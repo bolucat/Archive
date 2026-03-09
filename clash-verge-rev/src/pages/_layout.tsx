@@ -23,8 +23,8 @@ import {
 } from "@mui/material";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Outlet, useNavigate } from "react-router";
 import { SWRConfig } from "swr";
@@ -33,12 +33,11 @@ import iconDark from "@/assets/image/icon_dark.svg?react";
 import iconLight from "@/assets/image/icon_light.svg?react";
 import LogoSvg from "@/assets/image/logo.svg?react";
 import { BaseErrorBoundary } from "@/components/base";
-import { NoticeManager } from "@/components/base/NoticeManager";
-import { WindowControls } from "@/components/controller/window-controller";
 import { LayoutItem } from "@/components/layout/layout-item";
 import { LayoutTraffic } from "@/components/layout/layout-traffic";
+import { NoticeManager } from "@/components/layout/notice-manager";
 import { UpdateButton } from "@/components/layout/update-button";
-import { useCustomTheme } from "@/components/layout/use-custom-theme";
+import { WindowControls } from "@/components/layout/window-controller";
 import { useI18n } from "@/hooks/use-i18n";
 import { useVerge } from "@/hooks/use-verge";
 import { useWindowDecorations } from "@/hooks/use-window";
@@ -47,6 +46,7 @@ import getSystem from "@/utils/get-system";
 
 import {
   useAppInitialization,
+  useCustomTheme,
   useLayoutEvents,
   useLoadingOverlay,
   useNavMenuOrder,
@@ -117,6 +117,7 @@ const Layout = () => {
   const { theme } = useCustomTheme();
   const { verge, mutateVerge, patchVerge } = useVerge();
   const { language } = verge ?? {};
+  const navCollapsed = verge?.collapse_navbar ?? false;
   const { switchLanguage } = useI18n();
   const navigate = useNavigate();
   const themeReady = useMemo(() => Boolean(theme), [theme]);
@@ -125,7 +126,7 @@ const Layout = () => {
   const [menuContextPosition, setMenuContextPosition] =
     useState<MenuContextPosition | null>(null);
 
-  const windowControls = useRef<any>(null);
+  const windowControlsRef = useRef<any>(null);
   const { decorated } = useWindowDecorations();
 
   const sensors = useSensors(
@@ -196,11 +197,16 @@ const Layout = () => {
     setMenuContextPosition(null);
   }, []);
 
+  const handleToggleNavCollapsed = useCallback(() => {
+    setMenuContextPosition(null);
+    void patchVerge({ collapse_navbar: !navCollapsed });
+  }, [navCollapsed, patchVerge]);
+
   const customTitlebar = useMemo(
     () =>
       !decorated ? (
         <div className="the_titlebar" data-tauri-drag-region="true">
-          <WindowControls ref={windowControls} />
+          <WindowControls ref={windowControlsRef} />
         </div>
       ) : null,
     [decorated],
@@ -251,19 +257,31 @@ const Layout = () => {
     <SWRConfig
       value={{
         errorRetryCount: 3,
+        // TODO remove the 5000ms
         errorRetryInterval: 5000,
         onError: (error, key) => {
-          console.error(`[SWR Error] Key: ${key}, Error:`, error);
+          // FIXME the condition should not be handle gllobally
           if (key !== "getAutotemProxy") {
             console.error(`SWR Error for ${key}:`, error);
+            return;
           }
+
+          // FIXME we need a better way to handle the retry when first booting app
+          const silentKeys = [
+            "getVersion",
+            "getClashConfig",
+            "getAutotemProxy",
+          ];
+          if (silentKeys.includes(key)) return;
+
+          console.error(`[SWR Error] Key: ${key}, Error:`, error);
         },
         dedupingInterval: 2000,
       }}
     >
       <ThemeProvider theme={theme}>
         {/* 左侧底部窗口控制按钮 */}
-        <NoticeManager />
+        <NoticeManager position={verge?.notice_position} />
         <div
           style={{
             animation: "fadeIn 0.5s",
@@ -281,7 +299,7 @@ const Layout = () => {
         <Paper
           square
           elevation={0}
-          className={`${OS} layout`}
+          className={`${OS} layout${navCollapsed ? " layout--nav-collapsed" : ""}`}
           style={{
             borderTopLeftRadius: "0px",
             borderTopRightRadius: "0px",
@@ -430,6 +448,11 @@ const Layout = () => {
                   },
                 }}
               >
+                <MenuItem onClick={handleToggleNavCollapsed} dense>
+                  {navCollapsed
+                    ? t("layout.components.navigation.menu.expandNavBar")
+                    : t("layout.components.navigation.menu.collapseNavBar")}
+                </MenuItem>
                 <MenuItem
                   onClick={menuUnlocked ? handleLockMenu : handleUnlockMenu}
                   dense

@@ -35,7 +35,7 @@ type SudokuOption struct {
 type SudokuHTTPMaskOptions struct {
 	Disable  bool   `inbound:"disable,omitempty"`
 	Mode     string `inbound:"mode,omitempty"`
-	PathRoot string `inbound:"path_root,omitempty"`
+	PathRoot string `inbound:"path-root,omitempty"`
 }
 
 func (o SudokuOption) Equal(config C.InboundConfig) bool {

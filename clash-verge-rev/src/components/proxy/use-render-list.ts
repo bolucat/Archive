@@ -1,9 +1,8 @@
 import { useEffect, useMemo } from "react";
-import useSWR from "swr";
 
-import { useProxiesData } from "@/hooks/use-clash-data";
+import { useRuntimeConfig } from "@/hooks/use-clash";
 import { useVerge } from "@/hooks/use-verge";
-import { getRuntimeConfig } from "@/services/cmds";
+import { useAppData } from "@/providers/app-data-context";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
@@ -34,8 +33,24 @@ interface IProxyItem {
 }
 
 // 代理组类型
-type ProxyGroup = IProxyGroupItem & {
-  now?: string;
+type ProxyGroup = {
+  name: string;
+  type: string;
+  udp: boolean;
+  xudp: boolean;
+  tfo: boolean;
+  mptcp: boolean;
+  smux: boolean;
+  history: {
+    time: string;
+    delay: number;
+  }[];
+  now: string;
+  all: IProxyItem[];
+  hidden?: boolean;
+  icon?: string;
+  testUrl?: string;
+  provider?: string;
 };
 
 export interface IRenderItem {
@@ -84,21 +99,14 @@ export const useRenderList = (
   selectedGroup?: string | null,
 ) => {
   // 使用全局数据提供者
-  const { proxies: proxiesData, refreshProxy } = useProxiesData();
+  const { proxies: proxiesData, refreshProxy } = useAppData();
   const { verge } = useVerge();
   const { width } = useWindowWidth();
   const [headStates, setHeadState] = useHeadStateNew();
   const latencyTimeout = verge?.default_latency_timeout;
 
   // 获取运行时配置用于链式代理模式
-  const { data: runtimeConfig } = useSWR(
-    isChainMode ? "getRuntimeConfig" : null,
-    getRuntimeConfig,
-    {
-      revalidateOnFocus: false,
-      revalidateIfStale: true,
-    },
-  );
+  const { data: runtimeConfig } = useRuntimeConfig(!!isChainMode);
 
   // 计算列数
   const col = useMemo(
@@ -390,6 +398,11 @@ export const useRenderList = (
           headState.filterText,
           headState.sortType,
           latencyTimeout,
+          {
+            matchCase: headState.filterMatchCase,
+            matchWholeWord: headState.filterMatchWholeWord,
+            useRegularExpression: headState.filterUseRegularExpression,
+          },
         );
 
         ret.push({

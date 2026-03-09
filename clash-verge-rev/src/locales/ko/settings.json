@@ -15,7 +15,6 @@
         "systemProxy": "시스템 프록시"
       },
       "tooltips": {
-        "autoLaunchAdmin": "관리자 모드에서는 자동 실행이 지원되지 않을 수 있습니다",
         "silentStart": "패널을 표시하지 않고 백그라운드에서 시작합니다"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "Web UI",
           "clashCore": "Clash 코어",
           "openUwpTool": "UWP 도구 열기",
-          "updateGeoData": "GeoData 업데이트"
+          "updateGeoData": "GeoData 업데이트",
+          "tunnels": {
+            "title": "터널 관리",
+            "localAddr": "로컬 수신 주소",
+            "localPort": "로컬 수신 포트",
+            "targetAddr": "대상 주소",
+            "targetPort": "대상 포트",
+            "proxyGroup": "프록시 그룹",
+            "proxyNode": "프록시 노드",
+            "protocols": "프로토콜",
+            "existing": "기존 터널",
+            "default": "현재 설정 따르기",
+            "optional": "선택 사항",
+            "messages": {
+              "incomplete": "필수 터널 항목을 모두 입력해 주세요",
+              "invalidLocalAddr": "유효하지 않은 로컬 수신 주소입니다",
+              "invalidLocalPort": "유효하지 않은 로컬 수신 포트입니다",
+              "invalidTargetAddr": "유효하지 않은 대상 주소",
+              "invalidTargetPort": "유효하지 않은 대상 포트"
+            },
+            "actions": {
+              "add": "추가",
+              "addNew": "새 터널 추가"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "네트워크 인터페이스",
@@ -205,11 +228,14 @@
           "trafficGraph": "트래픽 그래프",
           "memoryUsage": "메모리 사용량",
           "proxyGroupIcon": "프록시 그룹 아이콘",
+          "toastPosition": "토스트 위치",
           "hoverNavigator": "호버 점프 내비게이터",
           "hoverNavigatorDelay": "호버 점프 내비게이터 지연",
           "navIcon": "내비게이션 아이콘",
+          "collapseNavBar": "내비게이션 바 접기",
           "trayIcon": "트레이 아이콘",
-          "showProxyGroupsInline": "프록시 그룹 인라인 표시",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "공용 트레이 아이콘",
           "systemProxyTrayIcon": "시스템 프록시 트레이 아이콘",
           "tunTrayIcon": "TUN 트레이 아이콘",
@@ -225,6 +251,17 @@
             "monochrome": "단색",
             "colorful": "컬러",
             "disable": "비활성화"
+          },
+          "toastPosition": {
+            "topLeft": "왼쪽 상단",
+            "topRight": "오른쪽 상단",
+            "bottomLeft": "왼쪽 하단",
+            "bottomRight": "오른쪽 하단"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "임의 포트"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "포트 설정이 저장되었습니다",
         "saveFailed": "포트 설정 저장에 실패했습니다"
       }
@@ -283,6 +321,7 @@
         "backup": "백업",
         "export": "내보내기",
         "exportBackup": "백업 내보내기",
+        "importBackup": "백업 가져오기",
         "deleteBackup": "백업 삭제",
         "restore": "복원",
         "restoreBackup": "백업 복원",
@@ -307,6 +346,8 @@
         "restoreSuccess": "복원 성공, 1초 후 앱이 재시작됩니다",
         "localBackupExported": "로컬 백업이 내보내졌습니다",
         "localBackupExportFailed": "로컬 백업 내보내기 실패",
+        "localBackupImported": "로컬 백업을 가져왔습니다",
+        "localBackupImportFailed": "로컬 백업 가져오기 실패: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "이 백업 파일을 삭제하시겠습니까?",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "알 수 없음",
+        "unknownTime": "시간 정보 없음"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "프록시 레이아웃 열 수",
         "autoLogClean": "로그 자동 정리",
         "autoDelayDetection": "자동 지연 감지",
+        "autoDelayDetectionInterval": "자동 지연 감지 간격",
         "defaultLatencyTest": "기본 지연 테스트",
         "defaultLatencyTimeout": "기본 지연 제한시간"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "프록시 가드",
         "guardDuration": "가드 지속시간",
         "alwaysUseDefaultBypass": "기본 우회 주소 항상 사용",
+        "enableBypassCheck": "프록시 우회 형식 검증",
         "proxyBypass": "프록시 우회 설정: ",
         "bypass": "우회: ",
         "pacScriptContent": "PAC 스크립트 내용"
@@ -424,6 +469,7 @@
         "stack": "스택",
         "device": "장치 이름",
         "autoRoute": "자동 라우팅",
+        "routeExcludeAddress": "라우트 제외 주소",
         "strictRoute": "엄격 라우팅",
         "autoDetectInterface": "인터페이스 자동 감지",
         "dnsHijack": "DNS 하이재킹",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "설정이 적용되었습니다"
+        "applied": "설정이 적용되었습니다",
+        "invalidRouteExcludeAddress": "유효한 CIDR 대역을 입력하세요",
+        "routeExcludeAddressHint": "IPv4/IPv6 CIDR만 지원합니다. 예: 192.168.0.0/16 또는 fd00::/8"
       }
     },
     "dns": {

@@ -7,14 +7,24 @@ import {
   Stack,
   Typography,
 } from "@mui/material";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useLockFn } from "ahooks";
 import type { ReactNode, Ref } from "react";
 import { useCallback, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { BaseDialog, DialogRef } from "@/components/base";
-import { createLocalBackup, createWebdavBackup } from "@/services/cmds";
+import { useVerge } from "@/hooks/use-verge";
+import {
+  createLocalBackup,
+  createWebdavBackup,
+  importLocalBackup,
+} from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
+import {
+  buildWebdavSignature,
+  setWebdavStatus,
+} from "@/services/webdav-status";
 
 import { AutoBackupSettings } from "./auto-backup-settings";
 import { BackupHistoryViewer } from "./backup-history-viewer";
@@ -24,12 +34,15 @@ type BackupSource = "local" | "webdav";
 
 export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
   const { t } = useTranslation();
+  const { verge } = useVerge();
   const [open, setOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<BackupSource | null>(null);
+  const [localImporting, setLocalImporting] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySource, setHistorySource] = useState<BackupSource>("local");
   const [historyPage, setHistoryPage] = useState(0);
   const [webdavDialogOpen, setWebdavDialogOpen] = useState(false);
+  const webdavSignature = buildWebdavSignature(verge);
 
   useImperativeHandle(ref, () => ({
     open: () => setOpen(true),
@@ -53,6 +66,7 @@ export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
       } else {
         await createWebdavBackup();
         showNotice.success("settings.modals.backup.messages.backupCreated");
+        setWebdavStatus(webdavSignature, "ready");
       }
     } catch (error) {
       console.error(error);
@@ -62,8 +76,33 @@ export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
           : "settings.modals.backup.messages.backupFailed",
         target === "local" ? undefined : { error },
       );
+      if (target === "webdav") {
+        setWebdavStatus(webdavSignature, "failed");
+      }
     } finally {
       setBusyAction(null);
+    }
+  });
+
+  const handleImport = useLockFn(async () => {
+    const selected = await openDialog({
+      multiple: false,
+      filters: [{ name: "Backup File", extensions: ["zip"] }],
+    });
+    if (!selected || Array.isArray(selected)) return;
+    try {
+      setLocalImporting(true);
+      await importLocalBackup(selected);
+      showNotice.success("settings.modals.backup.messages.localBackupImported");
+      openHistory("local");
+    } catch (error) {
+      console.error(error);
+      showNotice.error(
+        "settings.modals.backup.messages.localBackupImportFailed",
+        { error },
+      );
+    } finally {
+      setLocalImporting(false);
     }
   });
 
@@ -73,6 +112,8 @@ export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
     },
     [setBusyAction],
   );
+
+  const isLocalBusy = busyAction === "local" || localImporting;
 
   return (
     <BaseDialog
@@ -125,6 +166,7 @@ export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
                       variant="contained"
                       size="small"
                       loading={busyAction === "local"}
+                      disabled={localImporting}
                       onClick={() => handleBackup("local")}
                     >
                       {t("settings.modals.backup.actions.backup")}
@@ -133,10 +175,21 @@ export function BackupViewer({ ref }: { ref?: Ref<DialogRef> }) {
                       key="history"
                       variant="outlined"
                       size="small"
+                      disabled={isLocalBusy}
                       onClick={() => openHistory("local")}
                     >
                       {t("settings.modals.backup.actions.viewHistory")}
                     </Button>,
+                    <LoadingButton
+                      key="import"
+                      variant="text"
+                      size="small"
+                      loading={localImporting}
+                      disabled={busyAction === "local"}
+                      onClick={() => handleImport()}
+                    >
+                      {t("settings.modals.backup.actions.importBackup")}
+                    </LoadingButton>,
                   ],
                 },
                 {

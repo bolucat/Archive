@@ -15,7 +15,6 @@
         "systemProxy": "Системный прокси"
       },
       "tooltips": {
-        "autoLaunchAdmin": "Administrator mode may not support auto launch",
         "silentStart": "Запускать программу в фоновом режиме без отображения панели"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "Веб-интерфейс",
           "clashCore": "Ядро Clash",
           "openUwpTool": "Открыть UWP инструмент",
-          "updateGeoData": "Обновить GeoData"
+          "updateGeoData": "Обновить GeoData",
+          "tunnels": {
+            "title": "Управление туннелями",
+            "localAddr": "Локальный адрес прослушивания",
+            "localPort": "Локальный порт прослушивания",
+            "targetAddr": "Целевой адрес",
+            "targetPort": "Целевой порт",
+            "proxyGroup": "Группа прокси",
+            "proxyNode": "Прокси-узел",
+            "protocols": "Протокол",
+            "existing": "Существующие туннели",
+            "default": "Следовать текущей конфигурации",
+            "optional": "Необязательно",
+            "messages": {
+              "incomplete": "Пожалуйста, заполните все обязательные поля туннеля",
+              "invalidLocalAddr": "Недопустимый локальный адрес прослушивания",
+              "invalidLocalPort": "Недопустимый локальный порт прослушивания",
+              "invalidTargetAddr": "Неверный целевой адрес",
+              "invalidTargetPort": "Неверный целевой порт"
+            },
+            "actions": {
+              "add": "Добавить",
+              "addNew": "Добавить новый туннель"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "Сетевой интерфейс",
@@ -205,11 +228,14 @@
           "trafficGraph": "График трафика",
           "memoryUsage": "Использование памяти",
           "proxyGroupIcon": "Иконка Группы прокси",
+          "toastPosition": "Расположение уведомлений",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "Иконки навигации",
+          "collapseNavBar": "Свернуть панель навигации",
           "trayIcon": "Иконка в трее",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "Общий значок в трее",
           "systemProxyTrayIcon": "Значок системного прокси в трее",
           "tunTrayIcon": "Значок TUN в трее",
@@ -225,6 +251,17 @@
             "monochrome": "Монохромные",
             "colorful": "Цветные",
             "disable": "Отключить"
+          },
+          "toastPosition": {
+            "topLeft": "Сверху слева",
+            "topRight": "Сверху справа",
+            "bottomLeft": "Снизу слева",
+            "bottomRight": "Снизу справа"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "Случайный порт"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "Резервное копирование",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "Import Backup",
         "deleteBackup": "Удалить резервную копию",
         "restore": "Восстановить",
         "restoreBackup": "Восстановить резервную копию",
@@ -307,6 +346,8 @@
         "restoreSuccess": "Восстановление успешно выполнено, приложение перезапустится через 1 секунду",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "Local backup imported successfully",
+        "localBackupImportFailed": "Не удалось импортировать локальную резервную копию: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "Вы уверены, что хотите удалить этот файл резервной копии?",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "неизвестно",
+        "unknownTime": "Неизвестное время"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "Количество столбцов в макете прокси",
         "autoLogClean": "Автоматическая очистка логов",
         "autoDelayDetection": "Автоматическое измерение задержки",
+        "autoDelayDetectionInterval": "Интервал автоматического измерения задержки",
         "defaultLatencyTest": "Ссылка на тест задержки",
         "defaultLatencyTimeout": "Таймаут задержки по умолчанию"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "Proxy Guard",
         "guardDuration": "Период защиты",
         "alwaysUseDefaultBypass": "Всегда использовать стандартное обходное решение",
+        "enableBypassCheck": "Проверять формат обхода прокси",
         "proxyBypass": "Игнорируемые адреса: ",
         "bypass": "Игнорируемые адреса: ",
         "pacScriptContent": "Содержание сценария PAC"
@@ -424,6 +469,7 @@
         "stack": "Стек",
         "device": "Device Name",
         "autoRoute": "Автоматическая маршрутизация",
+        "routeExcludeAddress": "Адреса исключения маршрута",
         "strictRoute": "Строгая маршрутизация",
         "autoDetectInterface": "Автоопределение интерфейса",
         "dnsHijack": "DNS-перехват",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "Настройки применены"
+        "applied": "Настройки применены",
+        "invalidRouteExcludeAddress": "Введите корректный блок CIDR",
+        "routeExcludeAddressHint": "Поддерживаются только блоки CIDR IPv4/IPv6, например 192.168.0.0/16 или fd00::/8"
       }
     },
     "dns": {

@@ -54,7 +54,7 @@ type SudokuHTTPMaskOptions struct {
 	Mode      string `proxy:"mode,omitempty"`
 	TLS       bool   `proxy:"tls,omitempty"`
 	Host      string `proxy:"host,omitempty"`
-	PathRoot  string `proxy:"path_root,omitempty"`
+	PathRoot  string `proxy:"path-root,omitempty"`
 	Multiplex string `proxy:"multiplex,omitempty"`
 }
 

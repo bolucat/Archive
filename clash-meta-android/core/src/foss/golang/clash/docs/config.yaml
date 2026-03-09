@@ -1077,6 +1077,8 @@ proxies: # socks5
     # multiplexing: MULTIPLEXING_LOW
     # 如果想开启 0-RTT 握手，请设置为 HANDSHAKE_NO_WAIT，否则请设置为 HANDSHAKE_STANDARD。默认值为 HANDSHAKE_STANDARD
     # handshake-mode: HANDSHAKE_STANDARD
+    # 一个 base64 字符串用于微调网络行为
+    # traffic-pattern: ""
 
   # sudoku
   - name: sudoku
@@ -1090,12 +1092,22 @@ proxies: # socks5
     table-type: prefer_ascii    # 可选值：prefer_ascii、prefer_entropy 前者全ascii映射，后者保证熵值（汉明1）低于3
     # custom-table: xpxvvpvv    # 可选，自定义字节布局，必须包含2个x、2个p、4个v，可随意组合。启用此处则需配置`table-type`为`prefer_entropy`
     # custom-tables: ["xpxvvpvv", "vxpvxvvp"] # 可选，自定义字节布局列表（x/v/p），用于 xvp 模式轮换；非空时覆盖 custom-table
-    http-mask: true # 是否启用http掩码
-    # http-mask-mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）；stream/poll/auto 支持走 CDN/反代
-    # http-mask-tls: true # 可选：仅在 http-mask-mode 为 stream/poll/auto 时生效；true 强制 https；false 强制 http（不会根据端口自动推断）
-    # http-mask-host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 http-mask-mode 为 stream/poll/auto 时生效
-    # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload
-    # http-mask-multiplex: off # 可选：off（默认）、auto（复用底层 HTTP 连接，减少建链 RTT）、on（Sudoku mux 单隧道多目标；仅在 http-mask-mode=stream/poll/auto 生效）
+    # 推荐：使用 httpmask 对象统一管理 HTTPMask 相关字段：
+    httpmask:
+      disable: false # true 禁用所有 HTTP 伪装/隧道
+      mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）、ws（WebSocket 隧道）
+      # tls: true # 可选：仅在 mode 为 stream/poll/auto/ws 时生效；true 强制 https/wss；false 强制 http/ws（不会根据端口自动推断）
+      # host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 mode 为 stream/poll/auto/ws 时生效
+      # path_root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
+      # multiplex: off # 可选：off（默认）、auto（复用底层 HTTP 连接，减少建链 RTT）、on（Sudoku mux 单隧道多目标；仅在 mode=stream/poll/auto 生效；ws 强制 off）
+    #
+    # 向后兼容旧写法：
+    # http-mask: true # 是否启用 http 掩码
+    # http-mask-mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）、ws（WebSocket 隧道）
+    # http-mask-tls: true # 可选：仅在 http-mask-mode 为 stream/poll/auto/ws 时生效；true 强制 https/wss；false 强制 http/ws
+    # http-mask-host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 http-mask-mode 为 stream/poll/auto/ws 时生效
+    # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致）
+    # http-mask-multiplex: off # 可选：off（默认）、auto（复用底层 HTTP 连接）、on（Sudoku mux 单隧道多目标；ws 强制 off）
     enable-pure-downlink: false # 可选：false=带宽优化下行（更快，要求 aead-method != none）；true=纯 Sudoku 下行
 
   # anytls
@@ -1114,6 +1126,23 @@ proxies: # socks5
     #   - h2
     #   - http/1.1
     # skip-cert-verify: true
+
+  # trusttunnel
+  - name: trusttunnel
+    type: trusttunnel
+    server: 1.2.3.4
+    port: 443
+    username: username
+    password: password
+    # client-fingerprint: chrome
+    health-check: true
+    udp: true
+    # sni: "example.com"
+    # alpn:
+    #   - h2
+    # skip-cert-verify: true
+    # quic: true # 默认为false
+    # congestion-controller: bbr
 
 # dns 出站会将请求劫持到内部 dns 模块，所有请求均在内部处理
   - name: "dns-out"
@@ -1628,6 +1657,8 @@ listeners:
     users:
       username1: password1
       username2: password2
+    # 一个 base64 字符串用于微调网络行为
+    # traffic-pattern: ""
 
   - name: sudoku-in-1
     type: sudoku
@@ -1642,9 +1673,19 @@ listeners:
     # custom-tables: ["xpxvvpvv", "vxpvxvvp"] # 可选，自定义字节布局列表（x/v/p），用于 xvp 模式轮换；非空时覆盖 custom-table
     handshake-timeout: 5   # 可选（秒）
     enable-pure-downlink: false # 可选：false=带宽优化下行（更快，要求 aead-method != none）；true=纯 Sudoku 下行
-    disable-http-mask: false # 可选：禁用 http 掩码/隧道（默认为 false）
-    # http-mask-mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）；stream/poll/auto 支持走 CDN/反代
-    # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload
+    # 推荐：使用 httpmask 对象统一管理 HTTPMask 相关字段：
+    httpmask:
+      disable: false # true 禁用所有 HTTP 伪装/隧道
+      mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）、ws（WebSocket 隧道）
+      # path_root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
+    #
+    # 可选：当启用 HTTPMask 且识别到“像 HTTP 但不符合 tunnel/auth”的请求时，将原始字节透传给 fallback（常用于与其他服务共端口）：
+    # fallback: "127.0.0.1:80"
+    #
+    # 向后兼容旧写法：
+    # disable-http-mask: false # 可选：禁用 http 掩码/隧道（默认为 false）
+    # http-mask-mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）、ws（WebSocket 隧道）
+    # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致）
 
 
 
@@ -1730,6 +1771,30 @@ listeners:
     #  masquerade: file:///var/www # 作为文件服务器
     #  masquerade: http://127.0.0.1:8080	#作为反向代理
     #  masquerade: https://127.0.0.1:8080	#作为反向代理
+
+  - name: trusttunnel-in-1
+    type: trusttunnel
+    port: 10821 # 支持使用ports格式，例如200,302 or 200,204,401-429,501-503
+    listen: 0.0.0.0
+    # rule: sub-rule-name1 # 默认使用 rules，如果未找到 sub-rule 则直接使用 rules
+    # proxy: proxy # 如果不为空则直接将该入站流量交由指定 proxy 处理 (当 proxy 不为空时，这里的 proxy 名称必须合法，否则会出错)
+    users:
+      - username: 1
+        password: 9d0cb9d0-964f-4ef6-897d-6c6b3ccf9e68
+    certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    network: ["tcp", "udp"] # http2+http3
+    congestion-controller: bbr
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
 
   # 注意，listeners中的tun仅提供给高级用户使用，普通用户应使用顶层配置中的tun
   - name: tun-in-1

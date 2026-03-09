@@ -15,7 +15,6 @@
         "systemProxy": "系统代理"
       },
       "tooltips": {
-        "autoLaunchAdmin": "管理员模式可能不支持开机自启",
         "silentStart": "程序启动时以后台模式运行，不显示程序面板"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "网页界面",
           "clashCore": "Clash 内核",
           "openUwpTool": "UWP 工具",
-          "updateGeoData": "更新 GeoData"
+          "updateGeoData": "更新 GeoData",
+          "tunnels": {
+            "title": "流量隧道管理",
+            "localAddr": "本地监听地址",
+            "localPort": "本地监听端口",
+            "targetAddr": "目标地址",
+            "targetPort": "目标端口",
+            "proxyGroup": "代理组",
+            "proxyNode": "代理节点",
+            "protocols": "协议",
+            "existing": "已配置的隧道",
+            "default": "跟随当前配置",
+            "optional": "可选",
+            "messages": {
+              "incomplete": "请完整填写隧道信息",
+              "invalidLocalAddr": "无效的本地监听地址",
+              "invalidLocalPort": "无效的本地监听端口",
+              "invalidTargetAddr": "无效的目标地址",
+              "invalidTargetPort": "无效的目标端口"
+            },
+            "actions": {
+              "add": "添加",
+              "addNew": "添加新隧道"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "网络接口",
@@ -154,10 +177,10 @@
         "tooltips": {
           "backupInfo": "支持本地或 WebDAV 方式备份配置文件",
           "openConfDir": "如果软件运行异常，!备份!并删除此文件夹下的所有文件，重启软件",
-          "liteMode": "关闭GUI界面，仅保留内核运行"
+          "liteMode": "关闭 GUI 界面，仅保留内核运行"
         },
         "actions": {
-          "copyVersion": "复制Verge版本号"
+          "copyVersion": "复制 Verge 版本号"
         },
         "notifications": {
           "latestVersion": "当前已是最新版本",
@@ -205,11 +228,14 @@
           "trafficGraph": "流量图显",
           "memoryUsage": "内核占用",
           "proxyGroupIcon": "代理组图标",
+          "toastPosition": "通知位置",
           "hoverNavigator": "悬浮跳转导航",
           "hoverNavigatorDelay": "悬浮跳转导航延迟",
           "navIcon": "导航栏图标",
+          "collapseNavBar": "收起导航栏",
           "trayIcon": "托盘图标",
-          "showProxyGroupsInline": "将代理组显示在托盘一级菜单",
+          "proxyGroupsDisplayMode": "托盘代理组显示模式",
+          "showOutboundModesInline": "将出站模式显示在托盘一级菜单",
           "commonTrayIcon": "常规托盘图标",
           "systemProxyTrayIcon": "系统代理托盘图标",
           "tunTrayIcon": "TUN 模式托盘图标",
@@ -224,6 +250,17 @@
           "icon": {
             "monochrome": "单色图标",
             "colorful": "彩色图标",
+            "disable": "禁用"
+          },
+          "toastPosition": {
+            "topLeft": "左上角",
+            "topRight": "右上角",
+            "bottomLeft": "左下角",
+            "bottomRight": "右下角"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "默认",
+            "inline": "一级菜单",
             "disable": "禁用"
           }
         }
@@ -244,6 +281,7 @@
         "random": "随机端口"
       },
       "messages": {
+        "portInUse": "端口 {{port}} 已被占用",
         "saved": "端口设置已保存",
         "saveFailed": "端口设置保存失败"
       }
@@ -283,6 +321,7 @@
         "backup": "备份",
         "export": "导出",
         "exportBackup": "导出备份",
+        "importBackup": "导入备份",
         "deleteBackup": "删除备份",
         "restore": "恢复",
         "restoreBackup": "恢复备份",
@@ -307,6 +346,8 @@
         "restoreSuccess": "恢复成功，应用将在 1 秒后重启",
         "localBackupExported": "本地备份导出成功",
         "localBackupExportFailed": "本地备份导出失败",
+        "localBackupImported": "本地备份导入成功",
+        "localBackupImportFailed": "本地备份导入失败：{{error}}",
         "webdavRefreshSuccess": "WebDAV 刷新成功",
         "webdavRefreshFailed": "WebDAV 刷新失败: {{error}}",
         "confirmDelete": "确认删除此备份文件吗？",
@@ -333,7 +374,9 @@
       "history": {
         "title": "备份记录",
         "summary": "共 {{count}} 份备份 · 最近 {{recent}}",
-        "empty": "暂无备份记录"
+        "empty": "暂无备份记录",
+        "unknownPlatform": "未知",
+        "unknownTime": "未知时间"
       },
       "webdav": {
         "title": "WebDAV 设置"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "代理页布局列数",
         "autoLogClean": "自动清理日志",
         "autoDelayDetection": "自动延迟检测",
+        "autoDelayDetectionInterval": "自动延迟检测间隔",
         "defaultLatencyTest": "默认测试链接",
         "defaultLatencyTimeout": "测试超时时间"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "系统代理守卫",
         "guardDuration": "代理守卫间隔",
         "alwaysUseDefaultBypass": "始终使用默认绕过",
+        "enableBypassCheck": "验证代理绕过格式",
         "proxyBypass": "代理绕过设置：",
         "bypass": "当前绕过：",
         "pacScriptContent": "PAC 脚本内容"
@@ -424,6 +469,7 @@
         "stack": "TUN 模式堆栈",
         "device": "虚拟网卡名称",
         "autoRoute": "自动设置全局路由",
+        "routeExcludeAddress": "排除自定义网段",
         "strictRoute": "严格路由",
         "autoDetectInterface": "自动选择流量出口接口",
         "dnsHijack": "DNS 劫持",
@@ -435,7 +481,9 @@
         "autoRedirect": "自动配置 nftables/iptables 的 TCP 重定向"
       },
       "messages": {
-        "applied": "设置已应用"
+        "applied": "设置已应用",
+        "invalidRouteExcludeAddress": "请输入有效的 CIDR 网段",
+        "routeExcludeAddressHint": "仅支持 IPv4/IPv6 CIDR，例如 192.168.0.0/16 或 fd00::/8"
       }
     },
     "dns": {
@@ -588,7 +636,7 @@
       },
       "updater": {
         "withClashProxySuccess": "使用 Clash 代理更新成功",
-        "withClashProxyFailed": "使用 Clash 代理更新也失败"
+        "withClashProxyFailed": "使用 Clash 代理更新失败"
       }
     }
   },

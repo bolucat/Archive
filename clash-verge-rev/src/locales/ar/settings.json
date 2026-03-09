@@ -15,7 +15,6 @@
         "systemProxy": "وكيل النظام"
       },
       "tooltips": {
-        "autoLaunchAdmin": "Administrator mode may not support auto launch",
         "silentStart": "بدء البرنامج في الخلفية دون عرض الواجهة"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "واجهة الويب",
           "clashCore": "نواة Clash",
           "openUwpTool": "فتح أداة UWP",
-          "updateGeoData": "تحديث البيانات الجغرافية"
+          "updateGeoData": "تحديث البيانات الجغرافية",
+          "tunnels": {
+            "title": "إدارة الأنفاق",
+            "localAddr": "عنوان الاستماع المحلي",
+            "localPort": "منفذ الاستماع المحلي",
+            "targetAddr": "عنوان الهدف",
+            "targetPort": "منفذ الهدف",
+            "proxyGroup": "مجموعة الوكيل",
+            "proxyNode": "عقدة الوكيل",
+            "protocols": "البروتوكول",
+            "existing": "الأنفاق الموجودة",
+            "default": "اتباع الإعدادات الحالية",
+            "optional": "اختياري",
+            "messages": {
+              "incomplete": "يرجى تعبئة جميع حقول النفق المطلوبة",
+              "invalidLocalAddr": "عنوان الاستماع المحلي غير صالح",
+              "invalidLocalPort": "منفذ الاستماع المحلي غير صالح",
+              "invalidTargetAddr": "عنوان الهدف غير صالح",
+              "invalidTargetPort": "منفذ الهدف غير صالح"
+            },
+            "actions": {
+              "add": "إضافة",
+              "addNew": "إضافة نفق جديد"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "واجهة الشبكة",
@@ -205,11 +228,14 @@
           "trafficGraph": "مخطط حركة المرور",
           "memoryUsage": "استهلاك الذاكرة",
           "proxyGroupIcon": "أيقونة مجموعة الوكلاء",
+          "toastPosition": "Toast Position",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "أيقونة التنقل",
+          "collapseNavBar": "طي شريط التنقل",
           "trayIcon": "أيقونة شريط المهام",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "أيقونة شريط مهام عامة",
           "systemProxyTrayIcon": "أيقونة شريط المهام لوكيل النظام",
           "tunTrayIcon": "أيقونة شريط المهام لـ TUN",
@@ -225,6 +251,17 @@
             "monochrome": "أحادي اللون",
             "colorful": "ملون",
             "disable": "تعطيل"
+          },
+          "toastPosition": {
+            "topLeft": "Top Left",
+            "topRight": "Top Right",
+            "bottomLeft": "Bottom Left",
+            "bottomRight": "Bottom Right"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "منفذ عشوائي"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "نسخ احتياطي",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "Import Backup",
         "deleteBackup": "حذف النسخة الاحتياطية",
         "restore": "استعادة",
         "restoreBackup": "استعادة النسخة الاحتياطية",
@@ -307,6 +346,8 @@
         "restoreSuccess": "تمت الاستعادة بنجاح، سيعاد تشغيل التطبيق خلال ثانية واحدة",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "Local backup imported successfully",
+        "localBackupImportFailed": "Failed to import local backup: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "هل تريد بالتأكيد حذف ملف النسخة الاحتياطية هذا؟",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "unknown",
+        "unknownTime": "Unknown time"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "أعمدة عرض الوكيل",
         "autoLogClean": "تنظيف السجلات تلقائيًا",
         "autoDelayDetection": "اكتشاف التأخير التلقائي",
+        "autoDelayDetectionInterval": "الفاصل الزمني لاكتشاف التأخير التلقائي",
         "defaultLatencyTest": "اختبار التأخير الافتراضي",
         "defaultLatencyTimeout": "مهلة التأخير الافتراضية"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "حماية الوكيل",
         "guardDuration": "مدة الحماية",
         "alwaysUseDefaultBypass": "استخدام التخطي الافتراضي دائمًا",
+        "enableBypassCheck": "التحقق من تنسيق تجاوز الوكيل",
         "proxyBypass": "إعدادات تخطي الوكيل:",
         "bypass": "تخطي:",
         "pacScriptContent": "محتوى سكريبت PAC"
@@ -424,6 +469,7 @@
         "stack": "مكدس TUN",
         "device": "Device Name",
         "autoRoute": "توجيه تلقائي",
+        "routeExcludeAddress": "عناوين مستثناة من التوجيه",
         "strictRoute": "توجيه صارم",
         "autoDetectInterface": "الكشف التلقائي عن الواجهة",
         "dnsHijack": "اختطاف DNS",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "تم تطبيق الإعدادات"
+        "applied": "تم تطبيق الإعدادات",
+        "invalidRouteExcludeAddress": "يرجى إدخال نطاق CIDR صالح",
+        "routeExcludeAddressHint": "يتم دعم CIDR لـ IPv4/IPv6 فقط، مثل 192.168.0.0/16 أو fd00::/8"
       }
     },
     "dns": {

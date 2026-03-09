@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
-use flexi_logger::LoggerHandle;
 
 use crate::{
     config::Config,
     core::{
-        CoreManager, Timer, handle,
+        CoreManager, Timer,
         hotkey::Hotkey,
+        logger::Logger,
         service::{SERVICE_MANAGER, ServiceManager, is_service_ipc_path_exists},
         sysopt,
         tray::Tray,
@@ -28,25 +28,15 @@ pub mod window_script;
 
 static RESOLVE_DONE: AtomicBool = AtomicBool::new(false);
 
-pub fn init_work_dir_and_logger() -> Option<LoggerHandle> {
+pub fn init_work_dir_and_logger() -> anyhow::Result<()> {
     AsyncHandler::block_on(async {
         init_work_config().await;
         init_resources().await;
-
-        #[cfg(not(feature = "tauri-dev"))]
-        {
-            logging!(info, Type::Setup, "Initializing logger");
-            init::init_logger().await.ok()
-        }
-        #[cfg(feature = "tauri-dev")]
-        {
-            None
-        }
+        logging!(info, Type::Setup, "Initializing logger");
+        // #[cfg(not(feature = "tokio-trace"))]
+        Logger::global().init().await?;
+        Ok(())
     })
-}
-
-pub fn resolve_setup_handle() {
-    init_handle();
 }
 
 pub fn resolve_setup_sync() {
@@ -101,10 +91,6 @@ pub async fn resolve_reset_async() -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-pub fn init_handle() {
-    handle::Handle::global().init();
-}
-
 pub(super) fn init_scheme() {
     logging_error!(Type::Setup, init::init_scheme());
 }
@@ -154,9 +140,6 @@ pub async fn init_work_config() {
 }
 
 pub(super) async fn init_tray() {
-    if std::env::var("CLASH_VERGE_DISABLE_TRAY").unwrap_or_default() == "1" {
-        return;
-    }
     logging_error!(Type::Setup, Tray::global().init().await);
 }
 

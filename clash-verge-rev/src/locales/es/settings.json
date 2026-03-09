@@ -15,7 +15,6 @@
         "systemProxy": "Proxy del sistema"
       },
       "tooltips": {
-        "autoLaunchAdmin": "El modo de administrador puede no admitir el inicio automático.",
         "silentStart": "El programa se ejecutará en segundo plano al iniciarse y no mostrará el panel."
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "Interfaz web",
           "clashCore": "Núcleo de Clash",
           "openUwpTool": "Abrir herramienta UWP",
-          "updateGeoData": "Actualizar GeoData"
+          "updateGeoData": "Actualizar GeoData",
+          "tunnels": {
+            "title": "Gestión de Túneles",
+            "localAddr": "Dirección de Escucha Local",
+            "localPort": "Puerto de Escucha Local",
+            "targetAddr": "Dirección de destino",
+            "targetPort": "Puerto de destino",
+            "proxyGroup": "Grupo de Proxy",
+            "proxyNode": "Nodo Proxy",
+            "protocols": "Protocolo",
+            "existing": "Túneles Existentes",
+            "default": "Seguir la Configuración Actual",
+            "optional": "Opcional",
+            "messages": {
+              "incomplete": "Por favor complete todos los campos obligatorios del túnel",
+              "invalidLocalAddr": "Dirección de escucha local no válida",
+              "invalidLocalPort": "Puerto de escucha local no válido",
+              "invalidTargetAddr": "Dirección de destino no válida",
+              "invalidTargetPort": "Puerto de destino no válido"
+            },
+            "actions": {
+              "add": "Agregar",
+              "addNew": "Agregar Nuevo Túnel"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "Interfaz de red",
@@ -205,11 +228,14 @@
           "trafficGraph": "Gráfico de tráfico",
           "memoryUsage": "Uso de memoria del núcleo",
           "proxyGroupIcon": "Icono del grupo de proxy",
+          "toastPosition": "Posición del aviso",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "Icono de la barra de navegación",
+          "collapseNavBar": "Colapsar barra de navegación",
           "trayIcon": "Icono de la bandeja",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "Icono de bandeja común",
           "systemProxyTrayIcon": "Icono de bandeja del proxy del sistema",
           "tunTrayIcon": "Icono de bandeja del modo TUN",
@@ -225,6 +251,17 @@
             "monochrome": "Icono monocromo",
             "colorful": "Icono colorido",
             "disable": "Deshabilitar"
+          },
+          "toastPosition": {
+            "topLeft": "Arriba a la izquierda",
+            "topRight": "Arriba a la derecha",
+            "bottomLeft": "Abajo a la izquierda",
+            "bottomRight": "Abajo a la derecha"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "Puerto aleatorio"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "Copia de seguridad",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "Import Backup",
         "deleteBackup": "Eliminar copia de seguridad",
         "restore": "Restaurar",
         "restoreBackup": "Restaurar copia de seguridad",
@@ -307,6 +346,8 @@
         "restoreSuccess": "Restauración exitosa. La aplicación se reiniciará en 1 segundo",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "Local backup imported successfully",
+        "localBackupImportFailed": "Failed to import local backup: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "Confirm to delete this backup file?",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "unknown",
+        "unknownTime": "Unknown time"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "Número de columnas en la disposición de la página de proxy",
         "autoLogClean": "Limpiar registros automáticamente",
         "autoDelayDetection": "Detección automática de latencia",
+        "autoDelayDetectionInterval": "Intervalo de detección automática de latencia",
         "defaultLatencyTest": "Enlace de prueba de latencia predeterminado",
         "defaultLatencyTimeout": "Tiempo de espera de la prueba de latencia"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "Guardia del proxy del sistema",
         "guardDuration": "Intervalo de guardia del proxy",
         "alwaysUseDefaultBypass": "Siempre usar la lista de omisión predeterminada",
+        "enableBypassCheck": "Validar formato de bypass de proxy",
         "proxyBypass": "Configuración de omisión del proxy: ",
         "bypass": "Omisión actual: ",
         "pacScriptContent": "Contenido del script PAC"
@@ -424,6 +469,7 @@
         "stack": "Pila del modo TUN",
         "device": "Device Name",
         "autoRoute": "Configurar enrutamiento global automáticamente",
+        "routeExcludeAddress": "Direcciones excluidas de ruta",
         "strictRoute": "Enrutamiento estricto",
         "autoDetectInterface": "Detectar automáticamente la interfaz de salida del tráfico",
         "dnsHijack": "Secuestro de DNS",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "Ajustes aplicados"
+        "applied": "Ajustes aplicados",
+        "invalidRouteExcludeAddress": "Introduce un bloque CIDR válido",
+        "routeExcludeAddressHint": "Solo se admiten bloques CIDR de IPv4/IPv6, como 192.168.0.0/16 o fd00::/8"
       }
     },
     "dns": {

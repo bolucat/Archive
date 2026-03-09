@@ -18,7 +18,7 @@ export async function enhanceProfiles() {
 }
 
 export async function patchProfilesConfig(profiles: IProfilesConfig) {
-  return invoke<void>("patch_profiles_config", { profiles });
+  return invoke<boolean>("patch_profiles_config", { profiles });
 }
 
 export async function createProfile(
@@ -340,7 +340,7 @@ export async function cmdGetProxyDelay(
   url?: string,
 ) {
   // 确保URL不为空
-  const testUrl = url || "https://cp.cloudflare.com/generate_204";
+  const testUrl = url || "http://cp.cloudflare.com";
 
   try {
     // 不再在前端编码代理名称，由后端统一处理编码
@@ -455,6 +455,10 @@ export async function restoreLocalBackup(filename: string) {
   return invoke<void>("restore_local_backup", { filename });
 }
 
+export async function importLocalBackup(source: string) {
+  return invoke<string>("import_local_backup", { source });
+}
+
 export async function exportLocalBackup(filename: string, destination: string) {
   return invoke<void>("export_local_backup", { filename, destination });
 }
@@ -550,3 +554,12 @@ export const isAdmin = async () => {
 export async function getNextUpdateTime(uid: string) {
   return invoke<number | null>("get_next_update_time", { uid });
 }
+
+export const isPortInUse = async (port: number) => {
+  try {
+    return await invoke<boolean>("is_port_in_use", { port });
+  } catch (error) {
+    console.error("检查端口使用状态失败:", error);
+    return false;
+  }
+};

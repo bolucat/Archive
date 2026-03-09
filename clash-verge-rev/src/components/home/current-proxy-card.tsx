@@ -27,21 +27,22 @@ import {
   useTheme,
 } from "@mui/material";
 import { useLockFn } from "ahooks";
-import React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
 import { EnhancedCard } from "@/components/home/enhanced-card";
-import {
-  useClashConfig,
-  useProxiesData,
-  useRulesData,
-} from "@/hooks/use-clash-data";
 import { useProfiles } from "@/hooks/use-profiles";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
+import { useAppData } from "@/providers/app-data-context";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
@@ -50,8 +51,8 @@ const STORAGE_KEY_GROUP = "clash-verge-selected-proxy-group";
 const STORAGE_KEY_PROXY = "clash-verge-selected-proxy";
 const STORAGE_KEY_SORT_TYPE = "clash-verge-proxy-sort-type";
 
-const AUTO_CHECK_INITIAL_DELAY_MS = 1500;
-const AUTO_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const AUTO_CHECK_DEFAULT_INTERVAL_MINUTES = 5;
+const AUTO_CHECK_INITIAL_DELAY_MS = 100;
 
 // 代理节点信息接口
 interface ProxyOption {
@@ -88,9 +89,13 @@ function getSignalIcon(delay: number): {
   text: string;
   color: string;
 } {
-  if (delay < 0)
+  if (delay === -2)
+    return { icon: <SignalNone />, text: "测试中", color: "text.secondary" };
+  if (delay === -1)
     return { icon: <SignalNone />, text: "未测试", color: "text.secondary" };
-  if (delay >= 10000)
+  if (delay > 1e5)
+    return { icon: <SignalError />, text: "错误", color: "error.main" };
+  if (delay === 0 || delay >= 10000)
     return { icon: <SignalError />, text: "超时", color: "error.main" };
   if (delay >= 500)
     return { icon: <SignalWeak />, text: "延迟较高", color: "error.main" };
@@ -105,12 +110,19 @@ export const CurrentProxyCard = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const theme = useTheme();
-  const { proxies, refreshProxy } = useProxiesData();
-  const { clashConfig } = useClashConfig();
-  const { rules } = useRulesData();
+  const { proxies, clashConfig, refreshProxy, rules } = useAppData();
   const { verge } = useVerge();
   const { current: currentProfile } = useProfiles();
   const autoDelayEnabled = verge?.enable_auto_delay_detection ?? false;
+  const defaultLatencyTimeout = verge?.default_latency_timeout;
+  const autoDelayIntervalMs = useMemo(() => {
+    const rawInterval = verge?.auto_delay_detection_interval_minutes;
+    const intervalMinutes =
+      typeof rawInterval === "number" && rawInterval > 0
+        ? rawInterval
+        : AUTO_CHECK_DEFAULT_INTERVAL_MINUTES;
+    return Math.max(1, Math.round(intervalMinutes)) * 60 * 1000;
+  }, [verge?.auto_delay_detection_interval_minutes]);
   const currentProfileId = currentProfile?.uid || null;
 
   const getProfileStorageKey = useCallback(
@@ -597,13 +609,13 @@ export const CurrentProxyCard = () => {
       if (disposed) return;
       await checkCurrentProxyDelay();
       if (disposed) return;
-      intervalTimer = setTimeout(runAndSchedule, AUTO_CHECK_INTERVAL_MS);
+      intervalTimer = setTimeout(runAndSchedule, autoDelayIntervalMs);
     };
 
     initialTimer = setTimeout(async () => {
       await checkCurrentProxyDelay();
       if (disposed) return;
-      intervalTimer = setTimeout(runAndSchedule, AUTO_CHECK_INTERVAL_MS);
+      intervalTimer = setTimeout(runAndSchedule, autoDelayIntervalMs);
     }, AUTO_CHECK_INITIAL_DELAY_MS);
 
     return () => {
@@ -613,6 +625,7 @@ export const CurrentProxyCard = () => {
     };
   }, [
     checkCurrentProxyDelay,
+    autoDelayIntervalMs,
     isDirectMode,
     state.selection.group,
     state.selection.proxy,
@@ -742,20 +755,38 @@ export const CurrentProxyCard = () => {
 
       if (sortType === 1) {
         const refreshTick = delaySortRefresh;
+        const effectiveTimeout =
+          typeof defaultLatencyTimeout === "number" && defaultLatencyTimeout > 0
+            ? defaultLatencyTimeout
+            : 10000;
+
+        const categorizeDelay = (delay: number): [number, number] => {
+          if (!Number.isFinite(delay)) return [5, Number.MAX_SAFE_INTEGER];
+          if (delay > 1e5) return [4, delay];
+          if (delay === 0 || (delay >= effectiveTimeout && delay <= 1e5)) {
+            return [3, delay || effectiveTimeout];
+          }
+          if (delay < 0) return [5, Number.MAX_SAFE_INTEGER];
+          return [0, delay];
+        };
+
         list.sort((a, b) => {
           const recordA = state.proxyData.records[a.name];
           const recordB = state.proxyData.records[b.name];
 
-          if (!recordA) return 1;
-          if (!recordB) return -1;
+          const [ar, av] = recordA
+            ? categorizeDelay(
+                delayManager.getDelayFix(recordA, state.selection.group),
+              )
+            : [6, Number.MAX_SAFE_INTEGER];
+          const [br, bv] = recordB
+            ? categorizeDelay(
+                delayManager.getDelayFix(recordB, state.selection.group),
+              )
+            : [6, Number.MAX_SAFE_INTEGER];
 
-          const ad = delayManager.getDelayFix(recordA, state.selection.group);
-          const bd = delayManager.getDelayFix(recordB, state.selection.group);
-
-          if (ad === -1 || ad === -2) return 1;
-          if (bd === -1 || bd === -2) return -1;
-
-          if (ad !== bd) return ad - bd;
+          if (ar !== br) return ar - br;
+          if (av !== bv) return av - bv;
           return refreshTick >= 0 ? a.name.localeCompare(b.name) : 0;
         });
       } else {
@@ -800,6 +831,7 @@ export const CurrentProxyCard = () => {
     state.selection.group,
     sortType,
     delaySortRefresh,
+    defaultLatencyTimeout,
   ]);
 
   // 获取排序图标

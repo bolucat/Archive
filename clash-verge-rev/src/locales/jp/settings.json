@@ -15,7 +15,6 @@
         "systemProxy": "システムプロキシ"
       },
       "tooltips": {
-        "autoLaunchAdmin": "管理者モードでは起動時の自動起動がサポートされない場合があります。",
         "silentStart": "アプリケーションを起動すると、バックグラウンドモードで実行され、アプリケーションパネルは表示されません。"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "Webインターフェース",
           "clashCore": "Clashコア",
           "openUwpTool": "UWPツールを開く",
-          "updateGeoData": "GeoDataを更新"
+          "updateGeoData": "GeoDataを更新",
+          "tunnels": {
+            "title": "トンネル管理",
+            "localAddr": "ローカル待受アドレス",
+            "localPort": "ローカル待受ポート",
+            "targetAddr": "ターゲットアドレス",
+            "targetPort": "ターゲットポート",
+            "proxyGroup": "プロキシグループ",
+            "proxyNode": "プロキシノード",
+            "protocols": "プロトコル",
+            "existing": "既存のトンネル",
+            "default": "現在の設定に従う",
+            "optional": "任意",
+            "messages": {
+              "incomplete": "必須のトンネル項目をすべて入力してください",
+              "invalidLocalAddr": "無効なローカル待受アドレスです",
+              "invalidLocalPort": "無効なローカル待受ポートです",
+              "invalidTargetAddr": "無効なターゲットアドレス",
+              "invalidTargetPort": "無効なターゲットポート"
+            },
+            "actions": {
+              "add": "追加",
+              "addNew": "新しいトンネルを追加"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "ネットワークインターフェース",
@@ -205,11 +228,14 @@
           "trafficGraph": "トラフィックグラフ",
           "memoryUsage": "コアメモリ使用量",
           "proxyGroupIcon": "プロキシグループアイコン",
+          "toastPosition": "トーストの表示位置",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "ナビゲーションバーアイコン",
+          "collapseNavBar": "ナビゲーションバーを折りたたむ",
           "trayIcon": "トレイアイコン",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "通常のトレイアイコン",
           "systemProxyTrayIcon": "システムプロキシトレイアイコン",
           "tunTrayIcon": "TUNモードトレイアイコン",
@@ -225,6 +251,17 @@
             "monochrome": "モノクロアイコン",
             "colorful": "カラーアイコン",
             "disable": "無効にする"
+          },
+          "toastPosition": {
+            "topLeft": "左上",
+            "topRight": "右上",
+            "bottomLeft": "左下",
+            "bottomRight": "右下"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "ランダムポート"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "バックアップ",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "バックアップをインポート",
         "deleteBackup": "バックアップを削除",
         "restore": "復元",
         "restoreBackup": "バックアップを復元",
@@ -307,6 +346,8 @@
         "restoreSuccess": "復元に成功しました。アプリケーションは1秒後に再起動します。",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "ローカルバックアップのインポートに成功しました",
+        "localBackupImportFailed": "ローカルバックアップのインポートに失敗しました: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "Confirm to delete this backup file?",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "unknown",
+        "unknownTime": "Unknown time"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "プロキシページのレイアウト列数",
         "autoLogClean": "ログを自動的にクリーンアップ",
         "autoDelayDetection": "自動遅延検出",
+        "autoDelayDetectionInterval": "自動遅延検出間隔",
         "defaultLatencyTest": "デフォルトの遅延テストURL",
         "defaultLatencyTimeout": "テストタイムアウト時間"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "システムプロキシガード",
         "guardDuration": "プロキシガード間隔",
         "alwaysUseDefaultBypass": "常にデフォルトのバイパスを使用",
+        "enableBypassCheck": "プロキシバイパス形式を検証",
         "proxyBypass": "プロキシバイパス設定：",
         "bypass": "現在のバイパス：",
         "pacScriptContent": "PACスクリプト内容"
@@ -424,6 +469,7 @@
         "stack": "TUNモードスタック",
         "device": "Device Name",
         "autoRoute": "グローバルルートを自動設定",
+        "routeExcludeAddress": "ルート除外アドレス",
         "strictRoute": "厳格なルート",
         "autoDetectInterface": "トラフィックの出口インターフェースを自動選択",
         "dnsHijack": "DNSハイジャック",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "設定が適用されました。"
+        "applied": "設定が適用されました",
+        "invalidRouteExcludeAddress": "有効な CIDR ブロックを入力してください",
+        "routeExcludeAddressHint": "IPv4/IPv6 の CIDR のみ対応しています。例: 192.168.0.0/16、fd00::/8"
       }
     },
     "dns": {

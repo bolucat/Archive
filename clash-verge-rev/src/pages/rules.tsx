@@ -3,18 +3,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 
-import { BaseEmpty, BasePage } from "@/components/base";
-import { BaseSearchBox } from "@/components/base/base-search-box";
+import { BaseEmpty, BasePage, BaseSearchBox } from "@/components/base";
 import { ScrollTopButton } from "@/components/layout/scroll-top-button";
 import { ProviderButton } from "@/components/rule/provider-button";
 import RuleItem from "@/components/rule/rule-item";
-import { useRuleProvidersData, useRulesData } from "@/hooks/use-clash-data";
 import { useVisibility } from "@/hooks/use-visibility";
+import { useAppData } from "@/providers/app-data-context";
 
 const RulesPage = () => {
   const { t } = useTranslation();
-  const { rules = [], refreshRules } = useRulesData();
-  const { ruleProviders, refreshRuleProviders } = useRuleProvidersData();
+  const { rules = [], refreshRules, refreshRuleProviders } = useAppData();
   const [match, setMatch] = useState(() => (_: string) => true);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -32,7 +30,13 @@ const RulesPage = () => {
   }, [refreshRules, refreshRuleProviders, pageVisible]);
 
   const filteredRules = useMemo(() => {
-    return rules.filter((item) => match(item.payload));
+    const rulesWithLineNo = rules.map((item, index) => ({
+      ...item,
+      // UI-only derived data; keep app context/SWR data immutable
+      lineNo: index + 1,
+    }));
+
+    return rulesWithLineNo.filter((item) => match(item.payload ?? ""));
   }, [rules, match]);
 
   const scrollToTop = () => {
@@ -58,11 +62,7 @@ const RulesPage = () => {
       }}
       header={
         <Box display="flex" alignItems="center" gap={1}>
-          <ProviderButton
-            ruleProviders={ruleProviders}
-            refreshRuleProviders={refreshRuleProviders}
-            refreshRules={refreshRules}
-          />
+          <ProviderButton />
         </Box>
       }
     >
@@ -87,9 +87,7 @@ const RulesPage = () => {
             style={{
               flex: 1,
             }}
-            itemContent={(index, item) => (
-              <RuleItem index={index + 1} value={item} />
-            )}
+            itemContent={(_index, item) => <RuleItem value={item} />}
             followOutput={"smooth"}
             scrollerRef={(ref) => {
               if (ref) ref.addEventListener("scroll", handleScroll);

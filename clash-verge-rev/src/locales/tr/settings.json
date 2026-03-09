@@ -15,7 +15,6 @@
         "systemProxy": "Sistem Vekil'i"
       },
       "tooltips": {
-        "autoLaunchAdmin": "Yönetici modu otomatik başlatmayı desteklemeyebilir",
         "silentStart": "Programı paneli görüntülemeden arka plan modunda başlatır"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "Web Arayüzü",
           "clashCore": "Clash Çekirdeği",
           "openUwpTool": "UWP Aracını Aç",
-          "updateGeoData": "GeoData'yı Güncelle"
+          "updateGeoData": "GeoData'yı Güncelle",
+          "tunnels": {
+            "title": "Tünel Yönetimi",
+            "localAddr": "Yerel Dinleme Adresi",
+            "localPort": "Yerel Dinleme Portu",
+            "targetAddr": "Hedef Adresi",
+            "targetPort": "Hedef Portu",
+            "proxyGroup": "Proxy Grubu",
+            "proxyNode": "Proxy Düğümü",
+            "protocols": "Protokol",
+            "existing": "Mevcut Tüneller",
+            "default": "Geçerli Yapılandırmayı İzle",
+            "optional": "İsteğe Bağlı",
+            "messages": {
+              "incomplete": "Lütfen gerekli tüm tünel alanlarını doldurun",
+              "invalidLocalAddr": "Geçersiz yerel dinleme adresi",
+              "invalidLocalPort": "Geçersiz yerel dinleme portu",
+              "invalidTargetAddr": "Geçersiz hedef adresi",
+              "invalidTargetPort": "Geçersiz hedef portu"
+            },
+            "actions": {
+              "add": "Ekle",
+              "addNew": "Yeni Tünel Ekle"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "Ağ Arayüzü",
@@ -205,11 +228,14 @@
           "trafficGraph": "Trafik Grafiği",
           "memoryUsage": "Çekirdek Kullanımı",
           "proxyGroupIcon": "Vekil Grup Simgesi",
+          "toastPosition": "Toast konumu",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "Gezinme Simgesi",
+          "collapseNavBar": "Gezinme çubuğunu daralt",
           "trayIcon": "Tepsi Simgesi",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "Genel Tepsi Simgesi",
           "systemProxyTrayIcon": "Sistem Vekil Tepsi Simgesi",
           "tunTrayIcon": "Tun Tepsi Simgesi",
@@ -225,6 +251,17 @@
             "monochrome": "Tek Renkli",
             "colorful": "Renkli",
             "disable": "Devre Dışı Bırak"
+          },
+          "toastPosition": {
+            "topLeft": "Sol üst",
+            "topRight": "Sağ üst",
+            "bottomLeft": "Sol alt",
+            "bottomRight": "Sağ alt"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "Rastgele Port"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "Yedekle",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "Import Backup",
         "deleteBackup": "Yedeği Sil",
         "restore": "Geri Yükle",
         "restoreBackup": "Yedeği Geri Yükle",
@@ -307,6 +346,8 @@
         "restoreSuccess": "Geri Yükleme Başarılı, Uygulama 1 saniye içinde yeniden başlatılacak",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "Local backup imported successfully",
+        "localBackupImportFailed": "Failed to import local backup: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "Bu yedek dosyasını silmeyi onaylıyor musunuz?",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "unknown",
+        "unknownTime": "Unknown time"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "Vekil Düzeni Sütunları",
         "autoLogClean": "Otomatik Günlük Temizleme",
         "autoDelayDetection": "Otomatik Gecikme Tespiti",
+        "autoDelayDetectionInterval": "Otomatik Gecikme Tespiti Aralığı",
         "defaultLatencyTest": "Varsayılan Gecikme Testi",
         "defaultLatencyTimeout": "Varsayılan Gecikme Zaman Aşımı"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "Vekil Koruyucusu",
         "guardDuration": "Koruma Süresi",
         "alwaysUseDefaultBypass": "Her Zaman Varsayılan Baypas Kullan",
+        "enableBypassCheck": "Proxy baypas biçimini doğrula",
         "proxyBypass": "Vekil Baypas Ayarları: ",
         "bypass": "Baypas: ",
         "pacScriptContent": "PAC Betiği İçeriği"
@@ -424,6 +469,7 @@
         "stack": "Tun Yığını",
         "device": "Device Name",
         "autoRoute": "Otomatik Yönlendirme",
+        "routeExcludeAddress": "Yönlendirme Hariç Adresler",
         "strictRoute": "Katı Yönlendirme",
         "autoDetectInterface": "Arayüzü Otomatik Algıla",
         "dnsHijack": "DNS Ele Geçirme",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "Ayarlar Uygulandı"
+        "applied": "Ayarlar Uygulandı",
+        "invalidRouteExcludeAddress": "Lütfen geçerli bir CIDR bloğu girin",
+        "routeExcludeAddressHint": "Yalnızca IPv4/IPv6 CIDR blokları desteklenir; örneğin 192.168.0.0/16 veya fd00::/8"
       }
     },
     "dns": {

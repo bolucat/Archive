@@ -7,6 +7,8 @@ pub mod commands;
 
 #[cfg(windows)]
 use deelevate::{PrivilegeLevel, Token};
+#[cfg(unix)]
+pub use libc;
 use parking_lot::RwLock;
 use sysinfo::{Networks, System};
 use tauri::{
@@ -119,6 +121,12 @@ fn is_binary_admin() -> bool {
 }
 
 #[inline]
+#[cfg(unix)]
+pub fn current_gid() -> u32 {
+    unsafe { libc::getgid() }
+}
+
+#[inline]
 pub fn list_network_interfaces() -> Vec<String> {
     let mut networks = Networks::new();
     networks.refresh(false);
@@ -130,6 +138,13 @@ pub fn set_app_core_mode<R: Runtime>(app: &tauri::AppHandle<R>, mode: impl Into<
     let platform_spec = app.state::<RwLock<Platform>>();
     let mut spec = platform_spec.write();
     spec.appinfo.app_core_mode = mode.into();
+}
+
+#[inline]
+pub fn get_app_uptime<R: Runtime>(app: &tauri::AppHandle<R>) -> Instant {
+    let platform_spec = app.state::<RwLock<Platform>>();
+    let spec = platform_spec.read();
+    spec.appinfo.app_startup_time
 }
 
 #[inline]

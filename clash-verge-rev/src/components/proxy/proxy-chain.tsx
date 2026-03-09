@@ -16,6 +16,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
+  ArrowDownward,
   Delete as DeleteIcon,
   DragIndicator,
   Link,
@@ -33,14 +34,13 @@ import {
 } from "@mui/material";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import useSWR from "swr";
 import {
   closeAllConnections,
   selectNodeForGroup,
 } from "tauri-plugin-mihomo-api";
 
-import { useProxiesData } from "@/hooks/use-clash-data";
-import { calcuProxies, updateProxyChainConfigInRuntime } from "@/services/cmds";
+import { useAppData } from "@/providers/app-data-context";
+import { updateProxyChainConfigInRuntime } from "@/services/cmds";
 import { debugLog } from "@/utils/debug";
 
 interface ProxyChainItem {
@@ -70,10 +70,18 @@ interface ProxyChainProps {
 interface SortableItemProps {
   proxy: ProxyChainItem;
   index: number;
+  isFirst: boolean;
+  isLast: boolean;
   onRemove: (id: string) => void;
 }
 
-const SortableItem = ({ proxy, index, onRemove }: SortableItemProps) => {
+const SortableItem = ({
+  proxy,
+  index,
+  isFirst,
+  isLast,
+  onRemove,
+}: SortableItemProps) => {
   const theme = useTheme();
   const { t } = useTranslation();
   const {
@@ -91,12 +99,24 @@ const SortableItem = ({ proxy, index, onRemove }: SortableItemProps) => {
     opacity: isDragging ? 0.5 : 1,
   };
 
+  const roleLabel = isFirst
+    ? t("proxies.page.chain.entryNode")
+    : isLast
+      ? t("proxies.page.chain.exitNode")
+      : undefined;
+
+  const roleColor = isFirst
+    ? theme.palette.success.main
+    : isLast
+      ? theme.palette.warning.main
+      : undefined;
+
   return (
     <Box
       ref={setNodeRef}
       style={style}
       sx={{
-        mb: 1,
+        mb: 0,
         display: "flex",
         alignItems: "center",
         p: 1,
@@ -104,7 +124,9 @@ const SortableItem = ({ proxy, index, onRemove }: SortableItemProps) => {
           ? theme.palette.action.selected
           : theme.palette.background.default,
         borderRadius: 1,
-        border: `1px solid ${theme.palette.divider}`,
+        border: roleColor
+          ? `1.5px solid ${roleColor}`
+          : `1px solid ${theme.palette.divider}`,
         boxShadow: isDragging ? theme.shadows[4] : theme.shadows[1],
         transition: "box-shadow 0.2s, background-color 0.2s",
       }}
@@ -126,12 +148,25 @@ const SortableItem = ({ proxy, index, onRemove }: SortableItemProps) => {
         <DragIndicator />
       </Box>
 
-      <Chip
-        label={`${index + 1}`}
-        size="small"
-        color="primary"
-        sx={{ mr: 1, minWidth: 32 }}
-      />
+      {roleLabel ? (
+        <Chip
+          label={roleLabel}
+          size="small"
+          sx={{
+            mr: 1,
+            fontWeight: 700,
+            color: "#fff",
+            backgroundColor: roleColor,
+          }}
+        />
+      ) : (
+        <Chip
+          label={`${index + 1}`}
+          size="small"
+          color="primary"
+          sx={{ mr: 1, minWidth: 32 }}
+        />
+      )}
 
       <Typography
         variant="body2"
@@ -200,44 +235,33 @@ export const ProxyChain = ({
 }: ProxyChainProps) => {
   const theme = useTheme();
   const { t } = useTranslation();
-  const { proxies } = useProxiesData();
+  const { proxies, refreshProxy } = useAppData();
   const [isConnecting, setIsConnecting] = useState(false);
   const markUnsavedChanges = useCallback(() => {
     onMarkUnsavedChanges?.();
   }, [onMarkUnsavedChanges]);
 
-  // 获取当前代理信息以检查连接状态
-  const { data: currentProxies, mutate: mutateProxies } = useSWR(
-    "getProxies",
-    calcuProxies,
-    {
-      revalidateOnFocus: true,
-      revalidateIfStale: true,
-      refreshInterval: 5000, // 每5秒刷新一次
-    },
-  );
-
   const isConnected = useMemo(() => {
-    if (!currentProxies || proxyChain.length < 2) {
+    if (!proxies || proxyChain.length < 2) {
       return false;
     }
 
     const lastNode = proxyChain[proxyChain.length - 1];
 
     if (mode === "global") {
-      return currentProxies.global?.now === lastNode.name;
+      return proxies.global?.now === lastNode.name;
     }
 
-    if (!selectedGroup || !Array.isArray(currentProxies.groups)) {
+    if (!selectedGroup || !Array.isArray(proxies.groups)) {
       return false;
     }
 
-    const proxyChainGroup = currentProxies.groups.find(
-      (group) => group.name === selectedGroup,
+    const proxyChainGroup = proxies.groups.find(
+      (group: { name: string }) => group.name === selectedGroup,
     );
 
     return proxyChainGroup?.now === lastNode.name;
-  }, [currentProxies, proxyChain, mode, selectedGroup]);
+  }, [proxies, proxyChain, mode, selectedGroup]);
 
   // 监听链的变化，但排除从配置加载的情况
   const chainLengthRef = useRef(proxyChain.length);
@@ -253,7 +277,9 @@ export const ProxyChain = ({
   }, [proxyChain.length, markUnsavedChanges]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -313,7 +339,7 @@ export const ProxyChain = ({
         localStorage.removeItem("proxy-chain-items");
 
         await closeAllConnections();
-        await mutateProxies();
+        await refreshProxy();
 
         onUpdateChain([]);
       } catch (error) {
@@ -354,7 +380,7 @@ export const ProxyChain = ({
       localStorage.setItem("proxy-chain-exit-node", lastNode.name);
 
       // 刷新代理信息以更新连接状态
-      mutateProxies();
+      refreshProxy();
       debugLog("Successfully connected to proxy chain");
     } catch (error) {
       console.error("Failed to connect to proxy chain:", error);
@@ -366,7 +392,7 @@ export const ProxyChain = ({
     proxyChain,
     isConnected,
     t,
-    mutateProxies,
+    refreshProxy,
     mode,
     selectedGroup,
     onUpdateChain,
@@ -591,12 +617,34 @@ export const ProxyChain = ({
                 }}
               >
                 {proxyChain.map((proxy, index) => (
-                  <SortableItem
-                    key={proxy.id}
-                    proxy={proxy}
-                    index={index}
-                    onRemove={handleRemoveProxy}
-                  />
+                  <Box key={proxy.id}>
+                    <SortableItem
+                      proxy={proxy}
+                      index={index}
+                      isFirst={index === 0}
+                      isLast={
+                        index === proxyChain.length - 1 && proxyChain.length > 1
+                      }
+                      onRemove={handleRemoveProxy}
+                    />
+                    {index < proxyChain.length - 1 && (
+                      <Box
+                        sx={{
+                          display: "flex",
+                          justifyContent: "center",
+                          py: 0.25,
+                        }}
+                      >
+                        <ArrowDownward
+                          sx={{
+                            fontSize: 20,
+                            color: theme.palette.primary.main,
+                            opacity: 0.7,
+                          }}
+                        />
+                      </Box>
+                    )}
+                  </Box>
                 ))}
               </Box>
             </SortableContext>

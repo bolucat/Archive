@@ -17,8 +17,7 @@ import { exists } from "@tauri-apps/plugin-fs";
 import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BaseDialog, DialogRef, Switch } from "@/components/base";
-import { TooltipIcon } from "@/components/base/base-tooltip-icon";
+import { BaseDialog, DialogRef, Switch, TooltipIcon } from "@/components/base";
 import { DEFAULT_HOVER_DELAY } from "@/components/proxy/proxy-group-navigator";
 import { useVerge } from "@/hooks/use-verge";
 import { useWindowDecorations } from "@/hooks/use-window";
@@ -192,6 +191,42 @@ export const LayoutViewer = forwardRef<DialogRef>((_, ref) => {
 
         <Item>
           <ListItemText
+            primary={t("settings.components.verge.layout.fields.toastPosition")}
+          />
+          <GuardState
+            value={verge?.notice_position ?? "top-right"}
+            onCatch={onError}
+            onFormat={(e: any) => e.target.value}
+            onChange={(value) => onChangeData({ notice_position: value })}
+            onGuard={(value) => patchVerge({ notice_position: value })}
+          >
+            <Select size="small" sx={{ width: 180, "> div": { py: "7.5px" } }}>
+              <MenuItem value="top-right">
+                {t(
+                  "settings.components.verge.layout.options.toastPosition.topRight",
+                )}
+              </MenuItem>
+              <MenuItem value="top-left">
+                {t(
+                  "settings.components.verge.layout.options.toastPosition.topLeft",
+                )}
+              </MenuItem>
+              <MenuItem value="bottom-right">
+                {t(
+                  "settings.components.verge.layout.options.toastPosition.bottomRight",
+                )}
+              </MenuItem>
+              <MenuItem value="bottom-left">
+                {t(
+                  "settings.components.verge.layout.options.toastPosition.bottomLeft",
+                )}
+              </MenuItem>
+            </Select>
+          </GuardState>
+        </Item>
+
+        <Item>
+          <ListItemText
             primary={
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
                 <span>
@@ -302,6 +337,24 @@ export const LayoutViewer = forwardRef<DialogRef>((_, ref) => {
           </GuardState>
         </Item>
 
+        <Item>
+          <ListItemText
+            primary={t(
+              "settings.components.verge.layout.fields.collapseNavBar",
+            )}
+          />
+          <GuardState
+            value={verge?.collapse_navbar ?? false}
+            valueProps="checked"
+            onCatch={onError}
+            onFormat={onSwitchFormat}
+            onChange={(e) => onChangeData({ collapse_navbar: e })}
+            onGuard={(e) => patchVerge({ collapse_navbar: e })}
+          >
+            <Switch edge="end" />
+          </GuardState>
+        </Item>
+
         {OS === "macos" && (
           <Item>
             <ListItemText
@@ -368,16 +421,52 @@ export const LayoutViewer = forwardRef<DialogRef>((_, ref) => {
         <Item>
           <ListItemText
             primary={t(
-              "settings.components.verge.layout.fields.showProxyGroupsInline",
+              "settings.components.verge.layout.fields.proxyGroupsDisplayMode",
             )}
           />
           <GuardState
-            value={verge?.tray_inline_proxy_groups ?? true}
+            value={verge?.tray_proxy_groups_display_mode ?? "default"}
+            onCatch={onError}
+            onFormat={(e: any) => e.target.value}
+            onChange={(value) =>
+              onChangeData({ tray_proxy_groups_display_mode: value })
+            }
+            onGuard={(value) =>
+              patchVerge({ tray_proxy_groups_display_mode: value })
+            }
+          >
+            <Select size="small" sx={{ width: 140, "> div": { py: "7.5px" } }}>
+              <MenuItem value="default">
+                {t(
+                  "settings.components.verge.layout.options.proxyGroupsDisplayMode.default",
+                )}
+              </MenuItem>
+              <MenuItem value="inline">
+                {t(
+                  "settings.components.verge.layout.options.proxyGroupsDisplayMode.inline",
+                )}
+              </MenuItem>
+              <MenuItem value="disable">
+                {t(
+                  "settings.components.verge.layout.options.proxyGroupsDisplayMode.disable",
+                )}
+              </MenuItem>
+            </Select>
+          </GuardState>
+        </Item>
+        <Item>
+          <ListItemText
+            primary={t(
+              "settings.components.verge.layout.fields.showOutboundModesInline",
+            )}
+          />
+          <GuardState
+            value={verge?.tray_inline_outbound_modes ?? false}
             valueProps="checked"
             onCatch={onError}
             onFormat={onSwitchFormat}
-            onChange={(e) => onChangeData({ tray_inline_proxy_groups: e })}
-            onGuard={(e) => patchVerge({ tray_inline_proxy_groups: e })}
+            onChange={(e) => onChangeData({ tray_inline_outbound_modes: e })}
+            onGuard={(e) => patchVerge({ tray_inline_outbound_modes: e })}
           >
             <Switch edge="end" />
           </GuardState>

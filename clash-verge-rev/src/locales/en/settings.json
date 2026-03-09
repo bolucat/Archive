@@ -15,7 +15,6 @@
         "systemProxy": "System Proxy"
       },
       "tooltips": {
-        "autoLaunchAdmin": "Administrator mode may not support auto launch",
         "silentStart": "Start the program in background mode without displaying the panel"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "Web UI",
           "clashCore": "Clash Core",
           "openUwpTool": "Open UWP tool",
-          "updateGeoData": "Update GeoData"
+          "updateGeoData": "Update GeoData",
+          "tunnels": {
+            "title": "Tunnel Management",
+            "localAddr": "Local Listen Address",
+            "localPort": "Local Listen Port",
+            "targetAddr": "Target Address",
+            "targetPort": "Target Port",
+            "proxyGroup": "Proxy Group",
+            "proxyNode": "Proxy Node",
+            "protocols": "Protocol",
+            "existing": "Existing Tunnels",
+            "default": "Follow Current Configuration",
+            "optional": "Optional",
+            "messages": {
+              "incomplete": "Please fill in all required tunnel fields",
+              "invalidLocalAddr": "Invalid local listen address",
+              "invalidLocalPort": "Invalid local listen port",
+              "invalidTargetAddr": "Invalid Target Address",
+              "invalidTargetPort": "Invalid Target Port"
+            },
+            "actions": {
+              "add": "Add",
+              "addNew": "Add New Tunnel"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "Network Interface",
@@ -205,11 +228,14 @@
           "trafficGraph": "Traffic Graph",
           "memoryUsage": "Core Usage",
           "proxyGroupIcon": "Proxy Group Icon",
+          "toastPosition": "Toast Position",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "Nav Icon",
+          "collapseNavBar": "Collapse Navigation Bar",
           "trayIcon": "Tray Icon",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "Common Tray Icon",
           "systemProxyTrayIcon": "System Proxy Tray Icon",
           "tunTrayIcon": "Tun Tray Icon",
@@ -224,6 +250,17 @@
           "icon": {
             "monochrome": "Monochrome",
             "colorful": "Colorful",
+            "disable": "Disable"
+          },
+          "toastPosition": {
+            "topLeft": "Top Left",
+            "topRight": "Top Right",
+            "bottomLeft": "Bottom Left",
+            "bottomRight": "Bottom Right"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
             "disable": "Disable"
           }
         }
@@ -244,6 +281,7 @@
         "random": "Random Port"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "Backup",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "Import Backup",
         "deleteBackup": "Delete Backup",
         "restore": "Restore",
         "restoreBackup": "Restore Backup",
@@ -307,6 +346,8 @@
         "restoreSuccess": "Restore Success, App will restart in 1s",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "Local backup imported successfully",
+        "localBackupImportFailed": "Failed to import local backup: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "Confirm to delete this backup file?",
@@ -333,7 +374,9 @@
       "history": {
         "title": "Backup history",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "No backups available"
+        "empty": "No backups available",
+        "unknownPlatform": "unknown",
+        "unknownTime": "Unknown time"
       },
       "webdav": {
         "title": "WebDAV settings"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "Proxy Layout Columns",
         "autoLogClean": "Auto Log Clean",
         "autoDelayDetection": "Auto Delay Detection",
+        "autoDelayDetectionInterval": "Auto Delay Detection Interval",
         "defaultLatencyTest": "Default Latency Test",
         "defaultLatencyTimeout": "Default Latency Timeout"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "Proxy Guard",
         "guardDuration": "Guard Duration",
         "alwaysUseDefaultBypass": "Always use Default Bypass",
+        "enableBypassCheck": "Validate Proxy Bypass Format",
         "proxyBypass": "Proxy Bypass Settings: ",
         "bypass": "Bypass: ",
         "pacScriptContent": "PAC Script Content"
@@ -424,6 +469,7 @@
         "stack": "Tun Stack",
         "device": "Device Name",
         "autoRoute": "Auto Route",
+        "routeExcludeAddress": "Route Exclude Address",
         "strictRoute": "Strict Route",
         "autoDetectInterface": "Auto Detect Interface",
         "dnsHijack": "DNS Hijack",
@@ -435,7 +481,9 @@
         "autoRedirect": "Automatically configures nftables/iptables TCP redirects"
       },
       "messages": {
-        "applied": "Settings Applied"
+        "applied": "Settings Applied",
+        "invalidRouteExcludeAddress": "Please enter a valid CIDR block",
+        "routeExcludeAddressHint": "Only IPv4/IPv6 CIDR is supported, such as 192.168.0.0/16 or fd00::/8"
       }
     },
     "dns": {

@@ -4,7 +4,7 @@ import { mutate, type MutatorCallback } from "swr";
 import useSWRSubscription from "swr/subscription";
 import { type Message, type MihomoWebSocket } from "tauri-plugin-mihomo-api";
 
-export const RECONNECT_DELAY_MS = 500;
+export const RECONNECT_DELAY_MS = 100;
 
 type NextFn<T> = (error?: any, data?: T | MutatorCallback<T>) => void;
 
@@ -46,7 +46,7 @@ export const useMihomoWsSubscription = <T>(
   const subscriptionCacheKey = subscriptKey ? `$sub$${subscriptKey}` : null;
 
   const wsRef = useRef<MihomoWebSocket | null>(null);
-  const wsFirstConnection = useRef<boolean>(true);
+  const wsFirstConnectionRef = useRef<boolean>(true);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const response = useSWRSubscription<T, any, string | null>(
@@ -124,15 +124,15 @@ export const useMihomoWsSubscription = <T>(
         }
       }
 
-      if (wsFirstConnection.current || !wsRef.current) {
-        wsFirstConnection.current = false;
+      if (wsFirstConnectionRef.current || !wsRef.current) {
+        wsFirstConnectionRef.current = false;
         cleanupAll();
         void connectWs();
       }
 
       return () => {
         isMounted = false;
-        wsFirstConnection.current = true;
+        wsFirstConnectionRef.current = true;
         cleanupAll();
       };
     },

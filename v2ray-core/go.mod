@@ -2,7 +2,7 @@ module github.com/v2fly/v2ray-core/v5
 
 go 1.25.5
 
-toolchain go1.26.0
+toolchain go1.26.1
 
 require (
 	github.com/adrg/xdg v0.5.3
@@ -38,11 +38,11 @@ require (
 	go.starlark.net v0.0.0-20230612165344-9532f5667272
 	go4.org/netipx v0.0.0-20230303233057-f1b76eb4bb35
 	golang.org/x/crypto v0.48.0
-	golang.org/x/net v0.50.0
+	golang.org/x/net v0.51.0
 	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.41.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
-	google.golang.org/grpc v1.79.1
+	google.golang.org/grpc v1.79.2
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20260218152508-eed1cebf761e

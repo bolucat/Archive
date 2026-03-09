@@ -11,8 +11,7 @@ import { useLockFn } from "ahooks";
 import React, { useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
-import { DialogRef, Switch } from "@/components/base";
-import { TooltipIcon } from "@/components/base/base-tooltip-icon";
+import { DialogRef, Switch, TooltipIcon } from "@/components/base";
 import { GuardState } from "@/components/setting/mods/guard-state";
 import { SysproxyViewer } from "@/components/setting/mods/sysproxy-viewer";
 import { TunViewer } from "@/components/setting/mods/tun-viewer";
@@ -115,7 +114,7 @@ const ProxyControlSwitches = ({
   const { verge, mutateVerge, patchVerge } = useVerge();
   const { installServiceAndRestartCore } = useServiceInstaller();
   const { uninstallServiceAndRestartCore } = useServiceUninstaller();
-  const { actualState: systemProxyActualState, toggleSystemProxy } =
+  const { configState: systemProxyConfigState, toggleSystemProxy } =
     useSystemProxyState();
   const { isServiceOk, isTunModeAvailable, mutateSystemState } =
     useSystemState();
@@ -170,12 +169,12 @@ const ProxyControlSwitches = ({
       {isSystemProxyMode && (
         <SwitchRow
           label={t("settings.sections.proxyControl.fields.systemProxy")}
-          active={systemProxyActualState}
+          active={systemProxyConfigState}
           infoTitle={t("settings.sections.proxyControl.tooltips.systemProxy")}
           onInfoClick={() => sysproxyRef.current?.open()}
           onToggle={(value) => toggleSystemProxy(value)}
           onError={onError}
-          highlight={systemProxyActualState}
+          highlight={systemProxyConfigState}
         />
       )}
 

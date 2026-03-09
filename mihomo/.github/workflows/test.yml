@@ -50,6 +50,13 @@ jobs:
           go-version: ${{ matrix.go-version }}
           check-latest: true # Always check for the latest patch release
 
+      # TODO: remove after issue77975 fixed, see: https://github.com/golang/go/issues/77975
+      - name: Fix issue77975 for Golang1.26
+        if: ${{ matrix.go-version == '1.26' }}
+        run: |
+          cd $(go env GOROOT)
+          patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/issue77975.patch
+
       - name: Revert Golang commit for Windows7/8
         if: ${{ runner.os == 'Windows' && matrix.go-version != '1.20' }}
         run: |

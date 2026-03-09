@@ -15,7 +15,6 @@
         "systemProxy": "系統代理"
       },
       "tooltips": {
-        "autoLaunchAdmin": "管理員模式可能不支援開機自啟",
         "silentStart": "程序啟動時以後台模式執行，不顯示程序面板"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "網頁介面",
           "clashCore": "Clash 內核",
           "openUwpTool": "UWP 工具",
-          "updateGeoData": "更新 GeoData"
+          "updateGeoData": "更新 GeoData",
+          "tunnels": {
+            "title": "流量隧道管理",
+            "localAddr": "本地監聽位址",
+            "localPort": "本地監聽連接埠",
+            "targetAddr": "目標地址",
+            "targetPort": "目標端口",
+            "proxyGroup": "代理群組",
+            "proxyNode": "代理節點",
+            "protocols": "協定",
+            "existing": "已設定的通道",
+            "default": "跟隨目前設定",
+            "optional": "可選",
+            "messages": {
+              "incomplete": "請完整填寫通道資訊",
+              "invalidLocalAddr": "無效的本地監聽位址",
+              "invalidLocalPort": "無效的本地監聽連接埠",
+              "invalidTargetAddr": "無效的目標地址",
+              "invalidTargetPort": "無效的目標端口"
+            },
+            "actions": {
+              "add": "新增",
+              "addNew": "新增通道"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "網路介面",
@@ -205,11 +228,14 @@
           "trafficGraph": "流量圖表",
           "memoryUsage": "內核佔用",
           "proxyGroupIcon": "代理組圖示",
+          "toastPosition": "通知位置",
           "hoverNavigator": "懸浮跳轉導航",
           "hoverNavigatorDelay": "懸浮跳轉導航延遲",
           "navIcon": "導覽列圖示",
+          "collapseNavBar": "收起導覽列",
           "trayIcon": "系統匣圖示",
-          "showProxyGroupsInline": "將代理組顯示在系統匣一級選單",
+          "proxyGroupsDisplayMode": "系統匣代理組顯示模式",
+          "showOutboundModesInline": "將出站模式顯示在系統匣一級選單",
           "commonTrayIcon": "一般系統匣圖示",
           "systemProxyTrayIcon": "系統代理系統匣圖示",
           "tunTrayIcon": "虛擬網路介面卡模式系統匣圖示",
@@ -224,6 +250,17 @@
           "icon": {
             "monochrome": "單色圖示",
             "colorful": "彩色圖示",
+            "disable": "停用"
+          },
+          "toastPosition": {
+            "topLeft": "左上角",
+            "topRight": "右上角",
+            "bottomLeft": "左下角",
+            "bottomRight": "右下角"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "預設",
+            "inline": "一級選單",
             "disable": "停用"
           }
         }
@@ -244,6 +281,7 @@
         "random": "隨機連接埠"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "連結埠設定已儲存",
         "saveFailed": "連結埠設定儲存失敗"
       }
@@ -283,6 +321,7 @@
         "backup": "備份",
         "export": "匯出",
         "exportBackup": "匯出備份",
+        "importBackup": "匯入備份",
         "deleteBackup": "刪除備份",
         "restore": "還原",
         "restoreBackup": "還原備份",
@@ -307,6 +346,8 @@
         "restoreSuccess": "還原成功，應用程式將在 1 秒後重啟",
         "localBackupExported": "本機備份匯出成功",
         "localBackupExportFailed": "本機備份匯出失敗",
+        "localBackupImported": "本機備份匯入成功",
+        "localBackupImportFailed": "本機備份匯入失敗：{{error}}",
         "webdavRefreshSuccess": "WebDAV 更新成功",
         "webdavRefreshFailed": "WebDAV 更新失敗: {{error}}",
         "confirmDelete": "確認是否刪除此備份檔案嗎？",
@@ -333,7 +374,9 @@
       "history": {
         "title": "備份紀錄",
         "summary": "共 {{count}} 份備份 · 最近 {{recent}}",
-        "empty": "尚無備份紀錄"
+        "empty": "尚無備份紀錄",
+        "unknownPlatform": "未知",
+        "unknownTime": "未知時間"
       },
       "webdav": {
         "title": "WebDAV 設定"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "代理頁面欄數",
         "autoLogClean": "自動清理日誌",
         "autoDelayDetection": "自動延遲偵測",
+        "autoDelayDetectionInterval": "自動延遲偵測間隔",
         "defaultLatencyTest": "預設測試網址",
         "defaultLatencyTimeout": "測試逾時"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "系統代理守護",
         "guardDuration": "代理守護間隔",
         "alwaysUseDefaultBypass": "始終使用預設繞過",
+        "enableBypassCheck": "驗證代理繞過格式",
         "proxyBypass": "代理繞過設定：",
         "bypass": "目前繞過：",
         "pacScriptContent": "PAC 指令碼內容"
@@ -424,6 +469,7 @@
         "stack": "虛擬網路介面卡模式堆疊",
         "device": "Device Name",
         "autoRoute": "自動設定全域路由",
+        "routeExcludeAddress": "排除自訂網段",
         "strictRoute": "嚴格路由",
         "autoDetectInterface": "自動偵測流量輸出介面",
         "dnsHijack": "DNS 綁架",
@@ -435,7 +481,9 @@
         "autoRedirect": "自動配置 nftables/iptables 的 TCP 重導"
       },
       "messages": {
-        "applied": "設定已套用"
+        "applied": "設定已套用",
+        "invalidRouteExcludeAddress": "請輸入有效的 CIDR 網段",
+        "routeExcludeAddressHint": "僅支援 IPv4/IPv6 CIDR，例如 192.168.0.0/16 或 fd00::/8"
       }
     },
     "dns": {

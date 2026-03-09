@@ -106,7 +106,7 @@ async fn get_config_values() -> ConfigValues {
         ref verge_http_enabled,
         ref enable_dns_settings,
         ..
-    } = **verge_arc;
+    } = *verge_arc;
 
     let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
@@ -310,7 +310,7 @@ fn process_global_items(
     profile_name: &String,
 ) -> (Mapping, Vec<String>, HashMap<String, ResultLog>) {
     let mut result_map = HashMap::new();
-    let mut exists_keys = use_keys(&config);
+    let mut exists_keys = use_keys(&config).collect::<Vec<_>>();
 
     if let ChainType::Merge(merge) = global_merge.data {
         exists_keys.extend(use_keys(&merge));

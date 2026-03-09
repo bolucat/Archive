@@ -6,8 +6,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { updateGeo } from "tauri-plugin-mihomo-api";
 
-import { DialogRef, Switch } from "@/components/base";
-import { TooltipIcon } from "@/components/base/base-tooltip-icon";
+import { DialogRef, Switch, TooltipIcon } from "@/components/base";
 import { useClash } from "@/hooks/use-clash";
 import { useClashLog } from "@/hooks/use-clash-log";
 import { useVerge } from "@/hooks/use-verge";
@@ -23,6 +22,7 @@ import { HeaderConfiguration } from "./mods/external-controller-cors";
 import { GuardState } from "./mods/guard-state";
 import { NetworkInterfaceViewer } from "./mods/network-interface-viewer";
 import { SettingItem, SettingList } from "./mods/setting-comp";
+import { TunnelsViewer } from "./mods/tunnels-viewer";
 import { WebUIViewer } from "./mods/web-ui-viewer";
 
 const isWIN = getSystem() === "windows";
@@ -59,6 +59,7 @@ const SettingClash = ({ onError }: Props) => {
   const networkRef = useRef<DialogRef>(null);
   const dnsRef = useRef<DialogRef>(null);
   const corsRef = useRef<DialogRef>(null);
+  const tunnelRef = useRef<DialogRef>(null);
 
   const onSwitchFormat = (_e: any, value: boolean) => value;
   const onChangeData = (patch: Partial<IConfigData>) => {
@@ -103,7 +104,7 @@ const SettingClash = ({ onError }: Props) => {
       <NetworkInterfaceViewer ref={networkRef} />
       <DnsViewer ref={dnsRef} />
       <HeaderConfiguration ref={corsRef} />
-
+      <TunnelsViewer ref={tunnelRef} />
       <SettingItem
         label={t("settings.sections.clash.form.fields.allowLan")}
         extra={
@@ -282,6 +283,11 @@ const SettingClash = ({ onError }: Props) => {
       <SettingItem
         onClick={onUpdateGeo}
         label={t("settings.sections.clash.form.fields.updateGeoData")}
+      />
+
+      <SettingItem
+        label={t("settings.sections.clash.form.fields.tunnels.title")}
+        onClick={() => tunnelRef.current?.open()}
       />
     </SettingList>
   );

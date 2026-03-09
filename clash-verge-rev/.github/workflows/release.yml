@@ -197,7 +197,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -218,7 +218,7 @@ jobs:
 
       - name: Tauri build
         # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
-        uses: tauri-apps/tauri-action@v0.6.0
+        uses: tauri-apps/tauri-action@v0.6.1
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -281,7 +281,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -420,7 +420,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -448,7 +448,7 @@ jobs:
 
       - name: Tauri build
         id: build
-        uses: tauri-apps/tauri-action@v0.6.0
+        uses: tauri-apps/tauri-action@v0.6.1
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -505,7 +505,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -531,7 +531,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm
@@ -593,7 +593,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - uses: pnpm/action-setup@v4
         name: Install pnpm

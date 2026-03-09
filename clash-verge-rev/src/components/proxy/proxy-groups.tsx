@@ -15,14 +15,14 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { delayGroup, healthcheckProxyProvider } from "tauri-plugin-mihomo-api";
 
-import { useProxiesData } from "@/hooks/use-clash-data";
+import { BaseEmpty } from "@/components/base";
 import { useProxySelection } from "@/hooks/use-proxy-selection";
 import { useVerge } from "@/hooks/use-verge";
+import { useAppData } from "@/providers/app-data-context";
 import { updateProxyChainConfigInRuntime } from "@/services/cmds";
 import delayManager from "@/services/delay";
 import { debugLog } from "@/utils/debug";
 
-import { BaseEmpty } from "../base";
 import { ScrollTopButton } from "../layout/scroll-top-button";
 
 import { ProxyChain } from "./proxy-chain";
@@ -80,7 +80,7 @@ export const ProxyGroups = (props: Props) => {
   }>({ open: false, message: "" });
 
   const { verge } = useVerge();
-  const { proxies: proxiesData } = useProxiesData();
+  const { proxies: proxiesData } = useAppData();
   const groups = proxiesData?.groups;
   const availableGroups = useMemo(() => {
     if (!groups) return [];

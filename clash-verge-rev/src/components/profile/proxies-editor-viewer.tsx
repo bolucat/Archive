@@ -40,14 +40,13 @@ import {
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
+import { BaseSearchBox } from "@/components/base";
 import { ProxyItem } from "@/components/profile/proxy-item";
 import { readProfileFile, saveProfileFile } from "@/services/cmds";
 import { showNotice } from "@/services/notice-service";
 import { useThemeMode } from "@/services/states";
 import getSystem from "@/utils/get-system";
 import parseUri from "@/utils/uri-parser";
-
-import { BaseSearchBox } from "../base/base-search-box";
 
 interface Props {
   profileUid: string;
@@ -86,7 +85,9 @@ export const ProxiesEditorViewer = (props: Props) => {
   );
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -142,7 +143,7 @@ export const ProxiesEditorViewer = (props: Props) => {
   const handleParseAsync = (cb: (proxies: IProxyConfig[]) => void) => {
     const proxies: IProxyConfig[] = [];
     const names: string[] = [];
-    let uris = "";
+    let uris: string;
     try {
       uris = atob(proxyUri);
     } catch {
@@ -272,7 +273,13 @@ export const ProxiesEditorViewer = (props: Props) => {
   });
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xl"
+      fullWidth
+      disableEnforceFocus={!visualization}
+    >
       <DialogTitle>
         {
           <Box display="flex" justifyContent="space-between">

@@ -124,9 +124,6 @@ export interface TranslationResources {
             vergeVersion: string;
           };
           title: string;
-          tooltips: {
-            autoLaunchAdmin: string;
-          };
         };
         tests: {
           title: string;
@@ -179,6 +176,8 @@ export interface TranslationResources {
       components: {
         navigation: {
           menu: {
+            collapseNavBar: string;
+            expandNavBar: string;
             lock: string;
             reorderMode: string;
             restoreDefaultOrder: string;
@@ -430,6 +429,8 @@ export interface TranslationResources {
           disconnectFailed: string;
           duplicateNode: string;
           empty: string;
+          entryNode: string;
+          exitNode: string;
           header: string;
           instruction: string;
           minimumNodes: string;
@@ -616,6 +617,7 @@ export interface TranslationResources {
           };
           layout: {
             fields: {
+              collapseNavBar: string;
               commonTrayIcon: string;
               enableTrayIcon: string;
               enableTraySpeed: string;
@@ -625,8 +627,10 @@ export interface TranslationResources {
               navIcon: string;
               preferSystemTitlebar: string;
               proxyGroupIcon: string;
-              showProxyGroupsInline: string;
+              proxyGroupsDisplayMode: string;
+              showOutboundModesInline: string;
               systemProxyTrayIcon: string;
+              toastPosition: string;
               trafficGraph: string;
               trayIcon: string;
               tunTrayIcon: string;
@@ -636,6 +640,17 @@ export interface TranslationResources {
                 colorful: string;
                 disable: string;
                 monochrome: string;
+              };
+              proxyGroupsDisplayMode: {
+                default: string;
+                disable: string;
+                inline: string;
+              };
+              toastPosition: {
+                bottomLeft: string;
+                bottomRight: string;
+                topLeft: string;
+                topRight: string;
               };
             };
             title: string;
@@ -694,6 +709,7 @@ export interface TranslationResources {
             deleteBackup: string;
             export: string;
             exportBackup: string;
+            importBackup: string;
             restore: string;
             restoreBackup: string;
             selectTarget: string;
@@ -720,6 +736,8 @@ export interface TranslationResources {
             empty: string;
             summary: string;
             title: string;
+            unknownPlatform: string;
+            unknownTime: string;
           };
           manual: {
             configureWebdav: string;
@@ -737,6 +755,8 @@ export interface TranslationResources {
             localBackupExported: string;
             localBackupExportFailed: string;
             localBackupFailed: string;
+            localBackupImported: string;
+            localBackupImportFailed: string;
             passwordRequired: string;
             restoreSuccess: string;
             usernameRequired: string;
@@ -780,6 +800,7 @@ export interface TranslationResources {
             tproxy: string;
           };
           messages: {
+            portInUse: string;
             saved: string;
             saveFailed: string;
           };
@@ -922,6 +943,7 @@ export interface TranslationResources {
             autoCheckUpdate: string;
             autoCloseConnections: string;
             autoDelayDetection: string;
+            autoDelayDetectionInterval: string;
             autoLogClean: string;
             defaultLatencyTest: string;
             defaultLatencyTimeout: string;
@@ -964,6 +986,7 @@ export interface TranslationResources {
           fields: {
             alwaysUseDefaultBypass: string;
             bypass: string;
+            enableBypassCheck: string;
             enableStatus: string;
             guardDuration: string;
             pacScriptContent: string;
@@ -995,11 +1018,14 @@ export interface TranslationResources {
             device: string;
             dnsHijack: string;
             mtu: string;
+            routeExcludeAddress: string;
             stack: string;
             strictRoute: string;
           };
           messages: {
             applied: string;
+            invalidRouteExcludeAddress: string;
+            routeExcludeAddressHint: string;
           };
           title: string;
           tooltips: {
@@ -1054,6 +1080,30 @@ export interface TranslationResources {
               logLevel: string;
               openUwpTool: string;
               portConfig: string;
+              tunnels: {
+                actions: {
+                  add: string;
+                  addNew: string;
+                };
+                default: string;
+                existing: string;
+                localAddr: string;
+                localPort: string;
+                messages: {
+                  incomplete: string;
+                  invalidLocalAddr: string;
+                  invalidLocalPort: string;
+                  invalidTargetAddr: string;
+                  invalidTargetPort: string;
+                };
+                optional: string;
+                protocols: string;
+                proxyGroup: string;
+                proxyNode: string;
+                targetAddr: string;
+                targetPort: string;
+                title: string;
+              };
               unifiedDelay: string;
               updateGeoData: string;
               webUI: string;
@@ -1149,7 +1199,6 @@ export interface TranslationResources {
             tunMode: string;
           };
           tooltips: {
-            autoLaunchAdmin: string;
             silentStart: string;
           };
         };
@@ -1274,6 +1323,7 @@ export interface TranslationResources {
         filter: string;
         matchCase: string;
         matchWholeWord: string;
+        resetInput: string;
         useRegex: string;
       };
       statuses: {

@@ -1,7 +1,7 @@
 use crate::config::Config;
 use crate::{
     config::{DEFAULT_PAC, deserialize_encrypted, serialize_encrypted},
-    utils::{dirs, help, i18n},
+    utils::{dirs, help},
 };
 use anyhow::Result;
 use clash_verge_logging::{Type, logging};
@@ -66,6 +66,13 @@ pub struct IVerge {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub menu_order: Option<Vec<String>>,
 
+    /// toast / notice position on screen
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notice_position: Option<String>,
+
+    /// collapse navigation bar
+    pub collapse_navbar: Option<bool>,
+
     /// sysproxy tray icon
     pub sysproxy_tray_icon: Option<bool>,
 
@@ -86,6 +93,9 @@ pub struct IVerge {
 
     /// enable proxy guard
     pub enable_proxy_guard: Option<bool>,
+
+    /// enable bypass format check
+    pub enable_bypass_check: Option<bool>,
 
     /// enable dns settings - this controls whether dns_config.yaml is applied
     pub enable_dns_settings: Option<bool>,
@@ -144,6 +154,9 @@ pub struct IVerge {
 
     /// 是否自动检测当前节点延迟
     pub enable_auto_delay_detection: Option<bool>,
+
+    /// 自动检测当前节点延迟的间隔（分钟）
+    pub auto_delay_detection_interval_minutes: Option<u64>,
 
     /// 是否使用内部的脚本支持，默认为真
     pub enable_builtin_enhanced: Option<bool>,
@@ -222,7 +235,10 @@ pub struct IVerge {
 
     // pub enable_tray_icon: Option<bool>,
     /// show proxy groups directly on tray root menu
-    pub tray_inline_proxy_groups: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tray_proxy_groups_display_mode: Option<String>,
+    /// show outbound modes directly on tray root menu
+    pub tray_inline_outbound_modes: Option<bool>,
 
     /// 自动进入轻量模式
     pub enable_auto_light_weight_mode: Option<bool>,
@@ -336,19 +352,6 @@ impl IVerge {
         self.clash_core.clone().unwrap_or_else(|| "verge-mihomo".into())
     }
 
-    fn get_system_language() -> String {
-        let sys_lang = sys_locale::get_locale().unwrap_or_else(|| "en".into()).to_lowercase();
-
-        let lang_code = sys_lang.split(['_', '-']).next().unwrap_or("en");
-        let supported_languages = i18n::get_supported_languages();
-
-        if supported_languages.contains(&lang_code.into()) {
-            lang_code.into()
-        } else {
-            String::from("en")
-        }
-    }
-
     pub async fn new() -> Self {
         match dirs::verge_path() {
             Ok(path) => match help::read_yaml::<Self>(&path).await {
@@ -378,7 +381,7 @@ impl IVerge {
             app_log_max_size: Some(128),
             app_log_max_count: Some(8),
             clash_core: Some("verge-mihomo".into()),
-            language: Some(Self::get_system_language()),
+            language: Some(clash_verge_i18n::system_language().into()),
             theme_mode: Some("system".into()),
             #[cfg(not(target_os = "windows"))]
             env_type: Some("bash".into()),
@@ -391,6 +394,8 @@ impl IVerge {
             #[cfg(target_os = "macos")]
             tray_icon: Some("monochrome".into()),
             menu_icon: Some("monochrome".into()),
+            notice_position: Some("top-right".into()),
+            collapse_navbar: Some(false),
             common_tray_icon: Some(false),
             sysproxy_tray_icon: Some(false),
             tun_tray_icon: Some(false),
@@ -416,6 +421,7 @@ impl IVerge {
             verge_port: Some(7899),
             verge_http_enabled: Some(false),
             enable_proxy_guard: Some(false),
+            enable_bypass_check: Some(true),
             use_default_bypass: Some(true),
             proxy_guard_duration: Some(30),
             auto_close_connection: Some(true),
@@ -430,7 +436,8 @@ impl IVerge {
             webdav_password: None,
             enable_tray_speed: Some(false),
             // enable_tray_icon: Some(true),
-            tray_inline_proxy_groups: Some(true),
+            tray_proxy_groups_display_mode: Some("default".into()),
+            tray_inline_outbound_modes: Some(false),
             enable_global_hotkey: Some(true),
             enable_auto_light_weight_mode: Some(false),
             auto_light_weight_minutes: Some(10),
@@ -475,6 +482,8 @@ impl IVerge {
         patch!(tray_icon);
         patch!(menu_icon);
         patch!(menu_order);
+        patch!(notice_position);
+        patch!(collapse_navbar);
         patch!(common_tray_icon);
         patch!(sysproxy_tray_icon);
         patch!(tun_tray_icon);
@@ -499,6 +508,7 @@ impl IVerge {
         patch!(verge_http_enabled);
         patch!(enable_system_proxy);
         patch!(enable_proxy_guard);
+        patch!(enable_bypass_check);
         patch!(use_default_bypass);
         patch!(system_proxy_bypass);
         patch!(proxy_guard_duration);
@@ -516,6 +526,7 @@ impl IVerge {
         patch!(default_latency_test);
         patch!(default_latency_timeout);
         patch!(enable_auto_delay_detection);
+        patch!(auto_delay_detection_interval_minutes);
         patch!(enable_builtin_enhanced);
         patch!(proxy_layout_column);
         patch!(test_list);
@@ -529,7 +540,8 @@ impl IVerge {
         patch!(webdav_password);
         patch!(enable_tray_speed);
         // patch!(enable_tray_icon);
-        patch!(tray_inline_proxy_groups);
+        patch!(tray_proxy_groups_display_mode);
+        patch!(tray_inline_outbound_modes);
         patch!(enable_auto_light_weight_mode);
         patch!(auto_light_weight_minutes);
         patch!(enable_dns_settings);

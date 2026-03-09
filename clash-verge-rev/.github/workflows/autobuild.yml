@@ -46,7 +46,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -137,7 +137,7 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-apple-darwin
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
@@ -165,10 +165,19 @@ jobs:
           cache-workspace-crates: true
 
       - name: Install dependencies (ubuntu only)
-        if: matrix.os == 'ubuntu-22.04'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt install \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
 
       - name: Install x86 OpenSSL (macOS only)
         if: matrix.target == 'x86_64-apple-darwin'
@@ -187,7 +196,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
           cache: "pnpm"
 
       - name: Pnpm Cache
@@ -244,6 +253,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # It should be ubuntu-22.04 to match the cross-compilation environment
+          # ortherwise it is hard to resolve the dependencies
           - os: ubuntu-22.04
             target: aarch64-unknown-linux-gnu
             arch: arm64
@@ -283,7 +294,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
           cache: "pnpm"
 
       - name: Pnpm Cache
@@ -302,8 +313,8 @@ jobs:
       - name: Release ${{ env.TAG_CHANNEL }} Version
         run: pnpm release-version autobuild-latest
 
-      - name: Setup for linux
-        run: |
+      - name: "Setup for linux"
+        run: |-
           sudo ls -lR /etc/apt/
 
           cat > /tmp/sources.list << EOF
@@ -322,14 +333,9 @@ jobs:
           sudo mv /tmp/sources.list /etc/apt/sources.list
 
           sudo dpkg --add-architecture ${{ matrix.arch }}
-          sudo apt-get update -y
-          sudo apt-get -f install -y
+          sudo apt update
 
-          sudo apt-get install -y \
-            linux-libc-dev:${{ matrix.arch }} \
-            libc6-dev:${{ matrix.arch }}
-
-          sudo apt-get install -y \
+          sudo apt install -y \
             libxslt1.1:${{ matrix.arch }} \
             libwebkit2gtk-4.1-dev:${{ matrix.arch }} \
             libayatana-appindicator3-dev:${{ matrix.arch }} \
@@ -433,7 +439,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
           cache: "pnpm"
 
       - name: Pnpm Cache
@@ -535,7 +541,7 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.12.0"
+          node-version: "24.14.0"
 
       - uses: pnpm/action-setup@v4.2.0
         name: Install pnpm

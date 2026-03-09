@@ -15,7 +15,6 @@
         "systemProxy": "پراکسی سیستم"
       },
       "tooltips": {
-        "autoLaunchAdmin": "حالت ادمین ممکن است از راه‌اندازی خودکار پشتیبانی نکند",
         "silentStart": "برنامه را در حالت پس‌زمینه بدون نمایش پانل اجرا کنید"
       },
       "fields": {
@@ -104,7 +103,31 @@
           "webUI": "رابط وب",
           "clashCore": "هسته Clash",
           "openUwpTool": "باز کردن ابزار UWP",
-          "updateGeoData": "به‌روزرسانی GeoData"
+          "updateGeoData": "به‌روزرسانی GeoData",
+          "tunnels": {
+            "title": "مدیریت تونل‌ها",
+            "localAddr": "آدرس شنود محلی",
+            "localPort": "پورت شنود محلی",
+            "targetAddr": "آدرس هدف",
+            "targetPort": "پورت هدف",
+            "proxyGroup": "گروه پراکسی",
+            "proxyNode": "گره پراکسی",
+            "protocols": "پروتکل",
+            "existing": "تونل‌های موجود",
+            "default": "پیروی از تنظیمات فعلی",
+            "optional": "اختیاری",
+            "messages": {
+              "incomplete": "لطفاً تمام فیلدهای الزامی تونل را تکمیل کنید",
+              "invalidLocalAddr": "آدرس شنود محلی نامعتبر است",
+              "invalidLocalPort": "پورت شنود محلی نامعتبر است",
+              "invalidTargetAddr": "آدرس هدف نامعتبر",
+              "invalidTargetPort": "پورت هدف نامعتبر"
+            },
+            "actions": {
+              "add": "افزودن",
+              "addNew": "افزودن تونل جدید"
+            }
+          }
         },
         "tooltips": {
           "networkInterface": "رابط شبکه",
@@ -205,11 +228,14 @@
           "trafficGraph": "نمودار ترافیک",
           "memoryUsage": "استفاده از حافظه",
           "proxyGroupIcon": "آیکون گروه پراکسی",
+          "toastPosition": "Toast Position",
           "hoverNavigator": "Hover Jump Navigator",
           "hoverNavigatorDelay": "Hover Jump Navigator Delay",
           "navIcon": "آیکون ناوبری",
+          "collapseNavBar": "جمع کردن نوار ناوبری",
           "trayIcon": "آیکون سینی سیستم",
-          "showProxyGroupsInline": "Show Proxy Groups Inline",
+          "proxyGroupsDisplayMode": "Proxy Groups Display Mode",
+          "showOutboundModesInline": "Show Outbound Modes Inline",
           "commonTrayIcon": "آیکون مشترک سینی سیستم",
           "systemProxyTrayIcon": "آیکون سینی پراکسی سیستم",
           "tunTrayIcon": "آیکون سینی Tun",
@@ -225,6 +251,17 @@
             "monochrome": "تک رنگ",
             "colorful": "رنگارنگ",
             "disable": "غیرفعال کردن"
+          },
+          "toastPosition": {
+            "topLeft": "Top Left",
+            "topRight": "Top Right",
+            "bottomLeft": "Bottom Left",
+            "bottomRight": "Bottom Right"
+          },
+          "proxyGroupsDisplayMode": {
+            "default": "Default",
+            "inline": "Inline",
+            "disable": "Disable"
           }
         }
       }
@@ -244,6 +281,7 @@
         "random": "پورت تصادفی"
       },
       "messages": {
+        "portInUse": "Port {{port}} is already in use",
         "saved": "Port settings saved",
         "saveFailed": "Failed to save port settings"
       }
@@ -283,6 +321,7 @@
         "backup": "پشتیبان‌گیری",
         "export": "Export",
         "exportBackup": "Export Backup",
+        "importBackup": "Import Backup",
         "deleteBackup": "حذف پشتیبان",
         "restore": "بازیابی",
         "restoreBackup": "بازیابی پشتیبان",
@@ -307,6 +346,8 @@
         "restoreSuccess": "بازیابی با موفقیت انجام شد، برنامه در 1 ثانیه راه‌اندازی مجدد می‌شود",
         "localBackupExported": "Local backup exported successfully",
         "localBackupExportFailed": "Failed to export local backup",
+        "localBackupImported": "Local backup imported successfully",
+        "localBackupImportFailed": "Failed to import local backup: {{error}}",
         "webdavRefreshSuccess": "WebDAV refresh succeeded",
         "webdavRefreshFailed": "WebDAV refresh failed: {{error}}",
         "confirmDelete": "آیا از حذف این فایل پشتیبان اطمینان دارید؟",
@@ -333,7 +374,9 @@
       "history": {
         "title": "تاریخچه پشتیبان گیری",
         "summary": "{{count}} backups • latest {{recent}}",
-        "empty": "هیچ نسخه پشتیبان در دسترس نیست"
+        "empty": "هیچ نسخه پشتیبان در دسترس نیست",
+        "unknownPlatform": "unknown",
+        "unknownTime": "Unknown time"
       },
       "webdav": {
         "title": "پیکربندی WebDAV"
@@ -358,6 +401,7 @@
         "proxyLayoutColumns": "ستون چیدمان پراکسی",
         "autoLogClean": "پاکسازی خودکار لاگ",
         "autoDelayDetection": "تشخیص تأخیر خودکار",
+        "autoDelayDetectionInterval": "فاصله تشخیص تأخیر خودکار",
         "defaultLatencyTest": "آزمون تأخیر پیش‌فرض",
         "defaultLatencyTimeout": "زمان انتظار تأخیر پیش‌فرض"
       },
@@ -402,6 +446,7 @@
         "proxyGuard": "محافظ پراکسی",
         "guardDuration": "مدت محافظت",
         "alwaysUseDefaultBypass": "همیشه از دور زدن پیش‌فرض استفاده کنید",
+        "enableBypassCheck": "اعتبارسنجی قالب دور زدن پراکسی",
         "proxyBypass": "دور زدن پراکسی: ",
         "bypass": "دور زدن: ",
         "pacScriptContent": "محتوای اسکریپت PAC"
@@ -424,6 +469,7 @@
         "stack": "انباشته Tun",
         "device": "Device Name",
         "autoRoute": "مسیر خودکار",
+        "routeExcludeAddress": "نشانی‌های مستثنا از مسیردهی",
         "strictRoute": "مسیر دقیق",
         "autoDetectInterface": "تشخیص خودکار رابط",
         "dnsHijack": "ربایش DNS",
@@ -435,7 +481,9 @@
         "autoRedirect": "پیکربندی خودکار ریدایرکت‌های TCP در nftables/iptables"
       },
       "messages": {
-        "applied": "تنظیمات اعمال شد"
+        "applied": "تنظیمات اعمال شد",
+        "invalidRouteExcludeAddress": "لطفاً یک محدوده CIDR معتبر وارد کنید",
+        "routeExcludeAddressHint": "فقط CIDRهای IPv4/IPv6 پشتیبانی می‌شوند، مانند 192.168.0.0/16 یا fd00::/8"
       }
     },
     "dns": {

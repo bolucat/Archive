@@ -8,7 +8,7 @@ use clash_verge_logging::{Type, logging};
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
-use std::{collections::HashSet, sync::Arc};
+use std::collections::HashSet;
 use tokio::fs;
 
 /// Define the `profiles.yaml` schema
@@ -31,8 +31,8 @@ pub struct IProfilePreview<'a> {
 #[derive(Debug, Clone)]
 pub struct CleanupResult {
     pub total_files: usize,
-    pub deleted_files: Vec<String>,
-    pub failed_deletions: Vec<String>,
+    pub deleted_files: usize,
+    pub failed_deletions: usize,
 }
 
 macro_rules! patch {
@@ -45,13 +45,9 @@ macro_rules! patch {
 
 impl IProfiles {
     // Helper to find and remove an item by uid from the items vec, returning its file name (if any).
-    fn take_item_file_by_uid(items: &mut Vec<PrfItem>, target_uid: Option<String>) -> Option<String> {
-        for (i, _) in items.iter().enumerate() {
-            if items[i].uid == target_uid {
-                return items.remove(i).file;
-            }
-        }
-        None
+    fn take_item_file_by_uid(items: &mut Vec<PrfItem>, target_uid: Option<&str>) -> Option<String> {
+        let index = items.iter().position(|item| item.uid.as_deref() == target_uid)?;
+        items.remove(index).file
     }
 
     pub async fn new() -> Self {
@@ -124,15 +120,6 @@ impl IProfiles {
         }
 
         bail!("failed to get the profile item \"uid:{}\"", uid_str);
-    }
-
-    pub fn get_item_arc(&self, uid: &str) -> Option<Arc<PrfItem>> {
-        self.items.as_ref().and_then(|items| {
-            items
-                .iter()
-                .find(|it| it.uid.as_deref() == Some(uid))
-                .map(|it| Arc::new(it.clone()))
-        })
     }
 
     /// append new item
@@ -276,33 +263,38 @@ impl IProfiles {
     pub async fn delete_item(&mut self, uid: &String) -> Result<bool> {
         let current = self.current.as_ref().unwrap_or(uid);
         let current = current.clone();
-        let item = self.get_item(uid)?;
-        let merge_uid = item.option.as_ref().and_then(|e| e.merge.clone());
-        let script_uid = item.option.as_ref().and_then(|e| e.script.clone());
-        let rules_uid = item.option.as_ref().and_then(|e| e.rules.clone());
-        let proxies_uid = item.option.as_ref().and_then(|e| e.proxies.clone());
-        let groups_uid = item.option.as_ref().and_then(|e| e.groups.clone());
+        let (merge_uid, script_uid, rules_uid, proxies_uid, groups_uid) = {
+            let item = self.get_item(uid)?;
+            let option = item.option.as_ref();
+            (
+                option.and_then(|e| e.merge.clone()),
+                option.and_then(|e| e.script.clone()),
+                option.and_then(|e| e.rules.clone()),
+                option.and_then(|e| e.proxies.clone()),
+                option.and_then(|e| e.groups.clone()),
+            )
+        };
         let mut items = self.items.take().unwrap_or_default();
 
         // remove the main item (if exists) and delete its file
-        if let Some(file) = Self::take_item_file_by_uid(&mut items, Some(uid.clone())) {
+        if let Some(file) = Self::take_item_file_by_uid(&mut items, Some(uid.as_str())) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
 
         // remove related extension items (merge, script, rules, proxies, groups)
-        if let Some(file) = Self::take_item_file_by_uid(&mut items, merge_uid.clone()) {
+        if let Some(file) = Self::take_item_file_by_uid(&mut items, merge_uid.as_deref()) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
-        if let Some(file) = Self::take_item_file_by_uid(&mut items, script_uid.clone()) {
+        if let Some(file) = Self::take_item_file_by_uid(&mut items, script_uid.as_deref()) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
-        if let Some(file) = Self::take_item_file_by_uid(&mut items, rules_uid.clone()) {
+        if let Some(file) = Self::take_item_file_by_uid(&mut items, rules_uid.as_deref()) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
-        if let Some(file) = Self::take_item_file_by_uid(&mut items, proxies_uid.clone()) {
+        if let Some(file) = Self::take_item_file_by_uid(&mut items, proxies_uid.as_deref()) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
-        if let Some(file) = Self::take_item_file_by_uid(&mut items, groups_uid.clone()) {
+        if let Some(file) = Self::take_item_file_by_uid(&mut items, groups_uid.as_deref()) {
             let _ = dirs::app_profiles_dir()?.join(file.as_str()).remove_if_exists().await;
         }
         // delete the original uid
@@ -374,15 +366,11 @@ impl IProfiles {
     }
 
     /// 以 app 中的 profile 列表为准，删除不再需要的文件
-    pub async fn cleanup_orphaned_files(&self) -> Result<CleanupResult> {
+    pub async fn cleanup_orphaned_files(&self) -> Result<()> {
         let profiles_dir = dirs::app_profiles_dir()?;
 
         if !profiles_dir.exists() {
-            return Ok(CleanupResult {
-                total_files: 0,
-                deleted_files: vec![],
-                failed_deletions: vec![],
-            });
+            return Ok(());
         }
 
         // 获取所有 active profile 的文件名集合
@@ -393,11 +381,11 @@ impl IProfiles {
 
         // 扫描 profiles 目录下的所有文件
         let mut total_files = 0;
-        let mut deleted_files = vec![];
-        let mut failed_deletions = vec![];
+        let mut deleted_files = 0;
+        let mut failed_deletions = 0;
 
-        for entry in std::fs::read_dir(&profiles_dir)? {
-            let entry = entry?;
+        let mut dir_entries = tokio::fs::read_dir(&profiles_dir).await?;
+        while let Some(entry) = dir_entries.next_entry().await? {
             let path = entry.path();
 
             if !path.is_file() {
@@ -419,11 +407,11 @@ impl IProfiles {
                 if !active_files.contains(file_name) {
                     match path.to_path_buf().remove_if_exists().await {
                         Ok(_) => {
-                            deleted_files.push(file_name.into());
-                            logging!(info, Type::Config, "已清理冗余文件: {file_name}");
+                            deleted_files += 1;
+                            logging!(debug, Type::Config, "已清理冗余文件: {file_name}");
                         }
                         Err(e) => {
-                            failed_deletions.push(format!("{file_name}: {e}").into());
+                            failed_deletions += 1;
                             logging!(warn, Type::Config, "Warning: 清理文件失败: {file_name} - {e}");
                         }
                     }
@@ -442,11 +430,11 @@ impl IProfiles {
             Type::Config,
             "Profile 文件清理完成: 总文件数={}, 删除文件数={}, 失败数={}",
             result.total_files,
-            result.deleted_files.len(),
-            result.failed_deletions.len()
+            result.deleted_files,
+            result.failed_deletions
         );
 
-        Ok(result)
+        Ok(())
     }
 
     /// 不删除全局扩展配置

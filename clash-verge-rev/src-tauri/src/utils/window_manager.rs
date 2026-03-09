@@ -1,16 +1,10 @@
 use crate::{core::handle, utils::resolve::window::build_new_window};
+use clash_verge_limiter::Limiter;
 use clash_verge_logging::{Type, logging};
-use std::future::Future;
+use once_cell::sync::Lazy;
 use std::pin::Pin;
+use std::time::Duration;
 use tauri::{Manager as _, WebviewWindow, Wry};
-
-use once_cell::sync::OnceCell;
-use parking_lot::Mutex;
-use scopeguard;
-use std::{
-    sync::atomic::{AtomicBool, Ordering},
-    time::{Duration, Instant},
-};
 
 /// 窗口操作结果
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,59 +39,48 @@ pub enum WindowState {
 }
 
 // 窗口操作防抖机制
-static WINDOW_OPERATION_DEBOUNCE: OnceCell<Mutex<Instant>> = OnceCell::new();
-static WINDOW_OPERATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-const WINDOW_OPERATION_DEBOUNCE_MS: u64 = 500;
-
-fn get_window_operation_debounce() -> &'static Mutex<Instant> {
-    WINDOW_OPERATION_DEBOUNCE.get_or_init(|| Mutex::new(Instant::now() - Duration::from_secs(1)))
-}
+const WINDOW_OPERATION_DEBOUNCE_MS: u64 = 625;
+static WINDOW_OPERATION_LIMITER: Lazy<Limiter> = Lazy::new(|| {
+    Limiter::new(
+        Duration::from_millis(WINDOW_OPERATION_DEBOUNCE_MS),
+        clash_verge_limiter::SystemClock,
+    )
+});
 
 fn should_handle_window_operation() -> bool {
-    if WINDOW_OPERATION_IN_PROGRESS.load(Ordering::Acquire) {
-        logging!(warn, Type::Window, "Warning: [防抖] 窗口操作已在进行中，跳过重复调用");
-        return false;
+    let allow = WINDOW_OPERATION_LIMITER.check();
+    if !allow {
+        logging!(debug, Type::Window, "window operation rate limited");
     }
-
-    let debounce_lock = get_window_operation_debounce();
-    let mut last_operation = debounce_lock.lock();
-    let now = Instant::now();
-    let elapsed = now.duration_since(*last_operation);
-
-    logging!(
-        debug,
-        Type::Window,
-        "[防抖] 检查窗口操作间隔: {}ms (需要>={}ms)",
-        elapsed.as_millis(),
-        WINDOW_OPERATION_DEBOUNCE_MS
-    );
-
-    if elapsed >= Duration::from_millis(WINDOW_OPERATION_DEBOUNCE_MS) {
-        *last_operation = now;
-        drop(last_operation);
-        WINDOW_OPERATION_IN_PROGRESS.store(true, Ordering::Release);
-        logging!(info, Type::Window, "[防抖] 窗口操作被允许执行");
-        true
-    } else {
-        logging!(
-            warn,
-            Type::Window,
-            "Warning: [防抖] 窗口操作被防抖机制忽略，距离上次操作 {}ms < {}ms",
-            elapsed.as_millis(),
-            WINDOW_OPERATION_DEBOUNCE_MS
-        );
-        false
-    }
-}
-
-fn finish_window_operation() {
-    WINDOW_OPERATION_IN_PROGRESS.store(false, Ordering::Release);
+    allow
 }
 
 /// 统一的窗口管理器
 pub struct WindowManager;
 
 impl WindowManager {
+    pub fn get_main_window_with_state() -> (Option<WebviewWindow<Wry>>, WindowState) {
+        let Some(window) = Self::get_main_window() else {
+            return (None, WindowState::NotExist);
+        };
+
+        let is_minimized = window.is_minimized().unwrap_or(false);
+        let is_visible = window.is_visible().unwrap_or(false);
+        let is_focused = window.is_focused().unwrap_or(false);
+
+        let state = if is_minimized {
+            WindowState::Minimized
+        } else if !is_visible {
+            WindowState::Hidden
+        } else if is_focused {
+            WindowState::VisibleFocused
+        } else {
+            WindowState::VisibleUnfocused
+        };
+
+        (Some(window), state)
+    }
+
     pub fn get_main_window_state() -> WindowState {
         match Self::get_main_window() {
             Some(window) => {
@@ -135,9 +118,6 @@ impl WindowManager {
         if !should_handle_window_operation() {
             return WindowOperationResult::NoAction;
         }
-        let _guard = scopeguard::guard((), |_| {
-            finish_window_operation();
-        });
 
         logging!(info, Type::Window, "开始智能显示主窗口");
         logging!(debug, Type::Window, "{}", Self::get_window_status_info());
@@ -149,7 +129,7 @@ impl WindowManager {
                 logging!(info, Type::Window, "窗口不存在，创建新窗口");
                 if Self::create_window(true).await {
                     logging!(info, Type::Window, "窗口创建成功");
-                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    std::thread::sleep(std::time::Duration::from_millis(50));
                     WindowOperationResult::Created
                 } else {
                     logging!(warn, Type::Window, "窗口创建失败");
@@ -161,12 +141,12 @@ impl WindowManager {
                 WindowOperationResult::NoAction
             }
             WindowState::VisibleUnfocused | WindowState::Minimized | WindowState::Hidden => {
-                if let Some(window) = Self::get_main_window() {
-                    let state_after_check = Self::get_main_window_state();
-                    if state_after_check == WindowState::VisibleFocused {
-                        logging!(info, Type::Window, "窗口在检查期间已变为可见和有焦点状态");
-                        return WindowOperationResult::NoAction;
-                    }
+                let (window, state_after_check) = Self::get_main_window_with_state();
+                if state_after_check == WindowState::VisibleFocused {
+                    logging!(info, Type::Window, "窗口在检查期间已变为可见和有焦点状态");
+                    return WindowOperationResult::NoAction;
+                }
+                if let Some(window) = window {
                     Self::activate_window(&window)
                 } else {
                     WindowOperationResult::Failed
@@ -177,29 +157,18 @@ impl WindowManager {
 
     /// 切换主窗口显示状态（显示/隐藏）
     pub async fn toggle_main_window() -> WindowOperationResult {
-        // 防抖检查
         if !should_handle_window_operation() {
             return WindowOperationResult::NoAction;
         }
-        let _guard = scopeguard::guard((), |_| {
-            finish_window_operation();
-        });
 
-        logging!(info, Type::Window, "开始切换主窗口显示状态");
+        let (window, state) = Self::get_main_window_with_state();
 
-        let current_state = Self::get_main_window_state();
-        logging!(
-            info,
-            Type::Window,
-            "当前窗口状态: {:?} | 详细状态: {}",
-            current_state,
-            Self::get_window_status_info()
-        );
+        logging!(debug, Type::Window, "当前状态: {:?}", state);
 
-        match current_state {
+        match state {
             WindowState::NotExist => Self::handle_not_exist_toggle().await,
-            WindowState::VisibleFocused | WindowState::VisibleUnfocused => Self::hide_main_window(),
-            WindowState::Minimized | WindowState::Hidden => Self::activate_existing_main_window(),
+            WindowState::VisibleFocused | WindowState::VisibleUnfocused => Self::hide_main_window(window.as_ref()),
+            WindowState::Minimized | WindowState::Hidden => Self::activate_existing_main_window(window.as_ref()),
         }
     }
 
@@ -215,9 +184,9 @@ impl WindowManager {
     }
 
     // 隐藏主窗口
-    fn hide_main_window() -> WindowOperationResult {
+    fn hide_main_window(window: Option<&WebviewWindow<Wry>>) -> WindowOperationResult {
         logging!(info, Type::Window, "窗口可见，将隐藏窗口");
-        if let Some(window) = Self::get_main_window() {
+        if let Some(window) = window {
             match window.hide() {
                 Ok(_) => {
                     logging!(info, Type::Window, "窗口已成功隐藏");
@@ -235,10 +204,10 @@ impl WindowManager {
     }
 
     // 激活已存在的主窗口
-    fn activate_existing_main_window() -> WindowOperationResult {
+    fn activate_existing_main_window(window: Option<&WebviewWindow<Wry>>) -> WindowOperationResult {
         logging!(info, Type::Window, "窗口存在但被隐藏或最小化，将激活窗口");
-        if let Some(window) = Self::get_main_window() {
-            Self::activate_window(&window)
+        if let Some(window) = window {
+            Self::activate_window(window)
         } else {
             logging!(warn, Type::Window, "无法获取窗口实例");
             WindowOperationResult::Failed
@@ -301,24 +270,18 @@ impl WindowManager {
     }
 
     /// 检查窗口是否可见
-    pub fn is_main_window_visible() -> bool {
-        Self::get_main_window()
-            .map(|window| window.is_visible().unwrap_or(false))
-            .unwrap_or(false)
+    pub fn is_main_window_visible(window: Option<&WebviewWindow<Wry>>) -> bool {
+        window.map(|w| w.is_visible().unwrap_or(false)).unwrap_or(false)
     }
 
     /// 检查窗口是否有焦点
-    pub fn is_main_window_focused() -> bool {
-        Self::get_main_window()
-            .map(|window| window.is_focused().unwrap_or(false))
-            .unwrap_or(false)
+    pub fn is_main_window_focused(window: Option<&WebviewWindow<Wry>>) -> bool {
+        window.map(|w| w.is_focused().unwrap_or(false)).unwrap_or(false)
     }
 
     /// 检查窗口是否最小化
-    pub fn is_main_window_minimized() -> bool {
-        Self::get_main_window()
-            .map(|window| window.is_minimized().unwrap_or(false))
-            .unwrap_or(false)
+    pub fn is_main_window_minimized(window: Option<&WebviewWindow<Wry>>) -> bool {
+        window.map(|w| w.is_minimized().unwrap_or(false)).unwrap_or(false)
     }
 
     /// 创建新窗口,防抖避免重复调用
@@ -346,8 +309,6 @@ impl WindowManager {
                 return false;
             }
 
-            handle::Handle::global().mark_startup_completed();
-
             true
         })
     }
@@ -368,11 +329,11 @@ impl WindowManager {
     }
 
     /// 获取详细的窗口状态信息
-    pub fn get_window_status_info() -> String {
-        let state = Self::get_main_window_state();
-        let is_visible = Self::is_main_window_visible();
-        let is_focused = Self::is_main_window_focused();
-        let is_minimized = Self::is_main_window_minimized();
+    fn get_window_status_info() -> String {
+        let (window, state) = Self::get_main_window_with_state();
+        let is_visible = Self::is_main_window_visible(window.as_ref());
+        let is_focused = Self::is_main_window_focused(window.as_ref());
+        let is_minimized = Self::is_main_window_minimized(window.as_ref());
 
         format!("窗口状态: {state:?} | 可见: {is_visible} | 有焦点: {is_focused} | 最小化: {is_minimized}")
     }

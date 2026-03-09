@@ -36,8 +36,7 @@ import { useLocation } from "react-router";
 import useSWR, { mutate } from "swr";
 import { closeAllConnections } from "tauri-plugin-mihomo-api";
 
-import { BasePage, DialogRef } from "@/components/base";
-import { BaseStyledTextField } from "@/components/base/base-styled-text-field";
+import { BasePage, BaseStyledTextField, DialogRef } from "@/components/base";
 import { ProfileItem } from "@/components/profile/profile-item";
 import { ProfileMore } from "@/components/profile/profile-more";
 import {
@@ -164,7 +163,9 @@ const ProfilePage = () => {
     [],
   );
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -390,7 +391,7 @@ const ProfilePage = () => {
           switchingProfileRef.current === profile &&
           !abortController.signal.aborted
         ) {
-          await activateSelected();
+          await activateSelected(profiles);
           debugLog(`[Profile] 后台处理完成，序列号: ${sequence}`);
         } else {
           debugProfileSwitch(
@@ -403,7 +404,7 @@ const ProfilePage = () => {
         console.warn("Failed to activate selected proxies:", err);
       }
     },
-    [activateSelected],
+    [activateSelected, profiles],
   );
 
   const activateProfile = useCallback(
@@ -457,6 +458,7 @@ const ProfilePage = () => {
         const requestPromise = patchProfiles(
           { current: profile },
           currentAbortController.signal,
+          { deferRefreshOnSuccess: true },
         );
         pendingRequestRef.current = requestPromise;
 

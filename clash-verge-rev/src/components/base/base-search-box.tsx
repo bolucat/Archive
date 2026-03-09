@@ -1,4 +1,5 @@
-import { Box, SvgIcon, TextField, styled } from "@mui/material";
+import { ClearRounded } from "@mui/icons-material";
+import { Box, SvgIcon, TextField, styled, IconButton } from "@mui/material";
 import Tooltip from "@mui/material/Tooltip";
 import {
   ChangeEvent,
@@ -12,7 +13,8 @@ import { useTranslation } from "react-i18next";
 
 import matchCaseIcon from "@/assets/image/component/match_case.svg?react";
 import matchWholeWordIcon from "@/assets/image/component/match_whole_word.svg?react";
-import useRegularExpressionIcon from "@/assets/image/component/use_regular_expression.svg?react";
+import UseRegularExpressionIcon from "@/assets/image/component/use_regular_expression.svg?react";
+import { buildRegex, compileStringMatcher } from "@/utils/search-matcher";
 
 export type SearchState = {
   text: string;
@@ -21,11 +23,17 @@ export type SearchState = {
   useRegularExpression: boolean;
 };
 
+type SearchOptionState = Omit<SearchState, "text">;
+
 type SearchProps = {
+  value?: string;
+  defaultValue?: string;
+  autoFocus?: boolean;
   placeholder?: string;
   matchCase?: boolean;
   matchWholeWord?: boolean;
   useRegularExpression?: boolean;
+  searchState?: Partial<SearchOptionState>;
   onSearch: (match: (content: string) => boolean, state: SearchState) => void;
 };
 
@@ -42,36 +50,61 @@ const StyledTextField = styled(TextField)(({ theme }) => ({
   },
 }));
 
+const useControllableState = <T,>(options: {
+  controlled: T | undefined;
+  defaultValue: T;
+}) => {
+  const { controlled, defaultValue } = options;
+  const [uncontrolled, setUncontrolled] = useState(defaultValue);
+  const isControlled = controlled !== undefined;
+
+  const value = isControlled ? controlled : uncontrolled;
+
+  const setValue = useCallback(
+    (next: T) => {
+      if (!isControlled) setUncontrolled(next);
+    },
+    [isControlled],
+  );
+
+  return [value, setValue] as const;
+};
+
 export const BaseSearchBox = ({
+  value,
+  defaultValue,
+  autoFocus,
   placeholder,
+  searchState,
   matchCase: defaultMatchCase = false,
   matchWholeWord: defaultMatchWholeWord = false,
   useRegularExpression: defaultUseRegularExpression = false,
   onSearch,
 }: SearchProps) => {
   const { t } = useTranslation();
-
-  const escapeRegex = useCallback((value: string) => {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }, []);
-
-  const buildRegex = useCallback((pattern: string, flags = "") => {
-    try {
-      return new RegExp(pattern, flags);
-    } catch (e) {
-      console.warn("[BaseSearchBox] buildRegex error:", e);
-      return null;
-    }
-  }, []);
-
-  const inputRef = useRef<HTMLInputElement>(null);
   const onSearchRef = useRef(onSearch);
-  const [matchCase, setMatchCase] = useState(defaultMatchCase);
-  const [matchWholeWord, setMatchWholeWord] = useState(defaultMatchWholeWord);
-  const [useRegularExpression, setUseRegularExpression] = useState(
-    defaultUseRegularExpression,
-  );
-  const [errorMessage, setErrorMessage] = useState("");
+  const lastSearchStateRef = useRef<SearchState | null>(null);
+
+  const [text, setText] = useControllableState<string>({
+    controlled: value,
+    defaultValue: defaultValue ?? "",
+  });
+
+  const [matchCase, setMatchCase] = useControllableState<boolean>({
+    controlled: searchState?.matchCase,
+    defaultValue: defaultMatchCase,
+  });
+
+  const [matchWholeWord, setMatchWholeWord] = useControllableState<boolean>({
+    controlled: searchState?.matchWholeWord,
+    defaultValue: defaultMatchWholeWord,
+  });
+
+  const [useRegularExpression, setUseRegularExpression] =
+    useControllableState<boolean>({
+      controlled: searchState?.useRegularExpression,
+      defaultValue: defaultUseRegularExpression,
+    });
 
   const iconStyle = {
     style: {
@@ -82,97 +115,43 @@ export const BaseSearchBox = ({
     inheritViewBox: true,
   };
 
-  // Helper that verifies whether a pattern is a valid regular expression
-  const validateRegex = useCallback(
-    (pattern: string, flags = "") => {
-      if (!pattern) return true;
-      return !!buildRegex(pattern, flags);
-    },
-    [buildRegex],
-  );
-
-  const createMatcher = useMemo(() => {
-    return (searchText: string) => {
-      if (!searchText) {
-        return () => true;
-      }
-
-      const flags = matchCase ? "" : "i";
-
-      if (useRegularExpression) {
-        const regex = buildRegex(searchText, flags);
-        if (!regex) return () => false;
-
-        return (content: string) => {
-          try {
-            return regex.test(content);
-          } catch (e) {
-            console.warn("[BaseSearchBox] regex match error:", e);
-            return false;
-          }
-        };
-      }
-
-      if (matchWholeWord) {
-        const regex = buildRegex(`\\b${escapeRegex(searchText)}\\b`, flags);
-        if (!regex) return () => false;
-
-        return (content: string) => {
-          try {
-            return regex.test(content);
-          } catch (e) {
-            console.warn("[BaseSearchBox] whole word match error:", e);
-            return false;
-          }
-        };
-      }
-
-      return (content: string) => {
-        const item = matchCase ? content : content.toLowerCase();
-        const target = matchCase ? searchText : searchText.toLowerCase();
-        return item.includes(target);
-      };
-    };
-  }, [
-    buildRegex,
-    escapeRegex,
-    matchCase,
-    matchWholeWord,
-    useRegularExpression,
-  ]);
-
   useEffect(() => {
     onSearchRef.current = onSearch;
   }, [onSearch]);
 
+  const emitSearch = useCallback((nextState: SearchState) => {
+    const prevState = lastSearchStateRef.current;
+    const isSameState =
+      !!prevState &&
+      prevState.text === nextState.text &&
+      prevState.matchCase === nextState.matchCase &&
+      prevState.matchWholeWord === nextState.matchWholeWord &&
+      prevState.useRegularExpression === nextState.useRegularExpression;
+    if (isSameState) return;
+
+    const compiled = compileStringMatcher(nextState.text, nextState);
+    onSearchRef.current(compiled.matcher, nextState);
+
+    lastSearchStateRef.current = nextState;
+  }, []);
+
   useEffect(() => {
-    if (!inputRef.current) return;
-    const value = inputRef.current.value;
-    const matcher = createMatcher(value);
-    onSearchRef.current(matcher, {
-      text: value,
-      matchCase,
-      matchWholeWord,
-      useRegularExpression,
-    });
-  }, [matchCase, matchWholeWord, useRegularExpression, createMatcher]);
+    emitSearch({ text, matchCase, matchWholeWord, useRegularExpression });
+  }, [emitSearch, matchCase, matchWholeWord, text, useRegularExpression]);
 
-  const onChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const value = e.target?.value ?? "";
-    setErrorMessage("");
+  const effectiveErrorMessage = useMemo(() => {
+    if (!useRegularExpression || !text) return "";
     const flags = matchCase ? "" : "i";
+    return buildRegex(text, flags) ? "" : t("shared.validation.invalidRegex");
+  }, [matchCase, t, text, useRegularExpression]);
 
-    // Validate regex input eagerly
-    if (useRegularExpression && value) {
-      const isValid = validateRegex(value, flags);
-      if (!isValid) {
-        setErrorMessage(t("shared.validation.invalidRegex"));
-      }
-    }
-
-    const matcher = createMatcher(value);
-    onSearchRef.current(matcher, {
-      text: value,
+  const handleChangeText = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    const nextText = e.target?.value ?? "";
+    setText(nextText);
+    emitSearch({
+      text: nextText,
       matchCase,
       matchWholeWord,
       useRegularExpression,
@@ -180,69 +159,87 @@ export const BaseSearchBox = ({
   };
 
   const handleToggleUseRegularExpression = () => {
-    setUseRegularExpression((prev) => {
-      const next = !prev;
-      if (!next) {
-        setErrorMessage("");
-      } else {
-        const value = inputRef.current?.value ?? "";
-        const flags = matchCase ? "" : "i";
-        if (value && !validateRegex(value, flags)) {
-          setErrorMessage(t("shared.validation.invalidRegex"));
-        }
-      }
-      return next;
+    const next = !useRegularExpression;
+    setUseRegularExpression(next);
+    emitSearch({
+      text,
+      matchCase,
+      matchWholeWord,
+      useRegularExpression: next,
     });
   };
 
+  const handleClearInput = () => {
+    setText("");
+    emitSearch({ text: "", matchCase, matchWholeWord, useRegularExpression });
+  };
+
+  const handleToggleMatchCase = () => {
+    const next = !matchCase;
+    setMatchCase(next);
+    emitSearch({ text, matchCase: next, matchWholeWord, useRegularExpression });
+  };
+
+  const handleToggleMatchWholeWord = () => {
+    const next = !matchWholeWord;
+    setMatchWholeWord(next);
+    emitSearch({ text, matchCase, matchWholeWord: next, useRegularExpression });
+  };
+
   return (
-    <Tooltip title={errorMessage || ""} placement="bottom-start">
+    <Tooltip title={effectiveErrorMessage || ""} placement="bottom-start">
       <StyledTextField
         autoComplete="new-password"
-        inputRef={inputRef}
         hiddenLabel
         fullWidth
         size="small"
         variant="outlined"
+        autoFocus={autoFocus}
         spellCheck="false"
         placeholder={placeholder ?? t("shared.placeholders.filter")}
         sx={{ input: { py: 0.65, px: 1.25 } }}
-        onChange={onChange}
-        error={!!errorMessage}
+        value={text}
+        onChange={handleChangeText}
+        error={!!effectiveErrorMessage}
         slotProps={{
           input: {
             sx: { pr: 1 },
             endAdornment: (
               <Box display="flex">
-                <Tooltip title={t("shared.placeholders.matchCase")}>
-                  <div>
-                    <SvgIcon
-                      component={matchCaseIcon}
+                {!!text && (
+                  <Tooltip title={t("shared.placeholders.resetInput")}>
+                    <IconButton
+                      size="small"
                       {...iconStyle}
-                      aria-label={matchCase ? "active" : "inactive"}
-                      onClick={() => setMatchCase((prev) => !prev)}
-                    />
-                  </div>
+                      onClick={handleClearInput}
+                    >
+                      <ClearRounded fontSize="inherit" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Tooltip title={t("shared.placeholders.matchCase")}>
+                  <SvgIcon
+                    component={matchCaseIcon}
+                    {...iconStyle}
+                    aria-label={matchCase ? "active" : "inactive"}
+                    onClick={handleToggleMatchCase}
+                  />
                 </Tooltip>
                 <Tooltip title={t("shared.placeholders.matchWholeWord")}>
-                  <div>
-                    <SvgIcon
-                      component={matchWholeWordIcon}
-                      {...iconStyle}
-                      aria-label={matchWholeWord ? "active" : "inactive"}
-                      onClick={() => setMatchWholeWord((prev) => !prev)}
-                    />
-                  </div>
+                  <SvgIcon
+                    component={matchWholeWordIcon}
+                    {...iconStyle}
+                    aria-label={matchWholeWord ? "active" : "inactive"}
+                    onClick={handleToggleMatchWholeWord}
+                  />
                 </Tooltip>
                 <Tooltip title={t("shared.placeholders.useRegex")}>
-                  <div>
-                    <SvgIcon
-                      component={useRegularExpressionIcon}
-                      aria-label={useRegularExpression ? "active" : "inactive"}
-                      {...iconStyle}
-                      onClick={handleToggleUseRegularExpression}
-                    />
-                  </div>
+                  <SvgIcon
+                    component={UseRegularExpressionIcon}
+                    aria-label={useRegularExpression ? "active" : "inactive"}
+                    {...iconStyle}
+                    onClick={handleToggleUseRegularExpression}
+                  />
                 </Tooltip>
               </Box>
             ),

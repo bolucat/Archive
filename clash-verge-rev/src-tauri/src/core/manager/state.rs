@@ -2,14 +2,13 @@ use super::{CoreManager, RunningMode};
 use crate::{
     AsyncHandler,
     config::{Config, IClashTemp},
-    core::{handle, manager::CLASH_LOGGER, service},
+    core::{handle, logger::Logger, manager::CLASH_LOGGER, service},
     logging,
-    utils::{dirs, init::sidecar_writer},
+    utils::dirs,
 };
 use anyhow::Result;
-use clash_verge_logging::{SharedWriter, Type, write_sidecar_log};
+use clash_verge_logging::Type;
 use compact_str::CompactString;
-use flexi_logger::DeferredNow;
 use log::Level;
 use scopeguard::defer;
 use tauri_plugin_shell::ShellExt as _;
@@ -31,6 +30,8 @@ impl CoreManager {
         let clash_core = Config::verge().await.latest_arc().get_valid_clash_core();
         let config_dir = dirs::app_home_dir()?;
 
+        #[cfg(unix)]
+        let previous_mask = unsafe { tauri_plugin_clash_verge_sysinfo::libc::umask(0o007) };
         let (mut rx, child) = app_handle
             .shell()
             .sidecar(clash_core.as_str())?
@@ -47,6 +48,10 @@ impl CoreManager {
                 &IClashTemp::guard_external_controller_ipc(),
             ])
             .spawn()?;
+        #[cfg(unix)]
+        unsafe {
+            tauri_plugin_clash_verge_sysinfo::libc::umask(previous_mask)
+        };
 
         let pid = child.pid();
         logging!(trace, Type::Core, "Sidecar started with PID: {}", pid);
@@ -54,20 +59,16 @@ impl CoreManager {
         self.set_running_child_sidecar(child);
         self.set_running_mode(RunningMode::Sidecar);
 
-        let shared_writer: SharedWriter = std::sync::Arc::new(tokio::sync::Mutex::new(sidecar_writer().await?));
-
         AsyncHandler::spawn(|| async move {
             while let Some(event) = rx.recv().await {
                 match event {
                     tauri_plugin_shell::process::CommandEvent::Stdout(line)
                     | tauri_plugin_shell::process::CommandEvent::Stderr(line) => {
-                        let mut now = DeferredNow::default();
-                        let message = CompactString::from(String::from_utf8_lossy(&line).as_ref());
-                        write_sidecar_log(shared_writer.lock().await, &mut now, Level::Error, &message);
+                        let message = CompactString::from(&*String::from_utf8_lossy(&line));
+                        Logger::global().writer_sidecar_log(Level::Error, &message);
                         CLASH_LOGGER.append_log(message).await;
                     }
                     tauri_plugin_shell::process::CommandEvent::Terminated(term) => {
-                        let mut now = DeferredNow::default();
                         let message = if let Some(code) = term.code {
                             CompactString::from(format!("Process terminated with code: {}", code))
                         } else if let Some(signal) = term.signal {
@@ -75,7 +76,7 @@ impl CoreManager {
                         } else {
                             CompactString::from("Process terminated")
                         };
-                        write_sidecar_log(shared_writer.lock().await, &mut now, Level::Info, &message);
+                        Logger::global().writer_sidecar_log(Level::Info, &message);
                         CLASH_LOGGER.clear_logs().await;
                         break;
                     }

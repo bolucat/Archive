@@ -61,7 +61,7 @@ func startTunnelServer(t *testing.T, cfg *ProtocolConfig, handle func(*ServerSes
 					return
 				}
 
-				session, err := ServerHandshake(handshakeConn, handshakeCfg)
+				cConn, meta, err := ServerHandshake(handshakeConn, handshakeCfg)
 				if err != nil {
 					_ = handshakeConn.Close()
 					if handshakeConn != conn {
@@ -70,8 +70,13 @@ func startTunnelServer(t *testing.T, cfg *ProtocolConfig, handle func(*ServerSes
 					errC <- err
 					return
 				}
-				defer session.Conn.Close()
+				defer cConn.Close()
 
+				session, err := ReadServerSession(cConn, meta)
+				if err != nil {
+					errC <- err
+					return
+				}
 				if handleErr := handle(session); handleErr != nil {
 					errC <- handleErr
 				}
@@ -172,7 +177,7 @@ func TestHTTPMaskTunnel_Stream_TCPRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode addr: %v", err)
 	}
-	if _, err := cConn.Write(addrBuf); err != nil {
+	if err := WriteKIPMessage(cConn, KIPTypeOpenTCP, addrBuf); err != nil {
 		t.Fatalf("write addr: %v", err)
 	}
 
@@ -239,8 +244,8 @@ func TestHTTPMaskTunnel_Poll_UoTRoundTrip(t *testing.T) {
 	}
 	defer cConn.Close()
 
-	if err := WritePreface(cConn); err != nil {
-		t.Fatalf("write preface: %v", err)
+	if err := WriteKIPMessage(cConn, KIPTypeStartUoT, nil); err != nil {
+		t.Fatalf("start uot: %v", err)
 	}
 	if err := WriteDatagram(cConn, target, payload); err != nil {
 		t.Fatalf("write datagram: %v", err)
@@ -305,7 +310,68 @@ func TestHTTPMaskTunnel_Auto_TCPRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("encode addr: %v", err)
 	}
-	if _, err := cConn.Write(addrBuf); err != nil {
+	if err := WriteKIPMessage(cConn, KIPTypeOpenTCP, addrBuf); err != nil {
+		t.Fatalf("write addr: %v", err)
+	}
+
+	buf := make([]byte, 2)
+	if _, err := io.ReadFull(cConn, buf); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if string(buf) != "ok" {
+		t.Fatalf("unexpected payload: %q", buf)
+	}
+
+	stop()
+	for err := range errCh {
+		t.Fatalf("server error: %v", err)
+	}
+}
+
+func TestHTTPMaskTunnel_WS_TCPRoundTrip(t *testing.T) {
+	key := "tunnel-ws-key"
+	target := "1.1.1.1:80"
+
+	serverCfg := newTunnelTestTable(t, key)
+	serverCfg.HTTPMaskMode = "ws"
+
+	addr, stop, errCh := startTunnelServer(t, serverCfg, func(s *ServerSession) error {
+		if s.Type != SessionTypeTCP {
+			return fmt.Errorf("unexpected session type: %v", s.Type)
+		}
+		if s.Target != target {
+			return fmt.Errorf("target mismatch: %s", s.Target)
+		}
+		_, _ = s.Conn.Write([]byte("ok"))
+		return nil
+	})
+	defer stop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	clientCfg := *serverCfg
+	clientCfg.ServerAddress = addr
+
+	tunnelConn, err := DialHTTPMaskTunnel(ctx, clientCfg.ServerAddress, &clientCfg, (&net.Dialer{}).DialContext, nil)
+	if err != nil {
+		t.Fatalf("dial tunnel: %v", err)
+	}
+	defer tunnelConn.Close()
+
+	handshakeCfg := clientCfg
+	handshakeCfg.DisableHTTPMask = true
+	cConn, err := ClientHandshake(tunnelConn, &handshakeCfg)
+	if err != nil {
+		t.Fatalf("client handshake: %v", err)
+	}
+	defer cConn.Close()
+
+	addrBuf, err := EncodeAddress(target)
+	if err != nil {
+		t.Fatalf("encode addr: %v", err)
+	}
+	if err := WriteKIPMessage(cConn, KIPTypeOpenTCP, addrBuf); err != nil {
 		t.Fatalf("write addr: %v", err)
 	}
 
@@ -406,7 +472,7 @@ func TestHTTPMaskTunnel_Soak_Concurrent(t *testing.T) {
 				runErr <- fmt.Errorf("encode addr: %w", err)
 				return
 			}
-			if _, err := cConn.Write(addrBuf); err != nil {
+			if err := WriteKIPMessage(cConn, KIPTypeOpenTCP, addrBuf); err != nil {
 				runErr <- fmt.Errorf("write addr: %w", err)
 				return
 			}
