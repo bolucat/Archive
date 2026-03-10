@@ -669,6 +669,7 @@ proxies: # socks5
     grpc-opts:
       grpc-service-name: "example"
       # grpc-user-agent: "grpc-go/1.36.0"
+      # ping-interval: 0 # 默认关闭，单位为秒
     # ip-version: ipv4
 
   # vless
@@ -759,6 +760,7 @@ proxies: # socks5
     grpc-opts:
       grpc-service-name: "grpc"
       # grpc-user-agent: "grpc-go/1.36.0"
+      # ping-interval: 0 # 默认关闭，单位为秒
       
     reality-opts:
       public-key: CrrQSjAG_YkHLwvM2M-7XkKJilgL5upBKCp0od0tLhE
@@ -830,6 +832,7 @@ proxies: # socks5
     grpc-opts:
       grpc-service-name: "example"
       # grpc-user-agent: "grpc-go/1.36.0"
+      # ping-interval: 0 # 默认关闭，单位为秒
 
   - name: trojan-ws
     server: server

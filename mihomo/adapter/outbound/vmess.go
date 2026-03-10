@@ -34,8 +34,7 @@ type Vmess struct {
 	option *VmessOption
 
 	// for gun mux
-	gunConfig    *gun.Config
-	gunTransport *gun.TransportWrap
+	gunTransport *gun.Transport
 
 	realityConfig *tlsC.RealityConfig
 	echConfig     *ech.Config
@@ -86,6 +85,7 @@ type HTTP2Options struct {
 type GrpcOptions struct {
 	GrpcServiceName string `proxy:"grpc-service-name,omitempty"`
 	GrpcUserAgent   string `proxy:"grpc-user-agent,omitempty"`
+	PingInterval    int    `proxy:"ping-interval,omitempty"`
 }
 
 type WSOptions struct {
@@ -295,7 +295,7 @@ func (v *Vmess) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn
 	var c net.Conn
 	// gun transport
 	if v.gunTransport != nil {
-		c, err = gun.StreamGunWithTransport(v.gunTransport, v.gunConfig)
+		c, err = v.gunTransport.Dial()
 	} else {
 		c, err = v.dialer.DialContext(ctx, "tcp", v.addr)
 	}
@@ -318,7 +318,7 @@ func (v *Vmess) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (
 	var c net.Conn
 	// gun transport
 	if v.gunTransport != nil {
-		c, err = gun.StreamGunWithTransport(v.gunTransport, v.gunConfig)
+		c, err = v.gunTransport.Dial()
 	} else {
 		c, err = v.dialer.DialContext(ctx, "tcp", v.addr)
 	}
@@ -437,9 +437,10 @@ func NewVmess(option VmessOption) (*Vmess, error) {
 		}
 
 		gunConfig := &gun.Config{
-			ServiceName: option.GrpcOpts.GrpcServiceName,
-			UserAgent:   option.GrpcOpts.GrpcUserAgent,
-			Host:        option.ServerName,
+			ServiceName:  option.GrpcOpts.GrpcServiceName,
+			UserAgent:    option.GrpcOpts.GrpcUserAgent,
+			Host:         option.ServerName,
+			PingInterval: option.GrpcOpts.PingInterval,
 		}
 		if option.ServerName == "" {
 			gunConfig.Host = v.addr
@@ -463,9 +464,7 @@ func NewVmess(option VmessOption) (*Vmess, error) {
 			}
 		}
 
-		v.gunConfig = gunConfig
-
-		v.gunTransport = gun.NewHTTP2Client(dialFn, tlsConfig)
+		v.gunTransport = gun.NewTransport(dialFn, tlsConfig, gunConfig)
 	}
 
 	return v, nil

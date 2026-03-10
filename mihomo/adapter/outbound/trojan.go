@@ -27,8 +27,7 @@ type Trojan struct {
 	hexPassword [trojan.KeyLength]byte
 
 	// for gun mux
-	gunConfig    *gun.Config
-	gunTransport *gun.TransportWrap
+	gunTransport *gun.Transport
 
 	realityConfig *tlsC.RealityConfig
 	echConfig     *ech.Config
@@ -178,7 +177,7 @@ func (t *Trojan) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Con
 	var c net.Conn
 	// gun transport
 	if t.gunTransport != nil {
-		c, err = gun.StreamGunWithTransport(t.gunTransport, t.gunConfig)
+		c, err = t.gunTransport.Dial()
 	} else {
 		c, err = t.dialer.DialContext(ctx, "tcp", t.addr)
 	}
@@ -206,7 +205,7 @@ func (t *Trojan) ListenPacketContext(ctx context.Context, metadata *C.Metadata) 
 	var c net.Conn
 	// grpc transport
 	if t.gunTransport != nil {
-		c, err = gun.StreamGunWithTransport(t.gunTransport, t.gunConfig)
+		c, err = t.gunTransport.Dial()
 	} else {
 		c, err = t.dialer.DialContext(ctx, "tcp", t.addr)
 	}
@@ -317,13 +316,14 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 			Reality:           t.realityConfig,
 		}
 
-		t.gunTransport = gun.NewHTTP2Client(dialFn, tlsConfig)
-
-		t.gunConfig = &gun.Config{
-			ServiceName: option.GrpcOpts.GrpcServiceName,
-			UserAgent:   option.GrpcOpts.GrpcUserAgent,
-			Host:        option.SNI,
+		gunConfig := &gun.Config{
+			ServiceName:  option.GrpcOpts.GrpcServiceName,
+			UserAgent:    option.GrpcOpts.GrpcUserAgent,
+			Host:         option.SNI,
+			PingInterval: option.GrpcOpts.PingInterval,
 		}
+
+		t.gunTransport = gun.NewTransport(dialFn, tlsConfig, gunConfig)
 	}
 
 	return t, nil

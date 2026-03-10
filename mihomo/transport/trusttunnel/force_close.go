@@ -11,7 +11,7 @@ func forceCloseAllConnections(roundTripper RoundTripper) {
 	roundTripper.CloseIdleConnections()
 	switch tr := roundTripper.(type) {
 	case *http.Http2Transport:
-		gun.CloseTransport(tr)
+		gun.CloseHttp2Transport(tr)
 	case *http3.Transport:
 		_ = tr.Close()
 	}

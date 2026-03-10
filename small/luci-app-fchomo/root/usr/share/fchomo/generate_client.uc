@@ -11,6 +11,7 @@ import { urldecode, urlencode } from 'luci.http';
 import {
 	isEmpty, strToBool, strToInt, bytesizeToByte, durationToSecond,
 	arrToObj, removeBlankAttrs,
+	parseListener,
 	HM_DIR, RUN_DIR, PRESET_OUTBOUND, RULES_LOGICAL_TYPE
 } from 'fchomo';
 
@@ -39,6 +40,7 @@ const ucisniff = 'sniff',
       ucidnspoli = 'dns_policy',
       ucidnsnpoli = 'dns_node_policy',
       ucipgrp = 'proxy_group',
+      uciinbd = 'inbound',
       ucinode = 'node',
       uciprov = 'provider',
       ucichain = 'dialer_proxy',
@@ -326,29 +328,14 @@ uci.foreach(uciconf, ucisniff, (cfg) => {
 /* Inbound START */
 const proxy_mode = uci.get(uciconf, uciinbound, 'proxy_mode') || 'redir_tproxy';
 /* Listen ports */
-config.listeners = [];
-push(config.listeners, {
-	name: 'mixed-in',
-	type: 'mixed',
-	port: strToInt(uci.get(uciconf, uciinbound, 'mixed_port')) || 7890,
-	listen: '::',
-	udp: true
-});
+config["allow-lan"] = true;
+config["bind-address"] = "*";
+config["mixed-port"] = strToInt(uci.get(uciconf, uciinbound, 'mixed_port')) || 7890;
 if (match(proxy_mode, /redir/))
-	push(config.listeners, {
-		name: 'redir-in',
-		type: 'redir',
-		port: strToInt(uci.get(uciconf, uciinbound, 'redir_port')) || 7891,
-		listen: '::'
-	});
+	config["redir-port"] = strToInt(uci.get(uciconf, uciinbound, 'redir_port')) || 7891;
 if (match(proxy_mode, /tproxy/))
-	push(config.listeners, {
-		name: 'tproxy-in',
-		type: 'tproxy',
-		port: strToInt(uci.get(uciconf, uciinbound, 'tproxy_port')) || 7892,
-		listen: '::',
-		udp: true
-	});
+	config["tproxy-port"] = strToInt(uci.get(uciconf, uciinbound, 'tproxy_port')) || 7892;
+config.listeners = [];
 push(config.listeners, {
 	name: 'dns-in',
 	type: 'tunnel',
@@ -357,6 +344,13 @@ push(config.listeners, {
 	network: ['tcp', 'udp'],
 	target: '1.1.1.1:53'
 }); // @Not required for v1.19.2+
+/* Custom Inbound settings */
+uci.foreach(uciconf, uciinbd, (cfg) => {
+	if (cfg.enabled === '0')
+		return;
+
+	push(config.listeners, parseListener(cfg, true, get_proxygroup(cfg.proxy)));
+});
 /* Tun settings */
 if (match(proxy_mode, /tun/))
 	config.tun = {
@@ -502,7 +496,6 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 		cipher: cfg.vmess_chipher || cfg.shadowsocks_chipher,
 		password: cfg.shadowsocks_password || cfg.password,
 		headers: cfg.headers ? json(cfg.headers) : null,
-		"congestion-controller": cfg.tuic_congestion_controller || cfg.masque_congestion_controller,
 		"private-key": cfg.masque_private_key || cfg.wireguard_private_key || cfg.ssh_priv_key,
 		"public-key": cfg.masque_endpoint_public_key || cfg.wireguard_peer_public_key,
 		ip: cfg.masque_ip || cfg.wireguard_ip,
@@ -531,6 +524,7 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 		transport: cfg.mieru_transport,
 		multiplexing: cfg.mieru_multiplexing,
 		"handshake-mode": cfg.mieru_handshake_mode,
+		"traffic-pattern": cfg.mieru_traffic_pattern,
 
 		/* Sudoku */
 		key: cfg.sudoku_key,
@@ -540,12 +534,16 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 		"table-type": cfg.sudoku_table_type,
 		"custom-tables": cfg.sudoku_custom_tables,
 		"enable-pure-downlink": (cfg.sudoku_enable_pure_downlink === '0') ? false : null,
-		"http-mask": (cfg.sudoku_http_mask === '0') ? false : true,
-		"http-mask-mode": cfg.sudoku_http_mask_mode,
-		"http-mask-tls": strToBool(cfg.sudoku_http_mask_tls),
-		"http-mask-host": cfg.sudoku_http_mask_host,
-		"path-root": cfg.sudoku_path_root,
-		"http-mask-multiplex": cfg.sudoku_http_mask_multiplex,
+		...(cfg.type === 'sudoku' ? {
+			httpmask: (cfg.sudoku_http_mask === '0') ? { disable: true } : {
+				disable: false,
+				mode: cfg.sudoku_http_mask_mode,
+				tls: strToBool(cfg.sudoku_http_mask_tls) || false,
+				host: cfg.sudoku_http_mask_host,
+				path_root: cfg.sudoku_path_root,
+				multiplex: cfg.sudoku_http_mask_multiplex,
+			}
+		} : {}),
 
 		/* Snell */
 		psk: cfg.snell_psk,
@@ -587,6 +585,10 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 		"packet-encoding": cfg.vmess_packet_encoding,
 		encryption: cfg.vless_encryption === '1' ? cfg.vless_encryption_encryption : null,
 
+		/* TrustTunnel */
+		"health-check": strToBool(cfg.trusttunnel_health_check === '0' ? false : true),
+		quic: strToBool(cfg.trusttunnel_quic),
+
 		/* WireGuard */
 		"pre-shared-key": cfg.wireguard_pre_shared_key,
 		"allowed-ips": cfg.wireguard_allowed_ips,
@@ -605,12 +607,13 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 		} : null,
 
 		/* Extra fields */
+		"congestion-controller": cfg.congestion_controller,
 		udp: strToBool(cfg.udp),
 		"udp-over-tcp": strToBool(cfg.uot),
 		"udp-over-tcp-version": cfg.uot_version,
 
 		/* TLS fields */
-		tls: (cfg.type in ['trojan', 'anytls', 'hysteria', 'hysteria2', 'tuic']) ? null : strToBool(cfg.tls),
+		tls: (cfg.type in ['trojan', 'anytls', 'hysteria', 'hysteria2', 'tuic', 'trusttunnel']) ? null : strToBool(cfg.tls),
 		"disable-sni": strToBool(cfg.tls_disable_sni),
 		...arrToObj([[(cfg.type in ['vmess', 'vless']) ? 'servername' : 'sni', cfg.tls_sni]]),
 		fingerprint: cfg.tls_fingerprint,

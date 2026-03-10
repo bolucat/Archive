@@ -33,8 +33,7 @@ type Vless struct {
 	encryption *encryption.ClientInstance
 
 	// for gun mux
-	gunConfig    *gun.Config
-	gunTransport *gun.TransportWrap
+	gunTransport *gun.Transport
 
 	realityConfig *tlsC.RealityConfig
 	echConfig     *ech.Config
@@ -234,7 +233,7 @@ func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn
 	var c net.Conn
 	// gun transport
 	if v.gunTransport != nil {
-		c, err = gun.StreamGunWithTransport(v.gunTransport, v.gunConfig)
+		c, err = v.gunTransport.Dial()
 	} else {
 		c, err = v.dialer.DialContext(ctx, "tcp", v.addr)
 	}
@@ -260,7 +259,7 @@ func (v *Vless) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (
 	var c net.Conn
 	// gun transport
 	if v.gunTransport != nil {
-		c, err = gun.StreamGunWithTransport(v.gunTransport, v.gunConfig)
+		c, err = v.gunTransport.Dial()
 	} else {
 		c, err = v.dialer.DialContext(ctx, "tcp", v.addr)
 	}
@@ -431,9 +430,10 @@ func NewVless(option VlessOption) (*Vless, error) {
 		}
 
 		gunConfig := &gun.Config{
-			ServiceName: option.GrpcOpts.GrpcServiceName,
-			UserAgent:   option.GrpcOpts.GrpcUserAgent,
-			Host:        option.ServerName,
+			ServiceName:  option.GrpcOpts.GrpcServiceName,
+			UserAgent:    option.GrpcOpts.GrpcUserAgent,
+			Host:         option.ServerName,
+			PingInterval: option.GrpcOpts.PingInterval,
 		}
 		if option.ServerName == "" {
 			gunConfig.Host = v.addr
@@ -457,9 +457,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 			}
 		}
 
-		v.gunConfig = gunConfig
-
-		v.gunTransport = gun.NewHTTP2Client(dialFn, tlsConfig)
+		v.gunTransport = gun.NewTransport(dialFn, tlsConfig, gunConfig)
 	}
 
 	return v, nil

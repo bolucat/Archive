@@ -18,8 +18,8 @@ var (
 
 type healthCheckSchema struct {
 	Enable         bool   `provider:"enable"`
-	URL            string `provider:"url"`
-	Interval       int    `provider:"interval"`
+	URL            string `provider:"url,omitempty"`
+	Interval       int    `provider:"interval,omitempty"`
 	TestTimeout    int    `provider:"timeout,omitempty"`
 	Lazy           bool   `provider:"lazy,omitempty"`
 	ExpectedStatus string `provider:"expected-status,omitempty"`
