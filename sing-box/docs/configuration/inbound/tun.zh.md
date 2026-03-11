@@ -4,8 +4,12 @@ icon: material/new-box
 
 !!! quote "sing-box 1.14.0 中的更改"
 
-    :material-plus: [include_mac_address](#include_mac_address)  
+    :material-plus: [include_mac_address](#include_mac_address)
     :material-plus: [exclude_mac_address](#exclude_mac_address)
+
+!!! quote "sing-box 1.13.3 中的更改"
+
+    :material-alert: [strict_route](#strict_route)
 
 !!! quote "sing-box 1.13.0 中的更改"
 
@@ -358,6 +362,9 @@ tun 接口的 IPv6 前缀。
 
 * 使不支持的网络不可达。
 * 出于历史遗留原因，当未启用 `strict_route` 或 `auto_redirect` 时，所有 ICMP 流量将不会通过 TUN。
+* 当启用 `auto_redirect` 时，`strict_route` 也影响 `SO_BINDTODEVICE` 流量：
+    * 启用：`SO_BINDTODEVICE` 流量被重定向通过 sing-box。
+    * 禁用：`SO_BINDTODEVICE` 流量绕过 sing-box。
 
 *在 Windows 中*：
 

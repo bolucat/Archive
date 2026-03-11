@@ -37,7 +37,9 @@ See [Listen Fields](/configuration/shared/listen/) for details.
 
 Path to the OpenAI OAuth credentials file.
 
-If not specified, defaults to `~/.codex/auth.json`.
+If not specified, defaults to:
+- `$CODEX_HOME/auth.json` if `CODEX_HOME` environment variable is set
+- `~/.codex/auth.json` otherwise
 
 Refreshed tokens are automatically written back to the same location.
 
@@ -111,17 +113,23 @@ TLS configuration, see [TLS](/configuration/shared/tls/#inbound).
 Add to `~/.codex/config.toml`:
 
 ```toml
+# profile = "ocm"                # set as default profile
+
 [model_providers.ocm]
 name = "OCM Proxy"
 base_url = "http://127.0.0.1:8080/v1"
-wire_api = "responses"
-requires_openai_auth = false
+supports_websockets = true
+
+[profiles.ocm]
+model_provider = "ocm"
+# model = "gpt-5.4"              # if the latest model is not yet publicly released
+# model_reasoning_effort = "xhigh"
 ```
 
 Then run:
 
 ```bash
-codex --model-provider ocm
+codex --profile ocm
 ```
 
 ### Example with Authentication
@@ -139,11 +147,11 @@ codex --model-provider ocm
       "users": [
         {
           "name": "alice",
-          "token": "sk-alice-secret-token"
+          "token": "sk-ocm-hello-world"
         },
         {
           "name": "bob",
-          "token": "sk-bob-secret-token"
+          "token": "sk-ocm-hello-bob"
         }
       ]
     }
@@ -156,16 +164,22 @@ codex --model-provider ocm
 Add to `~/.codex/config.toml`:
 
 ```toml
+# profile = "ocm"                # set as default profile
+
 [model_providers.ocm]
 name = "OCM Proxy"
 base_url = "http://127.0.0.1:8080/v1"
-wire_api = "responses"
-requires_openai_auth = false
-experimental_bearer_token = "sk-alice-secret-token"
+supports_websockets = true
+experimental_bearer_token = "sk-ocm-hello-world"
+
+[profiles.ocm]
+model_provider = "ocm"
+# model = "gpt-5.4"              # if the latest model is not yet publicly released
+# model_reasoning_effort = "xhigh"
 ```
 
 Then run:
 
 ```bash
-codex --model-provider ocm
+codex --profile ocm
 ```

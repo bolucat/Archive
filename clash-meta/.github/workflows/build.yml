@@ -53,7 +53,7 @@ jobs:
           - { goos: linux, goarch: mipsle, gomips: softfloat, output: mipsle-softfloat }
           - { goos: linux, goarch: mips64, output: mips64 }
           - { goos: linux, goarch: mips64le, output: mips64le, debian: mips64el, rpm: mips64el }
-          - { goos: linux, goarch: loong64, output: loong64-abi1, abi: '1', debian: loongarch64, rpm: loongarch64 }
+          - { goos: linux, goarch: loong64, output: loong64-abi1, abi: '1', debian: loongarch64, rpm: loongarch64, goversion: 'custom' }
           - { goos: linux, goarch: loong64, output: loong64-abi2, abi: '2', debian: loong64, rpm: loong64 }
           - { goos: linux, goarch: riscv64, output: riscv64, debian: riscv64, rpm: riscv64 }
           - { goos: linux, goarch: s390x, output: s390x, debian: s390x, rpm: s390x }
@@ -158,14 +158,14 @@ jobs:
     - uses: actions/checkout@v5
 
     - name: Set up Go
-      if: ${{ matrix.jobs.goversion == '' && matrix.jobs.abi != '1' }}
+      if: ${{ matrix.jobs.goversion == '' }}
       uses: actions/setup-go@v6
       with:
         go-version: '1.26'
         check-latest: true # Always check for the latest patch release
 
     - name: Set up Go
-      if: ${{ matrix.jobs.goversion != '' && matrix.jobs.abi != '1' }}
+      if: ${{ matrix.jobs.goversion != '' && matrix.jobs.goversion != 'custom' }}
       uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.jobs.goversion }}

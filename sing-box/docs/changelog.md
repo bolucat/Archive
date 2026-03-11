@@ -2,6 +2,54 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.2
+
+* Add OpenWrt and Alpine APK packages to release **1**
+* Backport to macOS 10.13 High Sierra **2**
+* OCM service: Add WebSocket support for Responses API **3**
+* Fixes and improvements
+
+**1**:
+
+Alpine APK files use `linux` in the filename to distinguish from OpenWrt APKs which use the `openwrt` prefix:
+
+- OpenWrt: `sing-box_{version}_openwrt_{architecture}.apk`
+- Alpine: `sing-box_{version}_linux_{architecture}.apk`
+
+**2**:
+
+Legacy macOS binaries (with `-legacy-macos-10.13` suffix) now support
+macOS 10.13 High Sierra, built using Go 1.25 with patches
+from [SagerNet/go](https://github.com/SagerNet/go).
+
+**3**:
+
+See [OCM](/configuration/service/ocm).
+
+#### 1.13.3-beta.1
+
+* Add OpenWrt and Alpine APK packages to release **1**
+* Backport to macOS 10.13 High Sierra **2**
+* OCM service: Add WebSocket support for Responses API **3**
+* Fixes and improvements
+
+**1**:
+
+Alpine APK files use `linux` in the filename to distinguish from OpenWrt APKs which use the `openwrt` prefix:
+
+- OpenWrt: `sing-box_{version}_openwrt_{architecture}.apk`
+- Alpine: `sing-box_{version}_linux_{architecture}.apk`
+
+**2**:
+
+Legacy macOS binaries (with `-legacy-macos-10.13` suffix) now support
+macOS 10.13 High Sierra, built using Go 1.25 with patches
+from [SagerNet/go](https://github.com/SagerNet/go).
+
+**3**:
+
+See [OCM](/configuration/service/ocm).
+
 #### 1.14.0-alpha.1
 
 * Add `source_mac_address` and `source_hostname` rule items **1**

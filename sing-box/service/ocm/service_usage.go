@@ -46,6 +46,7 @@ func (u *UsageStats) UnmarshalJSON(data []byte) error {
 type CostCombination struct {
 	Model         string                `json:"model"`
 	ServiceTier   string                `json:"service_tier,omitempty"`
+	ContextWindow int                   `json:"context_window"`
 	WeekStartUnix int64                 `json:"week_start_unix,omitempty"`
 	Total         UsageStats            `json:"total"`
 	ByUser        map[string]UsageStats `json:"by_user"`
@@ -74,15 +75,17 @@ type UsageStatsJSON struct {
 type CostCombinationJSON struct {
 	Model         string                    `json:"model"`
 	ServiceTier   string                    `json:"service_tier,omitempty"`
+	ContextWindow int                       `json:"context_window"`
 	WeekStartUnix int64                     `json:"week_start_unix,omitempty"`
 	Total         UsageStatsJSON            `json:"total"`
 	ByUser        map[string]UsageStatsJSON `json:"by_user"`
 }
 
 type CostsSummaryJSON struct {
-	TotalUSD float64            `json:"total_usd"`
-	ByUser   map[string]float64 `json:"by_user"`
-	ByWeek   map[string]float64 `json:"by_week,omitempty"`
+	TotalUSD      float64                       `json:"total_usd"`
+	ByUser        map[string]float64            `json:"by_user"`
+	ByWeek        map[string]float64            `json:"by_week,omitempty"`
+	ByUserAndWeek map[string]map[string]float64 `json:"by_user_and_week,omitempty"`
 }
 
 type AggregatedUsageJSON struct {
@@ -103,8 +106,9 @@ type ModelPricing struct {
 }
 
 type modelFamily struct {
-	pattern *regexp.Regexp
-	pricing ModelPricing
+	pattern        *regexp.Regexp
+	pricing        ModelPricing
+	premiumPricing *ModelPricing
 }
 
 const (
@@ -113,6 +117,12 @@ const (
 	serviceTierFlex     = "flex"
 	serviceTierPriority = "priority"
 	serviceTierScale    = "scale"
+)
+
+const (
+	contextWindowStandard   = 272000
+	contextWindowPremium    = 1050000
+	premiumContextThreshold = 272000
 )
 
 var (
@@ -158,6 +168,30 @@ var (
 		CachedInputPrice: 0.025,
 	}
 
+	gpt54StandardPricing = ModelPricing{
+		InputPrice:       2.5,
+		OutputPrice:      15.0,
+		CachedInputPrice: 0.25,
+	}
+
+	gpt54PremiumPricing = ModelPricing{
+		InputPrice:       5.0,
+		OutputPrice:      22.5,
+		CachedInputPrice: 0.5,
+	}
+
+	gpt54ProPricing = ModelPricing{
+		InputPrice:       30.0,
+		OutputPrice:      180.0,
+		CachedInputPrice: 30.0,
+	}
+
+	gpt54ProPremiumPricing = ModelPricing{
+		InputPrice:       60.0,
+		OutputPrice:      270.0,
+		CachedInputPrice: 60.0,
+	}
+
 	gpt52ProPricing = ModelPricing{
 		InputPrice:       21.0,
 		OutputPrice:      168.0,
@@ -168,6 +202,30 @@ var (
 		InputPrice:       15.0,
 		OutputPrice:      120.0,
 		CachedInputPrice: 15.0,
+	}
+
+	gpt54FlexPricing = ModelPricing{
+		InputPrice:       1.25,
+		OutputPrice:      7.5,
+		CachedInputPrice: 0.125,
+	}
+
+	gpt54PremiumFlexPricing = ModelPricing{
+		InputPrice:       2.5,
+		OutputPrice:      11.25,
+		CachedInputPrice: 0.25,
+	}
+
+	gpt54ProFlexPricing = ModelPricing{
+		InputPrice:       15.0,
+		OutputPrice:      90.0,
+		CachedInputPrice: 15.0,
+	}
+
+	gpt54ProPremiumFlexPricing = ModelPricing{
+		InputPrice:       30.0,
+		OutputPrice:      135.0,
+		CachedInputPrice: 30.0,
 	}
 
 	gpt52FlexPricing = ModelPricing{
@@ -192,6 +250,18 @@ var (
 		InputPrice:       0.025,
 		OutputPrice:      0.2,
 		CachedInputPrice: 0.0025,
+	}
+
+	gpt54PriorityPricing = ModelPricing{
+		InputPrice:       5.0,
+		OutputPrice:      30.0,
+		CachedInputPrice: 0.5,
+	}
+
+	gpt54PremiumPriorityPricing = ModelPricing{
+		InputPrice:       10.0,
+		OutputPrice:      45.0,
+		CachedInputPrice: 1.0,
 	}
 
 	gpt52PriorityPricing = ModelPricing{
@@ -382,6 +452,16 @@ var (
 
 	standardModelFamilies = []modelFamily{
 		{
+			pattern:        regexp.MustCompile(`^gpt-5\.4-pro(?:$|-)`),
+			pricing:        gpt54ProPricing,
+			premiumPricing: &gpt54ProPremiumPricing,
+		},
+		{
+			pattern:        regexp.MustCompile(`^gpt-5\.4(?:$|-)`),
+			pricing:        gpt54StandardPricing,
+			premiumPricing: &gpt54PremiumPricing,
+		},
+		{
 			pattern: regexp.MustCompile(`^gpt-5\.3-codex(?:$|-)`),
 			pricing: gpt52CodexPricing,
 		},
@@ -525,6 +605,16 @@ var (
 
 	flexModelFamilies = []modelFamily{
 		{
+			pattern:        regexp.MustCompile(`^gpt-5\.4-pro(?:$|-)`),
+			pricing:        gpt54ProFlexPricing,
+			premiumPricing: &gpt54ProPremiumFlexPricing,
+		},
+		{
+			pattern:        regexp.MustCompile(`^gpt-5\.4(?:$|-)`),
+			pricing:        gpt54FlexPricing,
+			premiumPricing: &gpt54PremiumFlexPricing,
+		},
+		{
 			pattern: regexp.MustCompile(`^gpt-5-mini(?:$|-)`),
 			pricing: gpt5MiniFlexPricing,
 		},
@@ -555,6 +645,11 @@ var (
 	}
 
 	priorityModelFamilies = []modelFamily{
+		{
+			pattern:        regexp.MustCompile(`^gpt-5\.4(?:$|-)`),
+			pricing:        gpt54PriorityPricing,
+			premiumPricing: &gpt54PremiumPriorityPricing,
+		},
 		{
 			pattern: regexp.MustCompile(`^gpt-5\.3-codex(?:$|-)`),
 			pricing: gpt52CodexPriorityPricing,
@@ -637,13 +732,26 @@ func modelFamiliesForTier(serviceTier string) []modelFamily {
 	}
 }
 
-func findPricingInFamilies(model string, modelFamilies []modelFamily) (ModelPricing, bool) {
+func findPricingInFamilies(model string, contextWindow int, modelFamilies []modelFamily) (ModelPricing, bool) {
+	isPremium := contextWindow >= contextWindowPremium
 	for _, family := range modelFamilies {
 		if family.pattern.MatchString(model) {
+			if isPremium && family.premiumPricing != nil {
+				return *family.premiumPricing, true
+			}
 			return family.pricing, true
 		}
 	}
 	return ModelPricing{}, false
+}
+
+func hasPremiumPricingInFamilies(model string, modelFamilies []modelFamily) bool {
+	for _, family := range modelFamilies {
+		if family.pattern.MatchString(model) {
+			return family.premiumPricing != nil
+		}
+	}
+	return false
 }
 
 func normalizeServiceTier(serviceTier string) string {
@@ -662,33 +770,57 @@ func normalizeServiceTier(serviceTier string) string {
 	}
 }
 
-func getPricing(model string, serviceTier string) ModelPricing {
+func getPricing(model string, serviceTier string, contextWindow int) ModelPricing {
 	normalizedServiceTier := normalizeServiceTier(serviceTier)
-	modelFamilies := modelFamiliesForTier(normalizedServiceTier)
+	families := modelFamiliesForTier(normalizedServiceTier)
 
-	if pricing, found := findPricingInFamilies(model, modelFamilies); found {
+	if pricing, found := findPricingInFamilies(model, contextWindow, families); found {
 		return pricing
 	}
 
 	normalizedModel := normalizeGPT5Model(model)
 	if normalizedModel != model {
-		if pricing, found := findPricingInFamilies(normalizedModel, modelFamilies); found {
+		if pricing, found := findPricingInFamilies(normalizedModel, contextWindow, families); found {
 			return pricing
 		}
 	}
 
 	if normalizedServiceTier != serviceTierDefault {
-		if pricing, found := findPricingInFamilies(model, standardModelFamilies); found {
+		if pricing, found := findPricingInFamilies(model, contextWindow, standardModelFamilies); found {
 			return pricing
 		}
 		if normalizedModel != model {
-			if pricing, found := findPricingInFamilies(normalizedModel, standardModelFamilies); found {
+			if pricing, found := findPricingInFamilies(normalizedModel, contextWindow, standardModelFamilies); found {
 				return pricing
 			}
 		}
 	}
 
 	return gpt4oPricing
+}
+
+func detectContextWindow(model string, serviceTier string, inputTokens int64) int {
+	if inputTokens <= premiumContextThreshold {
+		return contextWindowStandard
+	}
+	normalizedServiceTier := normalizeServiceTier(serviceTier)
+	families := modelFamiliesForTier(normalizedServiceTier)
+	if hasPremiumPricingInFamilies(model, families) {
+		return contextWindowPremium
+	}
+	normalizedModel := normalizeGPT5Model(model)
+	if normalizedModel != model && hasPremiumPricingInFamilies(normalizedModel, families) {
+		return contextWindowPremium
+	}
+	if normalizedServiceTier != serviceTierDefault {
+		if hasPremiumPricingInFamilies(model, standardModelFamilies) {
+			return contextWindowPremium
+		}
+		if normalizedModel != model && hasPremiumPricingInFamilies(normalizedModel, standardModelFamilies) {
+			return contextWindowPremium
+		}
+	}
+	return contextWindowStandard
 }
 
 func normalizeGPT5Model(model string) string {
@@ -706,18 +838,18 @@ func normalizeGPT5Model(model string) string {
 	case strings.Contains(model, "-chat-latest"):
 		return "gpt-5.2-chat-latest"
 	case strings.Contains(model, "-pro"):
-		return "gpt-5.2-pro"
+		return "gpt-5.4-pro"
 	case strings.Contains(model, "-mini"):
 		return "gpt-5-mini"
 	case strings.Contains(model, "-nano"):
 		return "gpt-5-nano"
 	default:
-		return "gpt-5.2"
+		return "gpt-5.4"
 	}
 }
 
-func calculateCost(stats UsageStats, model string, serviceTier string) float64 {
-	pricing := getPricing(model, serviceTier)
+func calculateCost(stats UsageStats, model string, serviceTier string, contextWindow int) float64 {
+	pricing := getPricing(model, serviceTier, contextWindow)
 
 	regularInputTokens := stats.InputTokens - stats.CachedTokens
 	if regularInputTokens < 0 {
@@ -738,13 +870,16 @@ func roundCost(cost float64) float64 {
 func normalizeCombinations(combinations []CostCombination) {
 	for index := range combinations {
 		combinations[index].ServiceTier = normalizeServiceTier(combinations[index].ServiceTier)
+		if combinations[index].ContextWindow <= 0 {
+			combinations[index].ContextWindow = contextWindowStandard
+		}
 		if combinations[index].ByUser == nil {
 			combinations[index].ByUser = make(map[string]UsageStats)
 		}
 	}
 }
 
-func addUsageToCombinations(combinations *[]CostCombination, model string, serviceTier string, weekStartUnix int64, user string, inputTokens, outputTokens, cachedTokens int64) {
+func addUsageToCombinations(combinations *[]CostCombination, model string, serviceTier string, contextWindow int, weekStartUnix int64, user string, inputTokens, outputTokens, cachedTokens int64) {
 	var matchedCombination *CostCombination
 	for index := range *combinations {
 		combination := &(*combinations)[index]
@@ -752,7 +887,7 @@ func addUsageToCombinations(combinations *[]CostCombination, model string, servi
 		if combination.ServiceTier != combinationServiceTier {
 			combination.ServiceTier = combinationServiceTier
 		}
-		if combination.Model == model && combinationServiceTier == serviceTier && combination.WeekStartUnix == weekStartUnix {
+		if combination.Model == model && combinationServiceTier == serviceTier && combination.ContextWindow == contextWindow && combination.WeekStartUnix == weekStartUnix {
 			matchedCombination = combination
 			break
 		}
@@ -762,6 +897,7 @@ func addUsageToCombinations(combinations *[]CostCombination, model string, servi
 		newCombination := CostCombination{
 			Model:         model,
 			ServiceTier:   serviceTier,
+			ContextWindow: contextWindow,
 			WeekStartUnix: weekStartUnix,
 			Total:         UsageStats{},
 			ByUser:        make(map[string]UsageStats),
@@ -790,12 +926,13 @@ func buildCombinationJSON(combinations []CostCombination, aggregateUserCosts map
 	var totalCost float64
 
 	for index, combination := range combinations {
-		combinationTotalCost := calculateCost(combination.Total, combination.Model, combination.ServiceTier)
+		combinationTotalCost := calculateCost(combination.Total, combination.Model, combination.ServiceTier, combination.ContextWindow)
 		totalCost += combinationTotalCost
 
 		combinationJSON := CostCombinationJSON{
 			Model:         combination.Model,
 			ServiceTier:   combination.ServiceTier,
+			ContextWindow: combination.ContextWindow,
 			WeekStartUnix: combination.WeekStartUnix,
 			Total: UsageStatsJSON{
 				RequestCount: combination.Total.RequestCount,
@@ -808,7 +945,7 @@ func buildCombinationJSON(combinations []CostCombination, aggregateUserCosts map
 		}
 
 		for user, userStats := range combination.ByUser {
-			userCost := calculateCost(userStats, combination.Model, combination.ServiceTier)
+			userCost := calculateCost(userStats, combination.Model, combination.ServiceTier, combination.ContextWindow)
 			if aggregateUserCosts != nil {
 				aggregateUserCosts[user] += userCost
 			}
@@ -856,12 +993,37 @@ func buildByWeekCost(combinations []CostCombination) map[string]float64 {
 		}
 		weekStartAt := time.Unix(combination.WeekStartUnix, 0).UTC()
 		weekKey := formatWeekStartKey(weekStartAt)
-		byWeek[weekKey] += calculateCost(combination.Total, combination.Model, combination.ServiceTier)
+		byWeek[weekKey] += calculateCost(combination.Total, combination.Model, combination.ServiceTier, combination.ContextWindow)
 	}
 	for weekKey, weekCost := range byWeek {
 		byWeek[weekKey] = roundCost(weekCost)
 	}
 	return byWeek
+}
+
+func buildByUserAndWeekCost(combinations []CostCombination) map[string]map[string]float64 {
+	byUserAndWeek := make(map[string]map[string]float64)
+	for _, combination := range combinations {
+		if combination.WeekStartUnix <= 0 {
+			continue
+		}
+		weekStartAt := time.Unix(combination.WeekStartUnix, 0).UTC()
+		weekKey := formatWeekStartKey(weekStartAt)
+		for user, userStats := range combination.ByUser {
+			userWeeks, exists := byUserAndWeek[user]
+			if !exists {
+				userWeeks = make(map[string]float64)
+				byUserAndWeek[user] = userWeeks
+			}
+			userWeeks[weekKey] += calculateCost(userStats, combination.Model, combination.ServiceTier, combination.ContextWindow)
+		}
+	}
+	for _, weekCosts := range byUserAndWeek {
+		for weekKey, cost := range weekCosts {
+			weekCosts[weekKey] = roundCost(cost)
+		}
+	}
+	return byUserAndWeek
 }
 
 func deriveWeekStartUnix(cycleHint *WeeklyCycleHint) int64 {
@@ -892,6 +1054,11 @@ func (u *AggregatedUsage) ToJSON() *AggregatedUsageJSON {
 
 	if len(result.Costs.ByWeek) == 0 {
 		result.Costs.ByWeek = nil
+	}
+
+	result.Costs.ByUserAndWeek = buildByUserAndWeekCost(u.Combinations)
+	if len(result.Costs.ByUserAndWeek) == 0 {
+		result.Costs.ByUserAndWeek = nil
 	}
 
 	for user, cost := range result.Costs.ByUser {
@@ -956,13 +1123,16 @@ func (u *AggregatedUsage) Save() error {
 	return err
 }
 
-func (u *AggregatedUsage) AddUsage(model string, inputTokens, outputTokens, cachedTokens int64, serviceTier string, user string) error {
-	return u.AddUsageWithCycleHint(model, inputTokens, outputTokens, cachedTokens, serviceTier, user, time.Now(), nil)
+func (u *AggregatedUsage) AddUsage(model string, contextWindow int, inputTokens, outputTokens, cachedTokens int64, serviceTier string, user string) error {
+	return u.AddUsageWithCycleHint(model, contextWindow, inputTokens, outputTokens, cachedTokens, serviceTier, user, time.Now(), nil)
 }
 
-func (u *AggregatedUsage) AddUsageWithCycleHint(model string, inputTokens, outputTokens, cachedTokens int64, serviceTier string, user string, observedAt time.Time, cycleHint *WeeklyCycleHint) error {
+func (u *AggregatedUsage) AddUsageWithCycleHint(model string, contextWindow int, inputTokens, outputTokens, cachedTokens int64, serviceTier string, user string, observedAt time.Time, cycleHint *WeeklyCycleHint) error {
 	if model == "" {
 		return E.New("model cannot be empty")
+	}
+	if contextWindow <= 0 {
+		return E.New("contextWindow must be positive")
 	}
 
 	normalizedServiceTier := normalizeServiceTier(serviceTier)
@@ -976,7 +1146,7 @@ func (u *AggregatedUsage) AddUsageWithCycleHint(model string, inputTokens, outpu
 	u.LastUpdated = observedAt
 	weekStartUnix := deriveWeekStartUnix(cycleHint)
 
-	addUsageToCombinations(&u.Combinations, model, normalizedServiceTier, weekStartUnix, user, inputTokens, outputTokens, cachedTokens)
+	addUsageToCombinations(&u.Combinations, model, normalizedServiceTier, contextWindow, weekStartUnix, user, inputTokens, outputTokens, cachedTokens)
 
 	go u.scheduleSave()
 
