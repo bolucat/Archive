@@ -43,7 +43,7 @@
     "upload:osx-aarch64": "tsx scripts/osx-aarch64-upload.ts",
     "generate:git-info": "tsx scripts/generate-git-info.ts",
     "generate:manifest": "run-p generate:manifest:*",
-    "generate:manifest:latest-version": "tsx scripts/generate-latest-version.ts",
+    "generate:manifest:latest-version": "deno run -A scripts/deno/generate-latest-version.ts",
     "prepare": "husky",
     "prepare:nightly": "tsx scripts/prepare-nightly.ts",
     "prepare:release": "tsx scripts/prepare-release.ts",
@@ -56,8 +56,8 @@
     "lodash-es": "4.17.23"
   },
   "devDependencies": {
-    "@commitlint/cli": "20.4.3",
-    "@commitlint/config-conventional": "20.4.3",
+    "@commitlint/cli": "20.4.4",
+    "@commitlint/config-conventional": "20.4.4",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.10.1",
     "@types/fs-extra": "11.0.4",
@@ -71,7 +71,7 @@
     "knip": "5.86.0",
     "lint-staged": "16.3.3",
     "npm-run-all2": "8.0.4",
-    "oxlint": "1.53.0",
+    "oxlint": "1.54.0",
     "postcss": "8.5.8",
     "postcss-html": "1.8.1",
     "postcss-import": "16.1.1",
