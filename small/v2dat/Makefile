@@ -7,14 +7,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=v2dat
-PKG_SOURCE_DATE:=2022-12-15
-PKG_SOURCE_VERSION:=47b8ee51fb528e11e1a83453b7e767a18d20d1f7
-PKG_RELEASE:=3
+PKG_VERSION:=0.1.1
+PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_SOURCE_DATE).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/urlesistiana/v2dat/tar.gz/$(PKG_SOURCE_VERSION)?
-PKG_HASH:=dca45a31006aca3dba5f543f6990ca755ffb2bde8e533cc2bbe6bac9ec12f157
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_SOURCE_VERSION)
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://codeload.github.com/kenzok8/v2dat/tar.gz/v$(PKG_VERSION)?
+PKG_HASH:=8c5ca5ffec48034527de09281ed4cb7fb6004fc693e09baf7d874549ad7e49c0
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
 PKG_LICENSE:=GPL-3.0
 PKG_LICENSE_FILE:=LICENSE
@@ -25,7 +24,7 @@ PKG_BUILD_PARALLEL:=1
 PKG_USE_MIPS16:=0
 PKG_BUILD_FLAGS:=no-mips16
 
-GO_PKG:=github.com/urlesistiana/v2dat
+GO_PKG:=github.com/kenzok8/v2dat
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
@@ -34,7 +33,7 @@ define Package/v2dat
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=V2ray geo/ip data unpack tools
-  URL:=https://github.com/urlesistiana/v2dat
+  URL:=https://github.com/kenzok8/v2dat
   DEPENDS:=$(GO_ARCH_DEPENDS)
 endef
 

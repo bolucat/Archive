@@ -1,3 +1,4 @@
+import MenuOpenRounded from '~icons/material-symbols/menu-open-rounded'
 import { motion } from 'framer-motion'
 import { merge } from 'lodash-es'
 import {
@@ -8,6 +9,7 @@ import {
 } from 'react'
 import { cn } from '@nyanpasu/ui'
 import { useControllableState } from '@radix-ui/react-use-controllable-state'
+import { Button } from './button'
 
 const DEFAULT_SIDEBAR_WIDTH = {
   open: 280,
@@ -58,6 +60,7 @@ export function SidebarProvider({
 }
 
 export function Sidebar({
+  className,
   animate,
   transition,
   width = DEFAULT_SIDEBAR_WIDTH,
@@ -71,22 +74,36 @@ export function Sidebar({
   const { open } = useSidebar()
 
   return (
-    <motion.aside
-      initial={false}
-      animate={merge(
-        {
-          width: open ? width.open : width.closed,
-        },
-        animate,
-      )}
-      transition={{
-        type: 'spring',
-        stiffness: 300,
-        damping: 30,
-        ...transition,
-      }}
-      {...props}
-    />
+    <>
+      <div
+        className="h-full md:hidden"
+        data-slot="sidebar-placeholder"
+        style={{
+          width: width.closed,
+        }}
+      />
+
+      <motion.aside
+        className={cn(
+          'bg-mixed-background absolute h-full md:static',
+          className,
+        )}
+        initial={false}
+        animate={merge(
+          {
+            width: open ? width.open : width.closed,
+          },
+          animate,
+        )}
+        transition={{
+          type: 'spring',
+          stiffness: 300,
+          damping: 30,
+          ...transition,
+        }}
+        {...props}
+      />
+    </>
   )
 }
 
@@ -100,6 +117,7 @@ export function SidebarLabelItem({
 
   return (
     <motion.span
+      data-open={String(open)}
       className={cn('overflow-hidden whitespace-nowrap', className)}
       initial={false}
       animate={merge(
@@ -115,5 +133,19 @@ export function SidebarLabelItem({
       }}
       {...props}
     />
+  )
+}
+
+export const SidebarToggleButton = () => {
+  const { open, setOpen } = useSidebar()
+
+  return (
+    <Button
+      className="flex size-12 min-w-0 items-center gap-2 rounded-2xl px-3 text-left"
+      variant="raised"
+      onClick={() => setOpen(!open)}
+    >
+      <MenuOpenRounded className="size-6 shrink-0" />
+    </Button>
   )
 }
