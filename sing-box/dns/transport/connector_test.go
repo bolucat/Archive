@@ -188,9 +188,153 @@ func TestConnectorCanceledRequestDoesNotCacheConnection(t *testing.T) {
 	err := <-result
 	require.ErrorIs(t, err, context.Canceled)
 	require.EqualValues(t, 1, dialCount.Load())
-	require.EqualValues(t, 1, closeCount.Load())
+	require.Eventually(t, func() bool {
+		return closeCount.Load() == 1
+	}, time.Second, 10*time.Millisecond)
 
 	_, err = connector.Get(context.Background())
+	require.NoError(t, err)
+	require.EqualValues(t, 2, dialCount.Load())
+}
+
+func TestConnectorCanceledRequestReturnsBeforeIgnoredDialCompletes(t *testing.T) {
+	t.Parallel()
+
+	var (
+		dialCount  atomic.Int32
+		closeCount atomic.Int32
+	)
+	dialStarted := make(chan struct{}, 1)
+	releaseDial := make(chan struct{})
+
+	connector := NewConnector(context.Background(), func(ctx context.Context) (*testConnectorConnection, error) {
+		dialCount.Add(1)
+		select {
+		case dialStarted <- struct{}{}:
+		default:
+		}
+		<-releaseDial
+		return &testConnectorConnection{}, nil
+	}, ConnectorCallbacks[*testConnectorConnection]{
+		IsClosed: func(connection *testConnectorConnection) bool {
+			return false
+		},
+		Close: func(connection *testConnectorConnection) {
+			closeCount.Add(1)
+		},
+		Reset: func(connection *testConnectorConnection) {},
+	})
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := connector.Get(requestContext)
+		result <- err
+	}()
+
+	<-dialStarted
+	cancel()
+
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("Get did not return after request cancel")
+	}
+
+	require.EqualValues(t, 1, dialCount.Load())
+	require.EqualValues(t, 0, closeCount.Load())
+
+	close(releaseDial)
+
+	require.Eventually(t, func() bool {
+		return closeCount.Load() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	_, err := connector.Get(context.Background())
+	require.NoError(t, err)
+	require.EqualValues(t, 2, dialCount.Load())
+}
+
+func TestConnectorWaiterDoesNotStartNewDialBeforeCanceledDialCompletes(t *testing.T) {
+	t.Parallel()
+
+	var (
+		dialCount  atomic.Int32
+		closeCount atomic.Int32
+	)
+	firstDialStarted := make(chan struct{}, 1)
+	secondDialStarted := make(chan struct{}, 1)
+	releaseFirstDial := make(chan struct{})
+
+	connector := NewConnector(context.Background(), func(ctx context.Context) (*testConnectorConnection, error) {
+		attempt := dialCount.Add(1)
+		switch attempt {
+		case 1:
+			select {
+			case firstDialStarted <- struct{}{}:
+			default:
+			}
+			<-releaseFirstDial
+		case 2:
+			select {
+			case secondDialStarted <- struct{}{}:
+			default:
+			}
+		}
+		return &testConnectorConnection{}, nil
+	}, ConnectorCallbacks[*testConnectorConnection]{
+		IsClosed: func(connection *testConnectorConnection) bool {
+			return false
+		},
+		Close: func(connection *testConnectorConnection) {
+			closeCount.Add(1)
+		},
+		Reset: func(connection *testConnectorConnection) {},
+	})
+
+	requestContext, cancel := context.WithCancel(context.Background())
+	firstResult := make(chan error, 1)
+	go func() {
+		_, err := connector.Get(requestContext)
+		firstResult <- err
+	}()
+
+	<-firstDialStarted
+	cancel()
+
+	secondResult := make(chan error, 1)
+	go func() {
+		_, err := connector.Get(context.Background())
+		secondResult <- err
+	}()
+
+	select {
+	case <-secondDialStarted:
+		t.Fatal("second dial started before first dial completed")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	select {
+	case err := <-firstResult:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("first Get did not return after request cancel")
+	}
+
+	close(releaseFirstDial)
+
+	require.Eventually(t, func() bool {
+		return closeCount.Load() == 1
+	}, time.Second, 10*time.Millisecond)
+
+	select {
+	case <-secondDialStarted:
+	case <-time.After(time.Second):
+		t.Fatal("second dial did not start after first dial completed")
+	}
+
+	err := <-secondResult
 	require.NoError(t, err)
 	require.EqualValues(t, 2, dialCount.Load())
 }

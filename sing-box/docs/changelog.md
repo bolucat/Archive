@@ -2,7 +2,11 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.2
+#### 1.14.0-alpha.3
+
+* Fixes and improvements
+
+#### 1.13.3
 
 * Add OpenWrt and Alpine APK packages to release **1**
 * Backport to macOS 10.13 High Sierra **2**
@@ -26,7 +30,11 @@ from [SagerNet/go](https://github.com/SagerNet/go).
 
 See [OCM](/configuration/service/ocm).
 
-#### 1.13.3-beta.1
+#### 1.12.24
+
+* Fixes and improvements
+
+#### 1.14.0-alpha.2
 
 * Add OpenWrt and Alpine APK packages to release **1**
 * Backport to macOS 10.13 High Sierra **2**

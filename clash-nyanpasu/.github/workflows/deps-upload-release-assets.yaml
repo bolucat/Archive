@@ -1,0 +1,35 @@
+name: '[Single] Upload Release Assets'
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release Tag'
+        required: true
+        type: string
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: Clash.Nyanpasu-*
+          path: ./release-assets
+          merge-multiple: true
+
+      - name: Upload to release
+        run: |
+          find ./release-assets -type f -print0 | while IFS= read -r -d '' file; do
+            echo "Uploading $file"
+            gh release upload "${{ inputs.tag }}" "$file" --clobber
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

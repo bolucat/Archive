@@ -55,6 +55,12 @@ type contextKeyConnecting struct{}
 
 var errRecursiveConnectorDial = E.New("recursive connector dial")
 
+type connectorDialResult[T any] struct {
+	connection T
+	cancel     context.CancelFunc
+	err        error
+}
+
 func (c *Connector[T]) Get(ctx context.Context) (T, error) {
 	var zero T
 	for {
@@ -100,47 +106,75 @@ func (c *Connector[T]) Get(ctx context.Context) (T, error) {
 			return zero, err
 		}
 
-		c.connecting = make(chan struct{})
+		connecting := make(chan struct{})
+		c.connecting = connecting
+		dialContext := context.WithValue(ctx, contextKeyConnecting{}, c)
+		dialResult := make(chan connectorDialResult[T], 1)
 		c.access.Unlock()
 
-		dialContext := context.WithValue(ctx, contextKeyConnecting{}, c)
-		connection, cancel, err := c.dialWithCancellation(dialContext)
+		go func() {
+			connection, cancel, err := c.dialWithCancellation(dialContext)
+			dialResult <- connectorDialResult[T]{
+				connection: connection,
+				cancel:     cancel,
+				err:        err,
+			}
+		}()
 
-		c.access.Lock()
-		close(c.connecting)
-		c.connecting = nil
-
-		if err != nil {
-			c.access.Unlock()
-			return zero, err
-		}
-
-		if c.closed {
-			cancel()
-			c.callbacks.Close(connection)
-			c.access.Unlock()
+		select {
+		case result := <-dialResult:
+			return c.completeDial(ctx, connecting, result)
+		case <-ctx.Done():
+			go func() {
+				result := <-dialResult
+				_, _ = c.completeDial(ctx, connecting, result)
+			}()
+			return zero, ctx.Err()
+		case <-c.closeCtx.Done():
+			go func() {
+				result := <-dialResult
+				_, _ = c.completeDial(ctx, connecting, result)
+			}()
 			return zero, ErrTransportClosed
 		}
-		if err = ctx.Err(); err != nil {
-			cancel()
-			c.callbacks.Close(connection)
-			c.access.Unlock()
-			return zero, err
-		}
-
-		c.connection = connection
-		c.hasConnection = true
-		c.connectionCancel = cancel
-		result := c.connection
-		c.access.Unlock()
-
-		return result, nil
 	}
 }
 
 func isRecursiveConnectorDial[T any](ctx context.Context, connector *Connector[T]) bool {
 	dialConnector, loaded := ctx.Value(contextKeyConnecting{}).(*Connector[T])
 	return loaded && dialConnector == connector
+}
+
+func (c *Connector[T]) completeDial(ctx context.Context, connecting chan struct{}, result connectorDialResult[T]) (T, error) {
+	var zero T
+
+	c.access.Lock()
+	defer c.access.Unlock()
+	defer func() {
+		if c.connecting == connecting {
+			c.connecting = nil
+		}
+		close(connecting)
+	}()
+
+	if result.err != nil {
+		return zero, result.err
+	}
+	if c.closed || c.closeCtx.Err() != nil {
+		result.cancel()
+		c.callbacks.Close(result.connection)
+		return zero, ErrTransportClosed
+	}
+	if err := ctx.Err(); err != nil {
+		result.cancel()
+		c.callbacks.Close(result.connection)
+		return zero, err
+	}
+
+	c.connection = result.connection
+	c.hasConnection = true
+	c.connectionCancel = result.cancel
+	return c.connection, nil
 }
 
 func (c *Connector[T]) dialWithCancellation(ctx context.Context) (T, context.CancelFunc, error) {

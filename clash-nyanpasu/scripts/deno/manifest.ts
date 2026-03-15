@@ -24,20 +24,25 @@ export type LatestVersionResolver = Promise<{
 
 // === GitHub API helpers ===
 
-async function getLatestRelease(owner: string, repo: string): Promise<string> {
-  const resp = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
-    {
-      headers: {
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'clash-nyanpasu',
-      },
-    },
-  )
+const GITHUB_API_HEADERS = {
+  Accept: 'application/vnd.github+json',
+  'User-Agent': 'clash-nyanpasu',
+}
+
+async function githubFetch<T>(url: string): Promise<T> {
+  const resp = await fetch(url, { headers: GITHUB_API_HEADERS })
   if (!resp.ok) {
-    throw new Error(`GitHub API error: ${resp.statusText} (${resp.status})`)
+    throw new Error(
+      `GitHub API error: ${resp.statusText} (${resp.status}) — ${url}`,
+    )
   }
-  const data = (await resp.json()) as { tag_name: string }
+  return resp.json() as Promise<T>
+}
+
+async function getLatestRelease(owner: string, repo: string): Promise<string> {
+  const data = await githubFetch<{ tag_name: string }>(
+    `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
+  )
   return data.tag_name
 }
 
@@ -91,28 +96,42 @@ export const resolveClashRs = async (): LatestVersionResolver => {
   consola.debug(`clash-rs latest release: ${version}`)
 
   const archMapping: ArchMapping = {
-    'windows-i386': 'clash-i686-pc-windows-msvc-static-crt.exe',
-    'windows-x86_64': 'clash-x86_64-pc-windows-msvc.exe',
-    'windows-arm64': 'clash-aarch64-pc-windows-msvc.exe',
-    'linux-aarch64': 'clash-aarch64-unknown-linux-gnu',
-    'linux-amd64': 'clash-x86_64-unknown-linux-gnu-static-crt',
-    'linux-i386': 'clash-i686-unknown-linux-gnu',
-    'darwin-arm64': 'clash-aarch64-apple-darwin',
-    'darwin-x64': 'clash-x86_64-apple-darwin',
-    'linux-armv7': 'clash-armv7-unknown-linux-gnueabi',
-    'linux-armv7hf': 'clash-armv7-unknown-linux-gnueabihf',
+    'windows-i386': 'clash-rs-i686-pc-windows-msvc-static-crt.exe',
+    'windows-x86_64': 'clash-rs-x86_64-pc-windows-msvc.exe',
+    'windows-arm64': 'clash-rs-aarch64-pc-windows-msvc.exe',
+    'linux-aarch64': 'clash-rs-aarch64-unknown-linux-gnu',
+    'linux-amd64': 'clash-rs-x86_64-unknown-linux-gnu-static-crt',
+    'linux-i386': 'clash-rs-i686-unknown-linux-gnu',
+    'darwin-arm64': 'clash-rs-aarch64-apple-darwin',
+    'darwin-x64': 'clash-rs-x86_64-apple-darwin',
+    'linux-armv7': 'clash-rs-armv7-unknown-linux-gnueabi',
+    'linux-armv7hf': 'clash-rs-armv7-unknown-linux-gnueabihf',
   }
 
   return { name: 'clash_rs', version, archMapping }
 }
 
 export const resolveClashRsAlpha = async (): LatestVersionResolver => {
-  const resp = await fetch(
-    'https://github.com/Watfaq/clash-rs/releases/download/latest/version.txt',
-  )
-  const alphaVersion = resp.ok
-    ? (await resp.text()).trim().split(' ').pop()!
-    : 'latest'
+  // Fetch commit SHA for the "latest" pre-release tag and the stable base version in parallel
+  const [ref, stableTag] = await Promise.all([
+    githubFetch<{ object: { type: string; sha: string; url: string } }>(
+      'https://api.github.com/repos/Watfaq/clash-rs/git/ref/tags/latest',
+    ),
+    getLatestRelease('Watfaq', 'clash-rs'),
+  ])
+
+  // Dereference annotated tags to get the underlying commit SHA
+  let commitSha = ref.object.sha
+  if (ref.object.type === 'tag') {
+    const tagObj = await githubFetch<{ object: { sha: string } }>(
+      ref.object.url,
+    )
+    commitSha = tagObj.object.sha
+  }
+
+  const shortSha = commitSha.substring(0, 7)
+  const baseVersion = stableTag.replace(/^v/, '')
+  const alphaVersion = `${baseVersion}-alpha+sha.${shortSha}`
   consola.debug(`clash-rs alpha latest release: ${alphaVersion}`)
 
   const archMapping: ArchMapping = {
