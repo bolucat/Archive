@@ -60,4 +60,4 @@ QUIC 拥塞控制算法。
 
 #### tls
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#inbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#入站)。

@@ -82,7 +82,7 @@ VMess 用户 ID。
 
 #### tls
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#outbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#出站)。
 
 #### packet_encoding
 
@@ -96,7 +96,7 @@ UDP 包编码。
 
 #### multiplex
 
-参阅 [多路复用](/zh/configuration/shared/multiplex#outbound)。
+参阅 [多路复用](/zh/configuration/shared/multiplex#出站)。
 
 #### transport
 

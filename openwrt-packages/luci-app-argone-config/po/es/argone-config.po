@@ -35,8 +35,8 @@ msgstr "Un color HEX; (Predeterminado: #5e72e4)"
 
 #: applications/luci-app-argone-config/luasrc/controller/argone-config.lua:8
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:53
-msgid "argone Config"
-msgstr "Configuración de argone"
+msgid "Argon Config"
+msgstr "Configuración de Argon"
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:195
 msgid "Background file list"
@@ -84,11 +84,11 @@ msgstr "Otorgar acceso UCI para luci-app-argone-config"
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:53
 msgid ""
-"Here you can set the blur and transparency of the login page of argone theme, "
+"Here you can set the blur and transparency of the login page of argon theme, "
 "and manage the background pictures and videos.[Chrome is recommended]"
 msgstr ""
 "Aquí puede configurar el desenfoque y la transparencia de la página de "
-"inicio de sesión del tema argone y administrar las imágenes de fondo y los "
+"inicio de sesión del tema argon y administrar las imágenes de fondo y los "
 "videos. [Se recomienda Chrome]"
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:87
@@ -132,8 +132,8 @@ msgid "Upload (Free:"
 msgstr "Cargar (Libre:"
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:128
-msgid "Upload file to '/www/luci-static/argone/background/'"
-msgstr "Subir archivo a '/www/luci-static/argone/background/'"
+msgid "Upload file to '/www/luci-static/argon/background/'"
+msgstr "Subir archivo a '/www/luci-static/argon/background/'"
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:58
 msgid "Wallpaper Source"
@@ -145,10 +145,10 @@ msgstr "Puede elegir el modo de color del tema aquí"
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:124
 msgid ""
-"You can upload files such as jpg,png,gif,mp4,webm files, To change the login page "
+"You can upload files such as jpg,png,gif,webp,mp4,webm files, To change the login page "
 "background."
 msgstr ""
-"Puede cargar archivos como jpg, png, gif, mp4, webm, para cambiar el fondo de la "
+"Puede cargar archivos como jpg, png, gif, webp, mp4, webm, para cambiar el fondo de la "
 "página de inicio de sesión."
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:105
@@ -175,5 +175,5 @@ msgstr "[Modo claro] Color primario"
 msgid "[Light mode] Transparency"
 msgstr "[Modo claro] Transparencia"
 
-#~ msgid "Luci argone theme config"
-#~ msgstr "Configuración del tema Luci argone"
+#~ msgid "Luci Argon theme config"
+#~ msgstr "Configuración del tema Luci Argon"

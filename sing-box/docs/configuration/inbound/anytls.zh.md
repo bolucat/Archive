@@ -58,4 +58,4 @@ AnyTLS 填充方案行数组。
 
 #### tls
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#inbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#入站)。

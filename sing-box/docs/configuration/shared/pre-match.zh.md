@@ -22,13 +22,13 @@ icon: material/new-box
 
 以 TCP RST / ICMP 不可达拒绝。
 
-详情参阅 [reject](/configuration/route/rule_action/#reject)。
+详情参阅 [reject](/zh/configuration/route/rule_action/#reject)。
 
 #### route
 
 将 ICMP 连接路由到指定出站以直接回复。
 
-详情参阅 [route](/configuration/route/rule_action/#route)。
+详情参阅 [route](/zh/configuration/route/rule_action/#route)。
 
 #### bypass
 
@@ -44,4 +44,4 @@ icon: material/new-box
 
 对于其他所有场景，指定了 `outbound` 的 bypass 行为与 `route` 相同。
 
-详情参阅 [bypass](/configuration/route/rule_action/#bypass)。
+详情参阅 [bypass](/zh/configuration/route/rule_action/#bypass)。

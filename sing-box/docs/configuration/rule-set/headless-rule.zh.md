@@ -10,8 +10,8 @@ icon: material/new-box
 !!! quote "sing-box 1.11.0 中的更改"
 
     :material-plus: [network_type](#network_type)  
-    :material-alert: [network_is_expensive](#network_is_expensive)  
-    :material-alert: [network_is_constrained](#network_is_constrained)
+    :material-plus: [network_is_expensive](#network_is_expensive)  
+    :material-plus: [network_is_constrained](#network_is_constrained)
 
 ### 结构
 

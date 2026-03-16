@@ -66,7 +66,7 @@ icon: material/new-box
 
 目标出站的标签。
 
-如果未指定，规则仅在来自 auto redirect 的[预匹配](/configuration/shared/pre-match/)中匹配，在其他场景中将被跳过。
+如果未指定，规则仅在来自 auto redirect 的[预匹配](/zh/configuration/shared/pre-match/)中匹配，在其他场景中将被跳过。
 
 #### route-options 字段
 
@@ -154,22 +154,22 @@ icon: material/new-box
 
 #### network_strategy
 
-详情参阅 [拨号字段](/configuration/shared/dial/#network_strategy)。
+详情参阅 [拨号字段](/zh/configuration/shared/dial/#network_strategy)。
 
 仅当出站为 `direct` 且 `outbound.bind_interface`, `outbound.inet4_bind_address`
 且 `outbound.inet6_bind_address` 未设置时生效。
 
 #### network_type
 
-详情参阅 [拨号字段](/configuration/shared/dial/#network_type)。
+详情参阅 [拨号字段](/zh/configuration/shared/dial/#network_type)。
 
 #### fallback_network_type
 
-详情参阅 [拨号字段](/configuration/shared/dial/#fallback_network_type)。
+详情参阅 [拨号字段](/zh/configuration/shared/dial/#fallback_network_type)。
 
 #### fallback_delay
 
-详情参阅 [拨号字段](/configuration/shared/dial/#fallback_delay)。
+详情参阅 [拨号字段](/zh/configuration/shared/dial/#fallback_delay)。
 
 #### udp_disable_domain_unmapping
 

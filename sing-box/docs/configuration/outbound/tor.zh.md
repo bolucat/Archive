@@ -18,7 +18,7 @@
 
 !!! info ""
 
-    默认安装不包含嵌入式 Tor, 参阅 [安装](/zh/installation/build-from-source/#_5)。
+    默认安装不包含嵌入式 Tor, 参阅 [安装](/zh/installation/build-from-source/#构建标记)。
 
 ### 字段
 

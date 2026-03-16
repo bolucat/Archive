@@ -115,7 +115,7 @@ percent-encoding = "2.3.1"
 
 # Algorithms
 uuid = "1.7.0"
-rand = "0.9"
+rand = "0.10"
 md-5 = "0.10.6"
 sha2 = "0.10"
 nanoid = "0.4.0"
@@ -130,7 +130,7 @@ runas = { git = "https://github.com/libnyanpasu/rust-runas.git" }
 single-instance = "0.3.3"
 which = "8"
 open = "5.0.1"
-sysinfo = "0.37"
+sysinfo = "0.38"
 num_cpus = "1"
 os_pipe = "1.2.1"
 whoami = "1.5.1"
@@ -169,12 +169,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.119"
-oxc_allocator = "0.119"
-oxc_span = "0.119"
-oxc_ast = "0.119"
-oxc_syntax = "0.119"
-oxc_ast_visit = "0.119"
+oxc_parser = "0.120"
+oxc_allocator = "0.120"
+oxc_span = "0.120"
+oxc_ast = "0.120"
+oxc_syntax = "0.120"
+oxc_ast_visit = "0.120"
 
 # Lua Integration
 mlua = { version = "0.11", features = [
@@ -207,7 +207,7 @@ tauri-plugin-updater = "2.2"
 tauri-plugin-shell = "2.2"
 tauri-plugin-notification = "2.2"
 tauri-plugin-opener = "2.5"
-window-vibrancy = { version = "0.6.0" }
+window-vibrancy = { version = "0.7.0" }
 
 # Strong typed api binding between typescript and rust
 specta-typescript = "0.0.9"
@@ -237,7 +237,7 @@ objc2-app-kit = { version = "0.3.1", features = [
 objc2-foundation = { version = "0.3.1", features = ["NSGeometry"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.30.0", features = ["user", "fs"] }
+nix = { version = "0.31.0", features = ["user", "fs"] }
 
 [target.'cfg(windows)'.dependencies]
 deelevate = "0.2.0"

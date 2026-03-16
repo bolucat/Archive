@@ -85,7 +85,7 @@ Hysteria 用户
 
 ==必填==
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#inbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#入站)。
 
 #### masquerade
 

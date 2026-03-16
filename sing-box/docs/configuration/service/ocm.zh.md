@@ -90,7 +90,7 @@ OpenAI OAuth 凭据文件的路径。
 
 #### tls
 
-TLS 配置，参阅 [TLS](/zh/configuration/shared/tls/#inbound)。
+TLS 配置，参阅 [TLS](/zh/configuration/shared/tls/#入站)。
 
 ### 示例
 

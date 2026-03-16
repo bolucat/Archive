@@ -11,7 +11,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/kenzok8/simple-obfs/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=f9c05de42608691dad77c707504ad855191cd26ccd7095a0b3d4be939055111e
+PKG_HASH:=d0f7a1ec6b13ade944ab43d551ba04b0a48b58d7ebfefec5607ce33e7d4bf2d7
 
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_LICENSE_FILES:=LICENSE

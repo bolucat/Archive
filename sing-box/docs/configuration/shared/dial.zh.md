@@ -173,7 +173,7 @@ TCP keep alive 间隔。
 
 用于设置解析域名的域名解析器。
 
-此选项的格式与 [路由 DNS 规则动作](/configuration/dns/rule_action/#route) 相同，但不包含 `action` 字段。  
+此选项的格式与 [路由 DNS 规则动作](/zh/configuration/dns/rule_action/#route) 相同，但不包含 `action` 字段。  
 
 若直接将此选项设置为字符串，则等同于设置该选项的 `server` 字段。
 
@@ -246,7 +246,7 @@ TCP keep alive 间隔。
 
 !!! failure "已在 sing-box 1.12.0 废弃"
 
-    `domain_strategy` 已废弃且将在 sing-box 1.14.0 中被移除，参阅 [迁移指南](/migration/#migrate-outbound-domain-strategy-option-to-domain-resolver)。
+    `domain_strategy` 已废弃且将在 sing-box 1.14.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移出站域名策略选项到域名解析器)。
 
 可选值：`prefer_ipv4` `prefer_ipv6` `ipv4_only` `ipv6_only`。
 

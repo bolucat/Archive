@@ -144,7 +144,7 @@ HTTP 请求的额外标头
 
 !!! note ""
 
-    默认安装不包含标准 gRPC (兼容性好，但性能较差), 参阅 [安装](/zh/installation/build-from-source/#_5)。
+    默认安装不包含标准 gRPC (兼容性好，但性能较差), 参阅 [安装](/zh/installation/build-from-source/#构建标记)。
 
 ```json
 {

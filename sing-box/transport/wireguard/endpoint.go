@@ -63,7 +63,7 @@ func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
 		}
 		if rawPeer.Endpoint.Addr.IsValid() {
 			peer.endpoint = rawPeer.Endpoint.AddrPort()
-		} else if rawPeer.Endpoint.IsFqdn() {
+		} else if rawPeer.Endpoint.IsDomain() {
 			peer.destination = rawPeer.Endpoint
 		}
 		publicKeyBytes, err := base64.StdEncoding.DecodeString(rawPeer.PublicKey)
@@ -135,13 +135,13 @@ func NewEndpoint(options EndpointOptions) (*Endpoint, error) {
 
 func (e *Endpoint) Start(resolve bool) error {
 	if common.Any(e.peers, func(peer peerConfig) bool {
-		return !peer.endpoint.IsValid() && peer.destination.IsFqdn()
+		return !peer.endpoint.IsValid() && peer.destination.IsDomain()
 	}) {
 		if !resolve {
 			return nil
 		}
 		for peerIndex, peer := range e.peers {
-			if peer.endpoint.IsValid() || !peer.destination.IsFqdn() {
+			if peer.endpoint.IsValid() || !peer.destination.IsDomain() {
 				continue
 			}
 			destinationAddress, err := e.options.ResolvePeer(peer.destination.Fqdn)

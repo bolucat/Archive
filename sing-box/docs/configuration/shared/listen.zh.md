@@ -145,13 +145,13 @@ UDP NAT 过期时间。
 
 如果设置，连接将被转发到指定的入站。
 
-需要目标入站支持，参阅 [注入支持](/zh/configuration/inbound/#_3)。
+需要目标入站支持，参阅 [注入支持](/zh/configuration/inbound/#字段)。
 
 #### sniff
 
 !!! failure "已在 sing-box 1.11.0 废弃"
 
-    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/migration/#migrate-legacy-inbound-fields-to-rule-actions).
+    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移旧的入站字段到规则动作).
 
 启用协议探测。
 
@@ -171,7 +171,7 @@ UDP NAT 过期时间。
 
 !!! failure "已在 sing-box 1.11.0 废弃"
 
-    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/migration/#migrate-legacy-inbound-fields-to-rule-actions).
+    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移旧的入站字段到规则动作).
 
 探测超时时间。
 
@@ -181,7 +181,7 @@ UDP NAT 过期时间。
 
 !!! failure "已在 sing-box 1.11.0 废弃"
 
-    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/migration/#migrate-legacy-inbound-fields-to-rule-actions).
+    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移旧的入站字段到规则动作).
 
 可选值： `prefer_ipv4` `prefer_ipv6` `ipv4_only` `ipv6_only`。
 
@@ -193,7 +193,7 @@ UDP NAT 过期时间。
 
 !!! failure "已在 sing-box 1.11.0 废弃"
 
-    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/migration/#migrate-legacy-inbound-fields-to-rule-actions).
+    入站字段已废弃且将在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移旧的入站字段到规则动作).
 
 如果启用，对于地址为域的 UDP 代理请求，将在响应中发送原始包地址而不是映射的域。
 

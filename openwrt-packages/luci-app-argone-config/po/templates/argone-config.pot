@@ -21,7 +21,7 @@ msgstr ""
 
 #: applications/luci-app-argone-config/luasrc/controller/argone-config.lua:8
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:53
-msgid "argone Config"
+msgid "Argon Config"
 msgstr ""
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:195
@@ -70,7 +70,7 @@ msgstr ""
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:53
 msgid ""
-"Here you can set the blur and transparency of the login page of argone theme, "
+"Here you can set the blur and transparency of the login page of argon theme, "
 "and manage the background pictures and videos.[Chrome is recommended]"
 msgstr ""
 
@@ -113,7 +113,7 @@ msgid "Upload (Free:"
 msgstr ""
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:128
-msgid "Upload file to '/www/luci-static/argone/background/'"
+msgid "Upload file to '/www/luci-static/argon/background/'"
 msgstr ""
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:58
@@ -126,7 +126,7 @@ msgstr ""
 
 #: applications/luci-app-argone-config/luasrc/model/cbi/argone-config.lua:124
 msgid ""
-"You can upload files such as jpg,png,gif,mp4,webm files, To change the login page "
+"You can upload files such as jpg,png,gif,webp,mp4,webm files, To change the login page "
 "background."
 msgstr ""
 

@@ -190,7 +190,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		if err != nil {
 			return nil, E.Cause(err, "parse control URL")
 		}
-		remoteIsDomain = M.IsDomainName(controlURL.Hostname())
+		remoteIsDomain = M.ParseSocksaddr(controlURL.Hostname()).IsDomain()
 	} else {
 		// controlplane.tailscale.com
 		remoteIsDomain = true
@@ -492,7 +492,7 @@ func (t *Endpoint) DialContext(ctx context.Context, network string, destination 
 	case N.NetworkUDP:
 		t.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 	}
-	if destination.IsFqdn() {
+	if destination.IsDomain() {
 		destinationAddresses, err := t.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
 		if err != nil {
 			return nil, err
@@ -578,7 +578,7 @@ func (t *Endpoint) listenPacketWithAddress(ctx context.Context, destination M.So
 
 func (t *Endpoint) ListenPacketWithDestination(ctx context.Context, destination M.Socksaddr) (net.PacketConn, netip.Addr, error) {
 	t.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-	if destination.IsFqdn() {
+	if destination.IsDomain() {
 		destinationAddresses, err := t.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
 		if err != nil {
 			return nil, netip.Addr{}, err

@@ -4,7 +4,7 @@ icon: material/new-box
 
 # Wi-Fi 状态
 
-!!! quote "sing-box 1.13.0 的变更"
+!!! quote "sing-box 1.13.0 中的更改"
 
     :material-plus: Linux 支持  
     :material-plus: Windows 支持

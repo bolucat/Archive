@@ -194,7 +194,7 @@ func (h *vmessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		return nil, err
 	}
 	if h.packetAddr {
-		if destination.IsFqdn() {
+		if destination.IsDomain() {
 			return nil, E.New("packetaddr: domain destination is not supported")
 		}
 		return packetaddr.NewConn(h.client.DialEarlyPacketConn(conn, M.Socksaddr{Fqdn: packetaddr.SeqPacketMagicAddress}), destination), nil

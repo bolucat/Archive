@@ -426,7 +426,7 @@ echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/
     其实现行为无法通过简单复制握手格式来复现，其行为细节必然存在差异，使得检测成为可能。
     此外，此库缺乏积极维护，且代码质量较差，不建议用于反审查场景。
 
-    如需 TLS 指纹抵抗，请改用 [NaiveProxy](/configuration/inbound/naive/)。
+    如需 TLS 指纹抵抗，请改用 [NaiveProxy](/zh/configuration/inbound/naive/)。
 
 uTLS 是 "crypto/tls" 的一个分支，它提供了 ClientHello 指纹识别阻力。
 

@@ -349,7 +349,7 @@ func (r *Router) PreMatch(metadata adapter.InboundContext, routeContext tun.Dire
 		}
 		directRouteOutbound = defaultOutbound.(adapter.DirectRouteOutbound)
 	}
-	if metadata.Destination.IsFqdn() {
+	if metadata.Destination.IsDomain() {
 		if len(metadata.DestinationAddresses) == 0 {
 			var strategy C.DomainStrategy
 			if metadata.Source.IsIPv4() {
@@ -807,7 +807,7 @@ func (r *Router) actionSniff(
 }
 
 func (r *Router) actionResolve(ctx context.Context, metadata *adapter.InboundContext, action *R.RuleActionResolve) error {
-	if metadata.Destination.IsFqdn() {
+	if metadata.Destination.IsDomain() {
 		var transport adapter.DNSTransport
 		if action.Server != "" {
 			var loaded bool

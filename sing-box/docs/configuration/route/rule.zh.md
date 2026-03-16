@@ -27,6 +27,7 @@ icon: material/new-box
 
     :material-plus: [client](#client)  
     :material-delete-clock: [rule_set_ipcidr_match_source](#rule_set_ipcidr_match_source)  
+    :material-plus: [rule_set_ip_cidr_match_source](#rule_set_ip_cidr_match_source)  
     :material-plus: [process_path_regex](#process_path_regex)
 
 !!! quote "sing-box 1.8.0 中的更改"
@@ -265,7 +266,7 @@ icon: material/new-box
 
 !!! failure "已在 sing-box 1.8.0 废弃"
 
-    Geosite 已废弃且可能在不久的将来移除，参阅 [迁移指南](/zh/migration/#geosite)。
+    Geosite 已废弃且可能在不久的将来移除，参阅 [迁移指南](/zh/migration/#迁移-geosite-到规则集)。
 
 匹配 Geosite。
 
@@ -273,7 +274,7 @@ icon: material/new-box
 
 !!! failure "已在 sing-box 1.8.0 废弃"
 
-    GeoIP 已废弃且可能在不久的将来移除，参阅 [迁移指南](/zh/migration/#geoip)。
+    GeoIP 已废弃且可能在不久的将来移除，参阅 [迁移指南](/zh/migration/#迁移-geoip-到规则集)。
 
 匹配源 GeoIP。
 
@@ -281,7 +282,7 @@ icon: material/new-box
 
 !!! failure "已在 sing-box 1.8.0 废弃"
 
-    GeoIP 已废弃且可能在不久的将来移除，参阅 [迁移指南](/zh/migration/#geoip)。
+    GeoIP 已废弃且可能在不久的将来移除，参阅 [迁移指南](/zh/migration/#迁移-geoip-到规则集)。
 
 匹配 GeoIP。
 

@@ -59,7 +59,7 @@ AnyTLS 密码。
 
 ==必填==
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#outbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#出站)。
 
 ### 拨号字段
 

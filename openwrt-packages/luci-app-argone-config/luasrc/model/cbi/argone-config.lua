@@ -50,7 +50,7 @@ local transparency_sets = {
 }
 
 -- [[ 模糊设置 ]]--
-br = SimpleForm('config', translate('Argonne Config'), translate('Here you can set the blur and transparency of the login page of argone theme, and manage the background pictures and videos.[Chrome is recommended]'))
+br = SimpleForm('config', translate('Argon Config'), translate('Here you can set the blur and transparency of the login page of argon theme, and manage the background pictures and videos.[Chrome is recommended]'))
 br.reset = false
 br.submit = false
 s = br:section(SimpleSection) 
@@ -112,27 +112,28 @@ o.inputstyle = 'reload'
 
 function br.handle(self, state, data)
     if (state == FORM_VALID and data.blur ~= nil and data.blur_dark ~= nil and data.transparency ~= nil and data.transparency_dark ~= nil and data.mode ~= nil) then
-        nxfs.writefile('/tmp/aaa', data)
         for key, value in pairs(data) do
-            uci:set('argone','@global[0]',key,value)
+            if key ~= 'save' then
+                uci:set('argone','@global[0]',key,value)
+            end
         end 
         uci:commit('argone')
     end
     return true
 end
 
-ful = SimpleForm('upload', translate('Upload  (Free: ') .. wa.byte_format(free_byte) .. ')', translate("You can upload files such as jpg,png,gif,mp4,webm files, To change the login page background."))
+ful = SimpleForm('upload', translate('Upload  (Free: ') .. wa.byte_format(free_byte) .. ')', translate("You can upload files such as jpg,png,gif,webp,mp4,webm files, To change the login page background."))
 ful.reset = false
 ful.submit = false
 
-sul = ful:section(SimpleSection, '', translate("Upload file to '/www/luci-static/argone/background/'"))
+sul = ful:section(SimpleSection, '', translate("Upload file to '/www/luci-static/argon/background/'"))
 fu = sul:option(FileUpload, '')
 fu.template = 'argone-config/other_upload'
 um = sul:option(DummyValue, '', nil)
 um.template = 'argone-config/other_dvalue'
 
 local dir, fd
-dir = '/www/luci-static/argone/background/'
+dir = '/www/luci-static/argon/background/'
 nxfs.mkdir(dir)
 http.setfilehandler(
     function(meta, chunk, eof)
@@ -156,7 +157,7 @@ http.setfilehandler(
         if eof and fd then
             fd:close()
             fd = nil
-            um.value = translate('File saved to') .. ' "/www/luci-static/argone/background/' .. meta.file .. '"'
+            um.value = translate('File saved to') .. ' "/www/luci-static/argon/background/' .. meta.file .. '"'
         end
     end
 )

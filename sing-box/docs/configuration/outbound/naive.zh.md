@@ -105,7 +105,7 @@ QUIC 拥塞控制算法。
 
 ==必填==
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#outbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#出站)。
 
 只有 `server_name`、`certificate`、`certificate_path` 和 `ech` 是被支持的。
 

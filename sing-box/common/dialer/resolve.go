@@ -96,7 +96,7 @@ func (d *resolveDialer) DialContext(ctx context.Context, network string, destina
 	if err != nil {
 		return nil, err
 	}
-	if !destination.IsFqdn() {
+	if !destination.IsDomain() {
 		return d.dialer.DialContext(ctx, network, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
@@ -116,7 +116,7 @@ func (d *resolveDialer) ListenPacket(ctx context.Context, destination M.Socksadd
 	if err != nil {
 		return nil, err
 	}
-	if !destination.IsFqdn() {
+	if !destination.IsDomain() {
 		return d.dialer.ListenPacket(ctx, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
@@ -144,7 +144,7 @@ func (d *resolveParallelNetworkDialer) DialParallelInterface(ctx context.Context
 	if err != nil {
 		return nil, err
 	}
-	if !destination.IsFqdn() {
+	if !destination.IsDomain() {
 		return d.dialer.DialContext(ctx, network, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)
@@ -167,7 +167,7 @@ func (d *resolveParallelNetworkDialer) ListenSerialInterfacePacket(ctx context.C
 	if err != nil {
 		return nil, err
 	}
-	if !destination.IsFqdn() {
+	if !destination.IsDomain() {
 		return d.dialer.ListenPacket(ctx, destination)
 	}
 	ctx = log.ContextWithOverrideLevel(ctx, log.LevelDebug)

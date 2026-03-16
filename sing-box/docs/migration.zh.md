@@ -518,9 +518,9 @@ DNS 服务器已经重构。
 
 !!! info "参考"
 
-    [DNS 规则](/configuration/dns/rule/#outbound) /
-    [拨号字段](/configuration/shared/dial/#domain_resolver) /
-    [路由](/configuration/route/#default_domain_resolver)
+    [DNS 规则](/zh/configuration/dns/rule/#outbound) /
+    [拨号字段](/zh/configuration/shared/dial/#domain_resolver) /
+    [路由](/zh/configuration/route/#default_domain_resolver)
 
 === ":material-card-remove: 废弃的"
 
@@ -596,7 +596,7 @@ DNS 服务器已经重构。
 
 !!! info "参考"
 
-    [拨号字段](/configuration/shared/dial/#domain_strategy)
+    [拨号字段](/zh/configuration/shared/dial/#domain_strategy)
 
 === ":material-card-remove: 弃用的"
 

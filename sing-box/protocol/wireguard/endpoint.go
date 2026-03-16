@@ -210,7 +210,7 @@ func (w *Endpoint) DialContext(ctx context.Context, network string, destination 
 	case N.NetworkUDP:
 		w.logger.InfoContext(ctx, "outbound packet connection to ", destination)
 	}
-	if destination.IsFqdn() {
+	if destination.IsDomain() {
 		destinationAddresses, err := w.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
 		if err != nil {
 			return nil, err
@@ -224,7 +224,7 @@ func (w *Endpoint) DialContext(ctx context.Context, network string, destination 
 
 func (w *Endpoint) ListenPacketWithDestination(ctx context.Context, destination M.Socksaddr) (net.PacketConn, netip.Addr, error) {
 	w.logger.InfoContext(ctx, "outbound packet connection to ", destination)
-	if destination.IsFqdn() {
+	if destination.IsDomain() {
 		destinationAddresses, err := w.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
 		if err != nil {
 			return nil, netip.Addr{}, err

@@ -93,4 +93,4 @@
 
 #### multiplex
 
-参阅 [多路复用](/zh/configuration/shared/multiplex#inbound)。
+参阅 [多路复用](/zh/configuration/shared/multiplex#入站)。

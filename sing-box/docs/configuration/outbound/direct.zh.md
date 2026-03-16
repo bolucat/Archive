@@ -4,8 +4,8 @@ icon: material/alert-decagram
 
 !!! quote "sing-box 1.11.0 中的更改"
 
-    :material-alert-decagram: [override_address](#override_address)  
-    :material-alert-decagram: [override_port](#override_port)
+    :material-delete-clock: [override_address](#override_address)  
+    :material-delete-clock: [override_port](#override_port)
 
 `direct` 出站直接发送请求。
 
@@ -29,7 +29,7 @@ icon: material/alert-decagram
 
 !!! failure "已在 sing-box 1.11.0 废弃"
 
-    目标覆盖字段在 sing-box 1.11.0 中已废弃，并将在 sing-box 1.13.0 中被移除，参阅 [迁移指南](/migration/#migrate-destination-override-fields-to-route-options)。
+    目标覆盖字段在 sing-box 1.11.0 中已废弃，并将在 sing-box 1.13.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移-direct-出站中的目标地址覆盖字段到路由字段)。
 
 覆盖连接目标地址。
 
@@ -37,7 +37,7 @@ icon: material/alert-decagram
 
 !!! failure "已在 sing-box 1.11.0 废弃"
 
-    目标覆盖字段在 sing-box 1.11.0 中已废弃，并将在 sing-box 1.13.0 中被移除，参阅 [迁移指南](/migration/#migrate-destination-override-fields-to-route-options)。
+    目标覆盖字段在 sing-box 1.11.0 中已废弃，并将在 sing-box 1.13.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移-direct-出站中的目标地址覆盖字段到路由字段)。
 
 覆盖连接目标端口。
 

@@ -47,11 +47,11 @@ Trojan 密码。
 
 #### tls
 
-TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#outbound)。
+TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#出站)。
 
 #### multiplex
 
-参阅 [多路复用](/zh/configuration/shared/multiplex#outbound)。
+参阅 [多路复用](/zh/configuration/shared/multiplex#出站)。
 
 #### transport
 

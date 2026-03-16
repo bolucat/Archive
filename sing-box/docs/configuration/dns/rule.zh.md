@@ -267,7 +267,7 @@ DNS 查询类型。值可以为整数或者类型名称字符串。
 
 !!! failure "已在 sing-box 1.12.0 中被移除"
 
-    GeoSite 已在 sing-box 1.8.0 废弃且在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#geosite)。
+    GeoSite 已在 sing-box 1.8.0 废弃且在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移-geosite-到规则集)。
 
 匹配 Geosite。
 
@@ -275,7 +275,7 @@ DNS 查询类型。值可以为整数或者类型名称字符串。
 
 !!! failure "已在 sing-box 1.12.0 中被移除"
 
-    GeoIP 已在 sing-box 1.8.0 废弃且在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#geoip)。
+    GeoIP 已在 sing-box 1.8.0 废弃且在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移-geoip-到规则集)。
 
 匹配源 GeoIP。
 
@@ -484,7 +484,7 @@ Available values: `wifi`, `cellular`, `ethernet` and `other`.
 
 !!! failure "已在 sing-box 1.12.0 废弃"
 
-    `outbound` 规则项已废弃且将在 sing-box 1.14.0 中被移除，参阅 [迁移指南](/migration/#migrate-outbound-dns-rule-items-to-domain-resolver)。
+    `outbound` 规则项已废弃且将在 sing-box 1.14.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移-outbound-dns-规则项到域解析选项)。
 
 匹配出站。
 
@@ -536,7 +536,7 @@ Available values: `wifi`, `cellular`, `ethernet` and `other`.
 
 !!! failure "已在 sing-box 1.12.0 中被移除"
 
-    GeoIP 已在 sing-box 1.8.0 废弃且在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#geoip)。
+    GeoIP 已在 sing-box 1.8.0 废弃且在 sing-box 1.12.0 中被移除，参阅 [迁移指南](/zh/migration/#迁移-geoip-到规则集)。
 
 
 与查询响应匹配 GeoIP。

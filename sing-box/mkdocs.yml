@@ -183,6 +183,10 @@ nav:
           - CCM: configuration/service/ccm.md
           - OCM: configuration/service/ocm.md
 markdown_extensions:
+  - toc:
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
   - pymdownx.inlinehilite
   - pymdownx.snippets
   - pymdownx.superfences

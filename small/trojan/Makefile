@@ -8,11 +8,11 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=trojan
 PKG_VERSION:=1.16.9
-PKG_RELEASE:=2
+PKG_RELEASE:=1
 
 PKG_SOURCE:=Trojan-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/kenzok8/Trojan/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=f011e7424e89d3f1c529ea160478957e1a6527c39015b8960803b1a858d0287b
+PKG_SOURCE_URL:=https://codeload.github.com/kenzok8/trojan/tar.gz/v$(PKG_VERSION)?
+PKG_HASH:=c8c65f8227dbffc2853fad9da759391ea9c709e12cee71b78392a4cdb8aeb89c
 
 PKG_BUILD_PARALLEL:=1
 PKG_BUILD_DEPENDS:=openssl
