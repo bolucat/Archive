@@ -50,6 +50,7 @@ type others struct {
 	Bootstrap             []string `toml:"bootstrap"`
 	Passthrough           []string `toml:"passthrough"`
 	Timeout               uint     `toml:"timeout"`
+	Interface             string   `toml:"interface"`
 	NoCookies             bool     `toml:"no_cookies"`
 	NoECS                 bool     `toml:"no_ecs"`
 	NoIPv6                bool     `toml:"no_ipv6"`

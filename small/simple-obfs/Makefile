@@ -6,12 +6,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=simple-obfs
-PKG_VERSION:=0.0.9
+PKG_VERSION:=0.0.10
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/kenzok8/simple-obfs/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=d0f7a1ec6b13ade944ab43d551ba04b0a48b58d7ebfefec5607ce33e7d4bf2d7
+PKG_HASH:=f64eb9f9013fe0798e5159e3cd108909eb4ac949d78d51804d96945af82d363e
 
 PKG_LICENSE:=GPL-3.0-or-later
 PKG_LICENSE_FILES:=LICENSE

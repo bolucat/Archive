@@ -51,7 +51,7 @@
  #include "includeobfs.h" // I don't want to modify makefile
  #include "jconf.h"
  
-@@ -101,18 +109,28 @@ static struct cork_dllist inactive_profi
+@@ -114,21 +114,23 @@
  static listen_ctx_t *current_profile;
  static struct cork_dllist all_connections;
  
@@ -65,28 +65,26 @@
  
 -    error = getsockopt(fd, SOL_IPV6, IP6T_SO_ORIGINAL_DST, destaddr, &socklen);
 -    if (error) { // Didn't find a proper way to detect IP version.
+-#if defined(__FreeBSD__)
+-        error = getsockname(fd, (struct sockaddr *)destaddr, &socklen);
+-#else
 -        error = getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, destaddr, &socklen);
+-#endif
 -        if (error) {
 -            return -1;
--        }
-+	if (tcp_tproxy) {
++    if (tcp_tproxy) {
 +        error = getsockname(fd, (void *)destaddr, &socklen);
 +    } else {
-+		error = getsockopt(fd, SOL_IPV6, IP6T_SO_ORIGINAL_DST, destaddr, &socklen);
-+		if (error) { // Didn't find a proper way to detect IP version.
-+			error = getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, destaddr, &socklen);
-+			if (error) {
-+				return -1;
-+			}
-+		}
-+	}
-+	
-+	if (error) {
-+        return -1;
++        error = getsockopt(fd, SOL_IPV6, IP6T_SO_ORIGINAL_DST, destaddr, &socklen);
++        if (error) { // Didn't find a proper way to detect IP version.
++            error = getsockopt(fd, SOL_IP, SO_ORIGINAL_DST, destaddr, &socklen);
++            if (error) {
++                return -1;
++            }
+         }
      }
      return 0;
- }
-@@ -164,6 +182,23 @@ create_and_bind(const char *addr, const
+@@ -164,6 +174,23 @@ create_and_bind(const char *addr, const
          if (err == 0) {
              LOGI("tcp port reuse enabled");
          }
@@ -110,7 +108,7 @@
  
          s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
          if (s == 0) {
-@@ -1094,7 +1129,7 @@ main(int argc, char **argv)
+@@ -1094,7 +1121,7 @@ main(int argc, char **argv)
  
      USE_TTY();
  
@@ -119,7 +117,7 @@
                              "O:o:G:g:",
                              long_options, &option_index)) != -1) {
          switch (c) {
-@@ -1169,6 +1204,9 @@ main(int argc, char **argv)
+@@ -1169,6 +1196,9 @@ main(int argc, char **argv)
          case 'U':
              mode = UDP_ONLY;
              break;
@@ -129,7 +127,7 @@
          case 'v':
              verbose = 1;
              break;
-@@ -1255,6 +1293,9 @@ main(int argc, char **argv)
+@@ -1255,6 +1285,9 @@ main(int argc, char **argv)
          if (mode == TCP_ONLY) {
              mode = conf->mode;
          }
