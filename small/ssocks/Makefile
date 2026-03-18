@@ -31,7 +31,7 @@ define Package/ssocks/template
 	SECTION:=net
 	CATEGORY:=Network
 	TITLE:=sSocks
-	URL:=https://github.com/kenzok8/ssocks
+  URL:=https://github.com/kenzok8/ssocks
 	DEPENDS:=+libopenssl
 endef
 

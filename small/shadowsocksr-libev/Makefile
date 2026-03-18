@@ -6,7 +6,7 @@ PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/kenzok8/shadowsocksr-libev/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=2dd06d4591ac46f1afd26bf9054488193143d31121e31ae914f67535a8e2cd22
+PKG_HASH:=142d62bf4a1937c96c3f0970eef7391ce8df4efb830e295338a594ddf6493630
 
 PKG_LICENSE:=GPL-3.0
 PKG_LICENSE_FILES:=LICENSE
@@ -35,7 +35,7 @@ define Package/shadowsocksr-libev/Default
   endef
 endef
 
-SHADOWSOCKSR_COMPONENTS:=local nat redir server
+SHADOWSOCKSR_COMPONENTS:=check local nat redir server
 define shadowsocksr-libev/templates
   $(foreach component,$(SHADOWSOCKSR_COMPONENTS),
     $(call Package/shadowsocksr-libev/Default,$(component))
@@ -54,6 +54,17 @@ define Build/Prepare
 		-e 's/pcre\.h/pcre2.h/g' \
 		-e 's/pcre\/pcre\.h/pcre2\/pcre2.h/g' \
 		$(PKG_BUILD_DIR)/configure
+endef
+
+define Build/Compile
+	$(call Build/Compile/Default)
+	$(TARGET_CC) $(TARGET_CFLAGS) -o $(PKG_BUILD_DIR)/ss-check $(CURDIR)/src/server/check.c
+endef
+
+define Build/Install
+	$(call Build/Install/Default)
+	$(INSTALL_DIR) $(PKG_INSTALL_DIR)/usr/bin
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/ss-check $(PKG_INSTALL_DIR)/usr/bin/ss-check
 endef
 
 CONFIGURE_ARGS += \

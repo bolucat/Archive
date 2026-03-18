@@ -37,7 +37,7 @@ define Package/trojan-go
   SUBMENU:=Web Servers/Proxies
   TITLE:=A Trojan proxy written in Go
   DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
-  URL:=https://p4gefau1t.github.io/trojan-go/
+  URL:=https://github.com/kenzok8/trojan-go
 endef
 
 define Package/trojan-go/description

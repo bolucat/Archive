@@ -54,7 +54,7 @@ define Package/trojan
   CATEGORY:=Network
   SUBMENU:=Web Servers/Proxies
   TITLE:=An unidentifiable mechanism that helps you bypass GFW
-  URL:=https://github.com/trojan-gfw/trojan
+  URL:=https://github.com/kenzok8/trojan
   DEPENDS:= \
     +libpthread +libstdcpp +libopenssl \
     +boost +boost-system +boost-program_options +boost-date_time
