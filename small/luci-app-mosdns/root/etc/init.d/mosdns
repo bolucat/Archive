@@ -66,6 +66,50 @@ get_config() {
     config_get cloudflare_ip $1 cloudflare_ip ""
 }
 
+# h3:// 协议处理：将 h3:// 转为 https:// 并设置 enable_http3=1
+# 用法：addr=$(process_upstream_addr "$addr")  — 执行前先将 enable_http3 置 0
+process_upstream_addr() {
+    local addr="$1"
+    enable_http3=0
+    if echo "$addr" | grep -q "^h3://"; then
+        enable_http3=1
+        addr=$(echo "$addr" | sed 's|h3://|https://|')
+    fi
+    echo "$addr"
+}
+
+# 构建单个 upstream JSON 对象
+build_upstream() {
+    local addr="$1" bootstrap="$2" pipeline="$3" insecure="$4" idle="$5"
+    enable_http3=0
+    addr=$(process_upstream_addr "$addr")
+    json_add_object ""
+    json_add_string "addr" "$addr"
+    [ -n "$bootstrap" ] && json_add_string "bootstrap" "$bootstrap"
+    [ "$pipeline" = "1" ] && json_add_boolean "enable_pipeline" true
+    [ "$enable_http3" = "1" ] && json_add_boolean "enable_http3" true
+    [ "$insecure" = "1" ] && json_add_boolean "insecure_skip_verify" true
+    json_add_int "idle_timeout" "$idle"
+    json_close_object
+}
+
+# 构建 forward 插件（含 upstreams 数组）
+build_forward_plugin() {
+    local tag="$1" dns_list="$2" bootstrap="$3" concurrent="$4" pipeline="$5" insecure="$6" idle="$7"
+    json_add_object ""
+    json_add_string "tag" "$tag"
+    json_add_string "type" "forward"
+    json_add_object "args"
+    json_add_int "concurrent" "$concurrent"
+    json_add_array "upstreams"
+    for addr in $dns_list; do
+        build_upstream "$addr" "$bootstrap" "$pipeline" "$insecure" "$idle"
+    done
+    json_close_array
+    json_close_object
+    json_close_object
+}
+
 generate_config() {
     # jshn shell library
     . /usr/share/libubox/jshn.sh
@@ -86,7 +130,7 @@ generate_config() {
     # plugins
     json_add_array "plugins"
     # plugin: geosite_cn
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "geosite_cn"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -96,7 +140,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: geoip_cn
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "geoip_cn"
     json_add_string "type" "ip_set"
     json_add_object "args"
@@ -106,7 +150,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: geosite_apple
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "geosite_apple"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -116,7 +160,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: geosite_no_cn
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "geosite_no_cn"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -126,7 +170,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: whitelist
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "whitelist"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -136,7 +180,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: blocklist
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "blocklist"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -146,7 +190,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: greylist
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "greylist"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -156,7 +200,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: ddnslist
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "ddnslist"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -166,7 +210,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: hosts
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "hosts"
     json_add_string "type" "hosts"
     json_add_object "args"
@@ -176,7 +220,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: redirect
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "redirect"
     json_add_string "type" "redirect"
     json_add_object "args"
@@ -186,7 +230,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: adlist
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "adlist"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -199,7 +243,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: local_ptr
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "local_ptr"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -209,7 +253,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: stream_media
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "stream_media"
     json_add_string "type" "domain_set"
     json_add_object "args"
@@ -222,7 +266,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: cloudflare_cidr
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "cloudflare_cidr"
     json_add_string "type" "ip_set"
     json_add_object "args"
@@ -233,7 +277,7 @@ generate_config() {
     json_close_object
     # plugin: lazy_cache
     [ "$cache" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "tag" "lazy_cache"
         json_add_string "type" "cache"
         json_add_object "args"
@@ -247,198 +291,129 @@ generate_config() {
         json_close_object
     }
     # plugin: forward_xinfeng_udp
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "forward_xinfeng_udp"
     json_add_string "type" "forward"
     json_add_object "args"
     json_add_int "concurrent" 2
     json_add_array "upstreams"
-    json_add_object
+    json_add_object ""
     json_add_string "addr" "114.114.114.114"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "addr" "114.114.115.115"
     json_close_object
     json_close_array
     json_close_object
     json_close_object
     # plugin: forward_local
-    json_add_object
-    json_add_string "tag" "forward_local"
-    json_add_string "type" "forward"
-    json_add_object "args"
-    json_add_int "concurrent" "$concurrent"
-    json_add_array "upstreams"
     local_dns=$($MOSDNS_SCRIPT dns)
-    for addr in $local_dns; do
-        enable_http3=0
-        if echo "$addr" | grep -q "^h3://"; then
-            enable_http3=1
-            addr=$(echo $addr | sed 's/h3:\/\//https:\/\//g')
-        fi
-        json_add_object
-        json_add_string "addr" "$addr"
-        json_add_string "bootstrap" "$bootstrap_dns"
-        json_add_boolean "enable_pipeline" "$enable_pipeline"
-        json_add_boolean "insecure_skip_verify" "$insecure_skip_verify"
-        json_add_int "idle_timeout" "$idle_timeout"
-        [ "$enable_http3" -eq 1 ] && json_add_boolean "enable_http3" "1"
-        json_close_object
-    done
-    json_close_array
-    json_close_object
-    json_close_object
+    build_forward_plugin "forward_local" "$local_dns" "$bootstrap_dns" "$concurrent" "$enable_pipeline" "$insecure_skip_verify" "$idle_timeout"
     # plugin: forward_remote
-    json_add_object
-    json_add_string "tag" "forward_remote"
-    json_add_string "type" "forward"
-    json_add_object "args"
-    json_add_int "concurrent" "$concurrent"
-    json_add_array "upstreams"
-    for addr in $remote_dns; do
-        enable_http3=0
-        if echo "$addr" | grep -q "^h3://"; then
-            enable_http3=1
-            addr=$(echo $addr | sed 's/h3:\/\//https:\/\//g')
-        fi
-        json_add_object
-        json_add_string "addr" "$addr"
-        json_add_string "bootstrap" "$bootstrap_dns"
-        json_add_boolean "enable_pipeline" "$enable_pipeline"
-        json_add_boolean "insecure_skip_verify" "$insecure_skip_verify"
-        json_add_int "idle_timeout" "$idle_timeout"
-        [ "$enable_http3" -eq 1 ] && json_add_boolean "enable_http3" "1"
-        json_close_object
-    done
-    json_close_array
-    json_close_object
-    json_close_object
+    build_forward_plugin "forward_remote" "$remote_dns" "$bootstrap_dns" "$concurrent" "$enable_pipeline" "$insecure_skip_verify" "$idle_timeout"
     # plugin: forward_remote_upstream
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "forward_remote_upstream"
     json_add_string "type" "sequence"
     json_add_array "args"
     [ "$prefer_ipv4" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "prefer_ipv4"
         json_close_object
     }
     [ "$enable_ecs_remote" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "ecs $remote_ecs_ip"
         json_close_object
     }
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$forward_remote"
     json_close_object
     json_close_array
     json_close_object
     # plugin: forward_stream_media
-    json_add_object
-    json_add_string "tag" "forward_stream_media"
-    json_add_string "type" "forward"
-    json_add_object "args"
-    json_add_int "concurrent" "$concurrent"
-    json_add_array "upstreams"
-    for addr in $stream_media_dns; do
-        enable_http3=0
-        if echo "$addr" | grep -q "^h3://"; then
-            enable_http3=1
-            addr=$(echo $addr | sed 's/h3:\/\//https:\/\//g')
-        fi
-        json_add_object
-        json_add_string "addr" "$addr"
-        json_add_string "bootstrap" "$bootstrap_dns"
-        json_add_boolean "enable_pipeline" "$enable_pipeline"
-        json_add_boolean "insecure_skip_verify" "$insecure_skip_verify"
-        json_add_int "idle_timeout" "$idle_timeout"
-        [ "$enable_http3" -eq 1 ] && json_add_boolean "enable_http3" "1"
-        json_close_object
-    done
-    json_close_array
-    json_close_object
-    json_close_object
+    build_forward_plugin "forward_stream_media" "$stream_media_dns" "$bootstrap_dns" "$concurrent" "$enable_pipeline" "$insecure_skip_verify" "$idle_timeout"
     # plugin: forward_stream_media_upstream
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "forward_stream_media_upstream"
     json_add_string "type" "sequence"
     json_add_array "args"
     [ "$prefer_ipv4" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "prefer_ipv4"
         json_close_object
     }
     [ "$enable_ecs_remote" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "ecs $remote_ecs_ip"
         json_close_object
     }
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$forward_stream_media"
     json_close_object
     json_close_array
     json_close_object
     # plugin: modify_ttl
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "modify_ttl"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "ttl $minimal_ttl-$maximum_ttl"
     json_close_object
     json_close_array
     json_close_object
     # plugin: modify_ddns_ttl
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "modify_ddns_ttl"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "ttl 5-5"
     json_close_object
     json_close_array
     json_close_object
     # plugin: has_resp_sequence
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "has_resp_sequence"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$ddnslist"
     json_add_string "exec" "\$modify_ddns_ttl"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "!qname \$ddnslist"
     json_add_string "exec" "\$modify_ttl"
     json_close_object
     [ "$cloudflare" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "matches" "resp_ip \$cloudflare_cidr"
         json_add_string "exec" "black_hole $cloudflare_ip"
         json_close_object
     }
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "has_resp"
     json_add_string "exec" "accept"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_non_local_ip
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_non_local_ip"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$forward_local"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "!resp_ip \$geoip_cn"
     json_add_string "exec" "drop_resp"
     json_close_object
     json_close_array
     json_close_object
     # plugin: fallback
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "fallback"
     json_add_string "type" "fallback"
     json_add_object "args"
@@ -449,7 +424,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: apple_domain_fallback
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "apple_domain_fallback"
     json_add_string "type" "fallback"
     json_add_object "args"
@@ -460,124 +435,124 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: query_is_apple_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_apple_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "!qname \$geosite_apple"
     json_add_string "exec" "return"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$apple_domain_fallback"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_ddns_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_ddns_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$ddnslist"
     json_add_string "exec" "\$forward_local"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_local_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_local_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$geosite_cn"
     json_add_string "exec" "\$forward_local"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_no_local_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_no_local_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$geosite_no_cn"
     json_add_string "exec" "\$forward_remote_upstream"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_whitelist_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_whitelist_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$whitelist"
     json_add_string "exec" "\$forward_local"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_greylist_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_greylist_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$greylist"
     json_add_string "exec" "\$forward_remote_upstream"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_reject_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_reject_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$blocklist"
     json_add_string "exec" "reject 3"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$adlist"
     json_add_string "exec" "reject 3"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_array "matches"
     json_add_string "" "qtype 12"
     json_add_string "" "qname \$local_ptr"
     json_close_array
     json_add_string "exec" "reject 3"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qtype 65"
     json_add_string "exec" "reject 3"
     json_close_object
     json_close_array
     json_close_object
     # plugin: query_is_stream_media_domain
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "query_is_stream_media_domain"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "matches" "qname \$stream_media"
     json_add_string "exec" "\$forward_stream_media_upstream"
     json_close_object
     json_close_array
     json_close_object
     # plugin: main_sequence
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "main_sequence"
     json_add_string "type" "sequence"
     json_add_array "args"
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$hosts"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
     [ "$cache" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_array "matches"
         json_add_string "" "!qname \$ddnslist"
         json_add_string "" "!qname \$blocklist"
@@ -587,71 +562,71 @@ generate_config() {
         json_add_string "exec" "\$lazy_cache"
         json_close_object
     }
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$redirect"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
+    json_add_object ""
     [ "$apple_optimization" -eq 1 ] && {
         json_add_string "exec" "\$query_is_apple_domain"
         json_close_object
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "jump has_resp_sequence"
         json_close_object
-        json_add_object
+        json_add_object ""
     }
     json_add_string "exec" "\$query_is_ddns_domain"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$query_is_whitelist_domain"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$query_is_reject_domain"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$query_is_greylist_domain"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
     [ "$custom_stream_media_dns" -eq 1 ] && {
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "\$query_is_stream_media_domain"
         json_close_object
-        json_add_object
+        json_add_object ""
         json_add_string "exec" "jump has_resp_sequence"
         json_close_object
     }
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$query_is_local_domain"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$query_is_no_local_domain"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "jump has_resp_sequence"
     json_close_object
-    json_add_object
+    json_add_object ""
     json_add_string "exec" "\$fallback"
     json_close_object
     json_close_array
     json_close_object
     # plugin: udp_server
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "udp_server"
     json_add_string "type" "udp_server"
     json_add_object "args"
@@ -660,7 +635,7 @@ generate_config() {
     json_close_object
     json_close_object
     # plugin: tcp_server
-    json_add_object
+    json_add_object ""
     json_add_string "tag" "tcp_server"
     json_add_string "type" "tcp_server"
     json_add_object "args"
@@ -684,7 +659,8 @@ service_triggers() {
 
 restore_setting() {
     rm -f /etc/mosdns/redirect.lock
-    sed -i "/list server/d" /etc/config/dhcp
+    uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.1#$listen_port"
+    uci -q del_list dhcp.@dnsmasq[0].server="::1#$listen_port"
     uci set dhcp.@dnsmasq[0].noresolv='0'
     uci del dhcp.@dnsmasq[0].cachesize
     uci commit dhcp
@@ -692,15 +668,19 @@ restore_setting() {
 
 redirect_setting() {
     if [ "${CONF}" = "/var/etc/mosdns.json" ]; then
-        sed -i "/list server/d" /etc/config/dhcp
+        uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.1#$listen_port"
+        uci -q del_list dhcp.@dnsmasq[0].server="::1#$listen_port"
         uci add_list dhcp.@dnsmasq[0].server="127.0.0.1#$listen_port"
         uci set dhcp.@dnsmasq[0].rebind_protection='0'
         uci set dhcp.@dnsmasq[0].noresolv="1"
         uci set dhcp.@dnsmasq[0].cachesize='0'
         uci commit dhcp
     else
-        sed -i "/list server/d" /etc/config/dhcp
-        uci add_list dhcp.@dnsmasq[0].server="127.0.0.1#$(awk -F'[:" ]+' '/^\s+listen:/{for(i=1;i<=NF;i++){if($i~/^[0-9]+$/){print $i;exit}}}' $CONF)"
+        local custom_port
+        custom_port=$(grep -m1 'listen:' "$CONF" | grep -oE '[0-9]+$' | tail -1)
+        uci -q del_list dhcp.@dnsmasq[0].server="127.0.0.1#$custom_port"
+        uci -q del_list dhcp.@dnsmasq[0].server="::1#$custom_port"
+        uci add_list dhcp.@dnsmasq[0].server="127.0.0.1#$custom_port"
         uci set dhcp.@dnsmasq[0].rebind_protection='0'
         uci set dhcp.@dnsmasq[0].noresolv="1"
         uci set dhcp.@dnsmasq[0].cachesize='0'
@@ -768,16 +748,22 @@ start_service() {
                 if [ "$url" = "geosite.dat" ] || [ $(echo "$url" | grep -c -E "^file://") -eq 1 ]; then
                     continue
                 fi
-		        if [ $(grep -c "$url" "/etc/mosdns/rule/.ad_source") -eq 0 ]; then
+                if [ $(grep -c "$url" "/etc/mosdns/rule/.ad_source") -eq 0 ]; then
                     update_list=1
                     break
                 fi
-	        done
+            done
         else
             update_list=1
         fi
     fi
-    [ "$update_list" -eq 1 ] && $MOSDNS_SCRIPT adlist_update &> /dev/null &
+    [ "$update_list" -eq 1 ] && {
+        if [ ! -s /etc/mosdns/rule/adlist.txt ]; then
+            (sleep 3 && $MOSDNS_SCRIPT adlist_update) &
+        else
+            ($MOSDNS_SCRIPT adlist_update) &
+        fi
+    }
 }
 
 stop_service() {

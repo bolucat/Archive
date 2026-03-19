@@ -1,5 +1,6 @@
 local sys  = require "luci.sys"
 local http = require "luci.http"
+local util = require "luci.util"
 
 module("luci.controller.mosdns", package.seeall)
 
@@ -25,17 +26,29 @@ end
 
 function act_status()
     local e = {}
-    e.running = sys.call("pgrep -f /usr/bin/mosdns >/dev/null") == 0
+    e.running = sys.call("pgrep -x mosdns >/dev/null") == 0
     http.prepare_content("application/json")
     http.write_json(e)
 end
 
 function get_log()
-    http.write(sys.exec("cat $(/usr/share/mosdns/mosdns.sh logfile)"))
+    local logfile = sys.exec("/usr/share/mosdns/mosdns.sh logfile"):gsub("%s+$", "")
+    if logfile == "" or not logfile:match("^/") then
+        http.prepare_content("text/plain")
+        http.write("Log file not configured")
+        return
+    end
+    local log = sys.exec("cat " .. util.shellquote(logfile))
+    http.prepare_content("text/plain")
+    http.write(log)
 end
 
 function clear_log()
-    sys.call("cat /dev/null > $(/usr/share/mosdns/mosdns.sh logfile)")
+    local logfile = sys.exec("/usr/share/mosdns/mosdns.sh logfile"):gsub("%s+$", "")
+    if logfile == "" or not logfile:match("^/") then
+        return
+    end
+    sys.call("cat /dev/null > " .. util.shellquote(logfile))
 end
 
 function geo_update()

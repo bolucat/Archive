@@ -227,6 +227,15 @@ o:depends("configfile", "/var/etc/mosdns.json")
 o = s:taboption("cloudflare", DynamicList, "cloudflare_ip", translate("Custom IP"))
 o.datatype = "ipaddr"
 o:depends("configfile", "/var/etc/mosdns.json")
+o.validate = function(self, value, section)
+    if not value:match("^%d+%.%d+%.%d+%.%d+$") and
+       not value:match("^%d+%.%d+%.%d+%.%d+/%d+$") and
+       not value:match("^[%x:]+$") and
+       not value:match("^[%x:]+/%d+$") then
+        return nil, "Invalid IP or CIDR format: " .. value
+    end
+    return value
+end
 
 o = s:taboption("cloudflare", TextValue, "cloudflare_cidr", translate("Cloudflare IP Ranges"))
 o.description = translate("IPv4 CIDR：") .. [[<a href="https://www.cloudflare.com/ips-v4" target="_blank">https://www.cloudflare.com/ips-v4</a>]] .. '<br />' .. translate("IPv6 CIDR：") .. [[<a href="https://www.cloudflare.com/ips-v6" target="_blank">https://www.cloudflare.com/ips-v6</a>]]

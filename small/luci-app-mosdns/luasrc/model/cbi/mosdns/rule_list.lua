@@ -1,5 +1,3 @@
-local datatypes = require "luci.cbi.datatypes"
-
 local white_list_file = "/etc/mosdns/rule/whitelist.txt"
 local block_list_file = "/etc/mosdns/rule/blocklist.txt"
 local grey_list_file = "/etc/mosdns/rule/greylist.txt"
@@ -30,6 +28,11 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(white_list_file) o
 o.write = function(self, section, value) nixio.fs.writefile(white_list_file , value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(white_list_file , "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in rule list"
+        end
+    end
     return value
 end
 
@@ -40,6 +43,11 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(block_list_file) o
 o.write = function(self, section, value) nixio.fs.writefile(block_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(block_list_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in rule list"
+        end
+    end
     return value
 end
 
@@ -50,6 +58,11 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(grey_list_file) or
 o.write = function(self, section, value) nixio.fs.writefile(grey_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(grey_list_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in rule list"
+        end
+    end
     return value
 end
 
@@ -60,6 +73,11 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(ddns_list_file) or
 o.write = function(self, section, value) nixio.fs.writefile(ddns_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(ddns_list_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in rule list"
+        end
+    end
     return value
 end
 
@@ -70,6 +88,16 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(hosts_list_file) o
 o.write = function(self, section, value) nixio.fs.writefile(hosts_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(hosts_list_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        -- hosts format: IP domain or domain only; reject shell special chars
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in hosts entry: " .. line
+        end
+        -- must be non-empty and contain at least one non-space character
+        if not line:match("%S") then
+            return nil, "Empty line in hosts list"
+        end
+    end
     return value
 end
 
@@ -80,6 +108,16 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(redirect_list_file
 o.write = function(self, section, value) nixio.fs.writefile(redirect_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(redirect_list_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in redirect entry: " .. line
+        end
+        -- redirect format: domain1 domain2 (two tokens)
+        local t1, t2 = line:match("^(%S+)%s+(%S+)$")
+        if not t1 then
+            return nil, "Invalid redirect format (expected: src dst): " .. line
+        end
+    end
     return value
 end
 
@@ -90,6 +128,11 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(local_ptr_file) or
 o.write = function(self, section, value) nixio.fs.writefile(local_ptr_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(local_ptr_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in rule list"
+        end
+    end
     return value
 end
 
@@ -100,6 +143,11 @@ o.cfgvalue = function(self, section) return nixio.fs.readfile(streaming_media_li
 o.write = function(self, section, value) nixio.fs.writefile(streaming_media_list_file, value:gsub("\r\n", "\n")) end
 o.remove = function(self, section, value) nixio.fs.writefile(streaming_media_list_file, "") end
 o.validate = function(self, value)
+    for line in value:gmatch("[^\n]+") do
+        if line:match("[;&|`$<>]") then
+            return nil, "Invalid characters in rule list"
+        end
+    end
     return value
 end
 

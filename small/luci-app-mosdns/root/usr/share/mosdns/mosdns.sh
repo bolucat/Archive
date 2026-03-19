@@ -2,6 +2,16 @@
 
 script_action=${1}
 
+# 彩色日志函数
+print_info()  { echo -e "\e[1;32m[INFO]\e[0m $1"; }
+print_warn()  { echo -e "\e[1;33m[WARN]\e[0m $1"; }
+print_error() { echo -e "\e[1;31m[ERROR]\e[0m $1"; }
+
+# curl 选项：根据 insecure_skip_verify 决定是否加 -k
+CURL_OPTS="--ipv4 -fSL --connect-timeout 10"
+insecure=$(uci -q get mosdns.config.insecure_skip_verify)
+[ "$insecure" = "1" ] && CURL_OPTS="$CURL_OPTS -k"
+
 logfile_path() (
     configfile=$(uci -q get mosdns.config.configfile)
     if [ "$configfile" = "/var/etc/mosdns.json" ]; then
@@ -12,22 +22,29 @@ logfile_path() (
     fi
 )
 
-interface_dns() (
+interface_dns() {
     if [ "$(uci -q get mosdns.config.custom_local_dns)" = 1 ]; then
         uci -q get mosdns.config.local_dns
     else
+        local dns
         peerdns=$(uci -q get network.wan.peerdns)
         proto=$(uci -q get network.wan.proto)
         if [ "$peerdns" = 0 ] || [ "$proto" = "static" ]; then
-            uci -q get network.wan.dns
+            dns=$(uci -q get network.wan.dns 2>/dev/null)
         else
             interface_status=$(ubus call network.interface.wan status)
-            echo $interface_status | jsonfilter -e "@['dns-server'][0]"
-            echo $interface_status | jsonfilter -e "@['dns-server'][1]"
+            dns=$(echo "$interface_status" | jsonfilter -e "@['dns-server'][0]" 2>/dev/null)
+            local dns2
+            dns2=$(echo "$interface_status" | jsonfilter -e "@['dns-server'][1]" 2>/dev/null)
+            [ -n "$dns2" ] && dns="$dns $dns2"
         fi
-        [ $? -ne 0 ] && echo "119.29.29.29 223.5.5.5"
+        if [ -z "$dns" ]; then
+            echo "119.29.29.29 223.5.5.5"
+        else
+            echo "$dns"
+        fi
     fi
-)
+}
 
 get_adlist() (
     adblock=$(uci -q get mosdns.config.adblock)
@@ -54,15 +71,19 @@ get_adlist() (
 
 adlist_update() {
     [ "$(uci -q get mosdns.config.adblock)" != 1 ] && return 0
-    lock_file=/var/lock/mosdns_ad_update.lock
+    local lock_file=/var/lock/mosdns_ad_update.lock
     ad_source=$(uci -q get mosdns.config.ad_source)
     : > /etc/mosdns/rule/.ad_source
     if [ -f "$lock_file" ]; then
-        has_update=0
-        exit 0
-    else
-        : > $lock_file
+        local pid
+        pid=$(cat "$lock_file" 2>/dev/null)
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            has_update=0
+            return 0
+        fi
+        rm -f "$lock_file"
     fi
+    echo $$ > "$lock_file"
     AD_TMPDIR=$(mktemp -d) || exit 1
     has_update=0
     for url in $ad_source;
@@ -76,12 +97,12 @@ adlist_update() {
             else
                 mirror=""
             fi
-            echo -e "\e[1;32mDownloading $mirror$url\e[0m"
-            curl --connect-timeout 5 -m 90 --ipv4 -kfSLo "$AD_TMPDIR/$filename" "$mirror$url"
+            print_info "Downloading $mirror$url"
+            curl --connect-timeout 5 -m 90 $CURL_OPTS -o "$AD_TMPDIR/$filename" "$mirror$url"
         fi
     done
     if [ $? -ne 0 ]; then
-        echo -e "\e[1;31mRules download failed.\e[0m"
+        print_error "Rules download failed."
         rm -rf "$AD_TMPDIR" "$lock_file"
         exit 1
     else
@@ -98,29 +119,29 @@ geodat_update() (
     TMPDIR=$(mktemp -d) || exit 1
     [ -n "$(uci -q get mosdns.config.github_proxy)" ] && mirror="$(uci -q get mosdns.config.github_proxy)/"
     # geoip.dat - cn-private
-    echo -e "\e[1;32mDownloading "$mirror"https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat\e[0m"
-    curl --connect-timeout 5 -m 60 --ipv4 -kfSLo "$TMPDIR/geoip.dat" ""$mirror"https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat"
+    print_info "Downloading ${mirror}https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat"
+    curl --connect-timeout 5 -m 60 $CURL_OPTS -o "$TMPDIR/geoip.dat" "${mirror}https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat"
     [ $? -ne 0 ] && rm -rf "$TMPDIR" && exit 1
     # checksum - geoip.dat
-    echo -e "\e[1;32mDownloading "$mirror"https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat.sha256sum\e[0m"
-    curl --connect-timeout 5 -m 10 --ipv4 -kfSLo "$TMPDIR/geoip.dat.sha256sum" ""$mirror"https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat.sha256sum"
+    print_info "Downloading ${mirror}https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat.sha256sum"
+    curl --connect-timeout 5 -m 10 $CURL_OPTS -o "$TMPDIR/geoip.dat.sha256sum" "${mirror}https://github.com/Loyalsoldier/geoip/releases/latest/download/geoip-only-cn-private.dat.sha256sum"
     [ $? -ne 0 ] && rm -rf "$TMPDIR" && exit 1
     if [ "$(sha256sum "$TMPDIR/geoip.dat" | awk '{print $1}')" != "$(cat "$TMPDIR/geoip.dat.sha256sum" | awk '{print $1}')" ]; then
-        echo -e "\e[1;31mgeoip.dat checksum error\e[0m"
+        print_error "geoip.dat checksum error"
         rm -rf "$TMPDIR"
         exit 1
     fi
 
     # geosite.dat
-    echo -e "\e[1;32mDownloading "$mirror"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat\e[0m"
-    curl --connect-timeout 5 -m 120 --ipv4 -kfSLo "$TMPDIR/geosite.dat" ""$mirror"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+    print_info "Downloading ${mirror}https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
+    curl --connect-timeout 5 -m 120 $CURL_OPTS -o "$TMPDIR/geosite.dat" "${mirror}https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"
     [ $? -ne 0 ] && rm -rf "$TMPDIR" && exit 1
     # checksum - geosite.dat
-    echo -e "\e[1;32mDownloading "$mirror"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat.sha256sum\e[0m"
-    curl --connect-timeout 5 -m 10 --ipv4 -kfSLo "$TMPDIR/geosite.dat.sha256sum" ""$mirror"https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat.sha256sum"
+    print_info "Downloading ${mirror}https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat.sha256sum"
+    curl --connect-timeout 5 -m 10 $CURL_OPTS -o "$TMPDIR/geosite.dat.sha256sum" "${mirror}https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat.sha256sum"
     [ $? -ne 0 ] && rm -rf "$TMPDIR" && exit 1
     if [ "$(sha256sum "$TMPDIR/geosite.dat" | awk '{print $1}')" != "$(cat "$TMPDIR/geosite.dat.sha256sum" | awk '{print $1}')" ]; then
-        echo -e "\e[1;31mgeosite.dat checksum error\e[0m"
+        print_error "geosite.dat checksum error"
         rm -rf "$TMPDIR"
         exit 1
     fi
@@ -151,8 +172,13 @@ v2dat_dump() {
         v2dat unpack geoip -o /var/mosdns -f cn $v2dat_dir/geoip.dat
         v2dat unpack geosite -o /var/mosdns -f cn -f apple -f 'geolocation-!cn' $v2dat_dir/geosite.dat
         [ "$adblock" -eq 1 ] && [ $(echo $ad_source | grep -c geosite.dat) -ge '1' ] && v2dat unpack geosite -o /var/mosdns -f category-ads-all $v2dat_dir/geosite.dat
-        [ "$streaming_media" -eq 1 ] && v2dat unpack geosite -o /var/mosdns -f netflix -f disney -f hulu $v2dat_dir/geosite.dat || \
-        touch /var/mosdns/geosite_disney.txt ; touch /var/mosdns/geosite_netflix.txt ; touch /var/mosdns/geosite_hulu.txt
+        if [ "$streaming_media" = "1" ]; then
+            v2dat unpack geosite -o /var/mosdns -f netflix -f disney -f hulu $v2dat_dir/geosite.dat
+        else
+            touch /var/mosdns/geosite_disney.txt
+            touch /var/mosdns/geosite_netflix.txt
+            touch /var/mosdns/geosite_hulu.txt
+        fi
     else
         # custom config
         v2dat unpack geoip -o /var/mosdns -f cn $v2dat_dir/geoip.dat
