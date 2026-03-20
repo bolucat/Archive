@@ -669,6 +669,7 @@ proxies: # socks5
     grpc-opts:
       grpc-service-name: "example"
       # grpc-user-agent: "grpc-go/1.36.0"
+      # ping-interval: 0 # 默认关闭，单位为秒
     # ip-version: ipv4
 
   # vless
@@ -759,6 +760,7 @@ proxies: # socks5
     grpc-opts:
       grpc-service-name: "grpc"
       # grpc-user-agent: "grpc-go/1.36.0"
+      # ping-interval: 0 # 默认关闭，单位为秒
       
     reality-opts:
       public-key: CrrQSjAG_YkHLwvM2M-7XkKJilgL5upBKCp0od0tLhE
@@ -830,6 +832,7 @@ proxies: # socks5
     grpc-opts:
       grpc-service-name: "example"
       # grpc-user-agent: "grpc-go/1.36.0"
+      # ping-interval: 0 # 默认关闭，单位为秒
 
   - name: trojan-ws
     server: server
@@ -1098,7 +1101,7 @@ proxies: # socks5
       mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）、ws（WebSocket 隧道）
       # tls: true # 可选：仅在 mode 为 stream/poll/auto/ws 时生效；true 强制 https/wss；false 强制 http/ws（不会根据端口自动推断）
       # host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 mode 为 stream/poll/auto/ws 时生效
-      # path_root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
+      # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
       # multiplex: off # 可选：off（默认）、auto（复用底层 HTTP 连接，减少建链 RTT）、on（Sudoku mux 单隧道多目标；仅在 mode=stream/poll/auto 生效；ws 强制 off）
     #
     # 向后兼容旧写法：
@@ -1677,7 +1680,7 @@ listeners:
     httpmask:
       disable: false # true 禁用所有 HTTP 伪装/隧道
       mode: legacy # 可选：legacy（默认）、stream（split-stream）、poll、auto（先 stream 再 poll）、ws（WebSocket 隧道）
-      # path_root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
+      # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
     #
     # 可选：当启用 HTTPMask 且识别到“像 HTTP 但不符合 tunnel/auth”的请求时，将原始字节透传给 fallback（常用于与其他服务共端口）：
     # fallback: "127.0.0.1:80"

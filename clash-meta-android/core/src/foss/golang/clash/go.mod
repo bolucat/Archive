@@ -23,6 +23,7 @@ require (
 	github.com/metacubex/gopacket v1.1.20-0.20230608035415-7e2f98a3e759
 	github.com/metacubex/http v0.1.0
 	github.com/metacubex/kcp-go v0.0.0-20260105040817-550693377604
+	github.com/metacubex/mhurl v0.1.0
 	github.com/metacubex/mlkem v0.1.0
 	github.com/metacubex/quic-go v0.59.1-0.20260213014310-4df8f0de5b56
 	github.com/metacubex/randv2 v0.2.0

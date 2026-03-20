@@ -1,13 +1,18 @@
-![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=kenzok8&show_icons=true&&theme=transparent)
 <div align="center">
-<h1 align="center"small</h1>
+  <img src="https://github-readme-stats.vercel.app/api?username=kenzok8&show_icons=true&theme=default&hide_border=true&cache_seconds=86400" alt="kenzok8 github stats" height="165">
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=kenzok8&layout=compact&theme=default&hide_border=true&cache_seconds=86400" alt="kenzok8 top langs" height="165">
+</div>
+<div align="center">
+<h1 align="center">small</h1>
 <img src="https://img.shields.io/github/issues/kenzok8/small?color=green">
 <img src="https://img.shields.io/github/stars/kenzok8/small?color=yellow">
 <img src="https://img.shields.io/github/forks/kenzok8/small?color=orange">
 <img src="https://img.shields.io/github/languages/code-size/kenzok8/small?color=blueviolet">
 </div>
 
-<img src="https://v2.jinrishici.com/one.svg?font-size=24&spacing=2&color=Black">
+<div align="center">
+  <img src="https://v2.jinrishici.com/one.svg?font-size=24&spacing=2&color=Black" alt="jinrishici">
+</div>
 
 
 * small仓库不定期添加主流代理软件，ssr、passwall、homeproxy、mihomo等
@@ -30,7 +35,7 @@
 
 
 ##### 插件每日更新下载:
-[![GitHub release (latest by date)](https://img.shields.io/github/v/release/kenzok8/small?style=for-the-badge&label=插件下载)](https://github.com/kenzok8/small/releases/latest)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/kenzok8/small?style=for-the-badge&label=插件下载&color=orange)](https://github.com/kenzok8/small/releases/latest)
 
 + [ssr+passwall依赖仓库](https://github.com/kenzok8/small)
 

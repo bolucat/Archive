@@ -33,8 +33,8 @@ var (
 )
 
 var defaultHeader = http.Header{
-	"content-type": []string{"application/grpc"},
-	"user-agent":   []string{"grpc-go/1.36.0"},
+	"Content-Type": []string{"application/grpc"},
+	"User-Agent":   []string{"grpc-go/1.36.0"},
 }
 
 type DialFn = func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -59,9 +59,10 @@ type Conn struct {
 }
 
 type Config struct {
-	ServiceName string
-	UserAgent   string
-	Host        string
+	ServiceName  string
+	UserAgent    string
+	Host         string
+	PingInterval int
 }
 
 func (g *Conn) initReader() {
@@ -246,7 +247,7 @@ func (g *Conn) SetDeadline(t time.Time) error {
 	return nil
 }
 
-func NewHTTP2Client(dialFn DialFn, tlsConfig *vmess.TLSConfig) *TransportWrap {
+func NewTransport(dialFn DialFn, tlsConfig *vmess.TLSConfig, gunCfg *Config) *Transport {
 	dialFunc := func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
 		ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
 		defer cancel()
@@ -288,14 +289,16 @@ func NewHTTP2Client(dialFn DialFn, tlsConfig *vmess.TLSConfig) *TransportWrap {
 		DialTLSContext:     dialFunc,
 		AllowHTTP:          false,
 		DisableCompression: true,
+		ReadIdleTimeout:    time.Duration(gunCfg.PingInterval) * time.Second, // If zero, no health check is performed
 		PingTimeout:        0,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	wrap := &TransportWrap{
-		Http2Transport: transport,
-		ctx:            ctx,
-		cancel:         cancel,
+	wrap := &Transport{
+		transport: transport,
+		cfg:       gunCfg,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 	return wrap
 }
@@ -307,18 +310,18 @@ func ServiceNameToPath(serviceName string) string {
 	return "/" + serviceName + "/Tun"
 }
 
-func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, error) {
+func (t *Transport) Dial() (net.Conn, error) {
 	serviceName := "GunService"
-	if cfg.ServiceName != "" {
-		serviceName = cfg.ServiceName
+	if t.cfg.ServiceName != "" {
+		serviceName = t.cfg.ServiceName
 	}
 	path := ServiceNameToPath(serviceName)
 
 	reader, writer := io.Pipe()
 
 	header := defaultHeader.Clone()
-	if cfg.UserAgent != "" {
-		header.Set("User-Agent", cfg.UserAgent)
+	if t.cfg.UserAgent != "" {
+		header.Set("User-Agent", t.cfg.UserAgent)
 	}
 
 	request := &http.Request{
@@ -326,17 +329,17 @@ func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, er
 		Body:   reader,
 		URL: &url.URL{
 			Scheme: "https",
-			Host:   cfg.Host,
+			Host:   t.cfg.Host,
 			Path:   path,
 			// for unescape path
-			Opaque: "//" + cfg.Host + path,
+			Opaque: "//" + t.cfg.Host + path,
 		},
 		Proto:      "HTTP/2",
 		ProtoMajor: 2,
 		ProtoMinor: 0,
 		Header:     header,
 	}
-	request = request.WithContext(transport.ctx)
+	request = request.WithContext(t.ctx)
 
 	conn := &Conn{
 		initFn: func() (io.ReadCloser, NetAddr, error) {
@@ -348,7 +351,7 @@ func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, er
 				},
 			}
 			request = request.WithContext(httptrace.WithClientTrace(request.Context(), trace))
-			response, err := transport.RoundTrip(request)
+			response, err := t.transport.RoundTrip(request)
 			if err != nil {
 				return nil, nAddr, err
 			}
@@ -361,13 +364,13 @@ func StreamGunWithTransport(transport *TransportWrap, cfg *Config) (net.Conn, er
 	return conn, nil
 }
 
-func StreamGunWithConn(conn net.Conn, tlsConfig *vmess.TLSConfig, cfg *Config) (net.Conn, error) {
+func StreamGunWithConn(conn net.Conn, tlsConfig *vmess.TLSConfig, gunCfg *Config) (net.Conn, error) {
 	dialFn := func(ctx context.Context, network, addr string) (net.Conn, error) {
 		return conn, nil
 	}
 
-	transport := NewHTTP2Client(dialFn, tlsConfig)
-	c, err := StreamGunWithTransport(transport, cfg)
+	transport := NewTransport(dialFn, tlsConfig, gunCfg)
+	c, err := transport.Dial()
 	if err != nil {
 		return nil, err
 	}

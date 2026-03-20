@@ -10,17 +10,18 @@ import (
 	"github.com/metacubex/http"
 )
 
-type TransportWrap struct {
-	*http.Http2Transport
+type Transport struct {
+	transport *http.Http2Transport
+	cfg       *Config
 	ctx       context.Context
 	cancel    context.CancelFunc
 	closeOnce sync.Once
 }
 
-func (tw *TransportWrap) Close() error {
-	tw.closeOnce.Do(func() {
-		tw.cancel()
-		CloseTransport(tw.Http2Transport)
+func (t *Transport) Close() error {
+	t.closeOnce.Do(func() {
+		t.cancel()
+		CloseHttp2Transport(t.transport)
 	})
 	return nil
 }
