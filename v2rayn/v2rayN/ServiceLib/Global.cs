@@ -193,6 +193,10 @@ public class Global
 
     public const string Hysteria2ProtocolShare = "hy2://";
 
+    public const string NaiveHttpsProtocolShare = "naive+https://";
+
+    public const string NaiveQuicProtocolShare = "naive+quic://";
+
     public static readonly Dictionary<EConfigType, string> ProtocolShares = new()
     {
         { EConfigType.VMess, "vmess://" },
@@ -203,7 +207,8 @@ public class Global
         { EConfigType.Hysteria2, "hysteria2://" },
         { EConfigType.TUIC, "tuic://" },
         { EConfigType.WireGuard, "wireguard://" },
-        { EConfigType.Anytls, "anytls://" }
+        { EConfigType.Anytls, "anytls://" },
+        { EConfigType.Naive, "naive://" }
     };
 
     public static readonly Dictionary<EConfigType, string> ProtocolTypes = new()
@@ -217,7 +222,8 @@ public class Global
         { EConfigType.Hysteria2, "hysteria2" },
         { EConfigType.TUIC, "tuic" },
         { EConfigType.WireGuard, "wireguard" },
-        { EConfigType.Anytls, "anytls" }
+        { EConfigType.Anytls, "anytls" },
+        { EConfigType.Naive, "naive" }
     };
 
     public static readonly List<string> VmessSecurities =
@@ -342,6 +348,7 @@ public class Global
         EConfigType.Hysteria2,
         EConfigType.TUIC,
         EConfigType.Anytls,
+        EConfigType.Naive,
         EConfigType.WireGuard,
         EConfigType.SOCKS,
         EConfigType.HTTP,
@@ -558,6 +565,14 @@ public class Global
         "bbr"
     ];
 
+    public static readonly List<string> NaiveCongestionControls =
+    [
+        "bbr",
+        "bbr2",
+        "cubic",
+        "reno"
+    ];
+
     public static readonly List<string> allowSelectType =
     [
         "selector",
@@ -658,6 +673,15 @@ public class Global
         "half",
         "full",
         ""
+    ];
+
+    public static readonly List<string> TunIcmpRoutingPolicies =
+    [
+        "rule",
+        "direct",
+        "unreachable",
+        "drop",
+        "reply",
     ];
 
     #endregion const
