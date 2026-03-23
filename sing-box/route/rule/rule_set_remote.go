@@ -323,7 +323,9 @@ func (s *RemoteRuleSet) Close() error {
 
 func (s *RemoteRuleSet) Match(metadata *adapter.InboundContext) bool {
 	for _, rule := range s.rules {
-		if rule.Match(metadata) {
+		nestedMetadata := *metadata
+		nestedMetadata.ResetRuleMatchCache()
+		if rule.Match(&nestedMetadata) {
 			return true
 		}
 	}

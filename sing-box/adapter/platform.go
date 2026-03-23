@@ -51,11 +51,11 @@ type FindConnectionOwnerRequest struct {
 }
 
 type ConnectionOwner struct {
-	ProcessID          uint32
-	UserId             int32
-	UserName           string
-	ProcessPath        string
-	AndroidPackageName string
+	ProcessID           uint32
+	UserId              int32
+	UserName            string
+	ProcessPath         string
+	AndroidPackageNames []string
 }
 
 type Notification struct {

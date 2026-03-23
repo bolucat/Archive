@@ -329,9 +329,9 @@ func (d *DefaultDialer) ListenPacket(ctx context.Context, destination M.Socksadd
 
 func (d *DefaultDialer) DialerForICMPDestination(destination netip.Addr) net.Dialer {
 	if !destination.Is6() {
-		return d.dialer6.Dialer
-	} else {
 		return d.dialer4.Dialer
+	} else {
+		return d.dialer6.Dialer
 	}
 }
 

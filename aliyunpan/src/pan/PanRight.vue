@@ -21,7 +21,7 @@ import {
   TestKeyboardScroll,
   TestKeyboardSelect
 } from '../utils/keyboardhelper'
-import { onMounted, ref, watchEffect } from 'vue'
+import { computed, onMounted, ref, watchEffect } from 'vue'
 import PanDAL from './pandal'
 
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
@@ -48,6 +48,7 @@ import PanTopbtn from './menus/PanTopbtn.vue'
 import FileTopbtn from './menus/FileTopbtn.vue'
 import FileRightMenu from './menus/FileRightMenu.vue'
 import TrashRightMenu from './menus/TrashRightMenu.vue'
+import MediaLibraryMenu from './menus/MediaLibraryMenu.vue'
 import TrashTopbtn from './menus/TrashTopbtn.vue'
 import DirTopPath from './menus/DirTopPath.vue'
 import message from '../utils/message'
@@ -55,7 +56,7 @@ import { menuOpenFile } from '../utils/openfile'
 import { throttle } from '../utils/debounce'
 import { TestButton } from '../utils/mosehelper'
 import usePanTreeStore from './pantreestore'
-import { GetDriveID, GetDriveType } from '../aliapi/utils'
+import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User } from '../aliapi/utils'
 import { xorWith } from 'lodash'
 
 const viewlist = ref()
@@ -64,6 +65,18 @@ const isresourcedrive = ref(false)
 const inputpicType = ref('pic_root')
 const inputselectType = ref('backup')
 const inputsearchType = ref<string[]>([])
+
+const handleListScroll = (event: any) => {
+  onHideRightMenuScroll()
+  if (panfileStore.SelectDirType !== 'trash') return
+  if (!isDrive115User(panTreeStore.user_id || '')) return
+  const target = event?.target as HTMLElement | undefined
+  if (!target) return
+  const distance = target.scrollHeight - target.scrollTop - target.clientHeight
+  if (distance < 120) {
+    // PanDAL.LoadMoreDrive115Trash(panTreeStore.user_id, panfileStore.DriveID)
+  }
+}
 
 const appStore = useAppStore()
 const settingStore = useSettingStore()
@@ -89,6 +102,9 @@ panfileStore.$subscribe((_m: any, state: PanFileState) => {
   if (menuShowVideo.value != isShowVideo) menuShowVideo.value = isShowVideo
   const isShowZip = !isTrash && panfileStore.ListSelected.size == 1 && (selectItem?.ext == 'zip' || selectItem?.ext == 'rar')
   if (menuShowZip.value != isShowZip) menuShowZip.value = isShowZip
+  // 媒体库菜单：选中单个文件夹时显示
+  const isShowMediaLibrary = !isTrash && panfileStore.ListSelected.size == 1 && (selectItem?.isDir ?? false)
+  if (menuShowMediaLibrary.value != isShowMediaLibrary) menuShowMediaLibrary.value = isShowMediaLibrary
 })
 
 watchEffect(() => {
@@ -299,6 +315,7 @@ const handleSearchEnter = (event: any) => {
 
 const menuShowVideo = ref(false)
 const menuShowZip = ref(false)
+const menuShowMediaLibrary = ref(false)
 const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   const key = e.node.key
   if (!panfileStore.ListSelected.has(key)) panfileStore.mMouseSelect(key, false, false)
@@ -575,7 +592,8 @@ const onPanDragEnd = (ev: any) => {
     <DirTopPath />
     <div style='flex-grow: 1'></div>
     <div v-if="panfileStore.SelectDirType == 'trash'" class='toppantip'>
-      <span style='color: crimson'> 免费=10天 会员=30天 超级会员=60天</span>
+      <span v-if="isCloud123User(panTreeStore.user_id || '')" style='color: crimson'>回收站内容保存30天，到期后自动清理，会员可延长期限至100天</span>
+      <span v-else style='color: crimson'> 免费=10天 会员=30天 超级会员=60天</span>
     </div>
     <div v-if="panfileStore.SelectDirType == 'recover'" class='toppantip'>
       <span style='color: crimson'>仅会员可用 恢复60天内彻底删除的文件(不保留文件夹路径)</span>
@@ -620,7 +638,7 @@ const onPanDragEnd = (ev: any) => {
         <a-option value='mypic'>我的相册</a-option>
       </a-select>
     </div>
-    <div v-show="!panfileStore.IsListSelected && ['trash', 'recover', 'favorite'].includes(panfileStore.SelectDirType)"
+    <div v-show="!panfileStore.IsListSelected && ['trash', 'recover', 'favorite'].includes(panfileStore.SelectDirType) && isAliyunUser(panTreeStore.user_id || '')"
          class='toppanbtn'>
       <a-select v-model:model-value='inputselectType'
                 size='small' tabindex='-1'
@@ -632,7 +650,7 @@ const onPanDragEnd = (ev: any) => {
         <a-option value='pic' :disabled="useSettingStore().securityHidePicDrive">相册</a-option>
       </a-select>
     </div>
-    <div v-show="panfileStore.SelectDirType == 'search' && !panfileStore.IsListSelected" class='toppanbtn'>
+    <div v-show="panfileStore.SelectDirType == 'search' && !panfileStore.IsListSelected && isAliyunUser(panTreeStore.user_id || '')" class='toppanbtn'>
       <a-dropdown style='width: 100px;' @popup-visible-change="handleSearchCheck">
         <a-button :disabled='panfileStore.ListLoading'>范围</a-button>
         <template #content>
@@ -657,7 +675,7 @@ const onPanDragEnd = (ev: any) => {
         @search='(val:string)=>topSearchAll(val, inputsearchType)'
         @press-enter='($event:any)=>topSearchAll($event.srcElement.value as string, inputsearchType)'
         @keydown.esc=';($event.target as any).blur()' />
-      <a-button type='text' size='small' tabindex='-1' style='border: none'
+      <a-button v-show=" isAliyunUser(panTreeStore.user_id || '')" type='text' size='small' tabindex='-1' style='border: none'
                 @click="() => topSearchAll('topSearchAll高级搜索', inputsearchType)">高级
       </a-button>
     </div>
@@ -818,7 +836,7 @@ const onPanDragEnd = (ev: any) => {
       style='width: 100%'
       :data='panfileStore.ListDataShow'
       tabindex='-1'
-      @scroll='onHideRightMenuScroll'>
+      @scroll='handleListScroll'>
       <template #empty>
         <a-empty description='空文件夹' />
       </template>
@@ -985,7 +1003,7 @@ const onPanDragEnd = (ev: any) => {
       style='width: 100%'
       :data='panfileStore.ListDataGrid'
       tabindex='-1'
-      @scroll='onHideRightMenuScroll'>
+      @scroll='handleListScroll'>
       <template #empty>
         <a-empty description='空文件夹' />
       </template>
@@ -1144,7 +1162,7 @@ const onPanDragEnd = (ev: any) => {
       style='width: 100%'
       :data='panfileStore.ListDataGrid'
       tabindex='-1'
-      @scroll='onHideRightMenuScroll'>
+      @scroll='handleListScroll'>
       <template #empty>
         <a-empty description='空文件夹' />
       </template>
@@ -1291,6 +1309,11 @@ const onPanDragEnd = (ev: any) => {
                    :inputpicType='inputpicType'
                    :isallfavored='panfileStore.IsListSelectedFavAll' />
     <TrashRightMenu :dirtype='panfileStore.SelectDirType' />
+    <MediaLibraryMenu v-if='menuShowMediaLibrary'
+                      :selectedItem='panfileStore.GetSelectedFirst()'
+                      :x='0'
+                      :y='0'
+                      @close='onHideRightMenuScroll' />
   </div>
 
   <div id='PanRightShowUpload' :style="{ display: showDragUpload ? '' : 'none' }" @drop='onPanDrop'

@@ -2,7 +2,26 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.3
+#### 1.14.0-alpha.4
+
+* Refactor ACME support to certificate provider system **1**
+* Add Cloudflare Origin CA certificate provider **2**
+* Add Tailscale certificate provider **3**
+* Fixes and improvements
+
+**1**:
+
+See [Certificate Provider](/configuration/shared/certificate-provider/) and [Migration](/migration/#migrate-inline-acme-to-certificate-provider).
+
+**2**:
+
+See [Cloudflare Origin CA](/configuration/shared/certificate-provider/cloudflare-origin-ca).
+
+**3**:
+
+See [Tailscale](/configuration/shared/certificate-provider/tailscale).
+
+#### 1.13.4-beta.1
 
 * Fixes and improvements
 

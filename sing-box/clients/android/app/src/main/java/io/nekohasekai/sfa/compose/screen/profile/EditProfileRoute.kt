@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.screen.profile
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
@@ -64,12 +65,12 @@ fun EditProfileRoute(profileId: Long, onNavigateBack: () -> Unit, modifier: Modi
                 profileId = profileId,
                 onNavigateBack = onNavigateBack,
                 onNavigateToIconSelection = { currentIconId ->
-                    navController.navigate("icon_selection/${currentIconId ?: "null"}") {
+                    navController.navigate("icon_selection/${Uri.encode(currentIconId ?: "null")}") {
                         launchSingleTop = true
                     }
                 },
-                onNavigateToEditContent = { profileName, isReadOnly ->
-                    navController.navigate("edit_content/$profileName/$isReadOnly") {
+                onNavigateToEditContent = { isReadOnly ->
+                    navController.navigate("edit_content/$isReadOnly") {
                         launchSingleTop = true
                     }
                 },
@@ -128,13 +129,9 @@ fun EditProfileRoute(profileId: Long, onNavigateBack: () -> Unit, modifier: Modi
         }
 
         composable(
-            route = "edit_content/{profileName}/{isReadOnly}",
+            route = "edit_content/{isReadOnly}",
             arguments =
             listOf(
-                navArgument("profileName") {
-                    type = NavType.StringType
-                    defaultValue = ""
-                },
                 navArgument("isReadOnly") {
                     type = NavType.BoolType
                     defaultValue = false
@@ -165,7 +162,6 @@ fun EditProfileRoute(profileId: Long, onNavigateBack: () -> Unit, modifier: Modi
                 )
             },
         ) { backStackEntry ->
-            val profileName = backStackEntry.arguments?.getString("profileName") ?: ""
             val isReadOnly = backStackEntry.arguments?.getBoolean("isReadOnly") ?: false
 
             EditProfileContentScreen(
@@ -173,7 +169,6 @@ fun EditProfileRoute(profileId: Long, onNavigateBack: () -> Unit, modifier: Modi
                 onNavigateBack = {
                     navController.popBackStack("edit_profile", inclusive = false)
                 },
-                profileName = profileName,
                 isReadOnly = isReadOnly,
             )
         }

@@ -31,10 +31,18 @@ type NeighborUpdateListener interface {
 }
 
 type ConnectionOwner struct {
-	UserId             int32
-	UserName           string
-	ProcessPath        string
-	AndroidPackageName string
+	UserId              int32
+	UserName            string
+	ProcessPath         string
+	androidPackageNames []string
+}
+
+func (c *ConnectionOwner) SetAndroidPackageNames(names StringIterator) {
+	c.androidPackageNames = iteratorToArray[string](names)
+}
+
+func (c *ConnectionOwner) AndroidPackageNames() StringIterator {
+	return newIterator(c.androidPackageNames)
 }
 
 type InterfaceUpdateListener interface {

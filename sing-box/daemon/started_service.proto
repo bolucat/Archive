@@ -195,7 +195,7 @@ message ProcessInfo {
   int32 userId = 2;
   string userName = 3;
   string processPath = 4;
-  string packageName = 5;
+  repeated string packageNames = 5;
 }
 
 message CloseConnectionRequest {

@@ -67,6 +67,10 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	if options.GSO {
 		return nil, E.New("GSO option in tun is deprecated in sing-box 1.11.0 and removed in sing-box 1.12.0")
 	}
+	//nolint:staticcheck
+	if options.InboundOptions != (option.InboundOptions{}) {
+		return nil, E.New("legacy inbound fields are deprecated in sing-box 1.11.0 and removed in sing-box 1.13.0, checkout migration: https://sing-box.sagernet.org/migration/#migrate-legacy-inbound-fields-to-rule-actions")
+	}
 
 	address := options.Address
 	inet4Address := common.Filter(address, func(it netip.Prefix) bool {

@@ -104,6 +104,10 @@ type InboundContext struct {
 func (c *InboundContext) ResetRuleCache() {
 	c.IPCIDRMatchSource = false
 	c.IPCIDRAcceptEmpty = false
+	c.ResetRuleMatchCache()
+}
+
+func (c *InboundContext) ResetRuleMatchCache() {
 	c.SourceAddressMatch = false
 	c.SourcePortMatch = false
 	c.DestinationAddressMatch = false

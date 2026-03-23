@@ -44,6 +44,12 @@ func (h *Inbound) UnmarshalJSONContext(ctx context.Context, content []byte) erro
 	if err != nil {
 		return err
 	}
+	if listenWrapper, isListen := options.(ListenOptionsWrapper); isListen {
+		//nolint:staticcheck
+		if listenWrapper.TakeListenOptions().InboundOptions != (InboundOptions{}) {
+			return E.New("legacy inbound fields are deprecated in sing-box 1.11.0 and removed in sing-box 1.13.0, checkout migration: https://sing-box.sagernet.org/migration/#migrate-legacy-inbound-fields-to-rule-actions")
+		}
+	}
 	h.Options = options
 	return nil
 }

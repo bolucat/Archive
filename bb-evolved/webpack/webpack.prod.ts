@@ -26,7 +26,6 @@ previewConfig.output.filename = 'bilibili-evolved.preview.user.js'
 previewConfig.mode = 'production'
 const targets = [mainConfig, previewConfig].map(config => {
   config.cache = { type: 'memory' }
-  config.devtool = false
   return config
 })
 

@@ -1460,7 +1460,7 @@ type ProcessInfo struct {
 	UserId        int32                  `protobuf:"varint,2,opt,name=userId,proto3" json:"userId,omitempty"`
 	UserName      string                 `protobuf:"bytes,3,opt,name=userName,proto3" json:"userName,omitempty"`
 	ProcessPath   string                 `protobuf:"bytes,4,opt,name=processPath,proto3" json:"processPath,omitempty"`
-	PackageName   string                 `protobuf:"bytes,5,opt,name=packageName,proto3" json:"packageName,omitempty"`
+	PackageNames  []string               `protobuf:"bytes,5,rep,name=packageNames,proto3" json:"packageNames,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1523,11 +1523,11 @@ func (x *ProcessInfo) GetProcessPath() string {
 	return ""
 }
 
-func (x *ProcessInfo) GetPackageName() string {
+func (x *ProcessInfo) GetPackageNames() []string {
 	if x != nil {
-		return x.PackageName
+		return x.PackageNames
 	}
-	return ""
+	return nil
 }
 
 type CloseConnectionRequest struct {
@@ -1884,13 +1884,13 @@ const file_daemon_started_service_proto_rawDesc = "" +
 	"\boutbound\x18\x13 \x01(\tR\boutbound\x12\"\n" +
 	"\foutboundType\x18\x14 \x01(\tR\foutboundType\x12\x1c\n" +
 	"\tchainList\x18\x15 \x03(\tR\tchainList\x125\n" +
-	"\vprocessInfo\x18\x16 \x01(\v2\x13.daemon.ProcessInfoR\vprocessInfo\"\xa3\x01\n" +
+	"\vprocessInfo\x18\x16 \x01(\v2\x13.daemon.ProcessInfoR\vprocessInfo\"\xa5\x01\n" +
 	"\vProcessInfo\x12\x1c\n" +
 	"\tprocessId\x18\x01 \x01(\rR\tprocessId\x12\x16\n" +
 	"\x06userId\x18\x02 \x01(\x05R\x06userId\x12\x1a\n" +
 	"\buserName\x18\x03 \x01(\tR\buserName\x12 \n" +
-	"\vprocessPath\x18\x04 \x01(\tR\vprocessPath\x12 \n" +
-	"\vpackageName\x18\x05 \x01(\tR\vpackageName\"(\n" +
+	"\vprocessPath\x18\x04 \x01(\tR\vprocessPath\x12\"\n" +
+	"\fpackageNames\x18\x05 \x03(\tR\fpackageNames\"(\n" +
 	"\x16CloseConnectionRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"K\n" +
 	"\x12DeprecatedWarnings\x125\n" +

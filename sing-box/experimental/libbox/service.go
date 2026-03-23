@@ -202,10 +202,10 @@ func (w *platformInterfaceWrapper) FindConnectionOwner(request *adapter.FindConn
 		return nil, err
 	}
 	return &adapter.ConnectionOwner{
-		UserId:             result.UserId,
-		UserName:           result.UserName,
-		ProcessPath:        result.ProcessPath,
-		AndroidPackageName: result.AndroidPackageName,
+		UserId:              result.UserId,
+		UserName:            result.UserName,
+		ProcessPath:         result.ProcessPath,
+		AndroidPackageNames: result.androidPackageNames,
 	}, nil
 }
 

@@ -28,6 +28,10 @@ func initWin32API() error {
 	return winiphlpapi.LoadExtendedTable()
 }
 
+func (s *windowsSearcher) Close() error {
+	return nil
+}
+
 func (s *windowsSearcher) FindProcessInfo(ctx context.Context, network string, source netip.AddrPort, destination netip.AddrPort) (*adapter.ConnectionOwner, error) {
 	pid, err := winiphlpapi.FindPid(network, source)
 	if err != nil {

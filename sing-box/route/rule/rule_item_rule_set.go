@@ -41,10 +41,12 @@ func (r *RuleSetItem) Start() error {
 }
 
 func (r *RuleSetItem) Match(metadata *adapter.InboundContext) bool {
-	metadata.IPCIDRMatchSource = r.ipCidrMatchSource
-	metadata.IPCIDRAcceptEmpty = r.ipCidrAcceptEmpty
 	for _, ruleSet := range r.setList {
-		if ruleSet.Match(metadata) {
+		nestedMetadata := *metadata
+		nestedMetadata.ResetRuleMatchCache()
+		nestedMetadata.IPCIDRMatchSource = r.ipCidrMatchSource
+		nestedMetadata.IPCIDRAcceptEmpty = r.ipCidrAcceptEmpty
+		if ruleSet.Match(&nestedMetadata) {
 			return true
 		}
 	}

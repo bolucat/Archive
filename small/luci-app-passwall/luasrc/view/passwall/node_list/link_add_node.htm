@@ -40,6 +40,22 @@ local api = require "luci.passwall.api"
 		sendNextChunk();
 	}
 
+	function decodeIfBase64(str) {
+		try {
+			let s = str.replace(/-/g, '+').replace(/_/g, '/');
+			while (s.length % 4) s += '=';
+			const decoded = decodeURIComponent(
+				atob(s).split('').map(c =>
+					'%' + c.charCodeAt(0).toString(16).padStart(2, '0')
+				).join('')
+			);
+			if (btoa(unescape(encodeURIComponent(decoded))).replace(/=+$/, '') === s.replace(/=+$/, '')) {
+				return decoded;
+			}
+		} catch (e) {}
+		return str;
+	}
+
 	function getBg(el) {
 		if (!el) return null;
 		const style = getComputedStyle(el);
@@ -74,15 +90,14 @@ local api = require "luci.passwall.api"
 		const group = (document.querySelector('#addlink_group_custom input[type="hidden"]')?.value || "default");
 		nodes_link = nodes_link.replace(/\t/g, "").replace(/\r\n|\r/g, "\n").replace(/<[^>]*>/g, '').trim();
 		if (nodes_link != "") {
+			nodes_link = decodeIfBase64(nodes_link);
 			let s = nodes_link.split('://');
 			if (s.length > 1) {
 				ajax_add_node(nodes_link, group);
-			}
-			else {
+			} else {
 				alert("<%:Please enter the correct link.%>");
 			}
-		}
-		else {
+		} else {
 			document.getElementById("nodes_link").focus();
 		}
 	}
@@ -93,8 +108,7 @@ local api = require "luci.passwall.api"
 			function(x, data) {
 				if(x && x.status == 200) {
 					window.location.href = '<%=api.url("node_list")%>';
-				}
-				else {
+				} else {
 					alert("<%:Error%>");
 				}
 			});
@@ -154,8 +168,7 @@ local api = require "luci.passwall.api"
 				function(x, data) {
 					if (x && x.status == 200) {
 						window.location.href = '<%=api.url("node_list")%>';
-					}
-					else {
+					} else {
 						alert("<%:Error%>");
 					}
 				});
