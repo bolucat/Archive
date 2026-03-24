@@ -1,5 +1,4 @@
 From 435afd182e8f5997033da1d69e56094ecb112cad Mon Sep 17 00:00:00 2001
-From: Chukun Pan <amadeus@jmu.edu.cn>
 Date: Thu, 10 Jun 2025 23:10:16 +0800
 Subject: [PATCH] mtd: spi-nand: macronix: disable continuous read for
  MX35LFxGE4AD
@@ -10,7 +9,6 @@ In on-die ECC mode, enabling continuous read will cause ubi_io_read error.
 So disable it first. Tested on GL.iNet GL-MT3000 with MX35LF2GE4AD flash.
 
 Fixes: 11813857864f ("mtd: spi-nand: macronix: Continuous read support")
-Signed-off-by: Chukun Pan <amadeus@jmu.edu.cn>
 ---
  drivers/mtd/nand/spi/macronix.c | 2 --
  1 file changed, 2 deletions(-)

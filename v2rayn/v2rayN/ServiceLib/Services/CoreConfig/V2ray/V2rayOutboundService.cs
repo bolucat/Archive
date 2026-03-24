@@ -354,11 +354,7 @@ public partial class CoreConfigV2rayService
             var host = _node.RequestHost.TrimEx();
             var path = _node.Path.TrimEx();
             var sni = _node.Sni.TrimEx();
-            var useragent = "";
-            if (!_config.CoreBasicItem.DefUserAgent.IsNullOrEmpty())
-            {
-                useragent = Global.UserAgentTexts.GetValueOrDefault(_config.CoreBasicItem.DefUserAgent, _config.CoreBasicItem.DefUserAgent);
-            }
+            var useragent = _config.CoreBasicItem.DefUserAgent ?? string.Empty;
 
             //if tls
             if (_node.StreamSecurity == Global.StreamSecurity)
@@ -441,10 +437,10 @@ public partial class CoreConfigV2rayService
                     kcpSettings.congestion = _config.KcpItem.Congestion;
                     kcpSettings.readBufferSize = _config.KcpItem.ReadBufferSize;
                     kcpSettings.writeBufferSize = _config.KcpItem.WriteBufferSize;
-                    streamSettings.finalmask ??= new();
+                    var kcpFinalmask = new Finalmask4Ray();
                     if (Global.KcpHeaderMaskMap.TryGetValue(_node.HeaderType, out var header))
                     {
-                        streamSettings.finalmask.udp =
+                        kcpFinalmask.udp =
                         [
                             new Mask4Ray
                             {
@@ -453,23 +449,24 @@ public partial class CoreConfigV2rayService
                             }
                         ];
                     }
-                    streamSettings.finalmask.udp ??= [];
+                    kcpFinalmask.udp ??= [];
                     if (path.IsNullOrEmpty())
                     {
-                        streamSettings.finalmask.udp.Add(new Mask4Ray
+                        kcpFinalmask.udp.Add(new Mask4Ray
                         {
                             type = "mkcp-original"
                         });
                     }
                     else
                     {
-                        streamSettings.finalmask.udp.Add(new Mask4Ray
+                        kcpFinalmask.udp.Add(new Mask4Ray
                         {
                             type = "mkcp-aes128gcm",
                             settings = new MaskSettings4Ray { password = path }
                         });
                     }
                     streamSettings.kcpSettings = kcpSettings;
+                    streamSettings.finalmask = kcpFinalmask;
                     break;
                 //ws
                 case nameof(ETransport.ws):
@@ -495,13 +492,17 @@ public partial class CoreConfigV2rayService
                 case nameof(ETransport.httpupgrade):
                     HttpupgradeSettings4Ray httpupgradeSettings = new();
 
+                    if (host.IsNotEmpty())
+                    {
+                        httpupgradeSettings.host = host;
+                    }
                     if (path.IsNotEmpty())
                     {
                         httpupgradeSettings.path = path;
                     }
-                    if (host.IsNotEmpty())
+                    if (useragent.IsNotEmpty())
                     {
-                        httpupgradeSettings.host = host;
+                        httpupgradeSettings.headers.UserAgent = useragent;
                     }
                     streamSettings.httpupgradeSettings = httpupgradeSettings;
 
@@ -580,6 +581,7 @@ public partial class CoreConfigV2rayService
                         health_check_timeout = _config.GrpcItem.HealthCheckTimeout,
                         permit_without_stream = _config.GrpcItem.PermitWithoutStream,
                         initial_windows_size = _config.GrpcItem.InitialWindowsSize,
+                        user_agent = useragent.NullIfEmpty(),
                     };
                     streamSettings.grpcSettings = grpcSettings;
                     break;
@@ -598,36 +600,46 @@ public partial class CoreConfigV2rayService
                         : (_config.HysteriaItem.HopInterval >= 5
                             ? _config.HysteriaItem.HopInterval
                             : Global.Hysteria2DefaultHopInt).ToString();
-                    HysteriaUdpHop4Ray? udpHop = null;
+                    var hy2Finalmask = new Finalmask4Ray();
+                    var quicParams = new QuicParams4Ray();
                     if (!ports.IsNullOrEmpty() &&
                         (ports.Contains(':') || ports.Contains('-') || ports.Contains(',')))
                     {
-                        udpHop = new HysteriaUdpHop4Ray
+                        var udpHop = new UdpHop4Ray
                         {
-                            port = ports.Replace(':', '-'),
+                            ports = ports.Replace(':', '-'),
                             interval = hopInterval,
                         };
+                        quicParams.udpHop = udpHop;
+                    }
+                    if (upMbps > 0 || downMbps > 0)
+                    {
+                        quicParams.congestion = "brutal";
+                        quicParams.brutalUp = upMbps > 0 ? $"{upMbps}mbps" : null;
+                        quicParams.brutalDown = downMbps > 0 ? $"{downMbps}mbps" : null;
+                    }
+                    else
+                    {
+                        quicParams.congestion = "bbr";
+                    }
+                    hy2Finalmask.quicParams = quicParams;
+                    if (!protocolExtra.SalamanderPass.IsNullOrEmpty())
+                    {
+                        hy2Finalmask.udp =
+                            [
+                                new Mask4Ray
+                                {
+                                    type = "salamander",
+                                    settings = new MaskSettings4Ray { password = protocolExtra.SalamanderPass.TrimEx(), }
+                                }
+                            ];
                     }
                     streamSettings.hysteriaSettings = new()
                     {
                         version = 2,
                         auth = _node.Password,
-                        up = upMbps > 0 ? $"{upMbps}mbps" : null,
-                        down = downMbps > 0 ? $"{downMbps}mbps" : null,
-                        udphop = udpHop,
                     };
-                    if (!protocolExtra.SalamanderPass.IsNullOrEmpty())
-                    {
-                        streamSettings.finalmask ??= new();
-                        streamSettings.finalmask.udp =
-                        [
-                            new Mask4Ray
-                            {
-                                type = "salamander",
-                                settings = new MaskSettings4Ray { password = protocolExtra.SalamanderPass.TrimEx(), }
-                            }
-                        ];
-                    }
+                    streamSettings.finalmask = hy2Finalmask;
                     break;
 
                 default:
@@ -644,10 +656,11 @@ public partial class CoreConfigV2rayService
 
                         //request Host
                         var request = EmbedUtils.GetEmbedText(Global.V2raySampleHttpRequestFileName);
+                        var useragentValue = Global.TcpHttpUserAgentTexts.GetValueOrDefault(useragent, useragent);
                         var arrHost = host.Split(',');
                         var host2 = string.Join(",".AppendQuotes(), arrHost);
                         request = request.Replace("$requestHost$", $"{host2.AppendQuotes()}");
-                        request = request.Replace("$requestUserAgent$", $"{useragent.AppendQuotes()}");
+                        request = request.Replace("$requestUserAgent$", $"{useragentValue.AppendQuotes()}");
                         //Path
                         var pathHttp = @"/";
                         if (path.IsNotEmpty())
@@ -665,7 +678,7 @@ public partial class CoreConfigV2rayService
 
             if (!_node.Finalmask.IsNullOrEmpty())
             {
-                streamSettings.finalmask = JsonUtils.Deserialize<Finalmask4Ray>(_node.Finalmask);
+                streamSettings.finalmask = JsonUtils.ParseJson(_node.Finalmask);
             }
         }
         catch (Exception ex)
@@ -725,7 +738,7 @@ public partial class CoreConfigV2rayService
         {
             var node = nodesReverse[i];
             var currentTag = i == 0 ? baseTagName : $"chain-{baseTagName}-{i}-{node.Remarks}";
-            var dialerProxyTag = i != nodesReverse.Count - 1 ? $"chain-{baseTagName}-{i + 1}-{node.Remarks}" : null;
+            var dialerProxyTag = i != nodesReverse.Count - 1 ? $"chain-{baseTagName}-{i + 1}-{nodesReverse[i + 1].Remarks}" : null;
             if (node.ConfigType.IsGroupType())
             {
                 var childProfiles = new CoreConfigV2rayService(context with { Node = node, }).BuildGroupProxyOutbounds(currentTag);

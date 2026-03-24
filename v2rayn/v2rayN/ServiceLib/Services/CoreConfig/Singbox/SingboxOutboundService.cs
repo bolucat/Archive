@@ -224,13 +224,14 @@ public partial class CoreConfigSingboxService
                                 password = protocolExtra.SalamanderPass.TrimEx(),
                             };
                         }
-
-                        outbound.up_mbps = protocolExtra?.UpMbps is { } su and >= 0
+                        int? upMbps = protocolExtra?.UpMbps is { } su and >= 0
                             ? su
                             : _config.HysteriaItem.UpMbps;
-                        outbound.down_mbps = protocolExtra?.DownMbps is { } sd and >= 0
+                        int? downMbps = protocolExtra?.DownMbps is { } sd and >= 0
                             ? sd
-                            : _config.HysteriaItem.DownMbps;
+                            : _config.HysteriaItem.UpMbps;
+                        outbound.up_mbps = upMbps > 0 ? upMbps : null;
+                        outbound.down_mbps = downMbps > 0 ? downMbps : null;
                         var ports = protocolExtra?.Ports?.IsNullOrEmpty() == false ? protocolExtra.Ports : null;
                         if ((!ports.IsNullOrEmpty()) && (ports.Contains(':') || ports.Contains('-') || ports.Contains(',')))
                         {
@@ -608,7 +609,7 @@ public partial class CoreConfigSingboxService
         {
             var node = nodesReverse[i];
             var currentTag = i == 0 ? baseTagName : $"chain-{baseTagName}-{i}-{node.Remarks}";
-            var dialerProxyTag = i != nodesReverse.Count - 1 ? $"chain-{baseTagName}-{i + 1}-{node.Remarks}" : null;
+            var dialerProxyTag = i != nodesReverse.Count - 1 ? $"chain-{baseTagName}-{i + 1}-{nodesReverse[i + 1].Remarks}" : null;
             if (node.ConfigType.IsGroupType())
             {
                 var childProfiles = new CoreConfigSingboxService(context with { Node = node, }).BuildGroupProxyOutbounds(currentTag);

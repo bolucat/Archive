@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.5
+
+* Fixes and improvements
+
+#### 1.13.4-beta.2
+
+* Fixes and improvements
+
 #### 1.14.0-alpha.4
 
 * Refactor ACME support to certificate provider system **1**
@@ -20,10 +28,6 @@ See [Cloudflare Origin CA](/configuration/shared/certificate-provider/cloudflare
 **3**:
 
 See [Tailscale](/configuration/shared/certificate-provider/tailscale).
-
-#### 1.13.4-beta.1
-
-* Fixes and improvements
 
 #### 1.13.3
 

@@ -78,9 +78,9 @@ func newRuleSetOnlyRule(ruleSetMatched bool, invert bool) *DefaultRule {
 	}
 	return &DefaultRule{
 		abstractDefaultRule: abstractDefaultRule{
-			items:    []RuleItem{ruleSetItem},
-			allItems: []RuleItem{ruleSetItem},
-			invert:   invert,
+			ruleSetItem: ruleSetItem,
+			allItems:    []RuleItem{ruleSetItem},
+			invert:      invert,
 		},
 	}
 }

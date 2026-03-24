@@ -11,11 +11,6 @@ on:
         description: "Version name"
         required: true
         type: string
-      forceBeta:
-        description: "Force beta"
-        required: false
-        type: boolean
-        default: false
   release:
     types:
       - published
@@ -23,7 +18,6 @@ on:
 jobs:
   calculate_version:
     name: Calculate version
-    if: github.event_name != 'release' || github.event.release.target_commitish != 'oldstable'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.outputs.outputs.version }}
@@ -168,14 +162,8 @@ jobs:
       - name: Set mtime
         run: |-
           TZ=UTC touch -t '197001010000' dist/sing-box
-      - name: Set name
-        if: (! contains(needs.calculate_version.outputs.version, '-')) && !inputs.forceBeta
-        run: |-
-          echo "NAME=sing-box" >> "$GITHUB_ENV"
-      - name: Set beta name
-        if: contains(needs.calculate_version.outputs.version, '-') || inputs.forceBeta
-        run: |-
-          echo "NAME=sing-box-beta" >> "$GITHUB_ENV"
+      - name: Detect track
+        run: bash .github/detect_track.sh
       - name: Set version
         run: |-
           PKG_VERSION="${{ needs.calculate_version.outputs.version }}"

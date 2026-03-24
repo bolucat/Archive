@@ -5,6 +5,10 @@ local api = require "luci.passwall.api"
 <script type="text/javascript">
 	//<![CDATA[
 	function ajax_add_node(link, group) {
+		const dom = document.getElementById('modal-mask');
+		dom.style.display = 'block';
+		dom.innerHTML = '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#fff;"><%:Processing, please wait…%></div>';
+		
 		const chunkSize = 1000;  // 分片发送以突破uhttpd的限制，每块1000字符
 		const totalChunks = Math.ceil(link.length / chunkSize);
 		let currentChunk = 0;
@@ -19,11 +23,15 @@ local api = require "luci.passwall.api"
 						currentChunk++;
 						sendNextChunk();
 					} else {
+						dom.innerHTML = '';
+						dom.style.display = 'none';
 						alert("<%:Error%>");
 						return;
 					}
 				};
 				xhr.onerror = function () {
+					dom.innerHTML = '';
+					dom.style.display = 'none';
 					alert("<%:Network Error%>");
 					return;
 				};
@@ -93,6 +101,7 @@ local api = require "luci.passwall.api"
 			nodes_link = decodeIfBase64(nodes_link);
 			let s = nodes_link.split('://');
 			if (s.length > 1) {
+				close_add_link_div();
 				ajax_add_node(nodes_link, group);
 			} else {
 				alert("<%:Please enter the correct link.%>");
