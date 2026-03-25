@@ -87,22 +87,40 @@ type ruleStateMatcher interface {
 	matchStates(metadata *adapter.InboundContext) ruleMatchStateSet
 }
 
+type ruleStateMatcherWithBase interface {
+	matchStatesWithBase(metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet
+}
+
 func matchHeadlessRuleStates(rule adapter.HeadlessRule, metadata *adapter.InboundContext) ruleMatchStateSet {
+	return matchHeadlessRuleStatesWithBase(rule, metadata, 0)
+}
+
+func matchHeadlessRuleStatesWithBase(rule adapter.HeadlessRule, metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
+	if matcher, isStateMatcher := rule.(ruleStateMatcherWithBase); isStateMatcher {
+		return matcher.matchStatesWithBase(metadata, base)
+	}
 	if matcher, isStateMatcher := rule.(ruleStateMatcher); isStateMatcher {
-		return matcher.matchStates(metadata)
+		return matcher.matchStates(metadata).withBase(base)
 	}
 	if rule.Match(metadata) {
-		return emptyRuleMatchState()
+		return emptyRuleMatchState().withBase(base)
 	}
 	return 0
 }
 
 func matchRuleItemStates(item RuleItem, metadata *adapter.InboundContext) ruleMatchStateSet {
+	return matchRuleItemStatesWithBase(item, metadata, 0)
+}
+
+func matchRuleItemStatesWithBase(item RuleItem, metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
+	if matcher, isStateMatcher := item.(ruleStateMatcherWithBase); isStateMatcher {
+		return matcher.matchStatesWithBase(metadata, base)
+	}
 	if matcher, isStateMatcher := item.(ruleStateMatcher); isStateMatcher {
-		return matcher.matchStates(metadata)
+		return matcher.matchStates(metadata).withBase(base)
 	}
 	if item.Match(metadata) {
-		return emptyRuleMatchState()
+		return emptyRuleMatchState().withBase(base)
 	}
 	return 0
 }

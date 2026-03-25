@@ -72,10 +72,18 @@ func (r *abstractDefaultRule) requiresDestinationAddressMatch(metadata *adapter.
 }
 
 func (r *abstractDefaultRule) matchStates(metadata *adapter.InboundContext) ruleMatchStateSet {
+	return r.matchStatesWithBase(metadata, 0)
+}
+
+func (r *abstractDefaultRule) matchStatesWithBase(metadata *adapter.InboundContext, inheritedBase ruleMatchState) ruleMatchStateSet {
 	if len(r.allItems) == 0 {
-		return emptyRuleMatchState()
+		return emptyRuleMatchState().withBase(inheritedBase)
 	}
-	var baseState ruleMatchState
+	evaluationBase := inheritedBase
+	if r.invert {
+		evaluationBase = 0
+	}
+	baseState := evaluationBase
 	if len(r.sourceAddressItems) > 0 {
 		metadata.DidMatch = true
 		if matchAnyItem(r.sourceAddressItems, metadata) {
@@ -119,17 +127,15 @@ func (r *abstractDefaultRule) matchStates(metadata *adapter.InboundContext) rule
 	for _, item := range r.items {
 		metadata.DidMatch = true
 		if !item.Match(metadata) {
-			return r.invertedFailure()
+			return r.invertedFailure(inheritedBase)
 		}
 	}
-	stateSet := singleRuleMatchState(baseState)
+	var stateSet ruleMatchStateSet
 	if r.ruleSetItem != nil {
 		metadata.DidMatch = true
-		ruleSetStates := matchRuleItemStates(r.ruleSetItem, metadata)
-		if ruleSetStates.isEmpty() {
-			return r.invertedFailure()
-		}
-		stateSet = ruleSetStates.withBase(baseState)
+		stateSet = matchRuleItemStatesWithBase(r.ruleSetItem, metadata, baseState)
+	} else {
+		stateSet = singleRuleMatchState(baseState)
 	}
 	stateSet = stateSet.filter(func(state ruleMatchState) bool {
 		if r.requiresSourceAddressMatch(metadata) && !state.has(ruleMatchSourceAddress) {
@@ -147,21 +153,21 @@ func (r *abstractDefaultRule) matchStates(metadata *adapter.InboundContext) rule
 		return true
 	})
 	if stateSet.isEmpty() {
-		return r.invertedFailure()
+		return r.invertedFailure(inheritedBase)
 	}
 	if r.invert {
 		// DNS pre-lookup defers destination address-limit checks until the response phase.
 		if metadata.IgnoreDestinationIPCIDRMatch && stateSet == emptyRuleMatchState() && !metadata.DidMatch && len(r.destinationIPCIDRItems) > 0 {
-			return emptyRuleMatchState()
+			return emptyRuleMatchState().withBase(inheritedBase)
 		}
 		return 0
 	}
 	return stateSet
 }
 
-func (r *abstractDefaultRule) invertedFailure() ruleMatchStateSet {
+func (r *abstractDefaultRule) invertedFailure(base ruleMatchState) ruleMatchStateSet {
 	if r.invert {
-		return emptyRuleMatchState()
+		return emptyRuleMatchState().withBase(base)
 	}
 	return 0
 }
@@ -225,16 +231,24 @@ func (r *abstractLogicalRule) Match(metadata *adapter.InboundContext) bool {
 }
 
 func (r *abstractLogicalRule) matchStates(metadata *adapter.InboundContext) ruleMatchStateSet {
+	return r.matchStatesWithBase(metadata, 0)
+}
+
+func (r *abstractLogicalRule) matchStatesWithBase(metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
+	evaluationBase := base
+	if r.invert {
+		evaluationBase = 0
+	}
 	var stateSet ruleMatchStateSet
 	if r.mode == C.LogicalTypeAnd {
-		stateSet = emptyRuleMatchState()
+		stateSet = emptyRuleMatchState().withBase(evaluationBase)
 		for _, rule := range r.rules {
 			nestedMetadata := *metadata
 			nestedMetadata.ResetRuleCache()
-			nestedStateSet := matchHeadlessRuleStates(rule, &nestedMetadata)
+			nestedStateSet := matchHeadlessRuleStatesWithBase(rule, &nestedMetadata, evaluationBase)
 			if nestedStateSet.isEmpty() {
 				if r.invert {
-					return emptyRuleMatchState()
+					return emptyRuleMatchState().withBase(base)
 				}
 				return 0
 			}
@@ -244,11 +258,11 @@ func (r *abstractLogicalRule) matchStates(metadata *adapter.InboundContext) rule
 		for _, rule := range r.rules {
 			nestedMetadata := *metadata
 			nestedMetadata.ResetRuleCache()
-			stateSet = stateSet.merge(matchHeadlessRuleStates(rule, &nestedMetadata))
+			stateSet = stateSet.merge(matchHeadlessRuleStatesWithBase(rule, &nestedMetadata, evaluationBase))
 		}
 		if stateSet.isEmpty() {
 			if r.invert {
-				return emptyRuleMatchState()
+				return emptyRuleMatchState().withBase(base)
 			}
 			return 0
 		}

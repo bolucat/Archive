@@ -149,6 +149,95 @@ func TestRouteRuleSetMergeSourceAndPortGroups(t *testing.T) {
 	})
 }
 
+func TestRouteRuleSetOuterGroupedStateMergesIntoSameGroup(t *testing.T) {
+	t.Parallel()
+	testCases := []struct {
+		name       string
+		metadata   adapter.InboundContext
+		buildOuter func(*testing.T, *abstractDefaultRule)
+		buildInner func(*testing.T, *abstractDefaultRule)
+	}{
+		{
+			name:     "destination address",
+			metadata: testMetadata("www.example.com"),
+			buildOuter: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			},
+			buildInner: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addDestinationAddressItem(t, rule, nil, []string{"google.com"})
+			},
+		},
+		{
+			name:     "source address",
+			metadata: testMetadata("www.example.com"),
+			buildOuter: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addSourceAddressItem(t, rule, []string{"10.0.0.0/8"})
+			},
+			buildInner: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addSourceAddressItem(t, rule, []string{"198.51.100.0/24"})
+			},
+		},
+		{
+			name:     "source port",
+			metadata: testMetadata("www.example.com"),
+			buildOuter: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addSourcePortItem(rule, []uint16{1000})
+			},
+			buildInner: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addSourcePortItem(rule, []uint16{2000})
+			},
+		},
+		{
+			name:     "destination port",
+			metadata: testMetadata("www.example.com"),
+			buildOuter: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addDestinationPortItem(rule, []uint16{443})
+			},
+			buildInner: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addDestinationPortItem(rule, []uint16{8443})
+			},
+		},
+		{
+			name: "destination ip cidr",
+			metadata: func() adapter.InboundContext {
+				metadata := testMetadata("lookup.example")
+				metadata.DestinationAddresses = []netip.Addr{netip.MustParseAddr("203.0.113.1")}
+				return metadata
+			}(),
+			buildOuter: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addDestinationIPCIDRItem(t, rule, []string{"203.0.113.0/24"})
+			},
+			buildInner: func(t *testing.T, rule *abstractDefaultRule) {
+				t.Helper()
+				addDestinationIPCIDRItem(t, rule, []string{"198.51.100.0/24"})
+			},
+		},
+	}
+	for _, testCase := range testCases {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+			ruleSet := newLocalRuleSetForTest("outer-merge-"+testCase.name, headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+				testCase.buildInner(t, rule)
+			}))
+			rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+				testCase.buildOuter(t, rule)
+				addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+			})
+			require.True(t, rule.Match(&testCase.metadata))
+		})
+	}
+}
+
 func TestRouteRuleSetOtherFieldsStayAnd(t *testing.T) {
 	t.Parallel()
 	metadata := testMetadata("www.example.com")
@@ -160,6 +249,34 @@ func TestRouteRuleSetOtherFieldsStayAnd(t *testing.T) {
 		addOtherItem(rule, NewNetworkItem([]string{N.NetworkUDP}))
 	})
 	require.False(t, rule.Match(&metadata))
+}
+
+func TestRouteRuleSetMergedBranchKeepsAndConstraints(t *testing.T) {
+	t.Parallel()
+	t.Run("outer group does not bypass inner non grouped condition", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("network-and", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			addOtherItem(rule, NewNetworkItem([]string{N.NetworkUDP}))
+		}))
+		rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.False(t, rule.Match(&metadata))
+	})
+	t.Run("outer group does not satisfy different grouped branch", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("different-group", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"google.com"})
+		}))
+		rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+			addSourcePortItem(rule, []uint16{1000})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.False(t, rule.Match(&metadata))
+	})
 }
 
 func TestRouteRuleSetOrSemantics(t *testing.T) {
@@ -271,6 +388,68 @@ func TestRouteRuleSetLogicalSemantics(t *testing.T) {
 	})
 }
 
+func TestRouteRuleSetInvertMergedBranchSemantics(t *testing.T) {
+	t.Parallel()
+	t.Run("default invert keeps inherited group outside grouped predicate", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("invert-grouped", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			rule.invert = true
+			addDestinationAddressItem(t, rule, nil, []string{"google.com"})
+		}))
+		rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
+	t.Run("default invert keeps inherited group after negation succeeds", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("invert-network", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			rule.invert = true
+			addOtherItem(rule, NewNetworkItem([]string{N.NetworkUDP}))
+		}))
+		rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
+	t.Run("logical invert keeps inherited group outside grouped predicate", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("logical-invert-grouped", headlessLogicalRule(
+			C.LogicalTypeOr,
+			true,
+			headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+				addDestinationAddressItem(t, rule, nil, []string{"google.com"})
+			}),
+		))
+		rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
+	t.Run("logical invert keeps inherited group after negation succeeds", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("logical-invert-network", headlessLogicalRule(
+			C.LogicalTypeOr,
+			true,
+			headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+				addOtherItem(rule, NewNetworkItem([]string{N.NetworkUDP}))
+			}),
+		))
+		rule := routeRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
+}
+
 func TestRouteRuleSetNoLeakageRegressions(t *testing.T) {
 	t.Parallel()
 	t.Run("same ruleset failed branch does not leak", func(t *testing.T) {
@@ -339,6 +518,59 @@ func TestRouteRuleSetRemoteUsesSameSemantics(t *testing.T) {
 
 func TestDNSRuleSetSemantics(t *testing.T) {
 	t.Parallel()
+	t.Run("outer destination group merges into matching ruleset branch", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.baidu.com")
+		ruleSet := newLocalRuleSetForTest("dns-merged-branch", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"google.com"})
+		}))
+		rule := dnsRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"baidu.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
+	t.Run("outer destination group does not bypass ruleset non grouped condition", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("dns-network-and", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			addOtherItem(rule, NewNetworkItem([]string{N.NetworkUDP}))
+		}))
+		rule := dnsRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.False(t, rule.Match(&metadata))
+	})
+	t.Run("outer destination group stays outside inverted grouped branch", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.baidu.com")
+		ruleSet := newLocalRuleSetForTest("dns-invert-grouped", headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+			rule.invert = true
+			addDestinationAddressItem(t, rule, nil, []string{"google.com"})
+		}))
+		rule := dnsRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"baidu.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
+	t.Run("outer destination group stays outside inverted logical branch", func(t *testing.T) {
+		t.Parallel()
+		metadata := testMetadata("www.example.com")
+		ruleSet := newLocalRuleSetForTest("dns-logical-invert-network", headlessLogicalRule(
+			C.LogicalTypeOr,
+			true,
+			headlessDefaultRule(t, func(rule *abstractDefaultRule) {
+				addOtherItem(rule, NewNetworkItem([]string{N.NetworkUDP}))
+			}),
+		))
+		rule := dnsRuleForTest(func(rule *abstractDefaultRule) {
+			addDestinationAddressItem(t, rule, nil, []string{"example.com"})
+			addRuleSetItem(rule, &RuleSetItem{setList: []adapter.RuleSet{ruleSet}})
+		})
+		require.True(t, rule.Match(&metadata))
+	})
 	t.Run("match address limit merges destination group", func(t *testing.T) {
 		t.Parallel()
 		metadata := testMetadata("www.example.com")

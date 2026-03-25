@@ -68,10 +68,10 @@
     "cross-env": "10.1.0",
     "dedent": "1.7.2",
     "globals": "17.4.0",
-    "knip": "6.0.4",
+    "knip": "6.0.5",
     "lint-staged": "16.4.0",
     "npm-run-all2": "8.0.4",
-    "oxlint": "1.56.0",
+    "oxlint": "1.57.0",
     "postcss": "8.5.8",
     "postcss-html": "1.8.1",
     "postcss-import": "16.1.1",
@@ -91,9 +91,9 @@
     "tsx": "4.21.0",
     "typescript": "5.9.3"
   },
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": "24.14.0"
+    "node": "24.14.1"
   },
   "pnpm": {
     "overrides": {

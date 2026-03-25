@@ -33,15 +33,24 @@ const parseRulesetYaml = hm.parseYaml.extend({
 	}
 });
 
-function parseRulesetLink(section_type, uri) {
-	const filefmt = new RegExp(/^(text|yaml|mrs)$/);
-	const filebehav = new RegExp(/^(domain|ipcidr|classical)$/);
+async function parseRulesetLink(section_type, uri) {
+	const filefmt = /^(text|yaml|mrs)$/;
+	const filebehav = /^(domain|ipcidr|classical)$/;
 
 	let config;
-
 	uri = uri.split('://');
-	if (uri[0] && uri[1]) {
-		switch (uri[0]) {
+
+	const done = (conf) => {
+		if (conf && conf.type && conf.id) {
+			if (!conf.label) conf.label = conf.id;
+			return conf;
+		}
+		return null;
+	};
+
+	if (!(uri[0] && uri[1])) return done();
+
+	switch (uri[0]) {
 		case 'http':
 		case 'https':
 			var url = new URL('http://' + uri[1]);
@@ -54,7 +63,7 @@ function parseRulesetLink(section_type, uri) {
 			if (filefmt.test(format) && filebehav.test(behavior)) {
 				let fullpath = (url.username ? url.username + '@' : '') + url.host + url.pathname + (rawquery ? '?' + decodeURIComponent(rawquery) : '');
 				config = {
-					label: url.hash ? decodeURIComponent(url.hash.slice(1)) : name ? name : null,
+					label: url.hash ? decodeURIComponent(url.hash.slice(1)) : (name || null),
 					type: 'http',
 					format: format,
 					behavior: behavior,
@@ -64,7 +73,7 @@ function parseRulesetLink(section_type, uri) {
 				};
 			}
 
-			break;
+			return done(config);
 		case 'file':
 			var url = new URL('file://' + uri[1]);
 			var format = url.searchParams.get('fmt');
@@ -75,53 +84,54 @@ function parseRulesetLink(section_type, uri) {
 
 			if (filefmt.test(format) && filebehav.test(behavior)) {
 				config = {
-					label: url.hash ? decodeURIComponent(url.hash.slice(1)) : name ? name : null,
+					label: url.hash ? decodeURIComponent(url.hash.slice(1)) : (name || null),
 					type: 'file',
 					format: format,
 					behavior: behavior,
 					id: hm.calcStringMD5(String.format('file://%s%s', url.host, url.pathname))
 				};
-				hm.writeFile(section_type, config.id, hm.decodeBase64Str(filler));
+				if (filler?.match(/^H4sI/)) // Gzip magic + Deflate
+					await hm.writeFile(section_type, config.id, await hm.decompressGzip(filler, true));
+				else
+					hm.writeFile(section_type, config.id, hm.decodeBase64(filler, true));
 			}
 
-			break;
+			return done(config);
 		case 'inline':
 			var url = new URL('inline:' + uri[1]);
 			var behavior = url.searchParams.get('behav');
-			var payload = hm.decodeBase64Str(url.pathname).trim();
+			var payload = url.pathname.match(/^H4sI/) // Gzip magic + Deflate
+				? await hm.decompressGzip(url.pathname, true)
+				: hm.decodeBase64(url.pathname, true);
 
-			if (filebehav.test(behavior) && payload && payload.length) {
+			payload = (payload || '').trim();
+			if (filebehav.test(behavior) && payload) {
 				config = {
 					label: url.hash ? decodeURIComponent(url.hash.slice(1)) : null,
 					type: 'inline',
 					behavior: behavior,
 					payload: payload,
-					id: hm.calcStringMD5(String.format('inline:%s', btoa(payload)))
+					id: hm.calcStringMD5(String.format('inline:%s', hm.encodeBase64(payload)))
 				};
 			}
 
-			break;
-		}
+			return done(config);
+		default:
+			return done();
 	}
-
-	if (config) {
-		if (!config.type || !config.id)
-			return null;
-		else if (!config.label)
-			config.label = config.id;
-	}
-
-	return config;
 }
 
 return view.extend({
 	load() {
 		return Promise.all([
-			uci.load('fchomo')
+			uci.load('fchomo'),
+			hm.decompressGzip(hm.rulesetdoc[1], true).then((res) => { return hm.rulesetdoc[0] + hm.encodeBase64(res); })
 		]);
 	},
 
 	render(data) {
+		const rulesetdoc = data[1];
+
 		let m, s, o;
 
 		m = new form.Map('fchomo', _('Edit ruleset'));
@@ -188,33 +198,30 @@ return view.extend({
 				_('Supports rule-set links of type: <code>%s</code> and format: <code>%s</code>.</br>')
 					.format('file, http, inline', 'text, yaml, mrs') +
 					_('Please refer to <a href="%s" target="_blank">%s</a> for link format standards.')
-						.format(hm.rulesetdoc, _('Ruleset-URI-Scheme')));
+						.format(rulesetdoc, _('Ruleset-URI-Scheme')));
 			o.placeholder = 'http(s)://github.com/ACL4SSR/ACL4SSR/raw/refs/heads/master/Clash/Providers/BanAD.yaml?fmt=yaml&behav=classical&rawq=good%3Djob#BanAD\n' +
 							'file:///example.txt?fmt=text&behav=domain&fill=LmNuCg#CN%20TLD\n' +
-							'inline://LSAnLmhrJwoK?behav=domain#HK%20TLD\n';
-			o.handleFn = function(textarea) {
+							'inline://LSAnLmhrJwoK?behav=domain#HK%20TLD\n' +
+							'inline://H4sIAAAAAAACA9NVUNcrKVcHANszKpEHAAAA?behav=domain#TW%20TLD\n';
+			o.handleFn = async function(textarea) {
 				let input_links = textarea.getValue().trim().split('\n');
+				if (!input_links[0]) return ui.hideModal();
+
 				let imported_count = 0;
-
-				if (input_links && input_links[0]) {
-					/* Remove duplicate lines */
-					input_links = input_links.reduce((pre, cur) =>
-						(!pre.includes(cur) && pre.push(cur), pre), []);
-
-					input_links.forEach((l) => {
-						let config = parseRulesetLink(section_type, l);
-						if (config) {
-							this.write(config);
-							imported_count++;
-						}
-					});
-
-					if (imported_count === 0)
-						ui.addNotification(null, E('p', _('No valid rule-set link found.')));
-					else
-						ui.addNotification(null, E('p', _('Successfully imported %s %s of total %s.')
-							.format(imported_count, _('rule-set'), input_links.length)), 'info');
+				input_links = [...new Set(input_links)]; // Remove duplicate lines
+				for (const link of input_links) {
+					let config = await parseRulesetLink(section_type, link);
+					if (config) {
+						this.write(config);
+						imported_count++;
+					}
 				}
+
+				if (imported_count === 0)
+					ui.addNotification(null, E('p', _('No valid rule-set link found.')));
+				else
+					ui.addNotification(null, E('p', _('Successfully imported %s %s of total %s.')
+						.format(imported_count, _('rule-set'), input_links.length)), 'info');
 
 				if (imported_count)
 					return this.save();

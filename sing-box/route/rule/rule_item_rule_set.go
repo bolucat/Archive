@@ -45,13 +45,17 @@ func (r *RuleSetItem) Match(metadata *adapter.InboundContext) bool {
 }
 
 func (r *RuleSetItem) matchStates(metadata *adapter.InboundContext) ruleMatchStateSet {
+	return r.matchStatesWithBase(metadata, 0)
+}
+
+func (r *RuleSetItem) matchStatesWithBase(metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
 	var stateSet ruleMatchStateSet
 	for _, ruleSet := range r.setList {
 		nestedMetadata := *metadata
 		nestedMetadata.ResetRuleMatchCache()
 		nestedMetadata.IPCIDRMatchSource = r.ipCidrMatchSource
 		nestedMetadata.IPCIDRAcceptEmpty = r.ipCidrAcceptEmpty
-		stateSet = stateSet.merge(matchHeadlessRuleStates(ruleSet, &nestedMetadata))
+		stateSet = stateSet.merge(matchHeadlessRuleStatesWithBase(ruleSet, &nestedMetadata, base))
 	}
 	return stateSet
 }

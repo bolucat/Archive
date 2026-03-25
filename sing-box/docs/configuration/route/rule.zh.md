@@ -208,7 +208,7 @@ icon: material/new-box
     (`source_port` || `source_port_range`) &&  
     `other fields`
 
-    另外，引用的规则集可视为被合并，而不是作为一个单独的规则子项。
+    另外，引用规则集中的每个分支都可视为与外层规则合并，不同分支之间仍保持 OR 语义。
 
 #### inbound
 

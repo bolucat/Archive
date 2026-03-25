@@ -208,7 +208,7 @@ define Device/bananapi_bpi-r4-common
   DEVICE_DTS_OVERLAY:= mt7988a-bananapi-bpi-r4-emmc mt7988a-bananapi-bpi-r4-rtc mt7988a-bananapi-bpi-r4-sd
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_PACKAGES := kmod-hwmon-pwmfan kmod-i2c-mux-pca954x kmod-eeprom-at24 kmod-mt7996-233-firmware \
-		     kmod-rtc-pcf8563 kmod-sfp kmod-usb3 e2fsprogs f2fsck mkf2fs mt7988-wo-firmware
+		     kmod-rtc-pcf8563 kmod-sfp kmod-usb3 e2fsprogs f2fsck mkf2fs mt7988-wo-firmware fitblk
   IMAGES := sysupgrade.itb
   KERNEL_LOADADDR := 0x46000000
   KERNEL_INITRAMFS_SUFFIX := -recovery.itb
@@ -276,7 +276,7 @@ define Device/bananapi_bpi-r4-lite
   DEVICE_DTC_FLAGS := --pad 4096
   DEVICE_DTS_DIR := ../dts
   DEVICE_DTS_LOADADDR := 0x4ff00000
-  DEVICE_PACKAGES := kmod-eeprom-at24 kmod-gpio-pca953x kmod-i2c-mux-pca954x \
+  DEVICE_PACKAGES := fitblk kmod-eeprom-at24 kmod-gpio-pca953x kmod-i2c-mux-pca954x \
 		     kmod-rtc-pcf8563 kmod-sfp kmod-usb3 e2fsprogs mkf2fs mt7987-2p5g-phy-firmware
   BLOCKSIZE := 128k
   PAGESIZE := 2048
@@ -410,10 +410,6 @@ define Device/cmcc_rax3000m-nand
   IMAGES += factory.bin
   IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-  KERNEL = kernel-bin | lzma | \
-	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
-  KERNEL_INITRAMFS = kernel-bin | lzma | \
-	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd
 endef
 TARGET_DEVICES += cmcc_rax3000m-nand
 
@@ -543,10 +539,6 @@ define Device/glinet_gl-mt3600be
   DEVICE_DTS_DIR := ../dts
   DEVICE_PACKAGES := mt7987-2p5g-phy-firmware kmod-mt7990-firmware \
 	kmod-hwmon-pwmfan kmod-usb3
-  KERNEL = kernel-bin | lzma | \
-	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
-  KERNEL_INITRAMFS = kernel-bin | lzma | \
-	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd
   KERNEL_IN_UBI := 1
   KERNEL_LOADADDR := 0x40000000
   UBINIZE_OPTS := -E 5
@@ -767,10 +759,6 @@ define Device/mediatek_mt7986a-rfb
   IMAGES += factory.bin
   IMAGE/factory.bin := append-ubi | check-size $$$$(IMAGE_SIZE)
   IMAGE/sysupgrade.bin := sysupgrade-tar | append-metadata
-  KERNEL = kernel-bin | lzma | \
-	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb
-  KERNEL_INITRAMFS = kernel-bin | lzma | \
-	fit lzma $$(KDIR)/image-$$(firstword $$(DEVICE_DTS)).dtb with-initrd
 endef
 TARGET_DEVICES += mediatek_mt7986a-rfb
 

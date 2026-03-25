@@ -2,6 +2,11 @@ name: T2 Build
 
 on:
   workflow_dispatch:
+    inputs:
+      plugins:
+        description: '输入: 留空/1/2=默认编译, 或插件名(空格分隔)'
+        required: false
+        default: ''
   push:
     tags:
       - v.**
@@ -24,12 +29,27 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Get packages to build
+        id: packages
+        run: |
+          input="${{ github.event.inputs.plugins }}"
+          
+          if [ -z "$input" ] || [ "$input" == "*" ] || [ "$input" == "1" ] || [ "$input" == "2" ]; then
+            # 默认编译的包
+            PACKAGES="luci-app-fchomo luci-app-homeproxy luci-app-momo luci-app-nikki luci-app-openclash luci-app-passwall luci-app-passwall2 luci-app-ssr-plus brook hysteria ipt2socks pdnsd-alt redsocks2 shadow-tls trojan tuic-client xray-plugin v2ray-core v2ray-geodata naiveproxy sing-box"
+            echo "使用默认包: $PACKAGES"
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          else
+            echo "编译指定包: $input"
+            echo "packages=$input" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build
         uses: kenzok8/gh-action-sdk@hash
         env:
           ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
           FEEDNAME: packages_ci
-          PACKAGES: luci-app-fchomo luci-app-homeproxy luci-app-momo luci-app-nikki luci-app-openclash luci-app-passwall luci-app-passwall2 luci-app-ssr-plus brook hysteria ipt2socks pdnsd-alt redsocks2 shadow-tls trojan tuic-client xray-plugin v2ray-core v2ray-geodata naiveproxy sing-box
+          PACKAGES: ${{ steps.packages.outputs.packages }}
           NO_REFRESH_CHECK: true
           IGNORE_ERRORS: true
 

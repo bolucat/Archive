@@ -2,6 +2,11 @@ name: T9 Build
 
 on:
   workflow_dispatch:
+    inputs:
+      plugins:
+        description: '输入: 留空=全部, 1=最近1天更新, 2=最近2天更新, 或插件名(空格分隔)'
+        required: false
+        default: ''
   push:
     tags:
       - v.**
@@ -19,8 +24,6 @@ jobs:
           - aarch64_cortex-a53
           - aarch64_cortex-a72
           - aarch64_generic
-          - arm_arm1176jzf-s_vfp
-          - arm_arm926ej-s
           - arm_cortex-a15_neon-vfpv4
           - arm_cortex-a5_vfpv4
           - arm_cortex-a7
@@ -30,7 +33,6 @@ jobs:
           - arm_cortex-a9_neon
           - arm_cortex-a9_vfpv3-d16
           - arm_fa526
-          - arm_xscale
           - i386_pentium-mmx
           - i386_pentium4
           - mips64_octeonplus
@@ -47,6 +49,30 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
+
+      - name: Get packages to build
+        id: packages
+        run: |
+          input="${{ github.event.inputs.plugins }}"
+          
+          if [ -z "$input" ] || [ "$input" == "*" ]; then
+            PACKAGES=$(find . -maxdepth 1 -type d ! -name '.' ! -name '.git' ! -name '.github' -printf '%f ' | sed 's/ $//')
+            echo "编译所有包: $PACKAGES"
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          elif [ "$input" == "1" ]; then
+            SINCE_DAYS=1
+            PACKAGES=$(find . -maxdepth 1 -type d ! -name '.' ! -name '.git' ! -name '.github' -mtime -$SINCE_DAYS -printf '%f ' | sed 's/ $//')
+            echo "最近1天更新的包: $PACKAGES"
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          elif [ "$input" == "2" ]; then
+            SINCE_DAYS=2
+            PACKAGES=$(find . -maxdepth 1 -type d ! -name '.' ! -name '.git' ! -name '.github' -mtime -$SINCE_DAYS -printf '%f ' | sed 's/ $//')
+            echo "最近2天更新的包: $PACKAGES"
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          else
+            echo "编译指定包: $input"
+            echo "packages=$input" >> $GITHUB_OUTPUT
+          fi
 
       - name: Delete workflow runs
         env:

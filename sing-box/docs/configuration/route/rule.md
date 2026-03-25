@@ -210,7 +210,7 @@ icon: material/new-box
     (`source_port` || `source_port_range`) &&  
     `other fields`
 
-    Additionally, included rule-sets can be considered merged rather than as a single rule sub-item.
+    Additionally, each branch inside an included rule-set can be considered merged into the outer rule, while different branches keep OR semantics.
 
 #### inbound
 
