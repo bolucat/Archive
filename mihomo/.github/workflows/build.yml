@@ -173,14 +173,13 @@ jobs:
 
     - name: Set up Go1.26 loongarch abi1
       if: ${{ matrix.jobs.goarch == 'loong64' && matrix.jobs.abi == '1' }}
-      run: |
-        wget -q https://github.com/MetaCubeX/loongarch64-golang/releases/download/1.26.0/go1.26.0.linux-amd64-abi1.tar.gz
-        mkdir -p $HOME/usr/local
-        tar zxf go1.26.0.linux-amd64-abi1.tar.gz -C $HOME/usr/local
-        echo "$HOME/usr/local/go/bin" >> $GITHUB_PATH
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+      with:
+        go-download-base-url: 'https://github.com/MetaCubeX/loongarch64-golang/releases/download/1.26.0'
+        go-version: 1.26.0
 
-      # TODO: remove after issue77731 merged, see: https://github.com/golang/go/issues/77731
-    - name: Apply issue77731 for Golang1.26
+      # TODO: remove after issue77731 fixed, see: https://github.com/golang/go/issues/77731
+    - name: Fix issue77731 for Golang1.26
       if: ${{ matrix.jobs.goversion == '' }}
       run: |
         cd $(go env GOROOT)
@@ -192,6 +191,13 @@ jobs:
       run: |
         cd $(go env GOROOT)
         patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/issue77975.patch
+
+      # TODO: remove after issue77930 fixed, see: https://github.com/golang/go/issues/77930
+    - name: Fix issue77930 for Golang1.26
+      if: ${{ matrix.jobs.goversion == '' }}
+      run: |
+        cd $(go env GOROOT)
+        patch --verbose -p 1 < $GITHUB_WORKSPACE/.github/patch/issue77930.patch
 
       # this patch file only works on golang1.26.x
       # that means after golang1.27 release it must be changed

@@ -45,6 +45,11 @@ func NewDefaultHeadlessRule(ctx context.Context, options option.DefaultHeadlessR
 			invert: options.Invert,
 		},
 	}
+	if len(options.QueryType) > 0 {
+		item := NewQueryTypeItem(options.QueryType)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
 	if len(options.Network) > 0 {
 		item := NewNetworkItem(options.Network)
 		rule.items = append(rule.items, item)

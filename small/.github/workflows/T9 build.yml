@@ -61,12 +61,12 @@ jobs:
             echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
           elif [ "$input" == "1" ]; then
             SINCE_DAYS=1
-            PACKAGES=$(find . -maxdepth 1 -type d ! -name '.' ! -name '.git' ! -name '.github' -mtime -$SINCE_DAYS -printf '%f ' | sed 's/ $//')
+            PACKAGES=$(git log --since="${SINCE_DAYS} days ago" --name-only --pretty=format: | grep -v '^$' | awk -F'/' '{print $1}' | sort -u | grep -v '^\.\|^$' | tr '\n' ' ' | sed 's/ $//')
             echo "最近1天更新的包: $PACKAGES"
             echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
           elif [ "$input" == "2" ]; then
             SINCE_DAYS=2
-            PACKAGES=$(find . -maxdepth 1 -type d ! -name '.' ! -name '.git' ! -name '.github' -mtime -$SINCE_DAYS -printf '%f ' | sed 's/ $//')
+            PACKAGES=$(git log --since="${SINCE_DAYS} days ago" --name-only --pretty=format: | grep -v '^$' | awk -F'/' '{print $1}' | sort -u | grep -v '^\.\|^$' | tr '\n' ' ' | sed 's/ $//')
             echo "最近2天更新的包: $PACKAGES"
             echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
           else

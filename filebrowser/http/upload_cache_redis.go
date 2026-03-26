@@ -67,6 +67,8 @@ func (c *redisUploadCache) GetLength(filePath string) (int64, error) {
 		return 0, fmt.Errorf("invalid upload length in cache: %w", err)
 	}
 
+	c.Touch(filePath)
+
 	return size, nil
 }
 

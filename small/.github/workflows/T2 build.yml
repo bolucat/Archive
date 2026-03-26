@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       plugins:
-        description: '输入: 留空/1/2=默认编译, 或插件名(空格分隔)'
+        description: 'Input: empty/*=default packages, 1=updated in 1 day, 2=updated in 2 days, or package name(s)'
         required: false
         default: ''
   push:
@@ -34,13 +34,17 @@ jobs:
         run: |
           input="${{ github.event.inputs.plugins }}"
           
-          if [ -z "$input" ] || [ "$input" == "*" ] || [ "$input" == "1" ] || [ "$input" == "2" ]; then
-            # 默认编译的包
+          if [ -z "$input" ] || [ "$input" == "*" ]; then
+            # default packages
             PACKAGES="luci-app-fchomo luci-app-homeproxy luci-app-momo luci-app-nikki luci-app-openclash luci-app-passwall luci-app-passwall2 luci-app-ssr-plus brook hysteria ipt2socks pdnsd-alt redsocks2 shadow-tls trojan tuic-client xray-plugin v2ray-core v2ray-geodata naiveproxy sing-box"
-            echo "使用默认包: $PACKAGES"
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          elif [ "$input" == "1" ]; then
+            PACKAGES=$(git log --since="1 days ago" --name-only --pretty=format: | grep -v '^$' | awk -F'/' '{print $1}' | sort -u | grep -v '^\.\|^$' | tr '\n' ' ' | sed 's/ $//')
+            echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
+          elif [ "$input" == "2" ]; then
+            PACKAGES=$(git log --since="2 days ago" --name-only --pretty=format: | grep -v '^$' | awk -F'/' '{print $1}' | sort -u | grep -v '^\.\|^$' | tr '\n' ' ' | sed 's/ $//')
             echo "packages=$PACKAGES" >> $GITHUB_OUTPUT
           else
-            echo "编译指定包: $input"
             echo "packages=$input" >> $GITHUB_OUTPUT
           fi
 
