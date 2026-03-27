@@ -230,9 +230,6 @@ importers:
       '@tauri-apps/api':
         specifier: 2.10.1
         version: 2.10.1
-      '@types/json-schema':
-        specifier: 7.0.15
-        version: 7.0.15
       '@uidotdev/usehooks':
         specifier: 2.4.1
         version: 2.4.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -254,6 +251,9 @@ importers:
       country-emoji:
         specifier: 1.5.6
         version: 1.5.6
+      d3:
+        specifier: 7.9.0
+        version: 7.9.0
       dayjs:
         specifier: 1.11.20
         version: 1.11.20
@@ -261,8 +261,8 @@ importers:
         specifier: 12.38.0
         version: 12.38.0(@emotion/is-prop-valid@1.3.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       i18next:
-        specifier: 25.10.9
-        version: 25.10.9(typescript@5.9.3)
+        specifier: 25.10.10
+        version: 25.10.10(typescript@5.9.3)
       jotai:
         specifier: 2.19.0
         version: 2.19.0(@babel/core@7.29.0)(@babel/template@7.28.6)(@types/react@19.2.14)(react@19.2.4)
@@ -301,7 +301,7 @@ importers:
         version: 8.2.0(6d218d2bf105c0e96ea9b04fabea0c78)
       react-i18next:
         specifier: 15.7.4
-        version: 15.7.4(i18next@25.10.9(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+        version: 15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       react-markdown:
         specifier: 10.1.0
         version: 10.1.0(@types/react@19.2.14)(react@19.2.4)
@@ -317,6 +317,9 @@ importers:
       swr:
         specifier: 2.4.1
         version: 2.4.1(react@19.2.4)
+      vaul:
+        specifier: 1.1.2
+        version: 1.1.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       virtua:
         specifier: 0.46.6
         version: 0.46.6(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(solid-js@1.9.5)
@@ -375,6 +378,15 @@ importers:
       '@tauri-apps/plugin-updater':
         specifier: 2.10.0
         version: 2.10.0
+      '@types/d3':
+        specifier: 7.4.3
+        version: 7.4.3
+      '@types/d3-interpolate-path':
+        specifier: 2.0.3
+        version: 2.0.3
+      '@types/json-schema':
+        specifier: 7.0.15
+        version: 7.0.15
       '@types/react':
         specifier: 19.2.14
         version: 19.2.14
@@ -436,8 +448,8 @@ importers:
         specifier: 3.2.2
         version: 3.2.2(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
       vite-plugin-sass-dts:
-        specifier: 1.3.35
-        version: 1.3.35(postcss@8.5.8)(prettier@3.8.1)(sass-embedded@1.98.0)(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
+        specifier: 1.3.37
+        version: 1.3.37(postcss@8.5.8)(prettier@3.8.1)(sass-embedded@1.98.0)(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
       vite-plugin-svgr:
         specifier: 4.5.0
         version: 4.5.0(rollup@4.46.2)(typescript@5.9.3)(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2))
@@ -500,7 +512,7 @@ importers:
         version: 6.0.0(react@19.2.4)
       react-i18next:
         specifier: 15.7.4
-        version: 15.7.4(i18next@25.10.9(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
+        version: 15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
       react-use:
         specifier: 17.6.0
         version: 17.6.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -5798,8 +5810,8 @@ packages:
   hyphenate-style-name@1.1.0:
     resolution: {integrity: sha512-WDC/ui2VVRrz3jOVi+XtjqkDjiVjTtFaAGiW37k6b+ohyQ5wYDOGkvCZa8+H0nx3gyvv0+BST9xuOgIyGQ00gw==}
 
-  i18next@25.10.9:
-    resolution: {integrity: sha512-hQY9/bFoQKGlSKMlaCuLR8w1h5JjieqrsnZvEmj1Ja6Ec7fbyc4cTrCsY9mb9Sd8YQ/swsrKz1S9M8AcvVI70w==}
+  i18next@25.10.10:
+    resolution: {integrity: sha512-cqUW2Z3EkRx7NqSyywjkgCLK7KLCL6IFVFcONG7nVYIJ3ekZ1/N5jUsihHV6Bq37NfhgtczxJcxduELtjTwkuQ==}
     peerDependencies:
       typescript: ^5 || ^6
     peerDependenciesMeta:
@@ -7927,6 +7939,12 @@ packages:
   varint@6.0.0:
     resolution: {integrity: sha512-cXEIW6cfr15lFv563k4GuVuW/fiwjknytD37jIOLSdSWuOI6WnO/oKwmP2FQTU2l01LP8/M5TSAJpzUaGe3uWg==}
 
+  vaul@1.1.2:
+    resolution: {integrity: sha512-ZFkClGpWyI2WUQjdLJ/BaGuV6AVQiJ3uELGk3OYtP+B6yCO7Cmn9vPFXVJkRaGkOJu3m8bQMgtyzNHixULceQA==}
+    peerDependencies:
+      react: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
+      react-dom: ^16.8 || ^17.0 || ^18.0 || ^19.0.0 || ^19.0.0-rc
+
   vfile-message@4.0.2:
     resolution: {integrity: sha512-jRDZ1IMLttGj41KcZvlrYAaI3CfqpLpfpf+Mfig13viT6NKvRzWZ+lXz0Y5D60w6uJIBAOGq9mSHf0gktF0duw==}
 
@@ -7972,14 +7990,14 @@ packages:
     peerDependencies:
       vite: '>=2.0.0'
 
-  vite-plugin-sass-dts@1.3.35:
-    resolution: {integrity: sha512-WWfOvgwu7ljBdmtt8VjSvsyzmXUhyITdXhDYzkTprXYOJ9Efbknf97lBPbKcF2sCVeK/JsH+djvJbkazDU5VGQ==}
+  vite-plugin-sass-dts@1.3.37:
+    resolution: {integrity: sha512-R3TgyrMhHh81sBuFFt5FjEWRbFeukoqwIeUmQDxJKYhOk8lafkftvoSqKsfWMepXQL73cu3HFk6FD6nLZ2mDjA==}
     engines: {node: '>=20'}
     peerDependencies:
       postcss: ^8
       prettier: ^2.7 || ^3
       sass-embedded: ^1.78.0
-      vite: ^7
+      vite: ^7 || ^8
 
   vite-plugin-svgr@4.5.0:
     resolution: {integrity: sha512-W+uoSpmVkSmNOGPSsDCWVW/DDAyv+9fap9AZXBvWiQqrboJ08j2vh0tFxTD/LjwqwAd3yYSVJgm54S/1GhbdnA==}
@@ -13514,7 +13532,7 @@ snapshots:
 
   hyphenate-style-name@1.1.0: {}
 
-  i18next@25.10.9(typescript@5.9.3):
+  i18next@25.10.10(typescript@5.9.3):
     dependencies:
       '@babel/runtime': 7.29.2
     optionalDependencies:
@@ -14770,11 +14788,11 @@ snapshots:
     dependencies:
       react: 19.2.4
 
-  react-i18next@15.7.4(i18next@25.10.9(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3):
+  react-i18next@15.7.4(i18next@25.10.10(typescript@5.9.3))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3):
     dependencies:
       '@babel/runtime': 7.28.3
       html-parse-stringify: 3.0.1
-      i18next: 25.10.9(typescript@5.9.3)
+      i18next: 25.10.10(typescript@5.9.3)
       react: 19.2.4
     optionalDependencies:
       react-dom: 19.2.4(react@19.2.4)
@@ -15783,6 +15801,15 @@ snapshots:
 
   varint@6.0.0: {}
 
+  vaul@1.1.2(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4):
+    dependencies:
+      '@radix-ui/react-dialog': 1.1.15(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+
   vfile-message@4.0.2:
     dependencies:
       '@types/unist': 3.0.2
@@ -15845,7 +15872,7 @@ snapshots:
       pathe: 0.2.0
       vite: 7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2)
 
-  vite-plugin-sass-dts@1.3.35(postcss@8.5.8)(prettier@3.8.1)(sass-embedded@1.98.0)(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2)):
+  vite-plugin-sass-dts@1.3.37(postcss@8.5.8)(prettier@3.8.1)(sass-embedded@1.98.0)(vite@7.3.1(@types/node@24.11.0)(jiti@2.6.1)(less@4.2.0)(lightningcss@1.32.0)(sass-embedded@1.98.0)(sass@1.98.0)(stylus@0.62.0)(terser@5.36.0)(tsx@4.21.0)(yaml@2.8.2)):
     dependencies:
       postcss: 8.5.8
       postcss-js: 4.0.1(postcss@8.5.8)
