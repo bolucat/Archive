@@ -84,7 +84,6 @@
             }"
             :epubOptions="{
               allowPopups: true,
-              allowScriptedContent: true,
             }"
             @update:location="locationChange"
           />
