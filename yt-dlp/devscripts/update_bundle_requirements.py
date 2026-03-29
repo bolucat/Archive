@@ -22,8 +22,11 @@ from devscripts.utils import run_process
 REQUIREMENTS_PATH = pathlib.Path(__file__).parent.parent / 'bundle/requirements'
 INPUT_TMPL = 'requirements-{}.in'
 OUTPUT_TMPL = 'requirements-{}.txt'
-COOLDOWN_DATE = (dt.datetime.today() - dt.timedelta(days=5)).strftime('%Y-%m-%d')
 CUSTOM_COMPILE_COMMAND = 'python -m devscripts.update_bundle_requirements'
+COOLDOWN_DATE = (dt.date.today() - dt.timedelta(days=7)).isoformat()
+FUTURE_DATE = (dt.date.today() + dt.timedelta(days=1)).isoformat()
+
+COOLDOWN_EXCEPTIONS = ('protobug', 'yt-dlp-ejs')
 
 LINUX_GNU_PYTHON_VERSION = '3.13'
 LINUX_MUSL_PYTHON_VERISON = '3.14'
@@ -152,14 +155,20 @@ def write_requirements_input(filepath: pathlib.Path, *args: str) -> None:
 def run_pip_compile(python_platform: str, python_version: str, requirements_input_path: pathlib.Path, *args: str) -> str:
     return run_process(
         'uv', 'pip', 'compile',
+        '--no-config',
+        '--quiet',
+        '--no-progress',
+        '--color=never',
         '--upgrade',
         f'--exclude-newer={COOLDOWN_DATE}',
+        *(f'--exclude-newer-package={package}={FUTURE_DATE}' for package in COOLDOWN_EXCEPTIONS),
         f'--python-platform={python_platform}',
         f'--python-version={python_version}',
         '--generate-hashes',
         '--no-strip-markers',
         f'--custom-compile-command={CUSTOM_COMPILE_COMMAND}',
         str(requirements_input_path),
+        '--format=requirements.txt',
         *args)
 
 
@@ -174,7 +183,7 @@ def main():
         base_requirements_path.write_text(f'pyinstaller=={pyinstaller_version}\n')
         pyinstaller_builds_deps = run_pip_compile(
             target.platform, target.version, base_requirements_path,
-            '--color=never', '--no-emit-package=pyinstaller').stdout
+            '--no-emit-package=pyinstaller').stdout
         requirements_path = REQUIREMENTS_PATH / OUTPUT_TMPL.format(target_suffix)
         requirements_path.write_text(PYINSTALLER_BUILDS_TMPL.format(
             pyinstaller_builds_deps, asset_info['browser_download_url'], asset_info['digest']))

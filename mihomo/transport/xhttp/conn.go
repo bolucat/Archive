@@ -4,14 +4,14 @@ import (
 	"io"
 	"time"
 
-	"github.com/metacubex/mihomo/transport/gun"
+	"github.com/metacubex/mihomo/common/httputils"
 )
 
 type Conn struct {
 	writer  io.WriteCloser
 	reader  io.ReadCloser
 	onClose func()
-	gun.NetAddr
+	httputils.NetAddr
 
 	// deadlines
 	deadline *time.Timer

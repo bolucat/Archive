@@ -48,7 +48,7 @@ return view.extend({
         poll.add(L.bind(function () {
             const option = this;
             return L.resolveDefault(momo.getAppLog()).then(function (log) {
-                option.getUIElement('log').setValue(log);
+                option.getUIElement('placeholder').setValue(log);
             });
         }, o));
 
@@ -81,7 +81,7 @@ return view.extend({
         poll.add(L.bind(function () {
             const option = this;
             return L.resolveDefault(momo.getCoreLog()).then(function (log) {
-                option.getUIElement('log').setValue(log);
+                option.getUIElement('placeholder').setValue(log);
             });
         }, o));
 

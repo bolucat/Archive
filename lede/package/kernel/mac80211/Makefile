@@ -10,7 +10,7 @@ include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=mac80211
 
-ifdef CONFIG_LINUX_6_12
+ifneq ($(filter y,$(CONFIG_LINUX_6_12) $(CONFIG_LINUX_6_18)),)
 PKG_VERSION:=6.18.7
 PKG_HASH:=623e5cf46ca8e81fd413f4f465e2580a0143e24929f9c22ce1ba7c34f2872989
 PKG_SOURCE_URL:=https://github.com/openwrt/backports/releases/download/backports-v$(PKG_VERSION)

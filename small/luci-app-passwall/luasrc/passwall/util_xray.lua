@@ -304,6 +304,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 						finalmask.tcp[#finalmask.tcp+1] = api.clone(fragment_table)
 					end
 					if noise and noise_table and (TP == "mkcp" or (TP == "xhttp" and node.alpn == "h3")) then
+						finalmask.udp = finalmask.udp or {}
 						finalmask.udp[#finalmask.udp+1] = api.clone(noise_table)
 					end
 					if node.finalmask and node.finalmask ~= "" then
@@ -770,10 +771,10 @@ function gen_config(var)
 		uci:foreach(appname, "xray_noise_packets", function(n)
 			if n.enabled == "1" then
 				local noise = {
-					rand = (n.type == "rand") and (string.find(n.packet, "-") and n.packet or tonumber(n.packet)) or nil,
+					rand = (n.type == "rand" and n.packet) and (string.find(n.packet, "-", 1, true) and n.packet or tonumber(n.packet)) or nil,
 					type = (n.type ~= "rand") and n.type or nil,
 					packet = (n.type ~= "rand") and n.packet or nil,
-					delay = string.find(n.delay, "-") and n.delay or tonumber(n.delay)
+					delay = n.delay and (string.find(n.delay, "-", 1, true) and n.delay or tonumber(n.delay)) or nil
 				}
 				table.insert(noises, noise)
 			end

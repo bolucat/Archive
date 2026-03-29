@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metacubex/mihomo/common/httputils"
 	N "github.com/metacubex/mihomo/common/net"
 
 	"github.com/metacubex/http"
@@ -194,7 +195,7 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writer: httpSC,
 			reader: httpSC,
 		}
-		conn.SetAddrFromRequest(r)
+		httputils.SetAddrFromRequest(&conn.NetAddr, r)
 
 		go h.connHandler(N.NewDeadlineConn(conn))
 
@@ -228,7 +229,7 @@ func (h *requestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				h.deleteSession(sessionID)
 			},
 		}
-		conn.SetAddrFromRequest(r)
+		httputils.SetAddrFromRequest(&conn.NetAddr, r)
 
 		go h.connHandler(N.NewDeadlineConn(conn))
 

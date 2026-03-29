@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.62.2](https://github.com/filebrowser/filebrowser/compare/v2.62.1...v2.62.2) (2026-03-28)
+
+
+### Bug Fixes
+
+* disable scripted content in epub ([126227b](https://github.com/filebrowser/filebrowser/commit/126227bb2754eee15cd7c722916c3bb8821084a2))
+* double slash in TUS upload path when readEntries returns multiple batches ([#5848](https://github.com/filebrowser/filebrowser/issues/5848)) ([432f3e6](https://github.com/filebrowser/filebrowser/commit/432f3e60ffdf92af6f8f56119a1bac8084f52a60))
+* include filename in Content-Disposition header for inline downloads ([#5860](https://github.com/filebrowser/filebrowser/issues/5860)) ([8f81b77](https://github.com/filebrowser/filebrowser/commit/8f81b77cf2a3da0a445f3700fbf4a0091ea46c07))
+* json escaping ([c406bda](https://github.com/filebrowser/filebrowser/commit/c406bda0c73ac8b187e23a97c05521edc77efa84))
+* self-registered users don't get execute perms ([b6a4fb1](https://github.com/filebrowser/filebrowser/commit/b6a4fb1f27f4d894b384c0f3acacda276d1338a5))
+* shares listing ([a8fc165](https://github.com/filebrowser/filebrowser/commit/a8fc1657b796c5da7190466beff13e680721b6d3))
+* touch Redis upload cache key on GetLength to prevent TTL expiry ([#5850](https://github.com/filebrowser/filebrowser/issues/5850)) ([4812536](https://github.com/filebrowser/filebrowser/commit/48125365551ce2b27790aaafd7594cf5ce52f1ba))
+* use html/template ([d9f9460](https://github.com/filebrowser/filebrowser/commit/d9f9460c1e51d10a25065e10358c12d5ced66ad9))
+
 ## [2.62.1](https://github.com/filebrowser/filebrowser/compare/v2.62.0...v2.62.1) (2026-03-14)
 
 

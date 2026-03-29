@@ -21,6 +21,10 @@ procd=$(uci -q get momo.procd); [ -z "$procd" ] && {
 	uci del momo.config.fast_reload
 }
 
+# since v1.1.1
+
+dummy_device=$(uci -q get momo.routing.dummy_device); [ -z "$dummy_device" ] && uci set momo.routing.dummy_device=momo-dummy
+
 # commit
 uci commit momo
 

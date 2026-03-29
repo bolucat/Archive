@@ -10,47 +10,33 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
-	"time"
 
 	"github.com/metacubex/mihomo/common/contextutils"
-	"github.com/metacubex/mihomo/transport/gun"
+	"github.com/metacubex/mihomo/common/httputils"
 
 	"github.com/metacubex/http"
-	"github.com/metacubex/http/httptrace"
 	"github.com/metacubex/tls"
 )
 
 type DialRawFunc func(ctx context.Context) (net.Conn, error)
 type WrapTLSFunc func(ctx context.Context, conn net.Conn, isH2 bool) (net.Conn, error)
 
-type PacketUpConn struct {
+type PacketUpWriter struct {
 	ctx       context.Context
 	cfg       *Config
-	address   string
-	port      int
-	host      string
 	sessionID string
-	client    *http.Client
+	transport http.RoundTripper
 	writeMu   sync.Mutex
 	seq       uint64
-	reader    io.ReadCloser
-	gun.NetAddr
-
-	// deadlines
-	deadline *time.Timer
 }
 
-func (c *PacketUpConn) Read(b []byte) (int, error) {
-	return c.reader.Read(b)
-}
-
-func (c *PacketUpConn) Write(b []byte) (int, error) {
+func (c *PacketUpWriter) Write(b []byte) (int, error) {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 
 	u := url.URL{
 		Scheme: "https",
-		Host:   c.host,
+		Host:   c.cfg.Host,
 		Path:   c.cfg.NormalizedPath(),
 	}
 
@@ -65,9 +51,9 @@ func (c *PacketUpConn) Write(b []byte) (int, error) {
 	if err := c.cfg.FillPacketRequest(req, c.sessionID, seqStr, b); err != nil {
 		return 0, err
 	}
-	req.Host = c.host
+	req.Host = c.cfg.Host
 
-	resp, err := c.client.Do(req)
+	resp, err := c.transport.RoundTrip(req)
 	if err != nil {
 		return 0, err
 	}
@@ -81,51 +67,20 @@ func (c *PacketUpConn) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-func (c *PacketUpConn) Close() error {
-	if c.reader != nil {
-		return c.reader.Close()
-	}
-	return nil
-}
-
-func (c *PacketUpConn) SetReadDeadline(t time.Time) error  { return c.SetDeadline(t) }
-func (c *PacketUpConn) SetWriteDeadline(t time.Time) error { return c.SetDeadline(t) }
-
-func (c *PacketUpConn) SetDeadline(t time.Time) error {
-	if t.IsZero() {
-		if c.deadline != nil {
-			c.deadline.Stop()
-			c.deadline = nil
-		}
-		return nil
-	}
-	d := time.Until(t)
-	if c.deadline != nil {
-		c.deadline.Reset(d)
-		return nil
-	}
-	c.deadline = time.AfterFunc(d, func() {
-		c.Close()
-	})
+func (c *PacketUpWriter) Close() error {
+	httputils.CloseTransport(c.transport)
 	return nil
 }
 
 func DialStreamOne(
 	ctx context.Context,
-	address string,
-	port int,
 	cfg *Config,
 	dialRaw DialRawFunc,
 	wrapTLS WrapTLSFunc,
 ) (net.Conn, error) {
-	host := cfg.Host
-	if host == "" {
-		host = address
-	}
-
 	requestURL := url.URL{
 		Scheme: "https",
-		Host:   host,
+		Host:   cfg.Host,
 		Path:   cfg.NormalizedPath(),
 	}
 
@@ -144,30 +99,19 @@ func DialStreamOne(
 		},
 	}
 
-	client := &http.Client{
-		Transport: transport,
-	}
-
 	pr, pw := io.Pipe()
 
 	conn := &Conn{
 		writer: pw,
 	}
 
-	trace := &httptrace.ClientTrace{
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			conn.SetLocalAddr(connInfo.Conn.LocalAddr())
-			conn.SetRemoteAddr(connInfo.Conn.RemoteAddr())
-		},
-	}
-
-	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(contextutils.WithoutCancel(ctx), trace), http.MethodPost, requestURL.String(), pr)
+	req, err := http.NewRequestWithContext(httputils.NewAddrContext(&conn.NetAddr, contextutils.WithoutCancel(ctx)), http.MethodPost, requestURL.String(), pr)
 	if err != nil {
 		_ = pr.Close()
 		_ = pw.Close()
 		return nil, err
 	}
-	req.Host = host
+	req.Host = cfg.Host
 
 	if err := cfg.FillStreamRequest(req); err != nil {
 		_ = pr.Close()
@@ -175,34 +119,25 @@ func DialStreamOne(
 		return nil, err
 	}
 
-	type respResult struct {
-		resp *http.Response
-		err  error
-	}
-
-	respCh := make(chan respResult, 1)
-
-	go func() {
-		resp, err := client.Do(req)
-		respCh <- respResult{resp: resp, err: err}
-	}()
-
-	result := <-respCh
-	if result.err != nil {
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
 		_ = pr.Close()
 		_ = pw.Close()
-		return nil, result.err
+		httputils.CloseTransport(transport)
+		return nil, err
 	}
-	if result.resp.StatusCode < 200 || result.resp.StatusCode >= 300 {
-		_ = result.resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
 		_ = pr.Close()
 		_ = pw.Close()
-		return nil, fmt.Errorf("xhttp stream-one bad status: %s", result.resp.Status)
+		httputils.CloseTransport(transport)
+		return nil, fmt.Errorf("xhttp stream-one bad status: %s", resp.Status)
 	}
-	conn.reader = result.resp.Body
+	conn.reader = resp.Body
 	conn.onClose = func() {
-		_ = result.resp.Body.Close()
+		_ = resp.Body.Close()
 		_ = pr.Close()
+		httputils.CloseTransport(transport)
 	}
 
 	return conn, nil
@@ -210,17 +145,10 @@ func DialStreamOne(
 
 func DialPacketUp(
 	ctx context.Context,
-	address string,
-	port int,
 	cfg *Config,
 	dialRaw DialRawFunc,
 	wrapTLS WrapTLSFunc,
 ) (net.Conn, error) {
-	host := cfg.Host
-	if host == "" {
-		host = address
-	}
-
 	transport := &http.Http2Transport{
 		DialTLSContext: func(ctx context.Context, network string, addr string, _ *tls.Config) (net.Conn, error) {
 			raw, err := dialRaw(ctx)
@@ -236,49 +164,40 @@ func DialPacketUp(
 		},
 	}
 
-	client := &http.Client{Transport: transport}
-
 	sessionID := newSessionID()
 
 	downloadURL := url.URL{
 		Scheme: "https",
-		Host:   host,
+		Host:   cfg.Host,
 		Path:   cfg.NormalizedPath(),
 	}
 
-	conn := &PacketUpConn{
-		ctx:       contextutils.WithoutCancel(ctx),
+	ctx = contextutils.WithoutCancel(ctx)
+	writer := &PacketUpWriter{
+		ctx:       ctx,
 		cfg:       cfg,
-		address:   address,
-		port:      port,
-		host:      host,
 		sessionID: sessionID,
-		client:    client,
+		transport: transport,
 		seq:       0,
 	}
+	conn := &Conn{writer: writer}
 
-	trace := &httptrace.ClientTrace{
-		GotConn: func(connInfo httptrace.GotConnInfo) {
-			conn.SetLocalAddr(connInfo.Conn.LocalAddr())
-			conn.SetRemoteAddr(connInfo.Conn.RemoteAddr())
-		},
-	}
-
-	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(conn.ctx, trace), http.MethodGet, downloadURL.String(), nil)
+	req, err := http.NewRequestWithContext(httputils.NewAddrContext(&conn.NetAddr, ctx), http.MethodGet, downloadURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
 	if err := cfg.FillDownloadRequest(req, sessionID); err != nil {
 		return nil, err
 	}
-	req.Host = host
+	req.Host = cfg.Host
 
-	resp, err := client.Do(req)
+	resp, err := transport.RoundTrip(req)
 	if err != nil {
 		return nil, err
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
+		httputils.CloseTransport(transport)
 		return nil, fmt.Errorf("xhttp packet-up download bad status: %s", resp.Status)
 	}
 	conn.reader = resp.Body

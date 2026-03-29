@@ -222,8 +222,9 @@ service_started() {
 	local core_only
 	config_get_bool core_only "config" "core_only" 0
 	## core
-	local tun_inbound_tag
+	local tun_inbound_tag fake_ip_dns_server_tag
 	config_get tun_inbound_tag "core" "tun_inbound_tag"
+	config_get fake_ip_dns_server_tag "core" "fake_ip_dns_server_tag"
 	## proxy config
 	### general
 	local ipv4_proxy ipv6_proxy tcp_mode udp_mode tun_timeout tun_interval
@@ -234,7 +235,7 @@ service_started() {
 	config_get tun_timeout "proxy" "tun_timeout" 30
 	config_get tun_interval "proxy" "tun_interval" 1
 	## routing config
-	local tproxy_fw_mark tproxy_fw_mask tun_fw_mark tun_fw_mask tproxy_rule_pref tun_rule_pref tproxy_route_table tun_route_table cgroup_id cgroup_name
+	local tproxy_fw_mark tproxy_fw_mask tun_fw_mark tun_fw_mask tproxy_rule_pref tun_rule_pref tproxy_route_table tun_route_table cgroup_id cgroup_name dummy_device
 	config_get tproxy_fw_mark "routing" "tproxy_fw_mark" "0x80"
 	config_get tproxy_fw_mask "routing" "tproxy_fw_mask" "0xFF"
 	config_get tun_fw_mark "routing" "tun_fw_mark" "0x81"
@@ -245,6 +246,7 @@ service_started() {
 	config_get tun_route_table "routing" "tun_route_table" "81"
 	config_get cgroup_id "routing" "cgroup_id" "0x12061206"
 	config_get cgroup_name "routing" "cgroup_name" "momo"
+	config_get dummy_device "routing" "dummy_device" "momo-dummy"
 	# prepare config
 	local tproxy_enable; tproxy_enable=0
 	if [ "$tcp_mode" = "tproxy" ] || [ "$udp_mode" = "tproxy" ]; then
@@ -255,6 +257,7 @@ service_started() {
 		tun_enable=1
 	fi
 	local tun_device; tun_device=$(jsonfilter -q -i "$RUN_PROFILE_PATH" -e "@['inbounds'][*]" | jsonfilter -q -a -e "@[@['tag']='$tun_inbound_tag']" | jsonfilter -q -a -e "@[@['type']='tun']" | jsonfilter -q -e "@['interface_name']")
+	local fake_ip6_range; fake_ip6_range=$(jsonfilter -q -i "$RUN_PROFILE_PATH" -e "@['dns']['servers'][*]" | jsonfilter -q -a -e "@[@['tag']='$fake_ip_dns_server_tag']" | jsonfilter -q -e "@['inet6_range']")
 	if [ "$core_only" = 0 ]; then
 		# proxy
 		log "Proxy" "Enabled."
@@ -323,6 +326,11 @@ service_started() {
 			fi
 			$FIREWALL_INCLUDE_SH
 		fi
+		if [ -n "$fake_ip6_range" ]; then
+			ip link add "$dummy_device" type dummy
+			ip link set dev "$dummy_device" up
+			ip -6 route add "$fake_ip6_range" dev "$dummy_device"
+		fi
 		# hijack
 		utpl -S "$HIJACK_UT" | nft -f -
 		# check hijack
@@ -355,9 +363,10 @@ cleanup() {
 	config_load momo
 	# get config
 	## routing config
-	local tproxy_route_table tun_route_table
+	local tproxy_route_table tun_route_table dummy_device
 	config_get tproxy_route_table "routing" "tproxy_route_table" "80"
 	config_get tun_route_table "routing" "tun_route_table" "81"
+	config_get dummy_device "routing" "dummy_device" "momo-dummy"
 	# delete routing policy
 	ip -4 rule del table "$tproxy_route_table" > /dev/null 2>&1
 	ip -4 rule del table "$tun_route_table" > /dev/null 2>&1
@@ -368,6 +377,8 @@ cleanup() {
 	ip -4 route flush table "$tun_route_table" > /dev/null 2>&1
 	ip -6 route flush table "$tproxy_route_table" > /dev/null 2>&1
 	ip -6 route flush table "$tun_route_table" > /dev/null 2>&1
+	# delete dummy device
+	ip -6 link del "$dummy_device" > /dev/null 2>&1
 	# delete hijack
 	nft delete table inet momo > /dev/null 2>&1
 	local handles handle

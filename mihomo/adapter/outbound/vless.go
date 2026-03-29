@@ -267,8 +267,6 @@ func (v *Vless) dialXHTTPConn(ctx context.Context) (net.Conn, error) {
 	case "stream-one":
 		return xhttp.DialStreamOne(
 			ctx,
-			v.option.Server,
-			v.option.Port,
 			cfg,
 			func(ctx context.Context) (net.Conn, error) {
 				return v.dialer.DialContext(ctx, "tcp", v.addr)
@@ -280,8 +278,6 @@ func (v *Vless) dialXHTTPConn(ctx context.Context) (net.Conn, error) {
 	case "packet-up":
 		return xhttp.DialPacketUp(
 			ctx,
-			v.option.Server,
-			v.option.Port,
 			cfg,
 			func(ctx context.Context) (net.Conn, error) {
 				return v.dialer.DialContext(ctx, "tcp", v.addr)
