@@ -2,6 +2,23 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.8
+
+* Add BBR profile and hop interval randomization for Hysteria2 **1**
+* Fixes and improvements
+
+**1**:
+
+See [Hysteria2 Inbound](/configuration/inbound/hysteria2/#bbr_profile) and [Hysteria2 Outbound](/configuration/outbound/hysteria2/#bbr_profile).
+
+#### 1.14.0-alpha.8
+
+* Fixes and improvements
+
+#### 1.13.5
+
+* Fixes and improvements
+
 #### 1.14.0-alpha.7
 
 * Fixes and improvements

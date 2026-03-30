@@ -760,7 +760,7 @@ function gen_config(var)
 			settings = {
 				packets = xray_settings.fragment_packets,
 				length = xray_settings.fragment_length,
-				delay = string.find(delay, "-") and delay or tonumber(delay),
+				delay = delay and (delay:find("-", 1, true) and delay or tonumber(delay)) or nil,
 				maxSplit = xray_settings.fragment_maxSplit
 			}
 		}
@@ -771,10 +771,10 @@ function gen_config(var)
 		uci:foreach(appname, "xray_noise_packets", function(n)
 			if n.enabled == "1" then
 				local noise = {
-					rand = (n.type == "rand" and n.packet) and (string.find(n.packet, "-", 1, true) and n.packet or tonumber(n.packet)) or nil,
+					rand = (n.type == "rand" and n.packet) and (n.packet:find("-", 1, true) and n.packet or tonumber(n.packet)) or nil,
 					type = (n.type ~= "rand") and n.type or nil,
 					packet = (n.type ~= "rand") and n.packet or nil,
-					delay = n.delay and (string.find(n.delay, "-", 1, true) and n.delay or tonumber(n.delay)) or nil
+					delay = n.delay and (n.delay:find("-", 1, true) and n.delay or tonumber(n.delay)) or nil
 				}
 				table.insert(noises, noise)
 			end

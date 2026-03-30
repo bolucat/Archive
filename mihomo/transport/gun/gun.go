@@ -4,7 +4,6 @@
 package gun
 
 import (
-	"bufio"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -48,7 +47,6 @@ type Conn struct {
 	initOnce sync.Once
 	initErr  error
 	reader   io.ReadCloser
-	br       *bufio.Reader
 	remain   int
 
 	closeMutex sync.Mutex
@@ -84,7 +82,6 @@ func (g *Conn) initReader() {
 	}
 
 	g.reader = reader
-	g.br = bufio.NewReader(reader)
 }
 
 func (g *Conn) Init() error {
@@ -96,61 +93,49 @@ func (g *Conn) Read(b []byte) (n int, err error) {
 	if err = g.Init(); err != nil {
 		return
 	}
+	return g.read(b)
+}
 
+func (g *Conn) read(b []byte) (n int, err error) {
 	if g.remain > 0 {
 		size := g.remain
 		if len(b) < size {
 			size = len(b)
 		}
 
-		n, err = io.ReadFull(g.br, b[:size])
+		n, err = io.ReadFull(g.reader, b[:size])
 		g.remain -= n
 		return
 	}
 
 	// 0x00 grpclength(uint32) 0x0A uleb128 payload
-	_, err = g.br.Discard(6)
+	var discard [6]byte
+	_, err = io.ReadFull(g.reader, discard[:])
 	if err != nil {
 		return 0, err
 	}
 
-	protobufPayloadLen, err := binary.ReadUvarint(g.br)
+	protobufPayloadLen, err := ReadUVariant(g.reader)
 	if err != nil {
 		return 0, ErrInvalidLength
 	}
-
-	size := int(protobufPayloadLen)
-	if len(b) < size {
-		size = len(b)
-	}
-
-	n, err = io.ReadFull(g.br, b[:size])
-	if err != nil {
-		return
-	}
-
-	remain := int(protobufPayloadLen) - n
-	if remain > 0 {
-		g.remain = remain
-	}
-
-	return n, nil
+	g.remain = int(protobufPayloadLen)
+	return g.read(b)
 }
 
 func (g *Conn) Write(b []byte) (n int, err error) {
-	protobufHeader := [binary.MaxVarintLen64 + 1]byte{0x0A}
-	varuintSize := binary.PutUvarint(protobufHeader[1:], uint64(len(b)))
-	var grpcHeader [5]byte
-	grpcPayloadLen := uint32(varuintSize + 1 + len(b))
-	binary.BigEndian.PutUint32(grpcHeader[1:5], grpcPayloadLen)
+	dataLen := len(b)
+	varLen := UVarintLen(uint64(dataLen))
+	buf := pool.Get(5 + 1 + varLen + dataLen)
+	defer pool.Put(buf)
+	_ = buf[6] // bounds check hint to compiler
+	buf[0] = 0x00
+	binary.BigEndian.PutUint32(buf[1:5], uint32(1+varLen+dataLen))
+	buf[5] = 0x0A
+	binary.PutUvarint(buf[6:], uint64(dataLen))
+	copy(buf[6+varLen:], b)
 
-	buf := pool.GetBuffer()
-	defer pool.PutBuffer(buf)
-	buf.Write(grpcHeader[:])
-	buf.Write(protobufHeader[:varuintSize+1])
-	buf.Write(b)
-
-	_, err = g.writer.Write(buf.Bytes())
+	_, err = g.writer.Write(buf)
 	if err == io.ErrClosedPipe {
 		if initErr := g.Init(); initErr != nil {
 			err = initErr
@@ -203,14 +188,14 @@ func (g *Conn) Close() error {
 
 	var errorArr []error
 
-	if reader := g.reader; reader != nil {
-		if err := reader.Close(); err != nil {
+	if closer, ok := g.writer.(io.Closer); ok {
+		if err := closer.Close(); err != nil {
 			errorArr = append(errorArr, err)
 		}
 	}
 
-	if closer, ok := g.writer.(io.Closer); ok {
-		if err := closer.Close(); err != nil {
+	if reader := g.reader; reader != nil {
+		if err := reader.Close(); err != nil {
 			errorArr = append(errorArr, err)
 		}
 	}

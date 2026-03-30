@@ -709,18 +709,22 @@ public class ProfilesViewModel : MyReactiveObject
 
     public async Task ServerSpeedtest(ESpeedActionType actionType)
     {
-        if (actionType == ESpeedActionType.Mixedtest)
+        List<ProfileItem>? lstSelected;
+        if (actionType is ESpeedActionType.Mixedtest or ESpeedActionType.FastRealping)
         {
-            SelectedProfiles = ProfileItems;
+            if (actionType == ESpeedActionType.FastRealping)
+            {
+                actionType = ESpeedActionType.Realping;
+            }
+
+            lstSelected = JsonUtils.Deserialize<List<ProfileItem>>(JsonUtils.Serialize(ProfileItems?.OrderBy(t => t.Sort)));
         }
-        else if (actionType == ESpeedActionType.FastRealping)
+        else
         {
-            SelectedProfiles = ProfileItems;
-            actionType = ESpeedActionType.Realping;
+            lstSelected = await GetProfileItems(false);
         }
 
-        var lstSelected = await GetProfileItems(false);
-        if (lstSelected == null)
+        if (lstSelected is null || lstSelected.Count <= 0)
         {
             return;
         }

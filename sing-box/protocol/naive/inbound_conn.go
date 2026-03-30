@@ -179,18 +179,18 @@ type naiveConn struct {
 
 func (c *naiveConn) Read(p []byte) (n int, err error) {
 	n, err = c.readWithPadding(c.Conn, p)
-	return n, baderror.WrapH2(err)
+	return n, wrapError(err)
 }
 
 func (c *naiveConn) Write(p []byte) (n int, err error) {
 	n, err = c.writeChunked(c.Conn, p)
-	return n, baderror.WrapH2(err)
+	return n, wrapError(err)
 }
 
 func (c *naiveConn) WriteBuffer(buffer *buf.Buffer) error {
 	defer buffer.Release()
 	err := c.writeBufferWithPadding(c.Conn, buffer)
-	return baderror.WrapH2(err)
+	return wrapError(err)
 }
 
 func (c *naiveConn) FrontHeadroom() int      { return c.frontHeadroom() }
@@ -210,7 +210,7 @@ type naiveH2Conn struct {
 
 func (c *naiveH2Conn) Read(p []byte) (n int, err error) {
 	n, err = c.readWithPadding(c.reader, p)
-	return n, baderror.WrapH2(err)
+	return n, wrapError(err)
 }
 
 func (c *naiveH2Conn) Write(p []byte) (n int, err error) {
@@ -218,7 +218,7 @@ func (c *naiveH2Conn) Write(p []byte) (n int, err error) {
 	if err == nil {
 		c.flusher.Flush()
 	}
-	return n, baderror.WrapH2(err)
+	return n, wrapError(err)
 }
 
 func (c *naiveH2Conn) WriteBuffer(buffer *buf.Buffer) error {
@@ -227,7 +227,15 @@ func (c *naiveH2Conn) WriteBuffer(buffer *buf.Buffer) error {
 	if err == nil {
 		c.flusher.Flush()
 	}
-	return baderror.WrapH2(err)
+	return wrapError(err)
+}
+
+func wrapError(err error) error {
+	err = baderror.WrapH2(err)
+	if WrapError != nil {
+		err = WrapError(err)
+	}
+	return err
 }
 
 func (c *naiveH2Conn) Close() error {

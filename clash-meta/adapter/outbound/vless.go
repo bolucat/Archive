@@ -72,13 +72,12 @@ type VlessOption struct {
 }
 
 type XHTTPOptions struct {
-	Path                 string            `proxy:"path,omitempty"`
-	Host                 string            `proxy:"host,omitempty"`
-	Mode                 string            `proxy:"mode,omitempty"`
-	Headers              map[string]string `proxy:"headers,omitempty"`
-	ScMaxConcurrentPosts int               `proxy:"sc-max-concurrent-posts,omitempty"`
-	NoGRPCHeader         bool              `proxy:"no-grpc-header,omitempty"`
-	XPaddingBytes        string            `proxy:"x-padding-bytes,omitempty"`
+	Path          string            `proxy:"path,omitempty"`
+	Host          string            `proxy:"host,omitempty"`
+	Mode          string            `proxy:"mode,omitempty"`
+	Headers       map[string]string `proxy:"headers,omitempty"`
+	NoGRPCHeader  bool              `proxy:"no-grpc-header,omitempty"`
+	XPaddingBytes string            `proxy:"x-padding-bytes,omitempty"`
 }
 
 func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
@@ -242,7 +241,7 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 	return conn, nil
 }
 
-func (v *Vless) dialXHTTPConn(ctx context.Context) (net.Conn, error) {
+func (v *Vless) dialXHTTPConn() (net.Conn, error) {
 	requestHost := v.option.XHTTPOpts.Host
 	if requestHost == "" {
 		if v.option.ServerName != "" {
@@ -262,61 +261,39 @@ func (v *Vless) dialXHTTPConn(ctx context.Context) (net.Conn, error) {
 	}
 
 	mode := cfg.EffectiveMode(v.realityConfig != nil)
+	transport := xhttp.NewTransport(
+		func(ctx context.Context) (net.Conn, error) {
+			return v.dialer.DialContext(ctx, "tcp", v.addr)
+		},
+		func(ctx context.Context, raw net.Conn, isH2 bool) (net.Conn, error) {
+			return v.streamTLSConn(ctx, raw, isH2)
+		},
+	)
 
 	switch mode {
 	case "stream-one":
-		return xhttp.DialStreamOne(
-			ctx,
-			cfg,
-			func(ctx context.Context) (net.Conn, error) {
-				return v.dialer.DialContext(ctx, "tcp", v.addr)
-			},
-			func(ctx context.Context, raw net.Conn, isH2 bool) (net.Conn, error) {
-				return v.streamTLSConn(ctx, raw, isH2)
-			},
-		)
+		return xhttp.DialStreamOne(cfg, transport)
 	case "packet-up":
-		return xhttp.DialPacketUp(
-			ctx,
-			cfg,
-			func(ctx context.Context) (net.Conn, error) {
-				return v.dialer.DialContext(ctx, "tcp", v.addr)
-			},
-			func(ctx context.Context, raw net.Conn, isH2 bool) (net.Conn, error) {
-				return v.streamTLSConn(ctx, raw, isH2)
-			},
-		)
+		return xhttp.DialPacketUp(cfg, transport)
 	default:
 		return nil, fmt.Errorf("xhttp mode %s is not implemented yet", mode)
 	}
 }
 
-// DialContext implements C.ProxyAdapter
-func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
-	if v.option.Network == "xhttp" {
-		c, err := v.dialXHTTPConn(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
-		}
-
-		c, err = v.streamConnContext(ctx, c, metadata)
-		if err != nil {
-			safeConnClose(c, err)
-			return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
-		}
-
-		return NewConn(c, v), nil
-	}
-
-	var c net.Conn
+func (v *Vless) dialContext(ctx context.Context) (c net.Conn, err error) {
 	switch v.option.Network {
 	case "xhttp":
-		c, err = v.dialXHTTPConn(ctx)
+		return v.dialXHTTPConn()
 	case "grpc": // gun transport
-		c, err = v.gunTransport.Dial()
+		return v.gunTransport.Dial()
 	default:
-		c, err = v.dialer.DialContext(ctx, "tcp", v.addr)
 	}
+	return v.dialer.DialContext(ctx, "tcp", v.addr)
+}
+
+// DialContext implements C.ProxyAdapter
+func (v *Vless) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
+	c, err := v.dialContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
 	}
@@ -337,15 +314,7 @@ func (v *Vless) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (
 		return nil, err
 	}
 
-	var c net.Conn
-	switch v.option.Network {
-	case "xhttp":
-		c, err = v.dialXHTTPConn(ctx)
-	case "grpc": // gun transport
-		c, err = v.gunTransport.Dial()
-	default:
-		c, err = v.dialer.DialContext(ctx, "tcp", v.addr)
-	}
+	c, err := v.dialContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
 	}
@@ -355,16 +324,7 @@ func (v *Vless) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (
 
 	c, err = v.StreamConnContext(ctx, c, metadata)
 	if err != nil {
-		return nil, fmt.Errorf("new vless client error: %v", err)
-	}
-
-	return v.ListenPacketOnStreamConn(ctx, c, metadata)
-}
-
-// ListenPacketOnStreamConn implements C.ProxyAdapter
-func (v *Vless) ListenPacketOnStreamConn(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ C.PacketConn, err error) {
-	if err = v.ResolveUDP(ctx, metadata); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s connect error: %s", v.addr, err.Error())
 	}
 
 	if v.option.XUDP {

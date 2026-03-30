@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/metacubex/mihomo/common/contextutils"
 	"github.com/metacubex/mihomo/common/httputils"
 
 	"github.com/metacubex/http"
@@ -72,19 +71,8 @@ func (c *PacketUpWriter) Close() error {
 	return nil
 }
 
-func DialStreamOne(
-	ctx context.Context,
-	cfg *Config,
-	dialRaw DialRawFunc,
-	wrapTLS WrapTLSFunc,
-) (net.Conn, error) {
-	requestURL := url.URL{
-		Scheme: "https",
-		Host:   cfg.Host,
-		Path:   cfg.NormalizedPath(),
-	}
-
-	transport := &http.Http2Transport{
+func NewTransport(dialRaw DialRawFunc, wrapTLS WrapTLSFunc) http.RoundTripper {
+	return &http.Http2Transport{
 		DialTLSContext: func(ctx context.Context, network, addr string, _ *tls.Config) (net.Conn, error) {
 			raw, err := dialRaw(ctx)
 			if err != nil {
@@ -98,14 +86,20 @@ func DialStreamOne(
 			return wrapped, nil
 		},
 	}
+}
 
+func DialStreamOne(cfg *Config, transport http.RoundTripper) (net.Conn, error) {
+	requestURL := url.URL{
+		Scheme: "https",
+		Host:   cfg.Host,
+		Path:   cfg.NormalizedPath(),
+	}
 	pr, pw := io.Pipe()
 
-	conn := &Conn{
-		writer: pw,
-	}
+	ctx := context.Background()
+	conn := &Conn{writer: pw}
 
-	req, err := http.NewRequestWithContext(httputils.NewAddrContext(&conn.NetAddr, contextutils.WithoutCancel(ctx)), http.MethodPost, requestURL.String(), pr)
+	req, err := http.NewRequestWithContext(httputils.NewAddrContext(&conn.NetAddr, ctx), http.MethodPost, requestURL.String(), pr)
 	if err != nil {
 		_ = pr.Close()
 		_ = pw.Close()
@@ -143,27 +137,7 @@ func DialStreamOne(
 	return conn, nil
 }
 
-func DialPacketUp(
-	ctx context.Context,
-	cfg *Config,
-	dialRaw DialRawFunc,
-	wrapTLS WrapTLSFunc,
-) (net.Conn, error) {
-	transport := &http.Http2Transport{
-		DialTLSContext: func(ctx context.Context, network string, addr string, _ *tls.Config) (net.Conn, error) {
-			raw, err := dialRaw(ctx)
-			if err != nil {
-				return nil, err
-			}
-			wrapped, err := wrapTLS(ctx, raw, true)
-			if err != nil {
-				_ = raw.Close()
-				return nil, err
-			}
-			return wrapped, nil
-		},
-	}
-
+func DialPacketUp(cfg *Config, transport http.RoundTripper) (net.Conn, error) {
 	sessionID := newSessionID()
 
 	downloadURL := url.URL{
@@ -172,7 +146,7 @@ func DialPacketUp(
 		Path:   cfg.NormalizedPath(),
 	}
 
-	ctx = contextutils.WithoutCancel(ctx)
+	ctx := context.Background()
 	writer := &PacketUpWriter{
 		ctx:       ctx,
 		cfg:       cfg,
