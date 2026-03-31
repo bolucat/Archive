@@ -133,11 +133,9 @@ o.validate = function(self, value)
 	return value:gsub("%s+", ""):gsub("%z", "")
 end
 
-o = s:option(Flag, "allowInsecure", translate("allowInsecure"))
+o = s:option(Flag, "allowInsecure", translate("allowInsecure"), translate("Whether unsafe connections are allowed. When checked, Certificate validation will be skipped."))
 o.default = "0"
 o.rmempty = false
-o.description = translate("Whether unsafe connections are allowed. When checked, Certificate validation will be skipped.") .. "<br>" ..
-		translate("Used when the node link does not include this parameter.")
 
 o = s:option(ListValue, "filter_keyword_mode", translate("Filter keyword Mode"))
 o.default = "5"
