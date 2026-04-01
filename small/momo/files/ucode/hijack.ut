@@ -161,7 +161,7 @@
 	}
 -%}
 
-table inet nikki {
+table inet momo {
 	set dns_hijack_nfproto {
 		type nf_proto
 		flags interval

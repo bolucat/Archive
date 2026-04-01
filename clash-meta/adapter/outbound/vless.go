@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -37,7 +38,7 @@ type Vless struct {
 	// for gun mux
 	gunTransport *gun.Transport
 	// for xhttp
-	dialXHTTPConn func() (net.Conn, error)
+	xhttpClient *xhttp.Client
 
 	realityConfig *tlsC.RealityConfig
 	echConfig     *ech.Config
@@ -132,7 +133,6 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 			wsOpts.TLS = true
 			wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
 				TLSConfig: &tls.Config{
-					MinVersion:         tls.VersionTLS12,
 					ServerName:         host,
 					InsecureSkipVerify: v.option.SkipCertVerify,
 					NextProtos:         []string{"http/1.1"},
@@ -188,7 +188,7 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 	case "grpc":
 		break // already handle in gun transport
 	case "xhttp":
-		break // already handle in dialXHTTPConn
+		break // already handle in xhttp client
 	default:
 		// default tcp network
 		// handle TLS
@@ -272,7 +272,7 @@ func (v *Vless) dialContext(ctx context.Context) (c net.Conn, err error) {
 	case "grpc": // gun transport
 		return v.gunTransport.Dial()
 	case "xhttp":
-		return v.dialXHTTPConn()
+		return v.xhttpClient.Dial()
 	default:
 	}
 	return v.dialer.DialContext(ctx, "tcp", v.addr)
@@ -347,10 +347,18 @@ func (v *Vless) ProxyInfo() C.ProxyInfo {
 
 // Close implements C.ProxyAdapter
 func (v *Vless) Close() error {
+	var errs []error
 	if v.gunTransport != nil {
-		return v.gunTransport.Close()
+		if err := v.gunTransport.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	if v.xhttpClient != nil {
+		if err := v.xhttpClient.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func parseVlessAddr(metadata *C.Metadata, xudp bool) *vless.DstAddr {
@@ -607,33 +615,9 @@ func NewVless(option VlessOption) (*Vless, error) {
 			}
 		}
 
-		mode := cfg.EffectiveMode(v.realityConfig != nil)
-		switch mode {
-		case "stream-one":
-			v.dialXHTTPConn = func() (net.Conn, error) {
-				transport := makeTransport()
-				return xhttp.DialStreamOne(cfg, transport)
-			}
-		case "stream-up":
-			v.dialXHTTPConn = func() (net.Conn, error) {
-				transport := makeTransport()
-				downloadTransport := transport
-				if makeDownloadTransport != nil {
-					downloadTransport = makeDownloadTransport()
-				}
-				return xhttp.DialStreamUp(cfg, transport, downloadTransport)
-			}
-		case "packet-up":
-			v.dialXHTTPConn = func() (net.Conn, error) {
-				transport := makeTransport()
-				downloadTransport := transport
-				if makeDownloadTransport != nil {
-					downloadTransport = makeDownloadTransport()
-				}
-				return xhttp.DialPacketUp(cfg, transport, downloadTransport)
-			}
-		default:
-			return nil, fmt.Errorf("xhttp mode %s is not implemented yet", mode)
+		v.xhttpClient, err = xhttp.NewClient(cfg, makeTransport, makeDownloadTransport, v.realityConfig != nil)
+		if err != nil {
+			return nil, err
 		}
 	}
 

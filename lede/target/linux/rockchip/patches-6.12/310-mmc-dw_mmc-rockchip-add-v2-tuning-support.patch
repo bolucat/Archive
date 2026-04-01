@@ -18,9 +18,9 @@ Signed-off-by: Shawn Lin <shawn.lin@rock-chips.com>
 --- a/drivers/mmc/host/dw_mmc-rockchip.c
 +++ b/drivers/mmc/host/dw_mmc-rockchip.c
 @@ -35,6 +35,8 @@ struct dw_mci_rockchip_priv_data {
- 	int			default_sample_phase;
- 	int			num_phases;
  	bool			internal_phase;
+ 	int                     sample_phase;
+ 	int                     drv_phase;
 +	int			last_degree;
 +	bool			use_v2_tuning;
  };
