@@ -490,6 +490,7 @@ public class StatusBarViewModel : MyReactiveObject
                 }
             }
         }
+
         await ConfigHandler.SaveConfig(_config);
         AppEvents.ReloadRequested.Publish();
     }
