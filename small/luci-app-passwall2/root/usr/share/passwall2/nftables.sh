@@ -128,9 +128,7 @@ destroy_nftset() {
 
 gen_nft_tables() {
 	if ! nft list table "$NFTABLE_NAME" >/dev/null 2>&1; then
-		local nft_table_file="$TMP_PATH/PSW2_TABLE.nft"
-		# Set the correct priority to fit fw4
-		cat > "$nft_table_file" <<-EOF
+		nft -f - <<-EOF
 		table $NFTABLE_NAME {
 			chain dstnat {
 				type nat hook prerouting priority dstnat - 1; policy accept;
@@ -146,9 +144,6 @@ gen_nft_tables() {
 			}
 		}
 		EOF
-
-		nft -f "$nft_table_file"
-		rm -rf "$nft_table_file"
 	fi
 }
 
@@ -715,8 +710,7 @@ add_firewall_rule() {
 
 	nft "add chain $NFTABLE_NAME PSW2_DIVERT"
 	nft "flush chain $NFTABLE_NAME PSW2_DIVERT"
-	nft "add rule $NFTABLE_NAME PSW2_DIVERT meta l4proto tcp socket transparent 1 mark set ${FWMARK} counter accept"
-	nft "add rule $NFTABLE_NAME PSW2_DIVERT meta l4proto udp socket transparent 1 mark set ${FWMARK} counter accept"
+	nft "add rule $NFTABLE_NAME PSW2_DIVERT meta l4proto { tcp, udp } socket transparent 1 mark set ${FWMARK} counter accept"
 
 	nft "add chain $NFTABLE_NAME PSW2_DNS"
 	nft "flush chain $NFTABLE_NAME PSW2_DNS"
@@ -734,7 +728,7 @@ add_firewall_rule() {
 	nft "add rule $NFTABLE_NAME PSW2_RULE counter meta mark set ct mark"
 	nft "add rule $NFTABLE_NAME PSW2_RULE meta mark ${FWMARK} counter return"
 	nft "add rule $NFTABLE_NAME PSW2_RULE tcp flags & (fin|syn|rst|ack) == syn counter meta mark set ${FWMARK}"
-	nft "add rule $NFTABLE_NAME PSW2_RULE meta l4proto udp ct state new,related counter meta mark set ${FWMARK}"
+	nft "add rule $NFTABLE_NAME PSW2_RULE meta l4proto udp ct state { new, related } counter meta mark set ${FWMARK}"
 	nft "add rule $NFTABLE_NAME PSW2_RULE counter ct mark set mark"
 
 	#ipv4 tproxy mode and udp

@@ -744,7 +744,7 @@ add_firewall_rule() {
 	}
 	$ipt_m -A PSW2_OUTPUT -m mark --mark 255 -j RETURN
 
-	ip rule add fwmark ${FWMARK} lookup 999 priority 999
+	ip rule add fwmark ${FWMARK} table 999 priority 999
 	ip route add local 0.0.0.0/0 dev lo table 999
 
 	[ "$accept_icmpv6" = "1" ] && {
@@ -953,10 +953,10 @@ del_firewall_rule() {
 		done
 	done
 
-	ip rule del fwmark ${FWMARK} lookup 999 priority 999 2>/dev/null
+	ip rule del fwmark ${FWMARK} 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table 999 2>/dev/null
 
-	ip -6 rule del fwmark ${FWMARK} table 999 priority 999 2>/dev/null
+	ip -6 rule del fwmark ${FWMARK} 2>/dev/null
 	ip -6 route del local ::/0 dev lo table 999 2>/dev/null
 
 	log_i18n 0 "Delete %s rules is complete." "iptables"
