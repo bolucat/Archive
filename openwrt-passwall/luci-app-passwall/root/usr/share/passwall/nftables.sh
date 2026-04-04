@@ -834,9 +834,36 @@ filter_direct_node_list() {
 	done
 }
 
+
+del_script_mwan3() {
+	[ -s "/etc/init.d/mwan3" ] && sed -i "/${CONFIG}/d" /etc/init.d/mwan3 >/dev/null 2>&1
+}
+
+add_script_mwan3() {
+	del_script_mwan3
+	[ -s "/etc/init.d/mwan3" ] && {
+		sed -i '/start_service()/,/}/ s/^}/    \/usr\/share\/passwall\/nftables.sh mwan3_start\n}/' /etc/init.d/mwan3
+		sed -i '/stop_service().*{/a \    \/usr\/share\/passwall\/nftables.sh mwan3_stop' /etc/init.d/mwan3
+	}
+}
+
+mwan3_stop() {
+	local handles=$(nft -a list chain ip mangle mwan3_hook 2>/dev/null | grep "${FWMARK}" | awk -F '# handle ' '{print$2}')
+	for handle in $handles; do
+		nft delete rule ip mangle mwan3_hook handle ${handle} 2>/dev/null
+	done
+}
+
+mwan3_start() {
+	mwan3_stop
+	nft list chain ip mangle mwan3_hook >/dev/null 2>&1 && nft insert rule ip mangle mwan3_hook ct mark ${FWMARK} counter return >/dev/null 2>&1
+}
+
 add_firewall_rule() {
 	echolog "开始加载 nftables 防火墙规则..."
 	gen_nft_tables
+	add_script_mwan3
+	mwan3_start
 	gen_nftset $NFTSET_WAN ipv4_addr 0 "-1"
 	gen_nftset $NFTSET_VPS ipv4_addr 0 "-1"
 	gen_nftset $NFTSET_GFW ipv4_addr "2d" 0
@@ -1011,7 +1038,8 @@ add_firewall_rule() {
 
 	nft "add chain $NFTABLE_NAME PSW_DIVERT"
 	nft "flush chain $NFTABLE_NAME PSW_DIVERT"
-	nft "add rule $NFTABLE_NAME PSW_DIVERT meta l4proto { tcp, udp } socket transparent 1 mark set ${FWMARK} counter accept"
+	# Only TCP, UDP Invalid.
+	nft "add rule $NFTABLE_NAME PSW_DIVERT meta l4proto tcp socket transparent 1 mark set ${FWMARK} counter accept"
 
 	nft "add chain $NFTABLE_NAME PSW_DNS"
 	nft "flush chain $NFTABLE_NAME PSW_DNS"
@@ -1098,7 +1126,7 @@ add_firewall_rule() {
 	fi
 	unset WAN_IP wan_ip
 
-	ip rule add fwmark ${FWMARK} lookup 999 priority 999
+	ip rule add fwmark ${FWMARK} table 999 priority 999
 	ip route add local 0.0.0.0/0 dev lo table 999
 
 	#ipv6 tproxy mode and udp
@@ -1382,10 +1410,10 @@ del_firewall_rule() {
 	# Need to be removed at the end, otherwise it will show "Resource busy"
 	nft delete chain $NFTABLE_NAME handle $(nft -a list chains | grep -E "PSW_RULE" | awk -F '# handle ' '{print$2}') 2>/dev/null
 
-	ip rule del fwmark ${FWMARK} lookup 999 priority 999 2>/dev/null
+	ip rule del fwmark ${FWMARK} 2>/dev/null
 	ip route del local 0.0.0.0/0 dev lo table 999 2>/dev/null
 
-	ip -6 rule del fwmark ${FWMARK} lookup 999 priority 999 2>/dev/null
+	ip -6 rule del fwmark ${FWMARK} 2>/dev/null
 	ip -6 route del local ::/0 dev lo table 999 2>/dev/null
 
 	destroy_nftset $NFTSET_LOCAL
@@ -1409,6 +1437,8 @@ del_firewall_rule() {
 	#destroy_nftset $NFTSET_BLACK6
 	destroy_nftset $NFTSET_BLOCK6
 	destroy_nftset $NFTSET_WHITE6
+
+	del_script_mwan3
 
 	echolog "删除 nftables 规则完成。"
 }
@@ -1491,6 +1521,12 @@ insert_nftset)
 	;;
 filter_direct_node_list)
 	filter_direct_node_list
+	;;
+mwan3_start)
+	mwan3_start
+	;;
+mwan3_stop)
+	mwan3_stop
 	;;
 stop)
 	stop

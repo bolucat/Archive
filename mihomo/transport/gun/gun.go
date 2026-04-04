@@ -103,7 +103,7 @@ func (g *Conn) read(b []byte) (n int, err error) {
 			size = len(b)
 		}
 
-		n, err = io.ReadFull(g.reader, b[:size])
+		n, err = g.reader.Read(b[:size])
 		g.remain -= n
 		return
 	}
@@ -112,6 +112,9 @@ func (g *Conn) read(b []byte) (n int, err error) {
 	var discard [6]byte
 	_, err = io.ReadFull(g.reader, discard[:])
 	if err != nil {
+		if err == io.ErrUnexpectedEOF {
+			err = io.EOF
+		}
 		return 0, err
 	}
 
@@ -267,19 +270,10 @@ func NewTransport(dialFn DialFn, tlsConfig *vmess.TLSConfig, gunCfg *Config) *Tr
 		}
 
 		if tlsConfig.Reality == nil { // reality doesn't return the negotiated ALPN
-			switch tlsConn := conn.(type) {
-			case interface{ ConnectionState() tls.ConnectionState }:
-				state := tlsConn.ConnectionState()
-				if p := state.NegotiatedProtocol; p != http.Http2NextProtoTLS {
-					_ = conn.Close()
-					return nil, fmt.Errorf("http2: unexpected ALPN protocol %s, want %s", p, http.Http2NextProtoTLS)
-				}
-			case interface{ ConnectionState() tlsC.ConnectionState }:
-				state := tlsConn.ConnectionState()
-				if p := state.NegotiatedProtocol; p != http.Http2NextProtoTLS {
-					_ = conn.Close()
-					return nil, fmt.Errorf("http2: unexpected ALPN protocol %s, want %s", p, http.Http2NextProtoTLS)
-				}
+			state := tlsC.GetTLSConnectionState(conn)
+			if p := state.NegotiatedProtocol; p != http.Http2NextProtoTLS {
+				_ = conn.Close()
+				return nil, fmt.Errorf("http2: unexpected ALPN protocol %s, want %s", p, http.Http2NextProtoTLS)
 			}
 		}
 		return conn, nil

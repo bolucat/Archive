@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.63.0](https://github.com/filebrowser/filebrowser/compare/v2.62.2...v2.63.0) (2026-04-04)
+
+
+### Features
+
+* enable copy operation on drag‑and‑drop with ctrl key ([#5882](https://github.com/filebrowser/filebrowser/issues/5882)) ([876cdb3](https://github.com/filebrowser/filebrowser/commit/876cdb34265b090c2a74a69509f4106f2c5e8726))
+
+
+### Bug Fixes
+
+* check download permission when sharing permission is enabled ([#5875](https://github.com/filebrowser/filebrowser/issues/5875)) ([0f39bd0](https://github.com/filebrowser/filebrowser/commit/0f39bd055efdadc15abd2f8146cf5da3793f8318))
+* **tus:** reject negative upload-length to prevent inconsistent cache entry ([#5876](https://github.com/filebrowser/filebrowser/issues/5876)) ([7a16129](https://github.com/filebrowser/filebrowser/commit/7a16129bfc07dbdc2fa52b99d2985c1bc0ea12e2))
+
 ## [2.62.2](https://github.com/filebrowser/filebrowser/compare/v2.62.1...v2.62.2) (2026-03-28)
 
 
