@@ -5,14 +5,16 @@ MY_PATH=$DIR/nftables.sh
 UTILS_PATH=$DIR/utils.sh
 NFTABLE_NAME="inet passwall2"
 NFTSET_LOCAL="passwall2_local"
-NFTSET_WAN="passwall2_wan"
+NFTSET_PROXY_LAN="passwall2_proxy_lan"
 NFTSET_LAN="passwall2_lan"
 NFTSET_VPS="passwall2_vps"
+NFTSET_WAN="passwall2_wan"
 
 NFTSET_LOCAL6="passwall2_local6"
-NFTSET_WAN6="passwall2_wan6"
+NFTSET_PROXY_LAN6="passwall2_proxy_lan6"
 NFTSET_LAN6="passwall2_lan6"
 NFTSET_VPS6="passwall2_vps6"
+NFTSET_WAN6="passwall2_wan6"
 
 FWMARK="0x50535732"
 
@@ -425,6 +427,7 @@ load_acl() {
 					fi
 
 					[ "$accept_icmp" = "1" ] && {
+						nft "insert rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ${_ipt_source} ip daddr @$NFTSET_PROXY_LAN $(REDIRECT) comment \"$remarks\""
 						nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ${_ipt_source} ip daddr $FAKE_IP $(REDIRECT) comment \"$remarks\""
 						add_shunt_t_rule "${shunt_list4}" "nft add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ${_ipt_source} ip daddr" "$(REDIRECT)" "$remarks"
 						nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ${_ipt_source} $(REDIRECT) comment \"$remarks\""
@@ -432,18 +435,21 @@ load_acl() {
 					}
 
 					[ "$accept_icmpv6" = "1" ] && [ "$PROXY_IPV6" == "1" ] && {
+						nft "insert rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ${_ipt_source} ip6 daddr @$NFTSET_PROXY_LAN6 $(REDIRECT) comment \"$remarks\"" 2>/dev/null
 						nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ${_ipt_source} ip6 daddr $FAKE_IP_6 $(REDIRECT) comment \"$remarks\"" 2>/dev/null
 						add_shunt_t_rule "${shunt_list6}" "nft add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ${_ipt_source} ip6 daddr" "$(REDIRECT)" "$remarks" 2>/dev/null
 						nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ${_ipt_source} $(REDIRECT) comment \"$remarks\"" 2>/dev/null
 						nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ${_ipt_source} return comment \"$remarks\"" 2>/dev/null
 					}
 
+					nft "insert rule $NFTABLE_NAME $nft_chain ip protocol tcp ${_ipt_source} ip daddr @$NFTSET_PROXY_LAN ${nft_j} comment \"$remarks\""
 					nft "add rule $NFTABLE_NAME $nft_chain ip protocol tcp ${_ipt_source} ip daddr $FAKE_IP ${nft_j} comment \"$remarks\""
 					add_shunt_t_rule "${shunt_list4}" "nft add rule $NFTABLE_NAME $nft_chain ip protocol tcp ${_ipt_source} $(factor $tcp_redir_ports "tcp dport") ip daddr" "${nft_j}" "$remarks"
 					nft "add rule $NFTABLE_NAME $nft_chain ip protocol tcp ${_ipt_source} $(factor $tcp_redir_ports "tcp dport") ${nft_j} comment \"$remarks\""
 					[ -n "${is_tproxy}" ] && nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol tcp ${_ipt_source} $(REDIRECT $redir_port TPROXY4) comment \"$remarks\""
 
 					[ "$PROXY_IPV6" == "1" ] && [ "$_ipv4" != "1" ] &&  {
+						nft "insert rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp ${_ipt_source} ip6 daddr @$NFTSET_PROXY_LAN6 counter jump PSW2_RULE comment \"$remarks\""
 						nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp ${_ipt_source} ip6 daddr $FAKE_IP_6 counter jump PSW2_RULE comment \"$remarks\""
 						add_shunt_t_rule "${shunt_list6}" "nft add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp ${_ipt_source} $(factor $tcp_redir_ports "tcp dport") ip6 daddr" "counter jump PSW2_RULE" "$remarks" 2>/dev/null
 						nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp ${_ipt_source} $(factor $tcp_redir_ports "tcp dport") counter jump PSW2_RULE comment \"$remarks\"" 2>/dev/null
@@ -457,12 +463,14 @@ load_acl() {
 				[ "$udp_proxy_mode" != "disable" ] && [ -n "$redir_port" ] && {
 					msg2="${msg}$(i18n "Use the %s node [%s]" "UDP" "${node_remark}")(TPROXY:${redir_port})"
 
+					nft "insert rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ${_ipt_source} ip daddr @$NFTSET_PROXY_LAN counter jump PSW2_RULE comment \"$remarks\""
 					nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ${_ipt_source} ip daddr $FAKE_IP counter jump PSW2_RULE comment \"$remarks\""
 					add_shunt_t_rule "${shunt_list4}" "nft add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ${_ipt_source} $(factor $udp_redir_ports "udp dport") ip daddr" "counter jump PSW2_RULE" "$remarks"
 					nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ${_ipt_source} $(factor $udp_redir_ports "udp dport") counter jump PSW2_RULE comment \"$remarks\""
 					nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ${_ipt_source} $(REDIRECT $redir_port TPROXY4) comment \"$remarks\""
 
 					[ "$PROXY_IPV6" == "1" ] && [ "$_ipv4" != "1" ] && {
+						nft "insert rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp ${_ipt_source} ip6 daddr @$NFTSET_PROXY_LAN6 counter jump PSW2_RULE comment \"$remarks\""
 						nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp ${_ipt_source} ip6 daddr $FAKE_IP_6 counter jump PSW2_RULE comment \"$remarks\""
 						add_shunt_t_rule "${shunt_list6}" "nft add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp ${_ipt_source} $(factor $udp_redir_ports "udp dport") ip6 daddr" "counter jump PSW2_RULE" "$remarks" 2>/dev/null
 						nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp ${_ipt_source} $(factor $udp_redir_ports "udp dport") counter jump PSW2_RULE comment \"$remarks\"" 2>/dev/null
@@ -527,6 +535,7 @@ load_acl() {
 			fi
 
 			[ "$accept_icmp" = "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ip daddr @$NFTSET_PROXY_LAN $(REDIRECT) comment \"${comment}\""
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ip daddr $FAKE_IP $(REDIRECT) comment \"${comment}\""
 				add_shunt_t_rule "${SHUNT_LIST4}" "nft add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp ip daddr" "$(REDIRECT)" "${comment}"
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT ip protocol icmp $(REDIRECT) comment \"${comment}\""
@@ -534,18 +543,21 @@ load_acl() {
 			}
 
 			[ "$accept_icmpv6" = "1" ] && [ "$PROXY_IPV6" == "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ip6 daddr @$NFTSET_PROXY_LAN6 $(REDIRECT) comment \"${comment}\""
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ip6 daddr $FAKE_IP_6 $(REDIRECT) comment \"${comment}\""
 				add_shunt_t_rule "${SHUNT_LIST6}" "nft add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 ip6 daddr" "$(REDIRECT)" "${comment}"
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 $(REDIRECT) comment \"${comment}\""
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT meta l4proto icmpv6 return comment \"${comment}\""
 			}
 
+			nft "insert rule $NFTABLE_NAME $nft_chain ip protocol tcp ip daddr @$NFTSET_PROXY_LAN ${nft_j} comment \"${comment}\""
 			nft "add rule $NFTABLE_NAME $nft_chain ip protocol tcp ip daddr $FAKE_IP ${nft_j} comment \"${comment}\""
 			add_shunt_t_rule "${SHUNT_LIST4}" "nft add rule $NFTABLE_NAME $nft_chain ip protocol tcp $(factor $TCP_REDIR_PORTS "tcp dport") ip daddr" "${nft_j}" "${comment}"
 			nft "add rule $NFTABLE_NAME $nft_chain ip protocol tcp $(factor $TCP_REDIR_PORTS "tcp dport") ${nft_j} comment \"${comment}\""
 			[ -n "${is_tproxy}" ] && nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol tcp $(REDIRECT $REDIR_PORT TPROXY4) comment \"${comment}\""
 
 			[ "$PROXY_IPV6" == "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp ip6 daddr @$NFTSET_PROXY_LAN6 jump PSW2_RULE comment \"${comment}\""
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp ip6 daddr $FAKE_IP_6 jump PSW2_RULE comment \"${comment}\""
 				add_shunt_t_rule "${SHUNT_LIST6}" "nft add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp $(factor $TCP_REDIR_PORTS "tcp dport") ip6 daddr" "${nft_j}" "${comment}"
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp $(factor $TCP_REDIR_PORTS "tcp dport") counter jump PSW2_RULE comment \"${comment}\""
@@ -558,12 +570,14 @@ load_acl() {
 		if [ "$UDP_PROXY_MODE" != "disable" ] && [ -n "$NODE" ]; then
 			msg2="${msg}$(i18n "Use the %s node [%s]" "UDP" "$(config_n_get $NODE remarks)")(TPROXY:${REDIR_PORT})"
 
+			nft "insert rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ip daddr @$NFTSET_PROXY_LAN counter jump PSW2_RULE comment \"${comment}\""
 			nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp ip daddr $FAKE_IP counter jump PSW2_RULE comment \"${comment}\""
 			add_shunt_t_rule "${SHUNT_LIST4}" "nft add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp $(factor $UDP_REDIR_PORTS "udp dport") ip daddr" "counter jump PSW2_RULE" "${comment}"
 			nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp $(factor $UDP_REDIR_PORTS "udp dport") counter jump PSW2_RULE comment \"${comment}\""
 			nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp $(REDIRECT $REDIR_PORT TPROXY4) comment \"${comment}\""
 
 			[ "$PROXY_IPV6" == "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp ip6 daddr @$NFTSET_PROXY_LAN6 jump PSW2_RULE comment \"${comment}\""
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp ip6 daddr $FAKE_IP_6 jump PSW2_RULE comment \"${comment}\""
 				add_shunt_t_rule "${SHUNT_LIST6}" "nft add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp $(factor $UDP_REDIR_PORTS "udp dport") ip6 daddr" "counter jump PSW2_RULE" "${comment}"
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp $(factor $UDP_REDIR_PORTS "udp dport") counter jump PSW2_RULE comment \"${comment}\""
@@ -671,15 +685,18 @@ add_firewall_rule() {
 	gen_nft_tables
 	add_script_mwan3
 	mwan3_start
-	gen_nftset $NFTSET_WAN ipv4_addr 0 "-1"
+
 	gen_nftset $NFTSET_LOCAL ipv4_addr 0 "-1"
+	gen_nftset $NFTSET_PROXY_LAN ipv4_addr 0 "-1"
 	gen_nftset $NFTSET_LAN ipv4_addr 0 "-1" $(gen_lanlist)
 	gen_nftset $NFTSET_VPS ipv4_addr 0 "-1"
+	gen_nftset $NFTSET_WAN ipv4_addr 0 "-1"
 
-	gen_nftset $NFTSET_WAN6 ipv6_addr 0 "-1"
 	gen_nftset $NFTSET_LOCAL6 ipv6_addr 0 "-1"
+	gen_nftset $NFTSET_PROXY_LAN6 ipv6_addr 0 "-1"
 	gen_nftset $NFTSET_LAN6 ipv6_addr 0 "-1" $(gen_lanlist_6)
 	gen_nftset $NFTSET_VPS6 ipv6_addr 0 "-1"
+	gen_nftset $NFTSET_WAN6 ipv6_addr 0 "-1"
 
 	ip address show | grep -w "inet" | awk '{print $2}' | awk -F '/' '{print $1}' | insert_nftset $NFTSET_LOCAL "-1"
 	ip address show | grep -w "inet6" | awk '{print $2}' | awk -F '/' '{print $1}' | insert_nftset $NFTSET_LOCAL6 "-1"
@@ -710,6 +727,16 @@ add_firewall_rule() {
 			log_i18n 1 "$(i18n "Add ISP %s DNS to the whitelist: %s" "IPv6" "${ispip6}")"
 		done
 	}
+
+	# Force proxy LAN IP CIDR
+	force_proxy_lan_ip=$(config_t_get global_forwarding force_proxy_lan_ip)
+	for ip in $force_proxy_lan_ip; do
+		if [[ "$ip" == *::* ]]; then
+			echo "$ip" | insert_nftset $NFTSET_PROXY_LAN6 0
+		else
+			echo "$ip" | insert_nftset $NFTSET_PROXY_LAN 0
+		fi
+	done
 
 	# Shunt rules IP list (import when use shunt node)
 	gen_shunt_list "${NODE}" SHUNT_LIST4 SHUNT_LIST6
@@ -900,6 +927,7 @@ add_firewall_rule() {
 		# Loading local router proxy TCP
 		if [ -n "$NODE" ] && [ "$TCP_LOCALHOST_PROXY" = "1" ]; then
 			[ "$accept_icmp" = "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo ip protocol icmp ip daddr @$NFTSET_PROXY_LAN counter redirect"
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo ip protocol icmp ip daddr $FAKE_IP counter redirect"
 				add_shunt_t_rule "${SHUNT_LIST4}" "nft add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo ip protocol icmp ip daddr" "counter redirect"
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo ip protocol icmp counter redirect"
@@ -907,6 +935,7 @@ add_firewall_rule() {
 			}
 
 			[ "$accept_icmpv6" = "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo meta l4proto icmpv6 ip6 daddr @$NFTSET_PROXY_LAN6 counter redirect"
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo meta l4proto icmpv6 ip6 daddr $FAKE_IP_6 counter redirect"
 				add_shunt_t_rule "${SHUNT_LIST6}" "nft add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo meta l4proto icmpv6 ip6 daddr" "counter redirect"
 				nft "add rule $NFTABLE_NAME PSW2_ICMP_REDIRECT oif lo meta l4proto icmpv6 counter redirect"
@@ -921,21 +950,25 @@ add_firewall_rule() {
 				nft_j="$(REDIRECT $REDIR_PORT)"
 			fi
 
+			nft "insert rule $NFTABLE_NAME $nft_chain ip protocol tcp ip daddr @$NFTSET_PROXY_LAN ${nft_j}"
 			nft "add rule $NFTABLE_NAME $nft_chain ip protocol tcp ip daddr $FAKE_IP ${nft_j}"
 			add_shunt_t_rule "${SHUNT_LIST4}" "nft add rule $NFTABLE_NAME $nft_chain ip protocol tcp $(factor $TCP_REDIR_PORTS "tcp dport") ip daddr" "${nft_j}"
 			nft "add rule $NFTABLE_NAME $nft_chain ip protocol tcp $(factor $TCP_REDIR_PORTS "tcp dport") ${nft_j}"
 			[ -z "${is_tproxy}" ] && nft "add rule $NFTABLE_NAME nat_output ip protocol tcp counter jump PSW2_OUTPUT_NAT"
 			[ -n "${is_tproxy}" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_MANGLE ip protocol tcp iif lo ip daddr @$NFTSET_PROXY_LAN $(REDIRECT $REDIR_PORT TPROXY4) comment \"${comment_l}\""
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol tcp iif lo $(REDIRECT $REDIR_PORT TPROXY4) comment \"${comment_l}\""
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol tcp iif lo counter return comment \"${comment_l}\""
 				nft "add rule $NFTABLE_NAME mangle_output ip protocol tcp counter jump PSW2_OUTPUT_MANGLE comment \"PSW2_OUTPUT_MANGLE\""
 			}
 
 			[ "$PROXY_IPV6" == "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto tcp ip6 daddr @$NFTSET_PROXY_LAN6 jump PSW2_RULE"
 				nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto tcp ip6 daddr $FAKE_IP_6 jump PSW2_RULE"
 				add_shunt_t_rule "${SHUNT_LIST6}" "nft add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto tcp $(factor $TCP_REDIR_PORTS "tcp dport") ip6 daddr" "counter jump PSW2_RULE"
 				nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto tcp $(factor $TCP_REDIR_PORTS "tcp dport") counter jump PSW2_RULE"
-				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp iif lo $(REDIRECT $REDIR_PORT TPROXY) comment \"${comment_l}\""
+				nft "insert rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp iif lo ip6 daddr @$NFTSET_PROXY_LAN6 $(REDIRECT $REDIR_PORT TPROXY6) comment \"${comment_l}\""
+				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp iif lo $(REDIRECT $REDIR_PORT TPROXY6) comment \"${comment_l}\""
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto tcp iif lo counter return comment \"${comment_l}\""
 			}
 
@@ -949,18 +982,22 @@ add_firewall_rule() {
 
 		# Loading local router proxy UDP
 		if [ -n "$NODE" ] && [ "$UDP_LOCALHOST_PROXY" = "1" ]; then
+			nft "insert rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ip protocol udp ip daddr @$NFTSET_PROXY_LAN counter jump PSW2_RULE"
 			nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ip protocol udp ip daddr $FAKE_IP counter jump PSW2_RULE"
 			add_shunt_t_rule "${SHUNT_LIST4}" "nft add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ip protocol udp $(factor $UDP_REDIR_PORTS "udp dport") ip daddr" "counter jump PSW2_RULE"
 			nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE ip protocol udp $(factor $UDP_REDIR_PORTS "udp dport") counter jump PSW2_RULE"
+			nft "insert rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp iif lo ip daddr @$NFTSET_PROXY_LAN $(REDIRECT $REDIR_PORT TPROXY4) comment \"${comment_l}\""
 			nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp iif lo $(REDIRECT $REDIR_PORT TPROXY4) comment \"${comment_l}\""
 			nft "add rule $NFTABLE_NAME PSW2_MANGLE ip protocol udp iif lo counter return comment \"${comment_l}\""
 			nft "add rule $NFTABLE_NAME mangle_output ip protocol udp counter jump PSW2_OUTPUT_MANGLE comment \"PSW2_OUTPUT_MANGLE\""
 
 			[ "$PROXY_IPV6" == "1" ] && {
+				nft "insert rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto udp ip6 daddr @$NFTSET_PROXY_LAN6 jump PSW2_RULE"
 				nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto udp ip6 daddr $FAKE_IP_6 jump PSW2_RULE"
 				add_shunt_t_rule "${SHUNT_LIST6}" "nft add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto udp $(factor $UDP_REDIR_PORTS "udp dport") ip6 daddr" "counter jump PSW2_RULE"
 				nft "add rule $NFTABLE_NAME PSW2_OUTPUT_MANGLE_V6 meta l4proto udp $(factor $UDP_REDIR_PORTS "udp dport") counter jump PSW2_RULE"
-				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp iif lo $(REDIRECT $REDIR_PORT TPROXY) comment \"${comment_l}\""
+				nft "insert rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp iif lo ip6 daddr @$NFTSET_PROXY_LAN6 $(REDIRECT $REDIR_PORT TPROXY6) comment \"${comment_l}\""
+				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp iif lo $(REDIRECT $REDIR_PORT TPROXY6) comment \"${comment_l}\""
 				nft "add rule $NFTABLE_NAME PSW2_MANGLE_V6 meta l4proto udp iif lo counter return comment \"${comment_l}\""
 			}
 
@@ -1080,6 +1117,8 @@ start() {
 stop() {
 	[ -z "$(command -v log_i18n)" ] && . /usr/share/passwall2/utils.sh
 	del_firewall_rule
+	destroy_nftset $NFTSET_PROXY_LAN
+	destroy_nftset $NFTSET_PROXY_LAN6
 	[ $(config_t_get global flush_set "0") = "1" ] && {
 		uci -q delete ${CONFIG}.@global[0].flush_set
 		uci -q commit ${CONFIG}

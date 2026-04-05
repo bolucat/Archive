@@ -1955,7 +1955,7 @@ function gen_config(var)
 			}
 		})
 		for index, value in ipairs(config.outbounds) do
-			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and value.server_port and not no_run then
+			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and (value.server_port or value.server_ports) and not no_run then
 				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
 			end
 			for k, v in pairs(config.outbounds[index]) do

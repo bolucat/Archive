@@ -1101,6 +1101,9 @@ socks_node_switch() {
 		LOG_FILE="/dev/null"
 		run_socks flag=$flag node=$new_node bind=$bind socks_port=$port config_file=$config_file http_port=$http_port http_config_file=$http_config_file log_file=$log_file
 		set_cache_var "socks_${flag}" "$new_node"
+		local ENABLED_DEFAULT_ACL=$(get_cache_var "ENABLED_DEFAULT_ACL")
+		local ENABLED_ACLS=$(get_cache_var "ENABLED_ACLS")
+		[ "$ENABLED_DEFAULT_ACL" != "1" -a "$ENABLED_ACLS" != "1" ] && return
 		local USE_TABLES=$(get_cache_var "USE_TABLES")
 		[ -n "$USE_TABLES" ] && source $APP_PATH/${USE_TABLES}.sh filter_direct_node_list
 	}
@@ -1979,6 +1982,8 @@ get_config() {
 	[ "$ENABLED_ACLS" = 1 ] && {
 		[ "$(uci show ${CONFIG} | grep "@acl_rule" | grep "enabled='1'" | wc -l)" == 0 ] && ENABLED_ACLS=0
 	}
+	set_cache_var ENABLED_DEFAULT_ACL $ENABLED_DEFAULT_ACL
+	set_cache_var ENABLED_ACLS $ENABLED_ACLS
 
 	TCP_PROXY_WAY=$(config_t_get global_forwarding tcp_proxy_way redirect)
 	PROXY_IPV6=$(config_t_get global_forwarding ipv6_tproxy 0)

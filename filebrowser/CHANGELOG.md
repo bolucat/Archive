@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.63.1](https://github.com/filebrowser/filebrowser/compare/v2.63.0...v2.63.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* check download permission in resource handler ([#5891](https://github.com/filebrowser/filebrowser/issues/5891)) ([1e03fea](https://github.com/filebrowser/filebrowser/commit/1e03feadb550e4414b5589a6a8df57f538efba15))
+* check share owner permissions on public share access ([#5888](https://github.com/filebrowser/filebrowser/issues/5888)) ([7dbf7a3](https://github.com/filebrowser/filebrowser/commit/7dbf7a3528234b2a9ee9c4115e8ecf58d258ca51))
+* enforce directory boundary in rule path matching ([#5889](https://github.com/filebrowser/filebrowser/issues/5889)) ([8adf127](https://github.com/filebrowser/filebrowser/commit/8adf127c7d33585333b8030869f6f318e6517179))
+* restrict default permissions for proxy-auth auto-provisioned users ([#5890](https://github.com/filebrowser/filebrowser/issues/5890)) ([f13c7c8](https://github.com/filebrowser/filebrowser/commit/f13c7c8cffd6d58ff29c4a6763ced1385f69961e))
+
 ## [2.63.0](https://github.com/filebrowser/filebrowser/compare/v2.62.2...v2.63.0) (2026-04-04)
 
 
