@@ -90,10 +90,8 @@ const char* BalsaFrameEnums::ErrorCodeToString(
       return "INVALID_CHUNK_EXTENSION";
     case INVALID_CHUNK_FRAMING:
       return "INVALID_CHUNK_FRAMING";
-    case CALLED_BYTES_SPLICED_WHEN_UNSAFE_TO_DO_SO:
-      return "CALLED_BYTES_SPLICED_WHEN_UNSAFE_TO_DO_SO";
-    case CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT:
-      return "CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT";
+    case STRAY_DATA_AFTER_CHUNK:
+      return "STRAY_DATA_AFTER_CHUNK";
     case MULTIPLE_CONTENT_LENGTH_KEYS:
       return "MULTIPLE_CONTENT_LENGTH_KEYS";
     case MULTIPLE_TRANSFER_ENCODING_KEYS:
@@ -128,6 +126,9 @@ const char* BalsaFrameEnums::ErrorCodeToString(
       return "INVALID_TRAILER_NAME_CHARACTER";
     case UNSUPPORTED_100_CONTINUE:
       return "UNSUPPORTED_100_CONTINUE";
+    case INVALID_REQUEST_METHOD:
+      return "INVALID_REQUEST_METHOD";
+    // This should be the last case in the switch statement.
     case NUM_ERROR_CODES:
       return "UNKNOWN_ERROR";
   }

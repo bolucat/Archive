@@ -24,27 +24,28 @@
 #include <limits>
 #include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "perfetto/base/build_config.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
 #include "perfetto/ext/base/flat_hash_map.h"
-#include "perfetto/ext/base/small_vector.h"
+#include "perfetto/ext/base/murmur_hash.h"
 #include "perfetto/ext/base/status_macros.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "perfetto/public/compiler.h"
 #include "perfetto/trace_processor/basic_types.h"
-#include "src/trace_processor/containers/interval_intersector.h"
+#include "src/trace_processor/containers/interval_tree.h"
 #include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/array.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/counter.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/node.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/partitioned_intervals.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/row_dataframe.h"
+#include "src/trace_processor/perfetto_sql/intrinsics/types/sorted_timestamps.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/struct.h"
 #include "src/trace_processor/sqlite/bindings/sqlite_aggregate_function.h"
 #include "src/trace_processor/sqlite/bindings/sqlite_function.h"
@@ -59,22 +60,23 @@
 namespace perfetto::trace_processor {
 namespace {
 
-inline void HashSqlValue(base::FnvHasher& h, const SqlValue& v) {
+inline void HashSqlValue(base::MurmurHashCombiner& h, const SqlValue& v) {
+  h.Combine(v.type);
   switch (v.type) {
     case SqlValue::Type::kString:
-      h.Update(v.AsString());
+      h.Combine(base::StringView(v.AsString()));
       break;
     case SqlValue::Type::kDouble:
-      h.Update(v.AsDouble());
+      h.Combine(v.AsDouble());
       break;
     case SqlValue::Type::kLong:
-      h.Update(v.AsLong());
+      h.Combine(v.AsLong());
       break;
     case SqlValue::Type::kBytes:
       PERFETTO_FATAL("Wrong type");
       break;
     case SqlValue::Type::kNull:
-      h.Update(nullptr);
+      h.Combine(0);
       break;
   }
   return;
@@ -309,6 +311,7 @@ struct IntervalTreeIntervalsAgg
   static constexpr char kName[] = "__intrinsic_interval_tree_intervals_agg";
   static constexpr int kArgCount = -1;
   static constexpr int kMinArgCount = 3;
+
   struct AggCtx : sqlite::AggregateContext<AggCtx> {
     perfetto_sql::PartitionedTable partitions;
     std::vector<SqlValue> tmp_vals;
@@ -377,10 +380,18 @@ struct IntervalTreeIntervalsAgg
     }
 
     // Create a partition key and save SqlValues of the partition.
-    base::FnvHasher h;
+    base::MurmurHashCombiner h;
     uint32_t j = 0;
     for (uint32_t i = kMinArgCount + 1; i < argc; i += 2) {
       SqlValue new_val = sqlite::utils::SqliteValueToSqlValue(argv[i]);
+      // If it's a string, intern it immediately into the StringPool.
+      // This ensures the pointer remains valid and we only store unique
+      // strings.
+      if (new_val.type == SqlValue::kString) {
+        StringPool* pool = GetUserData(ctx)->pool;
+        new_val.string_value =
+            pool->Get(pool->InternString(new_val.AsString())).c_str();
+      }
       agg_ctx.tmp_vals[j] = new_val;
       HashSqlValue(h, new_val);
       j++;
@@ -403,10 +414,6 @@ struct IntervalTreeIntervalsAgg
       return;
     }
 
-    std::vector<SqlValue> part_values;
-    for (uint32_t i = kMinArgCount + 1; i < argc; i += 2) {
-      part_values.push_back(sqlite::utils::SqliteValueToSqlValue(argv[i]));
-    }
     perfetto_sql::Partition new_partition;
     new_partition.sql_values = agg_ctx.tmp_vals;
     new_partition.last_interval = interval.end;
@@ -420,11 +427,42 @@ struct IntervalTreeIntervalsAgg
     if (!raw_agg_ctx) {
       return sqlite::result::Null(ctx);
     }
+    // String values are already interned in Step(), so we can directly return.
     return sqlite::result::UniquePointer(
         ctx,
         std::make_unique<perfetto_sql::PartitionedTable>(
             std::move(raw_agg_ctx.get()->partitions)),
         perfetto_sql::PartitionedTable::kName);
+  }
+};
+
+// An SQL aggregate function which collects timestamps into a vector.
+// Used as input to __intrinsic_interval_create. The caller is responsible
+// for ensuring timestamps are passed in sorted order (e.g. via ORDER BY).
+struct TimestampSetAgg
+    : public sqlite::AggregateFunction<perfetto_sql::SortedTimestamps> {
+  static constexpr char kName[] = "__intrinsic_timestamp_set_agg";
+  static constexpr int kArgCount = 1;
+  struct AggCtx : sqlite::AggregateContext<AggCtx> {
+    perfetto_sql::SortedTimestamps data;
+  };
+
+  static void Step(sqlite3_context* ctx, int argc, sqlite3_value** argv) {
+    PERFETTO_DCHECK(argc == kArgCount);
+    auto& data = AggCtx::GetOrCreateContextForStep(ctx).data;
+    data.timestamps.push_back(sqlite::value::Int64(argv[0]));
+  }
+
+  static void Final(sqlite3_context* ctx) {
+    auto raw_agg_ctx = AggCtx::GetContextOrNullForFinal(ctx);
+    if (!raw_agg_ctx) {
+      return sqlite::result::Null(ctx);
+    }
+    return sqlite::result::UniquePointer(
+        ctx,
+        std::make_unique<perfetto_sql::SortedTimestamps>(
+            std::move(raw_agg_ctx.get()->data)),
+        perfetto_sql::SortedTimestamps::kName);
   }
 };
 
@@ -552,14 +590,19 @@ struct SymbolizeAgg
 
 }  // namespace
 
-base::Status RegisterTypeBuilderFunctions(PerfettoSqlEngine& engine) {
+base::Status RegisterTypeBuilderFunctions(PerfettoSqlEngine& engine,
+                                          StringPool* pool) {
   RETURN_IF_ERROR(engine.RegisterAggregateFunction<ArrayAgg>(nullptr));
   RETURN_IF_ERROR(engine.RegisterFunction<Struct>(nullptr));
   RETURN_IF_ERROR(engine.RegisterAggregateFunction<RowDataframeAgg>(nullptr));
-  RETURN_IF_ERROR(
-      engine.RegisterAggregateFunction<IntervalTreeIntervalsAgg>(nullptr));
+  // Use a static UserData since aggregate functions don't take ownership.
+  static auto interval_tree_user_data =
+      perfetto_sql::PartitionedTable::UserData{pool};
+  RETURN_IF_ERROR(engine.RegisterAggregateFunction<IntervalTreeIntervalsAgg>(
+      &interval_tree_user_data));
   RETURN_IF_ERROR(
       engine.RegisterAggregateFunction<CounterPerTrackAgg>(nullptr));
+  RETURN_IF_ERROR(engine.RegisterAggregateFunction<TimestampSetAgg>(nullptr));
 
 #if PERFETTO_BUILDFLAG(PERFETTO_LLVM_SYMBOLIZER)
   RETURN_IF_ERROR(engine.RegisterAggregateFunction<SymbolizeAgg>(nullptr));

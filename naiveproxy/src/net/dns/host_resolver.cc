@@ -27,6 +27,7 @@
 #include "net/base/host_port_pair.h"
 #include "net/base/net_errors.h"
 #include "net/base/network_change_notifier.h"
+#include "net/dns/canary_domain_service.h"
 #include "net/dns/context_host_resolver.h"
 #include "net/dns/dns_client.h"
 #include "net/dns/dns_util.h"
@@ -149,7 +150,7 @@ class FailingServiceEndpointRequestImpl
   const int error_;
 };
 
-void GetTimeDeltaFromDictString(const base::Value::Dict& args,
+void GetTimeDeltaFromDictString(const base::DictValue& args,
                                 std::string_view key,
                                 base::TimeDelta* out) {
   const std::string* value_string = args.FindString(key);
@@ -240,6 +241,12 @@ const url::SchemeHostPort& HostResolver::Host::AsSchemeHostPort() const {
   return *scheme_host_port;
 }
 
+const HostPortPair& HostResolver::Host::AsHostPortPair() const {
+  const HostPortPair* host_port_pair = std::get_if<HostPortPair>(&host_);
+  DCHECK(host_port_pair);
+  return *host_port_pair;
+}
+
 HostResolver::HttpsSvcbOptions::HttpsSvcbOptions() = default;
 
 HostResolver::HttpsSvcbOptions::HttpsSvcbOptions(
@@ -251,7 +258,7 @@ HostResolver::HttpsSvcbOptions::~HttpsSvcbOptions() = default;
 
 // static
 HostResolver::HttpsSvcbOptions HostResolver::HttpsSvcbOptions::FromDict(
-    const base::Value::Dict& dict) {
+    const base::DictValue& dict) {
   net::HostResolver::HttpsSvcbOptions options;
   GetTimeDeltaFromDictString(dict, kUseDnsHttpsSvcbInsecureExtraTimeMax,
                              &options.insecure_extra_time_max);
@@ -353,8 +360,8 @@ HostCache* HostResolver::GetHostCache() {
   return nullptr;
 }
 
-base::Value::Dict HostResolver::GetDnsConfigAsValue() const {
-  return base::Value::Dict();
+base::DictValue HostResolver::GetDnsConfigAsValue() const {
+  return base::DictValue();
 }
 
 void HostResolver::SetRequestContext(URLRequestContext* request_context) {
@@ -377,6 +384,12 @@ const URLRequestContext* HostResolver::GetContextForTesting() const {
 
 handles::NetworkHandle HostResolver::GetTargetNetworkForTesting() const {
   return handles::kInvalidNetworkHandle;
+}
+
+std::unique_ptr<CanaryDomainService> HostResolver::CreateCanaryDomainService() {
+  // Should be overridden in any HostResolver implementation where this method
+  // may be called.
+  NOTREACHED();
 }
 
 // static

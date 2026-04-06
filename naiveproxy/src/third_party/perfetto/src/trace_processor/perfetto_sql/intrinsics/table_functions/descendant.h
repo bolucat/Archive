@@ -25,7 +25,7 @@
 
 #include "perfetto/base/status.h"
 #include "perfetto/trace_processor/basic_types.h"
-#include "src/trace_processor/dataframe/specs.h"
+#include "src/trace_processor/core/dataframe/specs.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/table_functions/static_table_function.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/table_functions/tables_py.h"
 #include "src/trace_processor/storage/trace_storage.h"
@@ -37,12 +37,11 @@ class TraceProcessorContext;
 
 // Implements the following dynamic tables:
 // * descendant_slice
-// * descendant_slice_by_stack
 //
 // See docs/analysis/trace-processor for usage.
 class Descendant : public StaticTableFunction {
  public:
-  enum class Type : uint8_t { kSlice = 1, kSliceByStack = 2 };
+  enum class Type : uint8_t { kSlice = 1 };
   class Cursor : public StaticTableFunction::Cursor {
    public:
     Cursor(Type type, TraceStorage* storage);
@@ -54,7 +53,6 @@ class Descendant : public StaticTableFunction {
     tables::SliceSubsetTable table_;
     std::vector<tables::SliceTable::RowNumber> descendants_;
     tables::SliceTable::ConstCursor slice_cursor_;
-    tables::SliceTable::ConstCursor stack_cursor_;
   };
 
   Descendant(Type type, TraceStorage* storage);

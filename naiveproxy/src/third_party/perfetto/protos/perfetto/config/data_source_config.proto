@@ -26,6 +26,7 @@ import "protos/perfetto/config/android/android_system_property_config.proto";
 import "protos/perfetto/config/android/android_sdk_sysprop_guard_config.proto";
 import "protos/perfetto/config/android/app_wakelock_config.proto";
 import "protos/perfetto/config/android/cpu_per_uid_config.proto";
+import "protos/perfetto/config/android/inputmethod_config.proto";
 import "protos/perfetto/config/android/kernel_wakelocks_config.proto";
 import "protos/perfetto/config/android/network_trace_config.proto";
 import "protos/perfetto/config/android/packages_list_config.proto";
@@ -47,6 +48,7 @@ import "protos/perfetto/config/gpu/gpu_renderstages_config.proto";
 import "protos/perfetto/config/inode_file/inode_file_config.proto";
 import "protos/perfetto/config/interceptor_config.proto";
 import "protos/perfetto/config/power/android_power_config.proto";
+import "protos/perfetto/config/protovm/protovm_config.proto";
 import "protos/perfetto/config/statsd/statsd_tracing_config.proto";
 import "protos/perfetto/config/priority_boost/priority_boost_config.proto";
 import "protos/perfetto/config/process_stats/process_stats_config.proto";
@@ -58,9 +60,10 @@ import "protos/perfetto/config/test_config.proto";
 import "protos/perfetto/config/track_event/track_event_config.proto";
 import "protos/perfetto/config/system_info/system_info_config.proto";
 import "protos/perfetto/config/chrome/histogram_samples.proto";
+import "protos/perfetto/config/qnx/qnx_config.proto";
 
 // The configuration that is passed to each data source when starting tracing.
-// Next id: 139
+// Next id: 140
 message DataSourceConfig {
   enum SessionInitiator {
     SESSION_INITIATOR_UNSPECIFIED = 0;
@@ -76,12 +79,30 @@ message DataSourceConfig {
   optional string name = 1;
 
   // The index of the logging buffer where TracePacket(s) will be stored.
-  // This field doesn't make a major difference for the Producer(s). The final
-  // logging buffers, in fact, are completely owned by the Service. We just ask
-  // the Producer to copy this number into the chunk headers it emits, so that
-  // the Service can quickly identify the buffer where to move the chunks into
-  // without expensive lookups on its fastpath.
+  // This field is quite subtle as it has a double semantic:
+  // 1) When the config is passed, this field is a 0-based index relative to the
+  //    buffer array in the TraceConfig and defines the mapping between data
+  //    sources and config. From v54 this is optional because the user can
+  //    instead use target_buffer_name.
+  // 2) When the TracingService issues a SetupDataSource/StartDataSource to the
+  //    producer, it overwrites this field with the global buffer index (which
+  //    depends on other tracing sessions active). This tells the producer which
+  //    buffer id should be passed to CreateTraceWriter. In this case, the trace
+  //    service always sets the resolved global id, even when using
+  //    `target_buffer_name`.
+  // In hindsight we should have used two different fields given even in v0 they
+  // had a different semantic. But now it's too late as this would be a major
+  // protocol breaking change.
   optional uint32 target_buffer = 2;
+
+  // Alternative to |target_buffer|. References a buffer by name (as specified
+  // in TraceConfig.BufferConfig.name) rather than by index. This is more
+  // readable and less error-prone than using buffer indices.
+  // If both |target_buffer| and |target_buffer_name| are specified, they must
+  // refer to the same buffer, otherwise the service will reject the config.
+  // Using both fields allows configs to work with both old and new versions
+  // of the tracing service. Introduced in v54.
+  optional string target_buffer_name = 11;
 
   // Set by the service to indicate the duration of the trace.
   // DO NOT SET in consumer as this will be overridden by the service.
@@ -134,6 +155,20 @@ message DataSourceConfig {
   optional BufferExhaustedPolicy buffer_exhausted_policy = 9;
 
   optional PriorityBoostConfig priority_boost = 10;
+
+  // If specified, the data source requires the tracing service to process
+  // overwritten packets (patches) using a ProtoVM instance with this config.
+  // The ProtoVM program is specified at data source registration time through
+  // the descriptor.
+
+  // TODO(primiano): today when we enable a protovm_config, we actually accept
+  // that if N producers advertise M different versions of the same program we
+  // will create M instances of that program.
+  // To overcome this, we could move the program to the TraceConfig. But doing
+  // so would bloat the trace config size too big and create problems to statsd.
+  // Once the config store (b/482305876) exists we should move protovm programs
+  // onto that.
+  optional ProtoVmConfig protovm_config = 12;
 
   // Keep the lower IDs (up to 99) for fields that are *not* specific to
   // data-sources and needs to be processed by the traced daemon.
@@ -261,7 +296,13 @@ message DataSourceConfig {
   optional CpuPerUidConfig cpu_per_uid_config = 137 [lazy = true];
 
   // Data source name: android.user_list
-  optional UserListConfig user_list_config = 138 [lazy = true];
+  optional AndroidUserListConfig user_list_config = 138 [lazy = true];
+
+  // Data source name: android.inputmethod
+  optional InputMethodConfig inputmethod_config = 139 [lazy = true];
+
+  // Data source name: qnx.kernel
+  optional QnxConfig qnx_config = 150 [lazy = true];
 
   // This is a fallback mechanism to send a free-form text config to the
   // producer. In theory this should never be needed. All the code that

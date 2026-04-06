@@ -10,9 +10,11 @@
 namespace base {
 namespace android {
 
-static jboolean JNI_FeatureList_IsInitialized(JNIEnv* env) {
+static bool JNI_FeatureList_IsInitialized(JNIEnv* env) {
   return !!base::FeatureList::GetInstance();
 }
 
 }  // namespace android
 }  // namespace base
+
+DEFINE_JNI(FeatureList)

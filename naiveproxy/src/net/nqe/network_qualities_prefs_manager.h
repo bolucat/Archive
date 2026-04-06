@@ -9,7 +9,6 @@
 #include <memory>
 
 #include "base/memory/raw_ptr.h"
-#include "base/memory/weak_ptr.h"
 #include "base/sequence_checker.h"
 #include "base/values.h"
 #include "net/base/net_export.h"
@@ -35,14 +34,14 @@ class NET_EXPORT NetworkQualitiesPrefsManager
     virtual ~PrefDelegate() = default;
 
     // Sets the persistent pref to the given value.
-    virtual void SetDictionaryValue(const base::Value::Dict& dict) = 0;
+    virtual void SetDictionaryValue(const base::DictValue& dict) = 0;
 
     // Returns a copy of the persistent prefs.
-    virtual base::Value::Dict GetDictionaryValue() = 0;
+    virtual base::DictValue GetDictionaryValue() = 0;
   };
 
   // Creates an instance of the NetworkQualitiesPrefsManager. Ownership of
-  // |pref_delegate| is taken by this class.
+  // `pref_delegate` is taken by this class.
   explicit NetworkQualitiesPrefsManager(
       std::unique_ptr<PrefDelegate> pref_delegate);
 
@@ -72,7 +71,7 @@ class NET_EXPORT NetworkQualitiesPrefsManager
   std::unique_ptr<PrefDelegate> pref_delegate_;
 
   // Current prefs on the disk.
-  base::Value::Dict prefs_;
+  base::DictValue prefs_;
 
   // nqe::internal::NetworkQualityStore::NetworkQualitiesCacheObserver
   // implementation:

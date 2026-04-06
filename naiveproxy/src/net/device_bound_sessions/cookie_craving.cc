@@ -7,7 +7,6 @@
 #include <optional>
 
 #include "base/check.h"
-#include "base/containers/contains.h"
 #include "base/containers/fixed_flat_set.h"
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
@@ -19,6 +18,7 @@
 #include "net/cookies/cookie_inclusion_status.h"
 #include "net/cookies/cookie_util.h"
 #include "net/cookies/parsed_cookie.h"
+#include "net/device_bound_sessions/cookie_craving_display.h"
 #include "net/device_bound_sessions/proto/storage.pb.h"
 #include "net/device_bound_sessions/session_error.h"
 #include "net/url_request/url_request.h"
@@ -122,7 +122,7 @@ base::expected<CookieCraving, SessionError> CookieCraving::Create(
           {"domain", "path", "secure", "httponly", "samesite"});
   if (!parsed_cookie.ForEachAttribute(
           [](std::string_view attribute, std::string_view value) {
-            return base::Contains(kPermittedAttributes, attribute);
+            return kPermittedAttributes.contains(attribute);
           })) {
     return base::unexpected(SessionError{
         SessionError::kInvalidCredentialsCookieUnpermittedAttribute});
@@ -195,8 +195,8 @@ base::expected<CookieCraving, SessionError> CookieCraving::Create(
   return cookie_craving;
 }
 
-// TODO(crbug.com/438792839): Much of this function is copied directly from CanonicalCookie.
-// Try to deduplicate it.
+// TODO(crbug.com/438792839): Much of this function is copied directly from
+// CanonicalCookie. Try to deduplicate it.
 bool CookieCraving::IsValid() const {
   if (ParsedCookie::ParseTokenString(Name()) != Name() ||
       !ParsedCookie::IsValidCookieName(Name())) {
@@ -220,41 +220,15 @@ bool CookieCraving::IsValid() const {
     return false;
   }
 
-  CookiePrefix prefix = cookie_util::GetCookiePrefix(Name());
-  switch (prefix) {
-    case COOKIE_PREFIX_HOST:
-      if (!SecureAttribute() || Path() != "/" || !IsHostCookie()) {
-        return false;
-      }
-      break;
-    case COOKIE_PREFIX_SECURE:
-      if (!SecureAttribute()) {
-        return false;
-      }
-      break;
-    case COOKIE_PREFIX_HTTP:
-      if (!SecureAttribute() || !IsHttpOnly()) {
-        return false;
-      }
-      break;
-    case COOKIE_PREFIX_HOSTHTTP:
-      if (!SecureAttribute() || Path() != "/" || !IsHostCookie() ||
-          !IsHttpOnly()) {
-        return false;
-      }
-      break;
-    case COOKIE_PREFIX_NONE:
-    case COOKIE_PREFIX_LAST:
-      break;
+  if (!cookie_util::IsCookiePrefixValid(cookie_util::GetCookiePrefix(Name()),
+                                        /*url=*/std::nullopt, SecureAttribute(),
+                                        IsHttpOnly(), Domain(), Path())) {
+    return false;
   }
 
-  if (IsPartitioned()) {
-    if (CookiePartitionKey::HasNonce(PartitionKey())) {
-      return true;
-    }
-    if (!SecureAttribute()) {
-      return false;
-    }
+  if (!cookie_util::IsCookiePartitionedValid(
+          /*url=*/std::nullopt, SecureAttribute(), PartitionKey())) {
+    return false;
   }
 
   return true;
@@ -404,19 +378,24 @@ std::optional<CookieCraving> CookieCraving::CreateFromProto(
   return cookie_craving;
 }
 
+CookieCravingDisplay CookieCraving::ToDisplay() const {
+  return CookieCravingDisplay(Name(), Domain(), Path(), SecureAttribute(),
+                              IsHttpOnly(), SameSite());
+}
+
 bool CookieCraving::ShouldIncludeForRequest(
-    URLRequest* request,
+    DbscRequest& request,
     const FirstPartySetMetadata& first_party_set_metadata,
     const CookieOptions& options,
     const CookieAccessParams& params) const {
-  if (!IncludeForRequestURL(request->url(), options, params)
+  if (!IncludeForRequestURL(request.url(), options, params)
            .status.IsInclude()) {
     return false;
   }
 
   CookieInclusionStatus status;
   std::unique_ptr<CanonicalCookie> canonical_cookie =
-      CreateCanonicalCookieForRequest(request->url(), &status);
+      CreateCanonicalCookieForRequest(request.url(), &status);
 
   if (!canonical_cookie) {
     SCOPED_CRASH_KEY_STRING256("CookieCraving", "ShouldInclude",
@@ -432,12 +411,18 @@ bool CookieCraving::ShouldIncludeForRequest(
   CookieAccessResultList included_cravings;
   included_cravings.emplace_back(std::move(*canonical_cookie));
   CookieAccessResultList excluded_cravings;
-  return request->network_delegate()->AnnotateAndMoveUserBlockedCookies(
-      *request, first_party_set_metadata, included_cravings, excluded_cravings);
+  // The use of `unnormalized_request()` here is potentially unsafe since
+  // accessing the URL could drop the normalization of WebSocket schemes. But
+  // cookie inclusion logic has to handle this already when deciding
+  // whether to include cookies on the WebSocket handshake. That makes
+  // it safe in this very limited context to expose the `URLRequest`.
+  return request.network_delegate()->AnnotateAndMoveUserBlockedCookies(
+      *request.unnormalized_request(), first_party_set_metadata,
+      included_cravings, excluded_cravings);
 }
 
 bool CookieCraving::CanSetBoundCookie(
-    const URLRequest& request,
+    DbscRequest& request,
     const FirstPartySetMetadata& first_party_set_metadata,
     CookieOptions* options) const {
   // TODO(crbug.com/438783631): Refactor this.
@@ -455,9 +440,14 @@ bool CookieCraving::CanSetBoundCookie(
     return false;
   }
 
+  // The use of `unnormalized_request()` here is potentially unsafe since
+  // accessing the URL could drop the normalization of WebSocket schemes. But
+  // cookie inclusion logic has to handle this already when deciding
+  // whether to include cookies on the WebSocket handshake. That makes
+  // it safe in this very limited context to expose the `URLRequest`.
   if (!request.network_delegate()->CanSetCookie(
-          request, *canonical_cookie, options, first_party_set_metadata,
-          &status)) {
+          *request.unnormalized_request(), *canonical_cookie, options,
+          first_party_set_metadata, &status)) {
     return false;
   }
 
@@ -492,7 +482,7 @@ std::unique_ptr<CanonicalCookie> CookieCraving::CreateCanonicalCookieForRequest(
   //  2) Can we refactor `AnnotateAndMoveUserBlockedCookies` to input a
   //     `CookieBase` instead?
   if (!url.HostIsIPAddress() &&
-      cookie_util::GetCookiePrefix(Name()) == COOKIE_PREFIX_HOST) {
+      cookie_util::GetCookiePrefix(Name()) == CookiePrefix::kHost) {
     domain = "";
   }
   return CanonicalCookie::CreateSanitizedCookie(

@@ -17,19 +17,20 @@
 #include "src/trace_processor/util/trace_type.h"
 
 #include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 
 #include "perfetto/base/logging.h"
 #include "perfetto/ext/base/string_utils.h"
+#include "perfetto/protozero/proto_decoder.h"
 #include "perfetto/protozero/proto_utils.h"
 #include "src/trace_processor/importers/android_bugreport/android_log_event.h"
 #include "src/trace_processor/importers/perf_text/perf_text_sample_line_parser.h"
 
 #include "protos/perfetto/trace/trace.pbzero.h"
 #include "protos/perfetto/trace/trace_packet.pbzero.h"
+#include "protos/third_party/pprof/profile.pbzero.h"
 
 namespace perfetto::trace_processor {
 namespace {
@@ -56,12 +57,8 @@ constexpr uint16_t kModuleSymbolsTag =
     protozero::proto_utils::MakeTagLengthDelimited(
         protos::pbzero::TracePacket::kModuleSymbolsFieldNumber);
 
-inline bool isspace(unsigned char c) {
-  return ::isspace(c);
-}
-
 std::string RemoveWhitespace(std::string str) {
-  str.erase(std::remove_if(str.begin(), str.end(), isspace), str.end());
+  str.erase(std::remove_if(str.begin(), str.end(), base::IsSpace), str.end());
   return str;
 }
 
@@ -108,68 +105,145 @@ bool IsProtoTraceWithSymbols(const uint8_t* ptr, size_t size) {
 }
 
 bool IsPprofProfile(const uint8_t* data, size_t size) {
+  using perfetto::third_party::perftools::profiles::pbzero::Profile;
+  using protozero::proto_utils::ProtoWireType;
   // Minimum size to parse a protobuf tag and small varint
   constexpr size_t kMinPprofSize = 10;
   if (size < kMinPprofSize) {
     return false;
   }
 
-  const uint8_t* ptr = data;
-  const uint8_t* const end = ptr + size;
+  bool has_core_pprof_field = false;
+  protozero::ProtoDecoder decoder(data, size);
+  for (auto fld = decoder.ReadField(); fld.valid(); fld = decoder.ReadField()) {
+    switch (fld.id()) {
+      case Profile::kSampleFieldNumber:
+      case Profile::kMappingFieldNumber:
+      case Profile::kLocationFieldNumber:
+      case Profile::kFunctionFieldNumber:
+      case Profile::kStringTableFieldNumber:
+        has_core_pprof_field = true;
+        [[fallthrough]];
+      case Profile::kSampleTypeFieldNumber:
+      case Profile::kPeriodTypeFieldNumber:
+        if (fld.type() != ProtoWireType::kLengthDelimited) {
+          return false;
+        }
+        break;
+      case Profile::kCommentFieldNumber:
+        if (fld.type() != ProtoWireType::kLengthDelimited &&
+            fld.type() != ProtoWireType::kVarInt) {
+          return false;
+        }
+        break;
+      case Profile::kDropFramesFieldNumber:
+      case Profile::kKeepFramesFieldNumber:
+        has_core_pprof_field = true;
+        [[fallthrough]];
+      case Profile::kTimeNanosFieldNumber:
+      case Profile::kDurationNanosFieldNumber:
+      case Profile::kPeriodFieldNumber:
+      case Profile::kDefaultSampleTypeFieldNumber:
+        if (fld.type() != ProtoWireType::kVarInt) {
+          return false;
+        }
+        break;
+      default:
+        return false;
+    }
+  }
+  return has_core_pprof_field;
+}
 
-  // Check if first field is sample_type (field 1, length-delimited)
-  uint64_t tag;
-  const uint8_t* next = protozero::proto_utils::ParseVarInt(ptr, end, &tag);
-  if (next == ptr) {
+// Checks if a line looks like a valid collapsed stack line:
+// frame1;frame2;frame3 count
+bool IsCollapsedStackLine(const char* line_start, size_t line_len) {
+  // Skip leading whitespace
+  size_t start = 0;
+  while (start < line_len && base::IsSpace(line_start[start])) {
+    ++start;
+  }
+  if (start >= line_len || line_start[start] == '#') {
+    return false;  // Empty or comment - not definitive
+  }
+
+  // Trim trailing whitespace
+  size_t end = line_len;
+  while (end > start && base::IsSpace(line_start[end - 1])) {
+    --end;
+  }
+
+  size_t len = end - start;
+  if (len == 0) {
     return false;
   }
 
-  constexpr uint64_t kSampleTypeTag =
-      protozero::proto_utils::MakeTagLengthDelimited(1);
+  const char* line = line_start + start;
 
-  if (tag != kSampleTypeTag) {
-    return false;
+  // Find the last space - count should be after it
+  size_t last_space = len;
+  for (size_t i = len; i > 0; --i) {
+    if (line[i - 1] == ' ') {
+      last_space = i - 1;
+      break;
+    }
   }
 
-  // Parse the length of the sample_type field
-  uint64_t sample_type_length;
-  const uint8_t* len_next =
-      protozero::proto_utils::ParseVarInt(next, end, &sample_type_length);
-  if (len_next == next ||
-      sample_type_length > static_cast<uint64_t>(end - len_next)) {
-    return false;
+  if (last_space == len || last_space == 0) {
+    return false;  // No space found, or space at start
   }
 
-  // Look inside the sample_type field for pprof ValueType structure
-  // In pprof: ValueType has field 1 (type) and field 2 (unit) as varints (wire
-  // type 0)
-  // In Perfetto: field 1 would contain length-delimited data (wire type 2)
-  const uint8_t* value_type_ptr = len_next;
-  const uint8_t* value_type_end = len_next + sample_type_length;
-
-  // Parse the first ValueType message
-  if (value_type_ptr >= value_type_end) {
-    return false;
+  // Check that everything after the last space is a digit
+  for (size_t i = last_space + 1; i < len; ++i) {
+    if (!std::isdigit(static_cast<unsigned char>(line[i]))) {
+      return false;
+    }
   }
 
-  // Check for field 1 (type) as varint
-  uint64_t inner_tag;
-  const uint8_t* inner_next = protozero::proto_utils::ParseVarInt(
-      value_type_ptr, value_type_end, &inner_tag);
-  if (inner_next == value_type_ptr) {
-    return false;
+  // Check that the stack part contains at least one semicolon
+  bool has_semicolon = false;
+  for (size_t i = 0; i < last_space; ++i) {
+    if (line[i] == ';') {
+      has_semicolon = true;
+      break;
+    }
+  }
+  return has_semicolon;
+}
+
+bool IsCollapsedStackFormat(const uint8_t* data, size_t size) {
+  const char* str = reinterpret_cast<const char*>(data);
+
+  // Look at first few non-empty, non-comment lines
+  size_t valid_lines = 0;
+  size_t pos = 0;
+
+  while (pos < size && valid_lines < 3) {
+    // Find end of line
+    size_t nl = pos;
+    while (nl < size && str[nl] != '\n') {
+      ++nl;
+    }
+
+    size_t line_len = nl - pos;
+
+    // Skip empty/whitespace-only lines and comments for counting
+    size_t start = pos;
+    while (start < nl && base::IsSpace(str[start])) {
+      ++start;
+    }
+
+    if (start < nl && str[start] != '#') {
+      if (!IsCollapsedStackLine(str + pos, line_len)) {
+        return false;
+      }
+      ++valid_lines;
+    }
+
+    pos = (nl < size) ? nl + 1 : size;
   }
 
-  // Use proto_utils to create proper field tags for pprof ValueType fields:
-  // Field 1 (type) and Field 2 (unit) are both varints in pprof format
-  constexpr uint64_t kValueTypeTypeFieldTag =
-      protozero::proto_utils::MakeTagVarInt(1);
-  constexpr uint64_t kValueTypeUnitFieldTag =
-      protozero::proto_utils::MakeTagVarInt(2);
-
-  // Accept either field 1 (type) or field 2 (unit) as evidence of pprof format
-  return inner_tag == kValueTypeTypeFieldTag ||
-         inner_tag == kValueTypeUnitFieldTag;
+  return valid_lines > 0;
 }
 
 }  // namespace
@@ -198,6 +272,8 @@ const char* TraceTypeToString(TraceType trace_type) {
       return "perf";
     case kPprofTraceType:
       return "pprof";
+    case kCollapsedStackTraceType:
+      return "collapsed_stack";
     case kInstrumentsXmlTraceType:
       return "instruments_xml";
     case kAndroidLogcatTraceType:
@@ -214,12 +290,46 @@ const char* TraceTypeToString(TraceType trace_type) {
       return "art_hprof";
     case kPerfTextTraceType:
       return "perf_text";
+    case kPrimesTraceType:
+      return "primes";
     case kSimpleperfProtoTraceType:
       return "simpleperf_proto";
     case kUnknownTraceType:
       return "unknown";
     case kTarTraceType:
       return "tar";
+  }
+  PERFETTO_FATAL("For GCC");
+}
+
+bool IsContainerTraceType(TraceType trace_type) {
+  switch (trace_type) {
+    case kGzipTraceType:
+    case kCtraceTraceType:
+    case kZipFile:
+    case kAndroidBugreportTraceType:
+    case kTarTraceType:
+      return true;
+    case kJsonTraceType:
+    case kPrimesTraceType:
+    case kProtoTraceType:
+    case kSymbolsTraceType:
+    case kNinjaLogTraceType:
+    case kFuchsiaTraceType:
+    case kSystraceTraceType:
+    case kPerfDataTraceType:
+    case kPprofTraceType:
+    case kCollapsedStackTraceType:
+    case kInstrumentsXmlTraceType:
+    case kAndroidLogcatTraceType:
+    case kAndroidDumpstateTraceType:
+    case kGeckoTraceType:
+    case kArtMethodTraceType:
+    case kArtHprofTraceType:
+    case kPerfTextTraceType:
+    case kSimpleperfProtoTraceType:
+    case kUnknownTraceType:
+      return false;
   }
   PERFETTO_FATAL("For GCC");
 }
@@ -320,6 +430,10 @@ TraceType GuessTraceType(const uint8_t* data, size_t size) {
     return kAndroidLogcatTraceType;
   }
 
+  // Collapsed stack format (flamegraph input format).
+  if (IsCollapsedStackFormat(data, size))
+    return kCollapsedStackTraceType;
+
   // Perf text format.
   if (perf_text_importer::IsPerfTextFormatTrace(data, size))
     return kPerfTextTraceType;
@@ -336,6 +450,11 @@ TraceType GuessTraceType(const uint8_t* data, size_t size) {
 
   if (base::StartsWith(start, "\x0a"))
     return kProtoTraceType;
+
+  // TODO(leemh): This is not robust enough. Chat elkurdi@/lalitm@ to determine
+  // better way.
+  if (base::StartsWith(start, "\x09"))
+    return kPrimesTraceType;
 
   if (base::StartsWith(start, "9,0,i,vers,")) {
     return kAndroidDumpstateTraceType;  // BatteryStats Checkin format.

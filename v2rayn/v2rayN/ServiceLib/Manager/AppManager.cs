@@ -306,6 +306,7 @@ public sealed class AppManager
     }
 
 #pragma warning disable CS0618
+
     public async Task MigrateProfileExtra()
     {
         await MigrateProfileExtraGroup();
@@ -500,6 +501,7 @@ public sealed class AppManager
 
         //await ProfileGroupItemManager.Instance.ClearAll();
     }
+
 #pragma warning restore CS0618
 
     #endregion SqliteHelper

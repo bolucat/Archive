@@ -9,6 +9,7 @@
 #include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/logging/logging_settings.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/strings/string_split.h"
 #include "base/synchronization/waitable_event.h"
@@ -78,8 +79,6 @@ void SetUpOnNetworkThread(
 #endif
   *context = url_request_context_builder.Build();
 
-  // TODO(mattm): add command line flag to configure using
-  // CertNetFetcher
   *cert_net_fetcher = base::MakeRefCounted<net::CertNetFetcherURLRequest>();
   (*cert_net_fetcher)->SetURLRequestContext(context->get());
   initialization_complete_event->Signal();
@@ -205,6 +204,10 @@ class DummySystemTrustStore : public net::SystemTrustStore {
     return false;
   }
 
+  bool IsKnownMtcAnchor(const bssl::MTCAnchor* anchor) const override {
+    return false;
+  }
+
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
   net::PlatformTrustStore* GetPlatformTrustStore() override { return nullptr; }
 
@@ -215,9 +218,18 @@ class DummySystemTrustStore : public net::SystemTrustStore {
 
   int64_t chrome_root_store_version() const override { return 0; }
 
+  std::optional<base::Time> mtc_metadata_update_time() const override {
+    return std::nullopt;
+  }
+
   base::span<const net::ChromeRootCertConstraints> GetChromeRootConstraints(
-      const bssl::ParsedCertificate* cert) const override {
+      const bssl::CertPathBuilderResultPath* path) const override {
     return {};
+  }
+
+  const net::TrustStoreChrome::MtcAnchorExtraData* GetMTCAnchorData(
+      base::span<const uint8_t> log_id) const override {
+    return nullptr;
   }
 
   bssl::TrustStore* eutl_trust_store() override { return &empty_trust_store_; }
@@ -393,6 +405,9 @@ const char kUsage[] =
     " --dump=<file prefix>\n"
     "      Dumps the verified chain to PEM files starting with\n"
     "      <file prefix>.\n"
+    "\n"
+    " --no-net-fetcher\n"
+    "      If set, skips performing AIA fetches.\n"
     "\n"
     "\n"
     "[1] A \"file containing certificates\" means a path to a file that can\n"
@@ -577,6 +592,10 @@ int main(int argc, char** argv) {
 
   std::vector<std::unique_ptr<CertVerifyImpl>> impls;
 
+  scoped_refptr<net::CertNetFetcher> passed_net_fetcher = cert_net_fetcher;
+  if (command_line.HasSwitch("no-net-fetcher")) {
+    passed_net_fetcher = nullptr;
+  }
   // Parse the ordered list of CertVerifyImpl passed via command line flags into
   // |impls|.
   std::string impls_str = command_line.GetSwitchValueASCII("impls");
@@ -592,8 +611,8 @@ int main(int argc, char** argv) {
       impls_str, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
 
   for (const std::string& impl_name : impl_names) {
-    auto verify_impl = CreateCertVerifyImplFromName(impl_name, cert_net_fetcher,
-                                                    crl_set, root_store_type);
+    auto verify_impl = CreateCertVerifyImplFromName(
+        impl_name, passed_net_fetcher, crl_set, root_store_type);
     if (verify_impl)
       impls.push_back(std::move(verify_impl));
   }

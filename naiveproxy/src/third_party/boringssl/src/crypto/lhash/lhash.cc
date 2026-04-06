@@ -19,8 +19,11 @@
 #include <openssl/mem.h>
 
 #include "../internal.h"
+#include "../mem_internal.h"
 #include "internal.h"
 
+
+BSSL_NAMESPACE_BEGIN
 
 // kMinNumBuckets is the minimum size of the buckets array in an |_LHASH|.
 static const size_t kMinNumBuckets = 16;
@@ -60,7 +63,7 @@ struct lhash_st {
 };
 
 _LHASH *OPENSSL_lh_new(lhash_hash_func hash, lhash_cmp_func comp) {
-  _LHASH *ret = reinterpret_cast<_LHASH *>(OPENSSL_zalloc(sizeof(_LHASH)));
+  _LHASH *ret = NewZeroed<_LHASH>();
   if (ret == nullptr) {
     return nullptr;
   }
@@ -69,7 +72,7 @@ _LHASH *OPENSSL_lh_new(lhash_hash_func hash, lhash_cmp_func comp) {
   ret->buckets = reinterpret_cast<LHASH_ITEM **>(
       OPENSSL_calloc(ret->num_buckets, sizeof(LHASH_ITEM *)));
   if (ret->buckets == nullptr) {
-    OPENSSL_free(ret);
+    Delete(ret);
     return nullptr;
   }
 
@@ -87,12 +90,12 @@ void OPENSSL_lh_free(_LHASH *lh) {
     LHASH_ITEM *next;
     for (LHASH_ITEM *n = lh->buckets[i]; n != nullptr; n = next) {
       next = n->next;
-      OPENSSL_free(n);
+      Delete(n);
     }
   }
 
   OPENSSL_free(lh->buckets);
-  OPENSSL_free(lh);
+  Delete(lh);
 }
 
 size_t OPENSSL_lh_num_items(const _LHASH *lh) { return lh->num_items; }
@@ -239,7 +242,7 @@ int OPENSSL_lh_insert(_LHASH *lh, void **old_data, void *data,
   }
 
   // An element equal to |data| doesn't exist in the hash table yet.
-  item = reinterpret_cast<LHASH_ITEM *>(OPENSSL_malloc(sizeof(LHASH_ITEM)));
+  item = New<LHASH_ITEM>();
   if (item == nullptr) {
     return 0;
   }
@@ -270,7 +273,7 @@ void *OPENSSL_lh_delete(_LHASH *lh, const void *data,
   item = *next_ptr;
   *next_ptr = item->next;
   ret = reinterpret_cast<LHASH_ITEM *>(item->data);
-  OPENSSL_free(item);
+  Delete(item);
 
   lh->num_items--;
   lh_maybe_resize(lh);
@@ -305,3 +308,5 @@ void OPENSSL_lh_doall_arg(_LHASH *lh, void (*func)(void *, void *), void *arg) {
   // resizing is done here.
   lh_maybe_resize(lh);
 }
+
+BSSL_NAMESPACE_END

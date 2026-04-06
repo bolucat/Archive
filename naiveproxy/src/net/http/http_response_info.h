@@ -67,7 +67,7 @@ class NET_EXPORT HttpResponseInfo {
   // that would prevent us from doing a bunch of forward declaration.
 
   // Initializes from the representation stored in the given pickle.
-  bool InitFromPickle(const base::Pickle& pickle, bool* response_truncated);
+  bool InitFromPickle(base::PickleIterator iterator, bool* response_truncated);
 
   // Call this method to persist the response info. Can't fail. Returns a
   // unique_ptr because base::Pickle doesn't support std::move().
@@ -108,12 +108,6 @@ class NET_EXPORT HttpResponseInfo {
 
   // Information about the proxy chain used to fetch this response, if any.
   ProxyChain proxy_chain;
-
-  // Whether this request was eligible for IP Protection based on the request
-  // being a match to the masked domain list, if available.
-  // This field is not persisted by `Persist()` and not restored by
-  // `InitFromPickle()`.
-  bool was_mdl_match = false;
 
   // Whether the request uses server authentication.
   bool did_use_server_http_auth = false;
@@ -203,10 +197,22 @@ class NET_EXPORT HttpResponseInfo {
   // session. Used for filtering cache access.
   std::optional<int64_t> browser_run_id;
 
+  // True if the request matched a shared dictionary and advertised it as being
+  // available with an "Available-Dictionary" request header.
+  // This is always false for resources served from cache.
+  bool did_send_available_dictionary = false;
+
   // True if the response used a shared dictionary for decoding its body.
   // This is always false for resources served from cache (where
   // dictionary-compressed responses are stored uncompressed).
   bool did_use_shared_dictionary = false;
+
+  // The original encoded (on-the-wire, before content decoding) body size.
+  // This is stored so that when the response is served from the disk cache
+  // (which stores the decoded body), we can still report the correct
+  // encodedBodySize for Resource Timing.
+  // Only set after the full body has been received.
+  std::optional<int64_t> encoded_body_size;
 };
 
 }  // namespace net

@@ -31,9 +31,16 @@ if (use_clang_modules) {
       forward_variables_from(invoker, "*", [ "modulemap" ])
       use_libcxx_modules = false
       sources = [ invoker.modulemap ]
+      module_name = target_name
       if (!defined(public_deps)) {
         public_deps = []
       }
+
+      if (!defined(public_configs)) {
+        public_configs = []
+      }
+
+      public_configs += [ "//build/config/compiler:libcxx_module" ]
 
       # Implicit module maps won't work on apple because we're currently
       # missing some dependencies.
@@ -49,14 +56,6 @@ if (use_clang_modules) {
         # * If we provide -fmodule-map-file=bar but choose not to build bar,
         #   then any target that did depend on bar would fail to compile.
         configs += [ "//buildtools/third_party/libc++:all_modulemap_configs" ]
-        if (!defined(cflags)) {
-          cflags = []
-        }
-
-        # While it'd be nice to enable implicit module maps to pick up on errors
-        # for missing modules, unfortunately then it finds modulemap files we've
-        # intentionally disabled because it's broken (eg. Darwin.modulemap).
-        cflags += [ clang_arg_prefix + "-fno-implicit-module-maps" ]
       } else {
         if (use_xcode_symlinks) {
           # The `copy_sysroot_modulemaps` action depends on SDK paths that differ
@@ -71,10 +70,6 @@ if (use_clang_modules) {
           public_deps += [ "//buildtools/third_party/libc++:copy_sysroot_modulemaps($toolchain)" ]
         }
 
-        if (!defined(public_configs)) {
-          public_configs = []
-        }
-
         # By always including all module maps, we can get it to error out if
         # we attempt to include something not in your dependencies.
         # Otherwise, it would silently add it to your own AST.
@@ -84,11 +79,18 @@ if (use_clang_modules) {
           "//buildtools/third_party/libc++:sysroot_modulemaps",
         ]
       }
-      configs -= configs_to_remove
+
+      # Header files in modules need to be built with chromium_code config as
+      # some warnings are not triggered if we use no_chromium_code config for
+      # modules compiles.
+      configs -= configs_to_remove - [ "//build/config/compiler:chromium_code" ]
 
       # The module needs to use the same version of -std that is used by the
       # libraries depending on it. Otherwise we get a module config mismatch.
-      configs += configs_to_add - [ "//buildtools/third_party/libc++:stdver" ]
+      configs += configs_to_add - [
+                   "//build/config/compiler:no_chromium_code",
+                   "//buildtools/third_party/libc++:stdver",
+                 ]
 
       # Any complex target-specific logic needs to go in here.
       # The modularize tool supports simple attributes, but not conditional
@@ -96,7 +98,9 @@ if (use_clang_modules) {
       if (target_name == "std_stdatomic_h" && use_cxx23) {
         # In cxx23, stdatomic.h uses libcxx's stdatomic rather than the
         # builtin.
-        public_deps -= [ ":_Builtin_stdatomic" ]
+        if (!is_win) {
+          public_deps -= [ ":_Builtin_stdatomic" ]
+        }
         public_deps += [ ":std" ]
       }
     }
@@ -193,7 +197,8 @@ template("sysroot_modulemap") {
     } else if (current_cpu == "arm64") {
       win_toolchain_data = win_toolchain_data_arm64
     } else {
-      error("Unsuppported windows CPU, add it to win_toolchain_data.gni")
+      assert(false,
+             "Unsuppported windows CPU, add it to win_toolchain_data.gni")
     }
 
     # This must be relative to the directory the modulemap is contained within.

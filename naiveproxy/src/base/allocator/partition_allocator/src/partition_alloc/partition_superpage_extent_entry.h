@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_PARTITION_SUPERPAGE_EXTENT_ENTRY_H_
 #define PARTITION_ALLOC_PARTITION_SUPERPAGE_EXTENT_ENTRY_H_
 
@@ -68,11 +63,19 @@ SuperPagesBeginFromExtent(const PartitionSuperPageExtentEntry* extent) {
   return base::bits::AlignDown(extent_as_uintptr, kSuperPageAlignment);
 }
 
-// Returns the end of the last super page in the range of consecutive super
+// Returns the base of the first super page in the range of consecutive super
 // pages.
 //
 // CAUTION! |extent| must point to the extent of the first super page in the
 // range of consecutive super pages.
+uintptr_t SuperPagesBeginFromExtent(
+    const PartitionSuperPageExtentEntry* extent);
+
+// Returns the end of the last super page in the range of consecutive
+// super pages.
+//
+// CAUTION! |extent| must point to the extent of the first super page in
+// the range of consecutive super pages.
 PA_ALWAYS_INLINE uintptr_t
 SuperPagesEndFromExtent(const PartitionSuperPageExtentEntry* extent) {
   return SuperPagesBeginFromExtent(extent) +

@@ -37,10 +37,12 @@
 #include "perfetto/ext/base/string_view.h"
 #include "perfetto/protozero/field.h"
 #include "perfetto/trace_processor/basic_types.h"
+#include "src/trace_processor/containers/null_term_string_view.h"
 #include "src/trace_processor/containers/string_pool.h"
-#include "src/trace_processor/dataframe/dataframe.h"
-#include "src/trace_processor/dataframe/specs.h"
-#include "src/trace_processor/dataframe/typed_cursor.h"
+#include "src/trace_processor/core/dataframe/cursor.h"
+#include "src/trace_processor/core/dataframe/dataframe.h"
+#include "src/trace_processor/core/dataframe/specs.h"
+#include "src/trace_processor/core/dataframe/typed_cursor.h"
 #include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/table_functions/static_table_function.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/table_functions/tables_py.h"
@@ -54,6 +56,28 @@ namespace perfetto::trace_processor {
 
 namespace {
 constexpr char kDeinternError[] = "STRING DE-INTERNING ERROR";
+
+// Helper to extract uint32 values via Cell() callback.
+struct Uint32CellExtractor : dataframe::CellCallback {
+  std::optional<uint32_t> result;
+  void OnCell(int64_t) {}
+  void OnCell(double) {}
+  void OnCell(NullTermStringView) {}
+  void OnCell(std::nullptr_t) { result = std::nullopt; }
+  void OnCell(uint32_t v) { result = v; }
+  void OnCell(int32_t) {}
+};
+
+// Helper to extract int64 values via Cell() callback.
+struct Int64CellExtractor : dataframe::CellCallback {
+  int64_t result = 0;
+  void OnCell(int64_t v) { result = v; }
+  void OnCell(double) {}
+  void OnCell(NullTermStringView) {}
+  void OnCell(std::nullptr_t) {}
+  void OnCell(uint32_t) {}
+  void OnCell(int32_t) {}
+};
 
 // Interned data stored in table with columns:
 // - base64_proto_id
@@ -242,7 +266,8 @@ base::Status InsertRows(
     const std::string* group_id_col_name,
     DescriptorPool& descriptor_pool,
     StringPool* string_pool,
-    const ProtoToInternedData& proto_to_interned_data) {
+    const ProtoToInternedData& proto_to_interned_data,
+    const std::string& table_name) {
   util::ProtoToArgsParser args_parser{descriptor_pool};
 
   auto it = static_table.IndexOfColumnLegacy("base64_proto_id");
@@ -258,15 +283,19 @@ base::Status InsertRows(
   std::unordered_set<uint32_t> inflated_protos;
   std::unordered_map<uint32_t, KeyToRowMap> group_id_to_key_row_map;
   for (uint32_t i = 0; i < static_table.row_count(); ++i) {
-    std::optional<uint32_t> base64_proto_id =
-        static_table.GetCellUncheckedLegacy<
-            dataframe::Uint32, dataframe::SparseNullWithPopcountAlways>(
-            base64_col, i);
+    Uint32CellExtractor base64_extractor;
+    static_table.GetCell(i, base64_col, base64_extractor);
+    std::optional<uint32_t> base64_proto_id = base64_extractor.result;
     PERFETTO_CHECK(base64_proto_id.has_value());
     if (inflated_protos.count(*base64_proto_id) > 0) {
       continue;
     }
     inflated_protos.insert(*base64_proto_id);
+
+    if (util::winscope_proto_mapping::ShouldSkipRow(table_name, static_table, i,
+                                                    string_pool)) {
+      continue;
+    }
 
     const auto raw_proto =
         string_pool->Get(StringPool::Id::Raw(*base64_proto_id));
@@ -276,10 +305,9 @@ base::Status InsertRows(
 
     KeyToRowMap* key_to_row = nullptr;
     if (group_id_col_idx.has_value()) {
-      uint32_t group_id = static_cast<uint32_t>(
-          static_table
-              .GetCellUncheckedLegacy<dataframe::Int64, dataframe::NonNull>(
-                  *group_id_col_idx, i));
+      Int64CellExtractor group_id_extractor;
+      static_table.GetCell(i, *group_id_col_idx, group_id_extractor);
+      uint32_t group_id = static_cast<uint32_t>(group_id_extractor.result);
       auto pos = group_id_to_key_row_map.find(group_id);
       if (pos != group_id_to_key_row_map.end()) {
         key_to_row = &(pos->second);
@@ -290,8 +318,20 @@ base::Status InsertRows(
     InternedData* interned_data = proto_to_interned_data.Find(*base64_proto_id);
     Delegate delegate(string_pool, *base64_proto_id, inflated_args_table,
                       key_to_row, interned_data);
-    RETURN_IF_ERROR(args_parser.ParseMessage(cb, proto_name, allowed_fields,
-                                             delegate, nullptr, true));
+
+    const std::vector<uint32_t>* allowed_fields_per_row = nullptr;
+    std::optional<std::vector<uint32_t>> fields_per_row;
+    if (!allowed_fields) {
+      fields_per_row = util::winscope_proto_mapping::GetAllowedFieldsPerRow(
+          table_name, static_table, i, string_pool);
+      allowed_fields_per_row =
+          fields_per_row ? &fields_per_row.value() : nullptr;
+    }
+
+    RETURN_IF_ERROR(args_parser.ParseMessage(
+        cb, proto_name,
+        allowed_fields ? allowed_fields : allowed_fields_per_row, delegate,
+        nullptr, true));
   }
   return base::OkStatus();
 }
@@ -314,6 +354,11 @@ bool WinscopeProtoToArgsWithDefaults::Cursor::Run(
         "a string."));
   }
   std::string table_name_str = arguments[0].AsString();
+  // Table names now use the __intrinsic_ prefix internally. If the caller
+  // passes the user-facing name, prepend the prefix.
+  if (table_name_str.substr(0, 12) != "__intrinsic_") {
+    table_name_str = "__intrinsic_" + table_name_str;
+  }
   const dataframe::Dataframe* static_table_from_engine =
       engine_->GetDataframeOrNull(table_name_str);
   if (!static_table_from_engine) {
@@ -330,15 +375,18 @@ bool WinscopeProtoToArgsWithDefaults::Cursor::Run(
 
   auto allowed_fields =
       util::winscope_proto_mapping::GetAllowedFields(table_name_str);
+
   auto group_id_col_name =
       util::winscope_proto_mapping::GetGroupIdColName(table_name_str);
   auto proto_to_interned_data =
       GetProtoToInternedData(table_name_str, context_->storage.get());
-  base::Status insert_status = InsertRows(
-      *static_table_from_engine, &table_, *proto_name,
-      allowed_fields ? &allowed_fields.value() : nullptr,
-      group_id_col_name ? &group_id_col_name.value() : nullptr,
-      *context_->descriptor_pool_, string_pool_, proto_to_interned_data);
+
+  base::Status insert_status =
+      InsertRows(*static_table_from_engine, &table_, *proto_name,
+                 allowed_fields ? &allowed_fields.value() : nullptr,
+                 group_id_col_name ? &group_id_col_name.value() : nullptr,
+                 *context_->descriptor_pool_, string_pool_,
+                 proto_to_interned_data, table_name_str);
   if (!insert_status.ok()) {
     return OnFailure(insert_status);
   }

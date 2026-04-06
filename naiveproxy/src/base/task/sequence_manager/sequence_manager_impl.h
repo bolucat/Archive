@@ -21,7 +21,6 @@
 #include "base/compiler_specific.h"
 #include "base/containers/circular_deque.h"
 #include "base/debug/crash_logging.h"
-#include "base/feature_list.h"
 #include "base/functional/callback_forward.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
@@ -134,8 +133,7 @@ class BASE_EXPORT SequenceManagerImpl
   void RemoveTaskObserver(TaskObserver* task_observer) override;
   std::optional<WakeUp> GetNextDelayedWakeUp() const override;
   TaskQueue::QueuePriority GetPriorityCount() const override;
-  std::vector<std::unique_ptr<TaskQueue::QueueEnabledVoter>>
-  CreateBestEffortTaskQueueEnabledVoters() override;
+  std::vector<TaskQueue*> GetBestEffortTaskQueues() override;
 
   // SequencedTaskSource implementation:
   void SetRunTaskSynchronouslyAllowed(
@@ -203,6 +201,11 @@ class BASE_EXPORT SequenceManagerImpl
 
   // How frequently to perform housekeeping tasks (sweeping canceled tasks etc).
   static constexpr TimeDelta kReclaimMemoryInterval = Seconds(30);
+
+  // Allows SingleThreadTaskRunner to find the best-effort task queue for the
+  // current thread. Returns nullptr if there isn't one.
+  static scoped_refptr<SingleThreadTaskRunner> GetCurrentBestEffortTaskRunner(
+      PassKey<SingleThreadTaskRunner>);
 
  protected:
   static std::unique_ptr<ThreadControllerImpl>
@@ -413,9 +416,8 @@ class BASE_EXPORT SequenceManagerImpl
   std::unique_ptr<trace_event::ConvertableToTraceFormat>
   AsValueWithSelectorResultForTracing(internal::WorkQueue* selected_work_queue,
                                       bool force_verbose) const;
-  Value::Dict AsValueWithSelectorResult(
-      internal::WorkQueue* selected_work_queue,
-      bool force_verbose) const;
+  DictValue AsValueWithSelectorResult(internal::WorkQueue* selected_work_queue,
+                                      bool force_verbose) const;
 
   // Used in construction of TaskQueueImpl to obtain an AtomicFlag which it can
   // use to request reload by ReloadEmptyWorkQueues. The lifetime of
@@ -468,10 +470,6 @@ class BASE_EXPORT SequenceManagerImpl
                                      LazyNow* lazy_now) const;
 
   void MaybeAddLeewayToTask(Task& task) const;
-
-#if DCHECK_IS_ON()
-  void LogTaskDebugInfo(const internal::WorkQueue* work_queue) const;
-#endif
 
   // Determines if wall time or thread time should be recorded for the next
   // task.

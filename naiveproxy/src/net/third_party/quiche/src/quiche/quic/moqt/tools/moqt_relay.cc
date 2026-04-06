@@ -16,7 +16,10 @@
 #include "quiche/quic/core/crypto/proof_verifier.h"
 #include "quiche/quic/core/io/quic_event_loop.h"
 #include "quiche/quic/core/quic_server_id.h"
+#include "quiche/quic/moqt/moqt_fetch_task.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_names.h"
 #include "quiche/quic/moqt/moqt_session.h"
 #include "quiche/quic/moqt/moqt_session_callbacks.h"
 #include "quiche/quic/moqt/moqt_session_interface.h"
@@ -45,25 +48,24 @@ MoqtRelay::MoqtRelay(std::unique_ptr<quic::ProofSource> proof_source,
                      absl::string_view default_upstream,
                      bool ignore_certificate,
                      quic::QuicEventLoop* client_event_loop)
-    : ignore_certificate_(ignore_certificate),
-      client_event_loop_(client_event_loop),
+    : client_event_loop_(client_event_loop),
       // TODO(martinduke): Extend MoqtServer so that partial objects can be
       // received.
-      server_(std::make_unique<MoqtServer>(std::move(proof_source),
-                                           [this](absl::string_view path) {
-                                             return IncomingSessionHandler(
-                                                 path);
-                                           })) {
+      server_(std::make_unique<MoqtServer>(
+          std::move(proof_source), [this](absl::string_view path) {
+            return IncomingSessionHandler(path);
+          })) {
   quiche::QuicheIpAddress bind_ip_address;
   QUICHE_CHECK(bind_ip_address.FromString(bind_address));
   // CreateUDPSocketAndListen() creates the event loop that we will pass to
   // MoqtClient.
-  server_->quic_server().CreateUDPSocketAndListen(
+  absl::Status socket_status = server_->CreateUDPSocketAndListen(
       quic::QuicSocketAddress(bind_ip_address, bind_port));
+  QUICHE_CHECK_OK(socket_status);
   if (!default_upstream.empty()) {
     quic::QuicUrl url(default_upstream, "https");
     if (client_event_loop == nullptr) {
-      client_event_loop = server_->quic_server().event_loop();
+      client_event_loop = server_->event_loop();
     }
     default_upstream_client_ =
         CreateClient(url, ignore_certificate, client_event_loop_);
@@ -108,10 +110,12 @@ MoqtSessionCallbacks MoqtRelay::CreateClientCallbacks() {
 
 void MoqtRelay::SetNamespaceCallbacks(MoqtSessionInterface* session) {
   session->callbacks().incoming_publish_namespace_callback =
-      [this, session](
-          const TrackNamespace& track_namespace,
-          const std::optional<VersionSpecificParameters>& parameters,
-          MoqtResponseCallback callback) {
+      [this, session](const TrackNamespace& track_namespace,
+                      const std::optional<MessageParameters>& parameters,
+                      MoqtResponseCallback callback) {
+        if (is_closing_) {
+          return;
+        }
         if (parameters.has_value()) {
           return publisher_.OnPublishNamespace(track_namespace, *parameters,
                                                session, std::move(callback));
@@ -120,17 +124,27 @@ void MoqtRelay::SetNamespaceCallbacks(MoqtSessionInterface* session) {
         }
       };
   session->callbacks().incoming_subscribe_namespace_callback =
-      [this, session](
-          const TrackNamespace& track_namespace,
-          const std::optional<VersionSpecificParameters>& parameters,
-          MoqtResponseCallback callback) {
-        if (parameters.has_value()) {
-          publisher_.AddNamespaceSubscriber(track_namespace, session);
-          std::move(callback)(std::nullopt);
-        } else {
-          publisher_.RemoveNamespaceSubscriber(track_namespace, session);
-        }
-      };
+      [this, session](const TrackNamespace& prefix,
+                      SubscribeNamespaceOption option,
+                      const MessageParameters& parameters,
+                      MoqtResponseCallback response_callback)
+      -> std::unique_ptr<MoqtNamespaceTask> {
+    if (is_closing_) {
+      return nullptr;
+    }
+    std::unique_ptr<MoqtNamespaceTask> task;
+    switch (option) {
+      case SubscribeNamespaceOption::kNamespace:
+        task = publisher_.AddNamespaceSubscriber(prefix, nullptr);
+        break;
+      case SubscribeNamespaceOption::kBoth:
+      case SubscribeNamespaceOption::kPublish:
+        task = publisher_.AddNamespaceSubscriber(prefix, session);
+        break;
+    }
+    std::move(response_callback)(std::nullopt);
+    return task;
+  };
 }
 
 absl::StatusOr<MoqtConfigureSessionCallback> MoqtRelay::IncomingSessionHandler(

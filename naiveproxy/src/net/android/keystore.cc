@@ -41,7 +41,7 @@ bool PrivateKeySupportsSignature(const base::android::JavaRef<jobject>& key,
       ConvertUTF8ToJavaString(env, algorithm);
   DCHECK(!algorithm_ref.is_null());
 
-  jboolean result =
+  bool result =
       Java_AndroidKeyStore_privateKeySupportsSignature(env, key, algorithm_ref);
   return !HasException(env) && result;
 }
@@ -54,7 +54,7 @@ bool PrivateKeySupportsCipher(const base::android::JavaRef<jobject>& key,
       ConvertUTF8ToJavaString(env, algorithm);
   DCHECK(!algorithm_ref.is_null());
 
-  jboolean result =
+  bool result =
       Java_AndroidKeyStore_privateKeySupportsCipher(env, key, algorithm_ref);
   return !HasException(env) && result;
 }
@@ -112,3 +112,5 @@ bool EncryptWithPrivateKey(const JavaRef<jobject>& private_key_ref,
 }
 
 }  // namespace net::android
+
+DEFINE_JNI(AndroidKeyStore)

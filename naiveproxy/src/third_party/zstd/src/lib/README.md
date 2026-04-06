@@ -12,8 +12,9 @@ including commands variables, staged install, directory variables and standard t
 - `make` : generates both static and dynamic libraries
 - `make install` : install libraries, headers and pkg-config in local system directories
 
-`libzstd` default scope is extensive, including compression, decompression, dictionary builder,
-and support for decoding legacy formats >= v0.5.0 by default.
+`libzstd` default scope includes compression, decompression, and dictionary builder.
+Note: starting v1.6.0, support for decoding legacy formats is disabled by default.
+See _modular build_ below to learn how to enable it.
 The scope can be reduced on demand (see paragraph _modular build_).
 
 #### Multiarch Support
@@ -99,7 +100,7 @@ The file structure is designed to make this selection manually achievable for an
         Specifying a number limits versions supported to that version onward.
         For example, `ZSTD_LEGACY_SUPPORT=2` means : "support legacy formats >= v0.2.0".
         Conversely, `ZSTD_LEGACY_SUPPORT=0` means "do __not__ support legacy formats".
-        By default, this build macro is set as `ZSTD_LEGACY_SUPPORT=5`.
+        By default, this build macro is set as `ZSTD_LEGACY_SUPPORT=0` (disabled).
         Decoding supported legacy format is a transparent capability triggered within decompression functions.
         It's also allowed to invoke legacy API directly, exposed in `lib/legacy/zstd_legacy.h`.
         Each version does also provide its own set of advanced API.

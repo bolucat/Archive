@@ -115,6 +115,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("config.scheduler.record_task_post_time").SetDescription(
       "Controls details emitted by TaskAnnotator::EmitTaskTimingDetails"),
     perfetto::Category("content"),
+    perfetto::Category("content.digitalcredentials").SetDescription(
+        "Traces for the Digital Credentials API"),
     perfetto::Category("content.fedcm").SetDescription(
         "Traces for the Federated Credential Management API"),
     perfetto::Category("content_capture"),
@@ -159,8 +161,6 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("input").SetTags("input"),
     perfetto::Category("input.scrolling").SetTags("input"),
     perfetto::Category("io"),
-    perfetto::Category("ip_protection").SetDescription(
-      "Traces for //components/ip_protection."),
     perfetto::Category("ipc").SetTags("ipc"),
     perfetto::Category("Java"),
     perfetto::Category("jni"),
@@ -259,6 +259,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("toplevel").SetTags("scheduling", "toplevel"),
     perfetto::Category("toplevel.flow").SetTags("scheduling", "toplevel"),
     perfetto::Category("ui").SetTags("rendering"),
+    perfetto::Category("update_client").SetDescription(
+        "Events from component updater."),
     perfetto::Category("v8"),
     perfetto::Category("v8.execute"),
     perfetto::Category("v8.wasm"),
@@ -272,6 +274,7 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
       "Includes events related to WaaP (Webium-as-a-Product) UI experiments as "
       "described in //chrome/browser/waap."),
     perfetto::Category("wayland"),
+    perfetto::Category("wayland.debug").SetTags("debug"),
     perfetto::Category("webaudio").SetTags("audio"),
     perfetto::Category("webengine.fidl"),
     perfetto::Category("WebCore"),
@@ -305,11 +308,7 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
         .SetTags("slow"),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("blink.invalidation"))
         .SetTags("slow"),
-    perfetto::Category(TRACE_DISABLED_BY_DEFAULT("identifiability"))
-        .SetTags("slow"),
-    perfetto::Category(
-        TRACE_DISABLED_BY_DEFAULT("identifiability.high_entropy_api"))
-        .SetTags("slow"),
+    perfetto::Category("blink.webdx_feature_usage").SetTags("slow"),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("cc"))
         .SetTags("slow"),
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("cc.debug")).SetTags("debug"),
@@ -482,6 +481,7 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category(TRACE_DISABLED_BY_DEFAULT("xr.debug")).SetTags("debug"),
     perfetto::Category::Group("android_webview,toplevel"),
     perfetto::Category::Group("android_webview.timeline,android.ui.jank"),
+    perfetto::Category::Group("audio,latency"),
     perfetto::Category::Group("base,toplevel"),
     perfetto::Category::Group("benchmark,drm"),
     perfetto::Category::Group("benchmark,latencyInfo,rail"),

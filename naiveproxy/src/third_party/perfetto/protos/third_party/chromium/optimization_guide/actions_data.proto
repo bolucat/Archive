@@ -106,7 +106,7 @@ message ScrollAction {
 
   ScrollDirection direction = 2 [features = { field_presence: EXPLICIT }];
 
-  // The distance to scroll in pixels.
+  // The distance to scroll in DIPs.
   float distance = 3 [features = { field_presence: EXPLICIT }];
 
   int32 tab_id = 4 [features = { field_presence: EXPLICIT }];
@@ -252,9 +252,38 @@ message YieldToUserAction {
 }
 
 // Attempts to log in to the website.
-// Next ID: 2
+// Next ID: 3
 message AttemptLoginAction {
   int32 tab_id = 1 [features = { field_presence: EXPLICIT }];
+
+  // All of the login methods that the model knows about for this page.
+  // As it does not know in advance which account type will be selected by the
+  // user, the model provides everything it recognizes.
+  // If a password form target is not provided (or if no targets are provided at
+  // all), password form filling will still be done if a password credential is
+  // selected by the user, but submitting the form will need to be done by a
+  // follow up action.
+  repeated LoginTarget login_targets = 2;
+
+  // A target along with a type indicating how it is used to log in.
+  // Next ID: 3
+  message LoginTarget {
+    LoginType login_type = 1 [features = { field_presence: EXPLICIT }];
+
+    ActionTarget target = 2 [features = { field_presence: EXPLICIT }];
+
+    // Indicates how the target is used to log in.
+    enum LoginType {
+      // Unknown login type. This should not be used.
+      UNKNOWN_LOGIN_TYPE = 0;
+
+      // The target is used to submit a username/password form.
+      PASSWORD_FORM_SUBMIT = 1;
+
+      // The target is a "Sign in with Google" button.
+      FEDERATED_GOOGLE_SIGNIN = 2;
+    }
+  }
 }
 
 // Specifies a form by a set of fields (from different autofill sections) and
@@ -307,6 +336,11 @@ message FormFillingRequest {
 
     // A credit card should be filled.
     CREDIT_CARD = 6;
+
+    // Contact information should be filled. Contact information includes name,
+    // email, phone number, but not postal address information (street, city,
+    // etc.)
+    CONTACT_INFORMATION = 7;
   }
 }
 
@@ -358,11 +392,16 @@ message PauseMediaAction {
 }
 
 // Seek media action seeks the media session to the given seek time in
-// microseconds from the beginning of the media. The seek time should be
+// milliseconds from the beginning of the media. The seek time should be
 // non-negative.
-// Next ID: 2
+// Next ID: 3
 message SeekMediaAction {
-  int64 seek_time_microseconds = 1 [features = { field_presence: EXPLICIT }];
+  int64 seek_time_microseconds = 1 [
+    deprecated = true,
+    features = { field_presence: EXPLICIT }
+  ];
+
+  int64 seek_time_milliseconds = 2 [features = { field_presence: EXPLICIT }];
 }
 
 // Controls media session in a tab.
@@ -382,10 +421,16 @@ message MediaControlAction {
   reserved 1;
 }
 
+// Loads the given URLs and extracts content from them.
+message LoadAndExtractContentAction {
+  repeated string urls = 1;
+}
+
 // All of the actions that can be taken.
 // Only one of these is allowed per action.
-// Next ID: 23
+// Next ID: 24
 message Action {
+
   oneof action {
     ClickAction click = 1;
 
@@ -430,6 +475,8 @@ message Action {
     MediaControlAction media_control = 21;
 
     AttemptFormFillingAction attempt_form_filling = 22;
+
+    LoadAndExtractContentAction load_and_extract_content = 23;
   }
 }
 
@@ -450,8 +497,32 @@ message SecurityMetadata {
   repeated string added_writable_mainframe_origins = 1;
 }
 
-// A single set of actions to be taken by Chrome. The response is ActionsResult.
+// Options for screenshot collection.
 // Next ID: 5
+message ScreenshotCollectionOptions {
+  // The maximum width of the screenshot. If 0, the screenshot will be returned
+  // at the natural width of the screen.
+  // Screenshot will be scaled to fit the max width and height while
+  // maintaining the aspect ratio.
+  int32 max_width = 1 [features = { field_presence: EXPLICIT }];
+
+  // The maximum height of the screenshot. If 0, the screenshot will be returned
+  // at the natural height of the screen.
+  // Screenshot will be scaled to fit the max width and height while maintaining
+  // the aspect ratio.
+  int32 max_height = 2 [features = { field_presence: EXPLICIT }];
+
+  // The format of the screenshot. If not set, the screenshot will be returned
+  // as a jpeg image.
+  ScreenshotImageFormat screenshot_format = 3 [features = { field_presence: EXPLICIT }];
+
+  // The compression quality of the screenshot. If not set, the screenshot will
+  // be returned with medium compression quality.
+  CompressionQuality compression_quality = 4 [features = { field_presence: EXPLICIT }];
+}
+
+// A single set of actions to be taken by Chrome. The response is ActionsResult.
+// Next ID: 6
 message Actions {
   // The actions to be taken by Chrome.
   repeated Action actions = 1;
@@ -469,6 +540,9 @@ message Actions {
 
   // Metadata that is associated with a task.
   TaskMetadata task_metadata = 4 [features = { field_presence: EXPLICIT }];
+
+  // Options for screenshot collection.
+  ScreenshotCollectionOptions screenshot_options = 5 [features = { field_presence: EXPLICIT }];
 }
 
 // Information about a chrome window.
@@ -490,7 +564,7 @@ message WindowObservation {
 }
 
 // Information about a chrome tab.
-// Next ID: 7
+// Next ID: 9
 message TabObservation {
   // Unique id
   int32 id = 1 [features = { field_presence: EXPLICIT }];
@@ -519,8 +593,12 @@ message TabObservation {
   // in the Actions message.
   PageMetadata metadata = 6 [features = { field_presence: EXPLICIT }];
 
-  // Result codes of a tab observation. It may be possible
-  // to retry an observation given specific error codes.
+  AnnotatedPageContentResult annotated_page_content_result = 7 [features = { field_presence: EXPLICIT }];
+
+  ScreenshotResult screenshot_result = 8 [features = { field_presence: EXPLICIT }];
+
+  // Result codes of a tab observation as a whole. It may be possible to retry
+  // an observation given specific error codes.
   enum TabObservationResult {
     // The tab was observed successfully.
     TAB_OBSERVATION_OK = 0;
@@ -529,10 +607,46 @@ message TabObservation {
     TAB_OBSERVATION_TAB_WENT_AWAY = 1;
 
     // The screenshot of the tab timed out.
+    // TODO: crbug.com/462190108 - Deprecate, this should be a screenshot error code.
     TAB_OBSERVATION_SCREENSHOT_TIMEOUT = 2;
 
     // The page crashed.
     TAB_OBSERVATION_PAGE_CRASHED = 3;
+
+    // A generic error has occurred.
+    TAB_OBSERVATION_UNKNOWN_ERROR = 4;
+
+    // The web contents of the tab changed so the tab observation was abandoned.
+    TAB_OBSERVATION_WEB_CONTENTS_CHANGED = 5;
+
+    // The page is not eligible for tab observation.
+    TAB_OBSERVATION_PAGE_CONTEXT_NOT_ELIGIBLE = 6;
+
+    // Fetching context encountered an error. The details are in the APC or
+    // Screenshot specific fields below.
+    TAB_OBSERVATION_FETCH_ERROR = 7;
+  }
+
+  enum AnnotatedPageContentResult {
+    // The annotated page content was observed successfully.
+    ANNOTATED_PAGE_CONTENT_OK = 0;
+
+    // Fetching annotated page content timed out.
+    ANNOTATED_PAGE_CONTENT_TIMEOUT = 1;
+
+    // Fetching annotated page content encountered an unspecified error.
+    ANNOTATED_PAGE_CONTENT_ERROR = 2;
+  }
+
+  enum ScreenshotResult {
+    // The screenshot was observed successfully.
+    SCREENSHOT_OK = 0;
+
+    // Fetching the screenshot timed out.
+    SCREENSHOT_TIMEOUT = 1;
+
+    // Fetching the screenshot encountered an unspecified error.
+    SCREENSHOT_ERROR = 2;
   }
 }
 
@@ -651,4 +765,38 @@ message BrowserStartTaskResult {
     // running.
     OVER_TASK_LIMIT = 2;
   }
+}
+
+enum ScreenshotImageFormat {
+  // Unknown screenshot format. This should not be used.
+  SCREENSHOT_IMAGE_FORMAT_UNKNOWN = 0;
+
+  // JPEG screenshot format. This is the default format.
+  SCREENSHOT_IMAGE_FORMAT_JPEG = 1;
+
+  // PNG screenshot format.
+  SCREENSHOT_IMAGE_FORMAT_PNG = 2;
+
+  // WEBP screenshot format.
+  SCREENSHOT_IMAGE_FORMAT_WEBP = 3;
+}
+
+// The compression quality of the screenshot. Depending on screenshot format,
+// the compression quality may not be respected or may mean something different.
+// The default value is MEDIUM.
+enum CompressionQuality {
+  // Unknown compression quality. This should not be used.
+  COMPRESSION_QUALITY_UNKNOWN = 0;
+
+  // Low compression quality.
+  COMPRESSION_QUALITY_LOW = 1;
+
+  // Medium compression quality.
+  COMPRESSION_QUALITY_MEDIUM = 2;
+
+  // High compression quality.
+  COMPRESSION_QUALITY_HIGH = 3;
+
+  // No compression.
+  COMPRESSION_QUALITY_NONE = 4;
 }

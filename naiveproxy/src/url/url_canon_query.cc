@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "url/url_canon.h"
 #include "url/url_canon_internal.h"
 
@@ -46,15 +47,15 @@ namespace {
 // match the given |type| in SharedCharTypes. This version will accept 8 or 16
 // bit characters, but assumes that they have only 7-bit values. It also assumes
 // that all UTF-8 values are correct, so doesn't bother checking
-template<typename CHAR>
-void AppendRaw8BitQueryString(const CHAR* source, int length,
+template <typename CHAR>
+void AppendRaw8BitQueryString(std::basic_string_view<CHAR> source,
                               CanonOutput* output) {
-  for (int i = 0; i < length; i++) {
-    if (!IsQueryChar(static_cast<unsigned char>(UNSAFE_TODO(source[i])))) {
-      AppendEscapedChar(static_cast<unsigned char>(UNSAFE_TODO(source[i])),
-                        output);
+  for (const CHAR& c : source) {
+    unsigned char uc = static_cast<unsigned char>(c);
+    if (!IsQueryChar(uc)) {
+      AppendEscapedChar(uc, output);
     } else {  // Doesn't need escaping.
-      output->push_back(static_cast<char>(UNSAFE_TODO(source[i])));
+      output->push_back(static_cast<char>(uc));
     }
   }
 }
@@ -67,8 +68,8 @@ void RunConverter(std::string_view input,
   // This function will replace any misencoded values with the invalid
   // character. This is what we want so we don't have to check for error.
   RawCanonOutputW<1024> utf16;
-  ConvertUTF8ToUTF16(input, &utf16);
-  converter->ConvertFromUTF16(utf16.view(), output);
+  ConvertUtf8ToUtf16(input, &utf16);
+  converter->ConvertFromUtf16(utf16.view(), output);
 }
 
 // Runs the converter with the given UTF-16 input. We don't have to do
@@ -77,7 +78,7 @@ void RunConverter(std::string_view input,
 void RunConverter(std::u16string_view input,
                   CharsetConverter* converter,
                   CanonOutput* output) {
-  converter->ConvertFromUTF16(input, output);
+  converter->ConvertFromUtf16(input, output);
 }
 
 template <typename CHAR, typename UCHAR>
@@ -89,7 +90,7 @@ void DoConvertToQueryEncoding(std::basic_string_view<CHAR> input,
     // necessary values.
     RawCanonOutput<1024> eight_bit;
     RunConverter(input, converter, &eight_bit);
-    AppendRaw8BitQueryString(eight_bit.data(), eight_bit.length(), output);
+    AppendRaw8BitQueryString(eight_bit.view(), output);
 
   } else {
     // No converter, do our own UTF-8 conversion.

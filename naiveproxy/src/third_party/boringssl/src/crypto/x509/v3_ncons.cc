@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <string_view>
+
 #include <stdio.h>
 #include <string.h>
 
@@ -20,11 +22,14 @@
 #include <openssl/err.h>
 #include <openssl/mem.h>
 #include <openssl/obj.h>
+#include <openssl/span.h>
 #include <openssl/x509.h>
 
 #include "../internal.h"
 #include "internal.h"
 
+
+using namespace bssl;
 
 static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
                                   const X509V3_CTX *ctx,
@@ -37,13 +42,15 @@ static int do_i2r_name_constraints(const X509V3_EXT_METHOD *method,
 static int print_nc_ipadd(BIO *bp, const ASN1_OCTET_STRING *ip);
 
 static int nc_match(const GENERAL_NAME *gen, const NAME_CONSTRAINTS *nc);
-static int nc_match_single(const GENERAL_NAME *sub, const GENERAL_NAME *gen);
+static int nc_match_single(const GENERAL_NAME *sub, const GENERAL_NAME *gen,
+                           bool excluding);
 static int nc_dn(const X509_NAME *sub, const X509_NAME *nm);
-static int nc_dns(const ASN1_IA5STRING *sub, const ASN1_IA5STRING *dns);
+static int nc_dns(const ASN1_IA5STRING *sub, const ASN1_IA5STRING *dns,
+                  bool excluding);
 static int nc_email(const ASN1_IA5STRING *sub, const ASN1_IA5STRING *eml);
 static int nc_uri(const ASN1_IA5STRING *uri, const ASN1_IA5STRING *base);
 
-const X509V3_EXT_METHOD v3_name_constraints = {
+const X509V3_EXT_METHOD bssl::v3_name_constraints = {
     NID_name_constraints,
     0,
     ASN1_ITEM_ref(NAME_CONSTRAINTS),
@@ -194,8 +201,9 @@ int NAME_CONSTRAINTS_check(const X509 *x, const NAME_CONSTRAINTS *nc) {
   // Guard against certificates with an excessive number of names or
   // constraints causing a computationally expensive name constraints
   // check.
+  const auto *x_impl = FromOpaque(x);
   size_t name_count =
-      X509_NAME_entry_count(nm) + sk_GENERAL_NAME_num(x->altname);
+      X509_NAME_entry_count(nm) + sk_GENERAL_NAME_num(x_impl->altname);
   size_t constraint_count = sk_GENERAL_SUBTREE_num(nc->permittedSubtrees) +
                             sk_GENERAL_SUBTREE_num(nc->excludedSubtrees);
   size_t check_count = constraint_count * name_count;
@@ -237,7 +245,7 @@ int NAME_CONSTRAINTS_check(const X509 *x, const NAME_CONSTRAINTS *nc) {
     }
   }
 
-  for (const GENERAL_NAME *gen : x->altname) {
+  for (const GENERAL_NAME *gen : x_impl->altname) {
     int r = nc_match(gen, nc);
     if (r != X509_V_OK) {
       return r;
@@ -265,7 +273,7 @@ static int nc_match(const GENERAL_NAME *gen, const NAME_CONSTRAINTS *nc) {
     if (match == 0) {
       match = 1;
     }
-    int r = nc_match_single(gen, sub->base);
+    int r = nc_match_single(gen, sub->base, /*excluding=*/false);
     if (r == X509_V_OK) {
       match = 2;
     } else if (r != X509_V_ERR_PERMITTED_VIOLATION) {
@@ -286,7 +294,7 @@ static int nc_match(const GENERAL_NAME *gen, const NAME_CONSTRAINTS *nc) {
       return X509_V_ERR_SUBTREE_MINMAX;
     }
 
-    int r = nc_match_single(gen, sub->base);
+    int r = nc_match_single(gen, sub->base, /*excluding=*/true);
     if (r == X509_V_OK) {
       return X509_V_ERR_EXCLUDED_VIOLATION;
     } else if (r != X509_V_ERR_PERMITTED_VIOLATION) {
@@ -297,13 +305,14 @@ static int nc_match(const GENERAL_NAME *gen, const NAME_CONSTRAINTS *nc) {
   return X509_V_OK;
 }
 
-static int nc_match_single(const GENERAL_NAME *gen, const GENERAL_NAME *base) {
+static int nc_match_single(const GENERAL_NAME *gen, const GENERAL_NAME *base,
+                           bool excluding) {
   switch (base->type) {
     case GEN_DIRNAME:
       return nc_dn(gen->d.directoryName, base->d.directoryName);
 
     case GEN_DNS:
-      return nc_dns(gen->d.dNSName, base->d.dNSName);
+      return nc_dns(gen->d.dNSName, base->d.dNSName, excluding);
 
     case GEN_EMAIL:
       return nc_email(gen->d.rfc822Name, base->d.rfc822Name);
@@ -317,9 +326,9 @@ static int nc_match_single(const GENERAL_NAME *gen, const GENERAL_NAME *base) {
   }
 }
 
-// directoryName name constraint matching. The canonical encoding of
-// X509_NAME makes this comparison easy. It is matched if the subtree is a
-// subset of the name.
+// directoryName name constraint matching. The canonical encoding of X509_NAME
+// makes this comparison easy. It is matched if the constraint is a prefix of
+// the name.
 
 static int nc_dn(const X509_NAME *nm, const X509_NAME *base) {
   const X509_NAME_CACHE *nm_cache = x509_name_get_cache(nm);
@@ -330,11 +339,11 @@ static int nc_dn(const X509_NAME *nm, const X509_NAME *base) {
   if (base_cache == nullptr) {
     return X509_V_ERR_OUT_OF_MEM;
   }
-  if (base_cache->canon_len > nm_cache->canon_len) {
+  if (base_cache->canon.size() > nm_cache->canon.size()) {
     return X509_V_ERR_PERMITTED_VIOLATION;
   }
-  if (OPENSSL_memcmp(base_cache->canon, nm_cache->canon,
-                     base_cache->canon_len)) {
+  if (base_cache->canon !=
+      Span(nm_cache->canon).first(base_cache->canon.size())) {
     return X509_V_ERR_PERMITTED_VIOLATION;
   }
   return X509_V_OK;
@@ -342,6 +351,15 @@ static int nc_dn(const X509_NAME *nm, const X509_NAME *base) {
 
 static int starts_with(const CBS *cbs, uint8_t c) {
   return CBS_len(cbs) > 0 && CBS_data(cbs)[0] == c;
+}
+
+static int starts_with_str(const CBS *cbs, std::string_view str) {
+  return CBS_len(cbs) >= str.size() &&
+         !OPENSSL_memcmp(CBS_data(cbs), str.data(), str.size());
+}
+
+static int ends_with(const CBS *cbs, uint8_t c) {
+  return CBS_len(cbs) > 0 && CBS_data(cbs)[CBS_len(cbs) - 1] == c;
 }
 
 static int equal_case(const CBS *a, const CBS *b) {
@@ -368,7 +386,8 @@ static int has_suffix_case(const CBS *a, const CBS *b) {
   return equal_case(&copy, b);
 }
 
-static int nc_dns(const ASN1_IA5STRING *dns, const ASN1_IA5STRING *base) {
+static int nc_dns(const ASN1_IA5STRING *dns, const ASN1_IA5STRING *base,
+                  bool excluding) {
   CBS dns_cbs, base_cbs;
   CBS_init(&dns_cbs, dns->data, dns->length);
   CBS_init(&base_cbs, base->data, base->length);
@@ -376,6 +395,34 @@ static int nc_dns(const ASN1_IA5STRING *dns, const ASN1_IA5STRING *base) {
   // Empty matches everything
   if (CBS_len(&base_cbs) == 0) {
     return X509_V_OK;
+  }
+
+  // Normalize absolute DNS names by removing the trailing dot, if any.
+  if (ends_with(&dns_cbs, '.')) {
+    uint8_t unused;
+    CBS_get_last_u8(&dns_cbs, &unused);
+  }
+  if (ends_with(&base_cbs, '.')) {
+    uint8_t unused;
+    CBS_get_last_u8(&base_cbs, &unused);
+  }
+
+  // Wildcard partial-match handling ("*.bar.com" matching name constraint
+  // "foo.bar.com"). This only handles the case where the the dnsname and the
+  // constraint match after removing the leftmost label, otherwise it is handled
+  // by falling through to the check of whether the dnsname is fully within or
+  // fully outside of the constraint.
+  if (excluding && starts_with_str(&dns_cbs, "*.")) {
+    CBS unused;
+    CBS base_parent_cbs = base_cbs;
+    CBS dns_parent_cbs = dns_cbs;
+    CBS_skip(&dns_parent_cbs, 2);
+    if (CBS_get_until_first(&base_parent_cbs, &unused, '.') &&
+        CBS_skip(&base_parent_cbs, 1)) {
+      if (equal_case(&dns_parent_cbs, &base_parent_cbs)) {
+        return X509_V_OK;
+      }
+    }
   }
 
   // If |base_cbs| begins with a '.', do a simple suffix comparison. This is

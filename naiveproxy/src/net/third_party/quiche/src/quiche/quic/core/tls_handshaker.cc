@@ -19,6 +19,8 @@
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/quic_crypto_stream.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
+#include "quiche/quic/platform/api/quic_flag_utils.h"
+#include "quiche/quic/platform/api/quic_flags.h"
 
 namespace quic {
 
@@ -217,6 +219,12 @@ bool TlsHandshaker::ShouldCloseConnectionOnUnexpectedError(int /*ssl_error*/) {
 }
 
 size_t TlsHandshaker::BufferSizeLimitForLevel(EncryptionLevel level) const {
+  if (GetQuicRestartFlag(quic_shed_tls_handshake_config) &&
+      level != ENCRYPTION_FORWARD_SECURE && !SSL_in_init(ssl())) {
+    QUIC_RESTART_FLAG_COUNT_N(quic_shed_tls_handshake_config, 1, 2);
+    // TODO(crbug.com/459517298): Remove this branch when BoringSSL is fixed.
+    return 0;
+  }
   return SSL_quic_max_handshake_flight_len(
       ssl(), TlsConnection::BoringEncryptionLevel(level));
 }
@@ -340,6 +348,10 @@ bool TlsHandshaker::SetReadSecret(EncryptionLevel level,
       /*latch_once_used=*/false);
 }
 
+const SSL_CIPHER* TlsHandshaker::GetCipher() const {
+  return SSL_get_current_cipher(ssl());
+}
+
 std::unique_ptr<QuicDecrypter>
 TlsHandshaker::AdvanceKeysAndCreateCurrentOneRttDecrypter() {
   if (latest_read_secret_.empty() || latest_write_secret_.empty() ||
@@ -350,7 +362,7 @@ TlsHandshaker::AdvanceKeysAndCreateCurrentOneRttDecrypter() {
     CloseConnection(QUIC_INTERNAL_ERROR, error_details);
     return nullptr;
   }
-  const SSL_CIPHER* cipher = SSL_get_current_cipher(ssl());
+  const SSL_CIPHER* cipher = GetCipher();
   const EVP_MD* prf = Prf(cipher);
   CryptoUtils::GenerateNextKeyPhaseSecret(
       prf, handshaker_delegate_->parsed_version(), latest_read_secret_,
@@ -379,7 +391,7 @@ std::unique_ptr<QuicEncrypter> TlsHandshaker::CreateCurrentOneRttEncrypter() {
     CloseConnection(QUIC_INTERNAL_ERROR, error_details);
     return nullptr;
   }
-  const SSL_CIPHER* cipher = SSL_get_current_cipher(ssl());
+  const SSL_CIPHER* cipher = GetCipher();
   std::unique_ptr<QuicEncrypter> encrypter =
       QuicEncrypter::CreateFromCipherSuite(SSL_CIPHER_get_id(cipher));
   CryptoUtils::SetKeyAndIV(Prf(cipher), latest_write_secret_,

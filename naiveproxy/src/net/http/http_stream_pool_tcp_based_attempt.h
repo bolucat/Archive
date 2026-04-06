@@ -56,9 +56,9 @@ class HttpStreamPool::TcpBasedAttempt : public TlsStreamAttempt::Delegate {
 
   // TlsStreamAttempt::Delegate implementation:
   void OnTcpHandshakeComplete() override;
-  int WaitForServiceEndpointReady(CompletionOnceCallback callback) override;
+  int WaitForTlsHandshakeReady(CompletionOnceCallback callback) override;
   base::expected<ServiceEndpoint, TlsStreamAttempt::GetServiceEndpointError>
-  GetServiceEndpoint() override;
+  GetServiceEndpointForTlsHandshake() override;
 
   bool IsWaitingForServiceEndpointReady() const {
     return !service_endpoint_waiting_callback_.is_null();
@@ -68,7 +68,7 @@ class HttpStreamPool::TcpBasedAttempt : public TlsStreamAttempt::Delegate {
   // SSLConfig.
   std::optional<CompletionOnceCallback> MaybeTakeSSLConfigWaitingCallback();
 
-  base::Value::Dict GetInfoAsValue() const;
+  base::DictValue GetInfoAsValue() const;
 
  private:
   void OnAttemptSlow();
@@ -157,7 +157,7 @@ class HttpStreamPool::TcpBasedAttemptSlot {
   // slow.
   void UpdateIsSlow();
 
-  base::Value::Dict GetInfoAsValue() const;
+  base::DictValue GetInfoAsValue() const;
 
  private:
   // Re-calculates whether this slot is considered slow, without updating

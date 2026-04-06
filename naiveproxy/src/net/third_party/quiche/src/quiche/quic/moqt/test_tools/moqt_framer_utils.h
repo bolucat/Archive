@@ -19,22 +19,21 @@
 #include "quiche/common/platform/api/quiche_test.h"
 #include "quiche/common/quiche_data_reader.h"
 #include "quiche/common/quiche_mem_slice.h"
-#include "quiche/common/quiche_stream.h"
+#include "quiche/web_transport/web_transport.h"
 
 namespace moqt::test {
 
 // TODO: remove MoqtObject from TestMessageBase::MessageStructuredData and merge
 // those two types.
-using MoqtGenericFrame = std::variant<
-    MoqtClientSetup, MoqtServerSetup, MoqtSubscribe, MoqtSubscribeOk,
-    MoqtSubscribeError, MoqtUnsubscribe, MoqtPublishDone, MoqtSubscribeUpdate,
-    MoqtPublishNamespace, MoqtPublishNamespaceOk, MoqtPublishNamespaceError,
-    MoqtPublishNamespaceDone, MoqtPublishNamespaceCancel, MoqtTrackStatus,
-    MoqtTrackStatusOk, MoqtTrackStatusError, MoqtGoAway, MoqtSubscribeNamespace,
-    MoqtSubscribeNamespaceOk, MoqtSubscribeNamespaceError,
-    MoqtUnsubscribeNamespace, MoqtMaxRequestId, MoqtFetch, MoqtFetchCancel,
-    MoqtFetchOk, MoqtFetchError, MoqtRequestsBlocked, MoqtPublish,
-    MoqtPublishOk, MoqtPublishError, MoqtObjectAck>;
+using MoqtGenericFrame =
+    std::variant<MoqtClientSetup, MoqtServerSetup, MoqtRequestOk,
+                 MoqtRequestError, MoqtSubscribe, MoqtSubscribeOk,
+                 MoqtUnsubscribe, MoqtPublishDone, MoqtRequestUpdate,
+                 MoqtPublishNamespace, MoqtPublishNamespaceDone, MoqtNamespace,
+                 MoqtNamespaceDone, MoqtPublishNamespaceCancel, MoqtTrackStatus,
+                 MoqtGoAway, MoqtSubscribeNamespace, MoqtMaxRequestId,
+                 MoqtFetch, MoqtFetchCancel, MoqtFetchOk, MoqtRequestsBlocked,
+                 MoqtPublish, MoqtPublishOk, MoqtObjectAck>;
 
 std::string SerializeGenericMessage(const MoqtGenericFrame& frame,
                                     bool use_webtrans = false);
@@ -84,8 +83,9 @@ class StoreSubscribe {
       : subscribe_(subscribe) {}
 
   // quiche::WriteStream::Writev() implementation.
-  absl::Status operator()(absl::Span<const absl::string_view> data,
-                          const quiche::StreamWriteOptions& options) const;
+  absl::Status operator()(
+      absl::Span<const absl::string_view> data,
+      const webtransport::StreamWriteOptions& options) const;
 
  private:
   std::optional<MoqtSubscribe>* subscribe_;

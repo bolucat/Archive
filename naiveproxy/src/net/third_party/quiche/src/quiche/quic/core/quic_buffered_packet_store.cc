@@ -27,6 +27,8 @@
 #include "quiche/quic/core/quic_packet_creator.h"
 #include "quiche/quic/core/quic_packet_number.h"
 #include "quiche/quic/core/quic_packets.h"
+#include "quiche/quic/core/quic_stream_send_buffer.h"
+#include "quiche/quic/core/quic_stream_send_buffer_inlining.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
@@ -210,7 +212,7 @@ EnqueuePacketResult QuicBufferedPacketStore::EnqueuePacket(
 
   MaybeSetExpirationAlarm();
 
-  if (is_ietf_initial_packet && version.UsesTls() &&
+  if (is_ietf_initial_packet && version.IsIetfQuic() &&
       !queue.HasAttemptedToReplaceConnectionId()) {
     queue.SetAttemptedToReplaceConnectionId(&connection_id_generator);
     std::optional<QuicConnectionId> replaced_connection_id =
@@ -585,11 +587,11 @@ bool QuicBufferedPacketStore::IngestPacketForTlsChloExtraction(
     std::vector<uint16_t>* out_cert_compression_algos,
     std::vector<std::string>* out_alpns, std::string* out_sni,
     bool* out_resumption_attempted, bool* out_early_data_attempted,
-    std::optional<uint8_t>* tls_alert) {
+    std::optional<uint8_t>* tls_alert, bool* out_invalid_ack) {
   QUICHE_DCHECK_NE(out_alpns, nullptr);
   QUICHE_DCHECK_NE(out_sni, nullptr);
   QUICHE_DCHECK_NE(tls_alert, nullptr);
-  QUICHE_DCHECK_EQ(version.handshake_protocol, PROTOCOL_TLS1_3);
+  QUICHE_DCHECK(version.IsIetfQuic());
 
   auto it = buffered_session_map_.find(connection_id);
   if (it == buffered_session_map_.end()) {
@@ -598,7 +600,16 @@ bool QuicBufferedPacketStore::IngestPacketForTlsChloExtraction(
     return false;
   }
   BufferedPacketListNode& node = *it->second;
-  node.tls_chlo_extractor.IngestPacket(version, packet);
+  if (GetQuicRestartFlag(quic_dispatcher_close_connection_on_invalid_ack)) {
+    QUIC_RESTART_FLAG_COUNT_N(quic_dispatcher_close_connection_on_invalid_ack,
+                              7, 7);
+    node.tls_chlo_extractor.IngestPacket(version, packet,
+                                         node.GetLastSentPacketNumber());
+    *out_invalid_ack = node.tls_chlo_extractor.has_invalid_ack();
+  } else {
+    node.tls_chlo_extractor.IngestPacket(version, packet);
+  }
+
   if (!node.tls_chlo_extractor.HasParsedFullChlo()) {
     *tls_alert = node.tls_chlo_extractor.tls_alert();
     return false;
@@ -613,4 +624,16 @@ bool QuicBufferedPacketStore::IngestPacketForTlsChloExtraction(
   return true;
 }
 
+static std::unique_ptr<QuicStreamSendBufferBase> CreateSendBuffer(
+    quiche::QuicheBufferAllocator* allocator) {
+  if (GetQuicReloadableFlag(quic_use_inlining_send_buffer_everywhere)) {
+    QUIC_RELOADABLE_FLAG_COUNT_N(quic_use_inlining_send_buffer_everywhere, 2,
+                                 2);
+    return std::make_unique<QuicStreamSendBufferInlining>(allocator);
+  }
+  return std::make_unique<QuicStreamSendBufferOld>(allocator);
+}
+
+PacketCollector::PacketCollector(quiche::QuicheBufferAllocator* allocator)
+    : send_buffer_(CreateSendBuffer(allocator)) {}
 }  // namespace quic

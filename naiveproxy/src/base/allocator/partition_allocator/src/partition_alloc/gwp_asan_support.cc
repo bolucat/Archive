@@ -2,12 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "partition_alloc/gwp_asan_support.h"
+
+#include "partition_alloc/partition_alloc_base/compiler_specific.h"
 
 #if PA_BUILDFLAG(ENABLE_GWP_ASAN_SUPPORT)
 
@@ -51,7 +48,7 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
   const size_t kSlotSize = 2 * internal::SystemPageSize();
   uint16_t bucket_index = PartitionRoot::SizeToBucketIndex(
       kSlotSize, root->GetBucketDistribution());
-  auto* bucket = root->buckets + bucket_index;
+  auto* bucket = PA_UNSAFE_TODO(root->buckets_ + bucket_index);
 
   const size_t kSuperPagePayloadStartOffset =
       internal::SuperPagePayloadStartOffset();
@@ -103,17 +100,19 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
            internal::NumPartitionPagesPerSuperPage();
            partition_page_idx += bucket->get_pages_per_slot_span()) {
         auto* slot_span_metadata =
-            &page_metadata[partition_page_idx].slot_span_metadata;
+            &PA_UNSAFE_TODO(page_metadata[partition_page_idx])
+                 .slot_span_metadata;
         bucket->InitializeSlotSpanForGwpAsan(slot_span_metadata);
         auto slot_span_start = internal::SlotSpanMetadata::ToSlotSpanStart(
             slot_span_metadata, root);
 
         for (uintptr_t slot_idx = 0; slot_idx < kSlotsPerSlotSpan; ++slot_idx) {
-          auto slot_start = slot_span_start + slot_idx * kSlotSize;
+          auto slot_start =
+              slot_span_start.GetNthSlotStart(slot_idx, kSlotSize);
           PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(slot_start,
                                                                    kSlotSize)
               ->InitializeForGwpAsan();
-          size_t global_slot_idx = (slot_start - super_page_span_start -
+          size_t global_slot_idx = (slot_start.value() - super_page_span_start -
                                     kSuperPageGwpAsanSlotAreaBeginOffset) /
                                    kSlotSize;
           PA_DCHECK(global_slot_idx < std::numeric_limits<uint16_t>::max());
@@ -136,8 +135,8 @@ void* GwpAsanSupport::MapRegion(size_t slot_count,
 // static
 bool GwpAsanSupport::CanReuse(uintptr_t slot_start) {
   const size_t kSlotSize = 2 * internal::SystemPageSize();
-  return PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(slot_start,
-                                                                  kSlotSize)
+  return PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(
+             internal::UntaggedSlotStart::Unchecked(slot_start), kSlotSize)
       ->CanBeReusedByGwpAsan();
 }
 

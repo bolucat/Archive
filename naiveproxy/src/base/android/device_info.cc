@@ -13,6 +13,7 @@
 #include "base/compiler_specific.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/synchronization/lock.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "base/build_info_jni/DeviceInfo_jni.h"
@@ -56,28 +57,30 @@ IDeviceInfo& get_device_info() {
 }  // namespace
 
 void Set(const IDeviceInfo& info) {
+  static base::NoDestructor<base::Lock> lock;
+  base::AutoLock l(*lock);
+
   std::optional<IDeviceInfo>& holder = get_holder();
   holder.emplace(info);
 }
 
 static void JNI_DeviceInfo_FillFields(JNIEnv* env,
-                                      std::string& gmsVersionCode,
-                                      jboolean isTV,
-                                      jboolean isAutomotive,
-                                      jboolean isFoldable,
-                                      jboolean isDesktop,
-                                      jint vulkanDeqpLevel,
-                                      jboolean isXr,
-                                      jboolean wasLaunchedOnLargeDisplay) {
+                                      const std::string& gmsVersionCode,
+                                      bool isTV,
+                                      bool isAutomotive,
+                                      bool isFoldable,
+                                      bool isDesktop,
+                                      int32_t vulkanDeqpLevel,
+                                      bool isXr,
+                                      bool wasLaunchedOnLargeDisplay) {
   Set(IDeviceInfo{.gmsVersionCode = gmsVersionCode,
-                  .isAutomotive = static_cast<bool>(isAutomotive),
-                  .isDesktop = static_cast<bool>(isDesktop),
-                  .isFoldable = static_cast<bool>(isFoldable),
-                  .isTv = static_cast<bool>(isTV),
+                  .isAutomotive = isAutomotive,
+                  .isDesktop = isDesktop,
+                  .isFoldable = isFoldable,
+                  .isTv = isTV,
                   .vulkanDeqpLevel = vulkanDeqpLevel,
-                  .isXr = static_cast<bool>(isXr),
-                  .wasLaunchedOnLargeDisplay =
-                      static_cast<bool>(wasLaunchedOnLargeDisplay)});
+                  .isXr = isXr,
+                  .wasLaunchedOnLargeDisplay = wasLaunchedOnLargeDisplay});
 }
 
 const std::string& gms_version_code() {
@@ -146,3 +149,5 @@ void reset_is_xr_for_testing() {
   get_holder().reset();
 }
 }  // namespace base::android::device_info
+
+DEFINE_JNI(DeviceInfo)

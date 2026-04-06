@@ -81,7 +81,7 @@ void JavaHandlerThread::Stop() {
   Java_JavaHandlerThread_joinThread(env, java_thread_);
 }
 
-void JavaHandlerThread::InitializeThread(JNIEnv* env, jlong event) {
+void JavaHandlerThread::InitializeThread(JNIEnv* env, int64_t event) {
   base::ThreadIdNameManager::GetInstance()->RegisterThread(
       base::PlatformThread::CurrentHandle().platform_handle(),
       base::PlatformThread::CurrentId());
@@ -180,3 +180,5 @@ JavaHandlerThread::State::~State() = default;
 
 }  // namespace android
 }  // namespace base
+
+DEFINE_JNI(JavaHandlerThread)

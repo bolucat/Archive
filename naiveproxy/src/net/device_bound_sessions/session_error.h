@@ -7,6 +7,8 @@
 
 #include "net/base/schemeful_site.h"
 #include "net/device_bound_sessions/deletion_reason.h"
+#include "net/device_bound_sessions/failed_request.h"
+#include "url/gurl.h"
 
 namespace net::device_bound_sessions {
 
@@ -56,7 +58,7 @@ struct NET_EXPORT SessionError {
     kBoundCookieSetForbidden = 37,
     kNetError = 38,
     kProxyError = 39,
-    kInvalidConfigJson = 40,
+    // Deprecated: kInvalidConfigJson = 40,
     kEmptySessionConfig = 41,
     kInvalidCredentialsConfig = 42,
     kInvalidCredentialsType = 43,
@@ -94,9 +96,13 @@ struct NET_EXPORT SessionError {
     kScopeRuleOriginScopedHostPatternMismatch = 75,
     kScopeRuleSiteScopedHostPatternMismatch = 76,
     kSigningQuotaExceeded = 77,
-    kMaxValue = kSigningQuotaExceeded,
+    kInvalidConfigJson = 78,
+    kInvalidFederatedSessionProviderFailedToRestoreKey = 79,
+    kFailedToUnwrapKey = 80,
+    kSessionDeletedDuringRefresh = 81,
+    kMaxValue = kSessionDeletedDuringRefresh,
   };
-  // LINT.ThenChange(//tools/metrics/histograms/metadata/net/enums.xml:DeviceBoundSessionError)
+  // LINT.ThenChange(//tools/metrics/histograms/enums.xml:DeviceBoundSessionError,//services/network/public/mojom/device_bound_sessions.mojom:DeviceBoundSessionError)
 
   using enum ErrorType;
 
@@ -117,6 +123,9 @@ struct NET_EXPORT SessionError {
   bool IsServerError() const;
 
   ErrorType type;
+  // If a network request failed during registration/refresh, details
+  // about that request.
+  std::optional<FailedRequest> failed_request;
 };
 
 }  // namespace net::device_bound_sessions

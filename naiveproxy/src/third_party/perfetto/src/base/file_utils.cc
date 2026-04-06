@@ -30,10 +30,12 @@
 #include "perfetto/base/logging.h"
 #include "perfetto/base/platform_handle.h"
 #include "perfetto/base/status.h"
+#include "perfetto/base/task_runner.h"
 #include "perfetto/ext/base/platform.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/utils.h"
+#include "perfetto/ext/base/weak_ptr.h"
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
 #include <windows.h>
@@ -48,6 +50,7 @@
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) ||   \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_FREEBSD) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
 #define PERFETTO_SET_FILE_PERMISSIONS
 #include <fcntl.h>
@@ -55,6 +58,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#endif
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX_BUT_NOT_QNX) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+// For inotify. QNX doesn't have full support for inotify_init1().
+#include <sys/inotify.h>
 #endif
 
 namespace perfetto {
@@ -412,11 +421,135 @@ base::Status ListFilesRecursive(const std::string& dir_path,
   return base::OkStatus();
 }
 
+base::Status ListDirectories(const std::string& dir_path,
+                             std::vector<std::string>& output) {
+  std::string normalized_path = dir_path;
+  if (!normalized_path.empty() && normalized_path.back() != '/' &&
+      normalized_path.back() != '\\') {
+    normalized_path.push_back('/');
+  }
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_NACL)
+  return base::ErrStatus("ListDirectories not supported yet");
+#elif PERFETTO_BUILDFLAG(PERFETTO_OS_WIN)
+  std::string glob_path = normalized_path + "*";
+  if (glob_path.length() + 1 > MAX_PATH) {
+    return base::ErrStatus("Directory path %s is too long", dir_path.c_str());
+  }
+  WIN32_FIND_DATAA ffd;
+
+  base::ScopedResource<HANDLE, CloseFindHandle, nullptr, false,
+                       base::PlatformHandleChecker>
+      hFind(FindFirstFileA(glob_path.c_str(), &ffd));
+  if (!hFind) {
+    return base::ErrStatus("Failed to open directory %s",
+                           normalized_path.c_str());
+  }
+  do {
+    if (strcmp(ffd.cFileName, ".") == 0 || strcmp(ffd.cFileName, "..") == 0) {
+      continue;
+    }
+    if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+      output.push_back(ffd.cFileName);
+    }
+  } while (FindNextFileA(*hFind, &ffd));
+#else
+  ScopedDir dir = ScopedDir(opendir(normalized_path.c_str()));
+  if (!dir) {
+    return base::ErrStatus("Failed to open directory %s",
+                           normalized_path.c_str());
+  }
+  for (auto* dirent = readdir(dir.get()); dirent != nullptr;
+       dirent = readdir(dir.get())) {
+    if (strcmp(dirent->d_name, ".") == 0 || strcmp(dirent->d_name, "..") == 0) {
+      continue;
+    }
+    std::string full_path = normalized_path + dirent->d_name;
+    struct stat dirstat;
+    if (stat(full_path.c_str(), &dirstat) == 0 && S_ISDIR(dirstat.st_mode)) {
+      output.push_back(dirent->d_name);
+    }
+  }
+#endif
+  return base::OkStatus();
+}
+
 std::string GetFileExtension(const std::string& filename) {
   auto ext_idx = filename.rfind('.');
   if (ext_idx == std::string::npos)
     return std::string();
   return filename.substr(ext_idx);
+}
+
+std::string Basename(const std::string& path) {
+  // Handle empty path
+  if (path.empty())
+    return ".";
+
+  // Make a copy to work with
+  std::string p = path;
+
+  // Strip trailing slashes (both / and \)
+  while (p.size() > 1 && (p.back() == '/' || p.back() == '\\')) {
+    p.pop_back();
+  }
+
+  // If the path is now empty or just a single slash, return it
+  if (p.empty() || p == "/" || p == "\\")
+    return p.empty() ? "/" : p;
+
+  // Find the last directory separator (either / or \)
+  size_t last_sep = p.find_last_of("/\\");
+
+  if (last_sep == std::string::npos) {
+    // No separator found, the whole path is the basename
+    return p;
+  }
+
+  // Return everything after the last separator
+  return p.substr(last_sep + 1);
+}
+
+std::string Dirname(const std::string& path) {
+  // Handle empty path
+  if (path.empty())
+    return ".";
+
+  // Make a copy to work with
+  std::string p = path;
+
+  // Strip trailing slashes (both / and \)
+  while (p.size() > 1 && (p.back() == '/' || p.back() == '\\')) {
+    p.pop_back();
+  }
+
+  // If the path is now just a single slash, return it
+  if (p == "/" || p == "\\")
+    return p;
+
+  // Find the last directory separator (either / or \)
+  size_t last_sep = p.find_last_of("/\\");
+
+  if (last_sep == std::string::npos) {
+    // No separator found, return "."
+    return ".";
+  }
+
+  // If the separator is at position 0, return the root
+  if (last_sep == 0)
+    return p.substr(0, 1);  // Return "/" or "\"
+
+  // Strip trailing slashes from the dirname part
+  while (last_sep > 0 && (p[last_sep - 1] == '/' || p[last_sep - 1] == '\\')) {
+    --last_sep;
+  }
+
+  // If we've consumed all characters, return the root
+  if (last_sep == 0)
+    return p.substr(0, 1);
+
+  // Return everything up to (but not including) the last separator
+  return p.substr(0, last_sep);
 }
 
 base::Status SetFilePermissions(const std::string& file_path,
@@ -501,6 +634,111 @@ std::optional<uint64_t> GetFileSize(PlatformHandle fd) {
   return static_cast<uint64_t>(buf.st_size);
 #endif
 }
+
+// LinuxFileWatch
+
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX_BUT_NOT_QNX) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
+
+namespace {
+
+// Implementation class extends LinuxFileWatch
+class FileWatchImpl : public LinuxFileWatch {
+ public:
+  FileWatchImpl(TaskRunner* tr,
+                std::string fn,
+                ScopedFile ifd,
+                std::function<void()> cb)
+      : task_runner_(tr),
+        file_base_name_(std::move(fn)),
+        inotify_fd_(std::move(ifd)),
+        callback_(std::move(cb)),
+        weak_ptr_factory_(this) {
+    task_runner_->AddFileDescriptorWatch(
+        *inotify_fd_, [weak_handle = weak_ptr_factory_.GetWeakPtr()] {
+          if (!weak_handle)
+            return;
+          alignas(struct inotify_event) char buf[4096];
+          ssize_t rsize =
+              base::Read(*weak_handle->inotify_fd_, buf, sizeof(buf));
+          if (rsize <= 0)
+            return;
+          for (ssize_t i = 0; i < rsize;) {
+            auto* evt = reinterpret_cast<struct inotify_event*>(&buf[i]);
+            i += static_cast<ssize_t>(sizeof(inotify_event) + evt->len);
+            if (evt->len > 0 && (evt->mask & IN_CREATE)) {
+              if (weak_handle->file_base_name_ == evt->name) {
+                weak_handle->task_runner_->PostTask(weak_handle->callback_);
+                return;
+              }
+            }
+          }  // for(evt);
+        });
+  }
+
+  ~FileWatchImpl() override {
+    if (!inotify_fd_)
+      return;
+    task_runner_->RemoveFileDescriptorWatch(*inotify_fd_);
+    inotify_fd_.reset();
+  }
+
+ private:
+  TaskRunner* task_runner_ = nullptr;
+  std::string file_base_name_;  // Only the name without the path.
+  ScopedFile inotify_fd_;
+  std::function<void()> callback_;
+  WeakPtrFactory<FileWatchImpl> weak_ptr_factory_;  // Keep last.
+};
+
+}  // namespace
+
+std::unique_ptr<LinuxFileWatch> LinuxFileWatch::WatchFileCreation(
+    TaskRunner* task_runner,
+    const char* path,
+    std::function<void()> callback) {
+  if (!path || path[0] == '\0') {
+    // We can add a inotify watch only for valid filesystem paths.
+    return nullptr;
+  }
+
+  ScopedFile inotify_fd(inotify_init1(IN_CLOEXEC | IN_NONBLOCK));
+  if (!inotify_fd) {
+    PERFETTO_DLOG("inotify_init() failed");
+    return nullptr;
+  }
+
+  // Here we watch the parent dir, not the file itself. We cannot watch for
+  // a file that doesn't exist yet, because the kernel internally attaches the
+  // watch to an inode, and a non-existing file doesn't have inodes.
+  // We are not interested in IN_MOVED_TO because we don't mv files.
+  std::string file_dir = Dirname(path);
+  if (inotify_add_watch(*inotify_fd, file_dir.c_str(), IN_CREATE) < 0) {
+    PERFETTO_DLOG("inotify_add_watch(%s) failed", file_dir.c_str());
+    return nullptr;
+  }
+
+  std::string file_base_name = Basename(path);
+
+  return std::unique_ptr<LinuxFileWatch>(
+      new FileWatchImpl(task_runner, std::move(file_base_name),
+                        std::move(inotify_fd), std::move(callback)));
+}
+
+LinuxFileWatch::~LinuxFileWatch() = default;
+
+#else
+
+std::unique_ptr<LinuxFileWatch> LinuxFileWatch::WatchFileCreation(
+    TaskRunner*,
+    const char*,
+    std::function<void()>) {
+  return nullptr;  // Not supported on other platforms.
+}
+
+LinuxFileWatch::~LinuxFileWatch() = default;
+
+#endif  // OS_LINUX || OS_ANDROID
 
 }  // namespace base
 }  // namespace perfetto

@@ -12,6 +12,7 @@
 
 #include "base/check.h"
 #include "base/json/json_writer.h"
+#include "base/strings/string_view_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/trace_event/trace_event.h"
 #include "base/values.h"
@@ -30,7 +31,7 @@ constexpr const char kSensitiveNetLogTracingCategory[] =
 
 class TracedValue : public base::trace_event::ConvertableToTraceFormat {
  public:
-  explicit TracedValue(base::Value::Dict value) : value_(std::move(value)) {}
+  explicit TracedValue(base::DictValue value) : value_(std::move(value)) {}
   ~TracedValue() override = default;
 
  private:
@@ -45,7 +46,7 @@ class TracedValue : public base::trace_event::ConvertableToTraceFormat {
   }
 
  private:
-  base::Value::Dict value_;
+  base::DictValue value_;
 };
 
 // Inspired by http://crbug.com/418158806#comment2. This is more efficient than
@@ -114,7 +115,7 @@ perfetto::Track TraceNetLogObserver::MaybeSetUpAndGetRootTrack() {
 }
 
 void TraceNetLogObserver::OnAddEntry(const NetLogEntry& entry) {
-  base::Value::Dict params = entry.params.Clone();
+  base::DictValue params = entry.params.Clone();
   // Add source's start time as a parameter. The net-log viewer requires it.
   params.Set("source_start_time",
              NetLog::TickCountToString(entry.source.start_time));
@@ -133,7 +134,7 @@ void TraceNetLogObserver::OnAddEntry(const NetLogEntry& entry) {
 void TraceNetLogObserver::AddEntry(const NetLogEntry& entry,
                                    perfetto::StaticString entry_type_string,
                                    perfetto::StaticString source_type_string,
-                                   base::Value::Dict params) {
+                                   base::DictValue params) {
   const perfetto::Track track(track_id_base_ + entry.source.id,
                               MaybeSetUpAndGetRootTrack());
   switch (entry.phase) {
@@ -158,7 +159,7 @@ void TraceNetLogObserver::AddEntryVerbose(
     const NetLogEntry& entry,
     perfetto::StaticString entry_type_string,
     perfetto::StaticString source_type_string,
-    base::Value::Dict params) {
+    base::DictValue params) {
   const auto get_source_track = [&](uint32_t source_id,
                                     perfetto::StaticString source_type_string) {
     return SourceTrack(track_id_base_ + entry.source.id,
@@ -187,7 +188,9 @@ void TraceNetLogObserver::AddEntryVerbose(
   // This will work as long as a given Track doesn't have two NetLog events that
   // are the same type *and* overlap in time. If this assumption breaks, we will
   // need to revisit this approach; we may need to track additional state.
-  const auto thread_event_name_str = base::StringPrintf(
+  // Note: the separate variable is load-bearing, as DynamicString will not
+  // retain the std::string. See https://crbug.com/417982839.
+  std::string thread_event_name_str = base::StringPrintf(
       "%s: %s%s/%s", root_track_name_.value,
       [&] {
         switch (entry.phase) {
@@ -200,21 +203,19 @@ void TraceNetLogObserver::AddEntryVerbose(
         }
       }(),
       source_type_string.value, entry_type_string.value);
-  // Note: the separate variable is load-bearing, as DynamicString will not
-  // retain the std::string. See https://crbug.com/417982839.
-  const perfetto::DynamicString thread_event_name(thread_event_name_str);
   const uint64_t thread_flow_id =
       entry.phase == NetLogEventPhase::NONE
           ? base::RandUint64()
-          : track.uuid + std::hash<std::string_view>()(std::string_view(
-                             reinterpret_cast<const char*>(&entry.type),
-                             sizeof(entry.type)));
+          : track.uuid + std::hash<std::string_view>()(base::as_string_view(
+                             base::byte_span_from_ref(entry.type)));
+
   if (entry.phase != NetLogEventPhase::END) {
-    TRACE_EVENT_INSTANT(kNetLogTracingCategory, thread_event_name,
+    TRACE_EVENT_INSTANT(kNetLogTracingCategory,
+                        perfetto::DynamicString(thread_event_name_str),
                         perfetto::Flow::ProcessScoped(thread_flow_id));
   } else {
     TRACE_EVENT_INSTANT(
-        kNetLogTracingCategory, thread_event_name,
+        kNetLogTracingCategory, perfetto::DynamicString(thread_event_name_str),
         perfetto::TerminatingFlow::ProcessScoped(thread_flow_id));
   }
   const auto add_thread_flow = [&](perfetto::EventContext& event_context) {
@@ -309,17 +310,16 @@ void TraceNetLogObserver::WatchForTraceStart(NetLog* netlog) {
   net_log_to_watch_ = netlog;
   // Tracing can start before the observer is even created, for instance for
   // startup tracing.
-  if (base::trace_event::TraceLog::GetInstance()->IsEnabled())
-    OnTraceLogEnabled();
-  base::trace_event::TraceLog::GetInstance()->AddAsyncEnabledStateObserver(
-      weak_factory_.GetWeakPtr());
+  if (TRACE_EVENT_CATEGORY_ENABLED(kNetLogTracingCategory)) {
+    net_log_to_watch_->AddObserver(this, capture_mode_);
+  }
+  base::trace_event::TraceSessionObserverList::AddObserver(this);
 }
 
 void TraceNetLogObserver::StopWatchForTraceStart() {
   // Should only stop if is currently watching.
   DCHECK(net_log_to_watch_);
-  base::trace_event::TraceLog::GetInstance()->RemoveAsyncEnabledStateObserver(
-      this);
+  base::trace_event::TraceSessionObserverList::RemoveObserver(this);
   // net_log() != nullptr iff NetLog::AddObserver() has been called.
   // This implies that if the netlog category wasn't enabled, then
   // NetLog::RemoveObserver() will not get called, and there won't be
@@ -329,18 +329,27 @@ void TraceNetLogObserver::StopWatchForTraceStart() {
   net_log_to_watch_ = nullptr;
 }
 
-void TraceNetLogObserver::OnTraceLogEnabled() {
-  bool enabled;
-  TRACE_EVENT_CATEGORY_GROUP_ENABLED(kNetLogTracingCategory, &enabled);
+void TraceNetLogObserver::OnStart(const perfetto::DataSourceBase::StartArgs&) {
+  if (net_log()) {
+    return;
+  }
+  bool enabled = TRACE_EVENT_CATEGORY_ENABLED(kNetLogTracingCategory);
   if (!enabled)
     return;
 
   net_log_to_watch_->AddObserver(this, capture_mode_);
 }
 
-void TraceNetLogObserver::OnTraceLogDisabled() {
-  if (net_log())
+void TraceNetLogObserver::OnStop(
+    const perfetto::DataSourceBase::StopArgs& args) {
+  if (!net_log()) {
+    return;
+  }
+  bool should_stop = !base::trace_event::IsCategoryEnabledOnStop(
+      PERFETTO_GET_CATEGORY_INDEX(kNetLogTracingCategory), args);
+  if (should_stop) {
     net_log()->RemoveObserver(this);
+  }
 }
 
 }  // namespace net

@@ -177,15 +177,6 @@ class QUICHE_EXPORT QuicConnectionVisitorInterface {
   virtual void OnSuccessfulVersionNegotiation(
       const ParsedQuicVersion& version) = 0;
 
-  // Called when a packet has been received by the connection, after being
-  // validated and parsed. Only called when the client receives a valid packet
-  // or the server receives a connectivity probing packet.
-  // |is_connectivity_probe| is true if the received packet is a connectivity
-  // probe.
-  virtual void OnPacketReceived(const QuicSocketAddress& self_address,
-                                const QuicSocketAddress& peer_address,
-                                bool is_connectivity_probe) = 0;
-
   // Called when a blocked socket becomes writable.
   virtual void OnCanWrite() = 0;
 
@@ -682,6 +673,10 @@ class QUICHE_EXPORT QuicConnection
 
   // Returns statistics tracked for this connection.
   const QuicConnectionStats& GetStats();
+  // Same as above, but const.  Note that since GetStats() internally updates a
+  // lot of fields, some of the fields in the resulting QuicConnectionStats
+  // might be stale.
+  const QuicConnectionStats& GetStatsPotentiallyStale() const { return stats_; }
 
   // Processes an incoming UDP packet (consisting of a QuicEncryptedPacket) from
   // the peer.
@@ -841,6 +836,7 @@ class QUICHE_EXPORT QuicConnection
   // QuicIdleNetworkDetector::Delegate
   void OnHandshakeTimeout() override;
   void OnIdleNetworkDetected() override;
+  void OnMemoryReductionTimeout() override;
 
   // QuicPingManager::Delegate
   void OnKeepAliveTimeout() override;
@@ -940,6 +936,12 @@ class QUICHE_EXPORT QuicConnection
   // Sets the handshake and idle state connection timeouts.
   void SetNetworkTimeouts(QuicTime::Delta handshake_timeout,
                           QuicTime::Delta idle_timeout);
+  // Trim memory usage when network has been idle for
+  // `memory_reduction_timeout`. The timeout only takes effect after handshake
+  // completes.
+  void SetMemoryReductionTimeout(QuicTime::Delta memory_reduction_timeout) {
+    idle_network_detector_.SetMemoryReductionTimeout(memory_reduction_timeout);
+  }
 
   void SetMultiPortProbingInterval(QuicTime::Delta probing_interval) {
     multi_port_probing_interval_ = probing_interval;
@@ -1091,9 +1093,7 @@ class QUICHE_EXPORT QuicConnection
   // Sends a connectivity probing packet to |peer_address| with
   // |probing_writer|. If |probing_writer| is nullptr, will use default
   // packet writer to write the packet. Returns true if subsequent packets can
-  // be written to the probing writer. If connection is V99, a padded IETF QUIC
-  // PATH_CHALLENGE packet is transmitted; if not V99, a Google QUIC padded PING
-  // packet is transmitted.
+  // be written to the probing writer.
   virtual bool SendConnectivityProbingPacket(
       QuicPacketWriter* probing_writer, const QuicSocketAddress& peer_address);
 
@@ -1232,16 +1232,6 @@ class QUICHE_EXPORT QuicConnection
   // Process previously queued coalesced packets. Returns true if any coalesced
   // packets have been successfully processed.
   bool MaybeProcessCoalescedPackets();
-
-  enum PacketContent : uint8_t {
-    NO_FRAMES_RECEIVED,
-    // TODO(fkastenholz): Change name when we get rid of padded ping/
-    // pre-version-99.
-    // Also PATH CHALLENGE and PATH RESPONSE.
-    FIRST_FRAME_IS_PING,
-    SECOND_FRAME_IS_PADDING,
-    NOT_PADDED_PING,  // Set if the packet is not {PING, PADDING}.
-  };
 
   // Whether the handshake completes from this connection's perspective.
   bool IsHandshakeComplete() const;
@@ -1464,8 +1454,6 @@ class QUICHE_EXPORT QuicConnection
     return peer_issued_cid_manager_ != nullptr;
   }
 
-  bool ignore_gquic_probing() const { return ignore_gquic_probing_; }
-
   // Sets the ECN marking for all outgoing packets, assuming that the congestion
   // control supports that codepoint. QuicConnection will revert to sending
   // ECN_NOT_ECT if there is evidence the path is dropping ECN-marked packets,
@@ -1477,8 +1465,8 @@ class QUICHE_EXPORT QuicConnection
     return packet_writer_params_.ecn_codepoint;
   }
 
-  bool quic_limit_new_streams_per_loop_2() const {
-    return quic_limit_new_streams_per_loop_2_;
+  bool quic_close_on_idle_timeout() const {
+    return quic_close_on_idle_timeout_;
   }
 
   void set_outgoing_flow_label(uint32_t flow_label);
@@ -1589,11 +1577,6 @@ class QUICHE_EXPORT QuicConnection
   // Notify various components(Session etc.) that this connection has been
   // migrated.
   virtual void OnConnectionMigration();
-
-  // Return whether the packet being processed is a connectivity probing.
-  // A packet is a connectivity probing if it is a padded ping packet with self
-  // and/or peer address changes.
-  bool IsCurrentPacketConnectivityProbing() const;
 
   // Return true iff the writer is blocked, if blocked, call
   // visitor_->OnWriteBlocked() to add the connection into the write blocked
@@ -1726,22 +1709,30 @@ class QUICHE_EXPORT QuicConnection
     QuicSocketAddress destination_address;
     QuicSocketAddress source_address;
     QuicTime receipt_time = QuicTime::Zero();
-    bool received_bytes_counted = false;
     QuicByteCount length = 0;
-    QuicConnectionId destination_connection_id;
-    // Fields below are only populated if packet gets decrypted successfully.
+    // END FIRST CACHELINE
+    // Fields below are only populated if packet gets decrypted successfully,
+    // except received_bytes_counted and header.destination_connection_id.
     // TODO(fayang): consider using std::optional for following fields.
+    QuicPacketHeader header;  // Placed to fall on the cacheline boundary, as it
+                              // fills two full cachelines including padding.
+    // END THIRD CACHELINE
+    bool received_bytes_counted = false;
     bool decrypted = false;
-    EncryptionLevel decrypted_level = ENCRYPTION_INITIAL;
-    QuicPacketHeader header;
-    absl::InlinedVector<QuicFrameType, 1> frames;
     QuicEcnCodepoint ecn_codepoint = ECN_NOT_ECT;
+    EncryptionLevel decrypted_level = ENCRYPTION_INITIAL;
     uint32_t flow_label = 0;
+    absl::InlinedVector<QuicFrameType, 1> frames;
     // Stores the actual address this packet is received on when it is received
     // on the preferred address. In this case, |destination_address| will
     // be overridden to the current default self address.
     QuicSocketAddress actual_destination_address;
+    // 8B remaining in the fourth cacheline.
+    // TODO(martinduke): Remove once gfe2_reloadable_flag_quic_one_dcid is
+    // deprecated.
+    QuicConnectionId destination_connection_id;
   };
+  static_assert(offsetof(ReceivedPacketInfo, received_bytes_counted) <= 192);
 
   QUICHE_EXPORT friend std::ostream& operator<<(
       std::ostream& os, const QuicConnection::ReceivedPacketInfo& info);
@@ -2075,14 +2066,6 @@ class QUICHE_EXPORT QuicConnection
   // Returns string which contains undecryptable packets information.
   std::string UndecryptablePacketsInfo() const;
 
-  // For Google Quic, if the current packet is connectivity probing packet, call
-  // session OnPacketReceived() which eventually sends connectivity probing
-  // response on server side. And no-op on client side. And for both Google Quic
-  // and IETF Quic, start migration if the current packet is a non-probing
-  // packet.
-  // TODO(danzh) remove it when deprecating ignore_gquic_probing_.
-  void MaybeRespondToConnectivityProbingOrMigration();
-
   // Called in IETF QUIC. Start peer migration if a non-probing frame is
   // received and the current packet number is largest received so far.
   void MaybeStartIetfPeerMigration();
@@ -2207,12 +2190,22 @@ class QUICHE_EXPORT QuicConnection
     return QuicAlarmProxy(&alarms_, QuicAlarmSlot::kMultiPortProbing);
   }
 
+  // Extract destination connection ID from ReceivedPacketInfo.
+  inline QuicConnectionId GetDestinationConnectionId(
+      const ReceivedPacketInfo& packet_info) const {
+    if (store_one_dcid_) {
+      QUIC_RELOADABLE_FLAG_COUNT_N(quic_one_dcid, 1, 3);
+      return packet_info.header.destination_connection_id;
+    }
+    return packet_info.destination_connection_id;
+  }
+
   QuicConnectionContext context_;
 
   QuicFramer framer_;
 
-  QuicConnectionHelperInterface* helper_;  // Not owned.
-  QuicAlarmFactory* alarm_factory_;        // Not owned.
+  QuicConnectionHelperInterface* helper_;           // Not owned.
+  QuicAlarmFactory* alarm_factory_;                 // Not owned.
   PerPacketOptions* per_packet_options_ = nullptr;  // Not owned.
   QuicPacketWriterParams packet_writer_params_;
   QuicPacketWriter* writer_;  // Owned or not depending on |owns_writer_|.
@@ -2426,13 +2419,6 @@ class QUICHE_EXPORT QuicConnection
 
   RetransmittableOnWireBehavior retransmittable_on_wire_behavior_ = DEFAULT;
 
-  // TODO(danzh) remove `current_packet_content_` and
-  // `is_current_packet_connectivity_probing_` fields once
-  // quic_ignore_gquic_probing_ gets deprecated. Contents received in the
-  // current packet, especially used to identify whether the current packet is a
-  // padded PING packet.
-  PacketContent current_packet_content_;
-
   // Caches the current effective peer migration type if a effective peer
   // migration might be initiated. As soon as the current packet is confirmed
   // not a connectivity probe, effective peer migration will start.
@@ -2467,10 +2453,7 @@ class QUICHE_EXPORT QuicConnection
   // might be different from the next codepoint in per_packet_options_.
   QuicEcnCodepoint last_ecn_codepoint_sent_ = ECN_NOT_ECT;
 
-  // Set to true as soon as the packet currently being processed has been
-  // detected as a connectivity probing.
   // Always false outside the context of ProcessUdpPacket().
-  bool is_current_packet_connectivity_probing_ : 1 = false;
   bool has_path_challenge_in_current_packet_ : 1 = false;
   bool owns_writer_ : 1;
   // On the server, the connection ID is set when receiving the first packet.
@@ -2555,8 +2538,6 @@ class QUICHE_EXPORT QuicConnection
   bool multi_port_probing_on_rto_ : 1 = false;
   // Client side only.
   bool active_migration_disabled_ : 1 = false;
-  const bool ignore_gquic_probing_ : 1 =
-      GetQuicReloadableFlag(quic_ignore_gquic_probing);
   // If true, kicks off validation of server_preferred_address_ once it is
   // received. Also, send all coalesced packets on both paths until handshake is
   // confirmed.
@@ -2578,13 +2559,15 @@ class QUICHE_EXPORT QuicConnection
   // If true then flow labels will be changed when a PTO fires, or when
   // a PTO'd packet from a peer is detected.
   bool enable_black_hole_avoidance_via_flow_label_ : 1 = false;
-  // If true, fixes a off-by-one error in the least unacked packet calculation.
-  bool least_unacked_plus_1_ : 1;
-  const bool quic_limit_new_streams_per_loop_2_ : 1 =
-      GetQuicReloadableFlag(quic_limit_new_streams_per_loop_2);
+  // If true, stores only one copy of the destination connection ID in
+  // ReceivedPacketInfo.
+  const bool store_one_dcid_ : 1;
+
   const bool quic_test_peer_addr_change_after_normalize_ : 1 =
       GetQuicReloadableFlag(quic_test_peer_addr_change_after_normalize);
   const bool quic_fix_timeouts_ : 1 = GetQuicReloadableFlag(quic_fix_timeouts);
+  bool quic_close_on_idle_timeout_ : 1 =
+      GetQuicReloadableFlag(quic_close_on_idle_timeout);
 };
 
 }  // namespace quic

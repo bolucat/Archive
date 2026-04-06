@@ -246,6 +246,7 @@ MockHttpRequest::MockHttpRequest(const MockTransaction& t) {
   frame_origin = url::Origin::Create(url);
   fps_cache_filter = t.fps_cache_filter;
   browser_run_id = t.browser_run_id;
+  is_shared_resource = t.is_shared_resource;
 }
 
 std::string MockHttpRequest::CacheKey() {
@@ -656,6 +657,9 @@ int MockNetworkTransaction::DoSendRequest() {
     DCHECK(response_.unused_since_prefetch);
     response_.restricted_prefetch = true;
   }
+
+  response_.did_use_shared_dictionary = t->did_use_shared_dictionary;
+
   return OK;
 }
 
@@ -750,10 +754,6 @@ ConnectionAttempts MockNetworkTransaction::GetConnectionAttempts() const {
 
 void MockNetworkTransaction::CloseConnectionOnDestruction() {
   NOTIMPLEMENTED();
-}
-
-bool MockNetworkTransaction::IsMdlMatchForMetrics() const {
-  return false;
 }
 
 void MockNetworkTransaction::CallbackLater(CompletionOnceCallback callback,

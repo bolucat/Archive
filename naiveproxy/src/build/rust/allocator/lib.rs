@@ -28,9 +28,9 @@
 
 /// Module that provides `#[global_allocator]` / `GlobalAlloc` interface for
 /// using an allocator from C++.
-#[cfg(rust_allocator_uses_allocator_impls_h)]
+#[cfg(RUST_ALLOCATOR_USES_ALLOCATOR_IMPLS_H)]
 mod cpp_allocator {
-    use allocator_impls_ffi::rust_allocator_internal as ffi;
+    use allocator_impls_ffi::root::rust_allocator_internal as ffi;
     use std::alloc::{GlobalAlloc, Layout};
 
     struct Allocator;
@@ -61,7 +61,7 @@ mod cpp_allocator {
 
 /// Module that provides `#[global_allocator]` / `GlobalAlloc` interface for
 /// using the default Rust allocator.
-#[cfg(not(rust_allocator_uses_allocator_impls_h))]
+#[cfg(not(RUST_ALLOCATOR_USES_ALLOCATOR_IMPLS_H))]
 mod rust_allocator {
     #[global_allocator]
     static GLOBAL: std::alloc::System = std::alloc::System;
@@ -81,7 +81,7 @@ mod rust_allocator {
 ///
 /// TODO(https://crbug.com/410596442): Stop using internal features here.
 mod both_allocators {
-    use alloc_error_handler_impl_ffi::rust_allocator_internal as ffi;
+    use alloc_error_handler_impl_ffi::root::rust_allocator_internal as ffi;
 
     /// As part of rustc's contract for using `#[global_allocator]` without
     /// rustc-generated shims we must define this symbol, since we are opting in
@@ -90,9 +90,21 @@ mod both_allocators {
     #[linkage = "weak"]
     fn __rust_no_alloc_shim_is_unstable_v2() {}
 
+    #[cfg(not(RUST_ALLOCATOR_NIGHTLY_CAPABILITY))]
+    #[rustc_std_internal_symbol]
+    #[linkage = "weak"]
+    fn __rust_no_alloc_shim_is_unstable() {}
+
     #[rustc_std_internal_symbol]
     #[linkage = "weak"]
     fn __rust_alloc_error_handler_should_panic_v2() -> u8 {
+        0
+    }
+
+    #[cfg(not(RUST_ALLOCATOR_NIGHTLY_CAPABILITY))]
+    #[rustc_std_internal_symbol]
+    #[linkage = "weak"]
+    fn __rust_alloc_error_handler_should_panic() -> u8 {
         0
     }
 

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
@@ -6,6 +6,7 @@
 		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
 		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
 		<AssemblyName>v2rayN</AssemblyName>
+		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 	</PropertyGroup>
 
 	<ItemGroup>

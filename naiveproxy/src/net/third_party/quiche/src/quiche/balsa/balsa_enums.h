@@ -89,10 +89,9 @@ struct QUICHE_EXPORT BalsaFrameEnums {
     CHUNK_LENGTH_OVERFLOW,
     INVALID_CHUNK_EXTENSION,
     INVALID_CHUNK_FRAMING,
+    STRAY_DATA_AFTER_CHUNK,
 
     // Other errors.
-    CALLED_BYTES_SPLICED_WHEN_UNSAFE_TO_DO_SO,
-    CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT,
     MULTIPLE_CONTENT_LENGTH_KEYS,
     MULTIPLE_TRANSFER_ENCODING_KEYS,
     UNKNOWN_TRANSFER_ENCODING,
@@ -119,6 +118,9 @@ struct QUICHE_EXPORT BalsaFrameEnums {
     // The client request included 'Expect: 100-continue' header on a protocol
     // that doesn't support it.
     UNSUPPORTED_100_CONTINUE,
+
+    // Request method violates RFC 9110, Section 5.6.2
+    INVALID_REQUEST_METHOD,
 
     NUM_ERROR_CODES
   };

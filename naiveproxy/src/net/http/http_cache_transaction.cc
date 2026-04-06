@@ -67,6 +67,7 @@
 #include "net/http/http_util.h"
 #include "net/http/no_vary_search_cache.h"
 #include "net/log/net_log_event_type.h"
+#include "net/log/net_log_util.h"
 #include "net/ssl/ssl_cert_request_info.h"
 #include "net/ssl/ssl_config_service.h"
 
@@ -187,6 +188,8 @@ int HttpCache::Transaction::Start(const HttpRequestInfo* request,
   DCHECK(request);
   DCHECK(request->IsConsistent());
   DCHECK(!callback.is_null());
+  TRACE_EVENT("net", "HttpCache::Transaction::Start",
+              NetLogWithSourceToFlow(net_log));
   TRACE_EVENT_BEGIN(TRACE_DISABLED_BY_DEFAULT("net"),
                     "HttpCacheTransactionState", track_for_state_change_, "url",
                     request->url.spec());
@@ -616,18 +619,6 @@ void HttpCache::Transaction::CloseConnectionOnDestruction() {
     network_trans_->CloseConnectionOnDestruction();
   } else if (InWriters()) {
     entry_->writers()->CloseConnectionOnDestruction();
-  }
-}
-
-bool HttpCache::Transaction::IsMdlMatchForMetrics() const {
-  if (network_transaction_info_.previous_mdl_match_for_metrics) {
-    return true;
-  }
-  const HttpTransaction* transaction = GetOwnedOrMovedNetworkTransaction();
-  if (transaction) {
-    return transaction->IsMdlMatchForMetrics();
-  } else {
-    return false;
   }
 }
 
@@ -1274,7 +1265,7 @@ int HttpCache::Transaction::DoOpenOrCreateEntryComplete(int result) {
   // OK, otherwise the cache will end up with an active entry without any
   // transaction attached.
   net_log_.EndEvent(NetLogEventType::HTTP_CACHE_OPEN_OR_CREATE_ENTRY, [&] {
-    base::Value::Dict params;
+    base::DictValue params;
     if (result == OK) {
       params.Set("result", new_entry_->opened() ? "opened" : "created");
     } else {
@@ -1886,6 +1877,8 @@ int HttpCache::Transaction::DoCacheUpdateStaleWhileRevalidateTimeoutComplete(
 }
 
 int HttpCache::Transaction::DoSendRequest() {
+  TRACE_EVENT("net", "HttpCache::Transaction::DoSendRequest",
+              NetLogWithSourceToFlow(net_log_));
   TRACE_EVENT_INSTANT(TRACE_DISABLED_BY_DEFAULT("net"), "DoSendRequest",
                       track_for_state_change_);
   DCHECK(mode_ & WRITE || mode_ == NONE);
@@ -2828,7 +2821,16 @@ int HttpCache::Transaction::BeginCacheValidation() {
     // LOAD_FROM_CACHE_IF_OFFLINE case.
     if (!ConditionalizeRequest()) {
       couldnt_conditionalize_request_ = true;
-      UpdateCacheEntryStatus(CacheEntryStatus::ENTRY_CANT_CONDITIONALIZE);
+      if (cache_entry_status_ != CacheEntryStatus::ENTRY_CANT_CONDITIONALIZE) {
+        // `cache_entry_status_` may already be marked as
+        // `ENTRY_CANT_CONDITIONALIZE`. This can occur if an existed cache entry
+        // was initially deemed unusable (e.g. a "no-cache" header), and then,
+        // another concurrent same URL transactions receives the "no-cache"
+        // response again which leads this transaction's BeginCacheValidation()
+        // to re-evaluate the entry as unusable. This check avoids redundant
+        // status updates.
+        UpdateCacheEntryStatus(CacheEntryStatus::ENTRY_CANT_CONDITIONALIZE);
+      }
       if (partial_) {
         return DoRestartPartialRequest();
       }
@@ -3134,10 +3136,14 @@ HttpCache::Transaction::GetHttpCacheEntryRejectionStatus(
     return HttpCacheEntryRejectionStatus::kNoRejectionLoadOnlyFromCache;
   }
 
-  return (in_memory_info & HINT_UNUSABLE_PER_CACHING_HEADERS) ==
-                 HINT_UNUSABLE_PER_CACHING_HEADERS
+  if ((in_memory_info & HINT_UNUSABLE_PER_CACHING_HEADERS) !=
+      HINT_UNUSABLE_PER_CACHING_HEADERS) {
+    return HttpCacheEntryRejectionStatus::kNoRejectionUsable;
+  }
+
+  return base::FeatureList::IsEnabled(features::kHttpCacheSkipUnusableEntry)
              ? HttpCacheEntryRejectionStatus::kRejection
-             : HttpCacheEntryRejectionStatus::kNoRejectionUsable;
+             : HttpCacheEntryRejectionStatus::kNoRejectionHintDisabled;
 }
 
 bool HttpCache::Transaction::MaybeRejectBasedOnEntryInMemoryData(
@@ -3355,6 +3361,8 @@ int HttpCache::Transaction::DoConnectedCallbackComplete(int result) {
   if (result != OK) {
     if (result ==
         ERR_CACHED_IP_ADDRESS_SPACE_BLOCKED_BY_LOCAL_NETWORK_ACCESS_POLICY) {
+      net_log_.AddEvent(
+          net::NetLogEventType::LOCAL_NETWORK_ACCESS_RETRY_DUE_TO_CACHE);
       DoomInconsistentEntry();
       UpdateCacheEntryStatusToOther(OtherStatusReason::kBlockedByIpSpace);
       TransitionToState(reading_ ? STATE_SEND_REQUEST
@@ -3512,11 +3520,10 @@ int HttpCache::Transaction::WriteResponseInfoToEntry(
     if (ComputeUnusablePerCachingHeaders()) {
       in_memory_data |= HINT_UNUSABLE_PER_CACHING_HEADERS;
     }
-    if (request_->is_main_frame_navigation) {
+    if (request_->is_main_frame_navigation || request_->is_shared_resource) {
       in_memory_data |= HINT_HIGH_PRIORITY;
     }
-    cache_->GetCurrentBackend()->SetEntryInMemoryData(cache_key_,
-                                                      in_memory_data);
+    entry_->GetEntry()->SetEntryInMemoryData(in_memory_data);
   }
 
   BeginDiskCacheAccessTimeCount();
@@ -4034,16 +4041,12 @@ void HttpCache::Transaction::SaveNetworkTransactionInfo(
   network_transaction_info_.received_body_bytes =
       transaction.GetReceivedBodyBytes();
 
-  ConnectionAttempts attempts = transaction.GetConnectionAttempts();
-  for (const auto& attempt : attempts) {
-    network_transaction_info_.old_connection_attempts.push_back(attempt);
-  }
+  const auto connection_attempts = transaction.GetConnectionAttempts();
+  network_transaction_info_.old_connection_attempts.insert(
+      network_transaction_info_.old_connection_attempts.end(),
+      connection_attempts.begin(), connection_attempts.end());
   network_transaction_info_.old_remote_endpoint = IPEndPoint();
   transaction.GetRemoteEndpoint(&network_transaction_info_.old_remote_endpoint);
-
-  if (transaction.IsMdlMatchForMetrics()) {
-    network_transaction_info_.previous_mdl_match_for_metrics = true;
-  }
 }
 
 void HttpCache::Transaction::OnIOComplete(int result) {
@@ -4100,6 +4103,11 @@ bool HttpCache::Transaction::UpdateAndReportCacheability(
     if (base::FeatureList::IsEnabled(features::kAvoidEntryCreationForNoStore)) {
       cache_->MarkKeyNoStore(cache_key_);
     }
+    return true;
+  }
+  // Do not cache pervasive responses that are not public.
+  if (request_->is_shared_resource &&
+      !headers.HasHeaderValue("cache-control", "public")) {
     return true;
   }
 
@@ -4184,6 +4192,8 @@ bool HttpCache::Transaction::IsUsingURLFromNoVarySearchCache() const {
 
 HttpCache::Transaction::NoVarySearchUseResult
 HttpCache::Transaction::LookupRequestInNoVarySearchCache() {
+  TRACE_EVENT("net",
+              "HttpCache::Transaction::LookupRequestInNoVarySearchCache");
   // In order to conditionally log HttpCache.NoVarySearch.LookupTime.{Hit,Miss},
   // this doesn't use the SCOPED_UMA_HISTOGRAM_TIMER_MICROS macro, but the
   // bucket definitions are identical.
@@ -4232,7 +4242,7 @@ HttpCache::Transaction::LookupRequestInNoVarySearchCache() {
   NoVarySearchCache::LookupResult result = std::move(maybe_result).value();
   net_log_.BeginEvent(
       NetLogEventType::HTTP_CACHE_USING_NO_VARY_SEARCH_CACHE_URL, [&] {
-        return base::Value::Dict()
+        return base::DictValue()
             .Set("request_url", request_->url.spec())
             .Set("cached_url", result.original_url.spec());
       });
@@ -4258,7 +4268,7 @@ int HttpCache::Transaction::RestartWithoutNoVarySearchCache(
   no_vary_search_use_result_ = restart_reason;
   net_log_.EndEvent(
       NetLogEventType::HTTP_CACHE_USING_NO_VARY_SEARCH_CACHE_URL, [&] {
-        return base::Value::Dict().Set(
+        return base::DictValue().Set(
             "restart_reason", NoVarySearchUseResultToString(restart_reason));
       });
   if (entry_action == RestartCacheEntryAction::kErase) {

@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.9
+
+* Fixes and improvements
+
+#### 1.13.6
+
+* Fixes and improvements
+
 #### 1.14.0-alpha.8
 
 * Add BBR profile and hop interval randomization for Hysteria2 **1**

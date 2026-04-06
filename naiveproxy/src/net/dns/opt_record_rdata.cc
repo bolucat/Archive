@@ -15,7 +15,6 @@
 
 #include "base/big_endian.h"
 #include "base/check_is_test.h"
-#include "base/containers/contains.h"
 #include "base/containers/span.h"
 #include "base/containers/span_reader.h"
 #include "base/containers/span_writer.h"
@@ -45,7 +44,7 @@ std::vector<uint8_t> SerializeEdeOpt(uint16_t info_code,
 }
 
 std::optional<std::string> GetFilteringDetailsString(
-    const base::Value::Dict& dict,
+    const base::DictValue& dict,
     std::string_view key) {
   const std::string* val = dict.FindString(key);
   if (!val) {
@@ -65,7 +64,7 @@ std::vector<OptRecordRdata::EdeOpt::FilteringDetails> ParseFilteringDetails(
   if (!value || !value->is_dict()) {
     return {};
   }
-  const base::Value::Dict& dict = value->GetDict();
+  const base::DictValue& dict = value->GetDict();
   const base::ListValue* dbs = dict.FindList("fdbs");
   if (!dbs) {
     return {};
@@ -75,13 +74,13 @@ std::vector<OptRecordRdata::EdeOpt::FilteringDetails> ParseFilteringDetails(
     if (!fdb.is_dict()) {
       continue;
     }
-    const base::Value::Dict& entry = fdb.GetDict();
+    const base::DictValue& entry = fdb.GetDict();
     auto db = GetFilteringDetailsString(entry, "db");
     auto id = GetFilteringDetailsString(entry, "id");
     if (db && id) {
       OptRecordRdata::EdeOpt::FilteringDetails meta;
-      meta.resolver_operator_id = std::move(*db);
-      meta.filtering_incident_id = std::move(*id);
+      meta.database_operator_id = std::move(*db);
+      meta.incident_id = std::move(*id);
       filtering_details.push_back(std::move(meta));
     }
   }
@@ -143,10 +142,15 @@ std::unique_ptr<OptRecordRdata::EdeOpt> OptRecordRdata::EdeOpt::Create(
   }
   auto ede = std::make_unique<EdeOpt>(
       info_code, std::string(base::as_string_view(extra_text)));
-  if (base::FeatureList::IsEnabled(net::features::kDnsFilteringDetails)) {
+  if (base::FeatureList::IsEnabled(net::features::kUseStructuredDnsErrors)) {
     ede->filtering_details_ = ParseFilteringDetails(ede->extra_text());
   }
   return ede;
+}
+
+std::unique_ptr<OptRecordRdata::EdeOpt>
+OptRecordRdata::EdeOpt::CreateStructuredErrorsRequest() {
+  return std::make_unique<EdeOpt>(EdeInfoCode::kOtherError, /*extra_text=*/"");
 }
 
 uint16_t OptRecordRdata::EdeOpt::GetCode() const {
@@ -248,7 +252,7 @@ OptRecordRdata::UnknownOpt::CreateForTesting(uint16_t code,
 OptRecordRdata::UnknownOpt::UnknownOpt(uint16_t code,
                                        base::span<const uint8_t> data)
     : Opt(data), code_(code) {
-  CHECK(!base::Contains(kOptsWithDedicatedClasses, code));
+  CHECK(!std::ranges::contains(kOptsWithDedicatedClasses, code));
 }
 
 uint16_t OptRecordRdata::UnknownOpt::GetCode() const {
@@ -343,7 +347,7 @@ void OptRecordRdata::AddOpt(std::unique_ptr<Opt> opt) {
 }
 
 bool OptRecordRdata::ContainsOptCode(uint16_t opt_code) const {
-  return base::Contains(opts_, opt_code);
+  return opts_.contains(opt_code);
 }
 
 std::vector<const OptRecordRdata::Opt*> OptRecordRdata::GetOpts() const {

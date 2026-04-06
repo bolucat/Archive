@@ -5,6 +5,9 @@
 #ifndef BASE_AUTO_RESET_H_
 #define BASE_AUTO_RESET_H_
 
+// Necessary per <utility>'s usage of `sizeof(std::intmax_t)` without IWYU.
+#include <stdint.h>
+
 #include <utility>
 
 #include "base/check_op.h"

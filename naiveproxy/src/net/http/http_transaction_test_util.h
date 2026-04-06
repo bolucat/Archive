@@ -106,6 +106,8 @@ struct MockTransaction {
   // Value returned by MockNetworkTransaction::Read (potentially
   // asynchronously if |!(test_mode & TEST_MODE_SYNC_NET_START)|.)
   Error read_return_code;
+  bool is_shared_resource = false;
+  bool did_use_shared_dictionary = false;
 };
 
 extern const MockTransaction kSimpleGET_Transaction;
@@ -251,7 +253,6 @@ class MockNetworkTransaction final : public HttpTransaction {
   ConnectionAttempts GetConnectionAttempts() const override;
 
   void CloseConnectionOnDestruction() override;
-  bool IsMdlMatchForMetrics() const override;
 
   CreateHelper* websocket_handshake_stream_create_helper() {
     return websocket_handshake_stream_create_helper_;

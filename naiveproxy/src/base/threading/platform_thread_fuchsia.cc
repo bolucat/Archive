@@ -94,8 +94,8 @@ void PlatformThread::SetName(const std::string& name) {
 
 // static
 bool PlatformThread::CanChangeThreadType(ThreadType from, ThreadType to) {
-  return from == to || to == ThreadType::kDisplayCritical ||
-         to == ThreadType::kInteractive || to == ThreadType::kRealtimeAudio;
+  return from == to || to == ThreadType::kPresentation ||
+         to == ThreadType::kAudioProcessing || to == ThreadType::kRealtimeAudio;
 }
 
 namespace internal {
@@ -116,8 +116,8 @@ void SetCurrentThreadTypeImpl(ThreadType thread_type,
       SetThreadRole("chromium.base.threading.utility");
       break;
 
-    case ThreadType::kDisplayCritical:
-    case ThreadType::kInteractive:
+    case ThreadType::kPresentation:
+    case ThreadType::kAudioProcessing:
       SetThreadRole("chromium.base.threading.display", kDisplaySchedulingPeriod,
                     kDisplaySchedulingCapacity);
       break;
@@ -129,24 +129,28 @@ void SetCurrentThreadTypeImpl(ThreadType thread_type,
   }
 }
 
+PlatformPriorityOverride SetThreadTypeOverride(
+    PlatformThreadHandle thread_handle,
+    ThreadType thread_type) {
+  return false;
+}
+
+void RemoveThreadTypeOverride(
+    PlatformThreadHandle thread_handle,
+    const PlatformPriorityOverride& priority_override_handle,
+    ThreadType initial_thread_type) {}
+
 }  // namespace internal
 
 // static
-ThreadPriorityForTest PlatformThread::GetCurrentThreadPriorityForTest() {
+ThreadType PlatformThread::GetCurrentEffectiveThreadTypeForTest() {
   // Fuchsia doesn't provide a way to get the current thread's priority.
   // Use ThreadType stored in TLS as a proxy.
   const ThreadType thread_type = PlatformThread::GetCurrentThreadType();
-  switch (thread_type) {
-    case ThreadType::kBackground:
-    case ThreadType::kUtility:
-    case ThreadType::kDefault:
-      return ThreadPriorityForTest::kNormal;
-    case ThreadType::kDisplayCritical:
-    case ThreadType::kInteractive:
-      return ThreadPriorityForTest::kDisplay;
-    case ThreadType::kRealtimeAudio:
-      return ThreadPriorityForTest::kRealtimeAudio;
+  if (thread_type == ThreadType::kAudioProcessing) {
+    return ThreadType::kPresentation;
   }
+  return thread_type;
 }
 
 }  // namespace base

@@ -19,6 +19,7 @@
 #include <iterator>
 #include <limits>
 #include <memory>
+#include <new>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -199,6 +200,10 @@
 // - The constructor which takes an iterator and a count uses
 //   `StrictNumeric<size_type>` instead of `size_type` to prevent unsafe type
 //   conversions.
+// - The constructor from a built-in array does not need to block CTAD, since
+//   the corresponding explicit deduction guide is constrained enough to be
+//   picked over the implicit one.
+//   See https://cplusplus.github.io/LWG/issue3369 for background.
 // - Omits constructors from `std::array`, since separating these from the range
 //   constructor is only useful to mark them `noexcept`, and Chromium doesn't
 //   care about that.
@@ -221,7 +226,9 @@
 //
 // Differences from [span.deduct]:
 // - The deduction guide from a range creates fixed-extent spans if the source
-//   extent is available at compile time.
+//   extent is available at compile time. This also removes the need for an
+//   explicit deduction guide for built-in arrays.
+// - Deduce a const element type for non-borrowed ranges.
 //
 // Differences from [span.sub]:
 // - As in [span.cons], `size_t` parameters are changed to
@@ -240,6 +247,8 @@
 //   http://wg21.link/p1085 for details.
 // - Similarly, provides `span::operator<=>()`, which performs lexicographic
 //   comparison between spans.
+// - Furthermore, provides support for Abseil hashing, consistent with the
+//   semantics of equality described above.
 //
 // Differences from [span.elem]:
 // - Because Chromium does not use exceptions, `span::at()` behaves identically
@@ -373,6 +382,16 @@ template <typename T, size_t N>
 inline constexpr size_t kComputedExtentImpl<std::span<T, N>> = N;
 template <typename T, size_t N, typename InternalPtrType>
 inline constexpr size_t kComputedExtentImpl<span<T, N, InternalPtrType>> = N;
+
+// `std::ranges::subrange` implements the tuple protocol to allow decaying into
+// an (iterator, sentinel) pair.
+//
+// However, this is undesired here and inconsistent with subrange.size(). Thus
+// we force the extent to be dynamic.
+template <typename I, typename S, std::ranges::subrange_kind K>
+inline constexpr size_t kComputedExtentImpl<std::ranges::subrange<I, S, K>> =
+    dynamic_extent;
+
 template <typename T>
 inline constexpr size_t kComputedExtent =
     kComputedExtentImpl<std::remove_cvref_t<T>>;
@@ -486,8 +505,7 @@ class GSL_POINTER span {
 
   // Array of size `extent`.
   // NOLINTNEXTLINE(google-explicit-constructor)
-  constexpr span(
-      std::type_identity_t<element_type> (&arr LIFETIME_BOUND)[extent]) noexcept
+  constexpr span(element_type (&arr LIFETIME_BOUND)[extent]) noexcept
       // SAFETY: The type signature guarantees `arr` contains `extent` elements.
       : UNSAFE_BUFFERS(span(arr, extent)) {}
 
@@ -551,7 +569,7 @@ class GSL_POINTER span {
   constexpr void copy_from(span<const element_type, extent> other)
     requires(!std::is_const_v<element_type>)
   {
-    if (std::is_constant_evaluated()) {
+    if consteval {
       // Comparing pointers to different objects at compile time yields
       // unspecified behavior, which would halt compilation. Instead,
       // unconditionally use a separate buffer in the constexpr context. This
@@ -566,10 +584,7 @@ class GSL_POINTER span {
           constexpr ~Holder() {}
           element_type value;
         };
-        // std::unique_ptr<T[]> isn't constexpr enough prior to C++23; another
-        // alternative is std::vector, but that requires including <vector> just
-        // for this edge case.
-        Holder* buffer = new Holder[extent];
+        auto buffer = std::make_unique<Holder[]>(extent);
         for (size_t i = 0; i < extent; ++i) {
           // SAFETY: `buffers` is allocated with `extent` elements, and the loop
           // body only executes if `i < extent`.
@@ -581,7 +596,6 @@ class GSL_POINTER span {
           (*this)[i] = UNSAFE_BUFFERS(buffer[i]).value;
           UNSAFE_BUFFERS(buffer[i]).value.~element_type();
         }
-        delete[] buffer;
       }
     } else {
       // Using `<=` to compare pointers to different allocations is UB;
@@ -600,11 +614,18 @@ class GSL_POINTER span {
              // overload above; if they don't, it's because the extent doesn't
              // match. Rejecting this here improves the resulting errors.
              N == dynamic_extent &&
-             std::convertible_to<R &&, span<const element_type>>)
+             (std::convertible_to<R &&, span<const element_type>> ||
+              std::convertible_to<R &&, span<const volatile element_type>>))
   constexpr void copy_from(R&& other) {
     // Note: The constructor `CHECK()`s that a dynamic-extent `other` has the
     // right size.
-    copy_from(span<const element_type, extent>(std::forward<R>(other)));
+    if constexpr (std::convertible_to<R&&, span<const volatile element_type>> &&
+                  !std::convertible_to<R&&, span<const element_type>>) {
+      copy_from(
+          span<const volatile element_type, extent>(std::forward<R>(other)));
+    } else {
+      copy_from(span<const element_type, extent>(std::forward<R>(other)));
+    }
   }
 
   // Like `copy_from()`, but may be more performant; however, the caller must
@@ -619,7 +640,7 @@ class GSL_POINTER span {
     // unspecified behavior, which would halt compilation. Instead implement in
     // terms of the guaranteed-safe behavior; performance is irrelevant in the
     // constexpr context.
-    if (std::is_constant_evaluated()) {
+    if consteval {
       copy_from(other);
       return;
     }
@@ -656,6 +677,19 @@ class GSL_POINTER span {
       return first(other.size()).copy_from(other);
     } else {
       return first<N>().copy_from(other);
+    }
+  }
+
+  // Performs a deep copy from a volatile source span. The spans must be the
+  // same size.
+  //
+  // (Not in `std::`; supports volatile memory access patterns.)
+  template <typename U>
+    requires(!std::is_const_v<element_type> &&
+             std::is_same_v<U, const volatile element_type>)
+  constexpr void copy_from(span<U, extent> other) {
+    for (size_t i = 0; i < extent; ++i) {
+      (*this)[i] = other[i];
     }
   }
 
@@ -844,6 +878,11 @@ class GSL_POINTER span {
         const_lhs.begin(), const_lhs.end(), const_rhs.begin(), const_rhs.end());
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, span v) {
+    return H::combine_contiguous(std::move(h), v.data(), v.size());
+  }
+
   // [span.elem]: Element access
   // Reference to specific element.
   // When `idx` is outside the span, the underlying call will `CHECK()`.
@@ -1007,8 +1046,7 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
   // Array of size N.
   template <size_t N>
   // NOLINTNEXTLINE(google-explicit-constructor)
-  constexpr span(
-      std::type_identity_t<element_type> (&arr LIFETIME_BOUND)[N]) noexcept
+  constexpr span(element_type (&arr LIFETIME_BOUND)[N]) noexcept
       // SAFETY: The type signature guarantees `arr` contains `N` elements.
       : UNSAFE_BUFFERS(span(arr, N)) {}
 
@@ -1068,7 +1106,7 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
     requires(!std::is_const_v<element_type>)
   {
     CHECK(size() == other.size());
-    if (std::is_constant_evaluated()) {
+    if consteval {
       // Comparing pointers to different objects at compile time yields
       // unspecified behavior, which would halt compilation. Instead,
       // unconditionally use a separate buffer in the constexpr context. This
@@ -1081,10 +1119,7 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
         constexpr ~Holder() {}
         element_type value;
       };
-      // std::unique_ptr<T[]> isn't constexpr enough prior to C++23; another
-      // alternative is std::vector, but that requires including <vector> just
-      // for this edge case.
-      Holder* buffer = new Holder[other.size()];
+      auto buffer = std::make_unique<Holder[]>(other.size());
       for (size_t i = 0; i < other.size(); ++i) {
         // SAFETY: `buffers` is allocated with `other.size()` elements, and the
         // loop body only executes if `i < other.size()`.
@@ -1096,7 +1131,6 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
         (*this)[i] = UNSAFE_BUFFERS(buffer[i]).value;
         UNSAFE_BUFFERS(buffer[i]).value.~element_type();
       }
-      delete[] buffer;
     } else {
       // Using `<=` to compare pointers to different allocations is UB;
       // reinterpret_cast is the workaround.
@@ -1106,6 +1140,20 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
       } else {
         std::ranges::copy_backward(other, end());
       }
+    }
+  }
+
+  // Performs a deep copy from a volatile source span. The spans must be the
+  // same size.
+  //
+  // (Not in `std::`; supports volatile memory access patterns.)
+  template <typename U>
+    requires(!std::is_const_v<element_type> &&
+             std::is_same_v<U, const volatile element_type>)
+  constexpr void copy_from(span<U> other) {
+    CHECK(size() == other.size());
+    for (size_t i = 0; i < size(); ++i) {
+      (*this)[i] = other[i];
     }
   }
 
@@ -1120,7 +1168,7 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
     // unspecified behavior, which would halt compilation. Instead implement in
     // terms of the guaranteed-safe behavior; performance is irrelevant in the
     // constexpr context.
-    if (std::is_constant_evaluated()) {
+    if consteval {
       copy_from(other);
       return;
     }
@@ -1339,6 +1387,11 @@ class GSL_POINTER span<ElementType, dynamic_extent, InternalPtrType> {
         const_lhs.begin(), const_lhs.end(), const_rhs.begin(), const_rhs.end());
   }
 
+  template <typename H>
+  friend H AbslHashValue(H h, span v) {
+    return H::combine_contiguous(std::move(h), v.data(), v.size());
+  }
+
   // [span.elem]: Element access
   // Reference to a specific element.
   // When `idx` is outside the span, the underlying call will `CHECK()`.
@@ -1443,13 +1496,22 @@ template <typename It, typename EndOrSize>
 span(It, EndOrSize) -> span<std::remove_reference_t<std::iter_reference_t<It>>,
                             internal::MaybeStaticExt<EndOrSize>>;
 
-template <typename T, size_t N>
-span(T (&)[N]) -> span<T, N>;
-
 template <typename R>
   requires(std::ranges::contiguous_range<R>)
 span(R&&) -> span<std::remove_reference_t<std::ranges::range_reference_t<R>>,
                   internal::kComputedExtent<R>>;
+
+// Deduction guide for contiguous and non-borrowed ranges. This adds const to
+// the element type, since mutable spans only support construction from borrowed
+// ranges.
+//
+// (Not in `std::`; Restores behavior of gsl::span:
+// https://godbolt.org/z/11dz4dceY)
+template <typename R>
+  requires(std::ranges::contiguous_range<R> && !std::ranges::borrowed_range<R>)
+span(R&&)
+    -> span<const std::remove_reference_t<std::ranges::range_reference_t<R>>,
+            internal::kComputedExtent<R>>;
 
 // [span.objectrep]: Views of object representation
 template <typename ElementType, size_t Extent, typename InternalPtrType>
@@ -1672,6 +1734,102 @@ constexpr auto as_writable_byte_span(
     ElementType (&arr LIFETIME_BOUND)[Extent]) {
   return as_writable_bytes(allow_nonunique_obj, span<ElementType, Extent>(arr));
 }
+
+namespace subtle {
+// Reinterprets a span of bytes (uint8_t) as a span of another type
+// `ElementType`.
+//
+// Please use sparingly. Prefer structured serialization/deserialization methods
+// when possible, for instance with SpanReader.
+//
+// This is useful when handling buffers (e.g. IPC messages, shared memory) where
+// the type of the data is known but the buffer is typed as generic bytes.
+//
+// This is conceptually the inverse of `as_byte_span()`.
+//
+// The source span must be strictly `uint8_t` (const or mutable).
+//
+// Please do not use as_byte_span() followed by reinterpret_span() as a way to
+// cast between two arbitrary types. This would violate strict aliasing rules
+// and result in undefined behavior. Only use reinterpret_span() on spans that
+// were originally byte spans.
+template <typename ElementType,
+          typename ByteType,
+          size_t Count,
+          typename InternalPtrType>
+  requires(
+      // In standard C++, pointers of different types are assumed not to alias
+      // (the strict aliasing rule). While Chromium disables strict aliasing
+      // (-fno-strict-aliasing), it doesn't hurt to follow the rule in this
+      // function, since it is intended to be a safe alternative to raw pointer
+      // casts. By restricting `ByteType` to be `uint8_t` (or `const uint8_t`),
+      // we ensure that the function is only used for its intended purpose of
+      // reinterpreting byte spans, and not for arbitrary type punning.
+      std::same_as<std::remove_cv_t<ByteType>, uint8_t> &&
+
+      // This function effectively "creates" objects by overlaying a type onto
+      // raw bytes, bypassing constructors. Such an operation is only safe for
+      // objects that do not maintain internal invariant. Therefore, we restrict
+      // this function to trivially copyable types.
+      std::is_trivially_copyable_v<ElementType> &&
+
+      // Ensure we are not casting away constness.
+      (!std::is_const_v<ByteType> || std::is_const_v<ElementType>) &&
+
+      // Ensure the size of the byte span is a multiple of the target type size.
+      // This is checked at compile time for fixed-size spans, and at runtime
+      // for dynamic-size spans.
+      (Count == dynamic_extent || Count % sizeof(ElementType) == 0))
+[[nodiscard]] constexpr auto reinterpret_span(
+    span<ByteType, Count, InternalPtrType> s) {
+  // Check for proper alignment of the target type.
+  // This remains a runtime CHECK because alignment is a property of the
+  // pointer value, not the type system.
+  CHECK(reinterpret_cast<uintptr_t>(s.data()) % alignof(ElementType) == 0u);
+
+  // Runtime check for dynamic spans ensures size is a multiple of ElementType.
+  if constexpr (Count == dynamic_extent) {
+    CHECK(s.size_bytes() % sizeof(ElementType) == 0u);
+  }
+
+  // In C++, one cannot simply reinterpret a span of bytes as a span of
+  // `ElementType` and dereference it, unless an object of type `ElementType`
+  // actually exists at that memory location.
+  //
+  // Per [intro.object], casting a pointer does not start the lifetime of an
+  // object. Even if the bytes represent a valid object representation, strict
+  // adherence to the standard requires explicit object creation. Dereferencing
+  // a pointer to an object that hasn't been created is undefined behavior.
+  //
+  // The proper solution is C++23's `std::start_lifetime_as_array`
+  // (see [obj.lifetime]), which explicitly blesses the memory as containing
+  // objects of type `ElementType`.
+  //
+  // [intro.object]: https://eel.is/c++draft/intro.object
+  // [obj.lifetime] https://eel.is/c++draft/obj.lifetime
+  //
+  // TODO(arthursonzogni): use std::start_lifetime_as_array.
+  //
+  // std::start_lifetime_as_array is part of C++23, but not yet implemented by
+  // CLang as of January 2026. `std::launder` helps with pointer provenance
+  // issues, but does not by itself start the lifetime of the object. However,
+  // in practice, most compilers implicitly treat this pattern as valid de
+  // facto, but it is technically not standard-compliant.
+  auto* ptr = std::launder(reinterpret_cast<ElementType*>(s.data()));
+
+  if constexpr (Count == dynamic_extent) {
+    // SAFETY: We checked for proper alignment, size, strict aliasing rules, and
+    // started the lifetime of the array.
+    return UNSAFE_BUFFERS(span<ElementType, dynamic_extent>(
+        ptr, s.size_bytes() / sizeof(ElementType)));
+  } else {
+    // SAFETY: We checked for proper alignment, size, strict aliasing rules, and
+    // started the lifetime of the array.
+    constexpr size_t NewCount = Count / sizeof(ElementType);
+    return UNSAFE_BUFFERS(span<ElementType, NewCount>(ptr, NewCount));
+  }
+}
+}  // namespace subtle
 
 }  // namespace base
 

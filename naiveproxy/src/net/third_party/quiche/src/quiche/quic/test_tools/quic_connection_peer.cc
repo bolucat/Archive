@@ -291,12 +291,6 @@ bool QuicConnectionPeer::SupportsReleaseTime(QuicConnection* connection) {
 }
 
 // static
-QuicConnection::PacketContent QuicConnectionPeer::GetCurrentPacketContent(
-    QuicConnection* connection) {
-  return connection->current_packet_content_;
-}
-
-// static
 void QuicConnectionPeer::AddBytesReceived(QuicConnection* connection,
                                           size_t length) {
   if (connection->EnforceAntiAmplificationLimit()) {
@@ -573,7 +567,7 @@ bool QuicConnectionPeer::TestLastReceivedPacketInfoDefaults() {
       << " ecn_codepoint passed: " << (info.ecn_codepoint == ECN_NOT_ECT)
       << " sizeof(ReceivedPacketInfo) passed: "
       << (sizeof(size_t) != 8 ||
-          sizeof(QuicConnection::ReceivedPacketInfo) == 288);
+          sizeof(QuicConnection::ReceivedPacketInfo) == 272);
   return info.destination_address == QuicSocketAddress() &&
          info.source_address == QuicSocketAddress() &&
          info.receipt_time == QuicTime::Zero() &&
@@ -587,7 +581,7 @@ bool QuicConnectionPeer::TestLastReceivedPacketInfoDefaults() {
          // have changed. Please add the relevant conditions and update the
          // length below.
          (sizeof(size_t) != 8 ||
-          sizeof(QuicConnection::ReceivedPacketInfo) == 288);
+          sizeof(QuicConnection::ReceivedPacketInfo) == 272);
 }
 
 // static
@@ -619,7 +613,7 @@ uint8_t QuicConnectionPeer::GetNumPtosForRetransmittableOnWireTimeout(
 // static
 uint64_t QuicConnectionPeer::GetPeerReorderingThreshold(
     QuicConnection* connection) {
-  if (!connection->version().UsesTls()) {
+  if (!connection->version().IsIetfQuic()) {
     return connection->uber_received_packet_manager_
         .received_packet_managers_[0]
         .reordering_threshold_;
@@ -627,6 +621,12 @@ uint64_t QuicConnectionPeer::GetPeerReorderingThreshold(
   return connection->uber_received_packet_manager_
       .received_packet_managers_[APPLICATION_DATA]
       .reordering_threshold_;
+}
+
+// static
+bool QuicConnectionPeer::ConnectionMigrationDisabled(
+    QuicConnection* connection) {
+  return connection->active_migration_disabled_;
 }
 
 }  // namespace test

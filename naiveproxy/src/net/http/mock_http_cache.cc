@@ -20,6 +20,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/pickle.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/types/expected.h"
 #include "net/base/features.h"
 #include "net/base/net_errors.h"
 #include "net/disk_cache/disk_cache_test_util.h"
@@ -351,6 +352,10 @@ Error MockDiskEntry::ReadyForSparseIO(CompletionOnceCallback callback) {
   return ERR_IO_PENDING;
 }
 
+void MockDiskEntry::SetEntryInMemoryData(uint8_t data) {
+  in_memory_data_ = data;
+}
+
 void MockDiskEntry::SetLastUsedTimeForTest(base::Time time) {
   NOTREACHED();
 }
@@ -436,9 +441,9 @@ MockDiskCache::~MockDiskCache() {
   ReleaseAll();
 }
 
-int32_t MockDiskCache::GetEntryCount(
-    net::Int32CompletionOnceCallback callback) const {
-  return static_cast<int32_t>(entries_.size());
+base::expected<int32_t, net::Error> MockDiskCache::GetEntryCount(
+    GetEntryCountCallback callback) const {
+  return base::ok(entries_.size());
 }
 
 disk_cache::EntryResult MockDiskCache::OpenOrCreateEntry(
@@ -662,13 +667,6 @@ uint8_t MockDiskCache::GetEntryInMemoryData(const std::string& key) {
     return it->second->in_memory_data();
   }
   return 0;
-}
-
-void MockDiskCache::SetEntryInMemoryData(const std::string& key, uint8_t data) {
-  auto it = entries_.find(key);
-  if (it != entries_.end()) {
-    it->second->set_in_memory_data(data);
-  }
 }
 
 int64_t MockDiskCache::MaxFileSize() const {

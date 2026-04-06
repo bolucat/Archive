@@ -21,6 +21,7 @@
 #include "base/task/sequence_manager/task_time_observer.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/task/thread_type.h"
 #include "base/time/default_tick_clock.h"
 
 namespace base {
@@ -48,12 +49,16 @@ class BASE_EXPORT SequenceManager {
 
   class BASE_EXPORT PrioritySettings {
    public:
+    using ThreadTypeMapping = ThreadType (*)(TaskQueue::QueuePriority);
+
     // This limit is based on an implementation detail of `TaskQueueSelector`'s
     // `ActivePriorityTracker`, which can be refactored if more priorities are
     // needed.
     static constexpr size_t kMaxPriorities = sizeof(size_t) * 8 - 1;
 
     static PrioritySettings CreateDefault();
+    static ThreadType DefaultTaskPriorityToThreadType(
+        TaskQueue::QueuePriority priority);
 
     template <typename T>
       requires(std::is_enum_v<T>)
@@ -87,7 +92,18 @@ class BASE_EXPORT SequenceManager {
       proto_priority_converter_ = proto_priority_converter;
     }
 
+    // Sets a mapping functions from custom priority to ThreadType, which
+    // will be returned by internal::GetCurrentTaskImportance().
+    void SetThreadTypeMapping(ThreadTypeMapping thread_type_mapping) {
+      thread_type_mapping_ = thread_type_mapping;
+    }
+
     perfetto::protos::pbzero::SequenceManagerTask::Priority TaskPriorityToProto(
+        TaskQueue::QueuePriority priority) const;
+
+    // Returns the ThreadType corresponding to `priority`, using the mapping
+    // provided via SetThreadTypeMapping() if applicable.
+    ThreadType TaskPriorityToThreadType(
         TaskQueue::QueuePriority priority) const;
 
    private:
@@ -97,32 +113,7 @@ class BASE_EXPORT SequenceManager {
     perfetto::protos::pbzero::SequenceManagerTask::Priority (
         *proto_priority_converter_)(TaskQueue::QueuePriority) = nullptr;
 
-#if DCHECK_IS_ON()
-   public:
-    PrioritySettings(
-        TaskQueue::QueuePriority priority_count,
-        TaskQueue::QueuePriority default_priority,
-        std::vector<TimeDelta> per_priority_cross_thread_task_delay,
-        std::vector<TimeDelta> per_priority_same_thread_task_delay);
-
-    const std::vector<TimeDelta>& per_priority_cross_thread_task_delay() const
-        LIFETIME_BOUND {
-      return per_priority_cross_thread_task_delay_;
-    }
-
-    const std::vector<TimeDelta>& per_priority_same_thread_task_delay() const
-        LIFETIME_BOUND {
-      return per_priority_same_thread_task_delay_;
-    }
-
-   private:
-    // Scheduler policy induced raciness is an area of concern. This lets us
-    // apply an extra delay per priority for cross thread posting.
-    std::vector<TimeDelta> per_priority_cross_thread_task_delay_;
-
-    // Like the above but for same thread posting.
-    std::vector<TimeDelta> per_priority_same_thread_task_delay_;
-#endif
+    ThreadTypeMapping thread_type_mapping_ = &DefaultTaskPriorityToThreadType;
   };
 
   // Settings defining the desired SequenceManager behaviour.
@@ -169,26 +160,6 @@ class BASE_EXPORT SequenceManager {
     bool should_block_on_scoped_fences = false;
 
 #if DCHECK_IS_ON()
-    // TODO(alexclarke): Consider adding command line flags to control these.
-    enum class TaskLogging {
-      kNone,
-      kEnabled,
-      kEnabledWithBacktrace,
-
-      // Logs high priority tasks and the lower priority tasks they skipped
-      // past.  Useful for debugging test failures caused by scheduler policy
-      // changes.
-      kReorderedOnly,
-    };
-    TaskLogging task_execution_logging = TaskLogging::kNone;
-
-    // If true PostTask will emit a debug log.
-    bool log_post_task = false;
-
-    // If true debug logs will be emitted when a delayed task becomes eligible
-    // to run.
-    bool log_task_delay_expiry = false;
-
     // If not zero this seeds a PRNG used by the task selection logic to choose
     // a random TaskQueue for a given priority rather than the TaskQueue with
     // the oldest EnqueueOrder.
@@ -271,13 +242,11 @@ class BASE_EXPORT SequenceManager {
 
   virtual TaskQueue::QueuePriority GetPriorityCount() const = 0;
 
-  // Returns a list of voters that can enable/disable each TaskQueue with the
-  // priority used for "best-effort" tasks. This is the largest value (lowest
-  // priority) defined by the PrioritySettings, unless that's the default
-  // priority, in which case there's no "best-effort" priority and the returned
-  // list is empty.
-  virtual std::vector<std::unique_ptr<TaskQueue::QueueEnabledVoter>>
-  CreateBestEffortTaskQueueEnabledVoters() = 0;
+  // Returns all TaskQueues with the priority used for "best-effort" tasks. This
+  // is the largest value (lowest priority) defined by the PrioritySettings,
+  // unless that's the default priority, in which case there's no "best-effort"
+  // priority and the returned list is empty.
+  virtual std::vector<TaskQueue*> GetBestEffortTaskQueues() = 0;
 
   // Creates a `TaskQueue` and returns a `TaskQueue::Handle`for it. The queue is
   // owned by the handle and shut down when the handle is destroyed. Must be
@@ -340,16 +309,6 @@ class BASE_EXPORT SequenceManager::Settings::Builder {
   Builder& SetShouldBlockOnScopedFences(bool enable);
 
 #if DCHECK_IS_ON()
-  // Controls task execution logging.
-  Builder& SetTaskLogging(TaskLogging task_execution_logging);
-
-  // Whether or not PostTask will emit a debug log.
-  Builder& SetLogPostTask(bool log_post_task);
-
-  // Whether or not debug logs will be emitted when a delayed task becomes
-  // eligible to run.
-  Builder& SetLogTaskDelayExpiry(bool log_task_delay_expiry);
-
   // If not zero this seeds a PRNG used by the task selection logic to choose a
   // random TaskQueue for a given priority rather than the TaskQueue with the
   // oldest EnqueueOrder.

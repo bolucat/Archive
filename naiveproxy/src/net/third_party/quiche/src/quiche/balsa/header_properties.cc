@@ -11,6 +11,16 @@ namespace quiche::header_properties {
 
 namespace {
 
+// The set of characters allowed in HTTP `token`s. See
+// https://datatracker.ietf.org/doc/html/rfc9110#section-5.6.2
+inline constexpr unsigned char kValidTokenCharList[] = {
+    'A', 'B', 'C',  'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+    'N', 'O', 'P',  'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
+    'a', 'b', 'c',  'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+    'n', 'o', 'p',  'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+    '0', '1', '2',  '3', '4', '5', '6', '7', '8', '9', '!', '#', '$',
+    '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~'};
+
 using MultivaluedHeadersSet =
     absl::flat_hash_set<absl::string_view, StringPieceCaseHash,
                         StringPieceCaseEqual>;
@@ -128,6 +138,34 @@ constexpr std::array<bool, 256> buildInvalidQueryCharLookupTable() {
   return invalidCharTable;
 }
 
+constexpr std::array<bool, 256> buildValidTokenCharLookupTable() {
+  std::array<bool, 256> validTokenCharTable{};
+  for (uint8_t c : kValidTokenCharList) {
+    validTokenCharTable[c] = true;
+  }
+  return validTokenCharTable;
+}
+
+constexpr std::array<bool, 256> buildValidChunkExtensionValCharLookupTable() {
+  std::array<bool, 256> validChunkExtValCharTable = kAllTrueArray;
+  constexpr uint8_t US_ASCII_CONTROL_START = 0;
+  constexpr uint8_t US_ASCII_CONTROL_END = 32;  // exclusive
+  // Valid chunk-ext-val characters are the entire range of visible US-ASCII
+  // characters and all extended ASCII characters. Of the control characters,
+  // only HTAB is allowed. There are some more precise rules for when DQUOTE
+  // and backslash can appear in a quoted-string which we skip here.
+  for (uint8_t c = US_ASCII_CONTROL_START; c < US_ASCII_CONTROL_END; ++c) {
+    if (c == '\t') {
+      continue;
+    }
+    validChunkExtValCharTable[c] = false;
+  }
+  // Also exclude the control character DEL.
+  validChunkExtValCharTable[127] = false;
+
+  return validChunkExtValCharTable;
+}
+
 }  // anonymous namespace
 
 bool IsMultivaluedHeader(absl::string_view header) {
@@ -155,6 +193,40 @@ bool IsInvalidHeaderChar(uint8_t c) {
       buildInvalidCharLookupTable();
 
   return invalidCharTable[c];
+}
+
+bool IsValidTokenChar(uint8_t c) {
+  static constexpr std::array<bool, 256> validTokenCharTable =
+      buildValidTokenCharLookupTable();
+  return validTokenCharTable[c];
+}
+
+bool IsValidToken(absl::string_view value) {
+  if (value.empty()) {
+    return false;
+  }
+  for (const char c : value) {
+    if (!IsValidTokenChar(static_cast<uint8_t>(c))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsValidChunkExtension(absl::string_view value) {
+  for (const char c : value) {
+    if (!IsValidChunkExtensionValChar(static_cast<uint8_t>(c))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool IsValidChunkExtensionValChar(uint8_t c) {
+  static constexpr std::array<bool, 256> validChunkExtValCharTable =
+      buildValidChunkExtensionValCharLookupTable();
+
+  return validChunkExtValCharTable[c];
 }
 
 bool HasInvalidHeaderChars(absl::string_view value) {

@@ -19,17 +19,19 @@
 #include "base/memory/ref_counted.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_split.h"
-#include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
+#include "base/types/expected.h"
 #include "build/build_config.h"
 #include "net/base/cache_type.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/net_errors.h"
 #include "net/base/net_export.h"
 #include "net/base/request_priority.h"
+#include "net/disk_cache/cache_file.h"
 
 namespace base {
 class FilePath;
+class SequencedTaskRunner;
 
 namespace android {
 class ApplicationStatusListener;
@@ -38,9 +40,10 @@ class ApplicationStatusListener;
 }  // namespace base
 
 namespace net {
+class CacheEncryptionDelegate;
 class IOBuffer;
 class NetLog;
-}
+}  // namespace net
 
 namespace disk_cache {
 
@@ -107,6 +110,7 @@ CreateCacheBackend(net::CacheType type,
                    int64_t max_bytes,
                    ResetHandling reset_handling,
                    net::NetLog* net_log,
+                   net::CacheEncryptionDelegate* cache_encryption_delegate,
                    BackendResultCallback callback);
 
 // Note: this is permitted to return nullptr when things are in process of
@@ -126,6 +130,7 @@ CreateCacheBackend(net::CacheType type,
                    int64_t max_bytes,
                    ResetHandling reset_handling,
                    net::NetLog* net_log,
+                   net::CacheEncryptionDelegate* cache_encryption_delegate,
                    BackendResultCallback callback,
                    ApplicationStatusListenerGetter app_status_listener_getter);
 #endif
@@ -147,6 +152,7 @@ CreateCacheBackend(net::CacheType type,
                    int64_t max_bytes,
                    ResetHandling reset_handling,
                    net::NetLog* net_log,
+                   net::CacheEncryptionDelegate* cache_encryption_delegate,
                    base::OnceClosure post_cleanup_callback,
                    BackendResultCallback callback);
 
@@ -206,9 +212,12 @@ class NET_EXPORT Backend {
   net::CacheType GetCacheType() const { return cache_type_; }
 
   // Returns the entry count synchronously if available, or
-  // net::ERR_IO_PENDING for asynchronous completion via `callback`.
-  virtual int32_t GetEntryCount(
-      net::Int32CompletionOnceCallback callback) const = 0;
+  // net::ERR_IO_PENDING for asynchronous completion via `callback`. The only
+  // error that might be returned is ERR_IO_PENDING; all other returns will
+  // indicate synchronous success.
+  using GetEntryCountCallback = base::OnceCallback<void(int32_t)>;
+  virtual base::expected<int32_t, net::Error> GetEntryCount(
+      GetEntryCountCallback callback) const = 0;
 
   // Atomically attempts to open an existing entry based on |key| or, if none
   // already exists, to create a new entry. Returns an EntryResult object,
@@ -309,14 +318,13 @@ class NET_EXPORT Backend {
   // GetEntryInMemoryData has the following behavior:
   // - If the data is not available at this time for any reason, returns 0.
   // - Otherwise, returns a value that was with very high probability
-  //   given to SetEntryInMemoryData(|key|) (and with a very low probability
+  //   given to Entry::SetEntryInMemoryData() (and with a very low probability
   //   to a different key that collides in the in-memory index).
   //
   // Due to the probability of collisions, including those that can be induced
   // by hostile 3rd parties, this interface should not be used to make decisions
   // that affect correctness (especially security).
   virtual uint8_t GetEntryInMemoryData(const std::string& key);
-  virtual void SetEntryInMemoryData(const std::string& key, uint8_t data);
 
   // Returns the maximum length an individual stream can have.
   virtual int64_t MaxFileSize() const = 0;
@@ -488,6 +496,13 @@ class NET_EXPORT Entry {
   // Note: This method is deprecated.
   virtual net::Error ReadyForSparseIO(CompletionOnceCallback callback) = 0;
 
+  // Sets data associated with this entry.
+  // This data is persisted and loaded into memory when the backend index is
+  // initialized. It can be retrieved via Backend::GetEntryInMemoryData()
+  // without opening the entry.
+  // See Backend::GetEntryInMemoryData() for important usage information.
+  virtual void SetEntryInMemoryData(uint8_t data);
+
   // Used in tests to set the last used time. Note that backend might have
   // limited precision. Also note that this call may modify the last modified
   // time.
@@ -657,7 +672,9 @@ class BackendFileOperations {
   virtual bool DirectoryExists(const base::FilePath& path) = 0;
 
   // Opens a file with the given path and flags. Returns the opened file.
-  virtual base::File OpenFile(const base::FilePath& path, uint32_t flags) = 0;
+  // Implementations must ensure the returned `CacheFile` object is not null.
+  virtual std::unique_ptr<CacheFile> OpenFile(const base::FilePath& path,
+                                              uint32_t flags) = 0;
 
   // Deletes a file with the given path and returns whether that succeeded.
   virtual bool DeleteFile(const base::FilePath& path,
@@ -692,6 +709,9 @@ class BackendFileOperations {
   // this method is called, no methods (except for the destructor) on this
   // object must not be called.
   virtual std::unique_ptr<UnboundBackendFileOperations> Unbind() = 0;
+
+  // Returns whether the cache entries are encrypted on disk.
+  virtual bool IsEncrypted() const = 0;
 };
 
 // BackendFileOperations which is not yet bound to a sequence.
@@ -722,7 +742,7 @@ class BackendFileOperationsFactory
 
 // A trivial BackendFileOperations implementation which uses corresponding
 // base functions.
-class NET_EXPORT TrivialFileOperations final : public BackendFileOperations {
+class NET_EXPORT TrivialFileOperations : public BackendFileOperations {
  public:
   TrivialFileOperations();
   ~TrivialFileOperations() override;
@@ -731,7 +751,8 @@ class NET_EXPORT TrivialFileOperations final : public BackendFileOperations {
   bool CreateDirectory(const base::FilePath& path) override;
   bool PathExists(const base::FilePath& path) override;
   bool DirectoryExists(const base::FilePath& path) override;
-  base::File OpenFile(const base::FilePath& path, uint32_t flags) override;
+  std::unique_ptr<CacheFile> OpenFile(const base::FilePath& path,
+                                      uint32_t flags) override;
   bool DeleteFile(const base::FilePath& path, DeleteFileMode mode) override;
   bool ReplaceFile(const base::FilePath& from_path,
                    const base::FilePath& to_path,
@@ -743,6 +764,7 @@ class NET_EXPORT TrivialFileOperations final : public BackendFileOperations {
   void CleanupDirectory(const base::FilePath& path,
                         base::OnceCallback<void(bool)> callback) override;
   std::unique_ptr<UnboundBackendFileOperations> Unbind() override;
+  bool IsEncrypted() const override;
 
  private:
   SEQUENCE_CHECKER(sequence_checker_);

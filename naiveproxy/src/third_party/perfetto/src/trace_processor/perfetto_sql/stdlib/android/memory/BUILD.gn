@@ -21,7 +21,9 @@ perfetto_sql_source_set("memory") {
   ]
   sources = [
     "dmabuf.sql",
+    "dmabuf_spans.sql",
     "lmk.sql",
+    "memory_breakdown.sql",
     "process.sql",
   ]
 }

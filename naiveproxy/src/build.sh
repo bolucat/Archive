@@ -18,7 +18,7 @@ else
     exclude_unwind_tables=true
     enable_resource_allowlist_generation=false
     chrome_pgo_phase=2
-    symbol_level=0"
+    symbol_level=1"
 fi
 
 . ./get-sysroot.sh
@@ -88,7 +88,7 @@ fi
 
 if [ "$host_os" = "mac" ]; then
   flags="$flags"'
-    enable_dsyms=false'
+    enable_dsyms=true'
 fi
 
 case "$EXTRA_FLAGS" in
@@ -96,6 +96,7 @@ case "$EXTRA_FLAGS" in
   # default_min_sdk_version=24: 26 introduces unnecessary snew symbols
   # is_high_end_android=true: Does not optimize for size, Uses PGO profiles
   flags="$flags"'
+    is_desktop_android=true
     default_min_sdk_version=24
     is_high_end_android=true'
   ;;

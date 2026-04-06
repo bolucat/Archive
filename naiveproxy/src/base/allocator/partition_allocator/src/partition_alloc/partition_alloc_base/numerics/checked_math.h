@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_PARTITION_ALLOC_BASE_NUMERICS_CHECKED_MATH_H_
 #define PARTITION_ALLOC_PARTITION_ALLOC_BASE_NUMERICS_CHECKED_MATH_H_
 
@@ -297,14 +292,6 @@ constexpr StrictNumeric<Dst> ValueOrDefaultForType(
   return value.template ValueOrDefault<Dst>(default_value);
 }
 
-// Convenience wrapper to return a new CheckedNumeric from the provided
-// arithmetic or CheckedNumericType.
-template <typename T>
-constexpr CheckedNumeric<typename UnderlyingType<T>::type> MakeCheckedNum(
-    const T value) {
-  return value;
-}
-
 // These implement the variadic wrapper for the math operations.
 template <template <typename, typename, typename> class M,
           typename L,
@@ -374,7 +361,6 @@ using internal::CheckRsh;
 using internal::CheckSub;
 using internal::CheckXor;
 using internal::IsValidForType;
-using internal::MakeCheckedNum;
 using internal::ValueOrDefaultForType;
 using internal::ValueOrDieForType;
 

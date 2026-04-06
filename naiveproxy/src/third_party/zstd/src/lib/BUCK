@@ -57,7 +57,7 @@ cxx_library(
     srcs=glob(['legacy/*.c']),
     deps=[':common'],
     exported_preprocessor_flags=[
-        '-DZSTD_LEGACY_SUPPORT=4',
+        '-DZSTD_LEGACY_SUPPORT=0',
     ],
 )
 

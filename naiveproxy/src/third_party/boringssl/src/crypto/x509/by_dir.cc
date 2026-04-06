@@ -21,7 +21,13 @@
 #include <openssl/x509.h>
 
 #include "../internal.h"
+#include "../mem_internal.h"
 #include "internal.h"
+
+
+using namespace bssl;
+
+BSSL_NAMESPACE_BEGIN
 
 typedef struct lookup_dir_hashes_st {
   uint32_t hash;
@@ -29,7 +35,7 @@ typedef struct lookup_dir_hashes_st {
 } BY_DIR_HASH;
 
 typedef struct lookup_dir_entry_st {
-  CRYPTO_MUTEX lock;
+  Mutex lock;
   char *dir;
   int dir_type;
   STACK_OF(BY_DIR_HASH) *hashes;
@@ -39,8 +45,10 @@ typedef struct lookup_dir_st {
   STACK_OF(BY_DIR_ENTRY) *dirs;
 } BY_DIR;
 
-DEFINE_STACK_OF(BY_DIR_HASH)
-DEFINE_STACK_OF(BY_DIR_ENTRY)
+DEFINE_NAMESPACED_STACK_OF(BY_DIR_HASH)
+DEFINE_NAMESPACED_STACK_OF(BY_DIR_ENTRY)
+
+BSSL_NAMESPACE_END
 
 static int dir_ctrl(X509_LOOKUP *ctx, int cmd, const char *argp, long argl,
                     char **ret);
@@ -56,9 +64,7 @@ static const X509_LOOKUP_METHOD x509_dir_lookup = {
     get_cert_by_subject,  // get_by_subject
 };
 
-const X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir(void) {
-  return &x509_dir_lookup;
-}
+const X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir() { return &x509_dir_lookup; }
 
 static int dir_ctrl(X509_LOOKUP *ctx, int cmd, const char *argp, long argl,
                     char **retp) {
@@ -91,7 +97,7 @@ static int dir_ctrl(X509_LOOKUP *ctx, int cmd, const char *argp, long argl,
 static int new_dir(X509_LOOKUP *lu) {
   BY_DIR *a;
 
-  if ((a = (BY_DIR *)OPENSSL_malloc(sizeof(BY_DIR))) == nullptr) {
+  if ((a = New<BY_DIR>()) == nullptr) {
     return 0;
   }
   a->dirs = nullptr;
@@ -99,7 +105,7 @@ static int new_dir(X509_LOOKUP *lu) {
   return 1;
 }
 
-static void by_dir_hash_free(BY_DIR_HASH *hash) { OPENSSL_free(hash); }
+static void by_dir_hash_free(BY_DIR_HASH *hash) { Delete(hash); }
 
 static int by_dir_hash_cmp(const BY_DIR_HASH *const *a,
                            const BY_DIR_HASH *const *b) {
@@ -114,10 +120,9 @@ static int by_dir_hash_cmp(const BY_DIR_HASH *const *a,
 
 static void by_dir_entry_free(BY_DIR_ENTRY *ent) {
   if (ent != nullptr) {
-    CRYPTO_MUTEX_cleanup(&ent->lock);
-    OPENSSL_free(ent->dir);
+    Delete(ent->dir);
     sk_BY_DIR_HASH_pop_free(ent->hashes, by_dir_hash_free);
-    OPENSSL_free(ent);
+    Delete(ent);
   }
 }
 
@@ -125,7 +130,7 @@ static void free_dir(X509_LOOKUP *lu) {
   BY_DIR *a = reinterpret_cast<BY_DIR *>(lu->method_data);
   if (a != nullptr) {
     sk_BY_DIR_ENTRY_pop_free(a->dirs, by_dir_entry_free);
-    OPENSSL_free(a);
+    Delete(a);
   }
 }
 
@@ -170,12 +175,10 @@ static int add_cert_dir(BY_DIR *ctx, const char *dir, int type) {
           return 0;
         }
       }
-      ent = reinterpret_cast<BY_DIR_ENTRY *>(
-          OPENSSL_malloc(sizeof(BY_DIR_ENTRY)));
+      ent = New<BY_DIR_ENTRY>();
       if (!ent) {
         return 0;
       }
-      CRYPTO_MUTEX_init(&ent->lock);
       ent->dir_type = type;
       ent->hashes = sk_BY_DIR_HASH_new(by_dir_hash_cmp);
       ent->dir = OPENSSL_strndup(ss, len);
@@ -191,8 +194,8 @@ static int add_cert_dir(BY_DIR *ctx, const char *dir, int type) {
 
 static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
                                X509_OBJECT *ret) {
-  bssl::UniquePtr<X509> lookup_cert;
-  bssl::UniquePtr<X509_CRL> lookup_crl;
+  UniquePtr<X509> lookup_cert;
+  UniquePtr<X509_CRL> lookup_crl;
   int ok = 0;
   size_t i;
   int k;
@@ -241,7 +244,7 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
       ent = sk_BY_DIR_ENTRY_value(ctx->dirs, i);
       if (type == X509_LU_CRL && ent->hashes) {
         htmp.hash = h;
-        CRYPTO_MUTEX_lock_read(&ent->lock);
+        MutexReadLock lock(&ent->lock);
         if (sk_BY_DIR_HASH_find(ent->hashes, &idx, &htmp)) {
           hent = sk_BY_DIR_HASH_value(ent->hashes, idx);
           k = hent->suffix;
@@ -249,7 +252,6 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
           hent = nullptr;
           k = 0;
         }
-        CRYPTO_MUTEX_unlock_read(&ent->lock);
       } else {
         k = 0;
         hent = nullptr;
@@ -282,18 +284,19 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
       }
 
       // we have added it to the cache so now pull it out again
-      CRYPTO_MUTEX_lock_write(&xl->store_ctx->objs_lock);
+      auto *store_impl = FromOpaque(xl->store_ctx);
+      store_impl->objs_lock.LockWrite();
       tmp = nullptr;
-      sk_X509_OBJECT_sort(xl->store_ctx->objs);
-      if (sk_X509_OBJECT_find(xl->store_ctx->objs, &idx, &stmp)) {
-        tmp = sk_X509_OBJECT_value(xl->store_ctx->objs, idx);
+      sk_X509_OBJECT_sort(store_impl->objs);
+      if (sk_X509_OBJECT_find(store_impl->objs, &idx, &stmp)) {
+        tmp = sk_X509_OBJECT_value(store_impl->objs, idx);
       }
-      CRYPTO_MUTEX_unlock_write(&xl->store_ctx->objs_lock);
+      store_impl->objs_lock.UnlockWrite();
 
       // If a CRL, update the last file suffix added for this
 
       if (type == X509_LU_CRL) {
-        CRYPTO_MUTEX_lock_write(&ent->lock);
+        ent->lock.LockWrite();
         // Look for entry again in case another thread added an entry
         // first.
         if (!hent) {
@@ -304,18 +307,17 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
           }
         }
         if (!hent) {
-          hent = reinterpret_cast<BY_DIR_HASH *>(
-              OPENSSL_malloc(sizeof(BY_DIR_HASH)));
+          hent = New<BY_DIR_HASH>();
           if (hent == nullptr) {
-            CRYPTO_MUTEX_unlock_write(&ent->lock);
+            ent->lock.UnlockWrite();
             ok = 0;
             goto finish;
           }
           hent->hash = h;
           hent->suffix = k;
           if (!sk_BY_DIR_HASH_push(ent->hashes, hent)) {
-            CRYPTO_MUTEX_unlock_write(&ent->lock);
-            OPENSSL_free(hent);
+            ent->lock.UnlockWrite();
+            Delete(hent);
             ok = 0;
             goto finish;
           }
@@ -324,7 +326,7 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, const X509_NAME *name,
           hent->suffix = k;
         }
 
-        CRYPTO_MUTEX_unlock_write(&ent->lock);
+        ent->lock.UnlockWrite();
       }
 
       if (tmp != nullptr) {

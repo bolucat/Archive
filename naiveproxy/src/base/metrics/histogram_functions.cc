@@ -335,6 +335,18 @@ void UmaHistogramMemoryKB(const char* name, ByteCount sample) {
   UmaHistogramMemoryKB(name, static_cast<int>(sample.InKiB()));
 }
 
+void UmaHistogramMemoryKB(std::string_view name, ByteSize sample) {
+  UmaHistogramMemoryKB(name, static_cast<int>(sample.InKiB()));
+}
+
+void UmaHistogramMemoryKB(const std::string& name, ByteSize sample) {
+  UmaHistogramMemoryKB(name, static_cast<int>(sample.InKiB()));
+}
+
+void UmaHistogramMemoryKB(const char* name, ByteSize sample) {
+  UmaHistogramMemoryKB(name, static_cast<int>(sample.InKiB()));
+}
+
 void UmaHistogramMemoryMB(std::string_view name, int sample_mb) {
   UmaHistogramCustomCounts(name, sample_mb, 1, 1000, 50);
 }
@@ -356,6 +368,18 @@ void UmaHistogramMemoryMB(const std::string& name, ByteCount sample) {
 }
 
 void UmaHistogramMemoryMB(const char* name, ByteCount sample) {
+  UmaHistogramMemoryMB(name, static_cast<int>(sample.InMiB()));
+}
+
+void UmaHistogramMemoryMB(std::string_view name, ByteSize sample) {
+  UmaHistogramMemoryMB(name, static_cast<int>(sample.InMiB()));
+}
+
+void UmaHistogramMemoryMB(const std::string& name, ByteSize sample) {
+  UmaHistogramMemoryMB(name, static_cast<int>(sample.InMiB()));
+}
+
+void UmaHistogramMemoryMB(const char* name, ByteSize sample) {
   UmaHistogramMemoryMB(name, static_cast<int>(sample.InMiB()));
 }
 
@@ -383,6 +407,18 @@ void UmaHistogramMemoryLargeMB(const char* name, ByteCount sample) {
   UmaHistogramMemoryLargeMB(name, static_cast<int>(sample.InMiB()));
 }
 
+void UmaHistogramMemoryLargeMB(std::string_view name, ByteSize sample) {
+  UmaHistogramMemoryLargeMB(name, static_cast<int>(sample.InMiB()));
+}
+
+void UmaHistogramMemoryLargeMB(const std::string& name, ByteSize sample) {
+  UmaHistogramMemoryLargeMB(name, static_cast<int>(sample.InMiB()));
+}
+
+void UmaHistogramMemoryLargeMB(const char* name, ByteSize sample) {
+  UmaHistogramMemoryLargeMB(name, static_cast<int>(sample.InMiB()));
+}
+
 void UmaHistogramSparse(std::string_view name, int sample) {
   HistogramBase* histogram = SparseHistogram::FactoryGet(
       name, HistogramBase::kUmaTargetedHistogramFlag);
@@ -403,9 +439,21 @@ void UmaHistogramSparse(const char* name, int sample) {
 
 ScopedUmaHistogramTimer::ScopedUmaHistogramTimer(std::string_view name,
                                                  ScopedHistogramTiming timing)
-    : constructed_(base::TimeTicks::Now()), timing_(timing), name_(name) {}
+    : constructed_(base::TimeTicks::Now()), timing_(timing), name_(name) {
+  DCHECK(!name_.empty());
+}
+
+ScopedUmaHistogramTimer::ScopedUmaHistogramTimer(
+    ScopedUmaHistogramTimer&& other)
+    : constructed_(other.constructed_),
+      timing_(other.timing_),
+      name_(std::exchange(other.name_, "")) {}
 
 ScopedUmaHistogramTimer::~ScopedUmaHistogramTimer() {
+  if (name_.empty()) {
+    // This object has been moved-from, so we shouldn't record the histogram.
+    return;
+  }
   base::TimeDelta elapsed = base::TimeTicks::Now() - constructed_;
   switch (timing_) {
     case ScopedHistogramTiming::kMicrosecondTimes:

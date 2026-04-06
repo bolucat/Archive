@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "quiche/http2/adapter/http2_protocol.h"
 #include "quiche/http2/adapter/http2_visitor_interface.h"
@@ -37,51 +38,55 @@ class QUICHE_NO_EXPORT MasqueH2Connection
   class QUICHE_NO_EXPORT Visitor {
    public:
     virtual ~Visitor() = default;
-    virtual void OnConnectionReady(MasqueH2Connection *connection) = 0;
-    virtual void OnConnectionFinished(MasqueH2Connection *connection) = 0;
-    virtual void OnRequest(MasqueH2Connection *connection, int32_t stream_id,
-                           const quiche::HttpHeaderBlock &headers,
-                           const std::string &body) = 0;
-    virtual void OnResponse(MasqueH2Connection *connection, int32_t stream_id,
-                            const quiche::HttpHeaderBlock &headers,
-                            const std::string &body) = 0;
+    virtual void OnConnectionReady(MasqueH2Connection* connection) = 0;
+    virtual void OnConnectionFinished(MasqueH2Connection* connection,
+                                      absl::Status error) = 0;
+    virtual void OnRequest(MasqueH2Connection* connection, int32_t stream_id,
+                           const quiche::HttpHeaderBlock& headers,
+                           const std::string& body) = 0;
+    virtual void OnResponse(MasqueH2Connection* connection, int32_t stream_id,
+                            const quiche::HttpHeaderBlock& headers,
+                            const std::string& body) = 0;
+    virtual void OnStreamFailure(MasqueH2Connection* connection,
+                                 int32_t stream_id, absl::Status error) = 0;
   };
 
   // `ssl` and `visitor` must outlive this object.
-  explicit MasqueH2Connection(SSL *ssl, bool is_server, Visitor *visitor);
+  explicit MasqueH2Connection(SSL* ssl, bool is_server, Visitor* visitor);
 
-  MasqueH2Connection(const MasqueH2Connection &) = delete;
-  MasqueH2Connection(MasqueH2Connection &&) = delete;
-  MasqueH2Connection &operator=(const MasqueH2Connection &) = delete;
-  MasqueH2Connection &operator=(MasqueH2Connection &&) = delete;
+  MasqueH2Connection(const MasqueH2Connection&) = delete;
+  MasqueH2Connection(MasqueH2Connection&&) = delete;
+  MasqueH2Connection& operator=(const MasqueH2Connection&) = delete;
+  MasqueH2Connection& operator=(MasqueH2Connection&&) = delete;
 
   ~MasqueH2Connection();
 
-  bool aborted() const { return aborted_; }
+  bool aborted() const { return !error_.ok(); }
   // Call when there is more data to be read from SSL.
   void OnTransportReadable();
   // Call when there is more data to be written to SSL.
   bool AttemptToSend();
-  int32_t SendRequest(const quiche::HttpHeaderBlock &headers,
-                      const std::string &body);
-  void SendResponse(int32_t stream_id, const quiche::HttpHeaderBlock &headers,
-                    const std::string &body);
+  int32_t SendRequest(const quiche::HttpHeaderBlock& headers,
+                      const std::string& body);
+  void SendResponse(int32_t stream_id, const quiche::HttpHeaderBlock& headers,
+                    const std::string& body);
 
  private:
   struct MasqueH2Stream {
     quiche::HttpHeaderBlock received_headers;
     std::string received_body;
     std::string body_to_send;
+    bool callback_fired = false;
   };
   static constexpr size_t kBioBufferSize = 16384;
-  void Abort();
+  void Abort(absl::Status error);
   void StartH2();
   bool TryRead();
-  MasqueH2Stream *GetOrCreateH2Stream(Http2StreamId stream_id);
+  MasqueH2Stream* GetOrCreateH2Stream(Http2StreamId stream_id);
   std::vector<http2::adapter::Header> ConvertHeaders(
-      const quiche::HttpHeaderBlock &headers);
+      const quiche::HttpHeaderBlock& headers);
 
-  int WriteDataToTls(absl::string_view data);
+  bool WriteDataToTls(absl::string_view data);
 
   // From http2::adapter::Http2VisitorInterface.
   int64_t OnReadyToSend(absl::string_view serialized) override;
@@ -132,18 +137,19 @@ class QUICHE_NO_EXPORT MasqueH2Connection
   bool OnMetadataEndForStream(Http2StreamId stream_id) override;
   void OnErrorDebug(absl::string_view message) override;
 
-  SSL *ssl_;
+  SSL* ssl_;
   std::unique_ptr<http2::adapter::OgHttp2Adapter> h2_adapter_;
   const bool is_server_;
   bool tls_connected_ = false;
-  bool aborted_ = false;
+  absl::Status error_ = absl::OkStatus();
   absl::flat_hash_map<Http2StreamId, std::unique_ptr<MasqueH2Stream>>
       h2_streams_;
-  Visitor *visitor_;
+  Visitor* visitor_;
+  std::string tls_write_buffer_;
 };
 
-// Logs an SSL error that was provided by BoringSSL.
-void PrintSSLError(const char *msg, int ssl_err, int ret);
+// Formats an SSL error that was provided by BoringSSL.
+std::string FormatSslError(const char* msg, int ssl_err, int ret);
 
 }  // namespace quic
 

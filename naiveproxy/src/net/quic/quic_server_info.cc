@@ -66,9 +66,8 @@ bool QuicServerInfo::ParseInner(const string& data) {
     return false;
   }
 
-  base::Pickle pickle =
-      base::Pickle::WithUnownedBuffer(base::as_byte_span(data));
-  base::PickleIterator iter(pickle);
+  base::PickleIterator iter =
+      base::PickleIterator::WithData(base::as_byte_span(data));
 
   int version = -1;
   if (!iter.ReadInt(&version)) {
@@ -143,7 +142,7 @@ string QuicServerInfo::SerializeInner() const {
   for (const auto& cert : state_.certs)
     p.WriteString(cert);
 
-  return string(reinterpret_cast<const char*>(p.data()), p.size());
+  return string(p.AsStringView());
 }
 
 }  // namespace net

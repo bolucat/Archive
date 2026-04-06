@@ -21,14 +21,14 @@
 #include <openssl/x509.h>
 
 #include "../asn1/internal.h"
+#include "../mem_internal.h"
 #include "../internal.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
-
-
 // Internal structures.
+
+DECLARE_OPAQUE_STRUCT(x509_st, X509Impl)
+DECLARE_OPAQUE_STRUCT(x509_store_st, X509Store)
+DECLARE_OPAQUE_STRUCT(X509_name_st, X509Name)
 
 struct X509_pubkey_st {
   X509_ALGOR algor;
@@ -36,11 +36,13 @@ struct X509_pubkey_st {
   EVP_PKEY *pkey;
 } /* X509_PUBKEY */;
 
+BSSL_NAMESPACE_BEGIN
+
 void x509_pubkey_init(X509_PUBKEY *key);
 void x509_pubkey_cleanup(X509_PUBKEY *key);
 
 int x509_parse_public_key(CBS *cbs, X509_PUBKEY *out,
-                          bssl::Span<const EVP_PKEY_ALG *const> algs);
+                          Span<const EVP_PKEY_ALG *const> algs);
 int x509_marshal_public_key(CBB *cbb, const X509_PUBKEY *in);
 int x509_pubkey_set1(X509_PUBKEY *key, EVP_PKEY *pkey);
 
@@ -50,35 +52,43 @@ int x509_pubkey_set1(X509_PUBKEY *key, EVP_PKEY *pkey);
 // depend on the tables.
 DECLARE_ASN1_ITEM(X509_PUBKEY)
 
+BSSL_NAMESPACE_END
+
 struct X509_name_entry_st {
   ASN1_OBJECT *object;
   ASN1_STRING value;
   int set;
 } /* X509_NAME_ENTRY */;
 
+BSSL_NAMESPACE_BEGIN
+
 // X509_NAME_ENTRY is an |ASN1_ITEM| whose ASN.1 type is AttributeTypeAndValue
 // (RFC 5280) and C type is |X509_NAME_ENTRY*|.
 DECLARE_ASN1_ITEM(X509_NAME_ENTRY)
 
 struct X509_NAME_CACHE {
+  static constexpr bool kAllowUniquePtr = true;
   // canon contains the DER-encoded canonicalized X.509 Name, not including the
   // outermost TLV.
-  uint8_t *canon;
-  size_t canon_len;
+  Array<uint8_t> canon;
   // der contains the DER-encoded X.509 Name, including the outermost TLV.
-  uint8_t *der;
-  size_t der_len;
+  Array<uint8_t> der;
 };
 
-struct X509_name_st {
+class X509Name : public X509_name_st {
+ public:
   STACK_OF(X509_NAME_ENTRY) *entries;
-  mutable bssl::Atomic<X509_NAME_CACHE *> cache;
+  mutable bssl::Atomic<bssl::X509_NAME_CACHE *> cache;
 } /* X509_NAME */;
+
+BSSL_NAMESPACE_END
 
 struct x509_attributes_st {
   ASN1_OBJECT *object;
   STACK_OF(ASN1_TYPE) *set;
 } /* X509_ATTRIBUTE */;
+
+BSSL_NAMESPACE_BEGIN
 
 // X509_ATTRIBUTE is an |ASN1_ITEM| whose ASN.1 type is Attribute (RFC 2986) and
 // C type is |X509_ATTRIBUTE*|.
@@ -93,6 +103,8 @@ typedef struct x509_cert_aux_st {
 
 DECLARE_ASN1_FUNCTIONS_const(X509_CERT_AUX)
 
+BSSL_NAMESPACE_END
+
 struct X509_extension_st {
   ASN1_OBJECT *object;
   ASN1_BOOLEAN critical;
@@ -103,19 +115,24 @@ struct X509_extension_st {
 // 5280) and C type is |X509_EXTENSION*|.
 DECLARE_ASN1_ITEM(X509_EXTENSION)
 
+BSSL_NAMESPACE_BEGIN
+
 // X509_EXTENSIONS is an |ASN1_ITEM| whose ASN.1 type is SEQUENCE of Extension
 // (RFC 5280) and C type is |STACK_OF(X509_EXTENSION)*|.
 DECLARE_ASN1_ITEM(X509_EXTENSIONS)
 
-struct x509_st {
+class X509Impl : public x509_st, public RefCounted<X509Impl> {
+ public:
+  X509Impl();
+
   // TBSCertificate fields:
-  uint8_t version;  // One of the |X509_VERSION_*| constants.
+  uint8_t version = X509_VERSION_1;  // One of the |X509_VERSION_*| constants.
   ASN1_INTEGER serialNumber;
   X509_ALGOR tbs_sig_alg;
-  X509_NAME issuer;
+  X509Name issuer;
   ASN1_TIME notBefore;
   ASN1_TIME notAfter;
-  X509_NAME subject;
+  X509Name subject;
   X509_PUBKEY key;
   ASN1_BIT_STRING *issuerUID;            // [ 1 ] optional in v2
   ASN1_BIT_STRING *subjectUID;           // [ 2 ] optional in v2
@@ -128,10 +145,9 @@ struct x509_st {
   // TODO(davidben): Now every parsed |X509| has an underlying |CRYPTO_BUFFER|,
   // but |X509|s created peacemeal do not. Can we make this more uniform?
   CRYPTO_BUFFER *buf;
-  CRYPTO_refcount_t references;
   CRYPTO_EX_DATA ex_data;
   // These contain copies of various extension values
-  long ex_pathlen;
+  long ex_pathlen = -1;
   uint32_t ex_flags;
   uint32_t ex_kusage;
   uint32_t ex_xkusage;
@@ -141,8 +157,12 @@ struct x509_st {
   STACK_OF(GENERAL_NAME) *altname;
   NAME_CONSTRAINTS *nc;
   unsigned char cert_hash[SHA256_DIGEST_LENGTH];
-  X509_CERT_AUX *aux;
-  CRYPTO_MUTEX lock;
+  bssl::X509_CERT_AUX *aux;
+  Mutex lock;
+
+ private:
+  friend RefCounted;
+  ~X509Impl();
 } /* X509 */;
 
 int x509_marshal_tbs_cert(CBB *cbb, const X509 *x509);
@@ -152,7 +172,7 @@ int x509_marshal_tbs_cert(CBB *cbb, const X509 *x509);
 DECLARE_ASN1_ITEM(X509)
 
 typedef struct {
-  ASN1_ENCODING enc;
+  bssl::ASN1_ENCODING enc;
   ASN1_INTEGER *version;
   X509_NAME *subject;
   X509_PUBKEY *pubkey;
@@ -162,15 +182,21 @@ typedef struct {
 
 DECLARE_ASN1_FUNCTIONS_const(X509_REQ_INFO)
 
+BSSL_NAMESPACE_END
+
 struct X509_req_st {
-  X509_REQ_INFO *req_info;
+  bssl::X509_REQ_INFO *req_info;
   X509_ALGOR *sig_alg;
   ASN1_BIT_STRING *signature;
 } /* X509_REQ */;
 
+BSSL_NAMESPACE_BEGIN
+
 // X509_REQ is an |ASN1_ITEM| whose ASN.1 type is CertificateRequest (RFC 2986)
 // and C type is |X509_REQ*|.
 DECLARE_ASN1_ITEM(X509_REQ)
+
+BSSL_NAMESPACE_END
 
 struct x509_revoked_st {
   ASN1_INTEGER *serialNumber;
@@ -179,6 +205,8 @@ struct x509_revoked_st {
   // Revocation reason
   int reason;
 } /* X509_REVOKED */;
+
+BSSL_NAMESPACE_BEGIN
 
 // X509_REVOKED is an |ASN1_ITEM| whose ASN.1 type is an element of the
 // revokedCertificates field of TBSCertList (RFC 5280) and C type is
@@ -193,10 +221,12 @@ typedef struct {
   ASN1_TIME *nextUpdate;
   STACK_OF(X509_REVOKED) *revoked;
   STACK_OF(X509_EXTENSION) /* [0] */ *extensions;
-  ASN1_ENCODING enc;
+  bssl::ASN1_ENCODING enc;
 } X509_CRL_INFO;
 
 DECLARE_ASN1_FUNCTIONS_const(X509_CRL_INFO)
+
+BSSL_NAMESPACE_END
 
 // Values in idp_flags field
 // IDP present
@@ -216,10 +246,10 @@ DECLARE_ASN1_FUNCTIONS_const(X509_CRL_INFO)
 
 struct X509_crl_st {
   // actual signature
-  X509_CRL_INFO *crl;
+  bssl::X509_CRL_INFO *crl;
   X509_ALGOR *sig_alg;
   ASN1_BIT_STRING *signature;
-  CRYPTO_refcount_t references;
+  bssl::CRYPTO_refcount_t references;
   int flags;
   // Copies of various extensions
   AUTHORITY_KEYID *akid;
@@ -228,6 +258,8 @@ struct X509_crl_st {
   int idp_flags;
   unsigned char crl_hash[SHA256_DIGEST_LENGTH];
 } /* X509_CRL */;
+
+BSSL_NAMESPACE_BEGIN
 
 // X509_CRL is an |ASN1_ITEM| whose ASN.1 type is X.509 CertificateList (RFC
 // 5280) and C type is |X509_CRL*|.
@@ -240,6 +272,8 @@ DECLARE_ASN1_ITEM(GENERAL_NAME)
 // GENERAL_NAMES is an |ASN1_ITEM| whose ASN.1 type is SEQUENCE OF GeneralName
 // and C type is |GENERAL_NAMES*|, aka |STACK_OF(GENERAL_NAME)*|.
 DECLARE_ASN1_ITEM(GENERAL_NAMES)
+
+BSSL_NAMESPACE_END
 
 struct X509_VERIFY_PARAM_st {
   int64_t check_time;               // POSIX time to use
@@ -269,6 +303,8 @@ struct x509_object_st {
   } data;
 } /* X509_OBJECT */;
 
+BSSL_NAMESPACE_BEGIN
+
 // NETSCAPE_SPKI is an |ASN1_ITEM| whose ASN.1 type is
 // SignedPublicKeyAndChallenge and C type is |NETSCAPE_SPKI*|.
 DECLARE_ASN1_ITEM(NETSCAPE_SPKI)
@@ -276,6 +312,8 @@ DECLARE_ASN1_ITEM(NETSCAPE_SPKI)
 // NETSCAPE_SPKAC is an |ASN1_ITEM| whose ASN.1 type is PublicKeyAndChallenge
 // and C type is |NETSCAPE_SPKAC*|.
 DECLARE_ASN1_ITEM(NETSCAPE_SPKAC)
+
+BSSL_NAMESPACE_END
 
 // This is a static that defines the function interface
 struct x509_lookup_method_st {
@@ -287,26 +325,37 @@ struct x509_lookup_method_st {
                         X509_OBJECT *ret);
 } /* X509_LOOKUP_METHOD */;
 
-DEFINE_STACK_OF(X509_LOOKUP)
+BSSL_NAMESPACE_BEGIN
+
+DEFINE_NAMESPACED_STACK_OF(X509_LOOKUP)
+
+using StackOfX509Lookup = STACK_OF(X509_LOOKUP);
 
 // This is used to hold everything.  It is used for all certificate
 // validation.  Once we have a certificate chain, the 'verify'
 // function is then called to actually check the cert chain.
-struct x509_store_st {
+class X509Store : public x509_store_st, public RefCounted<X509Store> {
+ public:
+  X509Store();
+
   // The following is a cache of trusted certs
   STACK_OF(X509_OBJECT) *objs;  // Cache of all objects
-  CRYPTO_MUTEX objs_lock;
+  Mutex objs_lock;
 
   // These are external lookup methods
-  STACK_OF(X509_LOOKUP) *get_cert_methods;
+  StackOfX509Lookup *get_cert_methods;
 
   X509_VERIFY_PARAM *param;
 
   // Callbacks for various operations
-  X509_STORE_CTX_verify_cb verify_cb;       // error callback
+  X509_STORE_CTX_verify_cb verify_cb = nullptr;  // error callback
 
-  CRYPTO_refcount_t references;
+ private:
+  friend RefCounted;
+  ~X509Store();
 } /* X509_STORE */;
+
+BSSL_NAMESPACE_END
 
 // This is the functions plus an instance of the local variables.
 struct x509_lookup_st {
@@ -352,6 +401,8 @@ struct x509_store_ctx_st {
   CRYPTO_EX_DATA ex_data;
 } /* X509_STORE_CTX */;
 
+BSSL_NAMESPACE_BEGIN
+
 ASN1_TYPE *ASN1_generate_v3(const char *str, const X509V3_CTX *cnf);
 
 int X509_CERT_AUX_print(BIO *bp, X509_CERT_AUX *x, int indent);
@@ -396,12 +447,12 @@ int x509_digest_verify_init(EVP_MD_CTX *ctx, const X509_ALGOR *sigalg,
 // |in|. It returns one if the signature is valid and zero on error.
 int x509_verify_signature(const X509_ALGOR *sigalg,
                           const ASN1_BIT_STRING *signature,
-                          bssl::Span<const uint8_t> in, EVP_PKEY *pkey);
+                          Span<const uint8_t> in, EVP_PKEY *pkey);
 
 // x509_sign_to_bit_string signs |in| using |ctx| and saves the result in |out|.
 // It returns the length of the signature on success and zero on error.
 int x509_sign_to_bit_string(EVP_MD_CTX *ctx, ASN1_BIT_STRING *out,
-                            bssl::Span<const uint8_t> in);
+                            Span<const uint8_t> in);
 
 
 // Path-building functions.
@@ -610,9 +661,7 @@ extern const X509V3_EXT_METHOD v3_policy_mappings, v3_policy_constraints;
 extern const X509V3_EXT_METHOD v3_name_constraints, v3_inhibit_anyp, v3_idp;
 extern const X509V3_EXT_METHOD v3_addr, v3_asid;
 
+BSSL_NAMESPACE_END
 
-#if defined(__cplusplus)
-}  // extern C
-#endif
 
 #endif  // OPENSSL_HEADER_CRYPTO_X509_INTERNAL_H

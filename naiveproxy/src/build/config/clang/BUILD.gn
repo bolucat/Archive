@@ -77,6 +77,10 @@ clang_plugin("raw_ptr_check") {
     if (enable_check_raw_ref_fields) {
       plugin_arguments += [ "check-raw-ref-fields" ]
     }
+
+    # TODO(crbug.com/330759291): once this has landed and simmered for
+    # a while, bake in the resultant settings and remove all this.
+    plugin_arguments += [ "no-special-treatment-for-oilpanized-paths" ]
   }
 }
 
@@ -85,7 +89,10 @@ clang_plugin("find_bad_constructs") {
     # The plugin is built directly into clang, so there's no need to load it
     # dynamically.
     plugin = "find-bad-constructs"
-    plugin_arguments = [ "check-stack-allocated" ]
+    plugin_arguments = [
+      "check-stack-allocated",
+      "check-std-ranges-pipe-operator",
+    ]
 
     if (is_linux || is_chromeos || is_android || is_fuchsia) {
       plugin_arguments += [ "check-ipc" ]
@@ -111,7 +118,16 @@ clang_plugin("find_bad_constructs") {
 clang_plugin("unsafe_buffers") {
   if (clang_use_chrome_plugins || clang_use_unsafe_buffers_plugin) {
     if (clang_unsafe_buffers_paths != "" && !enable_precompiled_headers) {
-      cflags = [ "-DUNSAFE_BUFFERS_BUILD" ]
+      cflags = [
+        # If -Werror is set, the plugin still suppresses the warning from
+        # printing, but clang still exits with a nonzero status because an error
+        # occurred.
+        # To prevent this, we use -Wno-error. If -Werror is set, the plugin
+        # upgrades this to an error manually, thus ignoring the -Wno-error.
+        "-DUNSAFE_BUFFERS_BUILD",
+        "-Wunsafe-buffer-usage",
+        "-Wno-error=unsafe-buffer-usage",
+      ]
       plugin = "unsafe-buffers"
       plugin_arguments =
           [ rebase_path(clang_unsafe_buffers_paths, root_build_dir) ]

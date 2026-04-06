@@ -30,6 +30,9 @@ config("protobuf_config_internal") {
     cflags = [
       # For src/google/protobuf/map.cc:
       "-Wno-deprecated-this-capture",
+
+      # For src/google/protobuf/generated_message_reflection.cc
+      "-Wno-unused-lambda-capture",
     ]
   }
 }
@@ -82,8 +85,8 @@ target(_protobuf_lite_target_type, "protobuf_lite") {
   # Remove coverage and Sanitizers other than ASan for a performance boost when
   # fuzzing. ASan can't be removed here because of a bug preventing unsanitized
   # code from using libc++, which protobuf_full uses.
-  configs -= not_fuzzed_remove_nonasan_configs
-  configs += [ "//build/config/sanitizers:not_fuzzed" ]
+  configs -= not_fuzzed_remove_configs
+  configs += not_fuzzed_needs_asan_add_configs
 
   if (is_win) {
     configs -= [ "//build/config/win:lean_and_mean" ]
@@ -167,6 +170,10 @@ static_library("protobuf_full") {
       # use, and thus needs to know the full types.
       "//components/proto_extras:protobuf_full_support",
 
+      # The proto_extras plugin uses a custom option, which must be defined in a
+      # full protobuf. This is only used in the plugin binary.
+      "//components/proto_extras:proto_extras_options_proto",
+
       # Sync requires descriptors for testing.
       "//components/sync:sync_full_proto_unittests",
       "//components/sync/protocol:full_proto",
@@ -202,8 +209,8 @@ static_library("protobuf_full") {
   # Remove coverage and Sanitizers other than ASan for a performance boost when
   # fuzzing. ASan can't be removed here because of a bug preventing unsanitized
   # code from using libc++, which protobuf_full uses.
-  configs -= not_fuzzed_remove_nonasan_configs
-  configs += [ "//build/config/sanitizers:not_fuzzed" ]
+  configs -= not_fuzzed_remove_configs
+  configs += not_fuzzed_needs_asan_add_configs
 
   if (is_win) {
     configs -= [ "//build/config/win:lean_and_mean" ]
@@ -475,4 +482,9 @@ if (enable_js_protobuf) {
       "//third_party/protobuf-javascript/src/unsafe_bytestring.js",
     ]
   }
+}
+
+proto_library("google_protobuf_timestamp_lite_proto") {
+  sources = [ "src/google/protobuf/timestamp.proto" ]
+  cc_generator_options = "lite=true:"
 }

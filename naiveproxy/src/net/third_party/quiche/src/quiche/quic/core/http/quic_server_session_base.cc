@@ -12,6 +12,9 @@
 #include <string>
 #include <utility>
 
+#include "quiche/quic/core/frames/quic_crypto_frame.h"
+#include "quiche/quic/core/frames/quic_frame.h"
+#include "quiche/quic/core/http/quic_spdy_session.h"
 #include "quiche/quic/core/proto/cached_network_parameters_proto.h"
 #include "quiche/quic/core/quic_connection.h"
 #include "quiche/quic/core/quic_stream.h"
@@ -23,6 +26,7 @@
 #include "quiche/quic/platform/api/quic_flag_utils.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/common/platform/api/quiche_flag_utils.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 
 namespace quic {
@@ -61,7 +65,7 @@ void QuicServerSessionBase::OnConfigNegotiated() {
   // Set the initial rtt from cached_network_params.min_rtt_ms, which comes from
   // a validated address token. This will override the initial rtt that may have
   // been set by the transport parameters.
-  if (version().UsesTls() && cached_network_params != nullptr) {
+  if (version().IsIetfQuic() && cached_network_params != nullptr) {
     if (cached_network_params->serving_region() == serving_region_) {
       QUIC_CODE_COUNT(quic_server_received_network_params_at_same_region);
       if (config()->HasReceivedConnectionOptions() &&
@@ -85,7 +89,7 @@ void QuicServerSessionBase::OnConfigNegotiated() {
   }
 
   if (GetQuicReloadableFlag(quic_enable_disable_resumption) &&
-      version().UsesTls() &&
+      version().IsIetfQuic() &&
       ContainsQuicTag(config()->ReceivedConnectionOptions(), kNRES) &&
       crypto_stream_->ResumptionAttempted()) {
     QUIC_RELOADABLE_FLAG_COUNT(quic_enable_disable_resumption);
@@ -107,7 +111,7 @@ void QuicServerSessionBase::OnConfigNegotiated() {
   // resumption.
   if (cached_network_params != nullptr &&
       cached_network_params->serving_region() == serving_region_) {
-    if (!version().UsesTls()) {
+    if (!version().IsIetfQuic()) {
       // Log the received connection parameters, regardless of how they
       // get used for bandwidth resumption.
       connection()->OnReceiveConnectionState(*cached_network_params);
@@ -193,8 +197,8 @@ void QuicServerSessionBase::OnCongestionWindowChange(QuicTime now) {
     return;
   }
 
-  if (version().UsesTls()) {
-    if (version().HasIetfQuicFrames() && MaybeSendAddressToken()) {
+  if (version().IsIetfQuic()) {
+    if (MaybeSendAddressToken()) {
       bandwidth_estimate_sent_to_client_ = new_bandwidth_estimate;
     }
   } else {
@@ -270,7 +274,7 @@ int32_t QuicServerSessionBase::BandwidthToCachedParameterBytesPerSecond(
 }
 
 void QuicServerSessionBase::SendSettingsToCryptoStream() {
-  if (!version().UsesTls()) {
+  if (!version().IsIetfQuic()) {
     return;
   }
   std::string settings_frame = HttpEncoder::SerializeSettingsFrame(settings());
@@ -302,6 +306,38 @@ QuicSSLConfig QuicServerSessionBase::GetSSLConfig() const {
   }
 
   return ssl_config;
+}
+
+bool QuicServerSessionBase::OnFrameAcked(const quic::QuicFrame& frame,
+                                         quic::QuicTime::Delta ack_delay_time,
+                                         quic::QuicTime receive_timestamp,
+                                         bool is_retransmission) {
+  bool result = QuicSpdySession::OnFrameAcked(
+      frame, ack_delay_time, receive_timestamp, is_retransmission);
+  if (!reset_ssl_after_handshake_ || ssl_reset_) {
+    return result;
+  }
+  if (frame.type == quic::HANDSHAKE_DONE_FRAME) {
+    handshake_done_acked_ = true;
+  }
+  // When resumption is enabled, the resumption tickets must have been
+  // buffered at the time the handshake_done frame is ACKed.
+  if (handshake_done_acked_ && !HasUnackedCryptoData()) {
+    QUICHE_CODE_COUNT(quic_reset_ssl_after_handshake);
+    crypto_stream_->ResetSsl();
+    ssl_reset_ = true;
+  }
+  return result;
+}
+
+void QuicServerSessionBase::OnCryptoFrame(const quic::QuicCryptoFrame& frame) {
+  if (ssl_reset_) {
+    // This code path can happen due to retransmission of crypto data but
+    // should be rare. Add a code count to monitor.
+    QUICHE_CODE_COUNT(quic_reset_ssl_after_handshake);
+    return;
+  }
+  QuicSpdySession::OnCryptoFrame(frame);
 }
 
 std::optional<CachedNetworkParameters>

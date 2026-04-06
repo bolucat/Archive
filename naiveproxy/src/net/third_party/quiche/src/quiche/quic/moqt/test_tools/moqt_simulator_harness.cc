@@ -18,6 +18,7 @@
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_quic_config.h"
 #include "quiche/quic/moqt/moqt_session.h"
 #include "quiche/quic/moqt/moqt_session_callbacks.h"
 #include "quiche/quic/test_tools/crypto_test_utils.h"
@@ -29,7 +30,7 @@ namespace moqt::test {
 
 namespace {
 MoqtSessionParameters CreateParameters(quic::Perspective perspective,
-                                       MoqtVersion version) {
+                                       absl::string_view version) {
   MoqtSessionParameters parameters(perspective, "", "");
   parameters.version = version;
   parameters.deliver_partial_objects = false;
@@ -47,14 +48,15 @@ MoqtSessionCallbacks CreateCallbacks(quic::simulator::Simulator* simulator) {
 MoqtClientEndpoint::MoqtClientEndpoint(quic::simulator::Simulator* simulator,
                                        const std::string& name,
                                        const std::string& peer_name,
-                                       MoqtVersion version)
+                                       absl::string_view version)
     : QuicEndpointWithConnection(simulator, name, peer_name,
                                  quic::Perspective::IS_CLIENT,
                                  quic::GetQuicVersionsForGenericSession()),
       crypto_config_(quic::test::crypto_test_utils::ProofVerifierForTesting()),
-      quic_session_(connection_.get(), false, nullptr, quic::QuicConfig(),
-                    "test.example.com", 443, "moqt", &session_,
-                    /*visitor_owned=*/false, nullptr, &crypto_config_),
+      quic_session_(connection_.get(), false, nullptr, GenerateQuicConfig(),
+                    "test.example.com", 443, std::string(kDefaultMoqtVersion),
+                    &session_, /*visitor_owned=*/false, nullptr,
+                    &crypto_config_),
       session_(&quic_session_,
                CreateParameters(quic::Perspective::IS_CLIENT, version),
                std::make_unique<quic::QuicAlarmFactoryProxy>(
@@ -66,7 +68,7 @@ MoqtClientEndpoint::MoqtClientEndpoint(quic::simulator::Simulator* simulator,
 MoqtServerEndpoint::MoqtServerEndpoint(quic::simulator::Simulator* simulator,
                                        const std::string& name,
                                        const std::string& peer_name,
-                                       MoqtVersion version)
+                                       absl::string_view version)
     : QuicEndpointWithConnection(simulator, name, peer_name,
                                  quic::Perspective::IS_SERVER,
                                  quic::GetQuicVersionsForGenericSession()),
@@ -76,8 +78,8 @@ MoqtServerEndpoint::MoqtServerEndpoint(quic::simulator::Simulator* simulator,
                      quic::QuicRandom::GetInstance(),
                      quic::test::crypto_test_utils::ProofSourceForTesting(),
                      quic::KeyExchangeSource::Default()),
-      quic_session_(connection_.get(), false, nullptr, quic::QuicConfig(),
-                    "moqt", &session_,
+      quic_session_(connection_.get(), false, nullptr, GenerateQuicConfig(),
+                    std::string(kDefaultMoqtVersion), &session_,
                     /*visitor_owned=*/false, nullptr, &crypto_config_,
                     &compressed_certs_cache_),
       session_(&quic_session_,

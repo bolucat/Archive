@@ -41,9 +41,15 @@
 #include <openssl/opensslconf.h>
 #include <openssl/target.h>  // IWYU pragma: export
 
-#if defined(BORINGSSL_PREFIX)
-#include <boringssl_prefix_symbols.h>
+// Define |BORINGSSL_ALWAYS_USE_STATIC_INLINE| early so |prefix_symbols.h| has
+// access to it. See comment at |OPENSSL_INLINE| for what it does.
+#if !defined(__cplusplus) && !defined(BORINGSSL_ALWAYS_USE_STATIC_INLINE)
+#define BORINGSSL_ALWAYS_USE_STATIC_INLINE
 #endif
+
+#if defined(BORINGSSL_PREFIX)
+#include <openssl/prefix_symbols.h>
+#endif  // BORINGSSL_PREFIX
 
 #if defined(__cplusplus)
 extern "C" {
@@ -73,7 +79,7 @@ extern "C" {
 // A consumer may use this symbol in the preprocessor to temporarily build
 // against multiple revisions of BoringSSL at the same time. It is not
 // recommended to do so for longer than is necessary.
-#define BORINGSSL_API_VERSION 37
+#define BORINGSSL_API_VERSION 39
 
 #if defined(BORINGSSL_SHARED_LIBRARY)
 
@@ -200,13 +206,13 @@ extern "C" {
 // not used much in practice, extern inline is tedious, and there are conflicts
 // with the old gnu89 model:
 // https://stackoverflow.com/questions/216510/extern-inline
-#if defined(__cplusplus)
-#define OPENSSL_INLINE inline
-#else
+#if defined(BORINGSSL_ALWAYS_USE_STATIC_INLINE)
 // Add OPENSSL_UNUSED so that, should an inline function be emitted via macro
 // (e.g. a |STACK_OF(T)| implementation) in a source file without tripping
 // clang's -Wunused-function.
 #define OPENSSL_INLINE static inline OPENSSL_UNUSED
+#else
+#define OPENSSL_INLINE inline
 #endif
 
 #if defined(__cplusplus)
@@ -309,6 +315,8 @@ typedef struct conf_st CONF;
 typedef struct conf_value_st CONF_VALUE;
 typedef struct crypto_buffer_pool_st CRYPTO_BUFFER_POOL;
 typedef struct crypto_buffer_st CRYPTO_BUFFER;
+typedef struct crypto_ivec_st CRYPTO_IVEC;
+typedef struct crypto_iovec_st CRYPTO_IOVEC;
 typedef struct ctr_drbg_state_st CTR_DRBG_STATE;
 typedef struct dh_st DH;
 typedef struct dsa_st DSA;
@@ -406,27 +414,6 @@ typedef void *OPENSSL_BLOCK;
 #define BSSL_NAMESPACE_END }
 #endif
 
-// MSVC doesn't set __cplusplus to 201103 to indicate C++11 support (see
-// https://connect.microsoft.com/VisualStudio/feedback/details/763051/a-value-of-predefined-macro-cplusplus-is-still-199711l)
-// so MSVC is just assumed to support C++11.
-#if !defined(BORINGSSL_NO_CXX) && __cplusplus < 201103L && !defined(_MSC_VER)
-#define BORINGSSL_NO_CXX
-#endif
-
-#if !defined(BORINGSSL_NO_CXX)
-
-extern "C++" {
-
-#include <memory>
-
-// STLPort, used by some Android consumers, not have std::unique_ptr.
-#if defined(_STLPORT_VERSION)
-#define BORINGSSL_NO_CXX
-#endif
-
-}  // extern C++
-#endif  // !BORINGSSL_NO_CXX
-
 #if defined(BORINGSSL_NO_CXX)
 
 #define BORINGSSL_MAKE_DELETER(type, deleter)
@@ -434,7 +421,10 @@ extern "C++" {
 
 #else
 
+// Work around consumers including our headers under extern "C".
 extern "C++" {
+
+#include <memory>
 
 BSSL_NAMESPACE_BEGIN
 

@@ -53,7 +53,7 @@ public partial class JsonEditor : UserControl
         var keyColor = dark ? "#9CDCFE" : "#0451A5";
         var strColor = dark ? "#CE9178" : "#A31515";
         var numColor = dark ? "#B5CEA8" : "#098658";
-        var kwColor  = dark ? "#569CD6" : "#0000FF";
+        var kwColor = dark ? "#569CD6" : "#0000FF";
         var xshd = $"""
             <?xml version="1.0"?>
             <SyntaxDefinition name="JSON" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
@@ -91,6 +91,8 @@ public partial class JsonEditor : UserControl
     }
 
     private void Copy_Click(object? sender, RoutedEventArgs e) => Editor.Copy();
+
     private void Paste_Click(object? sender, RoutedEventArgs e) => Editor.Paste();
+
     private void SelectAll_Click(object? sender, RoutedEventArgs e) => Editor.SelectAll();
 }

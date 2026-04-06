@@ -141,22 +141,6 @@ void ConstVectorDeducesAsConstSpan() {
   span<int> s = span(v);  // expected-error-re@*:* {{no viable conversion from 'span<{{.*}}, [...]>' to 'span<int, [...]>'}}
 }
 
-// A span can only be constructed from a range rvalue when the element type is
-// read-only or the range is a borrowed range.
-void SpanFromNonConstRvalueRange() {
-  std::array<bool, 3> arr = {true, false, true};
-  [[maybe_unused]] auto a = span(std::move(arr));  // expected-error {{no matching conversion}}
-
-  std::string str = "ok";
-  [[maybe_unused]] auto b = span(std::move(str));  // expected-error {{no matching conversion}}
-
-  std::u16string str16 = u"ok";
-  [[maybe_unused]] auto c = span(std::move(str16));  // expected-error {{no matching conversion}}
-
-  std::vector<int> vec = {1, 2, 3, 4, 5};
-  [[maybe_unused]] auto d = span(std::move(vec));  // expected-error {{no matching conversion}}
-}
-
 void Dangling() {
   // `std::array` destroyed at the end of the full expression.
   [[maybe_unused]] auto a = span<const int>(std::to_array({1, 2, 3}));     // expected-error-re {{temporary whose address is used as value of local variable {{.*}}will be destroyed at the end of the full-expression}}
@@ -386,6 +370,35 @@ void SpanFromCstrings() {
   span_with_nul_from_cstring(no_null);  // expected-error@*:* {{no matching function for call to 'span_with_nul_from_cstring'}}
   byte_span_from_cstring(no_null);  // expected-error@*:* {{no matching function for call to 'byte_span_from_cstring'}}
   byte_span_with_nul_from_cstring(no_null);  // expected-error@*:* {{no matching function for call to 'byte_span_with_nul_from_cstring'}}
+}
+
+void ReinterpretSpanNonByteSource() {
+  int arr[] = {1, 2, 3};
+  span s(arr);
+  span r = subtle::reinterpret_span<uint32_t>(s);  // expected-error {{no matching function for call to 'reinterpret_span'}}
+}
+
+void ReinterpretSpanCastAwayConst() {
+  const uint8_t arr[] = {0, 0, 0, 0};
+  span s(arr);
+  span r = subtle::reinterpret_span<uint32_t>(s);  // expected-error {{no matching function for call to 'reinterpret_span'}}
+}
+
+void ReinterpretSpanNonTriviallyCopyable() {
+  struct S {
+    S() {}
+    ~S() {}
+    int i;
+  };
+  uint8_t arr[] = {0, 0, 0, 0};
+  span s(arr);
+  span r = subtle::reinterpret_span<S>(s);  // expected-error {{no matching function for call to 'reinterpret_span'}}
+}
+
+void ReinterpretSpanFixedSizeMismatch() {
+  uint8_t arr[] = {0, 0, 0, 0, 0};
+  span<uint8_t, 5u> s(arr);
+  span r = subtle::reinterpret_span<uint32_t>(s);  // expected-error {{no matching function for call to 'reinterpret_span'}}
 }
 
 }  // namespace base

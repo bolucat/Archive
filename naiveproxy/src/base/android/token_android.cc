@@ -11,8 +11,8 @@ namespace base::android {
 
 ScopedJavaLocalRef<jobject> TokenAndroid::Create(JNIEnv* env,
                                                  const base::Token& token) {
-  return Java_Token_Constructor(env, static_cast<jlong>(token.high()),
-                                static_cast<jlong>(token.low()));
+  return Java_Token_Constructor(env, static_cast<int64_t>(token.high()),
+                                static_cast<int64_t>(token.low()));
 }
 
 base::Token TokenAndroid::FromJavaToken(JNIEnv* env,
@@ -30,4 +30,5 @@ static base::Token JNI_Token_CreateRandom(JNIEnv* env) {
 
 }  // namespace base::android
 
-DEFINE_JNI_FOR_Token()
+DEFINE_JNI(Token)
+DEFINE_JNI(TokenBase)

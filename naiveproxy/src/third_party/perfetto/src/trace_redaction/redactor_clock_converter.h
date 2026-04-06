@@ -17,43 +17,38 @@
 #ifndef SRC_TRACE_REDACTION_REDACTOR_CLOCK_CONVERTER_H_
 #define SRC_TRACE_REDACTION_REDACTOR_CLOCK_CONVERTER_H_
 
-#include <unordered_map>
-#include "perfetto/ext/base/status_macros.h"
-#include "protos/perfetto/common/builtin_clock.pbzero.h"
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "perfetto/base/status.h"
+#include "perfetto/ext/base/flat_hash_map.h"
+#include "perfetto/ext/base/status_or.h"
 #include "src/trace_processor/util/clock_synchronizer.h"
 
 namespace perfetto::trace_redaction {
 
-class RedactorClockSynchronizerListenerImpl {
+class RedactorClockSynchronizerListenerImpl
+    : public perfetto::trace_processor::ClockSynchronizerListener {
  public:
   RedactorClockSynchronizerListenerImpl();
 
-  base::Status OnClockSyncCacheMiss();
+  base::Status OnClockSyncCacheMiss() override;
 
-  base::Status OnInvalidClockSnapshot();
+  base::Status OnInvalidClockSnapshot() override;
 
-  base::Status OnTraceTimeClockIdChanged(
-      perfetto::trace_processor::ClockSynchronizer<
-          RedactorClockSynchronizerListenerImpl>::ClockId trace_time_clock_id);
-
-  base::Status OnSetTraceTimeClock(
-      perfetto::trace_processor::ClockSynchronizer<
-          RedactorClockSynchronizerListenerImpl>::ClockId trace_time_clock_id);
-
-  // Always returns true as redactor only supports local host clock conversion.
-  bool IsLocalHost();
-
- private:
-  // Number of time that trace time has been updated.
-  uint32_t trace_time_updates_;
+  void RecordConversionError(trace_processor::ClockSyncErrorType,
+                             trace_processor::ClockId,
+                             trace_processor::ClockId,
+                             int64_t,
+                             std::optional<size_t>) override;
 };
 
-using RedactorClockSynchronizer = perfetto::trace_processor::ClockSynchronizer<
-    RedactorClockSynchronizerListenerImpl>;
-
+using RedactorClockSynchronizer = trace_processor::ClockSynchronizer;
 using SequenceId = uint32_t;
-using ClockId = RedactorClockSynchronizer::ClockId;
-using ClockTimestamp = RedactorClockSynchronizer::ClockTimestamp;
+using ClockId = trace_processor::ClockId;
+using ClockTimestamp = trace_processor::ClockTimestamp;
 
 // This class handles conversions between different clocks for trace redactor.
 //
@@ -102,7 +97,7 @@ class RedactorClockConverter {
    public:
     // Get the Clock Id for the provided clock_type if exists.
     std::optional<ClockId> GetClockId(DataSourceType clock_type) const {
-      auto clock_id = clock_type_to_id_.Find(clock_type);
+      auto* clock_id = clock_type_to_id_.Find(clock_type);
       if (clock_id == nullptr) {
         return std::nullopt;
       }
@@ -128,6 +123,7 @@ class RedactorClockConverter {
   base::StatusOr<ClockId> GetGlobalDefaultDataSourceClock(
       const DataSourceType& clock_type) const;
 
+  perfetto::trace_processor::TraceTimeState trace_time_state_;
   mutable RedactorClockSynchronizer clock_synchronizer_;
   std::optional<ClockId> primary_trace_clock_;
   base::FlatHashMap<SequenceId, SequenceClocks> seq_to_default_clocks_;

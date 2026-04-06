@@ -11,6 +11,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing/common/byteformats"
 )
 
@@ -46,12 +47,12 @@ type SetupOptions struct {
 	LogMaxLines             int
 	Debug                   bool
 	CrashReportSource       string
-	OOMKillerEnabled        bool
-	OOMKillerDisabled       bool
-	OOMMemoryLimit          int64
+	OomKillerEnabled        bool
+	OomKillerDisabled       bool
+	OomMemoryLimit          int64
 }
 
-func Setup(options *SetupOptions) error {
+func applySetupOptions(options *SetupOptions) {
 	sBasePath = options.BasePath
 	sWorkingPath = options.WorkingPath
 	sTempPath = options.TempPath
@@ -68,18 +69,32 @@ func Setup(options *SetupOptions) error {
 	sLogMaxLines = options.LogMaxLines
 	sDebug = options.Debug
 	sCrashReportSource = options.CrashReportSource
-	sOOMKillerEnabled = options.OOMKillerEnabled
-	sOOMKillerDisabled = options.OOMKillerDisabled
-	sOOMMemoryLimit = options.OOMMemoryLimit
-	if sOOMKillerEnabled && sOOMMemoryLimit > 0 {
-		debug.SetMemoryLimit(sOOMMemoryLimit)
+	ReloadSetupOptions(options)
+}
+
+func ReloadSetupOptions(options *SetupOptions) {
+	sOOMKillerEnabled = options.OomKillerEnabled
+	sOOMKillerDisabled = options.OomKillerDisabled
+	sOOMMemoryLimit = options.OomMemoryLimit
+	if sOOMKillerEnabled {
+		if sOOMMemoryLimit == 0 && C.IsIos {
+			sOOMMemoryLimit = oomkiller.DefaultAppleNetworkExtensionMemoryLimit
+		}
+		if sOOMMemoryLimit > 0 {
+			debug.SetMemoryLimit(sOOMMemoryLimit * 3 / 4)
+		} else {
+			debug.SetMemoryLimit(math.MaxInt64)
+		}
 	} else {
 		debug.SetMemoryLimit(math.MaxInt64)
 	}
+}
 
+func Setup(options *SetupOptions) error {
+	applySetupOptions(options)
 	os.MkdirAll(sWorkingPath, 0o777)
 	os.MkdirAll(sTempPath, 0o777)
-	return redirectStderr(filepath.Join(sTempPath, "CrashReport-"+sCrashReportSource+".log"))
+	return redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
 }
 
 func SetLocale(localeId string) {

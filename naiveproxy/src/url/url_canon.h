@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/350788890): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef URL_URL_CANON_H_
 #define URL_URL_CANON_H_
 
@@ -68,11 +63,7 @@ class CanonOutputT {
 
   // Accessor for returning a character at a given position. The input offset
   // must be in the valid range.
-  inline T at(size_t offset) const { return buffer_[offset]; }
-
-  // Sets the character at the given position. The given position MUST be less
-  // than the length().
-  inline void set(size_t offset, T ch) { buffer_[offset] = ch; }
+  inline T at(size_t offset) const { return view()[offset]; }
 
   // Returns the number of characters currently in the buffer.
   inline size_t length() const { return cur_len_; }
@@ -86,14 +77,14 @@ class CanonOutputT {
 
   // Returns the contents of the buffer as a string_view.
   std::basic_string_view<T> view() const {
-    return std::basic_string_view<T>(data(), length());
+    return std::basic_string_view<T>(buffer_, length());
   }
 
   // Called by the user of this class to get the output. The output will NOT
-  // be NULL-terminated. Call length() to get the
-  // length.
-  const T* data() const { return buffer_; }
-  T* data() { return buffer_; }
+  // be NULL-terminated. Call length() to get the length.
+  //
+  // This is unsafe, and we should use view() instead.
+  UNSAFE_BUFFER_USAGE const T* data() const { return buffer_; }
 
   // Shortens the URL to the new length. Used for "backing up" when processing
   // relative paths. This can also be used if an external function writes a lot
@@ -109,7 +100,8 @@ class CanonOutputT {
     // In VC2005, putting this common case first speeds up execution
     // dramatically because this branch is predicted as taken.
     if (cur_len_ < buffer_len_) {
-      buffer_[cur_len_] = ch;
+      // SAFETY: `cur_len_` was validated on the previous line.
+      UNSAFE_BUFFERS(buffer_[cur_len_]) = ch;
       cur_len_++;
       return;
     }
@@ -120,21 +112,21 @@ class CanonOutputT {
       return;
 
     // Actually do the insertion.
-    buffer_[cur_len_] = ch;
+    // SAFETY: Successful `Grow(1)` ensured `cur_len_` was valid.
+    UNSAFE_BUFFERS(buffer_[cur_len_]) = ch;
     cur_len_++;
   }
 
   // Appends the given string to the output.
-  void Append(const T* str, size_t str_len) {
+  void Append(std::basic_string_view<T> str) {
+    size_t str_len = str.length();
     if (str_len > buffer_len_ - cur_len_) {
       if (!Grow(str_len - (buffer_len_ - cur_len_)))
         return;
     }
-    memcpy(buffer_ + cur_len_, str, str_len * sizeof(T));
+    Span().subspan(cur_len_, str_len).copy_from(base::span(str));
     cur_len_ += str_len;
   }
-
-  void Append(std::basic_string_view<T> str) { Append(str.data(), str.size()); }
 
   void ReserveSizeIfNeeded(size_t estimated_size) {
     // Reserve a bit extra to account for escaped chars.
@@ -150,6 +142,12 @@ class CanonOutputT {
     set_length(pos);
     Append(str);
     Append(copy);
+  }
+
+  // Returns a span for the whole buffer.
+  base::span<T> Span() {
+    // SAFETY: Resize() must ensure `buffer_` has `buffer_len_` size.
+    return UNSAFE_BUFFERS(base::span(buffer_, buffer_len_));
   }
 
  protected:
@@ -193,8 +191,10 @@ class RawCanonOutputT : public CanonOutputT<T> {
 
   void Resize(size_t sz) override {
     T* new_buf = new T[sz];
-    memcpy(new_buf, this->buffer_,
-           sizeof(T) * (this->cur_len_ < sz ? this->cur_len_ : sz));
+    // SAFETY: The previous line ensured `new_buf` had `sz` size.
+    UNSAFE_BUFFERS(base::span(new_buf, sz))
+        .copy_prefix_from(
+            CanonOutputT<T>::Span().first(std::min(sz, this->cur_len_)));
     if (this->buffer_ != fixed_buffer_)
       delete[] this->buffer_;
     this->buffer_ = new_buf;
@@ -205,7 +205,7 @@ class RawCanonOutputT : public CanonOutputT<T> {
   T fixed_buffer_[fixed_capacity];
 };
 
-// Explicitely instantiate commonly used instatiations.
+// Explicitly instantiate commonly used instantiations.
 extern template class EXPORT_TEMPLATE_DECLARE(COMPONENT_EXPORT(URL))
     CanonOutputT<char>;
 extern template class EXPORT_TEMPLATE_DECLARE(COMPONENT_EXPORT(URL))
@@ -246,7 +246,7 @@ class COMPONENT_EXPORT(URL) CharsetConverter {
   // decimal, (such as "&#20320;") with escaping of the ampersand, number
   // sign, and semicolon (in the previous example it would be
   // "%26%2320320%3B"). This rule is based on what IE does in this situation.
-  virtual void ConvertFromUTF16(std::u16string_view input,
+  virtual void ConvertFromUtf16(std::u16string_view input,
                                 CanonOutput* output) = 0;
 };
 
@@ -475,11 +475,11 @@ bool CanonicalizeFileHost(std::u16string_view spec,
 // CanonicalizeNonSpecialHostVerbose.
 //
 // TODO(crbug.com/40063064): Check the callers of these functions.
-COMPONENT_EXPORT(URL)
-void CanonicalizeHostVerbose(const char* spec,
-                             const Component& host,
-                             CanonOutput* output,
-                             CanonHostInfo* host_info);
+UNSAFE_BUFFER_USAGE COMPONENT_EXPORT(URL) void CanonicalizeHostVerbose(
+    const char* spec,
+    const Component& host,
+    CanonOutput* output,
+    CanonHostInfo* host_info);
 COMPONENT_EXPORT(URL)
 void CanonicalizeHostVerbose(std::string_view spec,
                              const Component& host,
@@ -649,11 +649,11 @@ bool CanonicalizePath(std::optional<std::u16string_view> path,
 // functions requires several steps.
 // TODO(crbug.com/422740114): Remove this after `//net/third_party/quiche` is
 // not depending on it.
-COMPONENT_EXPORT(URL)
-bool CanonicalizePath(const char* spec,
-                      const Component& path,
-                      CanonOutput* output,
-                      Component* out_path);
+UNSAFE_BUFFER_USAGE COMPONENT_EXPORT(URL) bool CanonicalizePath(
+    const char* spec,
+    const Component& path,
+    CanonOutput* output,
+    Component* out_path);
 COMPONENT_EXPORT(URL)
 bool CanonicalizePath(std::optional<std::string_view> path,
                       CanonOutput* output,
@@ -798,14 +798,12 @@ bool CanonicalizeFileSystemUrl(std::u16string_view spec,
 // Use for path URLs such as javascript. This does not modify the path in any
 // way, for example, by escaping it.
 COMPONENT_EXPORT(URL)
-bool CanonicalizePathURL(const char* spec,
-                         int spec_len,
+bool CanonicalizePathUrl(std::string_view spec,
                          const Parsed& parsed,
                          CanonOutput* output,
                          Parsed* new_parsed);
 COMPONENT_EXPORT(URL)
-bool CanonicalizePathURL(const char16_t* spec,
-                         int spec_len,
+bool CanonicalizePathUrl(std::u16string_view spec,
                          const Parsed& parsed,
                          CanonOutput* output,
                          Parsed* new_parsed);
@@ -813,11 +811,11 @@ bool CanonicalizePathURL(const char16_t* spec,
 // Use to canonicalize just the path component of a "path" URL; e.g. the
 // path of a javascript URL.
 COMPONENT_EXPORT(URL)
-void CanonicalizePathURLPath(std::optional<std::string_view> source,
+void CanonicalizePathUrlPath(std::optional<std::string_view> source,
                              CanonOutput* output,
                              Component* new_component);
 COMPONENT_EXPORT(URL)
-void CanonicalizePathURLPath(std::optional<std::u16string_view> source,
+void CanonicalizePathUrlPath(std::optional<std::u16string_view> source,
                              CanonOutput* output,
                              Component* new_component);
 
@@ -827,14 +825,12 @@ void CanonicalizePathURLPath(std::optional<std::u16string_view> source,
 // really intended for an external mail program, and the encoding of a page,
 // etc. which would influence a query encoding normally are irrelevant.
 COMPONENT_EXPORT(URL)
-bool CanonicalizeMailtoURL(const char* spec,
-                           int spec_len,
+bool CanonicalizeMailtoUrl(std::string_view spec,
                            const Parsed& parsed,
                            CanonOutput* output,
                            Parsed* new_parsed);
 COMPONENT_EXPORT(URL)
-bool CanonicalizeMailtoURL(const char16_t* spec,
-                           int spec_len,
+bool CanonicalizeMailtoUrl(std::u16string_view spec,
                            const Parsed& parsed,
                            CanonOutput* output,
                            Parsed* new_parsed);
@@ -855,26 +851,18 @@ bool CanonicalizeMailtoURL(const char16_t* spec,
 // ensure that the data the pointers point to stays in scope and is not
 // modified.
 template <typename CHAR>
-struct URLComponentSource {
+struct UrlComponentSource {
   STACK_ALLOCATED();
 
  public:
   // Constructor normally used by callers wishing to replace components. This
-  // will make them all NULL, which is no replacement. The caller would then
-  // override the components they want to replace.
-  URLComponentSource()
-      : scheme(nullptr),
-        username(nullptr),
-        password(nullptr),
-        host(nullptr),
-        port(nullptr),
-        path(nullptr),
-        query(nullptr),
-        ref(nullptr) {}
+  // will make them all null string_view, which is no replacement. The caller
+  // would then override the components they want to replace.
+  UrlComponentSource() = default;
 
   // Constructor normally used internally to initialize all the components to
   // point to the same spec.
-  explicit URLComponentSource(const CHAR* default_value)
+  explicit UrlComponentSource(std::basic_string_view<CHAR> default_value)
       : scheme(default_value),
         username(default_value),
         password(default_value),
@@ -884,14 +872,21 @@ struct URLComponentSource {
         query(default_value),
         ref(default_value) {}
 
-  const CHAR* scheme;
-  const CHAR* username;
-  const CHAR* password;
-  const CHAR* host;
-  const CHAR* port;
-  const CHAR* path;
-  const CHAR* query;
-  const CHAR* ref;
+  // The following data members distinguish between std::basic_string_view()
+  // and std::basic_string_view(""). The former's data() returns nullptr.
+  //
+  // This behavior is confusing, but Replacements::SetFooStr() has
+  // distinguished these two for a long time, and it is costly to eliminate
+  // the distinction.
+
+  std::basic_string_view<CHAR> scheme;
+  std::basic_string_view<CHAR> username;
+  std::basic_string_view<CHAR> password;
+  std::basic_string_view<CHAR> host;
+  std::basic_string_view<CHAR> port;
+  std::basic_string_view<CHAR> path;
+  std::basic_string_view<CHAR> query;
+  std::basic_string_view<CHAR> ref;
 };
 
 // This structure encapsulates information on modifying a URL. Each component
@@ -902,122 +897,216 @@ struct URLComponentSource {
 //
 // The string passed to Set* functions DOES NOT GET COPIED AND MUST BE KEPT
 // IN SCOPE BY THE CALLER for as long as this object exists!
+// In order to make it harder to misuse the API the setters do not accept rvalue
+// references to std::strings and std::u16strings.
+// Note: Extra const CHAR* overloads are necessary to break ambiguities that
+// would otherwise exist for string literals.
 //
 // Prefer the 8-bit replacement version if possible since it is more efficient.
 template <typename CHAR>
 class Replacements {
+  using StringViewT = std::basic_string_view<CHAR>;
+  using StringT = std::basic_string<CHAR>;
+
  public:
-  Replacements() {}
+  // Creates an empty `Replacements` instance, which indicates that no
+  // components will be replaced.
+  Replacements() = default;
+
+  // Creates a `Replacements` instance from a single spec and its parsed
+  // components. This is used to indicate that all components of a URL should
+  // be replaced.
+  Replacements(StringViewT spec, const Parsed& parsed)
+      : sources_(spec), components_(parsed) {}
 
   // Scheme
-  void SetScheme(const CHAR* s, const Component& comp) {
+  void SetScheme(StringViewT s, const Component& comp) {
     sources_.scheme = s;
     components_.scheme = comp;
   }
+  void SetSchemeStr(StringViewT str) { SetScheme(str, Component(str)); }
+  void SetSchemeStr(const CHAR* str) { SetSchemeStr(StringViewT(str)); }
+  void SetSchemeStr(const StringT&&) = delete;
   // Note: we don't have a ClearScheme since this doesn't make any sense.
-  bool IsSchemeOverridden() const { return sources_.scheme != NULL; }
+
+  // Indicates the scheme part won't be replaced.
+  void SetSchemeUnchanged() {
+    sources_.scheme = StringViewT();
+    components_.scheme = Component();
+  }
+  // Return the scheme part of the source string if the scheme component is
+  // valid.
+  std::optional<StringViewT> MaybeScheme() const {
+    return components_.scheme.MaybeAsViewOn(sources_.scheme);
+  }
+  bool IsSchemeOverridden() const { return sources_.scheme.data(); }
 
   // Username
-  void SetUsername(const CHAR* s, const Component& comp) {
+  void SetUsername(StringViewT s, const Component& comp) {
     sources_.username = s;
     components_.username = comp;
   }
+  void SetUsernameStr(StringViewT str) { SetUsername(str, Component(str)); }
+  void SetUsernameStr(const CHAR* str) { SetUsernameStr(StringViewT(str)); }
+  void SetUsernameStr(const StringT&&) = delete;
   void ClearUsername() {
     sources_.username = Placeholder();
     components_.username = Component();
   }
-  bool IsUsernameOverridden() const { return sources_.username != NULL; }
+  // Return the username part of the source string if the username component is
+  // valid.
+  std::optional<StringViewT> MaybeUsername() const {
+    return components_.username.MaybeAsViewOn(sources_.username);
+  }
+  bool IsUsernameOverridden() const { return sources_.username.data(); }
 
   // Password
-  void SetPassword(const CHAR* s, const Component& comp) {
+  void SetPassword(StringViewT s, const Component& comp) {
     sources_.password = s;
     components_.password = comp;
   }
+  void SetPasswordStr(StringViewT str) { SetPassword(str, Component(str)); }
+  void SetPasswordStr(const CHAR* str) { SetPasswordStr(StringViewT(str)); }
+  void SetPasswordStr(const StringT&&) = delete;
   void ClearPassword() {
     sources_.password = Placeholder();
     components_.password = Component();
   }
-  bool IsPasswordOverridden() const { return sources_.password != NULL; }
+  // Return the password part of the source string if the password component is
+  // valid.
+  std::optional<StringViewT> MaybePassword() const {
+    return components_.password.MaybeAsViewOn(sources_.password);
+  }
+  bool IsPasswordOverridden() const { return sources_.password.data(); }
 
   // Host
-  void SetHost(const CHAR* s, const Component& comp) {
+  void SetHost(StringViewT s, const Component& comp) {
     sources_.host = s;
     components_.host = comp;
   }
+  void SetHostStr(StringViewT str) { SetHost(str, Component(str)); }
+  void SetHostStr(const CHAR* str) { SetHostStr(StringViewT(str)); }
+  void SetHostStr(const StringT&&) = delete;
   void ClearHost() {
     sources_.host = Placeholder();
     components_.host = Component();
   }
-  bool IsHostOverridden() const { return sources_.host != NULL; }
+  // Return the host part of the source string if the host component is
+  // valid.
+  std::optional<StringViewT> MaybeHost() const {
+    return components_.host.MaybeAsViewOn(sources_.host);
+  }
+  // Return the string starting at the beginning of the source string and ending
+  // at the end of the host part.  The beginning of the source string is
+  // different from the beginning of the host part if components().host.begin()
+  // is not 0.
+  StringViewT SpecUntilHostOrEmpty() const {
+    return sources_.host.substr(
+        0, components_.host.is_valid() ? components_.host.end() : 0);
+  }
+  bool IsHostOverridden() const { return sources_.host.data(); }
 
   // Port
-  void SetPort(const CHAR* s, const Component& comp) {
+  void SetPort(StringViewT s, const Component& comp) {
     sources_.port = s;
     components_.port = comp;
   }
+  void SetPortStr(StringViewT str) { SetPort(str, Component(str)); }
+  void SetPortStr(const CHAR* str) { SetPortStr(StringViewT(str)); }
+  void SetPortStr(const StringT&&) = delete;
   void ClearPort() {
     sources_.port = Placeholder();
     components_.port = Component();
   }
-  bool IsPortOverridden() const { return sources_.port != NULL; }
+  // Return the port part of the source string if the port component is valid.
+  std::optional<StringViewT> MaybePort() const {
+    return components_.port.MaybeAsViewOn(sources_.port);
+  }
+  bool IsPortOverridden() const { return sources_.port.data(); }
 
   // Path
-  void SetPath(const CHAR* s, const Component& comp) {
+  void SetPath(StringViewT s, const Component& comp) {
     sources_.path = s;
     components_.path = comp;
   }
+  void SetPathStr(StringViewT str) { SetPath(str, Component(str)); }
+  void SetPathStr(const CHAR* str) { SetPathStr(StringViewT(str)); }
+  void SetPathStr(const StringT&&) = delete;
   void ClearPath() {
     sources_.path = Placeholder();
     components_.path = Component();
   }
-  bool IsPathOverridden() const { return sources_.path != NULL; }
+  // Return the path part of the source string if the path component is valid.
+  std::optional<StringViewT> MaybePath() const {
+    return components_.path.MaybeAsViewOn(sources_.path);
+  }
+  bool IsPathOverridden() const { return sources_.path.data(); }
 
   // Query
-  void SetQuery(const CHAR* s, const Component& comp) {
+  void SetQuery(StringViewT s, const Component& comp) {
     sources_.query = s;
     components_.query = comp;
   }
+  void SetQueryStr(StringViewT str) { SetQuery(str, Component(str)); }
+  void SetQueryStr(const CHAR* str) { SetQueryStr(StringViewT(str)); }
+  void SetQueryStr(const StringT&&) = delete;
   void ClearQuery() {
     sources_.query = Placeholder();
     components_.query = Component();
   }
-  bool IsQueryOverridden() const { return sources_.query != NULL; }
+  // Return the query part of the source string if the query component is
+  // valid.
+  std::optional<StringViewT> MaybeQuery() const {
+    return components_.query.MaybeAsViewOn(sources_.query);
+  }
+  bool IsQueryOverridden() const { return sources_.query.data(); }
 
   // Ref
-  void SetRef(const CHAR* s, const Component& comp) {
+  void SetRef(StringViewT s, const Component& comp) {
     sources_.ref = s;
     components_.ref = comp;
   }
+  void SetRefStr(StringViewT str) { SetRef(str, Component(str)); }
+  void SetRefStr(const CHAR* str) { SetRefStr(StringViewT(str)); }
+  void SetRefStr(const StringT&&) = delete;
   void ClearRef() {
     sources_.ref = Placeholder();
     components_.ref = Component();
   }
-  bool IsRefOverridden() const { return sources_.ref != NULL; }
+  // Return the ref part of the source string if the ref component is valid.
+  std::optional<StringViewT> MaybeRef() const {
+    return components_.ref.MaybeAsViewOn(sources_.ref);
+  }
+  bool IsRefOverridden() const { return sources_.ref.data(); }
 
   // Getters for the internal data. See the variables below for how the
   // information is encoded.
-  const URLComponentSource<CHAR>& sources() const { return sources_; }
+  const UrlComponentSource<CHAR>& sources() const { return sources_; }
   const Parsed& components() const { return components_; }
 
  private:
-  // Returns a pointer to a static empty string that is used as a placeholder
-  // to indicate a component should be deleted (see below).
-  const CHAR* Placeholder() {
+  friend void SetupOverrideComponents(const Replacements<char>& repl,
+                                      Replacements<char>& overridden);
+  friend bool SetupUtf16OverrideComponents(const Replacements<char16_t>& repl,
+                                           CanonOutput& utf8_buffer,
+                                           Replacements<char>& overridden);
+
+  // Returns a string_view on a static empty string that is used as a
+  // placeholder to indicate a component should be deleted (see below).
+  StringViewT Placeholder() {
     static const CHAR empty_cstr = 0;
-    return &empty_cstr;
+    // NOLINTNEXTLINE(bugprone-string-constructor)
+    return StringViewT(&empty_cstr, 0);
   }
 
   // We support three states:
   //
   // Action                 | Source                Component
   // -----------------------+--------------------------------------------------
-  // Don't change component | NULL                  (unused)
+  // Don't change component | null string_view      (unused)
   // Replace component      | (replacement string)  (replacement component)
-  // Delete component       | (non-NULL)            (invalid component: (0,-1))
-  //
-  // We use a pointer to the empty string for the source when the component
-  // should be deleted.
-  URLComponentSource<CHAR> sources_;
+  // Delete component       | empty string_view     (invalid component: (0,-1))
+  UrlComponentSource<CHAR> sources_;
   Parsed components_;
 };
 
@@ -1092,13 +1181,13 @@ bool ReplaceFileUrl(std::string_view base,
 // Path URLs can only have the scheme and path replaced. All other components
 // will be ignored.
 COMPONENT_EXPORT(URL)
-bool ReplacePathURL(const char* base,
+bool ReplacePathUrl(std::string_view base,
                     const Parsed& base_parsed,
                     const Replacements<char>& replacements,
                     CanonOutput* output,
                     Parsed* new_parsed);
 COMPONENT_EXPORT(URL)
-bool ReplacePathURL(const char* base,
+bool ReplacePathUrl(std::string_view base,
                     const Parsed& base_parsed,
                     const Replacements<char16_t>& replacements,
                     CanonOutput* output,
@@ -1107,13 +1196,13 @@ bool ReplacePathURL(const char* base,
 // Mailto URLs can only have the scheme, path, and query replaced.
 // All other components will be ignored.
 COMPONENT_EXPORT(URL)
-bool ReplaceMailtoURL(const char* base,
+bool ReplaceMailtoUrl(std::string_view base,
                       const Parsed& base_parsed,
                       const Replacements<char>& replacements,
                       CanonOutput* output,
                       Parsed* new_parsed);
 COMPONENT_EXPORT(URL)
-bool ReplaceMailtoURL(const char* base,
+bool ReplaceMailtoUrl(std::string_view base,
                       const Parsed& base_parsed,
                       const Replacements<char16_t>& replacements,
                       CanonOutput* output,

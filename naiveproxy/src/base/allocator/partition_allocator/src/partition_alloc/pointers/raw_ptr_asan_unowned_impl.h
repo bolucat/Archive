@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_POINTERS_RAW_PTR_ASAN_UNOWNED_IMPL_H_
 #define PARTITION_ALLOC_POINTERS_RAW_PTR_ASAN_UNOWNED_IMPL_H_
 
@@ -15,7 +10,6 @@
 
 #include "partition_alloc/buildflags.h"
 #include "partition_alloc/partition_alloc_base/compiler_specific.h"
-#include "partition_alloc/partition_alloc_base/cxx20_is_constant_evaluated.h"
 #include "partition_alloc/partition_alloc_forward.h"
 
 #if !PA_BUILDFLAG(USE_RAW_PTR_ASAN_UNOWNED_IMPL)
@@ -44,7 +38,7 @@ struct RawPtrAsanUnownedImpl {
   // Notifies the allocator when a wrapped pointer is being removed or replaced.
   template <typename T>
   PA_ALWAYS_INLINE static constexpr void ReleaseWrappedPtr(T* wrapped_ptr) {
-    if (!partition_alloc::internal::base::is_constant_evaluated()) {
+    if (!std::is_constant_evaluated()) {
       ProbeForLowSeverityLifetimeIssue(wrapped_ptr);
     }
   }
@@ -63,7 +57,7 @@ struct RawPtrAsanUnownedImpl {
   template <typename T>
   PA_ALWAYS_INLINE static constexpr T* SafelyUnwrapPtrForExtraction(
       T* wrapped_ptr) {
-    if (!partition_alloc::internal::base::is_constant_evaluated()) {
+    if (!std::is_constant_evaluated()) {
       ProbeForLowSeverityLifetimeIssue(wrapped_ptr);
     }
     return wrapped_ptr;

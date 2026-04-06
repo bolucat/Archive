@@ -1,5 +1,6 @@
 ﻿using System.Reactive.Linq;
 using System.Reactive.Subjects;
+using System.Runtime.InteropServices;
 
 namespace GlobalHotKeys;
 
@@ -42,7 +43,7 @@ public class HotKeyManager : IDisposable
             var wndProcDelegate = new WndProc(MessageHandler);
 
             // Convert the WndProc delegate into a structure.
-            var wndClassEx = WNDCLASSEX.FromWndProc(wndProcDelegate);
+            var wndClassEx = WNDCLASSEX.FromWndProc(wndProcDelegate, out var classNamePtr);
 
             // Register the window class.
             var registeredClass = NativeFunctions.RegisterClassEx(ref wndClassEx);
@@ -58,6 +59,9 @@ public class HotKeyManager : IDisposable
 
             // cleanup the resources after wards.
             Cleanup(localHWnd);
+
+            // Keep the delegate alive until after cleanup to prevent GC collection during the message loop.
+            GC.KeepAlive(wndProcDelegate);
 
             return;
 
@@ -163,7 +167,8 @@ public class HotKeyManager : IDisposable
                 }
 
                 NativeFunctions.DestroyWindow(hWnd);
-                NativeFunctions.UnregisterClass(wndClassEx.lpszClassName, hInstance);
+                NativeFunctions.UnregisterClass(classNamePtr, hInstance);
+                Marshal.FreeHGlobal(classNamePtr);
             }
         }
     }

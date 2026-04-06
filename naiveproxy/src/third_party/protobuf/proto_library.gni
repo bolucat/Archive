@@ -247,7 +247,6 @@ _protoc_gen_ts_runtime_deps = [
   "//third_party/node/node_modules/ts-proto/build/src/generate-type-registry.js",
   "//third_party/node/node_modules/ts-proto/build/src/main.js",
   "//third_party/node/node_modules/ts-proto/build/src/options.js",
-  "//third_party/node/node_modules/ts-proto/build/src/options.js",
   "//third_party/node/node_modules/ts-proto/build/src/plugin.js",
   "//third_party/node/node_modules/ts-proto/build/src/schema.js",
   "//third_party/node/node_modules/ts-proto/build/src/sourceInfo.js",
@@ -626,13 +625,24 @@ template("proto_library") {
     # proto_library target using it AND every library that transitively includes
     # it. To prevent having massive side-effects to build files on changes, this
     # simply adds the input and import_dir for descriptor.proto to all targets.
+    #
+    # Protos can also import cpp_features.proto in order to provide C++ specific
+    # options for code generation.
+    #
     # The import_dirs modification can be removed if http://crbug.com/691451 is
     # fixed.
-    inputs += [ "//third_party/protobuf/src/google/protobuf/descriptor.proto" ]
-    _import_dirs = [ "//third_party/protobuf/src" ]
+    inputs += [
+      "//third_party/protobuf/src/google/protobuf/descriptor.proto",
+      "//third_party/protobuf/src/google/protobuf/cpp_features.proto",
+    ]
+
+    # Note: the order of import dirs is kept the same as the order of include
+    # dirs in the target for consistency (specific first, then generic).
+    _import_dirs = []
     if (defined(invoker.import_dirs)) {
       _import_dirs += invoker.import_dirs
     }
+    _import_dirs += [ "//third_party/protobuf/src" ]
     foreach(_path, _import_dirs) {
       args += [ "--import-dir=" + rebase_path(_path, root_build_dir) ]
     }
@@ -688,11 +698,11 @@ template("proto_library") {
       # fuzzing, since the only fuzzers that use protobuf are libprotobuf-mutator
       # based fuzzers, and they don't actually target protobuf code.
       configs -= not_fuzzed_remove_configs
-      configs += [ "//build/config/sanitizers:not_fuzzed" ]
+      configs += not_fuzzed_add_configs
     }
 
     if (_generate_cc || _generate_with_plugin) {
-      public_configs = [ "$_this_dir:using_proto" ]
+      public_configs = []
 
       # By default, propagate the config for |include_dirs| to dependent
       # targets, so that public imports can be resolved to corresponding
@@ -707,6 +717,17 @@ template("proto_library") {
           configs += [ ":$_include_dir_config_name" ]
         }
       }
+
+      # Add generic protobuf config *after* specific ones so that specific ones
+      # can override the generic one.
+      #
+      # This is required for instance for well-known protobuf types, like
+      # timestamp.proto, as the non-lite version of its header is included in
+      # protobuf's sources.  Specifying the protobuf's src directory (as include_dir)
+      # before the generated directory, would cause header file mismatch and the
+      # non-lite version would be included instead of the lite one causing
+      # issues when linking binaries.
+      public_configs += [ "$_this_dir:using_proto" ]
 
       # If using built-in cc generator, the resulting headers reference headers
       # within protobuf_lite. Hence, dependencies require those headers too.

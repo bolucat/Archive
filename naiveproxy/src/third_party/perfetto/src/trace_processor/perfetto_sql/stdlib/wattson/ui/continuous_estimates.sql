@@ -17,8 +17,6 @@ INCLUDE PERFETTO MODULE counters.intervals;
 
 INCLUDE PERFETTO MODULE wattson.estimates;
 
-INCLUDE PERFETTO MODULE wattson.utils;
-
 -- After ii, a single column will have the same value split up into different
 -- slices. This macro recombines all the slices such that adjacent slices will
 -- always have different values. This means less slices to process, and from the
@@ -100,3 +98,8 @@ CREATE PERFETTO TABLE _system_state_gpu_mw AS
 SELECT
   *
 FROM _get_continuous_estimates!(gpu_mw);
+
+CREATE PERFETTO TABLE _system_state_tpu_mw AS
+SELECT
+  *
+FROM _get_continuous_estimates!(tpu_mw);

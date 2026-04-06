@@ -413,6 +413,7 @@ config("delayloads_except_dbghelp") {
     "/DELAYLOAD:d3d11.dll",
     "/DELAYLOAD:d3d12.dll",
     "/DELAYLOAD:d3d9.dll",
+    "/DELAYLOAD:dhcpcsvc.dll",
     "/DELAYLOAD:dcomp.dll",
     "/DELAYLOAD:dwmapi.dll",
     "/DELAYLOAD:dxgi.dll",
@@ -423,6 +424,7 @@ config("delayloads_except_dbghelp") {
     "/DELAYLOAD:hid.dll",
     "/DELAYLOAD:imagehlp.dll",
     "/DELAYLOAD:imm32.dll",
+    "/DELAYLOAD:iphlpapi.dll",
     "/DELAYLOAD:mmdevapi.dll",
     "/DELAYLOAD:msi.dll",
     "/DELAYLOAD:netapi32.dll",
@@ -435,17 +437,22 @@ config("delayloads_except_dbghelp") {
     "/DELAYLOAD:psapi.dll",
     "/DELAYLOAD:rpcrt4.dll",
     "/DELAYLOAD:rstrtmgr.dll",
+    "/DELAYLOAD:secur32.dll",
     "/DELAYLOAD:setupapi.dll",
     "/DELAYLOAD:shell32.dll",
     "/DELAYLOAD:shlwapi.dll",
     "/DELAYLOAD:uiautomationcore.dll",
     "/DELAYLOAD:urlmon.dll",
     "/DELAYLOAD:user32.dll",
+    "/DELAYLOAD:userenv.dll",
     "/DELAYLOAD:usp10.dll",
     "/DELAYLOAD:uxtheme.dll",
     "/DELAYLOAD:wer.dll",
     "/DELAYLOAD:wevtapi.dll",
+    "/DELAYLOAD:winhttp.dll",
     "/DELAYLOAD:wininet.dll",
+    "/DELAYLOAD:winspool.drv",
+    "/DELAYLOAD:wintrust.dll",
     "/DELAYLOAD:winusb.dll",
     "/DELAYLOAD:wsock32.dll",
     "/DELAYLOAD:wtsapi32.dll",
@@ -469,15 +476,8 @@ config("delayloads_for_tests") {
 config("delayloads_not_for_child_dll") {
   ldflags = [
     "/DELAYLOAD:crypt32.dll",
-    "/DELAYLOAD:dhcpcsvc.dll",
     "/DELAYLOAD:dwrite.dll",
-    "/DELAYLOAD:iphlpapi.dll",
-    "/DELAYLOAD:secur32.dll",
-    "/DELAYLOAD:userenv.dll",
-    "/DELAYLOAD:winhttp.dll",
     "/DELAYLOAD:winmm.dll",
-    "/DELAYLOAD:winspool.drv",
-    "/DELAYLOAD:wintrust.dll",
     "/DELAYLOAD:ws2_32.dll",
   ]
 }
@@ -690,4 +690,15 @@ config("lean_and_mean") {
 
 config("nominmax") {
   defines = [ "NOMINMAX" ]
+}
+
+# Wincrypt use symbol prefix ---------------------------------------------------
+
+# Some third party code might not compile with WINCRYPT_USE_SYMBOL_PREFIX so we
+# have to have a separate config for it. Remove this config from your target to
+# get the unprefixed versions of the wincrypt.h symbols. Note this will mean
+# your target cannot include wincrypt.h and OpenSSL/BoringSSL headers at the
+# same time.
+config("wincrypt_use_symbol_prefix") {
+  defines = [ "WINCRYPT_USE_SYMBOL_PREFIX" ]
 }

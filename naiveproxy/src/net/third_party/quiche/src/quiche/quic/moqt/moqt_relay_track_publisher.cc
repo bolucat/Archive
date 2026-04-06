@@ -13,37 +13,48 @@
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/quic_time.h"
+#include "quiche/quic/moqt/moqt_error.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_names.h"
 #include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_publisher.h"
 #include "quiche/quic/moqt/moqt_session_interface.h"
+#include "quiche/quic/moqt/moqt_types.h"
+#include "quiche/common/platform/api/quiche_bug_tracker.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/quiche_callbacks.h"
 #include "quiche/common/quiche_mem_slice.h"
+#include "quiche/common/quiche_weak_ptr.h"
 
 namespace moqt {
 
 void MoqtRelayTrackPublisher::OnReply(
     const FullTrackName&,
-    std::variant<SubscribeOkData, MoqtRequestError> response) {
-  if (std::holds_alternative<MoqtRequestError>(response)) {
-    auto request_error = std::get<MoqtRequestError>(response);
+    std::variant<SubscribeOkData, MoqtRequestErrorInfo> response) {
+  if (is_closing_) {
+    return;
+  }
+  if (std::holds_alternative<MoqtRequestErrorInfo>(response)) {
+    auto request_error = std::get<MoqtRequestErrorInfo>(response);
+    // Delete upstream_ to avoid sending UNSUBSCRIBE.
+    upstream_ = quiche::QuicheWeakPtr<MoqtSessionInterface>();
+    // Sessions will delete listeners, causing the track to delete itself.
     for (MoqtObjectListener* listener : listeners_) {
       listener->OnSubscribeRejected(request_error);
     }
-    DeleteTrack();
     return;
   }
   SubscribeOkData ok_data = std::get<SubscribeOkData>(response);
-  if (ok_data.expires.IsInfinite()) {
-    expiration_ = quic::QuicTime::Infinite();
-  } else {
-    expiration_ = clock_->Now() + ok_data.expires;
-  }
-  delivery_order_ = ok_data.delivery_order;
-  next_location_ = ok_data.largest_location.has_value()
-                       ? ok_data.largest_location->Next()
+  quic::QuicTimeDelta expires =
+      ok_data.parameters.expires.value_or(kDefaultExpires);
+  expiration_ = expires.IsInfinite() ? quic::QuicTime::Infinite()
+                                     : clock_->Now() + expires;
+  extensions_ = ok_data.extensions;
+  next_location_ = ok_data.parameters.largest_object.has_value()
+                       ? ok_data.parameters.largest_object->Next()
                        : Location(0, 0);
+  got_response_ = true;
   // TODO(martinduke): Handle parameters.
   for (MoqtObjectListener* listener : listeners_) {
     listener->OnSubscribeAccepted();
@@ -54,6 +65,9 @@ void MoqtRelayTrackPublisher::OnObjectFragment(
     const FullTrackName& full_track_name,
     const PublishedObjectMetadata& metadata, absl::string_view object,
     bool end_of_message) {
+  if (is_closing_) {
+    return;
+  }
   if (!end_of_message) {
     QUICHE_BUG(moqt_relay_track_publisher_got_fragment)
         << "Received a fragment of an object.";
@@ -111,32 +125,76 @@ void MoqtRelayTrackPublisher::OnObjectFragment(
       return;
     }
   }
-  auto subgroup_it = group.subgroups.try_emplace(metadata.subgroup);
-  auto& subgroup = subgroup_it.first->second;
-  if (!subgroup.empty()) {  // Check if the new object is valid
-    CachedObject& last_object = subgroup.rbegin()->second;
-    if (last_object.metadata.publisher_priority !=
-        metadata.publisher_priority) {
-      QUICHE_DLOG(INFO) << "Publisher priority changing in a subgroup";
+  CachedObject* duplicate_object = nullptr;
+  if (!metadata.subgroup.has_value()) {  // It's a datagram.
+    std::shared_ptr<quiche::QuicheMemSlice> slice;
+    if (!object.empty()) {
+      slice = std::make_shared<quiche::QuicheMemSlice>(
+          quiche::QuicheMemSlice::Copy(object));
+    }
+    auto [it, inserted] = group.datagrams.try_emplace(
+        metadata.location.object, CachedObject{metadata, slice, false});
+    if (!inserted) {
+      duplicate_object = &it->second;
+    }
+  } else {
+    auto subgroup_it = group.subgroups.try_emplace(*metadata.subgroup);
+    auto& subgroup = subgroup_it.first->second;
+    if (!subgroup.empty()) {  // Check if the new object is valid
+      CachedObject& last_object = subgroup.rbegin()->second;
+      if (last_object.metadata.publisher_priority !=
+          metadata.publisher_priority) {
+        QUICHE_DLOG(INFO) << "Publisher priority changing in a subgroup";
+        OnMalformedTrack(full_track_name);
+        return;
+      }
+      if (last_object.fin_after_this) {
+        QUICHE_DLOG(INFO) << "Skipping object because it is after the end of "
+                          << "the subgroup";
+        OnMalformedTrack(full_track_name);
+        return;
+      }
+      // If last_object has stream-ending status, it should have been caught by
+      // the fin_after_this check above.
+      QUICHE_DCHECK(
+          last_object.metadata.status != MoqtObjectStatus::kEndOfGroup &&
+          last_object.metadata.status != MoqtObjectStatus::kEndOfTrack);
+      if (last_object.metadata.location.object > metadata.location.object) {
+        QUICHE_DLOG(INFO) << "Skipping object because it decreases the "
+                          << "object ID in the subgroup.";
+        return;
+      }
+    }
+    if (metadata.status == MoqtObjectStatus::kEndOfGroup ||
+        metadata.status == MoqtObjectStatus::kEndOfTrack) {
+      // Anticipate stream FIN.
+      last_object_in_stream = true;
+    }
+    std::shared_ptr<quiche::QuicheMemSlice> slice;
+    if (!object.empty()) {
+      slice = std::make_shared<quiche::QuicheMemSlice>(
+          quiche::QuicheMemSlice::Copy(object));
+    }
+    auto [it, inserted] = subgroup.try_emplace(
+        metadata.location.object,
+        CachedObject{metadata, slice, last_object_in_stream});
+    if (!inserted) {
+      duplicate_object = &it->second;
+    }
+  }
+  if (duplicate_object != nullptr) {
+    if (metadata.IsMalformed(duplicate_object->metadata)) {
+      // Something besides the arrival time and extension headers changed.
       OnMalformedTrack(full_track_name);
       return;
     }
-    if (last_object.fin_after_this) {
-      QUICHE_DLOG(INFO) << "Skipping object because it is after the end of the "
-                        << "subgroup";
+    // TODO(b/467718801): Fix this when the class supports partial object
+    // delivery. When objects are complete, we can simply compare payloads.
+    if (duplicate_object->payload->AsStringView() != object) {
       OnMalformedTrack(full_track_name);
-      return;
     }
-    // If last_object has stream-ending status, it should have been caught by
-    // the fin_after_this check above.
-    QUICHE_DCHECK(
-        last_object.metadata.status != MoqtObjectStatus::kEndOfGroup &&
-        last_object.metadata.status != MoqtObjectStatus::kEndOfTrack);
-    if (last_object.metadata.location.object >= metadata.location.object) {
-      QUICHE_DLOG(INFO) << "Skipping object because it does not increase the "
-                        << "object ID monotonically in the subgroup.";
-      return;
-    }
+    // No need to update state.
+    return;
   }
   // Object is valid. Update state.
   if (next_location_ <= metadata.location) {
@@ -145,37 +203,57 @@ void MoqtRelayTrackPublisher::OnObjectFragment(
   if (metadata.location.object >= group.next_object) {
     group.next_object = metadata.location.object + 1;
   }
-  // Anticipate stream FIN with most non-normal objects.
   switch (metadata.status) {
     case MoqtObjectStatus::kEndOfTrack:
       end_of_track_ = metadata.location;
-      last_object_in_stream = true;
       ABSL_FALLTHROUGH_INTENDED;
     case MoqtObjectStatus::kEndOfGroup:
       group.complete = true;
-      last_object_in_stream = true;
       break;
     default:
       break;
   }
-  std::shared_ptr<quiche::QuicheMemSlice> slice;
-  if (!object.empty()) {
-    slice = std::make_shared<quiche::QuicheMemSlice>(
-        quiche::QuicheMemSlice::Copy(object));
-  }
-  subgroup.emplace(metadata.location.object,
-                   CachedObject{metadata, slice, last_object_in_stream});
   for (MoqtObjectListener* listener : listeners_) {
     listener->OnNewObjectAvailable(metadata.location, metadata.subgroup,
                                    metadata.publisher_priority);
     if (last_object_in_stream) {
-      listener->OnNewFinAvailable(metadata.location, metadata.subgroup);
+      listener->OnNewFinAvailable(metadata.location, *(metadata.subgroup));
     }
   }
 }
 
+void MoqtRelayTrackPublisher::OnPublishDone(FullTrackName full_track_name) {
+  if (full_track_name != track_) {
+    QUICHE_BUG(moqt_got_wrong_track) << "Received object for wrong track.";
+    return;
+  }
+  if (is_closing_) {
+    return;
+  }
+  // Reset all the streams so that PUBLISH_DONE kills the subscription.
+  // TODO(martinduke): This should vary based on the error code. If it was a
+  // clean PUBLISH_DONE, allow the streams to complete.
+  for (auto& [group, group_data] : queue_) {
+    for (auto& [subgroup, subgroup_data] : group_data.subgroups) {
+      for (MoqtObjectListener* listener : listeners_) {
+        listener->OnSubgroupAbandoned(group, subgroup, kResetCodeCancelled);
+      }
+    }
+  }
+  is_closing_ = true;
+  while (!listeners_.empty()) {
+    (*listeners_.begin())->OnTrackPublisherGone();
+  }
+  upstream_ = quiche::QuicheWeakPtr<MoqtSessionInterface>();
+  DeleteTrack();
+  // No class access below this line!
+}
+
 void MoqtRelayTrackPublisher::OnStreamFin(const FullTrackName&,
                                           DataStreamIndex stream) {
+  if (is_closing_) {
+    return;
+  }
   auto group_it = queue_.find(stream.group);
   if (group_it == queue_.end()) {
     return;
@@ -197,21 +275,33 @@ void MoqtRelayTrackPublisher::OnStreamFin(const FullTrackName&,
 
 void MoqtRelayTrackPublisher::OnStreamReset(const FullTrackName&,
                                             DataStreamIndex stream) {
+  if (is_closing_) {
+    return;
+  }
   for (MoqtObjectListener* listener : listeners_) {
     listener->OnSubgroupAbandoned(stream.group, stream.subgroup,
-                                  kResetCodeCanceled);
+                                  kResetCodeCancelled);
   }
 }
 
 std::optional<PublishedObject> MoqtRelayTrackPublisher::GetCachedObject(
-    uint64_t group_id, uint64_t subgroup_id, uint64_t min_object_id) const {
+    uint64_t group_id, std::optional<uint64_t> subgroup_id,
+    uint64_t min_object_id) const {
   auto group_it = queue_.find(group_id);
   if (group_it == queue_.end()) {
     // Group does not exist.
     return std::nullopt;
   }
   const Group& group = group_it->second;
-  auto subgroup_it = group.subgroups.find(subgroup_id);
+  if (!subgroup_id.has_value()) {
+    auto object_it = group.datagrams.lower_bound(min_object_id);
+    if (object_it == group.datagrams.end()) {
+      // No object after the last one received.
+      return std::nullopt;
+    }
+    return CachedObjectToPublishedObject(object_it->second);
+  }
+  auto subgroup_it = group.subgroups.find(*subgroup_id);
   if (subgroup_it == group.subgroups.end()) {
     // Subgroup does not exist.
     return std::nullopt;
@@ -230,25 +320,39 @@ std::optional<PublishedObject> MoqtRelayTrackPublisher::GetCachedObject(
 }
 
 void MoqtRelayTrackPublisher::AddObjectListener(MoqtObjectListener* listener) {
+  if (is_closing_) {
+    return;
+  }
   if (listeners_.empty()) {
     MoqtSessionInterface* session = upstream_.GetIfAvailable();
     if (session == nullptr) {
       // upstream went away, reject the subscribe.
-      listener->OnSubscribeRejected(MoqtRequestError{
-          RequestErrorCode::kInternalError,
+      listener->OnSubscribeRejected(MoqtRequestErrorInfo{
+          RequestErrorCode::kInternalError, std::nullopt,
           "The upstream session was closed before a subscription could be "
           "established."});
       DeleteTrack();
       return;
     }
-    session->SubscribeCurrentObject(track_, this, VersionSpecificParameters());
+    MessageParameters parameters;
+    // Use default params, not what the subscriber used.
+    // TODO(b/478300706): Always forward NEW_GROUP_REQUEST in this case.
+    session->Subscribe(track_, this, parameters);
   }
   listeners_.insert(listener);
+  // TODO(b/478300706): If there is a NEW_GROUP_REQUEST and we don't have one
+  // pending, send it.
+  if (got_response_) {
+    listener->OnSubscribeAccepted();
+  }
 }
 
 void MoqtRelayTrackPublisher::RemoveObjectListener(
     MoqtObjectListener* listener) {
   listeners_.erase(listener);
+  if (is_closing_) {
+    return;
+  }
   if (listeners_.empty()) {
     DeleteTrack();
   }
@@ -275,11 +379,8 @@ std::optional<Location> MoqtRelayTrackPublisher::largest_location() const {
 }
 
 std::optional<quic::QuicTimeDelta> MoqtRelayTrackPublisher::expiration() const {
-  if (!expiration_.has_value()) {
+  if (!expiration_.has_value() || *expiration_ == quic::QuicTime::Infinite()) {
     return std::nullopt;
-  }
-  if (expiration_ == quic::QuicTime::Infinite()) {
-    return quic::QuicTimeDelta::Infinite();
   }
   quic::QuicTime now = clock_->Now();
   if (expiration_ < now) {
@@ -290,6 +391,7 @@ std::optional<quic::QuicTimeDelta> MoqtRelayTrackPublisher::expiration() const {
 }
 
 void MoqtRelayTrackPublisher::DeleteTrack() {
+  is_closing_ = true;
   for (MoqtObjectListener* listener : listeners_) {
     listener->OnTrackPublisherGone();
   }

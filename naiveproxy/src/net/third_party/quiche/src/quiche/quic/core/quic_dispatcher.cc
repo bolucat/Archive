@@ -298,8 +298,7 @@ void QuicDispatcher::ProcessPacket(const QuicSocketAddress& self_address,
   }
   if (packet_info.destination_connection_id.length() !=
           expected_server_connection_id_length_ &&
-      packet_info.version.IsKnown() &&
-      !packet_info.version.AllowsVariableLengthConnectionIds()) {
+      packet_info.version.IsKnown() && !packet_info.version.IsIetfQuic()) {
     SetLastError(QUIC_INVALID_PACKET_HEADER);
     QUIC_DLOG(ERROR) << "Invalid Connection Id Length";
     return;
@@ -314,7 +313,7 @@ void QuicDispatcher::ProcessPacket(const QuicSocketAddress& self_address,
           << "Invalid destination connection ID length for version";
       return;
     }
-    if (packet_info.version.SupportsClientConnectionIds() &&
+    if (packet_info.version.IsIetfQuic() &&
         !QuicUtils::IsConnectionIdValidForVersion(
             packet_info.source_connection_id,
             packet_info.version.transport_version)) {
@@ -438,7 +437,7 @@ bool QuicDispatcher::MaybeDispatchPacket(
   if (packet_info.version_flag && packet_info.version.IsKnown() &&
       IsServerConnectionIdTooShort(server_connection_id)) {
     QUICHE_DCHECK(packet_info.version_flag);
-    QUICHE_DCHECK(packet_info.version.AllowsVariableLengthConnectionIds());
+    QUICHE_DCHECK(packet_info.version.IsIetfQuic());
     QUIC_DLOG(INFO) << "Packet with short destination connection ID "
                     << server_connection_id << " expected "
                     << static_cast<int>(expected_server_connection_id_length_);
@@ -499,7 +498,7 @@ bool QuicDispatcher::MaybeDispatchPacket(
     time_wait_list_manager_->ProcessPacket(
         packet_info.self_address, packet_info.peer_address,
         packet_info.destination_connection_id, packet_info.form,
-        packet_info.packet.length(), GetPerPacketContext());
+        packet_info.packet.length());
     return true;
   }
 
@@ -521,7 +520,7 @@ bool QuicDispatcher::MaybeDispatchPacket(
     time_wait_list_manager()->ProcessPacket(
         packet_info.self_address, packet_info.peer_address,
         packet_info.destination_connection_id, packet_info.form,
-        packet_info.packet.length(), GetPerPacketContext());
+        packet_info.packet.length());
     OnNewConnectionRejected();
     return true;
   }
@@ -565,17 +564,25 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
   QuicErrorCode connection_close_error_code =
       QUIC_HANDSHAKE_FAILED_INVALID_CONNECTION;
 
-  // If a fatal TLS alert was received when extracting Client Hello,
-  // |tls_alert_error_detail| will be set and will be used as the error_details
-  // of the connection close.
-  std::string tls_alert_error_detail;
+  // If a fatal TLS alert was received when extracting Client Hello or a packet
+  // with an invalid ack was received, |error_detail| will be set and will
+  // be used as the error_details of the connection close.
+  std::string error_detail;
 
   if (fate == kFateProcess) {
     ExtractChloResult extract_chlo_result =
         TryExtractChloOrBufferEarlyPacket(*packet_info);
     auto& parsed_chlo = extract_chlo_result.parsed_chlo;
 
-    if (extract_chlo_result.tls_alert.has_value()) {
+    if (GetQuicRestartFlag(quic_dispatcher_close_connection_on_invalid_ack) &&
+        extract_chlo_result.has_invalid_ack) {
+      QUIC_RESTART_FLAG_COUNT_N(quic_dispatcher_close_connection_on_invalid_ack,
+                                6, 7);
+      // Invalid ack when parsing received packet.
+      fate = kFateTimeWait;
+      connection_close_error_code = IETF_QUIC_PROTOCOL_VIOLATION;
+      error_detail = "Received packet with invalid ack.";
+    } else if (extract_chlo_result.tls_alert.has_value()) {
       QUIC_BUG_IF(quic_dispatcher_parsed_chlo_and_tls_alert_coexist_1,
                   parsed_chlo.has_value())
           << "parsed_chlo and tls_alert should not be set at the same time.";
@@ -584,11 +591,10 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
       uint8_t tls_alert = *extract_chlo_result.tls_alert;
       connection_close_error_code = TlsAlertToQuicErrorCode(tls_alert).value_or(
           connection_close_error_code);
-      tls_alert_error_detail =
-          absl::StrCat("TLS handshake failure from dispatcher (",
-                       EncryptionLevelToString(ENCRYPTION_INITIAL), ") ",
-                       static_cast<int>(tls_alert), ": ",
-                       SSL_alert_desc_string_long(tls_alert));
+      error_detail = absl::StrCat("TLS handshake failure from dispatcher (",
+                                  EncryptionLevelToString(ENCRYPTION_INITIAL),
+                                  ") ", static_cast<int>(tls_alert), ": ",
+                                  SSL_alert_desc_string_long(tls_alert));
     } else if (!parsed_chlo.has_value()) {
       // Client Hello incomplete. Packet has been buffered or (rarely) dropped.
       return;
@@ -615,8 +621,7 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
                       << " to time-wait list.";
       QUIC_CODE_COUNT(quic_reject_fate_time_wait);
       const std::string& connection_close_error_detail =
-          tls_alert_error_detail.empty() ? "Reject connection"
-                                         : tls_alert_error_detail;
+          error_detail.empty() ? "Reject connection" : error_detail;
       StatelesslyTerminateConnection(
           packet_info->self_address, packet_info->peer_address,
           server_connection_id, packet_info->form, packet_info->version_flag,
@@ -628,8 +633,8 @@ void QuicDispatcher::ProcessHeader(ReceivedPacketInfo* packet_info) {
           server_connection_id));
       time_wait_list_manager_->ProcessPacket(
           packet_info->self_address, packet_info->peer_address,
-          server_connection_id, packet_info->form, packet_info->packet.length(),
-          GetPerPacketContext());
+          server_connection_id, packet_info->form,
+          packet_info->packet.length());
 
       buffered_packets_.DiscardPackets(server_connection_id);
     } break;
@@ -642,7 +647,7 @@ QuicDispatcher::ExtractChloResult
 QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
     const ReceivedPacketInfo& packet_info) {
   ExtractChloResult result;
-  if (packet_info.version.UsesTls()) {
+  if (packet_info.version.IsIetfQuic()) {
     bool has_full_tls_chlo = false;
     std::string sni;
     std::vector<uint16_t> supported_groups;
@@ -657,13 +662,23 @@ QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
           packet_info.destination_connection_id, packet_info.version,
           packet_info.packet, &supported_groups, &cert_compression_algos,
           &alpns, &sni, &resumption_attempted, &early_data_attempted,
-          &result.tls_alert);
+          &result.tls_alert, &result.has_invalid_ack);
     } else {
       // If we do not have a BufferedPacketList for this connection ID,
       // create a single-use one to check whether this packet contains a
       // full single-packet CHLO.
       TlsChloExtractor tls_chlo_extractor;
-      tls_chlo_extractor.IngestPacket(packet_info.version, packet_info.packet);
+      if (GetQuicRestartFlag(quic_dispatcher_close_connection_on_invalid_ack)) {
+        QUIC_RESTART_FLAG_COUNT_N(
+            quic_dispatcher_close_connection_on_invalid_ack, 1, 7);
+        tls_chlo_extractor.IngestPacket(packet_info.version, packet_info.packet,
+                                        QuicPacketNumber());
+        result.has_invalid_ack = tls_chlo_extractor.has_invalid_ack();
+      } else {
+        tls_chlo_extractor.IngestPacket(packet_info.version,
+                                        packet_info.packet);
+      }
+
       if (tls_chlo_extractor.HasParsedFullChlo()) {
         // This packet contains a full single-packet CHLO.
         has_full_tls_chlo = true;
@@ -676,6 +691,13 @@ QuicDispatcher::TryExtractChloOrBufferEarlyPacket(
       } else {
         result.tls_alert = tls_chlo_extractor.tls_alert();
       }
+    }
+
+    if (GetQuicRestartFlag(quic_dispatcher_close_connection_on_invalid_ack) &&
+        result.has_invalid_ack) {
+      QUIC_RESTART_FLAG_COUNT_N(quic_dispatcher_close_connection_on_invalid_ack,
+                                2, 7);
+      return result;
     }
 
     if (result.tls_alert.has_value()) {
@@ -868,11 +890,6 @@ std::vector<std::shared_ptr<QuicSession>> QuicDispatcher::GetSessionsSnapshot()
     }
   }
   return snapshot;
-}
-
-std::unique_ptr<QuicPerPacketContext> QuicDispatcher::GetPerPacketContext()
-    const {
-  return nullptr;
 }
 
 void QuicDispatcher::DeleteSessions() {
@@ -1138,8 +1155,7 @@ void QuicDispatcher::OnExpiredPackets(
       self_address, peer_address, early_arrived_packets.original_connection_id,
       early_arrived_packets.ietf_quic ? IETF_QUIC_LONG_HEADER_PACKET
                                       : GOOGLE_QUIC_Q043_PACKET,
-      /*version_flag=*/true,
-      early_arrived_packets.version.HasLengthPrefixedConnectionIds(),
+      /*version_flag=*/true, early_arrived_packets.version.IsIetfQuic(),
       early_arrived_packets.version, error_code,
       "Packets buffered for too long",
       quic::QuicTimeWaitListManager::SEND_STATELESS_RESET,
@@ -1464,7 +1480,7 @@ QuicDispatcher::HandleConnectionIdCollision(
   StatelesslyTerminateConnection(
       self_address, peer_address, original_connection_id,
       IETF_QUIC_LONG_HEADER_PACKET,
-      /*version_flag=*/true, version.HasLengthPrefixedConnectionIds(), version,
+      /*version_flag=*/true, version.IsIetfQuic(), version,
       QUIC_HANDSHAKE_FAILED_CID_COLLISION,
       "Connection ID collision, please retry",
       QuicTimeWaitListManager::SEND_CONNECTION_CLOSE_PACKETS);
@@ -1519,8 +1535,7 @@ void QuicDispatcher::MaybeResetPacketsWithNoVersion(
   time_wait_list_manager()->SendPublicReset(
       packet_info.self_address, packet_info.peer_address,
       packet_info.destination_connection_id,
-      packet_info.form != GOOGLE_QUIC_Q043_PACKET, packet_info.packet.length(),
-      GetPerPacketContext());
+      packet_info.form != GOOGLE_QUIC_Q043_PACKET, packet_info.packet.length());
 }
 
 bool QuicDispatcher::MaybeSendVersionNegotiationPacket(
@@ -1537,8 +1552,7 @@ bool QuicDispatcher::MaybeSendVersionNegotiationPacket(
       packet_info.destination_connection_id, packet_info.source_connection_id,
       packet_info.form != GOOGLE_QUIC_Q043_PACKET,
       packet_info.use_length_prefix, GetSupportedVersions(),
-      packet_info.self_address, packet_info.peer_address,
-      GetPerPacketContext());
+      packet_info.self_address, packet_info.peer_address);
   return true;
 }
 

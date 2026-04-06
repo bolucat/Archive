@@ -213,8 +213,6 @@ void MessagePump::InitializeFeatures() {
   ResetAlignWakeUpsState();
 #if BUILDFLAG(IS_WIN)
   MessagePumpWin::InitializeFeatures();
-#elif BUILDFLAG(IS_ANDROID)
-  MessagePumpAndroid::InitializeFeatures();
 #endif
 }
 
@@ -293,6 +291,10 @@ IOWatcher* MessagePump::GetIOWatcher() {
     io_watcher_ = std::make_unique<IOWatcherForCurrentIOThread>();
   }
   return io_watcher_.get();
+}
+
+bool MessagePump::IsAsyncIOSupported() {
+  return false;
 }
 
 }  // namespace base

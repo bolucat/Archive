@@ -26,6 +26,8 @@
 #include "internal.h"
 
 
+using namespace bssl;
+
 static int cbs_get(CBS *cbs, const uint8_t **p, size_t n) {
   if (cbs->len < n) {
     return 0;
@@ -752,6 +754,39 @@ char *CBS_asn1_oid_to_text(const CBS *cbs) {
 err:
   CBB_cleanup(&cbb);
   return nullptr;
+}
+
+int CBS_is_valid_asn1_relative_oid(const CBS *cbs) {
+  return CBS_is_valid_asn1_oid(cbs);
+}
+
+char *CBS_asn1_relative_oid_to_text(const CBS *cbs) {
+  CBS copy = *cbs;
+  ScopedCBB cbb;
+  if (!CBB_init(cbb.get(), 32)) {
+    return nullptr;
+  }
+
+  // Relative OIDs must have at least one component.
+  uint64_t v;
+  if (!parse_base128_integer(&copy, &v) || !add_decimal(cbb.get(), v)) {
+    return nullptr;
+  }
+
+  while (CBS_len(&copy) != 0) {
+    if (!parse_base128_integer(&copy, &v) || !CBB_add_u8(cbb.get(), '.') ||
+        !add_decimal(cbb.get(), v)) {
+      return nullptr;
+    }
+  }
+
+  uint8_t *txt;
+  size_t txt_len;
+  if (!CBB_add_u8(cbb.get(), '\0') || !CBB_finish(cbb.get(), &txt, &txt_len)) {
+    return nullptr;
+  }
+
+  return reinterpret_cast<char *>(txt);
 }
 
 static int cbs_get_two_digits(CBS *cbs, int *out) {

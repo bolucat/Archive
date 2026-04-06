@@ -17,6 +17,7 @@
 #include "base/compiler_specific.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/synchronization/lock.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "base/build_info_jni/AndroidInfo_jni.h"
@@ -70,28 +71,33 @@ const IAndroidInfo& get_android_info() {
 }  // namespace
 
 void Set(const IAndroidInfo& info) {
+  static base::NoDestructor<base::Lock> lock;
+  base::AutoLock l(*lock);
+
   std::optional<IAndroidInfo>& holder = get_holder();
-  DCHECK(!holder.has_value());
+  if (holder.has_value()) {
+    return;
+  }
   holder.emplace(info);
 }
 
-static void JNI_AndroidInfo_FillFields(JNIEnv* env,
-                                       std::string& brand,
-                                       std::string& device,
-                                       std::string& buildId,
-                                       std::string& manufacturer,
-                                       std::string& model,
-                                       std::string& type,
-                                       std::string& board,
-                                       std::string& androidBuildFingerprint,
-                                       std::string& versionIncremental,
-                                       std::string& hardware,
-                                       std::string& codename,
-                                       std::string& socManufacturer,
-                                       std::string& supportedAbis,
-                                       jint sdkInt,
-                                       jboolean isDebugAndroid,
-                                       std::string& securityPatch) {
+static void JNI_AndroidInfo_FillFields(
+    const std::string& brand,
+    const std::string& device,
+    const std::string& buildId,
+    const std::string& manufacturer,
+    const std::string& model,
+    const std::string& type,
+    const std::string& board,
+    const std::string& androidBuildFingerprint,
+    const std::string& versionIncremental,
+    const std::string& hardware,
+    const std::string& codename,
+    const std::string& socManufacturer,
+    const std::string& supportedAbis,
+    int32_t sdkInt,
+    bool isDebugAndroid,
+    const std::string& securityPatch) {
   Set(IAndroidInfo{.abiName = supportedAbis,
                    .androidBuildFp = androidBuildFingerprint,
                    .androidBuildId = buildId,
@@ -101,7 +107,7 @@ static void JNI_AndroidInfo_FillFields(JNIEnv* env,
                    .codename = codename,
                    .device = device,
                    .hardware = hardware,
-                   .isDebugAndroid = static_cast<bool>(isDebugAndroid),
+                   .isDebugAndroid = isDebugAndroid,
                    .manufacturer = manufacturer,
                    .model = model,
                    .sdkInt = sdkInt,
@@ -176,3 +182,5 @@ const std::string& security_patch() {
 }
 
 }  // namespace base::android::android_info
+
+DEFINE_JNI(AndroidInfo)

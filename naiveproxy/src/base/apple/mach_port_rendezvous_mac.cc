@@ -11,6 +11,7 @@
 
 #include <utility>
 
+#include "base/apple/app_plist_size_buildflags.h"
 #include "base/apple/foundation_util.h"
 #include "base/apple/mach_logging.h"
 #include "base/apple/scoped_dispatch_object.h"
@@ -26,13 +27,12 @@
 #include "base/numerics/byte_conversions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
-#include "base/types/cxx23_to_underlying.h"
 
 namespace base {
 
 // Whether any peer process requirements should be validated.
 BASE_FEATURE(kMachPortRendezvousValidatePeerRequirements,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Whether a failure to validate a peer process against a requirement
 // should result in aborting the rendezvous.
@@ -45,8 +45,11 @@ namespace {
 // PID of the server.
 constexpr char kBootstrapNameFormat[] = "%s.MachPortRendezvousServer.%d";
 
-// This can be safely increased if Info.plist grows in the future.
-constexpr size_t kMaxInfoPlistDataSize = 18 * 1024;
+// The size of the on-disk app-Info.plist with extra size added to account for
+// size increases that occur during hydration. The extra size can safely be
+// increased in the future.
+constexpr size_t kMaxInfoPlistDataSize =
+    BUILDFLAG(APP_INFO_PLIST_FILE_SIZE) + 1024;
 
 // The state of the peer validation policy features is passed to child processes
 // via this environment variable as Mach port rendezvous is performed before the
@@ -384,11 +387,13 @@ GetPeerValidationPolicyFromEnvironment() {
     }
 
     switch (policy_int) {
-      case to_underlying(MachPortRendezvousPeerValidationPolicy::kNoValidation):
+      case std::to_underlying(
+          MachPortRendezvousPeerValidationPolicy::kNoValidation):
         return MachPortRendezvousPeerValidationPolicy::kNoValidation;
-      case to_underlying(MachPortRendezvousPeerValidationPolicy::kValidateOnly):
+      case std::to_underlying(
+          MachPortRendezvousPeerValidationPolicy::kValidateOnly):
         return MachPortRendezvousPeerValidationPolicy::kValidateOnly;
-      case to_underlying(MachPortRendezvousPeerValidationPolicy::kEnforce):
+      case std::to_underlying(MachPortRendezvousPeerValidationPolicy::kEnforce):
         return MachPortRendezvousPeerValidationPolicy::kEnforce;
       default:
         // An invalid policy or no policy was passed via the environment. Fall

@@ -29,7 +29,7 @@ class NetworkAnonymizationKey;
 class ProxyInfo;
 class ProxyChain;
 
-constexpr int kDefaultMaxSocketsPerProxyChain = 32;
+constexpr size_t kDefaultMaxSocketsPerProxyChain = 32;
 
 class NET_EXPORT_PRIVATE ClientSocketPoolManager {
  public:
@@ -39,22 +39,25 @@ class NET_EXPORT_PRIVATE ClientSocketPoolManager {
   // The setter methods below affect only newly created socket pools after the
   // methods are called. Normally they should be called at program startup
   // before any ClientSocketPoolManagerImpl is created.
-  static int max_sockets_per_pool(HttpNetworkSession::SocketPoolType pool_type);
-  static void set_max_sockets_per_pool(
-      HttpNetworkSession::SocketPoolType pool_type,
-      int socket_count);
-
-  static int max_sockets_per_group(
+  static size_t socket_soft_cap_per_pool(
       HttpNetworkSession::SocketPoolType pool_type);
-  static void set_max_sockets_per_group(
+  static void set_socket_soft_cap_per_pool_for_test(
       HttpNetworkSession::SocketPoolType pool_type,
-      int socket_count);
+      size_t socket_count);
 
-  static int max_sockets_per_proxy_chain(
+  static size_t max_sockets_per_group(
       HttpNetworkSession::SocketPoolType pool_type);
+  static void set_max_sockets_per_group_for_test(
+      HttpNetworkSession::SocketPoolType pool_type,
+      size_t socket_count);
+
+  static size_t max_sockets_per_proxy_chain(
+      HttpNetworkSession::SocketPoolType pool_type);
+  // Unlike the other `set_` methods, this one is used in production code and
+  // thus cannot be marked as `_for_test`. Usage should be carefully audited.
   static void set_max_sockets_per_proxy_chain(
       HttpNetworkSession::SocketPoolType pool_type,
-      int socket_count);
+      size_t socket_count);
 
   static base::TimeDelta unused_idle_socket_timeout(
       HttpNetworkSession::SocketPoolType pool_type);
@@ -91,8 +94,7 @@ int InitSocketHandleForHttpRequest(
     const NetLogWithSource& net_log,
     ClientSocketHandle* socket_handle,
     CompletionOnceCallback callback,
-    const ClientSocketPool::ProxyAuthCallback& proxy_auth_callback,
-    bool fail_if_alias_requires_proxy_override);
+    const ClientSocketPool::ProxyAuthCallback& proxy_auth_callback);
 
 // A helper method that uses the passed in proxy information to initialize a
 // ClientSocketHandle with the relevant socket pool. Use this method for
@@ -110,8 +112,7 @@ int InitSocketHandleForWebSocketRequest(
     const NetLogWithSource& net_log,
     ClientSocketHandle* socket_handle,
     CompletionOnceCallback callback,
-    const ClientSocketPool::ProxyAuthCallback& proxy_auth_callback,
-    bool fail_if_alias_requires_proxy_override);
+    const ClientSocketPool::ProxyAuthCallback& proxy_auth_callback);
 
 // Similar to InitSocketHandleForHttpRequest except that it initiates the
 // desired number of preconnect streams from the relevant socket pool.
@@ -127,7 +128,6 @@ int PreconnectSocketsForHttpRequest(
     SecureDnsPolicy secure_dns_policy,
     const NetLogWithSource& net_log,
     int num_preconnect_streams,
-    bool fail_if_alias_requires_proxy_override,
     CompletionOnceCallback callback);
 
 }  // namespace net

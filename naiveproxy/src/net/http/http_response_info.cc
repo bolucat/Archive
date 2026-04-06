@@ -146,7 +146,10 @@ enum {
   RESPONSE_EXTRA_INFO_HAS_PROXY_CHAIN = 1 << 1,
 
   // This bit is set if the response has original_response_time.
-  RESPONSE_EXTRA_INFO_HAS_ORIGINAL_RESPONSE_TIME = 1 << 2
+  RESPONSE_EXTRA_INFO_HAS_ORIGINAL_RESPONSE_TIME = 1 << 2,
+
+  // This bit is set if the response has an encoded body size stored.
+  RESPONSE_EXTRA_INFO_HAS_ENCODED_BODY_SIZE = 1 << 3
 };
 
 HttpResponseInfo::HttpResponseInfo() = default;
@@ -158,10 +161,8 @@ HttpResponseInfo::~HttpResponseInfo() = default;
 HttpResponseInfo& HttpResponseInfo::operator=(const HttpResponseInfo& rhs) =
     default;
 
-bool HttpResponseInfo::InitFromPickle(const base::Pickle& pickle,
+bool HttpResponseInfo::InitFromPickle(base::PickleIterator iter,
                                       bool* response_truncated) {
-  base::PickleIterator iter(pickle);
-
   // Read flags and verify version
   int flags;
   int extra_flags = 0;
@@ -380,6 +381,14 @@ bool HttpResponseInfo::InitFromPickle(const base::Pickle& pickle,
     proxy_chain = std::move(*unpickled_proxy_chain);
   }
 
+  if (extra_flags & RESPONSE_EXTRA_INFO_HAS_ENCODED_BODY_SIZE) {
+    int64_t size;
+    if (!iter.ReadInt64(&size)) {
+      return false;
+    }
+    encoded_body_size = size;
+  }
+
   return true;
 }
 
@@ -439,6 +448,10 @@ std::unique_ptr<base::Pickle> HttpResponseInfo::MakePickle(
 
   if (proxy_chain.IsValid()) {
     extra_flags |= RESPONSE_EXTRA_INFO_HAS_PROXY_CHAIN;
+  }
+
+  if (encoded_body_size.has_value()) {
+    extra_flags |= RESPONSE_EXTRA_INFO_HAS_ENCODED_BODY_SIZE;
   }
 
   extra_flags |= RESPONSE_EXTRA_INFO_HAS_ORIGINAL_RESPONSE_TIME;
@@ -508,6 +521,11 @@ std::unique_ptr<base::Pickle> HttpResponseInfo::MakePickle(
   if (proxy_chain.IsValid()) {
     proxy_chain.Persist(pickle.get());
   }
+
+  if (encoded_body_size.has_value()) {
+    pickle->WriteInt64(encoded_body_size.value());
+  }
+
   return pickle;
 }
 

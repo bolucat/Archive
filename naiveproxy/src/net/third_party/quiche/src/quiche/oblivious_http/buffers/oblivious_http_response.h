@@ -79,7 +79,7 @@ class QUICHE_EXPORT ObliviousHttpResponse {
   static absl::StatusOr<ObliviousHttpResponse> CreateServerObliviousResponse(
       std::string plaintext_payload,
       ObliviousHttpRequest::Context& oblivious_http_request_context,
-      absl::string_view resp_label =
+      absl::string_view response_label =
           ObliviousHttpHeaderKeyConfig::kOhttpResponseLabel,
       QuicheRandom* quiche_random = nullptr);
 
@@ -104,6 +104,11 @@ class QUICHE_EXPORT ObliviousHttpResponse {
       ObliviousHttpRequest::Context& oblivious_http_request_context,
       const AeadContextData& aead_context_data,
       absl::string_view plaintext_payload, absl::string_view chunk_nonce,
+      bool is_final_chunk);
+
+  static absl::StatusOr<std::string> DecryptChunk(
+      absl::string_view encrypted_chunk,
+      const AeadContextData& aead_context_data, absl::string_view chunk_nonce,
       bool is_final_chunk);
 
   // Generic Usecase : server-side calls this method in the context of Response

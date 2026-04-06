@@ -79,9 +79,9 @@ void SetJavaException(const char* exception) {
   }
 }
 
-void JNI_JavaExceptionReporter_ReportJavaException(
+static void JNI_JavaExceptionReporter_ReportJavaException(
     JNIEnv* env,
-    jboolean crash_after_report,
+    bool crash_after_report,
     const JavaRef<jthrowable>& e) {
   std::string exception_info = base::android::GetJavaExceptionInfo(env, e);
   bool should_report_exception = GetJavaExceptionFilter().Run(e);
@@ -98,8 +98,9 @@ void JNI_JavaExceptionReporter_ReportJavaException(
   }
 }
 
-void JNI_JavaExceptionReporter_ReportJavaStackTrace(JNIEnv* env,
-                                                    std::string& stack_trace) {
+static void JNI_JavaExceptionReporter_ReportJavaStackTrace(
+    JNIEnv* env,
+    const std::string& stack_trace) {
   SetJavaException(stack_trace.c_str());
   base::debug::DumpWithoutCrashing();
   SetJavaException(nullptr);
@@ -108,4 +109,4 @@ void JNI_JavaExceptionReporter_ReportJavaStackTrace(JNIEnv* env,
 }  // namespace android
 }  // namespace base
 
-DEFINE_JNI_FOR_JavaExceptionReporter()
+DEFINE_JNI(JavaExceptionReporter)

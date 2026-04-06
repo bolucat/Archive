@@ -160,8 +160,11 @@ class NET_EXPORT_PRIVATE HttpStreamPool
   class NET_EXPORT_PRIVATE Job;
   class NET_EXPORT_PRIVATE JobController;
   class NET_EXPORT_PRIVATE Group;
+  class NET_EXPORT_PRIVATE Attempt;
   class NET_EXPORT_PRIVATE AttemptManager;
   class NET_EXPORT_PRIVATE IPEndPointStateTracker;
+  // TODO(crbug.com/457478038): Remove `TcpBasedAttempt` and
+  // `TcpBasedAttemptSlot` once we complete implementing `Attempt`.
   class NET_EXPORT_PRIVATE TcpBasedAttempt;
   class NET_EXPORT_PRIVATE TcpBasedAttemptSlot;
   class NET_EXPORT_PRIVATE QuicAttempt;
@@ -187,6 +190,8 @@ class NET_EXPORT_PRIVATE HttpStreamPool
 
   // Returns when to start the stream attempt delay timer.
   static TcpBasedAttemptDelayBehavior GetTcpBasedAttemptDelayBehavior();
+
+  static bool IsQuicErrorBrokenable(int net_error);
 
   explicit HttpStreamPool(HttpNetworkSession* http_network_session,
                           bool cleanup_on_ip_address_change = true);
@@ -281,13 +286,14 @@ class NET_EXPORT_PRIVATE HttpStreamPool
       const NetworkAnonymizationKey& network_anonymization_key) const;
 
   // Returns true when QUIC is broken for `destination`.
-  bool IsQuicBroken(const url::SchemeHostPort& destination,
-                    const NetworkAnonymizationKey& network_anonymization_key);
+  bool IsQuicBroken(
+      const url::SchemeHostPort& destination,
+      const NetworkAnonymizationKey& network_anonymization_key) const;
 
   // Returns true when QUIC can be used for `destination`.
   bool CanUseQuic(const url::SchemeHostPort& destination,
                   const NetworkAnonymizationKey& network_anonymization_key,
-                  bool enable_alternative_services);
+                  bool enable_alternative_services) const;
 
   // Returns the first quic::ParsedQuicVersion that has been advertised in
   // `alternative_service_info` and is supported, following the order of
@@ -305,7 +311,7 @@ class NET_EXPORT_PRIVATE HttpStreamPool
   CompletionOnceCallback GetAltSvcQuicPreconnectCallback();
 
   // Retrieves information on the current state of the pool as a base::Value.
-  base::Value::Dict GetInfoAsValue() const;
+  base::DictValue GetInfoAsValue() const;
 
   void SetDelegateForTesting(std::unique_ptr<TestDelegate> observer);
 
@@ -359,9 +365,7 @@ class NET_EXPORT_PRIVATE HttpStreamPool
   // JobControllers), always return true.
   bool EnsureTotalActiveStreamCountBelowLimit() const;
 
-  Group& GetOrCreateGroup(
-      const HttpStreamKey& stream_key,
-      std::optional<QuicSessionAliasKey> quic_session_alias_key = std::nullopt);
+  Group& GetOrCreateGroup(const HttpStreamKey& stream_key);
 
   Group* GetGroup(const HttpStreamKey& stream_key);
 
@@ -415,7 +419,7 @@ class NET_EXPORT_PRIVATE HttpStreamPool
   // The total number of connecting streams in this pool.
   size_t total_connecting_stream_count_ = 0;
 
-  std::map<HttpStreamKey, std::unique_ptr<Group>> groups_;
+  std::map<HttpStreamKey, Group> groups_;
 
   std::set<std::unique_ptr<JobController>, base::UniquePtrComparator>
       job_controllers_;

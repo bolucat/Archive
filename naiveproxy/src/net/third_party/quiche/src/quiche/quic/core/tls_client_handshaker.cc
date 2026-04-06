@@ -5,7 +5,7 @@
 #include "quiche/quic/core/tls_client_handshaker.h"
 
 #include <algorithm>
-#include <cstring>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -13,17 +13,27 @@
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "openssl/ssl.h"
+#include "quiche/quic/core/crypto/client_proof_source.h"
+#include "quiche/quic/core/crypto/crypto_handshake.h"
+#include "quiche/quic/core/crypto/crypto_protocol.h"
+#include "quiche/quic/core/crypto/proof_verifier.h"
 #include "quiche/quic/core/crypto/quic_crypto_client_config.h"
-#include "quiche/quic/core/crypto/quic_encrypter.h"
 #include "quiche/quic/core/crypto/transport_parameters.h"
+#include "quiche/quic/core/quic_crypto_client_stream.h"
+#include "quiche/quic/core/quic_data_writer.h"
+#include "quiche/quic/core/quic_error_codes.h"
+#include "quiche/quic/core/quic_server_id.h"
 #include "quiche/quic/core/quic_session.h"
 #include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/core/quic_versions.h"
+#include "quiche/quic/core/tls_handshaker.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_hostname_utils.h"
+#include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/quiche_text_utils.h"
 
 namespace quic {
@@ -255,7 +265,7 @@ bool TlsClientHandshaker::SetAlpn() {
   // Enable ALPS only for versions that use HTTP/3 frames.
   for (const std::string& alpn_string : alpns) {
     for (const ParsedQuicVersion& version : session()->supported_versions()) {
-      if (!version.UsesHttp3() || AlpnForVersion(version) != alpn_string) {
+      if (!version.IsIetfQuic() || AlpnForVersion(version) != alpn_string) {
         continue;
       }
       if (SSL_add_application_settings(
@@ -275,10 +285,14 @@ bool TlsClientHandshaker::SetAlpn() {
 bool TlsClientHandshaker::SetTransportParameters() {
   TransportParameters params;
   params.perspective = Perspective::IS_CLIENT;
-  params.legacy_version_information =
-      TransportParameters::LegacyVersionInformation();
-  params.legacy_version_information->version =
-      CreateQuicVersionLabel(session()->supported_versions().front());
+  if (GetQuicRestartFlag(quic_stop_sending_legacy_version_info)) {
+    QUIC_RESTART_FLAG_COUNT_N(quic_stop_sending_legacy_version_info, 4, 4);
+  } else {
+    params.legacy_version_information =
+        TransportParameters::LegacyVersionInformation();
+    params.legacy_version_information->version =
+        CreateQuicVersionLabel(session()->supported_versions().front());
+  }
   params.version_information = TransportParameters::VersionInformation();
   const QuicVersionLabel version = CreateQuicVersionLabel(session()->version());
   params.version_information->chosen_version = version;
@@ -286,6 +300,18 @@ bool TlsClientHandshaker::SetTransportParameters() {
 
   if (!handshaker_delegate()->FillTransportParameters(&params)) {
     return false;
+  }
+
+  // The `debugging_sni` field must not be sent when attempting Encrypted Client
+  // Hello (ECH) because it would reveal the real SNI in cleartext. When only
+  // ECH GREASE will be sent, it's still sensible to omit `debugging_sni`
+  // because it would enable observers to discriminate real ECH from GREASE. The
+  // `kDSNI` option forces `debugging_sni` to be sent despite ECH GREASE.
+  if (!tls_connection_.ssl_config().ech_config_list.empty() ||
+      (tls_connection_.ssl_config().ech_grease_enabled &&
+       !session_->config()->HasClientSentConnectionOption(
+           kDSNI, Perspective::IS_CLIENT))) {
+    params.debugging_sni.reset();
   }
 
   // Notify QuicConnectionDebugVisitor.
@@ -321,20 +347,23 @@ bool TlsClientHandshaker::ProcessTransportParameters(
   // Notify QuicConnectionDebugVisitor.
   session()->connection()->OnTransportParametersReceived(
       *received_transport_params_);
-
-  if (received_transport_params_->legacy_version_information.has_value()) {
-    if (received_transport_params_->legacy_version_information->version !=
-        CreateQuicVersionLabel(session()->connection()->version())) {
-      *error_details = "Version mismatch detected";
-      return false;
-    }
-    if (CryptoUtils::ValidateServerHelloVersions(
-            received_transport_params_->legacy_version_information
-                ->supported_versions,
-            session()->connection()->server_supported_versions(),
-            error_details) != QUIC_NO_ERROR) {
-      QUICHE_DCHECK(!error_details->empty());
-      return false;
+  if (GetQuicRestartFlag(quic_stop_parsing_legacy_version_info)) {
+    QUIC_RESTART_FLAG_COUNT_N(quic_stop_parsing_legacy_version_info, 1, 3);
+  } else {
+    if (received_transport_params_->legacy_version_information.has_value()) {
+      if (received_transport_params_->legacy_version_information->version !=
+          CreateQuicVersionLabel(session()->connection()->version())) {
+        *error_details = "Version mismatch detected";
+        return false;
+      }
+      if (CryptoUtils::ValidateServerHelloVersions(
+              received_transport_params_->legacy_version_information
+                  ->supported_versions,
+              session()->connection()->server_supported_versions(),
+              error_details) != QUIC_NO_ERROR) {
+        QUICHE_DCHECK(!error_details->empty());
+        return false;
+      }
     }
   }
   if (received_transport_params_->version_information.has_value()) {

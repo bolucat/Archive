@@ -14,6 +14,7 @@
 #include "base/compiler_specific.h"
 #include "base/debug/alias.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/json/json_writer.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -320,7 +321,7 @@ bool TaskTracker::WillPostTask(Task* task,
 }
 
 bool TaskTracker::WillPostTaskNow(const Task& task,
-                                  TaskPriority priority) const {
+                                  ThreadType thread_type) const {
   // Delayed tasks's TaskShutdownBehavior is implicitly capped at
   // SKIP_ON_SHUTDOWN. i.e. it cannot BLOCK_SHUTDOWN, TaskTracker will not wait
   // for a delayed task in a BLOCK_SHUTDOWN TaskSource and will also skip
@@ -330,8 +331,8 @@ bool TaskTracker::WillPostTaskNow(const Task& task,
   }
 
   if (has_log_best_effort_tasks_switch_ &&
-      priority == TaskPriority::BEST_EFFORT) {
-    // A TaskPriority::BEST_EFFORT task is being posted.
+      thread_type == ThreadType::kBackground) {
+    // A ThreadType::kBackground task is being posted.
     LOG(INFO) << task.posted_from.ToString();
   }
   return true;
@@ -350,7 +351,7 @@ RegisteredTaskSource TaskTracker::RegisterTaskSource(
   return RegisteredTaskSource(std::move(task_source), this);
 }
 
-bool TaskTracker::CanRunPriority(TaskPriority priority) const {
+bool TaskTracker::CanRunThreadType(ThreadType thread_type) const {
   auto can_run_policy = can_run_policy_.load();
 
   if (can_run_policy == CanRunPolicy::kAll) {
@@ -358,7 +359,7 @@ bool TaskTracker::CanRunPriority(TaskPriority priority) const {
   }
 
   if (can_run_policy == CanRunPolicy::kForegroundOnly &&
-      priority >= TaskPriority::USER_VISIBLE) {
+      thread_type > ThreadType::kBackground) {
     return true;
   }
 
@@ -374,11 +375,13 @@ RegisteredTaskSource TaskTracker::RunAndPopNextTask(
   // Run the next task in |task_source|.
   std::optional<Task> task;
   TaskTraits traits;
+  ThreadType thread_type;
   {
     auto transaction = task_source->BeginTransaction();
     task = should_run_tasks ? task_source.TakeTask(&transaction)
                             : task_source.Clear(&transaction);
     traits = transaction.traits();
+    thread_type = transaction.thread_type();
   }
 
   if (task) {
@@ -388,7 +391,7 @@ RegisteredTaskSource TaskTracker::RunAndPopNextTask(
     }
 
     // Run the |task| (whether it's a worker task or the Clear() closure).
-    RunTask(std::move(task.value()), task_source.get(), traits);
+    RunTask(std::move(task.value()), task_source.get(), traits, thread_type);
   }
   if (should_run_tasks) {
     AfterRunTask(task_source->shutdown_behavior());
@@ -421,7 +424,8 @@ void TaskTracker::EndFizzlingBlockShutdownTasks() {
 
 void TaskTracker::RunTask(Task task,
                           TaskSource* task_source,
-                          const TaskTraits& traits) {
+                          const TaskTraits& traits,
+                          ThreadType thread_type) {
   DCHECK(task_source);
 
   const auto environment = task_source->GetExecutionEnvironment();
@@ -462,6 +466,7 @@ void TaskTracker::RunTask(Task task,
                              TaskSourceExecutionMode::kSingleThread);
     ScopedSetTaskPriorityForCurrentThread
         scoped_set_task_priority_for_current_thread(traits.priority());
+    internal::CurrentTaskImportanceOverride thread_type_override(thread_type);
 
     // Local storage map used if none is provided by |environment|.
     std::optional<SequenceLocalStorageMap> local_storage_map;

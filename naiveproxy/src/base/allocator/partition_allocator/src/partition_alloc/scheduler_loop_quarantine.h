@@ -2,10 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
+#include "partition_alloc/slot_start.h"
 
 // Scheduler-loop Quarantine is a quarantine pool behind PartitionAlloc with
 // Advanced Checks and `ADVANCED_MEMORY_SAFETY_CHECKS()`.
@@ -65,7 +62,7 @@
 
 namespace partition_alloc {
 
-struct PartitionRoot;
+class PartitionRoot;
 class ThreadCache;
 struct SchedulerLoopQuarantineStats;
 
@@ -84,6 +81,8 @@ struct SchedulerLoopQuarantineConfig {
   // For informational purposes only.
   char branch_name[32] = "";
 };
+
+struct BucketSizeDetails;
 
 class PA_COMPONENT_EXPORT(PARTITION_ALLOC) SchedulerLoopQuarantineRoot {
  public:
@@ -157,9 +156,10 @@ class SchedulerLoopQuarantineBranch {
   // requirement.
   void SetCapacityInBytes(size_t capacity_in_bytes);
 
-  void Quarantine(void* object,
+  void Quarantine(SlotStart slot_start,
                   SlotSpanMetadata* slot_span,
-                  uintptr_t slot_start) PA_LOCKS_EXCLUDED(lock_);
+                  const internal::BucketSizeDetails& size_details)
+      PA_LOCKS_EXCLUDED(lock_);
 
   void AllowScanlessPurge();
   void DisallowScanlessPurge();
@@ -186,6 +186,8 @@ class SchedulerLoopQuarantineBranch {
       --branch_.pause_quarantine_;
     }
   };
+
+  int PausedCountForTesting() { return pause_quarantine_; }
 
  private:
   // `ToBeFreedArray` is used in `Quarantine` and
@@ -227,7 +229,7 @@ class SchedulerLoopQuarantineBranch {
 
   // `slots_` hold quarantined entries.
   struct QuarantineSlot {
-    uintptr_t slot_start = 0;
+    SlotStart slot_start;
     // Record bucket index instead of slot size because look-up from bucket
     // index to slot size is more lightweight compared to its reverse look-up.
     size_t bucket_index = 0;

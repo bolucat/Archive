@@ -8,6 +8,7 @@
 #include "base/component_export.h"
 #include "base/containers/span.h"
 #include "base/functional/callback_forward.h"
+#include "base/time/time.h"
 #include "components/unexportable_keys/background_task_priority.h"
 #include "components/unexportable_keys/service_error.h"
 #include "components/unexportable_keys/unexportable_key_id.h"
@@ -79,10 +80,58 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyService {
   // calling `GetWrappedKey()` on a previous instance of `UnexportableKeyId`.
   // Invokes `callback` with a `ServiceError` if `wrapped_key` cannot be
   // imported.
+  //
+  // This method is also a supported way of transferring a key between
+  // `UnexportableKeyService` instances. A key's lifetime is controlled by the
+  // source `UnexportableKeyService` instance until this method completes in the
+  // destination service.
   virtual void FromWrappedSigningKeySlowlyAsync(
       base::span<const uint8_t> wrapped_key,
       BackgroundTaskPriority priority,
       base::OnceCallback<void(ServiceErrorOr<UnexportableKeyId>)> callback) = 0;
+
+  // Returns all signing keys currently stored by the OS that are have been
+  // managed by this service.
+  //
+  // Invokes `callback` with a `ServiceError` if an error occurs during
+  // retrieval, or the list of stored keys otherwise.
+  //
+  // Note: The intended use case for this method is garbage collecting obsolete
+  // keys. That is, clients are expected to call this method, and then compare
+  // the returned keys to the ones present in the client's storage. Keys that
+  // are returned but no longer recognized by the client should be passed to
+  // `DeleteKeySlowlyAsync()` soon after.
+  //
+  // Note: This method is meaningless on platforms that do not support storing
+  // keys in the OS, and will return an empty list on those platforms. Here
+  // clients are not expected to perform garbage collection.
+  //
+  // Example usage:
+  //
+  // void OnKeys(ServiceErrorOr<std::vector<UnexportableKeyId>> maybe_keys) {
+  //   if (!maybe_keys.has_value()) {
+  //     // Handle error.
+  //     return;
+  //   }
+  //
+  //   UnexportableKeyService& service = GetUnexportableKeyService();
+  //   for (const auto& key : *maybe_keys) {
+  //     if (!MyCodeRecognizesThisKey(key)) {
+  //       // Perform garbage collection.
+  //       service.DeleteKeySlowlyAsync(key, ...);
+  //     }
+  //   }
+  // }
+  //
+  //
+  // UnexportableKeyService& service = GetUnexportableKeyService();
+  // service.GetAllSigningKeysForGarbageCollectionSlowlyAsync(
+  //     kPriority,
+  //     base::BindOnce(OnKeys));
+  virtual void GetAllSigningKeysForGarbageCollectionSlowlyAsync(
+      BackgroundTaskPriority priority,
+      base::OnceCallback<void(ServiceErrorOr<std::vector<UnexportableKeyId>>)>
+          callback) = 0;
 
   // Schedules a new asynchronous signing task.
   // Might return a cached result if a task with the same combination of
@@ -92,11 +141,44 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyService {
   // `key_id` must have resulted from calling `GenerateSigningKeySlowlyAsync()`
   // or `FromWrappedSigningKeySlowlyAsync()`.
   virtual void SignSlowlyAsync(
-      const UnexportableKeyId& key_id,
+      UnexportableKeyId key_id,
       base::span<const uint8_t> data,
       BackgroundTaskPriority priority,
       base::OnceCallback<void(ServiceErrorOr<std::vector<uint8_t>>)>
           callback) = 0;
+
+  // Deletes a collection of keys.
+  //
+  // Invokes `callback` with the number of deleted keys or a `ServiceError` if
+  // an error occurs during deletion.
+  //
+  // The entries in `key_ids` must have resulted from calling
+  // `GenerateSigningKeySlowlyAsync()` or `FromWrappedSigningKeySlowlyAsync()`.
+  //
+  // Assuming the entries in `key_ids` were found, they are invalidated
+  // immediately and should not be used again.
+  //
+  // Note: On platforms like macOS this will delete the keys from the OS, and
+  // thus future calls to `FromWrappedSigningKeySlowlyAsync()` with the same
+  // wrapped keys will fail.
+  virtual void DeleteKeysSlowlyAsync(
+      base::span<const UnexportableKeyId> key_ids,
+      BackgroundTaskPriority priority,
+      base::OnceCallback<void(ServiceErrorOr<size_t>)> callback) = 0;
+
+  // Deletes all keys.
+  //
+  // This will remove all keys from the in-memory cache synchronously, cancel
+  // **all** outstanding key operation requests, and schedule an asynchronous
+  // deletion task. This will invoke `callback` with a `ServiceError` if an
+  // error occurs during deletion and the number of deleted keys otherwise.
+  // Furthermore, the background task is scheduled with the highest priority,
+  // ensuring that it is completed as soon as possible.
+  //
+  // Note: On platforms like macOS this will delete all keys from the OS, and
+  // thus future calls to `FromWrappedSigningKeySlowlyAsync()` will fail.
+  virtual void DeleteAllKeysSlowlyAsync(
+      base::OnceCallback<void(ServiceErrorOr<size_t>)> callback) = 0;
 
   // Returns an SPKI that contains the public key of a key that `key_id` refers
   // to.
@@ -121,6 +203,18 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyService {
   // or `FromWrappedSigningKeySlowlyAsync()`
   virtual ServiceErrorOr<crypto::SignatureVerifier::SignatureAlgorithm>
   GetAlgorithm(UnexportableKeyId key_id) const = 0;
+
+  // Returns the tag of a key that `key_id` refers to.
+  // Returns a `ServiceError` if `key_id` is not found, or if the key does not
+  // support stateful operations.
+  virtual ServiceErrorOr<std::string> GetKeyTag(
+      UnexportableKeyId key_id) const = 0;
+
+  // Returns the time a key that `key_id` refers to was created.
+  // Returns a `ServiceError` if `key_id` is not found, or if the key does not
+  // support stateful operations.
+  virtual ServiceErrorOr<base::Time> GetCreationTime(
+      UnexportableKeyId key_id) const = 0;
 };
 
 }  // namespace unexportable_keys

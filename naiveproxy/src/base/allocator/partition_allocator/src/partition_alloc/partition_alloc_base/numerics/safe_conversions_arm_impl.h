@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_PARTITION_ALLOC_BASE_NUMERICS_SAFE_CONVERSIONS_ARM_IMPL_H_
 #define PARTITION_ALLOC_PARTITION_ALLOC_BASE_NUMERICS_SAFE_CONVERSIONS_ARM_IMPL_H_
 
@@ -14,6 +9,7 @@
 #include <limits>
 #include <type_traits>
 
+#include "partition_alloc/partition_alloc_base/compiler_specific.h"
 #include "partition_alloc/partition_alloc_base/numerics/safe_conversions_impl.h"
 
 namespace partition_alloc::internal::base::internal {
@@ -28,7 +24,7 @@ struct SaturateFastAsmOp {
       IntegerBitsPlusSign<Dst>::value <= IntegerBitsPlusSign<int32_t>::value &&
       !IsTypeInRangeForNumericType<Dst, Src>::value;
 
-  __attribute__((always_inline)) static Dst Do(Src value) {
+  PA_ALWAYS_INLINE static Dst Do(Src value) {
     int32_t src = value;
     typename std::conditional<std::is_signed_v<Dst>, int32_t, uint32_t>::type
         result;

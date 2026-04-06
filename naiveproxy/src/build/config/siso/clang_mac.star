@@ -5,7 +5,6 @@
 """Siso configuration for clang/mac."""
 
 load("@builtin//struct.star", "module")
-load("./clang_all.star", "clang_all")
 load("./clang_exception.star", "clang_exception")
 load("./clang_unix.star", "clang_unix")
 load("./gn_logs.star", "gn_logs")
@@ -15,12 +14,10 @@ load("./rewrapper_cfg.star", "rewrapper_cfg")
 def __filegroups(ctx):
     fg = {}
     fg.update(mac_sdk.filegroups(ctx))
-    fg.update(clang_all.filegroups(ctx))
+    fg.update(clang_unix.filegroups(ctx))
     return fg
 
-__handlers = {}
-__handlers.update(clang_unix.handlers)
-__handlers.update(clang_all.handlers)
+__handlers = clang_unix.handlers
 
 def __step_config(ctx, step_config):
     cfg = "buildtools/reclient_cfgs/chromium-browser-clang/rewrapper_mac.cfg"
@@ -36,7 +33,7 @@ def __step_config(ctx, step_config):
             "clang": reproxy_config["platform"],
             "clang_large": largePlatform,
         })
-        step_config["input_deps"].update(clang_all.input_deps(ctx))
+        step_config["input_deps"].update(clang_unix.input_deps(ctx))
 
         clang_rules = clang_unix.rules(ctx)
 
@@ -47,6 +44,11 @@ def __step_config(ctx, step_config):
                     rule["platform_ref"] = "clang"
                 elif rule["platform_ref"] == "large":
                     rule["platform_ref"] = "clang_large"
+
+            inputs = rule.setdefault("inputs", [])
+            inputs.extend(reproxy_config.get("inputs", []))
+            inputs.extend(reproxy_config.get("toolchain_inputs", []))
+
             step_config["rules"].append(rule)
     elif gn_logs.read(ctx).get("use_remoteexec") == "true":
         fail("remoteexec requires rewrapper config")

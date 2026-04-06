@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package libbox
 
@@ -12,8 +12,6 @@ import (
 	"runtime/debug"
 	"time"
 )
-
-var crashOutputFile *os.File
 
 type crashReportMetadata struct {
 	reportMetadata
@@ -37,7 +35,10 @@ func archiveCrashReport(path string, crashReportsDir string) {
 	}
 
 	initReportDir(crashReportsDir)
-	destPath := nextAvailableReportPath(crashReportsDir, crashTime)
+	destPath, err := nextAvailableReportPath(crashReportsDir, crashTime)
+	if err != nil {
+		return
+	}
 	initReportDir(destPath)
 
 	writeReportFile(destPath, "go.log", content)
@@ -48,11 +49,10 @@ func archiveCrashReport(path string, crashReportsDir string) {
 	writeReportMetadata(destPath, metadata)
 	os.Remove(path)
 	copyConfigSnapshot(destPath)
-	os.Remove(configSnapshotPath())
 }
 
 func configSnapshotPath() string {
-	return filepath.Join(sTempPath, "configuration.json")
+	return filepath.Join(sBasePath, "configuration.json")
 }
 
 func saveConfigSnapshot(configContent string) {
@@ -70,7 +70,7 @@ func redirectStderr(path string) error {
 	if err != nil {
 		return err
 	}
-	if runtime.GOOS != "android" {
+	if runtime.GOOS != "android" && runtime.GOOS != "windows" {
 		err = outputFile.Chown(sUserID, sGroupID)
 		if err != nil {
 			outputFile.Close()
@@ -85,7 +85,7 @@ func redirectStderr(path string) error {
 		os.Remove(outputFile.Name())
 		return err
 	}
-	crashOutputFile = outputFile
+	_ = outputFile.Close()
 	return nil
 }
 

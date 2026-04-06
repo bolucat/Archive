@@ -4,6 +4,8 @@
 
 #include "net/base/network_change_notifier_apple.h"
 
+#include <Network/Network.h>
+#include <dispatch/dispatch.h>
 #include <netinet/in.h>
 #include <resolv.h>
 
@@ -22,14 +24,10 @@
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 #include "net/base/features.h"
+#include "net/base/network_change_notifier_apple_buildflags.h"
 #include "net/base/network_interfaces_getifaddrs.h"
 #include "net/dns/dns_config_service.h"
 #include "net/log/net_log.h"
-
-#if BUILDFLAG(IS_MAC)
-#include <Network/Network.h>
-#include <dispatch/dispatch.h>
-#endif
 
 #if BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_IOS_TVOS)
 #import <CoreTelephony/CTTelephonyNetworkInfo.h>
@@ -37,7 +35,6 @@
 
 namespace net {
 
-#if BUILDFLAG(IS_MAC)
 struct NetworkChangeNotifierApple::NetworkPathMonitorStorage {
   NetworkPathMonitorStorage() = default;
   ~NetworkPathMonitorStorage() {
@@ -49,7 +46,6 @@ struct NetworkChangeNotifierApple::NetworkPathMonitorStorage {
   nw_path_monitor_t __strong monitor;
   dispatch_queue_t __strong queue;
 };
-#endif  // BUILDFLAG(IS_MAC)
 
 namespace {
 // The maximum number of seconds to wait for the connection type to be
@@ -105,9 +101,9 @@ GetNetworkInterfaceListForNetworkChangeCheck(
   return interfaces;
 }
 
-base::Value::Dict GetNetworkInterfaceValueDict(
+base::DictValue GetNetworkInterfaceValueDict(
     const NetworkInterface& interface) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("name", interface.name);
   dict.Set("friendly_name", interface.friendly_name);
   dict.Set("interface_index", static_cast<int>(interface.interface_index));
@@ -121,33 +117,31 @@ base::Value::Dict GetNetworkInterfaceValueDict(
   return dict;
 }
 
-base::Value::List GetNetworkInterfacesValueList(
+base::ListValue GetNetworkInterfacesValueList(
     const NetworkInterfaceList& interfaces) {
-  base::Value::List list;
+  base::ListValue list;
   for (const NetworkInterface& interface : interfaces) {
     list.Append(GetNetworkInterfaceValueDict(interface));
   }
   return list;
 }
 
-base::Value::Dict NetLogOsConfigChangedParams(
+base::DictValue NetLogOsConfigChangedParams(
     const std::string& result,
     bool net_ipv4_key_found,
     bool net_ipv6_key_found,
     bool net_interface_key_found,
-    bool reduce_ip_address_change_notification,
     const std::string& old_ipv4_primary_interface_name,
     const std::string& old_ipv6_primary_interface_name,
     const std::string& new_ipv4_primary_interface_name,
     const std::string& new_ipv6_primary_interface_name,
     const std::optional<NetworkInterfaceList>& old_interfaces,
     const std::optional<NetworkInterfaceList>& new_interfaces) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("result", result);
   dict.Set("net_ipv4_key", net_ipv4_key_found);
   dict.Set("net_ipv6_key", net_ipv6_key_found);
   dict.Set("net_interface_key", net_interface_key_found);
-  dict.Set("reduce_notification", reduce_ip_address_change_notification);
   dict.Set("old_ipv4_interface", old_ipv4_primary_interface_name);
   dict.Set("old_ipv6_interface", old_ipv6_primary_interface_name);
   dict.Set("new_ipv4_interface", new_ipv4_primary_interface_name);
@@ -176,8 +170,6 @@ NetworkChangeNotifierApple::NetworkChangeNotifierApple()
       initial_connection_type_cv_(&connection_type_lock_),
       forwarder_(this),
 #if BUILDFLAG(IS_MAC)
-      reduce_ip_address_change_notification_(base::FeatureList::IsEnabled(
-          features::kReduceIPAddressChangeNotification)),
       get_network_list_callback_(base::BindRepeating(&GetNetworkList)),
       get_ipv4_primary_interface_name_callback_(
           base::BindRepeating(&GetIPv4PrimaryInterfaceName)),
@@ -193,20 +185,20 @@ NetworkChangeNotifierApple::NetworkChangeNotifierApple()
 }
 
 NetworkChangeNotifierApple::~NetworkChangeNotifierApple() {
-#if BUILDFLAG(IS_MAC)
   StopNetworkPathMonitor();
-#endif  // BUILDFLAG(IS_MAC)
   ClearGlobalPointer();
   // Delete the ConfigWatcher to join the notifier thread, ensuring that
   // StartReachabilityNotifications() has an opportunity to run to completion.
   config_watcher_.reset();
 
+#if defined(COMPILE_OLD_NOTIFIER_IMPL)
   // Now that StartReachabilityNotifications() has either run to completion or
   // never run at all, unschedule reachability_ if it was previously scheduled.
   if (reachability_.get() && run_loop_.get()) {
     SCNetworkReachabilityUnscheduleFromRunLoop(
         reachability_.get(), run_loop_.get(), kCFRunLoopCommonModes);
   }
+#endif  // defined(COMPILE_OLD_NOTIFIER_IMPL)
 }
 
 // static
@@ -358,28 +350,11 @@ void NetworkChangeNotifierApple::Forwarder::CleanUpOnNotifierThread() {
 
 void NetworkChangeNotifierApple::SetInitialConnectionType() {
   // Called on notifier thread.
-
-#if BUILDFLAG(IS_MAC)
+#if defined(COMPILE_OLD_NOTIFIER_IMPL)
   if (EnsureNetworkPathMonitorStarted()) {
-    {
-      base::AutoLock lock(connection_type_lock_);
-      if (!connection_type_initialized_) {
-        // Mirror the legacy SCNetworkReachability behaviour: wait briefly for
-        // the asynchronous path monitor callback so GetCurrentConnectionType()
-        // observes a deterministic value during early startup.
-        base::TimeTicks end_time =
-            base::TimeTicks::Now() +
-            base::Seconds(kMaxWaitForConnectionTypeInSeconds);
-        while (!connection_type_initialized_ &&
-               base::TimeTicks::Now() < end_time) {
-          base::TimeDelta remaining = end_time - base::TimeTicks::Now();
-          initial_connection_type_cv_.TimedWait(remaining);
-        }
-      }
-    }
+    WaitOnInitialConnectionType();
     return;
   }
-#endif  // BUILDFLAG(IS_MAC)
 
   // Try to reach 0.0.0.0. This is the approach taken by Firefox:
   //
@@ -407,17 +382,19 @@ void NetworkChangeNotifierApple::SetInitialConnectionType() {
     connection_type_initialized_ = true;
     initial_connection_type_cv_.Broadcast();
   }
+#else
+  WaitOnInitialConnectionType();
+#endif  // defined(COMPILE_OLD_NOTIFIER_IMPL)
 }
 
 void NetworkChangeNotifierApple::StartReachabilityNotifications() {
   // Called on notifier thread.
   run_loop_.reset(CFRunLoopGetCurrent(), base::scoped_policy::RETAIN);
-#if BUILDFLAG(IS_MAC)
   if (EnsureNetworkPathMonitorStarted()) {
     return;
   }
-#endif  // BUILDFLAG(IS_MAC)
 
+#if defined(COMPILE_OLD_NOTIFIER_IMPL)
   DCHECK(reachability_);
   SCNetworkReachabilityContext reachability_context = {
       0,        // version
@@ -436,6 +413,7 @@ void NetworkChangeNotifierApple::StartReachabilityNotifications() {
     LOG(DFATAL) << "Could not schedule network reachability on run loop";
     reachability_.reset();
   }
+#endif  // defined(COMPILE_OLD_NOTIFIER_IMPL)
 }
 
 void NetworkChangeNotifierApple::SetDynamicStoreNotificationKeys(
@@ -460,16 +438,14 @@ void NetworkChangeNotifierApple::SetDynamicStoreNotificationKeys(
   // TODO(willchan): Figure out a proper way to handle this rather than crash.
   CHECK(ret);
 
-  if (reduce_ip_address_change_notification_) {
-    store_ = std::move(store);
-    ipv4_primary_interface_name_ =
-        get_ipv4_primary_interface_name_callback_.Run(store_.get());
-    ipv6_primary_interface_name_ =
-        get_ipv6_primary_interface_name_callback_.Run(store_.get());
-    interfaces_for_network_change_check_ =
-        GetNetworkInterfaceListForNetworkChangeCheck(
-            get_network_list_callback_, ipv6_primary_interface_name_);
-  }
+  store_ = std::move(store);
+  ipv4_primary_interface_name_ =
+      get_ipv4_primary_interface_name_callback_.Run(store_.get());
+  ipv6_primary_interface_name_ =
+      get_ipv6_primary_interface_name_callback_.Run(store_.get());
+  interfaces_for_network_change_check_ =
+      GetNetworkInterfaceListForNetworkChangeCheck(
+          get_network_list_callback_, ipv6_primary_interface_name_);
   if (initialized_callback_for_test_) {
     std::move(initialized_callback_for_test_).Run();
   }
@@ -511,25 +487,12 @@ void NetworkChangeNotifierApple::OnNetworkConfigChange(CFArrayRef changed_keys) 
       return NetLogOsConfigChangedParams(
           "DoNotNotify_NoIPAddressChange", net_ipv4_key_found,
           net_ipv6_key_found, net_interface_key_found,
-          reduce_ip_address_change_notification_, ipv4_primary_interface_name_,
-          ipv6_primary_interface_name_, "", "",
-          interfaces_for_network_change_check_, std::nullopt);
-    });
-    return;
-  }
-  if (!reduce_ip_address_change_notification_) {
-    net_log_.AddEvent(net::NetLogEventType::NETWORK_MAC_OS_CONFIG_CHANGED, [&] {
-      return NetLogOsConfigChangedParams(
-          "Notify_NoReduce", net_ipv4_key_found, net_ipv6_key_found,
-          net_interface_key_found, reduce_ip_address_change_notification_,
           ipv4_primary_interface_name_, ipv6_primary_interface_name_, "", "",
           interfaces_for_network_change_check_, std::nullopt);
     });
-    NotifyObserversOfIPAddressChange();
     return;
   }
-  // When the ReduceIPAddressChangeNotification feature is enabled, we notifies
-  // the IP address change only when:
+  // We notify the IP address change only when:
   //  - The list of network interfaces has changed, excluding local IPv6
   //    addresses of non-primary interfaces.
   //  - or the primary interface name (for IPv4 and IPv6) has changed.
@@ -547,20 +510,20 @@ void NetworkChangeNotifierApple::OnNetworkConfigChange(CFArrayRef changed_keys) 
     net_log_.AddEvent(net::NetLogEventType::NETWORK_MAC_OS_CONFIG_CHANGED, [&] {
       return NetLogOsConfigChangedParams(
           "DoNotNotify_NoChange", net_ipv4_key_found, net_ipv6_key_found,
-          net_interface_key_found, reduce_ip_address_change_notification_,
-          ipv4_primary_interface_name_, ipv6_primary_interface_name_,
-          ipv4_primary_interface_name, ipv6_primary_interface_name,
-          interfaces_for_network_change_check_, interfaces);
+          net_interface_key_found, ipv4_primary_interface_name_,
+          ipv6_primary_interface_name_, ipv4_primary_interface_name,
+          ipv6_primary_interface_name, interfaces_for_network_change_check_,
+          interfaces);
     });
     return;
   }
   net_log_.AddEvent(net::NetLogEventType::NETWORK_MAC_OS_CONFIG_CHANGED, [&] {
     return NetLogOsConfigChangedParams(
         "Notify_Changed", net_ipv4_key_found, net_ipv6_key_found,
-        net_interface_key_found, reduce_ip_address_change_notification_,
-        ipv4_primary_interface_name_, ipv6_primary_interface_name_,
-        ipv4_primary_interface_name, ipv6_primary_interface_name,
-        interfaces_for_network_change_check_, interfaces);
+        net_interface_key_found, ipv4_primary_interface_name_,
+        ipv6_primary_interface_name_, ipv4_primary_interface_name,
+        ipv6_primary_interface_name, interfaces_for_network_change_check_,
+        interfaces);
   });
   ipv4_primary_interface_name_ = std::move(ipv4_primary_interface_name);
   ipv6_primary_interface_name_ = std::move(ipv6_primary_interface_name);
@@ -607,7 +570,6 @@ void NetworkChangeNotifierApple::ReachabilityCallback(
 #endif  // BUILDFLAG(IS_IOS)
 }
 
-#if BUILDFLAG(IS_MAC)
 bool NetworkChangeNotifierApple::ShouldUseNetworkPathMonitor() const {
   return base::FeatureList::IsEnabled(
       features::kUseNetworkPathMonitorForNetworkChangeNotifier);
@@ -732,6 +694,22 @@ void NetworkChangeNotifierApple::ProcessConnectionTypeUpdate(
   NotifyObserversOfMaxBandwidthChange(max_bandwidth_mbps, new_type);
 }
 
+void NetworkChangeNotifierApple::WaitOnInitialConnectionType() {
+  base::AutoLock lock(connection_type_lock_);
+  if (!connection_type_initialized_) {
+    // Mirror the legacy SCNetworkReachability behaviour: wait briefly for
+    // the asynchronous path monitor callback so GetCurrentConnectionType()
+    // observes a deterministic value during early startup.
+    base::TimeTicks end_time =
+        base::TimeTicks::Now() +
+        base::Seconds(kMaxWaitForConnectionTypeInSeconds);
+    while (!connection_type_initialized_ && base::TimeTicks::Now() < end_time) {
+      base::TimeDelta remaining = end_time - base::TimeTicks::Now();
+      initial_connection_type_cv_.TimedWait(remaining);
+    }
+  }
+}
+
 void NetworkChangeNotifierApple::SetCallbacksForTest(
     base::OnceClosure initialized_callback,
     base::RepeatingCallback<bool(NetworkInterfaceList*, int)>
@@ -747,6 +725,5 @@ void NetworkChangeNotifierApple::SetCallbacksForTest(
   get_ipv6_primary_interface_name_callback_ =
       std::move(get_ipv6_primary_interface_name_callback);
 }
-#endif  // BUILDFLAG(IS_MAC)
 
 }  // namespace net

@@ -14,7 +14,13 @@
 #include "base/macros/uniquify.h"
 #include "base/memory/raw_ptr.h"
 #include "base/task/task_observer.h"
+#include "base/threading/platform_thread.h"
+#include "base/threading/thread_checker.h"
 #include "build/build_config.h"
+
+#if BUILDFLAG(IS_WIN)
+#include "base/win/scoped_handle.h"
+#endif
 
 namespace base {
 
@@ -51,45 +57,76 @@ enum class ThreadType : int;
   base::internal::ScopedMayLoadLibraryAtBackgroundPriority BASE_UNIQUIFY( \
       scoped_may_load_library_at_background_priority)(FROM_HERE, nullptr);
 
+namespace internal {
+
+class BASE_EXPORT ScopedBoostPriorityBase {
+ public:
+  ScopedBoostPriorityBase();
+  ~ScopedBoostPriorityBase();
+
+  ScopedBoostPriorityBase(const ScopedBoostPriorityBase&) = delete;
+  ScopedBoostPriorityBase& operator=(const ScopedBoostPriorityBase&) = delete;
+
+  static bool CurrentThreadHasScope();
+
+ protected:
+  bool ShouldBoostTo(ThreadType target_thread_type) const;
+
+  const ThreadType initial_thread_type_;
+  std::optional<ThreadType> target_thread_type_;
+  internal::PlatformPriorityOverride priority_override_handle_ = {};
+
+ private:
+  raw_ptr<ScopedBoostPriorityBase> previous_boost_scope_;
+  THREAD_CHECKER(thread_checker_);
+};
+
+}  // namespace internal
+
 // Boosts the current thread's priority to match the priority of threads of
 // `target_thread_type` in this scope. `target_thread_type` must be lower
 // priority than kRealtimeAudio, since realtime priority should only be used by
 // dedicated media threads.
-class BASE_EXPORT ScopedBoostPriority {
+//
+// TODO(crbug.com/483622914): consider migrating to platform thread leases.
+class BASE_EXPORT ScopedBoostPriority
+    : public internal::ScopedBoostPriorityBase {
  public:
   explicit ScopedBoostPriority(ThreadType target_thread_type);
   ~ScopedBoostPriority();
-
-  ScopedBoostPriority(const ScopedBoostPriority&) = delete;
-  ScopedBoostPriority& operator=(const ScopedBoostPriority&) = delete;
-
- private:
-  std::optional<ThreadType> original_thread_type_;
 };
 
-// This wraps ScopedBoostPriority with a callback to determine whether
-// the priority should be boosted or not before every task execution.
-class BASE_EXPORT TaskMonitoringScopedBoostPriority : public TaskObserver {
+// Allows another thread to temporarily boost the current thread's priority to
+// match the priority of threads of `target_thread_type`. The priority is reset
+// when the object is destroyed, which must happens on the current thread.
+// `target_thread_type` must be lower priority than kRealtimeAudio, since
+// realtime priority should only be used by dedicated media threads.
+//
+// TODO(crbug.com/483622914): consider migrating to platform thread leases.
+class BASE_EXPORT ScopedBoostablePriority
+    : public internal::ScopedBoostPriorityBase {
  public:
-  explicit TaskMonitoringScopedBoostPriority(
-      ThreadType target_thread_type,
-      RepeatingCallback<bool()> should_boost_callback);
-  ~TaskMonitoringScopedBoostPriority() override;
+  ScopedBoostablePriority();
+  ~ScopedBoostablePriority();
 
-  TaskMonitoringScopedBoostPriority(const TaskMonitoringScopedBoostPriority&) =
-      delete;
-  TaskMonitoringScopedBoostPriority& operator=(
-      const TaskMonitoringScopedBoostPriority&) = delete;
+  // Boosts the priority of the thread where this ScopedBoostablePriority was
+  // created. Can be called from any thread, but requires proper external
+  // synchronization with the constructor, destructor and any other call to
+  // BoostPriority/Reset(). If called multiple times, only the first call takes
+  // effect.
+  bool BoostPriority(ThreadType target_thread_type);
 
-  // TaskObserver implementation:
-  void WillProcessTask(const PendingTask& pending_task,
-                       bool was_blocked_or_low_priority) override;
-  void DidProcessTask(const PendingTask& pending_task) override {}
+  // Resets the priority of the thread where this ScopedBoostablePriority was
+  // created to its original priority. Can be called from any thread, but
+  // requires proper external synchronization with the constructor, destructor
+  // and any other call to BoostPriority/Reset().
+  void Reset();
 
  private:
-  std::optional<ScopedBoostPriority> scoped_boost_priority_;
-  ThreadType target_thread_type_;
-  RepeatingCallback<bool()> should_boost_callback_;
+  PlatformThreadHandle thread_handle_;
+#if BUILDFLAG(IS_WIN)
+  win::ScopedHandle scoped_handle_;
+#endif
 };
 
 namespace internal {
@@ -112,7 +149,7 @@ class BASE_EXPORT ScopedMayLoadLibraryAtBackgroundPriority {
  private:
 #if BUILDFLAG(IS_WIN)
   // The original priority when invoking entering the scope().
-  std::optional<ThreadType> original_thread_type_;
+  std::optional<ScopedBoostPriority> boost_priority_;
   const raw_ptr<std::atomic_bool> already_loaded_;
 #endif
 };

@@ -15,8 +15,6 @@ namespace base::features {
 // alongside the definition of their values in the .cc file.
 
 // Alphabetical:
-BASE_EXPORT BASE_DECLARE_FEATURE(kBoostCompositorThreadsPriorityWhenIdle);
-
 BASE_EXPORT BASE_DECLARE_FEATURE(kFeatureParamWithCache);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kFastFilePathIsParent);
@@ -36,6 +34,8 @@ BASE_EXPORT BASE_DECLARE_FEATURE(kReducePPMs);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kScopedBestEffortExecutionFenceForTaskQueue);
 
+BASE_EXPORT BASE_DECLARE_FEATURE(kSimdutfBase64Encode);
+
 BASE_EXPORT BASE_DECLARE_FEATURE(kStackScanMaxFramePointerToStackEndGap);
 BASE_EXPORT BASE_DECLARE_FEATURE_PARAM(
     int,
@@ -48,14 +48,11 @@ BASE_EXPORT BASE_DECLARE_FEATURE(kPartialLowEndModeOnMidRangeDevices);
 
 #if BUILDFLAG(IS_ANDROID)
 BASE_EXPORT BASE_DECLARE_FEATURE(kBackgroundNotPerceptibleBinding);
-BASE_EXPORT BASE_DECLARE_FEATURE(kEffectiveBindingState);
 BASE_EXPORT BASE_DECLARE_FEATURE(
     kPostPowerMonitorBroadcastReceiverInitToBackground);
 BASE_EXPORT BASE_DECLARE_FEATURE(kPostGetMyMemoryStateToBackground);
 BASE_EXPORT BASE_DECLARE_FEATURE(kRebindingChildServiceConnectionController);
 BASE_EXPORT BASE_DECLARE_FEATURE(kRebindServiceBatchApi);
-BASE_EXPORT BASE_DECLARE_FEATURE(kUpdateStateBeforeUnbinding);
-BASE_EXPORT BASE_DECLARE_FEATURE(kUseIsUnboundCheck);
 BASE_EXPORT BASE_DECLARE_FEATURE(kUseSharedRebindServiceConnection);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kBackgroundThreadPoolFieldTrial);
@@ -70,27 +67,23 @@ BASE_EXPORT BASE_DECLARE_FEATURE_PARAM(bool, kLibraryPrefetcherMadviseFallback);
 
 BASE_EXPORT BASE_DECLARE_FEATURE(kUseTerminationStatusMemoryExhaustion);
 
+#if BUILDFLAG(IS_WIN)
+BASE_EXPORT BASE_DECLARE_FEATURE(kUserBlockingAboveNormalPriority);
+BASE_EXPORT BASE_DECLARE_FEATURE(kRetryCreateFileMappingOnCommitLimit);
+#endif
+
 // Whether the ReducePPMs feature is enabled. Unlike
 // `FeatureList::IsEnabled(base::features::kReducePPMs)`, this can be called
 // racily with initializing the FeatureList (although the return value might not
 // reflect the state of the feature in the FeatureList in that case).
 BASE_EXPORT bool IsReducePPMsEnabled();
 
-// Policy for emitting profiler metadata from `ThreadController`.
-enum class EmitThreadControllerProfilerMetadata {
-  // Always emit metadata.
-  kForce,
-  // Emit metadata only if enabled via the `FeatureList`.
-  kFeatureDependent,
-};
-
 // Initializes global variables that depend on `FeatureList`. Must be invoked
 // early on process startup, but after `FeatureList` initialization. Different
 // parts of //base read experiment state from global variables instead of
 // directly from `FeatureList` to avoid data races (default values are used
 // before this function is called to initialize the global variables).
-BASE_EXPORT void Init(EmitThreadControllerProfilerMetadata
-                          emit_thread_controller_profiler_metadata);
+BASE_EXPORT void Init();
 
 }  // namespace base::features
 

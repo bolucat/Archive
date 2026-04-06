@@ -17,13 +17,10 @@ namespace {
 // this array may either refer to features defined in //base features.
 const base::Feature* const kFeaturesExposedToJava[] = {
     &features::kBackgroundNotPerceptibleBinding,
-    &features::kEffectiveBindingState,
     &features::kPostPowerMonitorBroadcastReceiverInitToBackground,
     &features::kPostGetMyMemoryStateToBackground,
     &features::kRebindingChildServiceConnectionController,
     &features::kRebindServiceBatchApi,
-    &features::kUpdateStateBeforeUnbinding,
-    &features::kUseIsUnboundCheck,
     &features::kUseSharedRebindServiceConnection,
 };
 
@@ -36,8 +33,10 @@ base::android::FeatureMap* GetFeatureMap() {
 
 }  // namespace
 
-static jlong JNI_BaseFeatureMap_GetNativeMap(JNIEnv* env) {
-  return reinterpret_cast<jlong>(GetFeatureMap());
+static int64_t JNI_BaseFeatureMap_GetNativeMap(JNIEnv* env) {
+  return reinterpret_cast<int64_t>(GetFeatureMap());
 }
 
 }  // namespace base::android
+
+DEFINE_JNI(BaseFeatureMap)

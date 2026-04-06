@@ -82,10 +82,12 @@
 #include "protos/perfetto/trace/ftrace/devfreq.pbzero.h"
 #include "protos/perfetto/trace/ftrace/dmabuf_heap.pbzero.h"
 #include "protos/perfetto/trace/ftrace/dpu.pbzero.h"
+#include "protos/perfetto/trace/ftrace/f2fs.pbzero.h"
 #include "protos/perfetto/trace/ftrace/fastrpc.pbzero.h"
 #include "protos/perfetto/trace/ftrace/ftrace.pbzero.h"
 #include "protos/perfetto/trace/ftrace/ftrace_event.pbzero.h"
 #include "protos/perfetto/trace/ftrace/ftrace_stats.pbzero.h"
+#include "protos/perfetto/trace/ftrace/fwtp_ftrace.pbzero.h"
 #include "protos/perfetto/trace/ftrace/g2d.pbzero.h"
 #include "protos/perfetto/trace/ftrace/generic.pbzero.h"
 #include "protos/perfetto/trace/ftrace/google_icc_trace.pbzero.h"
@@ -144,16 +146,22 @@ struct FtraceEventAndFieldId {
 // TODO(lalitm): going through this array is O(n) on a hot-path (see
 // ParseTypedFtraceToRaw). Consider changing this if we end up adding a lot of
 // events here.
-constexpr auto kKernelFunctionFields = std::array<FtraceEventAndFieldId, 7>{
+constexpr auto kKernelFunctionFields = std::array<FtraceEventAndFieldId, 9>{
     FtraceEventAndFieldId{
         protos::pbzero::FtraceEvent::kSchedBlockedReasonFieldNumber,
         protos::pbzero::SchedBlockedReasonFtraceEvent::kCallerFieldNumber},
     FtraceEventAndFieldId{
+        protos::pbzero::FtraceEvent::kWorkqueueQueueWorkFieldNumber,
+        protos::pbzero::WorkqueueQueueWorkFtraceEvent::kFunctionFieldNumber},
+    FtraceEventAndFieldId{
+        protos::pbzero::FtraceEvent::kWorkqueueActivateWorkFieldNumber,
+        protos::pbzero::WorkqueueExecuteStartFtraceEvent::kFunctionFieldNumber},
+    FtraceEventAndFieldId{
         protos::pbzero::FtraceEvent::kWorkqueueExecuteStartFieldNumber,
         protos::pbzero::WorkqueueExecuteStartFtraceEvent::kFunctionFieldNumber},
     FtraceEventAndFieldId{
-        protos::pbzero::FtraceEvent::kWorkqueueQueueWorkFieldNumber,
-        protos::pbzero::WorkqueueQueueWorkFtraceEvent::kFunctionFieldNumber},
+        protos::pbzero::FtraceEvent::kWorkqueueExecuteEndFieldNumber,
+        protos::pbzero::WorkqueueExecuteStartFtraceEvent::kFunctionFieldNumber},
     FtraceEventAndFieldId{
         protos::pbzero::FtraceEvent::kFuncgraphEntryFieldNumber,
         protos::pbzero::FuncgraphEntryFtraceEvent::kFuncFieldNumber},
@@ -523,7 +531,29 @@ FtraceParser::FtraceParser(TraceProcessorContext* context,
       disp_vblank_irq_enable_output_id_arg_name_(
           context_->storage->InternString("output_id")),
       hrtimer_id_(context_->storage->InternString("hrtimer")),
-      local_timer_id_(context_->storage->InternString("IRQ (LocalTimer)")) {
+      local_timer_id_(context_->storage->InternString("IRQ (LocalTimer)")),
+      f2fs_checkpoint_name_id_(
+          context_->storage->InternString("F2fs Write Checkpoint")),
+      f2fs_reason_str_arg_id_(context_->storage->InternString("reason_str")),
+      f2fs_reason_int_arg_id_(context_->storage->InternString("reason_int")),
+      f2fs_dev_arg_id_(context->storage->InternString("dev")),
+      f2fs_checkpoint_unknown_reason_id_(
+          context->storage->InternString("Unknown")),
+      gpu_power_state_unknown_id_(context->storage->InternString("Unknown")),
+      gpu_power_state_off_id_(context->storage->InternString("OFF")),
+      gpu_power_state_pg_id_(context->storage->InternString("PG")),
+      gpu_power_state_on_id_(context->storage->InternString("ON")),
+      ddic_underrun_id_(context_->storage->InternString("ddic_underrun")) {
+  static const char* kReasonStrings[] = {
+      "Umount",  "Fastboot", "Sync",  "Recovery",
+      "Discard", "Trimmed",  "Pause", "Resize",
+  };
+
+  for (size_t i = 0; i < std::size(kReasonStrings); ++i) {
+    f2fs_checkpoint_reason_ids_[i] =
+        context->storage->InternString(kReasonStrings[i]);
+  }
+
   // Build the lookup table for the strings inside ftrace events (e.g. the
   // name of ftrace event fields and the names of their args).
   for (size_t i = 0; i < GetDescriptorsSize(); i++) {
@@ -1122,6 +1152,10 @@ base::Status FtraceParser::ParseFtraceEvent(uint32_t cpu,
         ParseDpuDispDpuUnderrun(ts, fld_bytes);
         break;
       }
+      case FtraceEvent::kGramCollisionFieldNumber: {
+        ParseGramCollision(ts, fld_bytes);
+        break;
+      }
       case FtraceEvent::kDpuDispVblankIrqEnableFieldNumber: {
         ParseDpuDispVblankIrqEnable(ts, fld_bytes);
         break;
@@ -1471,6 +1505,22 @@ base::Status FtraceParser::ParseFtraceEvent(uint32_t cpu,
         ParseDmabufRssStat(ts, pid, fld_bytes);
         break;
       }
+      case FtraceEvent::kFwtpPerfettoCounterFieldNumber: {
+        ParseFwtpPerfettoCounter(fld_bytes);
+        break;
+      }
+      case FtraceEvent::kFwtpPerfettoSliceFieldNumber: {
+        ParseFwtpPerfettoSlice(ts, fld_bytes);
+        break;
+      }
+      case FtraceEvent::kF2fsWriteCheckpointFieldNumber: {
+        ParseF2fsWriteCheckpoint(ts, pid, fld_bytes);
+        break;
+      }
+      case FtraceEvent::kGpuPowerStateFieldNumber: {
+        ParseGpuPowerState(ts, fld_bytes);
+        break;
+      }
       default:
         break;
     }
@@ -1630,7 +1680,7 @@ void FtraceParser::ParseGenericFtrace(uint32_t event_proto_id,
                                       uint32_t cpu,
                                       uint32_t tid,
                                       ConstBytes blob) {
-  protozero::ProtoDecoder decoder(blob);
+  ProtoDecoder decoder(blob);
 
   // Special handling for events matching a convention - derive track/counter
   // tracks for them automatically (no perfetto code changes needed).
@@ -1980,6 +2030,29 @@ void FtraceParser::ParseDpuDispDpuUnderrun(int64_t timestamp, ConstBytes blob) {
         inserter->AddArg(
             context_->storage->InternString(base::StringView("pending_frame")),
             Variadic::Integer(ex.frames_pending()));
+      });
+}
+
+void FtraceParser::ParseGramCollision(int64_t timestamp, ConstBytes blob) {
+  protos::pbzero::GramCollisionFtraceEvent::Decoder ex(blob);
+  static constexpr auto kBluePrint = tracks::SliceBlueprint(
+      "ddic_underrun",
+      tracks::DimensionBlueprints(
+          tracks::UintDimensionBlueprint("panel_index")),
+      tracks::FnNameBlueprint([](uint32_t panel_index) {
+        return base::StackString<256>("ddic_underrun[%u]", panel_index);
+      }));
+
+  TrackId track_id = context_->track_tracker->InternTrack(
+      kBluePrint, tracks::Dimensions(ex.panel_index()));
+  StringId slice_name_id = ddic_underrun_id_;
+
+  context_->slice_tracker->Scoped(
+      timestamp, track_id, kNullStringId, slice_name_id, 0,
+      [&](ArgsTracker::BoundInserter* inserter) {
+        inserter->AddArg(
+            context_->storage->InternString(base::StringView("collision_cnt")),
+            Variadic::Integer(ex.collision_cnt()));
       });
 }
 
@@ -4347,6 +4420,135 @@ void FtraceParser::ParseDmabufRssStat(int64_t ts,
   UniqueTid utid = context_->process_tracker->GetOrCreateThread(pid);
   context_->event_tracker->PushProcessCounterForThread(
       EventTracker::DmabufRssStat(), ts, static_cast<double>(evt.rss()), utid);
+}
+
+void FtraceParser::ParseFwtpPerfettoCounter(protozero::ConstBytes blob) {
+  static constexpr auto kBlueprint = tracks::CounterBlueprint(
+      "pixel_fwtp_counters", tracks::UnknownUnitBlueprint(),
+      tracks::DimensionBlueprints(tracks::kNameFromTraceDimensionBlueprint),
+      tracks::FnNameBlueprint([](base::StringView name) {
+        return base::StackString<255>("%.*s", int(name.size()), name.data());
+      }));
+  protos::pbzero::FwtpPerfettoCounterFtraceEvent::Decoder event(blob);
+  TrackId track_id = context_->track_tracker->InternTrack(
+      kBlueprint, tracks::Dimensions(event.name()));
+  context_->event_tracker->PushCounter(static_cast<int64_t>(event.timestamp()),
+                                       event.value(), track_id);
+}
+
+void FtraceParser::ParseFwtpPerfettoSlice(int64_t ts,
+                                          protozero::ConstBytes blob) {
+  constexpr auto kSliceBlueprint =
+      tracks::SliceBlueprint("pixel_fwtp_slices", tracks::DimensionBlueprints(),
+                             tracks::DynamicNameBlueprint());
+
+  // Get the trace info.
+  protos::pbzero::FwtpPerfettoSliceFtraceEvent::Decoder event(blob);
+  StringId track_name_id = context_->storage->InternString(event.name());
+  StringId track_category_id =
+      context_->storage->InternString(event.category());
+  TrackId track_id = context_->track_tracker->InternTrack(
+      kSliceBlueprint, tracks::Dimensions(), track_name_id);
+
+  // Add a slice begin or end event. Before beginning a slice, end the slice
+  // first to prevent any open slice existing.
+  if (event.begin()) {
+    context_->slice_tracker->End(ts, track_id);
+    context_->slice_tracker->Begin(ts, track_id, track_category_id,
+                                   track_name_id);
+  } else {
+    context_->slice_tracker->End(ts, track_id);
+  }
+}
+
+void FtraceParser::ParseF2fsWriteCheckpoint(int64_t ts,
+                                            uint32_t pid,
+                                            ConstBytes blob) {
+  enum F2fsCheckpointPhase {
+    kF2fsCpPhaseStart = 0,
+    kF2fsCpPhaseFinishBlockOps = 1,
+    kF2fsCpPhaseFinish = 2,
+  };
+  constexpr auto kF2fsCheckpointBlueprint = tracks::SliceBlueprint(
+      "f2fs_write_checkpoint",
+      tracks::DimensionBlueprints(tracks::kProcessDimensionBlueprint),
+      tracks::DynamicNameBlueprint());
+
+  protos::pbzero::F2fsWriteCheckpointFtraceEvent::Decoder evt(blob);
+
+  uint32_t phase = evt.phase();
+  if (phase == kF2fsCpPhaseFinishBlockOps) {
+    return;
+  }
+  UniquePid upid = context_->process_tracker->GetOrCreateProcess(pid);
+  base::StackString<255> track_name("f2fs_ckpt %u", pid);
+  StringId track_name_id =
+      context_->storage->InternString(track_name.string_view());
+
+  TrackId track_id = context_->track_tracker->InternTrack(
+      kF2fsCheckpointBlueprint, tracks::Dimensions(upid), track_name_id);
+
+  if (phase == kF2fsCpPhaseStart) {
+    int32_t reason_int = evt.reason();
+    uint64_t dev = evt.dev();
+
+    // End the slice first to prevent any open slice existing.
+    context_->slice_tracker->End(ts, track_id);
+
+    context_->slice_tracker->Begin(
+        ts, track_id, kNullStringId, f2fs_checkpoint_name_id_,
+        [&](ArgsTracker::BoundInserter* inserter) {
+          inserter->AddArg(f2fs_dev_arg_id_, Variadic::UnsignedInteger(dev));
+          inserter->AddArg(f2fs_reason_int_arg_id_,
+                           Variadic::Integer(reason_int));
+          if (reason_int == 0) {
+            inserter->AddArg(
+                f2fs_reason_str_arg_id_,
+                Variadic::String(f2fs_checkpoint_unknown_reason_id_));
+          } else {
+            for (size_t i = 0; i < f2fs_checkpoint_reason_ids_.size(); ++i) {
+              if (reason_int & (1 << i)) {
+                size_t array_index =
+                    inserter->GetNextArrayEntryIndex(f2fs_reason_str_arg_id_);
+                StringId key = context_->storage->InternString(
+                    "reason_str[" + std::to_string(array_index) + "]");
+                inserter->AddArg(
+                    f2fs_reason_str_arg_id_, key,
+                    Variadic::String(f2fs_checkpoint_reason_ids_[i]));
+                inserter->IncrementArrayEntryIndex(f2fs_reason_str_arg_id_);
+              }
+            }
+          }
+        });
+  } else if (phase == kF2fsCpPhaseFinish) {
+    context_->slice_tracker->End(ts, track_id);
+  }
+}
+
+void FtraceParser::ParseGpuPowerState(int64_t ts, protozero::ConstBytes blob) {
+  static constexpr auto kGpuPowerStateSliceBlueprint = tracks::SliceBlueprint(
+      "powervr_gpu_power_state", tracks::DimensionBlueprints(),
+      tracks::StaticNameBlueprint("powervr_gpu_power_state"));
+
+  protos::pbzero::GpuPowerStateFtraceEvent::Decoder event(blob);
+  TrackId track_id =
+      context_->track_tracker->InternTrack(kGpuPowerStateSliceBlueprint);
+
+  context_->slice_tracker->End(ts, track_id);
+
+  StringId slice_name_id = gpu_power_state_unknown_id_;
+  switch (event.new_state()) {
+    case 0:
+      slice_name_id = gpu_power_state_off_id_;
+      break;
+    case 1:
+      slice_name_id = gpu_power_state_pg_id_;
+      break;
+    case 2:
+      slice_name_id = gpu_power_state_on_id_;
+      break;
+  }
+  context_->slice_tracker->Begin(ts, track_id, kNullStringId, slice_name_id);
 }
 
 }  // namespace perfetto::trace_processor

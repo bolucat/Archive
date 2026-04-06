@@ -164,9 +164,6 @@ class QUICHE_EXPORT BalsaFrame : public FramerInterface {
   const BalsaHeaders* headers() const { return headers_; }
   BalsaHeaders* mutable_headers() { return headers_; }
 
-  size_t BytesSafeToSplice() const;
-  void BytesSpliced(size_t bytes_spliced);
-
   size_t ProcessInput(const char* input, size_t size) override;
 
   void set_allow_reading_until_close_for_request(bool set) {
@@ -312,6 +309,10 @@ class QUICHE_EXPORT BalsaFrame : public FramerInterface {
   // TODO(b/68801833): Default-enable and then deprecate this field, along with
   // set_continue_headers().
   bool use_interim_headers_callback_ : 1;
+
+  // Whether we've already processed the CR that should come right after
+  // chunk data before the \n and then the next chunk length.
+  bool saw_slash_r_after_chunk_ : 1;
 
   // This is not reset in Reset().
   bool parse_truncated_headers_even_when_headers_too_long_ : 1;

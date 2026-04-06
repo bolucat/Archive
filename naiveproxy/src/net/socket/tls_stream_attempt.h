@@ -56,17 +56,16 @@ class NET_EXPORT_PRIVATE TlsStreamAttempt final : public StreamAttempt {
     // Called when TCP handshake completes.
     virtual void OnTcpHandshakeComplete() = 0;
 
-    // Returns `OK` and ignores `callback` when a ServiceEndpoint is immediately
-    // available. Otherwise, returns `ERR_IO_PENDING` when `this` can't provide
-    // a ServiceEndpoint immediately. `callback` is invoked when a SSLConfig is
-    // ready.
-    virtual int WaitForServiceEndpointReady(
-        CompletionOnceCallback callback) = 0;
+    // Returns `OK` and ignores `callback` when the attempt can start TLS
+    // handshake immediately. Otherwise, returns `ERR_IO_PENDING` when `this`
+    // can't provide a ServiceEndpoint for TLS handshake immediately. `callback`
+    // is invoked when a ServiceEndpoint is ready.
+    virtual int WaitForTlsHandshakeReady(CompletionOnceCallback callback) = 0;
 
-    // Returns a ServiceEndpoint. Should be called only after
-    // WaitForServiceEndpointReady() returns `OK` or the callback is invoked.
+    // Returns a ServiceEndpoint for TLS handshake. Should be called only after
+    // WaitForTlsHandshakeReady() returns `OK` or the callback is invoked.
     virtual base::expected<ServiceEndpoint, GetServiceEndpointError>
-    GetServiceEndpoint() = 0;
+    GetServiceEndpointForTlsHandshake() = 0;
   };
 
   // `params` must outlive `this`. `base_ssl_config` contains the base SSL
@@ -86,7 +85,7 @@ class NET_EXPORT_PRIVATE TlsStreamAttempt final : public StreamAttempt {
 
   // StreamAttempt implementations:
   LoadState GetLoadState() const override;
-  base::Value::Dict GetInfoAsValue() const override;
+  base::DictValue GetInfoAsValue() const override;
   scoped_refptr<SSLCertRequestInfo> GetCertRequestInfo() override;
 
   bool IsTcpHandshakeCompleted() { return tcp_handshake_completed_; }
@@ -106,7 +105,7 @@ class NET_EXPORT_PRIVATE TlsStreamAttempt final : public StreamAttempt {
 
   // StreamAttempt methods:
   int StartInternal() override;
-  base::Value::Dict GetNetLogStartParams() override;
+  base::DictValue GetNetLogStartParams() override;
 
   void OnIOComplete(int rv);
 
@@ -141,6 +140,9 @@ class NET_EXPORT_PRIVATE TlsStreamAttempt final : public StreamAttempt {
   // certificate error when sending TLS Trust Anchor IDs. Used to ensure that we
   // only retry once per connection attempt.
   bool retried_for_trust_anchor_ids_ = false;
+  // True if the Trust Anchor ID retry attempted to fallback from a
+  // signatureless MTC to a classical cert. Used for metrics.
+  bool trust_anchor_retry_used_mtc_fallback_ = false;
   // Used for metrics. Set to true when the initial connection attempt used a
   // service endpoint that advertised trust anchor IDs and ECH, respectively,
   // whether or not sufficient features were enabled to use them.

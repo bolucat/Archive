@@ -15,7 +15,7 @@
 #ifndef OPENSSL_HEADER_EVP_H
 #define OPENSSL_HEADER_EVP_H
 
-#include <openssl/base.h>   // IWYU pragma: export
+#include <openssl/base.h>  // IWYU pragma: export
 
 #include <openssl/evp_errors.h>  // IWYU pragma: export
 
@@ -61,11 +61,10 @@ OPENSSL_EXPORT int EVP_PKEY_up_ref(EVP_PKEY *pkey);
 // an error to attempt to duplicate, export, or compare an opaque key.
 OPENSSL_EXPORT int EVP_PKEY_is_opaque(const EVP_PKEY *pkey);
 
-// EVP_PKEY_cmp compares |a| and |b| and returns one if they are equal, zero if
-// not and a negative number on error.
+// EVP_PKEY_cmp compares |a| and |b| and returns one if their public keys are
+// equal and zero otherwise.
 //
-// WARNING: this differs from the traditional return value of a "cmp"
-// function.
+// WARNING: this differs from the traditional return value of a "cmp" function.
 OPENSSL_EXPORT int EVP_PKEY_cmp(const EVP_PKEY *a, const EVP_PKEY *b);
 
 // EVP_PKEY_copy_parameters sets the parameters of |to| to equal the parameters
@@ -77,9 +76,10 @@ OPENSSL_EXPORT int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from);
 OPENSSL_EXPORT int EVP_PKEY_missing_parameters(const EVP_PKEY *pkey);
 
 // EVP_PKEY_cmp_parameters compares the parameters of |a| and |b|. It returns
-// one if they match, zero if not, or a negative number on error.
+// one if they match and zero otherwise. In algorithms that do not use
+// parameters, this function returns one; null parameters are vacuously equal.
 //
-// WARNING: the return value differs from the usual return value convention.
+// WARNING: this differs from the traditional return value of a "cmp" function.
 OPENSSL_EXPORT int EVP_PKEY_cmp_parameters(const EVP_PKEY *a,
                                            const EVP_PKEY *b);
 
@@ -93,6 +93,14 @@ OPENSSL_EXPORT int EVP_PKEY_size(const EVP_PKEY *pkey);
 // returns the bit length of the modulus. For an EC key, this returns the bit
 // length of the group order.
 OPENSSL_EXPORT int EVP_PKEY_bits(const EVP_PKEY *pkey);
+
+// EVP_PKEY_has_public returns one if |pkey| has a public key, or zero
+// otherwise.
+OPENSSL_EXPORT int EVP_PKEY_has_public(const EVP_PKEY *pkey);
+
+// EVP_PKEY_has_private returns one if |pkey| has a private key, or zero
+// otherwise.
+OPENSSL_EXPORT int EVP_PKEY_has_private(const EVP_PKEY *pkey);
 
 // The following constants are returned by |EVP_PKEY_id| and specify the type of
 // key.
@@ -888,6 +896,22 @@ OPENSSL_EXPORT int EVP_PKEY_CTX_set_signature_md(EVP_PKEY_CTX *ctx,
 OPENSSL_EXPORT int EVP_PKEY_CTX_get_signature_md(EVP_PKEY_CTX *ctx,
                                                  const EVP_MD **out_md);
 
+// EVP_PKEY_CTX_set1_signature_context_string sets the context string for a
+// signature or verification operation. It returns one success and zero on
+// error. The context string is an additional input to some signature
+// algorithms, such as ML-DSA, to separate different uses of the same key.
+// This is known as domain separation. Section 8.3 of RFC 8032 provides some
+// additional guidance on context strings.
+//
+// Not all signature algorithms support context strings. Callers that support
+// a mix of algorithms, with and without context string support, can instead
+// separate the signature input itself. For example, callers can prepend
+// context-specific prefixes to signature inputs.
+OPENSSL_EXPORT int EVP_PKEY_CTX_set1_signature_context_string(
+    EVP_PKEY_CTX *ctx,
+    uint8_t *context,
+    size_t context_len);
+
 
 // RSA specific control functions.
 
@@ -1277,10 +1301,13 @@ OPENSSL_EXPORT EVP_PKEY *EVP_PKEY_new_raw_public_key(int type, ENGINE *unused,
 // constants to 'ctrl' functions. To avoid breaking #ifdefs in consumers, this
 // section defines a number of legacy macros.
 
-// |BORINGSSL_PREFIX| already makes each of these symbols into macros, so there
-// is no need to define conflicting macros.
-#if !defined(BORINGSSL_PREFIX)
+// |BORINGSSL_PREFIX| already makes some of these symbols into macros, so there
+// is no need to define conflicting macros; however it is compiler specific
+// which ones become macros.
+#if !defined(EVP_PKEY_CTX_set_rsa_oaep_md)
 #define EVP_PKEY_CTX_set_rsa_oaep_md EVP_PKEY_CTX_set_rsa_oaep_md
+#endif
+#if !defined(EVP_PKEY_CTX_set0_rsa_oaep_label)
 #define EVP_PKEY_CTX_set0_rsa_oaep_label EVP_PKEY_CTX_set0_rsa_oaep_label
 #endif
 

@@ -400,6 +400,16 @@ void BalsaFrame::ProcessFirstLine(char* begin, char* end) {
       headers_->whitespace_4_idx_ - headers_->non_whitespace_3_idx_);
 
   if (is_request_) {
+    const bool is_method_valid = header_properties::IsValidToken(part1);
+    if (http_validation_policy().disallow_invalid_request_methods &&
+        !is_method_valid) {
+      QUICHE_CODE_COUNT(disallow_invalid_request_methods_enforced);
+      parse_state_ = BalsaFrameEnums::ERROR;
+      last_error_ = BalsaFrameEnums::INVALID_REQUEST_METHOD;
+      HandleError(last_error_);
+      return;
+    }
+
     is_valid_target_uri_ = IsValidTargetUri(part1, part2);
     if (http_validation_policy().disallow_invalid_target_uris &&
         !is_valid_target_uri_) {
@@ -787,13 +797,29 @@ void BalsaFrame::ProcessHeaderLines(const Lines& lines, bool is_trailer,
         content_length_remaining_ = length;
         continue;
       }
-      if ((headers->content_length_status_ != content_length_status) ||
-          ((headers->content_length_status_ ==
-            BalsaHeadersEnums::VALID_CONTENT_LENGTH) &&
-           (http_validation_policy().disallow_multiple_content_length ||
-            length != headers->content_length_))) {
+
+      // There are multiple content-length keys in this request.
+
+      // First case: the second CL header conflicts with the first CL. This
+      // request _must_ be rejected.
+      bool found_new_invalid_content_length =
+          headers->content_length_status_ != content_length_status;
+      bool found_new_content_length_with_different_value =
+          length != headers->content_length_;
+      if (found_new_invalid_content_length ||
+          found_new_content_length_with_different_value) {
         HandleError(BalsaFrameEnums::MULTIPLE_CONTENT_LENGTH_KEYS);
         return;
+      }
+
+      // Second case: CL is duplicated but the value is valid and the same.
+      // Optionally, reject this per the RFC or simply keep one value.
+      if (headers->content_length_status_ ==
+          BalsaHeadersEnums::VALID_CONTENT_LENGTH) {
+        if (http_validation_policy().disallow_multiple_content_length) {
+          HandleError(BalsaFrameEnums::MULTIPLE_CONTENT_LENGTH_KEYS);
+          return;
+        }
       }
       continue;
     }
@@ -1064,55 +1090,6 @@ size_t BalsaFrame::ProcessHeaders(const char* message_start,
   return message_current - original_message_start;
 }
 
-size_t BalsaFrame::BytesSafeToSplice() const {
-  switch (parse_state_) {
-    case BalsaFrameEnums::READING_CHUNK_DATA:
-      return chunk_length_remaining_;
-    case BalsaFrameEnums::READING_UNTIL_CLOSE:
-      return std::numeric_limits<size_t>::max();
-    case BalsaFrameEnums::READING_CONTENT:
-      return content_length_remaining_;
-    default:
-      return 0;
-  }
-}
-
-void BalsaFrame::BytesSpliced(size_t bytes_spliced) {
-  switch (parse_state_) {
-    case BalsaFrameEnums::READING_CHUNK_DATA:
-      if (chunk_length_remaining_ < bytes_spliced) {
-        HandleError(BalsaFrameEnums::
-                        CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT);
-        return;
-      }
-      chunk_length_remaining_ -= bytes_spliced;
-      if (chunk_length_remaining_ == 0) {
-        parse_state_ = BalsaFrameEnums::READING_CHUNK_TERM;
-      }
-      return;
-
-    case BalsaFrameEnums::READING_UNTIL_CLOSE:
-      return;
-
-    case BalsaFrameEnums::READING_CONTENT:
-      if (content_length_remaining_ < bytes_spliced) {
-        HandleError(BalsaFrameEnums::
-                        CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT);
-        return;
-      }
-      content_length_remaining_ -= bytes_spliced;
-      if (content_length_remaining_ == 0) {
-        parse_state_ = BalsaFrameEnums::MESSAGE_FULLY_READ;
-        visitor_->MessageDone();
-      }
-      return;
-
-    default:
-      HandleError(BalsaFrameEnums::CALLED_BYTES_SPLICED_WHEN_UNSAFE_TO_DO_SO);
-      return;
-  }
-}
-
 size_t BalsaFrame::ProcessInput(const char* input, size_t size) {
   const char* current = input;
   const char* on_entry = current;
@@ -1276,10 +1253,10 @@ size_t BalsaFrame::ProcessInput(const char* input, size_t size) {
         continue;
 
       case BalsaFrameEnums::READING_CHUNK_EXTENSION: {
-        // TODO(phython): Convert this scanning to be 16 bytes at a time if
-        // there is data to be read.
         const char* extensions_start = current;
         size_t extensions_length = 0;
+        bool found_semicolon = false;
+        bool found_non_bws_before_semicolon = false;
         QUICHE_DCHECK_LE(current, end);
         while (true) {
           if (current == end) {
@@ -1290,6 +1267,12 @@ size_t BalsaFrame::ProcessInput(const char* input, size_t size) {
             return current - input;
           }
           const char c = *current;
+          if (c == ';') {
+            found_semicolon = true;
+          }
+          if (!found_semicolon && (c != ' ' && c != '\t')) {
+            found_non_bws_before_semicolon = true;
+          }
           if (!IsValidChunkExtensionCharacter(c, current, input, end)) {
             HandleError(BalsaFrameEnums::INVALID_CHUNK_EXTENSION);
             return current - input;
@@ -1306,6 +1289,15 @@ size_t BalsaFrame::ProcessInput(const char* input, size_t size) {
           ++current;
           if (c == '\n') {
             break;
+          }
+        }
+
+        if (extensions_length > 0 &&
+            (!found_semicolon || found_non_bws_before_semicolon)) {
+          if (http_validation_policy_
+                  .require_semicolon_delimited_chunk_extension) {
+            HandleError(BalsaFrameEnums::INVALID_CHUNK_EXTENSION);
+            return current - input;
           }
         }
 
@@ -1344,6 +1336,7 @@ size_t BalsaFrame::ProcessInput(const char* input, size_t size) {
 
         if (chunk_length_remaining_ == 0) {
           parse_state_ = BalsaFrameEnums::READING_CHUNK_TERM;
+          saw_slash_r_after_chunk_ = false;
           continue;
         }
 
@@ -1362,8 +1355,36 @@ size_t BalsaFrame::ProcessInput(const char* input, size_t size) {
 
           const char c = *current;
           ++current;
-          if (c == '\n') {
+          // Right after the chunk should be a \r then a \n.
+          if (c == '\r') {
+            if (saw_slash_r_after_chunk_) {
+              if (http_validation_policy().disallow_stray_data_after_chunk) {
+                HandleError(BalsaFrameEnums::STRAY_DATA_AFTER_CHUNK);
+                return current - input;
+              } else {
+                HandleWarning(BalsaFrameEnums::STRAY_DATA_AFTER_CHUNK);
+              }
+            }
+            saw_slash_r_after_chunk_ = true;
+          } else if (c == '\n') {
+            // Can't use last_char_was_slash_r_ because a \r might've been part
+            // of the chunk data.
+            if (!saw_slash_r_after_chunk_) {
+              if (http_validation_policy().disallow_stray_data_after_chunk) {
+                HandleError(BalsaFrameEnums::STRAY_DATA_AFTER_CHUNK);
+                return current - input;
+              } else {
+                HandleWarning(BalsaFrameEnums::STRAY_DATA_AFTER_CHUNK);
+              }
+            }
             break;
+          } else {
+            if (http_validation_policy().disallow_stray_data_after_chunk) {
+              HandleError(BalsaFrameEnums::STRAY_DATA_AFTER_CHUNK);
+              return current - input;
+            } else {
+              HandleWarning(BalsaFrameEnums::STRAY_DATA_AFTER_CHUNK);
+            }
           }
         }
         parse_state_ = BalsaFrameEnums::READING_CHUNK_LENGTH;
@@ -1578,6 +1599,7 @@ bool BalsaFrame::IsValidChunkExtensionCharacter(char c, const char* current,
       return false;
     }
   }
+
   return true;
 }
 

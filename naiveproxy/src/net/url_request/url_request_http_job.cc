@@ -28,6 +28,7 @@
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/rand_util.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
@@ -63,6 +64,7 @@
 #include "net/cookies/cookie_store.h"
 #include "net/cookies/cookie_util.h"
 #include "net/cookies/parsed_cookie.h"
+#include "net/device_bound_sessions/session_usage.h"
 #include "net/filter/filter_source_stream.h"
 #include "net/filter/source_stream.h"
 #include "net/filter/source_stream_type.h"
@@ -82,6 +84,7 @@
 #include "net/http/transport_security_state.h"
 #include "net/log/net_log.h"
 #include "net/log/net_log_event_type.h"
+#include "net/log/net_log_util.h"
 #include "net/log/net_log_values.h"
 #include "net/log/net_log_with_source.h"
 #include "net/nqe/network_quality_estimator.h"
@@ -91,6 +94,7 @@
 #include "net/ssl/ssl_cert_request_info.h"
 #include "net/ssl/ssl_config_service.h"
 #include "net/ssl/ssl_connection_status_flags.h"
+#include "net/ssl/ssl_info.h"
 #include "net/storage_access_api/status.h"
 #include "net/url_request/clear_site_data.h"
 #include "net/url_request/redirect_util.h"
@@ -118,24 +122,10 @@ namespace net {
 
 namespace {
 
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-enum class TpcdHeaderStatus {
-  kSet = 0,
-  kNoLabel = 1,
-  kNoCookie = 2,
-  kMaxValue = kNoCookie,
-};
-
-void RecordTpcdHeaderStatus(TpcdHeaderStatus status) {
-  base::UmaHistogramEnumeration("Privacy.3PCD.SecCookieDeprecationHeaderStatus",
-                                status);
-}
-
-base::Value::Dict FirstPartySetMetadataNetLogParams(
+base::DictValue FirstPartySetMetadataNetLogParams(
     const FirstPartySetMetadata& first_party_set_metadata,
     const int64_t* const fps_cache_filter) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   auto entry_or_empty =
       [](const std::optional<FirstPartySetEntry>& entry) -> std::string {
     return entry.has_value() ? entry->GetDebugString() : "none";
@@ -150,7 +140,7 @@ base::Value::Dict FirstPartySetMetadataNetLogParams(
   return dict;
 }
 
-base::Value::Dict CookieInclusionStatusNetLogParams(
+base::DictValue CookieInclusionStatusNetLogParams(
     const std::string& operation,
     const std::string& cookie_name,
     const std::string& cookie_domain,
@@ -158,7 +148,7 @@ base::Value::Dict CookieInclusionStatusNetLogParams(
     const std::optional<CookiePartitionKey>& partition_key,
     const CookieInclusionStatus& status,
     NetLogCaptureMode capture_mode) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("operation", operation);
   dict.Set("status", status.GetDebugString());
   if (NetLogCaptureIncludesSensitive(capture_mode)) {
@@ -516,6 +506,9 @@ bool ShouldBlockAllCookies(PrivacyMode privacy_mode) {
 void URLRequestHttpJob::OnGotFirstPartySetMetadata(
     FirstPartySetMetadata first_party_set_metadata,
     FirstPartySetsCacheFilter::MatchInfo match_info) {
+  TRACE_EVENT("net", "URLRequestHttpJob::OnGotFirstPartySetMetadata",
+              NetLogWithSourceToFlow(request_->net_log()));
+
   first_party_set_metadata_ = std::move(first_party_set_metadata);
   request_info_.fps_cache_filter = match_info.clear_at_run_id;
   request_info_.browser_run_id = match_info.browser_run_id;
@@ -678,6 +671,9 @@ void URLRequestHttpJob::DestroyTransaction() {
 }
 
 void URLRequestHttpJob::StartTransaction() {
+  TRACE_EVENT("net", "URLRequestHttpJob::StartTransaction",
+              NetLogWithSourceToFlow(request_->net_log()));
+
   DCHECK(!override_response_info_);
 
   NetworkDelegate* network_delegate = request()->network_delegate();
@@ -822,6 +818,9 @@ void URLRequestHttpJob::AddExtraHeaders() {
 }
 
 void URLRequestHttpJob::AddCookieHeaderAndStart() {
+  TRACE_EVENT("net", "URLRequestHttpJob::AddCookieHeaderAndStart",
+              NetLogWithSourceToFlow(request_->net_log()));
+
   CookieStore* cookie_store = request_->context()->cookie_store();
   DCHECK(cookie_store);
   DCHECK(ShouldAddCookieHeader());
@@ -840,7 +839,8 @@ void URLRequestHttpJob::AddCookieHeaderAndStart() {
       cookie_util::ComputeSameSiteContextForRequest(
           request_->method(), request_->url_chain(),
           request_->site_for_cookies(), request_->initiator(),
-          is_main_frame_navigation, force_ignore_site_for_cookies);
+          is_main_frame_navigation, force_ignore_site_for_cookies,
+          request_->ignore_unsafe_method_for_same_site_lax());
 
   CookieOptions options = CreateCookieOptions(same_site_context);
 
@@ -855,6 +855,9 @@ void URLRequestHttpJob::SetCookieHeaderAndStart(
     const CookieOptions& options,
     const CookieAccessResultList& cookies_with_access_result_list,
     const CookieAccessResultList& excluded_list) {
+  TRACE_EVENT("net", "URLRequestHttpJob::SetCookieHeaderAndStart",
+              NetLogWithSourceToFlow(request_->net_log()));
+
   DCHECK(request_->maybe_sent_cookies().empty());
 
   CookieAccessResultList maybe_included_cookies =
@@ -879,14 +882,6 @@ void URLRequestHttpJob::SetCookieHeaderAndStart(
     // reason.
     AnnotateAndMoveUserBlockedCookies(maybe_included_cookies, excluded_cookies);
   }
-
-  const bool cookie_deprecation_testing_enabled =
-      request_->context()->cookie_deprecation_label().has_value();
-  const bool cookie_deprecation_testing_has_label =
-      cookie_deprecation_testing_enabled &&
-      !request_->context()->cookie_deprecation_label().value().empty();
-  bool may_set_sec_cookie_deprecation_header =
-      cookie_deprecation_testing_has_label;
 
   if (!maybe_included_cookies.empty()) {
     std::string cookie_line =
@@ -927,30 +922,12 @@ void URLRequestHttpJob::SetCookieHeaderAndStart(
                                 cookie_request_schemes);
       if (c.cookie.IsPartitioned()) {
         ++n_partitioned_cookies;
-
-        if (may_set_sec_cookie_deprecation_header &&
-            c.cookie.Name() == "receive-cookie-deprecation" &&
-            c.cookie.IsHttpOnly() && c.cookie.SecureAttribute()) {
-          request_info_.extra_headers.SetHeader(
-              "Sec-Cookie-Deprecation",
-              *request_->context()->cookie_deprecation_label());
-          may_set_sec_cookie_deprecation_header = false;
-        }
       }
     }
 
     if (ShouldRecordPartitionedCookieUsage()) {
       base::UmaHistogramCounts100("Cookie.PartitionedCookiesInRequest",
                                   n_partitioned_cookies);
-    }
-  }
-  if (cookie_deprecation_testing_enabled) {
-    if (!cookie_deprecation_testing_has_label) {
-      RecordTpcdHeaderStatus(TpcdHeaderStatus::kNoLabel);
-    } else if (may_set_sec_cookie_deprecation_header) {
-      RecordTpcdHeaderStatus(TpcdHeaderStatus::kNoCookie);
-    } else {
-      RecordTpcdHeaderStatus(TpcdHeaderStatus::kSet);
     }
   }
 
@@ -984,8 +961,9 @@ void URLRequestHttpJob::SetCookieHeaderAndStart(
   device_bound_sessions::SessionService* service =
       request_->context()->device_bound_session_service();
   if (service) {
+    device_bound_sessions::DbscRequest request(request_);
     std::optional<device_bound_sessions::SessionService::DeferralParams>
-        deferral = service->ShouldDefer(request_, &request_info_.extra_headers,
+        deferral = service->ShouldDefer(request, &request_info_.extra_headers,
                                         first_party_set_metadata_);
     // If the request needs to be deferred while waiting for refresh, do not
     // start the transaction at this time. This may also kick off a refresh.
@@ -995,7 +973,7 @@ void URLRequestHttpJob::SetCookieHeaderAndStart(
         device_bound_session_first_deferral_ = base::TimeTicks::Now();
       }
       service->DeferRequestForRefresh(
-          request_, *deferral,
+          request, *deferral,
           // restart with new cookies callback
           base::BindOnce(&URLRequestHttpJob::RestartTransactionForRefresh,
                          weak_factory_.GetWeakPtr(), *deferral));
@@ -1005,8 +983,9 @@ void URLRequestHttpJob::SetCookieHeaderAndStart(
     base::UmaHistogramCounts100("Net.DeviceBoundSessions.RequestDeferralCount",
                                 device_bound_session_deferral_count_);
     base::UmaHistogramEnumeration(
-        "Net.DeviceBoundSessions.RequestDeferralDecision2",
-        request_->device_bound_session_usage());
+        "Net.DeviceBoundSessions.RequestDeferralDecision3",
+        net::device_bound_sessions::GetMaxUsage(
+            request_->device_bound_session_usage()));
     if (device_bound_session_deferral_count_ > 0) {
       base::UmaHistogramTimes(
           "Net.DeviceBoundSessions.TotalRequestDeferredDuration",
@@ -1206,37 +1185,9 @@ void URLRequestHttpJob::ProcessDeviceBoundSessionsHeader() {
     return;
   }
 
-  const auto& request_url = request_->url();
-  auto* headers = GetResponseHeaders();
-
-  // If response header Sec-Session-Registration is present and configured
-  // appropriately, trigger a registration request per header value to attempt
-  // to create a new session.
-  if (request_->allows_device_bound_session_registration() ||
-      !features::kDeviceBoundSessionsRequireOriginTrialTokens.Get()) {
-    std::vector<device_bound_sessions::RegistrationFetcherParam> params =
-        device_bound_sessions::RegistrationFetcherParam::CreateIfValid(
-            request_url, headers);
-    for (auto& param : params) {
-      service->RegisterBoundSession(
-          request_->device_bound_session_access_callback(), std::move(param),
-          request_->isolation_info(), request_->net_log(),
-          request_->initiator());
-    }
-  }
-
-  // If response header Sec-Session-Challenge is present and configured
-  // appropriately, for each header value, store the challenge in advance for
-  // the next relevant refresh request that gets triggered. This is to help
-  // avoid a round-trip for when the next refresh request is required.
-  std::vector<device_bound_sessions::SessionChallengeParam> challenge_params =
-      device_bound_sessions::SessionChallengeParam::CreateIfValid(request_url,
-                                                                  headers);
-  for (auto& param : challenge_params) {
-    service->SetChallengeForBoundSession(
-        request_->device_bound_session_access_callback(), *request_,
-        first_party_set_metadata_, std::move(param));
-  }
+  device_bound_sessions::DbscRequest request(request_);
+  service->HandleResponseHeaders(request, GetResponseHeaders(),
+                                 first_party_set_metadata_);
 }
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
 
@@ -1316,6 +1267,13 @@ void URLRequestHttpJob::OnStartCompleted(int result) {
       if (transaction_) {
         transaction_->GetRemoteEndpoint(&endpoint);
       }
+
+      // ssl_info is not a reference because there's no way of avoiding copy
+      // when constructing optional without move.
+      std::optional<net::SSLInfo> ssl_info;
+      if (transaction_ && transaction_->GetResponseInfo()) {
+        ssl_info = transaction_->GetResponseInfo()->ssl_info;
+      }
       // The NetworkDelegate must watch for OnRequestDestroyed and not modify
       // any of the arguments after it's called.
       // TODO(mattm): change the API to remove the out-params and take the
@@ -1325,7 +1283,7 @@ void URLRequestHttpJob::OnStartCompleted(int result) {
           base::BindOnce(&URLRequestHttpJob::OnHeadersReceivedCallback,
                          weak_factory_.GetWeakPtr()),
           headers.get(), &override_response_headers_, endpoint,
-          &preserve_fragment_on_redirect_url_);
+          &preserve_fragment_on_redirect_url_, ssl_info);
       if (error != OK) {
         if (error == ERR_IO_PENDING) {
           awaiting_callback_ = true;
@@ -1412,6 +1370,9 @@ void URLRequestHttpJob::OnReadCompleted(int result) {
 }
 
 void URLRequestHttpJob::RestartTransaction() {
+  TRACE_EVENT("net", "URLRequestHttpJob::RestartTransaction",
+              NetLogWithSourceToFlow(request_->net_log()));
+
   DCHECK(!override_response_info_);
 
   // These will be reset in OnStartCompleted.
@@ -1443,13 +1404,14 @@ void URLRequestHttpJob::RestartTransaction() {
 void URLRequestHttpJob::RestartTransactionForRefresh(
     const device_bound_sessions::SessionService::DeferralParams&
         deferral_params,
-    device_bound_sessions::SessionService::RefreshResult result) {
+    device_bound_sessions::RefreshResult result) {
   // Some deferrals are not associated with a particular session
   // (e.g. session service initialization).
   if (deferral_params.session_id.has_value()) {
     request_->AddDeviceBoundSessionDeferral(
-        device_bound_sessions::SessionKey{SchemefulSite(request_->url()),
-                                          *deferral_params.session_id},
+        device_bound_sessions::SessionKey{
+            SchemefulSite(device_bound_sessions::DbscRequest(request_).url()),
+            *deferral_params.session_id},
         result);
   }
 
@@ -1619,6 +1581,14 @@ bool URLRequestHttpJob::CopyFragmentOnRedirect(const GURL& location) const {
 }
 
 bool URLRequestHttpJob::IsSafeRedirect(const GURL& location) {
+  // When the caller has indicated all redirects should be treated as safe,
+  // skip the scheme check. The caller is responsible for filtering unsafe
+  // redirects (e.g., returning an opaque-redirect response instead of
+  // following the redirect).
+  if (request_->treat_all_redirects_as_safe()) {
+    return true;
+  }
+
   // HTTP is always safe.
   // TODO(pauljensen): Remove once crbug.com/146591 is fixed.
   if (location.is_valid() &&
@@ -2023,18 +1993,6 @@ void URLRequestHttpJob::RecordCompletionHistograms(CompletionCause reason) {
                                    GetTotalSentBytes(), 1, 50000000, 50);
     base::UmaHistogramCustomCounts("Net.HttpJob.BytesReceived2",
                                    GetTotalReceivedBytes(), 1, 50000000, 50);
-    // Having a transaction_ does not imply having a response_info_. This is
-    // particularly the case in some aborted/cancelled jobs. The transaction is
-    // the primary source of MDL match information.
-    if ((transaction_ && transaction_->IsMdlMatchForMetrics()) ||
-        (response_info_ && response_info_->was_mdl_match)) {
-      base::UmaHistogramCustomCounts(
-          "Net.HttpJob.IpProtection.AllowListMatch.BytesSent2",
-          GetTotalSentBytes(), 1, 50000000, 50);
-      base::UmaHistogramCustomCounts(
-          "Net.HttpJob.IpProtection.AllowListMatch.BytesReceived2",
-          GetTotalReceivedBytes(), 1, 50000000, 50);
-    }
   }
 
   if (response_info_) {
@@ -2067,55 +2025,6 @@ void URLRequestHttpJob::RecordCompletionHistograms(CompletionCause reason) {
                                      prefilter_bytes_read(), 1, 50000000, 50);
     } else {
       base::UmaHistogramTimes("Net.HttpJob.TotalTimeNotCached", total_time);
-      if (response_info_->was_mdl_match) {
-        base::UmaHistogramCustomCounts(
-            "Net.HttpJob.IpProtection.AllowListMatch.PrefilterBytesRead.Net",
-            prefilter_bytes_read(), 1, 50000000, 50);
-      }
-
-      auto& proxy_chain = response_info_->proxy_chain;
-      bool direct_only = features::kIpPrivacyDirectOnly.Get();
-      if (proxy_chain.is_for_ip_protection()) {
-        base::UmaHistogramTimes("Net.HttpJob.IpProtection.TotalTimeNotCached3",
-                                total_time);
-        base::UmaHistogramCustomCounts("Net.HttpJob.IpProtection.BytesSent2",
-                                       GetTotalSentBytes(), 1, 50000000, 50);
-        base::UmaHistogramCustomCounts(
-            "Net.HttpJob.IpProtection.PrefilterBytesRead.Net2",
-            prefilter_bytes_read(), 1, 50000000, 50);
-      }
-      // To enable measuring how much traffic would be proxied (for
-      // experimentation and planning purposes), treat use of the direct
-      // proxy chain as success only when `kIpPrivacyDirectOnly` is
-      // true. When it is false, we only care about traffic that actually went
-      // through the IP Protection proxies, so a direct chain must be a
-      // fallback.
-      // Note that the non-chain-specific histograms don't log anything when IP
-      // Protection fails and we fall back to direct. That makes them unsuitable
-      // for measuring the success of experiments. Use the *2 variants above for
-      // that.
-      bool protection_success = proxy_chain.is_for_ip_protection() &&
-                                (!proxy_chain.is_direct() || direct_only);
-      if (protection_success) {
-        base::UmaHistogramTimes("Net.HttpJob.IpProtection.TotalTimeNotCached",
-                                total_time);
-        // Log specific times for non-zero chains. The zero chain is the
-        // default and is still counted in the base `TotalTimeNotCached`.
-        int chain_id = proxy_chain.ip_protection_chain_id();
-        if (chain_id != ProxyChain::kNotIpProtectionChainId) {
-          UmaHistogramTimes(
-              base::StrCat({"Net.HttpJob.IpProtection.TotalTimeNotCached.Chain",
-                            base::NumberToString(chain_id)}),
-              total_time);
-        }
-
-        base::UmaHistogramCustomCounts("Net.HttpJob.IpProtection.BytesSent",
-                                       GetTotalSentBytes(), 1, 50000000, 50);
-
-        base::UmaHistogramCustomCounts(
-            "Net.HttpJob.IpProtection.PrefilterBytesRead.Net",
-            prefilter_bytes_read(), 1, 50000000, 50);
-      }
       base::UmaHistogramCustomCounts("Net.HttpJob.PrefilterBytesRead.Net",
                                      prefilter_bytes_read(), 1, 50000000, 50);
 
@@ -2128,34 +2037,6 @@ void URLRequestHttpJob::RecordCompletionHistograms(CompletionCause reason) {
         base::UmaHistogramMediumTimes(
             "Net.HttpJob.TotalTimeNotCached.Secure.Quic", total_time);
       }
-
-      // Log the result of an IP-Protected request.
-      IpProtectionJobResult ipp_result;
-      if (proxy_chain.is_for_ip_protection()) {
-        if (protection_success) {
-          ipp_result = IpProtectionJobResult::kProtectionSuccess;
-        } else {
-          ipp_result = IpProtectionJobResult::kDirectFallback;
-          base::UmaHistogramTimes(
-              "Net.HttpJob.IpProtection.Fallback.TotalTimeNotCached2",
-              total_time);
-          base::UmaHistogramCustomCounts(
-              "Net.HttpJob.IpProtection.Fallback.BytesSent",
-              GetTotalSentBytes(), 1, 50000000, 50);
-          base::UmaHistogramCustomCounts(
-              "Net.HttpJob.IpProtection.Fallback.PrefilterBytesRead.Net",
-              prefilter_bytes_read(), 1, 50000000, 50);
-        }
-        base::UmaHistogramEnumeration(
-            base::StrCat(
-                {"Net.HttpJob.IpProtection.JobResult.Chain",
-                 base::NumberToString(proxy_chain.ip_protection_chain_id())}),
-            ipp_result);
-      } else {
-        ipp_result = IpProtectionJobResult::kProtectionNotAttempted;
-      }
-      base::UmaHistogramEnumeration("Net.HttpJob.IpProtection.JobResult",
-                                    ipp_result);
     }
   }
 

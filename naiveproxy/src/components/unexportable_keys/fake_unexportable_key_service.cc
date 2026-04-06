@@ -27,11 +27,28 @@ void FakeUnexportableKeyService::FromWrappedSigningKeySlowlyAsync(
     base::OnceCallback<void(ServiceErrorOr<UnexportableKeyId>)> callback) {
   std::move(callback).Run(base::unexpected(ServiceError::kKeyNotFound));
 }
+void FakeUnexportableKeyService::
+    GetAllSigningKeysForGarbageCollectionSlowlyAsync(
+        BackgroundTaskPriority priority,
+        base::OnceCallback<void(ServiceErrorOr<std::vector<UnexportableKeyId>>)>
+            callback) {
+  std::move(callback).Run(base::unexpected(ServiceError::kKeyNotFound));
+}
 void FakeUnexportableKeyService::SignSlowlyAsync(
-    const UnexportableKeyId& key_id,
+    UnexportableKeyId key_id,
     base::span<const uint8_t> data,
     BackgroundTaskPriority priority,
     base::OnceCallback<void(ServiceErrorOr<std::vector<uint8_t>>)> callback) {
+  std::move(callback).Run(base::unexpected(ServiceError::kKeyNotFound));
+}
+void FakeUnexportableKeyService::DeleteKeysSlowlyAsync(
+    base::span<const UnexportableKeyId> key_ids,
+    BackgroundTaskPriority priority,
+    base::OnceCallback<void(ServiceErrorOr<size_t>)> callback) {
+  std::move(callback).Run(base::unexpected(ServiceError::kKeyNotFound));
+}
+void FakeUnexportableKeyService::DeleteAllKeysSlowlyAsync(
+    base::OnceCallback<void(ServiceErrorOr<size_t>)> callback) {
   std::move(callback).Run(base::unexpected(ServiceError::kKeyNotFound));
 }
 ServiceErrorOr<std::vector<uint8_t>>
@@ -45,6 +62,16 @@ ServiceErrorOr<std::vector<uint8_t>> FakeUnexportableKeyService::GetWrappedKey(
 }
 ServiceErrorOr<crypto::SignatureVerifier::SignatureAlgorithm>
 FakeUnexportableKeyService::GetAlgorithm(UnexportableKeyId key_id) const {
+  return base::unexpected(ServiceError::kKeyNotFound);
+}
+
+ServiceErrorOr<std::string> FakeUnexportableKeyService::GetKeyTag(
+    UnexportableKeyId key_id) const {
+  return base::unexpected(ServiceError::kKeyNotFound);
+}
+
+ServiceErrorOr<base::Time> FakeUnexportableKeyService::GetCreationTime(
+    UnexportableKeyId key_id) const {
   return base::unexpected(ServiceError::kKeyNotFound);
 }
 

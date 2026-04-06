@@ -45,7 +45,11 @@ class QUICHE_EXPORT QuicClientSessionCache : public SessionCache {
 
   void Clear() override;
 
-  size_t size() const { return cache_.Size(); }
+  size_t GetSize() const override;
+
+  size_t GetMaxSize() const override;
+
+  void UpdateMaxSize(size_t max_entries) override;
 
  private:
   friend class test::QuicClientSessionCachePeer;

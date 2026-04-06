@@ -36,6 +36,8 @@ class NET_EXPORT_PRIVATE WebSocketQuicSpdyStream : public quic::QuicSpdyStream {
         const quic::QuicHeaderList& header_list) = 0;
     virtual void OnBodyAvailable() = 0;
     virtual void ClearStream() = 0;
+    virtual void OnCanWriteNewData() = 0;
+    virtual void OnClose(int status) = 0;
 
    protected:
     virtual ~Delegate() = default;
@@ -48,6 +50,7 @@ class NET_EXPORT_PRIVATE WebSocketQuicSpdyStream : public quic::QuicSpdyStream {
   WebSocketQuicSpdyStream& operator=(const WebSocketQuicSpdyStream&) = delete;
   ~WebSocketQuicSpdyStream() override;
 
+  // Sets the delegate to receive stream events.
   void set_delegate(Delegate* delegate) { delegate_ = delegate; }
 
   void OnInitialHeadersComplete(
@@ -55,9 +58,23 @@ class NET_EXPORT_PRIVATE WebSocketQuicSpdyStream : public quic::QuicSpdyStream {
       size_t frame_len,
       const quic::QuicHeaderList& header_list) override;
   void OnBodyAvailable() override;
+  void OnClose() override;
   int Read(IOBuffer* buf, int buf_len);
 
+  void OnCanWriteNewData() override;
+
+  // Decouples the delegate from this stream and cancels the underlying QUIC
+  // stream. This allows the delegate to be destroyed independently while
+  // ensuring the stream is properly terminated. The stream is reset with
+  // QUIC_STREAM_CANCELLED to signal intentional closure to the peer.
+  void DetachDelegate();
+
  private:
+  // Maps QUIC connection and stream errors to net error codes.
+  // Returns OK if there are no errors, otherwise returns the appropriate
+  // net error code based on the QUIC error type.
+  int MapQuicErrorToNetError();
+
   // The transaction should own the delegate. `delegate_` notifies this object
   // of its destruction, because they may be destroyed in any order.
   raw_ptr<WebSocketQuicSpdyStream::Delegate> delegate_ = nullptr;

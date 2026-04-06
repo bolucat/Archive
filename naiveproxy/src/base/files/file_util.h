@@ -424,9 +424,9 @@ BASE_EXPORT bool CreateTemporaryFileInDir(const FilePath& dir,
                                           FilePath* temp_file);
 
 // Returns the file name for a temporary file by using a platform-specific
-// naming scheme that incorporates |identifier|.
+// naming scheme that incorporates |identifier|. |hidden| is ignored on Windows.
 BASE_EXPORT FilePath
-FormatTemporaryFileName(FilePath::StringViewType identifier);
+FormatTemporaryFileName(FilePath::StringViewType identifier, bool hidden);
 
 // Create and open a temporary file stream for exclusive read, write, and delete
 // access. The full path is placed in `path`. Returns the opened file stream, or
@@ -543,7 +543,7 @@ BASE_EXPORT bool TouchFile(const FilePath& path,
 // Wrapper for fopen-like calls. Returns non-NULL FILE* on success. The
 // underlying file descriptor (POSIX) or handle (Windows) is unconditionally
 // configured to not be propagated to child processes.
-BASE_EXPORT FILE* OpenFile(const FilePath& filename, const char* mode);
+BASE_EXPORT FILE* OpenFile(const FilePath& filename, base::cstring_view mode);
 
 // Closes file opened by OpenFile. Returns true on success.
 BASE_EXPORT bool CloseFile(FILE* file);

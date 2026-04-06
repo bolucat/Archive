@@ -272,19 +272,35 @@ template("single_apple_toolchain") {
       _unstripped_output = "{{root_out_dir}}/{{target_output_name}}{{output_extension}}.unstripped"
     }
 
+    if (system_headers_in_deps) {
+      md = "-MD"
+    } else {
+      md = "-MMD"
+    }
+
     if (toolchain_has_rust) {
+      rustc_wrapper_path =
+          rebase_path("//build/rust/gni_impl/rustc_wrapper.py", root_build_dir)
+      rustc_wrapper = "\"$python_path\" \"$rustc_wrapper_path\""
+
+      rustc_env_and_flags_path =
+          "{{target_out_dir}}/{{label_name}}.rustflags.json"
+      rustc_wrapper += " --dump-rustc-env-and-flags $rustc_env_and_flags_path"
+
+      rustc_rsp_path = "{{target_out_dir}}/{{label_name}}.rsp"
+      rustc_wrapper += " --rsp=$rustc_rsp_path"
+
       if (!defined(rust_compiler_prefix)) {
         rust_compiler_prefix = ""
       }
       rust_sysroot_relative = rebase_path(rust_sysroot, root_build_dir)
       rustc_bin = "$rust_sysroot_relative/bin/rustc"
       rustc = "$rust_compiler_prefix${rustc_bin}"
-      rustc_wrapper =
-          rebase_path("//build/rust/gni_impl/rustc_wrapper.py", root_build_dir)
+      rustc_wrapper += " --rustc=$rustc"
 
       tool("rust_staticlib") {
         libname = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
-        rspfile = "$libname.rsp"
+        rspfile = rustc_rsp_path
         depfile = "$libname.d"
 
         default_output_extension = ".a"
@@ -295,13 +311,18 @@ template("single_apple_toolchain") {
         # collide.
         default_output_dir = "{{target_out_dir}}"
         description = "RUST(STATICLIB) {{output}}"
-        outputs = [ libname ]
+        outputs = [
+          libname,
+          rustc_env_and_flags_path,
+          "${rspfile}.rust",
+        ]
 
         # TODO(danakj): When `!toolchain_uses_lld` do we need to specify a path
         # to libtool like the "alink" rule?
 
-        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
-        command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"$_cxx\" $rustc_common_args --emit=dep-info=$depfile,link -o $libname LDFLAGS RUSTENV {{rustenv}}"
+        rspfile_content =
+            "$rustc_common_args {{rustdeps}} {{externs}} SOURCES {{sources}}"
+        command = "$rustc_wrapper --depfile=$depfile --emit=dep-info=$depfile,link -o $libname -- -Clinker=\"$_cxx\" {{source}} LDFLAGS RUSTENV {{rustenv}}"
         rust_sysroot = rust_sysroot_relative
       }
 
@@ -311,7 +332,7 @@ template("single_apple_toolchain") {
         # actually liblibc.rlib).
         rlibname =
             "{{output_dir}}/lib{{target_output_name}}{{output_extension}}"
-        rspfile = "$rlibname.rsp"
+        rspfile = rustc_rsp_path
         depfile = "$rlibname.d"
 
         default_output_extension = ".rlib"
@@ -324,16 +345,21 @@ template("single_apple_toolchain") {
         # collide.
         default_output_dir = "{{target_out_dir}}"
         description = "RUST {{output}}"
-        outputs = [ rlibname ]
+        outputs = [
+          rlibname,
+          rustc_env_and_flags_path,
+          "${rspfile}.rust",
+        ]
 
-        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
-        command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"$_cxx\" $rustc_common_args {{rustdeps}} {{externs}} --emit=dep-info=$depfile,link -o $rlibname LDFLAGS RUSTENV {{rustenv}}"
+        rspfile_content =
+            "$rustc_common_args {{rustdeps}} {{externs}} SOURCES {{sources}}"
+        command = "$rustc_wrapper --depfile=$depfile --emit=dep-info=$depfile,link -o $rlibname -- -Clinker=\"$_cxx\" {{source}} LDFLAGS RUSTENV {{rustenv}}"
         rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_bin") {
         exename = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
-        rspfile = "$exename.rsp"
+        rspfile = rustc_rsp_path
         depfile = "$exename.d"
         pool = "//build/toolchain:link_pool($default_toolchain)"
 
@@ -342,7 +368,11 @@ template("single_apple_toolchain") {
 
         default_output_dir = "{{root_out_dir}}"
         description = "RUST(BIN) {{output}}"
-        outputs = [ exename ]
+        outputs = [
+          exename,
+          rustc_env_and_flags_path,
+          "${rspfile}.rust",
+        ]
 
         # TODO(danakj): Support dsym_switch like C++ targets.
         # link_command += dsym_switch
@@ -353,14 +383,15 @@ template("single_apple_toolchain") {
         #   outputs += [ _unstripped_output ]
         # }
 
-        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
-        command = "$linker_driver_env \"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"$linker_driver\" $rustc_common_args --emit=dep-info=$depfile,link -o $exename LDFLAGS $linker_driver_args {{ldflags}} RUSTENV {{rustenv}}"
+        rspfile_content =
+            "$rustc_common_args {{rustdeps}} {{externs}} SOURCES {{sources}}"
+        command = "$linker_driver_env $rustc_wrapper --depfile=$depfile --emit=dep-info=$depfile,link -o $exename -- -Clinker=\"$linker_driver\" {{source}} LDFLAGS $linker_driver_args {{ldflags}} RUSTENV {{rustenv}}"
         rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_cdylib") {
         dllname = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
-        rspfile = "$dllname.rsp"
+        rspfile = rustc_rsp_path
         depfile = "$dllname.d"
         pool = "//build/toolchain:link_pool($default_toolchain)"
 
@@ -371,7 +402,11 @@ template("single_apple_toolchain") {
         output_prefix = "lib"
         default_output_dir = "{{root_out_dir}}"
         description = "RUST(CDYLIB) {{output}}"
-        outputs = [ dllname ]
+        outputs = [
+          dllname,
+          rustc_env_and_flags_path,
+          "${rspfile}.rust",
+        ]
 
         # TODO(danakj): Support dsym_switch like C++ targets.
         # link_command += dsym_switch
@@ -382,14 +417,15 @@ template("single_apple_toolchain") {
         #   outputs += [ _unstripped_output ]
         # }
 
-        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
-        command = "$linker_driver_env \"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"$linker_driver\" $rustc_common_args --emit=dep-info=$depfile,link -o $dllname LDFLAGS $linker_driver_args {{ldflags}} RUSTENV {{rustenv}}"
+        rspfile_content =
+            "$rustc_common_args {{rustdeps}} {{externs}} SOURCES {{sources}}"
+        command = "$linker_driver_env $rustc_wrapper --depfile=$depfile --emit=dep-info=$depfile,link -o $dllname -- -Clinker=\"$linker_driver\" {{source}} LDFLAGS $linker_driver_args {{ldflags}} RUSTENV {{rustenv}}"
         rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_macro") {
         dllname = "{{output_dir}}/{{target_output_name}}{{output_extension}}"
-        rspfile = "$dllname.rsp"
+        rspfile = rustc_rsp_path
         depfile = "$dllname.d"
         pool = "//build/toolchain:link_pool($default_toolchain)"
 
@@ -400,7 +436,11 @@ template("single_apple_toolchain") {
         output_prefix = "lib"
         default_output_dir = "{{root_out_dir}}"
         description = "RUST(MACRO) {{output}}"
-        outputs = [ dllname ]
+        outputs = [
+          dllname,
+          rustc_env_and_flags_path,
+          "${rspfile}.rust",
+        ]
 
         # TODO(danakj): Support dsym_switch like C++ targets.
         # link_command += dsym_switch
@@ -411,8 +451,9 @@ template("single_apple_toolchain") {
         #   outputs += [ _unstripped_output ]
         # }
 
-        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
-        command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"${_cxx}\" $rustc_common_args --emit=dep-info=$depfile,link -o $dllname LDFLAGS {{ldflags}} RUSTENV {{rustenv}}"
+        rspfile_content =
+            "$rustc_common_args {{rustdeps}} {{externs}} SOURCES {{sources}}"
+        command = "$rustc_wrapper --depfile=$depfile --emit=dep-info=$depfile,link -o $dllname -- -Clinker=\"${_cxx}\" {{source}} LDFLAGS {{ldflags}} RUSTENV {{rustenv}}"
         rust_sysroot = rust_sysroot_relative
       }
     }
@@ -420,7 +461,7 @@ template("single_apple_toolchain") {
     tool("cc") {
       depfile = "{{output}}.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
+      command = "$coverage_wrapper$cc $md -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CC {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]
@@ -429,7 +470,7 @@ template("single_apple_toolchain") {
     tool("cxx") {
       depfile = "{{output}}.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cxx -MMD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} {{module_deps_no_self}} -c {{source}} -o {{output}}"
+      command = "$coverage_wrapper$cxx $md -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} {{module_deps_no_self}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CXX {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]
@@ -441,7 +482,7 @@ template("single_apple_toolchain") {
 
       # Module file doesn't need coverage instrumentation because module files
       # represent interfaces rather than implementations.
-      command = "$cxx -MD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} {{module_deps_no_self}} -fmodule-name={{label_name}} -c -x c++ -Xclang -emit-module {{source}} -o {{output}}"
+      command = "$cxx -MD -MF $depfile {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}} {{module_deps_no_self}} -fmodule-name={{cc_module_name}} -c -x c++ -Xclang -emit-module {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "CXX_MODULE {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.pcm" ]
@@ -450,7 +491,7 @@ template("single_apple_toolchain") {
     tool("asm") {
       # For GCC we can just use the C compiler to compile assembly.
       depfile = "{{output}}.d"
-      command = "$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{asmflags}} -c {{source}} -o {{output}}"
+      command = "$cc $md -MF $depfile {{defines}} {{include_dirs}} {{asmflags}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "ASM {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]
@@ -459,7 +500,7 @@ template("single_apple_toolchain") {
     tool("objc") {
       depfile = "{{output}}.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cc -MMD -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objc}} -c {{source}} -o {{output}}"
+      command = "$coverage_wrapper$cc $md -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objc}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "OBJC {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]
@@ -468,7 +509,7 @@ template("single_apple_toolchain") {
     tool("objcxx") {
       depfile = "{{output}}.d"
       precompiled_header_type = "gcc"
-      command = "$coverage_wrapper$cxx -MMD -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objcc}} -c {{source}} -o {{output}}"
+      command = "$coverage_wrapper$cxx $md -MF $depfile {{defines}} {{include_dirs}} {{framework_dirs}} {{cflags}} {{cflags_objcc}} -c {{source}} -o {{output}}"
       depsformat = "gcc"
       description = "OBJCXX {{output}}"
       outputs = [ "$object_subdir/{{source_name_part}}.o" ]

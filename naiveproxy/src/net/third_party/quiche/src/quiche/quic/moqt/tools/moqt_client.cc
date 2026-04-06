@@ -9,7 +9,9 @@
 #include <utility>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "quiche/quic/core/crypto/proof_verifier.h"
 #include "quiche/quic/core/http/quic_spdy_client_stream.h"
 #include "quiche/quic/core/http/web_transport_http3.h"
@@ -17,6 +19,7 @@
 #include "quiche/quic/core/quic_server_id.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_quic_config.h"
 #include "quiche/quic/moqt/moqt_session.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/quic/tools/quic_default_client.h"
@@ -24,6 +27,7 @@
 #include "quiche/quic/tools/quic_name_lookup.h"
 #include "quiche/common/http/http_header_block.h"
 #include "quiche/common/platform/api/quiche_logging.h"
+#include "quiche/web_transport/web_transport_headers.h"
 
 namespace moqt {
 
@@ -33,6 +37,7 @@ MoqtClient::MoqtClient(quic::QuicSocketAddress peer_address,
                        quic::QuicEventLoop* event_loop)
     : spdy_client_(peer_address, server_id, GetMoqtSupportedQuicVersions(),
                    event_loop, std::move(proof_verifier)) {
+  TuneQuicConfig(*spdy_client_.config());
   spdy_client_.set_enable_web_transport(true);
 }
 
@@ -81,6 +86,14 @@ absl::Status MoqtClient::ConnectInner(std::string path,
   headers[":path"] = path;
   headers[":method"] = "CONNECT";
   headers[":protocol"] = "webtransport";
+  std::string version = std::string(kDefaultMoqtVersion);
+  absl::StatusOr<std::string> serialized_version =
+      webtransport::SerializeSubprotocolRequestHeader(
+          absl::MakeSpan(&version, 1));
+  if (!serialized_version.ok()) {
+    return serialized_version.status();
+  }
+  headers["wt-available-protocols"] = *serialized_version;
   stream->SendRequest(std::move(headers), "", false);
 
   quic::WebTransportHttp3* web_transport = stream->web_transport();

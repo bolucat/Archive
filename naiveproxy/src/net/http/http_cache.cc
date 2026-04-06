@@ -18,7 +18,6 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
-#include "base/hash/sha1.h"
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
@@ -33,10 +32,12 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/task/thread_pool.h"
 #include "base/time/default_clock.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "crypto/hash.h"
 #include "http_request_info.h"
 #include "net/base/cache_type.h"
 #include "net/base/features.h"
@@ -66,6 +67,13 @@
 #endif
 
 namespace net {
+
+BASE_FEATURE(kHttpCacheInitializeDiskCacheBackendEarly,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+const base::FeatureParam<bool>
+    kHttpCacheInitializeDiskCacheBackendEarlyCheckDisk{
+        &kHttpCacheInitializeDiskCacheBackendEarly, "check_disk", false};
 
 namespace {
 // True if any HTTP cache has been initialized.
@@ -107,13 +115,15 @@ HttpCache::DefaultBackend::DefaultBackend(
         file_operations_factory,
     const base::FilePath& path,
     int max_bytes,
-    bool hard_reset)
+    bool hard_reset,
+    net::CacheEncryptionDelegate* cache_encryption_delegate)
     : type_(type),
       backend_type_(backend_type),
       file_operations_factory_(std::move(file_operations_factory)),
       path_(path),
       max_bytes_(max_bytes),
-      hard_reset_(hard_reset) {}
+      hard_reset_(hard_reset),
+      cache_encryption_delegate_(std::move(cache_encryption_delegate)) {}
 
 HttpCache::DefaultBackend::~DefaultBackend() = default;
 
@@ -122,7 +132,9 @@ std::unique_ptr<HttpCache::BackendFactory> HttpCache::DefaultBackend::InMemory(
     int max_bytes) {
   return std::make_unique<DefaultBackend>(MEMORY_CACHE, CACHE_BACKEND_DEFAULT,
                                           /*file_operations_factory=*/nullptr,
-                                          base::FilePath(), max_bytes, false);
+                                          base::FilePath(), max_bytes, false,
+                                          /*cache_encryption_delegate=*/
+                                          nullptr);
 }
 
 disk_cache::BackendResult HttpCache::DefaultBackend::CreateBackend(
@@ -137,13 +149,13 @@ disk_cache::BackendResult HttpCache::DefaultBackend::CreateBackend(
   if (app_status_listener_getter_) {
     return disk_cache::CreateCacheBackend(
         type_, backend_type_, file_operations_factory_, path_, max_bytes_,
-        reset_handling, net_log, std::move(callback),
-        app_status_listener_getter_);
+        reset_handling, net_log, cache_encryption_delegate_,
+        std::move(callback), app_status_listener_getter_);
   }
 #endif
   return disk_cache::CreateCacheBackend(
       type_, backend_type_, file_operations_factory_, path_, max_bytes_,
-      reset_handling, net_log, std::move(callback));
+      reset_handling, net_log, cache_encryption_delegate_, std::move(callback));
 }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -152,6 +164,65 @@ void HttpCache::DefaultBackend::SetAppStatusListenerGetter(
   app_status_listener_getter_ = std::move(app_status_listener_getter);
 }
 #endif
+
+std::optional<CacheType> HttpCache::BackendFactory::GetCacheType() const {
+  return std::nullopt;
+}
+
+void HttpCache::BackendFactory::HasExistingFileToLoad(
+    base::OnceCallback<void(bool)> callback) {
+  std::move(callback).Run(false);
+}
+
+std::optional<CacheType> HttpCache::DefaultBackend::GetCacheType() const {
+  return type_;
+}
+
+void HttpCache::DefaultBackend::HasExistingFileToLoad(
+    base::OnceCallback<void(bool)> callback) {
+  if (path_.empty()) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  auto task_runner = base::ThreadPool::CreateSequencedTaskRunner(
+      {base::MayBlock(), base::WithBaseSyncPrimitives(),
+       base::TaskPriority::USER_BLOCKING,
+       base::TaskShutdownBehavior::BLOCK_SHUTDOWN});
+
+  std::unique_ptr<disk_cache::BackendFileOperations> file_ops;
+  if (file_operations_factory_) {
+    file_ops = file_operations_factory_->Create(task_runner);
+  } else {
+    file_ops = std::make_unique<disk_cache::TrivialFileOperations>();
+  }
+
+  task_runner->PostTaskAndReplyWithResult(
+      FROM_HERE,
+      base::BindOnce(
+          [](std::unique_ptr<disk_cache::BackendFileOperations> ops,
+             base::FilePath path) {
+// On platforms other than Android, GrantSandboxAccessOnThreadPool()
+// is called when the browser process creates a NetworkContext, and that
+// function explicitly ensures the/ cache directory is created.
+// Thus we need to check if cache files actually exist.
+#if !BUILDFLAG(IS_ANDROID)
+            if (!ops->PathExists(path)) {
+              return false;
+            }
+            auto enumerator = ops->EnumerateFiles(path);
+            return enumerator && enumerator->Next().has_value();
+
+// For Android, we don't create the directory so checking
+// the directory is enough and we should minimize file operations
+// as much as possible during browser startup.
+#else
+            return ops->PathExists(path);
+#endif
+          },
+          std::move(file_ops), path_),
+      std::move(callback));
+}
 
 //-----------------------------------------------------------------------------
 
@@ -455,11 +526,33 @@ HttpCache::HttpCache(
   // Session may be NULL in unittests.
   // TODO(mmenke): Seems like tests could be changed to provide a session,
   // rather than having logic only used in unit tests here.
-  if (!session) {
-    return;
+  if (session) {
+    net_log_ = session->net_log();
   }
 
-  net_log_ = session->net_log();
+  if (base::FeatureList::IsEnabled(kHttpCacheInitializeDiskCacheBackendEarly) &&
+      backend_factory_) {
+    if (auto maybe_cache_type = backend_factory_->GetCacheType()) {
+      if (*maybe_cache_type == CacheType::DISK_CACHE) {
+        if (!kHttpCacheInitializeDiskCacheBackendEarlyCheckDisk.Get()) {
+          CreateBackend(CompletionOnceCallback());
+          base::UmaHistogramBoolean("HttpCache.CreateBackendEarly", true);
+        } else {
+          backend_factory_->HasExistingFileToLoad(base::BindOnce(
+              [](base::WeakPtr<HttpCache> self, bool has_file) {
+                bool create_backend = false;
+                if (self && has_file) {
+                  self->CreateBackend(CompletionOnceCallback());
+                  create_backend = true;
+                }
+                base::UmaHistogramBoolean("HttpCache.CreateBackendEarly",
+                                          create_backend);
+              },
+              weak_factory_.GetWeakPtr()));
+        }
+      }
+    }
+  }
 }
 
 HttpCache::~HttpCache() {
@@ -522,8 +615,8 @@ disk_cache::Backend* HttpCache::GetCurrentBackend() const {
 bool HttpCache::ParseResponseInfo(base::span<const uint8_t> data,
                                   HttpResponseInfo* response_info,
                                   bool* response_truncated) {
-  base::Pickle pickle = base::Pickle::WithUnownedBuffer(data);
-  return response_info->InitFromPickle(pickle, response_truncated);
+  return response_info->InitFromPickle(base::PickleIterator::WithData(data),
+                                       response_truncated);
 }
 
 void HttpCache::CloseAllConnections(int net_error,
@@ -692,9 +785,6 @@ std::string HttpCache::GetResourceURLFromHttpCacheKey(const std::string& key) {
 
 // static
 bool HttpCache::CanGenerateCacheKeyForRequest(const HttpRequestInfo& request) {
-  // WARNING: If this function is changed to look at `request.url` in future,
-  // it will break GenerateCacheKeyForRequestWithAlternateURL(). Add an extra
-  // `url` parameter instead.
   if (IsSplitCacheEnabled()) {
     if (request.network_isolation_key.IsTransient()) {
       return false;
@@ -738,9 +828,7 @@ std::string HttpCache::GenerateCacheKey(
     }
 
     std::string_view is_cross_site_main_frame_navigation_prefix;
-    if (initiator.has_value() && is_mainframe_navigation &&
-        base::FeatureList::IsEnabled(
-            net::features::kSplitCacheByCrossSiteMainFrameNavigationBoolean)) {
+    if (initiator.has_value() && is_mainframe_navigation) {
       const bool is_initiator_cross_site =
           !net::SchemefulSite::IsSameSite(*initiator, url::Origin::Create(url));
       if (is_initiator_cross_site) {
@@ -773,13 +861,12 @@ std::string HttpCache::GenerateCacheKey(
 // static
 std::optional<std::string> HttpCache::GenerateCacheKeyForRequest(
     const HttpRequestInfo* request) {
-  return GenerateCacheKeyForRequestWithAlternateURL(request, request->url);
+  return GenerateCacheKeyInternal(*request, /*include_url=*/true);
 }
 
 // static
 std::optional<std::string> HttpCache::GenerateCacheKeyInternal(
     const HttpRequestInfo& request,
-    const GURL& url,
     bool include_url) {
   if (!CanGenerateCacheKeyForRequest(request)) {
     return std::nullopt;
@@ -789,26 +876,16 @@ std::optional<std::string> HttpCache::GenerateCacheKeyInternal(
       request.upload_data_stream ? request.upload_data_stream->identifier()
                                  : int64_t{0};
   return GenerateCacheKey(
-      url, request.load_flags, request.network_isolation_key,
+      request.url, request.load_flags, request.network_isolation_key,
       upload_data_identifier, request.is_subframe_document_resource,
       request.is_main_frame_navigation, request.is_shared_resource,
       request.initiator, include_url);
 }
 
 // static
-std::optional<std::string>
-HttpCache::GenerateCacheKeyForRequestWithAlternateURL(
-    const HttpRequestInfo* request,
-    const GURL& url) {
-  CHECK(request);
-  return GenerateCacheKeyInternal(*request, url, /*include_url=*/true);
-}
-
-// static
 std::optional<std::string> HttpCache::GenerateCachePartitionKeyForRequest(
     const HttpRequestInfo& request) {
-  return GenerateCacheKeyInternal(request, request.url,
-                                  /*include_url=*/false);
+  return GenerateCacheKeyInternal(request, /*include_url=*/false);
 }
 
 // static
@@ -860,8 +937,6 @@ int HttpCache::CreateBackend(CompletionOnceCallback callback) {
     return ERR_FAILED;
   }
 
-  building_backend_ = true;
-
   const bool callback_is_null = callback.is_null();
   std::unique_ptr<WorkItem> item = std::make_unique<WorkItem>(
       WI_CREATE_BACKEND, nullptr, std::move(callback));
@@ -869,12 +944,14 @@ int HttpCache::CreateBackend(CompletionOnceCallback callback) {
   // This is the only operation that we can do that is not related to any given
   // entry, so we use an empty key for it.
   PendingOp* pending_op = GetPendingOp(std::string());
-  if (pending_op->writer) {
+  if (building_backend_) {
+    DCHECK(pending_op->writer);
     if (!callback_is_null) {
       pending_op->pending_queue.push_back(std::move(item));
     }
     return ERR_IO_PENDING;
   }
+  building_backend_ = true;
 
   DCHECK(pending_op->pending_queue.empty());
 
@@ -1013,14 +1090,40 @@ bool HttpCache::HasActiveEntry(const std::string& key) {
 scoped_refptr<HttpCache::ActiveEntry> HttpCache::GetActiveEntry(
     const std::string& key) {
   auto it = active_entries_.find(key);
-  return it != active_entries_.end() ? base::WrapRefCounted(&it->second.get())
-                                     : nullptr;
+  if (it == active_entries_.end()) {
+    return nullptr;
+  }
+
+  scoped_refptr<ActiveEntry> entry = base::WrapRefCounted(&it->second.get());
+
+  // Check if the existing active entry has been logically invalidated.
+  // We only check opened entries because newly created (unopened) entries
+  // are guaranteed to be fresh and should not be invalidated by filters
+  // that were registered before their creation.
+  // This ensures that even if an entry is currently in use, a new request
+  // will treat it as a miss if a clear-data request just occurred.
+  if (entry->opened() && IsInvalidated(entry->GetEntry())) {
+    DoomEntry(key, nullptr);
+    return nullptr;
+  }
+  return entry;
 }
 
 scoped_refptr<HttpCache::ActiveEntry> HttpCache::ActivateEntry(
     disk_cache::Entry* disk_entry,
     bool opened) {
   DCHECK(!HasActiveEntry(disk_entry->GetKey()));
+
+  // Intercept entries as they are being activated from the disk backend.
+  // We only check 'opened' (existing) entries. Newly 'created' entries
+  // are bypassing the cache due to a miss and should not be invalidated.
+  // If they match an invalidation filter, we doom them immediately and
+  // return nullptr to signal a cache miss to the transaction.
+  if (opened && IsInvalidated(disk_entry)) {
+    disk_entry->Doom();
+    return nullptr;
+  }
+
   return base::MakeRefCounted<ActiveEntry>(weak_factory_.GetWeakPtr(),
                                            disk_entry, opened);
 }
@@ -1510,11 +1613,11 @@ bool HttpCache::RemovePendingTransactionFromPendingOp(
 }
 
 void HttpCache::MarkKeyNoStore(const std::string& key) {
-  keys_marked_no_store_.Put(base::SHA1Hash(base::as_byte_span(key)));
+  keys_marked_no_store_.Put(crypto::hash::Sha256(key));
 }
 
 bool HttpCache::DidKeyLeadToNoStoreResponse(const std::string& key) {
-  return keys_marked_no_store_.Get(base::SHA1Hash(base::as_byte_span(key))) !=
+  return keys_marked_no_store_.Get(crypto::hash::Sha256(key)) !=
          keys_marked_no_store_.end();
 }
 
@@ -1581,6 +1684,13 @@ void HttpCache::OnIOComplete(int result, PendingOp* pending_op) {
       DCHECK(pending_op->entry);
       key = pending_op->entry->GetKey();
       entry = ActivateEntry(pending_op->entry, pending_op->entry_opened);
+      if (!entry) {
+        // Entry was invalidated.
+        result = ERR_CACHE_RACE;
+        try_restart_requests = true;
+        pending_op->entry.ExtractAsDangling()->Close();
+        pending_op->entry = nullptr;
+      }
     } else {
       // The writer transaction is gone.
       if (!pending_op->entry_opened) {
@@ -1718,6 +1828,7 @@ void HttpCache::OnPendingBackendCreationOpComplete(
 }
 
 void HttpCache::OnBackendCreated(int result, PendingOp* pending_op) {
+  TRACE_EVENT("net", "HttpCache::OnBackendCreated");
   std::unique_ptr<WorkItem> item = std::move(pending_op->writer);
   WorkItemOperation op = item->operation();
   DCHECK_EQ(WI_CREATE_BACKEND, op);
@@ -1771,6 +1882,53 @@ void HttpCache::OnNoVarySearchCacheLoadComplete(
   auto provisional_no_vary_search_cache = std::move(no_vary_search_cache_);
   no_vary_search_cache_ = std::move(result.value());
   no_vary_search_cache_->MergeFrom(*provisional_no_vary_search_cache);
+  // The persisted cache may have had a different size than our current
+  // configuration. Reconfigure it and evict entries if necessary.
+  const size_t max_size = features::kHttpCacheNoVarySearchCacheMaxEntries.Get();
+  if (max_size >= 1) {
+    no_vary_search_cache_->SetMaxSize(max_size);
+  }
+}
+
+HttpCache::InvalidationFilter::InvalidationFilter() = default;
+HttpCache::InvalidationFilter::~InvalidationFilter() = default;
+HttpCache::InvalidationFilter::InvalidationFilter(const InvalidationFilter&) =
+    default;
+HttpCache::InvalidationFilter& HttpCache::InvalidationFilter::operator=(
+    const InvalidationFilter&) = default;
+
+bool HttpCache::InvalidationFilter::Matches(
+    const GURL& url,
+    const disk_cache::Entry* entry) const {
+  if (entry->GetLastUsed() < begin_time || entry->GetLastUsed() >= end_time) {
+    return false;
+  }
+
+  return DoesUrlMatchFilter(filter_type, origins, domains, url);
+}
+
+void HttpCache::AddInvalidationFilter(InvalidationFilter filter) {
+  invalidation_filters_.push_back(std::move(filter));
+}
+
+bool HttpCache::IsInvalidated(disk_cache::Entry* entry) {
+  if (!base::FeatureList::IsEnabled(features::kLogicalClearHttpCache) ||
+      invalidation_filters_.empty()) {
+    return false;
+  }
+
+  std::string url_str = GetResourceURLFromHttpCacheKey(entry->GetKey());
+  GURL url(url_str);
+  if (!url.is_valid()) {
+    return false;
+  }
+
+  for (const auto& filter : invalidation_filters_) {
+    if (filter.Matches(url, entry)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace net

@@ -30,6 +30,7 @@ namespace net {
 class CanonicalCookie;
 class CookieAccessDelegate;
 class CookieInclusionStatus;
+class CookiePartitionKey;
 class IsolationInfo;
 class ParsedCookie;
 class SchemefulSite;
@@ -101,27 +102,6 @@ enum class StorageAccessStatusOutcome {
   kMaxValue = kValueActive
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/storage/enums.xml:StorageAccessStatusOutcome)
-
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-// The values of this enum correspond to possible reasons the
-// `Sec-Fetch-Storage-Access` header may be omitted from a request, as well as
-// the possible values of the header when it is included.
-enum class SecFetchStorageAccessOutcome {
-  // The request's storage access status is nullopt.
-  kOmittedStatusMissing = 0,
-  // The request's credentials mode is not "include".
-  kOmittedRequestOmitsCredentials = 1,
-  // The `Sec-Fetch-Storage-Access` header is included and has the value `none`.
-  kValueNone = 2,
-  // The `Sec-Fetch-Storage-Access` header is included and has the value
-  // `inactive`.
-  kValueInactive = 3,
-  // The `Sec-Fetch-Storage-Access` header is included and has the value
-  // `active`.
-  kValueActive = 4,
-  kMaxValue = kValueActive
-};
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
@@ -264,32 +244,36 @@ NET_EXPORT bool IsOnPath(const std::string_view cookie_path,
 // applies to the given cookie |name|.
 CookiePrefix GetCookiePrefix(std::string_view name);
 
+// Checks if a cookie value contains a hidden prefix name. This can be used to
+// reject cookies where the name is empty but the value starts with a cookie
+// prefix (e.g., "__Host-", "__Secure-", "__Http-"). Such cookies would be
+// sent back as "Cookie: __Host-foo=bar" which could be misinterpreted by
+// servers as a cookie named "__Host-foo".
+NET_EXPORT_PRIVATE bool HasHiddenPrefixName(std::string_view cookie_value);
+
 // Returns true if the cookie does not violate any constraints imposed
 // by the cookie name's prefix, as described in
 // https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-13#name-cookie-name-prefixes
 bool IsCookiePrefixValid(CookiePrefix prefix,
                          const GURL& url,
                          const ParsedCookie& parsed_cookie);
-// As above. `secure`, `domain`, and `path` are the raw attribute values (i.e.
-// as taken from a ParsedCookie), NOT in normalized form as represented in
-// CookieBase.
+// As above. When `url` is present, `domain` and `path` are the raw attribute
+// values (i.e. as taken from a ParsedCookie). When `url` is nullopt (e.g., when
+// validating cookies loaded from storage), `domain` is in normalized form
+// (e.g., "example.com" for host-only, ".example.com" for domain cookies) and
+// URL scheme checks are skipped.
 NET_EXPORT_PRIVATE bool IsCookiePrefixValid(CookiePrefix prefix,
-                                            const GURL& url,
+                                            base::optional_ref<const GURL> url,
                                             bool secure,
                                             bool http_only,
                                             std::string_view domain,
                                             std::string_view path);
 
-// Returns true iff the cookie is a partitioned cookie with a nonce or that
-// does not violate the semantics of the Partitioned attribute:
-// - Must have the Secure attribute OR the cookie partition contains a nonce.
-bool IsCookiePartitionedValid(const GURL& url,
-                              const ParsedCookie& parsed_cookie,
-                              bool partition_has_nonce);
-bool IsCookiePartitionedValid(const GURL& url,
-                              bool secure,
-                              bool is_partitioned,
-                              bool partition_has_nonce);
+// Returns true iff the cookie's Partitioned attribute is valid (or unused).
+NET_EXPORT_PRIVATE bool IsCookiePartitionedValid(
+    base::optional_ref<const GURL> url,
+    bool secure,
+    base::optional_ref<const CookiePartitionKey> partition_key);
 
 // A ParsedRequestCookie consists of the key and value of the cookie.
 using ParsedRequestCookie = std::pair<std::string, std::string>;
@@ -355,7 +339,8 @@ ComputeSameSiteContextForRequest(std::string_view http_method,
                                  const SiteForCookies& site_for_cookies,
                                  const std::optional<url::Origin>& initiator,
                                  bool is_main_frame_navigation,
-                                 bool force_ignore_site_for_cookies);
+                                 bool force_ignore_site_for_cookies,
+                                 bool ignore_unsafe_method_for_same_site_lax);
 
 // As above, but applying for scripts. `initiator` here should be the initiator
 // used when fetching the document.
@@ -470,9 +455,7 @@ NET_EXPORT bool IsForceThirdPartyCookieBlockingEnabled();
 [[nodiscard]] NET_EXPORT bool ShouldAddInitialStorageAccessApiOverride(
     const GURL& url,
     StorageAccessApiStatus api_status,
-    base::optional_ref<const url::Origin> request_initiator,
-    bool emit_metrics,
-    bool credentials_mode_include);
+    base::optional_ref<const url::Origin> request_initiator);
 
 }  // namespace cookie_util
 

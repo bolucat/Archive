@@ -43,4 +43,16 @@ perfetto_proto_library("@TYPE@") {
     "zero",
     "cpp",
   ]
+  deps = [ "../protovm:@TYPE@" ]
+}
+
+# Semantic types for proto field filtering. This is separate from the main
+# common protos because it's used by the proto filtering system.
+perfetto_proto_library("semantic_type_@TYPE@") {
+  sources = [ "semantic_type.proto" ]
+  proto_generators = [
+    "cpp",
+    "lite",
+    "zero",
+  ]
 }

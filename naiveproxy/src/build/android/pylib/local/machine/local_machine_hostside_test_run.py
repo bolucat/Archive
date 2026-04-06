@@ -148,8 +148,6 @@ class LocalMachineHostsideTestRun(test_run.TestRun):
         'run',
         'commandAndExit',
         'cts',
-        '-m',
-        self.TestPackage(),
     ] + self._MakeModeArgs() + filter_args + ['--collect-tests-only']
 
     logging.info('Getting tests from cts-tradefed using --collect_tests_only.')
@@ -185,16 +183,15 @@ class LocalMachineHostsideTestRun(test_run.TestRun):
         'run',
         'commandAndExit',
         'cts',
-        '-m',
-        self.TestPackage(),
     ] + self._MakeModeArgs() + filter_args + [
         '--retry-strategy',
         'RETRY_ANY_FAILURE',
         '--max-testcase-run-count',
         str(self._test_instance.max_tries),
         '--template:map',
-        'reporters=../../build/android/pylib/local/machine/'
-        'local_machine_hostside_tradefed_config.xml',
+        f'''reporters={(
+            os.path.abspath(os.path.join(os.path.dirname(__file__),
+            'local_machine_hostside_tradefed_config.xml')))}''',
     ]
 
     return _Job(

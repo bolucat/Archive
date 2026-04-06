@@ -12,7 +12,7 @@
 #include "base/numerics/safe_math_shared_impl.h"  // IWYU pragma: export
 
 namespace base {
-namespace internal {
+namespace numerics_internal {
 
 template <typename T>
   requires std::is_arithmetic_v<T>
@@ -180,13 +180,6 @@ class ClampedNumeric {
 template <typename T>
 ClampedNumeric(T) -> ClampedNumeric<T>;
 
-// Convenience wrapper to return a new ClampedNumeric from the provided
-// arithmetic or ClampedNumericType.
-template <typename T>
-constexpr ClampedNumeric<UnderlyingType<T>> MakeClampedNum(T value) {
-  return value;
-}
-
 // These implement the variadic wrapper for the math operations.
 template <template <typename, typename> class M, typename L, typename R>
 constexpr ClampedNumeric<typename MathWrapper<M, L, R>::type> ClampMathOp(
@@ -225,22 +218,21 @@ BASE_NUMERIC_COMPARISON_OPERATORS(Clamped, IsGreaterOrEqual, >=)
 BASE_NUMERIC_COMPARISON_OPERATORS(Clamped, IsEqual, ==)
 BASE_NUMERIC_COMPARISON_OPERATORS(Clamped, IsNotEqual, !=)
 
-}  // namespace internal
+}  // namespace numerics_internal
 
-using internal::ClampAdd;
-using internal::ClampAnd;
-using internal::ClampDiv;
-using internal::ClampedNumeric;
-using internal::ClampLsh;
-using internal::ClampMax;
-using internal::ClampMin;
-using internal::ClampMod;
-using internal::ClampMul;
-using internal::ClampOr;
-using internal::ClampRsh;
-using internal::ClampSub;
-using internal::ClampXor;
-using internal::MakeClampedNum;
+using numerics_internal::ClampAdd;
+using numerics_internal::ClampAnd;
+using numerics_internal::ClampDiv;
+using numerics_internal::ClampedNumeric;
+using numerics_internal::ClampLsh;
+using numerics_internal::ClampMax;
+using numerics_internal::ClampMin;
+using numerics_internal::ClampMod;
+using numerics_internal::ClampMul;
+using numerics_internal::ClampOr;
+using numerics_internal::ClampRsh;
+using numerics_internal::ClampSub;
+using numerics_internal::ClampXor;
 
 }  // namespace base
 

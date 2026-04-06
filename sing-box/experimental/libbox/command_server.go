@@ -173,6 +173,7 @@ type OverrideOptions struct {
 }
 
 func (s *CommandServer) StartOrReloadService(configContent string, options *OverrideOptions) error {
+	saveConfigSnapshot(configContent)
 	err := s.StartedService.StartOrReloadService(configContent, &daemon.OverrideOptions{
 		AutoRedirect:   options.AutoRedirect,
 		IncludePackage: iteratorToArray(options.IncludePackage),
@@ -181,7 +182,6 @@ func (s *CommandServer) StartOrReloadService(configContent string, options *Over
 	if err != nil {
 		return err
 	}
-	saveConfigSnapshot(configContent)
 	return nil
 }
 

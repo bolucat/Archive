@@ -45,8 +45,8 @@ namespace net {
 namespace {
 
 // Callback for TYPE_URL_REQUEST_FILTERS_SET net-internals event.
-base::Value::Dict SourceStreamSetParams(SourceStream* source_stream) {
-  base::Value::Dict event_params;
+base::DictValue SourceStreamSetParams(SourceStream* source_stream) {
+  base::DictValue event_params;
   event_params.Set("filters", source_stream->Description());
   return event_params;
 }
@@ -762,10 +762,10 @@ void URLRequestJob::RecordBytesRead(int bytes_read) {
   if (request_->context()->network_quality_estimator()) {
     if (prefilter_bytes_read() == bytes_read) {
       request_->context()->network_quality_estimator()->NotifyHeadersReceived(
-          *request_, prefilter_bytes_read());
+          *request_);
     } else {
       request_->context()->network_quality_estimator()->NotifyBytesRead(
-          *request_, prefilter_bytes_read());
+          *request_);
     }
   }
 

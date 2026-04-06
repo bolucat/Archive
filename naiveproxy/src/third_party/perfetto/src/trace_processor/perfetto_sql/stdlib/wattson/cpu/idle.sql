@@ -13,8 +13,6 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 
-INCLUDE PERFETTO MODULE counters.intervals;
-
 INCLUDE PERFETTO MODULE wattson.device_infos;
 
 -- Get the corresponding deep idle time offset based on device and CPU.
@@ -40,36 +38,16 @@ LIMIT 1;
 -- thread.
 CREATE PERFETTO TABLE _unified_idle_state AS
 WITH
-  idle_prev AS (
+  -- If _wattson_cpuidle_counters_exist has rows, this CTE returns empty,
+  -- effectively disabling the 'swapper_as_idle' branch efficiently.
+  const_params AS (
     SELECT
-      ts,
-      lag(ts, 1, trace_start()) OVER (PARTITION BY cpu ORDER BY ts) AS prev_ts,
-      value AS idle,
-      cli.value - cli.delta_value AS idle_prev,
-      cct.cpu
-    -- Same as cpu_idle_counters, but extracts some additional info that isn't
-    -- nominally present in cpu_idle_counters, such that the already calculated
-    -- lag values are reused instead of recomputed
-    FROM counter_leading_intervals!((
-      SELECT c.*
-      FROM counter c
-      JOIN cpu_counter_track cct ON cct.id = c.track_id AND cct.name = 'cpuidle'
-    )) AS cli
-    JOIN cpu_counter_track AS cct
-      ON cli.track_id = cct.id
-  ),
-  swapper_as_idle AS (
-    SELECT
-      ts,
-      cpu,
-      iif(is_idle, (
+      (
         SELECT
           idle
         FROM _deepest_idle
-      ), 4294967295) AS idle
-    FROM sched
-    LEFT JOIN thread
-      USING (utid)
+        LIMIT 1
+      ) AS deepest_idle
     WHERE
       NOT EXISTS(
         SELECT
@@ -77,13 +55,72 @@ WITH
         FROM _wattson_cpuidle_counters_exist
       )
   ),
+  idle_prev AS (
+    SELECT
+      c.ts,
+      lag(c.ts, 1, trace_start()) OVER (PARTITION BY c.track_id ORDER BY c.ts, c.id) AS prev_ts,
+      cast_int!(c.value) AS idle,
+      cast_int!(lag(c.value) OVER (PARTITION BY c.track_id ORDER BY c.ts, c.id)) AS idle_prev,
+      cct.cpu
+    FROM counter AS c
+    JOIN cpu_counter_track AS cct
+      ON cct.id = c.track_id
+    WHERE
+      cct.name = 'cpuidle'
+  ),
+  swapper_events AS (
+    -- Transition to idle (using swapper as idle)
+    SELECT
+      ts,
+      cpu,
+      p.deepest_idle AS idle
+    FROM const_params AS p
+    CROSS JOIN sched
+    -- dur != 0 to handle unfinished slices
+    WHERE
+      utid IN (
+        SELECT
+          utid
+        FROM thread
+        WHERE
+          is_idle
+      ) AND dur != 0
+    UNION ALL
+    -- Transition to active
+    SELECT
+      ts + dur AS ts,
+      cpu,
+      4294967295 AS idle
+    FROM const_params AS p
+    CROSS JOIN sched
+    -- dur > 0 to prevent ts + (-1)
+    WHERE
+      utid IN (
+        SELECT
+          utid
+        FROM thread
+        WHERE
+          is_idle
+      ) AND dur > 0
+  ),
+  -- Merge transition points if an idle slice exactly abuts an active state
+  swapper_transitions AS (
+    SELECT
+      ts,
+      cpu,
+      min(idle) AS idle
+    FROM swapper_events
+    GROUP BY
+      cpu,
+      ts
+  ),
   idle_transitions AS (
     SELECT
       ts,
       cpu,
       idle,
       lag(idle, 1, idle) OVER (PARTITION BY cpu ORDER BY ts) != idle AS transitioned
-    FROM swapper_as_idle
+    FROM swapper_transitions
   ),
   continuous_idle_slices AS (
     SELECT
@@ -182,6 +219,8 @@ SELECT
   first_slices.cpu,
   NULL AS idle
 FROM first_cpu_idle_slices AS first_slices
+WHERE
+  dur > 0
 UNION ALL
 SELECT
   ts,
@@ -189,6 +228,8 @@ SELECT
   cpu,
   idle
 FROM _cpu_idle
+WHERE
+  dur > 0
 UNION ALL
 -- Add empty cpu idle counters for CPUs that are physically present, but did not
 -- have a single idle event register. The time region needs to be defined so

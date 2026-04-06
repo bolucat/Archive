@@ -77,5 +77,15 @@ void SimpleSessionCache::RemoveExpiredEntries(QuicWallTime /*now*/) {
 
 void SimpleSessionCache::Clear() { cache_entries_.clear(); }
 
+void SimpleSessionCache::UpdateMaxSize(size_t /*max_entries*/) {
+  // SimpleSessionCache does not support updating the maximum size of the cache.
+}
+
+size_t SimpleSessionCache::GetSize() const { return cache_entries_.size(); }
+
+size_t SimpleSessionCache::GetMaxSize() const {
+  return std::numeric_limits<size_t>::max();
+}
+
 }  // namespace test
 }  // namespace quic

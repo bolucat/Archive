@@ -64,7 +64,8 @@ _DEVIL_STATIC_CONFIG_FILE = os.path.abspath(os.path.join(
     host_paths.DIR_SOURCE_ROOT, 'build', 'android', 'devil_config.json'))
 
 _RERUN_FAILED_TESTS_FILE = 'rerun_failed_tests.filter'
-
+# A dictionary of a test suite and a flat test name to overwrite.
+_REWRITE_SCHEME = {'components_perftests': 'components_perftests'}
 
 def _RealPath(arg):
   if arg.startswith('//'):
@@ -151,6 +152,10 @@ def AddTracingOptions(parser):
 
 def AddCommonOptions(parser):
   """Adds all common options to |parser|."""
+  parser.add_argument("-q",
+                      "--quiet",
+                      action="store_true",
+                      help="Minimize output.")
 
   default_build_type = os.environ.get('BUILDTYPE', 'Debug')
 
@@ -192,6 +197,12 @@ def AddCommonOptions(parser):
       action='store_true',
       help='Whether to archive test output locally and generate '
            'a local results detail page.')
+  # This is being added here so that autotest.py can pass the flag without
+  # knowing if it's a robolectric test.
+  parser.add_argument(
+      '--single-variant',
+      action='store_true',
+      help='Run only a single SDK variant of Robolectric tests.')
 
   parser.add_argument('--list-tests',
                       action='store_true',
@@ -210,16 +221,14 @@ def AddCommonOptions(parser):
       namespace.local_output = True
       namespace.num_retries = 0
       namespace.skip_clear_data = True
-      namespace.use_persistent_shell = True
 
-  parser.add_argument(
-      '--fast-local-dev',
-      type=bool,
-      nargs=0,
-      action=FastLocalDevAction,
-      help='Alias for: --num-retries=0 --enable-device-cache '
-      '--enable-concurrent-adb --skip-clear-data '
-      '--extract-test-list-from-filter --use-persistent-shell --local-output')
+  parser.add_argument('--fast-local-dev',
+                      type=bool,
+                      nargs=0,
+                      action=FastLocalDevAction,
+                      help='Alias for: --num-retries=0 --enable-device-cache '
+                      '--enable-concurrent-adb --skip-clear-data '
+                      '--extract-test-list-from-filter --local-output')
 
   # TODO(jbudorick): Remove this once downstream bots have switched to
   # api.test_results.
@@ -248,11 +257,12 @@ def AddCommonOptions(parser):
       dest='repeat', type=int, default=0,
       help='Number of times to repeat the specified set of tests.')
 
-  # Not useful for junit tests.
+  # There may be steps that involve setting up a new emulator or device
+  # resets that may not interact well with a persistent shell connection.
   parser.add_argument(
-      '--use-persistent-shell',
+      '--disable-persistent-shell',
       action='store_true',
-      help='Uses a persistent shell connection for the adb connection.')
+      help='Use a non-persistent shell connection for the adb connection.')
 
   # This is currently only implemented for gtests and instrumentation tests.
   parser.add_argument(
@@ -276,10 +286,11 @@ def AddCommonOptions(parser):
 def ProcessCommonOptions(args):
   """Processes and handles all common options."""
   run_tests_helper.SetLogLevel(args.verbose_count, add_handler=False)
-  if args.verbose_count > 0:
-    handler = logging_utils.ColorStreamHandler()
-  else:
-    handler = logging.StreamHandler(sys.stdout)
+  # Color warnings only when showing INFO logs (otherwise they do not need to
+  # be distinguished).
+  color_warnings = args.verbose_count > 0
+  logging_utils.InitColorama()
+  handler = logging_utils.ColorStreamHandler(color_warnings=color_warnings)
   handler.setFormatter(run_tests_helper.CustomFormatter())
   logging.getLogger().addHandler(handler)
 
@@ -895,7 +906,6 @@ def AddJUnitTestOptions(parser):
                       help='Path to search for native libraries.')
   parser.add_argument(
       '--resource-apk',
-      required=True,
       help='Path to .ap_ containing binary resources for Robolectric.')
   parser.add_argument('--shadows-allowlist',
                       help='Path to Allowlist file for Shadows.')
@@ -1088,7 +1098,7 @@ def _CreateStructuredTestDict(test_instance, test_result):
 
   test_id = test_result.GetNameForResultSink()
 
-  if test_instance.TestType() in ['instrumentation', 'junit']:
+  if test_instance.TestType() in ['hostside', 'instrumentation', 'junit']:
     re_match = re.search(r'(.*)\.(\w+\$?\w+)#(.*)', test_id)
     if not re_match:
       logging.error(
@@ -1127,6 +1137,14 @@ def _CreateStructuredTestDict(test_instance, test_result):
       name = re_match.group(2)
       instantiation = ""
       case_id = ""
+
+    # Some android gtests are incompatible with the upload scheme on other
+    # test runners.
+    if test_instance.suite in _REWRITE_SCHEME:
+      struct_test_dict['caseNameComponents'] = [
+          _REWRITE_SCHEME.get(test_instance.suite)
+      ]
+      return struct_test_dict
 
     struct_test_dict['coarseName'] = None  # Not used.
     struct_test_dict['fineName'] = suite
@@ -1405,17 +1423,17 @@ def RunTestsInPlatformMode(args, result_sink_client=None):
         for r in iteration_results.GetAll():
           result_counts[r.GetName()][r.GetType()] += 1
 
-        report_results.LogFull(
-            results=iteration_results,
-            test_type=test_instance.TestType(),
-            test_package=test_run.TestPackage(),
-            annotation=getattr(args, 'annotations', None),
-            flakiness_server=getattr(args, 'flakiness_dashboard_server',
-                                     None))
+        report_results.LogFull(results=iteration_results,
+                               test_type=test_instance.TestType(),
+                               test_package=test_run.TestPackage(),
+                               annotation=getattr(args, 'annotations', None),
+                               flakiness_server=getattr(
+                                   args, 'flakiness_dashboard_server', None),
+                               quiet=args.quiet)
 
         failed_tests = (iteration_results.GetNotPass() -
                         iteration_results.GetSkip())
-        if failed_tests:
+        if failed_tests and not args.quiet:
           _LogRerunStatement(failed_tests, args.wrapper_script_args)
 
         if args.break_on_failure and not iteration_results.DidRunPass():
@@ -1551,6 +1569,11 @@ def DumpThreadStacks(_signal, _frame):
 
 def main():
   signal.signal(signal.SIGUSR1, DumpThreadStacks)
+  if os.environ.get('GEMINI_CLI') == '1':
+    if not any(arg in ('--quiet', '-q') for arg in sys.argv):
+      print('Adding --quiet because we\'re running under gemini-cli ('
+            'GEMINI_CLI=1)')
+      sys.argv.append('--quiet')
 
   parser = argparse.ArgumentParser()
   command_parsers = parser.add_subparsers(
@@ -1636,8 +1659,16 @@ def main():
           'Ignoring --enable-concurrent-adb due to --use-webview-provider')
       args.enable_concurrent_adb = False
 
-  if (getattr(args, 'coverage_on_the_fly', False)
-      and not getattr(args, 'coverage_dir', '')):
+  coverage_dir = getattr(args, 'coverage_dir', '')
+  if coverage_dir:
+    isolated_outdir = os.environ.get('ISOLATED_OUTDIR')
+    if isolated_outdir and not coverage_dir.startswith(isolated_outdir):
+      replacement = os.path.join(isolated_outdir, 'coverage')
+      logging.warning(
+          'Detected bot environment. Replacing explicit val of --coverage-dir '
+          '(%s) with magic bot val (%s).', coverage_dir, replacement)
+      args.coverage_dir = replacement
+  elif getattr(args, 'coverage_on_the_fly', False):
     parser.error('--coverage-on-the-fly requires --coverage-dir')
 
   if (getattr(args, 'debug_socket', None)

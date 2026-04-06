@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/test/test_suite.h"
 
 #include <signal.h>
@@ -21,6 +16,7 @@
 #include "base/base_paths.h"
 #include "base/base_switches.h"
 #include "base/command_line.h"
+#include "base/compiler_specific.h"
 #include "base/debug/asan_service.h"
 #include "base/debug/debugger.h"
 #include "base/debug/profiler.h"
@@ -32,6 +28,7 @@
 #include "base/i18n/icu_util.h"
 #include "base/i18n/rtl.h"
 #include "base/logging.h"
+#include "base/logging/logging_settings.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/statistics_recorder.h"
@@ -81,6 +78,10 @@
 #include "base/test/test_support_android.h"
 #endif
 
+#if BUILDFLAG(IS_LINUX)
+#include "partition_alloc/tagging.h"  // nogncheck
+#endif
+
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 #include "third_party/test_fonts/fontconfig/fontconfig_util_linux.h"
 #endif
@@ -115,7 +116,7 @@ namespace {
 // When using different prefixes depending on platform, we use MAYBE_ and
 // preprocessor directives to replace MAYBE_ with the target prefix.
 bool IsMarkedMaybe(const testing::TestInfo& test) {
-  return strncmp(test.name(), "MAYBE_", 6) == 0;
+  return UNSAFE_TODO(strncmp(test.name(), "MAYBE_", 6)) == 0;
 }
 
 class DisableMaybeTests : public testing::EmptyTestEventListener {
@@ -178,8 +179,8 @@ class FeatureListScopedToEachTest : public testing::EmptyTestEventListener {
     // ASAN.
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC) && !defined(ADDRESS_SANITIZER)
     allocator::PartitionAllocSupport::Get()->ReconfigureAfterFeatureListInit(
-        "",
-        /*configure_dangling_pointer_detector=*/true);
+        "", allocator::FeatureListConfiguration{
+                .configure_dangling_pointer_detector = true});
 #endif
   }
 
@@ -371,7 +372,7 @@ TestSuite::TestSuite(int argc, char** argv) : argc_(argc), argv_(argv) {
 TestSuite::TestSuite(int argc, wchar_t** argv) : argc_(argc) {
   argv_as_strings_.reserve(argc);
   argv_as_pointers_.reserve(argc + 1);
-  std::for_each(argv, argv + argc, [this](wchar_t* arg) {
+  std::for_each(argv, UNSAFE_TODO(argv + argc), [this](wchar_t* arg) {
     argv_as_strings_.push_back(WideToUTF8(arg));
     // Have to use .data() here to get a mutable pointer.
     argv_as_pointers_.push_back(argv_as_strings_.back().data());
@@ -569,9 +570,9 @@ void TestSuite::Initialize() {
   // TODO(https://crbug.com/432019338): Remove this once fixed.
   if (::testing::internal::InDeathTestChild()) {
     allocator::PartitionAllocSupport::Get()->ReconfigureAfterFeatureListInit(
-        "",
-        /*configure_dangling_pointer_detector=*/true,
-        /*is_in_death_test_child=*/true);
+        "", allocator::FeatureListConfiguration{
+                .configure_dangling_pointer_detector = true,
+                .is_in_death_test_child = true});
   }
 #endif  // GTEST_HAS_DEATH_TEST
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC) && !defined(ADDRESS_SANITIZER)

@@ -119,6 +119,7 @@ absl_cc_library(
     ${ABSL_DEFAULT_LINKOPTS}
   DEPS
     absl::base
+    absl::core_headers
     absl::status
     absl::statusor
     absl::strings
@@ -135,6 +136,22 @@ absl_cc_test(
    "status_matchers_test.cc"
   COPTS
     ${ABSL_TEST_COPTS}
+  DEPS
+    absl::status
+    absl::statusor
+    absl::status_matchers
+    GTest::gmock_main
+)
+
+absl_cc_test(
+  NAME
+    status_matchers_with_unqualified_macros_test
+  SRCS
+   "status_matchers_test.cc"
+  COPTS
+    ${ABSL_TEST_COPTS}
+  DEFINES
+    "ABSL_DEFINE_UNQUALIFIED_STATUS_TESTING_MACROS"
   DEPS
     absl::status
     absl::statusor

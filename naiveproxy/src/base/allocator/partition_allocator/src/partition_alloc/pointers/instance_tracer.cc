@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "partition_alloc/pointers/instance_tracer.h"
 
 #include <atomic>
@@ -14,6 +9,7 @@
 #include <mutex>
 #include <vector>
 
+#include "partition_alloc/bounds_checks.h"
 #include "partition_alloc/partition_alloc_base/check.h"
 #include "partition_alloc/partition_alloc_base/debug/stack_trace.h"
 #include "partition_alloc/partition_alloc_base/no_destructor.h"
@@ -61,7 +57,7 @@ void InstanceTracer::TraceImpl(uint64_t owner_id,
                                uintptr_t address) {
   PA_CHECK(owner_id);
   const auto slot_and_size =
-      partition_alloc::PartitionAllocGetSlotStartAndSizeInBRPPool(address);
+      partition_alloc::SlotAddressAndSize::FromBRPPool(address);
   const uintptr_t slot_count = reinterpret_cast<uintptr_t>(
       partition_alloc::PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(
           slot_and_size.slot_start, slot_and_size.size));
@@ -90,9 +86,8 @@ InstanceTracer::GetStackTracesForDanglingRefs(uintptr_t allocation) {
 
 std::vector<std::array<const void*, 32>>
 InstanceTracer::GetStackTracesForAddressForTest(const void* address) {
-  const auto slot_and_size =
-      partition_alloc::PartitionAllocGetSlotStartAndSizeInBRPPool(
-          reinterpret_cast<uintptr_t>(address));
+  const auto slot_and_size = partition_alloc::SlotAddressAndSize::FromBRPPool(
+      reinterpret_cast<uintptr_t>(address));
   const uintptr_t slot_count = reinterpret_cast<uintptr_t>(
       partition_alloc::PartitionRoot::InSlotMetadataPointerFromSlotStartAndSize(
           slot_and_size.slot_start, slot_and_size.size));

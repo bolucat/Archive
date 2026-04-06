@@ -5,13 +5,15 @@
 #ifndef QUICHE_QUIC_CORE_CRYPTO_TRANSPORT_PARAMETERS_H_
 #define QUICHE_QUIC_CORE_CRYPTO_TRANSPORT_PARAMETERS_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <ostream>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/string_view.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_data_reader.h"
 #include "quiche/quic/core/quic_data_writer.h"
@@ -19,6 +21,7 @@
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_versions.h"
 #include "quiche/quic/platform/api/quic_socket_address.h"
+#include "quiche/common/platform/api/quiche_export.h"
 
 namespace quic {
 
@@ -108,8 +111,8 @@ struct QUICHE_EXPORT TransportParameters {
 
   // LegacyVersionInformation represents the Google QUIC downgrade prevention
   // mechanism ported to QUIC+TLS. It is exchanged using transport parameter ID
-  // 0x4752 and will eventually be deprecated in favor of
-  // draft-ietf-quic-version-negotiation.
+  // 0x4752 and is in the process of being deprecated in favor of RFC 9368
+  // which uses the VersionInformation class below.
   struct QUICHE_EXPORT LegacyVersionInformation {
     LegacyVersionInformation();
     LegacyVersionInformation(const LegacyVersionInformation& other) = default;
@@ -139,7 +142,7 @@ struct QUICHE_EXPORT TransportParameters {
   };
 
   // Version information used for version downgrade prevention and compatible
-  // version negotiation. See draft-ietf-quic-version-negotiation-05.
+  // version negotiation. See RFC 9368.
   struct QUICHE_EXPORT VersionInformation {
     VersionInformation();
     VersionInformation(const VersionInformation& other) = default;
@@ -170,17 +173,22 @@ struct QUICHE_EXPORT TransportParameters {
   bool operator==(const TransportParameters& rhs) const;
   bool operator!=(const TransportParameters& rhs) const;
 
-  // Represents the sender of the transport parameters. When |perspective| is
-  // Perspective::IS_CLIENT, this struct is being used in the client_hello
-  // handshake message; when it is Perspective::IS_SERVER, it is being used in
-  // the encrypted_extensions handshake message.
-  Perspective perspective;
+  // Validates whether transport parameters are valid according to
+  // the specification. If the transport parameters are not valid, this method
+  // will write a human-readable error message to |error_details|.
+  bool AreValid(std::string* error_details) const;
 
-  // Google QUIC downgrade prevention mechanism sent over QUIC+TLS.
+  // Allows easily logging transport parameters.
+  std::string ToString() const;
+
+  friend QUICHE_EXPORT std::ostream& operator<<(
+      std::ostream& os, const TransportParameters& params);
+
+  // Google QUIC downgrade prevention mechanism sent over QUIC+TLS. This is
+  // being deprecated in favor of the version_information field below.
   std::optional<LegacyVersionInformation> legacy_version_information;
 
-  // IETF downgrade prevention and compatible version negotiation, see
-  // draft-ietf-quic-version-negotiation.
+  // IETF downgrade prevention and compatible version negotiation, see RFC 9368.
   std::optional<VersionInformation> version_information;
 
   // The value of the Destination Connection ID field from the first
@@ -229,9 +237,6 @@ struct QUICHE_EXPORT TransportParameters {
   // IMMEDIATE_ACK frames.
   std::optional<uint64_t> min_ack_delay_us_draft10;
 
-  // Indicates lack of support for connection migration.
-  bool disable_active_migration;
-
   // Used to effect a change in server address at the end of the handshake.
   std::unique_ptr<PreferredAddress> preferred_address;
 
@@ -251,19 +256,28 @@ struct QUICHE_EXPORT TransportParameters {
   // the sender accepts. See draft-ietf-quic-datagram.
   IntegerParameter max_datagram_frame_size;
 
-  // Indicates support for the RESET_STREAM_AT frame.
-  bool reliable_stream_reset;
-
   // Google-specific transport parameter that carries an estimate of the
   // initial round-trip time in microseconds.
   IntegerParameter initial_round_trip_time_us;
+
+  // Google internal handshake message.
+  std::optional<std::string> google_handshake_message;
 
   // Data length for TransportParameterId::kDiscard. Negative values means the
   // parameter is not set.
   int32_t discard_length = -1;
 
-  // Google internal handshake message.
-  std::optional<std::string> google_handshake_message;
+  // Represents the sender of the transport parameters. When |perspective| is
+  // Perspective::IS_CLIENT, this struct is being used in the client_hello
+  // handshake message; when it is Perspective::IS_SERVER, it is being used in
+  // the encrypted_extensions handshake message.
+  Perspective perspective;
+
+  // Indicates lack of support for connection migration.
+  bool disable_active_migration;
+
+  // Indicates support for the RESET_STREAM_AT frame.
+  bool reliable_stream_reset;
 
   // Debugging Server Name Indication. This is used to send the obfuscated SNI
   // in the transport parameters to the server for debugging purposes only.
@@ -272,18 +286,8 @@ struct QUICHE_EXPORT TransportParameters {
   // Google-specific connection options.
   std::optional<QuicTagVector> google_connection_options;
 
-  // Validates whether transport parameters are valid according to
-  // the specification. If the transport parameters are not valid, this method
-  // will write a human-readable error message to |error_details|.
-  bool AreValid(std::string* error_details) const;
-
   // Custom parameters that may be specific to application protocol.
   ParameterMap custom_parameters;
-
-  // Allows easily logging transport parameters.
-  std::string ToString() const;
-  friend QUICHE_EXPORT std::ostream& operator<<(
-      std::ostream& os, const TransportParameters& params);
 };
 
 // Serializes a TransportParameters struct into the format for sending it in a

@@ -26,9 +26,11 @@
 #include <vector>
 
 #include "perfetto/base/status.h"
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/ext/protozero/proto_ring_buffer.h"
 #include "perfetto/protozero/field.h"
 #include "perfetto/trace_processor/basic_types.h"
+#include "perfetto/trace_processor/summarizer.h"
 #include "protos/perfetto/trace_processor/trace_processor.pbzero.h"
 
 namespace perfetto {
@@ -62,7 +64,10 @@ class Rpc {
   // The unique_ptr argument is optional. If non-null it will adopt the passed
   // instance and allow to directly query that. If null, a new instanace will be
   // created internally by calling Parse().
-  explicit Rpc(std::unique_ptr<TraceProcessor>, bool has_preloaded_eof);
+  explicit Rpc(std::unique_ptr<TraceProcessor>,
+               bool has_preloaded_eof,
+               Config default_config,
+               std::function<void(TraceProcessor*)> on_trace_processor_created);
   Rpc();
   ~Rpc();
 
@@ -148,7 +153,10 @@ class Rpc {
   void DisableAndReadMetatraceInternal(
       protos::pbzero::DisableAndReadMetatraceResult*);
 
-  Config trace_processor_config_;
+  Config default_config_;
+  std::function<void(TraceProcessor*)> on_trace_processor_created_;
+
+  Config current_config_;
   std::unique_ptr<TraceProcessor> trace_processor_;
   RpcResponseFunction rpc_response_fn_;
   protozero::ProtoRingBuffer rxbuf_;
@@ -158,6 +166,9 @@ class Rpc {
   int64_t t_parse_started_ = 0;
   size_t bytes_last_progress_ = 0;
   size_t bytes_parsed_ = 0;
+
+  // Manages Summarizer instances keyed by caller-provided ID.
+  base::FlatHashMap<std::string, std::unique_ptr<Summarizer>> summarizers_;
 };
 
 }  // namespace trace_processor

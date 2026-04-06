@@ -28,10 +28,10 @@ jobs:
         shell: ${{ matrix.shell == 'cmake' && 'pwsh' || 'msys2 {0}' }}
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # tag=v5.0.0
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # tag=v6.0.2
 
       # MSYS2 setup
-      - uses: msys2/setup-msys2@fb197b72ce45fb24f17bf3f807a388985654d1f2 # tag=v2.29.0
+      - uses: msys2/setup-msys2@4f806de0a5a7294ffabaff804b38a9b435a73bda # tag=v2.30.0
         if: matrix.shell == 'msys2'
         with:
           msystem: ${{ matrix.msystem }}
@@ -93,7 +93,7 @@ jobs:
           mv bin/ zstd-${{ github.ref_name }}-${{matrix.ziparch}}/
 
       - name: Publish zstd-$VERSION-${{matrix.ziparch}}.zip for manual inspection
-        uses: actions/upload-artifact@5d5d22a31266ced268874388b861e4b58bb5c2f3 # tag=v4.3.1
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # tag=v6.0.0
         with:
           compression-level: 9  # maximum compression
           if-no-files-found: error # defaults to `warn`

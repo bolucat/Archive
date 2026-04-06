@@ -16,15 +16,22 @@
 
 #include "src/trace_processor/importers/proto/deobfuscation_tracker.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <set>
 #include <string>
-#include <utility>
+#include <unordered_set>
 #include <vector>
 
+#include "perfetto/base/flat_set.h"
 #include "perfetto/base/logging.h"
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/ext/base/string_view.h"
+#include "perfetto/protozero/field.h"
 #include "perfetto/trace_processor/trace_blob.h"
 #include "protos/perfetto/trace/profiling/deobfuscation.pbzero.h"
+#include "src/trace_processor/core/dataframe/specs.h"
 #include "src/trace_processor/importers/common/stack_profile_tracker.h"
 #include "src/trace_processor/importers/proto/heap_graph_tracker.h"
 #include "src/trace_processor/storage/trace_storage.h"
@@ -34,26 +41,47 @@
 #include "src/trace_processor/util/profiler_util.h"
 
 namespace perfetto::trace_processor {
-
+namespace {
 using ::perfetto::protos::pbzero::DeobfuscationMapping;
 using ::perfetto::protos::pbzero::ObfuscatedClass;
 using ::perfetto::protos::pbzero::ObfuscatedMember;
 using ::protozero::ConstBytes;
+
+using JavaFrameMap = base::
+    FlatHashMap<NameInPackage, base::FlatSet<FrameId>, NameInPackage::Hasher>;
+
+// Returns true if `line` falls within the optional range [start, end].
+// Missing bounds are treated as unbounded (always match).
+bool LineInRange(uint32_t line,
+                 std::optional<uint32_t> start,
+                 std::optional<uint32_t> end) {
+  if (start.has_value() && line < *start) {
+    return false;
+  }
+  if (end.has_value() && line > *end) {
+    return false;
+  }
+  return true;
+}
+
+std::vector<FrameId> JavaFramesForName(const JavaFrameMap& java_frames_for_name,
+                                       NameInPackage name) {
+  if (const auto* frames = java_frames_for_name.Find(name); frames) {
+    return {frames->begin(), frames->end()};
+  }
+  return {};
+}
+
+}  // namespace
 
 DeobfuscationTracker::DeobfuscationTracker(TraceProcessorContext* context)
     : context_(context) {}
 
 DeobfuscationTracker::~DeobfuscationTracker() = default;
 
-std::vector<FrameId> DeobfuscationTracker::JavaFramesForName(
-    NameInPackage name) const {
-  if (const auto* frames = java_frames_for_name_.Find(name); frames) {
-    return std::vector<FrameId>(frames->begin(), frames->end());
-  }
-  return {};
-}
-
-void DeobfuscationTracker::BuildJavaFrameMaps() {
+void DeobfuscationTracker::BuildJavaFrameMaps(
+    JavaFrameMap& java_frames_for_name,
+    std::unordered_set<FrameId>& frames_needing_package_guess) {
   // Iterate over all frames in the table (names are now finalized)
   const auto& frame_table = context_->storage->stack_profile_frame_table();
   const auto& mapping_table = context_->storage->stack_profile_mapping_table();
@@ -83,15 +111,15 @@ void DeobfuscationTracker::BuildJavaFrameMaps() {
       StringId package_id =
           context_->storage->InternString(base::StringView(*package));
       NameInPackage nip{name_id, package_id};
-      java_frames_for_name_[nip].insert(frame_id);
+      java_frames_for_name[nip].insert(frame_id);
     } else if (mapping_name.find("/memfd:") == 0) {
       // Special case: memfd mappings
       StringId memfd_id = context_->storage->InternString("memfd");
       NameInPackage nip{name_id, memfd_id};
-      java_frames_for_name_[nip].insert(frame_id);
+      java_frames_for_name[nip].insert(frame_id);
     } else {
       // Package unknown - will need guessing from process info
-      frames_needing_package_guess_.insert(frame_id);
+      frames_needing_package_guess.insert(frame_id);
     }
   }
 }
@@ -100,24 +128,31 @@ void DeobfuscationTracker::AddDeobfuscationMapping(ConstBytes blob) {
   packets_.emplace_back(TraceBlob::CopyFrom(blob.data, blob.size));
 }
 
-void DeobfuscationTracker::NotifyEndOfFile() {
+void DeobfuscationTracker::OnEventsFullyExtracted() {
+  // Maps (name, package) -> set of FrameIds for deobfuscation
+  JavaFrameMap java_frames_for_name;
+
+  // Frames needing package guessing (temporary during EOF processing)
+  std::unordered_set<FrameId> frames_needing_package_guess;
+
   // Step 1: Build Java frame maps from complete frame table
-  BuildJavaFrameMaps();
+  BuildJavaFrameMaps(java_frames_for_name, frames_needing_package_guess);
 
   // Step 2: Guess packages for frames that couldn't be determined from mappings
-  if (!frames_needing_package_guess_.empty()) {
-    GuessPackages();
+  if (!frames_needing_package_guess.empty()) {
+    GuessPackages(java_frames_for_name, frames_needing_package_guess);
   }
 
   // Step 3: Perform deobfuscation using the built maps
   for (const auto& packet : packets_) {
     DeobfuscationMapping::Decoder mapping(packet.data(), packet.size());
-    DeobfuscateProfiles(mapping);
-    ParseDeobfuscationMappingForHeapGraph(mapping);
+    DeobfuscateProfiles(java_frames_for_name, mapping);
+    DeobfuscateHeapGraph(mapping);
   }
 }
 
 void DeobfuscationTracker::DeobfuscateProfiles(
+    const JavaFrameMap& java_frames_for_name,
     const DeobfuscationMapping::Decoder& deobfuscation_mapping) {
   if (deobfuscation_mapping.package_name().size == 0)
     return;
@@ -128,48 +163,166 @@ void DeobfuscationTracker::DeobfuscateProfiles(
   if (!opt_package_name_id && !opt_memfd_id)
     return;
 
+  // Collect all method mappings with line info for inline support.
+  // Key: merged_obfuscated_id (e.g., "a.b") -> vector of mappings
+  struct MethodMappingInfo {
+    StringId deobfuscated_name;
+    std::optional<uint32_t> obfuscated_line_start;
+    std::optional<uint32_t> obfuscated_line_end;
+    std::optional<uint32_t> source_line_start;
+  };
+  base::FlatHashMap<StringId, std::vector<MethodMappingInfo>> method_mappings;
+
   for (auto class_it = deobfuscation_mapping.obfuscated_classes(); class_it;
        ++class_it) {
     ObfuscatedClass::Decoder cls(*class_it);
-
     for (auto member_it = cls.obfuscated_methods(); member_it; ++member_it) {
       ObfuscatedMember::Decoder member(*member_it);
 
       std::string merged_obfuscated = cls.obfuscated_name().ToStdString() +
                                       "." +
                                       member.obfuscated_name().ToStdString();
-      auto merged_obfuscated_id = context_->storage->string_pool().GetId(
-          base::StringView(merged_obfuscated));
-      if (!merged_obfuscated_id)
-        continue;
+      StringId merged_obfuscated_id =
+          context_->storage->InternString(base::StringView(merged_obfuscated));
 
       std::string merged_deobfuscated =
           FullyQualifiedDeobfuscatedName(cls, member);
+      StringId deobfuscated_id = context_->storage->InternString(
+          base::StringView(merged_deobfuscated));
 
-      std::vector<tables::StackProfileFrameTable::Id> frames;
-      if (opt_package_name_id) {
-        const std::vector<tables::StackProfileFrameTable::Id> pkg_frames =
-            JavaFramesForName({*merged_obfuscated_id, *opt_package_name_id});
-        frames.insert(frames.end(), pkg_frames.begin(), pkg_frames.end());
+      MethodMappingInfo info;
+      info.deobfuscated_name = deobfuscated_id;
+      if (member.has_obfuscated_line_start()) {
+        info.obfuscated_line_start = member.obfuscated_line_start();
       }
-      if (opt_memfd_id) {
-        const std::vector<tables::StackProfileFrameTable::Id> memfd_frames =
-            JavaFramesForName({*merged_obfuscated_id, *opt_memfd_id});
-        frames.insert(frames.end(), memfd_frames.begin(), memfd_frames.end());
+      if (member.has_obfuscated_line_end()) {
+        info.obfuscated_line_end = member.obfuscated_line_end();
+      }
+      if (member.has_source_line_start()) {
+        info.source_line_start = member.source_line_start();
+      }
+      method_mappings[merged_obfuscated_id].push_back(info);
+    }
+  }
+
+  auto symbol_cursor = context_->storage->symbol_table().CreateCursor({
+      dataframe::FilterSpec{
+          tables::SymbolTable::ColumnIndex::symbol_set_id,
+          0,
+          dataframe::Eq{},
+          {},
+      },
+      dataframe::FilterSpec{
+          tables::SymbolTable::ColumnIndex::line_number,
+          1,
+          dataframe::IsNotNull{},
+          {},
+      },
+  });
+  // Deobfuscate frames using the collected mappings.
+  auto* frames_tbl = context_->storage->mutable_stack_profile_frame_table();
+  for (auto it = method_mappings.GetIterator(); it; ++it) {
+    StringId merged_obfuscated_id = it.key();
+    const auto& mappings = it.value();
+
+    // Look up frames with this obfuscated name.
+    std::vector<tables::StackProfileFrameTable::Id> frames;
+    if (opt_package_name_id) {
+      for (FrameId fid :
+           JavaFramesForName(java_frames_for_name,
+                             {merged_obfuscated_id, *opt_package_name_id})) {
+        frames.push_back(fid);
+      }
+    }
+    if (opt_memfd_id) {
+      for (FrameId fid : JavaFramesForName(
+               java_frames_for_name, {merged_obfuscated_id, *opt_memfd_id})) {
+        frames.push_back(fid);
+      }
+    }
+
+    for (tables::StackProfileFrameTable::Id frame_id : frames) {
+      auto frame = frames_tbl->FindById(frame_id);
+      if (!frame) {
+        continue;
       }
 
-      for (tables::StackProfileFrameTable::Id frame_id : frames) {
-        auto* frames_tbl =
-            context_->storage->mutable_stack_profile_frame_table();
+      // Try to get line number from existing symbol entry. Note that the
+      // symbol table is not just populated during symbolization, it's also
+      // populated by simpleperf, pprof, V8 JIT inside the trace itself.
+      std::optional<uint32_t> obfuscated_line;
+      if (frame->symbol_set_id().has_value()) {
+        symbol_cursor.SetFilterValueUnchecked(0, *frame->symbol_set_id());
+        symbol_cursor.Execute();
+        if (!symbol_cursor.Eof()) {
+          obfuscated_line = symbol_cursor.line_number();
+        }
+      }
+
+      // Find mappings matching this line number (forms the inline chain).
+      std::vector<const MethodMappingInfo*> chain;
+      if (obfuscated_line.has_value()) {
+        for (const auto& info : mappings) {
+          if (LineInRange(*obfuscated_line, info.obfuscated_line_start,
+                          info.obfuscated_line_end)) {
+            chain.push_back(&info);
+          }
+        }
+      }
+
+      if (!chain.empty()) {
+        // Create symbol entries for the deobfuscated inline chain.
+        auto* symbol_tbl = context_->storage->mutable_symbol_table();
+        uint32_t new_symbol_set_id =
+            context_->storage->symbol_table().row_count();
+
+        for (size_t i = 0; i < chain.size(); ++i) {
+          symbol_tbl->Insert({new_symbol_set_id, chain[i]->deobfuscated_name,
+                              kNullStringId,  // source_file
+                              chain[i]->source_line_start,
+                              (i < chain.size() - 1)});  // inlined
+        }
+
         auto rr = *frames_tbl->FindById(frame_id);
-        rr.set_deobfuscated_name(context_->storage->InternString(
-            base::StringView(merged_deobfuscated)));
+        rr.set_symbol_set_id(new_symbol_set_id);
+        rr.set_deobfuscated_name(chain.back()->deobfuscated_name);
+      } else {
+        // Fallback: check if all mappings resolve to the same name.
+        // If not, mark as ambiguous following existing convention.
+        auto rr = *frames_tbl->FindById(frame_id);
+
+        // Collect unique deobfuscated names (sorted for deterministic output).
+        std::set<std::string> unique_names;
+        for (const auto& m : mappings) {
+          unique_names.insert(
+              context_->storage->GetString(m.deobfuscated_name).ToStdString());
+        }
+
+        if (unique_names.size() == 1) {
+          // All mappings agree on the same name.
+          rr.set_deobfuscated_name(mappings.front().deobfuscated_name);
+        } else {
+          // Ambiguous: multiple distinct names, can't disambiguate without
+          // line number. Build "Name1 | Name2" string following existing
+          // convention from FlattenClasses() in deobfuscator.cc.
+          std::string ambiguous_str;
+          bool first = true;
+          for (const std::string& name : unique_names) {
+            if (!first) {
+              ambiguous_str += " | ";
+            }
+            ambiguous_str += name;
+            first = false;
+          }
+          rr.set_deobfuscated_name(
+              context_->storage->InternString(base::StringView(ambiguous_str)));
+        }
       }
     }
   }
 }
 
-void DeobfuscationTracker::ParseDeobfuscationMappingForHeapGraph(
+void DeobfuscationTracker::DeobfuscateHeapGraph(
     const DeobfuscationMapping::Decoder& deobfuscation_mapping) {
   using ReferenceTable = tables::HeapGraphReferenceTable;
 
@@ -266,8 +419,10 @@ void DeobfuscationTracker::DeobfuscateHeapGraphClass(
 }
 
 void DeobfuscationTracker::GuessPackageForCallsite(
+    JavaFrameMap& java_frames_for_name,
     tables::ProcessTable::Id upid,
-    tables::StackProfileCallsiteTable::Id callsite_id) {
+    tables::StackProfileCallsiteTable::Id callsite_id,
+    std::unordered_set<FrameId>& frames_needing_package_guess) {
   const auto& process_table = context_->storage->process_table();
 
   auto process = process_table.FindById(upid);
@@ -301,15 +456,15 @@ void DeobfuscationTracker::GuessPackageForCallsite(
     const FrameId frame_id = callsite->frame_id();
 
     // Check if this frame needs package guessing
-    if (frames_needing_package_guess_.count(frame_id) != 0) {
+    if (frames_needing_package_guess.count(frame_id) != 0) {
       // Add frame to map with guessed package
       auto frame =
           context_->storage->stack_profile_frame_table().FindById(frame_id);
       NameInPackage nip{frame->name(), *package};
-      java_frames_for_name_[nip].insert(frame_id);
+      java_frames_for_name[nip].insert(frame_id);
 
       // Remove from set (package now known)
-      frames_needing_package_guess_.erase(frame_id);
+      frames_needing_package_guess.erase(frame_id);
     }
 
     auto parent_id = callsite->parent_id();
@@ -320,7 +475,9 @@ void DeobfuscationTracker::GuessPackageForCallsite(
   }
 }
 
-void DeobfuscationTracker::GuessPackages() {
+void DeobfuscationTracker::GuessPackages(
+    JavaFrameMap& java_frames_for_name,
+    std::unordered_set<FrameId>& frames_needing_package_guess) {
   const auto& heap_profile_allocation_table =
       context_->storage->heap_profile_allocation_table();
   for (auto allocation = heap_profile_allocation_table.IterateRows();
@@ -328,7 +485,8 @@ void DeobfuscationTracker::GuessPackages() {
     auto upid = tables::ProcessTable::Id(allocation.upid());
     auto callsite_id = allocation.callsite_id();
 
-    GuessPackageForCallsite(upid, callsite_id);
+    GuessPackageForCallsite(java_frames_for_name, upid, callsite_id,
+                            frames_needing_package_guess);
   }
 
   const auto& perf_sample_table = context_->storage->perf_sample_table();
@@ -339,8 +497,9 @@ void DeobfuscationTracker::GuessPackages() {
         !sample.callsite_id().has_value()) {
       continue;
     }
-    GuessPackageForCallsite(tables::ProcessTable::Id(*thread->upid()),
-                            *sample.callsite_id());
+    GuessPackageForCallsite(
+        java_frames_for_name, tables::ProcessTable::Id(*thread->upid()),
+        *sample.callsite_id(), frames_needing_package_guess);
   }
 }
 

@@ -20,7 +20,7 @@
 # zstreamtest32: Same as zstreamtest, but forced to compile in 32-bits mode
 # ##########################################################################
 
-ZSTD_LEGACY_SUPPORT ?= 5
+ZSTD_LEGACY_SUPPORT ?= 0
 export ZSTD_LEGACY_SUPPORT
 
 DEBUGLEVEL ?= 2

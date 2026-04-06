@@ -28,6 +28,7 @@
 #include "perfetto/trace_processor/basic_types.h"
 #include "perfetto/trace_processor/iterator.h"
 #include "perfetto/trace_processor/metatrace_config.h"
+#include "perfetto/trace_processor/summarizer.h"
 #include "perfetto/trace_processor/trace_blob_view.h"
 #include "perfetto/trace_processor/trace_processor_storage.h"
 
@@ -45,6 +46,33 @@ class PERFETTO_EXPORT_COMPONENT TraceProcessor : public TraceProcessorStorage {
   static std::unique_ptr<TraceProcessor> CreateInstance(const Config&);
 
   ~TraceProcessor() override;
+
+  // =================================================================
+  // |        Trace loading related functionality starts here         |
+  // =================================================================
+
+  // The entry point to push trace data into the processor. The trace format
+  // will be automatically discovered on the first push call. It is possible
+  // to make queries between two pushes.
+  // Returns the Ok status if parsing has been succeeding so far, and Error
+  // status if some unrecoverable error happened. If this happens, the
+  // TraceProcessor will ignore the following Parse() requests, drop data on the
+  // floor and return errors forever.
+  base::Status Parse(TraceBlobView) override = 0;
+
+  // Shorthand for Parse(TraceBlobView(TraceBlob(TakeOwnership(buf, size))).
+  // For compatibility with older API clients.
+  base::Status Parse(std::unique_ptr<uint8_t[]> buf, size_t size);
+
+  // Forces all data in the trace to be pushed to tables without buffering data
+  // in sorting queues. This is useful if queries need to be performed to
+  // compute post-processing data (e.g. deobfuscation, symbolization etc) which
+  // will be appended to the trace in a future call to Parse.
+  void Flush() override = 0;
+
+  // Calls Flush and finishes all of the actions required for parsing the trace.
+  // Calling this function multiple times is undefined behaviour.
+  base::Status NotifyEndOfFile() override = 0;
 
   // =================================================================
   // |        PerfettoSQL related functionality starts here          |
@@ -157,11 +185,6 @@ class PERFETTO_EXPORT_COMPONENT TraceProcessor : public TraceProcessorStorage {
   // NOTE: No Iterators can active when called.
   virtual size_t RestoreInitialTables() = 0;
 
-  // Deprecated. Use |RegisterSqlPackage()| instead, which is identical in
-  // functionality to |RegisterSqlModule()| and the only difference is in
-  // the argument, which is directly translatable to |SqlPackage|.
-  virtual base::Status RegisterSqlModule(SqlModule) = 0;
-
   // =================================================================
   // |  Trace-based metrics (v1) related functionality starts here   |
   // =================================================================
@@ -217,12 +240,16 @@ class PERFETTO_EXPORT_COMPONENT TraceProcessor : public TraceProcessorStorage {
   virtual std::vector<uint8_t> GetMetricDescriptors() = 0;
 
   // =================================================================
-  // |                        Experimental                           |
+  // |  EXPERIMENTAL: Summarizer related functionality starts here   |
   // =================================================================
+  //
+  // WARNING: This API is under active development and may change without
+  // notice. Do not depend on this interface in production code.
 
-  virtual base::Status AnalyzeStructuredQueries(
-      const std::vector<StructuredQueryBytes>& queries,
-      std::vector<AnalyzedStructuredQuery>* output) = 0;
+  // EXPERIMENTAL: Creates a new Summarizer instance for managing lazy
+  // materialization of structured queries. On success, |out| is populated with
+  // the new instance and ownership is transferred to the caller.
+  virtual base::Status CreateSummarizer(std::unique_ptr<Summarizer>* out) = 0;
 };
 
 }  // namespace perfetto::trace_processor

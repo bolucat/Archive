@@ -1052,33 +1052,39 @@ ZSTD_row_getNEONMask(const U32 rowEntries, const BYTE* const src, const BYTE tag
 #endif
 #if defined(ZSTD_ARCH_RISCV_RVV) && (__riscv_xlen == 64)
 FORCE_INLINE_TEMPLATE ZSTD_VecMask
-ZSTD_row_getRVVMask(int nbChunks, const BYTE* const src, const BYTE tag, const U32 head)
+ZSTD_row_getRVVMask(int rowEntries, const BYTE* const src, const BYTE tag, const U32 head)
 {
     ZSTD_VecMask matches;
     size_t vl;
 
     if (rowEntries == 16) {
         vl = __riscv_vsetvl_e8m1(16);
-        vuint8m1_t chunk = __riscv_vle8_v_u8m1(src, vl);
-        vbool8_t mask = __riscv_vmseq_vx_u8m1_b8(chunk, tag, vl);
-        vuint16m1_t mask_u16 = __riscv_vreinterpret_v_b8_u16m1(mask);
-        matches = __riscv_vmv_x_s_u16m1_u16(mask_u16);
-        return ZSTD_rotateRight_U16((U16)matches, head);
+        {
+            vuint8m1_t chunk = __riscv_vle8_v_u8m1(src, vl);
+            vbool8_t mask = __riscv_vmseq_vx_u8m1_b8(chunk, tag, vl);
+            vuint16m1_t mask_u16 = __riscv_vreinterpret_v_b8_u16m1(mask);
+            matches = __riscv_vmv_x_s_u16m1_u16(mask_u16);
+            return ZSTD_rotateRight_U16((U16)matches, head);
+        }
 
     } else if (rowEntries == 32) {
         vl = __riscv_vsetvl_e8m2(32);
-        vuint8m2_t chunk = __riscv_vle8_v_u8m2(src, vl);
-        vbool4_t mask = __riscv_vmseq_vx_u8m2_b4(chunk, tag, vl);
-        vuint32m1_t mask_u32 = __riscv_vreinterpret_v_b4_u32m1(mask);
-        matches = __riscv_vmv_x_s_u32m1_u32(mask_u32);
-        return ZSTD_rotateRight_U32((U32)matches, head);
+        {
+            vuint8m2_t chunk = __riscv_vle8_v_u8m2(src, vl);
+            vbool4_t mask = __riscv_vmseq_vx_u8m2_b4(chunk, tag, vl);
+            vuint32m1_t mask_u32 = __riscv_vreinterpret_v_b4_u32m1(mask);
+            matches = __riscv_vmv_x_s_u32m1_u32(mask_u32);
+            return ZSTD_rotateRight_U32((U32)matches, head);
+        }
     } else { // rowEntries = 64
         vl = __riscv_vsetvl_e8m4(64);
-        vuint8m4_t chunk = __riscv_vle8_v_u8m4(src, vl);
-        vbool2_t mask = __riscv_vmseq_vx_u8m4_b2(chunk, tag, vl);
-        vuint64m1_t mask_u64 = __riscv_vreinterpret_v_b2_u64m1(mask);
-        matches = __riscv_vmv_x_s_u64m1_u64(mask_u64);
-        return ZSTD_rotateRight_U64(matches, head);
+        {
+            vuint8m4_t chunk = __riscv_vle8_v_u8m4(src, vl);
+            vbool2_t mask = __riscv_vmseq_vx_u8m4_b2(chunk, tag, vl);
+            vuint64m1_t mask_u64 = __riscv_vreinterpret_v_b2_u64m1(mask);
+            matches = __riscv_vmv_x_s_u64m1_u64(mask_u64);
+            return ZSTD_rotateRight_U64(matches, head);
+        }
     }
 }
 #endif

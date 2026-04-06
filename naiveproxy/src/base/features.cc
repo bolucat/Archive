@@ -6,10 +6,10 @@
 
 #include <atomic>
 
-#include "base/containers/variant_map.h"
 #include "base/debug/stack_trace.h"
 #include "base/files/file_path.h"
 #include "base/task/sequence_manager/sequence_manager_impl.h"
+#include "base/task/thread_pool/job_task_source.h"
 #include "base/threading/platform_thread.h"
 #include "build/blink_buildflags.h"
 #include "build/buildflag.h"
@@ -51,11 +51,6 @@ std::atomic_bool g_is_reduce_ppms_enabled{false};
 
 // Alphabetical:
 
-// When enabled, the compositor threads (including GPU) will be boosted to
-// kInteractive when not in input or loading scenarios.
-BASE_FEATURE(kBoostCompositorThreadsPriorityWhenIdle,
-             FEATURE_DISABLED_BY_DEFAULT);
-
 // Controls caching within BASE_FEATURE_PARAM(). This is feature-controlled
 // so that ScopedFeatureList can disable it to turn off caching.
 BASE_FEATURE(kFeatureParamWithCache, FEATURE_ENABLED_BY_DEFAULT);
@@ -85,12 +80,15 @@ BASE_FEATURE_PARAM(int,
                    "LowMemoryDeviceThresholdMB",
                    LOW_MEMORY_DEVICE_THRESHOLD_MB);
 
-BASE_FEATURE(kReducePPMs, FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kReducePPMs, FEATURE_ENABLED_BY_DEFAULT);
 
 // Apply base::ScopedBestEffortExecutionFence to registered task queues as well
 // as the thread pool.
 BASE_FEATURE(kScopedBestEffortExecutionFenceForTaskQueue,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Use simdutf for base::Base64Encode() and base::Base64EncodeAppend().
+BASE_FEATURE(kSimdutfBase64Encode, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Whether to restrict the max gap between the frame pointer and the stack end
 // for stack scanning. If the gap is beyond the given gap threshold, the stack
@@ -138,12 +136,7 @@ BASE_FEATURE(kPartialLowEndModeOnMidRangeDevices,
 
 #if BUILDFLAG(IS_ANDROID)
 // Enable not perceptible binding without cpu priority boosting.
-BASE_FEATURE(kBackgroundNotPerceptibleBinding, FEATURE_DISABLED_BY_DEFAULT);
-
-// Whether to use effective binding state to manage child process bindings.
-// ChildProcessConnection will binds at most 2 service connections only,
-// the connection for the effective binding state and waived binding.
-BASE_FEATURE(kEffectiveBindingState, FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kBackgroundNotPerceptibleBinding, FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, post registering PowerMonitor broadcast receiver to a background
 // thread,
@@ -159,13 +152,6 @@ BASE_FEATURE(kRebindingChildServiceConnectionController,
 
 // Use a batch API to rebind service connections.
 BASE_FEATURE(kRebindServiceBatchApi, FEATURE_DISABLED_BY_DEFAULT);
-
-// Update child process binding state before unbinding.
-BASE_FEATURE(kUpdateStateBeforeUnbinding, FEATURE_ENABLED_BY_DEFAULT);
-
-// Use ChildServiceConnectionController.isUnbound() instead of isConnected() to
-// check the connection state in ChildProcessConnection.
-BASE_FEATURE(kUseIsUnboundCheck, FEATURE_DISABLED_BY_DEFAULT);
 
 // Use shared service connection to rebind a service binding to update the LRU
 // in the ProcessList of OomAdjuster.
@@ -195,25 +181,33 @@ BASE_FEATURE_PARAM(bool,
 // When enabled, GetTerminationStatus() returns
 // TERMINATION_STATUS_EVICTED_FOR_MEMORY for processes terminated due to commit
 // failures. Otherwise, it returns TERMINATION_STATUS_OOM.
-BASE_FEATURE(kUseTerminationStatusMemoryExhaustion,
-             FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kUseTerminationStatusMemoryExhaustion, FEATURE_ENABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_WIN)
+// When enabled, use ABOVE_NORMAL_PRIORITY_CLASS for Priority::kUserBlocking on
+// Windows.
+BASE_FEATURE(kUserBlockingAboveNormalPriority, FEATURE_DISABLED_BY_DEFAULT);
+
+// When enabled, retries CreateFileMapping on a commit limit failure (OOM).
+// If retrying fails, the function returns failure as usual and reports the
+// last error code.
+BASE_FEATURE(kRetryCreateFileMappingOnCommitLimit, FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
 
 bool IsReducePPMsEnabled() {
   return g_is_reduce_ppms_enabled.load(std::memory_order_relaxed);
 }
 
-void Init(EmitThreadControllerProfilerMetadata
-              emit_thread_controller_profiler_metadata) {
+void Init() {
   g_is_reduce_ppms_enabled.store(FeatureList::IsEnabled(kReducePPMs),
                                  std::memory_order_relaxed);
 
   sequence_manager::internal::SequenceManagerImpl::InitializeFeatures();
-  sequence_manager::internal::ThreadController::InitializeFeatures(
-      emit_thread_controller_profiler_metadata);
+  sequence_manager::internal::ThreadController::InitializeFeatures();
+  base::internal::JobTaskSource::InitializeFeatures();
 
   debug::StackTrace::InitializeFeatures();
   FilePath::InitializeFeatures();
-  InitializeVariantMapFeatures();
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
   MessagePumpEpoll::InitializeFeatures();

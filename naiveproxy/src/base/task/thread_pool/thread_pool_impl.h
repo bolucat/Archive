@@ -68,8 +68,7 @@ class BASE_EXPORT ThreadPoolImpl : public ThreadPoolInstance,
              WorkerThreadObserver* worker_thread_observer) override;
   bool WasStarted() const final;
   bool WasStartedUnsafe() const final;
-  size_t GetMaxConcurrentNonBlockedTasksWithTraitsDeprecated(
-      const TaskTraits& traits) const override;
+  size_t GetMaxConcurrentForegroundTasks() const override;
   void Shutdown() override;
   void FlushForTesting() override;
   void FlushAsyncForTesting(OnceClosure flush_callback) override;
@@ -175,10 +174,12 @@ class BASE_EXPORT ThreadPoolImpl : public ThreadPoolInstance,
   // workers as appropriate.
   void UpdateCanRunPolicy(CanRunPolicy can_run_policy);
 
-  const ThreadGroup* GetThreadGroupForTraits(const TaskTraits& traits) const;
+  const ThreadGroup* GetThreadGroup(ThreadType thread_type,
+                                    ThreadPolicy policy) const;
 
   // ThreadGroup::Delegate:
-  ThreadGroup* GetThreadGroupForTraits(const TaskTraits& traits) override;
+  ThreadGroup* GetThreadGroup(ThreadType thread_type,
+                              ThreadPolicy policy) override;
 
   // Posts |task| to be executed by the appropriate thread group as part of
   // |sequence|. This must only be called after |task| has gone through
@@ -199,6 +200,8 @@ class BASE_EXPORT ThreadPoolImpl : public ThreadPoolInstance,
   std::unique_ptr<ThreadGroup> foreground_thread_group_;
   std::unique_ptr<ThreadGroup> utility_thread_group_;
   std::unique_ptr<ThreadGroup> background_thread_group_;
+  std::unique_ptr<ThreadGroup> presentation_thread_group_;
+  std::unique_ptr<ThreadGroup> audio_thread_group_;
 
   // Whether this TaskScheduler was started.
   bool started_ GUARDED_BY_CONTEXT(sequence_checker_) = false;

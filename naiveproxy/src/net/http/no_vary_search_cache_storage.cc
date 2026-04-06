@@ -16,6 +16,7 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/numerics/byte_conversions.h"
 #include "base/pickle.h"
 #include "base/sequence_checker.h"
@@ -24,7 +25,7 @@
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/time/time.h"
-#include "base/types/cxx23_to_underlying.h"
+#include "base/trace_event/trace_event.h"
 #include "net/base/pickle.h"
 #include "net/base/pickle_base_types.h"
 #include "net/base/pickle_traits.h"
@@ -83,7 +84,7 @@ enum class JournalEntryType : uint32_t {
 template <>
 struct PickleTraits<JournalEntryType> {
   static void Serialize(base::Pickle& pickle, const JournalEntryType& value) {
-    WriteToPickle(pickle, base::to_underlying(value));
+    WriteToPickle(pickle, std::to_underlying(value));
   }
 
   static std::optional<JournalEntryType> Deserialize(
@@ -102,7 +103,7 @@ struct PickleTraits<JournalEntryType> {
   }
 
   static size_t PickleSize(const JournalEntryType& value) {
-    return EstimatePickleSize(base::to_underlying(value));
+    return EstimatePickleSize(std::to_underlying(value));
   }
 };
 
@@ -295,6 +296,9 @@ class NoVarySearchCacheStorage::Loader final {
       base::WeakPtr<NoVarySearchCacheStorage> storage_ptr,
       scoped_refptr<base::SequencedTaskRunner> parent_sequence,
       size_t default_max_size) {
+    TRACE_EVENT("net", "NoVarySearchCacheStorage::Loader::CreateAndLoad");
+    SCOPED_UMA_HISTOGRAM_TIMER_MICROS(
+        "HttpCache.NoVarySearch.CacheStorage.CreateAndLoadTime");
     // As this whole process is synchronous, the Loader object can be allocated
     // on the stack.
     Loader loader(std::move(operations), std::move(storage_ptr),
@@ -376,7 +380,8 @@ class NoVarySearchCacheStorage::Loader final {
       return StartFromScratch(Result::kBadSnapshotMagicNumber);
     }
 
-    auto pickle = base::Pickle::WithUnownedBuffer(snapshot_pickle);
+    base::PickleIterator pickle =
+        base::PickleIterator::WithData(snapshot_pickle);
     auto maybe_cache = ReadValueFromPickle<NoVarySearchCache>(pickle);
     if (!maybe_cache) {
       return StartFromScratch(Result::kInvalidSnapshotPickle);
@@ -448,13 +453,12 @@ class NoVarySearchCacheStorage::Loader final {
         break;
       }
       const auto pickle_span = pickles.take_first(size);
-      const auto pickle = base::Pickle::WithUnownedBuffer(pickle_span);
-      if (pickle.size() == 0) {
+      base::PickleIterator iter = base::PickleIterator::WithData(pickle_span);
+      if (iter.ReachedEnd()) {
         // The Pickle header was invalid.
         had_error = true;
         break;
       }
-      base::PickleIterator iter(pickle);
       auto maybe_type = ReadValueFromPickle<JournalEntryType>(iter);
       if (!maybe_type) {
         had_error = true;

@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "partition_alloc/partition_alloc.h"
 
 #include <cstdint>
@@ -115,9 +110,14 @@ PartitionAllocator::~PartitionAllocator() {
 
 void PartitionAllocator::init(PartitionOptions opts) {
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
-  PA_CHECK(opts.thread_cache == PartitionOptions::kDisabled)
-      << "Cannot use a thread cache when PartitionAlloc is malloc().";
+  PA_CHECK(opts.thread_cache == PartitionOptions::kDisabled ||
+           opts.thread_cache_index >= kNumDefaultPartitions)
+      << "Cannot use a thread cache at indices used by default partitions when "
+         "PartitionAlloc is malloc().";
 #endif
+  PA_CHECK(opts.thread_cache == PartitionOptions::kDisabled ||
+           opts.thread_cache_index < internal::kMaxThreadCacheIndex)
+      << "Thread cache index must be less than kMaxThreadCacheIndex";
   partition_root_.Init(opts);
 #if PA_BUILDFLAG(ENABLE_THREAD_ISOLATION)
   // The MemoryReclaimer won't have write access to the partition, so skip

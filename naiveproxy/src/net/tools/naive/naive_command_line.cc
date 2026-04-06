@@ -47,13 +47,13 @@ DuplicateSwitchCollector& DuplicateSwitchCollector::GetInstance() {
   return *g_duplicate_switch_collector;
 }
 
-base::Value::Dict GetSwitchesAsValue(const base::CommandLine& cmdline) {
-  base::Value::Dict dict;
+base::DictValue GetSwitchesAsValue(const base::CommandLine& cmdline) {
+  base::DictValue dict;
   for (const auto& [key, value] : cmdline.GetSwitches()) {
     const std::vector<base::CommandLine::StringType>& values =
         DuplicateSwitchCollector::GetInstance().GetValuesByKey(key);
     if (values.size() > 1) {
-      base::Value::List list;
+      base::ListValue list;
       for (const base::CommandLine::StringType& v : values) {
 #if BUILDFLAG(IS_WIN)
         list.Append(base::AsStringPiece16(v));

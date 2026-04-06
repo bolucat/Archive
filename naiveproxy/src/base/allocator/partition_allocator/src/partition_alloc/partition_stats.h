@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_PARTITION_STATS_H_
 #define PARTITION_ALLOC_PARTITION_STATS_H_
 
@@ -43,7 +38,7 @@ struct ThreadCacheStats {
   uint32_t metadata_overhead;
 
 #if PA_CONFIG(THREAD_CACHE_ALLOC_STATS)
-  uint64_t allocs_per_bucket_[BucketIndexLookup::kNumBuckets + 1];
+  std::array<uint64_t, BucketIndexLookup::kNumBuckets + 1> allocs_per_bucket_;
 #endif  // PA_CONFIG(THREAD_CACHE_ALLOC_STATS)
 };
 

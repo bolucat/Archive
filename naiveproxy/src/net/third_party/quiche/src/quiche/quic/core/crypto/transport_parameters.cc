@@ -18,10 +18,12 @@
 #include "absl/strings/string_view.h"
 #include "openssl/digest.h"
 #include "openssl/sha.h"
+#include "quiche/quic/core/crypto/quic_random.h"
 #include "quiche/quic/core/quic_connection_id.h"
 #include "quiche/quic/core/quic_constants.h"
 #include "quiche/quic/core/quic_data_reader.h"
 #include "quiche/quic/core/quic_data_writer.h"
+#include "quiche/quic/core/quic_tag.h"
 #include "quiche/quic/core/quic_types.h"
 #include "quiche/quic/core/quic_utils.h"
 #include "quiche/quic/core/quic_versions.h"
@@ -29,6 +31,8 @@
 #include "quiche/quic/platform/api/quic_flag_utils.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_ip_address.h"
+#include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/common/platform/api/quiche_logging.h"
 #include "quiche/common/quiche_data_writer.h"
 #include "quiche/common/quiche_endian.h"
@@ -163,6 +167,9 @@ std::string TransportParameterIdToString(
     case TransportParameters::kGoogleConnectionOptions:
       return "google_connection_options";
     case TransportParameters::kGoogleQuicVersion:
+      if (GetQuicRestartFlag(quic_stop_parsing_legacy_version_info)) {
+        return absl::StrCat("Unknown(", param_id, ")");
+      }
       return "google-version";
     case TransportParameters::kMinAckDelayDraft10:
       return "min_ack_delay_us";
@@ -242,11 +249,12 @@ bool TransportParameterIdIsKnown(
     case TransportParameters::kDebuggingSni:
     case TransportParameters::kInitialRoundTripTime:
     case TransportParameters::kGoogleConnectionOptions:
-    case TransportParameters::kGoogleQuicVersion:
     case TransportParameters::kMinAckDelayDraft10:
     case TransportParameters::kReliableStreamReset:
     case TransportParameters::kVersionInformation:
       return true;
+    case TransportParameters::kGoogleQuicVersion:
+      return !GetQuicRestartFlag(quic_stop_parsing_legacy_version_info);
   }
   return false;
 }
@@ -544,14 +552,14 @@ TransportParameters::TransportParameters()
                          kMaxAckDelayExponentTransportParam),
       max_ack_delay(kMaxAckDelay, kDefaultMaxAckDelayTransportParam, 0,
                     kMaxMaxAckDelayTransportParam),
-      disable_active_migration(false),
       active_connection_id_limit(kActiveConnectionIdLimit,
                                  kDefaultActiveConnectionIdLimitTransportParam,
                                  kMinActiveConnectionIdLimitTransportParam,
                                  quiche::kVarInt62MaxValue),
       max_datagram_frame_size(kMaxDatagramFrameSize),
-      reliable_stream_reset(false),
-      initial_round_trip_time_us(kInitialRoundTripTime)
+      initial_round_trip_time_us(kInitialRoundTripTime),
+      disable_active_migration(false),
+      reliable_stream_reset(false)
 // Important note: any new transport parameters must be added
 // to TransportParameters::AreValid, SerializeTransportParameters and
 // ParseTransportParameters, TransportParameters's custom copy constructor, the
@@ -559,8 +567,7 @@ TransportParameters::TransportParameters()
 {}
 
 TransportParameters::TransportParameters(const TransportParameters& other)
-    : perspective(other.perspective),
-      legacy_version_information(other.legacy_version_information),
+    : legacy_version_information(other.legacy_version_information),
       version_information(other.version_information),
       original_destination_connection_id(
           other.original_destination_connection_id),
@@ -578,15 +585,16 @@ TransportParameters::TransportParameters(const TransportParameters& other)
       ack_delay_exponent(other.ack_delay_exponent),
       max_ack_delay(other.max_ack_delay),
       min_ack_delay_us_draft10(other.min_ack_delay_us_draft10),
-      disable_active_migration(other.disable_active_migration),
       active_connection_id_limit(other.active_connection_id_limit),
       initial_source_connection_id(other.initial_source_connection_id),
       retry_source_connection_id(other.retry_source_connection_id),
       max_datagram_frame_size(other.max_datagram_frame_size),
-      reliable_stream_reset(other.reliable_stream_reset),
       initial_round_trip_time_us(other.initial_round_trip_time_us),
-      discard_length(other.discard_length),
       google_handshake_message(other.google_handshake_message),
+      discard_length(other.discard_length),
+      perspective(other.perspective),
+      disable_active_migration(other.disable_active_migration),
+      reliable_stream_reset(other.reliable_stream_reset),
       debugging_sni(other.debugging_sni),
       google_connection_options(other.google_connection_options),
       custom_parameters(other.custom_parameters) {
@@ -771,12 +779,16 @@ bool SerializeTransportParameters(const TransportParameters& in,
         << "Not serializing invalid transport parameters: " << error_details;
     return false;
   }
-  if (!in.legacy_version_information.has_value() ||
-      in.legacy_version_information->version == 0 ||
-      (in.perspective == Perspective::IS_SERVER &&
-       in.legacy_version_information->supported_versions.empty())) {
-    QUIC_BUG(missing versions) << "Refusing to serialize without versions";
-    return false;
+  if (GetQuicRestartFlag(quic_stop_sending_legacy_version_info)) {
+    QUIC_RESTART_FLAG_COUNT_N(quic_stop_sending_legacy_version_info, 1, 4);
+  } else {
+    if (!in.legacy_version_information.has_value() ||
+        in.legacy_version_information->version == 0 ||
+        (in.perspective == Perspective::IS_SERVER &&
+         in.legacy_version_information->supported_versions.empty())) {
+      QUIC_BUG(missing versions) << "Refusing to serialize without versions";
+      return false;
+    }
   }
   TransportParameters::ParameterMap custom_parameters = in.custom_parameters;
   for (const auto& kv : custom_parameters) {
@@ -1266,6 +1278,11 @@ bool SerializeTransportParameters(const TransportParameters& in,
       } break;
       // Google-specific version extension.
       case TransportParameters::kGoogleQuicVersion: {
+        if (GetQuicRestartFlag(quic_stop_sending_legacy_version_info)) {
+          QUIC_RESTART_FLAG_COUNT_N(quic_stop_sending_legacy_version_info, 2,
+                                    4);
+          break;
+        }
         if (!in.legacy_version_information.has_value()) {
           break;
         }
@@ -1609,6 +1626,19 @@ bool ParseTransportParameters(ParsedQuicVersion version,
         }
       } break;
       case TransportParameters::kGoogleQuicVersion: {
+        if (GetQuicRestartFlag(quic_stop_parsing_legacy_version_info)) {
+          QUIC_RESTART_FLAG_COUNT_N(quic_stop_parsing_legacy_version_info, 3,
+                                    3);
+          if (out->custom_parameters.find(param_id) !=
+              out->custom_parameters.end()) {
+            *error_details = "Received a second unknown parameter" +
+                             TransportParameterIdToString(param_id);
+            return false;
+          }
+          out->custom_parameters[param_id] =
+              std::string(value_reader.ReadRemainingPayload());
+          break;
+        }
         if (!out->legacy_version_information.has_value()) {
           out->legacy_version_information =
               TransportParameters::LegacyVersionInformation();

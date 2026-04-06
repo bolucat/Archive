@@ -718,9 +718,6 @@ func (s *StartedService) TriggerDebugCrash(ctx context.Context, request *DebugCr
 }
 
 func (s *StartedService) TriggerOOMReport(ctx context.Context, _ *emptypb.Empty) (*emptypb.Empty, error) {
-	if !s.debug {
-		return nil, status.Error(codes.PermissionDenied, "OOM report trigger unavailable")
-	}
 	instance := s.Instance()
 	if instance == nil {
 		return nil, status.Error(codes.FailedPrecondition, "service not started")

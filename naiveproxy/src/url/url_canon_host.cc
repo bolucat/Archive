@@ -22,7 +22,7 @@ namespace {
 // https://crbug.com/1416013 for details.
 const unsigned char kEsc = 0xff;
 // clang-format off
-const unsigned char kHostCharLookup[0x80] = {
+constexpr std::array<unsigned char, 0x80> kHostCharLookup = {
 // 00-1f: all are invalid
      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
      0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
@@ -47,7 +47,7 @@ const uint8_t kForbiddenHost = 0x1;
 // be probably done after https://crbug.com/1416013 is resolved.
 //
 // This table is currently only used for an opaque-host in non-special URLs.
-const uint8_t kHostCharacterTable[128] = {
+constexpr std::array<uint8_t, 128> kHostCharacterTable = {
     kForbiddenHost,  // 0x00 (NUL)
     0,               // 0x01
     0,               // 0x02
@@ -180,7 +180,7 @@ const uint8_t kHostCharacterTable[128] = {
 // clang-format on
 
 bool IsForbiddenHostCodePoint(uint8_t ch) {
-  return ch <= 0x7F && (UNSAFE_TODO(kHostCharacterTable[ch]) & kForbiddenHost);
+  return ch <= 0x7F && (kHostCharacterTable[ch] & kForbiddenHost);
 }
 
 // RFC1034 maximum FQDN length.
@@ -249,8 +249,7 @@ bool DoSimpleHost(std::basic_string_view<INCHAR> host,
     if (source == '%') {
       // Unescape first, if possible.
       // Source will be used only if decode operation was successful.
-      if (!DecodeEscaped(host.data(), &i, host.length(),
-                         reinterpret_cast<unsigned char*>(&source))) {
+      if (!DecodeEscaped(host, &i, reinterpret_cast<unsigned char*>(&source))) {
         // Invalid escaped character. There is nothing that can make this
         // host valid. We append an escaped percent so the URL looks reasonable
         // and mark as failed.
@@ -262,7 +261,7 @@ bool DoSimpleHost(std::basic_string_view<INCHAR> host,
 
     if (source < 0x80) {
       // We have ASCII input, we can use our lookup table.
-      unsigned char replacement = UNSAFE_TODO(kHostCharLookup[source]);
+      unsigned char replacement = kHostCharLookup[source];
       if (!replacement) {
         // Invalid character, add it as percent-escaped and mark as failed.
         AppendEscapedChar(source, output);
@@ -294,8 +293,7 @@ bool DoSimpleHost(std::basic_string_view<INCHAR> host,
 
 // Canonicalizes a host that requires IDN conversion. Returns true on success
 template <CanonMode canon_mode>
-bool DoIDNHost(const char16_t* src, size_t src_len, CanonOutput* output) {
-  std::u16string_view host_view(src, src_len);
+bool DoIdnHost(std::u16string_view host_view, CanonOutput* output) {
   int original_output_len = output->length();  // So we can rewind below.
 
   // We need to escape URL before doing IDN conversion, since punicode strings
@@ -393,7 +391,7 @@ bool DoComplexHost(std::string_view host,
   // Above, we may have used the output to write the unescaped values to, so
   // we have to rewind it to where we started after we convert it to UTF-16.
   StackBufferW utf16;
-  if (!ConvertUTF8ToUTF16(utf8_source, &utf16)) {
+  if (!ConvertUtf8ToUtf16(utf8_source, &utf16)) {
     // In this error case, the input may or may not be the output.
     StackBuffer utf8;
     for (size_t i = 0; i < utf8_source.length(); i++) {
@@ -407,8 +405,7 @@ bool DoComplexHost(std::string_view host,
 
   // This will call DoSimpleHost which will do normal ASCII canonicalization
   // and also check for IP addresses in the outpt.
-  return DoIDNHost<canon_mode>(utf16.data(), utf16.length(), output) &&
-         are_all_escaped_valid;
+  return DoIdnHost<canon_mode>(utf16.view(), output) && are_all_escaped_valid;
 }
 
 // UTF-16 convert host to its ASCII version. The set up is already ready for
@@ -429,7 +426,7 @@ bool DoComplexHost(std::u16string_view host,
     // very rare that host names have escaped characters, and it is relatively
     // fast to do the conversion anyway.
     StackBuffer utf8;
-    if (!ConvertUTF16ToUTF8(host, &utf8)) {
+    if (!ConvertUtf16ToUtf8(host, &utf8)) {
       AppendInvalidNarrowString(host, output);
       return false;
     }
@@ -444,7 +441,7 @@ bool DoComplexHost(std::u16string_view host,
   // function will only get called if we either have escaped or non-ascii
   // input, so it's safe to just use ICU now. Even if the input is ASCII,
   // this function will do the right thing (just slower than we could).
-  return DoIDNHost<canon_mode>(host.data(), host.length(), output);
+  return DoIdnHost<canon_mode>(host, output);
 }
 
 template <typename CHAR, typename UCHAR, CanonMode canon_mode>
@@ -494,7 +491,7 @@ bool DoOpaqueHost(const std::basic_string_view<CharT> host,
     // > 4. Return the result of running UTF-8 percent-encode on input using
     // > the C0 control percent-encode set.
     if (IsInC0ControlPercentEncodeSet(ch)) {
-      AppendUTF8EscapedChar(host.data(), &i, host_len, &output);
+      AppendUtf8EscapedChar(host, &i, &output);
     } else {
       output.push_back(ch);
     }
@@ -510,7 +507,7 @@ void DoHost(std::basic_string_view<CHAR> spec,
   // URL Standard: https://url.spec.whatwg.org/#host-parsing
 
   // Keep track of output's initial length, so we can rewind later.
-  const int output_begin = output.length();
+  const size_t output_begin = output.length();
 
   if (host.is_empty()) {
     // Empty hosts don't need anything.
@@ -529,7 +526,7 @@ void DoHost(std::basic_string_view<CHAR> spec,
     return;
   }
 
-  std::basic_string_view<CHAR> host_view = host.as_string_view_on(spec.data());
+  std::basic_string_view<CHAR> host_view = host.AsViewOn(spec);
   bool success;
   if constexpr (canon_mode == CanonMode::kSpecialURL ||
                 canon_mode == CanonMode::kFileURL) {

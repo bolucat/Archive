@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/test/test_future.h"
 #include "net/base/completion_once_callback.h"
@@ -19,11 +20,13 @@
 #include "net/base/net_errors.h"
 #include "net/base/request_priority.h"
 #include "net/dns/host_resolver.h"
+#include "net/http/alternative_service.h"
 #include "net/http/http_stream_key.h"
 #include "net/http/http_stream_pool.h"
 #include "net/http/http_stream_pool_job.h"
 #include "net/socket/socket_test_util.h"
 #include "net/socket/stream_socket.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_versions.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "url/scheme_host_port.h"
 
@@ -51,7 +54,6 @@ class FakeServiceEndpointResolution {
 
   // These setters return `this&` to allow chaining.
   FakeServiceEndpointResolution& CompleteStartSynchronously(int rv);
-  FakeServiceEndpointResolution& set_start_result(int start_result);
   FakeServiceEndpointResolution& set_endpoints(
       std::vector<ServiceEndpoint> endpoints);
   FakeServiceEndpointResolution& add_endpoint(ServiceEndpoint endpoint);
@@ -88,12 +90,24 @@ class FakeServiceEndpointRequest : public HostResolver::ServiceEndpointRequest {
       ResolveErrorInfo resolve_error_info);
   FakeServiceEndpointRequest& set_priority(RequestPriority priority);
 
+  // Sets a callback that will be invoked asynchronously after Start() is
+  // invoked. It's async so that CallOnServiceEndpointsUpdated() and
+  // CallOnServiceEndpointRequestFinished() may be safely invoked from the
+  // callback. May not be used with CompleteStartSynchronously().
+  FakeServiceEndpointRequest& set_start_callback(
+      base::OnceClosure start_callback);
+
   // Make `this` complete synchronously when ServiceEndpointRequest::Start()
   // is called.
   FakeServiceEndpointRequest& CompleteStartSynchronously(int rv);
 
+  // Make `this` call CallOnServiceEndpointRequestFinished() asynchronously when
+  // ServiceEndpointRequest::Start() is called. May not be used with
+  // set_start_callback() or CompleteStartSynchronously();
+  FakeServiceEndpointRequest& CompleteStartAsynchronously(int rv);
+
   // Calls `delegate_->OnServiceEndpointsUpdated()`. Must not be used after
-  // calling CompleteStartSynchronously() or
+  // calling CompleteStartSynchronously(), CompleteStartAsynchronously(), or
   // CallOnServiceEndpointRequestFinished()
   FakeServiceEndpointRequest& CallOnServiceEndpointsUpdated();
 
@@ -116,9 +130,13 @@ class FakeServiceEndpointRequest : public HostResolver::ServiceEndpointRequest {
  private:
   friend class FakeServiceEndpointResolver;
 
+  void CompleteAsync(int rv);
+
   raw_ptr<Delegate> delegate_;
 
   FakeServiceEndpointResolution resolution_;
+
+  base::OnceClosure start_callback_;
 
   base::WeakPtrFactory<FakeServiceEndpointRequest> weak_ptr_factory_{this};
 };
@@ -150,6 +168,18 @@ class FakeServiceEndpointResolver : public HostResolver {
   // existed.
   FakeServiceEndpointResolution& ConfigureDefaultResolution();
 
+  // Makes any attempt to create a request that did not match a call to
+  // AddFakeRequest() CHECK. For tests that use test fixtures that call
+  // ConfigureDefaultResolution(), that want more fine grained call over
+  // resolutions.
+  void ClearDefaultResolution() { default_resolution_.reset(); }
+
+  // When called, causes the destructor call to expect all requests added by
+  // AddFakeRequest() to be consumed.
+  void set_expect_all_fake_requests_consumed() {
+    expect_all_fake_requests_consumed_ = true;
+  }
+
   // HostResolver methods:
   void OnShutdown() override;
   std::unique_ptr<ResolveHostRequest> CreateRequest(
@@ -170,6 +200,7 @@ class FakeServiceEndpointResolver : public HostResolver {
   bool IsHappyEyeballsV3Enabled() const override;
 
  private:
+  bool expect_all_fake_requests_consumed_ = false;
   std::list<std::unique_ptr<FakeServiceEndpointRequest>> requests_;
   std::optional<FakeServiceEndpointResolution> default_resolution_;
 };
@@ -187,6 +218,11 @@ class ServiceEndpointBuilder {
   ServiceEndpointBuilder& add_ip_endpoint(IPEndPoint ip_endpoint);
 
   ServiceEndpointBuilder& set_alpns(std::vector<std::string> alpns);
+
+  // Helper that looks up the alpn string for `quic_version`, and sets the list
+  // of alpns to contain only that value. Clears any other pre-existing ALPNs
+  // already set.
+  ServiceEndpointBuilder& set_alpn(quic::ParsedQuicVersion quic_version);
 
   ServiceEndpointBuilder& set_ech_config_list(
       std::vector<uint8_t> ech_config_list);
@@ -254,13 +290,12 @@ class FakeStreamSocket : public MockClientSocket {
 // A helper to create an HttpStreamKey.
 class StreamKeyBuilder {
  public:
-  explicit StreamKeyBuilder(std::string_view destination = "http://a.test")
-      : destination_(url::SchemeHostPort(GURL(destination))) {}
+  explicit StreamKeyBuilder(std::string_view destination = "http://a.test");
 
   StreamKeyBuilder(const StreamKeyBuilder&) = delete;
   StreamKeyBuilder& operator=(const StreamKeyBuilder&) = delete;
 
-  ~StreamKeyBuilder() = default;
+  ~StreamKeyBuilder();
 
   StreamKeyBuilder& from_key(const HttpStreamKey& key);
 
@@ -281,6 +316,12 @@ class StreamKeyBuilder {
     return *this;
   }
 
+  StreamKeyBuilder& set_alt_service(
+      std::optional<AlternativeService> alt_service) {
+    alt_service_ = std::move(alt_service);
+    return *this;
+  }
+
   HttpStreamKey Build() const;
 
  private:
@@ -288,6 +329,7 @@ class StreamKeyBuilder {
   PrivacyMode privacy_mode_ = PRIVACY_MODE_DISABLED;
   SecureDnsPolicy secure_dns_policy_ = SecureDnsPolicy::kAllow;
   bool disable_cert_network_fetches_ = true;
+  std::optional<AlternativeService> alt_service_;
 };
 
 // An HttpStreamPool::Job::Delegate implementation for tests.

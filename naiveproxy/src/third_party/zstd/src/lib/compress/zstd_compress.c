@@ -7292,7 +7292,7 @@ size_t convertSequences_noRepcodes(
     return longLen;
 }
 
-#elif defined ZSTD_ARCH_RISCV_RVV
+#elif defined (ZSTD_ARCH_RISCV_RVV)
 #include <riscv_vector.h>
 /*
  * Convert `vl` sequences per iteration, using RVV intrinsics:
@@ -7824,7 +7824,7 @@ BlockSummary ZSTD_get1BlockSummary(const ZSTD_Sequence* seqs, size_t nbSeqs)
     }
 }
 
-#elif defined ZSTD_ARCH_RISCV_RVV
+#elif defined (ZSTD_ARCH_RISCV_RVV)
 
 BlockSummary ZSTD_get1BlockSummary(const ZSTD_Sequence* seqs, size_t nbSeqs)
 {

@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_POINTERS_INSTANCE_TRACER_H_
 #define PARTITION_ALLOC_POINTERS_INSTANCE_TRACER_H_
 
@@ -23,7 +18,6 @@
 #include <vector>
 
 #include "partition_alloc/partition_alloc_base/component_export.h"
-#include "partition_alloc/partition_alloc_base/cxx20_is_constant_evaluated.h"
 #endif
 
 namespace base::internal {
@@ -49,15 +43,13 @@ class PA_TRIVIAL_ABI InstanceTracer {
   constexpr static void Trace(uint64_t owner_id,
                               bool may_dangle,
                               uintptr_t address) {
-    if (partition_alloc::internal::base::is_constant_evaluated() ||
-        owner_id == 0) {
+    if (std::is_constant_evaluated() || owner_id == 0) {
       return;
     }
     TraceImpl(owner_id, may_dangle, address);
   }
   constexpr static void Untrace(uint64_t owner_id) {
-    if (partition_alloc::internal::base::is_constant_evaluated() ||
-        owner_id == 0) {
+    if (std::is_constant_evaluated() || owner_id == 0) {
       return;
     }
     UntraceImpl(owner_id);
@@ -77,7 +69,7 @@ class PA_TRIVIAL_ABI InstanceTracer {
   PA_COMPONENT_EXPORT(RAW_PTR) static void UntraceImpl(uint64_t owner_id);
 
   constexpr uint64_t CreateOwnerId() {
-    if (partition_alloc::internal::base::is_constant_evaluated()) {
+    if (std::is_constant_evaluated()) {
       return 0;
     }
     return ++counter_;

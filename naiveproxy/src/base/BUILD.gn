@@ -37,6 +37,7 @@ import("//build/config/ui.gni")
 import("//build/nocompile.gni")
 import("//build/util/process_version.gni")
 import("//build_overrides/build.gni")
+import("//tools/metrics/generate_allowlist_from_histograms_file.gni")
 
 if (is_ios) {
   # Used to access target_environment and target_platform.
@@ -111,6 +112,13 @@ if (is_fuchsia) {
 
 _build_date_header = "$target_gen_dir/generated_build_date.h"
 
+# mold does not support PROVIDE_HIDDEN.
+# https://github.com/rui314/mold/issues/1055
+_enable_code_ordering =
+    is_android && !is_component_build && experimental_linker_path == "" &&
+    (current_cpu == "arm" || current_cpu == "arm64" || current_cpu == "x86" ||
+     current_cpu == "x64")
+
 if (is_win) {
   # This is in a separate config so the flags can be applied to dependents.
   # ldflags in GN aren't automatically inherited.
@@ -155,6 +163,14 @@ buildflag_header("ios_cronet_buildflags") {
 }
 
 use_epoll = is_linux || is_chromeos || is_android
+
+generate_allowlist_from_histograms_file("memory_dump_provider_name_variants") {
+  namespace = "trace_event_metrics"
+  input_xml_file = "//tools/metrics/histograms/metadata/memory/histograms.xml"
+  output_file = "trace_event/memory_dump_provider_name_variants.h"
+  tag = "variant"
+  allow_list_name = "MemoryDumpProviderName"
+}
 
 # Base and everything it depends on should be a static library rather than
 # a source set. Base is more of a "library" in the classic sense in that many
@@ -206,7 +222,6 @@ component("base") {
     "big_endian.h",
     "bit_cast.h",
     "bits.h",
-    "build_time.h",
     "byte_count.cc",
     "byte_count.h",
     "byte_size.cc",
@@ -223,7 +238,6 @@ component("base") {
     "check_op.h",
     "command_line.cc",
     "command_line.h",
-    "compiler_specific.h",
     "component_export.h",
     "containers/adapters.h",
     "containers/adapters_internal.h",
@@ -231,7 +245,6 @@ component("base") {
     "containers/buffer_iterator.h",
     "containers/checked_iterators.h",
     "containers/circular_deque.h",
-    "containers/contains.h",
     "containers/enum_set.h",
     "containers/extend.h",
     "containers/fixed_flat_map.h",
@@ -258,8 +271,6 @@ component("base") {
     "containers/to_value_list.h",
     "containers/to_vector.h",
     "containers/unique_ptr_adapters.h",
-    "containers/variant_map.cc",
-    "containers/variant_map.h",
     "containers/vector_buffer.h",
     "critical_closure.h",
     "dcheck_is_on.h",
@@ -319,6 +330,7 @@ component("base") {
     "functional/concurrent_closures.h",
     "functional/disallow_unretained.h",
     "functional/function_ref.h",
+    "functional/is_callback.h",
     "functional/unretained_traits.h",
     "gtest_prod_util.h",
     "hash/hash.cc",
@@ -350,22 +362,25 @@ component("base") {
     "logging.cc",
     "logging.h",
     "logging/log_severity.h",
+    "logging/logging_settings.h",
     "macros/concat.h",
     "macros/if.h",
     "macros/is_empty.h",
     "macros/remove_parens.h",
     "macros/uniquify.h",
+    "memory/advanced_memory_safety_checks.cc",
+    "memory/advanced_memory_safety_checks.h",
     "memory/aligned_memory.cc",
     "memory/aligned_memory.h",
     "memory/asan_interface.h",
+    "memory/available_memory_monitor.cc",
+    "memory/available_memory_monitor.h",
     "memory/free_deleter.h",
     "memory/memory_pressure_level.h",
     "memory/memory_pressure_listener.cc",
     "memory/memory_pressure_listener.h",
     "memory/memory_pressure_listener_registry.cc",
     "memory/memory_pressure_listener_registry.h",
-    "memory/memory_pressure_monitor.cc",
-    "memory/memory_pressure_monitor.h",
     "memory/page_size.h",
     "memory/platform_shared_memory_handle.cc",
     "memory/platform_shared_memory_handle.h",
@@ -377,12 +392,6 @@ component("base") {
     "memory/protected_memory.h",
     "memory/ptr_util.h",
     "memory/raw_ptr.h",
-    "memory/raw_ptr_asan_bound_arg_tracker.cc",
-    "memory/raw_ptr_asan_bound_arg_tracker.h",
-    "memory/raw_ptr_asan_hooks.cc",
-    "memory/raw_ptr_asan_hooks.h",
-    "memory/raw_ptr_asan_service.cc",
-    "memory/raw_ptr_asan_service.h",
     "memory/raw_ptr_cast.h",
     "memory/raw_ptr_exclusion.h",
     "memory/raw_ref.h",
@@ -431,6 +440,7 @@ component("base") {
     "memory_coordinator/memory_consumer_registry.h",
     "memory_coordinator/memory_consumer_registry_destruction_observer.h",
     "memory_coordinator/traits.h",
+    "memory_coordinator/utils.h",
     "message_loop/io_watcher.cc",
     "message_loop/io_watcher.h",
     "message_loop/message_pump.cc",
@@ -464,7 +474,6 @@ component("base") {
     "metrics/histogram_base.h",
     "metrics/histogram_delta_serialization.cc",
     "metrics/histogram_delta_serialization.h",
-    "metrics/histogram_flattener.h",
     "metrics/histogram_functions.cc",
     "metrics/histogram_functions.h",
     "metrics/histogram_functions_internal_overloads.h",
@@ -483,6 +492,8 @@ component("base") {
     "metrics/persistent_memory_allocator.h",
     "metrics/persistent_sample_map.cc",
     "metrics/persistent_sample_map.h",
+    "metrics/puma_histogram_functions.cc",
+    "metrics/puma_histogram_functions.h",
     "metrics/ranges_manager.cc",
     "metrics/ranges_manager.h",
     "metrics/record_histogram_checker.h",
@@ -542,6 +553,7 @@ component("base") {
     "process/current_process_test.h",
     "process/environment_internal.cc",
     "process/environment_internal.h",
+    "process/process.cc",
     "process/process.h",
     "process/process_handle.cc",
     "process/process_handle.h",
@@ -589,7 +601,6 @@ component("base") {
     "run_loop.h",
     "sampling_heap_profiler/lock_free_address_hash_set.cc",
     "sampling_heap_profiler/lock_free_address_hash_set.h",
-    "sampling_heap_profiler/lock_free_bloom_filter.cc",
     "sampling_heap_profiler/lock_free_bloom_filter.h",
     "sampling_heap_profiler/poisson_allocation_sampler.cc",
     "sampling_heap_profiler/poisson_allocation_sampler.h",
@@ -618,8 +629,8 @@ component("base") {
     "strings/durable_string_view.h",
     "strings/escape.cc",
     "strings/escape.h",
-    "strings/latin1_string_conversions.cc",
-    "strings/latin1_string_conversions.h",
+    "strings/lazy_string_builder.cc",
+    "strings/lazy_string_builder.h",
     "strings/levenshtein_distance.cc",
     "strings/levenshtein_distance.h",
     "strings/pattern.cc",
@@ -826,6 +837,8 @@ component("base") {
     "task/thread_pool/worker_thread_observer.h",
     "task/thread_pool/worker_thread_set.cc",
     "task/thread_pool/worker_thread_set.h",
+    "task/thread_type.cc",
+    "task/thread_type.h",
     "task/updateable_sequenced_task_runner.h",
     "test/scoped_logging_settings.h",
     "test/spin_wait.h",
@@ -914,11 +927,11 @@ component("base") {
     "trace_event/named_trigger.h",
     "trace_event/trace_id_helper.cc",
     "trace_event/trace_id_helper.h",
+    "trace_event/trace_session_observer.cc",
+    "trace_event/trace_session_observer.h",
     "traits_bag.h",
     "tuple.h",
-    "types/cxx23_from_range.h",
-    "types/cxx23_is_scoped_enum.h",
-    "types/cxx23_to_underlying.h",
+    "types/cxx26_projected_value_t.h",
     "types/expected.h",
     "types/expected_internal.h",
     "types/expected_macros.h",
@@ -951,7 +964,6 @@ component("base") {
     "version_info/channel.h",
     "vlog.cc",
     "vlog.h",
-    _build_date_header,
   ]
 
   # Various files that are unused in the Chromium build, but presumably here to
@@ -1056,6 +1068,7 @@ component("base") {
 
   deps = [
     ":check_version_internal",
+    ":simdutf_shim",
     "//base/allocator:buildflags",
     "//base/third_party/cityhash",
     "//base/third_party/cityhash_v103",
@@ -1071,6 +1084,25 @@ component("base") {
   # Used by metrics/crc32
   deps += [ "//third_party/zlib" ]
 
+  if (use_asan_backup_ref_ptr) {
+    # Used by raw_ptr_service.cc to override {malloc,free,ignore_free} hooks.
+    sources += [
+      "memory/raw_ptr_asan_allocator.cc",
+      "memory/raw_ptr_asan_allocator.h",
+      "memory/raw_ptr_asan_bound_arg_tracker.cc",
+      "memory/raw_ptr_asan_bound_arg_tracker.h",
+      "memory/raw_ptr_asan_event.cc",
+      "memory/raw_ptr_asan_event.h",
+      "memory/raw_ptr_asan_hooks.cc",
+      "memory/raw_ptr_asan_hooks.h",
+      "memory/raw_ptr_asan_service.cc",
+      "memory/raw_ptr_asan_service.h",
+    ]
+    if (use_asan_backup_ref_ptr_v2) {
+      deps += [ "//build/config/sanitizers:sanitizer_shared_hooks" ]
+    }
+  }
+
   # `raw_ptr` cannot be made a component due to CRT symbol issues.
   # Its gateway to being a component is through `//base`, so we have
   # to provide the appropriate `#define` here.
@@ -1083,7 +1115,6 @@ component("base") {
   public_deps = [
     ":anchor_functions_buildflags",
     ":base_static",
-    ":build_date",
     ":cfi_buildflags",
     ":clang_profiling_buildflags",
     ":debugging_buildflags",
@@ -1103,6 +1134,14 @@ component("base") {
     "//build:chromecast_buildflags",
     "//third_party/abseil-cpp:absl",
   ]
+
+  if (use_asan_backup_ref_ptr) {
+    # raw_ptr_asan_service.cc depends on:
+    deps += [ "//base/allocator/partition_allocator/src/partition_alloc" ]
+    if (use_asan_backup_ref_ptr_v2) {
+      deps += [ "//build/config/sanitizers:sanitizer_shared_hooks" ]
+    }
+  }
 
   # Needed for <atomic> if using newer C++ library than sysroot, except if
   # building inside the cros_sdk environment - use host_toolchain as a
@@ -1224,7 +1263,9 @@ component("base") {
 
     # This is actually a linker script, but it can be added to the link in the
     # same way as a library.
-    libs += [ "android/library_loader/anchor_functions.lds" ]
+    if (_enable_code_ordering) {
+      libs += [ "android/library_loader/anchor_functions.lds" ]
+    }
   }  # is_android
 
   if (build_allocation_stack_trace_recorder) {
@@ -1256,8 +1297,6 @@ component("base") {
       "android/jni_array.h",
       "android/jni_bytebuffer.cc",
       "android/jni_bytebuffer.h",
-      "android/jni_callback.cc",
-      "android/jni_callback.h",
       "android/jni_registrar.cc",
       "android/jni_registrar.h",
       "android/jni_string.cc",
@@ -1434,8 +1473,6 @@ component("base") {
   }
 
   sources += [
-    "hash/md5.cc",
-    "hash/md5.h",
     "hash/sha1.cc",
     "hash/sha1.h",
   ]
@@ -1625,6 +1662,7 @@ component("base") {
       "allocator/partition_alloc_support.h",
       "allocator/scheduler_loop_quarantine_config.cc",
       "allocator/scheduler_loop_quarantine_config.h",
+      "allocator/scheduler_loop_quarantine_support.h",
     ]
   }
   if (use_allocator_shim) {
@@ -1749,6 +1787,8 @@ component("base") {
       "win/i18n.h",
       "win/iat_patch_function.cc",
       "win/iat_patch_function.h",
+      "win/limited_access_features.cc",
+      "win/limited_access_features.h",
       "win/map.h",
       "win/message_window.cc",
       "win/message_window.h",
@@ -1825,7 +1865,6 @@ component("base") {
       "win/win_util.h",
       "win/winbase_shim.h",
       "win/wincred_shim.h",
-      "win/wincrypt_shim.h",
       "win/window_enumerator.cc",
       "win/window_enumerator.h",
       "win/windows_defines.inc",
@@ -1839,7 +1878,6 @@ component("base") {
       "win/winrt_foundation_helpers.h",
       "win/winrt_storage_util.cc",
       "win/winrt_storage_util.h",
-      "win/wintrust_shim.h",
       "win/wmi.cc",
       "win/wmi.h",
       "win/wrapped_window_proc.cc",
@@ -1918,6 +1956,8 @@ component("base") {
       "apple/scoped_objc_class_swizzler.h",
       "apple/scoped_objc_class_swizzler.mm",
       "apple/scoped_typeref.h",
+      "apple/swift_callback_helpers.h",
+      "apple/swift_interop_util.h",
       "file_version_info_apple.h",
       "file_version_info_apple.mm",
       "files/file_util_apple.mm",
@@ -2024,6 +2064,8 @@ component("base") {
       "synchronization/waitable_event_watcher_mac.cc",
       "system/sys_info_mac.mm",
     ]
+
+    deps += [ ":plist_size_buildflags" ]
 
     libs += [
       "bsm",
@@ -2235,6 +2277,8 @@ component("base") {
     sources += [
       "memory/platform_shared_memory_mapper_posix.cc",
       "memory/platform_shared_memory_region_posix.cc",
+      "version_info/nix/version_extra_utils.cc",
+      "version_info/nix/version_extra_utils.h",
     ]
   }
 
@@ -2300,7 +2344,6 @@ component("base") {
   }
 
   sources += [
-    "trace_event/auto_open_close_event.h",
     "trace_event/builtin_categories.h",
     "trace_event/heap_profiler.h",
     "trace_event/interned_args_helper.cc",
@@ -2309,6 +2352,8 @@ component("base") {
     "trace_event/log_message.h",
     "trace_event/malloc_dump_provider.cc",
     "trace_event/malloc_dump_provider.h",
+    "trace_event/measured_memory_dump_provider_info.cc",
+    "trace_event/measured_memory_dump_provider_info.h",
     "trace_event/memory_allocator_dump.cc",
     "trace_event/memory_allocator_dump.h",
     "trace_event/memory_dump_manager.cc",
@@ -2365,6 +2410,8 @@ component("base") {
   ]
 
   public_deps += [
+    ":compiler_specific",
+    ":memory_dump_provider_name_variants",
     "//base/tracing/protos:chrome_track_event_zero",
     "//third_party/perfetto:libperfetto",
   ]
@@ -2389,8 +2436,6 @@ component("base") {
     sources += [
       "trace_event/application_state_proto_android.cc",
       "trace_event/application_state_proto_android.h",
-      "trace_event/cpufreq_monitor_android.cc",
-      "trace_event/cpufreq_monitor_android.h",
       "trace_event/java_heap_dump_provider_android.cc",
       "trace_event/java_heap_dump_provider_android.h",
     ]
@@ -2415,6 +2460,38 @@ component("base") {
   }
 }
 
+# A separate source_set for this header to avoid circular dependencies.
+source_set("compiler_specific") {
+  public = [ "compiler_specific.h" ]
+}
+
+# Separate simdutf from ":base", so simdutf cannot accidentally affect the
+# build config for ":base".
+source_set("simdutf_shim") {
+  visibility = [ ":base" ]
+  configs += [
+    "//build/config/compiler:wexit_time_destructors",
+    "//build/config/compiler:wglobal_constructors",
+  ]
+  if (!is_win) {
+    # Generates -Werror,-Wsign-conversion
+    configs += [ "//build/config/compiler:prevent_unsafe_narrowing" ]
+  }
+
+  public = [ "simdutf_shim.h" ]
+  sources = [ "simdutf_shim.cc" ]
+  deps = [ "//third_party/simdutf" ]
+}
+
+if (is_android) {
+  # This source_set must end up in the root component of a shared library, and
+  # the NativeInitializationHook definition must also be in the root component.
+  source_set("jni_onload") {
+    sources = [ "android/jni_onload.cc" ]
+    deps = [ ":base" ]
+  }
+}
+
 if (is_linux || is_chromeos) {
   # Split out as a separate target for two reasons:
   # - the line number reader is 2x slower in debug builds if not optimized,
@@ -2431,6 +2508,7 @@ if (is_linux || is_chromeos) {
     ]
 
     deps = [
+      ":compiler_specific",
       "//base/allocator/partition_allocator:raw_ptr",
       "//base/numerics:base_numerics",
       "//base/third_party/symbolize",
@@ -2567,13 +2645,10 @@ buildflag_header("synchronization_buildflags") {
 buildflag_header("anchor_functions_buildflags") {
   header = "anchor_functions_buildflags.h"
   header_dir = "base/android/library_loader"
-  _supports_code_ordering =
-      is_android && (current_cpu == "arm" || current_cpu == "arm64" ||
-                     current_cpu == "x86" || current_cpu == "x64")
 
   flags = [
     "USE_LLD=$use_lld",
-    "SUPPORTS_CODE_ORDERING=$_supports_code_ordering",
+    "SUPPORTS_CODE_ORDERING=$_enable_code_ordering",
   ]
 }
 
@@ -2593,6 +2668,7 @@ buildflag_header("sanitizer_buildflags") {
   header_dir = "base"
 
   flags = [
+    "IS_ASAN=$is_asan",
     "IS_HWASAN=$is_hwasan",
     "IS_UBSAN=$is_ubsan",
     "IS_UBSAN_SECURITY=$is_ubsan_security",
@@ -2632,13 +2708,22 @@ buildflag_header("fuzzing_buildflags") {
   flags = [ "USE_FUZZING_ENGINE=$use_fuzzing_engine" ]
 }
 
+if (is_mac) {
+  buildflag_header("plist_size_buildflags") {
+    header = "app_plist_size_buildflags.h"
+    header_dir = "base/apple"
+
+    plist_file = read_file("//chrome/app/app-Info.plist", "string")
+    flags = [ "APP_INFO_PLIST_FILE_SIZE=" + len(plist_file) ]
+  }
+}
+
 # This is the subset of files from base that should not be used with a dynamic
 # library. Note that this library cannot depend on base because base depends on
 # base_static.
 static_library("base_static") {
   sources = [
     "base_export.h",
-    "base_switches.cc",
     "base_switches.h",
     "immediate_crash.h",
   ]
@@ -2684,10 +2769,20 @@ if (current_toolchain == default_toolchain) {
   }
 }
 
-copy("build_date") {
+copy("build_date_header") {
   sources = [ "$root_build_dir/gen/base/generated_build_date_internal.h" ]
   outputs = [ _build_date_header ]
   deps = [ ":build_date_internal($default_toolchain)" ]
+}
+
+source_set("build_time") {
+  # This is a header, but it should be private.
+  sources = [ _build_date_header ]
+  public_deps = [
+    ":base",
+    ":build_date_header",
+  ]
+  public = [ "build_time.h" ]
 }
 
 process_version("check_version_internal") {

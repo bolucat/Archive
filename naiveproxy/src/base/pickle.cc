@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
-#pragma allow_unsafe_libc_calls
-#endif
-
 #include "base/pickle.h"
 
 #include <algorithm>
@@ -18,6 +13,7 @@
 #include <type_traits>
 
 #include "base/bits.h"
+#include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/numerics/safe_math.h"
@@ -31,9 +27,40 @@ const size_t Pickle::kPayloadUnit = 64;
 static const size_t kCapacityReadOnly = static_cast<size_t>(-1);
 
 PickleIterator::PickleIterator(const Pickle& pickle)
-    : payload_(pickle.payload()),
+    : payload_(reinterpret_cast<const char*>(pickle.payload_bytes().data())),
       read_index_(0),
       end_index_(pickle.payload_size()) {}
+
+PickleIterator PickleIterator::WithData(span<const uint8_t> data) {
+  if (data.size() < sizeof(Pickle::Header)) {
+    return PickleIterator();
+  }
+  // Make a copy of the header instead of dereferencing `data` with
+  // reinterpret_cast in case the memory is not aligned, which would lead to
+  // Undefined Behavior. This scenario should be rare as in most cases memory
+  // allocations are aligned, but it is not guaranteed by this API which accepts
+  // arbitrary spans.
+  Pickle::Header header;
+  byte_span_from_ref(header).copy_from_nonoverlapping(
+      data.first(sizeof(header)));
+
+  if (header.payload_size > data.size() - sizeof(Pickle::Header)) {
+    return PickleIterator();
+  }
+  const size_t header_size = data.size() - header.payload_size;
+  if (header_size != bits::AlignUp(header_size, sizeof(uint32_t))) {
+    return PickleIterator();
+  }
+  DCHECK_GE(header_size, sizeof(Pickle::Header));
+
+  PickleIterator iter;
+  // SAFETY: `data` contains at least `header_size` bytes.
+  iter.payload_ =
+      UNSAFE_BUFFERS(reinterpret_cast<const char*>(data.data()) + header_size);
+  iter.read_index_ = 0;
+  iter.end_index_ = header.payload_size;
+  return iter;
+}
 
 template <typename Type>
 inline bool PickleIterator::ReadBuiltinType(Type* result) {
@@ -44,7 +71,7 @@ inline bool PickleIterator::ReadBuiltinType(Type* result) {
   if (!read_from) {
     return false;
   }
-  memcpy(result, read_from, sizeof(*result));
+  UNSAFE_TODO(memcpy(result, read_from, sizeof(*result)));
   return true;
 }
 
@@ -143,7 +170,7 @@ bool PickleIterator::ReadFloat(float* result) {
   if (!read_from) {
     return false;
   }
-  memcpy(result, read_from, sizeof(*result));
+  UNSAFE_TODO(memcpy(result, read_from, sizeof(*result)));
   return true;
 }
 
@@ -156,7 +183,7 @@ bool PickleIterator::ReadDouble(double* result) {
   if (!read_from) {
     return false;
   }
-  memcpy(result, read_from, sizeof(*result));
+  UNSAFE_TODO(memcpy(result, read_from, sizeof(*result)));
   return true;
 }
 
@@ -217,26 +244,13 @@ bool PickleIterator::ReadStringPiece16(std::u16string_view* result) {
   return true;
 }
 
-bool PickleIterator::ReadData(const char** data, size_t* length) {
-  *length = 0;
-  *data = nullptr;
-
-  if (!ReadLength(length)) {
-    return false;
-  }
-
-  return ReadBytes(data, *length);
-}
-
 std::optional<span<const uint8_t>> PickleIterator::ReadData() {
-  const char* ptr;
   size_t length;
-
-  if (!ReadData(&ptr, &length)) {
+  if (!ReadLength(&length)) {
     return std::nullopt;
   }
 
-  return as_bytes(UNSAFE_TODO(span(ptr, length)));
+  return ReadBytes(length);
 }
 
 bool PickleIterator::ReadBytes(const char** data, size_t length) {
@@ -331,7 +345,8 @@ Pickle::Pickle(const Pickle& other)
       write_offset_(other.write_offset_) {
   if (other.header_) {
     Resize(other.header_->payload_size);
-    memcpy(header_, other.header_, header_size_ + other.header_->payload_size);
+    UNSAFE_TODO(memcpy(header_, other.header_,
+                       header_size_ + other.header_->payload_size));
   }
 }
 
@@ -356,8 +371,8 @@ Pickle& Pickle::operator=(const Pickle& other) {
   }
   if (other.header_) {
     Resize(other.header_->payload_size);
-    memcpy(header_, other.header_,
-           other.header_size_ + other.header_->payload_size);
+    UNSAFE_TODO(memcpy(header_, other.header_,
+                       other.header_size_ + other.header_->payload_size));
     write_offset_ = other.write_offset_;
   }
   return *this;
@@ -369,7 +384,7 @@ void Pickle::WriteString(std::string_view value) {
 
 void Pickle::WriteString16(std::u16string_view value) {
   WriteInt(checked_cast<int>(value.size()));
-  WriteBytes(value.data(), value.size() * sizeof(char16_t));
+  WriteBytes(as_byte_span(value));
 }
 
 void Pickle::WriteData(const char* data, size_t length) {
@@ -383,11 +398,6 @@ void Pickle::WriteData(std::string_view data) {
 void Pickle::WriteData(base::span<const uint8_t> data) {
   WriteInt(checked_cast<int>(data.size()));
   WriteBytes(data);
-}
-
-void Pickle::WriteBytes(const void* data, size_t length) {
-  WriteBytesCommon(
-      UNSAFE_TODO(span(static_cast<const uint8_t*>(data), length)));
 }
 
 void Pickle::WriteBytes(span<const uint8_t> data) {
@@ -431,7 +441,7 @@ void Pickle::Resize(size_t new_capacity) {
 void* Pickle::ClaimBytes(size_t num_bytes) {
   void* p = ClaimUninitializedBytesInternal(num_bytes);
   CHECK(p);
-  memset(p, 0, num_bytes);
+  UNSAFE_TODO(memset(p, 0, num_bytes));
   return p;
 }
 
@@ -442,20 +452,13 @@ size_t Pickle::GetTotalAllocatedSize() const {
   return header_size_ + capacity_after_header_;
 }
 
-// static
-const char* Pickle::FindNext(size_t header_size,
-                             const char* start,
-                             const char* end) {
-  size_t pickle_size = 0;
-  if (!PeekNext(header_size, start, end, &pickle_size)) {
-    return nullptr;
-  }
-
-  if (pickle_size > static_cast<size_t>(end - start)) {
-    return nullptr;
-  }
-
-  return UNSAFE_TODO(start + pickle_size);
+span<uint8_t> Pickle::AsWritableBytes() {
+  CHECK(header_);
+  CHECK_NE(kCapacityReadOnly, capacity_after_header_)
+      << "oops: pickle is readonly";
+  // SAFETY: `header_` always points to at least `size()` valid bytes if
+  // non-null, and otherwise `size()` returns zero.
+  return UNSAFE_BUFFERS(span(reinterpret_cast<uint8_t*>(header_), size()));
 }
 
 // static
@@ -513,7 +516,8 @@ inline void* Pickle::ClaimUninitializedBytesInternal(size_t length) {
     Resize(std::max(new_capacity, new_size));
   }
 
-  char* write = UNSAFE_TODO(mutable_payload() + write_offset_);
+  char* write = UNSAFE_TODO(reinterpret_cast<char*>(header_) + header_size_ +
+                            write_offset_);
   std::fill(UNSAFE_TODO(write + length), UNSAFE_TODO(write + data_len),
             0);  // Always initialize padding
   header_->payload_size = static_cast<uint32_t>(new_size);

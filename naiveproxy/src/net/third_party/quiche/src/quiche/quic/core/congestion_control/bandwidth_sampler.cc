@@ -8,11 +8,17 @@
 #include <cstddef>
 #include <ostream>
 
+#include "quiche/quic/core/congestion_control/send_algorithm_interface.h"
+#include "quiche/quic/core/quic_bandwidth.h"
+#include "quiche/quic/core/quic_packet_number.h"
+#include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/core/quic_types.h"
+#include "quiche/quic/core/quic_unacked_packet_map.h"
 #include "quiche/quic/platform/api/quic_bug_tracker.h"
 #include "quiche/quic/platform/api/quic_flag_utils.h"
 #include "quiche/quic/platform/api/quic_flags.h"
 #include "quiche/quic/platform/api/quic_logging.h"
+#include "quiche/common/platform/api/quiche_logging.h"
 
 namespace quic {
 
@@ -135,21 +141,9 @@ QuicByteCount MaxAckHeightTracker::Update(
 BandwidthSampler::BandwidthSampler(
     const QuicUnackedPacketMap* unacked_packet_map,
     QuicRoundTripCount max_height_tracker_window_length)
-    : total_bytes_sent_(0),
-      total_bytes_acked_(0),
-      total_bytes_lost_(0),
-      total_bytes_neutered_(0),
-      total_bytes_sent_at_last_acked_packet_(0),
-      last_acked_packet_sent_time_(QuicTime::Zero()),
-      last_acked_packet_ack_time_(QuicTime::Zero()),
-      is_app_limited_(true),
-      connection_state_map_(),
-      max_tracked_packets_(GetQuicFlag(quic_max_tracked_packet_count)),
+    : max_tracked_packets_(GetQuicFlag(quic_max_tracked_packet_count)),
       unacked_packet_map_(unacked_packet_map),
-      max_ack_height_tracker_(max_height_tracker_window_length),
-      total_bytes_acked_after_last_ack_event_(0),
-      overestimate_avoidance_(false),
-      limit_max_ack_height_tracker_by_send_rate_(false) {
+      max_ack_height_tracker_(max_height_tracker_window_length) {
   const size_t preallocate_count =
       GetQuicFlag(quic_preallocate_unacked_packets);
   if (preallocate_count > 0) {
@@ -157,30 +151,7 @@ BandwidthSampler::BandwidthSampler(
   }
 }
 
-BandwidthSampler::BandwidthSampler(const BandwidthSampler& other)
-    : total_bytes_sent_(other.total_bytes_sent_),
-      total_bytes_acked_(other.total_bytes_acked_),
-      total_bytes_lost_(other.total_bytes_lost_),
-      total_bytes_neutered_(other.total_bytes_neutered_),
-      total_bytes_sent_at_last_acked_packet_(
-          other.total_bytes_sent_at_last_acked_packet_),
-      last_acked_packet_sent_time_(other.last_acked_packet_sent_time_),
-      last_acked_packet_ack_time_(other.last_acked_packet_ack_time_),
-      last_sent_packet_(other.last_sent_packet_),
-      last_acked_packet_(other.last_acked_packet_),
-      is_app_limited_(other.is_app_limited_),
-      end_of_app_limited_phase_(other.end_of_app_limited_phase_),
-      connection_state_map_(other.connection_state_map_),
-      recent_ack_points_(other.recent_ack_points_),
-      a0_candidates_(other.a0_candidates_),
-      max_tracked_packets_(other.max_tracked_packets_),
-      unacked_packet_map_(other.unacked_packet_map_),
-      max_ack_height_tracker_(other.max_ack_height_tracker_),
-      total_bytes_acked_after_last_ack_event_(
-          other.total_bytes_acked_after_last_ack_event_),
-      overestimate_avoidance_(other.overestimate_avoidance_),
-      limit_max_ack_height_tracker_by_send_rate_(
-          other.limit_max_ack_height_tracker_by_send_rate_) {}
+BandwidthSampler::BandwidthSampler(const BandwidthSampler& other) = default;
 
 void BandwidthSampler::EnableOverestimateAvoidance() {
   if (overestimate_avoidance_) {
@@ -192,8 +163,6 @@ void BandwidthSampler::EnableOverestimateAvoidance() {
   // --quic_ack_aggregation_bandwidth_threshold to 2.0.
   max_ack_height_tracker_.SetAckAggregationBandwidthThreshold(2.0);
 }
-
-BandwidthSampler::~BandwidthSampler() {}
 
 void BandwidthSampler::OnPacketSent(
     QuicTime sent_time, QuicPacketNumber packet_number, QuicByteCount bytes,
@@ -215,6 +184,11 @@ void BandwidthSampler::OnPacketSent(
   // importantly at the beginning of the connection.
   if (bytes_in_flight == 0) {
     last_acked_packet_ack_time_ = sent_time;
+    // Receive timestamps are in the receiver clock time, so we cannot use
+    // `sent_time` here.  Fortunately, since setting A_0 time to `sent_time`
+    // inherently underestimates bandwidth, the resulting sample should be fine
+    // without the anti-overestimation effect of receive timestamps.
+    last_acked_packet_receive_time_ = QuicTime::Zero();
     if (overestimate_avoidance_) {
       recent_ack_points_.Clear();
       recent_ack_points_.Update(sent_time, total_bytes_acked_);
@@ -308,7 +282,7 @@ BandwidthSampler::OnCongestionEvent(QuicTime ack_time,
 
   SendTimeState last_acked_packet_send_state;
   QuicBandwidth max_send_rate = QuicBandwidth::Zero();
-  for (const auto& packet : acked_packets) {
+  for (const AckedPacket& packet : acked_packets) {
     if (packet.spurious_loss) {
       // If the packet has been detected as lost before, QuicSentPacketManager
       // should set the AckedPacket.bytes_acked to 0 before passing the packet
@@ -316,8 +290,7 @@ BandwidthSampler::OnCongestionEvent(QuicTime ack_time,
       QUICHE_DCHECK_EQ(packet.bytes_acked, 0);
       continue;
     }
-    BandwidthSample sample =
-        OnPacketAcknowledged(ack_time, packet.packet_number);
+    BandwidthSample sample = OnPacketAcknowledged(ack_time, packet);
     if (!sample.state_at_send.is_valid) {
       continue;
     }
@@ -394,7 +367,8 @@ QuicByteCount BandwidthSampler::OnAckEventEnd(
 }
 
 BandwidthSample BandwidthSampler::OnPacketAcknowledged(
-    QuicTime ack_time, QuicPacketNumber packet_number) {
+    QuicTime ack_time, const AckedPacket& acked_packet) {
+  const QuicPacketNumber packet_number = acked_packet.packet_number;
   last_acked_packet_ = packet_number;
   ConnectionStateOnSentPacket* sent_packet_pointer =
       connection_state_map_.GetEntry(packet_number);
@@ -403,19 +377,24 @@ BandwidthSample BandwidthSampler::OnPacketAcknowledged(
     return BandwidthSample();
   }
   BandwidthSample sample =
-      OnPacketAcknowledgedInner(ack_time, packet_number, *sent_packet_pointer);
+      OnPacketAcknowledgedInner(ack_time, acked_packet, *sent_packet_pointer);
   return sample;
 }
 
 BandwidthSample BandwidthSampler::OnPacketAcknowledgedInner(
-    QuicTime ack_time, QuicPacketNumber packet_number,
+    QuicTime ack_time, const AckedPacket& acked_packet,
     const ConnectionStateOnSentPacket& sent_packet) {
+  const QuicPacketNumber packet_number = acked_packet.packet_number;
   total_bytes_acked_ += sent_packet.size();
   total_bytes_sent_at_last_acked_packet_ =
       sent_packet.send_time_state().total_bytes_sent;
   last_acked_packet_sent_time_ = sent_packet.sent_time();
   last_acked_packet_ack_time_ = ack_time;
+  last_acked_packet_receive_time_ = acked_packet.receive_timestamp;
   if (overestimate_avoidance_) {
+    // Note that this does not store `receive_timestamp`.  Ideally, the receive
+    // timestamps prove sufficiently useful in dealing with overestimation that
+    // we can eventually remove `overestimate_avoidance_` altogether.
     recent_ack_points_.Update(ack_time, total_bytes_acked_);
   }
 
@@ -456,6 +435,7 @@ BandwidthSample BandwidthSampler::OnPacketAcknowledgedInner(
     QUIC_DVLOG(2) << "Using a0 point: " << a0;
   } else {
     a0.ack_time = sent_packet.last_acked_packet_ack_time(),
+    a0.receive_time = sent_packet.last_acked_packet_receive_time();
     a0.total_bytes_acked = sent_packet.send_time_state().total_bytes_acked;
   }
 
@@ -487,6 +467,31 @@ BandwidthSample BandwidthSampler::OnPacketAcknowledgedInner(
 
   BandwidthSample sample;
   sample.bandwidth = std::min(send_rate, ack_rate);
+
+  // If QUIC receive timestamps are available, use them to clamp the returned
+  // bandwidth sample.  Those generally should not be trusted for increasing
+  // the bandwidth estimate to avoid "speculative ACK"-style attacks, but they
+  // do work as a reasonable signal to compute an upper bound.
+  const QuicTime recv_time1 = acked_packet.receive_timestamp;
+  const QuicTime recv_time0 = a0.receive_time;
+  if (recv_time0.IsInitialized() && recv_time1.IsInitialized() &&
+      recv_time0 < recv_time1) {
+    const QuicBandwidth recv_rate = QuicBandwidth::FromBytesAndTimeDelta(
+        total_bytes_acked_ - a0.total_bytes_acked, recv_time1 - recv_time0);
+    sample.bandwidth = std::min(sample.bandwidth, recv_rate);
+  }
+
+  if (GetQuicReloadableFlag(quic_bandwidth_sampler_guard_rtt_subtraction)) {
+    // It's possible for the ACK time to precede the send time when the sender
+    // and receiver run concurrently.  Suppose that (1) the receiver gets the
+    // time, (2) the sender gets the time, (3) the receiver reads packets, and
+    // (4) the sender sends packets.  In this scenario, a packet's send time
+    // could be greater than its ACK time.  See b/461578611 for context.
+    if (ack_time < sent_packet.sent_time()) {
+      QUIC_BUG(quic_bandwidth_sampler_ack_time_before_sent_time);
+      return BandwidthSample();
+    }
+  }
   // Note: this sample does not account for delayed acknowledgement time.  This
   // means that the RTT measurements here can be artificially high, especially
   // on low bandwidth connections.

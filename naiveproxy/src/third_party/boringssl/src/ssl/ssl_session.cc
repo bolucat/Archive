@@ -21,6 +21,7 @@
 
 #include <utility>
 
+#include <openssl/cipher.h>
 #include <openssl/err.h>
 #include <openssl/hmac.h>
 #include <openssl/mem.h>
@@ -37,8 +38,7 @@ BSSL_NAMESPACE_BEGIN
 // that it needs to asynchronously fetch session information.
 static const char g_pending_session_magic = 0;
 
-static CRYPTO_EX_DATA_CLASS g_ex_data_class =
-    CRYPTO_EX_DATA_CLASS_INIT_WITH_APP_DATA;
+static ExDataClass g_ex_data_class(/*with_app_data=*/true);
 
 static void SSL_SESSION_list_remove(SSL_CTX *ctx, SSL_SESSION *session);
 static void SSL_SESSION_list_add(SSL_CTX *ctx, SSL_SESSION *session);
@@ -65,7 +65,8 @@ uint32_t ssl_hash_session_id(Span<const uint8_t> session_id) {
   return hash;
 }
 
-UniquePtr<SSL_SESSION> SSL_SESSION_dup(SSL_SESSION *session, int dup_flags) {
+UniquePtr<SSL_SESSION> SSL_SESSION_dup(const SSL_SESSION *session,
+                                       int dup_flags) {
   UniquePtr<SSL_SESSION> new_session = ssl_session_new(session->x509_method);
   if (!new_session) {
     return nullptr;
@@ -367,13 +368,15 @@ static int ssl_encrypt_ticket_with_cipher_ctx(SSL_HANDSHAKE *hs, CBB *out,
     OPENSSL_memcpy(ptr, session_buf, session_len);
     total = session_len;
   } else {
-    int len;
-    if (!EVP_EncryptUpdate(ctx.get(), ptr + total, &len, session_buf,
-                           session_len)) {
+    size_t len;
+    if (!EVP_EncryptUpdate_ex(ctx.get(), ptr + total, &len,
+                              session_len + EVP_MAX_BLOCK_LENGTH - total,
+                              session_buf, session_len)) {
       return 0;
     }
     total += len;
-    if (!EVP_EncryptFinal_ex(ctx.get(), ptr + total, &len)) {
+    if (!EVP_EncryptFinal_ex2(ctx.get(), ptr + total, &len,
+                              session_len + EVP_MAX_BLOCK_LENGTH - total)) {
       return 0;
     }
     total += len;
@@ -596,7 +599,8 @@ enum ssl_hs_wait_t ssl_get_prev_session(SSL_HANDSHAKE *hs,
   if (tickets_supported && CBS_len(&ticket) != 0) {
     switch (ssl_process_ticket(
         hs, &session, &renew_ticket, ticket,
-        Span(client_hello->session_id, client_hello->session_id_len))) {
+        Span(client_hello->session_id, client_hello->session_id_len),
+        /*save_ticket=*/false)) {
       case ssl_ticket_aead_success:
         break;
       case ssl_ticket_aead_ignore_ticket:
@@ -629,7 +633,7 @@ static bool remove_session(SSL_CTX *ctx, SSL_SESSION *session, bool lock) {
   }
 
   if (lock) {
-    CRYPTO_MUTEX_lock_write(&ctx->lock);
+    ctx->lock.LockWrite();
   }
 
   SSL_SESSION *found_session = lh_SSL_SESSION_retrieve(ctx->sessions, session);
@@ -640,7 +644,7 @@ static bool remove_session(SSL_CTX *ctx, SSL_SESSION *session, bool lock) {
   }
 
   if (lock) {
-    CRYPTO_MUTEX_unlock_write(&ctx->lock);
+    ctx->lock.UnlockWrite();
   }
 
   if (found) {
@@ -1027,7 +1031,7 @@ SSL_SESSION *SSL_SESSION_copy_without_early_data(SSL_SESSION *session) {
   return copy.release();
 }
 
-SSL_SESSION *SSL_magic_pending_session_ptr(void) {
+SSL_SESSION *SSL_magic_pending_session_ptr() {
   return (SSL_SESSION *)&g_pending_session_magic;
 }
 

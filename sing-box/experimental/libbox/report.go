@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build darwin || linux || windows
 
 package libbox
 
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	C "github.com/sagernet/sing-box/constant"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 type reportMetadata struct {
@@ -58,7 +59,10 @@ func writeReportMetadata(destPath string, metadata any) {
 func copyConfigSnapshot(destPath string) {
 	snapshotPath := configSnapshotPath()
 	content, err := os.ReadFile(snapshotPath)
-	if err != nil || len(bytes.TrimSpace(content)) == 0 {
+	if err != nil {
+		return
+	}
+	if len(bytes.TrimSpace(content)) == 0 {
 		return
 	}
 	writeReportFile(destPath, "configuration.json", content)
@@ -70,20 +74,24 @@ func initReportDir(path string) {
 }
 
 func chownReport(path string) {
-	if runtime.GOOS != "android" {
+	if runtime.GOOS != "android" && runtime.GOOS != "windows" {
 		os.Chown(path, sUserID, sGroupID)
 	}
 }
 
-func nextAvailableReportPath(reportsDir string, timestamp time.Time) string {
+func nextAvailableReportPath(reportsDir string, timestamp time.Time) (string, error) {
 	destName := timestamp.Format("2006-01-02T15-04-05")
 	destPath := filepath.Join(reportsDir, destName)
-	for i := 1; i <= 1000; i++ {
-		_, err := os.Stat(destPath)
-		if os.IsNotExist(err) {
-			break
-		}
-		destPath = filepath.Join(reportsDir, destName+"-"+strconv.Itoa(i))
+	_, err := os.Stat(destPath)
+	if os.IsNotExist(err) {
+		return destPath, nil
 	}
-	return destPath
+	for i := 1; i <= 1000; i++ {
+		suffixedPath := filepath.Join(reportsDir, destName+"-"+strconv.Itoa(i))
+		_, err = os.Stat(suffixedPath)
+		if os.IsNotExist(err) {
+			return suffixedPath, nil
+		}
+	}
+	return "", E.New("no available report path for ", destName)
 }

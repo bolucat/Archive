@@ -188,11 +188,6 @@ void URLRequestContextBuilder::set_persistent_reporting_and_nel_store(
   persistent_reporting_and_nel_store_ =
       std::move(persistent_reporting_and_nel_store);
 }
-
-void URLRequestContextBuilder::set_enterprise_reporting_endpoints(
-    const base::flat_map<std::string, GURL>& enterprise_reporting_endpoints) {
-  enterprise_reporting_endpoints_ = enterprise_reporting_endpoints;
-}
 #endif  // BUILDFLAG(ENABLE_REPORTING)
 
 void URLRequestContextBuilder::SetCookieStore(
@@ -267,6 +262,11 @@ void URLRequestContextBuilder::set_device_bound_session_service(
   device_bound_session_service_ = std::move(device_bound_session_service);
 }
 #endif  // BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
+
+void URLRequestContextBuilder::set_cache_encryption_delegate(
+    std::unique_ptr<net::CacheEncryptionDelegate> cache_encryption_delegate) {
+  cache_encryption_delegate_ = std::move(cache_encryption_delegate);
+}
 
 void URLRequestContextBuilder::BindToNetwork(
     handles::NetworkHandle network,
@@ -483,8 +483,7 @@ std::unique_ptr<URLRequestContext> URLRequestContextBuilder::Build() {
   } else if (reporting_policy_) {
     context->set_reporting_service(
         ReportingService::Create(*reporting_policy_, context.get(),
-                                 persistent_reporting_and_nel_store_.get(),
-                                 enterprise_reporting_endpoints_));
+                                 persistent_reporting_and_nel_store_.get()));
   }
 
   if (network_error_logging_enabled_) {
@@ -513,13 +512,19 @@ std::unique_ptr<URLRequestContext> URLRequestContextBuilder::Build() {
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
   if (has_device_bound_session_service_) {
+    if (unexportable_key_service_) {
+      context->set_unexportable_key_service(
+          std::move(unexportable_key_service_));
+    }
     if (!device_bound_sessions_file_path_.empty()) {
       context->set_device_bound_session_store(
           device_bound_sessions::SessionStore::Create(
-              device_bound_sessions_file_path_));
+              device_bound_sessions_file_path_,
+              context->unexportable_key_service()));
     }
     context->set_device_bound_session_service(
-        device_bound_sessions::SessionService::Create(context.get()));
+        device_bound_sessions::SessionService::Create(
+            context.get(), device_bound_sessions_restricted_sites_));
   } else {
     if (device_bound_session_service_) {
       context->set_device_bound_session_service(
@@ -590,7 +595,7 @@ std::unique_ptr<URLRequestContext> URLRequestContextBuilder::Build() {
       http_cache_backend = std::make_unique<HttpCache::DefaultBackend>(
           DISK_CACHE, backend_type, http_cache_params_.file_operations_factory,
           http_cache_params_.path, http_cache_params_.max_size,
-          http_cache_params_.reset_cache);
+          http_cache_params_.reset_cache, cache_encryption_delegate_.get());
       if (base::FeatureList::IsEnabled(features::kHttpCacheNoVarySearch) &&
           features::kHttpCacheNoVarySearchPersistenceEnabled.Get() &&
           !http_cache_params_.no_vary_search_path.empty()) {
@@ -612,6 +617,7 @@ std::unique_ptr<URLRequestContext> URLRequestContextBuilder::Build() {
         std::move(file_operations));
   }
   context->set_http_transaction_factory(std::move(http_transaction_factory));
+  context->set_cache_encryption_delegate(std::move(cache_encryption_delegate_));
 
   std::unique_ptr<URLRequestJobFactory> job_factory =
       std::make_unique<URLRequestJobFactory>();
@@ -620,13 +626,7 @@ std::unique_ptr<URLRequestContext> URLRequestContextBuilder::Build() {
                                     std::move(scheme_handler.second));
   }
   protocol_handlers_.clear();
-
   context->set_job_factory(std::move(job_factory));
-
-  if (cookie_deprecation_label_.has_value()) {
-    context->set_cookie_deprecation_label(*cookie_deprecation_label_);
-  }
-
   return context;
 }
 
@@ -638,8 +638,10 @@ URLRequestContextBuilder::CreateProxyResolutionService(
     NetworkDelegate* network_delegate,
     NetLog* net_log,
     bool pac_quick_check_enabled) {
+  DCHECK(host_resolver);
   return ConfiguredProxyResolutionService::CreateUsingSystemProxyResolver(
-      std::move(proxy_config_service), net_log, pac_quick_check_enabled);
+      std::move(proxy_config_service), host_resolver, net_log,
+      pac_quick_check_enabled);
 }
 
 }  // namespace net

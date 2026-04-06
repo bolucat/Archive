@@ -91,6 +91,7 @@ class FrameTimelineEventParser {
   const StringId jank_type_experimental_id_;
   const StringId jank_severity_type_id_;
   const StringId jank_severity_score_id_;
+  const StringId jank_debug_metadata_id_;
   const StringId layer_name_id_;
   const StringId prediction_type_id_;
   const StringId jank_tag_id_;
@@ -104,8 +105,7 @@ class FrameTimelineEventParser {
   const StringId jank_tag_dropped_id_;
   const StringId jank_tag_buffer_stuffing_id_;
   const StringId jank_tag_sf_stuffing_id_;
-  const StringId jank_tag_none_animating_id_;
-  const StringId jank_tag_display_not_on_id_;
+  const StringId jank_tag_none_perceivable_id_;
 
   // upid -> set of tokens map. The expected timeline is the same for a given
   // token no matter how many times its seen. We can safely ignore duplicates

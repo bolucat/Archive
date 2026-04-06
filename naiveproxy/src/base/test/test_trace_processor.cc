@@ -12,8 +12,11 @@
 #include "base/test/chrome_track_event.descriptor.h"
 #include "base/test/perfetto_sql_stdlib.h"
 #include "base/threading/thread_restrictions.h"
+#include "base/trace_event/builtin_categories.h"
+#include "base/trace_event/trace_config_category_filter.h"
 #include "base/trace_event/trace_event_impl.h"
-#include "base/trace_event/trace_log.h"
+#include "third_party/perfetto/include/perfetto/tracing/core/chrome_config.h"  // IWYU pragma: keep
+#include "third_party/perfetto/protos/perfetto/config/trace_config.gen.h"
 #include "third_party/perfetto/protos/perfetto/trace/extension_descriptor.pbzero.h"
 
 namespace base::test {
@@ -38,7 +41,7 @@ void EmitChromeTrackEventDescriptor() {
   });
 }
 
-std::string kChromeSqlModuleName = "chrome";
+std::string kChromeSqlPackageName = "chrome";
 // A command-line switch to save the trace test trace processor generated to
 // make debugging complex traces.
 constexpr char kSaveTraceSwitch[] = "ttp-save-trace";
@@ -46,8 +49,8 @@ constexpr char kSaveTraceSwitch[] = "ttp-save-trace";
 // Returns a vector of pairs of strings consisting of
 // {include_key, sql_file_contents}. For example, the include key for
 // `chrome/scroll_jank/utils.sql` is `chrome.scroll_jank.utils`.
-// The output is used to override the Chrome SQL module in the trace processor.
-TestTraceProcessorImpl::PerfettoSQLModule GetChromeStdlib() {
+// The output is used to override the Chrome SQL package in the trace processor.
+TestTraceProcessorImpl::PerfettoSQLPackage GetChromeStdlib() {
   std::vector<std::pair<std::string, std::string>> stdlib;
   for (const auto& file_to_sql :
        perfetto::trace_processor::chrome_stdlib::kFileToSql) {
@@ -56,7 +59,7 @@ TestTraceProcessorImpl::PerfettoSQLModule GetChromeStdlib() {
     if (include_key.ends_with(".sql")) {
       include_key.resize(include_key.size() - 4);
     }
-    stdlib.emplace_back(kChromeSqlModuleName + "." + include_key,
+    stdlib.emplace_back(kChromeSqlPackageName + "." + include_key,
                         file_to_sql.sql);
   }
   return stdlib;
@@ -64,7 +67,8 @@ TestTraceProcessorImpl::PerfettoSQLModule GetChromeStdlib() {
 }  // namespace
 
 TraceConfig DefaultTraceConfig(std::string_view category_filter_string,
-                               bool privacy_filtering) {
+                               bool privacy_filtering,
+                               bool convert_to_legacy_json) {
   TraceConfig trace_config;
   auto* buffer_config = trace_config.add_buffers();
   buffer_config->set_size_kb(4 * 1024);
@@ -73,6 +77,10 @@ TraceConfig DefaultTraceConfig(std::string_view category_filter_string,
   auto* source_config = data_source->mutable_config();
   source_config->set_name("track_event");
   source_config->set_target_buffer(0);
+
+  auto* chrome_config = source_config->mutable_chrome_config();
+  chrome_config->set_privacy_filtering_enabled(privacy_filtering);
+  chrome_config->set_convert_to_legacy_json(convert_to_legacy_json);
 
   perfetto::protos::gen::TrackEventConfig track_event_config;
   base::trace_event::TraceConfigCategoryFilter category_filter;
@@ -112,8 +120,8 @@ TraceConfig DefaultTraceConfig(std::string_view category_filter_string,
 }
 
 TestTraceProcessor::TestTraceProcessor() {
-  auto status = test_trace_processor_.OverrideSqlModule(kChromeSqlModuleName,
-                                                        GetChromeStdlib());
+  auto status = test_trace_processor_.OverrideSqlPackage(kChromeSqlPackageName,
+                                                         GetChromeStdlib());
   CHECK(status.ok());
 }
 

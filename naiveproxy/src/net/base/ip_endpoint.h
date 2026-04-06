@@ -111,6 +111,14 @@ class NET_EXPORT IPEndPoint {
   bool operator<(const IPEndPoint& that) const;
   friend bool operator==(const IPEndPoint&, const IPEndPoint&) = default;
 
+  template <typename H>
+  friend H AbslHashValue(H h, const IPEndPoint& ep) {
+    auto addr_bytes = ep.address_.bytes();
+    return H::combine(H::combine_contiguous(std::move(h), addr_bytes.data(),
+                                            addr_bytes.size()),
+                      ep.port_, ep.scope_id_);
+  }
+
   base::Value ToValue() const;
 
  private:
@@ -119,7 +127,7 @@ class NET_EXPORT IPEndPoint {
 
   // Returns a scope ID from `dict` when `dict` has a valid interface name that
   // can be converted to an interface index.
-  static std::optional<uint32_t> ScopeIdFromDict(const base::Value::Dict& dict);
+  static std::optional<uint32_t> ScopeIdFromDict(const base::DictValue& dict);
 
   // Converts `scope_id` to an interface name as a base::Value.
   static base::Value ScopeIdToValue(std::optional<uint32_t> scope_id);

@@ -2,12 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/374320451): Fix and remove.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/power_monitor/battery_level_provider.h"
+
+#include "base/compiler_specific.h"
 
 #define INITGUID
 #include <windows.h>  // Must be in front of other Windows header files.
@@ -16,6 +13,10 @@
 #include <poclass.h>
 #include <setupapi.h>
 #include <winioctl.h>
+
+// LogSeverity is both a macro in setupapi.h and an enum in absl, which is used
+// indirectly via //base.
+#undef LogSeverity
 
 #include <algorithm>
 #include <array>
@@ -28,6 +29,7 @@
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/scoped_blocking_call.h"
+#include "base/threading/scoped_thread_priority.h"
 #include "base/win/scoped_devinfo.h"
 #include "base/win/scoped_handle.h"
 
@@ -51,8 +53,8 @@ base::win::ScopedHandle GetBatteryHandle(
 
   // |interface_detail->DevicePath| is variable size.
   std::vector<uint8_t> raw_buf(required_size);
-  auto* interface_detail =
-      reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA*>(raw_buf.data());
+  auto* interface_detail = UNSAFE_TODO(
+      reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA*>(raw_buf.data()));
   interface_detail->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
 
   BOOL success = ::SetupDiGetDeviceInterfaceDetail(
@@ -222,7 +224,7 @@ class BatteryLevelProviderWin : public BatteryLevelProvider {
   // to avoid the performance cost of concurrent calls.
   scoped_refptr<base::SequencedTaskRunner> blocking_task_runner_{
       base::ThreadPool::CreateSequencedTaskRunner(
-          {base::MayBlock(),
+          {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
            base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN})};
 
   base::WeakPtrFactory<BatteryLevelProviderWin> weak_ptr_factory_{this};
@@ -239,6 +241,10 @@ BatteryLevelProviderWin::GetBatteryStateImpl() {
   // trigger ScopedBlockingCall.
   base::ScopedBlockingCall scoped_blocking_call(FROM_HERE,
                                                 base::BlockingType::MAY_BLOCK);
+
+  // Mitigate the issues caused by loading DLLs on a background thread
+  // (http://crbug/973868).
+  SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY();
 
   // Battery interfaces are enumerated at every sample to detect when a new
   // interface is added, and avoid holding dangling handles when a battery is
@@ -273,7 +279,7 @@ BatteryLevelProviderWin::GetBatteryStateImpl() {
 
     base::win::ScopedHandle battery =
         GetBatteryHandle(devices.get(), &interface_data);
-    if (!battery.IsValid()) {
+    if (!battery.is_valid()) {
       return std::nullopt;
     }
 

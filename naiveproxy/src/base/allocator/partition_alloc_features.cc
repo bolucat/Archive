@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/allocator/partition_alloc_features.h"
 
 #include "base/base_export.h"
@@ -27,6 +22,10 @@ static constexpr char kPAFeatureEnabledProcessesStr[] = "enabled-processes";
 static constexpr char kBrowserOnlyStr[] = "browser-only";
 static constexpr char kBrowserAndRendererStr[] = "browser-and-renderer";
 static constexpr char kNonRendererStr[] = "non-renderer";
+#if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
+static constexpr char kGPUOnlyStr[] = "gpu-only";
+static constexpr char kBrowserAndGPUStr[] = "browser-and-gpu";
+#endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 static constexpr char kAllProcessesStr[] = "all-processes";
 
 }  // namespace
@@ -93,6 +92,11 @@ BASE_FEATURE(kPartitionAllocLargeEmptySlotSpanRing,
 #else
              FEATURE_DISABLED_BY_DEFAULT);
 #endif
+BASE_FEATURE_PARAM(int,
+                   kPartitionAllocLargeEmptySlotSpanRingSize,
+                   &kPartitionAllocLargeEmptySlotSpanRing,
+                   "ring-size",
+                   partition_alloc::internal::SlotSpanRingMaxSize::kMedium);
 
 BASE_FEATURE(kPartitionAllocWithAdvancedChecks, FEATURE_DISABLED_BY_DEFAULT);
 constexpr FeatureParam<PartitionAllocWithAdvancedChecksEnabledProcesses>::Option
@@ -103,6 +107,10 @@ constexpr FeatureParam<PartitionAllocWithAdvancedChecksEnabledProcesses>::Option
          kBrowserAndRendererStr},
         {PartitionAllocWithAdvancedChecksEnabledProcesses::kNonRenderer,
          kNonRendererStr},
+        {PartitionAllocWithAdvancedChecksEnabledProcesses::kGPUOnly,
+         kGPUOnlyStr},
+        {PartitionAllocWithAdvancedChecksEnabledProcesses::kBrowserAndGPU,
+         kBrowserAndGPUStr},
         {PartitionAllocWithAdvancedChecksEnabledProcesses::kAllProcesses,
          kAllProcessesStr}};
 // Note: Do not use the prepared macro as of no need for a local cache.
@@ -125,19 +133,25 @@ BASE_FEATURE(kPartitionAllocSchedulerLoopQuarantineTaskControlledPurge,
              FEATURE_DISABLED_BY_DEFAULT);
 constexpr FeatureParam<
     PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses>::Option
-    kPartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcessesOptions[] =
-        {{PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
-              kBrowserOnly,
-          kBrowserOnlyStr},
-         {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
-              kBrowserAndRenderer,
-          kBrowserAndRendererStr},
-         {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
-              kNonRenderer,
-          kNonRendererStr},
-         {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
-              kAllProcesses,
-          kAllProcessesStr}};
+    kPartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcessesOptions[] = {
+        {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
+             kBrowserOnly,
+         kBrowserOnlyStr},
+        {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
+             kBrowserAndRenderer,
+         kBrowserAndRendererStr},
+        {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
+             kNonRenderer,
+         kNonRendererStr},
+        {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
+             kGPUOnly,
+         kGPUOnlyStr},
+        {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
+             kBrowserAndGPU,
+         kBrowserAndGPUStr},
+        {PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses::
+             kAllProcesses,
+         kAllProcessesStr}};
 // Note: Do not use the prepared macro as of no need for a local cache.
 constinit const FeatureParam<
     PartitionAllocSchedulerLoopQuarantineTaskControlledPurgeEnabledProcesses>
@@ -346,7 +360,7 @@ BASE_FEATURE(kPartitionAllocSortActiveSlotSpans, FEATURE_DISABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_WIN)
 // Whether to retry allocations when commit fails.
-BASE_FEATURE(kPageAllocatorRetryOnCommitFailure, FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kPageAllocatorRetryOnCommitFailure, FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS)
@@ -380,10 +394,40 @@ BASE_FEATURE(kPartitionAllocAdjustSizeWhenInForeground,
 #else
              FEATURE_DISABLED_BY_DEFAULT);
 #endif
+BASE_FEATURE_PARAM(
+    int,
+    kPartitionAllocForegroundEmptySlotSpanRingSize,
+    &kPartitionAllocAdjustSizeWhenInForeground,
+    "foreground-ring-size",
+    static_cast<int>(partition_alloc::internal::kMaxEmptySlotSpanRingSize));
+BASE_FEATURE_PARAM(int,
+                   kPartitionAllocBackgroundEmptySlotSpanRingSize,
+                   &kPartitionAllocAdjustSizeWhenInForeground,
+                   "background-ring-size",
+                   partition_alloc::internal::SlotSpanRingMaxSize::kMedium);
 
 #if PA_BUILDFLAG(ENABLE_PARTITION_LOCK_PRIORITY_INHERITANCE)
 BASE_FEATURE(kPartitionAllocUsePriorityInheritanceLocks,
              FEATURE_DISABLED_BY_DEFAULT);
 #endif  // PA_BUILDFLAG(ENABLE_PARTITION_LOCK_PRIORITY_INHERITANCE)
+
+BASE_FEATURE(kPartitionAllocFreeWithSize, FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(bool,
+                   kPartitionAllocStrictFreeSizeCheck,
+                   &kPartitionAllocFreeWithSize,
+                   "strict-free-size-check",
+                   true);
+
+#if BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_ARM64)
+BASE_FEATURE(kPartitionAllocLockTuneSpin, FEATURE_DISABLED_BY_DEFAULT);
+
+// On ARM64, 2048 cycles results in spinning for 500-1500 nanoseconds on most
+// Android devices which overlaps with the time spent on a futex syscall.
+BASE_FEATURE_PARAM(int,
+                   kPartitionAllocLockSpinCount,
+                   &kPartitionAllocLockTuneSpin,
+                   "spin_count",
+                   2048);
+#endif  // BUILDFLAG(IS_ANDROID) && defined(ARCH_CPU_ARM64)
 
 }  // namespace base::features

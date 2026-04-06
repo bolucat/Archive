@@ -17,9 +17,8 @@
 #include "quiche/quic/moqt/moqt_parser.h"
 #include "quiche/common/platform/api/quiche_test.h"
 #include "quiche/common/quiche_buffer_allocator.h"
-#include "quiche/common/quiche_stream.h"
-#include "quiche/common/simple_buffer_allocator.h"
 #include "quiche/web_transport/test_tools/in_memory_stream.h"
+#include "quiche/web_transport/web_transport.h"
 
 namespace moqt::test {
 
@@ -32,14 +31,17 @@ struct FramingVisitor {
   quiche::QuicheBuffer operator()(const MoqtServerSetup& message) {
     return framer.SerializeServerSetup(message);
   }
+  quiche::QuicheBuffer operator()(const MoqtRequestOk& message) {
+    return framer.SerializeRequestOk(message);
+  }
+  quiche::QuicheBuffer operator()(const MoqtRequestError& message) {
+    return framer.SerializeRequestError(message);
+  }
   quiche::QuicheBuffer operator()(const MoqtSubscribe& message) {
     return framer.SerializeSubscribe(message);
   }
   quiche::QuicheBuffer operator()(const MoqtSubscribeOk& message) {
     return framer.SerializeSubscribeOk(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtSubscribeError& message) {
-    return framer.SerializeSubscribeError(message);
   }
   quiche::QuicheBuffer operator()(const MoqtUnsubscribe& message) {
     return framer.SerializeUnsubscribe(message);
@@ -47,20 +49,20 @@ struct FramingVisitor {
   quiche::QuicheBuffer operator()(const MoqtPublishDone& message) {
     return framer.SerializePublishDone(message);
   }
-  quiche::QuicheBuffer operator()(const MoqtSubscribeUpdate& message) {
-    return framer.SerializeSubscribeUpdate(message);
+  quiche::QuicheBuffer operator()(const MoqtRequestUpdate& message) {
+    return framer.SerializeRequestUpdate(message);
   }
   quiche::QuicheBuffer operator()(const MoqtPublishNamespace& message) {
     return framer.SerializePublishNamespace(message);
   }
-  quiche::QuicheBuffer operator()(const MoqtPublishNamespaceOk& message) {
-    return framer.SerializePublishNamespaceOk(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtPublishNamespaceError& message) {
-    return framer.SerializePublishNamespaceError(message);
-  }
   quiche::QuicheBuffer operator()(const MoqtPublishNamespaceDone& message) {
     return framer.SerializePublishNamespaceDone(message);
+  }
+  quiche::QuicheBuffer operator()(const MoqtNamespace& message) {
+    return framer.SerializeNamespace(message);
+  }
+  quiche::QuicheBuffer operator()(const MoqtNamespaceDone& message) {
+    return framer.SerializeNamespaceDone(message);
   }
   quiche::QuicheBuffer operator()(const MoqtPublishNamespaceCancel& message) {
     return framer.SerializePublishNamespaceCancel(message);
@@ -68,26 +70,11 @@ struct FramingVisitor {
   quiche::QuicheBuffer operator()(const MoqtTrackStatus& message) {
     return framer.SerializeTrackStatus(message);
   }
-  quiche::QuicheBuffer operator()(const MoqtTrackStatusOk& message) {
-    return framer.SerializeTrackStatusOk(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtTrackStatusError& message) {
-    return framer.SerializeTrackStatusError(message);
-  }
   quiche::QuicheBuffer operator()(const MoqtGoAway& message) {
     return framer.SerializeGoAway(message);
   }
   quiche::QuicheBuffer operator()(const MoqtSubscribeNamespace& message) {
     return framer.SerializeSubscribeNamespace(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtSubscribeNamespaceOk& message) {
-    return framer.SerializeSubscribeNamespaceOk(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtSubscribeNamespaceError& message) {
-    return framer.SerializeSubscribeNamespaceError(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtUnsubscribeNamespace& message) {
-    return framer.SerializeUnsubscribeNamespace(message);
   }
   quiche::QuicheBuffer operator()(const MoqtMaxRequestId& message) {
     return framer.SerializeMaxRequestId(message);
@@ -101,9 +88,6 @@ struct FramingVisitor {
   quiche::QuicheBuffer operator()(const MoqtFetchOk& message) {
     return framer.SerializeFetchOk(message);
   }
-  quiche::QuicheBuffer operator()(const MoqtFetchError& message) {
-    return framer.SerializeFetchError(message);
-  }
   quiche::QuicheBuffer operator()(const MoqtRequestsBlocked& message) {
     return framer.SerializeRequestsBlocked(message);
   }
@@ -112,9 +96,6 @@ struct FramingVisitor {
   }
   quiche::QuicheBuffer operator()(const MoqtPublishOk& message) {
     return framer.SerializePublishOk(message);
-  }
-  quiche::QuicheBuffer operator()(const MoqtPublishError& message) {
-    return framer.SerializePublishError(message);
   }
   quiche::QuicheBuffer operator()(const MoqtObjectAck& message) {
     return framer.SerializeObjectAck(message);
@@ -135,13 +116,16 @@ class GenericMessageParseVisitor : public MoqtControlParserVisitor {
   void OnServerSetupMessage(const MoqtServerSetup& message) {
     frames_.push_back(message);
   }
+  void OnRequestOkMessage(const MoqtRequestOk& message) {
+    frames_.push_back(message);
+  }
+  void OnRequestErrorMessage(const MoqtRequestError& message) {
+    frames_.push_back(message);
+  }
   void OnSubscribeMessage(const MoqtSubscribe& message) {
     frames_.push_back(message);
   }
   void OnSubscribeOkMessage(const MoqtSubscribeOk& message) {
-    frames_.push_back(message);
-  }
-  void OnSubscribeErrorMessage(const MoqtSubscribeError& message) {
     frames_.push_back(message);
   }
   void OnUnsubscribeMessage(const MoqtUnsubscribe& message) {
@@ -150,20 +134,19 @@ class GenericMessageParseVisitor : public MoqtControlParserVisitor {
   void OnPublishDoneMessage(const MoqtPublishDone& message) {
     frames_.push_back(message);
   }
-  void OnSubscribeUpdateMessage(const MoqtSubscribeUpdate& message) {
+  void OnRequestUpdateMessage(const MoqtRequestUpdate& message) {
     frames_.push_back(message);
   }
   void OnPublishNamespaceMessage(const MoqtPublishNamespace& message) {
     frames_.push_back(message);
   }
-  void OnPublishNamespaceOkMessage(const MoqtPublishNamespaceOk& message) {
-    frames_.push_back(message);
-  }
-  void OnPublishNamespaceErrorMessage(
-      const MoqtPublishNamespaceError& message) {
-    frames_.push_back(message);
-  }
   void OnPublishNamespaceDoneMessage(const MoqtPublishNamespaceDone& message) {
+    frames_.push_back(message);
+  }
+  void OnNamespaceMessage(const MoqtNamespace& message) {
+    frames_.push_back(message);
+  }
+  void OnNamespaceDoneMessage(const MoqtNamespaceDone& message) {
     frames_.push_back(message);
   }
   void OnPublishNamespaceCancelMessage(
@@ -173,26 +156,10 @@ class GenericMessageParseVisitor : public MoqtControlParserVisitor {
   void OnTrackStatusMessage(const MoqtTrackStatus& message) {
     frames_.push_back(message);
   }
-  void OnTrackStatusOkMessage(const MoqtTrackStatusOk& message) {
-    frames_.push_back(message);
-  }
-  void OnTrackStatusErrorMessage(const MoqtTrackStatusError& message) {
-    frames_.push_back(message);
-  }
   void OnGoAwayMessage(const MoqtGoAway& message) {
     frames_.push_back(message);
   }
   void OnSubscribeNamespaceMessage(const MoqtSubscribeNamespace& message) {
-    frames_.push_back(message);
-  }
-  void OnSubscribeNamespaceOkMessage(const MoqtSubscribeNamespaceOk& message) {
-    frames_.push_back(message);
-  }
-  void OnSubscribeNamespaceErrorMessage(
-      const MoqtSubscribeNamespaceError& message) {
-    frames_.push_back(message);
-  }
-  void OnUnsubscribeNamespaceMessage(const MoqtUnsubscribeNamespace& message) {
     frames_.push_back(message);
   }
   void OnMaxRequestIdMessage(const MoqtMaxRequestId& message) {
@@ -205,9 +172,6 @@ class GenericMessageParseVisitor : public MoqtControlParserVisitor {
   void OnFetchOkMessage(const MoqtFetchOk& message) {
     frames_.push_back(message);
   }
-  void OnFetchErrorMessage(const MoqtFetchError& message) {
-    frames_.push_back(message);
-  }
   void OnRequestsBlockedMessage(const MoqtRequestsBlocked& message) {
     frames_.push_back(message);
   }
@@ -215,9 +179,6 @@ class GenericMessageParseVisitor : public MoqtControlParserVisitor {
     frames_.push_back(message);
   }
   void OnPublishOkMessage(const MoqtPublishOk& message) {
-    frames_.push_back(message);
-  }
-  void OnPublishErrorMessage(const MoqtPublishError& message) {
     frames_.push_back(message);
   }
   void OnObjectAckMessage(const MoqtObjectAck& message) {
@@ -236,7 +197,7 @@ class GenericMessageParseVisitor : public MoqtControlParserVisitor {
 
 std::string SerializeGenericMessage(const MoqtGenericFrame& frame,
                                     bool use_webtrans) {
-  MoqtFramer framer(quiche::SimpleBufferAllocator::Get(), use_webtrans);
+  MoqtFramer framer(use_webtrans);
   return std::string(std::visit(FramingVisitor{framer}, frame).AsStringView());
 }
 
@@ -252,14 +213,14 @@ std::vector<MoqtGenericFrame> ParseGenericMessage(absl::string_view body) {
 
 absl::Status StoreSubscribe::operator()(
     absl::Span<const absl::string_view> data,
-    const quiche::StreamWriteOptions& options) const {
+    const webtransport::StreamWriteOptions& options) const {
   std::string merged_message = absl::StrJoin(data, "");
   std::vector<MoqtGenericFrame> frames = ParseGenericMessage(merged_message);
   if (frames.size() != 1 || !std::holds_alternative<MoqtSubscribe>(frames[0])) {
     ADD_FAILURE() << "Expected one SUBSCRIBE frame in a write";
     return absl::InternalError("Expected one SUBSCRIBE frame in a write");
   }
-  *subscribe_ = std::get<MoqtSubscribe>(frames[0]);
+  subscribe_->emplace(std::get<MoqtSubscribe>(frames[0]));
   return absl::OkStatus();
 }
 

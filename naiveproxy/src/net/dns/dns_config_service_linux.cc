@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "net/dns/dns_config_service_linux.h"
 
 #include <netdb.h>
@@ -24,6 +19,7 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/compiler_specific.h"
 #include "base/files/file_path.h"
 #include "base/files/file_path_watcher.h"
 #include "base/functional/bind.h"
@@ -77,8 +73,8 @@ std::optional<DnsConfig> ConvertResStateToDnsConfig(
 
   dns_config.nameservers = std::move(nameservers.value());
   dns_config.search.clear();
-  for (int i = 0; (i < MAXDNSRCH) && res.dnsrch[i]; ++i) {
-    dns_config.search.emplace_back(res.dnsrch[i]);
+  for (int i = 0; (i < MAXDNSRCH) && UNSAFE_TODO(res.dnsrch[i]); ++i) {
+    dns_config.search.emplace_back(UNSAFE_TODO(res.dnsrch[i]));
   }
 
   dns_config.ndots = res.ndots;
@@ -137,11 +133,14 @@ bool SetActionBehavior(const NsswitchReader::ServiceAction& action,
       }
     }
   } else {
-    if (in_out_parsed_behavior.count(action.status) >= 1 &&
-        in_out_parsed_behavior[action.status] != action.action) {
-      return false;
+    if (auto it = in_out_parsed_behavior.find(action.status);
+        it != in_out_parsed_behavior.end()) {
+      if (it->second != action.action) {
+        return false;
+      }
+    } else {
+      in_out_parsed_behavior.emplace(action.status, action.action);
     }
-    in_out_parsed_behavior[action.status] = action.action;
   }
 
   return true;

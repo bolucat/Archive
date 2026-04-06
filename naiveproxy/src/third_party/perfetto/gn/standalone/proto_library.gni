@@ -148,6 +148,7 @@ template("proto_library") {
 
   # The XXX_gen action that generates the .pb.{cc,h} files.
   action(action_name) {
+    forward_variables_from(invoker, [ "testonly" ])
     if (generate_descriptor == "") {
       visibility = [ ":$source_set_name" ]
     }
@@ -289,17 +290,11 @@ template("proto_library") {
         configs += [ ":$config_name" ]
       }
 
-      # Use protobuf_full only for tests.
-      if (defined(invoker.use_protobuf_full) &&
-          invoker.use_protobuf_full == true) {
-        deps = [ "//gn:protobuf_full" ]
-      } else if (generate_cc) {
-        deps = [ "//gn:protobuf_lite" ]
-      } else {
-        deps = []
+      if (generate_cc) {
+        public_deps = [ "//gn:protobuf_lite" ]
       }
 
-      deps += [ ":$action_name" ]
+      deps = [ ":$action_name" ]
       if (defined(invoker.deps)) {
         deps += invoker.deps
       }

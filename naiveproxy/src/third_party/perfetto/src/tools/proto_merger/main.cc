@@ -14,18 +14,24 @@
  * limitations under the License.
  */
 
-#include <stdio.h>
+#include <cstdio>
+#include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include <google/protobuf/compiler/importer.h>
+#include <google/protobuf/descriptor.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 
 #include "perfetto/base/logging.h"
+#include "perfetto/base/status.h"
 #include "perfetto/ext/base/file_utils.h"
 #include "perfetto/ext/base/getopt.h"
 #include "perfetto/ext/base/scoped_file.h"
 #include "perfetto/ext/base/string_utils.h"
 #include "perfetto/ext/base/version.h"
+#include "src/protozero/multifile_error_collector.h"
 #include "src/tools/proto_merger/allowlist.h"
 #include "src/tools/proto_merger/proto_file.h"
 #include "src/tools/proto_merger/proto_file_serializer.h"
@@ -35,32 +41,6 @@ namespace perfetto {
 namespace proto_merger {
 namespace {
 
-class MultiFileErrorCollectorImpl
-    : public google::protobuf::compiler::MultiFileErrorCollector {
- public:
-  ~MultiFileErrorCollectorImpl() override;
-  void AddError(const std::string&, int, int, const std::string&) override;
-  void AddWarning(const std::string&, int, int, const std::string&) override;
-};
-
-MultiFileErrorCollectorImpl::~MultiFileErrorCollectorImpl() = default;
-
-void MultiFileErrorCollectorImpl::AddError(const std::string& filename,
-                                           int line,
-                                           int column,
-                                           const std::string& message) {
-  PERFETTO_ELOG("Error %s %d:%d: %s", filename.c_str(), line, column,
-                message.c_str());
-}
-
-void MultiFileErrorCollectorImpl::AddWarning(const std::string& filename,
-                                             int line,
-                                             int column,
-                                             const std::string& message) {
-  PERFETTO_ELOG("Warning %s %d:%d: %s", filename.c_str(), line, column,
-                message.c_str());
-}
-
 struct ImportResult {
   std::unique_ptr<google::protobuf::compiler::Importer> importer;
   const google::protobuf::FileDescriptor* file_descriptor;
@@ -68,7 +48,7 @@ struct ImportResult {
 
 ImportResult ImportProto(const std::string& proto_file,
                          const std::string& proto_dir_path) {
-  MultiFileErrorCollectorImpl mfe;
+  protozero::MultiFileErrorCollectorImpl mfe;
 
   google::protobuf::compiler::DiskSourceTree dst;
   dst.MapPath("", proto_dir_path);

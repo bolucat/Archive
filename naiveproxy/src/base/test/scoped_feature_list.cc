@@ -4,13 +4,14 @@
 
 #include "base/test/scoped_feature_list.h"
 
+#include <algorithm>
 #include <atomic>
+#include <memory>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "base/check_op.h"
-#include "base/containers/contains.h"
 #include "base/containers/flat_map.h"
 #include "base/features.h"
 #include "base/memory/ptr_util.h"
@@ -188,10 +189,11 @@ std::string_view GetFeatureName(std::string_view feature) {
 bool ContainsFeature(
     const std::vector<ScopedFeatureList::FeatureWithStudyGroup>& feature_vector,
     std::string_view feature_name) {
-  return Contains(feature_vector, feature_name,
-                  [](const ScopedFeatureList::FeatureWithStudyGroup& a) {
-                    return a.feature_name;
-                  });
+  return std::ranges::contains(
+      feature_vector, feature_name,
+      [](const ScopedFeatureList::FeatureWithStudyGroup& a) {
+        return a.feature_name;
+      });
 }
 
 // Merges previously-specified feature overrides with those passed into one of
@@ -240,7 +242,7 @@ void OverrideFeatures(const std::string& features_list,
 
 // Hex encode params so that special characters do not break formatting.
 std::string HexEncodeString(const std::string& input) {
-  return HexEncode(input.data(), input.size());
+  return HexEncode(input);
 }
 
 // Inverse of HexEncodeString().
@@ -608,7 +610,7 @@ void ScopedFeatureList::InitWithMergedFeatures(
   std::string disabled = CreateCommandLineArgumentFromFeatureList(
       merged_features.disabled_feature_list, /*enable_features=*/false);
 
-  std::unique_ptr<FeatureList> new_feature_list(new FeatureList);
+  auto new_feature_list = std::make_unique<FeatureList>();
   new_feature_list->InitFromCommandLine(enabled, disabled);
   InitWithFeatureList(std::move(new_feature_list));
 }

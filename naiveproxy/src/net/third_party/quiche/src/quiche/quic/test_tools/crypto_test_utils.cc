@@ -24,6 +24,7 @@
 #include "quiche/quic/core/crypto/quic_decrypter.h"
 #include "quiche/quic/core/crypto/quic_encrypter.h"
 #include "quiche/quic/core/crypto/quic_random.h"
+#include "quiche/quic/core/frames/quic_crypto_frame.h"
 #include "quiche/quic/core/proto/crypto_server_config_proto.h"
 #include "quiche/quic/core/quic_clock.h"
 #include "quiche/quic/core/quic_connection.h"
@@ -40,6 +41,7 @@
 #include "quiche/quic/platform/api/quic_socket_address.h"
 #include "quiche/quic/platform/api/quic_test.h"
 #include "quiche/quic/test_tools/quic_connection_peer.h"
+#include "quiche/quic/test_tools/quic_crypto_stream_peer.h"
 #include "quiche/quic/test_tools/quic_framer_peer.h"
 #include "quiche/quic/test_tools/quic_stream_peer.h"
 #include "quiche/quic/test_tools/quic_test_utils.h"
@@ -138,7 +140,7 @@ void MovePackets(const QuicConnection& source_conn,
     dest_conn.OnDecryptedPacket(packet->length(),
                                 framer.last_decrypted_level());
 
-    if (dest_stream.handshake_protocol() == PROTOCOL_TLS1_3) {
+    if (dest_stream.version().IsIetfQuic()) {
       // Try to process the packet with a framer that only has the NullDecrypter
       // for decryption. If ProcessPacket succeeds, that means the packet was
       // encrypted with the NullEncrypter. With the TLS handshaker in use, no
@@ -161,8 +163,7 @@ void MovePackets(const QuicConnection& source_conn,
 
     QuicConnectionPeer::SetCurrentPacket(&dest_conn, packet->AsStringPiece());
     for (const auto& stream_frame : framer.stream_frames()) {
-      if (process_stream_data &&
-          dest_stream.handshake_protocol() == PROTOCOL_TLS1_3) {
+      if (process_stream_data && dest_stream.version().IsIetfQuic()) {
         // Deliver STREAM_FRAME such that application state is available and can
         // be stored along with resumption ticket in session cache,
         dest_conn.OnStreamFrame(*stream_frame);
@@ -384,7 +385,7 @@ int HandshakeWithFakeClient(MockQuicConnectionHelper* helper,
     supported_versions.erase(
         std::remove_if(supported_versions.begin(), supported_versions.end(),
                        [](const ParsedQuicVersion& version) {
-                         return version.handshake_protocol != PROTOCOL_TLS1_3;
+                         return !version.IsIetfQuic();
                        }),
         supported_versions.end());
     QUICHE_CHECK(!options.only_quic_crypto_versions);
@@ -392,8 +393,7 @@ int HandshakeWithFakeClient(MockQuicConnectionHelper* helper,
     supported_versions.erase(
         std::remove_if(supported_versions.begin(), supported_versions.end(),
                        [](const ParsedQuicVersion& version) {
-                         return version.handshake_protocol !=
-                                PROTOCOL_QUIC_CRYPTO;
+                         return version.IsIetfQuic();
                        }),
         supported_versions.end());
   }
@@ -437,7 +437,6 @@ int HandshakeWithFakeClient(MockQuicConnectionHelper* helper,
 void SetupCryptoServerConfigForTest(const QuicClock* clock, QuicRandom* rand,
                                     QuicCryptoServerConfig* crypto_config) {
   QuicCryptoServerConfig::ConfigOptions options;
-  options.channel_id_enabled = true;
   std::unique_ptr<CryptoHandshakeMessage> scfg =
       crypto_config->AddDefaultConfig(rand, clock, options);
 }
@@ -447,15 +446,16 @@ void SendHandshakeMessageToStream(QuicCryptoStream* stream,
                                   Perspective /*perspective*/) {
   const QuicData& data = message.GetSerialized();
   QuicSession* session = QuicStreamPeer::session(stream);
-  if (!QuicVersionUsesCryptoFrames(session->transport_version())) {
+  if (!VersionIsIetfQuic(session->transport_version())) {
     QuicStreamFrame frame(
         QuicUtils::GetCryptoStreamId(session->transport_version()), false,
         stream->crypto_bytes_read(), data.AsStringPiece());
     stream->OnStreamFrame(frame);
   } else {
     EncryptionLevel level = session->connection()->last_decrypted_level();
-    QuicCryptoFrame frame(level, stream->BytesReadOnLevel(level),
-                          data.AsStringPiece());
+    QuicCryptoFrame frame(
+        level, QuicCryptoStreamPeer::BytesReadOnLevel(*stream, level),
+        data.AsStringPiece());
     stream->OnCryptoFrame(frame);
   }
 }
@@ -835,6 +835,7 @@ CryptoHandshakeMessage CreateCHLO(
 CryptoHandshakeMessage GenerateDefaultInchoateCHLO(
     const QuicClock* clock, QuicTransportVersion version,
     QuicCryptoServerConfig* crypto_config) {
+  QUICHE_DCHECK_EQ(version, QUIC_VERSION_46);
   // clang-format off
   return CreateCHLO(
       {{"PDMD", "X509"},
@@ -844,7 +845,7 @@ CryptoHandshakeMessage GenerateDefaultInchoateCHLO(
        {"NONC", GenerateClientNonceHex(clock, crypto_config).c_str()},
        {"VER\0", QuicVersionLabelToString(
            CreateQuicVersionLabel(
-            ParsedQuicVersion(PROTOCOL_QUIC_CRYPTO, version))).c_str()}},
+            ParsedQuicVersion(version))).c_str()}},
       kClientHelloMinimumSize);
   // clang-format on
 }
@@ -884,11 +885,11 @@ void GenerateFullCHLO(
     quiche::QuicheReferenceCountedPointer<QuicSignedServerConfig> signed_config,
     QuicCompressedCertsCache* compressed_certs_cache,
     CryptoHandshakeMessage* out) {
+  QUICHE_DCHECK_EQ(transport_version, QUIC_VERSION_46);
   // Pass a inchoate CHLO.
-  FullChloGenerator generator(
-      crypto_config, server_addr, client_addr, clock,
-      ParsedQuicVersion(PROTOCOL_QUIC_CRYPTO, transport_version), signed_config,
-      compressed_certs_cache, out);
+  FullChloGenerator generator(crypto_config, server_addr, client_addr, clock,
+                              ParsedQuicVersion(transport_version),
+                              signed_config, compressed_certs_cache, out);
   crypto_config->ValidateClientHello(
       inchoate_chlo, client_addr, server_addr, transport_version, clock,
       signed_config, generator.GetValidateClientHelloCallback());

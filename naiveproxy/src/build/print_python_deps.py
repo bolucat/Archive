@@ -89,7 +89,9 @@ def _ImportModuleByPath(module_path):
   sys.path[0] = os.path.dirname(module_path)
 
   # https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
-  module_name = os.path.splitext(os.path.basename(module_path))[0]
+  # We need to append a string like "__file" to prevent aliasing real modules,
+  # e.g. grit.py aliasing the grit/ module.
+  module_name = os.path.splitext(os.path.basename(module_path))[0] + "__file"
   import importlib.util  # Python 3 only, since it's unavailable in Python 2.
   spec = importlib.util.spec_from_file_location(module_name, module_path)
   module = importlib.util.module_from_spec(spec)
@@ -162,7 +164,7 @@ def main():
     # Output extra diagnostics when loading the script fails.
     sys.stderr.write('Error running print_python_deps.py.\n')
     sys.stderr.write('is_vpython={}\n'.format(is_vpython))
-    sys.stderr.write('did_relanuch={}\n'.format(options.did_relaunch))
+    sys.stderr.write('did_relaunch={}\n'.format(options.did_relaunch))
     sys.stderr.write('python={}\n'.format(sys.executable))
     raise
 

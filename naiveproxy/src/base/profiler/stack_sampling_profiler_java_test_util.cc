@@ -20,7 +20,8 @@ struct UnwinderJavaTestSupportParams {
 
 }  // namespace
 
-void JNI_TestSupport_InvokeCallbackFunction(JNIEnv* env, jlong context) {
+static void JNI_TestSupport_InvokeCallbackFunction(JNIEnv* env,
+                                                   int64_t context) {
   const void* start_program_counter = GetProgramCounter();
 
   UnwinderJavaTestSupportParams* params =
@@ -44,3 +45,5 @@ FunctionAddressRange callWithJavaFunction(OnceClosure closure) {
 }
 
 }  // namespace base
+
+DEFINE_JNI(TestSupport)

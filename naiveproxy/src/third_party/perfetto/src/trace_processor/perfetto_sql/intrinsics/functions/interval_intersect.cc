@@ -36,8 +36,8 @@
 #include "src/trace_processor/containers/interval_intersector.h"
 #include "src/trace_processor/containers/interval_tree.h"
 #include "src/trace_processor/containers/string_pool.h"
-#include "src/trace_processor/dataframe/adhoc_dataframe_builder.h"
-#include "src/trace_processor/dataframe/dataframe.h"
+#include "src/trace_processor/core/dataframe/adhoc_dataframe_builder.h"
+#include "src/trace_processor/core/dataframe/dataframe.h"
 #include "src/trace_processor/perfetto_sql/engine/perfetto_sql_engine.h"
 #include "src/trace_processor/perfetto_sql/intrinsics/types/partitioned_intervals.h"
 #include "src/trace_processor/sqlite/bindings/sqlite_bind.h"
@@ -53,7 +53,7 @@ namespace perfetto::trace_processor::perfetto_sql {
 namespace {
 
 constexpr uint32_t kArgCols = 2;
-constexpr uint32_t kIdCols = 5;
+constexpr uint32_t kIdCols = 10;
 constexpr uint32_t kPartitionColsOffset = kArgCols + kIdCols;
 
 using Intervals = std::vector<Interval>;
@@ -62,7 +62,7 @@ using ColType = dataframe::AdhocDataframeBuilder::ColumnType;
 struct MultiIndexInterval {
   uint64_t start;
   uint64_t end;
-  std::vector<int64_t> idx_in_table;
+  std::array<int64_t, kIdCols> idx_in_table;
 };
 
 ColType FromSqlValueTypeToBuilderType(SqlValue::Type type) {
@@ -150,9 +150,8 @@ base::StatusOr<uint32_t> PushPartition(
     MultiIndexInterval m_int;
     m_int.start = interval.start;
     m_int.end = interval.end;
-    m_int.idx_in_table.resize(tables_count);
     m_int.idx_in_table[idx_of_smallest_part] = interval.id;
-    last_results.push_back(m_int);
+    last_results.push_back(std::move(m_int));
   }
 
   // Create an interval tree on all tables except the smallest - the first one.
@@ -242,7 +241,7 @@ struct IntervalIntersect : public sqlite::Function<IntervalIntersect> {
     auto tabc = static_cast<size_t>(argc - 1);
     if (tabc > kIdCols) {
       return sqlite::result::Error(
-          ctx, "interval intersect: Can intersect at most 5 tables");
+          ctx, "interval intersect: Can intersect at most 10 tables");
     }
     const char* partition_list = sqlite::value::Text(argv[argc - 1]);
     if (!partition_list) {
@@ -279,8 +278,10 @@ struct IntervalIntersect : public sqlite::Function<IntervalIntersect> {
       // If any of the tables is empty the intersection with it also has to be
       // empty.
       if (!tables[i] || tables[i]->partitions_map.size() == 0) {
-        dataframe::AdhocDataframeBuilder builder(ret_col_names,
-                                                 GetUserData(ctx)->pool);
+        dataframe::AdhocDataframeBuilder builder(
+            ret_col_names, GetUserData(ctx)->pool,
+            dataframe::AdhocDataframeBuilder::Options{
+                {}, dataframe::NullabilityType::kSparseNullWithPopcount});
         SQLITE_ASSIGN_OR_RETURN(ctx, dataframe::Dataframe ret_table,
                                 std::move(builder).Build());
         return sqlite::result::UniquePointer(
@@ -305,8 +306,10 @@ struct IntervalIntersect : public sqlite::Function<IntervalIntersect> {
                                      return t_a->size() < t_b->size();
                                    });
 
-    dataframe::AdhocDataframeBuilder builder(ret_col_names,
-                                             GetUserData(ctx)->pool, col_types);
+    dataframe::AdhocDataframeBuilder builder(
+        ret_col_names, GetUserData(ctx)->pool,
+        dataframe::AdhocDataframeBuilder::Options{
+            col_types, dataframe::NullabilityType::kSparseNullWithPopcount});
     auto t_least_partitions =
         static_cast<uint32_t>(std::distance(t_partitions.begin(), min_el));
 
@@ -316,9 +319,11 @@ struct IntervalIntersect : public sqlite::Function<IntervalIntersect> {
 
     // For each partition insert into table.
     uint32_t rows = 0;
+    std::vector<Partition*> cur_partition_in_table;
+    cur_partition_in_table.reserve(tabc);
     for (auto p_it = p_intervals->GetIterator(); p_it; ++p_it) {
-      std::vector<Partition*> cur_partition_in_table;
       bool all_have_p = true;
+      cur_partition_in_table.clear();
 
       // From each table get all vectors of intervals.
       for (uint32_t i = 0; i < tabc; i++) {

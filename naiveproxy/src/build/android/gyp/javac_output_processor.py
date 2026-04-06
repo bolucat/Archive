@@ -105,11 +105,12 @@ class JavacOutputProcessor:
                                            sorted(missing_targets))
       sb.append(f'    {shlex.join(cmd)}')
       sb.append('')
-      sb.append('Use tools/android/tools/android/auto_fix_missing_java_deps.py'
+      sb.append('Use tools/android/auto_fix_missing_java_deps.py'
                 ' to auto-apply suggestions.')
     elif not self._unresolvable_classes:
       sb.append(
-          'Hint: Rebuild with -config no-remote-javac to show missing deps.')
+          'Hint: To show missing deps: "autoninja -config no-remote-javac ..." '
+          'or: ' + os.path.abspath('siso_failed_commands.sh'))
 
     sb.append('')
     return output + '\n'.join(sb)

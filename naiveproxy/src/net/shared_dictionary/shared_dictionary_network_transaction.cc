@@ -38,6 +38,7 @@
 #include "net/shared_dictionary/shared_dictionary_constants.h"
 #include "net/shared_dictionary/shared_dictionary_header_checker_source_stream.h"
 #include "net/shared_dictionary/shared_dictionary_isolation_key.h"
+#include "net/shared_dictionary/shared_dictionary_transaction_outcome.h"
 #include "net/ssl/ssl_private_key.h"
 
 namespace net {
@@ -108,6 +109,8 @@ SharedDictionaryNetworkTransaction::~SharedDictionaryNetworkTransaction() =
 int SharedDictionaryNetworkTransaction::Start(const HttpRequestInfo* request,
                                               CompletionOnceCallback callback,
                                               const NetLogWithSource& net_log) {
+  request_destination_is_document_ = request->is_main_frame_navigation ||
+                                     request->is_subframe_document_resource;
   if (!(request->load_flags & LOAD_CAN_USE_SHARED_DICTIONARY) ||
       !request->dictionary_getter) {
     return network_transaction_->Start(request, std::move(callback), net_log);
@@ -158,6 +161,9 @@ void SharedDictionaryNetworkTransaction::OnStartCompleted(
                           ? "KnownRootCert"
                           : "UnknownRootCertOrNoCert"}),
         -result);
+    shared_dictionary_response_info_ = std::make_unique<HttpResponseInfo>(
+        *network_transaction_->GetResponseInfo());
+    shared_dictionary_response_info_->did_send_available_dictionary = true;
   }
 
   if (result != OK || !shared_dictionary_) {
@@ -167,15 +173,37 @@ void SharedDictionaryNetworkTransaction::OnStartCompleted(
 
   shared_dictionary_encoding_type_ = ParseSharedDictionaryEncodingType(
       *network_transaction_->GetResponseInfo()->headers);
+
+  if (shared_dictionary_) {
+    // Log UMA for whether the server used the dictionary if one was advertised.
+    switch (shared_dictionary_encoding_type_) {
+      case SharedDictionaryEncodingType::kSharedBrotli:
+        base::UmaHistogramEnumeration(
+            "Net.SharedDictionary.Transaction.Outcome",
+            SharedDictionaryTransactionOutcome::kDictionaryUsedBrotli);
+        break;
+
+      case SharedDictionaryEncodingType::kSharedZstd:
+        base::UmaHistogramEnumeration(
+            "Net.SharedDictionary.Transaction.Outcome",
+            SharedDictionaryTransactionOutcome::kDictionaryUsedZstandard);
+        break;
+
+      case SharedDictionaryEncodingType::kNotUsed:
+        base::UmaHistogramEnumeration(
+            "Net.SharedDictionary.Transaction.Outcome",
+            SharedDictionaryTransactionOutcome::kDictionaryNotUsed);
+        break;
+    }
+  }
+
   if (shared_dictionary_encoding_type_ ==
       SharedDictionaryEncodingType::kNotUsed) {
     std::move(callback).Run(result);
     return;
   }
 
-  shared_dictionary_used_response_info_ = std::make_unique<HttpResponseInfo>(
-      *network_transaction_->GetResponseInfo());
-  shared_dictionary_used_response_info_->did_use_shared_dictionary = true;
+  shared_dictionary_response_info_->did_use_shared_dictionary = true;
   std::move(callback).Run(result);
 }
 
@@ -260,8 +288,10 @@ void SharedDictionaryNetworkTransaction::OnReadSharedDictionary(
     int result) {
   bool succeeded = result == OK;
   base::UmaHistogramTimes(
-      base::StrCat({"Net.SharedDictionaryTransaction.DictionaryReadLatency.",
-                    succeeded ? "Success" : "Failure"}),
+      base::StrCat(
+          {"Net.SharedDictionaryTransaction.DictionaryReadLatency.",
+           request_destination_is_document_ ? "Document." : "Subresource.",
+           succeeded ? "Success" : "Failure"}),
       base::Time::Now() - read_start_time);
   if (!succeeded) {
     dictionary_status_ = DictionaryStatus::kFailed;
@@ -282,7 +312,7 @@ void SharedDictionaryNetworkTransaction::OnReadSharedDictionary(
 
 int SharedDictionaryNetworkTransaction::RestartIgnoringLastError(
     CompletionOnceCallback callback) {
-  shared_dictionary_used_response_info_.reset();
+  shared_dictionary_response_info_.reset();
   return network_transaction_->RestartIgnoringLastError(
       base::BindOnce(&SharedDictionaryNetworkTransaction::OnStartCompleted,
                      base::Unretained(this), std::move(callback)));
@@ -292,7 +322,7 @@ int SharedDictionaryNetworkTransaction::RestartWithCertificate(
     scoped_refptr<X509Certificate> client_cert,
     scoped_refptr<SSLPrivateKey> client_private_key,
     CompletionOnceCallback callback) {
-  shared_dictionary_used_response_info_.reset();
+  shared_dictionary_response_info_.reset();
   return network_transaction_->RestartWithCertificate(
       std::move(client_cert), std::move(client_private_key),
       base::BindOnce(&SharedDictionaryNetworkTransaction::OnStartCompleted,
@@ -302,7 +332,7 @@ int SharedDictionaryNetworkTransaction::RestartWithCertificate(
 int SharedDictionaryNetworkTransaction::RestartWithAuth(
     const AuthCredentials& credentials,
     CompletionOnceCallback callback) {
-  shared_dictionary_used_response_info_.reset();
+  shared_dictionary_response_info_.reset();
   return network_transaction_->RestartWithAuth(
       credentials,
       base::BindOnce(&SharedDictionaryNetworkTransaction::OnStartCompleted,
@@ -316,7 +346,8 @@ bool SharedDictionaryNetworkTransaction::IsReadyToRestartForAuth() {
 int SharedDictionaryNetworkTransaction::Read(IOBuffer* buf,
                                              int buf_len,
                                              CompletionOnceCallback callback) {
-  if (!shared_dictionary_used_response_info_) {
+  if (!shared_dictionary_response_info_ ||
+      !shared_dictionary_response_info_->did_use_shared_dictionary) {
     return network_transaction_->Read(buf, buf_len, std::move(callback));
   }
 
@@ -398,8 +429,8 @@ void SharedDictionaryNetworkTransaction::DoneReading() {
 
 const HttpResponseInfo* SharedDictionaryNetworkTransaction::GetResponseInfo()
     const {
-  if (shared_dictionary_used_response_info_) {
-    return shared_dictionary_used_response_info_.get();
+  if (shared_dictionary_response_info_) {
+    return shared_dictionary_response_info_.get();
   }
   return network_transaction_->GetResponseInfo();
 }
@@ -478,10 +509,6 @@ ConnectionAttempts SharedDictionaryNetworkTransaction::GetConnectionAttempts()
 
 void SharedDictionaryNetworkTransaction::CloseConnectionOnDestruction() {
   network_transaction_->CloseConnectionOnDestruction();
-}
-
-bool SharedDictionaryNetworkTransaction::IsMdlMatchForMetrics() const {
-  return network_transaction_->IsMdlMatchForMetrics();
 }
 
 int SharedDictionaryNetworkTransaction::OnConnected(

@@ -15,7 +15,6 @@
 
 #include "base/base64.h"
 #include "base/containers/span.h"
-#include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/numerics/checked_math.h"
@@ -29,9 +28,10 @@
 #include "base/threading/scoped_thread_priority.h"
 #include "base/types/expected.h"
 #include "base/types/optional_util.h"
-#include "crypto/features.h"
 #include "crypto/hash.h"
+#include "crypto/keypair.h"
 #include "crypto/random.h"
+#include "crypto/sign.h"
 #include "crypto/unexportable_key.h"
 #include "crypto/unexportable_key_metrics.h"
 #include "third_party/boringssl/src/include/openssl/bn.h"
@@ -80,17 +80,23 @@ std::u16string KeyIdToWindowsLabel(base::span<const uint8_t> key_id) {
 void LogTPMOperationError(
     TPMOperation operation,
     SECURITY_STATUS status,
-    std::optional<SignatureVerifier::SignatureAlgorithm> selected_algorithm) {
-  static constexpr char kCreateKeyErrorStatusHistogramFormat[] =
+    std::optional<SignatureVerifier::SignatureAlgorithm> selected_algorithm,
+    bool open_storage_provider_error = false) {
+  static constexpr char kTPMOperationErrorHistogramFormat[] =
       "Crypto.TPMOperation.Win.%s%s.Error";
-  // Only `kWrappedKeyCreation` could and should be recorded without
-  // `selected_algorithm`.
-  CHECK_EQ(!selected_algorithm.has_value(),
-           operation == TPMOperation::kWrappedKeyCreation);
+  // There are two cases that can be recorded without a `selected_algorithm`:
+  //    1- OpenStorageProvider errors because these happen before an algorithm
+  //       is chosen.
+  //    2- Errors during `kWrappedKeyCreation` TPM operation.
+  if (!open_storage_provider_error) {
+    CHECK_EQ(!selected_algorithm.has_value(),
+             operation == TPMOperation::kWrappedKeyCreation);
+  }
+
   std::string algorithm_string =
       selected_algorithm ? AlgorithmToString(*selected_algorithm) : "";
   base::UmaHistogramSparse(
-      base::StringPrintf(kCreateKeyErrorStatusHistogramFormat,
+      base::StringPrintf(kTPMOperationErrorHistogramFormat,
                          OperationToString(operation).c_str(),
                          algorithm_string.c_str()),
       status);
@@ -129,10 +135,20 @@ std::optional<SignatureVerifier::SignatureAlgorithm> GetBestSupported(
     }
 
     SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY();
-    if (!FAILED(NCryptIsAlgSupported(provider, *bcrypto_algo_name,
-                                     /*flags=*/0))) {
-      return algo;
+    SECURITY_STATUS status = NCryptIsAlgSupported(provider, *bcrypto_algo_name,
+                                                  /*flags=*/0);
+    if (FAILED(status)) {
+      // `NTE_NOT_SUPPORTED` is expected when an algorithm is not supported.
+      // Avoid recording it as an error as it may unnecessarily clutter the
+      // metrics.
+      //
+      // https://learn.microsoft.com/en-us/windows/win32/api/ncrypt/nf-ncrypt-ncryptisalgsupported#return-value
+      if (status != NTE_NOT_SUPPORTED) {
+        LogTPMOperationError(TPMOperation::kSelectAlgorithm, status, algo);
+      }
+      continue;
     }
+    return algo;
   }
 
   return std::nullopt;
@@ -358,10 +374,13 @@ ScopedNCryptKey LoadWrappedKey(base::span<const uint8_t> wrapped,
                                ProviderType provider_type) {
   SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY();
   ScopedNCryptProvider provider;
-  if (FAILED(NCryptOpenStorageProvider(
-          ScopedNCryptProvider::Receiver(provider).get(),
-          GetWindowsIdentifierForProvider(provider_type),
-          /*flags=*/0))) {
+  SECURITY_STATUS status =
+      NCryptOpenStorageProvider(ScopedNCryptProvider::Receiver(provider).get(),
+                                GetWindowsIdentifierForProvider(provider_type),
+                                /*flags=*/0);
+  if (FAILED(status)) {
+    LogTPMOperationError(TPMOperation::kWrappedKeyCreation, status,
+                         std::nullopt, /*open_storage_provider_error=*/true);
     return ScopedNCryptKey();
   }
 
@@ -427,9 +446,13 @@ class ECDSAKey : public UnexportableSigningKey {
   }
 
   bool IsHardwareBacked() const override {
-    return base::FeatureList::IsEnabled(features::kIsHardwareBackedFixEnabled)
-               ? provider_type_ == ProviderType::kTPM
-               : true;
+    return provider_type_ == ProviderType::kTPM;
+  }
+
+  bool SupportsTls13() override { return true; }
+
+  StatefulUnexportableSigningKey* AsStatefulUnexportableSigningKey() override {
+    return nullptr;
   }
 
  private:
@@ -474,16 +497,66 @@ class RSAKey : public UnexportableSigningKey {
   }
 
   bool IsHardwareBacked() const override {
-    return base::FeatureList::IsEnabled(features::kIsHardwareBackedFixEnabled)
-               ? provider_type_ == ProviderType::kTPM
-               : true;
+    return provider_type_ == ProviderType::kTPM;
+  }
+
+  bool SupportsTls13() override {
+    if (!is_compatible_with_tls13.has_value()) {
+      is_compatible_with_tls13 = CanSignPssWithExpectedSaltLength();
+    }
+
+    return is_compatible_with_tls13.value();
+  }
+
+  StatefulUnexportableSigningKey* AsStatefulUnexportableSigningKey() override {
+    return nullptr;
   }
 
  private:
+  bool CanSignPssWithExpectedSaltLength() {
+    // TLS 1.3 requires support of RSA-PSS algorithm with Salt Length == Hash
+    // Length (32 bytes for SHA-256).
+    BCRYPT_PSS_PADDING_INFO padding_info = {0};
+    padding_info.pszAlgId = BCRYPT_SHA256_ALGORITHM;
+    padding_info.cbSalt = 32;
+
+    constexpr auto dummy_data = std::to_array<uint8_t>({
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a,
+        0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15,
+        0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+    });
+
+    auto dummy_hash = hash::Sha256(dummy_data);
+    DWORD cb_signature = 0;
+
+    if (FAILED(NCryptSignHash(key_.get(), &padding_info, dummy_hash.data(),
+                              dummy_hash.size(), nullptr, 0, &cb_signature,
+                              NCRYPT_SILENT_FLAG | NCRYPT_PAD_PSS_FLAG))) {
+      return false;
+    }
+
+    std::vector<uint8_t> signature(cb_signature);
+    if (FAILED(NCryptSignHash(key_.get(), &padding_info, dummy_hash.data(),
+                              dummy_hash.size(), signature.data(),
+                              signature.size(), &cb_signature,
+                              NCRYPT_SILENT_FLAG | NCRYPT_PAD_PSS_FLAG))) {
+      return false;
+    }
+
+    auto public_key = keypair::PublicKey::FromSubjectPublicKeyInfo(spki_);
+    if (!public_key) {
+      return false;
+    }
+
+    return sign::Verify(sign::SignatureKind::RSA_PSS_SHA256, public_key.value(),
+                        dummy_data, signature);
+  }
+
   const ProviderType provider_type_;
   ScopedNCryptKey key_;
   const std::vector<uint8_t> wrapped_;
   const std::vector<uint8_t> spki_;
+  std::optional<bool> is_compatible_with_tls13;
 };
 
 // UnexportableKeyProviderWin uses NCrypt and the Platform Crypto
@@ -500,9 +573,13 @@ class UnexportableKeyProviderWin : public UnexportableKeyProvider {
     ScopedNCryptProvider provider;
     {
       SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY();
-      if (FAILED(NCryptOpenStorageProvider(
-              ScopedNCryptProvider::Receiver(provider).get(),
-              GetWindowsIdentifierForProvider(provider_type_), /*flags=*/0))) {
+      SECURITY_STATUS status = NCryptOpenStorageProvider(
+          ScopedNCryptProvider::Receiver(provider).get(),
+          GetWindowsIdentifierForProvider(provider_type_), /*flags=*/0);
+      if (FAILED(status)) {
+        LogTPMOperationError(TPMOperation::kSelectAlgorithm, status,
+                             std::nullopt,
+                             /*open_storage_provider_error=*/true);
         return std::nullopt;
       }
     }
@@ -519,9 +596,13 @@ class UnexportableKeyProviderWin : public UnexportableKeyProvider {
     ScopedNCryptProvider provider;
     {
       SCOPED_MAY_LOAD_LIBRARY_AT_BACKGROUND_PRIORITY();
-      if (FAILED(NCryptOpenStorageProvider(
-              ScopedNCryptProvider::Receiver(provider).get(),
-              GetWindowsIdentifierForProvider(provider_type_), /*flags=*/0))) {
+      SECURITY_STATUS status = NCryptOpenStorageProvider(
+          ScopedNCryptProvider::Receiver(provider).get(),
+          GetWindowsIdentifierForProvider(provider_type_), /*flags=*/0);
+      if (FAILED(status)) {
+        LogTPMOperationError(TPMOperation::kNewKeyCreation, status,
+                             std::nullopt,
+                             /*open_storage_provider_error=*/true);
         return nullptr;
       }
     }
@@ -567,7 +648,6 @@ class UnexportableKeyProviderWin : public UnexportableKeyProvider {
         return nullptr;
       }
     }
-
     if (provider_type_ == ProviderType::kTPM) {
       base::expected<std::vector<uint8_t>, SECURITY_STATUS> wrapped_key =
           ExportKey(key.get(), BCRYPT_OPAQUE_KEY_BLOB);
@@ -656,9 +736,10 @@ class UnexportableKeyProviderWin : public UnexportableKeyProvider {
     return nullptr;
   }
 
-  bool DeleteSigningKeySlowly(base::span<const uint8_t> wrapped) override {
+  StatefulUnexportableKeyProvider* AsStatefulUnexportableKeyProvider()
+      override {
     // Unexportable keys are stateless on Windows.
-    return true;
+    return nullptr;
   }
 
  private:

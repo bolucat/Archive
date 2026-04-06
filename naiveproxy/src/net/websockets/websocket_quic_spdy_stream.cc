@@ -46,6 +46,14 @@ void WebSocketQuicSpdyStream::OnInitialHeadersComplete(
   }
 }
 
+void WebSocketQuicSpdyStream::OnClose() {
+  quic::QuicSpdyStream::OnClose();
+  Delegate* delegate = std::exchange(delegate_, nullptr);
+  if (delegate) {
+    delegate->OnClose(MapQuicErrorToNetError());
+  }
+}
+
 int WebSocketQuicSpdyStream::Read(IOBuffer* buf, int buf_len) {
   DCHECK_GT(buf_len, 0);
   DCHECK(buf->data());
@@ -65,6 +73,41 @@ int WebSocketQuicSpdyStream::Read(IOBuffer* buf, int buf_len) {
   // Since HasBytesToRead is true, Readv() must have read some data.
   DCHECK_NE(0u, bytes_read);
   return bytes_read;
+}
+
+void WebSocketQuicSpdyStream::OnCanWriteNewData() {
+  quic::QuicSpdyStream::OnCanWriteNewData();
+  if (delegate_) {
+    delegate_->OnCanWriteNewData();
+  }
+}
+
+void WebSocketQuicSpdyStream::DetachDelegate() {
+  CHECK(!read_side_closed());
+  CHECK(!write_side_closed());
+  delegate_ = nullptr;
+  Reset(quic::QUIC_STREAM_CANCELLED);
+}
+
+int WebSocketQuicSpdyStream::MapQuicErrorToNetError() {
+  // Map Connection QUIC errors to net errors.
+  if (connection_error() != quic::QUIC_NO_ERROR) {
+    return ERR_QUIC_PROTOCOL_ERROR;
+  }
+
+  // Map Stream QUIC errors to net errors.
+  switch (stream_error()) {
+    case quic::QUIC_STREAM_NO_ERROR:
+      return OK;
+    case quic::QUIC_STREAM_GENERAL_PROTOCOL_ERROR:
+      return ERR_QUIC_PROTOCOL_ERROR;
+    case quic::QUIC_STREAM_INTERNAL_ERROR:
+      return ERR_FAILED;
+    case quic::QUIC_STREAM_CANCELLED:
+      return ERR_ABORTED;
+    default:
+      return ERR_CONNECTION_RESET;
+  }
 }
 
 }  // namespace net

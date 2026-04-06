@@ -139,8 +139,6 @@ class QuicConnectionPeer {
   static void SetMaxConsecutiveNumPacketsWithNoRetransmittableFrames(
       QuicConnection* connection, size_t new_value);
   static bool SupportsReleaseTime(QuicConnection* connection);
-  static QuicConnection::PacketContent GetCurrentPacketContent(
-      QuicConnection* connection);
   static void AddBytesReceived(QuicConnection* connection, size_t length);
   static void SetAddressValidated(QuicConnection* connection);
 
@@ -258,6 +256,8 @@ class QuicConnectionPeer {
       const QuicConnection* connection);
 
   static uint64_t GetPeerReorderingThreshold(QuicConnection* connection);
+
+  static bool ConnectionMigrationDisabled(QuicConnection* connection);
 };
 
 }  // namespace test

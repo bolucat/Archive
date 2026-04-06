@@ -589,3 +589,11 @@ gpu_scheduler/drm_sched_job_done
 gpu_scheduler/drm_sched_job_queue
 gpu_scheduler/drm_sched_job_run
 gpu_scheduler/drm_sched_job_unschedulable
+fwtp_ftrace/fwtp_perfetto_counter
+scsi/scsi_dispatch_cmd_error
+scsi/scsi_dispatch_cmd_timeout
+scsi/scsi_eh_wakeup
+fwtp_ftrace/fwtp_perfetto_slice
+power/gpu_power_state
+panel/gram_collision
+f2fs/f2fs_lock_elapsed_time

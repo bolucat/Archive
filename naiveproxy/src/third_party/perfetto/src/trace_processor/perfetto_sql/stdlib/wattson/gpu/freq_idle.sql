@@ -19,6 +19,30 @@ INCLUDE PERFETTO MODULE android.gpu.mali_power_state;
 
 INCLUDE PERFETTO MODULE intervals.intersect;
 
+INCLUDE PERFETTO MODULE wattson.device_infos;
+
+INCLUDE PERFETTO MODULE wattson.utils;
+
+-- GPU power state which is analogous to CPU idle state
+CREATE PERFETTO TABLE _pvr_gpu_power_state (
+  -- Timestamp
+  ts TIMESTAMP,
+  -- Duration
+  dur DURATION,
+  -- GPU power state
+  power_state LONG
+) AS
+SELECT
+  s.ts,
+  iif(s.dur = -1, trace_end() - s.ts, s.dur) AS dur,
+  -- Map slice names to integer states
+  CASE s.name WHEN 'OFF' THEN 0 WHEN 'PG' THEN 1 WHEN 'ON' THEN 2 ELSE -1 END AS power_state
+FROM slice AS s
+JOIN track AS t
+  ON s.track_id = t.id
+WHERE
+  t.name = 'powervr_gpu_power_state';
+
 -- Gapless time slices of GPU freq from trace_start() to trace_end()
 CREATE PERFETTO TABLE _gapless_gpu_freq AS
 WITH
@@ -32,9 +56,14 @@ WITH
       next_gpu_freq AS next_freq,
       gpu_id
     FROM android_gpu_frequency
-    -- Use gpu_id1 since there are multiple gpu_id1 freqs for each gpu_id0 freq
     WHERE
-      gpu_id = 1
+      gpu_id = (
+        SELECT
+          gpu_id
+        FROM _gpuid_map
+        JOIN _wattson_device
+          ON _gpuid_map.device = _wattson_device.name
+      )
     UNION ALL
     SELECT
       ts,
@@ -45,11 +74,32 @@ WITH
       gpu_id
     FROM android_gpu_frequency
     WHERE
-      gpu_id = 1
+      gpu_id = (
+        SELECT
+          gpu_id
+        FROM _gpuid_map
+        JOIN _wattson_device
+          ON _gpuid_map.device = _wattson_device.name
+      )
   )
 SELECT
   *
 FROM nominal_freqs;
+
+-- A single source for GPU power state information
+-- from either mali or pvr which are mutually exclusive
+CREATE PERFETTO VIEW _gpu_power_state AS
+SELECT
+  ts,
+  dur,
+  power_state
+FROM android_mali_gpu_power_state
+UNION ALL
+SELECT
+  ts,
+  dur,
+  power_state
+FROM _pvr_gpu_power_state;
 
 -- Gapless time slices of GPU idle from trace_start() to trace_end()
 CREATE PERFETTO TABLE _gapless_gpu_power_state AS
@@ -60,13 +110,13 @@ WITH
       trace_start() AS ts,
       min(ts) - trace_start() AS dur,
       NULL AS power_state
-    FROM android_mali_gpu_power_state
+    FROM _gpu_power_state
     UNION ALL
     SELECT
       ts,
       dur,
       power_state
-    FROM android_mali_gpu_power_state
+    FROM _gpu_power_state
   )
 SELECT
   *

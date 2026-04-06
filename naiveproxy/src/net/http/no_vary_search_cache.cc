@@ -15,10 +15,12 @@
 #include "base/check_op.h"
 #include "base/containers/map_util.h"
 #include "base/memory/weak_ptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/pickle.h"
+#include "base/strings/strcat.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "base/types/expected_macros.h"
@@ -531,6 +533,18 @@ void NoVarySearchCache::MergeFrom(const NoVarySearchCache& newer) {
     ReconstructURLAndDoInsert(*queries.cache_partition_key_ptr, base_url,
                               *queries.nvs_data_ptr, std::move(query_string),
                               query->update_time(), journal_);
+  }
+}
+
+void NoVarySearchCache::SetMaxSize(size_t max_size) {
+  if (max_size == max_size_) {
+    return;
+  }
+  CHECK_GE(max_size, 1u);
+  // Evict entries while size_ > max_size_.
+  max_size_ = max_size;
+  while (size_ > max_size_) {
+    EraseQuery(lru_.tail()->value());
   }
 }
 

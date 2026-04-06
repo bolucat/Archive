@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_SHIM_ALLOCATOR_SHIM_DEFAULT_DISPATCH_TO_PARTITION_ALLOC_H_
 #define PARTITION_ALLOC_SHIM_ALLOCATOR_SHIM_DEFAULT_DISPATCH_TO_PARTITION_ALLOC_H_
 
@@ -28,44 +23,71 @@ class PA_COMPONENT_EXPORT(ALLOCATOR_SHIM) PartitionAllocMalloc {
   // allocators are effectively set in stone.
   static bool AllocatorConfigurationFinalized();
 
-  static partition_alloc::PartitionRoot* Allocator();
-  // May return |nullptr|, will never return the same pointer as |Allocator()|.
-  static partition_alloc::PartitionRoot* OriginalAllocator();
+  // TODO(crbug.com/477186304): Remove default value for `alloc_token`, once all
+  // callers are updated and verified to make configuration for all roots.
+  static partition_alloc::PartitionRoot* Allocator(
+      AllocToken alloc_token = kDefaultAllocToken);
+  // May return |nullptr|, will never return the same pointer as  |Allocator()|.
+  static partition_alloc::PartitionRoot* OriginalAllocator(
+      AllocToken alloc_token = kDefaultAllocToken);
 };
 
 template <partition_alloc::AllocFlags base_alloc_flags,
           partition_alloc::FreeFlags base_free_flags>
 class PartitionAllocFunctionsInternal {
  public:
-  static void* Malloc(size_t size, void* context);
+  static void* Malloc(size_t size, AllocToken alloc_token, void* context);
 
-  static void* MallocUnchecked(size_t size, void* context);
+  static void* MallocUnchecked(size_t size,
+                               AllocToken alloc_token,
+                               void* context);
 
-  static void* Calloc(size_t n, size_t size, void* context);
+  static void* Calloc(size_t n,
+                      size_t size,
+                      AllocToken alloc_token,
+                      void* context);
 
-  static void* CallocUnchecked(size_t n, size_t size, void* context);
+  static void* CallocUnchecked(size_t n,
+                               size_t size,
+                               AllocToken alloc_token,
+                               void* context);
 
-  static void* Memalign(size_t alignment, size_t size, void* context);
+  static void* Memalign(size_t alignment,
+                        size_t size,
+                        AllocToken alloc_token,
+                        void* context);
 
-  static void* AlignedAlloc(size_t size, size_t alignment, void* context);
+  static void* AlignedAlloc(size_t size,
+                            size_t alignment,
+                            AllocToken alloc_token,
+                            void* context);
 
   static void* AlignedAllocUnchecked(size_t size,
                                      size_t alignment,
+                                     AllocToken alloc_token,
                                      void* context);
 
   static void* AlignedRealloc(void* address,
                               size_t size,
                               size_t alignment,
+                              AllocToken alloc_token,
                               void* context);
 
   static void* AlignedReallocUnchecked(void* address,
                                        size_t size,
                                        size_t alignment,
+                                       AllocToken alloc_token,
                                        void* context);
 
-  static void* Realloc(void* address, size_t size, void* context);
+  static void* Realloc(void* address,
+                       size_t size,
+                       AllocToken alloc_token,
+                       void* context);
 
-  static void* ReallocUnchecked(void* address, size_t size, void* context);
+  static void* ReallocUnchecked(void* address,
+                                size_t size,
+                                AllocToken alloc_token,
+                                void* context);
 
   static void Free(void* object, void* context);
 
@@ -163,6 +185,15 @@ extern template class PA_EXPORT_TEMPLATE_DECLARE(
 
 }  // namespace internal
 
+PA_COMPONENT_EXPORT(ALLOCATOR_SHIM)
+void InstallPartitionAllocWithAdvancedChecks();
+
+PA_COMPONENT_EXPORT(ALLOCATOR_SHIM)
+void InstallCustomDispatchForTesting(AllocatorDispatch* dispatch);
+
+PA_COMPONENT_EXPORT(ALLOCATOR_SHIM)
+void UninstallCustomDispatch();
+
 #if PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 // Provide a ConfigurePartitions() helper, to mimic what Chromium uses. This way
 // we're making it more resilient to ConfigurePartitions() interface changes, so
@@ -198,6 +229,10 @@ PA_ALWAYS_INLINE void ConfigurePartitionsForTesting() {
       partition_alloc::internal::SchedulerLoopQuarantineConfig();
 
   auto eventually_zero_freed_memory = EventuallyZeroFreedMemory(false);
+  auto enable_free_with_size = allocator_shim::EnableFreeWithSize(
+      PA_BUILDFLAG(SHIM_SUPPORTS_SIZED_DEALLOC));
+  auto enable_strict_free_size_check =
+      allocator_shim::EnableStrictFreeSizeCheck(true);
 
   ConfigurePartitions(
       enable_brp, brp_extra_extras_size, enable_memory_tagging,
@@ -205,7 +240,8 @@ PA_ALWAYS_INLINE void ConfigurePartitionsForTesting() {
       scheduler_loop_quarantine_global_config,
       scheduler_loop_quarantine_thread_local_config,
       scheduler_loop_quarantine_for_advanced_memory_safety_checks_config,
-      eventually_zero_freed_memory);
+      eventually_zero_freed_memory, enable_free_with_size,
+      enable_strict_free_size_check);
 }
 #endif  // PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
 

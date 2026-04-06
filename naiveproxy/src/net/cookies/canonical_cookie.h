@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include "base/gtest_prod_util.h"
 #include "base/types/pass_key.h"
 #include "crypto/process_bound_string.h"
 #include "net/base/net_export.h"
@@ -78,6 +79,8 @@ class NET_EXPORT CanonicalCookie : public CookieBase {
     kInvalidPath,
     kInvalidHostPrefix,
     kInvalidSecurePrefix,
+    kInvalidHttpPrefix,
+    kInvalidHostHttpPrefix,
     kEmptyNameWithHiddenPrefix,
     kPartitionedInsecure,
   };
@@ -435,7 +438,6 @@ class NET_EXPORT CanonicalCookie : public CookieBase {
  private:
   FRIEND_TEST_ALL_PREFIXES(CanonicalCookieTest,
                            TestGetAndAdjustPortForTrustworthyUrls);
-  FRIEND_TEST_ALL_PREFIXES(CanonicalCookieTest, TestHasHiddenPrefixName);
 
   // Returns the appropriate port value for the given `source_url` depending on
   // if the url is considered trustworthy or not.
@@ -449,9 +451,6 @@ class NET_EXPORT CanonicalCookie : public CookieBase {
   // indicate that we're treating `source_url` as if it was secure.
   static int GetAndAdjustPortForTrustworthyUrls(const GURL& source_url,
                                                 bool url_is_trustworthy);
-
-  // Checks for values that could be misinterpreted as a cookie name prefix.
-  static bool HasHiddenPrefixName(std::string_view cookie_value);
 
   // Helpers for use in canonicalization checks.
   static CanonicalizationResult Pass();
@@ -469,7 +468,7 @@ class NET_EXPORT CanonicalCookie : public CookieBase {
       const CookieOptions& options_used) const override;
 
   // Keep defaults here in sync with
-  // services/network/public/interfaces/cookie_manager.mojom.
+  // services/network/public/mojom/cookie_manager.mojom.
   // These are the fields specific to CanonicalCookie. See CookieBase for other
   // data fields.
   // If adding more data fields, please also adjust GetAllDataMembersAsTuple().

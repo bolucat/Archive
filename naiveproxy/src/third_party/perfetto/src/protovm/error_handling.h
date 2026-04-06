@@ -29,8 +29,19 @@
 #include "perfetto/base/logging.h"
 
 #if defined(__GNUC__) || defined(__clang__)
+#if defined(__clang__)
+#pragma clang diagnostic push
+// Fix 'error: #pragma system_header ignored in main file' for amalgamated
+// build.
+#pragma clang diagnostic ignored "-Wpragma-system-header-outside-header"
+#endif
+
 // Ignore GCC warning about a missing argument for a variadic macro parameter.
 #pragma GCC system_header
+
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 #endif
 
 namespace perfetto {
@@ -49,36 +60,36 @@ void LogStacktraceMessage(Stacktrace& stacktrace,
                           const char* file_name,
                           int file_line);
 
-#define PROTOVM_ABORT(fmt, ...)                                               \
-  do {                                                                        \
-    auto status_abort = StatusOr<void>::Abort();                              \
-    LogStacktraceMessage(status_abort.stacktrace(),                           \
-                         ::perfetto::base::Basename(__FILE__), __LINE__, fmt, \
-                         ##__VA_ARGS__);                                      \
-    return status_abort;                                                      \
+#define PROTOVM_ABORT(fmt, ...)                                       \
+  do {                                                                \
+    auto status_abort = StatusOr<void>::Abort();                      \
+    LogStacktraceMessage(status_abort.stacktrace(),                   \
+                         ::perfetto::base::LoggingBasename(__FILE__), \
+                         __LINE__, fmt, ##__VA_ARGS__);               \
+    return status_abort;                                              \
   } while (0)
 
-#define PROTOVM_RETURN(s, ...)                                             \
-  do {                                                                     \
-    if (s.IsAbort()) {                                                     \
-      LogStacktraceMessage(s.stacktrace(),                                 \
-                           ::perfetto::base::Basename(__FILE__), __LINE__, \
-                           ##__VA_ARGS__);                                 \
-    }                                                                      \
-    return s;                                                              \
+#define PROTOVM_RETURN(s, ...)                                          \
+  do {                                                                  \
+    if (s.IsAbort()) {                                                  \
+      LogStacktraceMessage(s.stacktrace(),                              \
+                           ::perfetto::base::LoggingBasename(__FILE__), \
+                           __LINE__, ##__VA_ARGS__);                    \
+    }                                                                   \
+    return s;                                                           \
   } while (0)
 
-#define PROTOVM_RETURN_IF_NOT_OK(s, ...)                                   \
-  do {                                                                     \
-    if (s.IsAbort()) {                                                     \
-      LogStacktraceMessage(s.stacktrace(),                                 \
-                           ::perfetto::base::Basename(__FILE__), __LINE__, \
-                           ##__VA_ARGS__);                                 \
-      return s;                                                            \
-    }                                                                      \
-    if (!s.IsOk()) {                                                       \
-      return s;                                                            \
-    }                                                                      \
+#define PROTOVM_RETURN_IF_NOT_OK(s, ...)                                \
+  do {                                                                  \
+    if (s.IsAbort()) {                                                  \
+      LogStacktraceMessage(s.stacktrace(),                              \
+                           ::perfetto::base::LoggingBasename(__FILE__), \
+                           __LINE__, ##__VA_ARGS__);                    \
+      return s;                                                         \
+    }                                                                   \
+    if (!s.IsOk()) {                                                    \
+      return s;                                                         \
+    }                                                                   \
   } while (0)
 
 enum class Status : uint8_t {
@@ -91,9 +102,6 @@ enum class Status : uint8_t {
 };
 
 namespace internal {
-
-template <class T>
-constexpr bool is_empty_class_v = std::is_class_v<T> && std::is_empty_v<T>;
 
 template <class T, class Arg, class... Args>
 static constexpr bool is_copy_or_move_ctor_arg_v =

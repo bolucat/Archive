@@ -46,8 +46,8 @@ TaskRunnerAndroid::UiThreadTaskRunnerCallback& GetUiThreadTaskRunnerCallback() {
 class JavaLocation {
  public:
   JavaLocation(JNIEnv* env,
-               const android::JavaParamRef<jstring>& file_name,
-               const android::JavaParamRef<jstring>& function_name,
+               const android::JavaRef<jstring>& file_name,
+               const android::JavaRef<jstring>& function_name,
                int line_number)
       : JavaLocation(base::android::ConvertJavaStringToUTF8(env, file_name),
                      base::android::ConvertJavaStringToUTF8(env, function_name),
@@ -78,15 +78,15 @@ class JavaLocation {
   const int line_number_;
 };
 
-void RunJavaTask(jint task_index) {
+void RunJavaTask(int32_t task_index) {
   Java_TaskRunnerImpl_runTask(jni_zero::AttachCurrentThread(), task_index);
 }
 
 }  // namespace
 
-jlong JNI_TaskRunnerImpl_Init(JNIEnv* env,
-                              jint task_runner_type,
-                              jint task_traits) {
+static int64_t JNI_TaskRunnerImpl_Init(JNIEnv* env,
+                                       int32_t task_runner_type,
+                                       int32_t task_traits) {
   TaskRunnerAndroid* task_runner =
       TaskRunnerAndroid::Create(task_runner_type, task_traits).release();
   return reinterpret_cast<intptr_t>(task_runner);
@@ -104,8 +104,8 @@ void TaskRunnerAndroid::Destroy(JNIEnv* env) {
 }
 
 void TaskRunnerAndroid::PostDelayedTask(JNIEnv* env,
-                                        jlong delay,
-                                        jint task_index) {
+                                        int64_t delay,
+                                        int32_t task_index) {
   // This could be run on any java thread, so we can't cache |env| in the
   // BindOnce because JNIEnv is thread specific.
   task_runner_->PostDelayedTask(
@@ -114,17 +114,17 @@ void TaskRunnerAndroid::PostDelayedTask(JNIEnv* env,
 
 void TaskRunnerAndroid::PostDelayedTaskWithLocation(
     JNIEnv* env,
-    jlong delay,
-    jint task_index,
-    const android::JavaParamRef<jstring>& file_name,
-    const android::JavaParamRef<jstring>& function_name,
-    jint line_number) {
+    int64_t delay,
+    int32_t task_index,
+    const android::JavaRef<jstring>& file_name,
+    const android::JavaRef<jstring>& function_name,
+    int32_t line_number) {
   // This could be run on any java thread, so we can't cache |env| in the
   // BindOnce because JNIEnv is thread specific.
   task_runner_->PostDelayedTask(
       FROM_HERE,
       base::BindOnce(
-          [](const JavaLocation& location, jint task_index) {
+          [](const JavaLocation& location, int32_t task_index) {
             TRACE_EVENT(android::internal::kToplevelTraceCategory,
                         "Running Java Task", "posted_from", location);
             RunJavaTask(task_index);
@@ -135,8 +135,8 @@ void TaskRunnerAndroid::PostDelayedTaskWithLocation(
 
 // static
 std::unique_ptr<TaskRunnerAndroid> TaskRunnerAndroid::Create(
-    jint task_runner_type,
-    jint j_task_traits) {
+    int32_t task_runner_type,
+    int32_t j_task_traits) {
   TaskTraits task_traits;
   bool use_thread_pool = true;
   switch (j_task_traits) {
@@ -200,3 +200,5 @@ void TaskRunnerAndroid::SetUiThreadTaskRunnerCallback(
 }
 
 }  // namespace base
+
+DEFINE_JNI(TaskRunnerImpl)

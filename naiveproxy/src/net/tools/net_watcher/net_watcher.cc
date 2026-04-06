@@ -12,13 +12,13 @@
 
 #include <memory>
 #include <string>
-#include <unordered_set>
 
 #include "base/at_exit.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/json/json_writer.h"
 #include "base/logging.h"
+#include "base/logging/logging_settings.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/run_loop.h"
 #include "base/strings/string_split.h"
@@ -33,6 +33,7 @@
 
 #if BUILDFLAG(IS_LINUX)
 #include "net/base/network_change_notifier_linux.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #endif
 
 #if BUILDFLAG(IS_APPLE)
@@ -180,13 +181,13 @@ int main(int argc, char* argv[]) {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   std::string ignored_netifs_str =
       command_line->GetSwitchValueASCII(kIgnoreNetifFlag);
-  std::unordered_set<std::string> ignored_interfaces;
+  absl::flat_hash_set<std::string> ignored_interfaces;
   if (!ignored_netifs_str.empty()) {
-    for (const std::string& ignored_netif :
-         base::SplitString(ignored_netifs_str, ",", base::TRIM_WHITESPACE,
-                           base::SPLIT_WANT_ALL)) {
+    for (const std::string_view ignored_netif :
+         base::SplitStringPiece(ignored_netifs_str, ",", base::TRIM_WHITESPACE,
+                                base::SPLIT_WANT_ALL)) {
       LOG(INFO) << "Ignoring: " << ignored_netif;
-      ignored_interfaces.insert(ignored_netif);
+      ignored_interfaces.emplace(ignored_netif);
     }
   }
   auto network_change_notifier =

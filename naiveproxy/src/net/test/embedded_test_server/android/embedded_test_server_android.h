@@ -11,6 +11,7 @@
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/raw_ptr.h"
 #include "base/synchronization/lock.h"
+#include "net/android/net_test_support_provider_jni/EmbeddedTestServerImpl_shared_jni.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/embedded_test_server_connection_listener.h"
 #include "net/test/embedded_test_server/http_request.h"
@@ -21,9 +22,10 @@ namespace net::test_server {
 // The C++ side of the Java EmbeddedTestServer.
 class EmbeddedTestServerAndroid {
  public:
-  EmbeddedTestServerAndroid(JNIEnv* env,
-                            const base::android::JavaRef<jobject>& obj,
-                            jboolean jhttps);
+  EmbeddedTestServerAndroid(
+      JNIEnv* env,
+      const base::android::JavaRef<JEmbeddedTestServerImpl>& obj,
+      bool jhttps);
 
   EmbeddedTestServerAndroid(const EmbeddedTestServerAndroid&) = delete;
   EmbeddedTestServerAndroid& operator=(const EmbeddedTestServerAndroid&) =
@@ -33,40 +35,40 @@ class EmbeddedTestServerAndroid {
 
   void Destroy(JNIEnv* env);
 
-  jboolean Start(JNIEnv* env, jint port);
+  bool Start(JNIEnv* env, int32_t port);
 
   base::android::ScopedJavaLocalRef<jstring> GetRootCertPemPath(
       JNIEnv* jenv) const;
 
-  jboolean ShutdownAndWaitUntilComplete(JNIEnv* env);
+  bool ShutdownAndWaitUntilComplete(JNIEnv* env);
 
   base::android::ScopedJavaLocalRef<jstring> GetURL(
       JNIEnv* jenv,
-      const base::android::JavaParamRef<jstring>& jrelative_url) const;
+      const base::android::JavaRef<jstring>& jrelative_url) const;
 
   base::android::ScopedJavaLocalRef<jstring> GetURLWithHostName(
       JNIEnv* jenv,
-      const base::android::JavaParamRef<jstring>& jhostname,
-      const base::android::JavaParamRef<jstring>& jrelative_url) const;
+      const base::android::JavaRef<jstring>& jhostname,
+      const base::android::JavaRef<jstring>& jrelative_url) const;
 
   std::vector<std::string> GetRequestHeadersForUrl(
       JNIEnv* env,
-      const base::android::JavaParamRef<jstring>& jrelative_url);
+      const base::android::JavaRef<jstring>& jrelative_url);
   int GetRequestCountForUrl(
       JNIEnv* env,
-      const base::android::JavaParamRef<jstring>& jrelative_url);
+      const base::android::JavaRef<jstring>& jrelative_url);
 
   void AddDefaultHandlers(
       JNIEnv* jenv,
-      const base::android::JavaParamRef<jstring>& jdirectory_path);
+      const base::android::JavaRef<jstring>& jdirectory_path);
 
-  void SetSSLConfig(JNIEnv* jenv, jint jserver_certificate);
+  void SetSSLConfig(JNIEnv* jenv, int32_t jserver_certificate);
 
-  void RegisterRequestHandler(JNIEnv* jenv, jlong handler);
+  void RegisterRequestHandler(JNIEnv* jenv, int64_t handler);
 
   void ServeFilesFromDirectory(
       JNIEnv* env,
-      const base::android::JavaParamRef<jstring>& jdirectory_path);
+      const base::android::JavaRef<jstring>& jdirectory_path);
 
  private:
   // Connection listener forwarding notifications to EmbeddedTestServerAndroid.
@@ -89,7 +91,7 @@ class EmbeddedTestServerAndroid {
 
   void MonitorResourceRequest(const net::test_server::HttpRequest& request);
 
-  JavaObjectWeakGlobalRef weak_java_server_;
+  base::android::ScopedJavaGlobalRef<JEmbeddedTestServerImpl> java_server_;
 
   EmbeddedTestServer test_server_;
   ConnectionListener connection_listener_;

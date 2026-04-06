@@ -206,11 +206,9 @@ bool ParseHostAndPort(std::string_view input, std::string* host, int* port) {
   url::Component hostname_component;
   url::Component port_component;
 
-  // `input` is not NUL-terminated, so `input.data()` must be accompanied by a
-  // length. In these calls, `url::Component` provides an offset and length.
-  url::ParseAuthority(input.data(), auth_component, &username_component,
-                      &password_component, &hostname_component,
-                      &port_component);
+  url::ParseAuthority(input, auth_component, url::ParserMode::kSpecialURL,
+                      &username_component, &password_component,
+                      &hostname_component, &port_component);
 
   // There shouldn't be a username/password.
   if (username_component.is_valid() || password_component.is_valid())
@@ -221,7 +219,7 @@ bool ParseHostAndPort(std::string_view input, std::string* host, int* port) {
 
   int parsed_port_number = -1;
   if (port_component.is_nonempty()) {
-    parsed_port_number = url::ParsePort(input.data(), port_component);
+    parsed_port_number = url::ParsePort(input, port_component);
 
     // If parsing failed, port_number will be either PORT_INVALID or
     // PORT_UNSPECIFIED, both of which are negative.
@@ -238,9 +236,8 @@ bool ParseHostAndPort(std::string_view input, std::string* host, int* port) {
   // invalid. If it is an IPv6 literal then strip the brackets.
   if (hostname_component.len > 0 && input[hostname_component.begin] == '[') {
     if (input[hostname_component.end() - 1] == ']' &&
-        url::IPv6AddressToNumber(
-            hostname_component.as_string_view_on(input.data()),
-            tmp_ipv6_addr)) {
+        url::IPv6AddressToNumber(hostname_component.AsViewOn(input),
+                                 tmp_ipv6_addr)) {
       // Strip the brackets.
       hostname_component.begin++;
       hostname_component.len -= 2;
@@ -600,10 +597,7 @@ std::string UnescapePercentEncodedUrl(std::string_view input) {
     }
   }
   // Run UTF-8 decoding without BOM on the percent-decoding.
-  url::RawCanonOutputT<char16_t> canon_output;
-  url::DecodeURLEscapeSequences(result, url::DecodeURLMode::kUTF8,
-                                &canon_output);
-  return base::UTF16ToUTF8(canon_output.view());
+  return url::DecodeUrlEscapeSequences(result, url::DecodeUrlMode::kUtf8);
 }
 
 }  // namespace net

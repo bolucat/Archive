@@ -37,7 +37,6 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 
 namespace absl {
 ABSL_NAMESPACE_BEGIN
@@ -47,6 +46,10 @@ static_assert(
     "absl::Status assumes it can use the bottom 2 bits of a StatusRep*.");
 
 std::string StatusCodeToString(StatusCode code) {
+  return std::string(absl::StatusCodeToStringView(code));
+}
+
+absl::string_view StatusCodeToStringView(StatusCode code) {
   switch (code) {
     case StatusCode::kOk:
       return "OK";

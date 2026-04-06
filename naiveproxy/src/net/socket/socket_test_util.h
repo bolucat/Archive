@@ -17,6 +17,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/byte_size.h"
 #include "base/check_op.h"
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
@@ -41,6 +42,7 @@
 #include "net/socket/client_socket_pool.h"
 #include "net/socket/datagram_client_socket.h"
 #include "net/socket/socket_performance_watcher.h"
+#include "net/socket/socket_pool_additional_capacity.h"
 #include "net/socket/socket_tag.h"
 #include "net/socket/ssl_client_socket.h"
 #include "net/socket/transport_client_socket.h"
@@ -125,6 +127,9 @@ class MockConnectCompleter {
 
   // Convenience function that combines WaitForConnect() and Complete().
   void WaitForConnectAndComplete(int result);
+
+  // Returns true if the completer has a waiting connection attempt.
+  bool is_connecting() const { return !callback_.is_null(); }
 
  private:
   friend class MockTCPClientSocket;
@@ -630,8 +635,8 @@ struct SSLSocketDataProvider {
   // Result for GetECHRetryConfigs().
   std::vector<uint8_t> ech_retry_configs;
 
-  // Result for GetServerTrustAnchorIDsForRetry().
-  std::vector<std::vector<uint8_t>> server_trust_anchor_ids_for_retry;
+  // Result for GetServerTrustAnchorIDs().
+  std::vector<std::vector<uint8_t>> server_trust_anchor_ids;
 
   std::optional<NextProtoVector> next_protos_expected_in_ssl_config;
   std::optional<SSLConfig::ApplicationSettings> expected_application_settings;
@@ -770,8 +775,9 @@ class SocketDataProviderArray {
   // having no remaining elements is expected in some cases and is handled
   // safely.
   T* GetNextWithoutAsserting() {
-    if (next_index_ == data_providers_.size())
+    if (no_more_data_providers()) {
       return nullptr;
+    }
     return data_providers_[next_index_++];
   }
 
@@ -783,6 +789,10 @@ class SocketDataProviderArray {
   size_t next_index() { return next_index_; }
 
   void ResetNextIndex() { next_index_ = 0; }
+
+  bool no_more_data_providers() const {
+    return next_index_ == data_providers_.size();
+  }
 
  private:
   // Index of the next |data_providers_| element to use. Not an iterator
@@ -832,6 +842,11 @@ class MockClientSocketFactory : public ClientSocketFactory {
   void set_enable_read_if_ready(bool enable_read_if_ready) {
     enable_read_if_ready_ = enable_read_if_ready;
   }
+
+  // Returns true if all top-level data providers have been used. Does not check
+  // if all individual reads/writes have been used. ResetNextMockIndexes() will
+  // reset the value this returns.
+  bool AllDataProvidersUsed() const;
 
   // ClientSocketFactory
   std::unique_ptr<DatagramClientSocket> CreateDatagramClientSocket(
@@ -1064,7 +1079,7 @@ class MockSSLClientSocket : public AsyncSocket, public SSLClientSocket {
 
   // SSLClientSocket implementation.
   std::vector<uint8_t> GetECHRetryConfigs() override;
-  std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDsForRetry() override;
+  std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDs() override;
 
   // This MockSocket does not implement the manual async IO feature.
   void OnReadComplete(const MockRead& data) override;
@@ -1266,9 +1281,7 @@ class ClientSocketPoolTest {
     int rv = request->handle()->Init(
         group_id, socket_params, std::nullopt /* proxy_annotation_tag */,
         priority, SocketTag(), respect_limits, request->callback(),
-        ClientSocketPool::ProxyAuthCallback(),
-        /*fail_if_alias_requires_proxy_override=*/false, socket_pool,
-        NetLogWithSource());
+        ClientSocketPool::ProxyAuthCallback(), socket_pool, NetLogWithSource());
     if (rv != ERR_IO_PENDING)
       request_order_.push_back(request);
     return rv;
@@ -1381,7 +1394,6 @@ class MockTransportClientSocketPool : public TransportClientSocketPool {
       ClientSocketHandle* handle,
       CompletionOnceCallback callback,
       const ProxyAuthCallback& on_auth_callback,
-      bool fail_if_alias_requires_proxy_override,
       const NetLogWithSource& net_log) override;
   void SetPriority(const GroupId& group_id,
                    ClientSocketHandle* handle,
@@ -1535,10 +1547,12 @@ extern const std::string_view kSOCKS5OkRequest;
 
 extern const std::string_view kSOCKS5OkResponse;
 
-// Helper function to get the total data size of the MockReads in |reads|.
+// Helper functions to get the total data size of the MockReads in |reads|.
+base::ByteSize CountReadByteSize(base::span<const MockRead> reads);
 int64_t CountReadBytes(base::span<const MockRead> reads);
 
-// Helper function to get the total data size of the MockWrites in |writes|.
+// Helper functions to get the total data size of the MockWrites in |writes|.
+base::ByteSize CountWriteByteSize(base::span<const MockWrite> writes);
 int64_t CountWriteBytes(base::span<const MockWrite> writes);
 
 #if BUILDFLAG(IS_ANDROID)
@@ -1549,6 +1563,16 @@ bool CanGetTaggedBytes();
 // |expected_tag| for our UID.  Return the count of received bytes.
 uint64_t GetTaggedBytes(int32_t expected_tag);
 #endif
+
+// The goal of this test is to walk a pool back and forth between being
+// capped and uncapped, tracking at what point the transition occurs
+// and using that data to validate expected behavior. We take this walk
+// about 100 times as there is randomization in the transition points.
+void ValidateAdditionalCapacityForSocketPool(
+    base::RepeatingCallback<SocketPoolState()> request_socket,
+    base::RepeatingCallback<void()> wait_for_socket_initialization,
+    base::RepeatingCallback<SocketPoolState()> release_socket,
+    base::RepeatingCallback<size_t()> sockets_in_use);
 
 }  // namespace net
 

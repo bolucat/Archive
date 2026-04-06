@@ -106,10 +106,11 @@ class StaleHostResolver : public HostResolver {
   // The remaining public methods pass through to the inner resolver:
 
   HostCache* GetHostCache() override;
-  base::Value::Dict GetDnsConfigAsValue() const override;
+  base::DictValue GetDnsConfigAsValue() const override;
   void SetRequestContext(URLRequestContext* request_context) override;
   bool IsHappyEyeballsV3Enabled() const override;
   std::unique_ptr<HostResolver::ProbeRequest> CreateDohProbeRequest() override;
+  std::unique_ptr<CanaryDomainService> CreateCanaryDomainService() override;
 
   // Set `tick_clock_` for testing. Must be set before issuing any requests.
   NET_EXPORT void SetTickClockForTesting(const base::TickClock* tick_clock);

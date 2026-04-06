@@ -7,12 +7,12 @@
 #include <limits.h>
 #include <stdlib.h>
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <vector>
 
-#include "base/containers/contains.h"
 #include "base/containers/span.h"
 #include "base/containers/to_vector.h"
 #include "base/logging.h"
@@ -220,12 +220,12 @@ scoped_refptr<X509Certificate> X509Certificate::CreateFromPickleUnsafeOptions(
     return nullptr;
 
   std::vector<std::string_view> cert_chain;
-  const char* data = nullptr;
-  size_t data_length = 0;
   for (size_t i = 0; i < chain_length; ++i) {
-    if (!pickle_iter->ReadData(&data, &data_length))
+    std::string_view data;
+    if (!pickle_iter->ReadStringPiece(&data)) {
       return nullptr;
-    cert_chain.emplace_back(data, data_length);
+    }
+    cert_chain.emplace_back(data);
   }
   return CreateFromDERCertChainUnsafeOptions(cert_chain, options);
 }
@@ -376,11 +376,11 @@ bool X509Certificate::GetSubjectAltName(
 
   if (dns_names) {
     for (const auto& dns_name : subject_alt_names->dns_names)
-      dns_names->push_back(std::string(dns_name));
+      dns_names->emplace_back(dns_name);
   }
   if (ip_addrs) {
     for (const auto& addr : subject_alt_names->ip_addresses) {
-      ip_addrs->push_back(std::string(addr.AsStringView()));
+      ip_addrs->emplace_back(base::as_string_view(addr));
     }
   }
 
@@ -428,7 +428,7 @@ bool X509Certificate::IsIssuedByEncoded(
     if (!GetNormalizedCertIssuer(cert.get(), &normalized_cert_issuer)) {
       return false;
     }
-    if (base::Contains(normalized_issuers, normalized_cert_issuer))
+    if (std::ranges::contains(normalized_issuers, normalized_cert_issuer))
       return true;
   }
   return false;
@@ -463,8 +463,8 @@ bool X509Certificate::VerifyHostname(
 
   // Fully handle all cases where |hostname| contains an IP address.
   if (host_info.IsIPAddress()) {
-    return base::Contains(cert_san_ip_addrs,
-                          base::as_string_view(host_info.AddressSpan()));
+    return std::ranges::contains(cert_san_ip_addrs,
+                                 base::as_string_view(host_info.AddressSpan()));
   }
 
   // The host portion of a URL may support a variety of name resolution formats
@@ -766,6 +766,9 @@ bool X509Certificate::ParsedFields::Initialize(
   // okay to save it into a span even though `tbs` gets destroyed at the end of
   // this method.
   serial_number_ = tbs.serial_number;
+
+  signature_algorithm_ =
+      bssl::ParseSignatureAlgorithm(tbs.signature_algorithm_tlv);
   return true;
 }
 

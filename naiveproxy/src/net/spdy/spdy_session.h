@@ -18,7 +18,6 @@
 #include <vector>
 
 #include "base/containers/circular_deque.h"
-#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
@@ -547,7 +546,7 @@ class NET_EXPORT SpdySession
 
   // Retrieves information on the current state of the SPDY session as a
   // Value.
-  base::Value::Dict GetInfoAsValue() const;
+  base::DictValue GetInfoAsValue() const;
 
   // Indicates whether the session is being reused after having successfully
   // used to send/receive data in the past or if the underlying socket was idle

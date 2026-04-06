@@ -10,18 +10,21 @@
 #include <optional>
 #include <utility>
 
-
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "quiche/quic/core/quic_alarm.h"
 #include "quiche/quic/core/quic_alarm_factory.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/moqt/moqt_fetch_task.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
 #include "quiche/quic/moqt/moqt_parser.h"
 #include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/quic/moqt/moqt_publisher.h"
 #include "quiche/quic/moqt/moqt_session.h"
 #include "quiche/quic/moqt/moqt_track.h"
+#include "quiche/quic/moqt/moqt_types.h"
 #include "quiche/web_transport/test_tools/mock_web_transport.h"
 #include "quiche/web_transport/web_transport.h"
 
@@ -30,7 +33,8 @@ namespace moqt::test {
 class MoqtDataParserPeer {
  public:
   static void SetType(MoqtDataParser* parser, MoqtDataStreamType type) {
-    parser->type_.emplace(std::move(type));
+    parser->type_ = type;
+    parser->next_input_ = MoqtDataParser::NextInput::kTrackAlias;
   }
 };
 
@@ -40,16 +44,12 @@ class MoqtSessionPeer {
 
   static std::unique_ptr<MoqtControlParserVisitor> CreateControlStream(
       MoqtSession* session, webtransport::test::MockStream* stream) {
-    auto new_stream =
-        std::make_unique<MoqtSession::ControlStream>(session, stream);
-    session->control_stream_ = kControlStreamId;
+    auto new_stream = std::make_unique<MoqtSession::ControlStream>(session);
+    session->control_stream_ = new_stream->GetWeakPtr();
+    new_stream->set_stream(stream);
     ON_CALL(*stream, visitor())
         .WillByDefault(::testing::Return(new_stream.get()));
-    webtransport::test::MockSession* mock_session =
-        static_cast<webtransport::test::MockSession*>(session->session());
-    EXPECT_CALL(*mock_session, GetStreamById(kControlStreamId))
-        .Times(::testing::AnyNumber())
-        .WillRepeatedly(::testing::Return(stream));
+    ON_CALL(*stream, CanWrite).WillByDefault(::testing::Return(true));
     return new_stream;
   }
 
@@ -102,26 +102,28 @@ class MoqtSessionPeer {
       MoqtSession* session, std::shared_ptr<MoqtTrackPublisher> publisher,
       uint64_t subscribe_id, uint64_t track_alias, uint64_t start_group,
       uint64_t start_object) {
-    MoqtSubscribe subscribe;
-    subscribe.full_track_name = publisher->GetTrackName();
-    subscribe.request_id = subscribe_id;
-    subscribe.forward = true;
-    subscribe.filter_type = MoqtFilterType::kAbsoluteStart;
-    subscribe.start = Location(start_group, start_object);
-    subscribe.subscriber_priority = 0x80;
+    MessageParameters parameters;
+    parameters.subscription_filter.emplace(Location(start_group, start_object));
+    MoqtSubscribe subscribe(subscribe_id, publisher->GetTrackName(),
+                            parameters);
+    subscribe.parameters.set_forward(true);
+    subscribe.parameters.subscription_filter.emplace(
+        Location(start_group, start_object));
+    subscribe.parameters.subscriber_priority = 0x80;
+    subscribe.parameters.group_order = MoqtDeliveryOrder::kAscending;
     session->published_subscriptions_.emplace(
         subscribe_id, std::make_unique<MoqtSession::PublishedSubscription>(
-                          session, std::move(publisher), subscribe,
+                          session, std::move(publisher), subscribe, track_alias,
                           /*monitoring_interface=*/nullptr));
-    session->published_subscriptions_[subscribe_id]->track_alias_.emplace(
-        track_alias);
     return session->published_subscriptions_[subscribe_id].get();
   }
 
   static bool InSubscriptionWindow(MoqtObjectListener* subscription,
                                    Location sequence) {
-    return static_cast<MoqtSession::PublishedSubscription*>(subscription)
-        ->InWindow(sequence);
+    std::optional<SubscriptionFilter> filter =
+        absl::down_cast<MoqtSession::PublishedSubscription*>(subscription)
+            ->parameters_.subscription_filter;
+    return (!filter.has_value() || filter->InWindow(sequence));
   }
 
   static MoqtObjectListener* GetSubscription(MoqtSession* session,
@@ -153,10 +155,6 @@ class MoqtSessionPeer {
     session->next_request_id_ = id;
   }
 
-  static void set_next_incoming_request_id(MoqtSession* session, uint64_t id) {
-    session->next_incoming_request_id_ = id;
-  }
-
   static void set_peer_max_request_id(MoqtSession* session, uint64_t id) {
     session->peer_max_request_id_ = id;
   }
@@ -181,15 +179,12 @@ class MoqtSessionPeer {
 
   // Adds an upstream fetch and a stream ready to receive data.
   static std::unique_ptr<MoqtFetchTask> CreateUpstreamFetch(
-      MoqtSession* session, webtransport::Stream* stream,
-      MoqtDeliveryOrder order = MoqtDeliveryOrder::kAscending) {
+      MoqtSession* session, webtransport::Stream* stream) {
     MoqtFetch fetch_message = {
         0,
-        128,
-        std::nullopt,
         StandaloneFetch(FullTrackName{"foo", "bar"}, Location{0, 0},
                         Location{4, kMaxObjectId}),
-        VersionSpecificParameters(),
+        MessageParameters(),
     };
     std::unique_ptr<MoqtFetchTask> task;
     auto [it, success] = session->upstream_by_id_.try_emplace(
@@ -199,16 +194,16 @@ class MoqtSessionPeer {
                  task = std::move(fetch_task);
                }));
     QUICHE_DCHECK(success);
-    UpstreamFetch* fetch = static_cast<UpstreamFetch*>(it->second.get());
+    UpstreamFetch* fetch = absl::down_cast<UpstreamFetch*>(it->second.get());
     // Initialize the fetch task
     fetch->OnFetchResult(
-        Location{4, 10}, order, absl::OkStatus(),
+        Location{4, 10}, absl::OkStatus(),
         [=, session_ptr = session, request_id = fetch_message.request_id]() {
           session_ptr->CancelFetch(request_id);
         });
     ;
     auto mock_session =
-        static_cast<webtransport::test::MockSession*>(session->session());
+        absl::down_cast<webtransport::test::MockSession*>(session->session());
     EXPECT_CALL(*mock_session, AcceptIncomingUnidirectionalStream())
         .WillOnce(testing::Return(stream))
         .WillOnce(testing::Return(nullptr));
@@ -225,13 +220,13 @@ class MoqtSessionPeer {
   }
 
   static quic::QuicAlarm* GetAlarm(webtransport::StreamVisitor* visitor) {
-    return static_cast<MoqtSession::OutgoingDataStream*>(visitor)
+    return absl::down_cast<MoqtSession::OutgoingDataStream*>(visitor)
         ->delivery_timeout_alarm_.get();
   }
 
   static quic::QuicAlarm* GetPublishDoneAlarm(
       SubscribeRemoteTrack* subscription) {
-    return subscription->subscribe_done_alarm_.get();
+    return subscription->publish_done_alarm_.get();
   }
 
   static quic::QuicAlarm* GetGoAwayTimeoutAlarm(MoqtSession* session) {
@@ -240,20 +235,28 @@ class MoqtSessionPeer {
 
   static quic::QuicTimeDelta GetDeliveryTimeout(
       MoqtObjectListener* subscription) {
-    return static_cast<MoqtSession::PublishedSubscription*>(subscription)
+    return absl::down_cast<MoqtSession::PublishedSubscription*>(subscription)
         ->delivery_timeout();
   }
   static void SetDeliveryTimeout(MoqtObjectListener* subscription,
                                  quic::QuicTimeDelta timeout) {
-    static_cast<MoqtSession::PublishedSubscription*>(subscription)
-        ->set_delivery_timeout(timeout);
+    absl::down_cast<MoqtSession::PublishedSubscription*>(subscription)
+        ->parameters_.delivery_timeout = timeout;
   }
 
   static bool SubgroupHasBeenReset(MoqtObjectListener* subscription,
                                    DataStreamIndex index) {
-    return static_cast<MoqtSession::PublishedSubscription*>(subscription)
+    return absl::down_cast<MoqtSession::PublishedSubscription*>(subscription)
         ->reset_subgroups()
         .contains(index);
+  }
+
+  static absl::string_view GetImplementationString(MoqtSession* session) {
+    return session->parameters_.moqt_implementation;
+  }
+
+  static MoqtSession::ControlStream* GetControlStream(MoqtSession* session) {
+    return session->control_stream_.GetIfAvailable();
   }
 };
 

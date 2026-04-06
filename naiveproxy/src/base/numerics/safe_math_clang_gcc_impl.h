@@ -14,7 +14,7 @@
 
 #include "base/numerics/safe_conversions.h"
 
-#if defined(__ARMEL__) || defined(__arch64__)
+#if defined(__ARMEL__)
 #include "base/numerics/safe_math_arm_impl.h"  // IWYU pragma: export
 #define BASE_HAS_ASSEMBLER_SAFE_MATH (1)
 #else
@@ -22,7 +22,7 @@
 #endif
 
 namespace base {
-namespace internal {
+namespace numerics_internal {
 
 // These are the non-functioning boilerplate implementations of the optimized
 // safe math routines.
@@ -154,7 +154,7 @@ struct ClampedNegFastOp {
   }
 };
 
-}  // namespace internal
+}  // namespace numerics_internal
 }  // namespace base
 
 #endif  // BASE_NUMERICS_SAFE_MATH_CLANG_GCC_IMPL_H_

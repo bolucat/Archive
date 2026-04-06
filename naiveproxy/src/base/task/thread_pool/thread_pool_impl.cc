@@ -46,12 +46,24 @@ constexpr EnvironmentParams kForegroundPoolEnvironmentParams{
 constexpr EnvironmentParams kUtilityPoolEnvironmentParams{
     "Utility", base::ThreadType::kUtility};
 
+constexpr EnvironmentParams kPresentationPoolEnvironmentParams{
+    "Presentation", base::ThreadType::kPresentation};
+
+constexpr EnvironmentParams kAudioPoolEnvironmentParams{
+    "Audio", base::ThreadType::kAudioProcessing};
+
 constexpr EnvironmentParams kBackgroundPoolEnvironmentParams{
     "Background", base::ThreadType::kBackground};
 
 // Used for ThreadGroupProfiler to tag profiles collected for different thread
 // groups.
-enum ThreadGroupType { FOREGROUND = 0, UTILITY, BACKGROUND };
+enum ThreadGroupType {
+  FOREGROUND = 0,
+  UTILITY,
+  BACKGROUND,
+  PRESENTATION,
+  AUDIO
+};
 
 constexpr size_t kMaxBestEffortTasks = 2;
 
@@ -121,6 +133,8 @@ ThreadPoolImpl::~ThreadPoolImpl() {
   foreground_thread_group_.reset();
   utility_thread_group_.reset();
   background_thread_group_.reset();
+  presentation_thread_group_.reset();
+  audio_thread_group_.reset();
 }
 
 void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
@@ -161,8 +175,36 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
         ThreadGroupType::UTILITY, task_tracker_->GetTrackedRef(),
         tracked_ref_factory_.GetTrackedRef());
     foreground_thread_group_
-        ->HandoffNonUserBlockingTaskSourcesToOtherThreadGroup(
-            utility_thread_group_.get());
+        ->HandoffTaskSourcesToOtherThreadGroupAtMostThreadType(
+            ThreadType::kUtility, utility_thread_group_.get());
+  }
+  if (FeatureList::IsEnabled(kUseHighPriorityThreadGroup)) {
+    audio_thread_group_ = std::make_unique<ThreadGroupImpl>(
+        histogram_label_.empty()
+            ? std::string()
+            : JoinString(
+                  {histogram_label_, kAudioPoolEnvironmentParams.name_suffix},
+                  "."),
+        kAudioPoolEnvironmentParams.name_suffix,
+        kAudioPoolEnvironmentParams.thread_type_hint, ThreadGroupType::AUDIO,
+        task_tracker_->GetTrackedRef(), tracked_ref_factory_.GetTrackedRef());
+    presentation_thread_group_ = std::make_unique<ThreadGroupImpl>(
+        histogram_label_.empty()
+            ? std::string()
+            : JoinString({histogram_label_,
+                          kPresentationPoolEnvironmentParams.name_suffix},
+                         "."),
+        kPresentationPoolEnvironmentParams.name_suffix,
+        kPresentationPoolEnvironmentParams.thread_type_hint,
+        ThreadGroupType::PRESENTATION, task_tracker_->GetTrackedRef(),
+        tracked_ref_factory_.GetTrackedRef());
+
+    foreground_thread_group_
+        ->HandoffTaskSourcesToOtherThreadGroupAtLeastThreadType(
+            ThreadType::kAudioProcessing, audio_thread_group_.get());
+    foreground_thread_group_
+        ->HandoffTaskSourcesToOtherThreadGroupAtLeastThreadType(
+            ThreadType::kPresentation, presentation_thread_group_.get());
   }
 
   // Update the CanRunPolicy based on |has_disable_best_effort_switch_|.
@@ -189,6 +231,7 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
 
   size_t foreground_threads = init_params.max_num_foreground_threads;
   size_t utility_threads = init_params.max_num_utility_threads;
+  size_t audio_threads = init_params.max_num_audio_threads;
 
   // On platforms that can't use the background thread priority, best-effort
   // tasks run in foreground pools. A cap is set on the number of best-effort
@@ -200,7 +243,7 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
       init_params.suggested_reclaim_time, service_thread_task_runner,
       worker_thread_observer, worker_environment,
       g_synchronous_thread_start_for_testing,
-      /*may_block_threshold=*/{});
+      /*may_block_threshold_for_testing=*/{});
 
   if (utility_thread_group_) {
     utility_thread_group_.get()->Start(
@@ -208,7 +251,23 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
         init_params.suggested_reclaim_time, service_thread_task_runner,
         worker_thread_observer, worker_environment,
         g_synchronous_thread_start_for_testing,
-        /*may_block_threshold=*/{});
+        /*may_block_threshold_for_testing=*/{});
+  }
+
+  if (presentation_thread_group_) {
+    presentation_thread_group_.get()->Start(
+        foreground_threads, 0, init_params.suggested_reclaim_time,
+        service_thread_task_runner, worker_thread_observer, worker_environment,
+        g_synchronous_thread_start_for_testing,
+        /*may_block_threshold_for_testing=*/{});
+  }
+
+  if (audio_thread_group_) {
+    audio_thread_group_.get()->Start(
+        audio_threads, 0, init_params.suggested_reclaim_time,
+        service_thread_task_runner, worker_thread_observer, worker_environment,
+        g_synchronous_thread_start_for_testing,
+        /*may_block_threshold_for_testing=*/{});
   }
 
   if (background_thread_group_) {
@@ -217,7 +276,7 @@ void ThreadPoolImpl::Start(const ThreadPoolInstance::InitParams& init_params,
         init_params.suggested_reclaim_time, service_thread_task_runner,
         worker_thread_observer, worker_environment,
         g_synchronous_thread_start_for_testing,
-        /*may_block_threshold=*/{});
+        /*may_block_threshold_for_testing=*/{});
   }
 
   started_ = true;
@@ -240,6 +299,12 @@ void ThreadPoolImpl::BeginRestrictedTasks() {
   if (background_thread_group_) {
     background_thread_group_->SetMaxTasks(1);
   }
+  if (presentation_thread_group_) {
+    presentation_thread_group_->SetMaxTasks(1);
+  }
+  if (audio_thread_group_) {
+    audio_thread_group_->SetMaxTasks(1);
+  }
 }
 
 void ThreadPoolImpl::EndRestrictedTasks() {
@@ -249,6 +314,12 @@ void ThreadPoolImpl::EndRestrictedTasks() {
   }
   if (background_thread_group_) {
     background_thread_group_->ResetMaxTasks();
+  }
+  if (presentation_thread_group_) {
+    presentation_thread_group_->ResetMaxTasks();
+  }
+  if (audio_thread_group_) {
+    audio_thread_group_->ResetMaxTasks();
   }
 }
 
@@ -261,7 +332,8 @@ bool ThreadPoolImpl::PostDelayedTask(const Location& from_here,
       Task(from_here, std::move(task), TimeTicks::Now(), delay,
            MessagePump::GetLeewayIgnoringThreadOverride()),
       MakeRefCounted<Sequence>(traits, nullptr,
-                               TaskSourceExecutionMode::kParallel));
+                               TaskSourceExecutionMode::kParallel,
+                               GetCurrentTaskImportance()));
 }
 
 scoped_refptr<TaskRunner> ThreadPoolImpl::CreateTaskRunner(
@@ -332,13 +404,8 @@ void ThreadPoolImpl::SetSynchronousThreadStartForTesting(bool enabled) {
   g_synchronous_thread_start_for_testing = enabled;
 }
 
-size_t ThreadPoolImpl::GetMaxConcurrentNonBlockedTasksWithTraitsDeprecated(
-    const TaskTraits& traits) const {
-  // This method does not support getting the maximum number of BEST_EFFORT
-  // tasks that can run concurrently in a pool.
-  DCHECK_NE(traits.priority(), TaskPriority::BEST_EFFORT);
-  return GetThreadGroupForTraits(traits)
-      ->GetMaxConcurrentNonBlockedTasksDeprecated();
+size_t ThreadPoolImpl::GetMaxConcurrentForegroundTasks() const {
+  return foreground_thread_group_->GetMaxConcurrentNonBlockedTasksDeprecated();
 }
 
 void ThreadPoolImpl::Shutdown() {
@@ -374,6 +441,12 @@ void ThreadPoolImpl::Shutdown() {
   if (background_thread_group_) {
     background_thread_group_->OnShutdownStarted();
   }
+  if (presentation_thread_group_) {
+    presentation_thread_group_->OnShutdownStarted();
+  }
+  if (audio_thread_group_) {
+    audio_thread_group_->OnShutdownStarted();
+  }
 
   task_tracker_->CompleteShutdown();
 }
@@ -381,7 +454,7 @@ void ThreadPoolImpl::Shutdown() {
 void ThreadPoolImpl::FlushForTesting() {
   // If BEST_EFFORT tasks can run it means all tasks can run.
   const bool can_run_all =
-      task_tracker_->CanRunPriority(TaskPriority::BEST_EFFORT);
+      task_tracker_->CanRunThreadType(ThreadType::kBackground);
 
   if (!can_run_all) {
     // Calling `FlushForTesting` when not all tasks are allowed to run can only
@@ -429,6 +502,12 @@ void ThreadPoolImpl::JoinForTesting() {
   }
   if (background_thread_group_) {
     background_thread_group_->JoinForTesting();
+  }
+  if (presentation_thread_group_) {
+    presentation_thread_group_->JoinForTesting();
+  }
+  if (audio_thread_group_) {
+    audio_thread_group_->JoinForTesting();
   }
 #if DCHECK_IS_ON()
   join_for_testing_returned_.Set();
@@ -481,14 +560,14 @@ bool ThreadPoolImpl::PostTaskWithSequenceNow(Task task,
       return false;
     }
   }
-  if (!task_tracker_->WillPostTaskNow(task, transaction.traits().priority())) {
+  if (!task_tracker_->WillPostTaskNow(task, sequence->thread_type_racy())) {
     return false;
   }
   transaction.PushImmediateTask(std::move(task));
   if (task_source) {
-    const TaskTraits traits = transaction.traits();
-    GetThreadGroupForTraits(traits)->PushTaskSourceAndWakeUpWorkers(
-        {std::move(task_source), std::move(transaction)});
+    GetThreadGroup(transaction.thread_type(), task_source->thread_policy())
+        ->PushTaskSourceAndWakeUpWorkers(
+            {std::move(task_source), std::move(transaction)});
   }
   return true;
 }
@@ -507,6 +586,13 @@ bool ThreadPoolImpl::PostTaskWithSequence(Task task,
     ANNOTATE_LEAKING_OBJECT_PTR(leak.get());
     leak.release();
     return false;
+  }
+
+  if (sequence->inherit_thread_type()) {
+    // When inheriting task importance, it's forbidden to post from a context
+    // that would make the sequence higher priority than when it was created.
+    DCHECK_LE(std::min(sequence->max_thread_type(), GetCurrentTaskImportance()),
+              sequence->thread_type_racy());
   }
 
   if (task.delayed_run_time.is_null()) {
@@ -531,15 +617,15 @@ bool ThreadPoolImpl::PostTaskWithSequence(Task task,
 }
 
 bool ThreadPoolImpl::ShouldYield(const TaskSource* task_source) {
-  const TaskPriority priority = task_source->priority_racy();
+  const ThreadType thread_type = task_source->thread_type_racy();
   auto* const thread_group =
-      GetThreadGroupForTraits({priority, task_source->thread_policy()});
+      GetThreadGroup(thread_type, task_source->thread_policy());
   // A task whose priority changed and is now running in the wrong thread group
   // should yield so it's rescheduled in the right one.
   if (!thread_group->IsBoundToCurrentThread()) {
     return true;
   }
-  return GetThreadGroupForTraits({priority, task_source->thread_policy()})
+  return GetThreadGroup(thread_type, task_source->thread_policy())
       ->ShouldYield(task_source->GetSortKey());
 }
 
@@ -553,16 +639,18 @@ bool ThreadPoolImpl::EnqueueJobTaskSource(
   task_tracker_->WillEnqueueJob(
       static_cast<JobTaskSource*>(registered_task_source.get()));
   auto transaction = registered_task_source->BeginTransaction();
-  const TaskTraits traits = transaction.traits();
-  GetThreadGroupForTraits(traits)->PushTaskSourceAndWakeUpWorkers(
-      {std::move(registered_task_source), std::move(transaction)});
+  GetThreadGroup(transaction.thread_type(),
+                 registered_task_source->thread_policy())
+      ->PushTaskSourceAndWakeUpWorkers(
+          {std::move(registered_task_source), std::move(transaction)});
   return true;
 }
 
 void ThreadPoolImpl::RemoveJobTaskSource(
     scoped_refptr<JobTaskSource> task_source) {
   auto transaction = task_source->BeginTransaction();
-  GetThreadGroupForTraits(transaction.traits())->RemoveTaskSource(*task_source);
+  GetThreadGroup(transaction.thread_type(), task_source->thread_policy())
+      ->RemoveTaskSource(*task_source);
 }
 
 void ThreadPoolImpl::UpdatePriority(scoped_refptr<TaskSource> task_source,
@@ -581,10 +669,10 @@ void ThreadPoolImpl::UpdatePriority(scoped_refptr<TaskSource> task_source,
   }
 
   ThreadGroup* const old_thread_group =
-      GetThreadGroupForTraits(transaction.traits());
+      GetThreadGroup(transaction.thread_type(), task_source->thread_policy());
   transaction.UpdatePriority(priority);
   ThreadGroup* const new_thread_group =
-      GetThreadGroupForTraits(transaction.traits());
+      GetThreadGroup(transaction.thread_type(), task_source->thread_policy());
 
   if (new_thread_group == old_thread_group) {
     // |task_source|'s position needs to be updated within its current thread
@@ -608,22 +696,29 @@ void ThreadPoolImpl::UpdateJobPriority(scoped_refptr<TaskSource> task_source,
   UpdatePriority(std::move(task_source), priority);
 }
 
-const ThreadGroup* ThreadPoolImpl::GetThreadGroupForTraits(
-    const TaskTraits& traits) const {
-  return const_cast<ThreadPoolImpl*>(this)->GetThreadGroupForTraits(traits);
+const ThreadGroup* ThreadPoolImpl::GetThreadGroup(ThreadType thread_type,
+                                                  ThreadPolicy policy) const {
+  return const_cast<ThreadPoolImpl*>(this)->GetThreadGroup(thread_type, policy);
 }
 
-ThreadGroup* ThreadPoolImpl::GetThreadGroupForTraits(const TaskTraits& traits) {
-  if (traits.priority() == TaskPriority::BEST_EFFORT &&
-      traits.thread_policy() == ThreadPolicy::PREFER_BACKGROUND &&
-      background_thread_group_) {
+ThreadGroup* ThreadPoolImpl::GetThreadGroup(ThreadType thread_type,
+                                            ThreadPolicy policy) {
+  if (thread_type == ThreadType::kBackground &&
+      policy == ThreadPolicy::PREFER_BACKGROUND && background_thread_group_) {
     return background_thread_group_.get();
   }
 
-  if (traits.priority() <= TaskPriority::USER_VISIBLE &&
-      traits.thread_policy() == ThreadPolicy::PREFER_BACKGROUND &&
-      utility_thread_group_) {
+  if (thread_type <= ThreadType::kUtility &&
+      policy == ThreadPolicy::PREFER_BACKGROUND && utility_thread_group_) {
     return utility_thread_group_.get();
+  }
+
+  if (thread_type >= ThreadType::kAudioProcessing && audio_thread_group_) {
+    return audio_thread_group_.get();
+  }
+
+  if (thread_type >= ThreadType::kPresentation && presentation_thread_group_) {
+    return presentation_thread_group_.get();
   }
 
   return foreground_thread_group_.get();
@@ -653,6 +748,12 @@ void ThreadPoolImpl::UpdateCanRunPolicy(CanRunPolicy can_run_policy) {
   }
   if (background_thread_group_) {
     background_thread_group_->DidUpdateCanRunPolicy();
+  }
+  if (presentation_thread_group_) {
+    presentation_thread_group_->DidUpdateCanRunPolicy();
+  }
+  if (audio_thread_group_) {
+    audio_thread_group_->DidUpdateCanRunPolicy();
   }
   single_thread_task_runner_manager_.DidUpdateCanRunPolicy();
 }

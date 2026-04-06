@@ -20,7 +20,7 @@ on the code.
 
 Some example targets that have lint enabled are:
 
- - `//chrome/android:monochrome_public_bundle`
+ - `//chrome/android:chrome_public_apk`
  - `//android_webview/support_library/boundary_interfaces:boundary_interface_example_apk`
  - Other targets with `enable_lint` enabled: https://source.chromium.org/search?q=lang:gn%20enable_lint%5C%20%3D%5C%20true&ss=chromium
 
@@ -124,6 +124,13 @@ Here is an example of how to structure a suppressions XML file:
   </issue>
 </lint>
 ```
+
+
+### Per-target cache
+
+To avoid race conditions and IO-related flakes when running Lint in parallel,
+Chromium uses a per-target cache directory located in the target's generated
+directory (e.g., `gen/.../android_lint_cache`).
 
 ## What are `lint-baseline.xml` files for?
 

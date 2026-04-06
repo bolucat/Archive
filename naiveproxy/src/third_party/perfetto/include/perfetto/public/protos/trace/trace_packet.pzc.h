@@ -31,6 +31,7 @@ PERFETTO_PB_MSG_DECL(perfetto_protos_AndroidEnergyEstimationBreakdown);
 PERFETTO_PB_MSG_DECL(perfetto_protos_AndroidGameInterventionList);
 PERFETTO_PB_MSG_DECL(perfetto_protos_AndroidLogPacket);
 PERFETTO_PB_MSG_DECL(perfetto_protos_AndroidSystemProperty);
+PERFETTO_PB_MSG_DECL(perfetto_protos_AndroidUserList);
 PERFETTO_PB_MSG_DECL(perfetto_protos_AppWakelockBundle);
 PERFETTO_PB_MSG_DECL(perfetto_protos_BatteryCounters);
 PERFETTO_PB_MSG_DECL(perfetto_protos_BluetoothTraceEvent);
@@ -93,7 +94,11 @@ PERFETTO_PB_MSG_DECL(perfetto_protos_SystemInfo);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TestEvent);
 PERFETTO_PB_MSG_DECL(perfetto_protos_ThreadDescriptor);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TraceConfig);
+PERFETTO_PB_MSG_DECL(perfetto_protos_TracePacket);
+PERFETTO_PB_MSG_DECL(perfetto_protos_TracePacket_ProtoVms);
+PERFETTO_PB_MSG_DECL(perfetto_protos_TracePacket_ProtoVms_Instance);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TracePacketDefaults);
+PERFETTO_PB_MSG_DECL(perfetto_protos_TraceProvenance);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TraceStats);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TraceUuid);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TracingServiceEvent);
@@ -104,12 +109,12 @@ PERFETTO_PB_MSG_DECL(perfetto_protos_TransactionTraceEntry);
 PERFETTO_PB_MSG_DECL(perfetto_protos_TranslationTable);
 PERFETTO_PB_MSG_DECL(perfetto_protos_Trigger);
 PERFETTO_PB_MSG_DECL(perfetto_protos_UiState);
-PERFETTO_PB_MSG_DECL(perfetto_protos_UserList);
 PERFETTO_PB_MSG_DECL(perfetto_protos_V8CodeMove);
 PERFETTO_PB_MSG_DECL(perfetto_protos_V8InternalCode);
 PERFETTO_PB_MSG_DECL(perfetto_protos_V8JsCode);
 PERFETTO_PB_MSG_DECL(perfetto_protos_V8RegExpCode);
 PERFETTO_PB_MSG_DECL(perfetto_protos_V8WasmCode);
+PERFETTO_PB_MSG_DECL(perfetto_protos_VmProgram);
 PERFETTO_PB_MSG_DECL(perfetto_protos_VulkanApiEvent);
 PERFETTO_PB_MSG_DECL(perfetto_protos_VulkanMemoryEvent);
 PERFETTO_PB_MSG_DECL(perfetto_protos_WinscopeExtensions);
@@ -377,6 +382,16 @@ PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
                   91);
 PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
                   MSG,
+                  perfetto_protos_TraceProvenance,
+                  trace_provenance,
+                  124);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
+                  MSG,
+                  perfetto_protos_TracePacket_ProtoVms,
+                  protovms,
+                  125);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
+                  MSG,
                   perfetto_protos_ModuleSymbols,
                   module_symbols,
                   61);
@@ -567,7 +582,7 @@ PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
                   121);
 PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
                   MSG,
-                  perfetto_protos_UserList,
+                  perfetto_protos_AndroidUserList,
                   user_list,
                   123);
 PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
@@ -621,5 +636,34 @@ PERFETTO_PB_FIELD(perfetto_protos_TracePacket,
                   uint32_t,
                   machine_id,
                   98);
+
+PERFETTO_PB_MSG(perfetto_protos_TracePacket_ProtoVms);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket_ProtoVms,
+                  MSG,
+                  perfetto_protos_TracePacket_ProtoVms_Instance,
+                  instance,
+                  1);
+
+PERFETTO_PB_MSG(perfetto_protos_TracePacket_ProtoVms_Instance);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket_ProtoVms_Instance,
+                  MSG,
+                  perfetto_protos_VmProgram,
+                  program,
+                  1);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket_ProtoVms_Instance,
+                  MSG,
+                  perfetto_protos_TracePacket,
+                  state,
+                  2);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket_ProtoVms_Instance,
+                  VARINT,
+                  uint32_t,
+                  memory_limit_kb,
+                  3);
+PERFETTO_PB_FIELD(perfetto_protos_TracePacket_ProtoVms_Instance,
+                  VARINT,
+                  int32_t,
+                  producer_id,
+                  4);
 
 #endif  // INCLUDE_PERFETTO_PUBLIC_PROTOS_TRACE_TRACE_PACKET_PZC_H_

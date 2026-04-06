@@ -136,6 +136,9 @@ class PartnerBookmarksReader;
 class Profile;
 class ProfileImpl;
 class ScopedAllowBlockingForProfile;
+#if BUILDFLAG(IS_WIN)
+class ScopedAllowBlockingForMediaFoundation;
+#endif
 class StartupTabProviderImpl;
 class WebEngineBrowserMainParts;
 struct StartupProfilePathInfo;
@@ -165,7 +168,6 @@ bool HasWaylandDisplay(base::Environment* env);
 namespace android_webview {
 class AwBrowserContext;
 class AwBrowserContextStore;
-class AwFormDatabaseService;
 class AwMetricsServiceClient;
 class CookieManager;
 class JsSandboxIsolate;
@@ -265,6 +267,9 @@ class ScopedAllowBlockingForNSS;
 }
 namespace dbus {
 class Bus;
+}
+namespace dbus_xdg {
+class FileTransferPortal;
 }
 namespace drive {
 class FakeDriveService;
@@ -389,6 +394,7 @@ class PrintBackendServiceImpl;
 class PrintBackendServiceManager;
 class PrintPreviewUIUntrusted;
 class PrinterQuery;
+base::FilePath GetAbsoluteSystemDestinationLocation(const base::FilePath&);
 }  // namespace printing
 namespace proxy_resolver {
 class ScopedAllowThreadJoinForProxyResolverV8Tracing;
@@ -438,14 +444,15 @@ namespace updater {
 class SystemctlLauncherScopedAllowBaseSyncPrimitives;
 }
 namespace viz {
-class HostGpuMemoryBufferManager;
-class ClientGpuMemoryBufferManager;
 class DisplayCompositorMemoryAndTaskController;
 class SkiaOutputSurfaceImpl;
 class SharedImageInterfaceProvider;
 }  // namespace viz
 namespace vr {
 class VrShell;
+}
+namespace webnn {
+class WebNNTensorImpl;
 }
 namespace web {
 class WebMainLoop;
@@ -578,6 +585,9 @@ class BASE_EXPORT ScopedAllowBlocking {
   friend class ::GaiaConfig;
   friend class ::ProfileImpl;
   friend class ::ScopedAllowBlockingForProfile;
+#if BUILDFLAG(IS_WIN)
+  friend class ::ScopedAllowBlockingForMediaFoundation;
+#endif
   friend class ::StartupTabProviderImpl;
   friend class ::WebEngineBrowserMainParts;
   friend class android_webview::AwBrowserContext;
@@ -681,6 +691,8 @@ class BASE_EXPORT ScopedAllowBlocking {
       base::FilePath* file_path);  // http://crbug.com/110709
   friend bool disk_cache::CleanupDirectorySync(const base::FilePath&);
   friend bool gl::init::InitializeStaticGLBindings(gl::GLImplementationParts);
+  friend base::FilePath printing::GetAbsoluteSystemDestinationLocation(
+      const base::FilePath&);
 
   ScopedAllowBlocking(const Location& from_here = Location::Current());
   ~ScopedAllowBlocking();
@@ -786,6 +798,7 @@ class BASE_EXPORT ScopedAllowBaseSyncPrimitives {
   friend class syncer::HttpBridge;
   friend class syncer::GetLocalChangesRequest;
   friend class updater::SystemctlLauncherScopedAllowBaseSyncPrimitives;
+  friend class webnn::WebNNTensorImpl;
 
   // Usage that should be fixed:
   // Sorted by class name (with namespace).
@@ -830,8 +843,6 @@ class BASE_EXPORT
   friend class ::KeyStorageLinux;
   friend class ::NativeDesktopMediaList;
   friend class android::JavaHandlerThread;
-  friend class android_webview::
-      AwFormDatabaseService;  // http://crbug.com/904431
   friend class android_webview::CookieManager;
   friend class android_webview::VizCompositorThreadRunnerWebView;
   friend class audio::OutputDevice;
@@ -870,8 +881,6 @@ class BASE_EXPORT
   friend class mojo::core::ipcz_driver::MojoTrap;
   friend class net::NetworkConfigWatcherAppleThread;
   friend class ui::DrmThreadProxy;
-  friend class viz::ClientGpuMemoryBufferManager;
-  friend class viz::HostGpuMemoryBufferManager;
   friend class vr::VrShell;
 
   // Usage that should be fixed:
@@ -883,6 +892,7 @@ class BASE_EXPORT
       BrowserGpuChannelHostFactory;          // http://crbug.com/125248
   friend class content::TextInputClientMac;  // http://crbug.com/121917
   friend class dbus::Bus;                    // http://crbug.com/125222
+  friend class dbus_xdg::FileTransferPortal;  // https://crbug.com/40398800
   friend class discardable_memory::
       ClientDiscardableSharedMemoryManager;  // http://crbug.com/1396355
   friend class disk_cache::BackendImpl;      // http://crbug.com/74623

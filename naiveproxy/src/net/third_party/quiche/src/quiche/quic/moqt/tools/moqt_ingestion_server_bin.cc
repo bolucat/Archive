@@ -29,7 +29,11 @@
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "quiche/quic/moqt/moqt_error.h"
+#include "quiche/quic/moqt/moqt_fetch_task.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_names.h"
 #include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_session.h"
 #include "quiche/quic/moqt/moqt_session_callbacks.h"
@@ -84,7 +88,7 @@ bool IsValidTrackNamespaceChar(char c) {
 }
 
 bool IsValidTrackNamespace(TrackNamespace track_namespace) {
-  for (const auto& element : track_namespace.tuple()) {
+  for (const absl::string_view element : track_namespace.tuple()) {
     if (!absl::c_all_of(element, IsValidTrackNamespaceChar)) {
       return false;
     }
@@ -94,14 +98,16 @@ bool IsValidTrackNamespace(TrackNamespace track_namespace) {
 
 TrackNamespace CleanUpTrackNamespace(TrackNamespace track_namespace) {
   TrackNamespace output;
-  for (auto& it : track_namespace.tuple()) {
-    std::string element = it;
+  for (absl::string_view input : track_namespace.tuple()) {
+    std::string element(input);
     for (char& c : element) {
       if (!IsValidTrackNamespaceChar(c)) {
         c = '_';
       }
     }
-    output.AddElement(element);
+    // The replacement above will not change the tuple size, which means that
+    // the result will be always valid.
+    (void)output.AddElement(element);
   }
   return output;
 }
@@ -120,7 +126,7 @@ class MoqtIngestionHandler {
   // TODO(martinduke): Handle when |publish_namespace| is false
   // (PUBLISH_NAMESPACE_DONE).
   void OnPublishNamespaceReceived(TrackNamespace track_namespace,
-                                  std::optional<VersionSpecificParameters>,
+                                  std::optional<MessageParameters>,
                                   MoqtResponseCallback callback) {
     if (!IsValidTrackNamespace(track_namespace) &&
         !quiche::GetQuicheCommandLineFlag(
@@ -129,8 +135,8 @@ class MoqtIngestionHandler {
           << "Rejected remote publish_namespace as it contained "
              "disallowed characters; namespace: "
           << track_namespace;
-      std::move(callback)(MoqtPublishNamespaceErrorReason{
-          RequestErrorCode::kInternalError,
+      std::move(callback)(MoqtRequestErrorInfo{
+          RequestErrorCode::kInternalError, std::nullopt,
           "Track namespace contains disallowed characters"});
       return;
     }
@@ -152,8 +158,8 @@ class MoqtIngestionHandler {
       QUICHE_LOG(ERROR) << "Failed to create directory " << directory_path
                         << "; " << status;
       std::move(callback)(
-          MoqtPublishNamespaceErrorReason{RequestErrorCode::kInternalError,
-                                          "Failed to create output directory"});
+          MoqtRequestErrorInfo{RequestErrorCode::kInternalError, std::nullopt,
+                               "Failed to create output directory"});
       return;
     }
 
@@ -161,9 +167,16 @@ class MoqtIngestionHandler {
     std::vector<absl::string_view> tracks_to_subscribe =
         absl::StrSplit(track_list, ',', absl::AllowEmpty());
     for (absl::string_view track : tracks_to_subscribe) {
-      FullTrackName full_track_name(track_namespace, track);
-      session_->RelativeJoiningFetch(full_track_name, &it->second, 0,
-                                     VersionSpecificParameters());
+      absl::StatusOr<FullTrackName> full_track_name =
+          FullTrackName::Create({track_namespace}, std::string(track));
+      if (!full_track_name.ok()) {
+        std::move(callback)(
+            MoqtRequestErrorInfo{RequestErrorCode::kInternalError, std::nullopt,
+                                 "Namespace too long"});
+        return;
+      }
+      session_->RelativeJoiningFetch(*full_track_name, &it->second, 0,
+                                     MessageParameters());
     }
     std::move(callback)(std::nullopt);
   }
@@ -176,11 +189,11 @@ class MoqtIngestionHandler {
 
     void OnReply(
         const FullTrackName& full_track_name,
-        std::variant<SubscribeOkData, MoqtRequestError> response) override {
-      if (std::holds_alternative<MoqtRequestError>(response)) {
-        QUICHE_LOG(ERROR) << "Failed to subscribe to the peer track "
-                          << full_track_name << ": "
-                          << std::get<MoqtRequestError>(response).reason_phrase;
+        std::variant<SubscribeOkData, MoqtRequestErrorInfo> response) override {
+      if (std::holds_alternative<MoqtRequestErrorInfo>(response)) {
+        QUICHE_LOG(ERROR)
+            << "Failed to subscribe to the peer track " << full_track_name
+            << ": " << std::get<MoqtRequestErrorInfo>(response).reason_phrase;
       }
     }
 
@@ -264,9 +277,11 @@ int main(int argc, char** argv) {
   quiche::QuicheIpAddress bind_address;
   QUICHE_CHECK(bind_address.FromString(
       quiche::GetQuicheCommandLineFlag(FLAGS_bind_address)));
-  server.quic_server().CreateUDPSocketAndListen(quic::QuicSocketAddress(
-      bind_address, quiche::GetQuicheCommandLineFlag(FLAGS_port)));
-  server.quic_server().HandleEventsForever();
+  absl::Status socket_status =
+      server.CreateUDPSocketAndListen(quic::QuicSocketAddress(
+          bind_address, quiche::GetQuicheCommandLineFlag(FLAGS_port)));
+  QUICHE_CHECK_OK(socket_status);
+  server.HandleEventsForever();
 
   return 0;
 }

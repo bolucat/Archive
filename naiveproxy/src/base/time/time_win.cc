@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/390223051): Remove C-library calls to fix the errors.
-#pragma allow_unsafe_libc_calls
-#endif
-
 // Windows Timer Primer
 //
 // A good article:  http://www.ddj.com/windows/184416651
@@ -382,7 +377,7 @@ bool Time::FromExploded(bool is_local, const Exploded& exploded, Time* time) {
 void Time::Explode(bool is_local, Exploded* exploded) const {
   if (!CanConvertToFileTime(us_)) {
     // We are not able to convert it to FILETIME.
-    ZeroMemory(exploded, sizeof(*exploded));
+    *exploded = Exploded();
     return;
   }
 
@@ -405,7 +400,7 @@ void Time::Explode(bool is_local, Exploded* exploded) const {
   }
 
   if (!success) {
-    ZeroMemory(exploded, sizeof(*exploded));
+    *exploded = Exploded();
     return;
   }
 

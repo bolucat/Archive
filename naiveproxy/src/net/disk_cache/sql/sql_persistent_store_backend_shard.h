@@ -5,15 +5,18 @@
 #ifndef NET_DISK_CACHE_SQL_SQL_PERSISTENT_STORE_BACKEND_SHARD_H_
 #define NET_DISK_CACHE_SQL_SQL_PERSISTENT_STORE_BACKEND_SHARD_H_
 
+#include <atomic>
 #include <optional>
 
 #include "base/containers/flat_set.h"
+#include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/threading/sequence_bound.h"
 #include "net/base/cache_type.h"
 #include "net/base/io_buffer.h"
 #include "net/disk_cache/sql/sql_persistent_store.h"
 #include "net/disk_cache/sql/sql_persistent_store_in_memory_index.h"
+#include "net/disk_cache/sql/sql_read_cache_memory_monitor.h"
 
 namespace base {
 class FilePath;
@@ -33,10 +36,12 @@ class EvictionCandidateAggregator;
 // operations to the `Backend` on a dedicated background task runner.
 class SqlPersistentStore::BackendShard {
  public:
-  BackendShard(ShardId shard_id,
-               const base::FilePath& path,
-               net::CacheType type,
-               scoped_refptr<base::SequencedTaskRunner> background_task_runner);
+  BackendShard(
+      ShardId shard_id,
+      const base::FilePath& path,
+      net::CacheType type,
+      scoped_refptr<SqlReadCacheMemoryMonitor> read_cache_memory_monitor,
+      scoped_refptr<base::SequencedTaskRunner> background_task_runner);
   ~BackendShard();
 
   // Kicks off the asynchronous initialization of the backend.
@@ -50,6 +55,7 @@ class SqlPersistentStore::BackendShard {
                    EntryInfoOrErrorCallback callback);
   void DoomEntry(const CacheEntryKey& key,
                  ResId res_id,
+                 bool accept_index_mismatch,
                  ErrorCallback callback);
   void DeleteDoomedEntry(const CacheEntryKey& key,
                          ResId res_id,
@@ -63,23 +69,24 @@ class SqlPersistentStore::BackendShard {
   void UpdateEntryLastUsedByKey(const CacheEntryKey& key,
                                 base::Time last_used,
                                 ErrorCallback callback);
-  void UpdateEntryLastUsedByResId(ResId res_id,
-                                  base::Time last_used,
-                                  ErrorCallback callback);
-  void UpdateEntryHeaderAndLastUsed(const CacheEntryKey& key,
-                                    ResId res_id,
-                                    base::Time last_used,
-                                    scoped_refptr<net::IOBuffer> buffer,
-                                    int64_t header_size_delta,
-                                    ErrorCallback callback);
+  void WriteEntryDataAndMetadata(
+      const CacheEntryKey& key,
+      std::optional<ResId> res_id,
+      std::optional<int64_t> old_body_end,
+      EntryWriteBuffer buffer,
+      base::Time last_used,
+      const std::optional<MemoryEntryDataHints>& new_hints,
+      scoped_refptr<net::IOBuffer> head_buffer,
+      int64_t header_size_delta,
+      bool doomed_new_entry,
+      ResIdOrErrorCallback callback);
   void WriteEntryData(const CacheEntryKey& key,
-                      ResId res_id,
+                      const ResIdOrTime& res_id_or_last_used_time,
                       int64_t old_body_end,
-                      int64_t offset,
-                      scoped_refptr<net::IOBuffer> buffer,
-                      int buf_len,
+                      EntryWriteBuffer buffer,
                       bool truncate,
-                      ErrorCallback callback);
+                      bool doomed_new_entry,
+                      ResIdOrErrorCallback callback);
   void ReadEntryData(const CacheEntryKey& key,
                      ResId res_id,
                      int64_t offset,
@@ -87,7 +94,8 @@ class SqlPersistentStore::BackendShard {
                      int buf_len,
                      int64_t body_end,
                      bool sparse_reading,
-                     SqlPersistentStore::IntOrErrorCallback callback);
+                     SqlPersistentStore::ReadResultOrErrorCallback callback);
+
   void GetEntryAvailableRange(const CacheEntryKey& key,
                               ResId res_id,
                               int64_t offset,
@@ -98,17 +106,43 @@ class SqlPersistentStore::BackendShard {
                                      Int64OrErrorCallback callback);
   void OpenNextEntry(const EntryIterator& iterator,
                      OptionalEntryInfoWithKeyAndIteratorCallback callback);
-  void StartEviction(int64_t size_to_be_removed,
-                     base::flat_set<ResId> excluded_res_ids,
-                     bool is_idle_time_eviction,
-                     scoped_refptr<EvictionCandidateAggregator> aggregator,
-                     ResIdListOrErrorCallback callback);
+  void StartEviction(
+      int64_t size_to_be_removed,
+      base::flat_set<ResId> excluded_res_ids,
+      bool is_idle_time_eviction,
+      scoped_refptr<EvictionCandidateAggregator> aggregator,
+      scoped_refptr<base::RefCountedData<std::atomic_bool>> abort_flag,
+      scoped_refptr<base::RefCountedData<std::atomic_int64_t>>
+          remaining_mandatory_size,
+      ResIdListOrErrorCallback callback);
+  void ResumePendingEviction(
+      base::flat_set<ResId> excluded_res_ids,
+      bool is_idle_time_eviction,
+      scoped_refptr<base::RefCountedData<std::atomic_bool>> abort_flag,
+      scoped_refptr<base::RefCountedData<std::atomic_int64_t>>
+          remaining_mandatory_size,
+      ResIdListOrErrorCallback callback);
+  bool HasPendingEviction() const { return !pending_eviction_targets_.empty(); }
 
   int32_t GetEntryCount() const;
   void GetEntryCountAsync(Int32Callback callback) const;
   int64_t GetSizeOfAllEntries() const;
 
   IndexState GetIndexStateForHash(CacheEntryKey::Hash key_hash) const;
+
+  // Updates the in-memory index with the given hints for the specified entry.
+  void SetInMemoryEntryDataHints(ResId res_id, MemoryEntryDataHints hints);
+
+  // Retrieves the hints for the specified entry from the in-memory index, if
+  // available.
+  std::optional<MemoryEntryDataHints> GetInMemoryEntryDataHints(
+      CacheEntryKey::Hash key_hash) const;
+
+  // Tries to find a single resource ID for the given key hash in the in-memory
+  // index of this shard. Returns the resource ID if the index is available and
+  // contains a unique entry for the hash.
+  std::optional<ResId> TryGetSingleResIdFromInMemoryIndex(
+      CacheEntryKey::Hash key_hash) const;
 
   void LoadInMemoryIndex(ErrorCallback callback);
 
@@ -123,6 +157,7 @@ class SqlPersistentStore::BackendShard {
   void EnableStrictCorruptionCheckForTesting();
   void SetSimulateDbFailureForTesting(bool fail);
   void RazeAndPoisonForTesting();
+  void SetEvictionHookForTesting(base::RepeatingClosure hook);
 
  private:
   // These values are persisted to logs. Entries should not be renumbered and
@@ -135,7 +170,9 @@ class SqlPersistentStore::BackendShard {
     kStartEviction = 3,
     kDeleteLiveEntry = 4,
     kDeleteLiveEntriesBetween = 5,
-    kMaxValue = kDeleteLiveEntriesBetween,
+    kWriteEntryDataAndMetadata = 6,
+    kWriteEntryData = 7,
+    kMaxValue = kWriteEntryData,
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/net/enums.xml:SqlDiskCacheIndexMismatchLocation)
 
@@ -159,6 +196,14 @@ class SqlPersistentStore::BackendShard {
   base::OnceCallback<void(ErrorAndStoreStatus)> WrapCallbackWithStoreStatus(
       ErrorCallback callback);
 
+  base::OnceCallback<void(ResIdOrErrorAndStoreStatus)>
+  WrapCallbackWithStoreStatusAndIndexUpdate(
+      ResIdOrErrorCallback callback,
+      const CacheEntryKey& key,
+      bool is_new_entry,
+      const std::optional<MemoryEntryDataHints>& new_hints,
+      IndexMismatchLocation location);
+
   base::OnceCallback<void(EntryInfoOrErrorAndStoreStatus)>
   WrapEntryInfoOrErrorCallback(EntryInfoOrErrorCallback callback,
                                const CacheEntryKey& key,
@@ -168,7 +213,7 @@ class SqlPersistentStore::BackendShard {
   WrapErrorCallbackToRemoveFromIndex(ErrorCallback callback,
                                      IndexMismatchLocation location);
   void OnEvictionFinished(ResIdListOrErrorCallback callback,
-                          ResIdListOrErrorAndStoreStatus result);
+                          EvictionResultOrErrorAndStoreStatus result);
   void RecordIndexMismatch(IndexMismatchLocation location);
 
   base::SequenceBound<Backend> backend_;
@@ -184,7 +229,19 @@ class SqlPersistentStore::BackendShard {
   // and are scheduled for deletion.
   ResIdList to_be_deleted_res_ids_;
 
+  // True while the in-memory index is being loaded from the database.
+  bool loading_index_ = false;
+
+  // A list of resource IDs of entries that are doomed during the in-memory
+  // index is being loaded. Once loading is complete, these entries are removed
+  // from the newly loaded index to ensure consistency.
+  ResIdList pending_doomed_res_ids_;
+
   bool strict_corruption_check_enabled_ = false;
+
+  // The list of eviction candidates that were selected but not yet evicted
+  // because the eviction was paused.
+  SqlPersistentStore::EvictionTargetQueue pending_eviction_targets_;
 
   base::WeakPtrFactory<BackendShard> weak_factory_{this};
 };

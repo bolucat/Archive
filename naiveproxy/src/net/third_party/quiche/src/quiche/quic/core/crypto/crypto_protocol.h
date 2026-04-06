@@ -145,6 +145,8 @@ DEFINE_STATIC_QUIC_TAG(BBQ0);  // Increase bytes_acked in
 DEFINE_STATIC_QUIC_TAG(BBHI);  // Increase inflight_hi in
                                // PROBE_UP if ever inflight_hi
                                // limited in round
+DEFINE_STATIC_QUIC_TAG(B1AL);  // In BBRv1, always exit startup
+                               // on loss even if app-limited.
 DEFINE_STATIC_QUIC_TAG(RENO);  // Reno Congestion Control
 DEFINE_STATIC_QUIC_TAG(BYTE);  // TCP cubic or reno in bytes
 DEFINE_STATIC_QUIC_TAG(IW03);  // Force ICWND to 3
@@ -374,8 +376,11 @@ DEFINE_STATIC_QUIC_TAG(DTOS);  // Enable overshooting
 DEFINE_STATIC_QUIC_TAG(FIDT);  // Extend idle timer by PTO
                                // instead of the whole idle
                                // timeout.
+DEFINE_STATIC_QUIC_TAG(CIDT);  // Check the idle timeout on the client before
+                               // opening a new stream.
 
 DEFINE_STATIC_QUIC_TAG(3AFF);  // 3 anti amplification factor.
+DEFINE_STATIC_QUIC_TAG(5AFF);  // 5 anti amplification factor.
 DEFINE_STATIC_QUIC_TAG(10AF);  // 10 anti amplification factor.
 
 // Enable path MTU discovery experiment.
@@ -417,6 +422,8 @@ DEFINE_STATIC_QUIC_TAG(TRTT);  // If server receives an rtt
                                // it as the initial rtt.
 DEFINE_STATIC_QUIC_TAG(SNI);   // Server name
                                // indication
+DEFINE_STATIC_QUIC_TAG(DSNI);  // Enables the debugging_sni transport parameter
+                               // to be sent alongside ECH GREASE, but not ECH.
 DEFINE_STATIC_QUIC_TAG(PUBS);  // Public key values
 DEFINE_STATIC_QUIC_TAG(SCID);  // Server config id
 DEFINE_STATIC_QUIC_TAG(OBIT);  // Server orbit.

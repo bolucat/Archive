@@ -201,12 +201,21 @@ class NET_EXPORT_PRIVATE WebSocketQuicStreamAdapter
   int Read(IOBuffer* buf,
            int buf_len,
            CompletionOnceCallback callback) override;
+
+  // Writes data to the WebSocket QUIC stream. Returns the number of bytes
+  // written synchronously if the stream can accept new data, or ERR_IO_PENDING
+  // if the stream is blocked. When ERR_IO_PENDING is returned, |callback| will
+  // be invoked when the stream can accept new data.
   int Write(IOBuffer* buf,
             int buf_len,
             CompletionOnceCallback callback,
             const NetworkTrafficAnnotationTag& traffic_annotation) override;
   void Disconnect() override;
   bool is_initialized() const override;
+
+  // Byte count accessors. Return 0 after Disconnect().
+  uint64_t stream_bytes_read() const;
+  uint64_t stream_bytes_written() const;
 
   // WebSocketQuicSpdyStream::Delegate methods.
   void OnInitialHeadersComplete(
@@ -215,6 +224,11 @@ class NET_EXPORT_PRIVATE WebSocketQuicStreamAdapter
       const quic::QuicHeaderList& header_list) override;
   void OnBodyAvailable() override;
   void ClearStream() override;
+  void OnClose(int status) override;
+
+  // Invoked when QUIC transport acknowledges sent data.
+  // Triggers the write callback with the number of bytes written.
+  void OnCanWriteNewData() override;
 
  private:
   //  `websocket_quic_spdy_stream_` notifies this object of its destruction,
@@ -226,7 +240,11 @@ class NET_EXPORT_PRIVATE WebSocketQuicStreamAdapter
   // Read buffer, length and callback used for asynchronous read operations.
   raw_ptr<IOBuffer> read_buffer_ = nullptr;
   int read_length_ = 0u;
+  int write_length_ = 0u;
   CompletionOnceCallback read_callback_;
+  CompletionOnceCallback write_callback_;
+
+  base::WeakPtrFactory<WebSocketQuicStreamAdapter> weak_factory_{this};
 };
 
 }  // namespace net

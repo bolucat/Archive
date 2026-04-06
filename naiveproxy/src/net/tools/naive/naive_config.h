@@ -12,6 +12,7 @@
 
 #include "base/files/file_path.h"
 #include "base/logging.h"
+#include "base/logging/logging_settings.h"
 #include "base/values.h"
 #include "net/base/auth.h"
 #include "net/base/host_port_pair.h"
@@ -65,7 +66,7 @@ struct NaiveConfig {
   NaiveConfig();
   NaiveConfig(const NaiveConfig&);
   ~NaiveConfig();
-  bool Parse(const base::Value::Dict& value);
+  bool Parse(const base::DictValue& value);
 };
 
 }  // namespace net

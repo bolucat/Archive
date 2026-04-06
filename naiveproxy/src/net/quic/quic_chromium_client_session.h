@@ -172,6 +172,21 @@ enum class EcnPermutations {
   kMaxValue = kNotEctEct1Ect0Ce,
 };
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(MTCResult)
+enum class MTCResult {
+  kValidMTC = 0,
+  kInvalidMTC = 1,
+  kClassicalCertExpectedMTC = 2,
+  kClassicalCertOldClient = 3,
+  kClassicalCertUnknownLandmarkDelta = 4,
+  kResumption = 5,
+  kMaxValue = kResumption,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/net/enums.xml:MTCResult)
+
 class NET_EXPORT_PRIVATE QuicChromiumClientSession
     : public quic::QuicSpdyClientSessionBase,
       public MultiplexedSession,
@@ -760,6 +775,7 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void OnGoAway(const quic::QuicGoAwayFrame& frame) override;
   void OnCanCreateNewOutgoingStream(bool unidirectional) override;
   quic::QuicSSLConfig GetSSLConfig() const override;
+  void OnConfigNegotiated() override;
 
   // QuicSpdyClientSessionBase methods:
   void OnProofValid(
@@ -826,7 +842,7 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
                                 quic::QuicErrorCode quic_error,
                                 quic::ConnectionCloseBehavior behavior);
 
-  base::Value::Dict GetInfoAsValue(const std::set<HostPortPair>& aliases);
+  base::DictValue GetInfoAsValue(const std::set<HostPortPair>& aliases);
 
   const NetLogWithSource& net_log() const { return net_log_; }
 
@@ -976,6 +992,10 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void SetConnectionMigrationInformationForTesting(
       net::ConnectionMigrationInformation migration_info) {
     migration_info_ = migration_info;
+  }
+
+  quic::QuicTagVector& received_connection_options() {
+    return received_connection_options_;
   }
 
  protected:
@@ -1254,11 +1274,24 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
   const MultiplexedSessionCreationInitiator session_creation_initiator_;
 
+  quic::QuicTagVector received_connection_options_;
+
+  bool connection_migration_disabled_ = false;
+
   // Enable periodic ping to keep the connection alive even when the session
   // does not have any outstanding requests.
   bool enable_periodic_ping_ = false;
 
   bool crypto_handshake_complete_ = false;
+
+  // If the server supports MTCs, this is set to true in
+  // OnProofVerifyDetailsAvailable. A server is considered to support MTCs if
+  // either it sends an MTC in its Certificate message or if its trust_anchors
+  // extension (in EncryptedExtensions) contains a trust anchor ID corresponding
+  // to a known Merkle Tree Certificate CA.
+  //
+  // This is only used for metrics.
+  bool server_supports_mtc_tai_ = false;
 
   base::WeakPtrFactory<QuicChromiumClientSession> weak_factory_{this};
 };

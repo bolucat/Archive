@@ -2,28 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef BASE_ALLOCATOR_PARTITION_ALLOC_SUPPORT_H_
 #define BASE_ALLOCATOR_PARTITION_ALLOC_SUPPORT_H_
 
 #include <map>
 #include <string>
 
-#include "base/allocator/partition_alloc_features.h"
+#include "base/allocator/scheduler_loop_quarantine_config.h"
 #include "base/base_export.h"
-#include "base/feature_list.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/synchronization/lock.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/thread_annotations.h"
+#include "base/time/time.h"
 #include "partition_alloc/buildflags.h"
 #include "partition_alloc/partition_alloc_config.h"
-#include "partition_alloc/scheduler_loop_quarantine_support.h"
-#include "partition_alloc/thread_cache.h"
+
+#if PA_CONFIG(THREAD_CACHE_SUPPORTED) && \
+    PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC)
+#include "partition_alloc/partition_alloc_constants.h"
+#endif
 
 namespace base::allocator {
 
@@ -50,6 +48,21 @@ BASE_EXPORT void InstallUnretainedDanglingRawPtrChecks();
 // is not active.
 // Does nothing if allocator shim support is not built.
 BASE_EXPORT void MakeFreeNoOp();
+
+// Checks if the scheduler loop quarantine feature is enabled for the given
+// process type.
+BASE_EXPORT bool IsSchedulerLoopQuarantineEnabled(
+    std::string_view process_type);
+// Apply specialized configuration to the quarantine branch for the current
+// thread.
+BASE_EXPORT void ReconfigureSchedulerLoopQuarantineBranch(
+    SchedulerLoopQuarantineBranchType branch_type);
+
+// Configuration for `ReconfigureAfterFeatureListInit()`.
+struct BASE_EXPORT FeatureListConfiguration {
+  bool configure_dangling_pointer_detector = true;
+  bool is_in_death_test_child = false;
+};
 
 // Allows to re-configure PartitionAlloc at run-time.
 class BASE_EXPORT PartitionAllocSupport {
@@ -87,13 +100,11 @@ class BASE_EXPORT PartitionAllocSupport {
   //
   // *AfterTaskRunnerInit() may be called more than once.
   void ReconfigureForTests();
-  void ReconfigureEarlyish(const std::string& process_type);
-  void ReconfigureAfterZygoteFork(const std::string& process_type);
-  void ReconfigureAfterFeatureListInit(
-      const std::string& process_type,
-      bool configure_dangling_pointer_detector = true,
-      bool is_in_death_test_child = false);
-  void ReconfigureAfterTaskRunnerInit(const std::string& process_type);
+  void ReconfigureEarlyish(std::string_view process_type);
+  void ReconfigureAfterZygoteFork(std::string_view process_type);
+  void ReconfigureAfterFeatureListInit(std::string_view process_type,
+                                       FeatureListConfiguration config = {});
+  void ReconfigureAfterTaskRunnerInit(std::string_view process_type);
 
   // |has_main_frame| tells us if the renderer contains a main frame.
   // The default value is intended for other process types, where the parameter
@@ -103,16 +114,16 @@ class BASE_EXPORT PartitionAllocSupport {
 
 #if PA_BUILDFLAG(ENABLE_DANGLING_RAW_PTR_CHECKS)
   static std::string ExtractDanglingPtrSignatureForTests(
-      std::string stacktrace);
+      std::string_view stacktrace);
 #endif
 
   static PartitionAllocSupport* Get();
 
-  static BrpConfiguration GetBrpConfiguration(const std::string& process_type);
+  static BrpConfiguration GetBrpConfiguration(std::string_view process_type);
 
   // Returns true if memory tagging should be enabled if available for the given
   // process type. May be called multiple times per process.
-  static bool ShouldEnableMemoryTagging(const std::string& process_type);
+  static bool ShouldEnableMemoryTagging(std::string_view process_type);
 
   // For calling from within third_party/blink/.
   static bool ShouldEnableMemoryTaggingInRendererProcess();
@@ -120,7 +131,7 @@ class BASE_EXPORT PartitionAllocSupport {
   // Returns true if PA advanced checks should be enabled if available for the
   // given process type. May be called multiple times per process.
   static bool ShouldEnablePartitionAllocWithAdvancedChecks(
-      const std::string& process_type);
+      std::string_view process_type);
 
  private:
   PartitionAllocSupport();
@@ -177,10 +188,6 @@ BASE_EXPORT void CheckHeapIntegrity(const void* ptr);
 // `DoubleFreeOrCorruptionDetected()`. We provide an address for the slot start
 // to the function, and it may use that for debugging purpose.
 BASE_EXPORT void SetDoubleFreeOrCorruptionDetectedFn(void (*fn)(uintptr_t));
-
-using partition_alloc::SchedulerLoopQuarantineScanPolicyUpdater;
-using partition_alloc::ScopedSchedulerLoopQuarantineDisallowScanlessPurge;
-using partition_alloc::ScopedSchedulerLoopQuarantineExclusion;
 
 }  // namespace base::allocator
 

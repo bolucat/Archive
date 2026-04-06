@@ -14,16 +14,22 @@
 #include <utility>
 #include <variant>
 
+#include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/bind_front.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "quiche/quic/core/crypto/proof_verifier.h"
 #include "quiche/quic/core/io/quic_default_event_loop.h"
 #include "quiche/quic/core/io/quic_event_loop.h"
 #include "quiche/quic/core/quic_default_clock.h"
 #include "quiche/quic/core/quic_server_id.h"
+#include "quiche/quic/moqt/moqt_error.h"
+#include "quiche/quic/moqt/moqt_fetch_task.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_known_track_publisher.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_names.h"
 #include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_outgoing_queue.h"
 #include "quiche/quic/moqt/moqt_session.h"
@@ -43,14 +49,16 @@ namespace moqt::moq_chat {
 
 void ChatClient::OnIncomingPublishNamespace(
     const moqt::TrackNamespace& track_namespace,
-    std::optional<VersionSpecificParameters> parameters,
-    moqt::MoqtResponseCallback callback) {
+    const std::optional<MessageParameters>& parameters,
+    moqt::MoqtResponseCallback absl_nullable callback) {
   if (!session_is_open_) {
     return;
   }
   if (track_namespace == GetUserNamespace(my_track_name_)) {
     // Ignore PUBLISH_NAMESPACE for my own track.
-    std::move(callback)(std::nullopt);
+    if (parameters.has_value() && callback != nullptr) {  // callback exists.
+      std::move(callback)(std::nullopt);
+    }
     return;
   }
   std::optional<FullTrackName> track_name = ConstructTrackNameFromNamespace(
@@ -58,8 +66,7 @@ void ChatClient::OnIncomingPublishNamespace(
   if (!parameters.has_value()) {
     std::cout << "PUBLISH_NAMESPACE_DONE for " << track_namespace.ToString()
               << "\n";
-    if (track_name.has_value() && other_users_.contains(*track_name)) {
-      session_->Unsubscribe(*track_name);
+    if (track_name.has_value()) {
       other_users_.erase(*track_name);
     }
     return;
@@ -67,29 +74,42 @@ void ChatClient::OnIncomingPublishNamespace(
   std::cout << "PUBLISH_NAMESPACE for " << track_namespace.ToString() << "\n";
   if (!track_name.has_value()) {
     std::cout << "PUBLISH_NAMESPACE rejected, invalid namespace\n";
-    std::move(callback)(std::make_optional<MoqtPublishNamespaceErrorReason>(
-        RequestErrorCode::kTrackDoesNotExist, "Not a subscribed namespace"));
+    if (callback != nullptr) {
+      std::move(callback)(std::make_optional<MoqtRequestErrorInfo>(
+          RequestErrorCode::kDoesNotExist, std::nullopt,
+          "Not a subscribed namespace"));
+    }
     return;
   }
   if (other_users_.contains(*track_name)) {
     std::cout << "Duplicate PUBLISH_NAMESPACE, send OK and ignore\n";
-    std::move(callback)(std::nullopt);
+    if (callback != nullptr) {
+      std::move(callback)(std::nullopt);
+    }
     return;
   }
   if (GetUsername(my_track_name_) == GetUsername(*track_name)) {
     std::cout << "PUBLISH_NAMESPACE for a previous instance of my track, "
                  "do not subscribe\n";
-    std::move(callback)(std::nullopt);
+    if (callback != nullptr) {
+      std::move(callback)(std::nullopt);
+    }
     return;
   }
-  VersionSpecificParameters subscribe_parameters(
+  MessageParameters subscribe_parameters(MoqtFilterType::kLargestObject);
+  subscribe_parameters.authorization_tokens.emplace_back(
       AuthTokenType::kOutOfBand, std::string(GetUsername(my_track_name_)));
-  if (session_->SubscribeCurrentObject(*track_name, &remote_track_visitor_,
-                                       subscribe_parameters)) {
+  // session_ could be nullptr if we get unsolicited PUBLISH_NAMESPACE at the
+  // start of the session.
+  other_users_.emplace(*track_name);
+  if (session_ != nullptr &&
+      session_->Subscribe(*track_name, &remote_track_visitor_,
+                          subscribe_parameters)) {
     ++subscribes_to_make_;
-    other_users_.emplace(*track_name);
   }
-  std::move(callback)(std::nullopt);  // Send PUBLISH_NAMESPACE_OK.
+  if (callback != nullptr) {
+    std::move(callback)(std::nullopt);  // Send PUBLISH_NAMESPACE_OK.
+  }
 }
 
 ChatClient::ChatClient(const quic::QuicServerId& server_id,
@@ -162,12 +182,15 @@ void ChatClient::OnTerminalLineInput(absl::string_view input_message) {
   }
   if (input_message == "/exit") {
     // Clean teardown of SUBSCRIBE_NAMESPACE, PUBLISH_NAMESPACE, SUBSCRIBE.
-    session_->UnsubscribeNamespace(GetChatNamespace(my_track_name_));
+    namespace_task_.reset();
+    // TODO(martinduke): Add a session API to send PUBLISH_DONE.
     session_->PublishNamespaceDone(GetUserNamespace(my_track_name_));
     for (const auto& track_name : other_users_) {
       session_->Unsubscribe(track_name);
     }
+    session_->callbacks() = MoqtSessionCallbacks();
     other_users_.clear();
+    session_->Close();
     session_is_open_ = false;
     return;
   }
@@ -178,7 +201,7 @@ void ChatClient::OnTerminalLineInput(absl::string_view input_message) {
 
 void ChatClient::RemoteTrackVisitor::OnReply(
     const FullTrackName& full_track_name,
-    std::variant<SubscribeOkData, MoqtRequestError> response) {
+    std::variant<SubscribeOkData, MoqtRequestErrorInfo> response) {
   auto it = client_->other_users_.find(full_track_name);
   if (it == client_->other_users_.end()) {
     std::cout << "Error: received reply for unknown user "
@@ -190,17 +213,16 @@ void ChatClient::RemoteTrackVisitor::OnReply(
   if (std::holds_alternative<SubscribeOkData>(response)) {
     std::cout << "ACCEPTED\n";
   } else {
-    auto request_error = std::get<MoqtRequestError>(response);
+    auto request_error = std::get<MoqtRequestErrorInfo>(response);
     std::cout << "REJECTED, reason = "
-              << std::get<MoqtRequestError>(response).reason_phrase << "\n";
+              << std::get<MoqtRequestErrorInfo>(response).reason_phrase << "\n";
     client_->other_users_.erase(it);
   }
 }
 
 void ChatClient::RemoteTrackVisitor::OnObjectFragment(
-    const FullTrackName& full_track_name,
-    const PublishedObjectMetadata& /*metadata*/, absl::string_view object,
-    bool end_of_message) {
+    const FullTrackName& full_track_name, const PublishedObjectMetadata&,
+    absl::string_view object, bool end_of_message) {
   if (!end_of_message) {
     std::cerr << "Error: received partial message despite requesting "
                  "buffering\n";
@@ -223,15 +245,24 @@ bool ChatClient::PublishNamespaceAndSubscribeNamespace() {
     std::cout << "Failed to connect.\n";
     return false;
   }
+  // There might already be published namespaces that have populated
+  // other_users_. Subscribe to their tracks now.
+  for (const auto& track_name : other_users_) {
+    MessageParameters subscribe_parameters(MoqtFilterType::kLargestObject);
+    subscribe_parameters.authorization_tokens.emplace_back(
+        AuthTokenType::kOutOfBand, std::string(GetUsername(my_track_name_)));
+    if (session_->Subscribe(track_name, &remote_track_visitor_,
+                            subscribe_parameters)) {
+      ++subscribes_to_make_;
+    }
+  }
   // TODO: A server log might choose to not provide a username, thus getting all
   // the messages without adding itself to the catalog.
-  queue_ = std::make_shared<MoqtOutgoingQueue>(
-      my_track_name_, MoqtForwardingPreference::kSubgroup);
+  queue_ = std::make_shared<MoqtOutgoingQueue>(my_track_name_);
   publisher_.Add(queue_);
   session_->set_publisher(&publisher_);
-  MoqtOutgoingPublishNamespaceCallback publish_namespace_callback =
-      [this](TrackNamespace track_namespace,
-             std::optional<MoqtPublishNamespaceErrorReason> reason) {
+  MoqtResponseCallback publish_namespace_callback =
+      [this](std::optional<MoqtRequestErrorInfo> reason) {
         if (reason.has_value()) {
           std::cout << "PUBLISH_NAMESPACE rejected, " << reason->reason_phrase
                     << "\n";
@@ -239,38 +270,88 @@ bool ChatClient::PublishNamespaceAndSubscribeNamespace() {
                           "Local PUBLISH_NAMESPACE rejected");
           return;
         }
-        std::cout << "PUBLISH_NAMESPACE for " << track_namespace.ToString()
-                  << " accepted\n";
+        std::cout << "PUBLISH_NAMESPACE accepted\n";
         return;
       };
   std::cout << "Announcing " << GetUserNamespace(my_track_name_).ToString()
             << "\n";
-  session_->PublishNamespace(GetUserNamespace(my_track_name_),
-                             std::move(publish_namespace_callback),
-                             VersionSpecificParameters());
+  session_->PublishNamespace(
+      GetUserNamespace(my_track_name_), MessageParameters(),
+      [this](std::optional<MoqtRequestErrorInfo> reason) {
+        if (reason.has_value()) {
+          std::cout << "PUBLISH_NAMESPACE rejected, " << reason->reason_phrase
+                    << "\n";
+          session_->Error(MoqtError::kInternalError,
+                          "Local PUBLISH_NAMESPACE rejected");
+          return;
+        }
+        std::cout << "PUBLISH_NAMESPACE for "
+                  << GetUserNamespace(my_track_name_).ToString()
+                  << " accepted\n";
+        return;
+      },
+      [](MoqtRequestErrorInfo) {});
 
   // Send SUBSCRIBE_NAMESPACE. Pop 3 levels of namespace to get to
   // {moq-chat, chat-id}
-  MoqtOutgoingSubscribeNamespaceCallback subscribe_namespace_callback =
-      [this](TrackNamespace track_namespace,
-             std::optional<RequestErrorCode> error, absl::string_view reason) {
+  bool subscribe_response_received = false;
+  TrackNamespace prefix = GetChatNamespace(my_track_name_);
+  MoqtResponseCallback response_callback =
+      [&, this, prefix](std::optional<MoqtRequestErrorInfo> error) {
+        subscribe_response_received = true;
         if (error.has_value()) {
-          std::cout << "SUBSCRIBE_NAMESPACE rejected, " << reason << "\n";
+          std::cout << "SUBSCRIBE_NAMESPACE rejected, " << error->reason_phrase
+                    << "\n";
           session_->Error(MoqtError::kInternalError,
                           "Local SUBSCRIBE_NAMESPACE rejected");
           return;
         }
-        std::cout << "SUBSCRIBE_NAMESPACE for " << track_namespace.ToString()
+        std::cout << "SUBSCRIBE_NAMESPACE for " << prefix.ToString()
                   << " accepted\n";
         return;
       };
-  VersionSpecificParameters parameters(
+  MessageParameters parameters;
+  parameters.authorization_tokens.emplace_back(
       AuthTokenType::kOutOfBand, std::string(GetUsername(my_track_name_)));
-  session_->SubscribeNamespace(GetChatNamespace(my_track_name_),
-                               std::move(subscribe_namespace_callback),
-                               parameters);
+  namespace_task_ =
+      session_->SubscribeNamespace(prefix, SubscribeNamespaceOption::kNamespace,
+                                   parameters, std::move(response_callback));
+  if (namespace_task_ != nullptr) {
+    namespace_task_->SetObjectsAvailableCallback(
+        [this]() {
+          TrackNamespace suffix;
+          TransactionType type;
+          for (;;) {
+            GetNextResult result = namespace_task_->GetNextSuffix(suffix, type);
+            switch (result) {
+              case GetNextResult::kPending:
+                return;
+              case GetNextResult::kEof:
+                return;
+              case GetNextResult::kError:
+                std::cerr << "Error: received error from namespace task\n";
+                return;
+              case GetNextResult::kSuccess:
+                absl::StatusOr<TrackNamespace> track_namespace =
+                    namespace_task_->prefix().AddSuffix(suffix);
+                if (!track_namespace.ok()) {
+                  std::cerr
+                      << "Error: received invalid suffix from namespace task\n";
+                  return;
+                }
+                OnIncomingPublishNamespace(
+                    *track_namespace,
+                    (type == TransactionType::kAdd)
+                        ? std::make_optional(MessageParameters())
+                        : std::nullopt,
+                    /*callback=*/nullptr);
+                break;
+            }
+          }
+        });
+  }
 
-  while (session_is_open_ && is_syncing()) {
+  while (session_is_open_ && !subscribe_response_received) {
     RunEventLoop();
   }
   return session_is_open_;

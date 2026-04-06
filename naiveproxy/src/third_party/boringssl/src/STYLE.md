@@ -45,7 +45,8 @@ not
     const auto& blah;
 
 Rather than `malloc()` and `free()`, use the wrappers `OPENSSL_malloc()`
-and `OPENSSL_free()`. Use the standard C `assert()` function freely.
+and `OPENSSL_free()`. Similarly, rather than `new` and `delete`, use the
+wrappers `New` and `Delete`. Use the standard C `assert()` function freely.
 
 Use the following wrappers, found in `crypto/internal.h` instead of the
 corresponding C standard library functions. They behave the same but avoid
@@ -135,7 +136,7 @@ functions must do nothing on `NULL` input.
 
 If a variable is the length of a pointer value, it has the suffix
 `_len`. An output parameter is named `out` or has an `out_` prefix. For
-instance, For instance:
+instance:
 
     uint8_t *out,
     size_t *out_len,

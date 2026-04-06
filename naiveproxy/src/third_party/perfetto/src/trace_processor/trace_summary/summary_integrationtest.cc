@@ -171,6 +171,165 @@ TEST_F(TraceSummaryTest, SingleTemplateSpec) {
   EXPECT_THAT(*status_or_output, HasSubstr("id: \"my_metric_value\""));
 }
 
+TEST_F(TraceSummaryTest, TemplateSpecWithInnerQueryId) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "my_metric"
+      value_columns: "value"
+      query {
+        inner_query_id: "shared_query"
+      }
+    }
+    query {
+      id: "shared_query"
+      sql {
+        sql: "SELECT 1.0 as value"
+        column_names: "value"
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"my_metric_value\""));
+}
+
+TEST_F(TraceSummaryTest, TemplateSpecWithInnerQueryIdAndGroupBy) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "my_metric"
+      dimensions_specs { name: "category" type: STRING }
+      value_columns: "total_value"
+      query {
+        inner_query_id: "shared_query"
+      }
+    }
+    query {
+      id: "shared_query"
+      sql {
+        sql: "SELECT 'cat1' as category, 1.0 as value UNION ALL SELECT 'cat1' as category, 2.0 as value UNION ALL SELECT 'cat2' as category, 3.0 as value"
+        column_names: "category"
+        column_names: "value"
+      }
+      group_by {
+        column_names: "category"
+        aggregates {
+          column_name: "value"
+          op: SUM
+          result_column_name: "total_value"
+        }
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"my_metric_total_value\""));
+}
+
+TEST_F(TraceSummaryTest, TemplateSpecWithInnerQueryIdTableSource) {
+  // This test uses a table source in the shared query (like the slice table)
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "my_metric"
+      dimensions_specs { name: "name" type: STRING }
+      value_columns: "count"
+      query {
+        inner_query_id: "shared_query"
+      }
+    }
+    query {
+      id: "shared_query"
+      table {
+        table_name: "slice"
+      }
+      group_by {
+        column_names: "name"
+        aggregates {
+          column_name: "id"
+          op: COUNT
+          result_column_name: "count"
+        }
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"my_metric_count\""));
+}
+
+// Test complex template spec with multiple inner_query_id references including
+// one in interned_dimension_specs. This mimics real-world heap graph metrics.
+TEST_F(TraceSummaryTest, TemplateSpecWithInternedDimensionsAndInnerQueryId) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "test_aggregation"
+      dimensions_specs {
+        name: "track_id"
+        type: INT64
+      }
+      dimensions_specs {
+        name: "name"
+        type: STRING
+      }
+      value_columns: "total_dur"
+      value_columns: "slice_count"
+      interned_dimension_specs {
+        key_column_spec {
+          name: "track_id"
+          type: INT64
+        }
+        data_column_specs {
+          name: "track_name"
+          type: STRING
+        }
+        query {
+          inner_query_id: "track_metadata_query"
+        }
+      }
+      query {
+        inner_query_id: "slice_aggregation_query"
+      }
+    }
+    query {
+      id: "slice_aggregation_query"
+      table {
+        table_name: "slice"
+      }
+      group_by {
+        column_names: "track_id"
+        column_names: "name"
+        aggregates {
+          column_name: "dur"
+          op: SUM
+          result_column_name: "total_dur"
+        }
+        aggregates {
+          column_name: "id"
+          op: COUNT
+          result_column_name: "slice_count"
+        }
+      }
+    }
+    query {
+      id: "track_metadata_query"
+      table {
+        table_name: "track"
+        column_names: "id"
+        column_names: "name"
+      }
+      select_columns {
+        column_name_or_expression: "id"
+        alias: "track_id"
+      }
+      select_columns {
+        column_name_or_expression: "name"
+        alias: "track_name"
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+  EXPECT_THAT(*status_or_output,
+              HasSubstr("id: \"test_aggregation_total_dur\""));
+  EXPECT_THAT(*status_or_output,
+              HasSubstr("id: \"test_aggregation_slice_count\""));
+}
+
 TEST_F(TraceSummaryTest, MultiValueColumnTemplateSpec) {
   base::StatusOr<std::string> status_or_output = RunSummarize(R"(
     metric_template_spec {
@@ -907,6 +1066,129 @@ TEST_F(TraceSummaryTest, TemplateSpecWithUnitAndPolarity) {
   )-"));
 }
 
+TEST_F(TraceSummaryTest, InternedDimensionBundleUnusedKeysDropped) {
+  ASSERT_OK_AND_ASSIGN(auto output, RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "my_metric"
+      value_columns: "dur"
+      dimensions_specs { name: "dim_1" type: INT64 }
+      dimensions_specs { name: "dim_2" type: INT64 }
+      query {
+        sql {
+          sql: "SELECT 123 as dim_1, 123 as dim_2, 750.0 as dur UNION ALL SELECT 456 as dim_1, 789 as dim_2, 850.0 as dur"
+          column_names: "dim_1"
+          column_names: "dim_2"
+          column_names: "dur"
+        }
+      }
+      interned_dimension_specs {
+        key_column_spec { name: "dim_1" type: INT64 }
+        data_column_specs { name: "version_1" type: INT64 }
+        query {
+          sql {
+            sql: "SELECT 123 as dim_1, 100 as version_1 UNION ALL SELECT 456 as dim_1, 200 as version_1 UNION ALL SELECT 789 as dim_1, 300 as version_1"
+          }
+        }
+      }
+      interned_dimension_specs {
+        key_column_spec { name: "dim_2" type: INT64 }
+        data_column_specs { name: "version_2" type: INT64 }
+        query {
+          sql {
+            sql: "SELECT 123 as dim_2, 1000 as version_2 UNION ALL SELECT 456 as dim_2, 2000 as version_2 UNION ALL SELECT 789 as dim_2, 3000 as version_2"
+          }
+        }
+      }
+    }
+  )"));
+  EXPECT_THAT(output, EqualsIgnoringWhitespace(R"-(
+    metric_bundles {
+      bundle_id: "my_metric"
+      specs {
+        id: "my_metric_dur"
+        value: "dur"
+        dimensions_specs {
+          name: "dim_1"
+          type: INT64
+        }
+        dimensions_specs {
+          name: "dim_2"
+          type: INT64
+        }
+        query {
+          sql {
+            sql: "SELECT 123 as dim_1, 123 as dim_2, 750.0 as dur UNION ALL SELECT 456 as dim_1, 789 as dim_2, 850.0 as dur"
+            column_names: "dim_1"
+            column_names: "dim_2"
+            column_names: "dur"
+          }
+        }
+        bundle_id: "my_metric"
+        interned_dimension_specs {
+          key_column_spec {
+            name: "dim_1"
+            type: INT64
+          }
+          data_column_specs {
+            name: "version_1"
+            type: INT64
+          }
+          query {
+            sql {
+              sql: "SELECT 123 as dim_1, 100 as version_1 UNION ALL SELECT 456 as dim_1, 200 as version_1 UNION ALL SELECT 789 as dim_1, 300 as version_1"
+            }
+          }
+        }
+        interned_dimension_specs {
+          key_column_spec {
+            name: "dim_2"
+            type: INT64
+          }
+          data_column_specs {
+            name: "version_2"
+            type: INT64
+          }
+          query {
+            sql {
+              sql: "SELECT 123 as dim_2, 1000 as version_2 UNION ALL SELECT 456 as dim_2, 2000 as version_2 UNION ALL SELECT 789 as dim_2, 3000 as version_2"
+            }
+          }
+        }
+      }
+      row {
+        dimension { int64_value: 123 }
+        dimension { int64_value: 123 }
+        values { double_value: 750.000000 }
+      }
+      row {
+        dimension { int64_value: 456 }
+        dimension { int64_value: 789 }
+        values { double_value: 850.000000 }
+      }
+      interned_dimension_bundles {
+        interned_dimension_rows {
+          key_dimension_value { int64_value: 123 }
+          interned_dimension_values { int64_value: 100 }
+        }
+        interned_dimension_rows {
+          key_dimension_value { int64_value: 456 }
+          interned_dimension_values { int64_value: 200 }
+        }
+      }
+      interned_dimension_bundles {
+        interned_dimension_rows {
+          key_dimension_value { int64_value: 123 }
+          interned_dimension_values { int64_value: 1000 }
+        }
+        interned_dimension_rows {
+          key_dimension_value { int64_value: 789 }
+          interned_dimension_values { int64_value: 3000 }
+        }
+      }
+    }
+  )-"));
+}
+
 TEST_F(TraceSummaryTest, TemplateSpecWithValueColumnsAndSpecsError) {
   base::StatusOr<std::string> status_or_output = RunSummarize(R"(
     metric_template_spec {
@@ -1179,6 +1461,270 @@ TEST_F(TraceSummaryTest, OutputCompressionFailsWhenZlibDisabled) {
           "Zlib compression requested but is not supported on this platform."));
 }
 #endif
+
+// Test that sql.column_names works correctly with group_by transformations.
+// The column_names field describes what the SQL returns before transformations,
+// but group_by changes the output schema to group keys + aggregates.
+TEST_F(TraceSummaryTest, SqlColumnNamesWithGroupBy) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "test_metric"
+      dimensions: "process_name"
+      value_columns: "min_val"
+      value_columns: "max_val"
+      value_columns: "avg_val"
+      query {
+        sql {
+          column_names: "process_name"
+          column_names: "metric_val"
+          column_names: "dur"
+          sql: "
+            SELECT 'systemui' as process_name, 100 as metric_val, 1000 as dur
+            UNION ALL
+            SELECT 'systemui' as process_name, 200 as metric_val, 2000 as dur
+            UNION ALL
+            SELECT 'launcher' as process_name, 150 as metric_val, 1500 as dur
+          "
+        }
+        group_by {
+          column_names: "process_name"
+          aggregates {
+            column_name: "metric_val"
+            op: MIN
+            result_column_name: "min_val"
+          }
+          aggregates {
+            column_name: "metric_val"
+            op: MAX
+            result_column_name: "max_val"
+          }
+          aggregates {
+            column_name: "metric_val"
+            op: MEAN
+            result_column_name: "avg_val"
+          }
+        }
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+
+  // Verify we get metrics for both processes
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"test_metric_min_val\""));
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"test_metric_max_val\""));
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"test_metric_avg_val\""));
+
+  // Verify dimension values
+  EXPECT_THAT(*status_or_output, HasSubstr("string_value: \"systemui\""));
+  EXPECT_THAT(*status_or_output, HasSubstr("string_value: \"launcher\""));
+
+  // Verify aggregated values for systemui (min=100, max=200, avg=150)
+  EXPECT_THAT(*status_or_output, HasSubstr("double_value: 100.000000"));
+  EXPECT_THAT(*status_or_output, HasSubstr("double_value: 200.000000"));
+  EXPECT_THAT(*status_or_output, HasSubstr("double_value: 150.000000"));
+}
+
+// Test that sql.column_names works correctly with select_columns
+// transformations.
+TEST_F(TraceSummaryTest, SqlColumnNamesWithSelectColumns) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_spec {
+      id: "test_metric"
+      value: "renamed_value"
+      query {
+        sql {
+          column_names: "id"
+          column_names: "name"
+          column_names: "value"
+          sql: "SELECT 1 as id, 'foo' as name, 42.0 as value"
+        }
+        select_columns {
+          column_name_or_expression: "value"
+          alias: "renamed_value"
+        }
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"test_metric\""));
+  EXPECT_THAT(*status_or_output, HasSubstr("double_value: 42"));
+}
+
+// Test that sql.column_names validation still works when there are no
+// transformations (only filters, which don't change the schema).
+TEST_F(TraceSummaryTest, SqlColumnNamesWithFiltersOnly) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_spec {
+      id: "test_metric"
+      value: "value"
+      dimensions: "name"
+      query {
+        sql {
+          column_names: "name"
+          column_names: "value"
+          sql: "
+            SELECT 'a' as name, 10.0 as value
+            UNION ALL
+            SELECT 'b' as name, 20.0 as value
+            UNION ALL
+            SELECT 'c' as name, 30.0 as value
+          "
+        }
+        filters {
+          column_name: "value"
+          op: GREATER_THAN
+          double_rhs: 15.0
+        }
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+
+  EXPECT_THAT(*status_or_output, HasSubstr("id: \"test_metric\""));
+  // Should only have b and c (values > 15)
+  EXPECT_THAT(*status_or_output, HasSubstr("string_value: \"b\""));
+  EXPECT_THAT(*status_or_output, HasSubstr("string_value: \"c\""));
+  EXPECT_THAT(*status_or_output, HasSubstr("double_value: 20.000000"));
+  EXPECT_THAT(*status_or_output, HasSubstr("double_value: 30.000000"));
+}
+
+// Test the exact heap_graph_class_aggregation spec with inner_query_id
+// references in both the main query and interned_dimension_specs.
+TEST_F(TraceSummaryTest, HeapGraphClassAggregationSpec) {
+  base::StatusOr<std::string> status_or_output = RunSummarize(R"(
+    metric_template_spec {
+      id_prefix: "heap_graph_class_aggregation"
+      dimensions_specs {
+        name: "upid"
+        type: INT64
+      }
+      dimensions_specs {
+        name: "type_name"
+        type: STRING
+      }
+      dimensions_specs {
+        name: "is_libcore_or_array"
+        type: BOOLEAN
+      }
+      value_columns: "total_size_bytes"
+      value_columns: "total_native_size_bytes"
+      value_columns: "total_dominated_obj_count"
+      value_columns: "total_dominated_size_bytes"
+      value_columns: "total_reachable_obj_count"
+      interned_dimension_specs {
+        key_column_spec {
+          name: "upid"
+          type: INT64
+        }
+        data_column_specs {
+          name: "pid"
+          type: INT64
+        }
+        data_column_specs {
+          name: "process_name"
+          type: STRING
+        }
+        data_column_specs {
+          name: "uid"
+          type: INT64
+        }
+        data_column_specs {
+          name: "user_id"
+          type: INT64
+        }
+        data_column_specs {
+          name: "package_name"
+          type: STRING
+        }
+        data_column_specs {
+          name: "version_code"
+          type: INT64
+        }
+        data_column_specs {
+          name: "debuggable"
+          type: BOOLEAN
+        }
+        data_column_specs {
+          name: "is_kernel_task"
+          type: BOOLEAN
+        }
+        query {
+          inner_query_id: "process_metadata_query"
+        }
+      }
+      query {
+        inner_query_id: "heap_graph_class_aggregation_outer_query"
+      }
+    }
+    query {
+      id: "heap_graph_class_aggregation_outer_query"
+      table {
+        table_name: "android_heap_graph_class_aggregation"
+      }
+      referenced_modules: "android.memory.heap_graph.heap_graph_class_aggregation"
+      group_by {
+        column_names: "upid"
+        column_names: "type_name"
+        column_names: "is_libcore_or_array"
+        aggregates {
+          column_name: "size_bytes"
+          op: SUM
+          result_column_name: "total_size_bytes"
+        }
+        aggregates {
+          column_name: "native_size_bytes"
+          op: SUM
+          result_column_name: "total_native_size_bytes"
+        }
+        aggregates {
+          column_name: "dominated_obj_count"
+          op: SUM
+          result_column_name: "total_dominated_obj_count"
+        }
+        aggregates {
+          column_name: "dominated_size_bytes"
+          op: SUM
+          result_column_name: "total_dominated_size_bytes"
+        }
+        aggregates {
+          column_name: "reachable_obj_count"
+          op: SUM
+          result_column_name: "total_reachable_obj_count"
+        }
+      }
+    }
+    query {
+      id: "process_metadata_query"
+      referenced_modules: "android.process_metadata"
+      table {
+        table_name: "android_process_metadata"
+      }
+    }
+  )");
+  ASSERT_TRUE(status_or_output.ok()) << status_or_output.status().message();
+
+  // Verify all the expected metric IDs are generated
+  EXPECT_THAT(
+      *status_or_output,
+      HasSubstr("id: \"heap_graph_class_aggregation_total_size_bytes\""));
+  EXPECT_THAT(
+      *status_or_output,
+      HasSubstr(
+          "id: \"heap_graph_class_aggregation_total_native_size_bytes\""));
+  EXPECT_THAT(
+      *status_or_output,
+      HasSubstr(
+          "id: \"heap_graph_class_aggregation_total_dominated_obj_count\""));
+  EXPECT_THAT(
+      *status_or_output,
+      HasSubstr(
+          "id: \"heap_graph_class_aggregation_total_dominated_size_bytes\""));
+  EXPECT_THAT(
+      *status_or_output,
+      HasSubstr(
+          "id: \"heap_graph_class_aggregation_total_reachable_obj_count\""));
+}
 
 }  // namespace
 }  // namespace perfetto::trace_processor::summary

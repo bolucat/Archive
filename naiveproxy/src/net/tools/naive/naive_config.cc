@@ -74,12 +74,12 @@ NaiveConfig::NaiveConfig() = default;
 NaiveConfig::NaiveConfig(const NaiveConfig&) = default;
 NaiveConfig::~NaiveConfig() = default;
 
-bool NaiveConfig::Parse(const base::Value::Dict& value) {
+bool NaiveConfig::Parse(const base::DictValue& value) {
   if (const base::Value* v = value.Find("listen")) {
     std::vector<std::string> listen_strs;
     if (const std::string* str = v->GetIfString()) {
       listen_strs.push_back(*str);
-    } else if (const base::Value::List* strs = v->GetIfList()) {
+    } else if (const base::ListValue* strs = v->GetIfList()) {
       for (const auto& str_e : *strs) {
         if (const std::string* s = str_e.GetIfString()) {
           listen_strs.push_back(*s);
@@ -133,7 +133,7 @@ bool NaiveConfig::Parse(const base::Value::Dict& value) {
     std::vector<std::string> proxy_strs;
     if (const std::string* str = v->GetIfString(); str && !str->empty()) {
       proxy_strs.push_back(*str);
-    } else if (const base::Value::List* strs = v->GetIfList()) {
+    } else if (const base::ListValue* strs = v->GetIfList()) {
       for (const auto& str_e : *strs) {
         if (const std::string* s = str_e.GetIfString(); s && !s->empty()) {
           proxy_strs.push_back(*s);

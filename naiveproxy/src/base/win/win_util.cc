@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/win/win_util.h"
 
 #include <objbase.h>
@@ -41,6 +36,10 @@
 #include <winstring.h>
 #include <wrl/client.h>
 #include <wrl/wrappers/corewrappers.h>
+
+// LogSeverity is both a macro in setupapi.h and an enum in absl, which is used
+// indirectly via //base.
+#undef LogSeverity
 
 #include <limits>
 #include <memory>
@@ -86,8 +85,7 @@
 #include "base/win/windows_version.h"
 #include "base/win/wmi.h"
 
-namespace base {
-namespace win {
+namespace base::win {
 
 namespace {
 
@@ -128,7 +126,7 @@ void __cdecl ForceCrashOnSigAbort(int) {
 // Returns the current platform role. We use the PowerDeterminePlatformRoleEx
 // API for that.
 POWER_PLATFORM_ROLE GetPlatformRole() {
-  return PowerDeterminePlatformRoleEx(POWER_PLATFORM_ROLE_V2);
+  return ::PowerDeterminePlatformRoleEx(POWER_PLATFORM_ROLE_V2);
 }
 
 // Enable V2 per-monitor high-DPI support for the process. This will cause
@@ -157,7 +155,7 @@ bool EnablePerMonitorV2() {
 }
 
 bool* GetDomainEnrollmentStateStorage() {
-  static bool state = IsOS(OS_DOMAINMEMBER);
+  static bool state = ::IsOS(OS_DOMAINMEMBER);
   return &state;
 }
 
@@ -447,7 +445,7 @@ bool& IsDeviceFormConvertible() {
     using lpfnRtlGetDeviceFamilyInfo =
         VOID(WINAPI*)(ULONGLONG*, DWORD*, DWORD*);
     static const lpfnRtlGetDeviceFamilyInfo get_device_family_info_fn =
-        reinterpret_cast<lpfnRtlGetDeviceFamilyInfo>(GetProcAddress(
+        reinterpret_cast<lpfnRtlGetDeviceFamilyInfo>(::GetProcAddress(
             ::GetModuleHandle(L"ntdll.dll"), "RtlGetDeviceFamilyInfoEnum"));
     PCHECK(get_device_family_info_fn);
     get_device_family_info_fn(/*pullUAPInfo=*/nullptr,
@@ -659,7 +657,7 @@ void IsDeviceSlateWithKeyboard(HWND hwnd,
   // If no touch screen detected, assume keyboard attached.
   // TODO(crbug.com/383267933) If the device is mouse only with no touch screen,
   // this will determine that the device has a keyboard.
-  if ((GetSystemMetrics(SM_DIGITIZER) & NID_INTEGRATED_TOUCH) !=
+  if ((::GetSystemMetrics(SM_DIGITIZER) & NID_INTEGRATED_TOUCH) !=
       NID_INTEGRATED_TOUCH) {
     reason << "NID_INTEGRATED_TOUCH\n";
   }
@@ -753,9 +751,9 @@ bool SetBooleanValueForPropertyStore(IPropertyStore* property_store,
 
 bool SetStringValueForPropertyStore(IPropertyStore* property_store,
                                     const PROPERTYKEY& property_key,
-                                    const wchar_t* property_string_value) {
+                                    base::wcstring_view property_string_value) {
   ScopedPropVariant property_value;
-  if (FAILED(InitPropVariantFromString(property_string_value,
+  if (FAILED(InitPropVariantFromString(property_string_value.c_str(),
                                        property_value.Receive()))) {
     return false;
   }
@@ -778,13 +776,13 @@ bool SetClsidForPropertyStore(IPropertyStore* property_store,
 }
 
 bool SetAppIdForPropertyStore(IPropertyStore* property_store,
-                              const wchar_t* app_id) {
+                              base::wcstring_view app_id) {
   // App id should be less than 128 chars and contain no space. And recommended
   // format is CompanyName.ProductName[.SubProduct.ProductNumber].
   // See
   // https://docs.microsoft.com/en-us/windows/win32/shell/appids#how-to-form-an-application-defined-appusermodelid
-  DCHECK_LT(lstrlen(app_id), 128);
-  DCHECK_EQ(wcschr(app_id, L' '), nullptr);
+  DCHECK_LT(app_id.length(), 128u);
+  DCHECK_EQ(app_id.find(L' '), base::wcstring_view::npos);
 
   return SetStringValueForPropertyStore(property_store, PKEY_AppUserModel_ID,
                                         app_id);
@@ -859,7 +857,7 @@ bool IsDeviceUsedAsATablet(std::string* reason) {
   // reason is NULL.
   std::optional<bool> ret;
 
-  if (GetSystemMetrics(SM_MAXIMUMTOUCHES) == 0) {
+  if (::GetSystemMetrics(SM_MAXIMUMTOUCHES) == 0) {
     if (!reason) {
       return false;
     }
@@ -869,7 +867,7 @@ bool IsDeviceUsedAsATablet(std::string* reason) {
   }
 
   // If the device is docked, the user is treating the device as a PC.
-  if (GetSystemMetrics(SM_SYSTEMDOCKED) != 0) {
+  if (::GetSystemMetrics(SM_SYSTEMDOCKED) != 0) {
     if (!reason) {
       return false;
     }
@@ -884,7 +882,7 @@ bool IsDeviceUsedAsATablet(std::string* reason) {
   // a convertible or a detachable.
   // See
   // https://msdn.microsoft.com/en-us/library/windows/desktop/dn629263(v=vs.85).aspx
-  using GetAutoRotationStateType = decltype(GetAutoRotationState)*;
+  using GetAutoRotationStateType = decltype(::GetAutoRotationState)*;
   static const auto get_auto_rotation_state_func =
       reinterpret_cast<GetAutoRotationStateType>(
           GetUser32FunctionPointer("GetAutoRotationState"));
@@ -900,7 +898,7 @@ bool IsDeviceUsedAsATablet(std::string* reason) {
   POWER_PLATFORM_ROLE role = GetPlatformRole();
   bool is_tablet = false;
   if (role == PlatformRoleMobile || role == PlatformRoleSlate) {
-    is_tablet = !GetSystemMetrics(SM_CONVERTIBLESLATEMODE);
+    is_tablet = !::GetSystemMetrics(SM_CONVERTIBLESLATEMODE);
     if (!is_tablet) {
       if (!reason) {
         return false;
@@ -942,7 +940,7 @@ bool IsUser32AndGdi32Available() {
   static const bool is_user32_and_gdi32_available = [] {
     // If win32k syscalls aren't disabled, then user32 and gdi32 are available.
     PROCESS_MITIGATION_SYSTEM_CALL_DISABLE_POLICY policy = {};
-    if (::GetProcessMitigationPolicy(GetCurrentProcess(),
+    if (::GetProcessMitigationPolicy(::GetCurrentProcess(),
                                      ProcessSystemCallDisablePolicy, &policy,
                                      sizeof(policy))) {
       return policy.DisallowWin32kSystemCalls == 0;
@@ -1036,7 +1034,7 @@ std::wstring WStringFromGUID(const ::GUID& rguid) {
   constexpr int kGuidStringCharacters =
       1 + 8 + 1 + 4 + 1 + 4 + 1 + 4 + 1 + 12 + 1 + 1;
   wchar_t guid_string[kGuidStringCharacters];
-  CHECK(SUCCEEDED(StringCchPrintfW(
+  CHECK(SUCCEEDED(::StringCchPrintfW(
       guid_string, kGuidStringCharacters,
       L"{%08lX-%04X-%04X-%02X%02X-%02X%02X%02X%02X%02X%02X}", rguid.Data1,
       rguid.Data2, rguid.Data3, rguid.Data4[0], rguid.Data4[1], rguid.Data4[2],
@@ -1146,7 +1144,7 @@ bool IsCurrentSessionRemote() {
 }
 
 bool IsAppVerifierLoaded() {
-  return GetModuleHandleA(kApplicationVerifierDllName);
+  return ::GetModuleHandleA(kApplicationVerifierDllName);
 }
 
 std::optional<std::wstring> ExpandEnvironmentVariables(wcstring_view str) {
@@ -1314,5 +1312,4 @@ ScopedDeviceConvertibilityStateForTesting::
 ScopedDeviceConvertibilityStateForTesting::
     ~ScopedDeviceConvertibilityStateForTesting() = default;
 
-}  // namespace win
-}  // namespace base
+}  // namespace base::win

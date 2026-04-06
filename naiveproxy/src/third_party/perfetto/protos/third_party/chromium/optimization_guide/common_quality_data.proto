@@ -196,7 +196,7 @@ message PageContext {
 
 // The page content represented as a tree of semantic chunks and (in the
 // future) annotated with additional information about the page.
-// Next ID: 9
+// Next ID: 11
 message AnnotatedPageContent {
   // The version of the proto. Each time a backwards incompatible change is made
   // to the proto, the version should be incremented.
@@ -221,16 +221,33 @@ message AnnotatedPageContent {
 
   // The rect of the viewport for the tab. i.e., screenshot dimensions.
   // Dimensions are in captured pixels.
+  // This coordinate system should be used for coordinate based browser actions.
+  // This uses device independent pixels, i.e., doesn't include the device
+  // scale factor while other dimensions in APC are based on that.
   BoundingRect viewport_geometry = 5 [features = { field_presence: EXPLICIT }];
 
   // The id of the tab that the page content was extracted from. Guaranteed to
   // be unique within the browsing session.
   int32 tab_id = 7 [features = { field_presence: EXPLICIT }];
 
-  // A page can only have one popup window open at a time. If one is open, its
-  // details are populated here. The popup window draws on top of the tab and as
-  // such has a higher z order than the main frame's Document.
+  // Provides APC for internal popup widgets created by elements like <select>
+  // and <input type="color"> . Does not provide APC for separate windows opened
+  // via window.open() or similar. A page can only have one popup window open at
+  // a time. If one is open, its details are populated here. The popup window
+  // draws on top of the tab and as such has a higher z order than the main
+  // frame's Document.
   PopupWindow popup_window = 8 [features = { field_presence: EXPLICIT }];
+
+  // Information that pertains to the user's profile, not the page.
+  // TODO(crbug.com/454610456): This should be moved out of AnnotatedPageContent because
+  // it does not semantically belong here.
+  ProfileInformation profile_information = 9 [features = { field_presence: EXPLICIT }];
+
+  // Metadata about the page when Gemini in Chrome captures Annotated Page
+  // Content.
+  // TODO(crbug.com/484011242): This should be moved out of AnnotatedPageContent because
+  // it does not semantically belong here.
+  GeminiInChromePageMetadata gemini_in_chrome_page_metadata = 10 [features = { field_presence: EXPLICIT }];
 }
 
 // The ContentNode tree is a sparse representation of the DOM tree for a web
@@ -268,8 +285,8 @@ message ContentAttributes {
     // Only set if attribute_type is CONTENT_ATTRIBUTE_IMAGE.
     ImageInfo image_data = 11;
 
-    // Only set if attribute_type is CONTENT_ATTRIBUTE_SVG.
-    SVGData svg_data = 23;
+    // Only set if attribute_type is CONTENT_ATTRIBUTE_SVG_ROOT.
+    SVGRootData svg_root_data = 23;
 
     // Only set if attribute_type is CONTENT_ATTRIBUTE_CANVAS.
     CanvasData canvas_data = 24;
@@ -356,7 +373,7 @@ message ContentAttributes {
 }
 
 // The geometry of the content, in the page coordinate system.
-// Next ID: 6
+// Next ID: 7
 // NOTE: If `visual_bounding_box` is empty, i.e., the content is offscreen and
 // it's in an iframe, the `outer_bounding_box` may be incorrect. See crbug.com/384996050
 // for details.
@@ -380,6 +397,14 @@ message Geometry {
   // ancestor clipping. These are the element bounds visible to the user and
   // hit-testable in the DOM.
   BoundingRect visible_bounding_box = 2 [features = { field_presence: EXPLICIT }];
+
+  // Multiple boxes are used when there are multiple rectangles belonging to
+  // the same node, e.g.: across multiple lines, columns or pages. In layout
+  // terms, a node that does this is called a fragmentainer.
+  // Each rectangle represents a hit testable fragment belonging to the node.
+  // An empty array indicates that the node is not fragmented or is entirely
+  // offscreen. Relative to viewport origin.
+  repeated BoundingRect fragment_visible_bounding_boxes = 6;
 
   // Whether the content node is fixed or sticky position. This may suggest
   // that the node is a header, footer, or sidebar.
@@ -407,7 +432,7 @@ message BoundingRect {
 // Note: ScrollerInfo is populated for ANNOTATED_PAGE_CONTENT_MODE_DEFAULT. The
 // rest of the fields are only populated for
 // ANNOTATED_PAGE_CONTENT_MODE_ACTIONABLE_ELEMENTS.
-// Next ID: 16
+// Next ID: 18
 message InteractionInfo {
   // Set if the content node is scrollable.
   ScrollerInfo scroller_info = 12 [features = { field_presence: EXPLICIT }];
@@ -475,6 +500,18 @@ message InteractionInfo {
   // Provides signals which indicate whether the node is actionable. The action
   // may be triggered by clicking or hovering on the element.
   repeated ClickabilityReason clickability_reasons = 15;
+
+  // Whether the content node is explicitly disabled from being actionable. For
+  // example, a `select` element with the `disabled` or `aria-disabled`
+  // attribute. Disabled nodes are still valid action targets and can consume
+  // events. This is not set for nodes which are not hit-testable and will
+  // ignore events, for example with `pointer-events: none`.
+  bool is_disabled = 16 [features = { field_presence: EXPLICIT }];
+
+  // Hints on why the interaction with the node is disabled.
+  //
+  // TODO(linnan): Deprecate is_disabled in favour of the list of reasons.
+  repeated InteractionDisabledReason interaction_disabled_reasons = 17;
 
   reserved 8, 1, 2, 11;
 }
@@ -559,7 +596,7 @@ message SecurityOrigin {
   string value = 2 [features = { field_presence: EXPLICIT }];
 }
 
-message SVGData {
+message SVGRootData {
   // The inner text for the SVG subtree.
   string inner_text = 1 [features = { field_presence: EXPLICIT }];
 }
@@ -585,12 +622,20 @@ message AnchorData {
   repeated AnchorRel rel = 2;
 }
 
+// FormInfo is a mirror of AIPageContentFormData from
+// third_party/blink/public/mojom/content_extraction/ai_page_content.mojom,
+// in contrast with FormData, which is a mirror of autofill::FormData from
+// components/autofill/core/common/mojom/autofill_types.mojom.
 message FormInfo {
-  // The of the form.
+  // The name of the form.
   string form_name = 1 [features = { field_presence: EXPLICIT }];
+
+  // The action URL of the form, if present. This is the resolved value
+  // including the final origin.
+  string action_url = 2 [features = { field_presence: EXPLICIT }];
 }
 
-// Next ID: 11
+// Next ID: 12
 message FormControlData {
   // The name for the field.
   string field_name = 1 [features = { field_presence: EXPLICIT }];
@@ -628,6 +673,9 @@ message FormControlData {
   // in AnnotatedPageContent traversal order according to Autofill's
   // understanding of forms).
   uint32 autofill_section_id = 10 [features = { field_presence: EXPLICIT }];
+
+  // Whether the field is readonly.
+  bool is_readonly = 11 [features = { field_presence: EXPLICIT }];
 }
 
 // Represents an option in a select field. See below for example.
@@ -729,10 +777,17 @@ message FrameData {
 
 // The interaction information for the frame. This is for interactions that
 // are specific to the frame, such as the current selection.
-// Next ID: 2
+// Next ID: 4
 message FrameInteractionInfo {
   // The current selection.
   Selection selection = 1 [features = { field_presence: EXPLICIT }];
+
+  // The content node ID of the content node that is currently focused.
+  int32 focused_node_id = 2 [features = { field_presence: EXPLICIT }];
+
+  // The content node ID of the content node that is currently focused by a
+  // screen reader. If this is set, it means that a screen reader is being used.
+  int32 accessibility_focused_node_id = 3 [features = { field_presence: EXPLICIT }];
 }
 
 // Represents a selection in the page. This is a frame-level concept.
@@ -841,7 +896,7 @@ message ScriptToolAnnotations {
 }
 
 // Result of executing a script tool.
-// Next ID: 3
+// Next ID: 6
 // TODO(khushalsagar): Move this to actions_data.proto.
 message ScriptToolResult {
   // The index of the ScriptToolAction in the Actions proto. This is used to
@@ -850,6 +905,15 @@ message ScriptToolResult {
 
   // The result from executing the tool, if the execution was successful.
   string result = 2 [features = { field_presence: EXPLICIT }];
+
+  // Provides the name and arguments the tool was invoked with. This is
+  // populated to provide context for the result.
+  string tool_name = 3 [features = { field_presence: EXPLICIT }];
+
+  string input_arguments = 4 [features = { field_presence: EXPLICIT }];
+
+  // The tool that was executed.
+  ScriptTool tool = 5 [features = { field_presence: EXPLICIT }];
 }
 
 message TableRowData {
@@ -861,17 +925,24 @@ message TableRowData {
 // there can only be one unique value.
 // Currently this is only tracked for the main frame. The IDs correspond to the
 // DOM node IDs of the content nodes in the main frame.
-// Next ID: 4
+// Next ID: 5
 message PageInteractionInfo {
   // The content node ID of the content node that is currently focused.
+  // TODO(linnan): Deprecate this field in favor of
+  // FrameInteractionInfo.focused_node_id.
   int32 focused_node_id = 1 [features = { field_presence: EXPLICIT }];
 
   // The content node ID of the content node that is currently focused by a
   // screen reader. If this is set, it means that a screen reader is being used.
+  // TODO(linnan): Deprecate this field in favor of
+  // FrameInteractionInfo.accessibility_focused_node_id.
   int32 accessibility_focused_node_id = 2 [features = { field_presence: EXPLICIT }];
 
   // The last known mouse position, in the page coordinate system.
   Point mouse_position = 3 [features = { field_presence: EXPLICIT }];
+
+  // The identifier of the frame that currently has focus.
+  DocumentIdentifier focused_frame = 4 [features = { field_presence: EXPLICIT }];
 }
 
 message Point {
@@ -881,13 +952,14 @@ message Point {
 }
 
 // Represents a popup window that is open on a web page.
-// Next ID: 5
+// Next ID: 6
 message PopupWindow {
   // Root node for the document in the window.
   ContentNode root_node = 1 [features = { field_presence: EXPLICIT }];
 
-  // Metadata for the document in the window.
-  FrameData frame_data = 2 [features = { field_presence: EXPLICIT }];
+  // The bounding box of the popup window relative to the viewport. The popup is
+  // not clipped by any ancestor except the viewport clipping the screenshot.
+  BoundingRect visible_bounding_box = 5 [features = { field_presence: EXPLICIT }];
 
   // Unique identifier for the document which opened this popup window.
   DocumentIdentifier opener_document_id = 3 [features = { field_presence: EXPLICIT }];
@@ -895,6 +967,54 @@ message PopupWindow {
   // Unique identifier for the node which opened this popup window. Relies on
   // opener_document_id to determine which document contains the node.
   int32 opener_common_ancestor_dom_node_id = 4 [features = { field_presence: EXPLICIT }];
+
+  reserved 2;
+}
+
+// Information that pertains the user's Chrome profile.
+// Next ID: 2
+message ProfileInformation {
+  AutofillInformation autofill_information = 1 [features = { field_presence: EXPLICIT }];
+}
+
+// Autofill information that pertains to Autofill data on the client.
+// Next ID: 2
+message AutofillInformation {
+  repeated FillableData fillable_data = 1;
+
+  // The type of data that can be autofilled into a form because the client has
+  // corresponding data on file. Note that this is coarse data: A user may have
+  // an address on file that does not contain an email address. So the autofill
+  // status may indicate that an address is fillable but autofill cannot be
+  // triggered on an email field.
+  enum FillableData {
+    UNSPECIFIED = 0;
+
+    // If reported, the user has at least one address on file.
+    ADDRESS = 1;
+
+    // The gap in numbering here exists to stay aligned with
+    // FormFillingRequest.RequestedData.
+
+    // If reported, the user has at least one credit card on file.
+    CREDIT_CARD = 6;
+  }
+}
+
+// Metadata about the page from Gemini in Chrome.
+// Next ID: 2
+message GeminiInChromePageMetadata {
+  // Information about the associated screenshot.
+  ScreenshotInfo screenshot_info = 1 [features = { field_presence: EXPLICIT }];
+}
+
+// The screenshot information for the page. While the screenshot is not
+// conveyed in the parent message, this metadata should be used to inform the
+// model about the screenshot.
+// Next ID: 2
+message ScreenshotInfo {
+  // Whether the screenshot contains a selection region.
+  bool has_selection_region_in_screenshot = 1 [features = { field_presence: EXPLICIT }];
 }
 
 // Uniquely identifies a DOM elements across all frames.
@@ -1041,11 +1161,35 @@ message SiteEngagement {
 }
 
 // The coordinates of a point.
-// Next ID: 3
+// Next ID: 4
 message Coordinate {
   int32 x = 1 [features = { field_presence: EXPLICIT }];
 
   int32 y = 2 [features = { field_presence: EXPLICIT }];
+
+  // The type of the coordinate. If not specified, the coordinate is assumed to
+  // be relative to the viewport dimensions or screenshot dimensions depending
+  // on the context.
+  PixelType pixel_type = 3 [features = { field_presence: EXPLICIT }];
+
+  enum PixelType {
+    // The coordinate type is not specified. Assumed to be viewport.
+    PIXEL_TYPE_UNSPECIFIED = 0;
+
+    // Density independent pixels (DIPs).
+    // The coordinate is in DIPs which are independent of OS-level UI scaling.
+    // e.g., The coordinate is relative to the viewport dimensions set in APC.
+    PIXEL_TYPE_DIPS = 1;
+
+    // Physical pixels.
+    // The coordinate is provided in physical screen pixels. Values provided in
+    // physical pixels depend on UI scaling factor so must not be used when the
+    // scaling factor changes (e.g. APC generated, window moved to a higher
+    // density monitor; physical coordinate values must now be invalidated).
+    // e.g., The coordinate is relative to the dimensions of the annotated page
+    // content root node.
+    PIXEL_TYPE_PHYSICAL_PIXELS = 2;
+  }
 }
 
 // A meta tag (https://developer.mozilla.org/en-US/docs/Wecrbug.com/HTML/Element/meta).
@@ -1059,12 +1203,14 @@ message MetaTag {
 }
 
 // Metadata about a frame.
-// Next ID: 3
+// Next ID: 4
 message FrameMetadata {
   // The URL of the frame.
   string url = 1 [features = { field_presence: EXPLICIT }];
 
   repeated MetaTag meta_tags = 2;
+
+  bool has_media_transcripts = 3 [features = { field_presence: EXPLICIT }];
 }
 
 // Metadata (URL and meta tags) from page content. Includes data from meta tags
@@ -1073,6 +1219,14 @@ message FrameMetadata {
 message PageMetadata {
   // The main frame is the first entry in the array.
   repeated FrameMetadata frame_metadata = 1;
+}
+
+message DocumentSelection {
+  // The document identifier of the document/frame that this selection is from.
+  DocumentIdentifier document_identifier = 1 [features = { field_presence: EXPLICIT }];
+
+  // The selection in the document.
+  Selection selection = 2 [features = { field_presence: EXPLICIT }];
 }
 
 // Selection text affinity, part of the a11y snapshot.
@@ -1608,7 +1762,7 @@ enum AXStringAttribute {
 }
 
 // AX Int attribute enum.
-// Next ID: 69
+// Next ID: 70
 enum AXIntAttribute {
   AX_IA_NONE = 0;
 
@@ -1747,6 +1901,8 @@ enum AXIntAttribute {
   AX_IA_MAXLENGTH = 67;
 
   AX_IA_PAINTORDER = 68;
+
+  AX_IA_COMMITTEDTEXTLENGTH = 69;
 }
 
 // AX Float attribute enum.
@@ -1772,7 +1928,7 @@ enum AXFloatAttribute {
 }
 
 // AX Bool attribute enum.
-// Next ID: 23
+// Next ID: 26
 enum AXBoolAttribute {
   AX_BA_NONE = 0;
 
@@ -1819,6 +1975,12 @@ enum AXBoolAttribute {
   AX_BA_LONGCLICKABLE = 21;
 
   AX_BA_HASHIDDENOFFSCREENNODES = 22;
+
+  AX_BA_HASCOMPOSITION = 23;
+
+  AX_BA_COMMITTEDBYIME = 24;
+
+  AX_BA_TEXTSUGGESTIONSELECTEDBYIME = 25;
 }
 
 // AX IntList attribute enum.
@@ -1953,7 +2115,8 @@ enum ContentAttributeType {
   // Image chunks.
   CONTENT_ATTRIBUTE_IMAGE = 9;
 
-  CONTENT_ATTRIBUTE_SVG = 25;
+  // Root SVG nodes.
+  CONTENT_ATTRIBUTE_SVG_ROOT = 25;
 
   CONTENT_ATTRIBUTE_CANVAS = 26;
 
@@ -2038,6 +2201,21 @@ enum ClickabilityReason {
   // in Chrome to know what properties the rule might effect, so this reason
   // just indicates that a :hover rule is defined.
   CLICKABILITY_REASON_HOVER_PSEUDO_CLASS = 14;
+}
+
+// Provides hints that indicate that interaction with this node is disabled.
+// Next ID: 4
+enum InteractionDisabledReason {
+  INTERACTION_DISABLED_REASON_UNSPECIFIED = 0;
+
+  // The node is disabled by the `disabled` attribute.
+  INTERACTION_DISABLED_REASON_DISABLED = 1;
+
+  // The node is disabled by the `aria-disabled` attribute.
+  INTERACTION_DISABLED_REASON_ARIA_DISABLED = 2;
+
+  // The node has the style `cursor: not-allowed`.
+  INTERACTION_DISABLED_REASON_CURSOR_NOT_ALLOWED = 3;
 }
 
 // Next ID: 5
@@ -2150,6 +2328,30 @@ enum RedactionDecision {
 
   // Is a password input or was in the past.
   REDACTION_DECISION_REDACTED_HAS_BEEN_PASSWORD = 2;
+
+  // Empty payment fields are not redacted.
+  REDACTION_DECISION_UNREDACTED_EMPTY_PAYMENT_FIELD = 3;
+
+  // Is a non-empty field that autofill recognized as a sensitive payment field
+  // type and so must be redacted.
+  REDACTION_DECISION_REDACTED_IS_SENSITIVE_PAYMENT_FIELD = 4;
+
+  // Empty inputs which have been classified as password-like by heuristic
+  // redaction (e.g. `-webkit-text-security`). These are not redacted since they
+  // contain no sensitive content, but the classification is preserved.
+  REDACTION_DECISION_UNREDACTED_EMPTY_CUSTOM_PASSWORD = 5;
+
+  // Is a password-like input detected by heuristic redaction based on CSS
+  // masking (e.g. `-webkit-text-security` set to a masking value, not `none`).
+  REDACTION_DECISION_REDACTED_CUSTOM_PASSWORD_CSS = 6;
+
+  // Is a password-like input detected by heuristic redaction based on a
+  // JavaScript-masked value (e.g. mostly bullet-like masking characters).
+  REDACTION_DECISION_REDACTED_CUSTOM_PASSWORD_JS = 7;
+
+  // Is a non-empty field that autofill recognized as an OTP field and so must
+  // be redacted.
+  REDACTION_DECISION_REDACTED_IS_OTP = 8;
 }
 
 // The type of data that can be autofilled into a form.
@@ -2244,4 +2446,29 @@ enum UserFeedback {
   USER_FEEDBACK_THUMBS_DOWN = 1;
 
   USER_FEEDBACK_THUMBS_UP = 2;
+}
+
+// The platform for the user's Chrome on which the request was made. Roughly
+// matches the same platforms that are available via UMA.
+enum ChromePlatform {
+  // Unknown is used when the user's platform cannot be resolved.
+  CHROME_PLATFORM_UNKNOWN = 0;
+
+  // Android based platforms.
+  CHROME_PLATFORM_ANDROID = 1;
+
+  // ChromeOS platforms including all architectures.
+  CHROME_PLATFORM_CHROMEOS = 2;
+
+  // IOS based platforms.
+  CHROME_PLATFORM_IOS = 3;
+
+  // Linux platforms including all architectures.
+  CHROME_PLATFORM_LINUX = 4;
+
+  // Mac based platforms.
+  CHROME_PLATFORM_MAC = 5;
+
+  // Windows based platforms.
+  CHROME_PLATFORM_WINDOWS = 6;
 }

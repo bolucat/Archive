@@ -35,7 +35,7 @@ class NET_EXPORT CertVerifyResult {
   // Creates NetLog parameter to describe the CertVerifyResult. |net_error| is
   // a net error code to include in the params, if non-zero. It must not be
   // ERR_IO_PENDING, as that is not a true error.
-  base::Value::Dict NetLogParams(int net_error) const;
+  base::DictValue NetLogParams(int net_error) const;
 
   // The certificate chain that was constructed during verification.
   //
@@ -60,10 +60,6 @@ class NET_EXPORT CertVerifyResult {
   // |verified_cert|, rather than the originally supplied certificate
   // chain.
   CertStatus cert_status;
-
-  // Hash algorithms used by the certificate chain, excluding the trust
-  // anchor.
-  bool has_sha1;
 
   // If the certificate was successfully verified then this contains the
   // hashes for all of the SubjectPublicKeyInfos of the chain (target,

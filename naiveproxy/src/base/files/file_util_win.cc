@@ -25,7 +25,6 @@
 
 #include "base/check.h"
 #include "base/clang_profiling_buildflags.h"
-#include "base/compiler_specific.h"
 #include "base/feature_list.h"
 #include "base/features.h"
 #include "base/files/file_enumerator.h"
@@ -662,7 +661,7 @@ File CreateAndOpenTemporaryFileInDir(const FilePath& dir, FilePath* temp_file) {
   // still use a loop here in case it happens.
   for (int i = 0; i < 100; ++i) {
     temp_name = dir.Append(FormatTemporaryFileName(
-        UTF8ToWide(Uuid::GenerateRandomV4().AsLowercaseString())));
+        UTF8ToWide(Uuid::GenerateRandomV4().AsLowercaseString()), true));
     file.Initialize(temp_name, kFlags);
     if (file.IsValid()) {
       break;
@@ -692,7 +691,8 @@ bool CreateTemporaryFileInDir(const FilePath& dir, FilePath* temp_file) {
   return CreateAndOpenTemporaryFileInDir(dir, temp_file).IsValid();
 }
 
-FilePath FormatTemporaryFileName(FilePath::StringViewType identifier) {
+FilePath FormatTemporaryFileName(FilePath::StringViewType identifier,
+                                 bool /*hidden*/) {
   return FilePath(StrCat({identifier, FILE_PATH_LITERAL(".tmp")}));
 }
 
@@ -719,8 +719,8 @@ bool CreateTemporaryDirInDir(const FilePath& base_dir,
     new_dir_name.assign(prefix);
     new_dir_name.append(AsWString(NumberToString16(GetCurrentProcId())));
     new_dir_name.push_back('_');
-    new_dir_name.append(AsWString(
-        NumberToString16(RandInt(0, std::numeric_limits<int32_t>::max()))));
+    new_dir_name.append(AsWString(NumberToString16(
+        RandIntInclusive(0, std::numeric_limits<int32_t>::max()))));
 
     path_to_create = base_dir.Append(new_dir_name);
     if (::CreateDirectory(path_to_create.value().c_str(), NULL)) {
@@ -892,9 +892,8 @@ bool DevicePathToDriveLetterPath(const FilePath& nt_device_path,
       FilePath device_path(device_path_as_string);
       if (device_path == nt_device_path ||
           device_path.IsParent(nt_device_path)) {
-        *out_drive_letter_path =
-            FilePath(drive + nt_device_path.value().substr(
-                                 UNSAFE_TODO(wcslen(device_path_as_string))));
+        *out_drive_letter_path = FilePath(
+            drive + nt_device_path.value().substr(device_path.value().size()));
         return true;
       }
     }
@@ -971,12 +970,14 @@ bool GetFileInfo(const FilePath& file_path, File::Info* results) {
   return true;
 }
 
-FILE* OpenFile(const FilePath& filename, const char* mode) {
+FILE* OpenFile(const FilePath& filename, base::cstring_view mode) {
+  size_t n_pos = mode.find('N');
+  size_t comma_pos = mode.find(',');
+
   // 'N' is unconditionally added below, so be sure there is not one already
-  // present before a comma in |mode|.
-  DCHECK(UNSAFE_TODO(strchr(mode, 'N')) == nullptr ||
-         (UNSAFE_TODO(strchr(mode, ',')) != nullptr &&
-          UNSAFE_TODO(strchr(mode, 'N')) > UNSAFE_TODO(strchr(mode, ','))));
+  // present before a comma in `mode`.
+  DCHECK(n_pos == base::cstring_view::npos ||
+         (comma_pos != base::cstring_view::npos && n_pos > comma_pos));
   ScopedBlockingCall scoped_blocking_call(FROM_HERE, BlockingType::MAY_BLOCK);
   std::wstring w_mode = UTF8ToWide(mode);
   AppendModeCharacter(L'N', &w_mode);
@@ -1239,8 +1240,8 @@ bool PreventExecuteMappingInternal(const FilePath& path, bool skip_path_check) {
     return false;
   }
 
-  static constexpr wchar_t kEveryoneSid[] = L"WD";
-  auto sids = win::Sid::FromSddlStringVector({kEveryoneSid});
+  const std::vector<std::wstring> sddl = {L"WD"};
+  auto sids = win::Sid::FromSddlStringVector(sddl);
 
   // Remove executable access from the file. The API does not add a duplicate
   // ACE if it already exists.

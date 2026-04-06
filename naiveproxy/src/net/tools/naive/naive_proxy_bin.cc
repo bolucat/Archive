@@ -100,16 +100,16 @@ constexpr int kExpectedMaxUsers = 8;
 constexpr net::NetworkTrafficAnnotationTag kTrafficAnnotation =
     net::DefineNetworkTrafficAnnotation("naive", "");
 
-std::unique_ptr<base::Value::Dict> GetConstants() {
-  base::Value::Dict constants_dict = net::GetNetConstants();
-  base::Value::Dict dict;
+std::unique_ptr<base::DictValue> GetConstants() {
+  base::DictValue constants_dict = net::GetNetConstants();
+  base::DictValue dict;
   std::string os_type = base::StringPrintf(
       "%s: %s (%s)", base::SysInfo::OperatingSystemName().c_str(),
       base::SysInfo::OperatingSystemVersion().c_str(),
       base::SysInfo::OperatingSystemArchitecture().c_str());
   dict.Set("os_type", os_type);
   constants_dict.Set("clientInfo", std::move(dict));
-  return std::make_unique<base::Value::Dict>(std::move(constants_dict));
+  return std::make_unique<base::DictValue>(std::move(constants_dict));
 }
 }  // namespace
 
@@ -167,7 +167,7 @@ std::unique_ptr<URLRequestContext> BuildCertURLRequestContext(NetLog* net_log) {
       ConfiguredProxyResolutionService::CreateWithoutProxyResolver(
           std::make_unique<ProxyConfigServiceFixed>(
               ProxyConfigWithAnnotation(proxy_config, kTrafficAnnotation)),
-          net_log);
+          nullptr, net_log);
   proxy_service->ForceReloadProxyConfig();
   builder.set_proxy_resolution_service(std::move(proxy_service));
 
@@ -232,7 +232,7 @@ std::unique_ptr<URLRequestContext> BuildURLRequestContext(
       ConfiguredProxyResolutionService::CreateWithoutProxyResolver(
           std::make_unique<ProxyConfigServiceFixed>(
               ProxyConfigWithAnnotation(proxy_config, kTrafficAnnotation)),
-          net_log);
+          nullptr, net_log);
   proxy_service->ForceReloadProxyConfig();
   builder.set_proxy_resolution_service(std::move(proxy_service));
 
@@ -359,19 +359,19 @@ int main(int argc, char* argv[]) {
   url::AddStandardScheme("socks",
                          url::SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION);
   url::AddStandardScheme("redir", url::SCHEME_WITH_HOST_AND_PORT);
-  net::ClientSocketPoolManager::set_max_sockets_per_pool(
+  net::ClientSocketPoolManager::set_socket_soft_cap_per_pool_for_test(
       net::HttpNetworkSession::NORMAL_SOCKET_POOL,
       kDefaultMaxSocketsPerPool * kExpectedMaxUsers);
   net::ClientSocketPoolManager::set_max_sockets_per_proxy_chain(
       net::HttpNetworkSession::NORMAL_SOCKET_POOL,
       kDefaultMaxSocketsPerPool * kExpectedMaxUsers);
-  net::ClientSocketPoolManager::set_max_sockets_per_group(
+  net::ClientSocketPoolManager::set_max_sockets_per_group_for_test(
       net::HttpNetworkSession::NORMAL_SOCKET_POOL,
       kDefaultMaxSocketsPerGroup * kExpectedMaxUsers);
 
   const auto& proc = *base::CommandLine::ForCurrentProcess();
   const auto& args = proc.GetArgs();
-  base::Value::Dict config_dict;
+  base::DictValue config_dict;
   if (args.empty() && proc.argv().size() >= 2) {
     config_dict = GetSwitchesAsValue(proc);
   } else {
@@ -391,7 +391,7 @@ int main(int argc, char* argv[]) {
                 << ") " << error_message << std::endl;
       return EXIT_FAILURE;
     }
-    if (const base::Value::Dict* dict = value->GetIfDict()) {
+    if (const base::DictValue* dict = value->GetIfDict()) {
       config_dict = dict->Clone();
     }
   }

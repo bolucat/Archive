@@ -18,6 +18,7 @@
 ^buildtools/third_party/libunwind/BUILD.gn
 ^chrome/VERSION
 ^chrome/android/profiles/newest.txt
+^chrome/app/app-Info.plist
 ^chrome/app/theme/chromium/BRANDING
 ^chrome/build/*.txt
 ^chrome/version.gni
@@ -76,6 +77,7 @@
 ^tools/clang/scripts/update.py
 ^tools/grit
 ^tools/gritsettings
+^tools/metrics
 ^tools/protoc_wrapper
 ^tools/ubsan
 ^tools/update_pgo_profiles.py

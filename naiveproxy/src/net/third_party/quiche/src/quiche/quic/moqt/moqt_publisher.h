@@ -11,10 +11,13 @@
 
 #include "absl/base/nullability.h"
 #include "quiche/quic/core/quic_time.h"
+#include "quiche/quic/moqt/moqt_error.h"
 #include "quiche/quic/moqt/moqt_fetch_task.h"
-#include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
+#include "quiche/quic/moqt/moqt_names.h"
 #include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_priority.h"
+#include "quiche/quic/moqt/moqt_types.h"
 #include "quiche/web_transport/web_transport.h"
 
 namespace moqt {
@@ -31,12 +34,13 @@ class MoqtObjectListener {
   virtual void OnSubscribeAccepted() = 0;
   // Called when the publisher is sure that it cannot serve the subscription.
   // This could happen synchronously or asynchronously.
-  virtual void OnSubscribeRejected(MoqtSubscribeErrorReason reason) = 0;
+  virtual void OnSubscribeRejected(MoqtRequestErrorInfo info) = 0;
 
   // Notifies that a new object is available on the track.  The object payload
   // itself may be retrieved via GetCachedObject method of the associated track
-  // publisher.
-  virtual void OnNewObjectAvailable(Location sequence, uint64_t subgroup,
+  // publisher. If |subgroup| is nullopt, the object is a datagram.
+  virtual void OnNewObjectAvailable(Location sequence,
+                                    std::optional<uint64_t> subgroup,
                                     MoqtPriority publisher_priority) = 0;
   // Notifies that a pure FIN has arrived following |sequence|. Should not be
   // called unless all objects have already been delivered. If not delivered,
@@ -78,13 +82,11 @@ class MoqtTrackPublisher {
   // whenever they are sent.  Once an object is not available via the cache, it
   // can no longer be sent; this ensures that objects are not buffered forever.
   //
-  // This method returns nullopt if the object is not currently available, but
-  // might become available in the future.  If the object is gone forever,
-  // kEndOfGroup/kObjectDoesNotExist has to be returned instead;
-  // otherwise, the corresponding QUIC streams will be stuck waiting for objects
-  // that will never arrive.
+  // This method returns nullopt if the object is not currently available.
+  // If |subgroup| is nullopt, the object is a datagram.
   virtual std::optional<PublishedObject> GetCachedObject(
-      uint64_t group, uint64_t subgroup, uint64_t min_object) const = 0;
+      uint64_t group, std::optional<uint64_t> subgroup,
+      uint64_t min_object) const = 0;
 
   // Registers a listener with the track.  The listener will be notified of all
   // newly arriving objects. The pointer to the listener must be valid until
@@ -93,23 +95,20 @@ class MoqtTrackPublisher {
   virtual void RemoveObjectListener(MoqtObjectListener* listener) = 0;
 
   // Methods to return various track properties. Returns nullopt if the value is
-  // not yet available. Guaranteed to be non-null if an object is available
-  // and/or OnSubscribeAccepted() has been called.
+  // not yet available.
   // Track alias is not present because MoqtSession always uses locally
   // generated values.
   virtual std::optional<Location> largest_location() const = 0;
-  virtual std::optional<MoqtForwardingPreference> forwarding_preference()
-      const = 0;
-  virtual std::optional<MoqtDeliveryOrder> delivery_order() const = 0;
+  virtual const TrackExtensions& extensions() const = 0;
   virtual std::optional<quic::QuicTimeDelta> expiration() const = 0;
 
   // Performs a fetch for the specified range of objects.
   virtual std::unique_ptr<MoqtFetchTask> StandaloneFetch(
-      Location start, Location end, std::optional<MoqtDeliveryOrder> order) = 0;
+      Location start, Location end, MoqtDeliveryOrder order) = 0;
   virtual std::unique_ptr<MoqtFetchTask> RelativeFetch(
-      uint64_t group_diff, std::optional<MoqtDeliveryOrder> order) = 0;
+      uint64_t group_diff, MoqtDeliveryOrder order) = 0;
   virtual std::unique_ptr<MoqtFetchTask> AbsoluteFetch(
-      uint64_t group, std::optional<MoqtDeliveryOrder> order) = 0;
+      uint64_t group, MoqtDeliveryOrder order) = 0;
 };
 
 // MoqtPublisher is an interface to a publisher that allows it to publish

@@ -15,7 +15,8 @@
 --
 
 CREATE PERFETTO FUNCTION _extract_anr_type(
-    subject STRING
+    subject STRING,
+    process_name STRING
 )
 RETURNS STRING AS
 SELECT
@@ -54,6 +55,9 @@ SELECT
     THEN 'APP_TRIGGERED'
     WHEN $subject GLOB 'required notification not provided*'
     THEN 'JOB_SERVICE_NOTIFICATION_NOT_PROVIDED'
+    -- If the subject doesn't match any of the known patterns but it's an ANR in system_server, we label it as a system server watchdog timeout
+    WHEN $process_name = 'system_server'
+    THEN 'SYSTEM_SERVER_WATCHDOG_TIMEOUT'
     ELSE 'UNKNOWN_ANR_TYPE'
   END;
 
@@ -122,6 +126,19 @@ SELECT
     ELSE NULL
   END;
 
+-- Extract the ANR duration (milliseconds) from the subject line
+CREATE PERFETTO FUNCTION _extract_anr_duration_from_subject(
+    subject STRING
+)
+RETURNS LONG AS
+SELECT
+  CASE
+    -- e.g. 'Blocked in handler on foreground thread (android.fg) for 2s'
+    WHEN $subject GLOB '*Blocked in* for *s*'
+    THEN CAST(regexp_extract($subject, ' for ([0-9]+)s') * 1000 AS LONG)
+    ELSE NULL
+  END;
+
 -- Some of the anr timer events don't use the standard anr types and we have to convert them (temporal solution).
 -- For 'JobScheduler' there's not a 1:1 mapping to a standard type.
 CREATE PERFETTO FUNCTION _platform_to_standard_anr_type(
@@ -143,6 +160,67 @@ SELECT
     ELSE $platform
   END;
 
+CREATE PERFETTO FUNCTION _get_intent(
+    anr_type STRING,
+    subject STRING
+)
+RETURNS STRING AS
+SELECT
+  CASE
+    WHEN $anr_type = 'BROADCAST_OF_INTENT' AND $subject GLOB 'Broadcast of Intent *act=*'
+    THEN str_split(substr($subject, instr($subject, 'act=') + 4), ' ', 0)
+    WHEN $anr_type = 'BROADCAST_OF_INTENT' AND $subject GLOB 'Broadcast of */u*'
+    THEN str_split(substr($subject, instr($subject, 'Broadcast of ') + 13), '/u', 0)
+    ELSE NULL
+  END AS intent;
+
+CREATE PERFETTO FUNCTION _get_component(
+    anr_type STRING,
+    subject STRING
+)
+RETURNS STRING AS
+SELECT
+  CASE
+    WHEN $anr_type = 'BROADCAST_OF_INTENT'
+    THEN str_split(substr($subject, instr($subject, ' cmp=') + 5), ' ', 0)
+    WHEN $anr_type = 'INPUT_DISPATCHING_TIMEOUT_NO_FOCUSED_WINDOW'
+    THEN NULL
+    WHEN $anr_type = 'INPUT_DISPATCHING_TIMEOUT'
+    THEN str_split(substr($subject, instr($subject, '(') + 1), ' ', 1)
+    WHEN $anr_type = 'START_FOREGROUND_SERVICE'
+    THEN str_split(
+      substr(
+        $subject,
+        instr($subject, ' u') + 1 + instr(substr($subject, instr($subject, ' u') + 1), ' ')
+      ),
+      ' ',
+      0
+    )
+    WHEN $anr_type = 'EXECUTING_SERVICE'
+    THEN str_split(substr($subject, instr($subject, 'executing service ') + 18), ',', 0)
+    WHEN $anr_type = 'FOREGROUND_SHORT_SERVICE_TIMEOUT'
+    THEN str_split(substr($subject, instr($subject, 'ComponentInfo{') + 14), '}', 0)
+    WHEN $anr_type = 'FOREGROUND_SERVICE_TIMEOUT'
+    THEN str_split(substr($subject, instr($subject, 'ComponentInfo{') + 14), '}', 0)
+    WHEN $anr_type = 'APP_TRIGGERED'
+    THEN substr($subject, instr($subject, 'App requested: ') + 15)
+    WHEN $anr_type = 'CONTENT_PROVIDER_NOT_RESPONDING'
+    THEN NULL
+    WHEN $anr_type = 'GPU_HANG'
+    THEN NULL
+    WHEN $anr_type = 'JOB_SERVICE_START'
+    THEN NULL
+    WHEN $anr_type = 'JOB_SERVICE_STOP'
+    THEN NULL
+    WHEN $anr_type = 'JOB_SERVICE_BIND'
+    THEN NULL
+    WHEN $anr_type = 'BIND_APPLICATION'
+    THEN NULL
+    WHEN $anr_type = 'JOB_SERVICE_NOTIFICATION_NOT_PROVIDED'
+    THEN NULL
+    ELSE NULL
+  END AS component;
+
 -- List of all ANRs that occurred in the trace (one row per ANR).
 CREATE PERFETTO TABLE android_anrs (
   -- Name of the process that triggered the ANR.
@@ -157,11 +235,15 @@ CREATE PERFETTO TABLE android_anrs (
   ts TIMESTAMP,
   -- Subject line of the ANR.
   subject STRING,
+  -- The intent that caused the ANR (if applicable).
+  intent STRING,
+  -- The component associated with the ANR (if applicable).
+  component STRING,
   -- The duration between the timer expiration event and the anr counter event
   timer_delay LONG,
   -- The standard type of ANR.
   anr_type STRING,
-  -- Duration of the ANR, computed from the timer expiration event.
+  -- Duration of the ANR, computed from the timer expiration event OR extracted from the subject line
   anr_dur_ms LONG,
   -- Default duration of the ANR, based on the anr_type (default means in AOSP/Pixel).
   -- Note: Other OEMs may have customized these timeout values, so the defaults
@@ -252,26 +334,44 @@ WITH
     FROM anr_ranked_timers
     WHERE
       rn = 1
+  ),
+  anrs AS (
+    SELECT
+      anr.process_name,
+      anr.pid,
+      process.upid,
+      anr.error_id,
+      anr.ts,
+      s.subject,
+      (
+        anr.ts - abt.timer_ts
+      ) AS timer_delay,
+      coalesce(
+        _platform_to_standard_anr_type(abt.anr_type),
+        _extract_anr_type(s.subject, anr.process_name)
+      ) AS anr_type,
+      coalesce(abt.anr_dur_ms, _extract_anr_duration_from_subject(s.subject)) AS anr_dur_ms
+    FROM anr
+    LEFT JOIN subject AS s
+      USING (error_id)
+    LEFT JOIN anr_best_timer AS abt
+      USING (error_id)
+    LEFT JOIN process
+      ON (
+        process.pid = anr.pid
+      )
   )
 SELECT
-  anr.process_name,
-  anr.pid,
-  process.upid,
-  anr.error_id,
-  anr.ts,
-  s.subject,
-  (
-    anr.ts - abt.timer_ts
-  ) AS timer_delay,
-  coalesce(_platform_to_standard_anr_type(abt.anr_type), _extract_anr_type(s.subject)) AS anr_type,
-  abt.anr_dur_ms,
-  _default_anr_dur(_extract_anr_type(s.subject), s.subject) AS default_anr_dur_ms
-FROM anr
-LEFT JOIN subject AS s
-  USING (error_id)
-LEFT JOIN anr_best_timer AS abt
-  USING (error_id)
-LEFT JOIN process
-  ON (
-    process.pid = anr.pid
-  );
+  process_name,
+  pid,
+  upid,
+  error_id,
+  ts,
+  anr_type,
+  subject,
+  _get_intent(anr_type, subject) AS intent,
+  _get_component(anr_type, subject) AS component,
+  timer_delay,
+  anr_dur_ms,
+  _default_anr_dur(anr_type, subject) AS default_anr_dur_ms
+FROM anrs;

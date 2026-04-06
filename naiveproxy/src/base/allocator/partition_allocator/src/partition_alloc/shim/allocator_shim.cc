@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "partition_alloc/shim/allocator_shim.h"
 
 #include <unistd.h>
@@ -35,6 +30,9 @@
 // avoid crashes in case of operator new() noexcept.  Thus, operator new()
 // noexcept needs to be routed to
 // allocator_shim::internal::PartitionMallocUnchecked through the shim layer.
+#if PA_BUILDFLAG(SHIM_SUPPORTS_ALLOC_TOKEN)
+#include "partition_alloc/shim/allocator_shim_alloc_token_symbols.h"
+#endif
 #include "partition_alloc/shim/allocator_shim_override_cpp_symbols.h"
 #include "partition_alloc/shim/allocator_shim_override_libc_symbols.h"
 

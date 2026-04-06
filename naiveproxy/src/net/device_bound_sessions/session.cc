@@ -6,12 +6,14 @@
 
 #include <memory>
 
+#include "base/containers/to_vector.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/escape.h"
 #include "base/types/expected_macros.h"
 #include "components/unexportable_keys/unexportable_key_id.h"
 #include "net/base/features.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
+#include "net/base/schemeful_site.h"
 #include "net/cookies/canonical_cookie.h"
 #include "net/cookies/cookie_access_params.h"
 #include "net/cookies/cookie_constants.h"
@@ -20,8 +22,10 @@
 #include "net/cookies/cookie_util.h"
 #include "net/device_bound_sessions/cookie_craving.h"
 #include "net/device_bound_sessions/host_patterns.h"
+#include "net/device_bound_sessions/inclusion_result.h"
 #include "net/device_bound_sessions/proto/storage.pb.h"
 #include "net/device_bound_sessions/session_binding_utils.h"
+#include "net/device_bound_sessions/session_display.h"
 #include "net/device_bound_sessions/session_error.h"
 #include "net/device_bound_sessions/session_inclusion_rules.h"
 #include "net/device_bound_sessions/session_usage.h"
@@ -59,7 +63,7 @@ constexpr net::BackoffEntry::Policy kBackoffPolicy = {
     // Don't use initial delay unless the last request was an error.
     false,
 };
-}
+}  // namespace
 
 Session::Session(Id id, SessionInclusionRules inclusion_rules, GURL refresh)
     : id_(id),
@@ -106,8 +110,7 @@ base::expected<std::unique_ptr<Session>, SessionError> Session::CreateIfValid(
   }
 
   // If there is an origin in the scope, verify it has no path (including '/').
-  if (features::kDeviceBoundSessionsOriginTrialFeedback.Get() &&
-      !params.scope.origin.empty()) {
+  if (!params.scope.origin.empty()) {
     std::string_view origin_view =
         base::TrimWhitespaceASCII(params.scope.origin, base::TRIM_ALL);
     if ((scope_origin_as_url.has_path() && scope_origin_as_url.path() != "/") ||
@@ -263,24 +266,39 @@ proto::Session Session::ToProto() const {
   return session_proto;
 }
 
-bool Session::IsInScope(URLRequest* request) {
-  if (!IncludesUrl(request->url())) {
+SessionDisplay Session::ToDisplay() const {
+  std::vector<CookieCravingDisplay> display_cravings =
+      base::ToVector(cookie_cravings_,
+                     [](const auto& craving) { return craving.ToDisplay(); });
+  return SessionDisplay(SessionKey(SchemefulSite(origin()), id_), refresh_url_,
+                        inclusion_rules_.ToDisplay(),
+                        std::move(display_cravings), expiry_date_,
+                        cached_challenge_, allowed_refresh_initiators_);
+}
+
+bool Session::IsInScope(DbscRequest& request) {
+  SchemefulSite session_site = SchemefulSite(this->origin());
+  SessionKey session_key{session_site, id()};
+  if (SchemefulSite(request.url()) == session_site) {
+    MaybeIncreaseSessionUsage(session_key, request,
+                              SessionUsage::kSiteMatchNotInScope);
+  }
+
+  if (!IncludesUrl(request.url())) {
     // Request is not in scope for this session.
     return false;
   }
 
-  if (request->device_bound_session_usage() <
-      SessionUsage::kInScopeNotDeferred) {
-    request->set_device_bound_session_usage(SessionUsage::kInScopeNotDeferred);
-  }
+  MaybeIncreaseSessionUsage(session_key, request,
+                            SessionUsage::kInScopeRefreshNotYetNeeded);
 
-  request->net_log().AddEvent(
+  request.net_log().AddEvent(
       net::NetLogEventType::DBSC_REQUEST, [&](NetLogCaptureMode capture_mode) {
-        base::Value::Dict dict;
+        base::DictValue dict;
         dict.Set("refresh_url", refresh_url_.spec());
         dict.Set("scope", inclusion_rules_.DebugString());
 
-        base::Value::List credentials;
+        base::ListValue credentials;
         for (const CookieCraving& craving : cookie_cravings_) {
           credentials.Append(craving.DebugString());
         }
@@ -294,12 +312,13 @@ bool Session::IsInScope(URLRequest* request) {
         return dict;
       });
 
-  if (features::kDeviceBoundSessionsOriginTrialFeedback.Get() &&
-      !AllowedToInitiateRefresh(request->initiator())) {
-    request->net_log().AddEvent(
+  if (!AllowedToInitiateRefresh(request.initiator())) {
+    MaybeIncreaseSessionUsage(session_key, request,
+                              SessionUsage::kInScopeRefreshNotAllowed);
+    request.net_log().AddEvent(
         net::NetLogEventType::CHECK_DBSC_REFRESH_REQUIRED,
         [&](NetLogCaptureMode capture_mode) {
-          base::Value::Dict dict;
+          base::DictValue dict;
           dict.Set("refresh_required_reason",
                    "refresh_not_allowed_for_initiator");
           return dict;
@@ -311,28 +330,30 @@ bool Session::IsInScope(URLRequest* request) {
 }
 
 base::TimeDelta Session::MinimumBoundCookieLifetime(
-    URLRequest* request,
-    const FirstPartySetMetadata& first_party_set_metadata) {
+    DbscRequest& request,
+    const FirstPartySetMetadata& first_party_set_metadata,
+    const SessionKey& session_key) {
   // TODO(crbug.com/438783631): Refactor this.
   // The below is all copied from AddCookieHeaderAndStart. We should refactor
   // it.
-  CookieStore* cookie_store = request->context()->cookie_store();
-  bool force_ignore_site_for_cookies = request->force_ignore_site_for_cookies();
+  CookieStore* cookie_store = request.context()->cookie_store();
+  bool force_ignore_site_for_cookies = request.force_ignore_site_for_cookies();
   if (cookie_store->cookie_access_delegate() &&
       cookie_store->cookie_access_delegate()->ShouldIgnoreSameSiteRestrictions(
-          request->url(), request->site_for_cookies())) {
+          request.url(), request.site_for_cookies())) {
     force_ignore_site_for_cookies = true;
   }
 
   bool is_main_frame_navigation =
       IsolationInfo::RequestType::kMainFrame ==
-          request->isolation_info().request_type() ||
-      request->force_main_frame_for_same_site_cookies();
+          request.isolation_info().request_type() ||
+      request.force_main_frame_for_same_site_cookies();
   CookieOptions::SameSiteCookieContext same_site_context =
       net::cookie_util::ComputeSameSiteContextForRequest(
-          request->method(), request->url_chain(), request->site_for_cookies(),
-          request->initiator(), is_main_frame_navigation,
-          force_ignore_site_for_cookies);
+          request.method(), request.url_chain(), request.site_for_cookies(),
+          request.initiator(), is_main_frame_navigation,
+          force_ignore_site_for_cookies,
+          request.ignore_unsafe_method_for_same_site_lax());
 
   CookieOptions options;
   options.set_same_site_cookie_context(same_site_context);
@@ -357,7 +378,7 @@ base::TimeDelta Session::MinimumBoundCookieLifetime(
 
     bool satisfied = false;
     for (const CookieWithAccessResult& request_cookie :
-         request->maybe_sent_cookies()) {
+         request.maybe_sent_cookies()) {
       // Note that any request_cookie that satisfies the craving is fine, even
       // if it does not ultimately get included when sending the request. We
       // only need to ensure the cookie is present in the store.
@@ -382,10 +403,10 @@ base::TimeDelta Session::MinimumBoundCookieLifetime(
     }
 
     if (!satisfied) {
-      request->net_log().AddEvent(
+      request.net_log().AddEvent(
           net::NetLogEventType::CHECK_DBSC_REFRESH_REQUIRED,
           [&](NetLogCaptureMode capture_mode) {
-            base::Value::Dict dict;
+            base::DictValue dict;
             dict.Set("refresh_required_reason", "missing_cookie");
 
             if (NetLogCaptureIncludesSensitive(capture_mode)) {
@@ -396,7 +417,7 @@ base::TimeDelta Session::MinimumBoundCookieLifetime(
           });
 
       // There's an unsatisfied craving. Defer the request.
-      request->set_device_bound_session_usage(SessionUsage::kDeferred);
+      MaybeIncreaseSessionUsage(session_key, request, SessionUsage::kDeferred);
       return base::TimeDelta();
     }
   }
@@ -405,13 +426,13 @@ base::TimeDelta Session::MinimumBoundCookieLifetime(
   last_proactive_refresh_opportunity_minimum_cookie_lifetime_ =
       minimum_remaining_lifetime;
 
-  request->net_log().AddEvent(net::NetLogEventType::CHECK_DBSC_REFRESH_REQUIRED,
-                              [&](NetLogCaptureMode capture_mode) {
-                                base::Value::Dict dict;
-                                dict.Set("refresh_required_reason",
-                                         "refresh_not_required");
-                                return dict;
-                              });
+  request.net_log().AddEvent(net::NetLogEventType::CHECK_DBSC_REFRESH_REQUIRED,
+                             [&](NetLogCaptureMode capture_mode) {
+                               base::DictValue dict;
+                               dict.Set("refresh_required_reason",
+                                        "refresh_not_required");
+                               return dict;
+                             });
 
   // All cookiecravings satisfied.
   return minimum_remaining_lifetime;
@@ -441,8 +462,7 @@ void Session::RecordAccess() {
 }
 
 bool Session::IncludesUrl(const GURL& url) const {
-  return inclusion_rules_.EvaluateRequestUrl(url) ==
-         SessionInclusionRules::kInclude;
+  return inclusion_rules_.EvaluateRequestUrl(url) == InclusionResult::kInclude;
 }
 
 bool Session::AllowedToInitiateRefresh(
@@ -522,6 +542,7 @@ void Session::InformOfRefreshResult(bool was_proactive,
     case kInvalidFederatedSessionProviderSessionMissing:
     case kInvalidFederatedSessionWrongProviderOrigin:
     case kInvalidFederatedKey:
+    case kSessionDeletedDuringRefresh:
 
     // We do not want to back off on many network connection errors
     // (e.g. internet disconnected), so we do not hit our maximum
@@ -553,6 +574,8 @@ void Session::InformOfRefreshResult(bool was_proactive,
     case kTooManyRelyingOriginLabels:
     case kEmptySessionConfig:
     case kRegistrationAttemptedChallenge:
+    case kInvalidFederatedSessionProviderFailedToRestoreKey:
+    case kFailedToUnwrapKey:
       NOTREACHED();
   }
 
@@ -566,7 +589,7 @@ void Session::InformOfRefreshResult(bool was_proactive,
 }
 
 bool Session::CanSetBoundCookie(
-    const URLRequest& request,
+    DbscRequest& request,
     const FirstPartySetMetadata& first_party_set_metadata) const {
   // TODO(crbug.com/438783631): Refactor this.
   // The below is all copied from

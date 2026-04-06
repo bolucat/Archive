@@ -32,5 +32,5 @@ class DuplicateSwitchCollector : public base::DuplicateSwitchHandler {
       values_by_key_;
 };
 
-base::Value::Dict GetSwitchesAsValue(const base::CommandLine& cmdline);
+base::DictValue GetSwitchesAsValue(const base::CommandLine& cmdline);
 #endif  // NET_TOOLS_NAIVE_NAIVE_COMMAND_LINE_H_

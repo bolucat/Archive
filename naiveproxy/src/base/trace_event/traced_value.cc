@@ -362,7 +362,7 @@ class PickleWriter final : public TracedValue::Writer {
         } break;
 
         case kTypeStartArray: {
-          Value::List new_list;
+          ListValue new_list;
           if (cur_dict) {
             stack.push_back(cur_dict);
             cur_list =
@@ -848,7 +848,7 @@ void TracedValue::DictionaryItem::WriteToValue(TracedValue* value) const {
 
 std::unique_ptr<TracedValue> TracedValue::Build(
     const std::initializer_list<DictionaryItem> items) {
-  std::unique_ptr<TracedValue> value(new TracedValue());
+  auto value = std::make_unique<TracedValue>();
   for (const auto& item : items) {
     item.WriteToValue(value.get());
   }

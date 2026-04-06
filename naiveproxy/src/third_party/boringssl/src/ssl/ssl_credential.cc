@@ -16,6 +16,7 @@
 
 #include <assert.h>
 
+#include <openssl/hkdf.h>
 #include <openssl/span.h>
 
 #include "../crypto/internal.h"
@@ -26,7 +27,7 @@
 BSSL_NAMESPACE_BEGIN
 
 // new_leafless_chain returns a fresh stack of buffers set to {nullptr}.
-static UniquePtr<STACK_OF(CRYPTO_BUFFER)> new_leafless_chain(void) {
+static UniquePtr<STACK_OF(CRYPTO_BUFFER)> new_leafless_chain() {
   UniquePtr<STACK_OF(CRYPTO_BUFFER)> chain(sk_CRYPTO_BUFFER_new_null());
   if (!chain || !sk_CRYPTO_BUFFER_push(chain.get(), nullptr)) {
     return nullptr;
@@ -105,7 +106,7 @@ BSSL_NAMESPACE_END
 
 using namespace bssl;
 
-static CRYPTO_EX_DATA_CLASS g_ex_data_class = CRYPTO_EX_DATA_CLASS_INIT;
+static ExDataClass g_ex_data_class;
 
 ssl_credential_st::ssl_credential_st(SSLCredentialType type_arg)
     : RefCounted(CheckSubClass()), type(type_arg) {
@@ -164,6 +165,7 @@ bool ssl_credential_st::UsesX509() const {
       return true;
     case SSLCredentialType::kSPAKE2PlusV1Client:
     case SSLCredentialType::kSPAKE2PlusV1Server:
+    case SSLCredentialType::kPreSharedKey:
       return false;
   }
   abort();
@@ -176,6 +178,7 @@ bool ssl_credential_st::UsesPrivateKey() const {
       return true;
     case SSLCredentialType::kSPAKE2PlusV1Client:
     case SSLCredentialType::kSPAKE2PlusV1Server:
+    case SSLCredentialType::kPreSharedKey:
       return false;
   }
   abort();
@@ -265,8 +268,7 @@ void ssl_credential_st::ClearIntermediateCerts() {
   }
 }
 
-bool ssl_credential_st::ChainContainsIssuer(
-    bssl::Span<const uint8_t> dn) const {
+bool ssl_credential_st::ChainContainsIssuer(Span<const uint8_t> dn) const {
   if (UsesX509()) {
     // TODO(bbe) This is used for matching a chain by CA name for the CA
     // extension. If we require a chain to be present, we could remove any
@@ -327,11 +329,36 @@ bool ssl_credential_st::AppendIntermediateCert(UniquePtr<CRYPTO_BUFFER> cert) {
   return PushToStack(chain.get(), std::move(cert));
 }
 
-SSL_CREDENTIAL *SSL_CREDENTIAL_new_x509(void) {
+SSL_CREDENTIAL *SSL_CREDENTIAL_new_x509() {
   return New<SSL_CREDENTIAL>(SSLCredentialType::kX509);
 }
 
-SSL_CREDENTIAL *SSL_CREDENTIAL_new_delegated(void) {
+SSL_CREDENTIAL *SSL_CREDENTIAL_new_pre_shared_key(
+    const uint8_t *key, size_t key_len, const uint8_t *id, size_t id_len,
+    const EVP_MD *md, const uint8_t *context, size_t context_len) {
+  if (id_len == 0) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_IDENTITY_NOT_FOUND);
+    return nullptr;
+  }
+
+  auto cred = MakeUnique<SSL_CREDENTIAL>(SSLCredentialType::kPreSharedKey);
+  size_t epskx_len;
+  if (cred == nullptr ||
+      // Precompute epskx, to avoid recomputing it on every use of the
+      // credential.
+      !cred->epskx.InitForOverwrite(EVP_MD_size(md)) ||
+      !HKDF_extract(cred->epskx.data(), &epskx_len, md, key, key_len,
+                    /*salt=*/nullptr, /*salt_len=*/0) ||
+      !cred->epsk_id.CopyFrom(Span(id, id_len)) ||
+      !cred->epsk_context.CopyFrom(Span(context, context_len))) {
+    return nullptr;
+  }
+  BSSL_CHECK(epskx_len == cred->epskx.size());
+  cred->epsk_md = md;
+  return cred.release();
+}
+
+SSL_CREDENTIAL *SSL_CREDENTIAL_new_delegated() {
   return New<SSL_CREDENTIAL>(SSLCredentialType::kDelegated);
 }
 
@@ -341,6 +368,10 @@ void SSL_CREDENTIAL_free(SSL_CREDENTIAL *cred) {
   if (cred != nullptr) {
     cred->DecRefInternal();
   }
+}
+
+int SSL_CREDENTIAL_is_complete(const SSL_CREDENTIAL *cred) {
+  return cred->IsComplete();
 }
 
 int SSL_CREDENTIAL_set1_private_key(SSL_CREDENTIAL *cred, EVP_PKEY *key) {

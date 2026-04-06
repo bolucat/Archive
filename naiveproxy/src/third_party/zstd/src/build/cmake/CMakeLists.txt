@@ -29,7 +29,7 @@ include(ZstdVersion)
 #-----------------------------------------------------------------------------
 project(zstd
     VERSION "${ZSTD_FULL_VERSION}"
-    LANGUAGES C ASM  # Main library is in C and ASM
+    LANGUAGES C   # Main library is in C and ASM, ASM is enabled conditionally
     HOMEPAGE_URL "${zstd_HOMEPAGE_URL}"
     DESCRIPTION "${zstd_DESCRIPTION}"
 )

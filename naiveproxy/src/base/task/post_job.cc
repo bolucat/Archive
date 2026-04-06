@@ -24,8 +24,8 @@ scoped_refptr<internal::JobTaskSource> CreateJobTaskSource(
          "base::test::TaskEnvironment member in your fixture.\n";
 
   return base::MakeRefCounted<internal::JobTaskSource>(
-      from_here, traits, std::move(worker_task),
-      std::move(max_concurrency_callback),
+      from_here, traits, internal::GetCurrentTaskImportance(),
+      std::move(worker_task), std::move(max_concurrency_callback),
       static_cast<internal::ThreadPoolImpl*>(ThreadPoolInstance::Get()));
 }
 
@@ -120,11 +120,8 @@ void JobHandle::NotifyConcurrencyIncrease() {
 void JobHandle::Join() {
   DCHECK(internal::PooledTaskRunnerDelegate::MatchesCurrentDelegate(
       task_source_->delegate()));
-  DCHECK_GE(internal::GetTaskPriorityForCurrentThread(),
-            task_source_->priority_racy())
-      << "Join may not be called on Job with higher priority than the current "
-         "thread.";
-  UpdatePriority(internal::GetTaskPriorityForCurrentThread());
+  // TODO(crbug.com/470337728): Use thread type once implemented.
+  UpdatePriority(TaskPriority::USER_BLOCKING);
   if (task_source_->GetRemainingConcurrency() != 0) {
     // Make sure the task source is in the queue if not enough workers are
     // contributing. This is necessary for CreateJob(...).Join(). This is a

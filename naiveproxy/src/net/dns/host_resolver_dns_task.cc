@@ -11,6 +11,7 @@
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/strings/strcat.h"
 #include "base/time/tick_clock.h"
 #include "base/types/optional_util.h"
 #include "net/base/features.h"
@@ -43,24 +44,24 @@ DnsResponse CreateFakeEmptyResponse(std::string_view hostname,
       DnsQueryTypeToQtype(query_type));
 }
 
-base::Value::Dict NetLogDnsTaskExtractionFailureParams(
+base::DictValue NetLogDnsTaskExtractionFailureParams(
     DnsResponseResultExtractor::ExtractionError extraction_error,
     DnsQueryType dns_query_type) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("extraction_error", base::strict_cast<int>(extraction_error));
   dict.Set("dns_query_type", kDnsQueryTypes.at(dns_query_type));
   return dict;
 }
 
 // Creates NetLog parameters when the DnsTask failed.
-base::Value::Dict NetLogDnsTaskFailedParams(
+base::DictValue NetLogDnsTaskFailedParams(
     const HostResolverInternalErrorResult& failure_result,
     const HostResolverDnsTask::Results& saved_results) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("failure_result", failure_result.ToValue());
 
   if (!saved_results.empty()) {
-    base::Value::List list;
+    base::ListValue list;
     for (const std::unique_ptr<HostResolverInternalResult>& result :
          saved_results) {
       list.Append(result->ToValue());
@@ -71,24 +72,15 @@ base::Value::Dict NetLogDnsTaskFailedParams(
   return dict;
 }
 
-base::Value::Dict NetLogResults(const HostResolverDnsTask::Results& results) {
-  base::Value::List list;
+base::DictValue NetLogResults(const HostResolverDnsTask::Results& results) {
+  base::ListValue list;
   for (const std::unique_ptr<HostResolverInternalResult>& result : results) {
     list.Append(result->ToValue());
   }
 
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("results", std::move(list));
   return dict;
-}
-
-void RecordResolveTimeDiffForBucket(const char* histogram_variant,
-                                    const char* histogram_bucket,
-                                    base::TimeDelta diff) {
-  base::UmaHistogramTimes(
-      base::StrCat({"Net.Dns.ResolveTimeDiff.", histogram_variant,
-                    ".FirstRecord", histogram_bucket}),
-      diff);
 }
 
 void RecordResolveTimeDiff(const char* histogram_variant,
@@ -97,26 +89,10 @@ void RecordResolveTimeDiff(const char* histogram_variant,
                            base::TimeTicks second_record_end_time) {
   CHECK_LE(start_time, first_record_end_time);
   CHECK_LE(first_record_end_time, second_record_end_time);
-  base::TimeDelta first_elapsed = first_record_end_time - start_time;
   base::TimeDelta diff = second_record_end_time - first_record_end_time;
 
-  if (first_elapsed < base::Milliseconds(10)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "FasterThan10ms", diff);
-  } else if (first_elapsed < base::Milliseconds(25)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "10msTo25ms", diff);
-  } else if (first_elapsed < base::Milliseconds(50)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "25msTo50ms", diff);
-  } else if (first_elapsed < base::Milliseconds(100)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "50msTo100ms", diff);
-  } else if (first_elapsed < base::Milliseconds(250)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "100msTo250ms", diff);
-  } else if (first_elapsed < base::Milliseconds(500)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "250msTo500ms", diff);
-  } else if (first_elapsed < base::Seconds(1)) {
-    RecordResolveTimeDiffForBucket(histogram_variant, "500msTo1s", diff);
-  } else {
-    RecordResolveTimeDiffForBucket(histogram_variant, "SlowerThan1s", diff);
-  }
+  base::UmaHistogramTimes(
+      base::StrCat({"Net.Dns.ResolveTimeDiff2.", histogram_variant}), diff);
 }
 
 // Gets endpoints for sort and prepares `results` to add sorted and merged
@@ -335,13 +311,13 @@ void HostResolverDnsTask::StartNextTransaction() {
   CreateAndStartTransaction(std::move(transaction_info));
 }
 
-base::Value::Dict HostResolverDnsTask::NetLogDnsTaskCreationParams() {
-  base::Value::Dict dict;
+base::DictValue HostResolverDnsTask::NetLogDnsTaskCreationParams() {
+  base::DictValue dict;
   dict.Set("secure", secure());
 
-  base::Value::List transactions_needed_value;
+  base::ListValue transactions_needed_value;
   for (const TransactionInfo& info : transactions_needed_) {
-    base::Value::Dict transaction_dict;
+    base::DictValue transaction_dict;
     transaction_dict.Set("dns_query_type", kDnsQueryTypes.at(info.type));
     transactions_needed_value.Append(std::move(transaction_dict));
   }
@@ -350,13 +326,13 @@ base::Value::Dict HostResolverDnsTask::NetLogDnsTaskCreationParams() {
   return dict;
 }
 
-base::Value::Dict HostResolverDnsTask::NetLogDnsTaskTimeoutParams() {
-  base::Value::Dict dict;
+base::DictValue HostResolverDnsTask::NetLogDnsTaskTimeoutParams() {
+  base::DictValue dict;
 
   if (!transactions_in_progress_.empty()) {
-    base::Value::List list;
+    base::ListValue list;
     for (const TransactionInfo& info : transactions_in_progress_) {
-      base::Value::Dict transaction_dict;
+      base::DictValue transaction_dict;
       transaction_dict.Set("dns_query_type", kDnsQueryTypes.at(info.type));
       list.Append(std::move(transaction_dict));
     }
@@ -364,9 +340,9 @@ base::Value::Dict HostResolverDnsTask::NetLogDnsTaskTimeoutParams() {
   }
 
   if (!transactions_needed_.empty()) {
-    base::Value::List list;
+    base::ListValue list;
     for (const TransactionInfo& info : transactions_needed_) {
-      base::Value::Dict transaction_dict;
+      base::DictValue transaction_dict;
       transaction_dict.Set("dns_query_type", kDnsQueryTypes.at(info.type));
       list.Append(std::move(transaction_dict));
     }
@@ -462,7 +438,7 @@ void HostResolverDnsTask::CreateAndStartTransaction(
   transaction_info.transaction =
       client_->GetTransactionFactory()->CreateTransaction(
           std::move(transaction_hostname),
-          DnsQueryTypeToQtype(transaction_info.type), net_log_, secure_,
+          DnsQueryTypeToQtype(transaction_info.type), net_log_, secure_ ? DnsTransactionFactory::AttemptMode::kHttp : DnsTransactionFactory::AttemptMode::kClassic,
           secure_dns_mode_, &*resolve_context_,
           fallback_available_ /* fast_timeout */);
   transaction_info.transaction->SetRequestPriority(delegate_->priority());
@@ -522,7 +498,7 @@ void HostResolverDnsTask::OnDnsTransactionComplete(
     int net_error,
     const DnsResponse* response) {
   CHECK(transaction_info_it != transactions_in_progress_.end());
-  DCHECK(base::Contains(transactions_in_progress_, *transaction_info_it));
+  DCHECK(transactions_in_progress_.contains(*transaction_info_it));
 
   // Pull the TransactionInfo out of `transactions_in_progress_` now, so it
   // and its underlying DnsTransaction will be deleted on completion of
@@ -612,12 +588,12 @@ void HostResolverDnsTask::OnDnsTransactionComplete(
   CHECK(results.has_value());
   net_log_.AddEvent(NetLogEventType::HOST_RESOLVER_DNS_TASK_EXTRACTION_RESULTS,
                     [&] {
-                      base::Value::List list;
+                      base::ListValue list;
                       list.reserve(results.value().size());
                       for (const auto& result : results.value()) {
                         list.Append(result->ToValue());
                       }
-                      base::Value::Dict dict;
+                      base::DictValue dict;
                       dict.Set("results", std::move(list));
                       return dict;
                     });
@@ -711,8 +687,10 @@ bool HostResolverDnsTask::IsFatalTransactionFailure(
     DCHECK(transaction_info.error_behavior !=
            TransactionErrorBehavior::kFatalOrEmpty);
     error = HttpsTransactionError::kInsecureError;
-  } else if (transaction_error == ERR_DNS_SERVER_FAILED && response &&
-             response->rcode() != dns_protocol::kRcodeSERVFAIL) {
+  } else if (transaction_error == ERR_DNS_FORMAT_ERROR ||
+             transaction_error == ERR_DNS_NOT_IMPLEMENTED ||
+             transaction_error == ERR_DNS_REFUSED ||
+             transaction_error == ERR_DNS_OTHER_FAILURE) {
     // For server failures, only SERVFAIL is fatal.
     error = HttpsTransactionError::kNonFatalError;
   } else if (features::kUseDnsHttpsSvcbEnforceSecureResponse.Get()) {

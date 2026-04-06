@@ -26,6 +26,7 @@ std::optional<DeletionReason> SessionError::GetDeletionReason() const {
     case kPersistentHttpError:
     case kInvalidChallenge:
     case kTooManyChallenges:
+    case kSessionDeletedDuringRefresh:
       return DeletionReason::kRefreshFatalError;
     case kInvalidConfigJson:
     case kInvalidSessionId:
@@ -88,6 +89,8 @@ std::optional<DeletionReason> SessionError::GetDeletionReason() const {
     case kTooManyRelyingOriginLabels:
     case kEmptySessionConfig:
     case kRegistrationAttemptedChallenge:
+    case kInvalidFederatedSessionProviderFailedToRestoreKey:
+    case kFailedToUnwrapKey:
       NOTREACHED();
   }
 }
@@ -100,6 +103,7 @@ bool SessionError::IsServerError() const {
     case kNetError:
     case kProxyError:
     case kSigningQuotaExceeded:
+    case kSessionDeletedDuringRefresh:
       return false;
     case kServerRequestedTermination:
     case kInvalidConfigJson:
@@ -162,6 +166,8 @@ bool SessionError::IsServerError() const {
     case kTooManyRelyingOriginLabels:
     case kEmptySessionConfig:
     case kRegistrationAttemptedChallenge:
+    case kInvalidFederatedSessionProviderFailedToRestoreKey:
+    case kFailedToUnwrapKey:
       NOTREACHED();
   }
 }

@@ -6,6 +6,7 @@
 
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
+#include "base/files/file_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_view_util.h"
 #include "crypto/openssl_util.h"
@@ -67,6 +68,21 @@ bool ProofSourceChromium::Initialize(const base::FilePath& cert_path,
     return false;
   }
 
+  return true;
+}
+
+bool ProofSourceChromium::InitializeFromCertAndKey(
+    const CertificateList& cert_list,
+    const crypto::keypair::PrivateKey& private_key) {
+  certs_in_file_ = cert_list;
+  std::vector<string> certs;
+  for (const scoped_refptr<X509Certificate>& cert : certs_in_file_) {
+    certs.emplace_back(
+        x509_util::CryptoBufferAsStringPiece(cert->cert_buffer()));
+  }
+  // TODO(nharper): set trust_anchor_id in chain_.
+  chain_ = new quic::ProofSource::Chain(certs);
+  private_key_ = private_key;
   return true;
 }
 

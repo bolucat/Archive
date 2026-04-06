@@ -4,6 +4,7 @@
 
 #include "base/metrics/sparse_histogram.h"
 
+#include <memory>
 #include <utility>
 
 #include "base/logging.h"
@@ -137,7 +138,7 @@ void SparseHistogram::AddCount(Sample32 value, int count) {
 }
 
 std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotSamples() const {
-  std::unique_ptr<SampleMap> snapshot(new SampleMap(name_hash()));
+  auto snapshot = std::make_unique<SampleMap>(name_hash());
 
   base::AutoLock auto_lock(lock_);
   snapshot->Add(*unlogged_samples_);
@@ -147,7 +148,7 @@ std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotSamples() const {
 
 std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotUnloggedSamples()
     const {
-  std::unique_ptr<SampleMap> snapshot(new SampleMap(name_hash()));
+  auto snapshot = std::make_unique<SampleMap>(name_hash());
 
   base::AutoLock auto_lock(lock_);
   snapshot->Add(*unlogged_samples_);
@@ -178,7 +179,7 @@ std::unique_ptr<HistogramSamples> SparseHistogram::SnapshotFinalDelta() const {
   DCHECK(!final_delta_created_);
   final_delta_created_ = true;
 
-  std::unique_ptr<SampleMap> snapshot(new SampleMap(name_hash()));
+  auto snapshot = std::make_unique<SampleMap>(name_hash());
   base::AutoLock auto_lock(lock_);
   snapshot->Add(*unlogged_samples_);
 
@@ -195,7 +196,7 @@ bool SparseHistogram::AddSamplesFromPickle(PickleIterator* iter) {
   return unlogged_samples_->AddFromPickle(iter);
 }
 
-base::Value::Dict SparseHistogram::ToGraphDict() const {
+base::DictValue SparseHistogram::ToGraphDict() const {
   std::unique_ptr<HistogramSamples> snapshot = SnapshotSamples();
   return snapshot->ToGraphDict(histogram_name(), flags());
 }
@@ -239,7 +240,8 @@ SparseHistogram::SparseHistogram(PersistentHistogramAllocator* allocator,
   DCHECK_EQ(name_hash, HashMetricName(*durable_name)) << "Name hash mismatch";
 }
 
-HistogramBase* SparseHistogram::DeserializeInfoImpl(PickleIterator* iter) {
+HistogramBase* SparseHistogram::DeserializeInfoImpl(PickleIterator* iter,
+                                                    NameMapper mapper) {
   std::string histogram_name;
   int flags;
   if (!iter->ReadString(&histogram_name) || !iter->ReadInt(&flags)) {
@@ -249,13 +251,21 @@ HistogramBase* SparseHistogram::DeserializeInfoImpl(PickleIterator* iter) {
 
   flags &= ~HistogramBase::kIPCSerializationSourceFlag;
 
-  return SparseHistogram::FactoryGet(histogram_name, flags);
+  std::string_view name_to_use = histogram_name;
+  if (mapper) {
+    name_to_use = mapper.Run(histogram_name);
+    if (name_to_use.empty()) {
+      return DummyHistogram::GetInstance();
+    }
+  }
+
+  return SparseHistogram::FactoryGet(name_to_use, flags);
 }
 
-Value::Dict SparseHistogram::GetParameters() const {
+DictValue SparseHistogram::GetParameters() const {
   // Unlike Histogram::GetParameters, only set the type here, and no other
   // params. The other params do not make sense for sparse histograms.
-  Value::Dict params;
+  DictValue params;
   params.Set("type", HistogramTypeToString(GetHistogramType()));
   return params;
 }

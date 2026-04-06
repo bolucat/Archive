@@ -41,6 +41,7 @@
 #include "net/cookies/cookie_setting_override.h"
 #include "net/cookies/cookie_util.h"
 #include "net/cookies/site_for_cookies.h"
+#include "net/device_bound_sessions/refresh_result.h"
 #include "net/device_bound_sessions/session_key.h"
 #include "net/device_bound_sessions/session_service.h"
 #include "net/device_bound_sessions/session_usage.h"
@@ -337,6 +338,15 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
     force_ignore_site_for_cookies_ = attach;
   }
 
+  // Force allow SameSite=Lax cookies, even when they normally wouldn't be
+  // sent because the request method is unsafe.
+  bool ignore_unsafe_method_for_same_site_lax() const {
+    return ignore_unsafe_method_for_same_site_lax_;
+  }
+  void set_ignore_unsafe_method_for_same_site_lax(bool allow) {
+    ignore_unsafe_method_for_same_site_lax_ = allow;
+  }
+
   // Indicates if the request should be treated as a main frame navigation for
   // SameSite cookie computations. This flag overrides the IsolationInfo
   // request type associated with fetches from a service worker context.
@@ -431,13 +441,19 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
   ReferrerPolicy referrer_policy() const { return referrer_policy_; }
   void set_referrer_policy(ReferrerPolicy referrer_policy);
 
-  // Sets whether credentials are allowed.
-  // If credentials are allowed, the request will send and save HTTP
-  // cookies, as well as authentication to the origin server. If not,
-  // they will not be sent, however proxy-level authentication will
-  // still occur. Setting this will force the LOAD_DO_NOT_SAVE_COOKIES field to
-  // be set in |load_flags_|. See https://crbug.com/799935.
-  void set_allow_credentials(bool allow_credentials);
+  // Prohibits sending credentials. By default, credentials, including HTTP
+  // cookies, client certs, and HTTP auth, are sent and, if appropriate, saved,
+  // though LOAD_DO_NOT_SAVE_COOKIES can block saving cookies. Once called on a
+  // URLRequest, credentials may not later be enabled on a request.
+  //
+  // If this is called, no credentials will be sent or saved, though proxy-level
+  // authentication will still occur. Calling this this will force the
+  // LOAD_DO_NOT_SAVE_COOKIES field to be set in `load_flags_`. See
+  // https://crbug.com/799935.
+  //
+  // Clearing the LOAD_DO_NOT_SAVE_COOKIES LoadFlag after calling this method is
+  // not allowed (It will CHECK).
+  void set_disallow_credentials();
   bool allow_credentials() const { return allow_credentials_; }
 
   // Sets the upload data.
@@ -488,7 +504,7 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
 
   // Returns a partial representation of the request's state as a value, for
   // debugging.
-  base::Value::Dict GetStateAsValue(NetLogCaptureMode capture_mode) const;
+  base::DictValue GetStateAsValue(NetLogCaptureMode capture_mode) const;
 
   // Logs information about what external object currently blocking the
   // request. LogUnblocked must be called before resuming the request. This
@@ -641,6 +657,9 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
   // The new flags may change the IGNORE_LIMITS flag only when called
   // before Start() is called, it must only set the flag, and if set,
   // the priority of this request must already be MAXIMUM_PRIORITY.
+  //
+  // If set_disallow_credentials() has been invoked, `flags` must include
+  // LOAD_DO_NOT_SAVE_COOKIES.
   void SetLoadFlags(int flags);
 
   // Sets "temporary" load flags. They are cleared upon receiving a redirect.
@@ -891,6 +910,16 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
   }
   bool send_client_certs() const { return send_client_certs_; }
 
+  // When true, all redirects are considered safe to follow regardless of the
+  // target URL scheme. The caller is responsible for filtering unsafe
+  // redirects.
+  void set_treat_all_redirects_as_safe(bool treat_as_safe) {
+    treat_all_redirects_as_safe_ = treat_as_safe;
+  }
+  bool treat_all_redirects_as_safe() const {
+    return treat_all_redirects_as_safe_;
+  }
+
   bool is_for_websockets() const { return is_for_websockets_; }
 
   void SetIdempotency(Idempotency idempotency) { idempotency_ = idempotency; }
@@ -939,26 +968,29 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
         allows_device_bound_session_registration;
   }
 
-  // Whether this request was in the scope of any device-bound session,
-  // even if it did not need to be deferred.
-  device_bound_sessions::SessionUsage device_bound_session_usage() const {
+  // Whether this request was in the scope of any device-bound session for this
+  // request's site, even if it did not need to be deferred.
+  const base::flat_map<device_bound_sessions::SessionKey,
+                       device_bound_sessions::SessionUsage>&
+  device_bound_session_usage() const {
     return device_bound_session_usage_;
   }
   void set_device_bound_session_usage(
+      const device_bound_sessions::SessionKey& key,
       device_bound_sessions::SessionUsage usage) {
-    device_bound_session_usage_ = usage;
+    device_bound_session_usage_[key] = usage;
   }
 
   // Returns all the device-bound sessions that have deferred this
   // request.
   const base::flat_map<device_bound_sessions::SessionKey,
-                       device_bound_sessions::SessionService::RefreshResult>&
+                       device_bound_sessions::RefreshResult>&
   device_bound_session_deferrals() const {
     return device_bound_session_deferrals_;
   }
   void AddDeviceBoundSessionDeferral(
       const device_bound_sessions::SessionKey& deferral,
-      const device_bound_sessions::SessionService::RefreshResult result) {
+      const device_bound_sessions::RefreshResult result) {
     device_bound_session_deferrals_[deferral] = result;
   }
 
@@ -1095,6 +1127,7 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
   std::optional<CookiePartitionKey> cookie_partition_key_ = std::nullopt;
 
   bool force_ignore_site_for_cookies_ = false;
+  bool ignore_unsafe_method_for_same_site_lax_ = false;
   bool force_main_frame_for_same_site_cookies_ = false;
   bool is_shared_resource_ = false;
   CookieSettingOverrides cookie_setting_overrides_;
@@ -1240,6 +1273,8 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
 
   bool send_client_certs_ = true;
 
+  bool treat_all_redirects_as_safe_ = false;
+
   // Idempotency of the request.
   Idempotency idempotency_ = DEFAULT_IDEMPOTENCY;
 
@@ -1253,13 +1288,15 @@ class NET_EXPORT URLRequest : public base::SupportsUserData {
 
   // Whether the request is allowed to register new device-bound sessions
   bool allows_device_bound_session_registration_ = false;
-  // How existing device-bound sessions interacted with this request
-  device_bound_sessions::SessionUsage device_bound_session_usage_ =
-      device_bound_sessions::SessionUsage::kUnknown;
+  // How existing device-bound sessions for the request's site interacted with
+  // this request.
+  base::flat_map<device_bound_sessions::SessionKey,
+                 device_bound_sessions::SessionUsage>
+      device_bound_session_usage_;
   // Which device-bound sessions have deferred this request, and the
   // result of that refresh.
   base::flat_map<device_bound_sessions::SessionKey,
-                 device_bound_sessions::SessionService::RefreshResult>
+                 device_bound_sessions::RefreshResult>
       device_bound_session_deferrals_;
 
   THREAD_CHECKER(thread_checker_);

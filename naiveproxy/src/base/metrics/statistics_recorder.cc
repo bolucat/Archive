@@ -9,12 +9,13 @@
 
 #include "base/at_exit.h"
 #include "base/barrier_closure.h"
-#include "base/containers/contains.h"
 #include "base/debug/leak_annotations.h"
+#include "base/functional/callback_helpers.h"
 #include "base/json/string_escape.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram.h"
+#include "base/metrics/histogram_base.h"
 #include "base/metrics/histogram_snapshot_manager.h"
 #include "base/metrics/metrics_hashes.h"
 #include "base/metrics/persistent_histogram_allocator.h"
@@ -154,7 +155,7 @@ HistogramBase* StatisticsRecorder::RegisterOrDeleteDuplicate(
     ANNOTATE_LEAKING_OBJECT_PTR(histogram);  // see crbug.com/79322
     // If there are callbacks for this histogram, we set the kCallbackExists
     // flag.
-    if (base::Contains(top_->observers_, hash)) {
+    if (top_->observers_.contains(hash)) {
       // Note: SetFlags() does not write to persistent memory, it only writes to
       // an in-memory version of the flags.
       histogram->SetFlags(HistogramBase::kCallbackExists);
@@ -317,7 +318,8 @@ void StatisticsRecorder::PrepareDeltas(
     HistogramBase::Flags flags_to_set,
     HistogramBase::Flags required_flags,
     HistogramSnapshotManager* snapshot_manager) {
-  Histograms histograms = Sort(GetHistograms(include_persistent));
+  Histograms histograms =
+      Sort(GetHistograms(include_persistent, HistogramBase::Flags::kNoFlags));
   snapshot_manager->PrepareDeltas(std::move(histograms), flags_to_set,
                                   required_flags);
 }
@@ -534,7 +536,8 @@ bool StatisticsRecorder::ShouldRecordHistogram(uint32_t histogram_hash) {
 
 // static
 StatisticsRecorder::Histograms StatisticsRecorder::GetHistograms(
-    bool include_persistent) {
+    bool include_persistent,
+    int32_t exclude_flags) {
   // This must be called *before* the lock is acquired below because it will
   // call back into this object to register histograms. Those called methods
   // will acquire the lock at that time.
@@ -558,6 +561,12 @@ StatisticsRecorder::Histograms StatisticsRecorder::GetHistograms(
     if (!include_persistent && is_persistent) {
       continue;
     }
+
+    if (exclude_flags & entry.second->flags()) {
+      // Skip the histogram if any flag from exclude_flags is set.
+      continue;
+    }
+
     out.push_back(entry.second);
   }
 

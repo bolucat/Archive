@@ -257,10 +257,12 @@ class TraceBufferV1 : public TraceBuffer {
   const WriterStats& writer_stats() const override { return writer_stats_; }
   size_t size() const override { return size_; }
   size_t used_size() const override { return used_size_; }
+  size_t GetMemoryUsageBytes() const override { return size_; }
   OverwritePolicy overwrite_policy() const override {
     return overwrite_policy_;
   }
   bool has_data() const override { return has_data_; }
+  BufType buf_type() const override { return kV1; }
 
  private:
   friend class TraceBufferTest;

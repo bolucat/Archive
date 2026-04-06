@@ -5,9 +5,9 @@
 #ifndef NET_QUIC_QUIC_CONTEXT_H_
 #define NET_QUIC_QUIC_CONTEXT_H_
 
+#include <algorithm>
 #include <memory>
 
-#include "base/containers/contains.h"
 #include "base/feature_list.h"
 #include "base/time/time.h"
 #include "net/base/features.h"
@@ -57,7 +57,7 @@ AllSupportedQuicVersions() {
       quic::AllSupportedVersions();
   quic::ParsedQuicVersionVector filtered_versions;
   for (const auto& version : all_supported_versions) {
-    if (!base::Contains(obsolete_versions, version)) {
+    if (!std::ranges::contains(obsolete_versions, version)) {
       filtered_versions.push_back(version);
     }
   }
@@ -250,6 +250,9 @@ struct NET_EXPORT QuicParams {
   // If true, a request will be sent on the existing session iff the hostname
   // matches the certificate presented during the handshake.
   bool ignore_ip_matching_when_finding_existing_sessions = false;
+
+  // If true, the obfuscated sni is sent in the transport parameters.
+  bool enable_debugging_sni_in_transport_param = false;
 };
 
 // QuicContext contains QUIC-related variables that are shared across all of the

@@ -33,9 +33,15 @@ TaskSource::Transaction::~Transaction() {
 }
 
 void TaskSource::Transaction::UpdatePriority(TaskPriority priority) {
+  DCHECK(!task_source_->traits_.inherit_thread_type());
   task_source_->traits_.UpdatePriority(priority);
-  task_source_->priority_racy_.store(task_source_->traits_.priority(),
-                                     std::memory_order_relaxed);
+  task_source_->thread_type_racy_.store(TaskPriorityToThreadType(priority),
+                                        std::memory_order_relaxed);
+}
+
+ThreadType TaskSource::Transaction::thread_type() const {
+  return EffectiveThreadType(task_source_->traits_,
+                             task_source_->originating_thread_type_);
 }
 
 void TaskSource::Transaction::Release() NO_THREAD_SAFETY_ANALYSIS {
@@ -62,9 +68,11 @@ void TaskSource::ClearDelayedHeapHandle() {
 }
 
 TaskSource::TaskSource(const TaskTraits& traits,
-                       TaskSourceExecutionMode execution_mode)
+                       TaskSourceExecutionMode execution_mode,
+                       ThreadType originating_thread_type)
     : traits_(traits),
-      priority_racy_(traits.priority()),
+      thread_type_racy_(EffectiveThreadType(traits, originating_thread_type)),
+      originating_thread_type_(originating_thread_type),
       execution_mode_(execution_mode) {}
 
 TaskSource::~TaskSource() {

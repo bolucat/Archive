@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <limits>
+#include <memory>
 #include <string_view>
 #include <utility>
 
@@ -57,10 +58,8 @@ enum : uint32_t {
 // but that's best since PersistentMemoryAllocator objects (that underlie
 // GlobalHistogramAllocator objects) are explicitly forbidden from doing
 // anything essential at exit anyway due to the fact that they depend on data
-// managed elsewhere and which could be destructed first. An AtomicWord is
-// used instead of std::atomic because the latter can create global ctors
-// and dtors.
-subtle::AtomicWord g_histogram_allocator = 0;
+// managed elsewhere and which could be destructed first.
+std::atomic<GlobalHistogramAllocator*> g_histogram_allocator;
 
 // Calculate the number of bytes required to store all of a histogram's
 // "counts". This will return zero (0) if `bucket_count` is not valid.
@@ -79,7 +78,7 @@ size_t CalculateRequiredCountsBytes(size_t bucket_count) {
   return bucket_count * kBytesPerBucket;
 }
 
-bool MergeSamplesToExistingHistogram(
+PersistentHistogramAllocator::MergeResult MergeSamplesToExistingHistogram(
     HistogramBase* existing,
     const HistogramBase* histogram,
     std::unique_ptr<HistogramSamples> samples) {
@@ -88,10 +87,11 @@ bool MergeSamplesToExistingHistogram(
   if (existing_type == HistogramType::DUMMY_HISTOGRAM) {
     // Merging into a dummy histogram (e.g. histogram is expired) is a no-op and
     // not considered a failure case.
-    return true;
+    return PersistentHistogramAllocator::MergeResult::kSuccess;
   }
   if (histogram->GetHistogramType() != existing_type) {
-    return false;  // Merge failed due to different histogram types.
+    // Merge failed due to different histogram types.
+    return PersistentHistogramAllocator::MergeResult::kTypeMismatch;
   }
 
   if (existing_type == HistogramType::HISTOGRAM ||
@@ -109,7 +109,8 @@ bool MergeSamplesToExistingHistogram(
     DCHECK(histogram_buckets->HasValidChecksum());
 
     if (existing_buckets->checksum() != histogram_buckets->checksum()) {
-      return false;  // Merge failed due to different buckets.
+      // Merge failed due to different buckets.
+      return PersistentHistogramAllocator::MergeResult::kRangesMismatch;
     }
   }
 
@@ -118,7 +119,11 @@ bool MergeSamplesToExistingHistogram(
   // It's possible for the buckets to differ but their checksums to match due
   // to a collision, in which case AddSamples() will return false, which we
   // propagate to the caller (indicating histogram mismatch).
-  return existing->AddSamples(*samples);
+  if (existing->AddSamples(*samples)) {
+    return PersistentHistogramAllocator::MergeResult::kSuccess;
+  }
+
+  return PersistentHistogramAllocator::MergeResult::kAddFailed;
 }
 
 }  // namespace
@@ -482,8 +487,10 @@ void PersistentHistogramAllocator::FinalizeHistogram(Reference ref,
   }
 }
 
-bool PersistentHistogramAllocator::MergeHistogramDeltaToStatisticsRecorder(
-    HistogramBase* histogram) {
+PersistentHistogramAllocator::MergeResult
+PersistentHistogramAllocator::MergeHistogramDeltaToStatisticsRecorder(
+    HistogramBase* histogram,
+    std::string_view name_override) {
   DCHECK(histogram);
 
   // Return immediately if the histogram has no samples since the last delta
@@ -491,22 +498,25 @@ bool PersistentHistogramAllocator::MergeHistogramDeltaToStatisticsRecorder(
   // the StatisticsRecorder, which requires acquiring a lock.
   std::unique_ptr<HistogramSamples> samples = histogram->SnapshotDelta();
   if (samples->IsDefinitelyEmpty()) {
-    return true;
+    return PersistentHistogramAllocator::MergeResult::kSuccess;
   }
 
-  HistogramBase* existing = GetOrCreateStatisticsRecorderHistogram(histogram);
+  HistogramBase* existing =
+      GetOrCreateStatisticsRecorderHistogram(histogram, name_override);
   if (!existing) {
     // The above should never fail but if it does, no real harm is done.
     // Some metric data will be lost but that is better than crashing.
-    return false;
+    return PersistentHistogramAllocator::MergeResult::kCouldNotCreate;
   }
 
   return MergeSamplesToExistingHistogram(existing, histogram,
                                          std::move(samples));
 }
 
-bool PersistentHistogramAllocator::MergeHistogramFinalDeltaToStatisticsRecorder(
-    const HistogramBase* histogram) {
+PersistentHistogramAllocator::MergeResult
+PersistentHistogramAllocator::MergeHistogramFinalDeltaToStatisticsRecorder(
+    const HistogramBase* histogram,
+    std::string_view name_override) {
   DCHECK(histogram);
 
   // Return immediately if the histogram has no samples. This is to prevent
@@ -514,14 +524,15 @@ bool PersistentHistogramAllocator::MergeHistogramFinalDeltaToStatisticsRecorder(
   // requires acquiring a lock.
   std::unique_ptr<HistogramSamples> samples = histogram->SnapshotFinalDelta();
   if (samples->IsDefinitelyEmpty()) {
-    return true;
+    return PersistentHistogramAllocator::MergeResult::kSuccess;
   }
 
-  HistogramBase* existing = GetOrCreateStatisticsRecorderHistogram(histogram);
+  HistogramBase* existing =
+      GetOrCreateStatisticsRecorderHistogram(histogram, name_override);
   if (!existing) {
     // The above should never fail but if it does, no real harm is done.
     // Some metric data will be lost but that is better than crashing.
-    return false;
+    return PersistentHistogramAllocator::MergeResult::kCouldNotCreate;
   }
 
   return MergeSamplesToExistingHistogram(existing, histogram,
@@ -704,14 +715,17 @@ std::unique_ptr<HistogramBase> PersistentHistogramAllocator::CreateHistogram(
 
 HistogramBase*
 PersistentHistogramAllocator::GetOrCreateStatisticsRecorderHistogram(
-    const HistogramBase* histogram) {
+    const HistogramBase* histogram,
+    std::string_view name_override) {
   // This should never be called on the global histogram allocator as objects
   // created there are already within the global statistics recorder.
   DCHECK_NE(GlobalHistogramAllocator::Get(), this);
   DCHECK(histogram);
 
-  HistogramBase* existing =
-      StatisticsRecorder::FindHistogram(histogram->histogram_name());
+  std::string_view lookup_name =
+      name_override.empty() ? histogram->histogram_name() : name_override;
+
+  HistogramBase* existing = StatisticsRecorder::FindHistogram(lookup_name);
   if (existing) {
     return existing;
   }
@@ -724,7 +738,16 @@ PersistentHistogramAllocator::GetOrCreateStatisticsRecorderHistogram(
   base::Pickle pickle;
   histogram->SerializeInfo(&pickle);
   PickleIterator iter(pickle);
-  existing = DeserializeHistogramInfo(&iter);
+
+  base::RepeatingCallback<std::string_view(std::string_view)> mapper;
+  if (!name_override.empty()) {
+    mapper = base::BindRepeating(
+        [](std::string_view override_name, std::string_view /* original_name */)
+            -> std::string_view { return override_name; },
+        name_override);
+  }
+
+  existing = DeserializeHistogramInfo(&iter, mapper);
   if (!existing) {
     return nullptr;
   }
@@ -776,7 +799,7 @@ bool GlobalHistogramAllocator::CreateWithFile(const FilePath& file_path,
     return false;
   }
 
-  std::unique_ptr<MemoryMappedFile> mmfile(new MemoryMappedFile());
+  auto mmfile = std::make_unique<MemoryMappedFile>();
   bool success = false;
   const bool file_created = file.created();
   if (file_created) {
@@ -973,9 +996,8 @@ void GlobalHistogramAllocator::Set(GlobalHistogramAllocator* allocator) {
   // Releasing or changing an allocator is extremely dangerous because it
   // likely has histograms stored within it. If the backing memory is also
   // also released, future accesses to those histograms will seg-fault.
-  CHECK(!subtle::NoBarrier_Load(&g_histogram_allocator));
-  subtle::Release_Store(&g_histogram_allocator,
-                        reinterpret_cast<intptr_t>(allocator));
+  CHECK(!g_histogram_allocator.load(std::memory_order_relaxed));
+  g_histogram_allocator.store(allocator, std::memory_order_release);
 
   // Record the number of histograms that were sampled before the global
   // histogram allocator was initialized.
@@ -999,8 +1021,7 @@ void GlobalHistogramAllocator::Set(GlobalHistogramAllocator* allocator) {
 
 // static
 GlobalHistogramAllocator* GlobalHistogramAllocator::Get() {
-  return reinterpret_cast<GlobalHistogramAllocator*>(
-      subtle::Acquire_Load(&g_histogram_allocator));
+  return g_histogram_allocator.load(std::memory_order_acquire);
 }
 
 // static
@@ -1021,7 +1042,7 @@ GlobalHistogramAllocator* GlobalHistogramAllocator::ReleaseForTesting() {
     StatisticsRecorder::ForgetHistogramForTesting(data->name);
   }
 
-  subtle::Release_Store(&g_histogram_allocator, 0);
+  g_histogram_allocator.store(nullptr, std::memory_order_release);
   ANNOTATE_LEAKING_OBJECT_PTR(histogram_allocator);
   return histogram_allocator;
 }

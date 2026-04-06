@@ -4,6 +4,7 @@
 
 #include "net/dns/host_resolver_manager_job.h"
 
+#include <algorithm>
 #include <deque>
 #include <memory>
 #include <optional>
@@ -17,6 +18,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/time/time.h"
 #include "net/base/address_family.h"
@@ -77,9 +79,9 @@ bool ContainsIcannNameCollisionIp(const std::vector<IPEndPoint>& endpoints) {
 }
 
 // Creates NetLog parameters for HOST_RESOLVER_MANAGER_JOB_ATTACH/DETACH events.
-base::Value::Dict NetLogJobAttachParams(const NetLogSource& source,
-                                        RequestPriority priority) {
-  base::Value::Dict dict;
+base::DictValue NetLogJobAttachParams(const NetLogSource& source,
+                                      RequestPriority priority) {
+  base::DictValue dict;
   source.AddToEventParameters(dict);
   dict.Set("priority", RequestPriorityToString(priority));
   return dict;
@@ -318,7 +320,7 @@ base::OnceClosure HostResolverManager::Job::GetAbortInsecureDnsTaskClosure(
 
 void HostResolverManager::Job::AbortInsecureDnsTask(int error,
                                                     bool fallback_only) {
-  bool has_system_fallback = base::Contains(tasks_, TaskType::SYSTEM);
+  bool has_system_fallback = std::ranges::contains(tasks_, TaskType::SYSTEM);
   if (has_system_fallback) {
     for (auto it = tasks_.begin(); it != tasks_.end();) {
       if (*it == TaskType::DNS) {
@@ -475,17 +477,17 @@ void HostResolverManager::Job::RunNextTask() {
   }
 }
 
-base::Value::Dict HostResolverManager::Job::NetLogJobCreationParams(
+base::DictValue HostResolverManager::Job::NetLogJobCreationParams(
     const NetLogSource& source) {
-  base::Value::Dict dict;
+  base::DictValue dict;
   source.AddToEventParameters(dict);
   dict.Set("host", key_.host.ToString());
-  base::Value::List query_types_list;
+  base::ListValue query_types_list;
   for (DnsQueryType query_type : key_.query_types) {
     query_types_list.Append(kDnsQueryTypes.at(query_type));
   }
   dict.Set("dns_query_types", std::move(query_types_list));
-  base::Value::List tasks_list;
+  base::ListValue tasks_list;
   for (TaskType task : tasks_) {
     tasks_list.Append(static_cast<int>(task));
   }
@@ -760,7 +762,7 @@ void HostResolverManager::Job::OnDnsTaskFailure(
   // to use during request completion.
   base::TimeDelta ttl =
       failure_results.has_ttl() ? failure_results.ttl() : base::Seconds(0);
-  completion_results_.push_back({failure_results, ttl, secure});
+  completion_results_.emplace_back(failure_results, ttl, secure);
 
   dns_task_error_ = failure_results.error();
   KillDnsTask();
@@ -1080,9 +1082,8 @@ void HostResolverManager::Job::CompleteRequests(
   Finish();
 
   if (results.error() == ERR_DNS_REQUEST_CANCELLED) {
-    net_log_.AddEvent(NetLogEventType::CANCELLED);
-    net_log_.EndEventWithNetErrorCode(
-        NetLogEventType::HOST_RESOLVER_MANAGER_JOB, OK);
+    CancelRequests();
+    // `this` may be deleted. Do not access `this` after this point.
     return;
   }
 
@@ -1162,6 +1163,35 @@ void HostResolverManager::Job::CompleteRequestsWithError(
   CompleteRequests(
       HostCache::Entry(net_error, HostCache::Entry::SOURCE_UNKNOWN),
       base::TimeDelta(), true /* allow_cache */, false /* secure */, task_type);
+}
+
+void HostResolverManager::Job::CancelRequests() {
+  net_log_.AddEvent(NetLogEventType::CANCELLED);
+  net_log_.EndEventWithNetErrorCode(NetLogEventType::HOST_RESOLVER_MANAGER_JOB,
+                                    OK);
+
+  // In the following while loops, we check if the resolver was destroyed as a
+  // result of running the callback. If it was, we could continue, but we choose
+  // to bail.
+
+  while (!requests_.empty()) {
+    RequestImpl* req = requests_.head()->value();
+    req->RemoveFromList();
+    req->OnJobCancelled(key_);
+    if (!resolver_.get()) {
+      return;
+    }
+  }
+
+  while (!service_endpoint_requests_.empty()) {
+    ServiceEndpointRequestImpl* request =
+        service_endpoint_requests_.head()->value();
+    request->RemoveFromList();
+    request->OnJobCancelled();
+    if (!resolver_.get()) {
+      return;
+    }
+  }
 }
 
 RequestPriority HostResolverManager::Job::priority() const {

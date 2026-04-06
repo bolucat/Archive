@@ -4,6 +4,7 @@
 # found in the LICENSE file.
 """Siso configuration for clang."""
 
+load("@builtin//lib/gn.star", "gn")
 load("@builtin//path.star", "path")
 load("@builtin//struct.star", "module")
 load("./ar.star", "ar")
@@ -11,13 +12,42 @@ load("./config.star", "config")
 load("./gn_logs.star", "gn_logs")
 load("./mac_sdk.star", "mac_sdk")
 load("./win_sdk.star", "win_sdk")
+load("./clang_code_coverage_wrapper.star", "clang_code_coverage_wrapper")
 
-__clang_plugin_configs = [
-    "build/config/unsafe_buffers_paths.txt",
-    "build/config/warning_suppression.txt",
-    # crbug.com/418842344: Angle, PDFium use a different plugin config.
-    "unsafe_buffers_paths.txt",
-]
+def __clang_plugin_configs(ctx):
+    configs = [
+        "build/config/unsafe_buffers_paths.txt",
+        "build/config/warning_suppression.txt",
+        # crbug.com/418842344: Angle, PDFium use a different plugin config.
+        "unsafe_buffers_paths.txt",
+    ]
+
+    if "args.gn" in ctx.metadata and gn.args(ctx).get("sanitizer_coverage_skip_stdlib_and_absl"):
+        configs += ["build/config/sanitizers/ignorelist_stdlib_and_absl.txt"]
+    return configs
+
+def __check_crash_diagnostics(ctx, args):
+    # If multiple -fcrash-diagnostics-dir flags are provided, clang uses the last one.
+    crash_dir = None
+    skip = False
+    for i, arg in enumerate(args):
+        if skip:
+            skip = False
+            continue
+        if arg.startswith("-fcrash-diagnostics-dir="):
+            crash_dir = arg.removeprefix("-fcrash-diagnostics-dir=")
+        elif arg == "-fcrash-diagnostics-dir" and i + 1 < len(args):
+            crash_dir = args[i + 1]
+            skip = True
+
+    if crash_dir:
+        if path.isabs(crash_dir):
+            # RBE requires relative paths for output directories.
+            # If the crash dir is absolute (e.g. /tmp/...), we can't capture it easily.
+            # For now, just skip it to avoid build failures.
+            return
+        crash_dir = ctx.fs.canonpath(crash_dir)
+        ctx.actions.fix(auxiliary_log_output_dirs = [crash_dir])
 
 def __filegroups(ctx):
     gn_logs_data = gn_logs.read(ctx)
@@ -68,6 +98,7 @@ def __filegroups(ctx):
 
 def __input_deps(ctx):
     build_dir = ctx.fs.canonpath(".")
+    clang_plugin_configs = __clang_plugin_configs(ctx)
 
     return {
         # need this because we use
@@ -84,10 +115,10 @@ def __input_deps(ctx):
             path.join(build_dir, "phony/buildtools/third_party/libc++/copy_custom_headers") + ":inputs",
             path.join(build_dir, "phony/buildtools/third_party/libc++/copy_libcxx_headers") + ":inputs",
         ],
-        "third_party/llvm-build/Release+Asserts/bin/clang": __clang_plugin_configs,
-        "third_party/llvm-build/Release+Asserts/bin/clang++": __clang_plugin_configs,
-        "third_party/llvm-build/Release+Asserts/bin/clang-cl": __clang_plugin_configs,
-        "third_party/llvm-build/Release+Asserts/bin/clang-cl.exe": __clang_plugin_configs,
+        "third_party/llvm-build/Release+Asserts/bin/clang": clang_plugin_configs,
+        "third_party/llvm-build/Release+Asserts/bin/clang++": clang_plugin_configs,
+        "third_party/llvm-build/Release+Asserts/bin/clang-cl": clang_plugin_configs,
+        "third_party/llvm-build/Release+Asserts/bin/clang-cl.exe": clang_plugin_configs,
         "third_party/llvm-build/Release+Asserts/bin/lld-link": [
             "build/config/c++/libc++.natvis",
             "build/win/as_invoker.manifest",
@@ -204,7 +235,17 @@ def __thin_archive(ctx, cmd):
     ctx.actions.write(cmd.outputs[0], data)
     ctx.actions.exit(exit_status = 0)
 
+def __compile(ctx, cmd):
+    __check_crash_diagnostics(ctx, cmd.args)
+
+def __compile_coverage(ctx, cmd):
+    clang_command = clang_code_coverage_wrapper.run(ctx, list(cmd.args))
+    __check_crash_diagnostics(ctx, clang_command)
+    ctx.actions.fix(args = clang_command)
+
 __handlers = {
+    "clang_compile": __compile,
+    "clang_compile_coverage": __compile_coverage,
     "lld_link": __lld_link,
     "lld_thin_archive": __thin_archive,
 }

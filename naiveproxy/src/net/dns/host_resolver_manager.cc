@@ -24,7 +24,6 @@
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
 #include "base/containers/circular_deque.h"
-#include "base/containers/contains.h"
 #include "base/containers/flat_set.h"
 #include "base/containers/linked_list.h"
 #include "base/debug/debugger.h"
@@ -46,6 +45,7 @@
 #include "base/notimplemented.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/observer_list.h"
+#include "base/rand_util.h"
 #include "base/sequence_checker.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -133,10 +133,9 @@
 #if BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 #include <net/if.h>
 #include "net/base/sys_addrinfo.h"
-#if BUILDFLAG(IS_ANDROID)
-#else  // !BUILDFLAG(IS_ANDROID)
+#if !BUILDFLAG(IS_ANDROID)
 #include <ifaddrs.h>
-#endif  // BUILDFLAG(IS_ANDROID)
+#endif  // !BUILDFLAG(IS_ANDROID)
 #endif  // BUILDFLAG(IS_POSIX) || BUILDFLAG(IS_FUCHSIA)
 
 namespace net {
@@ -177,8 +176,8 @@ bool ConfigureAsyncDnsNoFallbackFieldTrial() {
   return kDefault;
 }
 
-base::Value::Dict NetLogIPv6AvailableParams(bool ipv6_available, bool cached) {
-  base::Value::Dict dict;
+base::DictValue NetLogIPv6AvailableParams(bool ipv6_available, bool cached) {
+  base::DictValue dict;
   dict.Set("ipv6_available", ipv6_available);
   dict.Set("cached", cached);
   return dict;
@@ -244,20 +243,20 @@ PrioritizedDispatcher::Limits GetDispatcherLimits(
   return limits;
 }
 
-base::Value::Dict NetLogResults(const HostCache::Entry& results) {
-  base::Value::Dict dict;
+base::DictValue NetLogResults(const HostCache::Entry& results) {
+  base::DictValue dict;
   dict.Set("results", results.NetLogParams());
   return dict;
 }
 
-base::Value::Dict NetLogResults(
+base::DictValue NetLogResults(
     const std::set<std::unique_ptr<HostResolverInternalResult>>& results) {
-  auto list = base::Value::List::with_capacity(results.size());
+  auto list = base::ListValue::with_capacity(results.size());
   for (const std::unique_ptr<HostResolverInternalResult>& result : results) {
     list.Append(result->ToValue());
   }
 
-  base::Value::Dict dict;
+  base::DictValue dict;
   dict.Set("results", std::move(list));
   return dict;
 }
@@ -397,9 +396,17 @@ class HostResolverManager::ProbeRequestImpl
   }
 
   void CancelRunner() {
-    runner_.reset();
+    if (runner_) {
+      // Destroy the runner asynchronously to prevent its destructor from
+      // causing reentrant modifications to HostResolverManager::jobs_
+      // during InvalidateCaches().
+      base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
+          FROM_HERE, std::move(runner_));
+    }
 
-    // Cancel any asynchronous StartRunner() calls.
+    // Synchronously invalidate WeakPtrs to ensure that any previously posted
+    // asynchronous StartRunner() tasks (e.g., from the old session) are
+    // cancelled and do not execute unexpectedly in the new session.
     weak_ptr_factory_.InvalidateWeakPtrs();
   }
 
@@ -582,7 +589,7 @@ HostResolverManager::CreateMdnsListener(const HostPortPair& host,
 
 std::unique_ptr<HostResolver::ServiceEndpointRequest>
 HostResolverManager::CreateServiceEndpointRequest(
-    url::SchemeHostPort scheme_host_port,
+    HostResolver::Host host,
     NetworkAnonymizationKey network_anonymization_key,
     NetLogWithSource net_log,
     ResolveHostParameters parameters,
@@ -595,8 +602,8 @@ HostResolverManager::CreateServiceEndpointRequest(
   }
 
   return std::make_unique<ServiceEndpointRequestImpl>(
-      std::move(scheme_host_port), std::move(network_anonymization_key),
-      std::move(net_log), std::move(parameters),
+      std::move(host), std::move(network_anonymization_key), std::move(net_log),
+      std::move(parameters),
       resolve_context ? resolve_context->GetWeakPtr() : nullptr,
       weak_ptr_factory_.GetWeakPtr(), tick_clock_);
 }
@@ -627,10 +634,10 @@ void HostResolverManager::SetInsecureDnsClientEnabled(
   }
 }
 
-base::Value::Dict HostResolverManager::GetDnsConfigAsValue() const {
+base::DictValue HostResolverManager::GetDnsConfigAsValue() const {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   return dns_client_ ? dns_client_->GetDnsConfigAsValueForNetLog()
-                     : base::Value::Dict();
+                     : base::DictValue();
 }
 
 void HostResolverManager::SetDnsConfigOverrides(DnsConfigOverrides overrides) {
@@ -799,7 +806,8 @@ void HostResolverManager::InitializeJobKeyAndIPAddress(
       out_job_key.host.HasScheme()) {
     static constexpr std::string_view kSchemesForHttpsQuery[] = {
         url::kHttpScheme, url::kHttpsScheme, url::kWsScheme, url::kWssScheme};
-    if (base::Contains(kSchemesForHttpsQuery, out_job_key.host.GetScheme())) {
+    if (std::ranges::contains(kSchemesForHttpsQuery,
+                              out_job_key.host.GetScheme())) {
       effective_types.Put(DnsQueryType::HTTPS);
     }
   }
@@ -824,11 +832,11 @@ HostCache::Entry HostResolverManager::ResolveLocally(
   CreateTaskSequence(job_key, cache_usage, secure_dns_policy, out_tasks);
   source_net_log.AddEvent(
       NetLogEventType::HOST_RESOLVER_MANAGER_TASK_SEQUENCE_CREATED, [&] {
-        base::Value::List tasks_list;
+        base::ListValue tasks_list;
         for (TaskType task : *out_tasks) {
           tasks_list.Append(static_cast<int>(task));
         }
-        return base::Value::Dict().Set("tasks", std::move(tasks_list));
+        return base::DictValue().Set("tasks", std::move(tasks_list));
       });
 
   if (!ip_address.IsValid()) {
@@ -1077,6 +1085,11 @@ std::optional<HostCache::Entry> HostResolverManager::MaybeReadFromConfig(
       FilterAddresses(std::move(*preset_addrs), key.query_types);
   if (filtered_addresses.empty())
     return std::nullopt;
+
+  if (base::FeatureList::IsEnabled(
+          features::kEnableBootstrapIPRandomizationForDoh)) {
+    base::RandomShuffle(filtered_addresses.begin(), filtered_addresses.end());
+  }
 
   return HostCache::Entry(OK, std::move(filtered_addresses), /*aliases=*/{},
                           HostCache::Entry::SOURCE_CONFIG);

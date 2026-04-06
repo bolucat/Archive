@@ -5,12 +5,18 @@
 #include "base/threading/platform_thread.h"
 
 #include <errno.h>
+#include <pthread.h>
 #include <stddef.h>
 #include <sys/prctl.h>
+#include <sys/resource.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <iterator>
 #include <optional>
+#include <vector>
 
 #include "base/android/android_info.h"
 #include "base/android/jni_android.h"
@@ -19,53 +25,222 @@
 #include "base/system/sys_info.h"
 #include "base/threading/platform_thread_internal_posix.h"
 #include "base/threading/thread_id_name_manager.h"
+#include "base/trace_event/trace_event.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "base/tasks_jni/ThreadUtils_jni.h"
 
 namespace base {
 
-BASE_FEATURE(kIncreaseDisplayCriticalThreadPriority,
-             "RaiseDisplayCriticalThreadPriority",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+// Allows fine-grained control of thread priorities on Android.
+// Enable with e.g.
+// --enable-features=AndroidThreadPriority:presentation/-8/default/-1
+BASE_FEATURE(kAndroidThreadPriority, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(int,
+                   kBackgroundThreadPriority,
+                   &kAndroidThreadPriority,
+                   "background",
+                   10);
+BASE_FEATURE_PARAM(int,
+                   kUtilityThreadPriority,
+                   &kAndroidThreadPriority,
+                   "utility",
+                   1);
+BASE_FEATURE_PARAM(int,
+                   kDefaultThreadPriority,
+                   &kAndroidThreadPriority,
+                   "default",
+                   0);
+BASE_FEATURE_PARAM(int,
+                   kPresentationThreadPriority,
+                   &kAndroidThreadPriority,
+                   "presentation",
+                   -4);
+BASE_FEATURE_PARAM(int,
+                   kInteractiveThreadPriority,
+                   &kAndroidThreadPriority,
+                   "interactive",
+                   -4);
+BASE_FEATURE_PARAM(bool,
+                   kObeySocRestrictions,
+                   &kAndroidThreadPriority,
+                   "obey_soc_restrictions",
+                   true);
+// kRealtimeAudio cannot be configured on the command line and should be the
+// effective maximum.
+
+// When enabled, do not run threads with a less important ThreadType than
+// kDisplayCritical on the big core cluster, for configurations with at least 3
+// clusters. This is based on observations that this cluster is both
+// power-hungry and contended.
+BASE_FEATURE(kRestrictBigCoreThreadAffinity, base::FEATURE_DISABLED_BY_DEFAULT);
+
+namespace {
+
+std::vector<uint64_t>* g_max_frequency_per_processor_override = nullptr;
+
+struct SetAffinityMask {
+  // Only set when the current CPU configuration has at least 3 separate
+  // clusters.
+  std::optional<cpu_set_t> mask;
+  size_t count = 0;
+  int allowed_count = 0;
+};
+
+// Get the CPU affinity mask, given the maximum frequency of all cores, and
+// whether the mask should allow to run on the largest core cluster, for
+// configurations with at least 3 clusters.
+//
+// Returns a value where `mask.mask` is not set if the device is not eligible,
+// that is it does not have at least 3 different CPU types.
+SetAffinityMask GetAffinityMask(const std::vector<uint64_t>& max_frequencies,
+                                bool can_run) {
+  if (max_frequencies.empty()) {
+    return {};
+  }
+
+  auto sorted = max_frequencies;
+  std::sort(sorted.begin(), sorted.end());
+  uint64_t max_frequency = sorted[sorted.size() - 1];
+  auto last = std::unique(sorted.begin(), sorted.end());
+  ssize_t distinct_count = std::distance(sorted.begin(), last);
+
+  // Don't want to move entirely from big cores on big.LITTLE, only on
+  // little-mid-big designs.
+  if (distinct_count < 3) {
+    return {};
+  }
+
+  int allowed_cpus_count = 0;
+  cpu_set_t cpu_set;
+  // SAFETY: Here and below, these are macros that we don't control, and hence
+  // we cannot safely replace. However, CPU_ZERO() is safe, and CPU_SET() has a
+  // check internally to not overflow the bitset, which we repeat in the loop to
+  // be clearer.
+  UNSAFE_BUFFERS(CPU_ZERO(&cpu_set));
+  for (size_t i = 0; i < max_frequencies.size(); i++) {
+    if (i < CPU_SETSIZE) {
+      if (can_run || (max_frequencies[i] < max_frequency)) {
+        allowed_cpus_count++;
+        UNSAFE_BUFFERS(CPU_SET(i, &cpu_set));
+      }
+    }
+  }
+
+  return {cpu_set, max_frequencies.size(), allowed_cpus_count};
+}
+
+}  // namespace
+
+void SetMaxFrequencyPerProcessorOverrideForTesting(
+    std::vector<uint64_t>* value) {
+  g_max_frequency_per_processor_override = value;
+}
+
+bool IsEligibleForBigCoreAffinityChange() {
+  if (g_max_frequency_per_processor_override) {
+    return GetAffinityMask(*g_max_frequency_per_processor_override, false)
+        .mask.has_value();
+  }
+  static const bool eligible =
+      GetAffinityMask(SysInfo::MaxFrequencyPerProcessor(), false)
+          .mask.has_value();
+  return eligible;
+}
+
+void SetCanRunOnBigCore(PlatformThreadId thread_id, bool can_run) {
+  TRACE_EVENT("base", __PRETTY_FUNCTION__, "thread_id", thread_id, "can_run",
+              can_run);
+  SetAffinityMask mask;
+  if (g_max_frequency_per_processor_override) {
+    mask = GetAffinityMask(*g_max_frequency_per_processor_override, can_run);
+  } else {
+    static const SetAffinityMask all_cores_mask =
+        GetAffinityMask(SysInfo::MaxFrequencyPerProcessor(), true);
+    static const SetAffinityMask no_big_cores_mask =
+        GetAffinityMask(SysInfo::MaxFrequencyPerProcessor(), false);
+    mask = can_run ? all_cores_mask : no_big_cores_mask;
+  }
+
+  if (!mask.mask) {
+    return;
+  }
+
+  TRACE_EVENT("base", "SetAffinity", "count", mask.count, "allowed",
+              mask.allowed_count);
+  // If the call fails, it's not a correctness issue. However we want to catch
+  // the sandbox returning EPERM.
+  //
+  // For instance, an invalid mask (e.g. one with an empty intersection with the
+  // set of possible CPUs) returns EINVAL and does not change the current mask,
+  // per sched_setaffinity(2). On more recent kernels, an empty mask resets the
+  // affinity.
+  int retval =
+      sched_setaffinity(thread_id.raw(), sizeof(*mask.mask), &*mask.mask);
+  DPCHECK(!retval);
+}
 
 namespace internal {
 
-// Returns true if the kDisplayCriticalThreadPriority should be boosted.
-static bool ShouldBoostDisplayCriticalThreadPriority() {
-  // ADPF-equipped Google Pixels are excluded from the study because of
-  // potential input jank. Because Finch doesn't support per-device targeting,
-  // switch this off even if the flag's on. TODO (ritownsend): make it possible
-  // to switch this back on for Pixel.
+static int GetAdjustedPresentationThreadPriority() {
+  // ADPF-equipped Google Pixels seem to have issues with input jank if the
+  // kDisplayCriticalThreadPriority value is lowered below -4.
   static bool is_google_soc = SysInfo::SocManufacturer() == "Google";
-  return !is_google_soc &&
-         base::FeatureList::IsEnabled(kIncreaseDisplayCriticalThreadPriority);
+  const bool allowed_to_lower =
+      (!is_google_soc || !kObeySocRestrictions.Get()) &&
+      base::FeatureList::IsEnabled(kAndroidThreadPriority);
+  const int requested_priority = kPresentationThreadPriority.Get();
+  return allowed_to_lower ? requested_priority
+                          : std::max(-4, requested_priority);
 }
 
 // - kRealtimeAudio corresponds to Android's PRIORITY_AUDIO = -16 value.
-// - kDisplay corresponds to Android's PRIORITY_DISPLAY = -4 value.
+// - kPresentation corresponds to Android's PRIORITY_DISPLAY = -4 value.
 // - kUtility corresponds to Android's THREAD_PRIORITY_LESS_FAVORABLE = 1 value.
 // - kBackground corresponds to Android's PRIORITY_BACKGROUND = 10
 //   value. Contrary to the matching Java APi in Android <13, this does not
 //   restrict the thread to (subset of) little cores.
-const ThreadPriorityToNiceValuePairForTest
-    kThreadPriorityToNiceValueMapForTest[7] = {
-        {ThreadPriorityForTest::kRealtimeAudio, -16},
-        {ThreadPriorityForTest::kDisplay, -4},
-        {ThreadPriorityForTest::kNormal, 0},
-        {ThreadPriorityForTest::kUtility, 1},
-        {ThreadPriorityForTest::kBackground, 10},
+const ThreadTypeToNiceValuePairForTest kThreadTypeToNiceValueMapForTest[7] = {
+    {ThreadType::kRealtimeAudio, -16}, {ThreadType::kPresentation, -4},
+    {ThreadType::kDefault, 0},         {ThreadType::kUtility, 1},
+    {ThreadType::kBackground, 10},
 };
 
-// - kBackground corresponds to Android's PRIORITY_BACKGROUND = 10 value and can
-// result in heavy throttling and force the thread onto a little core on
-// big.LITTLE devices.
-// - kUtility corresponds to Android's THREAD_PRIORITY_LESS_FAVORABLE = 1 value.
-// - kDisplayCritical and kInteractive correspond to Android's PRIORITY_DISPLAY
-// = -4 value.
-// - kRealtimeAudio corresponds to Android's PRIORITY_AUDIO = -16 value.
-
+// If we're not in the AndroidThreadPriorityTrial:
+//    - kBackground corresponds to Android's PRIORITY_BACKGROUND = 10 value.
+//    - kUtility corresponds to Android's THREAD_PRIORITY_LESS_FAVORABLE = 1
+//      value.
+//    - kPresentation and kInteractive correspond to Android's
+//      PRIORITY_DISPLAY = -4 value.
+//    - kRealtimeAudio corresponds to Android's PRIORITY_AUDIO = -16 value.
 int ThreadTypeToNiceValue(const ThreadType thread_type) {
+  if (base::FeatureList::IsEnabled(kAndroidThreadPriority)) {
+    [[unlikely]]
+    // Establish weak partial ordering from high to low.
+    DCHECK_LE(kUtilityThreadPriority.Get(), kBackgroundThreadPriority.Get());
+    DCHECK_LE(kDefaultThreadPriority.Get(), kUtilityThreadPriority.Get());
+    DCHECK_LE(GetAdjustedPresentationThreadPriority(),
+              kDefaultThreadPriority.Get());
+    DCHECK_LE(kInteractiveThreadPriority.Get(),
+              GetAdjustedPresentationThreadPriority());
+    // Check that -16 is the highest priority in the system.
+    DCHECK_LT(-16, kInteractiveThreadPriority.Get());
+    switch (thread_type) {
+      case ThreadType::kBackground:
+        return kBackgroundThreadPriority.Get();
+      case ThreadType::kUtility:
+        return kUtilityThreadPriority.Get();
+      case ThreadType::kDefault:
+        return kDefaultThreadPriority.Get();
+      case ThreadType::kPresentation:
+        return GetAdjustedPresentationThreadPriority();
+      case ThreadType::kAudioProcessing:
+        return kInteractiveThreadPriority.Get();
+      case ThreadType::kRealtimeAudio:
+        // Not configurable, should be the effective highest.
+        return -16;
+    }
+  }
   switch (thread_type) {
     case ThreadType::kBackground:
       return 10;
@@ -73,11 +248,8 @@ int ThreadTypeToNiceValue(const ThreadType thread_type) {
       return 1;
     case ThreadType::kDefault:
       return 0;
-    case ThreadType::kDisplayCritical:
-    case ThreadType::kInteractive:
-      if (ShouldBoostDisplayCriticalThreadPriority()) {
-        return -12;
-      }
+    case ThreadType::kPresentation:
+    case ThreadType::kAudioProcessing:
       return -4;
     case ThreadType::kRealtimeAudio:
       return -16;
@@ -88,8 +260,8 @@ bool CanSetThreadTypeToRealtimeAudio() {
   return true;
 }
 
-bool SetCurrentThreadTypeForPlatform(ThreadType thread_type,
-                                     MessagePumpType pump_type_hint) {
+void SetCurrentThreadTypeImpl(ThreadType thread_type,
+                              MessagePumpType pump_type_hint) {
   // We set the Audio priority through JNI as the Java setThreadPriority will
   // put it into a preferable cgroup, whereas the "normal" C++ call wouldn't.
   // However, with
@@ -101,27 +273,54 @@ bool SetCurrentThreadTypeForPlatform(ThreadType thread_type,
     JNIEnv* env = base::android::AttachCurrentThread();
     Java_ThreadUtils_setThreadPriorityAudio(env,
                                             PlatformThread::CurrentId().raw());
-    return true;
+  } else if (thread_type == ThreadType::kPresentation &&
+             pump_type_hint == MessagePumpType::UI &&
+             GetCurrentThreadNiceValue() <=
+                 ThreadTypeToNiceValue(ThreadType::kPresentation)) {
+    // Recent versions of Android (O+) up the priority of the UI thread
+    // automatically.
+  } else {
+    SetThreadNiceFromType(PlatformThread::CurrentId(), thread_type);
   }
-  // Recent versions of Android (O+) up the priority of the UI thread
-  // automatically.
-  if (thread_type == ThreadType::kDisplayCritical &&
-      pump_type_hint == MessagePumpType::UI &&
-      GetCurrentThreadNiceValue() <=
-          ThreadTypeToNiceValue(ThreadType::kDisplayCritical)) {
-    return true;
+
+  if (IsEligibleForBigCoreAffinityChange() &&
+      base::FeatureList::IsEnabled(kRestrictBigCoreThreadAffinity)) {
+    SetCanRunOnBigCore(PlatformThread::CurrentId(),
+                       thread_type >= ThreadType::kPresentation);
   }
-  return false;
 }
 
-std::optional<ThreadPriorityForTest>
-GetCurrentThreadPriorityForPlatformForTest() {
+std::optional<ThreadType> GetCurrentEffectiveThreadTypeForPlatformForTest() {
   JNIEnv* env = base::android::AttachCurrentThread();
   if (Java_ThreadUtils_isThreadPriorityAudio(
           env, PlatformThread::CurrentId().raw())) {
-    return std::make_optional(ThreadPriorityForTest::kRealtimeAudio);
+    return std::make_optional(ThreadType::kRealtimeAudio);
   }
   return std::nullopt;
+}
+
+PlatformPriorityOverride SetThreadTypeOverride(
+    PlatformThreadHandle thread_handle,
+    ThreadType thread_type) {
+  PlatformThreadId thread_id(
+      pthread_gettid_np(thread_handle.platform_handle()));
+  if (GetThreadNiceValue(thread_id) <= ThreadTypeToNiceValue(thread_type)) {
+    return false;
+  }
+  return SetThreadNiceFromType(thread_id, thread_type);
+}
+
+void RemoveThreadTypeOverride(
+    PlatformThreadHandle thread_handle,
+    const PlatformPriorityOverride& priority_override_handle,
+    ThreadType initial_thread_type) {
+  if (!priority_override_handle) {
+    return;
+  }
+
+  PlatformThreadId thread_id(
+      pthread_gettid_np(thread_handle.platform_handle()));
+  SetThreadNiceFromType(thread_id, initial_thread_type);
 }
 
 }  // namespace internal
@@ -161,3 +360,5 @@ size_t GetDefaultThreadStackSize(const pthread_attr_t& attributes) {
 }
 
 }  // namespace base
+
+DEFINE_JNI(ThreadUtils)

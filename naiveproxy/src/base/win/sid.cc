@@ -2,12 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/win/sid.h"
+
+#include "base/compiler_specific.h"
 
 // clang-format off
 #include <windows.h>  // Must be in front of other Windows header files.
@@ -46,7 +43,8 @@ Sid FromSubAuthorities(const SID_IDENTIFIER_AUTHORITY& identifier_authority,
   sid->SubAuthorityCount = static_cast<UCHAR>(sub_authority_count);
   sid->IdentifierAuthority = identifier_authority;
   for (size_t index = 0; index < sub_authority_count; ++index) {
-    sid->SubAuthority[index] = static_cast<DWORD>(*sub_authorities++);
+    UNSAFE_TODO(sid->SubAuthority[index]) =
+        static_cast<DWORD>(*UNSAFE_TODO(sub_authorities++));
   }
   DCHECK(::IsValidSid(sid));
   return *Sid::FromPSID(sid);
@@ -95,7 +93,7 @@ int32_t WellKnownCapabilityToRid(WellKnownCapability capability) {
 
 Sid::Sid(const void* sid, size_t length)
     : sid_(static_cast<const char*>(sid),
-           static_cast<const char*>(sid) + length) {
+           UNSAFE_TODO(static_cast<const char*>(sid) + length)) {
   DCHECK(::IsValidSid(GetPSID()));
 }
 
@@ -105,7 +103,7 @@ Sid Sid::FromKnownCapability(WellKnownCapability capability) {
                             {SECURITY_CAPABILITY_BASE_RID, capability_rid});
 }
 
-Sid Sid::FromNamedCapability(const std::wstring& capability_name) {
+Sid Sid::FromNamedCapability(std::wstring_view capability_name) {
   static const base::NoDestructor<std::map<std::wstring, WellKnownCapability>>
       known_capabilities(
           {{L"INTERNETCLIENT", WellKnownCapability::kInternetClient},
@@ -212,7 +210,7 @@ Sid Sid::FromKnownSid(WellKnownSid type) {
   }
 }
 
-std::optional<Sid> Sid::FromSddlString(const std::wstring& sddl_sid) {
+std::optional<Sid> Sid::FromSddlString(wcstring_view sddl_sid) {
   PSID psid = nullptr;
   if (!::ConvertStringSidToSid(sddl_sid.c_str(), &psid)) {
     return std::nullopt;
@@ -242,7 +240,7 @@ Sid Sid::FromIntegrityLevel(DWORD integrity_level) {
 }
 
 std::optional<std::vector<Sid>> Sid::FromSddlStringVector(
-    const std::vector<std::wstring>& sddl_sids) {
+    span<const std::wstring> sddl_sids) {
   std::vector<Sid> converted_sids;
   converted_sids.reserve(sddl_sids.size());
   for (const std::wstring& sddl_sid : sddl_sids) {
@@ -256,7 +254,7 @@ std::optional<std::vector<Sid>> Sid::FromSddlStringVector(
 }
 
 std::vector<Sid> Sid::FromNamedCapabilityVector(
-    const std::vector<std::wstring>& capability_names) {
+    span<const std::wstring> capability_names) {
   std::vector<Sid> sids;
   std::ranges::transform(capability_names, std::back_inserter(sids),
                          FromNamedCapability);
@@ -264,15 +262,14 @@ std::vector<Sid> Sid::FromNamedCapabilityVector(
 }
 
 std::vector<Sid> Sid::FromKnownCapabilityVector(
-    const std::vector<WellKnownCapability>& capabilities) {
+    span<const WellKnownCapability> capabilities) {
   std::vector<Sid> sids;
   std::ranges::transform(capabilities, std::back_inserter(sids),
                          FromKnownCapability);
   return sids;
 }
 
-std::vector<Sid> Sid::FromKnownSidVector(
-    const std::vector<WellKnownSid>& known_sids) {
+std::vector<Sid> Sid::FromKnownSidVector(span<const WellKnownSid> known_sids) {
   std::vector<Sid> sids;
   std::ranges::transform(known_sids, std::back_inserter(sids), FromKnownSid);
   return sids;

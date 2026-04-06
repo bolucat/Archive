@@ -1047,14 +1047,25 @@ function gen_config(var)
 				else
 					local preproxy_node = get_node_by_id(node.preproxy_node)
 					if preproxy_node then
-						local preproxy_outbound = gen_outbound(node[".name"], preproxy_node)
+						local preproxy_outbound, exist
+						if preproxy_node.protocol == "_balancing" then
+							local balancer_tag, loopback_outbound = gen_balancer(preproxy_node)
+							if loopback_outbound then
+								preproxy_outbound = loopback_outbound
+								exist = true
+							end
+						else
+							preproxy_outbound = gen_outbound(node[".name"], preproxy_node)
+						end
 						if preproxy_outbound then
 							outbound.tag = preproxy_outbound.tag .. " -> " .. outbound.tag
 							outbound.proxySettings = {
 								tag = preproxy_outbound.tag,
 								transportLayer = true
 							}
-							last_insert_outbound = preproxy_outbound
+							if not exist then
+								last_insert_outbound = preproxy_outbound
+							end
 							default_outTag = outbound.tag
 						end
 					end

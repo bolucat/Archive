@@ -11,6 +11,7 @@
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "net/base/switches.h"
 #include "net/log/file_net_log_observer.h"
 #include "net/log/net_log.h"
 #include "net/log/net_log_util.h"
@@ -45,7 +46,8 @@ class TestNetLogManager::LogNetLogObserver : public NetLog::ThreadSafeObserver {
 
 TestNetLogManager::TestNetLogManager(NetLog* net_log,
                                      NetLogCaptureMode capture_mode) {
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(kLogNetLogSwitch)) {
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          net::switches::kLogNetLog)) {
     Start(net_log, capture_mode);
   }
 }
@@ -71,7 +73,7 @@ void TestNetLogManager::Start(NetLog* net_log, NetLogCaptureMode capture_mode) {
       base::CommandLine::ForCurrentProcess();
 
   base::FilePath log_file_path =
-      command_line->GetSwitchValuePath(kLogNetLogSwitch);
+      command_line->GetSwitchValuePath(net::switches::kLogNetLog);
   if (log_file_path.empty()) {
     log_net_log_observer_ =
         std::make_unique<LogNetLogObserver>(net_log, capture_mode);
@@ -84,8 +86,8 @@ void TestNetLogManager::Start(NetLog* net_log, NetLogCaptureMode capture_mode) {
     return;
   }
 
-  auto constants = std::make_unique<base::Value::Dict>(GetNetConstants());
-  base::Value::Dict client_info;
+  auto constants = std::make_unique<base::DictValue>(GetNetConstants());
+  base::DictValue client_info;
   client_info.Set("name", "net_unittests");
   base::CommandLine::StringType command_line_string =
       command_line->GetCommandLineString();

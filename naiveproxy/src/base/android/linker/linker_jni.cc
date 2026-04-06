@@ -270,8 +270,9 @@ String::String(JNIEnv* env, jstring str) {
   env->ReleaseStringUTFChars(str, bytes);
 }
 
-bool IsValidAddress(jlong address) {
-  bool result = static_cast<jlong>(static_cast<uintptr_t>(address)) == address;
+bool IsValidAddress(int64_t address) {
+  bool result =
+      static_cast<int64_t>(static_cast<uintptr_t>(address)) == address;
   if (!result) {
     LOG_ERROR("Invalid address 0x%" PRIx64, static_cast<uint64_t>(address));
   }
@@ -489,13 +490,13 @@ bool NativeLibInfo::CreateSharedRelroFd() {
   }
 
   // Create a writable shared memory region.
-  int shared_mem_fd = ashmem_create_region("cr_relro", relro_size_);
+  int shared_mem_fd = SharedMemoryRegionCreate("cr_relro", relro_size_);
   if (shared_mem_fd == -1) {
     LOG_ERROR("Cannot create the shared memory file");
     return false;
   }
   int rw_flags = PROT_READ | PROT_WRITE;
-  ashmem_set_prot_region(shared_mem_fd, rw_flags);
+  SharedMemoryRegionSetProtectionFlags(shared_mem_fd, rw_flags);
 
   // Map the region as writable.
   void* relro_copy_addr =
@@ -519,7 +520,7 @@ bool NativeLibInfo::CreateSharedRelroFd() {
   // writable memory mappings, since they are not directly affected by the
   // change of region's protection flags.
   munmap(relro_copy_addr, relro_size_);
-  if (ashmem_set_prot_region(shared_mem_fd, PROT_READ) == -1) {
+  if (SharedMemoryRegionSetProtectionFlags(shared_mem_fd, PROT_READ) == -1) {
     LOG_ERROR("Failed to set the RELRO FD as read-only.");
     close(shared_mem_fd);
     return false;
@@ -711,7 +712,7 @@ Java_org_chromium_base_library_1loader_LinkerJni_nativeReserveMemoryForLibrary(
   s_lib_info_fields.SetLoadInfo(env, lib_info_obj, address, size);
 }
 
-JNI_ZERO_BOUNDARY_EXPORT jboolean
+JNI_ZERO_BOUNDARY_EXPORT bool
 Java_org_chromium_base_library_1loader_LinkerJni_nativeFindRegionReservedByWebViewZygote(
     JNIEnv* env,
     jclass clazz,
@@ -726,13 +727,13 @@ Java_org_chromium_base_library_1loader_LinkerJni_nativeFindRegionReservedByWebVi
   return true;
 }
 
-JNI_ZERO_BOUNDARY_EXPORT jboolean
+JNI_ZERO_BOUNDARY_EXPORT bool
 Java_org_chromium_base_library_1loader_LinkerJni_nativeLoadLibrary(
     JNIEnv* env,
     jclass clazz,
     jstring jdlopen_ext_path,
     jobject lib_info_obj,
-    jboolean spawn_relro_region) {
+    bool spawn_relro_region) {
   LOG_INFO("Entering");
 
   // Copy the contents from the Java-side LibInfo object.
@@ -748,11 +749,11 @@ Java_org_chromium_base_library_1loader_LinkerJni_nativeLoadLibrary(
   return true;
 }
 
-JNI_ZERO_BOUNDARY_EXPORT jboolean
+JNI_ZERO_BOUNDARY_EXPORT bool
 Java_org_chromium_base_library_1loader_LinkerJni_nativeUseRelros(
     JNIEnv* env,
     jclass clazz,
-    jlong local_load_address,
+    int64_t local_load_address,
     jobject remote_lib_info_obj) {
   LOG_INFO("Entering");
   // Copy the contents from the Java-side LibInfo object.
@@ -774,11 +775,11 @@ Java_org_chromium_base_library_1loader_LinkerJni_nativeUseRelros(
   return true;
 }
 
-JNI_ZERO_BOUNDARY_EXPORT jint
+JNI_ZERO_BOUNDARY_EXPORT int32_t
 Java_org_chromium_base_library_1loader_LinkerJni_nativeGetRelroSharingResult(
     JNIEnv* env,
     jclass clazz) {
-  return static_cast<jint>(s_relro_sharing_status);
+  return static_cast<int32_t>(s_relro_sharing_status);
 }
 
 bool LinkerJNIInit(JavaVM* vm, JNIEnv* env) {

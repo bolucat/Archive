@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_POOL_OFFSET_FREELIST_H_
 #define PARTITION_ALLOC_POOL_OFFSET_FREELIST_H_
 
@@ -97,7 +92,7 @@ class EncodedPoolOffset {
     if (!ptr) {
       return kEncodeedNullptr;
     }
-    uintptr_t address = SlotStartPtr2Addr(ptr);
+    uintptr_t address = SlotStart::Unchecked(ptr).Untag().value();
     PoolInfo pool_info = PartitionAddressSpace::GetPoolInfo(address);
     // Save a MTE tag as well as an offset.
     uintptr_t tagged_offset =
@@ -118,7 +113,8 @@ class EncodedPoolOffset {
 
   // Given `pool_info`, decodes a `tagged_offset` into a tagged pointer.
   PA_ALWAYS_INLINE FreelistEntry* Decode(size_t slot_size) const {
-    PoolInfo pool_info = GetPoolInfo(SlotStartPtr2Addr(this));
+    PoolInfo pool_info =
+        GetPoolInfo(SlotStart::Unchecked(this).Untag().value());
     uintptr_t tagged_offset = Transform(encoded_);
 
     // `tagged_offset` must not have bits set in the pool base mask, except MTE

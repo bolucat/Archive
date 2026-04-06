@@ -66,9 +66,9 @@ PacFileDataWithSource::PacFileDataWithSource(const PacFileDataWithSource&) =
 PacFileDataWithSource& PacFileDataWithSource::operator=(
     const PacFileDataWithSource&) = default;
 
-base::Value::Dict PacFileDecider::PacSource::NetLogParams(
+base::DictValue PacFileDecider::PacSource::NetLogParams(
     const GURL& effective_pac_url) const {
-  base::Value::Dict dict;
+  base::DictValue dict;
   std::string source;
   switch (type) {
     case PacSource::WPAD_DHCP:
@@ -119,6 +119,7 @@ int PacFileDecider::Start(const ProxyConfigWithAnnotation& config,
 
   pac_mandatory_ = config.value().pac_mandatory();
   have_custom_pac_url_ = config.value().has_pac_url();
+  proxy_override_rules_ = config.value().proxy_override_rules();
 
   pac_sources_ = BuildPacSourcesFallbackList(config.value());
   DCHECK(!pac_sources_.empty());
@@ -410,6 +411,8 @@ int PacFileDecider::DoVerifyPacScriptComplete(int result) {
       config = ProxyConfig::CreateAutoDetect();
     }
   }
+
+  config.set_proxy_override_rules(proxy_override_rules_);
 
   effective_config_ = ProxyConfigWithAnnotation(
       config, net::NetworkTrafficAnnotationTag(traffic_annotation_));

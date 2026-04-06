@@ -68,7 +68,7 @@ using ::quic::simulator::Simulator;
 // value just has to be sufficiently larger than the server link bandwidth.
 constexpr QuicBandwidth kClientLinkBandwidth =
     QuicBandwidth::FromBitsPerSecond(10.0e6);
-constexpr MoqtVersion kMoqtVersion = kDefaultMoqtVersion;
+constexpr absl::string_view kMoqtVersion = kDefaultMoqtVersion;
 
 // Track name used by the simulator.
 FullTrackName TrackName() { return FullTrackName("test", "track"); }
@@ -137,9 +137,8 @@ ObjectGenerator::ObjectGenerator(quic::simulator::Simulator* simulator,
                                  float i_to_p_ratio,
                                  quic::QuicBandwidth bitrate)
     : Actor(simulator, actor_name),
-      queue_(std::make_shared<MoqtOutgoingQueue>(
-          track_name, MoqtForwardingPreference::kSubgroup,
-          simulator->GetClock())),
+      queue_(std::make_shared<MoqtOutgoingQueue>(track_name,
+                                                 simulator->GetClock())),
       keyframe_interval_(keyframe_interval),
       time_between_frames_(QuicTimeDelta::FromMicroseconds(1.0e6 / fps)),
       i_to_p_ratio_(i_to_p_ratio),
@@ -196,10 +195,10 @@ std::string ObjectGenerator::FormatBitrateHistory() const {
 
 void ObjectReceiver::OnReply(
     const FullTrackName& full_track_name,
-    std::variant<SubscribeOkData, MoqtRequestError> response) {
+    std::variant<SubscribeOkData, MoqtRequestErrorInfo> response) {
   QUICHE_CHECK(full_track_name == TrackName());
-  if (std::holds_alternative<MoqtRequestError>(response)) {
-    MoqtRequestError error = std::get<MoqtRequestError>(response);
+  if (std::holds_alternative<MoqtRequestErrorInfo>(response)) {
+    MoqtRequestErrorInfo error = std::get<MoqtRequestErrorInfo>(response);
     QUICHE_CHECK(!error.reason_phrase.empty()) << error.reason_phrase;
   }
 }
@@ -255,6 +254,7 @@ constexpr QuicByteCount AdjustedQueueSize(
 
 MoqtSimulator::MoqtSimulator(const SimulationParameters& parameters)
     : simulator_(quic::QuicRandom::GetInstance()),
+      receiver_(simulator_.GetClock(), parameters.deadline),
       client_endpoint_(&simulator_, "Client", "Server", kMoqtVersion),
       server_endpoint_(&simulator_, "Server", "Client", kMoqtVersion),
       switch_(&simulator_, "Switch", 8, AdjustedQueueSize(parameters)),
@@ -266,9 +266,8 @@ MoqtSimulator::MoqtSimulator(const SimulationParameters& parameters)
       generator_(&simulator_, "Client generator", client_endpoint_.session(),
                  TrackName(), parameters.keyframe_interval, parameters.fps,
                  parameters.i_to_p_ratio, parameters.bitrate),
-      receiver_(simulator_.GetClock(), parameters.deadline),
       adjuster_(simulator_.GetClock(), client_endpoint_.session()->session(),
-                &generator_),
+                simulator_.GetAlarmFactory(), &generator_),
       parameters_(parameters) {
   if (parameters.aggregation_threshold > 0) {
     QuicTimeDelta timeout = parameters.aggregation_timeout;
@@ -280,8 +279,10 @@ MoqtSimulator::MoqtSimulator(const SimulationParameters& parameters)
   }
   client_endpoint_.RecordTrace();
   QUICHE_DCHECK(client_endpoint_.trace_visitor() != nullptr);
-  client_endpoint_.session()->trace_recorder().set_trace(
-      client_endpoint_.trace_visitor()->trace());
+  client_endpoint_.session()->trace_recorder().SetParentRecorder(
+      client_endpoint_.trace_visitor());
+  adjuster_.trace_recorder().SetParentRecorder(
+      client_endpoint_.trace_visitor());
 }
 
 std::string MoqtSimulator::GetClientSessionCongestionControl() {
@@ -298,7 +299,6 @@ void MoqtSimulator::Run() {
   server_session()->set_support_object_acks(true);
   RunHandshakeOrDie(simulator_, client_endpoint_, server_endpoint_);
 
-  generator_.queue()->SetDeliveryOrder(parameters_.delivery_order);
   client_session()->set_publisher(&publisher_);
   if (parameters_.bitrate_adaptation) {
     client_session()->SetMonitoringInterfaceForTrack(TrackName(), &adjuster_);
@@ -315,7 +315,7 @@ void MoqtSimulator::Run() {
   //       server does not yet have an active subscription, so the client has
   //       some catching up to do.
   generator_.Start();
-  VersionSpecificParameters subscription_parameters;
+  MessageParameters subscription_parameters;
   if (parameters_.bitrate_adaptation) {
     subscription_parameters.oack_window_size = parameters_.deadline;
   }

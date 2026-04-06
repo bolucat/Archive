@@ -8,12 +8,16 @@
 #include <queue>
 #include <variant>
 
+#include "base/functional/callback_helpers.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "net/disk_cache/buildflags.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/disk_cache/sql/cache_entry_key.h"
+#include "net/disk_cache/sql/entry_db_handle.h"
+#include "net/disk_cache/sql/entry_write_buffer.h"
 #include "net/disk_cache/sql/sql_persistent_store.h"
+#include "net/disk_cache/sql/sql_write_buffer_memory_monitor.h"
 #include "net/log/net_log_with_source.h"
 
 // This backend is experimental and only available when the build flag is set.
@@ -34,16 +38,10 @@ class NET_EXPORT_PRIVATE SqlEntryImpl final
     : public Entry,
       public base::RefCounted<SqlEntryImpl> {
  public:
-  // For a speculatively created entry, this holds `std::nullopt` initially, and
-  // when the entry creation task is complete, it will hold either the `ResId`
-  // on success or an `Error` on failure. Otherwise, it just holds a `ResId`.
-  using ResIdOrErrorHolder = base::RefCountedData<std::optional<
-      std::variant<SqlPersistentStore::ResId, SqlPersistentStore::Error>>>;
-
   // Constructs a SqlEntryImpl.
   SqlEntryImpl(base::WeakPtr<SqlBackendImpl> backend,
                CacheEntryKey key,
-               scoped_refptr<ResIdOrErrorHolder> res_id_or_error,
+               scoped_refptr<EntryDbHandle> db_handle,
                base::Time last_used,
                int64_t body_end,
                scoped_refptr<net::GrowableIOBuffer> head);
@@ -79,24 +77,38 @@ class NET_EXPORT_PRIVATE SqlEntryImpl final
   bool CouldBeSparse() const override;
   void CancelSparseIO() override;
   net::Error ReadyForSparseIO(CompletionOnceCallback callback) override;
+  void SetEntryInMemoryData(uint8_t data) override;
   void SetLastUsedTimeForTest(base::Time time) override;
+
+  net::IOBuffer* read_cache_buffer_for_test() const {
+    return read_cache_buffer_.get();
+  }
+  int64_t read_cache_buffer_offset_for_test() const {
+    return read_cache_buffer_offset_;
+  }
 
   // Returns the cache key of the entry.
   const CacheEntryKey& cache_key() const { return key_; }
 
   // Returns the holder for the resource ID or an error.
-  const scoped_refptr<ResIdOrErrorHolder>& res_id_or_error() const {
-    return res_id_or_error_;
+  const scoped_refptr<EntryDbHandle>& db_handle() const { return db_handle_; }
+
+  // Returns the new hints value if it has been modified via
+  // SetEntryInMemoryData(). This value might not yet be persisted to the
+  // database.
+  const std::optional<MemoryEntryDataHints>& new_hints() const {
+    return new_hints_;
   }
 
-  // Marks the entry as doomed. This is called by the backend when an
-  // active entry is doomed.
-  void MarkAsDoomed();
-
-  bool doomed() const { return doomed_; }
+  bool doomed() const;
 
   // Updates the `last_used_` timestamp to the current time.
   void UpdateLastUsed();
+
+  // Flushes the write buffer to the backend.
+  // When `force_flush_for_creation` is true, this flushes even when the write
+  // buffer is empty to create an entry in the DB.
+  void FlushBuffer(bool force_flush_for_creation);
 
  private:
   friend class base::RefCounted<SqlEntryImpl>;
@@ -120,14 +132,21 @@ class NET_EXPORT_PRIVATE SqlEntryImpl final
                        CompletionOnceCallback callback,
                        bool sparse_reading);
 
-  base::WeakPtr<SqlBackendImpl> backend_;
+  // Retrieves the write buffer and returns true if successful. If the buffer
+  // is empty, returns false. The `reservation` will be populated with the
+  // scoped reservation for the write buffer, which should be kept alive until
+  // the buffer is written to the backend.
+  bool TakeWriteBuffer(
+      EntryWriteBuffer& buffer,
+      SqlWriteBufferMemoryMonitor::ScopedReservation& reservation);
 
+  base::WeakPtr<SqlBackendImpl> backend_;
   // The key for this cache entry.
   const CacheEntryKey key_;
 
   // Holds the ResId of the entry or an error if the speculative creation
   // failed.
-  const scoped_refptr<ResIdOrErrorHolder> res_id_or_error_;
+  const scoped_refptr<EntryDbHandle> db_handle_;
 
   // The last time this entry was accessed.
   base::Time last_used_;
@@ -142,14 +161,28 @@ class NET_EXPORT_PRIVATE SqlEntryImpl final
   // The entry's header data (stream 0).
   scoped_refptr<net::GrowableIOBuffer> head_;
 
+  // Stores the new hints value if it has been modified. This is used to
+  // determine if the hints need to be persisted to the database when the entry
+  // is destructed.
+  std::optional<MemoryEntryDataHints> new_hints_;
+
   // Stores the original size of the header (stream 0) before it was first
   // modified. `std::nullopt` indicates that the header has not been written to
   // since the entry was opened. This is used in the destructor to determine if
   // the header needs to be persisted to storage.
   std::optional<int64_t> previous_header_size_in_storage_;
 
-  // True if this entry has been marked for deletion.
-  bool doomed_ = false;
+  // Buffers data for stream 1 writes.
+  EntryWriteBuffer write_buffer_;
+
+  // A scoped reservation that holds the memory usage of `write_buffer_` in the
+  // `SqlWriteBufferMemoryMonitor`.
+  SqlWriteBufferMemoryMonitor::ScopedReservation write_buffer_reservation_;
+
+  // A buffer containing data read beyond the requested range.
+  scoped_refptr<net::IOBuffer> read_cache_buffer_;
+  // The offset within the entry's body where `read_cache_buffer_` starts.
+  int64_t read_cache_buffer_offset_ = -1;
 
   base::WeakPtrFactory<SqlEntryImpl> weak_factory_{this};
 };

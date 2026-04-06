@@ -224,16 +224,11 @@
 #  if defined(__ARM_FEATURE_SVE2)
 #    define ZSTD_ARCH_ARM_SVE2
 #  endif
-#if defined(__riscv) && defined(__riscv_vector)
-    #if defined(__GNUC__)
-        #if (__GNUC__ > 14 || (__GNUC__ == 14 && __GNUC_MINOR__ >= 1))
-            #define ZSTD_ARCH_RISCV_RVV
-        #endif
-    #elif defined(__clang__)
-        #if __clang_major__ > 18 || (__clang_major__ == 18 && __clang_minor__ >= 1)
-            #define ZSTD_ARCH_RISCV_RVV
-        #endif
-    #endif
+#  if defined(__riscv) && defined(__riscv_vector)
+#    if ((defined(__GNUC__) && !defined(__clang__) && __GNUC__ >= 14) || \
+        (defined(__clang__) && __clang_major__ >= 19))
+        #define ZSTD_ARCH_RISCV_RVV
+#  endif
 #endif
 #
 #  if defined(ZSTD_ARCH_X86_AVX2)

@@ -22,7 +22,9 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/strings/string_split.h"
+#include "base/types/expected.h"
 #include "net/base/completion_once_callback.h"
+#include "net/base/net_errors.h"
 #include "net/base/request_priority.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/http/http_cache.h"
@@ -88,10 +90,10 @@ class MockDiskEntry : public disk_cache::Entry,
   bool CouldBeSparse() const override;
   void CancelSparseIO() override;
   Error ReadyForSparseIO(CompletionOnceCallback completion_callback) override;
+  void SetEntryInMemoryData(uint8_t data) override;
   void SetLastUsedTimeForTest(base::Time time) override;
 
   uint8_t in_memory_data() const { return in_memory_data_; }
-  void set_in_memory_data(uint8_t val) { in_memory_data_ = val; }
 
   // Fail subsequent requests, specified via FailOp bits.
   void set_fail_requests(int mask) { fail_requests_ = mask; }
@@ -162,8 +164,8 @@ class MockDiskCache : public disk_cache::Backend {
   MockDiskCache();
   ~MockDiskCache() override;
 
-  int32_t GetEntryCount(
-      net::Int32CompletionOnceCallback callback) const override;
+  base::expected<int32_t, net::Error> GetEntryCount(
+      GetEntryCountCallback callback) const override;
   EntryResult OpenOrCreateEntry(const std::string& key,
                                 RequestPriority request_priority,
                                 EntryResultCallback callback) override;
@@ -188,7 +190,6 @@ class MockDiskCache : public disk_cache::Backend {
   void GetStats(base::StringPairs* stats) override;
   void OnExternalCacheHit(const std::string& key) override;
   uint8_t GetEntryInMemoryData(const std::string& key) override;
-  void SetEntryInMemoryData(const std::string& key, uint8_t data) override;
   int64_t MaxFileSize() const override;
 
   // Returns number of times a cache entry was successfully opened.

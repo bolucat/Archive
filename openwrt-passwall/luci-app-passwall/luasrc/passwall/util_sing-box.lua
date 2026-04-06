@@ -1813,7 +1813,9 @@ function gen_config(var)
 				table.insert(dns.rules, {
 					query_type = { "A", "AAAA" },
 					server = fakedns_tag,
-					disable_cache = true
+					disable_cache = true,
+					rewrite_ttl = 30,
+					strategy = remote_strategy
 				})
 			end
 		end

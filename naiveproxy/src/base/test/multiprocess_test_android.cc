@@ -53,7 +53,7 @@ Process SpawnMultiProcessTestChild(const std::string& procname,
   android::ScopedJavaLocalRef<jobjectArray> j_argv =
       android::ToJavaArrayOfStrings(env, command_line.argv());
 
-  jint pid = android::Java_MultiprocessTestClientLauncher_launchClient(
+  int32_t pid = android::Java_MultiprocessTestClientLauncher_launchClient(
       env, j_argv, fds);
   return Process(pid);
 }
@@ -97,3 +97,6 @@ bool MultiProcessTestChildHasCleanExit(const Process& process) {
 }
 
 }  // namespace base
+
+DEFINE_JNI(MainReturnCodeResult)
+DEFINE_JNI(MultiprocessTestClientLauncher)

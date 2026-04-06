@@ -5,7 +5,6 @@
 #include <iostream>
 #include <memory>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 #include "base/at_exit.h"
@@ -13,7 +12,6 @@
 #include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/format_macros.h"
-#include "base/hash/md5.h"
 #include "base/logging.h"
 #include "base/message_loop/message_pump_type.h"
 #include "base/pickle.h"
@@ -31,6 +29,7 @@
 #include "net/http/http_response_headers.h"
 #include "net/http/http_response_info.h"
 #include "net/http/http_util.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 
 using disk_cache::Backend;
 using disk_cache::BackendResult;
@@ -54,7 +53,7 @@ struct EntryData {
 constexpr int kResponseInfoIndex = 0;
 constexpr int kResponseContentIndex = 1;
 
-auto kCommandNames = std::to_array(
+constexpr auto kCommandNames = std::to_array(
     {"stop", "get_size", "list_keys", "get_stream", "delete_stream",
      "delete_key", "update_raw_headers", "list_dups", "set_header"});
 
@@ -405,7 +404,7 @@ std::string GetMD5ForResponseBody(disk_cache::Entry* entry) {
     }
 
     if (rv == 0) {
-      return base::ToLowerASCII(base::HexEncode(hasher.Finish()));
+      return base::HexEncodeLower(hasher.Finish());
     }
 
     bytes_read += rv;
@@ -446,7 +445,7 @@ void ListDups(CommandMarshal* command_marshal) {
   disk_cache::EntryResult result = entry_iterator->OpenNextEntry(cb.callback());
   command_marshal->ReturnSuccess();
 
-  std::unordered_map<std::string, std::vector<EntryData>> md5_entries;
+  absl::flat_hash_map<std::string, std::vector<EntryData>> md5_entries;
 
   int total_entries = 0;
 
@@ -477,12 +476,7 @@ void ListDups(CommandMarshal* command_marshal) {
     if (response_info.headers)
       response_info.headers->GetMimeType(&entry_data.mime_type);
 
-    auto iter = md5_entries.find(hash);
-    if (iter == md5_entries.end()) {
-      md5_entries.emplace(hash, std::vector<EntryData>{entry_data});
-    } else {
-      iter->second.push_back(entry_data);
-    }
+    md5_entries[hash].push_back(entry_data);
 
     entry->Close();
     entry = nullptr;
@@ -762,7 +756,7 @@ int main(int argc, char* argv[]) {
   BackendResult result = disk_cache::CreateCacheBackend(
       net::DISK_CACHE, backend_type, /*file_operations=*/nullptr, cache_path,
       INT_MAX, disk_cache::ResetHandling::kNeverReset, /*net_log=*/nullptr,
-      cb.callback());
+      /*cache_encryption_delegate=*/nullptr, cb.callback());
   result = cb.GetResult(std::move(result));
   if (result.net_error != net::OK) {
     std::cerr << "Invalid cache." << std::endl;

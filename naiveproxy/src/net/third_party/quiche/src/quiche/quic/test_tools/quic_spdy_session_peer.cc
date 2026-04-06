@@ -6,7 +6,7 @@
 
 #include <utility>
 
-
+#include "absl/base/casts.h"
 #include "quiche/quic/core/http/quic_spdy_session.h"
 #include "quiche/quic/core/qpack/qpack_receive_stream.h"
 #include "quiche/quic/core/quic_utils.h"
@@ -20,18 +20,19 @@ namespace test {
 // static
 QuicHeadersStream* QuicSpdySessionPeer::GetHeadersStream(
     QuicSpdySession* session) {
-  QUICHE_DCHECK(!VersionUsesHttp3(session->transport_version()));
+  QUICHE_DCHECK(!VersionIsIetfQuic(session->transport_version()));
   return session->headers_stream();
 }
 
 void QuicSpdySessionPeer::SetHeadersStream(QuicSpdySession* session,
                                            QuicHeadersStream* headers_stream) {
-  QUICHE_DCHECK(!VersionUsesHttp3(session->transport_version()));
+  QUICHE_DCHECK(!VersionIsIetfQuic(session->transport_version()));
   for (auto& it : QuicSessionPeer::stream_map(session)) {
     if (it.first ==
         QuicUtils::GetHeadersStreamId(session->transport_version())) {
       it.second.reset(headers_stream);
-      session->headers_stream_ = static_cast<QuicHeadersStream*>(it.second.get());
+      session->headers_stream_ =
+          absl::down_cast<QuicHeadersStream*>(it.second.get());
       break;
     }
   }

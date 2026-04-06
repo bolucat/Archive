@@ -50,8 +50,8 @@ class NET_EXPORT_PRIVATE OptRecordRdata : public RecordRdata {
 
   class NET_EXPORT_PRIVATE EdeOpt : public Opt {
    public:
-    // Metadata for Filtering Details (ro/inc) are defined in Version 1 of
-    // https://datatracker.ietf.org/doc/draft-nottingham-public-resolver-errors/01/
+    // Metadata for Filtering Details (db/id) are defined in Version 2 of
+    // https://datatracker.ietf.org/doc/draft-nottingham-public-resolver-errors/02/
     struct NET_EXPORT_PRIVATE FilteringDetails {
       FilteringDetails();
       ~FilteringDetails();
@@ -61,8 +61,8 @@ class NET_EXPORT_PRIVATE OptRecordRdata : public RecordRdata {
       FilteringDetails(FilteringDetails&&) noexcept;
       FilteringDetails& operator=(FilteringDetails&&) noexcept;
 
-      std::string resolver_operator_id;   // "ro"
-      std::string filtering_incident_id;  // "inc"
+      std::string database_operator_id;  // "db" Filtering Database Operator ID
+      std::string incident_id;           // "id" Filtering Incident ID
     };
 
     static const uint16_t kOptCode = dns_protocol::kEdnsExtendedDnsError;
@@ -113,6 +113,10 @@ class NET_EXPORT_PRIVATE OptRecordRdata : public RecordRdata {
 
     // Attempts to parse an EDE option from `data`. Returns nullptr on failure.
     static std::unique_ptr<EdeOpt> Create(base::span<const uint8_t> data);
+
+    // Allocates an EDE option suitable for a DNS query that indicates support
+    // for EDE with Structured DNS Errors.
+    static std::unique_ptr<EdeOpt> CreateStructuredErrorsRequest();
 
     uint16_t GetCode() const override;
     uint16_t info_code() const { return info_code_; }

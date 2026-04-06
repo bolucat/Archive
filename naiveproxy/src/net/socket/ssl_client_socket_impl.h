@@ -17,6 +17,7 @@
 #include "base/compiler_specific.h"
 #include "base/containers/lru_cache.h"
 #include "base/containers/span_reader.h"
+#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -75,7 +76,7 @@ class NET_EXPORT_PRIVATE SSLClientSocketImpl
 
   // SSLClientSocket implementation.
   std::vector<uint8_t> GetECHRetryConfigs() override;
-  std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDsForRetry() override;
+  std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDs() override;
 
   // SSLSocket implementation.
   int ExportKeyingMaterial(std::string_view label,

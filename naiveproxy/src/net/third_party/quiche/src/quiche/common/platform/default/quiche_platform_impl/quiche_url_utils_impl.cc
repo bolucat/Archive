@@ -30,7 +30,9 @@ bool ExpandURITemplateImpl(
     const std::string& value = pair.second;
     std::string name_input = absl::StrCat("{", name, "}");
     url::RawCanonOutputT<char> canon_value;
-    url::EncodeURIComponent(value.c_str(), value.length(), &canon_value);
+    url::EncodeURIComponent(
+        value,
+        &canon_value);
     std::string encoded_value(canon_value.data(), canon_value.length());
     int num_replaced =
         absl::StrReplaceAll({{name_input, encoded_value}}, &result);
@@ -60,12 +62,13 @@ bool ExpandURITemplateImpl(
 std::optional<std::string> AsciiUrlDecodeImpl(absl::string_view input) {
   std::string input_encoded = std::string(input);
   url::RawCanonOutputW<1024> canon_output;
-  url::DecodeURLEscapeSequences(input_encoded.c_str(), input_encoded.length(),
-                                url::DecodeURLMode::kUTF8,
-                                &canon_output);
+  url::DecodeURLEscapeSequences(
+      input_encoded, url::DecodeURLMode::kUTF8,
+      &canon_output);
   std::string output;
-  output.reserve(canon_output.length());
-  for (int i = 0; i < canon_output.length(); i++) {
+  const size_t length = canon_output.length();
+  output.reserve(length);
+  for (size_t i = 0; i < length; i++) {
     const uint16_t c = reinterpret_cast<uint16_t*>(canon_output.data())[i];
     if (c > std::numeric_limits<signed char>::max()) {
       return std::nullopt;

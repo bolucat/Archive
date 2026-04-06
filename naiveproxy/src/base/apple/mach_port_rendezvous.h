@@ -18,7 +18,7 @@
 #include "base/apple/scoped_mach_port.h"
 #include "base/base_export.h"
 #include "base/containers/buffer_iterator.h"
-#include "base/feature_list.h"
+#include "base/containers/heap_array.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
 #include "build/ios_buildflags.h"
@@ -117,7 +117,7 @@ class BASE_EXPORT MachPortRendezvousServerBase {
   // Returns a buffer containing a well-formed Mach message, destined for
   // `reply_port` containing descriptors for the specified `ports` and
   // `additional_data`.
-  std::unique_ptr<uint8_t[]> CreateReplyMessage(
+  base::HeapArray<uint8_t> CreateReplyMessage(
       mach_port_t reply_port,
       const MachPortsForRendezvous& ports,
       std::vector<uint8_t> additional_data);
@@ -185,7 +185,7 @@ class BASE_EXPORT MachPortRendezvousClient {
 namespace internal {
 
 // This limit is arbitrary and can be safely increased in the future.
-inline constexpr size_t kMaximumRendezvousPorts = 6;
+inline constexpr size_t kMaximumRendezvousPorts = 8;
 
 enum MachRendezvousMsgId : mach_msg_id_t {
   kMachRendezvousMsgIdRequest = 'mrzv',

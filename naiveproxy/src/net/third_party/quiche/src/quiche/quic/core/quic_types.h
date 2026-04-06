@@ -581,6 +581,11 @@ enum PacketHeaderFormat : uint8_t {
 
 QUICHE_EXPORT std::string PacketHeaderFormatToString(PacketHeaderFormat format);
 
+template <typename Sink>
+void AbslStringify(Sink& sink, PacketHeaderFormat format) {
+  sink.Append(PacketHeaderFormatToString(format));
+}
+
 // Information about a newly acknowledged packet.
 struct QUICHE_EXPORT AckedPacket {
   constexpr AckedPacket(QuicPacketNumber packet_number,
@@ -898,6 +903,8 @@ struct QUICHE_EXPORT QuicDelayedSSLConfig {
   std::optional<ClientCertMode> client_cert_mode;
   // QUIC transport parameters as serialized by ProofSourceHandle.
   std::optional<std::vector<uint8_t>> quic_transport_parameters;
+
+  bool operator==(const QuicDelayedSSLConfig& other) const = default;
 };
 
 // ParsedClientHello contains client hello information extracted from a fully

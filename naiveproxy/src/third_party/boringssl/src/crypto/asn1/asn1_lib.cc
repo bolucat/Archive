@@ -22,8 +22,11 @@
 #include <openssl/mem.h>
 
 #include "../internal.h"
+#include "../mem_internal.h"
 #include "internal.h"
 
+
+using namespace bssl;
 
 // Cross-module errors from crypto/x509/i2d_pr.c.
 OPENSSL_DECLARE_ERROR_REASON(ASN1, UNSUPPORTED_PUBLIC_KEY_TYPE)
@@ -280,14 +283,12 @@ void ASN1_STRING_set0(ASN1_STRING *str, void *data, int len) {
   str->length = len;
 }
 
-ASN1_STRING *ASN1_STRING_new(void) {
+ASN1_STRING *ASN1_STRING_new() {
   return (ASN1_STRING_type_new(V_ASN1_OCTET_STRING));
 }
 
 ASN1_STRING *ASN1_STRING_type_new(int type) {
-  ASN1_STRING *ret;
-
-  ret = (ASN1_STRING *)OPENSSL_malloc(sizeof(ASN1_STRING));
+  ASN1_STRING *ret = New<ASN1_STRING>();
   if (ret == nullptr) {
     return nullptr;
   }
@@ -298,12 +299,12 @@ ASN1_STRING *ASN1_STRING_type_new(int type) {
   return ret;
 }
 
-void asn1_string_init(ASN1_STRING *str, int type) {
+void bssl::asn1_string_init(ASN1_STRING *str, int type) {
   OPENSSL_memset(str, 0, sizeof(ASN1_STRING));
   str->type = type;
 }
 
-void asn1_string_cleanup(ASN1_STRING *str) {
+void bssl::asn1_string_cleanup(ASN1_STRING *str) {
   OPENSSL_free(str->data);
   str->data = nullptr;
 }
@@ -313,7 +314,7 @@ void ASN1_STRING_free(ASN1_STRING *str) {
     return;
   }
   asn1_string_cleanup(str);
-  OPENSSL_free(str);
+  Delete(str);
 }
 
 int ASN1_STRING_cmp(const ASN1_STRING *a, const ASN1_STRING *b) {
@@ -367,7 +368,8 @@ const unsigned char *ASN1_STRING_get0_data(const ASN1_STRING *str) {
   return str->data;
 }
 
-int asn1_parse_octet_string(CBS *cbs, ASN1_STRING *out, CBS_ASN1_TAG tag) {
+int bssl::asn1_parse_octet_string(CBS *cbs, ASN1_STRING *out,
+                                  CBS_ASN1_TAG tag) {
   tag = tag == 0 ? CBS_ASN1_OCTETSTRING : tag;
   CBS child;
   if (!CBS_get_asn1(cbs, &child, tag)) {
@@ -381,8 +383,8 @@ int asn1_parse_octet_string(CBS *cbs, ASN1_STRING *out, CBS_ASN1_TAG tag) {
   return 1;
 }
 
-int asn1_marshal_octet_string(CBB *out, const ASN1_STRING *in,
-                              CBS_ASN1_TAG tag) {
+int bssl::asn1_marshal_octet_string(CBB *out, const ASN1_STRING *in,
+                                    CBS_ASN1_TAG tag) {
   tag = tag == 0 ? CBS_ASN1_OCTETSTRING : tag;
   return CBB_add_asn1_element(out, tag, ASN1_STRING_get0_data(in),
                               ASN1_STRING_length(in));
@@ -412,23 +414,24 @@ static int asn1_parse_character_string(CBS *cbs, ASN1_STRING *out,
   return 1;
 }
 
-int asn1_parse_bmp_string(CBS *cbs, ASN1_BMPSTRING *out, CBS_ASN1_TAG tag) {
+int bssl::asn1_parse_bmp_string(CBS *cbs, ASN1_BMPSTRING *out,
+                                CBS_ASN1_TAG tag) {
   tag = tag == 0 ? CBS_ASN1_BMPSTRING : tag;
   return asn1_parse_character_string(cbs, out, tag, V_ASN1_BMPSTRING,
                                      &CBS_get_ucs2_be,
                                      ASN1_R_INVALID_BMPSTRING);
 }
 
-int asn1_parse_universal_string(CBS *cbs, ASN1_UNIVERSALSTRING *out,
-                                CBS_ASN1_TAG tag) {
+int bssl::asn1_parse_universal_string(CBS *cbs, ASN1_UNIVERSALSTRING *out,
+                                      CBS_ASN1_TAG tag) {
   tag = tag == 0 ? CBS_ASN1_UNIVERSALSTRING : tag;
   return asn1_parse_character_string(cbs, out, tag, V_ASN1_UNIVERSALSTRING,
                                      &CBS_get_utf32_be,
                                      ASN1_R_INVALID_UNIVERSALSTRING);
 }
 
-int asn1_parse_utf8_string(CBS *cbs, ASN1_UNIVERSALSTRING *out,
-                           CBS_ASN1_TAG tag) {
+int bssl::asn1_parse_utf8_string(CBS *cbs, ASN1_UNIVERSALSTRING *out,
+                                 CBS_ASN1_TAG tag) {
   tag = tag == 0 ? CBS_ASN1_UTF8STRING : tag;
   return asn1_parse_character_string(cbs, out, tag, V_ASN1_UTF8STRING,
                                      &CBS_get_utf8, ASN1_R_INVALID_UTF8STRING);

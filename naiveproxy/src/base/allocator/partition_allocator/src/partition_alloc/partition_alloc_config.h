@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_PARTITION_ALLOC_CONFIG_H_
 #define PARTITION_ALLOC_PARTITION_ALLOC_CONFIG_H_
 
@@ -264,15 +259,5 @@ constexpr bool kUseFewerMemoryRegions =
 #else
 #define PA_CONFIG_IS_NONCLANG_MSVC() 0
 #endif
-
-// Set GN build override 'assert_cpp_20' to false to disable assertion.
-#if PA_BUILDFLAG(ASSERT_CPP_20)
-static_assert(__cplusplus >= 202002L,
-              "PartitionAlloc targets C++20 or higher.");
-#endif  // PA_BUILDFLAG(ASSERT_CPP_20)
-
-// Named pass-through that determines whether or not PA should generally
-// enforce that `SlotStart` instances are in fact slot starts.
-#define PA_CONFIG_ENFORCE_SLOT_STARTS() PA_BUILDFLAG(DCHECKS_ARE_ON)
 
 #endif  // PARTITION_ALLOC_PARTITION_ALLOC_CONFIG_H_

@@ -26,13 +26,10 @@ namespace internal {
 // - kBackground corresponds to Android's PRIORITY_BACKGROUND = 10 value and can
 // result in heavy throttling and force the thread onto a little core on
 // big.LITTLE devices.
-const ThreadPriorityToNiceValuePairForTest
-    kThreadPriorityToNiceValueMapForTest[7] = {
-        {ThreadPriorityForTest::kRealtimeAudio, -16},
-        {ThreadPriorityForTest::kDisplay, -4},
-        {ThreadPriorityForTest::kNormal, 0},
-        {ThreadPriorityForTest::kUtility, 1},
-        {ThreadPriorityForTest::kBackground, 10},
+const ThreadTypeToNiceValuePairForTest kThreadTypeToNiceValueMapForTest[7] = {
+    {ThreadType::kRealtimeAudio, -16}, {ThreadType::kPresentation, -4},
+    {ThreadType::kDefault, 0},         {ThreadType::kUtility, 1},
+    {ThreadType::kBackground, 10},
 };
 
 // - kBackground corresponds to Android's PRIORITY_BACKGROUND = 10 value and can
@@ -50,8 +47,8 @@ int ThreadTypeToNiceValue(const ThreadType thread_type) {
       return 1;
     case ThreadType::kDefault:
       return 0;
-    case ThreadType::kDisplayCritical:
-    case ThreadType::kInteractive:
+    case ThreadType::kPresentation:
+    case ThreadType::kAudioProcessing:
       return -4;
     case ThreadType::kRealtimeAudio:
       return -16;
@@ -62,16 +59,18 @@ bool CanSetThreadTypeToRealtimeAudio() {
   return false;
 }
 
-bool SetCurrentThreadTypeForPlatform(ThreadType thread_type,
-                                     MessagePumpType pump_type_hint) {
-  return false;
-}
+void SetCurrentThreadTypeImpl(ThreadType thread_type,
+                              MessagePumpType pump_type_hint) {}
 
-absl::optional<ThreadPriorityForTest>
-GetCurrentThreadPriorityForPlatformForTest() {
-  return absl::nullopt;
+PlatformPriorityOverride SetThreadTypeOverride(
+    PlatformThreadHandle thread_handle,
+    ThreadType thread_type) {
+  return {};
 }
-
+void RemoveThreadTypeOverride(
+    PlatformThreadHandle thread_handle,
+    const PlatformPriorityOverride& priority_override_handle,
+    ThreadType initial_thread_type) {}
 }  // namespace internal
 
 void PlatformThread::SetName(const std::string& name) {
@@ -90,12 +89,9 @@ void PlatformThread::SetName(const std::string& name) {
     DPLOG(ERROR) << "prctl(PR_SET_NAME)";
 }
 
+void InitThreading() {}
 
-void InitThreading() {
-}
-
-void TerminateOnThread() {
-}
+void TerminateOnThread() {}
 
 size_t GetDefaultThreadStackSize(const pthread_attr_t& attributes) {
 #if !defined(ADDRESS_SANITIZER)

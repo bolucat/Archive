@@ -10,7 +10,7 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
-#include "base/task/sequenced_task_runner.h"
+#include "base/strings/strcat.h"
 #include "base/time/time.h"
 #include "net/base/load_states.h"
 #include "net/base/net_error_details.h"
@@ -58,16 +58,23 @@ NextProtoSet CalculateAllowedAlpns(HttpStreamPool::Job::Delegate* delegate,
   //
   // Inlining this logic instead of calling HttpStreamPool::CanUseQuic() is an
   // optimization, to avoid the extra ShouldForceQuic() call.
+  //
+  // Note that IsQuicBroken() takes the hostname that we're establishing a UDP
+  // connection to, rather than the origin we're establishing a secure session
+  // with.
   if (!group->http_network_session()->IsQuicEnabled() ||
+      !group->quic_session_alias_key().destination().IsValid() ||
       !delegate->enable_alternative_services() ||
       !GURL::SchemeIsCryptographic(
           group->stream_key().destination().scheme()) ||
       group->pool()->IsQuicBroken(
-          group->stream_key().destination(),
+          group->quic_session_alias_key().destination(),
           group->stream_key().network_anonymization_key())) {
     allowed_alpns.RemoveAll(HttpStreamPool::kQuicBasedProtocols);
   }
 
+  // TODO(crbug.com/473856758): This can trigger for QUIC alt-service jobs when
+  // QUIC is marked a broken. Fix that.
   CHECK(!allowed_alpns.empty());
   return allowed_alpns;
 }
@@ -108,10 +115,10 @@ HttpStreamPool::Job::Job(Delegate* delegate,
       create_time_(base::TimeTicks::Now()) {
   CHECK(attempt_manager_);
   job_net_log_.BeginEvent(NetLogEventType::HTTP_STREAM_POOL_JOB_ALIVE, [&] {
-    base::Value::Dict dict;
+    base::DictValue dict;
     dict.Set("stream_key", group->stream_key().ToValue());
     dict.Set("quic_version", quic::ParsedQuicVersionToString(quic_version));
-    base::Value::List allowed_alpn_list;
+    base::ListValue allowed_alpn_list;
     for (const auto alpn : allowed_alpns_) {
       allowed_alpn_list.Append(NextProtoToString(alpn));
     }
@@ -233,11 +240,26 @@ void HttpStreamPool::Job::OnPreconnectComplete(int status) {
   delegate_->OnPreconnectComplete(this, status);
 }
 
-void HttpStreamPool::Job::CallOnPreconnectCompleteLater(int status) {
-  // Currently the notification is only used for testing so using IDLE priority.
-  TaskRunner(IDLE)->PostTask(
-      FROM_HERE, base::BindOnce(&Job::OnPreconnectComplete,
-                                weak_ptr_factory_.GetWeakPtr(), status));
+void HttpStreamPool::Job::SetPreconnectTcpAttemptRemaining(size_t remaining) {
+  CHECK(is_preconnect());
+  CHECK(!preconnect_tcp_attempts_remaining_.has_value());
+  preconnect_tcp_attempts_remaining_ = remaining;
+}
+
+void HttpStreamPool::Job::OnPreconnectTcpAttemptComplete() {
+  CHECK(is_preconnect());
+  CHECK(preconnect_tcp_attempts_remaining_.has_value() &&
+        *preconnect_tcp_attempts_remaining_ > 0);
+  --*preconnect_tcp_attempts_remaining_;
+}
+
+bool HttpStreamPool::Job::IsPreconnectTcpAttemptComplete() const {
+  return preconnect_tcp_attempts_remaining_.has_value() &&
+         *preconnect_tcp_attempts_remaining_ == 0;
+}
+
+size_t HttpStreamPool::Job::NumRequiredTcpAttempts() const {
+  return preconnect_tcp_attempts_remaining_.value_or(0);
 }
 
 void HttpStreamPool::Job::OnDone(std::optional<int> result) {
@@ -267,7 +289,7 @@ void HttpStreamPool::Job::OnDone(std::optional<int> result) {
   }
 
   job_net_log_.EndEvent(NetLogEventType::HTTP_STREAM_POOL_JOB_ALIVE, [&] {
-    base::Value::Dict dict;
+    base::DictValue dict;
     if (result_.has_value()) {
       // Use "net_error" for the result as the NetLog viewer converts the value
       // to a human-readable string.

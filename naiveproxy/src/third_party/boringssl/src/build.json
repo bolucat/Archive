@@ -83,7 +83,6 @@
             "crypto/fipsmodule/mlkem/mlkem.cc.inc",
             "crypto/fipsmodule/rand/ctrdrbg.cc.inc",
             "crypto/fipsmodule/rand/rand.cc.inc",
-            "crypto/fipsmodule/rsa/blinding.cc.inc",
             "crypto/fipsmodule/rsa/padding.cc.inc",
             "crypto/fipsmodule/rsa/rsa.cc.inc",
             "crypto/fipsmodule/rsa/rsa_impl.cc.inc",
@@ -486,6 +485,7 @@
             "include/openssl/target.h",
             "include/openssl/thread.h",
             "include/openssl/time.h",
+            "include/openssl/tls_prf.h",
             "include/openssl/trust_token.h",
             "include/openssl/type_check.h",
             "include/openssl/x509.h",
@@ -495,6 +495,7 @@
             "include/openssl/xwing.h"
         ],
         "internal_hdrs": [
+            "crypto/armv8_feature_parsing.h",
             "crypto/asn1/internal.h",
             "crypto/bio/internal.h",
             "crypto/bytestring/internal.h",
@@ -550,7 +551,6 @@
             "crypto/pkcs8/internal.h",
             "crypto/poly1305/internal.h",
             "crypto/pool/internal.h",
-            "crypto/rand/getrandom_fillin.h",
             "crypto/rand/internal.h",
             "crypto/rsa/internal.h",
             "crypto/spake2plus/internal.h",
@@ -613,6 +613,7 @@
             "pki/general_names.cc",
             "pki/input.cc",
             "pki/ip_util.cc",
+            "pki/merkle_tree.cc",
             "pki/name_constraints.cc",
             "pki/ocsp.cc",
             "pki/parse_certificate.cc",
@@ -658,6 +659,7 @@
             "pki/general_names.h",
             "pki/input.h",
             "pki/ip_util.h",
+            "pki/merkle_tree.h",
             "pki/mock_signature_verify_cache.h",
             "pki/name_constraints.h",
             "pki/nist_pkits_unittest.h",
@@ -937,10 +939,13 @@
             "crypto/poly1305/poly1305_tests.txt",
             "crypto/rsa/test/*.pem",
             "crypto/siphash/siphash_tests.txt",
-            "crypto/slhdsa/slhdsa_keygen.txt",
-            "crypto/slhdsa/slhdsa_prehash.txt",
-            "crypto/slhdsa/slhdsa_siggen.txt",
-            "crypto/slhdsa/slhdsa_sigver.txt",
+            "crypto/slhdsa/slhdsa_sha2_128s_keygen.txt",
+            "crypto/slhdsa/slhdsa_shake_256f_keygen.txt",
+            "crypto/slhdsa/slhdsa_sha2_128s_prehash.txt",
+            "crypto/slhdsa/slhdsa_sha2_128s_siggen.txt",
+            "crypto/slhdsa/slhdsa_shake_256f_siggen.txt",
+            "crypto/slhdsa/slhdsa_sha2_128s_sigver.txt",
+            "crypto/slhdsa/slhdsa_shake_256f_sigver.txt",
             "crypto/x509/test/*.pem",
             "crypto/x509/test/*.pk8",
             "third_party/wycheproof_testvectors/*.txt"
@@ -963,6 +968,7 @@
             "pki/general_names_unittest.cc",
             "pki/input_unittest.cc",
             "pki/ip_util_unittest.cc",
+            "pki/merkle_tree_unittest.cc",
             "pki/mock_signature_verify_cache.cc",
             "pki/name_constraints_unittest.cc",
             "pki/nist_pkits_unittest.cc",
@@ -1006,7 +1012,7 @@
             "pki/testdata/verify_name_match_unittest/names/*.pem",
             "pki/testdata/verify_signed_data_unittest/*.pem",
             "pki/testdata/verify_unittest/*.der",
-            "pki/testdata/verify_unittest/self-issued.pem"
+            "pki/testdata/verify_unittest/*.pem"
         ]
     },
     "ssl_test": {
@@ -1046,7 +1052,6 @@
             "tool/rand.cc",
             "tool/server.cc",
             "tool/sign.cc",
-            "tool/speed.cc",
             "tool/tool.cc",
             "tool/transport_common.cc"
         ],
@@ -1061,6 +1066,35 @@
         // FuzzTest, this will be moot.
         "srcs": [
             "fuzz/*.cc"
+        ]
+    },
+    "bench": {
+        "internal_hdrs": [
+            "bench/internal.h"
+        ],
+        "srcs": [
+            "bench/aead.cc",
+            "bench/aes.cc",
+            "bench/base64.cc",
+            "bench/curve25519.cc",
+            "bench/ecdh.cc",
+            "bench/ecdsa.cc",
+            "bench/hash.cc",
+            "bench/hash_to_curve.cc",
+            "bench/hrss.cc",
+            "bench/main.cc",
+            "bench/mldsa.cc",
+            "bench/mlkem.cc",
+            "bench/rand.cc",
+            "bench/rsa.cc",
+            "bench/rsakeygen.cc",
+            "bench/scrypt.cc",
+            "bench/selftest.cc",
+            "bench/siphash.cc",
+            "bench/slhdsa.cc",
+            "bench/spake2.cc",
+            "bench/trust_token.cc",
+            "bench/x509.cc"
         ]
     },
     "rust_bssl_sys": {

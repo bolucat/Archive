@@ -11,7 +11,6 @@
 #include <vector>
 
 #include "base/containers/flat_set.h"
-#include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/observer_list.h"
 #include "net/base/load_timing_info.h"
@@ -49,6 +48,7 @@ class NET_EXPORT SSLClientSocket : public SSLSocket {
       const std::optional<std::vector<uint8_t>>& ech_retry_configs,
       bool trust_anchor_ids_from_dns,
       bool retried_with_trust_anchor_ids,
+      bool trust_anchor_retry_used_mtc_fallback,
       const LoadTimingInfo::ConnectTiming& connect_timing);
 
   // These values are persisted to logs. Entries should not be renumbered
@@ -78,7 +78,19 @@ class NET_EXPORT SSLClientSocket : public SSLSocket {
     // There was no DNS hint, and the connection failed after retrying with
     // fresh Trust Anchor IDs.
     kNoDnsErrorRetry = 7,
-    kMaxValue = kNoDnsErrorRetry,
+    // There was a DNS hint, and the connection succeeded after retrying with
+    // the MTC fallback.
+    kDnsSuccessRetryMtcFallback = 8,
+    // There was a DNS hint, and the connection failed after retrying with
+    // the MTC fallback.
+    kDnsErrorRetryMtcFallback = 9,
+    // There was no DNS hint, and the connection succeeded after retrying with
+    // the MTC fallback.
+    kNoDnsSuccessRetryMtcFallback = 10,
+    // There was no DNS hint, and the connection failed after retrying with
+    // the MTC fallback.
+    kNoDnsErrorRetryMtcFallback = 11,
+    kMaxValue = kNoDnsErrorRetryMtcFallback,
   };
 
   SSLClientSocket();
@@ -97,8 +109,7 @@ class NET_EXPORT SSLClientSocket : public SSLSocket {
   // the server provided in the handshake. The connection can be retried with
   // these new Trust Anchor IDs, overriding the Trust Anchor IDs that the server
   // advertised in DNS.
-  virtual std::vector<std::vector<uint8_t>>
-  GetServerTrustAnchorIDsForRetry() = 0;
+  virtual std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDs() = 0;
 
   // Log SSL key material to |logger|. Must be called before any
   // SSLClientSockets are created.

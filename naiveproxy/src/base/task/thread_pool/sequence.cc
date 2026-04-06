@@ -297,7 +297,7 @@ bool Sequence::HasImmediateTasks() const {
 
 TaskSourceSortKey Sequence::GetSortKey() const {
   return TaskSourceSortKey(
-      priority_racy(),
+      thread_type_racy(),
       TS_UNCHECKED_READ(latest_ready_time_).load(std::memory_order_relaxed));
 }
 
@@ -343,8 +343,10 @@ void Sequence::ReleaseTaskRunner() {
 
 Sequence::Sequence(const TaskTraits& traits,
                    SequencedTaskRunner* task_runner,
-                   TaskSourceExecutionMode execution_mode)
-    : TaskSource(traits, execution_mode), task_runner_(task_runner) {}
+                   TaskSourceExecutionMode execution_mode,
+                   ThreadType originating_thread_type)
+    : TaskSource(traits, execution_mode, originating_thread_type),
+      task_runner_(task_runner) {}
 
 Sequence::~Sequence() = default;
 
