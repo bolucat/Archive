@@ -171,10 +171,7 @@ func New(options Options) (*Box, error) {
 
 	var internalServices []adapter.LifecycleService
 	certificateOptions := common.PtrValueOrDefault(options.Certificate)
-	if C.IsAndroid || certificateOptions.Store != "" && certificateOptions.Store != C.CertificateStoreSystem ||
-		len(certificateOptions.Certificate) > 0 ||
-		len(certificateOptions.CertificatePath) > 0 ||
-		len(certificateOptions.CertificateDirectoryPath) > 0 {
+	if C.IsAndroid || C.IsDarwin || certificateOptions.Store != "" {
 		certificateStore, err := certificate.NewStore(ctx, logFactory.NewLogger("certificate"), certificateOptions)
 		if err != nil {
 			return nil, err
@@ -199,6 +196,7 @@ func New(options Options) (*Box, error) {
 	service.MustRegister[adapter.CertificateProviderManager](ctx, certificateProviderManager)
 	dnsRouter := dns.NewRouter(ctx, logFactory, dnsOptions)
 	service.MustRegister[adapter.DNSRouter](ctx, dnsRouter)
+	service.MustRegister[adapter.DNSRuleSetUpdateValidator](ctx, dnsRouter)
 	networkManager, err := route.NewNetworkManager(ctx, logFactory.NewLogger("network"), routeOptions, dnsOptions)
 	if err != nil {
 		return nil, E.Cause(err, "initialize network manager")
@@ -486,7 +484,7 @@ func (s *Box) preStart() error {
 	if err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.dnsRouter, s.network, s.connection, s.router)
+	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.network, s.connection, s.router, s.dnsRouter)
 	if err != nil {
 		return err
 	}

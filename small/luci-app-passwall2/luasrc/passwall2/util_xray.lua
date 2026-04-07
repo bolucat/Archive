@@ -280,7 +280,19 @@ function gen_outbound(flag, node, tag, proxy_table)
 							udpHop = (node.hysteria2_hop) and {
 								ports = string.gsub(node.hysteria2_hop, ":", "-"),
 								interval = (function(v)
-									v = tonumber((v or "30s"):match("^%d+"))
+									if not v then return 30 end
+									if v:find("-", 1, true) then
+										local min, max = v:match("^(%d+)%-(%d+)$")
+										min = tonumber(min)
+										max = tonumber(max)
+										if min and max then
+											min = (min >= 5) and min or 5
+											max = (max >= min) and max or min
+											return min .. "-" .. max
+										end
+										return 30
+									end
+									v = tonumber((v or "30"):match("^%d+"))
 									return (v and v >= 5) and v or 30
 								end)(node.hysteria2_hop_interval)
 							} or nil,
@@ -694,6 +706,14 @@ function gen_config_server(node)
 		end
 	end
 
+	for index, value in ipairs(config.outbounds) do
+		for k, v in pairs(config.outbounds[index]) do
+			if k:find("_") == 1 then
+				config.outbounds[index][k] = nil
+			end
+		end
+	end
+
 	return config
 end
 
@@ -734,7 +754,7 @@ function gen_config(var)
 	local no_run = var["no_run"]
 
 	local dns_domain_rules = {}
-	local dns = nil
+	local dns = {}
 	local fakedns = nil
 	local inbounds = {}
 	local outbounds = {}
@@ -1063,17 +1083,17 @@ function gen_config(var)
 			local to_node = get_node_by_id(node.to_node)
 			if to_node then
 				-- Landing Node not support use special node.
-				if to_node.protocol:find("^_") then
+				if to_node.protocol and to_node.protocol:find("^_") then
 					to_node = nil
 				end
 			end
 			if to_node then
 				local to_outbound
 				if to_node.type ~= "Xray" then
-					local tag = to_node[".name"]
+					local in_tag = "inbound_" .. to_node[".name"] .. "_" .. tostring(outbound.tag)
 					local new_port = api.get_new_port()
 					table.insert(inbounds, {
-						tag = tag,
+						tag = in_tag,
 						listen = "127.0.0.1",
 						port = new_port,
 						protocol = "dokodemo-door",
@@ -1085,11 +1105,11 @@ function gen_config(var)
 					to_node.address = "127.0.0.1"
 					to_node.port = new_port
 					table.insert(rules, 1, {
-						inboundTag = {tag},
+						inboundTag = {in_tag},
 						outboundTag = outbound.tag
 					})
-					to_outbound = gen_outbound(node[".name"], to_node, tag, {
-						tag = tag,
+					to_outbound = gen_outbound(node[".name"], to_node, to_node[".name"], {
+						tag = to_node[".name"],
 						run_socks_instance = not no_run
 					})
 				else
@@ -1365,13 +1385,31 @@ function gen_config(var)
 			}
 		end
 	end
-	
+
+	dns = {
+		tag = "dns-global",
+		hosts = {},
+		disableCache = (dns_cache and dns_cache == "0") and true or false,
+		disableFallback = true,
+		disableFallbackIfMatch = true,
+		servers = {},
+		queryStrategy = "UseIP"
+	}
+
+	local dns_servers = {}
+
+	table.insert(dns_servers, {
+		server = {
+			tag = "local",
+			address = "localhost"
+		}
+	})
+
 	if dns_listen_port then
 		local direct_dns_tag = "dns-in-direct"
 		local remote_dns_tag = "dns-in-remote"
 		local remote_fakedns_tag = "dns-in-remote-fakedns"
 		local default_dns_tag = "dns-in-default"
-		local dns_servers = {}
 
 		local _remote_dns_proto = "tcp"
 
@@ -1381,16 +1419,6 @@ function gen_config(var)
 				rules = {}
 			}
 		end
-	
-		dns = {
-			tag = "dns-global",
-			hosts = {},
-			disableCache = (dns_cache and dns_cache == "0") and true or false,
-			disableFallback = true,
-			disableFallbackIfMatch = true,
-			servers = {},
-			queryStrategy = "UseIP"
-		}
 	
 		local dns_host = ""
 		if flag == "global" then
@@ -1510,6 +1538,39 @@ function gen_config(var)
 				})
 			end
 		end
+
+		local dnsmasq_server_domain = api.get_dnsmasq_server_domain()
+		if next(dnsmasq_server_domain) then
+			local new_dns_servers = {}
+			for domain, v in pairs(dnsmasq_server_domain) do
+				if not new_dns_servers[v.dnsmasq_dns] then
+					new_dns_servers[v.dnsmasq_dns] = {
+						server = {
+							tag = v.dnsmasq_dns,
+							address = v.server,
+							port = v.port,
+							queryStrategy = (direct_dns_query_strategy and direct_dns_query_strategy ~= "") and direct_dns_query_strategy or "UseIP"
+						},
+						domain = {}
+					}
+				end
+				table.insert(new_dns_servers[v.dnsmasq_dns].domain, domain)
+			end
+			for k, v in pairs(new_dns_servers) do
+				table.insert(dns_domain_rules, 1, {
+					shunt_rule_name = k,
+					outboundTag = "direct",
+					dns_server = v.server,
+					domain = v.domain
+				})
+				table.insert(routing.rules, 1, {
+					network = "udp",
+					ip = v.server.address,
+					port = v.server.port,
+					outboundTag = "direct"
+				})
+			end
+		end
 	
 		if dns_listen_port then
 			table.insert(inbounds, {
@@ -1590,7 +1651,9 @@ function gen_config(var)
 					if value.domain and value.outboundTag then
 						local dns_server = nil
 						local dns_outboundTag = value.outboundTag
-						if value.outboundTag == "direct" then
+						if value.dns_server then
+							dns_server = api.clone(value.dns_server)
+						elseif value.outboundTag == "direct" then
 							dns_server = api.clone(_direct_dns)
 						else
 							if value.fakedns then
@@ -1657,15 +1720,6 @@ function gen_config(var)
 			table.insert(routing.rules, default_rule)
 		end
 
-		local dns_hosts_len = 0
-		for key, value in pairs(dns.hosts) do
-			dns_hosts_len = dns_hosts_len + 1
-		end
-
-		if dns_hosts_len == 0 then
-			dns.hosts = nil
-		end
-
 		local content = flag .. node_id .. jsonc.stringify(routing.rules)
 		if api.cacheFileCompareToLogic(CACHE_TEXT_FILE, content) == false then
 			--clear ipset/nftset
@@ -1699,6 +1753,10 @@ function gen_config(var)
 				end)
 			end
 		end
+	end
+
+	if not next(dns.hosts) then
+		dns.hosts = nil
 	end
 
 	if redir_port then

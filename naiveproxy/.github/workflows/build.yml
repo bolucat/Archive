@@ -78,7 +78,19 @@ jobs:
             curl -LO https://github.com/ninja-build/ninja/releases/download/v1.10.2/ninja-win.zip
             unzip ninja-win.zip -d ~/bin
           fi
-  cache-toolchains-mac:
+  cache-toolchains-mac-x64:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            src/third_party/llvm-build/Release+Asserts/
+            src/chrome/build/pgo_profiles/chrome-mac-*
+            src/gn/
+          key: toolchains-pgo-mac-x64-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
+      - run: EXTRA_FLAGS='target_cpu="x64"' ./get-clang.sh
+  cache-toolchains-mac-arm64:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -88,12 +100,9 @@ jobs:
             src/third_party/llvm-build/Release+Asserts/
             src/chrome/build/pgo_profiles/chrome-mac-*
             src/gn/
-            src/tools/clang/dsymutil/bin/
-          key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
-      - run: EXTRA_FLAGS='target_cpu="x64"' ./get-clang.sh
+          key: toolchains-pgo-mac-arm64-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - run: EXTRA_FLAGS='target_cpu="arm64"' ./get-clang.sh
   linux:
-    if: false
     needs: cache-toolchains-posix
     runs-on: ubuntu-22.04
     strategy:
@@ -168,7 +177,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   android:
-    if: false
     needs: cache-toolchains-posix
     runs-on: ubuntu-22.04
     strategy:
@@ -265,7 +273,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   win:
-    if: false
     needs: cache-toolchains-win
     runs-on: windows-2022
     strategy:
@@ -329,13 +336,13 @@ jobs:
         run: gh release upload "${GITHUB_REF##*/}"  ${{ env.BUNDLE }}.zip --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  mac:
-    needs: cache-toolchains-mac
-    runs-on: macos-15
+  mac-x64:
+    needs: cache-toolchains-mac-x64
+    runs-on: macos-15-intel
     strategy:
       fail-fast: false
       matrix:
-        arch: [x64, arm64]
+        arch: [x64]
     env:
       EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
       BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
@@ -348,8 +355,7 @@ jobs:
             src/third_party/llvm-build/Release+Asserts/
             src/chrome/build/pgo_profiles/chrome-mac-*
             src/gn/
-            src/tools/clang/dsymutil/bin/
-          key: toolchains-pgo-mac-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
+          key: toolchains-pgo-mac-x64-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
       - id: ccache-timestamp
         run: echo "CCACHE_TIMESTAMP=$(date +%s)" >>$GITHUB_OUTPUT
       - name: Cache ccache files
@@ -364,10 +370,58 @@ jobs:
       - run: ccache -z
       - run: ./build.sh
       - run: ccache -s && ccache --evict-older-than 1d
-      - run: lldb -b -o "run" -k "bt all" -k "quit" -- ./out/Release/naive --version
       - run: ../tests/basic.sh out/Release/naive
-        # No real or emulated environment is available to test this.
-        if: ${{ matrix.arch != 'arm64' }}
+      - name: Pack naiveproxy assets
+        run: |
+          mkdir ${{ env.BUNDLE }}
+          cp out/Release/naive config.json ../LICENSE ../USAGE.txt ${{ env.BUNDLE }}
+          tar cJf ${{ env.BUNDLE }}.tar.xz ${{ env.BUNDLE }}
+          openssl sha256 out/Release/naive >sha256sum.txt
+          echo "SHA256SUM=$(cut -d' ' -f2 sha256sum.txt)" >>$GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BUNDLE }}.tar.xz naive executable sha256 ${{ env.SHA256SUM }}
+          path: src/sha256sum.txt
+      - name: Upload naiveproxy assets
+        if: ${{ github.event_name == 'release' }}
+        run: gh release upload "${GITHUB_REF##*/}" ${{ env.BUNDLE }}.tar.xz --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  mac-arm64:
+    needs: cache-toolchains-mac-arm64
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64]
+    env:
+      EXTRA_FLAGS: 'target_cpu="${{ matrix.arch }}"'
+      BUNDLE: naiveproxy-${{ github.event.release.tag_name }}-${{ github.job }}-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache toolchains and PGO
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/third_party/llvm-build/Release+Asserts/
+            src/chrome/build/pgo_profiles/chrome-mac-*
+            src/gn/
+          key: toolchains-pgo-mac-arm64-${{ hashFiles('CHROMIUM_VERSION') }}-v${{ env.CACHE_EPOCH }}
+      - id: ccache-timestamp
+        run: echo "CCACHE_TIMESTAMP=$(date +%s)" >>$GITHUB_OUTPUT
+      - name: Cache ccache files
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ccache
+          key: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-${{ steps.ccache-timestamp.outputs.CCACHE_TIMESTAMP }}
+          restore-keys: ccache-mac-${{ matrix.arch }}-${{ hashFiles('CHROMIUM_VERSION') }}-
+      - run: brew install ninja ccache
+      - run: pip install setuptools
+      - run: ./get-clang.sh
+      - run: ccache -z
+      - run: ./build.sh
+      - run: ccache -s && ccache --evict-older-than 1d
+      - run: ../tests/basic.sh out/Release/naive
       - name: Pack naiveproxy assets
         run: |
           mkdir ${{ env.BUNDLE }}
@@ -385,7 +439,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   openwrt:
-    if: false
     needs: cache-toolchains-posix
     runs-on: ubuntu-22.04
     strategy:

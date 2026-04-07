@@ -24,7 +24,7 @@ func TestObserverUpdateStatusPrunesStaleOutbounds(t *testing.T) {
 		},
 	}
 
-	observer.updateStatus([]string{"keep"})
+	observer.clearRemovedOutbounds([]string{"keep"})
 
 	if len(observer.status) != 1 {
 		t.Fatalf("expected 1 status after pruning, got %d", len(observer.status))
@@ -56,7 +56,7 @@ func TestObserverUpdateStatusClearsWhenNoOutboundsRemain(t *testing.T) {
 		},
 	}
 
-	observer.updateStatus(nil)
+	observer.clearRemovedOutbounds(nil)
 
 	if len(observer.status) != 0 {
 		t.Fatalf("expected all statuses to be removed, got %d", len(observer.status))

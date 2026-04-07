@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net"
 	"net/netip"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -166,6 +167,9 @@ func TestInboundShadowSocks_ShadowTlsv3(t *testing.T) {
 }
 
 func TestInboundShadowSocks_KcpTun(t *testing.T) {
+	if runtime.GOOS == "windows" && strings.HasPrefix(runtime.Version(), "go1.20") {
+		t.Skip("skip kcptun test on windows go1.20")
+	}
 	inboundOptions := inbound.ShadowSocksOption{
 		KcpTun: inbound.KcpTun{
 			Enable: true,

@@ -33,17 +33,6 @@ if [ ! -d third_party/llvm-build/Release+Asserts/bin ]; then
   curl "$clang_url" | tar xJf - -C third_party/llvm-build/Release+Asserts
 fi
 
-# dsymutil (Mac)
-if [ "$host_os" = mac -a ! -d tools/clang/dsymutil/bin ]; then
-  mkdir -p tools/clang/dsymutil
-  DSYMUTIL_PATH="dsymutil-$CLANG_REVISION.tar.xz"
-  case "$host_cpu" in
-    x64) dsymutil_url="http://commondatastorage.googleapis.com/chromium-browser-clang/Mac/$DSYMUTIL_PATH";;
-    arm64) dsymutil_url="http://commondatastorage.googleapis.com/chromium-browser-clang/Mac_arm64/$DSYMUTIL_PATH";;
-  esac
-  curl "$dsymutil_url" | tar xJf - -C tools/clang/dsymutil
-fi
-
 # sccache
 if [ "$host_os" = win -a ! -f ~/.cargo/bin/sccache.exe ]; then
   sccache_url="https://github.com/mozilla/sccache/releases/download/0.2.12/sccache-0.2.12-x86_64-pc-windows-msvc.tar.gz"

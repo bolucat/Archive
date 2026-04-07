@@ -18,7 +18,7 @@ else
     exclude_unwind_tables=true
     enable_resource_allowlist_generation=false
     chrome_pgo_phase=2
-    symbol_level=1"
+    symbol_level=0"
 fi
 
 . ./get-sysroot.sh
@@ -88,7 +88,7 @@ fi
 
 if [ "$host_os" = "mac" ]; then
   flags="$flags"'
-    enable_dsyms=true'
+    enable_dsyms=false'
 fi
 
 case "$EXTRA_FLAGS" in

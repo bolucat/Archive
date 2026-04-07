@@ -106,9 +106,8 @@ make menuconfig
 * [MIT License](https://github.com/vernesong/OpenClash/blob/master/LICENSE)
 * 内核 [Mihomo](https://github.com/MetaCubeX/mihomo) by [MetaCubeX](https://github.com/MetaCubeX)
 * 本项目代码基于 [Luci For Clash](https://github.com/frainzy1477/luci-app-clash) by [frainzy1477](https://github.com/frainzy1477)
-* GEOIP数据库 [GeoLite2](https://dev.maxmind.com/geoip/geoip2/geolite2/) by [MaxMind](https://www.maxmind.com)
 * IP检查 [IP](https://ip.skk.moe/) by [SukkaW](https://ip.skk.moe/)
-* 控制面板 [zashboard](https://github.com/Zephyruso/zashboard) by [Dreamacro](https://github.com/Zephyruso)
+* 控制面板 [zashboard](https://github.com/Zephyruso/zashboard) by [Zephyruso](https://github.com/Zephyruso)
 * 控制面板 [yacd](https://github.com/haishanh/yacd) by [haishanh](https://github.com/haishanh)
 * 流媒体解锁检测 [RegionRestrictionCheck](https://github.com/lmc999/RegionRestrictionCheck) by [lmc999](https://github.com/lmc999)
 

@@ -1,5 +1,9 @@
 [
   {
+    "zh": "覆写模块从 v0.47.081 开始支持 [YAML] 块来进行配置文件覆写，格式使用 yaml， 从而降低代码覆写编辑的难度, 使用方式请参考 default 文件的示例。",
+    "en": "Overwrite module now supports YAML blocks for configuration file overwriting, using YAML format, which reduces the difficulty of code overwriting. Please refer to the default file example for usage."
+  },
+  {
     "zh": "覆写模块现已支持远程订阅，更加方便插件的远程管理及统一配置、一键订阅，欢迎各位分享配置。",
     "en": "Overwrite module now supports subscription, more convenient remote management and configuration, one-click subscription, welcome to share the configuration."
   },
