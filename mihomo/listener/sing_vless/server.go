@@ -154,7 +154,7 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 		}
 	}
 	if config.XHTTPConfig.Path != "" || config.XHTTPConfig.Host != "" || config.XHTTPConfig.Mode != "" {
-		httpServer.Handler = xhttp.NewServerHandler(xhttp.ServerOption{
+		httpServer.Handler, err = xhttp.NewServerHandler(xhttp.ServerOption{
 			Config: xhttp.Config{
 				Host:                 config.XHTTPConfig.Host,
 				Path:                 config.XHTTPConfig.Path,
@@ -168,6 +168,9 @@ func New(config LC.VlessServer, tunnel C.Tunnel, additions ...inbound.Addition) 
 			},
 			HttpHandler: httpServer.Handler,
 		})
+		if err != nil {
+			return nil, err
+		}
 		if !slices.Contains(tlsConfig.NextProtos, "http/1.1") {
 			tlsConfig.NextProtos = append([]string{"http/1.1"}, tlsConfig.NextProtos...)
 		}

@@ -82,7 +82,7 @@ type XHTTPOptions struct {
 	Headers            map[string]string      `proxy:"headers,omitempty"`
 	NoGRPCHeader       bool                   `proxy:"no-grpc-header,omitempty"`
 	XPaddingBytes      string                 `proxy:"x-padding-bytes,omitempty"`
-	ScMaxEachPostBytes int                    `proxy:"sc-max-each-post-bytes,omitempty"`
+	ScMaxEachPostBytes string                 `proxy:"sc-max-each-post-bytes,omitempty"`
 	ReuseSettings      *XHTTPReuseSettings    `proxy:"reuse-settings,omitempty"` // aka XMUX
 	DownloadSettings   *XHTTPDownloadSettings `proxy:"download-settings,omitempty"`
 }
@@ -102,7 +102,7 @@ type XHTTPDownloadSettings struct {
 	Headers            *map[string]string  `proxy:"headers,omitempty"`
 	NoGRPCHeader       *bool               `proxy:"no-grpc-header,omitempty"`
 	XPaddingBytes      *string             `proxy:"x-padding-bytes,omitempty"`
-	ScMaxEachPostBytes *int                `proxy:"sc-max-each-post-bytes,omitempty"`
+	ScMaxEachPostBytes *string             `proxy:"sc-max-each-post-bytes,omitempty"`
 	ReuseSettings      *XHTTPReuseSettings `proxy:"reuse-settings,omitempty"` // aka XMUX
 	// proxy part
 	Server            *string         `proxy:"server,omitempty"`

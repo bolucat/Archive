@@ -1170,7 +1170,7 @@ return view.extend({
 		so.depends({transport_enabled: '1', transport_type: 'h2'});
 		so.modalonly = true;
 
-		so = ss.taboption('field_transport', form.DynamicList, 'transport_host', _('Server hostname'));
+		so = ss.taboption('field_transport', form.Value, 'transport_host', _('Server hostname'));
 		so.datatype = 'hostname';
 		so.placeholder = 'example.com';
 		so.depends({transport_enabled: '1', transport_type: 'xhttp'});
@@ -1261,6 +1261,42 @@ return view.extend({
 		so.depends({transport_enabled: '1', transport_type: 'xhttp'});
 		so.modalonly = true;
 
+		so = ss.taboption('field_transport', form.Value, 'transport_xhttp_sc_max_each_post_bytes', _('Max each POST bytes'));
+		so.datatype = 'uinteger';
+		so.placeholder = '1000000';
+		so.depends({transport_enabled: '1', transport_type: 'xhttp'});
+		so.modalonly = true;
+
+		so = ss.taboption('field_transport', form.Flag, 'transport_xhttp_xmux', _('XMUX'));
+		so.default = so.disabled;
+		so.depends({transport_enabled: '1', transport_type: 'xhttp'});
+		so.modalonly = true;
+
+		so = ss.taboption('field_transport', form.Value, 'transport_xhttp_xmux_max_connections', _('XMUX: ') + _('Max connections'));
+		so.placeholder = '16-32';
+		so.depends('transport_xhttp_xmux', '1');
+		so.modalonly = true;
+
+		so = ss.taboption('field_transport', form.Value, 'transport_xhttp_xmux_max_concurrency', _('XMUX: ') + _('Max concurrency'));
+		so.placeholder = '0';
+		so.depends({transport_xhttp_xmux: '1', transport_xhttp_xmux_max_connections: ''});
+		so.modalonly = true;
+
+		so = ss.taboption('field_transport', form.Value, 'transport_xhttp_xmux_max_reuse_times', _('XMUX: ') + _('Max reuse times'));
+		so.placeholder = '0';
+		so.depends('transport_xhttp_xmux', '1');
+		so.modalonly = true;
+
+		so = ss.taboption('field_transport', form.Value, 'transport_xhttp_xmux_max_request_times', _('XMUX: ') + _('Max request times'));
+		so.placeholder = '600-900';
+		so.depends('transport_xhttp_xmux', '1');
+		so.modalonly = true;
+
+		so = ss.taboption('field_transport', form.Value, 'transport_xhttp_xmux_max_reusable_secs', _('XMUX: ') + _('Max reusable seconds'));
+		so.placeholder = '1800-3000';
+		so.depends('transport_xhttp_xmux', '1');
+		so.modalonly = true;
+
 		/* Multiplex fields */ // TCP protocol only
 		so = ss.taboption('field_general', form.Flag, 'smux_enabled', _('Multiplex'));
 		so.default = so.disabled;
@@ -1280,6 +1316,8 @@ return view.extend({
 		so.datatype = 'uinteger';
 		so.placeholder = '4';
 		so.depends('smux_enabled', '1');
+		so.depends({transport_enabled: '1', transport_type: 'grpc'});
+		so.depends('type', 'trusttunnel');
 		so.modalonly = true;
 
 		so = ss.taboption('field_multiplex', form.Value, 'smux_min_streams', _('Minimum streams'),
@@ -1287,6 +1325,8 @@ return view.extend({
 		so.datatype = 'uinteger';
 		so.placeholder = '4';
 		so.depends('smux_enabled', '1');
+		so.depends({transport_enabled: '1', transport_type: 'grpc'});
+		so.depends('type', 'trusttunnel');
 		so.modalonly = true;
 
 		so = ss.taboption('field_multiplex', form.Value, 'smux_max_streams', _('Maximum streams'),
@@ -1296,6 +1336,8 @@ return view.extend({
 		so.datatype = 'uinteger';
 		so.placeholder = '0';
 		so.depends({smux_enabled: '1', smux_max_connections: '', smux_min_streams: ''});
+		so.depends({transport_enabled: '1', transport_type: 'grpc', smux_max_connections: '', smux_min_streams: ''});
+		so.depends({type: 'trusttunnel', smux_max_connections: '', smux_min_streams: ''});
 		so.modalonly = true;
 
 		so = ss.taboption('field_multiplex', form.Flag, 'smux_padding', _('Enable padding'));

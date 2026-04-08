@@ -649,7 +649,10 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 			"grpc-opts": cfg.transport_type === 'grpc' ? {
 				"grpc-service-name": cfg.transport_grpc_servicename,
 				"grpc-user-agent": cfg.transport_grpc_user_agent,
-				"ping-interval": strToInt(cfg.transport_grpc_ping_interval) || null
+				"ping-interval": strToInt(cfg.transport_grpc_ping_interval) || null,
+				"max-connections": strToInt(cfg.smux_max_connections) || null,
+				"min-streams": strToInt(cfg.smux_min_streams) || null,
+				"max-streams": strToInt(cfg.smux_max_streams) || null,
 			} : null,
 			"ws-opts": cfg.transport_type === 'ws' ? {
 				path: cfg.transport_path || '/',
@@ -665,11 +668,24 @@ uci.foreach(uciconf, ucinode, (cfg) => {
 				headers: cfg.transport_http_headers ? json(cfg.transport_http_headers) : null,
 				mode: cfg.transport_xhttp_mode,
 				"no-grpc-header": strToBool(cfg.transport_xhttp_no_grpc_header),
-				"x-padding-bytes": cfg.transport_xhttp_x_padding_bytes
+				"x-padding-bytes": cfg.transport_xhttp_x_padding_bytes,
+				"sc-max-each-post-bytes": strToInt(cfg.transport_xhttp_sc_max_each_post_bytes) || null,
+				"reuse-settings": cfg.transport_xhttp_xmux ? {
+					"max-connections": cfg.transport_xhttp_xmux_max_connections,
+					"max-concurrency": cfg.transport_xhttp_xmux_max_concurrency,
+					"c-max-reuse-times": cfg.transport_xhttp_xmux_max_reuse_times,
+					"h-max-request-times": cfg.transport_xhttp_xmux_max_request_times,
+					"h-max-reusable-secs": cfg.transport_xhttp_xmux_max_reusable_secs
+				} : null
 			} : null
 		} : {}),
 
 		/* Multiplex fields */
+		...(cfg.type in ['trusttunnel'] ? {
+			"max-connections": strToInt(cfg.smux_max_connections) || null,
+			"min-streams": strToInt(cfg.smux_min_streams) || null,
+			"max-streams": strToInt(cfg.smux_max_streams) || null
+		} : {}),
 		smux: cfg.smux_enabled === '1' ? {
 			enabled: true,
 			protocol: cfg.smux_protocol,

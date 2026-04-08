@@ -55,12 +55,14 @@ func (rt *ReuseTransport) Close() error {
 var _ http.RoundTripper = (*ReuseTransport)(nil)
 
 type ReuseManager struct {
-	cfg            *ReuseConfig
-	maxConnections int
-	maxConcurrency int
-	maker          TransportMaker
-	mu             sync.Mutex
-	entries        []*reuseEntry
+	maxConnections   int
+	maxConcurrency   int
+	hMaxRequestTimes Range
+	hMaxReusableSecs Range
+	cMaxReuseTimes   Range
+	maker            TransportMaker
+	mu               sync.Mutex
+	entries          []*reuseEntry
 }
 
 func NewReuseManager(cfg *ReuseConfig, makeTransport TransportMaker) (*ReuseManager, error) {
@@ -71,16 +73,18 @@ func NewReuseManager(cfg *ReuseConfig, makeTransport TransportMaker) (*ReuseMana
 	if err != nil {
 		return nil, err
 	}
-	_, _, _, err = cfg.ResolveEntryConfig() // check if config is valid
+	hMaxRequestTimes, hMaxReusableSecs, cMaxReuseTimes, err := cfg.ResolveEntryConfig()
 	if err != nil {
 		return nil, err
 	}
 	return &ReuseManager{
-		cfg:            cfg,
-		maxConnections: connections,
-		maxConcurrency: concurrency,
-		maker:          makeTransport,
-		entries:        make([]*reuseEntry, 0),
+		maxConnections:   connections.Rand(),
+		maxConcurrency:   concurrency.Rand(),
+		hMaxRequestTimes: hMaxRequestTimes,
+		hMaxReusableSecs: hMaxReusableSecs,
+		cMaxReuseTimes:   cMaxReuseTimes,
+		maker:            makeTransport,
+		entries:          make([]*reuseEntry, 0),
 	}, nil
 }
 
@@ -169,17 +173,16 @@ func (m *ReuseManager) canCreateLocked() bool {
 func (m *ReuseManager) newEntryLocked(transport http.RoundTripper, now time.Time) *reuseEntry {
 	entry := &reuseEntry{transport: transport}
 
-	hMaxRequestTimes, hMaxReusableSecs, cMaxReuseTimes, _ := m.cfg.ResolveEntryConfig() // error already checked in [NewReuseManager]
-	if hMaxRequestTimes > 0 {
-		entry.leftRequests.Store(int32(hMaxRequestTimes))
+	if m.hMaxRequestTimes.Max > 0 {
+		entry.leftRequests.Store(int32(m.hMaxRequestTimes.Rand()))
 	} else {
 		entry.leftRequests.Store(1<<30 - 1)
 	}
-	if hMaxReusableSecs > 0 {
-		entry.unreusableAt = now.Add(time.Duration(hMaxReusableSecs) * time.Second)
+	if m.hMaxReusableSecs.Max > 0 {
+		entry.unreusableAt = now.Add(time.Duration(m.hMaxReusableSecs.Rand()) * time.Second)
 	}
-	if cMaxReuseTimes > 0 {
-		entry.maxReuseTimes = int32(cMaxReuseTimes)
+	if m.cMaxReuseTimes.Max > 0 {
+		entry.maxReuseTimes = int32(m.cMaxReuseTimes.Rand())
 	}
 
 	m.entries = append(m.entries, entry)

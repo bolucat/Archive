@@ -1085,8 +1085,8 @@ socks_node_switch() {
 		done
 
 		for filename in $(ls ${TMP_SCRIPT_FUNC_PATH}); do
-			cmd=$(cat ${TMP_SCRIPT_FUNC_PATH}/${filename})
-			[ -n "$(echo $cmd | grep "${flag}")" ] && rm -f ${TMP_SCRIPT_FUNC_PATH}/${filename}
+			grep -q "${flag}" "${TMP_SCRIPT_FUNC_PATH}/${filename}" && \
+				rm -f "${TMP_SCRIPT_FUNC_PATH}/${filename}" "${TMP_PATH}/script_rstats/${filename}.count"
 		done
 		local bind_local=$(config_n_get $flag bind_local 0)
 		local bind="0.0.0.0"

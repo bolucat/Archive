@@ -23,7 +23,7 @@ jobs:
         sudo apt-get update
         sudo apt-get -y install jq
 
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
 
     # https://github.com/marketplace/actions/git-changesets
     - id: changed_files

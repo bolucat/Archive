@@ -22,7 +22,7 @@ jobs:
           sudo apt-get -y install git
 
       - name: Clone OpenClash Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: core
       
@@ -61,7 +61,7 @@ jobs:
         arch: [normal, loongarch_abi1]
     steps:
       - name: Checkout OpenClash Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: core
 
@@ -111,7 +111,7 @@ jobs:
             go-loongarch-abi1-1.24.0-
 
       - name: Clone MetaCubeX/mihomo source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: MetaCubeX/mihomo
           ref: Alpha
@@ -163,7 +163,7 @@ jobs:
         arch: [normal, loongarch_abi1]
     steps:
       - name: Checkout OpenClash Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: core
 
@@ -215,7 +215,7 @@ jobs:
             go-loongarch-abi1-1.24.0-
 
       - name: Clone vernesong/mihomo source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: vernesong/mihomo
           ref: Alpha
@@ -266,7 +266,7 @@ jobs:
     if: always() && (needs.Get-Commit-id.outputs.current_id != needs.Get-Commit-id.outputs.upstream_id || needs.Get-Commit-id.outputs.current_smart_id != needs.Get-Commit-id.outputs.upstream_smart_id)
     steps:
       - name: Checkout OpenClash Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: core
 
@@ -391,3 +391,46 @@ jobs:
           else
             echo "No changes to commit."
           fi
+
+      - name: Trim History to Last 10 Commits
+        run: |
+          MAX_COMMITS=20
+          LIMIT_COMMITS=10
+          count=$(git rev-list --count HEAD)
+          echo "Current commit count on core branch: $count"
+          if [ "$count" -le "$MAX_COMMITS" ]; then
+            echo "No trimming needed (commit count: $count <= $MAX_COMMITS)."
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          recent_commits=($(git rev-list --max-count=$LIMIT_COMMITS HEAD))
+          sync_commit=$(git log --grep='Release: Auto sync' --format='%H' | tail -n 1)
+
+          keep_commits=("${recent_commits[@]}")
+          if [ -n "$sync_commit" ]; then
+            found=false
+            for c in "${recent_commits[@]}"; do
+              if [ "$c" = "$sync_commit" ]; then
+                found=true
+                break
+              fi
+            done
+            if [ "$found" = false ]; then
+              keep_commits+=("$sync_commit")
+            fi
+          fi
+
+          git checkout -b __tmp_history_trim HEAD
+          for c in $(printf "%s\n" "${keep_commits[@]}" | tac); do
+            git checkout "$c" -- dev || true
+            [ -d master ] && git checkout "$c" -- master || true
+            git add dev || true
+            [ -d master ] && git add master || true
+            git commit --allow-empty --keep-redundant-commits --no-edit --author="github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
+          done
+          git branch -M __tmp_history_trim core
+          git push --force origin core
+          echo "Trim complete. New commit count: $(git rev-list --count HEAD)"

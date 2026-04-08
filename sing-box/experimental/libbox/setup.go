@@ -1,18 +1,22 @@
 package libbox
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"time"
 
+	"github.com/sagernet/sing-box/common/networkquality"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing/common/byteformats"
+	E "github.com/sagernet/sing/common/exceptions"
 )
 
 var (
@@ -97,8 +101,14 @@ func Setup(options *SetupOptions) error {
 	return redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
 }
 
-func SetLocale(localeId string) {
-	locale.Set(localeId)
+func SetLocale(localeId string) error {
+	if strings.Contains(localeId, "@") {
+		localeId = strings.Split(localeId, "@")[0]
+	}
+	if !locale.Set(localeId) {
+		return E.New("unsupported locale: ", localeId)
+	}
+	return nil
 }
 
 func Version() string {
@@ -120,6 +130,29 @@ func FormatMemoryBytes(length int64) string {
 func FormatDuration(duration int64) string {
 	return log.FormatDuration(time.Duration(duration) * time.Millisecond)
 }
+
+func FormatBitrate(bps int64) string {
+	switch {
+	case bps >= 1_000_000_000:
+		return fmt.Sprintf("%.1f Gbps", float64(bps)/1_000_000_000)
+	case bps >= 1_000_000:
+		return fmt.Sprintf("%.1f Mbps", float64(bps)/1_000_000)
+	case bps >= 1_000:
+		return fmt.Sprintf("%.1f Kbps", float64(bps)/1_000)
+	default:
+		return fmt.Sprintf("%d bps", bps)
+	}
+}
+
+const NetworkQualityDefaultConfigURL = networkquality.DefaultConfigURL
+
+const NetworkQualityDefaultMaxRuntimeSeconds = int32(networkquality.DefaultMaxRuntime / time.Second)
+
+const (
+	NetworkQualityAccuracyLow    = int32(networkquality.AccuracyLow)
+	NetworkQualityAccuracyMedium = int32(networkquality.AccuracyMedium)
+	NetworkQualityAccuracyHigh   = int32(networkquality.AccuracyHigh)
+)
 
 func ProxyDisplayType(proxyType string) string {
 	return C.ProxyDisplayName(proxyType)

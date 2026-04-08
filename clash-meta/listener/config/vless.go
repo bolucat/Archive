@@ -36,7 +36,7 @@ type XHTTPConfig struct {
 	Mode                 string
 	NoSSEHeader          bool
 	ScStreamUpServerSecs string
-	ScMaxEachPostBytes   int
+	ScMaxEachPostBytes   string
 }
 
 func (t VlessServer) String() string {
