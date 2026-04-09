@@ -12,6 +12,10 @@ local ech_domain = {}
 local local_version = api.get_app_version("sing-box"):match("[^v]+")
 local version_ge_1_13_0 = api.compare_versions(local_version, ">=", "1.13.0")
 
+local GLOBAL = {
+	DNS_SERVER = {}
+}
+
 local GEO_VAR = {
 	OK = nil,
 	DIR = nil,
@@ -158,6 +162,47 @@ function gen_outbound(flag, node, tag, proxy_table)
 			},
 			detour = node.detour,
 		}
+
+		if api.datatypes.hostname(node.address) and node.domain_resolver and (node.domain_resolver_dns or node.domain_resolver_dns_https) then
+			local dns_tag = node_id .. "_dns"
+			local dns_proto = node.domain_resolver
+			local server_address
+			local server_port
+			local server_path
+			if dns_proto == "https" then
+				local _a = api.parseURL(node.domain_resolver_dns_https)
+				if _a then
+					server_address = _a.hostname
+					if _a.port then
+						server_port = _a.port
+					else
+						server_port = 443
+					end
+					server_path = _a.pathname
+				end
+			else
+				server_address = node.domain_resolver_dns
+				server_port = 53
+				local split = api.split(server_address, ":")
+				if #split > 1 then
+					server_address = split[1]
+					server_port = tonumber(split[#split])
+				end
+			end
+			GLOBAL.DNS_SERVER[node_id] = {
+				server = {
+					tag = dns_tag,
+					type = dns_proto,
+					server = server_address,
+					server_port = server_port,
+					path = server_path,
+					domain_resolver = "local",
+					detour = "direct"
+				},
+				domain = node.address
+			}
+			result.domain_resolver.server = dns_tag
+		end
 
 		local tls = nil
 		if node.protocol == "hysteria" or node.protocol == "hysteria2" or node.protocol == "tuic" or node.protocol == "naive" then
@@ -1695,6 +1740,15 @@ function gen_config(var)
 		reverse_mapping = true, -- After responding to a DNS query, a reverse mapping of the IP address is stored to provide the domain name for routing purposes.
 	}
 
+	for i, v in pairs(GLOBAL.DNS_SERVER) do
+		table.insert(dns.servers, v.server)
+		table.insert(dns.rules, {
+			action = "route",
+			server = v.server.tag,
+			domain = v.domain,
+		})
+	end
+
 	table.insert(dns.servers, {
 		type = "local",
 		tag = "local"
@@ -1853,42 +1907,6 @@ function gen_config(var)
 				server_port = server_port,
 				detour = "direct",
 			})
-		end
-
-		local dnsmasq_server_domain = api.get_dnsmasq_server_domain()
-		if next(dnsmasq_server_domain) then
-			local new_dns_servers = {}
-			for domain, v in pairs(dnsmasq_server_domain) do
-				if not new_dns_servers[v.dnsmasq_dns] then
-					new_dns_servers[v.dnsmasq_dns] = {
-						server = {
-							tag = v.dnsmasq_dns,
-							type = "udp",
-							server = v.server,
-							server_port = v.port,
-							detour = "direct",
-						},
-						rule = {
-							action = "route",
-							domain_suffix = {},
-							server = v.dnsmasq_dns,
-							strategy = direct_strategy,
-						},
-					}
-				end
-				table.insert(new_dns_servers[v.dnsmasq_dns].rule.domain_suffix, domain)
-			end
-			for k, v in pairs(new_dns_servers) do
-				table.insert(dns.servers, v.server)
-				table.insert(dns.rules, 1, v.rule)
-				table.insert(route.rules, 1, {
-					action = "route",
-					network = v.server.type,
-					ip_cidr = v.server.server,
-					port = v.server.server_port,
-					outbound = "direct",
-				})
-			end
 		end
 
 		local default_dns_flag = "remote"
@@ -2083,7 +2101,10 @@ function gen_config(var)
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and value.server_port and not no_run then
 				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
 			end
-			if value.detour then
+			if not value.detour and value.server then
+				value.detour = "direct"
+			end
+			if value.server and not api.datatypes.hostname(value.server) then
 				value.domain_resolver = nil
 			end
 			for k, v in pairs(config.outbounds[index]) do

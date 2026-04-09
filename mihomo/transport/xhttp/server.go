@@ -75,7 +75,7 @@ func (c *httpServerConn) Wait() <-chan struct{} {
 }
 
 type httpSession struct {
-	uploadQueue *uploadQueue
+	uploadQueue *UploadQueue
 	connected   chan struct{}
 	once        sync.Once
 }

@@ -11,6 +11,10 @@ local ech_domain = {}
 local local_version = api.get_app_version("sing-box"):match("[^v]+")
 local version_ge_1_13_0 = api.compare_versions(local_version, ">=", "1.13.0")
 
+local GLOBAL = {
+	DNS_SERVER = {}
+}
+
 local GEO_VAR = {
 	OK = nil,
 	DIR = nil,
@@ -153,6 +157,47 @@ function gen_outbound(flag, node, tag, proxy_table)
 			},
 			detour = node.detour,
 		}
+
+		if api.datatypes.hostname(node.address) and node.domain_resolver and (node.domain_resolver_dns or node.domain_resolver_dns_https) then
+			local dns_tag = node_id .. "_dns"
+			local dns_proto = node.domain_resolver
+			local server_address
+			local server_port
+			local server_path
+			if dns_proto == "https" then
+				local _a = api.parseURL(node.domain_resolver_dns_https)
+				if _a then
+					server_address = _a.hostname
+					if _a.port then
+						server_port = _a.port
+					else
+						server_port = 443
+					end
+					server_path = _a.pathname
+				end
+			else
+				server_address = node.domain_resolver_dns
+				server_port = 53
+				local split = api.split(server_address, ":")
+				if #split > 1 then
+					server_address = split[1]
+					server_port = tonumber(split[#split])
+				end
+			end
+			GLOBAL.DNS_SERVER[node_id] = {
+				server = {
+					tag = dns_tag,
+					type = dns_proto,
+					server = server_address,
+					server_port = server_port,
+					path = server_path,
+					domain_resolver = "direct",
+					detour = "direct"
+				},
+				domain = node.address
+			}
+			result.domain_resolver.server = dns_tag
+		end
 
 		local tls = nil
 		if node.protocol == "hysteria" or node.protocol == "hysteria2" or node.protocol == "tuic" or node.protocol == "naive" then
@@ -1922,6 +1967,16 @@ function gen_config(var)
 		}
 	end
 
+	for i, v in pairs(GLOBAL.DNS_SERVER) do
+		table.insert(dns.servers, v.server)
+		if not dns.rules then dns.rules = {} end
+		table.insert(dns.rules, {
+			action = "route",
+			server = v.server.tag,
+			domain = v.domain,
+		})
+	end
+
 	if next(ech_domain) ~= nil then
 		table.insert(dns.servers, {
 			tag = "ech-dns",
@@ -1982,6 +2037,12 @@ function gen_config(var)
 		for index, value in ipairs(config.outbounds) do
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and (value.server_port or value.server_ports) and not no_run then
 				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
+			end
+			if not value.detour and value.server then
+				value.detour = "direct"
+			end
+			if value.server and not api.datatypes.hostname(value.server) then
+				value.domain_resolver = nil
 			end
 			for k, v in pairs(config.outbounds[index]) do
 				if k:find("_") == 1 then

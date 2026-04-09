@@ -8,11 +8,11 @@ import (
 
 type Packet struct {
 	Seq     uint64
-	Payload []byte
+	Payload []byte // UploadQueue will hold Payload, so never reuse it after UploadQueue.Push
 	Reader  io.ReadCloser
 }
 
-type uploadQueue struct {
+type UploadQueue struct {
 	mu      sync.Mutex
 	cond    *sync.Cond
 	packets map[uint64][]byte
@@ -22,15 +22,15 @@ type uploadQueue struct {
 	reader  io.ReadCloser
 }
 
-func NewUploadQueue() *uploadQueue {
-	q := &uploadQueue{
+func NewUploadQueue() *UploadQueue {
+	q := &UploadQueue{
 		packets: make(map[uint64][]byte),
 	}
 	q.cond = sync.NewCond(&q.mu)
 	return q
 }
 
-func (q *uploadQueue) Push(p Packet) error {
+func (q *UploadQueue) Push(p Packet) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -48,14 +48,12 @@ func (q *uploadQueue) Push(p Packet) error {
 		return nil
 	}
 
-	cp := make([]byte, len(p.Payload))
-	copy(cp, p.Payload)
-	q.packets[p.Seq] = cp
+	q.packets[p.Seq] = p.Payload
 	q.cond.Broadcast()
 	return nil
 }
 
-func (q *uploadQueue) Read(b []byte) (int, error) {
+func (q *UploadQueue) Read(b []byte) (int, error) {
 	q.mu.Lock()
 
 	for {
@@ -87,7 +85,7 @@ func (q *uploadQueue) Read(b []byte) (int, error) {
 	}
 }
 
-func (q *uploadQueue) Close() error {
+func (q *UploadQueue) Close() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

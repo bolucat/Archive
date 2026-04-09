@@ -191,55 +191,8 @@ jobs:
           cp ./luci-app-openclash-*.apk "./${{ github.ref_name }}/"
           rm -f ./luci-app-openclash_*.ipk
           rm -f ./luci-app-openclash-*.apk
-          sed -i -E "s/OpenClash\/tree\/v(.*)/OpenClash\/tree\/v${{ needs.Get-Version.outputs.version }}/g" ./${{ github.ref_name }}/README.md
-          sed -i -E "s/OpenClash\/releases\/tag\/v(.*)/OpenClash\/releases\/tag\/v${{ needs.Get-Version.outputs.version }}/g" ./${{ github.ref_name }}/README.md
-          sed -i -E "s/source code-v(.*)-green/source code-v${{ needs.Get-Version.outputs.version }}-green/g" ./${{ github.ref_name }}/README.md
-          sed -i -E "s/New Release-v(.*)-orange/New Release-v${{ needs.Get-Version.outputs.version }}-orange/g" ./${{ github.ref_name }}/README.md
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add .
           git commit -m "Auto Release: v${{ needs.Get-Version.outputs.version }}"
           git push
-
-      - name: Trim History to Last 30 Commits
-        run: |
-          MAX_COMMITS=50
-          LIMIT_COMMITS=30
-          count=$(git rev-list --count HEAD)
-          echo "Current commit count on package branch: $count"
-          if [ "$count" -le "$MAX_COMMITS" ]; then
-            echo "No trimming needed (commit count: $count <= $MAX_COMMITS)."
-            exit 0
-          fi
-
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
-
-          recent_commits=($(git rev-list --max-count=$LIMIT_COMMITS HEAD))
-          sync_commit=$(git log --grep='Release: Auto sync' --format='%H' | tail -n 1)
-
-          keep_commits=("${recent_commits[@]}")
-          if [ -n "$sync_commit" ]; then
-            found=false
-            for c in "${recent_commits[@]}"; do
-              if [ "$c" = "$sync_commit" ]; then
-                found=true
-                break
-              fi
-            done
-            if [ "$found" = false ]; then
-              keep_commits+=("$sync_commit")
-            fi
-          fi
-
-          git checkout -b __tmp_history_trim HEAD
-          for c in $(printf "%s\n" "${keep_commits[@]}" | tac); do
-            git checkout "$c" -- dev || true
-            [ -d master ] && git checkout "$c" -- master || true
-            git add dev || true
-            [ -d master ] && git add master || true
-            git commit --allow-empty --keep-redundant-commits --no-edit --author="github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          done
-          git branch -M __tmp_history_trim package
-          git push --force origin package
-          echo "Trim complete. New commit count: $(git rev-list --count HEAD)"

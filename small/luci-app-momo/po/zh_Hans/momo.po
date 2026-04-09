@@ -8,6 +8,14 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:144
+msgid "API Listen"
+msgstr "API 监听"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:148
+msgid "API Secret"
+msgstr "API 密码"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:69
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:122
 msgid "Access Control"
@@ -31,7 +39,7 @@ msgstr "全部端口"
 msgid "App Config"
 msgstr "插件配置"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:29
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:53
 msgid "App Log"
 msgstr "插件日志"
 
@@ -63,6 +71,26 @@ msgstr "绕过 FWMark"
 msgid "CGroup"
 msgstr "控制组"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:108
+msgid "Cache Config"
+msgstr "缓存配置"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:110
+msgid "Cache Enabled"
+msgstr "启用缓存"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:116
+msgid "Cache Path"
+msgstr "缓存文件路径"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:119
+msgid "Cache Store FakeIP"
+msgstr "缓存 FakeIP"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:125
+msgid "Cache Store RDRC"
+msgstr "缓存 RDRC"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/editor.js:27
 msgid "Choose File"
 msgstr "选择文件"
@@ -71,8 +99,8 @@ msgstr "选择文件"
 msgid "Choose Profile"
 msgstr "选择配置文件"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:33
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:66
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:57
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:90
 msgid "Clear Log"
 msgstr "清空日志"
 
@@ -81,7 +109,7 @@ msgstr "清空日志"
 msgid "Commonly Used Port"
 msgstr "常用端口"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:62
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:86
 msgid "Core Log"
 msgstr "核心日志"
 
@@ -97,16 +125,40 @@ msgstr "核心状态"
 msgid "Core Version"
 msgstr "核心版本"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:117
-msgid "Cron Expression"
-msgstr "Cron 表达式"
-
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:99
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:165
 msgid "DNS"
 msgstr "DNS"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:95
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:80
+msgid "DNS Cache Capacity"
+msgstr "DNS 缓存容量"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:52
+msgid "DNS Config"
+msgstr "DNS 配置"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:62
+msgid "DNS Disable Cache"
+msgstr "禁用 DNS 缓存"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:68
+msgid "DNS Disable Expire"
+msgstr "禁用 DNS 过期"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:74
+msgid "DNS Independent Cache"
+msgstr "DNS 独立缓存"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:84
+msgid "DNS Reverse Mapping"
+msgstr "DNS 反向映射"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:54
+msgid "DNS Strategy"
+msgstr "DNS 策略"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:119
 msgid "Debug Log"
 msgstr "调试日志"
 
@@ -118,6 +170,16 @@ msgstr "要代理的 TCP 目标端口"
 msgid "Destination UDP Port to Proxy"
 msgstr "要代理的 UDP 目标端口"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:29
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:46
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:65
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:71
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:77
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:87
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:95
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:113
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:122
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:128
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:53
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:60
 msgid "Disable"
@@ -128,11 +190,21 @@ msgid "Edit Subscription"
 msgstr "编辑订阅"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/editor.js:25
-#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:37
+#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:45
 msgid "Editor"
 msgstr "编辑器"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:96
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:30
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:47
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:66
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:72
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:78
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:88
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:96
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:114
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:123
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:129
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:33
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:66
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:77
@@ -144,6 +216,10 @@ msgstr "启用"
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/profile.js:50
 msgid "Expire At"
 msgstr "到期时间"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:131
+msgid "External Control Config"
+msgstr "外部控制配置"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:48
 msgid "Fake-IP Ping Hijack"
@@ -162,7 +238,7 @@ msgstr "文件："
 msgid "General Config"
 msgstr "全局配置"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:99
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:123
 msgid "Generate & Download"
 msgstr "生成并下载"
 
@@ -190,6 +266,10 @@ msgstr "使用说明"
 msgid "IPv4 DNS Hijack"
 msgstr "IPv4 DNS 劫持"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:59
+msgid "IPv4 Only"
+msgstr "仅 IPv4"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:42
 msgid "IPv4 Proxy"
 msgstr "IPv4 代理"
@@ -197,6 +277,10 @@ msgstr "IPv4 代理"
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:39
 msgid "IPv6 DNS Hijack"
 msgstr "IPv6 DNS 劫持"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:60
+msgid "IPv6 Only"
+msgstr "仅 IPv6"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:45
 msgid "IPv6 Proxy"
@@ -215,18 +299,67 @@ msgid "Local"
 msgstr "本地"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:27
-#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:45
+#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:53
 msgid "Log"
 msgstr "日志"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:29
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:24
+msgid "Log Config"
+msgstr "日志配置"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:26
+msgid "Log Disabled"
+msgstr "禁用日志"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:32
+msgid "Log Level"
+msgstr "日志级别"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:49
+msgid "Log Output"
+msgstr "日志输出文件路径"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:43
+msgid "Log Timestamp"
+msgstr "打印时间戳"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:194
 msgid "Misc"
 msgstr "杂项"
 
+#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:29
+msgid "Mixin Config"
+msgstr "混入配置"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:22
+msgid "Mixin Option"
+msgstr "混入选项"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:38
 #: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:3
 msgid "Momo"
 msgstr "Momo"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:90
+msgid "NTP Config"
+msgstr "NTP 配置"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:92
+msgid "NTP Enabled"
+msgstr "启用 NTP"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:105
+msgid "NTP Interval"
+msgstr "NTP 时间同步间隔"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:98
+msgid "NTP Server"
+msgstr "NTP 服务地址"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:101
+msgid "NTP Server Port"
+msgstr "NTP 服务端口"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:15
 msgid "Not Running"
@@ -248,6 +381,14 @@ msgstr "打开面板"
 msgid "Prefer"
 msgstr "优先"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:57
+msgid "Prefer IPv4"
+msgstr "优先 IPv4"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:58
+msgid "Prefer IPv6"
+msgstr "优先 IPv6"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/profile.js:21
 #: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:21
 msgid "Profile"
@@ -264,7 +405,7 @@ msgstr "代理"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:29
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/proxy.js:31
-#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:29
+#: applications/luci-app-momo/root/usr/share/luci/menu.d/luci-app-momo.json:37
 msgid "Proxy Config"
 msgstr "代理配置"
 
@@ -304,12 +445,32 @@ msgstr "路由器代理"
 msgid "Running"
 msgstr "运行中"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:31
+msgid "Scheduled Clear"
+msgstr "定时清除""
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:34
+msgid "Scheduled Clear Cron"
+msgstr "Cron 表达式"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:39
+msgid "Scheduled Clear Size Limit"
+msgstr "日志大小上限"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:45
+msgid "Scheduled Clear Size Limit Unit"
+msgstr "日志大小上限单位"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:114
 msgid "Scheduled Restart"
 msgstr "定时重启"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:56
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:89
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:117
+msgid "Scheduled Restart Cron"
+msgstr "Cron 表达式"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:80
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:113
 msgid "Scroll To Bottom"
 msgstr "滚动到底部"
 
@@ -392,6 +553,14 @@ msgstr "在 OpenWrt 上使用 sing-box 进行透明代理"
 msgid "UDP Mode"
 msgstr "UDP 模式"
 
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:136
+msgid "UI Download Url"
+msgstr "UI 下载地址"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:133
+msgid "UI Path"
+msgstr "UI 路径"
+
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:139
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:143
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:147
@@ -400,6 +569,31 @@ msgstr "UDP 模式"
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/app.js:159
 msgid "Unlimited"
 msgstr "无限制"
+
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:28
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:34
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:45
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:50
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:56
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:64
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:70
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:76
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:82
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:86
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:94
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:99
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:103
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:106
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:112
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:117
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:121
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:127
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:134
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:137
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:146
+#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/mixin.js:150
+msgid "Unmodified"
+msgstr "不修改"
 
 #: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/profile.js:63
 msgid "Update"
@@ -433,38 +627,34 @@ msgstr "用户代理（UA）"
 msgid "procd Config"
 msgstr "procd 配置"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:47
-msgid "Check log size at the configured cron schedule before cleaning up."
-msgstr "按设定的 Cron 周期检查日志大小，满足条件后再清理。"
+#~ msgid "Cron Expression"
+#~ msgstr "Cron 表达式"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:53
-msgid "Clear app, core and debug logs when their total size reaches this threshold."
-msgstr "当插件日志、核心日志和调试日志总大小达到该阈值时自动清理。"
+#~ msgid "Check log size at the configured cron schedule before cleaning up."
+#~ msgstr "按设定的 Cron 周期检查日志大小，满足条件后再清理。"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:27
-msgid "Log Cleanup"
-msgstr "日志清理"
+#~ msgid ""
+#~ "Clear app, core and debug logs when their total size reaches this "
+#~ "threshold."
+#~ msgstr "当插件日志、核心日志和调试日志总大小达到该阈值时自动清理。"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:32
-msgid "Log Cleanup Cron Expression"
-msgstr "日志清理 Cron 表达式"
+#~ msgid "Log Cleanup"
+#~ msgstr "日志清理"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:49
-msgid "Log Cleanup Size Threshold (MB)"
-msgstr "日志清理大小阈值（MB）"
+#~ msgid "Log Cleanup Cron Expression"
+#~ msgstr "日志清理 Cron 表达式"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:42
-msgid "Log Size Check Cron Expression"
-msgstr "日志大小检查 Cron 表达式"
+#~ msgid "Log Cleanup Size Threshold (MB)"
+#~ msgstr "日志清理大小阈值（MB）"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:37
-msgid "Run unconditional log cleanup at the configured cron schedule."
-msgstr "按设定的 Cron 时间无条件执行日志清理。"
+#~ msgid "Log Size Check Cron Expression"
+#~ msgstr "日志大小检查 Cron 表达式"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:29
-msgid "Scheduled Log Cleanup"
-msgstr "定时日志清理"
+#~ msgid "Run unconditional log cleanup at the configured cron schedule."
+#~ msgstr "按设定的 Cron 时间无条件执行日志清理。"
 
-#: applications/luci-app-momo/htdocs/luci-static/resources/view/momo/log.js:39
-msgid "Size-based Log Cleanup"
-msgstr "按大小触发日志清理"
+#~ msgid "Scheduled Log Cleanup"
+#~ msgstr "定时日志清理"
+
+#~ msgid "Size-based Log Cleanup"
+#~ msgstr "按大小触发日志清理"

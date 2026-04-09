@@ -26,8 +26,8 @@ type Config struct {
 }
 
 type ReuseConfig struct {
-	MaxConnections   string
 	MaxConcurrency   string
+	MaxConnections   string
 	CMaxReuseTimes   string
 	HMaxRequestTimes string
 	HMaxReusableSecs string
@@ -171,22 +171,27 @@ func (c *ReuseConfig) ResolveManagerConfig() (Range, Range, error) {
 		return Range{}, Range{}, nil
 	}
 
-	maxConnections, err := ParseRange(c.MaxConnections, "0")
-	if err != nil {
-		return Range{}, Range{}, fmt.Errorf("invalid max-connections: %w", err)
-	}
-
 	maxConcurrency, err := ParseRange(c.MaxConcurrency, "0")
 	if err != nil {
 		return Range{}, Range{}, fmt.Errorf("invalid max-concurrency: %w", err)
 	}
 
-	return maxConnections, maxConcurrency, nil
+	maxConnections, err := ParseRange(c.MaxConnections, "0")
+	if err != nil {
+		return Range{}, Range{}, fmt.Errorf("invalid max-connections: %w", err)
+	}
+
+	return maxConcurrency, maxConnections, nil
 }
 
 func (c *ReuseConfig) ResolveEntryConfig() (Range, Range, Range, error) {
 	if c == nil {
 		return Range{}, Range{}, Range{}, nil
+	}
+
+	cMaxReuseTimes, err := ParseRange(c.CMaxReuseTimes, "0")
+	if err != nil {
+		return Range{}, Range{}, Range{}, fmt.Errorf("invalid c-max-reuse-times: %w", err)
 	}
 
 	hMaxRequestTimes, err := ParseRange(c.HMaxRequestTimes, "0")
@@ -199,12 +204,7 @@ func (c *ReuseConfig) ResolveEntryConfig() (Range, Range, Range, error) {
 		return Range{}, Range{}, Range{}, fmt.Errorf("invalid h-max-reusable-secs: %w", err)
 	}
 
-	cMaxReuseTimes, err := ParseRange(c.CMaxReuseTimes, "0")
-	if err != nil {
-		return Range{}, Range{}, Range{}, fmt.Errorf("invalid c-max-reuse-times: %w", err)
-	}
-
-	return hMaxRequestTimes, hMaxReusableSecs, cMaxReuseTimes, nil
+	return cMaxReuseTimes, hMaxRequestTimes, hMaxReusableSecs, nil
 }
 
 func (c *Config) FillStreamRequest(req *http.Request, sessionID string) error {

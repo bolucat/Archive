@@ -1,4 +1,4 @@
-import { readfile, popen } from 'fs';
+import { readfile, writefile, popen } from 'fs';
 
 export function get_paths() {
 	let result = {};
@@ -120,4 +120,14 @@ export function get_cgroups() {
 		}
 	}
 	return result;
+};
+
+export function load_profile() {
+	const paths = get_paths();
+	return json(readfile(paths.run_profile_path));
+};
+
+export function save_profile(obj) {
+	const paths = get_paths();
+	return writefile(paths.run_profile_path, obj);
 };

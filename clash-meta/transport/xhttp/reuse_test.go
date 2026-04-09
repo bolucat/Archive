@@ -31,8 +31,8 @@ func TestManagerReuseSameEntry(t *testing.T) {
 	var created atomic.Int64
 
 	manager, err := NewReuseManager(&ReuseConfig{
-		MaxConnections:   "1",
 		MaxConcurrency:   "1",
+		MaxConnections:   "1",
 		HMaxRequestTimes: "10",
 	}, makeTestTransportFactory(&created))
 	if err != nil {
@@ -65,8 +65,8 @@ func TestManagerRespectMaxConnections(t *testing.T) {
 	var created atomic.Int64
 
 	manager, err := NewReuseManager(&ReuseConfig{
-		MaxConnections:   "2",
 		MaxConcurrency:   "1",
+		MaxConnections:   "2",
 		HMaxRequestTimes: "100",
 	}, makeTestTransportFactory(&created))
 	if err != nil {
@@ -110,8 +110,8 @@ func TestManagerRotateOnRequestLimit(t *testing.T) {
 	var created atomic.Int64
 
 	manager, err := NewReuseManager(&ReuseConfig{
-		MaxConnections:   "1",
 		MaxConcurrency:   "1",
+		MaxConnections:   "1",
 		HMaxRequestTimes: "1",
 	}, makeTestTransportFactory(&created))
 	if err != nil {
@@ -144,8 +144,8 @@ func TestManagerRotateOnReusableSecs(t *testing.T) {
 	var created atomic.Int64
 
 	manager, err := NewReuseManager(&ReuseConfig{
-		MaxConnections:   "1",
 		MaxConcurrency:   "1",
+		MaxConnections:   "1",
 		HMaxRequestTimes: "100",
 		HMaxReusableSecs: "1",
 	}, makeTestTransportFactory(&created))
@@ -180,8 +180,8 @@ func TestManagerRotateOnConnReuseLimit(t *testing.T) {
 	var created atomic.Int64
 
 	manager, err := NewReuseManager(&ReuseConfig{
-		MaxConnections:   "1",
 		MaxConcurrency:   "1",
+		MaxConnections:   "1",
 		CMaxReuseTimes:   "1",
 		HMaxRequestTimes: "100",
 	}, makeTestTransportFactory(&created))

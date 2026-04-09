@@ -27,42 +27,29 @@ dummy_device=$(uci -q get momo.routing.dummy_device); [ -z "$dummy_device" ] && 
 
 # since v1.1.2
 
-section_log=$(uci -q get momo.log); [ -z "$section_log" ] && uci set momo.log=log
+config_scheduled_restart_cron=$(uci -q get momo.config.scheduled_restart_cron); [ -z "$config_scheduled_restart_cron" ] && uci rename momo.config.cron_expression="scheduled_restart_cron"
 
-log_cleanup_enabled=$(uci -q get momo.log.log_cleanup_enabled)
-[ -z "$log_cleanup_enabled" ] && {
-	log_cleanup_enabled=$(uci -q get momo.config.log_cleanup_enabled)
-	[ -n "$log_cleanup_enabled" ] && uci set momo.log.log_cleanup_enabled=$log_cleanup_enabled || uci set momo.log.log_cleanup_enabled=0
+section_log=$(uci -q get momo.log); [ -z "$section_log" ] && {
+	uci set momo.log=log
+	uci set momo.log.scheduled_clear=1
+	uci set momo.log.scheduled_clear_cron="*/5 * * * *"
+	uci set momo.log.scheduled_clear_size_limit=1
+	uci set momo.log.scheduled_clear_size_limit_unit=MB
 }
-uci -q del momo.config.log_cleanup_enabled
 
-log_cleanup_cron_expression=$(uci -q get momo.log.log_cleanup_cron_expression)
-[ -z "$log_cleanup_cron_expression" ] && {
-	log_cleanup_cron_expression=$(uci -q get momo.config.log_cleanup_cron_expression)
-	[ -n "$log_cleanup_cron_expression" ] && uci set momo.log.log_cleanup_cron_expression="$log_cleanup_cron_expression" || uci set momo.log.log_cleanup_cron_expression='0 4 * * *'
+section_mixin=$(uci -q get momo.mixin); [ -z "$section_mixin" ] && {
+	uci set momo.mixin=mixin
+	uci set momo.mixin.log_disabled='0'
+	uci set momo.mixin.log_level='info'
+	uci set momo.mixin.log_timestamp='1'
+	uci set momo.mixin.dns_independent_cache='1'
+	uci set momo.mixin.dns_reverse_mapping='1'
+	uci set momo.mixin.cache_enabled='1'
+	uci set momo.mixin.cache_store_fakeip='1'
+	uci set momo.mixin.cache_store_rdrc='1'
+	uci set momo.mixin.external_control_ui_path='ui'
+	uci set momo.mixin.external_control_ui_download_url='https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip'
 }
-uci -q del momo.config.log_cleanup_cron_expression
-
-log_cleanup_size_enabled=$(uci -q get momo.log.log_cleanup_size_enabled)
-[ -z "$log_cleanup_size_enabled" ] && {
-	log_cleanup_size_enabled=$(uci -q get momo.config.log_cleanup_size_enabled)
-	[ -n "$log_cleanup_size_enabled" ] && uci set momo.log.log_cleanup_size_enabled=$log_cleanup_size_enabled || uci set momo.log.log_cleanup_size_enabled=0
-}
-uci -q del momo.config.log_cleanup_size_enabled
-
-log_cleanup_size_check_cron_expression=$(uci -q get momo.log.log_cleanup_size_check_cron_expression)
-[ -z "$log_cleanup_size_check_cron_expression" ] && {
-	log_cleanup_size_check_cron_expression=$(uci -q get momo.config.log_cleanup_size_check_cron_expression)
-	[ -n "$log_cleanup_size_check_cron_expression" ] && uci set momo.log.log_cleanup_size_check_cron_expression="$log_cleanup_size_check_cron_expression" || uci set momo.log.log_cleanup_size_check_cron_expression='*/30 * * * *'
-}
-uci -q del momo.config.log_cleanup_size_check_cron_expression
-
-log_cleanup_size_mb=$(uci -q get momo.log.log_cleanup_size_mb)
-[ -z "$log_cleanup_size_mb" ] && {
-	log_cleanup_size_mb=$(uci -q get momo.config.log_cleanup_size_mb)
-	[ -n "$log_cleanup_size_mb" ] && uci set momo.log.log_cleanup_size_mb=$log_cleanup_size_mb || uci set momo.log.log_cleanup_size_mb=50
-}
-uci -q del momo.config.log_cleanup_size_mb
 
 # commit
 uci commit momo

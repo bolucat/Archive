@@ -55,11 +55,11 @@ func (rt *ReuseTransport) Close() error {
 var _ http.RoundTripper = (*ReuseTransport)(nil)
 
 type ReuseManager struct {
-	maxConnections   int
 	maxConcurrency   int
+	maxConnections   int
+	cMaxReuseTimes   Range
 	hMaxRequestTimes Range
 	hMaxReusableSecs Range
-	cMaxReuseTimes   Range
 	maker            TransportMaker
 	mu               sync.Mutex
 	entries          []*reuseEntry
@@ -69,20 +69,20 @@ func NewReuseManager(cfg *ReuseConfig, makeTransport TransportMaker) (*ReuseMana
 	if cfg == nil {
 		return nil, nil
 	}
-	connections, concurrency, err := cfg.ResolveManagerConfig()
+	concurrency, connections, err := cfg.ResolveManagerConfig()
 	if err != nil {
 		return nil, err
 	}
-	hMaxRequestTimes, hMaxReusableSecs, cMaxReuseTimes, err := cfg.ResolveEntryConfig()
+	cMaxReuseTimes, hMaxRequestTimes, hMaxReusableSecs, err := cfg.ResolveEntryConfig()
 	if err != nil {
 		return nil, err
 	}
 	return &ReuseManager{
-		maxConnections:   connections.Rand(),
 		maxConcurrency:   concurrency.Rand(),
+		maxConnections:   connections.Rand(),
+		cMaxReuseTimes:   cMaxReuseTimes,
 		hMaxRequestTimes: hMaxRequestTimes,
 		hMaxReusableSecs: hMaxReusableSecs,
-		cMaxReuseTimes:   cMaxReuseTimes,
 		maker:            makeTransport,
 		entries:          make([]*reuseEntry, 0),
 	}, nil

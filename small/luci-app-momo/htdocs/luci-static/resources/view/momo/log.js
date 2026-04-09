@@ -24,35 +24,31 @@ return view.extend({
 
         m = new form.Map('momo');
 
-        s = m.section(form.NamedSection, 'log', 'log', _('Log Cleanup'));
+        s = m.section(form.NamedSection, 'log', 'log', _('Log'));
 
-        o = s.option(form.Flag, 'log_cleanup_enabled', _('Scheduled Log Cleanup'));
+        s.tab('log_config', _('Log Config'));
+        
+        o = s.taboption('log_config', form.Flag, 'scheduled_clear', _('Scheduled Clear'));
         o.rmempty = false;
-
-        o = s.option(form.Value, 'log_cleanup_cron_expression', _('Log Cleanup Cron Expression'));
+        
+        o = s.taboption('log_config', form.Value, 'scheduled_clear_cron', _('Scheduled Clear Cron'));
         o.retain = true;
         o.rmempty = false;
-        o.placeholder = '0 4 * * *';
-        o.depends('log_cleanup_enabled', '1');
-        o.description = _('Run unconditional log cleanup at the configured cron schedule.');
+        o.depends('scheduled_clear', '1');
 
-        o = s.option(form.Flag, 'log_cleanup_size_enabled', _('Size-based Log Cleanup'));
-        o.rmempty = false;
-
-        o = s.option(form.Value, 'log_cleanup_size_check_cron_expression', _('Log Size Check Cron Expression'));
+        o = s.taboption('log_config', form.Value, 'scheduled_clear_size_limit', _('Scheduled Clear Size Limit'));
         o.retain = true;
         o.rmempty = false;
-        o.placeholder = '*/30 * * * *';
-        o.depends('log_cleanup_size_enabled', '1');
-        o.description = _('Check log size at the configured cron schedule before cleaning up.');
-
-        o = s.option(form.Value, 'log_cleanup_size_mb', _('Log Cleanup Size Threshold (MB)'));
         o.datatype = 'uinteger';
-        o.placeholder = '50';
-        o.depends('log_cleanup_size_enabled', '1');
-        o.description = _('Clear app, core and debug logs when their total size reaches this threshold.');
+        o.depends('scheduled_clear', '1');
 
-        s = m.section(form.NamedSection, 'placeholder', 'placeholder', _('Log'));
+        o = s.taboption('log_config', form.ListValue, 'scheduled_clear_size_limit_unit', _('Scheduled Clear Size Limit Unit'));
+        o.retain = true;
+        o.rmempty = false;
+        o.depends('scheduled_clear', '1');
+        o.value('KB', 'KB');
+        o.value('MB', 'MB');
+        o.value('GB', 'GB');
 
         s.tab('app_log', _('App Log'));
 

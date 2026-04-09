@@ -1765,6 +1765,12 @@ msgstr "Задержка (мс)"
 msgid "If is domain name, The requested domain name will be resolved to IP before connect."
 msgstr "Если указано доменное имя, оно будет разрешено в IP-адрес перед подключением."
 
+msgid "Domain DNS Resolve"
+msgstr "Разрешение DNS-запросов для домена"
+
+msgid "If the node address is a domain name, this DNS will be used for resolution."
+msgstr "Если адрес узла является доменным именем, для разрешения будет использоваться этот DNS-сервер."
+
 msgid "Chain Proxy"
 msgstr "Цепочка прокси"
 

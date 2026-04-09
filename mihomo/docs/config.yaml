@@ -807,8 +807,7 @@ proxies: # socks5
     udp: true
     tls: true
     network: xhttp
-    alpn:
-      - h2
+    alpn: [h2] # 默认仅支持h2，如果开启h3模式需要设置alpn: [h3]，如果开启http1.1模式需要设置alpn: [http/1.1]
     # ech-opts: ...
     # reality-opts: ...
     # skip-cert-verify: false
@@ -828,11 +827,12 @@ proxies: # socks5
       # x-padding-bytes: "100-1000"
       # sc-max-each-post-bytes: 1000000
       # reuse-settings: # aka XMUX
-      #   max-connections: "16-32"
-      #   max-concurrency: "0"
+      #   max-concurrency: "16-32"
+      #   max-connections: "0"
       #   c-max-reuse-times: "0"
       #   h-max-request-times: "600-900"
       #   h-max-reusable-secs: "1800-3000"
+      #   h-keep-alive-period: 0
       # download-settings:
       #   ## xhttp part
       #   path: "/"
@@ -843,17 +843,17 @@ proxies: # socks5
       #   x-padding-bytes: "100-1000"
       #   sc-max-each-post-bytes: 1000000
       #   reuse-settings: # aka XMUX
-      #     max-connections: "16-32"
-      #     max-concurrency: "0"
+      #     max-concurrency: "16-32"
+      #     max-connections: "0"
       #     c-max-reuse-times: "0"
       #     h-max-request-times: "600-900"
       #     h-max-reusable-secs: "1800-3000"
+      #     h-keep-alive-period: 0
       #   ## proxy part
       #   server: server
       #   port: 443
       #   tls: true
-      #   alpn:
-      #     - h2
+      #   alpn: ...
       #   ech-opts: ...
       #   reality-opts: ...
       #   skip-cert-verify: false

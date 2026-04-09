@@ -118,6 +118,12 @@ msgstr "0為不使用"
 msgid "Current node: %s"
 msgstr "當前節點：%s"
 
+msgid "Direct domain DNS routing"
+msgstr "直連網域 DNS 分流"
+
+msgid "Please note that the program will not start if the format is incorrect!"
+msgstr "請注意，格式不正確將無法啟動！"
+
 msgid "IP:Port mode acceptable, multi value split with english comma."
 msgstr "接受 IP:Port 形式的輸入，多個以英文逗号分隔。"
 
@@ -1755,6 +1761,12 @@ msgstr "延迟（ms）"
 
 msgid "If is domain name, The requested domain name will be resolved to IP before connect."
 msgstr "如果是域名，域名將在請求發出之前解析為 IP。"
+
+msgid "Domain DNS Resolve"
+msgstr "域名 DNS 解析"
+
+msgid "If the node address is a domain name, this DNS will be used for resolution."
+msgstr "如果節點地址是域名，則將使用此 DNS 進行解析。"
 
 msgid "Chain Proxy"
 msgstr "鏈式代理"

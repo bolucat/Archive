@@ -1756,6 +1756,12 @@ msgstr "延迟（ms）"
 msgid "If is domain name, The requested domain name will be resolved to IP before connect."
 msgstr "如果是域名，域名將在請求發出之前解析為 IP。"
 
+msgid "Domain DNS Resolve"
+msgstr "域名 DNS 解析"
+
+msgid "If the node address is a domain name, this DNS will be used for resolution."
+msgstr "如果節點地址是域名，則將使用此 DNS 進行解析。"
+
 msgid "Chain Proxy"
 msgstr "鏈式代理"
 

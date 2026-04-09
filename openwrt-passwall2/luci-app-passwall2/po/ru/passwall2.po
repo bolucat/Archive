@@ -118,6 +118,12 @@ msgstr "0 — отключить функцию"
 msgid "Current node: %s"
 msgstr "Текущий узел: %s"
 
+msgid "Direct domain DNS routing"
+msgstr "Прямая маршрутизация DNS домена"
+
+msgid "Please note that the program will not start if the format is incorrect!"
+msgstr "Обратите внимание, что программа не запустится, если формат указан неверно!"
+
 msgid "IP:Port mode acceptable, multi value split with english comma."
 msgstr "Допустим формат IP:Port. Несколько значений указывайте через запятую."
 
@@ -1764,6 +1770,12 @@ msgstr "Задержка (мс)"
 
 msgid "If is domain name, The requested domain name will be resolved to IP before connect."
 msgstr "Если указано доменное имя, оно будет разрешено в IP-адрес перед подключением."
+
+msgid "Domain DNS Resolve"
+msgstr "Разрешение DNS-запросов для домена"
+
+msgid "If the node address is a domain name, this DNS will be used for resolution."
+msgstr "Если адрес узла является доменным именем, для разрешения будет использоваться этот DNS-сервер."
 
 msgid "Chain Proxy"
 msgstr "Цепочка прокси"

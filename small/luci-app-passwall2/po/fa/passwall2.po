@@ -1764,6 +1764,12 @@ msgstr "تاخیر (میلی‌ثانیه)"
 msgid "If is domain name, The requested domain name will be resolved to IP before connect."
 msgstr "اگر نام دامنه است، نام دامنه درخواست شده قبل از اتصال به IP حل می‌شود."
 
+msgid "Domain DNS Resolve"
+msgstr "حل مشکل DNS دامنه"
+
+msgid "If the node address is a domain name, this DNS will be used for resolution."
+msgstr "اگر آدرس گره یک نام دامنه باشد، از این DNS برای حل مسئله استفاده خواهد شد."
+
 msgid "Chain Proxy"
 msgstr "پروکسی زنجیره‌ای"
 

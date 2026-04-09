@@ -12,6 +12,10 @@ local ech_domain = {}
 local local_version = api.get_app_version("sing-box"):match("[^v]+")
 local version_ge_1_13_0 = api.compare_versions(local_version, ">=", "1.13.0")
 
+local GLOBAL = {
+	DNS_SERVER = {}
+}
+
 local GEO_VAR = {
 	OK = nil,
 	DIR = nil,
@@ -87,6 +91,34 @@ local function convert_geofile()
 	convert(GEO_VAR.IP_PATH, "geoip", GEO_VAR.IP_TAGS)
 end
 
+function parseDNS(str)
+	local result_dns_server
+	-- [proto]://[ip]
+	-- [proto]://[ip]:[port]
+	-- https://[ip]/[path]
+	-- https://[ip]:[port]/[path]
+	local _a = api.parseURL(str)
+	if _a then
+		if _a.protocol == "tcp" or _a.protocol == "udp" or _a.protocol == "https" then
+			result_dns_server = {
+				type = _a.protocol,
+				server = _a.hostname
+			}
+			if _a.port then
+				result_dns_server.server_port = _a.port
+			else
+				if _a.protocol == "https" then
+					result_dns_server.server_port = 443
+				else
+					result_dns_server.server_port = 53
+				end
+			end
+			result_dns_server.path = _a.pathname
+		end
+	end
+	return result_dns_server
+end
+
 function gen_outbound(flag, node, tag, proxy_table)
 	local result = nil
 	if node then
@@ -158,6 +190,47 @@ function gen_outbound(flag, node, tag, proxy_table)
 			},
 			detour = node.detour,
 		}
+
+		if api.datatypes.hostname(node.address) and node.domain_resolver and (node.domain_resolver_dns or node.domain_resolver_dns_https) then
+			local dns_tag = node_id .. "_dns"
+			local dns_proto = node.domain_resolver
+			local server_address
+			local server_port
+			local server_path
+			if dns_proto == "https" then
+				local _a = api.parseURL(node.domain_resolver_dns_https)
+				if _a then
+					server_address = _a.hostname
+					if _a.port then
+						server_port = _a.port
+					else
+						server_port = 443
+					end
+					server_path = _a.pathname
+				end
+			else
+				server_address = node.domain_resolver_dns
+				server_port = 53
+				local split = api.split(server_address, ":")
+				if #split > 1 then
+					server_address = split[1]
+					server_port = tonumber(split[#split])
+				end
+			end
+			GLOBAL.DNS_SERVER[node_id] = {
+				server = {
+					tag = dns_tag,
+					type = dns_proto,
+					server = server_address,
+					server_port = server_port,
+					path = server_path,
+					domain_resolver = "local",
+					detour = "direct"
+				},
+				domain = node.address
+			}
+			result.domain_resolver.server = dns_tag
+		end
 
 		local tls = nil
 		if node.protocol == "hysteria" or node.protocol == "hysteria2" or node.protocol == "tuic" or node.protocol == "naive" then
@@ -1695,10 +1768,26 @@ function gen_config(var)
 		reverse_mapping = true, -- After responding to a DNS query, a reverse mapping of the IP address is stored to provide the domain name for routing purposes.
 	}
 
+	for i, v in pairs(GLOBAL.DNS_SERVER) do
+		table.insert(dns.servers, v.server)
+		table.insert(dns.rules, {
+			action = "route",
+			server = v.server.tag,
+			domain = v.domain,
+		})
+	end
+
 	table.insert(dns.servers, {
 		type = "local",
 		tag = "local"
 	})
+
+	local direct_strategy = "prefer_ipv6"
+	if direct_dns_query_strategy == "UseIPv4" then
+		direct_strategy = "ipv4_only"
+	elseif direct_dns_query_strategy == "UseIPv6" then
+		direct_strategy = "ipv6_only"
+	end
 
 	if dns_listen_port then
 		local dns_host = ""
@@ -1837,13 +1926,6 @@ function gen_config(var)
 				})
 			end
 
-			direct_strategy = "prefer_ipv6"
-			if direct_dns_query_strategy == "UseIPv4" then
-				direct_strategy = "ipv4_only"
-			elseif direct_dns_query_strategy == "UseIPv6" then
-				direct_strategy = "ipv6_only"
-			end
-
 			local server_port = tonumber(direct_dns_udp_port) or 53
 
 			table.insert(dns.servers, {
@@ -1853,42 +1935,6 @@ function gen_config(var)
 				server_port = server_port,
 				detour = "direct",
 			})
-		end
-
-		local dnsmasq_server_domain = api.get_dnsmasq_server_domain()
-		if next(dnsmasq_server_domain) then
-			local new_dns_servers = {}
-			for domain, v in pairs(dnsmasq_server_domain) do
-				if not new_dns_servers[v.dnsmasq_dns] then
-					new_dns_servers[v.dnsmasq_dns] = {
-						server = {
-							tag = v.dnsmasq_dns,
-							type = "udp",
-							server = v.server,
-							server_port = v.port,
-							detour = "direct",
-						},
-						rule = {
-							action = "route",
-							domain_suffix = {},
-							server = v.dnsmasq_dns,
-							strategy = direct_strategy,
-						},
-					}
-				end
-				table.insert(new_dns_servers[v.dnsmasq_dns].rule.domain_suffix, domain)
-			end
-			for k, v in pairs(new_dns_servers) do
-				table.insert(dns.servers, v.server)
-				table.insert(dns.rules, 1, v.rule)
-				table.insert(route.rules, 1, {
-					action = "route",
-					network = v.server.type,
-					ip_cidr = v.server.server,
-					port = v.server.server_port,
-					outbound = "direct",
-				})
-			end
 		end
 
 		local default_dns_flag = "remote"
@@ -2083,7 +2129,10 @@ function gen_config(var)
 			if not value["_flag_proxy_tag"] and not value.detour and value["_id"] and value.server and value.server_port and not no_run then
 				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
 			end
-			if value.detour then
+			if not value.detour and value.server then
+				value.detour = "direct"
+			end
+			if value.server and not api.datatypes.hostname(value.server) then
 				value.domain_resolver = nil
 			end
 			for k, v in pairs(config.outbounds[index]) do
@@ -2208,7 +2257,155 @@ function gen_proto_config(var)
 	return jsonc.stringify(config, 1)
 end
 
+function gen_front_dns_config(var)
+	local dns_listen_port = var["dns_listen_port"]
+	local direct_dns_udp_server = var["direct_dns_udp_server"]
+	local direct_dns_udp_port = var["direct_dns_udp_port"]
+	local direct_dns_query_strategy = var["direct_dns_query_strategy"]
+	local default_dns_udp_server = var["default_dns_udp_server"]
+	local default_dns_udp_port = var["default_dns_udp_port"]
+
+	local dns = {
+		servers = {},
+		rules = {}
+	}
+	local inbounds = {}
+	local outbounds = {}
+	local route = {}
+
+	local direct_strategy = "prefer_ipv6"
+	if direct_dns_query_strategy == "UseIPv4" then
+		direct_strategy = "ipv4_only"
+	elseif direct_dns_query_strategy == "UseIPv6" then
+		direct_strategy = "ipv6_only"
+	end
+
+	table.insert(outbounds, {
+		type = "direct",
+		tag = "direct",
+		routing_mark = 255,
+		domain_resolver = {
+			server = "direct",
+			strategy = direct_strategy
+		}
+	})
+
+	local direct_dns_shunt = uci:get(appname, "@global[0]", "direct_dns_shunt") or ""
+	if #direct_dns_shunt > 0 then
+		local dns_server = {}
+		string.gsub(direct_dns_shunt, '[^' .. "\r\n" .. ']+', function(w)
+			if w:find("#") == 1 then return end
+			local domain = sys.exec(string.format("echo -n $(echo %s | awk -F ' ' '{print $1}')", w))
+			local dns = sys.exec(string.format("echo -n $(echo %s | awk -F ' ' '{print $2}')", w))
+			if domain ~= "" and dns ~= "" then
+				local new_dns_server = parseDNS(dns)
+				if new_dns_server then
+					if not dns_server[dns] then
+						dns_server[dns] = {}
+					end
+					if not dns_server[dns].server then
+						dns_server[dns].server = new_dns_server
+						dns_server[dns].server.tag = dns
+						dns_server[dns].server.detour = "direct"
+					end
+					if not dns_server[dns].rule then
+						dns_server[dns].rule = {
+							action = "route",
+							server = dns,
+							domain = {},
+							domain_suffix = {},
+							domain_keyword = {}
+						}
+					end
+					if domain:find("full:") == 1 then
+						table.insert(dns_server[dns].rule.domain, domain:sub(1 + #"full:"))
+					elseif domain:find("domain:") == 1 then
+						table.insert(dns_server[dns].rule.domain_suffix, domain:sub(1 + #"domain:"))
+					else
+						table.insert(dns_server[dns].rule.domain_keyword, domain)
+					end
+				end
+			end
+		end)
+		for k, v in pairs(dns_server) do
+			table.insert(dns.servers, v.server)
+			if #v.rule.domain == 0 then v.rule.domain = nil end
+			if #v.rule.domain_suffix == 0 then v.rule.domain_suffix = nil end
+			if #v.rule.domain_keyword == 0 then v.rule.domain_keyword = nil end
+			table.insert(dns.rules, v.rule)
+		end
+	end
+
+	if direct_dns_udp_server then
+		table.insert(dns.servers, {
+			tag = "direct",
+			type = "udp",
+			server = direct_dns_udp_server,
+			server_port = tonumber(direct_dns_udp_port) or 53,
+			detour = "direct"
+		})
+		local node_domain = {}
+		local nodes_domain_text = sys.exec('uci show passwall2 | grep ".address=" | cut -d "\'" -f 2 | grep "[a-zA-Z]$" | sort -u')
+		string.gsub(nodes_domain_text, '[^' .. "\r\n" .. ']+', function(w)
+			table.insert(node_domain, w)
+		end)
+		if #node_domain > 0 then
+			table.insert(dns.rules, {
+				action = "route",
+				server = "direct",
+				domain = node_domain
+			})
+		end
+	end
+
+	if default_dns_udp_server then
+		table.insert(dns.servers, {
+			tag = "default",
+			type = "udp",
+			server = default_dns_udp_server,
+			server_port = tonumber(default_dns_udp_port) or 53,
+			detour = "direct"
+		})
+		dns.final = "default"
+	else
+		dns.final = "direct"
+	end
+
+	local dns_in_inbound = {
+		type = "direct",
+		tag = "dns-in",
+		listen = "127.0.0.1",
+		listen_port = tonumber(dns_listen_port),
+	}
+	table.insert(inbounds, dns_in_inbound)
+
+	route.rules = {}
+	table.insert(route.rules, {
+		action = "hijack-dns",
+		inbound = dns_in_inbound.tag
+	})
+	table.insert(route.rules, {
+		action = "sniff",
+		inbound = dns_in_inbound.tag
+	})
+	route.final = "direct"
+
+	local config = {
+		log = {
+			disabled = true,
+			level = "debug",
+			timestamp = true,
+		},
+		dns = dns,
+		inbounds = inbounds,
+		outbounds = outbounds,
+		route = route
+	}
+	return jsonc.stringify(config, 1)
+end
+
 _G.gen_config = gen_config
+_G.gen_front_dns_config = gen_front_dns_config
 _G.gen_proto_config = gen_proto_config
 _G.geo_convert_srs = geo_convert_srs
 
