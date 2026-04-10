@@ -17,25 +17,24 @@ func NewNetworkQualityTest() *NetworkQualityTest {
 	return &NetworkQualityTest{ctx: ctx, cancel: cancel}
 }
 
-func (t *NetworkQualityTest) Start(configURL string, handler NetworkQualityTestHandler) {
-	t.StartWithSerialAndRuntime(configURL, false, NetworkQualityDefaultMaxRuntimeSeconds, handler)
-}
-
-func (t *NetworkQualityTest) StartWithSerial(configURL string, serial bool, handler NetworkQualityTestHandler) {
-	t.StartWithSerialAndRuntime(configURL, serial, NetworkQualityDefaultMaxRuntimeSeconds, handler)
-}
-
-func (t *NetworkQualityTest) StartWithSerialAndRuntime(configURL string, serial bool, maxRuntimeSeconds int32, handler NetworkQualityTestHandler) {
+func (t *NetworkQualityTest) Start(configURL string, serial bool, maxRuntimeSeconds int32, http3 bool, handler NetworkQualityTestHandler) {
 	go func() {
 		httpClient := networkquality.NewHTTPClient(nil)
 		defer httpClient.CloseIdleConnections()
 
+		measurementClientFactory, err := networkquality.NewOptionalHTTP3Factory(nil, http3)
+		if err != nil {
+			handler.OnError(err.Error())
+			return
+		}
+
 		result, err := networkquality.Run(networkquality.Options{
-			ConfigURL:  configURL,
-			HTTPClient: httpClient,
-			Serial:     serial,
-			MaxRuntime: time.Duration(maxRuntimeSeconds) * time.Second,
-			Context:    t.ctx,
+			ConfigURL:            configURL,
+			HTTPClient:           httpClient,
+			NewMeasurementClient: measurementClientFactory,
+			Serial:               serial,
+			MaxRuntime:           time.Duration(maxRuntimeSeconds) * time.Second,
+			Context:              t.ctx,
 			OnProgress: func(p networkquality.Progress) {
 				handler.OnProgress(&NetworkQualityProgress{
 					Phase:                    int32(p.Phase),

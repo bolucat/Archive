@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"math"
+	"math/rand"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -113,12 +114,13 @@ const (
 )
 
 type Options struct {
-	ConfigURL  string
-	HTTPClient *http.Client
-	Serial     bool
-	MaxRuntime time.Duration
-	OnProgress func(Progress)
-	Context    context.Context
+	ConfigURL            string
+	HTTPClient           *http.Client
+	NewMeasurementClient MeasurementClientFactory
+	Serial               bool
+	MaxRuntime           time.Duration
+	OnProgress           func(Progress)
+	Context              context.Context
 }
 
 const DefaultMaxRuntime = 20 * time.Second
@@ -129,14 +131,13 @@ type measurementSettings struct {
 	stabilityInterval   time.Duration
 	sampleInterval      time.Duration
 	progressInterval    time.Duration
-	baseProbeInterval   time.Duration
+	maxProbesPerSecond  int
 	initialConnections  int
 	maxConnections      int
 	movingAvgDistance   int
 	trimPercent         int
 	stdDevTolerancePct  float64
 	maxProbeCapacityPct float64
-	uploadRequestSize   int64
 }
 
 var settings = measurementSettings{
@@ -145,14 +146,13 @@ var settings = measurementSettings{
 	stabilityInterval:   time.Second,
 	sampleInterval:      250 * time.Millisecond,
 	progressInterval:    500 * time.Millisecond,
-	baseProbeInterval:   100 * time.Millisecond,
+	maxProbesPerSecond:  100,
 	initialConnections:  1,
 	maxConnections:      16,
 	movingAvgDistance:   4,
 	trimPercent:         5,
 	stdDevTolerancePct:  5,
 	maxProbeCapacityPct: 0.05,
-	uploadRequestSize:   4 << 20,
 }
 
 type resolvedConfig struct {
@@ -175,6 +175,7 @@ type probeTrace struct {
 	connectDone       time.Time
 	tlsStart          time.Time
 	tlsDone           time.Time
+	tlsVersion        uint16
 	gotConn           time.Time
 	wroteRequest      time.Time
 	firstResponseByte time.Time
@@ -273,7 +274,6 @@ type intervalWindow struct {
 
 type stabilityTracker struct {
 	window             int
-	trimPercent        int
 	stdDevTolerancePct float64
 	instantaneous      []float64
 	movingAverages     []float64
@@ -312,15 +312,11 @@ func (s *stabilityTracker) stable() bool {
 	if len(s.movingAverages) < s.window {
 		return false
 	}
-	trimmed := upperTrimFloat64s(s.movingAverages, s.trimPercent)
-	if len(trimmed) == 0 {
+	currentAverage := s.movingAverages[len(s.movingAverages)-1]
+	if currentAverage <= 0 {
 		return false
 	}
-	mean := meanFloat64s(trimmed)
-	if mean <= 0 {
-		return false
-	}
-	return stdDevFloat64s(trimmed) <= mean*(s.stdDevTolerancePct/100)
+	return stdDevFloat64s(s.movingAverages) <= currentAverage*(s.stdDevTolerancePct/100)
 }
 
 type directionMeasurement struct {
@@ -331,7 +327,7 @@ type directionMeasurement struct {
 }
 
 type directionRunner struct {
-	baseClient *http.Client
+	factory    MeasurementClientFactory
 	plan       directionPlan
 	probeBytes int64
 
@@ -344,9 +340,8 @@ type directionRunner struct {
 	currentRPM      atomic.Int32
 	currentInterval atomic.Int64
 
-	connMu         sync.Mutex
-	connections    []*loadConnection
-	nextConnection int
+	connMu      sync.Mutex
+	connections []*loadConnection
 
 	probeMu              sync.Mutex
 	probeRounds          []probeRound
@@ -356,9 +351,9 @@ type directionRunner struct {
 	throughputWindow     *intervalWindow
 }
 
-func newDirectionRunner(baseClient *http.Client, plan directionPlan, probeBytes int64) *directionRunner {
+func newDirectionRunner(factory MeasurementClientFactory, plan directionPlan, probeBytes int64) *directionRunner {
 	return &directionRunner{
-		baseClient: baseClient,
+		factory:    factory,
 		plan:       plan,
 		probeBytes: probeBytes,
 		errCh:      make(chan error, 1),
@@ -399,7 +394,7 @@ func (r *directionRunner) addConnection(ctx context.Context) error {
 	} else {
 		readCounters = []N.CountFunc{counter}
 	}
-	client, err := newMeasurementClient(r.baseClient, r.plan.connectEndpoint, true, false, readCounters, writeCounters)
+	client, err := r.factory(r.plan.connectEndpoint, true, false, readCounters, writeCounters)
 	if err != nil {
 		return err
 	}
@@ -428,45 +423,42 @@ func (r *directionRunner) connectionCount() int {
 func (r *directionRunner) pickReadyConnection() *loadConnection {
 	r.connMu.Lock()
 	defer r.connMu.Unlock()
-	if len(r.connections) == 0 {
-		return nil
-	}
-	for i := 0; i < len(r.connections); i++ {
-		index := (r.nextConnection + i) % len(r.connections)
-		if r.connections[index].ready.Load() && r.connections[index].active.Load() {
-			r.nextConnection = (index + 1) % len(r.connections)
-			return r.connections[index]
+	var ready []*loadConnection
+	for _, conn := range r.connections {
+		if conn.ready.Load() && conn.active.Load() {
+			ready = append(ready, conn)
 		}
 	}
-	return nil
+	if len(ready) == 0 {
+		return nil
+	}
+	return ready[rand.Intn(len(ready))]
 }
 
 func (r *directionRunner) startProber(ctx context.Context) {
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
-		timer := time.NewTimer(0)
-		defer timer.Stop()
+		ticker := time.NewTicker(r.probeInterval())
+		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case <-timer.C:
+			case <-ticker.C:
 			}
 			conn := r.pickReadyConnection()
-			if conn != nil {
-				foreignClient, err := newMeasurementClient(r.baseClient, r.plan.connectEndpoint, true, true, nil, nil)
+			if conn == nil {
+				continue
+			}
+			go func(selfClient *http.Client) {
+				foreignClient, err := r.factory(r.plan.connectEndpoint, true, true, nil, nil)
 				if err != nil {
-					r.fail(err)
 					return
 				}
-				round, err := collectProbeRound(ctx, foreignClient, conn.client, r.plan.probeURL.String())
+				round, err := collectProbeRound(ctx, foreignClient, selfClient, r.plan.probeURL.String())
 				foreignClient.CloseIdleConnections()
 				if err != nil {
-					if ctx.Err() != nil {
-						return
-					}
-					r.fail(err)
 					return
 				}
 				r.recordProbeRound(probeRound{
@@ -476,14 +468,14 @@ func (r *directionRunner) startProber(ctx context.Context) {
 					httpFirst:  round.httpFirst,
 					httpLoaded: round.httpLoaded,
 				})
-			}
-			timer.Reset(r.currentProbeInterval())
+			}(conn.client)
+			ticker.Reset(r.probeInterval())
 		}
 	}()
 }
 
-func (r *directionRunner) currentProbeInterval() time.Duration {
-	interval := settings.baseProbeInterval
+func (r *directionRunner) probeInterval() time.Duration {
+	interval := time.Second / time.Duration(settings.maxProbesPerSecond)
 	capacity := r.currentCapacity.Load()
 	if capacity <= 0 || r.probeBytes <= 0 || settings.maxProbeCapacityPct <= 0 {
 		return interval
@@ -496,9 +488,6 @@ func (r *directionRunner) currentProbeInterval() time.Duration {
 	capacityInterval := time.Duration(minSeconds * float64(time.Second))
 	if capacityInterval > interval {
 		interval = capacityInterval
-	}
-	if interval > settings.stabilityInterval {
-		interval = settings.stabilityInterval
 	}
 	return interval
 }
@@ -625,18 +614,25 @@ func Run(options Options) (*Result, error) {
 		options.OnProgress(progress)
 	}
 
+	factory := options.NewMeasurementClient
+	if factory == nil {
+		factory = defaultMeasurementClientFactory(options.HTTPClient)
+	}
+
 	report(Progress{Phase: PhaseIdle})
-	idleLatency, probeBytes, err := measureIdleLatency(ctx, options.HTTPClient, resolved)
+	idleLatency, probeBytes, err := measureIdleLatency(ctx, factory, resolved)
 	if err != nil {
 		return nil, E.Cause(err, "measure idle latency")
 	}
 	report(Progress{Phase: PhaseIdle, IdleLatencyMs: idleLatency})
 
+	start = time.Now()
+
 	var download, upload *directionMeasurement
 	if options.Serial {
 		download, upload, err = measureSerial(
 			ctx,
-			options.HTTPClient,
+			factory,
 			resolved,
 			idleLatency,
 			probeBytes,
@@ -646,7 +642,7 @@ func Run(options Options) (*Result, error) {
 	} else {
 		download, upload, err = measureParallel(
 			ctx,
-			options.HTTPClient,
+			factory,
 			resolved,
 			idleLatency,
 			probeBytes,
@@ -696,7 +692,7 @@ func normalizeMaxRuntime(maxRuntime time.Duration) (time.Duration, error) {
 
 func measureSerial(
 	ctx context.Context,
-	client *http.Client,
+	factory MeasurementClientFactory,
 	resolved *resolvedConfig,
 	idleLatency int32,
 	probeBytes int64,
@@ -705,7 +701,7 @@ func measureSerial(
 ) (*directionMeasurement, *directionMeasurement, error) {
 	downloadRuntime, uploadRuntime := splitRuntimeBudget(maxRuntime, 2)
 	report(Progress{Phase: PhaseDownload, IdleLatencyMs: idleLatency})
-	download, err := measureDirection(ctx, client, directionPlan{
+	download, err := measureDirection(ctx, factory, directionPlan{
 		dataURL:         resolved.largeURL,
 		probeURL:        resolved.smallURL,
 		connectEndpoint: resolved.connectEndpoint,
@@ -727,7 +723,7 @@ func measureSerial(
 		DownloadRPM:      download.rpm,
 		IdleLatencyMs:    idleLatency,
 	})
-	upload, err := measureDirection(ctx, client, directionPlan{
+	upload, err := measureDirection(ctx, factory, directionPlan{
 		dataURL:         resolved.uploadURL,
 		probeURL:        resolved.smallURL,
 		connectEndpoint: resolved.connectEndpoint,
@@ -750,7 +746,7 @@ func measureSerial(
 
 func measureParallel(
 	ctx context.Context,
-	client *http.Client,
+	factory MeasurementClientFactory,
 	resolved *resolvedConfig,
 	idleLatency int32,
 	probeBytes int64,
@@ -803,7 +799,7 @@ func measureParallel(
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		measurement, err := measureDirection(parallelCtx, client, directionPlan{
+		measurement, err := measureDirection(parallelCtx, factory, directionPlan{
 			dataURL:         resolved.largeURL,
 			probeURL:        resolved.smallURL,
 			connectEndpoint: resolved.connectEndpoint,
@@ -819,7 +815,7 @@ func measureParallel(
 	}()
 	go func() {
 		defer wg.Done()
-		measurement, err := measureDirection(parallelCtx, client, directionPlan{
+		measurement, err := measureDirection(parallelCtx, factory, directionPlan{
 			dataURL:         resolved.uploadURL,
 			probeURL:        resolved.smallURL,
 			connectEndpoint: resolved.connectEndpoint,
@@ -935,7 +931,7 @@ func validateConfig(config *Config) (*resolvedConfig, error) {
 	}, nil
 }
 
-func measureIdleLatency(ctx context.Context, baseClient *http.Client, config *resolvedConfig) (int32, int64, error) {
+func measureIdleLatency(ctx context.Context, factory MeasurementClientFactory, config *resolvedConfig) (int32, int64, error) {
 	var latencies []int64
 	var maxProbeBytes int64
 	for i := 0; i < settings.idleProbeCount; i++ {
@@ -944,7 +940,7 @@ func measureIdleLatency(ctx context.Context, baseClient *http.Client, config *re
 			return 0, 0, ctx.Err()
 		default:
 		}
-		client, err := newMeasurementClient(baseClient, config.connectEndpoint, true, true, nil, nil)
+		client, err := factory(config.connectEndpoint, true, true, nil, nil)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -964,7 +960,7 @@ func measureIdleLatency(ctx context.Context, baseClient *http.Client, config *re
 
 func measureDirection(
 	ctx context.Context,
-	baseClient *http.Client,
+	factory MeasurementClientFactory,
 	plan directionPlan,
 	probeBytes int64,
 	maxRuntime time.Duration,
@@ -973,7 +969,7 @@ func measureDirection(
 	phaseCtx, phaseCancel := context.WithTimeout(ctx, maxRuntime)
 	defer phaseCancel()
 
-	runner := newDirectionRunner(baseClient, plan, probeBytes)
+	runner := newDirectionRunner(factory, plan, probeBytes)
 	defer runner.wait()
 
 	for i := 0; i < settings.initialConnections; i++ {
@@ -983,14 +979,14 @@ func measureDirection(
 		}
 	}
 
+	runner.startProber(phaseCtx)
+
 	throughputTracker := stabilityTracker{
 		window:             settings.movingAvgDistance,
-		trimPercent:        settings.trimPercent,
 		stdDevTolerancePct: settings.stdDevTolerancePct,
 	}
 	responsivenessTracker := stabilityTracker{
 		window:             settings.movingAvgDistance,
-		trimPercent:        settings.trimPercent,
 		stdDevTolerancePct: settings.stdDevTolerancePct,
 	}
 
@@ -1007,7 +1003,7 @@ func measureDirection(
 	prevIntervalBytes := int64(0)
 	prevIntervalTime := start
 	var ewmaCapacity float64
-	var proberStarted bool
+	var goodputSaturated bool
 	var intervalIndex int
 
 	for {
@@ -1039,18 +1035,17 @@ func measureDirection(
 				if throughputStable && runner.throughputWindow == nil {
 					runner.setThroughputWindow(intervalIndex)
 				}
-				if !proberStarted && (throughputStable || (runner.connectionCount() >= settings.maxConnections && throughputTracker.ready())) {
-					proberStarted = true
-					runner.startProber(phaseCtx)
+				if !goodputSaturated && (throughputStable || (runner.connectionCount() >= settings.maxConnections && throughputTracker.ready())) {
+					goodputSaturated = true
 				}
-				if runner.connectionCount() < settings.maxConnections && runner.throughputWindow == nil {
+				if runner.connectionCount() < settings.maxConnections {
 					err := runner.addConnection(phaseCtx)
 					if err != nil {
 						return nil, err
 					}
 				}
 			}
-			if proberStarted {
+			if goodputSaturated {
 				if values := runner.swapIntervalProbeValues(); len(values) > 0 {
 					if responsivenessTracker.add(upperTrimmedMean(values, settings.trimPercent)) && runner.responsivenessWindow == nil {
 						runner.setResponsivenessWindow(intervalIndex)
@@ -1141,9 +1136,10 @@ func runProbe(ctx context.Context, client *http.Client, rawURL string, expectReu
 				trace.tlsStart = time.Now()
 			}
 		},
-		TLSHandshakeDone: func(tls.ConnectionState, error) {
+		TLSHandshakeDone: func(state tls.ConnectionState, _ error) {
 			if trace.tlsDone.IsZero() {
 				trace.tlsDone = time.Now()
+				trace.tlsVersion = state.Version
 			}
 		},
 		GotConn: func(info httptrace.GotConnInfo) {
@@ -1204,6 +1200,9 @@ func runProbe(ctx context.Context, client *http.Client, rawURL string, expectReu
 	}
 	if !trace.tlsStart.IsZero() && !trace.tlsDone.IsZero() && trace.tlsDone.After(trace.tlsStart) {
 		measurement.tls = trace.tlsDone.Sub(trace.tlsStart)
+		if roundTrips := tlsHandshakeRoundTrips(trace.tlsVersion); roundTrips > 1 {
+			measurement.tls /= time.Duration(roundTrips)
+		}
 	}
 	if !trace.firstResponseByte.IsZero() && trace.firstResponseByte.After(httpStart) {
 		measurement.httpFirst = trace.firstResponseByte.Sub(httpStart)
@@ -1240,17 +1239,20 @@ func runDownloadRequest(ctx context.Context, client *http.Client, rawURL string,
 
 func runUploadRequest(ctx context.Context, client *http.Client, rawURL string, onActive func()) error {
 	body := &uploadBody{
-		remaining: settings.uploadRequestSize,
-		onActive:  onActive,
+		ctx:      ctx,
+		onActive: onActive,
 	}
 	req, err := newRequest(ctx, http.MethodPost, rawURL, body)
 	if err != nil {
 		return err
 	}
-	req.ContentLength = settings.uploadRequestSize
+	req.ContentLength = -1
 	req.Header.Set("Content-Type", "application/octet-stream")
 	resp, err := client.Do(req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return err
 	}
 	defer resp.Body.Close()
@@ -1258,8 +1260,9 @@ func runUploadRequest(ctx context.Context, client *http.Client, rawURL string, o
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(io.Discard, resp.Body)
-	return err
+	_, _ = io.Copy(io.Discard, resp.Body)
+	<-ctx.Done()
+	return nil
 }
 
 func newRequest(ctx context.Context, method string, rawURL string, body io.Reader) (*http.Request, error) {
@@ -1326,6 +1329,15 @@ func calculateRPM(rounds []probeRound) int32 {
 	return int32(math.Round((foreignRPM + loadedRPM) / 2))
 }
 
+func tlsHandshakeRoundTrips(version uint16) int {
+	switch version {
+	case tls.VersionTLS12, tls.VersionTLS11, tls.VersionTLS10:
+		return 2
+	default:
+		return 1
+	}
+}
+
 func durationMillis(value time.Duration) float64 {
 	return float64(value) / float64(time.Millisecond)
 }
@@ -1379,26 +1391,19 @@ func stdDevFloat64s(values []float64) float64 {
 }
 
 type uploadBody struct {
-	remaining int64
+	ctx       context.Context
 	activated atomic.Bool
 	onActive  func()
 }
 
 func (u *uploadBody) Read(p []byte) (int, error) {
-	if u.remaining == 0 {
-		return 0, io.EOF
-	}
-	if int64(len(p)) > u.remaining {
-		p = p[:int(u.remaining)]
+	if err := u.ctx.Err(); err != nil {
+		return 0, err
 	}
 	clear(p)
 	n := len(p)
 	if n > 0 && u.onActive != nil && u.activated.CompareAndSwap(false, true) {
 		u.onActive()
-	}
-	u.remaining -= int64(n)
-	if u.remaining == 0 {
-		return n, io.EOF
 	}
 	return n, nil
 }

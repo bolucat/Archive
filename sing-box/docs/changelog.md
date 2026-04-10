@@ -2,9 +2,60 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.9
+#### 1.14.0-alpha.10
 
+* Add `evaluate` DNS rule action and Response Match Fields **1**
+* `ip_version` and `query_type` now also take effect on internal DNS lookups **2**
+* Add `package_name_regex` route, DNS and headless rule item **3**
+* Add cloudflared inbound **4**
 * Fixes and improvements
+
+**1**:
+
+Response Match Fields
+([`response_rcode`](/configuration/dns/rule/#response_rcode),
+[`response_answer`](/configuration/dns/rule/#response_answer),
+[`response_ns`](/configuration/dns/rule/#response_ns),
+and [`response_extra`](/configuration/dns/rule/#response_extra))
+match the evaluated DNS response. They are gated by the new
+[`match_response`](/configuration/dns/rule/#match_response) field and
+populated by a preceding
+[`evaluate`](/configuration/dns/rule_action/#evaluate) DNS rule action;
+the evaluated response can also be returned directly by a
+[`respond`](/configuration/dns/rule_action/#respond) action.
+
+This deprecates the Legacy Address Filter Fields (`ip_cidr`,
+`ip_is_private` without `match_response`) in DNS rules, the Legacy
+`strategy` DNS rule action option, and the Legacy
+`rule_set_ip_cidr_accept_empty` DNS rule item; all three will be removed
+in sing-box 1.16.0.
+See [Migration](/migration/#migrate-address-filter-fields-to-response-matching).
+
+**2**:
+
+`ip_version` and `query_type` in DNS rules, together with `query_type` in
+referenced rule-sets, now take effect on every DNS rule evaluation,
+including matches from internal domain resolutions that do not target a
+specific DNS server (for example a `resolve` route rule action without
+`server` set). In earlier versions they were silently ignored in that
+path. Combining these fields with any of the legacy DNS fields deprecated
+in **1** in the same DNS configuration is no longer supported and is
+rejected at startup.
+See [Migration](/migration/#ip_version-and-query_type-behavior-changes-in-dns-rules).
+
+**3**:
+
+See [Route Rule](/configuration/route/rule/#package_name_regex),
+[DNS Rule](/configuration/dns/rule/#package_name_regex) and
+[Headless Rule](/configuration/rule-set/headless-rule/#package_name_regex).
+
+**4**:
+
+See [Cloudflared](/configuration/inbound/cloudflared/).
+
+#### 1.13.7
+
+* Fixes and improvement
 
 #### 1.13.6
 

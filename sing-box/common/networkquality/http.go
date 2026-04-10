@@ -2,6 +2,7 @@ package networkquality
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -13,8 +14,19 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-// NewHTTPClient creates an http.Client that dials through the given dialer.
-// The dialer should already handle DNS resolution if needed.
+func FormatBitrate(bps int64) string {
+	switch {
+	case bps >= 1_000_000_000:
+		return fmt.Sprintf("%.1f Gbps", float64(bps)/1_000_000_000)
+	case bps >= 1_000_000:
+		return fmt.Sprintf("%.1f Mbps", float64(bps)/1_000_000)
+	case bps >= 1_000:
+		return fmt.Sprintf("%.1f Kbps", float64(bps)/1_000)
+	default:
+		return fmt.Sprintf("%d bps", bps)
+	}
+}
+
 func NewHTTPClient(dialer N.Dialer) *http.Client {
 	transport := &http.Transport{
 		ForceAttemptHTTP2:   true,
@@ -67,7 +79,6 @@ func newMeasurementClient(
 		dialer := &net.Dialer{}
 		baseDialContext = dialer.DialContext
 	}
-	connectEndpoint = strings.TrimSpace(connectEndpoint)
 	transport.DialContext = func(ctx context.Context, network string, addr string) (net.Conn, error) {
 		dialAddr := addr
 		if connectEndpoint != "" {
@@ -91,7 +102,29 @@ func newMeasurementClient(
 	}, nil
 }
 
+type MeasurementClientFactory func(
+	connectEndpoint string,
+	singleConnection bool,
+	disableKeepAlives bool,
+	readCounters []N.CountFunc,
+	writeCounters []N.CountFunc,
+) (*http.Client, error)
+
+func defaultMeasurementClientFactory(baseClient *http.Client) MeasurementClientFactory {
+	return func(connectEndpoint string, singleConnection, disableKeepAlives bool, readCounters, writeCounters []N.CountFunc) (*http.Client, error) {
+		return newMeasurementClient(baseClient, connectEndpoint, singleConnection, disableKeepAlives, readCounters, writeCounters)
+	}
+}
+
+func NewOptionalHTTP3Factory(dialer N.Dialer, useHTTP3 bool) (MeasurementClientFactory, error) {
+	if !useHTTP3 {
+		return nil, nil
+	}
+	return NewHTTP3MeasurementClientFactory(dialer)
+}
+
 func rewriteDialAddress(addr string, connectEndpoint string) string {
+	connectEndpoint = strings.TrimSpace(connectEndpoint)
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return addr

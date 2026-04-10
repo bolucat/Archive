@@ -177,12 +177,7 @@ func NewDefaultDNSRule(ctx context.Context, logger log.ContextLogger, options op
 		rule.destinationIPCIDRItems = append(rule.destinationIPCIDRItems, item)
 		rule.allItems = append(rule.allItems, item)
 	}
-	if options.IPAcceptAny { //nolint:staticcheck
-		if legacyDNSMode {
-			deprecated.Report(ctx, deprecated.OptionIPAcceptAny)
-		} else {
-			return nil, E.New(deprecated.OptionIPAcceptAny.MessageWithLink())
-		}
+	if options.IPAcceptAny {
 		item := NewIPAcceptAnyItem()
 		rule.destinationIPCIDRItems = append(rule.destinationIPCIDRItems, item)
 		rule.allItems = append(rule.allItems, item)
@@ -253,6 +248,14 @@ func NewDefaultDNSRule(ctx context.Context, logger log.ContextLogger, options op
 	}
 	if len(options.PackageName) > 0 {
 		item := NewPackageNameItem(options.PackageName)
+		rule.items = append(rule.items, item)
+		rule.allItems = append(rule.allItems, item)
+	}
+	if len(options.PackageNameRegex) > 0 {
+		item, err := NewPackageNameRegexItem(options.PackageNameRegex)
+		if err != nil {
+			return nil, E.Cause(err, "package_name_regex")
+		}
 		rule.items = append(rule.items, item)
 		rule.allItems = append(rule.allItems, item)
 	}

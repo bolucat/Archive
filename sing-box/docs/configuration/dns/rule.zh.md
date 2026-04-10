@@ -8,11 +8,13 @@ icon: material/alert-decagram
     :material-plus: [source_hostname](#source_hostname)  
     :material-plus: [match_response](#match_response)  
     :material-delete-clock: [rule_set_ip_cidr_accept_empty](#rule_set_ip_cidr_accept_empty)  
-    :material-delete-clock: [ip_accept_any](#ip_accept_any)  
     :material-plus: [response_rcode](#response_rcode)  
     :material-plus: [response_answer](#response_answer)  
     :material-plus: [response_ns](#response_ns)  
-    :material-plus: [response_extra](#response_extra)
+    :material-plus: [response_extra](#response_extra)  
+    :material-plus: [package_name_regex](#package_name_regex)  
+    :material-alert: [ip_version](#ip_version)  
+    :material-alert: [query_type](#query_type)
 
 !!! quote "sing-box 1.13.0 中的更改"
 
@@ -130,6 +132,9 @@ icon: material/alert-decagram
         "package_name": [
           "com.termux"
         ],
+        "package_name_regex": [
+          "^com\\.termux.*"
+        ],
         "user": [
           "sekai"
         ],
@@ -178,6 +183,7 @@ icon: material/alert-decagram
           "192.168.0.1"
         ],
         "ip_is_private": false,
+        "ip_accept_any": false,
         "response_rcode": "",
         "response_answer": [],
         "response_ns": [],
@@ -191,7 +197,6 @@ icon: material/alert-decagram
 
         // 已弃用
 
-        "ip_accept_any": false,
         "rule_set_ip_cidr_accept_empty": false,
         "rule_set_ipcidr_match_source": false,
         "geosite": [
@@ -240,11 +245,37 @@ icon: material/alert-decagram
 
 #### ip_version
 
+!!! quote "sing-box 1.14.0 中的更改"
+
+    此字段现在也会在 DNS 规则被未指定具体 DNS 服务器的内部域名解析匹配时生效，
+    例如未设置 `server` 的 [`resolve`](../../route/rule_action/#resolve) 路由规则动作。
+    此前只有来自客户端的 DNS 查询才会评估此字段。完整列表参阅
+    [迁移指南](/zh/migration/#dns-规则中的-ip_version-和-query_type-行为更改)。
+
+    在 DNS 规则中设置此字段后，该 DNS 规则在同一 DNS 配置中不能与
+    旧版地址筛选字段 (DNS 规则)、旧版 DNS 规则动作 `strategy` 选项，
+    或旧版 `rule_set_ip_cidr_accept_empty` DNS 规则项共存。如需与
+    基于地址的筛选组合，请使用 [`evaluate`](../rule_action/#evaluate) 动作和
+    [`match_response`](#match_response)。
+
 4 (A DNS 查询) 或 6 (AAAA DNS 查询)。
 
 默认不限制。
 
 #### query_type
+
+!!! quote "sing-box 1.14.0 中的更改"
+
+    此字段现在也会在 DNS 规则被未指定具体 DNS 服务器的内部域名解析匹配时生效，
+    例如未设置 `server` 的 [`resolve`](../../route/rule_action/#resolve) 路由规则动作。
+    此前只有来自客户端的 DNS 查询才会评估此字段。完整列表参阅
+    [迁移指南](/zh/migration/#dns-规则中的-ip_version-和-query_type-行为更改)。
+
+    在 DNS 规则中设置此字段后，该 DNS 规则在同一 DNS 配置中不能与
+    旧版地址筛选字段 (DNS 规则)、旧版 DNS 规则动作 `strategy` 选项，
+    或旧版 `rule_set_ip_cidr_accept_empty` DNS 规则项共存。如需与
+    基于地址的筛选组合，请使用 [`evaluate`](../rule_action/#evaluate) 动作和
+    [`match_response`](#match_response)。
 
 DNS 查询类型。值可以为整数或者类型名称字符串。
 
@@ -347,6 +378,12 @@ DNS 查询类型。值可以为整数或者类型名称字符串。
 #### package_name
 
 匹配 Android 应用包名。
+
+#### package_name_regex
+
+!!! question "自 sing-box 1.14.0 起"
+
+使用正则表达式匹配 Android 应用包名。
 
 #### user
 
@@ -498,7 +535,13 @@ Available values: `wifi`, `cellular`, `ethernet` and `other`.
 该已评估的响应也可以被后续的 [`respond`](/zh/configuration/dns/rule_action/#respond) 动作直接返回。
 
 响应匹配字段（`response_rcode`、`response_answer`、`response_ns`、`response_extra`）需要此选项。
-当与 `evaluate` 或响应匹配字段一起使用时，`ip_cidr` 和 `ip_is_private` 也需要此选项。
+当与 `evaluate` 或响应匹配字段一起使用时，`ip_cidr`、`ip_is_private` 和 `ip_accept_any` 也需要此选项。
+
+#### ip_accept_any
+
+!!! question "自 sing-box 1.12.0 起"
+
+当 DNS 查询响应包含至少一个地址时匹配。
 
 #### invert
 
@@ -598,17 +641,6 @@ Available values: `wifi`, `cellular`, `ethernet` and `other`.
     参阅[迁移指南](/zh/migration/#迁移地址筛选字段到响应匹配)。
 
 使规则集中的 `ip_cidr` 规则接受空查询响应。
-
-#### ip_accept_any
-
-!!! question "自 sing-box 1.12.0 起"
-
-!!! failure "已在 sing-box 1.14.0 废弃"
-
-    `ip_accept_any` 已废弃且将在 sing-box 1.16.0 中被移除，
-    参阅[迁移指南](/zh/migration/#迁移地址筛选字段到响应匹配)。
-
-匹配任意 IP。
 
 ### 响应匹配字段
 

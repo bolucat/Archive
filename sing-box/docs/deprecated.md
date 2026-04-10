@@ -16,15 +16,7 @@ Old fields will be removed in sing-box 1.16.0.
 
 #### Legacy `strategy` DNS rule action option
 
-Legacy `strategy` DNS rule action option is deprecated,
-check [Migration](../migration/#migrate-dns-rule-action-strategy-to-rule-items).
-
-Old fields will be removed in sing-box 1.16.0.
-
-#### Legacy `ip_accept_any` DNS rule item
-
-Legacy `ip_accept_any` DNS rule item is deprecated,
-check [Migration](../migration/#migrate-address-filter-fields-to-response-matching).
+Legacy `strategy` DNS rule action option is deprecated.
 
 Old fields will be removed in sing-box 1.16.0.
 

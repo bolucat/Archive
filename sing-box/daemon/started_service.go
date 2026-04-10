@@ -6,11 +6,14 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/networkquality"
+	"github.com/sagernet/sing-box/common/stun"
 	"github.com/sagernet/sing-box/common/urltest"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/clashapi"
 	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
 	"github.com/sagernet/sing-box/experimental/deprecated"
@@ -693,7 +696,7 @@ func (s *StartedService) SetSystemProxyEnabled(ctx context.Context, request *Set
 	if err != nil {
 		return nil, err
 	}
-	return nil, err
+	return &emptypb.Empty{}, nil
 }
 
 func (s *StartedService) TriggerDebugCrash(ctx context.Context, request *DebugCrashRequest) (*emptypb.Empty, error) {
@@ -706,7 +709,7 @@ func (s *StartedService) TriggerDebugCrash(ctx context.Context, request *DebugCr
 	switch request.Type {
 	case DebugCrashRequest_GO:
 		time.AfterFunc(200*time.Millisecond, func() {
-			panic("debug go crash")
+			*(*int)(unsafe.Pointer(uintptr(0))) = 0
 		})
 	case DebugCrashRequest_NATIVE:
 		err := s.handler.TriggerNativeCrash()
@@ -1082,31 +1085,6 @@ func (s *StartedService) GetStartedAt(ctx context.Context, empty *emptypb.Empty)
 	return &StartedAt{StartedAt: s.startedAt.UnixMilli()}, nil
 }
 
-func (s *StartedService) ListOutbounds(ctx context.Context, _ *emptypb.Empty) (*OutboundList, error) {
-	s.serviceAccess.RLock()
-	if s.serviceStatus.Status != ServiceStatus_STARTED {
-		s.serviceAccess.RUnlock()
-		return nil, os.ErrInvalid
-	}
-	boxService := s.instance
-	s.serviceAccess.RUnlock()
-	historyStorage := boxService.urlTestHistoryStorage
-	outbounds := boxService.instance.Outbound().Outbounds()
-	var list OutboundList
-	for _, ob := range outbounds {
-		item := &GroupItem{
-			Tag:  ob.Tag(),
-			Type: ob.Type(),
-		}
-		if history := historyStorage.LoadURLTestHistory(adapter.OutboundTag(ob)); history != nil {
-			item.UrlTestTime = history.Time.Unix()
-			item.UrlTestDelay = int32(history.Delay)
-		}
-		list.Outbounds = append(list.Outbounds, item)
-	}
-	return &list, nil
-}
-
 func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, server grpc.ServerStreamingServer[OutboundList]) error {
 	err := s.waitForStarted(server.Context())
 	if err != nil {
@@ -1126,14 +1104,24 @@ func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, server grpc.Server
 		boxService := s.instance
 		s.serviceAccess.RUnlock()
 		historyStorage := boxService.urlTestHistoryStorage
-		outbounds := boxService.instance.Outbound().Outbounds()
 		var list OutboundList
-		for _, ob := range outbounds {
+		for _, ob := range boxService.instance.Outbound().Outbounds() {
 			item := &GroupItem{
 				Tag:  ob.Tag(),
 				Type: ob.Type(),
 			}
 			if history := historyStorage.LoadURLTestHistory(adapter.OutboundTag(ob)); history != nil {
+				item.UrlTestTime = history.Time.Unix()
+				item.UrlTestDelay = int32(history.Delay)
+			}
+			list.Outbounds = append(list.Outbounds, item)
+		}
+		for _, ep := range boxService.instance.Endpoint().Endpoints() {
+			item := &GroupItem{
+				Tag:  ep.Tag(),
+				Type: ep.Type(),
+			}
+			if history := historyStorage.LoadURLTestHistory(adapter.OutboundTag(ep)); history != nil {
 				item.UrlTestTime = history.Time.Unix()
 				item.UrlTestDelay = int32(history.Delay)
 			}
@@ -1155,6 +1143,17 @@ func (s *StartedService) SubscribeOutbounds(_ *emptypb.Empty, server grpc.Server
 	}
 }
 
+func resolveOutbound(instance *Instance, tag string) (adapter.Outbound, error) {
+	if tag == "" {
+		return instance.instance.Outbound().Default(), nil
+	}
+	outbound, loaded := instance.instance.Outbound().Outbound(tag)
+	if !loaded {
+		return nil, E.New("outbound not found: ", tag)
+	}
+	return outbound, nil
+}
+
 func (s *StartedService) StartNetworkQualityTest(
 	request *NetworkQualityTestRequest,
 	server grpc.ServerStreamingServer[NetworkQualityTestProgress],
@@ -1167,27 +1166,27 @@ func (s *StartedService) StartNetworkQualityTest(
 	boxService := s.instance
 	s.serviceAccess.RUnlock()
 
-	var outbound adapter.Outbound
-	if request.OutboundTag == "" {
-		outbound = boxService.instance.Outbound().Default()
-	} else {
-		var loaded bool
-		outbound, loaded = boxService.instance.Outbound().Outbound(request.OutboundTag)
-		if !loaded {
-			return E.New("outbound not found: ", request.OutboundTag)
-		}
+	outbound, err := resolveOutbound(boxService, request.OutboundTag)
+	if err != nil {
+		return err
 	}
 
 	resolvedDialer := dialer.NewResolveDialer(boxService.ctx, outbound, true, "", adapter.DNSQueryOptions{}, 0)
 	httpClient := networkquality.NewHTTPClient(resolvedDialer)
 	defer httpClient.CloseIdleConnections()
 
+	measurementClientFactory, err := networkquality.NewOptionalHTTP3Factory(resolvedDialer, request.Http3)
+	if err != nil {
+		return err
+	}
+
 	result, nqErr := networkquality.Run(networkquality.Options{
-		ConfigURL:  request.ConfigURL,
-		HTTPClient: httpClient,
-		Serial:     request.Serial,
-		MaxRuntime: time.Duration(request.MaxRuntimeSeconds) * time.Second,
-		Context:    server.Context(),
+		ConfigURL:            request.ConfigURL,
+		HTTPClient:           httpClient,
+		NewMeasurementClient: measurementClientFactory,
+		Serial:               request.Serial,
+		MaxRuntime:           time.Duration(request.MaxRuntimeSeconds) * time.Second,
+		Context:              server.Context(),
 		OnProgress: func(p networkquality.Progress) {
 			_ = server.Send(&NetworkQualityTestProgress{
 				Phase:                    int32(p.Phase),
@@ -1222,6 +1221,247 @@ func (s *StartedService) StartNetworkQualityTest(
 		UploadCapacityAccuracy:   int32(result.UploadCapacityAccuracy),
 		DownloadRPMAccuracy:      int32(result.DownloadRPMAccuracy),
 		UploadRPMAccuracy:        int32(result.UploadRPMAccuracy),
+	})
+}
+
+func (s *StartedService) StartSTUNTest(
+	request *STUNTestRequest,
+	server grpc.ServerStreamingServer[STUNTestProgress],
+) error {
+	err := s.waitForStarted(server.Context())
+	if err != nil {
+		return err
+	}
+	s.serviceAccess.RLock()
+	boxService := s.instance
+	s.serviceAccess.RUnlock()
+
+	outbound, err := resolveOutbound(boxService, request.OutboundTag)
+	if err != nil {
+		return err
+	}
+
+	resolvedDialer := dialer.NewResolveDialer(boxService.ctx, outbound, true, "", adapter.DNSQueryOptions{}, 0)
+
+	result, stunErr := stun.Run(stun.Options{
+		Server:  request.Server,
+		Dialer:  resolvedDialer,
+		Context: server.Context(),
+		OnProgress: func(p stun.Progress) {
+			_ = server.Send(&STUNTestProgress{
+				Phase:        int32(p.Phase),
+				ExternalAddr: p.ExternalAddr,
+				LatencyMs:    p.LatencyMs,
+				NatMapping:   int32(p.NATMapping),
+				NatFiltering: int32(p.NATFiltering),
+			})
+		},
+	})
+	if stunErr != nil {
+		return server.Send(&STUNTestProgress{
+			IsFinal: true,
+			Error:   stunErr.Error(),
+		})
+	}
+	return server.Send(&STUNTestProgress{
+		Phase:            int32(stun.PhaseDone),
+		ExternalAddr:     result.ExternalAddr,
+		LatencyMs:        result.LatencyMs,
+		NatMapping:       int32(result.NATMapping),
+		NatFiltering:     int32(result.NATFiltering),
+		IsFinal:          true,
+		NatTypeSupported: result.NATTypeSupported,
+	})
+}
+
+func (s *StartedService) SubscribeTailscaleStatus(
+	_ *emptypb.Empty,
+	server grpc.ServerStreamingServer[TailscaleStatusUpdate],
+) error {
+	err := s.waitForStarted(server.Context())
+	if err != nil {
+		return err
+	}
+	s.serviceAccess.RLock()
+	boxService := s.instance
+	s.serviceAccess.RUnlock()
+
+	endpointManager := service.FromContext[adapter.EndpointManager](boxService.ctx)
+	if endpointManager == nil {
+		return status.Error(codes.FailedPrecondition, "endpoint manager not available")
+	}
+
+	type tailscaleEndpoint struct {
+		tag      string
+		provider adapter.TailscaleEndpoint
+	}
+	var endpoints []tailscaleEndpoint
+	for _, endpoint := range endpointManager.Endpoints() {
+		if endpoint.Type() != C.TypeTailscale {
+			continue
+		}
+		provider, loaded := endpoint.(adapter.TailscaleEndpoint)
+		if !loaded {
+			continue
+		}
+		endpoints = append(endpoints, tailscaleEndpoint{
+			tag:      endpoint.Tag(),
+			provider: provider,
+		})
+	}
+	if len(endpoints) == 0 {
+		return status.Error(codes.NotFound, "no Tailscale endpoint found")
+	}
+
+	type taggedStatus struct {
+		tag    string
+		status *adapter.TailscaleEndpointStatus
+	}
+	updates := make(chan taggedStatus, len(endpoints))
+	ctx, cancel := context.WithCancel(server.Context())
+	defer cancel()
+
+	var waitGroup sync.WaitGroup
+	for _, endpoint := range endpoints {
+		waitGroup.Add(1)
+		go func(tag string, provider adapter.TailscaleEndpoint) {
+			defer waitGroup.Done()
+			_ = provider.SubscribeTailscaleStatus(ctx, func(endpointStatus *adapter.TailscaleEndpointStatus) {
+				select {
+				case updates <- taggedStatus{tag: tag, status: endpointStatus}:
+				case <-ctx.Done():
+				}
+			})
+		}(endpoint.tag, endpoint.provider)
+	}
+
+	go func() {
+		waitGroup.Wait()
+		close(updates)
+	}()
+
+	var tags []string
+	statuses := make(map[string]*adapter.TailscaleEndpointStatus, len(endpoints))
+	for update := range updates {
+		if _, exists := statuses[update.tag]; !exists {
+			tags = append(tags, update.tag)
+		}
+		statuses[update.tag] = update.status
+		protoEndpoints := make([]*TailscaleEndpointStatus, 0, len(statuses))
+		for _, tag := range tags {
+			protoEndpoints = append(protoEndpoints, tailscaleEndpointStatusToProto(tag, statuses[tag]))
+		}
+		sendErr := server.Send(&TailscaleStatusUpdate{
+			Endpoints: protoEndpoints,
+		})
+		if sendErr != nil {
+			return sendErr
+		}
+	}
+	return nil
+}
+
+func tailscaleEndpointStatusToProto(tag string, s *adapter.TailscaleEndpointStatus) *TailscaleEndpointStatus {
+	userGroups := make([]*TailscaleUserGroup, len(s.UserGroups))
+	for i, group := range s.UserGroups {
+		peers := make([]*TailscalePeer, len(group.Peers))
+		for j, peer := range group.Peers {
+			peers[j] = tailscalePeerToProto(peer)
+		}
+		userGroups[i] = &TailscaleUserGroup{
+			UserID:        group.UserID,
+			LoginName:     group.LoginName,
+			DisplayName:   group.DisplayName,
+			ProfilePicURL: group.ProfilePicURL,
+			Peers:         peers,
+		}
+	}
+	result := &TailscaleEndpointStatus{
+		EndpointTag:    tag,
+		BackendState:   s.BackendState,
+		AuthURL:        s.AuthURL,
+		NetworkName:    s.NetworkName,
+		MagicDNSSuffix: s.MagicDNSSuffix,
+		UserGroups:     userGroups,
+	}
+	if s.Self != nil {
+		result.Self = tailscalePeerToProto(s.Self)
+	}
+	return result
+}
+
+func tailscalePeerToProto(peer *adapter.TailscalePeer) *TailscalePeer {
+	return &TailscalePeer{
+		HostName:       peer.HostName,
+		DnsName:        peer.DNSName,
+		Os:             peer.OS,
+		TailscaleIPs:   peer.TailscaleIPs,
+		Online:         peer.Online,
+		ExitNode:       peer.ExitNode,
+		ExitNodeOption: peer.ExitNodeOption,
+		Active:         peer.Active,
+		RxBytes:        peer.RxBytes,
+		TxBytes:        peer.TxBytes,
+		KeyExpiry:      peer.KeyExpiry,
+	}
+}
+
+func (s *StartedService) StartTailscalePing(
+	request *TailscalePingRequest,
+	server grpc.ServerStreamingServer[TailscalePingResponse],
+) error {
+	err := s.waitForStarted(server.Context())
+	if err != nil {
+		return err
+	}
+	s.serviceAccess.RLock()
+	boxService := s.instance
+	s.serviceAccess.RUnlock()
+
+	endpointManager := service.FromContext[adapter.EndpointManager](boxService.ctx)
+	if endpointManager == nil {
+		return status.Error(codes.FailedPrecondition, "endpoint manager not available")
+	}
+
+	var provider adapter.TailscaleEndpoint
+	if request.EndpointTag != "" {
+		endpoint, loaded := endpointManager.Get(request.EndpointTag)
+		if !loaded {
+			return status.Error(codes.NotFound, "endpoint not found: "+request.EndpointTag)
+		}
+		if endpoint.Type() != C.TypeTailscale {
+			return status.Error(codes.InvalidArgument, "endpoint is not Tailscale: "+request.EndpointTag)
+		}
+		pingProvider, loaded := endpoint.(adapter.TailscaleEndpoint)
+		if !loaded {
+			return status.Error(codes.FailedPrecondition, "endpoint does not support ping")
+		}
+		provider = pingProvider
+	} else {
+		for _, endpoint := range endpointManager.Endpoints() {
+			if endpoint.Type() != C.TypeTailscale {
+				continue
+			}
+			pingProvider, loaded := endpoint.(adapter.TailscaleEndpoint)
+			if loaded {
+				provider = pingProvider
+				break
+			}
+		}
+		if provider == nil {
+			return status.Error(codes.NotFound, "no Tailscale endpoint found")
+		}
+	}
+
+	return provider.StartTailscalePing(server.Context(), request.PeerIP, func(result *adapter.TailscalePingResult) {
+		_ = server.Send(&TailscalePingResponse{
+			LatencyMs:      result.LatencyMs,
+			IsDirect:       result.IsDirect,
+			Endpoint:       result.Endpoint,
+			DerpRegionID:   result.DERPRegionID,
+			DerpRegionCode: result.DERPRegionCode,
+			Error:          result.Error,
+		})
 	})
 }
 

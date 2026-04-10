@@ -8,7 +8,8 @@ local fs = api.fs
 
 local GLOBAL = {
 	DNS_SERVER = {},
-	DNS_HOSTNAME = {}
+	DNS_HOSTNAME = {},
+	VPS_EXCLUDE = {}
 }
 
 local xray_version = api.get_app_version("xray")
@@ -405,7 +406,6 @@ function gen_outbound(flag, node, tag, proxy_table)
 		end
 
 		if api.datatypes.hostname(node.address) and node.domain_resolver and (node.domain_resolver_dns or node.domain_resolver_dns_https) then
-			local dns_tag = node_id .. "_dns"
 			local dns_proto = node.domain_resolver
 			local config_address
 			local config_port
@@ -413,20 +413,14 @@ function gen_outbound(flag, node, tag, proxy_table)
 				local _a = api.parseURL(node.domain_resolver_dns_https)
 				if _a then
 					config_address = node.domain_resolver_dns_https
-					if _a.port then
-						config_port = _a.port
-					else
-						config_port = 443
-					end
-					if _a.hostname then
-						if api.datatypes.hostname(_a.hostname) then
-							GLOBAL.DNS_HOSTNAME[_a.hostname] = true
-						end
+					config_port = _a.port or 443
+					if _a.hostname and api.datatypes.hostname(_a.hostname) then
+						GLOBAL.DNS_HOSTNAME[_a.hostname] = true
 					end
 				end
 			else
 				local server_address = node.domain_resolver_dns
-				local config_port = 53
+				config_port = 53
 				local split = api.split(server_address, ":")
 				if #split > 1 then
 					server_address = split[1]
@@ -437,13 +431,27 @@ function gen_outbound(flag, node, tag, proxy_table)
 					config_address = dns_proto .. "://" .. server_address .. ":" .. config_port
 				end
 			end
-			GLOBAL.DNS_SERVER[node_id] = {
-				tag = dns_tag,
-				queryStrategy = node.domain_strategy or "UseIP",
-				address = config_address,
-				port = config_port,
-				domains = {"full:" .. node.address}
-			}
+			local dns_key = dns_proto .. "|" .. config_address .. "|" .. tostring(config_port)
+			if not GLOBAL.DNS_SERVER[dns_key] then
+				GLOBAL.DNS_SERVER[dns_key] = {
+					tag = "dns-node-" .. api.gen_short_uuid(),
+					queryStrategy = node.domain_strategy or "UseIP",
+					address = config_address,
+					port = config_port,
+					finalQuery = true,
+					disableCache = false,
+					serveStale = true,
+					serveExpiredTTL = 30,
+					domains = {}
+				}
+			end
+			local exists
+			local domain = "full:" .. node.address
+			for _, d in ipairs(GLOBAL.DNS_SERVER[dns_key].domains) do
+				if d == domain then exists = true; break end
+			end
+			if not exists then table.insert(GLOBAL.DNS_SERVER[dns_key].domains, domain) end
+			GLOBAL.VPS_EXCLUDE[node.address] = true
 		end
 	end
 	return result
@@ -1509,7 +1517,8 @@ function gen_config(var)
 			disableFallbackIfMatch = true,
 			servers = {},
 			clientIp = (remote_dns_client_ip and remote_dns_client_ip ~= "") and remote_dns_client_ip or nil,
-			queryStrategy = "UseIP"
+			queryStrategy = "UseIP",
+			useSystemHosts = true
 		}
 
 		local _direct_dns = {
@@ -1521,9 +1530,11 @@ function gen_config(var)
 
 		if direct_dns_udp_server or direct_dns_tcp_server then
 			local domain = {}
-			local nodes_domain_text = sys.exec('uci show passwall | grep ".address=" | cut -d "\'" -f 2 | grep "[a-zA-Z]$" | sort -u')
+			local nodes_domain_text = sys.exec([[uci show passwall | sed -n "s/.*\.\(address\|download_address\)='\([^']*\)'/\2/p" | sort -u]])
 			string.gsub(nodes_domain_text, '[^' .. "\r\n" .. ']+', function(w)
-				table.insert(domain, w)
+				if w and w ~= "" and api.datatypes.hostname(w) and not GLOBAL.VPS_EXCLUDE[w] then
+					table.insert(domain, "full:" .. w)
+				end
 			end)
 			if #domain > 0 then
 				table.insert(dns_domain_rules, 1, {
@@ -1763,9 +1774,10 @@ function gen_config(var)
 		if #node_dns > 0 and #dns.servers < 1 then
 			dns.servers = { "localhost" }
 		end
+		local idx = dns_listen_port and 2 or 1
 		for i = #node_dns, 1, -1 do
 			local value = node_dns[i]
-			table.insert(routing.rules, 1, {
+			table.insert(routing.rules, idx, {
 				inboundTag = {
 					value.server.tag
 				},
@@ -1784,7 +1796,7 @@ function gen_config(var)
 				queryStrategy = "UseIPv4",
 				domains = hostname
 			})
-			table.insert(routing.rules, 1, {
+			table.insert(routing.rules, idx, {
 				inboundTag = { "bootstrap" },
 				outboundTag = "direct"
 			})

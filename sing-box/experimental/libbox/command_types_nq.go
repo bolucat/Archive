@@ -10,8 +10,6 @@ type NetworkQualityProgress struct {
 	UploadRPM                int32
 	IdleLatencyMs            int32
 	ElapsedMs                int64
-	IsFinal                  bool
-	Error                    string
 	DownloadCapacityAccuracy int32
 	UploadCapacityAccuracy   int32
 	DownloadRPMAccuracy      int32
@@ -36,22 +34,6 @@ type NetworkQualityTestHandler interface {
 	OnError(message string)
 }
 
-func outboundGroupItemListFromGRPC(list *daemon.OutboundList) OutboundGroupItemIterator {
-	if list == nil || len(list.Outbounds) == 0 {
-		return newIterator([]*OutboundGroupItem{})
-	}
-	var items []*OutboundGroupItem
-	for _, ob := range list.Outbounds {
-		items = append(items, &OutboundGroupItem{
-			Tag:          ob.Tag,
-			Type:         ob.Type,
-			URLTestTime:  ob.UrlTestTime,
-			URLTestDelay: ob.UrlTestDelay,
-		})
-	}
-	return newIterator(items)
-}
-
 func networkQualityProgressFromGRPC(event *daemon.NetworkQualityTestProgress) *NetworkQualityProgress {
 	return &NetworkQualityProgress{
 		Phase:                    event.Phase,
@@ -61,8 +43,6 @@ func networkQualityProgressFromGRPC(event *daemon.NetworkQualityTestProgress) *N
 		UploadRPM:                event.UploadRPM,
 		IdleLatencyMs:            event.IdleLatencyMs,
 		ElapsedMs:                event.ElapsedMs,
-		IsFinal:                  event.IsFinal,
-		Error:                    event.Error,
 		DownloadCapacityAccuracy: event.DownloadCapacityAccuracy,
 		UploadCapacityAccuracy:   event.UploadCapacityAccuracy,
 		DownloadRPMAccuracy:      event.DownloadRPMAccuracy,

@@ -2085,7 +2085,7 @@ local execute = function()
 			domain_resolver = value.domain_resolver
 			domain_resolver_dns = value.domain_resolver_dns
 			domain_resolver_dns_https = value.domain_resolver_dns_https
-			domain_strategy = value.domain_strategy
+			domain_strategy = (value.domain_strategy == "UseIPv4" or value.domain_strategy == "UseIPv6") and value.domain_strategy or nil
 
 			-- 订阅组链式代理
 			local function valid_chain_node(node)

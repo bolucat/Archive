@@ -1,7 +1,6 @@
 package libbox
 
 import (
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -11,7 +10,9 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/common/networkquality"
+	"github.com/sagernet/sing-box/common/stun"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/experimental/locale"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/service/oomkiller"
@@ -132,16 +133,7 @@ func FormatDuration(duration int64) string {
 }
 
 func FormatBitrate(bps int64) string {
-	switch {
-	case bps >= 1_000_000_000:
-		return fmt.Sprintf("%.1f Gbps", float64(bps)/1_000_000_000)
-	case bps >= 1_000_000:
-		return fmt.Sprintf("%.1f Mbps", float64(bps)/1_000_000)
-	case bps >= 1_000:
-		return fmt.Sprintf("%.1f Kbps", float64(bps)/1_000)
-	default:
-		return fmt.Sprintf("%d bps", bps)
-	}
+	return networkquality.FormatBitrate(bps)
 }
 
 const NetworkQualityDefaultConfigURL = networkquality.DefaultConfigURL
@@ -153,6 +145,46 @@ const (
 	NetworkQualityAccuracyMedium = int32(networkquality.AccuracyMedium)
 	NetworkQualityAccuracyHigh   = int32(networkquality.AccuracyHigh)
 )
+
+const (
+	NetworkQualityPhaseIdle     = int32(networkquality.PhaseIdle)
+	NetworkQualityPhaseDownload = int32(networkquality.PhaseDownload)
+	NetworkQualityPhaseUpload   = int32(networkquality.PhaseUpload)
+	NetworkQualityPhaseDone     = int32(networkquality.PhaseDone)
+)
+
+const STUNDefaultServer = stun.DefaultServer
+
+const (
+	STUNPhaseBinding      = int32(stun.PhaseBinding)
+	STUNPhaseNATMapping   = int32(stun.PhaseNATMapping)
+	STUNPhaseNATFiltering = int32(stun.PhaseNATFiltering)
+	STUNPhaseDone         = int32(stun.PhaseDone)
+)
+
+const (
+	NATMappingEndpointIndependent     = int32(stun.NATMappingEndpointIndependent)
+	NATMappingAddressDependent        = int32(stun.NATMappingAddressDependent)
+	NATMappingAddressAndPortDependent = int32(stun.NATMappingAddressAndPortDependent)
+)
+
+const (
+	NATFilteringEndpointIndependent     = int32(stun.NATFilteringEndpointIndependent)
+	NATFilteringAddressDependent        = int32(stun.NATFilteringAddressDependent)
+	NATFilteringAddressAndPortDependent = int32(stun.NATFilteringAddressAndPortDependent)
+)
+
+func FormatNATMapping(value int32) string {
+	return stun.NATMapping(value).String()
+}
+
+func FormatNATFiltering(value int32) string {
+	return stun.NATFiltering(value).String()
+}
+
+func FormatFQDN(fqdn string) string {
+	return dns.FqdnToDomain(fqdn)
+}
 
 func ProxyDisplayType(proxyType string) string {
 	return C.ProxyDisplayName(proxyType)

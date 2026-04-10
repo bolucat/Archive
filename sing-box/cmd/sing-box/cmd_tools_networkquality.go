@@ -16,6 +16,7 @@ var (
 	commandNetworkQualityFlagConfigURL  string
 	commandNetworkQualityFlagSerial     bool
 	commandNetworkQualityFlagMaxRuntime int
+	commandNetworkQualityFlagHTTP3      bool
 )
 
 var commandNetworkQuality = &cobra.Command{
@@ -45,6 +46,11 @@ func init() {
 		"max-runtime", int(networkquality.DefaultMaxRuntime/time.Second),
 		"Network quality maximum runtime in seconds",
 	)
+	commandNetworkQuality.Flags().BoolVar(
+		&commandNetworkQualityFlagHTTP3,
+		"http3", false,
+		"Use HTTP/3 (QUIC) for measurement traffic",
+	)
 	commandTools.AddCommand(commandNetworkQuality)
 }
 
@@ -63,19 +69,25 @@ func runNetworkQuality() error {
 	httpClient := networkquality.NewHTTPClient(dialer)
 	defer httpClient.CloseIdleConnections()
 
+	measurementClientFactory, err := networkquality.NewOptionalHTTP3Factory(dialer, commandNetworkQualityFlagHTTP3)
+	if err != nil {
+		return err
+	}
+
 	fmt.Fprintln(os.Stderr, "==== NETWORK QUALITY TEST ====")
 
 	result, err := networkquality.Run(networkquality.Options{
-		ConfigURL:  commandNetworkQualityFlagConfigURL,
-		HTTPClient: httpClient,
-		Serial:     commandNetworkQualityFlagSerial,
-		MaxRuntime: time.Duration(commandNetworkQualityFlagMaxRuntime) * time.Second,
-		Context:    globalCtx,
+		ConfigURL:            commandNetworkQualityFlagConfigURL,
+		HTTPClient:           httpClient,
+		NewMeasurementClient: measurementClientFactory,
+		Serial:               commandNetworkQualityFlagSerial,
+		MaxRuntime:           time.Duration(commandNetworkQualityFlagMaxRuntime) * time.Second,
+		Context:              globalCtx,
 		OnProgress: func(p networkquality.Progress) {
 			if !commandNetworkQualityFlagSerial && p.Phase != networkquality.PhaseIdle {
 				fmt.Fprintf(os.Stderr, "\rDownload: %s  RPM: %d  Upload: %s  RPM: %d",
-					formatBitrate(p.DownloadCapacity), p.DownloadRPM,
-					formatBitrate(p.UploadCapacity), p.UploadRPM)
+					networkquality.FormatBitrate(p.DownloadCapacity), p.DownloadRPM,
+					networkquality.FormatBitrate(p.UploadCapacity), p.UploadRPM)
 				return
 			}
 			switch networkquality.Phase(p.Phase) {
@@ -87,10 +99,10 @@ func runNetworkQuality() error {
 				}
 			case networkquality.PhaseDownload:
 				fmt.Fprintf(os.Stderr, "\rDownload: %s  RPM: %d",
-					formatBitrate(p.DownloadCapacity), p.DownloadRPM)
+					networkquality.FormatBitrate(p.DownloadCapacity), p.DownloadRPM)
 			case networkquality.PhaseUpload:
 				fmt.Fprintf(os.Stderr, "\rUpload: %s  RPM: %d",
-					formatBitrate(p.UploadCapacity), p.UploadRPM)
+					networkquality.FormatBitrate(p.UploadCapacity), p.UploadRPM)
 			}
 		},
 	})
@@ -101,22 +113,9 @@ func runNetworkQuality() error {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, strings.Repeat("-", 40))
 	fmt.Fprintf(os.Stderr, "Idle Latency:            %d ms\n", result.IdleLatencyMs)
-	fmt.Fprintf(os.Stderr, "Download Capacity:       %-20s Accuracy: %s\n", formatBitrate(result.DownloadCapacity), result.DownloadCapacityAccuracy)
-	fmt.Fprintf(os.Stderr, "Upload Capacity:         %-20s Accuracy: %s\n", formatBitrate(result.UploadCapacity), result.UploadCapacityAccuracy)
+	fmt.Fprintf(os.Stderr, "Download Capacity:       %-20s Accuracy: %s\n", networkquality.FormatBitrate(result.DownloadCapacity), result.DownloadCapacityAccuracy)
+	fmt.Fprintf(os.Stderr, "Upload Capacity:         %-20s Accuracy: %s\n", networkquality.FormatBitrate(result.UploadCapacity), result.UploadCapacityAccuracy)
 	fmt.Fprintf(os.Stderr, "Download Responsiveness: %-20s Accuracy: %s\n", fmt.Sprintf("%d RPM", result.DownloadRPM), result.DownloadRPMAccuracy)
 	fmt.Fprintf(os.Stderr, "Upload Responsiveness:   %-20s Accuracy: %s\n", fmt.Sprintf("%d RPM", result.UploadRPM), result.UploadRPMAccuracy)
 	return nil
-}
-
-func formatBitrate(bps int64) string {
-	switch {
-	case bps >= 1_000_000_000:
-		return fmt.Sprintf("%.1f Gbps", float64(bps)/1_000_000_000)
-	case bps >= 1_000_000:
-		return fmt.Sprintf("%.1f Mbps", float64(bps)/1_000_000)
-	case bps >= 1_000:
-		return fmt.Sprintf("%.1f Kbps", float64(bps)/1_000)
-	default:
-		return fmt.Sprintf("%d bps", bps)
-	}
 }

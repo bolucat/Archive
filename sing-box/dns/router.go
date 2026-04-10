@@ -589,12 +589,13 @@ func (r *Router) Exchange(ctx context.Context, message *mDNS.Msg, options adapte
 		return &responseMessage, nil
 	}
 	r.rulesAccess.RLock()
-	defer r.rulesAccess.RUnlock()
 	if r.closing {
+		r.rulesAccess.RUnlock()
 		return nil, E.New("dns router closed")
 	}
 	rules := r.rules
 	legacyDNSMode := r.legacyDNSMode
+	r.rulesAccess.RUnlock()
 	r.logger.DebugContext(ctx, "exchange ", FormatQuestion(message.Question[0].String()))
 	var (
 		response  *mDNS.Msg
@@ -701,12 +702,13 @@ done:
 
 func (r *Router) Lookup(ctx context.Context, domain string, options adapter.DNSQueryOptions) ([]netip.Addr, error) {
 	r.rulesAccess.RLock()
-	defer r.rulesAccess.RUnlock()
 	if r.closing {
+		r.rulesAccess.RUnlock()
 		return nil, E.New("dns router closed")
 	}
 	rules := r.rules
 	legacyDNSMode := r.legacyDNSMode
+	r.rulesAccess.RUnlock()
 	var (
 		responseAddrs []netip.Addr
 		err           error
@@ -839,10 +841,10 @@ func (r *Router) ResetNetwork() {
 }
 
 func defaultRuleNeedsLegacyDNSModeFromAddressFilter(rule option.DefaultDNSRule) bool {
-	if rule.IPAcceptAny || rule.RuleSetIPCIDRAcceptEmpty { //nolint:staticcheck
+	if rule.RuleSetIPCIDRAcceptEmpty { //nolint:staticcheck
 		return true
 	}
-	return !rule.MatchResponse && (len(rule.IPCIDR) > 0 || rule.IPIsPrivate)
+	return !rule.MatchResponse && (rule.IPAcceptAny || len(rule.IPCIDR) > 0 || rule.IPIsPrivate)
 }
 
 func hasResponseMatchFields(rule option.DefaultDNSRule) bool {
@@ -1047,17 +1049,14 @@ func validateLegacyDNSModeDisabledRuleTree(rule option.DNSRule) (bool, error) {
 
 func validateLegacyDNSModeDisabledDefaultRule(rule option.DefaultDNSRule) (bool, error) {
 	hasResponseRecords := hasResponseMatchFields(rule)
-	if (hasResponseRecords || len(rule.IPCIDR) > 0 || rule.IPIsPrivate) && !rule.MatchResponse {
-		return false, E.New("Response Match Fields (ip_cidr, ip_is_private, response_rcode, response_answer, response_ns, response_extra) require match_response to be enabled")
+	if (hasResponseRecords || len(rule.IPCIDR) > 0 || rule.IPIsPrivate || rule.IPAcceptAny) && !rule.MatchResponse {
+		return false, E.New("Response Match Fields (ip_cidr, ip_is_private, ip_accept_any, response_rcode, response_answer, response_ns, response_extra) require match_response to be enabled")
 	}
 	// Intentionally do not reject rule_set here. A referenced rule set may mix
 	// destination-IP predicates with pre-response predicates such as domain items.
 	// When match_response is false, those destination-IP branches fail closed during
 	// pre-response evaluation instead of consuming DNS response state, while sibling
 	// non-response branches remain matchable.
-	if rule.IPAcceptAny { //nolint:staticcheck
-		return false, E.New(deprecated.OptionIPAcceptAny.MessageWithLink())
-	}
 	if rule.RuleSetIPCIDRAcceptEmpty { //nolint:staticcheck
 		return false, E.New(deprecated.OptionRuleSetIPCIDRAcceptEmpty.MessageWithLink())
 	}

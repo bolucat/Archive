@@ -79,57 +79,10 @@ See [ACME](/configuration/shared/certificate-provider/acme/) for fields newly ad
     }
     ```
 
-### Migrate DNS rule action strategy to rule items
-
-Legacy `strategy` DNS rule action option is deprecated.
-
-In sing-box 1.14.0, internal domain resolution (Lookup) now splits A and AAAA queries
-at the rule level, so each query type is evaluated independently through the full rule chain.
-Use `ip_version` or `query_type` rule items to control which query types a rule matches.
-
-!!! info "References"
-
-    [DNS Rule](/configuration/dns/rule/) /
-    [DNS Rule Action](/configuration/dns/rule_action/)
-
-=== ":material-card-remove: Deprecated"
-
-    ```json
-    {
-      "dns": {
-        "rules": [
-          {
-            "domain_suffix": ".cn",
-            "action": "route",
-            "server": "local",
-            "strategy": "ipv4_only"
-          }
-        ]
-      }
-    }
-    ```
-
-=== ":material-card-multiple: New"
-
-    ```json
-    {
-      "dns": {
-        "rules": [
-          {
-            "domain_suffix": ".cn",
-            "ip_version": 4,
-            "action": "route",
-            "server": "local"
-          }
-        ]
-      }
-    }
-    ```
-
 ### Migrate address filter fields to response matching
 
 Legacy Address Filter Fields (`ip_cidr`, `ip_is_private` without `match_response`) in DNS rules are deprecated,
-along with Legacy `ip_accept_any` and Legacy `rule_set_ip_cidr_accept_empty` DNS rule items.
+along with the Legacy `rule_set_ip_cidr_accept_empty` DNS rule item.
 
 In sing-box 1.14.0, use the [`evaluate`](/configuration/dns/rule_action/#evaluate) action
 to fetch a DNS response, then match against it explicitly with `match_response`.
@@ -183,6 +136,56 @@ to fetch a DNS response, then match against it explicitly with `match_response`.
       }
     }
     ```
+
+### ip_version and query_type behavior changes in DNS rules
+
+In sing-box 1.14.0, the behavior of
+[`ip_version`](/configuration/dns/rule/#ip_version) and
+[`query_type`](/configuration/dns/rule/#query_type) in DNS rules, together with
+[`query_type`](/configuration/rule-set/headless-rule/#query_type) in referenced
+rule-sets, changes in two ways.
+
+First, these fields now take effect on every DNS rule evaluation. In earlier
+versions they were evaluated only for DNS queries received from a client
+(for example, from a DNS inbound or intercepted by `tun`), and were silently
+ignored when a DNS rule was matched from an internal domain resolution that
+did not target a specific DNS server. Such internal resolutions include:
+
+- The [`resolve`](/configuration/route/rule_action/#resolve) route rule
+  action without a `server` set.
+- ICMP traffic routed to a domain destination through a `direct` outbound.
+- A [WireGuard](/configuration/endpoint/wireguard/) or
+  [Tailscale](/configuration/endpoint/tailscale/) endpoint used as an
+  outbound, when resolving its own destination address.
+- A [SOCKS4](/configuration/outbound/socks/) outbound, which must resolve
+  the destination locally because the protocol has no in-protocol domain
+  support.
+- The [DERP](/configuration/service/derp/) `bootstrap-dns` endpoint and the
+  [`resolved`](/configuration/service/resolved/) service (when resolving a
+  hostname or an SRV target).
+
+Resolutions that target a specific DNS server — via
+[`domain_resolver`](/configuration/shared/dial/#domain_resolver) on a dial
+field, [`default_domain_resolver`](/configuration/route/#default_domain_resolver)
+in route options, or an explicit `server` on a DNS rule action or the
+`resolve` route rule action — do not go through DNS rule matching and are
+unaffected.
+
+Second, setting `ip_version` or `query_type` in a DNS rule, or referencing a
+rule-set containing `query_type`, is no longer compatible in the same DNS
+configuration with Legacy Address Filter Fields in DNS rules, the Legacy
+`strategy` DNS rule action option, or the Legacy `rule_set_ip_cidr_accept_empty`
+DNS rule item. Such a configuration will be rejected at startup. To combine
+these fields with address-based filtering, migrate to response matching via
+the [`evaluate`](/configuration/dns/rule_action/#evaluate) action and
+[`match_response`](/configuration/dns/rule/#match_response), see
+[Migrate address filter fields to response matching](#migrate-address-filter-fields-to-response-matching).
+
+!!! info "References"
+
+    [DNS Rule](/configuration/dns/rule/) /
+    [Headless Rule](/configuration/rule-set/headless-rule/) /
+    [Route Rule Action](/configuration/route/rule_action/#resolve)
 
 ## 1.12.0
 

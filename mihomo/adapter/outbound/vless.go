@@ -600,7 +600,10 @@ func NewVless(option VlessOption) (*Vless, error) {
 					if err != nil {
 						return nil, err
 					}
-					quicConn, err := quic.DialEarly(ctx, packetConn, udpAddr, tlsConfig, cfg)
+					transport := quic.Transport{Conn: packetConn}
+					transport.SetCreatedConn(true) // auto close conn
+					transport.SetSingleUse(true)   // auto close transport
+					quicConn, err := transport.DialEarly(ctx, udpAddr, tlsConfig, cfg)
 					if err != nil {
 						_ = packetConn.Close()
 						return nil, err
@@ -752,7 +755,10 @@ func NewVless(option VlessOption) (*Vless, error) {
 						if err != nil {
 							return nil, err
 						}
-						quicConn, err := quic.DialEarly(ctx, packetConn, udpAddr, tlsConfig, cfg)
+						transport := quic.Transport{Conn: packetConn}
+						transport.SetCreatedConn(true) // auto close conn
+						transport.SetSingleUse(true)   // auto close transport
+						quicConn, err := transport.DialEarly(ctx, udpAddr, tlsConfig, cfg)
 						if err != nil {
 							_ = packetConn.Close()
 							return nil, err

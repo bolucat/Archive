@@ -42,7 +42,10 @@ func (c *Client) quicRoundTripper(tlsConfig *vmess.TLSConfig, congestionControlN
 			if err != nil {
 				return nil, err
 			}
-			quicConn, err := quic.DialEarly(ctx, packetConn, net.UDPAddrFromAddrPort(addrPort), tlsCfg, cfg)
+			transport := quic.Transport{Conn: packetConn}
+			transport.SetCreatedConn(true) // auto close conn
+			transport.SetSingleUse(true)   // auto close transport
+			quicConn, err := transport.DialEarly(ctx, net.UDPAddrFromAddrPort(addrPort), tlsCfg, cfg)
 			if err != nil {
 				_ = packetConn.Close()
 				return nil, err
