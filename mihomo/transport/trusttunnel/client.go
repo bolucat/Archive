@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/netip"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/metacubex/mihomo/common/httputils"
 	"github.com/metacubex/mihomo/common/once"
+	"github.com/metacubex/mihomo/component/dialer"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/vmess"
 
@@ -22,11 +22,11 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-type ResolvUDPFunc func(ctx context.Context, server string) (netip.AddrPort, error)
+type DialOptionsFunc func() []dialer.Option
 
 type ClientOptions struct {
 	Dialer                C.Dialer
-	ResolvUDP             ResolvUDPFunc
+	DialOptions           DialOptionsFunc // for quic
 	Server                string
 	Username              string
 	Password              string
@@ -43,7 +43,7 @@ type ClientOptions struct {
 type Client struct {
 	ctx              context.Context
 	dialer           C.Dialer
-	resolv           ResolvUDPFunc
+	dialOptions      DialOptionsFunc
 	server           string
 	auth             string
 	roundTripper     http.RoundTripper
@@ -55,11 +55,11 @@ type Client struct {
 
 func NewClient(ctx context.Context, options ClientOptions) (client *Client, err error) {
 	client = &Client{
-		ctx:    ctx,
-		dialer: options.Dialer,
-		resolv: options.ResolvUDP,
-		server: options.Server,
-		auth:   buildAuth(options.Username, options.Password),
+		ctx:         ctx,
+		dialer:      options.Dialer,
+		dialOptions: options.DialOptions,
+		server:      options.Server,
+		auth:        buildAuth(options.Username, options.Password),
 	}
 	if options.QUIC {
 		if len(options.TLSConfig.NextProtos) == 0 {

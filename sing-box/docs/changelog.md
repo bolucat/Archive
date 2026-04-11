@@ -2,6 +2,29 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.11
+
+* Add optimistic DNS cache **1**
+* Update NaiveProxy to 147.0.7727.49
+* Fixes and improvements
+
+**1**:
+
+Optimistic DNS cache returns an expired cached response immediately while
+refreshing it in the background, reducing tail latency for repeated
+queries. Enabled via [`optimistic`](/configuration/dns/#optimistic)
+in DNS options, and can be persisted across restarts with the new
+[`store_dns`](/configuration/experimental/cache-file/#store_dns) cache
+file option. A per-query
+[`disable_optimistic_cache`](/configuration/dns/rule_action/#disable_optimistic_cache)
+field is also available on DNS rule actions and the `resolve` route rule
+action.
+
+This deprecates the `independent_cache` DNS option (the DNS cache now
+always keys by transport) and the `store_rdrc` cache file option
+(replaced by `store_dns`); both will be removed in sing-box 1.16.0.
+See [Migration](/migration/#migrate-independent-dns-cache).
+
 #### 1.14.0-alpha.10
 
 * Add `evaluate` DNS rule action and Response Match Fields **1**

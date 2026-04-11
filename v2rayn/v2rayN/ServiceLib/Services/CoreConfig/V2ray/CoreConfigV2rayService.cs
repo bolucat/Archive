@@ -17,8 +17,8 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
         {
             if (!context.AppConfig.TunModeItem.EnableLegacyProtect
                 && context.IsTunEnabled
-                && context.TunProtectSsPort is > 0 and <= 65535
-                && context.ProxyRelaySsPort is > 0 and <= 65535)
+                && context.TunProtectSocksPort is > 0 and <= 65535
+                && context.ProxyRelaySocksPort is > 0 and <= 65535)
             {
                 return GenerateClientProxyRelayConfig();
             }
@@ -62,6 +62,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
             GenDns();
 
             GenStatistic();
+            ApplyOutboundSendThrough();
 
             var finalRule = BuildFinalRule();
             if (!string.IsNullOrEmpty(finalRule?.balancerTag))
@@ -195,6 +196,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
                 _coreConfig.routing.rules.Add(rule);
             }
 
+            ApplyOutboundSendThrough();
             //ret.Msg =string.Format(ResUI.SuccessfulConfiguration"), node.getSummary());
             ret.Success = true;
             ret.Data = JsonUtils.Serialize(_coreConfig);
@@ -255,6 +257,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
             });
 
             _coreConfig.routing.rules.Add(BuildFinalRule());
+            ApplyOutboundSendThrough();
 
             ret.Msg = string.Format(ResUI.SuccessfulConfiguration, "");
             ret.Success = true;
@@ -309,17 +312,16 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
             var protectNode = new ProfileItem()
             {
                 CoreType = ECoreType.Xray,
-                ConfigType = EConfigType.Shadowsocks,
+                ConfigType = EConfigType.SOCKS,
                 Address = Global.Loopback,
-                Port = context.TunProtectSsPort,
-                Password = Global.None,
+                Port = context.TunProtectSocksPort,
             };
             protectNode.SetProtocolExtra(protectNode.GetProtocolExtra() with
             {
                 SsMethod = Global.None,
             });
 
-            const string protectTag = "tun-protect-ss";
+            const string protectTag = "tun-protect-socks";
             foreach (var outbound in _coreConfig.outbounds
                 .Where(o => o.streamSettings?.sockopt?.dialerProxy?.IsNullOrEmpty() ?? true))
             {
@@ -368,7 +370,7 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
             var hasBalancer = _coreConfig.routing.balancers is { Count: > 0 };
             _coreConfig.routing.rules.Add(new()
             {
-                inboundTag = ["proxy-relay-ss"],
+                inboundTag = ["proxy-relay-socks"],
                 outboundTag = hasBalancer ? null : Global.ProxyTag,
                 balancerTag = hasBalancer ? Global.ProxyTag + Global.BalancerTagSuffix : null,
                 type = "field"
@@ -376,19 +378,19 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
 
             //_coreConfig.inbounds.Clear();
 
+            ApplyOutboundSendThrough();
             var configNode = JsonUtils.ParseJson(JsonUtils.Serialize(_coreConfig))!;
             configNode["inbounds"]!.AsArray().Add(new
             {
                 listen = Global.Loopback,
-                port = context.ProxyRelaySsPort,
-                protocol = "shadowsocks",
+                port = context.ProxyRelaySocksPort,
+                protocol = "socks",
                 settings = new
                 {
-                    network = "tcp,udp",
-                    method = Global.None,
-                    password = Global.None,
+                    auth = "noauth",
+                    udp = true,
                 },
-                tag = "proxy-relay-ss",
+                tag = "proxy-relay-socks",
             });
 
             ret.Msg = string.Format(ResUI.SuccessfulConfiguration, "");
@@ -405,4 +407,43 @@ public partial class CoreConfigV2rayService(CoreConfigContext context)
     }
 
     #endregion public gen function
+
+    private void ApplyOutboundSendThrough()
+    {
+        var sendThrough = _config.CoreBasicItem.SendThrough?.TrimEx();
+        foreach (var outbound in _coreConfig.outbounds ?? [])
+        {
+            outbound.sendThrough = ShouldApplySendThrough(outbound, sendThrough) ? sendThrough : null;
+        }
+    }
+
+    private static bool ShouldApplySendThrough(Outbounds4Ray outbound, string? sendThrough)
+    {
+        if (sendThrough.IsNullOrEmpty())
+        {
+            return false;
+        }
+
+        if (outbound.protocol is "freedom" or "blackhole" or "dns" or "loopback")
+        {
+            return false;
+        }
+
+        if (outbound.streamSettings?.sockopt?.dialerProxy.IsNullOrEmpty() == false)
+        {
+            return false;
+        }
+
+        var outboundAddress = outbound.settings?.servers?.FirstOrDefault()?.address
+            ?? outbound.settings?.vnext?.FirstOrDefault()?.address
+            ?? outbound.settings?.address?.ToString()
+            ?? string.Empty;
+
+        if (outboundAddress.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return !IPAddress.TryParse(outboundAddress, out var address) || !IPAddress.IsLoopback(address);
+    }
 }

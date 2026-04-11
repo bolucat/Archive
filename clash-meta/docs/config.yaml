@@ -982,7 +982,7 @@ proxies: # socks5
     server: server.com
     port: 443
     # ports: 1000,2000-3000,5000 # port 不可省略
-    # hop-interval: 15
+    # hop-interval: 15 # 支持填写"15-30"会每次随机选取其中一个值作为切换间隔，仅支持写一个范围（即不允许出现逗号）
     #  up 和 down 均不写或为 0 则使用 BBR 流控
     # up: "30 Mbps" # 若不写单位，默认为 Mbps
     # down: "200 Mbps" # 若不写单位，默认为 Mbps

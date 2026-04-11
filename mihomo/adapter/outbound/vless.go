@@ -16,6 +16,7 @@ import (
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
+	"github.com/metacubex/mihomo/transport/tuic/common"
 	"github.com/metacubex/mihomo/transport/vless"
 	"github.com/metacubex/mihomo/transport/vless/encryption"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -588,26 +589,11 @@ func NewVless(option VlessOption) (*Vless, error) {
 						return nil, err
 					}
 
-					udpAddr, err := resolveUDPAddr(ctx, "udp", v.addr, v.prefer)
-					if err != nil {
-						return nil, err
-					}
 					err = v.echConfig.ClientHandle(ctx, tlsConfig)
 					if err != nil {
 						return nil, err
 					}
-					packetConn, err := v.dialer.ListenPacket(ctx, "udp", "", udpAddr.AddrPort())
-					if err != nil {
-						return nil, err
-					}
-					transport := quic.Transport{Conn: packetConn}
-					transport.SetCreatedConn(true) // auto close conn
-					transport.SetSingleUse(true)   // auto close transport
-					quicConn, err := transport.DialEarly(ctx, udpAddr, tlsConfig, cfg)
-					if err != nil {
-						_ = packetConn.Close()
-						return nil, err
-					}
+					_, quicConn, err := common.DialQuic(ctx, v.addr, v.DialOptions(), v.dialer, tlsConfig, cfg, true)
 					return quicConn, nil
 				},
 				v.option.ALPN,
@@ -743,26 +729,11 @@ func NewVless(option VlessOption) (*Vless, error) {
 							return nil, err
 						}
 
-						udpAddr, err := resolveUDPAddr(ctx, "udp", downloadAddr, v.prefer)
-						if err != nil {
-							return nil, err
-						}
 						err = downloadEchConfig.ClientHandle(ctx, tlsConfig)
 						if err != nil {
 							return nil, err
 						}
-						packetConn, err := v.dialer.ListenPacket(ctx, "udp", "", udpAddr.AddrPort())
-						if err != nil {
-							return nil, err
-						}
-						transport := quic.Transport{Conn: packetConn}
-						transport.SetCreatedConn(true) // auto close conn
-						transport.SetSingleUse(true)   // auto close transport
-						quicConn, err := transport.DialEarly(ctx, udpAddr, tlsConfig, cfg)
-						if err != nil {
-							_ = packetConn.Close()
-							return nil, err
-						}
+						_, quicConn, err := common.DialQuic(ctx, downloadAddr, v.DialOptions(), v.dialer, tlsConfig, cfg, true)
 						return quicConn, nil
 					},
 					downloadALPN,

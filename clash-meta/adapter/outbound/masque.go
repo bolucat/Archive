@@ -257,26 +257,11 @@ func (w *Masque) run(ctx context.Context) error {
 			return err
 		}
 	} else {
-		var udpAddr *net.UDPAddr
-		udpAddr, err = resolveUDPAddr(ctx, "udp", w.addr, w.prefer)
+		var quicConn *quic.Conn
+		pc, quicConn, err = common.DialQuic(ctx, w.addr, w.DialOptions(), w.dialer, w.tlsConfig, w.quicConfig, false)
 		if err != nil {
 			return err
 		}
-
-		pc, err = w.dialer.ListenPacket(ctx, "udp", "", udpAddr.AddrPort())
-		if err != nil {
-			return err
-		}
-
-		transport := quic.Transport{Conn: pc}
-		transport.SetCreatedConn(true) // auto close conn
-		transport.SetSingleUse(true)   // auto close transport
-		quicConn, err := transport.Dial(ctx, udpAddr, w.tlsConfig, w.quicConfig)
-		if err != nil {
-			_ = pc.Close()
-			return err
-		}
-
 		common.SetCongestionController(quicConn, w.option.CongestionController, w.option.CWND)
 
 		closer, ipConn, err = masque.ConnectTunnel(ctx, quicConn, w.uri)

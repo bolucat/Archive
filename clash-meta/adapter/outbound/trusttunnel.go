@@ -3,7 +3,6 @@ package outbound
 import (
 	"context"
 	"net"
-	"net/netip"
 	"strconv"
 
 	N "github.com/metacubex/mihomo/common/net"
@@ -103,14 +102,8 @@ func NewTrustTunnel(option TrustTunnelOption) (*TrustTunnel, error) {
 	outbound.dialer = option.NewDialer(outbound.DialOptions())
 
 	tOption := trusttunnel.ClientOptions{
-		Dialer: outbound.dialer,
-		ResolvUDP: func(ctx context.Context, server string) (netip.AddrPort, error) {
-			udpAddr, err := resolveUDPAddr(ctx, "udp", server, option.IPVersion)
-			if err != nil {
-				return netip.AddrPort{}, err
-			}
-			return udpAddr.AddrPort(), nil
-		},
+		Dialer:                outbound.dialer,
+		DialOptions:           outbound.DialOptions,
 		Server:                addr,
 		Username:              option.UserName,
 		Password:              option.Password,

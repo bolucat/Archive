@@ -3,7 +3,7 @@
 use std::{io, net::SocketAddr, sync::Arc, time::Duration};
 
 use futures::future;
-use log::trace;
+use log::{info, trace};
 use shadowsocks::{
     config::Mode,
     net::{AcceptOpts, ConnectOpts},
@@ -179,6 +179,16 @@ impl Server {
         }
 
         context.set_security_config(&config.security);
+
+        if !config.outbound_proxy.is_empty() {
+            let has_udp = config.local.iter().any(|local| local.config.mode.enable_udp());
+            if has_udp {
+                info!(
+                    "outbound proxy chain only supports TCP; UDP traffic may not be proxied and may behave unexpectedly"
+                );
+            }
+            context.set_outbound_proxies(config.outbound_proxy);
+        }
 
         assert!(!config.local.is_empty(), "no valid local server configuration");
 

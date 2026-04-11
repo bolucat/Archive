@@ -219,7 +219,6 @@ func (r *Router) routePacketConnection(ctx context.Context, conn N.PacketConn, m
 	/*if deadline.NeedAdditionalReadDeadline(conn) {
 		conn = deadline.NewPacketConn(bufio.NewNetPacketConn(conn))
 	}*/
-
 	selectedRule, _, _, packetBuffers, err := r.matchRule(ctx, &metadata, false, false, nil, conn)
 	if err != nil {
 		return err
@@ -816,11 +815,12 @@ func (r *Router) actionResolve(ctx context.Context, metadata *adapter.InboundCon
 			}
 		}
 		addresses, err := r.dns.Lookup(adapter.WithContext(ctx, metadata), metadata.Destination.Fqdn, adapter.DNSQueryOptions{
-			Transport:    transport,
-			Strategy:     action.Strategy,
-			DisableCache: action.DisableCache,
-			RewriteTTL:   action.RewriteTTL,
-			ClientSubnet: action.ClientSubnet,
+			Transport:              transport,
+			Strategy:               action.Strategy,
+			DisableCache:           action.DisableCache,
+			DisableOptimisticCache: action.DisableOptimisticCache,
+			RewriteTTL:             action.RewriteTTL,
+			ClientSubnet:           action.ClientSubnet,
 		})
 		if err != nil {
 			return err
