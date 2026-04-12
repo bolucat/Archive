@@ -167,10 +167,10 @@ type RemoteTLSDNSServerOptions struct {
 }
 
 type RemoteHTTPSDNSServerOptions struct {
-	RemoteTLSDNSServerOptions
-	Path    string               `json:"path,omitempty"`
-	Method  string               `json:"method,omitempty"`
-	Headers badoption.HTTPHeader `json:"headers,omitempty"`
+	DNSServerAddressOptions
+	Path   string `json:"path,omitempty"`
+	Method string `json:"method,omitempty"`
+	HTTPClientOptions
 }
 
 type FakeIPDNSServerOptions struct {

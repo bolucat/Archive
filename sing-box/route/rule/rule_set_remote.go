@@ -3,9 +3,7 @@ package rule
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"io"
-	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -16,15 +14,13 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/srs"
 	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/logger"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/common/x/list"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/pause"
@@ -41,7 +37,7 @@ type RemoteRuleSet struct {
 	outbound       adapter.OutboundManager
 	options        option.RuleSet
 	updateInterval time.Duration
-	dialer         N.Dialer
+	httpClient     *http.Client
 	access         sync.RWMutex
 	rules          []adapter.HeadlessRule
 	metadata       adapter.RuleSetMetadata
@@ -81,22 +77,20 @@ func (s *RemoteRuleSet) String() string {
 	return strings.Join(F.MapToString(s.rules), " ")
 }
 
-func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.HTTPStartContext) error {
+func (s *RemoteRuleSet) StartContext(ctx context.Context) error {
 	s.cacheFile = service.FromContext[adapter.CacheFile](s.ctx)
-	var dialer N.Dialer
-	if s.options.RemoteOptions.DownloadDetour != "" {
-		outbound, loaded := s.outbound.Outbound(s.options.RemoteOptions.DownloadDetour)
-		if !loaded {
-			return E.New("download detour not found: ", s.options.RemoteOptions.DownloadDetour)
-		}
-		dialer = outbound
-	} else {
-		dialer = s.outbound.Default()
+	httpClientManager := service.FromContext[adapter.HTTPClientManager](s.ctx)
+	if httpClientManager == nil {
+		return E.New("missing http client manager in context")
 	}
-	s.dialer = dialer
+	transport, err := s.resolveTransport(httpClientManager)
+	if err != nil {
+		return E.Cause(err, "create rule-set http client")
+	}
+	s.httpClient = &http.Client{Transport: transport}
 	if s.cacheFile != nil {
 		if savedSet := s.cacheFile.LoadRuleSet(s.options.Tag); savedSet != nil {
-			err := s.loadBytes(savedSet.Content)
+			err = s.loadBytes(savedSet.Content)
 			if err != nil {
 				return E.Cause(err, "restore cached rule-set")
 			}
@@ -105,7 +99,7 @@ func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.
 		}
 	}
 	if s.lastUpdated.IsZero() {
-		err := s.fetch(ctx, startContext)
+		err = s.fetch(ctx)
 		if err != nil {
 			return E.Cause(err, "initial rule-set: ", s.options.Tag)
 		}
@@ -207,7 +201,7 @@ func (s *RemoteRuleSet) loadBytes(content []byte) error {
 
 func (s *RemoteRuleSet) loopUpdate() {
 	if time.Since(s.lastUpdated) > s.updateInterval {
-		err := s.fetch(s.ctx, nil)
+		err := s.fetch(s.ctx)
 		if err != nil {
 			s.logger.Error("fetch rule-set ", s.options.Tag, ": ", err)
 		} else if s.refs.Load() == 0 {
@@ -226,7 +220,7 @@ func (s *RemoteRuleSet) loopUpdate() {
 }
 
 func (s *RemoteRuleSet) updateOnce() {
-	err := s.fetch(s.ctx, nil)
+	err := s.fetch(s.ctx)
 	if err != nil {
 		s.logger.Error("fetch rule-set ", s.options.Tag, ": ", err)
 	} else if s.refs.Load() == 0 {
@@ -234,26 +228,8 @@ func (s *RemoteRuleSet) updateOnce() {
 	}
 }
 
-func (s *RemoteRuleSet) fetch(ctx context.Context, startContext *adapter.HTTPStartContext) error {
+func (s *RemoteRuleSet) fetch(ctx context.Context) error {
 	s.logger.Debug("updating rule-set ", s.options.Tag, " from URL: ", s.options.RemoteOptions.URL)
-	var httpClient *http.Client
-	if startContext != nil {
-		httpClient = startContext.HTTPClient(s.options.RemoteOptions.DownloadDetour, s.dialer)
-	} else {
-		httpClient = &http.Client{
-			Transport: &http.Transport{
-				ForceAttemptHTTP2:   true,
-				TLSHandshakeTimeout: C.TCPTimeout,
-				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-					return s.dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
-				},
-				TLSClientConfig: &tls.Config{
-					Time:    ntp.TimeFuncFromContext(s.ctx),
-					RootCAs: adapter.RootPoolFromContext(s.ctx),
-				},
-			},
-		}
-	}
 	request, err := http.NewRequest("GET", s.options.RemoteOptions.URL, nil)
 	if err != nil {
 		return err
@@ -261,7 +237,7 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, startContext *adapter.HTTPSta
 	if s.lastEtag != "" {
 		request.Header.Set("If-None-Match", s.lastEtag)
 	}
-	response, err := httpClient.Do(request.WithContext(ctx))
+	response, err := s.httpClient.Do(request.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -315,11 +291,36 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, startContext *adapter.HTTPSta
 	return nil
 }
 
+func (s *RemoteRuleSet) resolveTransport(manager adapter.HTTPClientManager) (http.RoundTripper, error) {
+	if s.options.RemoteOptions.HTTPClient != nil && !s.options.RemoteOptions.HTTPClient.IsEmpty() {
+		if s.options.RemoteOptions.DownloadDetour != "" { //nolint:staticcheck
+			return nil, E.New("http_client is conflict with deprecated download_detour field")
+		}
+		return manager.ResolveTransport(s.logger, *s.options.RemoteOptions.HTTPClient)
+	}
+	if s.options.RemoteOptions.DownloadDetour != "" { //nolint:staticcheck
+		deprecated.Report(s.ctx, deprecated.OptionLegacyRuleSetDownloadDetour)
+		var httpClientOptions option.HTTPClientOptions
+		httpClientOptions.DialerOptions = option.DialerOptions{
+			Detour: s.options.RemoteOptions.DownloadDetour, //nolint:staticcheck
+		}
+		return manager.ResolveTransport(s.logger, httpClientOptions)
+	}
+	defaultTransport := manager.DefaultTransport()
+	if defaultTransport == nil {
+		return nil, E.New("default http client transport is not initialized")
+	}
+	return defaultTransport, nil
+}
+
 func (s *RemoteRuleSet) Close() error {
 	s.rules = nil
 	s.cancel()
 	if s.updateTicker != nil {
 		s.updateTicker.Stop()
+	}
+	if s.httpClient != nil {
+		s.httpClient.CloseIdleConnections()
 	}
 	return nil
 }

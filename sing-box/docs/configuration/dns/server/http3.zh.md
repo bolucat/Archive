@@ -2,6 +2,10 @@
 icon: material/new-box
 ---
 
+!!! quote "sing-box 1.14.0 中的更改"
+
+    :material-alert: `headers`、`tls`、拨号字段已移至 [HTTP 客户端字段](#http-客户端字段)
+
 !!! question "自 sing-box 1.12.0 起"
 
 # DNS over HTTP3 (DoH3)
@@ -17,24 +21,17 @@ icon: material/new-box
         "tag": "",
 
         "server": "",
-        "server_port": 443,
+        "server_port": 0,
 
         "path": "",
-        "headers": {},
+        "method": "",
 
-        "tls": {},
-
-        // 拨号字段
+        ... // HTTP 客户端字段
       }
     ]
   }
 }
 ```
-
-!!! info "与旧版 H3 服务器的区别"
-
-    * 旧服务器默认使用默认出站，除非指定了绕行；新服务器像出站一样使用拨号器，相当于默认使用空的直连出站。
-    * 旧服务器使用 `address_resolver` 和 `address_strategy` 来解析服务器中的域名；新服务器改用 [拨号字段](/zh/configuration/shared/dial/) 中的 `domain_resolver` 和 `domain_strategy`。
 
 ### 字段
 
@@ -58,14 +55,14 @@ DNS 服务器的路径。
 
 默认使用 `/dns-query`。
 
-#### headers
+#### method
 
-发送到 DNS 服务器的额外标头。
+HTTP 请求方法。
 
-#### tls
+可用值：`GET`、`POST`。
 
-TLS 配置，参阅 [TLS](/zh/configuration/shared/tls/#出站)。
+默认使用 `POST`。
 
-### 拨号字段
+### HTTP 客户端字段
 
-参阅 [拨号字段](/zh/configuration/shared/dial/) 了解详情。
+参阅 [HTTP 客户端字段](/zh/configuration/shared/http-client/) 了解详情。

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
@@ -40,18 +41,23 @@ func RegisterHTTP3Transport(registry *dns.TransportRegistry) {
 
 type HTTP3Transport struct {
 	dns.TransportAdapter
-	logger          logger.ContextLogger
-	dialer          N.Dialer
-	destination     *url.URL
-	headers         http.Header
-	serverAddr      M.Socksaddr
-	tlsConfig       *tls.STDConfig
-	transportAccess sync.Mutex
-	transport       *http3.Transport
+	logger           logger.ContextLogger
+	dialer           N.Dialer
+	destination      *url.URL
+	headers          http.Header
+	handshakeTimeout time.Duration
+	serverAddr       M.Socksaddr
+	tlsConfig        *tls.STDConfig
+	transportAccess  sync.Mutex
+	transport        *http3.Transport
 }
 
 func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options option.RemoteHTTPSDNSServerOptions) (adapter.DNSTransport, error) {
-	transportDialer, err := dns.NewRemoteDialer(ctx, options.RemoteDNSServerOptions)
+	remoteOptions := option.RemoteDNSServerOptions{
+		DNSServerAddressOptions: options.DNSServerAddressOptions,
+	}
+	remoteOptions.DialerOptions = options.DialerOptions
+	transportDialer, err := dns.NewRemoteDialer(ctx, remoteOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -61,6 +67,7 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 	if err != nil {
 		return nil, err
 	}
+	handshakeTimeout := tlsConfig.HandshakeTimeout()
 	stdConfig, err := tlsConfig.STDConfig()
 	if err != nil {
 		return nil, err
@@ -102,11 +109,12 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 		return nil, E.New("invalid server address: ", serverAddr)
 	}
 	t := &HTTP3Transport{
-		TransportAdapter: dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeHTTP3, tag, options.RemoteDNSServerOptions),
+		TransportAdapter: dns.NewTransportAdapterWithRemoteOptions(C.DNSTypeHTTP3, tag, remoteOptions),
 		logger:           logger,
 		dialer:           transportDialer,
 		destination:      &destinationURL,
 		headers:          headers,
+		handshakeTimeout: handshakeTimeout,
 		serverAddr:       serverAddr,
 		tlsConfig:        stdConfig,
 	}
@@ -115,8 +123,17 @@ func NewHTTP3(ctx context.Context, logger log.ContextLogger, tag string, options
 }
 
 func (t *HTTP3Transport) newTransport() *http3.Transport {
+	quicConfig := &quic.Config{}
+	if t.handshakeTimeout > 0 {
+		quicConfig.HandshakeIdleTimeout = t.handshakeTimeout
+	}
 	return &http3.Transport{
+		QUICConfig: quicConfig,
 		Dial: func(ctx context.Context, addr string, tlsCfg *tls.STDConfig, cfg *quic.Config) (*quic.Conn, error) {
+			if t.handshakeTimeout > 0 && cfg.HandshakeIdleTimeout == 0 {
+				cfg = cfg.Clone()
+				cfg.HandshakeIdleTimeout = t.handshakeTimeout
+			}
 			conn, dialErr := t.dialer.DialContext(ctx, N.NetworkUDP, t.serverAddr)
 			if dialErr != nil {
 				return nil, dialErr

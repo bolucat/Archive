@@ -28,7 +28,7 @@ const (
 )
 
 type IpConn interface {
-	ReadPacket(b []byte) (n int, err error)
+	ReadPacket() (b []byte, err error)
 	WritePacket(b []byte) (icmp []byte, err error)
 	Close() error
 }

@@ -103,8 +103,8 @@ public class CoreConfigV2rayServiceTests
             AllProxiesMap = allProxiesMap ?? new(),
             SimpleDnsItem = new SimpleDNSItem(),
             IsTunEnabled = isTunEnabled,
-            TunProtectSsPort = tunProtectSsPort,
-            ProxyRelaySsPort = proxyRelaySsPort,
+            TunProtectSocksPort = tunProtectSsPort,
+            ProxyRelaySocksPort = proxyRelaySsPort,
         };
     }
 

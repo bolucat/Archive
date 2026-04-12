@@ -171,13 +171,9 @@ func (t *DNSTransport) createResolver(directDialer func() N.Dialer, resolver *dn
 			tlsConfig := common.Must1(tls.NewClient(t.ctx, t.logger, serverAddr.AddrString(), option.OutboundTLSOptions{
 				ALPN: []string{http2.NextProtoTLS, "http/1.1"},
 			}))
-			return transport.NewHTTPSRaw(t.TransportAdapter, t.logger, myDialer, serverURL, http.Header{}, serverAddr, tlsConfig), nil
+			return transport.NewHTTPRaw(t.TransportAdapter, t.logger, myDialer, serverURL, http.Header{}, tlsConfig, option.HTTPClientOptions{}, http.MethodPost)
 		case "http":
-			serverAddr = M.ParseSocksaddrHostPortStr(serverURL.Hostname(), serverURL.Port())
-			if serverAddr.Port == 0 {
-				serverAddr.Port = 80
-			}
-			return transport.NewHTTPSRaw(t.TransportAdapter, t.logger, myDialer, serverURL, http.Header{}, serverAddr, nil), nil
+			return transport.NewHTTPRaw(t.TransportAdapter, t.logger, myDialer, serverURL, http.Header{}, nil, option.HTTPClientOptions{}, http.MethodPost)
 		// case "tls":
 		default:
 			return nil, E.New("unknown resolver scheme: ", serverURL.Scheme)

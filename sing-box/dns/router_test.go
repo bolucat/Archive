@@ -139,9 +139,9 @@ type fakeRuleSet struct {
 	beforeDecrementReference func()
 }
 
-func (s *fakeRuleSet) Name() string                                                  { return "fake-rule-set" }
-func (s *fakeRuleSet) StartContext(context.Context, *adapter.HTTPStartContext) error { return nil }
-func (s *fakeRuleSet) PostStart() error                                              { return nil }
+func (s *fakeRuleSet) Name() string                       { return "fake-rule-set" }
+func (s *fakeRuleSet) StartContext(context.Context) error { return nil }
+func (s *fakeRuleSet) PostStart() error                   { return nil }
 func (s *fakeRuleSet) Metadata() adapter.RuleSetMetadata {
 	s.access.Lock()
 	metadata := s.metadata

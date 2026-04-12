@@ -5,7 +5,6 @@ package derp
 import (
 	"bufio"
 	"context"
-	stdTLS "crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	boxService "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/httpclient"
 	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
@@ -34,7 +34,6 @@ import (
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/common/ntp"
 	aTLS "github.com/sagernet/sing/common/tls"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
@@ -151,29 +150,13 @@ func (d *Service) Start(stage adapter.StartStage) error {
 		if len(d.verifyClientURL) > 0 {
 			var httpClients []*http.Client
 			var urls []string
-			for index, options := range d.verifyClientURL {
-				verifyDialer, createErr := dialer.NewWithOptions(dialer.Options{
-					Context:        d.ctx,
-					Options:        options.DialerOptions,
-					RemoteIsDomain: options.ServerIsDomain(),
-					NewDialer:      true,
-				})
+			for index, verifyOptions := range d.verifyClientURL {
+				client, createErr := httpclient.NewClient(d.ctx, d.logger, "", verifyOptions.HTTPClientOptions)
 				if createErr != nil {
 					return E.Cause(createErr, "verify_client_url[", index, "]")
 				}
-				httpClients = append(httpClients, &http.Client{
-					Transport: &http.Transport{
-						ForceAttemptHTTP2: true,
-						TLSClientConfig: &stdTLS.Config{
-							RootCAs: adapter.RootPoolFromContext(d.ctx),
-							Time:    ntp.TimeFuncFromContext(d.ctx),
-						},
-						DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-							return verifyDialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
-						},
-					},
-				})
-				urls = append(urls, options.URL)
+				httpClients = append(httpClients, &http.Client{Transport: client})
+				urls = append(urls, verifyOptions.URL)
 			}
 			server.SetVerifyClientHTTPClient(httpClients)
 			server.SetVerifyClientURL(urls)
@@ -310,7 +293,7 @@ func (d *Service) startMeshWithHost(derpServer *derpserver.Server, server *optio
 	}
 	var stdConfig *tls.STDConfig
 	if server.TLS != nil && server.TLS.Enabled {
-		tlsConfig, err := tls.NewClient(d.ctx, d.logger, hostname, common.PtrValueOrDefault(server.TLS))
+		tlsConfig, err := tls.NewClient(d.ctx, d.logger, hostname, *server.TLS)
 		if err != nil {
 			return err
 		}

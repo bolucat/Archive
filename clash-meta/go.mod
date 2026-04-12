@@ -16,7 +16,7 @@ require (
 	github.com/metacubex/blake3 v0.1.0
 	github.com/metacubex/chacha v0.1.5
 	github.com/metacubex/chi v0.1.0
-	github.com/metacubex/connect-ip-go v0.0.0-20260128031117-1cad62060727
+	github.com/metacubex/connect-ip-go v0.0.0-20260412152424-e1625567920a
 	github.com/metacubex/cpu v0.1.1
 	github.com/metacubex/edwards25519 v1.2.0
 	github.com/metacubex/fswatch v0.1.1

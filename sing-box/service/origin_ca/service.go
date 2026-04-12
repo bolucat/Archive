@@ -26,13 +26,13 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/certificate"
-	"github.com/sagernet/sing-box/common/dialer"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/ntp"
+	"github.com/sagernet/sing/service"
 
 	"github.com/caddyserver/certmagic"
 )
@@ -102,16 +102,10 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		requestedValidity = defaultRequestedValidity
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	serviceDialer, err := dialer.NewWithOptions(dialer.Options{
-		Context: ctx,
-		Options: option.DialerOptions{
-			Detour: options.Detour,
-		},
-		RemoteIsDomain: true,
-	})
+	httpClient, err := originCAHTTPClient(ctx, logger, options)
 	if err != nil {
 		cancel()
-		return nil, E.Cause(err, "create Cloudflare Origin CA dialer")
+		return nil, err
 	}
 	var storage certmagic.Storage
 	if options.DataDirectory != "" {
@@ -131,21 +125,12 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		certmagic.StorageKeys.Safe(storageNamesKey),
 	}, "/")
 	return &Service{
-		Adapter:  certificate.NewAdapter(C.TypeCloudflareOriginCA, tag),
-		logger:   logger,
-		ctx:      ctx,
-		cancel:   cancel,
-		timeFunc: timeFunc,
-		httpClient: &http.Client{Transport: &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return serviceDialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
-			},
-			TLSClientConfig: &tls.Config{
-				RootCAs: adapter.RootPoolFromContext(ctx),
-				Time:    timeFunc,
-			},
-			ForceAttemptHTTP2: true,
-		}},
+		Adapter:           certificate.NewAdapter(C.TypeCloudflareOriginCA, tag),
+		logger:            logger,
+		ctx:               ctx,
+		cancel:            cancel,
+		timeFunc:          timeFunc,
+		httpClient:        httpClient,
 		storage:           storage,
 		storageIssuerKey:  storageIssuerKey,
 		storageNamesKey:   storageNamesKey,
@@ -156,6 +141,19 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		requestType:       requestType,
 		requestedValidity: requestedValidity,
 	}, nil
+}
+
+func originCAHTTPClient(ctx context.Context, logger log.ContextLogger, options option.CloudflareOriginCACertificateProviderOptions) (*http.Client, error) {
+	httpClientOptions := common.PtrValueOrDefault(options.HTTPClient)
+	httpClientManager := service.FromContext[adapter.HTTPClientManager](ctx)
+	if httpClientManager == nil {
+		return nil, E.New("missing http client manager in context")
+	}
+	transport, err := httpClientManager.ResolveTransport(logger, httpClientOptions)
+	if err != nil {
+		return nil, E.Cause(err, "create Cloudflare Origin CA http client")
+	}
+	return &http.Client{Transport: transport}, nil
 }
 
 func (s *Service) Start(stage adapter.StartStage) error {

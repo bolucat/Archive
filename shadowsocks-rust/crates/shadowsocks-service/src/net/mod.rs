@@ -5,14 +5,15 @@ pub use self::{
 };
 
 pub mod flow;
+pub mod http_connect;
 pub mod http_stream;
 #[cfg(target_os = "macos")]
 pub mod launch_activate_socket;
 pub mod mon_socket;
 pub mod mon_stream;
+pub mod outbound_proxy;
 pub mod packet_window;
 pub mod socks5_client;
-pub mod outbound_proxy;
 pub mod utils;
 
 /// Packet size for all UDP associations' send queue

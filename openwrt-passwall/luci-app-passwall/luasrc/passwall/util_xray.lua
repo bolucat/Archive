@@ -1521,14 +1521,28 @@ function gen_config(var)
 			useSystemHosts = true
 		}
 
-		local _direct_dns = {
-			tag = "dns-global-direct",
-			queryStrategy = (direct_dns_query_strategy and direct_dns_query_strategy ~= "") and direct_dns_query_strategy or "UseIP"
-		}
+		local _direct_dns = {}
 
 		direct_dns_udp_server = (direct_dns_udp_server and direct_dns_udp_server ~= "") and direct_dns_udp_server or nil
 
 		if direct_dns_udp_server or direct_dns_tcp_server then
+			_direct_dns.tag = "dns-global-direct"
+			_direct_dns.queryStrategy = (direct_dns_query_strategy and direct_dns_query_strategy ~= "") and direct_dns_query_strategy or "UseIP"
+
+			if direct_dns_udp_server then
+				local port = tonumber(direct_dns_port) or 53
+				_direct_dns.port = port
+				_direct_dns.address = direct_dns_udp_server
+			elseif direct_dns_tcp_server then
+				local port = tonumber(direct_dns_port) or 53
+				_direct_dns.address = "tcp://" .. direct_dns_tcp_server .. ":" .. port
+			end
+
+			if COMMON.default_outbound_tag == "direct" then
+				table.insert(dns.servers, _direct_dns)
+			end
+		end
+		if dns_listen_port and next(_direct_dns) then
 			local domain = {}
 			local nodes_domain_text = sys.exec([[uci show passwall | sed -n "s/.*\.\(address\|download_address\)='\([^']*\)'/\2/p" | sort -u]])
 			string.gsub(nodes_domain_text, '[^' .. "\r\n" .. ']+', function(w)
@@ -1542,19 +1556,6 @@ function gen_config(var)
 					outboundTag = "direct",
 					domain = domain
 				})
-			end
-
-			if direct_dns_udp_server then
-				local port = tonumber(direct_dns_port) or 53
-				_direct_dns.port = port
-				_direct_dns.address = direct_dns_udp_server
-			elseif direct_dns_tcp_server then
-				local port = tonumber(direct_dns_port) or 53
-				_direct_dns.address = "tcp://" .. direct_dns_tcp_server .. ":" .. port
-			end
-
-			if COMMON.default_outbound_tag == "direct" then
-				table.insert(dns.servers, _direct_dns)
 			end
 		end
 
@@ -1649,8 +1650,7 @@ function gen_config(var)
 				protocol = "dokodemo-door",
 				tag = "dns-in",
 				settings = {
-					address = remote_dns_udp_server or remote_dns_tcp_server,
-					port = tonumber(remote_dns_udp_port) or tonumber(remote_dns_tcp_port),
+					address = "0.0.0.0",
 					network = "tcp,udp"
 				}
 			})
@@ -1796,14 +1796,12 @@ function gen_config(var)
 			for line, _ in pairs(GLOBAL.DNS_HOSTNAME) do
 				table.insert(hostname, line)
 			end
-			table.insert(dns.servers, 2, {
-				tag = "bootstrap",
-				address = "223.5.5.5",
-				queryStrategy = "UseIPv4",
-				domains = hostname
-			})
+			local new_dns_server = next(_direct_dns) and api.clone(_direct_dns) or { address = "localhost" }
+			new_dns_server.tag = "dns-in-bootstrap"
+			new_dns_server.domains = hostname
+			table.insert(dns.servers, 2, new_dns_server)
 			table.insert(routing.rules, idx, {
-				inboundTag = { "bootstrap" },
+				inboundTag = { "dns-in-bootstrap" },
 				outboundTag = "direct"
 			})
 		end

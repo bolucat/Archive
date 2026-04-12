@@ -87,8 +87,8 @@ github.com/metacubex/chacha v0.1.5 h1:fKWMb/5c7ZrY8Uoqi79PPFxl+qwR7X/q0OrsAubyX2
 github.com/metacubex/chacha v0.1.5/go.mod h1:Djn9bPZxLTXbJFSeyo0/qzEzQI+gUSSzttuzZM75GH8=
 github.com/metacubex/chi v0.1.0 h1:rjNDyDj50nRpicG43CNkIw4ssiCbmDL8d7wJXKlUCsg=
 github.com/metacubex/chi v0.1.0/go.mod h1:zM5u5oMQt8b2DjvDHvzadKrP6B2ztmasL1YHRMbVV+g=
-github.com/metacubex/connect-ip-go v0.0.0-20260128031117-1cad62060727 h1:qbZQ0sO0bDBKPvTd/qNQK6513300WJ5GRsHnw3PO4Ho=
-github.com/metacubex/connect-ip-go v0.0.0-20260128031117-1cad62060727/go.mod h1:xYC8Ik7/rN6no+vTRuWMEziGwm3brA0wNM/zZP9qhOQ=
+github.com/metacubex/connect-ip-go v0.0.0-20260412152424-e1625567920a h1:Ph5UfTWDsGruZ+v95Df1ycTflQFmpZBFg2LUvj2kx/M=
+github.com/metacubex/connect-ip-go v0.0.0-20260412152424-e1625567920a/go.mod h1:xYC8Ik7/rN6no+vTRuWMEziGwm3brA0wNM/zZP9qhOQ=
 github.com/metacubex/cpu v0.1.1 h1:rRV5HGmeuGzjiKI3hYbL0dCd0qGwM7VUtk4ICXD06mI=
 github.com/metacubex/cpu v0.1.1/go.mod h1:09VEt4dSRLR+bOA8l4w4NDuzGZ8n5dkMv7e8axgEeTU=
 github.com/metacubex/edwards25519 v1.2.0 h1:pIQZLBsjQgg3Nl/c86YYFEUAbL5qQRnPq4LrgIw0KK4=

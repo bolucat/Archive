@@ -150,7 +150,7 @@ type h2IpConn struct {
 	closeErr  error
 }
 
-func (c *h2IpConn) ReadPacket(b []byte) (n int, err error) {
+func (c *h2IpConn) ReadPacket() (b []byte, err error) {
 start:
 	data, err := c.str.ReceiveDatagram(context.Background())
 	if err != nil {
@@ -161,16 +161,16 @@ start:
 		}()
 		select {
 		case <-c.closeChan:
-			return 0, c.closeErr
+			return nil, c.closeErr
 		default:
-			return 0, err
+			return nil, err
 		}
 	}
 	if err := c.handleIncomingProxiedPacket(data); err != nil {
 		log.Debugln("dropping proxied packet: %s", err)
 		goto start
 	}
-	return copy(b, data), nil
+	return data, nil
 }
 
 func (c *h2IpConn) handleIncomingProxiedPacket(data []byte) error {

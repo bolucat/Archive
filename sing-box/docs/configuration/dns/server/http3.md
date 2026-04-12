@@ -2,6 +2,10 @@
 icon: material/new-box
 ---
 
+!!! quote "Changes in sing-box 1.14.0"
+
+    :material-alert: `headers`, `tls`, Dial Fields moved to [HTTP Client Fields](#http-client-fields)
+
 !!! question "Since sing-box 1.12.0"
 
 # DNS over HTTP3 (DoH3)
@@ -15,26 +19,19 @@ icon: material/new-box
       {
         "type": "h3",
         "tag": "",
-        
+
         "server": "",
-        "server_port": 443,
-        
+        "server_port": 0,
+
         "path": "",
-        "headers": {},
-        
-        "tls": {},
-        
-        // Dial Fields
+        "method": "",
+
+        ... // HTTP Client Fields
       }
     ]
   }
 }
 ```
-
-!!! info "Difference from legacy H3 server"
-
-    * The old server uses default outbound by default unless detour is specified; the new one uses dialer just like outbound, which is equivalent to using an empty direct outbound by default.
-    * The old server uses `address_resolver` and `address_strategy` to resolve the domain name in the server; the new one uses `domain_resolver` and `domain_strategy` in [Dial Fields](/configuration/shared/dial/) instead.
 
 ### Fields
 
@@ -58,14 +55,14 @@ The path of the DNS server.
 
 `/dns-query` will be used by default.
 
-#### headers
+#### method
 
-Additional headers to be sent to the DNS server.
+HTTP request method.
 
-#### tls
+Available values: `GET`, `POST`.
 
-TLS configuration, see [TLS](/configuration/shared/tls/#outbound).
+`POST` will be used by default.
 
-### Dial Fields
+### HTTP Client Fields
 
-See [Dial Fields](/configuration/shared/dial/) for details.
+See [HTTP Client Fields](/configuration/shared/http-client/) for details.

@@ -315,10 +315,8 @@ func (w *Masque) run(ctx context.Context) error {
 
 	go func() {
 		defer runCancel()
-		buf := pool.Get(pool.UDPBufferSize)
-		defer pool.Put(buf)
 		for runCtx.Err() == nil {
-			n, err := ipConn.ReadPacket(buf)
+			buf, err := ipConn.ReadPacket()
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) {
 					log.Errorln("[Masque](%s) connection closed while writing to IP connection: %v", w.name, err)
@@ -327,7 +325,7 @@ func (w *Masque) run(ctx context.Context) error {
 				log.Warnln("[Masque](%s) error reading from IP connection: %v, continuing...", w.name, err)
 				continue
 			}
-			if _, err := w.tunDevice.Write([][]byte{buf[:n]}, 0); err != nil {
+			if _, err := w.tunDevice.Write([][]byte{buf}, 0); err != nil {
 				log.Errorln("[Masque](%s) error writing to TUN device: %v", w.name, err)
 				return
 			}

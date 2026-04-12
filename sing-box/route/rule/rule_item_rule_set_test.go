@@ -56,12 +56,12 @@ type countingRuleSet struct {
 	refs atomic.Int32
 }
 
-func (s *countingRuleSet) Name() string                                                  { return s.name }
-func (s *countingRuleSet) StartContext(context.Context, *adapter.HTTPStartContext) error { return nil }
-func (s *countingRuleSet) PostStart() error                                              { return nil }
-func (s *countingRuleSet) Metadata() adapter.RuleSetMetadata                             { return adapter.RuleSetMetadata{} }
-func (s *countingRuleSet) ExtractIPSet() []*netipx.IPSet                                 { return nil }
-func (s *countingRuleSet) IncRef()                                                       { s.refs.Add(1) }
+func (s *countingRuleSet) Name() string                       { return s.name }
+func (s *countingRuleSet) StartContext(context.Context) error { return nil }
+func (s *countingRuleSet) PostStart() error                   { return nil }
+func (s *countingRuleSet) Metadata() adapter.RuleSetMetadata  { return adapter.RuleSetMetadata{} }
+func (s *countingRuleSet) ExtractIPSet() []*netipx.IPSet      { return nil }
+func (s *countingRuleSet) IncRef()                            { s.refs.Add(1) }
 func (s *countingRuleSet) DecRef() {
 	if s.refs.Add(-1) < 0 {
 		panic("rule-set: negative refs")

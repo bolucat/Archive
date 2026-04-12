@@ -11,10 +11,12 @@ import (
 )
 
 type TailscaleEndpointOptions struct {
+	// Deprecated: use control_http_client instead
 	DialerOptions
 	StateDirectory             string                     `json:"state_directory,omitempty"`
 	AuthKey                    string                     `json:"auth_key,omitempty"`
 	ControlURL                 string                     `json:"control_url,omitempty"`
+	ControlHTTPClient          *HTTPClientOptions         `json:"control_http_client,omitempty"`
 	Ephemeral                  bool                       `json:"ephemeral,omitempty"`
 	Hostname                   string                     `json:"hostname,omitempty"`
 	AcceptRoutes               bool                       `json:"accept_routes,omitempty"`
@@ -55,7 +57,7 @@ type DERPServiceOptions struct {
 
 type _DERPVerifyClientURLOptions struct {
 	URL string `json:"url,omitempty"`
-	DialerOptions
+	HTTPClientOptions
 }
 
 type DERPVerifyClientURLOptions _DERPVerifyClientURLOptions
@@ -69,7 +71,7 @@ func (d DERPVerifyClientURLOptions) ServerIsDomain() bool {
 }
 
 func (d DERPVerifyClientURLOptions) MarshalJSON() ([]byte, error) {
-	if reflect.DeepEqual(d, _DERPVerifyClientURLOptions{}) {
+	if d.URL != "" && d.TLS == nil && reflect.DeepEqual(d.DialerOptions, DialerOptions{}) {
 		return json.Marshal(d.URL)
 	} else {
 		return json.Marshal(_DERPVerifyClientURLOptions(d))

@@ -12,13 +12,9 @@ include $(INCLUDE_DIR)/package.mk
 define Package/momo
   SECTION:=net
   CATEGORY:=Network
-  TITLE:=The universal proxy platform.
-  URL:=https://sing-box.sagernet.org
+  TITLE:=Transparent Proxy with sing-box on OpenWrt.
+  URL:=https://github.com/nikkinikki-org
   DEPENDS:=+ca-bundle +curl firewall4 +ip-full +kmod-inet-diag +kmod-nft-socket +kmod-nft-tproxy +kmod-tun +kmod-dummy +sing-box
-endef
-
-define Package/momo/description
-  The universal proxy platform.
 endef
 
 define Package/momo/conffiles
@@ -58,6 +54,16 @@ define Package/momo/install
 
 	$(INSTALL_DIR) $(1)/lib/upgrade/keep.d
 	$(INSTALL_DATA) $(CURDIR)/files/momo.upgrade $(1)/lib/upgrade/keep.d/momo
+endef
+
+define Package/momo/postrm
+#!/bin/sh
+if [ -z $${IPKG_INSTROOT} ]; then
+	uci -q batch <<-EOF > /dev/null
+		del firewall.momo
+		commit firewall
+	EOF
+fi
 endef
 
 define Build/Compile

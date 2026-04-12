@@ -98,15 +98,13 @@ func (r *Router) Start(stage adapter.StartStage) error {
 	monitor := taskmonitor.New(r.logger, C.StartTimeout)
 	switch stage {
 	case adapter.StartStateStart:
-		var cacheContext *adapter.HTTPStartContext
 		if len(r.ruleSets) > 0 {
 			monitor.Start("initialize rule-set")
-			cacheContext = adapter.NewHTTPStartContext(r.ctx)
 			var ruleSetStartGroup task.Group
 			for i, ruleSet := range r.ruleSets {
 				ruleSetInPlace := ruleSet
 				ruleSetStartGroup.Append0(func(ctx context.Context) error {
-					err := ruleSetInPlace.StartContext(ctx, cacheContext)
+					err := ruleSetInPlace.StartContext(ctx)
 					if err != nil {
 						return E.Cause(err, "initialize rule-set[", i, "]")
 					}
@@ -120,9 +118,6 @@ func (r *Router) Start(stage adapter.StartStage) error {
 			if err != nil {
 				return err
 			}
-		}
-		if cacheContext != nil {
-			cacheContext.Close()
 		}
 		r.network.Initialize(r.ruleSets)
 		needFindProcess := r.needFindProcess
