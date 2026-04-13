@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
@@ -46,9 +47,14 @@ func (t *http2Transport) CloseIdleConnections() {
 	t.h2Transport.CloseIdleConnections()
 }
 
-func (t *http2Transport) Clone() httpTransport {
+func (t *http2Transport) Clone() adapter.HTTPTransport {
 	return &http2Transport{
 		h2Transport: CloneHTTP2Transport(t.h2Transport),
 		h1Transport: t.h1Transport.Clone().(*http1Transport),
 	}
+}
+
+func (t *http2Transport) Close() error {
+	t.CloseIdleConnections()
+	return nil
 }

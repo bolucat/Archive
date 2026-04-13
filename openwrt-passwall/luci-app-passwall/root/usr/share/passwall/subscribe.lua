@@ -254,11 +254,19 @@ do
 			uci:foreach(appname, "shunt_rules", function(e)
 				if e[".name"] and e.remarks then
 					table.insert(rules, e)
+					table.insert(rules, {
+						[".name"] = e[".name"] .. "_proxy_tag",
+						remarks = e.remarks .. " 前置代理"
+					})
 				end
 			end)
 			table.insert(rules, {
 				[".name"] = "default_node",
 				remarks = "默认"
+			})
+			table.insert(rules, {
+				[".name"] = "default_proxy_tag",
+				remarks = "默认 前置代理"
 			})
 
 			for k, e in pairs(rules) do

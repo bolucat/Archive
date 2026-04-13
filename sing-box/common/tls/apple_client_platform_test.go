@@ -16,6 +16,11 @@ import (
 
 const appleTLSTestTimeout = 5 * time.Second
 
+const (
+	appleTLSSuccessHandshakeLoops = 20
+	appleTLSFailureRecoveryLoops  = 10
+)
+
 type appleTLSServerResult struct {
 	state stdtls.ConnectionState
 	err   error
@@ -23,44 +28,48 @@ type appleTLSServerResult struct {
 
 func TestAppleClientHandshakeAppliesALPNAndVersion(t *testing.T) {
 	serverCertificate, serverCertificatePEM := newAppleTestCertificate(t, "localhost")
-	serverResult, serverAddress := startAppleTLSTestServer(t, &stdtls.Config{
-		Certificates: []stdtls.Certificate{serverCertificate},
-		MinVersion:   stdtls.VersionTLS12,
-		MaxVersion:   stdtls.VersionTLS12,
-		NextProtos:   []string{"h2"},
-	})
+	for index := 0; index < appleTLSSuccessHandshakeLoops; index++ {
+		serverResult, serverAddress := startAppleTLSTestServer(t, &stdtls.Config{
+			Certificates: []stdtls.Certificate{serverCertificate},
+			MinVersion:   stdtls.VersionTLS12,
+			MaxVersion:   stdtls.VersionTLS12,
+			NextProtos:   []string{"h2"},
+		})
 
-	clientConn, err := newAppleTestClientConn(t, serverAddress, option.OutboundTLSOptions{
-		Enabled:     true,
-		Engine:      "apple",
-		ServerName:  "localhost",
-		MinVersion:  "1.2",
-		MaxVersion:  "1.2",
-		ALPN:        badoption.Listable[string]{"h2"},
-		Certificate: badoption.Listable[string]{serverCertificatePEM},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clientConn.Close()
+		clientConn, err := newAppleTestClientConn(t, serverAddress, option.OutboundTLSOptions{
+			Enabled:     true,
+			Engine:      "apple",
+			ServerName:  "localhost",
+			MinVersion:  "1.2",
+			MaxVersion:  "1.2",
+			ALPN:        badoption.Listable[string]{"h2"},
+			Certificate: badoption.Listable[string]{serverCertificatePEM},
+		})
+		if err != nil {
+			t.Fatalf("iteration %d: %v", index, err)
+		}
 
-	clientState := clientConn.ConnectionState()
-	if clientState.Version != stdtls.VersionTLS12 {
-		t.Fatalf("unexpected negotiated version: %x", clientState.Version)
-	}
-	if clientState.NegotiatedProtocol != "h2" {
-		t.Fatalf("unexpected negotiated protocol: %q", clientState.NegotiatedProtocol)
-	}
+		clientState := clientConn.ConnectionState()
+		if clientState.Version != stdtls.VersionTLS12 {
+			_ = clientConn.Close()
+			t.Fatalf("iteration %d: unexpected negotiated version: %x", index, clientState.Version)
+		}
+		if clientState.NegotiatedProtocol != "h2" {
+			_ = clientConn.Close()
+			t.Fatalf("iteration %d: unexpected negotiated protocol: %q", index, clientState.NegotiatedProtocol)
+		}
+		_ = clientConn.Close()
 
-	result := <-serverResult
-	if result.err != nil {
-		t.Fatal(result.err)
-	}
-	if result.state.Version != stdtls.VersionTLS12 {
-		t.Fatalf("server negotiated unexpected version: %x", result.state.Version)
-	}
-	if result.state.NegotiatedProtocol != "h2" {
-		t.Fatalf("server negotiated unexpected protocol: %q", result.state.NegotiatedProtocol)
+		result := <-serverResult
+		if result.err != nil {
+			t.Fatalf("iteration %d: %v", index, result.err)
+		}
+		if result.state.Version != stdtls.VersionTLS12 {
+			t.Fatalf("iteration %d: server negotiated unexpected version: %x", index, result.state.Version)
+		}
+		if result.state.NegotiatedProtocol != "h2" {
+			t.Fatalf("iteration %d: server negotiated unexpected protocol: %q", index, result.state.NegotiatedProtocol)
+		}
 	}
 }
 
@@ -108,6 +117,93 @@ func TestAppleClientHandshakeRejectsServerNameMismatch(t *testing.T) {
 
 	if result := <-serverResult; result.err == nil {
 		t.Fatal("expected server handshake to fail on server name mismatch")
+	}
+}
+
+func TestAppleClientHandshakeRecoversAfterFailure(t *testing.T) {
+	serverCertificate, serverCertificatePEM := newAppleTestCertificate(t, "localhost")
+	testCases := []struct {
+		name          string
+		serverConfig  *stdtls.Config
+		clientOptions option.OutboundTLSOptions
+	}{
+		{
+			name: "version mismatch",
+			serverConfig: &stdtls.Config{
+				Certificates: []stdtls.Certificate{serverCertificate},
+				MinVersion:   stdtls.VersionTLS13,
+				MaxVersion:   stdtls.VersionTLS13,
+			},
+			clientOptions: option.OutboundTLSOptions{
+				Enabled:     true,
+				Engine:      "apple",
+				ServerName:  "localhost",
+				MaxVersion:  "1.2",
+				Certificate: badoption.Listable[string]{serverCertificatePEM},
+			},
+		},
+		{
+			name: "server name mismatch",
+			serverConfig: &stdtls.Config{
+				Certificates: []stdtls.Certificate{serverCertificate},
+			},
+			clientOptions: option.OutboundTLSOptions{
+				Enabled:     true,
+				Engine:      "apple",
+				ServerName:  "example.com",
+				Certificate: badoption.Listable[string]{serverCertificatePEM},
+			},
+		},
+	}
+	successClientOptions := option.OutboundTLSOptions{
+		Enabled:     true,
+		Engine:      "apple",
+		ServerName:  "localhost",
+		MinVersion:  "1.2",
+		MaxVersion:  "1.2",
+		ALPN:        badoption.Listable[string]{"h2"},
+		Certificate: badoption.Listable[string]{serverCertificatePEM},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for index := 0; index < appleTLSFailureRecoveryLoops; index++ {
+				failedResult, failedAddress := startAppleTLSTestServer(t, testCase.serverConfig)
+				failedConn, err := newAppleTestClientConn(t, failedAddress, testCase.clientOptions)
+				if err == nil {
+					_ = failedConn.Close()
+					t.Fatalf("iteration %d: expected handshake failure", index)
+				}
+				if result := <-failedResult; result.err == nil {
+					t.Fatalf("iteration %d: expected server handshake failure", index)
+				}
+
+				successResult, successAddress := startAppleTLSTestServer(t, &stdtls.Config{
+					Certificates: []stdtls.Certificate{serverCertificate},
+					MinVersion:   stdtls.VersionTLS12,
+					MaxVersion:   stdtls.VersionTLS12,
+					NextProtos:   []string{"h2"},
+				})
+				successConn, err := newAppleTestClientConn(t, successAddress, successClientOptions)
+				if err != nil {
+					t.Fatalf("iteration %d: follow-up handshake failed: %v", index, err)
+				}
+				clientState := successConn.ConnectionState()
+				if clientState.NegotiatedProtocol != "h2" {
+					_ = successConn.Close()
+					t.Fatalf("iteration %d: unexpected negotiated protocol after failure: %q", index, clientState.NegotiatedProtocol)
+				}
+				_ = successConn.Close()
+
+				result := <-successResult
+				if result.err != nil {
+					t.Fatalf("iteration %d: follow-up server handshake failed: %v", index, result.err)
+				}
+				if result.state.NegotiatedProtocol != "h2" {
+					t.Fatalf("iteration %d: follow-up server negotiated unexpected protocol: %q", index, result.state.NegotiatedProtocol)
+				}
+			}
+		})
 	}
 }
 

@@ -197,7 +197,7 @@ TLS 版本值：
 
 可用值：
 
-* `go`
+* `go`（默认）
 * `apple`
 
 `apple` 使用 Network.framework，仅在 Apple 平台可用，且仅支持 **直接** TCP TLS 客户端连接。
@@ -205,7 +205,7 @@ TLS 版本值：
 !!! warning ""
 
     仅供实验用途：由于 CGO 和 Network.framework 占用的内存都很多，
-    不应在 iOS 和 tvOS 的代理路径中使用。
+    不应在 iOS 和 tvOS 的热路径中使用。
     如果您想规避基于 TLS 指纹的代理审查，应使用 [NaiveProxy](/zh/configuration/outbound/naive/)。
 
 支持的字段：

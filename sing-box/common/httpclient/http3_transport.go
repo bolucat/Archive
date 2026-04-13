@@ -12,6 +12,7 @@ import (
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
+	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/bufio"
@@ -26,7 +27,7 @@ type http3Transport struct {
 
 type http3FallbackTransport struct {
 	h3Transport   *http3.Transport
-	h2Fallback    httpTransport
+	h2Fallback    adapter.HTTPTransport
 	fallbackDelay time.Duration
 	brokenAccess  sync.Mutex
 	brokenUntil   time.Time
@@ -97,7 +98,7 @@ func newHTTP3Transport(
 	rawDialer N.Dialer,
 	baseTLSConfig tls.Config,
 	options option.QUICOptions,
-) (httpTransport, error) {
+) (adapter.HTTPTransport, error) {
 	return &http3Transport{
 		h3Transport: newHTTP3RoundTripper(rawDialer, baseTLSConfig, options),
 	}, nil
@@ -106,10 +107,10 @@ func newHTTP3Transport(
 func newHTTP3FallbackTransport(
 	rawDialer N.Dialer,
 	baseTLSConfig tls.Config,
-	h2Fallback httpTransport,
+	h2Fallback adapter.HTTPTransport,
 	options option.QUICOptions,
 	fallbackDelay time.Duration,
-) (httpTransport, error) {
+) (adapter.HTTPTransport, error) {
 	return &http3FallbackTransport{
 		h3Transport:   newHTTP3RoundTripper(rawDialer, baseTLSConfig, options),
 		h2Fallback:    h2Fallback,
@@ -130,7 +131,7 @@ func (t *http3Transport) Close() error {
 	return t.h3Transport.Close()
 }
 
-func (t *http3Transport) Clone() httpTransport {
+func (t *http3Transport) Clone() adapter.HTTPTransport {
 	return &http3Transport{
 		h3Transport: t.h3Transport,
 	}
@@ -275,7 +276,7 @@ func (t *http3FallbackTransport) Close() error {
 	return t.h3Transport.Close()
 }
 
-func (t *http3FallbackTransport) Clone() httpTransport {
+func (t *http3FallbackTransport) Clone() adapter.HTTPTransport {
 	return &http3FallbackTransport{
 		h3Transport:   t.h3Transport,
 		h2Fallback:    t.h2Fallback.Clone(),

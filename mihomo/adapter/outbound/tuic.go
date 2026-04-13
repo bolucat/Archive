@@ -236,17 +236,17 @@ func NewTuic(option TuicOption) (*Tuic, error) {
 	}
 
 	t := &Tuic{
-		Base: &Base{
-			name:   option.Name,
-			addr:   addr,
-			tp:     C.Tuic,
-			pdName: option.ProviderName,
-			udp:    true,
-			tfo:    option.FastOpen,
-			iface:  option.Interface,
-			rmark:  option.RoutingMark,
-			prefer: option.IPVersion,
-		},
+		Base: NewBase(BaseOption{
+			Name:         option.Name,
+			Addr:         addr,
+			Type:         C.Tuic,
+			ProviderName: option.ProviderName,
+			UDP:          true,
+			TFO:          option.FastOpen,
+			Interface:    option.Interface,
+			RoutingMark:  option.RoutingMark,
+			Prefer:       option.IPVersion,
+		}),
 		option:     &option,
 		quicConfig: quicConfig,
 		tlsConfig:  tlsConfig,

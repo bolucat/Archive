@@ -131,7 +131,7 @@ func newSTDClient(ctx context.Context, logger logger.ContextLogger, serverAddres
 		}
 		tlsConfig.InsecureSkipVerify = true
 		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			return verifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts, tlsConfig.Time)
+			return VerifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts)
 		}
 	}
 	if len(options.ALPN) > 0 {
@@ -272,7 +272,7 @@ func verifyConnection(rootCAs *x509.CertPool, timeFunc func() time.Time, serverN
 	}
 }
 
-func verifyPublicKeySHA256(knownHashValues [][]byte, rawCerts [][]byte, timeFunc func() time.Time) error {
+func VerifyPublicKeySHA256(knownHashValues [][]byte, rawCerts [][]byte) error {
 	leafCertificate, err := x509.ParseCertificate(rawCerts[0])
 	if err != nil {
 		return E.Cause(err, "failed to parse leaf certificate")

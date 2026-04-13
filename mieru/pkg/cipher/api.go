@@ -56,6 +56,12 @@ var (
 
 	// Number of decryption that failed after iterating all possible cipher blocks.
 	ServerFailedIterateDecrypt = metrics.RegisterMetric(ServerDecryptionMetricGroupName, "FailedIterateDecrypt", metrics.COUNTER)
+
+	// Number of decryption where a user hint match was found.
+	ServerHintMatchDecrypt = metrics.RegisterMetric(ServerDecryptionMetricGroupName, "HintMatchDecrypt", metrics.COUNTER)
+
+	// Number of decryption where a user hint match was found but decryption failed.
+	ServerFailedHintMatchDecrypt = metrics.RegisterMetric(ServerDecryptionMetricGroupName, "FailedHintMatchDecrypt", metrics.COUNTER)
 )
 
 // BlockCipher is an interface of block encryption and decryption.
@@ -179,6 +185,7 @@ func CloneBlockCiphers(blocks []BlockCipher) []BlockCipher {
 }
 
 // CheckUserFromHint checks if the user is the one associated with the nonce.
+// It panics if the user is empty or the nonce is too short.
 func CheckUserFromHint(user, nonce []byte) bool {
 	if len(user) == 0 {
 		panic("user is empty")

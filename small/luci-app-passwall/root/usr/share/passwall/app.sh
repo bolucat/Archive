@@ -751,12 +751,11 @@ run_redir() {
 			}
 
 			local protocol=$(config_n_get $node protocol)
-			local default_node=$(config_n_get $node default_node)
 			local v2ray_dns_mode=$(config_t_get global v2ray_dns_mode tcp)
-			[ "${DNS_MODE}" != "sing-box" ] && [ "${DNS_MODE}" != "udp" ] && [ "$protocol" = "_shunt" ] && [ "$default_node" = "_direct" ] && {
+			[ "${DNS_MODE}" != "sing-box" ] && [ "$protocol" = "_shunt" ] && {
 				DNS_MODE="sing-box"
 				v2ray_dns_mode="tcp"
-				echolog "* 当前TCP节点采用Sing-Box分流且默认节点为直连，远程DNS过滤模式将默认使用Sing-Box(TCP)，防止环回！"
+				echolog "* 当前 TCP 节点采用 Sing-Box 分流，远程 DNS 过滤模式将默认使用 Sing-Box(TCP)。！"
 			}
 
 			[ "$protocol" = "_shunt" ] && {
@@ -832,12 +831,11 @@ run_redir() {
 			}
 
 			local protocol=$(config_n_get $node protocol)
-			local default_node=$(config_n_get $node default_node)
 			local v2ray_dns_mode=$(config_t_get global v2ray_dns_mode tcp)
-			[ "${DNS_MODE}" != "xray" ] && [ "${DNS_MODE}" != "udp" ] && [ "$protocol" = "_shunt" ] && [ "$default_node" = "_direct" ] && {
+			[ "${DNS_MODE}" != "xray" ] && [ "$protocol" = "_shunt" ] && {
 				DNS_MODE="xray"
 				v2ray_dns_mode="tcp"
-				echolog "* 当前TCP节点采用Xray分流且默认节点为直连，远程DNS过滤模式将默认使用Xray(TCP)，防止环回！"
+				echolog "* 当前 TCP 节点采用 Xray 分流，远程 DNS 过滤模式将默认使用Xray(TCP)。"
 			}
 
 			[ "$protocol" = "_shunt" ] && {
@@ -1759,6 +1757,12 @@ acl_app() {
 
 								local type=$(echo $(config_n_get $tcp_node type) | tr 'A-Z' 'a-z')
 								if [ -n "${type}" ] && ([ "${type}" = "sing-box" ] || [ "${type}" = "xray" ]); then
+									local protocol=$(config_n_get $tcp_node protocol)
+									[ "$protocol" = "_shunt" ] && [ "${type}" != "${dns_mode}" ] && {
+										dns_mode=${type}
+										v2ray_dns_mode="tcp"
+										remote_dns="1.1.1.1"
+									}
 									config_file="acl/${tcp_node}_TCP_${redir_port}.json"
 									_extra_param="socks_address=127.0.0.1 socks_port=$socks_port"
 									if ([ "$dns_mode" = "sing-box" ] || [ "$dns_mode" = "xray" ]) && [ "${type}" = "${dns_mode}" ]; then

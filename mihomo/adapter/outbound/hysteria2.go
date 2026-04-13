@@ -105,16 +105,16 @@ func (h *Hysteria2) ProxyInfo() C.ProxyInfo {
 func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 	outbound := &Hysteria2{
-		Base: &Base{
-			name:   option.Name,
-			addr:   addr,
-			tp:     C.Hysteria2,
-			pdName: option.ProviderName,
-			udp:    true,
-			iface:  option.Interface,
-			rmark:  option.RoutingMark,
-			prefer: option.IPVersion,
-		},
+		Base: NewBase(BaseOption{
+			Name:         option.Name,
+			Addr:         addr,
+			Type:         C.Hysteria2,
+			ProviderName: option.ProviderName,
+			UDP:          true,
+			Interface:    option.Interface,
+			RoutingMark:  option.RoutingMark,
+			Prefer:       option.IPVersion,
+		}),
 		option: &option,
 	}
 	outbound.dialer = option.NewDialer(outbound.DialOptions())

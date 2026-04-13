@@ -197,7 +197,7 @@ TLS engine to use.
 
 Values:
 
-* `go`
+* `go` (default)
 * `apple`
 
 `apple` uses Network.framework, only available on Apple platforms and only supports **direct** TCP TLS client connections.
@@ -205,7 +205,7 @@ Values:
 !!! warning ""
 
     Experimental only: due to the high memory overhead of both CGO and Network.framework,
-    do not use in proxy paths on iOS and tvOS.
+    do not use in hot paths on iOS and tvOS.
     If you want to circumvent TLS fingerprint-based proxy censorship,
     use [NaiveProxy](/configuration/outbound/naive/) instead.
 

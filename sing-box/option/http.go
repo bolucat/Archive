@@ -26,6 +26,7 @@ type QUICOptions struct {
 
 type _HTTPClientOptions struct {
 	Tag                    string               `json:"tag,omitempty"`
+	Engine                 string               `json:"engine,omitempty"`
 	Version                int                  `json:"version,omitempty"`
 	DisableVersionFallback bool                 `json:"disable_version_fallback,omitempty"`
 	Headers                badoption.HTTPHeader `json:"headers,omitempty"`
@@ -33,6 +34,7 @@ type _HTTPClientOptions struct {
 	HTTP3Options           QUICOptions          `json:"-"`
 	DefaultOutbound        bool                 `json:"-"`
 	ResolveOnDetour        bool                 `json:"-"`
+	DirectResolver         bool                 `json:"-"`
 	OutboundTLSOptionsContainer
 	DialerOptions
 }
@@ -54,6 +56,7 @@ func (o HTTPClientOptions) IsEmpty() bool {
 	}
 	o.DefaultOutbound = false
 	o.ResolveOnDetour = false
+	o.DirectResolver = false
 	return reflect.ValueOf(_HTTPClientOptions(o)).IsZero()
 }
 

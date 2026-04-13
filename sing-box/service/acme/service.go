@@ -45,11 +45,12 @@ var (
 
 type Service struct {
 	certificate.Adapter
-	ctx        context.Context
-	config     *certmagic.Config
-	cache      *certmagic.Cache
-	domain     []string
-	nextProtos []string
+	ctx           context.Context
+	config        *certmagic.Config
+	cache         *certmagic.Cache
+	domain        []string
+	nextProtos    []string
+	httpTransport adapter.HTTPTransport
 }
 
 func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag string, options option.ACMECertificateProviderOptions) (adapter.CertificateProviderService, error) {
@@ -123,7 +124,7 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		AltTLSALPNPort:          int(options.AlternativeTLSPort),
 		Logger:                  zapLogger,
 	}
-	acmeHTTPClient, err := newACMEHTTPClient(ctx, logger, options)
+	acmeHTTPClient, httpTransport, err := newACMEHTTPClient(ctx, logger, options)
 	if err != nil {
 		return nil, err
 	}
@@ -168,12 +169,13 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		nextProtos = []string{C.ACMETLS1Protocol}
 	}
 	return &Service{
-		Adapter:    certificate.NewAdapter(C.TypeACME, tag),
-		ctx:        ctx,
-		config:     config,
-		cache:      cache,
-		domain:     options.Domain,
-		nextProtos: nextProtos,
+		Adapter:       certificate.NewAdapter(C.TypeACME, tag),
+		ctx:           ctx,
+		config:        config,
+		cache:         cache,
+		domain:        options.Domain,
+		nextProtos:    nextProtos,
+		httpTransport: httpTransport,
 	}, nil
 }
 
@@ -188,7 +190,7 @@ func (s *Service) Close() error {
 	if s.cache != nil {
 		s.cache.Stop()
 	}
-	return nil
+	return s.httpTransport.Close()
 }
 
 func (s *Service) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -308,20 +310,17 @@ func createZeroSSLExternalAccountBinding(ctx context.Context, acmeIssuer *certma
 	}, account, nil
 }
 
-func newACMEHTTPClient(ctx context.Context, logger log.ContextLogger, options option.ACMECertificateProviderOptions) (*http.Client, error) {
+func newACMEHTTPClient(ctx context.Context, logger log.ContextLogger, options option.ACMECertificateProviderOptions) (*http.Client, adapter.HTTPTransport, error) {
 	httpClientOptions := common.PtrValueOrDefault(options.HTTPClient)
 	httpClientManager := service.FromContext[adapter.HTTPClientManager](ctx)
-	if httpClientManager == nil {
-		return nil, E.New("missing http client manager in context")
-	}
-	transport, err := httpClientManager.ResolveTransport(logger, httpClientOptions)
+	transport, err := httpClientManager.ResolveTransport(ctx, logger, httpClientOptions)
 	if err != nil {
-		return nil, E.Cause(err, "create ACME provider http client")
+		return nil, nil, E.Cause(err, "create ACME provider http client")
 	}
 	return &http.Client{
 		Transport: transport,
 		Timeout:   certmagic.HTTPTimeout,
-	}, nil
+	}, transport, nil
 }
 
 type acmeDNSProvider struct {

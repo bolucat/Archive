@@ -206,7 +206,7 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 		}
 		tlsConfig.InsecureSkipVerify = true
 		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			return verifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts, tlsConfig.Time)
+			return VerifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts)
 		}
 	}
 	if len(options.ALPN) > 0 {

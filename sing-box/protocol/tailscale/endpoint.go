@@ -219,10 +219,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 	dnsRouter := service.FromContext[adapter.DNSRouter](ctx)
 	httpClientManager := service.FromContext[adapter.HTTPClientManager](ctx)
-	if httpClientManager == nil {
-		return nil, E.New("missing HTTP client manager")
-	}
-	controlTransport, err := httpClientManager.ResolveTransport(logger, controlHTTPClientOptions)
+	controlTransport, err := httpClientManager.ResolveTransport(ctx, logger, controlHTTPClientOptions)
 	if err != nil {
 		return nil, E.Cause(err, "create control HTTP client")
 	}

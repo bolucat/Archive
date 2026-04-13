@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/sagernet/sing-box/common/badtls"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -65,8 +66,8 @@ func NewClientWithOptions(options ClientOptions) (Config, error) {
 		options.Logger.Warn("enabling kTLS RX will definitely reduce performance, please checkout https://sing-box.sagernet.org/configuration/shared/tls/#kernel_rx")
 	}
 	switch options.Options.Engine {
-	case "", "go":
-	case "apple":
+	case C.TLSEngineDefault, "go":
+	case C.TLSEngineApple:
 		return newAppleClient(options.Context, options.Logger, options.ServerAddress, options.Options, options.AllowEmptyServerName)
 	default:
 		return nil, E.New("unknown tls engine: ", options.Options.Engine)

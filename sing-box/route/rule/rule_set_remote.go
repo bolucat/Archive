@@ -38,6 +38,7 @@ type RemoteRuleSet struct {
 	options        option.RuleSet
 	updateInterval time.Duration
 	httpClient     *http.Client
+	httpTransport  adapter.HTTPTransport
 	access         sync.RWMutex
 	rules          []adapter.HeadlessRule
 	metadata       adapter.RuleSetMetadata
@@ -80,13 +81,11 @@ func (s *RemoteRuleSet) String() string {
 func (s *RemoteRuleSet) StartContext(ctx context.Context) error {
 	s.cacheFile = service.FromContext[adapter.CacheFile](s.ctx)
 	httpClientManager := service.FromContext[adapter.HTTPClientManager](s.ctx)
-	if httpClientManager == nil {
-		return E.New("missing http client manager in context")
-	}
 	transport, err := s.resolveTransport(httpClientManager)
 	if err != nil {
 		return E.Cause(err, "create rule-set http client")
 	}
+	s.httpTransport = transport
 	s.httpClient = &http.Client{Transport: transport}
 	if s.cacheFile != nil {
 		if savedSet := s.cacheFile.LoadRuleSet(s.options.Tag); savedSet != nil {
@@ -291,12 +290,12 @@ func (s *RemoteRuleSet) fetch(ctx context.Context) error {
 	return nil
 }
 
-func (s *RemoteRuleSet) resolveTransport(manager adapter.HTTPClientManager) (http.RoundTripper, error) {
+func (s *RemoteRuleSet) resolveTransport(manager adapter.HTTPClientManager) (adapter.HTTPTransport, error) {
 	if s.options.RemoteOptions.HTTPClient != nil && !s.options.RemoteOptions.HTTPClient.IsEmpty() {
 		if s.options.RemoteOptions.DownloadDetour != "" { //nolint:staticcheck
 			return nil, E.New("http_client is conflict with deprecated download_detour field")
 		}
-		return manager.ResolveTransport(s.logger, *s.options.RemoteOptions.HTTPClient)
+		return manager.ResolveTransport(s.ctx, s.logger, *s.options.RemoteOptions.HTTPClient)
 	}
 	if s.options.RemoteOptions.DownloadDetour != "" { //nolint:staticcheck
 		deprecated.Report(s.ctx, deprecated.OptionLegacyRuleSetDownloadDetour)
@@ -304,7 +303,7 @@ func (s *RemoteRuleSet) resolveTransport(manager adapter.HTTPClientManager) (htt
 		httpClientOptions.DialerOptions = option.DialerOptions{
 			Detour: s.options.RemoteOptions.DownloadDetour, //nolint:staticcheck
 		}
-		return manager.ResolveTransport(s.logger, httpClientOptions)
+		return manager.ResolveTransport(s.ctx, s.logger, httpClientOptions)
 	}
 	defaultTransport := manager.DefaultTransport()
 	if defaultTransport == nil {
@@ -319,8 +318,8 @@ func (s *RemoteRuleSet) Close() error {
 	if s.updateTicker != nil {
 		s.updateTicker.Stop()
 	}
-	if s.httpClient != nil {
-		s.httpClient.CloseIdleConnections()
+	if s.httpTransport != nil {
+		return s.httpTransport.Close()
 	}
 	return nil
 }

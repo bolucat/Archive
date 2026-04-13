@@ -472,7 +472,7 @@ func NewSTDServer(ctx context.Context, logger log.ContextLogger, options option.
 				tlsConfig.ClientAuth = tls.RequestClientCert
 			}
 			tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-				return verifyPublicKeySHA256(options.ClientCertificatePublicKeySHA256, rawCerts, tlsConfig.Time)
+				return VerifyPublicKeySHA256(options.ClientCertificatePublicKeySHA256, rawCerts)
 			}
 		} else {
 			return nil, E.New("missing client_certificate, client_certificate_path or client_certificate_public_key_sha256 for client authentication")

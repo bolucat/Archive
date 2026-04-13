@@ -62,6 +62,7 @@ type Service struct {
 	done              chan struct{}
 	timeFunc          func() time.Time
 	httpClient        *http.Client
+	httpTransport     adapter.HTTPTransport
 	storage           certmagic.Storage
 	storageIssuerKey  string
 	storageNamesKey   string
@@ -102,7 +103,7 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		requestedValidity = defaultRequestedValidity
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	httpClient, err := originCAHTTPClient(ctx, logger, options)
+	httpClient, httpTransport, err := originCAHTTPClient(ctx, logger, options)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -131,6 +132,7 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 		cancel:            cancel,
 		timeFunc:          timeFunc,
 		httpClient:        httpClient,
+		httpTransport:     httpTransport,
 		storage:           storage,
 		storageIssuerKey:  storageIssuerKey,
 		storageNamesKey:   storageNamesKey,
@@ -143,17 +145,14 @@ func NewCertificateProvider(ctx context.Context, logger log.ContextLogger, tag s
 	}, nil
 }
 
-func originCAHTTPClient(ctx context.Context, logger log.ContextLogger, options option.CloudflareOriginCACertificateProviderOptions) (*http.Client, error) {
+func originCAHTTPClient(ctx context.Context, logger log.ContextLogger, options option.CloudflareOriginCACertificateProviderOptions) (*http.Client, adapter.HTTPTransport, error) {
 	httpClientOptions := common.PtrValueOrDefault(options.HTTPClient)
 	httpClientManager := service.FromContext[adapter.HTTPClientManager](ctx)
-	if httpClientManager == nil {
-		return nil, E.New("missing http client manager in context")
-	}
-	transport, err := httpClientManager.ResolveTransport(logger, httpClientOptions)
+	transport, err := httpClientManager.ResolveTransport(ctx, logger, httpClientOptions)
 	if err != nil {
-		return nil, E.Cause(err, "create Cloudflare Origin CA http client")
+		return nil, nil, E.Cause(err, "create Cloudflare Origin CA http client")
 	}
-	return &http.Client{Transport: transport}, nil
+	return &http.Client{Transport: transport}, transport, nil
 }
 
 func (s *Service) Start(stage adapter.StartStage) error {
@@ -187,10 +186,7 @@ func (s *Service) Close() error {
 	if done := s.done; done != nil {
 		<-done
 	}
-	if transport, loaded := s.httpClient.Transport.(*http.Transport); loaded {
-		transport.CloseIdleConnections()
-	}
-	return nil
+	return s.httpTransport.Close()
 }
 
 func (s *Service) GetCertificate(_ *tls.ClientHelloInfo) (*tls.Certificate, error) {

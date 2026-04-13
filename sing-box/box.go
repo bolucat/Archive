@@ -173,9 +173,6 @@ func New(options Options) (*Box, error) {
 
 	var internalServices []adapter.LifecycleService
 	routeOptions := common.PtrValueOrDefault(options.Route)
-	httpClientManager := httpclient.NewManager(ctx, logFactory.NewLogger("httpclient"), options.HTTPClients, routeOptions.DefaultHTTPClient)
-	service.MustRegister[adapter.HTTPClientManager](ctx, httpClientManager)
-	httpClientService := adapter.LifecycleService(httpClientManager)
 	certificateOptions := common.PtrValueOrDefault(options.Certificate)
 	if C.IsAndroid || certificateOptions.Store != "" && certificateOptions.Store != C.CertificateStoreSystem ||
 		len(certificateOptions.Certificate) > 0 ||
@@ -214,6 +211,10 @@ func New(options Options) (*Box, error) {
 	service.MustRegister[adapter.NetworkManager](ctx, networkManager)
 	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"))
 	service.MustRegister[adapter.ConnectionManager](ctx, connectionManager)
+	// Must register after ConnectionManager: the Apple HTTP engine's proxy bridge reads it from the context when Manager.Start resolves the default client.
+	httpClientManager := httpclient.NewManager(ctx, logFactory.NewLogger("httpclient"), options.HTTPClients, routeOptions.DefaultHTTPClient)
+	service.MustRegister[adapter.HTTPClientManager](ctx, httpClientManager)
+	httpClientService := adapter.LifecycleService(httpClientManager)
 	router := route.NewRouter(ctx, logFactory, routeOptions, dnsOptions)
 	service.MustRegister[adapter.Router](ctx, router)
 	err = router.Initialize(routeOptions.Rules, routeOptions.RuleSet)
@@ -373,11 +374,11 @@ func New(options Options) (*Box, error) {
 			&option.LocalDNSServerOptions{},
 		)
 	})
-	httpClientManager.Initialize(func() (*httpclient.Client, error) {
+	httpClientManager.Initialize(func() (*httpclient.Transport, error) {
 		deprecated.Report(ctx, deprecated.OptionImplicitDefaultHTTPClient)
 		var httpClientOptions option.HTTPClientOptions
 		httpClientOptions.DefaultOutbound = true
-		return httpclient.NewClient(ctx, logFactory.NewLogger("httpclient"), "", httpClientOptions)
+		return httpclient.NewTransport(ctx, logFactory.NewLogger("httpclient"), "", httpClientOptions)
 	})
 	if platformInterface != nil {
 		err = platformInterface.Initialize(networkManager)

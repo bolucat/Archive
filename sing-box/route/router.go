@@ -43,6 +43,7 @@ type Router struct {
 	processCache      freelru.Cache[processCacheKey, processCacheEntry]
 	neighborResolver  adapter.NeighborResolver
 	pauseManager      pause.Manager
+	httpClientManager adapter.HTTPClientManager
 	trackers          []adapter.ConnectionTracker
 	platformInterface adapter.PlatformInterface
 	started           bool
@@ -97,6 +98,8 @@ func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) erro
 func (r *Router) Start(stage adapter.StartStage) error {
 	monitor := taskmonitor.New(r.logger, C.StartTimeout)
 	switch stage {
+	case adapter.StartStateInitialize:
+		r.httpClientManager = service.FromContext[adapter.HTTPClientManager](r.ctx)
 	case adapter.StartStateStart:
 		if len(r.ruleSets) > 0 {
 			monitor.Start("initialize rule-set")
@@ -275,5 +278,6 @@ func (r *Router) NeighborResolver() adapter.NeighborResolver {
 
 func (r *Router) ResetNetwork() {
 	r.network.ResetNetwork()
+	r.httpClientManager.ResetNetwork()
 	r.dns.ResetNetwork()
 }

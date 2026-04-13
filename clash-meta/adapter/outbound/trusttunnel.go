@@ -85,18 +85,18 @@ func (t *TrustTunnel) Close() error {
 func NewTrustTunnel(option TrustTunnelOption) (*TrustTunnel, error) {
 	addr := net.JoinHostPort(option.Server, strconv.Itoa(option.Port))
 	outbound := &TrustTunnel{
-		Base: &Base{
-			name:   option.Name,
-			addr:   addr,
-			tp:     C.TrustTunnel,
-			pdName: option.ProviderName,
-			udp:    option.UDP,
-			tfo:    option.TFO,
-			mpTcp:  option.MPTCP,
-			iface:  option.Interface,
-			rmark:  option.RoutingMark,
-			prefer: option.IPVersion,
-		},
+		Base: NewBase(BaseOption{
+			Name:         option.Name,
+			Addr:         addr,
+			Type:         C.TrustTunnel,
+			ProviderName: option.ProviderName,
+			UDP:          option.UDP,
+			TFO:          option.TFO,
+			MPTCP:        option.MPTCP,
+			Interface:    option.Interface,
+			RoutingMark:  option.RoutingMark,
+			Prefer:       option.IPVersion,
+		}),
 		option: &option,
 	}
 	outbound.dialer = option.NewDialer(outbound.DialOptions())

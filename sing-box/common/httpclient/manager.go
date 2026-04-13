@@ -2,7 +2,6 @@ package httpclient
 
 import (
 	"context"
-	"net/http"
 	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -22,11 +21,11 @@ type Manager struct {
 	logger                   log.ContextLogger
 	access                   sync.Mutex
 	defines                  map[string]option.HTTPClient
-	clients                  map[string]*Client
+	transports               map[string]*Transport
 	defaultTag               string
-	defaultTransport         http.RoundTripper
-	defaultTransportFallback func() (*Client, error)
-	fallbackClient           *Client
+	defaultTransport         adapter.HTTPTransport
+	defaultTransportFallback func() (*Transport, error)
+	fallbackTransport        *Transport
 }
 
 func NewManager(ctx context.Context, logger log.ContextLogger, clients []option.HTTPClient, defaultHTTPClient string) *Manager {
@@ -42,12 +41,12 @@ func NewManager(ctx context.Context, logger log.ContextLogger, clients []option.
 		ctx:        ctx,
 		logger:     logger,
 		defines:    defines,
-		clients:    make(map[string]*Client),
+		transports: make(map[string]*Transport),
 		defaultTag: defaultTag,
 	}
 }
 
-func (m *Manager) Initialize(defaultTransportFallback func() (*Client, error)) {
+func (m *Manager) Initialize(defaultTransportFallback func() (*Transport, error)) {
 	m.defaultTransportFallback = defaultTransportFallback
 }
 
@@ -66,21 +65,24 @@ func (m *Manager) Start(stage adapter.StartStage) error {
 		}
 		m.defaultTransport = transport
 	} else if m.defaultTransportFallback != nil {
-		client, err := m.defaultTransportFallback()
+		transport, err := m.defaultTransportFallback()
 		if err != nil {
 			return E.Cause(err, "create default http client")
 		}
-		m.defaultTransport = client
-		m.fallbackClient = client
+		m.defaultTransport = transport
+		m.fallbackTransport = transport
 	}
 	return nil
 }
 
-func (m *Manager) DefaultTransport() http.RoundTripper {
-	return m.defaultTransport
+func (m *Manager) DefaultTransport() adapter.HTTPTransport {
+	if m.defaultTransport == nil {
+		return nil
+	}
+	return &sharedTransport{m.defaultTransport}
 }
 
-func (m *Manager) ResolveTransport(logger logger.ContextLogger, options option.HTTPClientOptions) (http.RoundTripper, error) {
+func (m *Manager) ResolveTransport(ctx context.Context, logger logger.ContextLogger, options option.HTTPClientOptions) (adapter.HTTPTransport, error) {
 	if options.Tag != "" {
 		if options.ResolveOnDetour {
 			define, loaded := m.defines[options.Tag]
@@ -89,48 +91,74 @@ func (m *Manager) ResolveTransport(logger logger.ContextLogger, options option.H
 			}
 			resolvedOptions := define.Options()
 			resolvedOptions.ResolveOnDetour = true
-			return NewClient(m.ctx, logger, options.Tag, resolvedOptions)
+			return NewTransport(ctx, logger, options.Tag, resolvedOptions)
 		}
-		return m.resolveShared(options.Tag)
+		transport, err := m.resolveShared(options.Tag)
+		if err != nil {
+			return nil, err
+		}
+		return &sharedTransport{transport}, nil
 	}
-	return NewClient(m.ctx, logger, "", options)
+	return NewTransport(ctx, logger, "", options)
 }
 
-func (m *Manager) resolveShared(tag string) (http.RoundTripper, error) {
+func (m *Manager) resolveShared(tag string) (adapter.HTTPTransport, error) {
 	m.access.Lock()
 	defer m.access.Unlock()
-	if client, loaded := m.clients[tag]; loaded {
-		return client, nil
+	if transport, loaded := m.transports[tag]; loaded {
+		return transport, nil
 	}
 	define, loaded := m.defines[tag]
 	if !loaded {
 		return nil, E.New("http_client not found: ", tag)
 	}
-	client, err := NewClient(m.ctx, m.logger, tag, define.Options())
+	transport, err := NewTransport(m.ctx, m.logger, tag, define.Options())
 	if err != nil {
 		return nil, E.Cause(err, "create shared http_client[", tag, "]")
 	}
-	m.clients[tag] = client
-	return client, nil
+	m.transports[tag] = transport
+	return transport, nil
+}
+
+type sharedTransport struct {
+	adapter.HTTPTransport
+}
+
+func (t *sharedTransport) CloseIdleConnections() {
+}
+
+func (t *sharedTransport) Close() error {
+	return nil
+}
+
+func (m *Manager) ResetNetwork() {
+	m.access.Lock()
+	defer m.access.Unlock()
+	for _, transport := range m.transports {
+		transport.CloseIdleConnections()
+	}
+	if m.fallbackTransport != nil {
+		m.fallbackTransport.CloseIdleConnections()
+	}
 }
 
 func (m *Manager) Close() error {
 	m.access.Lock()
 	defer m.access.Unlock()
-	if m.clients == nil {
+	if m.transports == nil {
 		return nil
 	}
 	var err error
-	for _, client := range m.clients {
-		err = E.Append(err, client.Close(), func(err error) error {
+	for _, transport := range m.transports {
+		err = E.Append(err, transport.Close(), func(err error) error {
 			return E.Cause(err, "close http client")
 		})
 	}
-	if m.fallbackClient != nil {
-		err = E.Append(err, m.fallbackClient.Close(), func(err error) error {
+	if m.fallbackTransport != nil {
+		err = E.Append(err, m.fallbackTransport.Close(), func(err error) error {
 			return E.Cause(err, "close default http client")
 		})
 	}
-	m.clients = nil
+	m.transports = nil
 	return err
 }

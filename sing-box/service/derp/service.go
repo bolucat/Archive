@@ -20,7 +20,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	boxService "github.com/sagernet/sing-box/adapter/service"
 	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/httpclient"
 	"github.com/sagernet/sing-box/common/listener"
 	"github.com/sagernet/sing-box/common/tls"
 	C "github.com/sagernet/sing-box/constant"
@@ -59,19 +58,20 @@ func Register(registry *boxService.Registry) {
 
 type Service struct {
 	boxService.Adapter
-	ctx                  context.Context
-	logger               logger.ContextLogger
-	listener             *listener.Listener
-	stunListener         *listener.Listener
-	tlsConfig            tls.ServerConfig
-	server               *derpserver.Server
-	configPath           string
-	verifyClientEndpoint []string
-	verifyClientURL      []*option.DERPVerifyClientURLOptions
-	home                 string
-	meshKey              string
-	meshKeyPath          string
-	meshWith             []*option.DERPMeshOptions
+	ctx                    context.Context
+	logger                 logger.ContextLogger
+	listener               *listener.Listener
+	stunListener           *listener.Listener
+	tlsConfig              tls.ServerConfig
+	server                 *derpserver.Server
+	configPath             string
+	verifyClientEndpoint   []string
+	verifyClientURL        []*option.DERPVerifyClientURLOptions
+	home                   string
+	meshKey                string
+	meshKeyPath            string
+	meshWith               []*option.DERPMeshOptions
+	verifyClientTransports []adapter.HTTPTransport
 }
 
 func NewService(ctx context.Context, logger log.ContextLogger, tag string, options option.DERPServiceOptions) (adapter.Service, error) {
@@ -150,12 +150,16 @@ func (d *Service) Start(stage adapter.StartStage) error {
 		if len(d.verifyClientURL) > 0 {
 			var httpClients []*http.Client
 			var urls []string
+			httpClientManager := service.FromContext[adapter.HTTPClientManager](d.ctx)
 			for index, verifyOptions := range d.verifyClientURL {
-				client, createErr := httpclient.NewClient(d.ctx, d.logger, "", verifyOptions.HTTPClientOptions)
+				httpClientOptions := verifyOptions.HTTPClientOptions
+				httpClientOptions.Tag = ""
+				transport, createErr := httpClientManager.ResolveTransport(d.ctx, d.logger, httpClientOptions)
 				if createErr != nil {
 					return E.Cause(createErr, "verify_client_url[", index, "]")
 				}
-				httpClients = append(httpClients, &http.Client{Transport: client})
+				d.verifyClientTransports = append(d.verifyClientTransports, transport)
+				httpClients = append(httpClients, &http.Client{Transport: transport})
 				urls = append(urls, verifyOptions.URL)
 			}
 			server.SetVerifyClientHTTPClient(httpClients)
@@ -335,10 +339,16 @@ func (d *Service) startMeshWithHost(derpServer *derpserver.Server, server *optio
 }
 
 func (d *Service) Close() error {
-	return common.Close(
+	err := common.Close(
 		common.PtrOrNil(d.listener),
 		d.tlsConfig,
 	)
+	for _, transport := range d.verifyClientTransports {
+		err = E.Append(err, transport.Close(), func(err error) error {
+			return E.Cause(err, "close verify client transport")
+		})
+	}
+	return err
 }
 
 var homePage = `
