@@ -2,11 +2,17 @@ package adapter
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
+	"net/http"
+	"sync"
 	"time"
 
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-tun"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/common/ntp"
 	"github.com/sagernet/sing/common/x/list"
 
 	"go4.org/netipx"
@@ -45,7 +51,7 @@ type ConnectionRouterEx interface {
 
 type RuleSet interface {
 	Name() string
-	StartContext(ctx context.Context) error
+	StartContext(ctx context.Context, startContext *HTTPStartContext) error
 	PostStart() error
 	Metadata() RuleSetMetadata
 	ExtractIPSet() []*netipx.IPSet
@@ -70,4 +76,47 @@ type RuleSetMetadata struct {
 	ContainsWIFIRule         bool
 	ContainsIPCIDRRule       bool
 	ContainsDNSQueryTypeRule bool
+}
+type HTTPStartContext struct {
+	ctx             context.Context
+	access          sync.Mutex
+	httpClientCache map[string]*http.Client
+}
+
+func NewHTTPStartContext(ctx context.Context) *HTTPStartContext {
+	return &HTTPStartContext{
+		ctx:             ctx,
+		httpClientCache: make(map[string]*http.Client),
+	}
+}
+
+func (c *HTTPStartContext) HTTPClient(detour string, dialer N.Dialer) *http.Client {
+	c.access.Lock()
+	defer c.access.Unlock()
+	if httpClient, loaded := c.httpClientCache[detour]; loaded {
+		return httpClient
+	}
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			ForceAttemptHTTP2:   true,
+			TLSHandshakeTimeout: C.TCPTimeout,
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return dialer.DialContext(ctx, network, M.ParseSocksaddr(addr))
+			},
+			TLSClientConfig: &tls.Config{
+				Time:    ntp.TimeFuncFromContext(c.ctx),
+				RootCAs: RootPoolFromContext(c.ctx),
+			},
+		},
+	}
+	c.httpClientCache[detour] = httpClient
+	return httpClient
+}
+
+func (c *HTTPStartContext) Close() {
+	c.access.Lock()
+	defer c.access.Unlock()
+	for _, client := range c.httpClientCache {
+		client.CloseIdleConnections()
+	}
 }

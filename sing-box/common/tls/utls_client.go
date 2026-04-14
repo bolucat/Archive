@@ -28,10 +28,6 @@ import (
 type UTLSClientConfig struct {
 	ctx                   context.Context
 	config                *utls.Config
-	serverName            string
-	disableSNI            bool
-	verifyServerName      bool
-	handshakeTimeout      time.Duration
 	id                    utls.ClientHelloID
 	fragment              bool
 	fragmentFallbackDelay time.Duration
@@ -39,20 +35,10 @@ type UTLSClientConfig struct {
 }
 
 func (c *UTLSClientConfig) ServerName() string {
-	return c.serverName
+	return c.config.ServerName
 }
 
 func (c *UTLSClientConfig) SetServerName(serverName string) {
-	c.serverName = serverName
-	if c.disableSNI {
-		c.config.ServerName = ""
-		if c.verifyServerName {
-			c.config.InsecureServerNameToVerify = serverName
-		} else {
-			c.config.InsecureServerNameToVerify = ""
-		}
-		return
-	}
 	c.config.ServerName = serverName
 }
 
@@ -65,14 +51,6 @@ func (c *UTLSClientConfig) SetNextProtos(nextProto []string) {
 		nextProto = append(nextProto, "http/1.1")
 	}
 	c.config.NextProtos = nextProto
-}
-
-func (c *UTLSClientConfig) HandshakeTimeout() time.Duration {
-	return c.handshakeTimeout
-}
-
-func (c *UTLSClientConfig) SetHandshakeTimeout(timeout time.Duration) {
-	c.handshakeTimeout = timeout
 }
 
 func (c *UTLSClientConfig) STDConfig() (*STDConfig, error) {
@@ -91,20 +69,9 @@ func (c *UTLSClientConfig) SetSessionIDGenerator(generator func(clientHello []by
 }
 
 func (c *UTLSClientConfig) Clone() Config {
-	cloned := &UTLSClientConfig{
-		ctx:                   c.ctx,
-		config:                c.config.Clone(),
-		serverName:            c.serverName,
-		disableSNI:            c.disableSNI,
-		verifyServerName:      c.verifyServerName,
-		handshakeTimeout:      c.handshakeTimeout,
-		id:                    c.id,
-		fragment:              c.fragment,
-		fragmentFallbackDelay: c.fragmentFallbackDelay,
-		recordFragment:        c.recordFragment,
+	return &UTLSClientConfig{
+		c.ctx, c.config.Clone(), c.id, c.fragment, c.fragmentFallbackDelay, c.recordFragment,
 	}
-	cloned.SetServerName(cloned.serverName)
-	return cloned
 }
 
 func (c *UTLSClientConfig) ECHConfigList() []byte {
@@ -176,29 +143,29 @@ func (c *utlsALPNWrapper) HandshakeContext(ctx context.Context) error {
 }
 
 func NewUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
-	return newUTLSClient(ctx, logger, serverAddress, options, false)
-}
-
-func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions, allowEmptyServerName bool) (Config, error) {
 	var serverName string
 	if options.ServerName != "" {
 		serverName = options.ServerName
 	} else if serverAddress != "" {
 		serverName = serverAddress
 	}
-	if serverName == "" && !options.Insecure && !allowEmptyServerName {
-		return nil, errMissingServerName
+	if serverName == "" && !options.Insecure {
+		return nil, E.New("missing server_name or insecure=true")
 	}
 
 	var tlsConfig utls.Config
 	tlsConfig.Time = ntp.TimeFuncFromContext(ctx)
 	tlsConfig.RootCAs = adapter.RootPoolFromContext(ctx)
+	if !options.DisableSNI {
+		tlsConfig.ServerName = serverName
+	}
 	if options.Insecure {
 		tlsConfig.InsecureSkipVerify = options.Insecure
 	} else if options.DisableSNI {
 		if options.Reality != nil && options.Reality.Enabled {
 			return nil, E.New("disable_sni is unsupported in reality")
 		}
+		tlsConfig.InsecureServerNameToVerify = serverName
 	}
 	if len(options.CertificatePublicKeySHA256) > 0 {
 		if len(options.Certificate) > 0 || options.CertificatePath != "" {
@@ -206,7 +173,7 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 		}
 		tlsConfig.InsecureSkipVerify = true
 		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-			return VerifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts)
+			return verifyPublicKeySHA256(options.CertificatePublicKeySHA256, rawCerts, tlsConfig.Time)
 		}
 	}
 	if len(options.ALPN) > 0 {
@@ -284,29 +251,11 @@ func newUTLSClient(ctx context.Context, logger logger.ContextLogger, serverAddre
 	} else if len(clientCertificate) > 0 || len(clientKey) > 0 {
 		return nil, E.New("client certificate and client key must be provided together")
 	}
-	var handshakeTimeout time.Duration
-	if options.HandshakeTimeout > 0 {
-		handshakeTimeout = options.HandshakeTimeout.Build()
-	} else {
-		handshakeTimeout = C.TCPTimeout
-	}
 	id, err := uTLSClientHelloID(options.UTLS.Fingerprint)
 	if err != nil {
 		return nil, err
 	}
-	var config Config = &UTLSClientConfig{
-		ctx:                   ctx,
-		config:                &tlsConfig,
-		serverName:            serverName,
-		disableSNI:            options.DisableSNI,
-		verifyServerName:      options.DisableSNI && !options.Insecure,
-		handshakeTimeout:      handshakeTimeout,
-		id:                    id,
-		fragment:              options.Fragment,
-		fragmentFallbackDelay: time.Duration(options.FragmentFallbackDelay),
-		recordFragment:        options.RecordFragment,
-	}
-	config.SetServerName(serverName)
+	var config Config = &UTLSClientConfig{ctx, &tlsConfig, id, options.Fragment, time.Duration(options.FragmentFallbackDelay), options.RecordFragment}
 	if options.ECH != nil && options.ECH.Enabled {
 		if options.Reality != nil && options.Reality.Enabled {
 			return nil, E.New("Reality is conflict with ECH")

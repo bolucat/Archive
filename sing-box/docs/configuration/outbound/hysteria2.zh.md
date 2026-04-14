@@ -31,9 +31,6 @@
   "password": "goofy_ahh_password",
   "network": "tcp",
   "tls": {},
-
-  ... // QUIC 字段
-
   "bbr_profile": "",
   "brutal_debug": false,
 
@@ -124,10 +121,6 @@ QUIC 流量混淆器密码.
 ==必填==
 
 TLS 配置, 参阅 [TLS](/zh/configuration/shared/tls/#出站)。
-
-### QUIC 字段
-
-参阅 [QUIC 字段](/zh/configuration/shared/quic/) 了解详情。
 
 #### bbr_profile
 

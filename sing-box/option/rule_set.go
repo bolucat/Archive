@@ -122,10 +122,8 @@ type LocalRuleSet struct {
 
 type RemoteRuleSet struct {
 	URL            string             `json:"url"`
-	HTTPClient     *HTTPClientOptions `json:"http_client,omitempty"`
+	DownloadDetour string             `json:"download_detour,omitempty"`
 	UpdateInterval badoption.Duration `json:"update_interval,omitempty"`
-	// Deprecated: use http_client instead
-	DownloadDetour string `json:"download_detour,omitempty"`
 }
 
 type _HeadlessRule struct {

@@ -92,7 +92,6 @@ func getACMENextProtos(provider adapter.CertificateProvider) []string {
 type STDServerConfig struct {
 	access                sync.RWMutex
 	config                *tls.Config
-	handshakeTimeout      time.Duration
 	logger                log.Logger
 	certificateProvider   managedCertificateProvider
 	acmeService           adapter.SimpleLifecycle
@@ -140,18 +139,6 @@ func (c *STDServerConfig) SetNextProtos(nextProto []string) {
 	c.config = config
 }
 
-func (c *STDServerConfig) HandshakeTimeout() time.Duration {
-	c.access.RLock()
-	defer c.access.RUnlock()
-	return c.handshakeTimeout
-}
-
-func (c *STDServerConfig) SetHandshakeTimeout(timeout time.Duration) {
-	c.access.Lock()
-	defer c.access.Unlock()
-	c.handshakeTimeout = timeout
-}
-
 func (c *STDServerConfig) hasACMEALPN() bool {
 	if c.acmeService != nil {
 		return true
@@ -178,8 +165,7 @@ func (c *STDServerConfig) Server(conn net.Conn) (Conn, error) {
 
 func (c *STDServerConfig) Clone() Config {
 	return &STDServerConfig{
-		config:           c.config.Clone(),
-		handshakeTimeout: c.handshakeTimeout,
+		config: c.config.Clone(),
 	}
 }
 
@@ -472,7 +458,7 @@ func NewSTDServer(ctx context.Context, logger log.ContextLogger, options option.
 				tlsConfig.ClientAuth = tls.RequestClientCert
 			}
 			tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-				return VerifyPublicKeySHA256(options.ClientCertificatePublicKeySHA256, rawCerts)
+				return verifyPublicKeySHA256(options.ClientCertificatePublicKeySHA256, rawCerts, tlsConfig.Time)
 			}
 		} else {
 			return nil, E.New("missing client_certificate, client_certificate_path or client_certificate_public_key_sha256 for client authentication")
@@ -485,15 +471,8 @@ func NewSTDServer(ctx context.Context, logger log.ContextLogger, options option.
 			return nil, err
 		}
 	}
-	var handshakeTimeout time.Duration
-	if options.HandshakeTimeout > 0 {
-		handshakeTimeout = options.HandshakeTimeout.Build()
-	} else {
-		handshakeTimeout = C.TCPTimeout
-	}
 	serverConfig := &STDServerConfig{
 		config:                tlsConfig,
-		handshakeTimeout:      handshakeTimeout,
 		logger:                logger,
 		certificateProvider:   certificateProvider,
 		acmeService:           acmeService,

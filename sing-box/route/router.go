@@ -43,7 +43,6 @@ type Router struct {
 	processCache      freelru.Cache[processCacheKey, processCacheEntry]
 	neighborResolver  adapter.NeighborResolver
 	pauseManager      pause.Manager
-	httpClientManager adapter.HTTPClientManager
 	trackers          []adapter.ConnectionTracker
 	platformInterface adapter.PlatformInterface
 	started           bool
@@ -98,16 +97,16 @@ func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) erro
 func (r *Router) Start(stage adapter.StartStage) error {
 	monitor := taskmonitor.New(r.logger, C.StartTimeout)
 	switch stage {
-	case adapter.StartStateInitialize:
-		r.httpClientManager = service.FromContext[adapter.HTTPClientManager](r.ctx)
 	case adapter.StartStateStart:
+		var cacheContext *adapter.HTTPStartContext
 		if len(r.ruleSets) > 0 {
 			monitor.Start("initialize rule-set")
+			cacheContext = adapter.NewHTTPStartContext(r.ctx)
 			var ruleSetStartGroup task.Group
 			for i, ruleSet := range r.ruleSets {
 				ruleSetInPlace := ruleSet
 				ruleSetStartGroup.Append0(func(ctx context.Context) error {
-					err := ruleSetInPlace.StartContext(ctx)
+					err := ruleSetInPlace.StartContext(ctx, cacheContext)
 					if err != nil {
 						return E.Cause(err, "initialize rule-set[", i, "]")
 					}
@@ -121,6 +120,9 @@ func (r *Router) Start(stage adapter.StartStage) error {
 			if err != nil {
 				return err
 			}
+		}
+		if cacheContext != nil {
+			cacheContext.Close()
 		}
 		r.network.Initialize(r.ruleSets)
 		needFindProcess := r.needFindProcess
@@ -278,6 +280,5 @@ func (r *Router) NeighborResolver() adapter.NeighborResolver {
 
 func (r *Router) ResetNetwork() {
 	r.network.ResetNetwork()
-	r.httpClientManager.ResetNetwork()
 	r.dns.ResetNetwork()
 }

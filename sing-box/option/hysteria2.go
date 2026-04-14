@@ -18,7 +18,6 @@ type Hysteria2InboundOptions struct {
 	Users                 []Hysteria2User `json:"users,omitempty"`
 	IgnoreClientBandwidth bool            `json:"ignore_client_bandwidth,omitempty"`
 	InboundTLSOptionsContainer
-	QUICOptions
 	Masquerade  *Hysteria2Masquerade `json:"masquerade,omitempty"`
 	BBRProfile  string               `json:"bbr_profile,omitempty"`
 	BrutalDebug bool                 `json:"brutal_debug,omitempty"`
@@ -123,7 +122,6 @@ type Hysteria2OutboundOptions struct {
 	Password       string                     `json:"password,omitempty"`
 	Network        NetworkList                `json:"network,omitempty"`
 	OutboundTLSOptionsContainer
-	QUICOptions
 	BBRProfile  string `json:"bbr_profile,omitempty"`
 	BrutalDebug bool   `json:"brutal_debug,omitempty"`
 }

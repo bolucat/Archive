@@ -6,7 +6,7 @@ icon: material/new-box
 
     :material-plus: [account_key](#account_key)  
     :material-plus: [key_type](#key_type)  
-    :material-plus: [http_client](#http_client)
+    :material-plus: [detour](#detour)
 
 # ACME
 
@@ -37,7 +37,7 @@ icon: material/new-box
   },
   "dns01_challenge": {},
   "key_type": "",
-  "http_client": "" // 或 {}
+  "detour": ""
 }
 ```
 
@@ -136,12 +136,10 @@ ACME DNS01 质询字段。如果配置，将禁用其他质询方法。
 | `rsa2048` | RSA     |
 | `rsa4096` | RSA     |
 
-#### http_client
+#### detour
 
 !!! question "自 sing-box 1.14.0 起"
 
-用于所有提供者 HTTP 请求的 HTTP 客户端。
-
-参阅 [HTTP 客户端字段](/zh/configuration/shared/http-client/) 了解详情。
+上游出站的标签。
 
 所有提供者 HTTP 请求将使用此出站。

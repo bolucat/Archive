@@ -10,7 +10,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
 	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/proxybridge"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -35,7 +34,7 @@ type Outbound struct {
 	outbound.Adapter
 	ctx         context.Context
 	logger      logger.ContextLogger
-	proxy       *proxybridge.Bridge
+	proxy       *ProxyListener
 	startConf   *tor.StartConf
 	options     map[string]string
 	events      chan control.Event
@@ -80,15 +79,11 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, err
 	}
-	proxy, err := proxybridge.New(ctx, logger, "proxy", outboundDialer)
-	if err != nil {
-		return nil, err
-	}
 	return &Outbound{
 		Adapter:   outbound.NewAdapterWithDialerOptions(C.TypeTor, tag, []string{N.NetworkTCP}, options.DialerOptions),
 		ctx:       ctx,
 		logger:    logger,
-		proxy:     proxy,
+		proxy:     NewProxyListener(ctx, logger, outboundDialer),
 		startConf: &startConf,
 		options:   options.Options,
 	}, nil
@@ -122,6 +117,10 @@ func (t *Outbound) start() error {
 		return err
 	}
 	go t.recvLoop()
+	err = t.proxy.Start()
+	if err != nil {
+		return err
+	}
 	proxyPort := "127.0.0.1:" + F.ToString(t.proxy.Port())
 	proxyUsername := t.proxy.Username()
 	proxyPassword := t.proxy.Password()

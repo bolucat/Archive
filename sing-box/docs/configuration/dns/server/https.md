@@ -2,10 +2,6 @@
 icon: material/new-box
 ---
 
-!!! quote "Changes in sing-box 1.14.0"
-
-    :material-alert: `headers`, `tls`, Dial Fields moved to [HTTP Client Fields](#http-client-fields)
-
 !!! question "Since sing-box 1.12.0"
 
 # DNS over HTTPS (DoH)
@@ -19,19 +15,26 @@ icon: material/new-box
       {
         "type": "https",
         "tag": "",
-
+        
         "server": "",
-        "server_port": 0,
-
+        "server_port": 443,
+        
         "path": "",
-        "method": "",
-
-        ... // HTTP Client Fields
+        "headers": {},
+        
+        "tls": {},
+        
+        // Dial Fields
       }
     ]
   }
 }
 ```
+
+!!! info "Difference from legacy HTTPS server"
+
+    * The old server uses default outbound by default unless detour is specified; the new one uses dialer just like outbound, which is equivalent to using an empty direct outbound by default.
+    * The old server uses `address_resolver` and `address_strategy` to resolve the domain name in the server; the new one uses `domain_resolver` and `domain_strategy` in [Dial Fields](/configuration/shared/dial/) instead.
 
 ### Fields
 
@@ -55,14 +58,14 @@ The path of the DNS server.
 
 `/dns-query` will be used by default.
 
-#### method
+#### headers
 
-HTTP request method.
+Additional headers to be sent to the DNS server.
 
-Available values: `GET`, `POST`.
+#### tls
 
-`POST` will be used by default.
+TLS configuration, see [TLS](/configuration/shared/tls/#outbound).
 
-### HTTP Client Fields
+### Dial Fields
 
-See [HTTP Client Fields](/configuration/shared/http-client/) for details.
+See [Dial Fields](/configuration/shared/dial/) for details.

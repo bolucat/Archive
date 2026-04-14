@@ -20,7 +20,7 @@ func (f *fakeRuleSet) Name() string {
 	return "fake-rule-set"
 }
 
-func (f *fakeRuleSet) StartContext(context.Context) error {
+func (f *fakeRuleSet) StartContext(context.Context, *adapter.HTTPStartContext) error {
 	return nil
 }
 

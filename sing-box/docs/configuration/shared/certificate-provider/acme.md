@@ -6,7 +6,7 @@ icon: material/new-box
 
     :material-plus: [account_key](#account_key)  
     :material-plus: [key_type](#key_type)  
-    :material-plus: [http_client](#http_client)
+    :material-plus: [detour](#detour)
 
 # ACME
 
@@ -37,7 +37,7 @@ icon: material/new-box
   },
   "dns01_challenge": {},
   "key_type": "",
-  "http_client": "" // or {}
+  "detour": ""
 }
 ```
 
@@ -141,10 +141,10 @@ The private key type to generate for new certificates.
 | `rsa2048`  | RSA     |
 | `rsa4096`  | RSA     |
 
-#### http_client
+#### detour
 
 !!! question "Since sing-box 1.14.0"
 
-HTTP Client for all provider HTTP requests.
+The tag of the upstream outbound.
 
-See [HTTP Client Fields](/configuration/shared/http-client/) for details.
+All provider HTTP requests will use this outbound.

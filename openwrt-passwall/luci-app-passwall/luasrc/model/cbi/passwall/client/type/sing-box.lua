@@ -379,8 +379,14 @@ if singbox_tags:find("with_quic") then
 end
 
 -- [[ SSH config start ]] --
-o = s:option(Value, _n("ssh_priv_key"), translate("Private Key"))
+o = s:option(TextValue, _n("ssh_priv_key"), translate("Private Key"))
+o.rows = 5
+o.wrap = "off"
 o:depends({ [_n("protocol")] = "ssh" })
+o.validate = function(self, value)
+	value = api.trim(value):gsub("\r\n", "\n"):gsub("[ \t]*\n[ \t]*", "\n"):gsub("\n+", "\n")
+	return value
+end
 
 o = s:option(Value, _n("ssh_priv_key_pp"), translate("Private Key Passphrase"))
 o.password = true
@@ -472,11 +478,7 @@ o.rows = 5
 o.wrap = "off"
 o:depends({ [_n("ech")] = true })
 o.validate = function(self, value)
-	value = value:gsub("^%s+", ""):gsub("%s+$","\n"):gsub("\r\n","\n"):gsub("[ \t]*\n[ \t]*", "\n")
-	value = value:gsub("^%s*\n", "")
-	if value:sub(-1) == "\n" then  
-		value = value:sub(1, -2)  
-	end
+	value = api.trim(value):gsub("\r\n", "\n"):gsub("[ \t]*\n[ \t]*", "\n"):gsub("\n+", "\n")
 	return value
 end
 

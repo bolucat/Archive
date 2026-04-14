@@ -31,9 +31,6 @@
   "password": "goofy_ahh_password",
   "network": "tcp",
   "tls": {},
-
-  ... // QUIC Fields
-
   "bbr_profile": "",
   "brutal_debug": false,
 
@@ -126,10 +123,6 @@ Both is enabled by default.
 ==Required==
 
 TLS configuration, see [TLS](/configuration/shared/tls/#outbound).
-
-### QUIC Fields
-
-See [QUIC Fields](/configuration/shared/quic/) for details.
 
 #### bbr_profile
 
