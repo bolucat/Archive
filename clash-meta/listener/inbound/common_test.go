@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/common/pool"
@@ -185,6 +186,11 @@ func NewHttpTestTunnel() *TestTunnel {
 			DialContext: func(context.Context, string, string) (net.Conn, error) {
 				return instance, nil
 			},
+			// from http.DefaultTransport
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
 			// for our self-signed cert
 			TLSClientConfig: tlsClientConfig.Clone(),
 			// open http2
@@ -192,6 +198,7 @@ func NewHttpTestTunnel() *TestTunnel {
 		}
 
 		client := http.Client{
+			Timeout:   30 * time.Second,
 			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse

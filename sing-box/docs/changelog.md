@@ -4,13 +4,13 @@ icon: material/alert-decagram
 
 #### 1.14.0-alpha.12
 
-* Fix fake-ip DNS server should return SUCCESS when another address type is not configured
+* Fix fake-ip DNS server should return SUCCESS when address type is not configured
 * Fixes and improvements
 
 #### 1.13.8
 
 * Update naiveproxy to v147.0.7727.49-1
-* Fix fake-ip DNS server should return SUCCESS when another address type is not configured
+* Fix fake-ip DNS server should return SUCCESS when address type is not configured
 * Fixes and improvements
 
 #### 1.14.0-alpha.11

@@ -1316,6 +1316,15 @@
   </data>
   <data name="TbSettingsLinuxSudoPasswordTip" xml:space="preserve">
     <value>Le mot de passe sera vérifié en ligne de commande. En cas d’échec ou de dysfonctionnement, redémarrez l’application. Il n’est pas stocké et doit être saisi à chaque redémarrage.</value>
+    </data>
+  <data name="TbSettingsSendThrough" xml:space="preserve">
+    <value>Adresse sortante locale (SendThrough)</value>
+  </data>
+  <data name="TbSettingsSendThroughTip" xml:space="preserve">
+    <value>Pour environnement multi-interfaces, veuillez saisir l’adresse IPv4 de la machine locale.</value>
+  </data>
+  <data name="FillCorrectSendThroughIPv4" xml:space="preserve">
+    <value>Veuillez saisir l’adresse IPv4 correcte de SendThrough.</value>
   </data>
   <data name="TransportHeaderTypeTip5" xml:space="preserve">
     <value>*Mode XHTTP</value>
@@ -1621,49 +1630,49 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
     <value>Finalmask</value>
   </data>
   <data name="MsgRoutingRuleOutboundNodeWarning" xml:space="preserve">
-    <value>Routing rule {0} outbound node {1} warning: {2}</value>
+    <value>Règle de routage {0} nœud sortant {1} avertissement: {2}</value>
   </data>
   <data name="MsgRoutingRuleOutboundNodeError" xml:space="preserve">
-    <value>Routing rule {0} outbound node {1} error: {2}. Fallback to proxy node only.</value>
+    <value>Règle {0} nœud VPN sortant {1} erreur : {2}. Repli nœud proxy uniquement.</value>
   </data>
   <data name="MsgGroupCycleDependency" xml:space="preserve">
-    <value>Group {0} has a cycle dependency on child node {1}. Skipping this node.</value>
+    <value>Le groupe {0} a une dépendance cyclique avec le nœud enfant {1}. Nœud ignoré.</value>
   </data>
   <data name="MsgGroupChildNodeWarning" xml:space="preserve">
-    <value>Group {0} child node {1} warning: {2}</value>
+    <value>Groupe {0} nœud enfant {1} avertissement : {2}</value>
   </data>
   <data name="MsgGroupChildNodeError" xml:space="preserve">
-    <value>Group {0} child node {1} error: {2}. Skipping this node.</value>
+    <value>Groupe {0} nœud enfant {1} erreur : {2}. Nœud ignoré.</value>
   </data>
   <data name="MsgGroupChildGroupNodeWarning" xml:space="preserve">
-    <value>Group {0} child group node {1} warning: {2}</value>
+    <value>Groupe {0} nœud enfant groupe {1} avertissement: {2}</value>
   </data>
   <data name="MsgGroupChildGroupNodeError" xml:space="preserve">
-    <value>Group {0} child group node {1} error: {2}. Skipping this node.</value>
+    <value>Groupe {0} nœud groupe enfant {1} erreur: {2}. Nœud ignoré.</value>
   </data>
   <data name="MsgGroupNoValidChildNode" xml:space="preserve">
-    <value>Group {0} has no valid child node.</value>
+    <value>Groupe {0} n’a aucun nœud enfant valide.</value>
   </data>
   <data name="MsgRoutingRuleEmptyOutboundTag" xml:space="preserve">
-    <value>Routing rule {0} has an empty outbound tag. Fallback to proxy node only.</value>
+    <value>Règle de routage {0} tag sortant vide. Replié sur le nœud proxy uniquement.</value>
   </data>
   <data name="MsgRoutingRuleOutboundNodeNotFound" xml:space="preserve">
-    <value>Routing rule {0} outbound node {1} not found. Fallback to proxy node only.</value>
+    <value>Règle de routage {0} nœud sortant {1} introuvable. Repli sur le seul nœud proxy.</value>
   </data>
   <data name="MsgSubscriptionPrevProfileNotFound" xml:space="preserve">
-    <value>Subscription previous proxy {0} not found. Skipping.</value>
+    <value>Nœud proxy précédent de l’abonnement {0} introuvable. Ignoré.</value>
   </data>
   <data name="MsgSubscriptionNextProfileNotFound" xml:space="preserve">
-    <value>Subscription next proxy {0} not found. Skipping.</value>
+    <value>Nœud proxy suivant de l’abonnement {0} introuvable. Ignoré.</value>
   </data>
   <data name="menuGenGroupServer" xml:space="preserve">
-    <value>Generate Policy Group</value>
+    <value>Générer groupe de stratégie</value>
   </data>
   <data name="menuAllServers" xml:space="preserve">
-    <value>All configurations</value>
+    <value>Toutes configurations</value>
   </data>
   <data name="menuGenRegionGroup" xml:space="preserve">
-    <value>Group by Region</value>
+    <value>Grouper par région</value>
   </data>
   <data name="menuEditCopy" xml:space="preserve">
     <value>Copier</value>
@@ -1672,7 +1681,7 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
     <value>Tout sélect</value>
   </data>
   <data name="menuEditPaste" xml:space="preserve">
-    <value>Paste</value>
+    <value>Coller</value>
   </data>
   <data name="menuEditFormat" xml:space="preserve">
     <value>Format</value>
@@ -1687,15 +1696,15 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
     <value>Insecure Concurrency</value>
   </data>
   <data name="TbUsername" xml:space="preserve">
-    <value>Username</value>
+    <value>Nom d’utilisateur</value>
   </data>
   <data name="TbIcmpRoutingPolicy" xml:space="preserve">
-    <value>ICMP routing policy</value>
+    <value>Politique de routage ICMP</value>
   </data>
   <data name="TbLegacyProtect" xml:space="preserve">
-    <value>Legacy TUN Protect</value>
+    <value>Protection TUN héritée</value>
   </data>
   <data name="TbSettingsSendThroughTip" xml:space="preserve">
-    <value>For multi-interface environments, enter the local machine's IPv4 address</value>
+    <value>Pour environnements multi-interfaces, entrez l’adresse IPv4 de la machine locale.</value>
   </data>
 </root>

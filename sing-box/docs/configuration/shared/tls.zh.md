@@ -5,6 +5,9 @@ icon: material/new-box
 !!! quote "sing-box 1.14.0 中的更改"
 
     :material-plus: [certificate_provider](#certificate_provider)  
+    :material-plus: [handshake_timeout](#handshake_timeout)  
+    :material-plus: [spoof](#spoof)  
+    :material-plus: [spoof_method](#spoof_method)  
     :material-delete-clock: [acme](#acme-字段)
 
 !!! quote "sing-box 1.13.0 中的更改"
@@ -54,6 +57,7 @@ icon: material/new-box
   "key_path": "",
   "kernel_tx": false,
   "kernel_rx": false,
+  "handshake_timeout": "",
   "certificate_provider": "",
 
   // 废弃的
@@ -106,6 +110,7 @@ icon: material/new-box
 ```json
 {
   "enabled": true,
+  "engine": "",
   "disable_sni": false,
   "server_name": "",
   "insecure": false,
@@ -124,6 +129,11 @@ icon: material/new-box
   "fragment": false,
   "fragment_fallback_delay": "",
   "record_fragment": false,
+  "spoof": "",
+  "spoof_method": "",
+  "kernel_tx": false,
+  "kernel_rx": false,
+  "handshake_timeout": "",
   "ech": {
     "enabled": false,
     "config": [],
@@ -182,6 +192,48 @@ TLS 版本值：
 #### enabled
 
 启用 TLS
+
+#### engine
+
+==仅客户端==
+
+要使用的 TLS 引擎。
+
+可用值：
+
+* `go`（默认）
+* `apple`
+
+`apple` 使用 Network.framework，仅在 Apple 平台可用，且仅支持 **直接** TCP TLS 客户端连接。
+
+!!! warning ""
+
+    仅供实验用途：由于 CGO 和 Network.framework 占用的内存都很多，
+    不应在 iOS 和 tvOS 的热路径中使用。
+    如果您想规避基于 TLS 指纹的代理审查，应使用 [NaiveProxy](/zh/configuration/outbound/naive/)。
+
+支持的字段：
+
+* `server_name`
+* `insecure`
+* `alpn`
+* `min_version`
+* `max_version`
+* `certificate` / `certificate_path`
+* `certificate_public_key_sha256`
+* `handshake_timeout`
+
+不支持的字段：
+
+* `disable_sni`
+* `cipher_suites`
+* `curve_preferences`
+* `client_certificate` / `client_certificate_path` / `client_key` / `client_key_path`
+* `fragment` / `record_fragment`
+* `kernel_tx` / `kernel_rx`
+* `ech`
+* `utls`
+* `reality`
 
 #### disable_sni
 
@@ -416,6 +468,14 @@ echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/
 
 启用内核 TLS 接收支持。
 
+#### handshake_timeout
+
+!!! question "自 sing-box 1.14.0 起"
+
+TLS 握手超时，采用 golang 的 Duration 格式。
+
+默认使用 `15s`。
+
 #### certificate_provider
 
 !!! question "自 sing-box 1.14.0 起"
@@ -579,6 +639,39 @@ ECH 配置路径，PEM 格式。
 ==仅客户端==
 
 将 TLS 握手分段为多个 TLS 记录以绕过防火墙。
+
+#### spoof
+
+!!! question "自 sing-box 1.14.0 起"
+
+==仅客户端，仅 Linux/macOS/Windows，需要提权==
+
+在真实 ClientHello 之前注入一个伪造的、携带白名单 SNI 的 TLS ClientHello，
+以欺骗基于 SNI 过滤的中间盒放行连接。
+
+伪造报文是真实 ClientHello 的副本，仅将 SNI 值替换为本字段的值，
+因此 TLS 指纹无法区分伪造与真实报文。真实服务器会丢弃伪造报文（见 `spoof_method`），
+而中间盒将该连接视为合法会话。
+
+需要原始套接字权限（Linux 上需 `CAP_NET_RAW`，macOS 上需 root）；
+在 Linux 上还需 `CAP_NET_ADMIN`，因为需要通过 `TCP_REPAIR` 读取发送序列号。
+Windows 上首次使用时需要 Administrator 以安装内嵌的 WinDivert 内核驱动，
+不支持 Windows ARM64。
+
+#### spoof_method
+
+!!! question "自 sing-box 1.14.0 起"
+
+==仅客户端==
+
+控制伪造报文被真实服务器拒绝的方式。
+
+| 取值                       | 行为                                           |
+|----------------------------|------------------------------------------------|
+| `wrong-sequence`（默认）   | 伪造报文的 TCP 序列号位于服务器接收窗口之前。 |
+| `wrong-checksum`           | 伪造报文的 TCP 校验和被故意设为无效。         |
+
+与 `spoof` 未设置冲突。
 
 ### ACME 字段
 

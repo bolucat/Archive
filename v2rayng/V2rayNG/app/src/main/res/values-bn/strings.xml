@@ -186,8 +186,11 @@
     <string name="title_pref_fake_dns_enabled">ভুয়া DNS সক্রিয় করুন</string>
     <string name="summary_pref_fake_dns_enabled">স্থানীয় DNS মিথ্যা আইপি ঠিকানা ফেরত দেয় (দ্রুত, তবে এটি কিছু অ্যাপের জন্য কাজ নাও করতে পারে)</string>
 
+    <string name="title_pref_ipv6_enabled">IPv6 সক্রিয় করুন</string>
+    <string name="summary_pref_ipv6_enabled">VPN ইন্টারফেসে IPv6 ঠিকানা এবং রুট যোগ করুন</string>
+
     <string name="title_pref_prefer_ipv6">IPv6 অগ্রাধিকার দিন</string>
-    <string name="summary_pref_prefer_ipv6">IPv6 ঠিকানা এবং রুটকে অগ্রাধিকার দিন</string>
+    <string name="summary_pref_prefer_ipv6">ডোমেইন নাম রেজোলিউশনে IPv6 ঠিকানাকে অগ্রাধিকার দিন</string>
 
     <string name="title_pref_remote_dns">রিমোট DNS (udp/tcp/https/quic)(ঐচ্ছিক)</string>
     <string name="summary_pref_remote_dns">DNS</string>
@@ -316,7 +319,7 @@
     <!-- RoutingSettingActivity -->
     <string name="routing_settings_domain_strategy">ডোমেইন কৌশল</string>
     <string name="routing_settings_title">রাউটিং সেটিংস</string>
-    <string name="routing_settings_tips">কমা (,) দ্বারা আলাদা করুন, মনে রাখবেন সেভ করতে</string>
+    <string name="routing_settings_tips">কমা (,) দিয়ে আলাদা করুন। domain, ip বা process-এ একটি নির্বাচন করুন</string>
     <string name="routing_settings_save">সেভ করুন</string>
     <string name="routing_settings_delete">মুছে ফেলুন</string>
     <string name="routing_settings_rule_title">Routing Rule Settings</string>
