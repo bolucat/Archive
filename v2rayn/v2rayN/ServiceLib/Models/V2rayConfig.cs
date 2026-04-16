@@ -47,9 +47,9 @@ public class Inbounds4Ray
 {
     public string tag { get; set; }
 
-    public int port { get; set; }
+    public int? port { get; set; }
 
-    public string listen { get; set; }
+    public string? listen { get; set; }
 
     public string protocol { get; set; }
 
@@ -75,6 +75,18 @@ public class Inboundsettings4Ray
     public bool? allowTransparent { get; set; }
 
     public List<AccountsItem4Ray>? accounts { get; set; }
+
+    public string? name { get; set; }
+
+    public int? MTU { get; set; }
+
+    public List<string>? gateway { get; set; }
+
+    public List<string>? autoSystemRoutingTable { get; set; }
+
+    public string? autoOutboundsInterface { get; set; }
+
+    // public List<string>? dns { get; set; }
 }
 
 public class UsersItem4Ray
@@ -319,7 +331,7 @@ public class StreamSettings4Ray
 
     public TlsSettings4Ray? tlsSettings { get; set; }
 
-    public TcpSettings4Ray? tcpSettings { get; set; }
+    public RawSettings4Ray? rawSettings { get; set; }
 
     public KcpSettings4Ray? kcpSettings { get; set; }
 
@@ -373,7 +385,7 @@ public class CertificateSettings4Ray
     public string? usage { get; set; }
 }
 
-public class TcpSettings4Ray
+public class RawSettings4Ray
 {
     public Header4Ray header { get; set; }
 }
@@ -511,6 +523,8 @@ public class AccountsItem4Ray
 public class Sockopt4Ray
 {
     public string? dialerProxy { get; set; }
+    [JsonPropertyName("interface")]
+    public string? Interface { get; set; }
 }
 
 public class FragmentItem4Ray

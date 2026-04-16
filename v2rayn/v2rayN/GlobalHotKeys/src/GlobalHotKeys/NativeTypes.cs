@@ -28,33 +28,32 @@ public struct WNDCLASSEX
 {
     public uint cbSize;
     public uint style;
-    public IntPtr lpfnWndProc;
+    public WndProc lpfnWndProc;
     public int cbClsExtra;
     public int cbWndExtra;
     public IntPtr hInstance;
     public IntPtr hIcon;
     public IntPtr hCursor;
     public IntPtr hbrBackground;
-    public IntPtr lpszMenuName;
-    public IntPtr lpszClassName;
+    public string? lpszMenuName;
+    public string lpszClassName;
     public IntPtr hIconSm;
 
-    public static WNDCLASSEX FromWndProc(WndProc wndProc, out IntPtr classNamePtr)
+    public static WNDCLASSEX FromWndProc(WndProc wndProc)
     {
-        classNamePtr = Marshal.StringToHGlobalUni("GlobalHotKeyWindowClass_" + Guid.NewGuid().ToString());
         return new WNDCLASSEX
         {
             cbSize = (uint)Marshal.SizeOf(typeof(WNDCLASSEX)),
             style = 0,
-            lpfnWndProc = Marshal.GetFunctionPointerForDelegate(wndProc),
+            lpfnWndProc = wndProc,
             cbClsExtra = 0,
             cbWndExtra = 0,
             hInstance = NativeFunctions.GetModuleHandle(null),
             hIcon = IntPtr.Zero,
             hCursor = IntPtr.Zero,
             hbrBackground = IntPtr.Zero,
-            lpszMenuName = IntPtr.Zero,
-            lpszClassName = classNamePtr,
+            lpszMenuName = null,
+            lpszClassName = "GlobalHotKeyWindowClass_" + Guid.NewGuid().ToString(),
             hIconSm = IntPtr.Zero
         };
     }
