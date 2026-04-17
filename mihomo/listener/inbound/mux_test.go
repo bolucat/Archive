@@ -29,9 +29,8 @@ func testSingMux(t *testing.T, tunnel *TestTunnel, out outbound.ProxyAdapter) {
 			protocol := protocol
 			t.Run(protocol, func(t *testing.T) {
 				singMuxOption := outbound.SingMuxOption{
-					Enabled:    true,
-					Protocol:   protocol,
-					TCPTimeout: 30, // set a timeout value that is slightly larger than the default
+					Enabled:  true,
+					Protocol: protocol,
 				}
 				out, err := outbound.NewSingMux(singMuxOption, &notCloseProxyAdapter{out})
 				if !assert.NoError(t, err) {

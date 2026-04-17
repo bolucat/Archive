@@ -2,6 +2,81 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.13
+
+* Unify HTTP client **1**
+* Add Apple HTTP and TLS engines **2**
+* Unify HTTP/2 and QUIC parameters **3**
+* Add TLS spoof **4**
+* Fixes and improvements
+
+**1**:
+
+The new top-level [`http_clients`](/configuration/shared/http-client/)
+option defines reusable HTTP clients (engine, version, dialer, TLS,
+HTTP/2 and QUIC parameters). Components that make outbound HTTP requests
+— remote rule-sets, ACME and Cloudflare Origin CA certificate providers,
+DERP `verify_client_url`, and the Tailscale `control_http_client` — now
+accept an inline HTTP client object or the tag of an `http_clients`
+entry, replacing the dial and TLS fields previously inlined in each
+component. When the field is omitted, ACME, Cloudflare Origin CA, DERP
+and Tailscale dial direct (their existing default).
+
+Remote rule-sets are the only HTTP-using component whose default for an
+omitted `http_client` has historically resolved to the default outbound,
+not to direct, and a typical configuration contains many of them. To
+avoid repeating the same `http_client` block in every rule-set,
+[`route.default_http_client`](/configuration/route/#default_http_client)
+selects a default rule-set client by tag and is the only field that
+consults it. If `default_http_client` is empty and `http_clients` is
+non-empty, the first entry is used automatically. The legacy fallback
+(use the default outbound when `http_clients` is empty altogether) is
+preserved with a deprecation warning and will be removed in sing-box
+1.16.0, together with the legacy `download_detour` remote rule-set
+option and the legacy dialer fields on Tailscale endpoints.
+
+**2**:
+
+A new `apple` engine is available on Apple platforms in two independent
+places:
+
+* [HTTP client `engine`](/configuration/shared/http-client/#engine) —
+  routes HTTP requests through `NSURLSession`.
+* Outbound TLS [`engine`](/configuration/shared/tls/#engine) — routes
+  the TLS handshake through `Network.framework` for direct TCP TLS
+  client connections.
+
+The default remains `go`. Both engines come with additional CGO and
+framework memory overhead and platform restrictions documented on each
+field.
+
+**3**:
+
+[HTTP/2](/configuration/shared/http2/) and
+[QUIC](/configuration/shared/quic/) parameters
+(`idle_timeout`, `keep_alive_period`, `stream_receive_window`,
+`connection_receive_window`, `max_concurrent_streams`,
+`initial_packet_size`, `disable_path_mtu_discovery`) are now shared
+across QUIC-based outbounds
+([Hysteria](/configuration/outbound/hysteria/),
+[Hysteria2](/configuration/outbound/hysteria2/),
+[TUIC](/configuration/outbound/tuic/)) and HTTP clients running HTTP/2
+or HTTP/3.
+
+This deprecates the Hysteria v1 tuning fields `recv_window_conn`,
+`recv_window`, `recv_window_client`, `max_conn_client` and
+`disable_mtu_discovery`; they will be removed in sing-box 1.16.0.
+
+**4**:
+
+Added outbound TLS [`spoof`](/configuration/shared/tls/#spoof) and
+[`spoof_method`](/configuration/shared/tls/#spoof_method) fields. When
+enabled, a forged ClientHello carrying a whitelisted SNI is sent before
+the real handshake to fool SNI-filtering middleboxes. Requires
+`CAP_NET_RAW` + `CAP_NET_ADMIN` or root on Linux and macOS, and
+Administrator privileges on Windows (ARM64 is not supported). IP-literal
+server names are rejected.
+
 #### 1.14.0-alpha.12
 
 * Fix fake-ip DNS server should return SUCCESS when address type is not configured

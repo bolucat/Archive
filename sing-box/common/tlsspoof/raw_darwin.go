@@ -9,6 +9,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/sagernet/sing-tun/gtcpip/header"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	"golang.org/x/sys/unix"
@@ -34,14 +35,26 @@ const (
 	darwinXtcpcbRcvNxtOffset = 80
 )
 
-var darwinStructSize = sync.OnceValue(func() int {
-	value, _ := syscall.Sysctl("kern.osrelease")
-	major, _, _ := strings.Cut(value, ".")
-	n, _ := strconv.ParseInt(major, 10, 64)
-	if n >= 22 {
-		return 408
+// darwinStructSize returns the size of xinpcb_n for the running Darwin kernel.
+// Darwin 22 (macOS 13 Ventura) grew the struct from 384 to 408 bytes; there is
+// no ABI-stable way to read it, so we key off the kernel version.
+var darwinStructSize = sync.OnceValues(func() (int, error) {
+	value, err := syscall.Sysctl("kern.osrelease")
+	if err != nil {
+		return 0, E.Cause(err, "sysctl kern.osrelease")
 	}
-	return 384
+	major, _, ok := strings.Cut(value, ".")
+	if !ok {
+		return 0, E.New("unexpected kern.osrelease format: ", value)
+	}
+	n, err := strconv.ParseInt(major, 10, 64)
+	if err != nil {
+		return 0, E.Cause(err, "parse kern.osrelease major version: ", value)
+	}
+	if n >= 22 {
+		return 408, nil
+	}
+	return 384, nil
 })
 
 type darwinSpoofer struct {
@@ -59,7 +72,7 @@ func newRawSpoofer(conn net.Conn, method Method) (Spoofer, error) {
 	if err != nil {
 		return nil, err
 	}
-	fd, sockaddr, err := openDarwinRawSocket(dst)
+	fd, sockaddr, err := openDarwinRawSocket(src, dst)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +100,10 @@ func readDarwinTCPSequence(src, dst netip.AddrPort) (uint32, uint32, error) {
 	if err != nil {
 		return 0, 0, E.Cause(err, "sysctl net.inet.tcp.pcblist_n")
 	}
-	structSize := darwinStructSize()
+	structSize, err := darwinStructSize()
+	if err != nil {
+		return 0, 0, err
+	}
 	itemSize := structSize + darwinTCPExtraSize
 	for i := darwinXinpgenSize; i+itemSize <= len(buffer); i += itemSize {
 		inpcb := buffer[i : i+darwinXsocketOffset]
@@ -119,31 +135,50 @@ func readDarwinTCPSequence(src, dst netip.AddrPort) (uint32, uint32, error) {
 	return 0, 0, E.New("tls_spoof: connection ", src, "->", dst, " not found in pcblist_n")
 }
 
-func openDarwinRawSocket(dst netip.AddrPort) (int, unix.Sockaddr, error) {
-	if !dst.Addr().Is4() {
-		// macOS does not expose IPV6_HDRINCL; raw AF_INET6 injection would
-		// require either BPF link-layer writes or kernel-side IPv6 header
-		// synthesis, neither of which is implemented here.
-		return -1, nil, E.New("tls_spoof: IPv6 not supported on darwin")
+func openDarwinRawSocket(src, dst netip.AddrPort) (int, unix.Sockaddr, error) {
+	if dst.Addr().Is4() {
+		return openIPv4RawSocket(dst)
 	}
-	return openIPv4RawSocket(dst)
+	// macOS does not accept IPV6_HDRINCL on AF_INET6 SOCK_RAW IPPROTO_TCP
+	// sockets, so the kernel builds the IPv6 header itself. Bind to the real
+	// connection's source address so in6_selectsrc returns it, and rely on
+	// in6p_cksum defaulting to -1 so the user-supplied TCP checksum is
+	// preserved (including deliberately corrupted ones).
+	fd, err := unix.Socket(unix.AF_INET6, unix.SOCK_RAW, unix.IPPROTO_TCP)
+	if err != nil {
+		return -1, nil, E.Cause(err, "open AF_INET6 SOCK_RAW")
+	}
+	err = unix.Bind(fd, &unix.SockaddrInet6{Addr: src.Addr().As16()})
+	if err != nil {
+		unix.Close(fd)
+		return -1, nil, E.Cause(err, "bind AF_INET6 SOCK_RAW")
+	}
+	sockaddr := &unix.SockaddrInet6{Port: int(dst.Port()), Addr: dst.Addr().As16()}
+	return fd, sockaddr, nil
 }
 
 func (s *darwinSpoofer) Inject(payload []byte) error {
+	if !s.src.Addr().Is4() {
+		segment, err := buildSpoofTCPSegment(s.method, s.src, s.dst, s.sendNext, s.receiveNext, payload)
+		if err != nil {
+			return err
+		}
+		err = unix.Sendto(s.rawFD, segment, 0, s.rawSockAddr)
+		if err != nil {
+			return E.Cause(err, "sendto raw socket")
+		}
+		return nil
+	}
 	frame, err := buildSpoofFrame(s.method, s.src, s.dst, s.sendNext, s.receiveNext, payload)
 	if err != nil {
 		return err
 	}
 	// Darwin inherits the historical BSD quirk: with IP_HDRINCL the kernel
 	// expects ip_len and ip_off in host byte order, not network byte order.
-	// Apple's rip_output swaps them back before transmission. This does not
-	// apply to IPv6.
-	if s.src.Addr().Is4() {
-		totalLen := binary.BigEndian.Uint16(frame[2:4])
-		binary.NativeEndian.PutUint16(frame[2:4], totalLen)
-		fragOff := binary.BigEndian.Uint16(frame[6:8])
-		binary.NativeEndian.PutUint16(frame[6:8], fragOff)
-	}
+	// Apple's rip_output swaps them back before transmission.
+	ip := header.IPv4(frame)
+	ip.SetTotalLengthDarwinRaw(ip.TotalLength())
+	ip.SetFlagsFragmentOffsetDarwinRaw(ip.Flags(), ip.FragmentOffset())
 	err = unix.Sendto(s.rawFD, frame, 0, s.rawSockAddr)
 	if err != nil {
 		return E.Cause(err, "sendto raw socket")

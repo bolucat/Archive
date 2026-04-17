@@ -102,20 +102,7 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 		return nil, err
 	}
 
-	var state C.box_apple_tls_state_t
-	stateOK := C.box_apple_tls_client_copy_state(client, &state, &errorPtr)
-	if !bool(stateOK) {
-		C.box_apple_tls_client_cancel(client)
-		C.box_apple_tls_client_free(client)
-		if errorPtr != nil {
-			defer C.free(unsafe.Pointer(errorPtr))
-			return nil, E.New(C.GoString(errorPtr))
-		}
-		return nil, E.New("apple TLS: read metadata")
-	}
-	defer C.box_apple_tls_state_free(&state)
-
-	connectionState, rawCerts, err := parseAppleTLSState(&state)
+	connectionState, rawCerts, err := copyAppleTLSConnectionState(client)
 	if err != nil {
 		C.box_apple_tls_client_cancel(client)
 		C.box_apple_tls_client_free(client)
@@ -139,6 +126,23 @@ func (c *appleClientConfig) ClientHandshake(ctx context.Context, conn net.Conn) 
 }
 
 const appleTLSHandshakePollInterval = 100 * time.Millisecond
+
+func copyAppleTLSConnectionState(client *C.box_apple_tls_client_t) (tls.ConnectionState, [][]byte, error) {
+	var (
+		state    C.box_apple_tls_state_t
+		errorPtr *C.char
+	)
+	stateOK := C.box_apple_tls_client_copy_state(client, &state, &errorPtr)
+	if !bool(stateOK) {
+		if errorPtr != nil {
+			defer C.free(unsafe.Pointer(errorPtr))
+			return tls.ConnectionState{}, nil, E.New(C.GoString(errorPtr))
+		}
+		return tls.ConnectionState{}, nil, E.New("apple TLS: read metadata")
+	}
+	defer C.box_apple_tls_state_free(&state)
+	return parseAppleTLSState(&state)
+}
 
 func waitAppleTLSClientReady(ctx context.Context, client *C.box_apple_tls_client_t) error {
 	for {
