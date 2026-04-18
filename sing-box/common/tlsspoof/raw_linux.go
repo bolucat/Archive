@@ -29,7 +29,7 @@ type linuxSpoofer struct {
 	receiveNext uint32
 }
 
-func newRawSpoofer(conn net.Conn, method Method) (Spoofer, error) {
+func newRawSpoofer(conn net.Conn, method Method) (rawSpoofer, error) {
 	tcpConn, src, dst, err := tcpEndpoints(conn)
 	if err != nil {
 		return nil, err

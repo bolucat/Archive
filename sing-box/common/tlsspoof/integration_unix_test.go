@@ -15,7 +15,7 @@ import (
 func TestIntegrationSpoofer_WrongChecksum(t *testing.T) {
 	requireRoot(t)
 	client, serverPort := dialLocalEchoServer(t)
-	spoofer, err := NewSpoofer(client, MethodWrongChecksum)
+	spoofer, err := newRawSpoofer(client, MethodWrongChecksum)
 	require.NoError(t, err)
 	defer spoofer.Close()
 
@@ -31,7 +31,7 @@ func TestIntegrationSpoofer_WrongChecksum(t *testing.T) {
 func TestIntegrationSpoofer_WrongSequence(t *testing.T) {
 	requireRoot(t)
 	client, serverPort := dialLocalEchoServer(t)
-	spoofer, err := NewSpoofer(client, MethodWrongSequence)
+	spoofer, err := newRawSpoofer(client, MethodWrongSequence)
 	require.NoError(t, err)
 	defer spoofer.Close()
 
@@ -47,7 +47,7 @@ func TestIntegrationSpoofer_WrongSequence(t *testing.T) {
 func TestIntegrationSpoofer_IPv6_WrongChecksum(t *testing.T) {
 	requireRoot(t)
 	client, serverPort := dialLocalEchoServerIPv6(t)
-	spoofer, err := NewSpoofer(client, MethodWrongChecksum)
+	spoofer, err := newRawSpoofer(client, MethodWrongChecksum)
 	require.NoError(t, err)
 	defer spoofer.Close()
 
@@ -63,7 +63,7 @@ func TestIntegrationSpoofer_IPv6_WrongChecksum(t *testing.T) {
 func TestIntegrationSpoofer_IPv6_WrongSequence(t *testing.T) {
 	requireRoot(t)
 	client, serverPort := dialLocalEchoServerIPv6(t)
-	spoofer, err := NewSpoofer(client, MethodWrongSequence)
+	spoofer, err := newRawSpoofer(client, MethodWrongSequence)
 	require.NoError(t, err)
 	defer spoofer.Close()
 
@@ -130,9 +130,7 @@ func runFakeAndRealHaveDistinctSNIs(t *testing.T, network, address, fakeSNI stri
 		listener.Close()
 	})
 
-	spoofer, err := NewSpoofer(client, MethodWrongSequence)
-	require.NoError(t, err)
-	wrapped, err := NewConn(client, spoofer, fakeSNI)
+	wrapped, err := NewConn(client, MethodWrongSequence, fakeSNI)
 	require.NoError(t, err)
 
 	payload, err := hex.DecodeString(realClientHello)
@@ -185,9 +183,7 @@ func runInjectsThenForwardsRealCH(t *testing.T, network, address string) {
 		listener.Close()
 	})
 
-	spoofer, err := NewSpoofer(client, MethodWrongSequence)
-	require.NoError(t, err)
-	wrapped, err := NewConn(client, spoofer, "letsencrypt.org")
+	wrapped, err := NewConn(client, MethodWrongSequence, "letsencrypt.org")
 	require.NoError(t, err)
 
 	payload, err := hex.DecodeString(realClientHello)

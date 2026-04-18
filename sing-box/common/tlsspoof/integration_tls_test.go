@@ -86,9 +86,7 @@ func TestIntegrationConn_RealTLSHandshake(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { raw.Close() })
 
-	spoofer, err := NewSpoofer(raw, MethodWrongSequence)
-	require.NoError(t, err)
-	wrapped, err := NewConn(raw, spoofer, fakeSNI)
+	wrapped, err := NewConn(raw, MethodWrongSequence, fakeSNI)
 	require.NoError(t, err)
 
 	clientConfig := &tls.Config{

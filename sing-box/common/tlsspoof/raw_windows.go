@@ -41,7 +41,7 @@ type windowsSpoofer struct {
 	runErr    atomic.Pointer[error]
 }
 
-func newRawSpoofer(conn net.Conn, method Method) (Spoofer, error) {
+func newRawSpoofer(conn net.Conn, method Method) (rawSpoofer, error) {
 	_, src, dst, err := tcpEndpoints(conn)
 	if err != nil {
 		return nil, err

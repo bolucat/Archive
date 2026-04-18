@@ -48,16 +48,7 @@ func applyTLSSpoof(conn net.Conn, spoof string, method tlsspoof.Method) (net.Con
 	if spoof == "" {
 		return conn, nil
 	}
-	spoofer, err := tlsspoof.NewSpoofer(conn, method)
-	if err != nil {
-		return nil, err
-	}
-	spoofConn, err := tlsspoof.NewConn(conn, spoofer, spoof)
-	if err != nil {
-		spoofer.Close()
-		return nil, err
-	}
-	return spoofConn, nil
+	return tlsspoof.NewConn(conn, method, spoof)
 }
 
 func NewDialerFromOptions(ctx context.Context, logger logger.ContextLogger, dialer N.Dialer, serverAddress string, options option.OutboundTLSOptions) (N.Dialer, error) {

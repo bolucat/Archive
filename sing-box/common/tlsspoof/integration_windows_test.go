@@ -12,11 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newSpoofer(t *testing.T, conn net.Conn, method Method) Spoofer {
+func newSpoofer(t *testing.T, conn net.Conn, method Method) rawSpoofer {
 	t.Helper()
-	spoofer, err := NewSpoofer(conn, method)
+	s, err := newRawSpoofer(conn, method)
 	require.NoError(t, err)
-	return spoofer
+	return s
 }
 
 // Basic lifecycle: opening a spoofer against a live TCP conn installs
@@ -71,8 +71,7 @@ func TestIntegrationConnInjectsThenForwardsRealCH(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { client.Close() })
 
-	spoofer := newSpoofer(t, client, MethodWrongSequence)
-	wrapped, err := NewConn(client, spoofer, "letsencrypt.org")
+	wrapped, err := NewConn(client, MethodWrongSequence, "letsencrypt.org")
 	require.NoError(t, err)
 
 	payload, err := hex.DecodeString(realClientHello)
@@ -94,7 +93,7 @@ func TestIntegrationConnInjectsThenForwardsRealCH(t *testing.T) {
 
 // Inject before any kernel payload: stages the fake, then Write flushes
 // the real CH. Same terminal expectation as the Conn variant but via the
-// Spoofer primitive directly.
+// raw spoofer primitive directly.
 func TestIntegrationSpooferInjectThenWrite(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)

@@ -113,83 +113,44 @@ static void box_set_error_from_nw_error(char **error_out, nw_error_t error) {
 	CFRelease(cfError);
 }
 
-static bool box_apple_tls_metadata_load_owned_string(
-	sec_protocol_metadata_t metadata,
-	const char *copy_symbol,
-	const char *get_symbol,
-	box_sec_protocol_metadata_string_accessor_f *copy_fn,
-	box_sec_protocol_metadata_string_accessor_f *get_fn,
-	dispatch_once_t *once_token,
-	char **value_out,
-	char **error_out
-) {
-	dispatch_once(once_token, ^{
-		*copy_fn = (box_sec_protocol_metadata_string_accessor_f)dlsym(RTLD_DEFAULT, copy_symbol);
-		*get_fn = (box_sec_protocol_metadata_string_accessor_f)dlsym(RTLD_DEFAULT, get_symbol);
+static char *box_apple_tls_metadata_copy_negotiated_protocol(sec_protocol_metadata_t metadata) {
+	static box_sec_protocol_metadata_string_accessor_f copy_fn;
+	static box_sec_protocol_metadata_string_accessor_f get_fn;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		copy_fn = (box_sec_protocol_metadata_string_accessor_f)dlsym(RTLD_DEFAULT, "sec_protocol_metadata_copy_negotiated_protocol");
+		get_fn = (box_sec_protocol_metadata_string_accessor_f)dlsym(RTLD_DEFAULT, "sec_protocol_metadata_get_negotiated_protocol");
 	});
-	if (*copy_fn != NULL) {
-		const char *value = (*copy_fn)(metadata);
-		if (value == NULL) {
-			*value_out = NULL;
-			return true;
-		}
-		char *owned = strdup(value);
-		free((void *)value);
-		if (owned == NULL) {
-			box_set_error_message(error_out, "apple TLS: out of memory");
-			return false;
-		}
-		*value_out = owned;
-		return true;
+	if (copy_fn != NULL) {
+		return (char *)copy_fn(metadata);
 	}
-	if (*get_fn != NULL) {
-		const char *value = (*get_fn)(metadata);
-		if (value == NULL) {
-			*value_out = NULL;
-			return true;
+	if (get_fn != NULL) {
+		const char *protocol = get_fn(metadata);
+		if (protocol != NULL) {
+			return strdup(protocol);
 		}
-		char *owned = strdup(value);
-		if (owned == NULL) {
-			box_set_error_message(error_out, "apple TLS: out of memory");
-			return false;
-		}
-		*value_out = owned;
-		return true;
 	}
-	*value_out = NULL;
-	return true;
+	return NULL;
 }
 
-static bool box_apple_tls_metadata_load_negotiated_protocol(sec_protocol_metadata_t metadata, char **value_out, char **error_out) {
+static char *box_apple_tls_metadata_copy_server_name(sec_protocol_metadata_t metadata) {
 	static box_sec_protocol_metadata_string_accessor_f copy_fn;
 	static box_sec_protocol_metadata_string_accessor_f get_fn;
 	static dispatch_once_t onceToken;
-	return box_apple_tls_metadata_load_owned_string(
-		metadata,
-		"sec_protocol_metadata_copy_negotiated_protocol",
-		"sec_protocol_metadata_get_negotiated_protocol",
-		&copy_fn,
-		&get_fn,
-		&onceToken,
-		value_out,
-		error_out
-	);
-}
-
-static bool box_apple_tls_metadata_load_server_name(sec_protocol_metadata_t metadata, char **value_out, char **error_out) {
-	static box_sec_protocol_metadata_string_accessor_f copy_fn;
-	static box_sec_protocol_metadata_string_accessor_f get_fn;
-	static dispatch_once_t onceToken;
-	return box_apple_tls_metadata_load_owned_string(
-		metadata,
-		"sec_protocol_metadata_copy_server_name",
-		"sec_protocol_metadata_get_server_name",
-		&copy_fn,
-		&get_fn,
-		&onceToken,
-		value_out,
-		error_out
-	);
+	dispatch_once(&onceToken, ^{
+		copy_fn = (box_sec_protocol_metadata_string_accessor_f)dlsym(RTLD_DEFAULT, "sec_protocol_metadata_copy_server_name");
+		get_fn = (box_sec_protocol_metadata_string_accessor_f)dlsym(RTLD_DEFAULT, "sec_protocol_metadata_get_server_name");
+	});
+	if (copy_fn != NULL) {
+		return (char *)copy_fn(metadata);
+	}
+	if (get_fn != NULL) {
+		const char *server_name = get_fn(metadata);
+		if (server_name != NULL) {
+			return strdup(server_name);
+		}
+	}
+	return NULL;
 }
 
 static NSArray<NSString *> *box_split_lines(const char *content, size_t content_len) {
@@ -293,64 +254,6 @@ static nw_connection_t box_apple_tls_create_connection(int connected_socket, nw_
 	return create_fn(connected_socket, parameters);
 }
 
-static bool box_apple_tls_state_load_sec_metadata(sec_protocol_metadata_t sec_metadata, box_apple_tls_state_t *state, char **error_out) {
-	box_apple_tls_state_reset(state);
-	if (sec_metadata == NULL) {
-		box_set_error_message(error_out, "apple TLS: metadata unavailable");
-		return false;
-	}
-	state->version = (uint16_t)sec_protocol_metadata_get_negotiated_tls_protocol_version(sec_metadata);
-	state->cipher_suite = (uint16_t)sec_protocol_metadata_get_negotiated_tls_ciphersuite(sec_metadata);
-	if (!box_apple_tls_metadata_load_negotiated_protocol(sec_metadata, &state->alpn, error_out)) {
-		box_apple_tls_state_reset(state);
-		return false;
-	}
-	if (!box_apple_tls_metadata_load_server_name(sec_metadata, &state->server_name, error_out)) {
-		box_apple_tls_state_reset(state);
-		return false;
-	}
-
-	NSMutableData *chain_data = [NSMutableData data];
-	sec_protocol_metadata_access_peer_certificate_chain(sec_metadata, ^(sec_certificate_t certificate) {
-		SecCertificateRef certificate_ref = sec_certificate_copy_ref(certificate);
-		if (certificate_ref == NULL) {
-			return;
-		}
-		CFDataRef certificate_data = SecCertificateCopyData(certificate_ref);
-		CFRelease(certificate_ref);
-		if (certificate_data == NULL) {
-			return;
-		}
-		uint32_t certificate_len = (uint32_t)CFDataGetLength(certificate_data);
-		uint32_t network_len = htonl(certificate_len);
-		[chain_data appendBytes:&network_len length:sizeof(network_len)];
-		[chain_data appendBytes:CFDataGetBytePtr(certificate_data) length:certificate_len];
-		CFRelease(certificate_data);
-	});
-	if (chain_data.length > 0) {
-		state->peer_cert_chain = malloc(chain_data.length);
-		if (state->peer_cert_chain == NULL) {
-			box_set_error_message(error_out, "apple TLS: out of memory");
-			box_apple_tls_state_reset(state);
-			return false;
-		}
-		memcpy(state->peer_cert_chain, chain_data.bytes, chain_data.length);
-		state->peer_cert_chain_len = chain_data.length;
-	}
-	return true;
-}
-
-static bool box_apple_tls_client_capture_state(box_apple_tls_client_t *client, sec_protocol_metadata_t metadata, char **error_out) {
-	box_apple_tls_state_t loaded_state = {0};
-	if (!box_apple_tls_state_load_sec_metadata(metadata, &loaded_state, error_out)) {
-		return false;
-	}
-	box_apple_tls_state_reset(&client->state);
-	client->state = loaded_state;
-	memset(&loaded_state, 0, sizeof(box_apple_tls_state_t));
-	return true;
-}
-
 static bool box_apple_tls_state_copy(const box_apple_tls_state_t *source, box_apple_tls_state_t *destination) {
 	memset(destination, 0, sizeof(box_apple_tls_state_t));
 	destination->version = source->version;
@@ -380,6 +283,41 @@ static bool box_apple_tls_state_copy(const box_apple_tls_state_t *source, box_ap
 oom:
 	box_apple_tls_state_reset(destination);
 	return false;
+}
+
+// Captures TLS negotiation results from the verify block. The sec_metadata
+// exposed here is live for the duration of the handshake; the one retrieved
+// after nw_connection_state_ready may return stale ALPN/server_name buffers.
+static void box_apple_tls_state_load(sec_protocol_metadata_t sec_metadata, box_apple_tls_state_t *state) {
+	state->version = (uint16_t)sec_protocol_metadata_get_negotiated_tls_protocol_version(sec_metadata);
+	state->cipher_suite = (uint16_t)sec_protocol_metadata_get_negotiated_tls_ciphersuite(sec_metadata);
+	state->alpn = box_apple_tls_metadata_copy_negotiated_protocol(sec_metadata);
+	state->server_name = box_apple_tls_metadata_copy_server_name(sec_metadata);
+
+	NSMutableData *chain_data = [NSMutableData data];
+	sec_protocol_metadata_access_peer_certificate_chain(sec_metadata, ^(sec_certificate_t certificate) {
+		SecCertificateRef certificate_ref = sec_certificate_copy_ref(certificate);
+		if (certificate_ref == NULL) {
+			return;
+		}
+		CFDataRef certificate_data = SecCertificateCopyData(certificate_ref);
+		CFRelease(certificate_ref);
+		if (certificate_data == NULL) {
+			return;
+		}
+		uint32_t certificate_len = (uint32_t)CFDataGetLength(certificate_data);
+		uint32_t network_len = htonl(certificate_len);
+		[chain_data appendBytes:&network_len length:sizeof(network_len)];
+		[chain_data appendBytes:CFDataGetBytePtr(certificate_data) length:certificate_len];
+		CFRelease(certificate_data);
+	});
+	if (chain_data.length > 0) {
+		state->peer_cert_chain = malloc(chain_data.length);
+		if (state->peer_cert_chain != NULL) {
+			memcpy(state->peer_cert_chain, chain_data.bytes, chain_data.length);
+			state->peer_cert_chain_len = chain_data.length;
+		}
+	}
 }
 
 box_apple_tls_client_t *box_apple_tls_client_create(
@@ -431,17 +369,10 @@ box_apple_tls_client_t *box_apple_tls_client_create(
 		}
 		sec_protocol_options_set_peer_authentication_required(sec_options, !insecure);
 		sec_protocol_options_set_verify_block(sec_options, ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
-			if (client->ready_error == NULL) {
-				char *local_error = NULL;
-				if (!box_apple_tls_client_capture_state(client, metadata, &local_error)) {
-					client->ready_error = local_error;
-				}
+			if (client->state.version == 0) {
+				box_apple_tls_state_load(metadata, &client->state);
 			}
-			if (insecure) {
-				complete(true);
-				return;
-			}
-			complete(box_evaluate_trust(trust, anchors, anchor_only, verifyDate));
+			complete(insecure || box_evaluate_trust(trust, anchors, anchor_only, verifyDate));
 		}, box_apple_tls_client_queue(client));
 	}, NW_PARAMETERS_DEFAULT_CONFIGURATION);
 
@@ -466,11 +397,11 @@ box_apple_tls_client_t *box_apple_tls_client_create(
 		switch (state) {
 		case nw_connection_state_ready:
 			if (!atomic_load(&client->ready_done)) {
-				bool state_loaded = client->state.version != 0;
-				if (!state_loaded && client->ready_error == NULL) {
+				if (client->state.version == 0) {
 					box_set_error_message(&client->ready_error, "apple TLS: metadata unavailable");
+				} else {
+					atomic_store(&client->ready, true);
 				}
-				atomic_store(&client->ready, state_loaded);
 				atomic_store(&client->ready_done, true);
 				dispatch_semaphore_signal(box_apple_tls_ready_semaphore(client));
 			}

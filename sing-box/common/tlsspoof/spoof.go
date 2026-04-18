@@ -40,23 +40,32 @@ func (m Method) String() string {
 	}
 }
 
-type Spoofer interface {
+type rawSpoofer interface {
 	Inject(payload []byte) error
 	Close() error
 }
 
-func NewSpoofer(conn net.Conn, method Method) (Spoofer, error) {
-	return newRawSpoofer(conn, method)
-}
-
 type Conn struct {
 	net.Conn
-	spoofer   Spoofer
+	spoofer   rawSpoofer
 	fakeHello []byte
 	injected  bool
 }
 
-func NewConn(conn net.Conn, spoofer Spoofer, fakeSNI string) (*Conn, error) {
+func NewConn(conn net.Conn, method Method, fakeSNI string) (*Conn, error) {
+	spoofer, err := newRawSpoofer(conn, method)
+	if err != nil {
+		return nil, err
+	}
+	result, err := newConn(conn, spoofer, fakeSNI)
+	if err != nil {
+		spoofer.Close()
+		return nil, err
+	}
+	return result, nil
+}
+
+func newConn(conn net.Conn, spoofer rawSpoofer, fakeSNI string) (*Conn, error) {
 	fakeHello, err := buildFakeClientHello(fakeSNI)
 	if err != nil {
 		return nil, E.Cause(err, "tls_spoof: build fake ClientHello")
@@ -88,7 +97,7 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 
 func (c *Conn) Close() error {
 	return E.Append(c.Conn.Close(), c.spoofer.Close(), func(e error) error {
-		return E.Cause(e, "close spoofer")
+		return E.Cause(e, "tls_spoof: close spoofer")
 	})
 }
 

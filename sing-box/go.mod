@@ -37,7 +37,7 @@ require (
 	github.com/sagernet/gomobile v0.1.12
 	github.com/sagernet/gvisor v0.0.0-20250811.0-sing-box-mod.1
 	github.com/sagernet/quic-go v0.59.0-sing-box-mod.4
-	github.com/sagernet/sing v0.8.7-0.20260416084641-60846c117dd8
+	github.com/sagernet/sing v0.8.7-0.20260417135631-0d22698ed386
 	github.com/sagernet/sing-cloudflared v0.0.0-20260416083718-efa6ab16dba9
 	github.com/sagernet/sing-mux v0.3.4
 	github.com/sagernet/sing-quic v0.6.2-0.20260412143638-8f65b6be7cd6

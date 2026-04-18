@@ -58,7 +58,7 @@ func TestConn_Write_InjectsThenForwards(t *testing.T) {
 
 	client, server := net.Pipe()
 	spoofer := &fakeSpoofer{}
-	wrapped, err := NewConn(client, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(client, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	serverRead := make(chan []byte, 1)
@@ -87,7 +87,7 @@ func TestConn_Write_SecondWriteDoesNotInject(t *testing.T) {
 
 	client, server := net.Pipe()
 	spoofer := &fakeSpoofer{}
-	wrapped, err := NewConn(client, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(client, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	serverRead := make(chan []byte, 1)
@@ -115,7 +115,7 @@ func TestConn_Write_SurfacesCloseError(t *testing.T) {
 	defer client.Close()
 	defer server.Close()
 	spoofer := &fakeSpoofer{closeErr: errSpoofClose}
-	wrapped, err := NewConn(client, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(client, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	go func() { _, _ = io.ReadAll(server) }()
@@ -130,7 +130,7 @@ func TestConn_NewConn_RejectsEmptySNI(t *testing.T) {
 	client, server := net.Pipe()
 	defer client.Close()
 	defer server.Close()
-	_, err := NewConn(client, &fakeSpoofer{}, "")
+	_, err := newConn(client, &fakeSpoofer{}, "")
 	require.Error(t, err, "empty SNI must fail at construction")
 }
 
@@ -195,7 +195,7 @@ func TestConn_StackedWithRecordFragment(t *testing.T) {
 
 	fragConn := tf.NewConn(client, context.Background(), false, true, time.Millisecond)
 	spoofer := &fakeSpoofer{}
-	wrapped, err := NewConn(fragConn, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(fragConn, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	serverRead := make(chan []byte, 1)
@@ -238,7 +238,7 @@ func TestConn_StackedWithPacketFragment(t *testing.T) {
 	rc := &recordingConn{Conn: client}
 	fragConn := tf.NewConn(rc, context.Background(), true, false, time.Millisecond)
 	spoofer := &fakeSpoofer{}
-	wrapped, err := NewConn(fragConn, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(fragConn, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	serverRead := make(chan []byte, 1)
@@ -273,7 +273,7 @@ func TestConn_StackedWithBothFragment(t *testing.T) {
 	rc := &recordingConn{Conn: client}
 	fragConn := tf.NewConn(rc, context.Background(), true, true, time.Millisecond)
 	spoofer := &fakeSpoofer{}
-	wrapped, err := NewConn(fragConn, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(fragConn, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	serverRead := make(chan []byte, 1)
@@ -330,7 +330,7 @@ func TestConn_StackedInjectionOrder(t *testing.T) {
 	rc := &recordingConn{Conn: client, timeline: &timeline}
 	fragConn := tf.NewConn(rc, context.Background(), true, true, time.Millisecond)
 	spoofer := &trackingSpoofer{timeline: &timeline}
-	wrapped, err := NewConn(fragConn, spoofer, "letsencrypt.org")
+	wrapped, err := newConn(fragConn, spoofer, "letsencrypt.org")
 	require.NoError(t, err)
 
 	serverRead := make(chan []byte, 1)
