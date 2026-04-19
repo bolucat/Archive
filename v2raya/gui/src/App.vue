@@ -57,6 +57,13 @@
           <i class="iconfont icon-info" style="font-size: 1.25em"></i>
           {{ $t("common.log") }}
         </b-navbar-item>
+        <b-navbar-item tag="a" @click.native="toggleTheme">
+          <i
+            :class="themePreference === 'auto' ? 'mdi mdi-theme-light-dark' : (isDarkTheme ? 'mdi mdi-weather-sunny' : 'mdi mdi-weather-night')"
+            style="font-size: 1.25em"
+          ></i>
+          {{ themeSwitchLabel }}
+        </b-navbar-item>
         <b-dropdown position="is-bottom-left" aria-role="menu" class="langdropdown">
           <a slot="trigger" class="navbar-item" role="button">
             <i class="iconfont icon-earth" style="font-size: 1.25em; margin-right: 4px"></i>
@@ -84,7 +91,7 @@
         </b-dropdown>
       </template>
     </b-navbar>
-    <node v-model="runningState" :outbound="outboundName" :observatory="observatory" />
+    <node ref="nodeRef" v-model="runningState" :outbound="outboundName" :observatory="observatory" />
     <b-modal :active.sync="showCustomPorts" has-modal-card trap-focus aria-role="dialog" aria-modal
       class="modal-custom-ports">
       <ModalCustomAddress @close="showCustomPorts = false" />
@@ -134,6 +141,8 @@ export default {
       outbounds: ["proxy"],
       outboundDropdownHover: {},
       updateOutboundDropdown: true,
+      themePreference: 'auto',
+      systemDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
     };
   },
   computed: {
@@ -153,9 +162,20 @@ export default {
       const lang = this.langs.find(l => l.flag === currentLang);
       return lang ? lang.code : "zh_CN";
     },
+    isDarkTheme() {
+      if (this.themePreference === 'dark') return true;
+      if (this.themePreference === 'light') return false;
+      return this.systemDark;
+    },
+    themeSwitchLabel() {
+      if (this.themePreference === 'auto') return this.$t('common.autoTheme');
+      if (this.themePreference === 'dark') return this.$t('common.darkTheme');
+      return this.$t('common.lightTheme');
+    },
   },
   mounted() {
     console.log("app created");
+    this.initTheme();
     let ba = localStorage.getItem("backendAddress");
     if (ba) {
       let u = parseURL(ba);
@@ -222,6 +242,9 @@ export default {
     if (this.ws) {
       this.ws.close();
     }
+    if (this._darkMediaQuery && this._onSystemThemeChange) {
+      this._darkMediaQuery.removeEventListener('change', this._onSystemThemeChange);
+    }
   },
   methods: {
     connectWsMessage() {
@@ -267,6 +290,9 @@ export default {
         msg.body.outboundName === this.outboundName
       ) {
         this.observatory = msg;
+      }
+      if (msg.type === "running_state" && msg.body && msg.body.running === false) {
+        this.$refs.nodeRef && this.$refs.nodeRef.notifyStopped();
       }
     },
     handleOutboundDropdownActiveChange(active) {
@@ -513,6 +539,27 @@ export default {
       localStorage.removeItem("token");
       this.$remount();
     },
+    initTheme() {
+      const stored = localStorage.getItem('theme');
+      this.themePreference = (stored === 'dark' || stored === 'light') ? stored : 'auto';
+      this._darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      this._onSystemThemeChange = (e) => {
+        this.systemDark = e.matches;
+        this.applyThemeClass();
+      };
+      this._darkMediaQuery.addEventListener('change', this._onSystemThemeChange);
+      this.applyThemeClass();
+    },
+    applyThemeClass() {
+      document.body.classList.toggle('theme-dark', this.isDarkTheme);
+    },
+    toggleTheme() {
+      const order = ['auto', 'light', 'dark'];
+      const idx = order.indexOf(this.themePreference);
+      this.themePreference = order[(idx + 1) % order.length];
+      localStorage.setItem('theme', this.themePreference);
+      this.applyThemeClass();
+    },
     handleClickLogs() {
       this.$buefy.modal.open({
         parent: this,
@@ -528,6 +575,7 @@ export default {
 <style lang="scss">
 @import "assets/iconfont/fonts/font.css";
 @import "assets/scss/reset.scss";
+@import "assets/scss/dark-theme.scss";
 </style>
 
 <style lang="scss" scoped>
@@ -557,7 +605,7 @@ export default {
 <style lang="scss">
 html {
   //  &::-webkit-scrollbar {
-  //    // 去掉讨厌的滚动条
+  //    // remove annoying scrollbar
   //    display: none;
   //  }
 
@@ -571,7 +619,7 @@ html {
 
 @media screen and (max-width: 1023px) {
   .dropdown.is-mobile-modal .dropdown-menu {
-    // 修复modal模糊问题
+    // fix modal blur issues
     left: 0 !important;
     right: 0 !important;
     margin: auto;
@@ -580,7 +628,7 @@ html {
 }
 
 .dropdown-item:focus {
-  // 不要丑丑的outline
+  // remove ugly outline
   outline: none !important;
 }
 

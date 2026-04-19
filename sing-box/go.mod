@@ -33,12 +33,12 @@ require (
 	github.com/sagernet/cors v1.2.1
 	github.com/sagernet/cronet-go v0.0.0-20260413093659-e4926ba205fa
 	github.com/sagernet/cronet-go/all v0.0.0-20260413093659-e4926ba205fa
-	github.com/sagernet/fswatch v0.1.1
+	github.com/sagernet/fswatch v0.1.2
 	github.com/sagernet/gomobile v0.1.12
 	github.com/sagernet/gvisor v0.0.0-20250811.0-sing-box-mod.1
 	github.com/sagernet/quic-go v0.59.0-sing-box-mod.4
-	github.com/sagernet/sing v0.8.7-0.20260417135631-0d22698ed386
-	github.com/sagernet/sing-cloudflared v0.0.0-20260416083718-efa6ab16dba9
+	github.com/sagernet/sing v0.8.8-0.20260419124655-fbfc081294d5
+	github.com/sagernet/sing-cloudflared v0.1.0
 	github.com/sagernet/sing-mux v0.3.4
 	github.com/sagernet/sing-quic v0.6.2-0.20260412143638-8f65b6be7cd6
 	github.com/sagernet/sing-shadowsocks v0.2.8
@@ -81,7 +81,7 @@ require (
 	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1 // indirect
 	github.com/ebitengine/purego v0.9.1 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.0.2 // indirect
-	github.com/fsnotify/fsnotify v1.7.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/gaissmai/bart v0.18.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.3 // indirect

@@ -54,7 +54,7 @@
 
 #define LWIP_ERRNO_INCLUDE <errno.h>
 
-#if defined(LWIP_UNIX_LINUX) || defined(LWIP_UNIX_HURD) || defined(LWIP_UNIX_KFREEBSD)
+#if defined(LWIP_UNIX_LINUX) || defined(LWIP_UNIX_HURD) || defined(LWIP_UNIX_KFREEBSD) || defined(LWIP_UNIX_ANDROID)
 #define LWIP_ERRNO_STDINCLUDE	1
 #endif
 
