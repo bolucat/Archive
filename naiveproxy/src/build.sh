@@ -79,6 +79,8 @@ flags="$flags"'
 
   enable_backup_ref_ptr_support=false
   enable_dangling_raw_ptr_checks=false
+
+  use_clang_modules=false
 '
 
 if [ "$WITH_SYSROOT" ]; then
@@ -115,5 +117,15 @@ mkdir -p out
 export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 
 ./gn/out/gn gen "$out" --args="$flags $EXTRA_FLAGS"
+
+if [ "$host_os" = linux ]; then
+  clang_x64_targets=$(grep -o ' | .*' $out/toolchain.ninja | grep -o ' clang_x64/[^ ]*' | sort -u)
+  if [ "$clang_x64_targets" ]; then
+    CCACHE_DIR=$HOME/.cache/posix_ccache ninja -C "$out" $clang_x64_targets
+    if [ "$WARMUP_HOST_TOOLS" ]; then
+      exit 0
+    fi
+  fi
+fi
 
 ninja -C "$out" naive

@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -57,6 +58,30 @@ func init() {
 	realityPublickey = base64.RawURLEncoding.EncodeToString(privateKey.PublicKey().Bytes())
 }
 
+type TestDialer struct {
+	dialer C.Dialer
+	ctx    context.Context
+}
+
+func (t *TestDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+start:
+	conn, err := t.dialer.DialContext(ctx, network, address)
+	if err != nil && ctx.Err() == nil && t.ctx.Err() == nil {
+		// We are conducting tests locally, and they shouldn't fail.
+		// However, a large number of requests in a short period during concurrent testing can exhaust system ports.
+		// This can lead to various errors such as WSAECONNREFUSED and WSAENOBUFS.
+		// So we just retry if the context is not canceled.
+		goto start
+	}
+	return conn, err
+}
+
+func (t *TestDialer) ListenPacket(ctx context.Context, network, address string, rAddrPort netip.AddrPort) (net.PacketConn, error) {
+	return t.dialer.ListenPacket(ctx, network, address, rAddrPort)
+}
+
+var _ C.Dialer = (*TestDialer)(nil)
+
 type TestTunnel struct {
 	HandleTCPConnFn    func(conn net.Conn, metadata *C.Metadata)
 	HandleUDPPacketFn  func(packet C.UDPPacket, metadata *C.Metadata)
@@ -64,6 +89,7 @@ type TestTunnel struct {
 	CloseFn            func() error
 	DoSequentialTestFn func(t *testing.T, proxy C.ProxyAdapter)
 	DoConcurrentTestFn func(t *testing.T, proxy C.ProxyAdapter)
+	NewDialerFn        func() C.Dialer
 }
 
 func (tt *TestTunnel) HandleTCPConn(conn net.Conn, metadata *C.Metadata) {
@@ -93,6 +119,10 @@ func (tt *TestTunnel) DoSequentialTest(t *testing.T, proxy C.ProxyAdapter) {
 
 func (tt *TestTunnel) DoConcurrentTest(t *testing.T, proxy C.ProxyAdapter) {
 	tt.DoConcurrentTestFn(t, proxy)
+}
+
+func (tt *TestTunnel) NewDialer() C.Dialer {
+	return tt.NewDialerFn()
 }
 
 type TestTunnelListener struct {
@@ -182,15 +212,39 @@ func NewHttpTestTunnel() *TestTunnel {
 		}
 		defer instance.Close()
 
+		var dialNum atomic.Int32
+		var extraConns []net.Conn
+		var extraConnsMu sync.Mutex
+		defer func() {
+			extraConnsMu.Lock()
+			extraConns := append([]net.Conn{}, extraConns...) // clone conn list avoid race condition
+			extraConnsMu.Unlock()
+			for _, conn := range extraConns {
+				_ = conn.Close()
+			}
+		}()
+
 		transport := &http.Transport{
-			DialContext: func(context.Context, string, string) (net.Conn, error) {
-				return instance, nil
+			DialContext: func(ctx context.Context, network string, addr string) (net.Conn, error) {
+				dianNum := dialNum.Add(1)
+				if dianNum == 1 { // first dial, return instance
+					return instance, nil
+				}
+				t.Logf("transport dial time %d more than once in: %s", dianNum, t.Name())
+				conn, err := proxy.DialContext(ctx, metadata)
+				if err != nil {
+					return nil, err
+				}
+				extraConnsMu.Lock()
+				extraConns = append(extraConns, conn)
+				extraConnsMu.Unlock()
+				return conn, nil
 			},
-			// from http.DefaultTransport
-			MaxIdleConns:          100,
-			IdleConnTimeout:       90 * time.Second,
-			TLSHandshakeTimeout:   10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
+			//// from http.DefaultTransport
+			//MaxIdleConns:          100,
+			//IdleConnTimeout:       90 * time.Second,
+			//TLSHandshakeTimeout:   10 * time.Second,
+			//ExpectContinueTimeout: 1 * time.Second,
 			// for our self-signed cert
 			TLSClientConfig: tlsClientConfig.Clone(),
 			// open http2
@@ -198,7 +252,7 @@ func NewHttpTestTunnel() *TestTunnel {
 		}
 
 		client := http.Client{
-			Timeout:   30 * time.Second,
+			Timeout:   60 * time.Second,
 			Transport: transport,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -284,8 +338,8 @@ func NewHttpTestTunnel() *TestTunnel {
 						return
 					}
 				}
-				ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
-				defer cancel()
+				//ctx, cancel := context.WithTimeout(ctx, C.DefaultTLSTimeout)
+				//defer cancel()
 				if err := tlsConn.HandshakeContext(ctx); err != nil {
 					return
 				}
@@ -303,6 +357,7 @@ func NewHttpTestTunnel() *TestTunnel {
 		CloseFn:            ln.Close,
 		DoSequentialTestFn: sequentialTestFn,
 		DoConcurrentTestFn: concurrentTestFn,
+		NewDialerFn:        func() C.Dialer { return &TestDialer{dialer: dialer.NewDialer(), ctx: ctx} },
 	}
 	return tunnel
 }

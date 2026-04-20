@@ -109,8 +109,9 @@ void NaivePaddingSocket::OnReadPaddingV1Complete(int rv) {
                       read_user_buf_len_);
     if (rv == 0) {
       rv = ReadPaddingV1Payload();
-      if (rv == ERR_IO_PENDING)
+      if (rv == ERR_IO_PENDING) {
         return;
+      }
     }
   }
 
@@ -232,8 +233,9 @@ void NaivePaddingSocket::OnWritePaddingV1Complete(
   if (rv > 0) {
     write_buf_->DidConsume(rv);
     rv = WritePaddingV1Drain(traffic_annotation);
-    if (rv == ERR_IO_PENDING)
+    if (rv == ERR_IO_PENDING) {
       return;
+    }
   }
 
   // Must reset these before invoking write_callback_, which may reenter

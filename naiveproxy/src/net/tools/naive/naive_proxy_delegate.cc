@@ -18,40 +18,9 @@
 #include "net/base/proxy_string_util.h"
 #include "net/http/http_request_headers.h"
 #include "net/http/http_response_headers.h"
-#include "net/third_party/quiche/src/quiche/http2/hpack/hpack_constants.h"
+#include "net/tools/naive/padding_utils.h"
 
 namespace net {
-namespace {
-bool g_nonindex_codes_initialized;
-uint8_t g_nonindex_codes[17];
-}  // namespace
-
-void InitializeNonindexCodes() {
-  if (g_nonindex_codes_initialized)
-    return;
-  g_nonindex_codes_initialized = true;
-  unsigned i = 0;
-  for (const auto& symbol : spdy::HpackHuffmanCodeVector()) {
-    if (symbol.id >= 0x20 && symbol.id <= 0x7f && symbol.length >= 8) {
-      g_nonindex_codes[i++] = symbol.id;
-      if (i >= sizeof(g_nonindex_codes))
-        break;
-    }
-  }
-  CHECK(i == sizeof(g_nonindex_codes));
-}
-
-void FillNonindexHeaderValue(uint64_t unique_bits, char* buf, int len) {
-  DCHECK(g_nonindex_codes_initialized);
-  int first = len < 16 ? len : 16;
-  for (int i = 0; i < first; i++) {
-    buf[i] = g_nonindex_codes[unique_bits & 0b1111];
-    unique_bits >>= 4;
-  }
-  for (int i = first; i < len; i++) {
-    buf[i] = g_nonindex_codes[16];
-  }
-}
 
 NaiveProxyDelegate::NaiveProxyDelegate(
     const HttpRequestHeaders& extra_headers,
@@ -77,20 +46,24 @@ NaiveProxyDelegate::OnBeforeTunnelRequest(
   HttpRequestHeaders extra_headers;
   // Not possible to negotiate padding capability given the underlying
   // protocols.
-  if (proxy_chain.is_direct())
+  if (proxy_chain.is_direct()) {
     return extra_headers;
+  }
   const ProxyServer& proxy_server = proxy_chain.GetProxyServer(chain_index);
-  if (proxy_server.is_socks())
+  if (proxy_server.is_socks()) {
     return extra_headers;
+  }
 
   // Only the last server is attempted for padding
   // because proxy chaining will corrupt the padding.
-  if (chain_index != proxy_chain.length() - 1)
+  if (chain_index != proxy_chain.length() - 1) {
     return extra_headers;
+  }
 
   // Sends client-side padding header regardless of server support
   std::string padding(base::RandInt(16, 32), '~');
-  FillNonindexHeaderValue(base::RandUint64(), &padding[0], padding.size());
+  FillNonindexHeaderValue(base::RandUint64(),
+                          base::as_writable_byte_span(padding));
   extra_headers.SetHeader(kPaddingHeader, padding);
 
   // Enables Fast Open in H2/H3 proxy client socket once the state of server
@@ -133,16 +106,19 @@ Error NaiveProxyDelegate::OnTunnelHeadersReceived(
     CompletionOnceCallback callback) {
   // Not possible to negotiate padding capability given the underlying
   // protocols.
-  if (proxy_chain.is_direct())
+  if (proxy_chain.is_direct()) {
     return OK;
+  }
   const ProxyServer& proxy_server = proxy_chain.GetProxyServer(chain_index);
-  if (proxy_server.is_socks())
+  if (proxy_server.is_socks()) {
     return OK;
+  }
 
   // Only the last server is attempted for padding
   // because proxy chaining will corrupt the padding.
-  if (chain_index != proxy_chain.length() - 1)
+  if (chain_index != proxy_chain.length() - 1) {
     return OK;
+  }
 
   // Detects server padding support, even if it changes dynamically.
   std::optional<PaddingType> new_padding_type =
@@ -165,45 +141,13 @@ std::optional<PaddingType> NaiveProxyDelegate::GetProxyChainPaddingType(
     const ProxyChain& proxy_chain) {
   // Not possible to negotiate padding capability given the underlying
   // protocols.
-  if (proxy_chain.is_direct())
-    return PaddingType::kNone;
-  if (proxy_chain.Last().is_socks())
-    return PaddingType::kNone;
-  return padding_type_by_server_[proxy_chain.Last()];
-}
-
-PaddingDetectorDelegate::PaddingDetectorDelegate(
-    NaiveProxyDelegate* naive_proxy_delegate,
-    const ProxyChain& proxy_chain,
-    ClientProtocol client_protocol)
-    : naive_proxy_delegate_(naive_proxy_delegate),
-      proxy_chain_(proxy_chain),
-      client_protocol_(client_protocol) {}
-
-PaddingDetectorDelegate::~PaddingDetectorDelegate() = default;
-
-void PaddingDetectorDelegate::SetClientPaddingType(PaddingType padding_type) {
-  detected_client_padding_type_ = padding_type;
-}
-
-std::optional<PaddingType> PaddingDetectorDelegate::GetClientPaddingType() {
-  // Not possible to negotiate padding capability given the underlying
-  // protocols.
-  if (client_protocol_ == ClientProtocol::kSocks5) {
-    return PaddingType::kNone;
-  } else if (client_protocol_ == ClientProtocol::kRedir) {
+  if (proxy_chain.is_direct()) {
     return PaddingType::kNone;
   }
-
-  return detected_client_padding_type_;
-}
-
-std::optional<PaddingType> PaddingDetectorDelegate::GetServerPaddingType() {
-  if (cached_server_padding_type_.has_value())
-    return cached_server_padding_type_;
-  cached_server_padding_type_ =
-      naive_proxy_delegate_->GetProxyChainPaddingType(proxy_chain_);
-  return cached_server_padding_type_;
+  if (proxy_chain.Last().is_socks()) {
+    return PaddingType::kNone;
+  }
+  return padding_type_by_server_[proxy_chain.Last()];
 }
 
 }  // namespace net

@@ -49,7 +49,30 @@ local core_has = {
 	["hysteria2"] = has_hysteria2
 }
 -- Determine whether to filter node keywords
-local function is_filter_keyword(mode, discard_list, keep_list, value)
+local function is_filter_keyword(sub_cfg, value)
+	local mode = DEFAULT_FILTER_KEYWORD_MODE
+	local discard_list = DEFAULT_FILTER_KEYWORD_DISCARD_LIST
+	local keep_list = DEFAULT_FILTER_KEYWORD_KEEP_LIST
+	if sub_cfg then
+		local filter_keyword_mode = sub_cfg.filter_keyword_mode or "5" -- 5 is global
+		if filter_keyword_mode == "0" then
+			mode = "0"
+		elseif filter_keyword_mode == "1" then
+			mode = "1"
+			discard_list = sub_cfg.filter_discard_list or {}
+		elseif filter_keyword_mode == "2" then
+			mode = "2"
+			keep_list = sub_cfg.filter_keep_list or {}
+		elseif filter_keyword_mode == "3" then
+			mode = "3"
+			keep_list = sub_cfg.filter_keep_list or {}
+			discard_list = sub_cfg.filter_discard_list or {}
+		elseif filter_keyword_mode == "4" then
+			mode = "4"
+			keep_list = sub_cfg.filter_keep_list or {}
+			discard_list = sub_cfg.filter_discard_list or {}
+		end
+	end
 	if mode == "1" then
 		for k,v in ipairs(discard_list) do
 			if value:find(v, 1, true) then
@@ -449,9 +472,6 @@ end
 local function processData(szType, content, add_mode, group, sub_cfg)
 	--log(2, content, add_mode, group)
 	local default_allowinsecure = DEFAULT_ALLOWINSECURE
-	local default_filter_keyword_mode = DEFAULT_FILTER_KEYWORD_MODE
-	local default_filter_keyword_discard_list = DEFAULT_FILTER_KEYWORD_DISCARD_LIST
-	local default_filter_keyword_keep_list = DEFAULT_FILTER_KEYWORD_KEEP_LIST
 	local default_ss_type = DEFAULT_SS_TYPE
 	local default_trojan_type = DEFAULT_TROJAN_TYPE
 	local default_vmess_type = DEFAULT_VMESS_TYPE
@@ -460,24 +480,6 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 	if sub_cfg then
 		if sub_cfg.allowInsecure and sub_cfg.allowInsecure ~= "1" then
 			default_allowinsecure = nil
-		end
-		local filter_keyword_mode = sub_cfg.filter_keyword_mode or "5" -- 5 is global
-		if filter_keyword_mode == "0" then
-			default_filter_keyword_mode = "0"
-		elseif filter_keyword_mode == "1" then
-			default_filter_keyword_mode = "1"
-			default_filter_keyword_discard_list = sub_cfg.filter_discard_list or {}
-		elseif filter_keyword_mode == "2" then
-			default_filter_keyword_mode = "2"
-			default_filter_keyword_keep_list = sub_cfg.filter_keep_list or {}
-		elseif filter_keyword_mode == "3" then
-			default_filter_keyword_mode = "3"
-			default_filter_keyword_keep_list = sub_cfg.filter_keep_list or {}
-			default_filter_keyword_discard_list = sub_cfg.filter_discard_list or {}
-		elseif filter_keyword_mode == "4" then
-			default_filter_keyword_mode = "4"
-			default_filter_keyword_keep_list = sub_cfg.filter_keep_list or {}
-			default_filter_keyword_discard_list = sub_cfg.filter_discard_list or {}
 		end
 		local ss_type = sub_cfg.ss_type or "global"
 		if ss_type ~= "global" and core_has[ss_type] then
@@ -2045,7 +2047,7 @@ local function parse_link(raw, add_mode, group, sub_cfg)
 							log(2, i18n.translatef("Discard node: %s, Reason:", result.remarks) .. " " .. result.error_msg)
 						elseif not result.type then
 							log(2, i18n.translatef("Discard node: %s, Reason:", result.remarks) .. " " .. i18n.translatef("No usable binary was found."))
-						elseif (add_mode == "2" and is_filter_keyword(default_filter_keyword_mode, default_filter_keyword_discard_list, default_filter_keyword_keep_list, result.remarks)) or not result.address or result.remarks == "NULL" or result.address == "127.0.0.1" or
+						elseif (add_mode == "2" and is_filter_keyword(sub_cfg, result.remarks)) or not result.address or result.remarks == "NULL" or result.address == "127.0.0.1" or
 								(not datatypes.hostname(result.address) and not (api.is_ip(result.address))) then
 							log(2, i18n.translatef("Discard filter nodes: %s type node %s", result.type, result.remarks))
 						else

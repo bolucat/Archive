@@ -2,7 +2,16 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.14
+#### 1.14.0-alpha.15
+
+* Add search domain support for Tailscale DNS **1**
+* Fixes and improvements
+
+**1**:
+
+See [Tailscale DNS Server](/configuration/dns/server/tailscale/#accept_search_domain).
+
+#### 1.13.9
 
 * Fixes and improvements
 

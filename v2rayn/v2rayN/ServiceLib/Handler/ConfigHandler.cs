@@ -1936,6 +1936,12 @@ public static class ConfigHandler
         await SQLiteHelper.Instance.DeleteAsync(item);
         await RemoveServersViaSubid(config, id, false);
 
+        if (item.Id == config.SubIndexId)
+        {
+            var subs = await AppManager.Instance.SubItems();
+            config.SubIndexId = subs.LastOrDefault()?.Id;
+        }
+
         return 0;
     }
 

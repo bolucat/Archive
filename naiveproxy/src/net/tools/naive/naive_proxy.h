@@ -60,6 +60,8 @@ class NaiveProxy {
   void Close(unsigned int connection_id, int reason);
 
   NaiveConnection* FindConnection(unsigned int connection_id);
+  const NetworkAnonymizationKey& current_nak() const;
+  NaiveProxyDelegate* naive_proxy_delegate() const;
 
   std::unique_ptr<ServerSocket> listen_socket_;
   ClientProtocol protocol_;

@@ -78,18 +78,20 @@ void NaiveProxy::DoAcceptLoop() {
   int result;
   do {
     result = listen_socket_->Accept(
-        &accepted_socket_, base::BindRepeating(&NaiveProxy::OnAcceptComplete,
-                                               weak_ptr_factory_.GetWeakPtr()));
-    if (result == ERR_IO_PENDING)
+        &accepted_socket_, base::BindOnce(&NaiveProxy::OnAcceptComplete,
+                                          weak_ptr_factory_.GetWeakPtr()));
+    if (result == ERR_IO_PENDING) {
       return;
+    }
     HandleAcceptResult(result);
   } while (result == OK);
 }
 
 void NaiveProxy::OnAcceptComplete(int result) {
   HandleAcceptResult(result);
-  if (result == OK)
+  if (result == OK) {
     DoAcceptLoop();
+  }
 }
 
 void NaiveProxy::HandleAcceptResult(int result) {
@@ -101,23 +103,20 @@ void NaiveProxy::HandleAcceptResult(int result) {
 }
 
 void NaiveProxy::DoConnect() {
-  std::unique_ptr<StreamSocket> socket;
-  auto* proxy_delegate =
-      static_cast<NaiveProxyDelegate*>(session_->context().proxy_delegate);
-  DCHECK(proxy_delegate);
-  DCHECK(!proxy_info_.is_empty());
-  const ProxyChain& proxy_server = proxy_info_.proxy_chain();
-  auto padding_detector_delegate = std::make_unique<PaddingDetectorDelegate>(
-      proxy_delegate, proxy_server, protocol_);
+  auto negotiated_client_padding =
+      std::make_unique<PaddingType>(PaddingType::kNone);
 
+  std::unique_ptr<StreamSocket> socket;
   if (protocol_ == ClientProtocol::kSocks5) {
     socket = std::make_unique<Socks5ServerSocket>(std::move(accepted_socket_),
                                                   listen_user_, listen_pass_,
                                                   traffic_annotation_);
   } else if (protocol_ == ClientProtocol::kHttp) {
+    negotiated_client_padding =
+        std::make_unique<PaddingType>(PaddingType::kNone);
     socket = std::make_unique<HttpProxyServerSocket>(
         std::move(accepted_socket_), listen_user_, listen_pass_,
-        padding_detector_delegate.get(), traffic_annotation_,
+        negotiated_client_padding.get(), traffic_annotation_,
         supported_padding_types_);
   } else if (protocol_ == ClientProtocol::kRedir) {
     socket = std::move(accepted_socket_);
@@ -125,27 +124,29 @@ void NaiveProxy::DoConnect() {
     return;
   }
 
-  last_id_++;
-  int tunnel_session_id = last_id_ % concurrency_;
-  const auto& nak = network_anonymization_keys_[tunnel_session_id];
   auto connection_ptr = std::make_unique<NaiveConnection>(
-      last_id_, protocol_, std::move(padding_detector_delegate), proxy_info_,
-      resolver_, session_, nak, net_log_, std::move(socket),
+      last_id_, protocol_, std::move(negotiated_client_padding), proxy_info_,
+      resolver_, session_, current_nak(), net_log_, std::move(socket),
       traffic_annotation_);
   auto* connection = connection_ptr.get();
   connection_by_id_[connection->id()] = std::move(connection_ptr);
+
+  ++last_id_;
+
   int result = connection->Connect(
-      base::BindRepeating(&NaiveProxy::OnConnectComplete,
-                          weak_ptr_factory_.GetWeakPtr(), connection->id()));
-  if (result == ERR_IO_PENDING)
+      base::BindOnce(&NaiveProxy::OnConnectComplete,
+                     weak_ptr_factory_.GetWeakPtr(), connection->id()));
+  if (result == ERR_IO_PENDING) {
     return;
+  }
   HandleConnectResult(connection, result);
 }
 
 void NaiveProxy::OnConnectComplete(unsigned int connection_id, int result) {
   auto* connection = FindConnection(connection_id);
-  if (!connection)
+  if (!connection) {
     return;
+  }
   HandleConnectResult(connection, result);
 }
 
@@ -158,18 +159,20 @@ void NaiveProxy::HandleConnectResult(NaiveConnection* connection, int result) {
 }
 
 void NaiveProxy::DoRun(NaiveConnection* connection) {
-  int result = connection->Run(
-      base::BindRepeating(&NaiveProxy::OnRunComplete,
-                          weak_ptr_factory_.GetWeakPtr(), connection->id()));
-  if (result == ERR_IO_PENDING)
+  int result = connection->Run(base::BindOnce(&NaiveProxy::OnRunComplete,
+                                              weak_ptr_factory_.GetWeakPtr(),
+                                              connection->id()));
+  if (result == ERR_IO_PENDING) {
     return;
+  }
   HandleRunResult(connection, result);
 }
 
 void NaiveProxy::OnRunComplete(unsigned int connection_id, int result) {
   auto* connection = FindConnection(connection_id);
-  if (!connection)
+  if (!connection) {
     return;
+  }
   HandleRunResult(connection, result);
 }
 
@@ -179,8 +182,9 @@ void NaiveProxy::HandleRunResult(NaiveConnection* connection, int result) {
 
 void NaiveProxy::Close(unsigned int connection_id, int reason) {
   auto it = connection_by_id_.find(connection_id);
-  if (it == connection_by_id_.end())
+  if (it == connection_by_id_.end()) {
     return;
+  }
 
   LOG(INFO) << "Connection " << connection_id
             << " closed: " << ErrorToShortString(reason);
@@ -196,9 +200,22 @@ void NaiveProxy::Close(unsigned int connection_id, int reason) {
 
 NaiveConnection* NaiveProxy::FindConnection(unsigned int connection_id) {
   auto it = connection_by_id_.find(connection_id);
-  if (it == connection_by_id_.end())
+  if (it == connection_by_id_.end()) {
     return nullptr;
+  }
   return it->second.get();
+}
+
+const NetworkAnonymizationKey& NaiveProxy::current_nak() const {
+  int tunnel_session_id = last_id_ % concurrency_;
+  return network_anonymization_keys_[tunnel_session_id];
+}
+
+NaiveProxyDelegate* NaiveProxy::naive_proxy_delegate() const {
+  auto* proxy_delegate =
+      static_cast<NaiveProxyDelegate*>(session_->context().proxy_delegate);
+  DCHECK(proxy_delegate);
+  return proxy_delegate;
 }
 
 }  // namespace net

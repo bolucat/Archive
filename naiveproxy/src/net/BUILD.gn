@@ -2059,6 +2059,8 @@ executable("naive") {
     "tools/naive/naive_proxy_delegate.h",
     "tools/naive/naive_proxy.cc",
     "tools/naive/naive_proxy.h",
+    "tools/naive/padding_utils.cc",
+    "tools/naive/padding_utils.h",
     "tools/naive/redirect_resolver.cc",
     "tools/naive/redirect_resolver.h",
     "tools/naive/socks5_server_socket.cc",

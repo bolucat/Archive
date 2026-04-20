@@ -235,6 +235,11 @@ function renderListeners(s, uciconfig, isClient) {
 	o.depends('type', 'mieru');
 	o.modalonly = true;
 
+	o = s.taboption('field_general', form.Flag, 'mieru_user_hint_is_mandatory', _('User-hint is mandatory'),);
+	o.default = o.disabled;
+	o.depends('type', 'mieru');
+	o.modalonly = true;
+
 	o = s.taboption('field_general', form.Value, 'mieru_traffic_pattern', _('Traffic pattern'),
 		_('A base64 string is used to fine-tune network behavior.<br/>Please refer to the <a target="_blank" href="%s" rel="noreferrer noopener">document</a>.')
 		.format('https://github.com/enfein/mieru/blob/main/docs/traffic-pattern.md'));
@@ -543,6 +548,15 @@ function renderListeners(s, uciconfig, isClient) {
 		o.value.apply(o, res);
 	})
 	o.depends({type: /^(tuic|trusttunnel)$/});
+	o.modalonly = true;
+
+	o = s.taboption('field_general', form.ListValue, 'bbr_profile', _('BBR profile'));
+	o.default = hm.bbr_profiles[0][0];
+	hm.bbr_profiles.forEach((res) => {
+		o.value.apply(o, res);
+	})
+	o.depends({congestion_controller: 'bbr'});
+	o.depends({type: 'hysteria2'});
 	o.modalonly = true;
 
 	o = s.taboption('field_general', form.MultiValue, 'network', _('Network type'));
@@ -1022,6 +1036,12 @@ function renderListeners(s, uciconfig, isClient) {
 
 	o = s.taboption('field_transport', form.Flag, 'transport_xhttp_no_sse_header', _('No SSE header'));
 	o.default = o.disabled;
+	o.depends({transport_enabled: '1', transport_type: 'xhttp'});
+	o.modalonly = true;
+
+	o = s.taboption('field_transport', form.Value, 'transport_xhttp_sc_max_buffered_posts', _('Max buffered posts'));
+	o.datatype = 'uinteger';
+	o.placeholder = '30';
 	o.depends({transport_enabled: '1', transport_type: 'xhttp'});
 	o.modalonly = true;
 

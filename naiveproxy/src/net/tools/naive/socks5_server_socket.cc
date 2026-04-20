@@ -78,8 +78,9 @@ int Socks5ServerSocket::Connect(CompletionOnceCallback callback) {
   DCHECK(!user_callback_);
 
   // If already connected, then just return OK.
-  if (completed_handshake_)
+  if (completed_handshake_) {
     return OK;
+  }
 
   net_log_.BeginEvent(NetLogEventType::SOCKS5_CONNECT);
 
@@ -159,8 +160,9 @@ int Socks5ServerSocket::Read(IOBuffer* buf,
       buf, buf_len,
       base::BindOnce(&Socks5ServerSocket::OnReadWriteComplete,
                      base::Unretained(this), std::move(callback)));
-  if (rv > 0)
+  if (rv > 0) {
     was_ever_used_ = true;
+  }
   return rv;
 }
 
@@ -181,8 +183,9 @@ int Socks5ServerSocket::Write(
       base::BindOnce(&Socks5ServerSocket::OnReadWriteComplete,
                      base::Unretained(this), std::move(callback)),
       traffic_annotation);
-  if (rv > 0)
+  if (rv > 0) {
     was_ever_used_ = true;
+  }
   return rv;
 }
 
@@ -217,8 +220,9 @@ void Socks5ServerSocket::OnReadWriteComplete(CompletionOnceCallback callback,
   DCHECK_NE(ERR_IO_PENDING, result);
   DCHECK(callback);
 
-  if (result > 0)
+  if (result > 0) {
     was_ever_used_ = true;
+  }
   std::move(callback).Run(result);
 }
 
@@ -307,8 +311,9 @@ int Socks5ServerSocket::DoGreetRead() {
 }
 
 int Socks5ServerSocket::DoGreetReadComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   if (result == 0) {
     net_log_.AddEvent(
@@ -377,8 +382,9 @@ int Socks5ServerSocket::DoGreetWrite() {
 }
 
 int Socks5ServerSocket::DoGreetWriteComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   bytes_sent_ += result;
   if (bytes_sent_ == buffer_.size()) {
@@ -412,8 +418,9 @@ int Socks5ServerSocket::DoAuthRead() {
 }
 
 int Socks5ServerSocket::DoAuthReadComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   if (result == 0) {
     return ERR_SOCKS_CONNECTION_FAILED;
@@ -478,8 +485,9 @@ int Socks5ServerSocket::DoAuthWrite() {
 }
 
 int Socks5ServerSocket::DoAuthWriteComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   bytes_sent_ += result;
   if (bytes_sent_ == buffer_.size()) {
@@ -510,8 +518,9 @@ int Socks5ServerSocket::DoHandshakeRead() {
 }
 
 int Socks5ServerSocket::DoHandshakeReadComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   // The underlying socket closed unexpectedly.
   if (result == 0) {
@@ -629,8 +638,9 @@ int Socks5ServerSocket::DoHandshakeWrite() {
 }
 
 int Socks5ServerSocket::DoHandshakeWriteComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   // We ignore the case when result is 0, since the underlying Write
   // may return spurious writes while waiting on the socket.

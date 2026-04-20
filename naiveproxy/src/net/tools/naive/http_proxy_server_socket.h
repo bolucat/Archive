@@ -28,7 +28,6 @@
 
 namespace net {
 struct NetworkTrafficAnnotationTag;
-class ClientPaddingDetectorDelegate;
 
 // This StreamSocket is used to setup a HTTP CONNECT tunnel.
 class HttpProxyServerSocket : public StreamSocket {
@@ -37,7 +36,7 @@ class HttpProxyServerSocket : public StreamSocket {
       std::unique_ptr<StreamSocket> transport_socket,
       const std::string& user,
       const std::string& pass,
-      ClientPaddingDetectorDelegate* padding_detector_delegate,
+      PaddingType* negotiated_client_padding,
       const NetworkTrafficAnnotationTag& traffic_annotation,
       const std::vector<PaddingType>& supported_padding_types);
   HttpProxyServerSocket(const HttpProxyServerSocket&) = delete;
@@ -102,7 +101,7 @@ class HttpProxyServerSocket : public StreamSocket {
 
   // Stores the underlying socket.
   std::unique_ptr<StreamSocket> transport_;
-  ClientPaddingDetectorDelegate* padding_detector_delegate_;
+  PaddingType* negotiated_client_padding_;
 
   State next_state_;
 

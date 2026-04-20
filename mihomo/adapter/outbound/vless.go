@@ -316,7 +316,7 @@ func (v *Vless) dialContext(ctx context.Context) (c net.Conn, err error) {
 	case "grpc": // gun transport
 		return v.gunClient.Dial()
 	case "xhttp":
-		return v.xhttpClient.Dial()
+		return v.xhttpClient.Dial(ctx)
 	default:
 	}
 	return v.dialer.DialContext(ctx, "tcp", v.addr)
@@ -636,6 +636,9 @@ func NewVless(option VlessOption) (*Vless, error) {
 						return nil, err
 					}
 					_, quicConn, err := common.DialQuic(ctx, v.addr, v.DialOptions(), v.dialer, tlsConfig, cfg, true)
+					if err != nil {
+						return nil, err
+					}
 					return quicConn, nil
 				},
 				v.option.ALPN,
@@ -790,6 +793,9 @@ func NewVless(option VlessOption) (*Vless, error) {
 							return nil, err
 						}
 						_, quicConn, err := common.DialQuic(ctx, downloadAddr, v.DialOptions(), v.dialer, tlsConfig, cfg, true)
+						if err != nil {
+							return nil, err
+						}
 						return quicConn, nil
 					},
 					downloadALPN,

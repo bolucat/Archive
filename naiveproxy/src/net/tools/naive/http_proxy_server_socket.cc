@@ -26,9 +26,8 @@
 #include "net/base/url_util.h"
 #include "net/http/http_request_headers.h"
 #include "net/log/net_log.h"
-#include "net/third_party/quiche/src/quiche/http2/hpack/hpack_constants.h"
 #include "net/tools/naive/naive_protocol.h"
-#include "net/tools/naive/naive_proxy_delegate.h"
+#include "net/tools/naive/padding_utils.h"
 #include "url/gurl.h"
 
 namespace net {
@@ -37,7 +36,7 @@ namespace {
 constexpr int kBufferSize = 64 * 1024;
 constexpr size_t kMaxHeaderSize = 64 * 1024;
 constexpr char kResponseHeader[] = "HTTP/1.1 200 OK\r\nPadding: ";
-constexpr int kResponseHeaderSize = sizeof(kResponseHeader) - 1;
+constexpr size_t kResponseHeaderSize = sizeof(kResponseHeader) - 1;
 // A plain 200 is 10 bytes. Expected 48 bytes. "Padding" uses up 7 bytes.
 constexpr int kMinPaddingSize = 30;
 constexpr int kMaxPaddingSize = kMinPaddingSize + 32;
@@ -47,13 +46,13 @@ HttpProxyServerSocket::HttpProxyServerSocket(
     std::unique_ptr<StreamSocket> transport_socket,
     const std::string& user,
     const std::string& pass,
-    ClientPaddingDetectorDelegate* padding_detector_delegate,
+    PaddingType* negotiated_client_padding,
     const NetworkTrafficAnnotationTag& traffic_annotation,
     const std::vector<PaddingType>& supported_padding_types)
     : io_callback_(base::BindRepeating(&HttpProxyServerSocket::OnIOComplete,
                                        base::Unretained(this))),
       transport_(std::move(transport_socket)),
-      padding_detector_delegate_(padding_detector_delegate),
+      negotiated_client_padding_(negotiated_client_padding),
       next_state_(STATE_NONE),
       completed_handshake_(false),
       was_ever_used_(false),
@@ -81,8 +80,9 @@ int HttpProxyServerSocket::Connect(CompletionOnceCallback callback) {
   DCHECK(!user_callback_);
 
   // If already connected, then just return OK.
-  if (completed_handshake_)
+  if (completed_handshake_) {
     return OK;
+  }
 
   next_state_ = STATE_HEADER_READ;
   buffer_.clear();
@@ -172,8 +172,9 @@ int HttpProxyServerSocket::Read(IOBuffer* buf,
       buf, buf_len,
       base::BindOnce(&HttpProxyServerSocket::OnReadWriteComplete,
                      base::Unretained(this), std::move(callback)));
-  if (rv > 0)
+  if (rv > 0) {
     was_ever_used_ = true;
+  }
   return rv;
 }
 
@@ -194,8 +195,9 @@ int HttpProxyServerSocket::Write(
       base::BindOnce(&HttpProxyServerSocket::OnReadWriteComplete,
                      base::Unretained(this), std::move(callback)),
       traffic_annotation);
-  if (rv > 0)
+  if (rv > 0) {
     was_ever_used_ = true;
+  }
   return rv;
 }
 
@@ -229,8 +231,9 @@ void HttpProxyServerSocket::OnReadWriteComplete(CompletionOnceCallback callback,
   DCHECK_NE(ERR_IO_PENDING, result);
   DCHECK(callback);
 
-  if (result > 0)
+  if (result > 0) {
     was_ever_used_ = true;
+  }
   std::move(callback).Run(result);
 }
 
@@ -307,8 +310,9 @@ std::optional<PaddingType> HttpProxyServerSocket::ParsePaddingHeaders(
 }
 
 int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   if (result == 0) {
     return ERR_CONNECTION_CLOSED;
@@ -362,7 +366,8 @@ int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
     std::optional<std::string> proxy_auth;
     proxy_auth = headers.GetHeader(HttpRequestHeaders::kProxyAuthorization);
     if (proxy_auth != basic_auth_) {
-      LOG(WARNING) << "Invalid Proxy-Authorization: " << proxy_auth.value_or("");
+      LOG(WARNING) << "Invalid Proxy-Authorization: "
+                   << proxy_auth.value_or("");
       return ERR_INVALID_ARGUMENT;
     }
   }
@@ -377,7 +382,8 @@ int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
     std::string host;
     int port;
 
-    std::optional<std::string> host_str = headers.GetHeader(HttpRequestHeaders::kHost);
+    std::optional<std::string> host_str =
+        headers.GetHeader(HttpRequestHeaders::kHost);
     if (host_str.has_value()) {
       if (!ParseHostAndPort(*host_str, &host, &port)) {
         LOG(WARNING) << "Invalid Host: " << *host_str;
@@ -414,7 +420,7 @@ int HttpProxyServerSocket::DoHeaderReadComplete(int result) {
   if (!padding_type.has_value()) {
     return ERR_INVALID_ARGUMENT;
   }
-  padding_detector_delegate_->SetClientPaddingType(*padding_type);
+  *negotiated_client_padding_ = *padding_type;
 
   if (is_http_1_0) {
     // Regenerates http header to make sure don't leak them to end servers
@@ -444,22 +450,24 @@ int HttpProxyServerSocket::DoHeaderWrite() {
   next_state_ = STATE_HEADER_WRITE_COMPLETE;
 
   // Adds padding.
-  int padding_size = base::RandInt(kMinPaddingSize, kMaxPaddingSize);
+  size_t padding_size = base::RandInt(kMinPaddingSize, kMaxPaddingSize);
   header_write_size_ = kResponseHeaderSize + padding_size + 4;
   handshake_buf_ = base::MakeRefCounted<IOBufferWithSize>(header_write_size_);
-  char* p = handshake_buf_->data();
-  std::memcpy(p, kResponseHeader, kResponseHeaderSize);
-  FillNonindexHeaderValue(base::RandUint64(), p + kResponseHeaderSize,
-                          padding_size);
-  std::memcpy(p + kResponseHeaderSize + padding_size, "\r\n\r\n", 4);
+  base::span<uint8_t> handshake = handshake_buf_->span();
+  handshake.first(kResponseHeaderSize)
+      .copy_from(base::byte_span_from_cstring(kResponseHeader));
+  FillNonindexHeaderValue(base::RandUint64(),
+                          handshake.subspan(kResponseHeaderSize, padding_size));
+  handshake.last(4u).copy_from(base::byte_span_from_cstring("\r\n\r\n"));
 
   return transport_->Write(handshake_buf_.get(), header_write_size_,
                            io_callback_, traffic_annotation_);
 }
 
 int HttpProxyServerSocket::DoHeaderWriteComplete(int result) {
-  if (result < 0)
+  if (result < 0) {
     return result;
+  }
 
   if (result != header_write_size_) {
     return ERR_FAILED;
