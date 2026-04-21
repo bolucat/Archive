@@ -669,6 +669,34 @@ if geo2rule ~= "1" and gfwlist_update == "0" and chnroute_update == "0" and chnr
 	os.exit(0)
 end
 
+local function check_instance(action)
+	local rule_lock = "/var/lock/" .. name .. "_rule_update.lock"
+	local sub_lock = "/var/lock/" .. name .. "_subscribe.lock"
+
+	if action == "start" then
+		math.randomseed(os.time() + math.floor(os.clock() * 1000))
+		api.nixio.nanosleep(0, math.random(100, 1000) * 1000000)
+		if fs.access(rule_lock) then
+			log("有[规则更新]实例正在运行，请稍后再试...\n")
+			os.exit(0)
+		else
+			luci.sys.call("touch " .. rule_lock)
+		end
+	elseif action == "end" then
+		luci.sys.call("rm -f " .. rule_lock)
+		return
+	end
+
+	if fs.access(sub_lock) then
+		log("[订阅]实例正在运行，[规则更新]进入队列等待...\n")
+	end
+	while fs.access(sub_lock) do
+		api.nixio.nanosleep(2, 0)
+	end
+end
+
+check_instance("start")
+
 log("开始更新规则...")
 local function safe_call(func, err_msg)
 	xpcall(func, function(e)
@@ -769,3 +797,5 @@ if reboot == 1 then
 	api.uci_save(uci, name, true, true)
 end
 log("规则更新完毕...\n")
+
+check_instance("end")

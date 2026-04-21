@@ -121,7 +121,9 @@ export DEPOT_TOOLS_WIN_TOOLCHAIN=0
 if [ "$host_os" = linux ]; then
   clang_x64_targets=$(grep -o ' | .*' $out/toolchain.ninja | grep -o ' clang_x64/[^ ]*' | sort -u)
   if [ "$clang_x64_targets" ]; then
-    CCACHE_DIR=$HOME/.cache/posix_ccache ninja -C "$out" $clang_x64_targets
+    CCACHE_DIR=$PWD/.host_tool_cache ccache -z
+    CCACHE_DIR=$PWD/.host_tool_cache ninja -C "$out" $clang_x64_targets
+    CCACHE_DIR=$PWD/.host_tool_cache ccache -s
     if [ "$WARMUP_HOST_TOOLS" ]; then
       exit 0
     fi

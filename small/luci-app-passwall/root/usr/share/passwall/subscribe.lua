@@ -21,7 +21,6 @@ local UrlEncode = api.UrlEncode
 local UrlDecode = api.UrlDecode
 local uci = api.uci
 local fs = api.fs
-uci:revert(appname)
 
 local has_ss = api.is_finded("ss-redir")
 local has_ss_rust = api.is_finded("sslocal")
@@ -317,7 +316,12 @@ do
 					currentNodes[#currentNodes + 1] = {
 						log = true,
 						node = node,
-						currentNode = node and uci:get_all(appname, node) or nil,
+						currentNode = (function()
+							if node and node:find("Socks_") then
+								return { Socks = node }
+							end
+							return node and uci:get_all(appname, node) or nil
+						end)(),
 						remarks = node,
 						set = function(o, server)
 							if o and server and server ~= "nil" then
@@ -341,7 +345,7 @@ do
 
 			--后备节点
 			local currentNode = uci:get_all(appname, node_id) or nil
-			if currentNode and currentNode.fallback_node then
+			if currentNode and currentNode.fallback_node and not currentNode.fallback_node:find("Socks_") then
 				CONFIG[#CONFIG + 1] = {
 					log = true,
 					id = node_id,
@@ -365,7 +369,12 @@ do
 					currentNodes[#currentNodes + 1] = {
 						log = true,
 						node = node,
-						currentNode = node and uci:get_all(appname, node) or nil,
+						currentNode = (function()
+							if node and node:find("Socks_") then
+								return { Socks = node }
+							end
+							return node and uci:get_all(appname, node) or nil
+						end)(),
 						remarks = node,
 						set = function(o, server)
 							if o and server and server ~= "nil" then
@@ -1745,6 +1754,10 @@ end
 local function select_node(nodes, config, parentConfig)
 	if config.currentNode then
 		local server
+		-- 负载均衡、urltest中的 Socks [端口] 节点保持原id
+		if config.currentNode["Socks"] then
+			server = config.currentNode.Socks
+		end
 		-- 特别优先级 cfgid
 		if config.currentNode[".name"] then
 			for index, node in pairs(nodes) do
@@ -1959,7 +1972,6 @@ local function update_node(manual)
 			end
 		end
 	end
-	api.uci_save(uci, appname, true)
 
 	if next(CONFIG) then
 		local nodes = {}
@@ -1980,9 +1992,9 @@ local function update_node(manual)
 				select_node(nodes, config)
 			end
 		end
-
-		api.uci_save(uci, appname, true)
 	end
+
+	api.uci_save(uci, appname, true)
 
 	if arg[3] == "cron" then
 		if not fs.access("/var/lock/" .. appname .. ".lock") then
@@ -2162,7 +2174,26 @@ local execute = function()
 	end
 end
 
+function check_instance(action)
+	local lock_file = "/var/lock/" .. appname .. "_subscribe.lock"
+	if action == "start" then
+		math.randomseed(os.time() + math.floor(os.clock() * 1000))
+		api.nixio.nanosleep(0, math.random(100, 1000) * 1000000)
+		if fs.access(lock_file) then
+			log("有订阅实例正在运行，请稍后再试...\n")
+			os.exit(0)
+		else
+			luci.sys.call("touch " .. lock_file)
+			uci:revert(appname)
+		end
+	elseif action == "end" then
+		luci.sys.call("rm -f " .. lock_file)
+	end
+end
+
 if arg[1] then
+	check_instance("start")
+
 	if arg[1] == "start" then
 		log('开始订阅...')
 		xpcall(execute, function(e)
@@ -2183,4 +2214,6 @@ if arg[1] then
 	elseif arg[1] == "truncate" then
 		truncate_nodes(arg[2])
 	end
+
+	check_instance("end")
 end
