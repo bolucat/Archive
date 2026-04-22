@@ -671,17 +671,27 @@ end
 
 local function check_instance(action)
 	local rule_lock = "/var/lock/" .. name .. "_rule_update.lock"
+	local sub_lock = "/var/lock/" .. name .. "_subscribe.lock"
+
 	if action == "start" then
 		math.randomseed(os.time() + math.floor(os.clock() * 1000))
 		api.nixio.nanosleep(0, math.random(100, 1000) * 1000000)
 		if fs.access(rule_lock) then
-			log("有规则更新实例正在运行，请稍后再试...\n")
+			log("有[规则更新]实例正在运行，请稍后再试...\n")
 			os.exit(0)
 		else
 			luci.sys.call("touch " .. rule_lock)
 		end
 	elseif action == "end" then
 		luci.sys.call("rm -f " .. rule_lock)
+		return
+	end
+
+	if fs.access(sub_lock) then
+		log("[订阅]实例正在运行，[规则更新]进入队列等待...\n")
+	end
+	while fs.access(sub_lock) do
+		api.nixio.nanosleep(2, 0)
 	end
 end
 
