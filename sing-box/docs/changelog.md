@@ -2,6 +2,15 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.17
+
+* Fixes and improvements
+
+#### 1.13.11
+
+* Fix process searcher failure introduced in 1.13.9
+* Fixes and improvements
+
 #### 1.14.0-alpha.16
 
 * Add ACME profile support for IP address certificates **1**

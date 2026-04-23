@@ -39,13 +39,9 @@ const PatchSettings = () => {
           </SettingsCardContent>
         </SettingsCard>
 
-        <SettingsCard>
-          <SettingsCardContent>
-            <TunStackSelector />
+        <TunStackSelector />
 
-            <LogLevelSelector />
-          </SettingsCardContent>
-        </SettingsCard>
+        <LogLevelSelector />
       </SettingsGroup>
     </div>
   )
@@ -57,11 +53,7 @@ const PortSettings = () => {
       <SettingsLabel>{m.settings_clash_settings_port_label()}</SettingsLabel>
 
       <SettingsGroup>
-        <SettingsCard>
-          <SettingsCardContent>
-            <MixedPortConfig />
-          </SettingsCardContent>
-        </SettingsCard>
+        <MixedPortConfig />
 
         <SettingsCard>
           <SettingsCardContent>

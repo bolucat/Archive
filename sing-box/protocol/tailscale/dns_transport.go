@@ -52,6 +52,7 @@ type DNSTransport struct {
 	dnsRouter              adapter.DNSRouter
 	endpointManager        adapter.EndpointManager
 	endpoint               *Endpoint
+	access                 sync.RWMutex
 	routePrefixes          []netip.Prefix
 	routes                 map[string][]adapter.DNSTransport
 	hosts                  map[string][]netip.Addr
@@ -96,6 +97,12 @@ func (t *DNSTransport) Start(stage adapter.StartStage) error {
 }
 
 func (t *DNSTransport) Reset() {
+	t.access.RLock()
+	transports := t.collectResolversLocked()
+	t.access.RUnlock()
+	for _, transport := range transports {
+		transport.Reset()
+	}
 }
 
 func (t *DNSTransport) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCfg *nDNS.Config) {
@@ -106,7 +113,7 @@ func (t *DNSTransport) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, d
 }
 
 func (t *DNSTransport) updateDNSServers(routeConfig *router.Config, dnsConfig *nDNS.Config) error {
-	t.routePrefixes = buildRoutePrefixes(routeConfig)
+	routePrefixes := buildRoutePrefixes(routeConfig)
 	directDialerOnce := sync.OnceValue(func() N.Dialer {
 		directDialer := common.Must1(dialer.NewDefault(t.ctx, option.DialerOptions{}))
 		return &DNSDialer{transport: t, fallbackDialer: directDialer}
@@ -138,10 +145,20 @@ func (t *DNSTransport) updateDNSServers(routeConfig *router.Config, dnsConfig *n
 		}
 		defaultResolvers = append(defaultResolvers, myResolver)
 	}
+
+	t.access.Lock()
+	oldResolvers := t.collectResolversLocked()
+	t.routePrefixes = routePrefixes
 	t.routes = routes
 	t.hosts = hosts
 	t.searchDomains = searchDomains
 	t.defaultResolvers = defaultResolvers
+	t.access.Unlock()
+
+	for _, transport := range oldResolvers {
+		transport.Close()
+	}
+
 	if len(defaultResolvers) > 0 {
 		t.logger.Info("updated ", len(routes), " routes, ", len(hosts), " hosts, ", len(searchDomains), " search domains, default resolvers: ",
 			strings.Join(common.Map(dnsConfig.DefaultResolvers, func(it *dnstype.Resolver) string { return it.Addr }), " "))
@@ -216,7 +233,22 @@ func buildRoutePrefixes(routeConfig *router.Config) []netip.Prefix {
 }
 
 func (t *DNSTransport) Close() error {
-	return nil
+	t.access.Lock()
+	transports := t.collectResolversLocked()
+	t.routePrefixes = nil
+	t.routes = nil
+	t.hosts = nil
+	t.defaultResolvers = nil
+	t.access.Unlock()
+
+	var err error
+	for _, transport := range transports {
+		name := "resolver/" + transport.Type() + "[" + transport.Tag() + "]"
+		err = E.Append(err, transport.Close(), func(err error) error {
+			return E.Cause(err, "close ", name)
+		})
+	}
+	return err
 }
 
 func (t *DNSTransport) Raw() bool {
@@ -230,14 +262,20 @@ func (t *DNSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 	if t.acceptSearchDomain && mDNS.CountLabel(message.Question[0].Name) == 1 {
 		return t.exchangeWithSearchDomains(ctx, message)
 	}
-	return t.exchangeOnce(ctx, message, t.acceptDefaultResolvers)
+	t.access.RLock()
+	acceptDefaultResolvers := t.acceptDefaultResolvers
+	t.access.RUnlock()
+	return t.exchangeOnce(ctx, message, acceptDefaultResolvers)
 }
 
 func (t *DNSTransport) exchangeWithSearchDomains(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	t.access.RLock()
+	searchDomains := t.searchDomains
+	t.access.RUnlock()
 	originalQuestion := message.Question[0]
 	singleLabel := strings.TrimSuffix(originalQuestion.Name, ".")
 	var lastErr error
-	for _, searchDomain := range t.searchDomains {
+	for _, searchDomain := range searchDomains {
 		expandedName := singleLabel + "." + searchDomain
 		question := originalQuestion
 		question.Name = expandedName
@@ -275,7 +313,14 @@ func restoreOriginalQuestion(response *mDNS.Msg, expandedName string, originalQu
 
 func (t *DNSTransport) exchangeOnce(ctx context.Context, message *mDNS.Msg, allowDefaultResolvers bool) (*mDNS.Msg, error) {
 	question := message.Question[0]
-	addresses, hostsLoaded := t.hosts[question.Name]
+
+	t.access.RLock()
+	hosts := t.hosts
+	routes := t.routes
+	defaultResolvers := t.defaultResolvers
+	t.access.RUnlock()
+
+	addresses, hostsLoaded := hosts[question.Name]
 	if hostsLoaded {
 		switch question.Qtype {
 		case mDNS.TypeA:
@@ -294,7 +339,7 @@ func (t *DNSTransport) exchangeOnce(ctx context.Context, message *mDNS.Msg, allo
 			}
 		}
 	}
-	for domainSuffix, transports := range t.routes {
+	for domainSuffix, transports := range routes {
 		if strings.HasSuffix(question.Name, domainSuffix) {
 			if len(transports) == 0 {
 				return &mDNS.Msg{
@@ -319,9 +364,9 @@ func (t *DNSTransport) exchangeOnce(ctx context.Context, message *mDNS.Msg, allo
 		}
 	}
 	if allowDefaultResolvers {
-		if len(t.defaultResolvers) > 0 {
+		if len(defaultResolvers) > 0 {
 			var lastErr error
-			for _, resolver := range t.defaultResolvers {
+			for _, resolver := range defaultResolvers {
 				response, err := resolver.Exchange(ctx, message)
 				if err != nil {
 					lastErr = err
@@ -337,6 +382,15 @@ func (t *DNSTransport) exchangeOnce(ctx context.Context, message *mDNS.Msg, allo
 	return nil, dns.RcodeNameError
 }
 
+func (t *DNSTransport) collectResolversLocked() []adapter.DNSTransport {
+	var transports []adapter.DNSTransport
+	for _, resolvers := range t.routes {
+		transports = append(transports, resolvers...)
+	}
+	transports = append(transports, t.defaultResolvers...)
+	return transports
+}
+
 type DNSDialer struct {
 	transport      *DNSTransport
 	fallbackDialer N.Dialer
@@ -346,7 +400,8 @@ func (d *DNSDialer) DialContext(ctx context.Context, network string, destination
 	if destination.IsDomain() {
 		panic("invalid request here")
 	}
-	for _, prefix := range d.transport.routePrefixes {
+	routePrefixes := d.transport.routePrefixesSnapshot()
+	for _, prefix := range routePrefixes {
 		if prefix.Contains(destination.Addr) {
 			return d.transport.endpoint.DialContext(ctx, network, destination)
 		}
@@ -358,10 +413,17 @@ func (d *DNSDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (
 	if destination.IsDomain() {
 		panic("invalid request here")
 	}
-	for _, prefix := range d.transport.routePrefixes {
+	routePrefixes := d.transport.routePrefixesSnapshot()
+	for _, prefix := range routePrefixes {
 		if prefix.Contains(destination.Addr) {
 			return d.transport.endpoint.ListenPacket(ctx, destination)
 		}
 	}
 	return d.fallbackDialer.ListenPacket(ctx, destination)
+}
+
+func (t *DNSTransport) routePrefixesSnapshot() []netip.Prefix {
+	t.access.RLock()
+	defer t.access.RUnlock()
+	return append([]netip.Prefix(nil), t.routePrefixes...)
 }

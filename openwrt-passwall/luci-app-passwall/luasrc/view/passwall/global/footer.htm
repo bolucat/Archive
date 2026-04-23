@@ -16,6 +16,22 @@ local appname = api.appname
 	display: none !important;
 	visibility: hidden !important;
 }
+
+@media screen and (max-width: 1152px) {
+	#cbi-<%=appname%>-socks .cbi-section-table-titles {
+		display: none !important;
+	}
+}
+
+@media screen and (min-width: 1152px) {
+	#cbi-<%=appname%>-socks input[id*=".<%=appname%>."][id$=".port"],
+	#cbi-<%=appname%>-socks input[id*=".<%=appname%>."][id$=".http_port"] {
+		width: 100px !important;
+		min-width: unset !important;
+		max-width: unset !important;
+		text-align: center !important;
+	}
+}
 </style>
 <script type="text/javascript">
 	//<![CDATA[
