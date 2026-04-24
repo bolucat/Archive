@@ -164,7 +164,7 @@ export default class DownDAL {
 
     let cPid = ''
     let cPath = ''
-    const ariaRemote = settingStore.ariaState == 'remote'
+    const ariaRemote = settingStore.downUseAria2c && settingStore.ariaState == 'remote'
     const sep = settingStore.ariaSavePath.indexOf('/') >= 0 ? '/' : '\\'
     for (let f = 0; f < fileList.length; f++) {
       const file = fileList[f]
@@ -246,6 +246,7 @@ export default class DownDAL {
     const settingStore = useSettingStore()
 
     const isOnline = await AriaConnect()
+
     if (isOnline && downingStore.ListDataRaw.length) {
       await AriaGetDowningList()
       const ariaRemote = IsAria2cRemote()
@@ -305,7 +306,7 @@ export default class DownDAL {
     const downingStore = useDowningStore()
     const settingStore = useSettingStore()
     const DowningList: IStateDownFile[] = downingStore.ListDataRaw
-    const ariaRemote = !settingStore.AriaIsLocal
+    const ariaRemote = settingStore.downUseAria2c && !settingStore.AriaIsLocal
 
     const dellist: string[] = []
     const saveList: IStateDownFile[] = []
@@ -406,8 +407,10 @@ export default class DownDAL {
           let filePath = path.join(downInfo.DownSavePath, downInfo.name)
           let tmpFilePath1 = filePath + '.td.aria2'
           let tmpFilePath2 = filePath + '.td'
+          const tmpFilePath3 = filePath + '.td.json'
           await fsPromises.rm(tmpFilePath1, { recursive: true })
           await fsPromises.rm(tmpFilePath2, { recursive: true })
+          await fsPromises.rm(tmpFilePath3, { recursive: true })
         }
       } catch (e) {
       }

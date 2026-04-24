@@ -7,6 +7,8 @@ import { exec, spawn, SpawnOptions } from 'child_process'
 import { ShowError } from './dialog'
 import { getStaticPath, getUserDataPath } from '../utils/mainfile'
 import { portIsOccupied } from '../utils'
+import { registerDownloadHandlers } from '../download/ipcHandlers'
+import { registerMediaImageCacheIpc } from '../mediaImageCache'
 
 let psbId: any
 export default class ipcEvent {
@@ -36,6 +38,8 @@ export default class ipcEvent {
     this.handleWebSetProxy()
     this.handleWebOpenWindow()
     this.handleWebOpenUrl()
+    registerDownloadHandlers()
+    registerMediaImageCacheIpc()
   }
 
   private static handleWebToElectron() {

@@ -2,9 +2,18 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.17
+#### 1.14.0-alpha.18
 
+* Add Windows TLS engine **1**
 * Fixes and improvements
+
+**1**:
+
+The new `windows` value for outbound TLS
+[`engine`](/configuration/shared/tls/#engine) routes the TLS handshake
+through Schannel via SSPI. Only available on Windows build 17763 or
+later (Windows 10 version 1809, Windows Server 2019, or newer); TLS 1.3
+is only negotiated on Windows 11 or Windows Server 2022 and newer.
 
 #### 1.13.11
 

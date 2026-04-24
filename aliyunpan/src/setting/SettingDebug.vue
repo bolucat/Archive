@@ -6,6 +6,7 @@ import { getUserData, openExternal } from '../utils/electronhelper'
 import message from '../utils/message'
 import { createProxyServer, getIPAddress } from '../utils/proxyhelper'
 import { Sleep } from '../utils/format'
+import { onMounted, ref } from 'vue'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -47,11 +48,48 @@ const handleResetPort = async () => {
     })
   }
 }
+
+const cacheTotalBytes = ref(0)
+const cacheLoading = ref(false)
+const cacheClearing = ref(false)
+
+const loadCacheStats = async () => {
+  if (!(window as any).MsImageCacheStats) return
+  cacheLoading.value = true
+  try {
+    const stats = await (window as any).MsImageCacheStats()
+    cacheTotalBytes.value = stats.totalBytes ?? 0
+  } finally {
+    cacheLoading.value = false
+  }
+}
+
+const handleClearCache = async () => {
+  if (!(window as any).MsImageCacheClear) return
+  cacheClearing.value = true
+  try {
+    await (window as any).MsImageCacheClear()
+    await loadCacheStats()
+    message.success('已清理全部图片缓存')
+  } catch {
+    message.error('清理失败，请重试')
+  } finally {
+    cacheClearing.value = false
+  }
+}
+
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+onMounted(loadCacheStats)
 </script>
 
 <template>
   <div class="settingcard">
-    <div class="settinghead">:文件列表 显示限制</div>
+    <div class="settinghead">文件列表 显示限制</div>
     <div class="settingrow">
       <a-input-number tabindex="-1" :style="{ width: '252px' }" mode="button" :min="3000" :max="10000" :step="100"
                       :model-value="settingStore.debugFileListMax"
@@ -73,7 +111,7 @@ const handleResetPort = async () => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">:收藏夹/回收站/全盘搜索/文件标记/文件恢复/历史导入 显示限制</div>
+    <div class="settinghead">收藏夹/回收站/全盘搜索/文件标记/文件恢复/历史导入 显示限制</div>
     <div class="settingrow">
       <div class="settingrow">
         <a-input-number tabindex="-1" :style="{ width: '252px' }" mode="button" :min="100"
@@ -97,7 +135,7 @@ const handleResetPort = async () => {
       </div>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">:下载完/上传完记录 存储限制</div>
+    <div class="settinghead">下载完/上传完记录 存储限制</div>
     <div class="settingrow">
       <div class="settingrow">
         <a-input-number tabindex="-1" :style="{ width: '252px' }" mode="button" :min="1000" :max="50000" :step="1000"
@@ -124,7 +162,7 @@ const handleResetPort = async () => {
   <div class='settingcard' v-if="false">
     <a-alert banner type="warning">默认 不会产生任何 上传到服务器的数据</a-alert>
     <div class="settingspace"></div>
-    <div class="settinghead">:自动填写 分享链接提取码</div>
+    <div class="settinghead">自动填写 分享链接提取码</div>
     <div class="settingrow">
       <MySwitch :value="settingStore.yinsiLinkPassword" @update:value="cb({ yinsiLinkPassword: $event })">导入分享时
         尝试自动填写提取码
@@ -145,7 +183,7 @@ const handleResetPort = async () => {
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">:自动填写 在线解压密码</div>
+    <div class="settinghead">自动填写 在线解压密码</div>
     <div class="settingrow">
       <MySwitch :value="settingStore.yinsiZipPassword" @update:value="cb({ yinsiZipPassword: $event })">在线解压时
         尝试自动填写解压密码
@@ -166,7 +204,7 @@ const handleResetPort = async () => {
     </div>
   </div>
   <div class="settingcard">
-    <div class='settinghead'>:软件服务端口</div>
+    <div class='settinghead'>软件服务端口</div>
     <a-popover position='bottom'>
       <i class='iconfont iconbulb' />
       <template #content>
@@ -205,7 +243,7 @@ const handleResetPort = async () => {
     </div>
     <div class='settingspace'></div>
     <div class="settinghead">
-      :缓存路径
+      缓存路径
       <span class="opblue" style="margin-left: 12px; padding: 0 12px">( {{ settingStore.debugDirSize }} )</span>
     </div>
     <div class="settingrow">
@@ -229,6 +267,33 @@ const handleResetPort = async () => {
       <a-popconfirm content="确认要重置？会重启小白羊" @ok="AppCache.aClearDir('all')">
         <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">
           删除全部数据(重置)
+        </a-button>
+      </a-popconfirm>
+    </div>
+  </div>
+
+  <div class="settingcard">
+    <div class="settinghead">
+      媒体图片缓存
+      <span v-if="cacheTotalBytes > 0" class="opblue" style="margin-left: 12px; padding: 0 12px">
+        {{ formatBytes(cacheTotalBytes) }}
+      </span>
+      <a-spin v-if="cacheLoading" size="small" style="margin-left: 8px" />
+    </div>
+    <div class="settingrow">
+      <a-button type="outline" size="small" tabindex="-1" :loading="cacheLoading" @click="loadCacheStats">
+        刷新统计
+      </a-button>
+      <a-popconfirm content="确认清理全部媒体图片缓存？" @ok="handleClearCache">
+        <a-button
+          type="outline"
+          size="small"
+          status="danger"
+          tabindex="-1"
+          style="margin-left: 12px"
+          :loading="cacheClearing"
+        >
+          清理图片缓存
         </a-button>
       </a-popconfirm>
     </div>

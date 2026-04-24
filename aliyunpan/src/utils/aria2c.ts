@@ -34,6 +34,11 @@ function GetAria() {
   return Aria2EngineRemote
 }
 
+/** Use native DownloadManager only when aria2c module is disabled */
+function useNative(): boolean {
+  return !useSettingStore().downUseAria2c
+}
+
 function SetAriaOnline(isOnline: boolean, ariaState: string = '') {
   if (!ariaState) ariaState = useSettingStore().ariaState
   if (ariaState == 'local') {
@@ -159,6 +164,18 @@ export async function AriaChangeToRemote() {
 
 export async function AriaChangeToLocal() {
   CloseRemote()
+  if (!useSettingStore().downUseAria2c) {
+    // Native DownloadManager — no aria2c process needed
+    try {
+      IsAria2cOnlineLocal = true
+      SetAriaOnline(true, 'local')
+      await AriaGlobalSpeed()
+    } catch (e) {
+      SetAriaOnline(false, 'local')
+    }
+    return true
+  }
+  // Local aria2c via WebSocket
   if (Aria2cLocalRelaunchTime < 5) {
     try {
       let port = 16800
@@ -190,7 +207,6 @@ export async function AriaChangeToLocal() {
             message.info('正在尝试重启Aria进程中。。。')
           }
         })
-
       if (!IsAria2cOnlineLocal) {
         const url = `127.0.0.1:${port} secret=${localPwd}`
         if (Aria2cLocalRelaunchTime < 2) message.error('无法连接到本地Aria2 ' + url)
@@ -211,17 +227,22 @@ export async function AriaGlobalSpeed() {
   try {
     const settingStore = useSettingStore()
     const limit = settingStore.downGlobalSpeed.toString() + (settingStore.downGlobalSpeedM == 'MB' ? 'M' : 'K')
-    await GetAria()?.call('aria2.changeGlobalOption', { 'max-overall-download-limit': limit }).catch((e: any) => {
-      if (e && e.message == 'Unauthorized') message.error('Aria2密码错误(密码不要有 ^ 或特殊字符)')
-      IsAria2cOnlineLocal = false
-    })
+    if (useNative()) {
+      await window.Electron.ipcRenderer.invoke('download:setSpeed', { limit })
+    } else {
+      await GetAria()?.call('aria2.changeGlobalOption', { 'max-overall-download-limit': limit }).catch((e: any) => {
+        if (e && e.message == 'Unauthorized') message.error('Aria2密码错误(密码不要有 ^ 或特殊字符)')
+        IsAria2cOnlineLocal = false
+      })
+    }
   } catch {
     SetAriaOnline(false)
   }
 }
 
 export async function AriaConnect() {
-  if (useSettingStore().AriaIsLocal) {
+  if (!useSettingStore().downUseAria2c || useSettingStore().AriaIsLocal) {
+    // Native IPC (downUseAria2c=false) or local aria2c (downUseAria2c=true, ariaState=local)
     if (!IsAria2cOnlineLocal) await AriaChangeToLocal()
     return IsAria2cOnlineLocal
   } else {
@@ -232,6 +253,17 @@ export async function AriaConnect() {
 
 
 export async function AriaGetDowningList() {
+  if (useNative()) {
+    try {
+      const list: IAriaDownProgress[] = await window.Electron.ipcRenderer.invoke('download:list')
+      DownDAL.mSpeedEvent(list || [])
+      SetAriaOnline(true)
+    } catch (e: any) {
+      DebugLog.mSaveLog('danger', 'AriaGetDowningList' + (e.message || ''), e)
+      SetAriaOnline(false)
+    }
+    return
+  }
   const multicall = [
     ['aria2.tellActive', ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
     ['aria2.tellWaiting', 0, 1000, ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
@@ -258,6 +290,15 @@ export async function AriaGetDowningList() {
 
 
 export async function AriaDeleteList(list: string[]) {
+  if (useNative()) {
+    try {
+      await window.Electron.ipcRenderer.invoke('download:remove', list)
+      SetAriaOnline(true)
+    } catch {
+      SetAriaOnline(false)
+    }
+    return
+  }
   const multicall = []
   for (let i = 0, maxi = list.length; i < maxi; i++) {
     multicall.push(['aria2.forceRemove', list[i]])
@@ -273,6 +314,15 @@ export async function AriaDeleteList(list: string[]) {
 
 
 export async function AriaStopList(list: string[]) {
+  if (useNative()) {
+    try {
+      await window.Electron.ipcRenderer.invoke('download:pause', list)
+      SetAriaOnline(true)
+    } catch {
+      SetAriaOnline(false)
+    }
+    return
+  }
   const multicall = []
   for (let i = 0, maxi = list.length; i < maxi; i++) {
     multicall.push(['aria2.forcePause', list[i]])
@@ -287,10 +337,11 @@ export async function AriaStopList(list: string[]) {
 
 
 export function AriaShoutDown() {
-  if (useSettingStore().AriaIsLocal) {
-    Aria2EngineLocal?.call('aria2.forceShutdown').catch((e: any) => {
-    })
+  if (useNative()) {
+    // Native engine runs in the Electron main process; nothing to shut down from the renderer
+    return
   }
+  GetAria()?.call('aria2.forceShutdown').catch(() => {})
 }
 
 export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
@@ -426,6 +477,31 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
           headers.push(`User-Agent: ${userAgent}`)
         }
       }
+      if (useNative()) {
+        // Native DownloadManager path: submit via IPC
+        const headersRecord: Record<string, string> = {}
+        for (const h of headers) {
+          const colonIdx = h.indexOf(':')
+          if (colonIdx > 0) {
+            headersRecord[h.slice(0, colonIdx).trim()] = h.slice(colonIdx + 1).trim()
+          }
+        }
+        const result: any = await window.Electron.ipcRenderer.invoke('download:add', {
+          gid: info.GID,
+          user_id: info.user_id,
+          drive_id: info.drive_id,
+          file_id: info.file_id,
+          encType: info.encType,
+          url: downloadUrl,
+          headers: headersRecord,
+          savePath: dirPath,
+          fileName: info.name,
+          fileSize: info.size,
+          split
+        })
+        if (result === 'success') return 'success'
+        return '创建下载任务失败: ' + (result || '未知错误')
+      }
       const multicall = [
         ['aria2.forceRemove', info.GID],
         ['aria2.removeDownloadResult', info.GID],
@@ -481,18 +557,33 @@ export function AriaHashFile(downitem: IStateDownFile): { DownID: string; Check:
     check: crc64 || sha1 || ''
   }
   let success = false
-  if (data.inputfile == data.movetofile) {
-    success = true
-  } else {
-    try {
-      fs.renameSync(data.inputfile, data.movetofile)
+  if (useNative()) {
+    // Native engine renames .td → final on completion; just verify the final file exists
+    if (data.inputfile === data.movetofile || fs.existsSync(data.movetofile)) {
       success = true
-    } catch {
+    } else if (fs.existsSync(data.inputfile)) {
+      // Fallback: manual rename if .td file still present
       try {
         fs.renameSync(data.inputfile, data.movetofile)
         success = true
       } catch (e: any) {
         DebugLog.mSaveLog('danger', 'AriaRename file=' + data.inputfile + ' error=' + (e.message || ''), e)
+      }
+    }
+  } else {
+    if (data.inputfile == data.movetofile) {
+      success = true
+    } else {
+      try {
+        fs.renameSync(data.inputfile, data.movetofile)
+        success = true
+      } catch {
+        try {
+          fs.renameSync(data.inputfile, data.movetofile)
+          success = true
+        } catch (e: any) {
+          DebugLog.mSaveLog('danger', 'AriaRename file=' + data.inputfile + ' error=' + (e.message || ''), e)
+        }
       }
     }
   }

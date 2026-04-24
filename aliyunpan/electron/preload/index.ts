@@ -166,6 +166,36 @@ window.WebSetProxy = function(data: { proxyUrl: string }) {
   }
 }
 
+window.MsImageCacheSyncConfig = function(configs: any[]) {
+  try {
+    ipcRenderer.send('MsImageCache:syncConfig', configs)
+  } catch {}
+}
+
+window.MsImageCacheStats = async function() {
+  try {
+    return await ipcRenderer.invoke('MsImageCache:stats')
+  } catch {
+    return { totalBytes: 0, servers: [] }
+  }
+}
+
+window.MsImageCacheClear = async function(serverId?: string) {
+  try {
+    return await ipcRenderer.invoke('MsImageCache:clear', serverId ? { serverId } : {})
+  } catch {
+    return { cleared: 0 }
+  }
+}
+
+window.TvBoxInvoke = async function(channel: string, data: unknown) {
+  try {
+    return await ipcRenderer.invoke(channel, data)
+  } catch (e: unknown) {
+    throw e
+  }
+}
+
 function createRightMenu() {
   window.addEventListener('contextmenu', (e) => {
       if (e) e.preventDefault()

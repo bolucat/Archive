@@ -11,6 +11,7 @@ declare type VideoQuality = 'Origin' | 'QHD' | 'FHD' | 'HD' | 'SD' | 'LD'
 export interface SettingState {
   // 应用设置
   uiTheme: string
+  uiDefaultTab: string
   uiImageMode: string
   uiExitOnClose: boolean
   uiLaunchAutoCheckUpdate: boolean
@@ -80,6 +81,7 @@ export interface SettingState {
   downThreadMax: number
   downGlobalSpeed: number
   downGlobalSpeedM: string
+  downUseAria2c: boolean
 
   // 上传文件
   uploadFileMax: number
@@ -138,6 +140,7 @@ export interface SettingState {
 const setting: SettingState = {
   // 应用设置
   uiTheme: 'system',
+  uiDefaultTab: 'pan',
   uiImageMode: 'fill',
   uiExitOnClose: false,
   uiLaunchAutoCheckUpdate: false,
@@ -214,6 +217,7 @@ const setting: SettingState = {
   downThreadMax: 4,
   downGlobalSpeed: 0,
   downGlobalSpeedM: 'MB',
+  downUseAria2c: true,
 
   // 上传文件
   uploadFileMax: 5,
@@ -273,6 +277,7 @@ function _loadSetting(val: any) {
   console.log('_loadSetting', val)
   // 应用设置
   setting.uiTheme = defaultValue(val.uiTheme, ['system', 'light', 'dark'])
+  setting.uiDefaultTab = defaultValue(val.uiDefaultTab, ['pan', 'media', 'media-server'])
   setting.uiImageMode = defaultValue(val.uiImageMode, ['fill', 'width', 'web'])
   setting.uiExitOnClose = defaultBool(val.uiExitOnClose, false)
   setting.uiLaunchAutoCheckUpdate = defaultBool(val.uiLaunchAutoCheckUpdate, false)
@@ -340,6 +345,7 @@ function _loadSetting(val: any) {
   setting.downThreadMax = defaultValue(val.downThreadMax, [4, 1, 2, 4, 8, 16, 24, 32])
   setting.downGlobalSpeed = defaultNumberSub(val.downGlobalSpeed, 0, 0, 999)
   setting.downGlobalSpeedM = defaultValue(val.downGlobalSpeedM, ['MB', 'KB'])
+  setting.downUseAria2c = defaultBool(val.downUseAria2c, true)
 
   // 上传文件
   setting.uploadFileMax = defaultValue(val.uploadFileMax, [5, 1, 3, 5, 10, 20, 30, 50])
