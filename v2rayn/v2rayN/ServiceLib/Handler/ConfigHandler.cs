@@ -135,6 +135,10 @@ public static class ConfigHandler
         {
             config.SpeedTestItem.MixedConcurrencyCount = 5;
         }
+        if (config.SpeedTestItem.UdpTestTarget.IsNullOrEmpty())
+        {
+            config.SpeedTestItem.UdpTestTarget = Global.UdpTestTargets.First();
+        }
 
         config.Mux4RayItem ??= new()
         {
@@ -1037,13 +1041,19 @@ public static class ConfigHandler
 
         foreach (var item in lstProfile)
         {
-            if (!lstKeep.Exists(i => CompareProfileItem(i, item, false)))
+            if (item.IsComplex())
             {
                 lstKeep.Add(item);
+                continue;
+            }
+
+            if (lstKeep.Exists(i => CompareProfileItem(i, item, false)))
+            {
+                lstRemove.Add(item);
             }
             else
             {
-                lstRemove.Add(item);
+                lstKeep.Add(item);
             }
         }
         await RemoveServers(config, lstRemove);
