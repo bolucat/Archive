@@ -340,21 +340,27 @@ public partial class AddServerWindow
             case nameof(ETransport.raw):
                 gridTransportRaw.Visibility = Visibility.Visible;
                 break;
+
             case nameof(ETransport.kcp):
                 gridTransportKcp.Visibility = Visibility.Visible;
                 break;
+
             case nameof(ETransport.ws):
                 gridTransportWs.Visibility = Visibility.Visible;
                 break;
+
             case nameof(ETransport.httpupgrade):
                 gridTransportHttpupgrade.Visibility = Visibility.Visible;
                 break;
+
             case nameof(ETransport.xhttp):
                 gridTransportXhttp.Visibility = Visibility.Visible;
                 break;
+
             case nameof(ETransport.grpc):
                 gridTransportGrpc.Visibility = Visibility.Visible;
                 break;
+
             default:
                 gridTransportRaw.Visibility = Visibility.Visible;
                 break;

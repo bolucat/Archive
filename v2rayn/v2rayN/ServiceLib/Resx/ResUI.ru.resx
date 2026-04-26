@@ -720,9 +720,6 @@
   <data name="TbSettingsPass" xml:space="preserve">
     <value>Пароль авторизации</value>
   </data>
-  <data name="TbSettingsRemoteDNS" xml:space="preserve">
-    <value>Пользовательский DNS (если несколько, то делите запятыми (,))</value>
-  </data>
   <data name="TbSettingsSetUWP" xml:space="preserve">
     <value>Разрешить loopback для приложений UWP (Win10)</value>
   </data>

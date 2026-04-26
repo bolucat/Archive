@@ -2881,7 +2881,7 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
-        ///   查找类似 Supports DNS Object; Click to view documentation 的本地化字符串。
+        ///   查找类似 Please fill in DNS Object; Click to view documentation 的本地化字符串。
         /// </summary>
         public static string TbDnsObjectDoc {
             get {
@@ -4155,15 +4155,6 @@ namespace ServiceLib.Resx {
         public static string TbSettingsPass {
             get {
                 return ResourceManager.GetString("TbSettingsPass", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   查找类似 Custom DNS (multiple, separated by commas (,)) 的本地化字符串。
-        /// </summary>
-        public static string TbSettingsRemoteDNS {
-            get {
-                return ResourceManager.GetString("TbSettingsRemoteDNS", resourceCulture);
             }
         }
         

@@ -720,9 +720,6 @@
   <data name="TbSettingsPass" xml:space="preserve">
     <value>Hitelesítési jelszó</value>
   </data>
-  <data name="TbSettingsRemoteDNS" xml:space="preserve">
-    <value>Egyéni DNS (több, vesszővel (,) elválasztva)</value>
-  </data>
   <data name="TbSettingsSetUWP" xml:space="preserve">
     <value>Win10 UWP Loopback beállítása</value>
   </data>

@@ -720,9 +720,6 @@
   <data name="TbSettingsPass" xml:space="preserve">
     <value>مجوز احراز هویت</value>
   </data>
-  <data name="TbSettingsRemoteDNS" xml:space="preserve">
-    <value>سفارشی DNS (multiple, separated by commas (,))</value>
-  </data>
   <data name="TbSettingsSetUWP" xml:space="preserve">
     <value>تنظیم کردن Win10 UWP Loopback</value>
   </data>
