@@ -149,14 +149,14 @@ function gen_outbound(flag, node, tag, proxy_table)
 				tlsSettings = (node.stream_security == "tls") and {
 					serverName = node.tls_serverName,
 					allowInsecure = (function()
-								if node.tls_CertSha and node.tls_CertSha ~= "" then return nil end
+								if node.tls_pinSHA256 and node.tls_pinSHA256 ~= "" then return nil end
 								if api.compare_versions(os.date("%Y.%m.%d"), "<", "2026.6.1") and node.tls_allowInsecure == "1" then return true end
 							end)(),
 					fingerprint = (node.type == "Xray" and node.utls == "1" and node.fingerprint and node.fingerprint ~= "") and node.fingerprint or nil,
 					pinnedPeerCertSha256 = (function()
 								if api.compare_versions(xray_version, "<", "26.1.31") then return nil end
-								if not node.tls_CertSha then return "" end
-								return node.tls_CertSha
+								if not node.tls_pinSHA256 then return "" end
+								return node.tls_pinSHA256
 							end)(),
 					verifyPeerCertByName = (function()
 								if api.compare_versions(xray_version, "<", "26.1.31") then return nil end
@@ -1545,7 +1545,7 @@ function gen_config(var)
 			local domain = {}
 			local nodes_domain_text = sys.exec([[uci show passwall | sed -n "s/.*\.\(address\|download_address\)='\([^']*\)'/\2/p" | sort -u]])
 			string.gsub(nodes_domain_text, '[^' .. "\r\n" .. ']+', function(w)
-				if w and w ~= "" and api.datatypes.hostname(w) and not GLOBAL.VPS_EXCLUDE[w] then
+				if not api.vps_domain_exclude(w) and api.datatypes.hostname(w) and not GLOBAL.VPS_EXCLUDE[w] then
 					table.insert(domain, "full:" .. w)
 				end
 			end)
