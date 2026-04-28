@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 
 	singTun "github.com/sagernet/sing-tun"
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/logger"
 	wgTun "github.com/sagernet/wireguard-go/tun"
 )
@@ -92,7 +91,7 @@ func (a *tunDeviceAdapter) Write(bufs [][]byte, offset int) (count int, err erro
 	for _, packet := range bufs {
 		a.debugPacket("write", packet[offset:])
 		if singTun.PacketOffset > 0 {
-			common.ClearArray(packet[offset-singTun.PacketOffset : offset])
+			clear(packet[offset-singTun.PacketOffset : offset])
 			singTun.PacketFillHeader(packet[offset-singTun.PacketOffset:], singTun.PacketIPVersion(packet[offset:]))
 		}
 		_, err = a.tun.Write(packet[offset-singTun.PacketOffset:])

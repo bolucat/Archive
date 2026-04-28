@@ -20,7 +20,6 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing-tun/ping"
-	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/wireguard-go/device"
@@ -110,7 +109,7 @@ func (w *systemStackDevice) Write(bufs [][]byte, offset int) (count int, err err
 		for _, packet := range bufs {
 			if !w.writeStack(packet[offset:]) {
 				if tun.PacketOffset > 0 {
-					common.ClearArray(packet[offset-tun.PacketOffset : offset])
+					clear(packet[offset-tun.PacketOffset : offset])
 					tun.PacketFillHeader(packet[offset-tun.PacketOffset:], tun.PacketIPVersion(packet[offset:]))
 				}
 				_, err = w.device.Write(packet[offset-tun.PacketOffset:])

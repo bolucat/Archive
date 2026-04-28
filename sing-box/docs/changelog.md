@@ -2,6 +2,29 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.20
+
+** Fixes and improvements
+
+#### 1.14.0-alpha.19
+
+* Preserve comments between formatting
+* Add cipher, MAC, and key exchange algorithm options for SSH outbound **1**
+* Add DNS query timeout options **2**
+** Fixes and improvements
+
+**1**:
+
+See [SSH](/configuration/outbound/ssh/#cipher).
+
+**2**:
+
+Adds [`dns.timeout`](/configuration/dns/#timeout), with per-query
+overrides via [DNS rule action](/configuration/dns/rule_action/#timeout)
+and [`resolve` route rule action](/configuration/route/rule_action/#timeout),
+and a `timeout` field on
+[`domain_resolver`](/configuration/shared/dial/#domain_resolver).
+
 #### 1.14.0-alpha.18
 
 * Add Windows TLS engine **1**

@@ -147,7 +147,7 @@ func (w *systemDevice) Write(bufs [][]byte, offset int) (count int, err error) {
 	} else {
 		for _, packet := range bufs {
 			if tun.PacketOffset > 0 {
-				common.ClearArray(packet[offset-tun.PacketOffset : offset])
+				clear(packet[offset-tun.PacketOffset : offset])
 				tun.PacketFillHeader(packet[offset-tun.PacketOffset:], tun.PacketIPVersion(packet[offset:]))
 			}
 			_, err = w.device.Write(packet[offset-tun.PacketOffset:])

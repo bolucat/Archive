@@ -23,9 +23,7 @@ var _ adapter.CertificateStore = (*Store)(nil)
 
 type Store struct {
 	access                    sync.RWMutex
-	updateAccess              sync.Mutex
-	closed                    bool
-	store                     string
+	storeType                 string
 	systemPool                *x509.CertPool
 	currentPool               *x509.CertPool
 	certificate               string
@@ -36,9 +34,13 @@ type Store struct {
 }
 
 func NewStore(ctx context.Context, logger logger.Logger, options option.CertificateOptions) (*Store, error) {
+	storeType := options.Store
+	if storeType == "" {
+		storeType = C.CertificateStoreSystem
+	}
 	var systemPool *x509.CertPool
-	switch options.Store {
-	case C.CertificateStoreSystem, "":
+	switch storeType {
+	case C.CertificateStoreSystem:
 		systemPool = x509.NewCertPool()
 		platformInterface := service.FromContext[adapter.PlatformInterface](ctx)
 		var systemValid bool
@@ -56,17 +58,13 @@ func NewStore(ctx context.Context, logger logger.Logger, options option.Certific
 			}
 			systemPool = certPool
 		}
-	case C.CertificateStoreMozilla:
-		systemPool = mozillaIncluded
-	case C.CertificateStoreChrome:
-		systemPool = chromeIncluded
+	case C.CertificateStoreMozilla, C.CertificateStoreChrome:
 	case C.CertificateStoreNone:
-		systemPool = nil
 	default:
 		return nil, E.New("unknown certificate store: ", options.Store)
 	}
 	store := &Store{
-		store:                     options.Store,
+		storeType:                 storeType,
 		systemPool:                systemPool,
 		certificate:               strings.Join(options.Certificate, "\n"),
 		certificatePaths:          options.CertificatePath,
@@ -117,14 +115,6 @@ func (s *Store) Start(stage adapter.StartStage) error {
 }
 
 func (s *Store) Close() error {
-	s.updateAccess.Lock()
-	defer s.updateAccess.Unlock()
-
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-
 	watcher := s.watcher
 	s.watcher = nil
 
@@ -145,28 +135,33 @@ func (s *Store) Pool() *x509.CertPool {
 	return s.currentPool
 }
 
+func (s *Store) StoreKind() string {
+	return s.storeType
+}
+
 func (s *Store) ExclusiveAnchors() bool {
-	return s.store != "" && s.store != C.CertificateStoreSystem
+	return s.storeType != C.CertificateStoreSystem
 }
 
 func (s *Store) update() error {
-	s.updateAccess.Lock()
-	defer s.updateAccess.Unlock()
-	if s.closed {
-		return nil
-	}
-	var currentPool *x509.CertPool
-	if s.systemPool == nil {
-		currentPool = x509.NewCertPool()
-	} else {
-		currentPool = s.systemPool.Clone()
+	currentPool, err := s.newBasePool()
+	if err != nil {
+		return err
 	}
 	pemBuffer := new(bytes.Buffer)
-	switch s.store {
+	switch s.storeType {
 	case C.CertificateStoreMozilla:
-		pemBuffer.WriteString(mozillaIncludedPEM)
+		pemContent := mozillaIncludedPEM()
+		if !currentPool.AppendCertsFromPEM([]byte(pemContent)) {
+			return E.New("invalid Mozilla included certificate PEM")
+		}
+		appendPEMBlock(pemBuffer, string(pemContent))
 	case C.CertificateStoreChrome:
-		pemBuffer.WriteString(chromeIncludedPEM)
+		pemContent := chromeIncludedPEM()
+		if !currentPool.AppendCertsFromPEM([]byte(pemContent)) {
+			return E.New("invalid Chrome included certificate PEM")
+		}
+		appendPEMBlock(pemBuffer, string(pemContent))
 	}
 	if s.certificate != "" {
 		if !currentPool.AppendCertsFromPEM([]byte(s.certificate)) {
@@ -215,6 +210,22 @@ func appendPEMBlock(buffer *bytes.Buffer, block string) {
 		buffer.WriteByte('\n')
 	}
 	buffer.WriteString(block)
+}
+
+func (s *Store) newBasePool() (*x509.CertPool, error) {
+	switch s.storeType {
+	case C.CertificateStoreSystem:
+		if s.systemPool == nil {
+			return x509.NewCertPool(), nil
+		}
+		return s.systemPool.Clone(), nil
+	case C.CertificateStoreMozilla, C.CertificateStoreChrome:
+		return x509.NewCertPool(), nil
+	case C.CertificateStoreNone:
+		return x509.NewCertPool(), nil
+	default:
+		return nil, E.New("unknown certificate store: ", s.storeType)
+	}
 }
 
 func readUniqueDirectoryEntries(dir string) ([]fs.DirEntry, error) {

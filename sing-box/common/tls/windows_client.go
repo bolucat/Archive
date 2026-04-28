@@ -326,8 +326,10 @@ var (
 	_ N.ReadWaitCreator = (*windowsTLSConn)(nil)
 )
 
-type windowsTLSAppendCipherFunc func(requireMore bool) error
-type windowsTLSReadRawFunc func(requireMore bool) ([]byte, error)
+type (
+	windowsTLSAppendCipherFunc func(requireMore bool) error
+	windowsTLSReadRawFunc      func(requireMore bool) ([]byte, error)
+)
 
 func (c *windowsTLSConn) Read(p []byte) (int, error) {
 	c.readAccess.Lock()
