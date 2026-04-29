@@ -439,7 +439,6 @@ function gen_outbound(flag, node, tag, proxy_table)
 					finalQuery = true,
 					disableCache = false,
 					serveStale = true,
-					serveExpiredTTL = 30,
 					domains = {}
 				}
 			end
@@ -1568,9 +1567,13 @@ function gen_config(var)
 
 		local _remote_dns_host
 		if remote_dns_doh_url and remote_dns_doh_host then
-			if remote_dns_doh_ip and remote_dns_doh_host ~= remote_dns_doh_ip and not api.is_ip(remote_dns_doh_host) then
-				dns.hosts[remote_dns_doh_host] = remote_dns_doh_ip
-				_remote_dns_host = remote_dns_doh_host
+			if api.datatypes.hostname(remote_dns_doh_host) then
+				if remote_dns_doh_ip and remote_dns_doh_host ~= remote_dns_doh_ip and api.is_ip(remote_dns_doh_ip) then
+					dns.hosts[remote_dns_doh_host] = remote_dns_doh_ip
+					_remote_dns_host = remote_dns_doh_host
+				else
+					GLOBAL.DNS_HOSTNAME[remote_dns_doh_host] = true
+				end
 			end
 			_remote_dns.address = remote_dns_doh_url
 			_remote_dns.port = tonumber(remote_dns_doh_port)

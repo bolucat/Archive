@@ -134,28 +134,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
-            android:nextFocusDown="@+id/sp_ech_force_query" />
+            android:nextFocusDown="@+id/et_pinned_ca256" />
 
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/lay_ech_force_query"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/server_lab_ech_force_query" />
-
-        <Spinner
-            android:id="@+id/sp_ech_force_query"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/padding_spacing_dp8"
-            android:layout_marginBottom="@dimen/padding_spacing_dp8"
-            android:entries="@array/ech_force_query_value" />
     </LinearLayout>
 
     <LinearLayout
@@ -175,7 +155,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:inputType="text"
-            android:nextFocusDown="@+id/sp_ech_force_query" />
+            android:nextFocusDown="@+id/et_public_key" />
 
     </LinearLayout>
 

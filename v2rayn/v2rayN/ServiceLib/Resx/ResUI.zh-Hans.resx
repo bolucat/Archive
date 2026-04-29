@@ -121,7 +121,7 @@
     <value>导出分享链接至剪贴板成功</value>
   </data>
   <data name="CheckServerSettings" xml:space="preserve">
-    <value>请先检查设置</value>
+    <value>配置项无效，请检查或重新选择</value>
   </data>
   <data name="ConfigurationFormatIncorrect" xml:space="preserve">
     <value>配置格式不正确</value>
@@ -1586,9 +1586,6 @@
   </data>
   <data name="TbEchConfigList" xml:space="preserve">
     <value>EchConfigList</value>
-  </data>
-  <data name="TbEchForceQuery" xml:space="preserve">
-    <value>EchForceQuery</value>
   </data>
   <data name="TbFullCertTips" xml:space="preserve">
     <value>完整证书（链），PEM 格式</value>

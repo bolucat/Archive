@@ -215,11 +215,5 @@
         <item>2</item>
     </string-array>
 
-    <string-array name="ech_force_query_value" translatable="false">
-        <item />
-        <item>none</item>
-        <item>half</item>
-        <item>full</item>
-    </string-array>
 
 </resources>

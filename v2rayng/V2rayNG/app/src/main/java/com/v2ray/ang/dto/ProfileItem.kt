@@ -46,7 +46,6 @@ data class ProfileItem(
     var fingerPrint: String? = null,
     var insecure: Boolean? = null,
     var echConfigList: String? = null,
-    var echForceQuery: String? = null,
     var pinnedCA256: String? = null,
 
     var publicKey: String? = null,

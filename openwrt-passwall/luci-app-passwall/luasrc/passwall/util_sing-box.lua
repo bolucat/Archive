@@ -13,6 +13,7 @@ local version_ge_1_13_0 = api.compare_versions(local_version, ">=", "1.13.0")
 
 local GLOBAL = {
 	DNS_SERVER = {},
+	DNS_HOSTNAME = {},
 	VPS_EXCLUDE = {}
 }
 
@@ -170,6 +171,9 @@ function gen_outbound(flag, node, tag, proxy_table)
 					server_address = _a.hostname
 					server_port = _a.port or 443
 					server_path = _a.pathname or ""
+					if _a.hostname and api.datatypes.hostname(_a.hostname) then
+						GLOBAL.DNS_HOSTNAME[_a.hostname] = true
+					end
 				end
 			else
 				server_address = node.domain_resolver_dns
@@ -1774,24 +1778,25 @@ function gen_config(var)
 				remote_server.server_port = _a.port or 443
 				remote_server.path = _a.pathname or ""
 			end
-			if remote_dns_doh_ip and remote_dns_doh_host ~= remote_dns_doh_ip and not api.is_ip(remote_dns_doh_host) then
-				local domains = {}
-				local hosts_server = {
-					tag = "hosts",
-					type = "hosts",
-					predefined = {}
-				}
-				hosts_server.predefined[remote_dns_doh_host] = remote_dns_doh_ip
-				table.insert(domains, remote_dns_doh_host)
-				remote_server_domain_resolver = "hosts"
-				table.insert(dns.servers, hosts_server)
-				table.insert(dns.rules, {
-					query_type = {
-						"A", "AAAA"
-					},
-					domain = domains,
-					server = "hosts"
-				})
+			if api.datatypes.hostname(remote_dns_doh_host) then
+				if remote_dns_doh_ip and remote_dns_doh_host ~= remote_dns_doh_ip and api.is_ip(remote_dns_doh_ip) then
+					local hosts_server = {
+						tag = "hosts",
+						type = "hosts",
+						predefined = {}
+					}
+					hosts_server.predefined[remote_dns_doh_host] = remote_dns_doh_ip
+					remote_server_domain_resolver = "hosts"
+					table.insert(dns.servers, hosts_server)
+					table.insert(dns.rules, {
+						query_type = { "A", "AAAA" },
+						domain = { remote_dns_doh_host },
+						server = "hosts"
+					})
+				else
+					GLOBAL.DNS_HOSTNAME[remote_dns_doh_host] = true
+					remote_server_domain_resolver = "direct"
+				end
 			end
 		end
 
@@ -1977,8 +1982,19 @@ function gen_config(var)
 			action = "route",
 			server = v.server.tag,
 			disable_cache = false,
-			rewrite_ttl = 30,
 			domain = v.domain,
+		})
+	end
+	if next(GLOBAL.DNS_HOSTNAME) then
+		local hostname = {}
+		for line, _ in pairs(GLOBAL.DNS_HOSTNAME) do
+			table.insert(hostname, line)
+		end
+		if not dns.rules then dns.rules = {} end
+		table.insert(dns.rules, 1, {
+			query_type = { "A", "AAAA" },
+			domain = hostname,
+			server = "direct"
 		})
 	end
 

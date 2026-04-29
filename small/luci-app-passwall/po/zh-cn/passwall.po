@@ -178,6 +178,9 @@ msgstr "请求协议"
 msgid "Remote DNS DoH"
 msgstr "远程 DNS DoH"
 
+msgid "Format: URL[,IP] (optional IP to map the domain in the URL)"
+msgstr "格式：URL[,IP]（IP 可选，用于绑定 URL 中的域名）"
+
 msgid "Notify the DNS server when the DNS query is notified, the location of the client (cannot be a private IP address)."
 msgstr "用于 DNS 查询时通知 DNS 服务器，客户端所在的地理位置（不能是私有 IP 地址）。"
 
