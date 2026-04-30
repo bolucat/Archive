@@ -76,6 +76,45 @@ NaiveProxyDelegate::OnBeforeTunnelRequest(
   return extra_headers;
 }
 
+void NaiveProxyDelegate::OnBeforePreambleRequest(
+    const ProxyChain& proxy_chain,
+    size_t proxy_index,
+    size_t preamble_index,
+    HttpRequestHeaders& header) const {
+  CHECK(!proxy_chain.is_direct());
+  CHECK_EQ(proxy_index, proxy_chain.length() - 1);
+  const ProxyServer& proxy_server = proxy_chain.GetProxyServer(proxy_index);
+  CHECK(proxy_server.is_secure_http_like());
+
+  const auto it = preamble_request_headers_by_server_.find(proxy_server);
+  if (it == preamble_request_headers_by_server_.end()) {
+    return;
+  }
+  const std::vector<HttpRequestHeaders>& headers = it->second;
+  if (preamble_index >= headers.size()) {
+    return;
+  }
+  header = headers[preamble_index];
+}
+
+void NaiveProxyDelegate::OnPreambleHeadersReceived(
+    const ProxyChain& proxy_chain,
+    size_t proxy_index,
+    size_t preamble_index,
+    scoped_refptr<HttpResponseHeaders> response_headers) {
+  CHECK(!proxy_chain.is_direct());
+  CHECK_EQ(proxy_index, proxy_chain.length() - 1);
+  const ProxyServer& proxy_server = proxy_chain.GetProxyServer(proxy_index);
+  CHECK(proxy_server.is_secure_http_like());
+
+  std::vector<scoped_refptr<HttpResponseHeaders>>& headers =
+      preamble_response_headers_by_server_[proxy_server];
+  if (preamble_index >= headers.size()) {
+    headers.resize(preamble_index + 1);
+  }
+  headers[preamble_index] = response_headers;
+}
+
 std::optional<PaddingType> NaiveProxyDelegate::ParsePaddingHeaders(
     const HttpResponseHeaders& headers) {
   bool has_padding = headers.HasHeader(kPaddingHeader);
@@ -148,6 +187,32 @@ std::optional<PaddingType> NaiveProxyDelegate::GetProxyChainPaddingType(
     return PaddingType::kNone;
   }
   return padding_type_by_server_[proxy_chain.Last()];
+}
+
+void NaiveProxyDelegate::SetPreambleRequestHeaders(
+    const ProxyServer& proxy_server,
+    size_t preamble_index,
+    const HttpRequestHeaders& header) {
+  std::vector<HttpRequestHeaders>& headers =
+      preamble_request_headers_by_server_[proxy_server];
+  if (preamble_index >= headers.size()) {
+    headers.resize(preamble_index + 1);
+  }
+  headers[preamble_index] = header;
+}
+
+const HttpResponseHeaders* NaiveProxyDelegate::GetPreambleResponseHeaders(
+    const ProxyServer& proxy_server,
+    size_t preamble_index) const {
+  const auto it = preamble_response_headers_by_server_.find(proxy_server);
+  if (it == preamble_response_headers_by_server_.end()) {
+    return nullptr;
+  }
+  const std::vector<scoped_refptr<HttpResponseHeaders>>& headers = it->second;
+  if (preamble_index >= headers.size()) {
+    return nullptr;
+  }
+  return headers[preamble_index].get();
 }
 
 }  // namespace net

@@ -18,6 +18,7 @@
 #include "net/ssl/ssl_config.h"
 #include "net/tools/naive/naive_connection.h"
 #include "net/tools/naive/naive_protocol.h"
+#include "net/tools/naive/preamble_getter.h"
 
 namespace net {
 
@@ -49,6 +50,8 @@ class NaiveProxy {
   void OnAcceptComplete(int result);
   void HandleAcceptResult(int result);
 
+  void OnPreambleComplete(int result);
+
   void DoConnect();
   void OnConnectComplete(unsigned int connection_id, int result);
   void HandleConnectResult(NaiveConnection* connection, int result);
@@ -62,6 +65,7 @@ class NaiveProxy {
   NaiveConnection* FindConnection(unsigned int connection_id);
   const NetworkAnonymizationKey& current_nak() const;
   NaiveProxyDelegate* naive_proxy_delegate() const;
+  bool WillCreateSession() const;
 
   std::unique_ptr<ServerSocket> listen_socket_;
   ClientProtocol protocol_;
@@ -84,6 +88,8 @@ class NaiveProxy {
   const NetworkTrafficAnnotationTag& traffic_annotation_;
 
   std::vector<PaddingType> supported_padding_types_;
+
+  std::unique_ptr<PreambleGetter> url_getter_;
 
   base::WeakPtrFactory<NaiveProxy> weak_ptr_factory_{this};
 };

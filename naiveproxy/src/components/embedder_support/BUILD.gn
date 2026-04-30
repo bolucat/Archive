@@ -1,0 +1,25 @@
+# Copyright 2019 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+static_library("embedder_support") {
+  sources = [
+    "pref_names.h",
+    "switches.cc",
+    "switches.h",
+  ]
+}
+
+static_library("user_agent") {
+  sources = [
+    "user_agent_utils.cc",
+    "user_agent_utils.h",
+  ]
+
+  deps = [
+    ":embedder_support",
+    "//build:branding_buildflags",
+    "//components/version_info",
+    "//net",
+  ]
+}

@@ -858,9 +858,8 @@ function gen_config(var)
 		} or nil
 	end
 
-	local node = node_id and uci:get_all(appname, node_id) or nil
-
 	if node_id then
+		local node = uci:get_all(appname, node_id)
 		local balancers = {}
 		local rules = {}
 		if node then
@@ -877,7 +876,7 @@ function gen_config(var)
 				protocol = "socks",
 				settings = {auth = "noauth", udp = true},
 				sniffing = {
-					enabled = xray_settings.sniffing_override_dest == "1" or node.protocol == "_shunt"
+					enabled = (xray_settings.sniffing_override_dest == "1") or (node and node.protocol == "_shunt") or false
 				}
 			}
 			if inbound.sniffing.enabled == true then
@@ -1265,7 +1264,7 @@ function gen_config(var)
 			end
 		end
 
-		if node.protocol == "_shunt" then
+		if node and node.protocol == "_shunt" then
 			inner_fakedns = node.fakedns or "0"
 
 			local function gen_shunt_node(rule_name, _node_id)
@@ -1425,7 +1424,8 @@ function gen_config(var)
 				rules = rules
 			}
 		else
-			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, node, nil, {
+			local _node = node or node_id
+			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, _node, nil, {
 				fragment = xray_settings.fragment == "1" or nil,
 				noise = xray_settings.noise == "1" or nil,
 				run_socks_instance = not no_run
@@ -1451,7 +1451,7 @@ function gen_config(var)
 				settings = {network = "tcp,udp", followRedirect = true},
 				streamSettings = {sockopt = {tproxy = "tproxy"}},
 				sniffing = {
-					enabled = xray_settings.sniffing_override_dest == "1" or node.protocol == "_shunt"
+					enabled = (xray_settings.sniffing_override_dest == "1") or (node and node.protocol == "_shunt") or false
 				}
 			}
 			if inbound.sniffing.enabled == true then
@@ -1498,7 +1498,7 @@ function gen_config(var)
 		})
 	end
 
-	if (remote_dns_udp_server and remote_dns_udp_port) or (remote_dns_tcp_server and remote_dns_tcp_port) or #node_dns > 0 then
+	if (remote_dns_udp_server and remote_dns_udp_port) or (remote_dns_tcp_server and remote_dns_tcp_port) or remote_dns_doh_url or #node_dns > 0 then
 		if not routing then
 			routing = {
 				domainStrategy = "IPOnDemand",
@@ -1659,19 +1659,9 @@ function gen_config(var)
 			table.insert(outbounds, {
 				tag = "dns-out",
 				protocol = "dns",
-				proxySettings = dns_outbound_tag and {
-					tag = dns_outbound_tag
-				} or nil,
 				settings = {
-					address = remote_dns_udp_server or remote_dns_tcp_server,
-					port = tonumber(remote_dns_udp_port) or tonumber(remote_dns_tcp_port),
-					network = remote_dns_udp_server and "udp" or "tcp",
 					nonIPQuery = (api.compare_versions(xray_version, "<", "26.4.25")) and "reject" or nil, -- Todo is to remove it
-					rules = (api.compare_versions(xray_version, ">", "26.4.17")) and {
-						{
-							action = ((node and node.protocol == "_shunt") or remote_dns_fake or dns.clientIP) and "hijack" or "direct"
-						}
-					} or nil
+					rules = (api.compare_versions(xray_version, ">", "26.4.17")) and {{ action = "hijack" }} or nil
 				}
 			})
 

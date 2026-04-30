@@ -95,11 +95,11 @@ public partial class ProfilesView : ReactiveUserControl<ProfilesViewModel>
               .Subscribe(_ => StorageUI())
               .DisposeWith(disposables);
 
-            AppEvents.AdjustMainLvColWidthRequested
-                .AsObservable()
-                .ObserveOn(RxSchedulers.MainThreadScheduler)
-                .Subscribe(_ => AutofitColumnWidth())
-                .DisposeWith(disposables);
+            //AppEvents.AdjustMainLvColWidthRequested
+            //    .AsObservable()
+            //    .ObserveOn(RxSchedulers.MainThreadScheduler)
+            //    .Subscribe(_ => AutofitColumnWidth())
+            //    .DisposeWith(disposables);
         });
 
         RestoreUI();

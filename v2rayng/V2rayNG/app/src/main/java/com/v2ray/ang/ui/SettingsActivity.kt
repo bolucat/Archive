@@ -6,19 +6,12 @@ import androidx.preference.CheckBoxPreference
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.PeriodicWorkRequest
-import androidx.work.multiprocess.RemoteWorkManager
-import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.VPN
 import com.v2ray.ang.R
-import com.v2ray.ang.extension.toLongEx
 import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.handler.SubscriptionUpdater
 import com.v2ray.ang.helper.MmkvPreferenceDataStore
 import com.v2ray.ang.util.Utils
-import java.util.concurrent.TimeUnit
 
 class SettingsActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -48,8 +41,6 @@ class SettingsActivity : BaseActivity() {
         private val fragmentLength by lazy { findPreference<EditTextPreference>(AppConfig.PREF_FRAGMENT_LENGTH) }
         private val fragmentInterval by lazy { findPreference<EditTextPreference>(AppConfig.PREF_FRAGMENT_INTERVAL) }
 
-        private val autoUpdateCheck by lazy { findPreference<CheckBoxPreference>(AppConfig.SUBSCRIPTION_AUTO_UPDATE) }
-        private val autoUpdateInterval by lazy { findPreference<EditTextPreference>(AppConfig.SUBSCRIPTION_AUTO_UPDATE_INTERVAL) }
         private val mode by lazy { findPreference<ListPreference>(AppConfig.PREF_MODE) }
 
         private val hevTunLogLevel by lazy { findPreference<ListPreference>(AppConfig.PREF_HEV_TUNNEL_LOGLEVEL) }
@@ -93,24 +84,6 @@ class SettingsActivity : BaseActivity() {
 
             fragment?.setOnPreferenceChangeListener { _, newValue ->
                 updateFragment(newValue as Boolean)
-                true
-            }
-
-            autoUpdateCheck?.setOnPreferenceChangeListener { _, newValue ->
-                val value = newValue as Boolean
-                autoUpdateCheck?.isChecked = value
-                autoUpdateInterval?.isEnabled = value
-                autoUpdateInterval?.text?.toLongEx()?.let {
-                    if (newValue) configureUpdateTask(it) else cancelUpdateTask()
-                }
-                true
-            }
-
-            autoUpdateInterval?.setOnPreferenceChangeListener { _, newValue ->
-                val interval = (newValue as? String)?.toLongEx()
-                if (interval != null && autoUpdateCheck?.isChecked == true) {
-                    configureUpdateTask(interval)
-                }
                 true
             }
 
@@ -203,9 +176,6 @@ class SettingsActivity : BaseActivity() {
             // Initialize fragment-dependent UI states
             updateFragment(MmkvManager.decodeSettingsBool(AppConfig.PREF_FRAGMENT_ENABLED, false))
 
-            // Initialize auto-update interval state
-            autoUpdateInterval?.isEnabled = MmkvManager.decodeSettingsBool(AppConfig.SUBSCRIPTION_AUTO_UPDATE, false)
-
             updateDynamicSocksPort(MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_SOCKS_PORT, false))
         }
 
@@ -241,29 +211,6 @@ class SettingsActivity : BaseActivity() {
             fakeDns?.isEnabled = enabled
 //            localDnsPort?.isEnabled = enabled
             vpnDns?.isEnabled = !enabled
-        }
-
-        private fun configureUpdateTask(interval: Long) {
-            val rw = RemoteWorkManager.getInstance(AngApplication.application)
-            rw.cancelUniqueWork(AppConfig.SUBSCRIPTION_UPDATE_TASK_NAME)
-            rw.enqueueUniquePeriodicWork(
-                AppConfig.SUBSCRIPTION_UPDATE_TASK_NAME,
-                ExistingPeriodicWorkPolicy.UPDATE,
-                PeriodicWorkRequest.Builder(
-                    SubscriptionUpdater.UpdateTask::class.java,
-                    interval,
-                    TimeUnit.MINUTES
-                )
-                    .apply {
-                        setInitialDelay(interval, TimeUnit.MINUTES)
-                    }
-                    .build()
-            )
-        }
-
-        private fun cancelUpdateTask() {
-            val rw = RemoteWorkManager.getInstance(AngApplication.application)
-            rw.cancelUniqueWork(AppConfig.SUBSCRIPTION_UPDATE_TASK_NAME)
         }
 
         private fun updateMux(enabled: Boolean) {

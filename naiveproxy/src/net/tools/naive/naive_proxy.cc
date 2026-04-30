@@ -99,6 +99,25 @@ void NaiveProxy::HandleAcceptResult(int result) {
     LOG(ERROR) << "Accept error: " << ErrorToShortString(result);
     return;
   }
+  if (WillCreateSession()) {
+    url_getter_ = std::make_unique<PreambleGetter>(proxy_info_, session_,
+                                                   current_nak(), net_log_);
+    int rv =
+        url_getter_->Start(0, base::BindOnce(&NaiveProxy::OnPreambleComplete,
+                                             weak_ptr_factory_.GetWeakPtr()));
+    if (rv != ERR_IO_PENDING) {
+      OnPreambleComplete(rv);
+    }
+  } else {
+    DoConnect();
+  }
+}
+
+void NaiveProxy::OnPreambleComplete(int result) {
+  if (result != OK) {
+    LOG(ERROR) << "Preamble error: " << ErrorToShortString(result);
+    return;
+  }
   DoConnect();
 }
 
@@ -218,4 +237,19 @@ NaiveProxyDelegate* NaiveProxy::naive_proxy_delegate() const {
   return proxy_delegate;
 }
 
+bool NaiveProxy::WillCreateSession() const {
+  if (proxy_info_.is_direct())
+    return false;
+  // Simulates HttpProxyConnectJob::CreateSpdySessionKey()
+  const ProxyChain& proxy_chain = proxy_info_.proxy_chain();
+  auto [last_proxy_partial_chain, last_proxy_server] = proxy_chain.SplitLast();
+  const auto& last_proxy_host_port_pair = last_proxy_server.host_port_pair();
+  SpdySessionKey key(last_proxy_host_port_pair, PRIVACY_MODE_DISABLED,
+                     last_proxy_partial_chain, SessionUsage::kProxy,
+                     SocketTag(), current_nak(), SecureDnsPolicy::kDisable,
+                     /*disable_cert_verification_network_fetches=*/true);
+  return !session_->spdy_session_pool()->FindAvailableSession(
+      key, /*enable_ip_based_pooling_for_h2=*/false,
+      /*is_websocket=*/false, net_log_);
+}
 }  // namespace net

@@ -2,117 +2,61 @@
 import os
 import sys
 import subprocess
-import yaml
-
-
-class TlsStreamParser:
-    STATE_CONTENT_TYPE = 0
-    STATE_VERSION_BYTE0 = 1
-    STATE_VERSION_BYTE1 = 2
-    STATE_LENGTH_BYTE0 = 3
-    STATE_LENGTH_BYTE1 = 4
-    STATE_DATA = 5
-
-    TLS_HEADER_SIZE = 5
-
-    def __init__(self):
-        self.state = self.STATE_CONTENT_TYPE
-        self.current_length = None
-        self.current_remaining = None
-
-    def read(self, data):
-        record_parts = []
-        i = 0
-        tls_consumed_bytes = 0
-        while i < len(data):
-            if self.state == self.STATE_CONTENT_TYPE:
-                # TODO: add content type description
-                content_type = data[i]
-                self.state = self.STATE_VERSION_BYTE0
-                i += 1
-                tls_consumed_bytes += 1
-            elif self.state == self.STATE_VERSION_BYTE0:
-                self.state = self.STATE_VERSION_BYTE1
-                i += 1
-                tls_consumed_bytes += 1
-            elif self.state == self.STATE_VERSION_BYTE1:
-                self.state = self.STATE_LENGTH_BYTE0
-                i += 1
-                tls_consumed_bytes += 1
-            elif self.state == self.STATE_LENGTH_BYTE0:
-                self.current_length = data[i]
-                self.state = self.STATE_LENGTH_BYTE1
-                i += 1
-                tls_consumed_bytes += 1
-            elif self.state == self.STATE_LENGTH_BYTE1:
-                self.current_length = self.current_length * 256 + data[i]
-                self.current_remaining = self.current_length
-                self.state = self.STATE_DATA
-                i += 1
-                tls_consumed_bytes += 1
-            elif self.state == self.STATE_DATA:
-                consume_data = min(self.current_remaining, len(data) - i)
-                self.current_remaining -= consume_data
-                i += consume_data
-                tls_consumed_bytes += consume_data
-                if self.current_remaining == 0:
-                    record_parts.append(
-                        (tls_consumed_bytes, self.TLS_HEADER_SIZE + self.current_length))
-                    tls_consumed_bytes = 0
-                    self.current_length = None
-                    self.state = self.STATE_CONTENT_TYPE
-        if tls_consumed_bytes:
-            if self.current_length is None:
-                record_parts.append((tls_consumed_bytes, '?'))
-            else:
-                record_parts.append(
-                    (tls_consumed_bytes, self.TLS_HEADER_SIZE + self.current_length))
-        return record_parts
-
+import json
+import xml.etree.ElementTree as ET
 
 if len(sys.argv) != 3:
-    print(f'Usage: {sys.argv[0]} PCAP_FILE STREAM_ID')
+    print(f'Usage: {sys.argv[0]} PCAP_FILE DOMAIN')
     os.exit(1)
 
 file = sys.argv[1]
-stream_id = sys.argv[2]
-result = subprocess.run(['tshark', '-2', '-r', file, '-q', '-z',
-                        f'follow,tcp,yaml,{stream_id}'], capture_output=True, check=True, text=True)
+domain = sys.argv[2]
+result = subprocess.run(['tshark', '-2', '-r', file, '-q', '-o','tls.keylog_file:/tmp/keys','-Y',
+                        f'http2.header.value == "{domain}"', '-T', 'json'], capture_output=True, check=True, text=True)
+json_result = json.loads(result.stdout)
+target_tcp_stream = json_result[0]["_source"]["layers"]["tcp"]["tcp.stream"]
+result = subprocess.run(['tshark', '-2', '-r', file, '-q', '-o','tls.keylog_file:/tmp/keys','-Y',
+                        f'tcp.stream == {target_tcp_stream}', '-T', 'pdml'], capture_output=True, check=True, text=True)
+pdml_result = ET.fromstring(result.stdout)
 
-follow_result = yaml.safe_load(result.stdout)
-LOCAL_PEER = 0
-REMOTE_PEER = 1
-assert follow_result['peers'][REMOTE_PEER][
-    'port'] == 443, f"assuming the remote peer is the TLS server: {follow_result['peers']}"
-packets = follow_result['packets']
+def children(e, cname):
+    return [c for c in e if c.attrib['name'] == cname]
 
-upload_stream = TlsStreamParser()
-download_stream = TlsStreamParser()
-rtt = packets[1]['timestamp'] - packets[0]['timestamp']
-time_unit = rtt / 2
-local_timestamp_first = packets[0]['timestamp']
-mitm_timestamp_first = local_timestamp_first + rtt / 4
-min_mitm_timestamp_up = packets[0]['timestamp']
-min_mitm_timestamp_down = packets[0]['timestamp']
-for packet in packets:
-    local_timestamp = packet['timestamp']
+start_time = None
 
-    data = packet['data']
-    if packet['peer'] == LOCAL_PEER:
-        mitm_timestamp = local_timestamp + time_unit / 2
-        mitm_timestamp = max(mitm_timestamp, min_mitm_timestamp_up)
-        min_mitm_timestamp_up = mitm_timestamp
-
-        timestamp = (mitm_timestamp - mitm_timestamp_first) / time_unit
-        record_parts = upload_stream.read(data)
-        print('%.3f' % timestamp, len(data), ','.join(
-            f'{i}/{j}' for i, j in record_parts))
-    elif packet['peer'] == REMOTE_PEER:
-        mitm_timestamp = local_timestamp - time_unit / 2
-        mitm_timestamp = max(mitm_timestamp, min_mitm_timestamp_down)
-        min_mitm_timestamp_down = mitm_timestamp
-
-        timestamp = (mitm_timestamp - mitm_timestamp_first) / time_unit
-        record_parts = download_stream.read(data)
-        print('%.3f' % timestamp, -len(data),
-              ','.join(f'{i}/{j}' for i, j in record_parts))
+for packet in pdml_result:
+    frame = children(packet, "frame")[0]
+    frame_number = children(frame, "frame.number")[0].attrib['show']
+    frame_time_relative = children(frame, "frame.time_relative")[0].attrib['show']
+    tcp = children(packet, "tcp")[0]
+    tcp_srcport = children(tcp, "tcp.srcport")[0].attrib['show']
+    tcp_dstport = children(tcp, "tcp.dstport")[0].attrib['show']
+    if tcp_dstport == "443":
+        dir = '↑'
+    else:
+        dir = '↓'
+    if start_time is None:
+        start_time = float(frame_time_relative)
+    frame_time_relative = float(frame_time_relative) - start_time
+    http2s = children(packet, "http2")
+    if len(http2s) == 0:
+        continue
+    http2s_desc = []
+    for http2 in http2s:
+        http2_stream = children(http2, "http2.stream")
+        assert len(http2_stream) == 1
+        http2_stream = http2_stream[0]
+        http2_magic = children(http2_stream, "http2.magic")
+        if http2_magic:
+            http2s_desc.append('Magic')
+            continue
+        http2_type = children(http2_stream, "http2.type")[0].attrib['showname'].split(' ')[1]
+        http2_length = children(http2_stream, "http2.length")[0].attrib['show']
+        http2_streamid = children(http2_stream, "http2.streamid")[0].attrib['show']
+        http2_stream_desc = f'{http2_length}:{http2_type}[{http2_streamid}]'
+        if http2_type == 'HEADERS':
+            http2_stream_desc += ": " + http2_stream.attrib['showname'].split(',')[-1].strip()
+        http2s_desc.append(http2_stream_desc)
+    if not http2s_desc:
+        continue
+    print(frame_number, f'{frame_time_relative:.4f}', dir, ', '.join(http2s_desc))

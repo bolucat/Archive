@@ -9,7 +9,7 @@ local split = api.split
 local ech_domain = {}
 
 local local_version = api.get_app_version("sing-box"):match("[^v]+")
-local version_ge_1_13_0 = api.compare_versions(local_version, ">=", "1.13.0")
+local version_ge_1_14_0 = api.compare_versions(local_version, ">=", "1.14.0")
 
 local GLOBAL = {
 	DNS_SERVER = {},
@@ -1464,7 +1464,7 @@ function gen_config(var)
 
 		rules = {}
 
-		if node.protocol == "_shunt" then
+		if node and node.protocol == "_shunt" then
 			inner_fakedns = node.fakedns or "0"
 
 			local function gen_shunt_node(rule_name, _node_id)
@@ -1706,7 +1706,8 @@ function gen_config(var)
 				end
 			end)
 		else
-			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, node, nil, {
+			local _node = node or node_id
+			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, _node, nil, {
 				fragment = singbox_settings.fragment == "1" or nil,
 				record_fragment = singbox_settings.record_fragment == "1" or nil,
 				run_socks_instance = not no_run
@@ -1780,19 +1781,9 @@ function gen_config(var)
 			end
 			if api.datatypes.hostname(remote_dns_doh_host) then
 				if remote_dns_doh_ip and remote_dns_doh_host ~= remote_dns_doh_ip and api.is_ip(remote_dns_doh_ip) then
-					local hosts_server = {
-						tag = "hosts",
-						type = "hosts",
-						predefined = {}
-					}
-					hosts_server.predefined[remote_dns_doh_host] = remote_dns_doh_ip
+					if not hosts_predefined then hosts_predefined = {} end
+					hosts_predefined[remote_dns_doh_host] = remote_dns_doh_ip
 					remote_server_domain_resolver = "hosts"
-					table.insert(dns.servers, hosts_server)
-					table.insert(dns.rules, {
-						query_type = { "A", "AAAA" },
-						domain = { remote_dns_doh_host },
-						server = "hosts"
-					})
 				else
 					GLOBAL.DNS_HOSTNAME[remote_dns_doh_host] = true
 					remote_server_domain_resolver = "direct"
@@ -1975,9 +1966,10 @@ function gen_config(var)
 		}
 	end
 
+	if not dns.rules then dns.rules = {} end
+
 	for i, v in pairs(GLOBAL.DNS_SERVER) do
 		table.insert(dns.servers, v.server)
-		if not dns.rules then dns.rules = {} end
 		table.insert(dns.rules, 1, {
 			action = "route",
 			server = v.server.tag,
@@ -1990,7 +1982,6 @@ function gen_config(var)
 		for line, _ in pairs(GLOBAL.DNS_HOSTNAME) do
 			table.insert(hostname, line)
 		end
-		if not dns.rules then dns.rules = {} end
 		table.insert(dns.rules, 1, {
 			query_type = { "A", "AAAA" },
 			domain = hostname,
@@ -2004,12 +1995,33 @@ function gen_config(var)
 			type = "https",
 			server = "223.5.5.5"
 		})
-		if not dns.rules then dns.rules = {} end
 		local domain = {}
 		for line, _ in pairs(ech_domain) do domain[#domain+1] = line end
 		table.insert(dns.rules, 1, {
 			domain = domain,
 			server = "ech-dns"
+		})
+	end
+
+	table.insert(dns.servers, {
+		tag = "hosts",
+		type = "hosts",
+		predefined = (hosts_predefined and next(hosts_predefined) ~= nil) and hosts_predefined or nil
+	})
+	if not version_ge_1_14_0 then
+		table.insert(dns.rules, 1, {
+			ip_accept_any = true,
+			server = "hosts"
+		})
+	else
+		table.insert(dns.rules, 1, {
+			action = "evaluate",
+			server = "hosts"
+		})
+		table.insert(dns.rules, 2, {
+			match_response = true,
+			ip_accept_any = true,
+			action = "respond"
 		})
 	end
 

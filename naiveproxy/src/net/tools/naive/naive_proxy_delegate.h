@@ -51,18 +51,41 @@ class NaiveProxyDelegate : public ProxyDelegate {
   void SetProxyResolutionService(
       ProxyResolutionService* proxy_resolution_service) override {}
 
+  void OnBeforePreambleRequest(const ProxyChain& proxy_chain,
+                               size_t proxy_index,
+                               size_t preamble_index,
+                               HttpRequestHeaders& header) const override;
+
+  void OnPreambleHeadersReceived(
+      const ProxyChain& proxy_chain,
+      size_t proxy_index,
+      size_t preamble_index,
+      scoped_refptr<HttpResponseHeaders> response_headers) override;
+
   // Returns empty if the padding type has not been negotiated.
   std::optional<PaddingType> GetProxyChainPaddingType(
       const ProxyChain& proxy_chain);
 
+  void SetPreambleRequestHeaders(const ProxyServer& proxy_server,
+                                 size_t preamble_index,
+                                 const HttpRequestHeaders& headers);
+  const HttpResponseHeaders* GetPreambleResponseHeaders(
+      const ProxyServer& proxy_server,
+      size_t preamble_index) const;
+
  private:
-  std::optional<PaddingType> ParsePaddingHeaders(
+  static std::optional<PaddingType> ParsePaddingHeaders(
       const HttpResponseHeaders& headers);
 
   HttpRequestHeaders extra_headers_;
 
   // Empty value means padding type has not been negotiated.
   std::map<ProxyServer, std::optional<PaddingType>> padding_type_by_server_;
+
+  std::map<ProxyServer, std::vector<HttpRequestHeaders>>
+      preamble_request_headers_by_server_;
+  std::map<ProxyServer, std::vector<scoped_refptr<HttpResponseHeaders>>>
+      preamble_response_headers_by_server_;
 };
 
 }  // namespace net

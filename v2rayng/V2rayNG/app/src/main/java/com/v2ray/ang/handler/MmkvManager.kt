@@ -679,6 +679,7 @@ object MmkvManager {
         return settingsStorage.decodeStringSet(key)
     }
 
+
     /**
      * Encodes the start on boot setting.
      *

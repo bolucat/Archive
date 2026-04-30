@@ -2065,6 +2065,8 @@ executable("naive") {
     "tools/naive/redirect_resolver.h",
     "tools/naive/socks5_server_socket.cc",
     "tools/naive/socks5_server_socket.h",
+    "tools/naive/preamble_getter.cc",
+    "tools/naive/preamble_getter.h",
   ]
 
   deps = [
@@ -2072,6 +2074,7 @@ executable("naive") {
     "//base",
     "//build/win:default_exe_manifest",
     "//components/version_info:version_info",
+    "//components/embedder_support:user_agent",
     "//url",
   ]
 
