@@ -1652,8 +1652,17 @@ acl_app() {
 							set_cache_var "ACL_${sid}_dns_port" "${GLOBAL_DNSMASQ_PORT}"
 							set_cache_var "ACL_${sid}_tcp_default" "1"
 						else
-							local type=$(echo $(config_n_get $tcp_node type) | tr 'A-Z' 'a-z')
-							local protocol=$(config_n_get $tcp_node protocol)
+							local type protocol
+							if [ "$(config_get_type ${tcp_node#Socks_})" = "socks" ]; then
+								if [ "${dns_mode}" = "xray" ]; then
+									type="xray"
+								elif [ "${dns_mode}" = "sing-box" ]; then
+									type="sing-box"
+								fi
+							else
+								type=$(echo $(config_n_get $tcp_node type) | tr 'A-Z' 'a-z')
+								protocol=$(config_n_get $tcp_node protocol)
+							fi
 							#兼容旧模式，择机移除
 							[ "$v2ray_dns_mode" = "tcp+doh" ] && v2ray_dns_mode="tcp"
 							([ "$type" = "sing-box" ] || [ "$type" = "xray" ]) && [ "$protocol" = "_shunt" ] && [ "$type" != "$dns_mode" ] && {
@@ -1735,7 +1744,7 @@ acl_app() {
 								lua $APP_PATH/helper_dnsmasq.lua add_rule -FLAG ${sid} -TMP_DNSMASQ_PATH ${dnsmasq_conf_path} -DNSMASQ_CONF_FILE ${dnsmasq_conf} \
 									-LISTEN_PORT ${dnsmasq_port} -DEFAULT_DNS ${DEFAULT_DNS} -LOCAL_DNS $LOCAL_DNS \
 									-USE_DIRECT_LIST "${use_direct_list}" -USE_PROXY_LIST "${use_proxy_list}" -USE_BLOCK_LIST "${use_block_list}" -USE_GFW_LIST "${use_gfw_list}" -CHN_LIST "${chn_list}" \
-									-TUN_DNS "127.0.0.1#${_dns_port}" -REMOTE_FAKEDNS 0 -USE_DEFAULT_DNS "${use_default_dns:-direct}" -CHINADNS_DNS ${_china_ng_listen:-0} \
+									-TUN_DNS "127.0.0.1#${_dns_port}" -REMOTE_FAKEDNS ${remote_fakedns:-0} -USE_DEFAULT_DNS "${use_default_dns:-direct}" -CHINADNS_DNS ${_china_ng_listen:-0} \
 									-TCP_NODE $tcp_node -DEFAULT_PROXY_MODE ${tcp_proxy_mode} -NO_PROXY_IPV6 ${dnsmasq_filter_proxy_ipv6:-0} -NFTFLAG ${nftflag:-0} \
 									-NO_LOGIC_LOG 1
 								ln_run "$(first_type dnsmasq)" "dnsmasq_${sid}" "/dev/null" -C ${dnsmasq_conf} -x ${acl_path}/dnsmasq.pid
@@ -1775,7 +1784,7 @@ acl_app() {
 										[ "$filter_proxy_ipv6" = "1" ] && remote_dns_query_strategy="UseIPv4"
 										remote_dns_doh=${remote_dns_doh:-https://1.1.1.1/dns-query}
 										_extra_param="${_extra_param} dns_listen_port=${_dns_port} remote_dns_protocol=${v2ray_dns_mode} remote_dns_udp_server=${remote_dns} remote_dns_tcp_server=${remote_dns}"
-										_extra_param="${_extra_param} remote_dns_doh=${remote_dns_doh} remote_dns_query_strategy=${remote_dns_query_strategy} remote_dns_client_ip=${remote_dns_client_ip}"
+										_extra_param="${_extra_param} remote_dns_doh=${remote_dns_doh} remote_dns_query_strategy=${remote_dns_query_strategy} remote_fakedns=${remote_fakedns:-0} remote_dns_client_ip=${remote_dns_client_ip}"
 									}
 									_extra_param="${_extra_param} tcp_proxy_way=$TCP_PROXY_WAY"
 									[ -n "$udp_node" ] && ([ "$udp_node" = "tcp" ] || [ "$udp_node" = "$tcp_node" ]) && {
@@ -1841,7 +1850,16 @@ acl_app() {
 								set_cache_var "node_${udp_node}_redir_port" "${redir_port}"
 								udp_port=$redir_port
 
-								local type=$(echo $(config_n_get $udp_node type) | tr 'A-Z' 'a-z')
+								local type
+								if [ "$(config_get_type ${udp_node#Socks_})" = "socks" ]; then
+									if [ "${dns_mode}" = "xray" ]; then
+										type="xray"
+									elif [ "${dns_mode}" = "sing-box" ]; then
+										type="sing-box"
+									fi
+								else
+									type=$(echo $(config_n_get $udp_node type) | tr 'A-Z' 'a-z')
+								fi
 								if [ -n "${type}" ] && ([ "${type}" = "sing-box" ] || [ "${type}" = "xray" ]); then
 									config_file="acl/${udp_node}_UDP_${redir_port}.json"
 									config_file="$TMP_PATH/$config_file"

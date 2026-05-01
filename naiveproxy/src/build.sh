@@ -91,6 +91,7 @@ fi
 
 if [ "$host_os" = "mac" ]; then
   flags="$flags"'
+    mac_allow_system_xcode_for_official_builds_for_testing=true
     enable_dsyms=false'
 fi
 

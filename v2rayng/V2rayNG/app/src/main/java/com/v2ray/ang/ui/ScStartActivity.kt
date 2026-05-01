@@ -2,7 +2,7 @@ package com.v2ray.ang.ui
 
 import android.os.Bundle
 import com.v2ray.ang.R
-import com.v2ray.ang.handler.V2RayServiceManager
+import com.v2ray.ang.core.CoreServiceManager
 
 class ScStartActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -11,8 +11,8 @@ class ScStartActivity : BaseActivity() {
 
         setContentView(R.layout.activity_none)
 
-        if (!V2RayServiceManager.isRunning()) {
-            V2RayServiceManager.startVServiceFromToggle(this)
+        if (!CoreServiceManager.isRunning()) {
+            CoreServiceManager.startVServiceFromToggle(this)
         }
         finish()
     }

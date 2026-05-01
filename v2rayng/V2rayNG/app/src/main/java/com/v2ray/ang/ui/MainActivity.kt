@@ -32,7 +32,7 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionUpdater
-import com.v2ray.ang.handler.V2RayServiceManager
+import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
@@ -137,7 +137,7 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
         applyRunningState(isLoading = true, isRunning = false)
 
         if (mainViewModel.isRunning.value == true) {
-            V2RayServiceManager.stopVService(this)
+            CoreServiceManager.stopVService(this)
         } else if (SettingsManager.isVpnMode()) {
             val intent = VpnService.prepare(this)
             if (intent == null) {
@@ -164,12 +164,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             toast(R.string.title_file_chooser)
             return
         }
-        V2RayServiceManager.startVService(this)
+        CoreServiceManager.startVService(this)
     }
 
     fun restartV2Ray() {
         if (mainViewModel.isRunning.value == true) {
-            V2RayServiceManager.stopVService(this)
+            CoreServiceManager.stopVService(this)
         }
         lifecycleScope.launch {
             delay(500)

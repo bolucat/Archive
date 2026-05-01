@@ -12,6 +12,7 @@
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/task/single_thread_task_runner.h"
+#include "build/build_config.h"
 #include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_network_session.h"
@@ -26,6 +27,11 @@
 #include "net/tools/naive/socks5_server_socket.h"
 
 namespace net {
+#if BUILDFLAG(IS_ANDROID)
+constexpr int kRotationTimeoutSeconds = 10 * 60;
+#else
+constexpr int kRotationTimeoutSeconds = 30 * 60;
+#endif
 
 NaiveProxy::NaiveProxy(std::unique_ptr<ServerSocket> listen_socket,
                        ClientProtocol protocol,
@@ -60,8 +66,8 @@ NaiveProxy::NaiveProxy(std::unique_ptr<ServerSocket> listen_socket,
       net::MutableNetworkTrafficAnnotationTag(traffic_annotation_));
 
   for (int i = 0; i < concurrency_; i++) {
-    network_anonymization_keys_.push_back(
-        NetworkAnonymizationKey::CreateTransient());
+    tunnel_ids_.push_back(
+        TunnelId{NetworkAnonymizationKey::CreateTransient(), {}});
   }
 
   DCHECK(listen_socket_);
@@ -99,6 +105,18 @@ void NaiveProxy::HandleAcceptResult(int result) {
     LOG(ERROR) << "Accept error: " << ErrorToShortString(result);
     return;
   }
+
+  session_->CloseIdleConnections("Rotate old tunnels");
+
+  TunnelId& tunnel_id = tunnel_ids_[last_id_ % concurrency_];
+  base::Time now = base::Time::Now();
+  if (tunnel_id.deadline.is_null()) {
+    tunnel_id.deadline = now + base::Seconds(kRotationTimeoutSeconds);
+  } else if (now > tunnel_id.deadline) {
+    tunnel_id.key = NetworkAnonymizationKey::CreateTransient();
+    tunnel_id.deadline = now + base::Seconds(kRotationTimeoutSeconds);
+  }
+
   if (WillCreateSession()) {
     url_getter_ = std::make_unique<PreambleGetter>(proxy_info_, session_,
                                                    current_nak(), net_log_);
@@ -109,6 +127,9 @@ void NaiveProxy::HandleAcceptResult(int result) {
       OnPreambleComplete(rv);
     }
   } else {
+    if (url_getter_ != nullptr) {
+      url_getter_->StartOne();
+    }
     DoConnect();
   }
 }
@@ -227,7 +248,7 @@ NaiveConnection* NaiveProxy::FindConnection(unsigned int connection_id) {
 
 const NetworkAnonymizationKey& NaiveProxy::current_nak() const {
   int tunnel_session_id = last_id_ % concurrency_;
-  return network_anonymization_keys_[tunnel_session_id];
+  return tunnel_ids_[tunnel_session_id].key;
 }
 
 NaiveProxyDelegate* NaiveProxy::naive_proxy_delegate() const {
@@ -243,6 +264,8 @@ bool NaiveProxy::WillCreateSession() const {
   // Simulates HttpProxyConnectJob::CreateSpdySessionKey()
   const ProxyChain& proxy_chain = proxy_info_.proxy_chain();
   auto [last_proxy_partial_chain, last_proxy_server] = proxy_chain.SplitLast();
+  if (!last_proxy_server.is_secure_http_like())
+    return false;
   const auto& last_proxy_host_port_pair = last_proxy_server.host_port_pair();
   SpdySessionKey key(last_proxy_host_port_pair, PRIVACY_MODE_DISABLED,
                      last_proxy_partial_chain, SessionUsage::kProxy,

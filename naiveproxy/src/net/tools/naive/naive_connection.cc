@@ -161,7 +161,6 @@ int NaiveConnection::DoLoop(int last_io_result) {
         rv = DoConnectServerComplete(rv);
         break;
       default:
-        NOTREACHED() << "bad state";
         rv = ERR_UNEXPECTED;
         break;
     }

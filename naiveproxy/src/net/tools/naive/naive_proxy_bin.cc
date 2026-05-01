@@ -54,6 +54,7 @@
 #include "net/proxy_resolution/proxy_config.h"
 #include "net/proxy_resolution/proxy_config_service_fixed.h"
 #include "net/proxy_resolution/proxy_config_with_annotation.h"
+#include "net/socket/client_socket_pool.h"
 #include "net/socket/client_socket_pool_manager.h"
 #include "net/socket/ssl_client_socket.h"
 #include "net/socket/tcp_server_socket.h"
@@ -368,6 +369,7 @@ int main(int argc, char* argv[]) {
   net::ClientSocketPoolManager::set_max_sockets_per_group_for_test(
       net::HttpNetworkSession::NORMAL_SOCKET_POOL,
       kDefaultMaxSocketsPerGroup * kExpectedMaxUsers);
+  net::ClientSocketPool::set_used_idle_socket_timeout(base::Seconds(60));
 
   const auto& proc = *base::CommandLine::ForCurrentProcess();
   const auto& args = proc.GetArgs();

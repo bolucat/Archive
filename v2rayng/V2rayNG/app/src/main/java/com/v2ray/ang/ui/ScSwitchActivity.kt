@@ -2,7 +2,7 @@ package com.v2ray.ang.ui
 
 import android.os.Bundle
 import com.v2ray.ang.R
-import com.v2ray.ang.handler.V2RayServiceManager
+import com.v2ray.ang.core.CoreServiceManager
 
 class ScSwitchActivity : BaseActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -11,10 +11,10 @@ class ScSwitchActivity : BaseActivity() {
 
         setContentView(R.layout.activity_none)
 
-        if (V2RayServiceManager.isRunning()) {
-            V2RayServiceManager.stopVService(this)
+        if (CoreServiceManager.isRunning()) {
+            CoreServiceManager.stopVService(this)
         } else {
-            V2RayServiceManager.startVServiceFromToggle(this)
+            CoreServiceManager.startVServiceFromToggle(this)
         }
         finish()
     }

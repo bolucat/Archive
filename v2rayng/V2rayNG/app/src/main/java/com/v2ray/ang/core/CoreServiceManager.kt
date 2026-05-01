@@ -1,4 +1,4 @@
-package com.v2ray.ang.handler
+package com.v2ray.ang.core
 
 import android.app.Service
 import android.content.BroadcastReceiver
@@ -16,8 +16,12 @@ import com.v2ray.ang.contracts.ServiceControl
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.toast
-import com.v2ray.ang.service.V2RayProxyOnlyService
-import com.v2ray.ang.service.V2RayVpnService
+import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.NotificationManager
+import com.v2ray.ang.handler.SettingsManager
+import com.v2ray.ang.handler.SpeedtestManager
+import com.v2ray.ang.service.CoreProxyOnlyService
+import com.v2ray.ang.service.CoreVpnService
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MessageUtil
 import com.v2ray.ang.util.Utils
@@ -30,9 +34,9 @@ import libv2ray.ProcessFinder
 import java.lang.ref.SoftReference
 import java.net.InetSocketAddress
 
-object V2RayServiceManager {
+object CoreServiceManager {
 
-    private val coreController: CoreController = V2RayNativeManager.newCoreController(CoreCallback())
+    private val coreController: CoreController = CoreNativeManager.newCoreController(CoreCallback())
     private val mMsgReceive = ReceiveMessageHandler()
     private var currentConfig: ProfileItem? = null
     private var processFinder: XrayProcessFinder? = null
@@ -41,7 +45,7 @@ object V2RayServiceManager {
         set(value) {
             field = value
             val service = value?.get()?.getService()
-            V2RayNativeManager.initCoreEnv(service)
+            CoreNativeManager.initCoreEnv(service)
             if (service != null && processFinder == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 processFinder = XrayProcessFinder(service)
                 coreController.registerProcessFinder(processFinder)
@@ -144,10 +148,10 @@ object V2RayServiceManager {
         val isVpnMode = SettingsManager.isVpnMode()
         val intent = if (isVpnMode) {
             LogUtil.i(AppConfig.TAG, "StartCore-Manager: Starting VPN service")
-            Intent(context.applicationContext, V2RayVpnService::class.java)
+            Intent(context.applicationContext, CoreVpnService::class.java)
         } else {
             LogUtil.i(AppConfig.TAG, "StartCore-Manager: Starting Proxy service")
-            Intent(context.applicationContext, V2RayProxyOnlyService::class.java)
+            Intent(context.applicationContext, CoreProxyOnlyService::class.java)
         }
 
         try {
@@ -187,7 +191,7 @@ object V2RayServiceManager {
         }
 
         LogUtil.i(AppConfig.TAG, "StartCore-Manager: Starting core loop for ${config.remarks}")
-        val result = V2rayConfigManager.getV2rayConfig(service, guid)
+        val result = CoreConfigManager.getV2rayConfig(service, guid)
         LogUtil.d(AppConfig.TAG, result.content)
         if (!result.status) {
             LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to get V2Ray config")

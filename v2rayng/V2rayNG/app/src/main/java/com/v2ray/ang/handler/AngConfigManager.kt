@@ -6,6 +6,7 @@ import android.text.TextUtils
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.HY2
 import com.v2ray.ang.R
+import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.dto.SubscriptionCache
 import com.v2ray.ang.dto.SubscriptionItem
@@ -111,7 +112,7 @@ object AngConfigManager {
     fun shareFullContent2Clipboard(context: Context, guid: String?): Int {
         try {
             if (guid == null) return -1
-            val result = V2rayConfigManager.getV2rayConfig(context, guid)
+            val result = CoreConfigManager.getV2rayConfig(context, guid)
             if (result.status) {
                 Utils.setClipboard(context, result.content)
             } else {

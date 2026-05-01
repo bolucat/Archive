@@ -1424,8 +1424,7 @@ function gen_config(var)
 				rules = rules
 			}
 		else
-			local _node = node or node_id
-			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, _node, nil, {
+			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, node or node_id, nil, {
 				fragment = xray_settings.fragment == "1" or nil,
 				noise = xray_settings.noise == "1" or nil,
 				run_socks_instance = not no_run

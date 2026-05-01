@@ -42,7 +42,8 @@ class PreambleGetter {
   PreambleGetter(const PreambleGetter&) = delete;
   PreambleGetter& operator=(const PreambleGetter&) = delete;
 
-  int Start(size_t preamble_index, CompletionOnceCallback callback);
+  int Start(size_t preamble_index, CompletionOnceCallback callback, bool log_url = true);
+  void StartOne();
 
  private:
   enum State {

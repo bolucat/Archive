@@ -172,21 +172,4 @@ open class FmtBase {
 
         return dicQuery
     }
-
-    fun getServerAddress(profileItem: ProfileItem): String {
-        if (Utils.isPureIpAddress(profileItem.server.orEmpty())) {
-            return profileItem.server.orEmpty()
-        }
-
-        val domain = HttpUtil.toIdnDomain(profileItem.server.orEmpty())
-        if (MmkvManager.decodeSettingsString(AppConfig.PREF_OUTBOUND_DOMAIN_RESOLVE_METHOD, "1") != "2") {
-            return domain
-        }
-        //Resolve and replace domain
-        val resolvedIps = HttpUtil.resolveHostToIP(domain, MmkvManager.decodeSettingsBool(AppConfig.PREF_PREFER_IPV6))
-        if (resolvedIps.isNullOrEmpty()) {
-            return domain
-        }
-        return resolvedIps.first()
-    }
 }

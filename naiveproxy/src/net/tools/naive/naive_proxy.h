@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "net/base/completion_repeating_callback.h"
 #include "net/base/network_isolation_key.h"
 #include "net/log/net_log_with_source.h"
@@ -46,6 +47,11 @@ class NaiveProxy {
   NaiveProxy& operator=(const NaiveProxy&) = delete;
 
  private:
+  struct TunnelId {
+    NetworkAnonymizationKey key;
+    base::Time deadline;
+  };
+
   void DoAcceptLoop();
   void OnAcceptComplete(int result);
   void HandleAcceptResult(int result);
@@ -81,7 +87,7 @@ class NaiveProxy {
 
   std::unique_ptr<StreamSocket> accepted_socket_;
 
-  std::vector<NetworkAnonymizationKey> network_anonymization_keys_;
+  std::vector<TunnelId> tunnel_ids_;
 
   std::map<unsigned int, std::unique_ptr<NaiveConnection>> connection_by_id_;
 

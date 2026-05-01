@@ -23,14 +23,14 @@ import com.v2ray.ang.contracts.Tun2SocksControl
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.NotificationManager
 import com.v2ray.ang.handler.SettingsManager
-import com.v2ray.ang.handler.V2RayServiceManager
+import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MyContextWrapper
 import com.v2ray.ang.util.Utils
 import java.lang.ref.SoftReference
 
 @SuppressLint("VpnServicePolicy")
-class V2RayVpnService : VpnService(), ServiceControl {
+class CoreVpnService : VpnService(), ServiceControl {
     private lateinit var mInterface: ParcelFileDescriptor
     private var isRunning = false
     private var tun2SocksService: Tun2SocksControl? = null
@@ -77,7 +77,7 @@ class V2RayVpnService : VpnService(), ServiceControl {
         LogUtil.i(AppConfig.TAG, "StartCore-VPN: Service created")
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
-        V2RayServiceManager.serviceControl = SoftReference(this)
+        CoreServiceManager.serviceControl = SoftReference(this)
     }
 
     override fun onRevoke() {
@@ -128,7 +128,7 @@ class V2RayVpnService : VpnService(), ServiceControl {
             LogUtil.e(AppConfig.TAG, "StartCore-VPN: Interface not initialized")
             return
         }
-        if (!V2RayServiceManager.startCoreLoop(mInterface)) {
+        if (!CoreServiceManager.startCoreLoop(mInterface)) {
             LogUtil.e(AppConfig.TAG, "StartCore-VPN: Failed to start core loop")
             stopAllService()
             return
@@ -361,7 +361,7 @@ class V2RayVpnService : VpnService(), ServiceControl {
         tun2SocksService?.stopTun2Socks()
         tun2SocksService = null
 
-        V2RayServiceManager.stopCoreLoop()
+        CoreServiceManager.stopCoreLoop()
 
         if (isForced) {
             //stopSelf has to be called ahead of mInterface.close(). otherwise v2ray core cannot be stooped

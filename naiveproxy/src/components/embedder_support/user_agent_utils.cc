@@ -43,7 +43,7 @@
 #include "base/mac/mac_util.h"
 #endif
 
-#if BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_IOS)
 #include "ui/base/device_form_factor.h"
 #endif
 

@@ -126,7 +126,6 @@ NextProto Socks5ServerSocket::GetNegotiatedProtocol() const {
   if (transport_) {
     return transport_->GetNegotiatedProtocol();
   }
-  NOTREACHED();
   return NextProto::kProtoUnknown;
 }
 
@@ -134,7 +133,6 @@ bool Socks5ServerSocket::GetSSLInfo(SSLInfo* ssl_info) {
   if (transport_) {
     return transport_->GetSSLInfo(ssl_info);
   }
-  NOTREACHED();
   return false;
 }
 
@@ -288,7 +286,6 @@ int Socks5ServerSocket::DoLoop(int last_io_result) {
             NetLogEventType::SOCKS5_HANDSHAKE_WRITE, rv);
         break;
       default:
-        NOTREACHED() << "bad state";
         rv = ERR_UNEXPECTED;
         break;
     }

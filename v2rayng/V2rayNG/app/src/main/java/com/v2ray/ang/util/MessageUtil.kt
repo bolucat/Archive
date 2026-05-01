@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.TestServiceMessage
-import com.v2ray.ang.service.V2RayTestService
+import com.v2ray.ang.service.CoreTestService
 import java.io.Serializable
 
 object MessageUtil {
@@ -42,7 +42,7 @@ object MessageUtil {
     fun sendMsg2TestService(ctx: Context, message: TestServiceMessage) {
         try {
             val intent = Intent()
-            intent.component = ComponentName(ctx, V2RayTestService::class.java)
+            intent.component = ComponentName(ctx, CoreTestService::class.java)
             intent.putExtra("content", message)
             ctx.startService(intent)
         } catch (e: Exception) {

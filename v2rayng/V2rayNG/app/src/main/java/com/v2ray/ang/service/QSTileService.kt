@@ -10,7 +10,7 @@ import android.service.quicksettings.TileService
 import androidx.core.content.ContextCompat
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
-import com.v2ray.ang.handler.V2RayServiceManager
+import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MessageUtil
 import com.v2ray.ang.util.Utils
@@ -29,7 +29,7 @@ class QSTileService : TileService() {
             qsTile?.label = getString(R.string.app_name)
         } else if (state == Tile.STATE_ACTIVE) {
             qsTile?.state = Tile.STATE_ACTIVE
-            qsTile?.label = V2RayServiceManager.getRunningServerName()
+            qsTile?.label = CoreServiceManager.getRunningServerName()
         }
 
         qsTile?.updateTile()
@@ -42,7 +42,7 @@ class QSTileService : TileService() {
     override fun onStartListening() {
         super.onStartListening()
 
-        if (V2RayServiceManager.isRunning()) {
+        if (CoreServiceManager.isRunning()) {
             setState(Tile.STATE_ACTIVE)
         } else {
             setState(Tile.STATE_INACTIVE)
@@ -75,11 +75,11 @@ class QSTileService : TileService() {
         super.onClick()
         when (qsTile.state) {
             Tile.STATE_INACTIVE -> {
-                V2RayServiceManager.startVServiceFromToggle(this)
+                CoreServiceManager.startVServiceFromToggle(this)
             }
 
             Tile.STATE_ACTIVE -> {
-                V2RayServiceManager.stopVService(this)
+                CoreServiceManager.stopVService(this)
             }
         }
     }

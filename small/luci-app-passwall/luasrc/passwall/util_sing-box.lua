@@ -1706,8 +1706,7 @@ function gen_config(var)
 				end
 			end)
 		else
-			local _node = node or node_id
-			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, _node, nil, {
+			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, node or node_id, nil, {
 				fragment = singbox_settings.fragment == "1" or nil,
 				record_fragment = singbox_settings.record_fragment == "1" or nil,
 				run_socks_instance = not no_run

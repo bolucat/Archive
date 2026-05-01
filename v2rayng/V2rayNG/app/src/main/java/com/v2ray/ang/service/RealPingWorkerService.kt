@@ -3,8 +3,8 @@ package com.v2ray.ang.service
 import android.content.Context
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.handler.SettingsManager
-import com.v2ray.ang.handler.V2RayNativeManager
-import com.v2ray.ang.handler.V2rayConfigManager
+import com.v2ray.ang.core.CoreNativeManager
+import com.v2ray.ang.core.CoreConfigManager
 import com.v2ray.ang.util.MessageUtil
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineName
@@ -41,6 +41,8 @@ class RealPingWorkerService(
                 try {
                     val result = startRealPing(guid)
                     MessageUtil.sendMsg2UI(context, AppConfig.MSG_MEASURE_CONFIG_SUCCESS, Pair(guid, result))
+                } catch (_: Throwable) {
+                    // ignore
                 } finally {
                     val count = totalCount.decrementAndGet()
                     val left = runningCount.decrementAndGet()
@@ -75,11 +77,11 @@ class RealPingWorkerService(
 
     private fun startRealPing(guid: String): Long {
         val retFailure = -1L
-        val configResult = V2rayConfigManager.getV2rayConfig4Speedtest(context, guid)
+        val configResult = CoreConfigManager.getV2rayConfig4Speedtest(context, guid)
         if (!configResult.status) {
             return retFailure
         }
-        return V2RayNativeManager.measureOutboundDelay(configResult.content, SettingsManager.getDelayTestUrl())
+        return CoreNativeManager.measureOutboundDelay(configResult.content, SettingsManager.getDelayTestUrl())
     }
 }
 

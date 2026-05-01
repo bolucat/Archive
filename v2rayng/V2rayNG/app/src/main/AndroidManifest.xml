@@ -168,7 +168,7 @@
             android:exported="false" />
 
         <service
-            android:name=".service.V2RayVpnService"
+            android:name=".service.CoreVpnService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse"
@@ -188,7 +188,7 @@
         </service>
 
         <service
-            android:name=".service.V2RayProxyOnlyService"
+            android:name=".service.CoreProxyOnlyService"
             android:exported="false"
             android:foregroundServiceType="specialUse"
             android:label="@string/app_name"
@@ -199,7 +199,7 @@
         </service>
 
         <service
-            android:name=".service.V2RayTestService"
+            android:name=".service.CoreTestService"
             android:exported="false"
             android:process=":RunSoLibV2RayDaemon" />
 

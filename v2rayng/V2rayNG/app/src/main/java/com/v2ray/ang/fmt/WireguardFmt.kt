@@ -1,14 +1,11 @@
 package com.v2ray.ang.fmt
 
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.AppConfig.WIREGUARD_LOCAL_ADDRESS_V4
 import com.v2ray.ang.dto.ProfileItem
-import com.v2ray.ang.dto.V2rayConfig.OutboundBean
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.extension.idnHost
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.extension.removeWhiteSpace
-import com.v2ray.ang.handler.V2rayConfigManager
 import com.v2ray.ang.util.Utils
 import java.net.URI
 
@@ -31,7 +28,7 @@ object WireguardFmt : FmtBase() {
         config.serverPort = uri.port.toString()
 
         config.secretKey = uri.userInfo.orEmpty()
-        config.localAddress = queryParam["address"] ?: WIREGUARD_LOCAL_ADDRESS_V4
+        config.localAddress = queryParam["address"] ?: AppConfig.WIREGUARD_LOCAL_ADDRESS_V4
         config.publicKey = queryParam["publickey"].orEmpty()
         config.preSharedKey = queryParam["presharedkey"]?.nullIfBlank()
         config.mtu = Utils.parseInt(queryParam["mtu"] ?: AppConfig.WIREGUARD_LOCAL_MTU)
@@ -82,7 +79,7 @@ object WireguardFmt : FmtBase() {
 
         config.secretKey = interfaceParams["privatekey"].orEmpty()
         config.remarks = System.currentTimeMillis().toString()
-        config.localAddress = interfaceParams["address"] ?: WIREGUARD_LOCAL_ADDRESS_V4
+        config.localAddress = interfaceParams["address"] ?: AppConfig.WIREGUARD_LOCAL_ADDRESS_V4
         config.mtu = Utils.parseInt(interfaceParams["mtu"] ?: AppConfig.WIREGUARD_LOCAL_MTU)
         config.publicKey = peerParams["publickey"].orEmpty()
         config.preSharedKey = peerParams["presharedkey"]?.nullIfBlank()
@@ -100,29 +97,6 @@ object WireguardFmt : FmtBase() {
         return config
     }
 
-    /**
-     * Converts a ProfileItem object to an OutboundBean object.
-     *
-     * @param profileItem the ProfileItem object to convert
-     * @return the converted OutboundBean object, or null if conversion fails
-     */
-    fun toOutbound(profileItem: ProfileItem): OutboundBean? {
-        val outboundBean = V2rayConfigManager.createInitOutbound(EConfigType.WIREGUARD)
-
-        outboundBean?.settings?.let { wireguard ->
-            wireguard.secretKey = profileItem.secretKey
-            wireguard.address = (profileItem.localAddress ?: WIREGUARD_LOCAL_ADDRESS_V4).split(",")
-            wireguard.peers?.firstOrNull()?.let { peer ->
-                peer.publicKey = profileItem.publicKey.orEmpty()
-                peer.preSharedKey = profileItem.preSharedKey?.nullIfBlank()
-                peer.endpoint = Utils.getIpv6Address(profileItem.server) + ":${profileItem.serverPort}"
-            }
-            wireguard.mtu = profileItem.mtu
-            wireguard.reserved = profileItem.reserved?.takeIf { it.isNotBlank() }?.split(",")?.filter { it.isNotBlank() }?.map { it.trim().toInt() }
-        }
-
-        return outboundBean
-    }
 
     /**
      * Converts a ProfileItem object to a URI string.

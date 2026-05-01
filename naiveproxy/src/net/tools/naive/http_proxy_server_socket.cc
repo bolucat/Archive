@@ -124,7 +124,6 @@ NextProto HttpProxyServerSocket::GetNegotiatedProtocol() const {
   if (transport_) {
     return transport_->GetNegotiatedProtocol();
   }
-  NOTREACHED();
   return NextProto::kProtoUnknown;
 }
 
@@ -132,7 +131,6 @@ bool HttpProxyServerSocket::GetSSLInfo(SSLInfo* ssl_info) {
   if (transport_) {
     return transport_->GetSSLInfo(ssl_info);
   }
-  NOTREACHED();
   return false;
 }
 
@@ -259,7 +257,6 @@ int HttpProxyServerSocket::DoLoop(int last_io_result) {
         rv = DoHeaderWriteComplete(rv);
         break;
       default:
-        NOTREACHED() << "bad state";
         rv = ERR_UNEXPECTED;
         break;
     }

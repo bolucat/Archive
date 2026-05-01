@@ -13,7 +13,7 @@ import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.UpdateCheckerManager
-import com.v2ray.ang.handler.V2RayNativeManager
+import com.v2ray.ang.core.CoreNativeManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import kotlinx.coroutines.launch
@@ -36,7 +36,7 @@ class CheckUpdateActivity : BaseActivity() {
         }
         binding.checkPreRelease.isChecked = MmkvManager.decodeSettingsBool(AppConfig.PREF_CHECK_UPDATE_PRE_RELEASE, false)
 
-        "v${BuildConfig.VERSION_NAME} (${V2RayNativeManager.getLibVersion()})".also {
+        "v${BuildConfig.VERSION_NAME} (${CoreNativeManager.getLibVersion()})".also {
             binding.tvVersion.text = it
         }
 

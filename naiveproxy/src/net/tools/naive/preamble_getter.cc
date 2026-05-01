@@ -87,7 +87,7 @@ PreambleGetter::PreambleGetter(
       net_log_(net_log) {
   CHECK(!proxy_info_.proxy_chain().is_direct());
   proxy_server_ = &proxy_info_.proxy_chain().Last();
-  CHECK(proxy_server_->is_secure_http_like());
+  CHECK(proxy_server_->is_secure_http_like()) << *proxy_server_;
   requests_.push_back(std::make_unique<Request>());
   requests_[0]->path = "/";
   root_ = GURL("https://" + proxy_server_->host_port_pair().ToString())
@@ -131,7 +131,6 @@ int PreambleGetter::DoLoop(size_t preamble_index, int last_io_result) {
         rv = DoReadComplete(preamble_index, rv);
         break;
       default:
-        NOTREACHED() << "bad state";
         rv = ERR_UNEXPECTED;
         break;
     }
@@ -212,7 +211,8 @@ void PreambleGetter::AddHeaders(const std::string& path,
 }
 
 int PreambleGetter::Start(size_t preamble_index,
-                          CompletionOnceCallback callback) {
+                          CompletionOnceCallback callback,
+                          bool log_url) {
   CHECK_LT(preamble_index, requests_.size());
   Request& req = *requests_[preamble_index];
   req.next_state = STATE_CONNECT_SERVER_COMPLETE;
@@ -232,7 +232,9 @@ int PreambleGetter::Start(size_t preamble_index,
   naive_proxy_delegate()->SetPreambleRequestHeaders(*proxy_server_,
                                                     preamble_index, headers);
 
-  LOG(INFO) << "Preamble " << root_.Resolve(req.path).spec();
+  if (log_url) {
+    LOG(INFO) << "Preamble " << root_.Resolve(req.path).spec();
+  }
   RequestPriority priority = LOWEST;
   if (req.path == "/" || req.ext == "css") {
     priority = HIGHEST;
@@ -266,8 +268,6 @@ int PreambleGetter::DoConnectServerComplete(size_t preamble_index, int result) {
     LOG(ERROR) << "Failed to get preamble response headers";
     return ERR_INVALID_ARGUMENT;
   }
-  LOG(INFO) << "Preamble " << root_.Resolve(req.path).spec() << " "
-            << headers->response_code();
 
   // Only cares about decoding the first preamble request
   if (preamble_index == 0) {
@@ -488,6 +488,13 @@ int PreambleGetter::DoReadComplete(size_t preamble_index, int result) {
   }
   req.next_state = STATE_READ;
   return OK;
+}
+
+void PreambleGetter::StartOne() {
+  if (requests_.empty())
+    return;
+  int index = base::RandIntInclusive(0, requests_.size() - 1);
+  (void)Start(index, {}, /*log_url=*/false);
 }
 
 NaiveProxyDelegate* PreambleGetter::naive_proxy_delegate() const {

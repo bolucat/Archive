@@ -4,7 +4,7 @@ NaïveProxy uses Chromium's network stack to camouflage traffic with strong cens
 
 The following traffic attacks are mitigated by using Chromium's network stack:
 
-* Website fingerprinting / traffic classification: [mitigated](https://arxiv.org/abs/1707.00641) by traffic multiplexing in HTTP/2.
+* Website fingerprinting / traffic classification: mitigated by [traffic multiplexing in HTTP/2](https://arxiv.org/abs/1707.00641) and parroting preambles.
 * [TLS parameter fingerprinting](https://arxiv.org/abs/1607.01639): defeated by reusing [Chrome's network stack](https://www.chromium.org/developers/design-documents/network-stack).
 * [Active probing](https://ensa.fi/active-probing/): defeated by *application fronting*, i.e. hiding proxy servers behind a commonly used frontend server with application-layer routing.
 * Length-based traffic analysis: mitigated by length padding.
@@ -41,9 +41,13 @@ Example Caddyfile (replace `user` and `pass` accordingly):
 ```
 {
   order forward_proxy before file_server
+  log {
+    exclude http.log.error # Avoid logging user activity
+  }
 }
 :443, example.com {
   tls me@example.com
+  encode
   forward_proxy {
     basic_auth user pass
     hide_ip
@@ -149,13 +153,3 @@ The first CONNECT request to a server cannot use "Fast Open" to send payload bef
 - Force tunneling for all sockets
 - Support HTTP/2 and HTTP/3 CONNECT tunnel Fast Open using the `fastopen` header
 - Pad RST_STREAM frames
-
-## Known weaknesses
-
-* HTTP CONNECT Fast Open creates back to back h2 packets consistently, which should not appear so often. This could be fixed with a little bit of corking but it would require surgical change deep in Chromium h2 stack, not very easy to do.
-* TLS over TLS requires more handshake round trips than needed by common h2 requests, that is, no h2 requests need these many back and forth handshakes. There is no simple way to avoid this besides doing MITM proxying, breaking E2E encryption.
-* TLS over TLS overhead causes visible packet length enlargement and lack of small packets. Removing this overhead also requires MITM proxying.
-* TLS over TLS overhead also causes packets to consistently exceed MTU limits, which should not happen for an originating user agent. Fixing this requires re-segmentation and it is not easy to do.
-* Packet length obfuscation partly relies on h2 multiplexing, which does not work if there is only one connection, a scenario not uncommon. It is not clear how to create covering co-connections organically (i.e. not hard coded).
-* Multiplexing requires use of a few long-lived tunnel connections. It is not clearly how long is appropriate for parroting and how to convincingly rotate the connections if there is an age limit or how to detect and recover stuck tunnel connections convincingly.
-

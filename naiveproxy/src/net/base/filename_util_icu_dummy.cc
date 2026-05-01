@@ -5,19 +5,16 @@
 #include "net/base/filename_util.h"
 
 #include "base/files/file_path.h"
-#include "base/notreached.h"
 
 class GURL;
 
 namespace net {
 
 bool IsSafePortablePathComponent(const base::FilePath& component) {
-  NOTREACHED();
   return false;
 }
 
 bool IsSafePortableRelativePath(const base::FilePath& path) {
-  NOTREACHED();
   return false;
 }
 
@@ -27,7 +24,6 @@ std::u16string GetSuggestedFilename(const GURL& url,
                                     const std::string& suggested_name,
                                     const std::string& mime_type,
                                     const std::string& default_name) {
-  NOTREACHED();
   return {};
 }
 
@@ -37,7 +33,6 @@ base::FilePath GenerateFileName(const GURL& url,
                                 const std::string& suggested_name,
                                 const std::string& mime_type,
                                 const std::string& default_file_name) {
-  NOTREACHED();
   return {};
 }
 

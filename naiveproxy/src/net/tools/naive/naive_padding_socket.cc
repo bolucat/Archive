@@ -252,9 +252,9 @@ int NaivePaddingSocket::WritePaddingV1Drain(
 
   while (write_buf_->BytesRemaining() > 0) {
     int remaining = write_buf_->BytesRemaining();
-    if (direction_ == kServer && write_user_payload_len_ > 400 &&
+    if (direction_ == kServer && write_user_payload_len_ > 200 &&
         write_user_payload_len_ < 1024) {
-      remaining = std::min(remaining, base::RandInt(200, 300));
+      remaining = std::min(remaining, base::RandInt(100, 200));
     }
     int rv = transport_socket_->Write(
         write_buf_.get(), remaining,
