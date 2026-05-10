@@ -30,9 +30,9 @@ type Server struct {
 func NewServer(cfg *config.Config) (*Server, error) {
 	l := zap.S().Named("relay-server")
 	cmgrCfg := &cmgr.Config{
-		SyncURL:      cfg.RelaySyncURL,
-		SyncInterval: cfg.RelaySyncInterval,
-		MetricsURL:   cfg.GetMetricURL(),
+		SyncURL:       cfg.RelaySyncURL,
+		SyncInterval:  cfg.RelaySyncInterval,
+		EnableMetrics: cfg.NeedStartWebServer(),
 	}
 	cmgrCfg.Adjust()
 	cmgr, err := cmgr.NewCmgr(cmgrCfg)

@@ -22,6 +22,7 @@ import com.google.android.material.navigation.NavigationView
 import com.google.android.material.tabs.TabLayoutMediator
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
+import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.databinding.ActivityMainBinding
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.PermissionType
@@ -32,7 +33,6 @@ import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager
 import com.v2ray.ang.handler.SubscriptionUpdater
-import com.v2ray.ang.core.CoreServiceManager
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 import com.v2ray.ang.viewmodel.MainViewModel
@@ -254,6 +254,11 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
             true
         }
 
+        R.id.import_manually_proxy_chain -> {
+            importManually(EConfigType.PROXYCHAIN.value)
+            true
+        }
+
         R.id.import_manually_vmess -> {
             importManually(EConfigType.VMESS.value)
             true
@@ -355,6 +360,12 @@ class MainActivity : HelperBaseActivity(), NavigationView.OnNavigationItemSelect
                 Intent()
                     .putExtra("subscriptionId", mainViewModel.subscriptionId)
                     .setClass(this, ServerGroupActivity::class.java)
+            )
+        } else if (createConfigType == EConfigType.PROXYCHAIN.value) {
+            startActivity(
+                Intent()
+                    .putExtra("subscriptionId", mainViewModel.subscriptionId)
+                    .setClass(this, ServerProxyChainActivity::class.java)
             )
         } else {
             startActivity(

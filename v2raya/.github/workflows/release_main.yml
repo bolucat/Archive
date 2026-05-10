@@ -125,21 +125,39 @@ jobs:
       with:
         name: v2raya_linux_x64_${{ steps.prep.outputs.VERSION }}
         path: Downloads
+    - name: Download Core Artifact Linux x64
+      uses: actions/download-artifact@v8
+      with:
+        name: v2raya_core_linux_x64_${{ steps.prep.outputs.VERSION }}
+        path: Downloads
     - name: Download Artifact macOS x64
       uses: actions/download-artifact@v8
       with:
         name: v2raya_darwin_x64_${{ steps.prep.outputs.VERSION }}
+        path: Downloads
+    - name: Download Core Artifact macOS x64
+      uses: actions/download-artifact@v8
+      with:
+        name: v2raya_core_darwin_x64_${{ steps.prep.outputs.VERSION }}
         path: Downloads
     - name: Download Artifact macOS arm64
       uses: actions/download-artifact@v8
       with:
         name: v2raya_darwin_arm64_${{ steps.prep.outputs.VERSION }}
         path: Downloads
+    - name: Download Core Artifact macOS arm64
+      uses: actions/download-artifact@v8
+      with:
+        name: v2raya_core_darwin_arm64_${{ steps.prep.outputs.VERSION }}
+        path: Downloads
     - name: Compress to Zip Files
       run: |
         mkdir v2raya-x86_64-linux; cp Downloads/v2raya_linux_x64_${{ steps.prep.outputs.VERSION }} ./v2raya-x86_64-linux/v2raya
+        cp Downloads/v2raya_core_linux_x64_${{ steps.prep.outputs.VERSION }} ./v2raya-x86_64-linux/v2raya_core
         mkdir v2raya-x86_64-macos; cp Downloads/v2raya_darwin_x64_${{ steps.prep.outputs.VERSION }} ./v2raya-x86_64-macos/v2raya
+        cp Downloads/v2raya_core_darwin_x64_${{ steps.prep.outputs.VERSION }} ./v2raya-x86_64-macos/v2raya_core
         mkdir v2raya-aarch64-macos; cp Downloads/v2raya_darwin_arm64_${{ steps.prep.outputs.VERSION }} ./v2raya-aarch64-macos/v2raya
+        cp Downloads/v2raya_core_darwin_arm64_${{ steps.prep.outputs.VERSION }} ./v2raya-aarch64-macos/v2raya_core
         zip -r9 v2raya-x86_64-linux.zip ./v2raya-x86_64-linux/*
         zip -r9 v2raya-x86_64-macos.zip ./v2raya-x86_64-macos/*
         zip -r9 v2raya-aarch64-macos.zip ./v2raya-aarch64-macos/*

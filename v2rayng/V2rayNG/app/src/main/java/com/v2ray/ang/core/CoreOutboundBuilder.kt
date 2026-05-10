@@ -1,6 +1,5 @@
 package com.v2ray.ang.core
 
-import android.text.TextUtils
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.v2ray.ang.AppConfig
@@ -17,21 +16,15 @@ import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.Utils
 
 /**
- * Centralises all ProfileItem → OutboundBean conversion logic.
- *
- * keeping every build method implementation identical to the original
- * toOutbound implementations in each *Fmt class.
+ * Centralizes ProfileItem -> OutboundBean conversion.
+ * Most protocol builders mirror the previous *Fmt.toOutbound behavior.
  */
-object CoreOutboundBuilder  {
+object CoreOutboundBuilder {
 
-    /**
-     * Dispatches [profileItem] to the appropriate protocol builder
-     * and returns the resulting [OutboundBean].
-     */
+    /** Dispatches a profile to protocol-specific outbound builder. */
     fun convert(profileItem: ProfileItem): OutboundBean? {
         val outbound = when (profileItem.configType) {
             EConfigType.VMESS -> toOutboundVmess(profileItem)
-            EConfigType.CUSTOM -> null
             EConfigType.SHADOWSOCKS -> toOutboundShadowsocks(profileItem)
             EConfigType.SOCKS -> toOutboundSocks(profileItem)
             EConfigType.VLESS -> toOutboundVless(profileItem)
@@ -39,7 +32,6 @@ object CoreOutboundBuilder  {
             EConfigType.WIREGUARD -> toOutboundWireguard(profileItem)
             EConfigType.HYSTERIA2 -> toOutboundHysteria2(profileItem)
             EConfigType.HTTP -> toOutboundHttp(profileItem)
-            EConfigType.POLICYGROUP -> null
             else -> null
         }
 
@@ -49,11 +41,7 @@ object CoreOutboundBuilder  {
         return outbound
     }
 
-    /**
-     * Updates outbound settings based on global preferences.
-     *
-     * Applies multiplexing and protocol-specific settings to an outbound connection.
-     */
+    /** Applies global outbound options (mux, protocol-specific tweaks, etc.). */
     private fun updateOutboundWithGlobalSettings(outbound: OutboundBean): Boolean {
         try {
             var muxEnabled = MmkvManager.decodeSettingsBool(AppConfig.PREF_MUX_ENABLED, false)
@@ -84,41 +72,6 @@ object CoreOutboundBuilder  {
                 outbound.mux?.concurrency = -1
             }
 
-            if (protocol.equals(EConfigType.WIREGUARD.name, true)) {
-                var localTunAddr = if (outbound.settings?.address == null) {
-                    listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
-                } else {
-                    outbound.settings?.address as List<*>
-                }
-                if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED) != true) {
-                    localTunAddr = listOf(localTunAddr.first())
-                }
-                outbound.settings?.address = localTunAddr
-            }
-
-            if (outbound.streamSettings?.network == AppConfig.DEFAULT_NETWORK
-                && outbound.streamSettings?.tcpSettings?.header?.type == AppConfig.HEADER_TYPE_HTTP
-            ) {
-                val path = outbound.streamSettings?.tcpSettings?.header?.request?.path
-                val host = outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host
-
-                val requestString: String by lazy {
-                    """{"version":"1.1","method":"GET","headers":{"User-Agent":["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"],"Accept-Encoding":["gzip, deflate"],"Connection":["keep-alive"],"Pragma":["no-cache"]}}"""
-                }
-                outbound.streamSettings?.tcpSettings?.header?.request = JsonUtil.fromJson(
-                    requestString,
-                    OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean::class.java
-                )
-                outbound.streamSettings?.tcpSettings?.header?.request?.path =
-                    if (path.isNullOrEmpty()) {
-                        listOf("/")
-                    } else {
-                        path
-                    }
-                outbound.streamSettings?.tcpSettings?.header?.request?.headers?.Host = host
-            }
-
-
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to update outbound with global settings", e)
             return false
@@ -126,14 +79,7 @@ object CoreOutboundBuilder  {
         return true
     }
 
-    /**
-     * Creates an initial outbound configuration for a specific protocol type.
-     *
-     * Provides a template configuration for different protocol types.
-     *
-     * @param configType The type of configuration to create
-     * @return An initial OutboundBean for the specified configuration type, or null for custom types
-     */
+    /** Creates an initial outbound template for a protocol type. */
     fun createInitOutbound(configType: EConfigType): OutboundBean? {
         return when (configType) {
             EConfigType.VMESS,
@@ -181,8 +127,7 @@ object CoreOutboundBuilder  {
                     streamSettings = OutboundBean.StreamSettingsBean()
                 )
 
-            EConfigType.CUSTOM -> null
-            EConfigType.POLICYGROUP -> null
+            else -> null
         }
     }
 
@@ -310,9 +255,23 @@ object CoreOutboundBuilder  {
     private fun toOutboundWireguard(profileItem: ProfileItem): OutboundBean? {
         val outboundBean = createInitOutbound(EConfigType.WIREGUARD)
 
+        val rawAddresses = profileItem.localAddress
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?.ifEmpty { null }
+            ?: listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4)
+
+        val addresses = if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IPV6_ENABLED) == true) {
+            rawAddresses
+        } else {
+            val ipv4Addresses = rawAddresses.filter { !it.contains(":") }
+            ipv4Addresses.ifEmpty { listOf(AppConfig.WIREGUARD_LOCAL_ADDRESS_V4) }
+        }
+
         outboundBean?.settings?.let { wireguard ->
             wireguard.secretKey = profileItem.secretKey
-            wireguard.address = (profileItem.localAddress ?: AppConfig.WIREGUARD_LOCAL_ADDRESS_V4).split(",")
+            wireguard.address = addresses
             wireguard.peers?.firstOrNull()?.let { peer ->
                 peer.publicKey = profileItem.publicKey.orEmpty()
                 peer.preSharedKey = profileItem.preSharedKey?.nullIfBlank()
@@ -347,6 +306,23 @@ object CoreOutboundBuilder  {
         return outboundBean
     }
 
+    private fun createTcpHttpRequest(
+        host: String?,
+        path: String?
+    ): OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean {
+        val requestString =
+            """{"version":"1.1","method":"GET","headers":{"User-Agent":["Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"],"Accept-Encoding":["gzip, deflate"],"Connection":["keep-alive"],"Pragma":"no-cache"}}"""
+        val request = JsonUtil.fromJson(
+            requestString,
+            OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean::class.java
+        ) ?: OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean()
+
+        val parsedHost = host.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        request.headers.Host = parsedHost.ifEmpty { null }
+        request.path = path.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }.ifEmpty { listOf("/") }
+        return request
+    }
+
     /**
      * Configures transport settings for an outbound connection.
      *
@@ -377,13 +353,9 @@ object CoreOutboundBuilder  {
                 val tcpSetting = OutboundBean.StreamSettingsBean.TcpSettingsBean()
                 if (headerType == AppConfig.HEADER_TYPE_HTTP) {
                     tcpSetting.header.type = AppConfig.HEADER_TYPE_HTTP
-                    if (!TextUtils.isEmpty(host) || !TextUtils.isEmpty(path)) {
-                        val requestObj = OutboundBean.StreamSettingsBean.TcpSettingsBean.HeaderBean.RequestBean()
-                        requestObj.headers.Host = host.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        requestObj.path = path.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                        tcpSetting.header.request = requestObj
-                        sni = requestObj.headers.Host?.getOrNull(0)
-                    }
+                    val requestObj = createTcpHttpRequest(host, path)
+                    tcpSetting.header.request = requestObj
+                    sni = requestObj.headers.Host?.getOrNull(0)
                 } else {
                     tcpSetting.header.type = "none"
                     sni = host

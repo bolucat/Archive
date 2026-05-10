@@ -1,6 +1,6 @@
 export default {
   common: {
-    outboundSetting: "出站设置",
+    outboundSetting: "代理分组设置",
     setting: "设置",
     about: "关于",
     loggedAs: "正在以 <b>{username}</b> 的身份登录",
@@ -13,11 +13,13 @@ export default {
     local: "本地",
     success: "成功",
     fail: "失败",
+    empty: "没有加入节点",
     message: "提示",
     none: "无",
     optional: "可选",
     loadBalance: "负载均衡",
     log: "日志",
+    proxyGroups: "代理分组",
     darkTheme: "深色主题",
     lightTheme: "浅色主题",
     autoTheme: "自动主题",
@@ -80,6 +82,9 @@ export default {
     connect: "连接",
     disconnect: "断开",
     select: "选择",
+    addTo: "添加到",
+    addToProxyGroup: "加入分组 {group}",
+    removeFromProxyGroup: "移出分组 {group}",
     login: "登录",
     logout: "注销",
     configure: "配置",
@@ -89,14 +94,19 @@ export default {
     saveApply: "保存并应用",
     save: "保存",
     copyLink: "复制链接",
+    export: "导出",
+    copySelected: "复制勾选节点",
+    downloadTxt: "下载 TXT 文件",
     helpManual: "查看帮助",
     yes: "是",
     no: "否",
     switchSite: "切换至备用站点",
-    addOutbound: "新增一个出站 (outbound)",
+    addOutbound: "新增一个代理分组",
+    add: "添加",
+    close: "关闭",
     domainsExcluded: "排除域名",
     tproxyExcludedInterfaces: "不走代理的网卡前缀",
-    configureTunRouteScript: "配置路由脚本"
+    configureTunRouteScript: "配置路由脚本",
   },
   register: {
     title: "初来乍到，创建一个管理员账号",
@@ -131,6 +141,7 @@ export default {
     portSharingOn: "允许局域网的连接",
     concurrency: "最大并发数",
     tunProcessBackend: "TinyTun 进程排除方式",
+    tunExcludeProcesses: "TinyTun 自定义排除进程",
     ssBackend: "Shadowsocks 后端",
     trojanBackend: "Trojan 后端",
     nodeBackend: "后端",
@@ -161,7 +172,6 @@ export default {
       leastPing: "最小时延优先",
       tunBackendTun: "TUN（默认，/proc 进程查找）",
       tunBackendEbpf: "eBPF（cgroupv2 进程排除）",
-      backendDaeuniverse: "daeuniverse/outbound",
       backendV2ray: "v2ray / xray",
       backendSystemDefault: "跟随系统设置",
     },
@@ -178,6 +188,7 @@ export default {
         "开启时，TinyTun 自动配置系统路由。关闭时，需要提供自定义的启动/停止脚本手动配置路由。",
       tunBypassInterfaces: "勾选不走 TUN 代理的网卡，或在下方输入自定义通配符。",
       tunProcessBackend: "Linux 下选择 TinyTun 的进程排除实现。TUN 模式使用 /proc 查找，兼容性强；eBPF 模式通过 cgroupv2 钉子实现更准确的进程级排除，需安装 tinytun-ebpf.o（/usr/lib/tinytun/）。",
+      tunExcludeProcesses: "配置额外需要直通的进程名。建议一行一个，例如：chrome.exe、firefox。",
       pacMode:
         "该选项设置规则分流端口所使用的路由模式。默认情况下规则分流端口为20172，HTTP协议。",
       preventDnsSpoofing: "",
@@ -289,6 +300,25 @@ export default {
     password: "密码",
     origin: "原版",
     pinnedCertchainSha256: "固定证书链sha256",
+    maxEarlyData: "Max Early Data",
+    earlyDataHeaderName: "Early Data Header Name",
+    multiMode: "MultiMode",
+    idleTimeout: "Idle Timeout",
+    healthCheckTimeout: "Health Check Timeout",
+    permitWithoutStream: "Permit Without Stream",
+    initialWindowsSize: "Initial Windows Size",
+    wireguardName: "名称",
+    wireguardAddress: "服务器地址",
+    wireguardPort: "端口",
+    wireguardPublicKey: "公钥",
+    wireguardPrivateKey: "私钥",
+    wireguardLocalAddress: "本地地址",
+    wireguardDns: "DNS",
+    wireguardMtu: "MTU",
+    wireguardAllowedIPs: "允许的 IP 范围",
+    wireguardPersistentKeepalive: "持久化保活间隔",
+    wireguardPreSharedKey: "预共享密钥",
+    wireguardEndpoint: "端点地址",
   },
   configureSubscription: {
     title: "订阅配置",
@@ -311,6 +341,8 @@ export default {
       "检测到 geosite.dat, geoip.dat 文件或 v2ray-core 可能未正确安装，请检查",
     v2rayNotV5:
       "检测到 v2ray-core 的版本并非 v5，请使用 v5 版本或将 v2rayA 降级至 v1.5",
+    coreVersionMismatch:
+      "核心版本不匹配：v2raya_core 的版本必须与 v2rayA 版本完全一致。{err}",
   },
   about: `<p>v2rayA 是 V2Ray 的一个 Web 客户端。</p>
           <p class="about-small">默认端口：</p>
@@ -339,9 +371,14 @@ export default {
     messages: ["点击“查看帮助”按钮以获取帮助"],
   },
   outbound: {
-    addMessage: "请输入你想要添加的出站(outbound)名称：",
+    addMessage: "请输入你想要添加的代理分组名称：",
     deleteMessage:
       '确定要<b>删除</b>出站 "{outboundName}" 吗？注意，该操作是不可逆的。',
+  },
+  proxyGroup: {
+    pickTitle: "添加到代理分组",
+    pickMessage: "选择要加入的代理分组。",
+    group: "代理分组",
   },
   driver: {
     welcome: [
@@ -421,6 +458,26 @@ export default {
       setupScriptPlaceholder: "# TinyTun 启动时配置路由的脚本\n# 例如: ip route add default dev tun0",
       teardownScript: "停止脚本（TinyTun 停止前执行）",
       teardownScriptPlaceholder: "# TinyTun 停止时移除路由的脚本\n# 例如: ip route del default dev tun0",
-    }
-  }
+    },
+    processExclude: {
+      title: "TinyTun 自定义进程排除",
+      warning: "警告：错误的进程名可能导致流量被意外直通。请仅添加你确认需要排除的进程。",
+      listLabel: "排除进程名称",
+      placeholder: "v2raya\nv2ray\nchrome.exe",
+      hint: "支持逗号或换行分隔。保存时会自动去重。",
+    },
+  },
+  customInbound: {
+    title: "自定义入站端口",
+    tag: "标签（备注名称）",
+    protocol: "协议",
+    port: "端口",
+    addNew: "添加新入站",
+    tagPlaceholder: "如 my-socks",
+    portPlaceholder: "如 10800",
+    empty: "暂无自定义入站",
+    hint: "入站端口仅支持 SOCKS 和 HTTP 协议，标签必须唯一，将作为 v2ray core 的 tag 使用。",
+    fillAll: "请喆写全部字段",
+    deleteConfirm: "确认删除入站 {tag}？",
+  },
 };

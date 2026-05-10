@@ -30,6 +30,7 @@
     <string name="menu_item_import_config_clipboard">و من ٱووردن کانفیگ ز کلیپ بورد</string>
     <string name="menu_item_import_config_local">و من ٱووردن کانفیگ ز مهلی</string>
     <string name="menu_item_import_config_policy_group">ٱووردن [بونکۊ سیاست]</string>
+    <string name="menu_item_import_config_proxy_chain">Add [Proxy chain]</string>
     <string name="menu_item_import_config_manually_vmess">هؽل دستی[VMess]</string>
     <string name="menu_item_import_config_manually_vless">هؽل دستی[VLESS]</string>
     <string name="menu_item_import_config_manually_ss">هؽل دستی[Shadowsocks]</string>
@@ -210,6 +211,7 @@
 
     <string name="title_pref_delay_test_url">نشۊوی اینترنتی آزمایش تئخیر واقعی</string>
     <string name="summary_pref_delay_test_url">نشۊوی اینترنتی</string>
+    <string name="title_pref_real_ping_concurrency">هموورگی آزمایش تئخیر واقعی</string>
 
     <string name="title_pref_ip_api_url">نشۊوی اینترنتی آزمایش دووسمندیا منپیز هیم سکویی</string>
     <string name="summary_pref_ip_api_url">نشۊوی اینترنتی</string>
@@ -375,6 +377,12 @@
     <string name="title_policy_group_type">نوع بونکۊ سیاست</string>
     <string name="title_policy_group_subscription_id">ز بونکۊ اشتراک</string>
     <string name="title_policy_group_subscription_filter">توزیهات فیلتر معمۊلی</string>
+    <string name="server_proxy_chain_members">اعضای زنجیره پروکسی</string>
+    <string name="server_proxy_chain_pick_members">اینجا بزنین تا عضو اِنتخاب اکه</string>
+    <string name="server_proxy_chain_member_unselected">یه عضو اِنتخاب کۊنین</string>
+    <string name="server_proxy_chain_members_unselected">لطفا سی هر ردیو زنجیره، remark اِنتخاب کۊنین</string>
+    <string name="server_proxy_chain_members_insufficient">تعداد عضوها کافی نیس</string>
+    <string name="server_proxy_chain_members_invalid">اعضای نامعتبر زنجیره: %1$s</string>
 
     <!-- BackupActivity -->
     <string name="title_configuration_backup_restore">لادراری گرؽڌن &amp; وورگندن</string>

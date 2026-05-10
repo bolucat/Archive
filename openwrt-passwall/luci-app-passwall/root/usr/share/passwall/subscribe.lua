@@ -10,6 +10,8 @@ local appname = 'passwall'
 local api = require ("luci.passwall.api")
 local datatypes = require "luci.cbi.datatypes"
 
+loadfile("/usr/share/" .. appname .. "/clash_subconverter.lua")()
+
 -- these global functions are accessed all the time by the event handler
 -- so caching them is worth the effort
 local tinsert = table.insert
@@ -25,7 +27,6 @@ local fs = api.fs
 local has_ss = api.is_finded("ss-redir")
 local has_ss_rust = api.is_finded("sslocal")
 local has_ssr = api.is_finded("ssr-local") and api.is_finded("ssr-redir")
-local has_trojan_plus = api.is_finded("trojan-plus")
 local has_singbox = api.finded_com("sing-box")
 local has_xray = api.finded_com("xray")
 local has_hysteria2 = api.finded_com("hysteria")
@@ -35,7 +36,7 @@ local DEFAULT_FILTER_KEYWORD_DISCARD_LIST = uci:get(appname, "@global_subscribe[
 local DEFAULT_FILTER_KEYWORD_KEEP_LIST = uci:get(appname, "@global_subscribe[0]", "filter_keep_list") or {}
 -- 取节点使用core类型（节点订阅页面未设置时，自动取默认）
 local DEFAULT_SS_TYPE = api.get_core("ss_type", {{has_ss,"shadowsocks-libev"},{has_ss_rust,"shadowsocks-rust"},{has_singbox,"sing-box"},{has_xray,"xray"}})
-local DEFAULT_TROJAN_TYPE =  api.get_core("trojan_type", {{has_trojan_plus,"trojan-plus"},{has_singbox,"sing-box"},{has_xray,"xray"}})
+local DEFAULT_TROJAN_TYPE =  api.get_core("trojan_type", {{has_singbox,"sing-box"},{has_xray,"xray"}})
 local DEFAULT_VMESS_TYPE = api.get_core("vmess_type", {{has_xray,"xray"},{has_singbox,"sing-box"}})
 local DEFAULT_VLESS_TYPE = api.get_core("vless_type", {{has_xray,"xray"},{has_singbox,"sing-box"}})
 local DEFAULT_HYSTERIA2_TYPE = api.get_core("hysteria2_type", {{has_hysteria2,"hysteria2"},{has_singbox,"sing-box"},{has_xray,"xray"}})
@@ -44,7 +45,6 @@ local core_has = {
 	["sing-box"] = has_singbox,
 	["shadowsocks-libev"] = has_ss,
 	["shadowsocks-rust"] = has_ss_rust,
-	["trojan-plus"] = has_trojan_plus,
 	["hysteria2"] = has_hysteria2
 }
 -- 判断是否过滤节点关键字
@@ -663,9 +663,14 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 			result.httpupgrade_host = info.host
 			result.httpupgrade_path = info.path
 		end
-		if not info.security then result.security = "auto" end
+		result.security = info.security or info.scy or "auto"
 		if info.tls == "tls" or info.tls == "1" then
 			result.tls = "1"
+			result.alpn = info.alpn
+			if info.fp and info.fp ~= "" then
+				result.utls = "1"
+				result.fingerprint = info.fp
+			end
 			result.tls_serverName = (info.sni and info.sni ~= "") and info.sni or info.host
 			result.tls_pinSHA256 = info.pcs
 			result.tls_CertByName = info.vcn
@@ -1001,9 +1006,7 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 			end
 		end
 	elseif szType == "trojan" then
-		if sub_trojan_type == "trojan-plus" and has_trojan_plus then
-			result.type = "Trojan-Plus"
-		elseif sub_trojan_type == "sing-box" and has_singbox then
+		if sub_trojan_type == "sing-box" and has_singbox then
 			result.type = 'sing-box'
 			result.protocol = 'trojan'
 		elseif sub_trojan_type == "xray" and has_xray then
@@ -1485,7 +1488,7 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 		end
 		result.tls_serverName = params.sni
 		result.tls_disable_sni = params.disable_sni
-		result.tuic_alpn = params.alpn or "default"
+		result.tuic_alpn = params.alpn or "h3"
 		result.tuic_congestion_control = params.congestion_control or "cubic"
 		result.tuic_udp_relay_mode = params.udp_relay_mode or "native"
 		local insecure = params.allowinsecure or params.insecure or params.allow_insecure
@@ -1636,11 +1639,14 @@ local function curl(url, file, ua, mode)
 	local curl_args = {
 		"-fskL", "-w %{http_code}", "--retry 3", "--connect-timeout 3", "-H 'Accept-Encoding: identity'"
 	}
-	if ua and ua ~= "" and ua ~= "curl" then
-		ua = (ua == "passwall") and ("passwall/" .. api.get_version()) or ua
-		curl_args[#curl_args + 1] = '--user-agent "' .. ua .. '"'
+
+	ua = (ua and ua ~= "") and ua or "passwall"
+	ua = (ua == "passwall") and ("passwall/" .. api.get_version()) or ua
+	curl_args[#curl_args + 1] = '--user-agent "' .. ua .. '"'
+	if not ua:lower():find("clash", 1, true) then
+		curl_args[#curl_args + 1] = get_headers()
 	end
-	curl_args[#curl_args + 1] = get_headers()
+
 	local return_code, result
 	if mode == "direct" then
 		return_code, result = api.curl_base(url, file, curl_args)
@@ -2121,6 +2127,7 @@ local execute = function()
 			local cfgid = value[".name"]
 			local remark = value.remark or ""
 			local url = value.url or ""
+			local tmp_file, ua
 
 			local url_is_local
 			if fs.access(url) then
@@ -2129,7 +2136,7 @@ local execute = function()
 				url_is_local = true
 				tmp_file = url
 			else
-				local ua = value.user_agent
+				ua = value.user_agent
 				local access_mode = value.access_mode
 				local result = (not access_mode) and "自动" or (access_mode == "direct" and "直连" or (access_mode == "proxy" and "代理" or "自动"))
 				log('正在订阅:【' .. remark .. '】' .. url .. ' [' .. result .. ']')
@@ -2152,6 +2159,7 @@ local execute = function()
 					if not manual_sub and old_md5 == new_md5 then
 						log('订阅:【' .. remark .. '】没有变化，无需更新。')
 					else
+						raw_data = parseClashNode(raw_data)
 						parse_link(raw_data, "2", remark, value)
 						uci:set(appname, cfgid, "md5", new_md5)
 					end

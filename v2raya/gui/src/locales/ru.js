@@ -148,7 +148,6 @@ export default {
       closed: "Выключено",
       advanced: "Расширенная настройка",
       leastPing: "С наименьшей задержкой",
-      backendDaeuniverse: "daeuniverse/outbound",
       backendV2ray: "v2ray / xray",
       backendSystemDefault: "По умолчанию",
     },

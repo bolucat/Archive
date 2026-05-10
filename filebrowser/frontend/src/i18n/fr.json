@@ -29,6 +29,8 @@
     "rename": "Renommer",
     "replace": "Remplacer",
     "reportIssue": "Signaler un problème",
+    "resumeTransfer": "Reprendre un transfert précedement interrompu",
+    "resumeTransferTooltip": "Ignorer tous les fichiers en conflit, sauf ceux qui sont plus petits sur le serveur, car nous supposons que leur transfert a été interrompu.",
     "save": "Enregistrer",
     "schedule": "Planifier",
     "search": "Rechercher",
@@ -281,6 +283,7 @@
     "currentPassword": "Mot de Passe Actuel"
   },
   "sidebar": {
+    "diskUsed": "{used} of {total} used",
     "help": "Aide",
     "hugoNew": "Nouveau Hugo",
     "login": "Login",

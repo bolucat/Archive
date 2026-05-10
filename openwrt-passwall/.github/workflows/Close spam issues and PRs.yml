@@ -1,0 +1,38 @@
+name: "Close spam issues and PRs"
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+
+jobs:
+  close-item:
+    # 检查标签是否为指定的三个之一
+    if: >
+      github.event.label.name == 'invalid' || 
+      github.event.label.name == 'no plan' || 
+      github.event.label.name == 'wontfix'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Close Issue or PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          EVENT_TYPE: ${{ github.event_name }}
+        run: |
+          COMMENT="This content has been marked as invalid, no plan or wontfix; the system has automatically closed it."
+          LABEL_TO_ADD="closed-by-bot"
+          # 使用 Actions 自带的环境变量指定仓库
+          REPO="$GITHUB_REPOSITORY" 
+          
+          if [ "$EVENT_TYPE" == "issues" ]; then
+            gh issue edit $NUMBER --repo "$REPO" --add-label "$LABEL_TO_ADD"
+            gh issue close $NUMBER --repo "$REPO" --comment "$COMMENT" --reason "not planned"
+          else
+            gh pr edit $NUMBER --repo "$REPO" --add-label "$LABEL_TO_ADD"
+            gh pr close $NUMBER --repo "$REPO" --comment "$COMMENT"
+          fi

@@ -3,6 +3,9 @@ package com.v2ray.ang.util
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.LOOPBACK
 import com.v2ray.ang.BuildConfig
+import okhttp3.Credentials
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import java.io.File
 import java.io.IOException
 import java.net.IDN
@@ -14,9 +17,6 @@ import java.net.Proxy
 import java.net.URI
 import java.net.URL
 import java.util.concurrent.TimeUnit
-import okhttp3.Credentials
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
 object HttpUtil {
 
@@ -172,6 +172,9 @@ object HttpUtil {
                 .get()
                 .header("User-agent", finalUserAgent)
                 .header("Connection", "close")
+
+            applyEmbeddedBasicAuthHeader(currentUrl, requestBuilder)
+
             if (httpPort != 0 && !proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
                 requestBuilder.header("Proxy-Authorization", Credentials.basic(proxyUsername, proxyPassword))
             }
@@ -201,6 +204,20 @@ object HttpUtil {
             }
         }
         throw IOException("Too many redirects")
+    }
+
+    private fun applyEmbeddedBasicAuthHeader(rawUrl: String, requestBuilder: Request.Builder) {
+        val parsed = runCatching { URL(rawUrl) }.getOrNull() ?: return
+        parsed.userInfo?.let { userInfo ->
+            val colon = userInfo.indexOf(':')
+            val user = runCatching {
+                Utils.decodeURIComponent(if (colon >= 0) userInfo.substring(0, colon) else userInfo)
+            }.getOrDefault(if (colon >= 0) userInfo.substring(0, colon) else userInfo)
+            val pass = runCatching {
+                Utils.decodeURIComponent(if (colon >= 0) userInfo.substring(colon + 1) else "")
+            }.getOrDefault(if (colon >= 0) userInfo.substring(colon + 1) else "")
+            requestBuilder.header("Authorization", Credentials.basic(user, pass))
+        }
     }
 
     private fun buildOkHttpClient(
@@ -290,4 +307,3 @@ object HttpUtil {
         }
     }
 }
-

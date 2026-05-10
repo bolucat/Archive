@@ -14,6 +14,7 @@ import com.v2ray.ang.extension.isNotNullEmpty
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.util.Utils
 
 class ServerGroupActivity : BaseActivity() {
@@ -100,6 +101,9 @@ class ServerGroupActivity : BaseActivity() {
         config.description = "${binding.spPolicyGroupType.selectedItem} - ${binding.spPolicyGroupSubId.selectedItem} - ${config.policyGroupFilter}"
 
         MmkvManager.encodeServerConfig(editGuid, config)
+        if (isRunning) {
+            SettingsChangeManager.makeRestartService()
+        }
         toastSuccess(R.string.toast_success)
         finish()
         return true
@@ -143,17 +147,9 @@ class ServerGroupActivity : BaseActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.action_server, menu)
-        val delButton = menu.findItem(R.id.del_config)
-        val saveButton = menu.findItem(R.id.save_config)
 
-        if (editGuid.isNotEmpty()) {
-            if (isRunning) {
-                delButton?.isVisible = false
-                saveButton?.isVisible = false
-            }
-        } else {
-            delButton?.isVisible = false
-        }
+        val delButton = menu.findItem(R.id.del_config)
+        delButton?.isVisible = editGuid.isNotEmpty() && !isRunning
 
         return super.onCreateOptionsMenu(menu)
     }

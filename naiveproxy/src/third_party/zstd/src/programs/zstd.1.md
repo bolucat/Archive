@@ -131,6 +131,7 @@ the last one takes effect.
     In all cases, the nb of threads is capped to `ZSTDMT_NBWORKERS_MAX`,
     which is either 64 in 32-bit mode, or 256 for 64-bit environments.
     This modifier does nothing if `zstd` is compiled without multithread support.
+    Note that memory usage increases with each thread.
 * `--single-thread`:
     Use a single thread for both I/O and compression.
     As compression is serialized with I/O, this can be slightly slower.
@@ -157,7 +158,7 @@ the last one takes effect.
     when combined with multiple worker threads (>=2).
 * `--long[=#]`:
     enables long distance matching with `#` `windowLog`, if `#` is not
-    present it defaults to `27`.
+    present it defaults to `27`. The highest possible value is 31.
     This increases the window size (`windowLog`) and memory usage for both the
     compressor and decompressor.
     This setting is designed to improve the compression ratio for files with

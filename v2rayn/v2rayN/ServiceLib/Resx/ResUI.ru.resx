@@ -1062,7 +1062,7 @@
   <data name="TbSettingsTunStack" xml:space="preserve">
     <value>Сетевой стек</value>
   </data>
-  <data name="TbSettingsTunMtu" xml:space="preserve">
+  <data name="TbMtu" xml:space="preserve">
     <value>MTU</value>
   </data>
   <data name="TbSettingsEnableIPv6Address" xml:space="preserve">
@@ -1075,7 +1075,7 @@
     <value>Приватный ключ</value>
   </data>
   <data name="TbReserved" xml:space="preserve">
-    <value>Зарезервировано (2, 3, 4)</value>
+    <value>Зарезервировано</value>
   </data>
   <data name="TbLocalAddress" xml:space="preserve">
     <value>Адрес (IPv4, IPv6)</value>
@@ -1689,9 +1689,6 @@
   <data name="TbLegacyProtect" xml:space="preserve">
     <value>Устаревшая защита TUN (Legacy Protect)</value>
   </data>
-  <data name="TbSettingsSendThroughTip" xml:space="preserve">
-    <value>Для среды с несколькими сетевыми интерфейсами укажите IPv4-адрес локального компьютера</value>
-  </data>
   <data name="TbCamouflageDomain" xml:space="preserve">
     <value>Камуфляжный домен</value>
   </data>
@@ -1713,10 +1710,25 @@
   <data name="TbSettingsUdpTestUrl" xml:space="preserve">
     <value>URL для UDP-теста</value>
   </data>
+  <data name="TbSettingsSendThrough" xml:space="preserve">
+    <value>Локальный исходящий адрес (SendThrough)</value>
+  </data>
+  <data name="TbSettingsSendThroughTip" xml:space="preserve">
+    <value>Для среды с несколькими сетевыми интерфейсами укажите IPv4-адрес локального компьютера</value>
+  </data>
   <data name="FillCorrectSendThroughIPv4" xml:space="preserve">
     <value>Укажите корректный IPv4-адрес для SendThrough.</value>
   </data>
-  <data name="TbSettingsSendThrough" xml:space="preserve">
-    <value>Локальный исходящий адрес (SendThrough)</value>
+  <data name="TbSettingsBindInterface" xml:space="preserve">
+    <value>Привязать интерфейс</value>
+  </data>
+  <data name="TbSettingsBindInterfaceTip" xml:space="preserve">
+    <value>Для среды с несколькими сетевыми интерфейсами укажите имя интерфейса для привязки. Работает только в Windows и режиме TUN</value>
+  </data>
+  <data name="TbPreSharedKey" xml:space="preserve">
+    <value>PreSharedKey</value>
+  </data>
+  <data name="menuExport2InnerUri" xml:space="preserve">
+    <value>Export v2rayN Internal Share Link to Clipboard</value>
   </data>
 </root>

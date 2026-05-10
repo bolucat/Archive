@@ -30,6 +30,7 @@
     <string name="menu_item_import_config_clipboard">استيراد التكوين من الحافظة</string>
     <string name="menu_item_import_config_local">Import config from locally</string>
     <string name="menu_item_import_config_policy_group">Add [Policy group]</string>
+    <string name="menu_item_import_config_proxy_chain">Add [Proxy chain]</string>
     <string name="menu_item_import_config_manually_vmess">الكتابة يدويًا [VMess]</string>
     <string name="menu_item_import_config_manually_vless">الكتابة يدويًا [VLESS]</string>
     <string name="menu_item_import_config_manually_ss">الكتابة يدويًا [Shadowsocks]</string>
@@ -210,6 +211,7 @@
 
     <string name="title_pref_delay_test_url">True delay test url </string>
     <string name="summary_pref_delay_test_url">Url</string>
+    <string name="title_pref_real_ping_concurrency">True delay test concurrency</string>
 
     <string name="title_pref_ip_api_url">Current connection info test url</string>
     <string name="summary_pref_ip_api_url">Url</string>
@@ -376,6 +378,12 @@
     <string name="title_policy_group_type">Policy group type</string>
     <string name="title_policy_group_subscription_id">From subscription group</string>
     <string name="title_policy_group_subscription_filter">Remarks regular filter</string>
+    <string name="server_proxy_chain_members">اعضاء سلسلة الوكيل</string>
+    <string name="server_proxy_chain_pick_members">اضغط هنا لاختيار عضو</string>
+    <string name="server_proxy_chain_member_unselected">اختر عضوا</string>
+    <string name="server_proxy_chain_members_unselected">يرجى اختيار remark لكل صف في السلسلة</string>
+    <string name="server_proxy_chain_members_insufficient">عدد الاعضاء غير كاف</string>
+    <string name="server_proxy_chain_members_invalid">اعضاء سلسلة غير صالحين: %1$s</string>
 
     <!-- BackupActivity -->
     <string name="title_configuration_backup_restore">Backup &amp; Restore</string>

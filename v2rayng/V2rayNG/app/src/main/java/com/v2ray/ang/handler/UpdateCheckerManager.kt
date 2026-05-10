@@ -1,6 +1,5 @@
 package com.v2ray.ang.handler
 
-import android.content.Context
 import android.os.Build
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.BuildConfig
@@ -12,8 +11,6 @@ import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
 
 object UpdateCheckerManager {
     suspend fun checkForUpdate(includePreRelease: Boolean = false): CheckUpdateResult = withContext(Dispatchers.IO) {

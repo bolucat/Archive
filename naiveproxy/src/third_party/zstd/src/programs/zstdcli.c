@@ -77,7 +77,9 @@ static unsigned init_nbWorkers(unsigned defaultNbWorkers);
 #define MB *(1 <<20)
 #define GB *(1U<<30)
 
-#define DISPLAY_LEVEL_DEFAULT 2
+#ifndef ZSTD_DISPLAY_LEVEL_DEFAULT
+# define ZSTD_DISPLAY_LEVEL_DEFAULT 2
+#endif
 
 static const char*    g_defaultDictName = "dictionary";
 static const unsigned g_defaultMaxDictSize = 110 KB;
@@ -104,7 +106,7 @@ typedef enum { cover, fastCover, legacy } dictType;
 **************************************/
 #undef DISPLAYLEVEL
 #define DISPLAYLEVEL(l, ...) { if (g_displayLevel>=l) { DISPLAY(__VA_ARGS__); } }
-static int g_displayLevel = DISPLAY_LEVEL_DEFAULT;   /* 0 : no display,  1: errors,  2 : + result + interaction + warnings,  3 : + progression,  4 : + information */
+static int g_displayLevel = ZSTD_DISPLAY_LEVEL_DEFAULT;   /* 0 : no display,  1: errors,  2 : + result + interaction + warnings,  3 : + progression,  4 : + information */
 
 
 /*-************************************
@@ -147,6 +149,7 @@ static void usage(FILE* f, const char* programName)
     DISPLAY_F(f, "Usage: %s [OPTIONS...] [INPUT... | -] [-o OUTPUT]\n\n", programName);
     DISPLAY_F(f, "Options:\n");
     DISPLAY_F(f, "  -o OUTPUT                     Write output to a single file, OUTPUT.\n");
+    DISPLAY_F(f, "  -c, --stdout                  Write to STDOUT (even if it is a console) and keep the INPUT file(s).\n");
     DISPLAY_F(f, "  -k, --keep                    Preserve INPUT file(s). [Default] \n");
     DISPLAY_F(f, "  --rm                          Remove INPUT file(s) after successful (de)compression to file.\n");
 #ifdef ZSTD_GZCOMPRESS
@@ -181,7 +184,6 @@ static void usageAdvanced(const char* programName)
     DISPLAYOUT("\n");
     usage(stdout, programName);
     DISPLAYOUT("Advanced options:\n");
-    DISPLAYOUT("  -c, --stdout                  Write to STDOUT (even if it is a console) and keep the INPUT file(s).\n\n");
 
     DISPLAYOUT("  -v, --verbose                 Enable verbose output; pass multiple times to increase verbosity.\n");
     DISPLAYOUT("  -q, --quiet                   Suppress warnings; pass twice to suppress errors.\n");
@@ -264,7 +266,7 @@ static void usageAdvanced(const char* programName)
     DISPLAYOUT("  --format=lzma                 Compress files to the `.lzma` format.\n");
 #endif
 #ifdef ZSTD_LZ4COMPRESS
-    DISPLAYOUT( "  --format=lz4                 Compress files to the `.lz4` format.\n");
+    DISPLAYOUT( "  --format=lz4                  Compress files to the `.lz4` format.\n");
 #endif
 #endif  /* !ZSTD_NOCOMPRESS */
 
@@ -347,7 +349,7 @@ static void errorOut(const char* msg)
 
 /*! readU32FromCharChecked() :
  * @return 0 if success, and store the result in *value.
- *  allows and interprets K, KB, KiB, M, MB and MiB suffix.
+ *  allows and interprets K, KB, KiB, M, MB, MiB, G, GB and GiB suffix.
  *  Will also modify `*stringPtr`, advancing it to position where it stopped reading.
  * @return 1 if an overflow error occurs */
 static int readU32FromCharChecked(const char** stringPtr, unsigned* value)
@@ -362,15 +364,22 @@ static int readU32FromCharChecked(const char** stringPtr, unsigned* value)
         if (result < last) return 1; /* overflow error */
         (*stringPtr)++ ;
     }
-    if ((**stringPtr=='K') || (**stringPtr=='M')) {
-        unsigned const maxK = ((unsigned)(-1)) >> 10;
-        if (result > maxK) return 1; /* overflow error */
-        result <<= 10;
-        if (**stringPtr=='M') {
-            if (result > maxK) return 1; /* overflow error */
-            result <<= 10;
+    if ((**stringPtr=='K') || (**stringPtr=='M') || (**stringPtr=='G')) {
+        switch (**stringPtr) {
+            case 'K':
+                if (result > (((unsigned)-1) >> 10)) return 1; /* overflow error */
+                result <<= 10;
+                break;
+            case 'M':
+                if (result > (((unsigned)-1) >> 20)) return 1; /* overflow error */
+                result <<= 20;
+                break;
+            case 'G':
+                if (result > (((unsigned)-1) >> 30)) return 1; /* overflow error */
+                result <<= 30;
+                break;
         }
-        (*stringPtr)++;  /* skip `K` or `M` */
+        (*stringPtr)++;  /* skip `K`, `M` or `G` */
         if (**stringPtr=='i') (*stringPtr)++;
         if (**stringPtr=='B') (*stringPtr)++;
     }
@@ -380,7 +389,7 @@ static int readU32FromCharChecked(const char** stringPtr, unsigned* value)
 
 /*! readU32FromChar() :
  * @return : unsigned integer value read from input in `char` format.
- *  allows and interprets K, KB, KiB, M, MB and MiB suffix.
+ *  allows and interprets K, KB, KiB, M, MB, MiB, G, GB and GiB suffix.
  *  Will also modify `*stringPtr`, advancing it to position where it stopped reading.
  *  Note : function will exit() program if digit sequence overflows */
 static unsigned readU32FromChar(const char** stringPtr) {
@@ -392,7 +401,7 @@ static unsigned readU32FromChar(const char** stringPtr) {
 
 /*! readIntFromChar() :
  * @return : signed integer value read from input in `char` format.
- *  allows and interprets K, KB, KiB, M, MB and MiB suffix.
+ *  allows and interprets K, KB, KiB, M, MB, MiB, G, GB and GiB suffix.
  *  Will also modify `*stringPtr`, advancing it to position where it stopped reading.
  *  Note : function will exit() program if digit sequence overflows */
 static int readIntFromChar(const char** stringPtr) {
@@ -409,7 +418,7 @@ static int readIntFromChar(const char** stringPtr) {
 
 /*! readSizeTFromCharChecked() :
  * @return 0 if success, and store the result in *value.
- *  allows and interprets K, KB, KiB, M, MB and MiB suffix.
+ *  allows and interprets K, KB, KiB, M, MB, MiB, G, GB and GiB suffix.
  *  Will also modify `*stringPtr`, advancing it to position where it stopped reading.
  * @return 1 if an overflow error occurs */
 static int readSizeTFromCharChecked(const char** stringPtr, size_t* value)
@@ -424,15 +433,22 @@ static int readSizeTFromCharChecked(const char** stringPtr, size_t* value)
         if (result < last) return 1; /* overflow error */
         (*stringPtr)++ ;
     }
-    if ((**stringPtr=='K') || (**stringPtr=='M')) {
-        size_t const maxK = ((size_t)(-1)) >> 10;
-        if (result > maxK) return 1; /* overflow error */
-        result <<= 10;
-        if (**stringPtr=='M') {
-            if (result > maxK) return 1; /* overflow error */
-            result <<= 10;
+    if ((**stringPtr=='K') || (**stringPtr=='M') || (**stringPtr=='G')) {
+        switch (**stringPtr) {
+            case 'K':
+                if (result > (((size_t)-1) >> 10)) return 1; /* overflow error */
+                result <<= 10;
+                break;
+            case 'M':
+                if (result > (((size_t)-1) >> 20)) return 1; /* overflow error */
+                result <<= 20;
+                break;
+            case 'G':
+                if (result > (((size_t)-1) >> 30)) return 1; /* overflow error */
+                result <<= 30;
+                break;
         }
-        (*stringPtr)++;  /* skip `K` or `M` */
+        (*stringPtr)++;  /* skip `K`, `M` or `G` */
         if (**stringPtr=='i') (*stringPtr)++;
         if (**stringPtr=='B') (*stringPtr)++;
     }
@@ -442,7 +458,7 @@ static int readSizeTFromCharChecked(const char** stringPtr, size_t* value)
 
 /*! readSizeTFromChar() :
  * @return : size_t value read from input in `char` format.
- *  allows and interprets K, KB, KiB, M, MB and MiB suffix.
+ *  allows and interprets K, KB, KiB, M, MB, MiB, G, GB and GiB suffix.
  *  Will also modify `*stringPtr`, advancing it to position where it stopped reading.
  *  Note : function will exit() program if digit sequence overflows */
 static size_t readSizeTFromChar(const char** stringPtr) {
@@ -660,7 +676,7 @@ static void setMaxCompression(ZSTD_compressionParameters* params)
 
 static void printVersion(void)
 {
-    if (g_displayLevel < DISPLAY_LEVEL_DEFAULT) {
+    if (g_displayLevel < ZSTD_DISPLAY_LEVEL_DEFAULT) {
         DISPLAYOUT("%s\n", ZSTD_VERSION_STRING);
         return;
     }
@@ -830,7 +846,7 @@ static unsigned init_nbWorkers(unsigned defaultNbWorkers) {
     NEXT_FIELD(__nb);                 \
     _varu32 = readU32FromChar(&__nb); \
     if(*__nb != 0) {                  \
-        errorOut("error: only numeric values with optional suffixes K, KB, KiB, M, MB, MiB are allowed"); \
+        errorOut("error: only numeric values with optional suffixes K, KB, KiB, M, MB, MiB, G, GB, GiB are allowed"); \
     }                                 \
 }
 
@@ -839,7 +855,7 @@ static unsigned init_nbWorkers(unsigned defaultNbWorkers) {
     NEXT_FIELD(__nb);                     \
     _varTsize = readSizeTFromChar(&__nb); \
     if(*__nb != 0) {                      \
-        errorOut("error: only numeric values with optional suffixes K, KB, KiB, M, MB, MiB are allowed"); \
+        errorOut("error: only numeric values with optional suffixes K, KB, KiB, M, MB, MiB, G, GB, GiB are allowed"); \
     }                                     \
 }
 
@@ -1540,7 +1556,12 @@ int main(int argCount, const char* argv[])
     /* check compression level limits */
     {   int const maxCLevel = ultra ? ZSTD_maxCLevel() : ZSTDCLI_CLEVEL_MAX;
         if (cLevel > maxCLevel) {
-            DISPLAYLEVEL(2, "Warning : compression level higher than max, reduced to %i \n", maxCLevel);
+            DISPLAYLEVEL(2, "Warning : compression level higher than max, reduced to %i. ", maxCLevel);
+            DISPLAYLEVEL(2, "Specify --ultra to raise the limit to 22 and use "
+                            "--long=31 for maximum compression. Note that this "
+                            "requires high amounts of memory, and the resulting data "
+                            "might be rejected by third-party decoders and is "
+                            "therefore only recommended for archival purposes. \n");            
             cLevel = maxCLevel;
     }   }
 #endif

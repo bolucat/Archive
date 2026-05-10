@@ -1050,7 +1050,9 @@ static size_t FIO_setDictBufferMMap(FIO_Dict_t* dict, const char* fileName, FIO_
     }
 
     *bufferPtr = mmap(NULL, (size_t)fileSize, PROT_READ, MAP_PRIVATE, fileHandle, 0);
-    if (*bufferPtr==NULL) EXM_THROW(34, "%s", strerror(errno));
+    if (*bufferPtr == MAP_FAILED) {
+      EXM_THROW(34, "%s", strerror(errno))
+    }
 
     close(fileHandle);
     return (size_t)fileSize;
@@ -2399,7 +2401,9 @@ int FIO_compressFilename(FIO_ctx_t* const fCtx, FIO_prefs_t* const prefs, const 
     cRess_t ress = FIO_createCResources(prefs, dictFileName, UTIL_getFileSize(srcFileName), compressionLevel, comprParams);
     int const result = FIO_compressFilename_srcFile(fCtx, prefs, &ress, dstFileName, srcFileName, compressionLevel);
 
-#define DISPLAY_LEVEL_DEFAULT 2
+#ifndef ZSTD_DISPLAY_LEVEL_DEFAULT
+# define ZSTD_DISPLAY_LEVEL_DEFAULT 2
+#endif
 
     FIO_freeCResources(&ress);
     return result;

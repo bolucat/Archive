@@ -467,4 +467,95 @@ export default {
     max-height: 300px;
   }
 }
+
+body.theme-dark {
+  .log-modal {
+    .log-title {
+      color: var(--md-on-surface-variant);
+    }
+
+    .log-footer-label {
+      color: var(--md-on-surface-variant);
+    }
+
+    .log-row .log-line-number {
+      color: var(--md-surface-variant);
+    }
+
+    /* highlight.js github亮色主题覆盖 */
+    .hljs {
+      background: transparent !important;
+      color: #c9d1d9 !important;
+    }
+
+    .hljs-number {
+      color: #79c0ff !important;
+    }
+
+    .hljs-string {
+      color: #a5d6ff !important;
+    }
+
+    .hljs-keyword,
+    .hljs-selector-tag,
+    .hljs-meta {
+      color: #7ee787 !important;
+    }
+
+    .hljs-attr,
+    .hljs-attribute {
+      color: #ffa657 !important;
+    }
+
+    .hljs-comment,
+    .hljs-quote {
+      color: #8b949e !important;
+    }
+
+    .hljs-name,
+    .hljs-tag {
+      color: #7ee787 !important;
+    }
+
+    .hljs-title,
+    .hljs-section {
+      color: #d2a8ff !important;
+    }
+
+    .hljs-literal,
+    .hljs-type,
+    .hljs-built_in {
+      color: #79c0ff !important;
+    }
+
+    .hljs-bullet,
+    .hljs-symbol,
+    .hljs-variable {
+      color: #ffa657 !important;
+    }
+
+    .hljs-emphasis {
+      color: #c9d1d9 !important;
+      font-style: italic;
+    }
+
+    .hljs-strong {
+      color: #c9d1d9 !important;
+      font-weight: bold;
+    }
+
+    .hljs-link {
+      color: #a5d6ff !important;
+      text-decoration: underline;
+    }
+
+    .hljs-deletion {
+      color: #ffa198 !important;
+    }
+
+    .hljs-addition {
+      color: #7ee787 !important;
+    }
+  }
+}
 </style>

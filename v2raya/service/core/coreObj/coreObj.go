@@ -1,5 +1,7 @@
 package coreObj
 
+import "encoding/json"
+
 type APIObject struct {
 	Tag      string   `json:"tag"`
 	Services []string `json:"services"`
@@ -12,9 +14,19 @@ type ObservatoryItem struct {
 	Settings Observatory `json:"settings"`
 }
 type Observatory struct {
-	SubjectSelector []string `json:"subjectSelector"`
-	ProbeURL        string   `json:"probeURL,omitempty"`
-	ProbeInterval   string   `json:"probeInterval,omitempty"`
+	SubjectSelector []string    `json:"subjectSelector"`
+	PingConfig      *PingConfig `json:"pingConfig,omitempty"`
+	ProbeURL        string      `json:"probeURL,omitempty"`
+	ProbeInterval   string      `json:"probeInterval,omitempty"`
+}
+
+type PingConfig struct {
+	Destination   string `json:"destination,omitempty"`
+	Connectivity  string `json:"connectivity,omitempty"`
+	Interval      string `json:"interval,omitempty"`
+	SamplingCount int    `json:"samplingCount,omitempty"`
+	Timeout       string `json:"timeout,omitempty"`
+	HTTPMethod    string `json:"httpMethod,omitempty"`
 }
 type Balancer struct {
 	Tag      string           `json:"tag"`
@@ -120,7 +132,22 @@ type Settings struct {
 	Network        string      `json:"network,omitempty"`
 	Redirect       string      `json:"redirect,omitempty"`
 	UserLevel      *int        `json:"userLevel,omitempty"`
+	// Inlined, when non-nil, replaces the entire settings JSON during serialization.
+	// Used for non-standard protocols such as anytls/juicity whose settings do not
+	// fit the standard fields above.
+	Inlined json.RawMessage `json:"-"`
 }
+
+// MarshalJSON implements json.Marshaler. When Inlined is set it is emitted verbatim;
+// otherwise normal struct marshaling is used.
+func (s Settings) MarshalJSON() ([]byte, error) {
+	if s.Inlined != nil {
+		return s.Inlined, nil
+	}
+	type Alias Settings
+	return json.Marshal(Alias(s))
+}
+
 type TLSSettings struct {
 	AllowInsecure                    bool          `json:"allowInsecure"`
 	ServerName                       interface{}   `json:"serverName,omitempty"`
@@ -137,8 +164,10 @@ type Headers struct {
 	Host string `json:"Host"`
 }
 type WsSettings struct {
-	Path    string  `json:"path"`
-	Headers Headers `json:"headers"`
+	Path                string  `json:"path"`
+	Headers             Headers `json:"headers"`
+	MaxEarlyData        int     `json:"maxEarlyData,omitempty"`
+	EarlyDataHeaderName string  `json:"earlyDataHeaderName,omitempty"`
 }
 type StreamSettings struct {
 	Network         string           `json:"network,omitempty"`
@@ -164,7 +193,12 @@ type RealitySettings struct {
 	SpiderX     string `json:"spiderX,omitempty"`
 }
 type GrpcSettings struct {
-	ServiceName string `json:"serviceName"`
+	ServiceName          string `json:"serviceName"`
+	MultiMode            bool   `json:"multiMode,omitempty"`
+	IdleTimeout          int    `json:"idle_timeout,omitempty"`
+	HealthCheckTimeout   int    `json:"health_check_timeout,omitempty"`
+	PermitWithoutStream  bool   `json:"permit_without_stream,omitempty"`
+	InitialWindowsSize   int    `json:"initial_windows_size,omitempty"`
 }
 type Sockopt struct {
 	Mark        *int    `json:"mark,omitempty"`
@@ -259,6 +293,25 @@ type XHTTPSettings struct {
 	Host string `json:"host,omitempty"`
 	Mode string `json:"mode,omitempty"`
 }
+// WireGuard 出站配置
+type WireGuardSettings struct {
+	SecretKey  string          `json:"secretKey"`
+	Address    []string        `json:"address"`
+	Workers    int             `json:"workers,omitempty"`
+	Mtu        int             `json:"mtu,omitempty"`
+	Reserved   []int           `json:"reserved,omitempty"`
+	Peers      []WireGuardPeer `json:"peers"`
+	KernelMode bool            `json:"kernelMode,omitempty"`
+}
+
+type WireGuardPeer struct {
+	Endpoint     string   `json:"endpoint"`
+	PublicKey    string   `json:"publicKey"`
+	PreSharedKey string   `json:"preSharedKey,omitempty"`
+	AllowedIPs   []string `json:"allowedIPs"`
+	KeepAlive    int      `json:"keepAlive,omitempty"`
+}
+
 type Hosts map[string][]string
 
 type DNS struct {

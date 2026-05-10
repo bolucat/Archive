@@ -12,6 +12,7 @@
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "net/base/load_flags.h"
 #include "net/base/net_errors.h"
@@ -27,17 +28,20 @@
 #include "net/tools/naive/socks5_server_socket.h"
 
 namespace net {
-#if BUILDFLAG(IS_ANDROID)
-constexpr int kRotationTimeoutSeconds = 10 * 60;
-#else
-constexpr int kRotationTimeoutSeconds = 30 * 60;
-#endif
+namespace {
+constexpr base::TimeDelta kIdleCheckPeriod = base::Minutes(1);
+}  // namespace
+
+NaiveProxy::Tunnel::Tunnel() = default;
+NaiveProxy::Tunnel::~Tunnel() = default;
 
 NaiveProxy::NaiveProxy(std::unique_ptr<ServerSocket> listen_socket,
                        ClientProtocol protocol,
                        const std::string& listen_user,
                        const std::string& listen_pass,
                        int concurrency,
+                       int tunnel_timeout,
+                       int idle_timeout,
                        RedirectResolver* resolver,
                        HttpNetworkSession* session,
                        const NetworkTrafficAnnotationTag& traffic_annotation,
@@ -47,11 +51,15 @@ NaiveProxy::NaiveProxy(std::unique_ptr<ServerSocket> listen_socket,
       listen_user_(listen_user),
       listen_pass_(listen_pass),
       concurrency_(concurrency),
+      tunnel_timeout_(base::Seconds(tunnel_timeout)),
+      idle_timeout_(base::Seconds(idle_timeout)),
       resolver_(resolver),
       session_(session),
       net_log_(
           NetLogWithSource::Make(session->net_log(), NetLogSourceType::NONE)),
-      last_id_(0),
+      next_id_(0),
+      next_state_(State::kAccept),
+      tunnels_(concurrency),
       traffic_annotation_(traffic_annotation),
       supported_padding_types_(supported_padding_types) {
   const auto& proxy_config = static_cast<ConfiguredProxyResolutionService*>(
@@ -65,86 +73,120 @@ NaiveProxy::NaiveProxy(std::unique_ptr<ServerSocket> listen_socket,
   proxy_info_.set_traffic_annotation(
       net::MutableNetworkTrafficAnnotationTag(traffic_annotation_));
 
-  for (int i = 0; i < concurrency_; i++) {
-    tunnel_ids_.push_back(
-        TunnelId{NetworkAnonymizationKey::CreateTransient(), {}});
-  }
-
   DCHECK(listen_socket_);
   // Start accepting connections in next run loop in case when delegate is not
   // ready to get callbacks.
+  io_callback_ = base::BindRepeating(&NaiveProxy::OnIOComplete,
+                                     weak_ptr_factory_.GetWeakPtr());
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE, base::BindOnce(&NaiveProxy::DoAcceptLoop,
-                                weak_ptr_factory_.GetWeakPtr()));
+      FROM_HERE, base::BindOnce(&NaiveProxy::OnIOComplete,
+                                weak_ptr_factory_.GetWeakPtr(), OK));
+
+  cleanup_timer_.Start(FROM_HERE, kIdleCheckPeriod, this,
+                       &NaiveProxy::CleanUpIdleConnections);
 }
 
 NaiveProxy::~NaiveProxy() = default;
 
-void NaiveProxy::DoAcceptLoop() {
-  int result;
+void NaiveProxy::OnIOComplete(int result) {
+  DCHECK_NE(next_state_, State::kNone);
+  int rv = DoLoop(result);
+  if (rv != ERR_IO_PENDING) {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&NaiveProxy::OnIOComplete,
+                                  weak_ptr_factory_.GetWeakPtr(), OK));
+  }
+}
+
+int NaiveProxy::DoLoop(int last_io_result) {
+  DCHECK_NE(next_state_, State::kNone);
+  int rv = last_io_result;
   do {
-    result = listen_socket_->Accept(
-        &accepted_socket_, base::BindOnce(&NaiveProxy::OnAcceptComplete,
-                                          weak_ptr_factory_.GetWeakPtr()));
-    if (result == ERR_IO_PENDING) {
-      return;
+    State state = next_state_;
+    next_state_ = State::kNone;
+    switch (state) {
+      case State::kAccept:
+        DCHECK_EQ(OK, rv);
+        rv = DoAccept();
+        break;
+      case State::kAcceptComplete:
+        rv = DoAcceptComplete(rv);
+        break;
+      case State::kPreamble:
+        DCHECK_EQ(OK, rv);
+        rv = DoPreamble();
+        break;
+      case State::kPreambleComplete:
+        rv = DoPreambleComplete(rv);
+        break;
+      case State::kConnect:
+        DCHECK_EQ(OK, rv);
+        rv = DoConnect();
+        break;
+      default:
+        rv = ERR_UNEXPECTED;
+        break;
     }
-    HandleAcceptResult(result);
-  } while (result == OK);
+  } while (rv != ERR_IO_PENDING && next_state_ != State::kNone);
+  return rv;
 }
 
-void NaiveProxy::OnAcceptComplete(int result) {
-  HandleAcceptResult(result);
-  if (result == OK) {
-    DoAcceptLoop();
-  }
+int NaiveProxy::DoAccept() {
+  next_state_ = State::kAcceptComplete;
+  return listen_socket_->Accept(&accepted_socket_, io_callback_);
 }
 
-void NaiveProxy::HandleAcceptResult(int result) {
+int NaiveProxy::DoAcceptComplete(int result) {
   if (result != OK) {
+    next_state_ = State::kAccept;
     LOG(ERROR) << "Accept error: " << ErrorToShortString(result);
-    return;
+    // This accept error is ignored to start the next accept.
+    return OK;
   }
 
-  session_->CloseIdleConnections("Rotate old tunnels");
-
-  TunnelId& tunnel_id = tunnel_ids_[last_id_ % concurrency_];
-  base::Time now = base::Time::Now();
-  if (tunnel_id.deadline.is_null()) {
-    tunnel_id.deadline = now + base::Seconds(kRotationTimeoutSeconds);
-  } else if (now > tunnel_id.deadline) {
-    tunnel_id.key = NetworkAnonymizationKey::CreateTransient();
-    tunnel_id.deadline = now + base::Seconds(kRotationTimeoutSeconds);
-  }
-
-  if (WillCreateSession()) {
-    url_getter_ = std::make_unique<PreambleGetter>(proxy_info_, session_,
-                                                   current_nak(), net_log_);
-    int rv =
-        url_getter_->Start(0, base::BindOnce(&NaiveProxy::OnPreambleComplete,
-                                             weak_ptr_factory_.GetWeakPtr()));
-    if (rv != ERR_IO_PENDING) {
-      OnPreambleComplete(rv);
-    }
+  Tunnel& tunnel = tunnels_[next_id_ % concurrency_];
+  base::TimeTicks now = base::TimeTicks::Now();
+  if (tunnel.deadline.is_null()) {
+    tunnel.deadline = now + tunnel_timeout_;
+    next_state_ = State::kPreamble;
+  } else if (now > tunnel.deadline) {
+    tunnel.nak = NetworkAnonymizationKey::CreateTransient();
+    tunnel.deadline = now + tunnel_timeout_;
+    tunnel.url_getter.reset();
+    next_state_ = State::kPreamble;
   } else {
-    if (url_getter_ != nullptr) {
-      url_getter_->StartOne();
-    }
-    DoConnect();
+    DCHECK(tunnel.url_getter != nullptr);
+    tunnel.url_getter->StartOne();
+    next_state_ = State::kConnect;
   }
+  return OK;
 }
 
-void NaiveProxy::OnPreambleComplete(int result) {
+// Possible exit states: State::kAccept, State::kPreambleComplete
+int NaiveProxy::DoPreamble() {
+  Tunnel& tunnel = tunnels_[next_id_ % concurrency_];
+  DCHECK(WillCreateSession(tunnel.nak));
+  tunnel.url_getter = std::make_unique<PreambleGetter>(proxy_info_, session_,
+                                                       tunnel.nak, net_log_);
+  next_state_ = State::kPreambleComplete;
+  return tunnel.url_getter->Start(io_callback_);
+}
+
+int NaiveProxy::DoPreambleComplete(int result) {
   if (result != OK) {
-    LOG(ERROR) << "Preamble error: " << ErrorToShortString(result);
-    return;
+    LOG(WARNING) << "Preamble error: " << ErrorToShortString(result);
+    // Preamble error doesn't prevent Connect().
   }
-  DoConnect();
+  next_state_ = State::kConnect;
+  return OK;
 }
 
-void NaiveProxy::DoConnect() {
+int NaiveProxy::DoConnect() {
   auto negotiated_client_padding =
       std::make_unique<PaddingType>(PaddingType::kNone);
+
+  // Once accepted_socket_ is moved, the next Accept can start.
+  next_state_ = State::kAccept;
 
   std::unique_ptr<StreamSocket> socket;
   if (protocol_ == ClientProtocol::kSocks5) {
@@ -152,8 +194,6 @@ void NaiveProxy::DoConnect() {
                                                   listen_user_, listen_pass_,
                                                   traffic_annotation_);
   } else if (protocol_ == ClientProtocol::kHttp) {
-    negotiated_client_padding =
-        std::make_unique<PaddingType>(PaddingType::kNone);
     socket = std::make_unique<HttpProxyServerSocket>(
         std::move(accepted_socket_), listen_user_, listen_pass_,
         negotiated_client_padding.get(), traffic_annotation_,
@@ -161,25 +201,28 @@ void NaiveProxy::DoConnect() {
   } else if (protocol_ == ClientProtocol::kRedir) {
     socket = std::move(accepted_socket_);
   } else {
-    return;
+    return OK;
   }
 
+  const Tunnel& tunnel = tunnels_[next_id_ % concurrency_];
   auto connection_ptr = std::make_unique<NaiveConnection>(
-      last_id_, protocol_, std::move(negotiated_client_padding), proxy_info_,
-      resolver_, session_, current_nak(), net_log_, std::move(socket),
+      next_id_, protocol_, std::move(negotiated_client_padding), proxy_info_,
+      resolver_, session_, tunnel.nak, net_log_, std::move(socket),
       traffic_annotation_);
   auto* connection = connection_ptr.get();
   connection_by_id_[connection->id()] = std::move(connection_ptr);
 
-  ++last_id_;
+  ++next_id_;
 
   int result = connection->Connect(
       base::BindOnce(&NaiveProxy::OnConnectComplete,
                      weak_ptr_factory_.GetWeakPtr(), connection->id()));
   if (result == ERR_IO_PENDING) {
-    return;
+    // Connect result doesn't prevent the next Accept
+    return OK;
   }
   HandleConnectResult(connection, result);
+  return OK;
 }
 
 void NaiveProxy::OnConnectComplete(unsigned int connection_id, int result) {
@@ -246,11 +289,6 @@ NaiveConnection* NaiveProxy::FindConnection(unsigned int connection_id) {
   return it->second.get();
 }
 
-const NetworkAnonymizationKey& NaiveProxy::current_nak() const {
-  int tunnel_session_id = last_id_ % concurrency_;
-  return tunnel_ids_[tunnel_session_id].key;
-}
-
 NaiveProxyDelegate* NaiveProxy::naive_proxy_delegate() const {
   auto* proxy_delegate =
       static_cast<NaiveProxyDelegate*>(session_->context().proxy_delegate);
@@ -258,21 +296,39 @@ NaiveProxyDelegate* NaiveProxy::naive_proxy_delegate() const {
   return proxy_delegate;
 }
 
-bool NaiveProxy::WillCreateSession() const {
-  if (proxy_info_.is_direct())
+bool NaiveProxy::WillCreateSession(const NetworkAnonymizationKey& nak) const {
+  if (proxy_info_.is_direct()) {
     return false;
+  }
   // Simulates HttpProxyConnectJob::CreateSpdySessionKey()
   const ProxyChain& proxy_chain = proxy_info_.proxy_chain();
   auto [last_proxy_partial_chain, last_proxy_server] = proxy_chain.SplitLast();
-  if (!last_proxy_server.is_secure_http_like())
+  if (!last_proxy_server.is_secure_http_like()) {
     return false;
+  }
   const auto& last_proxy_host_port_pair = last_proxy_server.host_port_pair();
   SpdySessionKey key(last_proxy_host_port_pair, PRIVACY_MODE_DISABLED,
                      last_proxy_partial_chain, SessionUsage::kProxy,
-                     SocketTag(), current_nak(), SecureDnsPolicy::kDisable,
+                     SocketTag(), nak, SecureDnsPolicy::kDisable,
                      /*disable_cert_verification_network_fetches=*/true);
   return !session_->spdy_session_pool()->FindAvailableSession(
       key, /*enable_ip_based_pooling_for_h2=*/false,
       /*is_websocket=*/false, net_log_);
+}
+
+void NaiveProxy::CleanUpIdleConnections() {
+  std::vector<NaiveConnection*> idle_conns;
+  base::TimeTicks now = base::TimeTicks::Now();
+  for (const auto& [id, conn] : connection_by_id_) {
+    base::TimeDelta idle = now - conn->GetLastWriteTime();
+    base::TimeDelta age = now - conn->GetCreationTime();
+    if (idle > idle_timeout_ || age > tunnel_timeout_) {
+      idle_conns.push_back(conn.get());
+    }
+  }
+  for (NaiveConnection* conn : idle_conns) {
+    conn->Disconnect();
+  }
+  session_->CloseIdleConnections("Rotate old tunnels");
 }
 }  // namespace net

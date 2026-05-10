@@ -361,13 +361,13 @@ int main(int argc, char* argv[]) {
                          url::SCHEME_WITH_HOST_PORT_AND_USER_INFORMATION);
   url::AddStandardScheme("redir", url::SCHEME_WITH_HOST_AND_PORT);
   net::ClientSocketPoolManager::set_socket_soft_cap_per_pool_for_test(
-      net::HttpNetworkSession::NORMAL_SOCKET_POOL,
+      net::HttpNetworkSession::SocketPoolType::kNormal,
       kDefaultMaxSocketsPerPool * kExpectedMaxUsers);
   net::ClientSocketPoolManager::set_max_sockets_per_proxy_chain(
-      net::HttpNetworkSession::NORMAL_SOCKET_POOL,
+      net::HttpNetworkSession::SocketPoolType::kNormal,
       kDefaultMaxSocketsPerPool * kExpectedMaxUsers);
   net::ClientSocketPoolManager::set_max_sockets_per_group_for_test(
-      net::HttpNetworkSession::NORMAL_SOCKET_POOL,
+      net::HttpNetworkSession::SocketPoolType::kNormal,
       kDefaultMaxSocketsPerGroup * kExpectedMaxUsers);
   net::ClientSocketPool::set_used_idle_socket_timeout(base::Seconds(60));
 
@@ -410,6 +410,8 @@ int main(int argc, char* argv[]) {
                  "--proxy=<proto>://[<user>:<pass>@]<hostname>[:<port>]\n"
                  "                           proto: https, quic\n"
                  "--insecure-concurrency=<N> Use N connections, insecure\n"
+                 "--tunnel-timeout=<SECONDS> Rotate tunnels after timeout\n"
+                 "--idle-timeout=<SECONDS>   Close idle streams after timeout\n"
                  "--extra-headers=...        Extra headers split by CRLF\n"
                  "--host-resolver-rules=...  Resolver rules\n"
                  "--resolver-range=...       Redirect resolver range\n"
@@ -533,8 +535,8 @@ int main(int argc, char* argv[]) {
     auto* session = context->http_transaction_factory()->GetSession();
     auto naive_proxy = std::make_unique<net::NaiveProxy>(
         std::move(listen_socket), listen_config.protocol, listen_config.user,
-        listen_config.pass, config.insecure_concurrency, resolver.get(),
-        session, kTrafficAnnotation,
+        listen_config.pass, config.insecure_concurrency, config.tunnel_timeout,
+        config.idle_timeout, resolver.get(), session, kTrafficAnnotation,
         std::vector<net::PaddingType>{net::PaddingType::kVariant1,
                                       net::PaddingType::kNone});
     naive_proxies.push_back(std::move(naive_proxy));

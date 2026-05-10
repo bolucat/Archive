@@ -14,16 +14,64 @@ import (
 	"github.com/v2rayA/v2rayA/conf"
 )
 
+// CoreVersionMismatchError is returned when the core version does not match the expected version.
+var CoreVersionMismatchError = fmt.Errorf("core version mismatch")
+
+// CheckCoreVersion checks whether the core binary at corePath reports a version
+// that exactly matches expectedVersion. If not, it returns CoreVersionMismatchError
+// with details about the actual vs expected version.
+func CheckCoreVersion(corePath string, expectedVersion string) error {
+	cmd := exec.Command(corePath, "version")
+	output := bytes.NewBuffer(nil)
+	cmd.Stdout = output
+	cmd.Stderr = output
+	go func() {
+		time.Sleep(5 * time.Second)
+		p := cmd.Process
+		if p != nil {
+			_ = p.Kill()
+		}
+	}()
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to execute %s --version: %w", corePath, err)
+	}
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("failed to wait for %s --version: %w", corePath, err)
+	}
+
+	fields := strings.Fields(strings.TrimSpace(output.String()))
+	if len(fields) < 2 {
+		return fmt.Errorf("cannot parse version output from %s: %q", corePath, output.String())
+	}
+
+	// fields[0] is the binary name (e.g. "v2raya_core"), fields[1] is the version string.
+	actualVersion := fields[1]
+	// Strip leading 'v' if present for comparison
+	actualVer := strings.TrimPrefix(actualVersion, "v")
+	expectedVer := strings.TrimPrefix(expectedVersion, "v")
+
+	if actualVer != expectedVer {
+		return fmt.Errorf("%w: core version %q does not match v2raya version %q", CoreVersionMismatchError, actualVersion, expectedVersion)
+	}
+	return nil
+}
+
 type Variant string
 
 const (
 	Unknown Variant = "Unknown"
-	V2ray   Variant = "V2Ray"
-	Xray    Variant = "Xray"
+	// V2rayaCore is the merged v2raya-core binary (xray-core + MultiObservatory).
+	// Binary name: v2raya_core
+	V2rayaCore Variant = "V2rayaCore"
+
+	// Deprecated aliases kept for smooth migration; treated as V2rayaCore internally.
+	V2ray  = V2rayaCore
+	Xray   = V2rayaCore
+	Merged = V2rayaCore
 )
 
 var NotFoundErr = fmt.Errorf("not found")
-var ServiceNameList = []string{"xray", "v2ray"}
+var ServiceNameList = []string{"v2raya_core"}
 var v2rayVersion struct {
 	variant    Variant
 	version    string
@@ -32,20 +80,15 @@ var v2rayVersion struct {
 	mu         sync.Mutex
 }
 
-/* Detect core type by binary name */
+/* DetectCoreTypeByBinaryName detects the variant from the binary file name. */
 func DetectCoreTypeByBinaryName(binPath string) Variant {
 	baseName := strings.ToLower(filepath.Base(binPath))
-	// Remove .exe suffix on Windows
+	// Remove .exe suffix on Windows.
 	baseName = strings.TrimSuffix(baseName, ".exe")
-
-	switch baseName {
-	case "v2ray":
-		return V2ray
-	case "xray":
-		return Xray
-	default:
-		return Unknown
+	if baseName == "v2raya_core" {
+		return V2rayaCore
 	}
+	return Unknown
 }
 
 /* get the version of v2ray-core without 'v' like 4.23.1 */
@@ -72,12 +115,10 @@ func GetV2rayServiceVersion() (variant Variant, ver string, err error) {
 	if envConfig.CoreType != "" {
 		coreType := strings.ToLower(envConfig.CoreType)
 		switch coreType {
-		case "v2ray":
-			variant = V2ray
-		case "xray":
-			variant = Xray
+		case "v2raya_core", "v2raya-core":
+			variant = V2rayaCore
 		default:
-			return Unknown, "", fmt.Errorf("invalid core type '%s', must be 'v2ray' or 'xray'", envConfig.CoreType)
+			return Unknown, "", fmt.Errorf("invalid core type '%s', only 'v2raya_core' is supported", envConfig.CoreType)
 		}
 	} else {
 		// Auto-detect by binary name
@@ -113,10 +154,8 @@ func GetV2rayServiceVersion() (variant Variant, ver string, err error) {
 	// Verify the detected/specified variant matches the actual binary
 	detectedVariant := Unknown
 	switch strings.ToUpper(fields[0]) {
-	case "V2RAY":
-		detectedVariant = V2ray
-	case "XRAY":
-		detectedVariant = Xray
+	case "V2RAYA_CORE":
+		detectedVariant = V2rayaCore
 	}
 
 	if detectedVariant != Unknown && detectedVariant != variant {

@@ -1,6 +1,7 @@
 local m, s, o
 local cbi = require "luci.cbi"
 local uci = require "luci.model.uci".cursor()
+local URL = require "url"
 
 -- 获取 LAN IP 地址
 function lanip()
@@ -30,16 +31,32 @@ local lan_ip = lanip()
 local server_table = {}
 local type_table = {}
 local function is_finded(e)
-	return luci.sys.exec(string.format('type -t -p "%s" 2>/dev/null', e)) ~= ""
+	return luci.sys.exec(string.format('type -t -p "%s" -p "/usr/libexec/%s" 2>/dev/null', e, e)) ~= ""
+end
+
+local function clash_display_name(s)
+	if s.type ~= "clash" or not s.clash_url or s.clash_url == "" then
+		return nil
+	end
+	local ok, parsed = pcall(URL.parse, s.clash_url)
+	if ok and parsed and parsed.host then
+		return "[CLASH]:" .. parsed.host
+	end
+	return "[CLASH]"
 end
 
 uci:foreach("shadowsocksr", "servers", function(s)
-	if s.alias then
+	if s.type ~= "tun" and s.alias then
 		server_table[s[".name"]] = "[%s]:%s" % {string.upper(s.v2ray_protocol or s.type), s.alias}
-	elseif s.server and s.server_port then
+	elseif s.type ~= "tun" and s.server and s.server_port then
 		server_table[s[".name"]] = "[%s]:%s:%s" % {string.upper(s.v2ray_protocol or s.type), s.server, s.server_port}
+	elseif s.type ~= "tun" then
+		local display_name = clash_display_name(s)
+		if display_name then
+			server_table[s[".name"]] = display_name
+		end
 	end
-	if s.type then
+	if s.type and s.type ~= "tun" then
 		type_table[s[".name"]] = s.type
 	end
 end)
@@ -79,6 +96,13 @@ o.datatype = "uinteger"
 o:depends("enable_switch", "1")
 o.default = 3
 
+s:append(cbi.Template("shadowsocksr/advanced_switch_compact"))
+
+o = s:option(Value, "default_node_local_port", translate("Default Node Local Port"))
+o.datatype = "port"
+o.default = 1234
+o.rmempty = false
+
 o = s:option(Value, "gfwlist_url", translate("gfwlist Update url"))
 o:value("https://fastly.jsdelivr.net/gh/YW5vbnltb3Vz/domain-list-community@release/gfwlist.txt", translate("v2fly/domain-list-community"))
 o:value("https://fastly.jsdelivr.net/gh/Loyalsoldier/v2ray-rules-dat@release/gfw.txt", translate("Loyalsoldier/v2ray-rules-dat"))
@@ -91,145 +115,6 @@ o:value("https://ispip.clang.cn/all_cn.txt", translate("Clang.CN"))
 o:value("https://ispip.clang.cn/all_cn_cidr.txt", translate("Clang.CN.CIDR"))
 o:value("https://fastly.jsdelivr.net/gh/gaoyifan/china-operator-ip@ip-lists/china.txt", translate("china-operator-ip"))
 o.default = "https://ispip.clang.cn/all_cn.txt"
-
-o = s:option(Flag, "netflix_enable", translate("Enable Netflix Mode"))
-o.description = translate("When disabled shunt mode, will same time stopped shunt service.")
-o.rmempty = false
-
-o = s:option(Value, "nfip_url", translate("nfip_url"))
-o:value("https://fastly.jsdelivr.net/gh/QiuSimons/Netflix_IP/NF_only.txt", translate("Netflix IP Only"))
-o:value("https://fastly.jsdelivr.net/gh/QiuSimons/Netflix_IP/getflix.txt", translate("Netflix and AWS"))
-o.default = "https://fastly.jsdelivr.net/gh/QiuSimons/Netflix_IP/NF_only.txt"
-o.description = translate("Customize Netflix IP Url")
-o:depends("netflix_enable", "1")
-
-o = s:option(ListValue, "shunt_dns_mode", translate("DNS Query Mode For Shunt Mode"))
-if is_finded("dns2socks") then
-	o:value("1", translate("Use DNS2SOCKS query and cache"))
-end
-if is_finded("dns2socks-rust") then
-	o:value("2", translate("Use DNS2SOCKS-RUST query and cache"))
-end
-if is_finded("mosdns") then
-	o:value("3", translate("Use MosDNS query"))
-end
-if is_finded("dnsproxy") then
-	o:value("4", translate("Use DNSPROXY query and cache"))
-end
-if is_finded("chinadns-ng") then
-	o:value("5", translate("Use ChinaDNS-NG query and cache"))
-end
-o:depends("netflix_enable", "1")
-o.default = 1
-
-o = s:option(Value, "shunt_dnsserver", translate("Anti-pollution DNS Server For Shunt Mode"))
-o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
-o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
-o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
-o:value("208.67.220.220:53", translate("OpenDNS (208.67.220.220)"))
-o:value("209.244.0.3:53", translate("Level 3 Public DNS (209.244.0.3)"))
-o:value("209.244.0.4:53", translate("Level 3 Public DNS (209.244.0.4)"))
-o:value("4.2.2.1:53", translate("Level 3 Public DNS (4.2.2.1)"))
-o:value("4.2.2.2:53", translate("Level 3 Public DNS (4.2.2.2)"))
-o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
-o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
-o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
-o:depends("shunt_dns_mode", "1")
-o:depends("shunt_dns_mode", "2")
-o.description = translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)")
-o.datatype = "ip4addrport"
-
-o = s:option(Value, "shunt_mosdns_dnsserver", translate("Anti-pollution DNS Server"))
-o:value("tcp://8.8.4.4:53,tcp://8.8.8.8:53", translate("Google Public DNS"))
-o:value("tcp://208.67.222.222:53,tcp://208.67.220.220:53", translate("OpenDNS"))
-o:value("tcp://209.244.0.3:53,tcp://209.244.0.4:53", translate("Level 3 Public DNS-1 (209.244.0.3-4)"))
-o:value("tcp://4.2.2.1:53,tcp://4.2.2.2:53", translate("Level 3 Public DNS-2 (4.2.2.1-2)"))
-o:value("tcp://4.2.2.3:53,tcp://4.2.2.4:53", translate("Level 3 Public DNS-3 (4.2.2.3-4)"))
-o:value("tcp://1.1.1.1:53,tcp://1.0.0.1:53", translate("Cloudflare DNS"))
-o:depends("shunt_dns_mode", "3")
-o.description = translate("Custom DNS Server format as tcp://IP:PORT or tls://DOMAIN:PORT (tcp://8.8.8.8 or tls://dns.google:853)")
-
-o = s:option(Flag, "shunt_mosdns_ipv6", translate("Disable IPv6 In MosDNS Query Mode (Shunt Mode)"))
-o:depends("shunt_dns_mode", "3")
-o.rmempty = false
-o.default = "0"
-
-if is_finded("dnsproxy") then
-	o = s:option(ListValue, "shunt_parse_method", translate("Select DNS parse Mode"))
-	o.description = translate(
-    	"<ul>" ..
-    	"<li>" .. translate("When use DNS list file, please ensure list file exists and is formatted correctly.") .. "</li>" ..
-    	"<li>" .. translate("Tips: Dnsproxy DNS Parse List Path:") ..
-    	" <a href='http://" .. lan_ip .. "/cgi-bin/luci/admin/services/shadowsocksr/control' target='_blank'>" ..
-    	translate("Click here to view or manage the DNS list file") .. "</a>" .. "</li>" ..
-    	"</ul>"
-	)
-	o:value("single_dns", translate("Set Single DNS"))
-	o:value("parse_file", translate("Use DNS List File"))
-	o:depends("shunt_dns_mode", "4")
-	o.rmempty = true
-	o.default = "single_dns"
-
-	o = s:option(Value, "dnsproxy_shunt_forward", translate("Anti-pollution DNS Server"))
-	o:value("sdns://AgUAAAAAAAAABzguOC40LjQgsKKKE4EwvtIbNjGjagI2607EdKSVHowYZtyvD9iPrkkHOC44LjQuNAovZG5zLXF1ZXJ5", translate("Google DNSCrypt SDNS"))
-	o:value("sdns://AgcAAAAAAAAAACC2vD25TAYM7EnyCH8Xw1-0g5OccnTsGH9vQUUH0njRtAxkbnMudHduaWMudHcKL2Rucy1xdWVyeQ", translate("TWNIC-101 DNSCrypt SDNS"))
-	o:value("sdns://AgcAAAAAAAAADzE4NS4yMjIuMjIyLjIyMiAOp5Svj-oV-Fz-65-8H2VKHLKJ0egmfEgrdPeAQlUFFA8xODUuMjIyLjIyMi4yMjIKL2Rucy1xdWVyeQ", translate("dns.sb DNSCrypt SDNS"))
-	o:value("sdns://AgMAAAAAAAAADTE0OS4xMTIuMTEyLjkgsBkgdEu7dsmrBT4B4Ht-BQ5HPSD3n3vqQ1-v5DydJC8SZG5zOS5xdWFkOS5uZXQ6NDQzCi9kbnMtcXVlcnk", translate("Quad9 DNSCrypt SDNS"))
-	o:value("sdns://AQMAAAAAAAAAETk0LjE0MC4xNC4xNDo1NDQzINErR_JS3PLCu_iZEIbq95zkSV2LFsigxDIuUso_OQhzIjIuZG5zY3J5cHQuZGVmYXVsdC5uczEuYWRndWFyZC5jb20", translate("AdGuard DNSCrypt SDNS"))
-	o:value("sdns://AgcAAAAAAAAABzEuMC4wLjGgENk8mGSlIfMGXMOlIlCcKvq7AVgcrZxtjon911-ep0cg63Ul-I8NlFj4GplQGb_TTLiczclX57DvMV8Q-JdjgRgSZG5zLmNsb3VkZmxhcmUuY29tCi9kbnMtcXVlcnk", translate("Cloudflare DNSCrypt SDNS"))
-	o:value("sdns://AgcAAAAAAAAADjEwNC4xNi4yNDkuMjQ5ABJjbG91ZGZsYXJlLWRucy5jb20KL2Rucy1xdWVyeQ", translate("cloudflare-dns.com DNSCrypt SDNS"))
-	o:depends("shunt_parse_method", "single_dns")
-	o.description = translate("Custom DNS Server (support: IP:Port or tls://IP:Port or https://IP/dns-query and other format).")
-
-	o = s:option(ListValue, "shunt_upstreams_logic_mode", translate("Defines the upstreams logic mode"))
-	o.description = translate(
-    	"<ul>" ..
-    	"<li>" .. translate("Defines the upstreams logic mode, possible values: load_balance, parallel, fastest_addr (default: load_balance).") .. "</li>" .. "<li>" .. translate("When two or more DNS servers are deployed, enable this function.") .. "</li>" ..
-    	"</ul>"
-	)
-	o:value("load_balance", translate("load_balance"))
-	o:value("parallel", translate("parallel"))
-	o:value("fastest_addr", translate("fastest_addr"))
-	o:depends("shunt_parse_method", "parse_file")
-	o.rmempty = true
-	o.default = "load_balance"
-
-	o = s:option(Flag, "shunt_dnsproxy_ipv6", translate("Disable IPv6 query mode"))
-	o.description = translate("When disabled, all AAAA requests are not resolved.")
-	o:depends("shunt_parse_method", "single_dns")
-	o:depends("shunt_parse_method", "parse_file")
-	o.rmempty = false
-	o.default = "1"
-end
-
-if is_finded("chinadns-ng") then
-	o = s:option(Value, "chinadns_ng_shunt_dnsserver", translate("Anti-pollution DNS Server For Shunt Mode"))
-	o:value("8.8.4.4:53", translate("Google Public DNS (8.8.4.4)"))
-	o:value("8.8.8.8:53", translate("Google Public DNS (8.8.8.8)"))
-	o:value("208.67.222.222:53", translate("OpenDNS (208.67.222.222)"))
-	o:value("208.67.220.220:53", translate("OpenDNS (208.67.220.220)"))
-	o:value("209.244.0.3:53", translate("Level 3 Public DNS (209.244.0.3)"))
-	o:value("209.244.0.4:53", translate("Level 3 Public DNS (209.244.0.4)"))
-	o:value("4.2.2.1:53", translate("Level 3 Public DNS (4.2.2.1)"))
-	o:value("4.2.2.2:53", translate("Level 3 Public DNS (4.2.2.2)"))
-	o:value("4.2.2.3:53", translate("Level 3 Public DNS (4.2.2.3)"))
-	o:value("4.2.2.4:53", translate("Level 3 Public DNS (4.2.2.4)"))
-	o:value("1.1.1.1:53", translate("Cloudflare DNS (1.1.1.1)"))
-	o:depends("shunt_dns_mode", "5")
-	o.description = translate(
-    	"<ul>" ..
-    	"<li>" .. translate("Custom DNS Server format as IP:PORT (default: 8.8.4.4:53)") .. "</li>" .. 
-    	"<li>" .. translate("Muitiple DNS server can saperate with ','") .. "</li>" ..
-    	"</ul>"
-	)
-
-	o = s:option(ListValue, "chinadns_ng_shunt_proto", translate("ChinaDNS-NG shunt query protocol"))
-	o:value("none", translate("UDP/TCP upstream"))
-	o:value("tcp", translate("TCP upstream"))
-	o:value("udp", translate("UDP upstream"))
-	o:value("tls", translate("DoT upstream (Need use wolfssl version)"))
-	o:depends("shunt_dns_mode", "5")
-end
 
 o = s:option(Flag, "apple_optimization", translate("Apple domains optimization"), translate("For Apple domains equipped with Chinese mainland CDN, always responsive to Chinese CDN IP addresses"))
 o.rmempty = false
@@ -266,44 +151,12 @@ end
 -- [[ SOCKS5 Proxy ]]--
 s = m:section(TypedSection, "socks5_proxy", translate("Global SOCKS5 Proxy Server"))
 s.anonymous = true
+-- s.description = translate("Only Same as Global Server is supported here. If the current main program supports a built-in SOCKS5 listener, it will be enabled in-process; otherwise SSR Plus will fall back to microsocks.")
 
 -- Enable/Disable Option
 o = s:option(Flag, "enabled", translate("Enable"))
 o.default = 0
 o.rmempty = false
-
--- Server Selection
-o = s:option(ListValue, "server", translate("Server"))
-o:value("same", translate("Same as Global Server"))
-for _, key in pairs(key_table) do
-	o:value(key, server_table[key])
-end
-o.default = "same"
-o.rmempty = false
-
--- Dynamic value handling based on enabled/disabled state
-o.cfgvalue = function(self, section)
-	local enabled = m:get(section, "enabled")
-	if enabled == "0" then
-		return m:get(section, "old_server")
-	end
-	return Value.cfgvalue(self, section)-- Default to `same` when enabled
-end
-
-o.write = function(self, section, value)
-	local enabled = m:get(section, "enabled")
-	if enabled == "0" then
-		local old_server = Value.cfgvalue(self, section)
-		if old_server ~= "nil" then
-			m:set(section, "old_server", old_server)
-		end
-		m:set(section, "server", "nil")
-	else
-		m:del(section, "old_server")
-		-- Write the value normally when enabled
-		Value.write(self, section, value)
-	end
-end
 
 -- Socks Auth
 if is_finded("xray") then
@@ -312,13 +165,6 @@ o.default = "noauth"
 o:value("noauth", "NOAUTH")
 o:value("password", "PASSWORD")
 o.rmempty = true
-for key, server_type in pairs(type_table) do
-	if server_type == "v2ray" then
-		-- 如果服务器类型是 v2ray，则设置依赖项显示
-		o:depends("server", key)
-	end
-end
-o:depends({server = "same", disable = true})
 
 -- Socks User
 o = s:option(Value, "socks5_user", translate("Socks5 User"), translate("Only when Socks5 Auth Mode is password valid, Mandatory."))
@@ -335,13 +181,6 @@ o:depends("socks5_auth", "password")
 o = s:option(Flag, "socks5_mixed", translate("Enabled Mixed"), translate("Mixed as an alias of socks, default:Enabled."))
 o.default = "1"
 o.rmempty = false
-for key, server_type in pairs(type_table) do
-	if server_type == "v2ray" then
-		-- 如果服务器类型是 v2ray，则设置依赖项显示
-		o:depends("server", key)
-	end
-end
-o:depends({server = "same", disable = true})
 end
 
 -- Local Port
@@ -349,6 +188,37 @@ o = s:option(Value, "local_port", translate("Local Port"))
 o.datatype = "port"
 o.default = 1080
 o.rmempty = false
+
+if is_finded("3proxy") then
+	-- [[ HTTP/HTTPS Proxy ]]--
+	s = m:section(TypedSection, "http_proxy", translate("Global HTTP/HTTPS Proxy Server"))
+	s.anonymous = true
+	-- s.description = translate("Only Same as Global Server is supported here. HTTP/HTTPS proxy service is provided through 3proxy.")
+
+	o = s:option(Flag, "enabled", translate("Enable"))
+	o.default = 0
+	o.rmempty = false
+
+	o = s:option(ListValue, "http_auth", translate("HTTP Auth Mode"), translate("HTTP proxy auth method, default:none."))
+	o.default = "none"
+	o:value("none", "NONE")
+	o:value("password", "PASSWORD")
+	o.rmempty = false
+
+	o = s:option(Value, "http_user", translate("HTTP User"), translate("Only when HTTP Auth Mode is password valid, Mandatory."))
+	o.rmempty = true
+	o:depends("http_auth", "password")
+
+	o = s:option(Value, "http_pass", translate("HTTP Password"), translate("Only when HTTP Auth Mode is password valid, Not mandatory."))
+	o.password = true
+	o.rmempty = true
+	o:depends("http_auth", "password")
+
+	o = s:option(Value, "local_port", translate("Local Port"))
+	o.datatype = "port"
+	o.default = 3128
+	o.rmempty = false
+end
 
 -- [[ fragmen Settings ]]--
 if is_finded("xray") then

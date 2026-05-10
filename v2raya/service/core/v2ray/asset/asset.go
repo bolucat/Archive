@@ -16,7 +16,6 @@ import (
 	"github.com/muhammadmuzzammil1998/jsonc"
 	"github.com/v2rayA/v2rayA/common/files"
 	"github.com/v2rayA/v2rayA/conf"
-	"github.com/v2rayA/v2rayA/core/v2ray/where"
 	"github.com/v2rayA/v2rayA/pkg/util/log"
 )
 
@@ -35,28 +34,15 @@ func GetV2rayLocationAssetOverride() string {
 }
 
 func GetV2rayLocationAsset(filename string) (string, error) {
-	variant, _, err := where.GetV2rayServiceVersion()
-	if err != nil {
-		variant = where.Unknown
-	}
-	var location string
-	var folder string
-	switch variant {
-	case where.V2ray:
-		location = "V2RAY_LOCATION_ASSET"
-		folder = "v2ray"
-	case where.Xray:
-		location = "XRAY_LOCATION_ASSET"
-		folder = "xray"
-	default:
-		location = "V2RAY_LOCATION_ASSET"
-		folder = "v2ray"
-	}
+	// All variants use XRAY_LOCATION_ASSET; dat files are stored under
+	// v2raya's own XDG data subdirectory ("v2raya/"), not under "xray/".
+	const envKey = "XRAY_LOCATION_ASSET"
+	const folder = "v2raya"
 
-	location = os.Getenv(location)
-	// check if V2RAY_LOCATION_ASSET is set
+	location := os.Getenv(envKey)
+	// check if XRAY_LOCATION_ASSET is set
 	if location != "" {
-		// add V2RAY_LOCATION_ASSET to search path
+		// add XRAY_LOCATION_ASSET to search path
 		searchPaths := []string{
 			filepath.Join(location, filename),
 		}
@@ -69,18 +55,18 @@ func GetV2rayLocationAsset(filename string) (string, error) {
 			)
 		}
 		for _, searchPath := range searchPaths {
-			if _, err = os.Stat(searchPath); err != nil && errors.Is(err, fs.ErrNotExist) {
+			if _, err := os.Stat(searchPath); err != nil && errors.Is(err, fs.ErrNotExist) {
 				continue
 			}
 			// return the first path that exists
 			return searchPath, nil
 		}
-		// or download asset into V2RAY_LOCATION_ASSET
+		// or download asset into XRAY_LOCATION_ASSET
 		return searchPaths[0], nil
 	} else {
 		if runtime.GOOS != "windows" {
 			// search XDG data directories on non windows platform
-			// symlink all assets into XDG_RUNTIME_DIR
+			// symlink all assets into XDG_RUNTIME_DIR so xray-core can find them
 			relpath := filepath.Join(folder, filename)
 			fullpath, err := xdg.SearchDataFile(relpath)
 			if err != nil {

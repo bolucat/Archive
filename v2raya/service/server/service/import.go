@@ -43,7 +43,7 @@ func Import(url string, which *configure.Which) (err error) {
 	}
 	supportedPrefix := []string{"vmess", "vless", "ss", "ssr", "trojan", "trojan-go", "http-proxy",
 		"https-proxy", "socks5", "http2", "juicity", "tuic", "hysteria", "hysteria2", "anytls",
-		"shadowsocks", "shadowsocksr", "hy1", "hy2", "mcore", "mcp", "plugin"}
+		"shadowsocks", "shadowsocksr", "hy1", "hy2", "mcore", "mcp", "plugin", "wireguard"}
 	for i := range supportedPrefix {
 		supportedPrefix[i] += "://"
 	}
@@ -124,17 +124,16 @@ func Import(url string, which *configure.Which) (err error) {
 			servers[i] = configure.ServerRaw{ServerObj: v}
 		}
 
-		// deduplicate
-		unique := make(map[configure.ServerRaw]interface{})
+		// deduplicate using address as key since ServerRaw contains non-comparable fields
+		seen := make(map[string]struct{})
+		uniqueServers := make([]configure.ServerRaw, 0, len(servers))
 		for _, s := range servers {
-			unique[s] = nil
-		}
-		uniqueServers := make([]configure.ServerRaw, 0)
-		for _, s := range servers {
-			if _, ok := unique[s]; ok {
-				uniqueServers = append(uniqueServers, s)
-				delete(unique, s)
+			key := s.ServerObj.GetHostname() + ":" + fmt.Sprintf("%d", s.ServerObj.GetPort())
+			if _, ok := seen[key]; ok {
+				continue
 			}
+			seen[key] = struct{}{}
+			uniqueServers = append(uniqueServers, s)
 		}
 		err = configure.AppendSubscriptions([]*configure.SubscriptionRaw{{
 			Address: source,

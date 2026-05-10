@@ -85,6 +85,23 @@ Options:
     If you must use this, try N=2 first to see if it solves your issues.
     Strongly recommend against using more than 4 connections here.
 
+  --tunnel-timeout=<SECONDS>
+
+    After living for this timeout, a tunnel connection is retired: new streams
+    are tunneled in new connections, and the old tunneled streams are forcibly
+    closed by the idle timeout if idle or by the tunnel timeout if not idle.
+    And the retired connection is closed when all tunneled streams are closed.
+    This setting helps with CGNAT networks where long-lived connections are
+    stuck, but will break long-lived TCP protocols, e.g. SSH.
+    Default: 1800; 600 (Android).
+
+  --idle-timeout=<SECONDS>
+
+    After being idle for this timeout, tunneled streams are forcibly closed for
+    timely cleanup of retired connections. When a stream is idle for long
+    enough, it is assumed that the stream is unused and the breakage is mild.
+    Default: 600; 300 (Android).
+
   --extra-headers=...
 
     Appends extra headers in requests to the proxy server.

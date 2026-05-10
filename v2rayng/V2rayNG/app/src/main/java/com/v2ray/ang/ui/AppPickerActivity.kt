@@ -14,7 +14,6 @@ import com.v2ray.ang.databinding.ActivityAppPickerBinding
 import com.v2ray.ang.dto.AppInfo
 import com.v2ray.ang.util.AppManagerUtil
 import com.v2ray.ang.util.LogUtil
-import com.v2ray.ang.util.PackageUidResolver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

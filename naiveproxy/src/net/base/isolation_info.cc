@@ -175,6 +175,14 @@ IsolationInfo IsolationInfo::CreateTransient(
                        /*frame_ancestor_relation=*/std::nullopt);
 }
 
+IsolationInfo IsolationInfo::CreateEmptyWithPartition(
+    NetworkIsolationPartition network_isolation_partition) {
+  return IsolationInfo(RequestType::kOther, /*top_frame_origin=*/std::nullopt,
+                       /*frame_origin=*/std::nullopt, SiteForCookies(),
+                       /*nonce=*/std::nullopt, network_isolation_partition,
+                       /*frame_ancestor_relation=*/std::nullopt);
+}
+
 std::optional<IsolationInfo> IsolationInfo::Deserialize(
     const std::string& serialized) {
   proto::IsolationInfo proto;
@@ -236,8 +244,9 @@ IsolationInfo IsolationInfo::Create(
 
 IsolationInfo IsolationInfo::DoNotUseCreatePartialFromNak(
     const net::NetworkAnonymizationKey& network_anonymization_key) {
-  if (!network_anonymization_key.IsFullyPopulated()) {
-    return IsolationInfo();
+  if (network_anonymization_key.IsEmpty()) {
+    return IsolationInfo::CreateEmptyWithPartition(
+        network_anonymization_key.network_isolation_partition());
   }
 
   url::Origin top_frame_origin =
@@ -260,8 +269,9 @@ IsolationInfo IsolationInfo::DoNotUseCreatePartialFromNak(
 
   auto isolation_info = IsolationInfo::Create(
       IsolationInfo::RequestType::kOther, top_frame_origin,
-      frame_origin.value(), SiteForCookies(), nonce);
-  // TODO(crbug.com/40852603): DCHECK isolation info is fully populated.
+      frame_origin.value(), SiteForCookies(), nonce,
+      network_anonymization_key.network_isolation_partition());
+  // TODO(crbug.com/40852603): DCHECK isolation info is not empty.
   return isolation_info;
 }
 
@@ -500,7 +510,8 @@ IsolationInfo::Data::Data(
       site_for_cookies_(std::move(site_for_cookies)),
       network_isolation_key_(
           !this->top_frame_origin()
-              ? NetworkIsolationKey()
+              ? NetworkIsolationKey::CreateEmptyWithPartition(
+                    network_isolation_partition)
               : NetworkIsolationKey(SchemefulSite(*this->top_frame_origin()),
                                     SchemefulSite(*this->frame_origin()),
                                     std::move(nonce),

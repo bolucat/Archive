@@ -42,7 +42,9 @@ class PreambleGetter {
   PreambleGetter(const PreambleGetter&) = delete;
   PreambleGetter& operator=(const PreambleGetter&) = delete;
 
-  int Start(size_t preamble_index, CompletionOnceCallback callback, bool log_url = true);
+  int Start(CompletionOnceCallback callback,
+            size_t preamble_index = 0,
+            bool log_url = true);
   void StartOne();
 
  private:
@@ -66,6 +68,7 @@ class PreambleGetter {
         std::make_unique<ClientSocketHandle>();
     std::unique_ptr<SourceStream> upstream;
     scoped_refptr<IOBuffer> read_buffer;
+    std::string last_content;
     CompletionOnceCallback callback;
   };
 
@@ -78,7 +81,9 @@ class PreambleGetter {
   NaiveProxyDelegate* naive_proxy_delegate() const;
 
   void AddRootHeaders(HttpRequestHeaders& headers);
-  void AddHeaders(const std::string& path, const std::string& ext,HttpRequestHeaders& headers);
+  void AddHeaders(const std::string& path,
+                  const std::string& ext,
+                  HttpRequestHeaders& headers);
 
   const ProxyInfo& proxy_info_;
   const ProxyServer* proxy_server_;

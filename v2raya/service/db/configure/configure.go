@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
@@ -309,7 +310,11 @@ func AddConnect(wt Which) (err error) {
 	bucket := fmt.Sprintf("outbound.%v", wt.Outbound)
 	var wcs Whiches
 	_ = db.Get(bucket, "connectedServers", &wcs)
+	// Normalize Outbound field of existing entries for consistent comparison
 	for _, v := range wcs.Get() {
+		if v.Outbound == "" {
+			v.Outbound = "proxy"
+		}
 		if v.EqualTo(wt) {
 			return nil
 		}
@@ -342,6 +347,12 @@ func RemoveConnect(wt Which) (err error) {
 	bucket := fmt.Sprintf("outbound.%v", wt.Outbound)
 	var wcs Whiches
 	_ = db.Get(bucket, "connectedServers", &wcs)
+	// Normalize Outbound field of existing entries for consistent comparison
+	for _, v := range wcs.Touches {
+		if v.Outbound == "" {
+			v.Outbound = "proxy"
+		}
+	}
 	for i, v := range wcs.Touches {
 		if v.EqualTo(wt) {
 			wcs.Touches = append(wcs.Touches[:i], wcs.Touches[i+1:]...)
@@ -355,11 +366,30 @@ func GetOutbounds() (outbounds []string) {
 	// keep order
 	members, _ := db.StringSetGetAll("outbounds", "names")
 	for _, m := range members {
-		outbounds = append(outbounds, m)
+		if m != "proxy" {
+			outbounds = append(outbounds, m)
+		}
 	}
 	sort.Strings(outbounds)
+	// "proxy" is always the first outbound.
 	outbounds = append([]string{"proxy"}, outbounds...)
 	return
+}
+
+// InitDefaultOutbound ensures the default "proxy" outbound group exists in the database.
+// It should be called during system initialization.
+func InitDefaultOutbound() error {
+	members, err := db.StringSetGetAll("outbounds", "names")
+	if err != nil {
+		// bucket doesn't exist yet, create it with the default
+		return db.SetAdd("outbounds", "names", DefaultOutboundName)
+	}
+	for _, m := range members {
+		if m == DefaultOutboundName {
+			return nil // already exists
+		}
+	}
+	return db.SetAdd("outbounds", "names", DefaultOutboundName)
 }
 
 func AddOutbound(outbound string) (err error) {
@@ -368,7 +398,11 @@ func AddOutbound(outbound string) (err error) {
 		outbound == "block" {
 		return fmt.Errorf("cannot add %v as the outbound name", outbound)
 	}
-	return db.SetAdd("outbounds", "names", outbound)
+	if err = db.SetAdd("outbounds", "names", outbound); err != nil {
+		return err
+	}
+	// Apply default OutboundSetting for the new outbound group
+	return SetOutboundSetting(outbound, DefaultOutboundSetting())
 }
 
 func SetOutboundSetting(outbound string, setting OutboundSetting) (err error) {
@@ -381,11 +415,7 @@ func SetOutboundSetting(outbound string, setting OutboundSetting) (err error) {
 func GetOutboundSetting(outbound string) (setting OutboundSetting) {
 	err := db.Get(fmt.Sprintf("outbound.%v", outbound), "setting", &setting)
 	if err != nil {
-		return OutboundSetting{
-			ProbeURL:      "https://gstatic.com/generate_204",
-			ProbeInterval: "10s",
-			Type:          LeastPing,
-		}
+		return DefaultOutboundSetting()
 	}
 	return setting
 }
@@ -401,14 +431,27 @@ func SetAccount(username, password string) (err error) {
 	return db.Set("accounts", username, password)
 }
 func ResetAccounts() (err error) {
-	return db.BucketClear("accounts")
+	accounts, err := GetAccounts()
+	if err != nil {
+		return err
+	}
+	for _, account := range accounts {
+		if err = db.Delete("accounts", account[0]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func ExistsAccount(username string) bool {
-	return db.Exists("accounts", username)
+	pwd, err := GetPasswordOfAccount(username)
+	return err == nil && isAccountPasswordHash(pwd)
 }
 
 func GetPasswordOfAccount(username string) (pwd string, err error) {
 	err = db.Get("accounts", username, &pwd)
+	if err == nil && !isAccountPasswordHash(pwd) {
+		return "", fmt.Errorf("account not found")
+	}
 	return
 }
 
@@ -420,14 +463,27 @@ func GetAccounts() (accounts [][2]string, err error) {
 	for _, uname := range unames {
 		var passwd string
 		err = db.Get("accounts", uname, &passwd)
+		if err != nil || !isAccountPasswordHash(passwd) {
+			continue
+		}
 		accounts = append(accounts, [2]string{uname, passwd})
 	}
 	return accounts, nil
 }
 
 func HasAnyAccounts() bool {
-	l, err := db.GetBucketLen("accounts")
-	return err == nil && l > 0
+	accounts, err := GetAccounts()
+	return err == nil && len(accounts) > 0
+}
+
+func isAccountPasswordHash(passwordHash string) bool {
+	if len(passwordHash) == 32 {
+		_, err := hex.DecodeString(passwordHash)
+		return err == nil
+	}
+	return strings.HasPrefix(passwordHash, "$2a$") ||
+		strings.HasPrefix(passwordHash, "$2b$") ||
+		strings.HasPrefix(passwordHash, "$2y$")
 }
 
 func SetRunning(running bool) (err error) {

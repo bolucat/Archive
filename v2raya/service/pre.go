@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -111,64 +112,114 @@ func initConfigure() {
 	// initialize configuration
 	jsonIteratorExtra.RegisterFuzzyDecoders()
 
+	// Track whether we performed a BoltDB→SQLite migration in this session.
+	// If so, we must skip the v4 migration and initDBValue() below, because
+	// the data has already been migrated into SQLite by MigrateFromBoltDB().
+	migratedFromBoltDB := false
+
+	// Try to initialize SQLite database.
+	// If an old BoltDB database (bolt.db) exists, Open() returns ErrNeedMigration,
+	// and we must run the migration first.
+	err := db.Open()
+	if errors.Is(err, db.ErrNeedMigration) {
+		log.Warn("Detected legacy BoltDB database, migrating to SQLite...")
+		if err := db.MigrateFromBoltDB(); err != nil {
+			log.Fatal("Database migration failed: %v", err)
+		}
+		migratedFromBoltDB = true
+		// Migration succeeded (MigrateFromBoltDB already logged the completion);
+		// now initialize SQLite normally.
+		if err := db.Open(); err != nil {
+			// If SQLite initialization fails after migration, restore the backup
+			// so the migration can be retried on next startup.
+			confPath := conf.GetEnvironmentConfig().Config
+			backupPath := filepath.Join(confPath, "bolt.db.bak")
+			if _, e := os.Stat(backupPath); e == nil {
+				if renameErr := os.Rename(backupPath, filepath.Join(confPath, "bolt.db")); renameErr == nil {
+					log.Warn("Restored bolt.db from bolt.db.bak due to SQLite initialization failure")
+				}
+			}
+			log.Fatal("Failed to initialize SQLite after migration: %v", err)
+		}
+	} else if err != nil {
+		log.Fatal("Failed to initialize database: %v", err)
+	}
+
 	//db
 	dbPath := filepath.Join(conf.GetEnvironmentConfig().Config, "bolt.db")
 	if _, e := os.Lstat(dbPath); os.IsNotExist(e) {
-		//confv4.SetConfig(confv4.Params{Config: conf.GetEnvironmentConfig().Config})
-		// need to migrate?
-		if !configurev4.IsConfigureNotExists() {
-			// There is different format in server and subscription.
-			// So we keep other content and reimport servers and subscriptions.
-			log.Warn("Migrating from v4 to main")
-			if err := copyfile.CopyFileContent(filepath.Join(
-				confv4.GetEnvironmentConfig().Config,
-				"boltv4.db",
-			), filepath.Join(
-				conf.GetEnvironmentConfig().Config,
-				"bolt.db",
-			)); err != nil {
-				log.Fatal("Failed to copy boltv4.db to bolt.db: %v", err)
-			}
-
-			// clear connects of outbounds
-			for _, out := range configure.GetOutbounds() {
-				_ = configure.ClearConnects(out)
-			}
-			var indexes []int
-			for i := 0; i < configurev4.GetLenServers(); i++ {
-				indexes = append(indexes, i)
-			}
-			_ = configure.RemoveServers(indexes)
-
-			indexes = nil
-			for i := 0; i < configurev4.GetLenSubscriptions(); i++ {
-				indexes = append(indexes, i)
-			}
-			_ = configure.RemoveSubscriptions(indexes)
-
-			// migrate servers and subscriptions
-			t := touchv4.GenerateTouch()
-			subs := configurev4.GetSubscriptionsV2()
-			for _, sub := range subs {
-				log.Info("Importing subscription: %v", sub.Address)
-				if e := service.Import(sub.Address, nil); e != nil {
-					log.Warn("Failed to migrate subscription: %v", sub.Address)
-				}
-			}
-			for iSvr := range t.Servers {
-				if addr, e := servicev4.GetSharingAddress(&configurev4.Which{
-					TYPE: configurev4.ServerType,
-					ID:   iSvr + 1,
-				}); e == nil {
-					if e := service.Import(addr, nil); e != nil {
-						log.Warn("Failed to migrate server: %v", addr)
+		// If we just migrated from BoltDB to SQLite, the data is already in
+		// SQLite. Do NOT run initDBValue() or v4 migration, as that would
+		// overwrite or clear the freshly migrated data.
+		if !migratedFromBoltDB {
+			// db.IsNewDB is true only when v2raya.db was just created by Open()
+			// (i.e., it did not exist before). In that case, we need to initialize
+			// the default configuration values.
+			// If db.IsNewDB is false, v2raya.db already existed (from a previous
+			// migration or a previous startup), so we skip initialization.
+			if db.IsNewDB {
+				//confv4.SetConfig(confv4.Params{Config: conf.GetEnvironmentConfig().Config})
+				// need to migrate?
+				if !configurev4.IsConfigureNotExists() {
+					// There is different format in server and subscription.
+					// So we keep other content and reimport servers and subscriptions.
+					log.Warn("Migrating from v4 to main")
+					if err := copyfile.CopyFileContent(filepath.Join(
+						confv4.GetEnvironmentConfig().Config,
+						"boltv4.db",
+					), filepath.Join(
+						conf.GetEnvironmentConfig().Config,
+						"bolt.db",
+					)); err != nil {
+						log.Fatal("Failed to copy boltv4.db to bolt.db: %v", err)
 					}
+
+					// clear connects of outbounds
+					for _, out := range configure.GetOutbounds() {
+						_ = configure.ClearConnects(out)
+					}
+					var indexes []int
+					for i := 0; i < configurev4.GetLenServers(); i++ {
+						indexes = append(indexes, i)
+					}
+					_ = configure.RemoveServers(indexes)
+
+					indexes = nil
+					for i := 0; i < configurev4.GetLenSubscriptions(); i++ {
+						indexes = append(indexes, i)
+					}
+					_ = configure.RemoveSubscriptions(indexes)
+
+					// migrate servers and subscriptions
+					t := touchv4.GenerateTouch()
+					subs := configurev4.GetSubscriptionsV2()
+					for _, sub := range subs {
+						log.Info("Importing subscription: %v", sub.Address)
+						if e := service.Import(sub.Address, nil); e != nil {
+							log.Warn("Failed to migrate subscription: %v", sub.Address)
+						}
+					}
+					for iSvr := range t.Servers {
+						if addr, e := servicev4.GetSharingAddress(&configurev4.Which{
+							TYPE: configurev4.ServerType,
+							ID:   iSvr + 1,
+						}); e == nil {
+							if e := service.Import(addr, nil); e != nil {
+								log.Warn("Failed to migrate server: %v", addr)
+							}
+						}
+					}
+
+					log.Warn("Migration is done")
+				} else {
+					initDBValue()
 				}
 			}
+		}
 
-			log.Warn("Migration is done")
-		} else {
-			initDBValue()
+		// ensure the default "proxy" outbound group exists
+		if err := configure.InitDefaultOutbound(); err != nil {
+			log.Warn("initDefaultOutbound: %v", err)
 		}
 	}
 
@@ -382,6 +433,6 @@ func run() (err error) {
 	fmt.Println("Quitting...")
 	v2ray.ProcessManager.CheckAndStopTransparentProxy(nil)
 	v2ray.ProcessManager.Stop(false)
-	_ = db.DB().Close()
+	_ = db.Close()
 	return nil
 }

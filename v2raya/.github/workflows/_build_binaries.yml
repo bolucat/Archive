@@ -48,6 +48,7 @@ jobs:
     - uses: actions/checkout@v6
       with:
         fetch-depth: 0
+        submodules: recursive
     - name: Download Web Artifact
       uses: actions/download-artifact@v8
       with:
@@ -57,9 +58,21 @@ jobs:
       uses: actions/setup-go@v6
       with:
         cache-dependency-path: |
+          core/go.mod
+          core/go.sum
           service/go.mod
           service/go.sum
-        go-version: '1.24'
+        go-version: '1.26'
+    - name: Install MIPS/Loong64 Cross Compilers
+      if: ${{ matrix.goos == 'linux' && (startsWith(matrix.goarch, 'mips') || matrix.goarch == 'loong64') }}
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          gcc-mips-linux-gnu \
+          gcc-mipsel-linux-gnu \
+          gcc-mips64-linux-gnuabi64 \
+          gcc-mips64el-linux-gnuabi64 
     - name: Build v2rayA Binary
       id: build_binary
       shell: bash
@@ -71,15 +84,62 @@ jobs:
         [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
         build_tags=()
         [ "${{ matrix.tinytun }}" = "true" ] && build_tags=(-tags tinytun)
+
+        cgo_enabled=0
+        cc=""
+        if [ "${{ matrix.goos }}" = "linux" ]; then
+          case "${{ matrix.goarch }}" in
+            mips)
+              cgo_enabled=1
+              cc="mips-linux-gnu-gcc"
+              ;;
+            mipsle)
+              cgo_enabled=1
+              cc="mipsel-linux-gnu-gcc"
+              ;;
+            mips64)
+              cgo_enabled=1
+              cc="mips64-linux-gnuabi64-gcc"
+              ;;
+            mips64le)
+              cgo_enabled=1
+              cc="mips64el-linux-gnuabi64-gcc"
+              ;;
+          esac
+        fi
+
         cd service
         GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" GOARM="${{ matrix.goarm }}" \
+          CGO_ENABLED="$cgo_enabled" CC="$cc" \
           go build "${build_tags[@]}" \
           -o ../v2raya_binaries/v2raya_${filename}_${{ inputs.version }}${ext} \
           -ldflags="-X github.com/v2rayA/v2rayA/conf.Version=${{ inputs.version }} -s -w" \
           -trimpath
         echo "filename=v2raya_${filename}_${{ inputs.version }}${ext}" >> ${GITHUB_OUTPUT}
-    - name: Upload Binary
+    - name: Build v2rayA Core Binary
+      id: build_core_binary
+      shell: bash
+      run: |
+        mkdir -p v2raya_binaries
+        key="${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.goarm }}"
+        filename=$(jq -r --arg key "$key" '.[$key].friendlyName' ./install/friendly-filenames.json)
+        ext=""
+        [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
+        cd core
+        GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" GOARM="${{ matrix.goarm }}" \
+          go build \
+          -o ../v2raya_binaries/v2raya_core_${filename}_${{ inputs.version }}${ext} \
+          -ldflags="-X main.Version=${{ inputs.version }} -s -w" \
+          -trimpath \
+          ./main
+        echo "filename=v2raya_core_${filename}_${{ inputs.version }}${ext}" >> ${GITHUB_OUTPUT}
+    - name: Upload v2rayA Binary Artifact
       uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.build_binary.outputs.filename }}
         path: v2raya_binaries/${{ steps.build_binary.outputs.filename }}
+    - name: Upload v2rayA Core Binary Artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.build_core_binary.outputs.filename }}
+        path: v2raya_binaries/${{ steps.build_core_binary.outputs.filename }}

@@ -5,9 +5,22 @@ const { t } = useI18n()
 
 const username = $ref('')
 const password = $ref('')
+const isSubmitting = $ref(false)
 
 async function login() {
+  if (isSubmitting)
+    return
+
+  isSubmitting = true
+
   const { data } = await useV2Fetch<any>('login').post({ username, password }).json()
+
+  if (data.value?.data?.first === true) {
+    user.value.exist = false
+    navigateTo('/signup')
+    isSubmitting = false
+    return
+  }
 
   if (data.value.code !== 'SUCCESS') {
     ElMessage.warning({ message: data.value.message, duration: 5000 })
@@ -16,6 +29,8 @@ async function login() {
     ElMessage.success(t('common.success'))
     navigateTo('/')
   }
+
+  isSubmitting = false
 }
 </script>
 
@@ -33,7 +48,7 @@ async function login() {
       </ElFormItem>
 
       <ElFormItem>
-        <ElButton type="primary" class="flex mx-auto" :disabled="username === '' || password === ''" @click="login">
+        <ElButton type="primary" class="flex mx-auto" :loading="isSubmitting" :disabled="isSubmitting || username === '' || password === ''" @click="login">
           {{ t("operations.login") }}
         </ElButton>
       </ElFormItem>

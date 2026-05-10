@@ -30,14 +30,15 @@
     <string name="menu_item_import_config_clipboard">Импорт из буфера обмена</string>
     <string name="menu_item_import_config_local">Импорт из файла</string>
     <string name="menu_item_import_config_policy_group">Добавить группу политик</string>
-    <string name="menu_item_import_config_manually_vmess">Ручной ввод VMess</string>
-    <string name="menu_item_import_config_manually_vless">Ручной ввод VLESS</string>
-    <string name="menu_item_import_config_manually_ss">Ручной ввод Shadowsocks</string>
-    <string name="menu_item_import_config_manually_socks">Ручной ввод SOCKS</string>
-    <string name="menu_item_import_config_manually_http">Ручной ввод HTTP</string>
-    <string name="menu_item_import_config_manually_trojan">Ручной ввод Trojan</string>
-    <string name="menu_item_import_config_manually_wireguard">Ручной ввод WireGuard</string>
-    <string name="menu_item_import_config_manually_hysteria2">Ручной ввод Hysteria2</string>
+    <string name="menu_item_import_config_proxy_chain">Добавить цепочку прокси</string>
+    <string name="menu_item_import_config_manually_vmess">Добавить VMess</string>
+    <string name="menu_item_import_config_manually_vless">Добавить VLESS</string>
+    <string name="menu_item_import_config_manually_ss">Добавить Shadowsocks</string>
+    <string name="menu_item_import_config_manually_socks">Добавить SOCKS</string>
+    <string name="menu_item_import_config_manually_http">Добавить HTTP</string>
+    <string name="menu_item_import_config_manually_trojan">Добавить Trojan</string>
+    <string name="menu_item_import_config_manually_wireguard">Добавить WireGuard</string>
+    <string name="menu_item_import_config_manually_hysteria2">Добавить Hysteria2</string>
     <string name="del_config_comfirm">Подтверждаете удаление?</string>
     <string name="del_invalid_config_comfirm">Выполните проверку перед удалением! Подтверждаете удаление?</string>
     <string name="server_lab_remarks">Название</string>
@@ -115,7 +116,7 @@
     <string name="server_lab_xhttp_mode">Режим XHTTP</string>
     <string name="server_lab_xhttp_extra">Необработанный JSON XHTTP Extra, формат: { XHTTPObject }</string>
     <string name="server_lab_final_mask">Необработанный JSON FinalMask, формат: { FinalMaskObject }</string>
-    <string name="server_lab_ech_config_list">EchConfigList</string>
+    <string name="server_lab_ech_config_list">ECHConfigList</string>
     <string name="server_lab_pinned_ca256">Отпечаток сертификата (SHA-256)</string>
 
     <!-- UserAssetActivity -->
@@ -212,6 +213,7 @@
 
     <string name="title_pref_delay_test_url">Сервис проверки задержки</string>
     <string name="summary_pref_delay_test_url">URL</string>
+    <string name="title_pref_real_ping_concurrency">Параллельная проверка задержки</string>
 
     <string name="title_pref_ip_api_url">Сервис проверки текущего соединения</string>
     <string name="summary_pref_ip_api_url">URL</string>
@@ -303,7 +305,7 @@
     <string name="sub_setting_pre_profile">Предыдущий профиль прокси</string>
     <string name="sub_setting_next_profile">Следующий профиль прокси</string>
     <string name="sub_setting_pre_profile_tip">Профиль должен быть уникальным</string>
-    <string name="toast_invalid_update_interval">Неверный интервал обновления. Минимум 15 минут.</string>
+    <string name="toast_invalid_update_interval">Неправильный интервал обновления. Минимум 15 минут.</string>
     <string name="title_sub_update">Обновить подписку</string>
     <string name="title_ping_all_server">Проверить профили</string>
     <string name="title_real_ping_all_server">Проверить задержку профилей</string>
@@ -378,6 +380,13 @@
     <string name="title_policy_group_type">Тип группы политик</string>
     <string name="title_policy_group_subscription_id">Из группы подписки</string>
     <string name="title_policy_group_subscription_filter">Название фильтра</string>
+
+    <string name="server_proxy_chain_members">Участники цепочки прокси</string>
+    <string name="server_proxy_chain_pick_members">Нажмите здесь, чтобы выбрать участника</string>
+    <string name="server_proxy_chain_member_unselected">Выбор участника</string>
+    <string name="server_proxy_chain_members_unselected">Выберите участника для каждого звена цепочки</string>
+    <string name="server_proxy_chain_members_insufficient">Недостаточно участников</string>
+    <string name="server_proxy_chain_members_invalid">Недопустимые участники цепочки: %1$s</string>
 
     <!-- BackupActivity -->
     <string name="title_configuration_backup_restore">Резервное копирование</string>

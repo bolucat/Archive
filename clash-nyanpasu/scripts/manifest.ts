@@ -29,6 +29,11 @@ const GITHUB_API_HEADERS = {
   "User-Agent": "clash-nyanpasu",
 };
 
+const MIHOMO_ALPHA_VERSION_URL =
+  "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt";
+const MIHOMO_ALPHA_ASSETS_URL =
+  "https://github.com/MetaCubeX/mihomo/releases/expanded_assets/Prerelease-Alpha";
+
 async function githubFetch<T>(url: string): Promise<T> {
   const resp = await fetch(url, { headers: GITHUB_API_HEADERS });
   if (!resp.ok) {
@@ -44,6 +49,36 @@ async function getLatestRelease(owner: string, repo: string): Promise<string> {
     `https://api.github.com/repos/${owner}/${repo}/releases/latest`,
   );
   return data.tag_name;
+}
+
+function isValidVersion(version?: string): version is string {
+  return Boolean(version && /^[A-Za-z0-9._+-]+$/.test(version));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractVersionFromAssetList(
+  page: string,
+  assetTemplate: string,
+): string | undefined {
+  const [prefix, suffix] = assetTemplate.split("{}");
+  if (prefix === undefined || suffix === undefined) return undefined;
+
+  const matcher = new RegExp(
+    `${escapeRegExp(prefix)}([A-Za-z0-9._+-]+)${escapeRegExp(suffix)}`,
+  );
+  const matched = page.match(matcher)?.[1];
+  return isValidVersion(matched) ? matched : undefined;
+}
+
+async function fetchText(url: string): Promise<string | undefined> {
+  const resp = await fetch(url, { headers: GITHUB_API_HEADERS });
+  if (!resp.ok) {
+    return undefined;
+  }
+  return await resp.text();
 }
 
 // === Resolvers ===
@@ -69,12 +104,6 @@ export const resolveMihomo = async (): LatestVersionResolver => {
 };
 
 export const resolveMihomoAlpha = async (): LatestVersionResolver => {
-  const resp = await fetch(
-    "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt",
-  );
-  const alphaReleaseHash = (await resp.text()).trim();
-  consola.debug(`mihomo alpha release: ${alphaReleaseHash}`);
-
   const archMapping: ArchMapping = {
     "windows-i386": "mihomo-windows-386-{}.zip",
     "windows-x86_64": "mihomo-windows-amd64-v1-{}.zip",
@@ -87,6 +116,21 @@ export const resolveMihomoAlpha = async (): LatestVersionResolver => {
     "linux-armv7": "mihomo-linux-armv5-{}.gz",
     "linux-armv7hf": "mihomo-linux-armv7-{}.gz",
   };
+
+  const versionFromFile = (await fetchText(MIHOMO_ALPHA_VERSION_URL))?.trim();
+  const versionFromAssets = extractVersionFromAssetList(
+    (await fetchText(MIHOMO_ALPHA_ASSETS_URL)) ?? "",
+    archMapping["windows-x86_64"],
+  );
+  const alphaReleaseHash = [versionFromFile, versionFromAssets].find(
+    isValidVersion,
+  );
+
+  if (!alphaReleaseHash) {
+    throw new Error("Unable to resolve mihomo alpha version");
+  }
+
+  consola.debug(`mihomo alpha release: ${alphaReleaseHash}`);
 
   return { name: "mihomo_alpha", version: alphaReleaseHash, archMapping };
 };

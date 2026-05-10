@@ -36,8 +36,9 @@ typedef struct evp_pkey_ctx_method_st EVP_PKEY_CTX_METHOD;
 BSSL_NAMESPACE_END
 
 struct evp_pkey_alg_st {
-  // method implements operations for this |EVP_PKEY_ALG|.
+  // method and pkey_method implement operations for this |EVP_PKEY_ALG|.
   const bssl::EVP_PKEY_ASN1_METHOD *method;
+  const bssl::EVP_PKEY_CTX_METHOD *pkey_method;
 };
 
 BSSL_NAMESPACE_BEGIN
@@ -81,6 +82,11 @@ struct evp_pkey_asn1_method_st {
   // pub_present returns true iff the |pk| has a public key. (If so, validity
   // is not guaranteed and should be checked separately.)
   bool (*pub_present)(const EvpPkey *pk);
+
+  // pub_copy sets the key data of |out| to a newly allocated key data structure
+  // which contains a copy of only the public key of |pk|, freeing any key
+  // previously in |out|. Returns true on success or false on failure.
+  bool (*pub_copy)(EvpPkey *out, const EvpPkey *pk);
 
   // priv_decode decodes |params| and |key| as a PrivateKeyInfo and writes the
   // result into |out|.  It returns |evp_decode_ok| on success, and
@@ -159,14 +165,13 @@ class EvpPkey : public evp_pkey_st, public RefCounted<EvpPkey> {
 #define EVP_PKEY_OP_DECRYPT (1 << 7)
 #define EVP_PKEY_OP_DERIVE (1 << 8)
 #define EVP_PKEY_OP_PARAMGEN (1 << 9)
+#define EVP_PKEY_OP_ENCAPSULATE (1 << 10)
+#define EVP_PKEY_OP_DECAPSULATE (1 << 11)
 
 #define EVP_PKEY_OP_TYPE_SIG \
   (EVP_PKEY_OP_SIGN | EVP_PKEY_OP_VERIFY | EVP_PKEY_OP_VERIFYRECOVER)
 
 #define EVP_PKEY_OP_TYPE_CRYPT (EVP_PKEY_OP_ENCRYPT | EVP_PKEY_OP_DECRYPT)
-
-#define EVP_PKEY_OP_TYPE_NOGEN \
-  (EVP_PKEY_OP_SIG | EVP_PKEY_OP_CRYPT | EVP_PKEY_OP_DERIVE)
 
 #define EVP_PKEY_OP_TYPE_GEN (EVP_PKEY_OP_KEYGEN | EVP_PKEY_OP_PARAMGEN)
 
@@ -247,7 +252,8 @@ class EvpPkeyCtx : public evp_pkey_ctx_st {
 struct evp_pkey_ctx_method_st {
   int pkey_id;
 
-  int (*init)(EvpPkeyCtx *ctx);
+  // |alg| may be nullptr. If non-null, |ctx| will have a key set.
+  int (*init)(EvpPkeyCtx *ctx, const EVP_PKEY_ALG *alg);
   int (*copy)(EvpPkeyCtx *dst, EvpPkeyCtx *src);
   void (*cleanup)(EvpPkeyCtx *ctx);
 
@@ -278,16 +284,48 @@ struct evp_pkey_ctx_method_st {
 
   int (*paramgen)(EvpPkeyCtx *ctx, EvpPkey *pkey);
 
+  int (*encap)(EvpPkeyCtx *ctx, uint8_t *out_ciphertext,
+               size_t *out_ciphertext_len, uint8_t *out_secret,
+               size_t *out_secret_len);
+
+  int (*decap)(EvpPkeyCtx *ctx, uint8_t *out_secret, size_t *out_secret_len,
+               const uint8_t *ciphertext, size_t ciphertext_len);
+
   int (*ctrl)(EvpPkeyCtx *ctx, int type, int p1, void *p2);
 } /* EVP_PKEY_CTX_METHOD */;
 
-extern const EVP_PKEY_CTX_METHOD rsa_pkey_meth;
-extern const EVP_PKEY_CTX_METHOD rsa_pss_pkey_meth;
-extern const EVP_PKEY_CTX_METHOD ec_pkey_meth;
-extern const EVP_PKEY_CTX_METHOD ed25519_pkey_meth;
-extern const EVP_PKEY_CTX_METHOD x25519_pkey_meth;
-extern const EVP_PKEY_CTX_METHOD hkdf_pkey_meth;
-extern const EVP_PKEY_CTX_METHOD dh_pkey_meth;
+BSSL_NAMESPACE_END
+
+// TODO(chlily): Make compatible with `EVP_HPKE_KEM`.
+struct evp_kem_st {
+  // Identifies the type of EVP_PKEYs compatible with this KEM.
+  int pkey_id;
+
+  // Constant lengths of ciphertexts and secrets produced/consumed by this KEM.
+  size_t ciphertext_len;
+  size_t secret_len;
+
+  int (*encap)(uint8_t *out_ciphertext, size_t ciphertext_len,
+               uint8_t *out_secret, size_t secret_len,
+               const EVP_PKEY *peer_key);
+  int (*decap)(uint8_t *out_secret, size_t secret_len,
+               const uint8_t *ciphertext, size_t ciphertext_len,
+               const EVP_PKEY *key);
+} /* EVP_KEM */;
+
+BSSL_NAMESPACE_BEGIN
+
+// evp_pkey_ec_no_curve returns an internal curveless EC |EVP_PKEY_ALG|. This
+// cannot be used to parse anything and is only useful for key generation.
+const EVP_PKEY_ALG *evp_pkey_ec_no_curve();
+
+// evp_pkey_hkdf returns an internal |EVP_PKEY_ALG| used to implement
+// |EVP_PKEY_HKDF|. It has no associated key type.
+const EVP_PKEY_ALG *evp_pkey_hkdf();
+
+// evp_pkey_ctx_new_alg behaves like |EVP_PKEY_CTX_new_id| but takes an
+// |EVP_PKEY_ALG|.
+UniquePtr<EvpPkeyCtx> evp_pkey_ctx_new_alg(const EVP_PKEY_ALG *alg);
 
 // evp_pkey_set0 sets |pkey|'s method to |method| and data to |pkey_data|,
 // freeing any key that may previously have been configured. This function takes

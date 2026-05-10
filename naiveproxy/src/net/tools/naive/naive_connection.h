@@ -54,6 +54,8 @@ class NaiveConnection {
   int Connect(CompletionOnceCallback callback);
   void Disconnect();
   int Run(CompletionOnceCallback callback);
+  base::TimeTicks GetLastWriteTime() const;
+  base::TimeTicks GetCreationTime() const;
 
  private:
   enum State {
@@ -97,7 +99,7 @@ class NaiveConnection {
   const ProxyInfo& proxy_info_;
   RedirectResolver* resolver_;
   HttpNetworkSession* session_;
-  const NetworkAnonymizationKey& network_anonymization_key_;
+  NetworkAnonymizationKey network_anonymization_key_;
   const NetLogWithSource& net_log_;
 
   CompletionRepeatingCallback io_callback_;
@@ -124,6 +126,9 @@ class NaiveConnection {
   bool full_duplex_;
 
   TimeFunc time_func_;
+
+  base::TimeTicks last_write_time_[kNumDirections];
+  base::TimeTicks created_at_;
 
   // Traffic annotation for socket control.
   const NetworkTrafficAnnotationTag& traffic_annotation_;

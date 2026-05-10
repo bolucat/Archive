@@ -18,12 +18,16 @@ import (
 type Config struct {
 	PATH string `json:"-"`
 
-	NodeLabel   string `json:"node_label,omitempty"`
-	WebHost     string `json:"web_host,omitempty"`
-	WebPort     int    `json:"web_port,omitempty"`
-	WebToken    string `json:"web_token,omitempty"`
-	WebAuthUser string `json:"web_auth_user,omitempty"`
-	WebAuthPass string `json:"web_auth_pass,omitempty"`
+	NodeLabel string `json:"node_label,omitempty"`
+	WebHost   string `json:"web_host,omitempty"`
+	WebPort   int    `json:"web_port,omitempty"`
+
+	// Dashboard login password for the embedded SPA. The username is
+	// implicit (single-tenant); only the password is configured.
+	DashboardPass string `json:"dashboard_pass,omitempty"`
+	// Bearer token for non-browser callers (mizhiwu reload client,
+	// scrapers, curl). Sent via Authorization: Bearer or X-Ehco-Token.
+	ApiToken string `json:"api_token,omitempty"`
 
 	LogLeveL       string `json:"log_level,omitempty"`
 	EnablePing     bool   `json:"enable_ping,omitempty"`
@@ -48,13 +52,25 @@ func (c *Config) NeedSyncFromServer() bool {
 	return strings.Contains(c.PATH, "http")
 }
 
+// LastLoadTime returns the wall-clock timestamp of the most recent
+// successful (or attempted — see LoadConfig) reload. Zero before the
+// first call.
+func (c *Config) LastLoadTime() time.Time {
+	return c.lastLoadTime
+}
+
 func (c *Config) LoadConfig(force bool) error {
 	if c.ReloadInterval > 0 && time.Since(c.lastLoadTime).Seconds() < float64(c.ReloadInterval) && !force {
 		c.l.Warnf("Skip Load Config, last load time: %s", c.lastLoadTime)
 		return nil
 	}
-	// reset
+	// reset: drop all decoded state before re-unmarshaling. Several xray-conf
+	// types implement UnmarshalJSON that append rather than replace (e.g.
+	// PortList.Range), so re-decoding into a stale struct accumulates state
+	// across reloads. Forcing fields to nil makes the decoder allocate fresh
+	// objects.
 	c.RelayConfigs = nil
+	c.XRayConfig = nil
 	c.lastLoadTime = time.Now()
 	if c.NeedSyncFromServer() {
 		if err := c.readFromHttp(); err != nil {
@@ -132,17 +148,3 @@ func (c *Config) NeedStartCmgr() bool {
 	return c.RelaySyncURL != "" && c.RelaySyncInterval > 0
 }
 
-func (c *Config) GetMetricURL() string {
-	if !c.NeedStartWebServer() {
-		return ""
-	}
-	url := fmt.Sprintf("http://%s:%d/metrics/", c.WebHost, c.WebPort)
-	if c.WebToken != "" {
-		url += fmt.Sprintf("?token=%s", c.WebToken)
-	}
-	// for basic auth
-	if c.WebAuthUser != "" && c.WebAuthPass != "" {
-		url = fmt.Sprintf("http://%s:%s@%s:%d/metrics/", c.WebAuthUser, c.WebAuthPass, c.WebHost, c.WebPort)
-	}
-	return url
-}

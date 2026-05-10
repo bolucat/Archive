@@ -47,6 +47,11 @@ jobs:
       with:
         name: v2raya_${{ steps.get_filename.outputs.BUILD_NAME }}_${{ inputs.version }}
         path: build/
+    - name: Download Core Artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: v2raya_core_${{ steps.get_filename.outputs.BUILD_NAME }}_${{ inputs.version }}
+        path: build/
     - name: Download x64 Linux Build
       uses: actions/download-artifact@v8
       with:
@@ -67,6 +72,7 @@ jobs:
           packages="deb rpm pacman"
         fi
         sudo chmod 755 ./build/v2raya_${{ steps.get_filename.outputs.BUILD_NAME }}_${{ inputs.version }}
+        sudo chmod 755 ./build/v2raya_core_${{ steps.get_filename.outputs.BUILD_NAME }}_${{ inputs.version }}
         for package_manager in $packages; do
           if [ "$package_manager" == 'pacman' ];then
             if [ "$GOARCH" == 'arm' ] && [ "$GOARM" == '7' ];then
@@ -104,6 +110,7 @@ jobs:
             --after-install ./install/universal/after_install.sh \
             --after-upgrade ./install/universal/after_upgrade.sh \
             ./build/v2raya_${{ steps.get_filename.outputs.BUILD_NAME }}_${{ inputs.version }}=/usr/bin/v2raya \
+            ./build/v2raya_core_${{ steps.get_filename.outputs.BUILD_NAME }}_${{ inputs.version }}=/usr/bin/v2raya_core \
             ./install/universal/v2raya.service=/usr/lib/systemd/system/v2raya.service \
             ./install/universal/v2raya-lite.service=/usr/lib/systemd/user/v2raya-lite.service \
             ./install/universal/v2raya.png=/usr/share/icons/hicolor/512x512/apps/v2raya.png \

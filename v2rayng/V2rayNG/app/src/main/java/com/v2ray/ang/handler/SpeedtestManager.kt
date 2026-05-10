@@ -1,8 +1,6 @@
 package com.v2ray.ang.handler
 
-import android.os.SystemClock
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.R
 import com.v2ray.ang.dto.IPAPIInfo
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil

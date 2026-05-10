@@ -378,12 +378,14 @@ boringssl_crypto_sources := \
   crypto/evp/evp.cc \
   crypto/evp/evp_asn1.cc \
   crypto/evp/evp_ctx.cc \
+  crypto/evp/evp_kem.cc \
   crypto/evp/p_dh.cc \
   crypto/evp/p_dsa.cc \
   crypto/evp/p_ec.cc \
   crypto/evp/p_ed25519.cc \
   crypto/evp/p_hkdf.cc \
   crypto/evp/p_mldsa.cc \
+  crypto/evp/p_mlkem.cc \
   crypto/evp/p_rsa.cc \
   crypto/evp/p_x25519.cc \
   crypto/evp/pbkdf.cc \
@@ -583,6 +585,7 @@ boringssl_crypto_headers := \
   include/openssl/opensslconf.h \
   include/openssl/opensslv.h \
   include/openssl/ossl_typ.h \
+  include/openssl/params.h \
   include/openssl/pem.h \
   include/openssl/pkcs12.h \
   include/openssl/pkcs7.h \
@@ -590,6 +593,7 @@ boringssl_crypto_headers := \
   include/openssl/poly1305.h \
   include/openssl/pool.h \
   include/openssl/posix_time.h \
+  include/openssl/prefix_symbols.h \
   include/openssl/rand.h \
   include/openssl/rc4.h \
   include/openssl/ripemd.h \
@@ -666,6 +670,7 @@ boringssl_crypto_internal_headers := \
   crypto/md5/internal.h \
   crypto/mem_internal.h \
   crypto/obj/obj_dat.h \
+  crypto/params_internal.h \
   crypto/pem/internal.h \
   crypto/pkcs7/internal.h \
   crypto/pkcs8/internal.h \
@@ -678,7 +683,6 @@ boringssl_crypto_internal_headers := \
   crypto/x509/internal.h \
   gen/boringssl_prefix_symbols_internal_x86_64_win_asm.inc \
   gen/boringssl_prefix_symbols_internal_x86_win_asm.inc \
-  include/openssl/prefix_symbols.h \
   include/openssl/prefix_symbols_internal_S.h \
   include/openssl/prefix_symbols_internal_c.h \
   third_party/fiat/bedrock_unverified_bareminimum.c.inc \
@@ -851,6 +855,7 @@ boringssl_crypto_test_data := \
   crypto/evp/test/ed25519_tests.txt \
   crypto/evp/test/evp_tests.txt \
   crypto/evp/test/mldsa_tests.txt \
+  crypto/evp/test/mlkem_tests.txt \
   crypto/evp/test/rsa_tests.txt \
   crypto/evp/test/scrypt_tests.txt \
   crypto/evp/test/x25519_tests.txt \
@@ -2826,8 +2831,23 @@ boringssl_rust_bssl_crypto_sources := \
   rust/bssl-crypto/src/tls12_prf.rs \
   rust/bssl-crypto/src/x25519.rs
 
+boringssl_rust_bssl_macros_sources := \
+  rust/bssl-macros/src/lib.rs
+
 boringssl_rust_bssl_sys_sources := \
   rust/bssl-sys/src/lib.rs
+
+boringssl_rust_bssl_x509_sources := \
+  rust/bssl-x509/src/certificates.rs \
+  rust/bssl-x509/src/errors.rs \
+  rust/bssl-x509/src/ffi.rs \
+  rust/bssl-x509/src/keys.rs \
+  rust/bssl-x509/src/lib.rs \
+  rust/bssl-x509/src/oids.rs \
+  rust/bssl-x509/src/params.rs \
+  rust/bssl-x509/src/store.rs \
+  rust/bssl-x509/src/tests.rs \
+  rust/bssl-x509/src/verify.rs
 
 boringssl_ssl_sources := \
   ssl/bio_ssl.cc \

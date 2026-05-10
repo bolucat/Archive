@@ -151,6 +151,7 @@ func Run() error {
 	corsConfig.AllowWebSockets = true
 	corsConfig.AllowCredentials = true
 	corsConfig.AddAllowHeaders("Authorization", common.RequestIdHeader)
+	corsConfig.AddExposeHeaders("Content-Disposition")
 	engine.Use(cors.New(corsConfig))
 	noAuth := engine.Group("api",
 		nocache,
@@ -159,6 +160,7 @@ func Run() error {
 	{
 		noAuth.GET("version", controller.GetVersion)
 		noAuth.POST("login", controller.PostLogin)
+		noAuth.GET("account", controller.GetAccount)
 		noAuth.POST("account", controller.PostAccount)
 	}
 	auth := engine.Group("api",
@@ -195,6 +197,9 @@ func Run() error {
 		auth.PATCH("subscription", controller.PatchSubscription)
 		auth.GET("ports", controller.GetPorts)
 		auth.PUT("ports", controller.PutPorts)
+		auth.GET("customInbound", controller.GetCustomInbound)
+		auth.POST("customInbound", controller.PostCustomInbound)
+		auth.DELETE("customInbound", controller.DeleteCustomInbound)
 		//auth.PUT("account", controller.PutAccount)
 		auth.GET("dnsRules", controller.GetDnsRules)
 		auth.PUT("dnsRules", controller.PutDnsRules)
@@ -204,6 +209,7 @@ func Run() error {
 		auth.GET("outbound", controller.GetOutbound)
 		auth.POST("outbound", controller.PostOutbound)
 		auth.PUT("outbound", controller.PutOutbound)
+		auth.PUT("outboundConnections", controller.PutOutboundConnections)
 		auth.DELETE("outbound", controller.DeleteOutbound)
 		auth.GET("message", controller.WsMessage)
 		auth.GET("logger", controller.GetLogger)

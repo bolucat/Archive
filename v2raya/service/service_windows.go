@@ -152,7 +152,7 @@ func cleanupResources() {
 	}
 
 	// Close database connection
-	if err := db.DB().Close(); err != nil {
+	if err := db.Close(); err != nil {
 		elog.Error(1, fmt.Sprintf("Failed to close database: %v", err))
 	} else {
 		elog.Info(1, "Database connection closed")

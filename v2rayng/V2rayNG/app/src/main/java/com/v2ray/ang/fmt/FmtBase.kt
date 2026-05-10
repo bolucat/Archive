@@ -4,7 +4,6 @@ import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.ProfileItem
 import com.v2ray.ang.enums.NetworkType
 import com.v2ray.ang.extension.nullIfBlank
-import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.Utils
 import java.net.URI

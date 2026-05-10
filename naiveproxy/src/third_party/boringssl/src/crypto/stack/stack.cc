@@ -47,7 +47,7 @@ struct stack_st {
 static const size_t kMinSize = 4;
 
 OPENSSL_STACK *OPENSSL_sk_new(OPENSSL_sk_cmp_func comp) {
-  OPENSSL_STACK *ret = NewZeroed<OPENSSL_STACK>();
+  OPENSSL_STACK *ret = New<OPENSSL_STACK>();
   if (ret == nullptr) {
     return nullptr;
   }
@@ -331,7 +331,7 @@ OPENSSL_STACK *OPENSSL_sk_dup(const OPENSSL_STACK *sk) {
     return nullptr;
   }
 
-  OPENSSL_STACK *ret = NewZeroed<OPENSSL_STACK>();
+  OPENSSL_STACK *ret = New<OPENSSL_STACK>();
   if (ret == nullptr) {
     return nullptr;
   }
@@ -359,7 +359,7 @@ void OPENSSL_sk_sort(OPENSSL_STACK *sk,
     return;
   }
 
-  std::sort(sk->data, sk->data + sk->num, [&](void *a, void *b) {
+  std::stable_sort(sk->data, sk->data + sk->num, [&](void *a, void *b) {
     return call_cmp_func(sk->comp, a, b) < 0;
   });
   sk->sorted = 1;

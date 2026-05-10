@@ -12,30 +12,15 @@
           </b-tag>
         </b-navbar-item>
         <b-navbar-item tag="div">
-          <b-dropdown v-if="updateOutboundDropdown" :triggers="isMobile ? ['click'] : ['click', 'hover']"
-            aria-role="list" :close-on-click="false" @mouseenter.native="handleOutboundDropdownActiveChange"
-            @active-change="handleOutboundDropdownActiveChange">
-            <template #trigger>
-              <b-tag class="pointerTag" type="is-info" icon-right="menu-down">{{ outboundName.toUpperCase() }}
-              </b-tag>
-            </template>
-
-            <b-dropdown-item v-for="outbound in outbounds" :key="outbound" aria-role="listitem"
-              class="is-flex padding-right-1rem justify-content-space-between outbound-dropdown"
-              @mouseenter.native="handleOnOutboundMouseEnter(outbound)" @mouseleave.native="handleOnOutboundMouseLeave"
-              @click="outboundName = outbound">
-              <p class="is-relative is-fullwidth">
-                <span>{{ outboundNameDecorator(outbound) }}</span>
-                <span>
-                  <i v-show="isMobile || outboundDropdownHover[outbound]" class="iconfont icon-setting outbound-setting"
-                    @click="handleClickOutboundSetting($event, outbound)"></i></span>
-              </p>
-            </b-dropdown-item>
-            <b-dropdown-item aria-role="listitem" class="is-flex padding-right-1rem" separator></b-dropdown-item>
-            <b-dropdown-item aria-role="listitem" class="is-flex padding-right-1rem" @click="handleAddOutbound">{{
-              $t("operations.addOutbound") }}
-            </b-dropdown-item>
-          </b-dropdown>
+          <OutboundGroupPanel
+            :outbounds="outbounds"
+            :current-outbound="outboundName"
+            :is-mobile="isMobile"
+            @select="outboundName = $event"
+            @add-outbound="handleAddOutbound"
+            @changed="handleGroupChanged"
+            @group-deleted="handleGroupDeleted"
+          />
         </b-navbar-item>
       </template>
       <template slot="start"></template>
@@ -72,8 +57,8 @@
           </a>
           <b-dropdown-item v-for="lang of langs" :key="lang.code" aria-role="menuitem" class="no-select"
             @click="handleClickLang(lang.code)">
-            <span style="font-weight: 500; min-width: 60px; display: inline-block">{{ lang.code }}</span>
-            <span style="margin-left: 8px; color: #7a7a7a">{{ lang.label }}</span>
+            <span style="font-weight: 500; min-width: 120px; display: inline-block">{{ lang.label }}</span>
+            <span style="margin-left: 8px; color: #7a7a7a">{{ lang.code }}</span>
           </b-dropdown-item>
         </b-dropdown>
         <b-dropdown position="is-bottom-left" aria-role="menu" style="margin-right: 10px" class="menudropdown">
@@ -91,10 +76,13 @@
         </b-dropdown>
       </template>
     </b-navbar>
-    <node ref="nodeRef" v-model="runningState" :outbound="outboundName" :observatory="observatory" />
+    <node ref="nodeRef" v-model="runningState" :outbound="outboundName" :outbounds="outbounds" :observatory="observatory" />
     <b-modal :active.sync="showCustomPorts" has-modal-card trap-focus aria-role="dialog" aria-modal
       class="modal-custom-ports">
       <ModalCustomAddress @close="showCustomPorts = false" />
+    </b-modal>
+    <b-modal :active.sync="loginModalActive" has-modal-card trap-focus aria-role="dialog" aria-modal class="modal-login modal-login-app">
+      <ModalLogin :first="loginModalFirst" @close="loginModalActive = false" />
     </b-modal>
     <div id="login"></div>
   </div>
@@ -106,17 +94,22 @@ import node from "@/node";
 import { Base64 } from "js-base64";
 import ModalCustomAddress from "@/components/modalCustomPorts";
 import ModalOutboundSetting from "@/components/modalOutboundSetting";
+import OutboundGroupPanel from "@/components/outboundGroupPanel";
 import { parseURL } from "@/assets/js/utils";
 import { waitingConnected } from "@/assets/js/networkInspect";
 import axios from "@/plugins/axios";
 import ModalLog from "@/components/modalLog";
+import ModalLogin from "@/components/modalLogin";
+import { ModalProgrammatic } from "buefy";
 
 export default {
-  components: { ModalCustomAddress, node },
+  components: { ModalCustomAddress, node, OutboundGroupPanel, ModalLogin },
   data() {
     return {
       ws: null,
       observatory: null,
+      loginModalActive: false,
+      loginModalFirst: false,
       showSidebar: true,
       statusMap: {
         [this.$t("common.checkRunning")]: "is-light",
@@ -160,7 +153,7 @@ export default {
     currentLangLabel() {
       const currentLang = localStorage["_lang"] || "zh";
       const lang = this.langs.find(l => l.flag === currentLang);
-      return lang ? lang.code : "zh_CN";
+      return lang ? lang.label : "中文-中国";
     },
     isDarkTheme() {
       if (this.themePreference === 'dark') return true;
@@ -180,6 +173,30 @@ export default {
     if (ba) {
       let u = parseURL(ba);
       document.title = `v2rayA - ${u.host}:${u.port}`;
+    }
+    // 没有 token：先检查是否需要注册，避免触发需要认证的请求导致 401 二次弹窗
+    if (!localStorage["token"]) {
+      // 使用重试机制确保注册页面可靠弹出
+      const checkAccount = (retries = 3) => {
+        this.$axios({
+          url: apiRoot + "/account",
+          method: "get",
+        }).then((res) => {
+          if (res.data.code === "SUCCESS") {
+            const hasAnyAccounts = !!(res.data.data && res.data.data.hasAnyAccounts);
+            // first=true -> register flow, first=false -> login flow
+            this.showLoginModal(!hasAnyAccounts);
+          }
+        }).catch(() => {
+          if (retries > 0) {
+            // 网络错误时延迟重试，避免因后端尚未就绪而错过注册页面
+            setTimeout(() => checkAccount(retries - 1), 2000);
+          }
+        });
+      };
+      checkAccount();
+      // 无 token 时跳过需要认证的请求，注册/登录后会自动 remount
+      return;
     }
     this.$axios({
       url: apiRoot + "/version",
@@ -207,7 +224,15 @@ export default {
         this.$buefy.toast.open(toastConf);
         localStorage["docker"] = res.data.data.dockerMode;
         localStorage["version"] = res.data.data.version;
-        if (res.data.data.serviceValid === false) {
+        if (res.data.data.coreVersionValid === false) {
+          this.$buefy.toast.open({
+            message: this.$t("version.coreVersionMismatch", { err: res.data.data.coreVersionErr || "" }),
+            type: "is-danger",
+            position: "is-top",
+            queue: false,
+            duration: 0,
+          });
+        } else if (res.data.data.serviceValid === false) {
           this.$buefy.toast.open({
             message: this.$t("version.v2rayInvalid"),
             type: "is-danger",
@@ -227,14 +252,18 @@ export default {
         localStorage["lite"] = res.data.data.lite;
         localStorage["loadBalanceValid"] = res.data.data.loadBalanceValid;
         localStorage["variant"] = res.data.data.variant;
+        localStorage["coreVersionValid"] = res.data.data.coreVersionValid;
+        localStorage["coreVersionErr"] = res.data.data.coreVersionErr || "";
       }
     });
     this.$axios({
       url: apiRoot + "/outbounds",
     }).then((res) => {
       if (res.data.code === "SUCCESS") {
-        this.outbounds = res.data.data.outbounds;
+        this.outbounds = this.normalizeOutbounds(res.data.data.outbounds);
       }
+    }).catch(() => {
+      // 静默处理认证错误（如 token 过期），避免触发 axios 401 拦截器弹出登录框
     });
     this.connectWsMessage();
   },
@@ -247,6 +276,10 @@ export default {
     }
   },
   methods: {
+    showLoginModal(first) {
+      this.loginModalFirst = first;
+      this.loginModalActive = true;
+    },
     connectWsMessage() {
       const that = this;
       let url = apiRoot;
@@ -265,9 +298,13 @@ export default {
         this.ws.close();
       }
       const ws = new WebSocket(url);
+      // WebSocket 重连指数退避参数
+      if (typeof this._wsRetries === "undefined") {
+        this._wsRetries = 0;
+      }
       ws.onopen = () => {
         // console.log("ws opened");
-        //
+        this._wsRetries = 0; // 连接成功后重置重试计数
       };
       ws.onmessage = (msg) => {
         msg.data && that.handleMessage(JSON.parse(msg.data));
@@ -275,12 +312,14 @@ export default {
       ws.onclose = () => {
         ws.onmessage = null;
         that.ws = null;
-        // console.log("ws closed");
+        // 指数退避重连：1s, 2s, 4s, 8s... 最大 30 秒
+        const delay = Math.min(1000 * Math.pow(2, that._wsRetries), 30000);
+        that._wsRetries++;
         setTimeout(() => {
           if (that.ws === null) {
             that.connectWsMessage();
           }
-        }, 3000);
+        }, delay);
       };
       this.ws = ws;
     },
@@ -300,6 +339,45 @@ export default {
         this.updateOutboundDropdown = false;
         this.updateOutboundDropdown = true;
       }
+    },
+    handleGroupChanged() {
+      // Refresh node.vue's data after group membership change from the panel
+      if (this.$refs.nodeRef && this.$refs.nodeRef.created) {
+        this.$refs.nodeRef.$axios({ url: apiRoot + "/touch" }).then((res) => {
+          if (res.data && res.data.code === "SUCCESS") {
+            this.$refs.nodeRef.refreshTableData(res.data.data.touch, res.data.data.running);
+            this.$refs.nodeRef.updateConnectView();
+          }
+        }).catch(() => {});
+      }
+    },
+    handleGroupDeleted(newOutbounds) {
+      this.outbounds = this.normalizeOutbounds(newOutbounds);
+      // If deleted group was selected, fall back to proxy
+      if (!this.outbounds.includes(this.outboundName)) {
+        this.outboundName = "proxy";
+      }
+    },
+    normalizeOutbounds(outbounds) {
+      const seen = new Set();
+      const normalized = [];
+      if (outbounds instanceof Array) {
+        for (const outbound of outbounds) {
+          if (typeof outbound !== "string") {
+            continue;
+          }
+          const name = outbound.trim();
+          if (!name || seen.has(name)) {
+            continue;
+          }
+          seen.add(name);
+          normalized.push(name);
+        }
+      }
+      if (!seen.has("proxy")) {
+        normalized.unshift("proxy");
+      }
+      return normalized;
     },
     outboundNameDecorator(outbound) {
       if (this.runningState.outboundToServerName[outbound]) {
@@ -342,7 +420,7 @@ export default {
                   position: "is-top",
                   queue: false,
                 });
-                this.outbounds = res.data.data.outbounds;
+                this.outbounds = this.normalizeOutbounds(res.data.data.outbounds);
               } else {
                 this.$buefy.toast.open({
                   message: res.data.message,
@@ -380,7 +458,7 @@ export default {
               position: "is-top",
               queue: false,
             });
-            this.outbounds = res.data.data.outbounds;
+            this.outbounds = this.normalizeOutbounds(res.data.data.outbounds);
             if (this.outboundName === outbound) {
               this.outboundName = "proxy";
             }
@@ -673,6 +751,23 @@ a {
 
 .modal-custom-ports {
   z-index: 999;
+}
+
+/* Keep App-level login modal above any other modal overlays. */
+.modal-login-app {
+  z-index: 5000 !important;
+}
+
+.modal-login-app .modal-background {
+  z-index: 0 !important;
+}
+
+.modal-login-app .modal-content,
+.modal-login-app .animation-content,
+.modal-login-app .modal-card {
+  position: relative;
+  z-index: 1 !important;
+  pointer-events: auto !important;
 }
 
 .after-line-dot5 {

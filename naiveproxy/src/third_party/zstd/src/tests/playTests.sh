@@ -1075,13 +1075,19 @@ cat tmp | zstd -14 -f --size-hint=11050 | zstd -t  # slightly too high
 cat tmp | zstd -14 -f --size-hint=10950 | zstd -t  # slightly too low
 cat tmp | zstd -14 -f --size-hint=22000 | zstd -t  # considerably too high
 cat tmp | zstd -14 -f --size-hint=5500  | zstd -t  # considerably too low
-println "test : allows and interprets K,KB,KiB,M,MB and MiB suffix"
+println "test : allows and interprets K,KB,KiB,M,MB,MiB,G,GB and GiB suffix"
 cat tmp | zstd -14 -f --size-hint=11K | zstd -t
 cat tmp | zstd -14 -f --size-hint=11KB | zstd -t
 cat tmp | zstd -14 -f --size-hint=11KiB | zstd -t
 cat tmp | zstd -14 -f --size-hint=1M  | zstd -t
 cat tmp | zstd -14 -f --size-hint=1MB  | zstd -t
 cat tmp | zstd -14 -f --size-hint=1MiB  | zstd -t
+cat tmp | zstd -14 -f --size-hint=1G  | zstd -t
+cat tmp | zstd -14 -f --size-hint=1GB  | zstd -t
+cat tmp | zstd -14 -f --size-hint=1GiB  | zstd -t
+cat tmp | zstd -14 -f --size-hint=3G  | zstd -t
+cat tmp | zstd -14 -f --size-hint=3GB  | zstd -t
+cat tmp | zstd -14 -f --size-hint=3GiB  | zstd -t
 
 
 println "\n===>  dictionary tests "
@@ -1684,6 +1690,8 @@ roundTripTest -g1M -P50 "1 --single-thread --long=29" " --memory=512MB"
 roundTripTest -g1M -P50 "1 --single-thread --long=29 --zstd=wlog=28" " --memory=256MB"
 roundTripTest -g1M -P50 "1 --single-thread --long=29" " --long=28 --memory=512MB"
 roundTripTest -g1M -P50 "1 --single-thread --long=29" " --zstd=wlog=28 --memory=512MB"
+roundTripTest -g1M -P50 "1 --single-thread --long=30" " --memory=1GB"
+roundTripTest -g1M -P50 "1 --single-thread --long=30" " --zstd=wlog=29 --memory=1GB"
 
 
 if [ "$ZSTD_LIB_EXCLUDE_COMPRESSORS_DFAST_AND_UP" -ne "1" ]; then

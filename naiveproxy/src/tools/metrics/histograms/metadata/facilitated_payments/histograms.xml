@@ -260,7 +260,7 @@ reviewer.
 
 <histogram
     name="FacilitatedPayments.Ewallet.InitiatePayment.{Result}.Latency.{Scheme}"
-    units="ms" expires_after="2026-06-01">
+    units="ms" expires_after="2026-09-27">
   <owner>junhuihe@google.com</owner>
   <owner>qihuizhao@google.com</owner>
   <owner>payments-autofill-team@google.com</owner>
@@ -511,6 +511,32 @@ reviewer.
   </summary>
 </histogram>
 
+<histogram name="FacilitatedPayments.Pix.Iframe.IsSameOrigin" enum="Boolean"
+    expires_after="2027-02-01">
+  <owner>longsheng@google.com</owner>
+  <owner>siashah@google.com</owner>
+  <owner>payments-autofill-team@google.com</owner>
+  <summary>
+    Logged when a Pix code is copied to the clipboard within an iframe if the
+    iframe's URL is empty, about:blank, or about:srcdoc. Indicates whether the
+    iframe is same-origin with the main frame. This is useful for diagnosing
+    failures in the allowlist check.
+  </summary>
+</histogram>
+
+<histogram name="FacilitatedPayments.Pix.Iframe.UrlType"
+    enum="FacilitatedPayments.Pix.IframeUrlType" expires_after="2027-02-01">
+  <owner>longsheng@google.com</owner>
+  <owner>siashah@google.com</owner>
+  <owner>payments-autofill-team@google.com</owner>
+  <summary>
+    A Pix-specific histogram. Emits the type of URL for the iframe when a likely
+    Pix code is copied to the clipboard within an iframe. [Trigger] User copies
+    a likely Pix code to the clipboard in an iframe. [Frequency] Logged at most
+    once per Pix payflow.
+  </summary>
+</histogram>
+
 <histogram
     name="FacilitatedPayments.Pix.InitiatePurchaseAction.{Result}.Latency"
     units="ms" expires_after="2026-08-02">
@@ -667,7 +693,7 @@ reviewer.
 </histogram>
 
 <histogram name="FacilitatedPayments.Pix.Transaction.{Result}.Latency"
-    units="ms" expires_after="2026-06-01">
+    units="ms" expires_after="2026-09-27">
   <owner>siashah@google.com</owner>
   <owner>payments-autofill-team@google.com</owner>
   <summary>

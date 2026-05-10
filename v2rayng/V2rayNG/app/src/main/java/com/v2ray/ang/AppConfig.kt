@@ -78,6 +78,7 @@ object AppConfig {
     const val PREF_HEV_TUNNEL_RW_TIMEOUT = "pref_hev_tunnel_rw_timeout_v2"
     const val PREF_AUTO_REMOVE_INVALID_AFTER_TEST = "pref_auto_remove_invalid_after_test"
     const val PREF_AUTO_SORT_AFTER_TEST = "pref_auto_sort_after_test"
+    const val PREF_REAL_PING_CONCURRENCY = "pref_real_ping_concurrency"
 
     /** Cache keys. */
     const val CACHE_SUBSCRIPTION_ID = "cache_subscription_id"
@@ -164,17 +165,15 @@ object AppConfig {
     const val MSG_STATE_RESTART = 5
     const val MSG_MEASURE_DELAY = 6
     const val MSG_MEASURE_DELAY_SUCCESS = 61
-    const val MSG_MEASURE_CONFIG = 7
-    const val MSG_MEASURE_CONFIG_SUCCESS = 71
-    const val MSG_MEASURE_CONFIG_CANCEL = 72
+    const val MSG_MEASURE_CONFIG_START = 7
+    const val MSG_MEASURE_CONFIG_CANCEL = 71
+    const val MSG_MEASURE_CONFIG_SUCCESS = 72
     const val MSG_MEASURE_CONFIG_NOTIFY = 73
     const val MSG_MEASURE_CONFIG_FINISH = 74
 
     /** Notification channel IDs and names. */
     const val RAY_NG_CHANNEL_ID = "RAY_NG_M_CH_ID"
     const val RAY_NG_CHANNEL_NAME = "v2rayNG Background Service"
-    const val SUBSCRIPTION_UPDATE_CHANNEL = "subscription_update_channel"
-    const val SUBSCRIPTION_UPDATE_CHANNEL_NAME = "Subscription Update Service"
 
     /** Protocols Scheme **/
     const val VMESS = "vmess://"

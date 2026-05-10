@@ -22,11 +22,16 @@ jobs:
       with:
         name: v2raya_windows_x64_${{ inputs.version }}.exe
         path: D:\Downloads
+    - name: Download Core Artifact Windows x64
+      uses: actions/download-artifact@v8
+      with:
+        name: v2raya_core_windows_x64_${{ inputs.version }}.exe
+        path: D:\Downloads
     - name: Download TinyTun x64
       shell: pwsh
       run: |
-        $Url_TinyTun_x64 = "https://github.com/v2rayA/TinyTun/releases/download/v0.0.2-alpha.3/tinytun-v0.0.2-alpha.3-x86_64-pc-windows-msvc.zip"
-        $sha256_TinyTun_x64 = "a5e8c92999dc8d64862d14552ec833ea1ee2044cc8ac395eda03b041e1932ed4"
+        $Url_TinyTun_x64 = "https://github.com/v2rayA/TinyTun/releases/download/v0.0.2-alpha.7/tinytun-v0.0.2-alpha.7-x86_64-pc-windows-gnullvm.zip"
+        $sha256_TinyTun_x64 = "56fc9d62e5ddac537f74794dd2e704edd70103b1c1f3cc9ad00081a1e49e792e"
         Invoke-WebRequest $Url_TinyTun_x64 -OutFile "D:\tinytun-x64.zip"
         $hash_TinyTun_x64 = Get-FileHash -Path "D:\tinytun-x64.zip" -Algorithm SHA256
         if ($hash_TinyTun_x64.Hash -ne $sha256_TinyTun_x64) {
@@ -40,11 +45,16 @@ jobs:
       with:
         name: v2raya_windows_arm64_${{ inputs.version }}.exe
         path: D:\Downloads
+    - name: Download Core Artifact Windows arm64
+      uses: actions/download-artifact@v8
+      with:
+        name: v2raya_core_windows_arm64_${{ inputs.version }}.exe
+        path: D:\Downloads
     - name: Download TinyTun arm64
       shell: pwsh
       run: |
-        $Url_TinyTun_arm64 = "https://github.com/v2rayA/TinyTun/releases/download/v0.0.2-alpha.3/tinytun-v0.0.2-alpha.3-aarch64-pc-windows-msvc.zip"
-        $sha256_TinyTun_arm64 = "b39a39e319f12935580f62b7e93b83a013d45d9aa2ec7ce48433acf77fbafed9"
+        $Url_TinyTun_arm64 = "https://github.com/v2rayA/TinyTun/releases/download/v0.0.2-alpha.7/tinytun-v0.0.2-alpha.7-aarch64-pc-windows-gnullvm.zip"
+        $sha256_TinyTun_arm64 = "59e94de419e91c98957644cd2e07e6b8f3fee22907edef9c08876174439a8689"
         Invoke-WebRequest $Url_TinyTun_arm64 -OutFile "D:\tinytun-arm64.zip"
         $hash_TinyTun_arm64 = Get-FileHash -Path "D:\tinytun-arm64.zip" -Algorithm SHA256
         if ($hash_TinyTun_arm64.Hash -ne $sha256_TinyTun_arm64) {
@@ -69,25 +79,27 @@ jobs:
         ## Copy v2rayA to Destination Directory
         Copy-Item -Path D:\Downloads\v2raya_windows_arm64_${{ inputs.version }}.exe -Destination D:\v2raya-arm64-windows\bin\v2raya.exe
         Copy-Item -Path D:\Downloads\v2raya_windows_x64_${{ inputs.version }}.exe -Destination D:\v2raya-x64compatible-windows\bin\v2raya.exe
+        Copy-Item -Path D:\Downloads\v2raya_core_windows_arm64_${{ inputs.version }}.exe -Destination D:\v2raya-arm64-windows\bin\v2raya_core.exe
+        Copy-Item -Path D:\Downloads\v2raya_core_windows_x64_${{ inputs.version }}.exe -Destination D:\v2raya-x64compatible-windows\bin\v2raya_core.exe
         Copy-Item -Path ".\install\windows-inno\v2raya.ico" -Destination "D:\v2raya.ico"
         ## Copy TinyTun to Destination Directory
         Expand-Archive -Path "D:\tinytun-x64.zip" -DestinationPath "D:\tinytun-x64"
-        Move-Item -Path "D:\tinytun-x64\tinytun-x86_64-pc-windows-msvc.exe" -Destination "D:\v2raya-x64compatible-windows\bin\tinytun.exe"
+        Move-Item -Path "D:\tinytun-x64\tinytun-x86_64-pc-windows-gnullvm.exe" -Destination "D:\v2raya-x64compatible-windows\bin\tinytun.exe"
         Move-Item -Path "D:\tinytun-x64\wintun.dll" -Destination "D:\v2raya-x64compatible-windows\bin\wintun.dll"
         Expand-Archive -Path "D:\tinytun-arm64.zip" -DestinationPath "D:\tinytun-arm64"
-        Move-Item -Path "D:\tinytun-arm64\tinytun-aarch64-pc-windows-msvc.exe" -Destination "D:\v2raya-arm64-windows\bin\tinytun.exe"
+        Move-Item -Path "D:\tinytun-arm64\tinytun-aarch64-pc-windows-gnullvm.exe" -Destination "D:\v2raya-arm64-windows\bin\tinytun.exe"
         Move-Item -Path "D:\tinytun-arm64\wintun.dll" -Destination "D:\v2raya-arm64-windows\bin\wintun.dll"
-        ## Download and extract v2ray
-        $Url_v2ray_x64 = "https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-windows-64.zip"
-        $Url_v2ray_A64 = "https://github.com/v2fly/v2ray-core/releases/latest/download/v2ray-windows-arm64-v8a.zip"
-        Invoke-WebRequest $Url_v2ray_x64 -OutFile "D:\v2ray-windows-x64.zip"
-        Expand-Archive -Path "D:\v2ray-windows-x64.zip" -DestinationPath "D:\v2raya-x64compatible-windows\bin\"
-        Move-Item -Path "D:\v2raya-x64compatible-windows\bin\*.dat" -Destination "D:\v2raya-x64compatible-windows\data\"
-        Remove-Item -Path "D:\v2raya-x64compatible-windows\bin\*.json" -Force -Recurse -ErrorAction SilentlyContinue
-        Invoke-WebRequest $Url_v2ray_A64 -OutFile "D:\v2ray-windows-A64.zip"
-        Expand-Archive -Path "D:\v2ray-windows-A64.zip" -DestinationPath "D:\v2raya-arm64-windows\bin\"
-        Move-Item -Path "D:\v2raya-arm64-windows\bin\*.dat" -Destination "D:\v2raya-arm64-windows\data\"
-        Remove-Item -Path "D:\v2raya-arm64-windows\bin\*.json" -Force -Recurse -ErrorAction SilentlyContinue
+        ## Download DAT files directly from Loyalsoldier release
+        $DatBaseUrl = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download"
+        $DatFiles = @("geoip.dat", "geosite.dat")
+        foreach ($DatFile in $DatFiles) {
+          Invoke-WebRequest "$DatBaseUrl/$DatFile" -OutFile "D:\$DatFile"
+          Copy-Item -Path "D:\$DatFile" -Destination "D:\v2raya-x64compatible-windows\data\$DatFile"
+          Copy-Item -Path "D:\$DatFile" -Destination "D:\v2raya-arm64-windows\data\$DatFile"
+        }
+        ## Keep legacy alias for compatibility
+        Copy-Item -Path "D:\geosite.dat" -Destination "D:\v2raya-x64compatible-windows\data\LoyalsoldierSite.dat"
+        Copy-Item -Path "D:\geosite.dat" -Destination "D:\v2raya-arm64-windows\data\LoyalsoldierSite.dat"
         Copy-Item -Path ".\LICENSE" -Destination "D:\LICENSE.txt"
         Copy-Item -Path ".\install\windows-inno\ChineseSimplified.isl" -Destination "D:\ChineseSimplified.isl"
         ## Set Version

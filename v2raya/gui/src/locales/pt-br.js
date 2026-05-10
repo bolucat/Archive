@@ -146,7 +146,6 @@ export default {
       closed: "Desligado",
       advanced: "Configuração Avançada",
       leastPing: "Menor Latência Primeiro",
-      backendDaeuniverse: "daeuniverse/outbound",
       backendV2ray: "v2ray / xray",
       backendSystemDefault: "Padrão do Sistema",
     },

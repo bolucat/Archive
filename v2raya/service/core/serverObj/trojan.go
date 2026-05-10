@@ -141,67 +141,10 @@ func (t *Trojan) ConfigurationMT(info PriorInfo) (c Configuration, err error) {
 }
 
 func (t *Trojan) Configuration(info PriorInfo) (c Configuration, err error) {
-	if info.Backend == "v2ray" {
-		if info.Variant == where.Xray {
-			return t.ConfigurationMT(info)
-		}
-		return t.ConfigurationMC(info)
+	if info.Variant == where.Xray {
+		return t.ConfigurationMT(info)
 	}
-	// daeuniverse/outbound path
-	socks5 := url.URL{
-		Scheme: "socks5",
-		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(info.PluginPort)),
-	}
-	// Build chain URL without v2raya metadata
-	chainURL := t.exportToChainURL()
-	chain := []string{socks5.String(), chainURL}
-	return Configuration{
-		CoreOutbound: info.PluginObj(),
-		PluginChain:  strings.Join(chain, ","),
-		UDPSupport:   true,
-	}, nil
-}
-
-// exportToChainURL returns the URL for use in the daeuniverse plugin chain,
-// without v2rayA-specific metadata.
-func (t *Trojan) exportToChainURL() string {
-	u := &url.URL{
-		Scheme:   "trojan",
-		User:     url.User(t.Password),
-		Host:     net.JoinHostPort(t.Server, strconv.Itoa(t.Port)),
-		Fragment: t.Name,
-	}
-	query := u.Query()
-	setValue(&query, "type", t.Type)
-	net := strings.ToLower(t.Type)
-	switch net {
-	case "websocket", "ws", "http", "h2":
-		setValue(&query, "path", t.Path)
-		setValue(&query, "host", t.Host)
-	case "mkcp", "kcp":
-		setValue(&query, "headerType", t.Type)
-		setValue(&query, "seed", t.Path)
-	case "tcp":
-		setValue(&query, "headerType", t.Type)
-		setValue(&query, "host", t.Host)
-		setValue(&query, "path", t.Path)
-	case "grpc":
-		setValue(&query, "serviceName", t.ServiceName)
-	}
-	if t.AllowInsecure {
-		query.Set("allowInsecure", "1")
-	}
-	setValue(&query, "sni", t.Sni)
-	if t.Protocol == "trojan-go" {
-		u.Scheme = "trojan-go"
-		setValue(&query, "host", t.Host)
-		setValue(&query, "encryption", t.Encryption)
-		setValue(&query, "type", t.Type)
-		setValue(&query, "path", t.Path)
-		setValue(&query, "serviceName", t.ServiceName)
-	}
-	u.RawQuery = query.Encode()
-	return u.String()
+	return t.ConfigurationMC(info)
 }
 
 func (t *Trojan) ExportToURL() string {
@@ -254,7 +197,7 @@ func (t *Trojan) ExportToURL() string {
 }
 
 func (t *Trojan) NeedPluginPort() bool {
-	return true
+	return false
 }
 
 func (t *Trojan) ProtoToShow() string {

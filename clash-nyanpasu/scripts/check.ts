@@ -167,6 +167,48 @@ function normalizeVersion(version?: string): string | undefined {
   return version;
 }
 
+function isValidVersion(version?: string): version is string {
+  return Boolean(version && /^[A-Za-z0-9._+-]+$/.test(version));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractVersionFromAssetList(
+  page: string,
+  assetTemplate: string,
+): string | undefined {
+  const [prefix, suffix] = assetTemplate.split("{}");
+  if (prefix === undefined || suffix === undefined) return undefined;
+
+  const matcher = new RegExp(
+    `${escapeRegExp(prefix)}([A-Za-z0-9._+-]+)${escapeRegExp(suffix)}`,
+  );
+  const matched = page.match(matcher)?.[1];
+  return isValidVersion(matched) ? matched : undefined;
+}
+
+async function fetchText(
+  url: string,
+  options?: { headers?: HeadersInit },
+): Promise<string | undefined> {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0",
+      ...options?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    return undefined;
+  }
+
+  return await response.text();
+}
+
 function formatResolveInfo(info: ResolveInfo): TaskDetail {
   return {
     version: normalizeVersion(info.version),
@@ -262,6 +304,9 @@ const CLASH_META_ALPHA_MANIFEST: ClashManifest = {
     "https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha",
   ARCH_MAPPING: versionManifest.arch_template.mihomo_alpha as ArchMapping,
 };
+
+const MIHOMO_ALPHA_ASSETS_URL =
+  "https://github.com/MetaCubeX/mihomo/releases/expanded_assets/Prerelease-Alpha";
 
 const CLASH_RS_MANIFEST: ClashManifest = {
   URL_PREFIX: "https://github.com/Watfaq/clash-rs/releases/download/",
@@ -544,12 +589,27 @@ function getClashMetaInfo(): BinInfo {
 
 async function getClashMetaAlphaInfo(): Promise<BinInfo> {
   const { ARCH_MAPPING, URL_PREFIX, VERSION_URL } = CLASH_META_ALPHA_MANIFEST;
-  const resp = await fetch(VERSION_URL!);
-  const version = normalizeVersion((await resp.text()).trim()) ??
-    versionManifest.latest.mihomo_alpha;
-  debugLog(`mihomo-alpha version: ${version}`);
   const archLabel = mapArch(platform, arch);
-  const name = ARCH_MAPPING[archLabel].replace("{}", version);
+  const assetTemplate = ARCH_MAPPING[archLabel];
+
+  const versionFromFile = normalizeVersion(
+    (await fetchText(VERSION_URL!))?.trim(),
+  );
+  const versionFromAssets = extractVersionFromAssetList(
+    (await fetchText(MIHOMO_ALPHA_ASSETS_URL)) ?? "",
+    assetTemplate,
+  );
+  const fallbackVersion = normalizeVersion(versionManifest.latest.mihomo_alpha);
+  const version = [versionFromFile, versionFromAssets, fallbackVersion].find(
+    isValidVersion,
+  );
+
+  if (!version) {
+    throw new Error("cannot resolve mihomo-alpha version");
+  }
+
+  debugLog(`mihomo-alpha version: ${version}`);
+  const name = assetTemplate.replace("{}", version);
   const isWin = platform === "win32";
   return {
     name: "mihomo-alpha",

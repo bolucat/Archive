@@ -144,7 +144,6 @@ export default {
       closed: "خاموش",
       advanced: "تنظیمات پیشرفته",
       leastPing: "اول سرور با پینگ کمتر",
-      backendDaeuniverse: "daeuniverse/outbound",
       backendV2ray: "v2ray / xray",
       backendSystemDefault: "System Default",
     },

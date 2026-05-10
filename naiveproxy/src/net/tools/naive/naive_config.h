@@ -14,6 +14,7 @@
 #include "base/logging.h"
 #include "base/logging/logging_settings.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "net/base/auth.h"
 #include "net/base/host_port_pair.h"
 #include "net/base/ip_address.h"
@@ -41,6 +42,14 @@ struct NaiveConfig {
   std::vector<NaiveListenConfig> listen = {NaiveListenConfig()};
 
   int insecure_concurrency = 1;
+
+#if BUILDFLAG(IS_ANDROID)
+  int tunnel_timeout = 600;
+  int idle_timeout = 300;
+#else
+  int tunnel_timeout = 1800;
+  int idle_timeout = 600;
+#endif
 
   HttpRequestHeaders extra_headers;
 

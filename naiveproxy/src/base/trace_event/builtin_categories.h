@@ -146,6 +146,8 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category("fledge"),
     perfetto::Category("fonts"),
     perfetto::Category("GAMEPAD"),
+    perfetto::Category("glic").SetDescription(
+      "Events related to GLiC (Gemini Live in Chrome)."),
     perfetto::Category("gpu").SetTags("rendering"),
     perfetto::Category("gpu.angle"),
     perfetto::Category("gpu.angle.texture_metrics"),
@@ -563,7 +565,7 @@ PERFETTO_DEFINE_CATEGORIES_IN_NAMESPACE_WITH_ATTRS(
     perfetto::Category::Group("shutdown,viz"),
     perfetto::Category::Group("startup,benchmark,rail"),
     perfetto::Category::Group("startup,rail"),
-    perfetto::Category::Group("toplevel,graphics.pipeline"),
+    perfetto::Category::Group("toplevel,graphics.pipeline,viz"),
     perfetto::Category::Group("toplevel,Java"),
     perfetto::Category::Group("toplevel,mojom"),
     perfetto::Category::Group("toplevel,viz"),

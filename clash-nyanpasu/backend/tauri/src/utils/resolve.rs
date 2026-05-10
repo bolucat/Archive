@@ -12,6 +12,7 @@ use anyhow::Result;
 use semver::Version;
 use serde_yaml::Mapping;
 use std::{
+    collections::HashMap,
     net::TcpListener,
     sync::atomic::{AtomicBool, AtomicU16, AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
@@ -280,15 +281,61 @@ impl AppWindow for MainWindow {
     }
 }
 
+/// Type of content the editor window displays.
+/// Used to derive the window label (for singleton logic) and URL path params.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum EditorWindowType {
+    Profile,
+    CssEditor,
+}
+
+impl EditorWindowType {
+    /// Stable string used to build the window label suffix.
+    fn label_suffix(&self) -> &str {
+        match self {
+            Self::Profile => "profile",
+            Self::CssEditor => "css",
+        }
+    }
+
+    fn type_str(&self) -> &str {
+        match self {
+            Self::Profile => "profile",
+            Self::CssEditor => "css",
+        }
+    }
+}
+
 /// Editor window
 struct EditorWindow {
     label: String,
+    window_type: EditorWindowType,
 }
 
 impl EditorWindow {
-    fn new(uid: &str) -> Self {
+    /// Profile editor — non-singleton, one window per uid.
+    fn profile(uid: &str) -> Self {
         Self {
-            label: format!("{}-{}", crate::consts::EDITOR_WINDOW_LABEL, uid),
+            label: format!(
+                "{}-{}-{}",
+                crate::consts::EDITOR_WINDOW_LABEL,
+                EditorWindowType::Profile.label_suffix(),
+                uid
+            ),
+            window_type: EditorWindowType::Profile,
+        }
+    }
+
+    /// CSS editor — singleton, no uid.
+    fn css_editor() -> Self {
+        Self {
+            label: format!(
+                "{}-{}",
+                crate::consts::EDITOR_WINDOW_LABEL,
+                EditorWindowType::CssEditor.label_suffix()
+            ),
+            window_type: EditorWindowType::CssEditor,
         }
     }
 }
@@ -299,19 +346,40 @@ impl AppWindow for EditorWindow {
     }
 
     fn title(&self) -> &str {
-        &crate::consts::APP_EDITOR_NAME
+        crate::consts::APP_EDITOR_NAME
     }
 
     fn url(&self) -> &str {
         "/editor"
     }
 
+    fn url_with_params(&self, params: Option<&HashMap<String, String>>) -> String {
+        let editor_type = params
+            .and_then(|params| params.get("type"))
+            .map(String::as_str)
+            .unwrap_or_else(|| self.window_type.type_str());
+
+        let query_params = params.map(|params| {
+            params
+                .iter()
+                .filter(|(key, _)| key.as_str() != "type")
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        });
+
+        crate::window::build_url_with_params(
+            &format!("{}/{}", self.url(), editor_type),
+            query_params.as_ref(),
+        )
+    }
+
     fn config(&self) -> WindowConfig {
+        let singleton = matches!(self.window_type, EditorWindowType::CssEditor);
         WindowConfig::new()
-            .singleton(false) // Allow multiple editor windows with different uids
+            .singleton(singleton)
             .visible_on_create(true)
             .default_size(800.0, 636.0)
-            .min_size(400.0, 600.0)
+            .min_size(400.0, 500.0)
             .center(true)
     }
 
@@ -581,27 +649,58 @@ pub fn show_tray_menu_window(
     Ok(())
 }
 
-/// Create editor window with uid
+/// Create editor window with window_type and optional uid
 #[tracing_attributes::instrument(skip(app_handle))]
-pub fn create_editor_window(app_handle: &AppHandle, uid: &str) -> Result<()> {
-    let editor_window = EditorWindow::new(uid);
-    let params = WindowParamsBuilder::new().param("uid", uid).build();
-    editor_window.create_with_params(app_handle, params)?;
+pub fn create_editor_window(
+    app_handle: &AppHandle,
+    window_type: EditorWindowType,
+    uid: Option<&str>,
+) -> Result<()> {
+    let window = match &window_type {
+        EditorWindowType::Profile => {
+            let uid = uid.ok_or_else(|| anyhow::anyhow!("uid required for Profile editor"))?;
+            EditorWindow::profile(uid)
+        }
+        EditorWindowType::CssEditor => EditorWindow::css_editor(),
+    };
+    let mut builder = WindowParamsBuilder::new().param("type", window_type.type_str());
+    if let Some(u) = uid {
+        builder = builder.param("uid", u);
+    }
+    window.create_with_params(app_handle, builder.build())?;
     Ok(())
 }
 
-/// Close editor window by uid
-pub fn close_editor_window(app_handle: &AppHandle, uid: &str) {
-    let editor_window = EditorWindow::new(uid);
-    editor_window.close_by_label(app_handle, &editor_window.label());
+/// Close editor window by window_type and optional uid
+pub fn close_editor_window(
+    app_handle: &AppHandle,
+    window_type: &EditorWindowType,
+    uid: Option<&str>,
+) {
+    let window = match window_type {
+        EditorWindowType::Profile => {
+            let Some(uid) = uid else { return };
+            EditorWindow::profile(uid)
+        }
+        EditorWindowType::CssEditor => EditorWindow::css_editor(),
+    };
+    window.close_by_label(app_handle, window.label());
 }
 
-/// Check if editor window with uid is open
-pub fn is_editor_window_open(app_handle: &AppHandle, uid: &str) -> bool {
-    let editor_window = EditorWindow::new(uid);
-    app_handle
-        .get_webview_window(editor_window.label())
-        .is_some()
+/// Check if editor window with window_type (and optional uid) is open
+pub fn is_editor_window_open(
+    app_handle: &AppHandle,
+    window_type: &EditorWindowType,
+    uid: Option<&str>,
+) -> bool {
+    let window = match window_type {
+        EditorWindowType::Profile => {
+            let Some(uid) = uid else { return false };
+            EditorWindow::profile(uid)
+        }
+        EditorWindowType::CssEditor => EditorWindow::css_editor(),
+    };
+    app_handle.get_webview_window(window.label()).is_some()
 }
 
 /// resolve core version

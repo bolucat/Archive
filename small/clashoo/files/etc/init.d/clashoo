@@ -6,8 +6,16 @@ STOP=15
 
 CORE_LOG_PATH="/var/log/clashoo/core.log"
 
+. /usr/share/clashoo/runtime/dns_helpers.sh 2>/dev/null || true
+
 command_exists() {
 	command -v "$1" >/dev/null 2>&1
+}
+
+shell_quote() {
+	printf "'"
+	printf '%s' "$1" | sed "s/'/'\\\\''/g"
+	printf "'"
 }
 
 use_fw4_backend() {
@@ -39,6 +47,49 @@ backend_remove_rules() {
 	fi
 }
 
+# Compute start-wait window: TUN needs longer for utun setup + fake-ip pool init.
+# Override via `uci set clashoo.config.start_wait_secs=N` for slow devices.
+_compute_start_wait() {
+	local override
+	override="$(uci -q get clashoo.config.start_wait_secs)"
+	if [ -n "$override" ] && [ "$override" -gt 0 ] 2>/dev/null; then
+		echo "$override"; return
+	fi
+	if [ "$(uci -q get clashoo.config.tun_mode)" = "1" ]; then
+		echo 15
+	else
+		echo 6
+	fi
+}
+
+# Wait up to $1 seconds for $2 (mihomo|sing-box) to be alive AND stable.
+# Returns 0 if alive at end of window, 1 if dead/never-started.
+_wait_core_alive() {
+	local max="${1:-6}" want="${2:-mihomo}" i=0
+	while [ "$i" -lt "$max" ]; do
+		sleep 1
+		if [ "$want" = "sing-box" ] || [ "$want" = "singbox" ]; then
+			pidof sing-box >/dev/null 2>&1 && return 0
+		else
+			_core_running && return 0
+		fi
+		i=$((i + 1))
+	done
+	return 1
+}
+
+# Roll back partial state when start failed after backend rules / DNS were applied.
+# Reuses the same cleanup primitives as stop_service so behavior stays consistent.
+_rollback_failed_start() {
+	log_msg "Rolling back failed start" "启动失败，正在回退防火墙与 DNS 配置"
+	backend_remove_rules >/dev/null 2>&1
+	revert_dns >/dev/null 2>&1
+	stop_singbox_service >/dev/null 2>&1
+	_kill_core >/dev/null 2>&1
+	rm -rf /www/luci-static/yacd 2>/dev/null
+	del_cron >/dev/null 2>&1
+}
+
 _core_candidates() {
 	echo "/usr/bin/mihomo /usr/bin/clash-meta /etc/clashoo/clash"
 }
@@ -51,16 +102,19 @@ _detect_selected_core() {
 			for _bin in /usr/bin/smart /etc/clashoo/clash /usr/bin/clash; do
 				[ -x "$_bin" ] && echo "$_bin" && return
 			done
+			return 1
 			;;
 		2|mihomo)
 			for _bin in /usr/bin/mihomo /usr/bin/clash-meta /etc/clashoo/clash-meta; do
 				[ -x "$_bin" ] && echo "$_bin" && return
 			done
+			return 1
 			;;
 		3|mihomo-alpha)
 			for _bin in /usr/bin/mihomo /usr/bin/clash-meta; do
 				[ -x "$_bin" ] && echo "$_bin" && return
 			done
+			return 1
 			;;
 	esac
 	_detect_core
@@ -92,7 +146,7 @@ _core_running() {
 }
 
 _kill_core() {
-	local _found _name _pid
+	local _found _name _pid _comm
 	for _name in $(_core_names); do
 		_found=0
 		for _pid in $(pidof "$_name" 2>/dev/null); do
@@ -104,6 +158,8 @@ _kill_core() {
 		sleep 1
 		for _pid in $(pidof "$_name" 2>/dev/null); do
 			[ "$_pid" = "$$" ] && continue
+			_comm="$(cat "/proc/${_pid}/comm" 2>/dev/null || true)"
+			[ -n "$_comm" ] && [ "$_comm" != "$_name" ] && continue
 			kill -9 "$_pid" >/dev/null 2>&1
 		done
 	done
@@ -229,16 +285,50 @@ runtime_state_reset() {
 }
 
 runtime_state_set() {
-	local key="$1" value="${2:-}"
+	local key="$1" value="${2:-}" safe_value
 	[ -n "$key" ] || return 0
 	mkdir -p "$(dirname "$RUNTIME_STATE_FILE")" >/dev/null 2>&1
 	touch "$RUNTIME_STATE_FILE"
 	value="$(printf '%s' "$value" | tr '\r\n' '  ')"
+	safe_value="$(printf '%s' "$value" | sed 's/[\/&|\\]/\\&/g')"
 	if grep -q "^${key}=" "$RUNTIME_STATE_FILE" 2>/dev/null; then
-		sed -i "s|^${key}=.*|${key}=${value}|g" "$RUNTIME_STATE_FILE"
+		sed -i "s|^${key}=.*|${key}=${safe_value}|g" "$RUNTIME_STATE_FILE"
 	else
 		echo "${key}=${value}" >> "$RUNTIME_STATE_FILE"
 	fi
+}
+
+inject_dns_fallback_filter() {
+	local cfg="$1" tmp="/tmp/_clashoo_fb.$$"
+	[ -f "$cfg" ] || return 0
+	grep -Eq '^[[:space:]]+fallback-filter:' "$cfg" 2>/dev/null && return 0
+	awk '
+		function indent_len(s) { match(s, /[^ ]/); return RSTART ? RSTART - 1 : length(s) }
+		/^dns:[[:space:]]*$/ { dns=1; child_indent=-1; print; next }
+		dns {
+			cur_indent = indent_len($0)
+			if ($0 ~ /^[[:space:]]*[^#[:space:]][^:]*:/ && cur_indent > 0 && child_indent < 0)
+				child_indent = cur_indent
+			if ($0 ~ /^[^[:space:]#][^:]*:/) {
+				if (!inserted) {
+					sp = sprintf("%*s", child_indent > 0 ? child_indent : 2, "")
+					print sp "fallback-filter:"
+					print sp "  geoip: false"
+					inserted=1
+				}
+				dns=0
+			}
+		}
+		{ print }
+		END {
+			if (dns && !inserted) {
+				sp = sprintf("%*s", child_indent > 0 ? child_indent : 2, "")
+				print sp "fallback-filter:"
+				print sp "  geoip: false"
+			}
+		}
+	' "$cfg" > "$tmp" 2>/dev/null && mv "$tmp" "$cfg"
+	rm -f "$tmp" 2>/dev/null
 }
 
 runtime_has_tun_device() {
@@ -309,6 +399,13 @@ runtime_state_record_health() {
 	runtime_state_set "updated_at" "$(date +%s)"
 }
 
+curl_has_final_http_response() {
+	awk '
+		/^HTTP\// && $0 !~ /Connection established/ { ok=1 }
+		END { exit ok ? 0 : 1 }
+	'
+}
+
 runtime_run_health_check() {
 	local dns_state explicit_state transparent_state detail require_fakeip mixed_port _try
 	local dns_out dns_addr _url
@@ -339,24 +436,24 @@ runtime_run_health_check() {
 	mixed_port="$(uci -q get clashoo.config.mixed_port 2>/dev/null)"
 	[ -z "$mixed_port" ] && mixed_port="7890"
 	if command_exists curl; then
-		explicit_state="fail"
-		for _url in https://www.google.com/generate_204 https://www.gstatic.com/generate_204; do
-			for _try in 1 2; do
-				if curl -4 --proxy "http://127.0.0.1:${mixed_port}" -I --max-time 6 -sS "$_url" 2>/dev/null | grep -q '^HTTP/'; then
-					explicit_state="ok"
-					break 2
-				fi
-				sleep 1
+			explicit_state="fail"
+			for _url in https://www.google.com/generate_204 https://www.gstatic.com/generate_204; do
+				for _try in 1 2; do
+					if curl -4 --proxy "http://127.0.0.1:${mixed_port}" -I --max-time 6 -sS "$_url" 2>/dev/null | curl_has_final_http_response; then
+						explicit_state="ok"
+						break 2
+					fi
+					sleep 1
 			done
 		done
-		transparent_state="fail"
-		for _url in https://www.google.com https://www.gstatic.com/generate_204; do
-			for _try in 1 2; do
-				if curl -4 -I --max-time 6 -sS "$_url" 2>/dev/null | grep -q '^HTTP/'; then
-					transparent_state="ok"
-					break 2
-				fi
-				sleep 1
+			transparent_state="fail"
+			for _url in https://www.google.com https://www.gstatic.com/generate_204; do
+				for _try in 1 2; do
+					if curl -4 -I --max-time 6 -sS "$_url" 2>/dev/null | curl_has_final_http_response; then
+						transparent_state="ok"
+						break 2
+					fi
+					sleep 1
 			done
 		done
 	fi
@@ -803,20 +900,49 @@ yml_change() {
 		# 注入 fallback-filter: geoip: false — 防止 mihomo 启动时因 nameserver
 		# 无法引导 GeoIP 下载而 FATAL（订阅 nameserver 可能是 IP 直连 DoH）。
 		# 等代理启动后，后台 GeoIP 更新会走代理下载。
-		if ! grep -Eq '^[[:space:]]+fallback-filter:' "$CONFIG_YAML" 2>/dev/null; then
-			awk '
-			/^dns:/ { dns=1; print; next }
-			dns && /^[a-zA-Z]/ {
-				if (!inserted) {
-					print "  fallback-filter:"
-					print "    geoip: false"
-					inserted=1
-				}
-				dns=0; print; next
+		inject_dns_fallback_filter "$CONFIG_YAML"
+		# Sniffer injection (streaming support for transparent proxy)
+		_sniffer_streaming=$(uci get clashoo.config.sniffer_streaming 2>/dev/null)
+		awk '
+			BEGIN { skip = 0 }
+			{
+				if ($0 ~ /^sniffer:[[:space:]]*$/) { skip = 1; next }
+				if (skip && $0 ~ /^[^[:space:]#][^:]*:[[:space:]]*.*$/) skip = 0
+				if (!skip) print
 			}
-			{ print }
-			END { if (dns && !inserted) { print "  fallback-filter:"; print "    geoip: false" } }
-		' "$CONFIG_YAML" > /tmp/_clashoo_fb.yaml && mv /tmp/_clashoo_fb.yaml "$CONFIG_YAML"
+		' "$CONFIG_YAML" > /tmp/_clashoo_sniffer.yaml 2>/dev/null && mv /tmp/_clashoo_sniffer.yaml "$CONFIG_YAML"
+		if [ "${_sniffer_streaming:-0}" = "1" ] || [ "${_sniffer_streaming}" = "true" ]; then
+cat >> "$CONFIG_YAML" <<-'SNIFFER_EOF'
+
+sniffer:
+  enable: true
+  force-dns-mapping: true
+  parse-pure-ip: true
+  sniff:
+    HTTP:
+      ports:
+        - 80
+        - 8080
+      override-destination: true
+    TLS:
+      ports:
+        - 443
+        - 8443
+      override-destination: true
+    QUIC:
+      ports:
+        - 443
+        - 8443
+      override-destination: true
+  force-domain:
+    - "+.youtube.com"
+    - "+.googlevideo.com"
+    - "+.netflix.com"
+    - "+.nflxvideo.net"
+    - "+.disneyplus.com"
+    - "+.hulu.com"
+    - "+.hbomax.com"
+SNIFFER_EOF
 		fi
 		return 0
 	fi
@@ -1088,7 +1214,8 @@ singbox_dns_change() {
 		uci set dhcp.@dnsmasq[0].cachesize='0'
 	fi
 	uci commit dhcp >/dev/null 2>&1
-	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+	/etc/init.d/dnsmasq stop >/dev/null 2>&1
+	/etc/init.d/dnsmasq start >/dev/null 2>&1
 #===========================================================================================================================
 }
 
@@ -1138,7 +1265,26 @@ _has_valid_local_mmdb() {
 }
 
 _config_needs_geosite() {
-	grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,|^[[:space:]]*geosite:[[:space:]]|^[[:space:]]*'geosite:" "$CONFIG_YAML"
+	grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,|^[[:space:]]*geosite:[[:space:]]*|^[[:space:]]*'geosite:" "$CONFIG_YAML"
+}
+
+_has_valid_local_geosite() {
+	local site_file site_size
+
+	for site_file in /etc/clashoo/GeoSite.dat /etc/clashoo/geosite.dat; do
+		[ -f "$site_file" ] || continue
+		site_size=$(wc -c <"$site_file" 2>/dev/null)
+		[ -n "$site_size" ] || continue
+		if [ "$site_size" -ge 2000000 ]; then
+			if [ "$site_file" = "/etc/clashoo/geosite.dat" ]; then
+				cp -f "$site_file" /etc/clashoo/GeoSite.dat >/dev/null 2>&1 || true
+				chmod 644 /etc/clashoo/GeoSite.dat >/dev/null 2>&1 || true
+			fi
+			return 0
+		fi
+	done
+
+	return 1
 }
 
 _strip_geox_url_block() {
@@ -1226,7 +1372,7 @@ _prepare_geo_bootstrap_mode() {
 		rm -f /etc/clashoo/geoip.metadb >/dev/null 2>&1
 		log_msg "GeoIP database is invalid or incomplete, fallback to bootstrap mode" "GeoIP 数据库无效或下载不完整，已回退到引导模式"
 	fi
-	[ "$needs_geosite" -eq 1 ] && [ -f /etc/clashoo/geosite.dat ] && needs_geosite=0
+	[ "$needs_geosite" -eq 1 ] && _has_valid_local_geosite && needs_geosite=0
 
 	if [ "$needs_mmdb" -eq 0 ] && [ "$needs_geosite" -eq 0 ]; then
 		return 0
@@ -1243,6 +1389,7 @@ _prepare_geo_bootstrap_mode() {
 	fi
 
 	if [ "$needs_geosite" -eq 1 ]; then
+		rm -f /etc/clashoo/GeoSite.dat /etc/clashoo/geosite.dat >/dev/null 2>&1
 		_strip_yaml_rule_lines "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,"
 		_strip_yaml_child_block '^[[:space:]]*geosite:[[:space:]]*$'
 		_strip_yaml_child_block "^[[:space:]]*'geosite:[^']*'[[:space:]]*:[[:space:]]*$"
@@ -1258,6 +1405,7 @@ _prepare_geo_bootstrap_mode() {
 
 
 _start_validate_core() {
+	core="$(uci -q get clashoo.config.core 2>/dev/null)"
 	if is_singbox_selected; then
 		if [ ! -x /usr/bin/sing-box ]; then
 			if [ "${lang}" = "en" ] || [ "${lang}" = "auto" ]; then
@@ -1274,11 +1422,11 @@ _start_validate_core() {
 
 	if [ "${core:-0}" -eq 1 ] && [ ! -x "$CLASH" ]; then
 		if [ "${lang}" = "en" ] || [ "${lang}" = "auto" ]; then
-			echo "  $(date "+%Y-%m-%d %H:%M:%S") - mihomo core not found, detected binary is unavailable: $CLASH" >> /usr/share/clashoo/clashoo.txt
+			echo "  $(date "+%Y-%m-%d %H:%M:%S") - Smart core not found, please install the local Smart binary first" >> /usr/share/clashoo/clashoo.txt
 		elif [ "${lang}" = "zh_cn" ]; then
-			echo "  $(date "+%Y-%m-%d %H:%M:%S")  - 找不到可用的 mihomo 内核: $CLASH" >> /usr/share/clashoo/clashoo.txt
+			echo "  $(date "+%Y-%m-%d %H:%M:%S")  - 找不到本地 Smart 内核，请先安装 Smart 二进制" >> /usr/share/clashoo/clashoo.txt
 		fi
-		log_msg "mihomo core not found, detected binary is unavailable: $CLASH" "找不到可用的 mihomo 内核: $CLASH"
+		log_msg "Smart core not found, please install the local Smart binary first" "找不到本地 Smart 内核，请先安装 Smart 二进制"
 		echo "Clashoo" > "$REAL_LOG"
 		return 1
 	elif [ "${core:-0}" -eq 2 ] && [ ! -x "$CLASH" ]; then
@@ -1350,6 +1498,21 @@ _start_prepare_config() {
 	fi
 
 	yml_change >/dev/null 2>&1
+	dns_leak_protect=$(uci -q get clashoo.config.dns_leak_protect 2>/dev/null)
+	if command -v dns_mihomo_apply_leak_protect >/dev/null 2>&1; then
+		# dns_leak_protect=1 强制 ipv6: false；否则按 UCI enable_ipv6 收敛（true/false），未配置则不强制写
+		if [ "${dns_leak_protect:-0}" = "1" ]; then
+			_ipv6_value="false"
+		else
+			case "$(uci -q get clashoo.config.enable_ipv6 2>/dev/null)" in
+				true|1) _ipv6_value="true" ;;
+				false|0) _ipv6_value="false" ;;
+				*) _ipv6_value="" ;;
+			esac
+		fi
+		dns_mihomo_apply_leak_protect "$CONFIG_YAML" "${dns_leak_protect:-0}" "$_ipv6_value" >/dev/null 2>&1
+		unset _ipv6_value
+	fi
 	smart_inject >/dev/null 2>&1
 
 	if ! _has_valid_local_mmdb; then
@@ -1365,21 +1528,7 @@ _start_prepare_config() {
 		# default-nameserver 只用于解析 nameserver 域名，不用于 GeoIP 下载。
 		# 注入 geoip: false 后 mihomo 跳过 GeoIP 校验直接启动，
 		# 后台 GeoIP 更新通过代理下载。
-		if ! grep -Eq '^[[:space:]]+fallback-filter:' "$CONFIG_YAML" 2>/dev/null; then
-			awk '
-			/^dns:/ { dns=1; print; next }
-			dns && /^[a-zA-Z]/ {
-				if (!inserted) {
-					print "  fallback-filter:"
-					print "    geoip: false"
-					inserted=1
-				}
-				dns=0; print; next
-			}
-			{ print }
-			END { if (dns && !inserted) { print "  fallback-filter:"; print "    geoip: false" } }
-		' "$CONFIG_YAML" > /tmp/_clashoo_fb.yaml && mv /tmp/_clashoo_fb.yaml "$CONFIG_YAML"
-		fi
+			inject_dns_fallback_filter "$CONFIG_YAML"
 	fi
 
 	if [ ! -f /etc/clashoo/config.yaml ];then
@@ -1399,11 +1548,13 @@ _start_prepare_config() {
 }
 
 _start_launch_core() {
+	local _cmd
 	disable_quic_gso=$(uci get clashoo.config.disable_quic_gso 2>/dev/null)
 	mkdir -p "$(dirname "$CORE_LOG_PATH")" >/dev/null 2>&1
 	touch "$CORE_LOG_PATH" >/dev/null 2>&1
 	procd_open_instance
-	procd_set_param command /bin/sh -c "$CLASH -d '$CLASH_CONFIG' >> '$CORE_LOG_PATH' 2>&1"
+	_cmd="$(shell_quote "$CLASH") -d $(shell_quote "$CLASH_CONFIG") >> $(shell_quote "$CORE_LOG_PATH") 2>&1"
+	procd_set_param command /bin/sh -c "$_cmd"
 	[ "$disable_quic_gso" = "1" ] && procd_set_param env QUIC_GO_DISABLE_GSO=1
 	procd_set_param respawn 3600 5 5
 	procd_close_instance
@@ -1414,17 +1565,22 @@ _start_launch_core() {
 	backend_apply_rules >/dev/null 2>&1
 
 	log_msg "Reloading DNS resolver" "重启 DNS 解析"
-	/etc/init.d/dnsmasq restart >/dev/null 2>&1
+	/etc/init.d/dnsmasq stop >/dev/null 2>&1
+	/etc/init.d/dnsmasq start >/dev/null 2>&1
 
 	restore >/dev/null 2>&1
 	add_cron
 	echo "Clashoo" > "$REAL_LOG"
 	# procd starts the core process only after start_service() returns, so we
 	# cannot block here waiting for it. Launch a background watcher instead.
+	# If the core never appears within the window, roll back the firewall
+	# rules and dnsmasq override we already applied — otherwise the box is
+	# left with a hijacked DNS pointing at a port nobody is listening on.
 	(
 		exec 1000>&-
+		_bg_max="$(_compute_start_wait)"
 		bg_wait=0
-		while [ "$bg_wait" -lt 30 ]; do
+		while [ "$bg_wait" -lt "$_bg_max" ]; do
 			sleep 1
 			if _core_running; then
 				runtime_run_health_check >/dev/null 2>&1
@@ -1432,8 +1588,9 @@ _start_launch_core() {
 			fi
 			bg_wait=$((bg_wait + 1))
 		done
+		_rollback_failed_start
 		runtime_state_record_health "fail" "start:core_not_running"
-		echo "  $(date "+%Y-%m-%d %H:%M:%S") - clashoo core not detected within 30s" >> /usr/share/clashoo/clashoo.txt
+		echo "  $(date "+%Y-%m-%d %H:%M:%S") - clashoo core not detected within ${_bg_max}s, rolled back" >> /usr/share/clashoo/clashoo.txt
 		echo "Clashoo" > "$REAL_LOG"
 	) &
 }
@@ -1460,6 +1617,7 @@ start_service(){
 	tun_mode=$(uci get clashoo.config.tun_mode 2>/dev/null)
 
 	sync_legacy_core_field
+	CLASH="$(_detect_selected_core)"
 
 	cleanup_legacy_startup_backups
 	migrate_legacy_clash_dir
@@ -1498,10 +1656,19 @@ start_service(){
 			backend_apply_rules >/dev/null 2>&1
 			singbox_dns_change >/dev/null 2>&1
 			add_cron >/dev/null 2>&1
+			# Sync-wait: if sing-box dies within window, roll back applied state.
+			# /etc/init.d/sing-box start forks immediately so we can poll here.
+			if ! _wait_core_alive "$(_compute_start_wait)" sing-box; then
+				_rollback_failed_start
+				runtime_state_record_health "fail" "start:singbox_died_after_apply"
+				echo "Clashoo" > "$REAL_LOG"
+				return 1
+			fi
 			(exec 1000>&-; runtime_run_health_check >/dev/null 2>&1) &
 			echo "Clashoo" > "$REAL_LOG"
 			return 0
 		fi
+		if _core_running; then stop_service >/dev/null 2>&1; fi
 		if ! select_config >/dev/null 2>&1; then
 			runtime_state_record_health "fail" "preflight:config_missing"
 			_log_runtime_error "Config file is missing or empty; please import a subscription/config first"
@@ -1562,9 +1729,9 @@ stop_service(){
 		
 			lang=$(uci get luci.main.lang 2>/dev/null)
 			tun_mode=$(uci get clashoo.config.tun_mode 2>/dev/null)
-			LIST="/usr/share/clashoo/server.list"
 
-			sed -i '/#START/,/#END/d' "$LIST" 2>/dev/null
+			# server.list 现为只读包文件；停服时清理 /tmp 下的合并产物即可
+			rm -f /tmp/clashoo/fake_filter.list /tmp/clashoo/fake_filter.yaml 2>/dev/null
 
 			log_msg "Stopping Clashoo" "正在停止 Clashoo"
 		log_msg "Removing firewall rules" "清理防火墙规则"

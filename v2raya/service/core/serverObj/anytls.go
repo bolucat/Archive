@@ -1,11 +1,12 @@
 package serverObj
 
 import (
+	"encoding/json"
 	"fmt"
-	"net"
 	"net/url"
 	"strconv"
-	"strings"
+
+	"github.com/v2rayA/v2rayA/core/coreObj"
 )
 
 func init() {
@@ -45,16 +46,50 @@ func ParseAnyTLSURL(link string) (data *AnyTLS, err error) {
 	}, nil
 }
 
+// anytlsSettings holds the settings serialized into the hybrid-core xray config.
+type anytlsSettings struct {
+	Address         string `json:"address"`
+	Port            int    `json:"port"`
+	Password        string `json:"password"`
+	SNI             string `json:"sni,omitempty"`
+	AllowInsecure   bool   `json:"allow_insecure,omitempty"`
+	MinIdleSessions int    `json:"min_idle_sessions,omitempty"`
+}
+
 func (s *AnyTLS) Configuration(info PriorInfo) (c Configuration, err error) {
-	socks5 := url.URL{
-		Scheme: "socks5",
-		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(info.PluginPort)),
+	u, err := url.Parse(s.Link)
+	if err != nil {
+		return c, fmt.Errorf("anytls: parse link: %w", err)
 	}
-	chain := []string{socks5.String(), s.Link}
+
+	password := ""
+	if u.User != nil {
+		password = u.User.Username()
+	}
+	q := u.Query()
+	sni := q.Get("sni")
+	insecure := q.Get("insecure") == "1" || q.Get("allowInsecure") == "1"
+	minIdle, _ := strconv.Atoi(q.Get("minIdleSession"))
+
+	settingsJSON, err := json.Marshal(anytlsSettings{
+		Address:         s.Server,
+		Port:            s.Port,
+		Password:        password,
+		SNI:             sni,
+		AllowInsecure:   insecure,
+		MinIdleSessions: minIdle,
+	})
+	if err != nil {
+		return c, fmt.Errorf("anytls: marshal settings: %w", err)
+	}
+
 	return Configuration{
-		CoreOutbound: info.PluginObj(),
-		PluginChain:  strings.Join(chain, ","),
-		UDPSupport:   true,
+		CoreOutbound: coreObj.OutboundObject{
+			Tag:      info.Tag,
+			Protocol: "anytls",
+			Settings: coreObj.Settings{Inlined: settingsJSON},
+		},
+		UDPSupport: true,
 	}, nil
 }
 
@@ -63,7 +98,7 @@ func (s *AnyTLS) ExportToURL() string {
 }
 
 func (s *AnyTLS) NeedPluginPort() bool {
-	return true
+	return false
 }
 
 func (s *AnyTLS) ProtoToShow() string {

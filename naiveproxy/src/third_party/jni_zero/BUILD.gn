@@ -52,6 +52,7 @@ component("jni_zero") {
 
   deps = [
   ]
+  public_deps = []
 }
 
 if (enable_java_templates && is_android) {

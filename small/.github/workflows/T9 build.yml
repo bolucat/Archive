@@ -20,6 +20,7 @@ jobs:
       matrix:
         sdk:
           - 24.10.4
+          - 25.12.0
         arch:
           - aarch64_cortex-a53
           - aarch64_cortex-a72
@@ -44,6 +45,9 @@ jobs:
           - mipsel_74kc
           - mipsel_mips32
           - x86_64
+        exclude:
+          - sdk: 25.12.0
+            arch: mips_4kec
 
     steps:
       - uses: actions/checkout@v6.0.2
@@ -132,28 +136,41 @@ jobs:
           PACKAGES: luci-app-fchomo luci-app-homeproxy luci-app-momo luci-app-nikki luci-app-openclash luci-app-passwall luci-app-passwall2 luci-app-ssr-plus brook hysteria ipt2socks pdnsd-alt redsocks2 shadow-tls trojan tuic-client xray-plugin v2ray-core v2ray-geodata naiveproxy sing-box
           NO_REFRESH_CHECK: true
           IGNORE_ERRORS: true
+          INDEX: 1
 
       - name: Store packages
         uses: actions/upload-artifact@v7.0.0
         with:
           name: ${{ matrix.arch }}-${{ matrix.sdk }}
-          path: bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+          path: |
+            bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+            bin/packages/${{ matrix.arch }}/packages_ci/*.apk
 
       - name: Zip packages
         run: |
-          zip -j ${{ matrix.arch }}-${{ matrix.sdk }}.zip bin/packages/${{ matrix.arch }}/packages_ci/*.ipk
+          shopt -s nullglob
+          packages=(bin/packages/${{ matrix.arch }}/packages_ci/*.ipk bin/packages/${{ matrix.arch }}/packages_ci/*.apk)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "No packages found"
+            exit 1
+          fi
+          zip -j ${{ matrix.arch }}-${{ matrix.sdk }}.zip "${packages[@]}"
+          mkdir -p release-assets
+          cp "${packages[@]}" release-assets/
+          cp ${{ matrix.arch }}-${{ matrix.sdk }}.zip release-assets/
           echo -e "**文件说明** 🎈:\n" >> release.txt
           echo -e "1. 默认ssr与passwall的插件与依赖整合包\n" >> release.txt
-          echo -e "2. 使用方法：将整合包上传到openwrt设备的tmp目录，输入命令 \`opkg install *.ipk\`\n" >> release.txt
-          echo -e "3. 默认压缩包里包含ssr passwall passwall2 等插件\n" >> release.txt
-          echo -e "4. 如果单独安装ssr与依赖，\`rm -rf {*passwall*,*homeproxy*}\`\n" >> release.txt
+          echo -e "2. OpenWrt 24.10 使用：\`opkg install *.ipk\`\n" >> release.txt
+          echo -e "3. OpenWrt 25.12 使用：\`apk add --allow-untrusted ./*.apk\`\n" >> release.txt
+          echo -e "4. 默认压缩包里包含ssr passwall passwall2 等插件\n" >> release.txt
+          echo -e "5. 如果单独安装ssr与依赖，\`rm -rf {*passwall*,*homeproxy*}\`\n" >> release.txt
           
       - name: Upload packages
         uses: ncipollo/release-action@v1.21.0
         with:
           token: ${{ secrets.ACCESS_TOKEN }}
-          artifacts: "${{ matrix.arch }}-${{ matrix.sdk }}.zip,bin/packages/${{ matrix.arch }}/packages_ci/*.ipk"
+          artifacts: "release-assets/*"
           allowUpdates: true
           replacesArtifacts: true
           bodyFile: "release.txt"
-          tag: ${{ github.run_number }}-${{ matrix.arch }}
+          tag: ${{ github.run_number }}-${{ matrix.arch }}-${{ matrix.sdk }}

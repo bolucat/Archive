@@ -40,6 +40,26 @@ axios.interceptors.request.use(
 );
 
 let informed = "";
+let loginModalShown = false;
+// 401 请求队列：当登录模态框已显示时，后续 401 请求加入队列，
+// 模态框关闭后自动重试，避免请求被静默丢弃导致功能异常
+let pending401Queue = [];
+let isRetryingQueue = false;
+
+// 重试队列中所有等待的 401 请求
+function retryPendingQueue() {
+  if (isRetryingQueue) return;
+  isRetryingQueue = true;
+  const queue = pending401Queue.slice();
+  pending401Queue = [];
+  // 延迟执行，确保模态框完全关闭后再重试
+  setTimeout(() => {
+    for (const item of queue) {
+      axios(item.config).then(item.resolve).catch(item.reject);
+    }
+    isRetryingQueue = false;
+  }, 300);
+}
 
 function informNotRunning(url = localStorage["backendAddress"]) {
   if (informed === url) {
@@ -91,39 +111,23 @@ axios.interceptors.response.use(
       host = u.host;
     }
     if (err.response && err.response.status === 401) {
-      // 401 Unauthorized
-      new Vue({
-        components: { Modal, ModalLogin },
-        data: () => ({
-          show: true,
-        }),
-        render() {
-          let first =
-            err.response.data &&
-            err.response.data.data &&
-            err.response.data.data.first === true;
-          return (
-            <b-modal
-              active={this.show}
-              trap-focus={true}
-              has-modal-card={true}
-              aria-role="dialog"
-              aria-modal={true}
-              full-screen={false}
-              style="z-index:1000"
-              class="modal-login"
-              id="login"
-            >
-              <ModalLogin
-                first={first}
-                onClose={() => {
-                  this.show = false;
-                }}
-              />
-            </b-modal>
-          );
-        },
-      }).$mount("#login");
+      const reqUrl = (err.config && err.config.url) || "";
+      const isAuthAction = reqUrl.includes("/api/login") || reqUrl.includes("/api/account");
+      if (isAuthAction) {
+        // Let login/register request callers handle their own UI state.
+        return Promise.reject(err);
+      }
+
+      if (localStorage["token"]) {
+        // Centralize auth recovery in App.vue's mounted() flow to avoid
+        // programmatic modal stacking and overlay conflicts.
+        localStorage.removeItem("token");
+        loginModalShown = false;
+        pending401Queue = [];
+        isRetryingQueue = false;
+        window.location.reload();
+      }
+      return Promise.reject(err);
     } else if (
       location.protocol.substr(0, 5) === "https" &&
       u.protocol === "http"

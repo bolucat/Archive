@@ -83,6 +83,10 @@
             android:exported="false"
             android:windowSoftInputMode="stateUnchanged" />
         <activity
+            android:name=".ui.ServerProxyChainActivity"
+            android:exported="false"
+            android:windowSoftInputMode="stateUnchanged" />
+        <activity
             android:name=".ui.SettingsActivity"
             android:exported="false" />
         <activity
@@ -201,7 +205,12 @@
         <service
             android:name=".service.CoreTestService"
             android:exported="false"
-            android:process=":RunSoLibV2RayDaemon" />
+            android:foregroundServiceType="specialUse"
+            android:process=":RunSoLibV2RayDaemon">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="test" />
+        </service>
 
         <receiver
             android:name=".receiver.WidgetProvider"

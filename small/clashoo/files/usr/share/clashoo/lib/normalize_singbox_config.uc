@@ -371,12 +371,17 @@ function apply_dns_from_uci() {
 	for (let _me = 0; _me < length(_mihomo_exp); _me++)
 		if (cfg.experimental && cfg.experimental[_mihomo_exp[_me]] != null)
 			delete cfg.experimental[_mihomo_exp[_me]];
-	/* 清除 root 级别 mihomo 字段 */
-	let _mihomo_root = ['clash-for-android', 'cfw-bypass', 'sniffer', 'profile', 
+	/* 清除 root 级别非 sing-box 字段 */
+	let _mihomo_root = ['clash-for-android', 'cfw-bypass', 'sniffer', 'profile',
 	                'geodata-mode', 'geodata-loader', 'geox-url', 'geo-auto-update',
 	                'geo-update-interval', 'tun', 'ipv6', 'interface-name',
 	                'port', 'socks-port', 'mixed-port', 'redir-port', 'tproxy-port', 'mode', 'allow-lan', 'log-level', 'external-controller', 'secret', 'bind-address', 'routing-mark', 'find-process-mode', 'tcp-concurrent', 'unified-delay',
 	                'keep-alive-interval', 'keep-alive-idle', 'disable-keep-alive'];
+	/* 清除 subconverter 产物的附加说明字段及非标准字段 */
+	let _subconv_fields = ['_note', '_sub_url', 'hosts', 'script', 'enable', 'fake-ip-filter', 'fake-ip-range'];
+	for (let _sf = 0; _sf < length(_subconv_fields); _sf++)
+		if (cfg[_subconv_fields[_sf]] != null)
+			delete cfg[_subconv_fields[_sf]];
 	for (let _mr = 0; _mr < length(_mihomo_root); _mr++)
 		if (cfg[_mihomo_root[_mr]] != null)
 			delete cfg[_mihomo_root[_mr]];
@@ -419,6 +424,12 @@ function apply_dns_from_uci() {
 	cfg.dns.servers = clean_servers;
 	cfg.dns.rules = rules;
 	cfg.dns.final = 'dns_direct';
+
+	/* 防 DNS 泄漏：DNS 流量由 hijack-dns/853 reject 收口；final 仍走直连 DNS，
+	 * 避免局域网 PTR、国内域名等未命中规则的查询被兜底送到 DoT 导致启动超时。 */
+	if (opt_bool(uci_opt('dns_leak_protect', '0'), false)) {
+		unshift(cfg.dns.rules, { query_type: ['AAAA'], action: 'reject', method: 'drop' });
+	}
 
 	let ecs = trim_s(uci_opt('dns_ecs', ''));
 	if (s_len(ecs))
@@ -577,21 +588,23 @@ for (let ob in (cfg.outbounds || [])) {
 	if (t == 'selector' || t == 'urltest' || t == 'fallback' || t == 'load_balance' || t == 'dns' || t == 'block')
 		continue;
 
-		/* plugin_opts 必须是字符串；订阅转换可能输出对象（如 {"mode":"http","host":"..."}），
-		 * sing-box 只接受 "obfs=http;obfs-host=..." 字符串格式。 */
-		/* 清除 sing-box 不支持的 plugin（如 obfs），否则 Fatal: plugin not found */
-		if (ob.plugin != null && ob.plugin != 'obfs-local' && ob.plugin != 'v2ray-plugin' && ob.plugin != 'shadow-tls') {
-			delete ob.plugin;
-			delete ob.plugin_opts;
-		}
+		/* Clash 的 SS obfs 写法是 plugin=obfs + plugin-opts 对象；sing-box 需要
+		 * plugin=obfs-local + "obfs=http;obfs-host=..." 字符串。 */
+		if (ob.plugin == 'obfs')
+			ob.plugin = 'obfs-local';
 		if (ob.plugin_opts != null && type(ob.plugin_opts) == 'object') {
 			let _parts = [];
+			let _map = { mode: 'obfs', host: 'obfs-host', uri: 'obfs-uri' };
 			for (let _k in ob.plugin_opts) {
 				let _v = ob.plugin_opts[_k];
 				if (type(_v) == 'object' || type(_v) == 'array') continue;
-				push(_parts, _k + '=' + _v);
+				push(_parts, (_map[_k] || _k) + '=' + _v);
 			}
 			ob.plugin_opts = join(';', _parts);
+		}
+		if (ob.plugin != null && ob.plugin != 'obfs-local' && ob.plugin != 'v2ray-plugin' && ob.plugin != 'shadow-tls') {
+			delete ob.plugin;
+			delete ob.plugin_opts;
 		}
 
 		if (wants_tun) {
@@ -643,6 +656,34 @@ if (!has_dns_hijack) {
 }
 cfg.route.auto_detect_interface = true;
 apply_dns_from_uci();
+
+/* 防 DNS 泄漏：阻断 DoT/DoQ（853），强制 DNS 走核心。插在 hijack-dns 之后保证 dns 入站不被误杀 */
+if (opt_bool(uci_opt('dns_leak_protect', '0'), false)) {
+	let _has_853 = false;
+	for (let _r in cfg.route.rules) {
+		if (_r && type(_r) == 'object' && _r.action == 'reject' && _r.port) {
+			if (type(_r.port) == 'array') {
+				for (let _p in _r.port) if (_p == 853) { _has_853 = true; break; }
+			} else if (_r.port == 853) {
+				_has_853 = true;
+			}
+		}
+		if (_has_853) break;
+	}
+	if (!_has_853) {
+		let _new_rules = [];
+		let _inserted = false;
+		for (let _ri = 0; _ri < length(cfg.route.rules); _ri++) {
+			push(_new_rules, cfg.route.rules[_ri]);
+			if (!_inserted && cfg.route.rules[_ri] && cfg.route.rules[_ri].action == 'hijack-dns') {
+				push(_new_rules, { port: [853], action: 'reject' });
+				_inserted = true;
+			}
+		}
+		if (!_inserted) unshift(_new_rules, { port: [853], action: 'reject' });
+		cfg.route.rules = _new_rules;
+	}
+}
 
 if (uci_opt('enhanced_mode', 'fake-ip') == 'fake-ip') {
 	add_remote_rule_set('geolocation-!cn',

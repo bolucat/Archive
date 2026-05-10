@@ -394,6 +394,15 @@ object SettingsManager {
     }
 
     /**
+     * Get real ping concurrency.
+     * @return The number of concurrent real-ping tests (clamped to 1..64).
+     */
+    fun getRealPingConcurrency(): Int {
+        val value = MmkvManager.decodeSettingsString(AppConfig.PREF_REAL_PING_CONCURRENCY)?.toIntOrNull() ?: 16
+        return value.coerceIn(1, 128)
+    }
+
+    /**
      * Get the locale.
      * @return The locale.
      */

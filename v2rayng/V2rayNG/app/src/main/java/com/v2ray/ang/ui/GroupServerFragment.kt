@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.lifecycleScope
@@ -23,6 +24,7 @@ import com.v2ray.ang.extension.toastError
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.helper.SimpleItemTouchHelperCallback
 import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.viewmodel.MainViewModel
@@ -43,6 +45,11 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>(),
     }
     private val share_method_more: Array<out String> by lazy {
         ownerActivity.resources.getStringArray(R.array.share_method_more)
+    }
+    private val launcher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (SettingsChangeManager.consumeRestartService() && mainViewModel.isRunning.value == true) {
+            ownerActivity.restartV2Ray()
+        }
     }
 
     companion object {
@@ -168,23 +175,20 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>(),
      * @param profile The server configuration
      */
     private fun editServer(guid: String, profile: ProfileItem) {
-        val intent = Intent().putExtra("guid", guid)
+        val activityClass = when (profile.configType) {
+            EConfigType.CUSTOM -> ServerCustomConfigActivity::class.java
+            EConfigType.POLICYGROUP -> ServerGroupActivity::class.java
+            EConfigType.PROXYCHAIN -> ServerProxyChainActivity::class.java
+            else -> ServerActivity::class.java
+        }
+
+        val intent = Intent(ownerActivity, activityClass)
+            .putExtra("guid", guid)
             .putExtra("isRunning", mainViewModel.isRunning.value)
             .putExtra("createConfigType", profile.configType.value)
             .putExtra("subscriptionId", subId)
-        when (profile.configType) {
-            EConfigType.CUSTOM -> {
-                ownerActivity.startActivity(intent.setClass(ownerActivity, ServerCustomConfigActivity::class.java))
-            }
 
-            EConfigType.POLICYGROUP -> {
-                ownerActivity.startActivity(intent.setClass(ownerActivity, ServerGroupActivity::class.java))
-            }
-
-            else -> {
-                ownerActivity.startActivity(intent.setClass(ownerActivity, ServerActivity::class.java))
-            }
-        }
+        launcher.launch(intent)
     }
 
     /**
@@ -265,7 +269,9 @@ class GroupServerFragment : BaseFragment<FragmentGroupServerBinding>(),
         }
 
         override fun onShare(guid: String, profile: ProfileItem, position: Int, more: Boolean) {
-            val isCustom = profile.configType == EConfigType.CUSTOM || profile.configType == EConfigType.POLICYGROUP
+            val isCustom = profile.configType == EConfigType.CUSTOM
+                    || profile.configType == EConfigType.POLICYGROUP
+                    || profile.configType == EConfigType.PROXYCHAIN
 
             val (shareOptions, skip) = if (more) {
                 val options = if (isCustom) share_method_more.asList().takeLast(3) else share_method_more.asList()

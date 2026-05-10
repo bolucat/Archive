@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.63.3](https://github.com/filebrowser/filebrowser/compare/v2.63.2...v2.63.3) (2026-05-05)
+
+
+### Bug Fixes
+
+* correct environment variable in compose.yaml ([#5910](https://github.com/filebrowser/filebrowser/issues/5910)) ([41b801d](https://github.com/filebrowser/filebrowser/commit/41b801d30c736c8ca863e2be6aece7d99e92129e))
+* Fix conflict modal and add a resume transfert option ([#5884](https://github.com/filebrowser/filebrowser/issues/5884)) ([f4e1485](https://github.com/filebrowser/filebrowser/commit/f4e148523e0dc9242081831b53544396f995c611))
+
 ## [2.63.2](https://github.com/filebrowser/filebrowser/compare/v2.63.1...v2.63.2) (2026-04-11)
 
 

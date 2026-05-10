@@ -1,11 +1,13 @@
 package serverObj
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
 	"strconv"
-	"strings"
+
+	"github.com/v2rayA/v2rayA/core/coreObj"
 )
 
 func init() {
@@ -45,16 +47,59 @@ func ParseJuicityURL(link string) (data *Juicity, err error) {
 	}, nil
 }
 
+// juicitySettings holds the settings serialized into the hybrid-core xray config.
+type juicitySettings struct {
+	// Address is "host:port".
+	Address           string `json:"address"`
+	UUID              string `json:"uuid"`
+	Password          string `json:"password"`
+	SNI               string `json:"sni,omitempty"`
+	AllowInsecure     bool   `json:"allow_insecure,omitempty"`
+	CongestionControl string `json:"congestion_control,omitempty"`
+	PinnedSHA256      string `json:"pinned_certchain_sha256,omitempty"`
+}
+
 func (s *Juicity) Configuration(info PriorInfo) (c Configuration, err error) {
-	socks5 := url.URL{
-		Scheme: "socks5",
-		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(info.PluginPort)),
+	u, err := url.Parse(s.Link)
+	if err != nil {
+		return c, fmt.Errorf("juicity: parse link: %w", err)
 	}
-	chain := []string{socks5.String(), s.Link}
+
+	uuid := ""
+	password := ""
+	if u.User != nil {
+		uuid = u.User.Username()
+		password, _ = u.User.Password()
+	}
+	q := u.Query()
+	sni := q.Get("sni")
+	insecure := q.Get("insecure") == "1" || q.Get("allowInsecure") == "1"
+	congestion := q.Get("congestion_control")
+	if congestion == "" {
+		congestion = q.Get("congestionControl")
+	}
+	pinnedSHA := q.Get("pinned_certchain_sha256")
+
+	settingsJSON, err := json.Marshal(juicitySettings{
+		Address:           net.JoinHostPort(s.Server, strconv.Itoa(s.Port)),
+		UUID:              uuid,
+		Password:          password,
+		SNI:               sni,
+		AllowInsecure:     insecure,
+		CongestionControl: congestion,
+		PinnedSHA256:      pinnedSHA,
+	})
+	if err != nil {
+		return c, fmt.Errorf("juicity: marshal settings: %w", err)
+	}
+
 	return Configuration{
-		CoreOutbound: info.PluginObj(),
-		PluginChain:  strings.Join(chain, ","),
-		UDPSupport:   true,
+		CoreOutbound: coreObj.OutboundObject{
+			Tag:      info.Tag,
+			Protocol: "juicity",
+			Settings: coreObj.Settings{Inlined: settingsJSON},
+		},
+		UDPSupport: true,
 	}, nil
 }
 
@@ -63,7 +108,7 @@ func (s *Juicity) ExportToURL() string {
 }
 
 func (s *Juicity) NeedPluginPort() bool {
-	return true
+	return false
 }
 
 func (s *Juicity) ProtoToShow() string {

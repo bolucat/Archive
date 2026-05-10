@@ -22,7 +22,7 @@ import (
 	"github.com/v2rayA/v2rayA/pkg/util/log"
 )
 
-// This file supports TinyTun v0.0.2-alpha.3.
+// This file supports TinyTun v0.0.2-alpha.7.
 
 // tinytunLogConf represents the log settings in TinyTun config.
 type tinytunLogConf struct {
@@ -30,7 +30,7 @@ type tinytunLogConf struct {
 	HideTimestamp bool   `yaml:"hide_timestamp"`
 }
 
-// tinytunTunConf represents the TUN interface settings in TinyTun v0.0.2-alpha.3 config.
+// tinytunTunConf represents the TUN interface settings in TinyTun v0.0.2-alpha.7 config.
 type tinytunTunConf struct {
 	Name       string `yaml:"name"`
 	IP         string `yaml:"ip"`
@@ -90,7 +90,7 @@ type tinytunDnsHijackConf struct {
 	CaptureTCP bool `yaml:"capture_tcp"`
 }
 
-// tinytunDnsConf represents the DNS settings in TinyTun v0.0.2-alpha.3 config.
+// tinytunDnsConf represents the DNS settings in TinyTun v0.0.2-alpha.7 config.
 // TinyTun handles DNS routing natively; v2ray is used only for traffic forwarding.
 type tinytunDnsConf struct {
 	Groups     []tinytunDnsGroupConf `yaml:"groups"`
@@ -338,11 +338,37 @@ func collectBypassInterfaceNetworks(patterns string) []string {
 	return dedupeStrings(networks)
 }
 
+func parseCustomExcludeProcesses(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', '\n', '\r', ';', '\t':
+			return true
+		default:
+			return false
+		}
+	})
+	custom := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if base := filepath.Base(p); base != "" && base != "." {
+			p = base
+		}
+		custom = append(custom, p)
+	}
+	return dedupeStrings(custom)
+}
+
 // collectExcludeProcesses returns the process basenames that should be excluded
 // from TinyTun proxying to prevent traffic loops.  It dynamically resolves
 // v2rayA's own executable and the v2ray/xray core binary; names are only added
 // when the path can actually be resolved, so no hardcoded strings are written.
-func collectExcludeProcesses() []string {
+func collectExcludeProcesses(customRaw string) []string {
 	var processes []string
 
 	// Exclude v2rayA itself so its own outgoing connections are not captured.
@@ -362,6 +388,8 @@ func collectExcludeProcesses() []string {
 	} else {
 		log.Warn("tinytun: failed to resolve core binary for process exclusion: %v", err)
 	}
+
+	processes = append(processes, parseCustomExcludeProcesses(customRaw)...)
 
 	return dedupeStrings(processes)
 }
@@ -588,7 +616,7 @@ func generateTinyTunConfig(tmpl *Template) (string, error) {
 			SkipNetworks:     skipNetworks,
 			BlockPorts:       []int{22, 23, 25, 110, 143},
 			AllowPorts:       []int{80, 443, 53},
-			ExcludeProcesses: collectExcludeProcesses(),
+			ExcludeProcesses: collectExcludeProcesses(setting.TunExcludeProcesses),
 		},
 		Route: tinytunRouteConf{
 			AutoDetectInterface: true,
@@ -735,6 +763,7 @@ func (w tinytunLineWriter) Write(p []byte) (n int, err error) {
 	}
 	for _, line := range strings.Split(s, "\n") {
 		if line != "" {
+			line = strings.ReplaceAll(line, "io.go:", "tinytun.go:")
 			log.Info("[tinytun] %v", line)
 		}
 	}

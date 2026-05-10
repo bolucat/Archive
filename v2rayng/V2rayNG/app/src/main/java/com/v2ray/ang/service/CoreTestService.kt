@@ -4,13 +4,16 @@ import android.app.Service
 import android.content.Intent
 import android.os.IBinder
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.AppConfig.MSG_MEASURE_CONFIG
-import com.v2ray.ang.AppConfig.MSG_MEASURE_CONFIG_CANCEL
+import com.v2ray.ang.R
+import com.v2ray.ang.core.CoreNativeManager
+import com.v2ray.ang.dto.RealPingEvent
 import com.v2ray.ang.dto.TestServiceMessage
+import com.v2ray.ang.enums.NotificationChannelType
 import com.v2ray.ang.extension.serializable
 import com.v2ray.ang.handler.MmkvManager
-import com.v2ray.ang.core.CoreNativeManager
+import com.v2ray.ang.util.LogUtil
 import com.v2ray.ang.util.MessageUtil
+import com.v2ray.ang.util.NotificationHelper
 import java.util.Collections
 
 class CoreTestService : Service() {
@@ -39,11 +42,13 @@ class CoreTestService : Service() {
      * Cleans up resources when the service is destroyed.
      */
     override fun onDestroy() {
-        super.onDestroy()
+        LogUtil.i(AppConfig.TAG, "CoreTestService is being destroyed, cancelling ${activeWorkers.size} active workers")
         // cancel any active workers
         val snapshot = ArrayList(activeWorkers)
         snapshot.forEach { it.cancel() }
         activeWorkers.clear()
+        NotificationHelper.stopForeground(this)
+        super.onDestroy()
     }
 
     /**
@@ -54,36 +59,86 @@ class CoreTestService : Service() {
      * @return The start mode.
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val message = intent?.serializable<TestServiceMessage>("content") ?: return super.onStartCommand(intent, flags, startId)
+        val message = intent?.serializable<TestServiceMessage>("content")
+        if (message == null) {
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
         when (message.key) {
-            MSG_MEASURE_CONFIG -> {
-                val guidsList = if (message.serverGuids.isNotEmpty()) {
-                    message.serverGuids
-                } else if (message.subscriptionId.isNotEmpty()) {
-                    MmkvManager.decodeServerList(message.subscriptionId)
-                } else {
-                    MmkvManager.decodeAllServerList()
-                }
-
-                if (guidsList.isNotEmpty()) {
-                    lateinit var worker: RealPingWorkerService
-                    worker = RealPingWorkerService(this, guidsList) { status ->
-                        // notify UI and remove the worker from active list when finished
-                        MessageUtil.sendMsg2UI(this@CoreTestService, AppConfig.MSG_MEASURE_CONFIG_FINISH, status)
-                        activeWorkers.remove(worker)
-                    }
-                    activeWorkers.add(worker)
-                    worker.start()
-                }
-            }
-
-            MSG_MEASURE_CONFIG_CANCEL -> {
-                // cancel all running batch workers independently
-                val snapshot = ArrayList(activeWorkers)
-                snapshot.forEach { it.cancel() }
-                activeWorkers.clear()
+            AppConfig.MSG_MEASURE_CONFIG_START -> handleMeasureStart(message, startId)
+            AppConfig.MSG_MEASURE_CONFIG_CANCEL -> handleMeasureCancel()
+            else -> {
+                NotificationHelper.stopForeground(this); stopSelf(startId)
             }
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_NOT_STICKY
+    }
+
+    private fun handleMeasureStart(message: TestServiceMessage, startId: Int) {
+        LogUtil.i(AppConfig.TAG, "CoreTestService starting worker   subscription ${message.subscriptionId}")
+
+        NotificationHelper.startForeground(
+            this,
+            NotificationChannelType.CORE_TEST,
+            getString(R.string.app_name),
+            getString(R.string.title_real_ping_all_server)
+        )
+
+        val guidsList = when {
+            message.serverGuids.isNotEmpty() -> message.serverGuids
+            message.subscriptionId.isNotEmpty() -> MmkvManager.decodeServerList(message.subscriptionId)
+            else -> MmkvManager.decodeAllServerList()
+        }
+
+        if (guidsList.isNotEmpty()) {
+            lateinit var worker: RealPingWorkerService
+            worker = RealPingWorkerService(
+                context = this,
+                guids = guidsList,
+                onEvent = { event -> handleWorkerEvent(event) { activeWorkers.remove(worker) } }
+            )
+            activeWorkers.add(worker)
+            worker.start()
+        } else {
+            NotificationHelper.stopForeground(this)
+            stopSelf(startId)
+        }
+    }
+
+    private fun handleWorkerEvent(event: RealPingEvent, onWorkerDone: () -> Unit) {
+        when (event) {
+            is RealPingEvent.Progress -> {
+                NotificationHelper.updateNotification(
+                    channelType = NotificationChannelType.CORE_TEST,
+                    context = this,
+                    content = getString(R.string.connection_runing_task_left, event.text)
+                )
+                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_NOTIFY, event.text)
+            }
+
+            is RealPingEvent.Result -> {
+                MmkvManager.encodeServerTestDelayMillis(event.guid, event.delayMillis)
+                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_SUCCESS, event.guid)
+            }
+
+            is RealPingEvent.Finish -> {
+                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, event.status)
+                onWorkerDone()
+                if (activeWorkers.isEmpty()) {
+                    NotificationHelper.stopForeground(this)
+                    stopSelf()
+                }
+            }
+        }
+    }
+
+    private fun handleMeasureCancel() {
+        LogUtil.i(AppConfig.TAG, "CoreTestService received cancel message, cancelling ${activeWorkers.size} active workers")
+        val snapshot = ArrayList(activeWorkers)
+        snapshot.forEach { it.cancel() }
+        activeWorkers.clear()
+        NotificationHelper.stopForeground(this)
+        stopSelf()
     }
 }

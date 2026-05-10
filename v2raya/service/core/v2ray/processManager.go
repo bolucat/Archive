@@ -1,9 +1,7 @@
 package v2ray
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -177,7 +175,6 @@ func (m *CoreProcessManager) stop(saveRunning bool) {
 	if err != nil {
 		log.Warn("CoreProcessManager.Stop: %v", err)
 	}
-	m.terminatePluginManagers(p)
 	if saveRunning {
 		configure.SetRunning(false)
 	}
@@ -188,21 +185,6 @@ func (m *CoreProcessManager) stop(saveRunning bool) {
 
 	// Notify connected frontend clients that the proxy is no longer running.
 	ApiFeed.ProductMessage("running_state", map[string]interface{}{"running": false})
-}
-
-func (m *CoreProcessManager) terminatePluginManagers(p *Process) {
-	if p == nil {
-		return
-	}
-	for _, pm := range p.pluginManagers {
-		if pm == nil {
-			continue
-		}
-		if err := pm.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			log.Warn("failed to stop PluginManager (pid: %d): %v", pm.Pid, err)
-		}
-	}
-	p.pluginManagers = nil
 }
 
 func (m *CoreProcessManager) handleUnexpectedStop(p *Process) {

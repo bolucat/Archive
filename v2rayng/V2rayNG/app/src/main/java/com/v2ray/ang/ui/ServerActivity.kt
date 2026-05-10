@@ -29,6 +29,7 @@ import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.Utils
 
@@ -83,6 +84,9 @@ class ServerActivity : BaseActivity() {
     }
     private val xhttpMode: Array<out String> by lazy {
         resources.getStringArray(R.array.xhttp_mode)
+    }
+    private val browserDialerModes: Array<out String> by lazy {
+        resources.getStringArray(R.array.browser_dialer_mode)
     }
 
 
@@ -139,6 +143,8 @@ class ServerActivity : BaseActivity() {
     private val container_ech_config_list: LinearLayout? by lazy { findViewById(R.id.lay_ech_config_list) }
     private val et_pinned_ca256: EditText? by lazy { findViewById(R.id.et_pinned_ca256) }
     private val container_pinned_ca256: LinearLayout? by lazy { findViewById(R.id.lay_pinned_ca256) }
+    private val layout_browser_dialer: LinearLayout? by lazy { findViewById(R.id.layout_browser_dialer) }
+    private val sp_browser_dialer_mode: Spinner? by lazy { findViewById(R.id.sp_browser_dialer_mode) }
 
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -148,14 +154,12 @@ class ServerActivity : BaseActivity() {
 
         val layoutId = when (config?.configType ?: createConfigType) {
             EConfigType.VMESS -> R.layout.activity_server_vmess
-            EConfigType.CUSTOM -> null
             EConfigType.SHADOWSOCKS -> R.layout.activity_server_shadowsocks
             EConfigType.SOCKS, EConfigType.HTTP -> R.layout.activity_server_socks
             EConfigType.VLESS -> R.layout.activity_server_vless
             EConfigType.TROJAN -> R.layout.activity_server_trojan
             EConfigType.WIREGUARD -> R.layout.activity_server_wireguard
             EConfigType.HYSTERIA2 -> R.layout.activity_server_hysteria2
-            EConfigType.POLICYGROUP -> null
             else -> null
         } ?: return
         setContentViewWithToolbar(layoutId, showHomeAsUp = true, title = (config?.configType ?: createConfigType).toString())
@@ -253,6 +257,13 @@ class ServerActivity : BaseActivity() {
 
                 layout_extra?.visibility =
                     when (networks[position]) {
+                        NetworkType.XHTTP.type -> View.VISIBLE
+                        else -> View.GONE
+                    }
+
+                layout_browser_dialer?.visibility =
+                    when (networks[position]) {
+                        NetworkType.WS.type -> View.VISIBLE
                         NetworkType.XHTTP.type -> View.VISIBLE
                         else -> View.GONE
                     }
@@ -413,6 +424,12 @@ class ServerActivity : BaseActivity() {
         if (network >= 0) {
             sp_network?.setSelection(network)
         }
+
+        val browserDialerMode = Utils.arrayFind(browserDialerModes, config.browserDialerMode.orEmpty())
+        if (browserDialerMode >= 0) {
+            sp_browser_dialer_mode?.setSelection(browserDialerMode)
+        }
+
         return true
     }
 
@@ -441,6 +458,7 @@ class ServerActivity : BaseActivity() {
         et_local_address?.text =
             Utils.getEditable(WIREGUARD_LOCAL_ADDRESS_V4)
         et_local_mtu?.text = Utils.getEditable(WIREGUARD_LOCAL_MTU)
+        sp_browser_dialer_mode?.setSelection(0)
         return true
     }
 
@@ -509,6 +527,9 @@ class ServerActivity : BaseActivity() {
         }
         //LogUtil.i(AppConfig.TAG, JsonUtil.toJsonPretty(config) ?: "")
         MmkvManager.encodeServerConfig(editGuid, config)
+        if (isRunning) {
+            SettingsChangeManager.makeRestartService()
+        }
         toastSuccess(R.string.toast_success)
         finish()
         return true
@@ -570,6 +591,16 @@ class ServerActivity : BaseActivity() {
         profileItem.finalMask = et_fm?.text?.toString()?.trim()?.nullIfBlank()
         profileItem.kcpMtu = et_kcp_mtu?.text?.toString()?.toIntOrNull()
         profileItem.kcpTti = et_kcp_tti?.text?.toString()?.toIntOrNull()
+        if (networks[network] == NetworkType.WS.type || networks[network] == NetworkType.XHTTP.type) {
+            val browserDialerMode = browserDialerModes[sp_browser_dialer_mode?.selectedItemPosition ?: 0]
+            if (browserDialerMode != browserDialerModes[0]) {
+                profileItem.browserDialerMode = browserDialerMode
+            } else {
+                profileItem.browserDialerMode = null
+            }
+        } else {
+            profileItem.browserDialerMode = null
+        }
     }
 
     private fun saveTls(config: ProfileItem) {
@@ -658,17 +689,9 @@ class ServerActivity : BaseActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.action_server, menu)
-        val delButton = menu.findItem(R.id.del_config)
-        val saveButton = menu.findItem(R.id.save_config)
 
-        if (editGuid.isNotEmpty()) {
-            if (isRunning) {
-                delButton?.isVisible = false
-                saveButton?.isVisible = false
-            }
-        } else {
-            delButton?.isVisible = false
-        }
+        val delButton = menu.findItem(R.id.del_config)
+        delButton?.isVisible = editGuid.isNotEmpty() && !isRunning
 
         return super.onCreateOptionsMenu(menu)
     }

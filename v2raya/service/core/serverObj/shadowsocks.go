@@ -333,27 +333,13 @@ func (s *Shadowsocks) GetBackend() string {
 }
 
 func (s *Shadowsocks) Configuration(info PriorInfo) (c Configuration, err error) {
-	if info.Backend == "v2ray" {
-		if info.Variant == where.Xray {
-			return s.ConfigurationMT(info)
-		}
-		return s.ConfigurationMC(info)
+	if info.Variant == where.Xray {
+		return s.ConfigurationMT(info)
 	}
-	// daeuniverse/outbound path
-	socks5 := url.URL{
-		Scheme: "socks5",
-		Host:   net.JoinHostPort("127.0.0.1", strconv.Itoa(info.PluginPort)),
-	}
-	chain := []string{socks5.String(), s.exportToChainURL()}
-	return Configuration{
-		CoreOutbound: info.PluginObj(),
-		PluginChain:  strings.Join(chain, ","),
-		UDPSupport:   true,
-	}, nil
+	return s.ConfigurationMC(info)
 }
 
-// exportToChainURL returns the URL for use in the daeuniverse plugin chain.
-// It excludes v2rayA-specific metadata like v2raya-backend.
+// exportToChainURL is kept for the ConfigurationMC path used by non-xray variants.
 func (s *Shadowsocks) exportToChainURL() string {
 	u := &url.URL{
 		Scheme:   "ss",
@@ -390,7 +376,7 @@ func (s *Shadowsocks) ExportToURL() string {
 }
 
 func (s *Shadowsocks) NeedPluginPort() bool {
-	return true
+	return false
 }
 
 func (s *Shadowsocks) GetProtocol() string {

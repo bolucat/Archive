@@ -37,6 +37,7 @@ struct ED25519_KEY {
 };
 
 extern const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth;
+extern const EVP_PKEY_CTX_METHOD ed25519_pkey_meth;
 
 #define ED25519_PUBLIC_KEY_OFFSET 32
 
@@ -217,6 +218,21 @@ static int ed25519_priv_encode(CBB *out, const EvpPkey *pkey) {
 
 static bool ed25519_pub_present(const EvpPkey *) { return true; }
 
+static bool ed25519_pub_copy(EvpPkey *out, const EvpPkey *pkey) {
+  const ED25519_KEY *pkey_ed25519 =
+      reinterpret_cast<const ED25519_KEY *>(pkey->pkey);
+  ED25519_KEY *public_copy = New<ED25519_KEY>();
+  if (public_copy == nullptr) {
+    return false;
+  }
+  OPENSSL_memcpy(public_copy->key + ED25519_PUBLIC_KEY_OFFSET,
+                 pkey_ed25519->key + ED25519_PUBLIC_KEY_OFFSET,
+                 ED25519_PUBLIC_KEY_LEN);
+  public_copy->has_private = false;
+  evp_pkey_set0(out, pkey->ameth, public_copy);
+  return true;
+}
+
 static bool ed25519_priv_present(const EvpPkey *pkey) {
   const ED25519_KEY *key = reinterpret_cast<const ED25519_KEY *>(pkey->pkey);
   return key->has_private;
@@ -235,6 +251,7 @@ const EVP_PKEY_ASN1_METHOD ed25519_asn1_meth = {
     ed25519_pub_encode,
     ed25519_pub_equal,
     ed25519_pub_present,
+    ed25519_pub_copy,
     ed25519_priv_decode,
     ed25519_priv_encode,
     ed25519_priv_present,
@@ -314,9 +331,7 @@ static int pkey_ed25519_verify_message(EvpPkeyCtx *ctx, const uint8_t *sig,
   return 1;
 }
 
-}  // namespace
-
-const EVP_PKEY_CTX_METHOD bssl::ed25519_pkey_meth = {
+const EVP_PKEY_CTX_METHOD ed25519_pkey_meth = {
     /*pkey_id=*/EVP_PKEY_ED25519,
     /*init=*/nullptr,
     /*copy=*/pkey_ed25519_copy,
@@ -331,10 +346,14 @@ const EVP_PKEY_CTX_METHOD bssl::ed25519_pkey_meth = {
     /*decrypt=*/nullptr,
     /*derive=*/nullptr,
     /*paramgen=*/nullptr,
+    /*encap=*/nullptr,
+    /*decap=*/nullptr,
     /*ctrl=*/nullptr,
 };
 
+}  // namespace
+
 const EVP_PKEY_ALG *EVP_pkey_ed25519() {
-  static const EVP_PKEY_ALG kAlg = {&ed25519_asn1_meth};
+  static const EVP_PKEY_ALG kAlg = {&ed25519_asn1_meth, &ed25519_pkey_meth};
   return &kAlg;
 }

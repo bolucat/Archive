@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package v2ray.core.app.policy;
+option csharp_namespace = "V2Ray.Core.App.Policy";
+option go_package = "github.com/v2fly/v2ray-core/v5/app/policy";
+option java_package = "com.v2ray.core.app.policy";
+option java_multiple_files = true;
+
+import "common/protoext/extensions.proto";
+
+message Second {
+  uint32 value = 1;
+}
+
+message Policy {
+  // Timeout is a message for timeout settings in various stages, in seconds.
+  message Timeout {
+    Second handshake = 1;
+    Second connection_idle = 2;
+    Second uplink_only = 3;
+    Second downlink_only = 4;
+  }
+
+  message Stats {
+    bool user_uplink = 1;
+    bool user_downlink = 2;
+  }
+
+  message Buffer {
+    // Buffer size per connection, in bytes. -1 for unlimited buffer.
+    int32 connection = 1;
+  }
+
+  Timeout timeout = 1;
+  Stats stats = 2;
+  Buffer buffer = 3;
+}
+
+message SystemPolicy {
+  message Stats {
+    bool inbound_uplink = 1;
+    bool inbound_downlink = 2;
+    bool outbound_uplink = 3;
+    bool outbound_downlink = 4;
+  }
+
+  Stats stats = 1;
+  bool override_access_log_dest = 2;
+}
+
+message Config {
+  option (v2ray.core.common.protoext.message_opt).type = "service";
+  option (v2ray.core.common.protoext.message_opt).short_name = "policy";
+
+  map<uint32, Policy> level = 1;
+  SystemPolicy system = 2;
+}

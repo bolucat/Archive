@@ -35,6 +35,7 @@ struct X25519_KEY {
 };
 
 extern const EVP_PKEY_ASN1_METHOD x25519_asn1_meth;
+extern const EVP_PKEY_CTX_METHOD x25519_pkey_meth;
 
 static void x25519_free(EvpPkey *pkey) {
   X25519_KEY *key = reinterpret_cast<X25519_KEY *>(pkey->pkey);
@@ -227,6 +228,19 @@ static int x25519_priv_encode(CBB *out, const EvpPkey *pkey) {
 
 static bool x25519_pub_present(const EvpPkey *) { return true; }
 
+static bool x25519_pub_copy(EvpPkey *out, const EvpPkey *pkey) {
+  const X25519_KEY *pkey_x25519 =
+      reinterpret_cast<const X25519_KEY *>(pkey->pkey);
+  X25519_KEY *public_copy = New<X25519_KEY>();
+  if (public_copy == nullptr) {
+    return false;
+  }
+  OPENSSL_memcpy(public_copy->pub, pkey_x25519->pub, 32);
+  public_copy->has_private = false;
+  evp_pkey_set0(out, pkey->ameth, public_copy);
+  return true;
+}
+
 static bool x25519_priv_present(const EvpPkey *pk) {
   const X25519_KEY *key = reinterpret_cast<const X25519_KEY *>(pk->pkey);
   return key->has_private;
@@ -245,6 +259,7 @@ const EVP_PKEY_ASN1_METHOD x25519_asn1_meth = {
     x25519_pub_encode,
     x25519_pub_equal,
     x25519_pub_present,
+    x25519_pub_copy,
     x25519_priv_decode,
     x25519_priv_encode,
     x25519_priv_present,
@@ -264,13 +279,6 @@ const EVP_PKEY_ASN1_METHOD x25519_asn1_meth = {
     /*param_equal=*/nullptr,
     x25519_free,
 };
-
-}  // namespace
-
-const EVP_PKEY_ALG *EVP_pkey_x25519() {
-  static const EVP_PKEY_ALG kAlg = {&x25519_asn1_meth};
-  return &kAlg;
-}
 
 // X25519 has no parameters to copy.
 static int pkey_x25519_copy(EvpPkeyCtx *dst, EvpPkeyCtx *src) { return 1; }
@@ -335,7 +343,7 @@ static int pkey_x25519_ctrl(EvpPkeyCtx *ctx, int type, int p1, void *p2) {
   }
 }
 
-const EVP_PKEY_CTX_METHOD bssl::x25519_pkey_meth = {
+const EVP_PKEY_CTX_METHOD x25519_pkey_meth = {
     /*pkey_id=*/EVP_PKEY_X25519,
     /*init=*/nullptr,
     /*copy=*/pkey_x25519_copy,
@@ -350,5 +358,14 @@ const EVP_PKEY_CTX_METHOD bssl::x25519_pkey_meth = {
     /*decrypt=*/nullptr,
     /*derive=*/pkey_x25519_derive,
     /*paramgen=*/nullptr,
+    /*encap=*/nullptr,
+    /*decap=*/nullptr,
     /*ctrl=*/pkey_x25519_ctrl,
 };
+
+}  // namespace
+
+const EVP_PKEY_ALG *EVP_pkey_x25519() {
+  static const EVP_PKEY_ALG kAlg = {&x25519_asn1_meth, &x25519_pkey_meth};
+  return &kAlg;
+}

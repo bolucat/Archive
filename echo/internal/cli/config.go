@@ -25,7 +25,8 @@ func loadConfig() (cfg *config.Config, err error) {
 	} else {
 		cfg = &config.Config{
 			WebPort:        WebPort,
-			WebToken:       WebToken,
+			DashboardPass:  DashboardPass,
+			ApiToken:       ApiToken,
 			EnablePing:     EnablePing,
 			PATH:           ConfigPath,
 			LogLeveL:       LogLevel,
@@ -101,11 +102,19 @@ func MustStartComponents(mainCtx context.Context, cfg *config.Config) {
 		}
 	}()
 
+	var webS *web.Server
 	if cfg.NeedStartWebServer() {
-		webS, err := web.NewServer(cfg, rs, rs, rs.Cmgr)
+		webS, err = web.NewServer(cfg, rs, rs, rs.Cmgr)
 		if err != nil {
 			cliLogger.Fatalf("NewWebServer meet err=%s", err.Error())
 		}
+	}
+
+	// Web server must come up before xray: the xray UserPool's first sync
+	// (which runs synchronously inside xrayS.Start) fetches /metrics/ for
+	// bandwidth recording. Routes registered after Start are still served
+	// since echo's router accepts concurrent additions.
+	if webS != nil {
 		go func() {
 			cliLogger.Fatalf("StartWebServer meet err=%s", webS.Start())
 		}()
@@ -115,6 +124,10 @@ func MustStartComponents(mainCtx context.Context, cfg *config.Config) {
 		xrayS := xray.NewXrayServer(cfg)
 		if err := xrayS.Setup(); err != nil {
 			cliLogger.Fatalf("Setup XrayServer meet err=%v", err)
+		}
+		if webS != nil {
+			xrayS.RegisterRoutes(webS.APIGroup())
+			webS.SetXrayStatus(xrayS)
 		}
 		if err := xrayS.Start(mainCtx); err != nil {
 			cliLogger.Fatalf("Start XrayServer meet err=%v", err)

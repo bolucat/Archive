@@ -2,6 +2,13 @@
 
 [ -n "$(echo $SHELL)" ] && export SHELL=/bin/sh
 
+# Source OpenWrt UCI shell API (config_load/config_foreach/config_get etc.)
+. /lib/functions.sh 2>/dev/null || true
+
+# Source DNS helper functions (dns_yaml_list_item, dns_normalize_server, etc.)
+_YUM_DIR="$(dirname "$0" 2>/dev/null)"
+[ -n "$_YUM_DIR" ] && [ -f "$_YUM_DIR/dns_helpers.sh" ] && . "$_YUM_DIR/dns_helpers.sh"
+
 # 自定义/上传配置（config_type=2 上传, 3 自定义）跳过 yum_change.sh，
 # 保留 proxy-providers/proxies/rules 等完整不动。只添加运行时必需字段。
 _config_type=$(uci get clashoo.config.config_type 2>/dev/null)
@@ -180,7 +187,7 @@ fi
 		mode=$(uci get clashoo.config.mode 2>/dev/null)
 		p_mode=$(uci get clashoo.config.p_mode 2>/dev/null)
 		da_password=$(uci get clashoo.config.dash_pass 2>/dev/null)
-		safe_password=$(printf '%s' "$da_password" | sed 's/[\\/&]/\\\\&/g')
+		safe_password=$(printf '%s' "$da_password" | sed 's/[\/&]/\\&/g')
 		redir_port=$(uci get clashoo.config.redir_port 2>/dev/null)
 		http_port=$(uci get clashoo.config.http_port 2>/dev/null)
 		socks_port=$(uci get clashoo.config.socks_port 2>/dev/null)
@@ -205,7 +212,7 @@ fi
 		tun_mode=$(uci get clashoo.config.tun_mode 2>/dev/null)
 		stack=$(uci get clashoo.config.stack 2>/dev/null)
 		[ -z "$stack" ] && stack="system"
-		listen_port=$(uci get clashoo.config.listen_port 2>/dev/null)	
+		listen_port=$(uci get clashoo.config.listen_port 2>/dev/null)
 		TEMP_FILE="/tmp/clashdns.yaml"
 		interf=$(uci get clashoo.config.interf 2>/dev/null)
 		CONFIG_YAML="/etc/clashoo/config.yaml"
@@ -359,11 +366,9 @@ EOF
 
 
 if [ "$enable_ipv6" == "true" ];then
-
 cat >> "/tmp/enable_dns.yaml" <<-EOF
   ipv6: true
 EOF
-
 fi
 
 cat /tmp/enable_dns.yaml >> $TEMP_FILE 2>/dev/null
@@ -677,35 +682,43 @@ EOF
 		rm -rf  $TEMP_FILE 2>/dev/null
 		
 add_address(){
+	# 包内 /usr/share/clashoo/server.list 保持只读；合并后的 fake-ip 过滤源写到 /tmp
+	mkdir -p /tmp/clashoo
+	local SRC="/usr/share/clashoo/server.list"
+	local DST="/tmp/clashoo/fake_filter.list"
+	local SERVERS_CONF="/tmp/clashoo/_servers.conf"
+	local ADDRESS_LIST="/tmp/clashoo/_address.list"
+
+	: >"$SERVERS_CONF"
 	servers_get()
 	{
 	   local section="$1"
 	   config_get "server" "$section" "server" ""
-	   echo "$server" >>/tmp/server.conf
+	   [ -n "$server" ] && echo "$server" >>"$SERVERS_CONF"
 	}
 	config_load "clashoo"
 	config_foreach servers_get "servers"
 
-	count=$(grep -c '' /tmp/server.conf)
-	count_num=1
-	while [[ $count_num -le $count ]]
-	do
-	line=$(sed -n "$count_num"p /tmp/server.conf)
-	check_addr=$(grep -F "$line" "/usr/share/clashoo/server.list")
-	if [ -z "$check_addr" ];then
-	echo $line >>/usr/share/clashbackup/address.list
-	fi	
-	count_num=$(( $count_num + 1))	
-	done
+	: >"$ADDRESS_LIST"
+	if [ -s "$SERVERS_CONF" ]; then
+		while IFS= read -r line; do
+			[ -z "$line" ] && continue
+			grep -Fxq "$line" "$SRC" 2>/dev/null && continue
+			echo "$line" >>"$ADDRESS_LIST"
+		done <"$SERVERS_CONF"
+	fi
 
-	sed -i "1i\#START" /usr/share/clashbackup/address.list 2>/dev/null
-	sed -i -e "\$a#END" /usr/share/clashbackup/address.list 2>/dev/null
-			
-	cat /usr/share/clashbackup/address.list /usr/share/clashoo/server.list > /usr/share/clashoo/me.list
-	rm -rf /usr/share/clashoo/server.list 
-	mv /usr/share/clashoo/me.list /usr/share/clashoo/server.list
-	chmod 755 /usr/share/clashoo/server.list
-	rm -rf /tmp/server.conf /usr/share/clashbackup/address.list >/dev/null 2>&1
+	{
+		if [ -s "$ADDRESS_LIST" ]; then
+			echo "#START"
+			cat "$ADDRESS_LIST"
+			echo "#END"
+		fi
+		cat "$SRC" 2>/dev/null
+	} > "$DST"
+	chmod 644 "$DST" 2>/dev/null
+
+	rm -f "$SERVERS_CONF" "$ADDRESS_LIST" /tmp/server.conf 2>/dev/null
 }
 
 
@@ -716,25 +729,25 @@ add_address(){
 		
 		add_address >/dev/null 2>&1
 		wait
-		CUSTOM_FILE="/usr/share/clashoo/server.list"
-		FAKE_FILTER_FILE="/usr/share/clashoo/fake_filter.list"
-		num=$(grep -c '' /usr/share/clashoo/server.list 2>/dev/null)
+		CUSTOM_FILE="/tmp/clashoo/fake_filter.list"
+		FAKE_FILTER_FILE="/tmp/clashoo/fake_filter.yaml"
+		num=$(grep -c '' "$CUSTOM_FILE" 2>/dev/null)
 
 		rm -rf "$FAKE_FILTER_FILE" 2>/dev/null
 
 			if [ -s "$CUSTOM_FILE" ]; then
 
 				count_num=1
-				while [[ $count_num -le $num ]]
-				do 
-				line=$(sed -n "$count_num"p /usr/share/clashoo/server.list)
-				if [ -z "$(echo $line |grep '^ \{0,\}#' 2>/dev/null)" ]; then	
+				while [ "$count_num" -le "${num:-0}" ]
+				do
+				line=$(sed -n "${count_num}p" "$CUSTOM_FILE")
+				if [ -z "$(echo "$line" | grep '^ \{0,\}#' 2>/dev/null)" ]; then
 					 echo "   - '$line'" >> "$FAKE_FILTER_FILE"
 				fi
-				count_num=$(( $count_num + 1))	
-				done	  
-		  
-		 
+				count_num=$(( count_num + 1 ))
+				done
+
+
 			fi
 
 

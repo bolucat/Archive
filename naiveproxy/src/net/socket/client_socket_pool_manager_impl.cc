@@ -81,7 +81,7 @@ ClientSocketPool* ClientSocketPoolManagerImpl::GetSocketPool(
   std::unique_ptr<ClientSocketPool> new_pool;
 
   // Use specialized WebSockets pool for WebSockets when no proxies are in use.
-  if (pool_type_ == HttpNetworkSession::WEBSOCKET_SOCKET_POOL &&
+  if (pool_type_ == HttpNetworkSession::SocketPoolType::kWebSocket &&
       proxy_chain.is_direct()) {
     new_pool = std::make_unique<WebSocketTransportClientSocketPool>(
         sockets_per_proxy_chain, additional_capacity, proxy_chain,

@@ -52,8 +52,15 @@ type V2Ray struct {
 	AllowInsecure bool   `json:"allowInsecure"`
 	Key           string `json:"key,omitempty"`
 	QuicSecurity  string `json:"quicSecurity"`
-	XHTTPMode     string `json:"xhttpMode,omitempty"`
-	V             string `json:"v"`
+	XHTTPMode           string `json:"xhttpMode,omitempty"`
+	MaxEarlyData        string `json:"maxEarlyData,omitempty"`        // WebSocket Early Data 最大字节数
+	EarlyDataHeaderName string `json:"earlyDataHeaderName,omitempty"` // WebSocket Early Data 头部名称
+	MultiMode           string `json:"multiMode,omitempty"`           // gRPC MultiMode
+	IdleTimeout         string `json:"idleTimeout,omitempty"`         // gRPC IdleTimeout (秒)
+	HealthCheckTimeout  string `json:"healthCheckTimeout,omitempty"`  // gRPC HealthCheckTimeout (秒)
+	PermitWithoutStream string `json:"permitWithoutStream,omitempty"` // gRPC PermitWithoutStream
+	InitialWindowsSize  string `json:"initialWindowsSize,omitempty"`  // gRPC InitialWindowsSize
+	V                   string `json:"v"`
 	Protocol      string `json:"protocol"`
 }
 
@@ -121,6 +128,13 @@ func ParseVlessURL(vless string) (data *V2Ray, err error) {
 			data.XHTTPMode = "auto"
 		}
 	}
+	data.MaxEarlyData = u.Query().Get("maxEarlyData")
+	data.EarlyDataHeaderName = u.Query().Get("earlyDataHeaderName")
+	data.MultiMode = u.Query().Get("multiMode")
+	data.IdleTimeout = u.Query().Get("idleTimeout")
+	data.HealthCheckTimeout = u.Query().Get("healthCheckTimeout")
+	data.PermitWithoutStream = u.Query().Get("permitWithoutStream")
+	data.InitialWindowsSize = u.Query().Get("initialWindowsSize")
 	return data, nil
 }
 
@@ -290,14 +304,57 @@ func (v *V2Ray) Configuration(info PriorInfo) (c Configuration, err error) {
 			if v.Path == "" {
 				v.Path = "GunService"
 			}
-			core.StreamSettings.GrpcSettings = &coreObj.GrpcSettings{ServiceName: v.Path}
+			grpcSettings := coreObj.GrpcSettings{
+				ServiceName: v.Path,
+			}
+			// 解析 gRPC MultiMode
+			if v.MultiMode != "" {
+				if mm, err := strconv.ParseBool(v.MultiMode); err == nil {
+					grpcSettings.MultiMode = mm
+				}
+			}
+			// 解析 gRPC IdleTimeout
+			if v.IdleTimeout != "" {
+				if it, err := strconv.Atoi(v.IdleTimeout); err == nil {
+					grpcSettings.IdleTimeout = it
+				}
+			}
+			// 解析 gRPC HealthCheckTimeout
+			if v.HealthCheckTimeout != "" {
+				if hct, err := strconv.Atoi(v.HealthCheckTimeout); err == nil {
+					grpcSettings.HealthCheckTimeout = hct
+				}
+			}
+			// 解析 gRPC PermitWithoutStream
+			if v.PermitWithoutStream != "" {
+				if pws, err := strconv.ParseBool(v.PermitWithoutStream); err == nil {
+					grpcSettings.PermitWithoutStream = pws
+				}
+			}
+			// 解析 gRPC InitialWindowsSize
+			if v.InitialWindowsSize != "" {
+				if iws, err := strconv.Atoi(v.InitialWindowsSize); err == nil {
+					grpcSettings.InitialWindowsSize = iws
+				}
+			}
+			core.StreamSettings.GrpcSettings = &grpcSettings
 		case "ws":
-			core.StreamSettings.WsSettings = &coreObj.WsSettings{
+			wsSettings := coreObj.WsSettings{
 				Path: v.Path,
 				Headers: coreObj.Headers{
 					Host: v.Host,
 				},
 			}
+			// 解析 WebSocket Early Data
+			if v.MaxEarlyData != "" {
+				if med, err := strconv.Atoi(v.MaxEarlyData); err == nil && med > 0 {
+					wsSettings.MaxEarlyData = med
+					if v.EarlyDataHeaderName != "" {
+						wsSettings.EarlyDataHeaderName = v.EarlyDataHeaderName
+					}
+				}
+			}
+			core.StreamSettings.WsSettings = &wsSettings
 		case "mkcp", "kcp":
 			core.StreamSettings.KcpSettings = &coreObj.KcpSettings{
 				Mtu:              1350,
@@ -469,6 +526,12 @@ func (v *V2Ray) ExportToURL() string {
 		case "websocket", "ws", "http", "h2":
 			setValue(&query, "path", v.Path)
 			setValue(&query, "host", v.Host)
+			if v.MaxEarlyData != "" {
+				setValue(&query, "maxEarlyData", v.MaxEarlyData)
+			}
+			if v.EarlyDataHeaderName != "" {
+				setValue(&query, "earlyDataHeaderName", v.EarlyDataHeaderName)
+			}
 		case "mkcp", "kcp":
 			setValue(&query, "headerType", v.Type)
 			setValue(&query, "seed", v.Path)
@@ -478,6 +541,9 @@ func (v *V2Ray) ExportToURL() string {
 			setValue(&query, "path", v.Path)
 		case "grpc":
 			setValue(&query, "serviceName", v.Path)
+			if v.MultiMode != "" {
+				setValue(&query, "multiMode", v.MultiMode)
+			}
 		case "quic":
 			setValue(&query, "headerType", v.Type)
 			setValue(&query, "key", v.Key)

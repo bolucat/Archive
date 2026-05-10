@@ -20,6 +20,14 @@ Function Get-build-tools(){
 }
 
 Function Build-v2rayA(){
+    #Get OS
+    if ($env:GOOS -eq "windows" -or $env:WinDir) {
+        $v2rayaBin = "v2raya.exe"
+        $v2rayaCoreBin = "v2raya_core.exe"
+    } else {
+        $v2rayaBin = "v2raya"
+        $v2rayaCoreBin = "v2raya_core"
+    }
     #Get Paths
     $TerminalPath = Get-Item -LiteralPath ./ | ForEach-Object  -Process { $_.FullName }
     $CurrentPath = $PSScriptRoot
@@ -38,6 +46,10 @@ Function Build-v2rayA(){
     #Build Web Panel
     Set-Location -Path "$CurrentPath/gui"
     yarn; yarn build
+    #Build v2raya-core (merged xray-core + MultiObservatory)
+    Set-Location -Path "$CurrentPath/core"
+    ${env:CGO_ENABLED} = "0"
+    go build -ldflags "-s -w" -o "$CurrentPath/$v2rayaCoreBin" ./main
     #Build v2rayA
     Set-Location -Path "$CurrentPath/service"
     if ($env:GOOS -eq "windows") {

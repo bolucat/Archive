@@ -1,17 +1,13 @@
 package web
 
 import (
-	"crypto/subtle"
-	"embed"
 	"fmt"
-	"html/template"
-	"io"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"sync/atomic"
 
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 
@@ -21,15 +17,9 @@ import (
 	"github.com/Ehco1996/ehco/internal/metrics"
 )
 
-//go:embed templates/*.html js/*.js
-var templatesFS embed.FS
-
 const (
-	metricsPath     = "/metrics/"
-	indexPath       = "/"
-	connectionsPath = "/connections/"
-	rulesPath       = "/rules/"
-	apiPrefix       = "/api/v1"
+	metricsPath = "/metrics/"
+	apiPrefix   = "/api/v1"
 )
 
 type Server struct {
@@ -40,16 +30,23 @@ type Server struct {
 	addr string
 	l    *zap.SugaredLogger
 	cfg  *config.Config
+	auth *authenticator
 
 	connMgr cmgr.Cmgr
+
+	// xrayStatus is wired post-construction by cli boot once the
+	// XrayServer exists. Always read via Load() — may be nil when
+	// xray sync is disabled. Atomic pointer keeps it lock-free.
+	xrayStatus atomic.Pointer[glue.XrayStatus]
 }
 
-type echoTemplate struct {
-	templates *template.Template
-}
-
-func (t *echoTemplate) Render(w io.Writer, name string, data interface{}, c echo.Context) error {
-	return t.templates.ExecuteTemplate(w, name, data)
+// SetXrayStatus is called by cli boot once the XrayServer is
+// constructed. The /overview handler picks it up via Load().
+func (s *Server) SetXrayStatus(p glue.XrayStatus) {
+	if p == nil {
+		return
+	}
+	s.xrayStatus.Store(&p)
 }
 
 func NewServer(
@@ -65,13 +62,8 @@ func NewServer(
 	l := zap.S().Named("web")
 
 	e := NewEchoServer()
-	if err := setupMiddleware(e, cfg, l); err != nil {
-		return nil, fmt.Errorf("failed to setup middleware: %w", err)
-	}
-
-	if err := setupTemplates(e, l, cfg); err != nil {
-		return nil, fmt.Errorf("failed to setup templates: %w", err)
-	}
+	auth := newAuthenticator(cfg)
+	setupMiddleware(e, auth)
 
 	if err := setupMetrics(cfg); err != nil {
 		return nil, fmt.Errorf("failed to setup metrics: %w", err)
@@ -84,6 +76,7 @@ func NewServer(
 		e:       e,
 		l:       l,
 		cfg:     cfg,
+		auth:    auth,
 		connMgr: connMgr,
 		addr:    net.JoinHostPort(cfg.WebHost, fmt.Sprintf("%d", cfg.WebPort)),
 	}
@@ -94,65 +87,22 @@ func NewServer(
 }
 
 func validateConfig(cfg *config.Config) error {
-	// Add validation logic here
 	if cfg.WebPort <= 0 || cfg.WebPort > 65535 {
 		return fmt.Errorf("invalid web port: %d", cfg.WebPort)
 	}
-	// Add more validations as needed
 	return nil
 }
 
-func setupMiddleware(e *echo.Echo, cfg *config.Config, l *zap.SugaredLogger) error {
-	e.Use(NginxLogMiddleware(l))
-
-	if cfg.WebToken != "" {
-		e.Use(middleware.KeyAuthWithConfig(middleware.KeyAuthConfig{
-			KeyLookup: "query:token",
-			Validator: func(key string, c echo.Context) (bool, error) {
-				return key == cfg.WebToken, nil
-			},
-		}))
-	}
-
-	if cfg.WebAuthUser != "" && cfg.WebAuthPass != "" {
-		e.Use(middleware.BasicAuth(func(username, password string, c echo.Context) (bool, error) {
-			if subtle.ConstantTimeCompare([]byte(username), []byte(cfg.WebAuthUser)) == 1 &&
-				subtle.ConstantTimeCompare([]byte(password), []byte(cfg.WebAuthPass)) == 1 {
-				return true, nil
-			}
-			return false, nil
-		}))
-	}
-
-	return nil
-}
-
-func setupTemplates(e *echo.Echo, l *zap.SugaredLogger, cfg *config.Config) error {
-	funcMap := template.FuncMap{
-		"sub": func(a, b int) int { return a - b },
-		"add": func(a, b int) int { return a + b },
-		"CurrentCfg": func() *config.Config {
-			return cfg
-		},
-	}
-	tmpl, err := template.New("").Funcs(funcMap).ParseFS(templatesFS, "templates/*.html")
-	if err != nil {
-		return fmt.Errorf("failed to parse templates: %w", err)
-	}
-	templates := template.Must(tmpl, nil)
-	for _, temp := range templates.Templates() {
-		l.Debug("template name: ", temp.Name())
-	}
-	e.Renderer = &echoTemplate{templates: templates}
-	return nil
+func setupMiddleware(e *echo.Echo, auth *authenticator) {
+	e.Use(NginxLogMiddleware(zap.S().Named("web")))
+	// Single auth middleware: cookie-session for browsers, bearer-header
+	// for machine clients. No more dual gate, no more query-string token.
+	e.Use(auth.authMiddleware())
 }
 
 func setupMetrics(cfg *config.Config) error {
 	if err := metrics.RegisterEhcoMetrics(cfg); err != nil {
 		return fmt.Errorf("failed to register Ehco metrics: %w", err)
-	}
-	if err := metrics.RegisterNodeExporterMetrics(cfg); err != nil {
-		return fmt.Errorf("failed to register Node Exporter metrics: %w", err)
 	}
 	return nil
 }
@@ -160,26 +110,47 @@ func setupMetrics(cfg *config.Config) error {
 func setupRoutes(s *Server) {
 	e := s.e
 
-	e.StaticFS("/js", echo.MustSubFS(templatesFS, "js"))
 	e.GET(metricsPath, echo.WrapHandler(promhttp.Handler()))
 	e.GET("/debug/pprof/*", echo.WrapHandler(http.DefaultServeMux))
 
-	// web pages
-	e.GET(indexPath, s.index)
-	e.GET(connectionsPath, s.ListConnections)
-	e.GET(rulesPath, s.ListRules)
-	e.GET("/rule_metrics/", s.RuleMetrics)
-	e.GET("/logs/", s.LogsPage)
-
 	api := e.Group(apiPrefix)
+	api.GET("/auth/info", s.AuthInfo)
+	api.POST("/auth/login", s.HandleLogin)
+	api.POST("/auth/logout", s.HandleLogout)
 	api.GET("/config/", s.CurrentConfig)
 	api.POST("/config/reload/", s.HandleReload)
 	api.GET("/health_check/", s.HandleHealthCheck)
 	api.GET("/node_metrics/", s.GetNodeMetrics)
-	api.GET("/rule_metrics/", s.GetRuleMetrics)
+	api.GET("/overview", s.Overview)
+	api.GET("/version", s.Version)
+	api.GET("/update/check", s.UpdateCheck)
+	api.POST("/update/apply", s.UpdateApply)
 
-	// ws
+	// Local SQLite store: read-side health snapshot + maintenance ops.
+	// All four mutations are auth-gated through the api group's
+	// existing middleware — the /db/truncate confirm-string is a
+	// second line of defence, not a first.
+	api.GET("/db/health", s.GetDBHealth)
+	api.POST("/db/cleanup", s.PostDBCleanup)
+	api.POST("/db/vacuum", s.PostDBVacuum)
+	api.POST("/db/truncate", s.PostDBTruncate)
+	api.POST("/db/reset_stats", s.PostDBResetStats)
+
 	e.GET("/ws/logs", s.handleWebSocketLogs)
+
+	// SPA: assets are served from the embedded dist tree, every other
+	// path falls through to the SPA shell so client-side routing works.
+	e.GET("/assets/*", assetHandler())
+	e.GET("/favicon.ico", assetHandler())
+	e.GET("/", spaHandler())
+	e.GET("/*", spaHandler())
+}
+
+// APIGroup returns the /api/v1 echo group so other components (e.g. XrayServer)
+// can mount their own endpoints under the same auth/middleware stack.
+// Must be called before Start.
+func (s *Server) APIGroup() *echo.Group {
+	return s.e.Group(apiPrefix)
 }
 
 func (s *Server) Start() error {

@@ -30,6 +30,7 @@
     <string name="menu_item_import_config_clipboard">从剪贴板导入</string>
     <string name="menu_item_import_config_local">从本地导入</string>
     <string name="menu_item_import_config_policy_group">添加 [策略组]</string>
+    <string name="menu_item_import_config_proxy_chain">添加 [链式代理]</string>
     <string name="menu_item_import_config_manually_vmess">添加 [VMess]</string>
     <string name="menu_item_import_config_manually_vless">添加 [VLESS]</string>
     <string name="menu_item_import_config_manually_ss">添加 [Shadowsocks]</string>
@@ -117,6 +118,8 @@
     <string name="server_lab_final_mask">FinalMask 原始 JSON 格式: { FinalMaskObject }</string>
     <string name="server_lab_ech_config_list">EchConfigList</string>
     <string name="server_lab_pinned_ca256">证书指纹 (SHA-256)</string>
+    <string name="server_lab_browser_dialer">启用浏览器转发</string>
+    <string name="server_lab_browser_dialer_tip">仅支持 xhttp (packet-up) 和 ws。与优选域名冲突，utls, alpn, ech 等 TLS 设置将被忽略</string>
 
     <!-- UserAssetActivity -->
     <string name="toast_asset_copy_failed">失败, 请使用文件管理器</string>
@@ -154,9 +157,9 @@
     <string name="summary_pref_is_booted">开机时自动连接选择的服务器，可能会不成功</string>
 
     <string name="title_pref_auto_remove_invalid_after_test">测试后自动删除无效配置</string>
-    <string name="summary_pref_auto_remove_invalid_after_test">测试结果可能不准确；已删除的配置无法恢复。</string>
+    <string name="summary_pref_auto_remove_invalid_after_test">测试结果可能不准确且已删除的配置无法恢复</string>
     <string name="title_pref_auto_sort_after_test">测试后自动排序</string>
-    <string name="summary_pref_auto_sort_after_test">测试结果可能不准确；</string>
+    <string name="summary_pref_auto_sort_after_test">测试结果可能不准确</string>
 
     <string name="title_mux_settings">Mux 多路复用 设置</string>
     <string name="title_pref_mux_enabled">启用 Mux 多路复用</string>
@@ -207,6 +210,7 @@
 
     <string name="title_pref_delay_test_url">真连接延迟测试网址 </string>
     <string name="summary_pref_delay_test_url">Url</string>
+    <string name="title_pref_real_ping_concurrency">真连接延迟测试并发数量</string>
 
     <string name="title_pref_ip_api_url">当前连接信息测试网址</string>
     <string name="summary_pref_ip_api_url">URL</string>
@@ -273,7 +277,7 @@
     <string name="title_mode_help">点此查看更多帮助</string>
     <string name="title_language">语言</string>
     <string name="title_ui_settings">用户界面设置</string>
-    <string name="title_pref_ui_mode_night">界面颜色设置</string>
+    <string name="title_pref_ui_mode_night">深色模式</string>
     <string name="title_pref_use_hev_tunnel">启用 Hev TUN 功能</string>
     <string name="summary_pref_use_hev_tunnel">选择启用后 TUN 将使用 hev-socks5-tunnel 否则使用 xray-core</string>
     <string name="title_pref_hev_tunnel_loglevel">HevTun 日志级别</string>
@@ -376,6 +380,12 @@
     <string name="title_policy_group_type">策略组类型</string>
     <string name="title_policy_group_subscription_id">来自订阅分组</string>
     <string name="title_policy_group_subscription_filter">别名正则过滤</string>
+    <string name="server_proxy_chain_members">代理链成员</string>
+    <string name="server_proxy_chain_pick_members">点此选择成员</string>
+    <string name="server_proxy_chain_member_unselected">请选择成员</string>
+    <string name="server_proxy_chain_members_unselected">请为链路中的每一行选择成员</string>
+    <string name="server_proxy_chain_members_insufficient">成员数量不足</string>
+    <string name="server_proxy_chain_members_invalid">无效的链路成员: %1$s</string>
 
     <!-- BackupActivity -->
     <string name="title_configuration_backup_restore">备份 &amp; 还原</string>

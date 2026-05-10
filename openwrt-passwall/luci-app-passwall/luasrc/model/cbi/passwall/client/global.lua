@@ -253,7 +253,7 @@ o:value("119.28.28.28")
 o:depends("direct_dns_mode", "udp")
 o:depends("direct_dns_mode", "tcp")
 
-o = s:taboption("DNS", Flag, "filter_proxy_ipv6", translate("Filter Proxy Host IPv6"), translate("Experimental feature."))
+o = s:taboption("DNS", Flag, "filter_proxy_ipv6", translate("Filter Proxy Host IPv6"))
 o.default = "0"
 
 -- TCP分流时dns过滤模式保存逻辑
@@ -638,14 +638,6 @@ o:value("debug")
 o:value("info")
 o:value("warning")
 o:value("error")
-
-o = s:taboption("log", ListValue, "trojan_loglevel", "Trojan " ..  translate("Log Level"))
-o.default = "2"
-o:value("0", "all")
-o:value("1", "info")
-o:value("2", "warn")
-o:value("3", "error")
-o:value("4", "fatal")
 
 o = s:taboption("log", Flag, "advanced_log_feature", translate("Advanced log feature"), translate("For professionals only."))
 o.default = "0"

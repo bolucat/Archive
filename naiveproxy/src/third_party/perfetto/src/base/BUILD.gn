@@ -25,6 +25,7 @@ _subprocess_supported =
 
 perfetto_component("base") {
   deps = [
+    ":regex",
     "../../gn:base_platform",
     "../../gn:default_deps",
   ]
@@ -87,6 +88,30 @@ perfetto_component("base") {
 
   if (enable_perfetto_stderr_crash_dump) {
     deps += [ ":debug_crash_stack_trace" ]
+  }
+}
+
+source_set("regex") {
+  sources = [
+    "regex/regex.cc",
+    "regex/regex_std.h",
+  ]
+  if (enable_perfetto_re2) {
+    sources += [ "regex/regex_re2.h" ]
+  }
+  if (enable_perfetto_pcre2) {
+    sources += [ "regex/regex_pcre2.h" ]
+  }
+  deps = [ "../../gn:default_deps" ]
+  public_deps = [
+    "../../include/perfetto/base",
+    "../../include/perfetto/ext/base",
+  ]
+  if (enable_perfetto_re2) {
+    public_deps += [ "../../gn:re2" ]
+  }
+  if (enable_perfetto_pcre2) {
+    public_deps += [ "../../gn:pcre2" ]
   }
 }
 

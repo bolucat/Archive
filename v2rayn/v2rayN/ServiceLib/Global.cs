@@ -64,9 +64,12 @@ public class Global
     public const string HttpsProtocol = "https://";
     public const string SocksProtocol = "socks://";
     public const string Socks5Protocol = "socks5://";
+    public const string InnerUriProtocol = "v2rayn://";
     public const string AsIs = "AsIs";
     public const string IPIfNonMatch = "IPIfNonMatch";
     public const string IPOnDemand = "IPOnDemand";
+    public const string GeoSitePrefix = "geosite:";
+    public const string GeoIPPrefix = "geoip:";
 
     public const string UserEMail = "t@t.tt";
     public const string AutoRunRegPath = @"Software\Microsoft\Windows\CurrentVersion\Run";

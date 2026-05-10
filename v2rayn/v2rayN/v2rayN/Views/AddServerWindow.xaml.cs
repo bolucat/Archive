@@ -75,7 +75,7 @@ public partial class AddServerWindow
                 sepa2.Visibility = Visibility.Collapsed;
                 gridTransport.Visibility = Visibility.Collapsed;
                 cmbFingerprint.IsEnabled = false;
-                cmbFingerprint.Text = string.Empty;
+                cmbAlpn.IsEnabled = false;
                 break;
 
             case EConfigType.TUIC:
@@ -84,7 +84,6 @@ public partial class AddServerWindow
                 gridTransport.Visibility = Visibility.Collapsed;
                 cmbCoreType.IsEnabled = false;
                 cmbFingerprint.IsEnabled = false;
-                cmbFingerprint.Text = string.Empty;
                 gridFinalmask.Visibility = Visibility.Collapsed;
 
                 cmbCongestionControl8.ItemsSource = Global.TuicCongestionControls;
@@ -115,11 +114,8 @@ public partial class AddServerWindow
                 cmbCoreType.IsEnabled = false;
                 gridFinalmask.Visibility = Visibility.Collapsed;
                 cmbFingerprint.IsEnabled = false;
-                cmbFingerprint.Text = string.Empty;
                 cmbAlpn.IsEnabled = false;
-                cmbAlpn.Text = string.Empty;
                 cmbAllowInsecure.IsEnabled = false;
-                cmbAllowInsecure.Text = string.Empty;
 
                 cmbCongestionControl12.ItemsSource = Global.NaiveCongestionControls;
                 break;
@@ -188,6 +184,7 @@ public partial class AddServerWindow
                 case EConfigType.WireGuard:
                     this.Bind(ViewModel, vm => vm.SelectedSource.Password, v => v.txtId9.Text).DisposeWith(disposables);
                     this.Bind(ViewModel, vm => vm.WgPublicKey, v => v.txtPublicKey9.Text).DisposeWith(disposables);
+                    this.Bind(ViewModel, vm => vm.WgPresharedKey, v => v.txtPreSharedKey9.Text).DisposeWith(disposables);
                     this.Bind(ViewModel, vm => vm.WgReserved, v => v.txtPath9.Text).DisposeWith(disposables);
                     this.Bind(ViewModel, vm => vm.WgInterfaceAddress, v => v.txtRequestHost9.Text).DisposeWith(disposables);
                     this.Bind(ViewModel, vm => vm.WgMtu, v => v.txtShortId9.Text).DisposeWith(disposables);

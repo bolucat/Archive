@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package v2ray.core.app.commander;
+option csharp_namespace = "V2Ray.Core.App.Commander";
+option go_package = "github.com/v2fly/v2ray-core/v5/app/commander";
+option java_package = "com.v2ray.core.app.commander";
+option java_multiple_files = true;
+
+import "google/protobuf/any.proto";
+import "common/protoext/extensions.proto";
+
+// Config is the settings for Commander.
+message Config {
+  // Tag of the outbound handler that handles grpc connections.
+  string tag = 1;
+  // Services that supported by this server. All services must implement Service
+  // interface.
+  repeated google.protobuf.Any service = 2;
+}
+
+// ReflectionConfig is the placeholder config for ReflectionService.
+message ReflectionConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "grpcservice";
+  option (v2ray.core.common.protoext.message_opt).short_name = "reflection";
+}
+
+
+message SimplifiedConfig {
+  option (v2ray.core.common.protoext.message_opt).type = "service";
+  option (v2ray.core.common.protoext.message_opt).short_name = "commander";
+
+  string tag = 1;
+  repeated string name = 2;
+}

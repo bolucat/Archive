@@ -250,3 +250,36 @@ export default {
   }
 }
 </style>
+
+<style lang="scss">
+body.theme-dark {
+  .dns-setting-modal {
+    .help-link {
+      color: var(--md-on-surface-variant);
+      &:hover {
+        color: var(--md-primary);
+      }
+    }
+
+    .dns-table {
+      border-color: var(--md-surface-variant);
+    }
+
+    .dns-row {
+      border-bottom-color: var(--md-surface-variant);
+    }
+
+    .dns-header {
+      background: var(--md-surface-container);
+      color: var(--md-on-surface-variant);
+    }
+
+    .dns-data-row {
+      background: var(--md-bg);
+      &:hover {
+        background: var(--md-surface-container);
+      }
+    }
+  }
+}
+</style>

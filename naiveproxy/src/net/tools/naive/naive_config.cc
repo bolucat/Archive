@@ -120,6 +120,42 @@ bool NaiveConfig::Parse(const base::DictValue& value) {
     }
   }
 
+  if (const base::Value* v = value.Find("tunnel-timeout")) {
+    if (std::optional<int> i = v->GetIfInt()) {
+      tunnel_timeout = *i;
+    } else if (const std::string* str = v->GetIfString()) {
+      if (!base::StringToInt(*str, &tunnel_timeout)) {
+        std::cerr << "Invalid tunnel-timeout" << std::endl;
+        return false;
+      }
+    } else {
+      std::cerr << "Invalid tunnel-timeout" << std::endl;
+      return false;
+    }
+    if (tunnel_timeout < 1) {
+      std::cerr << "Invalid tunnel-timeout" << std::endl;
+      return false;
+    }
+  }
+
+  if (const base::Value* v = value.Find("idle-timeout")) {
+    if (std::optional<int> i = v->GetIfInt()) {
+      idle_timeout = *i;
+    } else if (const std::string* str = v->GetIfString()) {
+      if (!base::StringToInt(*str, &idle_timeout)) {
+        std::cerr << "Invalid idle-timeout" << std::endl;
+        return false;
+      }
+    } else {
+      std::cerr << "Invalid idle-timeout" << std::endl;
+      return false;
+    }
+    if (idle_timeout < 1) {
+      std::cerr << "Invalid idle-timeout" << std::endl;
+      return false;
+    }
+  }
+
   if (const base::Value* v = value.Find("extra-headers")) {
     if (const std::string* str = v->GetIfString()) {
       extra_headers.AddHeadersFromString(*str);

@@ -17,6 +17,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
 #include <openssl/nid.h>
@@ -66,9 +67,9 @@ int EVP_PKEY_is_opaque(const EVP_PKEY *pkey) {
   return 0;
 }
 
-int EVP_PKEY_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {
+int EVP_PKEY_eq(const EVP_PKEY *a, const EVP_PKEY *b) {
   // This also checks that |EVP_PKEY_id| matches.
-  if (!EVP_PKEY_cmp_parameters(a, b)) {
+  if (!EVP_PKEY_parameters_eq(a, b)) {
     return 0;
   }
 
@@ -77,6 +78,10 @@ int EVP_PKEY_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {
   return a_impl->ameth != nullptr && a_impl->ameth->pub_equal != nullptr &&
          a_impl->pkey != nullptr && b_impl->pkey != nullptr &&
          a_impl->ameth->pub_equal(a_impl, b_impl);
+}
+
+int EVP_PKEY_cmp(const EVP_PKEY *a, const EVP_PKEY *b) {
+  return EVP_PKEY_eq(a, b);
 }
 
 int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from) {
@@ -101,7 +106,7 @@ int EVP_PKEY_copy_parameters(EVP_PKEY *to, const EVP_PKEY *from) {
 
   // Once set, parameters may not change.
   if (!EVP_PKEY_missing_parameters(to_impl)) {
-    if (EVP_PKEY_cmp_parameters(to_impl, from_impl) == 1) {
+    if (EVP_PKEY_parameters_eq(to_impl, from_impl) == 1) {
       return 1;
     }
     OPENSSL_PUT_ERROR(EVP, EVP_R_DIFFERENT_PARAMETERS);
@@ -323,7 +328,7 @@ int EVP_PKEY_get_raw_public_key(const EVP_PKEY *pkey, uint8_t *out,
   return impl->ameth->get_pub_raw(impl, out, out_len);
 }
 
-int EVP_PKEY_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b) {
+int EVP_PKEY_parameters_eq(const EVP_PKEY *a, const EVP_PKEY *b) {
   if (EVP_PKEY_id(a) != EVP_PKEY_id(b)) {
     return 0;
   }
@@ -338,6 +343,10 @@ int EVP_PKEY_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b) {
   return 1;
 }
 
+int EVP_PKEY_cmp_parameters(const EVP_PKEY *a, const EVP_PKEY *b) {
+  return EVP_PKEY_parameters_eq(a, b);
+}
+
 int EVP_PKEY_CTX_set_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD *md) {
   return EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_TYPE_SIG, EVP_PKEY_CTRL_MD, 0,
                            (void *)md);
@@ -349,11 +358,12 @@ int EVP_PKEY_CTX_get_signature_md(EVP_PKEY_CTX *ctx, const EVP_MD **out_md) {
 }
 
 int EVP_PKEY_CTX_set1_signature_context_string(EVP_PKEY_CTX *ctx,
-                                               uint8_t *context,
+                                               const uint8_t *context,
                                                size_t context_len) {
+  Span<const uint8_t> context_string(context, context_len);
   return EVP_PKEY_CTX_ctrl(ctx, -1, EVP_PKEY_OP_TYPE_SIG,
-                           EVP_PKEY_CTRL_SIGNATURE_CONTEXT_STRING, context_len,
-                           context);
+                           EVP_PKEY_CTRL_SIGNATURE_CONTEXT_STRING, 0,
+                           &context_string);
 }
 
 void *EVP_PKEY_get0(const EVP_PKEY *pkey) {
@@ -374,6 +384,10 @@ void OpenSSL_add_all_ciphers() {}
 void OpenSSL_add_all_digests() {}
 
 void EVP_cleanup() {}
+
+int EVP_default_properties_is_fips_enabled(OSSL_LIB_CTX *libctx) {
+  return FIPS_mode();
+}
 
 int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
                                    size_t len) {
@@ -421,4 +435,18 @@ int EVP_PKEY_has_private(const EVP_PKEY *pkey) {
     return 0;
   }
   return impl->ameth->priv_present(impl);
+}
+
+EVP_PKEY *EVP_PKEY_copy_public(const EVP_PKEY *pkey) {
+  auto *impl = FromOpaque(pkey);
+  if (impl == nullptr || impl->ameth == nullptr || impl->pkey == nullptr ||
+      impl->ameth->pub_copy == nullptr) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    return nullptr;
+  }
+  UniquePtr<EvpPkey> ret(FromOpaque(EVP_PKEY_new()));
+  if (ret == nullptr || !impl->ameth->pub_copy(ret.get(), impl)) {
+    return nullptr;
+  }
+  return ret.release();
 }

@@ -29,6 +29,10 @@
                 android:title="@string/menu_item_import_config_policy_group"
                 app:showAsAction="never" />
             <item
+                android:id="@+id/import_manually_proxy_chain"
+                android:title="@string/menu_item_import_config_proxy_chain"
+                app:showAsAction="never" />
+            <item
                 android:id="@+id/import_manually_vmess"
                 android:title="@string/menu_item_import_config_manually_vmess"
                 app:showAsAction="never" />

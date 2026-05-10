@@ -5,12 +5,13 @@ on:
 
 jobs:
   stale:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     permissions:
       issues: write
       actions: write
     steps:
-      - uses: actions/stale@v10
+      - name: Close stale issue and pr
+        uses: actions/stale@v10
         with:
           stale-issue-message: "Stale Issue"
           stale-pr-message: "Stale PR"

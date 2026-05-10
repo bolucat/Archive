@@ -584,6 +584,10 @@ int SpdyProxyClientSocket::DoProcessResponseHeadersComplete(int result) {
 }
 
 int SpdyProxyClientSocket::DoProcessResponseCode() {
+  if (preamble_index_.has_value()) {
+    next_state_ = STATE_OPEN;
+    return OK;
+  }
   switch (response_.headers->response_code()) {
     case 200:  // OK
       next_state_ = STATE_OPEN;
@@ -595,10 +599,6 @@ int SpdyProxyClientSocket::DoProcessResponseCode() {
       return HandleProxyAuthChallenge(auth_.get(), &response_, net_log_);
 
     default:
-      if (preamble_index_.has_value()) {
-        next_state_ = STATE_OPEN;
-        return OK;
-      }
       // Ignore response to avoid letting the proxy impersonate the target
       // server.  (See http://crbug.com/137891.)
       return ERR_TUNNEL_CONNECTION_FAILED;

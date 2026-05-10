@@ -1,0 +1,380 @@
+name: Release
+
+on:
+  release:
+    types:
+      - prereleased
+      - released
+  push:
+    branches:
+      - master
+      - v*
+      - dev*
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/release.yml"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/release.yml"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        # Include amd64 on all platforms.
+        goos: [windows, freebsd, openbsd, linux, dragonfly, darwin]
+        goarch: [amd64, 386]
+        exclude:
+          # Exclude i386 on darwin and dragonfly.
+          - goarch: 386
+            goos: dragonfly
+          - goarch: 386
+            goos: darwin
+          - goarch: amd64
+            goos: linux
+        include:
+          # BEGIN Linux ARM 5 6 7
+          - goos: linux
+            goarch: arm
+            goarm: 7
+          - goos: linux
+            goarch: arm
+            goarm: 6
+          - goos: linux
+            goarch: arm
+            goarm: 5
+          # END Linux ARM 5 6 7
+          # BEGIN Windows ARM 7
+#          - goos: windows
+#            goarch: arm
+#            goarm: 7
+          # END Windows ARM 7
+          # BEGIN FreeBSD ARM 6 7
+          - goos: freebsd
+            goarch: arm
+            goarm: 6
+          - goos: freebsd
+            goarch: arm
+            goarm: 7
+          # END FreeBSD ARM 6 7
+          # BEGIN OpenBSD ARM 6 7
+          - goos: openbsd
+            goarch: arm
+            goarm: 6
+          - goos: openbsd
+            goarch: arm
+            goarm: 7
+          # END OpenBSD ARM 6 7
+          # BEGIN Other architectures
+          - goos: darwin
+            goarch: arm64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: riscv64
+          - goos: linux
+            goarch: loong64
+          - goos: windows
+            goarch: arm64
+          - goos: android
+            goarch: arm64
+          - goos: freebsd
+            goarch: arm64
+          - goos: openbsd
+            goarch: arm64
+          # BEGIN MIPS
+          - goos: linux
+            goarch: mips64
+          - goos: linux
+            goarch: mips64le
+          - goos: linux
+            goarch: mipsle
+          - goos: linux
+            goarch: mips
+          - goos: linux
+            goarch: arm64
+            pie: pie
+          - goos: linux
+            goarch: amd64
+            pie: pie
+          - goos: linux
+            goarch: amd64
+            pie:
+          # END MIPS
+          # END Other architectures
+      fail-fast: false
+
+    runs-on: ubuntu-latest
+    env:
+      GOOS: ${{ matrix.goos }}
+      GOARCH: ${{ matrix.goarch }}
+      GOARM: ${{ matrix.goarm }}
+      PIE_ENABLED: ${{ matrix.pie }}
+      CGO_ENABLED: 0
+      IS_PRERELEASE: ${{ github.event.release.prerelease }}
+
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Show workflow information
+        id: get_filename
+        run: |
+          export _NAME=$(jq ".[\"$GOOS-$GOARCH$GOARM$PIE_ENABLED\"].friendlyName" -r < release/friendly-filenames.json)
+
+          if [ "$GOARCH" = "arm64" ] && [ "$PIE_ENABLED" = "pie" ] && [ "$IS_PRERELEASE" = "true" ]; then
+            export _NAME="${_NAME}-prerelease"
+          fi
+
+          echo "GOOS: $GOOS, GOARCH: $GOARCH, GOARM: $GOARM, RELEASE_NAME: $_NAME"
+          echo "ASSET_NAME=$_NAME" >> $GITHUB_OUTPUT
+          echo "ASSET_NAME=$_NAME" >> $GITHUB_ENV
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
+
+      - name: Get project dependencies
+        run: go mod download
+
+      - name: Build V2Ray
+        run: |
+          mkdir -p build_assets
+          EXTRA_ARG=""
+          case "$GOOS-$GOARCH" in
+            "linux-amd64")
+              ;&
+            "linux-arm64")
+            if [ ! -z $PIE_ENABLED ]
+            then
+              EXTRA_ARG=$EXTRA_ARG" -buildmode=pie"
+            fi
+              ;;
+          esac
+          go build $EXTRA_ARG -v -o build_assets/v2ray -trimpath -ldflags "-s -w -buildid=" ./main
+
+      - name: Rename Windows V2Ray
+        if: matrix.goos == 'windows'
+        run: |
+          cd ./build_assets || exit 1
+          mv v2ray v2ray.exe
+
+      - name: Download geo files
+        run: |
+          wget -O release/config/geoip.dat "https://raw.githubusercontent.com/v2fly/geoip/release/geoip.dat"
+          wget -O release/config/geoip-only-cn-private.dat "https://raw.githubusercontent.com/v2fly/geoip/release/geoip-only-cn-private.dat"
+          wget -O release/config/geosite.dat "https://raw.githubusercontent.com/v2fly/domain-list-community/release/dlc.dat"
+
+      - name: Prepare package
+        run: cp -v ./release/config/*.* ./build_assets
+
+      - name: Prepare package for Linux
+        if: matrix.goos == 'linux'
+        run: cp -rv ./release/config/systemd ./build_assets/
+
+      - name: Create ZIP archive
+        run: |
+          pushd build_assets || exit 1
+          zip -9vr ../v2ray-$ASSET_NAME.zip .
+          popd || exit 1
+          FILE=./v2ray-$ASSET_NAME.zip
+          DGST=$FILE.dgst
+          openssl dgst -md5    $FILE | sed 's/([^)]*)//g' >>$DGST
+          openssl dgst -sha1   $FILE | sed 's/([^)]*)//g' >>$DGST
+          openssl dgst -sha256 $FILE | sed 's/([^)]*)//g' >>$DGST
+          openssl dgst -sha512 $FILE | sed 's/([^)]*)//g' >>$DGST
+
+      - name: Upload ZIP file to Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: v2ray-${{ steps.get_filename.outputs.ASSET_NAME }}.zip
+          path: v2ray-${{ steps.get_filename.outputs.ASSET_NAME }}.zip
+
+      - name: Upload files to GitHub release
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file_glob: true
+          file: ./v2ray-${{ steps.get_filename.outputs.ASSET_NAME }}.zip*
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  signature:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: ./go.mod
+          cache-dependency-path: ./go.sum
+
+      - uses: actions/download-artifact@v8
+        with:
+          path: build_artifacts
+
+      - name: Create extra package
+        run: |
+          pushd ./release/extra/
+          zip -9vr ../../build_artifacts/v2ray-extra.zip .
+          popd
+
+      - name: Generate shasum
+        run: |
+          go get -v github.com/v2fly/V2BuildAssist/v2buildutil
+          cd build_artifacts || exit 1
+          mkdir .temp
+          mv ./*/*.zip ./.temp
+          rmdir ./*/
+          mv ./.temp/* .
+          ls -lah --recursive
+          {
+            go run github.com/v2fly/V2BuildAssist/v2buildutil gen version $(git describe --tags $(git rev-list --tags --max-count=1))
+            go run github.com/v2fly/V2BuildAssist/v2buildutil gen project "v2fly"
+            for zip in $(ls *.zip); do
+              go run github.com/v2fly/V2BuildAssist/v2buildutil gen file ${zip}
+            done
+          } >Release.unsigned.unsorted
+          go run github.com/v2fly/V2BuildAssist/v2buildutil gen sort < Release.unsigned.unsorted > Release.unsigned
+          rm -f Release.unsigned.unsorted
+          FILE=./Release.unsigned
+          DGST=$FILE.dgst
+          openssl dgst -md5    $FILE | sed 's/([^)]*)//g' >>$DGST
+          openssl dgst -sha1   $FILE | sed 's/([^)]*)//g' >>$DGST
+          openssl dgst -sha256 $FILE | sed 's/([^)]*)//g' >>$DGST
+          openssl dgst -sha512 $FILE | sed 's/([^)]*)//g' >>$DGST
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Release.unsigned
+          path: build_artifacts/Release.unsigned
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Release.unsigned.dgst
+          path: build_artifacts/Release.unsigned.dgst
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: v2ray-extra.zip
+          path: build_artifacts/v2ray-extra.zip
+
+      - name: Upload Release.unsigned related files
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file_glob: true
+          file: build_artifacts/Release.unsigned*
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload extra package
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file_glob: true
+          file: build_artifacts/v2ray-extra.zip
+          tag: ${{ github.ref }}
+          overwrite: true
+
+  buildContainer:
+    if: github.event_name == 'release'
+    needs: signature
+    name: Build And Push image
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY_USER: ${{ github.actor }}
+      REGISTRY_PASSWORD: ${{ github.token }}
+      IMAGE_REGISTRY: ghcr.io/${{ github.repository_owner }}
+      RELEASE_REPO: ${{ github.repository }}
+      VERSION: ${{ github.event.release.tag_name }}
+      TIMESTAMP: ${{ github.event.release.created_at }}
+      PRERELEASE: ${{ github.event.release.prerelease }}
+      VARIANTS: | # <v2ray variant>:<image tag suffix>
+        std:
+        extra:-extra
+      ARCHS: | # <v2ray arch name>:<container arch name>
+        32:386
+        64:amd64
+        arm32-v6:arm/v6
+        arm32-v7a:arm/v7
+        arm64-v8a:arm64
+        arm64-v8a:arm64/v8
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Log in to ghcr.io
+        uses: redhat-actions/podman-login@v1
+        with:
+          username: ${{ env.REGISTRY_USER }}
+          password: ${{ env.REGISTRY_PASSWORD }}
+          registry: ${{ env.IMAGE_REGISTRY }}
+
+      - name: Build Images
+        id: build-image
+        run: |
+          image=v2ray
+          tags=
+
+          timestamp=$(date -d $TIMESTAMP +%s)
+          versions="$VERSION" # full version (v1.2.3)
+          versions="$versions $(echo $VERSION | cut -d. -f1,2)" # minor version (v1.2)
+          if [ $PRERELEASE = false ]; then
+            versions="$versions $(echo $VERSION | cut -d. -f1)" # major version (v1)
+            versions="$versions latest"
+          fi
+
+          formatEach() {
+            format=$1
+            shift 1
+            echo "$@" | xargs -n1 | xargs -i echo "$format" | xargs
+          }
+
+          for variant in $VARIANTS; do
+            v2Variant=$(echo $variant | cut -d: -f1)
+            containerVariant=$(echo $variant | cut -d: -f2)
+            variantTags=$(formatEach "{}$containerVariant" $versions)
+            tags="$tags $variantTags"
+            for arch in $ARCHS; do
+              v2Arch=$(echo $arch | cut -d: -f1)
+              containerArch=$(echo $arch | cut -d: -f2)
+              bash ./release/container/downloadAssets.sh $VERSION $v2Arch $containerArch $v2Variant
+              for tag in $variantTags; do
+                buildah bud \
+                  --manifest $image:$tag \
+                  --file ./release/container/Containerfile \
+                  --platform linux/$containerArch \
+                  --timestamp $timestamp \
+                  --squash \
+                  ./context/linux/$containerArch/$v2Variant
+              done
+            done
+          done
+
+          echo image=$image >> $GITHUB_OUTPUT
+          echo tags=$tags >> $GITHUB_OUTPUT
+
+      - name: Push To ghcr.io
+        uses: redhat-actions/push-to-registry@v2
+        with:
+          image: ${{ steps.build-image.outputs.image }}
+          tags: ${{ steps.build-image.outputs.tags }}
+          registry: ${{ env.IMAGE_REGISTRY }}

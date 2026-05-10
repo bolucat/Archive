@@ -69,6 +69,9 @@ data class ProfileItem(
     var policyGroupType: String? = null,
     var policyGroupSubscriptionId: String? = null,
     var policyGroupFilter: String? = null,
+    var proxyChainProfiles: String? = null,
+
+    var browserDialerMode: String? = null,
 
     ) {
     companion object {
@@ -129,6 +132,7 @@ data class ProfileItem(
                 && this.portHopping == obj.portHopping
                 && this.portHoppingInterval == obj.portHoppingInterval
                 && this.pinnedCA256 == obj.pinnedCA256
+                && this.proxyChainProfiles == obj.proxyChainProfiles
                 )
     }
 }

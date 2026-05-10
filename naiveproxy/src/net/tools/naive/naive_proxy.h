@@ -38,6 +38,8 @@ class NaiveProxy {
              const std::string& listen_user,
              const std::string& listen_pass,
              int concurrency,
+             int tunnel_timeout,
+             int idle_timeout,
              RedirectResolver* resolver,
              HttpNetworkSession* session,
              const NetworkTrafficAnnotationTag& traffic_annotation,
@@ -47,18 +49,31 @@ class NaiveProxy {
   NaiveProxy& operator=(const NaiveProxy&) = delete;
 
  private:
-  struct TunnelId {
-    NetworkAnonymizationKey key;
-    base::Time deadline;
+  enum class State {
+    kAccept,
+    kAcceptComplete,
+    kPreamble,
+    kPreambleComplete,
+    kConnect,
+    kNone,
   };
 
-  void DoAcceptLoop();
-  void OnAcceptComplete(int result);
-  void HandleAcceptResult(int result);
+  struct Tunnel {
+    Tunnel();
+    ~Tunnel();
 
-  void OnPreambleComplete(int result);
+    NetworkAnonymizationKey nak = NetworkAnonymizationKey::CreateTransient();
+    base::TimeTicks deadline;
+    std::unique_ptr<PreambleGetter> url_getter;
+  };
 
-  void DoConnect();
+  void OnIOComplete(int result);
+  int DoLoop(int last_io_result);
+  int DoAccept();
+  int DoAcceptComplete(int result);
+  int DoPreamble();
+  int DoPreambleComplete(int result);
+  int DoConnect();
   void OnConnectComplete(unsigned int connection_id, int result);
   void HandleConnectResult(NaiveConnection* connection, int result);
 
@@ -69,25 +84,29 @@ class NaiveProxy {
   void Close(unsigned int connection_id, int reason);
 
   NaiveConnection* FindConnection(unsigned int connection_id);
-  const NetworkAnonymizationKey& current_nak() const;
   NaiveProxyDelegate* naive_proxy_delegate() const;
-  bool WillCreateSession() const;
+  bool WillCreateSession(const NetworkAnonymizationKey& nak) const;
+  void CleanUpIdleConnections();
 
   std::unique_ptr<ServerSocket> listen_socket_;
   ClientProtocol protocol_;
   std::string listen_user_;
   std::string listen_pass_;
   int concurrency_;
+  base::TimeDelta tunnel_timeout_;
+  base::TimeDelta idle_timeout_;
   ProxyInfo proxy_info_;
   RedirectResolver* resolver_;
   HttpNetworkSession* session_;
   NetLogWithSource net_log_;
 
-  unsigned int last_id_;
+  unsigned int next_id_;
 
+  State next_state_;
+  CompletionRepeatingCallback io_callback_;
   std::unique_ptr<StreamSocket> accepted_socket_;
 
-  std::vector<TunnelId> tunnel_ids_;
+  std::vector<Tunnel> tunnels_;
 
   std::map<unsigned int, std::unique_ptr<NaiveConnection>> connection_by_id_;
 
@@ -95,7 +114,7 @@ class NaiveProxy {
 
   std::vector<PaddingType> supported_padding_types_;
 
-  std::unique_ptr<PreambleGetter> url_getter_;
+  base::RepeatingTimer cleanup_timer_;
 
   base::WeakPtrFactory<NaiveProxy> weak_ptr_factory_{this};
 };

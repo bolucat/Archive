@@ -31,6 +31,7 @@ type Setting struct {
 	TunSetupScript                     string          `json:"tunSetupScript"`
 	TunTeardownScript                  string          `json:"tunTeardownScript"`
 	TunProcessBackend                  string          `json:"tunProcessBackend"`
+	TunExcludeProcesses                string          `json:"tunExcludeProcesses"`
 	SsBackend                          string          `json:"ssBackend"`
 	TrojanBackend                      string          `json:"trojanBackend"`
 }

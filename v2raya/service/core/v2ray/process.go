@@ -31,8 +31,7 @@ type Process struct {
 	// mutex protect the proc
 	mutex          sync.Mutex
 	proc           *os.Process
-	procCancel     func() // cancel func for proc and pluginManagers
-	pluginManagers []*os.Process
+	procCancel     func() // cancel func for proc
 	template       *Template
 	tag2WhichIndex map[string]int
 	done           chan struct{}
@@ -62,35 +61,12 @@ func NewProcess(tmpl *Template,
 	if err = tmpl.CheckInboundPortsOccupied(); err != nil {
 		return nil, fmt.Errorf("%v", err)
 	}
-	go tmpl.ServePlugins()
 	pCtx, cancel := context.WithCancel(context.Background())
 	defer func() {
 		if err != nil {
 			cancel()
 		}
 	}()
-	// start PluginManagers
-	if pm := conf.GetEnvironmentConfig().PluginManager; pm != "" {
-		for _, v := range tmpl.PluginManagerInfoList {
-			arguments := []string{
-				pm,
-				"--stage=run",
-				fmt.Sprintf("--link=%v", v.Link),
-				fmt.Sprintf("--port=%v", v.Port),
-				fmt.Sprintf("--v2raya-confdir=%v", conf.GetEnvironmentConfig().Config),
-			}
-			proc, err := RunWithLog(pCtx, pm, arguments, "", os.Environ())
-			if err != nil {
-				// clean
-				for _, pm := range process.pluginManagers {
-					_ = pm.Kill()
-				}
-				process.pluginManagers = nil
-				return nil, fmt.Errorf("executing PluginManager [state: run, link: %v]: %w", v.Link, err)
-			}
-			process.pluginManagers = append(process.pluginManagers, proc)
-		}
-	}
 	defer func() {
 		if err != nil {
 			_ = tmpl.Close()
@@ -135,13 +111,6 @@ func NewProcess(tmpl *Template,
 	}()
 	// ports to check
 	portList := []string{strconv.Itoa(tmpl.ApiPort)}
-	for _, plu := range tmpl.Plugins {
-		_, port, err := net.SplitHostPort(plu.ListenAddr())
-		if err != nil {
-			return nil, err
-		}
-		portList = append(portList, port)
-	}
 	log.Trace("portList for connectivity test: %+v", portList)
 	startTime := time.Now()
 	startTimeOut := time.Duration(conf.GetEnvironmentConfig().CoreStartupTimeout) * time.Second
@@ -252,6 +221,11 @@ func StartCoreProcess(ctx context.Context) (*os.Process, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Check that the core version matches the v2raya version exactly.
+	if err := where.CheckCoreVersion(v2rayBinPath, conf.Version); err != nil {
+		return nil, fmt.Errorf("core version check failed: %w", err)
+	}
 	dir := filepath.Dir(v2rayBinPath)
 	var arguments = []string{
 		v2rayBinPath,
@@ -262,16 +236,9 @@ func StartCoreProcess(ctx context.Context) (*os.Process, error) {
 		arguments = append(arguments, "--confdir="+confdir)
 	}
 
-	// Get core variant to determine which environment variable to use
-	variant, _, err := where.GetV2rayServiceVersion()
-	if err != nil {
-		// Fallback to Unknown if detection fails
-		variant = where.Unknown
-	}
-
 	// Get asset directory
 	assetDir := asset.GetV2rayLocationAssetOverride()
-	log.Info("Asset directory for %s: %v", variant, assetDir)
+	log.Info("Asset directory for %s: %v", "v2raya_core", assetDir)
 
 	// Prepare environment variables, filtering out duplicates
 	env := make([]string, 0, len(os.Environ())+4)
@@ -285,19 +252,9 @@ func StartCoreProcess(ctx context.Context) (*os.Process, error) {
 		env = append(env, e)
 	}
 
-	// Add asset directory to environment based on core type
-	switch variant {
-	case where.V2ray:
-		env = append(env, "V2RAY_LOCATION_ASSET="+assetDir)
-	case where.Xray:
-		env = append(env, "XRAY_LOCATION_ASSET="+assetDir)
-	default:
-		// If unknown, set both for compatibility
-		env = append(env,
-			"V2RAY_LOCATION_ASSET="+assetDir,
-			"XRAY_LOCATION_ASSET="+assetDir,
-		)
-	}
+	// Add asset directory to environment based on core type.
+	// v2raya_core is based on xray-core and uses XRAY_LOCATION_ASSET.
+	env = append(env, "XRAY_LOCATION_ASSET="+assetDir)
 
 	// Check memory and set geoloader mode
 	memstat, err := mem.VirtualMemory()

@@ -31,6 +31,7 @@
     <string name="menu_item_import_config_clipboard">Import from Clipboard</string>
     <string name="menu_item_import_config_local">Import from locally</string>
     <string name="menu_item_import_config_policy_group">Add [Policy group]</string>
+    <string name="menu_item_import_config_proxy_chain">Add [Proxy chain]</string>
     <string name="menu_item_import_config_manually_vmess">Add [VMess]</string>
     <string name="menu_item_import_config_manually_vless">Add [VLESS]</string>
     <string name="menu_item_import_config_manually_ss">Add [Shadowsocks]</string>
@@ -118,6 +119,8 @@
     <string name="server_lab_final_mask">finalMask raw JSON, format: { FinalMaskObject }</string>
     <string name="server_lab_ech_config_list">EchConfigList</string>
     <string name="server_lab_pinned_ca256">Certificate fingerprint (SHA-256)</string>
+    <string name="server_lab_browser_dialer">Enable Browser Dialer</string>
+    <string name="server_lab_browser_dialer_tip">Only supports xhttp (packet-up) and ws outbound; TLS-related settings may be ignored or conflict</string>
 
     <!-- UserAssetActivity -->
     <string name="toast_asset_copy_failed">File copy failed, please use File Manager</string>
@@ -214,6 +217,7 @@
 
     <string name="title_pref_delay_test_url">True delay test url </string>
     <string name="summary_pref_delay_test_url">Url</string>
+    <string name="title_pref_real_ping_concurrency">True delay test concurrency</string>
 
     <string name="title_pref_ip_api_url">Current connection info test url</string>
     <string name="summary_pref_ip_api_url">Url</string>
@@ -382,6 +386,13 @@
     <string name="title_policy_group_subscription_id">From subscription group</string>
     <string name="title_policy_group_subscription_filter">Remarks regular filter</string>
 
+    <string name="server_proxy_chain_members">Proxy chain members</string>
+    <string name="server_proxy_chain_pick_members">Tap here to pick member</string>
+    <string name="server_proxy_chain_member_unselected">Select a member</string>
+    <string name="server_proxy_chain_members_unselected">Please select member for each chain row</string>
+    <string name="server_proxy_chain_members_insufficient">Insufficient members</string>
+    <string name="server_proxy_chain_members_invalid">Invalid chain members: %1$s</string>
+
     <!-- BackupActivity -->
     <string name="title_configuration_backup_restore">Backup &amp; Restore</string>
     <string name="title_configuration_backup">Backup config</string>
@@ -416,6 +427,12 @@
     <string-array name="mode_entries">
         <item>VPN</item>
         <item>Proxy only</item>
+    </string-array>
+
+    <string-array name="browser_dialer_mode">
+        <item>Disable</item>
+        <item>OkHttp</item>
+        <item>WebView</item>
     </string-array>
 
     <string-array name="ui_mode_night">

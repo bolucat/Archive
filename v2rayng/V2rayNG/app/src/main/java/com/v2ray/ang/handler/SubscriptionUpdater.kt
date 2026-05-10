@@ -1,12 +1,7 @@
 package com.v2ray.ang.handler
 
 import android.annotation.SuppressLint
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -19,7 +14,9 @@ import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.dto.SubscriptionCache
+import com.v2ray.ang.enums.NotificationChannelType
 import com.v2ray.ang.util.LogUtil
+import com.v2ray.ang.util.NotificationHelper
 import java.util.concurrent.TimeUnit
 
 object SubscriptionUpdater {
@@ -140,7 +137,7 @@ object SubscriptionUpdater {
         LogUtil.i(
             AppConfig.TAG,
             "SubscriptionUpdater: scheduled [$subId] interval=${intervalMinutes}min " +
-                "initialDelay=${initialDelayMillis / 1000}s policy=$existingWorkPolicy"
+                    "initialDelay=${initialDelayMillis / 1000}s policy=$existingWorkPolicy"
         )
     }
 
@@ -153,16 +150,6 @@ object SubscriptionUpdater {
     class UpdateTask(context: Context, params: WorkerParameters) :
         CoroutineWorker(context, params) {
 
-        private val notificationManager = NotificationManagerCompat.from(applicationContext)
-        private val notification =
-            NotificationCompat.Builder(applicationContext, AppConfig.SUBSCRIPTION_UPDATE_CHANNEL)
-                .setWhen(0)
-                .setTicker("Update")
-                .setContentTitle(applicationContext.getString(R.string.title_pref_auto_update_subscription))
-                .setSmallIcon(R.drawable.ic_stat_name)
-                .setCategory(NotificationCompat.CATEGORY_SERVICE)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-
         @SuppressLint("MissingPermission")
         override suspend fun doWork(): Result {
             val subId = inputData.getString(KEY_SUB_ID)
@@ -172,7 +159,6 @@ object SubscriptionUpdater {
                 LogUtil.w(AppConfig.TAG, "SubscriptionUpdater: missing subId in worker input")
                 return Result.success()
             }
-
 
             val subItem = MmkvManager.decodeSubscription(subId)
             if (subItem == null) {
@@ -187,22 +173,20 @@ object SubscriptionUpdater {
 
             val sub = SubscriptionCache(subId, subItem)
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                notificationManager.createNotificationChannel(
-                    NotificationChannel(
-                        AppConfig.SUBSCRIPTION_UPDATE_CHANNEL,
-                        AppConfig.SUBSCRIPTION_UPDATE_CHANNEL_NAME,
-                        NotificationManager.IMPORTANCE_MIN
-                    )
-                )
-            }
+            // Notify about update start
+            NotificationHelper.notify(
+                NotificationChannelType.SUBSCRIPTION_UPDATE,
+                applicationContext,
+                applicationContext.getString(R.string.title_pref_auto_update_subscription),
+                "Updating ${sub.subscription.remarks}"
+            )
 
-            notificationManager.notify(3, notification.build())
             LogUtil.i(AppConfig.TAG, "SubscriptionUpdater automatic update: ---${sub.subscription.remarks}")
             AngConfigManager.updateConfigViaSub(sub)
-            notification.setContentText("Updating ${sub.subscription.remarks}")
 
-            notificationManager.cancel(3)
+            // Clear notification
+            NotificationHelper.cancel(NotificationChannelType.SUBSCRIPTION_UPDATE, applicationContext)
+
             return Result.success()
         }
     }

@@ -168,6 +168,26 @@
         </b-select>
       </b-field>
 
+      <b-field v-show="transparent !== 'close' && transparentType === 'tun' && tinytunSupported"
+        label-position="on-border">
+        <template slot="label">
+          {{ $t("setting.tunExcludeProcesses") }}
+          <b-tooltip type="is-dark" multilined :label="$t('setting.messages.tunExcludeProcesses')" position="is-right">
+            <b-icon size="is-small" icon=" iconfont icon-help-circle-outline"
+              style="position: relative; top: 2px; right: 3px; font-weight: normal" />
+          </b-tooltip>
+        </template>
+        <b-input :value="tunExcludeProcesses" readonly expanded
+          :placeholder="$t('tinytun.processExclude.placeholder')" />
+        <b-button style="
+            margin-left: 0;
+            border-bottom-left-radius: 0;
+            border-top-left-radius: 0;
+            color: rgba(0, 0, 0, 0.75);
+          " outlined @click="handleClickTunExcludeProcesses">{{ $t("operations.configure") }}
+        </b-button>
+      </b-field>
+
       <b-field label-position="on-border">
         <template slot="label">
           {{ $t("setting.pacMode") }}
@@ -278,19 +298,6 @@
           style="flex: 1" />
       </b-field>
 
-      <b-field :label="$t('setting.ssBackend')" label-position="on-border">
-        <b-select v-model="ssBackend" expanded>
-          <option value="">{{ $t("setting.options.backendDaeuniverse") }}</option>
-          <option value="v2ray">{{ $t("setting.options.backendV2ray") }}</option>
-        </b-select>
-      </b-field>
-
-      <b-field :label="$t('setting.trojanBackend')" label-position="on-border">
-        <b-select v-model="trojanBackend" expanded>
-          <option value="">{{ $t("setting.options.backendDaeuniverse") }}</option>
-          <option value="v2ray">{{ $t("setting.options.backendV2ray") }}</option>
-        </b-select>
-      </b-field>
 
       <b-field v-show="pacMode === 'gfwlist' || transparent === 'gfwlist'" :label="$t('setting.autoUpdateGfwlist')"
         label-position="on-border">
@@ -363,6 +370,7 @@ import modalDomainsExcluded from "@/components/modalDomainsExcluded";
 import modalTproxyWhiteIpGroups from "@/components/modalTproxyWhiteIpGroups";
 import modalUpdateGfwList from "@/components/modalUpdateGfwList";
 import modalTinyTunRouteScript from "@/components/modalTinyTunRouteScript";
+import modalTinyTunExcludeProcesses from "@/components/modalTinyTunExcludeProcesses";
 import CusBInput from "./input/Input.vue";
 import { parseURL, toInt } from "@/assets/js/utils";
 import BButton from "buefy/src/components/button/Button";
@@ -398,8 +406,7 @@ export default {
     tunSetupScript: "",
     tunTeardownScript: "",
     tunProcessBackend: "",
-    ssBackend: "",
-    trojanBackend: "",
+    tunExcludeProcesses: "",
     pacAutoUpdateMode: "none",
     pacAutoUpdateIntervalHour: 0,
     subscriptionAutoUpdateMode: "none",
@@ -556,8 +563,7 @@ export default {
             tunSetupScript: this.tunSetupScript,
             tunTeardownScript: this.tunTeardownScript,
             tunProcessBackend: this.tunProcessBackend,
-            ssBackend: this.ssBackend,
-            trojanBackend: this.trojanBackend,
+            tunExcludeProcesses: this.tunExcludeProcesses,
           },
           cancelToken: new axios.CancelToken(function executor(c) {
             cancel = c;
@@ -676,6 +682,22 @@ export default {
             this.tunRouteShellPath = data.shellPath;
             this.tunSetupScript = data.setupScript;
             this.tunTeardownScript = data.teardownScript;
+          },
+        },
+      });
+    },
+    handleClickTunExcludeProcesses() {
+      this.$buefy.modal.open({
+        parent: this,
+        component: modalTinyTunExcludeProcesses,
+        hasModalCard: true,
+        canCancel: true,
+        props: {
+          excludeProcesses: this.tunExcludeProcesses,
+        },
+        events: {
+          save: (data) => {
+            this.tunExcludeProcesses = data.excludeProcesses;
           },
         },
       });

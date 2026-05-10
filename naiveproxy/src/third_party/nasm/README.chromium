@@ -8,6 +8,7 @@ License File: LICENSE
 Security Critical: no
 Shipped: no
 Source: https://github.com/netwide-assembler/nasm
+Update Mechanism: Manual (https://crbug.com/495536626)
 
 --[ DESCRIPTION ] ------------------
 This contains the source to NASM, the assembler used for parts of Chromium.

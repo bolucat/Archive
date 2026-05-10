@@ -64,6 +64,11 @@ const (
 )
 
 const (
+	DefaultProbeURL      = "https://www.gstatic.com/generate_204"
+	DefaultProbeInterval = "60s"
+	DefaultOutboundType  = "leastping"
+	DefaultOutboundName  = "proxy"
+
 	RoutingATemplate = `default: proxy
 # write your own rules below
 domain(domain:mail.qq.com)->direct

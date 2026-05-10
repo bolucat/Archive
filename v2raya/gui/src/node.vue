@@ -73,6 +73,16 @@
         </div>
       </b-message>
     </b-sidebar>
+    <b-message
+      v-if="ready && coreVersionValid === false"
+      type="is-danger"
+      size="is-small"
+      :closable="false"
+      class="core-version-error"
+    >
+      <i class="iconfont icon-alert" />
+      {{ $t("version.coreVersionMismatch", { err: coreVersionErr || "" }) }}
+    </b-message>
     <div v-if="ready" class="hero-body">
       <b-field
         id="toolbar"
@@ -130,19 +140,28 @@
             <i class="iconfont icon-delete" />
             <span>{{ $t("operations.delete") }}</span>
           </button>
-          <button
+          <b-dropdown
+            aria-role="list"
+            position="is-bottom-left"
             :class="{
-              button: true,
               field: true,
-              'is-delete': true,
               'mobile-small': true,
-              'not-show': true,
+              'not-display': !overHeight && !isCheckedRowsExportable(),
             }"
           >
-            <i class="iconfont icon-delete" />
-            <span>placeholder</span>
-          </button>
-          <span class="field not-show mobile-small">placeholder</span>
+            <template #trigger>
+              <button class="button is-info mobile-small" :disabled="!isCheckedRowsExportable()">
+                <i class="iconfont icon-share" />
+                <span>{{ $t("operations.export") }}</span>
+              </button>
+            </template>
+            <b-dropdown-item aria-role="listitem" @click="handleClickExportSelected('copy')">
+              {{ $t("operations.copySelected") }}
+            </b-dropdown-item>
+            <b-dropdown-item aria-role="listitem" @click="handleClickExportSelected('download')">
+              {{ $t("operations.downloadTxt") }}
+            </b-dropdown-item>
+          </b-dropdown>
         </div>
         <div class="right">
           <b-button
@@ -211,15 +230,6 @@
             <b-table
               :data="tableData.subscriptions"
               :checked-rows.sync="checkedRows"
-              :row-class="
-                (row, index) =>
-                  row.connected &&
-                  runningState.running === $t('common.isRunning')
-                    ? 'is-connected-running'
-                    : row.connected
-                    ? 'is-connected-not-running'
-                    : null
-              "
               default-sort="id"
               checkable
             >
@@ -318,15 +328,6 @@
               :data="tableData.servers"
               :checked-rows.sync="checkedRows"
               checkable
-              :row-class="
-                (row, index) =>
-                  row.connected &&
-                  runningState.running === $t('common.isRunning')
-                    ? 'is-connected-running'
-                    : row.connected
-                    ? 'is-connected-not-running'
-                    : null
-              "
               default-sort="id"
             >
               <b-table-column
@@ -390,7 +391,33 @@
                 width="300"
               >
                 <div class="operate-box">
+                  <b-dropdown
+                    v-if="loadBalanceValid"
+                    position="is-bottom-left"
+                  >
+                    <b-button
+                      slot="trigger"
+                      size="is-small"
+                      type="is-primary"
+                      icon-right="menu-down"
+                    >
+                      {{ $t("operations.addTo") }}
+                    </b-button>
+                    <b-dropdown-item
+                      v-for="group in outbounds"
+                      :key="group"
+                      @click="toggleNodeInGroup(props.row, undefined, group)"
+                    >
+                      <span
+                        class="node-group-option"
+                        :class="{ 'node-group-option--active': isNodeInOutbound(props.row, undefined, group) }"
+                      >
+                        {{ group.toUpperCase() }}
+                      </span>
+                    </b-dropdown-item>
+                  </b-dropdown>
                   <b-button
+                    v-else
                     size="is-small"
                     :icon-left="` github-circle iconfont ${
                       props.row.connected
@@ -398,15 +425,11 @@
                         : 'icon-lianjie'
                     }`"
                     :outlined="!props.row.connected"
-                    :type="props.row.connected ? 'is-warning' : 'is-warning'"
+                    :type="props.row.connected ? 'is-warning' : 'is-primary'"
                     @click="handleClickAboutConnection(props.row)"
                   >
                     {{
-                      loadBalanceValid
-                        ? props.row.connected
-                          ? $t("operations.cancel")
-                          : $t("operations.select")
-                        : props.row.connected
+                      props.row.connected
                         ? $t("operations.disconnect")
                         : $t("operations.connect")
                     }}
@@ -458,15 +481,6 @@
               :data="sub.servers"
               :checked-rows.sync="checkedRows"
               checkable
-              :row-class="
-                (row, index) =>
-                  row.connected &&
-                  runningState.running === $t('common.isRunning')
-                    ? 'is-connected-running'
-                    : row.connected
-                    ? 'is-connected-not-running'
-                    : null
-              "
               default-sort="id"
             >
               <b-table-column
@@ -531,7 +545,33 @@
                 width="300"
               >
                 <div class="operate-box">
+                  <b-dropdown
+                    v-if="loadBalanceValid"
+                    position="is-bottom-left"
+                  >
+                    <b-button
+                      slot="trigger"
+                      size="is-small"
+                      type="is-primary"
+                      icon-right="menu-down"
+                    >
+                      {{ $t("operations.addTo") }}
+                    </b-button>
+                    <b-dropdown-item
+                      v-for="group in outbounds"
+                      :key="group"
+                      @click="toggleNodeInGroup(props.row, subi, group)"
+                    >
+                      <span
+                        class="node-group-option"
+                        :class="{ 'node-group-option--active': isNodeInOutbound(props.row, subi, group) }"
+                      >
+                        {{ group.toUpperCase() }}
+                      </span>
+                    </b-dropdown-item>
+                  </b-dropdown>
                   <b-button
+                    v-else
                     size="is-small"
                     :icon-left="` github-circle iconfont ${
                       props.row.connected
@@ -539,15 +579,11 @@
                         : 'icon-lianjie'
                     }`"
                     :outlined="!props.row.connected"
-                    :type="props.row.connected ? 'is-warning' : 'is-warning'"
+                    :type="props.row.connected ? 'is-warning' : 'is-primary'"
                     @click="handleClickAboutConnection(props.row, subi)"
                   >
                     {{
-                      loadBalanceValid
-                        ? props.row.connected
-                          ? $t("operations.cancel")
-                          : $t("operations.select")
-                        : props.row.connected
+                      props.row.connected
                         ? $t("operations.disconnect")
                         : $t("operations.connect")
                     }}
@@ -732,6 +768,7 @@ import { Base64 } from "js-base64";
 import ModalServer from "@/components/modalServer";
 import ModalSubscription from "@/components/modalSubcription";
 import ModalSharing from "@/components/modalSharing";
+import ModalPickProxyGroup from "@/components/modalPickProxyGroup";
 import { waitingConnected } from "@/assets/js/networkInspect";
 import axios from "@/plugins/axios";
 import dayjs from "dayjs";
@@ -755,6 +792,12 @@ export default {
     outbound: {
       type: String,
       default: "proxy",
+    },
+    outbounds: {
+      type: Array,
+      default() {
+        return ["proxy"];
+      },
     },
     observatory: {
       type: Object,
@@ -795,6 +838,8 @@ export default {
       connectedServerInfo: [],
       overHeight: false,
       clipboard: null,
+      coreVersionValid: true,
+      coreVersionErr: "",
     };
   },
   computed: {
@@ -850,6 +895,9 @@ export default {
     },
   },
   created() {
+    this.coreVersionValid = localStorage["coreVersionValid"] !== "false";
+    this.coreVersionErr = localStorage["coreVersionErr"] || "";
+    if (!localStorage["token"]) return; // Not authenticated yet — skip to avoid spurious 401 modals
     this.$axios({
       url: apiRoot + "/touch",
     }).then((res) => {
@@ -949,6 +997,38 @@ export default {
           connectedServer: touch.connectedServer,
         });
       }
+    },
+    async syncLatestNodeOverview(showError = false) {
+      try {
+        const res = await this.$axios({
+          url: apiRoot + "/touch",
+        });
+        if (res.data.code === "SUCCESS") {
+          this.refreshTableData(res.data.data.touch, res.data.data.running);
+          this.updateConnectView();
+          return true;
+        }
+        if (showError) {
+          this.$buefy.toast.open({
+            message: res.data.message || this.$t("common.fail"),
+            type: "is-warning",
+            position: "is-top",
+            duration: 5000,
+            queue: false,
+          });
+        }
+      } catch (err) {
+        if (showError) {
+          this.$buefy.toast.open({
+            message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+            type: "is-warning",
+            position: "is-top",
+            duration: 5000,
+            queue: false,
+          });
+        }
+      }
+      return false;
     },
     handleClickConnectedServer(which) {
       const that = this;
@@ -1288,8 +1368,7 @@ export default {
         },
       }).then((res) => {
         if (res.data.code === "SUCCESS") {
-          this.refreshTableData(res.data.data.touch, res.data.data.running);
-          this.updateConnectView();
+          this.syncLatestNodeOverview();
           this.$buefy.toast.open({
             message: this.$t("common.success"),
             type: "is-primary",
@@ -1323,9 +1402,8 @@ export default {
         },
       }).then((res) => {
         if (res.data.code === "SUCCESS") {
-          this.refreshTableData(res.data.data.touch, res.data.data.running);
           this.checkedRows = [];
-          this.updateConnectView();
+          this.syncLatestNodeOverview();
         } else {
           this.$buefy.toast.open({
             message: res.data.message,
@@ -1350,69 +1428,135 @@ export default {
       });
     },
     handleClickAboutConnection(row, sub) {
-      let cancel;
+      if (!row.connected && this.loadBalanceValid) {
+        this.openPickProxyGroup(row, sub);
+        return;
+      }
       if (!row.connected) {
-        // The node is not connected, initiating connection
-        let loading = this.$buefy.loading.open();
-        waitingConnected(
-          this.$axios({
-            url: apiRoot + "/connection",
-            method: "post",
-            data: {
-              id: row.id,
-              _type: row._type,
-              sub: sub,
-              outbound: this.outbound,
-            },
-            cancelToken: new axios.CancelToken(function executor(c) {
-              cancel = c;
-            }),
-          }).then((res) => {
-            loading.close();
-            if (res.data.code === "SUCCESS") {
-              Object.assign(this.runningState, {
-                running: res.data.data.running
-                  ? this.$t("common.isRunning")
-                  : this.$t("common.notRunning"),
-                connectedServer: res.data.data.touch.connectedServer,
-              });
-              this.$nextTick(() => {
-                this.updateConnectView();
-              });
-            } else {
-              this.$buefy.toast.open({
-                message: res.data.message,
-                type: "is-warning",
-                position: "is-top",
-                duration: 5000,
-                queue: false,
-              });
-              this.deleteSelectedServers();
-            }
-          }),
-          3 * 1000,
-          cancel
+        this.connectToProxyGroup(row, sub, this.outbound);
+        return;
+      }
+      this.$axios({
+        url: apiRoot + "/connection",
+        method: "delete",
+        data: {
+          id: row.id,
+          _type: row._type,
+          sub: sub,
+          outbound: this.outbound,
+        },
+      }).then((res) => {
+        if (res.data.code === "SUCCESS") {
+          row.connected = false;
+          Object.assign(this.runningState, {
+            running: res.data.data.running
+              ? this.$t("common.isRunning")
+              : this.$t("common.notRunning"),
+            connectedServer: res.data.data.touch.connectedServer,
+          });
+          this.updateConnectView();
+          this.syncLatestNodeOverview();
+        } else {
+          this.$buefy.toast.open({
+            message: res.data.message,
+            type: "is-warning",
+            position: "is-top",
+            duration: 5000,
+            queue: false,
+          });
+        }
+      });
+    },
+    normalizeProxyGroups(groups) {
+      const seen = new Set();
+      const normalized = [];
+      if (groups instanceof Array) {
+        for (const group of groups) {
+          if (typeof group !== "string") {
+            continue;
+          }
+          const name = group.trim();
+          if (!name || seen.has(name)) {
+            continue;
+          }
+          seen.add(name);
+          normalized.push(name);
+        }
+      }
+      if (!seen.has("proxy")) {
+        normalized.unshift("proxy");
+      }
+      return normalized;
+    },
+    // 判断某节点是否已连接到指定分组，用于下拉菜单黄色高亮
+    isNodeInOutbound(row, sub, outboundName) {
+      return this.connectedServerInfo.some((x) => {
+        if (sub !== undefined) {
+          return (
+            x.which._type === "subscriptionServer" &&
+            x.which.id === row.id &&
+            x.which.sub === sub &&
+            x.which.outbound === outboundName
+          );
+        }
+        return (
+          x.which._type === "server" &&
+          x.which.id === row.id &&
+          x.which.outbound === outboundName
         );
-      } else {
+      });
+    },
+    openPickProxyGroup(row, sub) {
+      const groups = this.normalizeProxyGroups(this.outbounds);
+      if (groups.length === 1) {
+        this.connectToProxyGroup(row, sub, groups[0]);
+        return;
+      }
+      this.$buefy.modal.open({
+        parent: this,
+        component: ModalPickProxyGroup,
+        hasModalCard: true,
+        canCancel: true,
+        props: {
+          groups,
+          initialGroup: this.outbound || "proxy",
+        },
+        events: {
+          select: (selectedGroup) => {
+            this.connectToProxyGroup(row, sub, selectedGroup);
+          },
+        },
+      });
+    },
+    connectToProxyGroup(row, sub, outbound) {
+      let cancel;
+      let loading = this.$buefy.loading.open();
+      waitingConnected(
         this.$axios({
           url: apiRoot + "/connection",
-          method: "delete",
+          method: "post",
           data: {
             id: row.id,
             _type: row._type,
             sub: sub,
-            outbound: this.outbound,
+            outbound,
           },
+          cancelToken: new axios.CancelToken(function executor(c) {
+            cancel = c;
+          }),
         }).then((res) => {
+          loading.close();
           if (res.data.code === "SUCCESS") {
-            row.connected = false;
             Object.assign(this.runningState, {
               running: res.data.data.running
                 ? this.$t("common.isRunning")
                 : this.$t("common.notRunning"),
               connectedServer: res.data.data.touch.connectedServer,
             });
-            this.updateConnectView();
+            this.$nextTick(() => {
+              this.updateConnectView();
+            });
+            this.syncLatestNodeOverview();
           } else {
             this.$buefy.toast.open({
               message: res.data.message,
@@ -1422,8 +1566,94 @@ export default {
               queue: false,
             });
           }
-        });
+        }).catch((err) => {
+          loading.close();
+          this.$buefy.toast.open({
+            message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+            type: "is-warning",
+            position: "is-top",
+            duration: 5000,
+            queue: false,
+          });
+        }),
+        3 * 1000,
+        cancel
+      );
+    },
+    toggleNodeInGroup(row, sub, group) {
+      const targetType = row._type;
+      const targetSub = targetType === "subscriptionServer" ? sub : 0;
+      const targetId = row.id;
+      const currentMembers = this.connectedServerInfo
+        .map((x) => x.which)
+        .filter((w) => (w.outbound || "proxy") === group)
+        .map((w) => ({
+          id: w.id,
+          _type: w._type,
+          sub: w._type === "subscriptionServer" ? w.sub : 0,
+          outbound: group,
+        }));
+
+      const sameWhich = (w) => {
+        if (w._type !== targetType || w.id !== targetId) {
+          return false;
+        }
+        if (targetType === "subscriptionServer") {
+          return w.sub === targetSub;
+        }
+        return true;
+      };
+
+      let nextMembers;
+      if (this.isNodeInOutbound(row, sub, group)) {
+        nextMembers = currentMembers.filter((w) => !sameWhich(w));
+      } else {
+        nextMembers = currentMembers.concat([{
+          id: targetId,
+          _type: targetType,
+          sub: targetSub,
+          outbound: group,
+        }]);
       }
+
+      const loading = this.$buefy.loading.open();
+      this.$axios({
+        url: apiRoot + "/outboundConnections",
+        method: "put",
+        data: {
+          outbound: group,
+          touches: nextMembers,
+        },
+      }).then((res) => {
+        loading.close();
+        if (res.data.code === "SUCCESS") {
+          Object.assign(this.runningState, {
+            running: res.data.data.running
+              ? this.$t("common.isRunning")
+              : this.$t("common.notRunning"),
+            connectedServer: res.data.data.touch.connectedServer,
+          });
+          this.$nextTick(() => { this.updateConnectView(); });
+          this.syncLatestNodeOverview();
+        } else {
+          this.$buefy.toast.open({
+            message: res.data.message || this.$t("common.fail"),
+            type: "is-warning",
+            position: "is-top",
+            duration: 5000,
+            queue: false,
+          });
+        }
+      }).catch((err) => {
+        loading.close();
+        this.$buefy.toast.open({
+          message: err?.response?.data?.message || err?.message || this.$t("common.fail"),
+          type: "is-warning",
+          position: "is-top",
+          duration: 5000,
+          queue: false,
+        });
+      });
     },
     handleClickLatency(ping) {
       let touches = JSON.stringify(
@@ -1508,6 +1738,97 @@ export default {
         )
       );
     },
+    isCheckedRowsExportable() {
+      return this.checkedRows.length > 0;
+    },
+    getTouchFromCheckedRow(row) {
+      const sub = this.tableData.subscriptions.findIndex((subscription) =>
+        subscription.servers.some((server) => server === row)
+      );
+      return {
+        id: row.id,
+        _type: row._type,
+        sub: sub === -1 ? null : sub,
+      };
+    },
+    async collectSelectedSharingAddresses() {
+      const touches = this.checkedRows.map((row) => this.getTouchFromCheckedRow(row));
+      const requests = touches.map((touch) =>
+        this.$axios({
+          url: apiRoot + "/sharingAddress",
+          method: "get",
+          params: { touch },
+        })
+      );
+      const responses = await Promise.all(requests);
+      return responses.map((res) => {
+        if (!res?.data || res.data.code !== "SUCCESS") {
+          throw new Error(res?.data?.message || this.$t("common.fail"));
+        }
+        return res.data.data.sharingAddress || "";
+      }).filter((address) => !!address);
+    },
+    async buildSelectedNodesExportText() {
+      const addresses = await this.collectSelectedSharingAddresses();
+      if (!addresses.length) {
+        throw new Error(this.$t("common.fail"));
+      }
+      return addresses.join("\n");
+    },
+    async copyTextToClipboard(text) {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    },
+    downloadTextFile(text) {
+      const timestamp = dayjs().format("YYYYMMDD-HHmmss-SSS");
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${timestamp}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    async handleClickExportSelected(mode) {
+      if (!this.isCheckedRowsExportable()) {
+        return;
+      }
+      try {
+        const exportText = await this.buildSelectedNodesExportText();
+        if (mode === "copy") {
+          await this.copyTextToClipboard(exportText);
+        } else if (mode === "download") {
+          this.downloadTextFile(exportText);
+        }
+        this.$buefy.toast.open({
+          message: this.$t("common.success"),
+          type: "is-primary",
+          position: "is-top",
+          duration: 2500,
+          queue: false,
+        });
+      } catch (err) {
+        this.$buefy.toast.open({
+          message: err?.message || this.$t("common.fail"),
+          type: "is-warning",
+          position: "is-top",
+          duration: 5000,
+          queue: false,
+        });
+      }
+    },
     handleClickShare(row, sub) {
       const TYPE_MAP = {
         [CONST.SubscriptionServerType]: "SERVER",
@@ -1549,8 +1870,7 @@ export default {
         },
       }).then((res) => {
         handleResponse(res, this, () => {
-          this.refreshTableData(res.data.data.touch, res.data.data.running);
-          this.updateConnectView();
+          this.syncLatestNodeOverview();
           this.$buefy.toast.open({
             message: this.$t("common.success"),
             type: "is-primary",
@@ -1596,8 +1916,7 @@ export default {
             queue: false,
           });
           this.showModalServer = false;
-          this.refreshTableData(res.data.data.touch, res.data.data.running);
-          this.updateConnectView();
+          this.syncLatestNodeOverview();
         });
       });
     },
@@ -1623,8 +1942,7 @@ export default {
             queue: false,
           });
           this.showModalSubscription = false;
-          this.refreshTableData(res.data.data.touch, res.data.data.running);
-          this.updateConnectView();
+          this.syncLatestNodeOverview();
         });
       });
     },
@@ -1724,16 +2042,22 @@ td {
   }
 }
 
-tr.is-connected-running {
-  $c: #bbdefb;
-  background: $c;
-  color: findColorInvert($c);
+.node-group-option {
+  display: block;
+  width: 100%;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
 }
 
-tr.is-connected-not-running {
-  $c: rgba(255, 69, 58, 0.4);
-  background: $c;
-  color: findColorInvert($c);
+.node-group-option--active {
+  background-color: #ffe08a;
+  color: #5f4b00;
+  font-weight: 600;
+}
+
+body.theme-dark .node-group-option--active {
+  background-color: #6a5318;
+  color: #ffe29a;
 }
 
 @keyframes loading-rotate {

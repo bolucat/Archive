@@ -1059,7 +1059,7 @@
   <data name="TbSettingsTunStack" xml:space="preserve">
     <value>协议栈</value>
   </data>
-  <data name="TbSettingsTunMtu" xml:space="preserve">
+  <data name="TbMtu" xml:space="preserve">
     <value>MTU</value>
   </data>
   <data name="TbSettingsEnableIPv6Address" xml:space="preserve">
@@ -1072,7 +1072,7 @@
     <value>PrivateKey</value>
   </data>
   <data name="TbReserved" xml:space="preserve">
-    <value>Reserved (2,3,4)</value>
+    <value>Reserved</value>
   </data>
   <data name="TbLocalAddress" xml:space="preserve">
     <value>Address (IPv4,IPv6)</value>
@@ -1310,15 +1310,6 @@
   </data>
   <data name="TbSettingsLinuxSudoPasswordTip" xml:space="preserve">
     <value>密码将调用命令行校验，如果因为校验错误导致无法正常运行时，请重启本应用。 密码不会存储，每次重启后都需要再次输入。</value>
-  </data>
-  <data name="TbSettingsSendThrough" xml:space="preserve">
-    <value>本地出站地址 (SendThrough)</value>
-  </data>
-  <data name="TbSettingsSendThroughTip" xml:space="preserve">
-    <value>用于多网口环境，请填写本机 IPv4 地址</value>
-  </data>
-  <data name="FillCorrectSendThroughIPv4" xml:space="preserve">
-    <value>请填写正确的 SendThrough IPv4 地址。</value>
   </data>
   <data name="TransportHeaderType5" xml:space="preserve">
     <value>XHTTP 模式</value>
@@ -1715,5 +1706,26 @@
   </data>
   <data name="TbSettingsUdpTestUrl" xml:space="preserve">
     <value>UDP 测试地址</value>
+  </data>
+  <data name="TbSettingsSendThrough" xml:space="preserve">
+    <value>本地出站地址 (SendThrough)</value>
+  </data>
+  <data name="TbSettingsSendThroughTip" xml:space="preserve">
+    <value>用于多网口环境，请填写本机 IPv4 地址</value>
+  </data>
+  <data name="FillCorrectSendThroughIPv4" xml:space="preserve">
+    <value>请填写正确的 SendThrough IPv4 地址。</value>
+  </data>
+  <data name="TbSettingsBindInterface" xml:space="preserve">
+    <value>绑定网口</value>
+  </data>
+  <data name="TbSettingsBindInterfaceTip" xml:space="preserve">
+    <value>用于多网口环境，填写要绑定的网口名称，仅生效于 Windows 系统和 TUN 模式</value>
+  </data>
+  <data name="TbPreSharedKey" xml:space="preserve">
+    <value>PreSharedKey</value>
+  </data>
+  <data name="menuExport2InnerUri" xml:space="preserve">
+    <value>导出 v2rayN 内部分享链接至剪贴板 (多选)</value>
   </data>
 </root>

@@ -82,6 +82,7 @@ NaiveConnection::NaiveConnection(
       early_pull_result_(ERR_IO_PENDING),
       full_duplex_(false),
       time_func_(&base::TimeTicks::Now),
+      created_at_(base::TimeTicks::Now()),
       traffic_annotation_(traffic_annotation) {
   io_callback_ = base::BindRepeating(&NaiveConnection::OnIOComplete,
                                      weak_ptr_factory_.GetWeakPtr());
@@ -118,6 +119,7 @@ void NaiveConnection::Disconnect() {
   client_socket_->Disconnect();
 
   next_state_ = STATE_NONE;
+  OnBothDisconnected();
   connect_callback_.Reset();
   run_callback_.Reset();
 }
@@ -132,7 +134,10 @@ void NaiveConnection::DoCallback(int result) {
 }
 
 void NaiveConnection::OnIOComplete(int result) {
-  DCHECK_NE(next_state_, STATE_NONE);
+  if (next_state_ == STATE_NONE) {
+    // Disconnect() was called during client or server socket Connect().
+    return;
+  }
   int rv = DoLoop(result);
   if (rv != ERR_IO_PENDING) {
     DoCallback(rv);
@@ -279,8 +284,8 @@ int NaiveConnection::DoConnectServer() {
   return InitSocketHandleForHttpRequest(
       std::move(endpoint), LOAD_IGNORE_LIMITS, MAXIMUM_PRIORITY, session_,
       proxy_info_, {}, PRIVACY_MODE_DISABLED, network_anonymization_key_,
-      SecureDnsPolicy::kDisable, SocketTag(), net_log_,
-      server_socket_handle_.get(), io_callback_,
+      SecureDnsPolicy::kDisable, SocketTag(), handles::kInvalidNetworkHandle,
+      net_log_, server_socket_handle_.get(), io_callback_,
       ClientSocketPool::ProxyAuthCallback());
 }
 
@@ -370,6 +375,7 @@ void NaiveConnection::Push(Direction from, Direction to, int size) {
       base::BindOnce(&NaiveConnection::OnPushComplete,
                      weak_ptr_factory_.GetWeakPtr(), from, to),
       traffic_annotation_);
+  last_write_time_[to] = time_func_();
 
   if (rv != ERR_IO_PENDING) {
     OnPushComplete(from, to, rv);
@@ -462,6 +468,7 @@ void NaiveConnection::OnPushComplete(Direction from, Direction to, int result) {
           base::BindOnce(&NaiveConnection::OnPushComplete,
                          weak_ptr_factory_.GetWeakPtr(), from, to),
           traffic_annotation_);
+      last_write_time_[to] = time_func_();
       if (rv != ERR_IO_PENDING) {
         OnPushComplete(from, to, rv);
       }
@@ -493,4 +500,15 @@ std::optional<PaddingType> NaiveConnection::GetServerPaddingType() const {
   return proxy_delegate->GetProxyChainPaddingType(proxy_info_.proxy_chain());
 }
 
+base::TimeTicks NaiveConnection::GetLastWriteTime() const {
+  if (last_write_time_[kClient] > last_write_time_[kServer]) {
+    return last_write_time_[kClient];
+  } else {
+    return last_write_time_[kServer];
+  }
+}
+
+base::TimeTicks NaiveConnection::GetCreationTime() const {
+  return created_at_;
+}
 }  // namespace net
