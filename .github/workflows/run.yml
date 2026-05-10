@@ -46,6 +46,7 @@ jobs:
           mv yass .github
           mv suyu .github
           mv nodepass .github
+          mv shadowsocksx-ng .github
           # Clean Repository
           rm -rf *
           export GCRS="git clone --depth 1 --recurse-submodules"
@@ -73,7 +74,6 @@ jobs:
           # GFW Client Projects
           ${GCRS} https://github.com/shadowsocks/shadowsocks-windows shadowsocks-windows
           ${GCRS} https://github.com/shadowsocks/shadowsocks-android shadowsocks-android
-          ${GCRS} https://github.com/shadowsocks/ShadowsocksX-NG shadowsocksx-ng
           ${GCRS} https://github.com/2dust/v2rayN v2rayn
           ${GCRS} https://github.com/2dust/v2rayNG v2rayng
           ${GCRS} -b master https://github.com/yanue/V2rayU v2rayu
@@ -151,6 +151,7 @@ jobs:
           mv .github/yass .
           mv .github/suyu .
           mv .github/nodepass .
+          mv .github/shadowsocksx-ng .
           # Git Commit
           git config --local user.name "github-action[bot]"
           git config --local user.email "${{ secrets.EMAIL }}"
