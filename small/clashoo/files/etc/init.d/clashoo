@@ -83,11 +83,18 @@ _wait_core_alive() {
 _rollback_failed_start() {
 	log_msg "Rolling back failed start" "启动失败，正在回退防火墙与 DNS 配置"
 	backend_remove_rules >/dev/null 2>&1
+		cleanup_stale_core_nft >/dev/null 2>&1
 	revert_dns >/dev/null 2>&1
 	stop_singbox_service >/dev/null 2>&1
 	_kill_core >/dev/null 2>&1
 	rm -rf /www/luci-static/yacd 2>/dev/null
 	del_cron >/dev/null 2>&1
+}
+
+cleanup_stale_core_nft() {
+	for _nft_table in "inet mihomo" "inet sing-box"; do
+		nft delete table $_nft_table 2>/dev/null || true
+	done
 }
 
 _core_candidates() {
@@ -146,16 +153,12 @@ _core_running() {
 }
 
 _kill_core() {
-	local _found _name _pid _comm
+	local _name _pid _wait
 	for _name in $(_core_names); do
-		_found=0
 		for _pid in $(pidof "$_name" 2>/dev/null); do
 			[ "$_pid" = "$$" ] && continue
 			kill "$_pid" >/dev/null 2>&1
-			_found=1
 		done
-		[ "$_found" = "0" ] && continue
-		sleep 1
 		for _pid in $(pidof "$_name" 2>/dev/null); do
 			[ "$_pid" = "$$" ] && continue
 			_comm="$(cat "/proc/${_pid}/comm" 2>/dev/null || true)"
@@ -243,6 +246,12 @@ start_singbox_service() {
 		return 1
 	fi
 	prepare_singbox_runtime || return 1
+	# 启动前干测：配置坏直接放弃，不污染防火墙与 dnsmasq
+	if ! /usr/bin/sing-box -c /etc/sing-box/config.json check >> "$CORE_LOG_PATH" 2>&1; then
+		log_msg "sing-box config dry-run failed; firewall/DNS untouched" "sing-box 配置预检失败，未应用防火墙与 DNS 改动"
+		runtime_state_record_health "fail" "preflight:singbox_dry_run_failed"
+		return 1
+	fi
 	/etc/init.d/sing-box start >/dev/null 2>&1
 }
 
@@ -296,39 +305,6 @@ runtime_state_set() {
 	else
 		echo "${key}=${value}" >> "$RUNTIME_STATE_FILE"
 	fi
-}
-
-inject_dns_fallback_filter() {
-	local cfg="$1" tmp="/tmp/_clashoo_fb.$$"
-	[ -f "$cfg" ] || return 0
-	grep -Eq '^[[:space:]]+fallback-filter:' "$cfg" 2>/dev/null && return 0
-	awk '
-		function indent_len(s) { match(s, /[^ ]/); return RSTART ? RSTART - 1 : length(s) }
-		/^dns:[[:space:]]*$/ { dns=1; child_indent=-1; print; next }
-		dns {
-			cur_indent = indent_len($0)
-			if ($0 ~ /^[[:space:]]*[^#[:space:]][^:]*:/ && cur_indent > 0 && child_indent < 0)
-				child_indent = cur_indent
-			if ($0 ~ /^[^[:space:]#][^:]*:/) {
-				if (!inserted) {
-					sp = sprintf("%*s", child_indent > 0 ? child_indent : 2, "")
-					print sp "fallback-filter:"
-					print sp "  geoip: false"
-					inserted=1
-				}
-				dns=0
-			}
-		}
-		{ print }
-		END {
-			if (dns && !inserted) {
-				sp = sprintf("%*s", child_indent > 0 ? child_indent : 2, "")
-				print sp "fallback-filter:"
-				print sp "  geoip: false"
-			}
-		}
-	' "$cfg" > "$tmp" 2>/dev/null && mv "$tmp" "$cfg"
-	rm -f "$tmp" 2>/dev/null
 }
 
 runtime_has_tun_device() {
@@ -419,7 +395,7 @@ runtime_run_health_check() {
 	if command_exists nslookup; then
 		dns_state="fail"
 		for _try in 1 2 3; do
-			dns_out="$(nslookup www.google.com 127.0.0.1 2>/dev/null)"
+			dns_out="$(timeout 3 nslookup www.google.com 127.0.0.1 2>/dev/null)"
 			dns_addr="$(echo "$dns_out" | awk '/^Address: /{print $2} /^Address [0-9]+: /{print $3}' | grep -E '^[0-9a-fA-F:.]+$' | tail -n1)"
 			if [ -n "$dns_addr" ]; then
 				if echo "$dns_addr" | grep -Eq '^198\.18\.|^fc00:'; then
@@ -429,7 +405,7 @@ runtime_run_health_check() {
 				fi
 				break
 			fi
-			sleep 2
+			sleep 1
 		done
 	fi
 
@@ -490,13 +466,6 @@ _service_enabled() {
 	local svc="$1"
 	[ -x "/etc/init.d/${svc}" ] || return 1
 	"/etc/init.d/${svc}" enabled >/dev/null 2>&1
-}
-
-_openclash_conflict() {
-	if [ "$(uci -q get openclash.config.enable 2>/dev/null)" = "1" ]; then
-		return 0
-	fi
-	_service_enabled openclash
 }
 
 # 按优先级自动检测内核二进制：mihomo > clash-meta > 内置 clash
@@ -744,210 +713,10 @@ fi
 
 
 yml_change() {
-#===========================================================================================================================
-	if grep -Eq '^mixed-port:|^port:|^external-controller:|^secret:' "$CONFIG_YAML" && grep -Eq '^dns:' "$CONFIG_YAML"; then
-		listen_port=$(uci get clashoo.config.listen_port 2>/dev/null)
-		[ -z "$listen_port" ] && listen_port=5300
-		http_port=$(uci get clashoo.config.http_port 2>/dev/null)
-		socks_port=$(uci get clashoo.config.socks_port 2>/dev/null)
-		redir_port=$(uci get clashoo.config.redir_port 2>/dev/null)
-		mixed_port=$(uci get clashoo.config.mixed_port 2>/dev/null)
-		tproxy_port=$(uci get clashoo.config.tproxy_port 2>/dev/null)
-		allow_lan=$(uci get clashoo.config.allow_lan 2>/dev/null)
-		bind_addr=$(uci get clashoo.config.bind_addr 2>/dev/null)
-		p_mode=$(uci get clashoo.config.p_mode 2>/dev/null)
-		log_level=$(uci get clashoo.config.level 2>/dev/null)
-		[ -z "$http_port" ] && http_port=8080
-		[ -z "$socks_port" ] && socks_port=1080
-		[ -z "$redir_port" ] && redir_port=7891
-		[ -z "$mixed_port" ] && mixed_port=7890
-		[ -z "$tproxy_port" ] && tproxy_port=7982
-		[ -z "$allow_lan" ] && allow_lan=true
-		# Normalize uci integer to YAML boolean
-		[ "$allow_lan" = "1" ] && allow_lan=true
-		[ "$allow_lan" = "0" ] && allow_lan=false
-		[ -z "$bind_addr" ] && bind_addr="*"
-		[ -z "$p_mode" ] && p_mode="rule"
-		[ "$p_mode" = "script" ] && p_mode="rule"
-		[ -z "$log_level" ] && log_level="info"
-		if [ "$bind_addr" = "*" ]; then
-			bind_addr="0.0.0.0"
-		fi
-		dash_port=$(uci get clashoo.config.dash_port 2>/dev/null)
-		[ -z "$dash_port" ] && dash_port=9090
-		da_password=$(uci get clashoo.config.dash_pass 2>/dev/null)
-		safe_password=$(printf '%s' "$da_password" | sed 's/[\\/&]/\\&/g')
-		safe_bind_addr=$(printf '%s' "$bind_addr" | sed 's/[\\/&]/\\&/g')
-
-		if grep -Eq '^port:' "$CONFIG_YAML"; then
-			sed -i "s@^port:.*@port: ${http_port}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "1i\port: ${http_port}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^socks-port:' "$CONFIG_YAML"; then
-			sed -i "s@^socks-port:.*@socks-port: ${socks_port}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^port:/a\socks-port: ${socks_port}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^redir-port:' "$CONFIG_YAML"; then
-			sed -i "s@^redir-port:.*@redir-port: ${redir_port}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^socks-port:/a\redir-port: ${redir_port}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^mixed-port:' "$CONFIG_YAML"; then
-			sed -i "s@^mixed-port:.*@mixed-port: ${mixed_port}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^redir-port:/a\mixed-port: ${mixed_port}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		# tproxy-port 必须与 /usr/share/clashoo/net/fw4.sh 的 UDP TPROXY 规则端口一致（默认 7982）。
-		# 即使当前 tcp_mode=redirect，只要 udp_mode=tproxy 就需要 mihomo 监听这个端口，
-		# 否则 nft tproxy to :7982 会打到黑洞，所有 UDP 出站失败。
-		# 不能用 sed ... a\tproxy-port... — busybox sed 会把 \t 解释为 TAB 导致 YAML 解析失败。
-		if grep -Eq '^tproxy-port:' "$CONFIG_YAML"; then
-			sed -i "s@^tproxy-port:.*@tproxy-port: ${tproxy_port}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			awk -v p="$tproxy_port" '{print} /^mixed-port:/ && !x{print "tproxy-port: " p; x=1}' "$CONFIG_YAML" > /tmp/_cfg_tp.yaml 2>/dev/null && mv /tmp/_cfg_tp.yaml "$CONFIG_YAML"
-		fi
-
-		if grep -Eq '^allow-lan:' "$CONFIG_YAML"; then
-			sed -i "s@^allow-lan:.*@allow-lan: ${allow_lan}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^mixed-port:/a\allow-lan: ${allow_lan}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^mode:' "$CONFIG_YAML"; then
-			sed -i "s@^mode:.*@mode: ${p_mode}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^allow-lan:/a\mode: ${p_mode}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^log-level:' "$CONFIG_YAML"; then
-			sed -i "s@^log-level:.*@log-level: ${log_level}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^mode:/a\log-level: ${log_level}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if [ "$allow_lan" = "true" ]; then
-			if grep -Eq '^bind-address:' "$CONFIG_YAML"; then
-				sed -i "s@^bind-address:.*@bind-address: \"${safe_bind_addr}\"@g" "$CONFIG_YAML" 2>/dev/null
-			else
-				sed -i "/^allow-lan:/a\bind-address: \"${safe_bind_addr}\"" "$CONFIG_YAML" 2>/dev/null
-			fi
-		else
-			sed -i '/^bind-address:/d' "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if ! grep -Eq '^ {0,}listen:' "$CONFIG_YAML"; then
-			sed -i "/^dns:/a\    listen: 0.0.0.0:${listen_port}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^external-controller:' "$CONFIG_YAML"; then
-			sed -i "s@^external-controller:.*@external-controller: 0.0.0.0:${dash_port}@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^mixed-port:/a\external-controller: 0.0.0.0:${dash_port}" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^secret:' "$CONFIG_YAML"; then
-			sed -i "s@^secret:.*@secret: \"${safe_password}\"@g" "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i "/^external-controller:/a\secret: \"${safe_password}\"" "$CONFIG_YAML" 2>/dev/null
-		fi
-
-		if grep -Eq '^external-ui:' "$CONFIG_YAML"; then
-			sed -i 's@^external-ui:.*@external-ui: "./dashboard"@g' "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i '/^secret:/a\external-ui: "./dashboard"' "$CONFIG_YAML" 2>/dev/null
-		fi
-		# disable tun when not in tun mode
-		_tcp_mode=$(uci get clashoo.config.tcp_mode 2>/dev/null)
-		_udp_mode=$(uci get clashoo.config.udp_mode 2>/dev/null)
-		_stack=$(uci get clashoo.config.stack 2>/dev/null)
-		[ -z "$_stack" ] && _stack="system"
-		if { [ "$_tcp_mode" = "tun" ] || [ "$_udp_mode" = "tun" ]; } && ! is_singbox_selected; then
-			awk '
-				/^tun:/ { skip=1; next }
-				skip && /^[^[:space:]#][^:]*:/ { skip=0 }
-				!skip { print }
-			' "$CONFIG_YAML" > /tmp/_cfg_tun.yaml 2>/dev/null && mv /tmp/_cfg_tun.yaml "$CONFIG_YAML"
-			cat >> "$CONFIG_YAML" <<-EOF
-
-			tun:
-			  enable: true
-			  stack: ${_stack}
-			  auto-route: true
-			  auto-redirect: true
-			  auto-detect-interface: true
-			  dns-hijack:
-			    - any:53
-			    - tcp://any:53
-			EOF
-		elif [ "$_tcp_mode" != "tun" ]; then
-			awk '/^tun:/{f=1} f && /enable:/{sub(/enable:.*/, "enable: false"); f=0} {print}' "$CONFIG_YAML" > /tmp/_cfg_tun.yaml && mv /tmp/_cfg_tun.yaml "$CONFIG_YAML"
-		fi
-
-		# routing-mark 必须与 /usr/share/clashoo/net/fw4.sh:CORE_ROUTING_MARK (0x1a0a=6666) 一致。
-		# 不能复用 PROXY_FWMARK(0x162)：那个 mark 会被 ip rule 吸到 lo（TPROXY 入站重定向用途），
-		# 会导致 mihomo 出站 network unreachable。
-		if grep -Eq '^routing-mark:' "$CONFIG_YAML"; then
-			sed -i 's@^routing-mark:.*@routing-mark: 6666@g' "$CONFIG_YAML" 2>/dev/null
-		else
-			sed -i '/^mode:/a\routing-mark: 6666' "$CONFIG_YAML" 2>/dev/null
-		fi
-		# 注入 fallback-filter: geoip: false — 防止 mihomo 启动时因 nameserver
-		# 无法引导 GeoIP 下载而 FATAL（订阅 nameserver 可能是 IP 直连 DoH）。
-		# 等代理启动后，后台 GeoIP 更新会走代理下载。
-		inject_dns_fallback_filter "$CONFIG_YAML"
-		# Sniffer injection (streaming support for transparent proxy)
-		_sniffer_streaming=$(uci get clashoo.config.sniffer_streaming 2>/dev/null)
-		awk '
-			BEGIN { skip = 0 }
-			{
-				if ($0 ~ /^sniffer:[[:space:]]*$/) { skip = 1; next }
-				if (skip && $0 ~ /^[^[:space:]#][^:]*:[[:space:]]*.*$/) skip = 0
-				if (!skip) print
-			}
-		' "$CONFIG_YAML" > /tmp/_clashoo_sniffer.yaml 2>/dev/null && mv /tmp/_clashoo_sniffer.yaml "$CONFIG_YAML"
-		if [ "${_sniffer_streaming:-0}" = "1" ] || [ "${_sniffer_streaming}" = "true" ]; then
-cat >> "$CONFIG_YAML" <<-'SNIFFER_EOF'
-
-sniffer:
-  enable: true
-  force-dns-mapping: true
-  parse-pure-ip: true
-  sniff:
-    HTTP:
-      ports:
-        - 80
-        - 8080
-      override-destination: true
-    TLS:
-      ports:
-        - 443
-        - 8443
-      override-destination: true
-    QUIC:
-      ports:
-        - 443
-        - 8443
-      override-destination: true
-  force-domain:
-    - "+.youtube.com"
-    - "+.googlevideo.com"
-    - "+.netflix.com"
-    - "+.nflxvideo.net"
-    - "+.disneyplus.com"
-    - "+.hulu.com"
-    - "+.hbomax.com"
-SNIFFER_EOF
-		fi
-		return 0
-	fi
-	sh /usr/share/clashoo/runtime/yum_change.sh 2>/dev/null
-#===========================================================================================================================
+	ucode /usr/share/clashoo/runtime/mixin.uc 2>/dev/null | yq -M -p json -o yaml > /tmp/_clashoo_mixin.yaml 2>/dev/null && 
+		yq -M eval-all '. as $item ireduce ({}; . * $item)' "$CONFIG_YAML" /tmp/_clashoo_mixin.yaml > "${CONFIG_YAML}.mixin" 2>/dev/null && 
+		mv -f "${CONFIG_YAML}.mixin" "$CONFIG_YAML" 2>/dev/null && 
+		rm -f /tmp/_clashoo_mixin.yaml 2>/dev/null
 }
 
 ip_rules() {
@@ -1331,22 +1100,6 @@ _strip_yaml_rule_lines() {
 	' "$CONFIG_YAML" > /tmp/_clashoo_geo_rules.yaml && mv /tmp/_clashoo_geo_rules.yaml "$CONFIG_YAML"
 }
 
-_force_dns_fallback_geoip_false() {
-	grep -q '^dns:[[:space:]]*$' "$CONFIG_YAML" 2>/dev/null || return 0
-	grep -Eq '^[[:space:]]*fallback:[[:space:]]' "$CONFIG_YAML" 2>/dev/null || return 0
-	awk '
-	BEGIN { inserted=0 }
-	{
-		if ($0 ~ /^external-controller:[[:space:]]*/ && !inserted) {
-			print "    fallback-filter:"
-			print "      geoip: false"
-			inserted=1
-		}
-		print
-	}
-	END { }
-	' "$CONFIG_YAML" > /tmp/_clashoo_dns_fallback.yaml && mv /tmp/_clashoo_dns_fallback.yaml "$CONFIG_YAML"
-}
 
 _start_geoip_update_async() {
 	if [ -f /var/run/geoip_update ]; then
@@ -1385,7 +1138,6 @@ _prepare_geo_bootstrap_mode() {
 		_strip_yaml_rule_lines "^[[:space:]]*-[[:space:]]*[\"']?GEOIP,"
 		sed -i '/^[[:space:]]*geoip:[[:space:]]*/d' "$CONFIG_YAML" 2>/dev/null
 		sed -i '/^[[:space:]]*geoip-code:[[:space:]]*/d' "$CONFIG_YAML" 2>/dev/null
-		_strip_yaml_child_block '^[[:space:]]*fallback-filter:[[:space:]]*$'
 	fi
 
 	if [ "$needs_geosite" -eq 1 ]; then
@@ -1521,15 +1273,6 @@ _start_prepare_config() {
 
 	_prepare_geo_bootstrap_mode
 
-	if ! _has_valid_local_mmdb; then
-		# 确保 fallback-filter: geoip: false 存在于 dns 块内，
-		# 防止 mihomo 启动时因 nameserver 无法引导 GeoIP 下载而 FATAL。
-		# 订阅 nameserver 可能是 IP 直连 DoH（TLS 证书校验失败），
-		# default-nameserver 只用于解析 nameserver 域名，不用于 GeoIP 下载。
-		# 注入 geoip: false 后 mihomo 跳过 GeoIP 校验直接启动，
-		# 后台 GeoIP 更新通过代理下载。
-			inject_dns_fallback_filter "$CONFIG_YAML"
-	fi
 
 	if [ ! -f /etc/clashoo/config.yaml ];then
 		log_msg "Cannot find config.yaml" "找不到config.yaml"
@@ -1552,6 +1295,15 @@ _start_launch_core() {
 	disable_quic_gso=$(uci get clashoo.config.disable_quic_gso 2>/dev/null)
 	mkdir -p "$(dirname "$CORE_LOG_PATH")" >/dev/null 2>&1
 	touch "$CORE_LOG_PATH" >/dev/null 2>&1
+
+	# 启动前干测：配置坏直接放弃，不污染防火墙与 dnsmasq
+	if ! "$CLASH" -d "$CLASH_CONFIG" -t >> "$CORE_LOG_PATH" 2>&1; then
+		log_msg "Config dry-run failed; firewall/DNS untouched" "配置预检失败，未应用防火墙与 DNS 改动"
+		runtime_state_record_health "fail" "preflight:config_dry_run_failed"
+		echo "Clashoo" > "$REAL_LOG"
+		return 1
+	fi
+
 	procd_open_instance
 	_cmd="$(shell_quote "$CLASH") -d $(shell_quote "$CLASH_CONFIG") >> $(shell_quote "$CORE_LOG_PATH") 2>&1"
 	procd_set_param command /bin/sh -c "$_cmd"
@@ -1623,13 +1375,6 @@ start_service(){
 	migrate_legacy_clash_dir
 	runtime_state_reset
 
-	if _openclash_conflict; then
-		runtime_state_set "health_status" "fail"
-		runtime_state_set "health_detail" "preflight:openclash_conflict"
-		runtime_state_set "updated_at" "$(date +%s)"
-		_log_runtime_error "OpenClash is enabled; skip Clashoo start to avoid firewall/DNS conflicts"
-		return 0
-	fi
 	if [ "${enable:-0}" -eq 1 ]; then
 		resolve_effective_tp_modes
 		runtime_state_record_preflight "$(selected_core_family)"
@@ -1648,7 +1393,11 @@ start_service(){
 				return 1
 			fi
 			if ! start_singbox_service; then
-				runtime_state_record_health "fail" "start:singbox_service_failed"
+				# 干测失败已写入 preflight:* detail，避免被外层兜底覆盖
+				case "$(grep '^health_detail=' "$RUNTIME_STATE_FILE" 2>/dev/null | cut -d= -f2-)" in
+					preflight:*) ;;
+					*) runtime_state_record_health "fail" "start:singbox_service_failed" ;;
+				esac
 				echo "Clashoo" > "$REAL_LOG"
 				return 1
 			fi
@@ -1736,6 +1485,7 @@ stop_service(){
 			log_msg "Stopping Clashoo" "正在停止 Clashoo"
 		log_msg "Removing firewall rules" "清理防火墙规则"
 		backend_remove_rules >/dev/null 2>&1
+		cleanup_stale_core_nft >/dev/null 2>&1
 		revert_dns >/dev/null 2>&1
 
 			sh /usr/share/clashoo/runtime/backup.sh >/dev/null 2>&1
