@@ -395,7 +395,11 @@ runtime_run_health_check() {
 	if command_exists nslookup; then
 		dns_state="fail"
 		for _try in 1 2 3; do
-			dns_out="$(timeout 3 nslookup www.google.com 127.0.0.1 2>/dev/null)"
+			if command_exists timeout; then
+				dns_out="$(timeout 3 nslookup www.google.com 127.0.0.1 2>/dev/null)"
+			else
+				dns_out="$(nslookup www.google.com 127.0.0.1 2>/dev/null)"
+			fi
 			dns_addr="$(echo "$dns_out" | awk '/^Address: /{print $2} /^Address [0-9]+: /{print $3}' | grep -E '^[0-9a-fA-F:.]+$' | tail -n1)"
 			if [ -n "$dns_addr" ]; then
 				if echo "$dns_addr" | grep -Eq '^198\.18\.|^fc00:'; then
@@ -479,7 +483,6 @@ CLASH="$(_detect_selected_core)"
 CLASH_CONFIG="/etc/clashoo"
 CRON_FILE="/etc/crontabs/root"
 CONFIG_YAML="/etc/clashoo/config.yaml"
-CONFIG_YAML_PATH=$(uci get clashoo.config.use_config 2>/dev/null)  
 
 CUSLIST="/tmp/dnsmasq.d/custom_list.conf"
 CUSLITT="/tmp/dnsmasq.clashoo"
@@ -623,7 +626,6 @@ revert_dns() {
 }
 
 add_cron(){
-config_type=$(uci get clashoo.config.config_type 2>/dev/null)
 #===========================================================================================================================
 	clear=$(uci get clashoo.config.auto_clear_log 2>/dev/null)
 	if [ "${clear:-0}" -eq 1 ]; then
@@ -684,7 +686,7 @@ del_cron(){
 
 select_config(){
 #=========================================================================================================================== 
-config_type=$(uci get clashoo.config.config_type 2>/dev/null)
+CONFIG_YAML_PATH=$(uci get clashoo.config.use_config 2>/dev/null)
 log_msg "Checking Config file" "正在检查配置文件"
 
 if [ -f "$CONFIG_YAML_PATH" ] && [ -s "$CONFIG_YAML_PATH" ];then
@@ -782,7 +784,7 @@ smart_inject() {
 					.collectdata = (env(SMART_COLLECT) == "true") |
 					.["sample-rate"] = (env(SMART_COLLECT_RATE) | tonumber) |
 					(if env(SMART_PRIORITY) != "" then .["policy-priority"] = env(SMART_PRIORITY) else del(.["policy-priority"]) end)
-				else .
+			else .
 				end
 			)) |
 			(if env(SMART_COLLECT) == "true" then

@@ -13,7 +13,7 @@ Signed-off-by: Imre Kaloz <kaloz@openwrt.org>
 
 --- a/init/Kconfig
 +++ b/init/Kconfig
-@@ -2001,6 +2001,15 @@ config ARCH_SUPPORTS_MSEAL_SYSTEM_MAPPIN
+@@ -2012,6 +2012,15 @@ config ARCH_SUPPORTS_MSEAL_SYSTEM_MAPPIN
  	  For complete descriptions of memory sealing, please see
  	  Documentation/userspace-api/mseal.rst
  

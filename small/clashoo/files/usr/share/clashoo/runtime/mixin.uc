@@ -161,6 +161,7 @@ cfg['experimental'] = {
 	},
 };
 
+
 /* ── 输出 JSON (不含 null/空对象) ─────────────────── */
 function clean(obj) {
 	if (type(obj) == 'array') {

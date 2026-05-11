@@ -94,7 +94,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
  {
 --- a/net/Kconfig
 +++ b/net/Kconfig
-@@ -69,7 +69,7 @@ config SKB_EXTENSIONS
+@@ -75,7 +75,7 @@ config SKB_EXTENSIONS
  config NET_DEVMEM
  	def_bool y
  	select GENERIC_ALLOCATOR

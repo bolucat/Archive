@@ -729,7 +729,7 @@ return view.extend({
       sections.push(otherEditorBox);
     }
 
-    sections.push(
+      sections.push(
       E('div', { 'class': 'cl-section cl-card' }, [
         E('h4', {}, '复写设置'),
         E('div', { 'class': 'cl-form-wrap cl-rewrite-wrap cl-fixed-600' }, [

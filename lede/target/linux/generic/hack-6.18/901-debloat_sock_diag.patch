@@ -16,7 +16,7 @@ Signed-off-by: Felix Fietkau <nbd@nbd.name>
 
 --- a/net/Kconfig
 +++ b/net/Kconfig
-@@ -141,6 +141,9 @@ source "net/mptcp/Kconfig"
+@@ -147,6 +147,9 @@ source "net/mptcp/Kconfig"
  
  endif # if INET
  
