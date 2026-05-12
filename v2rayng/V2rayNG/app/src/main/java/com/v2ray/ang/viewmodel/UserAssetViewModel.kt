@@ -2,8 +2,9 @@ package com.v2ray.ang.viewmodel
 
 import androidx.lifecycle.ViewModel
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.dto.AssetUrlCache
-import com.v2ray.ang.dto.AssetUrlItem
+import com.v2ray.ang.dto.entities.AssetUrlCache
+import com.v2ray.ang.dto.entities.AssetUrlItem
+import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.extension.concatUrl
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.util.HttpUtil
@@ -92,7 +93,18 @@ class UserAssetViewModel : ViewModel() {
         val targetTemp = File(extDir, item.remarks + "_temp")
         val target = File(extDir, item.remarks)
         try {
-            if (HttpUtil.downloadToFile(item.url, targetTemp, 15000, httpPort, proxyUsername, proxyPassword)) {
+            if (
+                HttpUtil.downloadToFile(
+                    UrlContentRequest(
+                        url = item.url,
+                        timeout = 15000,
+                        httpPort = httpPort,
+                        proxyUsername = proxyUsername,
+                        proxyPassword = proxyPassword
+                    ),
+                    targetTemp
+                )
+            ) {
                 targetTemp.renameTo(target)
                 return true
             }

@@ -2,7 +2,7 @@ package com.v2ray.ang.fmt
 
 import android.text.TextUtils
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.dto.ProfileItem
+import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.VmessQRCode
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.NetworkType

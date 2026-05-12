@@ -4,12 +4,15 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
+import android.widget.ImageButton
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivitySubEditBinding
-import com.v2ray.ang.dto.SubscriptionItem
+import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.handler.MmkvManager
@@ -33,6 +36,7 @@ class SubEditActivity : BaseActivity() {
         //setContentView(binding.root)
         setContentViewWithToolbar(binding.root, showHomeAsUp = true, title = getString(R.string.title_sub_setting))
 
+        setupProfileRemarkInputs()
         SettingsChangeManager.makeSetupGroupTab()
         val subItem = MmkvManager.decodeSubscription(editSubId)
         if (subItem != null) {
@@ -71,6 +75,34 @@ class SubEditActivity : BaseActivity() {
         binding.etPreProfile.text = null
         binding.etNextProfile.text = null
         return true
+    }
+
+    private fun setupProfileRemarkInputs() {
+        val suggestions = MmkvManager.decodeAllServerList()
+            .mapNotNull { id -> MmkvManager.decodeServerConfig(id)?.remarks }
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        setupProfileRemarkInput(binding.etPreProfile, binding.btnPreProfileDropdown, suggestions)
+        setupProfileRemarkInput(binding.etNextProfile, binding.btnNextProfileDropdown, suggestions)
+    }
+
+    private fun setupProfileRemarkInput(
+        input: AutoCompleteTextView,
+        dropdownButton: ImageButton,
+        suggestions: List<String>
+    ) {
+        val adapter = ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, suggestions)
+        input.setAdapter(adapter)
+        input.threshold = 0
+
+        dropdownButton.setOnClickListener {
+            input.requestFocus()
+            input.showDropDown()
+        }
+        input.setOnClickListener {
+            input.showDropDown()
+        }
     }
 
     /**

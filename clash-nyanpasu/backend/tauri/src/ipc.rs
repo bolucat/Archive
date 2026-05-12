@@ -56,11 +56,9 @@ impl serde::Serialize for IpcError {
 }
 
 impl specta::Type for IpcError {
-    fn inline(
-        type_map: &mut specta::TypeMap,
-        generics: specta::Generics,
-    ) -> specta::datatype::DataType {
-        specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::String)
+    fn definition(types: &mut specta::Types) -> specta::datatype::DataType {
+        let _ = types;
+        specta::datatype::DataType::Primitive(specta::datatype::Primitive::str)
     }
 }
 
@@ -389,13 +387,17 @@ pub fn get_clash_info() -> Result<ClashInfo> {
 /// get the runtime config
 #[tauri::command]
 #[specta::specta]
-pub fn get_runtime_config() -> Result<Option<serde_json::Value>> {
+// TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
+// Any<> to avoid infinite type expansion. Replace with a typed ClashConfig struct if desired.
+pub fn get_runtime_config() -> Result<Option<specta_typescript::Any<serde_json::Value>>> {
     let config = Config::runtime().latest().config.clone();
     match config {
         Some(cfg) => {
             let yaml_value = serde_yaml::to_value(cfg)?;
             let json_value = serde_json::to_value(&yaml_value)?;
-            Ok(Some(json_value))
+            let wrapped: specta_typescript::Any<serde_json::Value> =
+                serde_json::from_value(json_value)?;
+            Ok(Some(wrapped))
         }
         None => Ok(None),
     }
@@ -441,8 +443,12 @@ pub async fn url_delay_test(url: &str, expected_status: u16) -> Result<Option<u6
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_ipsb_asn() -> Result<serde_json::Value> {
-    Ok(crate::utils::net::get_ipsb_asn().await?)
+// TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value). Wrapped in
+// Any<> to avoid infinite type expansion.
+pub async fn get_ipsb_asn() -> Result<specta_typescript::Any<serde_json::Value>> {
+    let value = crate::utils::net::get_ipsb_asn().await?;
+    let wrapped: specta_typescript::Any<serde_json::Value> = serde_json::from_value(value)?;
+    Ok(wrapped)
 }
 
 /// patch clash runtime config
@@ -1101,6 +1107,8 @@ pub struct UpdateWrapper {
     version: String,
     date: Option<String>,
     body: Option<String>,
+    // TODO: specta 2.0.0-rc.25 cannot export recursive inline types (serde_json::Value).
+    #[specta(type = specta_typescript::Any)]
     raw_json: serde_json::Value,
 }
 

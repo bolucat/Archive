@@ -85,7 +85,7 @@ o.validate = function(self, value)
 		fs.rmdir(value)
 	end
 	if fs.stat(value, "type") == "dir" then
-		m.message = (m.message or "") .. "\nerror: bin path is a directory"
+		m.message = (m.message or "") .. "\n" .. translate("Error: bin path is a directory")
 		return nil
 	end
 	return value
@@ -113,7 +113,7 @@ o.validate = function(self, value)
 		fs.rmdir(value)
 	end
 	if fs.stat(value, "type") == "dir" then
-		m.message = (m.message or "") .. "\nerror: config path is a directory"
+		m.message = (m.message or "") .. "\n" .. translate("Error: config path is a directory")
 		return nil
 	end
 	return value
@@ -127,7 +127,7 @@ o.rmempty = false
 o.validate = function(self, value)
 	if value == "" then return nil end
 	if fs.stat(value, "type") == "reg" then
-		m.message = (m.message or "") .. "\nerror: work dir is a file"
+		m.message = (m.message or "") .. "\n" .. translate("Error: work dir is a file")
 		return nil
 	end
 	if value:sub(-1) == "/" then
@@ -144,7 +144,7 @@ o.validate = function(self, value)
 		fs.rmdir(value)
 	end
 	if value and value ~= "" and fs.stat(value, "type") == "dir" then
-		m.message = (m.message or "") .. "\nerror: log file is a directory"
+		m.message = (m.message or "") .. "\n" .. translate("Error: log file is a directory")
 		return nil
 	end
 	return value
@@ -153,6 +153,53 @@ end
 o = s:option(Flag, "verbose", translate("Verbose log"))
 o.default = "0"
 o.optional = true
+
+o = s:option(Value, "user", translate("Service user"), translate("User the service runs under. If empty, defaults to 'adguardhome'."))
+o.placeholder = "adguardhome"
+o.datatype = "string"
+o.optional = true
+
+o = s:option(Value, "group", translate("Service group"), translate("Group the service runs under. If empty, defaults to 'adguardhome'."))
+o.placeholder = "adguardhome"
+o.datatype = "string"
+o.optional = true
+
+o = s:option(TextValue, "jail_mount", translate("Read-only file access"), translate("Directories or files AdGuardHome can read. One path per line."))
+o.rows = 4
+o.wrap = "off"
+o.optional = true
+o.rmempty = true
+
+o = s:option(TextValue, "jail_mount_rw", translate("Read-write file access"), translate("Directories or files AdGuardHome can write. One path per line."))
+o.rows = 4
+o.wrap = "off"
+o.optional = true
+o.rmempty = true
+
+o = s:option(Flag, "advanced_settings", translate("Show advanced settings"))
+o.default = "0"
+o.optional = true
+
+o = s:option(Value, "gc", "GOGC", translate("Tunes the garbage collector. If empty, defaults to 100."))
+o.datatype = "uinteger"
+o.placeholder = "0"
+o.optional = true
+o.rmempty = true
+o:depends("advanced_settings", "1")
+
+o = s:option(Value, "maxprocs", "GOMAXPROCS", translate("Max number of OS threads for Go. If empty, defaults to matching number of CPUs."))
+o.datatype = "uinteger"
+o.placeholder = "0"
+o.optional = true
+o.rmempty = true
+o:depends("advanced_settings", "1")
+
+o = s:option(Value, "memlimit", "GOMEMLIMIT", translate("Soft memory cap for Go runtime. If empty, defaults to unset."))
+o.datatype = "uinteger"
+o.placeholder = "0"
+o.optional = true
+o.rmempty = true
+o:depends("advanced_settings", "1")
 
 local gfw_status
 if fs.access(configpath) and luci.sys.call("grep -q 'programaddstart' " .. configpath .. " 2>/dev/null") == 0 then
@@ -239,7 +286,7 @@ o1.datatype = "string"
 o1.optional = false
 o1.validate = function(self, value)
 	if value and value ~= "" and fs.stat(value, "type") == "reg" then
-		m.message = (m.message or "") .. "\nerror: backup dir is a file"
+		m.message = (m.message or "") .. "\n" .. translate("Error: backup dir is a file")
 		return nil
 	end
 	if value and value:sub(-1) == "/" then

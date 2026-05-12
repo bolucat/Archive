@@ -1,8 +1,8 @@
 package com.v2ray.ang.viewmodel
 
 import androidx.lifecycle.ViewModel
-import com.v2ray.ang.dto.SubscriptionCache
-import com.v2ray.ang.dto.SubscriptionItem
+import com.v2ray.ang.dto.entities.SubscriptionCache
+import com.v2ray.ang.dto.entities.SubscriptionItem
 import com.v2ray.ang.handler.MmkvManager
 import com.v2ray.ang.handler.SettingsChangeManager
 import com.v2ray.ang.handler.SettingsManager

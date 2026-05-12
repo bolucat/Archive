@@ -2,6 +2,7 @@ package com.v2ray.ang.handler
 
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.dto.IPAPIInfo
+import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.util.HttpUtil
 import com.v2ray.ang.util.JsonUtil
 import com.v2ray.ang.util.LogUtil
@@ -88,7 +89,15 @@ object SpeedtestManager {
         val proxyPassword = SettingsManager.getSocksPassword()
         val httpPort = SettingsManager.getHttpPort()
         if (httpPort == 0) return null
-        val content = HttpUtil.getUrlContent(url, 5000, httpPort, proxyUsername, proxyPassword) ?: return null
+        val content = HttpUtil.getUrlContent(
+            UrlContentRequest(
+                url = url,
+                timeout = 5000,
+                httpPort = httpPort,
+                proxyUsername = proxyUsername,
+                proxyPassword = proxyPassword
+            )
+        ) ?: return null
         val ipInfo = JsonUtil.fromJson(content, IPAPIInfo::class.java) ?: return null
 
         val ip = listOf(

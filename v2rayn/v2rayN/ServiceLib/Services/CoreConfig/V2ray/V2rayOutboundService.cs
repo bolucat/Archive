@@ -491,7 +491,6 @@ public partial class CoreConfigV2rayService
                 //ws
                 case nameof(ETransport.ws):
                     WsSettings4Ray wsSettings = new();
-                    wsSettings.headers = new Headers4Ray();
 
                     if (host.IsNotEmpty())
                     {
@@ -503,6 +502,7 @@ public partial class CoreConfigV2rayService
                     }
                     if (useragent.IsNotEmpty())
                     {
+                        wsSettings.headers ??= new Headers4Ray();
                         wsSettings.headers.UserAgent = useragent;
                     }
                     streamSettings.wsSettings = wsSettings;
@@ -522,6 +522,7 @@ public partial class CoreConfigV2rayService
                     }
                     if (useragent.IsNotEmpty())
                     {
+                        httpupgradeSettings.headers ??= new Headers4Ray();
                         httpupgradeSettings.headers.UserAgent = useragent;
                     }
                     streamSettings.httpupgradeSettings = httpupgradeSettings;

@@ -14,6 +14,7 @@ import com.v2ray.ang.AppConfig.ANG_PACKAGE
 import com.v2ray.ang.R
 import com.v2ray.ang.databinding.ActivityBypassListBinding
 import com.v2ray.ang.dto.AppInfo
+import com.v2ray.ang.dto.UrlContentRequest
 import com.v2ray.ang.extension.toast
 import com.v2ray.ang.extension.toastSuccess
 import com.v2ray.ang.extension.v2RayApplication
@@ -189,12 +190,25 @@ class PerAppProxyActivity : BaseActivity() {
 
         val url = AppConfig.ANDROID_PACKAGE_NAME_LIST_URL
         lifecycleScope.launch(Dispatchers.IO) {
-            var content = HttpUtil.getUrlContent(url, 5000)
+            var content = HttpUtil.getUrlContent(
+                UrlContentRequest(
+                    url = url,
+                    timeout = 5000
+                )
+            )
             if (content.isNullOrEmpty()) {
                 val proxyUsername = SettingsManager.getSocksUsername()
                 val proxyPassword = SettingsManager.getSocksPassword()
                 val httpPort = SettingsManager.getHttpPort()
-                content = HttpUtil.getUrlContent(url, 5000, httpPort, proxyUsername, proxyPassword) ?: ""
+                content = HttpUtil.getUrlContent(
+                    UrlContentRequest(
+                        url = url,
+                        timeout = 5000,
+                        httpPort = httpPort,
+                        proxyUsername = proxyUsername,
+                        proxyPassword = proxyPassword
+                    )
+                ) ?: ""
             }
             launch(Dispatchers.Main) {
                 //LogUtil.i(AppConfig.TAG, content)

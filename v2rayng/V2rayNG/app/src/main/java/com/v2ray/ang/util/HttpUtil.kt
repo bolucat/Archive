@@ -3,6 +3,7 @@ package com.v2ray.ang.util
 import com.v2ray.ang.AppConfig
 import com.v2ray.ang.AppConfig.LOOPBACK
 import com.v2ray.ang.BuildConfig
+import com.v2ray.ang.dto.UrlContentRequest
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -108,20 +109,15 @@ object HttpUtil {
      * @param httpPort The HTTP port to use.
      * @return The content of the URL as a string.
      */
-    fun getUrlContent(
-        url: String,
-        timeout: Int,
-        httpPort: Int = 0,
-        proxyUsername: String? = null,
-        proxyPassword: String? = null
-    ): String? {
-        val client = buildOkHttpClient(timeout, httpPort, proxyUsername, proxyPassword, followRedirects = true)
+    fun getUrlContent(request: UrlContentRequest): String? {
+        val url = request.url ?: return null
+        val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
         val requestBuilder = Request.Builder()
             .url(url)
             .get()
             .header("Connection", "close")
-        if (httpPort != 0 && !proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
-            requestBuilder.header("Proxy-Authorization", Credentials.basic(proxyUsername, proxyPassword))
+        if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
+            requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
         }
         try {
             client.newCall(requestBuilder.build()).execute().use { response ->
@@ -147,25 +143,18 @@ object HttpUtil {
      * @throws IOException If an I/O error occurs.
      */
     @Throws(IOException::class)
-    fun getUrlContentWithUserAgent(
-        url: String?,
-        userAgent: String?,
-        timeout: Int = 15000,
-        httpPort: Int = 0,
-        proxyUsername: String? = null,
-        proxyPassword: String? = null
-    ): String {
-        var currentUrl = url
+    fun getUrlContentWithUserAgent(request: UrlContentRequest): String {
+        var currentUrl = request.url
         var redirects = 0
         val maxRedirects = 3
 
         while (redirects++ < maxRedirects) {
             if (currentUrl == null) continue
-            val client = buildOkHttpClient(timeout, httpPort, proxyUsername, proxyPassword, followRedirects = false)
-            val finalUserAgent = if (userAgent.isNullOrBlank()) {
+            val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = false)
+            val finalUserAgent = if (request.userAgent.isNullOrBlank()) {
                 "v2rayNG/${BuildConfig.VERSION_NAME}"
             } else {
-                userAgent
+                request.userAgent
             }
             val requestBuilder = Request.Builder()
                 .url(currentUrl)
@@ -175,8 +164,8 @@ object HttpUtil {
 
             applyEmbeddedBasicAuthHeader(currentUrl, requestBuilder)
 
-            if (httpPort != 0 && !proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
-                requestBuilder.header("Proxy-Authorization", Credentials.basic(proxyUsername, proxyPassword))
+            if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
+                requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
             }
 
             client.newCall(requestBuilder.build()).execute().use { response ->
@@ -271,20 +260,17 @@ object HttpUtil {
     }
 
     fun downloadToFile(
-        url: String,
-        targetFile: File,
-        timeout: Int = 15000,
-        httpPort: Int = 0,
-        proxyUsername: String? = null,
-        proxyPassword: String? = null
+        request: UrlContentRequest,
+        targetFile: File
     ): Boolean {
-        val client = buildOkHttpClient(timeout, httpPort, proxyUsername, proxyPassword, followRedirects = true)
+        val url = request.url ?: return false
+        val client = buildOkHttpClient(request.timeout, request.httpPort, request.proxyUsername, request.proxyPassword, followRedirects = true)
         val requestBuilder = Request.Builder()
             .url(url)
             .get()
             .header("Connection", "close")
-        if (httpPort != 0 && !proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
-            requestBuilder.header("Proxy-Authorization", Credentials.basic(proxyUsername, proxyPassword))
+        if (request.httpPort != 0 && !request.proxyUsername.isNullOrBlank() && !request.proxyPassword.isNullOrBlank()) {
+            requestBuilder.header("Proxy-Authorization", Credentials.basic(request.proxyUsername, request.proxyPassword))
         }
 
         return try {

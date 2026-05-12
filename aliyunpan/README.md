@@ -9,6 +9,28 @@
 </p>
 
 <p align="center">
+  <strong>支持多种网盘与媒体源</strong>
+</p>
+
+<p align="center">
+  <img src="public/images/drive-icons/aliyun.svg" width="36" height="36" alt="阿里云盘" title="阿里云盘">
+  <img src="public/images/drive-icons/baidu.svg" width="36" height="36" alt="百度网盘" title="百度网盘">
+  <img src="public/images/drive-icons/cloud123.svg" width="36" height="36" alt="123网盘" title="123网盘">
+  <img src="public/images/drive-icons/drive115.svg" width="36" height="36" alt="115网盘" title="115网盘">
+  <img src="public/images/drive-icons/pikpak.png" width="36" height="36" alt="PikPak" title="PikPak">
+  <img src="public/images/drive-icons/dropbox.svg" width="36" height="36" alt="Dropbox" title="Dropbox">
+  <img src="public/images/drive-icons/onedrive.svg" width="36" height="36" alt="OneDrive" title="OneDrive">
+  <img src="public/images/drive-icons/box.svg" width="36" height="36" alt="Box" title="Box">
+</p>
+
+<p align="center">
+  <img src="src/assets/media-server/jellyfin.svg" width="34" height="34" alt="Jellyfin" title="Jellyfin">
+  <img src="src/assets/media-server/emby.svg" width="34" height="34" alt="Emby" title="Emby">
+  <img src="src/assets/media-server/plex.svg" width="34" height="34" alt="Plex" title="Plex">
+  <img src="https://img.shields.io/badge/WebDAV-4f46e5?style=flat-square&logo=webdav&logoColor=white" alt="WebDAV">
+</p>
+
+<p align="center">
   <a href="LICENSE" target="_blank">
     <img alt="MIT License" src="https://img.shields.io/github/license/gaozhangmin/aliyunpan?style=flat-square&logoColor=white" />
   </a>
@@ -42,7 +64,7 @@
 </p>
 
 
-[![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-) [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-) [![](https://img.shields.io/badge/-%E5%AE%89%E8%A3%85-blue)](#安装-) [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-) [![](https://img.shields.io/badge/-%E4%BA%A4%E6%B5%81%E7%A4%BE%E5%8C%BA-blue)](#交流社区-) [![](https://img.shields.io/badge/-%E9%B8%A3%E8%B0%A2-blue)](#鸣谢-) [![](https://img.shields.io/badge/-%E5%A3%B0%E6%98%8E-blue)](#免责声明-)
+[![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-) [![](https://img.shields.io/badge/-%E7%95%8C%E9%9D%A2-blue)](#界面-) [![](https://img.shields.io/badge/-%E5%AE%89%E8%A3%85-blue)](#安装-) [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-) [![](https://img.shields.io/badge/-%E8%B5%9E%E5%8A%A9-blue)](#赞助-app-) [![](https://img.shields.io/badge/-%E4%BA%A4%E6%B5%81%E7%A4%BE%E5%8C%BA-blue)](#交流社区-) [![](https://img.shields.io/badge/-%E9%B8%A3%E8%B0%A2-blue)](#鸣谢-) [![](https://img.shields.io/badge/-%E5%A3%B0%E6%98%8E-blue)](#免责声明-)
 
 
 # 功能 [![](https://img.shields.io/badge/-%E5%8A%9F%E8%83%BD-blue)](#功能-)
@@ -56,7 +78,7 @@
 6. **剧集详情**：显示剧集封面、评分、简介、分集列表，支持继续播放进度记录 <br>
 
 ## 🌟 多网盘支持
-7. **多平台网盘接入**：支持阿里云盘、百度网盘、123网盘、115网盘等主流网盘服务 <br>
+7. **多平台网盘接入**：支持阿里云盘、百度网盘、123网盘、115网盘、PikPak、Dropbox、OneDrive、Box 等主流网盘服务 <br>
 8. **WebDAV 连接**：支持通过 WebDAV 协议连接夸克网盘、天翼云等更多网盘服务 <br>
 9. **本地文件夹导入**：支持导入本地文件夹并识别刮削 TMDB 元数据 <br>
 10. **多账号管理**：支持同时登录和管理多个网盘账号 <br>
@@ -137,6 +159,12 @@
 
 # 安装 [![](https://img.shields.io/badge/-%E5%AE%89%E8%A3%85-blue)](#安装-)
 
+## Apple 全家桶
+
+iOS / tvOS / macOS 用户可通过 App Store 安装：
+
+[https://apps.apple.com/us/app/boxplayer/id6739804060](https://apps.apple.com/us/app/boxplayer/id6739804060)
+
 ## 安装包说明（release 文件夹）
 
 `release` 文件夹中包含各平台、各架构的安装包，按文件名中的关键词区分：
@@ -188,12 +216,35 @@ sudo xattr -d com.apple.quarantine /Applications/xbyboxplayer.app
 - `.pacman`：`sudo pacman -U <文件名>.pacman`
 - `.zip`：解压后直接运行目录内的可执行文件
 
+## 手动升级
+
+下载新版 `app.asar` 文件后，在应用内进入 **设置 - 手动导入**，选择并导入 `app.asar` 文件即可完成升级。
+
 ---
 
 # 小白羊公众号 [![](https://img.shields.io/badge/-%E5%BE%AE%E4%BF%A1%E5%85%AC%E4%BC%97%E5%8F%B7-blue)](#小白羊公众号-)
 <p align="center">
   <img src="screenshot/qrcode_wechat.jpg" width="380">
 </p>
+<a href="#readme">
+    <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
+</a>
+
+# 赞助 APP [![](https://img.shields.io/badge/-%E8%B5%9E%E5%8A%A9-blue)](#赞助-app-)
+
+如果这个项目对你有帮助，欢迎赞助支持持续维护。
+
+<p align="center">
+  <img src="public/images/wechat_pay.jpg" width="240" alt="微信赞赏码" title="微信赞赏码">
+  <img src="public/images/alipay.jpg" width="240" alt="支付宝赞赏码" title="支付宝赞赏码">
+</p>
+
+**加密货币 USDT/USDC：**
+
+```text
+0xb0a3f7254e97a8bd398b1ab7f70eb48b0dc68eaf
+```
+
 <a href="#readme">
     <img src="https://img.shields.io/badge/-返回顶部-orange.svg" alt="#" align="right">
 </a>

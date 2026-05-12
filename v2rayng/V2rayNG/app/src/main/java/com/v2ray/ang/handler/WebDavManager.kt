@@ -1,7 +1,7 @@
 package com.v2ray.ang.handler
 
 import com.v2ray.ang.AppConfig
-import com.v2ray.ang.dto.WebDavConfig
+import com.v2ray.ang.dto.entities.WebDavConfig
 import com.v2ray.ang.util.LogUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
