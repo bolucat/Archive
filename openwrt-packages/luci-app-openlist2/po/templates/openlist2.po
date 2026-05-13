@@ -1,0 +1,384 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:169
+msgid ""
+"0 is unlimited, It is recommend to set a low number of concurrency (10-20) "
+"for poor performance device"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:175
+msgid ""
+"0 is unlimited, Limit the maximum concurrency of local agents. The default "
+"value is 64"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:84
+msgid "A file list program that supports multiple storage."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:327
+msgid "Allow Headers"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:323
+msgid "Allow Methods"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:319
+msgid "Allow Origins"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:106
+msgid "Basic Settings"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:157
+msgid "CDN URL"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:112
+msgid "CORS Settings"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:138
+msgid "Cache directory"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/logs.js:59
+msgid "Clear logs"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:376
+msgid "Client IP check in active transfer mode"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:379
+msgid "Client IP check in passive transfer mode"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:360
+msgid "Client idle timeout (seconds)"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:100
+msgid "Collecting data..."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:365
+msgid "Connection timeout (seconds)"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:313
+msgid "Copy Max Retry"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:308
+msgid "Copy Workers"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:135
+msgid "Data directory"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:109
+msgid "Database"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:255
+msgid "Database DSN"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:224
+msgid "Database Host"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:242
+msgid "Database Name"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:238
+msgid "Database Password"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:228
+msgid "Database Port"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:251
+msgid "Database SSL Mode"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:246
+msgid "Database Table Prefix"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:218
+msgid "Database Type"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:234
+msgid "Database Username"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:127
+msgid "Delayed Start (seconds)"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:180
+msgid "Disable TLS Verify"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:370
+msgid "Disable active transfer mode"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:283
+msgid "Download Max Retry"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:278
+msgid "Download Workers"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:185
+msgid "Enable Logs"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:260
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:340
+msgid "Enable SSL"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:373
+msgid "Enable binary transfer mode"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:357
+msgid "Enable non-20 port for active transfer"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:118
+msgid "Enabled"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:344
+msgid "Enabled FTP"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:332
+msgid "Enabled S3"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:383
+msgid "Enabled SFTP"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:114
+msgid "FTP"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:347
+msgid "FTP Port"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:263
+msgid "Force HTTPS"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:149
+msgid "Force read config"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:143
+msgid "Generate a new random password."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:107
+msgid "Global Settings"
+msgstr ""
+
+#: luci-app-openlist2/root/usr/share/rpcd/acl.d/luci-app-openlist2.json:3
+msgid "Grant UCI access for luci-app-openlist2"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:160
+msgid "JWT Key"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:212
+msgid "Log Compress"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:189
+msgid "Log path"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:163
+msgid "Login Validity Period (hours)"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:108
+#: luci-app-openlist2/root/usr/share/luci/menu.d/luci-app-openlist2.json:21
+msgid "Logs"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:168
+msgid "Max Connections"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:194
+msgid "Max Size (MB)"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:206
+msgid "Max age"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:200
+msgid "Max backups"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:174
+msgid "Max concurrency of local proxies"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:352
+msgid "Max retries on port conflict during passive transfer"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:221
+msgid "MySQL"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:40
+msgid "NOT RUNNING"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:65
+msgid "New Password:"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:65
+msgid "New password has been copied to clipboard."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/logs.js:23
+msgid "No log data."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:113
+msgid "Object Storage"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:37
+msgid "Open Web Interface"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:132
+msgid "Open firewall port"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:83
+#: luci-app-openlist2/root/usr/share/luci/menu.d/luci-app-openlist2.json:3
+msgid "OpenList"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:122
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:335
+msgid "Port"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:222
+msgid "PostgreSQL"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:38
+msgid "RUNNING"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/logs.js:68
+msgid "Refresh every %s seconds."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:142
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:144
+msgid "Reset Password"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:115
+msgid "SFTP"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:386
+msgid "SFTP Port"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:220
+msgid "SQLite"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:267
+msgid "SSL cert"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:268
+msgid "SSL certificate file path"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:272
+msgid "SSL key"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:273
+msgid "SSL key file path"
+msgstr ""
+
+#: luci-app-openlist2/root/usr/share/luci/menu.d/luci-app-openlist2.json:13
+msgid "Setting"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:150
+msgid ""
+"Setting this to true will force the program to read the configuration file, "
+"ignoring environment variables."
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:154
+msgid "Site URL"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:111
+msgid "Task threads"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:293
+msgid "Transfer Max Retry"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:288
+msgid "Transfer Workers"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:303
+msgid "Upload Max Retry"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:298
+msgid "Upload Workers"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:65
+msgid "Username:"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:110
+msgid "Web Protocol"
+msgstr ""
+
+#: luci-app-openlist2/htdocs/luci-static/resources/view/openlist2/basic.js:155
+msgid ""
+"When the web is reverse proxied to a subdirectory, this option must be "
+"filled out to ensure proper functioning of the web. Do not include '/' at "
+"the end of the URL"
+msgstr ""
