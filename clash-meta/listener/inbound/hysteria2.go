@@ -53,6 +53,7 @@ type Hysteria2RealmOption struct {
 	Certificate    string   `inbound:"certificate,omitempty"`
 	PrivateKey     string   `inbound:"private-key,omitempty"`
 	ALPN           []string `inbound:"alpn,omitempty"`
+	Proxy          string   `inbound:"proxy,omitempty"`
 }
 
 func (o Hysteria2RealmOption) Build() LC.Hysteria2RealmOption {
@@ -68,6 +69,7 @@ func (o Hysteria2RealmOption) Build() LC.Hysteria2RealmOption {
 		Certificate:    o.Certificate,
 		PrivateKey:     o.PrivateKey,
 		ALPN:           o.ALPN,
+		Proxy:          o.Proxy,
 	}
 }
 

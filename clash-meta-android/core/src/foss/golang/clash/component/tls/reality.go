@@ -22,7 +22,6 @@ import (
 
 	"github.com/metacubex/http"
 	"github.com/metacubex/randv2"
-	"github.com/metacubex/tls"
 	utls "github.com/metacubex/utls"
 	"golang.org/x/crypto/hkdf"
 )
@@ -134,11 +133,19 @@ func GetRealityConn(ctx context.Context, conn net.Conn, fingerprint UClientHello
 
 func realityClientFallback(uConn net.Conn, serverName string, fingerprint utls.ClientHelloID) {
 	defer uConn.Close()
+	// use h2c mode to disallow the net/http fallback to http1.1
+	//
+	// Note that this usage is only applicable to our own net/http fork.
+	// The standard library also needs to mask the tls.Conn type for the conn returned by DialTLSContext
+	// see: https://github.com/golang/go/issues/79293#issuecomment-4426393534
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
 	client := http.Client{
-		Transport: &http.Http2Transport{
-			DialTLSContext: func(ctx context.Context, network, addr string, config *tls.Config) (net.Conn, error) {
+		Transport: &http.Transport{
+			DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				return uConn, nil
 			},
+			Protocols: protocols,
 		},
 	}
 	request, err := http.NewRequest("GET", "https://"+serverName, nil)

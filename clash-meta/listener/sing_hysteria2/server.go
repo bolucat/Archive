@@ -155,6 +155,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 			TLSConfig: &tls.Config{
 				ServerName:         config.RealmOpts.SNI,
 				InsecureSkipVerify: config.RealmOpts.SkipCertVerify,
+				NextProtos:         config.RealmOpts.ALPN,
 			},
 			Fingerprint: config.RealmOpts.Fingerprint,
 			Certificate: config.RealmOpts.Certificate,
@@ -170,7 +171,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 			STUNServers: config.RealmOpts.STUNServers,
 			HTTPClient: &http.Client{Transport: &http.Transport{
 				DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-					return inner.HandleTcp(tunnel, address, "")
+					return inner.HandleTcp(tunnel, address, config.RealmOpts.Proxy)
 				},
 				TLSClientConfig: httpTLSClientConfig,
 				// from http.DefaultTransport

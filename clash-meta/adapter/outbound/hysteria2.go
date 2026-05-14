@@ -256,6 +256,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 			TLSConfig: &tls.Config{
 				ServerName:         option.RealmOpts.SNI,
 				InsecureSkipVerify: option.RealmOpts.SkipCertVerify,
+				NextProtos:         option.RealmOpts.ALPN,
 			},
 			Fingerprint: option.RealmOpts.Fingerprint,
 			Certificate: option.RealmOpts.Certificate,

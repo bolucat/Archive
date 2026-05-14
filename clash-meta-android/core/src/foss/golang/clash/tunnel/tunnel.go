@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"path/filepath"
@@ -65,6 +66,7 @@ var (
 	sniffingEnable    = false
 
 	ruleUpdateCallback = utils.NewCallback[P.RuleProvider]()
+	runningCallback    = utils.NewCallback[struct{}]()
 )
 
 type tunnel struct{}
@@ -134,6 +136,13 @@ func OnInnerLoading() {
 
 func OnRunning() {
 	status.Store(Running)
+	runningCallback.Emit(struct{}{})
+}
+
+func RegisterOnRunning(callback func()) io.Closer {
+	return runningCallback.Register(func(struct{}) {
+		callback()
+	})
 }
 
 func Status() TunnelStatus {
@@ -561,13 +570,14 @@ func handleTCPConn(connCtx C.ConnContext) {
 
 		if N.NeedHandshake(remoteConn) {
 			defer func() {
-				for _, chain := range remoteConn.Chains() {
-					if chain == "REJECT" {
-						err = nil
-						return
-					}
-				}
 				if err != nil {
+					_ = remoteConn.Close()
+					for _, chain := range remoteConn.Chains() {
+						if chain == "REJECT" {
+							err = nil
+							return
+						}
+					}
 					remoteConn = nil
 				}
 			}()

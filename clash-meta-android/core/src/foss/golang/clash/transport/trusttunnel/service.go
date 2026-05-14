@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/metacubex/mihomo/common/httputils"
 	N "github.com/metacubex/mihomo/common/net"
 
 	"github.com/metacubex/http"
-	"github.com/metacubex/http/h2c"
 	"github.com/metacubex/quic-go/http3"
 	"github.com/metacubex/sing/common"
 	"github.com/metacubex/sing/common/auth"
@@ -52,7 +52,6 @@ type Service struct {
 	quicCwnd              int
 	quicBBRProfile        string
 	httpServer            *http.Server
-	h2Server              *http.Http2Server
 	h3Server              *http3.Server
 	tcpListener           net.Listener
 	tlsListener           net.Listener
@@ -73,19 +72,23 @@ func NewService(options ServiceOptions) *Service {
 
 func (s *Service) Start(tcpListener net.Listener, udpConn net.PacketConn, tlsConfig *tls.Config) error {
 	if tcpListener != nil {
-		h2Server := &http.Http2Server{}
+		protocols := new(http.Protocols)
+		protocols.SetHTTP1(true)
+		protocols.SetHTTP2(true)
+		// Enable HTTP/2 support unconditionally on the server.
+		//
+		// Note that this usage is limited to our own net/http fork
+		// The standard library also needs to mask the tls.Conn type for the conn returned by the Listener.
+		// see: https://github.com/golang/go/issues/79293#issuecomment-4426393534
+		protocols.SetUnencryptedHTTP2(true)
 		s.httpServer = &http.Server{
-			Handler:     h2c.NewHandler(s, h2Server),
+			Handler:     s,
 			IdleTimeout: DefaultSessionTimeout,
 			BaseContext: func(net.Listener) context.Context {
 				return s.ctx
 			},
+			Protocols: protocols,
 		}
-		err := http.Http2ConfigureServer(s.httpServer, h2Server)
-		if err != nil {
-			return err
-		}
-		s.h2Server = h2Server
 		listener := tcpListener
 		s.tcpListener = tcpListener
 		if tlsConfig != nil {
@@ -228,11 +231,15 @@ func (s *Service) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 		}
 		httputils.SetAddrFromRequest(&conn.NetAddr, request)
 		conn.setup(request.Body, nil)
-		_ = s.handler.NewConnection(ctx, N.NewDeadlineConn(conn), M.Metadata{
+		wrapper := &h2ConnWrapper{
+			ExtendedConn: N.NewDeadlineConn(conn),
+		}
+		_ = s.handler.NewConnection(ctx, wrapper, M.Metadata{
 			Protocol:    "trusttunnel",
 			Source:      M.ParseSocksaddr(request.RemoteAddr),
 			Destination: M.ParseSocksaddr(request.Host).Unwrap(),
 		})
+		wrapper.CloseWrapper()
 	}
 }
 
@@ -253,4 +260,39 @@ func (s *Service) verify(authorization string) (username string, loaded bool) {
 
 func (s *Service) badRequest(ctx context.Context, request *http.Request, err error) {
 	s.logger.ErrorContext(ctx, E.Cause(err, "process connection from ", request.RemoteAddr))
+}
+
+// h2ConnWrapper used to avoid "panic: Write called after Handler finished" for gun.Conn
+type h2ConnWrapper struct {
+	N.ExtendedConn
+	access sync.Mutex
+	closed bool
+}
+
+func (w *h2ConnWrapper) Write(p []byte) (n int, err error) {
+	w.access.Lock()
+	defer w.access.Unlock()
+	if w.closed {
+		return 0, net.ErrClosed
+	}
+	return w.ExtendedConn.Write(p)
+}
+
+func (w *h2ConnWrapper) WriteBuffer(buffer *buf.Buffer) error {
+	w.access.Lock()
+	defer w.access.Unlock()
+	if w.closed {
+		return net.ErrClosed
+	}
+	return w.ExtendedConn.WriteBuffer(buffer)
+}
+
+func (w *h2ConnWrapper) CloseWrapper() {
+	w.access.Lock()
+	defer w.access.Unlock()
+	w.closed = true
+}
+
+func (w *h2ConnWrapper) Upstream() any {
+	return w.ExtendedConn
 }

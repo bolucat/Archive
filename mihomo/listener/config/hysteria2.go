@@ -51,6 +51,7 @@ type Hysteria2RealmOption struct {
 	Certificate    string   `yaml:"certificate" json:"certificate,omitempty"`
 	PrivateKey     string   `yaml:"private-key" json:"private-key,omitempty"`
 	ALPN           []string `yaml:"alpn" json:"alpn,omitempty"`
+	Proxy          string   `yaml:"proxy" json:"proxy,omitempty"`
 }
 
 func (h Hysteria2Server) String() string {

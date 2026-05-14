@@ -310,6 +310,7 @@ dns:
     - https://mozilla.cloudflare-dns.com/dns-query#DNS&h3=true # 指定策略组和使用 HTTP/3
     - dhcp://en0 # dns from dhcp
     - quic://dns.adguard.com:784 # DNS over QUIC
+    # - ts://tailscale # 使用指定 Tailscale 出站的 DNS 配置查询
     # - '8.8.8.8#RULES' # 效果同respect-rules，但仅对该服务器生效
     # - '8.8.8.8#en0' # 兼容指定 DNS 出口网卡
 
@@ -1087,6 +1088,26 @@ proxies: # socks5
     #   j3: <t><b 0xf6ab><c><r 10>                        # AmneziaWG v1.5 only (removed in v2)
     #   itime: 60                                         # AmneziaWG v1.5 only (removed in v2)
 
+  # tailscale
+  - name: "tailscale"
+    type: tailscale
+    # hostname: mihomo # Tailscale 设备名，默认由 tsnet 处理
+    # auth-key: tskey-auth-xxxx # 可选；不填写时首次启动会输出交互式登录 URL
+    # control-url: https://controlplane.tailscale.com # 可选；自定义 Headscale/Tailscale control server
+    # state-dir: ./tailscale # tsnet 状态目录，默认 tailscale
+    # ephemeral: false # 是否作为 ephemeral node 登录，默认 false
+    udp: true # 是否启用 UDP，默认 false
+    # accept-routes: true # 是否接受 Tailnet 中发布的 subnet routes
+    # exit-node: 100.64.0.1 # 使用指定 exit node，可填写节点 IP；也支持 auto:any
+    # exit-node-allow-lan-access: true # 使用 exit node 时是否允许访问本地 LAN
+    # 当目标不在 Tailscale 路由内时，连接会直接报错，不会回退到直连；
+    # 访问公网需要配置可用的 exit-node，或接受覆盖目标网段的 subnet routes。
+    # 一个出站代理的标识。当值不为空时，将使用指定的 proxy 发出 Tailscale 控制面和 DERP/STUN 等连接
+    # dialer-proxy: "ss1"
+    # interface-name: "WLAN" # 指定出站网卡
+    # routing-mark: 6666 # Linux 下配置 fwmark
+    # ip-version: ipv4-prefer # 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer
+
   # openvpn
   - name: "openvpn"
     type: openvpn
@@ -1094,19 +1115,22 @@ proxies: # socks5
     port: 1194
     proto: udp # udp/tcp，默认 udp
     # dev: tun # 目前仅支持 tun，默认 tun
-    # cipher: AES-128-GCM # 目前仅支持 AES-128-GCM，默认 AES-128-GCM
+    # cipher: AES-128-GCM # 支持 AES-128-GCM / AES-256-GCM，默认 AES-128-GCM
     # auth: SHA256 # 目前仅支持 SHA256，默认 SHA256
+    # username / password: auth-user-pass 模式（与下方 cert+key 二选一，不能都不填）
+    # username: "user"
+    # password: "pass"
     # 从 .ovpn 中复制 <ca></ca> 内的内容，不需要保留 <ca> 标签
     ca: |
       -----BEGIN CERTIFICATE-----
       MIIB...example
       -----END CERTIFICATE-----
-    # 从 .ovpn 中复制 <cert></cert> 内的内容，不需要保留 <cert> 标签
+    # 从 .ovpn 中复制 <cert></cert> 内的内容（auth-user-pass 时可省略 cert / key）
     cert: |
       -----BEGIN CERTIFICATE-----
       MIIB...example
       -----END CERTIFICATE-----
-    # 从 .ovpn 中复制 <key></key> 内的内容，不需要保留 <key> 标签
+    # 从 .ovpn 中复制 <key></key> 内的内容
     key: |
       -----BEGIN PRIVATE KEY-----
       MIIE...example
@@ -1961,6 +1985,7 @@ listeners:
     #      - stun.nextcloud.com:3478
     #      - stun.sip.us:3478
     #      - global.stun.twilio.com:3478
+    #    # proxy: DIRECT # 设置server-url通过哪个代理进行连接
     #    # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, fingerprint, certificate, private-key, alpn)
     #    # skip-cert-verify： false
     #    # ......

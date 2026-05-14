@@ -41,6 +41,7 @@ data class Proxy(
         Masque(false),
         TrustTunnel(false),
         OpenVPN(false),
+        Tailscale(false),
 
 
         Relay(true),

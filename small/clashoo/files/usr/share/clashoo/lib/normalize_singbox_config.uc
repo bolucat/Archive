@@ -607,6 +607,11 @@ for (let ob in (cfg.outbounds || [])) {
 			delete ob.plugin_opts;
 		}
 
+		/* DIRECT 出站强制 ipv4_only 解析：设备多为纯 IPv4 出口，
+		 * 国内域名若解析出 AAAA 会触发 "network is unreachable" 干等超时。 */
+		if (ob.type == 'direct' && ob.tag == 'DIRECT')
+			ob.domain_resolver = { server: 'dns_resolver', strategy: 'ipv4_only' };
+
 		if (wants_tun) {
 			delete ob.routing_mark;
 			if (ob.type == 'direct' && ob.tag == 'DIRECT' && default_interface)
@@ -778,6 +783,11 @@ cfg.experimental.cache_file = {
 	enabled: true,
 	store_fakeip: true
 };
+
+/* OpenWrt already owns system time sync. Keep sing-box NTP disabled by
+ * default to avoid noisy IPv6 UDP/123 failures on IPv4-only routers. */
+cfg.ntp = cfg.ntp || {};
+cfg.ntp.enabled = false;
 
 cfg.log = cfg.log || {};
 cfg.log.output = '/var/log/clashoo/core.log';

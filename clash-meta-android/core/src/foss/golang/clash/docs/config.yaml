@@ -310,6 +310,7 @@ dns:
     - https://mozilla.cloudflare-dns.com/dns-query#DNS&h3=true # 指定策略组和使用 HTTP/3
     - dhcp://en0 # dns from dhcp
     - quic://dns.adguard.com:784 # DNS over QUIC
+    # - ts://tailscale # 使用指定 Tailscale 出站的 DNS 配置查询
     # - '8.8.8.8#RULES' # 效果同respect-rules，但仅对该服务器生效
     # - '8.8.8.8#en0' # 兼容指定 DNS 出口网卡
 
@@ -853,23 +854,6 @@ proxies: # socks5
       #   host: xxx.com
       #   headers:
       #     X-Forwarded-For: ""
-      #   no-grpc-header: false
-      #   x-padding-bytes: "100-1000"
-      #   x-padding-obfs-mode: false
-      #   x-padding-key: x_padding
-      #   x-padding-header: Referer
-      #   x-padding-placement: queryInHeader # Available: queryInHeader, cookie, header, query
-      #   x-padding-method: repeat-x # Available: repeat-x, tokenish
-      #   uplink-http-method: POST # Available: POST, PUT, PATCH, DELETE
-      #   session-placement: path # Available: path, query, cookie, header
-      #   session-key: ""
-      #   seq-placement: path # Available: path, query, cookie, header
-      #   seq-key: ""
-      #   uplink-data-placement: body # Available: body, cookie, header
-      #   uplink-data-key: ""
-      #   uplink-chunk-size: 0 # only applicable when uplink-data-placement is not body
-      #   sc-max-each-post-bytes: 1000000
-      #   sc-min-posts-interval-ms: 30
       #   reuse-settings: # aka XMUX
       #     max-concurrency: "16-32"
       #     max-connections: "0"
@@ -1031,6 +1015,18 @@ proxies: # socks5
     # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # alpn:
     #   - h3
+    # realm-opts:
+    #   enable: true # 必须手动开启
+    #   server-url: https://realm.hy2.io
+    #   token: public
+    #   realm-id: my-cabin-1f3a8c2e9b
+    #   stun-servers:
+    #     - stun.nextcloud.com:3478
+    #     - stun.sip.us:3478
+    #     - global.stun.twilio.com:3478
+    #   # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, fingerprint, certificate, private-key, alpn)
+    #   # skip-cert-verify： false
+    #   # ......
     ###quic-go特殊配置项，不要随意修改除非你知道你在干什么###
     # initial-stream-receive-window： 8388608
     # max-stream-receive-window： 8388608
@@ -1091,6 +1087,63 @@ proxies: # socks5
     #   j2: <c><b 0xf6ab><t><wt 1000>                     # AmneziaWG v1.5 only (removed in v2)
     #   j3: <t><b 0xf6ab><c><r 10>                        # AmneziaWG v1.5 only (removed in v2)
     #   itime: 60                                         # AmneziaWG v1.5 only (removed in v2)
+
+  # tailscale
+  - name: "tailscale"
+    type: tailscale
+    # hostname: mihomo # Tailscale 设备名，默认由 tsnet 处理
+    # auth-key: tskey-auth-xxxx # 可选；不填写时首次启动会输出交互式登录 URL
+    # control-url: https://controlplane.tailscale.com # 可选；自定义 Headscale/Tailscale control server
+    # state-dir: ./tailscale # tsnet 状态目录，默认 tailscale
+    # ephemeral: false # 是否作为 ephemeral node 登录，默认 false
+    udp: true # 是否启用 UDP，默认 false
+    # accept-routes: true # 是否接受 Tailnet 中发布的 subnet routes
+    # exit-node: 100.64.0.1 # 使用指定 exit node，可填写节点 IP；也支持 auto:any
+    # exit-node-allow-lan-access: true # 使用 exit node 时是否允许访问本地 LAN
+    # 当目标不在 Tailscale 路由内时，连接会直接报错，不会回退到直连；
+    # 访问公网需要配置可用的 exit-node，或接受覆盖目标网段的 subnet routes。
+    # 一个出站代理的标识。当值不为空时，将使用指定的 proxy 发出 Tailscale 控制面和 DERP/STUN 等连接
+    # dialer-proxy: "ss1"
+    # interface-name: "WLAN" # 指定出站网卡
+    # routing-mark: 6666 # Linux 下配置 fwmark
+    # ip-version: ipv4-prefer # 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer
+
+  # openvpn
+  - name: "openvpn"
+    type: openvpn
+    server: vpn.example.com
+    port: 1194
+    proto: udp # udp/tcp，默认 udp
+    # dev: tun # 目前仅支持 tun，默认 tun
+    # cipher: AES-128-GCM # 目前仅支持 AES-128-GCM，默认 AES-128-GCM
+    # auth: SHA256 # 目前仅支持 SHA256，默认 SHA256
+    # 从 .ovpn 中复制 <ca></ca> 内的内容，不需要保留 <ca> 标签
+    ca: |
+      -----BEGIN CERTIFICATE-----
+      MIIB...example
+      -----END CERTIFICATE-----
+    # 从 .ovpn 中复制 <cert></cert> 内的内容，不需要保留 <cert> 标签
+    cert: |
+      -----BEGIN CERTIFICATE-----
+      MIIB...example
+      -----END CERTIFICATE-----
+    # 从 .ovpn 中复制 <key></key> 内的内容，不需要保留 <key> 标签
+    key: |
+      -----BEGIN PRIVATE KEY-----
+      MIIE...example
+      -----END PRIVATE KEY-----
+    # 从 .ovpn 中复制 <tls-crypt></tls-crypt> 内的内容，不需要保留 <tls-crypt> 标签
+    tls-crypt: |
+      -----BEGIN OpenVPN Static key V1-----
+      00000000000000000000000000000000
+      ...
+      -----END OpenVPN Static key V1-----
+    # mtu: 1500
+    udp: true
+    # 一个出站代理的标识。当值不为空时，将使用指定的 proxy 发出连接
+    # dialer-proxy: "ss1"
+    # remote-dns-resolve: true # 强制 dns 远程解析，默认值为 false
+    # dns: [ 1.1.1.1, 8.8.8.8 ] # 仅在 remote-dns-resolve 为 true 时生效
 
   # masque
   - name: "masque"
@@ -1214,7 +1267,7 @@ proxies: # socks5
     server: server_ip/domain # 1.2.3.4 or domain
     port: 443 
     key: "<client_key>" # 如果你使用sudoku生成的ED25519密钥对，请填写密钥对中的私钥，否则填入和服务端相同的uuid
-    aead-method: chacha20-poly1305 # 可选：chacha20-poly1305、aes-128-gcm、none（不建议；且 enable-pure-downlink=false 时不可用）
+    aead-method: chacha20-poly1305 # 可选：chacha20-poly1305、aes-128-gcm、none（不建议；none 不提供 AEAD 保护）
     padding-min: 2 # 最小填充率（0-100）
     padding-max: 7 # 最大填充率（0-100，必须 >= padding-min）
     table-type: prefer_ascii    # 可选值：prefer_ascii、prefer_entropy、up_ascii_down_entropy、up_entropy_down_ascii
@@ -1228,7 +1281,7 @@ proxies: # socks5
       # host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 mode 为 stream/poll/auto/ws 时生效
       # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
       # multiplex: "off" # 可选字符串：off（默认）、auto（复用底层 HTTP 连接，减少建链 RTT）、on（Sudoku mux 单隧道多目标；仅在 mode=stream/poll/auto 生效；ws 强制 off）
-    enable-pure-downlink: false # 可选：false=带宽优化下行（更快，要求 aead-method != none）；true=纯 Sudoku 下行
+    enable-pure-downlink: false # 可选：false=带宽优化下行；true=纯 Sudoku 下行
 
   # anytls
   - name: anytls
@@ -1576,6 +1629,9 @@ listeners:
     # proxy: proxy # 如果不为空则直接将该入站流量交由指定 proxy 处理 (当 proxy 不为空时，这里的 proxy 名称必须合法，否则会出错)
     password: vlmpIPSyHH6f4S8WVPdRIHIlzmB+GIRfoH3aNJ/t9Gg=
     cipher: 2022-blake3-aes-256-gcm
+    # simple-obfs:
+    #   enable: false # 设置为true时开启
+    #   mode: http # Available: http, tls
     # shadow-tls:
     #   enable: false # 设置为true时开启
     #   version: 3 # 支持v1/v2/v3
@@ -1816,14 +1872,14 @@ listeners:
     port: 8443 # 仅支持单端口
     listen: 0.0.0.0
     key: "<server_key>" # 如果你使用sudoku生成的ED25519密钥对，此处是密钥对中的公钥，当然，你也可以仅仅使用任意uuid充当key
-    aead-method: chacha20-poly1305 # 可选：chacha20-poly1305、aes-128-gcm、none（不建议；且 enable-pure-downlink=false 时不可用）
+    aead-method: chacha20-poly1305 # 可选：chacha20-poly1305、aes-128-gcm、none（不建议；none 不提供 AEAD 保护）
     padding-min: 1 # 最小填充率（0-100）
     padding-max: 15 # 最大填充率（0-100，必须 >= padding-min）
     table-type: prefer_ascii # 可选值：prefer_ascii、prefer_entropy、up_ascii_down_entropy、up_entropy_down_ascii
     # custom-table: xpxvvpvv # 可选，自定义字节布局，必须包含2个x、2个p、4个v，可随意组合；只对 entropy 方向生效
     # custom-tables: ["xpxvvpvv", "vxpvxvvp"] # 可选，自定义字节布局列表（x/v/p），用于多表轮换；非空时覆盖 custom-table
     handshake-timeout: 5   # 可选（秒）
-    enable-pure-downlink: false # 可选：false=带宽优化下行（更快，要求 aead-method != none）；true=纯 Sudoku 下行
+    enable-pure-downlink: false # 可选：false=带宽优化下行；true=纯 Sudoku 下行
     # 推荐：使用 httpmask 对象统一管理 HTTPMask 相关字段：
     httpmask:
       disable: false # true 禁用所有 HTTP 伪装/隧道
@@ -1908,6 +1964,7 @@ listeners:
     #  down: "200 Mbps" # 若不写单位，默认为 Mbps
     #  obfs: salamander # 默认为空，如果填写则开启 obfs，目前仅支持 salamander
     #  obfs-password: yourpassword
+    #  bbr-profile: "" # Available: "standard", "conservative", "aggressive". Default: "standard"
     #  max-idle-time: 15000
     #  alpn:
     #    - h3
@@ -1916,6 +1973,44 @@ listeners:
     #  masquerade: file:///var/www # 作为文件服务器
     #  masquerade: http://127.0.0.1:8080	#作为反向代理
     #  masquerade: https://127.0.0.1:8080	#作为反向代理
+    #  realm-opts:
+    #    enable: true # 必须手动开启
+    #    server-url: https://realm.hy2.io
+    #    token: public
+    #    realm-id: my-cabin-1f3a8c2e9b
+    #    stun-servers:
+    #      - stun.nextcloud.com:3478
+    #      - stun.sip.us:3478
+    #      - global.stun.twilio.com:3478
+    #    # proxy: DIRECT # 设置server-url通过哪个代理进行连接
+    #    # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, fingerprint, certificate, private-key, alpn)
+    #    # skip-cert-verify： false
+    #    # ......
+
+  # 注意，这是用于自建hysteria2入站和出站中realm-opts中server-url的HTTP/HTTPS服务器，请勿混淆
+  - name: hysteria2-realm-in-1
+    type: hysteria2-realm
+    port: 10820 # 支持使用ports格式，例如200,302 or 200,204,401-429,501-503
+    listen: 0.0.0.0
+    token: public # hysteria2入站和出站通过 `Authorization: Bearer <token>` 出示的 Bearer 令牌。
+    max-realms: 65536 # maximum total realms (0 = unlimited)
+    max-realms-per-ip: 4 # maximum realms per client IP (0 = unlimited)
+    trusted-proxy-header: "" # header to read real client IP from (e.g. X-Forwarded-For)
+    realm-name-pattern: "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" # regex realm names must match
+    # # 下面内容如果配置， realm 将通过 TLS 提供 HTTPS 服务；否则提供明文 HTTP
+    # certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
+    # private-key: ./server.key # 证书对应的私钥 PEM 格式，或者私钥路径
+    # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
+    # client-auth-type: "" # 可选值：""、"request"、"require-any"、"verify-if-given"、"require-and-verify"
+    # client-auth-cert: string # 证书 PEM 格式，或者 证书的路径
+    # 如果填写则开启ech（可由 mihomo generate ech-keypair <明文域名> 生成）
+    # ech-key: |
+    #   -----BEGIN ECH KEYS-----
+    #   ACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK
+    #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
+    #   dC5jb20AAA==
+    #   -----END ECH KEYS-----
+    # alpn: ["h2", "http/1.1"]
 
   - name: trusttunnel-in-1
     type: trusttunnel

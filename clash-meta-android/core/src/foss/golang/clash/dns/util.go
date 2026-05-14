@@ -96,6 +96,9 @@ func setMsgTTL(msg *D.Msg, ttl uint32) {
 	}
 
 	for _, extra := range msg.Extra {
+		if extra.Header().Rrtype == D.TypeOPT { // TTL section in OPT is the extended RCODE and flags (RFC 6891), not real TTL value
+			continue
+		}
 		extra.Header().Ttl = ttl
 	}
 }
@@ -123,6 +126,8 @@ func transform(servers []NameServer, resolver *Resolver) []dnsClient {
 			c = newDHCPClient(s.Addr)
 		case "system":
 			c = newSystemClient()
+		case "tailscale":
+			c = newTailscaleClient(s.Addr)
 		case "rcode":
 			c = newRCodeClient(s.Addr)
 		case "quic":

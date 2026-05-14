@@ -4,9 +4,11 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"runtime"
 	"time"
 
 	"github.com/metacubex/mihomo/common/singledo"
+	"github.com/metacubex/mihomo/component/iface/anet"
 
 	"github.com/metacubex/bart"
 )
@@ -35,7 +37,11 @@ var caches = singledo.NewSingle[*ifaceCache](time.Second * 20)
 
 func getCache() (*ifaceCache, error) {
 	value, err, _ := caches.Do(func() (*ifaceCache, error) {
-		ifaces, err := net.Interfaces()
+		netInterfaces := net.Interfaces
+		if runtime.GOOS == "android" {
+			netInterfaces = anet.Interfaces
+		}
+		ifaces, err := netInterfaces()
 		if err != nil {
 			return nil, err
 		}

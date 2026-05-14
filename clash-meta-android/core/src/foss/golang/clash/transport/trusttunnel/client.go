@@ -18,7 +18,6 @@ import (
 	"github.com/metacubex/mihomo/transport/vmess"
 
 	"github.com/metacubex/http"
-	"github.com/metacubex/tls"
 	"golang.org/x/exp/slices"
 )
 
@@ -87,8 +86,15 @@ func NewClient(ctx context.Context, options ClientOptions) (client *Client, err 
 }
 
 func (c *Client) h2RoundTripper(tlsConfig *vmess.TLSConfig) {
-	c.roundTripper = &http.Http2Transport{
-		DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+	// use h2c mode to disallow the net/http fallback to http1.1
+	//
+	// Note that this usage is only applicable to our own net/http fork.
+	// The standard library also needs to mask the tls.Conn type for the conn returned by DialTLSContext,
+	// see: https://github.com/golang/go/issues/79293#issuecomment-4426393534
+	protocols := new(http.Protocols)
+	protocols.SetUnencryptedHTTP2(true)
+	c.roundTripper = &http.Transport{
+		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			conn, err := c.dialer.DialContext(ctx, network, c.server)
 			if err != nil {
 				return nil, err
@@ -100,7 +106,7 @@ func (c *Client) h2RoundTripper(tlsConfig *vmess.TLSConfig) {
 			}
 			return tlsConn, nil
 		},
-		AllowHTTP:       false,
+		Protocols:       protocols,
 		IdleConnTimeout: DefaultSessionTimeout,
 	}
 }
