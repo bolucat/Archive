@@ -325,3 +325,178 @@ jobs:
             --data-binary @"$f" \
             "${upload_url}?name=${f##*/}"
         done
+
+  deb-loong64:
+    name: build and release deb loong64
+    if: |
+      (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-24.04
+
+    env:
+      RELEASE_TAG: ${{ case(inputs.release_tag != '', inputs.release_tag, github.ref_name) }}
+      QCOW2_URL: https://github.com/xujiegb/debian-loong64-qcow2/releases/download/13.4/debian13-loong64.qcow2
+      EFI_CODE_URL: https://github.com/xujiegb/debian-loong64-qcow2/releases/download/13.4/edk2-loongarch64-code.fd
+      EFI_VARS_URL: https://github.com/xujiegb/debian-loong64-qcow2/releases/download/13.4/edk2-loongarch64-vars.fd
+      QCOW2_IMAGE: debian13-loong64.qcow2
+      EFI_CODE: edk2-loongarch64-code.fd
+      EFI_VARS: edk2-loongarch64-vars.fd
+      QEMU_VERSION: 10.2.2
+
+    steps:
+    - name: Prepare host tools
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        sudo apt-get update
+        sudo apt-get install -y rsync qemu-utils expect wget curl ca-certificates libfdt1 libglib2.0-0 libpixman-1-0 libslirp0
+
+    - name: Checkout repo
+      uses: actions/checkout@v6
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Download QEMU prebuild
+      run: |
+        set -euo pipefail
+
+        wget -O qemu-linux-x64.tar.gz \
+          "https://github.com/xujiegb/qemu-linux-prebuild/releases/download/${QEMU_VERSION}/qemu-linux-x64.tar.gz"
+
+        tar -xzf qemu-linux-x64.tar.gz
+
+        mkdir -p "$HOME/qemu-install"
+
+        rsync -a qemu-linux-x64/ "$HOME/qemu-install/"
+
+        "$HOME/qemu-install/bin/qemu-system-loongarch64" --version
+
+    - name: Download loong64 qcow2 and EFI firmware
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        wget -O "$QCOW2_IMAGE" "$QCOW2_URL"
+        wget -O "$EFI_CODE" "$EFI_CODE_URL"
+        wget -O "$EFI_VARS" "$EFI_VARS_URL"
+
+        qemu-img info "$QCOW2_IMAGE"
+
+    - name: Build loong64 DEB in VM through serial console
+      shell: bash
+      timeout-minutes: 180
+      env:
+        RELEASE_TAG: ${{ env.RELEASE_TAG }}
+      run: |
+        set -euo pipefail
+
+        mkdir -p "$GITHUB_WORKSPACE/dist/deb-loong64"
+
+        expect <<'EOF'
+        log_user 1
+        set timeout -1
+
+        set release_tag $env(RELEASE_TAG)
+        set qemu_bin "$env(HOME)/qemu-install/bin/qemu-system-loongarch64"
+        set qemu_rom_dir "$env(HOME)/qemu-install/share/qemu"
+
+        set workspace $env(GITHUB_WORKSPACE)
+        set repo $env(GITHUB_REPOSITORY)
+        set sha $env(GITHUB_SHA)
+
+        set qcow2 $env(QCOW2_IMAGE)
+        set efi_code $env(EFI_CODE)
+        set efi_vars $env(EFI_VARS)
+
+        proc wait_prompt {} {
+          expect {
+            -re "__CI_PROMPT__# " {}
+            timeout { exit 1 }
+            eof { exit 1 }
+          }
+        }
+
+        proc run_cmd {cmd} {
+          send -- "$cmd\r"
+          wait_prompt
+        }
+
+        spawn $qemu_bin \
+          -L $qemu_rom_dir \
+          -machine virt \
+          -accel tcg,thread=multi,tb-size=2048 \
+          -cpu la464 \
+          -m 9216 \
+          -smp 4 \
+          -drive if=pflash,format=raw,unit=0,file=$efi_code,readonly=on \
+          -drive if=pflash,format=raw,unit=1,file=$efi_vars \
+          -device virtio-blk-pci,drive=hd0,bootindex=1 \
+          -drive if=none,media=disk,id=hd0,file=$qcow2,format=qcow2 \
+          -netdev user,id=net0 \
+          -device virtio-net-pci,netdev=net0 \
+          -virtfs local,path=$workspace,mount_tag=workspace,security_model=none,id=workspace \
+          -display none \
+          -serial stdio \
+          -monitor none
+
+        expect -re "login:|debian login:"
+        send -- "root\r"
+
+        expect -re "Password:|密码:|密码："
+        send -- "password\r"
+
+        expect {
+          -re "# " {}
+          timeout { exit 1 }
+          eof { exit 1 }
+        }
+
+        send -- "export TERM=dumb; export PS1='__CI_PROMPT__# '\r"
+        wait_prompt
+
+        run_cmd "mkdir -p /workspace"
+        run_cmd "mount -t 9p -o trans=virtio,version=9p2000.L workspace /workspace || mount -t 9p -o trans=virtio workspace /workspace"
+        run_cmd "IFACE=\$(ip -o link show | awk -F': ' '\$2 != \"lo\" {print \$2; exit}') ; ip link set \$IFACE up || true"
+        run_cmd "dhclient \$IFACE || true"
+        run_cmd "printf 'nameserver 10.0.2.3\nnameserver 1.1.1.1\n' >/etc/resolv.conf"
+        run_cmd "apt-get update || apt-get update || apt-get update"
+        run_cmd "DEBIAN_FRONTEND=noninteractive apt-get install -y sudo git rsync findutils tar gzip unzip which curl jq wget file ca-certificates desktop-file-utils xdg-utils fakeroot dpkg-dev gcc make libc6-dev libgcc-s1 libstdc++6 zlib1g libatomic1"
+        run_cmd "rm -rf /root/v2rayN-src"
+        run_cmd "git clone --recursive https://github.com/$repo.git /root/v2rayN-src"
+        run_cmd "cd /root/v2rayN-src && git fetch --depth=1 origin $sha && git checkout FETCH_HEAD && git submodule update --init --recursive"
+        run_cmd "cd /root/v2rayN-src && chmod 755 package-debian-loong.sh"
+
+        send -- "cd /root/v2rayN-src; cat >/tmp/run-loong-build.sh <<'SCRIPT'\nset +e\nset -o pipefail\nbash -x ./package-debian-loong.sh \"\$RELEASE_TAG\" 2>&1 | tee /tmp/build.log\nrc=\$?\nmkdir -p /workspace/dist/deb-loong64\ncp -av /root/debbuild/*.deb /workspace/dist/deb-loong64/ 2>/dev/null || true\necho __BUILD_DONE__\$rc\nSCRIPT\nRELEASE_TAG=\"$release_tag\" bash /tmp/run-loong-build.sh\r"
+
+        expect {
+          -re "__BUILD_DONE__0" {
+            send -- "poweroff\r"
+          }
+          default {
+            exit 1
+          }
+        }
+        EOF
+
+    - name: Collect DEBs
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        mkdir -p "$GITHUB_WORKSPACE/dist/deb-loong64"
+
+        find "$GITHUB_WORKSPACE/dist/deb-loong64" -name "*.deb" \
+          -exec mv {} "$GITHUB_WORKSPACE/dist/deb-loong64/v2rayN-linux-loong64.deb" \; || true
+
+        echo "==== Dist tree ===="
+        ls -R "$GITHUB_WORKSPACE/dist/deb-loong64"
+
+    - name: Upload DEBs to release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        file: dist/deb-loong64/**/*.deb
+        tag: ${{ env.RELEASE_TAG }}
+        file_glob: true
+        prerelease: true

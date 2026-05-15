@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
 	"runtime"
@@ -21,7 +20,6 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/log"
-	"github.com/metacubex/mihomo/tunnel"
 
 	"github.com/metacubex/tailscale/envknob"
 	"github.com/metacubex/tailscale/ipn"
@@ -44,7 +42,8 @@ type Tailscale struct {
 	backendInitCh   chan struct{}
 	backendInitErr  error
 
-	startHook             io.Closer
+	serverStarted bool
+
 	unregisterDNSResolver func()
 }
 
@@ -72,8 +71,13 @@ func init() {
 				return nil, err
 			}
 			for _, iff := range ifaces {
+				addrs, err := anet.InterfaceAddrsByInterface(&iff)
+				if err != nil {
+					continue
+				}
 				nif = append(nif, netmon.Interface{
 					Interface: &iff,
+					AltAddrs:  addrs,
 				})
 			}
 			return
@@ -135,14 +139,7 @@ func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 	dnsTransport := tailscaleDNSTransport{tailscale: outbound}
 	outbound.dnsResolver = dns.NewResolverFromClient(dnsTransport)
 	outbound.unregisterDNSResolver = dns.RegisterTailscaleDnsClient(option.Name, dnsTransport)
-	outbound.startHook = tunnel.RegisterOnRunning(outbound.startOnRunning)
 	return outbound, nil
-}
-
-func (t *Tailscale) startOnRunning() {
-	if err := t.start(); err != nil {
-		log.Warnln("[Tailscale](%s) start failed: %v", t.Name(), err)
-	}
 }
 
 func (t *Tailscale) start() error {
@@ -152,6 +149,7 @@ func (t *Tailscale) start() error {
 			t.setBackendInitialized(err)
 			return
 		}
+		t.serverStarted = true
 		ctx, cancel := context.WithTimeout(t.ctx, 30*time.Second)
 		defer cancel()
 		if err := t.applyPrefs(ctx); err != nil {
@@ -428,13 +426,13 @@ func (t *Tailscale) IsL3Protocol(metadata *C.Metadata) bool {
 
 func (t *Tailscale) Close() error {
 	t.cancel()
-	if t.startHook != nil {
-		_ = t.startHook.Close()
-	}
 	if t.unregisterDNSResolver != nil {
 		t.unregisterDNSResolver()
 	}
-	if t.server != nil {
+	t.startOnce.Do(func() {
+		t.startErr = errors.New("tailscale outbound closed")
+	})
+	if t.server != nil && t.serverStarted { // tsnet.Server.Close() must not be called before or concurrently with Start.
 		return t.server.Close()
 	}
 	return nil

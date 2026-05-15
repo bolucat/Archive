@@ -6,22 +6,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"net/netip"
+	"runtime"
 	"sync"
 	"time"
 
 	N "github.com/metacubex/mihomo/common/net"
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/mihomo/component/dialer"
+	"github.com/metacubex/mihomo/component/iface/anet"
 	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/log"
-	"github.com/metacubex/mihomo/tunnel"
 
 	"github.com/metacubex/tailscale/envknob"
 	"github.com/metacubex/tailscale/ipn"
+	"github.com/metacubex/tailscale/net/netmon"
 	"github.com/metacubex/tailscale/tsnet"
 	D "github.com/miekg/dns"
 )
@@ -40,7 +42,8 @@ type Tailscale struct {
 	backendInitCh   chan struct{}
 	backendInitErr  error
 
-	startHook             io.Closer
+	serverStarted bool
+
 	unregisterDNSResolver func()
 }
 
@@ -59,8 +62,30 @@ type TailscaleOption struct {
 	ExitNodeAllowLANAccess *bool  `proxy:"exit-node-allow-lan-access,omitempty"`
 }
 
-func NewTailscale(option TailscaleOption) (*Tailscale, error) {
+func init() {
 	envknob.SetNoLogsNoSupport()
+	if runtime.GOOS == "android" { // Android SDK 30 no longer permits Go's net.Interfaces to work (Issue 2293)
+		netmon.RegisterInterfaceGetter(func() (nif []netmon.Interface, err error) {
+			ifaces, err := anet.Interfaces()
+			if err != nil {
+				return nil, err
+			}
+			for _, iff := range ifaces {
+				addrs, err := anet.InterfaceAddrsByInterface(&iff)
+				if err != nil {
+					continue
+				}
+				nif = append(nif, netmon.Interface{
+					Interface: &iff,
+					AltAddrs:  addrs,
+				})
+			}
+			return
+		})
+	}
+}
+
+func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 	if _, err := buildTailscaleMaskedPrefs(option); err != nil {
 		return nil, err
 	}
@@ -114,14 +139,7 @@ func NewTailscale(option TailscaleOption) (*Tailscale, error) {
 	dnsTransport := tailscaleDNSTransport{tailscale: outbound}
 	outbound.dnsResolver = dns.NewResolverFromClient(dnsTransport)
 	outbound.unregisterDNSResolver = dns.RegisterTailscaleDnsClient(option.Name, dnsTransport)
-	outbound.startHook = tunnel.RegisterOnRunning(outbound.startOnRunning)
 	return outbound, nil
-}
-
-func (t *Tailscale) startOnRunning() {
-	if err := t.start(); err != nil {
-		log.Warnln("[Tailscale](%s) start failed: %v", t.Name(), err)
-	}
 }
 
 func (t *Tailscale) start() error {
@@ -131,6 +149,7 @@ func (t *Tailscale) start() error {
 			t.setBackendInitialized(err)
 			return
 		}
+		t.serverStarted = true
 		ctx, cancel := context.WithTimeout(t.ctx, 30*time.Second)
 		defer cancel()
 		if err := t.applyPrefs(ctx); err != nil {
@@ -294,11 +313,16 @@ func (t *Tailscale) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.
 	if err = t.ensureStarted(ctx); err != nil {
 		return nil, err
 	}
-	address := metadata.RemoteAddress()
-	if err = t.checkTailscaleRoute(ctx, "tcp", address); err != nil {
-		return nil, err
-	}
-	conn, err := t.server.Dial(ctx, "tcp", address)
+	options := t.DialOptions()
+	options = append(options, dialer.WithResolver(t.dnsResolver))
+	options = append(options, dialer.WithNetDialer(dialer.NetDialerFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
+		if err = t.checkTailscaleRoute(ctx, network, address); err != nil {
+			return nil, err
+		}
+		return t.server.Dial(ctx, network, address)
+	})))
+	var conn net.Conn
+	conn, err = dialer.NewDialer(options...).DialContext(ctx, "tcp", metadata.RemoteAddress())
 	if err != nil {
 		return nil, err
 	}
@@ -309,9 +333,6 @@ func (t *Tailscale) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.
 }
 
 func (t *Tailscale) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (_ C.PacketConn, err error) {
-	if !t.option.UDP {
-		return nil, C.ErrNotSupport
-	}
 	if err = t.ensureStarted(ctx); err != nil {
 		return nil, err
 	}
@@ -330,15 +351,12 @@ func (t *Tailscale) ListenPacketContext(ctx context.Context, metadata *C.Metadat
 		return nil, errors.New("packet conn is nil")
 	}
 	rAddr := metadata.UDPAddr()
-	if rAddr == nil {
-		return nil, errors.New("packet destination is invalid")
-	}
 	return newPacketConn(N.NewThreadSafePacketConn(&tailscaleConnPacketConn{Conn: conn, rAddr: rAddr}), t), nil
 }
 
 func (t *Tailscale) ResolveUDP(ctx context.Context, metadata *C.Metadata) error {
-	if !metadata.Resolved() && metadata.Host != "" {
-		ip, err := t.resolveIPWithTransport(ctx, metadata.Host)
+	if metadata.Host != "" {
+		ip, err := resolveIPWithResolver(ctx, metadata.Host, t.prefer, t.dnsResolver)
 		if err != nil {
 			return fmt.Errorf("can't resolve ip: %w", err)
 		}
@@ -356,19 +374,6 @@ func (t *Tailscale) checkTailscaleRoute(ctx context.Context, network, address st
 		return fmt.Errorf("destination %s is not routed by Tailscale; configure exit-node or accept an advertised subnet route", ipp)
 	}
 	return nil
-}
-
-func (t *Tailscale) resolveIPWithTransport(ctx context.Context, host string) (netip.Addr, error) {
-	switch t.option.IPVersion {
-	case C.IPv4Only:
-		return resolver.ResolveIPv4WithResolver(ctx, host, t.dnsResolver)
-	case C.IPv6Only:
-		return resolver.ResolveIPv6WithResolver(ctx, host, t.dnsResolver)
-	case C.IPv6Prefer:
-		return resolver.ResolveIPPrefer6WithResolver(ctx, host, t.dnsResolver)
-	default:
-		return resolver.ResolveIPWithResolver(ctx, host, t.dnsResolver)
-	}
 }
 
 type tailscaleDNSTransport struct {
@@ -421,13 +426,13 @@ func (t *Tailscale) IsL3Protocol(metadata *C.Metadata) bool {
 
 func (t *Tailscale) Close() error {
 	t.cancel()
-	if t.startHook != nil {
-		_ = t.startHook.Close()
-	}
 	if t.unregisterDNSResolver != nil {
 		t.unregisterDNSResolver()
 	}
-	if t.server != nil {
+	t.startOnce.Do(func() {
+		t.startErr = errors.New("tailscale outbound closed")
+	})
+	if t.server != nil && t.serverStarted { // tsnet.Server.Close() must not be called before or concurrently with Start.
 		return t.server.Close()
 	}
 	return nil

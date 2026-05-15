@@ -12,13 +12,10 @@ MIN_KERNEL="5.10"
 PKGROOT="v2rayN-publish"
 PROJECT_HINT="v2rayN.Desktop/v2rayN.Desktop.csproj"
 RPM_TOPDIR="${HOME}/rpmbuild"
-DOTNET_TFM="net10.0"
 DOTNET_RISCV_VERSION="10.0.108"
 DOTNET_RISCV_BASE="https://github.com/xujiegb/dotnet-riscv/releases/download"
 DOTNET_RISCV_FILE="dotnet-sdk-${DOTNET_RISCV_VERSION}-linux-riscv64.tar.gz"
 DOTNET_SDK_URL="${DOTNET_RISCV_BASE}/${DOTNET_RISCV_VERSION}/${DOTNET_RISCV_FILE}"
-SKIA_VER="${SKIA_VER:-3.119.2}"
-HARFBUZZ_VER="${HARFBUZZ_VER:-8.3.1.3}"
 
 OS_ID=""
 OS_NAME=""
@@ -27,7 +24,6 @@ HOST_ARCH=""
 SCRIPT_DIR=""
 PROJECT=""
 VERSION=""
-BUILT_ALL=0
 
 declare -a BUILT_RPMS=()
 
@@ -256,70 +252,6 @@ resolve_version() {
 
   VERSION="${VERSION#v}"
   echo "[*] GUI version resolved as: ${VERSION}"
-}
-
-apply_riscv_patch() {
-  local f=""
-
-  find . -type f \( -name "*.csproj" -o -name "*.props" -o -name "*.targets" \) \
-    -exec sed -Ei 's#<TargetFramework>[^<]+</TargetFramework>#<TargetFramework>'"$DOTNET_TFM"'</TargetFramework>#g' {} +
-
-  while IFS= read -r -d '' f; do
-    sed -i \
-      -e "s#<PackageVersion Include=\"SkiaSharp\" Version=\"[^\"]*\" */>#<PackageVersion Include=\"SkiaSharp\" Version=\"$SKIA_VER\" />#g" \
-      -e "s#<PackageVersion Include=\"SkiaSharp.NativeAssets.Linux\" Version=\"[^\"]*\" */>#<PackageVersion Include=\"SkiaSharp.NativeAssets.Linux\" Version=\"$SKIA_VER\" />#g" \
-      -e "s#<PackageVersion Include=\"HarfBuzzSharp\" Version=\"[^\"]*\" */>#<PackageVersion Include=\"HarfBuzzSharp\" Version=\"$HARFBUZZ_VER\" />#g" \
-      -e "s#<PackageVersion Include=\"HarfBuzzSharp.NativeAssets.Linux\" Version=\"[^\"]*\" */>#<PackageVersion Include=\"HarfBuzzSharp.NativeAssets.Linux\" Version=\"$HARFBUZZ_VER\" />#g" \
-      "$f"
-
-    grep -q 'PackageVersion Include="SkiaSharp"' "$f" || \
-      sed -i "/<\/ItemGroup>/i\    <PackageVersion Include=\"SkiaSharp\" Version=\"$SKIA_VER\" />" "$f"
-
-    grep -q 'PackageVersion Include="SkiaSharp.NativeAssets.Linux"' "$f" || \
-      sed -i "/<\/ItemGroup>/i\    <PackageVersion Include=\"SkiaSharp.NativeAssets.Linux\" Version=\"$SKIA_VER\" />" "$f"
-
-    grep -q 'PackageVersion Include="HarfBuzzSharp"' "$f" || \
-      sed -i "/<\/ItemGroup>/i\    <PackageVersion Include=\"HarfBuzzSharp\" Version=\"$HARFBUZZ_VER\" />" "$f"
-
-    grep -q 'PackageVersion Include="HarfBuzzSharp.NativeAssets.Linux"' "$f" || \
-      sed -i "/<\/ItemGroup>/i\    <PackageVersion Include=\"HarfBuzzSharp.NativeAssets.Linux\" Version=\"$HARFBUZZ_VER\" />" "$f"
-  done < <(find . -type f -name 'Directory.Packages.props' -print0)
-
-  f="$(find "$DOTNET_ROOT/sdk/$(dotnet --version)" -type f -name 'Microsoft.NETCoreSdk.BundledVersions.props' | head -n1 || true)"
-  if [[ -f "$f" ]] && ! grep -q 'linux-riscv64' "$f"; then
-    sed -i \
-      -e 's/linux-arm64/&;linux-riscv64/g' \
-      -e 's/linux-musl-arm64/&;linux-musl-riscv64/g' \
-      "$f"
-  fi
-}
-
-copy_skiasharp_native_riscv64() {
-  local outdir="$1"
-  local skia_so=""
-  local harfbuzz_so=""
-
-  mkdir -p "$outdir"
-
-  skia_so="$(find "$HOME/.nuget/packages" -path "*/skiasharp.nativeassets.linux/${SKIA_VER}/runtimes/linux-riscv64/native/libSkiaSharp.so" | head -n1 || true)"
-  [[ -n "$skia_so" ]] || skia_so="$(find "$HOME/.nuget/packages" -path "*/runtimes/linux-riscv64/native/libSkiaSharp.so" | head -n1 || true)"
-
-  harfbuzz_so="$(find "$HOME/.nuget/packages" -path "*/harfbuzzsharp.nativeassets.linux/${HARFBUZZ_VER}/runtimes/linux-riscv64/native/libHarfBuzzSharp.so" | head -n1 || true)"
-  [[ -n "$harfbuzz_so" ]] || harfbuzz_so="$(find "$HOME/.nuget/packages" -path "*/runtimes/linux-riscv64/native/libHarfBuzzSharp.so" | head -n1 || true)"
-
-  if [[ -n "$skia_so" && -f "$skia_so" ]]; then
-    echo "[+] Copy libSkiaSharp.so from NuGet cache"
-    install -m 755 "$skia_so" "$outdir/libSkiaSharp.so"
-  else
-    echo "[WARN] libSkiaSharp.so for linux-riscv64 not found in NuGet cache"
-  fi
-
-  if [[ -n "$harfbuzz_so" && -f "$harfbuzz_so" ]]; then
-    echo "[+] Copy libHarfBuzzSharp.so from NuGet cache"
-    install -m 755 "$harfbuzz_so" "$outdir/libHarfBuzzSharp.so"
-  else
-    echo "[WARN] libHarfBuzzSharp.so for linux-riscv64 not found in NuGet cache"
-  fi
 }
 
 xray_url_for_rid() {
@@ -551,10 +483,10 @@ describe_target() {
 publish_binary() {
   local rid="$1"
 
-  dotnet clean "$PROJECT" -c Release -p:TargetFramework="$DOTNET_TFM"
-  rm -rf "$(dirname "$PROJECT")/bin/Release/${DOTNET_TFM}" || true
-  dotnet restore "$PROJECT" -r "$rid" -p:TargetFramework="$DOTNET_TFM"
-  dotnet publish "$PROJECT" -c Release -r "$rid" -p:TargetFramework="$DOTNET_TFM" -p:PublishSingleFile=false -p:SelfContained=true
+  dotnet clean "$PROJECT" -c Release
+  rm -rf "$(dirname "$PROJECT")/bin/Release/net10.0" || true
+  dotnet restore "$PROJECT"
+  dotnet publish "$PROJECT" -c Release -r "$rid" -p:PublishSingleFile=false -p:SelfContained=true
 }
 
 write_spec_file() {
@@ -604,15 +536,12 @@ cp -a * %{buildroot}/opt/v2rayN/
 find %{buildroot}/opt/v2rayN -type d -exec chmod 0755 {} +
 find %{buildroot}/opt/v2rayN -type f -exec chmod 0644 {} +
 [ -f %{buildroot}/opt/v2rayN/v2rayN ] && chmod 0755 %{buildroot}/opt/v2rayN/v2rayN || :
-[ -f %{buildroot}/opt/v2rayN/libSkiaSharp.so ] && chmod 0755 %{buildroot}/opt/v2rayN/libSkiaSharp.so || :
-[ -f %{buildroot}/opt/v2rayN/libHarfBuzzSharp.so ] && chmod 0755 %{buildroot}/opt/v2rayN/libHarfBuzzSharp.so || :
 
 install -dm0755 %{buildroot}%{_bindir}
 install -m0755 /dev/stdin %{buildroot}%{_bindir}/v2rayn << 'EOF'
 #!/usr/bin/bash
 set -euo pipefail
 DIR="/opt/v2rayN"
-export LD_LIBRARY_PATH="$DIR:${LD_LIBRARY_PATH:-}"
 
 if [[ -x "$DIR/v2rayN" ]]; then exec "$DIR/v2rayN" "$@"; fi
 
@@ -673,7 +602,7 @@ package_binary() {
   local icon_candidate=""
   local f=""
 
-  pubdir="$(dirname "$PROJECT")/bin/Release/${DOTNET_TFM}/${rid}/publish"
+  pubdir="$(dirname "$PROJECT")/bin/Release/net10.0/${rid}/publish"
   [[ -d "$pubdir" ]] || { echo "Publish directory not found: $pubdir"; return 1; }
 
   workdir="$(mktemp -d)"
@@ -681,8 +610,6 @@ package_binary() {
 
   mkdir -p "$workdir/$PKGROOT"
   cp -a "$pubdir/." "$workdir/$PKGROOT/"
-
-  copy_skiasharp_native_riscv64 "$workdir/$PKGROOT" || echo "[!] SkiaSharp native copy failed (skipped)"
 
   project_dir="$(cd "$(dirname "$PROJECT")" && pwd)"
   icon_candidate="$project_dir/v2rayN.png"
@@ -755,7 +682,6 @@ main() {
   install_dependencies
   prepare_workspace
   resolve_version
-  apply_riscv_patch
 
   mapfile -t targets < <(select_targets)
 

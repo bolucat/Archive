@@ -61,10 +61,7 @@ type ClientOptions struct {
 }
 
 func NewClient(options ClientOptions) *Client {
-	cacheCapacity := options.CacheCapacity
-	if cacheCapacity < 1024 {
-		cacheCapacity = 1024
-	}
+	cacheCapacity := max(options.CacheCapacity, 1024)
 	client := &Client{
 		ctx:               options.Context,
 		timeout:           options.Timeout,
@@ -274,9 +271,10 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	if options.LookupStrategy != C.DomainStrategyAsIS {
 		lookupOptions.Strategy = strategy
 	}
-	if strategy == C.DomainStrategyIPv4Only {
+	switch strategy {
+	case C.DomainStrategyIPv4Only:
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, lookupOptions, responseChecker)
-	} else if strategy == C.DomainStrategyIPv6Only {
+	case C.DomainStrategyIPv6Only:
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, lookupOptions, responseChecker)
 	}
 	var response4 []netip.Addr
@@ -425,10 +423,7 @@ func (c *Client) loadResponse(question dns.Question, transport adapter.DNSTransp
 		c.cache.Remove(key)
 		return nil, 0, false
 	}
-	nowTTL := int(expireAt.Sub(timeNow).Seconds())
-	if nowTTL < 0 {
-		nowTTL = 0
-	}
+	nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
 	response = response.Copy()
 	normalizeTTL(response, uint32(nowTTL))
 	return response, nowTTL, false
@@ -455,10 +450,7 @@ func (c *Client) loadPersistentResponse(question dns.Question, transport adapter
 		}
 		return nil, 0, false
 	}
-	nowTTL := int(expireAt.Sub(timeNow).Seconds())
-	if nowTTL < 0 {
-		nowTTL = 0
-	}
+	nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
 	normalizeTTL(response, uint32(nowTTL))
 	return response, nowTTL, false
 }
@@ -572,18 +564,6 @@ func (c *Client) exchangeToTransport(ctx context.Context, transport adapter.DNST
 
 func MessageToAddresses(response *dns.Msg) []netip.Addr {
 	return adapter.DNSResponseAddresses(response)
-}
-
-func wrapError(err error) error {
-	switch dnsErr := err.(type) {
-	case *net.DNSError:
-		if dnsErr.IsNotFound {
-			return RcodeNameError
-		}
-	case *net.AddrError:
-		return RcodeNameError
-	}
-	return err
 }
 
 type transportKey struct{}

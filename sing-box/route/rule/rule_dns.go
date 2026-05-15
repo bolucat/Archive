@@ -423,7 +423,7 @@ func matchDNSHeadlessRuleStatesForMatch(rule adapter.HeadlessRule, metadata *ada
 	case *LogicalDNSRule:
 		return typedRule.matchStatesForMatch(metadata)
 	default:
-		return matchHeadlessRuleStates(typedRule, metadata)
+		return matchHeadlessRuleStatesWithBase(typedRule, metadata, 0)
 	}
 }
 

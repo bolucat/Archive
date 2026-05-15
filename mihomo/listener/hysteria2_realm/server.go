@@ -34,7 +34,7 @@ const (
 	DefaultRealmNamePattern = defaultRealmNamePattern
 )
 
-func DefaultALPN() []string { return []string{"h2", "http1.1"} }
+func DefaultALPN() []string { return []string{"h2", "http/1.1"} }
 
 func New(config LC.Hysteria2RealmServer, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
 	if len(additions) == 0 {

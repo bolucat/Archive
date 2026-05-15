@@ -79,7 +79,7 @@ func Read(reader io.Reader, recover bool) (ruleSetCompat option.PlainRuleSetComp
 	}
 	ruleSetCompat.Version = version
 	ruleSetCompat.Options.Rules = make([]option.HeadlessRule, length)
-	for i := uint64(0); i < length; i++ {
+	for i := range length {
 		ruleSetCompat.Options.Rules[i], err = readRule(bReader, recover)
 		if err != nil {
 			err = E.Cause(err, "read rule[", i, "]")
@@ -656,7 +656,7 @@ func readLogicalRule(reader varbin.Reader, recovery bool) (logicalRule option.Lo
 		return
 	}
 	logicalRule.Rules = make([]option.HeadlessRule, length)
-	for i := uint64(0); i < length; i++ {
+	for i := range length {
 		logicalRule.Rules[i], err = readRule(reader, recovery)
 		if err != nil {
 			err = E.Cause(err, "read logical rule [", i, "]")

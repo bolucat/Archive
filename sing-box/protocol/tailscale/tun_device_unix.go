@@ -56,7 +56,7 @@ func (a *tunDeviceAdapter) Read(bufs [][]byte, sizes []int, offset int) (count i
 	if a.linuxTUN != nil {
 		n, err := a.linuxTUN.BatchRead(bufs, offset-singTun.PacketOffset, sizes)
 		if err == nil {
-			for i := 0; i < n; i++ {
+			for i := range n {
 				a.debugPacket("read", bufs[i][offset:offset+sizes[i]])
 			}
 		}

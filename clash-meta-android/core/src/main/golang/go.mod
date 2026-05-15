@@ -85,7 +85,7 @@ require (
 	github.com/metacubex/sing-wireguard v0.0.0-20260507084707-690d479ec947 // indirect
 	github.com/metacubex/smux v0.0.0-20260105030934-d0c8756d3141 // indirect
 	github.com/metacubex/ssh v0.1.0 // indirect
-	github.com/metacubex/tailscale v0.0.0-20260514010142-10fd27a2338f // indirect
+	github.com/metacubex/tailscale v0.0.0-20260515095554-5026f03ad728 // indirect
 	github.com/metacubex/tailscale-wireguard-go v0.0.0-20260513233728-8bc7ee255d04 // indirect
 	github.com/metacubex/tfo-go v0.0.0-20251130171125-413e892ac443 // indirect
 	github.com/metacubex/tls v0.1.5 // indirect

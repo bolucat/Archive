@@ -2,15 +2,79 @@ import { AppWindow, createElectronWindow, Referer, ua } from './window'
 import path from 'path'
 import is from 'electron-is'
 import { app, BrowserWindow, dialog, ipcMain, Menu, powerSaveBlocker, session, shell } from 'electron'
-import { existsSync, writeFileSync } from 'fs'
-import { exec, spawn, SpawnOptions } from 'child_process'
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { exec, execFile, spawn, SpawnOptions } from 'child_process'
+import os from 'os'
 import { ShowError } from './dialog'
 import { getStaticPath, getUserDataPath } from '../utils/mainfile'
 import { portIsOccupied } from '../utils'
 import { registerDownloadHandlers } from '../download/ipcHandlers'
 import { registerMediaImageCacheIpc } from '../mediaImageCache'
+import { createHash } from 'crypto'
 
 let psbId: any
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function pathToFileUrl(filePath: string): string {
+  const normalized = path.resolve(filePath).replace(/\\/g, '/')
+  return 'file://' + (normalized.startsWith('/') ? normalized : '/' + normalized)
+}
+
+function findSoffice(): string {
+  const candidates = [
+    process.env.LIBREOFFICE_PATH || '',
+    process.env.SOFFICE_PATH || '',
+    is.macOS() ? '/Applications/LibreOffice.app/Contents/MacOS/soffice' : '',
+    is.windows() ? 'C:\\Program Files\\LibreOffice\\program\\soffice.exe' : '',
+    is.windows() ? 'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe' : '',
+    '/usr/bin/libreoffice',
+    '/usr/local/bin/libreoffice',
+    '/opt/homebrew/bin/libreoffice',
+    '/usr/bin/soffice',
+    '/usr/local/bin/soffice',
+    '/opt/homebrew/bin/soffice'
+  ].filter(Boolean)
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate
+  }
+  const names = is.windows() ? ['soffice.exe', 'libreoffice.exe'] : ['soffice', 'libreoffice']
+  const pathDirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
+  for (const dir of pathDirs) {
+    for (const name of names) {
+      const candidate = path.join(dir, name)
+      if (existsSync(candidate)) return candidate
+    }
+  }
+  return ''
+}
+
+function convertOfficeFileToPdf(soffice: string, inputPath: string, outDir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const userInstall = path.join(outDir, 'lo-profile').replace(/\\/g, '/')
+    const args = [
+      '--headless',
+      '--nologo',
+      '--nofirststartwizard',
+      `-env:UserInstallation=file://${userInstall}`,
+      '--convert-to',
+      'pdf',
+      '--outdir',
+      outDir,
+      inputPath
+    ]
+    execFile(soffice, args, { windowsHide: true }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error((stderr || stdout || err.message || '').trim() || 'LibreOffice 转换失败'))
+      } else {
+        resolve()
+      }
+    })
+  })
+}
+
 export default class ipcEvent {
   private constructor() {
   }
@@ -36,8 +100,16 @@ export default class ipcEvent {
     this.handleWebSetProgressBar()
     this.handleWebShutDown()
     this.handleWebSetProxy()
+    this.handleOfficePreviewConvertToPdf()
     this.handleWebOpenWindow()
     this.handleWebOpenUrl()
+    this.handleExportCliTokens()
+    this.handleInstallCli()
+    if (app.isPackaged) {
+      this.installCli(true).catch((err: any) => {
+        console.warn('Auto install BoxPlayer CLI failed', err?.message || err)
+      })
+    }
     registerDownloadHandlers()
     registerMediaImageCacheIpc()
   }
@@ -424,6 +496,42 @@ export default class ipcEvent {
     })
   }
 
+  private static handleOfficePreviewConvertToPdf() {
+    ipcMain.handle('OfficePreview:convertToPdf', async (_event, data: { sourceUrl?: string; fileName?: string }) => {
+      try {
+        const sourceUrl = data?.sourceUrl || ''
+        const fileName = path.basename(data?.fileName || 'document')
+        if (!sourceUrl) return { ok: false, error: '文档预览地址为空' }
+        const soffice = findSoffice()
+        if (!soffice) {
+          return {
+            ok: false,
+            error: '未找到 LibreOffice。请安装 LibreOffice 后重试，或继续使用网盘自带预览。'
+          }
+        }
+
+        const hash = createHash('sha1').update(sourceUrl + fileName).digest('hex')
+        const previewRoot = path.join(app.getPath('userData'), 'office-preview')
+        const workDir = path.join(previewRoot, hash)
+        mkdirSync(workDir, { recursive: true })
+        const ext = path.extname(fileName) || '.office'
+        const inputPath = path.join(workDir, `source${ext}`)
+        const outputPath = path.join(workDir, 'source.pdf')
+        if (!existsSync(outputPath)) {
+          const response = await fetch(sourceUrl)
+          if (!response.ok) return { ok: false, error: `文档下载失败：${response.status}` }
+          const arrayBuffer = await response.arrayBuffer()
+          writeFileSync(inputPath, Buffer.from(arrayBuffer))
+          await convertOfficeFileToPdf(soffice, inputPath, workDir)
+        }
+        if (!existsSync(outputPath)) return { ok: false, error: 'LibreOffice 未生成 PDF 文件' }
+        return { ok: true, pdfUrl: pathToFileUrl(outputPath) }
+      } catch (err: any) {
+        return { ok: false, error: err?.message || '文档转换 PDF 失败' }
+      }
+    })
+  }
+
   private static handleWebOpenWindow() {
     let winWidth = AppWindow.winWidth
     if (winWidth < 1080) winWidth = 1080
@@ -474,5 +582,169 @@ export default class ipcEvent {
         httpReferrer: Referer
       })
     })
+  }
+
+  private static handleExportCliTokens() {
+    ipcMain.handle('ExportCliTokens', async (_event, data: { accounts: any[] }) => {
+      try {
+        const cliDir = path.join(os.homedir(), '.clouddrive-cli')
+        const tokensPath = path.join(cliDir, 'tokens.json')
+        const configPath = path.join(cliDir, 'config.json')
+        mkdirSync(cliDir, { recursive: true })
+
+        let existing: { accounts: any[] } = { accounts: [] }
+        try {
+          const raw = require('fs').readFileSync(tokensPath, 'utf8')
+          existing = JSON.parse(raw)
+          if (!Array.isArray(existing.accounts)) existing.accounts = []
+        } catch {
+          existing = { accounts: [] }
+        }
+
+        existing.accounts = Array.isArray(data.accounts) ? data.accounts : []
+
+        let config: { defaults: Record<string, string> } = { defaults: {} }
+        try {
+          const raw = readFileSync(configPath, 'utf8')
+          config = JSON.parse(raw)
+          if (!config.defaults || typeof config.defaults !== 'object') config.defaults = {}
+        } catch {
+          config = { defaults: {} }
+        }
+
+        const accountKeys = new Set(existing.accounts.map((account) => `${account.provider}/${account.accountId}`))
+        for (const [provider, accountId] of Object.entries(config.defaults)) {
+          if (!accountKeys.has(`${provider}/${accountId}`)) delete config.defaults[provider]
+        }
+        for (const account of existing.accounts) {
+          if (account.provider && account.accountId && !config.defaults[account.provider]) {
+            config.defaults[account.provider] = account.accountId
+          }
+        }
+
+        writeFileSync(tokensPath, JSON.stringify(existing, null, 2) + '\n', { mode: 0o600 })
+        writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', { mode: 0o600 })
+        return { ok: true, exported: (data.accounts || []).length, path: tokensPath }
+      } catch (e: any) {
+        return { ok: false, error: e?.message || 'Export failed' }
+      }
+    })
+  }
+
+  private static handleInstallCli() {
+    ipcMain.handle('InstallCli', async () => {
+      return this.installCli(false)
+    })
+  }
+
+  private static async installCli(silent: boolean) {
+      try {
+        const cliSrcDir = is.dev()
+          ? path.join(app.getAppPath(), 'scripts')
+          : path.join(process.resourcesPath, 'cli')
+        const nodeExe = (() => {
+          const p = process.execPath.toLowerCase()
+          if (p.endsWith('electron') || p.endsWith('electron.exe') || p.includes('electron.app')) return null
+          return process.execPath
+        })()
+
+        if (is.macOS() || is.linux()) {
+          const homeDir = os.homedir()
+          const installDir = path.join(homeDir, '.local', 'bin')
+          mkdirSync(installDir, { recursive: true })
+
+          for (const name of ['clouddrive-cli', 'clouddrive-mcp']) {
+            const scriptFile = path.join(cliSrcDir, `${name}.mjs`)
+            if (!existsSync(scriptFile)) {
+              return { ok: false, error: `CLI script not found: ${scriptFile}` }
+            }
+            const linkPath = path.join(installDir, name)
+            const wrapper = `#!/bin/sh\nexec node ${shellQuote(scriptFile)} "$@"\n`
+            writeFileSync(linkPath, wrapper, { mode: 0o755 })
+            try { chmodSync(linkPath, 0o755) } catch { /* ignore */ }
+          }
+
+          // 将 ~/.local/bin 写入 shell 配置（如尚未添加）
+          const pathLine = `\n# BoxPlayer CLI\nexport PATH="$HOME/.local/bin:$PATH"\n`
+          const profiles = ['.zshrc', '.bashrc', '.bash_profile'].map((f) => path.join(homeDir, f))
+          let updatedProfile = ''
+          for (const p of profiles) {
+            try {
+              if (existsSync(p)) {
+                const content = readFileSync(p, 'utf8')
+                if (!content.includes('.local/bin')) {
+                  writeFileSync(p, content + pathLine)
+                  updatedProfile = path.basename(p)
+                  break
+                } else {
+                  updatedProfile = path.basename(p)
+                  break
+                }
+              }
+            } catch { /* ignore */ }
+          }
+
+          const hint = updatedProfile
+            ? `重启终端（或运行 source ~/.${updatedProfile}）后执行：`
+            : `请确保 ~/.local/bin 已加入 PATH，然后执行：`
+
+          return {
+            ok: true,
+            auto: silent,
+            message: `已安装到 ${installDir}\n${hint} clouddrive-cli auth list`,
+            paths: [
+              path.join(installDir, 'clouddrive-cli'),
+              path.join(installDir, 'clouddrive-mcp'),
+            ],
+          }
+        }
+
+        if (is.windows()) {
+          const installDir = path.join(os.homedir(), 'AppData', 'Local', 'BoxPlayer', 'bin')
+          mkdirSync(installDir, { recursive: true })
+
+          for (const name of ['clouddrive-cli', 'clouddrive-mcp']) {
+            const scriptFile = path.join(cliSrcDir, `${name}.mjs`)
+            if (!existsSync(scriptFile)) {
+              return { ok: false, error: `CLI script not found: ${scriptFile}` }
+            }
+            const nodeCmd = nodeExe ? nodeExe : 'node'
+            const batContent = `@echo off\n"${nodeCmd}" "${scriptFile}" %*\n`
+            writeFileSync(path.join(installDir, `${name}.cmd`), batContent)
+          }
+
+          const pathKey = 'HKCU\\Environment'
+          const currentPath = process.env.PATH || ''
+          if (!currentPath.includes(installDir)) {
+            const { execSync } = await import('child_process')
+            try {
+              execSync(`setx PATH "${currentPath};${installDir}"`)
+            } catch {
+            }
+          }
+
+          return {
+            ok: true,
+            auto: silent,
+            message: `已安装到 ${installDir}\n重启终端后运行: clouddrive-cli auth list`,
+            paths: [
+              path.join(installDir, 'clouddrive-cli.cmd'),
+              path.join(installDir, 'clouddrive-mcp.cmd'),
+            ],
+            note: '如命令不可用，请手动将该目录加入系统 PATH',
+          }
+        }
+
+        return { ok: false, error: 'Unsupported platform' }
+      } catch (e: any) {
+        if (e?.code === 'EACCES' || e?.code === 'EPERM') {
+          return {
+            ok: false,
+            error: '权限不足，无法写入命令行安装目录。\n请在设置页手动安装，或确认 ~/.local/bin / %LOCALAPPDATA% 可写。',
+            needsElevation: true,
+          }
+        }
+        return { ok: false, error: e?.message || 'Install failed' }
+      }
   }
 }
