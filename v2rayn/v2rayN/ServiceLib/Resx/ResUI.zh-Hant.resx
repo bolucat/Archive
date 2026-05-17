@@ -691,7 +691,7 @@
     <value>在更新訂閱後自動調整列寬</value>
   </data>
   <data name="TbSettingsEnableCheckPreReleaseUpdate" xml:space="preserve">
-    <value>檢查 Pre-Release 更新 (請謹慎啟用)</value>
+    <value>檢查 Pre-Release</value>
   </data>
   <data name="TbSettingsException" xml:space="preserve">
     <value>例外</value>
@@ -1727,5 +1727,11 @@
   </data>
   <data name="menuExport2InnerUri" xml:space="preserve">
     <value>匯出 v2rayN 內部分享連結至剪貼簿（多選）</value>
+  </data>
+  <data name="MsgCheckUpdateHasNewVersion" xml:space="preserve">
+    <value>{0} 有新版本可用：{1}</value>
+  </data>
+  <data name="menuCheckOnly" xml:space="preserve">
+    <value>僅檢查</value>
   </data>
 </root>

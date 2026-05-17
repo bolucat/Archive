@@ -1728,4 +1728,10 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
   <data name="menuExport2InnerUri" xml:space="preserve">
     <value>Export v2rayN Internal Share Link to Clipboard</value>
   </data>
+  <data name="MsgCheckUpdateHasNewVersion" xml:space="preserve">
+    <value>{0} has a new version available: {1}</value>
+  </data>
+  <data name="menuCheckOnly" xml:space="preserve">
+    <value>Only Check</value>
+  </data>
 </root>

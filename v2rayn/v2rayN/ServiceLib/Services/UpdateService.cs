@@ -100,6 +100,32 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         }
     }
 
+    public async Task<UpdateResult> CheckHasUpdateOnly(ECoreType type, bool preRelease)
+    {
+        if (!CoreInfoManager.Instance.IsCheckUpdateSupported(type))
+        {
+            return new UpdateResult(false, "Not Support");
+        }
+
+        var downloadHandle = new DownloadService();
+        var checkPreRelease = CoreInfoManager.Instance.GetCheckPreRelease(type, preRelease);
+        return await CheckUpdateAsync(downloadHandle, type, checkPreRelease);
+    }
+
+    public async Task<List<string>> CheckHasUpdateOnlyAll(bool preRelease)
+    {
+        var msgs = new List<string>();
+        foreach (var type in CoreInfoManager.Instance.GetCheckUpdateCoreTypes())
+        {
+            var result = await CheckHasUpdateOnly(type, preRelease);
+            if (result.Success && result.Version != null)
+            {
+                msgs.Add(string.Format(ResUI.MsgCheckUpdateHasNewVersion, type, result.Version));
+            }
+        }
+        return msgs;
+    }
+
     public async Task UpdateGeoFileAll()
     {
         await UpdateGeoFiles();

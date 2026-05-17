@@ -50,6 +50,50 @@ public sealed class CoreInfoManager
         return fileName;
     }
 
+    public List<ECoreType> GetCheckUpdateCoreTypes()
+    {
+        var lst = new List<ECoreType>();
+
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X86)
+        {
+            if (IsCheckUpdateSupported(ECoreType.v2rayN))
+            {
+                lst.Add(ECoreType.v2rayN);
+            }
+
+            if (!(Utils.IsWindows() && Environment.OSVersion.Version.Major < 10))
+            {
+                lst.Add(ECoreType.Xray);
+                lst.Add(ECoreType.mihomo);
+                lst.Add(ECoreType.sing_box);
+            }
+        }
+
+        return lst;
+    }
+
+    public bool IsCheckUpdateSupported(ECoreType type)
+    {
+        return type switch
+        {
+            ECoreType.v2rayN => !Utils.IsPackagedInstall(),
+            ECoreType.Xray => true,
+            ECoreType.mihomo => true,
+            ECoreType.sing_box => true,
+            _ => false,
+        };
+    }
+
+    public bool GetCheckPreRelease(ECoreType type, bool preRelease)
+    {
+        return type switch
+        {
+            ECoreType.v2rayN => preRelease,
+            ECoreType.Xray => preRelease,
+            _ => false,
+        };
+    }
+
     private void InitCoreInfo()
     {
         var urlN = GetCoreUrl(ECoreType.v2rayN);

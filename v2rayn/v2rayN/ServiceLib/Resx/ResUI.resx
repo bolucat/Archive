@@ -691,7 +691,7 @@
     <value>Automatically adjust column width after subscription update</value>
   </data>
   <data name="TbSettingsEnableCheckPreReleaseUpdate" xml:space="preserve">
-    <value>Check for pre-release updates</value>
+    <value>Check for pre-release</value>
   </data>
   <data name="TbSettingsException" xml:space="preserve">
     <value>Exception</value>
@@ -1336,7 +1336,7 @@
     <value>Enable second mixed port</value>
   </data>
   <data name="TbRoutingInboundTagTips" xml:space="preserve">
-    <value>socks: local port, socks2: second local port, socks3: LAN port</value>
+    <value>tun: TUN inbound, socks: local port, socks2: second local port, socks3: LAN port</value>
   </data>
   <data name="TbSettingsTheme" xml:space="preserve">
     <value>Theme</value>
@@ -1730,5 +1730,11 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
   </data>
   <data name="menuExport2InnerUri" xml:space="preserve">
     <value>Export v2rayN Internal Share Link to Clipboard</value>
+  </data>
+  <data name="MsgCheckUpdateHasNewVersion" xml:space="preserve">
+    <value>{0} has a new version available: {1}</value>
+  </data>
+  <data name="menuCheckOnly" xml:space="preserve">
+    <value>Only Check</value>
   </data>
 </root>

@@ -691,7 +691,7 @@
     <value>自动调整配置列宽在更新订阅后</value>
   </data>
   <data name="TbSettingsEnableCheckPreReleaseUpdate" xml:space="preserve">
-    <value>检查 Pre-Release 更新 (请谨慎启用)</value>
+    <value>检查 Pre-Release</value>
   </data>
   <data name="TbSettingsException" xml:space="preserve">
     <value>例外</value>
@@ -1333,7 +1333,7 @@
     <value>开启第二个本地监听端口</value>
   </data>
   <data name="TbRoutingInboundTagTips" xml:space="preserve">
-    <value>Socks：本地端口，Socks2：第二个本地端口，Socks3：局域网端口</value>
+    <value>Tun：TUN 入站，Socks：本地端口，Socks2：第二个本地端口，Socks3：局域网端口</value>
   </data>
   <data name="TbSettingsTheme" xml:space="preserve">
     <value>主题</value>
@@ -1727,5 +1727,11 @@
   </data>
   <data name="menuExport2InnerUri" xml:space="preserve">
     <value>导出 v2rayN 内部分享链接至剪贴板 (多选)</value>
+  </data>
+  <data name="MsgCheckUpdateHasNewVersion" xml:space="preserve">
+    <value>{0} 有新版本可用：{1}</value>
+  </data>
+  <data name="menuCheckOnly" xml:space="preserve">
+    <value>仅检查</value>
   </data>
 </root>

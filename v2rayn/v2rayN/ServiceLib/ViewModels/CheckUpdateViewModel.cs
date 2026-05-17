@@ -9,6 +9,7 @@ public class CheckUpdateViewModel : MyReactiveObject
 
     public IObservableCollection<CheckUpdateModel> CheckUpdateModels { get; } = new ObservableCollectionExtended<CheckUpdateModel>();
     public ReactiveCommand<Unit, Unit> CheckUpdateCmd { get; }
+    public ReactiveCommand<Unit, Unit> CheckOnlyCmd { get; }
     [Reactive] public bool EnableCheckPreReleaseUpdate { get; set; }
 
     public CheckUpdateViewModel(Func<EViewAction, object?, Task<bool>>? updateView)
@@ -18,6 +19,13 @@ public class CheckUpdateViewModel : MyReactiveObject
 
         CheckUpdateCmd = ReactiveCommand.CreateFromTask(CheckUpdate);
         CheckUpdateCmd.ThrownExceptions.Subscribe(ex =>
+        {
+            Logging.SaveLog(_tag, ex);
+            _ = UpdateView(_v2rayN, ex.Message);
+        });
+
+        CheckOnlyCmd = ReactiveCommand.CreateFromTask(CheckOnly);
+        CheckOnlyCmd.ThrownExceptions.Subscribe(ex =>
         {
             Logging.SaveLog(_tag, ex);
             _ = UpdateView(_v2rayN, ex.Message);
@@ -37,17 +45,11 @@ public class CheckUpdateViewModel : MyReactiveObject
     {
         CheckUpdateModels.Clear();
 
-        if (RuntimeInformation.ProcessArchitecture != Architecture.X86)
+        foreach (var type in CoreInfoManager.Instance.GetCheckUpdateCoreTypes())
         {
-            CheckUpdateModels.Add(GetCheckUpdateModel(_v2rayN));
-            //Not Windows and under Win10
-            if (!(Utils.IsWindows() && Environment.OSVersion.Version.Major < 10))
-            {
-                CheckUpdateModels.Add(GetCheckUpdateModel(ECoreType.Xray.ToString()));
-                CheckUpdateModels.Add(GetCheckUpdateModel(ECoreType.mihomo.ToString()));
-                CheckUpdateModels.Add(GetCheckUpdateModel(ECoreType.sing_box.ToString()));
-            }
+            CheckUpdateModels.Add(GetCheckUpdateModel(type.ToString()));
         }
+
         CheckUpdateModels.Add(GetCheckUpdateModel(_geo));
     }
 
@@ -77,9 +79,52 @@ public class CheckUpdateViewModel : MyReactiveObject
         await ConfigHandler.SaveConfig(_config);
     }
 
+    private async Task CheckOnly()
+    {
+        await Task.Run(CheckOnlyTask);
+    }
+
     private async Task CheckUpdate()
     {
         await Task.Run(CheckUpdateTask);
+    }
+
+    private async Task CheckOnlyTask()
+    {
+        await SaveSelectedCoreTypes();
+
+        for (var k = CheckUpdateModels.Count - 1; k >= 0; k--)
+        {
+            var item = CheckUpdateModels[k];
+            if (item.IsSelected != true)
+            {
+                continue;
+            }
+
+            await UpdateView(item.CoreType, "...");
+            if (item.CoreType == _geo)
+            {
+                await UpdateView(item.CoreType, ResUI.menuCheckOnly + " (Not Support)");
+                continue;
+            }
+
+            if (!Enum.TryParse<ECoreType>(item.CoreType, out var type))
+            {
+                await UpdateView(item.CoreType, "Not Support");
+                continue;
+            }
+
+            var updateService = new UpdateService(_config, async (success, msg) => await Task.CompletedTask);
+            var result = await updateService.CheckHasUpdateOnly(type, EnableCheckPreReleaseUpdate);
+            if (result.Success && result.Version != null)
+            {
+                await UpdateView(item.CoreType, string.Format(ResUI.MsgCheckUpdateHasNewVersion, type, result.Version));
+            }
+            else
+            {
+                await UpdateView(item.CoreType, result.Msg);
+            }
+        }
     }
 
     private async Task CheckUpdateTask()
