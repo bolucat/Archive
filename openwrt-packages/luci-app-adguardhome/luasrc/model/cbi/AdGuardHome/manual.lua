@@ -8,6 +8,8 @@ require("table")
 
 m = Map("AdGuardHome")
 
+
+
 local configpath = uci:get("AdGuardHome", "AdGuardHome", "configpath") or "/etc/AdGuardHome.yaml"
 local binpath = uci:get("AdGuardHome", "AdGuardHome", "binpath") or "/usr/bin/AdGuardHome"
 
