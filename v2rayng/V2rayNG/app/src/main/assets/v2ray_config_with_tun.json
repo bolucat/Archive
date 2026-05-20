@@ -30,7 +30,8 @@
       "enabled": true,
       "destOverride": [
         "http",
-        "tls"
+        "tls",
+		"quic"
       ]
     }
   },
@@ -46,7 +47,8 @@
       "enabled": true,
       "destOverride": [
         "http",
-        "tls"
+        "tls",
+		"quic"
       ]
     }
   }
@@ -89,8 +91,10 @@
   },
   {
     "protocol": "freedom",
-    "settings": {
-      "domainStrategy": "UseIP"
+    "streamSettings": {
+      "sockopt": {
+        "domainStrategy": "UseIP"
+      }
     },
     "tag": "direct"
   },

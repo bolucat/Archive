@@ -2,9 +2,17 @@
 icon: material/alert-decagram
 ---
 
-#### 1.14.0-alpha.24
+#### 1.14.0-alpha.25
 
-* Fixes and improvement
+* Revert Tailscale endpoint dial fields deprecation and remove `control_http_client` **1**
+* Fixes and improvements
+
+**1**:
+
+The `control_http_client` field on
+[Tailscale](/configuration/endpoint/tailscale/) endpoints introduced in
+`1.14.0-alpha.13` is removed, and the deprecation of
+[Dial Fields](/configuration/endpoint/tailscale/#dial-fields) is reverted.
 
 #### 1.13.12
 
