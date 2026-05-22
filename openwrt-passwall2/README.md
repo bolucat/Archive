@@ -86,19 +86,18 @@ The following packages should be resolved automatically by the package manager (
 
 ### Optional Protocol Packages
 Selected during installation based on your needs:
-- Shadowsocks (Libev/Rust), ShadowsocksR
+- Shadowsocks Rust, ShadowsocksR
 - V2Ray/Xray (VMess, VLESS, Trojan)
-- Sing-Box, Hysteria, Hysteria2, TUIC
+- Sing-Box, Hysteria, Hysteria2
 - NaiveProxy, HAProxy
 
 ## 🚀 Features
 
 ### Multi-Protocol Support
-- **Shadowsocks** (Libev & Rust implementations)
+- **Shadowsocks Rust**
 - **V2Ray/Xray** with full protocol support (VMess, VLESS, Trojan)
 - **Sing-Box** with modern proxy features
 - **Hysteria** and **Hysteria2** for high-performance UDP transport
-- **TUIC** client support
 - **NaiveProxy** for advanced obfuscation
 - **ShadowsocksR** legacy support
 
