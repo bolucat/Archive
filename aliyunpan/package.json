@@ -1,13 +1,13 @@
 {
   "name": "BoxPlayer",
   "description": "BoxPlayer",
-  "version": "4.0.11-beta",
+  "version": "4.0.12",
   "main": "dist/electron/main/index.js",
   "author": {
     "name": "gaozhangmin",
     "email": "gaozhangmin@gmail.com"
   },
-  "homepage": "https://github.com/gaozhangmin/aliyunpan",
+  "homepage": "https://github.com/gaozhangmin/boxplayer",
   "license": "GPL-3.0",
   "bin": {
     "clouddrive-cli": "scripts/clouddrive-cli.mjs",
@@ -15,7 +15,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "node version.mjs && vue-tsc --noEmit && vite build",
     "build:version": "node version.mjs",
     "build:electron": "pnpm run build && electron-builder",
     "build:test": "pnpm run build && electron-builder --dir",
@@ -97,7 +97,6 @@
     "perf_hooks": "^0.0.1",
     "pinia": "^2.1.7",
     "secp256k1": "^5.0.0",
-    "semver": "^7.6.0",
     "socks-proxy-agent": "^8.0.3",
     "terser": "^5.30.3",
     "thunky": "^1.1.0",
@@ -116,7 +115,16 @@
     "webdav": "5.9.0",
     "webdav-server": "^2.6.2",
     "whacko": "^0.19.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "builder-util-runtime": "^9.5.1",
+    "electron-updater": "^6.8.3",
+    "fs-extra": "^10.1.0",
+    "js-yaml": "^4.1.1",
+    "lazy-val": "^1.0.5",
+    "lodash.escaperegexp": "^4.1.2",
+    "lodash.isequal": "^4.5.0",
+    "semver": "^7.6.0",
+    "tiny-typed-emitter": "^2.1.0"
   },
   "debug": {
     "env": {

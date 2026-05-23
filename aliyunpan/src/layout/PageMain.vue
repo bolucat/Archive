@@ -338,6 +338,11 @@ onUnmounted(() => {
             </span>
           </div>
 
+          <div class='footerBar fix' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100'>
+            <i class='iconfont iconxiazaisudu' />
+            <span class='footspeedstr'>新版本 {{ footStore.updateDownloadProgress }}%</span>
+          </div>
+
           <div class='footerBar fix'>
             <span class='footAria' title='Aria已连接' v-if='footStore.ariaInfo'> {{ footStore.ariaInfo }} </span>
             <span class='footAria' title='Aria已离线' v-else> Aria ⚯ Offline </span>

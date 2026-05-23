@@ -8,7 +8,7 @@ const OAUTH_PROVIDERS = {
   onedrive: {
     authUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    clientId: process.env.CLOUDDRIVE_ONEDRIVE_CLIENT_ID || '14c7aa4b-7c3e-483c-af45-72e7ad551add',
+    clientId: process.env.CLOUDDRIVE_ONEDRIVE_CLIENT_ID || '',
     scope: 'offline_access Files.ReadWrite User.Read',
     defaultDriveId: 'onedrive',
     includeSecret: false,
@@ -16,8 +16,8 @@ const OAUTH_PROVIDERS = {
   dropbox: {
     authUrl: 'https://www.dropbox.com/oauth2/authorize',
     tokenUrl: 'https://api.dropboxapi.com/oauth2/token',
-    clientId: process.env.CLOUDDRIVE_DROPBOX_CLIENT_ID || 'n652ymflaqcpcs3',
-    clientSecret: process.env.CLOUDDRIVE_DROPBOX_CLIENT_SECRET || 'qv0xqayiq8mtzf2',
+    clientId: process.env.CLOUDDRIVE_DROPBOX_CLIENT_ID || '',
+    clientSecret: process.env.CLOUDDRIVE_DROPBOX_CLIENT_SECRET || '',
     scope: 'account_info.read files.metadata.read files.content.read files.content.write sharing.read sharing.write',
     defaultDriveId: 'dropbox',
     tokenAccessType: 'offline',
@@ -26,8 +26,8 @@ const OAUTH_PROVIDERS = {
   box: {
     authUrl: 'https://account.box.com/api/oauth2/authorize',
     tokenUrl: 'https://api.box.com/oauth2/token',
-    clientId: process.env.CLOUDDRIVE_BOX_CLIENT_ID || 'mbnw4zh7jssgstuosl74k03xn3vzfw7m',
-    clientSecret: process.env.CLOUDDRIVE_BOX_CLIENT_SECRET || 'x6jt4vNwZmOdc4SZroMVb4pVkhN83QEl',
+    clientId: process.env.CLOUDDRIVE_BOX_CLIENT_ID || '',
+    clientSecret: process.env.CLOUDDRIVE_BOX_CLIENT_SECRET || '',
     scope: 'root_readwrite',
     defaultDriveId: 'box',
     includeSecret: true,
@@ -36,8 +36,8 @@ const OAUTH_PROVIDERS = {
     authUrl: 'https://www.123pan.com/auth',
     tokenUrl: 'https://open-api.123pan.com/api/v1/oauth2/access_token',
     userInfoUrl: 'https://open-api.123pan.com/api/v1/user/info',
-    clientId: process.env.CLOUDDRIVE_CLOUD123_CLIENT_ID || process.env.CLOUDDRIVE_123_CLIENT_ID || 'sm6fkv5s4ycnb9pzgrpfiw90rianpq9a',
-    clientSecret: process.env.CLOUDDRIVE_CLOUD123_CLIENT_SECRET || process.env.CLOUDDRIVE_123_CLIENT_SECRET || '9vrg6n85jjnox9xnque9iajxp9d07b04',
+    clientId: process.env.CLOUDDRIVE_CLOUD123_CLIENT_ID || process.env.CLOUDDRIVE_123_CLIENT_ID || '',
+    clientSecret: process.env.CLOUDDRIVE_CLOUD123_CLIENT_SECRET || process.env.CLOUDDRIVE_123_CLIENT_SECRET || '',
     scope: 'user:base,file:all:read,file:all:write',
     defaultDriveId: 'cloud123',
     includeSecret: true,
@@ -49,8 +49,8 @@ const OAUTH_PROVIDERS = {
 const ALIYUN_OPENAPI = {
   qrCodeUrl: 'https://openapi.alipan.com/oauth/authorize/qrcode',
   tokenUrl: 'https://openapi.alipan.com/oauth/access_token',
-  clientId: process.env.CLOUDDRIVE_ALIYUN_CLIENT_ID || process.env.CLOUDDRIVE_ALIPAN_CLIENT_ID || 'df43e22f022d4c04b6e29964f3b8b46d',
-  clientSecret: process.env.CLOUDDRIVE_ALIYUN_CLIENT_SECRET || process.env.CLOUDDRIVE_ALIPAN_CLIENT_SECRET || '63f06c3c5c5d4e1196e2c13e8588ae29',
+  clientId: process.env.CLOUDDRIVE_ALIYUN_CLIENT_ID || process.env.CLOUDDRIVE_ALIPAN_CLIENT_ID || '',
+  clientSecret: process.env.CLOUDDRIVE_ALIYUN_CLIENT_SECRET || process.env.CLOUDDRIVE_ALIPAN_CLIENT_SECRET || '',
   scopes: ['user:base', 'file:all:read', 'file:all:write'],
 }
 
@@ -58,7 +58,7 @@ const DRIVE115 = {
   authDeviceUrl: 'https://passportapi.115.com/open/authDeviceCode',
   statusUrl: 'https://qrcodeapi.115.com/get/status/',
   tokenUrl: 'https://passportapi.115.com/open/deviceCodeToToken',
-  clientId: process.env.CLOUDDRIVE_115_CLIENT_ID || '100195153',
+  clientId: process.env.CLOUDDRIVE_115_CLIENT_ID || '',
 }
 
 function normalizeProvider(provider) {

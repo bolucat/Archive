@@ -22,7 +22,7 @@
   "mac": {
     "icon": "./static/images/icon.icns",
     "type": "distribution",
-    "artifactName": "xbyboxplayer-${version}-mac-${arch}.${ext}",
+    "artifactName": "boxplayer-${version}-mac-${arch}.${ext}",
     "darkModeSupport": true,
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
@@ -35,14 +35,15 @@
       { "from": "./static/engine/darwin/${arch}", "to": "./engine"}
     ],
     "target": [
-      { "target": "dmg", "arch": [ "x64", "arm64" ] }
+      { "target": "dmg", "arch": [ "x64", "arm64" ] },
+      { "target": "zip", "arch": [ "x64", "arm64" ] }
     ],
     "notarize": false
   },
   "linux": {
     "icon": "./static/images/icon_256x256.png",
     "category": "Network",
-    "artifactName": "xbyboxplayer-${version}-linux-${arch}.${ext}",
+    "artifactName": "boxplayer-${version}-linux-${arch}.${ext}",
     "extraResources": [
       { "from": "./static/images/icon_30x30.png", "to": "./images/icon_30x30.png"},
       { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
@@ -52,13 +53,12 @@
     "target": [
       { "target": "AppImage", "arch": [  "x64", "arm64", "armv7l" ] },
       { "target": "deb", "arch": [ "x64",  "arm64", "armv7l" ] },
-      { "target": "pacman", "arch": [ "x64", "arm64", "armv7l" ] },
-      { "target": "zip", "arch": [ "x64", "arm64", "armv7l" ] }
+      { "target": "pacman", "arch": [ "x64", "arm64", "armv7l" ] }
     ]
   },
   "win": {
     "icon": "./static/images/icon_256x256.ico",
-    "artifactName": "xbyboxplayer-${version}-win-${arch}.${ext}",
+    "artifactName": "boxplayer-${version}-win-${arch}.${ext}",
     "requestedExecutionLevel": "asInvoker",
     "extraResources": [
       { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
@@ -66,8 +66,7 @@
       { "from": "./static/engine/win32/${arch}", "to": "./engine"}
     ],
     "target": [
-      { "target": "nsis", "arch": [ "x64", "ia32", "arm64" ] },
-      { "target": "zip", "arch": [ "x64", "ia32", "arm64" ] }
+      { "target": "nsis", "arch": [ "x64", "ia32", "arm64" ] }
     ]
   },
   "dmg": {
@@ -89,9 +88,8 @@
   "publish": [
     {
       "owner": "gaozhangmin",
-      "repo": "aliyunpan",
+      "repo": "boxplayer",
       "provider": "github",
-      "publishAutoUpdate": false,
       "releaseType": "prerelease"
     }
   ]

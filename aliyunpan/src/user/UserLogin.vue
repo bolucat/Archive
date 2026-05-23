@@ -827,16 +827,6 @@ const loginSuccess = (token: ITokenInfo) => {
                   {{ qrCodeStatusTips }}
                 </a-alert>
               </div>
-              <div class='settingrow' v-if="loginCur === 2">
-                <a-radio-group
-                  type='button' tabindex='-1'
-                  :model-value='settingStore.uiEnableOpenApiType'
-                  @change="handlerChangeType"
-                  @update:model-value='cb({ uiEnableOpenApiType: $event })'>
-                  <a-radio tabindex='-1' value='inline'>内置方式</a-radio>
-                  <a-radio tabindex='-1' value='custom'>自定义方式</a-radio>
-                </a-radio-group>
-              </div>
             </div>
           </div>
         </div>
@@ -850,10 +840,6 @@ const loginSuccess = (token: ITokenInfo) => {
               <p style="color: var(--color-text-3); font-size: 13px;">请在浏览器中完成登录，授权后将自动跳转回应用</p>
               <a-button style="margin-top: 16px;" @click="handleReopenCloud123">重新打开浏览器</a-button>
             </div>
-<!--            <div class="cloud123-code">-->
-<!--              <a-input v-model="cloud123Code" placeholder="授权 code（自动填充）" allow-clear />-->
-<!--              <a-button type="primary" :loading="cloud123Loading" @click="submitCloud123Code">确认登录</a-button>-->
-<!--            </div>-->
           </div>
         </div>
       </div>

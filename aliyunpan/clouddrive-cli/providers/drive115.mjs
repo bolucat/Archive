@@ -1,7 +1,7 @@
 const BASE = 'https://proapi.115.com/open'
 const REFRESH_URL = 'https://passportapi.115.com/open/refreshToken'
-const CLIENT_ID = '100195153'
-const CLIENT_SECRET = 'ba2656d8fd7ef83a39283e7dfc9dc4fb'
+const CLIENT_ID = ''
+const CLIENT_SECRET = ''
 
 function drive115Headers(token) {
   return { 'Authorization': `Bearer ${token.access_token}` }

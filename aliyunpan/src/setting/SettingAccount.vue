@@ -8,16 +8,8 @@ import fs from 'node:fs'
 import path from 'path'
 import { decodeName, encodeName } from '../module/flow-enc/utils'
 import { localPwd } from '../utils/aria2c'
-import { ref } from 'vue'
-import { storeToRefs } from 'pinia'
-import AliUser from '../aliapi/user'
 
 const settingStore = useSettingStore()
-const qrCodeLoading = ref(false)
-const intervalId = ref()
-const qrCodeUrl = ref('')
-const qrCodeStatusType = ref()
-const qrCodeStatusTips = ref()
 
 const cb = (val: any) => {
   settingStore.updateStore(val)
@@ -131,86 +123,6 @@ const handlerExportCliTokens = async () => {
     message.error(`导出失败：${result?.error || '未知错误'}`)
   }
 }
-
-const handlerInstallCli = async () => {
-  const result = await window.TvBoxInvoke('InstallCli', {}) as { ok?: boolean; message?: string; needsElevation?: boolean; error?: string } | null
-  if (result?.ok) {
-    message.success(result.message || '命令行工具安装成功')
-  } else if (result?.needsElevation) {
-    message.warning(result.error ?? '需要提升权限')
-  } else {
-    message.error(`安装失败：${result?.error || '未知错误'}`)
-  }
-}
-
-
-const refreshStatus = () => {
-  qrCodeLoading.value = false
-  qrCodeUrl.value = ''
-  qrCodeStatusType.value = 'info'
-  qrCodeStatusTips.value = ''
-}
-
-const refreshQrCode = async () => {
-  let client_id = ''
-  let client_secret = ''
-  const { uiEnableOpenApiType, uiOpenApiClientId, uiOpenApiClientSecret } = storeToRefs(settingStore)
-  if (uiEnableOpenApiType.value === 'custom') {
-    if (!uiOpenApiClientId.value || !uiOpenApiClientSecret.value) {
-      message.error('客户端ID或客户端密钥不能为空！')
-      return
-    }
-    client_id = uiOpenApiClientId.value
-    client_secret = uiOpenApiClientSecret.value
-  } else {
-    client_id = ''
-    client_secret = ''
-  }
-  qrCodeLoading.value = true
-  const token = await UserDAL.GetUserTokenFromDB(useUserStore().user_id)
-  if (!token) {
-    refreshStatus()
-    message.error('未登录账号，该功能无法开启')
-    return
-  }
-  const codeUrl = await AliUser.OpenApiQrCodeUrl(client_id, client_secret)
-  if (!codeUrl) {
-    refreshStatus()
-    return
-  }
-  qrCodeLoading.value = false
-  qrCodeUrl.value = codeUrl
-  qrCodeStatusType.value = 'info'
-  qrCodeStatusTips.value = '状态：等待扫码登录'
-  // 监听状态
-  intervalId.value = setInterval(async () => {
-    const { authCode, statusCode, statusType, statusTips } = await AliUser.OpenApiQrCodeStatus(codeUrl)
-    if (!statusCode) {
-      refreshStatus()
-      clearInterval(intervalId.value)
-      return
-    }
-    qrCodeStatusType.value = statusType
-    qrCodeStatusTips.value = statusTips
-    if (statusCode === 'QRCodeExpired') {
-      message.error('二维码已超时，请刷新二维码')
-      clearInterval(intervalId.value)
-      refreshStatus()
-      return
-    }
-    if (authCode && statusCode === 'LoginSuccess') {
-      await AliUser.OpenApiLoginByAuthCode(token, client_id, client_secret, authCode, true)
-      clearInterval(intervalId.value)
-      refreshStatus()
-      message.success('获取OpenApiToken成功')
-    }
-  }, 1500)
-}
-
-const closeQrCode = () => {
-  refreshStatus()
-  clearInterval(intervalId.value)
-}
 </script>
 
 <template>
@@ -247,101 +159,6 @@ const closeQrCode = () => {
         导出到 CLI
       </a-button>
     </div>
-<!--    <div class='settingspace'></div>-->
-<!--    <div class='settinghead'>命令行工具</div>-->
-<!--    <a-popover position="bottom">-->
-<!--      <i class="iconfont iconbulb" />-->
-<!--      <template #content>-->
-<!--        <div style='min-width: 380px'>-->
-<!--          安装后可在终端使用 <span class='opblue'>clouddrive-cli</span> 命令<br />-->
-<!--          <hr /><div class="hrspace"></div>-->
-<!--          <span class='opblue'>clouddrive-cli auth list</span>　列出账号<br />-->
-<!--          <span class='opblue'>clouddrive-cli files list &#45;&#45;provider aliyun</span>　列出文件<br />-->
-<!--          <span class='opblue'>clouddrive-cli media rename-plan &#45;&#45;input files.json</span>　生成重命名计划<br />-->
-<!--          <div class="hrspace"></div>-->
-<!--          <span class='opred'>注意</span>：需要系统已安装 Node.js（≥18）<br />-->
-<!--          安装后会自动注册；macOS/Linux 安装到 ~/.local/bin，Windows 安装到 %LOCALAPPDATA%\BoxPlayer\bin-->
-<!--        </div>-->
-<!--      </template>-->
-<!--    </a-popover>-->
-<!--    <div class="settingrow">-->
-<!--      <a-button type='outline' size='small' tabindex='-1' @click='handlerInstallCli'>-->
-<!--        安装命令行工具-->
-<!--      </a-button>-->
-<!--    </div>-->
-<!--    <div class='settingspace'></div>-->
-<!--    <div class='settinghead'>阿里云盘开放平台</div>-->
-<!--    <a-popover position='bottom'>-->
-<!--      <i class='iconfont iconbulb' />-->
-<!--      <template #content>-->
-<!--        <div style='min-width: 400px'>-->
-<!--          <span class='opblue'>OpenApi</span>：阿里云盘开放平台API<br />-->
-<!--          说明：获取AccessToken后填入即可，仅用于加速视频播放和文件下载<br />-->
-<!--          官方文档：<span class='opblue' @click="openWebUrl('developer')">开发者门户</span>-->
-<!--          <br />-->
-<!--          <div class='hrspace'></div>-->
-<!--          <span class='opred'>注意</span>：需要申请OpenApi开发者账户-->
-<!--          <div class='hrspace'></div>-->
-<!--        </div>-->
-<!--      </template>-->
-<!--    </a-popover>-->
-<!--    <div class='settingrow'>-->
-<!--      <a-radio-group-->
-<!--        type='button' tabindex='-1'-->
-<!--        :model-value='settingStore.uiEnableOpenApiType'-->
-<!--        @update:model-value='cb({ uiEnableOpenApiType: $event })'>-->
-<!--        <a-radio tabindex='-1' value='inline'>内置方式</a-radio>-->
-<!--        <a-radio tabindex='-1' value='custom'>自定义方式</a-radio>-->
-<!--      </a-radio-group>-->
-<!--      <template v-if="settingStore.uiEnableOpenApiType === 'custom'">-->
-<!--        <div class='settingspace'></div>-->
-<!--        <div class='settinghead'>客户端ID(ClientId)</div>-->
-<!--        <div class='settingrow'>-->
-<!--          <a-input-->
-<!--            v-model.trim='settingStore.uiOpenApiClientId'-->
-<!--            :style="{ width: '340px' }"-->
-<!--            placeholder='客户端ID（该项必填）'-->
-<!--            @update:model-value='cb({ uiOpenApiClientId: $event })' />-->
-<!--        </div>-->
-<!--        <div class='settingspace'></div>-->
-<!--        <div class='settinghead'>客户端密钥(ClientSecret)</div>-->
-<!--        <div class='settingrow'>-->
-<!--          <a-input-->
-<!--            v-model.trim='settingStore.uiOpenApiClientSecret'-->
-<!--            :style="{ width: '340px' }"-->
-<!--            placeholder='客户端密钥（该项必填）'-->
-<!--            @update:model-value='cb({ uiOpenApiClientSecret: $event })' />-->
-<!--        </div>-->
-<!--      </template>-->
-<!--      <div class='settingspace'></div>-->
-<!--      <div class='settinghead'>二维码(手机扫码)</div>-->
-<!--      <div class='settingrow' style='display:flex;'>-->
-<!--        <a-button type='outline' size='small' tabindex='-1' :loading='qrCodeLoading' @click='refreshQrCode()'>-->
-<!--          <template #icon>-->
-<!--            <i class='iconfont iconreload-1-icon' />-->
-<!--          </template>-->
-<!--          刷新二维码-->
-<!--        </a-button>-->
-<!--        <a-button style='margin-left: 10px' status='success' type='outline' v-if='qrCodeUrl' size='small'-->
-<!--                  tabindex='-1' @click='closeQrCode()'>-->
-<!--          <template #icon>-->
-<!--            <i class='iconfont iconclose' />-->
-<!--          </template>-->
-<!--          关闭二维码-->
-<!--        </a-button>-->
-<!--      </div>-->
-<!--      <div class='settingrow' v-if='qrCodeUrl'>-->
-<!--        <div class='settingspace'></div>-->
-<!--        <a-alert :type='qrCodeStatusType'> {{ qrCodeStatusTips }}</a-alert>-->
-<!--        <a-image-->
-<!--          width='200'-->
-<!--          height='200'-->
-<!--          :hide-footer='true'-->
-<!--          :preview='false'-->
-<!--          :show-loader="true"-->
-<!--          :src="qrCodeUrl" />-->
-<!--      </div>-->
-<!--    </div>-->
   </div>
 </template>
 

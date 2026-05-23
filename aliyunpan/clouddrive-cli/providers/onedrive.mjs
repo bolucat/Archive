@@ -1,6 +1,6 @@
 const BASE = 'https://graph.microsoft.com/v1.0'
 const TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
-const CLIENT_ID = '14c7aa4b-7c3e-483c-af45-72e7ad551add'
+const CLIENT_ID = ''
 
 function odHeaders(token) {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.access_token}` }

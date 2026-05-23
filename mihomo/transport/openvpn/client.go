@@ -14,7 +14,10 @@ import (
 	"github.com/metacubex/tls"
 )
 
-const defaultHandshakeTimeout = 30 * time.Second
+const (
+	DefaultHandshakeTimeout = 30 * time.Second
+	ControlRetransmitDelay  = time.Second
+)
 
 type Client struct {
 	config *ClientConfig
@@ -64,7 +67,7 @@ func (c *Client) Handshake(ctx context.Context) (*PushReply, error) {
 	}
 	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, defaultHandshakeTimeout)
+		ctx, cancel = context.WithTimeout(ctx, DefaultHandshakeTimeout)
 		defer cancel()
 	}
 	if err := c.control.SendReset(ctx); err != nil {
@@ -172,10 +175,24 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) waitServerReset(ctx context.Context) error {
+	retransmits := 0
 	for {
-		packet, err := c.control.Read(ctx)
+		readCtx := ctx
+		cancel := func() {}
+		if c.config.Proto == ProtoUDP {
+			readCtx, cancel = context.WithTimeout(ctx, ControlRetransmitDelay)
+		}
+		packet, err := c.control.Read(readCtx)
+		cancel()
 		if err != nil {
-			return fmt.Errorf("read hard reset response: %w", err)
+			if c.config.Proto == ProtoUDP && errors.Is(err, context.DeadlineExceeded) && ctx.Err() == nil {
+				if err := c.control.RetransmitPending(ctx); err != nil {
+					return fmt.Errorf("retransmit hard reset: %w", err)
+				}
+				retransmits++
+				continue
+			}
+			return fmt.Errorf("read hard reset response after %d retransmits: %w", retransmits, err)
 		}
 		switch packet.Opcode {
 		case PControlHardResetServerV2:

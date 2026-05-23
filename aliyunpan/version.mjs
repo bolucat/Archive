@@ -1,21 +1,16 @@
-import dayjs from 'dayjs'
-import { execSync } from 'node:child_process'
 import fs from 'node:fs'
-import semver from 'semver'
+import { bumpPatchVersion } from './scripts/version-utils.mjs'
 
-process.env.TZ = 'Asia/Shanghai'
-const packageJsonStr = fs.readFileSync('./package.json').toString()
+const packageJsonPath = './package.json'
+
 try {
-  const tmp = `3.${dayjs().format('YY.MDDHH')}`
-  const packageJson = JSON.parse(packageJsonStr)
-  if (semver.gt(tmp, packageJson.version)) {
-    packageJson.version = tmp
-    console.info('版本升级为' + packageJson.version)
-    fs.writeFileSync('./package.json', JSON.stringify(packageJson, null, 2))
-    execSync(`git add package.json`)
-  }
+  const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
+  const nextVersion = bumpPatchVersion(packageJson.version)
+
+  packageJson.version = nextVersion
+  fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`)
+  console.info(`版本升级为 ${nextVersion}`)
 } catch (e) {
-  console.error('处理package.json失败，请重试', e.message)
+  console.error('处理 package.json 失败，请重试', e instanceof Error ? e.message : e)
   process.exit(1)
 }
-

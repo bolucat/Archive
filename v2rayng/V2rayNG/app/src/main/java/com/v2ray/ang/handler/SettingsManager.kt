@@ -12,10 +12,10 @@ import com.v2ray.ang.AppConfig.GEOIP_PRIVATE
 import com.v2ray.ang.AppConfig.GEOSITE_PRIVATE
 import com.v2ray.ang.AppConfig.TAG_DIRECT
 import com.v2ray.ang.AppConfig.VPN
+import com.v2ray.ang.dto.V2rayConfig
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.RulesetItem
 import com.v2ray.ang.dto.entities.SubscriptionItem
-import com.v2ray.ang.dto.V2rayConfig
 import com.v2ray.ang.enums.EConfigType
 import com.v2ray.ang.enums.Language
 import com.v2ray.ang.enums.RoutingType
@@ -244,6 +244,20 @@ object SettingsManager {
         return serverList
             .mapNotNull { guid -> decodeServerConfig(guid) }
             .firstOrNull { it.remarks == remarks }
+    }
+
+    /**
+     * Collects non-empty profile remarks while excluding specific config types.
+     */
+    fun getProfileRemarks(excludeConfigTypes: Set<EConfigType> = setOf(EConfigType.CUSTOM)): List<String> {
+        return decodeAllServerList()
+            .asSequence()
+            .mapNotNull { guid -> decodeServerConfig(guid) }
+            .filter { profile -> profile.configType !in excludeConfigTypes }
+            .map { it.remarks.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .toList()
     }
 
     /**

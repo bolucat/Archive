@@ -84,8 +84,14 @@ func init() {
 					continue
 				}
 				nif = append(nif, netmon.Interface{
-					Interface: &iff,
-					AltAddrs:  addrs,
+					Interface: &net.Interface{
+						Index:        iff.Index,
+						MTU:          iff.MTU,
+						Name:         iff.Name,
+						HardwareAddr: iff.HardwareAddr,
+						Flags:        iff.Flags,
+					},
+					AltAddrs: addrs,
 				})
 			}
 

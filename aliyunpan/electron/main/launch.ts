@@ -1,5 +1,6 @@
 import { AppWindow, createMainWindow, createTray } from './core/window'
 import { app, ipcMain, protocol, session } from 'electron'
+import { registerAutoUpdate } from './core/autoUpdate'
 import { registerMediaImageCacheProtocol } from './mediaImageCache'
 import is from 'electron-is'
 import fixPath from 'fix-path'
@@ -228,6 +229,7 @@ export default class launch extends EventEmitter {
         session.defaultSession.loadExtension(getStaticPath('crx'), { allowFileAccess: true }).then(() => {
           createMainWindow()
           createTray()
+          registerAutoUpdate()
           if (this.pendingOAuthUrl) {
             this.dispatchOAuthUrl(this.pendingOAuthUrl)
             this.pendingOAuthUrl = null

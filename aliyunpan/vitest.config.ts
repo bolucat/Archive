@@ -6,6 +6,8 @@ export default defineConfig({
     environment: 'node',
     include: [
       'electron/main/download/__tests__/**/*.test.ts',
+      'electron/main/core/__tests__/**/*.test.ts',
+      'scripts/__tests__/**/*.test.mjs',
       'src/media-server/__tests__/**/*.test.ts',
       'src/utils/__tests__/**/*.test.ts',
       'src/aliapi/__tests__/**/*.test.ts',

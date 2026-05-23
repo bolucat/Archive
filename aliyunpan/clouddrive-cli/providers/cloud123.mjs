@@ -1,7 +1,7 @@
 const BASE = 'https://open-api.123pan.com'
 const AUTH_URL = `${BASE}/api/v1/oauth2/access_token`
-const CLIENT_ID = 'sm6fkv5s4ycnb9pzgrpfiw90rianpq9a'
-const CLIENT_SECRET = '9vrg6n85jjnox9xnque9iajxp9d07b04'
+const CLIENT_ID = ''
+const CLIENT_SECRET = ''
 
 function headers(token) {
   return {

@@ -1,7 +1,7 @@
 const BASE = 'https://api.box.com/2.0'
 const TOKEN_URL = 'https://api.box.com/oauth2/token'
-const CLIENT_ID = 'mbnw4zh7jssgstuosl74k03xn3vzfw7m'
-const CLIENT_SECRET = 'x6jt4vNwZmOdc4SZroMVb4pVkhN83QEl'
+const CLIENT_ID = ''
+const CLIENT_SECRET = ''
 
 function boxHeaders(token) {
   return {

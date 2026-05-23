@@ -23,14 +23,15 @@ const getAppVersion = computed(() => {
   if (os.platform() === 'linux') {
     return pkgVersion
   }
-  let appVersion = ''
-  const localVersion = getResourcesPath('localVersion')
-  if (localVersion && existsSync(localVersion)) {
-    appVersion = readFileSync(localVersion, 'utf-8')
-  } else {
-    appVersion = pkgVersion
-  }
-  return appVersion
+  return pkgVersion
+  // let appVersion = ''
+  // const localVersion = getResourcesPath('localVersion')
+  // if (localVersion && existsSync(localVersion)) {
+  //   appVersion = readFileSync(localVersion, 'utf-8')
+  // } else {
+  //   appVersion = pkgVersion
+  // }
+  // return appVersion
 })
 
 const verLoading = ref(false)
@@ -110,7 +111,7 @@ const handleImportAsar = () => {
         <a-radio tabindex='-1' value='media'>媒体库</a-radio>
       </a-radio-group>
     </div>
-    <template v-if="['win32', 'darwin'].includes(os.platform())">
+    <template v-if="['win32', 'darwin'].includes(platform)">
       <div class='settingspace'></div>
       <div class='settinghead'>开机自启设置</div>
       <div class='settingrow'>
