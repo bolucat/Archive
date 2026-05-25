@@ -114,7 +114,7 @@ func ParseServerKeyMethod2Record(packet []byte) (*KeyMethod2Record, error) {
 }
 
 func DeriveClientKeyMaterial(sources KeySource2, clientSession, serverSession SessionID, cipherKeyLen int) (*KeyMaterial, error) {
-	if cipherKeyLen != 16 && cipherKeyLen != 32 {
+	if cipherKeyLen != 16 && cipherKeyLen != 24 && cipherKeyLen != 32 {
 		return nil, fmt.Errorf("unsupported data cipher key length %d", cipherKeyLen)
 	}
 	var master [48]byte

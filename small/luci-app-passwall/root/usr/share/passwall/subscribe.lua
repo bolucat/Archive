@@ -1413,7 +1413,7 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 		result.hysteria2_down_mbps = params.downmbps or sub_hy_down_mbps
 		result.hysteria2_hop = params.mport
 		if params["obfs-password"] or params["obfs_password"] then
-			result.hysteria2_obfs_type = "salamander"
+			result.hysteria2_obfs_type = params.obfs or "salamander"
 			result.hysteria2_obfs_password = params["obfs-password"] or params["obfs_password"]
 		end
 
@@ -1546,6 +1546,10 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 					result.reality = "1"
 					result.reality_publicKey = params.pbk or nil
 					result.reality_shortId = params.sid or nil
+				end
+				if params.ech and params.ech ~= "" then
+					result.ech = "1"
+					result.ech_config = params.ech
 				end
 			end
 			result.port = port

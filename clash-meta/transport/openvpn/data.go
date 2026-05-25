@@ -4,9 +4,11 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -120,7 +122,7 @@ func NewDataChannel(keys *KeyMaterial, cipherName, authName string, peerID uint3
 
 func isDataChannelAEAD(cipherName string) bool {
 	switch cipherName {
-	case CipherAES128GCM, CipherAES256GCM, CipherChaCha20Poly1305:
+	case CipherAES128GCM, CipherAES192GCM, CipherAES256GCM, CipherChaCha20Poly1305:
 		return true
 	default:
 		return false
@@ -129,7 +131,7 @@ func isDataChannelAEAD(cipherName string) bool {
 
 func newDataChannelAEAD(cipherName string, key []byte) (cipher.AEAD, error) {
 	switch cipherName {
-	case CipherAES128GCM, CipherAES256GCM:
+	case CipherAES128GCM, CipherAES192GCM, CipherAES256GCM:
 		block, err := aes.NewCipher(key)
 		if err != nil {
 			return nil, err
@@ -144,7 +146,7 @@ func newDataChannelAEAD(cipherName string, key []byte) (cipher.AEAD, error) {
 
 func newDataChannelCBC(cipherName string, key []byte) (cipher.Block, error) {
 	switch cipherName {
-	case CipherAESCBC, CipherAES128CBC, CipherAES256CBC:
+	case CipherAESCBC, CipherAES128CBC, CipherAES192CBC, CipherAES256CBC:
 		return aes.NewCipher(key)
 	default:
 		return nil, fmt.Errorf("unsupported openvpn cipher %q", cipherName)
@@ -153,10 +155,16 @@ func newDataChannelCBC(cipherName string, key []byte) (cipher.Block, error) {
 
 func newDataChannelAuth(authName string) (func() hash.Hash, int, error) {
 	switch authName {
+	case AuthMD5:
+		return md5.New, md5.Size, nil
 	case AuthSHA1:
 		return sha1.New, sha1.Size, nil
 	case AuthSHA256:
 		return sha256.New, sha256.Size, nil
+	case AuthSHA384:
+		return sha512.New384, sha512.Size384, nil
+	case AuthSHA512:
+		return sha512.New, sha512.Size, nil
 	default:
 		return nil, 0, fmt.Errorf("unsupported openvpn auth %q", authName)
 	}
