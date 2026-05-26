@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    compileSdk = 33
-    namespace = "com.bmshi.proxy.mobile"
+    compileSdk = 34
+    namespace = "com.bmshi.router.mobile"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.bmshi.proxy.mobile"
+        applicationId = "com.bmshi.router.mobile"
         minSdk = 24
-        targetSdk = 33
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
     }
@@ -39,7 +39,7 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
-    buildToolsVersion = "33.0.0"
+    buildToolsVersion = "34.0.0"
 }
 
 rust {

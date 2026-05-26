@@ -130,7 +130,7 @@ async fn start_response(mut receiver: UnboundedReceiver<(IpAddr, bool)>, name: S
         cfg_if::cfg_if! {
             if #[cfg(unix)] {
                 if let Err(err) = if add {
-                    session.add(ip, vec![])
+                    session.add(ip, &[])
                 } else {
                     session.del(ip)
                 } {
@@ -220,7 +220,7 @@ async fn check_server(host: String, timeout: u64, ip_timeout: u64) {
     loop {
         interval.tick().await;
         let ip = if let Ok(Some(ip)) =
-            lookup_host(host.as_str()).map(|data| data.iter().find(|ip| ip.is_ipv4()).cloned())
+            lookup_host(host.as_str()).map(|mut data| data.find(|ip| ip.is_ipv4()))
         {
             ip
         } else {
