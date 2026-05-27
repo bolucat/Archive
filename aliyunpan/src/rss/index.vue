@@ -38,35 +38,35 @@ watch(
               :selected-keys="[appStore.GetAppTabMenu]"
               @update:selected-keys="appStore.toggleTabMenu('rss', $event[0])">
         <a-menu-item key="RssXiMa">
-          <template #icon><i class="iconfont iconcameraadd" /></template>
+          <template #icon><IconFont name="iconcameraadd" /></template>
           视频文件洗码
         </a-menu-item>
         <a-menu-item key="RssJiaMi">
-          <template #icon><i class="iconfont iconsafebox" /></template>
+          <template #icon><IconFont name="iconsafebox" /></template>
           文件加密解密
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="AppSame">
-          <template #icon><i class="iconfont iconcopy" /></template>
+          <template #icon><IconFont name="iconcopy" /></template>
           重复文件清理
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssScanClean">
-          <template #icon><i class="iconfont iconclear" /></template>
+          <template #icon><IconFont name="iconclear" /></template>
           扫描大文件
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssScanSame">
-          <template #icon><i class="iconfont iconcopy" /></template>
+          <template #icon><IconFont name="iconcopy" /></template>
           扫描重复文件
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssScanPunish">
-          <template #icon><i class="iconfont iconweixiang" /></template>
+          <template #icon><IconFont name="iconweixiang" /></template>
           扫描违规文件
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssScanEnmpty">
-          <template #icon><i class="iconfont iconempty" /></template>
+          <template #icon><IconFont name="iconempty" /></template>
           扫描空文件夹
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssDriveCopy">
-          <template #icon><i class="iconfont iconchuanshu2" /></template>
+          <template #icon><IconFont name="iconchuanshu2" /></template>
           网盘相册间复制
         </a-menu-item>
       </a-menu>

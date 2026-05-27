@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { IAliGetDirModel } from '../aliapi/alimodels'
 import { h } from 'vue'
+import IconFont from '../components/IconFont.vue'
 import PanDAL from './pandal'
 import TreeStore, { TreeNodeData } from '../store/treestore'
 import { GetDriveID, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
@@ -34,7 +35,7 @@ export interface PanTreeState {
 let treeDataMap = new Map<string, TreeNodeData>()
 type State = PanTreeState
 
-export const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
+export const fileiconfn = (icon: string) => h(IconFont, { name: icon })
 
 const usePanTreeStore = defineStore('pantree', {
   state: (): State => ({

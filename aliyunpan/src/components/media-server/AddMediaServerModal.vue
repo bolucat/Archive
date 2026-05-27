@@ -89,7 +89,7 @@
             <div class="backup-header">
               <div class="section-subtitle">备份服务器</div>
               <a-button type="outline" size="small" class="backup-add-btn" @click="addBackupAddress">
-                <template #icon><i class="iconfont iconadd" /></template>
+                <template #icon><IconFont name="iconadd" /></template>
                 新增地址
               </a-button>
             </div>
@@ -100,7 +100,7 @@
               <a-input v-model="item.name" class="backup-name" placeholder="名称" allow-clear />
               <a-input v-model="item.url" class="backup-url" placeholder="http://127.0.0.1:8096" allow-clear />
               <a-button type="text" status="danger" size="mini" @click="removeBackupAddress(index)">
-                <template #icon><i class="iconfont icondelete" /></template>
+                <template #icon><IconFont name="icondelete" /></template>
               </a-button>
             </div>
           </div>

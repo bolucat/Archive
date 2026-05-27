@@ -210,15 +210,15 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div style="height: 14px"></div>
   <div class="toppanbtns" style="height: 26px">
     <div class="toppanbtn" v-show="downedStore.IsListSelected">
-      <a-button type="text" size="small" tabindex="-1" @click="handleOpenFile(null)"><i class="iconfont iconwenjian" />打开文件</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleOpenDir(null)"><i class="iconfont iconfolder" />打开目录</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleDelete"><i class="iconfont icondelete" />删除</a-button>
-      <a-button type="text" size="small" tabindex="-1"><i class="iconfont icondian" /></a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleOpenFile(null)"><IconFont name="iconwenjian" />打开文件</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleOpenDir(null)"><IconFont name="iconfolder" />打开目录</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleDelete"><IconFont name="icondelete" />删除</a-button>
+      <a-button type="text" size="small" tabindex="-1"><IconFont name="icondian" /></a-button>
 
-      <a-button type="text" size="small" tabindex="-1" @click="handleDeleteAll"><i class="iconfont icondelete" />清除全部下载记录</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleDeleteAll"><IconFont name="icondelete" />清除全部下载记录</a-button>
     </div>
     <div class="toppanbtn" v-show="!downedStore.IsListSelected">
-      <a-button type="text" size="small" tabindex="-1" @click="handleDeleteAll"><i class="iconfont icondelete" />清除全部下载记录</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleDeleteAll"><IconFont name="icondelete" />清除全部下载记录</a-button>
     </div>
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
@@ -243,7 +243,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" @click="handleSelectAll" title="Ctrl+A">
-          <i :class="downedStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="downedStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -309,11 +309,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               :class="'rangselect ' + (rangSelectFiles[item.DownID] ? (rangSelectStart == item.DownID ? 'rangstart' : rangSelectEnd == item.DownID ? 'rangend' : 'rang') : '')">
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.DownID, $event, true)'>
-                <i :class="downedStore.ListSelected.has(item.DownID) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="downedStore.ListSelected.has(item.DownID) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class="fileicon">
-              <i :class="'iconfont ' + item.Info.icon" aria-hidden="true"></i>
+              <IconFont :name="item.Info.icon" aria-hidden="true" />
             </div>
             <div class="filename">
               <div :title="item.Info.localFilePath">
@@ -322,9 +322,9 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
             </div>
             <div class="cell filesize">{{ item.Info.sizestr }}</div>
             <div class='toppanbtn'>
-              <a title='打开文件' v-if='!item.Info.ariaRemote' @click="handleOpenFile(item)"><i class="iconfont iconwenjian" /></a>&nbsp;&nbsp;
-              <a title='打开目录' v-if='!item.Info.ariaRemote' @click="handleOpenDir(item)"><i class="iconfont iconfolder" /></a>&nbsp;&nbsp;
-              <a title='删除' @click="handleDelete"><i class="iconfont icondelete" /></a>&nbsp;&nbsp;
+              <a title='打开文件' v-if='!item.Info.ariaRemote' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
+              <a title='打开目录' v-if='!item.Info.ariaRemote' @click="handleOpenDir(item)"><IconFont name="iconfolder" /></a>&nbsp;&nbsp;
+              <a title='删除' @click="handleDelete"><IconFont name="icondelete" /></a>&nbsp;&nbsp;
             </div>
           </div>
         </div>
@@ -333,15 +333,15 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <a-dropdown id="downedrightmenu" class="rightmenu" :popup-visible="true" tabindex="-1" :draggable="false" style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
         <a-doption @click="handleOpenFile(null)">
-          <template #icon> <i class="iconfont iconwenjian" /> </template>
+          <template #icon> <IconFont name="iconwenjian" /> </template>
           <template #default>打开文件</template>
         </a-doption>
         <a-doption @click="handleOpenDir(null)">
-          <template #icon> <i class="iconfont iconfolder" /> </template>
+          <template #icon> <IconFont name="iconfolder" /> </template>
           <template #default>打开目录</template>
         </a-doption>
         <a-doption @click="handleDelete" class="danger">
-          <template #icon> <i class="iconfont icondelete" /> </template>
+          <template #icon> <IconFont name="icondelete" /> </template>
           <template #default>删除</template>
         </a-doption>
       </template>

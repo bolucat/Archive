@@ -331,18 +331,18 @@ function getImageUrl(item: OneImageModel) {
     <a-layout-header v-show="!isPlaying" id="xbyhead" draggable="false">
       <div id="xbyhead2" class="q-electron-drag">
         <a-button type="text" tabindex="-1">
-          <i class="iconfont iconfile-img"></i>
+          <IconFont name="iconfile-img" />
         </a-button>
         <div class="title">{{ showName }}</div>
         <div class="flexauto"></div>
         <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
-          <i class='iconfont iconzuixiaohua'></i>
+          <IconFont name="iconzuixiaohua" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
-          <i class='iconfont iconfullscreen'></i>
+          <IconFont name="iconfullscreen" />
         </a-button>
         <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
-          <i class='iconfont iconclose'></i>
+          <IconFont name="iconclose" />
         </a-button>
       </div>
     </a-layout-header>
@@ -353,13 +353,13 @@ function getImageUrl(item: OneImageModel) {
           <a-button type="text" tabindex="-1" @click="modeChange('fill')"> 相册模式</a-button>
         </div>
         <div class="toppanbtn">
-          <a-button type="text" tabindex="-1" @click="goRefreshImage"><i class="iconfont iconreload-1-icon"></i>刷新
+          <a-button type="text" tabindex="-1" @click="goRefreshImage"><IconFont name="iconreload-1-icon" />刷新
           </a-button>
         </div>
         <div class="toppanbtn">
-          <a-button type="text" tabindex="-1" @click="goLastImage"><i class="iconfont iconarrow-left-2-icon"></i>上一张
+          <a-button type="text" tabindex="-1" @click="goLastImage"><IconFont name="iconarrow-left-2-icon" />上一张
           </a-button>
-          <a-button type="text" tabindex="-1" @click="goNextImage"><i class="iconfont iconarrow-right-2-icon"></i>下一张
+          <a-button type="text" tabindex="-1" @click="goNextImage"><IconFont name="iconarrow-right-2-icon" />下一张
           </a-button>
         </div>
       </div>

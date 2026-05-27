@@ -131,7 +131,7 @@ const handleForward = () => {
     <a-tabs class='share-site-tabs'>
       <template #extra>
         <a-button type='text' size='large' tabindex='-1' @click='handleRefreshSiteList'>
-          <i class='iconfont iconreload-1-icon' />刷新列表
+          <IconFont name="iconreload-1-icon" />刷新列表
         </a-button>
       </template>
       <template v-if='serverStore.shareSiteGroupList.length > 0'>
@@ -168,38 +168,38 @@ const handleForward = () => {
     <div class='toppanbtn'>
       <a-popconfirm content='确认要清除当前网站Cookies？' @ok='handleClearCookies'>
         <a-button type='text' size='small' tabindex='-1'>
-          <i class='iconfont icondelete' />清除Cookies
+          <IconFont name="icondelete" />清除Cookies
         </a-button>
       </a-popconfirm>
     </div>
     <div class='toppanbtn'>
       <a-button type='text' size='small' tabindex='-1' @click='openExternal(webview.src || siteUrl)'>
-        <i class='iconfont icondebug' />浏览器打开
+        <IconFont name="icondebug" />浏览器打开
       </a-button>
     </div>
     <div class='toppanbtn'>
       <a-button type='text' size='small' tabindex='-1' @click='handleHideLeft'>
-        <i class='iconfont iconfullscreen' />显隐侧边栏
+        <IconFont name="iconfullscreen" />显隐侧边栏
       </a-button>
     </div>
     <div class='toppanbtn'>
       <a-button type='text' size='small' tabindex='-1' @click='handleBack'>
-        <i class='iconfont iconarrow-left-1-icon' />回退
+        <IconFont name="iconarrow-left-1-icon" />回退
       </a-button>
     </div>
     <div class='toppanbtn'>
       <a-button type='text' size='small' tabindex='-1' @click='handleForward'>
-        <i class='iconfont iconarrow-right-1-icon' />前进
+        <IconFont name="iconarrow-right-1-icon" />前进
       </a-button>
     </div>
     <div class='toppanbtn'>
       <a-button type='text' :loading='onLoading' size='small' tabindex='-1' @click='handleRefresh'>
-        <i class='iconfont iconreload-1-icon' v-if='!onLoading' />刷新
+        <IconFont name="iconreload-1-icon" v-if='!onLoading' />刷新
       </a-button>
     </div>
     <div class='toppanbtn'>
       <a-button type='text' status='danger' size='small' tabindex='-1' @click='handleClose'>
-        <i class='iconfont iconclose' />关闭
+        <IconFont name="iconclose" />关闭
       </a-button>
     </div>
   </div>

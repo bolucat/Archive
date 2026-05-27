@@ -99,7 +99,7 @@ const handleHide = () => {
           <div class="arco-upload-list-item-content">
             <div class="arco-upload-list-item-name">
               <span class="arco-upload-list-item-file-icon">
-                <i class="iconfont iconluxiang"></i>
+                <IconFont name="iconluxiang" />
               </span>
               <a class="arco-upload-list-item-name-link" @click.stop="() => handleCopyUrl(item)">
                 {{ file_name }}

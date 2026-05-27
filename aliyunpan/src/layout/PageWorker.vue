@@ -12,7 +12,7 @@ const handleHideClick = (_e: any) => {
         <div class="flexauto"></div>
 
         <a-button type="text" tabindex="-1" @click="handleHideClick">
-          <i class="iconfont iconclose"></i>
+          <IconFont name="iconclose" />
         </a-button>
       </div>
     </a-layout-header>

@@ -534,7 +534,7 @@ const getCastInitial = (name?: string): string => {
     <!-- 返回按钮 -->
     <div class="detail-header">
       <button class="detail-back" @click="handleBackClick" :title="mediaItem.name">
-        <i class="iconfont iconarrow-left-2-icon"></i>
+        <IconFont name="iconarrow-left-2-icon" />
         <span class="detail-back-title">{{ mediaItem.name }}</span>
       </button>
     </div>
@@ -547,7 +547,7 @@ const getCastInitial = (name?: string): string => {
           <div class="hero-poster">
             <img v-if="mediaItem.posterUrl" :src="mediaItem.posterUrl" :alt="mediaItem.name" />
             <div v-else class="poster-placeholder">
-              <i class="iconfont iconfile-video"></i>
+              <IconFont name="iconfile-video" />
             </div>
           </div>
 
@@ -678,7 +678,7 @@ const getCastInitial = (name?: string): string => {
                 <span class="episode-number">{{ episode.episodeNumber }}</span>
               </div>
               <div class="episode-play-overlay">
-                <i class="iconfont iconstart"></i>
+                <IconFont name="iconstart" />
               </div>
             </div>
 

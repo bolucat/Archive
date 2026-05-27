@@ -19,6 +19,7 @@ import { modalRename, modalShuXing } from '../../utils/modal'
 import { useSettingStore, usePanFileStore, useAppStore, usePanTreeStore } from '../../store'
 import { computed } from 'vue'
 import { MediaScanner } from '../../utils/mediaScanner'
+import MusicScanner from '../../utils/musicScanner'
 import message from '../../utils/message'
 import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isOneDriveUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
@@ -29,33 +30,61 @@ const panFileStore = usePanFileStore()
 const appStore = useAppStore()
 const panTreeStore = usePanTreeStore()
 const mediaScanner = MediaScanner.getInstance()
+const musicScanner = MusicScanner.getInstance()
 
-// 扫描媒体库方法
-const handleScanMediaLibrary = async () => {
+const pickFolderForScan = () => {
   const selectedFiles = panFileStore.GetSelected()
   if (selectedFiles.length === 0) {
     message.warning('请先选择要扫描的文件夹')
+    return null
+  }
+  const folder = selectedFiles.find((file) => file.isDir)
+  if (!folder) {
+    message.warning('请选择文件夹进行扫描')
+    return null
+  }
+  return folder
+}
+
+// 扫描视频
+const handleScanVideo = async () => {
+  const folder = pickFolderForScan()
+  if (!folder) return
+  if (mediaScanner.isCurrentlyScanning) {
+    message.warning('正在扫描中，请稍后...')
     return
   }
-
-  // 只允许扫描文件夹
-  const folders = selectedFiles.filter(file => file.isDir)
-  if (folders.length === 0) {
-    message.warning('请选择文件夹进行媒体库扫描')
-    return
-  }
-
-  // 扫描第一个选中的文件夹
-  const folder = folders[0]
   try {
-    await mediaScanner.scanFolder(folder, folder.drive_id)
-    message.success(`开始扫描文件夹 "${folder.name}" 的媒体库`)
-
-    // 切换到媒体库标签页
+    message.info(`开始扫描文件夹 "${folder.name}" 的视频文件`)
     appStore.toggleTab('media')
+    await mediaScanner.scanFolder(folder, folder.drive_id)
   } catch (error) {
-    console.error('媒体库扫描失败:', error)
-    message.error('媒体库扫描失败，请稍后重试')
+    console.error('视频扫描失败:', error)
+    message.error('视频扫描失败，请稍后重试')
+  }
+}
+
+// 扫描音频
+const handleScanAudio = async () => {
+  const folder = pickFolderForScan()
+  if (!folder) return
+  if (musicScanner.isScanning) {
+    message.warning('音频扫描进行中，请稍后...')
+    return
+  }
+  const userId = (folder as any).user_id || panTreeStore.user_id || ''
+  if (!userId) {
+    message.error('未识别到当前账号，无法扫描')
+    return
+  }
+  try {
+    message.info(`开始扫描文件夹 "${folder.name}" 的音频文件`)
+    appStore.toggleTab('music')
+    const res = await musicScanner.scanFolder(folder, userId)
+    message.success(`音频扫描完成：收录 ${res.found} 首`)
+  } catch (error) {
+    console.error('音频扫描失败:', error)
+    message.error('音频扫描失败，请稍后重试')
   }
 }
 
@@ -117,46 +146,50 @@ const isSelectedFolder = computed(() => {
   <a-dropdown id='rightpanmenu' class='rightmenu' :popup-visible='true' style='z-index: -1; left: -200px; opacity: 0'>
     <template #content>
       <a-doption @click='() => menuDownload(istree)'>
-        <template #icon><i class='iconfont icondownload' /></template>
+        <template #icon><IconFont name="icondownload" /></template>
         <template #default>下载</template>
       </a-doption>
       <a-doption v-show='isShareSupported'
                  @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
-        <template #icon><i class='iconfont iconfenxiang' /></template>
+        <template #icon><IconFont name="iconfenxiang" /></template>
         <template #default>分享</template>
       </a-doption>
       <a-doption v-if="isAliyunAccount" @click="() => menuCreatShare(istree, 'pan', 'backup_root')">
-        <template #icon><i class='iconfont iconrss' /></template>
+        <template #icon><IconFont name="iconrss" /></template>
         <template #default>快传</template>
       </a-doption>
 
-      <!-- 扫描媒体库 -->
-      <a-doption v-show="isSelectedFolder && isShowBtn" @click="handleScanMediaLibrary">
-        <template #icon><i class='iconfont iconshipin' /></template>
-        <template #default>扫描媒体库</template>
+      <!-- 扫描视频 / 扫描音频 -->
+      <a-doption v-show="isSelectedFolder && isShowBtn" @click="handleScanVideo">
+        <template #icon><IconFont name="iconshipin" /></template>
+        <template #default>扫描视频</template>
+      </a-doption>
+      <a-doption v-show="isSelectedFolder && isShowBtn" @click="handleScanAudio">
+        <template #icon><IconFont name="iconmusic" /></template>
+        <template #default>扫描音频</template>
       </a-doption>
 
       <a-dsubmenu v-if="dirtype !== 'pic' && !isWebDav && !isThirdPartyDrive" id='rightpansubbiaoji' class='rightmenu' trigger='hover'>
         <template #default>
           <div @click.stop='() => {}'>
             <span class='arco-dropdown-option-icon'>
-              <i class='iconfont iconwbiaoqian' style='opacity: 0.8'></i>
+              <IconFont name="iconwbiaoqian" style='opacity: 0.8' />
             </span>标记
           </div>
         </template>
         <template #content>
           <a-doption v-for='item in settingStore.uiFileColorArray' :key='item.key'
                      @click='() => menuFileColorChange(istree, item.key)'>
-            <template #icon><i class='iconfont iconcheckbox-full' :style='{ color: item.key }' /></template>
+            <template #icon><IconFont name="iconcheckbox-full" :style='{ color: item.key }' /></template>
             <template #default>{{ item.title || item.key }}</template>
           </a-doption>
 
           <a-doption @click="() => menuFileColorChange(istree, '#e74c3c')">
-            <template #icon><i class='iconfont iconcheckbox-full' style='color: #e74c3c' /></template>
+            <template #icon><IconFont name="iconcheckbox-full" style='color: #e74c3c' /></template>
             <template #default>视频红</template>
           </a-doption>
           <a-doption @click="() => menuFileColorChange(istree, '')">
-            <template #icon><i class='iconfont iconfangkuang' /></template>
+            <template #icon><IconFont name="iconfangkuang" /></template>
             <template #default>清除标记</template>
           </a-doption>
         </template>
@@ -165,7 +198,7 @@ const isSelectedFolder = computed(() => {
         <template #default>
           <div @click.stop='() => {}'>
             <span class='arco-dropdown-option-icon'>
-              <i class='iconfont iconmoveto' style='opacity: 0.8'></i>
+              <IconFont name="iconmoveto" style='opacity: 0.8' />
             </span>
             操作
           </div>
@@ -173,34 +206,34 @@ const isSelectedFolder = computed(() => {
         <template #content>
           <a-doption v-show='isShowBtn && inputpicType !== "mypic" && dirtype !== "pan"'
                      @click='() => menuAddAlbumSelectFile()'>
-            <template #icon><i class='iconfont iconmoveto' /></template>
+            <template #icon><IconFont name="iconmoveto" /></template>
             <template #default>移入相册</template>
           </a-doption>
           <a-doption v-show='dirtype === "mypic"'
                      @click='() => menuTrashSelectFile(istree, false, true)'>
-            <template #icon><i class='iconfont iconqingkong' /></template>
+            <template #icon><IconFont name="iconqingkong" /></template>
             <template #default>移出相册</template>
           </a-doption>
           <a-doption v-show='isShowBtn' @click="() => menuCopySelectedFile(istree, 'cut')">
-            <template #icon><i class='iconfont iconscissor' /></template>
+            <template #icon><IconFont name="iconscissor" /></template>
             <template #default>移动到...</template>
           </a-doption>
           <a-doption v-show='isShowBtn' @click="() => menuCopySelectedFile(istree, 'copy')">
-            <template #icon><i class='iconfont iconcopy' /></template>
+            <template #icon><IconFont name="iconcopy" /></template>
             <template #default>复制到...</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isAliyunAccount && !isWebDav && !isThirdPartyDrive' type='text' size='small' tabindex='-1' title='Ctrl+M'
                      @click="() => menuFileEncTypeChange(istree)">
-            <template #icon><i class='iconfont iconsafebox' /></template>
+            <template #icon><IconFont name="iconsafebox" /></template>
             <template #default>标记加密</template>
           </a-doption>
           <a-doption v-show='!isWebDav && (isShowBtn && dirtype !== "mypic"  || dirtype === "search")' class='danger' @click='() => menuTrashSelectFile(istree, false, isPic)'>
-            <template #icon><i class='iconfont icondelete' /></template>
+            <template #icon><IconFont name="icondelete" /></template>
             <template #default>放回收站</template>
           </a-doption>
           <a-dsubmenu v-if='dirtype !== "mypic" && (isAliyunAccount || isWebDav)' class='rightmenu' trigger='hover'>
             <template #default>
-              <span class='arco-dropdown-option-icon'><i class='iconfont iconrest'></i></span>彻底删除
+              <span class='arco-dropdown-option-icon'><IconFont name="iconrest" /></span>彻底删除
             </template>
             <template #content>
               <a-doption title='Ctrl+Shift+Delete' class='danger' @click='() => menuTrashSelectFile(istree, true, isPic)'>
@@ -213,12 +246,12 @@ const isSelectedFolder = computed(() => {
 
       <a-doption v-show="dirtype != 'video'"
                  @click='() => modalRename(istree, isselectedmulti, dirtype.includes("pic"))'>
-        <template #icon><i class='iconfont iconedit-square' /></template>
+        <template #icon><IconFont name="iconedit-square" /></template>
         <template #default>重命名</template>
       </a-doption>
 
       <a-doption v-show="!isPic" @click='() => modalShuXing(istree, dirtype.includes("pic"))'>
-        <template #icon><i class='iconfont iconshuxing' /></template>
+        <template #icon><IconFont name="iconshuxing" /></template>
         <template #default>属性</template>
       </a-doption>
       <a-dsubmenu v-if='!dirtype.includes("pic")'
@@ -226,7 +259,7 @@ const isSelectedFolder = computed(() => {
         <template #default>
           <div @click.stop='() => {}'>
             <span class='arco-dropdown-option-icon'>
-              <i class='iconfont icongengduo1' style='opacity: 0.8'></i>
+              <IconFont name="icongengduo1" style='opacity: 0.8' />
             </span>
             更多
           </div>
@@ -235,38 +268,38 @@ const isSelectedFolder = computed(() => {
           <a-doption
             v-show="isselected && !isselectedmulti && (dirtype == 'favorite' || dirtype == 'search' || dirtype == 'color' || dirtype == 'video')"
             @click='() => menuJumpToDir()'>
-            <template #icon><i class='iconfont icondakaiwenjianjia1' /></template>
+            <template #icon><IconFont name="icondakaiwenjianjia1" /></template>
             <template #default>打开位置</template>
           </a-doption>
           <a-doption v-show='isvideo' @click='() => menuVideoXBT()'>
-            <template #icon><i class='iconfont iconjietu' /></template>
+            <template #icon><IconFont name="iconjietu" /></template>
             <template #default>雪碧图</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isAliyunAccount && !isWebDav && !isThirdPartyDrive' type='text' size='small' tabindex='-1' title='Ctrl+M'
                      @click="() => menuFileEncTypeChange(istree)">
-            <template #icon><i class='iconfont iconsafebox' /></template>
+            <template #icon><IconFont name="iconsafebox" /></template>
             <template #default>标记加密</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isAliyunAccount && !isWebDav' type='text' size='small' tabindex='-1' title='Ctrl+M'
                      @click="() => menuFileClearHistory(istree)">
-            <template #icon><i class='iconfont iconshipin' /></template>
+            <template #icon><IconFont name="iconshipin" /></template>
             <template #default>清除历史</template>
           </a-doption>
           <a-doption v-show="isvideo" @click="() => menuDLNA()">
-            <template #icon><i class="iconfont icontouping2" /></template>
+            <template #icon><IconFont name="icontouping2" /></template>
             <template #default>DLNA投屏</template>
           </a-doption>
           <a-doption v-show='isvideo' @click='() => menuM3U8Download()'>
-            <template #icon><i class='iconfont iconluxiang' /></template>
+            <template #icon><IconFont name="iconluxiang" /></template>
             <template #default>M3U8下载</template>
           </a-doption>
           <a-doption v-show='isselected' @click='() => menuCopyFileName()'>
-            <template #icon><i class='iconfont iconlist' /></template>
+            <template #icon><IconFont name="iconlist" /></template>
             <template #default>复制文件名</template>
           </a-doption>
           <a-doption v-show='isselected && !isselectedmulti && !isCloudUser && !isThirdPartyDrive'
                      @click='() => menuCopyFileTree()'>
-            <template #icon><i class='iconfont iconnode-tree1' /></template>
+            <template #icon><IconFont name="iconnode-tree1" /></template>
             <template #default>复制目录树</template>
           </a-doption>
         </template>

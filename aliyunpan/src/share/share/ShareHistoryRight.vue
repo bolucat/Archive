@@ -256,23 +256,20 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <a-button type="text" size="small" tabindex="-1" :loading="shareHistoryStore.ListLoading" title="F5"
                 @click="handleRefresh">
         <template #icon>
-          <i class="iconfont iconreload-1-icon" />
+          <IconFont name="iconreload-1-icon" />
         </template>
         刷新
       </a-button>
     </div>
     <div v-show="shareHistoryStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink"><i
-        class="iconfont iconchakan" />查看
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink"><IconFont name="iconchakan" />查看
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="保存到我的导入" @click="handleSaveMyImport">
-        <i class="iconfont iconxuanzhuan" />保存导入
+        <IconFont name="iconxuanzhuan" />保存导入
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><i
-        class="iconfont iconcopy" />复制链接
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><IconFont name="iconcopy" />复制链接
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><i
-        class="iconfont iconchrome" />浏览器
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><IconFont name="iconchrome" />浏览器
       </a-button>
     </div>
     <div style="flex-grow: 1"></div>
@@ -292,7 +289,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
-          <i :class="shareHistoryStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="shareHistoryStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
       <div class='selectInfo'>{{ shareHistoryStore.ListDataSelectCountInfo }}</div>
@@ -331,27 +328,27 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div :class="'cell count order ' + (shareHistoryStore.ListOrderKey == 'save' ? 'active' : '')"
          @click="handleOrder('save')">
       保存数
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div :class="'cell count order ' + (shareHistoryStore.ListOrderKey == 'preview' ? 'active' : '')"
          @click="handleOrder('preview')">
       预览数
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div :class="'cell count order ' + (shareHistoryStore.ListOrderKey == 'browse' ? 'active' : '')"
          @click="handleOrder('browse')">
       浏览数
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div :class="'cell sharetime order ' + (shareHistoryStore.ListOrderKey == 'ctime' ? 'active' : '')"
          @click="handleOrder('ctime')">
       创建时间
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div :class="'cell sharetime order ' + (shareHistoryStore.ListOrderKey == 'mtime' ? 'active' : '')"
          @click="handleOrder('mtime')">
       修改时间
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div :class="'cell count'">
       创建者
@@ -389,12 +386,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               :class="'rangselect ' + (rangSelectFiles[item.share_id] ? (rangSelectStart == item.share_id ? 'rangstart' : rangSelectEnd == item.share_id ? 'rangend' : 'rang') : '')">
               <a-button shape="circle" type="text" tabindex="-1" class="select" :title="index"
                         @click.prevent.stop="handleSelect(item.share_id, $event, true)">
-                <i
-                  :class="shareHistoryStore.ListSelected.has(item.share_id) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="shareHistoryStore.ListSelected.has(item.share_id) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class="fileicon">
-              <i class="iconfont iconlink2" aria-hidden="true"></i>
+              <IconFont name="iconlink2" aria-hidden="true" />
             </div>
             <div class="filename">
               <div :title="'https://www.aliyundrive.com/s/' + item.share_id" @click="handleOpenLink(item)">
@@ -416,19 +412,19 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                 style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
         <a-doption @click="handleOpenLink">
-          <template #icon><i class="iconfont iconchakan" /></template>
+          <template #icon><IconFont name="iconchakan" /></template>
           <template #default>查看</template>
         </a-doption>
         <a-doption @click="handleSaveMyImport">
-          <template #icon><i class="iconfont iconxuanzhuan" /></template>
+          <template #icon><IconFont name="iconxuanzhuan" /></template>
           <template #default>保存导入</template>
         </a-doption>
         <a-doption @click="handleCopySelectedLink">
-          <template #icon><i class="iconfont iconcopy" /></template>
+          <template #icon><IconFont name="iconcopy" /></template>
           <template #default>复制链接</template>
         </a-doption>
         <a-doption @click="handleBrowserLink">
-          <template #icon><i class="iconfont iconchrome" /></template>
+          <template #icon><IconFont name="iconchrome" /></template>
           <template #default>浏览器</template>
         </a-doption>
       </template>

@@ -1,11 +1,83 @@
 <script setup lang="ts">
+import { onMounted, ref, computed } from 'vue'
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
+import UserDAL from '../user/userdal'
+import type { ITokenInfo } from '../user/userstore'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
   settingStore.updateStore(val)
 }
+
+const userList = ref<ITokenInfo[]>([])
+
+const refreshUserList = async () => {
+  userList.value = await UserDAL.GetUserListFromDB()
+}
+
+onMounted(() => {
+  refreshUserList().catch(() => {})
+})
+
+const tokenLabel = (t: ITokenInfo) => {
+  const provider =
+    t.tokenfrom === 'aliyun' ? '阿里云盘' :
+    t.tokenfrom === 'cloud123' ? '123 网盘' :
+    t.tokenfrom === '115' ? '115 网盘' :
+    t.tokenfrom === 'baidu' ? '百度网盘' :
+    t.tokenfrom === 'pikpak' ? 'PikPak' :
+    t.tokenfrom === 'dropbox' ? 'Dropbox' :
+    t.tokenfrom === 'onedrive' ? 'OneDrive' :
+    t.tokenfrom === 'box' ? 'Box' :
+    '云盘'
+  const name = t.nick_name || t.user_name || t.user_id
+  return `${provider} · ${name}`
+}
+
+const isMusicOn = (uid: string) => !(settingStore.uiLibraryAutoScanMusicDisabledUsers || []).includes(uid)
+const isVideoOn = (uid: string) => !(settingStore.uiLibraryAutoScanVideoDisabledUsers || []).includes(uid)
+
+const toggleMusicForUser = (uid: string, on: boolean) => {
+  const list = new Set(settingStore.uiLibraryAutoScanMusicDisabledUsers || [])
+  if (on) list.delete(uid)
+  else list.add(uid)
+  cb({ uiLibraryAutoScanMusicDisabledUsers: Array.from(list) })
+}
+
+const toggleVideoForUser = (uid: string, on: boolean) => {
+  const list = new Set(settingStore.uiLibraryAutoScanVideoDisabledUsers || [])
+  if (on) list.delete(uid)
+  else list.add(uid)
+  cb({ uiLibraryAutoScanVideoDisabledUsers: Array.from(list) })
+}
+
+const allMusicOff = () => {
+  const ids = userList.value.map((t) => t.user_id).filter(Boolean)
+  cb({ uiLibraryAutoScanMusicDisabledUsers: ids })
+}
+const allMusicOn = () => {
+  cb({ uiLibraryAutoScanMusicDisabledUsers: [] })
+}
+const allVideoOff = () => {
+  const ids = userList.value.map((t) => t.user_id).filter(Boolean)
+  cb({ uiLibraryAutoScanVideoDisabledUsers: ids })
+}
+const allVideoOn = () => {
+  cb({ uiLibraryAutoScanVideoDisabledUsers: [] })
+}
+
+const removeMusicFolder = (f: { user_id: string; drive_id: string; file_id: string }) => {
+  const list = (settingStore.uiMusicAutoScanFolders || []).filter(
+    (x: any) => !(x.user_id === f.user_id && x.drive_id === f.drive_id && x.file_id === f.file_id)
+  )
+  cb({ uiMusicAutoScanFolders: list })
+}
+
+const hasUsers = computed(() => userList.value.length > 0)
+const showAccountList = computed(() =>
+  (settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo) && hasUsers.value
+)
 </script>
 
 <template>
@@ -34,11 +106,49 @@ const cb = (val: any) => {
       <MySwitch :value="settingStore.uiShowPanMedia" @update:value="cb({ uiShowPanMedia: $event })">在右侧文件列表中显示每个文件的（播放时长、分辨率）</MySwitch>
     </div>
     <div class="settingspace"></div>
+    <div class="settinghead">文件夹悬浮预览</div>
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiFolderPreviewEnabled" @update:value="cb({ uiFolderPreviewEnabled: $event })">鼠标悬停文件夹时，弹出窗口预览文件夹内的文件</MySwitch>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class="opred">开启</span>
+            <hr />
+            开启后，鼠标停留在文件夹上 0.45 秒会弹出缩略图预览面板<br />
+            关闭后将完全禁用该悬浮预览效果（左侧目录树和右侧文件列表均生效）
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div v-if="settingStore.uiFolderPreviewEnabled" class="settingrow">
+      <span style="margin-right: 12px; color: var(--color-text-2)">自动消失时间</span>
+      <a-select tabindex="-1" :style="{ width: '160px' }"
+                :model-value="settingStore.uiFolderPreviewAutoHide"
+                :popup-container="'#SettingDiv'"
+                @update:model-value="cb({ uiFolderPreviewAutoHide: $event })">
+        <a-option :value="0">不自动消失</a-option>
+        <a-option :value="3">3 秒</a-option>
+        <a-option :value="6">6 秒（推荐）</a-option>
+        <a-option :value="10">10 秒</a-option>
+        <a-option :value="20">20 秒</a-option>
+      </a-select>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            预览面板出现后，过这段时间会自动消失<br />
+            将鼠标移入面板时计时暂停，移出后重新计时
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div class="settingspace"></div>
     <div class="settinghead">自动统计文件夹体积</div>
     <div class="settingrow">
       <MySwitch :value="settingStore.uiFolderSize" @update:value="cb({ uiFolderSize: $event })">自动统计并显示文件夹的总体积</MySwitch>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">开启</span>
@@ -50,6 +160,123 @@ const cb = (val: any) => {
           </div>
         </template>
       </a-popover>
+    </div>
+    <div class="settingspace"></div>
+    <div class="settinghead">媒体库后台自动扫描</div>
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiLibraryAutoScanMusic" @update:value="cb({ uiLibraryAutoScanMusic: $event })">音乐库：启动后后台刮削网盘内的音频文件</MySwitch>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class="opred">关闭</span>
+            <hr />
+            开启后，每次打开 App 会按设定间隔在后台静默扫描音频文件并入库<br />
+            扫描进行时底部状态栏会显示静默进度条，可点击进入音乐库<br />
+            首次登录新网盘账号时会单独弹窗征求同意
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiLibraryAutoScanVideo" @update:value="cb({ uiLibraryAutoScanVideo: $event })">视频媒体库：启动后后台刮削网盘内的视频文件</MySwitch>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class="opred">关闭</span>
+            <hr />
+            开启后，每次打开 App 会按设定间隔在后台对"媒体库 → 文件源"中已添加的所有文件夹进行重扫<br />
+            适合定期把新增视频自动收录进媒体库，避免遗漏
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div v-if="settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo" class="settingrow">
+      <MySwitch :value="settingStore.uiLibraryIncrementalScan" @update:value="cb({ uiLibraryIncrementalScan: $event })">仅扫描增量（建议开启，按时间间隔节流，避免每次启动重跑）</MySwitch>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class="opred">开启</span>
+            <hr />
+            开启：当距离上次扫描的时间小于"扫描间隔"，本次自动跳过<br />
+            关闭：每次打开 App 都立刻发起一次完整扫描（不推荐，开销较大）
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div v-if="(settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo) && settingStore.uiLibraryIncrementalScan" class="settingrow">
+      <span style="margin-right: 12px; color: var(--color-text-2)">扫描间隔</span>
+      <a-select tabindex="-1" :style="{ width: '180px' }"
+                :model-value="settingStore.uiLibraryScanIntervalHours"
+                :popup-container="'#SettingDiv'"
+                @update:model-value="cb({ uiLibraryScanIntervalHours: $event })">
+        <a-option :value="1">1 小时</a-option>
+        <a-option :value="6">6 小时</a-option>
+        <a-option :value="12">12 小时</a-option>
+        <a-option :value="24">24 小时（推荐）</a-option>
+        <a-option :value="72">3 天</a-option>
+        <a-option :value="168">7 天</a-option>
+      </a-select>
+    </div>
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiLibraryFollowManualScans" @update:value="cb({ uiLibraryFollowManualScans: $event })">媒体源文件夹自动更新（推荐）</MySwitch>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class="opred">开启</span>
+            <hr />
+            开启后，你右键"扫描视频/扫描音频"过的文件夹会被记住<br />
+            下次打开 App 时即使总开关未开，也会对这些文件夹做增量扫描<br />
+            关闭后这些文件夹不会自动重扫
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div v-if="settingStore.uiLibraryFollowManualScans && (settingStore.uiMusicAutoScanFolders || []).length" class="settingrow library-scan-account-row">
+      <div class="library-scan-account-head">
+        <span style="color: var(--color-text-2); font-weight: 600">音频手动扫描文件夹（共 {{ settingStore.uiMusicAutoScanFolders.length }}）</span>
+        <a-popconfirm content="清空所有音频自动扫描文件夹？" @ok="cb({ uiMusicAutoScanFolders: [] })">
+          <a-button type="text" size="mini" status="warning">全部清空</a-button>
+        </a-popconfirm>
+      </div>
+      <div class="library-scan-account-list">
+        <div v-for="f in settingStore.uiMusicAutoScanFolders" :key="`${f.user_id}|${f.drive_id}|${f.file_id}`" class="library-scan-account-item">
+          <div class="library-scan-account-name" :title="f.path || f.name">
+            <span style="color: var(--color-text-3); margin-right: 6px">{{ f.path || '/' }}</span>
+            {{ f.name || f.file_id }}
+          </div>
+          <a-button type="text" size="mini" status="danger" @click="removeMusicFolder(f)">移除</a-button>
+        </div>
+      </div>
+    </div>
+    <div v-if="showAccountList" class="settingrow library-scan-account-row">
+      <div class="library-scan-account-head">
+        <span style="color: var(--color-text-2); font-weight: 600">参与扫描的账号</span>
+        <div class="library-scan-account-actions">
+          <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" @click="allMusicOn">全开音乐</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" status="warning" @click="allMusicOff">全关音乐</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" @click="allVideoOn">全开视频</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" status="warning" @click="allVideoOff">全关视频</a-button>
+        </div>
+      </div>
+      <div class="library-scan-account-list">
+        <div v-for="t in userList" :key="t.user_id" class="library-scan-account-item">
+          <div class="library-scan-account-name" :title="tokenLabel(t)">{{ tokenLabel(t) }}</div>
+          <div class="library-scan-account-toggles">
+            <span v-if="settingStore.uiLibraryAutoScanMusic" class="library-scan-toggle">
+              <span class="library-scan-toggle-label">音乐</span>
+              <MySwitch :value="isMusicOn(t.user_id)" @update:value="toggleMusicForUser(t.user_id, $event)">&nbsp;</MySwitch>
+            </span>
+            <span v-if="settingStore.uiLibraryAutoScanVideo" class="library-scan-toggle">
+              <span class="library-scan-toggle-label">视频</span>
+              <MySwitch :value="isVideoOn(t.user_id)" @update:value="toggleVideoForUser(t.user_id, $event)">&nbsp;</MySwitch>
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="settingspace"></div>
     <div class="settinghead">每个文件夹独立排序</div>
@@ -75,7 +302,7 @@ const cb = (val: any) => {
       <a-input-number tabindex="-1" :style="{ width: '100px', marginLeft: '16px', marginTop: '-1px' }" :min="1" :model-value="settingStore.uiTimeFolderIndex" @update:model-value="cb({ uiTimeFolderIndex: $event })" />
 
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div style="min-width: 400px">
             默认：<span class="opred">默认yyyy-MM-dd HH-mm-ss</span>(2021-08-08 12-30-00)
@@ -115,7 +342,7 @@ const cb = (val: any) => {
       </a-radio-group>
 
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">永久</span>，<span class="opred">随机</span>
@@ -143,7 +370,7 @@ const cb = (val: any) => {
       <a-input tabindex="-1" :style="{ width: '257px' }" placeholder="「NAME」URL 提取码：PWD" allow-clear :model-value="settingStore.uiShareFormate" @update:model-value="cb({ uiShareFormate: $event })" />
 
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div style="min-width: 400px">
             默认：<span class="opred">「NAME」URL 提取码：PWD</span> <br />
@@ -168,7 +395,7 @@ const cb = (val: any) => {
     <div class="settinghead">
       文件标记 自定义标签名
       <a-popover position="right">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             给文件打上标签，便于分类和快速访问<br />
@@ -184,7 +411,7 @@ const cb = (val: any) => {
     <div class="settingrow">
       <a-row class="grid-demo">
         <a-col v-for="item in settingStore.uiFileColorArray" :key="item.key" flex="210px">
-          <span style="width: 82px; display: inline-block"><i class="iconfont iconcheckbox-full" :style="{ color: item.key }" />{{ item.key }}</span>
+          <span style="width: 82px; display: inline-block"><IconFont name="iconcheckbox-full" :style="{ color: item.key }" />{{ item.key }}</span>
           <a-input :style="{ width: '120px' }" allow-clear :model-value="item.title" @update:model-value="(val:string)=>settingStore.updateFileColor(item.key,val)"> </a-input>
         </a-col>
       </a-row>
@@ -223,5 +450,74 @@ const cb = (val: any) => {
 :global(html.dark) .settings-panel-kicker {
   background: rgba(120, 160, 255, 0.2);
   color: #dbe6ff;
+}
+
+.library-scan-account-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.library-scan-account-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.library-scan-account-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.library-scan-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.library-scan-account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+
+.library-scan-account-item + .library-scan-account-item {
+  border-top: 1px dashed var(--color-border-2);
+}
+
+.library-scan-account-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--color-text-1);
+  font-size: 13px;
+}
+
+.library-scan-account-toggles {
+  display: flex;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.library-scan-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.library-scan-toggle-label {
+  font-size: 12px;
+  color: var(--color-text-3);
 }
 </style>

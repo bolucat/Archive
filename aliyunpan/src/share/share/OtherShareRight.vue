@@ -328,37 +328,37 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <a-button type="text" size="small" tabindex="-1" :loading="othershareStore.ListLoading" title="F5"
                 @click="handleRefresh">
         <template #icon>
-          <i class="iconfont iconreload-1-icon" />
+          <IconFont name="iconreload-1-icon" />
         </template>
         刷新
       </a-button>
     </div>
     <div class="toppanbtn">
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+N" @click="handleDaoRuLink">
-        <i class="iconfont iconlink2" />导入
+        <IconFont name="iconlink2" />导入
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+U" @click="handleRefreshStats">
-        <i class="iconfont iconyibu" />更新
+        <IconFont name="iconyibu" />更新
       </a-button>
       <a-button v-if="!othershareStore.IsListSelected"
                 class="danger" type="text" size="small" tabindex="-1"
                 @click="handleDeleteSelectedLink">
-        <i class="iconfont iconrest" />删除过期
+        <IconFont name="iconrest" />删除过期
       </a-button>
     </div>
     <div v-show="othershareStore.IsListSelected" class="toppanbtn">
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink">
-        <i class="iconfont iconchakan" />查看
+        <IconFont name="iconchakan" />查看
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink">
-        <i class="iconfont iconcopy" />复制链接
+        <IconFont name="iconcopy" />复制链接
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink">
-        <i class="iconfont iconchrome" />浏览器
+        <IconFont name="iconchrome" />浏览器
       </a-button>
       <a-button type="text" size="small" tabindex="-1" class="danger" title="Ctrl+Delete"
                 @click="handleDeleteSelectedLink('selected')">
-        <i class="iconfont icondelete" />删除
+        <IconFont name="icondelete" />删除
       </a-button>
     </div>
     <div style="flex-grow: 1"></div>
@@ -380,7 +380,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
-          <i :class="othershareStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="othershareStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -421,12 +421,12 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div :class="'cell sharestate order ' + (othershareStore.ListOrderKey == 'state' ? 'active' : '')"
          @click="handleOrder('state')">
       状态
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div :class="'cell sharetime order ' + (othershareStore.ListOrderKey == 'time' ? 'active' : '')"
          @click="handleOrder('time')">
       导入时间
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div class="cell pr"></div>
   </div>
@@ -461,12 +461,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               :class="'rangselect ' + (rangSelectFiles[item.share_id] ? (rangSelectStart == item.share_id ? 'rangstart' : rangSelectEnd == item.share_id ? 'rangend' : 'rang') : '')">
               <a-button shape="circle" type="text" tabindex="-1" class="select" :title="index"
                         @click.prevent.stop="handleSelect(item.share_id, $event, true)">
-                <i
-                  :class="othershareStore.ListSelected.has(item.share_id) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="othershareStore.ListSelected.has(item.share_id) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class="fileicon">
-              <i class="iconfont iconlink2" aria-hidden="true"></i>
+              <IconFont name="iconlink2" aria-hidden="true" />
             </div>
             <div class="filename">
               <div :title="'https://www.aliyundrive.com/s/' + item.share_id" @click="handleOpenLink(item)">
@@ -488,21 +487,21 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                 style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
         <a-doption @click="handleOpenLink">
-          <template #icon><i class="iconfont iconchakan" /></template>
+          <template #icon><IconFont name="iconchakan" /></template>
           <template #default>查看</template>
         </a-doption>
 
         <a-doption @click="handleCopySelectedLink">
-          <template #icon><i class="iconfont iconcopy" /></template>
+          <template #icon><IconFont name="iconcopy" /></template>
           <template #default>复制链接</template>
         </a-doption>
         <a-doption @click="handleBrowserLink">
-          <template #icon><i class="iconfont iconchrome" /></template>
+          <template #icon><IconFont name="iconchrome" /></template>
           <template #default>浏览器</template>
         </a-doption>
 
         <a-doption class="danger" @click="handleDeleteSelectedLink('selected')">
-          <template #icon><i class="iconfont icondelete" /></template>
+          <template #icon><IconFont name="icondelete" /></template>
           <template #default>删除记录</template>
         </a-doption>
       </template>

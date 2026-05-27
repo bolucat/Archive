@@ -148,7 +148,7 @@ const handleImportAsar = () => {
         关闭窗口时彻底退出小白羊
       </MySwitch>
       <a-popover position='right'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class='opred'>关闭</span>

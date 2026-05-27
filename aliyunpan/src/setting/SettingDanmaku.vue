@@ -38,10 +38,10 @@ const modeOptions: Array<{ label: string, value: DanmakuMode }> = [
 
 <template>
   <div class="settingcard play-settings-card">
-    <div class="play-settings-intro">
-      <div class="play-settings-kicker">Danmaku</div>
-      <div class="play-settings-copy">配置弹幕库 API、自动匹配和 ArtPlayer 弹幕显示参数。</div>
-    </div>
+<!--    <div class="play-settings-intro">-->
+<!--      <div class="play-settings-kicker">Danmaku</div>-->
+<!--      <div class="play-settings-copy">配置弹幕库 API、自动匹配和 ArtPlayer 弹幕显示参数。</div>-->
+<!--    </div>-->
 
     <div class="play-setting-group">
       <div class="play-setting-header">

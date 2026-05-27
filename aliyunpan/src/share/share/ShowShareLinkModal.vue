@@ -1,5 +1,6 @@
 <script setup lang='ts'>
 import { computed, h, PropType, ref } from 'vue'
+import IconFont from '../../components/IconFont.vue'
 import message from '../../utils/message'
 import { IAliShareAnonymous } from '../../aliapi/alimodels'
 import AliShare from '../../aliapi/share'
@@ -66,9 +67,9 @@ const props = defineProps({
   }
 })
 
-const iconfolder = h('i', { class: 'iconfont iconfile-folder' })
+const iconfolder = h(IconFont, { name: 'iconfile-folder' })
 const foldericonfn = () => iconfolder
-const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
+const fileiconfn = (icon: string) => h(IconFont, { name: icon })
 const winStore = useWinStore()
 const treeHeight = computed(() => (winStore.height * 8) / 10 - 126)
 const okLoading = ref(false)

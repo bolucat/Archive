@@ -79,59 +79,59 @@ onUnmounted(() => {
       <a-menu :selected-keys="[appStore.GetAppTabMenu]" :style="{ width: '100%' }" class="xbyleftmenu"
               @update:selected-keys="appStore.toggleTabMenu('setting', $event[0])">
         <a-menu-item key="SettingUI">
-          <template #icon><i class="iconfont iconui" /></template>
+          <template #icon><IconFont name="iconui" /></template>
           应用设置
         </a-menu-item>
         <a-menu-item key="SettingAccount">
-          <template #icon><i class="iconfont iconrobot" /></template>
+          <template #icon><IconFont name="iconrobot" /></template>
           账户设置
         </a-menu-item>
         <a-menu-item key="SettingSecurity">
-          <template #icon><i class="iconfont iconchrome" /></template>
+          <template #icon><IconFont name="iconchrome" /></template>
           安全设置
         </a-menu-item>
         <a-menu-item key="SettingPlay">
-          <template #icon><i class="iconfont iconshipin" /></template>
+          <template #icon><IconFont name="iconshipin" /></template>
           在线预览
         </a-menu-item>
         <a-menu-item key="SettingMediaServerPlayback">
-          <template #icon><i class="iconfont iconshipin" /></template>
+          <template #icon><IconFont name="iconshipin" /></template>
           媒体服务器
         </a-menu-item>
         <a-menu-item key="SettingDanmaku">
-          <template #icon><i class="iconfont iconshipin" /></template>
+          <template #icon><IconFont name="iconshipin" /></template>
           弹幕库
         </a-menu-item>
         <a-menu-item key="SettingPan">
-          <template #icon><i class="iconfont iconfile-folder" /></template>
+          <template #icon><IconFont name="iconfile-folder" /></template>
           网盘设置
         </a-menu-item>
         <a-menu-item key="SettingDown">
-          <template #icon><i class="iconfont icondownload" /></template>
+          <template #icon><IconFont name="icondownload" /></template>
           下载文件
         </a-menu-item>
         <a-menu-item key="SettingUpload">
-          <template #icon><i class="iconfont iconupload" /></template>
+          <template #icon><IconFont name="iconupload" /></template>
           上传文件
         </a-menu-item>
         <a-menu-item key='SettingWebDav'>
-          <template #icon><i class='iconfont iconchuanshu2' /></template>
+          <template #icon><IconFont name="iconchuanshu2" /></template>
           WebDav
         </a-menu-item>
         <a-menu-item key="SettingDebug">
-          <template #icon><i class="iconfont iconlogoff" /></template>
+          <template #icon><IconFont name="iconlogoff" /></template>
           高级选项
         </a-menu-item>
         <a-menu-item key="SettingProxy">
-          <template #icon><i class="iconfont iconyuanduanfuzhi" /></template>
+          <template #icon><IconFont name="iconyuanduanfuzhi" /></template>
           网络代理
         </a-menu-item>
         <a-menu-item key="SettingAria">
-          <template #icon><i class="iconfont iconchuanshu" /></template>
+          <template #icon><IconFont name="iconchuanshu" /></template>
           远程Aria
         </a-menu-item>
         <a-menu-item key="SettingLog">
-          <template #icon><i class="iconfont icondebug" /></template>
+          <template #icon><IconFont name="icondebug" /></template>
           运行日志
         </a-menu-item>
       </a-menu>

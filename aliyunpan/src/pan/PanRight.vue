@@ -58,6 +58,7 @@ import { TestButton } from '../utils/mosehelper'
 import usePanTreeStore from './pantreestore'
 import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User } from '../aliapi/utils'
 import { xorWith } from 'lodash'
+import FolderPreviewPopover from './menus/FolderPreviewPopover.vue'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -68,6 +69,7 @@ const inputsearchType = ref<string[]>([])
 
 const handleListScroll = (event: any) => {
   onHideRightMenuScroll()
+  cancelFolderPreview()
   if (panfileStore.SelectDirType !== 'trash') return
   if (!isDrive115User(panTreeStore.user_id || '')) return
   const target = event?.target as HTMLElement | undefined
@@ -90,6 +92,7 @@ panfileStore.$subscribe((_m: any, state: PanFileState) => {
   if (state.DirID != dirID) {
     dirID = state.DirID
     if (viewlist.value) viewlist.value.scrollIntoView(0)
+    cancelFolderPreview()
   }
   if (state.DriveID != DriveID) {
     DriveID = state.DriveID
@@ -454,7 +457,43 @@ const onSelectRang = (file_id: string) => {
 }
 
 const dragingRowItem = ref(false)
+
+const folderPreviewRef = ref<{ open: (target: HTMLElement, params: any) => void; leave: () => void; cancel: () => void } | null>(null)
+
+const isFolderPreviewable = (item: IAliGetFileModel | undefined): boolean => {
+  if (!settingStore.uiFolderPreviewEnabled) return false
+  if (!item || !item.isDir) return false
+  const dirType = panfileStore.SelectDirType
+  if (dirType === 'trash' || dirType === 'recover') return false
+  if (item.description && item.description.includes('xbyEncrypt')) return false
+  return true
+}
+
+const cancelFolderPreview = () => {
+  folderPreviewRef.value?.cancel()
+}
+
+const onFolderItemEnter = (ev: MouseEvent, item: IAliGetFileModel) => {
+  if (!isFolderPreviewable(item)) return
+  if (dragingRowItem.value || rangIsSelecting.value || showDragUpload.value) return
+  const target = ev.currentTarget as HTMLElement
+  if (!target) return
+  const userId = (item as any).user_id || panTreeStore.user_id
+  folderPreviewRef.value?.open(target, {
+    user_id: userId,
+    drive_id: item.drive_id,
+    file_id: item.file_id,
+    name: item.name,
+    path: (item as any).path || ''
+  })
+}
+
+const onFolderItemLeave = () => {
+  folderPreviewRef.value?.leave()
+}
+
 const onRowItemDragStart = (ev: any, file_id: string) => {
+  cancelFolderPreview()
   if (rangIsSelecting.value) {
     ev.stopPropagation()
     ev.preventDefault()
@@ -617,19 +656,19 @@ const onPanDragEnd = (ev: any) => {
       <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading' title='后退 Back Space'
                 @click='handleBack'>
         <template #icon>
-          <i class='iconfont iconarrow-left-2-icon' />
+          <IconFont name="iconarrow-left-2-icon" />
         </template>
       </a-button>
       <a-button type='text' size='small' tabindex='-1' :loading='panfileStore.ListLoading' title='刷新 F5'
                 @click='handleRefresh'>
         <template #icon>
-          <i class='iconfont iconreload-1-icon' />
+          <IconFont name="iconreload-1-icon" />
         </template>
       </a-button>
       <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading' title='定位 F6'
                 @click='handleDingWei'>
         <template #icon>
-          <i class='iconfont icondingwei' />
+          <IconFont name="icondingwei" />
         </template>
       </a-button>
     </div>
@@ -721,7 +760,7 @@ const onPanDragEnd = (ev: any) => {
     <div style='margin: 0 3px'>
       <AntdTooltip title='点击全选' placement='left'>
         <a-button shape='circle' type='text' tabindex='-1' class='select all' title='Ctrl+A' @click='handleSelectAll'>
-          <i :class="panfileStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="panfileStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -761,9 +800,9 @@ const onPanDragEnd = (ev: any) => {
     <div class='fileorder' v-if='!["pic", "video"].includes(panfileStore.SelectDirType)'>
       <a-dropdown trigger='hover' position='bl' @select='(val:any)=>handleFileListOrder(val as string)'>
         <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading'>
-          <i class='iconfont iconpaixu1' />
+          <IconFont name="iconpaixu1" />
           {{ panfileStore.FileOrderDesc }}
-          <i class='iconfont icondown' />
+          <IconFont name="icondown" />
         </a-button>
         <template #content>
           <a-doption value='name asc'>
@@ -792,21 +831,21 @@ const onPanDragEnd = (ev: any) => {
         <a-button shape='square' type='text' tabindex='-1'
                   :class="settingStore.uiFileListMode === 'list' ? 'select active' : 'select'"
                   @click="() => handleListGridMode('list')">
-          <i class='iconfont iconliebiaomoshi' />
+          <IconFont name="iconliebiaomoshi" />
         </a-button>
       </AntdTooltip>
       <AntdTooltip title='缩略图模式' placement='bottom'>
         <a-button shape='square' type='text' tabindex='-1'
                   :class="settingStore.uiFileListMode === 'image' ? 'select active' : 'select'"
                   @click="() => handleListGridMode('image')">
-          <i class='iconfont iconxiaotumoshi' />
+          <IconFont name="iconxiaotumoshi" />
         </a-button>
       </AntdTooltip>
       <AntdTooltip title='大图模式' placement='bottom'>
         <a-button shape='square' type='text' tabindex='-1'
                   :class="settingStore.uiFileListMode === 'bigimage' ? 'select active' : 'select'"
                   @click="() => handleListGridMode('bigimage')">
-          <i class='iconfont iconsuoluetumoshi' />
+          <IconFont name="iconsuoluetumoshi" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -851,6 +890,8 @@ const onPanDragEnd = (ev: any) => {
             draggable='true'
             @click='handleSelect(item.file_id, $event)'
             @mouseover='onSelectRang(item.file_id)'
+            @mouseenter='(ev:MouseEvent)=>onFolderItemEnter(ev, item)'
+            @mouseleave='onFolderItemLeave'
             @contextmenu='(event:MouseEvent)=>handleRightClick({event,node:{key:item.file_id}} )'
             @dragstart='(ev) => onRowItemDragStart(ev, item.file_id)'
             @dragend='onRowItemDragEnd'
@@ -862,12 +903,11 @@ const onPanDragEnd = (ev: any) => {
               :class="'rangselect ' + (rangSelectFiles[item.file_id] ? (rangSelectStart == item.file_id ? 'rangstart' : rangSelectEnd == item.file_id ? 'rangend' : 'rang') : '')">
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.file_id, $event, true)'>
-                <i
-                  :class="panfileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : item.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                <IconFont :name="panfileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconcrown3' : 'iconrsuccess') : item.starred ? 'iconcrown' : 'iconpic2'" />
               </a-button>
             </div>
             <div class='fileicon'>
-              <i :class="'iconfont ' + item.icon" aria-hidden='true'></i>
+              <IconFont :name="item.icon" aria-hidden='true' />
             </div>
             <div class='filename' droppable='false'>
               <div @click='handleOpenFile($event, item)'>
@@ -878,18 +918,18 @@ const onPanDragEnd = (ev: any) => {
               <template v-if='!item.album_id && item.description'>
                 <a-button v-if='!item.description.includes(",") && !item.description.includes("xbyEncrypt")'
                           type='text' tabindex='-1' class='label' title='标记'>
-                  <i class='iconfont iconwbiaoqian' :class='item.description' />
+                  <IconFont name="iconwbiaoqian" :class='item.description' />
                 </a-button>
                 <a-button v-else-if='item.description.includes(",")' type='text' tabindex='-1' class='label'
                           title='标记'>
-                  <i class='iconfont iconwbiaoqian'
+                  <IconFont name="iconwbiaoqian"
                      :class='item.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                 </a-button>
               </template>
               <a-popover v-if='item.thumbnail && !item.description.includes("xbyEncrypt")'
                          content-class='popimg' position='lt'>
                 <a-button type='text' tabindex='-1' class='gengduo' title='缩略图'>
-                  <i class='iconfont icongengduo' />
+                  <IconFont name="icongengduo" />
                 </a-button>
                 <template #content>
                   <div class='preimg'>
@@ -900,12 +940,12 @@ const onPanDragEnd = (ev: any) => {
               <a-button v-if='item.description.includes("xbyEncrypt1")'
                         type='text' tabindex='-1' class='label'
                         title='加密文件'>
-                <i class='iconfont iconsafebox' style="color: grey" />
+                <IconFont name="iconsafebox" style="color: grey" />
               </a-button>
               <a-button v-else-if='item.description.includes("xbyEncrypt2")'
                         type='text' tabindex='-1' class='label'
                         title='私密文件'>
-                <i class='iconfont iconsafebox' style="color: pink" />
+                <IconFont name="iconsafebox" style="color: pink" />
               </a-button>
               <a-button v-else type='text' tabindex='-1' class='gengduo' disabled></a-button>
             </div>
@@ -927,13 +967,12 @@ const onPanDragEnd = (ev: any) => {
               :class="'rangselect ' + (rangSelectFiles[item.file_id] ? (rangSelectStart == item.file_id ? 'rangstart' : rangSelectEnd == item.file_id ? 'rangend' : 'rang') : '')">
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.file_id, $event, true)'>
-                <i
-                  :class="panfileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : item.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                <IconFont :name="panfileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconcrown3' : 'iconrsuccess') : item.starred ? 'iconcrown' : 'iconpic2'" />
               </a-button>
             </div>
             <div class='fileicon'
                  :title="item.icon == 'iconweifa' ? '违规': item.icon == 'iconweixiang' ? '禁止分享': ''">
-              <i :class="'iconfont ' + item.icon" aria-hidden='true'></i>
+              <IconFont :name="item.icon" aria-hidden='true' />
             </div>
             <div class='filename' droppable='false'>
               <div @click='handleOpenFile($event, item)'>
@@ -944,18 +983,18 @@ const onPanDragEnd = (ev: any) => {
               <template v-if='!item.album_id && item.description'>
                 <a-button v-if='!item.description.includes(",") && !item.description.includes("xbyEncrypt")'
                           type='text' tabindex='-1' class='label' title='标记'>
-                  <i class='iconfont iconwbiaoqian' :class='item.description' />
+                  <IconFont name="iconwbiaoqian" :class='item.description' />
                 </a-button>
                 <a-button v-else-if='item.description.includes(",")' type='text' tabindex='-1' class='label'
                           title='标记'>
-                  <i class='iconfont iconwbiaoqian'
+                  <IconFont name="iconwbiaoqian"
                      :class='item.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                 </a-button>
               </template>
               <a-popover v-if='item.thumbnail && !item.description.includes("xbyEncrypt")' content-class='popimg'
                          position='lt'>
                 <a-button type='text' tabindex='-1' class='gengduo'>
-                  <i class='iconfont icontupianyulan' />
+                  <IconFont name="icontupianyulan" />
                 </a-button>
                 <template #content>
                   <div class='preimg'>
@@ -966,12 +1005,12 @@ const onPanDragEnd = (ev: any) => {
               <a-button v-if='item.description.includes("xbyEncrypt1")'
                         type='text' tabindex='-1' class='label'
                         title='加密文件'>
-                <i class='iconfont iconsafebox' style="color: grey" />
+                <IconFont name="iconsafebox" style="color: grey" />
               </a-button>
               <a-button v-else-if='item.description.includes("xbyEncrypt2")'
                         type='text' tabindex='-1' class='label'
                         title='私密文件'>
-                <i class='iconfont iconsafebox' style="color: pink" />
+                <IconFont name="iconsafebox" style="color: pink" />
               </a-button>
               <a-button v-if="false" type='text' tabindex='-1' class='gengduo' disabled></a-button>
             </div>
@@ -1020,6 +1059,8 @@ const onPanDragEnd = (ev: any) => {
                 draggable='true'
                 @click='handleSelect(grid.file_id, $event)'
                 @mouseover='() => onSelectRang(grid.file_id)'
+                @mouseenter='(ev:MouseEvent)=>onFolderItemEnter(ev, grid)'
+                @mouseleave='onFolderItemLeave'
                 @contextmenu='(event:MouseEvent)=>handleRightClick({event,node:{key:grid.file_id}} )'
                 @dragstart='(ev) => onRowItemDragStart(ev, grid.file_id)'
                 @dragend='onRowItemDragEnd'
@@ -1028,7 +1069,7 @@ const onPanDragEnd = (ev: any) => {
                 @dragenter='onRowItemDragEnter'
                 @dragleave='onRowItemDragLeave'>
                 <div class='gridicon'>
-                  <i :class="'iconfont ' + grid.icon" aria-hidden='true' role='img'></i>
+                  <IconFont :name="grid.icon" aria-hidden='true' role='img' />
                 </div>
                 <div class='gridicon'>
                   <img v-if='grid.thumbnail' :src='grid.thumbnail'
@@ -1054,29 +1095,28 @@ const onPanDragEnd = (ev: any) => {
                   <a-button shape='circle' type='text' tabindex='-1' class='select'
                             :title='(index * listGridColumn + gindex).toString()'
                             @click.prevent.stop='handleSelect(grid.file_id, $event, true)'>
-                    <i
-                      :class="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : grid.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                    <IconFont :name="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconcrown3' : 'iconrsuccess') : grid.starred ? 'iconcrown' : 'iconpic2'" />
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
                               type='text' tabindex='-1' class='label' title='标记'>
-                      <i class='iconfont iconwbiaoqian' :class='grid.description' />
+                      <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
                               title='标记'>
-                      <i class='iconfont iconwbiaoqian'
+                      <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt1")'
                             type='text' tabindex='-1' class='label'
                             title='加密文件'>
-                    <i class='iconfont iconsafebox' style="color: grey" />
+                    <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                   <a-button v-else-if='grid.description.includes("xbyEncrypt2")'
                             type='text' tabindex='-1' class='label'
                             title='私密文件'>
-                    <i class='iconfont iconsafebox' style="color: pink" />
+                    <IconFont name="iconsafebox" style="color: pink" />
                   </a-button>
                 </div>
               </div>
@@ -1090,7 +1130,7 @@ const onPanDragEnd = (ev: any) => {
                 @dragstart='(ev) => onRowItemDragStart(ev, grid.file_id)'
                 @dragend='onRowItemDragEnd'>
                 <div class='gridicon'>
-                  <i :class="'iconfont ' + grid.icon" aria-hidden='true' role='img'></i>
+                  <IconFont :name="grid.icon" aria-hidden='true' role='img' />
                 </div>
                 <div class='gridicon'>
                   <img v-if='grid.thumbnail' :src='grid.thumbnail'
@@ -1116,29 +1156,28 @@ const onPanDragEnd = (ev: any) => {
                   <a-button shape='circle' type='text' tabindex='-1' class='select'
                             :title='(index * listGridColumn + gindex).toString()'
                             @click.prevent.stop='handleSelect(grid.file_id, $event, true)'>
-                    <i
-                      :class="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : grid.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                    <IconFont :name="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconcrown3' : 'iconrsuccess') : grid.starred ? 'iconcrown' : 'iconpic2'" />
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
                               type='text' tabindex='-1' class='label' title='标记'>
-                      <i class='iconfont iconwbiaoqian' :class='grid.description' />
+                      <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
                               title='标记'>
-                      <i class='iconfont iconwbiaoqian'
+                      <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt1")'
                             type='text' tabindex='-1' class='label'
                             title='加密文件'>
-                    <i class='iconfont iconsafebox' style="color: grey" />
+                    <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                   <a-button v-else-if='grid.description.includes("xbyEncrypt2")'
                             type='text' tabindex='-1' class='label'
                             title='私密文件'>
-                    <i class='iconfont iconsafebox' style="color: pink" />
+                    <IconFont name="iconsafebox" style="color: pink" />
                   </a-button>
                 </div>
               </div>
@@ -1179,6 +1218,8 @@ const onPanDragEnd = (ev: any) => {
                 draggable='true'
                 @click='handleSelect(grid.file_id, $event)'
                 @mouseover='onSelectRang(grid.file_id)'
+                @mouseenter='(ev:MouseEvent)=>onFolderItemEnter(ev, grid)'
+                @mouseleave='onFolderItemLeave'
                 @contextmenu='(event:MouseEvent)=>handleRightClick({event,node:{key:grid.file_id}} )'
                 @dragstart='(ev) => onRowItemDragStart(ev, grid.file_id)'
                 @dragend='onRowItemDragEnd'
@@ -1187,7 +1228,7 @@ const onPanDragEnd = (ev: any) => {
                 @dragenter='onRowItemDragEnter'
                 @dragleave='onRowItemDragLeave'>
                 <div class='gridicon'>
-                  <i :class="'iconfont ' + grid.icon" aria-hidden='true' role='img'></i>
+                  <IconFont :name="grid.icon" aria-hidden='true' role='img' />
                 </div>
                 <div class='gridicon'>
                   <img v-if='grid.thumbnail' :src='grid.thumbnail'
@@ -1213,29 +1254,28 @@ const onPanDragEnd = (ev: any) => {
                   <a-button shape='circle' type='text' tabindex='-1' class='select'
                             :title='(index * listGridColumn + gindex).toString()'
                             @click.prevent.stop='handleSelect(grid.file_id, $event, true)'>
-                    <i
-                      :class="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : grid.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                    <IconFont :name="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconcrown3' : 'iconrsuccess') : grid.starred ? 'iconcrown' : 'iconpic2'" />
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
                               type='text' tabindex='-1' class='label' title='标记'>
-                      <i class='iconfont iconwbiaoqian' :class='grid.description' />
+                      <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
                               title='标记'>
-                      <i class='iconfont iconwbiaoqian'
+                      <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt1")'
                             type='text' tabindex='-1' class='label'
                             title='加密文件'>
-                    <i class='iconfont iconsafebox' style="color: grey" />
+                    <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                   <a-button v-else-if='grid.description.includes("xbyEncrypt2")'
                             type='text' tabindex='-1' class='label'
                             title='私密文件'>
-                    <i class='iconfont iconsafebox' style="color: pink" />
+                    <IconFont name="iconsafebox" style="color: pink" />
                   </a-button>
                 </div>
               </div>
@@ -1249,7 +1289,7 @@ const onPanDragEnd = (ev: any) => {
                 @dragstart='(ev) => onRowItemDragStart(ev, grid.file_id)'
                 @dragend='onRowItemDragEnd'>
                 <div class='gridicon'>
-                  <i :class="'iconfont ' + grid.icon" aria-hidden='true' role='img'></i>
+                  <IconFont :name="grid.icon" aria-hidden='true' role='img' />
                 </div>
                 <div class='gridicon'>
                   <img v-if='grid.thumbnail' :src='grid.thumbnail'
@@ -1278,23 +1318,22 @@ const onPanDragEnd = (ev: any) => {
                   <a-button shape='circle' type='text' tabindex='-1' class='select'
                             :title='(index * listGridColumn + gindex).toString()'
                             @click.prevent.stop='handleSelect(grid.file_id, $event, true)'>
-                    <i
-                      :class="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : grid.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                    <IconFont :name="panfileStore.ListSelected.has(grid.file_id) ? (grid.starred ? 'iconcrown3' : 'iconrsuccess') : grid.starred ? 'iconcrown' : 'iconpic2'" />
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
                               type='text' tabindex='-1' class='label' title='标记'>
-                      <i class='iconfont iconwbiaoqian' :class='grid.description' />
+                      <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
                               title='标记'>
-                      <i class='iconfont iconwbiaoqian'
+                      <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt")' type='text' tabindex='-1' class='label'
                             title='加密文件'>
-                    <i class='iconfont iconsafebox' style="color: grey" />
+                    <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                 </div>
               </div>
@@ -1322,12 +1361,14 @@ const onPanDragEnd = (ev: any) => {
   <div id='PanRightShowUpload' :style="{ display: showDragUpload ? '' : 'none' }" @drop='onPanDrop'
        @dragover='onPanDragOver' @dragleave='onPanDragLeave' @dragend='onPanDragEnd'>
     <div class='ShowUpload'>
-      <i class='iconfont iconyouxian' style='font-size: 64px' />
+      <IconFont name="iconyouxian" style='font-size: 64px' />
       <div class='ShowUploadTitle'>
         <span class='link'>上传到：{{ panfileStore.DirName }}</span>
       </div>
     </div>
   </div>
+
+  <FolderPreviewPopover ref='folderPreviewRef' />
 </template>
 
 <style>

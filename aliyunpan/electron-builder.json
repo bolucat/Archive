@@ -41,6 +41,7 @@
     "notarize": false
   },
   "linux": {
+    "executableName": "boxplayer",
     "icon": "./static/images/icon_256x256.png",
     "category": "Network",
     "artifactName": "boxplayer-${version}-linux-${arch}.${ext}",
@@ -51,10 +52,13 @@
       { "from": "./static/engine/linux/${arch}", "to": "./engine"}
     ],
     "target": [
-      { "target": "AppImage", "arch": [  "x64", "arm64", "armv7l" ] },
-      { "target": "deb", "arch": [ "x64",  "arm64", "armv7l" ] },
-      { "target": "pacman", "arch": [ "x64", "arm64", "armv7l" ] }
+      { "target": "AppImage", "arch": [  "x64", "arm64"] },
+      { "target": "deb", "arch": [ "x64",  "arm64"] },
+      { "target": "pacman", "arch": [ "x64", "arm64"] }
     ]
+  },
+  "deb": {
+    "fpm": ["--deb-no-default-config-files"]
   },
   "win": {
     "icon": "./static/images/icon_256x256.ico",

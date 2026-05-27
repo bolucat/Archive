@@ -285,18 +285,18 @@ const getPreviewInfo = computed(() => {
     <a-layout-header id="xbyhead" draggable="false">
       <div id="xbyhead2" class="q-electron-drag">
         <a-button type="text" tabindex="-1">
-          <i class="iconfont iconfile_video"></i>
+          <IconFont name="iconfile_video" />
         </a-button>
         <div class="title">视频雪碧图 {{ appStore.pageVideoXBT?.file_name || '' }}</div>
         <div class="flexauto"></div>
         <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
-          <i class='iconfont iconzuixiaohua'></i>
+          <IconFont name="iconzuixiaohua" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
-          <i class='iconfont iconfullscreen'></i>
+          <IconFont name="iconfullscreen" />
         </a-button>
         <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
-          <i class='iconfont iconclose'></i>
+          <IconFont name="iconclose" />
         </a-button>
       </div>
     </a-layout-header>
@@ -314,17 +314,17 @@ const getPreviewInfo = computed(() => {
           <div style="margin-right: 12px"></div>
 
           <a-button type="outline" size="small" tabindex="-1" :loading="loading" title="下载雪碧图到本地"
-                    @click="handleSaveImageClick"><i class="iconfont icondownload"></i>保存雪碧图
+                    @click="handleSaveImageClick"><IconFont name="icondownload" />保存雪碧图
           </a-button>
 
           <div style="flex-grow: 1"></div>
           <a-button v-if="false" type="outline" size="small" tabindex="-1" title="复制M3U8链接"
-                    @click="handleCopyM3U8Click"><i class="iconfont iconlink2"></i>M3U8链接
+                    @click="handleCopyM3U8Click"><IconFont name="iconlink2" />M3U8链接
           </a-button>
 
           <div style="margin-right: 12px"></div>
           <a-button v-if="false" type="outline" size="small" tabindex="-1" title="复制原文件链接"
-                    @click="handleCopyDownClick"><i class="iconfont iconlink2"></i>下载链接
+                    @click="handleCopyDownClick"><IconFont name="iconlink2" />下载链接
           </a-button>
 
           <div style="margin-right: 12px"></div>

@@ -21,7 +21,7 @@
         </a-button>
         <a-button class="toolbar-btn" @click="toggleViewMode">
           <template #icon>
-            <i :class="['iconfont', registry.preferences.serverListView === 'grid' ? 'iconliebiaomoshi' : 'iconxiaotumoshi', 'toolbar-iconfont']" />
+            <IconFont :name="registry.preferences.serverListView === 'grid' ? 'iconliebiaomoshi' : 'iconxiaotumoshi'" class="toolbar-iconfont" />
           </template>
         </a-button>
       </div>
@@ -94,10 +94,10 @@
 
           <div class="server-actions" @click.stop>
             <a-button class="action-btn" type="text" @click="handleEditServer(server.id)">
-              <template #icon><i class="iconfont iconedit-square" /></template>
+              <template #icon><IconFont name="iconedit-square" /></template>
             </a-button>
             <a-button class="action-btn danger" type="text" @click="handleDeleteServer(server.id)">
-              <template #icon><i class="iconfont icondelete" /></template>
+              <template #icon><IconFont name="icondelete" /></template>
             </a-button>
           </div>
 
@@ -110,19 +110,19 @@
         <template #content>
           <div class="server-context-menu">
             <button class="server-context-item" type="button" @click="handleEditServer(server.id)">
-              <i class="iconfont iconedit-square" />
+              <IconFont name="iconedit-square" />
               <span>编辑</span>
             </button>
             <button class="server-context-item" type="button" @click="openRenameServer(server.id)">
-              <i class="iconfont iconedit-square" />
+              <IconFont name="iconedit-square" />
               <span>重命名</span>
             </button>
             <button class="server-context-item" type="button" @click="openIconManager(server.id)">
-              <i class="iconfont icontupianyulan" />
+              <IconFont name="icontupianyulan" />
               <span>修改图标</span>
             </button>
             <button class="server-context-item" type="button" @click="toggleServerPinned(server.id)">
-              <i class="iconfont iconcrown2" />
+              <IconFont name="iconcrown2" />
               <span>{{ isServerPinned(server.id) ? '取消置顶' : '置顶' }}</span>
             </button>
             <button
@@ -131,12 +131,12 @@
               :disabled="!server.customIconUrl"
               @click="resetServerIcon(server.id)"
             >
-              <i class="iconfont iconreload-1-icon" />
+              <IconFont name="iconreload-1-icon" />
               <span>恢复默认图标</span>
             </button>
             <div class="server-context-divider" />
             <button class="server-context-item danger" type="button" @click="handleDeleteServer(server.id)">
-              <i class="iconfont icondelete" />
+              <IconFont name="icondelete" />
               <span>删除</span>
             </button>
           </div>

@@ -158,7 +158,7 @@ const autoInstallNewVersion = async (resourcesPath: string) => {
            @before-open='handleOpen'>
     <template #title>
       <span class='vermodaltitle' style="max-width: 540px">
-        <i class='iconfont iconyibu verupdate-icon'></i>
+        <IconFont name="iconyibu" class="verupdate-icon" />
         发现新版本<span class='vertip'>{{ verData.version }}</span>
       </span>
     </template>

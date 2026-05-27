@@ -34,7 +34,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>默认加密算法</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div style="width: 320px">
             默认：<span class="opred">AES-CTR</span>
@@ -63,7 +63,7 @@ const disabled = computed(() => {
         <span class="opblue" style="margin-left: 0; padding: 0 8px">用于加密和解密的通用密码</span>
       </div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">空</span>
@@ -98,7 +98,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>加密上传文件/文件夹加密名称</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">开启</span>
@@ -120,7 +120,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>加密上传文件隐藏扩展名</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -143,7 +143,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>操作文件二次确认密码</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -164,7 +164,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>文件列表自动解密文件名</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">开启</span>
@@ -187,7 +187,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>预览文件/下载文件自动解密文件</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">开启</span>
@@ -209,7 +209,7 @@ const disabled = computed(() => {
     <div class="security-setting-header">
       <div class='settinghead'>个人隐私设置</div>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>

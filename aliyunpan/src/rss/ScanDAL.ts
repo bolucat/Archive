@@ -1,4 +1,5 @@
 import { h, Ref } from 'vue'
+import IconFont from '../components/IconFont.vue'
 import AliDirList from '../aliapi/dirlist'
 import { IAliGetDirModel } from '../aliapi/alimodels'
 import DebugLog from '../utils/debuglog'
@@ -182,12 +183,12 @@ async function GetAllDir(user_id: string, drive_id: string, drive_root: string) 
     })
 }
 
-const iconFolder = h('i', { class: 'iconfont iconfile-folder' })
+const iconFolder = h(IconFont, { name: 'iconfile-folder' })
 export const foldericonfn = () => iconFolder
-const fileIcon = h('i', { class: 'iconfont iconwenjian' })
+const fileIcon = h(IconFont, { name: 'iconwenjian' })
 export const fileiconfn = () => fileIcon
-const iconWeifa = h('i', { class: 'iconfont iconweifa' })
-const iconWeixiang = h('i', { class: 'iconfont iconweixiang' })
+const iconWeifa = h(IconFont, { name: 'iconweifa' })
+const iconWeixiang = h(IconFont, { name: 'iconweixiang' })
 export const iconWeixiangFn = () => iconWeixiang
 export const iconWeifaFn = () => iconWeifa
 

@@ -9,6 +9,10 @@
 </p>
 
 <p align="center">
+  🌐 官网：<a href="https://xbyvideohub.com/" target="_blank"><strong>xbyvideohub.com</strong></a>
+</p>
+
+<p align="center">
   <strong>支持多种网盘与媒体源</strong>
 </p>
 

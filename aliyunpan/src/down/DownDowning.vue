@@ -241,35 +241,35 @@ const handleCloud123Offline = () => {
   <div style='height: 14px'></div>
   <div class='toppanbtns' style='height: 26px'>
     <div class='toppanbtn' v-show='downingStore.IsListSelected'>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStart'><i class='iconfont iconstart' />开始
+      <a-button type='text' size='small' tabindex='-1' @click='handleStart'><IconFont name="iconstart" />开始
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStop'><i class='iconfont iconpause' />暂停
+      <a-button type='text' size='small' tabindex='-1' @click='handleStop'><IconFont name="iconpause" />暂停
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleTop'><i class='iconfont iconyouxian' />优先传输
+      <a-button type='text' size='small' tabindex='-1' @click='handleTop'><IconFont name="iconyouxian" />优先传输
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleDelete'><i class='iconfont icondelete' />删除
+      <a-button type='text' size='small' tabindex='-1' @click='handleDelete'><IconFont name="icondelete" />删除
       </a-button>
-      <a-button type='text' size='small' tabindex='-1'><i class='iconfont icondian' /></a-button>
+      <a-button type='text' size='small' tabindex='-1'><IconFont name="icondian" /></a-button>
 
-      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><i class='iconfont iconstart' />开始全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />开始全部
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><i class='iconfont iconpause' />暂停全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />暂停全部
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><i class='iconfont icondelete' />删除全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />删除全部
       </a-button>
       <a-button v-if='isCloudUser' type='text' size='small' tabindex='-1' @click='handleCloud123Offline'>
-        <i class='iconfont iconcloud-download' />离线下载
+        <IconFont name="iconcloud-download" />离线下载
       </a-button>
     </div>
     <div class='toppanbtn' v-show='!downingStore.IsListSelected'>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><i class='iconfont iconstart' />开始全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />开始全部
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><i class='iconfont iconpause' />暂停全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />暂停全部
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><i class='iconfont icondelete' />删除全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />删除全部
       </a-button>
       <a-button v-if='isCloudUser' type='text' size='small' tabindex='-1' @click='handleCloud123Offline'>
-        <i class='iconfont iconcloud-download' />离线下载
+        <IconFont name="iconcloud-download" />离线下载
       </a-button>
     </div>
     <div style='flex-grow: 1'></div>
@@ -295,7 +295,7 @@ const handleCloud123Offline = () => {
     <div style='margin: 0 3px'>
       <AntdTooltip title='点击全选' placement='left'>
         <a-button shape='circle' type='text' tabindex='-1' class='select all' @click='handleSelectAll' title='Ctrl+A'>
-          <i :class="downingStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="downingStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -362,12 +362,11 @@ const handleCloud123Offline = () => {
               :class="'rangselect ' + (rangSelectFiles[item.DownID] ? (rangSelectStart == item.DownID ? 'rangstart' : rangSelectEnd == item.DownID ? 'rangend' : 'rang') : '')">
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.DownID, $event, true)'>
-                <i
-                  :class="downingStore.ListSelected.has(item.DownID) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="downingStore.ListSelected.has(item.DownID) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class='fileicon'>
-              <i :class="'iconfont ' + item.Info.icon" aria-hidden='true'></i>
+              <IconFont :name="item.Info.icon" aria-hidden='true' />
             </div>
             <div class='filename'>
               <div :title='item.Info.localFilePath'>
@@ -396,19 +395,19 @@ const handleCloud123Offline = () => {
                 style='z-index: -1; left: -200px; opacity: 0'>
       <template #content>
         <a-doption @click='handleStart'>
-          <template #icon><i class='iconfont iconstart' /></template>
+          <template #icon><IconFont name="iconstart" /></template>
           <template #default>开始</template>
         </a-doption>
         <a-doption @click='handleStop'>
-          <template #icon><i class='iconfont iconpause' /></template>
+          <template #icon><IconFont name="iconpause" /></template>
           <template #default>暂停</template>
         </a-doption>
         <a-doption @click='handleTop'>
-          <template #icon><i class='iconfont iconyouxian' /></template>
+          <template #icon><IconFont name="iconyouxian" /></template>
           <template #default>优先传输</template>
         </a-doption>
         <a-doption @click='handleDelete' class='danger'>
-          <template #icon><i class='iconfont icondelete' /></template>
+          <template #icon><IconFont name="icondelete" /></template>
           <template #default>删除</template>
         </a-doption>
       </template>

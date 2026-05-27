@@ -22,6 +22,7 @@ import { applyDropboxQuota, refreshDropboxAccessToken } from '../dropbox/auth'
 import { applyOneDriveQuota, refreshOneDriveAccessToken } from '../onedrive/auth'
 import { applyBoxQuota, refreshBoxAccessToken } from '../box/auth'
 import { isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
 
@@ -184,27 +185,62 @@ export default class UserDAL {
   static async aLoadFromDB() {
     const tokenList = await DB.getUserAll()
     const defaultUser = await DB.getValueString('uiDefaultUser')
-    let defaultUserAdd = false
-    let hasLogin = false
     UserTokenMap.clear()
-    try {
-      for (const token of tokenList) {
+    // 先把所有账号塞进 UserTokenMap，保证 UserInfo 历史账号列表 + 切换可用，
+    // 不受“默认账号加载失败”影响
+    for (const token of tokenList) {
+      if (token?.user_id) UserTokenMap.set(token.user_id, token)
+    }
+
+    // 排序：默认账号优先；其次按 used_size（getUserAll 已倒序，即“最常用”）
+    const orderedTokens: ITokenInfo[] = []
+    if (defaultUser) {
+      const idx = tokenList.findIndex((t) => t.user_id === defaultUser)
+      if (idx >= 0) {
+        orderedTokens.push(tokenList[idx])
+        for (let i = 0; i < tokenList.length; i++) {
+          if (i !== idx) orderedTokens.push(tokenList[i])
+        }
+      } else {
+        orderedTokens.push(...tokenList)
+      }
+    } else {
+      orderedTokens.push(...tokenList)
+    }
+
+    let hasLogin = false
+    let defaultUserLoaded = false
+    for (const token of orderedTokens) {
+      if (hasLogin) {
+        // 已经选出了一个账号成功登录；其余账号仅尝试静默刷新 + 签到，
+        // 不影响 UserInfo 列表显示
+        try {
+          const prepared = await this.ensureTokenReady(token)
+          if (prepared?.user_id) {
+            await this.UserAutoSign(prepared)
+          }
+        } catch (err: any) {
+          DebugLog.mSaveDanger('aLoadFromDB autoSign ' + (token?.user_id || ''), err)
+        }
+        continue
+      }
+      // 还未选出可登录账号：依次尝试。任意一步失败都 fallback 到下一个
+      try {
         const prepared = await this.ensureTokenReady(token)
         if (!prepared?.user_id) continue
-        const shouldLogin = (prepared.user_id && prepared.user_id === defaultUser) || (!defaultUser && !hasLogin)
-        if (shouldLogin) {
-          await this.UserLogin(prepared).catch()
-          hasLogin = true
-          if (!defaultUser || prepared.user_id === defaultUser) defaultUserAdd = true
-        } else {
-          await this.UserAutoSign(prepared)
-        }
+        await this.UserLogin(prepared)
+        hasLogin = true
+        if (defaultUser && prepared.user_id === defaultUser) defaultUserLoaded = true
+      } catch (err: any) {
+        DebugLog.mSaveDanger('aLoadFromDB userLogin ' + (token?.user_id || ''), err)
+        // 失败的账号 token 已在 UserTokenMap 中（顶部统一塞过），
+        // UserInfo.vue 仍可列出并支持手动切换
       }
-    } catch (err: any) {
-      DebugLog.mSaveDanger('aLoadFromDB loadUser', err)
     }
-    console.log('defaultUserAdd', defaultUserAdd)
-    if (!defaultUserAdd && !hasLogin) {
+    if (defaultUser && !defaultUserLoaded) {
+      console.log('aLoadFromDB defaultUser failed, fallback used. defaultUser=', defaultUser)
+    }
+    if (!hasLogin) {
       useUserStore().userShowLogin = true
     }
     this.scheduleCliAccountSync()
@@ -402,7 +438,7 @@ export default class UserDAL {
   }
 
 
-  static async UserLogin(token: ITokenInfo) {
+  static async UserLogin(token: ITokenInfo, isInteractive: boolean = false) {
     const loadingKey = 'userlogin_' + Date.now().toString()
     message.loading('加载用户信息中...', 0, loadingKey)
     const initialUserId = token.user_id
@@ -470,6 +506,10 @@ export default class UserDAL {
     useOtherFollowingStore().$reset()
     useFootStore().mSaveUserInfo(token)
     message.success('加载用户成功!', 2, loadingKey)
+    if (isInteractive && token.user_id) {
+      const label = token.nick_name || token.user_name || token.user_id
+      promptAutoScanForUser(token.user_id, label).catch(() => { /* ignore */ })
+    }
   }
 
   static async LoadPanData(token: ITokenInfo) {

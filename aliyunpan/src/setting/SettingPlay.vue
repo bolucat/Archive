@@ -64,7 +64,7 @@ const handleClearDanmuCache = () => {
         <a-radio tabindex='-1' value='other'>自定义播放软件</a-radio>
       </a-radio-group>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div style='min-width: 400px'>
             默认：<span class='opred'>内置网页播放器</span>
@@ -89,7 +89,7 @@ const handleClearDanmuCache = () => {
       <div class='play-setting-header'>
         <div class='settinghead'>视频默认清晰度</div>
         <a-popover position='bottom'>
-          <i class='iconfont iconbulb' />
+          <IconFont name="iconbulb" />
           <template #content>
             <div>
               默认：<span class='opred'>播放原始的文件</span>
@@ -171,7 +171,7 @@ const handleClearDanmuCache = () => {
           <div class='play-setting-header'>
             <div class='settinghead'>字幕加载设置</div>
             <a-popover position='bottom'>
-              <i class='iconfont iconbulb' />
+              <IconFont name="iconbulb" />
               <template #content>
                 <div style='min-width: 400px'>
                   默认：<span class='opred'>自动加载同名字幕</span>
@@ -202,7 +202,7 @@ const handleClearDanmuCache = () => {
           <div class='play-setting-header'>
             <div class='settinghead'>播放列表设置</div>
             <a-popover position='bottom'>
-              <i class='iconfont iconbulb' />
+              <IconFont name="iconbulb" />
               <template #content>
                 <div style='min-width: 200px'>
                   <span class='opred'>PotPlayer开启播放列表：</span><br>
@@ -252,7 +252,7 @@ const handleClearDanmuCache = () => {
         <div class='play-setting-header'>
           <div class='settinghead'>播放历史设置</div>
           <a-popover position='bottom'>
-            <i class='iconfont iconbulb' />
+            <IconFont name="iconbulb" />
             <template #content>
               <div style='min-width: 400px'>
                 <span class='opblue'>仅Mpv支持同步 播放进度</span> <br>
@@ -274,7 +274,7 @@ const handleClearDanmuCache = () => {
         <div class='play-setting-header'>
           <div class='settinghead'>播放器启动参数</div>
           <a-popover position='bottom'>
-            <i class='iconfont iconbulb' />
+            <IconFont name="iconbulb" />
             <template #content>
               <div style='min-width: 400px'>
                 <span class='opred'>自定义播放器参数, 使用,【逗号】分割</span> <br>
@@ -301,7 +301,7 @@ const handleClearDanmuCache = () => {
         <div class='play-setting-header'>
           <div class='settinghead'>自定义播放器路径</div>
           <a-popover position='bottom'>
-            <i class='iconfont iconbulb' />
+            <IconFont name="iconbulb" />
             <template #content>
               <div style='min-width: 400px'>
                 <span class='opred'>windows</span>：选择一个播放软件.exe
@@ -334,7 +334,7 @@ const handleClearDanmuCache = () => {
           <a-input-search tabindex='-1' class='play-player-path' :readonly='true' button-text='选择播放软件' search-button
                           :model-value='settingStore.uiVideoPlayerPath' @search='handleSelectPlayer' />
           <a-popover position='bottom'>
-            <i class='iconfont iconbulb' />
+            <IconFont name="iconbulb" />
             <template #content>
               <div style='min-width: 400px'>
                 <span class='opred'>macOS</span>：选择一个播放软件.app
@@ -356,7 +356,7 @@ const handleClearDanmuCache = () => {
                            :style="{ width: '420px', maxWidth: '100%' }" placeholder='请填写一个播放软件' strict
                            :model-value='settingStore.uiVideoPlayerPath' @change='cb({ uiVideoPlayerPath: $event })' />
           <a-popover position='bottom'>
-            <i class='iconfont iconbulb' />
+            <IconFont name="iconbulb" />
             <template #content>
               <div style='min-width: 400px'>
                 <span class='opred'>linux</span>：手动填写一个播放命令
@@ -402,7 +402,7 @@ const handleClearDanmuCache = () => {
         观看视频时 将播放进度同步到网盘放映室
       </MySwitch>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div style='min-width: 400px'>只有使用 <span class='opblue'>内置网页播放器或者MPV播放器</span> 时才支持同步
             播放进度

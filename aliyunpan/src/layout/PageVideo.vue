@@ -2632,21 +2632,21 @@ onBeforeUnmount(() => {
     <a-layout-header id='xbyhead' draggable='false'>
       <div id='xbyhead2' class='q-electron-drag'>
         <a-button type='text' tabindex='-1'>
-          <i class='iconfont iconfile_video'></i>
+          <IconFont name="iconfile_video" />
         </a-button>
         <div class='title'>{{ pageVideo?.file_name || '视频在线预览' }}</div>
         <div class='flexauto'></div>
         <a-button type='text' tabindex='-1' :title="(isTop ? '取消置顶' : '置顶') + 'Alt+T'" @click='handleTop'>
-          <i :class="'iconfont ' + (isTop ? 'iconquxiaozhiding' : 'iconzhiding')" />
+          <IconFont :name="(isTop ? 'iconquxiaozhiding' : 'iconzhiding')" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
-          <i class='iconfont iconzuixiaohua'></i>
+          <IconFont name="iconzuixiaohua" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
-          <i class='iconfont iconfullscreen'></i>
+          <IconFont name="iconfullscreen" />
         </a-button>
         <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
-          <i class='iconfont iconclose'></i>
+          <IconFont name="iconclose" />
         </a-button>
       </div>
     </a-layout-header>

@@ -22,7 +22,7 @@
             :title="resultBarTitle"
             @click="handleResultBack"
           >
-            <i class="iconfont iconarrow-left-2-icon"></i>
+            <IconFont name="iconarrow-left-2-icon" />
             <span class="library-arrow-back-title">{{ resultBarTitle }}</span>
           </button>
         </div>
@@ -74,7 +74,7 @@
           :title="resultBarTitle"
           @click="handleResultBack"
         >
-          <i class="iconfont iconarrow-left-2-icon"></i>
+          <IconFont name="iconarrow-left-2-icon" />
           <span class="library-arrow-back-title">{{ resultBarTitle }}</span>
         </button>
         <div class="library-result-bar-main">
@@ -88,7 +88,7 @@
         <div class="search-panel-input">
           <a-input-search v-model="localSearchQuery" allow-clear placeholder="搜索媒体库和所有媒体服务器">
             <template #prefix>
-              <i class="iconfont iconsearch" />
+              <IconFont name="iconsearch" />
             </template>
           </a-input-search>
         </div>
@@ -115,7 +115,7 @@
           <div class="library-home-toolbar-spacer" />
           <div class="library-home-toolbar-right">
             <a-button type="outline" @click="openLocalHomeManager">
-              <template #icon><i class="iconfont iconlist" /></template>
+              <template #icon><IconFont name="iconlist" /></template>
               媒体管理
             </a-button>
             <div class="home-poster-toggle">
@@ -237,7 +237,7 @@
                   class="home-library-manager-drag-icon"
                   @mousedown.prevent="handleLocalHomePointerDragStart(item.key)"
                 >
-                  <i class="iconfont iconmenu-unfold" />
+                  <IconFont name="iconmenu-unfold" />
                 </div>
                 <a-checkbox :model-value="item.visible" @change="toggleLocalHomeDraftVisible(item.key, $event)">
                   {{ item.title }}
@@ -277,7 +277,7 @@
                       @error="handleImageError"
                     />
                     <div v-else class="poster-placeholder">
-                      <i class="iconfont iconfile-video" />
+                      <IconFont name="iconfile-video" />
                     </div>
 
                     <div v-if="isContinueWatchingView && item.watchProgress !== undefined" class="watch-progress">
@@ -333,7 +333,7 @@
                       @error="handleImageError"
                     />
                     <div v-else class="poster-placeholder">
-                      <i class="iconfont iconfile-video" />
+                      <IconFont name="iconfile-video" />
                     </div>
                   </div>
 
@@ -465,7 +465,7 @@
                 :title="currentFolderInfo?.name || props.selectedFolder.name"
                 @click="handleGoBack"
               >
-                <i class="iconfont iconarrow-left-2-icon"></i>
+                <IconFont name="iconarrow-left-2-icon" />
                 <span class="library-arrow-back-title">{{ currentFolderInfo?.name || props.selectedFolder.name }}</span>
               </button>
             </div>
@@ -492,7 +492,7 @@
                 :title="currentFolderInfo?.name || props.selectedFolder.name"
                 @click="handleGoBack"
               >
-                <i class="iconfont iconarrow-left-2-icon"></i>
+                <IconFont name="iconarrow-left-2-icon" />
                 <span class="library-arrow-back-title">{{ currentFolderInfo?.name || props.selectedFolder.name }}</span>
               </button>
             </div>
@@ -629,7 +629,7 @@
                 @error="handleImageError"
               />
               <div class="poster-placeholder">
-                <i class="iconfont iconfile-video" />
+                <IconFont name="iconfile-video" />
               </div>
 
               <div v-if="isContinueWatchingView && item.watchProgress !== undefined" class="watch-progress">
@@ -693,7 +693,7 @@
                 @error="handleImageError"
               />
               <div class="poster-placeholder">
-                <i class="iconfont iconfile-video" />
+                <IconFont name="iconfile-video" />
               </div>
               <div class="type-badge">
                 {{ getItemTypeLabel(item) }}

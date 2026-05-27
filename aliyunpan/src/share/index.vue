@@ -47,42 +47,42 @@ const handleHideLeft = (val: boolean) => {
       <a-menu v-if="isAliyunAccount" :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">
         <a-menu-item key='ShareSiteRight'>
-          <template #icon><i class='iconfont iconrvip' /></template>
+          <template #icon><IconFont name="iconrvip" /></template>
           资源网站
         </a-menu-item>
         <a-menu-item key='OtherShareRight'>
-          <template #icon><i class='iconfont iconfenxiang1' /></template>
+          <template #icon><IconFont name="iconfenxiang1" /></template>
           我的导入
         </a-menu-item>
         <a-menu-item key='ShareHistoryRight'>
-          <template #icon><i class='iconfont iconfenxiang1' /></template>
+          <template #icon><IconFont name="iconfenxiang1" /></template>
           历史导入
         </a-menu-item>
         <a-menu-item key='MyShareRight'>
-          <template #icon><i class='iconfont iconfenxiang' /></template>
+          <template #icon><IconFont name="iconfenxiang" /></template>
           我的分享
         </a-menu-item>
         <a-menu-item key='MyTransferShareRight'>
-          <template #icon><i class='iconfont iconfenxiang' /></template>
+          <template #icon><IconFont name="iconfenxiang" /></template>
           我的快传
         </a-menu-item>
         <a-menu-item key='ShareBottleFishRight'>
-          <template #icon><i class='iconfont icontuijian' /></template>
+          <template #icon><IconFont name="icontuijian" /></template>
           好运分享
         </a-menu-item>
         <a-menu-item key='MyFollowingRight'>
-          <template #icon><i class='iconfont icondingyue' /></template>
+          <template #icon><IconFont name="icondingyue" /></template>
           我的订阅
         </a-menu-item>
         <a-menu-item key='OtherFollowingRight'>
-          <template #icon><i class='iconfont icontuijian' /></template>
+          <template #icon><IconFont name="icontuijian" /></template>
           订阅推荐
         </a-menu-item>
       </a-menu>
       <a-menu v-else :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">
         <a-menu-item key='MyShareRight'>
-          <template #icon><i class='iconfont iconfenxiang' /></template>
+          <template #icon><IconFont name="iconfenxiang" /></template>
           我的分享
         </a-menu-item>
       </a-menu>

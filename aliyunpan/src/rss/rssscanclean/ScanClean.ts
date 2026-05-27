@@ -6,6 +6,7 @@ import DebugLog from '../../utils/debuglog'
 import { humanSize } from '../../utils/format'
 import { HanToPin } from '../../utils/utils'
 import { h, Ref } from 'vue'
+import IconFont from '../../components/IconFont.vue'
 import { foldericonfn, IScanDriverModel, TreeNodeData } from '../ScanDAL'
 
 
@@ -131,7 +132,7 @@ async function ApiBatchDirFileList(user_id: string, drive_id: string, dirList: I
   }
   return true
 }
-const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
+const fileiconfn = (icon: string) => h(IconFont, { name: icon })
 
 export function GetTreeNodes(PanData: IScanDriverModel, parent_file_id: string, treeDataMap: Map<string, TreeNodeData>) {
   const data: TreeNodeData[] = []

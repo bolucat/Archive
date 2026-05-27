@@ -120,6 +120,34 @@ export interface IPageVideo {
   custom_playlist?: IPageVideoPlaylistEntry[]
 }
 
+export interface IPageMusicTrack {
+  user_id: string
+  drive_id: string
+  file_id: string
+  parent_file_id: string
+  file_name: string
+  ext?: string
+  size?: number
+  category?: string
+  icon?: string
+  thumbnail?: string
+  description?: string
+  encType?: string
+  password?: string
+}
+
+export interface IPageMusic {
+  user_id: string
+  drive_id: string
+  file_id: string
+  parent_file_id: string
+  parent_file_name: string
+  file_name: string
+  encType: string
+  password: string
+  playlist: IPageMusicTrack[]
+}
+
 export interface AppState {
   appTheme: string
 
@@ -141,6 +169,7 @@ export interface AppState {
   pageImage?: IPageImage
   pageVideoXBT?: IPageVideoXBT
   pageVideo?: IPageVideo
+  pageMusic?: IPageMusic
 }
 
 const useAppStore = defineStore('app', {
@@ -155,6 +184,7 @@ const useAppStore = defineStore('app', {
       ['rss', 'RssXiMa'],
       ['media', 'MediaLibrary'],
       ['media-server', 'MediaServerWorkspace'],
+      ['music', 'MusicLibrary'],
       ['setting', 'SettingUI']
     ]),
     appDark: false,
@@ -206,6 +236,7 @@ const useAppStore = defineStore('app', {
           ['rss', 'RssXiMa'],
           ['media', 'MediaLibrary'],
           ['media-server', 'MediaServerWorkspace'],
+          ['music', 'MusicLibrary'],
           ['setting', 'SettingUI']
         ])
       })
@@ -262,6 +293,10 @@ const useAppStore = defineStore('app', {
           break
         }
         case 'media-server': {
+          this.appTab = 'music'
+          break
+        }
+        case 'music': {
           this.appTab = 'setting'
           DebugLog.aLoadFromDB()
           break

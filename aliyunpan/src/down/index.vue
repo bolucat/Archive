@@ -16,27 +16,27 @@ const appStore = useAppStore()
       <div class="headdesc">传输文件</div>
       <a-menu :style="{ width: '100%' }" class="xbyleftmenu" :selected-keys="[appStore.GetAppTabMenu]" @update:selected-keys="appStore.toggleTabMenu('down', $event[0])">
         <a-menu-item key="DowningRight">
-          <template #icon><i class="iconfont icondownload" /></template>
+          <template #icon><IconFont name="icondownload" /></template>
           下载中
         </a-menu-item>
         <a-menu-item key="DownedRight">
-          <template #icon><i class="iconfont icondesktop" /></template>
+          <template #icon><IconFont name="icondesktop" /></template>
           已下载
         </a-menu-item>
         <a-menu-item key="UploadingRight">
-          <template #icon><i class="iconfont iconcloud-upload" /></template>
+          <template #icon><IconFont name="iconcloud-upload" /></template>
           上传中
         </a-menu-item>
         <a-menu-item key="UploadedRight">
-          <template #icon><i class="iconfont iconcloud_success" /></template>
+          <template #icon><IconFont name="iconcloud_success" /></template>
           已上传
         </a-menu-item>
 <!--        <a-menu-item key="SyncRight">-->
-<!--          <template #icon><i class="iconfont iconcloud-sync" /></template>-->
+<!--          <template #icon><IconFont name="iconcloud-sync" /></template>-->
 <!--          文件夹同步 x-->
 <!--        </a-menu-item>-->
 <!--        <a-menu-item key="M3U8Right">-->
-<!--          <template #icon><i class="iconfont iconluxiang" /></template>-->
+<!--          <template #icon><IconFont name="iconluxiang" /></template>-->
 <!--          M3U8视频 x-->
 <!--        </a-menu-item>-->
       </a-menu>

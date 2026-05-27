@@ -1,6 +1,7 @@
 <script setup lang='ts'>
 import { modalCloseAll } from '../../utils/modal'
 import { computed, h, PropType, reactive, ref } from 'vue'
+import IconFont from '../../components/IconFont.vue'
 import { usePanTreeStore, useSettingStore, useWinStore } from '../../store'
 import { CheckFileName, ClearFileName } from '../../utils/filehelper'
 import { Tree as AntdTree } from 'ant-design-vue'
@@ -21,7 +22,7 @@ import { apiPikPakFileList, mapPikPakFileToAliModel } from '../../pikpak/dirfile
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../../onedrive/dirfilelist'
 
-const iconfolder = h('i', { class: 'iconfont iconfile-folder' })
+const iconfolder = h(IconFont, { name: 'iconfile-folder' })
 const foldericonfn = () => iconfolder
 
 const props = defineProps({
@@ -714,7 +715,7 @@ const handleOK = () => {
           <i class='ant-tree-switcher-icon iconfont Arrow' />
         </template>
         <template #icon>
-          <i class='iconfont iconfile-folder' />
+          <IconFont name="iconfile-folder" />
         </template>
         <template #title='{ dataRef }'>
           <span class='sharetitleleft'>{{ dataRef.title }}</span>

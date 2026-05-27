@@ -1,3 +1,4 @@
+
 package com.v2ray.ang.ui
 
 import android.annotation.SuppressLint
@@ -14,6 +15,7 @@ import com.v2ray.ang.databinding.ItemRecyclerFooterBinding
 import com.v2ray.ang.databinding.ItemRecyclerMainBinding
 import com.v2ray.ang.dto.entities.ProfileItem
 import com.v2ray.ang.dto.entities.ServersCache
+import com.v2ray.ang.extension.isComplexType
 import com.v2ray.ang.extension.nullIfBlank
 import com.v2ray.ang.handler.AngConfigManager
 import com.v2ray.ang.handler.MmkvManager
@@ -58,7 +60,7 @@ class MainRecyclerAdapter(
             //Name address
             holder.itemMainBinding.tvName.text = profile.remarks
             holder.itemMainBinding.tvStatistics.text = getAddress(profile)
-            holder.itemMainBinding.tvType.text = profile.configType.name
+            holder.itemMainBinding.tvType.text = getProtocolDescription(profile)
 
             //TestResult
             val aff = MmkvManager.decodeServerAffiliationInfo(guid)
@@ -138,6 +140,31 @@ class MainRecyclerAdapter(
             else
                 null
         return subRemarks?.toString() ?: ""
+    }
+
+    private fun getProtocolDescription(profile: ProfileItem): String {
+        if (profile.configType.isComplexType()) {
+            return profile.configType.name
+        }
+
+        val parts = mutableListOf<String>()
+        parts.add(profile.configType.name)
+
+        // Transport: hide tcp or blank
+        profile.network?.let { net ->
+            if (net.isNotBlank() && !net.equals("tcp", ignoreCase = true)) {
+                parts.add(net)
+            }
+        }
+
+        // Security: hide blank or tls
+        profile.security?.let { sec ->
+            if (sec.isNotBlank() && !sec.equals("tls", ignoreCase = true)) {
+                parts.add(sec)
+            }
+        }
+
+        return parts.joinToString(" / ")
     }
 
     fun removeServerSub(guid: String, position: Int) {

@@ -1,10 +1,11 @@
-node_modules
+ node_modules
 .DS_Store
 dist*
 *.local
 .debug.env
 tmp
 **/.tmp
+.build-tools
 release
 
 .idea
@@ -36,3 +37,4 @@ plans/
 PikPakAPI/
 AGENT.md
 SKILL_ITERATION_LOG.md
+node_modules/

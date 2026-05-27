@@ -373,7 +373,7 @@ const submitCloud123Code = async () => {
   try {
     const token = await exchangeCloud123CodeForToken(cloud123Code.value.trim())
     if (token) {
-      await UserDAL.UserLogin(token)
+      await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
     }
   } catch (error) {
@@ -394,7 +394,7 @@ const submitBaiduCode = async () => {
   try {
     const token = await exchangeBaiduCodeForToken(baiduCode.value.trim())
     if (token) {
-      await UserDAL.UserLogin(token)
+      await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
     }
   } catch (error) {
@@ -416,7 +416,7 @@ const submitDropboxCode = async (code: string) => {
   try {
     const token = await exchangeDropboxCodeForToken(code, appKey, dropboxVerifier.value)
     if (token) {
-      await UserDAL.UserLogin(token)
+      await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
     }
   } catch (error) {
@@ -438,7 +438,7 @@ const submitOneDriveCode = async (code: string) => {
   try {
     const token = await exchangeOneDriveCodeForToken(code, clientId, onedriveVerifier.value)
     if (token) {
-      await UserDAL.UserLogin(token)
+      await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
     }
   } catch (error) {
@@ -460,7 +460,7 @@ const submitBoxCode = async (code: string) => {
   try {
     const token = await exchangeBoxCodeForToken(code, clientId, boxVerifier.value)
     if (token) {
-      await UserDAL.UserLogin(token)
+      await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
     }
   } catch (error) {
@@ -481,7 +481,7 @@ const submitPikPakLogin = async () => {
   pikpakLoading.value = true
   try {
     const token = await loginPikPak(username, pikpakPassword.value)
-    await UserDAL.UserLogin(token)
+    await UserDAL.UserLogin(token, true)
     useUserStore().userShowLogin = false
   } catch (err: any) {
     message.error(err?.message || 'PikPak 登录失败')
@@ -552,7 +552,7 @@ const poll115Status = async () => {
         return
       }
       await AliUser.Drive115UserInfo(token)
-      await UserDAL.UserLogin(token)
+      await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
       return
     }
@@ -748,7 +748,7 @@ const handleRefreshQrCodeUrl = () => {
 }
 
 const loginSuccess = (token: ITokenInfo) => {
-  UserDAL.UserLogin(token)
+  UserDAL.UserLogin(token, true)
     .then(() => {
       if (window.WebClearCookies) {
         window.WebClearCookies({

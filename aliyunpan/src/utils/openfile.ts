@@ -4,7 +4,7 @@ import AliFile from '../aliapi/file'
 import AliFileCmd from '../aliapi/filecmd'
 import ServerHttp from '../aliapi/server'
 import { ITokenInfo, useFootStore, usePanFileStore, useSettingStore, useUserStore } from '../store'
-import { IPageCode, IPageDocx, IPageEpub, IPageImage, IPageOffice, IPagePdf, IPageSheet, IPageVideo, IPageVideoPlaylistEntry } from '../store/appstore'
+import { IPageCode, IPageDocx, IPageEpub, IPageImage, IPageMusic, IPageMusicTrack, IPageOffice, IPagePdf, IPageSheet, IPageVideo, IPageVideoPlaylistEntry } from '../store/appstore'
 import UserDAL from '../user/userdal'
 import { clickWait } from './debounce'
 import DebugLog from './debuglog'
@@ -556,17 +556,77 @@ async function Audio(file: IAliGetFileModel, password: string = ''): Promise<voi
     return
   }
 
-  message.loading('加载中...', 2)
   const token = await resolveTokenForFile(file)
   if (!token || !token.access_token) {
     message.error('在线预览失败 账号失效，操作取消')
     return
   }
-  const data = await getRawUrl(token.user_id, file.drive_id, file.file_id, getEncType(file), password, weifa, 'audio')
-  if (typeof data != 'string') {
-    useFootStore().mSaveAudioUrl(data.url)
+
+  const ext = file.ext || (file.name?.split('.')?.pop() || '')
+  const listRaw = usePanFileStore().ListDataRaw || []
+  const audioList = listRaw.filter((v) => !v.isDir && (v.category === 'audio' || v.category === 'audio2'))
+  const sourceList = audioList.length > 0 ? audioList : [file]
+
+  const playlist: IPageMusicTrack[] = sourceList.map((item) => ({
+    user_id: ((item as any).user_id as string) || token.user_id,
+    drive_id: item.drive_id,
+    file_id: item.file_id,
+    parent_file_id: item.parent_file_id,
+    file_name: item.name,
+    ext: item.ext,
+    size: item.size,
+    category: item.category,
+    icon: item.icon,
+    thumbnail: item.thumbnail,
+    description: item.description,
+    encType: getEncType(item),
+    password: item.file_id === file.file_id ? password : ''
+  }))
+
+  if (!playlist.find((t) => t.file_id === file.file_id)) {
+    playlist.unshift({
+      user_id: ((file as any).user_id as string) || token.user_id,
+      drive_id: file.drive_id,
+      file_id: file.file_id,
+      parent_file_id: file.parent_file_id,
+      file_name: file.name,
+      ext: file.ext,
+      size: file.size,
+      category: file.category,
+      icon: file.icon,
+      thumbnail: file.thumbnail,
+      description: file.description,
+      encType: getEncType(file),
+      password
+    })
+  }
+
+  const pageMusic: IPageMusic = {
+    user_id: token.user_id,
+    drive_id: file.drive_id,
+    file_id: file.file_id,
+    parent_file_id: file.parent_file_id,
+    parent_file_name: usePanFileStore().DirName || '',
+    file_name: file.name,
+    encType: getEncType(file),
+    password,
+    playlist
+  }
+
+  if (typeof ext === 'string' && ext.length > 0) {
+    // ext intentionally captured for future use; no-op
+  }
+
+  if (typeof window !== 'undefined' && (window as any).WebOpenWindow) {
+    ;(window as any).WebOpenWindow({ page: 'PageMusic', data: pageMusic, theme: 'dark' })
   } else {
-    message.error(data)
+    // 兜底：旧版底部播放器
+    const data = await getRawUrl(token.user_id, file.drive_id, file.file_id, getEncType(file), password, weifa, 'audio')
+    if (typeof data != 'string') {
+      useFootStore().mSaveAudioUrl(data.url)
+    } else {
+      message.error(data)
+    }
   }
 }
 

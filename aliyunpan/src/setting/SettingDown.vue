@@ -41,7 +41,7 @@ const handleSelectDownSavePath = () => {
         使用 aria2c 下载模块
       </MySwitch>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class='opred'>开启（使用 aria2c）</span>
@@ -65,7 +65,7 @@ const handleSelectDownSavePath = () => {
         默认使用此路径
       </MySwitch>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class='opred'>开启</span>
@@ -81,7 +81,7 @@ const handleSelectDownSavePath = () => {
         按照网盘完整路径保存
       </MySwitch>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class='opred'>开启</span>
@@ -96,7 +96,7 @@ const handleSelectDownSavePath = () => {
         自动跳过违规文件
       </MySwitch>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class='opred'>开启</span>
@@ -136,7 +136,7 @@ const handleSelectDownSavePath = () => {
         <a-option :value='32'>每个文件使用32个线程</a-option>
       </a-select>
       <a-popover position='right'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class='opred'>4个线程</span>
@@ -166,7 +166,7 @@ const handleSelectDownSavePath = () => {
         <a-radio tabindex='-1' value='KB'>KB/s</a-radio>
       </a-radio-group>
       <a-popover position='bottom'>
-        <i class='iconfont iconbulb' />
+        <IconFont name="iconbulb" />
         <template #content>
           <div :style="{ width: '360px' }">
             默认：<span class='opred'>0 (不限速，满速下载)</span>

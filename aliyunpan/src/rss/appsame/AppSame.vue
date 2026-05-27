@@ -161,19 +161,19 @@ const handleScan = () => {
           加载
           <template #icon>
             <MyLoading v-if="scanLoading" />
-            <i v-else class="iconfont iconrsearch" />
+            <IconFont name="iconrsearch" v-else />
           </template>
         </a-step>
         <a-step description="勾选 需要删除的">
           勾选
           <template #icon>
-            <i class="iconfont iconedit-square" />
+            <IconFont name="iconedit-square" />
           </template>
         </a-step>
         <a-step description="删除 放入回收站">
           删除
           <template #icon>
-            <i class="iconfont icondelete" />
+            <IconFont name="icondelete" />
           </template>
         </a-step>
       </a-steps>
@@ -229,7 +229,7 @@ const handleScan = () => {
                     <AntdCheckbox tabindex="-1" :checked="checkedKeys.has(file.file_id)" @click.stop.prevent="handleCheck(file.file_id)"></AntdCheckbox>
                   </div>
                   <div class="fileicon">
-                    <i :class="'iconfont ' + file.icon" aria-hidden="true"></i>
+                    <IconFont :name="file.icon" aria-hidden="true" />
                   </div>
                   <div class="samename">
                     <div :title="file.name" @click.stop.prevent="handleCheck(file.file_id)">
@@ -246,7 +246,7 @@ const handleScan = () => {
       </a-spin>
       <a-empty v-else class="beginscan">
         <template #image>
-          <i class="iconfont iconrsearch" />
+          <IconFont name="iconrsearch" />
         </template>
         请点击上方 加载列表 按钮
       </a-empty>

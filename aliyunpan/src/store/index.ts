@@ -16,6 +16,7 @@ import usePanTreeStore from '../pan/pantreestore'
 import usePanFileStore from '../pan/panfilestore'
 import useMediaServerRegistryStore from './mediaServerRegistry'
 import useMediaServerNavigationStore from './mediaServerNavigation'
+import useMusicLibraryStore from './musiclibrary'
 
 import type { IShareSiteGroupModel, IShareSiteModel } from './serverstore'
 import useServerStore from './serverstore'
@@ -53,6 +54,7 @@ export {
   usePanFileStore,
   useMediaServerRegistryStore,
   useMediaServerNavigationStore,
+  useMusicLibraryStore,
   useServerStore,
   IOtherShareLinkModel,
   IShareSiteModel,

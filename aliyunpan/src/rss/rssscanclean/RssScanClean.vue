@@ -2,6 +2,7 @@
 import message from '../../utils/message'
 import { humanSize } from '../../utils/format'
 import { computed, ref, watch } from 'vue'
+import { ChevronRight } from 'lucide-vue-next'
 import MyLoading from '../../layout/MyLoading.vue'
 import { useSettingStore, useUserStore, useWinStore } from '../../store'
 import UserDAL from '../../user/userdal'
@@ -179,19 +180,19 @@ const handleScan = () => {
           查找
           <template #icon>
             <MyLoading v-if='scanLoading' />
-            <i v-else class='iconfont iconrsearch' />
+            <IconFont name="iconrsearch" v-else />
           </template>
         </a-step>
         <a-step description='勾选 需要删除的'>
           勾选
           <template #icon>
-            <i class='iconfont iconedit-square' />
+            <IconFont name="iconedit-square" />
           </template>
         </a-step>
         <a-step description='删除 放入回收站'>
           删除
           <template #icon>
-            <i class='iconfont icondelete' />
+            <IconFont name="icondelete" />
           </template>
         </a-step>
       </a-steps>
@@ -268,7 +269,7 @@ const handleScan = () => {
           @select='handleTreeSelect'
           @check='handleTreeCheck'>
           <template #switcherIcon>
-            <i class='ant-tree-switcher-icon iconfont Arrow' />
+            <ChevronRight :size='14' :stroke-width='1.8' class='ant-tree-switcher-lucide' />
           </template>
           <template #title='{ dataRef }'>
             <span class='cleantitleleft'>{{ dataRef.title }}</span>
@@ -278,7 +279,7 @@ const handleScan = () => {
       </a-spin>
       <a-empty v-else class='beginscan'>
         <template #image>
-          <i class='iconfont iconrsearch' />
+          <IconFont name="iconrsearch" />
         </template>
         请点击上方 开始扫描 按钮
       </a-empty>
@@ -291,8 +292,16 @@ const handleScan = () => {
   width: 100%;
 }
 
-.beginscan .iconfont {
-  font-size: 48px;
+.beginscan svg {
+  width: 48px !important;
+  height: 48px !important;
+}
+
+.ant-tree-switcher-lucide {
+  transition: transform 0.15s ease;
+}
+.ant-tree-switcher_open .ant-tree-switcher-lucide {
+  transform: rotate(90deg);
 }
 
 .cleantree .ant-tree-node-content-wrapper {

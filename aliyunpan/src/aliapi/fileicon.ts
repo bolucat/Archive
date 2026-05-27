@@ -80,11 +80,15 @@ export default function getFileIcon(category: string | undefined, ext: string | 
     return ['video2', 'iconfile_video']
   }
   if (ext == '.mp3.' && category == 'audio') return ['audio', 'iconfile-mp3']
+  if (ext == '.flac.') return ['audio', 'iconfile-flac']
+  if (ext == '.wav.') return ['audio', 'iconfile-wav']
+  if (ext == '.ape.') return ['audio', 'iconfile-ape']
+  if (ext == '.ogg.') return ['audio', 'iconfile-ogg']
   if (category == 'audio' && mimext != '.unknown.') {
     return ['audio', 'iconfile-audio']
   }
   if (mime.startsWith('audio/')) return ['audio', 'iconfile-audio']
-  if (';.ape.aac.cda.dsf.dtshd.eac3.m1a.m2a.m4a.mka.mpa.mpc.opus.ra.tak.tta.wma.wv.'.indexOf(ext) > 0) {
+  if (';.mp3.flac.wav.ape.ogg.aac.aif.aiff.cda.dsf.dts.dtshd.eac3.m1a.m2a.m4a.m4b.m4r.mka.mpa.mpc.opus.ra.tak.tta.wma.wv.amr.ac3.au.'.indexOf(ext) > 0) {
     return ['audio2', 'iconfile-audio']
   }
   if (mime.startsWith('video/')) return ['video2', 'iconfile_video']

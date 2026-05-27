@@ -8,23 +8,28 @@
     <div style="position: fixed; pointer-events: none; width: 1px; height: 1px;" />
     <template #content>
       <a-doption @click="handleAddToLibrary" v-if="!isInLibrary && !isMediaLibraryFolder">
-        <template #icon><i class='iconfont iconstar' /></template>
+        <template #icon><IconFont name="iconstar" /></template>
         <template #default>添加到媒体库</template>
       </a-doption>
 
-      <a-doption @click="handleScanFolder" v-if="selectedItem?.isdir && !isMediaLibraryFolder">
-        <template #icon><i class='iconfont iconreload-1-icon' /></template>
-        <template #default>扫描媒体文件</template>
+      <a-doption @click="handleScanVideo" v-if="selectedItem?.isdir && !isMediaLibraryFolder">
+        <template #icon><IconFont name="iconshipin" /></template>
+        <template #default>扫描视频</template>
+      </a-doption>
+
+      <a-doption @click="handleScanAudio" v-if="selectedItem?.isdir && !isMediaLibraryFolder">
+        <template #icon><IconFont name="iconmusic" /></template>
+        <template #default>扫描音频</template>
       </a-doption>
 
       <a-doption @click="handleViewInLibrary" v-if="isInLibrary && !isMediaLibraryFolder">
-        <template #icon><i class='iconfont iconmovie' /></template>
+        <template #icon><IconFont name="iconmovie" /></template>
         <template #default>在媒体库中查看</template>
       </a-doption>
 
       <!-- 媒体库文件夹删除选项 -->
       <a-doption @click="handleRemoveFromLibrary" v-if="isInLibrary || isMediaLibraryFolder" class="danger">
-        <template #icon><i class='iconfont icondelete' /></template>
+        <template #icon><IconFont name="icondelete" /></template>
         <template #default>从媒体库删除</template>
       </a-doption>
     </template>
@@ -33,9 +38,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted } from 'vue'
-import { useAppStore } from '../../store'
+import { useAppStore, usePanTreeStore } from '../../store'
 import { useMediaLibraryStore } from '../../store/medialibrary'
 import { MediaScanner } from '../../utils/mediaScanner'
+import MusicScanner from '../../utils/musicScanner'
 import { Modal } from '@arco-design/web-vue'
 import message from '../../utils/message'
 import type { MediaLibraryFolder } from '../../types/media'
@@ -50,8 +56,10 @@ const props = defineProps<{
 const emit = defineEmits(['close'])
 
 const appStore = useAppStore()
+const panTreeStore = usePanTreeStore()
 const mediaStore = useMediaLibraryStore()
 const mediaScanner = MediaScanner.getInstance()
+const musicScanner = MusicScanner.getInstance()
 
 // 计算属性
 const isInLibrary = computed(() => {
@@ -103,7 +111,6 @@ const handleAddToLibrary = async () => {
     message.success(`已将 "${folderName}" 添加到媒体库`)
 
     // 切换到媒体库标签页
-    const appStore = useAppStore()
     appStore.toggleTab('media')
 
   } catch (error) {
@@ -114,19 +121,54 @@ const handleAddToLibrary = async () => {
   }
 }
 
-const handleScanFolder = async () => {
+const handleScanVideo = async () => {
   if (!props.selectedItem || !props.selectedItem.isdir) {
     message.error('只能选择文件夹进行扫描')
     emit('close')
     return
   }
-
+  if (mediaScanner.isCurrentlyScanning) {
+    message.warning('正在扫描中，请稍后...')
+    emit('close')
+    return
+  }
   try {
+    message.info(`开始扫描文件夹 "${props.selectedItem.name}" 的视频文件`)
+    appStore.toggleTab('media')
     await mediaScanner.scanFolder(props.selectedItem, props.selectedItem.drive_id)
-    message.success('扫描完成')
   } catch (error) {
-    console.error('Error scanning folder:', error)
-    message.error('扫描失败')
+    console.error('视频扫描失败:', error)
+    message.error('视频扫描失败')
+  } finally {
+    emit('close')
+  }
+}
+
+const handleScanAudio = async () => {
+  if (!props.selectedItem || !props.selectedItem.isdir) {
+    message.error('只能选择文件夹进行扫描')
+    emit('close')
+    return
+  }
+  if (musicScanner.isScanning) {
+    message.warning('音频扫描进行中，请稍后...')
+    emit('close')
+    return
+  }
+  const userId = (props.selectedItem as any).user_id || panTreeStore.user_id || ''
+  if (!userId) {
+    message.error('未识别到当前账号，无法扫描')
+    emit('close')
+    return
+  }
+  try {
+    message.info(`开始扫描文件夹 "${props.selectedItem.name}" 的音频文件`)
+    appStore.toggleTab('music')
+    const res = await musicScanner.scanFolder(props.selectedItem, userId)
+    message.success(`音频扫描完成：收录 ${res.found} 首`)
+  } catch (error) {
+    console.error('音频扫描失败:', error)
+    message.error('音频扫描失败')
   } finally {
     emit('close')
   }

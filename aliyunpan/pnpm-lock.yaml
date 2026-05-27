@@ -8,9 +8,39 @@ importers:
 
   .:
     dependencies:
+      builder-util-runtime:
+        specifier: ^9.5.1
+        version: 9.5.1
+      electron-updater:
+        specifier: ^6.8.3
+        version: 6.8.3
+      fs-extra:
+        specifier: 10.1.0
+        version: 10.1.0
+      js-yaml:
+        specifier: ^4.1.1
+        version: 4.1.1
+      lazy-val:
+        specifier: ^1.0.5
+        version: 1.0.5
+      lodash.escaperegexp:
+        specifier: ^4.1.2
+        version: 4.1.2
+      lodash.isequal:
+        specifier: ^4.5.0
+        version: 4.5.0
+      lucide-vue-next:
+        specifier: ^1.0.0
+        version: 1.0.0(vue@3.4.21(typescript@5.9.3))
       qrcode-terminal:
         specifier: ^0.12.0
         version: 0.12.0
+      semver:
+        specifier: ^7.6.0
+        version: 7.8.1
+      tiny-typed-emitter:
+        specifier: ^2.1.0
+        version: 2.1.0
     devDependencies:
       '@arco-design/web-vue':
         specifier: 2.55.1
@@ -102,9 +132,6 @@ importers:
       axios:
         specifier: ^1.6.8
         version: 1.16.1
-      builder-util-runtime:
-        specifier: ^9.5.1
-        version: 9.5.1
       chinese-simple2traditional:
         specifier: ^2.1.0
         version: 2.3.2
@@ -141,9 +168,6 @@ importers:
       electron-is:
         specifier: ^3.0.0
         version: 3.0.0
-      electron-updater:
-        specifier: ^6.8.3
-        version: 6.8.3
       epubjs:
         specifier: ^0.3.93
         version: 0.3.93
@@ -156,9 +180,6 @@ importers:
       fix-path:
         specifier: ^4.0.0
         version: 4.0.0
-      fs-extra:
-        specifier: ^10.1.0
-        version: 10.1.0
       fuzzysort:
         specifier: ^2.0.4
         version: 2.0.4
@@ -174,27 +195,15 @@ importers:
       jassub:
         specifier: ^1.7.15
         version: 1.8.8
-      js-yaml:
-        specifier: ^4.1.1
-        version: 4.1.1
       jschardet:
         specifier: ^3.1.2
         version: 3.1.4
-      lazy-val:
-        specifier: ^1.0.5
-        version: 1.0.5
       less:
         specifier: ^4.2.0
         version: 4.6.4
       lodash:
         specifier: ^4.17.21
         version: 4.18.1
-      lodash.escaperegexp:
-        specifier: ^4.1.2
-        version: 4.1.2
-      lodash.isequal:
-        specifier: ^4.5.0
-        version: 4.5.0
       markdown-it:
         specifier: ^14.1.0
         version: 14.1.1
@@ -222,9 +231,6 @@ importers:
       secp256k1:
         specifier: ^5.0.0
         version: 5.0.1
-      semver:
-        specifier: ^7.6.0
-        version: 7.8.1
       socks-proxy-agent:
         specifier: ^8.0.3
         version: 8.0.5
@@ -234,9 +240,6 @@ importers:
       thunky:
         specifier: ^1.1.0
         version: 1.1.0
-      tiny-typed-emitter:
-        specifier: ^2.1.0
-        version: 2.1.0
       tree-kill:
         specifier: ^1.2.2
         version: 1.2.2
@@ -2266,6 +2269,12 @@ packages:
   lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
+
+  lucide-vue-next@1.0.0:
+    resolution: {integrity: sha512-V6SPvx1IHTj/UY+FrIYWV5faISsPSb8BnWSFDxAtezWKvWc9ZZ40PDrdu1/Qb5vg4lHWr1hs1BAMGVGm6V1Xdg==}
+    deprecated: Package deprecated. Please use @lucide/vue instead.
+    peerDependencies:
+      vue: '>=3.0.1'
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -5433,6 +5442,10 @@ snapshots:
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
+
+  lucide-vue-next@1.0.0(vue@3.4.21(typescript@5.9.3)):
+    dependencies:
+      vue: 3.4.21(typescript@5.9.3)
 
   magic-string@0.30.21:
     dependencies:

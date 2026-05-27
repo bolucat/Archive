@@ -49,7 +49,7 @@ const cb = (val: any) => {
         <a-radio tabindex="-1" value="KB">KB/s</a-radio>
       </a-radio-group>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div :style="{ width: '360px' }">
             默认：<span class="opred">0 (不限速，满速上传)</span>
@@ -67,7 +67,7 @@ const cb = (val: any) => {
     <div class="settingrow">
       <MySwitch :value="settingStore.downUploadBreakFile" @update:value="cb({ downUploadBreakFile: $event })"> 上传中 只通过秒传上传，暂停不能秒传的任务</MySwitch>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -88,7 +88,7 @@ const cb = (val: any) => {
         下载中/上传中 的任务全部完成后自动关机
       </MySwitch>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -109,7 +109,7 @@ const cb = (val: any) => {
     <div class="settingrow">
       <MySwitch :value="settingStore.downSmallFileFirst" @update:value="cb({ downSmallFileFirst: $event })"> 下载中/上传中 优先传输小于100MB的文件</MySwitch>
       <a-popover position="right">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -129,7 +129,7 @@ const cb = (val: any) => {
     <div class="settinghead">
       上传下载时 预先过滤文件
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             上传/下载时可以根据文件名结尾去过滤文件(不上传/下载)

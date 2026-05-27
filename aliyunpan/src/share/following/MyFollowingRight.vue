@@ -160,24 +160,20 @@ const handleSearchEnter = (event: any) => {
     <div class="toppanbtn">
       <a-button type="text" size="small" tabindex="-1" :loading="myfollowingStore.ListLoading" title="F5"
                 @click="handleRefresh">
-        <template #icon><i class="iconfont iconreload-1-icon" /></template>
+        <template #icon><IconFont name="iconreload-1-icon" /></template>
         刷新
       </a-button>
     </div>
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+N" @click="handleDaoRuLink"><i
-        class="iconfont iconlink2" />导入订阅
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+N" @click="handleDaoRuLink"><IconFont name="iconlink2" />导入订阅
       </a-button>
     </div>
     <div v-show="myfollowingStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><i
-        class="iconfont iconcopy" />复制链接
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><IconFont name="iconcopy" />复制链接
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><i
-        class="iconfont iconchrome" />浏览器
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><IconFont name="iconchrome" />浏览器
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+Delete" @click="handleDeleteSelectedLink"><i
-        class="iconfont icondelete" />取消订阅
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+Delete" @click="handleDeleteSelectedLink"><IconFont name="icondelete" />取消订阅
       </a-button>
     </div>
     <div style="flex-grow: 1"></div>
@@ -194,7 +190,7 @@ const handleSearchEnter = (event: any) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
-          <i :class="myfollowingStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="myfollowingStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>

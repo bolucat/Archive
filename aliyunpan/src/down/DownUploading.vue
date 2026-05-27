@@ -214,40 +214,34 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <a-button type="text" size="small" tabindex="-1" :disabled="uploadingStore.ListLoading" title="后退 Back Space"
                 @click="handleBack">
         <template #icon>
-          <i class="iconfont iconarrow-left-2-icon" />
+          <IconFont name="iconarrow-left-2-icon" />
         </template>
       </a-button>
       <a-button type="text" size="small" tabindex="-1" :loading="uploadingStore.ListLoading" title="F5"
                 @click="handleRefresh">
         <template #icon>
-          <i class="iconfont iconreload-1-icon" />
+          <IconFont name="iconreload-1-icon" />
         </template>
       </a-button>
     </div>
 
     <div v-if="uploadingStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(false, true)"><i
-        class="iconfont iconstart" />开始
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(false, true)"><IconFont name="iconstart" />开始
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(false, false)"><i
-        class="iconfont iconpause" />暂停
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(false, false)"><IconFont name="iconpause" />暂停
       </a-button>
       <a-button v-show="menuShowDir" type="text" size="small" tabindex="-1"
-                @click="() => UploadingDAL.mUploadingShowTask()"><i class="iconfont icongengduo1" />查看
+                @click="() => UploadingDAL.mUploadingShowTask()"><IconFont name="icongengduo1" />查看
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingDelete(false)"><i
-        class="iconfont icondelete" />清除
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingDelete(false)"><IconFont name="icondelete" />清除
       </a-button>
     </div>
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(true, true)"><i
-        class="iconfont iconstart" />开始全部
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(true, true)"><IconFont name="iconstart" />开始全部
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(true, false)"><i
-        class="iconfont iconpause" />暂停全部
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(true, false)"><IconFont name="iconpause" />暂停全部
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingDelete(true)"><i
-        class="iconfont iconrest" />清空全部
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingDelete(true)"><IconFont name="iconrest" />清空全部
       </a-button>
     </div>
   </div>
@@ -256,7 +250,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
-          <i :class="uploadingStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="uploadingStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
       <div class='selectInfo'>{{ uploadingStore.ListDataSelectCountInfo }}</div>
@@ -328,12 +322,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               :class="'rangselect ' + (rangSelectFiles[item.UploadID] ? (rangSelectStart == item.UploadID ? 'rangstart' : rangSelectEnd == item.UploadID ? 'rangend' : 'rang') : '')">
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.UploadID, $event, true)'>
-                <i
-                  :class="uploadingStore.ListSelected.has(item.UploadID) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="uploadingStore.ListSelected.has(item.UploadID) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class="fileicon">
-              <i :class="'iconfont ' + item.icon" aria-hidden="true"></i>
+              <IconFont :name="item.icon" aria-hidden="true" />
             </div>
             <div class="filename">
               <div v-if="item.isDir && menuShowTask" :title="item.localFilePath"
@@ -367,22 +360,22 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                 style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
         <a-doption @click="() => UploadingDAL.aUploadingStart(false, true)">
-          <template #icon><i class="iconfont iconstart" /></template>
+          <template #icon><IconFont name="iconstart" /></template>
           <template #default>开始上传</template>
         </a-doption>
 
         <a-doption @click="() => UploadingDAL.aUploadingStart(false, false)">
-          <template #icon><i class="iconfont iconpause" /></template>
+          <template #icon><IconFont name="iconpause" /></template>
           <template #default>暂停上传</template>
         </a-doption>
 
         <a-doption v-show="menuShowDir" @click="() => UploadingDAL.mUploadingShowTask()">
-          <template #icon><i class="iconfont icongengduo1" /></template>
+          <template #icon><IconFont name="icongengduo1" /></template>
           <template #default>查看详情</template>
         </a-doption>
 
         <a-doption @click="() => UploadingDAL.aUploadingDelete(false)">
-          <template #icon><i class="iconfont icondelete" /></template>
+          <template #icon><IconFont name="icondelete" /></template>
           <template #default>清除上传</template>
         </a-doption>
       </template>

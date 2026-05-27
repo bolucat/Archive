@@ -21,7 +21,7 @@ const selectDir = (drive_id: string, file_id: string, album_id: string) => {
           <template #content>
             <a-doption v-for='option in pantreeStore.selectDirPath' :key="'drop' + option.file_id"
                        @click='() => selectDir(option.drive_id, option.file_id, item.album_id || "")'>
-              <template #icon><i class='iconfont iconfile-folder' /></template>
+              <template #icon><IconFont name="iconfile-folder" /></template>
               <template #default>{{ option.name }}</template>
             </a-doption>
           </template>

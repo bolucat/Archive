@@ -1,7 +1,7 @@
 {
-  "name": "BoxPlayer",
+  "name": "boxplayer",
   "description": "BoxPlayer",
-  "version": "4.0.12",
+  "version": "4.0.13",
   "main": "dist/electron/main/index.js",
   "author": {
     "name": "gaozhangmin",
@@ -23,7 +23,7 @@
     "build:mac:signed": "pnpm run build && CSC_IDENTITY_AUTO_DISCOVERY=true electron-builder --mac",
     "build:linux": "pnpm run build && electron-builder --linux",
     "build:windows": "pnpm run build && electron-builder --win",
-    "build:all": "pnpm run build && CSC_IDENTITY_AUTO_DISCOVERY=true  electron-builder --linux --win --mac",
+    "build:all": "node build-all.mjs",
     "build:clouddrive-cli": "node scripts/build-clouddrive-cli-package.mjs",
     "config:clean": "node scripts/clean-config.js",
     "config:restore": "node scripts/restore-config.js",
@@ -123,6 +123,7 @@
     "lazy-val": "^1.0.5",
     "lodash.escaperegexp": "^4.1.2",
     "lodash.isequal": "^4.5.0",
+    "lucide-vue-next": "^1.0.0",
     "semver": "^7.6.0",
     "tiny-typed-emitter": "^2.1.0"
   },

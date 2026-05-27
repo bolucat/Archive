@@ -100,6 +100,17 @@ export interface SettingState {
   uiShowPanMedia: boolean
   uiShowPanRootFirst: string
   uiFolderSize: boolean
+  uiFolderPreviewEnabled: boolean
+  uiFolderPreviewAutoHide: number
+  uiLibraryAutoScanMusic: boolean
+  uiLibraryAutoScanVideo: boolean
+  uiLibraryIncrementalScan: boolean
+  uiLibraryScanIntervalHours: number
+  uiLibraryAutoScanPromptedUsers: string[]
+  uiLibraryAutoScanMusicDisabledUsers: string[]
+  uiLibraryAutoScanVideoDisabledUsers: string[]
+  uiLibraryFollowManualScans: boolean
+  uiMusicAutoScanFolders: { user_id: string; drive_id: string; file_id: string; name: string; path?: string }[]
   uiFileOrderDuli: string
   uiTimeFolderFormate: string
   uiTimeFolderIndex: number
@@ -250,6 +261,17 @@ const setting: SettingState = {
   uiShowPanMedia: false,
   uiShowPanRootFirst: 'all',
   uiFolderSize: true,
+  uiFolderPreviewEnabled: true,
+  uiFolderPreviewAutoHide: 6,
+  uiLibraryAutoScanMusic: false,
+  uiLibraryAutoScanVideo: false,
+  uiLibraryIncrementalScan: true,
+  uiLibraryScanIntervalHours: 24,
+  uiLibraryAutoScanPromptedUsers: [],
+  uiLibraryAutoScanMusicDisabledUsers: [],
+  uiLibraryAutoScanVideoDisabledUsers: [],
+  uiLibraryFollowManualScans: true,
+  uiMusicAutoScanFolders: [],
   uiFileOrderDuli: 'null',
   uiTimeFolderFormate: 'yyyy-MM-dd HH-mm-ss',
   uiTimeFolderIndex: 1,
@@ -336,7 +358,7 @@ function _loadSetting(val: any) {
   console.log('_loadSetting', val)
   // 应用设置
   setting.uiTheme = defaultValue(val.uiTheme, ['system', 'light', 'dark'])
-  setting.uiDefaultTab = defaultValue(val.uiDefaultTab, ['pan', 'media', 'media-server'])
+  setting.uiDefaultTab = defaultValue(val.uiDefaultTab, ['pan', 'media', 'media-server', 'music'])
   setting.uiImageMode = defaultValue(val.uiImageMode, ['fill', 'width', 'web'])
   setting.uiExitOnClose = defaultBool(val.uiExitOnClose, false)
   setting.uiLaunchAutoCheckUpdate = defaultBool(val.uiLaunchAutoCheckUpdate, false)
@@ -416,6 +438,33 @@ function _loadSetting(val: any) {
   setting.uiShowPanMedia = defaultBool(val.uiShowPanMedia, false)
   setting.uiShowPanRootFirst = defaultValue(val.uiShowPanRootFirst, ['all', 'backup', 'resource'])
   setting.uiFolderSize = defaultBool(val.uiFolderSize, true)
+  setting.uiFolderPreviewEnabled = defaultBool(val.uiFolderPreviewEnabled, true)
+  setting.uiFolderPreviewAutoHide = defaultNumber(val.uiFolderPreviewAutoHide, 6)
+  setting.uiLibraryAutoScanMusic = defaultBool(val.uiLibraryAutoScanMusic, false)
+  setting.uiLibraryAutoScanVideo = defaultBool(val.uiLibraryAutoScanVideo, false)
+  setting.uiLibraryIncrementalScan = defaultBool(val.uiLibraryIncrementalScan, true)
+  setting.uiLibraryScanIntervalHours = defaultNumberSub(val.uiLibraryScanIntervalHours, 24, 1, 24 * 30)
+  setting.uiLibraryAutoScanPromptedUsers = Array.isArray(val.uiLibraryAutoScanPromptedUsers)
+    ? val.uiLibraryAutoScanPromptedUsers.filter((s: unknown) => typeof s === 'string')
+    : []
+  setting.uiLibraryAutoScanMusicDisabledUsers = Array.isArray(val.uiLibraryAutoScanMusicDisabledUsers)
+    ? val.uiLibraryAutoScanMusicDisabledUsers.filter((s: unknown) => typeof s === 'string')
+    : []
+  setting.uiLibraryAutoScanVideoDisabledUsers = Array.isArray(val.uiLibraryAutoScanVideoDisabledUsers)
+    ? val.uiLibraryAutoScanVideoDisabledUsers.filter((s: unknown) => typeof s === 'string')
+    : []
+  setting.uiLibraryFollowManualScans = defaultBool(val.uiLibraryFollowManualScans, true)
+  setting.uiMusicAutoScanFolders = Array.isArray(val.uiMusicAutoScanFolders)
+    ? val.uiMusicAutoScanFolders
+        .filter((f: any) => f && typeof f.user_id === 'string' && typeof f.drive_id === 'string' && typeof f.file_id === 'string')
+        .map((f: any) => ({
+          user_id: String(f.user_id),
+          drive_id: String(f.drive_id),
+          file_id: String(f.file_id),
+          name: typeof f.name === 'string' ? f.name : '',
+          path: typeof f.path === 'string' ? f.path : ''
+        }))
+    : []
   setting.uiFileOrderDuli = defaultString(val.uiFileOrderDuli, 'null')
   setting.uiTimeFolderFormate = defaultString(val.uiTimeFolderFormate, 'yyyy-MM-dd HH-mm-ss').replace('mm-dd', 'MM-dd').replace('HH-MM', 'HH-mm')
   setting.uiTimeFolderIndex = defaultNumber(val.uiTimeFolderIndex, 1)

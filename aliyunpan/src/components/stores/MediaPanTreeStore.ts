@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { IAliGetDirModel } from '../../aliapi/alimodels'
 import { h } from 'vue'
+import IconFont from '../IconFont.vue'
 
 export interface MediaPanTreeState {
   user_id: string
@@ -13,7 +14,7 @@ export interface MediaPanTreeState {
 
 type State = MediaPanTreeState
 
-export const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
+export const fileiconfn = (icon: string) => h(IconFont, { name: icon })
 
 const useMediaPanTreeStore = defineStore('mediaPanTree', {
   state: (): State => ({

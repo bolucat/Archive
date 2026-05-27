@@ -11,8 +11,13 @@ import {
   useUserStore,
   useWinStore
 } from '../store'
+import useMusicLibraryStore from '../store/musiclibrary'
+import { useMediaLibraryStore } from '../store/medialibrary'
+import { Music, Video } from 'lucide-vue-next'
 import { onHideRightMenu, TestAlt, TestCtrl, TestKey, TestShift } from '../utils/keyboardhelper'
 import { copyToClipboard, openExternal } from '../utils/electronhelper'
+import { bootstrapMusicLibrary, shutdownMusicLibrary } from '../utils/musicLibraryBootstrap'
+import { bootstrapMediaLibrary, shutdownMediaLibrary } from '../utils/mediaLibraryBootstrap'
 import { QRCode as AntQRCode } from 'ant-design-vue'
 import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
@@ -24,6 +29,7 @@ import Down from '../down/index.vue'
 import Pan from '../pan/index.vue'
 import MediaLibraryView from '../views/MediaLibraryView.vue'
 import MediaServerView from '../views/MediaServerView.vue'
+import PageMusicLibrary from './PageMusicLibrary.vue'
 
 import UserInfo from '../user/UserInfo.vue'
 import UserLogin from '../user/UserLogin.vue'
@@ -44,6 +50,16 @@ const winStore = useWinStore()
 const keyboardStore = useKeyboardStore()
 const mouseStore = useMouseStore()
 const footStore = useFootStore()
+const musicStore = useMusicLibraryStore()
+const mediaStore = useMediaLibraryStore()
+
+const handleMusicLibraryClick = () => {
+  appStore.toggleTab('music')
+}
+
+const handleMediaLibraryClick = () => {
+  appStore.toggleTab('media')
+}
 
 const handlePanVisible = () => {
   panVisible.value = !panVisible.value
@@ -84,7 +100,8 @@ const themeTitle = computed(() => {
 const primaryTabDefinitions = [
   { key: 'pan', title: 'Alt+1', label: '网盘' },
   { key: 'media-server', title: 'Alt+6', label: '媒体服务器' },
-  { key: 'media', title: 'Alt+5', label: '媒体库' }
+  { key: 'media', title: 'Alt+5', label: '媒体库' },
+  { key: 'music', title: 'Alt+8', label: '音乐' }
 ]
 
 const orderedPrimaryTabs = computed(() => {
@@ -128,6 +145,7 @@ keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
   if (TestAlt('5', state.KeyDownEvent, () => appStore.toggleTab('media'))) return
   if (TestAlt('6', state.KeyDownEvent, () => appStore.toggleTab('media-server'))) return
   if (TestAlt('7', state.KeyDownEvent, () => appStore.toggleTab('setting'))) return
+  if (TestAlt('8', state.KeyDownEvent, () => appStore.toggleTab('music'))) return
   if (TestAlt('f4', state.KeyDownEvent, () => handleHideClick(undefined))) return
   if (TestAlt('m', state.KeyDownEvent, () => handleMinClick(undefined))) return
   if (TestAlt('enter', state.KeyDownEvent, () => handleMaxClick(undefined))) return
@@ -208,6 +226,8 @@ onMounted(() => {
     onHideRightMenu()
   }, 300)
   window.addEventListener('click', onHideRightMenu, { passive: true })
+  bootstrapMusicLibrary()
+  bootstrapMediaLibrary()
 })
 
 onUnmounted(() => {
@@ -215,6 +235,8 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('mousedown', onMouseDown)
   window.removeEventListener('click', onHideRightMenu)
+  shutdownMusicLibrary()
+  shutdownMediaLibrary()
 })
 </script>
 <template>
@@ -222,12 +244,12 @@ onUnmounted(() => {
     <a-layout-header id='xbyhead' draggable='false'>
       <div id='xbyhead2' class='q-electron-drag'>
         <a-button v-show="appStore.appTab === 'pan'" type='text' size='small' @click='handlePanVisible'>
-          <i class='iconfont iconmenuon' v-if='panVisible' />
-          <i class='iconfont iconmenuoff' v-else />
+          <IconFont name="iconmenuon" v-if='panVisible' />
+          <IconFont name="iconmenuoff" v-else />
         </a-button>
         <a-button v-show="appStore.appTab === 'media' || appStore.appTab === 'media-server'" type='text' size='small' @click='handleMediaNavVisible'>
-          <i class='iconfont iconmenuon' v-if='mediaNavVisible' />
-          <i class='iconfont iconmenuoff' v-else />
+          <IconFont name="iconmenuon" v-if='mediaNavVisible' />
+          <IconFont name="iconmenuoff" v-else />
         </a-button>
         <div class='title'>BoxPlayer</div>
 
@@ -247,22 +269,21 @@ onUnmounted(() => {
         <UserInfo />
         <UserLogin />
         <a-button type='text' tabindex='-1' style="margin-right: 5px" :title='themeTitle' @click="handleThemeClick">
-          <i class='iconfont iconnight'
-             v-if="appStore.appTheme === 'dark' || (appStore.appTheme == 'system' && appStore.appDark)"></i>
-          <i class='iconfont iconday' v-else></i>
+          <IconFont name="iconnight" v-if="appStore.appTheme === 'dark' || (appStore.appTheme == 'system' && appStore.appDark)" />
+          <IconFont name="iconday" v-else />
         </a-button>
         <a-button type='text' tabindex='-1' title='设置 Alt+7' :class="appStore.appTab == 'setting' ? 'active' : ''"
                   @click="appStore.toggleTab('setting')">
-          <i class='iconfont iconsetting'></i>
+          <IconFont name="iconsetting" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
-          <i class='iconfont iconzuixiaohua'></i>
+          <IconFont name="iconzuixiaohua" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
-          <i class='iconfont iconfullscreen'></i>
+          <IconFont name="iconfullscreen" />
         </a-button>
         <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
-          <i class='iconfont iconclose'></i>
+          <IconFont name="iconclose" />
         </a-button>
       </div>
     </a-layout-header>
@@ -286,6 +307,9 @@ onUnmounted(() => {
         <a-tab-pane key='media-server' title='6'>
           <MediaServerView :navVisible="mediaNavVisible" />
         </a-tab-pane>
+        <a-tab-pane key='music' title='8'>
+          <PageMusicLibrary />
+        </a-tab-pane>
         <a-tab-pane key='setting' title='7'>
           <Setting />
         </a-tab-pane>
@@ -308,6 +332,30 @@ onUnmounted(() => {
         <div class='footinfo'>
           {{ footStore.GetSpaceInfo }}
         </div>
+        <div
+          v-if="musicStore.isScanning && appStore.appTab !== 'music'"
+          class='footerBar fix music-scan-foot'
+          style='cursor: pointer; gap: 6px'
+          :title='musicStore.scanLabel || "正在扫描音乐库"'
+          @click='handleMusicLibraryClick'
+        >
+          <Music :size="14" :stroke-width="1.8" class="music-scan-spin" />
+          <span class='music-scan-text'>
+            {{ musicStore.scanLabel || '正在扫描音乐库' }} · {{ musicStore.scanFound }} 首
+          </span>
+        </div>
+        <div
+          v-if="mediaStore.isScanning && appStore.appTab !== 'media'"
+          class='footerBar fix music-scan-foot'
+          style='cursor: pointer; gap: 6px'
+          :title='`正在扫描视频媒体库 ${mediaStore.scanProgress}/${mediaStore.scanTotal}`'
+          @click='handleMediaLibraryClick'
+        >
+          <Video :size="14" :stroke-width="1.8" class="music-scan-spin" />
+          <span class='music-scan-text'>
+            视频媒体库扫描 {{ mediaStore.scanProgress }}/{{ mediaStore.scanTotal }}
+          </span>
+        </div>
         <div class='flexauto' />
         <div :style="{ display: 'flex', paddingRight: '16px', flexShrink: 0, flexGrow: 0 }">
           <div class='flexauto'></div>
@@ -321,25 +369,25 @@ onUnmounted(() => {
           </div>
           <div v-if='footStore.audioUrl' class='footerBar fix' title='关闭音频预览' style='cursor: pointer'
                @click.stop='handleAudioStop()'>
-            <i class='iconfont iconclose' />
+            <IconFont name="iconclose" />
           </div>
 
           <div class='footerBar fix' v-show='footStore.uploadTotalSpeed'>
-            <i class='iconfont iconshangchuansudu' />
+            <IconFont name="iconshangchuansudu" />
             <span id='footUploadSpeed' class='footspeedstr'>
               {{ footStore.uploadTotalSpeed }}
             </span>
           </div>
 
           <div class='footerBar fix' v-show='footStore.downloadTotalSpeed'>
-            <i class='iconfont iconxiazaisudu' />
+            <IconFont name="iconxiazaisudu" />
             <span id='footDownSpeed' class='footspeedstr'>
               {{ footStore.downloadTotalSpeed }}
             </span>
           </div>
 
           <div class='footerBar fix' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100'>
-            <i class='iconfont iconxiazaisudu' />
+            <IconFont name="iconxiazaisudu" />
             <span class='footspeedstr'>新版本 {{ footStore.updateDownloadProgress }}%</span>
           </div>
 
@@ -351,7 +399,7 @@ onUnmounted(() => {
           <a-popover v-model:popup-visible='footStore.taskVisible' trigger='click' position='top' class='asynclist'>
             <div class='footerBar fix' style='cursor: pointer'>
               <span :class="footStore.GetIsRunning ? 'shake' : ''">
-                <i class='iconfont icontongzhiblue' />
+                <IconFont name="icontongzhiblue" />
               </span>
               <span>异步通知</span>
             </div>
@@ -379,11 +427,11 @@ onUnmounted(() => {
                     </div>
                     <div v-else class='asynclistitem-name' :title='item.title'>{{ item.title }}</div>
                     <span v-if="item.status == 'running'" class='asynclistitem-progress asynclistitem-icon-running'
-                          title='执行中'><i class='iconfont iconhourglass' />{{ item.usetime }}</span>
+                          title='执行中'><IconFont name="iconhourglass" />{{ item.usetime }}</span>
                     <span v-if="item.status == 'success'" class='asynclistitem-progress asynclistitem-icon-success'
-                          title='成功'><i class='iconfont iconcheck' />{{ item.usetime }}</span>
+                          title='成功'><IconFont name="iconcheck" />{{ item.usetime }}</span>
                     <span v-if="item.status == 'error'" class='asynclistitem-progress asynclistitem-icon-error'
-                          title='失败'><i class='iconfont iconclose' />{{ item.usetime }}</span>
+                          title='失败'><IconFont name="iconclose" />{{ item.usetime }}</span>
                   </div>
                   <div class='asynclistitem-operation'>
                     <a-button type='text' size='mini' @click.stop='handleAsyncDelete(item.key)'>删除</a-button>
@@ -395,7 +443,7 @@ onUnmounted(() => {
           </a-popover>
           <a-popover trigger='hover' position='top' class='sponsor-popover'>
             <div class='footerBar fix footer-sponsor-button' title='赞助 APP'>
-              <i class='iconfont iconbiaozhang' />
+              <IconFont name="iconbiaozhang" />
               <span>赞助 APP</span>
             </div>
             <template #content>
@@ -420,14 +468,14 @@ onUnmounted(() => {
                   title='复制加密货币捐赠地址'
                   @click='handleCopyCryptoDonationAddress'
                 >
-                  <template #icon><i class='iconfont iconcopy' /></template>
+                  <template #icon><IconFont name="iconcopy" /></template>
                   复制地址
                 </a-button>
               </div>
             </template>
           </a-popover>
           <div class='footerBar fix' style='margin: 0; cursor: pointer' @click='handleHelpPage'>
-            <i class='iconfont iconrss' />
+            <IconFont name="iconrss" />
             项目地址
           </div>
         </div>
@@ -499,8 +547,11 @@ onUnmounted(() => {
   background-color: var(--color-fill-2);
 }
 
-#xbyhead2 .iconfont {
+#xbyhead2 .iconfont,
+#xbyhead2 .iconfont-svg {
   font-size: 24px;
+  width: 24px;
+  height: 24px;
 }
 
 .sponsor-popover .arco-popover-popup-content {
@@ -865,6 +916,32 @@ body[arco-theme='dark'] #footer2 audio::-webkit-media-controls-time-remaining-di
 .footspeedstr {
   min-width: 52px;
   display: inline-block;
+}
+
+.music-scan-foot {
+  opacity: 0.85;
+}
+
+.music-scan-foot:hover {
+  background-color: #569dff;
+  opacity: 1;
+}
+
+.music-scan-foot .music-scan-spin {
+  flex-shrink: 0;
+  animation: music-scan-rotate 2.4s linear infinite;
+}
+
+.music-scan-foot .music-scan-text {
+  max-width: 240px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+@keyframes music-scan-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>
 

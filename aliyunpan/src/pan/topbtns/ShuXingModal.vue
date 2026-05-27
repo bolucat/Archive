@@ -409,7 +409,7 @@ const parseBaiduDesc = (desc: string) => {
       <div class='h16'></div>
 
       <a-row>
-        <a-col flex='110px'> 文件大小： <i class='iconfont iconchakan link' title='点击切换格式' @click='handleSize'></i>
+        <a-col flex='110px'> 文件大小： <IconFont name="iconchakan" class="link" title='点击切换格式' @click='handleSize' />
         </a-col>
         <a-col flex='auto'></a-col>
         <a-col flex='170px'> 创建日期：</a-col>

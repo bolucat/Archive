@@ -46,7 +46,8 @@ body[arco-theme='dark'] .fileitem.focus {
     padding-right: 4px;
 }
 
-.fileicon i {
+.fileicon i,
+.fileicon .iconfont-svg {
     color: var(--color-neutral-7);
     font-size: 22px;
     position: relative;

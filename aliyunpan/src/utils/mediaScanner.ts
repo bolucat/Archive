@@ -47,10 +47,11 @@ export class MediaScanner {
   // 统一扫描入口，按当前网盘类型分流
   async scanFolder(
     folder: IAliGetFileModel,
-    driveServerId: string
+    driveServerId: string,
+    options: { incremental?: boolean; silent?: boolean } = {}
   ): Promise<void> {
     if (this.isScanning) {
-      message.warning('正在扫描中，请稍后...')
+      if (!options.silent) message.warning('正在扫描中，请稍后...')
       return
     }
 
@@ -70,19 +71,31 @@ export class MediaScanner {
       const videoFiles: DriveFileItem[] = []
       await this.collectVideoFiles(folder, scanContext, videoFiles, 0, folder.name)
 
+      // 增量模式：跳过 mediaStore 中已存在 id 的文件，避免重复 TMDB 请求
+      let toProcess = videoFiles
+      if (options.incremental) {
+        const existingIds = new Set(this.mediaStore.mediaItems.map((m: any) => m.id))
+        toProcess = videoFiles.filter((f) => !existingIds.has(f.id))
+        if (toProcess.length === 0) {
+          if (!options.silent) message.info('增量扫描：没有新增视频')
+          return
+        }
+        console.log(`增量扫描：${videoFiles.length} 个视频中 ${toProcess.length} 个为新增`)
+      }
+
       if (videoFiles.length === 0) {
-        message.info('未在该文件夹中找到视频文件')
+        if (!options.silent) message.info('未在该文件夹中找到视频文件')
         return
       }
 
-      this.mediaStore.setScanProgress(0, videoFiles.length)
-      console.log(`找到 ${videoFiles.length} 个视频文件，开始处理...`)
+      this.mediaStore.setScanProgress(0, toProcess.length)
+      console.log(`找到 ${videoFiles.length} 个视频文件，处理 ${toProcess.length} 个...`)
 
       // 批量处理视频文件
       const batchSize = 5 // 每次处理5个文件
       const folderKey = scanContext.driveServerId === 'webdav' ? `webdav_${folder.drive_id}_${folder.file_id}` : `${folder.file_id}`
-      for (let i = 0; i < videoFiles.length && !this.shouldStop; i += batchSize) {
-        const batch = videoFiles.slice(i, i + batchSize)
+      for (let i = 0; i < toProcess.length && !this.shouldStop; i += batchSize) {
+        const batch = toProcess.slice(i, i + batchSize)
         const promises = batch.map(file => this.processVideoFile(file, folder.name, folderKey))
 
         try {
@@ -91,7 +104,7 @@ export class MediaScanner {
           console.error('批量处理视频文件时出错:', error)
         }
 
-        this.mediaStore.setScanProgress(Math.min(i + batchSize, videoFiles.length), videoFiles.length)
+        this.mediaStore.setScanProgress(Math.min(i + batchSize, toProcess.length), toProcess.length)
 
         // 给UI一些时间更新
         await new Promise(resolve => setTimeout(resolve, 100))
@@ -113,14 +126,16 @@ export class MediaScanner {
 
         this.mediaStore.addFolder(mediaFolder)
 
-        message.success(`扫描完成！共处理 ${videoFiles.length} 个视频文件`)
+        if (!options.silent) {
+          message.success(`扫描完成！共处理 ${toProcess.length} 个视频文件`)
+        }
       } else {
-        message.info('扫描已停止')
+        if (!options.silent) message.info('扫描已停止')
       }
 
     } catch (error) {
       console.error('扫描文件夹时出错:', error)
-      message.error('扫描失败: ' + (error as Error).message)
+      if (!options.silent) message.error('扫描失败: ' + (error as Error).message)
     } finally {
       this.isScanning = false
       this.mediaStore.setScanning(false)

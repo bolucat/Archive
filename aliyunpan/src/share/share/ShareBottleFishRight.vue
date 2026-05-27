@@ -114,20 +114,20 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <a-button type="text" size="small" tabindex="-1" :loading="shareBottleFishStore.ListLoading" title="F5"
                 @click="handleRefresh">
         <template #icon>
-          <i class="iconfont iconreload-1-icon" />
+          <IconFont name="iconreload-1-icon" />
         </template>
         刷新
       </a-button>
     </div>
     <div v-show="shareBottleFishStore.IsListSelected" class="toppanbtn">
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink">
-        <i class="iconfont iconchakan" />查看
+        <IconFont name="iconchakan" />查看
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink">
-        <i class="iconfont iconcopy" />复制链接
+        <IconFont name="iconcopy" />复制链接
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink">
-        <i class="iconfont iconchrome" />浏览器
+        <IconFont name="iconchrome" />浏览器
       </a-button>
     </div>
     <div style="flex-grow: 1"></div>
@@ -147,7 +147,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
-          <i :class="shareBottleFishStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="shareBottleFishStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -159,7 +159,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     </div>
     <div :class="'cell sharetime order ' + (shareBottleFishStore.ListOrderKey == 'mtime' ? 'active' : '')" @click="handleOrder('mtime')">
       修改时间
-      <i class="iconfont iconxia" />
+      <IconFont name="iconxia" />
     </div>
     <div class="cell pr"></div>
   </div>
@@ -192,12 +192,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
             <div style="margin: 2px">
               <a-button shape="circle" type="text" tabindex="-1" class="select" :title="index"
                         @click.prevent.stop="handleSelect(item.shareId, $event, true)">
-                <i
-                  :class="shareBottleFishStore.ListSelected.has(item.shareId) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="shareBottleFishStore.ListSelected.has(item.shareId) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class="fileicon">
-              <i class="iconfont iconlink2" aria-hidden="true"></i>
+              <IconFont name="iconlink2" aria-hidden="true" />
             </div>
             <div class="filename">
               <div :title="'https://www.aliyundrive.com/s/' + item.shareId" @click="handleOpenLink(item)">
@@ -214,16 +213,16 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     <a-dropdown id="rightsharebottlefishmenu" class="rightmenu" :popup-visible="true" style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
         <a-doption @click="handleOpenLink">
-          <template #icon><i class="iconfont iconchakan" /></template>
+          <template #icon><IconFont name="iconchakan" /></template>
           <template #default>查看</template>
         </a-doption>
 
         <a-doption @click="handleCopySelectedLink">
-          <template #icon><i class="iconfont iconcopy" /></template>
+          <template #icon><IconFont name="iconcopy" /></template>
           <template #default>复制链接</template>
         </a-doption>
         <a-doption @click="handleBrowserLink">
-          <template #icon><i class="iconfont iconchrome" /></template>
+          <template #icon><IconFont name="iconchrome" /></template>
           <template #default>浏览器</template>
         </a-doption>
       </template>

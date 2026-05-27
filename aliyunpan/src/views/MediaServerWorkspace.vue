@@ -18,7 +18,7 @@
       <div v-if="currentRoute.kind !== 'item-detail' && currentRoute.kind !== 'person-page'" class="workspace-toolbar">
         <div class="toolbar-left">
           <a-button type="text" class="back-button" @click="handleBack">
-            <template #icon><i class="iconfont iconarrow-left-2-icon" /></template>
+            <template #icon><IconFont name="iconarrow-left-2-icon" /></template>
             <span class="back-button-server-icon">
               <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" />
             </span>
@@ -36,7 +36,7 @@
 
         <div class="toolbar-right">
           <a-button v-if="currentRoute.kind === 'home'" type="outline" @click="openHomeLibraryManager">
-            <template #icon><i class="iconfont iconlist" /></template>
+            <template #icon><IconFont name="iconlist" /></template>
             媒体管理
           </a-button>
           <div v-if="currentRoute.kind === 'home'" class="home-poster-toggle">
@@ -118,7 +118,7 @@
             </template>
           </a-dropdown>
           <a-button type="outline" @click="handleRefresh">
-            <template #icon><i class="iconfont iconreload-1-icon" /></template>
+            <template #icon><IconFont name="iconreload-1-icon" /></template>
             刷新
           </a-button>
 <!--          <a-button type="outline" @click="navigation.openRegistry()">管理服务器</a-button>-->
@@ -322,7 +322,7 @@
                 @select="handleSearchItemSelect"
               />
               <div v-else class="empty-placeholder search-empty-state">
-                <i class="iconfont iconsearch" />
+                <IconFont name="iconsearch" />
                 <span>暂时还没有可推荐的剧集</span>
               </div>
             </template>
@@ -589,7 +589,7 @@
 
                   <div class="detail-top-back">
                     <a-button type="text" class="detail-back-button" @click="handleBack">
-                      <template #icon><i class="iconfont iconarrow-left-2-icon" /></template>
+                      <template #icon><IconFont name="iconarrow-left-2-icon" /></template>
                       <span class="back-button-server-icon">
                         <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" />
                       </span>
@@ -663,7 +663,7 @@
                         @click="openPersonSection(section)"
                       >
                         查看所有
-                        <i class="iconfont iconarrow-right-2-icon" />
+                        <IconFont name="iconarrow-right-2-icon" />
                       </button>
                     </div>
 
@@ -818,7 +818,7 @@
 
                   <div class="detail-top-back">
                     <a-button type="text" class="detail-back-button" @click="handleBack">
-                      <template #icon><i class="iconfont iconarrow-left-2-icon" /></template>
+                      <template #icon><IconFont name="iconarrow-left-2-icon" /></template>
                       <span class="back-button-server-icon">
                         <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" />
                       </span>
@@ -1139,7 +1139,7 @@
                         @click="handleMediaInfoCardClick(card)"
                       >
                         <div v-if="card.selected" class="detail-media-card-selected-badge">
-                          <i class="iconfont iconcheck" />
+                          <IconFont name="iconcheck" />
                         </div>
                         <div class="detail-media-card-title">
                           <div class="detail-media-card-heading">
@@ -1202,14 +1202,11 @@
                 >
                   {{ item.title }}
                 </a-checkbox>
-                <i
-                  class="iconfont iconlist home-library-manager-drag-icon"
-                  draggable="true"
+                <IconFont name="iconlist" class="home-library-manager-drag-icon" draggable="true"
                   title="拖动排序"
                   @mousedown.prevent="handleHomeLibraryPointerDragStart(item.key)"
                   @dragstart="handleHomeLibraryDragStart($event, item.key)"
-                  @dragend="handleHomeLibraryDragEnd"
-                />
+                  @dragend="handleHomeLibraryDragEnd" />
               </div>
               <div v-if="homeLibraryManagerDraft.length === 0" class="home-library-manager-empty">
                 当前服务器还没有可管理的媒体库
@@ -1238,7 +1235,7 @@
                   <span class="detail-media-kind-badge">{{ activeMediaInfoCard.kind === 'video' ? '影' : activeMediaInfoCard.kind === 'audio' ? '声' : '字' }}</span>
                   <span>{{ activeMediaInfoCard.title }}</span>
                 </div>
-                <i v-if="activeMediaInfoCard.selected" class="iconfont iconcheck" />
+                <IconFont name="iconcheck" v-if="activeMediaInfoCard.selected" />
               </div>
               <div class="detail-media-modal-body">
                 <div
@@ -2686,7 +2683,7 @@ const enqueueMediaServerDownloadItems = async (
       savePath: itemFolder.length ? joinDownloadPath(basePath, ...itemFolder) : basePath,
       fileName: downloadInfo.fileName || item.title,
       fileSize: downloadInfo.fileSize,
-      icon: 'iconfont iconshipin'
+      icon: 'iconshipin'
     })
     created += 1
   }

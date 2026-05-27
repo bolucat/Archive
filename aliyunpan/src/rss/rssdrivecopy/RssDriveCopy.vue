@@ -130,19 +130,19 @@ const handleRightUser = (driveType: any) => {
         <a-step description='选择 网盘/相册'>
           选择
           <template #icon>
-            <i class='iconfont iconedit-square' />
+            <IconFont name="iconedit-square" />
           </template>
         </a-step>
         <a-step description='勾选 文件/文件夹'>
           勾选
           <template #icon>
-            <i class='iconfont iconedit-square' />
+            <IconFont name="iconedit-square" />
           </template>
         </a-step>
         <a-step description='开始复制'>
           复制
           <template #icon>
-            <i class='iconfont icondelete' />
+            <IconFont name="icondelete" />
           </template>
         </a-step>
       </a-steps>
@@ -179,11 +179,9 @@ const handleRightUser = (driveType: any) => {
         <template #first>
           <div class='rsscopymenu'>
             <a-button type='text' size='small' tabindex='-1' title='根目录'
-                      @click="handleLeftTreeSelect(['root'])"><i class='iconfont iconhome' /></a-button>
-            <a-button type='text' size='small' tabindex='-1' title='返回上级' @click="handleLeftTreeSelect(['back'])"><i
-              class='iconfont iconarrow-top-2-icon-copy' /></a-button>
-            <a-button type='text' size='small' tabindex='-1' title='刷新' @click="handleLeftTreeSelect(['refresh'])"><i
-              class='iconfont iconreload-1-icon' /></a-button>
+                      @click="handleLeftTreeSelect(['root'])"><IconFont name="iconhome" /></a-button>
+            <a-button type='text' size='small' tabindex='-1' title='返回上级' @click="handleLeftTreeSelect(['back'])"><IconFont name="iconarrow-top-2-icon-copy" /></a-button>
+            <a-button type='text' size='small' tabindex='-1' title='刷新' @click="handleLeftTreeSelect(['refresh'])"><IconFont name="iconreload-1-icon" /></a-button>
             <AntdCheckbox tabindex='-1' :disabled='TreeState.LeftInfo.loading'
                           :checked='TreeState.LeftCheckedKeys.length > 0 && TreeState.LeftTreeData.length == TreeState.LeftCheckedKeys.length'
                           style='margin-left: 7px' @click.stop.prevent='handleSelectAll'>全选
@@ -220,11 +218,10 @@ const handleRightUser = (driveType: any) => {
         <template #second>
           <div class='rsscopymenu'>
             <a-button type='text' size='small' tabindex='-1' title='根目录'
-                      @click="handleRightTreeSelect(['root'])"><i class='iconfont iconhome' /></a-button>
+                      @click="handleRightTreeSelect(['root'])"><IconFont name="iconhome" /></a-button>
             <a-button type='text' size='small' tabindex='-1' title='返回上级' @click="handleRightTreeSelect(['back'])">
-              <i class='iconfont iconarrow-top-2-icon-copy' /></a-button>
-            <a-button type='text' size='small' tabindex='-1' title='刷新' @click="handleRightTreeSelect(['refresh'])"><i
-              class='iconfont iconreload-1-icon' /></a-button>
+              <IconFont name="iconarrow-top-2-icon-copy" /></a-button>
+            <a-button type='text' size='small' tabindex='-1' title='刷新' @click="handleRightTreeSelect(['refresh'])"><IconFont name="iconreload-1-icon" /></a-button>
             <span class='checkedInfo'
                   style='margin-left: 8px; color: rgb(var(--success-6))'>复制到 {{ TreeState.RightInfo.dirName }}</span>
           </div>

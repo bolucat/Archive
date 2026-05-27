@@ -241,7 +241,7 @@ export default class DownDAL {
           DownUrl: downloadurl
         }
       }
-      if (downitem.Info.ariaRemote && !downitem.Info.isDir) downitem.Info.icon = 'iconfont iconcloud-download'
+      if (downitem.Info.ariaRemote && !downitem.Info.isDir) downitem.Info.icon = 'iconcloud-download'
       downlist.push(downitem)
     }
     useDowningStore().mAddDownload({ downlist })
@@ -281,7 +281,7 @@ export default class DownDAL {
         size: params.fileSize || 0,
         sizestr: params.fileSize ? humanSize(params.fileSize) : '',
         isDir: false,
-        icon: params.icon || 'iconfont iconcloud-download',
+        icon: params.icon || 'iconcloud-download',
         encType: '',
         sha1: '',
         crc64: '',

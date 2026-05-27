@@ -51,14 +51,11 @@ body[arco-theme='dark'] .ant-tree .ant-tree-node-content-wrapper.ant-tree-node-s
     border-right: 1px solid var(--color-neutral-3);
 }
 
-.ant-tree-switcher_open .ant-tree-switcher-icon.iconfont.Arrow:before {
-    content: '\e740';
-    font-size: 20px;
+.ant-tree-switcher-lucide {
+    transition: transform 0.15s ease;
 }
-
-.ant-tree-switcher_close .ant-tree-switcher-icon.iconfont.Arrow:before {
-    content: '\e742';
-    font-size: 18px;
+.ant-tree-switcher_open .ant-tree-switcher-lucide {
+    transform: rotate(90deg);
 }
 
 .ant-tree-switcher_close .ant-tree-switcher-icon {

@@ -124,7 +124,7 @@ const handleOK = () => {
                 <template #radio="{ checked }">
                   <a-tag size="large" bordered color="orangered" :checked="checked" checkable>
                     <template v-if="checked" #icon>
-                      <i class="iconfont iconcheck"></i>
+                      <IconFont name="iconcheck" />
                     </template>
                     {{ item.label }}
                   </a-tag>

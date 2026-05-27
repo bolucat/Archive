@@ -189,7 +189,7 @@ onBeforeUnmount(() => {
               >
                 <template #avatar>
                    <span class="arco-upload-list-item-file-icon">
-                      <i class="iconfont icontouping2"></i>
+                      <IconFont name="icontouping2" />
                    </span>
                 </template>
               </a-list-item-meta>

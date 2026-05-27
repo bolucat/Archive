@@ -11,7 +11,7 @@
             :loading="mediaStore.isScanning"
           >
             <template #icon>
-              <i class="iconfont iconadd" />
+              <IconFont name="iconadd" />
             </template>
             添加文件夹
           </a-button>
@@ -22,7 +22,7 @@
             :loading="mediaStore.isScanning"
           >
             <template #icon>
-              <i class="iconfont iconreload-1-icon" />
+              <IconFont name="iconreload-1-icon" />
             </template>
           </a-button>
         </div>
@@ -42,7 +42,7 @@
               <div class="poster">
                 <img v-if="item.posterUrl" :src="item.posterUrl" :alt="item.name" />
                 <div v-else class="poster-placeholder">
-                  <i class="iconfont iconfile-video" />
+                  <IconFont name="iconfile-video" />
                 </div>
                 <div class="progress-bar" v-if="item.watchProgress">
                   <div class="progress-fill" :style="{ width: item.watchProgress + '%' }"></div>
@@ -69,7 +69,7 @@
               <div class="poster">
                 <img v-if="item.posterUrl" :src="item.posterUrl" :alt="item.name" />
                 <div v-else class="poster-placeholder">
-                  <i class="iconfont iconfile-video" />
+                  <IconFont name="iconfile-video" />
                 </div>
                 <div class="type-badge">{{ item.type === 'movie' ? '电影' : '电视剧' }}</div>
                 <div class="rating" v-if="item.rating">{{ item.rating.toFixed(1) }}</div>

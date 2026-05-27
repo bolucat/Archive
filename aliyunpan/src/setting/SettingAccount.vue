@@ -136,7 +136,7 @@ const handlerExportCliTokens = async () => {
     <div class='settingspace'></div>
     <div class='settinghead'>账号导入导出</div>
     <a-popover position="bottom">
-      <i class="iconfont iconbulb" />
+      <IconFont name="iconbulb" />
       <template #content>
         <div>
           可以一键恢复所有账户的数据（加密）<br />

@@ -1,6 +1,7 @@
 <script setup lang='ts'>
 import { modalCloseAll } from '../../utils/modal'
 import { computed, h, reactive, ref, watch, watchEffect } from 'vue'
+import IconFont from '../../components/IconFont.vue'
 import MySwitchTab from '../../layout/MySwitchTab.vue'
 import usePanFileStore from '../panfilestore'
 import { AntTreeNodeDropEvent, EventDataNode } from 'ant-design-vue/es/tree'
@@ -20,9 +21,9 @@ import path from 'path'
 import { isCloud123User } from '../../aliapi/utils'
 import { apiCloud123RenameBatch } from '../../cloud123/filecmd'
 
-const iconfolder = h('i', { class: 'iconfont iconfile-folder' })
+const iconfolder = h(IconFont, { name: 'iconfile-folder' })
 const foldericonfn = () => iconfolder
-const fileiconfn = (icon: string) => h('i', { class: 'iconfont ' + icon })
+const fileiconfn = (icon: string) => h(IconFont, { name: icon })
 
 
 const props = defineProps({
@@ -990,17 +991,16 @@ const handleSelectRow = (visible: boolean, treeNodeKey: string) => {
           <div class='toppanbtns' style='height: 26px' tabindex='-1'>
             <div class='toppanbtn'>
               <a-button type='text' size='small' tabindex='-1' :disabled='okLoading' @click='onRunReplaceName()'>
-                <i class='iconfont iconreload-1-icon' />刷新
+                <IconFont name="iconreload-1-icon" />刷新
               </a-button>
               <a-button type='text' size='small' tabindex='-1' :disabled='okLoading'
                         style='margin: 0'
                         @click="handleContextMenu('all', '')">
-                <i
-                  :class="treeCheckedKeys.checked.length === allLen ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="treeCheckedKeys.checked.length === allLen ? 'iconrsuccess' : 'iconpic2'" />
                 {{ treeCheckedKeys.checked.length === allLen ? '取消全选' : '全选' }}
               </a-button>
               <a-button type='text' size='small' tabindex='-1' style='margin: 0' @click='handleMultiOpt'>
-                <i :class="multiOpt ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />多次操作
+                <IconFont :name="multiOpt ? 'iconrsuccess' : 'iconpic2'" />多次操作
               </a-button>
             </div>
             <div style='padding-top: 3px; color: rgb(var(--primary-6)); flex-shrink: 0'>{{ checkInfo }}</div>

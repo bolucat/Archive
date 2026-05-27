@@ -23,7 +23,7 @@
           @click="toggleResource(resource)"
         >
           <div class="plex-resource-left">
-            <div class="plex-resource-icon"><i class="iconfont iconserver" /></div>
+            <div class="plex-resource-icon"><IconFont name="iconserver" /></div>
             <div class="plex-resource-info">
               <div class="plex-resource-name">{{ resource.name }}</div>
               <div class="plex-resource-subtitle">
@@ -32,7 +32,7 @@
             </div>
           </div>
           <div class="plex-resource-check">
-            <i :class="['iconfont', isSelected(resource) ? 'iconcheckbox-checked' : 'iconcheckbox-unchecked']" />
+            <IconFont :name="isSelected(resource) ? 'iconcheckbox-checked' : 'iconcheckbox-unchecked'" />
           </div>
         </button>
       </div>

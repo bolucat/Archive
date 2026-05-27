@@ -81,10 +81,10 @@ const handleFollowing = (followingid: string, isFollowing: boolean) => {
             <div class="dingyuedesc">{{ item.description }}</div>
 
             <div class="dingyueaction">
-              <a-button v-if="myfollowingStore.FollowingKeys.has(item.user_id)" type="text" size="small" tabindex="-1" title="取消订阅" @click="handleFollowing(item.user_id, false)"><i class="iconfont icondingyueno" /></a-button>
-              <a-button v-else type="text" size="small" tabindex="-1" title="订阅" @click="handleFollowing(item.user_id, true)"><i class="iconfont icondingyue" /></a-button>
-              <a-button type="text" size="small" tabindex="-1" title="查看详情" @click="handleOpenLink(item.user_id)"><i class="iconfont iconchakan" /></a-button>
-              <a-button type="text" size="small" tabindex="-1" title="复制链接" @click="handleCopyLink(item.user_id, item.nick_name)"><i class="iconfont iconcopy" /></a-button>
+              <a-button v-if="myfollowingStore.FollowingKeys.has(item.user_id)" type="text" size="small" tabindex="-1" title="取消订阅" @click="handleFollowing(item.user_id, false)"><IconFont name="icondingyueno" /></a-button>
+              <a-button v-else type="text" size="small" tabindex="-1" title="订阅" @click="handleFollowing(item.user_id, true)"><IconFont name="icondingyue" /></a-button>
+              <a-button type="text" size="small" tabindex="-1" title="查看详情" @click="handleOpenLink(item.user_id)"><IconFont name="iconchakan" /></a-button>
+              <a-button type="text" size="small" tabindex="-1" title="复制链接" @click="handleCopyLink(item.user_id, item.nick_name)"><IconFont name="iconcopy" /></a-button>
             </div>
           </div>
         </div>

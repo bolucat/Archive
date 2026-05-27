@@ -175,7 +175,7 @@ const handleOK = async (multi: boolean) => {
       <span class='modaltitle'>
         创建{{ shareType.title }}链接
         <a-popover position="bottom">
-          <i class="iconfont iconbulb" />
+          <IconFont name="iconbulb" />
           <template #content>
             <div v-if="shareType.type === 's'">
               <span class="opred">普通用户</span>每天只能使用分享功能<span class="opred">5次</span><br />

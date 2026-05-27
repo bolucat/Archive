@@ -16,6 +16,8 @@ import UserDAL from '../user/userdal'
 import Config from '../config'
 import { buildUpstreamProxyHeaders } from './proxyHeaders'
 import { MEDIA_SERVER_DRIVE_ID, shouldRefreshProxyUrl } from './proxyCache'
+import { isAliyunUser } from '../aliapi/utils'
+import { isWebDavDrive } from './webdavClient'
 
 // 默认maxFreeSockets=256
 const httpsAgent = new HttpsAgent({ keepAlive: true })
@@ -170,9 +172,12 @@ export async function getRawUrl(
         }
       }
     } else if (preview_type === 'audio') {
-      let audioData = await AliFile.ApiAudioPreviewUrl(user_id, drive_id, file_id)
-      if (typeof audioData != 'string') {
-        data.url = audioData.url
+      // 仅阿里云盘有音频转码接口，其他网盘（115/百度/123/PikPak/Dropbox/OneDrive/Box/WebDAV 等）直接走原始下载链接
+      if (isAliyunUser(user_id) && !isWebDavDrive(drive_id)) {
+        let audioData = await AliFile.ApiAudioPreviewUrl(user_id, drive_id, file_id)
+        if (typeof audioData != 'string') {
+          data.url = audioData.url
+        }
       }
     }
   }

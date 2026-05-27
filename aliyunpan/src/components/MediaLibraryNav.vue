@@ -3,7 +3,7 @@
     <!-- 扫描进度 -->
     <div v-if="mediaStore.isScanning" class="scan-progress-section">
       <div class="scan-header">
-        <i class="iconfont iconreload-1-icon spin"></i>
+        <IconFont name="iconreload-1-icon" class="spin" />
         <span>正在扫描...</span>
       </div>
       <a-progress
@@ -30,7 +30,7 @@
           :class="{ active: activeCategory === 'home' }"
           @click="handleCategoryClick('home')"
         >
-          <i class="iconfont iconhome"></i>
+          <IconFont name="iconhome" />
           <span>首页</span>
         </div>
 
@@ -40,7 +40,7 @@
           :class="{ active: activeCategory === 'search' }"
           @click="handleCategoryClick('search')"
         >
-          <i class="iconfont iconsearch"></i>
+          <IconFont name="iconsearch" />
           <span>搜索</span>
         </div>
 
@@ -50,7 +50,7 @@
           :class="{ active: activeCategory === 'continue-watching' }"
           @click="handleCategoryClick('continue-watching')"
         >
-          <i class="iconfont iconstart"></i>
+          <IconFont name="iconstart" />
           <span>继续观看</span>
           <span v-if="mediaStore.continueWatching.length > 0" class="count">
             {{ mediaStore.continueWatching.length }}
@@ -63,7 +63,7 @@
           :class="{ active: activeCategory === 'recently-added' }"
           @click="handleCategoryClick('recently-added')"
         >
-          <i class="iconfont iconplus"></i>
+          <IconFont name="iconplus" />
           <span>最近添加</span>
           <span v-if="mediaStore.recentlyAdded.length > 0" class="count">
             {{ mediaStore.recentlyAdded.length }}
@@ -76,7 +76,7 @@
           :class="{ active: activeCategory === 'movies' }"
           @click="handleCategoryClick('movies')"
         >
-          <i class="iconfont iconfile_video"></i>
+          <IconFont name="iconfile_video" />
           <span>电影</span>
           <span v-if="mediaStore.movies.length > 0" class="count">
             {{ mediaStore.movies.length }}
@@ -89,7 +89,7 @@
           :class="{ active: activeCategory === 'tv-shows' }"
           @click="handleCategoryClick('tv-shows')"
         >
-          <i class="iconfont iconshipin"></i>
+          <IconFont name="iconshipin" />
           <span>电视剧</span>
           <span v-if="mediaStore.tvShows.length > 0" class="count">
             {{ mediaStore.tvShows.length }}
@@ -102,7 +102,7 @@
           :class="{ active: activeCategory === 'documentary' }"
           @click="handleCategoryClick('documentary')"
         >
-          <i class="iconfont iconluxiang"></i>
+          <IconFont name="iconluxiang" />
           <span>纪录片</span>
           <span v-if="documentaryCount > 0" class="count">
             {{ documentaryCount }}
@@ -115,7 +115,7 @@
           :class="{ active: activeCategory === 'animation' }"
           @click="handleCategoryClick('animation')"
         >
-          <i class="iconfont iconbiaozhang"></i>
+          <IconFont name="iconbiaozhang" />
           <span>动画</span>
           <span v-if="animationCount > 0" class="count">
             {{ animationCount }}
@@ -128,7 +128,7 @@
           :class="{ active: activeCategory === 'unmatched' }"
           @click="handleCategoryClick('unmatched')"
         >
-          <i class="iconfont iconinfo_circle"></i>
+          <IconFont name="iconinfo_circle" />
           <span>未匹配</span>
           <span v-if="mediaStore.unmatchedItems.length > 0" class="count">
             {{ mediaStore.unmatchedItems.length }}
@@ -141,7 +141,7 @@
           :class="{ active: activeCategory === 'unwatched' }"
           @click="handleCategoryClick('unwatched')"
         >
-          <i class="iconfont iconclose"></i>
+          <IconFont name="iconclose" />
           <span>未观看</span>
         </div>
 
@@ -151,7 +151,7 @@
           :class="{ active: activeCategory === 'favorites' }"
           @click="handleCategoryClick('favorites')"
         >
-          <i class="iconfont iconcrown3"></i>
+          <IconFont name="iconcrown3" />
           <span>收藏</span>
         </div>
 
@@ -161,7 +161,7 @@
           :class="{ active: activeCategory === 'playlist' }"
           @click="handleCategoryClick('playlist')"
         >
-          <i class="iconfont iconlist"></i>
+          <IconFont name="iconlist" />
           <span>播放列表</span>
         </div>
       </div>
@@ -180,7 +180,7 @@
           :class="{ active: activeCategory === 'genres' }"
           @click="handleCategoryClick('genres')"
         >
-          <i class="iconfont iconwbiaoqian"></i>
+          <IconFont name="iconwbiaoqian" />
           <span>类型</span>
           <span v-if="mediaStore.genres.length > 0" class="count">
             {{ mediaStore.genres.length }}
@@ -193,7 +193,7 @@
           :class="{ active: activeCategory === 'ratings' }"
           @click="handleCategoryClick('ratings')"
         >
-          <i class="iconfont iconcrown2"></i>
+          <IconFont name="iconcrown2" />
           <span>评分</span>
           <span v-if="mediaStore.ratingCategories.length > 0" class="count">
             {{ mediaStore.ratingCategories.length }}
@@ -206,7 +206,7 @@
           :class="{ active: activeCategory === 'years' }"
           @click="handleCategoryClick('years')"
         >
-          <i class="iconfont iconcalendar"></i>
+          <IconFont name="iconcalendar" />
           <span>年份</span>
           <span v-if="mediaStore.years.length > 0" class="count">
             {{ mediaStore.years.length }}
@@ -218,7 +218,7 @@
     <!-- 媒体库文件夹列表 -->
     <div class="nav-section" v-if="mediaStore.folders.length > 0">
       <div class="nav-header">
-        <i class="iconfont iconfolder"></i>
+        <IconFont name="iconfolder" />
         <span>文件源</span>
       </div>
 
@@ -231,7 +231,7 @@
           @click="handleFolderClick(folder)"
           @contextmenu="handleFolderRightClick($event, folder)"
         >
-          <i class="iconfont iconfolder"></i>
+          <IconFont name="iconfolder" />
           <div class="folder-main">
             <span class="folder-name">{{ folder.name }}</span>
             <span class="folder-source" :class="getFolderSourceClass(folder)">
@@ -250,7 +250,7 @@
         @click="handleImportLocalFolder"
         :loading="mediaStore.isScanning"
       >
-        <i class="iconfont iconfolder"></i>
+        <IconFont name="iconfolder" />
         导入本地文件夹
       </a-button>
       <a-button
@@ -259,7 +259,7 @@
         @click="showWebDavModal = true"
         :loading="webDavLoading"
       >
-        <i class="iconfont iconlink"></i>
+        <IconFont name="iconlink" />
         连接到 WebDAV
       </a-button>
     </div>
@@ -281,7 +281,7 @@
       <div style="width: 1px; height: 1px; visibility: hidden;" />
       <template #content>
         <a-doption @click="handleDeleteFolder" class="danger">
-          <template #icon><i class='iconfont icondelete' /></template>
+          <template #icon><IconFont name="icondelete" /></template>
           <template #default>从媒体库删除</template>
         </a-doption>
       </template>
@@ -303,7 +303,7 @@
       <div class="library-manager-panel">
         <button type="button" class="library-manager-card" @click="handleLibraryManagerImport">
           <div class="library-manager-card-icon">
-            <i class="iconfont iconfolder" />
+            <IconFont name="iconfolder" />
           </div>
           <div class="library-manager-card-main">
             <strong>导入本地文件夹</strong>
@@ -313,7 +313,7 @@
 
         <button type="button" class="library-manager-card" @click="handleLibraryManagerWebDav">
           <div class="library-manager-card-icon">
-            <i class="iconfont iconlink" />
+            <IconFont name="iconlink" />
           </div>
           <div class="library-manager-card-main">
             <strong>连接到 WebDAV</strong>

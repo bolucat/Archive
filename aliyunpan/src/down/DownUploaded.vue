@@ -268,20 +268,18 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
       <a-button type="text" size="small" tabindex="-1" :loading="uploadedStore.ListLoading" title="F5"
                 @click="handleRefresh">
         <template #icon>
-          <i class="iconfont iconreload-1-icon" />
+          <IconFont name="iconreload-1-icon" />
         </template>
       </a-button>
     </div>
 
     <div v-if="uploadedStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(false)"><i
-        class="iconfont icondelete" />清除选中
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(false)"><IconFont name="icondelete" />清除选中
       </a-button>
     </div>
 
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(true)"><i
-        class="iconfont iconrest" />清空全部已上传
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(true)"><IconFont name="iconrest" />清空全部已上传
       </a-button>
     </div>
 
@@ -307,7 +305,7 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
     <div style="margin: 0 3px">
       <AntdTooltip title="点击全选" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
-          <i :class="uploadedStore.IsListSelectedAll ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+          <IconFont :name="uploadedStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
       </AntdTooltip>
     </div>
@@ -378,12 +376,11 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
               :class="'rangselect ' + (rangSelectFiles[item.TaskID] ? (rangSelectStart == item.TaskID ? 'rangstart' : rangSelectEnd == item.TaskID ? 'rangend' : 'rang') : '')">
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.TaskID, $event, true)'>
-                <i
-                  :class="uploadedStore.ListSelected.has(item.TaskID) ? 'iconfont iconrsuccess' : 'iconfont iconpic2'" />
+                <IconFont :name="uploadedStore.ListSelected.has(item.TaskID) ? 'iconrsuccess' : 'iconpic2'" />
               </a-button>
             </div>
             <div class="fileicon">
-              <i :class="'iconfont ' + (item.isDir ? 'iconfile-folder' : 'iconwenjian')" aria-hidden="true"></i>
+              <IconFont :name="(item.isDir ? 'iconfile-folder' : 'iconwenjian')" aria-hidden="true" />
             </div>
             <div class="filename">
               <div class="nopoint" :title="item.localFilePath">
@@ -393,17 +390,17 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
             <div class="downsize">{{ humanSize(item.ChildTotalSize) }}</div>
             <div className="downedbtn">
               <a-button type="text" tabindex="-1" title="定位到网盘" @click.prevent.stop="onSelectFile(item, 'pan')">
-                <i class="iconfont iconcloud" />
+                <IconFont name="iconcloud" />
               </a-button>
               <a-button type="text" tabindex="-1" title="打开文件" @click.prevent.stop="onSelectFile(item, 'file')">
-                <i class="iconfont iconwenjian" />
+                <IconFont name="iconwenjian" />
               </a-button>
               <a-button type="text" tabindex="-1" title="打开文件夹" @click.prevent.stop="onSelectFile(item, 'dir')">
-                <i class="iconfont iconfile-folder" />
+                <IconFont name="iconfile-folder" />
               </a-button>
               <a-button type="text" tabindex="-1" title="删除上传记录"
                         @click.prevent.stop="onSelectFile(item, 'delete')">
-                <i class="iconfont icondelete" />
+                <IconFont name="icondelete" />
               </a-button>
             </div>
           </div>
@@ -414,19 +411,19 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
                 style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
         <a-doption @click="() => onSelectFile(undefined, 'pan')">
-          <template #icon><i class="iconfont iconcloud" /></template>
+          <template #icon><IconFont name="iconcloud" /></template>
           <template #default>定位到网盘</template>
         </a-doption>
         <a-doption @click="() => onSelectFile(undefined, 'file')">
-          <template #icon><i class="iconfont iconwenjian" /></template>
+          <template #icon><IconFont name="iconwenjian" /></template>
           <template #default>打开文件</template>
         </a-doption>
         <a-doption @click="() => onSelectFile(undefined, 'dir')">
-          <template #icon><i class="iconfont iconfile-folder" /></template>
+          <template #icon><IconFont name="iconfile-folder" /></template>
           <template #default>打开文件夹</template>
         </a-doption>
         <a-doption @click="() => onSelectFile(undefined, 'delete')">
-          <template #icon><i class="iconfont icondelete" /></template>
+          <template #icon><IconFont name="icondelete" /></template>
           <template #default>删除上传记录</template>
         </a-doption>
       </template>

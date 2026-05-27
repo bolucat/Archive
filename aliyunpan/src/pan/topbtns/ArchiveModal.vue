@@ -1,5 +1,6 @@
 <script lang="ts">
 import { computed, defineComponent, h, ref } from 'vue'
+import IconFont from '../../components/IconFont.vue'
 import message from '../../utils/message'
 import { useFootStore, useSettingStore, useWinStore } from '../../store'
 
@@ -33,8 +34,8 @@ export interface CheckNode {
   children: CheckNode[]
 }
 
-const folderIconFn = () => h('i', { class: 'iconfont iconfile-folder' })
-const fileIconFn = () => h('i', { class: 'iconfont iconwenjian' })
+const folderIconFn = () => h(IconFont, { name: 'iconfile-folder' })
+const fileIconFn = () => h(IconFont, { name: 'iconwenjian' })
 
 function getDirSize(sizeInfo: { size: number; dirCount: number; fileCount: number }, treeData: TreeNodeData[], linkList: ILinkTxt[], dirMap: Set<string>) {
   for (let n = 0; n < linkList.length; n++) {

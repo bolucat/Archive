@@ -38,13 +38,12 @@
             <div class='rangselect'>
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.file_id, $event, true)'>
-                <i
-                  :class="mediaPanFileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : item.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                <IconFont :name="mediaPanFileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconcrown3' : 'iconrsuccess') : item.starred ? 'iconcrown' : 'iconpic2'" />
               </a-button>
             </div>
             <!-- 文件图标 -->
             <div class='fileicon'>
-              <i :class="'iconfont ' + item.icon" aria-hidden='true'></i>
+              <IconFont :name="item.icon" aria-hidden='true' />
             </div>
             <!-- 文件名 -->
             <div class='filename' droppable='false'>
@@ -57,7 +56,7 @@
               <a-popover v-if='item.thumbnail'
                          content-class='popimg' position='lt'>
                 <a-button type='text' tabindex='-1' class='gengduo' title='缩略图'>
-                  <i class='iconfont icongengduo' />
+                  <IconFont name="icongengduo" />
                 </a-button>
                 <template #content>
                   <div class='preimg'>
@@ -84,13 +83,12 @@
             <div class='rangselect'>
               <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
                         @click.prevent.stop='handleSelect(item.file_id, $event, true)'>
-                <i
-                  :class="mediaPanFileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconfont iconcrown3' : 'iconfont iconrsuccess') : item.starred ? 'iconfont iconcrown' : 'iconfont iconpic2'" />
+                <IconFont :name="mediaPanFileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconcrown3' : 'iconrsuccess') : item.starred ? 'iconcrown' : 'iconpic2'" />
               </a-button>
             </div>
             <!-- 文件图标 -->
             <div class='fileicon'>
-              <i :class="'iconfont ' + item.icon" aria-hidden='true'></i>
+              <IconFont :name="item.icon" aria-hidden='true' />
             </div>
             <!-- 文件名 -->
             <div class='filename' droppable='false'>
@@ -103,7 +101,7 @@
               <a-popover v-if='item.thumbnail' content-class='popimg'
                          position='lt'>
                 <a-button type='text' tabindex='-1' class='gengduo'>
-                  <i class='iconfont icontupianyulan' />
+                  <IconFont name="icontupianyulan" />
                 </a-button>
                 <template #content>
                   <div class='preimg'>

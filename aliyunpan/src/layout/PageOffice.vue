@@ -66,18 +66,18 @@ onMounted(() => {
     <a-layout-header id="xbyhead" draggable="false">
       <div id="xbyhead2" class="q-electron-drag">
         <a-button type="text" tabindex="-1">
-          <i class="iconfont iconfile-wps"></i>
+          <IconFont name="iconfile-wps" />
         </a-button>
         <div class="title">{{ appStore.pageOffice?.file_name || '文档在线预览' }}</div>
         <div class="flexauto"></div>
         <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
-          <i class='iconfont iconzuixiaohua'></i>
+          <IconFont name="iconzuixiaohua" />
         </a-button>
         <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
-          <i class='iconfont iconfullscreen'></i>
+          <IconFont name="iconfullscreen" />
         </a-button>
         <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
-          <i class='iconfont iconclose'></i>
+          <IconFont name="iconclose" />
         </a-button>
       </div>
     </a-layout-header>

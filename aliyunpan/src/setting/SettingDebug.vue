@@ -98,7 +98,7 @@ onMounted(loadCacheStats)
         <template #suffix> 个文件</template>
       </a-input-number>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">3000</span> (3000-10000)
@@ -121,7 +121,7 @@ onMounted(loadCacheStats)
           <template #suffix> 个文件</template>
         </a-input-number>
         <a-popover position="bottom">
-          <i class="iconfont iconbulb" />
+          <IconFont name="iconbulb" />
           <template #content>
             <div>
               默认：<span class="opred">500</span> (500-3000)
@@ -145,7 +145,7 @@ onMounted(loadCacheStats)
           <template #suffix> 条记录</template>
         </a-input-number>
         <a-popover position="bottom">
-          <i class="iconfont iconbulb" />
+          <IconFont name="iconbulb" />
           <template #content>
             <div>
               默认：<span class="opred">5000</span> (1000-50000)
@@ -168,7 +168,7 @@ onMounted(loadCacheStats)
         尝试自动填写提取码
       </MySwitch>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -189,7 +189,7 @@ onMounted(loadCacheStats)
         尝试自动填写解压密码
       </MySwitch>
       <a-popover position="bottom">
-        <i class="iconfont iconbulb" />
+        <IconFont name="iconbulb" />
         <template #content>
           <div>
             默认：<span class="opred">关闭</span>
@@ -206,7 +206,7 @@ onMounted(loadCacheStats)
   <div class="settingcard">
     <div class='settinghead'>软件服务端口</div>
     <a-popover position='bottom'>
-      <i class='iconfont iconbulb' />
+      <IconFont name="iconbulb" />
       <template #content>
         <div>
           默认：<span class='opred'>10000</span>

@@ -9,6 +9,7 @@ import PanDAL from './pandal'
 import UserDAL from '../user/userdal'
 import { onHideRightMenuScroll, onShowRightMenu, TestCtrl } from '../utils/keyboardhelper'
 import DirLeftMenu from './menus/DirLeftMenu.vue'
+import FolderPreviewPopover from './menus/FolderPreviewPopover.vue'
 import { TreeNodeData } from '../store/treestore'
 import { dropMoveSelectedFile } from './topbtns/topbtn'
 import message from '../utils/message'
@@ -50,6 +51,7 @@ pantreeStore.$subscribe((_m: any, state: PanTreeState) => {
   if (state.drive_id != DriveID) {
     DriveID = state.drive_id
     inputselectType.value = GetDriveType(state.user_id, state.drive_id).name
+    folderPreviewRef.value?.cancel()
   }
 })
 
@@ -197,6 +199,54 @@ const filterTreeData = computed(() => {
 
   return baseList
 })
+
+const folderPreviewRef = ref<{ open: (target: HTMLElement, params: any) => void; leave: () => void; cancel: () => void } | null>(null)
+
+const SPECIAL_KEYS = new Set([
+  'trash', 'recover', 'favorite', 'video', 'pic_root',
+  'backup_root', 'resource_root'
+])
+
+const isPreviewableNode = (data: TreeNodeData | undefined): boolean => {
+  if (!settingStore.uiFolderPreviewEnabled) return false
+  if (!data) return false
+  const key = String(data.key || '')
+  if (!key) return false
+  if (SPECIAL_KEYS.has(key)) return false
+  if (key.startsWith('search') || key.startsWith('color')) return false
+  if (data.isLeaf === true) {
+    // leaf placeholder, but still might be a real folder; only block if no drive_id
+  }
+  const userId = pantreeStore.user_id || ''
+  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId)
+  if (!isSingleRootDrive && key.length < 40) return false
+  return true
+}
+
+const onTreeNodeEnter = (ev: MouseEvent, data: TreeNodeData) => {
+  if (!isPreviewableNode(data)) return
+  const target = ev.currentTarget as HTMLElement
+  if (!target) return
+  const driveId = data.drive_id || pantreeStore.drive_id
+  const userId = pantreeStore.user_id || ''
+  if (!userId || !driveId) return
+  folderPreviewRef.value?.open(target, {
+    user_id: userId,
+    drive_id: driveId,
+    file_id: data.key,
+    name: data.title,
+    path: (data as any).path || ''
+  })
+}
+
+const onTreeNodeLeave = () => {
+  folderPreviewRef.value?.leave()
+}
+
+const onTreeScroll = () => {
+  onHideRightMenuScroll()
+  folderPreviewRef.value?.cancel()
+}
 </script>
 
 <template>
@@ -233,12 +283,12 @@ const filterTreeData = computed(() => {
             @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, false)'
             @expand='(_:any[],e:any)=>pantreeStore.mTreeExpand(e.node.key)'
             @right-click='handleTreeRightClick'
-            @scroll='onHideRightMenuScroll'>
+            @scroll='onTreeScroll'>
             <template #switcherIcon>
               <i class='ant-tree-switcher-icon iconfont Arrow' />
             </template>
             <template #icon>
-              <i class='iconfont iconfile-folder' />
+              <IconFont name="iconfile-folder" />
             </template>
             <template #title='{ dataRef }'>
               <span v-if="String(dataRef.key).length == 40 || String(dataRef.key).includes('root')"
@@ -246,10 +296,15 @@ const filterTreeData = computed(() => {
                     @drop='onRowItemDrop($event, dataRef)'
                     @dragover='onRowItemDragOver'
                     @dragenter='onRowItemDragEnter'
-                    @dragleave='onRowItemDragLeave'>
+                    @dragleave='onRowItemDragLeave'
+                    @mouseenter='(ev:MouseEvent)=>onTreeNodeEnter(ev, dataRef)'
+                    @mouseleave='onTreeNodeLeave'>
                 {{ dataRef.title }}
               </span>
-              <span v-else class='dirtitle'>
+              <span v-else
+                    class='dirtitle'
+                    @mouseenter='(ev:MouseEvent)=>onTreeNodeEnter(ev, dataRef)'
+                    @mouseleave='onTreeNodeLeave'>
                 {{ dataRef.title }}
               </span>
             </template>
@@ -272,7 +327,7 @@ const filterTreeData = computed(() => {
             :tree-data='colorTreeData'
             @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, true)'>
             <template #icon='{ dataRef }'>
-              <i class='iconfont iconwbiaoqian' :class='dataRef.namesearch' />
+              <IconFont name="iconwbiaoqian" :class='dataRef.namesearch' />
             </template>
             <template #title='{ dataRef }'>
               <span :class="'dirtitle ' + dataRef.namesearch">标记 · {{ dataRef.title }}</span>
@@ -303,10 +358,12 @@ const filterTreeData = computed(() => {
             :tree-data='pantreeStore.quickData'
             @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, true)'>
             <template #icon>
-              <i class='iconfont iconfile-folder' />
+              <IconFont name="iconfile-folder" />
             </template>
             <template #title='{ dataRef }'>
-              <div class="quickitem">
+              <div class="quickitem"
+                   @mouseenter='(ev:MouseEvent)=>onTreeNodeEnter(ev, dataRef)'
+                   @mouseleave='onTreeNodeLeave'>
                  <span class='quicktitle' :title='dataRef.namesearch'>
                 {{ dataRef.title }}
               </span>
@@ -322,6 +379,7 @@ const filterTreeData = computed(() => {
       </a-tabs>
     </div>
     <DirLeftMenu :inputselectType='inputselectType' />
+    <FolderPreviewPopover ref='folderPreviewRef' />
   </div>
 </template>
 

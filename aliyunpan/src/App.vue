@@ -15,6 +15,7 @@ import PageDocx from './layout/PageDocx.vue'
 import PageSheet from './layout/PageSheet.vue'
 import PageImage from './layout/PageImage.vue'
 import PageVideo from './layout/PageVideo.vue'
+import PageMusic from './layout/PageMusic.vue'
 import PageWorker from './layout/PageWorker.vue'
 
 export default {
@@ -32,6 +33,7 @@ export default {
       if (appStore.appPage == 'PageCode') return h(PageCode)
       if (appStore.appPage == 'PageImage') return h(PageImage)
       if (appStore.appPage == 'PageVideo') return h(PageVideo)
+      if (appStore.appPage == 'PageMusic') return h(PageMusic)
       if (appStore.appPage == 'PageWorker') return h(PageWorker)
       return h(PageLoading)
     }
