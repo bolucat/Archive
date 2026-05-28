@@ -24,12 +24,15 @@ use tauri::{
     tray::{MouseButton, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, RunEvent, State, WebviewWindow, WindowEvent, Wry,
 };
+#[cfg(debug_assertions)]
+use tauri::menu::PredefinedMenuItem;
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
     ShellExt,
 };
 
+#[cfg(windows)]
 use wintool::adapter::{get_dns_server, get_main_adapter_ip};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -97,6 +100,7 @@ impl TrojanProxy {
         }
     }
 
+    #[cfg(windows)]
     fn update_dns(&mut self) -> Result<()> {
         let ret = get_dns_server();
         if ret.is_none() {
@@ -118,11 +122,25 @@ impl TrojanProxy {
         Ok(())
     }
 
+    #[cfg(target_os = "macos")]
+    fn update_dns(&mut self) -> Result<()> {
+        self.default_dns = self.config.trust_dns.clone();
+        self.explicit_dns = true;
+        Ok(())
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    fn update_dns(&mut self) -> Result<()> {
+        Err(Error::Custom(
+            "VPN mode is not supported on this platform yet".to_string(),
+        ))
+    }
+
     fn get_speed(&mut self) -> Result<(f32, f32)> {
-        let metadata = std::fs::metadata("logs\\wintun.status")?;
+        let metadata = std::fs::metadata(tun_status_file())?;
         let mod_time = metadata.modified()?;
         if mod_time > self.last_update {
-            let mut file = File::open("logs\\wintun.status")?;
+            let mut file = File::open(tun_status_file())?;
             let mut content = String::new();
             let _ = file.read_to_string(&mut content)?;
             let mut split = content.split(' ');
@@ -141,6 +159,26 @@ impl TrojanProxy {
         }
         Ok((self.rx_speed, self.tx_speed))
     }
+}
+
+#[cfg(windows)]
+fn tun_log_file() -> &'static str {
+    "logs\\wintun.log"
+}
+
+#[cfg(target_os = "macos")]
+fn tun_log_file() -> &'static str {
+    "logs/osxtun.log"
+}
+
+#[cfg(windows)]
+fn tun_status_file() -> &'static str {
+    "logs\\wintun.status"
+}
+
+#[cfg(target_os = "macos")]
+fn tun_status_file() -> &'static str {
+    "logs/osxtun.status"
 }
 
 type TrojanState = Arc<Mutex<TrojanProxy>>;
@@ -167,11 +205,13 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
             let config = state.lock().unwrap().config.clone();
             let default_dns = state.lock().unwrap().default_dns.clone() + ":53";
             let pool_size = config.pool_size.to_string();
+            #[cfg(windows)]
             let config_ipset = window
                 .app_handle()
                 .path()
                 .resolve("config/ipset.txt", BaseDirectory::Resource)
                 .unwrap();
+            #[cfg(windows)]
             let config_wintun = window
                 .app_handle()
                 .path()
@@ -179,29 +219,35 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
                 .unwrap();
             let mut args = vec![
                 "-l",
-                "logs\\wintun.log",
+                tun_log_file(),
                 "-L",
                 config.log_level_str(),
                 "-a",
                 "127.0.0.1:60080",
                 "-p",
                 config.server_auth.as_str(),
+                #[cfg(windows)]
                 "awintun",
+                #[cfg(target_os = "macos")]
+                "osxtun",
                 "-n",
                 config.iface_name.as_str(),
                 "-H",
                 config.server_domain.as_str(),
                 "-s",
-                "logs\\wintun.status",
+                tun_status_file(),
                 "--dns-server-addr",
                 default_dns.as_str(),
                 "-P",
                 pool_size.as_str(),
-                "-w",
-                config_wintun.to_str().unwrap(),
             ];
-            args.push("--route-ipset");
-            args.push(config_ipset.to_str().unwrap());
+            #[cfg(windows)]
+            {
+                args.push("-w");
+                args.push(config_wintun.to_str().unwrap());
+                args.push("--route-ipset");
+                args.push(config_ipset.to_str().unwrap());
+            }
             log::info!("{:?}", args);
             let mut rxs = HashMap::new();
             match window
@@ -222,6 +268,7 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
                     return;
                 }
             };
+            #[cfg(windows)]
             if state.lock().unwrap().config.enable_dns {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 let dns_listen = config.dns_listen.clone() + ":53";
@@ -438,7 +485,6 @@ fn init_config() -> Result<Config> {
     Ok(config)
 }
 
-
 fn load_domains() -> Result<Vec<String>> {
     let path = Path::new("config\\domain.txt");
     if !path.exists() {
@@ -517,6 +563,7 @@ fn remove_domain(key: String) {
         Err(err) => log::error!("load domains failed:{:?}", err),
     }
 }
+#[cfg(windows)]
 fn set_dns_server(state: &TrojanProxy) {
     if state.explicit_dns {
         wintool::adapter::set_dns_server(state.default_dns.clone());
@@ -524,6 +571,9 @@ fn set_dns_server(state: &TrojanProxy) {
         wintool::adapter::set_dns_server("".into());
     }
 }
+
+#[cfg(not(windows))]
+fn set_dns_server(_state: &TrojanProxy) {}
 
 fn quit_app(app: &AppHandle<Wry>) {
     let state: State<TrojanState> = app.state();
@@ -574,7 +624,15 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
-        .invoke_handler(tauri::generate_handler![start, init, stop, update_speed, search_domain, add_domain, remove_domain])
+        .invoke_handler(tauri::generate_handler![
+            start,
+            init,
+            stop,
+            update_speed,
+            search_domain,
+            add_domain,
+            remove_domain
+        ])
         .plugin(
             tauri_plugin_log::Builder::default()
                 .targets([

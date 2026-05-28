@@ -4,14 +4,19 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use bytes::BytesMut;
 use rustls::{ClientConfig, ClientConnection, RootCertStore};
 use rustls_pki_types::ServerName;
 use sha2::{Digest, Sha224};
-use tokio::{runtime::Builder, spawn, sync::mpsc::channel};
+use tokio::{
+    runtime::Builder,
+    spawn,
+    sync::mpsc::channel,
+    time::{interval, MissedTickBehavior},
+};
 
 use async_rustls::TlsClientStream;
 use async_smoltcp::TunDevice;
@@ -52,6 +57,14 @@ fn digest_pass(pass: &String) -> String {
 
 fn show_info(level: &String) -> bool {
     level == "Debug" || level == "Info" || level == "Trace"
+}
+
+async fn wait_stack_delay(delay: Option<Duration>) {
+    if let Some(delay) = delay {
+        tokio::time::sleep(delay).await;
+    } else {
+        std::future::pending::<()>().await;
+    }
 }
 
 pub async fn async_run(
@@ -99,7 +112,7 @@ pub async fn async_run(
             .with_no_client_auth(),
     );
 
-    let mut device = TunDevice::new(session);
+    let mut device = TunDevice::new(session.clone());
     device.add_white_ip(dns_addr.ip());
 
     let trusted_addr = (context.options.trusted_dns.clone() + ":53").parse()?;
@@ -123,8 +136,48 @@ pub async fn async_run(
         close_sender.clone(),
     ));
 
-    let mut last_speed_time = Instant::now();
+    let mut tun_ready = platform::TunReady::new(&session)?;
+    let device_wake = device.notifier();
+    let speed_update_ms = (context.options.speed_update_ms as u64).max(1);
+    let mut speed_tick = interval(Duration::from_millis(speed_update_ms));
+    speed_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    speed_tick.tick().await;
+    let mut maintenance_tick = interval(Duration::from_secs(1));
+    maintenance_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    maintenance_tick.tick().await;
+
     while running.load(Ordering::Relaxed) {
+        let stack_delay = device.poll_delay();
+        let poll_stack = tokio::select! {
+            result = tun_ready.readable() => {
+                result?;
+                true
+            }
+            _ = device_wake.notified() => true,
+            _ = wait_stack_delay(stack_delay) => true,
+            _ = speed_tick.tick() => {
+                let (rx_speed, tx_speed) = device.calculate_speed();
+                let (rx_speed, rx_unit) = get_speed_and_unit(rx_speed);
+                let (tx_speed, tx_unit) = get_speed_and_unit(tx_speed);
+                emit_event(
+                    EventType::UpdateSpeed,
+                    format!(
+                        "上行速度:{:.1}{}/s, 下行速度:{:.1}{}/s",
+                        rx_speed, rx_unit, tx_speed, tx_unit
+                    ),
+                )?;
+                false
+            }
+            _ = maintenance_tick.tick() => {
+                device.maintenance();
+                false
+            }
+        };
+
+        if !running.load(Ordering::Relaxed) || !poll_stack {
+            continue;
+        }
+
         let (tcp_streams, udp_sockets) = device.poll();
 
         for stream in tcp_streams {
@@ -159,21 +212,6 @@ pub async fn async_run(
                 spawn(start_udp(socket, data_sender.clone(), close_sender.clone()));
             }
         }
-
-        if last_speed_time.elapsed().as_millis() >= context.options.speed_update_ms {
-            let (rx_speed, tx_speed) = device.calculate_speed();
-            let (rx_speed, rx_unit) = get_speed_and_unit(rx_speed);
-            let (tx_speed, tx_unit) = get_speed_and_unit(tx_speed);
-            emit_event(
-                EventType::UpdateSpeed,
-                format!(
-                    "上行速度:{:.1}{}/s, 下行速度:{:.1}{}/s",
-                    rx_speed, rx_unit, tx_speed, tx_unit
-                ),
-            )?;
-            last_speed_time = std::time::Instant::now();
-        }
-        tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
     Ok(())

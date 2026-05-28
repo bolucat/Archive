@@ -3,7 +3,7 @@ use std::{
     io::{ErrorKind, Read, Write},
     mem::ManuallyDrop,
     ops::Deref,
-    os::fd::{FromRawFd, OwnedFd},
+    os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, LockResult, RwLock, RwLockReadGuard, RwLockWriteGuard,
@@ -407,6 +407,18 @@ pub struct Session {
     show_info: bool,
 }
 
+struct RawTunFd(RawFd);
+
+impl AsRawFd for RawTunFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
+    }
+}
+
+pub struct TunReady {
+    fd: tokio::io::unix::AsyncFd<RawTunFd>,
+}
+
 pub struct Packet {
     data: Vec<u8>,
 }
@@ -423,6 +435,39 @@ impl Session {
             }
         }
     }
+
+    fn raw_fd(&self) -> RawFd {
+        self.file.as_raw_fd()
+    }
+}
+
+impl TunReady {
+    pub fn new(session: &Session) -> std::io::Result<Self> {
+        let fd = session.raw_fd();
+        set_nonblocking(fd)?;
+        Ok(Self {
+            fd: tokio::io::unix::AsyncFd::new(RawTunFd(fd))?,
+        })
+    }
+
+    pub async fn readable(&mut self) -> std::io::Result<()> {
+        let mut guard = self.fd.readable().await?;
+        guard.clear_ready();
+        Ok(())
+    }
+}
+
+fn set_nonblocking(fd: RawFd) -> std::io::Result<()> {
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) < 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 impl Tun for Session {
