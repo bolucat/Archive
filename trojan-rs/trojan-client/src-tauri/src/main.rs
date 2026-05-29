@@ -10,7 +10,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
 
 use backtrace::Backtrace;
@@ -33,7 +33,12 @@ use tauri_plugin_shell::{
 };
 
 #[cfg(windows)]
-use wintool::adapter::{get_dns_server, get_main_adapter_ip};
+use wintool::adapter::{get_adapter_ready, get_dns_server, get_main_adapter_ip};
+
+#[cfg(windows)]
+const TUN_READY_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(windows)]
+const TUN_READY_POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -75,6 +80,7 @@ pub struct TrojanProxy {
     config: Config,
     wintun: Option<CommandChild>,
     dns: Option<CommandChild>,
+    status: ClientState,
     running_icon: Image<'static>,
     stopped_icon: Image<'static>,
     rx_speed: f32,
@@ -84,12 +90,21 @@ pub struct TrojanProxy {
     explicit_dns: bool,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum ClientState {
+    Starting,
+    Running,
+    Stopped,
+}
+
 impl TrojanProxy {
     fn new() -> TrojanProxy {
         TrojanProxy {
             config: init_config().unwrap_or_default(),
             wintun: None,
             dns: None,
+            status: ClientState::Stopped,
             running_icon: Image::from_bytes(include_bytes!("../icons/icon.ico")).unwrap(),
             stopped_icon: Image::from_bytes(include_bytes!("../icons/icon_gray.png")).unwrap(),
             rx_speed: 0.0,
@@ -181,6 +196,29 @@ fn tun_status_file() -> &'static str {
     "logs/osxtun.status"
 }
 
+#[cfg(windows)]
+async fn wait_tun_ready(name: &str) -> Result<()> {
+    let started = Instant::now();
+    loop {
+        if let Some(ready) = get_adapter_ready(name) {
+            log::info!(
+                "tun adapter ready name:{} ip:{} index:{}",
+                name,
+                ready.ip,
+                ready.index
+            );
+            return Ok(());
+        }
+        if started.elapsed() >= TUN_READY_TIMEOUT {
+            return Err(Error::Custom(format!(
+                "tun adapter {name} not ready after {} seconds",
+                TUN_READY_TIMEOUT.as_secs()
+            )));
+        }
+        tokio::time::sleep(TUN_READY_POLL_INTERVAL).await;
+    }
+}
+
 type TrojanState = Arc<Mutex<TrojanProxy>>;
 
 #[tauri::command]
@@ -188,18 +226,21 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
     log::info!("start trojan now");
     if let Err(err) = save_config(&config) {
         log::error!("save config failed:{:?}", err);
+        emit_state_update_event(ClientState::Stopped, window);
     } else {
         state.lock().unwrap().config = config;
-        if let Err(err) = state.lock().unwrap().update_dns() {
+        let update_dns_result = state.lock().unwrap().update_dns();
+        if let Err(err) = update_dns_result {
             log::error!("update_dns failed:{:?}", err);
+            emit_state_update_event(ClientState::Stopped, window);
             return;
         }
-
-        emit_state_update_event(true, window.clone());
 
         if state.lock().unwrap().wintun.is_some() {
+            emit_state_update_event(ClientState::Running, window);
             return;
         }
+        emit_state_update_event(ClientState::Starting, window.clone());
         let state = state.inner().clone();
         tauri::async_runtime::spawn(async move {
             let config = state.lock().unwrap().config.clone();
@@ -264,13 +305,25 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
                 }
                 Err(err) => {
                     log::error!("start wintun failed:{:?}", err);
-                    emit_state_update_event(false, window);
+                    emit_state_update_event(ClientState::Stopped, window);
                     return;
                 }
             };
             #[cfg(windows)]
             if state.lock().unwrap().config.enable_dns {
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                if let Err(err) = wait_tun_ready(&config.iface_name).await {
+                    log::error!("wait tun ready failed:{:?}", err);
+                    if let Some(wintun) = state.lock().unwrap().wintun.take() {
+                        let _ = wintun.kill();
+                    }
+                    emit_state_update_event(ClientState::Stopped, window);
+                    return;
+                }
+                if state.lock().unwrap().wintun.is_none() {
+                    log::warn!("wintun was stopped while waiting for adapter readiness");
+                    emit_state_update_event(ClientState::Stopped, window);
+                    return;
+                }
                 let dns_listen = config.dns_listen.clone() + ":53";
                 let default_dns = state.lock().unwrap().default_dns.clone();
                 let config_domains = window
@@ -316,8 +369,18 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
                     .spawn()
                 {
                     Ok((rx, child)) => {
-                        state.lock().unwrap().dns.replace(child);
+                        let mut state = state.lock().unwrap();
+                        if state.wintun.is_none() {
+                            log::warn!("wintun was stopped before dns sidecar was registered");
+                            let _ = child.kill();
+                            drop(state);
+                            emit_state_update_event(ClientState::Stopped, window);
+                            return;
+                        }
+                        state.dns.replace(child);
                         rxs.insert("dns", rx);
+                        drop(state);
+                        emit_state_update_event(ClientState::Running, window.clone());
                     }
                     Err(err) => {
                         log::error!("start dns failed:{:?}", err);
@@ -326,7 +389,11 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
                         }
                     }
                 }
+            } else {
+                emit_state_update_event(ClientState::Running, window.clone());
             }
+            #[cfg(not(windows))]
+            emit_state_update_event(ClientState::Running, window.clone());
             log::info!("sub process started");
 
             while !rxs.is_empty() {
@@ -388,22 +455,24 @@ fn start(config: Config, state: State<TrojanState>, window: WebviewWindow<Wry>) 
                 }
                 tokio::time::sleep(Duration::from_millis(66)).await;
             }
-            emit_state_update_event(false, window);
+            emit_state_update_event(ClientState::Stopped, window);
             log::info!("sub process exits");
         });
     }
 }
 
-fn emit_state_update_event(running: bool, window: WebviewWindow<Wry>) {
-    window.emit("state-update", running).unwrap();
+fn emit_state_update_event(status: ClientState, window: WebviewWindow<Wry>) {
     let app = window.app_handle();
     let state = app.state::<TrojanState>();
-    let state = state.lock().unwrap();
-    let icon = if running {
+    let mut state = state.lock().unwrap();
+    state.status = status;
+    let icon = if status == ClientState::Running {
         state.running_icon.clone()
     } else {
         state.stopped_icon.clone()
     };
+    drop(state);
+    window.emit("state-update", status).unwrap();
     window.set_icon(icon.clone()).unwrap();
     if let Some(tray) = window.app_handle().tray_by_id("main") {
         tray.set_icon(Some(icon)).unwrap();
@@ -445,12 +514,17 @@ fn update_speed(state: State<TrojanState>, window: WebviewWindow<Wry>) {
 #[tauri::command]
 fn stop(state: State<TrojanState>, window: WebviewWindow<Wry>) {
     log::info!("stop trojan now");
-    let mut config = state.lock().unwrap();
-    if let Some(child) = config.wintun.take() {
+    let mut state = state.lock().unwrap();
+    if state.status == ClientState::Starting {
+        log::warn!("stop ignored while client is starting");
+        return;
+    }
+    if let Some(child) = state.wintun.take() {
         let _ = child.kill();
         log::info!("trojan stopped");
     } else {
-        emit_state_update_event(false, window);
+        drop(state);
+        emit_state_update_event(ClientState::Stopped, window);
     }
 }
 
@@ -702,7 +776,10 @@ fn main() {
                 })
                 .build(app)?;
 
-            emit_state_update_event(false, app.get_webview_window("main").unwrap());
+            emit_state_update_event(
+                ClientState::Stopped,
+                app.get_webview_window("main").unwrap(),
+            );
             Ok(())
         })
         .build(tauri::generate_context!())
