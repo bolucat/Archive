@@ -1,4 +1,3 @@
-![Anurag's GitHub stats](https://github-readme-stats.vercel.app/api?username=kenzok8&show_icons=true&theme=radical)
 <div align="center">
 <h1 align="center"openwrt-packages</h1>
 <img src="https://img.shields.io/github/issues/kenzok8/openwrt-packages?color=green">
@@ -59,26 +58,20 @@ make menuconfig
 | luci-app-amlogic             | Amlogic Service             |  晶晨宝盒   |
 | luci-app-eqos                | Speed ​​limit by IP address       | 依IP地址限速      |
 | luci-app-gost                | https proxy      | 隐蔽的https代理   |
-| luci-app-openclash           | openclash proxy            |  clash的图形代理软件      |
-| luci-app-passwall            | passwall proxy      | passwall代理软件        |
+| luci-app-lucky               | lucky DDNS/port forwarding/reverse proxy | IPv6/4端口转发,DDNS,反向代理,证书 |
 | luci-app-wechatpush          | WeChat/DingTalk Pushed plugins    |   微信/钉钉推送        |
 | luci-theme-tomato            | Modify topic name             |  tomato主题        |
 | luci-app-smartdns            | smartdns dns pollution prevention     |  smartdns DNS防污染       |
-| luci-app-ssr-plus            | ssr-plus proxy              | ssr-plus 代理软件       |
+| luci-app-quickfile           | quickfile              | quickfile 管理       |
 | luci-app-store               | store software repository            |  应用商店   |
+| luci-theme-glass             | glass theme          |  Glass 玻璃主题        |
 | luci-theme-mcat              | Modify topic name          |   mcat主题        |
 | luci-app-mosdns              | mosdns dns offload            |DNS 国内外分流解析与广告过滤        |
 | luci-app-unblockneteasemusic | Unlock NetEase Cloud Music         | 解锁网易云音乐   |
 
-![暗黄主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-9.jpg)
-![暗黄主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-10.jpg)
-![暗黄主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-11.jpg)
-![暗黑红主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-5.jpg)
-![暗黑红主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-6.jpg)
-![暗黑红主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-7.jpg)
-![暗黑红主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-8.jpg)
-![抹茶绿主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-12.jpg)
-![抹茶绿主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-13.jpg)
-![抹茶绿主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-14.jpg)
-![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-1.png)
-![argon主题](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/sshot-2.png)
+![Glass 登录](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/openwrt-packages/Login_page_light.png)
+![Glass 概览浅色](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/openwrt-packages/Overview_page_light.png)
+![Glass 概览深色](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/openwrt-packages/Overview_page_dark.png)
+![Glass 软件包](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/openwrt-packages/Software_page_light.png)
+![Glass 流量图](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/openwrt-packages/Traffic_graph_light.png)
+![Glass Clashoo](https://raw.githubusercontent.com/kenzok8/kenzok8/main/screenshot/openwrt-packages/Clashoo_page_dark.png)

@@ -119,7 +119,7 @@ make menuconfig
     <a href="https://ko-fi.com/vernesong"><img width="300" src="https://www.ko-fi.com/img/githubbutton_sm.svg"> </a>
 </p>
 
-* USDT-TRC20
+* USDT-BSC
 <p align="left">
     <img width="300" src="https://github.com/vernesong/OpenClash/raw/master/img/USDT-Wallet.png">
 </p>
