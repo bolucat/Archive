@@ -1,4 +1,4 @@
-//go:build no_tailscale
+//go:build !with_gvisor || no_tailscale
 
 package outbound
 
@@ -24,5 +24,5 @@ type TailscaleOption struct {
 }
 
 func NewTailscale(option TailscaleOption) (*Tailscale, error) {
-	return nil, fmt.Errorf("tailscale support is disabled by no_tailscale build tag")
+	return nil, fmt.Errorf("tailscale support is disabled by \"no_tailscale\" build tag or not include \"with_gvisor\" build tag")
 }

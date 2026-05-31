@@ -2,6 +2,23 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.27
+
+* Add Tailscale SSH server **1**
+* Fixes and improvements
+
+**1**:
+
+Adds an [`ssh_server`](/configuration/endpoint/tailscale/#ssh_server) field to
+[Tailscale](/configuration/endpoint/tailscale/) endpoints, running a Tailscale SSH
+server on tailnet port 22. Access is controlled by the SSH ACL in the Tailscale
+admin console, which maps each connection to a local user (behavior varies by
+platform; iOS and tvOS are not yet supported). The value may be `true` (equivalent
+to `{ "enabled": true }`), or an object that additionally sets
+[`disable_pty`](/configuration/endpoint/tailscale/#ssh_serverdisable_pty),
+[`disable_sftp`](/configuration/endpoint/tailscale/#ssh_serverdisable_sftp), and
+[`disable_forwarding`](/configuration/endpoint/tailscale/#ssh_serverdisable_forwarding).
+
 #### 1.14.0-alpha.26
 
 * Add gecko obfs for Hysteria2 **1**

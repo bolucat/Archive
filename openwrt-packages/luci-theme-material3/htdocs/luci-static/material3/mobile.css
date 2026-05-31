@@ -36,6 +36,24 @@ header h3 a {
 		border-radius: var(--material3-card-radius);
 	}
 
+	body[data-page^="admin-services-dockerman"] #view div[style*="grid-template-columns"][style*="minmax(300px"] {
+		grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+	}
+
+	body[data-page^="admin-services-dockerman"] #view a[href*="/dockerman/"]>div[style*="min-height: 120px"] {
+		min-height: 96px !important;
+		padding: 10px !important;
+	}
+
+	body[data-page^="admin-services-dockerman"] #view a[href*="/dockerman/"] img[src*="dockerman/"][src$=".svg"] {
+		width: 52px !important;
+		height: 52px !important;
+	}
+
+	body[data-page^="admin-services-dockerman"] #view a[href*="/dockerman/"] div[style*="margin-right: 15px"] {
+		margin-right: 8px !important;
+	}
+
 	.table {
 		display: flex;
 		flex-direction: column;
@@ -148,6 +166,8 @@ header h3 a {
 
 	.tr.table-titles,
 	.tr.dashboard-table-titles,
+	.thead.dashboard-table-titles,
+	thead.dashboard-table-titles,
 	.cbi-section-table-titles,
 	.cbi-section-table-descr {
 		display: none;
@@ -241,6 +261,39 @@ header h3 a {
 
 	.cbi-value label.cbi-value-title {
 		font-weight: bold;
+	}
+
+	.cbi-value[data-widget="CBI.FlagValue"]:has(> .cbi-value-field > .cbi-checkbox) {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) max-content;
+		align-items: center;
+		column-gap: 10px;
+	}
+
+	.cbi-value[data-widget="CBI.FlagValue"]:has(> .cbi-value-field > .cbi-checkbox) > label.cbi-value-title {
+		width: auto;
+		max-width: none;
+		padding: 0;
+		margin: 0;
+		text-align: left;
+		text-indent: 0;
+		white-space: normal;
+	}
+
+	.cbi-value[data-widget="CBI.FlagValue"]:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field {
+		display: contents;
+	}
+
+	.cbi-value[data-widget="CBI.FlagValue"]:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field > .cbi-checkbox {
+		grid-column: 2;
+	}
+
+	.cbi-value[data-widget="CBI.FlagValue"]:has(> .cbi-value-field > .cbi-checkbox) > .cbi-value-field > .cbi-value-description {
+		grid-column: 1 / -1;
+		width: auto;
+		max-width: calc(100% - 1.25em);
+		box-sizing: border-box;
+		margin: .25em 0 0 1.25em;
 	}
 
 	.cbi-value-field,
@@ -505,7 +558,7 @@ header h3 a {
 	}
 
 	body[data-page="admin-network-wireless"] .td[data-name="_badge"] {
-		max-width: 50px;
+		max-width: 90px;
 		align-self: center;
 	}
 
