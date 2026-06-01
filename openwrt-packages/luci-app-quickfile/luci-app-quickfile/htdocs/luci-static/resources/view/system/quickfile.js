@@ -10,8 +10,6 @@ return view.extend({
 		s.anonymous = true;
 
 		s.render = function () {
-			const host = window.location.origin;
-
 			const iframeContainer = E('div', {
 				'class': 'iframe-container',
 				'style': `
@@ -19,13 +17,14 @@ return view.extend({
 					flex-direction: column;
 					width: 100%;
 					max-width: 1600px;
-					height: 800px;
+					height: calc(100vh - 180px);
+					min-height: 800px;
 					overflow: hidden;
 					border-radius: 10px;
 				`
 			}, [
 				E('iframe', {
-					'src': `/cgi-bin/luci/quickfile?host=${encodeURIComponent(host)}`,
+					'src': `/cgi-bin/luci/quickfile`,
 					'style': `
 						width: 100%;
 						height: 100%;
