@@ -1743,4 +1743,7 @@
   <data name="menuNewUpdate" xml:space="preserve">
     <value>有更新</value>
   </data>
+  <data name="MsgAllowInsecureDeprecated" xml:space="preserve">
+    <value>警告：Xray 将在 2026.8.1 禁用跳过证书验证 allowInsecure ，请尽快改用证书固定指纹 pinnedPeerCertSha256。到期后无法使用 </value>
+  </data>
 </root>

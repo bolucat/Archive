@@ -1,5 +1,12 @@
-## :mega:注意
-由于 Sing-box 在 1.12.0 版本中移除 Geo 只保留规则集（[详情](https://sing-box.sagernet.org/zh/deprecated/#geoip)），Passwall 为适应这一变更，同时兼容 Xray 和 Sing-box 的分流方式，从 25.3.9 版起，Sing-box 分流将依赖 Geoview 从 Geofile 生成规则集。**未安装 Geoview 将无法使用 Sing-box 分流**。  
+## :mega:公告
+自 2026 年 6 月 1 日起，Xray Core 内部定时器已自动弃用 `allowInsecure`（跳过证书验证），并要求自签证书必须配置 `pinnedPeerCertSha256`（`pcs` 参数）。
+
+若机场使用自签证书且未提供 `pcs` 参数，节点将无法正常连接。
+
+**解决方法：**
+
+* 向机场获取 `pinnedPeerCertSha256`（`pcs` 参数）；
+* 或切换至 Sing-box Core。  
 
 ## 📌如何能编译到最新代码？
 
