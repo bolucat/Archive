@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.63.10](https://github.com/filebrowser/filebrowser/compare/v2.63.9...v2.63.10) (2026-06-03)
+
+
+### Bug Fixes
+
+* allow writes when user scope resolves to filesystem root ([6b04cbf](https://github.com/filebrowser/filebrowser/commit/6b04cbf5e9db1f5b9c0b1624843607ce2881cfc4))
+
+## [2.63.9](https://github.com/filebrowser/filebrowser/compare/v2.63.8...v2.63.9) (2026-06-03)
+
+
+### Bug Fixes
+
+* force octet-stream for attachment downloads ([#5942](https://github.com/filebrowser/filebrowser/issues/5942)) ([103acd1](https://github.com/filebrowser/filebrowser/commit/103acd15fe57554fe0246bfe70a49b6cb4ae0c51))
+* prevent symlink scope escape in copy/move/rename ([cdd666f](https://github.com/filebrowser/filebrowser/commit/cdd666fc95f569ad583c32391e45646fed676dfd))
+* set X-Content-Type-Options: nosniff on raw file responses ([35db07d](https://github.com/filebrowser/filebrowser/commit/35db07d0159c520a6b3c969ac52033593914fadd))
+* use constant-time comparison for share access token ([1951436](https://github.com/filebrowser/filebrowser/commit/19514367adf2d9fe5be2b7666e397979ea679b94))
+
+## [2.63.8](https://github.com/filebrowser/filebrowser/compare/v2.63.7...v2.63.8) (2026-06-03)
+
+
+### Bug Fixes
+
+* check if share is within scope when creating ([ca019ae](https://github.com/filebrowser/filebrowser/commit/ca019ae7d966a7c28de2b2341271cd13e3458ae6))
+
+## [2.63.7](https://github.com/filebrowser/filebrowser/compare/v2.63.6...v2.63.7) (2026-06-03)
+
+
+### Bug Fixes
+
+* disallow shares for non-existent paths ([166583d](https://github.com/filebrowser/filebrowser/commit/166583db632e088e9f0adce30aec43bb9d9019f4))
+
+## [2.63.6](https://github.com/filebrowser/filebrowser/compare/v2.63.5...v2.63.6) (2026-06-03)
+
+
+### Bug Fixes
+
+* address three security disclosures (archive traversal, login DoS, symlink escape) ([847d08b](https://github.com/filebrowser/filebrowser/commit/847d08bdd135e5c3659f2e6dea2f0cd36617af9b))
+* cross-user unauthorized share-link deletion ([0231b7e](https://github.com/filebrowser/filebrowser/commit/0231b7ebdfbe77a6c54027d30c4856c3fd81ee4d))
+* incorrect access control in public directory shares via rule path rebasing ([e07c59d](https://github.com/filebrowser/filebrowser/commit/e07c59df0b850f5924d5b1683e8609661ddcf534))
+* parse csv files with uneven columns in their rows ([#5965](https://github.com/filebrowser/filebrowser/issues/5965)) ([5328e80](https://github.com/filebrowser/filebrowser/commit/5328e80d2e88d1c279a1250a7dfee4fc96f703ec))
+* remove undocumented hook auth with shell replacement ([34ae34e](https://github.com/filebrowser/filebrowser/commit/34ae34e764d72540c039f1f5ea2ec4c974168c1f))
+
 ## [2.63.5](https://github.com/filebrowser/filebrowser/compare/v2.63.4...v2.63.5) (2026-05-21)
 
 

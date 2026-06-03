@@ -1,6 +1,7 @@
 package fbhttp
 
 import (
+	"crypto/subtle"
 	"errors"
 	"net/http"
 	"net/url"
@@ -67,6 +68,11 @@ var withHashFile = func(fn handleFunc) handleFunc {
 		// set fs root to the shared file/folder
 		d.user.Fs = afero.NewBasePathFs(d.user.Fs, basePath)
 
+		// the filesystem is now rebased onto basePath, so paths handed to the
+		// rule checker are relative to it. Resolve them back to the user's
+		// original scope so deny rules below the share root keep applying.
+		d.checkerPrefix = basePath
+
 		file, err = files.NewFileInfo(&files.FileOptions{
 			Fs:      d.user.Fs,
 			Path:    filePath,
@@ -131,7 +137,7 @@ func authenticateShareRequest(r *http.Request, l *share.Link) (int, error) {
 		return 0, nil
 	}
 
-	if r.URL.Query().Get("token") == l.Token {
+	if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(l.Token)) == 1 {
 		return 0, nil
 	}
 

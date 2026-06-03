@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	fberrors "github.com/filebrowser/filebrowser/v2/errors"
+	"github.com/filebrowser/filebrowser/v2/files"
 	"github.com/filebrowser/filebrowser/v2/share"
 )
 
@@ -99,6 +100,23 @@ var shareDeleteHandler = withPermShare(func(_ http.ResponseWriter, r *http.Reque
 })
 
 var sharePostHandler = withPermShare(func(w http.ResponseWriter, r *http.Request, d *data) (int, error) {
+	// Only allow sharing paths that currently exist. Otherwise a share could be
+	// created for a non-existent path and would silently start exposing
+	// whatever file later appears there.
+	if _, err := d.user.Fs.Stat(r.URL.Path); err != nil {
+		return errToStatus(err), err
+	}
+
+	// Refuse to create a share whose on-disk target escapes the user's scope
+	// (e.g. via a symlink), mirroring the read/write guards. The public serve
+	// path already rejects these, but blocking creation avoids dangling shares.
+	if ok, err := files.WithinScope(d.user.Fs, r.URL.Path); err != nil || !ok {
+		if err != nil {
+			return errToStatus(err), err
+		}
+		return http.StatusForbidden, nil
+	}
+
 	var s *share.Link
 	var body share.CreateBody
 	if r.Body != nil {
