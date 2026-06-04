@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/metacubex/mihomo/common/contextutils"
 	"github.com/metacubex/mihomo/common/pool"
 	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
@@ -112,7 +113,7 @@ func (doq *dnsOverQUIC) ExchangeContext(ctx context.Context, m *D.Msg) (msg *D.M
 	// make DoQ usable.  We need to make 2 attempts in the case when the
 	// connection was closed (due to inactivity for example) AND the server
 	// refuses to open a 0-RTT connection.
-	for i := 0; hasConnection && doq.shouldRetry(err) && i < 2; i++ {
+	for i := 0; hasConnection && doq.shouldRetry(err) && ctx.Err() == nil && i < 2; i++ {
 		log.Debugln("re-creating the QUIC connection and retrying due to %v", err)
 
 		// Close the active connection to make sure we'll try to re-connect.
@@ -169,6 +170,11 @@ func (doq *dnsOverQUIC) exchangeQUIC(ctx context.Context, msg *D.Msg) (resp *D.M
 	if err != nil {
 		return nil, err
 	}
+
+	stop := contextutils.AfterFunc(ctx, func() {
+		_ = stream.SetDeadline(time.Now()) // cancel any read or write operation on this stream
+	})
+	defer stop()
 
 	_, err = stream.Write(AddPrefix(buf))
 	if err != nil {

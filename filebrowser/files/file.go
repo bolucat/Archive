@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -128,20 +129,16 @@ func stat(opts *FileOptions) (*FileInfo, error) {
 		}
 	}
 
-	// regular file
-	if file != nil && !file.IsSymlink {
-		return file, nil
-	}
-
-	// The path is a symlink. Refuse to follow it if its on-disk target escapes
-	// the user's scoped root; otherwise a symlink that lives lexically inside
-	// the scope but points outside it would let a restricted user read, write,
-	// or share files beyond their boundary.
-	if file != nil && file.IsSymlink {
+	if file != nil {
 		ok, scopeErr := WithinScope(opts.Fs, opts.Path)
 		if scopeErr != nil || !ok {
 			return nil, os.ErrPermission
 		}
+	}
+
+	// regular file
+	if file != nil && !file.IsSymlink {
+		return file, nil
 	}
 
 	// fs doesn't support afero.Lstater interface or the file is a symlink
@@ -456,8 +453,7 @@ func (i *FileInfo) addSubtitle(fPath string) {
 }
 
 func (i *FileInfo) readListing(checker rules.Checker, readHeader bool, calcImgRes bool) error {
-	afs := &afero.Afero{Fs: i.Fs}
-	dir, err := afs.ReadDir(i.Path)
+	dir, err := readDir(i.Fs, i.Path)
 	if err != nil {
 		return err
 	}
@@ -479,6 +475,13 @@ func (i *FileInfo) readListing(checker rules.Checker, readHeader bool, calcImgRe
 		isSymlink, isInvalidLink := false, false
 		if IsSymlink(f.Mode()) {
 			isSymlink = true
+			// A symlink whose on-disk target escapes the scoped root must not be
+			// followed, otherwise the listing would leak the target's metadata
+			// (and downstream access) for files outside the user's scope or the
+			// shared subtree.
+			if ok, scopeErr := WithinScope(i.Fs, fPath); scopeErr != nil || !ok {
+				continue
+			}
 			// It's a symbolic link. We try to follow it. If it doesn't work,
 			// we stay with the link information instead of the target's.
 			info, err := i.Fs.Stat(fPath)
@@ -531,4 +534,57 @@ func (i *FileInfo) readListing(checker rules.Checker, readHeader bool, calcImgRe
 
 	i.Listing = listing
 	return nil
+}
+
+func readDir(afs afero.Fs, dirname string) ([]os.FileInfo, error) {
+	dir, err := afero.ReadDir(afs, dirname)
+	if err == nil {
+		return dir, nil
+	}
+
+	dir, fallbackErr := readDirNames(afs, dirname)
+	if fallbackErr != nil {
+		return nil, err
+	}
+
+	return dir, nil
+}
+
+func readDirNames(afs afero.Fs, dirname string) ([]os.FileInfo, error) {
+	file, err := afs.Open(dirname)
+	if err != nil {
+		return nil, err
+	}
+
+	names, err := file.Readdirnames(-1)
+	if closeErr := file.Close(); err == nil && closeErr != nil {
+		err = closeErr
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Strings(names)
+	dir := make([]os.FileInfo, 0, len(names))
+	for _, name := range names {
+		fPath := path.Join(dirname, name)
+		info, err := lstatIfPossible(afs, fPath)
+		if err != nil {
+			log.Printf("Skipping inaccessible file %s: %v", fPath, err)
+			continue
+		}
+
+		dir = append(dir, info)
+	}
+
+	return dir, nil
+}
+
+func lstatIfPossible(afs afero.Fs, name string) (os.FileInfo, error) {
+	if lstaterFs, ok := afs.(afero.Lstater); ok {
+		info, _, err := lstaterFs.LstatIfPossible(name)
+		return info, err
+	}
+
+	return afs.Stat(name)
 }

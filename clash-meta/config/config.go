@@ -880,6 +880,7 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 	proxies["REJECT-DROP"] = adapter.NewProxy(outbound.NewRejectDrop())
 	proxies["COMPATIBLE"] = adapter.NewProxy(outbound.NewCompatible())
 	proxies["PASS"] = adapter.NewProxy(outbound.NewPass())
+	proxies["PASS-RULE"] = adapter.NewProxy(outbound.NewPassRule())
 	proxyList = append(proxyList, "DIRECT", "REJECT")
 
 	// parse proxy
@@ -950,7 +951,7 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 
 	var ps []C.Proxy
 	for _, v := range proxyList {
-		if proxies[v].Type() == C.Pass {
+		if proxies[v].Type() == C.Pass || proxies[v].Type() == C.PassRule {
 			continue
 		}
 		ps = append(ps, proxies[v])
@@ -964,6 +965,7 @@ func parseProxies(cfg *RawConfig) (proxies map[string]C.Proxy, providersMap map[
 			&outboundgroup.GroupCommonOption{
 				Name: "GLOBAL",
 			},
+			proxies["COMPATIBLE"],
 			[]P.ProxyProvider{pd},
 		)
 		proxies["GLOBAL"] = adapter.NewProxy(global)

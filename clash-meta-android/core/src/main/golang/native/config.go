@@ -60,3 +60,14 @@ func writeOverride(slot C.int, content C.c_string) {
 func clearOverride(slot C.int) {
 	config.ClearOverride(config.OverrideSlot(slot))
 }
+
+//export setAgeSecretKey
+func setAgeSecretKey(key C.c_string) {
+	if key == nil {
+		config.SetGlobalSecretKeys()
+		return
+	}
+
+	k := C.GoString(key)
+	config.SetGlobalSecretKeys(k)
+}

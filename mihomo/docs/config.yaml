@@ -1459,6 +1459,7 @@ proxy-groups:
     proxies:
       - Proxy
       - DIRECT
+    # empty-fallback: COMPATIBLE # 设置当组为空时的回退proxy
 
 # Mihomo 格式的节点或支持 *ray 的分享格式
 proxy-providers:

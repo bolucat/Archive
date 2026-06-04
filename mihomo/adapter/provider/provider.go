@@ -366,12 +366,9 @@ func NewProxiesParser(pdName string, tunnel C.Tunnel, filter string, excludeFilt
 		filterRegs = append(filterRegs, filterReg)
 	}
 
-	var identities []age.Identity
 	if ageSecretKey != "" {
-		var err error
-		identities, err = age.ParseIdentities(ageSecretKey)
-		if err != nil {
-			return nil, fmt.Errorf("parse age-secret-key error: %w", err)
+		if err := age.VeritySecretKeys(ageSecretKey); err != nil {
+			return nil, fmt.Errorf("invalid age-secret-key: %w", err)
 		}
 	}
 
@@ -379,7 +376,7 @@ func NewProxiesParser(pdName string, tunnel C.Tunnel, filter string, excludeFilt
 		schema := &ProxySchema{}
 
 		// decrypt config
-		buf, err := age.DecryptBytes(buf, identities...)
+		buf, err := age.DecryptBytes(buf, ageSecretKey)
 		if err != nil {
 			return nil, fmt.Errorf("decrypt config error: %w", err)
 		}
