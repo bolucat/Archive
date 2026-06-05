@@ -15,6 +15,7 @@ import (
 	"cfa/native/app"
 
 	clashHttp "github.com/metacubex/mihomo/component/http"
+	RB "github.com/metacubex/mihomo/rules/bundle"
 )
 
 type Status struct {
@@ -60,6 +61,10 @@ func fetch(url *U.URL, file string) error {
 
 	defer reader.Close()
 
+	return writeFile(file, reader)
+}
+
+func writeFile(file string, reader io.Reader) error {
 	_ = os.MkdirAll(P.Dir(file), 0700)
 
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
@@ -143,6 +148,22 @@ func FetchAndValid(
 		url, err := U.Parse(us)
 		if err != nil {
 			return
+		}
+
+		if prefix == RULES {
+			if pib, uok := provider["path-in-bundle"]; uok {
+				if pib, uok := pib.(string); uok && pib != "" {
+					// actually, we don't need to extract the file here; the core will do it.
+					// however, due to historical reasons, CMFA fetches provider content when loading profile,
+					// so we maintain consistency with the old behavior.
+					if file, err := RB.Open(pib); err == nil {
+						defer file.Close()
+						if err := writeFile(ps, file); err == nil {
+							return
+						}
+					}
+				}
+			}
 		}
 
 		_ = fetch(url, ps)

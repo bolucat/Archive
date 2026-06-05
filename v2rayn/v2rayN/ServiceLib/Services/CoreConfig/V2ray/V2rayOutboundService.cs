@@ -62,7 +62,7 @@ public partial class CoreConfigV2rayService
         try
         {
             var protocolExtra = _node.GetProtocolExtra();
-            var muxEnabled = _node.MuxEnabled ?? _config.CoreBasicItem.MuxEnabled;
+            var muxEnabled = _node.MuxEnabled ?? false;
             switch (_node.ConfigType)
             {
                 case EConfigType.VMess:
@@ -380,7 +380,7 @@ public partial class CoreConfigV2rayService
 
                 TlsSettings4Ray tlsSettings = new()
                 {
-                    allowInsecure = Utils.ToBool(_node.AllowInsecure.IsNullOrEmpty() ? _config.CoreBasicItem.DefAllowInsecure.ToString().ToLower() : _node.AllowInsecure),
+                    allowInsecure = _node.GetAllowInsecure(),
                     alpn = _node.GetAlpn(),
                     fingerprint = _node.Fingerprint.IsNullOrEmpty() ? _config.CoreBasicItem.DefFingerprint : _node.Fingerprint,
                     echConfigList = _node.EchConfigList.NullIfEmpty(),
@@ -465,8 +465,8 @@ public partial class CoreConfigV2rayService
                         [
                             new Mask4Ray
                             {
-                                type = header,
-                                settings = null
+                                type = "mkcp-legacy",
+                                settings = new MaskSettings4Ray { header = header },
                             }
                         ];
                     }
@@ -475,15 +475,15 @@ public partial class CoreConfigV2rayService
                     {
                         kcpFinalmask.udp.Add(new Mask4Ray
                         {
-                            type = "mkcp-original"
+                            type = "mkcp-legacy",
                         });
                     }
                     else
                     {
                         kcpFinalmask.udp.Add(new Mask4Ray
                         {
-                            type = "mkcp-aes128gcm",
-                            settings = new MaskSettings4Ray { password = kcpSeed }
+                            type = "mkcp-legacy",
+                            settings = new MaskSettings4Ray { value = kcpSeed },
                         });
                     }
                     streamSettings.kcpSettings = kcpSettings;
@@ -826,29 +826,7 @@ public partial class CoreConfigV2rayService
                                              && (n.streamSettings?.sockopt?.dialerProxy?.IsNullOrEmpty() ?? true))
                 .ToList();
 
-        var configPackets = _config.Fragment4RayItem?.Packets ?? "tlshello";
-        var configLength = _config.Fragment4RayItem?.Length ?? "50-100";
-        var configDelay = _config.Fragment4RayItem?.Interval ?? "10-20";
-
-        var fragmentMask = new Mask4Ray
-        {
-            type = "fragment",
-            settings = new MaskSettings4Ray
-            {
-                packets = configPackets,
-                length = configLength,
-                delay = configDelay,
-            }
-        };
-        var noiseMask = new Mask4Ray
-        {
-            type = "noise",
-            settings = new MaskSettings4Ray
-            {
-                length = "10-20",
-                delay = "10-16",
-            }
-        };
+        var (fragmentMask, noiseMask) = BuildFragmentsMasks();
 
         foreach (var outbound in actOutboundWithTlsList)
         {
@@ -881,5 +859,68 @@ public partial class CoreConfigV2rayService
             // write back
             outbound.streamSettings.finalmask = finalMaskJsonObj;
         }
+    }
+
+    private void ApplyFinalFragment()
+    {
+        var (fragmentMask, noiseMask) = BuildFragmentsMasks();
+        var actOutboundList = _coreConfig.outbounds.Where(n => n.tag.StartsWith(Global.ProxyTag)).ToList();
+
+        var fragmentFreedom = new Outbounds4Ray()
+        {
+            tag = $"{Global.ProxyTag}-fragment-freedom",
+            protocol = "freedom",
+            streamSettings = new StreamSettings4Ray
+            {
+                finalmask = new Finalmask4Ray
+                {
+                    tcp = [fragmentMask],
+                    udp = [noiseMask],
+                }
+            }
+        };
+
+        foreach (var outbound in actOutboundList)
+        {
+            var index = _coreConfig.outbounds.IndexOf(outbound);
+            var originalTag = outbound.tag;
+            var afterTag = $"fragment-{originalTag}";
+            var cloneFragmentFreedom = JsonUtils.DeepCopy(fragmentFreedom);
+            cloneFragmentFreedom.tag = originalTag;
+            cloneFragmentFreedom.streamSettings.sockopt ??= new();
+            cloneFragmentFreedom.streamSettings.sockopt.dialerProxy = afterTag;
+
+            outbound.tag = afterTag;
+            _coreConfig.outbounds.Insert(index, cloneFragmentFreedom);
+        }
+    }
+
+    private (Mask4Ray tcpFragment, Mask4Ray udpNoise) BuildFragmentsMasks()
+    {
+        var configPackets = _config.Fragment4RayItem?.Packets ?? "tlshello";
+        var configLength = _config.Fragment4RayItem?.Length ?? "50-100";
+        var configDelay = _config.Fragment4RayItem?.Interval ?? "10-20";
+
+        var fragmentMask = new Mask4Ray
+        {
+            type = "fragment",
+            settings = new MaskSettings4Ray
+            {
+                packets = configPackets,
+                length = configLength,
+                delay = configDelay,
+            }
+        };
+        var noiseMask = new Mask4Ray
+        {
+            type = "noise",
+            settings = new MaskSettings4Ray
+            {
+                length = "10-20",
+                delay = "10-16",
+            }
+        };
+
+        return (fragmentMask, noiseMask);
     }
 }

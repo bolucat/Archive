@@ -75,98 +75,77 @@ object ProfileProcessor {
                         var updateInterval: Long = snapshot.interval
                         if (snapshot?.type == Profile.Type.Url) {
                             if (snapshot.source.startsWith("https://", true)) {
-                                val client = OkHttpClient()
-                                val versionName =
-                                    context.packageManager.getPackageInfo(context.packageName, 0).versionName
-                                val request = Request.Builder().url(snapshot.source)
-                                    .header("User-Agent", "ClashMetaForAndroid/$versionName").build()
+                                try {
+                                    val client = OkHttpClient()
+                                    val versionName =
+                                        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                                    val request = Request.Builder().url(snapshot.source)
+                                        .header("User-Agent", "ClashMetaForAndroid/$versionName").build()
 
-                                client.newCall(request).execute().use { response ->
-                                    val userinfo = response.headers["subscription-userinfo"]
-                                    if (response.isSuccessful && userinfo != null) {
-                                        val flags = userinfo.split(";")
-                                        for (flag in flags) {
-                                            val info = flag.split("=")
-                                            when {
-                                                info[0].contains("upload") && info[1].isNotEmpty() -> upload =
-                                                    BigDecimal(info[1].split('.').first()).longValueExact()
+                                    client.newCall(request).execute().use { response ->
+                                        val userinfo = response.headers["subscription-userinfo"]
+                                        if (response.isSuccessful && userinfo != null) {
+                                            val flags = userinfo.split(";")
+                                            for (flag in flags) {
+                                                val info = flag.split("=")
+                                                when {
+                                                    info[0].contains("upload") && info[1].isNotEmpty() -> upload =
+                                                        BigDecimal(info[1].split('.').first()).longValueExact()
 
-                                                info[0].contains("download") && info[1].isNotEmpty() -> download =
-                                                    BigDecimal(info[1].split('.').first()).longValueExact()
+                                                    info[0].contains("download") && info[1].isNotEmpty() -> download =
+                                                        BigDecimal(info[1].split('.').first()).longValueExact()
 
-                                                info[0].contains("total") && info[1].isNotEmpty() -> total =
-                                                    BigDecimal(info[1].split('.').first()).longValueExact()
+                                                    info[0].contains("total") && info[1].isNotEmpty() -> total =
+                                                        BigDecimal(info[1].split('.').first()).longValueExact()
 
-                                                info[0].contains("expire") && info[1].isNotEmpty() -> expire =
-                                                    (info[1].toDouble() * 1000).toLong()
+                                                    info[0].contains("expire") && info[1].isNotEmpty() -> expire =
+                                                        (info[1].toDouble() * 1000).toLong()
+                                                }
+                                            }
+                                        }
+
+                                        val updateIntervalHeader = response.headers["profile-update-interval"]
+                                        if (old == null && snapshot.interval == 0L && response.isSuccessful && updateIntervalHeader != null) {
+                                            val intervalHours = updateIntervalHeader.toLongOrNull()
+                                            if (intervalHours != null) {
+                                                updateInterval = if (intervalHours > 0) {
+                                                    TimeUnit.HOURS.toMillis(intervalHours)
+                                                        .coerceAtLeast(TimeUnit.MINUTES.toMillis(15))
+                                                } else {
+                                                    0L
+                                                }
                                             }
                                         }
                                     }
-
-                                    val updateIntervalHeader = response.headers["profile-update-interval"]
-                                    if (old == null && snapshot.interval == 0L && response.isSuccessful && updateIntervalHeader != null) {
-                                        val intervalHours = updateIntervalHeader.toLongOrNull()
-                                        if (intervalHours != null) {
-                                            updateInterval = if (intervalHours > 0) {
-                                                TimeUnit.HOURS.toMillis(intervalHours)
-                                                    .coerceAtLeast(TimeUnit.MINUTES.toMillis(15))
-                                            } else {
-                                                0L
-                                            }
-                                        }
-                                    }
+                                } catch (e: Exception) {
+                                    Log.w("Report fetch subscription-userinfo status: $e", e)
                                 }
                             }
-                            val new = Imported(
-                                snapshot.uuid,
-                                snapshot.name,
-                                snapshot.type,
-                                snapshot.source,
-                                updateInterval,
-                                upload,
-                                download,
-                                total,
-                                expire,
-                                old?.createdAt ?: System.currentTimeMillis(),
-                                ageSecretKey = snapshot.ageSecretKey
-                            )
-                            if (old != null) {
-                                ImportedDao().update(new)
-                            } else {
-                                ImportedDao().insert(new)
-                            }
-
-                            PendingDao().remove(snapshot.uuid)
-
-                            context.pendingDir.resolve(snapshot.uuid.toString()).deleteRecursively()
-
-                            context.sendProfileChanged(snapshot.uuid)
-                        } else if (snapshot?.type == Profile.Type.File) {
-                            val new = Imported(
-                                snapshot.uuid,
-                                snapshot.name,
-                                snapshot.type,
-                                snapshot.source,
-                                snapshot.interval,
-                                upload,
-                                download,
-                                total,
-                                expire,
-                                old?.createdAt ?: System.currentTimeMillis(),
-                                ageSecretKey = snapshot.ageSecretKey
-                            )
-                            if (old != null) {
-                                ImportedDao().update(new)
-                            } else {
-                                ImportedDao().insert(new)
-                            }
-
-                            PendingDao().remove(snapshot.uuid)
-
-                            context.pendingDir.resolve(snapshot.uuid.toString()).deleteRecursively()
-
-                            context.sendProfileChanged(snapshot.uuid)
                         }
+                        val new = Imported(
+                            snapshot.uuid,
+                            snapshot.name,
+                            snapshot.type,
+                            snapshot.source,
+                            updateInterval,
+                            upload,
+                            download,
+                            total,
+                            expire,
+                            old?.createdAt ?: System.currentTimeMillis(),
+                            ageSecretKey = snapshot.ageSecretKey
+                        )
+                        if (old != null) {
+                            ImportedDao().update(new)
+                        } else {
+                            ImportedDao().insert(new)
+                        }
+
+                        PendingDao().remove(snapshot.uuid)
+
+                        context.pendingDir.resolve(snapshot.uuid.toString()).deleteRecursively()
+
+                        context.sendProfileChanged(snapshot.uuid)
                     }
                 }
             }

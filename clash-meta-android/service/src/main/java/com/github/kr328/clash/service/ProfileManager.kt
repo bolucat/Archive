@@ -1,6 +1,7 @@
 package com.github.kr328.clash.service
 
 import android.content.Context
+import com.github.kr328.clash.common.log.Log
 import com.github.kr328.clash.service.data.Database
 import com.github.kr328.clash.service.data.Imported
 import com.github.kr328.clash.service.data.ImportedDao
@@ -141,8 +142,8 @@ class ProfileManager(private val context: Context) : IProfileManager,
     }
 
     suspend fun updateFlow(old: Imported) {
-        val client = OkHttpClient()
         try {
+            val client = OkHttpClient()
             val versionName = context.packageManager.getPackageInfo(context.packageName, 0).versionName
             val request = Request.Builder()
                 .url(old.source)
@@ -208,7 +209,7 @@ class ProfileManager(private val context: Context) : IProfileManager,
             }
 
         } catch (e: Exception) {
-            System.out.println(e)
+            Log.w("Report fetch subscription-userinfo status: $e", e)
         }
     }
 
