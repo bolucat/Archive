@@ -40,6 +40,7 @@ type Transport struct {
 	resolved         ResolvedResolver
 	mdnsTransport    adapter.DNSTransport
 	dhcpTransport    dhcpTransport
+	systemResolver   systemResolver
 	neighborResolver adapter.NeighborResolver
 	neighborSuffixes []string
 }
@@ -48,6 +49,12 @@ type dhcpTransport interface {
 	adapter.DNSTransport
 	Fetch() []M.Socksaddr
 	Exchange0(ctx context.Context, message *mDNS.Msg, servers []M.Socksaddr) (*mDNS.Msg, error)
+}
+
+type systemResolver interface {
+	Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error)
+	Reset()
+	Close() error
 }
 
 func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, options option.LocalDNSServerOptions) (adapter.DNSTransport, error) {
@@ -91,6 +98,7 @@ func (t *Transport) Start(stage adapter.StartStage) error {
 		}
 	case adapter.StartStateStart:
 		if C.IsDarwin {
+			t.systemResolver = newSystemResolver()
 			inboundManager := service.FromContext[adapter.InboundManager](t.ctx)
 			for _, inbound := range inboundManager.Inbounds() {
 				if inbound.Type() == C.TypeTun {
@@ -127,7 +135,7 @@ func (t *Transport) Start(stage adapter.StartStage) error {
 }
 
 func (t *Transport) Close() error {
-	return common.Close(t.resolved, t.dhcpTransport, t.mdnsTransport)
+	return common.Close(t.resolved, t.dhcpTransport, t.mdnsTransport, t.systemResolver)
 }
 
 func (t *Transport) Reset() {
@@ -136,6 +144,9 @@ func (t *Transport) Reset() {
 	}
 	if t.mdnsTransport != nil {
 		t.mdnsTransport.Reset()
+	}
+	if t.systemResolver != nil {
+		t.systemResolver.Reset()
 	}
 }
 
@@ -162,7 +173,7 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 	}
 	if mdns.IsLocalDomain(question.Name) {
 		if C.IsDarwin {
-			return t.systemExchange(ctx, message)
+			return t.systemResolver.Exchange(ctx, message)
 		}
 		return t.mdnsTransport.Exchange(ctx, message)
 	}
@@ -176,7 +187,7 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 		}
 	}
 	if t.fallback {
-		return t.systemExchange(ctx, message)
+		return t.systemResolver.Exchange(ctx, message)
 	}
 	return t.exchange(ctx, message, question.Name)
 }

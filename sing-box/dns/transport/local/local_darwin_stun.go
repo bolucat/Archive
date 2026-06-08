@@ -10,6 +10,18 @@ import (
 	mDNS "github.com/miekg/dns"
 )
 
-func (t *Transport) systemExchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+func newSystemResolver() systemResolver {
+	return &cgoRequiredResolver{}
+}
+
+type cgoRequiredResolver struct{}
+
+func (r *cgoRequiredResolver) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	return nil, E.New(`local DNS server requires CGO on darwin, rebuild with CGO_ENABLED=1`)
+}
+
+func (r *cgoRequiredResolver) Reset() {}
+
+func (r *cgoRequiredResolver) Close() error {
+	return nil
 }
