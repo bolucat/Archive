@@ -13,9 +13,11 @@ import (
 	v4 "github.com/v2fly/v2ray-core/v5/infra/conf/v4"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
+	"github.com/v2fly/v2ray-core/v5/transport/internet/grpc"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/headers/http"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/headers/noop"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/headers/tls"
+	internethttp "github.com/v2fly/v2ray-core/v5/transport/internet/http"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/kcp"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/quic"
 	"github.com/v2fly/v2ray-core/v5/transport/internet/tcp"
@@ -92,13 +94,22 @@ func TestTransportConfig(t *testing.T) {
 					}
 				},
 				"wsSettings": {
-					"path": "/t"
+					"path": "/t",
+					"parseXForwardedFor": true
+				},
+				"httpSettings": {
+					"path": "/h2",
+					"parseXForwardedFor": true
 				},
 				"quicSettings": {
 					"key": "abcd",
 					"header": {
 						"type": "dtls"
 					}
+				},
+				"grpcSettings": {
+					"serviceName": "svc",
+					"parseXForwardedFor": true
 				}
 			}`,
 			Parser: createParser(),
@@ -156,7 +167,15 @@ func TestTransportConfig(t *testing.T) {
 					{
 						ProtocolName: "websocket",
 						Settings: serial.ToTypedMessage(&websocket.Config{
-							Path: "/t",
+							Path:               "/t",
+							ParseXForwardedFor: true,
+						}),
+					},
+					{
+						ProtocolName: "http",
+						Settings: serial.ToTypedMessage(&internethttp.Config{
+							Path:               "/h2",
+							ParseXForwardedFor: true,
 						}),
 					},
 					{
@@ -167,6 +186,13 @@ func TestTransportConfig(t *testing.T) {
 								Type: protocol.SecurityType_NONE,
 							},
 							Header: serial.ToTypedMessage(&tls.PacketConfig{}),
+						}),
+					},
+					{
+						ProtocolName: "gun",
+						Settings: serial.ToTypedMessage(&grpc.Config{
+							ServiceName:        "svc",
+							ParseXForwardedFor: true,
 						}),
 					},
 				},
