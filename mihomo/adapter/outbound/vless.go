@@ -348,18 +348,18 @@ func (v *Vless) ListenPacketContext(ctx context.Context, metadata *C.Metadata) (
 		if metadata.SourceValid() {
 			globalID = utils.GlobalID(metadata.SourceAddress())
 		}
-		return newPacketConn(N.NewThreadSafePacketConn(
+		return NewPacketConn(N.NewThreadSafePacketConn(
 			vmessSing.NewXUDPConn(c,
 				globalID,
 				M.SocksaddrFromNet(metadata.UDPAddr())),
 		), v), nil
 	} else if v.option.PacketAddr {
-		return newPacketConn(N.NewThreadSafePacketConn(
+		return NewPacketConn(N.NewThreadSafePacketConn(
 			packetaddr.NewConn(v.client.PacketConn(c, metadata.UDPAddr()),
 				M.SocksaddrFromNet(metadata.UDPAddr())),
 		), v), nil
 	}
-	return newPacketConn(N.NewThreadSafePacketConn(v.client.PacketConn(c, metadata.UDPAddr())), v), nil
+	return NewPacketConn(N.NewThreadSafePacketConn(v.client.PacketConn(c, metadata.UDPAddr())), v), nil
 }
 
 // SupportUOT implements C.ProxyAdapter
