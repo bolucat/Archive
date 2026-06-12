@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/sagernet/sing-box/experimental/clashapi"
 	"github.com/sagernet/sing-box/log"
 )
 
@@ -23,7 +22,6 @@ func NewAttachedService(ctx context.Context) *StartedService {
 	instance.urlTestHistoryStorage.SetHook(s.urlTestSubscriber)
 	if instance.clashServer != nil {
 		instance.clashServer.SetModeUpdateHook(s.clashModeSubscriber)
-		instance.clashServer.(*clashapi.Server).TrafficManager().SetEventHook(s.connectionEventSubscriber)
 	}
 	instance.logFactory.(log.ObservableFactory).AttachPlatformWriter(s)
 	return s

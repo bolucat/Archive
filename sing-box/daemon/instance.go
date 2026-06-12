@@ -6,6 +6,7 @@ import (
 
 	"github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/deprecated"
@@ -24,6 +25,7 @@ type Instance struct {
 	instance              *box.Box
 	connectionManager     adapter.ConnectionManager
 	clashServer           adapter.ClashServer
+	trafficManager        *trafficcontrol.Manager
 	cacheFile             adapter.CacheFile
 	pauseManager          pause.Manager
 	urlTestHistoryStorage adapter.URLTestHistoryStorage
@@ -122,6 +124,7 @@ func (s *StartedService) newInstance(profileContent string, overrideOptions *Ove
 	i.instance = boxInstance
 	i.connectionManager = service.FromContext[adapter.ConnectionManager](ctx)
 	i.clashServer = service.FromContext[adapter.ClashServer](ctx)
+	i.trafficManager = service.PtrFromContext[trafficcontrol.Manager](ctx)
 	i.pauseManager = service.FromContext[pause.Manager](ctx)
 	i.cacheFile = service.FromContext[adapter.CacheFile](ctx)
 	i.outboundManager = service.FromContext[adapter.OutboundManager](ctx)
@@ -136,6 +139,7 @@ func attachInstance(ctx context.Context) *Instance {
 		ctx:                   ctx,
 		connectionManager:     service.FromContext[adapter.ConnectionManager](ctx),
 		clashServer:           service.FromContext[adapter.ClashServer](ctx),
+		trafficManager:        service.PtrFromContext[trafficcontrol.Manager](ctx),
 		pauseManager:          service.FromContext[pause.Manager](ctx),
 		cacheFile:             service.FromContext[adapter.CacheFile](ctx),
 		urlTestHistoryStorage: service.PtrFromContext[urltest.HistoryStorage](ctx),

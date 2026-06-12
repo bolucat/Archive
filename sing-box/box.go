@@ -19,6 +19,7 @@ import (
 	"github.com/sagernet/sing-box/common/httpclient"
 	"github.com/sagernet/sing-box/common/taskmonitor"
 	"github.com/sagernet/sing-box/common/tls"
+	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/dns"
@@ -229,6 +230,12 @@ func New(options Options) (*Box, error) {
 	if err != nil {
 		return nil, E.Cause(err, "initialize router")
 	}
+	if needClashAPI || needAPIService {
+		trafficManager := trafficcontrol.NewManager(outboundManager)
+		service.MustRegisterPtr(ctx, trafficManager)
+		router.AppendTracker(trafficManager)
+		internalServices = append(internalServices, trafficManager)
+	}
 	ntpOptions := common.PtrValueOrDefault(options.NTP)
 	var timeService *tls.TimeServiceWrapper
 	if ntpOptions.Enabled {
@@ -406,7 +413,6 @@ func New(options Options) (*Box, error) {
 		if err != nil {
 			return nil, E.Cause(err, "create clash-server")
 		}
-		router.AppendTracker(clashServer)
 		service.MustRegister[adapter.ClashServer](ctx, clashServer)
 		internalServices = append(internalServices, clashServer)
 	}
