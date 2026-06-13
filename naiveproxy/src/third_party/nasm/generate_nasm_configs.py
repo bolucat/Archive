@@ -34,13 +34,27 @@ def UpdateLinuxConfig(path):
              ),
             (r'#define HAVE_STRLCPY 1',
              r'/* #undef HAVE_STRLCPY */ // Shouldn\'t work with -std=c11, but configure still detects it.'
+             ),
+            (r'#define HAVE_STDBIT_H 1',
+             r'/* #undef HAVE_STDBIT_H */ // Controlled by the Chromium build process - see generate_nasm_configs.py'
+             ),
+            (r'#define HAVE_STDC_LEADING_ZEROS 1',
+             r'/* #undef HAVE_STDC_LEADING_ZEROS */ // Controlled by the Chromium build process - see generate_nasm_configs.py'
+             ),
+            (r'#define HAVE_TYPEOF 1',
+             r'/* #undef HAVE_TYPEOF */ // Controlled by the Chromium build process - see generate_nasm_configs.py'
              )
        ])
 
 
 def UpdateMacConfig(path):
-    pass
-
+    RewriteFile(
+        path,
+        [
+            (r'#define HAVE_TYPEOF 1',
+             r'/* #undef HAVE_TYPEOF */ // Controlled by the Chromium build process - see generate_nasm_configs.py'
+             )
+       ])
 
 def main():
     UpdateLinuxConfig('config/config-linux.h')

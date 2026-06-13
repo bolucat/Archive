@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2022 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2022 The NASM Authors - All Rights Reserved */
 
 /*
  * outieee.c	output routines for the Netwide Assembler to produce
@@ -73,6 +43,7 @@
 
 #include "nasm.h"
 #include "nasmlib.h"
+#include "asmutil.h"
 #include "error.h"
 #include "ver.h"
 
@@ -84,7 +55,7 @@
 #define ARRAY_BOT 0x1
 
 static char ieee_infile[FILENAME_MAX];
-static int ieee_uppercase;
+static bool ieee_uppercase;
 
 static bool any_segs;
 static int arrindex;
@@ -387,10 +358,9 @@ static void ieee_deflabel(char *name, int32_t segment,
 /*
  * Put data out
  */
-static void ieee_out(int32_t segto, const void *data,
-		     enum out_type type, uint64_t size,
-                     int32_t segment, int32_t wrt)
+static void ieee_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     const uint8_t *ucdata;
     int32_t ldata;
     struct ieeeSection *seg;
@@ -830,7 +800,7 @@ ieee_directive(enum directive directive, char *value)
 
     switch (directive) {
     case D_UPPERCASE:
-        ieee_uppercase = true;
+        get_boolean_option(value, &ieee_uppercase);
         return DIRR_OK;
 
     default:
@@ -1201,7 +1171,7 @@ static int32_t ieee_putld(int32_t start, int32_t end, uint8_t *buf)
         start++;
     }
     ieee_putascii(".\n");
-    return (start);
+    return start;
 }
 static int32_t ieee_putlr(struct ieeeFixupp *p)
 {
@@ -1267,7 +1237,7 @@ static int32_t ieee_putlr(struct ieeeFixupp *p)
     }
     ieee_putascii("LR(%s,%"PRIX32").\n", buf, size);
 
-    return (size);
+    return size;
 }
 
 /* Dump all segment data (text and fixups )*/
@@ -1506,7 +1476,6 @@ const struct ofmt of_ieee = {
     NULL,
     ieee_init,
     null_reset,
-    nasm_do_legacy_output,
     ieee_out,
     ieee_deflabel,
     ieee_segment,

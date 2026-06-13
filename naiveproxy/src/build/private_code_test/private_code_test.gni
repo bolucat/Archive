@@ -11,6 +11,7 @@ _default_allowed_violations = [
   # Defines public counterpart with same entries.
   "../../components/metrics/internal/server_urls.grd",
   "../../components/autofill/core/browser/geo/chrome_alternative_state_name_maps/alternative_state_name_map_resources.grd",
+  "../../chrome/browser/actor/resources/internal/browser_resources.grd",
   "../../chrome/browser/glic/resources/internal/browser_resources.grd",
 
   # TODO(b/452971335): Audit entries below.
@@ -18,6 +19,7 @@ _default_allowed_violations = [
   "../../chrome/browser/internal/transform_additional_modules_list.py",
   "../../chrome/common/request_header_integrity/internal/*",
   "../../components/autofill/core/browser/form_parsing/internal_resources/0_default_regex_patterns.json",
+  "../../components/internal/components_variant_internal_strings.grd",
   "../../components/plus_addresses/core/browser/resources/internal/*",
   "../../components/vector_icons/google_chrome/*",
   "../../google_apis/internal/generate_metrics_key.py",
@@ -26,7 +28,7 @@ _default_allowed_violations = [
 
 if (!is_android) {
   _default_allowed_violations += [
-    "../../chrome/browser/actor/resources/internal/browser_resources.grd",
+    "../../chrome/browser/indigo/resources/internal/browser_resources.grd",
     "../../chrome/browser/nearby_sharing/internal/nearby_share_internal_icons.grd",
     "../../chrome/browser/nearby_sharing/internal/nearby_share_internal_strings.grd",
     "../../chrome/browser/resources/downloads/internal/icons.html",

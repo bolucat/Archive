@@ -22,16 +22,16 @@ parser.add_argument('--nasm',
                     dest = 'nasm', default = './nasm',
                     help = 'Nasm executable to use')
 
-parser.add_argument('--hexdump',
-                    dest = 'hexdump', default = '/usr/bin/hexdump',
-                    help = 'Hexdump executable to use')
-
 sp = parser.add_subparsers(dest = 'cmd')
 for cmd in ['run']:
     spp = sp.add_parser(cmd, help = 'Run test cases')
     spp.add_argument('-t', '--test',
                      dest = 'test',
                      help = 'Run the selected test only',
+                     required = False)
+    spp.add_argument('--stop',
+                     dest = 'stop', default = 'y',
+                     help = 'Stop immediately on failure (default "y")',
                      required = False)
 
 for cmd in ['new']:
@@ -113,11 +113,11 @@ args = parser.parse_args()
 
 if args.cmd == None:
     parser.print_help()
-    sys.exit(1)
+    sys.exit(64)
 
 def read_stdfile(path):
     with open(path, "rb") as f:
-        data = f.read().decode("utf-8")
+        data = f.read().decode("utf-8","replace")
         f.close()
         return data
 
@@ -182,7 +182,7 @@ def read_json(path):
     try:
         with open(path, "rb") as f:
             try:
-                desc = json.loads(f.read().decode("utf-8"))
+                desc = json.loads(f.read().decode("utf-8","replace"))
             except:
                 desc = None
             finally:
@@ -236,7 +236,7 @@ if args.cmd == 'list':
 def test_abort(test, message):
     print("\t%s: %s" % (test, message))
     print("=== Test %s ABORT ===" % (test))
-    sys.exit(1)
+    sys.exit(2)
     return False
 
 def test_fail(test, message):
@@ -261,13 +261,31 @@ def test_updated(test):
     print("=== Test %s UPDATED ===" % (test))
     return True
 
-def run_hexdump(path):
-    p = subprocess.Popen([args.hexdump, "-C", path],
-                         stdout = subprocess.PIPE,
-                         close_fds = True)
-    if p.wait() == 0:
-        return p
-    return None
+def hexdump(path):
+    dump = ''
+    addr = 0
+    with open(path, 'rb') as f:
+        while b := f.read(16):
+            dump += "%08x  " % (addr)
+            for i in range(16):
+                if (i == 8):
+                    dump += " -"
+                if (i >= len(b)):
+                    dump += "   "
+                else:
+                    dump += " %02x" % b[i]
+            dump += "  |"
+            for i in range(16):
+                if (i >= len(b)):
+                    c = ord(' ')
+                else:
+                    c = b[i]
+                if (c < 32 or c > 126):
+                    c = ord('.')
+                dump += chr(c)
+            dump += "|\n";
+            addr += 16
+    return dump
 
 def show_std(stdname, data):
     print("\t--- %s" % (stdname))
@@ -293,20 +311,18 @@ def cmp_std(from_name, from_data, match_name, match_data):
     return True
 
 def show_diff(test, patha, pathb):
-    pa = run_hexdump(patha)
-    pb = run_hexdump(pathb)
-    if pa == None or pb == None:
+    try:
+        sa = hexdump(patha)
+        sb = hexdump(pathb)
+    except OSError:
         return test_fail(test, "Can't create dumps")
-    sa = pa.stdout.read().decode("utf-8")
-    sb = pb.stdout.read().decode("utf-8")
+
     print("\t--- hexdump %s" % (patha))
     for i in sa.split("\n"):
         print("\t%s" % i)
     print("\t--- hexdump %s" % (pathb))
     for i in sb.split("\n"):
         print("\t%s" % i)
-    pa.stdout.close()
-    pb.stdout.close()
 
     diff = difflib.unified_diff(sa.split("\n"), sb.split("\n"),
                                 fromfile = patha, tofile = pathb)
@@ -325,9 +341,11 @@ def prepare_run_opts(desc):
     for t in desc['target']:
         if 'output' in t:
             if 'option' in t:
-                opts += t['option'].split(" ") + [desc['_base-dir'] + os.sep + t['output']]
+                opts += t['option'].split(" ")
             else:
-                opts += ['-o', desc['_base-dir'] + os.sep + t['output']]
+                opts += ['-o']
+            outfile = desc['_base-dir'] + os.sep + t['output']
+            opts += [outfile, '-L+', '-l', outfile + '.lst']
         if 'stdout' in t or 'stderr' in t:
             if 'option' in t:
                 opts += t['option'].split(" ")
@@ -364,8 +382,8 @@ def exec_nasm(desc):
     #
     # FIXME: For now 4M buffer is enough but
     # better provide reading in a cycle.
-    stderr = pnasm.stderr.read(4194304).decode("utf-8")
-    stdout = pnasm.stdout.read(4194304).decode("utf-8")
+    stderr = pnasm.stderr.read(4194304).decode("utf-8","replace")
+    stdout = pnasm.stdout.read(4194304).decode("utf-8","replace")
 
     pnasm.stdout.close()
     pnasm.stderr.close()
@@ -393,6 +411,12 @@ def test_run(desc):
         return False
 
     for t in desc['target']:
+        f = None
+        if 'filter' in t:
+            f = t['filter']
+            f_pat = re.compile(f['match'], re.M)
+            f_sub = f['subst']
+
         if 'output' in t:
             output = desc['_base-dir'] + os.sep + t['output']
             match = desc['_base-dir'] + os.sep + t['match']
@@ -408,7 +432,10 @@ def test_run(desc):
             match_data = read_stdfile(match)
             if match_data == None:
                 return test_fail(test, "Can't read " + match)
-            if cmp_std(match, match_data, 'stdout', stdout) == False:
+            out_data = stdout
+            if f:
+                out_data = f_pat.sub(f_sub, out_data, 0)
+            if cmp_std(match, match_data, 'stdout', out_data) == False:
                 return test_fail(desc['_test-name'], "Stdout mismatch")
             else:
                 stdout = ""
@@ -418,7 +445,10 @@ def test_run(desc):
             match_data = read_stdfile(match)
             if match_data == None:
                 return test_fail(test, "Can't read " + match)
-            if cmp_std(match, match_data, 'stderr', stderr) == False:
+            out_data = stderr
+            if f:
+                out_data = f_pat.sub(f_sub, out_data, 0)
+            if cmp_std(match, match_data, 'stderr', out_data) == False:
                 return test_fail(desc['_test-name'], "Stderr mismatch")
             else:
                 stderr = ""
@@ -530,6 +560,7 @@ if args.cmd == 'new':
         f.close()
 
 if args.cmd == 'run':
+    errors = 0
     desc_array = []
     if args.test == None:
         desc_array = collect_test_desc_from_dir(args.dir)
@@ -540,10 +571,14 @@ if args.cmd == 'run':
 
     for desc in desc_array:
         if test_run(desc) == False:
+            errors = 1;
             if 'error' in desc and desc['error'] == 'over':
                 test_over(desc['_test-name'])
             else:
-                test_abort(desc['_test-name'], "Error detected")
+                errors = 1
+                if args.stop == 'y':
+                    test_abort(desc['_test-name'], "Error detected")
+    sys.exit(errors)
 
 if args.cmd == 'update':
     desc_array = []

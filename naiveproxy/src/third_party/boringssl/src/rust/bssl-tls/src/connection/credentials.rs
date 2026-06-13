@@ -13,25 +13,40 @@
 // limitations under the License.
 
 use alloc::ffi::CString;
+use core::{
+    ffi::CStr,
+    ptr::null, //
+};
 
-use bssl_x509::store::X509Store;
+use bssl_x509::{params::CertificateVerificationParams, store::X509Store};
 
-use super::{Client, methods::HasTlsConnectionMethod};
+use super::{
+    Client,
+    methods::HasTlsConnectionMethod, //
+};
 use crate::{
     check_lib_error,
     config::ConfigurationError,
-    connection::lifecycle::TlsConnectionInHandshake,
-    credentials::{CertificateVerificationMode, TlsCredential},
+    connection::{
+        TlsConnectionBuilder,
+        lifecycle::{
+            EstablishedTlsConnection,
+            TlsConnectionInHandshake, //
+        }, //
+    }, //
+    credentials::{
+        CertificateVerificationMode,
+        SignatureAlgorithm,
+        TlsCredential, //
+    },
     errors::Error,
+    ffi::slice_into_ffi_raw_parts,
+    has_duplicates, //
 };
 
-/// # Custom certificate verification
-impl<M> TlsConnectionInHandshake<'_, Client, M>
-where
-    M: HasTlsConnectionMethod,
-{
+impl<R, M> TlsConnectionBuilder<R, M> {
     /// Configure the certificate verification mode.
-    pub fn set_certificate_verification_mode(
+    pub fn with_certificate_verification_mode(
         &mut self,
         mode: CertificateVerificationMode,
     ) -> &mut Self {
@@ -43,7 +58,13 @@ where
         }
         self
     }
+}
 
+/// # Custom certificate verification
+impl<M> TlsConnectionInHandshake<'_, Client, M>
+where
+    M: HasTlsConnectionMethod,
+{
     /// Get the certificate verification mode set by [`Self::set_certificate_verification_mode`].
     pub fn get_certificate_verification_mode(&self) -> Option<CertificateVerificationMode> {
         unsafe {
@@ -64,10 +85,10 @@ where
     ///
     /// Earlier calls to this method appends a credential that is preferred over those added
     /// in the later calls.
-    pub fn add_credential(&mut self, credential: TlsCredential) -> Result<&mut Self, Error> {
+    pub fn add_credential(&mut self, credential: &TlsCredential) -> Result<&mut Self, Error> {
         check_lib_error!(unsafe {
             // Safety: `credential` is still valid.
-            bssl_sys::SSL_add1_credential(self.ptr(), credential.into_raw())
+            bssl_sys::SSL_add1_credential(self.ptr(), credential.ptr())
         });
         Ok(self)
     }
@@ -84,16 +105,57 @@ where
 
 /// # Certificate verification
 impl<M> TlsConnectionInHandshake<'_, Client, M> {
+    /// Enable signed certificate timestamps.
+    ///
+    /// This method will instruct the client connections to request Signed Certificate Timestamps.
+    /// See [RFC 6962] for more information.
+    ///
+    /// [RFC 6962]: <https://datatracker.ietf.org/doc/html/rfc6962>
+    pub fn enable_signed_certificate_timestamps(&mut self) -> &mut Self {
+        unsafe {
+            // Safety: the validity of the handle `self.0` is witnessed by `self`.
+            bssl_sys::SSL_enable_signed_cert_timestamps(self.ptr());
+        }
+        self
+    }
+}
+
+/// # Certificate verification
+impl<M> TlsConnectionInHandshake<'_, Client, M> {
     /// Set certificate verification store.
-    pub fn set_certificate_store(&mut self, store: X509Store) -> &mut Self {
+    pub fn set_certificate_store(&mut self, store: &X509Store) -> &mut Self {
         unsafe {
             // Safety:
             // - the validity of the handle `self.0` is witnessed by `self`.
             // - when pending handshake, the assignment is always successful.
             // - `SSL_set1_verify_cert_store` bumps the ref-count on the store.
-            bssl_sys::SSL_set1_verify_cert_store(self.ptr(), store.as_raw());
+            bssl_sys::SSL_set1_verify_cert_store(self.ptr(), store.as_mut_ptr());
         }
         self
+    }
+
+    /// Set a preference list of signature algorithms.
+    ///
+    /// This method returns [`ConfigurationError::InvalidParameters`] if the list of algorithms
+    /// contains duplicate entries.
+    pub fn set_certificate_verification_preferences(
+        &mut self,
+        algs: &[SignatureAlgorithm],
+    ) -> Result<&mut Self, Error> {
+        let algs: &[u16] = unsafe {
+            // Safety: `SignatureAlgorithm` has a `repr(u16)` and maps to preferences correctly
+            // by construction.
+            core::mem::transmute(algs)
+        };
+        if has_duplicates(algs) {
+            return Err(Error::Configuration(ConfigurationError::InvalidParameters));
+        }
+        let (prefs, prefs_len) = slice_into_ffi_raw_parts(algs);
+        check_lib_error!(unsafe {
+            // Safety: the validity of the handle `self.0` is witnessed by `self`.
+            bssl_sys::SSL_set_verify_algorithm_prefs(self.ptr(), prefs, prefs_len)
+        });
+        Ok(self)
     }
 }
 
@@ -110,5 +172,87 @@ impl<M> TlsConnectionInHandshake<'_, Client, M> {
             bssl_sys::SSL_set1_host(self.ptr(), host_name.as_ptr())
         });
         Ok(self)
+    }
+}
+
+/// # Certificate verification.
+impl<R, M> TlsConnectionInHandshake<'_, R, M> {
+    /// Set depth of a potential certificate chain acceptable.
+    pub fn set_verify_depth(&mut self, depth: u16) -> Result<&mut Self, Error> {
+        let depth = depth
+            .try_into()
+            .map_err(|_| Error::Configuration(ConfigurationError::ValueOutOfRange))?;
+        unsafe {
+            // Safety: the validity of the handle `self.0` is witnessed by `self`.
+            bssl_sys::SSL_set_verify_depth(self.ptr(), depth);
+        }
+        Ok(self)
+    }
+
+    /// Get certificate verification depth.
+    ///
+    /// This method returns [`None`] if the depth is set but does not fit in a [`u16`].
+    pub fn get_verify_depth(&self) -> Option<u16> {
+        unsafe {
+            // Safety: the validity and state of the handle `self.0` is witnessed by `self`.
+            bssl_sys::SSL_get_verify_depth(self.ptr()).try_into().ok()
+        }
+    }
+
+    /// Set certificate verification parameters.
+    pub fn set_certificate_verification_params(
+        &mut self,
+        params: &CertificateVerificationParams,
+    ) -> Result<&mut Self, Error> {
+        check_lib_error!(unsafe {
+            // Safety:
+            // - the validity of the handle `self.0` is witnessed by `self`.
+            // - `SSL_set1_param` claims shared ownership of `params` by bumping ref-count.
+            bssl_sys::SSL_set1_param(self.ptr(), params.as_ptr())
+        });
+        Ok(self)
+    }
+}
+
+impl<'a, R, M> EstablishedTlsConnection<'a, R, M> {
+    /// Export keying material from this connection into a buffer of a chosen length,
+    /// as per [RFC 5705].
+    ///
+    /// To derive the same value, both sides of a connection must use the same output length, label
+    /// and context.
+    /// - In TLS 1.2 and earlier, using a zero-length context and using no context would give
+    /// different output.
+    /// - In TLS 1.3 and later, the output length controls the derivation so that a truncated
+    /// longer export will not match a shorter export.
+    ///
+    /// [RFC 5705]: <https://datatracker.ietf.org/doc/html/rfc5705>
+    pub fn export_keying_material(
+        &self,
+        label: &CStr,
+        context: Option<&[u8]>,
+        output: &mut [u8],
+    ) -> Result<(), Error> {
+        let (context, context_len, use_context) = if let Some(context) = context {
+            let (context, context_len) = slice_into_ffi_raw_parts(context);
+            (context, context_len, 1)
+        } else {
+            (null(), 0, 0)
+        };
+        let (output, output_len) = crate::ffi::mut_slice_into_ffi_raw_parts(output);
+        check_lib_error!(unsafe {
+            // Safety:
+            // - the validity of the handle `self.0` is witnessed by `self`.
+            bssl_sys::SSL_export_keying_material(
+                self.ptr(),
+                output,
+                output_len,
+                label.as_ptr(),
+                label.count_bytes(),
+                context,
+                context_len,
+                use_context,
+            )
+        });
+        Ok(())
     }
 }

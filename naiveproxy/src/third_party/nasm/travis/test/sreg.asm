@@ -24,11 +24,13 @@
 	mov ds,word [rsi]
 	mov fs,word [rsi]
 	mov gs,word [rsi]
+%ifdef ERR
 	mov es,qword [rsi]
 	mov ss,qword [rsi]
 	mov ds,qword [rsi]
 	mov fs,qword [rsi]
 	mov gs,qword [rsi]
+%endif
 	mov rax,es
 	mov rax,cs
 	mov rax,ss
@@ -57,9 +59,11 @@
 	mov word [rdi],ds
 	mov word [rdi],fs
 	mov word [rdi],gs
+%ifdef ERR
 	mov qword [rdi],es
 	mov qword [rdi],cs
 	mov qword [rdi],ss
 	mov qword [rdi],ds
 	mov qword [rdi],fs
 	mov qword [rdi],gs
+%endif

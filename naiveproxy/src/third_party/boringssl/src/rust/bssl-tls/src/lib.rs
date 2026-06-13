@@ -35,6 +35,7 @@ extern crate core;
 
 use core::panic::AssertUnwindSafe;
 
+pub mod alerts;
 pub mod config;
 pub mod connection;
 pub mod context;
@@ -43,15 +44,26 @@ pub mod errors;
 mod ffi;
 pub mod io;
 mod methods;
+pub mod sessions;
 #[macro_use]
 #[doc(hidden)]
 mod macros;
+#[cfg(test)]
+#[cfg(feature = "std")]
+mod tests;
+
+pub use ffi::ReceiveBuffer;
+
+fn has_duplicates<T: Ord + Eq>(list: &[T]) -> bool {
+    let mut seen = alloc::collections::BTreeSet::new();
+    list.iter().any(|elem| !seen.insert(elem))
+}
 
 #[allow(unused)]
 pub(crate) trait Methods {
     /// Safety: `ssl` must outlive `'a` and it must be passed in from BoringSSL
     /// through vtable calls.
-    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a mut Self>;
+    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a Self>;
 }
 
 #[inline]

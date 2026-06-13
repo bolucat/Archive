@@ -33,7 +33,7 @@ function install_qemu() {
     >&2 echo 'QEMU is disabled !'
     return 0
   fi
-  local -r QEMU_VERSION=${QEMU_VERSION:=7.1.0}
+  local -r QEMU_VERSION=${QEMU_VERSION:=9.0.4}
   local -r QEMU_TARGET=${QEMU_ARCH}-linux-user
 
   if echo "${QEMU_VERSION} ${QEMU_TARGET}" | cmp --silent "${QEMU_INSTALL}/.build" -; then
@@ -47,10 +47,10 @@ function install_qemu() {
   rm -rf "${QEMU_INSTALL}"
 
   # Checking for a tarball before downloading makes testing easier :-)
-  local -r QEMU_URL="http://wiki.qemu-project.org/download/qemu-${QEMU_VERSION}.tar.xz"
+  local -r QEMU_URL="https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz"
   local -r QEMU_DIR="qemu-${QEMU_VERSION}"
-  unpack ${QEMU_URL} ${QEMU_DIR}
-  cd ${QEMU_DIR} || exit 2
+  unpack "${QEMU_URL}" "${QEMU_DIR}"
+  cd "${QEMU_DIR}" || exit 2
 
   # Qemu (meson based build) depends on: pkgconf, libglib2.0, python3, ninja
   ./configure \
@@ -92,87 +92,67 @@ function clean_build() {
   mkdir -p "${BUILD_DIR}"
 }
 
-function expand_linaro_config() {
-  #ref: https://releases.linaro.org/components/toolchain/binaries/
-  local -r LINARO_VERSION=7.5-2019.12
-  local -r LINARO_ROOT_URL=https://releases.linaro.org/components/toolchain/binaries/${LINARO_VERSION}
-
-  local -r GCC_VERSION=7.5.0-2019.12
-  local -r GCC_URL=${LINARO_ROOT_URL}/${TARGET}/gcc-linaro-${GCC_VERSION}-x86_64_${TARGET}.tar.xz
-  local -r GCC_RELATIVE_DIR="gcc-linaro-${GCC_VERSION}-x86_64_${TARGET}"
-  unpack "${GCC_URL}" "${GCC_RELATIVE_DIR}"
-
-  local -r SYSROOT_VERSION=2.25-2019.12
-  local -r SYSROOT_URL=${LINARO_ROOT_URL}/${TARGET}/sysroot-glibc-linaro-${SYSROOT_VERSION}-${TARGET}.tar.xz
-  local -r SYSROOT_RELATIVE_DIR=sysroot-glibc-linaro-${SYSROOT_VERSION}-${TARGET}
-  unpack "${SYSROOT_URL}" "${SYSROOT_RELATIVE_DIR}"
-
-  local -r SYSROOT_DIR=${ARCHIVE_DIR}/${SYSROOT_RELATIVE_DIR}
-  local -r STAGING_DIR=${ARCHIVE_DIR}/${SYSROOT_RELATIVE_DIR}-stage
-  local -r GCC_DIR=${ARCHIVE_DIR}/${GCC_RELATIVE_DIR}
-
-  # Write a Toolchain file
-  # note: This is manadatory to use a file in order to have the CMake variable
-  # 'CMAKE_CROSSCOMPILING' set to TRUE.
-  # ref: https://cmake.org/cmake/help/latest/manual/cmake-toolchains.7.html#cross-compiling-for-linux
-  cat >"$TOOLCHAIN_FILE" <<EOL
-set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR ${TARGET})
-
-set(CMAKE_SYSROOT ${SYSROOT_DIR})
-set(CMAKE_STAGING_PREFIX ${STAGING_DIR})
-
-set(tools ${GCC_DIR})
-set(CMAKE_C_COMPILER \${tools}/bin/${TARGET}-gcc)
-set(CMAKE_CXX_COMPILER \${tools}/bin/${TARGET}-g++)
-
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-EOL
-CMAKE_ADDITIONAL_ARGS+=( -DCMAKE_TOOLCHAIN_FILE="${TOOLCHAIN_FILE}" )
-QEMU_ARGS+=( -L "${SYSROOT_DIR}" )
-QEMU_ARGS+=( -E LD_LIBRARY_PATH=/lib )
-}
-
 function expand_bootlin_config() {
   # ref: https://toolchains.bootlin.com/
   local -r GCC_DIR=${ARCHIVE_DIR}/${GCC_RELATIVE_DIR}
 
   case "${TARGET}" in
-    "aarch64")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2021.11-1.tar.bz2"
+    "arm" | "armv7-eabihf")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2024.05-1.tar.xz"
+      local -r GCC_PREFIX="arm"
+      local -r GCC_SUFFIX="eabihf"
+      ;;
+    "armeb" | "armebv7-eabihf")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/armebv7-eabihf/tarballs/armebv7-eabihf--glibc--stable-2024.05-1.tar.xz"
+      local -r GCC_PREFIX="armeb"
+      local -r GCC_SUFFIX="eabihf"
+      ;;
+    "arm64" | "aarch64")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2024.05-1.tar.xz"
       local -r GCC_PREFIX="aarch64"
+      local -r GCC_SUFFIX=""
       ;;
-    "aarch64be")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64be/tarballs/aarch64be--glibc--stable-2021.11-1.tar.bz2"
+    "arm64be" | "aarch64be")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64be/tarballs/aarch64be--glibc--stable-2024.05-1.tar.xz"
       local -r GCC_PREFIX="aarch64_be"
+      local -r GCC_SUFFIX=""
       ;;
-    "ppc64le")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc64le-power8/tarballs/powerpc64le-power8--glibc--stable-2021.11-1.tar.bz2"
-      local -r GCC_PREFIX="powerpc64le"
-      ;;
-    "ppc64")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc64-power8/tarballs/powerpc64-power8--glibc--stable-2021.11-1.tar.bz2"
-      local -r GCC_PREFIX="powerpc64"
-      ;;
-    "ppc")
-      #local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2021.11-1.tar.bz2"
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-440fp/tarballs/powerpc-440fp--glibc--stable-2021.11-1.tar.bz2"
+    "ppc" | "ppc-440fp")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-440fp/tarballs/powerpc-440fp--glibc--stable-2024.05-1.tar.xz"
       local -r GCC_PREFIX="powerpc"
+      local -r GCC_SUFFIX=""
+      QEMU_ARGS+=( -cpu "440epx" )
+      ;;
+    "ppc-e500mc")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2024.05-1.tar.xz"
+      local -r GCC_PREFIX="powerpc"
+      local -r GCC_SUFFIX=""
+      QEMU_ARGS+=( -cpu "e500mc" )
+      ;;
+    "ppc64" | "ppc64-power8")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc64-power8/tarballs/powerpc64-power8--glibc--stable-2024.05-1.tar.xz"
+      local -r GCC_PREFIX="powerpc64"
+      local -r GCC_SUFFIX=""
+      ;;
+    "ppc64le" | "ppc64le-power8")
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc64le-power8/tarballs/powerpc64le-power8--glibc--stable-2024.05-1.tar.xz"
+      local -r GCC_PREFIX="powerpc64le"
+      local -r GCC_SUFFIX=""
       ;;
     "riscv32")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/riscv32-ilp32d/tarballs/riscv32-ilp32d--glibc--bleeding-edge-2022.08-1.tar.bz2"
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/riscv32-ilp32d/tarballs/riscv32-ilp32d--glibc--bleeding-edge-2024.05-1.tar.xz"
       local -r GCC_PREFIX="riscv32"
+      local -r GCC_SUFFIX=""
       ;;
     "riscv64")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--glibc--stable-2022.08-1.tar.bz2"
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/riscv64-lp64d/tarballs/riscv64-lp64d--glibc--stable-2024.05-1.tar.xz"
       local -r GCC_PREFIX="riscv64"
+      local -r GCC_SUFFIX=""
       ;;
     "s390x")
-      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/s390x-z13/tarballs/s390x-z13--glibc--stable-2022.08-1.tar.bz2"
+      local -r TOOLCHAIN_URL="https://toolchains.bootlin.com/downloads/releases/toolchains/s390x-z13/tarballs/s390x-z13--glibc--stable-2024.05-1.tar.xz"
       local -r GCC_PREFIX="s390x"
+      local -r GCC_SUFFIX=""
       ;;
     *)
       >&2 echo 'unknown power platform'
@@ -181,14 +161,14 @@ function expand_bootlin_config() {
 
   local -r TOOLCHAIN_RELATIVE_DIR="${TARGET}"
   unpack "${TOOLCHAIN_URL}" "${TOOLCHAIN_RELATIVE_DIR}"
-  local -r EXTRACT_DIR="${ARCHIVE_DIR}/$(basename ${TOOLCHAIN_URL%.tar.bz2})"
+  local -r EXTRACT_DIR="${ARCHIVE_DIR}/$(basename ${TOOLCHAIN_URL%.tar.xz})"
 
   local -r TOOLCHAIN_DIR=${ARCHIVE_DIR}/${TOOLCHAIN_RELATIVE_DIR}
   if [[ -d "${EXTRACT_DIR}" ]]; then
     mv "${EXTRACT_DIR}" "${TOOLCHAIN_DIR}"
   fi
 
-  local -r SYSROOT_DIR="${TOOLCHAIN_DIR}/${GCC_PREFIX}-buildroot-linux-gnu/sysroot"
+  local -r SYSROOT_DIR="${TOOLCHAIN_DIR}/${GCC_PREFIX}-buildroot-linux-gnu${GCC_SUFFIX}/sysroot"
   #local -r STAGING_DIR=${SYSROOT_DIR}-stage
 
   # Write a Toolchain file
@@ -362,13 +342,11 @@ DESCRIPTION
 \tYou MUST define the following variables before running this script:
 \t* TARGET:
 \t\tx86_64
-\t\taarch64 aarch64be (bootlin)
-\t\taarch64-linux-gnu aarch64_be-linux-gnu (linaro)
-\t\tarm-linux-gnueabihf armv8l-linux-gnueabihf arm-linux-gnueabi (linaro)
-\t\tarmeb-linux-gnueabihf armeb-linux-gnueabi (linaro)
+\t\tarmv7-eabihf(arm) armebv7-eabihf(armeb) (bootlin)
+\t\taarch64(arm64) aarch64be(arm64be) (bootlin)
 \t\tmips32 mips32el (codespace)
 \t\tmips64 mips64el (codespace)
-\t\tppc (bootlin)
+\t\tppc-440fp(ppc) ppc-e500mc (bootlin)
 \t\tppc64 ppc64le (bootlin)
 \t\triscv32 riscv64 (bootlin)
 \t\ts390x (bootlin)
@@ -418,24 +396,19 @@ function main() {
   case ${TARGET} in
     x86_64)
       declare -r QEMU_ARCH=x86_64 ;;
-    arm-linux-gnueabihf | armv8l-linux-gnueabihf | arm-linux-gnueabi)
-      expand_linaro_config
+    arm | armv7-eabihf)
+      expand_bootlin_config
       declare -r QEMU_ARCH=arm ;;
-    armeb-linux-gnueabihf | armeb-linux-gnueabi)
-      expand_linaro_config
+    armeb | armebv7-eabihf)
+      expand_bootlin_config
       declare -r QEMU_ARCH=DISABLED ;;
-    aarch64-linux-gnu)
-      expand_linaro_config
-      declare -r QEMU_ARCH=aarch64 ;;
-    aarch64_be-linux-gnu)
-      expand_linaro_config
-      declare -r QEMU_ARCH=aarch64_be ;;
-    aarch64)
+    arm64 | aarch64)
       expand_bootlin_config
       declare -r QEMU_ARCH=aarch64 ;;
-    aarch64be)
+    arm64be | aarch64be)
       expand_bootlin_config
       declare -r QEMU_ARCH=aarch64_be ;;
+
     mips32)
       expand_codescape_config
       declare -r QEMU_ARCH=mips ;;
@@ -448,21 +421,24 @@ function main() {
     mips64el)
       expand_codescape_config
       declare -r QEMU_ARCH=mips64el ;;
-    ppc64le)
-      expand_bootlin_config
-      declare -r QEMU_ARCH=ppc64le ;;
-    ppc64)
-      expand_bootlin_config
-      declare -r QEMU_ARCH=ppc64 ;;
-    ppc)
+
+    ppc | ppc-440fp | ppc-e500mc )
       expand_bootlin_config
       declare -r QEMU_ARCH=ppc ;;
+    ppc64 | ppc64-power8)
+      expand_bootlin_config
+      declare -r QEMU_ARCH=ppc64 ;;
+    ppc64le | ppc64le-power8)
+      expand_bootlin_config
+      declare -r QEMU_ARCH=ppc64le ;;
+
     riscv32)
       expand_bootlin_config
       declare -r QEMU_ARCH=riscv32 ;;
     riscv64)
       expand_bootlin_config
       declare -r QEMU_ARCH=riscv64 ;;
+
     s390x)
       expand_bootlin_config
       declare -r QEMU_ARCH=s390x ;;

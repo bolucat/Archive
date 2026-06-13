@@ -82,7 +82,11 @@ class DebugHeaderBuilder {
     structured_headers::Item item;
     switch (result) {
       case RefreshResult::kRefreshed:
+      // TODO(crbug.com/417401759): Add "transient_signing_error" as a supported
+      // value for `Secure-Session-Skipped`.
+      case RefreshResult::kTransientSigningError:
       case RefreshResult::kFatalError:
+      case RefreshResult::kRefreshedAsWaiter:
         return;
       case RefreshResult::kInitializedService:
         NOTREACHED();
@@ -164,8 +168,9 @@ void LogProactiveRefreshAttempt(
 }  // namespace
 
 DeferredURLRequest::DeferredURLRequest(
+    base::WeakPtr<URLRequest> request,
     SessionService::RefreshCompleteCallback callback)
-    : callback(std::move(callback)) {}
+    : request(std::move(request)), callback(std::move(callback)) {}
 
 DeferredURLRequest::DeferredURLRequest(DeferredURLRequest&& other) noexcept =
     default;
@@ -281,7 +286,8 @@ void SessionServiceImpl::RegisterBoundSessionInternal(
       RegistrationFetcher::CreateFetcher(
           request_params, *this, key_service_.get(), context_.get(),
           isolation_info, net_log_source_for_registration,
-          original_request_initiator);
+          original_request_initiator,
+          unexportable_keys::BackgroundTaskPriority::kBestEffort);
   RegistrationFetcher* fetcher_raw = fetcher.get();
   registration_fetchers_.insert(std::move(fetcher));
 
@@ -350,7 +356,7 @@ void SessionServiceImpl::CheckFederatedProviderKey(
     SessionKey provider_session_key,
     std::string provider_key_thumbprint,
     base::OnceCallback<void(base::expected<Session*, SessionError>)> callback,
-    std::optional<unexportable_keys::UnexportableKeyId> provider_key) {
+    std::optional<unexportable_keys::UnexportableSigningKeyId> provider_key) {
   if (!provider_key) {
     // Failed to restore provider key.
     std::move(callback).Run(base::unexpected(SessionError(
@@ -473,7 +479,10 @@ std::optional<SessionService::DeferralParams> SessionServiceImpl::ShouldDefer(
     DbscRequest& request,
     HttpRequestHeaders* extra_headers,
     const FirstPartySetMetadata& first_party_set_metadata) {
-  if (!request.allows_device_bound_sessions()) {
+  if (request.device_bound_session_mode() ==
+          net::DeviceBoundSessionMode::kDisabled ||
+      request.device_bound_session_mode() ==
+          net::DeviceBoundSessionMode::kBypassDeferral) {
     return std::nullopt;
   }
 
@@ -497,7 +506,8 @@ std::optional<SessionService::DeferralParams> SessionServiceImpl::ShouldDefer(
         request, first_party_set_metadata, session_key);
     if (minimum_lifetime.is_zero()) {
       auto previous_deferrals_it = previous_deferrals.find(session_key);
-      if (previous_deferrals_it != previous_deferrals.end()) {
+      if (previous_deferrals_it != previous_deferrals.end() &&
+          previous_deferrals_it->second != RefreshResult::kRefreshedAsWaiter) {
         debug_header_builder.AddSkippedSession(previous_deferrals_it->first,
                                                previous_deferrals_it->second);
         continue;
@@ -541,7 +551,7 @@ void SessionServiceImpl::DeferRequestForRefresh(
   // For the first deferring request, create a new vector and add the request.
   auto [it, inserted] = deferred_requests_.try_emplace(session_key);
   // Add the request callback to the deferred list.
-  it->second.emplace_back(std::move(callback));
+  it->second.emplace_back(request.GetWeakPtr(), std::move(callback));
 
   auto* session = GetSession(session_key);
   CHECK(session);
@@ -579,6 +589,7 @@ void SessionServiceImpl::DeferRequestForRefresh(
   const Session::KeyIdOrError& key_id = session->unexportable_key_id();
   if (!key_id.has_value()) {
     if (key_id.error() == unexportable_keys::ServiceError::kKeyNotReady) {
+      it->second.back().triggered_refresh = true;
       RestoreSessionKey(
           session_key, request.device_bound_session_access_callback(),
           base::BindOnce(&SessionServiceImpl::RefreshSessionInternal,
@@ -594,6 +605,7 @@ void SessionServiceImpl::DeferRequestForRefresh(
     return;
   }
 
+  it->second.back().triggered_refresh = true;
   RefreshSessionInternal(RefreshTrigger::kMissingCookie, request.GetWeakPtr(),
                          session_key, *key_id);
 }
@@ -738,7 +750,11 @@ void SessionServiceImpl::UnblockDeferredRequests(
       base::UmaHistogramEnumeration(
           "Net.DeviceBoundSessions.DeferralResult.Slow", result);
     }
-    std::move(request.callback).Run(result);
+    RefreshResult final_result = result;
+    if (result == RefreshResult::kRefreshed && !request.triggered_refresh) {
+      final_result = RefreshResult::kRefreshedAsWaiter;
+    }
+    std::move(request.callback).Run(final_result);
   }
 }
 
@@ -881,8 +897,8 @@ void SessionServiceImpl::SetLatestSignedRefreshChallenge(
 base::expected<std::unique_ptr<Session>, SessionError::ErrorType>
 SessionServiceImpl::CreateSessionFromUnexportableKey(
     SessionParams params,
-    unexportable_keys::ServiceErrorOr<unexportable_keys::UnexportableKeyId>
-        key_or_error) {
+    unexportable_keys::ServiceErrorOr<
+        unexportable_keys::UnexportableSigningKeyId> key_or_error) {
   if (!key_or_error.has_value()) {
     return base::unexpected(SessionError::kFailedToUnwrapKey);
   }
@@ -901,8 +917,8 @@ void SessionServiceImpl::OnAddSessionKeyRestored(
     const SchemefulSite& site,
     SessionParams params,
     base::OnceCallback<void(SessionError::ErrorType)> callback,
-    unexportable_keys::ServiceErrorOr<unexportable_keys::UnexportableKeyId>
-        key_or_error) {
+    unexportable_keys::ServiceErrorOr<
+        unexportable_keys::UnexportableSigningKeyId> key_or_error) {
   base::expected<std::unique_ptr<Session>, SessionError::ErrorType>
       session_or_error = CreateSessionFromUnexportableKey(
           std::move(params), std::move(key_or_error));
@@ -1167,29 +1183,21 @@ SessionError::ErrorType SessionServiceImpl::OnRefreshRequestCompletionInternal(
                 return success_result;
               },
               [&](SessionError error) {
-                SessionError::ErrorType error_type = error.type;
-                if (std::optional<DeletionReason> deletion_reason =
-                        error.GetDeletionReason();
-                    deletion_reason.has_value()) {
+                const SessionError::ErrorType error_type = error.type;
+                std::optional<DeletionReason> deletion_reason =
+                    error.GetDeletionReason();
+                if (deletion_reason) {
                   DeleteSessionAndNotify(*deletion_reason, session_key,
                                          on_access_callback);
-                  UnblockDeferredRequests(session_key,
-                                          RefreshResult::kFatalError,
-                                          std::move(error));
-                } else {
-                  RefreshResult refresh_result;
-                  if (error.IsServerError()) {
-                    refresh_result = RefreshResult::kServerError;
-                  } else if (error.type ==
-                             SessionError::kSigningQuotaExceeded) {
-                    refresh_result = RefreshResult::kSigningQuotaExceeded;
-                  } else {
-                    refresh_result = RefreshResult::kUnreachable;
-                  }
-                  // Transient error, unblock the request without cookies.
-                  UnblockDeferredRequests(session_key, refresh_result,
-                                          std::move(error));
                 }
+
+                RefreshResult refresh_result =
+                    error.GetRefreshResult().value_or(
+                        deletion_reason ? RefreshResult::kFatalError
+                                        : RefreshResult::kUnreachable);
+
+                UnblockDeferredRequests(session_key, refresh_result,
+                                        std::move(error));
                 return error_type;
               }));
 
@@ -1201,8 +1209,8 @@ SessionError::ErrorType SessionServiceImpl::OnRefreshRequestCompletionInternal(
 void SessionServiceImpl::RestoreSessionKey(
     const SessionKey& session_key,
     OnAccessCallback on_access_callback,
-    base::OnceCallback<
-        void(std::optional<unexportable_keys::UnexportableKeyId>)> callback) {
+    base::OnceCallback<void(
+        std::optional<unexportable_keys::UnexportableSigningKeyId>)> callback) {
   if (session_store_) {
     session_store_->RestoreSessionBindingKey(
         session_key, base::BindOnce(&SessionServiceImpl::OnSessionKeyRestored,
@@ -1218,13 +1226,20 @@ void SessionServiceImpl::RestoreSessionKey(
 void SessionServiceImpl::OnSessionKeyRestored(
     const SessionKey& session_key,
     OnAccessCallback on_access_callback,
-    base::OnceCallback<
-        void(std::optional<unexportable_keys::UnexportableKeyId>)> callback,
+    base::OnceCallback<void(
+        std::optional<unexportable_keys::UnexportableSigningKeyId>)> callback,
     Session::KeyIdOrError key_id_or_error) {
   if (!key_id_or_error.has_value()) {
-    UnblockDeferredRequests(session_key, RefreshResult::kFatalError);
-    DeleteSessionAndNotify(DeletionReason::kFailedToUnwrapKey, session_key,
-                           on_access_callback);
+    const bool is_persistent_error =
+        unexportable_keys::IsPersistentError(key_id_or_error.error());
+    UnblockDeferredRequests(session_key,
+                            is_persistent_error
+                                ? RefreshResult::kFatalError
+                                : RefreshResult::kTransientSigningError);
+    if (is_persistent_error) {
+      DeleteSessionAndNotify(DeletionReason::kFailedToUnwrapKey, session_key,
+                             on_access_callback);
+    }
     std::move(callback).Run(std::nullopt);
     return;
   }
@@ -1243,12 +1258,34 @@ void SessionServiceImpl::RefreshSessionInternal(
     RefreshTrigger trigger,
     base::WeakPtr<URLRequest> maybe_request,
     const SessionKey& session_key,
-    std::optional<unexportable_keys::UnexportableKeyId> key_id) {
-  if (!maybe_request || !key_id) {
+    std::optional<unexportable_keys::UnexportableSigningKeyId> key_id) {
+  base::WeakPtr<URLRequest> active_request = std::move(maybe_request);
+  if (!active_request) {
+    // If the original request that triggered key restoration was canceled or
+    // destroyed (for example, during the asynchronous `RestoreSessionKey`
+    // delay), select the next available valid request in the deferred queue to
+    // act as the new triggering request for the DBSC refresh. This prevents
+    // waiter requests from hanging indefinitely.
+    if (auto it = deferred_requests_.find(session_key);
+        it != deferred_requests_.end()) {
+      auto req_it = std::ranges::find_if(
+          it->second, [](const auto& req) { return !!req.request; });
+      if (req_it != it->second.end()) {
+        active_request = req_it->request;
+        req_it->triggered_refresh = true;
+      }
+    }
+  }
+
+  if (!active_request || !key_id) {
+    // TODO(crbug.com/509885112): We should call UnblockDeferredRequests() here
+    // if `active_request` is null to drain the queue of deferred requests
+    // because all the requests have already been canceled. Use a new
+    // `RefreshResult::kCancelled` for this.
     return;
   }
 
-  DbscRequest request(maybe_request.get());
+  DbscRequest request(active_request.get());
 
   net::NetLogSource net_log_source_for_refresh = net::NetLogSource(
       net::NetLogSourceType::URL_REQUEST, net::NetLog::Get()->NextID());
@@ -1272,11 +1309,16 @@ void SessionServiceImpl::RefreshSessionInternal(
       &SessionServiceImpl::OnRefreshRequestCompletion,
       weak_factory_.GetWeakPtr(), trigger,
       request.device_bound_session_access_callback(), session_key);
+  unexportable_keys::BackgroundTaskPriority priority =
+      trigger == RefreshTrigger::kMissingCookie
+          ? unexportable_keys::BackgroundTaskPriority::kUserBlocking
+          : unexportable_keys::BackgroundTaskPriority::kBestEffort;
+
   std::unique_ptr<RegistrationFetcher> fetcher =
       RegistrationFetcher::CreateFetcher(
           registration_param, *this, key_service_.get(), context_.get(),
           request.isolation_info(), net_log_source_for_refresh,
-          request.initiator());
+          request.initiator(), priority);
   RegistrationFetcher* fetcher_raw = fetcher.get();
   registration_fetchers_.insert(std::move(fetcher));
   fetcher_raw->StartFetchWithExistingKey(registration_param, *key_id,
@@ -1452,9 +1494,8 @@ void SessionServiceImpl::HandleResponseHeaders(
     DbscRequest& request,
     HttpResponseHeaders* headers,
     const FirstPartySetMetadata& first_party_set_metadata) {
-  // Only process device bound session headers if the request allows device
-  // bound sessions.
-  if (!request.allows_device_bound_sessions()) {
+  if (request.device_bound_session_mode() ==
+      net::DeviceBoundSessionMode::kDisabled) {
     return;
   }
 

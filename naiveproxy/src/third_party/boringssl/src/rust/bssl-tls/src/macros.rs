@@ -20,8 +20,8 @@ macro_rules! check_tls_error {
         unsafe {
             // Safety: we have exclusive access to the connection state.
             match ::bssl_sys::SSL_get_error($tls, $e) {
-                0 => {}
-                rc => return Err($crate::errors::Error::extract_tls_err(rc)),
+                0 => None,
+                rc => Some($crate::errors::Error::extract_tls_err(rc)?),
             }
         }
     };
@@ -74,6 +74,35 @@ macro_rules! crypto_buffer_wrapper {
                     // Safety: `self.0` is still valid at dropping.
                     ::bssl_sys::CRYPTO_BUFFER_free(self.0.as_ptr());
                 }
+            }
+        }
+
+        impl ::core::ops::Deref for $name {
+            type Target = [u8];
+            fn deref(&self) -> &Self::Target {
+                let (data, len) = unsafe {
+                    // Safety: `self` witnesses the validity of the underlying handle.
+                    (
+                        ::bssl_sys::CRYPTO_BUFFER_data(self.ptr()),
+                        ::bssl_sys::CRYPTO_BUFFER_len(self.ptr()),
+                    )
+                };
+                if data.is_null() || len == 0 || len > isize::MAX as usize {
+                    &[]
+                } else {
+                    unsafe {
+                        // Safety:
+                        // - `data` is 1-size and 1-align and `len` is valid by BoringSSL invariant.
+                        // - `len` is sanitised to be within bound.
+                        ::core::slice::from_raw_parts(data, len)
+                    }
+                }
+            }
+        }
+
+        impl ::core::convert::AsRef<[u8]> for $name {
+            fn as_ref(&self) -> &[u8] {
+                &self
             }
         }
 

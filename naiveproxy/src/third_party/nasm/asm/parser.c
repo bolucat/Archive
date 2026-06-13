@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2023 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * parser.c   source line parser for the Netwide Assembler
@@ -160,7 +130,7 @@ static void process_size_override(insn *result, operand *op)
  * decorators can be placed in any order.  e.g. zmm1 {k2}{z} or zmm2
  * {z}{k3} decorator(s) are placed at the end of an operand.
  */
-static bool parse_braces(decoflags_t *decoflags)
+static bool parse_decorators(decoflags_t *decoflags)
 {
     int i, j;
 
@@ -243,8 +213,12 @@ static int parse_mref(operand *op, const expr *e)
     o = op->offset;
 
     for (; e->type; e++) {
+        if (!e->value)          /* Operand multiplied by zero */
+            continue;
+
         if (e->type <= EXPR_REG_END) {
-            bool is_gpr = is_class(REG_GPR,nasm_reg_flags[e->type]);
+            opflags_t flags = nasm_reg_flags[e->type];
+            bool is_gpr = is_class(REG_GPR, flags);
 
             if (is_gpr && e->value == 1 && b == -1) {
                 /* It can be basereg */
@@ -287,7 +261,7 @@ static int parse_mref(operand *op, const expr *e)
             nasm_nonfatal("invalid effective address: bad subexpression type");
             return -1;
         }
-   }
+    }
 
     op->basereg  = b;
     op->indexreg = i;
@@ -301,22 +275,45 @@ static void mref_set_optype(operand *op)
     int b = op->basereg;
     int i = op->indexreg;
     int s = op->scale;
+    opflags_t size;
 
     /* It is memory, but it can match any r/m operand */
     op->type |= MEMORY_ANY;
 
-    if (b == -1 && (i == -1 || s == 0)) {
-        int is_rel = globalbits == 64 &&
-            !(op->eaflags & EAF_ABS) &&
-            ((globalrel &&
-              !(op->eaflags & EAF_FSGS)) ||
-             (op->eaflags & EAF_REL));
+    nasm_assert(i == -1 || s > 0);
 
-        op->type |= is_rel ? IP_REL : MEM_OFFS;
+    if (!(op->eaflags & (EAF_FS|EAF_GS)))
+        op->eaflags |= EAF_NOTFSGS;
+
+    if (b != -1) {
+        opflags_t bclass = nasm_reg_flags[b];
+        op->type &= bclass | ~RN_L16;
+    } else if (i == -1) {
+        opflags_t flag = MEM_OFFS;
+        if (globl.bits == 64) {
+            if (op->eaflags & EAF_ABS) {
+                /* Do nothing */
+            } else if (op->eaflags & EAF_REL) {
+                flag = IP_REL;
+            } else {
+                if (globl.rel & op->eaflags)
+                    flag = IP_REL;
+                if (!(globl.reldef & op->eaflags)) {
+                    static int64_t pass_last_seen;
+                    if (pass_count() != pass_last_seen) {
+                        nasm_warn(WARN_IMPLICIT_ABS_DEPRECATED,
+                                  "implicit DEFAULT ABS is deprecated");
+                        pass_last_seen = pass_count();
+                    }
+                }
+            }
+        }
+        op->type |= flag;
     }
 
     if (i != -1) {
         opflags_t iclass = nasm_reg_flags[i];
+        op->type &= iclass | ~RN_L16;
 
         if (is_class(XMMREG,iclass))
             op->type |= XMEM;
@@ -325,6 +322,10 @@ static void mref_set_optype(operand *op)
         else if (is_class(ZMMREG,iclass))
             op->type |= ZMEM;
     }
+
+    size = op->type & SIZE_MASK;
+    if (!size || size == BITS16)
+        op->type |= RM_SEL;
 }
 
 /*
@@ -505,7 +506,7 @@ static int parse_eops(extop **result, bool critical, int elem)
             }
             skip = i != ',';
         } else if (i == '-' || i == '+') {
-            char *save = stdscan_get();
+            const struct stdscan_state *save = stdscan_get();
             struct tokenval tmptok;
 
             sign = (i == '-') ? -1 : 1;
@@ -622,63 +623,140 @@ fail:
     return -1;
 }
 
-insn *parse_line(char *buffer, insn *result)
+/* Return true if not a prefix token */
+static bool add_prefix(insn *result)
+{
+    enum prefix_pos slot;
+
+    switch (tokval.t_type) {
+    case TOKEN_SPECIAL:
+        if (tokval.t_integer == S_STRICT) {
+            result->opt |= OPTIM_STRICT_INSTR;
+            return true;
+        } else {
+            return false;
+        }
+    case TOKEN_PREFIX:
+        slot = tokval.t_inttwo;
+        break;
+    case TOKEN_REG:
+        slot = PPS_SEG;
+        if (!IS_SREG(tokval.t_integer))
+            return false;
+        break;
+    default:
+        return false;
+    }
+
+    if (result->prefixes[slot]) {
+        if (result->prefixes[slot] == tokval.t_integer)
+            nasm_warn(WARN_OTHER, "instruction has redundant prefixes");
+        else
+            nasm_nonfatal("instruction has conflicting prefixes");
+    }
+    result->prefixes[slot] = tokval.t_integer;
+
+    return true;
+}
+
+/* Set value-specific immediate flags. */
+static inline opflags_t set_imm_flags(struct operand *op, enum optimization opt)
+{
+    const bool strict = (op->type & STRICT) || (opt & OPTIM_STRICT_OPER);
+    const int64_t n = op->offset;
+
+    if (!(op->type & IMMEDIATE))
+        return op->type;
+
+    if (op->opflags & OPFLAG_UNKNOWN) {
+        /* Be optimistic in pass 1 */
+        if (!strict || !(op->type & SIZE_MASK))
+            op->type |= UNITY|FOURBITS;
+        if (!strict)
+            op->type |= SBYTEDWORD|SBYTEWORD|UDWORD|SDWORD;
+        op->type |= IMM_KNOWN;  /* Unknowable in pass 1 */
+        return op->type;
+    }
+
+    if (!(op->opflags & OPFLAG_SIMPLE))
+        return op->type;
+
+    op->type |= IMM_KNOWN;
+
+    if (!strict || !(op->type & SIZE_MASK)) {
+        if (n == 1)
+            op->type |= UNITY;
+
+        /*
+         * Allow FOURBITS matching for negative values, so things
+         * like ~0 work
+         */
+        if (n >= -16 && n <= 15)
+            op->type |= FOURBITS;
+    }
+
+    if (strict)
+        return op->type;
+
+    if ((int32_t)n == (int8_t)n)
+        op->type |= SBYTEDWORD;
+    if ((int16_t)n == (int8_t)n)
+        op->type |= SBYTEWORD;
+    if ((uint64_t)n == (uint32_t)n)
+        op->type |= UDWORD;
+    if ((int64_t)n == (int32_t)n)
+        op->type |= SDWORD;
+
+    return op->type;
+}
+
+insn *parse_line(char *buffer, insn *result, const int bits)
 {
     bool insn_is_label = false;
     struct eval_hints hints;
     int opnum;
     bool critical;
     bool first;
+    bool colonless_label;
     bool recover;
     bool far_jmp_ok;
+    bool have_prefixes;
     int i;
 
     nasm_static_assert(P_none == 0);
 
 restart_parse:
     first               = true;
+    colonless_label     = false;
 
-    stdscan_reset();
-    stdscan_set(buffer);
+    stdscan_reset(buffer);
     i = stdscan(NULL, &tokval);
 
-    memset(result->prefixes, P_none, sizeof(result->prefixes));
-    result->times       = 1;    /* No TIMES either yet */
-    result->label       = NULL; /* Assume no label */
-    result->eops        = NULL; /* must do this, whatever happens */
-    result->operands    = 0;    /* must initialize this */
-    result->evex_rm     = 0;    /* Ensure EVEX rounding mode is reset */
-    result->evex_brerop = NULL; /* Reset EVEX broadcasting/ER op position */
+    nasm_zero(*result);
+    result->times       = 1;        /* No TIMES either yet */
+    result->opcode      = I_none;   /* No opcode */
+    result->times       = 1;        /* No TIMES either yet */
+    result->loc         = location; /* Current assembly position */
+    result->bits        = bits;     /* Current assembly mode */
+    result->opt         = optimizing; /* Optimization flags */
 
     /* Ignore blank lines */
     if (i == TOKEN_EOS)
         goto fail;
 
-    if (i != TOKEN_ID       &&
-        i != TOKEN_INSN     &&
-        i != TOKEN_PREFIX   &&
-        (i != TOKEN_REG || !IS_SREG(tokval.t_integer))) {
-        nasm_nonfatal("label or instruction expected at start of line");
-        goto fail;
-    }
-
     if (i == TOKEN_ID || (insn_is_label && i == TOKEN_INSN)) {
         /* there's a label here */
+        struct tokenval label = tokval;
         first = false;
         result->label = tokval.t_charptr;
         i = stdscan(NULL, &tokval);
+        colonless_label = i != ':';
         if (i == ':') {         /* skip over the optional colon */
             i = stdscan(NULL, &tokval);
         } else if (i == 0) {
-            /*!
-             *!label-orphan [on] labels alone on lines without trailing \c{:}
-             *!=orphan-labels
-             *!  warns about source lines which contain no instruction but define
-             *!  a label without a trailing colon. This is most likely indicative
-             *!  of a typo, but is technically correct NASM syntax (see \k{syntax}.)
-             */
-            nasm_warn(WARN_LABEL_ORPHAN ,
-                       "label alone on a line without a colon might be in error");
+            nasm_warn(WARN_LABEL_ORPHAN,
+                      "label `%*s' alone on a line without a colon might be in error",
+                      (int)label.t_len, label.t_start);
         }
         if (i != TOKEN_INSN || tokval.t_integer != I_EQU) {
             /*
@@ -694,83 +772,72 @@ restart_parse:
         }
     }
 
-    /* Just a label here */
-    if (i == TOKEN_EOS)
-        goto fail;
+    have_prefixes = false;
 
+    /* Process things that go before the opcode */
     while (i) {
-        int slot = PPS_SEG;
+        if (i == TOKEN_TIMES) {
+            /* TIMES is a very special prefix */
+            expr *value;
 
-        if (i == TOKEN_PREFIX) {
-            slot = tokval.t_inttwo;
-
-            if (slot == PPS_TIMES) {
-                /* TIMES is a very special prefix */
-                expr *value;
-
-                i = stdscan(NULL, &tokval);
-                value = evaluate(stdscan, NULL, &tokval, NULL,
-                                 pass_stable(), NULL);
-                i = tokval.t_type;
-                if (!value)                  /* Error in evaluator */
-                    goto fail;
-                if (!is_simple(value)) {
-                    nasm_nonfatal("non-constant argument supplied to TIMES");
-                    result->times = 1;
-                } else {
-                    result->times = value->value;
-                    if (value->value < 0) {
-                        nasm_nonfatalf(ERR_PASS2, "TIMES value %"PRId64" is negative", value->value);
-                        result->times = 0;
-                    }
-                }
-                first = false;
-                continue;
+            i = stdscan(NULL, &tokval);
+            value = evaluate(stdscan, NULL, &tokval, NULL,
+                             pass_stable(), NULL);
+            i = tokval.t_type;
+            if (!value)                  /* Error in evaluator */
+                goto fail;
+            if (!is_simple(value)) {
+                nasm_nonfatal("non-constant argument supplied to TIMES");
+                result->times = 1;
+            } else {
+                result->times = value->value;
+                /* negative values handled in assemble.c: process_insn() */
             }
-        } else if (i == TOKEN_REG && IS_SREG(tokval.t_integer)) {
-            slot = PPS_SEG;
-            first = false;
         } else {
-            break;              /* Not a prefix */
+            if (!add_prefix(result))
+                break;
+            have_prefixes = true;
+            i = stdscan(NULL, &tokval);
         }
 
-        if (result->prefixes[slot]) {
-            if (result->prefixes[slot] == tokval.t_integer)
-                nasm_warn(WARN_OTHER, "instruction has redundant prefixes");
-            else
-                nasm_nonfatal("instruction has conflicting prefixes");
-        }
-        result->prefixes[slot] = tokval.t_integer;
-        i = stdscan(NULL, &tokval);
         first = false;
     }
 
     if (i != TOKEN_INSN) {
-        int j;
-        enum prefixes pfx;
-
-        for (j = 0; j < MAXPREFIX; j++) {
-            if ((pfx = result->prefixes[j]) != P_none)
-                break;
-        }
-
-        if (i == 0 && pfx != P_none) {
+        if (!i) {
+            if (have_prefixes) {
+                /*
+                 * Instruction prefixes are present, but no actual
+                 * instruction. This is allowed: at this point we
+                 * invent a notional instruction of RESB 0.
+                 *
+                 * Note that this can be combined with TIMES, so do
+                 * not clear *result!
+                 *
+                 */
+                result->opcode          = I_RESB;
+                result->operands        = 1;
+                result->oprs[0].type    = IMM_NORMAL;
+                result->oprs[0].opflags = OPFLAG_SIMPLE;
+                result->oprs[0].offset  = 0;
+                result->oprs[0].segment = result->oprs[0].wrt = NO_SEG;
+                set_imm_flags(&result->oprs[0], result->opt);
+            }
+        } else if (!first) {
             /*
-             * Instruction prefixes are present, but no actual
-             * instruction. This is allowed: at this point we
-             * invent a notional instruction of RESB 0.
+             * What was meant to be an instruction may very well have
+             * been mistaken for a label here, so print out both, unless
+             * it is unambiguous.
              */
-            result->opcode          = I_RESB;
-            result->operands        = 1;
-            nasm_zero(result->oprs);
-            result->oprs[0].type    = IMMEDIATE;
-            result->oprs[0].offset  = 0L;
-            result->oprs[0].segment = result->oprs[0].wrt = NO_SEG;
-            return result;
-        } else {
-            nasm_nonfatal("parser: instruction expected");
-            goto fail;
+            nasm_nonfatal("instruction expected, found `%s%s%.*s'",
+                          colonless_label ? result->label : "",
+                          colonless_label ? " " : "",
+                          tokval.t_len, tokval.t_start);
+        } else if (!result->label) {
+            nasm_nonfatal("label, instruction or prefix expected at start of line, found `%.*s'",
+                          tokval.t_len, tokval.t_start);
         }
+        return result;
     }
 
     result->opcode = tokval.t_integer;
@@ -829,20 +896,13 @@ restart_parse:
             /* DB et al */
             result->operands = oper_num;
             if (oper_num == 0)
-                /*!
-                 *!db-empty [on] no operand for data declaration
-                 *!  warns about a \c{D}\e{x} declaration
-                 *!  with no operands, producing no output.
-                 *!  This is permitted, but often indicative of an error.
-                 *!  See \k{db}.
-                 */
                 nasm_warn(WARN_DB_EMPTY, "no operand for data declaration");
         }
         return result;
     }
 
     /*
-     * Now we begin to parse the operands. There may be up to four
+     * Now we begin to parse the operands. There may be up to MAX_OPERANDS
      * of these, separated by commas, and terminated by a zero token.
      */
     far_jmp_ok = result->opcode == I_JMP || result->opcode == I_CALL;
@@ -861,20 +921,53 @@ restart_parse:
         decoflags_t brace_flags = 0;    /* flags for decorators in braces */
 
         i = stdscan(NULL, &tokval);
-        if (i == TOKEN_EOS)
-            break;              /* end of operands: get out of here */
-        else if (first && i == ':') {
+        if (first && i == ':') {
             insn_is_label = true;
             goto restart_parse;
         }
+
         first = false;
+        if (opnum == 0) {
+            /*
+             * Allow braced prefix tokens like {evex} after the opcode
+             * mnemonic proper, but before the first operand. This is
+             * currently not allowed for non-braced prefix tokens.
+             */
+            while ((tokval.t_flag & TFLAG_BRC) && add_prefix(result))
+                i = stdscan(NULL, &tokval);
+        }
+
+        if (i == TOKEN_EOS)
+            break;
+
         op->type = 0; /* so far, no override */
+
+        /*
+         * Naked special immediate token. Terminates the expression
+         * without requiring a post-comma.
+         */
+        if (i == TOKEN_BRCCONST) {
+            op->type    = IMMEDIATE; /* But not IMM_NORMAL! */
+            op->opflags = OPFLAG_SIMPLE;
+            op->offset  = tokval.t_integer;
+            op->segment = NO_SEG;
+            op->wrt     = NO_SEG;
+            op->iflag   = tokval.t_inttwo;
+            set_imm_flags(op, result->opt);
+            i = stdscan(NULL, &tokval);
+            if (i != ',')
+                stdscan_pushback(&tokval);
+            continue;           /* Next operand */
+        }
+
         /* size specifiers */
         while (i == TOKEN_SPECIAL || i == TOKEN_SIZE) {
             switch (tokval.t_integer) {
             case S_BYTE:
-                if (!setsize)   /* we want to use only the first */
+                if (!setsize) {   /* we want to use only the first */
+                    result->opt |= OPTIM_NO_Jcc_RELAX | OPTIM_NO_JMP_RELAX;
                     op->type |= BITS8;
+                }
                 setsize = 1;
                 break;
             case S_WORD:
@@ -923,10 +1016,16 @@ restart_parse:
                 op->type |= FAR;
                 break;
             case S_NEAR:
+                /* This is not legacy behavior, even if it perhaps should be */
+                /* result->opt |= OPTIM_NO_Jcc_RELAX | OPTIM_NO_JMP_RELAX; */
                 op->type |= NEAR;
                 break;
             case S_SHORT:
+                result->opt |= OPTIM_NO_Jcc_RELAX | OPTIM_NO_JMP_RELAX;
                 op->type |= SHORT;
+                break;
+            case S_ABS:
+                op->type |= ABS;
                 break;
             default:
                 nasm_nonfatal("invalid operand size specification");
@@ -959,9 +1058,9 @@ restart_parse:
                     break;
 
                 case ',':
+                    stdscan_pushback(&tokval);      /* rewind the comma */
                     tokval.t_type = TOKEN_NUM;
                     tokval.t_integer = 0;
-                    stdscan_set(stdscan_get() - 1);     /* rewind the comma */
                     done = nofw = true;
                     break;
 
@@ -997,26 +1096,44 @@ restart_parse:
             goto mref_more;
         }
 
-        if (i == ':' && (mref || !far_jmp_ok)) {
-            /* segment override? */
-            mref = true;
+        if (i == ':') {
+            bool ok_reg = is_register(value->type) &&
+                value->value == 1 && !value[1].type;
 
-            /*
-             * Process the segment override.
-             */
-            if (!IS_SREG(value->type) || value->value != 1 ||
-                value[1].type != 0) {
-                nasm_nonfatal("invalid segment override");
-            } else if (result->prefixes[PPS_SEG]) {
-                nasm_nonfatal("instruction has conflicting segment overrides");
-            } else {
-                result->prefixes[PPS_SEG] = value->type;
-                if (IS_FSGS(value->type))
-                    op->eaflags |= EAF_FSGS;
+            if (!mref && ok_reg && !IS_SREG(value->type)) {
+                /*
+                 * Register pair syntax; this terminates the expression
+                 * as if it had ended in a comma, but sets the COLON flag
+                 * on the operand further down.
+                 */
+            } else if (mref || !far_jmp_ok) {
+                /* segment override? */
+                mref = true;
+
+                /*
+                 * Process the segment override.
+                 */
+                if (!ok_reg || !IS_SREG(value->type)) {
+                    nasm_nonfatal("invalid segment override");
+                } else if (result->prefixes[PPS_SEG]) {
+                    nasm_nonfatal("instruction has conflicting segment overrides");
+                } else {
+                    result->prefixes[PPS_SEG] = value->type;
+                    switch (value->type) {
+                    case R_FS:
+                        op->eaflags |= EAF_FS;
+                        break;
+                    case R_GS:
+                        op->eaflags |= EAF_GS;
+                        break;
+                    default:
+                        break;
+                    }
+                }
+
+                i = stdscan(NULL, &tokval); /* then skip the colon */
+                goto mref_more;
             }
-
-            i = stdscan(NULL, &tokval); /* then skip the colon */
-            goto mref_more;
         }
 
         mib = false;
@@ -1037,7 +1154,6 @@ restart_parse:
             init_operand(&o2, 0);
             if (parse_mref(&o2, value))
                 goto fail;
-
             if (o2.basereg != -1 && o2.indexreg == -1) {
                 o2.indexreg = o2.basereg;
                 o2.scale = 1;
@@ -1089,11 +1205,12 @@ restart_parse:
 
             if (i == TOKEN_DECORATOR || i == TOKEN_OPMASK) {
                 /* parse opmask (and zeroing) after an operand */
-                recover = parse_braces(&brace_flags);
+                recover = parse_decorators(&brace_flags);
                 i = tokval.t_type;
             }
             if (!recover && i != 0 && i != ',') {
-                nasm_nonfatal("comma, decorator or end of line expected, got %d", i);
+                nasm_nonfatal("comma, decorator or end of line expected, got `%*s'",
+                              (int)tokval.t_len, tokval.t_start);
                 recover = true;
             }
         } else {                /* immediate operand */
@@ -1106,7 +1223,7 @@ restart_parse:
                 op->type |= COLON;
             } else if (i == TOKEN_DECORATOR || i == TOKEN_OPMASK) {
                 /* parse opmask (and zeroing) after an operand */
-                recover = parse_braces(&brace_flags);
+                recover = parse_decorators(&brace_flags);
             }
         }
         if (recover) {
@@ -1134,39 +1251,37 @@ restart_parse:
                 nasm_nonfatal("invalid use of FAR operand specifier");
                 recover = true;
         } else {                /* it's not a memory reference */
-            if (is_just_unknown(value)) {       /* it's immediate but unknown */
-                op->type      |= IMMEDIATE;
-                op->opflags   |= OPFLAG_UNKNOWN;
-                op->offset    = 0;        /* don't care */
-                op->segment   = NO_SEG;   /* don't care again */
-                op->wrt       = NO_SEG;   /* still don't care */
+            const enum expr_classes eclass = expr_class(value);
 
-                if(optimizing.level >= 0 && !(op->type & STRICT)) {
-                    /* Be optimistic */
-                    op->type |=
-                        UNITY | SBYTEWORD | SBYTEDWORD | UDWORD | SDWORD;
-                }
-            } else if (is_reloc(value)) {       /* it's immediate */
-                uint64_t n = reloc_value(value);
-
-                op->type      |= IMMEDIATE;
-                op->offset    = n;
+            if (!(eclass & ~(EC_RELOC | EC_UNKNOWN))) {
+                /* It is an immediate */
+                op->offset    = reloc_value(value);
                 op->segment   = reloc_seg(value);
                 op->wrt       = reloc_wrt(value);
-                op->opflags   |= is_self_relative(value) ? OPFLAG_RELATIVE : 0;
+                if (eclass & EC_SELFREL)
+                    op->opflags |= OPFLAG_RELATIVE;
+                if (!(eclass & ~EC_SIMPLE))
+                    op->opflags |= OPFLAG_SIMPLE;
+                if (eclass & EC_UNKNOWN)
+                    op->opflags |= OPFLAG_UNKNOWN;
 
-                if (is_simple(value)) {
-                    if (n == 1)
-                        op->type |= UNITY;
-                    if (optimizing.level >= 0 && !(op->type & STRICT)) {
-                        if ((uint32_t) (n + 128) <= 255)
-                            op->type |= SBYTEDWORD;
-                        if ((uint16_t) (n + 128) <= 255)
-                            op->type |= SBYTEWORD;
-                        if (n <= UINT64_C(0xFFFFFFFF))
-                            op->type |= UDWORD;
-                        if (n + UINT64_C(0x80000000) <= UINT64_C(0xFFFFFFFF))
-                            op->type |= SDWORD;
+                op->type |= IMM_NORMAL;
+                set_imm_flags(op, result->opt);
+
+                /*
+                 * Special hack: if the previous operand was a colon
+                 * immediate operand with an explicit size, and this
+                 * one does not have an explicit size, move the size
+                 * specifier to this operand. This handles the case:
+                 * "jmp dword foo:bar" (really being "jmp foo:dword bar".)
+                 */
+                if (opnum > 0 &&
+                    unlikely(is_class(op[-1].type, IMM_NORMAL|COLON))) {
+                    opflags_t nsize = op->type    & SIZE_MASK;
+                    opflags_t osize = op[-1].type & SIZE_MASK;
+                    if (osize && !nsize) {
+                        op->type    ^= osize;
+                        op[-1].type ^= osize;
                     }
                 }
             } else if (value->type == EXPR_RDSAE) {
@@ -1225,13 +1340,16 @@ restart_parse:
                     regset_size = 0;
                 }
 
-                /* clear overrides, except TO which applies to FPU regs */
-                if (op->type & ~TO) {
+                /*
+                 * Clear overrides, except TO which applies to FPU regs
+                 * and colon which is used in register pair syntax
+                 */
+                if (op->type & ~(TO | COLON)) {
                     /*
                      * we want to produce a warning iff the specified size
                      * is different from the register size
                      */
-                    rs = op->type & SIZE_MASK;
+                    rs = op->type & (SIZE_MASK & ~NEAR);
                 } else {
                     rs = 0;
                 }
@@ -1253,7 +1371,7 @@ restart_parse:
                         goto fail;
                 }
 
-                op->type      &= TO;
+                op->type      &= TO | COLON;
                 op->type      |= REGISTER;
                 op->type      |= nasm_reg_flags[value->type];
                 op->type      |= (regset_size >> 1) << REGSET_SHIFT;
@@ -1261,25 +1379,10 @@ restart_parse:
                 op->basereg   = value->type;
 
                 if (rs) {
-                    opflags_t opsize = nasm_reg_flags[value->type] & SIZE_MASK;
+                    opflags_t opsize = nasm_reg_flags[value->type] & (SIZE_MASK & ~NEAR);
                     if (!opsize) {
                         op->type |= rs; /* For non-size-specific registers, permit size override */
                     } else if (opsize != rs) {
-                        /*!
-                         *!regsize [on] register size specification ignored
-                         *!
-                         *!  warns about a register with implicit size (such as \c{EAX}, which is always 32 bits)
-                         *!  been given an explicit size specification which is inconsistent with the size
-                         *!  of the named register, e.g. \c{WORD EAX}. \c{DWORD EAX} or \c{WORD AX} are
-                         *!  permitted, and do not trigger this warning. Some registers which \e{do not} imply
-                         *!  a specific size, such as \c{K0}, may need this specification unless the instruction
-                         *!  itself implies the instruction size:
-                         *!-
-                         *!  \c      KMOVW K0,[foo]          ; Permitted, KMOVW implies 16 bits
-                         *!  \c      KMOV  WORD K0,[foo]     ; Permitted, WORD K0 specifies instruction size
-                         *!  \c      KMOV  K0,WORD [foo]     ; Permitted, WORD [foo] specifies instruction size
-                         *!  \c      KMOV  K0,[foo]          ; Not permitted, instruction size ambiguous
-                         */
                         nasm_warn(WARN_REGSIZE, "invalid register size specification ignored");
                     }
                 }
@@ -1309,12 +1412,12 @@ fail:
 static int end_expression_next(void)
 {
     struct tokenval tv;
-    char *p;
+    const struct stdscan_state *save;
     int i;
 
-    p = stdscan_get();
+    save = stdscan_get();
     i = stdscan(NULL, &tv);
-    stdscan_set(p);
+    stdscan_set(save);
 
     return (i == ',' || i == ';' || i == ')' || !i);
 }

@@ -323,7 +323,7 @@ void SessionStoreImpl::RestoreSessionBindingKey(
       std::vector<uint8_t> wrapped_key(it->second.wrapped_key().begin(),
                                        it->second.wrapped_key().end());
       key_service_->FromWrappedSigningKeySlowlyAsync(
-          wrapped_key, BackgroundTaskPriority::kUserVisible,
+          wrapped_key, unexportable_keys::BackgroundTaskPriority::kUserVisible,
           base::BindOnce(&SessionStoreImpl::OnSessionBindingKeyRestored,
                          weak_ptr_factory_.GetWeakPtr(), session_key));
       return;
@@ -337,8 +337,8 @@ void SessionStoreImpl::RestoreSessionBindingKey(
 
 void SessionStoreImpl::OnSessionBindingKeyRestored(
     const SessionKey& session_key,
-    unexportable_keys::ServiceErrorOr<unexportable_keys::UnexportableKeyId>
-        key_or_error) {
+    unexportable_keys::ServiceErrorOr<
+        unexportable_keys::UnexportableSigningKeyId> key_or_error) {
   auto it = restore_callbacks_.find(session_key);
   if (it == restore_callbacks_.end()) {
     return;
@@ -356,7 +356,7 @@ void SessionStoreImpl::StartGarbageCollection() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   CHECK_EQ(db_status_, DBStatus::kSuccess);
-  key_service_->GetAllSigningKeysForGarbageCollectionSlowlyAsync(
+  key_service_->GetAllKeysForGarbageCollectionSlowlyAsync(
       unexportable_keys::BackgroundTaskPriority::kBestEffort,
       base::BindOnce(&SessionStoreImpl::OnGetAllKeysForGarbageCollection,
                      weak_ptr_factory_.GetWeakPtr()));

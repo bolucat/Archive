@@ -41,7 +41,6 @@ Date:   Mon Nov 19 13:52:05 2018 -0800
 
 Affects:
     asm/nasm.c
-    output/outcoff.c
 
 ------------------------------------------------------------------
 commit e62fca4a4a7f10e4f1e0506f2cfdb6c1c4b7cf3a
@@ -109,21 +108,6 @@ Affects:
     output/outmacho.c
 
 ------------------------------------------------------------------
-commit 9215e8e1d0fe474ffd3e16c1a07a0f97089e6224
-Author: Nico Weber <thakis@chromium.org>
-Date:   Mon Oct 18 15:16:22 2021 -0400
-
-    nasm: Cherry-pick -Wbitwise-instead-of-logical fix
-
-    This cherry-picks https://github.com/netwide-assembler/nasm/pull/17
-
-    Bug: chromium:1255745
-    Change-Id: I230b9ab9fd0a8baa1cdc8dd6e62cdc069cb14070
-
-Affects:
-    asm/preproc.c
-
-------------------------------------------------------------------
 commit bc848980247d61c9fd60ff9560f718ca01d45ea2
 Author: Avi Drissman <avi@chromium.org>
 Date:   Tue Jan 24 14:59:30 2023 -0500
@@ -137,5 +121,51 @@ Date:   Tue Jan 24 14:59:30 2023 -0500
     Change-Id: Iafe0d19d567bd8dcf846b1d9cdcd6b5e324dbb1a
 
 Affects:
+    output/outmacho.c
+
+------------------------------------------------------------------
+commit d3ce93df395b26af62ec4ad2aa28bd34623f621f
+Merge: 767a169c 888d9ab5
+Author: Dale Curtis <dalecurtis@chromium.org>
+Date:   Mon Apr 7 17:27:08 2025 +0000
+
+    Merge remote-tracking branch 'upstream/master' into merge_clean
+
+    Notes:
+    * There's a new --reproducible flag we can use which lets us delete some
+    custom patches.
+    * The macho-min-version patch still hasn't landed upstream and required
+    some manual merging with the new reproducible flag.
+    * This doesn't build yet, but is a clean merge.
+    * No with a Change-Id
+
+    Bug: 406089864
+
+    Change-Id: I28cac44fe971a90ac373a5ea5ec17e2345fa2208
+
+Affects:
+    asm/nasm.c
+
+------------------------------------------------------------------
+commit 4fcad414b3b7aebe3030c49d0583a19c89464425
+Merge: 45252858 e9fac2fa
+Author: Dale Curtis <dalecurtis@chromium.org>
+Date:   Thu Apr 23 23:16:25 2026 +0000
+
+    Merge tag 'nasm-3.01' into nasm-update-3.01
+
+    NASM 3.01
+
+    Change-Id: I8272a7fe83e313e280d4a40013df95e8fede89ac
+
+    # Conflicts:
+    #       .gitignore
+    #       Makefile.in
+    #       asm/nasm.c
+    #       output/outmacho.c
+
+Affects:
+    Makefile.in
+    asm/nasm.c
     output/outmacho.c
 

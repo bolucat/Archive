@@ -34,8 +34,16 @@
 BSSL_NAMESPACE_BEGIN
 
 bool ssl_is_key_type_supported(int key_type) {
-  return key_type == EVP_PKEY_RSA || key_type == EVP_PKEY_EC ||
-         key_type == EVP_PKEY_ED25519;
+  switch (key_type) {
+    case EVP_PKEY_RSA:
+    case EVP_PKEY_EC:
+    case EVP_PKEY_ED25519:
+    case EVP_PKEY_ML_DSA_44:
+    case EVP_PKEY_ML_DSA_65:
+    case EVP_PKEY_ML_DSA_87:
+      return true;
+  }
+  return false;
 }
 
 typedef struct {
@@ -99,6 +107,16 @@ static const SSL_SIGNATURE_ALGORITHM kSignatureAlgorithms[] = {
     {SSL_SIGN_ED25519, EVP_PKEY_ED25519, NID_undef, nullptr,
      /*is_rsa_pss=*/false, /*tls12_ok=*/true, /*tls13_ok=*/true,
      /*client_only=*/false},
+
+    {SSL_SIGN_ML_DSA_44, EVP_PKEY_ML_DSA_44, NID_undef, nullptr,
+     /*is_rsa_pss=*/false, /*tls12_ok=*/false, /*tls13_ok=*/true,
+     /*client_only=*/false},
+    {SSL_SIGN_ML_DSA_65, EVP_PKEY_ML_DSA_65, NID_undef, nullptr,
+     /*is_rsa_pss=*/false, /*tls12_ok=*/false, /*tls13_ok=*/true,
+     /*client_only=*/false},
+    {SSL_SIGN_ML_DSA_87, EVP_PKEY_ML_DSA_87, NID_undef, nullptr,
+     /*is_rsa_pss=*/false, /*tls12_ok=*/false, /*tls13_ok=*/true,
+     /*client_only=*/false},
 };
 
 static const SSL_SIGNATURE_ALGORITHM *get_signature_algorithm(uint16_t sigalg) {
@@ -116,8 +134,9 @@ bssl::UniquePtr<EVP_PKEY> ssl_parse_peer_subject_public_key_info(
   // code elimination, but for now we just specify every algorithm that might be
   // reachable from libssl.
   const EVP_PKEY_ALG *const algs[] = {
-      EVP_pkey_rsa(),     EVP_pkey_ec_p256(), EVP_pkey_ec_p384(),
-      EVP_pkey_ec_p521(), EVP_pkey_ed25519(),
+      EVP_pkey_rsa(),       EVP_pkey_ec_p256(),   EVP_pkey_ec_p384(),
+      EVP_pkey_ec_p521(),   EVP_pkey_ed25519(),   EVP_pkey_ml_dsa_44(),
+      EVP_pkey_ml_dsa_65(), EVP_pkey_ml_dsa_87(),
   };
   return bssl::UniquePtr<EVP_PKEY>(EVP_PKEY_from_subject_public_key_info(
       spki.data(), spki.size(), algs, std::size(algs)));
@@ -211,7 +230,7 @@ enum ssl_private_key_result_t ssl_private_key_sign(
     SSL_HANDSHAKE *hs, uint8_t *out, size_t *out_len, size_t max_out,
     uint16_t sigalg, Span<const uint8_t> in) {
   SSL *const ssl = hs->ssl;
-  const SSL_CREDENTIAL *const cred = hs->credential.get();
+  const SSLCredential *const cred = hs->credential.get();
   SSL_HANDSHAKE_HINTS *const hints = hs->hints.get();
   Array<uint8_t> spki;
   if (hints) {
@@ -299,7 +318,7 @@ enum ssl_private_key_result_t ssl_private_key_decrypt(SSL_HANDSHAKE *hs,
                                                       size_t max_out,
                                                       Span<const uint8_t> in) {
   SSL *const ssl = hs->ssl;
-  const SSL_CREDENTIAL *const cred = hs->credential.get();
+  const SSLCredential *const cred = hs->credential.get();
   assert(!hs->can_release_private_key);
   if (cred->key_method != nullptr) {
     enum ssl_private_key_result_t ret;
@@ -481,6 +500,9 @@ static const SignatureAlgorithmName kSignatureAlgorithmNames[] = {
     {SSL_SIGN_RSA_PSS_RSAE_SHA384, "rsa_pss_rsae_sha384"},
     {SSL_SIGN_RSA_PSS_RSAE_SHA512, "rsa_pss_rsae_sha512"},
     {SSL_SIGN_ED25519, "ed25519"},
+    {SSL_SIGN_ML_DSA_44, "mldsa44"},
+    {SSL_SIGN_ML_DSA_65, "mldsa65"},
+    {SSL_SIGN_ML_DSA_87, "mldsa87"},
 };
 
 const char *SSL_get_signature_algorithm_name(uint16_t sigalg,
@@ -597,19 +619,20 @@ static bool set_sigalg_prefs(Array<uint16_t> *out, Span<const uint16_t> prefs) {
 int SSL_CREDENTIAL_set1_signing_algorithm_prefs(SSL_CREDENTIAL *cred,
                                                 const uint16_t *prefs,
                                                 size_t num_prefs) {
-  if (!cred->UsesPrivateKey()) {
+  auto *cred_impl = FromOpaque(cred);
+  if (!cred_impl->UsesPrivateKey()) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
   }
 
   // Delegated credentials are constrained to a single algorithm, so there is no
   // need to configure this.
-  if (cred->type == SSLCredentialType::kDelegated) {
+  if (cred_impl->type == SSLCredentialType::kDelegated) {
     OPENSSL_PUT_ERROR(SSL, ERR_R_SHOULD_NOT_HAVE_BEEN_CALLED);
     return 0;
   }
 
-  return set_sigalg_prefs(&cred->sigalgs, Span(prefs, num_prefs));
+  return set_sigalg_prefs(&cred_impl->sigalgs, Span(prefs, num_prefs));
 }
 
 int SSL_CTX_set_signing_algorithm_prefs(SSL_CTX *ctx, const uint16_t *prefs,
@@ -644,6 +667,9 @@ static constexpr struct {
     {EVP_PKEY_EC, NID_sha384, SSL_SIGN_ECDSA_SECP384R1_SHA384},
     {EVP_PKEY_EC, NID_sha512, SSL_SIGN_ECDSA_SECP521R1_SHA512},
     {EVP_PKEY_ED25519, NID_undef, SSL_SIGN_ED25519},
+    {EVP_PKEY_ML_DSA_44, NID_undef, SSL_SIGN_ML_DSA_44},
+    {EVP_PKEY_ML_DSA_65, NID_undef, SSL_SIGN_ML_DSA_65},
+    {EVP_PKEY_ML_DSA_87, NID_undef, SSL_SIGN_ML_DSA_87},
 };
 
 static bool parse_sigalg_pairs(Array<uint16_t> *out, const int *values,

@@ -1,36 +1,6 @@
 #!/usr/bin/perl
-## --------------------------------------------------------------------------
-##
-##   Copyright 1996-2018 The NASM Authors - All Rights Reserved
-##   See the file AUTHORS included with the NASM distribution for
-##   the specific copyright holders.
-##
-##   Redistribution and use in source and binary forms, with or without
-##   modification, are permitted provided that the following
-##   conditions are met:
-##
-##   * Redistributions of source code must retain the above copyright
-##     notice, this list of conditions and the following disclaimer.
-##   * Redistributions in binary form must reproduce the above
-##     copyright notice, this list of conditions and the following
-##     disclaimer in the documentation and/or other materials provided
-##     with the distribution.
-##
-##     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-##     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-##     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-##     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-##     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-##     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-##     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-##     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-##     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-##     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-##     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-##     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
-##     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-##
-## --------------------------------------------------------------------------
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright 1996-2024 The NASM Authors - All Rights Reserved
 
 #
 # Instruction template flags. These specify which processor
@@ -77,19 +47,41 @@ my %flag_byname;
 my @flag_bynum;
 my @flag_fields;
 my $iflag_words;
+my $no_word_break = 0;
+my $current_group;
+our $NOBREAK = 0;
+
+# This should be generated automatically, really...
+our $MAX_OPERANDS = 5;
 
 sub if_($$) {
     my($name, $def) = @_;
     my $num = $n_iflags++;
+
+    $name = uc($name);
+    if (defined($flag_byname{$name})) {
+	die "iflags: flag $name defined more than once\n";
+    }
+
     my $v = [$num, $name, $def];
+
+    if (!($n_iflags & 31) && $no_word_break) {
+	die "iflags: group $current_group has disallowed dword break\n";
+    }
 
     $flag_byname{$name}  = $v;
     $flag_bynum[$num] = $v;
 
     return 1;
 }
-sub if_align($) {
-    my($name) = @_;
+sub if_break_ok(;$) {
+    my($ok) = @_;
+    $no_word_break = defined($ok) && !$ok;
+}
+sub if_align($;$) {
+    my($name, $break_ok) = @_;
+
+    if_break_ok($break_ok);
 
     if ($#flag_fields >= 0) {
 	$flag_fields[$#flag_fields]->[2] = $n_iflags-1;
@@ -97,6 +89,7 @@ sub if_align($) {
     $n_iflags = ($n_iflags + 31) & ~31;
 
     if (defined($name)) {
+	$current_group = $name;
 	push(@flag_fields, [$name, $n_iflags, undef]);
     }
 
@@ -112,17 +105,209 @@ sub if_end() {
 require 'x86/iflags.ph';
 if_end();
 
+# Remove non-flags
+sub clean_flags($) {
+    my($flags) = @_;
+
+    delete $flags->{''};
+    delete $flags->{'0'};
+    delete $flags->{'IGNORE'};
+}
+
+# Adjust flags which imply each other
+sub set_implied_flags($;$) {
+    my($flags, $oprs) = @_;
+    $oprs = $MAX_OPERANDS unless (defined($oprs));
+
+    clean_flags($flags);
+
+    # If no ARx flags, make all operands ARx if a size is present
+    # flag is present
+    if (!opr_flags($flags, 'AR', $oprs)) {
+	if (defined(size_flag($flags))) {
+	    for (my $i = 0; $i < $oprs; $i++) {
+		$flags->{"AR$i"}++;
+	    }
+	}
+    }
+
+    # Convert the SM flag to all possible SMx flags
+    if ($flags->{'SM'}) {
+	delete $flags->{'SM'};
+	for (my $i = 0; $i < $oprs; $i++) {
+	    $flags->{"SM$i"}++;
+	}
+    }
+
+    # Delete SMx and ARx flags for nonexistent operands
+    foreach my $as ('AR', 'SM') {
+	for (my $i = $oprs; $i < $MAX_OPERANDS; $i++) {
+	    delete $flags->{"$as$i"};
+	}
+    }
+
+    $flags->{'LONG'}++     if ($flags->{'APX'});
+    $flags->{'NOREX'}++    if ($flags->{'NOLONG'});
+    $flags->{'NOAPX'}++    if ($flags->{'NOREX'});
+    $flags->{'X86_64'}++   if ($flags->{'LONG'});
+    $flags->{'PROT'}++     if ($flags->{'LONG'}); # LONG mode is a submode of PROT
+    $flags->{'PROT'}++     if ($flags->{'EVEX'}); # EVEX not supported in real/v86 mode
+    $flags->{'OBSOLETE'}++ if ($flags->{'NEVER'});
+    $flags->{'NF'}++ if ($flags->{'NF_R'} || $flags->{'NF_E'});
+    $flags->{'ZU'}++ if ($flags->{'ZU_R'} || $flags->{'ZU_E'});
+
+    # Retain only the highest CPU level flag
+    # CPU levels really need to be replaced with feature sets.
+    my $found = $flags->{'PSEUDO'}; # Pseudo-ops don't have a CPU level
+    for (my $i = $flag_byname{'ANY'}->[0]; $i >= $flag_byname{'8086'}->[0]; $i--) {
+	my $f = $flag_bynum[$i]->[1];
+	if ($found) {
+	    delete $flags->{$f};
+	} else {
+	    $found = $flags->{$f};
+	}
+    }
+    if (!$found) {
+	# No CPU level flag at all; tag it FUTURE
+	$flags->{'FUTURE'}++;
+    }
+}
+
+# Return the value of any assume-size flag if one exists;
+# SX, ANYSIZE or SIZE return 0 as they are size flags but
+# don't have a known value at compile time.
+sub size_flag($) {
+    my %sflags = ( 'SB' => 8, 'SW' => 16, 'SD' => 32, 'SQ' => 64,
+		   'ST' => 80, 'SO' => 128, 'SY' => 256, 'SZ' => 512,
+		   'SX' => 0, 'OSIZE' => 0, 'ASIZE' => 0, 'ANYSIZE' => 0 );
+    my($flags) = @_;
+
+    foreach my $fl (keys(%sflags)) {
+	if ($flags->{$fl}) {
+	    return $sflags{$fl};
+	}
+    }
+
+    return undef;
+}
+
+# Find any per-operand flags
+sub opr_flags($$;$) {
+    my($flags, $name, $oprs) = @_;
+    $oprs = $MAX_OPERANDS unless (defined($oprs));
+    my $nfl = 0;
+    for (my $i = 0; $i < $oprs; $i++) {
+	if ($flags->{"$name$i"}) {
+	    $nfl |= 1 << $i;
+	}
+    }
+    return $nfl;
+}
+
+# Split a flags field, returns a hash
+sub split_flags($) {
+    my($flagstr) = @_;
+    my %flags = ();
+
+    $flagstr = uc($flagstr);
+
+    foreach my $flag (split(',', $flagstr)) {
+	next if ($flag =~ /^\s*$/); # Null flag
+
+	# Somewhat nicer syntax for required flags (NF! -> NF_R)
+	$flag =~ s/\!$/_R/;
+	# Ditto for weak flags (SX- -> SX_W)
+	$flag =~ s/\-$/_W/;
+
+	if ($flag =~ /^(.*)(([0-9]+[+-])+[0-9]+)$/) {
+	    my $pref = $1;
+	    my @rang = split(/([-+])/, "+$2");
+	    shift(@rang);	# Drop empty entry at beginning
+	    my $eor;
+	    while (defined(my $sep = shift(@rang))) {
+		my $nxt = shift(@rang) + 0;
+
+		$eor = $nxt if ($sep eq '+');
+		for (my $i = $eor; $i <= $nxt; $i++) {
+		    $flags{"$pref$i"}++;
+		}
+		$eor = $nxt;
+	    }
+	} else {
+	    $flags{$flag}++;
+	}
+    }
+
+    clean_flags(\%flags);
+    return %flags;
+}
+
+# Merge a flags field and strip flags with leading !
+sub merge_flags($;$) {
+    my($flags, $human) = @_;
+
+    clean_flags(\%flags);
+
+    my @flagslist = sort { $flag_byname{$a} <=> $flag_byname{$b} }
+	grep { !/^(\s*|\!.*)$/ } keys(%$flags);
+
+    if ($human) {
+	# For possibe human consumption. Merge subsequent SM and AR
+	# flags back into ranges.
+	my @ofl = @flagslist;
+	@flagslist = ();
+
+	while (defined(my $fl = shift(@ofl))) {
+	    if ($fl =~ /^(SM|AR)([0-9]+)$/) {
+		my $pfx = $1;
+		my $mask = 1 << $2;
+
+		while ($ofl[0] =~ /^${pfx}([0-9]+)$/) {
+		    $mask |= 1 << $1;
+		    shift(@ofl);
+		}
+
+		my $n = 0;
+		my $nstr;
+		while ($mask) {
+		    if ($mask & 1) {
+			$nstr .= '+'.$n;
+			if ($mask & 2) {
+			    $nstr .= '-';
+			    while ($mask & 2) {
+				$n++;
+				$mask >>= 1;
+			    }
+			    $nstr .= $n;
+			}
+		    }
+		    $n++;
+		    $mask >>= 1;
+		}
+
+		$nstr =~ s/^\+/$pfx/;
+		push(@flagslist, $nstr);
+	    } else {
+		push(@flagslist, $fl);
+	    }
+	}
+    }
+
+    return scalar(@flagslist) ? join(',', @flagslist) : $human ? 'ignore' : '0';
+}
+
 # Compute the combinations of instruction flags actually used in templates
 
 my %insns_flag_hash = ();
 my @insns_flag_values = ();
 my @insns_flag_lists = ();
 
-sub insns_flag_index(@) {
-    return undef if $_[0] eq "ignore";
+sub insns_flag_index($) {
+    my($flags) = @_;
 
-    my @prekey = sort(@_);
-    my $key = join(',', @prekey);
+    my $key = merge_flags($flags);
+    my @prekey = sort(keys %$flags);
+
     my $flag_index = $insns_flag_hash{$key};
 
     unless (defined($flag_index)) {
@@ -142,6 +327,15 @@ sub insns_flag_index(@) {
     }
 
     return $flag_index;
+}
+
+#
+# Show the iflags corresponding to a specific iflags set extracted from
+# a code sequence in human-readable form.
+#
+sub get_iflags($) {
+    my($n) = @_;
+    return $insns_flag_lists[$n];
 }
 
 sub write_iflaggen_h() {

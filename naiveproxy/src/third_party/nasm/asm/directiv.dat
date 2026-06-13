@@ -1,35 +1,5 @@
-;; --------------------------------------------------------------------------
-;;
-;;   Copyright 1996-2017 The NASM Authors - All Rights Reserved
-;;   See the file AUTHORS included with the NASM distribution for
-;;   the specific copyright holders.
-;;
-;;   Redistribution and use in source and binary forms, with or without
-;;   modification, are permitted provided that the following
-;;   conditions are met:
-;;
-;;   * Redistributions of source code must retain the above copyright
-;;     notice, this list of conditions and the following disclaimer.
-;;   * Redistributions in binary form must reproduce the above
-;;     copyright notice, this list of conditions and the following
-;;     disclaimer in the documentation and/or other materials provided
-;;     with the distribution.
-;;
-;;     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-;;     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-;;     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-;;     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-;;     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-;;     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-;;     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-;;     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-;;     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-;;     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-;;     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-;;     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
-;;     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-;;
-;; --------------------------------------------------------------------------
+;; SPDX-License-Identifier: BSD-2-Clause
+;; Copyright 1996-2025 The NASM Authors - All Rights Reserved
 ;;
 ;; List of global NASM directives and pragma operations codes
 ;;
@@ -47,6 +17,12 @@
 ;; In the future, this will be turned into a general list of keywords
 ;; to be parsed in special contexts.
 ;;
+;; #special tokens are used to separate different classes of tokens.
+;; Make sure to add new tokens to the correct place. If a token is used
+;; in both a directive and in pragmas, they should be in the directive
+;; part of the list. Tokens used in pragmas *only* go at the end of the
+;; list.
+;;
 
 ; --- General configuration
 #name directive
@@ -55,9 +31,14 @@
 #header directiv.h
 
 ; --- Special enum values
+;     These must be first in the list.
 #special none = 0			; Must be zero
 #special unknown
 #special corrupt
+
+; --- True directives
+;     These tokens are accepted as directives by the global code or
+;     ignored if not implemented.
 
 ; --- Global directives
 absolute
@@ -66,19 +47,57 @@ common
 cpu
 debug
 default
+dollarhex
 extern
 float
 global
-static
 list
-section
-segment
-warning
-sectalign
 pragma
 required
+sectalign
+section
+segment
+static
+warning
+
+; --- Common output directives/pragmas
+prefix
+suffix
+postfix
+gprefix
+gsuffix
+gpostfix
+lprefix
+lsuffix
+lpostfix
+
+; --- Pseudo-op list, for the benefit of %isdirective
+;     Tokens put in this part will be rejected as either directives or
+;     pragmas
+#special pseudo_ops
+db
+dw
+dd
+dq
+dt
+do
+dy
+dz
+resb
+resw
+resd
+resq
+rest
+reso
+resy
+resz
+incbin
+equ
 
 ; --- Format-specific directives
+;     Tokens put in this part of the list will be forwarded to the
+;     backend ofmt->directive() method.
+#special ofmt
 export				; outcoff, outobj
 group				; outobj
 import				; outobj
@@ -90,19 +109,17 @@ osabi				; outelf
 safeseh				; outcoff
 uppercase			; outieee, outobj
 
+; --- The following are tokens used in pragmas, not actual directives.
+;     They will not be accepted as directives.
+#special pragma_tokens
+
 ; --- Assembler pragmas
-prefix
-suffix
-gprefix
-gsuffix
-lprefix
-lsuffix
 limit
 
 ; --- Listing pragmas
 options
 
-; --- Backend pragmas
+; --- Backend-specific pragmas
 subsections_via_symbols		; macho
 no_dead_strip			; macho
 maxdump				; dbg

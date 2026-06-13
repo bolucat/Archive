@@ -64,16 +64,11 @@ def main():
 # This file is created by generate_nasm_sources.py. Do not edit manually.
 """,
             file=out)
-        # Results in duplicated symbols in nasm.c
-        file_lists['LIBOBJ_NW'].remove('nasmlib/errfile.c')
-
-        # We don't use the disassembler and these files have compiler warnings.
-        file_lists['LIBOBJ_NW'].remove('disasm/disasm.c')
-        file_lists['LIBOBJ_NW'].remove('disasm/sync.c')
 
         PrintFileList(out, "nasmlib_sources",
-                      file_lists['LIBOBJ_NW'] + file_lists['WARNOBJ'] +
-                      file_lists['WARNFILES'])
+                      file_lists['LIBOBJ_W'] + file_lists['LIBOBJ_NW'] +
+                      file_lists['WARNOBJ'] + file_lists['WARNFILES'] +
+                      file_lists['OUTPUTOBJ'] + file_lists['ZLIBOBJ'])
         PrintFileList(out, "nasm_sources", file_lists['NASM'])
 
 if __name__ == "__main__":

@@ -26,23 +26,27 @@
 \IR{-p} \c{-p} option
 \IR{-s} \c{-s} option
 \IR{-u} \c{-u} option
-\IR{-v} \c{-v} option
 \IR{-W} \c{-W} option
+\IR{-t} \c{-t} option
+\IR{-soname} \c{-soname}, linker option
 \IR{-Werror} \c{-Werror} option
 \IR{-Wno-error} \c{-Wno-error} option
 \IR{-w} \c{-w} option
 \IR{-Z} \c{-Z} option
 \IR{!=} \c{!=} operator
 \IR{$, here} \c{$}, current address
-\IR{$, here} here token
 \IR{$, prefix} \c{$}, prefix
-\IR{$$} \c{$$} token
-\IR{%} \c{%} operator
-\IR{%db} \c{%} prefix to \c{DB} lists
+\IR{$$} \c{$$}
+\IR{%} \c{%}, operator
+\IR{%db} \c{%}, prefix to \c{DB} lists
 \IR{%%} \c{%%} operator
 \IR{%+1} \c{%+1} and \c{%-1} syntax
 \IA{%-1}{%+1}
-\IR{%0} \c{%0} parameter count
+\IR{%*?} \c{%*?} and \c{%*??}
+\IR{%?} \c{%?} and \c{%??}
+\IC{%*?}{_sname} macro name, single line
+\IC{%?}{_mname} macro name, multi-line
+\IR{%0} \c{%0}
 \IR{&} \c{&} operator
 \IR{&&} \c{&&} operator
 \IR{*} \c{*} operator
@@ -70,11 +74,12 @@
 \IR{||} \c{||} operator
 \IR{%$} \c{%$} and \c{%$$} prefixes
 \IA{%$$}{%$}
-\IR{+ opaddition} \c{+} operator, binary
-\IR{+ opunary} \c{+} operator, unary
-\IR{+ modifier} \c{+} modifier
-\IR{- opsubtraction} \c{-} operator, binary
-\IR{- opunary} \c{-} operator, unary
+\IR{%[} \c{%[}...\c{]}
+\IR{+ opaddition} \c{+}, binary operator
+\IR{+ opunary} \c{+}, unary operator
+\IR{+ modifier} \c{+}, modifier
+\IR{- opsubtraction} \c{-}, binary operator
+\IR{- opunary} \c{-}, unary operator
 \IR{! opunary} \c{!} operator
 \IA{~}{~ opunary}
 \IR{~ opunary} \c{~} operator
@@ -87,8 +92,7 @@
 \IR{alignment, in bin sections} alignment, in \c{bin} sections
 \IR{alignment, in elf sections} alignment, in ELF sections
 \IR{alignment, in win32 sections} alignment, in \c{win32} sections
-\IR{alignment, of elf common variables} alignment, of ELF common
-variables
+\IR{alignment, of elf common variables} alignment, of ELF common variables
 \IR{alignment, in obj sections} alignment, in \c{obj} sections
 \IR{a.out, bsd version} \c{a.out}, BSD version
 \IR{a.out, linux version} \c{a.out}, Linux version
@@ -112,8 +116,7 @@ variables
 \IA{case-insensitive}{case sensitive}
 \IA{character constants}{character constant}
 \IR{codeview debugging format} CodeView debugging format
-\IR{continuation line} continuation line
-\IR{continuation line} preprocessor, continuation line
+\IR{continuation} continuation line
 \IR{common object file format} Common Object File Format
 \IR{common variables, alignment in elf} common variables, alignment in ELF
 \IR{common, elf extensions to} \c{COMMON}, ELF extensions to
@@ -121,23 +124,26 @@ variables
 \IR{declaring structure} declaring structures
 \IR{default-wrt mechanism} default-\c{WRT} mechanism
 \IR{devpac} DevPac
+\IR{dfv} DFV
 \IR{djgpp} DJGPP
 \IR{dll symbols, exporting} DLL symbols, exporting
 \IR{dll symbols, importing} DLL symbols, importing
-\IR{dos} DOS
 \IA{effective addresses}{effective address}
 \IA{effective-address}{effective address}
 \IR{elf} ELF
 \IR{elf, 16-bit code} ELF, 16-bit code
 \IR{elf, debug formats} ELF, debug formats
 \IR{elf shared library} ELF, shared libraries
-\IR{elf32} \c{elf32}
-\IR{elf64} \c{elf64}
-\IR{elfx32} \c{elfx32}
-\IR{executable and linkable format} Executable and Linkable Format
-\IR{extern, elf extensions to} \c{EXTERN}, \c{elf} extensions to
+\IR{elf32} ELF, \c{elf32}
+\IR{elf64} ELF, \c{elf64}
+\IR{elfx32} ELF, \c{elfx32}
+\IC{elf}{executable and linkable format} Executable and Linkable Format (ELF)
+\IR{extern, elf extensions to} \c{EXTERN}, ELF extensions to
 \IR{extern, obj extensions to} \c{EXTERN}, \c{obj} extensions to
+\IR{floating-point} floating-point
 \IR{floating-point, constants} floating-point, constants
+\IA{floating-point constant}{floating-point, constants}
+\IA{floating-point constants}{floating-point, constants}
 \IR{floating-point, packed bcd constants} floating-point, packed BCD constants
 \IR{freebsd} FreeBSD
 \IR{freelink} FreeLink
@@ -145,30 +151,36 @@ variables
 \IR{functions, pascal calling convention} functions, \c{PASCAL} calling convention
 \IR{global, aoutb extensions to} \c{GLOBAL}, \c{aoutb} extensions to
 \IR{global, elf extensions to} \c{GLOBAL}, ELF extensions to
-\IR{global, rdf extensions to} \c{GLOBAL}, \c{rdf} extensions to
 \IR{got} GOT
-\IR{got relocations} \c{GOT} relocations
-\IR{gotoff relocation} \c{GOTOFF} relocations
-\IR{gotpc relocation} \c{GOTPC} relocations
+\IR{global offset table} GOT, global offset table
+\IR{got relocations} GOT, \c{GOT} relocations
+\IR{gotoff relocation} GOT, \c{GOTOFF} relocations
+\IR{gotpc relocation} GOT, \c{GOTPC} relocations
 \IR{intel number formats} Intel number formats
 \IR{linux, elf} Linux, ELF
 \IR{linux, a.out} Linux, \c{a.out}
 \IR{linux, as86} Linux, \c{as86}
-\IR{mach object file format} Mach, object file format
-\IA{mach-o}{macho}
 \IR{mach-o} Mach-O, object file format
-\IR{macho32} \c{macho32}
-\IR{macho64} \c{macho64}
+\IA{mach object file format}{mach-o}
+\IA{macho}{mach-o}
+\IR{macho32} Mach-O, \c{macho32}
+\IR{macho64} Mach-O, \c{macho64}
 \IR{macos x} MacOS X
 \IR{masm} MASM
 \IR{masmdb} MASM, \c{DB} syntax
+\IR{masm compatibility} MASM, compatibility
 \IA{memory reference}{memory references}
 \IR{minix} Minix
 \IA{misc directory}{misc subdirectory}
 \IR{misc subdirectory} \c{misc} subdirectory
 \IR{microsoft omf} Microsoft OMF
+\IR{mixed-size addressing} mixed-size, addressing
+\IR{mixed-size instruction} mixed-size, instruction
 \IR{ms-dos} MS-DOS
-\IR{ms-dos device drivers} MS-DOS device drivers
+\IR{ms-dos device drivers} MS-DOS, device drivers
+\IA{dos}{ms-dos}
+\IA{multi-line macro}{multi-line macros}
+\IR{multi-line macro expansion} multi-line macro, expansion
 \IR{multipush} \c{multipush} macro
 \IR{nan} NaN
 \IR{nasm version} NASM version
@@ -193,15 +205,20 @@ variables
 \IR{pascal calling convention} Pascal calling convention
 \IR{pic} PIC
 \IR{pharlap} PharLap
-\IR{plt} PLT
-\IR{plt} \c{PLT} relocations
+\IR{plt} PLT, procedure linkage table
+\IR{plt relocations} PLT, relocations
+\IC{plt}{procedure linkage table} procedure linkage table
 \IA{pre-defining macros}{pre-define}
 \IR{preprocessor conditionals} preprocessor, conditionals
+\IR{preprocessor directives} preprocessor, directives
 \IR{preprocessor expansions} preprocessor, expansions
 \IR{preprocessor expressions} preprocessor, expressions
+\IR{preprocessor functions} preprocessor, functions
 \IR{preprocessor loops} preprocessor, loops
 \IR{preprocessor variables} preprocessor, variables
-\IR{preprocessor variables} variables, preprocessor
+\IC{preprocessor variables}{vpp} variables, preprocessor
+\IR{other preprocessor directives} preprocessor, other directives
+\IR{stack relative preprocessor directives} preprocessor, stack relative directives
 \IA{comments}{comment}
 \IR{relocations, pic-specific} relocations, PIC-specific
 \IA{repeating}{repeating code}
@@ -209,8 +226,9 @@ variables
 \IR{section alignment, in bin} section alignment, in \c{bin}
 \IR{section alignment, in obj} section alignment, in \c{obj}
 \IR{section alignment, in win32} section alignment, in \c{win32}
+\IR{section, bin extensions to} \c{SECTION}, \c{bin} extensions to
 \IR{section, elf extensions to} \c{SECTION}, ELF extensions to
-\IR{section, macho extensions to} \c{SECTION}, \c{macho} extensions to
+\IR{section, macho extensions to} \c{SECTION}, Mach-O extensions to
 \IR{section, windows extensions to} \c{SECTION}, Windows extensions to
 \IR{segment alignment, in bin} segment alignment, in \c{bin}
 \IR{segment alignment, in obj} segment alignment, in \c{obj}
@@ -224,26 +242,38 @@ variables
 \IR{align, smart} \c{ALIGN}, smart
 \IA{sectalign}{sectalign}
 \IR{solaris x86} Solaris x86
+\IC{solaris x86}{unix, solaris} Unix, Solaris
 \IA{standard section names}{standardized section names}
 \IR{symbols, exporting from dlls} symbols, exporting from DLLs
 \IR{symbols, importing from dlls} symbols, importing from DLLs
+\IR{tasm} TASM
 \IR{test subdirectory} \c{test} subdirectory
 \IR{thread local storage in elf} thread local storage, in ELF
-\IR{thread local storage in mach-o} thread local storage, in \c{macho}
+\IR{thread local storage in mach-o} thread local storage, in Mach-O
+\IR{macho} Mach-O
 \IR{tlink} \c{TLINK}
+\IR{tls} \c{TLS}
+\IA{tls}{thread local storage}
 \IR{unconditionally importing symbols} importing symbols, unconditionally
 \IR{underscore, in c symbols} underscore, in C symbols
-\IA{uninitialized storage}{storage, uninitialized}
+\IR{uninitialized} uninitialized storage
+\IC{uninitialized storage}{storage, uninitialized}
+\IC{RESB}{uninitialized, resb} uninitialized storage, \c{RES}\e{x}
+\IC{?db}{uninitialized, db} uninitialized storage, \c{D}\e{x}\e{ ?}
 \IR{unicode} Unicode
 \IR{unix} Unix
-\IR{utf-8} UTF-8
-\IR{utf-16} UTF-16
-\IR{utf-32} UTF-32
+\IR{utf-8} Unicode, UTF-8
+\IR{utf-16} Unicode, UTF-16
+\IR{utf-32} Unicode, UTF-32
 \IA{sco unix}{unix, sco}
 \IR{unix, sco} Unix, SCO
 \IA{unix system v}{unix, system v}
 \IR{unix, system v} Unix, System V
-\IR{unixware} UnixWare
+\# Having just "UnixWare" is rather silly as it follows immediately
+\IR{unixware} Unix, UnixWare
+\IC{linux}{unix, linux} Unix, Linux
+\IC{bsd}{unix, bsd} Unix, BSD
+\IR{x32} x32 ABI (ELF)
 \IR{val} VAL
 \IA{version number of nasm}{nasm, version}
 \IR{visual c++} Visual C++
@@ -251,8 +281,35 @@ variables
 \IR{win64} Win64
 \IR{windows} Windows
 \IR{windows debugging formats} Windows, debugging formats
+\IR{__?USE_*?__} \c{__?USE_}\e{package}\c{?__}
+\IR{default, elf} \c{default}, ELF visibility
+\IR{hidden, elf} \c{hidden}, ELF visibility
+\IR{protected, elf} \c{protected}, ELF visibility
+\IR{internal, elf} \c{internal}, ELF visibility
+\IR{elf visibility} ELF visibility
+\IC{elf visibility}{visibility, elf} visibility, ELF
+\IR{unknown %if} \c{%if}, backwards compatibility
+\IC{unknown %if}{unknown %elif} \c{%elif}, backwards compatibility
+\IC{unknown %if}{unknown %ifn} \c{%ifn}, backwards compatibility
+\IC{unknown %if}{unknown %elifn} \c{%elifn}, backwards compatibility
+\IR{apx} APX
+\IR{advanced programming extensions} Advanced Programming Extensions
+\IA{egprs}{egpr}
+\IR{egpr} EGPR
+\IC{egpr}{extended general purpose register}
+\IA{extended general purpose registers}{egpr}
+\IR{apx syntax} APX, syntax
+\IC{apx syntax}{syntax, apx} syntax, APX
+\IR{scc} S\e{cc}
+\IR{apx optimizer} APX, optimizer
 \# \IC{program entry point}{entry point, program}
 \# \IC{program entry point}{start point, program}
 \# \IC{MS-DOS device drivers}{device drivers, MS-DOS}
 \# \IC{16-bit mode, versus 32-bit mode}{32-bit mode, versus 16-bit mode}
 \# \IC{c symbol names}{symbol names, in C}
+\IR{WRT ..got} \c{WRT}, \c{..got}
+\IR{WRT ..gotoff} \c{WRT}, \c{..gotoff}
+\IR{WRT ..gotpc} \c{WRT}, \c{..gotpc}
+\IR{WRT ..plt} \c{WRT}, \c{..plt}
+\IR{WRT ..sym} \c{WRT}, \c{..sym}
+\IR{rex2} REX2 prefix

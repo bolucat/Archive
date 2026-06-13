@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * outbin.c output routines for the Netwide Assembler to produce
@@ -228,10 +198,10 @@ static void bin_cleanup(void)
     uint64_t pend;
     int h;
 
-    if (debug_level(1)) {
-        nasm_debug("bin_cleanup: Sections were initially referenced in this order:\n");
+    if (debug_level(2)) {
+        nasm_debug(2, "bin_cleanup: Sections were initially referenced in this order:\n");
         for (h = 0, s = sections; s; h++, s = s->next)
-            nasm_debug("%i. %s\n", h, s->name);
+            nasm_debug(2, "%i. %s\n", h, s->name);
     }
 
     /* Assembly has completed, so now we need to generate the output file.
@@ -513,11 +483,11 @@ static void bin_cleanup(void)
     if (h)
         nasm_fatal("circular vfollows path detected");
 
-    if (debug_level(1)) {
-        nasm_debug("bin_cleanup: Confirm final section order for output file:\n");
+    if (debug_level(2)) {
+        nasm_debug(2, "bin_cleanup: Confirm final section order for output file:\n");
         for (h = 0, s = sections; s && (s->flags & TYPE_PROGBITS);
              h++, s = s->next)
-            nasm_debug("%i. %s\n", h, s->name);
+            nasm_debug(2, "%i. %s\n", h, s->name);
     }
 
     /* Step 5: Apply relocations. */
@@ -720,10 +690,9 @@ static void bin_cleanup(void)
     }
 }
 
-static void bin_out(int32_t segto, const void *data,
-		    enum out_type type, uint64_t size,
-                    int32_t segment, int32_t wrt)
+static void bin_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     uint8_t *p, mydata[8];
     struct Section *s;
 
@@ -973,8 +942,7 @@ static int bin_read_attribute(char **line, int *attribute,
     }
 
     /* Read and evaluate the expression. */
-    stdscan_reset();
-    stdscan_set(exp);
+    stdscan_reset(exp);
     tokval.t_type = TOKEN_INVALID;
     e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
     if (e) {
@@ -1267,81 +1235,83 @@ bin_directive(enum directive directive, char *args)
 {
     switch (directive) {
     case D_ORG:
-    {
-        struct tokenval tokval;
-        uint64_t value;
-        expr *e;
+        if (args) {
+            struct tokenval tokval;
+            uint64_t value;
+            expr *e;
 
-        stdscan_reset();
-        stdscan_set(args);
-        tokval.t_type = TOKEN_INVALID;
-        e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
-        if (e) {
-            if (!is_really_simple(e))
-                nasm_nonfatal("org value must be a critical"
-                      " expression");
-            else {
+            stdscan_reset(args);
+            tokval.t_type = TOKEN_INVALID;
+            e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
+            if (!e) {
+                nasm_nonfatal("No or invalid offset specified"
+                              " in ORG directive.");
+                return DIRR_ERROR;
+            } else if (!is_really_simple(e)) {
+                nasm_nonfatal("ORG value must be a critical"
+                              " expression");
+                return DIRR_ERROR;
+            } else {
                 value = reloc_value(e);
                 /* Check for ORG redefinition. */
-                if (origin_defined && (value != origin))
+                if (origin_defined && (value != origin)) {
                     nasm_nonfatal("program origin redefined");
-                else {
+                    return DIRR_ERROR;
+                } else {
                     origin = value;
                     origin_defined = 1;
                 }
             }
-        } else
-            nasm_nonfatal("No or invalid offset specified"
-                          " in ORG directive.");
-        return DIRR_OK;
-    }
-    case D_MAP:
-    {
-    /* The 'map' directive allows the user to generate section
-     * and symbol information to stdout, stderr, or to a file. */
-	char *p;
-
-        if (!pass_first())
-            return DIRR_OK;
-        args += strspn(args, " \t");
-        while (*args) {
-            p = args;
-            args += strcspn(args, " \t");
-            if (*args != '\0')
-                *(args++) = '\0';
-            if (!nasm_stricmp(p, "all"))
-                map_control |=
-                    MAP_ORIGIN | MAP_SUMMARY | MAP_SECTIONS | MAP_SYMBOLS;
-            else if (!nasm_stricmp(p, "brief"))
-                map_control |= MAP_ORIGIN | MAP_SUMMARY;
-            else if (!nasm_stricmp(p, "sections"))
-                map_control |= MAP_ORIGIN | MAP_SUMMARY | MAP_SECTIONS;
-            else if (!nasm_stricmp(p, "segments"))
-                map_control |= MAP_ORIGIN | MAP_SUMMARY | MAP_SECTIONS;
-            else if (!nasm_stricmp(p, "symbols"))
-                map_control |= MAP_SYMBOLS;
-            else if (!rf) {
-                if (!nasm_stricmp(p, "stdout"))
-                    rf = stdout;
-                else if (!nasm_stricmp(p, "stderr"))
-                    rf = stderr;
-                else {          /* Must be a filename. */
-                    rf = nasm_open_write(p, NF_TEXT);
-                    if (!rf) {
-                        nasm_warn(WARN_OTHER, "unable to open map file `%s'", p);
-                        map_control = 0;
-                        return DIRR_OK;
-                    }
-                }
-            } else
-                nasm_warn(WARN_OTHER, "map file already specified");
         }
-        if (map_control == 0)
-            map_control |= MAP_ORIGIN | MAP_SUMMARY;
-        if (!rf)
-            rf = stdout;
         return DIRR_OK;
-    }
+
+    case D_MAP:
+        /* The 'map' directive allows the user to generate section
+         * and symbol information to stdout, stderr, or to a file. */
+        if (args && pass_first()) {
+            char *p;
+
+            args += strspn(args, " \t");
+            while (*args) {
+                p = args;
+                args += strcspn(args, " \t");
+                if (*args != '\0')
+                    *(args++) = '\0';
+                if (!nasm_stricmp(p, "all"))
+                    map_control |=
+                        MAP_ORIGIN | MAP_SUMMARY | MAP_SECTIONS | MAP_SYMBOLS;
+                else if (!nasm_stricmp(p, "brief"))
+                    map_control |= MAP_ORIGIN | MAP_SUMMARY;
+                else if (!nasm_stricmp(p, "sections"))
+                    map_control |= MAP_ORIGIN | MAP_SUMMARY | MAP_SECTIONS;
+                else if (!nasm_stricmp(p, "segments"))
+                    map_control |= MAP_ORIGIN | MAP_SUMMARY | MAP_SECTIONS;
+                else if (!nasm_stricmp(p, "symbols"))
+                    map_control |= MAP_SYMBOLS;
+                else if (!rf) {
+                    if (!nasm_stricmp(p, "stdout"))
+                        rf = stdout;
+                    else if (!nasm_stricmp(p, "stderr"))
+                        rf = stderr;
+                    else {          /* Must be a filename. */
+                        rf = nasm_open_write(p, NF_TEXT);
+                        if (!rf) {
+                            nasm_nonfatal("unable to open map file `%s'", p);
+                            map_control = 0;
+                            return DIRR_OK;
+                        }
+                    }
+                } else {
+                    nasm_warn(WARN_OTHER, "map file already specified");
+                }
+            }
+            if (map_control == 0)
+                map_control |= MAP_ORIGIN | MAP_SUMMARY;
+            if (!rf)
+                rf = stdout;
+        }
+        return DIRR_OK;
+
     default:
 	return DIRR_UNKNOWN;
     }
@@ -1517,7 +1487,7 @@ static void write_srecord(unsigned int len,  unsigned int alen,
 	csum += dptr[i];
     csum = 0xff-csum;
 
-    p += sprintf(p, "S%c%02X%0*X", type, len+alen+1, alen*2, addr);
+    p += sprintf(p, "S%c%02X%0*"PRIX32, type, len+alen+1, alen*2, addr);
     for (i = 0; i < len; i++)
 	p += sprintf(p, "%02X", dptr[i]);
     p += sprintf(p, "%02X\n", csum);
@@ -1608,7 +1578,6 @@ const struct ofmt of_bin = {
     bin_stdmac,
     bin_init,
     null_reset,
-    nasm_do_legacy_output,
     bin_out,
     bin_deflabel,
     bin_secname,
@@ -1631,7 +1600,6 @@ const struct ofmt of_ith = {
     bin_stdmac,
     ith_init,
     null_reset,
-    nasm_do_legacy_output,
     bin_out,
     bin_deflabel,
     bin_secname,
@@ -1654,7 +1622,6 @@ const struct ofmt of_srec = {
     bin_stdmac,
     srec_init,
     null_reset,
-    nasm_do_legacy_output,
     bin_out,
     bin_deflabel,
     bin_secname,

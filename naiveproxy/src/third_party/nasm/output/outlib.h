@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 1996-2020 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 #ifndef NASM_OUTLIB_H
 #define NASM_OUTLIB_H
@@ -62,8 +32,17 @@ void null_debug_output(int type, void *param);
 void null_debug_cleanup(void);
 extern const struct dfmt * const null_debug_arr[2];
 
-/* Wrapper for unported backends */
-void nasm_do_legacy_output(const struct out_data *data);
+/*
+ * This macro expands the legacy output information into separate
+ * variables, to make gradual porting of backends easier.
+ */
+#define OUT_LEGACY(_out,_segto,_data,_type,_size,_segment,_wrt)       \
+    int32_t _segto      = (_out)->loc.segment;                        \
+    const void *_data   = (_out)->legacy.data;                        \
+    enum out_type _type = (_out)->legacy.type;                        \
+    uint64_t _size      = (_out)->legacy.size;                        \
+    int32_t _segment    = (_out)->legacy.tsegment;                    \
+    int32_t _wrt        = (_out)->legacy.twrt
 
 /*
  * Common routines for tasks that really should migrate into the core.
@@ -164,7 +143,7 @@ struct ol_loc {
 struct ol_sym {
     uint32_t flags;             /* Section/symbol flags */
     uint32_t size;              /* Size value (for backend) */
-    struct ol_sym *next;       	/* Next symbol in declared order */
+    struct ol_sym *next;        /* Next symbol in declared order */
     const char *name;           /* Symbol name */
     struct ol_symlist syml;     /* Section-local symbol list */
     struct ol_symlist symg;     /* Section-local global symbol list */

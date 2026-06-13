@@ -447,7 +447,7 @@ int HttpProxyServerSocket::DoHeaderWrite() {
   next_state_ = STATE_HEADER_WRITE_COMPLETE;
 
   // Adds padding.
-  size_t padding_size = base::RandInt(kMinPaddingSize, kMaxPaddingSize);
+  size_t padding_size = base::RandIntInclusive(kMinPaddingSize, kMaxPaddingSize);
   header_write_size_ = kResponseHeaderSize + padding_size + 4;
   handshake_buf_ = base::MakeRefCounted<IOBufferWithSize>(header_write_size_);
   base::span<uint8_t> handshake = handshake_buf_->span();

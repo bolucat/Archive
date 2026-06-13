@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.31
+
+* Fixes and improvements
+
 #### 1.14.0-alpha.30
 
 * Introducing sing-box API service **1**
@@ -16,16 +20,7 @@ server for observing and controlling the running sing-box instance,
 exposing the same interface the graphical clients use locally: service
 status, logs, outbound groups (selection and URL tests), Clash mode,
 connection tracking, and tools such as network quality tests, STUN
-tests, and Tailscale operations. The server also accepts
-[gRPC-Web](https://github.com/grpc/grpc/blob/master/doc/PROTOCOL-WEB.md)
-requests, including the WebSocket transport of
-[@improbable-eng/grpc-web](https://github.com/improbable-eng/grpc-web)
-for bidirectional streaming methods, so browsers can connect directly.
-Clients authenticate via the
-[`secret`](/configuration/service/api/#secret) field; TLS and CORS
-options are available. Connection tracking and Clash mode methods
-require the [Clash API](/configuration/experimental/clash-api/) to be
-configured.
+tests, and Tailscale operations.
 
 **2**:
 

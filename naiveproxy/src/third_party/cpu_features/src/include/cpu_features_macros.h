@@ -83,12 +83,20 @@
 #define CPU_FEATURES_ARCH_RISCV128
 #endif
 
+#if defined(__loongarch64)
+#define CPU_FEATURES_ARCH_LOONGARCH
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////
 // Os
 ////////////////////////////////////////////////////////////////////////////////
 
 #if (defined(__freebsd__) || defined(__FreeBSD__))
 #define CPU_FEATURES_OS_FREEBSD
+#endif
+
+#if defined(__OpenBSD__)
+#define CPU_FEATURES_OS_OPENBSD
 #endif
 
 #if defined(__ANDROID__)
@@ -231,11 +239,13 @@
 #endif  // defined(CPU_FEATURES_ARCH_X86)
 
 #if defined(CPU_FEATURES_ARCH_ANY_ARM)
-#if defined(__ARM_NEON__)
+// Note: MSVC targeting ARM does not define `__ARM_NEON` but Windows on ARM
+// requires it. In that case we force NEON detection.
+#if defined(__ARM_NEON) || defined(CPU_FEATURES_COMPILER_MSC)
 #define CPU_FEATURES_COMPILED_ANY_ARM_NEON 1
 #else
 #define CPU_FEATURES_COMPILED_ANY_ARM_NEON 0
-#endif  //  defined(__ARM_NEON__)
+#endif  //  defined(__ARM_NEON) || defined(CPU_FEATURES_COMPILER_MSC)
 #endif  //  defined(CPU_FEATURES_ARCH_ANY_ARM)
 
 #if defined(CPU_FEATURES_ARCH_MIPS)

@@ -1,11 +1,11 @@
 # -*- makefile -*-
+# SPDX-License-Identifier: BSD-2-Clause
+# Copyright 1996-2025 The NASM Authors - All Rights Reserved
 #
 # Makefile for building NASM using Microsoft Visual C++ and NMAKE.
-# Tested on Microsoft Visual C++ 2005 Express Edition.
+# Last tested on Visual Studio 2022 Community Edition.
 #
-# Make sure to put the appropriate directories in your PATH, in
-# the case of MSVC++ 2005, they are ...\VC\bin and ...\Common7\IDE.
-#
+# Make sure to have the proper directories in your path.
 # This is typically done by opening the Visual Studio Command Prompt.
 #
 
@@ -18,39 +18,49 @@ exec_prefix	= $(prefix)
 bindir		= $(prefix)/bin
 mandir		= $(prefix)/man
 
-MANIFEST_FLAGS  = /MANIFEST:EMBED /MANIFESTFILE:$(MANIFEST)
+MANIFEST_FLAGS  = /manifest:embed /manifestfile:$(MANIFEST)
 
 !IF "$(DEBUG)" == "1"
-CFLAGS		= /Od /Zi
-LDFLAGS		= /DEBUG
+OPTFLAGS	= /Od
+LDFLAGS		= /debug
 !ELSE
-CFLAGS		= /O2 /Zi
+OPTFLAGS	= /O2
  # /OPT:REF and /OPT:ICF two undo /DEBUG harm
-LDFLAGS		= /DEBUG /OPT:REF /OPT:ICF
+LDFLAGS		= /debug /opt:ref /opt:icf
 !ENDIF
 
 CC		= cl
 AR		= lib
+ARFLAGS		= /nologo
+
+CFLAGS		= $(OPTFLAGS) /Zi /nologo /std:c11 /bigobj
 BUILD_CFLAGS	= $(CFLAGS) /W2
 INTERNAL_CFLAGS = /I$(srcdir) /I. \
 		  /I$(srcdir)/include /I./include \
 		  /I$(srcdir)/x86 /I./x86 \
 		  /I$(srcdir)/asm /I./asm \
 		  /I$(srcdir)/disasm /I./disasm \
-		  /I$(srcdir)/output /I./output
+		  /I$(srcdir)/output /I./output \
+		  /I$(srcdir)/zlib
 ALL_CFLAGS	= $(BUILD_CFLAGS) $(INTERNAL_CFLAGS)
-MANIFEST_FLAGS  = /MANIFEST:EMBED /MANIFESTINPUT:$(MANIFEST)
-ALL_LDFLAGS	= /link $(LDFLAGS) $(MANIFEST_FLAGS) /SUBSYSTEM:CONSOLE /RELEASE
+MANIFEST_FLAGS  = /manifest:embed /manifestinput:$(MANIFEST)
+ALL_LDFLAGS	= /link $(LDFLAGS) $(MANIFEST_FLAGS) /subsystem:console /release
 LIBS		=
 
 PERL		= perl
 PERLFLAGS	= -I$(srcdir)/perllib -I$(srcdir)
+!IF [$(PERL) $(PERLFLAGS) -e "exit 0;"] == 0
 RUNPERL         = $(PERL) $(PERLFLAGS)
+!ELSE
+RUNPERL         = :
+!ENDIF
 
 MAKENSIS        = makensis
 
-RM_F		= -del /f
-LN_S		= copy
+RM_F		= -del /s /f /q
+LN_S		= copy /y
+EMPTY		= copy /y nul:
+SIDE		= @rem Created by side effect
 
 # Binary suffixes
 O               = obj
@@ -60,9 +70,13 @@ X               = .exe
 .SUFFIXES: $(X) .$(A) .obj .c .i .s .1 .man
 
 .c.obj:
-	$(CC) /c $(ALL_CFLAGS) /Fo$@ $<
+	$(CC) /c $(ALL_CFLAGS) /Fo:$@ $<
 
 MANIFEST = win/manifest.xml
+
+DIRS =
+
+ZLIB    = $(ZLIBOBJ)
 
 #-- Begin File Lists --#
 # Edit in Makefile.in, not here!
@@ -72,17 +86,62 @@ NDISASM = disasm\ndisasm.obj
 PROGOBJ = $(NASM) $(NDISASM)
 PROGS   = nasm$(X) ndisasm$(X)
 
-LIBOBJ_NW = stdlib\snprintf.obj stdlib\vsnprintf.obj stdlib\strlcpy.obj \
+# Files dependent on warnings.dat
+WARNOBJ   = asm\warnings.obj
+WARNFILES = asm\warnings_c.h include\warnings.h doc\warnings.src
+
+OUTPUTOBJ = \
+	output\outform.obj output\outlib.obj \
+	output\nulldbg.obj output\nullout.obj \
+	output\outbin.obj output\outaout.obj output\outcoff.obj \
+	output\outelf.obj \
+	output\outobj.obj output\outas86.obj \
+	output\outdbg.obj output\outieee.obj output\outmacho.obj \
+	output\codeview.obj
+
+# The source files for these objects are scanned for warnings
+LIBOBJ_W = \
+	nasmlib\readnum.obj \
+	\
+	asm\error.obj \
+	asm\floats.obj \
+	asm\directiv.obj \
+	asm\pragma.obj \
+	asm\assemble.obj asm\labels.obj asm\parser.obj \
+	asm\preproc.obj asm\quote.obj \
+	asm\listing.obj asm\eval.obj asm\exprlib.obj asm\exprdump.obj \
+	asm\stdscan.obj \
+	asm\getbool.obj \
+	asm\strfunc.obj \
+	asm\segalloc.obj \
+	asm\rdstrnum.obj \
+	asm\srcfile.obj \
+	\
+	$(OUTPUTOBJ)
+
+# The source files for these objects are NOT scanned for warnings;
+# normally this will include all generated files.
+# It is entirely possible that it may be necessary to move some of these
+# files to LIBOBJ_W, notably $(OUTPUTOBJ)
+LIBOBJ_NW = \
+	stdlib\snprintf.obj stdlib\vsnprintf.obj stdlib\strlcpy.obj \
 	stdlib\strnlen.obj stdlib\strrchrnul.obj \
 	\
+	asm\directbl.obj \
+	asm\pptok.obj \
+	asm\tokhash.obj \
+	asm\uncompress.obj \
+	\
+	macros\macros.obj \
+	\
 	nasmlib\ver.obj \
-	nasmlib\alloc.obj nasmlib\asprintf.obj nasmlib\errfile.obj \
-	nasmlib\crc32.obj nasmlib\crc64.obj nasmlib\md5c.obj \
+	nasmlib\alloc.obj nasmlib\asprintf.obj \
+	nasmlib\crc32b.obj nasmlib\crc64.obj nasmlib\md5c.obj \
 	nasmlib\string.obj nasmlib\nctype.obj \
 	nasmlib\file.obj nasmlib\mmap.obj nasmlib\ilog2.obj \
 	nasmlib\realpath.obj nasmlib\path.obj \
 	nasmlib\filename.obj nasmlib\rlimit.obj \
-	nasmlib\readnum.obj nasmlib\numstr.obj \
+	nasmlib\numstr.obj \
 	nasmlib\zerobuf.obj nasmlib\bsi.obj \
 	nasmlib\rbtree.obj nasmlib\hashtbl.obj \
 	nasmlib\raa.obj nasmlib\saa.obj \
@@ -91,64 +150,62 @@ LIBOBJ_NW = stdlib\snprintf.obj stdlib\vsnprintf.obj stdlib\strlcpy.obj \
 	\
 	common\common.obj \
 	\
-	x86\insnsa.obj x86\insnsb.obj x86\insnsd.obj x86\insnsn.obj \
-	x86\regs.obj x86\regvals.obj x86\regflags.obj x86\regdis.obj \
-	x86\disp8.obj x86\iflag.obj \
+	x86\insnsa.obj x86\insnsb.obj x86\insnsn.obj \
+	x86\regs.obj x86\regvals.obj x86\regflags.obj \
+	x86\iflag.obj \
 	\
-	asm\error.obj \
-	asm\floats.obj \
-	asm\directiv.obj asm\directbl.obj \
-	asm\pragma.obj \
-	asm\assemble.obj asm\labels.obj asm\parser.obj \
-	asm\preproc.obj asm\quote.obj asm\pptok.obj \
-	asm\listing.obj asm\eval.obj asm\exprlib.obj asm\exprdump.obj \
-	asm\stdscan.obj \
-	asm\strfunc.obj asm\tokhash.obj \
-	asm\segalloc.obj \
-	asm\rdstrnum.obj \
-	asm\srcfile.obj \
-	macros\macros.obj \
-	\
-	output\outform.obj output\outlib.obj output\legacy.obj \
-	output\nulldbg.obj output\nullout.obj \
-	output\outbin.obj output\outaout.obj output\outcoff.obj \
-	output\outelf.obj \
-	output\outobj.obj output\outas86.obj \
-	output\outdbg.obj output\outieee.obj output\outmacho.obj \
-	output\codeview.obj \
-	\
-	disasm\disasm.obj disasm\sync.obj
+	$(WARNOBJ)
 
-# Warnings depend on all source files, so handle them separately
-WARNOBJ   = asm\warnings.obj
-WARNFILES = asm\warnings_c.h include\warnings.h doc\warnings.src
+# Objects which are only used for the disassembler
+LIBOBJ_DIS = \
+	disasm\disasm.obj disasm\sync.obj disasm\prefix.obj \
+	\
+	x86\insnsd.obj x86\regdis.obj
 
-LIBOBJ    = $(LIBOBJ_NW) $(WARNOBJ)
-ALLOBJ_NW = $(PROGOBJ) $(LIBOBJ_NW)
+# Objects for the local copy of zlib. The variable ZLIB is set to
+# $(ZLIBOBJ) if the internal version of zlib should be used.
+ZLIBOBJ = \
+	zlib\adler32.obj \
+	zlib\crc32.obj \
+	zlib\infback.obj \
+	zlib\inffast.obj \
+	zlib\inflate.obj \
+	zlib\inftrees.obj \
+	zlib\zutil.obj
+
+LIBOBJ    = $(LIBOBJ_W) $(LIBOBJ_NW) $(ZLIB)
+ALLOBJ_W  = $(NASM) $(LIBOBJ_W)
 ALLOBJ    = $(PROGOBJ) $(LIBOBJ)
-
 SUBDIRS  = stdlib nasmlib include config output asm disasm x86 \
-	   common macros
-XSUBDIRS = test doc nsis win
+	   common zlib macros misc
+XSUBDIRS = nsis win test doc editors
 DEPDIRS  = . $(SUBDIRS)
+
+EDITORS  = editors\nasmtok.el editors\nasmtok.json
+
 #-- End File Lists --#
 
 NASMLIB = libnasm.$(A)
+NDISLIB = libndis.$(A)
 
 all: nasm$(X) ndisasm$(X)
 
 nasm$(X): $(NASM) $(MANIFEST) $(NASMLIB)
-	$(CC) /Fe$@ $(NASM) $(ALL_LDFLAGS) $(NASMLIB) $(LIBS)
+	$(CC) /Fe:$@ $(ALL_CFLAGS) $(NASM) $(NASMLIB) $(LIBS) \
+		$(ALL_LDFLAGS)
 
-ndisasm$(X): $(NDISASM) $(MANIFEST) $(NASMLIB)
-	$(CC) /Fe$@ $(NDISASM) $(ALL_LDFLAGS) $(NASMLIB) $(LIBS)
+ndisasm$(X): $(NDISASM) $(MANIFEST) $(NDISLIB) $(NASMLIB)
+	$(CC) /Fe:$@ $(ALL_CFLAGS) $(NDISASM) $(NDISLIB) $(NASMLIB) $(LIBS) \
+		$(ALL_LDFLAGS)
 
 $(NASMLIB): $(LIBOBJ)
-	$(AR) $(ARFLAGS) /OUT:$@ $**
+	$(AR) $(ARFLAGS) /out:$@ $**
+
+$(NDISLIB): $(LIBOBJ_DIS)
+	$(AR) $(ARFLAGS) /out:$@ $**
 
 # These are specific to certain Makefile syntaxes...
-WARNTIMES = $(patsubst %,%.time,$(WARNFILES))
-WARNSRCS  = $(patsubst %.obj,%.c,$(LIBOBJ_NW))
+WARNSRCS  = $(LIBOBJ_NW:.c=.obj)
 
 #-- Begin Generated File Rules --#
 # Edit in Makefile.in, not here!
@@ -166,40 +223,36 @@ PERLREQ_CLEANABLE = \
 	  macros\macros.c \
 	  asm\pptok.ph asm\directbl.c asm\directiv.h \
 	  $(WARNFILES) \
-	  misc\nasmtok.el \
 	  version.h version.mac version.mak nsis\version.nsh
 
-# Special hack to keep config\unconfig.h from getting deleted
-# by "make spotless"...
-PERLREQ = config\unconfig.h $(PERLREQ_CLEANABLE)
+PERLREQ = $(PERLREQ_CLEANABLE)
 
-INSDEP = x86\insns.dat x86\insns.pl x86\insns-iflags.ph x86\iflags.ph
+INSDEP = x86\insns.xda x86\insns.pl x86\insns-iflags.ph x86\iflags.ph
 
-config\unconfig.h: config\config.h.in autoconf\unconfig.pl
-	$(RUNPERL) '$(srcdir)'\autoconf\unconfig.pl \
-		'$(srcdir)' config\config.h.in config\unconfig.h
+x86\insns.xda: x86\insns.dat x86\preinsns.pl $(DIRS)
+	$(RUNPERL) $(srcdir)\x86\preinsns.pl $(srcdir)\x86\insns.dat $@
 
 x86\iflag.c: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -fc \
-		$(srcdir)\x86\insns.dat x86\iflag.c
+		x86\insns.xda x86\iflag.c
 x86\iflaggen.h: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -fh \
-		$(srcdir)\x86\insns.dat x86\iflaggen.h
+		x86\insns.xda x86\iflaggen.h
 x86\insnsb.c: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -b \
-		$(srcdir)\x86\insns.dat x86\insnsb.c
+		x86\insns.xda x86\insnsb.c
 x86\insnsa.c: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -a \
-		$(srcdir)\x86\insns.dat x86\insnsa.c
+		x86\insns.xda x86\insnsa.c
 x86\insnsd.c: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -d \
-		$(srcdir)\x86\insns.dat x86\insnsd.c
+		x86\insns.xda x86\insnsd.c
 x86\insnsi.h: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -i \
-		$(srcdir)\x86\insns.dat x86\insnsi.h
+		x86\insns.xda x86\insnsi.h
 x86\insnsn.c: $(INSDEP)
 	$(RUNPERL) $(srcdir)\x86\insns.pl -n \
-		$(srcdir)\x86\insns.dat x86\insnsn.c
+		x86\insns.xda x86\insnsn.c
 
 # These files contains all the standard macros that are derived from
 # the version number.
@@ -211,7 +264,7 @@ version.sed: version version.pl
 	$(RUNPERL) $(srcdir)\version.pl sed < $(srcdir)\version > version.sed
 version.mak: version version.pl
 	$(RUNPERL) $(srcdir)\version.pl make < $(srcdir)\version > version.mak
-nsis\version.nsh: version version.pl
+nsis\version.nsh: version version.pl $(DIRS)
 	$(RUNPERL) $(srcdir)\version.pl nsis < $(srcdir)\version > nsis\version.nsh
 
 # This source file is generated from the standard macros file
@@ -243,50 +296,16 @@ x86\regs.h: x86\regs.dat x86\regs.pl
 	$(RUNPERL) $(srcdir)\x86\regs.pl h \
 		$(srcdir)\x86\regs.dat > x86\regs.h
 
-# Extract warnings from source code. This is done automatically if any
-# C files have changed; the script is fast enough that that is
-# reasonable, but doesn't update the time stamp if the files aren't
-# changed, to avoid rebuilding everything every time. Track the actual
-# dependency by the empty file asm\warnings.time.
-.PHONY: warnings
-warnings: dirs
-	$(RM_F) $(WARNFILES) $(WARNTIMES) asm\warnings.time
-	$(MAKE) asm\warnings.time
-
-asm\warnings.time: $(WARNSRCS) asm\warnings.pl
-	$(EMPTY) asm\warnings.time
-	$(MAKE) $(WARNTIMES)
-
-asm\warnings_c.h.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl c asm\warnings_c.h $(srcdir)
-	$(EMPTY) asm\warnings_c.h.time
-
-asm\warnings_c.h: asm\warnings_c.h.time
-	@: Side effect
-
-include\warnings.h.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl h include\warnings.h $(srcdir)
-	$(EMPTY) include\warnings.h.time
-
-include\warnings.h: include\warnings.h.time
-	@: Side effect
-
-doc\warnings.src.time: asm\warnings.pl asm\warnings.time
-	$(RUNPERL) $(srcdir)\asm\warnings.pl doc doc\warnings.src $(srcdir)
-	$(EMPTY) doc\warnings.src.time
-
-doc\warnings.src : doc\warnings.src.time
-	@: Side effect
 
 # Assembler token hash
-asm\tokhash.c: x86\insns.dat x86\insnsn.c asm\tokens.dat asm\tokhash.pl \
+asm\tokhash.c: x86\insns.xda x86\insnsn.c asm\tokens.dat asm\tokhash.pl \
 	perllib\phash.ph
 	$(RUNPERL) $(srcdir)\asm\tokhash.pl c \
 		x86\insnsn.c $(srcdir)\x86\regs.dat \
 		$(srcdir)\asm\tokens.dat > asm\tokhash.c
 
 # Assembler token metadata
-asm\tokens.h: x86\insns.dat x86\insnsn.c asm\tokens.dat asm\tokhash.pl \
+asm\tokens.h: x86\insns.xda x86\insnsn.c asm\tokens.dat asm\tokhash.pl \
 	perllib\phash.ph
 	$(RUNPERL) $(srcdir)\asm\tokhash.pl h \
 		x86\insnsn.c $(srcdir)\x86\regs.dat \
@@ -302,6 +321,9 @@ asm\pptok.c: asm\pptok.dat asm\pptok.pl perllib\phash.ph
 asm\pptok.ph: asm\pptok.dat asm\pptok.pl perllib\phash.ph
 	$(RUNPERL) $(srcdir)\asm\pptok.pl ph \
 		$(srcdir)\asm\pptok.dat asm\pptok.ph
+doc\pptok.src: asm\pptok.dat asm\pptok.pl perllib\phash.ph
+	$(RUNPERL) $(srcdir)\asm\pptok.pl src \
+		$(srcdir)\asm\pptok.dat doc\pptok.src
 
 # Directives hash
 asm\directiv.h: asm\directiv.dat nasmlib\perfhash.pl perllib\phash.ph
@@ -311,10 +333,36 @@ asm\directbl.c: asm\directiv.dat nasmlib\perfhash.pl perllib\phash.ph
 	$(RUNPERL) $(srcdir)\nasmlib\perfhash.pl c \
 		$(srcdir)\asm\directiv.dat asm\directbl.c
 
-# Emacs token files
-misc\nasmtok.el: misc\emacstbl.pl asm\tokhash.c asm\pptok.c \
-		 asm\directiv.dat version
-	$(RUNPERL) $< $@ "$(srcdir)" "$(objdir)"
+# Editor token files
+editors\nasmtok.el: editors\nasmtok.pl asm\tokhash.c asm\pptok.c \
+		 asm\directiv.dat macros\macros.c editors\builtin.mac \
+		 version.mak
+	$(RUNPERL) $(srcdir)\editors\nasmtok.pl -el $@ $(srcdir) $(objdir)
+
+editors\nasmtok.json: editors\nasmtok.pl asm\tokhash.c asm\pptok.c \
+		 asm\directiv.dat macros\macros.c editors\builtin.mac \
+		 version.mak
+	$(RUNPERL) $(srcdir)\editors\nasmtok.pl -json $@ $(srcdir) $(objdir)
+
+editors: $(EDITORS) $(PHONY)
+
+asm\warnings_c.h: asm\warnings.pl asm\warnings.dat
+	$(RUNPERL) $(srcdir)\asm\warnings.pl c asm\warnings_c.h \
+		$(srcdir)\asm\warnings.dat
+
+include\warnings.h: asm\warnings.pl asm\warnings.dat
+	$(RUNPERL) $(srcdir)\asm\warnings.pl h include\warnings.h \
+		$(srcdir)\asm\warnings.dat
+
+doc\warnings.src: asm\warnings.pl asm\warnings.dat
+	$(RUNPERL) $(srcdir)\asm\warnings.pl doc doc\warnings.src \
+		$(srcdir)\asm\warnings.dat
+
+$(PERLREQ): $(DIRS)
+
+perlreq: $(PERLREQ) $(PHONY)
+
+warnings: $(WARNFILES) $(PHONY)
 
 #-- End Generated File Rules --#
 
@@ -323,14 +371,15 @@ perlreq: $(PERLREQ)
 #-- Begin NSIS Rules --#
 # Edit in Makefile.in, not here!
 
-nsis\arch.nsh: nsis\getpearch.pl nasm$(X)
+nsis\arch.nsh: nsis\getpearch.pl nasm$(X) $(DIRS)
 	$(PERL) $(srcdir)\nsis\getpearch.pl nasm$(X) > nsis\arch.nsh
 
 # Should only be done after "make everything".
 # The use of redirection here keeps makensis from moving the cwd to the
 # source directory.
 nsis: nsis\nasm.nsi nsis\arch.nsh nsis\version.nsh
-	$(MAKENSIS) -Dsrcdir="$(srcdir)" -Dobjdir="$(objdir)" - < nsis\nasm.nsi
+	$(MAKENSIS) -Dsrcdir=$(srcdir) -Dobjdir=$(objdir) - \
+		< $(srcdir)\nsis\nasm.nsi
 
 #-- End NSIS Rules --#
 

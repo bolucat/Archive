@@ -59,6 +59,7 @@ config("nasm_config") {
     "include",
     "output",
     "x86",
+    "zlib",
   ]
 
   defines = [ "HAVE_CONFIG_H" ]

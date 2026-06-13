@@ -1,62 +1,39 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2024 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * error.c - error message handling routines for the assembler
  */
 
 #include "compiler.h"
-
-
 #include "nasmlib.h"
 #include "error.h"
 
+unsigned int debug_nasm;        /* Debugging messages? */
+unsigned int opt_verbose_info;  /* Informational messages? */
+
 /* Common function body */
 #define nasm_do_error(_sev,_flags)				\
-	va_list ap;						\
-        va_start(ap, fmt);					\
-	if ((_sev) >= ERR_CRITICAL)				\
-		nasm_verror_critical((_sev)|(_flags), fmt, ap);	\
-	else							\
-		nasm_verror((_sev)|(_flags), fmt, ap);		\
-	va_end(ap);						\
-	if ((_sev) >= ERR_FATAL)                                \
-		abort();
+    do {                                                        \
+        va_list ap;                                             \
+        va_start(ap, fmt);                                      \
+        if ((_sev) >= ERR_CRITICAL)                             \
+            nasm_verror_critical((_sev)|(_flags), fmt, ap);     \
+        else							\
+            nasm_verror((_sev)|(_flags), fmt, ap);              \
+        va_end(ap);                                             \
+        if ((_sev) >= ERR_FATAL)                                \
+            abort();                                            \
+    } while (0)
 
-
-void nasm_error(errflags severity, const char *fmt, ...)
+/*
+ * This is the generic function to use when the error type is not
+ * known a priori. For ERR_DEBUG and ERR_INFO the level can be
+ * included by
+ */
+void nasm_error(errflags flags, const char *fmt, ...)
 {
-	nasm_do_error(severity & ERR_MASK, severity & ~ERR_MASK);
+    nasm_do_error(flags & ERR_MASK, flags);
 }
 
 #define nasm_err_helpers(_type, _name, _sev)				\
@@ -71,8 +48,6 @@ _type nasm_ ## _name (const char *fmt, ...)				\
 
 nasm_err_helpers(void,       listmsg,  ERR_LISTMSG)
 nasm_err_helpers(void,       note,     ERR_NOTE)
-nasm_err_helpers(void,       debug,    ERR_DEBUG)
-nasm_err_helpers(void,       info,     ERR_INFO)
 nasm_err_helpers(void,       nonfatal, ERR_NONFATAL)
 nasm_err_helpers(fatal_func, fatal,    ERR_FATAL)
 nasm_err_helpers(fatal_func, critical, ERR_CRITICAL)
@@ -88,17 +63,39 @@ nasm_err_helpers(fatal_func, panic,    ERR_PANIC)
  */
 void nasm_warn_(errflags flags, const char *fmt, ...)
 {
-	nasm_do_error(ERR_WARNING, flags);
+    nasm_do_error(ERR_WARNING, flags);
 }
 
-fatal_func nasm_panic_from_macro(const char *file, int line)
+/*
+ * nasm_info() and nasm_debug() takes mandatory enabling levels.
+ */
+void nasm_info_(unsigned int level, const char *fmt, ...)
 {
-	nasm_panic("internal error at %s:%d\n", file, line);
+    if (info_level(level))
+        nasm_do_error(ERR_INFO, LEVEL(level));
 }
 
-fatal_func nasm_assert_failed(const char *file, int line, const char *msg)
+void nasm_debug_(unsigned int level, const char *fmt, ...)
 {
-	nasm_panic("assertion %s failed at %s:%d", msg, file, line);
+    if (debug_level(level))
+        nasm_do_error(ERR_DEBUG, LEVEL(level));
+}
+
+fatal_func nasm_panic_from_macro(const char *func, const char *file, int line)
+{
+    if (!func)
+        func = "<unknown>";
+
+    nasm_panic("internal error in %s at %s:%d\n", func, file, line);
+}
+
+fatal_func nasm_assert_failed(const char *msg, const char *func,
+                              const char *file, int line)
+{
+    if (!func)
+        func = "<unknown>";
+
+    nasm_panic("assertion %s failed in %s at %s:%d", msg, func, file, line);
 }
 
 
@@ -131,12 +128,6 @@ void pop_warnings(void)
 
 	memcpy(warning_state, ws->state, sizeof warning_state);
 	if (!ws->next) {
-		/*!
-		 *!warn-stack-empty [on] warning stack empty
-		 *!  a \c{[WARNING POP]} directive was executed when
-		 *!  the warning stack is empty. This is treated
-		 *!  as a \c{[WARNING *all]} directive.
-		 */
 		nasm_warn(WARN_WARN_STACK_EMPTY, "warning stack empty");
 	} else {
 		warning_stack = ws->next;
@@ -171,15 +162,9 @@ void reset_warnings(void)
  * This is called when processing a -w or -W option, or a warning directive.
  * Returns ok if the action was successful.
  *
- * Special pseudo-warnings:
- *
- *!other [on] any warning not specifically mentioned above
- *!  specifies any warning not included in any specific warning class.
- *
- *!all [all] all possible warnings
- *!  is an group alias for \e{all} warning classes.  Thus, \c{-w+all}
- *!  enables all available warnings, and \c{-w-all} disables warnings
- *!  entirely (since NASM 2.13).
+ * Special pseudo-warnings (see warnings.dat):
+ * all   - all possible warnings
+ * other - any warning not specifically assigned a class
  */
 bool set_warning_status(const char *value)
 {
@@ -280,13 +265,37 @@ bool set_warning_status(const char *value)
         }
 
         if (!ok && value) {
-            /*!
-             *!unknown-warning [off] unknown warning in \c{-W}/\c{-w} or warning directive
-             *!  warns about a \c{-w} or \c{-W} option or a \c{[WARNING]} directive
-             *!  that contains an unknown warning name or is otherwise not possible to process.
-             */
             nasm_warn(WARN_UNKNOWN_WARNING, "unknown warning name: %s", value);
 	}
 
 	return ok;
+}
+
+/*
+ * The various error type prefixes
+ */
+const char *error_pfx(errflags severity)
+{
+    switch (severity & ERR_MASK) {
+    case ERR_LISTMSG:
+        return ";;; ";
+    case ERR_NOTE:
+        return "note: ";
+    case ERR_DEBUG:
+        return "debug: ";
+    case ERR_INFO:
+        return "info: ";
+    case ERR_WARNING:
+        return "warning: ";
+    case ERR_NONFATAL:
+        return "error: ";
+    case ERR_FATAL:
+        return "fatal: ";
+    case ERR_CRITICAL:
+        return "critical: ";
+    case ERR_PANIC:
+        return "panic: ";
+    default:
+        return "internal error: ";
+    }
 }

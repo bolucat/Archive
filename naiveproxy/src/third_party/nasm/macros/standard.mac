@@ -1,35 +1,5 @@
-;; --------------------------------------------------------------------------
-;;   
-;;   Copyright 1996-2019 The NASM Authors - All Rights Reserved
-;;   See the file AUTHORS included with the NASM distribution for
-;;   the specific copyright holders.
-;;
-;;   Redistribution and use in source and binary forms, with or without
-;;   modification, are permitted provided that the following
-;;   conditions are met:
-;;
-;;   * Redistributions of source code must retain the above copyright
-;;     notice, this list of conditions and the following disclaimer.
-;;   * Redistributions in binary form must reproduce the above
-;;     copyright notice, this list of conditions and the following
-;;     disclaimer in the documentation and/or other materials provided
-;;     with the distribution.
-;;
-;;     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-;;     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-;;     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-;;     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-;;     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-;;     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-;;     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-;;     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-;;     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-;;     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-;;     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-;;     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
-;;     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-;;
-;; --------------------------------------------------------------------------
+;; SPDX-License-Identifier: BSD-2-Clause
+;; Copyright 1996-2025 The NASM Authors - All Rights Reserved
 
 ; Standard macro set for NASM -*- nasm -*-
 
@@ -89,7 +59,10 @@ STD: nasm
 %imacro endstruc 0.nolist
         %{$strucname}_size equ ($-%$strucname)
     %pop
+    [warning push]
+    [warning -other]
     __?SECT?__
+    [warning pop]
 %endmacro
 
 %imacro istruc 1.nolist
@@ -241,11 +214,7 @@ STD: nasm
 %endmacro
 
 %imacro incbin 1-2+.nolist 0
-    %push
-        %pathsearch %$dep %1
-        %depend %$dep
-        %? %$dep,%2
-    %pop
+    %? %depend(%pathsearch(%1)),%2
 %endmacro
 
 ; Compatibility macro aliases
@@ -276,8 +245,9 @@ STD: nasm
 %defalias __PTR__             __?PTR?__
 %defalias __PASS__            __?PASS?__
 
-; Backwards compatibility aliases for tokens. The extra level of indirection here
-; means %aliases on|off will do the right thing for these as well.
+; Backwards compatibility aliases for tokens. The extra level of
+; indirection here means %aliases on|off will do the right thing for
+; these as well.
 %idefine __?infinity?__ %?
 %idefine __?nan?__ %?
 %idefine __?qnan?__ %?
@@ -329,3 +299,6 @@ STD: nasm
 %idefalias __ilog2w__ __?ilog2w?__
 %idefalias __ilog2f__ __?ilog2f?__
 %idefalias __ilog2c__ __?ilog2c?__
+
+; Declare that %ifdirective is supported
+%define __?NASM_HAS_IFDIRECTIVE?__ 1

@@ -441,7 +441,8 @@ static enum ssl_hs_wait_t do_start_connect(SSL_HANDSHAKE *hs) {
     hs->early_data_offered = true;
   }
 
-  if (!ssl_setup_pre_shared_keys(hs) ||
+  ssl_setup_client_certificate_type(hs);
+  if (!ssl_setup_pre_shared_keys(hs) ||  //
       !ssl_setup_key_shares(hs, /*override_group_id=*/0) ||
       !ssl_setup_extension_permutation(hs) ||
       !ssl_encrypt_client_hello(hs, Span(ech_enc, ech_enc_len)) ||
@@ -859,13 +860,26 @@ static enum ssl_hs_wait_t do_read_server_certificate(SSL_HANDSHAKE *hs) {
 
   CBS body = msg.body;
   uint8_t alert = SSL_AD_DECODE_ERROR;
-  if (!ssl_parse_cert_chain(&alert, &hs->new_session->certs, &hs->peer_pubkey,
-                            nullptr, &body, ssl->ctx->pool)) {
+
+  bool parse_ok;
+  if (hs->peer_cert_type == TLSEXT_cert_type_rpk) {
+    hs->new_session->peer_cert_type = TLSEXT_cert_type_rpk;
+    parse_ok = ssl_parse_rpk_cert(&alert, &hs->new_session->peer_raw_public_key,
+                                  &hs->peer_pubkey, nullptr, &body);
+  } else {
+    assert(hs->new_session->peer_cert_type == TLSEXT_cert_type_x509);
+    hs->new_session->peer_cert_type = TLSEXT_cert_type_x509;
+    parse_ok =
+        ssl_parse_cert_chain(&alert, &hs->new_session->certs, &hs->peer_pubkey,
+                             nullptr, &body, ssl->ctx->pool.get());
+  }
+
+  if (!parse_ok) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, alert);
     return ssl_hs_error;
   }
 
-  if (sk_CRYPTO_BUFFER_num(hs->new_session->certs.get()) == 0 ||
+  if (!ssl_session_has_peer_cred(hs->new_session.get()) ||
       CBS_len(&body) != 0 ||
       !ssl->ctx->x509_method->session_cache_objects(hs->new_session.get())) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
@@ -923,7 +937,7 @@ static enum ssl_hs_wait_t do_read_certificate_status(SSL_HANDSHAKE *hs) {
   }
 
   hs->new_session->ocsp_response.reset(
-      CRYPTO_BUFFER_new_from_CBS(&ocsp_response, ssl->ctx->pool));
+      CRYPTO_BUFFER_new_from_CBS(&ocsp_response, ssl->ctx->pool.get()));
   if (hs->new_session->ocsp_response == nullptr) {
     ssl_send_alert(ssl, SSL3_AL_FATAL, SSL_AD_INTERNAL_ERROR);
     return ssl_hs_error;
@@ -1250,9 +1264,15 @@ static enum ssl_hs_wait_t do_read_server_hello_done(SSL_HANDSHAKE *hs) {
   return ssl_hs_ok;
 }
 
-static bool check_credential(SSL_HANDSHAKE *hs, const SSL_CREDENTIAL *cred,
+static bool check_credential(SSL_HANDSHAKE *hs, const SSLCredential *cred,
                              uint16_t *out_sigalg) {
-  if (cred->type != SSLCredentialType::kX509) {
+  bool cert_type_ok = false;
+  if (hs->client_cert_type == TLSEXT_cert_type_x509) {
+    cert_type_ok = cred->type == SSLCredentialType::kX509;
+  } else if (hs->client_cert_type == TLSEXT_cert_type_rpk) {
+    cert_type_ok = cred->type == SSLCredentialType::kRawPublicKey;
+  }
+  if (!cert_type_ok) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_UNKNOWN_CERTIFICATE_TYPE);
     return false;
   }
@@ -1312,14 +1332,14 @@ static enum ssl_hs_wait_t do_send_client_certificate(SSL_HANDSHAKE *hs) {
     }
   }
 
-  Array<SSL_CREDENTIAL *> creds;
+  Array<SSLCredential *> creds;
   if (!ssl_get_full_credential_list(hs, &creds)) {
     return ssl_hs_error;
   }
 
   // Select the credential, if any, to use.
   bool may_proceed_anonymously = true;
-  for (SSL_CREDENTIAL *cred : creds) {
+  for (SSLCredential *cred : creds) {
     if (!cred->UsesPrivateKey()) {
       // Non-certificate credentials (e.g. PSKs) do not participate in deciding
       // whether to error or proceed anonymously.
@@ -1373,7 +1393,8 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
   Array<uint8_t> pms;
   uint32_t alg_k = hs->new_cipher->algorithm_mkey;
   uint32_t alg_a = hs->new_cipher->algorithm_auth;
-  if (ssl_cipher_uses_certificate_auth(hs->new_cipher)) {
+  if (ssl_cipher_uses_certificate_auth(hs->new_cipher) &&
+      hs->new_session->peer_cert_type == TLSEXT_cert_type_x509) {
     const CRYPTO_BUFFER *leaf =
         sk_CRYPTO_BUFFER_value(hs->new_session->certs.get(), 0);
     CBS leaf_cbs;
@@ -1384,6 +1405,8 @@ static enum ssl_hs_wait_t do_send_client_key_exchange(SSL_HANDSHAKE *hs) {
     // certificates, which we do not support, from ECDSA certificates.
     // Historically, we have not checked RSA key usages, so it is controlled by
     // a flag for now. See https://crbug.com/795089.
+    // Key usage is only checked for X.509 certs. (RPKs have no keyUsage to
+    // enforce.)
     ssl_key_usage_t intended_use = (alg_k & SSL_kRSA)
                                        ? key_usage_encipherment
                                        : key_usage_digital_signature;

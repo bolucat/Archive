@@ -70,7 +70,6 @@ bssl_enum! {
 
 bitflags::bitflags! {
     /// Flags for X.509 certificate verification.
-    #[repr(transparent)]
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub struct VerificationFlags: c_ulong {
         /// Use check time.
@@ -106,7 +105,6 @@ bitflags::bitflags! {
 
 bitflags::bitflags! {
     /// Flags for X.509 host checking.
-    #[repr(transparent)]
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub struct HostFlags: c_uint {
         /// Disable wildcard matching for DNS names.
@@ -156,7 +154,7 @@ impl CertificateVerificationParams {
     ///
     /// The handle **must** outlive the use sites.
     /// Verify the callsite contract to honour the lifetime contracts.
-    pub unsafe fn as_raw(&self) -> *mut bssl_sys::X509_VERIFY_PARAM {
+    pub unsafe fn as_ptr(&self) -> *mut bssl_sys::X509_VERIFY_PARAM {
         self.ptr()
     }
 

@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2020 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2020 The NASM Authors - All Rights Reserved */
 
 /*
  * outdbg.c	output routines for the Netwide Assembler to produce
@@ -213,17 +183,22 @@ static const char *out_flags(enum out_flags flags)
     return flags_buf;
 }
 
+static void dbg_legacy_out(const struct out_data *out);
+
 static void dbg_out(const struct out_data *data)
 {
     fprintf(ofile,
             "out to %"PRIx32":%"PRIx64" %s(%s) bits %d insoffs %d/%d "
             "size %"PRIu64,
-            data->segment, data->offset,
+            data->loc.segment, data->loc.offset,
             out_type(data->type), out_flags(data->flags),
             data->bits, data->insoffs, data->inslen, data->size);
     if (data->itemp) {
-        fprintf(ofile, " ins %s(%d)",
-                nasm_insn_names[data->itemp->opcode], data->itemp->operands);
+        fprintf(ofile, " ins %s#%u(%d)",
+                nasm_insn_names[data->itemp->opcode],
+                (unsigned int)
+                (data->itemp - nasm_instructions[data->itemp->opcode].temp),
+                data->itemp->operands);
     } else {
         fprintf(ofile, " no ins (plain data)");
     }
@@ -276,14 +251,13 @@ static void dbg_out(const struct out_data *data)
         }
     }
 
-    /* This is probably the only place were we'll call this this way... */
-    nasm_do_legacy_output(data);
+    /* Show the legacy format data, too. */
+    dbg_legacy_out(data);
 }
 
-static void dbg_legacy_out(int32_t segto, const void *data,
-                           enum out_type type, uint64_t size,
-                           int32_t segment, int32_t wrt)
+static void dbg_legacy_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     int32_t ldata;
 
     if (type == OUT_ADDRESS)
@@ -356,6 +330,8 @@ dbg_directive(enum directive directive, char *value)
 
     fprintf(ofile, "directive [%s] value [%s] pass %"PRId64" (%s)\n",
             directive_dname(directive), value, pass_count(), pass_type_name());
+
+    /* The debug output format accepts all known directives */
     return DIRR_OK;
 }
 
@@ -408,9 +384,44 @@ dbg_pragma(const struct pragma *pragma)
     return DIRR_OK;
 }
 
-static const char * const types[] = {
-    "unknown", "label", "byte", "word", "dword", "float", "qword", "tbyte"
-};
+static const char *type_name(uint32_t type)
+{
+    switch (TYM_TYPE(type)) {
+    case TY_UNKNOWN:
+        return "unknown";
+    case TY_LABEL:
+        return "label";
+    case TY_BYTE:
+        return "byte";
+    case TY_WORD:
+        return "word";
+    case TY_DWORD:
+        return "dword";
+    case TY_FLOAT:
+        return "float";
+    case TY_QWORD:
+        return "qword";
+    case TY_TBYTE:
+        return "tbyte";
+    case TY_OWORD:
+        return "oword";
+    case TY_YWORD:
+        return "yword";
+    case TY_ZWORD:
+        return "zword";
+    case TY_COMMON:
+        return "common";
+    case TY_SEG:
+        return "seg";
+    case TY_EXTERN:
+        return "extern";
+    case TY_EQU:
+        return "equ";
+    default:
+        return "<invalid type code>";
+    }
+}
+
 static void dbgdbg_init(void)
 {
     fprintf(ofile, "dbg init: debug information enabled\n");
@@ -457,7 +468,7 @@ static void dbgdbg_output(int output_type, void *param)
 static void dbgdbg_typevalue(int32_t type)
 {
     fprintf(ofile, "dbg typevalue: %s(%"PRIX32")\n",
-            types[TYM_TYPE(type) >> 3], TYM_ELEMENTS(type));
+            type_name(type), TYM_ELEMENTS(type));
 }
 
 static void
@@ -562,7 +573,6 @@ const struct ofmt of_dbg = {
     dbg_init,
     dbg_reset,
     dbg_out,
-    dbg_legacy_out,
     dbg_deflabel,
     dbg_section_names,
     dbg_herelabel,

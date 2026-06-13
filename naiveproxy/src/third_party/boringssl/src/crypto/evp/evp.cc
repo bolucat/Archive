@@ -264,39 +264,31 @@ EVP_PKEY *EVP_PKEY_from_raw_public_key(const EVP_PKEY_ALG *alg,
 
 EVP_PKEY *EVP_PKEY_new_raw_private_key(int type, ENGINE *unused,
                                        const uint8_t *in, size_t len) {
-  // To avoid pulling in all key types, look for specifically the key types that
-  // support |set_priv_raw|.
-  switch (type) {
-    case EVP_PKEY_X25519:
-      return EVP_PKEY_from_raw_private_key(EVP_pkey_x25519(), in, len);
-    case EVP_PKEY_ED25519:
-      return EVP_PKEY_from_raw_private_key(EVP_pkey_ed25519(), in, len);
-    default:
-      OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
-      return nullptr;
+  for (const EVP_PKEY_ALG *alg : GetDefaultEVPAlgorithms()) {
+    if (alg->method && alg->method->pkey_id == type) {
+      return EVP_PKEY_from_raw_private_key(alg, in, len);
+    }
   }
+  OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
+  return nullptr;
 }
 
 EVP_PKEY *EVP_PKEY_new_raw_public_key(int type, ENGINE *unused,
                                       const uint8_t *in, size_t len) {
-  // To avoid pulling in all key types, look for specifically the key types that
-  // support |set_pub_raw|.
-  switch (type) {
-    case EVP_PKEY_X25519:
-      return EVP_PKEY_from_raw_public_key(EVP_pkey_x25519(), in, len);
-    case EVP_PKEY_ED25519:
-      return EVP_PKEY_from_raw_public_key(EVP_pkey_ed25519(), in, len);
-    default:
-      OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
-      return nullptr;
+  for (const EVP_PKEY_ALG *alg : GetDefaultEVPAlgorithms()) {
+    if (alg->method && alg->method->pkey_id == type) {
+      return EVP_PKEY_from_raw_public_key(alg, in, len);
+    }
   }
+  OPENSSL_PUT_ERROR(EVP, EVP_R_UNSUPPORTED_ALGORITHM);
+  return nullptr;
 }
 
 int EVP_PKEY_get_raw_private_key(const EVP_PKEY *pkey, uint8_t *out,
                                  size_t *out_len) {
   auto *impl = FromOpaque(pkey);
 
-  if (impl->ameth->get_priv_raw == nullptr) {
+  if (impl->ameth == nullptr || impl->ameth->get_priv_raw == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -308,7 +300,7 @@ int EVP_PKEY_get_private_seed(const EVP_PKEY *pkey, uint8_t *out,
                               size_t *out_len) {
   auto *impl = FromOpaque(pkey);
 
-  if (impl->ameth->get_priv_seed == nullptr) {
+  if (impl->ameth == nullptr || impl->ameth->get_priv_seed == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -320,7 +312,7 @@ int EVP_PKEY_get_raw_public_key(const EVP_PKEY *pkey, uint8_t *out,
                                 size_t *out_len) {
   auto *impl = FromOpaque(pkey);
 
-  if (impl->ameth->get_pub_raw == nullptr) {
+  if (impl->ameth == nullptr || impl->ameth->get_pub_raw == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -393,7 +385,7 @@ int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
                                    size_t len) {
   auto *impl = FromOpaque(pkey);
 
-  if (impl->ameth->set1_tls_encodedpoint == nullptr) {
+  if (impl->ameth == nullptr || impl->ameth->set1_tls_encodedpoint == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }
@@ -404,7 +396,7 @@ int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey, const uint8_t *in,
 size_t EVP_PKEY_get1_tls_encodedpoint(const EVP_PKEY *pkey, uint8_t **out_ptr) {
   auto *impl = FromOpaque(pkey);
 
-  if (impl->ameth->get1_tls_encodedpoint == nullptr) {
+  if (impl->ameth == nullptr || impl->ameth->get1_tls_encodedpoint == nullptr) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
     return 0;
   }

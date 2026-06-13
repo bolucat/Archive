@@ -24,13 +24,28 @@ finish() {
   exit "$rc"
 }
 
+# In kernel-only mode there is no transparent proxy, so component downloads
+# would go out direct and stall behind the GFW. Route them through the running
+# core (shared logic in proxy_lib.sh). Normal mode returns empty -> TPROXY.
+# Guard the source: on a stale install missing proxy_lib.sh, an unguarded `.`
+# under `set -e` kills the whole update silently (empty log, nothing happens).
+# Fall back to no proxy detection (direct / TPROXY) instead of dying.
+if [ -f /usr/share/clashoo/update/proxy_lib.sh ]; then
+  . /usr/share/clashoo/update/proxy_lib.sh
+else
+  clashoo_detect_proxy() { :; }
+fi
+detect_proxy() { clashoo_detect_proxy; }
+
 fetch_text() {
   url="$1"
+  proxy="$(detect_proxy)"
   if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$url"
+    curl -fsSL ${proxy:+--proxy "$proxy"} "$url"
     return $?
   fi
   if command -v wget >/dev/null 2>&1; then
+    [ -n "$proxy" ] && { http_proxy="$proxy" https_proxy="$proxy" wget -qO- "$url"; return $?; }
     wget -qO- "$url"
     return $?
   fi
@@ -40,8 +55,13 @@ fetch_text() {
 download_file() {
   url="$1"
   out="$2"
+  proxy="$(detect_proxy)"
   if command -v curl >/dev/null 2>&1; then
-    curl -fL "$url" -o "$out"
+    curl -fL ${proxy:+--proxy "$proxy"} "$url" -o "$out"
+    return $?
+  fi
+  if [ -n "$proxy" ]; then
+    http_proxy="$proxy" https_proxy="$proxy" wget -qO "$out" "$url"
     return $?
   fi
   wget -qO "$out" "$url"
@@ -280,8 +300,11 @@ clashoo_was_running() {
 }
 
 restart_web_stack() {
-  /etc/init.d/rpcd restart >/dev/null 2>&1 || true
-  /etc/init.d/uhttpd restart >/dev/null 2>&1 || true
+  # reload (not restart) rpcd so the LuCI login session survives a plugin
+  # update — rpcd restart drops every ubus session and forces a re-login
+  # (issue #12). reload still picks up the new ucode RPC backend. uhttpd needs
+  # nothing: updated static assets are served on the next request.
+  /etc/init.d/rpcd reload >/dev/null 2>&1 || true
 }
 
 # which: clashoo（仅核心）/ luci（luci-app + 语言包）。两者拆开，clashoo
@@ -314,7 +337,7 @@ run_pkg_update() {
     ensure_root_space 98304
     log "正在安装 Clashoo 核心"
     if [ "$PM" = "opkg" ]; then
-      opkg install "$TMP_DIR/core.${EXT}" >"$TMP_DIR/install.log" 2>&1; rc=$?
+      opkg install --force-downgrade "$TMP_DIR/core.${EXT}" >"$TMP_DIR/install.log" 2>&1; rc=$?
     else
       apk add $APK_FLAGS "$TMP_DIR/core.${EXT}" >"$TMP_DIR/install.log" 2>&1; rc=$?
     fi
@@ -328,21 +351,34 @@ run_pkg_update() {
     fi
     log "正在安装客户端"
     if [ "$PM" = "opkg" ]; then
-      opkg install "$TMP_DIR/luci.${EXT}" ${I18N_URL:+"$TMP_DIR/i18n.${EXT}"} >"$TMP_DIR/install.log" 2>&1; rc=$?
+      opkg install --force-downgrade "$TMP_DIR/luci.${EXT}" ${I18N_URL:+"$TMP_DIR/i18n.${EXT}"} >"$TMP_DIR/install.log" 2>&1; rc=$?
     else
       apk add $APK_FLAGS "$TMP_DIR/luci.${EXT}" ${I18N_URL:+"$TMP_DIR/i18n.${EXT}"} >"$TMP_DIR/install.log" 2>&1; rc=$?
     fi
   fi
 
   if [ "$rc" -ne 0 ]; then
-    log_install_error "$TMP_DIR/install.log"
-    log "安装失败，正在恢复配置备份"
-    restore_config_backup
-    finish "$rc" "组件更新失败"
+    # apk exits non-zero when ANY package in the world is broken — e.g. file
+    # conflicts between unrelated apps (argon-config, momo, ...) — even though
+    # our package installed fine. Only treat it as a real failure when an apk
+    # ERROR line actually names a clashoo package; otherwise it is unrelated
+    # broken-world noise and we continue (--force-broken-world already applied).
+    if grep -E '^ERROR:' "$TMP_DIR/install.log" 2>/dev/null | grep -qi 'clashoo'; then
+      log_install_error "$TMP_DIR/install.log"
+      log "安装失败，正在恢复配置备份"
+      restore_config_backup
+      finish "$rc" "组件更新失败"
+    fi
+    log "apk 报告了无关软件包的错误（broken world），clashoo 自身已安装成功，继续"
   fi
 
-  log "正在刷新 LuCI 服务"
-  restart_web_stack
+  # Only a luci-app update touches /www and the rpcd backend, so only then
+  # refresh the web stack. The clashoo core package ships no web files — a
+  # web-stack refresh there is pointless churn that just disturbs the UI.
+  if [ "$which" = "luci" ]; then
+    log "正在刷新 LuCI 服务"
+    restart_web_stack
+  fi
   # 仅核心更新且原本运行中才重启 Clashoo；纯客户端更新不动服务
   if [ "$which" = "clashoo" ] && [ "$was_running" -eq 1 ]; then
     log "Clashoo 原本运行中，正在重启服务"
@@ -358,15 +394,12 @@ run_core_update() {
   dcore="$1"
   label="$2"
   log "正在更新 ${label}"
-  uci set clashoo.config.dcore="$dcore" >/dev/null 2>&1
-  if [ "$dcore" = "4" ] || [ "$dcore" = "5" ]; then
-    uci set clashoo.config.core_type='singbox' >/dev/null 2>&1
-  else
-    uci set clashoo.config.core_type='mihomo' >/dev/null 2>&1
-  fi
-  uci commit clashoo >/dev/null 2>&1
+  # Pass the target as an arg so core_download refreshes only that binary
+  # without switching the active kernel. It restarts only if the target is the
+  # currently-running core (see core_download.sh finalize). Switching kernels
+  # stays a separate, explicit user action.
   touch /var/run/core_update
-  sh /usr/share/clashoo/update/core_download.sh >>/tmp/clash_update.txt 2>&1
+  sh /usr/share/clashoo/update/core_download.sh "$dcore" >>/tmp/clash_update.txt 2>&1
   rc=$?
   rm -f /var/run/core_update
   [ "$rc" -eq 0 ] || finish "$rc" "${label} 更新失败"

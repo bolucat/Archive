@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2009 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * ndisasm.c   the Netwide Disassembler main module
@@ -48,21 +18,23 @@
 #include "sync.h"
 #include "disasm.h"
 
-#define BPL 8                   /* bytes per line of hex dump */
+static int bpl = 8;             /* bytes per line of hex dump */
 
 static const char *help =
-    "usage: ndisasm [-a] [-i] [-h] [-r] [-u] [-b bits] [-o origin] [-s sync...]\n"
+    "usage: ndisasm [-aihlruvw] [-b bits] [-o origin] [-s sync...]\n"
     "               [-e bytes] [-k start,bytes] [-p vendor] file\n"
     "   -a or -i activates auto (intelligent) sync\n"
-    "   -u same as -b 32\n"
     "   -b 16, -b 32 or -b 64 sets the processor mode\n"
+    "   -u same as -b 32\n"
+    "   -l same as -b 64\n"
+    "   -w wide output (avoids continuation lines)\n"
     "   -h displays this text\n"
     "   -r or -v displays the version number\n"
     "   -e skips <bytes> bytes of header\n"
     "   -k avoids disassembling <bytes> bytes from position <start>\n"
     "   -p selects the preferred vendor instruction set (intel, amd, cyrix, idt)\n";
 
-static void output_ins(uint64_t, uint8_t *, int, char *);
+static void output_ins(uint64_t, const uint8_t *, int, const char *);
 static void skip(uint32_t dist, FILE * fp);
 
 void nasm_verror(errflags severity, const char *fmt, va_list val)
@@ -80,9 +52,12 @@ fatal_func nasm_verror_critical(errflags severity, const char *fmt, va_list val)
     abort();
 }
 
+errflags errflags_never = 0;
+
 int main(int argc, char **argv)
 {
-    char buffer[INSN_MAX * 2], *p, *ep, *q;
+    uint8_t buffer[INSN_MAX * 2], *p;
+    const uint8_t *q;
     char outbuf[256];
     char *pname = *argv;
     char *filename = NULL;
@@ -128,6 +103,14 @@ int main(int argc, char **argv)
 			bits <<= 1;
                     p++;
                     break;
+                case 'l':
+                    bits = 64;
+                    p++;
+                    break;
+                case 'w':
+                    bpl = 16;
+                    p++;
+                    break;
                 case 'b':      /* bits */
                     v = p[1] ? p + 1 : --argc ? *++argv : NULL;
                     if (!v) {
@@ -135,8 +118,9 @@ int main(int argc, char **argv)
                                 pname);
                         return 1;
                     }
-		    b = strtoul(v, &ep, 10);
-		    if (*ep || !(bits == 16 || bits == 32 || bits == 64)) {
+		    b = readnum(v, &rn_error);
+		    if (rn_error ||
+                        !(bits == 16 || bits == 32 || bits == 64)) {
                         fprintf(stderr, "%s: argument to `-b' should"
                                 " be 16, 32 or 64\n", pname);
                     } else {
@@ -294,7 +278,7 @@ int main(int argc, char **argv)
      * find the energy...
      */
 
-    p = q = buffer;
+    q = p = buffer;
     nextsync = next_sync(offset, &synclen);
     do {
         int32_t to_read = buffer + sizeof(buffer) - p;
@@ -316,25 +300,23 @@ int main(int argc, char **argv)
                 offset += synclen;
                 skip(synclen, fp);
             }
-            p = q = buffer;
+            q = p = buffer;
             nextsync = next_sync(offset, &synclen);
         }
         while (p > q && (p - q >= INSN_MAX || lenread == 0)) {
-            lendis = disasm((uint8_t *)q, INSN_MAX, outbuf, sizeof(outbuf),
+            lendis = disasm(q, INSN_MAX, outbuf, sizeof(outbuf),
 			    bits, offset, autosync, &prefer);
             if (!lendis || lendis > (p - q)
                 || ((nextsync || synclen) &&
 		    (uint32_t)lendis > nextsync - offset))
-                lendis = eatbyte((uint8_t *) q, outbuf, sizeof(outbuf), bits);
-            output_ins(offset, (uint8_t *) q, lendis, outbuf);
+                lendis = eatbyte(*q, outbuf, sizeof(outbuf), bits);
+            output_ins(offset, q, lendis, outbuf);
             q += lendis;
             offset += lendis;
         }
         if (q >= buffer + INSN_MAX) {
-            uint8_t *r = (uint8_t *) buffer, *s = (uint8_t *) q;
             int count = p - q;
-            while (count--)
-                *r++ = *s++;
+            memmove(buffer, q, count);
             p -= (q - buffer);
             q = buffer;
         }
@@ -346,25 +328,25 @@ int main(int argc, char **argv)
     return 0;
 }
 
-static void output_ins(uint64_t offset, uint8_t *data,
-                       int datalen, char *insn)
+static void output_ins(uint64_t offset, const uint8_t *data,
+                       int datalen, const char *insn)
 {
     int bytes;
     fprintf(stdout, "%08"PRIX64"  ", offset);
 
     bytes = 0;
-    while (datalen > 0 && bytes < BPL) {
+    while (datalen > 0 && bytes < bpl) {
         fprintf(stdout, "%02X", *data++);
         bytes++;
         datalen--;
     }
 
-    fprintf(stdout, "%*s%s\n", (BPL + 1 - bytes) * 2, "", insn);
+    fprintf(stdout, "%*s%s\n", (bpl + 1 - bytes) * 2, "", insn);
 
     while (datalen > 0) {
         fprintf(stdout, "         -");
         bytes = 0;
-        while (datalen > 0 && bytes < BPL) {
+        while (datalen > 0 && bytes < bpl) {
             fprintf(stdout, "%02X", *data++);
             bytes++;
             datalen--;

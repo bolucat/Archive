@@ -39,6 +39,8 @@
 #include "cpuinfo_s390x.h"
 #elif defined(CPU_FEATURES_ARCH_RISCV)
 #include "cpuinfo_riscv.h"
+#elif defined(CPU_FEATURES_ARCH_LOONGARCH)
+#include "cpuinfo_loongarch.h"
 #endif
 
 // Design principles
@@ -146,7 +148,11 @@ static Node* CreatePrintfString(const char* format, ...) {
   const int written = vsnprintf(ptr, gBumpAllocator.size, format, arglist);
   va_end(arglist);
   if (written < 0 || written >= (int)gBumpAllocator.size) internal_error();
-  return CreateConstantString((char*)BA_Bump(written));
+  // `vsnprintf` does not set `\0` when no characters are to be written.
+  if (written == 0) *ptr = '\0';
+  // `vsnprintf` returns the number of printed characters excluding `\0`.
+  const int null_terminated_written = written + 1;
+  return CreateConstantString((char*)BA_Bump(null_terminated_written));
 }
 
 // Adds a string node.
@@ -210,11 +216,14 @@ DEFINE_ADD_FLAGS(GetMipsFeaturesEnumValue, GetMipsFeaturesEnumName,
 DEFINE_ADD_FLAGS(GetPPCFeaturesEnumValue, GetPPCFeaturesEnumName, PPCFeatures,
                  PPC_LAST_)
 #elif defined(CPU_FEATURES_ARCH_S390X)
-DEFINE_ADD_FLAGS(GetS390XFeaturesEnumValue, GetS390XFeaturesEnumName, S390XFeatures,
-                 S390X_LAST_)
+DEFINE_ADD_FLAGS(GetS390XFeaturesEnumValue, GetS390XFeaturesEnumName,
+                 S390XFeatures, S390X_LAST_)
 #elif defined(CPU_FEATURES_ARCH_RISCV)
-DEFINE_ADD_FLAGS(GetRiscvFeaturesEnumValue, GetRiscvFeaturesEnumName, RiscvFeatures,
-                 RISCV_LAST_)
+DEFINE_ADD_FLAGS(GetRiscvFeaturesEnumValue, GetRiscvFeaturesEnumName,
+                 RiscvFeatures, RISCV_LAST_)
+#elif defined(CPU_FEATURES_ARCH_LOONGARCH)
+DEFINE_ADD_FLAGS(GetLoongArchFeaturesEnumValue, GetLoongArchFeaturesEnumName,
+                 LoongArchFeatures, LOONGARCH_LAST_)
 #endif
 
 // Prints a json string with characters escaping.
@@ -431,7 +440,11 @@ static Node* CreateTree(void) {
   AddMapEntry(root, "arch", CreateString("risc-v"));
   AddMapEntry(root, "vendor", CreateString(info.vendor));
   AddMapEntry(root, "microarchitecture", CreateString(info.uarch));
-  AddFlags(root, &info.features); 
+  AddFlags(root, &info.features);
+#elif defined(CPU_FEATURES_ARCH_LOONGARCH)
+  const LoongArchInfo info = GetLoongArchInfo();
+  AddMapEntry(root, "arch", CreateString("loongarch"));
+  AddFlags(root, &info.features);
 #endif
   return root;
 }

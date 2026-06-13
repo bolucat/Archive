@@ -1,36 +1,9 @@
+\# SPDX-License-Identifier: BSD-2-Clause
+\# Copyright 1996-2025 The NASM Authors - All Rights Reserved
 \# --------------------------------------------------------------------------
 \#
-\#   Copyright 1996-2024 The NASM Authors - All Rights Reserved
-\M{year}{1996-2024}
-\#   See the file AUTHORS included with the NASM distribution for
-\#   the specific copyright holders.
-\#
-\#   Redistribution and use in source and binary forms, with or without
-\#   modification, are permitted provided that the following
-\#   conditions are met:
-\#
-\#   * Redistributions of source code must retain the above copyright
-\#     notice, this list of conditions and the following disclaimer.
-\#   * Redistributions in binary form must reproduce the above
-\#     copyright notice, this list of conditions and the following
-\#     disclaimer in the documentation and/or other materials provided
-\#     with the distribution.
-\#
-\#     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
-\#     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-\#     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
-\#     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-\#     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
-\#     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-\#     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-\#     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-\#     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
-\#     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
-\#     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-\#     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
-\#     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-\#
-\# --------------------------------------------------------------------------
+\#   Copyright 1996-2025 The NASM Authors - All Rights Reserved
+\M{year}{1996-2025}
 \#
 \# Source code to NASM documentation
 \#
@@ -56,6 +29,7 @@ source.}
 \# --- Index terms ---
 
 \& index.src
+\& pptok.src
 
 \# ---- Chapters ----
 
@@ -64,6 +38,8 @@ source.}
 \& running.src
 
 \& lang.src
+
+\& syntax.src
 
 \& preproc.src
 
@@ -91,12 +67,22 @@ source.}
 
 \& ndisasm.src
 
-\# Keep the changelog as Appendix C if at all possible, otherwise
-\# the website machinery needs to be changed.
+\# --- Begin directly referenced appendices
+
+\# The following three appendices are linked to directly from the
+\# website. Please keep them in their current position as appendices
+\# C, D and E if at all possible. If they are reorganized, the website
+\# will need to be updated.
+
+\# Appendix C: changelog/release notes
 \& changelog.src
 
+\# Appendix D: building from source
 \& source.src
 
+\# Appendix E: contact information
 \& contact.src
+
+\# --- End directly referenced appendices
 
 \& inslist.src

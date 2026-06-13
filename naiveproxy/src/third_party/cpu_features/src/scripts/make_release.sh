@@ -8,7 +8,7 @@ FINISHED='\033[1;96m'
 NOCOLOR='\033[0m'
 ERROR='\033[0;31m'
 
-echo -e "${ACTION}Checking environnement${NOCOLOR}"
+echo -e "${ACTION}Checking environment${NOCOLOR}"
 if [[ ! $1 =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
 then
     echo -e "${ERROR}Invalid version number. Aborting. ${NOCOLOR}"
@@ -40,7 +40,7 @@ fi
 git update-index -q --refresh
 if ! git diff-index --quiet HEAD --
 then
-    echo -e "${ERROR}Branch has uncommited changes. Aborting.${NOCOLOR}"
+    echo -e "${ERROR}Branch has uncommitted changes. Aborting.${NOCOLOR}"
     exit 1
 fi
 
@@ -62,14 +62,23 @@ fi
 echo -e "${ACTION}Modifying CMakeLists.txt${NOCOLOR}"
 sed -i "s/CpuFeatures VERSION ${LATEST_VERSION}/CpuFeatures VERSION ${VERSION}/g" CMakeLists.txt
 
+echo -e "${ACTION}Modifying MODULE.bazel${NOCOLOR}"
+sed -i "s/CPU_FEATURES_VERSION = \"${LATEST_VERSION}\"/CPU_FEATURES_VERSION = \"${VERSION}\"/g" MODULE.bazel
+
 echo -e "${ACTION}Commit new revision${NOCOLOR}"
-git add CMakeLists.txt
+git add CMakeLists.txt MODULE.bazel
 git commit -m"Release ${GIT_TAG}"
+
+echo -e "${ACTION}Check for unstaged or uncommited changes${NOCOLOR}"
+git diff --quiet && git diff --quiet --cached
 
 echo -e "${ACTION}Create new tag${NOCOLOR}"
 git tag ${GIT_TAG}
 
 echo -e "${FINISHED}Manual steps:${NOCOLOR}"
-echo -e "${FINISHED} - Push the tag upstream 'git push origin ${GIT_TAG}'${NOCOLOR}"
+echo -e "${FINISHED} - Push the branch and tag upstream 'git push --atomic origin main ${GIT_TAG}'${NOCOLOR}"
 echo -e "${FINISHED} - Create a new release https://github.com/google/cpu_features/releases/new${NOCOLOR}"
-echo -e "${FINISHED} - Update the Release Notes 'gren release --override'${NOCOLOR}"
+echo -e "${FINISHED} - Click "Choose a tag" -> ${GIT_TAG}${NOCOLOR}"
+echo -e "${FINISHED} - Click "Generate the release notes"${NOCOLOR}"
+echo -e "${FINISHED} - Edit description as needed${NOCOLOR}"
+echo -e "${FINISHED} - Click "Publish release"${NOCOLOR}"

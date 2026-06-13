@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 2017 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 2017-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * path.c - host operating system specific pathname manipulation functions
@@ -42,40 +12,64 @@
 #include "nasmlib.h"
 #include "error.h"
 
-#if defined(__MSDOS__) || defined(__DOS__) || \
+#define PATH_UNKNOWN	0
+#define PATH_UNIX	1
+#define PATH_MSDOS	2
+#define PATH_MACCLASSIC	3
+#define PATH_VMS	4
+
+#ifdef PATHSTYLE
+/* PATHSTYLE set externally, hope it is correct */
+#elif defined(__MSDOS__) || defined(__DOS__) || \
     defined(__WINDOWS__) || defined(_Windows) ||                        \
     defined(__OS2__) || defined(_WIN16) || defined(WIN32) || defined(_WIN32)
-/* MS-DOS/Windows and like operating systems */
-# define separators "/\\:"
-# define cleandirend "/\\"
-# define catsep '\\'
-# define leaveonclean 2         /* Leave \\ at the start alone */
-# define curdir "."
+/*
+ * MS-DOS, Windows and like operating systems
+ */
+# define PATHSTYLE PATH_MSDOS
 #elif defined(unix) || defined(__unix) || defined(__unix__) ||   \
     defined(__UNIX__) || defined(__Unix__) || \
-    defined(__MACH__) || defined(__BEOS__)
-/* Unix and Unix-like operating systems and others using
+    defined(_POSIX_VERSION) || defined(_XOPEN_VERSION) || \
+    defined(__MACH__) || defined(__BEOS__) || defined(__HAIKU__)
+/*
+ * Unix and Unix-like operating systems and others using
  * the equivalent syntax (slashes as only separators, no concept of volume)
  *
  * This must come after the __MSDOS__ section, since it seems that at
  * least DJGPP defines __unix__ despite not being a Unix environment at all.
  */
+# define PATHSTYLE PATH_UNIX
+#elif defined(Macintosh) || defined(macintosh)
+# define PATHSTYLE PATH_MACCLASSIC
+#elif defined(__VMS)
+/* VMS (only partially supported, really) */
+# define PATHSTYLE PATH_VMS
+#else
+/* Something else entirely? */
+# define PATHSTYLE PATH_UNKNOWN
+#endif
+
+#if PATHSTYLE == PATH_MSDOS
+# define separators "/\\:"
+# define cleandirend "/\\"
+# define catsep '\\'
+# define leaveonclean 2         /* Leave \\ at the start alone */
+# define curdir "."
+#elif PATHSTYLE == PATH_UNIX
 # define separators "/"
 # define cleandirend "/"
 # define catsep '/'
 # define leaveonclean 1
 # define curdir "."
-#elif defined(Macintosh) || defined(macintosh)
-/* MacOS classic */
+#elif PATHSTYLE == PATH_MACCLASSIC
 # define separators ":"
 # define curdir ":"
 # define catsep ':'
 # define cleandirend ":"
 # define leaveonclean 0
 # define leave_leading 1
-#elif defined(__VMS)
-/* VMS *
- *
+#elif PATHSTYLE == PATH_VMS
+/*
  * VMS filenames may have ;version at the end.  Assume we should count that
  * as part of the filename anyway.
  */
@@ -90,7 +84,7 @@
  * This is an inline, because most compilers can greatly simplify this
  * for a fixed string, like we have here.
  */
-static inline bool ismatch(const char *charset, char ch)
+static inline bool pure_func ismatch(const char *charset, char ch)
 {
     const char *p;
 
@@ -102,7 +96,7 @@ static inline bool ismatch(const char *charset, char ch)
     return false;
 }
 
-static const char *first_filename_char(const char *path)
+static const char * pure_func first_filename_char(const char *path)
 {
 #ifdef separators
     const char *p = path + strlen(path);

@@ -22,7 +22,7 @@
     "@nyanpasu/utils": "workspace:^",
     "@paper-design/shaders-react": "0.0.76",
     "@radix-ui/react-use-controllable-state": "1.2.3",
-    "@tailwindcss/postcss": "4.3.0",
+    "@tailwindcss/postcss": "4.3.1",
     "@tanstack/react-table": "8.21.3",
     "@tanstack/react-virtual": "3.14.2",
     "@tanstack/router-zod-adapter": "1.81.5",
@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",
-    "@iconify/json": "2.2.485",
+    "@iconify/json": "2.2.486",
     "@monaco-editor/react": "4.7.0",
     "@tailwindcss/vite": "4.3.1",
     "@tanstack/react-query": "5.101.0",

@@ -1,5 +1,6 @@
 #!/bin/sh /etc/rc.common
 USE_PROCD=1
+EXTRA_COMMANDS="refresh_cron"
 
 START=99
 STOP=15
@@ -705,6 +706,11 @@ add_cron(){
 		[ "$auto_update_time" -lt 1 ] && auto_update_time=12
 		[ -z "$(grep -w "/usr/share/clashoo/update/update_all.sh" "$CRON_FILE")" ] && echo "0 */$auto_update_time * * * sh /usr/share/clashoo/update/update_all.sh >/dev/null 2>&1 &" >> "$CRON_FILE"
 	fi
+
+	sub_auto=$(uci get clashoo.config.auto_subscription_update 2>/dev/null)
+	if [ "${sub_auto:-0}" -eq 1 ]; then
+		[ -z "$(grep -w "/usr/share/clashoo/update/subscription_update_cron.sh" "$CRON_FILE")" ] && echo "7 * * * * sh /usr/share/clashoo/update/subscription_update_cron.sh >/dev/null 2>&1" >> "$CRON_FILE"
+	fi
 	
 	lgbm_auto=$(uci get clashoo.config.smart_lgbm_auto_update 2>/dev/null)
 	if [ "${lgbm_auto:-0}" -eq 1 ]; then
@@ -729,8 +735,15 @@ del_cron(){
 	sed -i '/clashoo.txt/d' "$CRON_FILE"
 	sed -i '/update\/lgbm_update.sh/d' "$CRON_FILE"
 	sed -i '/\/usr\/share\/clash\/lgbm_update.sh/d' "$CRON_FILE"
+	sed -i '/update\/subscription_update_cron.sh/d' "$CRON_FILE"
 	/etc/init.d/cron restart
 #=========================================================================================================================== 	
+}
+
+refresh_cron() {
+	del_cron >/dev/null 2>&1
+	[ "$(uci -q get clashoo.config.core_only 2>/dev/null)" != "1" ] && _selected_core_running && add_cron >/dev/null 2>&1
+	return 0
 }
 
 
@@ -739,10 +752,20 @@ select_config(){
 CONFIG_YAML_PATH=$(uci get clashoo.config.use_config 2>/dev/null)
 log_msg "Checking Config file" "正在检查配置文件"
 
+# Runtime dir may be missing (e.g. after a broken uninstall left the package
+# installed but its /etc/clashoo dir removed). Recreate it so the cp below
+# can't silently fail and leave the core without a config.
+mkdir -p "$(dirname "$CONFIG_YAML")" 2>/dev/null
+
 if [ -f "$CONFIG_YAML_PATH" ] && [ -s "$CONFIG_YAML_PATH" ];then
 
-	cp "$CONFIG_YAML_PATH" "$CONFIG_YAML" 2>/dev/null
-	
+	if ! cp "$CONFIG_YAML_PATH" "$CONFIG_YAML" 2>/dev/null || [ ! -s "$CONFIG_YAML" ];then
+		log_msg "Failed to stage config file" "配置写入失败：运行目录缺失或不可写"
+		sleep 5
+		echo "Clashoo" >$REAL_LOG
+		return 1
+	fi
+
 elif [ ! -f "$CONFIG_YAML_PATH" ] && [ ! -f "$CONFIG_YAML" ];then
 
 		log_msg "No config found" "找不到配置文章"
@@ -1092,7 +1115,10 @@ _has_valid_local_mmdb() {
 }
 
 _config_needs_geosite() {
-	grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,|^[[:space:]]*geosite:[[:space:]]*|^[[:space:]]*'geosite:" "$CONFIG_YAML"
+	# Matches: routing rules (- GEOSITE,...), geosite: child blocks, and
+	# list-item refs like `- geosite:cn` / `- 'geosite:cn'` used in
+	# fake-ip-filter (the default config ships one, easy to miss).
+	grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,|^[[:space:]]*geosite:[[:space:]]*|^[[:space:]]*'geosite:|^[[:space:]]*-[[:space:]]*[\"']?geosite:" "$CONFIG_YAML"
 }
 
 _has_valid_local_geosite() {
@@ -1204,6 +1230,8 @@ _prepare_geo_bootstrap_mode() {
 		_strip_yaml_child_block '^[[:space:]]*geosite:[[:space:]]*$'
 		_strip_yaml_child_block "^[[:space:]]*'geosite:[^']*'[[:space:]]*:[[:space:]]*$"
 		sed -i '/^[[:space:]]*geosite:[[:space:]]*[^[:space:]].*/d' "$CONFIG_YAML" 2>/dev/null
+		# list-item refs (e.g. fake-ip-filter: - geosite:cn / - 'geosite:cn')
+		sed -i "/^[[:space:]]*-[[:space:]]*[\"']\{0,1\}geosite:/d" "$CONFIG_YAML" 2>/dev/null
 	fi
 
 	_start_geoip_update_async
@@ -1352,6 +1380,13 @@ _start_prepare_config() {
 	ip_rules >/dev/null 2>&1
 }
 
+_core_only_ui_args() {
+	[ "$(uci -q get clashoo.config.core_only 2>/dev/null)" = "1" ] || return 0
+	[ -f /etc/clashoo/dashboard/index.html ] || return 0
+	grep -Eq '^[[:space:]]*external-ui:' "$CONFIG_YAML" 2>/dev/null && return 0
+	printf ' -ext-ui %s' "$(shell_quote /etc/clashoo/dashboard)"
+}
+
 _start_launch_core() {
 	local _cmd _core_only
 	disable_quic_gso=$(uci get clashoo.config.disable_quic_gso 2>/dev/null)
@@ -1374,7 +1409,7 @@ _start_launch_core() {
 	fi
 
 	procd_open_instance
-	_cmd="$(shell_quote "$CLASH") -d $(shell_quote "$CLASH_CONFIG") >> $(shell_quote "$CORE_LOG_PATH") 2>&1"
+	_cmd="$(shell_quote "$CLASH") -d $(shell_quote "$CLASH_CONFIG")$(_core_only_ui_args) >> $(shell_quote "$CORE_LOG_PATH") 2>&1"
 	procd_set_param command /bin/sh -c "$_cmd"
 	[ "$disable_quic_gso" = "1" ] && procd_set_param env QUIC_GO_DISABLE_GSO=1
 	[ "$_core_only" = "1" ] && procd_set_param env SAFE_PATHS=/

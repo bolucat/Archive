@@ -115,7 +115,7 @@ _build_date_header = "$target_gen_dir/generated_build_date.h"
 # mold does not support PROVIDE_HIDDEN.
 # https://github.com/rui314/mold/issues/1055
 _enable_code_ordering =
-    is_android && !is_component_build && experimental_linker_path == "" &&
+    is_android && !is_component_build && linker_path == "" &&
     (current_cpu == "arm" || current_cpu == "arm64" || current_cpu == "x86" ||
      current_cpu == "x64")
 
@@ -170,6 +170,47 @@ generate_allowlist_from_histograms_file("memory_dump_provider_name_variants") {
   output_file = "trace_event/memory_dump_provider_name_variants.h"
   tag = "variant"
   allow_list_name = "MemoryDumpProviderName"
+}
+
+config("asan_raw_ptr_service_v2_config") {
+  # `-fsanitize-recover=address` makes asan report lazily. If tests expect
+  # immediate crash, this config will break the tests completely.
+  cflags = [ "-fsanitize-recover=address" ]
+}
+
+# `asan_raw_ptr_service` is built as a part of `base` without `-fsanitize=address`
+# to avoid performance regressions.
+source_set("asan_raw_ptr_service") {
+  # Used by raw_ptr_service.cc to override {malloc,free,ignore_free} hooks.
+  sources = []
+  if (use_asan_backup_ref_ptr) {
+    defines = [ "BASE_IMPLEMENTATION" ]
+    sources += [
+      "memory/raw_ptr_asan_allocator.cc",
+      "memory/raw_ptr_asan_allocator.h",
+      "memory/raw_ptr_asan_bound_arg_tracker.cc",
+      "memory/raw_ptr_asan_bound_arg_tracker.h",
+      "memory/raw_ptr_asan_event.cc",
+      "memory/raw_ptr_asan_event.h",
+      "memory/raw_ptr_asan_hooks.cc",
+      "memory/raw_ptr_asan_hooks.h",
+      "memory/raw_ptr_asan_service.cc",
+      "memory/raw_ptr_asan_service.h",
+    ]
+    deps = [ ":base_static" ]
+
+    if (use_asan_backup_ref_ptr_v2) {
+      deps += [ "//build/config/sanitizers:sanitizer_shared_hooks" ]
+      configs -= [ "//build/config/sanitizers:default_sanitizer_flags" ]
+    }
+
+    deps += [
+      ":compiler_specific",
+      "//base/allocator/partition_allocator/src/partition_alloc",
+      "//third_party/abseil-cpp:absl",
+      "//third_party/perfetto:libperfetto",
+    ]
+  }
 }
 
 # Base and everything it depends on should be a static library rather than
@@ -272,8 +313,8 @@ component("base") {
     "containers/to_vector.h",
     "containers/unique_ptr_adapters.h",
     "containers/vector_buffer.h",
+    "containers/weak_value_table.h",
     "critical_closure.h",
-    "dcheck_is_on.h",
     "debug/alias.cc",
     "debug/alias.h",
     "debug/asan_invalid_access.cc",
@@ -363,7 +404,6 @@ component("base") {
     "location.h",
     "logging.cc",
     "logging.h",
-    "logging/log_severity.h",
     "logging/logging_settings.h",
     "macros/concat.h",
     "macros/if.h",
@@ -444,6 +484,7 @@ component("base") {
     "memory_coordinator/memory_consumer_registry_destruction_observer.h",
     "memory_coordinator/memory_coordinator_features.cc",
     "memory_coordinator/memory_coordinator_features.h",
+    "memory_coordinator/traits.cc",
     "memory_coordinator/traits.h",
     "memory_coordinator/utils.h",
     "message_loop/io_watcher.cc",
@@ -763,8 +804,6 @@ component("base") {
     "task/sequence_manager/tasks.h",
     "task/sequence_manager/thread_controller.cc",
     "task/sequence_manager/thread_controller.h",
-    "task/sequence_manager/thread_controller_impl.cc",
-    "task/sequence_manager/thread_controller_impl.h",
     "task/sequence_manager/thread_controller_power_monitor.cc",
     "task/sequence_manager/thread_controller_power_monitor.h",
     "task/sequence_manager/thread_controller_with_message_pump_impl.cc",
@@ -1089,25 +1128,6 @@ component("base") {
   # Used by metrics/crc32
   deps += [ "//third_party/zlib" ]
 
-  if (use_asan_backup_ref_ptr) {
-    # Used by raw_ptr_service.cc to override {malloc,free,ignore_free} hooks.
-    sources += [
-      "memory/raw_ptr_asan_allocator.cc",
-      "memory/raw_ptr_asan_allocator.h",
-      "memory/raw_ptr_asan_bound_arg_tracker.cc",
-      "memory/raw_ptr_asan_bound_arg_tracker.h",
-      "memory/raw_ptr_asan_event.cc",
-      "memory/raw_ptr_asan_event.h",
-      "memory/raw_ptr_asan_hooks.cc",
-      "memory/raw_ptr_asan_hooks.h",
-      "memory/raw_ptr_asan_service.cc",
-      "memory/raw_ptr_asan_service.h",
-    ]
-    if (use_asan_backup_ref_ptr_v2) {
-      deps += [ "//build/config/sanitizers:sanitizer_shared_hooks" ]
-    }
-  }
-
   # `raw_ptr` cannot be made a component due to CRT symbol issues.
   # Its gateway to being a component is through `//base`, so we have
   # to provide the appropriate `#define` here.
@@ -1122,6 +1142,7 @@ component("base") {
     ":base_static",
     ":cfi_buildflags",
     ":clang_profiling_buildflags",
+    ":dcheck_is_on",
     ":debugging_buildflags",
     ":feature_buildflags",
     ":ios_cronet_buildflags",
@@ -1134,20 +1155,13 @@ component("base") {
     ":tracing_buildflags",
     "//base/allocator/partition_allocator:buildflags",
     "//base/allocator/partition_allocator:raw_ptr",
+    "//base/logging:log_severity",
     "//base/numerics:base_numerics",
     "//base/third_party/icu",
     "//build:chromecast_buildflags",
     "//build:robolectric_buildflags",
     "//third_party/abseil-cpp:absl",
   ]
-
-  if (use_asan_backup_ref_ptr) {
-    # raw_ptr_asan_service.cc depends on:
-    deps += [ "//base/allocator/partition_allocator/src/partition_alloc" ]
-    if (use_asan_backup_ref_ptr_v2) {
-      deps += [ "//build/config/sanitizers:sanitizer_shared_hooks" ]
-    }
-  }
 
   # Needed for <atomic> if using newer C++ library than sysroot, except if
   # building inside the cros_sdk environment - use host_toolchain as a
@@ -1328,7 +1342,6 @@ component("base") {
       "android/unguessable_token_android.h",
     ]
     deps += [
-      "//build:robolectric_buildflags",
     ]
   }
   if (is_android || is_robolectric) {
@@ -1515,7 +1528,6 @@ component("base") {
     "memory/discardable_memory.h",
     "memory/discardable_memory_allocator.cc",
     "memory/discardable_memory_allocator.h",
-    "memory/discardable_memory_internal.h",
     "metrics/persistent_histogram_storage.cc",
     "metrics/persistent_histogram_storage.h",
     "native_library.h",
@@ -1563,10 +1575,6 @@ component("base") {
   if (is_posix) {
     sources += [
       "base_paths_posix.h",
-      "memory/madv_free_discardable_memory_allocator_posix.cc",
-      "memory/madv_free_discardable_memory_allocator_posix.h",
-      "memory/madv_free_discardable_memory_posix.cc",
-      "memory/madv_free_discardable_memory_posix.h",
       "posix/unix_domain_socket.cc",
       "posix/unix_domain_socket.h",
       "rand_util_posix.cc",
@@ -1674,6 +1682,23 @@ component("base") {
   }
   if (use_allocator_shim) {
     public_deps += [ "allocator/partition_allocator:allocator_shim" ]
+  }
+
+  if (use_asan_backup_ref_ptr) {
+    # To make `source_set("asan_raw_ptr_service")` only a part of `base`,
+    # use `deps` to make only `base` depend on it. This causes a few
+    # unittests have `//nogncheck`.
+    deps += [ ":asan_raw_ptr_service" ]
+    allow_circular_includes_from = [ ":asan_raw_ptr_service" ]
+
+    # Moves the `-fsanitize-recover=address` configuration to `//base` using
+    # `all_dependent_configs`. This ensures the flag is only active when
+    # `use_asan_backup_ref_ptr_v2=true`, preventing PartitionAlloc GN variables
+    # from polluting the global `//build` directory and breaking standalone
+    # projects like V8.
+    if (use_asan_backup_ref_ptr_v2) {
+      all_dependent_configs += [ ":asan_raw_ptr_service_v2_config" ]
+    }
   }
 
   # Windows.
@@ -1852,6 +1877,8 @@ component("base") {
       "win/security_descriptor.h",
       "win/security_util.cc",
       "win/security_util.h",
+      "win/shell_util.cc",
+      "win/shell_util.h",
       "win/shlwapi.h",
       "win/shortcut.cc",
       "win/shortcut.h",
@@ -2472,6 +2499,12 @@ source_set("compiler_specific") {
   public = [ "compiler_specific.h" ]
 }
 
+# A separate source_set for this header to avoid circular dependencies.
+source_set("dcheck_is_on") {
+  public = [ "dcheck_is_on.h" ]
+  deps = [ ":debugging_buildflags" ]
+}
+
 # Separate simdutf from ":base", so simdutf cannot accidentally affect the
 # build config for ":base".
 source_set("simdutf_shim") {
@@ -2602,6 +2635,7 @@ buildflag_header("debugging_buildflags") {
     "ENABLE_ALLOCATION_STACK_TRACE_RECORDER=$build_allocation_stack_trace_recorder",
     "ENABLE_ALLOCATION_TRACE_RECORDER_FULL_REPORTING=$build_allocation_trace_recorder_full_reporting",
     "PRINT_UNSYMBOLIZED_STACK_TRACES=$print_unsymbolized_stack_traces",
+    "ENABLE_CHECK_ELISION_WARNING=$enable_check_elision_warning",
   ]
 }
 

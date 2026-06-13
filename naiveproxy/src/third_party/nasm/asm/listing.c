@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2020 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2020 The NASM Authors - All Rights Reserved */
 
 /*
  * listing.c    listing file generator for the Netwide Assembler
@@ -51,9 +21,10 @@
 
 static const char xdigit[] = "0123456789ABCDEF";
 
-#define HEX(a,b) (*(a)=xdigit[((b)>>4)&15],(a)[1]=xdigit[(b)&15]);
+#define HEX(a,b) (*(a)=xdigit[((b)>>4)&15],(a)[1]=xdigit[(b)&15])
 
 uint64_t list_options, active_list_options;
+bool user_nolist;
 
 static char listline[LIST_MAX_LEN];
 static bool listlinep;
@@ -174,6 +145,7 @@ static void list_init(const char *fname)
     list_errors = NULL;
     listlevel = 0;
     suppress = 0;
+    user_nolist = false;
 }
 
 static void list_out(int64_t offset, char *str)
@@ -224,7 +196,7 @@ static void list_output(const struct out_data *data)
 {
     char q[24];
     uint64_t size = data->size;
-    uint64_t offset = data->offset;
+    uint64_t offset = data->loc.offset;
     const uint8_t *p = data->data;
 
 
@@ -244,7 +216,7 @@ static void list_output(const struct out_data *data)
     {
 	if (size == 0) {
             if (!listdata[0])
-                listoffset = data->offset;
+                listoffset = data->loc.offset;
         } else if (p) {
             while (size--) {
                 HEX(q, *p);
@@ -393,10 +365,13 @@ static void list_update_options(const char *str)
             break;
         default:
             mask = list_option_mask(c);
-            if (state)
+            if (state) {
                 list_options |= mask;
-            else
+                active_list_options |= mask;
+            } else {
                 list_options &= ~mask;
+                active_list_options &= ~mask;
+            }
             break;
         }
     }

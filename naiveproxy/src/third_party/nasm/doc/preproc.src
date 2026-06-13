@@ -17,7 +17,7 @@ and the macro facilities of many other assemblers.
 The input to the preprocessor is expanded in the following ways in the
 order specified here.
 
-\S{pcbackslash} \i{Continuation Line} Collapsing
+\S{pcbackslash} \i{Continuation} Line Collapsing
 
 The preprocessor first collapses all lines which end with a backslash
 (\c{\\}) character into a single line.  Thus:
@@ -38,7 +38,7 @@ After concatenation, comments are removed.
 begin with the character \c{;} unless contained
 inside a quoted string or a handful of other special contexts.
 
-\I{ccomment}Note that this is applied \e{after} \i{continuation lines}
+\I{ccomment}Note that this is applied \e{after} \i{continuation} lines
 are collapsed. This means that
 
 \c       add al,'\\'	 ; Add the ASCII code for \\
@@ -106,8 +106,8 @@ In this step, the following expansions are performed on each line:
 below), the parameters to that macro are expanded at this time. See
 \k{mlmacro}.
 
-\b \i{Macro indirection}, using the \i\c{%[]} construct, is expanded. See
-\k{indmacro}.
+\b \i{Macro indirection}, using the \i\c{%[}...\c{]} construct, is
+expanded. See \k{indmacro}.
 
 \b Token \i{concatenation} using either the \i\c{%+} operator (see
 \k{concat%+}) or implicitly (see \k{indmacro} and \k{concat}.)
@@ -334,7 +334,7 @@ the time that \c{isFalse} was defined.
 same way that \c{%define} and \c{%idefine} does.
 
 
-\S{indmacro} \i{Macro Indirection}: \I\c{%[}\c{%[...]}
+\S{indmacro} \i{Macro Indirection}: \i\c{%[}...\c{]}
 
 The \c{%[...]} construct can be used to expand macros in contexts
 where macro expansion would otherwise not occur, including in the
@@ -396,7 +396,7 @@ Using this feature, we can simplify references to a lot of macros (and,
 in turn, reduce typing errors).
 
 
-\S{selfref%?} The Macro Name Itself: \i\c{%?} and \i\c{%??}
+\S{selfref%?} The Macro Name Itself: \i\c{%?} and \c{%??}
 
 The special symbols \c{%?} and \c{%??} can be used to reference the
 macro name itself inside a macro expansion, this is supported for both
@@ -422,7 +422,7 @@ will expand to:
 These tokens can be used for single-line macros \e{if defined outside
 any multi-line macros.} See below.
 
-\S{selfref%*?} The Single-Line Macro Name: \i\c{%*?} and \i\c{%*??}
+\S{selfref%*?} The Single-Line Macro Name: \i\c{%*?} and \c{%*??}
 
 If the tokens \c{%?} and \c{%??} are used inside a multi-line macro,
 they are expanded before any directives are processed. As a result,
@@ -574,7 +574,7 @@ To disable aliases without undefining them, use the \c{%aliases off}
 directive.
 
 To check whether an alias is defined, regardless of the existence of
-the aliased macro, use \c{%ifdefalias}.
+the aliased macro, use \i\c{%ifdefalias}.
 
 For example:
 
@@ -612,8 +612,8 @@ It's often useful to be able to handle strings in macros. NASM
 supports a few simple string handling macro operators from which
 more complex operations can be constructed.
 
-All the string operators define or redefine a value (either a string
-or a numeric value) to a single-line macro.  When producing a string
+All the string operators define or redefine a single-line macro to some
+value (either a string or a numeric value).  When producing a string
 value, it may change the style of quoting of the input string or
 strings, and possibly use \c{\\}-escapes inside \c{`}-quoted strings.
 
@@ -680,7 +680,7 @@ than the description:
 As with \c{%strlen} (see \k{strlen}), the first parameter is the
 single-line macro to be created and the second is the string. The
 third parameter specifies the first character to be selected, and the
-optional fourth parameter preceded by comma) is the length.  Note
+optional fourth parameter (preceded by comma) is the length.  Note
 that the first index is 1, not 0 and the last index is equal to the
 value that \c{%strlen} would assign given the same string. Index
 values out of range result in an empty string.  A negative length
@@ -701,12 +701,33 @@ arguments, and can be used in any context where single-line macro
 expansion would be performed. Preprocessor functions were introduced
 in NASM 2.16.
 
+Starting with NASM 3.00, the \i\c{%ifdef} directive or \i\c{%isdef()}
+function can also test for the availability of preprocessor
+functions. They cannot, however, be undefined, aliased or redefined.
+
+
 \S{f_abs} \i\c{%abs()} Function
 
 The \c{%abs()} function evaluates its first argument as an expression,
 and then emits the absolute value. This will always be emitted as a
 single token containing a decimal number; no minus sign will be
 emitted even if the input value is the maximum negative number.
+
+
+\S{f_b2hs} \i\c{%b2hs()} Function
+
+The \c{%b2hs()} functin takes a quoted string and an optional
+separator string, and expands to a quoted string containing a packed
+hexadecimal form of the bytes of the first string, separated by the
+separator string if applicable. This is the inverse of the \c{%hs2b()}
+function, see \k{f_hs2b}.
+
+
+\S{f_chr} \i\c{%chr()} Function
+
+The \c{%chr()} function evaluates its arguments as integers, then
+creates a quoted string out of these integers (mod 256) as bytes.
+
 
 \S{f_cond} \i\c{%cond()} Function
 
@@ -736,6 +757,18 @@ treats an empty argument list as a single empty argument.
 \c %xdefine lc2   %count(%[list]) ; %define lc 3 (indirection expands)
 
 
+\S{f_depend} \i\c\{%depend()} Function
+
+he \c{%depend()} function takes a quoted string as argument, adds it
+to the output dependency list generated by the \c{-M} options (see
+\k{opt-M}), and evaluates to the unchanged string.
+
+This is the function equivalent of the \c{%depend} directive, see
+\k{depend}.
+
+See also the \c{%pathsearch()} function (\k{f_pathsearch}).
+
+
 \S{f_eval} \i\c{%eval()} Function
 
 The \c{%eval()} function evaluates its argument as a numeric
@@ -753,18 +786,61 @@ The expressions passed to \c{%eval()} are \i{critical expressions},
 see \k{crit}.
 
 
+\S{f_find} \i\c{%find()} and \i\c{%findi()} Functions
+
+The \c{%find()} and \c{%findi()} functions take an argument followed
+by an optional list. These are turned into quoted strings if
+necessary, and then compared as if by the \i\c{%isidn()} or
+\i\c{%isidni()} functions, respectively (see \k{ifidn}) \- the
+\c{%find()} function compares case sensitively, and \c{%findi()} case
+insensitively.
+
+The functions then expand to \c{0} if none of the strings in the list
+match the first string, or the position in the list where the first
+string was found, where \c{1} is the first argument in the list,
+i.e. not including the first argument to the function.
+
+Once a matching argument has been found, no further arguments are expanded.
+
+For example:
+
+\c      db %find(a,b,c,d)                       ; 0
+\c      db %find(a,b,a,c)                       ; 2
+\c      db %find(a)                             ; 0 (empty list)
+
+
 \S{f_hex} \i\c{%hex()} Function
 
 Equivalent to \i\c\{%eval()}, except that the results generated are
 given as unsigned hexadecimal, with a \c{0x} prefix.
 
 
-\S{f_is} \i\c{%is()} Family Functions
+\S{f_hs2b} \i\c\{%hs2b()} Function
 
-Each \i\c{%if} family directive (see \k{condasm}) has an equivalent
-\c{%is()} family function, that expands to \c{1} if the equivalent
-\c{%if} directive would process as true, and \c{0} if the equivalent
-\c{%if} directive would process as false.
+The \c{%hs2b()} function takes one or more quoted strings containing
+hexadecimal numbers and optional separators (any character that is not
+a valid hexadecimal digit is considered a separator) and expands to a
+quoted string containing the bytes encoded in the hexadecimal
+string. Every pair of hexadecimal digits encodes a byte, but a
+separator will always terminate the encoding of a byte. Thus, these
+two statements will produce the same output:
+
+\c      db 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09
+\c      db %hs2b("00010203 4 0506 07 8","9")
+
+This can be used to compactly encode long strings of binary data in
+source code.
+
+
+\S{f_is} \i\c{%is()}\I\c{%isn()} Family Functions
+
+Each \c{%if} conditional assembly family directive (see \k{condasm})
+has an equivalent \c{%is()} family function, that expands to \c{1} if
+the equivalent \c{%if} directive would process as true, and \c{0} if
+the equivalent \c{%if} directive would process as false.
+
+This includes the \c{%ifn} forms of these directives, which become
+\c{%isn()}.
 
 \c ; Instead of !%isidn() could have used %isnidn()
 \c %if %isdef(foo) && !%isidn(foo,bar)
@@ -782,6 +858,9 @@ argument to the conditional using \c{\{\}}:
 \c %if %isdef(foo) && !%isidn({foo,)})
 \c       db "foo is defined, but not as ')'"
 \c %endif
+
+Unlike the C \c{defined()} preprocessor construct, these functions are
+valid anywhere in the source code, not just in \c{%if} expressions.
 
 
 \S{f_map} \i\c{%map()} Function
@@ -843,6 +922,12 @@ with a user-specified delimiter string:
 \c       db 'a:b:c:d'
 
 
+\S{f_null} \i\c{%null()} Function
+
+The \c{%null()} function ignores its arguments without expanding them,
+and expands to nothing.
+
+
 \S{f_num} \i\c{%num()} Function
 
 The \c{%num()} function evaluates its arguments as expressions, and
@@ -873,6 +958,45 @@ If a \e{signed} number needs to be converted to a string, use
 \c{%abs()}, \c{%cond()}, and \c{%strcat()} to format the signed number
 string to your specific output requirements.
 
+
+\S{f_ord} \i\c{%ord()} Function
+
+The \c{%ord()} function takes a quoted string, and (like
+\c{%substr()}, see \k{f_substr}) an optional starting index and
+length, and expands to a comma-separated list of integers
+corresponding to the bytes of the quoted string. Note that unlike
+\c{%substr()} the length argument defaults to \c{1}, so if it is not
+given only a single byte value is expanded.
+
+
+\S{f_pathsearch} \i\c\{%pathsearch()} Function
+
+The \c{%pathsearch()} function takes a quoted string as argument, and
+searches for a file with that name in the include path, then expands
+to the pathname located, if found, otherwise to the unmodified string.
+
+This is the function equivalent of the \c{%pathsearch} directive, see
+\k{pathsearch}.
+
+See also the \c{%depend()} function (\k{f_depend}).
+
+
+\S{f_realpath} \i\c{%realpath()} Function
+
+The \c{%realpath()} function takes a quoted string as argument, and
+attempts to convert it to a fully qualified absolute path name if
+supported by the underlying host operating system.
+
+If successful, it expands to a quoted string with the resulting
+path name, otherwise to the unmodified string.
+
+The include path is \e{not} searched; to search for the file using the
+include path, use the \c{%pathsearch()} function in conjunction with
+this function, for example:
+
+\c %define SOMEREALPATH %realpath(%pathsearch("somefile.asm"))
+
+
 \S{f_sel} \i\c{%sel()} Function
 
 The \c{%sel()} function evaluates its first argument as an
@@ -885,6 +1009,24 @@ expands to nothing.
 \c %xdefine bstr %sel(b,"one","two","three") ; %define bstr "two"
 
 The arguments not selected are never expanded.
+
+
+\S{f_selbits} \i\c{%selbits()} Function
+
+The \c{%selbits()} function returns its first, second, or third
+argument depending on if the current mode is 16, 32 or 64 bits. If
+less than three arguments are given, the last argument is considered
+repeated.  Like \c{%cond()}, this is a specialized version of the
+\c{%sel()} function.
+
+For example:
+
+\c      BITS 64
+\c
+\c %define breg %selbits(bx,ebx,rbx)
+\c %define vreg %selbits(ax,eax)
+\c
+\c      mov vreg,[breg]		; mov eax,[rbx]
 
 
 \S{f_str} \i\c\{%str()} Function
@@ -1345,7 +1487,7 @@ iterated through in reverse order.
 \S{concat} \i{Concatenating Macro Parameters}
 
 NASM can concatenate macro parameters and macro indirection constructs
-on to other text surrounding them. This allows you to declare a family
+with other surrounding text. This allows you to declare a family
 of symbols, for example, in a macro definition. If, for example, you
 wanted to generate a table of key codes along with offsets into the
 table, you could code something like
@@ -1455,12 +1597,17 @@ Or like this:
 
 \c %macro bar 1-5+.nolist a,b,c,d,e,f,g,h
 
-\S{unmacro} Undefining Multi-Line Macros: \I\c{%unimacro}\i\c{%unmacro}
+\S{unmacro} Undefining Multi-Line Macros: \i\c{%unmacro}, \i\c{%unimacro}
 
-Multi-line macros can be removed with the \c{%unmacro} directive.
-Unlike the \c{%undef} directive, however, \c{%unmacro} takes an
+Multi-line macros can be removed with the \c{%unmacro} or
+\c{%unimacro} directives.
+
+Unlike the \c{%undef} directive, however, these directives take an
 argument specification, and will only remove \i{exact matches} with
-that argument specification.
+that argument specification. Furthermore, case sensitive macros have
+match the directive: a case-sensitive macro has to be removed with
+\c{%unmacro}, and a case-insensitive one with \c{%unimacro}. This
+ensures that only the specific macro intended is removed.
 
 For example:
 
@@ -1479,8 +1626,23 @@ removes the previously defined macro \c{foo}, but
 does \e{not} remove the macro \c{bar}, since the argument
 specification does not match exactly.
 
-A case-insensitive macro needs to be removed with the \c{%unimacro}
-directive.
+\S{exitmacro} \i\c{%exitmacro}: Stop Expanding a Multi-Line Macro
+
+If a \c{%exitmacro} directive is encountered, NASM will immediately
+stop expanding the current multiline macro. This can, for example, be
+used to avoid unnecessarily deep \c{%if} trees in the case of error
+conditions, such as:
+
+\c %macro count_something 2
+\c  %if %1 < 0
+\c    %warning %?: negative count
+\c    %exitmacro
+\c  %endif
+\c  ; ... do the thing, knowing that %1 >= 0 ...
+\c %endmacro
+
+Compare with the \c{%exitrep} directive, \k{rep}.
+
 
 \H{condasm} \i{Conditional Assembly}\I\c{%if}
 
@@ -1498,21 +1660,42 @@ syntax of this feature looks like this:
 
 The inverse forms \i\c{%ifn} and \i\c{%elifn} are also supported.
 
-The \i\c{%else} clause is optional, as is the \i\c{%elif} clause.
-You can have more than one \c{%elif} clause as well.
+You can have multiple \i\c{%elif} clauses, or none. The \i\c{%else}
+clause is likewise optional.
 
 There are a number of variants of the \c{%if} directive.  Each has its
-corresponding \c{%elif}, \c{%ifn}, and \c{%elifn} directives; for
+corresponding \i\c{%elif}, \i\c{%ifn}, and \i\c{%elifn} directives; for
 example, the equivalents to the \c{%ifdef} directive are \c{%elifdef},
 \c{%ifndef}, and \c{%elifndef}.
+
+Futhermore, each variant of the \c{%if} directive (including
+\c{%ifn} forms) has a corresponding \i\c{%is()} preprocessor function
+(see \k{f_is}.) These are particularly useful for testing multiple
+conditions at the same time. Unlike the C \c{defined()} preprocessor
+construct, these functions are valid anywhere in the source code, not
+just in \c{%if} expressions.
+
+The following descriptions of tests all imply the existence of these
+alternate forms.
+
+\S{if} \i\c{%if}: Testing Arbitrary Numeric Expressions\I{testing,
+arbitrary numeric expressions}
+
+The conditional-assembly construct \c{%if expr} will cause the
+subsequent code to be assembled if and only if the value of the
+numeric expression \c{expr} is non-zero. An example of the use of
+this feature is in deciding when to break out of a \c{%rep}
+preprocessor loop: see \k{rep} for a detailed example.
+
+The expression given to \c{%if} is a critical expression (see \k{crit}).
+
 
 \S{ifdef} \i\c{%ifdef}: Testing Single-Line Macro Existence\I{testing,
 single-line macro existence}
 
 Beginning a conditional-assembly block with the line \c{%ifdef
 MACRO} will assemble the subsequent code if, and only if, a
-single-line macro called \c{MACRO} is defined. If not, then the
-\c{%elif} and \c{%else} blocks (if any) will be processed instead.
+single-line macro called \c{MACRO} is defined.
 
 For example, when debugging a program, you might want to write code
 such as
@@ -1527,10 +1710,34 @@ Then you could use the command-line option \c{-dDEBUG} to create a
 version of the program which produced debugging messages, and remove
 the option to generate the final release version of the program.
 
-You can test for a macro \e{not} being defined by using
-\i\c{%ifndef} instead of \c{%ifdef}. You can also test for macro
-definitions in \c{%elif} blocks by using \i\c{%elifdef} and
-\i\c{%elifndef}.
+From NASM 3.00 onward, \c{%ifdef} can also test for the availability
+of a preprocessor function, for example:
+
+\c %ifdef %newfunc
+\c   db %newfunc(99)     ; Generates something magic
+\c %else
+\c   %warning "This version of NASM doesn't support %newfunc()"
+\c   db -1              ; Feature not supported
+\c %endif
+
+or, if the warning is not needed, using the function form:
+
+\c   db %cond(%isdef(%newfunc),%newfunc(99),-1)
+
+It is strongly recommended to use this test instead of relying on NASM
+version numbers. To make it possible to test that this use of
+\c{%ifdef} is valid, the macro \i\c{__?NASM_HAS_IFDIRECTIVE?__} is
+defined on versions of NASM that support \c{%ifdirective},
+\c{%ifusable}, \c{%ifusing} and using \c{%ifdef} to test for
+preprocessor functions. See \k{has_ifdirective}.
+
+
+\S{ifdefalias} \i\c{%ifdefalias}: Testing Single-Line Macro Alias
+Existence\I{testing, single-line macro alias existence}
+
+The \c{%ifdefalias} directive operates in the same was as the
+\c{%ifdef} directive, except it tests for the definition of a
+single-line macro \e{alias}, as defined by \i\c{%defalias}.
 
 
 \S{ifmacro} \i\c{%ifmacro}: Testing Multi-Line Macro
@@ -1565,10 +1772,6 @@ This will create the macro "MyMacro 1-3" if no macro already exists which
 would conflict with it, and emits a warning if there would be a definition
 conflict.
 
-You can test for the macro not existing by using the \i\c{%ifnmacro} instead
-of \c{%ifmacro}. Additional tests can be performed in \c{%elif} blocks by using
-\i\c{%elifmacro} and \i\c{%elifnmacro}.
-
 
 \S{ifctx} \i\c{%ifctx}: Testing the Context Stack\I{testing, context
 stack}
@@ -1576,28 +1779,10 @@ stack}
 The conditional-assembly construct \c{%ifctx} will cause the
 subsequent code to be assembled if and only if the top context on
 the preprocessor's context stack has the same name as one of the arguments.
-As with \c{%ifdef}, the inverse and \c{%elif} forms \i\c{%ifnctx},
-\i\c{%elifctx} and \i\c{%elifnctx} are also supported.
 
 For more details of the context stack, see \k{ctxstack}. For a
 sample use of \c{%ifctx}, see \k{blockif}.
 
-
-\S{if} \i\c{%if}: Testing Arbitrary Numeric Expressions\I{testing,
-arbitrary numeric expressions}
-
-The conditional-assembly construct \c{%if expr} will cause the
-subsequent code to be assembled if and only if the value of the
-numeric expression \c{expr} is non-zero. An example of the use of
-this feature is in deciding when to break out of a \c{%rep}
-preprocessor loop: see \k{rep} for a detailed example.
-
-The expression given to \c{%if}, and its counterpart \i\c{%elif}, is
-a critical expression (see \k{crit}).
-
-
-Like other \c{%if} constructs, \c{%if} has a counterpart
-\i\c{%elif}, and negative forms \i\c{%ifn} and \i\c{%elifn}.
 
 \S{ifidn} \i\c{%ifidn} and \i\c{%ifidni}: Testing Exact Text
 Identity\I{testing, exact text identity}
@@ -1622,11 +1807,6 @@ stack, and allows you to treat \c{IP} as a real register:
 \c   %endif
 \c
 \c %endmacro
-
-Like other \c{%if} constructs, \c{%ifidn} has a counterpart
-\i\c{%elifidn}, and negative forms \i\c{%ifnidn} and \i\c{%elifnidn}.
-Similarly, \c{%ifidni} has counterparts \i\c{%elifidni},
-\i\c{%ifnidni} and \i\c{%elifnidni}.
 
 \S{iftyp} \i\c{%ifid}, \i\c{%ifnum}, \i\c{%ifstr}: Testing Token
 Types\I{testing, token types}
@@ -1688,10 +1868,6 @@ single string constant, and \c{db %2} would be adequate) or more (in
 which case, all but the first two would be lumped together into
 \c{%3}, and \c{db %2,%3} would be required).
 
-The usual \I\c{%elifid}\I\c{%elifnum}\I\c{%elifstr}\c{%elif}...,
-\I\c{%ifnid}\I\c{%ifnnum}\I\c{%ifnstr}\c{%ifn}..., and
-\I\c{%elifnid}\I\c{%elifnnum}\I\c{%elifnstr}\c{%elifn}... versions
-exist for each of \c{%ifid}, \c{%ifnum} and \c{%ifstr}.
 
 \S{iftoken} \i\c{%iftoken}: Test for a Single Token
 
@@ -1714,8 +1890,6 @@ will assemble the subsequent code, but
 will not, since \c{-1} contains two tokens: the unary minus operator
 \c{-}, and the number \c{1}.
 
-The usual \i\c{%eliftoken}, \i\c\{%ifntoken}, and \i\c{%elifntoken}
-variants are also provided.
 
 \S{ifempty} \i\c{%ifempty}: Test for Empty Expansion
 
@@ -1723,8 +1897,80 @@ The conditional assembly construct \c{%ifempty} assembles the
 subsequent code if and only if the expanded parameters do not contain
 any tokens at all, whitespace excepted.
 
-The usual \i\c{%elifempty}, \i\c\{%ifnempty}, and \i\c{%elifnempty}
-variants are also provided.
+
+\S{ifdirective} \i\c{%ifdirective}: Test If a Directive Is Supported
+
+The conditional assembly construct \c{%ifdirective} assembles the
+subsequent code if and only if followed by a token that corresponds to
+a preprocessor directive, assembler directive (see \k{directive}) or a
+pseudo-instruction (see \k{pseudop}) supported in the current version
+of NASM.
+
+The argument can be a quoted string to prevent macro expansion, in
+which case it is unquoted before the test, that is, these two lines do
+the same thing:
+
+\c      %ifdirective %ifndef
+\c      %ifdirective "%ifndef"
+
+Preprocessor directives must be specified with a leading \c{%} sign
+(except for certain directives in TASM mode); assembler directives
+\e{may} be specified with surrounding brackets \c{[]}, but those are
+not required.
+
+Some assembly directives can be supported in some contexts and not
+others, for example, most output formats do not support the \c{ORG}
+directive, therefore the result of \c{%ifdirective} may depend on more
+than just the current version of NASM.
+
+\c{%ifdirective} was introduced in NASM 3.00. It is strongly
+recommended to use this test instead of relying on NASM version
+numbers. To make it possible to probe for the existence of this test
+itself, the macro \i\c{__?NASM_HAS_IFDIRECTIVE?__} is defined on
+versions of NASM that support \c{%ifdirective}, \c{%ifusable},
+\c{%ifusing} and using \c{%ifdef} to test for preprocessor
+functions. See \k{has_ifdirective}.
+
+
+\S{ifusing} \i\c{%ifusable} and \i\c{%ifusing}: Test For Standard
+Macro Packages
+
+The conditional assembly construct \c{%ifusable} assembles the
+subsequent code if and only if the following argument would be valid
+as the argument to \c{%use} (see \k{use}), in other words, that a
+standard macro package with that name is available in the current
+version of NASM.
+
+The conditional assembly construct \c{%ifusing} assembles the
+subsequent code if and only if the following argument would be valid
+as the argument to \c{%use}. It is more or less equivalent to the
+\c{__?USE_}\e{package}\c{?__} standard macros (see \k{use_def}) but is
+potentially more robust.
+
+\c{%ifusing} and \c{%ifusable} were introduced in NASM 3.00. It is
+strongly recommended to use this test instead of relying on NASM
+version numbers. To make it possible to probe for the existence of
+this test itself, the macro \i\c{__?NASM_HAS_IFDIRECTIVE?__} is
+defined on versions of NASM that support \c{%ifdirective},
+\c{%ifusable}, \c{%ifusing} and using \c{%ifdef} to test for
+preprocessor functions. See \k{has_ifdirective}.
+
+
+\S{iffile} \i\c{%iffile}: Test If a File Exists
+
+The conditional assembly construct \c{%iffile} assembles the
+subsequent code if and only if a quoted string is specified which
+contains the name of a file that is available for NASM to read.
+
+The include path is \e{not} searched; to search for the file using the
+include path, use the \c{%pathsearch()} function in conjunction with
+this test, for example:
+
+\c %define MYFILE "file.asm"
+\c %iffile %pathsearch(MYFILE)
+\c      ; ...
+\c %endif
+
 
 \S{ifenv} \i\c{%ifenv}: Test If Environment Variable Exists
 
@@ -1732,12 +1978,41 @@ The conditional assembly construct \c{%ifenv} assembles the
 subsequent code if and only if the environment variable referenced by
 the \c{%!}\e{variable} directive exists.
 
-The usual \i\c{%elifenv}, \i\c\{%ifnenv}, and \i\c{%elifnenv}
-variants are also provided.
-
 Just as for \c{%!}\e{variable} the argument should be written as a
 string if it contains characters that would not be legal in an
 identifier.  See \k{getenv}.
+
+
+\S{if_caveat} Backwards Compatibility Caveat
+
+\I\c{__?NASM_HAS_IFDIRECTIVE?__}\I\c{%ifdirective}\I\c{unknown
+%if}Note that NASM before version 3.00 would not handle an unknown
+\c{%if}-type directive for the purpose of \c{%if}...\c{%endif}
+balancing. Therefore, something like this would not work:
+
+\c %ifdef __?NASM_HAS_IFDIRECTIVE?__        ; NASM 3.00 or later
+\c   %ifdirective %iffile		    ; Test for directive
+\c     %iffile MYFILE
+\c        incbin MYFILE
+\c     %endif
+\c   %endif
+\c %endif
+
+This can be worked around by using the \c{%is()} series functions and
+plain \c{%if} instead:
+
+\c %ifdef __?NASM_HAS_IFDIRECTIVE?__        ; NASM 3.00 or later
+\c   %if %isdef(%isfile)		    ; Test for function
+\c     %if %isfile(MYFILE)
+\c        incbin MYFILE
+\c     %endif
+\c   %endif
+\c %endif
+
+NASM 3.00 and later treats an unknown preprocessor directive beginning
+with \c{%if} or \c{%elif} as if it were a known conditional directive
+for the purpose of \c{%if}...\c{%endif} balancing.
+
 
 \H{rep} \i{Preprocessor Loops}\I{repeating code}: \i\c{%rep}
 
@@ -1844,6 +2119,8 @@ For example,
 ... with \c{-Ibins/} in the include path may end up defining the macro
 \c{MyFoo} to be \c{"bins/foo.bin"}.
 
+See also the \c{%pathsearch()} function (\k{f_pathsearch}).
+
 
 \S{depend} \i\c{%depend}: Add Dependent Files
 
@@ -1865,6 +2142,8 @@ This first resolves the location of the file into the macro \c{dep},
 then adds it to the dependency lists, and finally issues the
 assembler-level \c{INCBIN} directive.
 
+See also the \c{%depend()} function (\k{f_depend}).
+
 
 \S{use} \i\c{%use}: Include Standard Macro Package
 
@@ -1885,13 +2164,17 @@ Standard macro packages are protected from multiple inclusion.  When a
 standard macro package is used, a testable single-line macro of the
 form \c{__?USE_}\e{package}\c{?__} is also defined, see \k{use_def}.
 
+The \c{%ifusable} and \c{%ifusing} directives can be used for the
+existence and inclusion of a specific standard macro package, see
+\c{ifusing}.
+
 \H{ctxstack} The \i{Context Stack}
 
 Having labels that are local to a macro definition is sometimes not
 quite powerful enough: sometimes you want to be able to share labels
 between several macro calls. An example might be a \c{REPEAT} ...
-\c{UNTIL} loop, in which the expansion of the \c{REPEAT} macro
-would need to be able to refer to a label which the \c{UNTIL} macro
+\c{UNTIL} loop, in which the expansion of the \c{UNTIL} macro
+would need to be able to refer to a label which the \c{REPEAT} macro
 had defined. However, for such a macro you would also want to be
 able to nest these loops.
 
@@ -1915,7 +2198,7 @@ This pushes a new context called \c{foobar} on the stack. You can have
 several contexts on the stack with the same name: they can still be
 distinguished.  If no name is given, the context is unnamed (this is
 normally used when both the \c{%push} and the \c{%pop} are inside a
-single macro definition.)
+single macro definition).
 
 The directive \c{%pop}, taking one optional argument, removes the top
 context from the context stack and destroys it, along with any
@@ -1947,9 +2230,9 @@ above could be implemented by means of:
 
 and invoked by means of, for example,
 
-\c         mov     cx,string
+\c         mov     di,string
 \c         repeat
-\c         add     cx,3
+\c         add     di,3
 \c         scasb
 \c         until   e
 
@@ -2087,7 +2370,7 @@ implement a block IF statement as a set of macros.
 This code is more robust than the \c{REPEAT} and \c{UNTIL} macros
 given in \k{ctxlocal}, because it uses conditional assembly to check
 that the macros are issued in the right order (for example, not
-calling \c{endif} before \c{if}) and issues a \c{%error} if they're
+calling \c{endif} before \c{if}) and issues an \c{%error} if they're
 not.
 
 In addition, the \c{endif} macro has to be able to cope with the two
@@ -2247,7 +2530,7 @@ The \c{%$localsize} variable is used internally by the
 current context before the \c{%local} directive may be used.
 Failure to do so will result in one expression syntax error for
 each \c{%local} variable declared. It then may be used in
-the construction of an appropriately sized ENTER instruction
+the construction of an appropriately sized \c{ENTER} instruction
 as shown in the example.
 
 
@@ -2362,7 +2645,8 @@ output is either \c{win32} or \c{win64}:
 
 \S{pragma-preproc} Preprocessor Pragmas
 
-The only preprocessor \c{%pragma} defined in NASM 2.15 is:
+The only preprocessor \c{%pragma} defined as the current version of
+NASM is:
 
 \b \c{%pragma preproc sane_empty_expansion}: disables legacy
 compatibility handling of braceless empty arguments to multi-line

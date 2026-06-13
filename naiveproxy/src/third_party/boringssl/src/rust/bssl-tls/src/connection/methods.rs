@@ -14,20 +14,32 @@
 
 use alloc::boxed::Box;
 use core::{
-    ffi::{c_int, c_long, c_void},
-    ptr::{NonNull, null_mut},
-    task::Waker,
+    ffi::{
+        c_int,
+        c_long,
+        c_void, //
+    },
+    marker::PhantomData,
+    ptr::{
+        NonNull,
+        null_mut, //
+    },
+    task::Waker, //
 };
-use std::marker::PhantomData;
 
 use once_cell::sync::Lazy;
 
 use crate::{
-    Methods, abort_on_panic,
-    context::{QuicMode, TlsMode},
+    Methods,
+    abort_on_panic,
+    context::{
+        DtlsMode,
+        QuicMode,
+        TlsMode, //
+    },
     errors::TlsRetryReason,
     io::RustBioHandle,
-    methods::drop_box_rust_methods,
+    methods::drop_box_rust_methods, //
 };
 
 /// The associated state to the [`super::TlsConnection`].
@@ -48,6 +60,10 @@ impl<M> RustConnectionMethods<M> {
         }
     }
 
+    pub fn set_pending_reason(&mut self, reason: TlsRetryReason) {
+        self.pending_reason = Some(reason);
+    }
+
     pub fn take_pending_reason(&mut self) -> Option<TlsRetryReason> {
         self.pending_reason.take()
     }
@@ -61,7 +77,7 @@ impl<M> RustConnectionMethods<M> {
 }
 
 impl<Mode: HasTlsConnectionMethod> Methods for RustConnectionMethods<Mode> {
-    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a mut Self> {
+    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a Self> {
         unsafe {
             // Safety: `ssl` is originated from `TlsConnection::from_ssl`.
             let methods = bssl_sys::SSL_get_ex_data(ssl, Mode::registration());
@@ -233,6 +249,15 @@ impl HasTlsConnectionMethod for TlsMode {
     fn registration() -> c_int {
         static TLS_CONTEXT_METHOD: Lazy<c_int> =
             Lazy::new(register_tls_connection_vtable::<TlsMode>);
+        *TLS_CONTEXT_METHOD
+    }
+}
+
+impl HasTlsConnectionMethod for DtlsMode {
+    #[inline(always)]
+    fn registration() -> c_int {
+        static TLS_CONTEXT_METHOD: Lazy<c_int> =
+            Lazy::new(register_tls_connection_vtable::<DtlsMode>);
         *TLS_CONTEXT_METHOD
     }
 }

@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2019 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2019 The NASM Authors - All Rights Reserved */
 
 /*
  * Parse and handle [pragma] directives.  The preprocessor handles
@@ -192,22 +162,10 @@ found_it:
     case DIRR_UNKNOWN:
         switch (pragma.opcode) {
         case D_none:
-            /*!
-             *!pragma-bad [off] malformed \c{%pragma}
-             *!=bad-pragma
-             *!  warns about a malformed or otherwise unparsable
-             *!  \c{%pragma} directive.
-             */
             nasm_warn(ERR_PASS2|WARN_PRAGMA_BAD,
                        "empty %%pragma %s", pragma.facility_name);
             break;
         default:
-            /*!
-             *!pragma-unknown [off] unknown \c{%pragma} facility or directive
-             *!=unknown-pragma
-             *!  warns about an unknown \c{%pragma} directive.
-             *!  This is not yet implemented for most cases.
-             */
             nasm_warn(ERR_PASS2|WARN_PRAGMA_UNKNOWN,
                        "unknown %%pragma %s %s",
                        pragma.facility_name, pragma.opname);
@@ -235,21 +193,7 @@ found_it:
     return rv;
 }
 
-/* This warning message is intended for future use */
-/*!
- *!pragma-na [off] \c{%pragma} not applicable to this compilation
- *!=not-my-pragma
- *!  warns about a \c{%pragma} directive which is not applicable to
- *!  this particular assembly session.  This is not yet implemented.
- */
-
 /* Naked %pragma */
-/*!
- *!pragma-empty [off] empty \c{%pragma} directive
- *!  warns about a \c{%pragma} directive containing nothing.
- *!  This is treated identically to \c{%pragma ignore} except
- *!  for this optional warning.
- */
 void process_pragma(char *str)
 {
     const struct pragma_facility *pf;
@@ -272,7 +216,16 @@ void process_pragma(char *str)
     else
         pragma.opcode = directive_find(pragma.opname);
 
-    pragma.tail = nasm_trim_spaces(p);
+    /*
+     * This used to use nasm_trim_spaces, but that assumes a single word.
+     * Instead, strip spaces at either end of the directive, but allow
+     * interior spaces.
+     */
+    p = nasm_zap_spaces_fwd(p);
+    pragma.tail = p;
+    p += strlen(p);
+    while (p > pragma.tail && nasm_isspace(p[-1]))
+	*--p = 0;
 
     /*
      * Search the global pragma namespaces. This is done
@@ -334,17 +287,14 @@ static enum directive_result output_pragma_common(const struct pragma *pragma)
     switch (pragma->opcode) {
     case D_PREFIX:
     case D_GPREFIX:
-        set_label_mangle(LM_GPREFIX, pragma->tail);
-        return DIRR_OK;
     case D_SUFFIX:
     case D_GSUFFIX:
-        set_label_mangle(LM_GSUFFIX, pragma->tail);
-        return DIRR_OK;
+    case D_POSTFIX:
+    case D_GPOSTFIX:
     case D_LPREFIX:
-        set_label_mangle(LM_LPREFIX, pragma->tail);
-        return DIRR_OK;
     case D_LSUFFIX:
-        set_label_mangle(LM_LSUFFIX, pragma->tail);
+    case D_LPOSTFIX:
+        set_label_mangle(pragma->opcode, pragma->tail);
         return DIRR_OK;
     default:
         return DIRR_UNKNOWN;

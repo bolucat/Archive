@@ -37,6 +37,9 @@ component("jni_zero") {
   configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 
   defines = []
+  if (build_with_chromium) {
+    defines += [ "JNI_ZERO_BUILD_WITH_CHROMIUM" ]
+  }
   if (enable_jni_multiplexing) {
     defines += [ "JNI_ZERO_MULTIPLEXING_ENABLED" ]
   }
@@ -68,15 +71,15 @@ if (enable_java_templates && is_android) {
       "java/src/org/jni_zero/CalledByNative.java",
       "java/src/org/jni_zero/CalledByNativeForTesting.java",
       "java/src/org/jni_zero/CalledByNativeUnchecked.java",
+      "java/src/org/jni_zero/CommonApis.java",
       "java/src/org/jni_zero/JNINamespace.java",
-      "java/src/org/jni_zero/JniInit.java",
       "java/src/org/jni_zero/JniPtr.java",
       "java/src/org/jni_zero/JniPtrImpl.java",
       "java/src/org/jni_zero/JniPtrInner.java",
       "java/src/org/jni_zero/JniTestInstancesSnapshot.java",
       "java/src/org/jni_zero/JniType.java",
       "java/src/org/jni_zero/JniTypeToken.java",
-      "java/src/org/jni_zero/JniUtil.java",
+      "java/src/org/jni_zero/JniZero.java",
       "java/src/org/jni_zero/NativeClassQualifiedName.java",
       "java/src/org/jni_zero/NativeMethods.java",
       "java/src/org/jni_zero/UsedReflectively.java",

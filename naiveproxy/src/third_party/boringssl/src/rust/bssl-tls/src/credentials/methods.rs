@@ -12,11 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use core::{ffi::c_int, ptr::null_mut};
+use core::{
+    ffi::c_int,
+    ptr::null_mut, //
+};
 
 use once_cell::sync::Lazy;
 
-use crate::{Methods, methods::drop_box_rust_methods};
+use crate::{
+    Methods,
+    methods::drop_box_rust_methods, //
+};
 
 pub(super) static TLS_CREDENTIAL_METHOD: Lazy<c_int> = Lazy::new(|| unsafe {
     // Safety: this a one-time registration uses only valid function pointers.
@@ -38,7 +44,7 @@ pub(super) static TLS_CREDENTIAL_METHOD: Lazy<c_int> = Lazy::new(|| unsafe {
 pub(crate) struct RustCredentialMethods {}
 
 impl Methods for RustCredentialMethods {
-    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a mut Self> {
+    unsafe extern "C" fn from_ssl<'a>(ssl: *mut bssl_sys::SSL) -> Option<&'a Self> {
         unsafe {
             // Safety: `ssl` is valid per BoringSSL invariant.
             let cred = bssl_sys::SSL_get0_selected_credential(ssl);
@@ -51,7 +57,7 @@ impl Methods for RustCredentialMethods {
                 return None;
             }
             // Safety: `cred` is originated from `Box::into_raw`.
-            Some(&mut *(methods as *mut RustCredentialMethods))
+            Some(&*(methods as *mut RustCredentialMethods))
         }
     }
 }

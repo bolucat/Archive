@@ -1,7 +1,8 @@
 dnl Process this file with autoconf 2.71 or later to produce
 dnl a configure script.
 AC_PREREQ([2.71])
-AC_INIT
+m4_define([VERSION],m4_normalize(m4_include([version])))
+AC_INIT([nasm],VERSION,[https://bugs.nasm.us/],[nasm],[https://www.nasm.us/])
 AC_CONFIG_SRCDIR([config/config.h.in])
 AC_CONFIG_HEADERS([config/config.h])
 AC_PREFIX_PROGRAM(nasm)
@@ -18,11 +19,11 @@ dnl the best very slow and doesn't buy us a single thing at all.
 PA_CROSS_COMPILE
 
 dnl Enable any available C extensions
-PA_PROG_CC
+PA_PROG_CC([[-std=c23],[-std=c17],[-std=c11],[-std=c99]])
 AC_USE_SYSTEM_EXTENSIONS
-PA_ADD_CPPFLAGS([-std=c17], [], [],
-[PA_ADD_CPPFLAGS([-std=c11], [], [],
- [PA_ADD_CPPFLAGS([-std=c99])])])
+dnl Some environments abuse __STRICT_ANSI__ to disable some
+dnl function declarations
+PA_ADD_CFLAGS([-U__STRICT_ANSI__])
 
 dnl Options for debugging and profiling
 PA_OPTION_DEBUG
@@ -37,6 +38,28 @@ PA_ARG_ENABLED([panic-abort],
  [AC_DEFINE(ABORT_ON_PANIC)])
 AH_TEMPLATE(ABORT_ON_PANIC,
 [Define to 1 to call abort() on panics (internal errors), for debugging.])
+
+dnl Externally specified zlib
+AC_ARG_WITH([zlib],
+[AS_HELP_STRING([--with-zlib=path], [specify location of external zlib library])],
+[AS_IF([test "x$with_zlib" = xno],
+ [ac_cv_search_inflate=no],
+ [AS_IF([test -d "x$with_zlib"],
+  [for p in "$with_zlib"/include "$with_zlib"
+   do
+     AS_IF([test -d "$p"], [CPPFLAGS="$CPPFLAGS -I$p"])
+   done
+   for p in "$with_zlib"/lib64 "$with_zlib"/lib "$with_zlib"
+   do
+     AS_IF([test -d "$p"], [LDFLAGS="-L$p $LDFLAGS"])
+   done])])])
+
+AS_IF([test "x$ac_cv_search_inflate" != xno],
+      [AC_SEARCH_LIBS([inflate], [z zlib])])
+
+AS_IF([test "x$ac_cv_search_inflate" = xno],
+      [AC_SUBST([ZLIB],['$(ZLIBOBJ)'])
+       AC_SUBST([ZLIBINC],['-I$(top_srcdir)/zlib'])])
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_TYPE_SIZE_T
@@ -53,10 +76,6 @@ PA_ADD_CFLAGS([-fwrapv])
 dnl Force clang to behave in a predictable manner, in order to make bugs
 dnl possible to track down. gcc appears to have this behavior by default.
 PA_ADD_CFLAGS([-ftrivial-auto-var-init=zero])
-
-dnl Some environments abuse __STRICT_ANSI__ to disable some
-dnl function declarations
-PA_ADD_CFLAGS([-U__STRICT_ANSI__])
 
 dnl Don't put things in common if we can avoid it.  We don't want to
 dnl assume all compilers support common, and this will help find those
@@ -76,6 +95,7 @@ AC_CHECK_PROGS([NROFF],    nroff,    false)
 AC_CHECK_PROGS([ASCIIDOC], asciidoc, false)
 AC_CHECK_PROGS([XMLTO],    xmlto,    false)
 AC_CHECK_PROGS([XZ],       xz,       false)
+AC_CHECK_PROGS([PYTHON3],  [python3 python], false)
 
 dnl Check for progs needed for manpage generation
 MANPAGES=manpages
@@ -148,6 +168,9 @@ AC_CHECK_INCLUDES_DEFAULT
 dnl Check for variadic macro support
 PA_VARIADIC_MACROS
 
+dnl Check if the compiler supports __func__ or some equivalent
+PA_HAVE_FUNC_NAME
+
 dnl Handle Windows embedded manifests
 AS_CASE([$host],
 	[*-win* | *-mingw*],
@@ -200,15 +223,7 @@ AC_CHECK_FUNCS(sysconf)
 
 AC_CHECK_FUNCS([access _access faccessat])
 
-PA_HAVE_FUNC(__builtin_expect, (1,1))
-
-dnl ilog2() building blocks
-PA_ADD_HEADERS(intrin.h)
-PA_HAVE_FUNC(__builtin_clz, (0U))
-PA_HAVE_FUNC(__builtin_clzl, (0UL))
-PA_HAVE_FUNC(__builtin_clzll, (0ULL))
-PA_HAVE_FUNC(_BitScanReverse, (0))
-PA_HAVE_FUNC(_BitScanReverse64, (0))
+PA_HAVE_FUNC(__builtin_expect,(1,1))
 
 PA_FUNC_SNPRINTF
 PA_FUNC_VSNPRINTF
@@ -216,11 +231,9 @@ AC_CHECK_FUNCS([strlcpy])
 AC_CHECK_FUNCS([strrchrnul])
 
 dnl These types are POSIX-specific, and Windows does it differently...
-AC_CHECK_TYPES([struct _stati64])
-AC_CHECK_TYPES([struct stat])
-AC_CHECK_FUNCS([stat _stati64])
-AC_CHECK_FUNCS([fstat _fstati64])
-AC_CHECK_FUNCS([S_ISREG])
+AC_CHECK_TYPES([struct stat], [AC_CHECK_FUNCS([stat fstat])])
+AC_CHECK_TYPES([struct _stati64], [AC_CHECK_FUNCS([_stati64 _fstati64])])
+PA_HAVE_FUNC([S_ISREG],,[unistd.h fcntl.h sys/stat.h io.h])
 
 dnl Check for functions that might not be declared in the headers for
 dnl various idiotic reasons (mostly because of library authors
@@ -235,6 +248,7 @@ AC_CHECK_DECLS(strnlen)
 AC_CHECK_DECLS(strrchrnul)
 
 dnl Check for missing types
+AC_TYPE_UINTMAX_T
 AC_TYPE_UINTPTR_T
 
 dnl Documentation: should we generate an uncompressed PDF?  It is
@@ -246,15 +260,26 @@ PA_ARG_DISABLED([pdf-compression],
 AC_SUBST([PDFOPT])
 
 dnl
-dnl Look for byte-swapping support...
+dnl Look for byte-swapping support and endian detection
 dnl
 PA_ENDIAN
+
+dnl
+dnl ilog2() building blocks
+dnl
+PA_HAVE_FUNC([stdc_leading_zeros],(0U),[stdbit.h])
+AS_IF([test x$pa_cv_func_stdc_leading_zeros != xyes],
+[PA_FIND_FUNC([__builtin_clz,(0U)],
+[_BitScanReverse,(0UL),[intrin.h]])
+PA_FIND_FUNC([__builtin_clzll,(0ULL)],
+[_BitScanReverse64,(0ULL),[intrin.h]])])
 
 dnl
 dnl Some rather useful gcc extensions...
 dnl
 PA_HAVE_FUNC(__builtin_constant_p, (0))
 PA_HAVE_FUNC(__builtin_choose_expr, (0,1,2))
+PA_HAVE_FUNC(__builtin_prefetch, (NULL))
 
 dnl
 dnl Check for supported gcc attributes; some compilers (e.g. Sun CC)
@@ -349,5 +374,5 @@ dnl
 PA_CHECK_BAD_STDC_INLINE
 PA_C_TYPEOF
 
-AC_CONFIG_FILES([Makefile doc/Makefile])
+AC_CONFIG_FILES([Makefile doc/Makefile misc/Makefile test/Makefile])
 AC_OUTPUT

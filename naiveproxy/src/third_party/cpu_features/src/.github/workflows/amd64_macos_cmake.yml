@@ -1,3 +1,4 @@
+# ref: https://github.com/actions/runner-images
 name: amd64 MacOS CMake
 
 on:
@@ -10,11 +11,11 @@ on:
 jobs:
   # Building using the github runner environement directly.
   xcode:
-    runs-on: macos-latest
+    runs-on: macos-13 # Using x86 processors, ref: https://github.com/actions/runner-images
     env:
       CTEST_OUTPUT_ON_FAILURE: 1
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Check cmake
       run: cmake --version
     - name: Configure
@@ -26,11 +27,11 @@ jobs:
     - name: Install
       run: cmake --build build --config Release --target install -v
   make:
-    runs-on: macos-latest
+    runs-on: macos-13 # Using x86 processors, ref: https://github.com/actions/runner-images
     env:
       CTEST_OUTPUT_ON_FAILURE: 1
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
     - name: Check cmake
       run: cmake --version
     - name: Configure

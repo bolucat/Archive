@@ -49,6 +49,17 @@ impl TryFrom<c_int> for ProtocolVersion {
     }
 }
 
+bitflags::bitflags! {
+    #[derive(Debug, Copy, Clone)]
+    pub(crate) struct ConnectionMode: u32 {
+        /// Deny session creation.
+        const MODE_NO_SESSION_CREATION = bssl_sys::SSL_MODE_NO_SESSION_CREATION as u32;
+        /// Allow moving write buffer.
+        /// This is indispensable for async I/O because the future could be freely cancelled.
+        const ACCEPT_MOVING_WRITE_BUFFER = bssl_sys::SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER as u32;
+    }
+}
+
 bssl_enum! {
     /// Key exchange groups for TLS or DTLS
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -82,8 +93,8 @@ bitflags::bitflags! {
 /// Configuration errors
 #[derive(Debug)]
 pub enum ConfigurationError {
-    /// Some key exchange group is specified twice.
-    DuplicatedKeyExchangeGroup,
+    /// Some parameters are specified twice in the list.
+    DuplicatedParameters,
     /// Some string is not acceptable.
     InvalidString,
     /// Session ID context data is too large.
@@ -92,6 +103,8 @@ pub enum ConfigurationError {
     PskTooLong,
     /// Value is out of range.
     ValueOutOfRange,
+    /// Mismatching private and public key pair.
+    MismatchingKeyPair,
     /// IP address is invalid.
     /// It should either be 4 bytes for IPv4 addresses or 16 bytes for IPv6 addresses.
     InvalidIp,
@@ -102,14 +115,15 @@ pub enum ConfigurationError {
 impl core::fmt::Display for ConfigurationError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            ConfigurationError::DuplicatedKeyExchangeGroup => {
-                f.write_str("duplicated key exchange group")
-            }
+            ConfigurationError::DuplicatedParameters => f.write_str("duplicated parameters"),
             ConfigurationError::InvalidString => f.write_str("invalid string"),
             ConfigurationError::SessionIdContextTooLarge => {
                 f.write_str("session ID context data is too large")
             }
             ConfigurationError::PskTooLong => f.write_str("preshared key is too long"),
+            ConfigurationError::MismatchingKeyPair => {
+                f.write_str("mismatching private and public key pair")
+            }
             ConfigurationError::ValueOutOfRange => f.write_str("value is out of range"),
             ConfigurationError::InvalidIp => f.write_str("invalid IP address"),
             ConfigurationError::InvalidParameters => f.write_str("invalid parameters"),

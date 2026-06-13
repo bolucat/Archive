@@ -7,8 +7,22 @@ and consumed by asm/assemble.c and disasm/disasm.c.
 Values prefixed with \ are in octal, values prefixed with \x are in
 hexadecimal.
 
-The mnemonics are the ones used in x86/insns.txt, where applicable.
+The mnemonics are the ones used in x86/insns.dat, where applicable.
 
+In x86/insns.dat, the encoding slot of each operand is encoded as:
+
+	-	implicit operand (no encoding)
+	x+y	multiple encoding slots for one operand
+	r	"r" position in modr/m, or base register with "+r"
+	m	"m" position in modr/m
+	n	immediate encoded in the "m" position in modr/m
+	b	register encoded in the "m" position in modr/m
+	x	register encoded in the "x" position in modr/m + sib (MIB)
+	v	"v" register position in vex/evex
+	s	"s" registe rposition in /is4
+	w	immediate encoded in the "v" position in vex/evex
+	i	first immediate or mem_offs
+	j	second immediate or mem_offs
 
 Codes            Mnemonic        Explanation
 
@@ -23,11 +37,11 @@ Codes            Mnemonic        Explanation
 \20..\23         ib                      a byte immediate operand, from operand 0..3
 \24..\27         ib,u                    a zero-extended byte immediate operand, from operand 0..3
 \30..\33         iw                      a word immediate operand, from operand 0..3
-\34..\37         iwd                     select between \3[0-3] and \4[0-3] depending on 16/32 bit
-                                         assembly mode or the operand-size override on the operand
+\34..\37         iwd                     select between \3[0-3] and \4[0-3]
+					 depending on the *operand* size of the instruction.
 \40..\43         id                      a long immediate operand, from operand 0..3
 \44..\47         iwdq                    select between \3[0-3], \4[0-3] and \5[4-7]
-                                         depending on the address size of the instruction.
+                                         depending on the *address* size of the instruction.
 \50..\53         rel8                    a byte relative operand, from operand 0..3
 \54..\57         iq                      a qword immediate operand, from operand 0..3
 \60..\63         rel16                   a word relative operand, from operand 0..3
@@ -48,94 +62,120 @@ Codes            Mnemonic        Explanation
 \2ab             /b                      a ModRM, calculated on EA in operand a, with the reg
                                          field equal to digit b.
 \240..\243                               this instruction uses EVEX rather than REX or VEX/XOP, with the
-                                         V field taken from operand 0..3.
+                                         V register number taken from operand "b" (0..3) (which may
+					 be an immediate, as is used for DFV.)
 \250                                     this instruction uses EVEX rather than REX or VEX/XOP, with the
-                                         V field set to 1111b.
+                                         V register number set to 0 (subject to the XOR as defined
+					 below)
 
 EVEX prefixes are followed by the sequence:
-\cm\wlp\tup    where cm is:
-                 cc 00m mmm
-                 c = 2 for EVEX and mmmm is the M field (EVEX.P0[3:0])
-               and wlp is:
-                 00 wwl lpp
-                 [l0]  ll = 0 (.128, .lz)
-                 [l1]  ll = 1 (.256)
-                 [l2]  ll = 2 (.512)
-                 [lig] ll = 3 for EVEX.L'L don't care (always assembled as 0)
 
-                 [w0]  ww = 0 for W = 0
-                 [w1]  ww = 1 for W = 1
-                 [wig] ww = 2 for W don't care (always assembled as 0)
-                 [ww]  ww = 3 for W used as REX.W
+     \p1\p2\p3\3tt
 
-                 [p0]  pp = 0 for no prefix
-                 [60]  pp = 1 for legacy prefix 60
-                 [f3]  pp = 2
-                 [f2]  pp = 3
+		... which are XOR'd into the EVEX payload bytes. These are used to encode the
+		map and other fixed fields. Note that the inverted register bits should be
+		set to 1.
 
-               tup is tuple type for Disp8*N from %tuple_codes in insns.pl
+		These are used in conjunction with the following instruction flags:
+
+		IF_LIG	hint to the disassembler: ignore EVEX.L
+		IF_WIG	hint to the disassembler: ignore EVEX.W
+		IF_WW	W is used as REX_W
+		IF_NF	the {nf} prefix is permitted for this instruction
+		IF_DFV	this instruction uses the V field as DFV
+
+		tt is tuple type for Disp8*N from %tuple_codes in insns.pl
                    (compressed displacement encoding)
 
-\254..\257       id,s                    a signed 32-bit operand to be extended to 64 bits.
+\254..\257      id,s                     a signed 32-bit operand to be extended to 64 bits.
 \260..\263                               this instruction uses VEX/XOP rather than REX, with the
-                                         V field taken from operand 0..3.
+                                         V register taken from operand "b" 0..3.
+\264..\267	id,u			 an unsigned 32-bit operand to be extended to 64 bits.
 \270                                     this instruction uses VEX/XOP rather than REX, with the
-                                         V field set to 1111b.
+                                         V register set to 0.
 VEX/XOP prefixes are followed by the sequence:
-\tmm\wlp        where mm is the M field; and wlp is:
-                00 wwl lpp
+\tmm\wlp	tmm format:	tt 0mm mmm
+		[vex] tt = 0
+		[xop] tt = 1
+
+		mmmmm = M field
+
+		wlp format:	w0 00l lpp
                 [l0]  ll = 0 for L = 0 (.128, .lz)
                 [l1]  ll = 1 for L = 1 (.256)
-                [lig] ll = 2 for L don't care (always assembled as 0)
+                [lig] ll = 0 for L don't care (always assembled as 0) with IF_LIG
 
-                [w0]  ww = 0 for W = 0
-                [w1 ] ww = 1 for W = 1
-                [wig] ww = 2 for W don't care (always assembled as 0)
-                [ww]  ww = 3 for W used as REX.W
+                [w0]  w = 0 for W = 0
+                [w1 ] w = 1 for W = 1
+                [wig] w = 0 for W don't care (always assembled as 0) with IF_WIG
+                [ww]  w = 0 for W used as REX.W with IF_WW
 
 t = 0 for VEX (C4/C5), t = 1 for XOP (8F).
 
-\271             hlexr                       instruction takes XRELEASE (F3) with or without lock
+\271             hlex                       instruction takes XRELEASE (F3) with or without lock
 \272             hlenl                       instruction takes XACQUIRE/XRELEASE with or without lock
 \273             hle                         instruction takes XACQUIRE/XRELEASE with lock only
 \274..\277       ib,s                        a byte immediate operand, from operand 0..3, sign-extended
                                              to the operand size (if o16/o32/o64 present) or the bit size
+\300..\303	 ibn			     a valid 0F NOP opcode.
+\304..\307
+	\0\xNN	 ib^NN			     intermediate byte XOR 0xNN
+	\1\xNN	 ib,s^NN		     signed intermediate byte XOR 0xNN
+	\2\xNN	 ib,u^NN		     unsigned intermediate byte XOR 0xNN
 \310             a16                         indicates fixed 16-bit address size, i.e. optional 0x67.
 \311             a32                         indicates fixed 32-bit address size, i.e. optional 0x67.
-\312             adf                         (disassembler only) invalid with non-default address size.
+\312             adf, asz                    (disassembler only) invalid with non-default address size.
 \313             a64                         indicates fixed 64-bit address size, 0x67 invalid.
 \314             norexb                      (disassembler only) invalid with REX.B
 \315             norexx                      (disassembler only) invalid with REX.X
 \316             norexr                      (disassembler only) invalid with REX.R
 \317             norexw                      (disassembler only) invalid with REX.W
-\320             o16                         indicates fixed 16-bit operand size, i.e. optional 0x66.
-\321             o32                         indicates fixed 32-bit operand size, i.e. optional 0x66.
+-		 o8			     generates no byte code; for orthogonality.
+\320             o16*                        indicates fixed 16-bit operand size, i.e. optional 0x66.
+\321             o32*                        indicates fixed 32-bit operand size, i.e. optional 0x66.
 \322             odf                         indicates that this instruction is only valid when the
                                              operand size is the default (instruction to disassembler,
                                              generates no code in the assembler)
-\323             o64nw                       indicates fixed 64-bit operand size, REX on extensions only.
-\324             o64                         indicates 64-bit operand size requiring REX prefix.
+\323             o64nw                       indicates fixed 64-bit operand size (equivalent to nw o64)
+\324             o64                         indicates 64-bit operand size requiring REX.W.
 \325             nohi                        instruction which always uses spl/bpl/sil/dil
-\326             nof3                        instruction not valid with 0xF3 REP prefix.  Hint for
-                                                disassembler only; for SSE instructions.
-\331             norep                       instruction not valid with REP prefix.  Hint for
-                                             disassembler only; for SSE instructions.
-\332             f2i                         REP prefix (0xF2 byte) used as opcode extension.
-\333             f3i                         REP prefix (0xF3 byte) used as opcode extension.
-\334             rex.l                       LOCK prefix used as REX.R (used in non-64-bit mode)
+\326             nof3                        (disassembler only) not valid with 0xF3 REP prefix.
+\327		 nw			     indicates that the operand size defaults to 64 in 64-bit mode;
+					     REX.W is not required. As a side effect, 32-bit operand size is
+					     not available. If followed by an oxx code, this has the
+					     following effects:
+					     o16 - 66 prefix generated in 32- or 64-bit mode.
+					     o32 - 66 prefix generated in 16-bit mode; treated as o64 in 64-bit mode.
+					     o64 - only permitted in 64-bit mode, does not set REX.W unless combined
+						 with code rex.w (\347).
+\330		 osz			     default or user-specified operand size
+\331             norep                       not valid with 0xF2 or 0xF3 REP prefixes.
+\332             f2                          REP prefix (0xF2 byte) used as opcode extension.
+\333             f3                          REP prefix (0xF3 byte) used as opcode extension.
+\334             rex.l                       LOCK prefix used as REX.R in 16/32-bit mode.
 \335             repe                        disassemble a rep (0xF3 byte) prefix as repe not rep.
-\336             mustrep                     force a REP(E) prefix (0xF3) even if not specified.
-\337             mustrepne                   force a REPNE prefix (0xF2) even if not specified.
-                                             \336-\337 are still listed as prefixes in the disassembler.
+\336		 optw			     16-, 32- and 64-bit operation identical; allow optimization.
+\337		 optd			     32- and 64-bit operation identical; allow optimization.
 \340             resb                        reserve <operand 0> bytes of uninitialized storage.
                                              Operand 0 had better be a segmentless constant.
 \341             wait                        this instruction needs a WAIT "prefix"
+\342		 osm			     o16, o32 or o64 matching bit mode
+\343		 osd			     o16, o32 or o32 matching bit mode
+\344		 rex.b			     REX[2].B used as an opcode extension.
+\345		 rex.x			     REX[2].X used as an opcode extension.
+\346		 rex.r			     REX[2].R used as an opcode extension.
+\347		 rex.w			     REX[2].W used as an opcode extension.
+\350..\351	 rex2[.w]		     obligatory REX2 prefix, rex2.w = rex.w rex2
+\355..\357	 m[1-3] 0f 0f38 0f3a	     Set the legacy map number. Unless a REX2, VEX, or EVEX prefix
+					     is also generated, these are emitted as legacy prefix bytes.
+-		 m0			     Generates no byte code, but can be used to indicate that
+					     following bytes are literal and not part of a prefix.
 \360             np                          no SSE prefix (== \364\331)
-\361                                         66 SSE prefix (== \366\331)
+\361             66                          66 SSE prefix (== \366\331)
 \364             !osp                        operand-size prefix (0x66) not permitted
 \365             !asp                        address-size prefix (0x67) not permitted
-\366                                         operand-size prefix (0x66) used as opcode extension
-\367                                         address-size prefix (0x67) used as opcode extension
+\366             osp                         operand-size prefix (0x66) used as opcode extension
+\367             67                          address-size prefix (0x67) used as opcode extension
 \370,\371        jcc8                        match only if operand 0 meets byte jump criteria.
                  jmp8                        370 is used for Jcc, 371 is used for JMP.
 \373             jlen                        assemble 0x03 if bits==16, 0x05 if bits==32;
@@ -143,3 +183,5 @@ t = 0 for VEX (C4/C5), t = 1 for XOP (8F).
 \374             vsibx|vm32x|vm64x           this instruction takes an XMM VSIB memory EA
 \375             vsiby|vm32y|vm64y           this instruction takes an YMM VSIB memory EA
 \376             vsibz|vm32z|vm64z           this instruction takes an ZMM VSIB memory EA
+
+* No 66 prefix is emitted if combined with VEX/EVEX, np, 66, osp or !osp.

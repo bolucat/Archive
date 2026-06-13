@@ -1,7 +1,6 @@
 # cpu_features, a cross platform C99 library to get cpu features at runtime.
 
 load("@bazel_skylib//lib:selects.bzl", "selects")
-load("//:bazel/platforms.bzl", "PLATFORM_CPU_ARM", "PLATFORM_CPU_ARM64", "PLATFORM_CPU_MIPS", "PLATFORM_CPU_PPC", "PLATFORM_CPU_X86_64")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -12,19 +11,33 @@ exports_files(["LICENSE"])
 
 INCLUDES = ["include"]
 
-C99_FLAGS = [
-    "-std=c99",
-    "-Wall",
-    "-Wextra",
-    "-Wmissing-declarations",
-    "-Wmissing-prototypes",
-    "-Wno-implicit-fallthrough",
-    "-Wno-unused-function",
-    "-Wold-style-definition",
-    "-Wshadow",
-    "-Wsign-compare",
-    "-Wstrict-prototypes",
-]
+C99_FLAGS = select({
+    "@platforms//os:windows": [],
+    "//conditions:default": [
+        "-Wall",
+        "-Wextra",
+        "-Wmissing-declarations",
+        "-Wmissing-prototypes",
+        "-Wno-implicit-fallthrough",
+        "-Wno-unused-function",
+        "-Wold-style-definition",
+        "-Wshadow",
+        "-Wsign-compare",
+        "-Wstrict-prototypes",
+    ],
+})
+
+PLATFORM_CPU_X86 = ("@platforms//cpu:x86_32", "@platforms//cpu:x86_64")
+
+PLATFORM_CPU_ARM = ("@platforms//cpu:arm", "@platforms//cpu:armv7")
+
+PLATFORM_CPU_ARM64 = "@platforms//cpu:arm64"
+
+PLATFORM_CPU_MIPS = "@platforms//cpu:mips64"
+
+PLATFORM_CPU_PPC = "@platforms//cpu:ppc"
+
+PLATFORM_CPU_RISCV = ("@platforms//cpu:riscv32", "@platforms//cpu:riscv64")
 
 cc_library(
     name = "cpu_features_macros",
@@ -55,7 +68,7 @@ cc_test(
     includes = INCLUDES,
     deps = [
         ":bit_utils",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -89,7 +102,7 @@ cc_test(
     includes = INCLUDES,
     deps = [
         ":string_view",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -147,7 +160,7 @@ cc_test(
         ":cpu_features_macros",
         ":filesystem_for_testing",
         ":string_view",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -168,9 +181,18 @@ cc_library(
 
 cc_library(
     name = "hwcaps",
-    srcs = ["src/hwcaps.c"],
+    srcs = [
+        "src/hwcaps.c",
+        "src/hwcaps_freebsd_or_openbsd.c",
+        "src/hwcaps_linux_or_android.c",
+    ],
     copts = C99_FLAGS,
-    defines = ["HAVE_STRONG_GETAUXVAL"],
+    defines = selects.with_or({
+        "@platforms//os:macos": ["HAVE_DLFCN_H"],
+        ("@platforms//os:freebsd", "@platforms//os:openbsd"): ["HAVE_STRONG_ELF_AUX_INFO"],
+        ("@platforms//os:android", "@platforms//os:linux"): ["HAVE_STRONG_GETAUXVAL"],
+        "//conditions:default": [],
+    }),
     includes = INCLUDES,
     textual_hdrs = ["include/internal/hwcaps.h"],
     deps = [
@@ -185,6 +207,8 @@ cc_library(
     testonly = 1,
     srcs = [
         "src/hwcaps.c",
+        "src/hwcaps_freebsd_or_openbsd.c",
+        "src/hwcaps_linux_or_android.c",
         "test/hwcaps_for_testing.cc",
     ],
     hdrs = [
@@ -206,30 +230,49 @@ cc_library(
 cc_library(
     name = "cpuinfo",
     srcs = selects.with_or({
-        PLATFORM_CPU_X86_64: [
+        PLATFORM_CPU_X86: [
             "src/impl_x86_freebsd.c",
             "src/impl_x86_linux_or_android.c",
             "src/impl_x86_macos.c",
             "src/impl_x86_windows.c",
         ],
         PLATFORM_CPU_ARM: ["src/impl_arm_linux_or_android.c"],
-        PLATFORM_CPU_ARM64: ["src/impl_aarch64_linux_or_android.c"],
+        PLATFORM_CPU_ARM64: [
+            "src/impl_aarch64_cpuid.c",
+            "src/impl_aarch64_linux_or_android.c",
+            "src/impl_aarch64_macos_or_iphone.c",
+            "src/impl_aarch64_windows.c",
+            "src/impl_aarch64_freebsd_or_openbsd.c",
+        ],
         PLATFORM_CPU_MIPS: ["src/impl_mips_linux_or_android.c"],
         PLATFORM_CPU_PPC: ["src/impl_ppc_linux.c"],
+        PLATFORM_CPU_RISCV: ["src/impl_riscv_linux.c"],
     }),
-    copts = C99_FLAGS,
-    includes = INCLUDES,
-    textual_hdrs = selects.with_or({
-        PLATFORM_CPU_X86_64: [
-            "src/impl_x86__base_implementation.inl",
+    hdrs = selects.with_or({
+        PLATFORM_CPU_X86: [
             "include/cpuinfo_x86.h",
             "include/internal/cpuid_x86.h",
             "include/internal/windows_utils.h",
         ],
         PLATFORM_CPU_ARM: ["include/cpuinfo_arm.h"],
-        PLATFORM_CPU_ARM64: ["include/cpuinfo_aarch64.h"],
+        PLATFORM_CPU_ARM64: [
+            "include/cpuinfo_aarch64.h",
+            "include/internal/cpuid_aarch64.h",
+        ],
         PLATFORM_CPU_MIPS: ["include/cpuinfo_mips.h"],
         PLATFORM_CPU_PPC: ["include/cpuinfo_ppc.h"],
+        PLATFORM_CPU_RISCV: ["include/cpuinfo_riscv.h"],
+    }),
+    copts = C99_FLAGS,
+    defines = selects.with_or({
+        "@platforms//os:macos": ["HAVE_SYSCTLBYNAME"],
+        "//conditions:default": [],
+    }),
+    includes = INCLUDES,
+    textual_hdrs = selects.with_or({
+        PLATFORM_CPU_X86: ["src/impl_x86__base_implementation.inl"],
+        PLATFORM_CPU_ARM64: ["src/impl_aarch64__base_implementation.inl"],
+        "//conditions:default": [],
     }) + [
         "src/define_introspection.inl",
         "src/define_introspection_and_hwcaps.inl",
@@ -250,36 +293,55 @@ cc_library(
     name = "cpuinfo_for_testing",
     testonly = 1,
     srcs = selects.with_or({
-        PLATFORM_CPU_X86_64: [
+        PLATFORM_CPU_X86: [
             "src/impl_x86_freebsd.c",
             "src/impl_x86_linux_or_android.c",
             "src/impl_x86_macos.c",
             "src/impl_x86_windows.c",
         ],
         PLATFORM_CPU_ARM: ["src/impl_arm_linux_or_android.c"],
-        PLATFORM_CPU_ARM64: ["src/impl_aarch64_linux_or_android.c"],
+        PLATFORM_CPU_ARM64: [
+            "src/impl_aarch64_cpuid.c",
+            "src/impl_aarch64_linux_or_android.c",
+            "src/impl_aarch64_macos_or_iphone.c",
+            "src/impl_aarch64_windows.c",
+            "src/impl_aarch64_freebsd_or_openbsd.c",
+        ],
         PLATFORM_CPU_MIPS: ["src/impl_mips_linux_or_android.c"],
         PLATFORM_CPU_PPC: ["src/impl_ppc_linux.c"],
+        PLATFORM_CPU_RISCV: ["src/impl_riscv_linux.c"],
     }),
     hdrs = selects.with_or({
-        PLATFORM_CPU_X86_64: [
+        PLATFORM_CPU_X86: [
             "include/cpuinfo_x86.h",
             "include/internal/cpuid_x86.h",
             "include/internal/windows_utils.h",
         ],
         PLATFORM_CPU_ARM: ["include/cpuinfo_arm.h"],
-        PLATFORM_CPU_ARM64: ["include/cpuinfo_aarch64.h"],
+        PLATFORM_CPU_ARM64: [
+            "include/cpuinfo_aarch64.h",
+            "include/internal/cpuid_aarch64.h",
+        ],
         PLATFORM_CPU_MIPS: ["include/cpuinfo_mips.h"],
         PLATFORM_CPU_PPC: ["include/cpuinfo_ppc.h"],
+        PLATFORM_CPU_RISCV: ["include/cpuinfo_riscv.h"],
     }),
     copts = C99_FLAGS,
     defines = selects.with_or({
-        PLATFORM_CPU_X86_64: ["CPU_FEATURES_MOCK_CPUID_X86"],
+        PLATFORM_CPU_X86: ["CPU_FEATURES_MOCK_CPUID_X86"],
+        PLATFORM_CPU_ARM64: [
+            "CPU_FEATURES_MOCK_CPUID_AARCH64",
+            "CPU_FEATURES_MOCK_SYSCTL_AARCH64",
+        ],
+        "//conditions:default": [],
+    }) + selects.with_or({
+        "@platforms//os:macos": ["HAVE_SYSCTLBYNAME"],
         "//conditions:default": [],
     }),
     includes = INCLUDES,
     textual_hdrs = selects.with_or({
-        PLATFORM_CPU_X86_64: ["src/impl_x86__base_implementation.inl"],
+        PLATFORM_CPU_X86: ["src/impl_x86__base_implementation.inl"],
+        PLATFORM_CPU_ARM64: ["src/impl_aarch64__base_implementation.inl"],
         "//conditions:default": [],
     }) + [
         "src/define_introspection.inl",
@@ -304,7 +366,8 @@ cc_test(
         PLATFORM_CPU_ARM: ["test/cpuinfo_arm_test.cc"],
         PLATFORM_CPU_MIPS: ["test/cpuinfo_mips_test.cc"],
         PLATFORM_CPU_PPC: ["test/cpuinfo_ppc_test.cc"],
-        PLATFORM_CPU_X86_64: ["test/cpuinfo_x86_test.cc"],
+        PLATFORM_CPU_RISCV: ["test/cpuinfo_riscv_test.cc"],
+        PLATFORM_CPU_X86: ["test/cpuinfo_x86_test.cc"],
     }),
     includes = INCLUDES,
     deps = [
@@ -312,7 +375,7 @@ cc_test(
         ":filesystem_for_testing",
         ":hwcaps_for_testing",
         ":string_view",
-        "@com_google_googletest//:gtest_main",
+        "@googletest//:gtest_main",
     ],
 )
 
@@ -325,5 +388,24 @@ cc_binary(
         ":bit_utils",
         ":cpu_features_macros",
         ":cpuinfo",
+    ],
+)
+
+cc_library(
+    name = "ndk_compat",
+    srcs = ["ndk_compat/cpu-features.c"],
+    copts = C99_FLAGS,
+    includes = INCLUDES + ["ndk_compat"],
+    target_compatible_with = select({
+        "@platforms//os:windows": ["@platforms//:incompatible"],
+        "//conditions:default": [],
+    }),
+    textual_hdrs = ["ndk_compat/cpu-features.h"],
+    deps = [
+        ":cpu_features_macros",
+        ":cpuinfo",
+        ":filesystem",
+        ":stack_line_reader",
+        ":string_view",
     ],
 )

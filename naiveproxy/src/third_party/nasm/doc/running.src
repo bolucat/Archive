@@ -10,7 +10,8 @@ For example,
 
 \c nasm -f elf myfile.asm
 
-will assemble \c{myfile.asm} into an ELF object file \c{myfile.o}. And
+will assemble \c{myfile.asm} into an 32-bit ELF object file
+\c{myfile.o}. And
 
 \c nasm -f bin myfile.asm -o myfile.com
 
@@ -27,25 +28,6 @@ To get further usage instructions from NASM, try typing
 \c nasm -h
 
 The option \c{--help} is an alias for the \c{-h} option.
-
-If you use Linux but aren't sure whether your system is \c{a.out}
-or ELF, type
-
-\c file nasm
-
-(in the directory in which you put the NASM binary when you
-installed it). If it says something like
-
-\c nasm: ELF 32-bit LSB executable i386 (386 and up) Version 1
-
-then your system is \c{ELF}, and you should use the option \c{-f elf}
-when you want NASM to produce Linux object files. If it says
-
-\c nasm: Linux/i386 demand-paged executable (QMAGIC)
-
-or something similar, your system is \c{a.out}, and you should use
-\c{-f aout} instead (Linux \c{a.out} systems have long been obsolete,
-and are rare these days.)
 
 Like Unix compilers and assemblers, NASM is silent unless it
 goes wrong: you won't see any output at all, unless it gives error
@@ -129,6 +111,8 @@ Supported options are:
 \b \c{-Le} show the preprocessed input
 
 \b \c{-Lf} ignore \c{.nolist} and force listing output
+
+\b \c{-LF} ignore \c{[LIST]} directives (see \k{LIST})
 
 \b \c{-Lm} show multi-line macro calls with expanded parameters
 
@@ -288,7 +272,7 @@ See also the \c{Visual C++} output format, \k{win32fmt}.
 
 \S{opt-Z} The \i\c{-Z} Option: Send Errors to a File
 
-Under \I{DOS}\c{MS-DOS} it can be difficult (though there are ways) to
+Under \i{MS-DOS} it can be difficult (though there are ways) to
 redirect the standard-error output of a program to a file. Since
 NASM usually produces its warning and \i{error messages} on
 \i\c{stderr}, this can make it hard to capture the errors if (for
@@ -308,7 +292,7 @@ preprocessing only, with disastrous results.  See \k{opt-E}.
 \S{opt-s} The \i\c{-s} Option: Send Errors to \i\c{stdout}
 
 The \c{-s} option redirects \i{error messages} to \c{stdout} rather
-than \c{stderr}, so it can be redirected under \I{DOS}\c{MS-DOS}. To
+than \c{stderr}, so it can be redirected under \i{MS-DOS}. To
 assemble the file \c{myfile.asm} and pipe its output to the \c{more}
 program, you can type:
 
@@ -531,6 +515,9 @@ the \i\c{[WARNING]} directive.  See \k{asmdir-warning}.
 
 See \k{warnings} for the complete list of warning classes.
 
+\IR{-v} \c{-v} option
+\IR{--v} \c{--v} option
+
 \S{opt-v} The \i\c{-v} Option: Display \i{Version} Info
 
 Typing \c{NASM -v} will display the version of NASM which you are using,
@@ -542,22 +529,44 @@ For command-line compatibility with Yasm, the form \i\c{--v} is also
 accepted for this option starting in NASM version 2.11.05.
 
 
-\S{opt-pfix} The \i\c{--(g|l)prefix}, \i\c{--(g|l)postfix} Options.
+\IR{--prefix} \c{--prefix} option
+\IC{--prefix}{--gprefix} \c{--gprefix} option
+\IC{--prefix}{--lprefix} \c{--lprefix} option
+\IC{--prefix}{--gpostfix} \c{--gpostfix} option
+\IC{--prefix}{--lpostfix} \c{--lpostfix} option
+\IC{--prefix}{--suffix} \c{--suffix} option
+\IC{--prefix}{--gsuffix} \c{--gsuffix} option
+\IC{--prefix}{--lsuffix} \c{--lsuffix} option
 
-The \c{--(g)prefix} options prepend the given argument
+\S{opt-pfix} The \I{--prefix}\c{--[gl]prefix} and \c{--[gl]postfix} Options
+
+The \c{--gprefix} option prepends the given argument
 to all \c{extern}, \c{common}, \c{static}, and \c{global} symbols, and the
 \c{--lprefix} option prepends to all other symbols. Similarly,
-\c{--(g)postfix} and \c{--lpostfix} options append
-the argument in the exactly same way as the \c{--xxprefix} options does.
+\c{--gpostfix} and \c{--lpostfix} options append
+the argument, in a manner similar to the \c{--[gl]prefix} options.
 
 Running this:
 
 \c nasm -f macho --gprefix _
 
-is equivalent to place the directive with \c{%pragma macho gprefix _}
+is equivalent to placing the directive \c{%pragma macho gprefix _}
 at the start of the file (\k{mangling}). It will prepend the underscore
 to all global and external variables, as C requires it in some, but not all,
 system calling conventions.
+
+\c{--prefix} is an alias for \c{--gprefix}.
+
+See \k{mangling} for the equivalent directives and pragmas.
+
+Earlier versions of NASM called the pragmas \i\c{suffix} and the
+options \i\c{--postfix}, and did not implement directives at all
+despite being so documented. Since NASM 3.01, the directive forms are
+implemented, and directives, pragmas and options all support all
+spellings.
+
+
+\IR{--pragma} \c{--pragma} option
 
 \S{opt-pragma} The \i\c{--pragma} Option
 
@@ -570,17 +579,36 @@ Running this:
 is equivalent to the example in \k{opt-pfix}. See \k{pragma}.
 
 
+\IR{--before} \c{--before} option
+
 \S{opt-before} The \i\c{--before} Option
 
-A preprocess statement can be accepted with this option. The example
-shown in \k{opt-pragma} is the same as running this:
+Insert a statement (usually, but not necessarily) a preprocess
+statement before the input file. The example shown in \k{opt-pragma}
+is the same as running this:
 
 \c nasm -f macho --before "%pragma macho gprefix _"
 
 
-\S{opt-limit} The \i\c{--limit-X} Option
+\IR{--bits} \c{--bits} option
 
-This option allows user to setup various maximum values after which
+\S{opt-bits} The \i\c{--bits} Option
+
+Set the processor mode by inserting a \c{BITS} directive (kee
+\k{bits}) before the input file. The following two statements are
+exactly equivalent:
+
+\c nasm -f bin --bits 16 file.asm
+\c nasm -f bin --before "BITS 16" file.asm
+
+The \c{--bits} option was introduced in NASM 3.01; the \c{--before}
+form can be used for compatibility with older versions of NASM.
+
+\IR{--limit-} \c{--limit-} options
+
+\S{opt-limit} The \i\c{--limit-} Options
+
+These options allows user to setup various maximum values after which
 NASM will terminate with a fatal error rather than consume arbitrary
 amount of compute time. Each limit can be set to a positive number or
 \c{unlimited}.
@@ -603,7 +631,7 @@ before returning to the top-level input. Default is 100000.
 \b\c{--limit-rep}: Maximum number of allowed preprocessor loop, defined
 under \c{%rep}. Default is 1000000.
 
-\b\c{--limit-eval}: This number sets the boundary condition of allowed
+\b\c{--limit-eval}: This number sets the maximum allowed
 expression length. Default is 8192 on most systems.
 
 \b\c{--limit-lines}: Total number of source lines allowed to be
@@ -618,17 +646,22 @@ example:
 
 \c %pragma limit lines 1000
 
+\IR{--keep-all} \c{--keep-all} option
 
 \S{opt-keep-all} The \i\c{--keep-all} Option
 
 This option prevents NASM from deleting any output files even if an
 error happens.
 
+\IR{--no-line} \c{--no-line} option
+
 \S{opt-no-line} The \i\c{--no-line} Option
 
 If this option is given, all \i\c{%line} directives in the source code
 are ignored. This can be useful for debugging already preprocessed
 code. See \k{line}.
+
+\IR{--reproducible} \c{--reproducible} option
 
 \S{opt-reproducible} The \i\c{--reproducible} Option
 
@@ -780,25 +813,16 @@ MASM: where MASM would call them \c{ST(0)}, \c{ST(1)} and so on, and
 \i\c{a86} would call them simply \c{0}, \c{1} and so on, NASM
 chooses to call them \c{st0}, \c{st1} etc.
 
-As of version 0.96, NASM now treats the instructions with
-\i{`nowait'} forms in the same way as MASM-compatible assemblers.
-The idiosyncratic treatment employed by 0.95 and earlier was based
-on a misunderstanding by the authors.
-
 
 \S{qsother} Other Differences
 
 For historical reasons, NASM uses the keyword \i\c{TWORD} where MASM
 and compatible assemblers use \i\c{TBYTE}.
 
-Historically, NASM does not declare \i{uninitialized storage} in the
+Historically, NASM does not declare \i{uninitialized} storage in the
 same way as MASM: where a MASM programmer might use \c{stack db 64 dup
 (?)}, NASM requires \c{stack resb 64}, intended to be read as `reserve
-64 bytes'. For a limited amount of compatibility, since NASM treats
-\c{?} as a valid character in symbol names, you can code \c{? equ 0}
-and then writing \c{dw ?} will at least do something vaguely useful.
-
-As of NASM 2.15, the MASM syntax is also supported.
+64 bytes'. As of NASM 2.15, the MASM syntax is also supported.
 
 In addition to all of this, macros and directives work completely
 differently to MASM. See \k{preproc} and \k{directive} for further
@@ -806,6 +830,5 @@ details.
 
 \S{masm-compat} MASM compatibility package
 
-See \k{pkg_masm}.
-
-
+The MASM compatibility macro package can be used to improve MASM
+compatibility. See \k{pkg_masm}.

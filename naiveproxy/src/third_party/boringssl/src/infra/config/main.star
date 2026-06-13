@@ -144,7 +144,7 @@ notifier = luci.notifier(
     name = "all",
     on_occurrence = ["FAILURE", "INFRA_FAILURE"],
     on_new_status = ["SUCCESS"],
-    notify_emails = ["boringssl@google.com"],
+    notify_emails = ["boringssl-interrupts@rotations.google.com"],
 )
 
 DEFAULT_TIMEOUT = 30 * time.minute
@@ -379,7 +379,7 @@ def cq_builder(
         ),
         service_account = "boringssl-try-builder@chops-service-accounts.iam.gserviceaccount.com",
         dimensions = dimensions,
-        execution_timeout = host.get("execution_timeout", DEFAULT_TIMEOUT),
+        execution_timeout = execution_timeout,
         caches = host.get("caches"),
         properties = properties,
     )
@@ -1122,9 +1122,6 @@ both_builders(
         "cmake_args": {
             "BUILD_SHARED_LIBS": "1",
         },
-        # The default Linux build may not depend on the C++ runtime. This is
-        # easy to check when building shared libraries.
-        "check_imported_libraries": True,
     },
 )
 both_builders(

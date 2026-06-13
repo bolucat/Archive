@@ -370,12 +370,15 @@ chromium-metrics-reviews@google.com.
 <!-- LINT.IfChange(IndexedDbSqliteVacuumEvent) -->
 
 <enum name="IndexedDbSqliteVacuumEvent">
-  <int value="1" label="Vacuum requested because conditions were met"/>
+  <int value="0" label="(Obsolete) Vacuum needed because conditions were met"/>
+  <int value="1" label="Vacuum requested on close because conditions were met"/>
   <int value="2" label="Vacuum succeeded"/>
   <int value="3" label="Vacuum skipped due to force close"/>
   <int value="4" label="Error while determining required/available disk space"/>
   <int value="5" label="Vacuum skipped due to insufficient disk space"/>
   <int value="6" label="Vacuum failed at SQLite layer"/>
+  <int value="7" label="Vacuum requested on long idle"/>
+  <int value="8" label="Checkpoint before vacuum failed"/>
 </enum>
 
 <!-- LINT.ThenChange(//content/browser/indexed_db/instance/sqlite/database_connection.cc:VacuumEvent) -->
@@ -876,13 +879,16 @@ chromium-metrics-reviews@google.com.
              (deprecated)"/>
   <int value="4"
       label="Storage access allowed by the top-level version of the API"/>
-  <int value="5" label="Storage access allowed by 3PCD setting"/>
+  <int value="5" label="Storage access allowed by 3PCD setting (deprecated)"/>
   <int value="6"
-      label="Storage access allowed by 3PCD metadata grants content settings"/>
-  <int value="7" label="Temporary storage access allowed by 3PCD heuristics"/>
+      label="Storage access allowed by 3PCD metadata grants content settings
+             (deprecated)"/>
+  <int value="7"
+      label="Temporary storage access allowed by 3PCD heuristics (deprecated)"/>
   <int value="8"
       label="Storage access allowed due to CORS opt in (deprecated)"/>
-  <int value="9" label="Storage access allowed by top-level 3PCD setting"/>
+  <int value="9"
+      label="Storage access allowed by top-level 3PCD setting (deprecated)"/>
   <int value="10" label="Storage access allowed by first-party URL scheme"/>
   <int value="11"
       label="Storage access allowed by 'allow-same-site-none-cookies' value

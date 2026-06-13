@@ -1,39 +1,11 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2024 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * assemble.c   code generation for the Netwide Assembler
  *
+ * The entry points to this module are insn_size() for the non-final
+ * passes, and assemble() for the final pass.
  */
 
 #include "compiler.h"
@@ -52,15 +24,20 @@
 enum match_result {
     /*
      * Matching errors.  These should be sorted so that more specific
-     * errors come later in the sequence.
+     * errors (higher priority) come later in the sequence.
      */
     MERR_INVALOP,
+    MERR_OPSIZEINVAL,
     MERR_OPSIZEMISSING,
     MERR_OPSIZEMISMATCH,
+    MERR_MASKNOTHERE,
     MERR_BRNOTHERE,
     MERR_BRNUMMISMATCH,
-    MERR_MASKNOTHERE,
     MERR_DECONOTHERE,
+    MERR_BADZU,
+    MERR_MEMZU,
+    MERR_BADNF,
+    MERR_REQNF,
     MERR_BADCPU,
     MERR_BADMODE,
     MERR_BADHLE,
@@ -69,21 +46,25 @@ enum match_result {
     MERR_BADREPNE,
     MERR_REGSETSIZE,
     MERR_REGSET,
-    /*
-     * Matching success; the conditional ones first
-     */
-    MOK_JUMP,		/* Matching OK but needs jmp_match() */
-    MOK_GOOD		/* Matching unconditionally OK */
-};
+    MERR_WRONGIMM,
 
-typedef struct {
-    enum ea_type type;            /* what kind of EA is this? */
-    int sib_present;              /* is a SIB byte necessary? */
-    int bytes;                    /* # of bytes of offset needed */
-    int size;                     /* lazy - this is sib+bytes+1 */
-    uint8_t modrm, sib, rex, rip; /* the bytes themselves */
-    int8_t disp8;                  /* compressed displacement for EVEX */
-} ea;
+    /*
+     * Matching successes in decreasing order of fuzziness;
+     * the fuzziness factor amounts to the factors (normally
+     * operands) fuzzed.
+     */
+    MOK_FIRST,                  /* First successful anything */
+
+    MOK_FUZZY8,
+    MOK_FUZZY7,                 /* Matching unconditionally OK */
+    MOK_FUZZY6,
+    MOK_FUZZY5,
+    MOK_FUZZY4,
+    MOK_FUZZY3,
+    MOK_FUZZY2,
+    MOK_FUZZY1,
+    MOK_GOOD
+};
 
 #define GEN_SIB(scale, index, base)                 \
         (((scale) << 6) | ((index) << 3) | ((base)))
@@ -91,26 +72,63 @@ typedef struct {
 #define GEN_MODRM(mod, reg, rm)                     \
         (((mod) << 6) | (((reg) & 7) << 3) | ((rm) & 7))
 
-static int64_t calcsize(int32_t, int64_t, int, insn *,
-                        const struct itemplate *);
-static int emit_prefix(struct out_data *data, const int bits, insn *ins);
+static int64_t assemble(insn *instruction);
+static int64_t insn_size(insn *instruction);
+
+static int64_t calcsize(insn *, const struct itemplate *);
+static int emit_prefixes(struct out_data *data, const insn *ins);
 static void gencode(struct out_data *data, insn *ins);
 static enum match_result find_match(const struct itemplate **tempp,
-                                    insn *instruction,
-                                    int32_t segment, int64_t offset, int bits);
-static enum match_result matches(const struct itemplate *, insn *, int bits);
+                                    insn *instruction);
+static enum match_result matches(const struct itemplate *, const insn *);
 static opflags_t regflag(const operand *);
 static int32_t regval(const operand *);
-static int rexflags(int, opflags_t, int);
-static int op_rexflags(const operand *, int);
-static int op_evexflags(const operand *, int, uint8_t);
-static void add_asp(insn *, int);
+static uint32_t rexflags(int, opflags_t, uint32_t);
+static uint32_t op_rexflags(const operand *, uint32_t);
+static uint32_t op_evexflags(const operand *, uint32_t);
+static void insn_early_setup(insn *);
 
-static int process_ea(operand *, ea *, int, int, opflags_t,
-                      insn *, enum ea_type, const char **);
+static int process_ea(operand *input, int rfield, opflags_t rflags,
+                      insn *ins, enum ea_type expected,
+                      const char **errmsgp);
+
+/* Convert a prefix to a byte value */
+static int prefix_byte(enum prefixes pfx, const int bits);
+
+/*
+ * Convert operand/address/mode size to a BITS opflag constant.
+ * This is not valid for 80+ bits!
+ */
+static inline opflags_t mode_to_op(unsigned int bits)
+{
+    nasm_static_assert((BITS8 >> SIZE_SHIFT) == 1);
+    nasm_static_assert(BITS16 == (BITS8 << 1));
+    nasm_static_assert(BITS32 == (BITS8 << 2));
+    nasm_static_assert(BITS64 == (BITS8 << 3));
+
+    return (opflags_t)bits << (SIZE_SHIFT - 3);
+}
+
+/*
+ * Return any of REX_[BXR]1 corresponding to non-GPR registers by
+ * masking them with the REX_[BXR]V flags.
+ */
+static inline const_func uint32_t rex_highvec(uint32_t rexflags)
+{
+    return rexflags & (rexflags >> 4) & REX_BXR1;
+}
 
 /* Get the pointer to an operand if it exits */
 static inline struct operand *get_operand(insn *ins, unsigned int n)
+{
+    if (n >= (unsigned int)ins->operands)
+        return NULL;
+    else
+        return &ins->oprs[n];
+}
+
+static inline const struct operand *
+get_operand_const(const insn *ins, unsigned int n)
 {
     if (n >= (unsigned int)ins->operands)
         return NULL;
@@ -124,15 +142,18 @@ static inline bool absolute_op(const struct operand *o)
         !(o->opflags & OPFLAG_RELATIVE);
 }
 
-static int has_prefix(insn * ins, enum prefix_pos pos, int prefix)
+static int has_prefix(const insn * ins, enum prefix_pos pos, int prefix)
 {
     return ins->prefixes[pos] == prefix;
 }
 
-static void assert_no_prefix(insn * ins, enum prefix_pos pos)
+static int assert_no_prefix(insn * ins, enum prefix_pos pos)
 {
-    if (ins->prefixes[pos])
+    if (ins->prefixes[pos]) {
         nasm_nonfatal("invalid %s prefix", prefix_name(ins->prefixes[pos]));
+        return -1;
+    }
+    return 0;
 }
 
 static const char *size_name(int size)
@@ -159,31 +180,49 @@ static const char *size_name(int size)
     }
 }
 
-static void warn_overflow(int size)
+static void warn_overflow(int size, const char *prefix, const char *suffix)
 {
-    nasm_warn(ERR_PASS2 | WARN_NUMBER_OVERFLOW, "%s data exceeds bounds",
-               size_name(size));
+    const char *pfxsp, *sufsp;
+
+    pfxsp = sufsp = " ";
+    if (!prefix)
+        prefix = ++pfxsp;
+    if (!suffix)
+        suffix = ++sufsp;
+
+    nasm_warn(WARN_NUMBER_OVERFLOW|ERR_PASS2,
+              "%s%s%s%s%s exceeds bounds",
+              prefix, pfxsp, size_name(size), sufsp, suffix);
 }
 
 static void warn_overflow_const(int64_t data, int size)
 {
     if (overflow_general(data, size))
-        warn_overflow(size);
+        warn_overflow(size, NULL, NULL);
 }
 
-static void warn_overflow_out(int64_t data, int size, enum out_flags flags)
+static void warn_overflow_out(int64_t data, int size,
+                              enum out_flags flags, const char *what)
 {
     bool err;
+    const char *prefix;
 
-    if (flags & OUT_SIGNED)
+    if (flags & OUT_NOWARN)
+        return;
+
+    if (flags & OUT_SIGNED) {
+        prefix = "signed";
         err = overflow_signed(data, size);
-    else if (flags & OUT_UNSIGNED)
+    } else if (flags & OUT_UNSIGNED) {
+        prefix = "unsigned";
         err = overflow_unsigned(data, size);
-    else
+    } else {
+        prefix = NULL;
         err = overflow_general(data, size);
+    }
 
     if (err)
-        warn_overflow(size);
+        warn_overflow(size, prefix, what);
 }
 
 /*
@@ -192,10 +231,10 @@ static void warn_overflow_out(int64_t data, int size, enum out_flags flags)
 static void debug_macro_out(const struct out_data *data)
 {
     struct debug_macro_addr *addr;
-    uint64_t start = data->offset;
+    uint64_t start = data->loc.offset;
     uint64_t end  = start + data->size;
 
-    addr = debug_macro_get_addr(data->segment);
+    addr = debug_macro_get_addr(data->loc.segment);
     while (addr) {
         if (!addr->len)
             addr->start = start;
@@ -211,15 +250,92 @@ static void debug_macro_out(const struct out_data *data)
  * and verify backend compatibility.
  */
 /*
- * This warning is currently issued by backends, but in the future
- * this code should be centralized.
+ * Add the entries in struct out_data for the rather bizarre legacy
+ * backend interface, and then submit to the backend.
  *
- *!zeroing [on] \c{RES}\e{x} in initialized section becomes zero
- *!  a \c{RES}\e{x} directive was used in a section which contains
- *!  initialized data, and the output format does not support
- *!  this. Instead, this will be replaced with explicit zero
- *!  content, which may produce a large output file.
+ * The "data" parameter for the output function points to a "int64_t",
+ * containing the address of the target in question, unless the type is
+ * OUT_RAWDATA, in which case it points to an "uint8_t"
+ * array.
+ *
+ * Exceptions are OUT_RELxADR, which denote an x-byte relocation
+ * which will be a relative jump. For this we need to know the
+ * distance in bytes from the start of the relocated record until
+ * the end of the containing instruction. _This_ is what is stored
+ * in the size part of the parameter, in this case.
+ *
+ * Also OUT_RESERVE denotes reservation of N bytes of BSS space,
+ * and the contents of the "data" parameter is irrelevant.
  */
+
+static void nasm_ofmt_output(struct out_data *data)
+{
+    const void *dptr   = data->data;
+    enum out_type type = data->type;
+    int32_t tsegment   = data->tsegment;
+    int32_t twrt       = data->twrt;
+    uint64_t size      = data->size;
+
+    switch (data->type) {
+    case OUT_RELADDR:
+        switch (data->size) {
+        case 1:
+            type = OUT_REL1ADR;
+            break;
+        case 2:
+            type = OUT_REL2ADR;
+            break;
+        case 4:
+            type = OUT_REL4ADR;
+            break;
+        case 8:
+            type = OUT_REL8ADR;
+            break;
+        default:
+            panic();
+            break;
+        }
+
+        dptr = &data->toffset;
+        size = data->relbase - data->loc.offset;
+        break;
+
+    case OUT_SEGMENT:
+        type = OUT_ADDRESS;
+        if (tsegment != NO_SEG && tsegment < SEG_ABS)
+            tsegment |= 1;
+        /* fall through */
+
+    case OUT_ADDRESS:
+        dptr = &data->toffset;
+        size = (data->flags & OUT_SIGNED) ? -data->size : data->size;
+        break;
+
+    case OUT_RAWDATA:
+    case OUT_RESERVE:
+        tsegment = twrt = NO_SEG;
+        break;
+
+    case OUT_ZERODATA:
+        tsegment = twrt = NO_SEG;
+        type = OUT_RAWDATA;
+        dptr = zero_buffer;
+        break;
+
+    default:
+        panic();
+        break;
+    }
+
+    data->legacy.data     = dptr;
+    data->legacy.type     = type;
+    data->legacy.size     = size;
+    data->legacy.tsegment = tsegment;
+    data->legacy.twrt     = twrt;
+
+    ofmt->output(data);
+}
+
 static void out(struct out_data *data)
 {
     static struct last_debug_info {
@@ -232,11 +348,14 @@ static void out(struct out_data *data)
     } xdata;
     size_t asize, amax;
     uint64_t zeropad = 0;
+    uint64_t real_size;
     int64_t addrval;
     int32_t fixseg;             /* Segment for which to produce fixed data */
 
     if (!data->size)
         return;                 /* Nothing to do */
+
+    real_size = data->size;
 
     /*
      * Convert addresses to RAWDATA if possible
@@ -250,7 +369,7 @@ static void out(struct out_data *data)
 
     case OUT_RELADDR:
         addrval = data->toffset - data->relbase;
-        fixseg = data->segment; /* Our own segment is fixed data */
+        fixseg = data->loc.segment; /* Our own segment is fixed data */
         goto address;
 
     address:
@@ -263,85 +382,13 @@ static void out(struct out_data *data)
                     /* Support address space wrapping for low-bit modes */
                     data->flags &= ~OUT_SIGNMASK;
                 }
-                warn_overflow_out(addrval, asize, data->flags);
-                xdata.q = cpu_to_le64(addrval);
+                warn_overflow_out(addrval, asize, data->flags, data->what);
+                xdata.q = htole64(addrval);
                 data->data = xdata.b;
                 data->type = OUT_RAWDATA;
                 asize = amax = 0;   /* No longer an address */
             }
         } else {
-            /*!
-             *!reloc-abs-byte [off] 8-bit absolute section-crossing relocation
-             *!  warns that an 8-bit absolute relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-abs-word [off] 16-bit absolute section-crossing relocation
-             *!  warns that a 16-bit absolute relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-abs-dword [off] 32-bit absolute section-crossing relocation
-             *!  warns that a 32-bit absolute relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-abs-qword [off] 64-bit absolute section-crossing relocation
-             *!  warns that a 64-bit absolute relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-rel-byte [off] 8-bit relative section-crossing relocation
-             *!  warns that an 8-bit relative relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-rel-word [off] 16-bit relative section-crossing relocation
-             *!  warns that a 16-bit relative relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-rel-dword [off] 32-bit relative section-crossing relocation
-             *!  warns that a 32-bit relative relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
-            /*!
-             *!reloc-rel-qword [off] 64-bit relative section-crossing relocation
-             *!  warns that an 64-bit relative relocation that could
-             *!  not be resolved at assembly time was generated in
-             *!  the output format.
-             *!
-             *!  This is usually normal, but may not be handled by all
-             *!  possible target environments
-             */
             int warn;
             const char *type;
 
@@ -397,10 +444,10 @@ static void out(struct out_data *data)
     data->where = src_where();
     if (data->where.filename &&
         (!src_location_same(data->where, dbg.where) |
-         (data->segment != dbg.segment))) {
+         (data->loc.segment != dbg.segment))) {
         dbg.where   = data->where;
-        dbg.segment = data->segment;
-        dfmt->linenum(dbg.where.filename, dbg.where.lineno, data->segment);
+        dbg.segment = data->loc.segment;
+        dfmt->linenum(dbg.where.filename, dbg.where.lineno, data->loc.segment);
     }
 
     if (asize > amax) {
@@ -408,11 +455,6 @@ static void out(struct out_data *data)
             nasm_nonfatal("%u-bit signed relocation unsupported by output format %s",
                           (unsigned int)(asize << 3), ofmt->shortname);
         } else {
-            /*!
-             *!zext-reloc [on] relocation zero-extended to match output format
-             *!  warns that a relocation has been zero-extended due
-             *!  to limitations in the output format.
-             */
             nasm_warn(WARN_ZEXT_RELOC,
                        "%u-bit %s relocation zero-extended from %u bits",
                        (unsigned int)(asize << 3),
@@ -424,14 +466,32 @@ static void out(struct out_data *data)
     }
     lfmt->output(data);
 
-    if (likely(data->segment != NO_SEG)) {
+    if (likely(data->loc.segment != NO_SEG)) {
         /*
          * Collect macro-related information for the debugger, if applicable
          */
         if (debug_current_macro)
             debug_macro_out(data);
 
-        ofmt->output(data);
+	if (unlikely(data->type == OUT_ZERODATA) &&
+            !(ofmt->flags & OFMT_ZERODATA)) {
+	    /*
+	     * Break OFMT_ZERODATA up into ZERO_BUF_SIZE chunks unless the
+	     * backend has indicated it can handle arbitrary sizes
+	     * by setting the OFMT_ZERODATA flag.
+	     */
+	    uint64_t size = data->size;
+	    while (size > ZERO_BUF_SIZE) {
+		data->type        = OUT_ZERODATA; /* Help the compiler? */
+		data->size        = ZERO_BUF_SIZE;
+		nasm_ofmt_output(data);
+		size             -= ZERO_BUF_SIZE;
+		data->loc.offset += ZERO_BUF_SIZE;
+		data->insoffs    += ZERO_BUF_SIZE;
+	    }
+	    data->size = size;
+	}
+        nasm_ofmt_output(data);
     } else {
         /* Outputting to ABSOLUTE section - only reserve is permitted */
         if (data->type != OUT_RESERVE)
@@ -439,23 +499,33 @@ static void out(struct out_data *data)
         /* No need to push to the backend */
     }
 
-    data->offset  += data->size;
-    data->insoffs += data->size;
+    /* Prepare for the next instruction */
+    data->loc.offset  += data->size;
+    data->insoffs     += data->size;
 
+    /* Note: this is never called with zeropad > ZERO_BUF_SIZE */
     if (zeropad) {
-        data->type     = OUT_ZERODATA;
-        data->size     = zeropad;
+        data->type         = OUT_ZERODATA;
+        data->size         = zeropad;
         lfmt->output(data);
-        ofmt->output(data);
-        data->offset  += zeropad;
-        data->insoffs += zeropad;
-        data->size    += zeropad;  /* Restore original size value */
+        nasm_ofmt_output(data);
+        data->loc.offset  += zeropad;
+        data->insoffs     += zeropad;
     }
+
+    /* Restore real data size in case the transaction was broken up */
+    data->size = real_size;
+
+    /* Avoid confusion when this struct out_data is reused */
+    data->what = NULL;
 }
 
 static inline void out_rawdata(struct out_data *data, const void *rawdata,
                                size_t size)
 {
+    if (!size)
+        return;
+
     data->type = OUT_RAWDATA;
     data->data = rawdata;
     data->size = size;
@@ -470,6 +540,26 @@ static void out_rawbyte(struct out_data *data, uint8_t byte)
     out(data);
 }
 
+#if 0                           /* Currently unused */
+static void out_rawword(struct out_data *data, uint16_t value)
+{
+    uint16_t buf = htole16(value);
+    data->type = OUT_RAWDATA;
+    data->data = &buf;
+    data->size = 2;
+    out(data);
+}
+#endif
+
+static void out_rawdword(struct out_data *data, uint32_t value)
+{
+    uint32_t buf = htole32(value);
+    data->type = OUT_RAWDATA;
+    data->data = &buf;
+    data->size = 4;
+    out(data);
+}
+
 static inline void out_reserve(struct out_data *data, uint64_t size)
 {
     data->type = OUT_RESERVE;
@@ -477,7 +567,12 @@ static inline void out_reserve(struct out_data *data, uint64_t size)
     out(data);
 }
 
-static void out_segment(struct out_data *data, const struct operand *opx)
+/*
+ * Emit a segment from a far expression. In this case, the segment offset is
+ * always zero. out_imm() handles explicit segment references, which may
+ * have addends.
+ */
+static void out_farseg(struct out_data *data, const struct operand *opx)
 {
     if (opx->opflags & OPFLAG_RELATIVE)
         nasm_nonfatal("segment references cannot be relative");
@@ -485,7 +580,7 @@ static void out_segment(struct out_data *data, const struct operand *opx)
     data->type      = OUT_SEGMENT;
     data->flags     = OUT_UNSIGNED;
     data->size      = 2;
-    data->toffset   = opx->offset;
+    data->toffset   = 0;
     data->tsegment  = ofmt->segbase(opx->segment | 1);
     data->twrt      = opx->wrt;
     out(data);
@@ -535,56 +630,88 @@ static void out_reladdr(struct out_data *data, const struct operand *opx,
     data->toffset  = opx->offset;
     data->tsegment = opx->segment;
     data->twrt     = opx->wrt;
-    data->relbase  = data->offset + (data->inslen - data->insoffs);
+    data->relbase  = data->loc.offset + (data->inslen - data->insoffs);
     out(data);
 }
 
-static bool jmp_match(int32_t segment, int64_t offset, int bits,
-                      insn * ins, const struct itemplate *temp)
+/* This is a real hack. The jcc8 or jmp8 byte code must come first. */
+static enum match_result jmp_match(const struct itemplate *temp, const insn *ins)
 {
-    int64_t isize;
-    const uint8_t *code = temp->code;
-    uint8_t c = code[0];
-    bool is_byte;
-    const struct operand * const op0 = get_operand(ins, 0);
+    const struct operand * const op0 = get_operand_const(ins, 0);
+    int64_t delta;
 
-    if (((c & ~1) != 0370) || (op0->type & STRICT))
-        return false;
-    if (!optimizing.level || (optimizing.flag & OPTIM_DISABLE_JMP_MATCH))
-        return false;
-    if (optimizing.level < 0 && c == 0371)
-        return false;
+    if (op0->type & STRICT)
+        return MERR_INVALOP;
 
-    isize = calcsize(segment, offset, bits, ins, temp);
-
-    if (op0->opflags & OPFLAG_UNKNOWN)
-        /* Be optimistic in pass 1 */
-        return true;
-
-    if (op0->segment != segment)
-        return false;
-
-    isize = op0->offset - offset - isize; /* isize is delta */
-    is_byte = (isize >= -128 && isize <= 127); /* is it byte size? */
-
-    if (is_byte && c == 0371 && ins->prefixes[PPS_REP] == P_BND) {
-        /* jmp short (opcode eb) cannot be used with bnd prefix. */
-        ins->prefixes[PPS_REP] = P_none;
-        /*!
-         *!prefix-bnd [on] invalid \c{BND} prefix
-         *!=bnd
-         *!  warns about ineffective use of the \c{BND} prefix when the
-         *!  \c{JMP} instruction is converted to the \c{SHORT} form.
-         *!  This should be extremely rare since the short \c{JMP} only
-         *!  is applicable to jumps inside the same module, but if
-         *!  it is legitimate, it may be necessary to use
-         *!  \c{bnd jmp dword}.
-         */
-        nasm_warn(WARN_PREFIX_BND|ERR_PASS2 ,
-                   "jmp short does not init bnd regs - bnd prefix dropped");
+    if (unlikely(ins->opt & (OPTIM_NO_Jcc_RELAX|OPTIM_NO_JMP_RELAX))) {
+        const uint8_t c = temp->code[0];
+        switch (c) {
+        case 0370:
+            if (ins->opt & OPTIM_NO_Jcc_RELAX)
+                return MERR_INVALOP;
+            break;
+        case 0371:
+            if (ins->opt & OPTIM_NO_JMP_RELAX)
+                return MERR_INVALOP;
+            break;
+        default:
+            return MERR_INVALOP;
+        }
     }
 
-    return is_byte;
+    if (op0->opflags & OPFLAG_UNKNOWN) {
+        /* Be optimistic in pass 1 */
+        return MOK_GOOD;
+    }
+
+    if (op0->segment != ins->loc.segment) {
+        /* Cross-segment jump */
+        return MERR_INVALOP;
+    }
+
+    /*
+     * An instruction with a rel8 operand can only range between 2 and
+     * 15 bytes.  If that is guaranteed true or false, there is no
+     * reason to go through the process of calculating the exact
+     * instruction size.
+     *
+     * Note that the instruction size is to be *subtracted* from the
+     * initial (beginning-of-instruction) delta value.
+     */
+    delta = op0->offset - ins->loc.offset;
+    if (delta - 2 < -128 || delta - 15 > 127) {
+        /* This cannot be a byte-sized jump */
+        return MERR_INVALOP;
+    } else if (delta - 15 >= -128 && delta - 2 <= 127) {
+        /* It is guaranteed to be a valid byte-sized jump, no need to test */
+    } else {
+        /*
+         * Need to do this the hard way.
+         *
+         * However, calcsize() can modify the instruction structure,
+         * but after a mismatch we have to revert to the original
+         * state, so make a copy here and hold error messages.
+         */
+        int64_t isize;
+        insn tmpins;
+        errhold hold;
+
+        tmpins = *ins;
+        tmpins.dummy = true;
+        hold = nasm_error_hold_push();
+
+        isize = calcsize(&tmpins, temp);
+
+        if (nasm_error_hold_pop(hold, false) >= ERR_NONFATAL)
+            return MERR_INVALOP;
+        if (isize < 0)
+            return MERR_INVALOP;
+        delta -= isize;
+        if ((int8_t)delta != delta)
+            return MERR_INVALOP;
+    }
+
+    return MOK_GOOD;
 }
 
 static inline int64_t merge_resb(insn *ins, int64_t isize)
@@ -683,20 +810,20 @@ static void out_eops(struct out_data *data, const extop *e)
 /* This is totally just a wild guess what is reasonable... */
 #define INCBIN_MAX_BUF (ZERO_BUF_SIZE * 16)
 
-int64_t assemble(int32_t segment, int64_t start, int bits, insn *instruction)
+static int64_t assemble(insn *instruction)
 {
     struct out_data data;
     const struct itemplate *temp;
     enum match_result m;
+    const int64_t start = instruction->loc.offset;
+    const int bits = instruction->bits;
 
     if (instruction->opcode == I_none)
         return 0;
 
     nasm_zero(data);
-    data.offset = start;
-    data.segment = segment;
-    data.itemp = NULL;
-    data.bits = bits;
+    data.loc   = instruction->loc;
+    data.bits  = instruction->bits;
 
     if (opcode_is_db(instruction->opcode)) {
         out_eops(&data, instruction->eops);
@@ -741,7 +868,7 @@ int64_t assemble(int32_t segment, int64_t start, int bits, insn *instruction)
             }
         }
 
-        lfmt->set_offset(data.offset);
+        lfmt->set_offset(data.loc.offset);
         lfmt->uplevel(LIST_INCBIN, len);
 
         if (!len)
@@ -817,12 +944,12 @@ int64_t assemble(int32_t segment, int64_t start, int bits, insn *instruction)
     } else {
         /* "Real" instruction */
 
-        /* Check to see if we need an address-size prefix */
-        add_asp(instruction, bits);
+        /* Pre-match instruction structure update */
+        insn_early_setup(instruction);
 
-        m = find_match(&temp, instruction, data.segment, data.offset, bits);
+        m = find_match(&temp, instruction);
 
-        if (m == MOK_GOOD) {
+        if (m >= MOK_GOOD) {
             /* Matches! */
             if (unlikely(itemp_has(temp, IF_OBSOLETE))) {
                 errflags warning;
@@ -835,27 +962,9 @@ int64_t assemble(int32_t segment, int64_t start, int bits, insn *instruction)
                  * warning classes for "obsolete but valid for this
                  * specific CPU" and "obsolete and gone."
                  *
-                 *!obsolete-removed [on] instruction obsolete and removed on the target CPU
-                 *!  warns for an instruction which has been removed
-                 *!  from the architecture, and is no longer included
-                 *!  in the CPU definition given in the \c{[CPU]}
-                 *!  directive, for example \c{POP CS}, the opcode for
-                 *!  which, \c{0Fh}, instead is an opcode prefix on
-                 *!  CPUs newer than the first generation 8086.
-                 *
-                 *!obsolete-nop [on] instruction obsolete and is a noop on the target CPU
-                 *!  warns for an instruction which has been removed
-                 *!  from the architecture, but has been architecturally
-                 *!  defined to be a noop for future CPUs.
-                 *
-                 *!obsolete-valid [on] instruction obsolete but valid on the target CPU
-                 *!  warns for an instruction which has been removed
-                 *!  from the architecture, but is still valid on the
-                 *!  specific CPU given in the \c{CPU} directive. Code
-                 *!  using these instructions is most likely not
-                 *!  forward compatible.
+                 * This currently doesn't really happen correctly;
+                 * it requires better information in insns.dat.
                  */
-
                 whathappened = never ? "never implemented" : "obsolete";
 
                 if (!never && !iflag_cmp_cpu_level(&insns_flags[temp->iflag_idx], &cpu)) {
@@ -873,20 +982,32 @@ int64_t assemble(int32_t segment, int64_t start, int bits, insn *instruction)
                           whathappened, validity);
             }
 
-            data.itemp = temp;
-            data.bits = bits;
-            data.insoffs = 0;
+            data.inslen = calcsize(instruction, temp);
 
-            data.inslen = calcsize(data.segment, data.offset,
-                                   bits, instruction, temp);
-            nasm_assert(data.inslen >= 0);
+            /* This can happen if the instruction generated an error */
+            if (data.inslen <= 0)
+                return 0;
+
             data.inslen = merge_resb(instruction, data.inslen);
 
+            data.insoffs = 0;
             gencode(&data, instruction);
-            nasm_assert(data.insoffs == data.inslen);
+            if (unlikely(data.insoffs != data.inslen)) {
+                nasm_nonfatal("instruction length changed during code generation (%u -> %u)",
+                           (unsigned int)data.insoffs, (unsigned int)data.inslen);
+            }
+
+            nasm_assert(data.loc.offset - start == data.inslen);
         } else {
             /* No match */
             switch (m) {
+            case MERR_INVALOP:
+            default:
+                nasm_nonfatal("invalid combination of opcode and operands");
+                break;
+            case MERR_OPSIZEINVAL:
+                nasm_nonfatal("invalid operand sizes for instruction");
+                break;
             case MERR_OPSIZEMISSING:
                 nasm_nonfatal("operation size not specified");
                 break;
@@ -930,15 +1051,27 @@ int64_t assemble(int32_t segment, int64_t start, int bits, insn *instruction)
             case MERR_REGSET:
                 nasm_nonfatal("register set not valid for operand");
                 break;
-            default:
-                nasm_nonfatal("invalid combination of opcode and operands");
+            case MERR_WRONGIMM:
+                nasm_nonfatal("operand/operator invalid for this instruction");
+                break;
+            case MERR_BADZU:
+                nasm_nonfatal("{zu} not applicable to this instruction");
+                break;
+            case MERR_MEMZU:
+                nasm_nonfatal("{zu} invalid for non-register destination");
+                break;
+            case MERR_BADNF:
+                nasm_nonfatal("{nf} not available for this instruction");
+                break;
+            case MERR_REQNF:
+                nasm_nonfatal("{nf} required for this instruction");
                 break;
             }
 
             instruction->times = 1; /* Avoid repeated error messages */
         }
     }
-    return data.offset - start;
+    return data.loc.offset - start;
 }
 
 static int32_t eops_typeinfo(const extop *e)
@@ -1037,7 +1170,6 @@ static void debug_set_type(insn *instruction)
     dfmt->debug_typevalue(typeinfo);
 }
 
-
 /* Proecess an EQU directive */
 static void define_equ(insn * instruction)
 {
@@ -1102,7 +1234,7 @@ static int64_t len_extops(const extop *e)
     return isize;
 }
 
-int64_t insn_size(int32_t segment, int64_t offset, int bits, insn *instruction)
+static int64_t insn_size(insn *instruction)
 {
     const struct itemplate *temp;
     enum match_result m;
@@ -1149,14 +1281,14 @@ int64_t insn_size(int32_t segment, int64_t offset, int bits, insn *instruction)
     } else {
         /* Normal instruction, or RESx */
 
-        /* Check to see if we need an address-size prefix */
-        add_asp(instruction, bits);
+        /* Pre-matching setup */
+        insn_early_setup(instruction);
 
-        m = find_match(&temp, instruction, segment, offset, bits);
-        if (m != MOK_GOOD)
+        m = find_match(&temp, instruction);
+        if (m < MOK_GOOD)
             return -1;              /* No match */
 
-        isize = calcsize(segment, offset, bits, instruction, temp);
+        isize = calcsize(instruction, temp);
         debug_set_type(instruction);
         isize = merge_resb(instruction, isize);
 
@@ -1183,43 +1315,72 @@ static void bad_hle_warn(const insn * ins, uint8_t hleok)
     if (!is_class(MEMORY, ins->oprs[0].type))
         ww = w_inval;           /* HLE requires operand 0 to be memory */
 
-    /*!
-     *!prefix-hle [on] invalid HLE prefix
-     *!=hle
-     *!  warns about invalid use of the HLE \c{XACQUIRE} or \c{XRELEASE}
-     *!  prefixes.
-     */
     switch (ww) {
     case w_none:
         break;
 
     case w_lock:
         if (ins->prefixes[PPS_LOCK] != P_LOCK) {
-            nasm_warn(WARN_PREFIX_HLE|ERR_PASS2,
+            nasm_warn(WARN_PREFIX_HLE,
                        "%s with this instruction requires lock",
                        prefix_name(rep_pfx));
         }
         break;
 
     case w_inval:
-        nasm_warn(WARN_PREFIX_HLE|ERR_PASS2,
+        nasm_warn(WARN_PREFIX_HLE,
                    "%s invalid with this instruction",
                    prefix_name(rep_pfx));
         break;
     }
 }
 
+/* Handle EVEX flags at the time of EA processing */
+static int ea_evex_flags(insn *ins, const struct operand *opy)
+{
+    /* EVEX.b1 : evex_brerop contains the operand position */
+    const struct operand *op_er_sae = ins->evex_brerop;
+    const decoflags_t deco = op_er_sae ? op_er_sae->decoflags : 0;
+
+    if (deco & (ER | SAE)) {
+        /* EVEX_LL overlays EVEX_RC, so LL must = 2 or be ignored */
+        if (!itemp_has(ins-> itemp, IF_LIG)) {
+            const unsigned int vlen = getfield(EVEX_LL, ins->evex);
+
+            if (unlikely(vlen != 2)) {
+                const char *what = deco & ER
+                    ? "embedded rounding"
+                    : "suppress all exceptions";
+                nasm_nonfatal("%s not possible for %d-bit vectors",
+                              what, 128 << vlen);
+                return -1;
+            }
+        }
+
+        ins->evex &= ~EVEX_RC;
+        ins->evex ^= EVEX_B;
+        if (op_er_sae->decoflags & ER) {
+            /* set EVEX.RC (rounding control) */
+            ins->evex ^= fieldval(EVEX_RC, ins->evex_rm - BRC_RN);
+        }
+    } else if (opy->decoflags & BRDCAST_MASK) {
+        /* set EVEX.b but don't EVEX.L/RC */
+        ins->evex ^= EVEX_B;
+    }
+
+    return 0;
+}
+
 /* Common construct */
 #define case3(x) case (x): case (x)+1: case (x)+2
 #define case4(x) case3(x): case (x)+3
 
-static int64_t calcsize(int32_t segment, int64_t offset, int bits,
-                        insn * ins, const struct itemplate *temp)
+static int64_t calcsize(insn *ins, const struct itemplate * const temp)
 {
+    const int bits = ins->bits;
     const uint8_t *codes = temp->code;
     int64_t length = 0;
     uint8_t c;
-    int rex_mask = ~0;
     int op1, op2;
     struct operand *opx, *opy;
     uint8_t opex = 0;
@@ -1228,16 +1389,21 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
     bool lockcheck = true;
     enum reg_enum mib_index = R_none;   /* For a separate index reg form */
     const char *errmsg;
+    int need_pfx[MAXPREFIX];
+    int opt_opsize = 0;
 
-    ins->rex = 0;               /* Ensure REX is reset */
+    ins->rex     = 0;           /* Ensure REX is reset */
+    ins->evex    = 0;		/* Ensure EVEX is reset */
+    ins->vexreg  = 0;           /* No V register */
+    ins->vex_cm  = 0;           /* No implicit map */
+    ins->bits    = bits;        /* Execution mode (default asize) */
+    ins->itemp   = temp;        /* Instruction template */
     eat = EA_SCALAR;            /* Expect a scalar EA */
-    memset(ins->evex_p, 0, 3);  /* Ensure EVEX is reset */
 
-    if (ins->prefixes[PPS_OSIZE] == P_O64)
-        ins->rex |= REX_W;
+    /* Default operand size (prefixes are handled in the byte code) */
+    ins->op_size = bits != 16 ? 32 : 16;
 
-    (void)segment;              /* Don't warn that this parameter is unused */
-    (void)offset;               /* Don't warn that this parameter is unused */
+    nasm_zero(need_pfx);
 
     while (*codes) {
         c = *codes++;
@@ -1257,8 +1423,7 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
             break;
 
         case4(010):
-            ins->rex |=
-                op_rexflags(opx, REX_B|REX_H|REX_P|REX_W);
+            ins->rex |= op_rexflags(opx, REX_rB);
             codes++, length++;
             break;
 
@@ -1322,7 +1487,7 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
             c = *codes++;
             op2 = (op2 & ~3) | ((c >> 3) & 3);
             opy = get_operand(ins, op2);
-            ins->rex |= op_rexflags(opy, REX_R|REX_H|REX_P|REX_W);
+            ins->rex |= op_rexflags(opy, REX_rR);
             length++;
             break;
 
@@ -1337,37 +1502,45 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
             break;
 
         case4(0240):
-            ins->rex |= REX_EV;
-            ins->vexreg = regval(opx);
-            ins->evex_p[2] |= op_evexflags(opx, EVEX_P2VP, 2); /* High-16 NDS */
-            ins->vex_cm = *codes++;
-            ins->vex_wlp = *codes++;
-            ins->evex_tuple = (*codes++ - 0300);
-            break;
+            if (is_class(opx->type, IMMEDIATE))
+                ins->veximm = opx->offset;
+            else
+                ins->vexreg = regval(opx);
+            goto evex_common;
 
         case 0250:
-            ins->rex |= REX_EV;
             ins->vexreg = 0;
-            ins->vex_cm = *codes++;
-            ins->vex_wlp = *codes++;
+            goto evex_common;
+
+        evex_common:
+            ins->rex |= REX_EV;
+            ins->evex = 0x62;
+            ins->evex += *codes++ << 8;
+            ins->evex += *codes++ << 16;
+            ins->evex += *codes++ << 24;
             ins->evex_tuple = (*codes++ - 0300);
+            ins->vex_cm = ((ins->evex >> 8) & 7) | (RV_EVEX << 6);
             break;
 
         case4(0254):
+        case4(0264):
             length += 4;
             break;
 
         case4(0260):
-            ins->rex |= REX_V;
-            ins->vexreg = regval(opx);
-            ins->vex_cm = *codes++;
-            ins->vex_wlp = *codes++;
-            break;
+            if (is_class(opx->type, IMMEDIATE))
+                ins->veximm = opx->offset;
+            else
+                ins->vexreg = regval(opx);
+            goto vex_common;
 
         case 0270:
-            ins->rex |= REX_V;
             ins->vexreg = 0;
-            ins->vex_cm = *codes++;
+            goto vex_common;
+
+        vex_common:
+            ins->rex |= REX_V;
+            ins->vex_cm  = *codes++;
             ins->vex_wlp = *codes++;
             break;
 
@@ -1380,71 +1553,136 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
             break;
 
         case4(0300):
+            length++;
+            break;
+
+        case4(0304):
+            length++;
+            codes += 2;
             break;
 
         case 0310:
+        {
+            enum prefixes pfx = ins->prefixes[PPS_ASIZE];
+
+            ins->addr_size = 16;
+
             if (bits == 64)
                 return -1;
-            length += (bits != 16) && !has_prefix(ins, PPS_ASIZE, P_A16);
+            if (pfx) {
+                if (!(pfx == P_A16 || (bits == 32 && pfx == P_ASP)))
+                    return -1;
+            } else {
+                ins->prefixes[PPS_ASIZE] = P_A16;
+            }
             break;
+        }
 
         case 0311:
-            length += (bits != 32) && !has_prefix(ins, PPS_ASIZE, P_A32);
+        {
+            enum prefixes pfx = ins->prefixes[PPS_ASIZE];
+
+            ins->addr_size = 32;
+
+            if (pfx) {
+                if (!(pfx == P_A32 || (bits != 32 && pfx == P_ASP)))
+                    return -1;
+            } else {
+                ins->prefixes[PPS_ASIZE] = P_A32;
+            }
             break;
+        }
 
         case 0312:
             break;
 
         case 0313:
-            if (bits != 64 || has_prefix(ins, PPS_ASIZE, P_A16) ||
-                has_prefix(ins, PPS_ASIZE, P_A32))
+        {
+            enum prefixes pfx = ins->prefixes[PPS_ASIZE];
+
+            ins->addr_size = 64;
+
+            if (bits != 64 || (pfx && pfx != P_A64))
                 return -1;
+            else
+                ins->prefixes[PPS_ASIZE] = P_A64;
             break;
+        }
 
         case4(0314):
             break;
 
         case 0320:
+        is_o16:
         {
-            /*! prefix-opsize [on] invalid operand size prefix
-             *!   warns that an operand prefix (\c{o16}, \c{o32}, \c{o64},
-             *!   \c{osp}) invalid for the specified instruction has been specified.
-             *!   The operand prefix will be ignored by the assembler.
-             */
             enum prefixes pfx = ins->prefixes[PPS_OSIZE];
-            if (pfx == P_O16)
-                break;
-            if (pfx != P_none)
-                nasm_warn(WARN_PREFIX_OPSIZE|ERR_PASS2,
-                          "invalid operand size prefix, must be o16");
-            else
+            ins->op_size = 16;
+            if (bits != 16 && pfx == P_OSP) {
+                /* Allow osp prefix as is */
+            } else if (pfx != P_none && pfx != P_O16) {
+                nasm_warn(WARN_PREFIX_OPSIZE,
+                          "invalid operand size prefix %s, must be o16",
+                          prefix_name(pfx));
+            } else if (!(opt_opsize & 16)) {
                 ins->prefixes[PPS_OSIZE] = P_O16;
+            }
             break;
         }
 
         case 0321:
+        is_o32:
         {
             enum prefixes pfx = ins->prefixes[PPS_OSIZE];
-            if (pfx == P_O32)
-                break;
-            if (pfx != P_none)
-                nasm_warn(WARN_PREFIX_OPSIZE|ERR_PASS2,
-                          "invalid operand size prefix, must be o32");
-            else
+            ins->op_size = 32;
+            if (ins->rex & REX_NW) {
+                nasm_nonfatalf(ERR_PASS2,
+                          "instruction not valid with 32-bit operand size");
+                return -1;
+            } else if (bits == 16 && pfx == P_OSP) {
+                /* Allow osp prefix as is */
+            } else if (pfx != P_none && pfx != P_O32) {
+                nasm_warn(WARN_PREFIX_OPSIZE,
+                          "invalid operand size prefix %s, must be o32",
+                          prefix_name(pfx));
+            } else if (!(opt_opsize & 32)) {
                 ins->prefixes[PPS_OSIZE] = P_O32;
+            }
             break;
         }
 
         case 0322:
             break;
 
-        case 0323:
-            rex_mask &= ~REX_W;
+        case 0327:
+            if (bits == 64) {
+                ins->rex |= REX_NW;
+                if (ins->op_size == 32)
+                    ins->op_size = 64;
+            }
             break;
 
+        case 0323:
+            ins->rex |= REX_NW;
+            /* fall through */
+
         case 0324:
-            ins->rex |= REX_W;
+        is_o64:
+        {
+            enum prefixes pfx = ins->prefixes[PPS_OSIZE];
+            ins->op_size = 64;
+            if (pfx == P_OSP) {
+                /* If osp is specified, leave it, but force REX.W */
+                if (!(ins->rex & REX_NW))
+                    ins->rex |= REX_W;
+            } else if (pfx != P_none && pfx != P_O64) {
+                nasm_warn(WARN_PREFIX_OPSIZE,
+                          "invalid operand size prefix %s, must be o64",
+                          prefix_name(pfx));
+            } else if (!(opt_opsize & 64)) {
+                ins->prefixes[PPS_OSIZE] = P_O64;
+            }
             break;
+        }
 
         case 0325:
             ins->rex |= REX_NH;
@@ -1453,52 +1691,75 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
         case 0326:
             break;
 
+        case 0330:
+            switch (ins->prefixes[PPS_OSIZE]) {
+            case P_none:
+                switch (ins->op_size) {
+                case 16: goto is_o16;
+                case 32: goto is_o32;
+                case 64: goto is_o64;
+                default: panic(); break;
+                }
+                break;
+            case P_OSP:
+                if (bits == 16)
+                    goto is_o32;
+                else
+                    goto is_o16;
+            case P_O16:
+                goto is_o16;
+            case P_O32:
+                goto is_o32;
+            case P_O64:
+                goto is_o64;
+            default:
+                panic();
+                break;
+            }
+            break;
+
         case 0331:
+            ins->need_pfx[PPS_REP] = PFE_NULL;
             break;
 
         case 0332:
+            ins->need_pfx[PPS_REP] = 0xf2;
+            break;
+
         case 0333:
-            length++;
+            ins->need_pfx[PPS_REP] = 0xf3;
             break;
 
         case 0334:
-            ins->rex |= REX_L;
+            ins->rex |= REX_L;  /* Ignored in 64-bit mode */
             break;
 
         case 0335:
             break;
 
         case 0336:
-            if (!ins->prefixes[PPS_REP])
-                ins->prefixes[PPS_REP] = P_REP;
+            if (!(optimizing & OPTIM_STRICT_OSIZE))
+                opt_opsize = 16|32|64;
             break;
 
         case 0337:
-            if (!ins->prefixes[PPS_REP])
-                ins->prefixes[PPS_REP] = P_REPNE;
+            if (!(optimizing & OPTIM_STRICT_OSIZE))
+                opt_opsize = 64;
             break;
 
         case 0340:
-            /*!
-             *!forward [on] forward reference may have unpredictable results
-             *!  warns that a forward reference is used which may have
-             *!  unpredictable results, notably in a \c{RESB}-type
-             *!  pseudo-instruction. These would be \i\e{critical
-             *!  expressions} (see \k{crit}) but are permitted in a
-             *!  handful of cases for compatibility with older
-             *!  versions of NASM. This warning should be treated as a
-             *!  severe programming error as the code could break at
-             *!  any time for any number of reasons.
-             */
             /* The bytecode ends in 0, so opx points to operand 0 */
-            if (!absolute_op(opx))
+            if (!absolute_op(opx)) {
                 nasm_nonfatal("attempt to reserve non-constant"
-                              " quantity of BSS space");
-            else if (opx->opflags & OPFLAG_FORWARD)
-                nasm_warn(WARN_FORWARD, "forward reference in RESx "
-                           "can have unpredictable results");
-            else
-                length += opx->offset * resb_bytes(ins->opcode);
+                              " quantity of memory");
+                return -1;
+            } else if (opx->opflags & OPFLAG_FORWARD) {
+                nasm_warn(WARN_FORWARD, "forward reference in %s "
+                          "can have unpredictable results",
+                          nasm_insn_names[ins->opcode]);
+            }
+
+            length += opx->offset * resb_bytes(ins->opcode);
             break;
 
         case 0341:
@@ -1506,24 +1767,79 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
                 ins->prefixes[PPS_WAIT] = P_WAIT;
             break;
 
+        case 0342:
+            switch (bits) {
+            case 16: goto is_o16;
+            case 32: goto is_o32;
+            case 64: goto is_o64;
+            default: panic();
+            }
+            break;
+
+        case 0344:
+            ins->rex |= REX_P | REX_B;
+            break;
+
+        case 0345:
+            ins->rex |= REX_P | REX_X;
+            break;
+
+        case 0346:
+            ins->rex |= REX_P | REX_R;
+            break;
+
+        case 0347:
+            ins->rex |= REX_P | REX_W;
+            break;
+
+        case 0350:
+            ins->rex |= REX_P | REX_2;
+            break;
+
+        case 0351:
+            ins->rex |= REX_P | REX_2 | REX_W;
+            break;
+
+        case3(0355):
+            /* Set opmap for legacy and REX2 encodings */
+            ins->vex_cm = c & 3;
+            break;
+
         case 0360:
+            ins->need_pfx[PPS_REP]   = PFE_NULL;
+            ins->need_pfx[PPS_OSIZE] = PFE_NULL;
             break;
 
         case 0361:
-            length++;
+            ins->need_pfx[PPS_REP]   = PFE_NULL;
+            /* fall through */
+        case 0366:
+            ins->need_pfx[PPS_OSIZE] = 0x66;
             break;
 
         case 0364:
-        case 0365:
+            ins->need_pfx[PPS_OSIZE] = PFE_NULL;
             break;
 
-        case 0366:
+        case 0365:
+            ins->need_pfx[PPS_ASIZE] = PFE_NULL;
+            break;
+
         case 0367:
-            length++;
+            ins->need_pfx[PPS_ASIZE] = 0x67;
             break;
 
         case 0370:
+            break;
+
         case 0371:
+            if (ins->prefixes[PPS_REP] == P_BND) {
+                /* jmp short (opcode eb) cannot be used with bnd prefix. */
+                ins->prefixes[PPS_REP] = P_none;
+                if (!ins->dummy)
+                    nasm_warn(WARN_PREFIX_BND,
+                              "jmp short does not init bnd regs - bnd prefix dropped");
+            }
             break;
 
         case 0373:
@@ -1555,14 +1871,12 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
         case4(0230):
         case4(0234):
             {
-                ea ea_data;
                 int rfield;
                 opflags_t rflags;
-                const struct operand *op_er_sae;
 
                 opy = get_operand(ins, op2);
 
-                ea_data.rex = 0;           /* Ensure ea.REX is initially 0 */
+                ins->ea.rex = 0;           /* Ensure ea.REX is initially 0 */
 
                 if (c <= 0177) {
                     /* pick rfield from operand b (opx) */
@@ -1572,27 +1886,6 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
                     rflags = 0;
                     rfield = c & 7;
                     opx = NULL;
-                }
-
-                /* EVEX.b1 : evex_brerop contains the operand position */
-                op_er_sae = ins->evex_brerop;
-
-                if (op_er_sae && (op_er_sae->decoflags & (ER | SAE))) {
-                    /* set EVEX.b */
-                    ins->evex_p[2] |= EVEX_P2B;
-                    if (op_er_sae->decoflags & ER) {
-                        /* set EVEX.RC (rounding control) */
-                        ins->evex_p[2] |= ((ins->evex_rm - BRC_RN) << 5)
-                                          & EVEX_P2RC;
-                    }
-                } else {
-                    /* set EVEX.L'L (vector length) */
-                    ins->evex_p[2] |= ((ins->vex_wlp << (5 - 2)) & EVEX_P2LL);
-                    ins->evex_p[1] |= ((ins->vex_wlp << (7 - 4)) & EVEX_P1W);
-                    if (opy->decoflags & BRDCAST_MASK) {
-                        /* set EVEX.b */
-                        ins->evex_p[2] |= EVEX_P2B;
-                    }
                 }
 
                 if (itemp_has(temp, IF_MIB)) {
@@ -1613,14 +1906,17 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
                 if (itemp_has(temp, IF_SIB))
                     opy->eaflags |= EAF_SIB;
 
-                if (process_ea(opy, &ea_data, bits,
-                               rfield, rflags, ins, eat, &errmsg)) {
+                /* ea_evex_flags() must come before process_ea() */
+                if (ea_evex_flags(ins, opy))
+                    return -1;
+
+                if (process_ea(opy, rfield, rflags, ins, eat, &errmsg)) {
                     nasm_nonfatal("%s", errmsg);
                     return -1;
-                } else {
-                    ins->rex |= ea_data.rex;
-                    length += ea_data.size;
                 }
+
+                ins->rex |= ins->ea.rex;
+                length += ins->ea.size;
             }
             break;
 
@@ -1631,14 +1927,16 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
         }
     }
 
-    ins->rex &= rex_mask;
-
     if (ins->rex & REX_NH) {
         if (ins->rex & REX_H) {
             nasm_nonfatal("instruction cannot use high registers");
             return -1;
         }
         ins->rex &= ~REX_P;        /* Don't force REX prefix due to high reg */
+    }
+
+    if (ins->prefixes[PPS_OSIZE] == P_O64) {
+        ins->rex |= !(ins->rex & REX_NW) ? REX_W : 0;
     }
 
     switch (ins->prefixes[PPS_REX]) {
@@ -1653,91 +1951,120 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
             return -1;
         break;
     case P_REX:
-        if (ins->rex & (REX_V|REX_EV))
+        if (bits != 64) {
+            nasm_nonfatal("REX encoding not supported in %d-bit mode", bits);
+            return -1;
+        }
+        if (ins->rex & (REX_V|REX_EV|REX_2))
             return -1;
         ins->rex |= REX_P;      /* Force REX prefix */
+        break;
+    case P_REX2:
+        if (bits != 64) {
+            nasm_nonfatal("REX2 encoding not supported in %d-bit mode", bits);
+            return -1;
+        }
+        if ((ins->rex & (REX_V|REX_EV)) || rex_highvec(ins->rex))
+            return -1;
+        ins->rex |= REX_P | REX_2; /* Force REX2 prefix */
         break;
     default:
         break;
     }
 
     if (ins->rex & (REX_V | REX_EV)) {
-        int bad32 = REX_R|REX_W|REX_X|REX_B;
+        uint32_t bad32 = REX_BXR;
 
         if (ins->rex & REX_H) {
-            nasm_nonfatal("cannot use high register in AVX instruction");
+            nasm_nonfatal("cannot use high byte register in this instruction");
             return -1;
         }
-        switch (ins->vex_wlp & 060) {
-        case 000:
-        case 040:
-            ins->rex &= ~REX_W;
-            break;
-        case 020:
-            ins->rex |= REX_W;
-            bad32 &= ~REX_W;
-            break;
-        case 060:
-            /* Follow REX_W */
-            break;
+        if (itemp_has(temp, IF_WW)) {
+            bad32 |= REX_W;
+        } else {
+            ins->rex = (ins->rex & ~REX_W) | ((ins->vex_wlp >> (7-3)) & REX_W);
         }
 
         if (bits != 64 && ((ins->rex & bad32) || ins->vexreg > 7)) {
             nasm_nonfatal("invalid operands in non-64-bit mode");
             return -1;
-        } else if (!(ins->rex & REX_EV) &&
-                   ((ins->vexreg > 15) || (ins->evex_p[0] & 0xf0))) {
-            nasm_nonfatal("invalid high-16 register in non-AVX-512");
+        }
+
+        if (ins->rex & REX_EV) {
+            /* EVEX */
+            length += 4;
+        } else {
+            /* VEX */
+            if (ins->vexreg > 15 || (ins->rex & REX_BXR1)) {
+                nasm_nonfatal("invalid high-16 register in VEX encoded instruction");
+                return -1;
+            }
+
+            if (ins->vex_cm != 1 ||
+                (ins->rex & (REX_B|REX_X|REX_W)) ||
+                ins->prefixes[PPS_REX] == P_VEX3) {
+                /* VEX3 required */
+                if (ins->prefixes[PPS_REX] == P_VEX2)
+                    nasm_nonfatal("instruction not encodable with {vex2} prefix");
+                length += 3;
+            } else {
+                /* VEX2 available */
+                length += 2;
+            }
+        }
+    } else if (ins->rex & (REX_BXR1 | REX_2)) {
+        /* REX2 prefix needed */
+        if (bits != 64) {
+            nasm_nonfatal("invalid operands in %d-bit mode", bits);
             return -1;
         }
-        if (ins->rex & REX_EV) {
-            length += 4;
-        } else if (ins->vex_cm != 1 || (ins->rex & (REX_W|REX_X|REX_B)) ||
-                 ins->prefixes[PPS_REX] == P_VEX3) {
-            if (ins->prefixes[PPS_REX] == P_VEX2)
-                nasm_nonfatal("instruction not encodable with {vex2} prefix");
-            length += 3;
-        } else {
-            length += 2;
+        if (!iflag_test(&cpu, IF_APX)) {
+            nasm_nonfatal("invalid operands in non-APX mode");
+            return -1;
         }
+        if (itemp_has(temp, IF_NOAPX) || rex_highvec(ins->rex)) {
+            nasm_nonfatal("this use of registers 16-31 not supported for this instruction");
+            return -1;
+        }
+        if (ins->rex & REX_H) {
+            nasm_nonfatal("cannot use high byte register in this instruction");
+            return -1;
+        }
+
+        ins->rex |= REX_2 | REX_P;
+        length += 2;
     } else if (ins->rex & REX_MASK) {
         if (ins->rex & REX_H) {
-            nasm_nonfatal("cannot use high byte register in rex instruction");
+            nasm_nonfatal("cannot use high byte register in this instruction");
             return -1;
         } else if (bits == 64) {
-            length++;
-        } else if ((ins->rex & REX_L) &&
-                   !(ins->rex & (REX_P|REX_W|REX_X|REX_B)) &&
+            ins->rex &= ~REX_L;
+            ins->rex |= REX_P;
+        } else if ((ins->rex & (REX_L|REX_W|REX_BXR)) == (REX_L|REX_R) &&
                    iflag_cpu_level_ok(&cpu, IF_X86_64)) {
             /* LOCK-as-REX.R */
-            assert_no_prefix(ins, PPS_LOCK);
+            if (assert_no_prefix(ins, PPS_LOCK))
+                return -1;
             lockcheck = false;  /* Already errored, no need for warning */
-            length++;
+            ins->rex &= ~REX_P;
         } else {
-            nasm_nonfatal("invalid operands in non-64-bit mode");
+            nasm_nonfatal("invalid operands in %d-bit mode", bits);
             return -1;
         }
+        length++;
+    }
+
+    if (!(ins->rex & (REX_2|REX_V|REX_EV))) {
+        /* Opmap legacy encoding: none, 0f, 0f 38, 0f 3a */
+        length += (ins->vex_cm > 0) + (ins->vex_cm > 1);
     }
 
     if (lockcheck && has_prefix(ins, PPS_LOCK, P_LOCK)) {
         if ((!itemp_has(temp,IF_LOCK)  || !is_class(MEMORY, ins->oprs[0].type)) &&
             (!itemp_has(temp,IF_LOCK1) || !is_class(MEMORY, ins->oprs[1].type))) {
-            /*!
-             *!prefix-lock-error [on] \c{LOCK} prefix on unlockable instruction
-             *!=lock
-             *!  warns about \c{LOCK} prefixes on unlockable instructions.
-             */
-            nasm_warn(WARN_PREFIX_LOCK_ERROR|ERR_PASS2 , "instruction is not lockable");
+            nasm_warn(WARN_PREFIX_LOCK_ERROR, "instruction is not lockable");
         } else if (temp->opcode == I_XCHG) {
-            /*!
-             *!prefix-lock-xchg [on] superfluous \c{LOCK} prefix on \c{XCHG} instruction
-             *!  warns about a \c{LOCK} prefix added to an \c{XCHG} instruction.
-             *!  The \c{XCHG} instruction is \e{always} locking, and so this
-             *!  prefix is not necessary; however, NASM will generate it if
-             *!  explicitly provided by the user, so this warning indicates that
-             *!  suboptimal code is being generated.
-             */
-            nasm_warn(WARN_PREFIX_LOCK_XCHG|ERR_PASS2,
+            nasm_warn(WARN_PREFIX_LOCK_XCHG,
                       "superfluous LOCK prefix on XCHG instruction");
         }
     }
@@ -1749,149 +2076,270 @@ static int64_t calcsize(int32_t segment, int64_t offset, int bits,
      * BND prefix is added to every appropriate instruction line
      * unless it is overridden by NOBND prefix.
      */
-    if (globalbnd &&
+    if (globl.bnd &&
         (itemp_has(temp, IF_BND) && !has_prefix(ins, PPS_REP, P_NOBND)))
             ins->prefixes[PPS_REP] = P_BND;
 
     /*
+     * Warn on {pt} or {pn} on a nonhintable instruction
+     */
+    if (ins->prefixes[PPS_SEG] == P_PT || ins->prefixes[PPS_SEG] == P_PN) {
+        if (!itemp_has(temp, IF_JCC_HINT)) {
+            nasm_warn(WARN_PREFIX_HINT_DROPPED,
+                      "invalid branch hint prefix dropped");
+            ins->prefixes[PPS_SEG] = 0;
+        }
+    }
+
+    /*
      * Add length of legacy prefixes
      */
-    length += emit_prefix(NULL, bits, ins);
+    length += emit_prefixes(NULL, ins);
 
     return length;
 }
 
+/* Emit REX and REX2 prefixes, and if necessary legacy opmap bytes */
 static inline void emit_rex(struct out_data *data, insn *ins)
 {
-    if (data->bits == 64) {
-        if ((ins->rex & REX_MASK) &&
-            !(ins->rex & (REX_V | REX_EV)) &&
-            !ins->rex_done) {
-            uint8_t rex = (ins->rex & REX_MASK) | REX_P;
-            out_rawbyte(data, rex);
-            ins->rex_done = true;
+    uint8_t buf[4];
+    size_t n = 0;
+
+    if (ins->rex_done)
+        return;
+
+    ins->rex_done = true;
+
+    if (ins->rex & (REX_V | REX_EV))
+        return;                 /* Handled elsewhere */
+
+    if (ins->rex & REX_2) {
+        buf[0]  = 0xd5;
+        buf[1]  = ins->rex & (REX_BXR0|REX_W);
+        buf[1] |= (ins->rex & REX_BXR1) >> 8;
+        buf[1] |= ins->vex_cm << 7;
+        n = 2;
+    } else {
+        uint8_t rex = ins->rex & (REX_MASK|REX_L);
+
+        if (rex == (REX_L|REX_R)) {
+            buf[n++] = 0xf0;
+        } else if (rex & REX_P) {
+            buf[n++] = rex;
+        } else {
+            nasm_assert(!(rex & ~REX_L));
         }
+
+        if (ins->vex_cm) {
+            buf[n++] = 0x0f;
+            if (ins->vex_cm > 1) {
+                /* Map 2 = 0F 38, map 3 = 0F 3A */
+                buf[n++] = 0x34 + (ins->vex_cm << 1);
+            }
+        }
+    }
+
+    out_rawdata(data, buf, n);
+}
+
+/*
+ * Return the byte value of a legacy prefix (possibly depending on context)
+ * Returns one of the enum prefix_err values if the prefix has no byte value.
+ */
+static int prefix_byte(enum prefixes pfx, const int bits)
+{
+    switch ((int)pfx) {
+    case P_WAIT:
+        return 0x9B;
+
+    case P_LOCK:
+        return 0xF0;
+
+    case P_REPNE:
+    case P_REPNZ:
+    case P_XACQUIRE:
+    case P_BND:
+        return 0xF2;
+
+    case P_REPE:
+    case P_REPZ:
+    case P_REP:
+    case P_XRELEASE:
+        return 0xF3;
+
+    case R_CS:
+    case P_PN:
+        return 0x2E;
+
+    case R_DS:
+    case P_PT:
+        return 0x3E;
+
+    case R_ES:
+        return 0x26;
+
+    case R_FS:
+        return 0x64;
+        break;
+
+    case R_GS:
+        return 0x65;
+        break;
+
+    case R_SS:
+        return 0x36;
+        break;
+
+    case P_A16:
+        if (bits == 64)
+            return PFE_ERR;
+        else if (bits == 32)
+            return 0x67;
+        else
+            return PFE_NULL;
+
+    case P_A32:
+        return (bits != 32) ? 0x67 : PFE_NULL;
+
+    case P_ASP:
+        return 0x67;
+
+    case P_O16:
+        return (bits != 16) ? 0x66 : PFE_NULL;
+
+    case P_O32:
+        return (bits == 16) ? 0x66 : PFE_NULL;
+
+    case P_O64:
+        return (bits == 64) ? PFE_NULL : PFE_ERR;
+
+    case P_OSP:
+        return 0x66;
+
+    case P_REX:
+    case P_VEX:
+    case P_EVEX:
+    case P_VEX3:
+    case P_VEX2:
+    case P_REX2:
+        return PFE_MULTI;
+
+    case P_NF:
+    case P_NOBND:
+    case P_ZU:
+    case P_none:
+        return PFE_NULL;
+
+    default:
+        return PFE_WHAT;
     }
 }
 
-static int emit_prefix(struct out_data *data, const int bits, insn *ins)
+/* Emit legacy prefixes */
+static int emit_prefixes(struct out_data *data, const insn *ins)
 {
+    const int bits = ins->bits;
+    uint8_t buf[MAXPREFIX];
     int bytes = 0;
     int j;
+    bool do_warn;
+
+    /*
+     * Note: do not issue warnings if data is NULL during the
+     * data-generation pass, or the warnings will be issued twice.
+     * Warnings are still issued on previous passes, in case we
+     * terminate with an error.
+     */
+    do_warn = !pass_final() || data;
 
     for (j = 0; j < MAXPREFIX; j++) {
-        uint8_t c = 0;
-        switch (ins->prefixes[j]) {
-        case P_WAIT:
-            c = 0x9B;
-            break;
-        case P_LOCK:
-            c = 0xF0;
-            break;
-        case P_REPNE:
-        case P_REPNZ:
-        case P_XACQUIRE:
-        case P_BND:
-            c = 0xF2;
-            break;
-        case P_REPE:
-        case P_REPZ:
-        case P_REP:
-        case P_XRELEASE:
-            c = 0xF3;
-            break;
-        case R_CS:
-            /*!
-             *!prefix-seg [on] segment prefix ignored in 64-bit mode
-             *!  warns that an \c{es}, \c{cs}, \c{ss} or \c{ds} segment override
-             *!  prefix has no effect in 64-bit mode. The prefix will still be
-             *!  generated as requested.
-             */
-            if (bits == 64)
-                nasm_warn(WARN_PREFIX_SEG|ERR_PASS2, "cs segment base generated, "
-                           "but will be ignored in 64-bit mode");
-            c = 0x2E;
-            break;
-        case R_DS:
-            if (bits == 64)
-                nasm_warn(WARN_PREFIX_SEG|ERR_PASS2, "ds segment base generated, "
-                           "but will be ignored in 64-bit mode");
-            c = 0x3E;
-            break;
-        case R_ES:
-            if (bits == 64)
-                nasm_warn(WARN_PREFIX_SEG|ERR_PASS2, "es segment base generated, "
-                           "but will be ignored in 64-bit mode");
-            c = 0x26;
-            break;
-        case R_FS:
-            c = 0x64;
-            break;
-        case R_GS:
-            c = 0x65;
-            break;
-        case R_SS:
-            if (bits == 64) {
-                nasm_warn(WARN_PREFIX_SEG|ERR_PASS2, "ss segment base generated, "
-                           "but will be ignored in 64-bit mode");
+        const enum prefixes pfx = ins->prefixes[j];
+        const int r = ins->need_pfx[j];
+        int c = prefix_byte(pfx, bits);
+
+        if (r && r != c && !(r <= 0 && c <= 0)) {
+            switch (pfx) {
+            case P_none:
+            case P_O16:
+            case P_O32:
+            case P_O64:
+            case P_A16:
+            case P_A32:
+            case P_A64:
+                /* In these cases, allow the instruction to simply override */
+                c = r;
+                break;
+            default:
+                if (do_warn)
+                    nasm_warn(WARN_PREFIX_INVALID,
+                              "invalid prefix %s for instruction, result may be unexpected",
+                              prefix_name(pfx));
+                break;
             }
-            c = 0x36;
+        }
+
+	/* Various warnings and error conditions */
+        switch ((int)pfx) {
+        case R_CS:
+        case R_DS:
+            /* Hintable Jcc instructions OK even in 64-bit mode */
+            if (itemp_has(ins->itemp, IF_JCC_HINT))
+                break;
+            /* fall through */
+        case R_ES:
+        case R_SS:
+            if (do_warn && bits == 64) {
+                nasm_warn(WARN_PREFIX_SEG,
+                          "%s segment override will be ignored in 64-bit mode",
+                          prefix_name(pfx));
+            }
             break;
-        case R_SEGR6:
-        case R_SEGR7:
-            nasm_nonfatal("segr6 and segr7 cannot be used as prefixes");
-            break;
+
         case P_A16:
-            if (bits == 64) {
+            if (bits == 64)
                 nasm_nonfatal("16-bit addressing is not supported "
                               "in 64-bit mode");
-            } else if (bits != 16)
-                c = 0x67;
             break;
-        case P_A32:
-            if (bits != 32)
-                c = 0x67;
-            break;
+
         case P_A64:
-            if (bits != 64) {
+            if (bits != 64)
                 nasm_nonfatal("64-bit addressing is only supported "
 			      "in 64-bit mode");
-            }
             break;
-        case P_ASP:
-            c = 0x67;
-            break;
-        case P_O16:
-            if (bits != 16)
-                c = 0x66;
-            break;
-        case P_O32:
-            if (bits == 16)
-                c = 0x66;
-            break;
+
         case P_O64:
-            /* REX.W */
+            if (bits != 64)
+                nasm_nonfatal("64-bit operand size is only supported "
+			      "in 64-bit mode");
             break;
-        case P_OSP:
-            c = 0x66;
-            break;
-        case P_REX:
-        case P_VEX:
-        case P_EVEX:
-        case P_VEX3:
-        case P_VEX2:
-        case P_NOBND:
-        case P_none:
-            break;
+
         default:
-            nasm_panic("invalid instruction prefix");
+            switch (c) {
+            case 0x66:
+            case 0xf2:
+            case 0xf3:
+                /* These prefixes are embedded in a VEX/EVEX prefix */
+                if (ins->rex & (REX_V|REX_EV))
+                    c = PFE_NULL;
+                break;
+            case PFE_ERR:
+                nasm_nonfatal("invalid use of %s prefix", prefix_name(pfx));
+                break;
+            case PFE_WHAT:
+                nasm_nonfatal("%s cannot be used as a prefix", prefix_name(pfx));
+                break;
+            default:
+                break;
+            }
         }
-        if (c) {
-            if (data)
-                out_rawbyte(data, c);
-            bytes++;
-        }
+
+        if (c >= 0)
+            buf[bytes++] = c;
     }
+
+    if (data && bytes)
+        out_rawdata(data, buf, bytes);
+
     return bytes;
 }
 
@@ -1902,16 +2350,17 @@ static void gencode(struct out_data *data, insn *ins)
     int64_t size;
     int op1, op2;
     struct operand *opx, *opy;
-    const uint8_t *codes = data->itemp->code;
+    const uint8_t *codes = ins->itemp->code;
     uint8_t opex = 0;
-    enum ea_type eat = EA_SCALAR;
     int r;
-    const int bits = data->bits;
-    const char *errmsg;
+    const int bits = ins->bits;
+
+    data->itemp = ins->itemp;
+    data->bits  = ins->bits;
 
     ins->rex_done = false;
 
-    emit_prefix(data, bits, ins);
+    emit_prefixes(data, ins);
 
     while (*codes) {
         c = *codes++;
@@ -1976,10 +2425,11 @@ static void gencode(struct out_data *data, insn *ins)
             break;
 
         case4(050):
-            if (opx->segment == data->segment) {
-                int64_t delta = opx->offset - data->offset
-                    - (data->inslen - data->insoffs);
-                if (delta > 127 || delta < -128)
+            if (opx->segment == data->loc.segment) {
+                int64_t delta = sext(opx->offset - data->loc.offset
+                                     - (data->inslen - data->insoffs),
+                                     ins->op_size);
+                if (delta != (int8_t)delta)
                     nasm_nonfatal("short jump is out of range");
             }
             out_reladdr(data, opx, 1);
@@ -2009,7 +2459,7 @@ static void gencode(struct out_data *data, insn *ins)
         case4(074):
             if (opx->segment == NO_SEG)
                 nasm_nonfatal("value referenced by FAR is not relocatable");
-            out_segment(data, opx);
+            out_farseg(data, opx);
             break;
 
         case 0171:
@@ -2033,7 +2483,7 @@ static void gencode(struct out_data *data, insn *ins)
                 nasm_nonfatal("non-absolute expression not permitted "
                               "as argument %d", op2);
             else if (opy->offset & ~mask)
-                nasm_warn(ERR_PASS2|WARN_NUMBER_OVERFLOW,
+                nasm_warn(WARN_NUMBER_OVERFLOW,
                            "is4 argument exceeds bounds");
             c = opy->offset & mask;
             goto emit_is4;
@@ -2052,47 +2502,69 @@ static void gencode(struct out_data *data, insn *ins)
             out_rawbyte(data, (r << 4) | ((r & 0x10) >> 1) | c);
             break;
 
-        case4(0254):
-            if (absolute_op(opx) &&
-                (int32_t)opx->offset != (int64_t)opx->offset) {
-                nasm_warn(ERR_PASS2|WARN_NUMBER_OVERFLOW,
-                           "signed dword immediate exceeds bounds");
+        case4(0240):
+        case 0250:
+        {
+            uint8_t vregbits = ins->vexreg | ins->veximm;
+
+            codes += 4;
+            ins->evex ^= op_evexflags(&ins->oprs[0], EVEX_Z|EVEX_AAA);
+            ins->evex ^= (ins->rex & REX_BXR0) << 13; /* R0 X0 B0 */
+            if (ins->rex & REX_B1)
+                ins->evex ^= (ins->rex & REX_BV) ? EVEX_X3  : EVEX_B4;
+            if (ins->rex & REX_X1)
+                ins->evex ^= (ins->rex & REX_XV) ? EVEX_V4 : EVEX_X4;
+            if (ins->rex & REX_R1)
+                ins->evex ^= EVEX_R4;
+            if (ins->rex & REX_W)
+                ins->evex |= EVEX_W; /* OR is correct here */
+            ins->evex ^= (vregbits & 15) << 19;
+            ins->evex ^= (vregbits & 16) << (27 - 4);
+            if (ins->prefixes[PPS_NF] == P_NF) {
+                /* Set NF if {nd} and this is applicable */
+                if (itemp_has(ins->itemp, IF_NF_E))
+                    ins->evex ^= EVEX_NF;
+
+                /* Clear NF if the instruction forbids it */
+                if (itemp_has(ins->itemp, IF_NF_N)) {
+                    nasm_warn(WARN_OTHER, "this instruction doesn't allow {nf}");
+                }
             }
+            /* Set ND if {zu} and this is applicable */
+            if (ins->prefixes[PPS_ZU] == P_ZU) {
+                if (itemp_has(ins->itemp, IF_ZU_E))
+                    ins->evex ^= EVEX_ND;
+            }
+            out_rawdword(data, ins->evex);
+            break;
+        }
+
+        case4(0254):
             out_imm(data, opx, 4, OUT_SIGNED);
             break;
 
-        case4(0240):
-        case 0250:
-            codes += 3;
-            ins->evex_p[2] |= op_evexflags(&ins->oprs[0],
-                                           EVEX_P2Z | EVEX_P2AAA, 2);
-            ins->evex_p[2] ^= EVEX_P2VP;        /* 1's complement */
-            bytes[0] = 0x62;
-            /* EVEX.X can be set by either REX or EVEX for different reasons */
-            bytes[1] = ((((ins->rex & 7) << 5) |
-                         (ins->evex_p[0] & (EVEX_P0X | EVEX_P0RP))) ^ 0xf0) |
-                       (ins->vex_cm & EVEX_P0MM);
-            bytes[2] = ((ins->rex & REX_W) << (7 - 3)) |
-                       ((~ins->vexreg & 15) << 3) |
-                       (1 << 2) | (ins->vex_wlp & 3);
-            bytes[3] = ins->evex_p[2];
-            out_rawdata(data, bytes, 4);
+        case4(0264):
+            out_imm(data, opx, 4, OUT_UNSIGNED);
             break;
 
         case4(0260):
         case 0270:
             codes += 2;
-            if (ins->vex_cm != 1 || (ins->rex & (REX_W|REX_X|REX_B)) ||
+            if (ins->vex_cm != 1 ||
+                (ins->rex & (REX_W|REX_X|REX_B)) ||
                 ins->prefixes[PPS_REX] == P_VEX3) {
                 bytes[0] = (ins->vex_cm >> 6) ? 0x8f : 0xc4;
-                bytes[1] = (ins->vex_cm & 31) | ((~ins->rex & 7) << 5);
+                bytes[1] = (ins->vex_cm & 31) |
+                    ((~ins->rex & REX_BXR0) << 5);
                 bytes[2] = ((ins->rex & REX_W) << (7-3)) |
-                    ((~ins->vexreg & 15)<< 3) | (ins->vex_wlp & 07);
+                    ((~ins->vexreg & 15) << 3) |
+                    (ins->vex_wlp & 07);
                 out_rawdata(data, bytes, 3);
             } else {
                 bytes[0] = 0xc5;
                 bytes[1] = ((~ins->rex & REX_R) << (7-2)) |
-                    ((~ins->vexreg & 15) << 3) | (ins->vex_wlp & 07);
+                    ((~ins->vexreg & 15) << 3) |
+                    (ins->vex_wlp & 07);
                 out_rawdata(data, bytes, 2);
             }
             break;
@@ -2108,25 +2580,19 @@ static void gencode(struct out_data *data, insn *ins)
             int s;
 
             if (absolute_op(opx)) {
-                if (ins->rex & REX_W)
-                    s = 64;
-                else if (ins->prefixes[PPS_OSIZE] == P_O16)
-                    s = 16;
-                else if (ins->prefixes[PPS_OSIZE] == P_O32)
-                    s = 32;
-                else
-                    s = bits;
+                s = ins->op_size;
 
                 um = (uint64_t)2 << (s-1);
                 uv = opx->offset;
 
                 if (uv > 127 && uv < (uint64_t)-128 &&
                     (uv < um-128 || uv > um-1)) {
-                    /* If this wasn't explicitly byte-sized, warn as though we
+                    /*
+                     * If this wasn't explicitly byte-sized, warn as though we
                      * had fallen through to the imm16/32/64 case.
                      */
-                    nasm_warn(ERR_PASS2|WARN_NUMBER_OVERFLOW,
-                               "%s value exceeds bounds",
+                    nasm_warn(WARN_NUMBER_OVERFLOW|ERR_PASS2,
+                               "%s exceeds bounds",
                                (opx->type & BITS8) ? "signed byte" :
                                s == 16 ? "word" :
                                s == 32 ? "dword" :
@@ -2142,16 +2608,35 @@ static void gencode(struct out_data *data, insn *ins)
         }
 
         case4(0300):
+        {
+            emit_rex(data, ins);
+            if (absolute_op(opx)) {
+                if (!is_hint_nop(opx->offset)) {
+                    nasm_warn(0, "not a valid hint-NOP opcode (0D, 18-1F)");
+                }
+                out_rawbyte(data, opx->offset);
+            } else {
+                out_imm(data, opx, 1, OUT_UNSIGNED);
+            }
             break;
+        }
+
+        case4(0304):
+        {
+            uint8_t type     = *codes++;
+            uint8_t modifier = *codes++;
+            enum out_flags flags = type & 3; /* signed or unsigned */
+
+            nasm_assert(type <= 2);
+            nasm_assert(absolute_op(opx));
+
+            warn_overflow_out(opx->offset, 1, flags, "byte");
+            out_rawbyte(data, opx->offset ^ modifier);
+            break;
+        }
 
         case 0310:
-            if (bits == 32 && !has_prefix(ins, PPS_ASIZE, P_A16))
-                out_rawbyte(data, 0x67);
-            break;
-
         case 0311:
-            if (bits != 32 && !has_prefix(ins, PPS_ASIZE, P_A32))
-                out_rawbyte(data, 0x67);
             break;
 
         case 0312:
@@ -2165,14 +2650,11 @@ static void gencode(struct out_data *data, insn *ins)
 
         case 0320:
         case 0321:
-            break;
-
         case 0322:
         case 0323:
-            break;
-
         case 0324:
-            ins->rex |= REX_W;
+        case 0327:
+        case 0342:
             break;
 
         case 0325:
@@ -2181,18 +2663,13 @@ static void gencode(struct out_data *data, insn *ins)
         case 0326:
             break;
 
+        case 0330:
         case 0331:
-            break;
-
         case 0332:
         case 0333:
-            out_rawbyte(data, c - 0332 + 0xF2);
             break;
 
         case 0334:
-            if (ins->rex & REX_R)
-                out_rawbyte(data, 0xF0);
-            ins->rex &= ~(REX_L|REX_R);
             break;
 
         case 0335:
@@ -2203,7 +2680,7 @@ static void gencode(struct out_data *data, insn *ins)
             break;
 
         case 0340:
-            if (ins->oprs[0].segment != NO_SEG)
+            if (opx->segment != NO_SEG)
                 nasm_panic("non-constant BSS size in pass two");
 
             out_reserve(data, ins->oprs[0].offset * resb_bytes(ins->opcode));
@@ -2212,11 +2689,20 @@ static void gencode(struct out_data *data, insn *ins)
         case 0341:
             break;
 
+        case4(0344):
+            break;
+
+        case 0350:
+        case 0351:
+            break;
+
+        case3(0355):
+            break;
+
         case 0360:
             break;
 
         case 0361:
-            out_rawbyte(data, 0x66);
             break;
 
         case 0364:
@@ -2225,7 +2711,6 @@ static void gencode(struct out_data *data, insn *ins)
 
         case 0366:
         case 0367:
-            out_rawbyte(data, c - 0366 + 0x66);
             break;
 
         case3(0370):
@@ -2236,15 +2721,8 @@ static void gencode(struct out_data *data, insn *ins)
             break;
 
         case 0374:
-            eat = EA_XMMVSIB;
-            break;
-
         case 0375:
-            eat = EA_YMMVSIB;
-            break;
-
         case 0376:
-            eat = EA_ZMMVSIB;
             break;
 
         case4(0100):
@@ -2260,58 +2738,50 @@ static void gencode(struct out_data *data, insn *ins)
         case4(0230):
         case4(0234):
             {
-                ea ea_data;
-                int rfield;
-                opflags_t rflags;
                 uint8_t *p;
+                bool overflow;
 
                 opy = get_operand(ins, op2);
 
-                if (c <= 0177) {
-                    /* pick rfield from operand b (opx) */
-                    rflags = regflag(opx);
-                    rfield = nasm_regvals[opx->basereg];
-                } else {
-                    /* rfield is constant */
-                    rflags = 0;
-                    rfield = c & 7;
-                    opx = NULL;
-                }
-
-                if (process_ea(opy, &ea_data, bits,
-                               rfield, rflags, ins, eat, &errmsg))
-                    nasm_nonfatal("%s", errmsg);
-
                 p = bytes;
-                *p++ = ea_data.modrm;
-                if (ea_data.sib_present)
-                    *p++ = ea_data.sib;
+                *p++ = ins->ea.modrm;
+                if (ins->ea.sib_present)
+                    *p++ = ins->ea.sib;
                 out_rawdata(data, bytes, p - bytes);
 
                 /*
                  * Make sure the address gets the right offset in case
                  * the line breaks in the .lst file (BR 1197827)
                  */
-
-                if (ea_data.bytes) {
-                    /* use compressed displacement, if available */
-                    if (ea_data.disp8) {
-                        out_rawbyte(data, ea_data.disp8);
-                    } else if (ea_data.rip) {
-                        out_reladdr(data, opy, ea_data.bytes);
+                switch (ins->ea.bytes) {
+                case 0:
+                    /* No displacement */
+                    overflow = false;
+                    break;
+                case 1:
+                    /* 8-bit displacement, which may be compressed */
+                    out_rawbyte(data, ins->ea.disp8);
+                    overflow = !ins->ea.disp8_ok;
+                    break;
+                default:
+                    if (ins->ea.rip) {
+                        out_reladdr(data, opy, ins->ea.bytes);
+                        overflow = false;
                     } else {
-                        int asize = ins->addr_size >> 3;
+                        unsigned int asize = ins->addr_size >> 3;
 
-                        if (overflow_general(opy->offset, asize) ||
-                            signed_bits(opy->offset, ins->addr_size) !=
-                            signed_bits(opy->offset, ea_data.bytes << 3))
-                            warn_overflow(ea_data.bytes);
+                        out_imm(data, opy, ins->ea.bytes,
+                                (asize > ins->ea.bytes)
+                                ? OUT_SIGNED|OUT_NOWARN : OUT_WRAP|OUT_NOWARN);
 
-                        out_imm(data, opy, ea_data.bytes,
-                                (asize > ea_data.bytes)
-                                ? OUT_SIGNED : OUT_WRAP);
+                        overflow = overflow_general(opy->offset, asize) ||
+                            sext(opy->offset, ins->addr_size) !=
+                            sext(opy->offset, ins->ea.bytes << 3);
                     }
                 }
+
+                if (overflow)
+                    warn_overflow(ins->ea.bytes, NULL, "displacement");
             }
             break;
 
@@ -2323,21 +2793,27 @@ static void gencode(struct out_data *data, insn *ins)
     }
 }
 
-static opflags_t regflag(const operand * o)
+static opflags_t regflag(const operand *o)
 {
     if (!is_register(o->basereg))
         nasm_panic("invalid operand passed to regflag()");
     return nasm_reg_flags[o->basereg];
 }
 
-static int32_t regval(const operand * o)
+static int32_t regval(const operand *o)
 {
+    /*
+     * Certain instruction patterns allow an immediate to be put
+     * into a register field
+     */
+    if (o->type & IMMEDIATE)
+        return o->offset;
     if (!is_register(o->basereg))
         nasm_panic("invalid operand passed to regval()");
     return nasm_regvals[o->basereg];
 }
 
-static int op_rexflags(const operand * o, int mask)
+static uint32_t op_rexflags(const operand * o, uint32_t mask)
 {
     opflags_t flags;
     int val;
@@ -2351,138 +2827,96 @@ static int op_rexflags(const operand * o, int mask)
     return rexflags(val, flags, mask);
 }
 
-static int rexflags(int val, opflags_t flags, int mask)
+static uint32_t rexflags(int val, opflags_t flags, uint32_t mask)
 {
-    int rex = 0;
+    uint32_t rex = 0;
 
-    if (val >= 0 && (val & 8))
+    if (val < 0 || !is_class(REGISTER, flags)) {
+        /* Not a register */
+        return 0;
+    }
+
+    if (val & 8)
         rex |= REX_B|REX_X|REX_R;
-    if (flags & BITS64)
-        rex |= REX_W;
-    if (!(REG_HIGH & ~flags))                   /* AH, CH, DH, BH */
-        rex |= REX_H;
-    else if (!(REG8 & ~flags) && val >= 4)      /* SPL, BPL, SIL, DIL */
-        rex |= REX_P;
+    if (val & 16)
+        rex |= REX_B1|REX_X1|REX_R1;
+
+    if (flags & REG_CLASS_VECTOR) {
+        rex |= REX_BV|REX_XV|REX_RV;
+    } else if (is_class(REG8, flags)) {
+        if (is_class(REG_HIGH, flags)) {
+            /* AH, CH, DH, BH: REX/REX2/VEX/EVEX forbidden */
+            rex |= REX_H;
+        } else if (val >= 4) {
+            /* SPL, BPL, SIL, DIL, or extended: prefix required */
+            rex |= REX_P;
+        }
+    }
 
     return rex & mask;
 }
 
-static int evexflags(int val, decoflags_t deco,
-                     int mask, uint8_t byte)
+static uint32_t evexflags(decoflags_t deco, uint32_t mask)
 {
-    int evex = 0;
+    uint32_t evex = 0;
 
-    switch (byte) {
-    case 0:
-        if (val >= 0 && (val & 16))
-            evex |= (EVEX_P0RP | EVEX_P0X);
-        break;
-    case 2:
-        if (val >= 0 && (val & 16))
-            evex |= EVEX_P2VP;
-        if (deco & Z)
-            evex |= EVEX_P2Z;
-        if (deco & OPMASK_MASK)
-            evex |= deco & EVEX_P2AAA;
-        break;
-    }
+    if (deco & Z)
+        evex |= EVEX_Z;
+    if (deco & OPMASK_MASK)
+        evex |= (deco << 24) & EVEX_AAA;
+
     return evex & mask;
 }
 
-static int op_evexflags(const operand * o, int mask, uint8_t byte)
+static uint32_t op_evexflags(const operand * o, uint32_t mask)
 {
-    int val;
-
-    val = nasm_regvals[o->basereg];
-
-    return evexflags(val, o->decoflags, mask, byte);
+    return evexflags(o->decoflags, mask);
 }
 
 static enum match_result find_match(const struct itemplate **tempp,
-                                    insn *instruction,
-                                    int32_t segment, int64_t offset, int bits)
+                                    insn *instruction)
 {
+    const int bits = instruction->bits;
+    const struct itemplate_list *templist;
     const struct itemplate *temp;
+    const struct itemplate *best = NULL;
     enum match_result m, merr;
-    opflags_t xsizeflags[MAX_OPERANDS];
-    bool opsizemissing = false;
-    int i;
+    int this_good;
+    int rex = instruction->prefixes[PPS_REX];
+    unsigned int n;
 
-    for (i = 0; i < instruction->operands; i++)
-        xsizeflags[i] = instruction->oprs[i].xsize;
+    /* Impossible encoding request? */
+    if (bits != 64) {
+        if (rex == P_REX || rex == P_REX2)
+            return MERR_ENCMISMATCH;
+    }
 
     merr = MERR_INVALOP;
+    best = NULL;
+    this_good = 0;
 
-    for (temp = nasm_instructions[instruction->opcode];
-         temp->opcode != I_none; temp++) {
-        m = matches(temp, instruction, bits);
-        if (m == MOK_JUMP) {
-            if (jmp_match(segment, offset, bits, instruction, temp))
-                m = MOK_GOOD;
-            else
-                m = MERR_INVALOP;
-        } else if (m == MERR_OPSIZEMISSING && !itemp_has(temp, IF_SX)) {
-            /*
-             * Missing operand size and a candidate for fuzzy matching...
-             */
-            for (i = 0; i < temp->operands; i++) {
-                if (instruction->oprs[i].bcast)
-                    xsizeflags[i] |= temp->deco[i] & BRSIZE_MASK;
-                else
-                    xsizeflags[i] |= temp->opd[i] & SIZE_MASK;
-            }
-            opsizemissing = true;
-        }
-        if (m > merr)
+    templist = &nasm_instructions[instruction->opcode];
+    n    = templist->ntemp;
+    temp = templist->temp;
+
+    while (n--) {
+        m = matches(temp, instruction);
+        if (m > merr) {
+            best = temp;
             merr = m;
-        if (merr == MOK_GOOD)
-            goto done;
-    }
-
-    /* No match, but see if we can get a fuzzy operand size match... */
-    if (!opsizemissing)
-        goto done;
-
-    for (i = 0; i < instruction->operands; i++) {
-        struct operand *op = &instruction->oprs[i];
-        /*
-         * We ignore extrinsic operand sizes on registers, so we should
-         * never try to fuzzy-match on them.  This also resolves the case
-         * when we have e.g. "xmmrm128" in two different positions.
-         */
-        if (is_class(REGISTER, op->type))
-            continue;
-
-        /* This tests if xsizeflags[i] has more than one bit set */
-        if ((xsizeflags[i] & (xsizeflags[i]-1)))
-            goto done;                /* No luck */
-
-        if (op->bcast) {
-            op->decoflags |= xsizeflags[i];
-            op->type |= brsize_to_size(xsizeflags[i]);
-        } else {
-            op->type |= xsizeflags[i]; /* Set the size */
+            this_good = 1;
+            if (merr == MOK_GOOD)
+                break;
+        } else if (m == merr) {
+            this_good++;
         }
+        temp++;
     }
 
-    /* Try matching again... */
-    for (temp = nasm_instructions[instruction->opcode];
-         temp->opcode != I_none; temp++) {
-        m = matches(temp, instruction, bits);
-        if (m == MOK_JUMP) {
-            if (jmp_match(segment, offset, bits, instruction, temp))
-                m = MOK_GOOD;
-            else
-                m = MERR_INVALOP;
-        }
-        if (m > merr)
-            merr = m;
-        if (merr == MOK_GOOD)
-            goto done;
-    }
+    if (merr >= MOK_FIRST)
+        merr = MOK_GOOD;        /* Fuzzy match but valid */
 
-done:
-    *tempp = temp;
+    *tempp = best;
     return merr;
 }
 
@@ -2504,35 +2938,50 @@ static uint8_t get_broadcast_num(opflags_t opflags, opflags_t brsize)
     return brcast_num;
 }
 
-static enum match_result matches(const struct itemplate *itemp,
-                                 insn *instruction, int bits)
+static enum match_result matches(const struct itemplate * const itemp,
+                                 const insn * const ins)
 {
-    opflags_t size[MAX_OPERANDS], asize;
-    bool opsizemissing = false;
-    int i, oprs;
+    const int bits = ins->bits;
+    int i;
+    const int oprs = ins->operands;
+    unsigned int arflag;
+    unsigned int armask, smmask;
+    bool if_anysize, if_sx;
+    int op_size;
+    opflags_t opsize, arsize, smsize;
+    opflags_t isize[MAX_OPERANDS]; /* Adjusted instruction operand sizes */
+    opflags_t tsize[MAX_OPERANDS]; /* Adjusted template operand sizes */
+    opflags_t itype[MAX_OPERANDS]; /* Adjusted instruction flags */
+    bool sm_missing;
+
+    /* Jump size/type declarators are more like types than sizes */
+    const opflags_t jsize_mask = NEAR|FAR|SHORT|ABS;
+    const opflags_t msize_mask = SIZE_MASK & ~jsize_mask;
 
     /*
      * Check the opcode
      */
-    if (itemp->opcode != instruction->opcode)
+    if (itemp->opcode != ins->opcode)
         return MERR_INVALOP;
 
     /*
      * Count the operands
      */
-    if (itemp->operands != instruction->operands)
+    if (itemp->operands != oprs)
         return MERR_INVALOP;
 
     /*
      * Is it legal?
      */
-    if (!(optimizing.level > 0) && itemp_has(itemp, IF_OPT))
-	return MERR_INVALOP;
+    if (unlikely(ins->opt & OPTIM_STRICT_INSTR)) {
+        if (itemp_has(itemp, IF_OPT))
+            return MERR_INVALOP;
+    }
 
     /*
      * {rex/vexn/evex} available?
      */
-    switch (instruction->prefixes[PPS_REX]) {
+    switch (ins->prefixes[PPS_REX]) {
     case P_EVEX:
         if (!itemp_has(itemp, IF_EVEX))
             return MERR_ENCMISMATCH;
@@ -2544,128 +2993,79 @@ static enum match_result matches(const struct itemplate *itemp,
             return MERR_ENCMISMATCH;
         break;
     case P_REX:
-        if (itemp_has(itemp, IF_VEX) || itemp_has(itemp, IF_EVEX) ||
-            bits != 64)
+        if (bits != 64 ||
+            itemp_has(itemp, IF_NOREX) ||
+            itemp_has(itemp, IF_VEX) ||
+            itemp_has(itemp, IF_EVEX) ||
+            itemp_has(itemp, IF_REX2))
+            return MERR_ENCMISMATCH;
+        break;
+    case P_REX2:
+        if (bits != 64 ||
+            itemp_has(itemp, IF_NOAPX) ||
+            itemp_has(itemp, IF_EVEX))
             return MERR_ENCMISMATCH;
         break;
     default:
         if (itemp_has(itemp, IF_EVEX)) {
             if (!iflag_test(&cpu, IF_EVEX))
-                return MERR_ENCMISMATCH;
+                return MERR_BADCPU;
         } else if (itemp_has(itemp, IF_VEX)) {
             if (!iflag_test(&cpu, IF_VEX)) {
-                return MERR_ENCMISMATCH;
+                return MERR_BADCPU;
             } else if (itemp_has(itemp, IF_LATEVEX)) {
                 if (!iflag_test(&cpu, IF_LATEVEX) && iflag_test(&cpu, IF_EVEX))
-                    return MERR_ENCMISMATCH;
+                    return MERR_BADCPU;
+            } else if (itemp_has(itemp, IF_REX2)) {
+                if (bits != 64 || !iflag_test(&cpu, IF_APX))
+                    return MERR_BADCPU;
             }
         }
         break;
     }
 
     /*
-     * Check that no spurious colons or TOs are present
+     * First, cursory operand filtering and initialize
+     * itype[] and isize[]
      */
-    for (i = 0; i < itemp->operands; i++)
-        if (instruction->oprs[i].type & ~itemp->opd[i] & (COLON | TO))
+    for (i = 0; i < oprs; i++) {
+        const struct operand * const op = &ins->oprs[i];
+        const opflags_t ttype  = itemp->opd[i];
+
+        isize[i] = op->type & msize_mask;
+        itype[i] = op->type - isize[i];
+        if (op->type & ~ttype & (COLON | TO))
             return MERR_INVALOP;
-
-    /*
-     * Process size flags
-     */
-    switch (itemp_smask(itemp)) {
-    case IF_GENBIT(IF_SB):
-        asize = BITS8;
-        break;
-    case IF_GENBIT(IF_SW):
-        asize = BITS16;
-        break;
-    case IF_GENBIT(IF_SD):
-        asize = BITS32;
-        break;
-    case IF_GENBIT(IF_SQ):
-        asize = BITS64;
-        break;
-    case IF_GENBIT(IF_SO):
-        asize = BITS128;
-        break;
-    case IF_GENBIT(IF_SY):
-        asize = BITS256;
-        break;
-    case IF_GENBIT(IF_SZ):
-        asize = BITS512;
-        break;
-    case IF_GENBIT(IF_ANYSIZE):
-        asize = SIZE_MASK;
-        break;
-    case IF_GENBIT(IF_SIZE):
-        switch (bits) {
-        case 16:
-            asize = BITS16;
-            break;
-        case 32:
-            asize = BITS32;
-            break;
-        case 64:
-            asize = BITS64;
-            break;
-        default:
-            asize = 0;
-            break;
-        }
-        break;
-    default:
-        asize = 0;
-        break;
+        if (op->iflag && !itemp_has(itemp, op->iflag))
+            return MERR_WRONGIMM;
     }
 
-    if (itemp_armask(itemp)) {
-        /* S- flags only apply to a specific operand */
-        i = itemp_arg(itemp);
-        memset(size, 0, sizeof size);
-        size[i] = asize;
-    } else {
-        /* S- flags apply to all operands */
-        for (i = 0; i < MAX_OPERANDS; i++)
-            size[i] = asize;
+    /* "Default" operand size (from mode and prefixes only) */
+    op_size = ins->op_size;
+    if (bits == 64 && itemp_has(itemp, IF_NWSIZE) && op_size == 32) {
+        /* If this is an nw instruction, default to 64 bits in 64-bit mode */
+        op_size = bits;
     }
+    opsize = mode_to_op(op_size);
+
+    /* Some key flags */
+    if_anysize = itemp_has(itemp, IF_ANYSIZE);
+    if_sx      = itemp_has(itemp, IF_SX);
 
     /*
-     * Check that the operand flags all match up,
-     * it's a bit tricky so lets be verbose:
-     *
-     * 1) Find out the size of operand. If instruction
-     *    doesn't have one specified -- we're trying to
-     *    guess it either from template (IF_S* flag) or
-     *    from code bits.
-     *
-     * 2) If template operand do not match the instruction OR
-     *    template has an operand size specified AND this size differ
-     *    from which instruction has (perhaps we got it from code bits)
-     *    we are:
-     *      a)  Check that only size of instruction and operand is differ
-     *          other characteristics do match
-     *      b)  Perhaps it's a register specified in instruction so
-     *          for such a case we just mark that operand as "size
-     *          missing" and this will turn on fuzzy operand size
-     *          logic facility (handled by a caller)
+     * Compare various operand flags that don't depend on sizes,
+     * and compute the "true" template operand sizes.
      */
-    for (i = 0; i < itemp->operands; i++) {
-        opflags_t type = instruction->oprs[i].type;
-        decoflags_t deco = instruction->oprs[i].decoflags;
-        decoflags_t ideco = itemp->deco[i];
-        bool is_broadcast = deco & BRDCAST_MASK;
-        uint8_t brcast_num = 0;
-        opflags_t template_opsize, insn_opsize;
+    for (i = 0; i < oprs; i++) {
+        const opflags_t ttype   = itemp->opd[i];
+        const decoflags_t deco  = ins->oprs[i].decoflags;
+        const decoflags_t ideco = itemp->deco[i];
+        const bool is_broadcast = deco & BRDCAST_MASK;
 
-        if (!(type & SIZE_MASK))
-            type |= size[i];
-
-        insn_opsize     = type & SIZE_MASK;
-        if (!is_broadcast) {
-            template_opsize = itemp->opd[i] & SIZE_MASK;
+        if (likely(!is_broadcast)) {
+            tsize[i] = ttype & msize_mask;
         } else {
-            decoflags_t deco_brsize = ideco & BRSIZE_MASK;
+            const decoflags_t ideco_brsize = ideco & BRSIZE_MASK;
 
             if (~ideco & BRDCAST_MASK)
                 return MERR_BRNOTHERE;
@@ -2674,14 +3074,79 @@ static enum match_result matches(const struct itemplate *itemp,
              * when broadcasting, the element size depends on
              * the instruction type. decorator flag should match.
              */
-            if (deco_brsize) {
-                template_opsize = brsize_to_size(deco_brsize);
-                /* calculate the proper number : {1to<brcast_num>} */
-                brcast_num = get_broadcast_num(itemp->opd[i], template_opsize);
-            } else {
-                template_opsize = 0;
+            if (ideco_brsize)
+                tsize[i] = brsize_to_size(ideco_brsize);
+            else
+                tsize[i] = 0;   /* Is this even possible? */
+        }
+
+        /* Handle implied SHORT or NEAR */
+        if (unlikely(ttype & (NEAR|SHORT))) {
+            /* Treat BYTE as an alias for SHORT, ignoring size */
+            if (isize[i] == BITS8) {
+                itype[i] |= SHORT;
+                isize[i] = 0;
+            }
+            /* An explicit SHORT or BITS8 cancels NEAR; are synonyms */
+            if (itype[i] & SHORT) {
+                itype[i] &= ~NEAR;
+            }
+            /* NEAR is implicit unless otherwise specified */
+           if (!(itype[i] & (FAR|SHORT))) {
+                itype[i] |= ttype & NEAR;
+            }
+            if ((ttype & (NEAR|SHORT)) == (NEAR|SHORT)) {
+                /* Only a short form exists; this is specially coded */
+                if (!(itype[i] & (FAR|ABS)))
+                    itype[i] |= NEAR|SHORT;
             }
         }
+
+        /* Check to see if we need to coerce an explicitly sized immediate */
+        if (unlikely(itype[i] & ttype & IMMEDIATE)) {
+            /*
+             * If this is an *explicitly* sized immediate,
+             * allow it to match an extending pattern.
+             */
+#ifndef __WATCOMC__
+            switch (isize[i]) {
+            case BITS8:
+                if (ttype & BYTEEXTMASK) {
+                    isize[i]  = tsize[i];
+                    itype[i] |= BYTEEXTMASK;
+                }
+                break;
+            case BITS32:
+                if (ttype & DWORDEXTMASK)
+                    isize[i]  = tsize[i];
+                break;
+            default:
+                break;
+            }
+#else
+            /* Open Watcom does not support 64-bit constants at *case*. */
+            if (isize[i] == BITS8) {
+                if (ttype & BYTEEXTMASK) {
+                    isize[i]  = tsize[i];
+                    itype[i] |= BYTEEXTMASK;
+                }
+            } else if (isize[i] == BITS32) {
+                if (ttype & DWORDEXTMASK)
+                    isize[i]  = tsize[i];
+            }
+#endif
+
+            /*
+             * MOST instructions which take an sdword64 are the only form;
+             * set the SDWORD flag to be strict about sdword64 matching
+             * (use when a true imm64 pattern exists.)
+             */
+            if (!itemp_has(itemp, IF_SDWORD))
+                itype[i] |= SDWORD;
+        }
+
+        if (ttype & ~itype[i] & ~(msize_mask|REGSET_MASK))
+            return MERR_INVALOP;
 
         if (~ideco & deco & OPMASK_MASK)
             return MERR_MASKNOTHERE;
@@ -2689,31 +3154,130 @@ static enum match_result matches(const struct itemplate *itemp,
         if (~ideco & deco & (Z_MASK|STATICRND_MASK|SAE_MASK))
             return MERR_DECONOTHERE;
 
-        if (itemp->opd[i] & ~type & ~(SIZE_MASK|REGSET_MASK))
-            return MERR_INVALOP;
+        if (~ttype & itype[i] & REGSET_MASK)
+            return (ttype & REGSET_MASK) ? MERR_REGSETSIZE : MERR_REGSET;
+    }
 
-        if (~itemp->opd[i] & type & REGSET_MASK)
-            return (itemp->opd[i] & REGSET_MASK)
-                ? MERR_REGSETSIZE : MERR_REGSET;
+    /*
+     * Process the operand sizes.
+     */
+    arflag = itemp_smask(itemp);
 
-        if (template_opsize) {
-            if (template_opsize != insn_opsize) {
-                if (insn_opsize) {
-                    return MERR_INVALOP;
-                } else if (!is_class(REGISTER, type)) {
-                    /*
-                     * Note: we don't honor extrinsic operand sizes for registers,
-                     * so "missing operand size" for a register should be
-                     * considered a wildcard match rather than an error.
-                     */
-                    opsizemissing = true;
-                } else if (is_class(REG_HIGH, type) &&
-                           instruction->prefixes[PPS_REX]) {
-                    return MERR_ENCMISMATCH;
+    nasm_static_assert(SIZE_SHIFT >= IF_SB);
+    nasm_static_assert((BITS8 >> SIZE_SHIFT) == 1);
+    arsize = (arflag & IF_TSMASK) << (SIZE_SHIFT - IF_SB);
+
+    if (arflag & IFM_OSIZE)
+        arsize = opsize;
+    else if (arflag & IFM_ASIZE)
+        arsize = mode_to_op(ins->addr_size);
+
+    /* Flags for which the AR and SM flags apply */
+    armask = itemp_arx(itemp);
+    smmask = itemp_smx(itemp);
+
+    /* Apply ARx and register default sizes */
+    if (!if_sx) {
+        for (i = 0; i < oprs; i++) {
+            const unsigned int bit = 1U << i;
+
+            if (!isize[i]) {
+                if (is_class(REGISTER, itype[i]) && tsize[i])
+                    isize[i] = tsize[i];
+                else if (armask & bit)
+                    isize[i] = arsize;
+            }
+        }
+    }
+
+    /*
+     * Look the common subset for the size-matched operands.
+     * However, defer the error messages to until after
+     * the final operand checking loop, to get a better
+     * order of message priorities.
+     */
+    smsize = msize_mask;
+    sm_missing = false;
+    if (smmask) {
+        unsigned int nosizemask = 0;
+        for (i = 0; i < oprs; i++) {
+            const unsigned int bit = 1U << i;
+            if (isize[i]) {
+                if (smmask & bit)
+                    smsize &= isize[i];
+            } else if (tsize[i] && !is_class(REGISTER, itype[i])) {
+                nosizemask |= bit;
+            }
+        }
+        sm_missing = !(smmask & ~nosizemask);
+    }
+
+    /*
+     * Check that the operand sizes actually match,
+     * and look for other kinds of mismatches, e.g.
+     * REG_HIGH when REX is specified.
+     */
+    for (i = 0; i < oprs; i++) {
+        const opflags_t type    = itype[i];
+        const decoflags_t deco  = ins->oprs[i].decoflags;
+        const decoflags_t ideco = itemp->deco[i];
+        const bool is_broadcast = deco & BRDCAST_MASK;
+        const bool has_ar      = (armask >> i) & 1;
+        const bool has_sm      = (smmask >> i) & 1;
+        const bool is_reg      = is_class(REGISTER, type);
+
+        /*
+         * Operand sizes are considered matching at this stage
+         * if any one of these is true:
+         *
+         * 1. The template size is undefined.
+         *    XXX: apply ARx|Sx flags here?
+         * 2. The operand size matches the template size.
+         * 3. There is an ARx|ANYSIZE flag in the template.
+         * 4. The operand size is unspecified and the
+         *    template does not carry an ARx|SX flag.
+         */
+
+        if (tsize[i]) {
+            if (isize[i] != tsize[i]) {
+                if (has_ar) {
+                    if (if_anysize)
+                        goto isize_ok;
+                    if (unlikely(if_sx) && !is_reg)
+                        return MERR_OPSIZEINVAL;
                 }
-            } else if (is_broadcast &&
-                       (brcast_num !=
-                        (2U << ((deco & BRNUM_MASK) >> BRNUM_SHIFT)))) {
+
+                if (isize[i])
+                    return is_reg ? MERR_INVALOP : MERR_OPSIZEINVAL;
+            }
+
+        isize_ok:
+            if (has_sm)
+                smsize &= tsize[i];
+        } else {
+            /*
+             * SX with an unsized operand means only an unsized operand
+             * is OK.
+             */
+            if (unlikely(if_sx) && has_ar)
+                if (isize[i])
+                    return MERR_OPSIZEINVAL;
+        }
+
+        if (is_class(REG_HIGH, type) && ins->prefixes[PPS_REX]) {
+            /* High registers cannot be combined with any REX type */
+            return MERR_INVALOP;
+        }
+
+        if (is_broadcast) {
+            /* calculate the proper number : {1to<brcast_num>} */
+            const decoflags_t ideco_brsize = ideco & BRSIZE_MASK;
+            unsigned int brcast_num = 0;
+
+            if (ideco_brsize)
+                brcast_num = get_broadcast_num(itemp->opd[i], tsize[i]);
+
+            if (brcast_num != (2U << ((deco & BRNUM_MASK) >> BRNUM_SHIFT))) {
                 /*
                  * broadcasting opsize matches but the number of repeated memory
                  * element does not match.
@@ -2725,30 +3289,15 @@ static enum match_result matches(const struct itemplate *itemp,
         }
     }
 
-    if (opsizemissing)
-        return MERR_OPSIZEMISSING;
-
     /*
-     * Check operand sizes
+     * Make sure that our size match set, if any, did not get exhausted,
+     * and contains exactly one valid combination still...
      */
-    if (itemp_has(itemp, IF_SM) || itemp_has(itemp, IF_SM2)) {
-        oprs = (itemp_has(itemp, IF_SM2) ? 2 : itemp->operands);
-        for (i = 0; i < oprs; i++) {
-            asize = itemp->opd[i] & SIZE_MASK;
-            if (asize) {
-                for (i = 0; i < oprs; i++)
-                    size[i] = asize;
-                break;
-            }
-        }
-    } else {
-        oprs = itemp->operands;
-    }
-
-    for (i = 0; i < itemp->operands; i++) {
-        if (!(itemp->opd[i] & SIZE_MASK) &&
-            (instruction->oprs[i].type & SIZE_MASK & ~size[i]))
+    if (smmask) {
+        if (!smsize)
             return MERR_OPSIZEMISMATCH;
+        else if (!is_power2(smsize) || (if_sx && sm_missing))
+            return MERR_OPSIZEMISSING;
     }
 
     /*
@@ -2767,63 +3316,110 @@ static enum match_result matches(const struct itemplate *itemp,
      * If we have a HLE prefix, look for the NOHLE flag
      */
     if (itemp_has(itemp, IF_NOHLE) &&
-        (has_prefix(instruction, PPS_REP, P_XACQUIRE) ||
-         has_prefix(instruction, PPS_REP, P_XRELEASE)))
+        (has_prefix(ins, PPS_REP, P_XACQUIRE) ||
+         has_prefix(ins, PPS_REP, P_XRELEASE)))
         return MERR_BADHLE;
 
     /*
-     * Check if special handling needed for Jumps
+     * {nf} or {zu} prefixes used? Must be permitted.
      */
-    if ((itemp->code[0] & ~1) == 0370)
-        return MOK_JUMP;
+    if (has_prefix(ins, PPS_NF, P_NF)) {
+        if (!itemp_has(itemp, IF_NF) &&
+            (itemp_has(itemp, IF_FL) ||
+             (ins->opt & OPTIM_STRICT_INSTR)))
+            return MERR_BADNF;
+    } else if (itemp_has(itemp, IF_NF_R)) {
+        return MERR_REQNF;
+    }
+
+    if (has_prefix(ins, PPS_ZU, P_ZU)) {
+        if (!itemp_has(itemp, IF_ZU))
+            return MERR_BADZU;
+        else if (!(ins->oprs[0].type & REGISTER))
+            return MERR_MEMZU;
+    }
 
     /*
      * Check if BND prefix is allowed.
      * Other 0xF2 (REPNE/REPNZ) prefix is prohibited.
      */
     if (!itemp_has(itemp, IF_BND) &&
-        (has_prefix(instruction, PPS_REP, P_BND) ||
-         has_prefix(instruction, PPS_REP, P_NOBND)))
+        (has_prefix(ins, PPS_REP, P_BND) ||
+         has_prefix(ins, PPS_REP, P_NOBND)))
         return MERR_BADBND;
     else if (itemp_has(itemp, IF_BND) &&
-             (has_prefix(instruction, PPS_REP, P_REPNE) ||
-              has_prefix(instruction, PPS_REP, P_REPNZ)))
+             (has_prefix(ins, PPS_REP, P_REPNE) ||
+              has_prefix(ins, PPS_REP, P_REPNZ)))
         return MERR_BADREPNE;
+
+    /*
+     * Check if special handling needed for relaxable jump
+     */
+    if (itemp_has(itemp, IF_JMP_RELAX))
+        return jmp_match(itemp, ins);
 
     return MOK_GOOD;
 }
 
 /*
- * Check if ModR/M.mod should/can be 01.
- * - EAF_BYTEOFFS is set
- * - offset can fit in a byte when EVEX is not used
- * - offset can be compressed when EVEX is used
+ * Select the mod part of modr/m for an memory operand with displacement.
+ * zerook should be clear for the forbidden BP encodings; such instructions
+ * must be coded with a +0 displacement.
+ *
+ * 0 = no displacement
+ * 1 = 8-bit displacment
+ * 2 = 16/32-bit displacement
  */
-#define IS_MOD_01() (!(input->eaflags & EAF_WORDOFFS) &&               \
-                    (ins->rex & REX_EV ? seg == NO_SEG && !forw_ref && \
-                     is_disp8n(input, ins, &output->disp8) :           \
-                     input->eaflags & EAF_BYTEOFFS || (o >= -128 &&    \
-                     o <= 127 && seg == NO_SEG && !forw_ref)))
-
-static int process_ea(operand *input, ea *output, int bits,
-                      int rfield, opflags_t rflags, insn *ins,
-                      enum ea_type expected, const char **errmsgp)
+static unsigned int memory_mod(const int eaflags, insn *ins, int64_t o,
+                               bool known, bool zerook)
 {
-    bool forw_ref = !!(input->opflags & OPFLAG_UNKNOWN);
+    struct ea_data * const output = &ins->ea;
+
+    /* Explicitly requested by user */
+    if (eaflags & EAF_WORDOFFS) {
+        return 2;
+    }
+
+    output->disp8_shift = get_disp8_shift(ins);
+    output->disp8 = (int8_t)(o >> output->disp8_shift);
+    output->disp8_ok = known &&
+        ((int64_t)output->disp8 << output->disp8_shift)
+        == sext(o, ins->addr_size);
+
+    /* Explicitly requested by user */
+    if (eaflags & EAF_BYTEOFFS) {
+        return 1;
+    }
+
+    /* Not knowable at this time */
+    if (!known)
+        return 2;
+
+    /* No displacement needed? */
+    if (o == 0 && zerook)
+        return 0;
+
+    /* 8-bit displacement possible? */
+    return output->disp8_ok ? 1 : 2;
+}
+
+static int process_ea(operand *input, int rfield, opflags_t rflags,
+                      insn *ins, enum ea_type expected,
+                      const char **errmsgp)
+{
+    struct ea_data * const output = &ins->ea;
+    const bool long_mode = ins->bits == 64;
     const int addrbits = ins->addr_size;
     const int eaflags = input->eaflags;
     const char *errmsg = NULL;
 
     errmsg = NULL;
 
+    nasm_zero(*output);
     output->type    = EA_SCALAR;
-    output->rip     = false;
-    output->disp8   = 0;
 
     /* REX flags for the rfield operand */
-    output->rex     |= rexflags(rfield, rflags, REX_R | REX_P | REX_W | REX_H);
-    /* EVEX.R' flag for the REG operand */
-    ins->evex_p[0]  |= evexflags(rfield, 0, EVEX_P0RP, 0);
+    output->rex     |= rexflags(rfield, rflags, REX_rR);
 
     if (is_class(REGISTER, input->type)) {
         /*
@@ -2841,8 +3437,7 @@ static int process_ea(operand *input, ea *output, int bits,
             goto err;
         }
 
-        output->rex         |= op_rexflags(input, REX_B | REX_P | REX_W | REX_H);
-        ins->evex_p[0]      |= op_evexflags(input, EVEX_P0X, 0);
+        output->rex         |= op_rexflags(input, REX_rB);
         output->sib_present = false;    /* no SIB necessary */
         output->bytes       = 0;        /* no offset necessary either */
         output->modrm       = GEN_MODRM(3, rfield, nasm_regvals[input->basereg]);
@@ -2865,22 +3460,15 @@ static int process_ea(operand *input, ea *output, int bits,
              * in insns.dat which allows an immediate to be used as a memory
              * address, in which case apply the default REL/ABS.
              */
-            if (bits == 64) {
+            if (long_mode) {
                 if (is_class(IMMEDIATE, input->type)) {
                     if (!(input->eaflags & EAF_ABS) &&
-                        ((input->eaflags & EAF_REL) || globalrel))
+                        ((input->eaflags & EAF_REL) || globl.rel))
                         input->type |= IP_REL;
                 }
                 if ((input->type & IP_REL) == IP_REL) {
-                    /*!
-                     *!ea-absolute [on] absolute address cannot be RIP-relative
-                     *!  warns that an address that is inherently absolute cannot
-                     *!  be generated with RIP-relative encoding using \c{REL},
-                     *!  see \k{REL & ABS}.
-                     */
-                    if (input->segment == NO_SEG ||
-                        (input->opflags & OPFLAG_RELATIVE)) {
-                        nasm_warn(WARN_EA_ABSOLUTE|ERR_PASS2,
+                    if (!pass_first() && absolute_op(input)) {
+                        nasm_warn(WARN_EA_ABSOLUTE,
                                   "absolute address can not be RIP-relative");
                         input->type &= ~IP_REL;
                         input->type |= MEMORY;
@@ -2888,24 +3476,19 @@ static int process_ea(operand *input, ea *output, int bits,
                 }
             }
 
-            if (bits == 64 && !(IP_REL & ~input->type) && (eaflags & EAF_SIB)) {
+            if (long_mode && !(IP_REL & ~input->type) && (eaflags & EAF_SIB)) {
                 errmsg = "instruction requires SIB encoding, cannot be RIP-relative";
                 goto err;
             }
 
-            if (eaflags & EAF_BYTEOFFS ||
-                (eaflags & EAF_WORDOFFS &&
+            if ((eaflags & EAF_BYTEOFFS) ||
+                ((eaflags & EAF_WORDOFFS) &&
                  input->disp_size != (addrbits != 16 ? 32 : 16))) {
-                /*!
-                 *!ea-dispsize [on] displacement size ignored on absolute address
-                 *!  warns that NASM does not support generating displacements for
-                 *!  inherently absolute addresses that do not match the address size
-                 *!  of the instruction.
-                 */
                 nasm_warn(WARN_EA_DISPSIZE, "displacement size ignored on absolute address");
             }
 
-            if ((eaflags & EAF_SIB) || (bits == 64 && (~input->type & IP_REL))) {
+            if ((eaflags & EAF_SIB) ||
+                (long_mode && (~input->type & IP_REL))) {
                 output->sib_present = true;
                 output->sib         = GEN_SIB(0, 4, 5);
                 output->bytes       = 4;
@@ -2916,14 +3499,16 @@ static int process_ea(operand *input, ea *output, int bits,
                 output->bytes       = (addrbits != 16 ? 4 : 2);
                 output->modrm       = GEN_MODRM(0, rfield,
                                                 (addrbits != 16 ? 5 : 6));
-                output->rip         = bits == 64;
+                output->rip         = long_mode;
             }
         } else {
             /*
              * It's an indirection.
              */
             int i = input->indexreg, b = input->basereg, s = input->scale;
-            int32_t seg = input->segment;
+            const bool known =
+                !(input->opflags & OPFLAG_UNKNOWN) &&
+                (input->segment == NO_SEG);
             int hb = input->hintbase, ht = input->hinttype;
             int t, it, bt;              /* register numbers */
             opflags_t x, ix, bx;        /* register flags */
@@ -2992,9 +3577,8 @@ static int process_ea(operand *input, ea *output, int bits,
                                 : ((ix & YMMREG & ~REG_EA)
                                 ? EA_YMMVSIB : EA_XMMVSIB));
 
-                output->rex    |= rexflags(it, ix, REX_X);
-                output->rex    |= rexflags(bt, bx, REX_B);
-                ins->evex_p[2] |= evexflags(it, 0, EVEX_P2VP, 2);
+                output->rex    |= rexflags(it, ix, REX_rX);
+                output->rex    |= rexflags(bt, bx, REX_rB);
 
                 index = it & 7; /* it is known to be != -1 */
 
@@ -3019,15 +3603,9 @@ static int process_ea(operand *input, ea *output, int bits,
                     base = 5;
                     mod = 0;
                 } else {
-                    base = (bt & 7);
-                    if (base != REG_NUM_EBP && o == 0 &&
-                        seg == NO_SEG && !forw_ref &&
-                        !(eaflags & (EAF_BYTEOFFS | EAF_WORDOFFS)))
-                        mod = 0;
-                    else if (IS_MOD_01())
-                        mod = 1;
-                    else
-                        mod = 2;
+                    base = bt & 7;
+                    mod = memory_mod(eaflags, ins, o, known,
+                                     base != REG_NUM_EBP);
                 }
 
                 output->sib_present = true;
@@ -3121,8 +3699,8 @@ static int process_ea(operand *input, ea *output, int bits,
                     (s != 1 && s != 2 && s != 4 && s != 8 && it != -1))
                     goto err;        /* wrong, for various reasons */
 
-                output->rex |= rexflags(it, ix, REX_X);
-                output->rex |= rexflags(bt, bx, REX_B);
+                output->rex |= rexflags(it, ix, REX_rX);
+                output->rex |= rexflags(bt, bx, REX_rB);
 
                 if (it == -1 && (bt & 7) != REG_NUM_ESP && !(eaflags & EAF_SIB)) {
                     /* no SIB needed */
@@ -3132,15 +3710,9 @@ static int process_ea(operand *input, ea *output, int bits,
                         rm = 5;
                         mod = 0;
                     } else {
-                        rm = (bt & 7);
-                        if (rm != REG_NUM_EBP && o == 0 &&
-                            seg == NO_SEG && !forw_ref &&
-                            !(eaflags & (EAF_BYTEOFFS | EAF_WORDOFFS)))
-                            mod = 0;
-                        else if (IS_MOD_01())
-                            mod = 1;
-                        else
-                            mod = 2;
+                        rm = bt & 7;
+                        mod = memory_mod(eaflags, ins, o, known,
+                                         rm != REG_NUM_EBP);
                     }
 
                     output->sib_present = false;
@@ -3177,14 +3749,8 @@ static int process_ea(operand *input, ea *output, int bits,
                         mod = 0;
                     } else {
                         base = (bt & 7);
-                        if (base != REG_NUM_EBP && o == 0 &&
-                            seg == NO_SEG && !forw_ref &&
-                            !(eaflags & (EAF_BYTEOFFS | EAF_WORDOFFS)))
-                            mod = 0;
-                        else if (IS_MOD_01())
-                            mod = 1;
-                        else
-                            mod = 2;
+                        mod = memory_mod(eaflags, ins, o, known,
+                                         base != REG_NUM_EBP);
                     }
 
                     output->sib_present = true;
@@ -3263,14 +3829,7 @@ static int process_ea(operand *input, ea *output, int bits,
                 if (rm == -1)           /* can't happen, in theory */
                     goto err;        /* so panic if it does */
 
-                if (o == 0 && seg == NO_SEG && !forw_ref && rm != 6 &&
-                    !(eaflags & (EAF_BYTEOFFS | EAF_WORDOFFS)))
-                    mod = 0;
-                else if (IS_MOD_01())
-                    mod = 1;
-                else
-                    mod = 2;
-
+                mod = memory_mod(eaflags, ins, o, known, rm != 6);
                 output->sib_present = false;    /* no SIB - it's 16-bit */
                 output->bytes       = mod;      /* bytes of offset needed */
                 output->modrm       = GEN_MODRM(mod, rfield, rm);
@@ -3295,28 +3854,30 @@ static int process_ea(operand *input, ea *output, int bits,
 
     return 0;
 
+err:
+    output->type = EA_INVALID;
+    goto err_set_msg;
+
 err_set_msg:
     if (!errmsg) {
         /* Default error message */
         static char invalid_address_msg[40];
         snprintf(invalid_address_msg, sizeof invalid_address_msg,
-                 "invalid %d-bit effective address", bits);
+                 "invalid %d-bit effective address", addrbits);
         errmsg = invalid_address_msg;
     }
     *errmsgp = errmsg;
     return -1;
-
-err:
-    output->type = EA_INVALID;
-    goto err_set_msg;
 }
 
-static void add_asp(insn *ins, int addrbits)
+static void add_asp(insn *ins)
 {
+    const int bits = ins->bits;
     int j, valid;
     int defdisp;
+    int asp_bits;
 
-    valid = (addrbits == 64) ? 64|32 : 32|16;
+    valid = (bits == 64) ? 64|32 : 32|16;
 
     switch (ins->prefixes[PPS_ASIZE]) {
     case P_A16:
@@ -3329,7 +3890,7 @@ static void add_asp(insn *ins, int addrbits)
         valid &= 64;
         break;
     case P_ASP:
-        valid &= (addrbits == 32) ? 16 : 32;
+        valid &= (bits == 32) ? 16 : 32;
         break;
     default:
         break;
@@ -3356,8 +3917,8 @@ static void add_asp(insn *ins, int addrbits)
 
             if (!i && !b) {
                 int ds = ins->oprs[j].disp_size;
-                if ((addrbits != 64 && ds > 8) ||
-                    (addrbits == 64 && ds == 16))
+                if ((bits != 64 && ds > 8) ||
+                    (bits == 64 && ds == 16))
                     valid &= ds;
             } else {
                 if (!(REG16 & ~b))
@@ -3377,28 +3938,192 @@ static void add_asp(insn *ins, int addrbits)
         }
     }
 
-    if (valid & addrbits) {
-        ins->addr_size = addrbits;
-    } else if (valid & ((addrbits == 32) ? 16 : 32)) {
+    asp_bits = (bits == 32) ? 16 : 32;
+
+    if (valid & bits) {
+        ins->addr_size = bits;
+    } else if (valid & asp_bits) {
         /* Add an address size prefix */
-        ins->prefixes[PPS_ASIZE] = (addrbits == 32) ? P_A16 : P_A32;;
-        ins->addr_size = (addrbits == 32) ? 16 : 32;
+        ins->prefixes[PPS_ASIZE] = (bits == 32) ? P_A16 : P_A32;
+        ins->addr_size = asp_bits;
     } else {
         /* Impossible... */
         nasm_nonfatal("impossible combination of address sizes");
-        ins->addr_size = addrbits; /* Error recovery */
+        ins->addr_size = bits; /* Error recovery */
     }
 
     defdisp = ins->addr_size == 16 ? 16 : 32;
 
     for (j = 0; j < ins->operands; j++) {
-        if (!(MEM_OFFS & ~ins->oprs[j].type) &&
-            (ins->oprs[j].disp_size ? ins->oprs[j].disp_size : defdisp) != ins->addr_size) {
+        int disp_size;
+
+        if (!is_class(MEM_OFFS, ins->oprs[j].type))
+            continue;
+
+        disp_size = ins->oprs[j].disp_size;
+        if (!disp_size)
+            disp_size = defdisp;
+
+        if (disp_size != ins->addr_size) {
             /*
              * mem_offs sizes must match the address size; if not,
              * strip the MEM_OFFS bit and match only EA instructions
              */
             ins->oprs[j].type &= ~(MEM_OFFS & ~MEMORY);
         }
+    }
+}
+
+/*
+ * Set the initial operand size, based only on the mode and any prefixes.
+ * The actual operand size may change after instruction pattern selection.
+ */
+static void set_initial_opsize(insn *ins)
+{
+    const int bits = ins->bits;
+
+    switch (ins->prefixes[PPS_OSIZE]) {
+    case P_OSP:
+        ins->op_size = bits == 16 ? 32 : 16;
+        break;
+    case P_O16:
+        ins->op_size = 16;
+        break;
+    case P_O32:
+        ins->op_size = 32;
+        break;
+    case P_O64:
+        ins->op_size = 64;
+        break;
+    default:
+        ins->op_size = bits == 16 ? 16 : 32;
+        break;
+    }
+}
+
+static void insn_early_setup(insn *instruction)
+{
+    /* Check to see if we need an address-size prefix */
+    add_asp(instruction);
+
+    /* Set default/prefix-controlled operand size */
+    set_initial_opsize(instruction);
+}
+
+static void do_list_nonfinal_pass(int64_t start)
+{
+    struct out_data dummy;
+    nasm_zero(dummy);
+    /* OUT_RAWDATA with .data is special */
+    dummy.type       = OUT_RAWDATA;
+    dummy.loc        = location;
+    dummy.size       = location.offset - start;
+    dummy.loc.offset = start;
+    lfmt->output(&dummy);
+}
+
+static inline void list_nonfinal_pass(int64_t start)
+{
+    if (list_option('p'))
+        do_list_nonfinal_pass(start);
+}
+
+/*
+ * Process a single instruction without TIMES; this is a common case
+ * so optimize it.
+ */
+static void process_one_insn(insn *ins)
+{
+    int64_t l;
+
+    ins->loc = location;
+    if (!pass_final()) {
+        l = insn_size(ins);
+        if (l < 0)
+            return;             /* Invalid instruction */
+        list_nonfinal_pass(ins->loc.offset);
+    } else {
+        l = assemble(ins);
+        nasm_assert(l >= 0);    /* Invalid instruction here: bad */
+    }
+    increment_offset(l);
+}
+
+/*
+ * Process an instruction with TIMES handling. As this instruction
+ * may end up getting processed multiple times and it is permitted
+ * for the intervening layers to change the contents of the instruction
+ * structure, it is necessary to keep the original and re-initializing
+ * the structure on each iteration.
+ */
+static void process_times_insn(insn *ins)
+{
+    int64_t l;
+    insn tmpins;
+
+    ins->loc = location;
+
+    /*
+     * NOTE: insn_size() and therefore assemble() can change
+     * ins->times (usually to 1) when called due to merging certain
+     * operations (e.g. TIMES x RESB y).
+     *
+     * Therefore, it is necessary to check the returned times
+     * value for each iteration.
+     */
+    if (!pass_final()) {
+        int64_t times = ins->times;
+        while (times > 0) {
+            tmpins = *ins;
+            tmpins.loc.offset = location.offset;
+            tmpins.times = times;
+            l = insn_size(&tmpins);
+            if (l < 0)
+                break;          /* Invalid instruction */
+            increment_offset(l);
+            times = tmpins.times - 1;
+        }
+        list_nonfinal_pass(ins->loc.offset); /* The original starting offset */
+    } else {
+        int64_t times;
+
+        tmpins = *ins;
+        l = assemble(&tmpins);
+        nasm_assert(l >= 0);    /* Invalid instruction here: bad */
+        increment_offset(l);
+
+        times = tmpins.times;
+        if (times <= 1)
+            return;
+
+        lfmt->uplevel(LIST_TIMES, times);
+        times--;
+        while (times) {
+            tmpins = *ins;
+            tmpins.loc.offset = location.offset;
+            tmpins.times = times;
+            l = assemble(&tmpins);
+            nasm_assert(l >= 0);
+            increment_offset(l);
+            times = tmpins.times - 1;
+        }
+        lfmt->downlevel(LIST_TIMES);
+    }
+}
+
+/*
+ * This is the main entry point to this module, called from asm/nasm.c.
+ */
+void process_insn(insn *ins)
+{
+    if (likely(ins->times == 1)) {
+        process_one_insn(ins);
+    } else if (!ins->times) {
+        /* TIMES 0 = nothing to do */
+    } else if (likely(ins->times > 0)) {
+        process_times_insn(ins);
+    } else {
+        nasm_nonfatalf(ERR_PASS2, "TIMES value %"PRId32" is negative",
+                       ins->times);
     }
 }

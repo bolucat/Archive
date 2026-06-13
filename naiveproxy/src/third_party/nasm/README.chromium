@@ -1,8 +1,8 @@
 Name: Netwide Assembler
 Short Name: nasm
 URL: https://www.nasm.us/
-Version: 2.16.03 / 888d9ab55012d25059da81fed6575ef3a004726f
-CPEPrefix: cpe:/a:nasm:netwide_assembler:2.16.03
+Version: 3.01 / 19fd1bb434f2fed19b0eb82b1b42c5608b601134
+CPEPrefix: cpe:/a:nasm:netwide_assembler:3.01
 License: BSD-2-Clause
 License File: LICENSE
 Security Critical: no
@@ -75,7 +75,8 @@ checkout just add:
 
 export SDKROOT=$path_to_chrome_src/build/mac_files/xcode_binaries/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 
-You can stop after configure. Then just follow the copy instructions above.
+You can stop after configure. Then just follow the copy instructions above
+(including running generate_nasm_configs.py).
 
 
 --[ TODOS ] ------------------

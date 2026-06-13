@@ -1,35 +1,5 @@
-/* ----------------------------------------------------------------------- *
- *
- *   Copyright 1996-2018 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2025 The NASM Authors - All Rights Reserved */
 
 /*
  * labels.c  label handling for the Netwide Assembler
@@ -292,14 +262,45 @@ static inline bool is_global(enum label_type type)
     return type == LBL_GLOBAL || type == LBL_COMMON;
 }
 
+enum mangle_index {
+    LM_LPREFIX,                 /* Local variable prefix */
+    LM_LSUFFIX,                 /* Local variable suffix */
+    LM_GPREFIX,                 /* Global variable prefix */
+    LM_GSUFFIX                  /* GLobal variable suffix */
+};
+
 static const char *mangle_strings[] = {"", "", "", ""};
 static bool mangle_string_set[ARRAY_SIZE(mangle_strings)];
 
 /*
  * Set a prefix or suffix
  */
-void set_label_mangle(enum mangle_index which, const char *what)
+void set_label_mangle(enum directive how, const char *what)
 {
+    enum mangle_index which;
+
+    switch (how) {
+    case D_PREFIX:
+    case D_GPREFIX:
+        which = LM_GPREFIX;
+        break;
+    case D_SUFFIX:
+    case D_GSUFFIX:
+    case D_POSTFIX:
+    case D_GPOSTFIX:
+        which = LM_GSUFFIX;
+        break;
+    case D_LPREFIX:
+        which = LM_LPREFIX;
+        break;
+    case D_LSUFFIX:
+    case D_LPOSTFIX:
+        which = LM_LSUFFIX;
+        break;
+    default:
+        return;
+    }
+
     if (mangle_string_set[which])
         return;                 /* Once set, do not change */
 
@@ -391,8 +392,16 @@ static bool declare_label_lptr(union label *lptr,
     if (special && !special[0])
         special = NULL;
 
-    if (oldtype == type || (!pass_stable() && oldtype == LBL_LOCAL) ||
-        (oldtype == LBL_EXTERN && type == LBL_REQUIRED)) {
+    if (!pass_stable() && oldtype == LBL_LOCAL) {
+        if (is_extern(type) && lptr->defn.defined)
+            oldtype = LBL_GLOBAL; /* Already defined, promote to global */
+        else
+            oldtype = type;
+
+        lptr->defn.type = oldtype;
+    }
+
+    if (oldtype == type || (oldtype == LBL_EXTERN && type == LBL_REQUIRED)) {
         lptr->defn.type = type;
 
         if (special) {
@@ -443,7 +452,7 @@ void define_label(const char *label, int32_t segment,
                   int64_t offset, bool normal)
 {
     union label *lptr;
-    bool created, changed;
+    bool created, changed, largechange;
     int64_t size;
     int64_t lpass, lastdef;
 
@@ -498,10 +507,11 @@ void define_label(const char *label, int32_t segment,
         size = 0;               /* This is a hack... */
     }
 
-    changed = created || !lastdef ||
+    /* A "large change" is one which is not the offset */
+    largechange = created || !lastdef ||
         lptr->defn.segment != segment ||
-        lptr->defn.offset != offset ||
         lptr->defn.size != size;
+    changed = largechange || (lptr->defn.offset != offset);
     global_offset_changed += changed;
 
     if (lastdef == lpass) {
@@ -516,12 +526,6 @@ void define_label(const char *label, int32_t segment,
             nasm_nonfatal("label `%s' inconsistently redefined", lptr->defn.label);
             noteflags = ERR_NONFATAL|ERR_HERE|ERR_NO_SEVERITY;
         } else {
-            /*!
-             *!label-redef [off] label redefined to an identical value
-             *!  warns if a label is defined more than once, but the
-             *!  value is identical. It is an unconditional error to
-             *!  define the same label more than once to \e{different} values.
-             */
             nasm_warn(WARN_LABEL_REDEF,
                        "info: label `%s' redefined to an identical value", lptr->defn.label);
             noteflags = ERR_WARNING|ERR_HERE|ERR_NO_SEVERITY|WARN_LABEL_REDEF;
@@ -532,25 +536,20 @@ void define_label(const char *label, int32_t segment,
         nasm_error(noteflags, "info: label `%s' originally defined", lptr->defn.label);
         src_set(saved_line, saved_fname);
     } else if (changed && pass_final() && lptr->defn.type != LBL_SPECIAL) {
-        /*!
-         *!label-redef-late [err] label (re)defined during code generation
-         *!  the value of a label changed during the final, code-generation
-         *!  pass. This may be the result of strange use of the
-         *!  preprocessor. This is very likely to produce incorrect code and
-         *!  may end up being an unconditional error in a future
-         *!  version of NASM.
-         *
-         * WARN_LABEL_LATE defaults to an error, as this should never
-         * actually happen.  Just in case this is a backwards
-         * compatibility problem, still make it a warning so that the
-         * user can suppress or demote it.
-         *
+        /*
          * Note: As a special case, LBL_SPECIAL symbols are allowed
          * to be changed even during the last pass.
          */
-        nasm_warn(WARN_LABEL_REDEF_LATE|ERR_UNDEAD,
-                   "label `%s' %s during code generation",
+        if (!largechange) {
+            nasm_warn(WARN_LABEL_REDEF_LATE,
+                      "label `%s' changed during code generation"
+                      " (offset 0x%"PRIx64" -> 0x%"PRIx64")",
+                      lptr->defn.label, lptr->defn.offset, offset);
+        } else {
+            nasm_warn(WARN_LABEL_REDEF_LATE|ERR_UNDEAD,
+                      "label `%s' %s during code generation",
                    lptr->defn.label, created ? "defined" : "changed");
+        }
     }
     lptr->defn.segment = segment;
     lptr->defn.offset  = offset;

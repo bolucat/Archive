@@ -93,11 +93,10 @@ Pseudo-instructions are things which, though not real x86 machine
 instructions, are used in the instruction field anyway because that's
 the most convenient place to put them. The current pseudo-instructions
 are \i\c{DB}, \i\c{DW}, \i\c{DD}, \i\c{DQ}, \i\c{DT}, \i\c{DO},
-\i\c{DY} and \i\c\{DZ}; their \I{storage,
-uninitialized}\i{uninitialized} counterparts \i\c{RESB}, \i\c{RESW},
-\i\c{RESD}, \i\c{RESQ}, \i\c{REST}, \i\c{RESO}, \i\c{RESY} and
-\i\c\{RESZ}; the \i\c{INCBIN} command, the \i\c{EQU} command, and the
-\i\c{TIMES} prefix.
+\i\c{DY} and \i\c\{DZ}; their \i{uninitialized} counterparts
+\i\c{RESB}, \i\c{RESW}, \i\c{RESD}, \i\c{RESQ}, \i\c{REST},
+\i\c{RESO}, \i\c{RESY} and \i\c\{RESZ}; the \i\c{INCBIN} command, the
+\i\c{EQU} command, and the \i\c{TIMES} prefix.
 
 In this documentation, the notation "\c{D}\e{x}" and "\c{RES}\e{x}" is
 used to indicate all the \c{DB} and \c{RESB} type directives,
@@ -110,7 +109,7 @@ respectively.
 and \i\c{DZ} (collectively "\c{D}\e{x}" in this documentation) are used,
 much as in MASM, to declare initialized data in the output file. They
 can be invoked in a wide range of ways:
-\I{floating-point}\I{character constant}\I{string constant}
+\I{floating-point constant}\I{character constant}\I{string constant}
 
 \c       db    0x55                ; just the byte 0x55
 \c       db    0x55,0x56,0x57      ; three bytes in succession
@@ -132,7 +131,7 @@ can be invoked in a wide range of ways:
 \I{masmdb} Starting in NASM 2.15, a the following \i{MASM}-like features
 have been implemented:
 
-\b A \I{?db}\c{?} argument to declare \i{uninitialized storage}:
+\b A \I{?db}\c{?} argument to declare \i{uninitialized} storage:
 
 \c       db    ?                   ; uninitialized
 
@@ -371,24 +370,9 @@ In 64-bit mode, NASM will by default generate absolute addresses.  The
 this is frequently the normally desired behaviour, see the \c{DEFAULT}
 directive (\k{default}). The keyword \i\c{ABS} overrides \i\c{REL}.
 
-A new form of split effective address syntax is also supported. This is
-mainly intended for mib operands as used by MPX instructions, but can
-be used for any memory reference. The basic concept of this form is
-splitting base and index.
-
-\c      mov eax,[ebx+8,ecx*4]   ; ebx=base, ecx=index, 4=scale, 8=disp
-
-For mib operands, there are several ways of writing effective address depending
-on the tools. NASM supports all currently possible ways of mib syntax:
-
-\c      ; bndstx
-\c      ; next 5 lines are parsed same
-\c      ; base=rax, index=rbx, scale=1, displacement=3
-\c      bndstx [rax+0x3,rbx], bnd0      ; NASM - split EA
-\c      bndstx [rbx*1+rax+0x3], bnd0    ; GAS - '*1' indecates an index reg
-\c      bndstx [rax+rbx+3], bnd0        ; GAS - without hints
-\c      bndstx [rax+0x3], bnd0, rbx     ; ICC-1
-\c      bndstx [rax+0x3], rbx, bnd0     ; ICC-2
+A new syntax for split EA (effective addressing) is also supported in NASM. It's
+mainly intended for MPX instructions that use the MIB operands, but it can be
+used for any memory reference. It's described in more detail in \k{spliteas}.
 
 When broadcasting decorator is used, the opsize keyword should match
 the size of each element.
@@ -409,16 +393,19 @@ A numeric constant is simply a number. NASM allows you to specify
 numbers in a variety of number bases, in a variety of ways: you can
 suffix \c{H} or \c{X}, \c{D} or \c{T}, \c{Q} or \c{O}, and \c{B} or
 \c{Y} for \i{hexadecimal}, \i{decimal}, \i{octal} and \i{binary}
-respectively, or you can prefix \c{0x}, for hexadecimal in the style
-of C, or you can prefix \c{$} for hexadecimal in the style of Borland
-Pascal or Motorola Assemblers. Note, though, that the \I{$,
-prefix}\c{$} prefix does double duty as a prefix on identifiers (see
-\k{syntax}), so a hex number prefixed with a \c{$} sign must have a
-digit after the \c{$} rather than a letter.  In addition, current
-versions of NASM accept the prefix \c{0h} for hexadecimal, \c{0d} or
-\c{0t} for decimal, \c{0o} or \c{0q} for octal, and \c{0b} or \c{0y}
-for binary.  Please note that unlike C, a \c{0} prefix by itself does
-\e{not} imply an octal constant!
+respectively, or you can prefix \c{0h} or \c{0x}, \c{0d} or \c{0t},
+\c{0q} or \c{0o}, and \c{0b} or \c{0y}) in the style of C.  Please note
+that unlike C, a \c{0} prefix by itself does \e{not} imply an octal
+constant (this is deprecated in C23.)
+
+Previous versions of NASM allowed prefixing \c{$} for hexadecimal in
+the style of Borland Pascal or Motorola Assemblers.  Unfortunately
+though, the \I{$, prefix}\c{$} prefix does double duty as a prefix on
+identifiers (see \k{syntax}), so a hex number prefixed with a \c{$}
+sign would have to have a digit after the \c{$} rather than a letter,
+which is \e{not} what users would typically expect. This syntax is
+strongly deprecated, and can be disabled entirely with the
+\c{[DOLLARHEX]} directive, see \k{dollarhex}.
 
 Numeric constants can have underscores (\c{_}) interspersed to break
 up long strings.
@@ -430,7 +417,6 @@ Some examples (all producing exactly the same code):
 \c         mov     ax,0200d        ; explicitly decimal
 \c         mov     ax,0d200        ; also decimal
 \c         mov     ax,0c8h         ; hex
-\c         mov     ax,$0c8         ; hex again: the 0 is required
 \c         mov     ax,0xc8         ; hex yet again
 \c         mov     ax,0hc8         ; still hex
 \c         mov     ax,310q         ; octal
@@ -442,12 +428,15 @@ Some examples (all producing exactly the same code):
 \c         mov     ax,1100_1000y   ; same binary constant once more
 \c         mov     ax,0b1100_1000  ; same binary constant yet again
 \c         mov     ax,0y1100_1000  ; same binary constant yet again
+\c
+\c         ; Deprecated syntax:
+\c         mov     ax,$0c8         ; hex again: the 0 is required
 
 \S{strings} \I{string}\I{string constants}\i{Character Strings}
 
 A character string consists of up to eight characters enclosed in
 either single quotes (\c{'...'}), double quotes (\c{"..."}) or
-backquotes (\c{`...`}).  Single or double quotes are equivalent to
+backquotes (\c{`...`}).  Single or double quotes are equivalent in
 NASM (except of course that surrounding the constant with single
 quotes allows double quotes to appear within it and vice versa); the
 contents of those are represented verbatim.  Strings enclosed in
@@ -508,7 +497,7 @@ the sense of character constants understood by the Pentium's
 String constants are character strings used in the context of some
 pseudo-instructions, namely the
 \I\c{DW}\I\c{DD}\I\c{DQ}\I\c{DT}\I\c{DO}\I\c{DY}\i\c{DB} family and
-\i\c{INCBIN} (where it represents a filename.)  They are also used in
+\i\c{INCBIN} (where it represents a filename). They are also used in
 certain preprocessor directives.
 
 A string constant looks like a character constant, only longer. It
@@ -531,14 +520,14 @@ effect as \c{db 'a'}, which would be silly. Similarly, three-character
 or four-character constants are treated as strings when they are
 operands to \c{DW}, and so forth.
 
-\S{unicode} \I{UTF-16}\I{UTF-32}\i{Unicode} Strings
+\S{unicode} \I{UTF-8}\I{UTF-16}\I{UTF-32}\i{Unicode} Strings
 
 The special operators \i\c{__?utf16?__}, \i\c{__?utf16le?__},
 \i\c{__?utf16be?__}, \i\c{__?utf32?__}, \i\c{__?utf32le?__} and
 \i\c{__?utf32be?__} allows definition of Unicode strings.  They take a
 string in UTF-8 format and converts it to UTF-16 or UTF-32,
 respectively.  Unless the \c{be} forms are specified, the output is
-littleendian.
+little endian.
 
 For example:
 
@@ -552,7 +541,7 @@ The UTF operators can be applied either to strings passed to the
 \c{DB} family instructions, or to character constants in an expression
 context.
 
-\S{fltconst} \I{floating-point, constants}Floating-Point Constants
+\S{fltconst} \i{Floating-Point Constants}
 
 \i{Floating-point} constants are acceptable only as arguments to
 \i\c{DB}, \i\c{DW}, \i\c{DD}, \i\c{DQ}, \i\c{DT}, and \i\c{DO}, or as
@@ -573,7 +562,8 @@ optionally a \c{P} followed by a \e{binary} (not hexadecimal) exponent
 in decimal notation.  As an extension, NASM additionally supports the
 \c{0h} and \c{$} prefixes for hexadecimal, as well binary and octal
 floating-point, using the \c{0b} or \c{0y} and \c{0o} or \c{0q}
-prefixes, respectively.
+prefixes, respectively. As with integers, the \c{$} prefix for
+hexadecimal is deprecated.
 
 Underscores to break up groups of digits are permitted in
 floating-point constants as well.
@@ -855,30 +845,12 @@ preferred one. NASM lets you do this, by the use of the \c{WRT}
 to load \c{ES:BX} with a different, but functionally equivalent,
 pointer to the symbol \c{symbol}.
 
-NASM supports far (inter-segment) calls and jumps by means of the
-syntax \c{call segment:offset}, where \c{segment} and \c{offset}
-both represent immediate values. So to call a far procedure, you
-could code either of
+The \c{WRT} keyword is also used in far (inter-segment) calls and jumps. It's
+synonymous to the
 
-\c         call    (seg procedure):procedure
-\c         call    weird_seg:(procedure wrt weird_seg)
+\c	call far procedure
 
-(The parentheses are included for clarity, to show the intended
-parsing of the above instructions. They are not necessary in
-practice.)
-
-NASM supports the syntax \I\c{CALL FAR}\c{call far procedure} as a
-synonym for the first of the above usages. \c{JMP} works identically
-to \c{CALL} in these examples.
-
-To declare a \i{far pointer} to a data item in a data segment, you
-must code
-
-\c         dw      symbol, seg symbol
-
-NASM supports no convenient synonym for this, though you can always
-invent one using the macro processor.
-
+syntax which is documented in \k{farcall}.
 
 \H{strict} \i\c{STRICT}: Inhibiting Optimization
 
@@ -1004,5 +976,3 @@ entry point in the \c{obj} output format (see \k{dotdotstart}),
 of the current image in the \c{win64} output format (see \k{win64pic}).
 So just keep in mind that symbols beginning with a double period are
 special.
-
-

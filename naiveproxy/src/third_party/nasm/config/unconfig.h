@@ -4,7 +4,7 @@
 #define CONFIG_UNCONFIG_H
 
 #ifndef alloc_size_func2
-# ifdef HAVE_FUNC_ATTRIBUTE2_ALLOC_SIZE
+# ifdef HAVE_FUNC_ATTRIBUTE_2_ALLOC_SIZE
 #  define alloc_size_func2(x1,x2) ATTRIBUTE(alloc_size(x1,x2))
 # else
 #  define alloc_size_func2(x1,x2)
@@ -12,7 +12,7 @@
 #endif
 
 #ifndef alloc_size_func2_ptr
-# ifdef HAVE_FUNC_PTR_ATTRIBUTE2_ALLOC_SIZE
+# ifdef HAVE_FUNC_PTR_ATTRIBUTE_2_ALLOC_SIZE
 #  define alloc_size_func2_ptr(x1,x2) ATTRIBUTE(alloc_size(x1,x2))
 # else
 #  define alloc_size_func2_ptr(x1,x2)
@@ -36,7 +36,7 @@
 #endif
 
 #ifndef format_func3
-# ifdef HAVE_FUNC_ATTRIBUTE3_FORMAT
+# ifdef HAVE_FUNC_ATTRIBUTE_3_FORMAT
 #  define format_func3(x1,x2,x3) ATTRIBUTE(format(x1,x2,x3))
 # else
 #  define format_func3(x1,x2,x3)
@@ -44,7 +44,7 @@
 #endif
 
 #ifndef format_func3_ptr
-# ifdef HAVE_FUNC_PTR_ATTRIBUTE3_FORMAT
+# ifdef HAVE_FUNC_PTR_ATTRIBUTE_3_FORMAT
 #  define format_func3_ptr(x1,x2,x3) ATTRIBUTE(format(x1,x2,x3))
 # else
 #  define format_func3_ptr(x1,x2,x3)
@@ -67,6 +67,46 @@
 # endif
 #endif
 
+#ifndef unsequenced_func
+# ifdef HAVE_FUNC_ATTRIBUTE_UNSEQUENCED
+#  define unsequenced_func ATTRIBUTE(unsequenced)
+# else
+#  define unsequenced_func
+# endif
+#endif
+
+#ifndef unsequenced_func_ptr
+# ifdef HAVE_FUNC_PTR_ATTRIBUTE_UNSEQUENCED
+#  define unsequenced_func_ptr ATTRIBUTE(unsequenced)
+# else
+#  define unsequenced_func_ptr
+# endif
+#endif
+
+#ifndef noreturn_func
+# ifdef HAVE_FUNC_ATTRIBUTE_NORETURN
+#  define noreturn_func ATTRIBUTE(noreturn)
+# else
+#  define noreturn_func
+# endif
+#endif
+
+#ifndef reproducible_func
+# ifdef HAVE_FUNC_ATTRIBUTE_REPRODUCIBLE
+#  define reproducible_func ATTRIBUTE(reproducible)
+# else
+#  define reproducible_func
+# endif
+#endif
+
+#ifndef reproducible_func_ptr
+# ifdef HAVE_FUNC_PTR_ATTRIBUTE_REPRODUCIBLE
+#  define reproducible_func_ptr ATTRIBUTE(reproducible)
+# else
+#  define reproducible_func_ptr
+# endif
+#endif
+
 #ifndef pure_func
 # ifdef HAVE_FUNC_ATTRIBUTE_PURE
 #  define pure_func ATTRIBUTE(pure)
@@ -80,14 +120,6 @@
 #  define pure_func_ptr ATTRIBUTE(pure)
 # else
 #  define pure_func_ptr
-# endif
-#endif
-
-#ifndef noreturn_func
-# ifdef HAVE_FUNC_ATTRIBUTE_NORETURN
-#  define noreturn_func ATTRIBUTE(noreturn)
-# else
-#  define noreturn_func
 # endif
 #endif
 
@@ -107,19 +139,19 @@
 # endif
 #endif
 
-#ifndef used_func
-# ifdef HAVE_FUNC_ATTRIBUTE_USED
-#  define used_func ATTRIBUTE(used)
+#ifndef maybe_unused_func
+# ifdef HAVE_FUNC_ATTRIBUTE_MAYBE_UNUSED
+#  define maybe_unused_func ATTRIBUTE(maybe_unused)
 # else
-#  define used_func
+#  define maybe_unused_func
 # endif
 #endif
 
-#ifndef used_func_ptr
-# ifdef HAVE_FUNC_PTR_ATTRIBUTE_USED
-#  define used_func_ptr ATTRIBUTE(used)
+#ifndef maybe_unused_func_ptr
+# ifdef HAVE_FUNC_PTR_ATTRIBUTE_MAYBE_UNUSED
+#  define maybe_unused_func_ptr ATTRIBUTE(maybe_unused)
 # else
-#  define used_func_ptr
+#  define maybe_unused_func_ptr
 # endif
 #endif
 
@@ -180,7 +212,7 @@
 #endif
 
 #ifndef alloc_size_func1
-# ifdef HAVE_FUNC_ATTRIBUTE1_ALLOC_SIZE
+# ifdef HAVE_FUNC_ATTRIBUTE_1_ALLOC_SIZE
 #  define alloc_size_func1(x1) ATTRIBUTE(alloc_size(x1))
 # else
 #  define alloc_size_func1(x1)
@@ -188,7 +220,7 @@
 #endif
 
 #ifndef alloc_size_func1_ptr
-# ifdef HAVE_FUNC_PTR_ATTRIBUTE1_ALLOC_SIZE
+# ifdef HAVE_FUNC_PTR_ATTRIBUTE_1_ALLOC_SIZE
 #  define alloc_size_func1_ptr(x1) ATTRIBUTE(alloc_size(x1))
 # else
 #  define alloc_size_func1_ptr(x1)

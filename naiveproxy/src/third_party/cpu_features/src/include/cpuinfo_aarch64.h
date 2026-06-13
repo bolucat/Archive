@@ -169,6 +169,54 @@ typedef struct {
   int ecv : 1;         // Enhanced counter virtualization.
   int afp : 1;         // Alternate floating-point behaviour.
   int rpres : 1;       // 12-bit reciprocal (square root) estimate precision.
+  int mte3 : 1;        // MTE asymmetric fault handling.
+  int sme : 1;         // Scalable Matrix Extension.
+  int smei16i64 : 1;   // 16-bit to 64-bit integer widening outer product.
+  int smef64f64 : 1;   // FP64 to FP64 outer product.
+  int smei8i32 : 1;    // 8-bit to 32-bit integer widening outer product.
+  int smef16f32 : 1;   // FP16 to FP32 outer product.
+  int smeb16f32 : 1;   // BFloat16 to FP32 outper product.
+  int smef32f32 : 1;   // FP32 to FP32 outer product.
+  int smefa64 : 1;     // Full A64 support for SME in streaming mode.
+  int wfxt : 1;        // WFE and WFI with timeout.
+  int ebf16 : 1;       // Extended BFloat16 instructions.
+  int sveebf16 : 1;    // SVE BFloat16 instructions.
+  int cssc : 1;        // Common short sequence compression instructions.
+  int rprfm : 1;       // Range Prefetch Memory hint instruction.
+  int sve2p1 : 1;      // Scalable Vector Extension (version 2.1).
+  int sme2 : 1;        // Scalable Matrix Extension (version 2).
+  int sme2p1 : 1;      // Scalable Matrix Extension (version 2.1).
+  int smei16i32 : 1;   // 16-bit to 64-bit integer widening outer product.
+  int smebi32i32 : 1;  // 1-bit binary to 32-bit integer outer product.
+  int smeb16b16 : 1;   // SME2.1 BFloat16 instructions.
+  int smef16f16 : 1;   // FP16 to FP16 outer product.
+  int mops : 1;        // Standardized memory operations.
+  int hbc : 1;         // Hinted conditional branches.
+  int sveb16b16 : 1;   // Non-widening BFloat16 to BFloat16 arithmetic for SVE2
+                       // and SME2.
+  int lrcpc3 : 1;      // Load-Acquire RCpc instructions version 3.
+  int lse128 : 1;      // 128-bit Atomics.
+  int fpmr : 1;        // Floating-point Mode Register.
+  int lut : 1;        // Lookup table instructions with 2-bit and 4-bit indices.
+  int faminmax : 1;   // Maximum and minimum absolute value instructions.
+  int f8cvt : 1;      // FP scaling instructions and FP8 convert instructions.
+  int f8fma : 1;      // FP8 to single-precision and half-precision
+                      // multiply-accumulate instructions.
+  int f8dp4 : 1;      // FP8 to single-precision 4-way dot product FDOT (4-way)
+                      // instructions.
+  int f8dp2 : 1;      // FP8 to half-precision 2-way dot product FDOT (2-way)
+                      // instructions.
+  int f8e4m3 : 1;     // Arm FP8 E4M3 format.
+  int f8e5m2 : 1;     // Arm FP8 E5M2 format.
+  int smelutv2 : 1;   // SME2 lookup table LUTI4 and MOVT instructions.
+  int smef8f16 : 1;   // SME2 F8F16 instructions.
+  int smef8f32 : 1;   // SME2 F8F32 instructions.
+  int smesf8fma : 1;  // SVE2 FP8 to single-precision and half-precision
+                      // multiply-accumulate instructions.
+  int smesf8dp4 : 1;  // SVE2 FP8 to single-precision 4-way dot product FDOT
+                      // (4-way) instructions.
+  int smesf8dp2 : 1;  // SVE2 FP8 to half-precision 2-way dot product FDOT
+                      // (2-way) instructions.
 
   // Make sure to update Aarch64FeaturesEnum below if you add a field here.
 } Aarch64Features;
@@ -242,6 +290,47 @@ typedef enum {
   AARCH64_ECV,
   AARCH64_AFP,
   AARCH64_RPRES,
+  AARCH64_MTE3,
+  AARCH64_SME,
+  AARCH64_SME_I16I64,
+  AARCH64_SME_F64F64,
+  AARCH64_SME_I8I32,
+  AARCH64_SME_F16F32,
+  AARCH64_SME_B16F32,
+  AARCH64_SME_F32F32,
+  AARCH64_SME_FA64,
+  AARCH64_WFXT,
+  AARCH64_EBF16,
+  AARCH64_SVE_EBF16,
+  AARCH64_CSSC,
+  AARCH64_RPRFM,
+  AARCH64_SVE2P1,
+  AARCH64_SME2,
+  AARCH64_SME2P1,
+  AARCH64_SME_I16I32,
+  AARCH64_SME_BI32I32,
+  AARCH64_SME_B16B16,
+  AARCH64_SME_F16F16,
+  AARCH64_MOPS,
+  AARCH64_HBC,
+  AARCH64_SVE_B16B16,
+  AARCH64_LRCPC3,
+  AARCH64_LSE128,
+  AARCH64_FPMR,
+  AARCH64_LUT,
+  AARCH64_FAMINMAX,
+  AARCH64_F8CVT,
+  AARCH64_F8FMA,
+  AARCH64_F8DP4,
+  AARCH64_F8DP2,
+  AARCH64_F8E4M3,
+  AARCH64_F8E5M2,
+  AARCH64_SME_LUTV2,
+  AARCH64_SME_F8F16,
+  AARCH64_SME_F8F32,
+  AARCH64_SME_SF8FMA,
+  AARCH64_SME_SF8DP4,
+  AARCH64_SME_SF8DP2,
   AARCH64_LAST_,
 } Aarch64FeaturesEnum;
 

@@ -8,7 +8,7 @@ This document collects links to useful references. It is currently incomplete, b
 
 * [AES (FIPS 197)](https://csrc.nist.gov/pubs/fips/197/final)
 * [GCM (SP 800-38D)](https://csrc.nist.gov/pubs/sp/800/38/d/final)
-* [ChaCha20-Poly1305 (RFC 7539)](https://www.rfc-editor.org/rfc/rfc7539.html)
+* [ChaCha20-Poly1305 (RFC 8439)](https://www.rfc-editor.org/rfc/rfc8439.html)
 * [AES-GCM-SIV (RFC 8452)](https://www.rfc-editor.org/rfc/rfc8452.html)
 * [RSA (PKCS #1, RFC 8017)](https://www.rfc-editor.org/rfc/rfc8017.html)
 * [X25519 (RFC 7748)](https://www.rfc-editor.org/rfc/rfc7748.html)
@@ -101,3 +101,9 @@ This document collects links to useful references. It is currently incomplete, b
 * [iOS ARMv7](https://developer.apple.com/documentation/xcode/writing-armv7-code-for-ios)
 * [Apple ARM64](https://developer.apple.com/documentation/xcode/writing-arm64-code-for-apple-platforms)
 * [Windows ARM64](https://learn.microsoft.com/en-us/cpp/build/arm64-windows-abi-conventions)
+
+## Implementation Techniques
+
+* [BearSSL - Constant-Time Crypto](https://www.bearssl.org/constanttime.html)
+* [Analyzing and Comparing Montgomery Multiplication Algorithms](https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf)
+* [Scalar-multiplication algorithms](https://cryptojedi.org/peter/data/eccss-20130911b.pdf)

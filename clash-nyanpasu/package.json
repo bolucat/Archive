@@ -67,7 +67,7 @@
     "@types/node": "24.13.2",
     "knip": "6.16.1",
     "lint-staged": "17.0.7",
-    "npm-run-all2": "9.0.1",
+    "npm-run-all2": "9.0.2",
     "oxlint": "1.69.0",
     "postcss": "8.5.15",
     "postcss-html": "1.8.1",
@@ -82,7 +82,7 @@
     "stylelint-declaration-block-no-ignored-properties": "3.0.0",
     "stylelint-order": "8.1.1",
     "stylelint-scss": "7.2.0",
-    "tailwindcss": "4.3.0",
+    "tailwindcss": "4.3.1",
     "typescript": "6.0.3"
   },
   "packageManager": "pnpm@11.6.0",

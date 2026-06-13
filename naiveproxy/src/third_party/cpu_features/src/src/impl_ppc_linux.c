@@ -69,7 +69,7 @@
   LINE(PPC_SCV, scv, "scv", 0, PPC_FEATURE2_SCV)                               \
   LINE(PPC_HTM_NO_SUSPEND, htm_no_suspend, "htm-no-suspend", 0,                \
        PPC_FEATURE2_HTM_NO_SUSPEND)
-#undef PPC // Remove conflict with compiler generated preprocessor
+#undef PPC  // Remove conflict with compiler generated preprocessor
 #define INTROSPECTION_PREFIX PPC
 #define INTROSPECTION_ENUM_PREFIX PPC
 #include "define_introspection_and_hwcaps.inl"
@@ -127,7 +127,7 @@ static const PPCInfo kEmptyPPCInfo;
 PPCInfo GetPPCInfo(void) {
   /*
    * On Power feature flags aren't currently in cpuinfo so we only look at
-   * the auxilary vector.
+   * the auxiliary vector.
    */
   PPCInfo info = kEmptyPPCInfo;
   const HardwareCapabilities hwcaps = CpuFeatures_GetHardwareCapabilities();

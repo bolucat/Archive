@@ -71,7 +71,7 @@ necessary.
 
 When the \c{REX} prefix is used, the processor does not know how to
 address the AH, BH, CH or DH (high 8-bit legacy) registers. Instead,
-it is possible to access the the low 8-bits of the SP, BP SI and DI
+it is possible to access the the low 8-bits of the SP, BP, SI and DI
 registers as SPL, BPL, SIL and DIL, respectively; but only when the
 REX prefix is used.
 
@@ -95,24 +95,40 @@ specify most features directly.  However, this is occasionally
 obnoxious, as the explicit form is pretty much the only one one wishes
 to use.
 
-Currently, \c{DEFAULT} can set \c{REL} & \c{ABS} and \c{BND} & \c{NOBND}.
+Currently, \c{DEFAULT} can be used to select \c{RIP}-relative
+(\c{REL}) or absolute (\c{ABS}) addressing in 64-bit mode, and the use
+of MPX \c{BND} prefixes.
 
-\S{REL & ABS} \i\c{REL} & \i\c{ABS}: RIP-relative addressing
+\S{default-rel} \i\c{REL}, \i\c{ABS}: RIP-relative addressing
 
-This sets whether registerless instructions in 64-bit mode are \c{RIP}-relative
-or not. By default, they are absolute unless overridden with the \i\c{REL}
-specifier (see \k{effaddr}).  However, if \c{DEFAULT REL} is
-specified, \c{REL} is default, unless overridden with the \c{ABS}
-specifier, \e{except when used with an FS or GS segment override}.
+This sets whether registerless instructions in 64-bit mode are
+\c{RIP}-relative or not. By default, they are absolute unless
+overridden with the \i\c{REL} specifier (see \k{effaddr}).  However,
+if \c{DEFAULT REL} is specified, \c{REL} is default, unless overridden
+with the \c{ABS} specifier, \e{except when used with an FS or GS
+segment override}.
+
+\c{DEFAULT REL} is disabled with \c{DEFAULT ABS}.
 
 The special handling of \c{FS} and \c{GS} overrides are due to the
 fact that these registers are generally used as thread pointers or
 other special functions in 64-bit mode, and generating
-\c{RIP}-relative addresses would be extremely confusing.
+\c{RIP}-relative addresses is not desired on most platforms.
 
-\c{DEFAULT REL} is disabled with \c{DEFAULT ABS}.
+To specify that \c{FS}- or \c{GS}-relative addresses \e{should} also
+be generated as \c{RIP}-relative, specify the \c{ABS} or \c{REL}
+keyword with an \c{FS:} or \c{GS:} prefix:
 
-\S{BND & NOBND} \i\c{BND} & \i\c{NOBND}: \c{BND} prefix
+\c DEFAULT REL, FS:ABS, GS:REL
+
+... will make \c{FS}-relative references default to absolute, but all
+others, including \c{GS}-relative references, \c{RIP}-relative.
+
+\c{DEFAULT REL} is likely to become the default setting in a future
+version of NASM. Specify \c{DEFAULT ABS} explicitly if you need your
+code to avoid relative offsets.
+
+\S{default-bnd} \i\c{BND}, \i\c{NOBND}: \c{BND} prefix
 
 If \c{DEFAULT BND} is set, all bnd-prefix available instructions following
 this directive are prefixed with bnd. To override it, \c{NOBND} prefix can
@@ -288,16 +304,30 @@ declared as \c{EXTERN} and then defined, it will be treated as
 \c{GLOBAL}. If a variable is declared both as \c{COMMON} and
 \c{EXTERN}, it will be treated as \c{COMMON}.
 
+Since NASM version 2.15, the \c{EXTERN} keyword (since version 2.15)
+does not request import of symbols that are never actually referenced
+in the code, as that prevents using common header files, as it might
+cause the linker to pull in a bunch of unnecessary modules.  To
+unconditionally request import of external symbols, use the
+\c{REQUIRED} directive instead (see \k{required}).
+
+If the old behavior is required, rather than changing the source code,
+one can override the user macro definition:
+
+\c %ifmacro required	  ; Test for NASM new enough to support REQUIRED
+\c   %unimacro extern 1-*
+\c   %imacro extern 1+.nolist
+\c      required %1
+\c   %endmacro
+\c %endif
 
 \H{required} \i\c{REQUIRED}: \i{Unconditionally Importing Symbols} from Other Modules
 
 The \c{REQUIRED} keyword is similar to \c{EXTERN} one. The difference
-is that the \c{EXTERN} keyword as of version 2.15 does not generate
-unknown symbols as that prevents using common header files, as it
-might cause the linker to pull in a bunch of unnecessary modules.
-
-If the old behavior is required, use \c{REQUIRED} keyword instead.
-
+is that the \c{EXTERN} keyword (since version 2.15) does not request
+import of symbols that are never actually referenced in the code, as
+that prevents using common header files, as it might cause the linker
+to pull in a bunch of unnecessary modules.
 
 \H{global} \i\c{GLOBAL}: \i{Exporting Symbols} to Other Modules
 
@@ -372,26 +402,38 @@ global variables).
 Unlike \c{GLOBAL}, \c{STATIC} does not allow object formats to accept
 private extensions mentioned in \k{global}.
 
-\H{mangling} \i\c{(G|L)PREFIX}, \i\c{(G|L)POSTFIX}: Mangling Symbols
+\IR{PREFIX} \c{[PREFIX]}
+\IC{PREFIX}{GPREFIX} \c{[GPREFIX]}
+\IC{PREFIX}{LPREFIX} \c{[LPREFIX]}
+\IC{PREFIX}{SUFFIX} \c{[SUFFIX]}
+\IC{PREFIX}{GSUFFIX} \c{[GSUFFIX]}
+\IC{PREFIX}{LSUFFIX} \c{[LSUFFIX]}
+\IC{PREFIX}{POSTFIX} \c{[POSTFIX]}
+\IC{PREFIX}{GPOSTFIX} \c{[GPOSTFIX]}
+\IC{PREFIX}{LPOSTFIX} \c{[LPOSTFIX]}
 
-\c{PREFIX}, \c{GPREFIX}, \c{LPREFIX}, \c{POSTFIX}, \c{GPOSTFIX}, and
-\c{LPOSTFIX} directives can prepend or append a string to a certain
+\H{mangling} \I{PREFIX}\c{[[GL]PREFIX]}, \c{[[GL]SUFFIX]}: Mangling Symbols
+
+\c{[PREFIX]}, \c{[GPREFIX]}, \c{[LPREFIX]}, \c{[SUFFIX]}, \c{[GSUFFIX]}, and
+\c{[LSUFFIX]} directives can prepend or append a string to a certain
 type of symbols, normally to fit specific ABI conventions
 
-\b\c{PREFIX}|\c{GPREFIX}: Prepend the argument to all \c{EXTERN},
+\b\c{[PREFIX]}, \c{[GPREFIX]}: Prepend the argument to all \c{EXTERN},
 \c{COMMON}, \c{STATIC}, and \c{GLOBAL} symbols.
 
-\b\c{LPREFIX}: Prepend the argument to all other symbols
+\b\c{[LPREFIX}: Prepend the argument to all other symbols
 such as local labels and backend defined symbols.
 
-\b\c{POSTFIX}|\c{GPOSTFIX}: Append the argument to all \c{EXTERN},
-\c{COMMON}, \c{STATIC}, and \c{GLOBAL} symbols.
+\b\c{[SUFFIX]}, \c{[GSUFFIX]}, \c{[POSTFIX]}, \c{[GPOSTFIX]}: Append
+the argument to all \c{EXTERN}, \c{COMMON}, \c{STATIC}, and
+\c{GLOBAL} symbols.
 
-\b\c{LPOSTFIX}: Append the argument to all other symbols
+\b\c{[LSUFFIX]}, \c{[LPOSTFIX]}: Append the argument to all other symbols
 such as local labels and backend defined symbols.
 
-These are macros implemented as pragmas, and using \c{%pragma} syntax
-can be restricted to specific backends (see \k{pragma}):
+These directives are also implemented as pragmas, and using
+\c{%pragma} syntax can be restricted to specific backends (see
+\k{pragma}):
 
 \c %pragma macho lprefix L_
 
@@ -413,12 +455,18 @@ naming scheme to chunk up sections into smaller subsections, each of
 which may be eliminated. When the \c{subsections_via_symbols}
 directive (\k{macho-ssvs}) is declared, each symbol is the start of a
 separate block. The subsection is, then, defined to include sections
-before the one that starts with a 'L'. \c{LPREFIX} is useful here to
+before the one that starts with a 'L'. \c{[LPREFIX]} is useful here to
 mark all local symbols with the 'L' prefix to be excluded to the meta
 section.  It converts local symbols compatible with the particular
 toolchain.  Note that local symbols declared with \c{STATIC}
 (\k{static}) are excluded from the symbol mangling and also not marked
 as global.
+
+Earlier versions of NASM called the pragmas \i\c{suffix} and the
+options \i\c{--postfix}, and did not implement directives at all
+despite being so documented. Since NASM 3.01, the directive forms are
+implemented, and directives, pragmas and options all support all
+spellings.
 
 
 \H{CPU} \i\c{CPU}: Defining CPU Dependencies
@@ -507,6 +555,21 @@ requiring an explicit \c{\{vex\}} prefix. This is implicit if the
 off.
 
 
+\H{dollarhex} \i\c{[DOLLARHEX]}: Enable or disable \c{$} hexadecimal syntax
+
+Using a \c{$} prefix for hexadecimal numbers is deprecated, as it
+conflicts with the use of \c{$} for escaping symbols (see \k{numconst}
+and \k{syntax}). The \c{[DOLLARHEX]} directive can be used to disable
+it completely:
+
+\c     [dollarhex off]
+
+When disabled, symbols beginning with digits can be escaped as well,
+e.g. \c{$3} would define a symbol \c{3}.
+
+No "user form" (without the brackets) currently exists.
+
+
 \H{FLOAT} \i\c{FLOAT}: Handling of \I{floating-point, constants}floating-point constants
 
 By default, floating-point constants are rounded to nearest, and IEEE
@@ -529,7 +592,7 @@ this behaviour:
 
 The standard macros \i\c{__?FLOAT_DAZ?__}, \i\c{__?FLOAT_ROUND?__}, and
 \i\c{__?FLOAT?__} contain the current state, as long as the programmer
-has avoided the use of the brackeded primitive form, (\c{[FLOAT]}).
+has avoided the use of the bracketed primitive form, (\c{[FLOAT]}).
 
 \c{__?FLOAT?__} contains the full set of floating-point settings; this
 value can be saved away and invoked later to restore the setting.
@@ -561,3 +624,13 @@ The \c{[WARNING]} directive also accepts the \c{all}, \c{error} and
 No "user form" (without the brackets) currently exists.
 
 
+\H{LIST} \i\c{[LIST]}: Locally disable list file output
+
+The \c{[LIST]} directive disables or re-enables list file output.
+
+\b \c{[list -]} disables list file output.
+
+\b \c{[list +]} re-enables list file output.
+
+The \c{[LIST]} directive can be overridden with the \c{-LF}
+command-line option, see \k{opt-L}.

@@ -1,37 +1,7 @@
-/* ----------------------------------------------------------------------- *
- *   
- *   Copyright 1996-2013 The NASM Authors - All Rights Reserved
- *   See the file AUTHORS included with the NASM distribution for
- *   the specific copyright holders.
- *
- *   Redistribution and use in source and binary forms, with or without
- *   modification, are permitted provided that the following
- *   conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright
- *     notice, this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above
- *     copyright notice, this list of conditions and the following
- *     disclaimer in the documentation and/or other materials provided
- *     with the distribution.
- *     
- *     THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- *     CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- *     MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- *     DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
- *     CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- *     SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *     NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- *     LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
- *     HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- *     CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
- *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
- *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * ----------------------------------------------------------------------- */
+/* SPDX-License-Identifier: BSD-2-Clause */
+/* Copyright 1996-2013 The NASM Authors - All Rights Reserved */
 
-/* 
+/*
  * outaout.c	output routines for the Netwide Assembler to produce
  *		Linux a.out object files
  */
@@ -286,8 +256,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                 char *p = special;
 
                 p = nasm_skip_spaces(nasm_skip_word(p));
-                stdscan_reset();
-                stdscan_set(p);
+                stdscan_reset(p);
                 tokval.t_type = TOKEN_INVALID;
                 e = evaluate(stdscan, NULL, &tokval, NULL, 1, NULL);
                 if (e) {
@@ -367,7 +336,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                 struct tokenval tokval;
                 expr *e;
                 int fwd = false;
-                char *saveme = stdscan_get();
+                char *saveme = stdscan_tell();
 
                 if (!bsd) {
                     nasm_nonfatal("Linux a.out does not support"
@@ -380,8 +349,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                      * evaluate it.
                      */
                     sym->type |= SYM_WITH_SIZE;
-                    stdscan_reset();
-                    stdscan_set(special + n);
+                    stdscan_reset(special + n);
                     tokval.t_type = TOKEN_INVALID;
                     e = evaluate(stdscan, NULL, &tokval, &fwd, 0, NULL);
                     if (fwd) {
@@ -396,7 +364,7 @@ static void aout_deflabel(char *name, int32_t segment, int64_t offset,
                             sym->size = reloc_value(e);
                     }
                 }
-                stdscan_set(saveme);
+                stdscan_reset(saveme);
             }
             special_used = true;
         }
@@ -498,6 +466,11 @@ static int32_t aout_add_gsym_reloc(struct Section *sect,
         list_for_each(sym, shead)
             if (sym->value == offset)
                 break;
+        if (!sym) {
+            nasm_nonfatal("unable to find a suitable global symbol"
+                          " for this reference");
+            return 0;
+        }
     } else {
         /*
          * Find the nearest symbol below this one.
@@ -506,11 +479,11 @@ static int32_t aout_add_gsym_reloc(struct Section *sect,
         list_for_each(sm, shead)
             if (sm->value <= offset && (!sym || sm->value > sym->value))
                 sym = sm;
-    }
-    if (!sym && exact) {
-        nasm_nonfatal("unable to find a suitable global symbol"
-                      " for this reference");
-        return 0;
+        if (!sym) {
+            nasm_nonfatal("unable to find a suitable nearest symbol"
+                          " below this reference");
+            return 0;
+        }
     }
 
     r = *sect->tail = nasm_malloc(sizeof(struct Reloc));
@@ -554,9 +527,11 @@ static int32_t aout_add_gotoff_reloc(struct Section *sect, int32_t segment,
         asym = sdata.asym;
     else if (segment == sbss.index)
         asym = sbss.asym;
-    if (!asym)
+    if (!asym) {
         nasm_nonfatal("`..gotoff' relocations require a non-global"
                       " symbol in the section");
+        return 0;
+    }
 
     r = *sect->tail = nasm_malloc(sizeof(struct Reloc));
     sect->tail = &r->next;
@@ -572,10 +547,9 @@ static int32_t aout_add_gotoff_reloc(struct Section *sect, int32_t segment,
     return offset - asym->value;
 }
 
-static void aout_out(int32_t segto, const void *data,
-		     enum out_type type, uint64_t size,
-                     int32_t segment, int32_t wrt)
+static void aout_out(const struct out_data *out)
 {
+    OUT_LEGACY(out,segto,data,type,size,segment,wrt);
     struct Section *s;
     int32_t addr;
     uint8_t mydata[4], *p;
@@ -588,7 +562,7 @@ static void aout_out(int32_t segto, const void *data,
         s = NULL;
     else {
         nasm_warn(WARN_OTHER, "attempt to assemble code in"
-                  " segment %d: defaulting to `.text'", segto);
+                  " unknown section: defaulting to `.text'");
         s = &stext;
     }
 
@@ -881,7 +855,6 @@ const struct ofmt of_aout = {
     aout_stdmac,
     aout_init,
     null_reset,
-    nasm_do_legacy_output,
     aout_out,
     aout_deflabel,
     aout_section_names,
@@ -908,7 +881,6 @@ const struct ofmt of_aoutb = {
     aout_stdmac,
     aoutb_init,
     null_reset,
-    nasm_do_legacy_output,
     aout_out,
     aout_deflabel,
     aout_section_names,

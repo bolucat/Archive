@@ -17,9 +17,9 @@ NASM (\c{%ifusable}) or a particular package already loaded (\c{%ifusing}).
 
 The \c{altreg} standard macro package provides alternate register
 names.  It provides numeric register names for all registers (not just
-\c{R8}-\c{R15}), the Intel-defined aliases \c{R8L}-\c{R15L} for the
-low bytes of register (as opposed to the NASM/AMD standard names
-\c{R8B}-\c{R15B}), and the names \c{R0H}-\c{R3H} (by analogy with
+\c{R8}-\c{R31}), the Intel-defined aliases \c{R8L}-\c{R31L} for the
+low bytes of registers (as opposed to the NASM/AMD standard names
+\c{R8B}-\c{R31B}), and the names \c{R0H}-\c{R3H} (by analogy with
 \c{R0L}-\c{R3L}) for \c{AH}, \c{CH}, \c{DH}, and \c{BH}.
 
 Example use:
@@ -30,12 +30,12 @@ Example use:
 \c       mov r0l,r3h                    ; mov al,bh
 \c       ret
 
-See also \k{reg64}.
+See also \k{reg64} and \k{egprs}.
 
 
 \H{pkg_smartalign} \i\c{smartalign}\I{align, smart}: Smart \c{ALIGN} Macro
 
-The \c{smartalign} standard macro package provides for an \i\c{ALIGN}
+The \c{smartalign} standard macro package provides an \i\c{ALIGN}
 macro which is more powerful than the default (and
 backwards-compatible) one (see \k{align}).  When the \c{smartalign}
 package is enabled, when \c{ALIGN} is used without a second argument,
@@ -144,24 +144,24 @@ To enable the package, use the directive:
 
 Currently, the MASM compatibility package emulates:
 
-\b The \c{FLAT} and \c{OFFSET} keywords are recognized and ignored.
+\b The \i\c{FLAT} and \i\c{OFFSET} keywords are recognized and ignored.
 
-\b The \c{PTR} keyword signifies a memory reference, as if the
+\b The \i\c{PTR} keyword signifies a memory reference, as if the
 argument had been put in square brackets:
 
 \c      mov eax,[foo]               ; memory reference
 \c      mov eax,dword ptr foo       ; memory reference
-\c      mov eax,dowrd ptr flat:foo  ; memory reference
+\c      mov eax,dword ptr flat:foo  ; memory reference
 \c      mov eax,offset foo          ; address
 \c      mov eax,foo                 ; address (ambiguous syntax in MASM)
 
-\b The \c{SEGMENT} ... \c{ENDS} syntax:
+\b The \i\c{SEGMENT} ... \i\c{ENDS} syntax:
 
 \c    segname SEGMENT
 \c        ...
 \c    segname ENDS
 
-\b The \c{PROC} ... \c{ENDP} syntax:
+\b The \i\c{PROC} ... \i\c{ENDP} syntax:
 
 \c    procname PROC [FAR]
 \c         ...
@@ -171,12 +171,15 @@ argument had been put in square brackets:
 \c{RETF} if \c{FAR} is specified and \c{RETN} otherwise. Any keyword
 after \c{PROC} other than \c{FAR} is ignored.
 
-\b The \c{TBYTE} keyword as an alias for \c{TWORD} (see \k{qsother}).
+\b The \i\c{TBYTE} keyword as an alias for \c{TWORD} (see \k{qsother}).
 
-\b The \c{END} directive is ignored.
+\b The \i\c{END} directive is ignored.
 
 \b In 64-bit mode relative addressing is the default (\c{DEFAULT REL},
-see \k{REL & ABS}).
+see \k{default-rel}).
+
+\b A macro is defined to allow using the syntax \c{ST(0)} instead of
+\c{ST0} (and so on) for the x87 stack registers.
 
 In addition, NASM now natively supports, regardless of whether this
 package is used or not:
@@ -194,3 +197,8 @@ of \c{[base+index+displacement]}.
 \c      lea rax,[foo]               ; standard syntax
 \c      lea rax,foo                 ; also accepted
 
+\H{pkg_vtern} \i\c{vtern}: Ternary Logic Assist
+
+The \c{vtern} macro package allows for a simple and clear way of
+defining the immediate operand to the \i\c{VPTERNLOGD} and
+\i\c{VPTERNLOGQ} instructions. See \k{ternarylogic} for a description.

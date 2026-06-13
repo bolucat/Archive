@@ -2,20 +2,152 @@
 \# NASM revision history in nasmdoc format
 \#
 
-\H{cl-2.xx} NASM 2 Series
+\H{cl-3.xx} NASM 3 Series
 
-The NASM 2 series supports x86-64, and is the production version of NASM
-since 2007.
+The NASM 3 series added support for the APX instruction encodings
+(extended GPRs), as well as preprocessor enhancements meant to make
+evolving code simpler.
 
-\S{cl-2.17} Version 2.17
+It is the production version of NASM since 2025.
+
+
+\S{cl-3.01} Version 3.01
+
+\b A new \c{obj2} version of the \c{obj} output format, intended for
+   use on OS/2. See \k{obj2fmt}.
+
+\b The condition after \c{%if} or \c{%elif} would be evaluated while
+   output is suppressed after \c{%exitrep} or \c{%exitmacro}. Although
+   no output would be generated in either case, assembly would fail if
+   evaluating the expression triggered an error.
+
+\b Fix encoding of \c{TCVTROWPS2PHL}, correct multiple AVX512-BF16
+   instructions' operand formats and typoed mnemonics.
+
+\b The unofficial but obvious alternate form \c{TEST reg,mem} was not
+   accepted by NASM 3.00; corrected.
+
+\b For the \c{obj} output format, multiple \c{GROUP} directives can
+   now be specified for the same group; the resulting group includes
+   all sections specified in all \c{GROUP} directives for the group.
+
+\b A new \c{%selbits()} preprocessor function.  See \k{f_selbits}.
+
+\b A new \c{--bits} option as convenience shorthand for \c{--before
+   "BITS ..."}.  See \k{opt-bits}.
+
+\b The options and pragmas for configuring external label mangling
+   were inconsistent, the former using the spelling \c{postfix} and
+   the latter \c{suffix}. Furthermore, these were also documented as
+   \e{directives} in addition to pragmas. Implement the already
+   documented directives (bracketed forms only) and allow both
+   \c{postfix} and \c{suffix} in all cases.
+
+\> See \k{opt-pfix} and \k{mangling}.
+
+\b Define additional permissive patterns and fix several opcode bugs.
+
+\b Fix parsing of two-operand forms of x87 instructions.
+
+\b Fix bogus "absolute address can not be RIP-relative" warning.
+
+\b Hopefully fix building with OpenWatcom.
+
+\b Generate a warning, promoted to error by default, on the use of
+   \c{o64} prefixes in 16- or 32-bit mode. If demoted to a warning or
+   suppressed the prefix is ignored, but likely will trigger
+   subsequent, harder to debug, error messages.
+
+\b More consistent handling of jump and call instructions with
+   specified operand sizes.
+
+\b Fix an operand size handling bug in the \c{CMPXCHG} instruction.
+
+
+\S{cl-3.00} Version 3.00
 
 \b Improve the documentation for building from source (\k{source}).
 
-\S{cl-2.16.04} Version 2.16.04
+\b Add support for the APX and AVX10 instruction sets, and various
+   miscellaneous new instructions.
+
+\b Add new preprocessor functions: \c{%b2hs()}, \c{%chr()},
+   \c{%depend()}, \c{%find()}, \c{%findi()}, \c{%hs2b()}, \c{%null()},
+   \c{%ord()}, \c{%pathsearch()}, and \c{%realpath()}. See \k{ppfunc}.
+
+\b New preprocessor directive \c{%note} to insert a note in the list
+   file, without issuing an external diagnosic.  Unlike a comment, it
+   is optionally macro-expanded, see \k{pperror}.
+
+\b New preprocessor directive \c{%iffile} (and corresponding function
+   \c{%isfile()}) to test for the existence of a file. See \k{iffile}.
+
+\b New preprocessor directive \c{%ifdirective} to test for the
+   existence of a preprocessor directive, assembly directive, or
+   pseudo-instruction; see \k{ifdirective}.
+
+\b Fix a number of invalid memory references (usually causing crashes)
+   on various invalid inputs.
+
+\b Fix multiple bugs in the handling of \c{$}-escaped symbols.
+
+\b The use of \c{$} as a prefix for hexadecimal numbers has been
+   deprecated, and will now issue a warning. A new directive
+   \c{[DOLLARHEX]} can be used to disable this syntax entirely, see
+   \k{dollarhex}.
+
+\b Fix the generation of segment selector references (mainly used in
+   the \c{obj} output format.)
+
+\b Fix crash in the \c{obj} backend when code was emitted into the
+   default segment, without any labels having been defined.
 
 \b Clean up the command-line help text (\c{-h}) and break it down into
-individual topics, as the previous output was just too verbose to be
-practical as a quick reference.
+   individual topics, as the previous output was just too verbose to be
+   practical as a quick reference.
+
+\b The implicit \c{DEFAULT ABS} in 64-bit mode is deprecated and may
+   be changed to \c{REL} in the future. See \k{default}. A warning
+   is now emitted for this condition.
+
+\b It is now possible to set the \c{REL}/\c{ABS} default for memory
+   accesses using \c{FS:} or \c{GS:}, see \k{default}.
+
+\b The \c{__?DEFAULT?__} standard macro now reflects the settings of
+   the \c{DEFAULT} directive. See \k{defaultm}.
+
+\b The NASM preprocessor now assumes that an unknown directive
+   starting with \c{%if} or \c{%elif} is a misspelled or not yet
+   implemented conditional directive, and tries to match it with a
+   corresponding \c{%endif}.  See \k{if_caveat}.
+
+\b The \c{masm} macro package now defines a macro for x87 register
+   syntax.  See \k{pkg_masm}.
+
+\b A new macro package, \c{vtern}, to simplify generation of the
+   control immediates for the \c{VPTERNLOGD} and \c{VPTERNLOGQ}
+   instructions.  See \k{pkg_vtern}.
+
+\b A new command line option \c{-LF} allows overriding \c{[LIST -]}
+   directives.
+
+\b In the \c{obj} output format, allow a segment in the \c{FLAT}
+   pseudo-group to also belong to another (real) group. Used on OS/2.
+
+\b Add a new \c{build_version} directive to the Mach-O backend. See
+   \k{macho-bver}.
+
+\b Fix a spec violation in the generation of DWARF debugging
+   information on ELF.
+
+\b Response files can now be nested.
+
+\b Many documentation improvements.
+
+\H{cl-2.xx} NASM 2 Series
+
+The NASM 2 series added support for x86-64, and was the production
+versions of NASM from 2007 to 2025.
 
 \S{cl-2.16.03} Version 2.16.03
 
@@ -2661,7 +2793,7 @@ an error.
 specification warning when sizes agree).
 
 
-\H{cl-0.9x} NASM 0.9 Series
+\H{cl-0.9x} NASM 0.90-0.97
 
 Revisions before 0.98.
 
