@@ -69,7 +69,6 @@ void RecordAllocOrFree(uintptr_t addr, size_t size) {
 }
 #endif  // PA_BUILDFLAG(RECORD_ALLOC_INFO)
 
-
 }  // namespace partition_alloc::internal
 
 namespace partition_alloc {
@@ -283,14 +282,16 @@ void PartitionAllocMallocInitOnce() {
   // and other malloc() implementations use the same techniques.
 
 #if defined(__MUSL__)
-    allocator_shim::AllocatorDispatch d =
-        *allocator_shim::GetAllocatorDispatchChainHeadForTesting();
-    d.alloc_function = +[](size_t size, AllocToken, void*) -> void* {
-      // The size of the scratch fits struct atfork_funcs in Musl pthread_atfork.c.
-      static char scratch[5 * sizeof(void*)];
-      return size != sizeof(scratch) ? nullptr : scratch;
-    };
-    allocator_shim::InsertAllocatorDispatch(&d);
+  allocator_shim::AllocatorDispatch d =
+      *allocator_shim::GetAllocatorDispatchChainHeadForTesting();
+  d.alloc_function =
+      +[](size_t size, allocator_shim::AllocToken, void*) -> void* {
+    // The size of the scratch fits struct atfork_funcs in Musl
+    // pthread_atfork.c.
+    static char scratch[5 * sizeof(void*)];
+    return size != sizeof(scratch) ? nullptr : scratch;
+  };
+  allocator_shim::InsertAllocatorDispatch(&d);
 #endif
 
   int err =
@@ -298,7 +299,7 @@ void PartitionAllocMallocInitOnce() {
   PA_CHECK(err == 0);
 
 #if defined(__MUSL__)
-    allocator_shim::RemoveAllocatorDispatchForTesting(&d);
+  allocator_shim::RemoveAllocatorDispatchForTesting(&d);
 #endif
 #endif  // PA_BUILDFLAG(IS_LINUX) || PA_BUILDFLAG(IS_CHROMEOS)
 }
@@ -1386,8 +1387,8 @@ bool PartitionRoot::TryReallocInPlaceForNormalBuckets(
     }
 #endif  // PA_BUILDFLAG(ENABLE_BACKUP_REF_PTR_SUPPORT) &&
         // PA_BUILDFLAG(DCHECKS_ARE_ON)
-    // Write a new trailing cookie only when it is possible to keep track
-    // raw size (otherwise we wouldn't know where to look for it later).
+        // Write a new trailing cookie only when it is possible to keep track
+        // raw size (otherwise we wouldn't know where to look for it later).
 #if PA_BUILDFLAG(USE_PARTITION_COOKIE)
     if (settings_.use_cookie) {
       internal::PartitionCookieWriteValue(PA_UNSAFE_TODO(
