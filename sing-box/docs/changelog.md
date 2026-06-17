@@ -2,6 +2,32 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.32
+
+* Add dashboard support for the API service **1**
+* Add USB/IP service **2**
+* Fixes and improvements
+
+**1**:
+
+The [sing-box API service](/configuration/service/api/) can now download, update
+and serve [sing-box-dashboard](https://github.com/SagerNet/sing-box-dashboard)
+directly over its listener, configured via the new
+[`dashboard`](/configuration/service/api/#dashboard) option.
+
+**2**:
+
+New [USB/IP Server](/configuration/service/usbip-server/) and
+[USB/IP Client](/configuration/service/usbip-client/) services export and import
+USB devices over the [USB/IP](https://usbip.sourceforge.net/) protocol, built on
+[sing-usbip](https://github.com/SagerNet/sing-usbip), which adds hotplug while
+staying interoperable with standard USB/IP. Exporting config-selected local
+devices (`provider: default`) runs via the CLI on Linux, Windows, and macOS and
+requires elevated privileges (macOS additionally needs a CGO build and disabled
+System Integrity Protection). With `provider: dynamic`, devices are instead
+supplied at runtime through the API service by the graphical clients on macOS and
+Android, or the [sing-box Dashboard](https://github.com/SagerNet/sing-box-dashboard).
+
 #### 1.14.0-alpha.31
 
 * Fixes and improvements

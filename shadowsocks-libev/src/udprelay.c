@@ -245,6 +245,10 @@ static int
 parse_udprelay_header(const char *buf, const size_t buf_len,
                       char *host, char *port, struct sockaddr_storage *storage)
 {
+    if (buf_len < 1) {
+        return 0;
+    }
+
     const uint8_t atyp = *(uint8_t *)buf;
     int offset         = 1;
 
@@ -267,6 +271,9 @@ parse_udprelay_header(const char *buf, const size_t buf_len,
         }
     } else if ((atyp & ADDRTYPE_MASK) == 3) {
         // Domain name
+        if (buf_len < offset + 1) {
+            return 0;
+        }
         uint8_t name_len = *(uint8_t *)(buf + offset);
         if (name_len + 4 <= buf_len) {
             if (storage != NULL) {

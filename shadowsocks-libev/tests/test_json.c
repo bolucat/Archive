@@ -95,6 +95,26 @@ test_parse_invalid(void)
 }
 
 static void
+test_parse_truncated_escape_sequences(void)
+{
+    /* Four bytes remain after 'u', but the fourth hex read would hit EOF. */
+    const char *truncated_unicode_escape = "\"\\uB2D";
+    assert(json_parse(truncated_unicode_escape, strlen(truncated_unicode_escape)) == NULL);
+
+    /* Six bytes remain after the high surrogate, but the sixth read would hit EOF. */
+    const char *truncated_surrogate_pair = "\"\\udfff\\ufff";
+    assert(json_parse(truncated_surrogate_pair, strlen(truncated_surrogate_pair)) == NULL);
+}
+
+static void
+test_parse_truncated_literals(void)
+{
+    assert(json_parse("tru", 3) == NULL);
+    assert(json_parse("fals", 4) == NULL);
+    assert(json_parse("nul", 3) == NULL);
+}
+
+static void
 test_parse_empty_object(void)
 {
     const char *json_str = "{}";
@@ -124,6 +144,8 @@ main(void)
     test_parse_nested();
     test_parse_types();
     test_parse_invalid();
+    test_parse_truncated_escape_sequences();
+    test_parse_truncated_literals();
     test_parse_empty_object();
     test_parse_empty_array();
     return 0;

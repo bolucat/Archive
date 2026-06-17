@@ -12,7 +12,13 @@ function deriveAirportName(value) {
 			if (name)
 				return name;
 		}
-		return url.hostname || '机场_1';
+		// Use the registrable label, not the whole hostname: sub.ssr.sh -> ssr.
+		// Dropping the TLD (and any sub.* prefix) keeps the default group name
+		// clean and avoids leaking the provider's full domain.
+		const labels = (url.hostname || '').split('.').filter(Boolean);
+		if (labels.length >= 2)
+			return labels[labels.length - 2];
+		return labels[0] || '机场_1';
 	} catch (e) {
 		return '机场_1';
 	}
@@ -98,6 +104,7 @@ function parseAirportSection(section) {
 		name: String(section.name || ''),
 		source_hash: String(section.source_hash || ''),
 		group_id: String(section.group_id || ''),
+		subscription_id: String(section.subscription_id || ''),
 		node_ids: list(section.node_id)
 	};
 }
@@ -109,6 +116,7 @@ function airportSectionValues(record) {
 		name: String(record.name || ''),
 		source_hash: String(record.sourceHash || record.source_hash || ''),
 		group_id: String(record.groupId || record.group_id || ''),
+		subscription_id: String(record.subscriptionId || record.subscription_id || ''),
 		node_id: list(record.nodeIds || record.node_ids)
 	};
 }

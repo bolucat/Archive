@@ -5,9 +5,9 @@
 #   PCRE2_INCLUDE_DIRS
 #   PCRE2_LIBRARIES
 
-include(FindPkgConfig)
+find_package(PkgConfig QUIET)
 
-if(PKG_CONFIG_FOUND)
+if(PkgConfig_FOUND)
     pkg_check_modules(_PCRE2 QUIET libpcre2-8)
 endif()
 

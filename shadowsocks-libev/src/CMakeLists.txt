@@ -105,7 +105,7 @@ find_library(LIBMBEDTLS libmbedtls.a)
 find_library(LIBMBEDCRYPTO libmbedcrypto.a HINTS ${_MBEDTLS_LIB_DIR} NO_DEFAULT_PATH)
 find_library(LIBMBEDCRYPTO libmbedcrypto.a)
 find_library(LIBEV libev.a)
-find_library(LIBUDNS libcares.a)
+find_library(LIBUDNS NAMES libcares.a libcares_static.a)
 find_library(LIBPCRE2 libpcre2-8.a)
 
 # Dependencies we need for static and shared

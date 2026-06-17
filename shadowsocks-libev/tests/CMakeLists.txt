@@ -18,6 +18,8 @@ function(ss_add_test name sources libs)
     add_executable(${name} ${sources})
     target_compile_definitions(${name} PRIVATE -DHAVE_CONFIG_H)
     target_link_libraries(${name} ${libs})
+    # Keep assertions enabled for tests even in Release builds.
+    target_compile_options(${name} PRIVATE -UNDEBUG)
     add_test(NAME ${name} COMMAND ${name})
 endfunction()
 

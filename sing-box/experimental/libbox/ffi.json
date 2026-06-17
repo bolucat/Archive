@@ -110,10 +110,6 @@
       },
       "overrides": [
         {
-          "match": { "os": "macos" },
-          "tags_append": ["with_usbip"]
-        },
-        {
           "match": { "os": "ios" },
           "tags_append": ["with_low_memory"]
         },
