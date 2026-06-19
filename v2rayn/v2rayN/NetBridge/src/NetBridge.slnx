@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/GitHub Action/" />
+  <Folder Name="/Solution Files/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+  </Folder>
+  <Project Path="NetBridge.Desktop/NetBridge.Desktop.csproj" />
+  <Project Path="NetBridgeLib/NetBridgeLib.csproj" />
+</Solution>

@@ -1321,6 +1321,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Process traffic hijacking (experimental) 的本地化字符串。
+        /// </summary>
+        public static string menuNetBridge {
+            get {
+                return ResourceManager.GetString("menuNetBridge", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 New Update 的本地化字符串。
         /// </summary>
         public static string menuNewUpdate {
@@ -2302,6 +2311,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 The process names that need to be proxied; separate multiple processes with commas. Processes not in the list will also be hijacked, but will connect directly. 的本地化字符串。
+        /// </summary>
+        public static string NetBridgeRuleTips {
+            get {
+                return ResourceManager.GetString("NetBridgeRuleTips", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Non-VMess or SS protocol 的本地化字符串。
         /// </summary>
         public static string NonvmessOrssProtocol {
@@ -3034,6 +3052,24 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Enables process traffic hijacking (experimental), similar to Proxifer; can coexist with system proxy; conflicts with TUN mode, please do not enable them simultaneously;please allow v2rayN to use a private network in your firewall. 的本地化字符串。
+        /// </summary>
+        public static string TbEnableNetBridge {
+            get {
+                return ResourceManager.GetString("TbEnableNetBridge", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 DNS via Bridge 的本地化字符串。
+        /// </summary>
+        public static string TbEnabletDnsViaProxy {
+            get {
+                return ResourceManager.GetString("TbEnabletDnsViaProxy", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Enable Tun 的本地化字符串。
         /// </summary>
         public static string TbEnableTunAs {
@@ -3669,6 +3705,15 @@ namespace ServiceLib.Resx {
         public static string TbRuleTypeTips {
             get {
                 return ResourceManager.GetString("TbRuleTypeTips", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Save rules 的本地化字符串。
+        /// </summary>
+        public static string TbSaveNetBridgeRule {
+            get {
+                return ResourceManager.GetString("TbSaveNetBridgeRule", resourceCulture);
             }
         }
         

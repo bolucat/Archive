@@ -1,0 +1,15 @@
+<Project>
+    <PropertyGroup>
+        <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+        <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+        <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageVersion Include="Avalonia.Desktop" Version="11.3.17" />
+        <PackageVersion Include="DialogHost.Avalonia" Version="0.11.0" />
+        <PackageVersion Include="ReactiveUI.Avalonia" Version="11.4.12" />
+        <PackageVersion Include="ReactiveUI" Version="23.2.27" />
+        <PackageVersion Include="ReactiveUI.Fody" Version="19.5.41" />
+        <PackageVersion Include="Semi.Avalonia" Version="11.3.14" />
+    </ItemGroup>
+</Project>
