@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.33
+
+* Fixes and improvements
+
 #### 1.14.0-alpha.32
 
 * Add dashboard support for the API service **1**

@@ -2,6 +2,13 @@
 
 package local
 
-func newSystemResolver() systemResolver {
-	return nil
+import (
+	"context"
+	"os"
+
+	mDNS "github.com/miekg/dns"
+)
+
+func (t *Transport) systemExchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
+	return nil, os.ErrInvalid
 }
