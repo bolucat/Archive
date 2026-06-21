@@ -1,0 +1,160 @@
+From: Ryan Chen <rchen14b@gmail.com>
+Date: Thu, 06 Mar 2026 19:00:00 -0600
+Subject: [PATCH] wifi: mt76: mt7996: fix tx_retries underflow and stale TX
+ rate reporting
+
+Fix two issues related to TX status reporting:
+
+1. In mt7996_mac_tx_free(), the tx_retries calculation unconditionally
+   subtracts 1 from the TXFREE_INFO_COUNT field. When the count is 0
+   (which can occur with NPU WiFi offload), this causes an unsigned
+   integer underflow, resulting in bogus tx_retries values like
+   4294967131 (0xFFFFFF9B).
+
+   Fix by checking that count is non-zero before the subtraction.
+
+2. The periodic UNI_ALL_STA_TXRX_RATE MCU response contains complete
+   TX rate information (mode, MCS, NSS, BW, GI, STBC, LDPC) but
+   mt7996_mcu_update_tx_gi() only uses the GI field. This means
+   wcid->rate (reported via iw station dump) is only updated from
+   TXS packets. When TXS processing is delayed or sparse (e.g. during
+   NPU offload transitions), the reported TX rate becomes stale.
+
+   Fix by replacing the GI-only update with a full rate update that
+   uses all fields from the MCU response, matching the decode logic
+   already used in mt7996_mac_add_txs_skb().
+
+Signed-off-by: Ryan Chen <rchen14b@gmail.com>
+---
+ mt7996/mac.c |  8 +++---
+ mt7996/mcu.c | 76 ++++++++++++++++++++++++++++++++++++++++------------
+ 2 files changed, 62 insertions(+), 22 deletions(-)
+
+--- a/mt7996/mac.c
++++ b/mt7996/mac.c
+@@ -1362,12 +1362,14 @@ next:
+ 			continue;
+ 		} else if (info & MT_TXFREE_INFO_HEADER) {
+ 			u32 tx_retries = 0, tx_failed = 0;
++			u32 tx_count;
+ 
+ 			if (!wcid)
+ 				continue;
+ 
+-			tx_retries =
+-				FIELD_GET(MT_TXFREE_INFO_COUNT, info) - 1;
++			tx_count = FIELD_GET(MT_TXFREE_INFO_COUNT, info);
++			if (tx_count)
++				tx_retries = tx_count - 1;
+ 			tx_failed = tx_retries +
+ 				!!FIELD_GET(MT_TXFREE_INFO_STAT, info);
+ 
+--- a/mt7996/mcu.c
++++ b/mt7996/mcu.c
+@@ -599,41 +599,81 @@ out:
+ 	wiphy_info(mt76_hw(dev)->wiphy, "%s: %.*s", type, len, data);
+ }
+ 
+-static int
+-mt7996_mcu_update_tx_gi(struct rate_info *rate, struct all_sta_trx_rate *mcu_rate)
++static void
++mt7996_mcu_update_tx_rate(struct mt76_dev *mdev, struct mt76_wcid *wcid,
++			  struct all_sta_trx_rate *mcu_rate)
+ {
++	struct rate_info rate = {};
++
++	rate.mcs = mcu_rate->tx_mcs;
++	rate.nss = mcu_rate->tx_nss;
++
+ 	switch (mcu_rate->tx_mode) {
+ 	case MT_PHY_TYPE_CCK:
+-	case MT_PHY_TYPE_OFDM:
++	case MT_PHY_TYPE_OFDM: {
++		struct mt76_phy *mphy = mt76_dev_phy(mdev, wcid->phy_idx);
++		struct ieee80211_supported_band *sband;
++		bool cck = mcu_rate->tx_mode == MT_PHY_TYPE_CCK;
++
++		if (mphy->chandef.chan->band == NL80211_BAND_5GHZ)
++			sband = &mphy->sband_5g.sband;
++		else if (mphy->chandef.chan->band == NL80211_BAND_6GHZ)
++			sband = &mphy->sband_6g.sband;
++		else
++			sband = &mphy->sband_2g.sband;
++
++		rate.mcs = mt76_get_rate(mphy->dev, sband, rate.mcs, cck);
++		rate.legacy = sband->bitrates[rate.mcs].bitrate;
+ 		break;
++	}
+ 	case MT_PHY_TYPE_HT:
+ 	case MT_PHY_TYPE_HT_GF:
++		rate.flags = RATE_INFO_FLAGS_MCS;
++		if (mcu_rate->tx_gi)
++			rate.flags |= RATE_INFO_FLAGS_SHORT_GI;
++		break;
+ 	case MT_PHY_TYPE_VHT:
++		rate.flags = RATE_INFO_FLAGS_VHT_MCS;
+ 		if (mcu_rate->tx_gi)
+-			rate->flags |= RATE_INFO_FLAGS_SHORT_GI;
+-		else
+-			rate->flags &= ~RATE_INFO_FLAGS_SHORT_GI;
++			rate.flags |= RATE_INFO_FLAGS_SHORT_GI;
+ 		break;
+ 	case MT_PHY_TYPE_HE_SU:
+ 	case MT_PHY_TYPE_HE_EXT_SU:
+ 	case MT_PHY_TYPE_HE_TB:
+ 	case MT_PHY_TYPE_HE_MU:
+-		if (mcu_rate->tx_gi > NL80211_RATE_INFO_HE_GI_3_2)
+-			return -EINVAL;
+-		rate->he_gi = mcu_rate->tx_gi;
++		rate.he_gi = mcu_rate->tx_gi;
++		rate.he_dcm = 0;
++		rate.flags = RATE_INFO_FLAGS_HE_MCS;
+ 		break;
+ 	case MT_PHY_TYPE_EHT_SU:
+ 	case MT_PHY_TYPE_EHT_TRIG:
+ 	case MT_PHY_TYPE_EHT_MU:
+-		if (mcu_rate->tx_gi > NL80211_RATE_INFO_EHT_GI_3_2)
+-			return -EINVAL;
+-		rate->eht_gi = mcu_rate->tx_gi;
++		rate.eht_gi = mcu_rate->tx_gi;
++		rate.flags = RATE_INFO_FLAGS_EHT_MCS;
+ 		break;
+ 	default:
+-		return -EINVAL;
++		return;
++	}
++
++	switch (mcu_rate->tx_bw) {
++	case IEEE80211_STA_RX_BW_320:
++		rate.bw = RATE_INFO_BW_320;
++		break;
++	case IEEE80211_STA_RX_BW_160:
++		rate.bw = RATE_INFO_BW_160;
++		break;
++	case IEEE80211_STA_RX_BW_80:
++		rate.bw = RATE_INFO_BW_80;
++		break;
++	case IEEE80211_STA_RX_BW_40:
++		rate.bw = RATE_INFO_BW_40;
++		break;
++	default:
++		rate.bw = RATE_INFO_BW_20;
++		break;
+ 	}
+ 
+-	return 0;
++	wcid->rate = rate;
+ }
+ 
+ static void
+@@ -659,8 +699,8 @@ mt7996_mcu_rx_all_sta_info_event(struct
+ 			if (!wcid)
+ 				break;
+ 
+-			if (mt7996_mcu_update_tx_gi(&wcid->rate, &res->rate[i]))
+-				dev_err(dev->mt76.dev, "Failed to update TX GI\n");
++			mt7996_mcu_update_tx_rate(&dev->mt76, wcid,
++						  &res->rate[i]);
+ 			break;
+ 		case UNI_ALL_STA_TXRX_ADM_STAT:
+ 			wlan_idx = le16_to_cpu(res->adm_stat[i].wlan_idx);
