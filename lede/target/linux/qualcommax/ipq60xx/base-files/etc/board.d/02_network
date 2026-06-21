@@ -11,11 +11,9 @@ ipq60xx_setup_interfaces()
 	local board="$1"
 
 	case "$board" in
-	anysafe,e1|\
 	cmiot,ax18|\
 	jdcloud,re-cs-07|\
 	jdcloud,re-ss-01|\
-	philips,ly1800|\
 	qihoo,360v6|\
 	redmi,ax5-*|\
 	xiaomi,rm1800)

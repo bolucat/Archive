@@ -10,7 +10,6 @@ board=$(board_name)
 case "$FIRMWARE" in
 "ath11k/IPQ6018/hw1.0/cal-ahb-c000000.wifi.bin")
 	case "$board" in
-	anysafe,e1|\
 	dptech,ap3000-2c|\
 	glinet,gl-ax1800|\
 	glinet,gl-axt1800|\
@@ -21,7 +20,6 @@ case "$FIRMWARE" in
 		;;
 	jdcloud,re-cs-02|\
 	jdcloud,re-ss-01|\
-	philips,ly1800|\
 	redmi,ax5-jdcloud)
 		caldata_extract_mmc "0:ART" 0x1000 0x10000
 		;;
@@ -37,9 +35,6 @@ case "$FIRMWARE" in
 	;;
 "ath11k/QCN9074/hw1.0/cal-pci-0000:01:00.0.bin")
 	case "$board" in
-	anysafe,e1)
-		caldata_extract "0:ART" 0x26800 0x20000
-		;;
 	jdcloud,re-cs-02)
 		caldata_extract_mmc "0:ART" 0x26800 0x20000
 		;;

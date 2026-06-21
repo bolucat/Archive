@@ -20,9 +20,6 @@ ubootenv_add_sys_mtd() {
 }
 
 case "$board" in
-anysafe,e1)
-	ubootenv_add_mtd "0:APPSBLENV" "0x0" "0x10000" "0x10000"
-	;;
 compex,wpq873|\
 edgecore,eap102|\
 zyxel,nbg7815)
@@ -63,7 +60,6 @@ qnap,301w)
 	[ -n "$idx" ] && \
 		ubootenv_add_uci_config "/dev/mtd$idx" "0x0" "0x20000" "0x20000" "1"
 	;;
-philips,ly1800|\
 redmi,ax5-jdcloud)
 	mmcpart="$(find_mmc_part 0:APPSBLENV)"
 	[ -n "$mmcpart" ] && \

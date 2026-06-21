@@ -10,14 +10,12 @@ npu_usage="$(grep '%' "$NSS_PATH"/cpu_load_ubi | awk -F ' ' '{print $2}')"
 
 if [ -e "$ATH11K_NSS_OFFLOAD" ]; then
 	if [ "$(cat "$ATH11K_NSS_OFFLOAD" 2>/dev/null)" = "1" ]; then
-		wifi_nss=", WiFi NSS: ON"
-	else
-		wifi_nss=", WiFi NSS: OFF"
+		wifi="with WiFi"
 	fi
 fi
 
 if [ -d "$NSS_PATH" ]; then
-	echo -n "CPU: ${cpu_usage}, NPU: ${npu_usage}${wifi_nss}"
+	echo -n "CPU: ${cpu_usage}, NPU${wifi}: ${npu_usage}"
 else
-	echo -n "CPU: ${cpu_usage}${wifi_nss}"
+	echo -n "CPU: ${cpu_usage}"
 fi

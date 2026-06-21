@@ -1,0 +1,16 @@
+.idea/
+.vs/
+.vscode/
+**/.DS_Store
+
+*/**/obj
+*/**/bin
+
+DownKyi.Core/Binary/*
+
+script/downloads
+script/pupnet/output
+script/macos/*.dmg
+script/macos/*.app
+
+*.sln.DotSettings.user
