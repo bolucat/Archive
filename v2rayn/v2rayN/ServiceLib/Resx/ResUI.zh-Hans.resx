@@ -1030,7 +1030,7 @@
     <value>添加 [Hysteria2]</value>
   </data>
   <data name="TbSettingsHysteriaBandwidth" xml:space="preserve">
-    <value>Hysteria 最大带宽 (Up/Dw)</value>
+    <value>Hysteria 最大带宽 (上传/下载)</value>
   </data>
   <data name="TbSettingsUseSystemHosts" xml:space="preserve">
     <value>使用系统 hosts</value>
@@ -1100,6 +1100,39 @@
   </data>
   <data name="TbSettingsEnableFragment" xml:space="preserve">
     <value>启用分片 (Fragment)</value>
+  </data>
+  <data name="TbSettingsFragmentPackets" xml:space="preserve">
+    <value>分片包类型</value>
+  </data>
+  <data name="TbSettingsFragmentPacketsTip" xml:space="preserve">
+    <value>要分片的包类型: tlshello (TLS ClientHello) 或 1-1 到 1-5 (前 N 个 TCP 包)</value>
+  </data>
+  <data name="TbSettingsFragmentLength" xml:space="preserve">
+    <value>分片长度</value>
+  </data>
+  <data name="TbSettingsFragmentLengthTip" xml:space="preserve">
+    <value>分片大小范围(字节), 如 50-100. 第一个值必须 &lt;= 第二个值. 留空使用默认值.</value>
+  </data>
+  <data name="TbSettingsFragmentInterval" xml:space="preserve">
+    <value>分片间隔</value>
+  </data>
+  <data name="TbSettingsFragmentIntervalTip" xml:space="preserve">
+    <value>分片间延迟(毫秒), 如 10-20. 范围 1-100. 第一个值必须 &lt;= 第二个值. 留空使用默认值.</value>
+  </data>
+  <data name="TbSettingsFragmentMaxSplit" xml:space="preserve">
+    <value>最大分片数</value>
+  </data>
+  <data name="TbSettingsFragmentMaxSplitTip" xml:space="preserve">
+    <value>每个包最大分片数 (0-10000, 0=无限制). 仅 Xray. 留空使用默认值.</value>
+  </data>
+  <data name="TbSettingsFragmentFallbackDelay" xml:space="preserve">
+    <value>回退延迟</value>
+  </data>
+  <data name="TbSettingsFragmentFallbackDelayTip" xml:space="preserve">
+    <value>ACK 检测不可用时的回退延迟 (如 500ms). 仅 sing-box. 留空使用默认值.</value>
+  </data>
+  <data name="FillFragmentParameterError" xml:space="preserve">
+    <value>无效的范围格式。请使用 'from-to' (如 50-100)。</value>
   </data>
   <data name="TbSettingsEnableCacheFile4Sbox" xml:space="preserve">
     <value>启用 sing-box (规则集文件) 的缓存文件</value>
@@ -1775,5 +1808,17 @@
   </data>
   <data name="MsgInsecureConfiguration" xml:space="preserve">
     <value>检测到不安全配置：AllowInsecure 已启用，但未提供证书。这可能会导致中间人攻击。</value>
+  </data>
+  <data name="TbHy2RealmUrl" xml:space="preserve">
+    <value>Realm URL</value>
+  </data>
+  <data name="InvalidHy2RealmUrl" xml:space="preserve">
+    <value>Realm URL 不正确。</value>
+  </data>
+  <data name="TbHy2RealmUrlTip" xml:space="preserve">
+    <value>格式：realm://&lt;token&gt;@&lt;rendezvous-host&gt;[:port]/&lt;realm-name&gt;?stun=&lt;stun-host&gt;[:port]</value>
+  </data>
+  <data name="TbGeckoPacketSize" xml:space="preserve">
+    <value>Gecko 包大小 (最小/最大)</value>
   </data>
 </root>

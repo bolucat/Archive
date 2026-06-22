@@ -10,6 +10,7 @@ platform_check_image() {
 
 platform_do_upgrade() {
 	case "$(board_name)" in
+	anysafe,e1|\
 	cmiot,ax18|\
 	glinet,gl-ax1800|\
 	glinet,gl-axt1800|\
@@ -22,6 +23,7 @@ platform_do_upgrade() {
 	jdcloud,re-ss-01|\
 	link,nn6000-v1|\
 	link,nn6000-v2|\
+	philips,ly1800|\
 	redmi,ax5-jdcloud)
 		kernelname="0:HLOS"
 		rootfsname="rootfs"

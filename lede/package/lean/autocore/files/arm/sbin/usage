@@ -1,21 +1,14 @@
 #!/bin/sh
 
 NSS_PATH="/sys/kernel/debug/qca-nss-drv/stats"
-ATH11K_NSS_OFFLOAD="/sys/module/ath11k/parameters/nss_offload"
 
 cpu_usage="$(busybox top -n1 | awk '/^CPU/ {printf("%d%", 100 - $8)}')"
 
 [ ! -d "$NSS_PATH" ] || \
 npu_usage="$(grep '%' "$NSS_PATH"/cpu_load_ubi | awk -F ' ' '{print $2}')"
 
-if [ -e "$ATH11K_NSS_OFFLOAD" ]; then
-	if [ "$(cat "$ATH11K_NSS_OFFLOAD" 2>/dev/null)" = "1" ]; then
-		wifi="with WiFi"
-	fi
-fi
-
 if [ -d "$NSS_PATH" ]; then
-	echo -n "CPU: ${cpu_usage}, NPU${wifi}: ${npu_usage}"
+	echo -n "CPU: ${cpu_usage}, NPU: ${npu_usage}"
 else
 	echo -n "CPU: ${cpu_usage}"
 fi
