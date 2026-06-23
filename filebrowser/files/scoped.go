@@ -25,6 +25,11 @@ var (
 	_ afero.Lstater = (*ScopedFs)(nil)
 )
 
+// maxSymlinkHops bounds how many dangling symlinks within() will follow before
+// giving up, so a pathological chain cannot loop forever. It mirrors the kernel
+// MAXSYMLINKS limit; the operation is rejected once the bound is exceeded.
+const maxSymlinkHops = 255
+
 func NewScopedFs(source afero.Fs, path string) *ScopedFs {
 	if s, ok := source.(*ScopedFs); ok {
 		source = s.base
@@ -32,8 +37,31 @@ func NewScopedFs(source afero.Fs, path string) *ScopedFs {
 	return &ScopedFs{base: afero.NewBasePathFs(source, path).(*afero.BasePathFs)}
 }
 
-// Base returns the underlying *afero.BasePathFs.
-func (s *ScopedFs) Base() *afero.BasePathFs { return s.base }
+// NewFs builds a user filesystem rooted at path. When followExternal is true it
+// returns a bare BasePathFs, so symlinks whose target resolves outside the scope
+// are followed; otherwise it returns a ScopedFs that refuses to follow them.
+func NewFs(source afero.Fs, path string, followExternal bool) afero.Fs {
+	if followExternal {
+		return afero.NewBasePathFs(source, path)
+	}
+	return NewScopedFs(source, path)
+}
+
+// BasePath returns the underlying *afero.BasePathFs of a user filesystem built
+// by NewFs, whether it is a *ScopedFs or a bare *afero.BasePathFs, or nil if it
+// is neither.
+func BasePath(fs afero.Fs) *afero.BasePathFs {
+	switch f := fs.(type) {
+	case *ScopedFs:
+		return f.BasePathFs()
+	case *afero.BasePathFs:
+		return f
+	}
+	return nil
+}
+
+// BasePathFs returns the underlying *afero.BasePathFs.
+func (s *ScopedFs) BasePathFs() *afero.BasePathFs { return s.base }
 
 // RealPath resolves a scoped path to the real on-disk path by delegating to
 // the underlying BasePathFs. This is needed by callers that need the actual
@@ -61,13 +89,10 @@ func (s *ScopedFs) guard(name string) error {
 //
 // Paths that do not exist yet (e.g. a brand-new file being created) are
 // validated against their nearest existing ancestor, so legitimate new files
-// are always allowed.
-//
-// Note: a dangling symlink whose target does not yet exist resolves to its
-// containing directory and is therefore allowed; writing through such a link
-// could still create a file outside the scope. This is treated as best-effort
-// and relies on rejecting existing escaping symlinks, which covers the
-// disclosure and overwrite vectors.
+// are always allowed. A dangling symlink — a link whose target does not exist
+// yet — is the exception: it is followed to where it points and validated
+// there, so a write cannot dereference the link to create a file outside the
+// scope.
 func (s *ScopedFs) within(p string) (bool, error) {
 	root, err := filepath.EvalSymlinks(afero.FullBaseFsPath(s.base, "/"))
 	if err != nil {
@@ -76,12 +101,43 @@ func (s *ScopedFs) within(p string) (bool, error) {
 
 	target := afero.FullBaseFsPath(s.base, p)
 	resolved, err := filepath.EvalSymlinks(target)
-	for errors.Is(err, fs.ErrNotExist) {
-		parent := filepath.Dir(target)
-		if parent == target {
-			break
+	// When target does not resolve, work out where the operation would actually
+	// land. A non-existent regular path resolves to the file that would be
+	// created inside its containing directory, so walk up to the nearest
+	// existing ancestor and validate that. But when target itself is a dangling
+	// symlink, follow it one level instead: validating its lexical parent would
+	// wrongly accept a link pointing outside the scope, letting a write follow
+	// the link and create the file out of bounds.
+	for hops := 0; errors.Is(err, fs.ErrNotExist); {
+		if fi, lerr := os.Lstat(target); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+			hops++
+			if hops > maxSymlinkHops {
+				return false, os.ErrPermission
+			}
+			dest, rerr := os.Readlink(target)
+			if rerr != nil {
+				return false, rerr
+			}
+			if !filepath.IsAbs(dest) {
+				// Resolve the link relative to the directory that really contains
+				// it, not its lexical parent: a symlinked ancestor could otherwise
+				// shift the computed target back into scope while the real write
+				// lands outside it. The parent is guaranteed to resolve here
+				// because os.Lstat above already traversed it.
+				base, berr := filepath.EvalSymlinks(filepath.Dir(target))
+				if berr != nil {
+					return false, berr
+				}
+				dest = filepath.Join(base, dest)
+			}
+			target = filepath.Clean(dest)
+		} else {
+			parent := filepath.Dir(target)
+			if parent == target {
+				break
+			}
+			target = parent
 		}
-		target = parent
 		resolved, err = filepath.EvalSymlinks(target)
 	}
 	if err != nil {
@@ -136,10 +192,16 @@ func (s *ScopedFs) OpenFile(name string, flag int, perm os.FileMode) (afero.File
 }
 
 func (s *ScopedFs) Remove(name string) error {
+	if err := s.guard(name); err != nil {
+		return err
+	}
 	return s.base.Remove(name)
 }
 
 func (s *ScopedFs) RemoveAll(path string) error {
+	if err := s.guard(path); err != nil {
+		return err
+	}
 	return s.base.RemoveAll(path)
 }
 
