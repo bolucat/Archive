@@ -60,15 +60,15 @@
     "husky": "9.1.7"
   },
   "devDependencies": {
-    "@commitlint/cli": "21.0.2",
-    "@commitlint/config-conventional": "21.0.2",
+    "@commitlint/cli": "21.1.0",
+    "@commitlint/config-conventional": "21.1.0",
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.11.3",
     "@types/node": "24.13.2",
-    "knip": "6.17.1",
+    "knip": "6.20.0",
     "lint-staged": "17.0.8",
     "npm-run-all2": "9.0.2",
-    "oxlint": "1.70.0",
+    "oxlint": "1.71.0",
     "postcss": "8.5.15",
     "postcss-html": "1.8.1",
     "postcss-scss": "4.0.9",
@@ -87,6 +87,6 @@
   },
   "packageManager": "pnpm@11.8.0",
   "engines": {
-    "node": "24.17.0"
+    "node": "24.18.0"
   }
 }
