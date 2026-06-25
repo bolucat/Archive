@@ -104,10 +104,7 @@ func (c *TLSObfsConn) Read(b []byte) (int, error) {
 		c.leftBytes = int(binary.BigEndian.Uint16(c.buf[:lenSize]))
 	}
 
-	readLen := len(b)
-	if readLen > c.leftBytes {
-		readLen = c.leftBytes
-	}
+	readLen := min(len(b), c.leftBytes)
 
 	m, err := c.reader.Read(b[:readLen])
 	if err != nil {

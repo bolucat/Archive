@@ -57,12 +57,10 @@ func Relay(left, right net.Conn) error {
 	var wg sync.WaitGroup
 	var wait = 5 * time.Second
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		_, err1 = Copy(right, left)
 		right.SetReadDeadline(time.Now().Add(wait)) // unblock read on right
-	}()
+	})
 
 	_, err = Copy(left, right)
 	left.SetReadDeadline(time.Now().Add(wait)) // unblock read on left

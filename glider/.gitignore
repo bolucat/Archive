@@ -22,6 +22,7 @@
 
 # dev test only
 /dev/
+.gocache/
 dev*.go
 
 *_test.go

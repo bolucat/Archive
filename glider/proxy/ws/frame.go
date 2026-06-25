@@ -151,10 +151,7 @@ func (r *frameReader) Read(b []byte) (int, error) {
 		}
 	}
 
-	readLen := int64(len(b))
-	if readLen > r.left {
-		readLen = r.left
-	}
+	readLen := min(int64(len(b)), r.left)
 
 	m, err := io.ReadFull(r.Reader, b[:readLen])
 	if err != nil {

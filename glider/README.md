@@ -6,7 +6,7 @@
 [![Actions Status](https://img.shields.io/github/actions/workflow/status/nadoo/glider/build.yml?branch=dev&style=flat-square)](https://github.com/nadoo/glider/actions)
 [![DockerHub](https://img.shields.io/docker/image-size/nadoo/glider?color=blue&label=docker&style=flat-square)](https://hub.docker.com/r/nadoo/glider)
 
-glider is a forward proxy with multiple protocols support, and also a dns/dhcp server with ipset management features(like dnsmasq).
+glider is a forward proxy with multiple protocols support, and also a dns/dhcp server with ipset management features.
 
 we can set up local listeners as proxy servers, and forward requests to internet via forwarders.
 
@@ -52,11 +52,12 @@ we can set up local listeners as proxy servers, and forward requests to internet
 |HTTP           |√| |√| |client & server
 |SOCKS5         |√|√|√|√|client & server
 |SS             |√|√|√|√|client & server
-|Trojan         |√|√|√|√|client & server
-|Trojanc        |√|√|√|√|trojan cleartext(without tls)
-|VLESS          |√|√|√|√|client & server
+|Trojan         |√| |√|√|client & server
+|Trojanc        |√| |√|√|trojan cleartext(without tls)
+|AnyTLS         |√| |√|√|client & server
+|AnyTLSc        |√| |√|√|anytls cleartext(without tls)
+|VLESS          |√| |√|√|client & server
 |VMess          | | |√|√|client only
-|SSR            | | |√| |client only
 |SSH            | | |√| |client only
 |SOCKS4         | | |√| |client only
 |SOCKS4A        | | |√| |client only
@@ -118,7 +119,7 @@ OPTION:
   -checkdisabledonly
         check disabled fowarders only
   -checkinterval int
-        fowarder check interval(seconds) (default 30)
+        fowarder check interval(seconds) (default 30)ß
   -checklatencysamples int
         use the average latency of the latest N checks (default 10)
   -checktimeout int
@@ -197,8 +198,8 @@ URL:
          -forward socks5://serverA:1080,socks5://serverB:1080           (proxy chain)
 
 SCHEME:
-   listen : http kcp mixed pxyproto redir redir6 smux sni socks5 ss tcp tls tproxy trojan trojanc udp unix vless vsock ws wss
-   forward: direct http kcp reject simple-obfs smux socks4 socks4a socks5 ss ssh ssr tcp tls trojan trojanc udp unix vless vmess vsock ws wss
+   listen : anytls anytlsc http kcp mixed pxyproto redir redir6 smux sni socks5 ss tcp tls tproxy trojan trojanc udp unix vless vsock ws wss
+   forward: anytls anytlsc direct http kcp reject simple-obfs smux socks4 socks4a socks5 ss ssh tcp tls trojan trojanc udp unix vless vmess vsock ws wss
 
    Note: use 'glider -scheme all' or 'glider -scheme SCHEME' to see help info for the scheme.
 
@@ -303,10 +304,6 @@ SSH scheme:
     timeout: timeout of ssh handshake and channel operation, default: 5
 
 --
-SSR scheme:
-  ssr://method:pass@host:port?protocol=xxx&protocol_param=yyy&obfs=zzz&obfs_param=xyz
-
---
 TLS client scheme:
   tls://host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH][&alpn=proto1][&alpn=proto2]
   
@@ -333,6 +330,15 @@ Trojan client scheme:
 Trojan server scheme:
   trojan://pass@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1]
   trojanc://pass@host:port[?fallback=127.0.0.1]     (cleartext, without TLS)
+
+--
+AnyTLS client scheme:
+  anytls://password@host:port[?serverName=SERVERNAME][&skipVerify=true][&cert=PATH][&synackTimeout=10s]
+  anytlsc://password@host:port     (cleartext, without TLS)
+
+AnyTLS server scheme:
+  anytls://password@host:port?cert=PATH&key=PATH[&fallback=127.0.0.1:80]
+  anytlsc://password@host:port[?fallback=127.0.0.1:80]     (cleartext, without TLS)
 
 --
 Unix domain socket scheme:

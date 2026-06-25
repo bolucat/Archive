@@ -39,10 +39,7 @@ func (w *aeadWriter) Write(b []byte) (n int, err error) {
 
 	nonce := w.nonce[:w.NonceSize()]
 	for left := len(b); left != 0; {
-		writeLen = left + w.Overhead()
-		if writeLen > chunkSize {
-			writeLen = chunkSize
-		}
+		writeLen = min(left+w.Overhead(), chunkSize)
 		dataLen = writeLen - w.Overhead()
 
 		w.chunkSizeEncoder.Encode(uint16(writeLen), lenBuf)

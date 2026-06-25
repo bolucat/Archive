@@ -443,7 +443,7 @@ func (m *Message) UnmarshalRR(start int, rr *RR) (n int, err error) {
 // MarshalDomainTo marshals domain string struct to []byte and write to w.
 func MarshalDomainTo(w io.Writer, domain string) (n int, err error) {
 	nn := 0
-	for _, seg := range strings.Split(domain, ".") {
+	for seg := range strings.SplitSeq(domain, ".") {
 		nn, err = w.Write([]byte{byte(len(seg))})
 		if err != nil {
 			return

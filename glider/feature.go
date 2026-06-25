@@ -5,6 +5,7 @@ import (
 	// _ "github.com/nadoo/glider/service/xxx"
 
 	// comment out the protocols you don't need to make the compiled binary smaller.
+	_ "github.com/nadoo/glider/proxy/anytls"
 	_ "github.com/nadoo/glider/proxy/http"
 	_ "github.com/nadoo/glider/proxy/kcp"
 	_ "github.com/nadoo/glider/proxy/mixed"
@@ -16,7 +17,6 @@ import (
 	_ "github.com/nadoo/glider/proxy/socks5"
 	_ "github.com/nadoo/glider/proxy/ss"
 	_ "github.com/nadoo/glider/proxy/ssh"
-	_ "github.com/nadoo/glider/proxy/ssr"
 	_ "github.com/nadoo/glider/proxy/tcp"
 	_ "github.com/nadoo/glider/proxy/tls"
 	_ "github.com/nadoo/glider/proxy/trojan"

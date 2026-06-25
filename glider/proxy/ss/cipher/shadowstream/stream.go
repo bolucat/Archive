@@ -24,10 +24,7 @@ func (w *writer) Write(p []byte) (n int, err error) {
 	defer pool.PutBuffer(buf)
 
 	for nw := 0; n < len(p) && err == nil; n += nw {
-		end := n + len(buf)
-		if end > len(p) {
-			end = len(p)
-		}
+		end := min(n+len(buf), len(p))
 		w.XORKeyStream(buf, p[n:end])
 		nw, err = w.Writer.Write(buf[:end-n])
 	}

@@ -23,10 +23,7 @@ func ChunkedWriter(w io.Writer, chunkSizeEncoder ChunkSizeEncoder) io.Writer {
 func (w *chunkedWriter) Write(p []byte) (n int, err error) {
 	var dataLen int
 	for left := len(p); left != 0; {
-		dataLen = left
-		if dataLen > chunkSize {
-			dataLen = chunkSize
-		}
+		dataLen = min(left, chunkSize)
 		w.chunkSizeEncoder.Encode(uint16(dataLen), w.buf)
 		if _, err = (&net.Buffers{w.buf[:], p[n : n+dataLen]}).WriteTo(w.Writer); err != nil {
 			break
@@ -69,10 +66,7 @@ func (r *chunkedReader) Read(p []byte) (int, error) {
 		}
 	}
 
-	readLen := len(p)
-	if readLen > r.left {
-		readLen = r.left
-	}
+	readLen := min(len(p), r.left)
 
 	n, err := r.Reader.Read(p[:readLen])
 	if err != nil {
