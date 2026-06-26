@@ -160,11 +160,7 @@ public static class ConfigHandler
         config.ClashUIItem.ConnectionsColumnItem ??= [];
         config.SystemProxyItem ??= new();
         config.WebDavItem ??= new();
-        config.CheckUpdateItem ??= new();
-        config.NetBridgeItem ??= new()
-        {
-            RuleProcess = string.Empty
-        };
+        config.CheckUpdateItem ??= new();  
         config.Fragment4RayItem ??= new()
         {
             Packets = "tlshello",
@@ -1494,8 +1490,7 @@ public static class ConfigHandler
     public static ProfileItem? GetPreSocksItem(Config config, ProfileItem node, ECoreType coreType)
     {
         ProfileItem? itemSocks = null;
-        var enableLegacyProtect = config.TunModeItem.EnableLegacyProtect
-                                  || Utils.IsNonWindows();
+        var enableLegacyProtect = config.TunModeItem.EnableLegacyProtect;
         if (node.ConfigType != EConfigType.Custom
             && coreType != ECoreType.sing_box
             && config.TunModeItem.EnableTun

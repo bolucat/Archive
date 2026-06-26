@@ -50,7 +50,7 @@ function NavbarButton<
 
   return (
     <AnimatedTabsItem
-      className={cn('[&_svg]:size-5')}
+      className={cn('md:min-w-max md:flex-none [&_svg]:size-5')}
       data-active={String(isActive)}
       data-slot="animated-tabs-item"
       isActive={isActive}
@@ -223,7 +223,7 @@ export const MobileNavbar = () => {
         <MoblieNavbarContainer>
           <DropdownMenuTrigger asChild>
             <Button
-              className="min-w-0 flex-1 bg-transparent! px-4"
+              className="min-w-0 flex-1 bg-transparent! px-4 text-current"
               variant="flat"
             >
               <MenuRounded className="size-5" />
