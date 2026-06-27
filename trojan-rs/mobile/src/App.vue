@@ -3,12 +3,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import {
+  GMS_PACKAGES,
   addSelectedApp,
   filterAvailableApps,
-  getInstalledGmsPackages,
+  getDisplayedSelectedApps,
   removeSelectedApp,
   setGmsAppsSelected,
   toAppItems,
+  toSelectedAppItems,
 } from "./appSelection.js";
 
 const VPN_PERMISSION = "android.permission.BIND_VPN_SERVICE";
@@ -31,6 +33,7 @@ export default {
       show: false,
       config: defaultConfig(),
       apps: [],
+      runningAllowedApps: [],
       appToAdd: null,
       appSearch: "",
       configReady: false,
@@ -59,16 +62,10 @@ export default {
     availableApps() {
       return filterAvailableApps(this.apps, this.config.selected_apps);
     },
-    installedGmsPackages() {
-      return getInstalledGmsPackages(this.apps);
-    },
     gmsSelected: {
       get() {
-        return (
-          this.installedGmsPackages.length > 0 &&
-          this.installedGmsPackages.every((packageName) =>
-            this.config.selected_apps.includes(packageName),
-          )
+        return GMS_PACKAGES.every((packageName) =>
+          this.config.selected_apps.includes(packageName),
         );
       },
       set(selected) {
@@ -80,22 +77,23 @@ export default {
       },
     },
     gmsIndeterminate() {
-      const selectedCount = this.installedGmsPackages.filter((packageName) =>
+      const selectedCount = GMS_PACKAGES.filter((packageName) =>
         this.config.selected_apps.includes(packageName),
       ).length;
-      return (
-        selectedCount > 0 && selectedCount < this.installedGmsPackages.length
-      );
+      return selectedCount > 0 && selectedCount < GMS_PACKAGES.length;
     },
     selectedAppItems() {
-      const appMap = new Map(this.apps.map((app) => [app.value, app]));
-      return this.config.selected_apps.map((packageName) => {
-        const app = appMap.get(packageName);
-        return {
-          label: app?.label ?? packageName,
-          packageName,
-        };
-      });
+      return toSelectedAppItems(this.displayedSelectedApps, this.apps);
+    },
+    displayedSelectedApps() {
+      return getDisplayedSelectedApps(
+        this.config.selected_apps,
+        this.runningAllowedApps,
+        this.running,
+      );
+    },
+    selectedAppsTitle() {
+      return this.running ? "Active VPN app" : "Selected app";
     },
   },
   methods: {
@@ -115,6 +113,7 @@ export default {
     async start() {
       await this.saveConfig();
       if (!this.running) {
+        this.runningAllowedApps = [];
         await invoke("start_vpn", { options: this.config });
         this.label = "启动中";
       }
@@ -140,6 +139,7 @@ export default {
         } else if (event.payload === "VpnStop") {
           this.process_exit = true;
           this.running = false;
+          this.runningAllowedApps = [];
           this.label = "开始";
         } else if (event.payload === "NetworkAvailable") {
           if (this.process_exit && this.running) {
@@ -163,6 +163,13 @@ export default {
       });
       await listen("installed_apps_changed", async () => {
         await this.refreshInstalledApps();
+      });
+      await listen("vpn_allowed_apps_changed", async (event) => {
+        this.runningAllowedApps = getDisplayedSelectedApps(
+          [],
+          Array.isArray(event.payload) ? event.payload : [],
+          true,
+        );
       });
     },
     do_action() {
@@ -313,14 +320,14 @@ export default {
           ></v-text-field>
           <v-checkbox
             v-model="gmsSelected"
-            :disabled="running || installedGmsPackages.length === 0"
+            :disabled="running"
             :indeterminate="gmsIndeterminate"
             density="compact"
             hide-details
             label="GMS三件套"
           ></v-checkbox>
           <div class="selected-apps">
-            <div class="selected-apps__title">Selected app</div>
+            <div class="selected-apps__title">{{ selectedAppsTitle }}</div>
             <v-list
               v-if="selectedAppItems.length > 0"
               class="selected-apps__list"

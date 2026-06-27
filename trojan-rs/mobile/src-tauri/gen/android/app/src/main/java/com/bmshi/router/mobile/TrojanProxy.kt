@@ -7,6 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -20,9 +21,62 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 
+internal data class AllowedApplicationsResult(
+  val added: List<String>,
+  val missing: List<String>
+)
+
+internal fun addAllowedApplications(
+  allowedApps: Iterable<String>,
+  addAllowedApplication: (String) -> Unit,
+  onMissingApplication: (String, PackageManager.NameNotFoundException) -> Unit = { _, _ -> }
+): AllowedApplicationsResult {
+  val added = mutableListOf<String>()
+  val missing = mutableListOf<String>()
+  val seen = LinkedHashSet<String>()
+
+  for (rawApp in allowedApps) {
+    val app = rawApp.trim()
+    if (app.isEmpty() || !seen.add(app)) {
+      continue
+    }
+
+    try {
+      addAllowedApplication(app)
+      added += app
+    } catch (e: PackageManager.NameNotFoundException) {
+      missing += app
+      onMissingApplication(app, e)
+    }
+  }
+
+  return AllowedApplicationsResult(added, missing)
+}
+
+internal fun allowedApplicationsJson(allowedApps: Iterable<String>): String {
+  return JSONArray(allowedApps.toList()).toString()
+}
+
+internal fun <T> closeAndClear(
+  resource: T?,
+  close: (T) -> Unit,
+  onError: (Exception) -> Unit
+): T? {
+  if (resource == null) {
+    return null
+  }
+
+  try {
+    close(resource)
+  } catch (e: Exception) {
+    onError(e)
+  }
+  return null
+}
+
 
 class TrojanProxy : VpnService() {
-  private external fun onStart(fd: Int, dns: String)
+  private external fun onStart(fd: Int, dns: String, allowedApps: String)
   private external fun onStop()
 
   private external fun onNetworkChanged(available: Boolean)
@@ -124,18 +178,30 @@ class TrojanProxy : VpnService() {
         builder.addRoute("0.0.0.0", 0)
           .addAddress("10.10.10.1", 30)
           .addDnsServer("10.10.11.1")
-        for (app in allowedApps) {
-          builder.addAllowedApplication(app)
+        val allowedApplicationResult = addAllowedApplications(
+          allowedApps,
+          addAllowedApplication = { app -> builder.addAllowedApplication(app) },
+          onMissingApplication = { app, e ->
+            Logger.warn("skip missing allowed application $app: ${e.message ?: "not found"}")
+          }
+        )
+        if (allowedApplicationResult.added.isEmpty()) {
+          Logger.error("no selected apps can be added to VPN allow list")
+          close()
+          return@Runnable
+        }
+        if (allowedApplicationResult.missing.isNotEmpty()) {
+          Logger.warn("missing allowed apps skipped: ${allowedApplicationResult.missing}")
         }
         builder.setSession("gfw")
           .setMtu(mtu)
           .setBlocking(false)
         val vpn = builder.establish()
         if (vpn != null) {
-          Logger.info("vpn established for apps=$allowedApps mtu=$mtu")
+          Logger.info("vpn established for apps=${allowedApplicationResult.added} mtu=$mtu")
           startNetworkMonitor()
           vpnFd = vpn
-          onStart(vpn.fd, "10.10.11.1")
+          onStart(vpn.fd, "10.10.11.1", allowedApplicationsJson(allowedApplicationResult.added))
         } else {
           Logger.error("establish vpn failed")
           close()
@@ -177,11 +243,11 @@ class TrojanProxy : VpnService() {
     stopNetworkMonitor()
     stopForeground(STOP_FOREGROUND_REMOVE)
     NotificationManagerCompat.from(this).deleteNotificationChannel("vpn")
-    try {
-      vpnFd.close()
-    } catch (e: Exception) {
-      Logger.info(e.toString())
-    }
+    vpnFd = closeAndClear(
+      vpnFd,
+      close = { it.close() },
+      onError = { Logger.info(it.toString()) }
+    )
     stopSelf()
   }
 
@@ -226,7 +292,7 @@ class TrojanProxy : VpnService() {
 
   companion object {
     private var instance: TrojanProxy? = null
-    private lateinit var vpnFd: ParcelFileDescriptor
+    private var vpnFd: ParcelFileDescriptor? = null
     const val STOP_ACTION = "com.bmshi.router.mobile.STOP_VPN"
     const val NOTIFICATION_ID = 428571
 
@@ -253,8 +319,9 @@ class TrojanProxy : VpnService() {
     @JvmStatic
     fun syncData() {
       try {
-        if (vpnFd.fileDescriptor.valid()) {
-          vpnFd.fileDescriptor.sync()
+        val fd = vpnFd?.fileDescriptor
+        if (fd?.valid() == true) {
+          fd.sync()
         }
       } catch (e: Exception) {
         Logger.warn(e.toString())
