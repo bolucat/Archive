@@ -13,7 +13,7 @@ require (
 	github.com/metacubex/age v0.0.0-20260603010618-28d156b4ea78
 	github.com/metacubex/amneziawg-go v0.0.0-20260612143004-19b4f1cdd5ec
 	github.com/metacubex/bart v0.26.0
-	github.com/metacubex/bbolt v0.0.0-20250725135710-010dbbbb7a5b
+	github.com/metacubex/bbolt v0.0.0-20260628143611-ef0ff34681c8
 	github.com/metacubex/blake3 v0.1.0
 	github.com/metacubex/chacha v0.1.5
 	github.com/metacubex/chi v0.1.0
