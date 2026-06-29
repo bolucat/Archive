@@ -90,11 +90,9 @@ jobs:
         run: |
           mkdir -p tmp/${{ matrix.target.sdk_dir }}/package/luci-app-openclash
           cp -rf ./luci-app-openclash/. tmp/${{ matrix.target.sdk_dir }}/package/luci-app-openclash/
-
-      - name: Copy OpenClash Source Codes
-        run: |
-          mkdir -p tmp/${{ matrix.target.sdk_dir }}/package/luci-app-openclash
-          cp -rf ./luci-app-openclash/. tmp/${{ matrix.target.sdk_dir }}/package/luci-app-openclash/
+          if [ "${{ matrix.target.name }}" = "apk" ]; then
+            find tmp/${{ matrix.target.sdk_dir }}/package/luci-app-openclash -type f -name "Makefile" -exec sed -i 's/DEPENDS:=+dnsmasq-full/DEPENDS:=+dnsmasq-full +luci-compat/g' {} \;
+          fi
 
       - name: Update Third-Party Resources
         run: |
@@ -141,6 +139,19 @@ jobs:
           curl -sSL "https://github.com/alecthw/mmdb_china_ip_list/releases/latest/download/Country-lite.mmdb" -o tmp/Country.mmdb
           mkdir -p $(dirname "$COUNTRY_MMDB_PATH")
           cp tmp/Country.mmdb "$COUNTRY_MMDB_PATH"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Minify CSS (lightningcss)
+        run: |
+          CSS_PATH="tmp/${{ matrix.target.sdk_dir }}/package/luci-app-openclash/root/www/luci-static/resources/openclash/css/oc.css"
+          SIZE_BEFORE=$(wc -c < "$CSS_PATH")
+          npx --yes --package lightningcss-cli lightningcss --minify --targets 'iOS >= 12, safari >= 12, android >= 4.4' "$CSS_PATH" -o "$CSS_PATH.tmp"
+          mv "$CSS_PATH.tmp" "$CSS_PATH"
+          SIZE_AFTER=$(wc -c < "$CSS_PATH")
+          echo "CSS minified: ${SIZE_BEFORE} -> ${SIZE_AFTER} bytes ($(( 100 - SIZE_AFTER * 100 / SIZE_BEFORE ))% reduction)"
 
       - name: Compile po2lmo
         run: |

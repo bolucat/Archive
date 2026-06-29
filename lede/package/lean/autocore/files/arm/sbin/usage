@@ -1,26 +1,14 @@
 #!/bin/sh
 
 NSS_PATH="/sys/kernel/debug/qca-nss-drv/stats"
-WIFILI_PATH="$NSS_PATH/wifili"
-ATH11K_NSS_PEER_STATS_GLOB="/sys/kernel/debug/ath11k/*/*/nss_peer_stats_config"
 
 cpu_usage="$(busybox top -n1 | awk '/^CPU/ {printf("%d%", 100 - $8)}')"
 
 [ ! -d "$NSS_PATH" ] || \
 npu_usage="$(grep '%' "$NSS_PATH"/cpu_load_ubi | awk -F ' ' '{print $2}')"
 
-wifi_nss_status=""
-
-if [ -e "$WIFILI_PATH" ]; then
-	if grep -q '1' $ATH11K_NSS_PEER_STATS_GLOB 2>/dev/null; then
-		wifi_nss_status=", WIFI NSS: ON"
-	else
-		wifi_nss_status=", WIFI NSS: OFF"
-	fi
-fi
-
 if [ -d "$NSS_PATH" ]; then
-	echo -n "CPU: ${cpu_usage}, NPU: ${npu_usage}${wifi_nss_status}"
+	echo -n "CPU: ${cpu_usage}, NPU: ${npu_usage}"
 else
 	echo -n "CPU: ${cpu_usage}"
 fi
