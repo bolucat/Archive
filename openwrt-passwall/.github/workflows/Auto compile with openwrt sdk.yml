@@ -115,88 +115,53 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - url_sdk: https://archive.openwrt.org/releases/21.02.7/targets/x86/64/openwrt-sdk-21.02.7-x86-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+          - container_tag: x86_64-21.02.7
             ver: "22.03-"
 
-          - url_sdk: https://downloads.openwrt.org/releases/24.10.5/targets/x86/64/openwrt-sdk-24.10.5-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+          - container_tag: x86_64-24.10.5
             ver: "23.05-24.10"
 
-          - url_sdk: https://downloads.openwrt.org/snapshots/targets/x86/64/openwrt-sdk-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+          - container_tag: x86-64-SNAPSHOT
             ver: "25.12+"
     steps:
-      - name: Install packages
+      - name: Checkout
+        uses: actions/checkout@main
+
+      - name: Generate .config for Language Packs
         run: |
-          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
-          echo "Install packages"
-          sudo -E apt-get -qq update
-          sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-            bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
-            g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
-            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
-            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano \
-            ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
-            python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
-            upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd
-          sudo -E apt-get -qq autoremove --purge
-          sudo -E apt-get -qq clean
-
-      - name: Initialization environment
-        run: |
-          wget ${{ matrix.url_sdk }}
-          file_name=$(echo ${{ matrix.url_sdk }} | awk -F/ '{print $NF}')
-          mkdir sdk
-          if [[ $file_name == *.tar.xz ]]; then
-            tar -xJf $file_name -C ./sdk --strip-components=1
-          elif [[ $file_name == *.tar.zst ]]; then
-            tar --zstd -x -f $file_name -C ./sdk --strip-components=1
-          else
-            echo "Unsupported file format: $file_name"
-            exit 1
-          fi
-          cd sdk
-
-          # Update feeds to github source
-          sed -i \
-              -e 's|git\.openwrt\.org/feed|github.com/openwrt|g' \
-              -e 's|git\.openwrt\.org/project|github.com/openwrt|g' \
-              -e 's|git\.openwrt\.org/openwrt|github.com/openwrt|g' \
-              "feeds.conf.default"
-
-          cat > feeds.tmp <<'EOF'
-          src-git passwall_packages https://github.com/${{ env.packages }}.git;main
-          src-git passwall https://github.com/${{ env.passwall }}.git;${{ github.ref_name }}
-          EOF
-          cat feeds.conf.default >> feeds.tmp
-          mv feeds.tmp feeds.conf.default
-
-          ./scripts/feeds update -a
-          ./scripts/feeds install -a
-
-      - name: Compile
-        id: compile
-        run: |
-          cd sdk
           echo "CONFIG_ALL_NONSHARED=n" > .config
           echo "CONFIG_ALL_KMODS=n" >> .config
           echo "CONFIG_ALL=n" >> .config
           echo "CONFIG_AUTOREMOVE=n" >> .config
           echo "CONFIG_LUCI_LANG_zh_Hans=y" >> .config
           echo "CONFIG_PACKAGE_luci-app-passwall=m" >> .config
-          make defconfig
-          echo "make package/luci-app-passwall/{clean,compile} -j$(nproc)"
-          make package/luci-app-passwall/{clean,compile} -j$(nproc) V=s
-          mkdir upload
-          mv bin/packages/*/passwall/luci-* upload/
-          cd upload
-          for i in $(ls); do mv $i ${{ matrix.ver }}_$i; done
-          echo "status=success" >> $GITHUB_OUTPUT
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
-      - name: Upload passwall ipks to release
+      - name: Compile With OpenWrt SDK
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: ${{ matrix.container_tag }}
+          PACKAGES: luci-app-passwall
+          # V: s
+
+      - name: Process and Rename Artifacts
+        id: compile
+        run: |
+          mkdir -p ${{ github.workspace }}/upload
+          
+          # 使用 find 安全提取生成的 ipk/apk 及语言包
+          find bin/packages/ -type f -name "luci-app-passwall*" -exec cp {} ${{ github.workspace }}/upload/ \;
+          find bin/packages/ -type f -name "luci-i18n-passwall*" -exec cp {} ${{ github.workspace }}/upload/ \;
+          
+          cd ${{ github.workspace }}/upload
+          
+          for i in $(ls); do mv $i ${{ matrix.ver }}_$i; done
+          
+          echo "status=success" >> $GITHUB_OUTPUT
+      - name: Upload to release
         uses: softprops/action-gh-release@v3
         if: steps.compile.outputs.status == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{needs.job_check.outputs.passwall_version}}
-          files: ${{ env.FIRMWARE }}/*
+          files: ${{ github.workspace }}/upload/*
