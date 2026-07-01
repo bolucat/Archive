@@ -276,6 +276,7 @@ hev_socks5_client_connect (HevSocks5Client *self, const char *addr, int port)
     timeout = hev_socks5_get_connect_timeout ();
     hev_socks5_set_timeout (HEV_SOCKS5 (self), timeout);
 
+    memset (&saddr, 0, sizeof (saddr));
     addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
     res = hev_socks5_name_into_sockaddr6 (addr, port, &saddr, &addr_family);
     if (res < 0) {

@@ -350,6 +350,7 @@ hev_socks5_udp_fwd_f (HevSocks5UDP *self, int fd, void *buf, unsigned int num,
                 return -1;
             }
 
+            memset (&addr[i], 0, sizeof (struct sockaddr_in6));
             family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
             ret = hev_socks5_addr_into_sockaddr6 (svec[i].addr, &addr[i],
                                                   &family);

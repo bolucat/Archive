@@ -16,6 +16,7 @@
 void run_as_daemon (const char *pid_file);
 int set_limit_nofile (int limit_nofile);
 int set_sock_mark (int fd, unsigned int mark);
+void set_sock_tcp_fastopen (int fd, int enable);
 
 int hev_socks5_addr_from_lwip (HevSocks5Addr *addr, const ip_addr_t *ip,
                                u16_t port);

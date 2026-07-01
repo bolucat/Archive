@@ -45,4 +45,7 @@ void hev_socks5_session_terminate (HevSocks5Session *self);
 void hev_socks5_session_set_task (HevSocks5Session *self, HevTask *task);
 HevListNode *hev_socks5_session_get_node (HevSocks5Session *self);
 
+int hev_socks5_session_bind (HevSocks5 *self, int fd,
+                             const struct sockaddr *dest);
+
 #endif /* __HEV_SOCKS5_SESSION_H__ */

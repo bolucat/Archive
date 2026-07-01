@@ -84,6 +84,7 @@ hev_socks5_client_udp_set_upstream_addr (HevSocks5Client *base,
     if (HEV_SOCKS5 (base)->type != HEV_SOCKS5_TYPE_UDP_IN_UDP)
         return 0;
 
+    memset (&saddr, 0, sizeof (saddr));
     addr_family = hev_socks5_get_addr_family (HEV_SOCKS5 (self));
     res = hev_socks5_addr_into_sockaddr6 (addr, &saddr, &addr_family);
     if (res < 0) {

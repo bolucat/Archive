@@ -33,6 +33,8 @@ socks5:
 # password: 'password'
   # Socket mark
 # mark: 0
+  # TCP fastopen
+# tcp-fastopen: false
 
 #mapdns:
   # Mapped DNS address

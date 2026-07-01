@@ -482,6 +482,7 @@ hev_socks5_server_handshake (HevSocks5Server *self)
 
     LOG_D ("%p socks5 server handshake", self);
 
+    memset (&addr, 0, sizeof (addr));
     timeout = hev_socks5_get_tcp_timeout ();
     hev_socks5_set_timeout (HEV_SOCKS5 (self), timeout);
 

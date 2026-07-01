@@ -224,29 +224,6 @@ hev_socks5_session_udp_new (struct udp_pcb *pcb, HevTaskMutex *mutex)
     return self;
 }
 
-static int
-hev_socks5_session_udp_bind (HevSocks5 *self, int fd,
-                             const struct sockaddr *dest)
-{
-    HevConfigServer *srv;
-    unsigned int mark;
-
-    LOG_D ("%p socks5 session udp bind", self);
-
-    srv = hev_config_get_socks5_server ();
-    mark = srv->mark;
-
-    if (mark) {
-        int res;
-
-        res = set_sock_mark (fd, mark);
-        if (res < 0)
-            return -1;
-    }
-
-    return 0;
-}
-
 static uint16_t
 hev_socks5_addr_get_port (const HevSocks5Addr *addr)
 {
@@ -432,7 +409,7 @@ hev_socks5_session_udp_class (void)
         okptr->iface = hev_socks5_session_udp_iface;
 
         skptr = HEV_SOCKS5_CLASS (kptr);
-        skptr->binder = hev_socks5_session_udp_bind;
+        skptr->binder = hev_socks5_session_bind;
 
         ckptr = HEV_SOCKS5_CLIENT_CLASS (kptr);
         ckptr->set_upstream_addr = hev_socks5_session_udp_set_upstream_addr;

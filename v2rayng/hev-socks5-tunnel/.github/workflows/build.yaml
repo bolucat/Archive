@@ -18,7 +18,7 @@ jobs:
       BRANCH_NAME: ${{ github.base_ref || github.ref_name }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -30,7 +30,7 @@ jobs:
           echo ${REV_ID} > hev-socks5-tunnel-${{ env.BRANCH_NAME }}/.rev-id
           tar cJf hev-socks5-tunnel-${{ env.BRANCH_NAME }}.tar.xz hev-socks5-tunnel-${{ env.BRANCH_NAME }}
       - name: Upload source
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tunnel-${{ env.BRANCH_NAME }}.tar.xz
           path: hev-socks5-tunnel-${{ env.BRANCH_NAME }}.tar.xz
@@ -99,19 +99,19 @@ jobs:
             tool: x86_64-unknown-linux-musl
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
       - name: Build ${{ matrix.name }}
         run: |
           sudo mkdir -p /opt/x-tools
-          wget https://github.com/cross-tools/musl-cross/releases/download/20250929/${{ matrix.tool }}.tar.xz
+          wget https://github.com/cross-tools/musl-cross/releases/download/20260515/${{ matrix.tool }}.tar.xz
           sudo tar xf ${{ matrix.tool }}.tar.xz -C /opt/x-tools
           make CROSS_PREFIX=/opt/x-tools/${{ matrix.tool }}/bin/${{ matrix.tool }}- CFLAGS=${{ matrix.env.CFLAGS }} ENABLE_STATIC=1 -j`nproc`
           cp bin/hev-socks5-tunnel hev-socks5-tunnel-linux-${{ matrix.name }}
       - name: Upload ${{ matrix.name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tunnel-linux-${{ matrix.name }}
           path: hev-socks5-tunnel-linux-${{ matrix.name }}
@@ -130,7 +130,7 @@ jobs:
             flags: -arch x86_64 -mmacosx-version-min=10.6
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -139,7 +139,7 @@ jobs:
           make CC=clang CFLAGS="${{ matrix.flags }}" LFLAGS="${{ matrix.flags }}" -j $(sysctl -n hw.logicalcpu)
           cp bin/hev-socks5-tunnel hev-socks5-tunnel-darwin-${{ matrix.name }}
       - name: Upload ${{ matrix.name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tunnel-darwin-${{ matrix.name }}
           path: hev-socks5-tunnel-darwin-${{ matrix.name }}
@@ -151,7 +151,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -165,7 +165,7 @@ jobs:
             gmake
             cp bin/hev-socks5-tunnel hev-socks5-tunnel-freebsd-x86_64
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tunnel-freebsd-x86_64
           path: hev-socks5-tunnel-freebsd-x86_64
@@ -180,7 +180,7 @@ jobs:
         shell: cmd
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -208,10 +208,49 @@ jobs:
           wget -P hev-socks5-tunnel https://github.com/heiher/msys2/releases/latest/download/msys-2.0.dll
           zip -r ../hev-socks5-tunnel-win64.zip hev-socks5-tunnel
       - name: Upload ${{ matrix.name }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hev-socks5-tunnel-win64.zip
           path: hev-socks5-tunnel-win64.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          submodules: true
+      - name: Prepare
+        run: |
+          wget https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
+          unzip android-ndk-r27d-linux.zip
+          ln -sf . jni
+      - name: Build android-so
+        if: github.event_name != 'release'
+        run: |
+          ./android-ndk-r27d/ndk-build clean
+          ./android-ndk-r27d/ndk-build APP_MODULES=hev-socks5-tunnel -j$(nproc)
+      - name: Build android-bin
+        run: |
+          ./android-ndk-r27d/ndk-build clean
+          ./android-ndk-r27d/ndk-build APP_MODULES=hev-socks5-tunnel-bin -j$(nproc)
+          cp libs/armeabi-v7a/hev-socks5-tunnel-bin hev-socks5-tunnel-android-armeabi-v7a
+          cp libs/arm64-v8a/hev-socks5-tunnel-bin hev-socks5-tunnel-android-arm64-v8a
+          cp libs/x86/hev-socks5-tunnel-bin hev-socks5-tunnel-android-x86
+          cp libs/x86_64/hev-socks5-tunnel-bin hev-socks5-tunnel-android-x86_64
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: hev-socks5-tunnel-android
+          path: |
+            hev-socks5-tunnel-android-armeabi-v7a
+            hev-socks5-tunnel-android-arm64-v8a
+            hev-socks5-tunnel-android-x86
+            hev-socks5-tunnel-android-x86_64
           if-no-files-found: error
           retention-days: 1
 
@@ -224,14 +263,15 @@ jobs:
       - macos
       - freebsd
       - windows
+      - android
     if: github.event_name == 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release
           pattern: "hev-*"
@@ -250,7 +290,7 @@ jobs:
     if: github.event_name != 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -258,32 +298,13 @@ jobs:
         run: |
           ./build-apple.sh
 
-  android:
-    name: Android
-    runs-on: ubuntu-latest
-    if: github.event_name != 'release'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-          submodules: true
-      - name: Prepare
-        run: |
-          wget https://dl.google.com/android/repository/android-ndk-r27d-linux.zip
-          unzip android-ndk-r27d-linux.zip
-          ln -sf . jni
-      - name: Build
-        run: |
-          ./android-ndk-r27d/ndk-build
-
   llvm:
     name: LLVM
     runs-on: ubuntu-latest
     if: github.event_name != 'release'
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -311,7 +332,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
           submodules: true
@@ -351,7 +372,7 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
       - name: Upload Digest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: github.event_name != 'pull_request'
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
@@ -370,7 +391,7 @@ jobs:
       contents: read
     steps:
       - name: Download Digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-*

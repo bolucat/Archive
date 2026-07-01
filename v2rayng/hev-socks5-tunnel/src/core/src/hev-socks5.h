@@ -49,8 +49,8 @@ struct _HevSocks5
 
     int fd;
     int timeout;
-    int udp_associated;
-    HevSocks5Type type;
+    unsigned int type : 2;
+    unsigned int udp_associated : 1;
     HevSocks5AddrFamily addr_family;
 };
 
