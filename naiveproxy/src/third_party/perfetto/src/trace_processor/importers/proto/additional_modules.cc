@@ -18,7 +18,6 @@
 
 #include <memory>
 
-#include "perfetto/base/build_config.h"
 #include "src/trace_processor/importers/etw/etw_module.h"
 #include "src/trace_processor/importers/etw/etw_module_impl.h"
 #include "src/trace_processor/importers/ftrace/ftrace_module.h"
@@ -26,6 +25,7 @@
 #include "src/trace_processor/importers/generic_kernel/generic_kernel_module.h"
 #include "src/trace_processor/importers/proto/android_camera_event_module.h"
 #include "src/trace_processor/importers/proto/android_cpu_per_uid_module.h"
+#include "src/trace_processor/importers/proto/android_extension.descriptor.h"
 #include "src/trace_processor/importers/proto/android_kernel_wakelocks_module.h"
 #include "src/trace_processor/importers/proto/android_probes_module.h"
 #include "src/trace_processor/importers/proto/app_wakelock_module.h"
@@ -33,6 +33,7 @@
 #include "src/trace_processor/importers/proto/deobfuscation_module.h"
 #include "src/trace_processor/importers/proto/graphics_event_module.h"
 #include "src/trace_processor/importers/proto/heap_graph_module.h"
+#include "src/trace_processor/importers/proto/linux_probes_module.h"
 #include "src/trace_processor/importers/proto/metadata_module.h"
 #include "src/trace_processor/importers/proto/network_trace_module.h"
 #include "src/trace_processor/importers/proto/pixel_modem_module.h"
@@ -44,17 +45,15 @@
 #include "src/trace_processor/importers/proto/v8_module.h"
 #include "src/trace_processor/types/trace_processor_context.h"
 
-#if PERFETTO_BUILDFLAG(PERFETTO_ENABLE_WINSCOPE)
-#include "src/trace_processor/importers/proto/winscope/winscope_module.h"
-#endif
-
 namespace perfetto::trace_processor {
 
 void RegisterAdditionalModules(ProtoImporterModuleContext* module_context,
                                TraceProcessorContext* context) {
-  // Content analyzer and metadata module both depend on this.
+  // Content analyzer and metadata module both depend on these.
   context->descriptor_pool_->AddFromFileDescriptorSet(kTraceDescriptor.data(),
                                                       kTraceDescriptor.size());
+  context->descriptor_pool_->AddFromFileDescriptorSet(
+      kAndroidExtensionDescriptor.data(), kAndroidExtensionDescriptor.size());
 
   module_context->modules.emplace_back(
       new AndroidCpuPerUidModule(module_context, context));
@@ -62,6 +61,8 @@ void RegisterAdditionalModules(ProtoImporterModuleContext* module_context,
       new AndroidKernelWakelocksModule(module_context, context));
   module_context->modules.emplace_back(
       new AndroidProbesModule(module_context, context));
+  module_context->modules.emplace_back(
+      new LinuxProbesModule(module_context, context));
   module_context->modules.emplace_back(
       new NetworkTraceModule(module_context, context));
   module_context->modules.emplace_back(
@@ -89,11 +90,6 @@ void RegisterAdditionalModules(ProtoImporterModuleContext* module_context,
       new AppWakelockModule(module_context, context));
   module_context->modules.emplace_back(
       new GenericKernelModule(module_context, context));
-
-#if PERFETTO_BUILDFLAG(PERFETTO_ENABLE_WINSCOPE)
-  module_context->modules.emplace_back(
-      new WinscopeModule(module_context, context));
-#endif
 
   // Ftrace/Etw modules are special, because it has one extra method for parsing
   // ftrace/etw packets. So we need to store a pointer to it separately.

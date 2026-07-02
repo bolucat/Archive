@@ -82,7 +82,9 @@ component("crypto") {
     "user_verifying_key.h",
   ]
 
-  deps = [ "//components/cbor" ]
+  deps = [
+    "//components/cbor",
+  ]
 
   public_deps = [
     ":buildflags",

@@ -87,6 +87,8 @@ class QUICHE_EXPORT QuicSpdyClientSession
   void OnProofValid(const QuicCryptoClientConfig::CachedState& cached) override;
   void OnProofVerifyDetailsAvailable(
       const ProofVerifyDetails& verify_details) override;
+  bool OnCertificateRequested(
+      const std::vector<std::string>& cert_authorities) override;
 
   // QuicSpdyClientSessionWithMigration methods:
   void OnConnectionToBeClosedDueToMigrationError(
@@ -143,7 +145,6 @@ class QUICHE_EXPORT QuicSpdyClientSession
  protected:
   // QuicSession methods:
   QuicSpdyStream* CreateIncomingStream(QuicStreamId id) override;
-  QuicSpdyStream* CreateIncomingStream(PendingStream* pending) override;
   // If an outgoing stream can be created, return true.
   bool ShouldCreateOutgoingBidirectionalStream() override;
 

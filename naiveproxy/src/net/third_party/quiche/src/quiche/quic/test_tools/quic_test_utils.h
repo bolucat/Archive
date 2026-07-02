@@ -375,8 +375,7 @@ class MockFramerVisitor : public QuicFramerVisitorInterface {
   MOCK_METHOD(void, OnPacketComplete, (), (override));
   MOCK_METHOD(bool, IsValidStatelessResetToken, (const StatelessResetToken&),
               (const, override));
-  MOCK_METHOD(void, OnAuthenticatedIetfStatelessResetPacket,
-              (const QuicIetfStatelessResetPacket&), (override));
+  MOCK_METHOD(void, OnAuthenticatedIetfStatelessResetPacket, (), (override));
   MOCK_METHOD(void, OnKeyUpdate, (KeyUpdateReason), (override));
   MOCK_METHOD(void, OnDecryptedFirstPacketInKeyPhase, (), (override));
   MOCK_METHOD(void, OnSconePacket, (uint8_t), (override));
@@ -445,8 +444,7 @@ class NoOpFramerVisitor : public QuicFramerVisitorInterface {
   void OnPacketComplete() override {}
   bool IsValidStatelessResetToken(
       const StatelessResetToken& token) const override;
-  void OnAuthenticatedIetfStatelessResetPacket(
-      const QuicIetfStatelessResetPacket& /*packet*/) override {}
+  void OnAuthenticatedIetfStatelessResetPacket() override {}
   void OnKeyUpdate(KeyUpdateReason /*reason*/) override {}
   void OnDecryptedFirstPacketInKeyPhase() override {}
   void OnSconePacket(uint8_t /*signal*/) override {}
@@ -828,8 +826,6 @@ class MockQuicSession : public QuicSession {
                ConnectionCloseSource source),
               (override));
   MOCK_METHOD(QuicStream*, CreateIncomingStream, (QuicStreamId id), (override));
-  MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (PendingStream*),
-              (override));
   MOCK_METHOD(QuicConsumedData, WritevData,
               (QuicStreamId id, size_t write_length, QuicStreamOffset offset,
                StreamSendingState state, TransmissionType type,
@@ -979,8 +975,6 @@ class MockQuicSpdySession : public QuicSpdySession {
               (override));
   MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (QuicStreamId id),
               (override));
-  MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (PendingStream*),
-              (override));
   MOCK_METHOD(QuicSpdyStream*, CreateOutgoingBidirectionalStream, (),
               (override));
   MOCK_METHOD(bool, ShouldCreateIncomingStream, (QuicStreamId id), (override));
@@ -1087,8 +1081,6 @@ class TestQuicSpdyServerSession : public QuicServerSessionBase {
 
   MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (QuicStreamId id),
               (override));
-  MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (PendingStream*),
-              (override));
   MOCK_METHOD(QuicSpdyStream*, CreateOutgoingBidirectionalStream, (),
               (override));
   MOCK_METHOD(std::vector<absl::string_view>::const_iterator, SelectAlpn,
@@ -1152,8 +1144,6 @@ class TestQuicSpdyClientSession : public QuicSpdyClientSessionBase {
   // TestQuicSpdyClientSession
   MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (QuicStreamId id),
               (override));
-  MOCK_METHOD(QuicSpdyStream*, CreateIncomingStream, (PendingStream*),
-              (override));
   MOCK_METHOD(QuicSpdyStream*, CreateOutgoingBidirectionalStream, (),
               (override));
   MOCK_METHOD(bool, ShouldCreateIncomingStream, (QuicStreamId id), (override));
@@ -1161,6 +1151,8 @@ class TestQuicSpdyClientSession : public QuicSpdyClientSessionBase {
   MOCK_METHOD(std::vector<std::string>, GetAlpnsToOffer, (), (const, override));
   MOCK_METHOD(void, OnAlpnSelected, (absl::string_view), (override));
   MOCK_METHOD(void, OnConfigNegotiated, (), (override));
+  MOCK_METHOD(bool, OnCertificateRequested,
+              (const std::vector<std::string>& cert_authorities), (override));
 
   QuicCryptoClientStream* GetMutableCryptoStream() override;
   const QuicCryptoClientStream* GetCryptoStream() const override;

@@ -21,8 +21,8 @@
 
 #include <algorithm>
 #include <optional>
-#include <variant>
 #include <utility>
+#include <variant>
 
 #include <openssl/aead.h>
 #include <openssl/bytestring.h>
@@ -726,9 +726,12 @@ static bool ext_ri_add_clienthello(const SSL_HANDSHAKE *hs, CBB *out,
 static bool ext_ri_parse_serverhello(SSL_HANDSHAKE *hs, uint8_t *out_alert,
                                      CBS *contents) {
   SSL *const ssl = hs->ssl;
-  if (contents != nullptr && ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
-    *out_alert = SSL_AD_ILLEGAL_PARAMETER;
-    return false;
+  if (ssl_protocol_version(ssl) >= TLS1_3_VERSION) {
+    if (contents != nullptr) {
+      *out_alert = SSL_AD_ILLEGAL_PARAMETER;
+      return false;
+    }
+    return true;
   }
 
   // Servers may not switch between omitting the extension and supporting it.
@@ -744,10 +747,13 @@ static bool ext_ri_parse_serverhello(SSL_HANDSHAKE *hs, uint8_t *out_alert,
     // Strictly speaking, if we want to avoid an attack we should *always* see
     // RI even on initial ServerHello because the client doesn't see any
     // renegotiation during an attack. However this would mean we could not
-    // connect to any server which doesn't support RI.
-    //
-    // OpenSSL has |SSL_OP_LEGACY_SERVER_CONNECT| to control this, but in
-    // practical terms every client sets it so it's just assumed here.
+    // connect to any server which doesn't support RI. See RFC 5746,
+    // section 4.1.
+    if (!(ssl->options & SSL_OP_LEGACY_SERVER_CONNECT)) {
+      OPENSSL_PUT_ERROR(SSL, SSL_R_UNSAFE_LEGACY_RENEGOTIATION_DISABLED);
+      *out_alert = SSL_AD_HANDSHAKE_FAILURE;
+      return false;
+    }
     return true;
   }
 
@@ -808,6 +814,7 @@ static bool ext_ri_parse_clienthello(SSL_HANDSHAKE *hs, uint8_t *out_alert,
   }
 
   if (contents == nullptr) {
+    // Permit clients to omit the extension. We never renegotiate as a server.
     return true;
   }
 
@@ -2123,8 +2130,7 @@ std::optional<SSLOfferedPSKs> ssl_ext_pre_shared_key_parse_clienthello(
   }
 
   // We should have run out of identities and binders at the same time.
-  if (CBS_len(&copy.identities) != 0 ||
-      CBS_len(&copy.binders) != 0) {
+  if (CBS_len(&copy.identities) != 0 || CBS_len(&copy.binders) != 0) {
     OPENSSL_PUT_ERROR(SSL, SSL_R_PSK_IDENTITY_BINDER_COUNT_MISMATCH);
     *out_alert = SSL_AD_ILLEGAL_PARAMETER;
     return std::nullopt;
@@ -2821,6 +2827,107 @@ static bool ext_certificate_authorities_parse_clienthello(SSL_HANDSHAKE *hs,
   return true;
 }
 
+// Server Padding extension.
+//
+// Adds empty bytes to EncryptedExtensions for TLS 1.3 connections that request
+// it.
+
+// Limit max padding to 16k.
+constexpr uint16_t kMaxServerPadding = 16 * 1024;
+
+static bool ext_server_padding_add_clienthello(const SSL_HANDSHAKE *hs,
+                                               CBB *out, CBB *out_compressible,
+                                               ssl_client_hello_type_t type) {
+  if (!hs->config->server_padding_request.has_value()) {
+    return true;
+  }
+
+  CBB contents;
+  if (!CBB_add_u16(out_compressible, TLSEXT_TYPE_server_padding) ||
+      !CBB_add_u16_length_prefixed(out_compressible, &contents) ||
+      !CBB_add_u16(&contents, hs->config->server_padding_request.value()) ||
+      !CBB_flush(out_compressible)) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool ext_server_padding_parse_clienthello(SSL_HANDSHAKE *hs,
+                                                 uint8_t *out_alert,
+                                                 CBS *contents) {
+  if (contents == nullptr) {
+    return true;
+  }
+
+  if (ssl_protocol_version(hs->ssl) < TLS1_3_VERSION) {
+    return true;
+  }
+
+  uint16_t padding_requested;
+  if (!CBS_get_u16(contents, &padding_requested) || CBS_len(contents) != 0) {
+    *out_alert = SSL_AD_DECODE_ERROR;
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    return false;
+  }
+
+  hs->client_requested_server_padding_size = padding_requested;
+  return true;
+}
+
+static bool ext_server_padding_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
+  SSL *const ssl = hs->ssl;
+  if (ssl_protocol_version(ssl) < TLS1_3_VERSION ||
+      !hs->client_requested_server_padding_size ||
+      !hs->config->server_padding_enabled) {
+    return true;
+  }
+
+  // The extension shouldn't be sent when resuming sessions.
+  if (ssl->s3->session_reused) {
+    return true;
+  }
+
+  // Limit max padding; if a client requests more than this, don't return any
+  // padding.
+  uint16_t padding_len = hs->client_requested_server_padding_size.value();
+  if (padding_len > kMaxServerPadding) {
+    return true;
+  }
+
+  CBB contents;
+  if (!CBB_add_u16(out, TLSEXT_TYPE_server_padding) ||
+      !CBB_add_u16_length_prefixed(out, &contents) ||
+      !CBB_add_zeros(&contents, padding_len) || !CBB_flush(out)) {
+    return false;
+  }
+
+  return true;
+}
+
+static bool ext_server_padding_parse_serverhello(SSL_HANDSHAKE *hs,
+                                                 uint8_t *out_alert,
+                                                 CBS *contents) {
+  if (contents == nullptr) {
+    return true;
+  }
+
+  if (ssl_protocol_version(hs->ssl) < TLS1_3_VERSION ||
+      !hs->config->server_padding_request) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_UNEXPECTED_EXTENSION);
+    *out_alert = SSL_AD_UNSUPPORTED_EXTENSION;
+    return false;
+  }
+
+  if (hs->config->server_padding_request.value() != CBS_len(contents)) {
+    OPENSSL_PUT_ERROR(SSL, SSL_R_DECODE_ERROR);
+    *out_alert = SSL_AD_DECODE_ERROR;
+    return false;
+  }
+
+  hs->ssl->s3->server_sent_requested_padding = true;
+  return true;
+}
 
 // Trust Anchor Identifiers
 //
@@ -2894,6 +3001,15 @@ static bool ext_trust_anchors_add_serverhello(SSL_HANDSHAKE *hs, CBB *out) {
       !CBB_add_u16_length_prefixed(&contents, &list)) {
     return false;
   }
+
+  // Use the caller-provided list if they overrode it.
+  if (!hs->config->cert->available_trust_anchors.empty()) {
+    return CBB_add_bytes(&list,
+                         hs->config->cert->available_trust_anchors.data(),
+                         hs->config->cert->available_trust_anchors.size()) &&
+           CBB_flush(out);
+  }
+
   for (const auto &cred : hs->config->cert->credentials) {
     if (!cred->trust_anchor_id.empty()) {
       uint16_t unused_sigalg;
@@ -3220,7 +3336,7 @@ static bool cert_compression_parse_clienthello(SSL_HANDSHAKE *hs,
     return true;
   }
 
-  const SSL_CTX *ctx = hs->ssl->ctx.get();
+  const SSLContext *ctx = hs->ssl->ctx.get();
   const size_t num_algs = ctx->cert_compression_algs.size();
 
   CBS alg_ids;
@@ -4169,6 +4285,13 @@ static const struct tls_extension kExtensions[] = {
         ignore_parse_clienthello,
         ext_server_cert_type_add_serverhello,
     },
+    {
+        TLSEXT_TYPE_server_padding,
+        ext_server_padding_add_clienthello,
+        ext_server_padding_parse_serverhello,
+        ext_server_padding_parse_clienthello,
+        ext_server_padding_add_serverhello,
+    },
 };
 
 #define kNumExtensions (sizeof(kExtensions) / sizeof(struct tls_extension))
@@ -4802,7 +4925,7 @@ static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_cb(
 static enum ssl_ticket_aead_result_t ssl_decrypt_ticket_with_ticket_keys(
     SSL_HANDSHAKE *hs, Array<uint8_t> *out, Span<const uint8_t> ticket) {
   assert(ticket.size() >= SSL_TICKET_KEY_NAME_LEN + EVP_MAX_IV_LENGTH);
-  SSL_CTX *ctx = hs->ssl->session_ctx.get();
+  SSLContext *ctx = hs->ssl->session_ctx.get();
 
   // Rotate the ticket key if necessary.
   if (!ssl_ctx_rotate_ticket_encryption_key(ctx)) {

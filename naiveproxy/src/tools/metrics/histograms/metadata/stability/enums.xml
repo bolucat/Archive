@@ -130,6 +130,7 @@ Called by update_bad_message_reasons.py.-->
   <int value="10" label="CCU_SUPERFLUOUS_BIND"/>
   <int value="11" label="RFH_INVALID_WEB_FRAME_URL"/>
   <int value="12" label="PVM_PRINT_FENCED_FRAME"/>
+  <int value="13" label="SAGPC_INVALID_PERMISSION_REQUEST_CONTEXT"/>
 </enum>
 
 <enum name="BadMessageReasonContent">
@@ -516,8 +517,15 @@ Called by update_bad_message_reasons.py.-->
   <int value="345" label="RFHI_WEBMCP_REGISTER_DUPLICATE_TOOL_NAME"/>
   <int value="346" label="RFHI_WEBMCP_DUPLICATE_BIND"/>
   <int value="347" label="RFHI_WEBMCP_DUPLICATE_SET_RECEIVER"/>
-  <int value="348" label="RFHI_WEBMCP_EXPOSED_NON_HTTPS_ORIGIN"/>
+  <int value="348" label="RFHI_WEBMCP_EXPOSED_UNTRUSTWORTHY_ORIGIN"/>
+  <int value="349" label="RFHI_SYNCHONOUS_COMMIT_ORIGIN_MISMATCH"/>
   <int value="350" label="RFHI_WEBMCP_INVALID_TOOL_OWNER"/>
+  <int value="351" label="NR_BAD_ORIGIN_HEADER"/>
+  <int value="352" label="RFH_DID_COMMIT_NAVIGATION_WHILE_BFCACHED"/>
+  <int value="353"
+      label="BIBI_BIND_WEBNN_CONTEXT_PROVIDER_BLOCKED_BY_PERMISSIONS_POLICY"/>
+  <int value="354"
+      label="BIBI_BIND_WEBNN_WEIGHTS_FILE_CREATOR_BLOCKED_BY_PERMISSIONS_POLICY"/>
 </enum>
 
 <enum name="BadMessageReasonExtensions">

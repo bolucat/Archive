@@ -26,7 +26,6 @@ import "protos/perfetto/trace/android/android_aflags.proto";
 import "protos/perfetto/trace/android/android_game_intervention_list.proto";
 import "protos/perfetto/trace/android/android_log.proto";
 import "protos/perfetto/trace/android/android_system_property.proto";
-import "protos/perfetto/trace/android/app_wakelock_data.proto";
 import "protos/perfetto/trace/android/bluetooth_trace.proto";
 import "protos/perfetto/trace/android/camera_event.proto";
 import "protos/perfetto/trace/android/cpu_per_uid_data.proto";
@@ -50,6 +49,7 @@ import "protos/perfetto/trace/chrome/chrome_trace_event.proto";
 import "protos/perfetto/trace/chrome/chrome_trigger.proto";
 import "protos/perfetto/trace/chrome/v8.proto";
 import "protos/perfetto/trace/clock_snapshot.proto";
+import "protos/perfetto/trace/linux/journald_event.proto";
 import "protos/perfetto/trace/etw/etw_event_bundle.proto";
 import "protos/perfetto/trace/evdev.proto";
 import "protos/perfetto/trace/filesystem/inode_file_map.proto";
@@ -73,6 +73,7 @@ import "protos/perfetto/trace/power/android_entity_state_residency.proto";
 import "protos/perfetto/trace/power/battery_counters.proto";
 import "protos/perfetto/trace/power/power_rails.proto";
 import "protos/perfetto/trace/statsd/statsd_atom.proto";
+import "protos/perfetto/trace/profiling/art_process_metadata.proto";
 import "protos/perfetto/trace/profiling/deobfuscation.proto";
 import "protos/perfetto/trace/profiling/heap_graph.proto";
 import "protos/perfetto/trace/profiling/profile_common.proto";
@@ -84,6 +85,7 @@ import "protos/perfetto/trace/remote_clock_sync.proto";
 import "protos/perfetto/trace/sys_stats/sys_stats.proto";
 import "protos/perfetto/trace/system_info/cpu_info.proto";
 import "protos/perfetto/trace/system_info/gpu_info.proto";
+import "protos/perfetto/trace/system_info/interrupt_info.proto";
 import "protos/perfetto/trace/trace_packet_defaults.proto";
 import "protos/perfetto/trace/track_event/process_descriptor.proto";
 import "protos/perfetto/trace/track_event/range_of_interest.proto";
@@ -118,7 +120,7 @@ package perfetto.protos;
 // See the [Buffers and Dataflow](/docs/concepts/buffers.md) doc for details.
 //
 // Next reserved id: 14 (up to 15).
-// Next id: 130.
+// Next id: 133.
 message TracePacket {
   // Encapsulates the state and configuration of the ProtoVM instances running
   // when the trace was snapshotted. This allows TP to re-instantiate the VMs
@@ -207,6 +209,7 @@ message TracePacket {
     GpuCounterEvent gpu_counter_event = 52;
     GpuRenderStageEvent gpu_render_stage_event = 53;
     StreamingProfilePacket streaming_profile_packet = 54;
+    ArtProcessMetadata art_process_metadata = 131;
     HeapGraph heap_graph = 56;
     GraphicsFrameEvent graphics_frame_event = 57;
     VulkanMemoryEvent vulkan_memory_event = 62;
@@ -234,6 +237,7 @@ message TracePacket {
     TraceAttributes trace_attributes = 126;
     AndroidAflags android_aflags = 127;
     GpuInfo gpu_info = 128;
+    InterruptInfo interrupt_info = 130;
 
     // Only used in profile packets.
     ModuleSymbols module_symbols = 61;
@@ -301,13 +305,13 @@ message TracePacket {
 
     KernelWakelockData kernel_wakelock_data = 115;
 
-    AppWakelockBundle app_wakelock_bundle = 116;
-
     CpuPerUidData cpu_per_uid_data = 119;
 
     EvdevEvent evdev_event = 121;
 
     AndroidUserList user_list = 123;
+
+    SystemdJournaldEvent journald_event = 132;
 
     // This field is only used for testing.
     // In previous versions of this proto this field had the id 268435455
@@ -323,6 +327,14 @@ message TracePacket {
 
   // removed ProfiledFrameSymbols profiled_frame_symbols
   reserved 55;
+
+  // App wakelock (AppWakelockBundle). Schema:
+  // protos/third_party/android/frameworks/base/proto/tracing/frameworks_base_trace_packet.proto
+  extensions 116;
+
+  // Reserved for future OOT extensions. New allocations are carved out of this
+  // range and registered in protos/perfetto/trace/extensions.json.
+  extensions 1000 to 1999;
 
   // Trusted user id of the producer which generated this packet. Keep in sync
   // with TrustedPacket.trusted_uid.

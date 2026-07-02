@@ -23,7 +23,7 @@ import("../../gn/wasm.gni")
 _subprocess_supported =
     is_linux || is_chromeos || is_android || is_mac || is_win || is_freebsd
 
-source_set("base") {
+perfetto_component("base") {
   deps = [
     "../../gn:base_platform",
     "../../gn:default_deps",
@@ -38,9 +38,9 @@ source_set("base") {
     "cpu_info.cc",
     "crash_keys.cc",
     "ctrl_c_handler.cc",
+    "dynamic_string_writer.cc",
     "event_fd.cc",
     "file_utils.cc",
-    "fixed_string_writer.cc",
     "getopt_compat.cc",
     "intrusive_list.cc",
     "intrusive_tree.cc",

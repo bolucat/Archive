@@ -319,7 +319,8 @@ bool NaiveProxy::WillCreateSession(const NetworkAnonymizationKey& nak) const {
                        PRIVACY_MODE_DISABLED, last_proxy_partial_chain_,
                        SessionUsage::kProxy, SocketTag(), nak,
                        SecureDnsPolicy::kDisable,
-                       /*disable_cert_verification_network_fetches=*/true);
+                       /*disable_cert_verification_network_fetches=*/true,
+                       handles::kInvalidNetworkHandle);
     return !session_->spdy_session_pool()->FindAvailableSession(
         key, /*enable_ip_based_pooling_for_h2=*/false,
         /*is_websocket=*/false, net_log_);
@@ -329,7 +330,8 @@ bool NaiveProxy::WillCreateSession(const NetworkAnonymizationKey& nak) const {
         last_proxy_server_.host_port_pair(), PRIVACY_MODE_DISABLED,
         last_proxy_partial_chain_, SessionUsage::kProxy, SocketTag(), nak,
         SecureDnsPolicy::kDisable, /*require_dns_https_alpn=*/false,
-        /*disable_cert_verification_network_fetches=*/true);
+        /*disable_cert_verification_network_fetches=*/true,
+        handles::kInvalidNetworkHandle);
     url::SchemeHostPort destination("https", last_proxy_server_.GetHost(),
                                     last_proxy_server_.GetPort(),
                                     url::SchemeHostPort::ALREADY_CANONICALIZED);

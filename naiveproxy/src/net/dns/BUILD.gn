@@ -23,8 +23,6 @@ source_set("dns") {
     "address_info.cc",
     "address_info.h",
     "address_sorter.h",
-    "canary_domain_service.cc",
-    "canary_domain_service.h",
     "context_host_resolver.cc",
     "context_host_resolver.h",
     "dns_alias_utility.cc",

@@ -199,6 +199,20 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//components/signin/internal/identity_manager/mutable_profile_oauth2_token_service_delegate.h:AccountMoveDecision) -->
 
+<!-- LINT.IfChange(AccountPreviewDataFetchState) -->
+
+<enum name="AccountPreviewDataFetchState">
+  <int value="0" label="Requested"/>
+  <int value="1" label="EntityPreviewHasResult"/>
+  <int value="2" label="EntityPreviewEmptyResult"/>
+  <int value="3" label="StatisticsHasResult"/>
+  <int value="4" label="StatisticsEmptyResult"/>
+  <int value="5" label="CompletedWithResults"/>
+  <int value="6" label="CompletedWithoutResults"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/core/browser/account_preview_data_fetcher.h:AccountPreviewDataFetchState) -->
+
 <!-- LINT.IfChange(AccountProfileStartupState) -->
 
 <enum name="AccountProfileStartupState">
@@ -322,7 +336,7 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="Failed to attach the signature to an assertion token"/>
 </enum>
 
-<!-- LINT.ThenChange(//chrome/browser/signin/binding_key_registration_token_helper.h:Error) -->
+<!-- LINT.ThenChange(//components/signin/public/base/binding_key_registration_token_helper.h:Error) -->
 
 <enum name="BoundSessionCredentialsSessionRegistrationResult">
   <int value="0" label="Success"/>
@@ -724,6 +738,18 @@ chromium-metrics-reviews@google.com.
   <int value="11" label="Token binding challenge success"/>
 </enum>
 
+<!-- LINT.IfChange(OAuth2UpgradeTokenFlowResult) -->
+
+<enum name="OAuth2UpgradeTokenFlowResult">
+  <int value="0" label="kSuccess"/>
+  <int value="1" label="kNetworkError"/>
+  <int value="2" label="kServerError"/>
+  <int value="3" label="kTokenGenerationFailure"/>
+  <int value="4" label="kFailedToSaveBindingKey"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/internal/identity_manager/oauth2_upgrade_token_flow.h:OAuth2UpgradeTokenFlowResult) -->
+
 <!-- LINT.IfChange(OAuthConsumerId) -->
 
 <enum name="OAuthConsumerId">
@@ -826,6 +852,11 @@ chromium-metrics-reviews@google.com.
   <int value="96" label="Indigo"/>
   <int value="97" label="Glic Invoke API"/>
   <int value="98" label="Secure Gateway Service"/>
+  <int value="99" label="Drive Picker Host"/>
+  <int value="100" label="Skills Service"/>
+  <int value="101" label="Context Memory Service"/>
+  <int value="102" label="Sync Preview"/>
+  <int value="103" label="Fpop Service"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/signin/public/base/oauth_consumer_id.h:OAuthConsumerId) -->
@@ -1058,6 +1089,11 @@ chromium-metrics-reviews@google.com.
   <int value="100" label="Page Action Menu (iOS only)"/>
   <int value="101"
       label="Autofill and passwords settings page on iOS and Android"/>
+  <int value="102" label="Sign-in deep link (e.g. from cross-device QR code)"/>
+  <int value="103" label="Age mismatch signout (iOS only)"/>
+  <int value="104" label="Gemini Toolbar button (iOS only)"/>
+  <int value="105" label="Indigo"/>
+  <int value="106" label="Overflow Menu (iOS only)"/>
 </enum>
 
 <enum name="SigninAccountReconcilorState">
@@ -1104,6 +1140,20 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Returned after sign-in activity destroyed"/>
   <int value="7" label="Returned and sign-in activity was not destroyed"/>
 </enum>
+
+<!-- LINT.IfChange(SigninCrossDeviceInitialState) -->
+
+<enum name="SigninCrossDeviceInitialState">
+  <int value="0" label="SignedOut_TargetAccountOnDevice"/>
+  <int value="1" label="SignedOut_TargetAccountNotOnDevice"/>
+  <int value="2" label="SignedIn_WithDifferentAccount_TargetAccountOnDevice"/>
+  <int value="3"
+      label="SignedIn_WithDifferentAccount_TargetAccountNotOnDevice"/>
+  <int value="4" label="SignedIn_WithTargetAccount"/>
+  <int value="5" label="FlowForbidden"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/public/base/signin_deep_link_metrics.h:CrossDeviceInitialState) -->
 
 <enum name="SigninDiceResponseHeader">
   <int value="0" label="Signin"/>
@@ -1437,6 +1487,12 @@ chromium-metrics-reviews@google.com.
     A forced sign-out when the account capability CanSignInToChrome restricts
     signin. (iOS only).
   </int>
+  <int value="46"
+      label="User tapped on undo right after signin through autofill and
+             passwords sign-in promo">
+    User tapped on the 'Undo' button in a snackbar shown right after signin
+    through autofill and passwords promo. (Android only).
+  </int>
 </enum>
 
 <enum name="SigninSSOIdentityListRequestCacheState">
@@ -1629,6 +1685,15 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//google_apis/gaia/token_binding_response_encryption_error.h:TokenBindingResponseEncryptionError) -->
+
+<!-- LINT.IfChange(TokenBindingUpgradeSaveBindingKeyResult) -->
+
+<enum name="TokenBindingUpgradeSaveBindingKeyResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="Refresh token not found"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/internal/identity_manager/token_binding_helper.h:SaveBindingKeyResult) -->
 
 <!-- LINT.IfChange(WebSigninLoadingDialogStatus) -->
 

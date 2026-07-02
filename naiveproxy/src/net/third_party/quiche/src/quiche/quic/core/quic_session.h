@@ -893,7 +893,6 @@ class QUICHE_EXPORT QuicSession
   // Caller does not own the returned stream.
   // Returns nullptr and does error handling if the stream can not be created.
   virtual QuicStream* CreateIncomingStream(QuicStreamId id) = 0;
-  virtual QuicStream* CreateIncomingStream(PendingStream* pending) = 0;
   // Return true if the specified stream should be refused.
   virtual bool ShouldRefuseIncomingStream(QuicStreamId) { return false; }
 

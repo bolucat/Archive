@@ -25,6 +25,7 @@
 #include "perfetto/base/compiler.h"
 #include "perfetto/base/logging.h"
 #include "perfetto/base/status.h"
+#include "perfetto/ext/base/flat_hash_map.h"
 #include "perfetto/ext/base/status_or.h"
 #include "perfetto/protozero/field.h"
 #include "perfetto/trace_processor/ref_counted.h"
@@ -58,8 +59,7 @@ class FtraceTokenizer {
   void TokenizeFtraceEvent(uint32_t cpu,
                            ClockTracker::ClockId,
                            TraceBlobView event,
-                           RefPtr<PacketSequenceStateGeneration> state,
-                           uint32_t packet_sequence_id);
+                           RefPtr<PacketSequenceStateGeneration> state);
   void TokenizeFtraceCompactSched(uint32_t cpu,
                                   ClockTracker::ClockId,
                                   protozero::ConstBytes);
@@ -76,37 +76,38 @@ class FtraceTokenizer {
   base::StatusOr<ClockTracker::ClockId> HandleFtraceClockSnapshot(
       protos::pbzero::FtraceEventBundle::Decoder& decoder,
       uint32_t packet_sequence_id);
-  void TokenizeFtraceAdrenoCmdbatchSubmitted(
-      uint32_t cpu,
-      ClockTracker::ClockId clock_id,
-      uint64_t raw_timestamp,
-      TraceBlobView event,
-      RefPtr<PacketSequenceStateGeneration> state,
-      uint32_t packet_sequence_id);
-  void TokenizeFtraceAdrenoCmdbatchRetired(
-      uint32_t cpu,
-      ClockTracker::ClockId clock_id,
-      uint64_t raw_timestamp,
-      TraceBlobView event,
-      RefPtr<PacketSequenceStateGeneration> state,
-      uint32_t packet_sequence_id);
   void TokenizeFtraceGpuWorkPeriod(uint32_t cpu,
+                                   int64_t raw_ts,
                                    TraceBlobView event,
                                    RefPtr<PacketSequenceStateGeneration> state);
   void TokenizeFtraceThermalExynosAcpmBulk(
       uint32_t cpu,
+      int64_t raw_ts,
       TraceBlobView event,
       RefPtr<PacketSequenceStateGeneration> state);
   void TokenizeFtraceParamSetValueCpm(
       uint32_t cpu,
+      int64_t raw_ts,
       TraceBlobView event,
       RefPtr<PacketSequenceStateGeneration> state);
   void TokenizeFtraceFwtpPerfettoCounter(
       uint32_t cpu,
+      int64_t raw_ts,
       TraceBlobView event,
       RefPtr<PacketSequenceStateGeneration> state);
   void TokenizeFtraceFwtpPerfettoSlice(
       uint32_t cpu,
+      int64_t raw_ts,
+      TraceBlobView event,
+      RefPtr<PacketSequenceStateGeneration> state);
+  void TokenizeFtraceAdrenoCmdbatchSync(
+      uint32_t cpu,
+      int64_t raw_ts,
+      TraceBlobView event,
+      RefPtr<PacketSequenceStateGeneration> state);
+  void TokenizeFtraceAdrenoCmdbatchRetired(
+      uint32_t cpu,
+      int64_t raw_ts,
       TraceBlobView event,
       RefPtr<PacketSequenceStateGeneration> state);
   std::optional<protozero::Field> GetFtraceEventField(
@@ -123,8 +124,29 @@ class FtraceTokenizer {
   ProtoImporterModuleContext* module_context_;
   GenericFtraceTracker* generic_tracker_;
 
+  // Stashed sync point for computing gpu_start_ts.
+  struct AdrenoCmdbatchSyncPoint {
+    int64_t trace_ts;
+    uint64_t gpu_ticks;
+  };
+  base::FlatHashMap<uint32_t, AdrenoCmdbatchSyncPoint>
+      adreno_cmdbatch_sync_points_;
+
+  // Buffer retired event when its matching sync hasn't been seen yet, so
+  // gpu_start_ts can be computed when sync arrives. Sync and retired for the
+  // same cmdbatch can land on different CPUs, and bundles are processed one
+  // CPU at a time, so retired may be seen before sync.
+  struct PendingAdrenoCmdbatchRetired {
+    uint32_t cpu;
+    int64_t raw_ts;
+    uint64_t start;
+    TraceBlobView event;
+    RefPtr<PacketSequenceStateGeneration> state;
+  };
+  base::FlatHashMap<uint32_t, PendingAdrenoCmdbatchRetired>
+      pending_adreno_cmdbatch_retired_;
+
   int64_t latest_ftrace_clock_snapshot_ts_ = 0;
-  bool adreno_gpu_clock_registered_ = false;
   std::vector<bool> per_cpu_seen_first_bundle_;
 };
 

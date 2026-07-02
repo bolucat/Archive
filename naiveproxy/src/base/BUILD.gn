@@ -112,12 +112,9 @@ if (is_fuchsia) {
 
 _build_date_header = "$target_gen_dir/generated_build_date.h"
 
-# mold does not support PROVIDE_HIDDEN.
-# https://github.com/rui314/mold/issues/1055
-_enable_code_ordering =
-    is_android && !is_component_build && linker_path == "" &&
-    (current_cpu == "arm" || current_cpu == "arm64" || current_cpu == "x86" ||
-     current_cpu == "x64")
+_enable_code_ordering = is_android && !is_component_build &&
+                        (current_cpu == "arm" || current_cpu == "arm64" ||
+                         current_cpu == "x86" || current_cpu == "x64")
 
 if (is_win) {
   # This is in a separate config so the flags can be applied to dependents.
@@ -135,6 +132,7 @@ if (is_win) {
       "/DELAYLOAD:powrprof.dll",
       "/DELAYLOAD:setupapi.dll",
       "/DELAYLOAD:shcore.dll",
+      "/DELAYLOAD:tbs.dll",
     ]
   }
 }
@@ -178,8 +176,8 @@ config("asan_raw_ptr_service_v2_config") {
   cflags = [ "-fsanitize-recover=address" ]
 }
 
-# `asan_raw_ptr_service` is built as a part of `base` without `-fsanitize=address`
-# to avoid performance regressions.
+# `asan_raw_ptr_service` is built as a part of `base` without
+# `-fsanitize=address` to avoid performance regressions.
 source_set("asan_raw_ptr_service") {
   # Used by raw_ptr_service.cc to override {malloc,free,ignore_free} hooks.
   sources = []
@@ -249,7 +247,6 @@ component("base") {
     "atomic_sequence_num.h",
     "atomicops.cc",
     "atomicops.h",
-    "atomicops_internals_atomicword_compat.h",
     "atomicops_internals_portable.h",
     "auto_reset.h",
     "barrier_callback.h",
@@ -349,7 +346,6 @@ component("base") {
     "files/file_error_or.h",
     "files/file_path.cc",
     "files/file_path.h",
-    "files/file_tracing.cc",
     "files/file_tracing.h",
     "files/memory_mapped_file.cc",
     "files/memory_mapped_file.h",
@@ -484,6 +480,8 @@ component("base") {
     "memory_coordinator/memory_consumer_registry_destruction_observer.h",
     "memory_coordinator/memory_coordinator_features.cc",
     "memory_coordinator/memory_coordinator_features.h",
+    "memory_coordinator/multi_memory_consumer.cc",
+    "memory_coordinator/multi_memory_consumer.h",
     "memory_coordinator/traits.cc",
     "memory_coordinator/traits.h",
     "memory_coordinator/utils.h",
@@ -1209,6 +1207,10 @@ component("base") {
       "android/content_uri_utils_stub.cc",
       "android/device_info.h",
       "android/device_info_stub.cc",
+      "android/pmf_utils.cc",
+      "android/pmf_utils.h",
+      "android/pre_freeze_background_memory_trimmer.cc",
+      "android/pre_freeze_background_memory_trimmer.h",
       "android/virtual_document_path.cc",
       "android/virtual_document_path.h",
       "android/yield_to_looper_checker.cc",
@@ -1884,7 +1886,6 @@ component("base") {
       "win/shortcut.h",
       "win/sid.cc",
       "win/sid.h",
-      "win/sphelper.h",
       "win/startup_information.cc",
       "win/startup_information.h",
       "win/variant_conversions.h",
@@ -1933,6 +1934,7 @@ component("base") {
       "propsys.lib",
       "setupapi.lib",
       "shcore.lib",
+      "tbs.lib",
       "userenv.lib",
       "wbemuuid.lib",
       "winmm.lib",

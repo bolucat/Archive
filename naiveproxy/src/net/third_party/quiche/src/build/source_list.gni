@@ -44,6 +44,7 @@ quiche_core_hdrs = [
     "src/quiche/common/quiche_buffer_allocator.h",
     "src/quiche/common/quiche_callbacks.h",
     "src/quiche/common/quiche_circular_deque.h",
+    "src/quiche/common/quiche_cord_utils.h",
     "src/quiche/common/quiche_crypto_logging.h",
     "src/quiche/common/quiche_data_reader.h",
     "src/quiche/common/quiche_data_writer.h",
@@ -432,6 +433,7 @@ quiche_core_srcs = [
     "src/quiche/common/moq_varint.cc",
     "src/quiche/common/platform/api/quiche_hostname_utils.cc",
     "src/quiche/common/quiche_buffer_allocator.cc",
+    "src/quiche/common/quiche_cord_utils.cc",
     "src/quiche/common/quiche_crypto_logging.cc",
     "src/quiche/common/quiche_data_reader.cc",
     "src/quiche/common/quiche_data_writer.cc",
@@ -782,12 +784,6 @@ quiche_tool_support_srcs = [
     "src/quiche/quic/tools/quic_url.cc",
     "src/quiche/quic/tools/simple_ticket_crypter.cc",
     "src/quiche/quic/tools/web_transport_only_backend.cc",
-]
-quiche_fuzz_support_hdrs = [
-    "src/quiche/balsa/balsa_fuzz_util.h",
-]
-quiche_fuzz_support_srcs = [
-    "src/quiche/balsa/balsa_fuzz_util.cc",
 ]
 quiche_test_support_hdrs = [
     "src/quiche/common/platform/api/quiche_expect_bug.h",
@@ -1144,6 +1140,7 @@ quiche_tests_srcs = [
     "src/quiche/common/quiche_buffer_allocator_test.cc",
     "src/quiche/common/quiche_callbacks_test.cc",
     "src/quiche/common/quiche_circular_deque_test.cc",
+    "src/quiche/common/quiche_cord_utils_test.cc",
     "src/quiche/common/quiche_data_reader_test.cc",
     "src/quiche/common/quiche_data_writer_fuzz_test.cc",
     "src/quiche/common/quiche_data_writer_test.cc",
@@ -1606,9 +1603,11 @@ moqt_hdrs = [
     "src/quiche/quic/moqt/moqt_session_callbacks.h",
     "src/quiche/quic/moqt/moqt_session_interface.h",
     "src/quiche/quic/moqt/moqt_stream_map.h",
+    "src/quiche/quic/moqt/moqt_subscription.h",
     "src/quiche/quic/moqt/moqt_trace_recorder.h",
     "src/quiche/quic/moqt/moqt_track.h",
     "src/quiche/quic/moqt/moqt_types.h",
+    "src/quiche/quic/moqt/moqt_uni_stream.h",
     "src/quiche/quic/moqt/relay_namespace_tree.h",
     "src/quiche/quic/moqt/session_namespace_tree.h",
     "src/quiche/quic/moqt/tools/chat_client.h",
@@ -1618,6 +1617,7 @@ moqt_hdrs = [
     "src/quiche/quic/moqt/tools/moqt_server.h",
 ]
 moqt_srcs = [
+    "src/quiche/quic/moqt/moqt_bidi_stream.cc",
     "src/quiche/quic/moqt/moqt_bitrate_adjuster.cc",
     "src/quiche/quic/moqt/moqt_error.cc",
     "src/quiche/quic/moqt/moqt_framer.cc",
@@ -1637,8 +1637,10 @@ moqt_srcs = [
     "src/quiche/quic/moqt/moqt_relay_track_publisher.cc",
     "src/quiche/quic/moqt/moqt_session.cc",
     "src/quiche/quic/moqt/moqt_stream_map.cc",
+    "src/quiche/quic/moqt/moqt_subscription.cc",
     "src/quiche/quic/moqt/moqt_trace_recorder.cc",
     "src/quiche/quic/moqt/moqt_track.cc",
+    "src/quiche/quic/moqt/moqt_uni_stream.cc",
     "src/quiche/quic/moqt/relay_namespace_tree.cc",
     "src/quiche/quic/moqt/tools/chat_client.cc",
     "src/quiche/quic/moqt/tools/moq_chat.cc",
@@ -1658,6 +1660,7 @@ moqt_test_srcs = [
     "src/quiche/quic/moqt/moqt_messages_test.cc",
     "src/quiche/quic/moqt/moqt_names_test.cc",
     "src/quiche/quic/moqt/moqt_namespace_stream_test.cc",
+    "src/quiche/quic/moqt/moqt_object_test.cc",
     "src/quiche/quic/moqt/moqt_outgoing_queue_test.cc",
     "src/quiche/quic/moqt/moqt_outstanding_objects_test.cc",
     "src/quiche/quic/moqt/moqt_parser_fuzz_test.cc",
@@ -1668,7 +1671,9 @@ moqt_test_srcs = [
     "src/quiche/quic/moqt/moqt_relay_track_publisher_test.cc",
     "src/quiche/quic/moqt/moqt_session_test.cc",
     "src/quiche/quic/moqt/moqt_stream_map_test.cc",
+    "src/quiche/quic/moqt/moqt_subscription_test.cc",
     "src/quiche/quic/moqt/moqt_track_test.cc",
+    "src/quiche/quic/moqt/moqt_uni_stream_test.cc",
     "src/quiche/quic/moqt/relay_namespace_tree_test.cc",
     "src/quiche/quic/moqt/session_namespace_tree_test.cc",
     "src/quiche/quic/moqt/test_tools/moqt_simulator_test.cc",

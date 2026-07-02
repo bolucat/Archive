@@ -76,7 +76,7 @@ static const SSL_SIGNATURE_ALGORITHM kSignatureAlgorithms[] = {
      /*client_only=*/false},
 
     // Legacy PKCS#1 v1.5 code points are only allowed in TLS 1.3 and
-    // client-only. See draft-ietf-tls-tls13-pkcs1-00.
+    // client-only. See RFC 9963.
     {SSL_SIGN_RSA_PKCS1_SHA256_LEGACY, EVP_PKEY_RSA, NID_undef, &EVP_sha256,
      /*is_rsa_pss=*/false, /*tls12_ok=*/false, /*tls13_ok=*/true,
      /*client_only=*/true},
@@ -261,8 +261,16 @@ enum ssl_private_key_result_t ssl_private_key_sign(
   assert(!hs->can_release_private_key);
 
   if (key_method != nullptr) {
+    if (key_method->sign == nullptr) {
+      OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+      return ssl_private_key_failure;
+    }
     enum ssl_private_key_result_t ret;
     if (hs->pending_private_key_op) {
+      if (key_method->complete == nullptr) {
+        OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+        return ssl_private_key_failure;
+      }
       ret = key_method->complete(ssl, out, out_len, max_out);
     } else {
       ret = key_method->sign(ssl, out, out_len, max_out, sigalg, in.data(),
@@ -321,8 +329,16 @@ enum ssl_private_key_result_t ssl_private_key_decrypt(SSL_HANDSHAKE *hs,
   const SSLCredential *const cred = hs->credential.get();
   assert(!hs->can_release_private_key);
   if (cred->key_method != nullptr) {
+    if (cred->key_method->decrypt == nullptr) {
+      OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+      return ssl_private_key_failure;
+    }
     enum ssl_private_key_result_t ret;
     if (hs->pending_private_key_op) {
+      if (cred->key_method->complete == nullptr) {
+        OPENSSL_PUT_ERROR(SSL, ERR_R_INTERNAL_ERROR);
+        return ssl_private_key_failure;
+      }
       ret = cred->key_method->complete(ssl, out, out_len, max_out);
     } else {
       ret = cred->key_method->decrypt(ssl, out, out_len, max_out, in.data(),
@@ -440,8 +456,8 @@ int SSL_CTX_use_PrivateKey(SSL_CTX *ctx, EVP_PKEY *pkey) {
     return 0;
   }
 
-  return SSL_CREDENTIAL_set1_private_key(ctx->cert->legacy_credential.get(),
-                                         pkey);
+  return SSL_CREDENTIAL_set1_private_key(
+      FromOpaque(ctx)->cert->legacy_credential.get(), pkey);
 }
 
 int SSL_CTX_use_PrivateKey_ASN1(int type, SSL_CTX *ctx, const uint8_t *der,
@@ -473,7 +489,7 @@ void SSL_set_private_key_method(SSL *ssl,
 void SSL_CTX_set_private_key_method(SSL_CTX *ctx,
                                     const SSL_PRIVATE_KEY_METHOD *key_method) {
   BSSL_CHECK(SSL_CREDENTIAL_set_private_key_method(
-      ctx->cert->legacy_credential.get(), key_method));
+      FromOpaque(ctx)->cert->legacy_credential.get(), key_method));
 }
 
 static constexpr size_t kMaxSignatureAlgorithmNameLen = 24;
@@ -638,7 +654,7 @@ int SSL_CREDENTIAL_set1_signing_algorithm_prefs(SSL_CREDENTIAL *cred,
 int SSL_CTX_set_signing_algorithm_prefs(SSL_CTX *ctx, const uint16_t *prefs,
                                         size_t num_prefs) {
   return SSL_CREDENTIAL_set1_signing_algorithm_prefs(
-      ctx->cert->legacy_credential.get(), prefs, num_prefs);
+      FromOpaque(ctx)->cert->legacy_credential.get(), prefs, num_prefs);
 }
 
 int SSL_set_signing_algorithm_prefs(SSL *ssl, const uint16_t *prefs,
@@ -931,7 +947,8 @@ int SSL_set1_sigalgs_list(SSL *ssl, const char *str) {
 
 int SSL_CTX_set_verify_algorithm_prefs(SSL_CTX *ctx, const uint16_t *prefs,
                                        size_t num_prefs) {
-  return set_sigalg_prefs(&ctx->verify_sigalgs, Span(prefs, num_prefs));
+  return set_sigalg_prefs(&FromOpaque(ctx)->verify_sigalgs,
+                          Span(prefs, num_prefs));
 }
 
 int SSL_set_verify_algorithm_prefs(SSL *ssl, const uint16_t *prefs,

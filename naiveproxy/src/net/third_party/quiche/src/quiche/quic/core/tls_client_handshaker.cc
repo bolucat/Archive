@@ -188,6 +188,13 @@ bool TlsClientHandshaker::CryptoConnect() {
     }
   }
 
+#if BORINGSSL_API_VERSION >= 41
+  if (tls_connection_.ssl_config().server_padding_to_request.has_value()) {
+    SSL_set_server_padding_request(
+        ssl(), tls_connection_.ssl_config().server_padding_to_request.value());
+  }
+#endif
+
   // The compliance policy must be the last thing configured before the
   // handshake in order to have defined behavior.
   if (ssl_compliance_policy_.has_value()) {
@@ -291,14 +298,6 @@ bool TlsClientHandshaker::SetAlpn() {
 bool TlsClientHandshaker::SetTransportParameters() {
   TransportParameters params;
   params.perspective = Perspective::IS_CLIENT;
-  if (GetQuicRestartFlag(quic_stop_sending_legacy_version_info)) {
-    QUIC_RESTART_FLAG_COUNT_N(quic_stop_sending_legacy_version_info, 4, 4);
-  } else {
-    params.legacy_version_information =
-        TransportParameters::LegacyVersionInformation();
-    params.legacy_version_information->version =
-        CreateQuicVersionLabel(session()->supported_versions().front());
-  }
   params.version_information = TransportParameters::VersionInformation();
   const QuicVersionLabel version = CreateQuicVersionLabel(session()->version());
   params.version_information->chosen_version = version;
@@ -353,25 +352,7 @@ bool TlsClientHandshaker::ProcessTransportParameters(
   // Notify QuicConnectionDebugVisitor.
   session()->connection()->OnTransportParametersReceived(
       *received_transport_params_);
-  if (GetQuicRestartFlag(quic_stop_parsing_legacy_version_info)) {
-    QUIC_RESTART_FLAG_COUNT_N(quic_stop_parsing_legacy_version_info, 1, 3);
-  } else {
-    if (received_transport_params_->legacy_version_information.has_value()) {
-      if (received_transport_params_->legacy_version_information->version !=
-          CreateQuicVersionLabel(session()->connection()->version())) {
-        *error_details = "Version mismatch detected";
-        return false;
-      }
-      if (CryptoUtils::ValidateServerHelloVersions(
-              received_transport_params_->legacy_version_information
-                  ->supported_versions,
-              session()->connection()->server_supported_versions(),
-              error_details) != QUIC_NO_ERROR) {
-        QUICHE_DCHECK(!error_details->empty());
-        return false;
-      }
-    }
-  }
+
   if (received_transport_params_->version_information.has_value()) {
     if (!CryptoUtils::ValidateChosenVersion(
             received_transport_params_->version_information->chosen_version,
@@ -449,6 +430,10 @@ bool TlsClientHandshaker::ExportKeyingMaterial(absl::string_view label,
 
 bool TlsClientHandshaker::MatchedTrustAnchorIdForTesting() const {
   return matched_trust_anchor_id_;
+}
+
+bool TlsClientHandshaker::ServerPaddingSentForTesting() const {
+  return server_sent_padding_;
 }
 
 std::optional<ssl_compliance_policy_t>
@@ -655,6 +640,10 @@ void TlsClientHandshaker::FinishHandshake() {
     }
   }
 
+#if BORINGSSL_API_VERSION >= 41
+  server_sent_padding_ = SSL_server_sent_requested_padding(ssl());
+#endif
+
   state_ = HANDSHAKE_COMPLETE;
   handshaker_delegate()->OnTlsHandshakeComplete();
 }
@@ -730,6 +719,32 @@ void TlsClientHandshaker::InsertSession(bssl::UniquePtr<SSL_SESSION> session) {
   session_cache_->Insert(server_id_, std::move(session),
                          *received_transport_params_,
                          received_application_state_.get());
+}
+
+int TlsClientHandshaker::OnClientCertRequested(SSL* ssl) {
+  QUICHE_DCHECK(GetQuicRestartFlag(quic_client_cert_support));
+  if (SSL_get0_chain(ssl) != nullptr) {
+    QUIC_DVLOG(1) << "Client certificate already set, continuing handshake.";
+    return 1;
+  }
+  const STACK_OF(CRYPTO_BUFFER)* ca_names = SSL_get0_server_requested_CAs(ssl);
+  std::vector<std::string> cert_authorities;
+  if (ca_names != nullptr) {
+    for (size_t i = 0; i < sk_CRYPTO_BUFFER_num(ca_names); ++i) {
+      CRYPTO_BUFFER* buffer = sk_CRYPTO_BUFFER_value(ca_names, i);
+      cert_authorities.push_back(
+          std::string(reinterpret_cast<const char*>(CRYPTO_BUFFER_data(buffer)),
+                      CRYPTO_BUFFER_len(buffer)));
+    }
+  }
+
+  // OnCertificateRequested returns true if the implementation intends to
+  // provide the client certificate asynchronously, in which case we suspend the
+  // handshake.
+  if (proof_handler_->OnCertificateRequested(cert_authorities)) {
+    return -1;
+  }
+  return 1;
 }
 
 void TlsClientHandshaker::WriteMessage(EncryptionLevel level,

@@ -30,7 +30,6 @@ source_set("base") {
     "endian.h",
     "event_fd.h",
     "file_utils.h",
-    "fixed_string_writer.h",
     "flags.h",
     "flat_hash_map.h",
     "flat_hash_map_v1.h",
@@ -91,7 +90,6 @@ source_set("base") {
 
 source_set("regex") {
   sources = [ "regex.h" ]
-  public_deps = [ ":base" ]
 }
 
 source_set("version") {

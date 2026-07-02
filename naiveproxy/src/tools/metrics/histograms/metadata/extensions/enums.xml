@@ -814,6 +814,7 @@ Called by update_extension_histograms.py.-->
   <int value="572" label="ACCESSIBILITY_PRIVATE_ON_KEY_UP"/>
   <int value="573"
       label="PASSWORDS_PRIVATE_ON_PASSWORD_MANAGER_ACTIONABLE_ERROR_CHANGED"/>
+  <int value="574" label="INDIGO_PRIVATE_ON_REGENERATE_STARTED"/>
 </enum>
 
 <!-- LINT.ThenChange(//extensions/browser/extension_event_histogram_value.h:HistogramValue) -->
@@ -2555,7 +2556,7 @@ Called by update_extension_histograms.py.-->
   <int value="1649" label="LOGIN_NOTIFYEXTERNALLOGOUTDONE"/>
   <int value="1650"
       label="DELETED_PASSWORDSPRIVATE_RECORDCHANGEPASSWORDFLOWSTARTED"/>
-  <int value="1651" label="ENTERPRISEREPORTINGPRIVATE_ENQUEUERECORD"/>
+  <int value="1651" label="DELETED_ENTERPRISEREPORTINGPRIVATE_ENQUEUERECORD"/>
   <int value="1652" label="FILEMANAGERPRIVATE_SENDFEEDBACK"/>
   <int value="1653" label="DECLARATIVENETREQUEST_TESTMATCHOUTCOME"/>
   <int value="1654" label="FILEMANAGERPRIVATE_CANCELMOUNTING"/>
@@ -2816,7 +2817,7 @@ Called by update_extension_histograms.py.-->
   <int value="1893"
       label="DELETED_PASSWORDSPRIVATE_DELETEALLPASSWORDMANAGERDATA"/>
   <int value="1894"
-      label="DEVELOPERPRIVATE_DISMISSMV2DEPRECATIONNOTICEFOREXTENSION"/>
+      label="DELETED_DEVELOPERPRIVATE_DISMISSMV2DEPRECATIONNOTICEFOREXTENSION"/>
   <int value="1895" label="AUTOTESTPRIVATE_STARTOVERDRAWTRACKING"/>
   <int value="1896" label="AUTOTESTPRIVATE_STOPOVERDRAWTRACKING"/>
   <int value="1897" label="ACCESSIBILITY_PRIVATE_SCROLLATPOINT"/>
@@ -2903,6 +2904,14 @@ Called by update_extension_histograms.py.-->
   <int value="1965" label="MIMEHANDLER_GETSTREAMINFO"/>
   <int value="1966" label="INDIGOPRIVATE_GETORIGINALIMAGE"/>
   <int value="1967" label="INDIGOPRIVATE_GETREPLACEMENTIMAGE"/>
+  <int value="1968" label="OFFSCREEN_HASDOCUMENT"/>
+  <int value="1969" label="MIMEHANDLER_ABORTANDFALLBACKTONATIVEHANDLER"/>
+  <int value="1970" label="MIMEHANDLER_SETMIMEHANDLEROPTIONS"/>
+  <int value="1971" label="MIMEHANDLER_GETMIMEHANDLEROPTIONS"/>
+  <int value="1972" label="GLICPRIVATE_HASCONVERSATION"/>
+  <int value="1973" label="GLICPRIVATE_ACTIVATETABWITHCONVERSATION"/>
+  <int value="1974" label="CONTEXTUALTASKSPRIVATE_GETSTATE"/>
+  <int value="1975" label="CONTEXTUALTASKSPRIVATE_LAUNCHPANELINNEWTAB"/>
 </enum>
 
 <!-- LINT.ThenChange(//extensions/browser/extension_function_histogram_value.h:HistogramValue) -->
@@ -3296,6 +3305,7 @@ Called by update_extension_permission.py.-->
   <int value="265" label="kGlicPrivate"/>
   <int value="266" label="kGlicPrivateInvoke"/>
   <int value="267" label="kIndigoPrivate"/>
+  <int value="268" label="kContextualTasksPrivate"/>
 </enum>
 
 <enum name="ExtensionPolicyReinstallReason">
