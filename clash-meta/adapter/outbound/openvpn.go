@@ -41,31 +41,35 @@ type OpenVPN struct {
 
 type OpenVPNOption struct {
 	BasicOption
-	Name        string            `proxy:"name"`
-	Server      string            `proxy:"server"`
-	Port        int               `proxy:"port"`
-	Proto       string            `proxy:"proto,omitempty"`
-	Dev         string            `proxy:"dev,omitempty"`
-	Cipher      string            `proxy:"cipher,omitempty"`
-	Auth        string            `proxy:"auth,omitempty"`
-	CompLZO     string            `proxy:"comp-lzo,omitempty"`
-	CA          string            `proxy:"ca"`
-	Cert        string            `proxy:"cert,omitempty"`
-	Key         string            `proxy:"key,omitempty"`
-	TLSCrypt    string            `proxy:"tls-crypt,omitempty"`
-	Username    string            `proxy:"username,omitempty"`
-	Password    string            `proxy:"password,omitempty"`
-	PeerInfo    map[string]string `proxy:"peer-info,omitempty"`
-	Ping        int               `proxy:"ping,omitempty"`
-	PingRestart int               `proxy:"ping-restart,omitempty"`
-	MTU         int               `proxy:"mtu,omitempty"`
-	UDP         bool              `proxy:"udp,omitempty"`
+	Name             string            `proxy:"name"`
+	Server           string            `proxy:"server"`
+	Port             int               `proxy:"port"`
+	Proto            string            `proxy:"proto,omitempty"`
+	Dev              string            `proxy:"dev,omitempty"`
+	Cipher           string            `proxy:"cipher,omitempty"`
+	Auth             string            `proxy:"auth,omitempty"`
+	CompLZO          string            `proxy:"comp-lzo,omitempty"`
+	CA               string            `proxy:"ca"`
+	Cert             string            `proxy:"cert,omitempty"`
+	Key              string            `proxy:"key,omitempty"`
+	TLSCrypt         string            `proxy:"tls-crypt,omitempty"`
+	Username         string            `proxy:"username,omitempty"`
+	Password         string            `proxy:"password,omitempty"`
+	PeerInfo         map[string]string `proxy:"peer-info,omitempty"`
+	Ping             int               `proxy:"ping,omitempty"`
+	PingRestart      int               `proxy:"ping-restart,omitempty"`
+	HandshakeTimeout int               `proxy:"handshake-timeout,omitempty"`
+	MTU              int               `proxy:"mtu,omitempty"`
+	UDP              bool              `proxy:"udp,omitempty"`
 
 	RemoteDnsResolve bool     `proxy:"remote-dns-resolve,omitempty"`
 	Dns              []string `proxy:"dns,omitempty"`
 }
 
 func NewOpenVPN(option OpenVPNOption) (*OpenVPN, error) {
+	if option.HandshakeTimeout < 0 {
+		return nil, errors.New("openvpn handshake timeout must be non-negative")
+	}
 	cfg := &ovpn.ClientConfig{
 		RemoteHost:   option.Server,
 		RemotePort:   uint16(option.Port),
@@ -216,17 +220,22 @@ func (o *OpenVPN) Close() error {
 }
 
 func (o *OpenVPN) run(ctx context.Context) (wireguard.Device, resolver.Resolver, error) {
-	handshakeCtx, cancel := context.WithCancel(ctx)
+	runCtx, cancel := context.WithCancel(ctx)
 	stop := contextutils.AfterFunc(o.runCtx, cancel)
 	defer func() {
 		stop()
 		cancel()
 	}()
 
-	if err := o.runLock.Acquire(handshakeCtx, 1); err != nil {
+	if err := o.runLock.Acquire(runCtx, 1); err != nil {
 		return nil, nil, err
 	}
-	defer o.runLock.Release(1)
+	releaseRunLock := true
+	defer func() {
+		if releaseRunLock {
+			o.runLock.Release(1)
+		}
+	}()
 
 	if o.running {
 		if o.tunDevice == nil {
@@ -238,6 +247,38 @@ func (o *OpenVPN) run(ctx context.Context) (wireguard.Device, resolver.Resolver,
 		return nil, nil, o.runCtx.Err()
 	}
 
+	if o.option.HandshakeTimeout > 0 {
+		type runResult struct {
+			tunDevice wireguard.Device
+			resolver  resolver.Resolver
+			err       error
+		}
+
+		releaseRunLock = false
+		resultCh := make(chan runResult, 1)
+		go func() {
+			defer o.runLock.Release(1)
+
+			handshakeTimeout := time.Duration(o.option.HandshakeTimeout) * time.Second
+			handshakeCtx, handshakeCancel := context.WithTimeout(o.runCtx, handshakeTimeout)
+			defer handshakeCancel()
+
+			tunDevice, r, err := o.startLocked(handshakeCtx)
+			resultCh <- runResult{tunDevice: tunDevice, resolver: r, err: err}
+		}()
+
+		select {
+		case result := <-resultCh:
+			return result.tunDevice, result.resolver, result.err
+		case <-runCtx.Done():
+			return nil, nil, runCtx.Err()
+		}
+	}
+
+	return o.startLocked(runCtx)
+}
+
+func (o *OpenVPN) startLocked(handshakeCtx context.Context) (wireguard.Device, resolver.Resolver, error) {
 	packetIO, err := o.openPacketIO(handshakeCtx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect OpenVPN server: %w", err)

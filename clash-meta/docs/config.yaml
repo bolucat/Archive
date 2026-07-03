@@ -1224,6 +1224,7 @@ proxies: # socks5
     #   UV_DEVICE_ID: "laptop-001"
     # ping: 10 # 默认值为 0
     # ping-restart: 60 # 默认值为 0
+    # handshake-timeout: 30 # 单位为秒；配置后握手时不受外层连接超时影响；默认值为 0，表示仅使用外层连接超时
     # mtu: 1500
     udp: true
     # 一个出站代理的标识。当值不为空时，将使用指定的 proxy 发出连接
@@ -1247,6 +1248,7 @@ proxies: # socks5
     # remote-dns-resolve: true # 强制 dns 远程解析，默认值为 false
     # dns: [ 1.1.1.1, 8.8.8.8 ] # 仅在 remote-dns-resolve 为 true 时生效
     # congestion-controller: bbr # 默认不开启
+    # handshake-timeout: 30 # 单位为秒；配置后握手时不受外层连接超时影响；默认值为 0，表示仅使用外层连接超时
 
   # masque-h3-l4proxy
   - name: "masque-h3-l4proxy"
@@ -1262,6 +1264,7 @@ proxies: # socks5
     # remote-dns-resolve: true # 强制 dns 远程解析，默认值为 false
     # dns: [ tls://1.1.1.1, tls://1.0.0.1 ] # 仅在 remote-dns-resolve 为 true 时生效
     # congestion-controller: bbr # 默认不开启
+    # handshake-timeout: 30 # 单位为秒；配置后握手时不受外层连接超时影响；默认值为 0，表示仅使用外层连接超时
 
   # masque-h2
   - name: "masque-h2"
@@ -1279,6 +1282,7 @@ proxies: # socks5
     # dialer-proxy: "ss1"
     # remote-dns-resolve: true # 强制 dns 远程解析，默认值为 false
     # dns: [ 1.1.1.1, 8.8.8.8 ] # 仅在 remote-dns-resolve 为 true 时生效
+    # handshake-timeout: 30 # 单位为秒；配置后握手时不受外层连接超时影响；默认值为 0，表示仅使用外层连接超时
 
   # tuic
   - name: tuic
