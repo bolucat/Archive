@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [2.63.18](https://github.com/filebrowser/filebrowser/compare/v2.63.17...v2.63.18) (2026-07-04)
+
+
+### Bug Fixes
+
+* avoid recursive conflict checks for copy and move ([#6009](https://github.com/filebrowser/filebrowser/issues/6009)) ([dfc2e88](https://github.com/filebrowser/filebrowser/commit/dfc2e887e1a19d54984a0d7e39a2a63caf73ef19))
+* deduplicate PT language ([4470288](https://github.com/filebrowser/filebrowser/commit/4470288ba1828a14453a99348fd22c62aa0b9460))
+* **preview:** keep the EPUB table-of-contents button clear of the header ([#6010](https://github.com/filebrowser/filebrowser/issues/6010)) ([aac2516](https://github.com/filebrowser/filebrowser/commit/aac25166378422135e624e305c410c54a39374fb))
+
 ## [2.63.17](https://github.com/filebrowser/filebrowser/compare/v2.63.16...v2.63.17) (2026-06-27)
 
 
