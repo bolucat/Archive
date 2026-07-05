@@ -242,7 +242,6 @@ const proxy_group_type = [
 	['fallback', _('Fallback')],
 	['url-test', _('URL test')],
 	['load-balance', _('Load balance')],
-	//['relay', _('Relay')], // Deprecated
 ];
 
 const routing_port_type = [
@@ -1763,7 +1762,7 @@ function textvalue2Value(section_id) {
 	let cval = this.cfgvalue(section_id);
 	let i = this.keylist.indexOf(cval);
 
-	return this.vallist[i];
+	return this.vallist[i] ?? cval;
 }
 
 function validateAuth(section_id, value) {
