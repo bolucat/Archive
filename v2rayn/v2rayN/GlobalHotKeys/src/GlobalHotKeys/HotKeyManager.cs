@@ -1,5 +1,3 @@
-﻿using System.Reactive.Linq;
-using System.Reactive.Subjects;
 using System.Runtime.InteropServices;
 
 namespace GlobalHotKeys;
@@ -10,7 +8,8 @@ public class HotKeyManager : IDisposable
     private const uint RegisterHotKeyMsg = 0x0400u;     // WM_USER
     private const uint UnregisterHotKeyMsg = 0x0401u;   // WM_USER + 1
 
-    private readonly Subject<HotKey> _hotkey = new();   // _hotkey subject to fire _hotkey events.
+    public event Action<HotKey>? HotKeyPressed;         // Event to notify when a hotkey is pressed.
+
     private readonly Thread _messageLoopThread;         // Store the message loop thread and window handle.
     private readonly IntPtr _hWnd;
 
@@ -137,7 +136,7 @@ public class HotKeyManager : IDisposable
                             var registration = registrations.GetValueOrDefault(wParam.ToInt32());
                             if (registration != null)
                             {
-                                _hotkey.OnNext(registration);
+                                HotKeyPressed?.Invoke(registration);
                             }
                             return new IntPtr(1);
                         }
@@ -174,7 +173,7 @@ public class HotKeyManager : IDisposable
     }
 
     /// <summary>
-    /// Register method: registers a _hotkey.
+    /// Register method: registers a hotkey .
     /// </summary>
     /// <param name="key"></param>
     /// <param name="modifiers"></param>
@@ -183,17 +182,12 @@ public class HotKeyManager : IDisposable
     {
         // Retrieve the window handle.
 
-        // tell the message loop to register the _hotkey.
+        // tell the message loop to register the hotkey.
         var result = NativeFunctions.SendMessage(_hWnd, RegisterHotKeyMsg, new IntPtr((int)key), new IntPtr((int)modifiers));
 
-        // return a disposable that instructs the message loop to unregister the _hotkey on disposal.
+        // return a disposable that instructs the message loop to unregister the hotkey on disposal.
         return new Registration(_hWnd, result);
     }
-
-    /// <summary>
-    /// HotKeyPressed property: returns an observable sequence of hotkeys.
-    /// </summary>
-    public IObservable<HotKey> HotKeyPressed => _hotkey.AsObservable();
 
     /// <summary>
     /// Dispose method: shuts down the message loop.
@@ -229,7 +223,7 @@ public class HotKeyManager : IDisposable
         public int Id { get; }
 
         /// <summary>
-        /// Dispose method unregisters the _hotkey if registration was successful.
+        /// Dispose method unregisters the hotkey if registration was successful.
         /// </summary>
         public void Dispose()
         {

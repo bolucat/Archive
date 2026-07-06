@@ -1,9 +1,9 @@
+using System;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Threading;
 using GlobalHotKeys;
-using System;
-using System.Reactive.Linq;
 
 namespace AvaloniaApp
 {
@@ -29,10 +29,13 @@ namespace AvaloniaApp
 
                 var mainViewModel = new MainViewModel();
 
-                hotKeyManager.HotKeyPressed
-                  .ObserveOn(Avalonia.Threading.AvaloniaScheduler.Instance)
-                  .Subscribe(hotKey => mainViewModel.Text += $"HotKey: Id={hotKey.Id}, Key={hotKey.Key}, Modifiers={hotKey.Modifiers}{Environment.NewLine}");
-
+                hotKeyManager.HotKeyPressed += hotKey =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        mainViewModel.Text += $"hotKey: Id = {hotKey.Id}, Key = {hotKey.Key}, Modifiers = {hotKey.Modifiers}{Environment.NewLine}";
+                    });
+                };
                 desktop.MainWindow =
                   new MainWindow
                   {

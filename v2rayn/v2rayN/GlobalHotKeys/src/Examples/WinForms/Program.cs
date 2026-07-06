@@ -1,8 +1,6 @@
-using GlobalHotKeys;
 using System;
-using System.Reactive.Linq;
-using System.Threading;
 using System.Windows.Forms;
+using GlobalHotKeys;
 
 namespace WinForms
 {
@@ -22,11 +20,21 @@ namespace WinForms
             using var shift1 = hotKeyManager.Register(VirtualKeyCode.KEY_1, Modifiers.Shift);
 
             var form = new Form1();
-            using var subscription = hotKeyManager.HotKeyPressed
-              .ObserveOn(SynchronizationContext.Current)
-              .Subscribe(hotKey =>
-                form.AppendText($"HotKey: Id = {hotKey.Id}, Key = {hotKey.Key}, Modifiers = {hotKey.Modifiers}{Environment.NewLine}")
-              );
+
+            hotKeyManager.HotKeyPressed += hotKey =>
+            {
+                if (form.InvokeRequired)
+                {
+                    form.BeginInvoke(() =>
+                    {
+                        form.AppendText($"HotKey: Id = {hotKey.Id}, Key = {hotKey.Key}, Modifiers = {hotKey.Modifiers}{Environment.NewLine}");
+                    });
+                }
+                else
+                {
+                    form.AppendText($"HotKey: Id = {hotKey.Id}, Key = {hotKey.Key}, Modifiers = {hotKey.Modifiers}{Environment.NewLine}");
+                }
+            };
 
             Application.Run(form);
         }

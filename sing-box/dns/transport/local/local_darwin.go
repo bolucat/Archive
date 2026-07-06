@@ -10,11 +10,13 @@ import (
 	"io"
 	"net"
 	"os"
+	"syscall"
 
 	"github.com/sagernet/sing-box/dns"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	mDNS "github.com/miekg/dns"
+	"golang.org/x/sys/unix"
 )
 
 func (t *Transport) systemExchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -84,33 +86,80 @@ func darwinLookupSystemDNS(ctx context.Context, name string, qtype, qclass uint1
 		return nil, darwinResolverError(name, statusCode)
 	}
 
+	return readQueryResponse(ctx, conn, name, qtype, qclass)
+}
+
+func readQueryResponse(ctx context.Context, conn net.Conn, name string, qtype, qclass uint16) (*mDNS.Msg, error) {
 	var answers []mDNS.RR
+	var resolverErrorCode int32
+	var hasResolverError bool
 	for {
 		reply, replyErr := readReply(conn)
 		if replyErr != nil {
 			return nil, contextError(ctx, E.Cause(replyErr, "read mDNSResponder reply"))
 		}
-		if reply.errorCode != mdnsResponderErrNoError {
-			if len(answers) > 0 {
-				break
+		moreComing := reply.flags&mdnsResponderFlagMoreComing != 0
+		if !moreComing {
+			// Apple's client stub also treats already-readable bytes as MoreComing.
+			var moreBytesErr error
+			moreComing, moreBytesErr = mdnsResponderHasMoreBytes(conn)
+			if moreBytesErr != nil {
+				return nil, contextError(ctx, E.Cause(moreBytesErr, "check mDNSResponder reply queue"))
 			}
-			return nil, darwinResolverError(name, reply.errorCode)
 		}
-		if reply.flags&mdnsResponderFlagAdd != 0 && len(reply.rdata) > 0 {
+		if reply.errorCode != mdnsResponderErrNoError {
+			resolverErrorCode = reply.errorCode
+			hasResolverError = true
+		} else if reply.flags&mdnsResponderFlagAdd != 0 && len(reply.rdata) > 0 {
 			record, buildErr := buildResourceRecord(reply)
 			if buildErr == nil {
 				answers = append(answers, record)
 			}
 		}
-		if reply.flags&mdnsResponderFlagMoreComing == 0 {
+		if !moreComing {
 			break
 		}
+	}
+	if len(answers) == 0 && hasResolverError {
+		return nil, darwinResolverError(name, resolverErrorCode)
 	}
 
 	response := new(mDNS.Msg)
 	response.Question = []mDNS.Question{{Name: mDNS.Fqdn(name), Qtype: qtype, Qclass: qclass}}
 	response.Answer = answers
 	return response, nil
+}
+
+func mdnsResponderHasMoreBytes(conn net.Conn) (bool, error) {
+	syscallConn, loaded := conn.(syscall.Conn)
+	if !loaded {
+		return false, E.New("mDNSResponder connection has no raw fd")
+	}
+	rawConn, err := syscallConn.SyscallConn()
+	if err != nil {
+		return false, err
+	}
+	var hasMoreBytes bool
+	var pollErr error
+	controlErr := rawConn.Control(func(fd uintptr) {
+		pollFDs := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+		for {
+			var n int
+			n, pollErr = unix.Poll(pollFDs, 0)
+			if pollErr == unix.EINTR {
+				continue
+			}
+			hasMoreBytes = n > 0 && pollFDs[0].Revents&unix.POLLIN != 0
+			return
+		}
+	})
+	if controlErr != nil {
+		return false, controlErr
+	}
+	if pollErr != nil {
+		return false, pollErr
+	}
+	return hasMoreBytes, nil
 }
 
 func buildQueryRequest(name string, qtype, qclass uint16) []byte {

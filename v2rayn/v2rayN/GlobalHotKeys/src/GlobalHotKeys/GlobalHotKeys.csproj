@@ -6,11 +6,6 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
-  <ItemGroup>
-	  <PackageReference Include="System.Reactive" />
-  </ItemGroup>
-
  
 
 </Project>
