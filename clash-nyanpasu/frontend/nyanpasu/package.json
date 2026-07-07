@@ -39,7 +39,7 @@
     "less": "4.6.7",
     "lodash-es": "4.18.1",
     "monaco-editor": "0.55.1",
-    "radix-ui": "1.6.1",
+    "radix-ui": "1.6.2",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-error-boundary": "6.1.2",
@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@csstools/normalize.css": "12.1.1",
-    "@iconify/json": "2.2.496",
+    "@iconify/json": "2.2.497",
     "@monaco-editor/react": "4.7.0",
     "@tailwindcss/vite": "4.3.2",
     "@tanstack/react-query": "5.101.2",

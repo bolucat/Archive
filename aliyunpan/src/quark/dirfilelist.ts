@@ -1,0 +1,244 @@
+import type { IAliGetFileModel } from '../aliapi/alimodels'
+import getFileIcon from '../aliapi/fileicon'
+import { humanDateTimeDateStr, humanSize } from '../utils/format'
+import { HanToPin } from '../utils/utils'
+import message from '../utils/message'
+import UserDAL from '../user/userdal'
+import { buildQuarkCookieString, quarkAuthHeaders, quarkDownloadHeaders, readQuarkCookieStringFromElectron } from './auth'
+
+export type QuarkFileItem = {
+  fid: string
+  pdir_fid?: string
+  file_name: string
+  category?: number
+  file_type?: number
+  format_type?: string
+  size?: number | string
+  updated_at?: number | string
+  created_at?: number | string
+  thumbnail?: string
+  preview_url?: string
+  obj_category?: string
+}
+
+const BASE = 'https://drive-pc.quark.cn/1/clouddrive'
+
+const quarkParams = (params: Record<string, string | number | undefined> = {}) => {
+  const qs = new URLSearchParams({
+    pr: 'ucpro',
+    fr: 'pc',
+    uc_param_str: '',
+    __t: String(Date.now()),
+    __dt: '1000'
+  })
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== '') qs.set(key, String(value))
+  }
+  return qs
+}
+
+const getToken = async (user_id: string) => {
+  let token = UserDAL.GetUserToken(user_id)
+  if (!token?.access_token) {
+    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
+    if (dbToken) token = dbToken
+  }
+  return token
+}
+
+const hasQuarkCookieAuth = (cookieString: string) => /(?:^|;\s*)(?:__uid|__kps|__pus|__puus)=/.test(cookieString)
+
+const refreshQuarkTokenCookiesFromSession = async (token: any) => {
+  const cookieString = await readQuarkCookieStringFromElectron().catch(() => '')
+  if (!cookieString || !hasQuarkCookieAuth(cookieString) || cookieString === token.access_token) return
+  token.access_token = cookieString
+  UserDAL.SaveUserToken(token)
+}
+
+export const quarkRequest = async <T = any>(
+  user_id: string,
+  path: string,
+  init: RequestInit = {},
+  params: Record<string, string | number | undefined> = {},
+  silent = false
+): Promise<T | { __error: true; code: number; message: string } | null> => {
+  const token = await getToken(user_id)
+  if (!token?.access_token) {
+    message.error('未登录夸克网盘')
+    return null
+  }
+  const resp = await fetch(`${BASE}/${path.replace(/^\//, '')}?${quarkParams(params).toString()}`, {
+    ...init,
+    credentials: 'include',
+    headers: {
+      ...quarkAuthHeaders(token.access_token),
+      ...(init.headers || {})
+    }
+  })
+  await refreshQuarkTokenCookiesFromSession(token)
+  const data = await resp.json().catch(() => undefined)
+  if (!resp.ok || data?.status === 'error' || (data?.code && data.code !== 0)) {
+    const missingLoginCookie = data?.code === 31001 || /require login/i.test(data?.message || '')
+    if (!silent) message.error(missingLoginCookie ? '夸克网盘登录 Cookie 无效或未写入，请重新登录夸克' : (data?.message || '夸克网盘请求失败'))
+    return { __error: true, code: Number(data?.code || data?.status || resp.status || 0), message: data?.message || '夸克网盘请求失败' }
+  }
+  return data as T
+}
+
+const isQuarkError = (data: any): data is { __error: true; code: number; message: string } => !!data?.__error
+
+const getListFromResponse = (data: any): QuarkFileItem[] => {
+  const list = data?.data?.list || data?.data || []
+  return Array.isArray(list) ? list : []
+}
+
+const getQuarkTime = (value: number | string | undefined): number => {
+  if (!value) return 0
+  if (typeof value === 'number') return value > 100000000000 ? value : value * 1000
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+export const apiQuarkFileList = async (
+  user_id: string,
+  parentId = '0',
+  size = 100,
+  page = 1
+): Promise<{ items: QuarkFileItem[]; total: number }> => {
+  const data = await quarkRequest(user_id, 'file/sort', {}, {
+    pdir_fid: parentId === 'quark_root' ? '0' : parentId,
+    _page: page,
+    _size: size,
+    _sort: 'file_name:asc'
+  })
+  if (!data || isQuarkError(data)) return { items: [], total: 0 }
+  return {
+    items: getListFromResponse(data),
+    total: Number((data as any)?.metadata?._total || (data as any)?.data?.metadata?._total || getListFromResponse(data).length)
+  }
+}
+
+export const apiQuarkSearch = async (user_id: string, keyword: string, size = 200, silent = false): Promise<QuarkFileItem[]> => {
+  if (!keyword) return []
+  const data = await quarkRequest(user_id, 'file/search', {}, {
+    q: keyword,
+    _page: 1,
+    _size: size,
+    _fetch_total: 1,
+    _sort: 'file_type:desc,updated_at:desc',
+    _is_hl: 1
+  }, silent)
+  return data && !isQuarkError(data) ? getListFromResponse(data) : []
+}
+
+export const apiQuarkFileDetail = async (user_id: string, fileId: string): Promise<QuarkFileItem | null> => {
+  if (fileId === 'quark_root' || fileId === '0') {
+    return { fid: '0', pdir_fid: '', file_name: '网盘文件', file_type: 0 }
+  }
+  const data = await quarkRequest(user_id, 'file', {}, { fids: fileId })
+  if (!data || isQuarkError(data)) return null
+  const item = getListFromResponse(data).find((entry) => String(entry.fid) === String(fileId))
+  return item || getListFromResponse(data)[0] || null
+}
+
+export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Promise<{ url: string; size: number; name: string; error: string }> => {
+  const token = await getToken(user_id)
+  if (!token?.access_token) {
+    message.error('未登录夸克网盘')
+    return { url: '', size: 0, name: '', error: '未登录夸克网盘' }
+  }
+  if (typeof window !== 'undefined' && (window as any).WebQuarkDownloadUrl) {
+    const result = await (window as any).WebQuarkDownloadUrl({ fileId, cookie: token.access_token })
+    const cookieString = buildQuarkCookieString((result?.cookies || []) as any)
+    if (cookieString && hasQuarkCookieAuth(cookieString) && cookieString !== token.access_token) {
+      token.access_token = cookieString
+      UserDAL.SaveUserToken(token)
+    }
+    const data = result?.body ? JSON.parse(result.body) : undefined
+    if (!result?.ok || data?.status === 'error' || (data?.code && data.code !== 0)) {
+      const error = data?.message || result?.error || '获取夸克下载地址失败'
+      message.error(error)
+      return { url: '', size: 0, name: '', error }
+    }
+    const info = Array.isArray(data?.data) ? data.data[0] : null
+    const url = info?.download_url || ''
+    return {
+      url,
+      size: Number(info?.size || 0),
+      name: info?.file_name || '',
+      error: url ? '' : '获取夸克下载地址失败'
+    }
+  }
+  const params = new URLSearchParams({
+    pr: 'ucpro',
+    fr: 'pc',
+    sys: 'win32',
+    ve: '2.5.56',
+    ut: '',
+    guid: ''
+  })
+  const resp = await fetch(`${BASE}/file/download?${params.toString()}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: quarkDownloadHeaders(token.access_token),
+    body: JSON.stringify({ fids: [fileId] })
+  })
+  await refreshQuarkTokenCookiesFromSession(token)
+  const data = await resp.json().catch(() => undefined)
+  if (!resp.ok || data?.status === 'error' || (data?.code && data.code !== 0)) {
+    const error = data?.message || '获取夸克下载地址失败'
+    message.error(error)
+    return {
+      url: '',
+      size: 0,
+      name: '',
+      error
+    }
+  }
+  const info = Array.isArray((data as any)?.data) ? (data as any).data[0] : null
+  const url = info?.download_url || ''
+  return {
+    url,
+    size: Number(info?.size || 0),
+    name: info?.file_name || '',
+    error: url ? '' : '获取夸克下载地址失败'
+  }
+}
+
+export const mapQuarkFileToAliModel = (item: QuarkFileItem, drive_id: string, parentId: string): IAliGetFileModel => {
+  const isDir = Number(item.file_type || 0) === 0
+  const name = item.file_name || ''
+  const ext = isDir ? '' : (name.split('.').pop() || '')
+  const size = Number(item.size || 0)
+  const time = getQuarkTime(item.updated_at || item.created_at)
+  const timeStr = time ? humanDateTimeDateStr(new Date(time).toISOString()) : ''
+  let category = ''
+  let icon = 'iconfile-folder'
+  if (!isDir) {
+    const iconInfo = getFileIcon('', ext, ext, item.format_type || item.obj_category || '', size)
+    category = iconInfo[0]
+    icon = iconInfo[1]
+  }
+  return {
+    __v_skip: true,
+    drive_id,
+    file_id: String(item.fid || ''),
+    parent_file_id: item.pdir_fid && item.pdir_fid !== '0' ? String(item.pdir_fid) : parentId,
+    name,
+    namesearch: HanToPin(name),
+    ext,
+    mime_type: item.format_type || '',
+    mime_extension: ext,
+    category,
+    icon,
+    file_count: 0,
+    size,
+    sizeStr: humanSize(size),
+    time,
+    timeStr,
+    starred: false,
+    isDir,
+    thumbnail: item.thumbnail || item.preview_url || '',
+    description: `quark_fid:${item.fid || ''};quark_pdir:${item.pdir_fid || parentId}`
+  }
+}

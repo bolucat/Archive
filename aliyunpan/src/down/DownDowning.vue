@@ -26,9 +26,18 @@ import { Tooltip as AntdTooltip } from 'ant-design-vue'
 import { TestButton } from '../utils/mosehelper'
 import { xorWith } from 'lodash'
 import { modalCloud123OfflineDownload } from '../utils/modal'
+import UrlDownloadModal from './UrlDownloadModal.vue'
+import TaskDetailDrawer from './TaskDetailDrawer.vue'
+import TorrentFileSelector from './TorrentFileSelector.vue'
+import DragDropZone from '../components/DragDropZone.vue'
 
 const viewlist = ref()
 const inputsearch = ref()
+const urlDownloadVisible = ref(false)
+const taskDetailVisible = ref(false)
+const taskDetailGid = ref('')
+const torrentSelectorVisible = ref(false)
+const torrentSelectorGid = ref('')
 
 const appStore = useAppStore()
 const winStore = useWinStore()
@@ -211,13 +220,53 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   onShowRightMenu('downingrightmenu', e.event.clientX, e.event.clientY)
 }
 
+const focusedIsBT = computed(() => {
+  const key = downingStore.ListFocusKey || [...downingStore.ListSelected][0]
+  if (!key) return false
+  const item = downingStore.ListDataShow.find((i: any) => i.DownID === key)
+  const st = item?.Info?.sourceType
+  return st === 'magnet' || st === 'torrent' || st === 'torrent-url'
+})
+
 const handleCloud123Offline = () => {
   if (!isCloudUser.value) return
   modalCloud123OfflineDownload()
 }
+
+const handleUrlDownload = () => {
+  dropPrefilledUrl.value = ''
+  urlDownloadVisible.value = true
+}
+
+const dropPrefilledUrl = ref('')
+const handleDropUrl = (url: string) => {
+  dropPrefilledUrl.value = url
+  urlDownloadVisible.value = true
+}
+
+const handleTaskDetail = () => {
+  const selected = [...downingStore.ListSelected]
+  const key = selected[0] || downingStore.ListFocusKey
+  if (!key) return
+  const item = downingStore.ListDataShow.find((i: any) => i.DownID === key)
+  if (!item) return
+  taskDetailGid.value = item.Info?.GID || ''
+  taskDetailVisible.value = true
+}
+
+const handleTorrentFiles = () => {
+  const selected = [...downingStore.ListSelected]
+  const key = selected[0] || downingStore.ListFocusKey
+  if (!key) return
+  const item = downingStore.ListDataShow.find((i: any) => i.DownID === key)
+  if (!item) return
+  torrentSelectorGid.value = item.Info?.GID || ''
+  torrentSelectorVisible.value = true
+}
 </script>
 
 <template>
+  <DragDropZone style='display: contents' @drop-url='handleDropUrl'>
   <div style="height: 7px"></div>
   <div class='toppanbtns' style='height: 26px'>
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
@@ -260,8 +309,14 @@ const handleCloud123Offline = () => {
       <a-button v-if='isCloudUser' type='text' size='small' tabindex='-1' @click='handleCloud123Offline'>
         <IconFont name="iconcloud-download" />离线下载
       </a-button>
+      <a-button type='text' size='small' tabindex='-1' @click='handleUrlDownload'>
+        <IconFont name="iconcloud-download" />新建下载
+      </a-button>
     </div>
     <div class='toppanbtn' v-show='!downingStore.IsListSelected'>
+      <a-button type='text' size='small' tabindex='-1' @click='handleUrlDownload'>
+        <IconFont name="iconcloud-download" />新建下载
+      </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />开始全部
       </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />暂停全部
@@ -383,7 +438,7 @@ const handleCloud123Offline = () => {
                     :style="'width: ' + item.Down.DownProcess.toString() + '%'"
                   ></div>
                 </div>
-                <p class='text-error'>{{ item.Down.FailedMessage }}</p>
+                <p v-if='item.Down.IsFailed' class='text-error'>{{ item.Down.FailedMessage }}</p>
               </div>
             </div>
             <div class='downspeed'>{{ item.Down.DownSpeedStr }}</div>
@@ -410,9 +465,21 @@ const handleCloud123Offline = () => {
           <template #icon><IconFont name="icondelete" /></template>
           <template #default>删除</template>
         </a-doption>
+        <a-doption @click='handleTaskDetail'>
+          <template #icon><IconFont name="iconinfo" /></template>
+          <template #default>任务详情</template>
+        </a-doption>
+        <a-doption v-if='focusedIsBT' @click='handleTorrentFiles'>
+          <template #icon><IconFont name="iconfile" /></template>
+          <template #default>选择文件</template>
+        </a-doption>
       </template>
     </a-dropdown>
   </div>
+  <UrlDownloadModal v-model:visible="urlDownloadVisible" :initial-url="dropPrefilledUrl" />
+  <TaskDetailDrawer v-model:visible="taskDetailVisible" :gid="taskDetailGid" />
+  <TorrentFileSelector v-model:visible="torrentSelectorVisible" :gid="torrentSelectorGid" />
+  </DragDropZone>
 </template>
 
 <style scoped>

@@ -20,6 +20,7 @@ import { useSettingStore, usePanFileStore, useAppStore, usePanTreeStore } from '
 import { computed } from 'vue'
 import { MediaScanner } from '../../utils/mediaScanner'
 import MusicScanner from '../../utils/musicScanner'
+import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
 import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isOneDriveUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
@@ -31,6 +32,8 @@ const appStore = useAppStore()
 const panTreeStore = usePanTreeStore()
 const mediaScanner = MediaScanner.getInstance()
 const musicScanner = MusicScanner.getInstance()
+const bookScanner = BookScanner.getInstance()
+
 
 const pickFolderForScan = () => {
   const selectedFiles = panFileStore.GetSelected()
@@ -85,6 +88,30 @@ const handleScanAudio = async () => {
   } catch (error) {
     console.error('音频扫描失败:', error)
     message.error('音频扫描失败，请稍后重试')
+  }
+}
+
+// 扫描书籍
+const handleScanBook = async () => {
+  const folder = pickFolderForScan()
+  if (!folder) return
+  if (bookScanner.isScanning) {
+    message.warning('书籍扫描进行中，请稍后...')
+    return
+  }
+  const userId = (folder as any).user_id || panTreeStore.user_id || ''
+  if (!userId) {
+    message.error('未识别到当前账号，无法扫描')
+    return
+  }
+  try {
+    message.info(`开始扫描文件夹 "${folder.name}" 的书籍文件`)
+    appStore.toggleTab('book')
+    const res = await bookScanner.scanFolder(folder, userId)
+    message.success(`书籍扫描完成：收录 ${res.found} 本`)
+  } catch (error) {
+    console.error('书籍扫描失败:', error)
+    message.error('书籍扫描失败，请稍后重试')
   }
 }
 
@@ -159,15 +186,31 @@ const isSelectedFolder = computed(() => {
         <template #default>快传</template>
       </a-doption>
 
-      <!-- 扫描视频 / 扫描音频 -->
-      <a-doption v-show="isSelectedFolder && isShowBtn" @click="handleScanVideo">
-        <template #icon><IconFont name="iconshipin" /></template>
-        <template #default>扫描视频</template>
-      </a-doption>
-      <a-doption v-show="isSelectedFolder && isShowBtn" @click="handleScanAudio">
-        <template #icon><IconFont name="iconmusic" /></template>
-        <template #default>扫描音频</template>
-      </a-doption>
+      <!-- AI 整理此目录 暂时隐藏 -->
+      <a-dsubmenu v-if="isSelectedFolder && isShowBtn" class='rightmenu' trigger='hover'>
+        <template #default>
+          <div @click.stop='() => {}'>
+            <span class='arco-dropdown-option-icon'>
+              <IconFont name="iconscan" style='opacity: 0.8' />
+            </span>
+            扫描数据
+          </div>
+        </template>
+        <template #content>
+          <a-doption @click="handleScanVideo">
+            <template #icon><IconFont name="iconshipin" /></template>
+            <template #default>扫描视频</template>
+          </a-doption>
+          <a-doption @click="handleScanAudio">
+            <template #icon><IconFont name="iconmusic" /></template>
+            <template #default>扫描音频</template>
+          </a-doption>
+          <a-doption @click="handleScanBook">
+            <template #icon><IconFont name="iconbook" /></template>
+            <template #default>扫描书籍</template>
+          </a-doption>
+        </template>
+      </a-dsubmenu>
 
       <a-dsubmenu v-if="dirtype !== 'pic' && !isWebDav && !isThirdPartyDrive" id='rightpansubbiaoji' class='rightmenu' trigger='hover'>
         <template #default>

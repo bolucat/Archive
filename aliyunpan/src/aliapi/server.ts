@@ -29,7 +29,7 @@ export interface IServerVerData {
 
 export default class ServerHttp {
   static baseApi = b64decode('aHR0cDovLzEyMS41LjE0NC44NDo1MjgyLw==')
-  static configUrl = b64decode('aHR0cHM6Ly9naXRlZS5jb20vemhhbm5hby9yZXNvdXJjZS9yYXcvbWFzdGVyL3NoYXJlU2l0ZUNvbmZpZy5qc29u')
+  static configUrl = b64decode('aHR0cHM6Ly9naXRlZS5jb20vYXBpL3Y1L3JlcG9zL3poYW5uYW8vcmVzb3VyY2UvY29udGVudHMvc2hhcmVTaXRlQ29uZmlnLmpzb24=')
   static updateUrl = b64decode('aHR0cHM6Ly9hcGkuZ2l0aHViLmNvbS9yZXBvcy9nYW96aGFuZ21pbi9ib3hwbGF5ZXIvcmVsZWFzZXMvbGF0ZXN0')
 
   static compareVer(version1: string, version2: string): number {
@@ -108,22 +108,48 @@ export default class ServerHttp {
     axios
       .get(ServerHttp.configUrl, {
         withCredentials: false,
-        responseType: 'json',
+        responseType: 'arraybuffer',
         timeout: 30000
       })
       .then(async (response: AxiosResponse) => {
         console.log('CheckConfigUpgrade', response)
+        let apiData: any
+        try {
+          const buff = response.data as ArrayBuffer
+          const uint8array = new Uint8Array(buff)
+          const str = new TextDecoder().decode(uint8array)
+          apiData = JSON.parse(str)
+        } catch {
+          DebugLog.mSaveDanger('CheckConfigUpgrade', new Error('JSON parse failed'))
+          return
+        }
+        let jsonData: any
+        if (apiData.content && apiData.encoding === 'base64') {
+          const jsonStr = b64decode(apiData.content)
+          if (!jsonStr) return
+          try {
+            jsonData = JSON.parse(jsonStr)
+          } catch {
+            DebugLog.mSaveDanger('CheckConfigUpgrade', new Error('inner JSON parse failed'))
+            return
+          }
+        } else if (apiData.SSList) {
+          jsonData = apiData
+        } else {
+          return
+        }
+
         let GroupList: IShareSiteGroupModel[] = []
-        if (response.data.GroupList && response.data.GroupList.length > 0) {
-          const list = response.data.GroupList
+        if (jsonData.GroupList && jsonData.GroupList.length > 0) {
+          const list = jsonData.GroupList
           for (let item of list) {
             GroupList.push({ group: item.group, title: item.title })
           }
           ShareDAL.SaveShareSiteGroup(GroupList)
         }
-        if (response.data.SSList && response.data.SSList.length > 0) {
+        if (jsonData.SSList && jsonData.SSList.length > 0) {
           const list: IShareSiteModel[] = []
-          const SSList = response.data.SSList
+          const SSList = jsonData.SSList
           for (let item of SSList) {
             const add: any = {
               title: item.title,
@@ -137,13 +163,13 @@ export default class ServerHttp {
           }
           ShareDAL.SaveShareSite(list)
         }
-        if (response.data.HELP && response.data.HELP.length > 0) {
-          useServerStore().mSaveHelpUrl(response.data.HELP)
+        if (jsonData.HELP && jsonData.HELP.length > 0) {
+          useServerStore().mSaveHelpUrl(jsonData.HELP)
         }
-        if (response.data.POST && response.data.POST.length > 0) {
+        if (jsonData.POST && jsonData.POST.length > 0) {
           let postId = localStorage.getItem('postmodal')
-          if (!postId || postId != response.data.POST_ID) {
-            modalShowPost(response.data.POST, response.data.POST_ID)
+          if (!postId || postId != jsonData.POST_ID) {
+            modalShowPost(jsonData.POST, jsonData.POST_ID)
           }
         }
       }).catch((err: any) => {

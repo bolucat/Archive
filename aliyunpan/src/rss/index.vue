@@ -77,12 +77,12 @@ watch(
         <a-tab-pane key="RssRename" title="2"><RssRename /></a-tab-pane>
         <a-tab-pane key="RssJiaMi" title="3"><RssJiaMi /></a-tab-pane>
         <a-tab-pane v-if="isAliyunAccount" key="AppSame" title="4"><AppSame /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssScanClean" title="5"><RssScanClean /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssScanSame" title="6"><RssScanSame /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssScanPunish" title="7"><RssScanPunish /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssScanEnmpty" title="8"><RssScanEnmpty /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssDriveCopy" title="9"><RssDriveCopy /></a-tab-pane>
-        <a-tab-pane key="RssUserCopy" title="10"><RssUserCopy /></a-tab-pane>
+        <a-tab-pane v-if="isAliyunAccount" key="RssScanClean" title="6"><RssScanClean /></a-tab-pane>
+        <a-tab-pane v-if="isAliyunAccount" key="RssScanSame" title="7"><RssScanSame /></a-tab-pane>
+        <a-tab-pane v-if="isAliyunAccount" key="RssScanPunish" title="8"><RssScanPunish /></a-tab-pane>
+        <a-tab-pane v-if="isAliyunAccount" key="RssScanEnmpty" title="9"><RssScanEnmpty /></a-tab-pane>
+        <a-tab-pane v-if="isAliyunAccount" key="RssDriveCopy" title="10"><RssDriveCopy /></a-tab-pane>
+        <a-tab-pane key="RssUserCopy" title="11"><RssUserCopy /></a-tab-pane>
       </a-tabs>
     </a-layout-content>
   </a-layout>

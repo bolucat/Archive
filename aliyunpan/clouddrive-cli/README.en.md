@@ -93,7 +93,7 @@ After installing the App and logging in, you can run directly in the terminal:
 
 ```bash
 clouddrive-cli auth list --json
-clouddrive-cli files list --provider aliyun --account default --path root --json
+clouddrive-cli files list --provider aliyun --account default --file-id root --json
 ```
 
 ### Mode 2: Standalone Installation
@@ -367,7 +367,8 @@ List files in a cloud drive directory.
 clouddrive-cli files list \
   --provider aliyun \
   --account default \
-  --path root \
+  --file-id root \
+  --limit 100 \
   --json
 ```
 
@@ -375,9 +376,13 @@ clouddrive-cli files list \
 | --- | --- | --- | --- |
 | `--provider <p>` | No | `aliyun` | Provider ID |
 | `--account <id>` | No | `default` | Account ID or `default` |
-| `--path <p>` | No | `root` | Parent directory file ID |
+| `--file-id <id>` | No | provider root | Parent directory file ID |
+| `--limit <n>` | No | — | Return one page with at most `n` items |
+| `--cursor <token>` | No | — | Cursor returned by the previous page |
 | `--drive-id <d>` | No | account default drive | Drive ID |
 | `--json` | No | off | JSON output |
+
+Without `--limit` and `--cursor`, `files list` returns the full directory as `FileItem[]`. With either pagination option, it returns `{ provider, driveId, parentFileId, limit, cursor, nextCursor, hasMore, items }`.
 
 ### files walk
 
@@ -387,13 +392,13 @@ Recursively walk the cloud drive directory tree.
 clouddrive-cli files walk \
   --provider aliyun \
   --account default \
-  --path <folder-file-id> \
+  --file-id <folder-file-id> \
   --json
 ```
 
 `files walk` is suitable for AI full-directory analysis, but output can be large. For large directories, start with a smaller subdirectory.
 
-When `--path` is omitted, the CLI chooses provider-specific roots automatically: `aliyun=root`, `cloud123=0`, `115=0`, `baidu=/`, `pikpak=*`, `dropbox=` empty string, `onedrive=onedrive_root`, and `box=box_root`.
+When `--file-id` is omitted, the CLI chooses provider-specific roots automatically: `aliyun=root`, `cloud123=0`, `115=0`, `baidu=/`, `pikpak=*`, `dropbox=` empty string, `onedrive=onedrive_root`, and `box=box_root`.
 
 ### files rename-apply
 
@@ -427,34 +432,20 @@ AI Agents must run dry-run first by default. Only execute without `--dry-run` af
 
 ## media
 
-### media rename-plan
+### media scan
 
-Generate a media rename plan from a file list.
+Classify file items as media.
 
 ```bash
-clouddrive-cli media rename-plan \
-  --input files.json \
-  --provider aliyun \
-  --account default \
-  --style jellyfin \
-  --output rename-plan.json
+clouddrive-cli media scan --input files.json --json
 ```
 
-| Parameter | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--input <files.json>` | Yes | — | File list JSON, typically from `files list` or `files walk` |
-| `--provider <p>` | No | `aliyun` | Provider written into the plan |
-| `--account <id>` | No | `default` | Account written into the plan |
-| `--style <style>` | No | `jellyfin` | Naming style, primarily Jellyfin-compatible format |
-| `--output <plan.json>` | No | — | Save plan to file |
-| `--json` | No | off | JSON output |
+### media match
 
-Typical workflow:
+Extract media naming metadata from file items. AI agents can use this output as context when creating their own rename or organization plans.
 
 ```bash
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli media rename-plan --input files.json --provider aliyun --account default --output rename-plan.json
-clouddrive-cli files rename-apply rename-plan.json --current files.json --dry-run --json
+clouddrive-cli media match --input files.json --json
 ```
 
 ## docs
@@ -466,13 +457,21 @@ Read a local document as AI context.
 ```bash
 clouddrive-cli docs read ./rename-rules.md --json
 clouddrive-cli docs read ./rename-rules.md --max-chars 50000 --json
+clouddrive-cli docs read ./rules.pdf --pdf-format markdown --pdf-pages 1-3 --json
+clouddrive-cli docs convert ./pdf-folder --output ./out --pdf-format json,html,pdf,markdown,tagged-pdf,text --json
 ```
 
 | Parameter | Required | Default | Description |
 | --- | --- | --- | --- |
 | `<path>` | Yes | — | Local document path |
 | `--max-chars <n>` | No | `20000` | Maximum characters to return |
+| `--pdf-format <formats>` | No | `markdown` for `read`, `json` for `convert` | OpenDataLoader PDF output formats: `json`, `text`, `html`, `pdf`, `markdown`, `tagged-pdf` |
+| `--pdf-pages <pages>` | No | all | PDF pages to extract, for example `1,3,5-7` |
 | `--json` | No | off | Output JSON with metadata |
+
+### docs convert
+
+Convert PDF files or folders through OpenDataLoader. This exposes OpenDataLoader options for content safety, sanitization, structure tree, table/reading order, page separators, image output, page selection, header/footer, strikethrough, hybrid backend, Hancom AI, and threads. Requires Node.js 20+ and Java 11+ available on `PATH`.
 
 ## upload
 
@@ -524,7 +523,7 @@ clouddrive-cli organize analyze \
   --input files.json \
   --provider aliyun \
   --account default \
-  --path root \
+  --file-id root \
   --output analysis.json \
   --summary \
   --json
@@ -596,9 +595,10 @@ clouddrive-cli ops undo <operation-id> --json
 ```bash
 clouddrive-cli docs read ./rename-rules.md --json
 clouddrive-cli auth list --json
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli media rename-plan --input files.json --provider aliyun --account default --style jellyfin --output rename-plan.json
-clouddrive-cli files rename-apply rename-plan.json --current files.json --dry-run --json
+clouddrive-cli files walk --provider aliyun --account default --file-id <folder-id> --json > files.json
+clouddrive-cli media match --input files.json --json
+# Let the AI generate rename-plan.json from the rules, inventory, and match output.
+clouddrive-cli files rename-apply rename-plan.json --dry-run --json
 ```
 
 Verify the dry-run: `ok` is `true`, no name conflicts, no illegal filenames, `old_name` → `new_name` matches user intent. Then execute:
@@ -626,8 +626,8 @@ clouddrive-cli upload apply upload-plan.json --json
 ### AI analyze and organize a cloud drive directory
 
 ```bash
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli organize analyze --input files.json --provider aliyun --account default --path <folder-id> --output analysis.json --json
+clouddrive-cli files walk --provider aliyun --account default --file-id <folder-id> --json > files.json
+clouddrive-cli organize analyze --input files.json --provider aliyun --account default --file-id <folder-id> --output analysis.json --json
 clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.md --output organize-plan.json --json
 clouddrive-cli organize apply organize-plan.json --dry-run --json
 ```
@@ -659,7 +659,6 @@ Current tools:
 | `auth_list` | `clouddrive-cli auth list --json` |
 | `files_list` | `clouddrive-cli files list ... --json` |
 | `files_walk` | `clouddrive-cli files walk ... --json` |
-| `media_rename_plan` | Generate media rename plan |
 | `files_rename_apply` | Dry-run or execute rename plan |
 | `ops_list` | `clouddrive-cli ops list --json` |
 | `ops_show` | `clouddrive-cli ops show ... --json` |
@@ -716,6 +715,6 @@ If you see `does not support batch rename`, `does not support CLI upload yet`, o
 
 ### Output too large
 
-`files walk` may return a large number of files. Narrow the `--path` scope or have the AI process directories in batches.
+`files walk` may return a large number of files. Narrow the `--file-id` scope or have the AI process directories in batches.
 
 `docs read` supports `--max-chars` to control context length.

@@ -28,6 +28,8 @@ declare interface Window {
   WebRelaunchAria: () => Promise<number>
   WebSetProgressBar: any
   WebGetCookies: any
+  WebQuarkAccountInfo: any
+  WebQuarkDownloadUrl: any
   WebSetCookies: any
   WebOpenWindow: any
   WebOpenUrl: any
@@ -36,6 +38,7 @@ declare interface Window {
   MsImageCacheSyncConfig: any
   MsImageCacheStats: () => Promise<{ totalBytes: number; servers: unknown[] }>
   MsImageCacheClear: (serverId?: string) => Promise<{ cleared: number }>
-  TvBoxInvoke: (channel: string, data: unknown) => Promise<unknown>
+  TvBoxInvoke: (channel: string, data?: unknown) => Promise<unknown>
   IsMainPage: boolean
+  onExternalDownloadOpen: (callback: (payload: string) => void) => void
 }

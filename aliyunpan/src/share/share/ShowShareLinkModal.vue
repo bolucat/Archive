@@ -87,7 +87,7 @@ const handleOpen = () => {
   dirList.clear()
   props.file_id_list.map((t) => fileList.add(t))
 
-  AliShare.ApiGetShareAnonymous(props.share_id).then((info) => {
+  AliShare.ApiGetShareAnonymous(props.share_id, props.share_pwd).then((info) => {
     share.value = info
     isAlbum.value = info.shareinfo.is_photo_collection
     if (props.save_db) {

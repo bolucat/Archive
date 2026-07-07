@@ -1,4 +1,4 @@
-import { drive115RefreshToken, drive115ListDir, drive115Walk, drive115RenameBatch, drive115Search, drive115GetFile, drive115MoveBatch, drive115Mkdir, drive115Trash } from './drive115.mjs'
+import { drive115RefreshToken, drive115ListDir, drive115Walk, drive115RenameBatch, drive115Search, drive115GetFile, drive115MoveBatch, drive115Mkdir, drive115Trash, drive115UploadFile } from './drive115.mjs'
 
 export function createDrive115Provider() {
   return {
@@ -15,7 +15,7 @@ export function createDrive115Provider() {
       fileIdAddressable: true,
       mkdir: true,
       move: true,
-      uploadFile: false,
+      uploadFile: true,
     },
     auth: {
       async login() {
@@ -36,6 +36,9 @@ export function createDrive115Provider() {
       async moveBatch({ token, moves }) { return drive115MoveBatch(token, moves) },
       async mkdir({ token, parentId = '0', name }) { return drive115Mkdir(token, parentId, name) },
       async trash({ token, items }) { return drive115Trash(token, items.map((i) => i.fileId)) },
+      async uploadFile({ token, parentId = '0', localPath, name, size, conflict }) {
+        return drive115UploadFile(token, { parentId, localPath, name, size, conflict })
+      },
     },
   }
 }

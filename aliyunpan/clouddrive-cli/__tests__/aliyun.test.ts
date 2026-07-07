@@ -145,6 +145,15 @@ describe('aliyunFiles - aliListDir', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.marker).toBe('cursor-xyz')
   })
+
+  it('passes limit for pagination', async () => {
+    const fetchMock = mockFetch({ items: [], next_marker: '' })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await aliListDir(MOCK_TOKEN, 'drive-001', 'root', '', 25)
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    expect(body.limit).toBe(25)
+  })
 })
 
 describe('aliyunFiles - aliListAll', () => {

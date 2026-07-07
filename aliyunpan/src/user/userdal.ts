@@ -21,7 +21,8 @@ import { applyPikPakQuota, refreshPikPakAccessToken } from '../pikpak/auth'
 import { applyDropboxQuota, refreshDropboxAccessToken } from '../dropbox/auth'
 import { applyOneDriveQuota, refreshOneDriveAccessToken } from '../onedrive/auth'
 import { applyBoxQuota, refreshBoxAccessToken } from '../box/auth'
-import { isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { refreshCloud189Token } from '../cloud189/auth'
+import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
@@ -174,6 +175,24 @@ export default class UserDAL {
         }
         return token.user_id ? token : null
       }
+      if (isQuarkUser(token)) {
+        token.default_drive_id = token.default_drive_id || 'quark'
+        return token.user_id && token.access_token ? token : null
+      }
+      if (isCloud139User(token)) {
+        token.default_drive_id = token.default_drive_id || 'cloud139'
+        return token.user_id && token.access_token ? token : null
+      }
+      if (isCloud189User(token)) {
+        token.default_drive_id = token.default_drive_id || 'cloud189'
+        if (!token.open_api_access_token || !token.open_api_refresh_token) {
+          const refreshed = await refreshCloud189Token(token)
+          if (!refreshed?.user_id) return null
+          this.SaveUserToken(refreshed)
+          return refreshed
+        }
+        return token.user_id && token.refresh_token ? token : null
+      }
       const ok = !!(token.user_id && (await AliUser.ApiTokenRefreshAccount(token, false)))
       return ok ? token : null
     } catch (err: any) {
@@ -321,6 +340,22 @@ export default class UserDAL {
           }
           continue
         }
+        if (isCloud139User(token)) {
+          continue
+        }
+        if (isCloud189User(token)) {
+          if (!token.open_api_access_token || !token.open_api_refresh_token) {
+            const refreshed = await refreshCloud189Token(token)
+            if (refreshed) {
+              UserTokenMap.set(refreshed.user_id, refreshed)
+              await DB.saveUser(refreshed)
+            }
+          }
+          continue
+        }
+        if (isNonAliyunProvider(token)) {
+          continue
+        }
         const expire_time = new Date(token.expire_time).getTime()
         const session_expire_time = new Date(token.session_expires_in).getTime()
         // 自动刷新Token(过期前5分钟)
@@ -457,12 +492,24 @@ export default class UserDAL {
       await AliUser.Drive115UserInfo(token)
     } else if (isPikPakUser(token)) {
       await applyPikPakQuota(token)
+    } else if (isQuarkUser(token)) {
+      token.default_drive_id = token.default_drive_id || 'quark'
+    } else if (isCloud139User(token)) {
+      token.default_drive_id = token.default_drive_id || 'cloud139'
+    } else if (isCloud189User(token)) {
+      token.default_drive_id = token.default_drive_id || 'cloud189'
+      if (!token.open_api_access_token || !token.open_api_refresh_token) {
+        const refreshed = await refreshCloud189Token(token)
+        if (refreshed) Object.assign(token, refreshed)
+      }
     } else if (isDropboxUser(token)) {
       await applyDropboxQuota(token)
     } else if (isOneDriveUser(token)) {
       await applyOneDriveQuota(token)
     } else if (isBoxUser(token)) {
       await applyBoxQuota(token)
+    } else if (isNonAliyunProvider(token)) {
+      // 已知非阿里云盘 provider 但未在上面 if 链命中,跳过 aliyun 兜底
     } else {
       // 加载用户信息
       await Promise.all([
@@ -494,6 +541,7 @@ export default class UserDAL {
       name: token.user_name,
       access_token: token.access_token,
       open_api_access_token: token.open_api_access_token,
+      tokenfrom: token.tokenfrom,
       login: true
     })
     // 加载网盘文件
@@ -534,6 +582,21 @@ export default class UserDAL {
       await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'pikpak', 'pikpak_root', true)
       return
     }
+    if (isQuarkUser(token)) {
+      await PanDAL.aReLoadQuarkDrive(token)
+      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'quark', 'quark_root', true)
+      return
+    }
+    if (isCloud139User(token)) {
+      await PanDAL.aReLoadCloud139Drive(token)
+      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'cloud139', 'cloud139_root', true)
+      return
+    }
+    if (isCloud189User(token)) {
+      await PanDAL.aReLoadCloud189Drive(token)
+      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'cloud189', 'cloud189_root', true)
+      return
+    }
     if (isDropboxUser(token)) {
       await PanDAL.aReLoadDropboxDrive(token)
       await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'dropbox', 'dropbox_root', true)
@@ -572,7 +635,7 @@ export default class UserDAL {
 
     let newUserID = ''
     for (const [user_id, token] of UserTokenMap) {
-      const isLogin = (isDrive115User(token) || isBaiduUser(token) || isPikPakUser(token) || isDropboxUser(token) || isOneDriveUser(token) || isBoxUser(token))
+      const isLogin = (isDrive115User(token) || isBaiduUser(token) || isPikPakUser(token) || isQuarkUser(token) || isDropboxUser(token) || isOneDriveUser(token) || isBoxUser(token))
         ? !!token.user_id
         : (token.user_id && (await AliUser.ApiTokenRefreshAccount(token, false)))
       if (isLogin) {
@@ -638,6 +701,9 @@ export default class UserDAL {
         }
       }
       isLogin = !!token.access_token && !!token.user_id
+    } else if (isQuarkUser(token)) {
+      token.default_drive_id = token.default_drive_id || 'quark'
+      isLogin = !!token.access_token && !!token.user_id
     } else if (isDropboxUser(token)) {
       const expireTime = new Date(token.expire_time || 0).getTime()
       if (!token.access_token || (expireTime && expireTime <= Date.now())) {
@@ -698,6 +764,10 @@ export default class UserDAL {
         await applyPikPakQuota(token)
         UserDAL.SaveUserToken(token)
         return true
+      } else if (isQuarkUser(token)) {
+        token.default_drive_id = token.default_drive_id || 'quark'
+        UserDAL.SaveUserToken(token)
+        return true
       } else if (isDropboxUser(token)) {
         await applyDropboxQuota(token)
         UserDAL.SaveUserToken(token)
@@ -708,6 +778,10 @@ export default class UserDAL {
         return true
       } else if (isBoxUser(token)) {
         await applyBoxQuota(token)
+        UserDAL.SaveUserToken(token)
+        return true
+      } else if (isNonAliyunProvider(token)) {
+        // 已知非阿里云盘 provider 但未在上面 if 链命中,跳过 aliyun 兜底
         UserDAL.SaveUserToken(token)
         return true
       } else {
@@ -749,6 +823,9 @@ export default class UserDAL {
           const refreshed = await refreshPikPakAccessToken(token)
           if (!refreshed?.access_token) return false
           UserDAL.SaveUserToken(refreshed)
+        } else if (isQuarkUser(token)) {
+          token.default_drive_id = token.default_drive_id || 'quark'
+          UserDAL.SaveUserToken(token)
         } else if (isDropboxUser(token)) {
           const refreshed = await refreshDropboxAccessToken(token)
           if (!refreshed?.access_token) return false
@@ -761,6 +838,9 @@ export default class UserDAL {
           const refreshed = await refreshBoxAccessToken(token)
           if (!refreshed?.access_token) return false
           UserDAL.SaveUserToken(refreshed)
+        } else if (isNonAliyunProvider(token)) {
+          // 已知非阿里云盘 provider 但未在上面 if 链命中,跳过 aliyun 兜底
+          UserDAL.SaveUserToken(token)
         } else {
           const isToken = await AliUser.ApiTokenRefreshAccount(token, true)
           if (!isToken) return false
@@ -779,6 +859,8 @@ export default class UserDAL {
         await AliUser.Drive115UserInfo(token)
       } else if (isPikPakUser(token)) {
         await applyPikPakQuota(token)
+      } else if (isQuarkUser(token)) {
+        token.default_drive_id = token.default_drive_id || 'quark'
       } else if (isDropboxUser(token)) {
         await applyDropboxQuota(token)
       } else if (isOneDriveUser(token)) {
@@ -801,7 +883,7 @@ export default class UserDAL {
 
   static async UserAutoSign(token: ITokenInfo) {
     // 自动签到
-    if (isDrive115User(token) || isCloud123User(token) || isBaiduUser(token) || isPikPakUser(token) || isDropboxUser(token) || isOneDriveUser(token) || isBoxUser(token)) {
+    if (isDrive115User(token) || isCloud123User(token) || isBaiduUser(token) || isPikPakUser(token) || isQuarkUser(token) || isDropboxUser(token) || isOneDriveUser(token) || isBoxUser(token)) {
       UserDAL.SaveUserToken(token)
       return
     }

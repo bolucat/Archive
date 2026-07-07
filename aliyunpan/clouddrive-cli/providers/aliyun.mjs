@@ -1,5 +1,5 @@
 import { aliRefreshToken } from './aliyunHttp.mjs'
-import { aliListAll, aliWalk, aliRenameBatch, aliSearch, aliGetFile, aliMove, aliMkdir, aliTrash } from './aliyunFiles.mjs'
+import { aliListAll, aliListDir, aliWalk, aliRenameBatch, aliSearch, aliGetFile, aliMove, aliMkdir, aliTrash, aliUploadFile } from './aliyunFiles.mjs'
 
 export function createAliyunProvider() {
   return {
@@ -16,7 +16,7 @@ export function createAliyunProvider() {
       fileIdAddressable: true,
       mkdir: true,
       move: true,
-      uploadFile: false,
+      uploadFile: true,
     },
 
     auth: {
@@ -41,6 +41,11 @@ export function createAliyunProvider() {
     files: {
       async list({ token, driveId, parentFileId = 'root' }) {
         return aliListAll(token, driveId, parentFileId)
+      },
+
+      async listPage({ token, driveId, parentFileId = 'root', cursor = '', limit = 100 }) {
+        const page = await aliListDir(token, driveId, parentFileId, cursor, limit)
+        return { items: page.items, nextCursor: page.nextMarker }
       },
 
       async *walk({ token, driveId, parentFileId = 'root', maxDepth = 10 }) {
@@ -74,6 +79,10 @@ export function createAliyunProvider() {
 
       async trash({ token, driveId, items }) {
         return aliTrash(token, driveId, items.map((i) => i.fileId))
+      },
+
+      async uploadFile({ token, driveId, parentId, localPath, name, size, conflict }) {
+        return aliUploadFile(token, driveId, { parentId, localPath, name, size, conflict })
       },
     },
   }

@@ -1,7 +1,10 @@
 const BASE = 'https://api.box.com/2.0'
+const UPLOAD_BASE = 'https://upload.box.com/api/2.0'
 const TOKEN_URL = 'https://api.box.com/oauth2/token'
 const CLIENT_ID = ''
 const CLIENT_SECRET = ''
+
+import { readFileBuffer } from './uploadUtils.mjs'
 
 function boxHeaders(token) {
   return {
@@ -206,4 +209,29 @@ export async function boxTrash(token, items) {
     }
   }
   return results
+}
+
+export async function boxUploadFile(token, { parentId = 'box_root', localPath, name, size = 0 }) {
+  const id = parentId === 'box_root' ? '0' : parentId
+  const form = new FormData()
+  form.set('attributes', JSON.stringify({ name, parent: { id } }))
+  form.set('file', new Blob([new Uint8Array(await readFileBuffer(localPath))]), name)
+  const resp = await fetch(`${UPLOAD_BASE}/files/content`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token.access_token}` },
+    body: form,
+  })
+  const data = await resp.json().catch(() => undefined)
+  if (!resp.ok) {
+    const err = new Error(data?.message || data?.error || `Box upload failed ${resp.status}`)
+    err.code = 'ERR_BOX_UPLOAD'
+    throw err
+  }
+  const file = data?.entries?.[0]
+  if (!file?.id) {
+    const err = new Error('Box upload returned no file id')
+    err.code = 'ERR_BOX_UPLOAD'
+    throw err
+  }
+  return mapFileItem({ ...file, size: file.size ?? size }, token.user_id)
 }

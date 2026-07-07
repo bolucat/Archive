@@ -5,6 +5,7 @@ import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, Selec
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import DBDown from '../utils/dbdown'
+import { batchPauseTasks, batchRemoveTasks, batchResumeTasks } from './integration/aria2TaskApi'
 
 type Item = IStateDownFile
 type State = DowningState
@@ -248,28 +249,34 @@ const useDowningStore = defineStore('downing', {
     /**
      * 开始下载，只改变状态，待定时任务处理
      */
-    mStartDowning() {
+    async mStartDowning() {
+      const gids: string[] = []
       const DowningList = this.ListDataRaw
       for (const downID of this.ListSelected) {
         const selectedDown: IStateDownFile | undefined = DowningList.find(down => down.DownID === downID)
         if (selectedDown?.Info.offlineProvider) continue
         if (selectedDown && !selectedDown.Down.IsDowning && !selectedDown.Down.IsCompleted) {
+          if (selectedDown.Down.IsStop && selectedDown.Info.GID) gids.push(selectedDown.Info.GID)
           this.mUpdateDownState(selectedDown, 'queue')
         }
       }
+      if (gids.length) await batchResumeTasks(gids)
     },
 
     /**
      * 开始全部
      */
-    mStartAllDowning() {
+    async mStartAllDowning() {
+      const gids: string[] = []
       const DowningList = this.ListDataRaw
       for (let j = 0; j < DowningList.length; j++) {
         const down = DowningList[j].Down
         if (DowningList[j].Info.offlineProvider) continue
         if (down.IsDowning || down.IsCompleted) continue
+        if (down.IsStop && DowningList[j].Info.GID) gids.push(DowningList[j].Info.GID)
         this.mUpdateDownState(DowningList[j], 'queue')
       }
+      if (gids.length) await batchResumeTasks(gids)
     },
 
     /**
@@ -458,6 +465,43 @@ const useDowningStore = defineStore('downing', {
           break
       }
       DownItem.Down = {  ...DownItem.Down, ...updateState }
+    },
+
+    async batchPauseSelected(): Promise<void> {
+      const gids: string[] = []
+      for (const downID of this.ListSelected) {
+        const item = this.ListDataRaw.find((d) => d.DownID === downID)
+        if (item && item.Info.GID && !item.Down.IsCompleted && !item.Info.offlineProvider) {
+          gids.push(item.Info.GID)
+          this.mUpdateDownState(item, 'stop')
+        }
+      }
+      if (gids.length) await batchPauseTasks(gids)
+      this.mRefreshListDataShow(true)
+    },
+
+    async batchResumeSelected(): Promise<void> {
+      const gids: string[] = []
+      for (const downID of this.ListSelected) {
+        const item = this.ListDataRaw.find((d) => d.DownID === downID)
+        if (item && item.Info.GID && !item.Down.IsCompleted && !item.Info.offlineProvider) {
+          gids.push(item.Info.GID)
+          this.mUpdateDownState(item, 'queue')
+        }
+      }
+      if (gids.length) await batchResumeTasks(gids)
+      this.mRefreshListDataShow(true)
+    },
+
+    async batchRemoveSelected(): Promise<void> {
+      const gids: string[] = []
+      const downIDs: string[] = [...this.ListSelected]
+      for (const downID of downIDs) {
+        const item = this.ListDataRaw.find((d) => d.DownID === downID)
+        if (item && item.Info.GID && !item.Info.offlineProvider) gids.push(item.Info.GID)
+      }
+      if (gids.length) await batchRemoveTasks(gids)
+      await this.mDeleteDowning(downIDs)
     }
   }
 })

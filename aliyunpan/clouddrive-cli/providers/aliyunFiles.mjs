@@ -1,4 +1,6 @@
 import { aliPost } from './aliyunHttp.mjs'
+import { open } from 'node:fs/promises'
+import { readSlice, toConflictMode } from './uploadUtils.mjs'
 
 function mapFileItem(raw, driveId, accountId) {
   return {
@@ -18,13 +20,14 @@ function mapFileItem(raw, driveId, accountId) {
   }
 }
 
-export async function aliListDir(token, driveId, parentFileId = 'root', marker = '') {
+export async function aliListDir(token, driveId, parentFileId = 'root', marker = '', limit = 100) {
   const accountId = token.user_id
+  const pageSize = Math.max(1, Math.min(Number.parseInt(String(limit), 10) || 100, 100))
   const data = await aliPost('adrive/v3/file/list', {
     drive_id: driveId,
     parent_file_id: parentFileId,
     marker,
-    limit: 100,
+    limit: pageSize,
     all: false,
     url_expire_sec: 14400,
     fields: '*',
@@ -175,4 +178,70 @@ export async function aliTrash(token, driveId, fileIds) {
     }
   }
   return results
+}
+
+function aliPartList(size) {
+  const parts = []
+  let partSize = 10 * 1024 * 1024
+  while (size > partSize * 8000) partSize += 10 * 1024 * 1024
+  if (size === 0) return []
+  for (let offset = 0, index = 1; offset < size; offset += partSize, index++) {
+    parts.push({ part_number: index, part_size: Math.min(partSize, size - offset) })
+  }
+  return parts
+}
+
+async function putAliPart(uploadUrl, token, body) {
+  const resp = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': '',
+      'Content-Length': String(body.length),
+      Authorization: `${token.token_type || 'Bearer'} ${token.access_token}`,
+    },
+    body,
+  })
+  if (!resp.ok && resp.status !== 409) {
+    const text = await resp.text().catch(() => '')
+    const err = new Error(`Aliyun upload part failed ${resp.status}: ${text.slice(0, 200)}`)
+    err.code = 'ERR_ALIYUN_UPLOAD_PART'
+    throw err
+  }
+}
+
+export async function aliUploadFile(token, driveId, { parentId = 'root', localPath, name, size = 0, conflict = 'skip' }) {
+  const accountId = token.user_id
+  const data = await aliPost('adrive/v2/file/createWithFolders', {
+    drive_id: driveId,
+    parent_file_id: parentId && String(parentId).includes('root') ? 'root' : parentId,
+    name,
+    type: 'file',
+    check_name_mode: toConflictMode(conflict) === 'overwrite' ? 'overwrite' : toConflictMode(conflict),
+    size,
+    part_info_list: aliPartList(size),
+  }, token)
+
+  if (data.exist || data.rapid_upload || data.part_info_list?.length === 0) {
+    return mapFileItem({ ...data, name, parent_file_id: parentId, type: 'file', size }, driveId, accountId)
+  }
+
+  const handle = await open(localPath, 'r')
+  try {
+    let offset = 0
+    for (const part of data.part_info_list || []) {
+      const partSize = part.part_size || Math.min(10 * 1024 * 1024, size - ((part.part_number - 1) * 10 * 1024 * 1024))
+      const body = await readSlice(handle, offset, partSize)
+      await putAliPart(part.upload_url, token, body)
+      offset += body.length
+    }
+  } finally {
+    await handle.close().catch(() => {})
+  }
+
+  const completed = await aliPost('v2/file/complete', {
+    drive_id: driveId,
+    upload_id: data.upload_id,
+    file_id: data.file_id,
+  }, token)
+  return mapFileItem({ ...completed, file_id: data.file_id, name, parent_file_id: parentId, type: 'file', size }, driveId, accountId)
 }

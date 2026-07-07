@@ -1,6 +1,11 @@
 const BASE = 'https://graph.microsoft.com/v1.0'
 const TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
 const CLIENT_ID = ''
+const SMALL_UPLOAD_LIMIT = 250 * 1024 * 1024
+const SESSION_CHUNK_SIZE = 10 * 1024 * 1024
+
+import { open } from 'node:fs/promises'
+import { readFileBuffer, readSlice, toConflictMode } from './uploadUtils.mjs'
 
 function odHeaders(token) {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.access_token}` }
@@ -192,4 +197,81 @@ export async function onedriveTrash(token, fileIds) {
     }
   }
   return results
+}
+
+function encodePathSegment(value) {
+  return encodeURIComponent(value).replace(/%2F/g, '/')
+}
+
+function onedriveConflict(conflict) {
+  const mode = toConflictMode(conflict)
+  if (mode === 'auto_rename') return 'rename'
+  if (mode === 'overwrite') return 'replace'
+  return 'fail'
+}
+
+function onedriveUploadPath(parentId, name, suffix) {
+  const encoded = encodePathSegment(name)
+  if (!parentId || parentId === 'onedrive_root') return `${BASE}/me/drive/root:/${encoded}:/${suffix}`
+  return `${BASE}/me/drive/items/${encodeURIComponent(parentId)}:/${encoded}:/${suffix}`
+}
+
+async function putOneDriveUploadUrl(url, body, start, total) {
+  const end = start + body.length - 1
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      'Content-Length': String(body.length),
+      'Content-Range': `bytes ${start}-${end}/${total}`,
+    },
+    body,
+  })
+  const data = await resp.json().catch(() => undefined)
+  if (!resp.ok || data?.error) {
+    const err = new Error(data?.error?.message || `OneDrive upload failed ${resp.status}`)
+    err.code = 'ERR_ONEDRIVE_UPLOAD'
+    throw err
+  }
+  return data
+}
+
+export async function onedriveUploadFile(token, { parentId = 'onedrive_root', localPath, name, size = 0, conflict = 'skip' }) {
+  const accountId = token.user_id
+  if (size <= SMALL_UPLOAD_LIMIT) {
+    const body = await readFileBuffer(localPath)
+    const resp = await fetch(onedriveUploadPath(parentId, name, 'content'), {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token.access_token}`, 'Content-Type': 'application/octet-stream' },
+      body,
+    })
+    const data = await resp.json().catch(() => undefined)
+    if (!resp.ok || data?.error) {
+      const err = new Error(data?.error?.message || `OneDrive upload failed ${resp.status}`)
+      err.code = 'ERR_ONEDRIVE_UPLOAD'
+      throw err
+    }
+    return mapFileItem(data, accountId)
+  }
+
+  const created = await odPost(onedriveUploadPath(parentId, name, 'createUploadSession'), {
+    item: { '@microsoft.graph.conflictBehavior': onedriveConflict(conflict) },
+  }, token)
+  const uploadUrl = created.uploadUrl
+  if (!uploadUrl) {
+    const err = new Error('OneDrive createUploadSession returned no uploadUrl')
+    err.code = 'ERR_ONEDRIVE_UPLOAD_SESSION'
+    throw err
+  }
+  const handle = await open(localPath, 'r')
+  let uploaded
+  try {
+    for (let offset = 0; offset < size;) {
+      const body = await readSlice(handle, offset, Math.min(SESSION_CHUNK_SIZE, size - offset))
+      uploaded = await putOneDriveUploadUrl(uploadUrl, body, offset, size)
+      offset += body.length
+    }
+  } finally {
+    await handle.close().catch(() => {})
+  }
+  return mapFileItem(uploaded, accountId)
 }

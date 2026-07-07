@@ -1,6 +1,6 @@
-import { readFile, stat, writeFile } from 'node:fs/promises'
-import { extname, join, resolve } from 'node:path'
-import { homedir } from 'node:os'
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, extname, join, resolve } from 'node:path'
+import { homedir, tmpdir } from 'node:os'
 
 import { createAuthStore } from './authStore.mjs'
 import { loginWithBrowserOAuth, supportedBrowserLoginProviders } from './browserAuth.mjs'
@@ -9,11 +9,10 @@ import { analyzeDriveItems, createOrganizePlan, dryRunOrganizePlan } from './org
 import { dryRunRenamePlan } from './renamePlan.mjs'
 import { validateMovePlan, dryRunMovePlan } from './movePlan.mjs'
 import { validateTrashPlan, dryRunTrashPlan } from './trashPlan.mjs'
-import { createUploadPlanFromLocalPath, dryRunUploadPlan } from './uploadPlan.mjs'
-import { generateMediaRenamePlan } from '../media/mediaRenamePlanner.mjs'
+import { createUploadPlanFromLocalPath, dryRunUploadPlan, executeUploadPlan } from './uploadPlan.mjs'
 import { scanMediaItems, matchMediaItems } from '../media/mediaScanner.mjs'
-import { generateOrganizePlan } from '../media/mediaOrganizer.mjs'
 import { EXIT_CODES, classifyError } from './models.mjs'
+import { COMMAND_MANIFEST_VERSION, listCommands } from './commandManifest.mjs'
 import { createAliyunProvider } from '../providers/aliyun.mjs'
 import { createPikpakProvider } from '../providers/pikpakProvider.mjs'
 import { createDropboxProvider } from '../providers/dropboxProvider.mjs'
@@ -22,6 +21,9 @@ import { createBoxProvider } from '../providers/boxProvider.mjs'
 import { createBaiduProvider } from '../providers/baiduProvider.mjs'
 import { createDrive115Provider } from '../providers/drive115Provider.mjs'
 import { createCloud123Provider } from '../providers/cloud123Provider.mjs'
+import { createQuarkProvider } from '../providers/quarkProvider.mjs'
+import { createCloud139Provider } from '../providers/cloud139Provider.mjs'
+import { createCloud189Provider } from '../providers/cloud189Provider.mjs'
 
 const PROVIDERS = {
   aliyun: createAliyunProvider(),
@@ -32,6 +34,9 @@ const PROVIDERS = {
   baidu: createBaiduProvider(),
   '115': createDrive115Provider(),
   cloud123: createCloud123Provider(),
+  quark: createQuarkProvider(),
+  '139': createCloud139Provider(),
+  '189': createCloud189Provider(),
 }
 
 function defaultConfigDir() {
@@ -39,7 +44,13 @@ function defaultConfigDir() {
 }
 
 function hasFlag(argv, flag) {
+  if (flag === '--json' && readFormatOption(argv) === 'json') return true
   return argv.includes(flag)
+}
+
+function readFormatOption(argv) {
+  const raw = readOption(argv, '--format') || readOption(argv, '-f')
+  return raw.toLowerCase()
 }
 
 function readOption(argv, flag) {
@@ -48,14 +59,34 @@ function readOption(argv, flag) {
   return argv[index + 1] || ''
 }
 
+function hasOption(argv, flag) {
+  return argv.includes(flag)
+}
+
 function readOptionWithDefault(argv, flag, fallback) {
   const index = argv.indexOf(flag)
   if (index < 0) return fallback
   return argv[index + 1] ?? ''
 }
 
+function readCloudFileId(argv, providerName) {
+  return readOptionWithDefault(argv, '--file-id', defaultRootForProvider(providerName))
+}
+
+function rejectRemovedPath(argv) {
+  if (!hasOption(argv, '--path')) return null
+  return fail('--path has been removed. Use --file-id <folder-id>.')
+}
+
+function hasHelpFlag(argv) {
+  return argv.includes('--help') || argv.includes('-h')
+}
+
 function defaultRootForProvider(providerName) {
   if (providerName === '115' || providerName === 'cloud123') return '0'
+  if (providerName === 'quark') return 'quark_root'
+  if (providerName === '139') return 'cloud139_root'
+  if (providerName === '189') return 'cloud189_root'
   if (providerName === 'baidu') return '/'
   if (providerName === 'dropbox') return ''
   if (providerName === 'pikpak') return '*'
@@ -77,12 +108,80 @@ function ok(value, json = true) {
   return { exitCode: EXIT_CODES.SUCCESS, stdout: jsonOut(value), stderr: '' }
 }
 
+function activeProviders(env = {}) {
+  return env.providers || PROVIDERS
+}
+
+function summarizeAgentOutput(value) {
+  if (Array.isArray(value)) {
+    return {
+      itemCount: value.length,
+      fileCount: value.filter((item) => item?.type === 'file').length,
+      folderCount: value.filter((item) => item?.type === 'folder').length,
+      totalBytes: value.reduce((sum, item) => sum + (Number(item?.size) || 0), 0),
+    }
+  }
+  if (value && typeof value === 'object') {
+    if (Array.isArray(value.items)) {
+      return {
+        itemCount: value.items.length,
+        fileCount: value.items.filter((item) => item?.type === 'file').length,
+        folderCount: value.items.filter((item) => item?.type === 'folder').length,
+        hasMore: !!value.hasMore,
+        nextCursor: value.nextCursor || '',
+      }
+    }
+    const summary = {}
+    for (const key of ['total_files', 'total_dirs', 'total_size', 'max_depth', 'path', 'provider', 'driveId']) {
+      if (value[key] !== undefined) summary[key] = value[key]
+    }
+    if (Object.keys(summary).length > 0) return summary
+  }
+  return { valueType: Array.isArray(value) ? 'array' : typeof value }
+}
+
+async function outputOrOk(value, argv, json = true) {
+  const outputPath = readOption(argv, '--output')
+  if (!outputPath) return ok(value, json)
+  await writeFile(outputPath, jsonOut(value), 'utf8')
+  return ok({ ok: true, output: outputPath, summary: summarizeAgentOutput(value) }, true)
+}
+
 function usage(message) {
   return { exitCode: EXIT_CODES.SUCCESS, stdout: `${message}\n`, stderr: '' }
 }
 
 function fail(message, exitCode = EXIT_CODES.VALIDATION_ERROR) {
   return { exitCode, stdout: '', stderr: `${message}\n` }
+}
+
+function errorCodeForExit(exitCode) {
+  if (exitCode === EXIT_CODES.AUTH_ERROR) return 'AUTH_ERROR'
+  if (exitCode === EXIT_CODES.PROVIDER_API_ERROR) return 'PROVIDER_API_ERROR'
+  if (exitCode === EXIT_CODES.PARTIAL_SUCCESS) return 'PARTIAL_SUCCESS'
+  if (exitCode === EXIT_CODES.UNSUPPORTED_CAPABILITY) return 'UNSUPPORTED_CAPABILITY'
+  return 'VALIDATION_ERROR'
+}
+
+function errorEnvelope(message, exitCode) {
+  return {
+    ok: false,
+    error: {
+      code: errorCodeForExit(exitCode),
+      message,
+      exitCode,
+    },
+  }
+}
+
+function maybeJsonError(result, argv) {
+  if (!hasFlag(argv, '--json') || result.exitCode === EXIT_CODES.SUCCESS || result.stdout) return result
+  const message = (result.stderr || '').trim() || 'Command failed'
+  return {
+    exitCode: result.exitCode,
+    stdout: jsonOut(errorEnvelope(message, result.exitCode)),
+    stderr: '',
+  }
 }
 
 function countBy(values) {
@@ -127,12 +226,146 @@ async function readJsonFile(path) {
 
 function detectDocumentFormat(path) {
   const ext = extname(path).toLowerCase()
+  if (ext === '.pdf') return 'pdf'
   if (ext === '.md' || ext === '.markdown') return 'markdown'
   if (ext === '.txt' || ext === '.text') return 'text'
   if (ext === '.json') return 'json'
   if (ext === '.csv') return 'csv'
   if (ext === '.log') return 'log'
   return ext ? ext.slice(1) : 'text'
+}
+
+const PDF_OUTPUT_EXTENSIONS = {
+  markdown: ['.md', '.markdown'],
+  text: ['.txt'],
+  json: ['.json'],
+  html: ['.html', '.htm'],
+  pdf: ['.pdf'],
+  'tagged-pdf': ['.pdf'],
+}
+
+function readPdfFormatOption(argv, fallback = 'markdown') {
+  const raw = (readOption(argv, '--pdf-format') || fallback).toLowerCase()
+  const formats = raw.split(',').map((item) => item.trim()).filter(Boolean)
+  if (formats.length > 1) return formats.join(',')
+  if (PDF_OUTPUT_EXTENSIONS[formats[0]]) return formats[0]
+  return fallback
+}
+
+async function walkFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory()) files.push(...await walkFiles(path))
+    else if (entry.isFile()) files.push(path)
+  }
+  return files
+}
+
+async function findConvertedPdfOutput(outputDir, inputPath, format) {
+  const files = await walkFiles(outputDir)
+  const primaryFormat = String(format).split(',')[0]?.trim() || 'markdown'
+  const exts = PDF_OUTPUT_EXTENSIONS[primaryFormat] || PDF_OUTPUT_EXTENSIONS.markdown
+  const inputBase = basename(inputPath, extname(inputPath)).toLowerCase()
+  const matchingExt = files.filter((file) => exts.includes(extname(file).toLowerCase()))
+  return matchingExt.find((file) => basename(file, extname(file)).toLowerCase() === inputBase) || matchingExt[0] || ''
+}
+
+function addStringPdfOption(options, argv, flag, key) {
+  const value = readOption(argv, flag)
+  if (value) options[key] = value
+}
+
+function addBooleanPdfOption(options, argv, flag, key) {
+  if (hasFlag(argv, flag)) options[key] = true
+}
+
+function buildOpenDataLoaderOptions(argv, outputDir, fallbackFormat = 'markdown') {
+  const options = {
+    outputDir,
+    format: readPdfFormatOption(argv, fallbackFormat),
+    quiet: !hasFlag(argv, '--pdf-verbose'),
+  }
+  addStringPdfOption(options, argv, '--pdf-password', 'password')
+  addStringPdfOption(options, argv, '--pdf-content-safety-off', 'contentSafetyOff')
+  addBooleanPdfOption(options, argv, '--pdf-sanitize', 'sanitize')
+  addBooleanPdfOption(options, argv, '--pdf-keep-line-breaks', 'keepLineBreaks')
+  addStringPdfOption(options, argv, '--pdf-replace-invalid-chars', 'replaceInvalidChars')
+  addBooleanPdfOption(options, argv, '--pdf-use-struct-tree', 'useStructTree')
+  addStringPdfOption(options, argv, '--pdf-table-method', 'tableMethod')
+  addStringPdfOption(options, argv, '--pdf-reading-order', 'readingOrder')
+  addStringPdfOption(options, argv, '--pdf-markdown-page-separator', 'markdownPageSeparator')
+  addBooleanPdfOption(options, argv, '--pdf-markdown-with-html', 'markdownWithHtml')
+  addStringPdfOption(options, argv, '--pdf-text-page-separator', 'textPageSeparator')
+  addStringPdfOption(options, argv, '--pdf-html-page-separator', 'htmlPageSeparator')
+  addStringPdfOption(options, argv, '--pdf-image-output', 'imageOutput')
+  addStringPdfOption(options, argv, '--pdf-image-format', 'imageFormat')
+  addStringPdfOption(options, argv, '--pdf-image-dir', 'imageDir')
+  addStringPdfOption(options, argv, '--pdf-pages', 'pages')
+  addBooleanPdfOption(options, argv, '--pdf-include-header-footer', 'includeHeaderFooter')
+  addBooleanPdfOption(options, argv, '--pdf-detect-strikethrough', 'detectStrikethrough')
+  addStringPdfOption(options, argv, '--pdf-hybrid', 'hybrid')
+  addStringPdfOption(options, argv, '--pdf-hybrid-mode', 'hybridMode')
+  addStringPdfOption(options, argv, '--pdf-hybrid-url', 'hybridUrl')
+  addStringPdfOption(options, argv, '--pdf-hybrid-timeout', 'hybridTimeout')
+  addBooleanPdfOption(options, argv, '--pdf-hybrid-fallback', 'hybridFallback')
+  addStringPdfOption(options, argv, '--pdf-hybrid-hancom-ai-regionlist-strategy', 'hybridHancomAiRegionlistStrategy')
+  addStringPdfOption(options, argv, '--pdf-hybrid-hancom-ai-ocr-strategy', 'hybridHancomAiOcrStrategy')
+  addStringPdfOption(options, argv, '--pdf-hybrid-hancom-ai-image-cache', 'hybridHancomAiImageCache')
+  addBooleanPdfOption(options, argv, '--pdf-to-stdout', 'toStdout')
+  addStringPdfOption(options, argv, '--pdf-threads', 'threads')
+  return options
+}
+
+async function loadOpenDataLoaderPdf(env) {
+  if (env.openDataLoaderPdf?.convert) return env.openDataLoaderPdf
+  try {
+    return await import('@opendataloader/pdf')
+  } catch {
+    throw new Error('PDF support requires @opendataloader/pdf plus Node.js 20+ and Java 11+ on PATH.')
+  }
+}
+
+async function convertPdfDocument(resolvedPath, argv, env) {
+  const outputDir = await mkdtemp(join(tmpdir(), 'clouddrive-docs-pdf-'))
+  const pdf = await loadOpenDataLoaderPdf(env)
+  const options = buildOpenDataLoaderOptions(argv, outputDir, 'markdown')
+
+  try {
+    await pdf.convert([resolvedPath], options)
+    const outputPath = await findConvertedPdfOutput(outputDir, resolvedPath, options.format)
+    if (!outputPath) throw new Error(`OpenDataLoader did not produce ${options.format} output for PDF: ${resolvedPath}`)
+    return {
+      sourceFormat: options.format,
+      content: await readFile(outputPath, 'utf8'),
+    }
+  } finally {
+    await rm(outputDir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+function pdfFormats(format) {
+  return String(format || '').split(',').map((item) => item.trim()).filter(Boolean)
+}
+
+async function convertPdfWithOpenDataLoader(resolvedPath, argv, env) {
+  const outputDir = resolve(readOption(argv, '--output') || readOption(argv, '--output-dir') || join(process.cwd(), 'opendataloader-output'))
+  const pdf = await loadOpenDataLoaderPdf(env)
+  const options = buildOpenDataLoaderOptions(argv, outputDir, 'json')
+  await mkdir(outputDir, { recursive: true })
+  await pdf.convert([resolvedPath], options)
+  const files = (await walkFiles(outputDir)).map((file) => ({
+    path: file,
+    name: basename(file),
+    format: detectDocumentFormat(file),
+  }))
+  return {
+    path: resolvedPath,
+    outputDir,
+    formats: pdfFormats(options.format),
+    files,
+  }
 }
 
 function readPositiveIntegerOption(argv, flag, fallback) {
@@ -164,24 +397,41 @@ function authHelp() {
   ].join('\n') + '\n'
 }
 
+function authCommandUsage(subcommand) {
+  const usages = {
+    list: 'Usage: clouddrive-cli auth list [--json]',
+    default: 'Usage: clouddrive-cli auth default <provider> <account-id> [--json]',
+    'import-token': 'Usage: clouddrive-cli auth import-token --provider <p> --account <id> --token <token.json> [--name <display>] [--default] [--json]',
+    login: `Usage: clouddrive-cli auth login <provider> [--browser chrome] [--redirect-uri <uri>] [--port <n>] [--timeout-ms <n>] [--json]\nSupported login providers: ${supportedBrowserLoginProviders().join(', ')}`,
+    check: 'Usage: clouddrive-cli auth check [--provider <p>] [--json]',
+  }
+  return usages[subcommand] || authHelp().trimEnd()
+}
+
 async function handleAuth(argv, env) {
   const store = createAuthStore({ configDir: env.configDir })
   const subcommand = argv[1]
   if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
     return { exitCode: EXIT_CODES.SUCCESS, stdout: authHelp(), stderr: '' }
   }
+  if (hasHelpFlag(argv.slice(2))) return usage(authCommandUsage(subcommand))
   if (subcommand === 'list') {
     const accounts = await store.listAccounts()
     if (hasFlag(argv, '--json')) return ok(accounts, true)
     if (accounts.length === 0) {
       return { exitCode: EXIT_CODES.SUCCESS, stdout: '暂无已保存账号\n', stderr: '' }
     }
-    const lines = ['Provider   AccountId                          DisplayName          Default']
-    lines.push('─────────  ─────────────────────────────────  ───────────────────  ───────')
+    const providerWidth = Math.max('Provider'.length, ...accounts.map((a) => String(a.provider || '').length))
+    const accountWidth = Math.max('AccountId'.length, ...accounts.map((a) => String(a.accountId || '').length))
+    const displayWidth = Math.max('DisplayName'.length, ...accounts.map((a) => String(a.displayName || '').length))
+    const lines = [
+      `${'Provider'.padEnd(providerWidth)}  ${'AccountId'.padEnd(accountWidth)}  ${'DisplayName'.padEnd(displayWidth)}  Default`,
+    ]
+    lines.push(`${'─'.repeat(providerWidth)}  ${'─'.repeat(accountWidth)}  ${'─'.repeat(displayWidth)}  ───────`)
     for (const a of accounts) {
-      const p = (a.provider || '').padEnd(9)
-      const id = (a.accountId || '').slice(0, 33).padEnd(33)
-      const name = (a.displayName || '').slice(0, 20).padEnd(20)
+      const p = (a.provider || '').padEnd(providerWidth)
+      const id = (a.accountId || '').padEnd(accountWidth)
+      const name = (a.displayName || '').padEnd(displayWidth)
       const def = a.isDefault ? '  ✓' : ''
       lines.push(`${p}  ${id}  ${name}  ${def}`)
     }
@@ -261,7 +511,17 @@ async function resolveToken(env, providerName, accountArg) {
     err.code = 'ERR_NO_ACCOUNT'
     throw err
   }
-  return account.token || account
+  const token = account.token || account
+  const expireTime = token.expire_time ? new Date(token.expire_time).getTime() : 0
+  const bufferMs = 5 * 60 * 1000
+  const provider = activeProviders(env)[providerName]
+  if (provider?.auth?.refresh && token.refresh_token && expireTime && expireTime - Date.now() < bufferMs) {
+    const refreshed = await provider.auth.refresh(token)
+    const nextAccount = { ...account, token: { ...token, ...refreshed } }
+    await store.saveAccount(nextAccount)
+    return nextAccount.token
+  }
+  return token
 }
 
 const VIDEO_EXTS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.m4v', '.wmv', '.flv', '.ts', '.m2ts', '.rmvb', '.webm', '.vob', '.iso'])
@@ -359,35 +619,120 @@ function buildStats(allItems) {
   return stats
 }
 
+function filesCommandUsage(subcommand) {
+  const usages = {
+    list: 'Usage: clouddrive-cli files list [--provider <p>] [--account <id>] [--drive-id <d>] [--file-id <id>] [--limit <n>] [--cursor <token>] [--json]',
+    walk: 'Usage: clouddrive-cli files walk [--provider <p>] [--account <id>] [--drive-id <d>] [--file-id <id>] [--json]',
+    tree: 'Usage: clouddrive-cli files tree [--provider <p>] [--account <id>] [--drive-id <d>] [--file-id <id>] [--depth <n>] [--json]',
+    stats: 'Usage: clouddrive-cli files stats [--provider <p>] [--account <id>] [--drive-id <d>] [--file-id <id>] [--depth <n>] [--json]',
+    info: 'Usage: clouddrive-cli files info --file-id <id> [--provider <p>] [--account <id>] [--drive-id <d>] [--json]',
+    search: 'Usage: clouddrive-cli files search --name <filename> [--provider <p>] [--account <id>] [--limit <n>] [--json]',
+    mkdir: 'Usage: clouddrive-cli files mkdir --name <name> [--parent <id>] [--provider <p>] [--account <id>] [--drive-id <d>] [--json]',
+    'rename-apply': 'Usage: clouddrive-cli files rename-apply <plan.json> [--current current.json] [--dry-run] [--json]',
+    'move-apply': 'Usage: clouddrive-cli files move-apply <plan.json> [--dry-run] [--json]',
+    'trash-apply': 'Usage: clouddrive-cli files trash-apply <plan.json> [--apply] [--json]',
+  }
+  return usages[subcommand] || 'Usage: clouddrive-cli files <list|walk|tree|stats|info|search|mkdir|rename-apply|move-apply|trash-apply> [options]'
+}
+
+function mediaCommandUsage(subcommand) {
+  const usages = {
+    scan: 'Usage: clouddrive-cli media scan --input files.json [--json]',
+    match: 'Usage: clouddrive-cli media match --input files.json [--json]',
+  }
+  return usages[subcommand] || 'Usage: clouddrive-cli media <scan|match> [options]'
+}
+
+function opsCommandUsage(subcommand) {
+  const usages = {
+    list: 'Usage: clouddrive-cli ops list [--json]',
+    show: 'Usage: clouddrive-cli ops show <operation-id> [--json]',
+    undo: 'Usage: clouddrive-cli ops undo <operation-id> [--dry-run] [--json]',
+  }
+  return usages[subcommand] || 'Usage: clouddrive-cli ops <list|show|undo> [options]'
+}
+
+function uploadCommandUsage(subcommand) {
+  const usages = {
+    plan: 'Usage: clouddrive-cli upload plan --local <path> [--provider <p>] [--account <id>] [--remote-parent <id>] [--output <plan.json>] [--json]',
+    apply: 'Usage: clouddrive-cli upload apply <plan.json> [--dry-run] [--json]',
+  }
+  return usages[subcommand] || 'Usage: clouddrive-cli upload <plan|apply> [options]'
+}
+
+function organizeCommandUsage(subcommand) {
+  const usages = {
+    analyze: 'Usage: clouddrive-cli organize analyze [--input <files.json>] [--provider <p>] [--account <id>] [--file-id <folder-id>] [--depth <n>] [--output <analysis.json>] [--summary] [--json]',
+    plan: 'Usage: clouddrive-cli organize plan --analysis <analysis.json> [--rules <doc>] [--output <plan.json>] [--summary] [--json]',
+    apply: 'Usage: clouddrive-cli organize apply <plan.json> [--dry-run] [--summary] [--json]',
+  }
+  return usages[subcommand] || 'Usage: clouddrive-cli organize <analyze|plan|apply> [--summary] [--json]'
+}
+
+function fallbackListPage(items, { limit, cursor }) {
+  const offset = cursor ? Number.parseInt(cursor, 10) : 0
+  const start = Number.isFinite(offset) && offset >= 0 ? offset : 0
+  const pageItems = items.slice(start, start + limit)
+  const nextOffset = start + pageItems.length
+  const nextCursor = nextOffset < items.length ? String(nextOffset) : ''
+  return { items: pageItems, nextCursor }
+}
+
+function listPageEnvelope({ providerName, driveId, parentFileId, limit, cursor, page }) {
+  const nextCursor = page.nextCursor || ''
+  return {
+    provider: providerName,
+    driveId,
+    parentFileId,
+    limit,
+    cursor: cursor || '',
+    nextCursor,
+    hasMore: !!nextCursor,
+    items: page.items || [],
+  }
+}
+
 async function handleFiles(argv, env) {
   const subcommand = argv[1]
   if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    return usage('Usage: clouddrive-cli files <list|walk|tree|stats|info|search|mkdir|rename-apply|move-apply|trash-apply> [options]')
+    return usage(filesCommandUsage())
   }
+  if (hasHelpFlag(argv.slice(2))) return usage(filesCommandUsage(subcommand))
 
   if (subcommand === 'list' || subcommand === 'walk') {
+    const removedPath = rejectRemovedPath(argv)
+    if (removedPath) return removedPath
     const providerName = readOption(argv, '--provider') || 'aliyun'
     const accountArg = readOption(argv, '--account') || 'default'
-    const path = readOptionWithDefault(argv, '--path', defaultRootForProvider(providerName))
+    const fileId = readCloudFileId(argv, providerName)
     const driveId = readOption(argv, '--drive-id') || ''
     const isJson = hasFlag(argv, '--json')
+    const usePagination = hasOption(argv, '--limit') || hasOption(argv, '--cursor')
+    const limit = readPositiveIntegerOption(argv, '--limit', 100)
+    const cursor = readOption(argv, '--cursor')
 
-    const provider = PROVIDERS[providerName]
+    const provider = activeProviders(env)[providerName]
     if (!provider) return fail(`Unknown provider: ${providerName}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
 
     const token = await resolveToken(env, providerName, accountArg)
     const effectiveDriveId = driveId || token.default_drive_id || token.backup_drive_id
 
     if (subcommand === 'list') {
-      const items = await provider.files.list({ token, driveId: effectiveDriveId, parentFileId: path })
-      return ok(items, isJson)
+      if (usePagination) {
+        const page = provider.files.listPage
+          ? await provider.files.listPage({ token, driveId: effectiveDriveId, parentFileId: fileId, limit, cursor })
+          : fallbackListPage(await provider.files.list({ token, driveId: effectiveDriveId, parentFileId: fileId }), { limit, cursor })
+        return outputOrOk(listPageEnvelope({ providerName, driveId: effectiveDriveId, parentFileId: fileId, limit, cursor, page }), argv, true)
+      }
+      const items = await provider.files.list({ token, driveId: effectiveDriveId, parentFileId: fileId })
+      return outputOrOk(items, argv, isJson)
     }
 
     const allItems = []
-    for await (const item of provider.files.walk({ token, driveId: effectiveDriveId, parentFileId: path })) {
+    for await (const item of provider.files.walk({ token, driveId: effectiveDriveId, parentFileId: fileId })) {
       allItems.push(item)
     }
-    return ok(allItems, isJson)
+    return outputOrOk(allItems, argv, isJson)
   }
 
   if (subcommand === 'search') {
@@ -400,24 +745,26 @@ async function handleFiles(argv, env) {
 
     if (!query) return fail('Usage: clouddrive-cli files search --name <filename> [--provider <p>] [--account <id>] [--limit <n>] [--json]')
 
-    const provider = PROVIDERS[providerName]
+    const provider = activeProviders(env)[providerName]
     if (!provider) return fail(`Unknown provider: ${providerName}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
     if (!provider.files.search) return fail(`Provider "${providerName}" does not support server-side search`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
 
     const token = await resolveToken(env, providerName, accountArg)
     const driveId = readOption(argv, '--drive-id') || token.default_drive_id || token.backup_drive_id
     const items = await provider.files.search({ token, driveId, name, query, limit })
-    return ok(items, isJson)
+    return outputOrOk(items, argv, isJson)
   }
 
   if (subcommand === 'tree') {
+    const removedPath = rejectRemovedPath(argv)
+    if (removedPath) return removedPath
     const providerName = readOption(argv, '--provider') || 'aliyun'
     const accountArg = readOption(argv, '--account') || 'default'
-    const path = readOptionWithDefault(argv, '--path', defaultRootForProvider(providerName))
+    const path = readCloudFileId(argv, providerName)
     const depth = readPositiveIntegerOption(argv, '--depth', 3)
     const isJson = hasFlag(argv, '--json')
 
-    const provider = PROVIDERS[providerName]
+    const provider = activeProviders(env)[providerName]
     if (!provider) return fail(`Unknown provider: ${providerName}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
 
     const token = await resolveToken(env, providerName, accountArg)
@@ -430,7 +777,7 @@ async function handleFiles(argv, env) {
     }
 
     const node = buildTree(effectivePath, allItems)
-    if (isJson) return ok({ provider: providerName, driveId, rootId: effectivePath, depth, node }, true)
+    if (isJson || readOption(argv, '--output')) return outputOrOk({ provider: providerName, driveId, rootId: effectivePath, depth, node }, argv, true)
 
     const rootLabel = node.name === '/' ? '/' : `${node.name}/`
     const lines = [`${rootLabel}  (${node.totalFiles} files, ${node.totalFolders} folders)`]
@@ -441,13 +788,15 @@ async function handleFiles(argv, env) {
   }
 
   if (subcommand === 'stats') {
+    const removedPath = rejectRemovedPath(argv)
+    if (removedPath) return removedPath
     const providerName = readOption(argv, '--provider') || 'aliyun'
     const accountArg = readOption(argv, '--account') || 'default'
-    const path = readOptionWithDefault(argv, '--path', defaultRootForProvider(providerName))
+    const path = readCloudFileId(argv, providerName)
     const depth = readPositiveIntegerOption(argv, '--depth', 10)
     const isJson = hasFlag(argv, '--json')
 
-    const provider = PROVIDERS[providerName]
+    const provider = activeProviders(env)[providerName]
     if (!provider) return fail(`Unknown provider: ${providerName}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
 
     const token = await resolveToken(env, providerName, accountArg)
@@ -459,7 +808,7 @@ async function handleFiles(argv, env) {
     }
 
     const stats = { provider: providerName, driveId, path, max_depth: depth, ...buildStats(allItems) }
-    if (isJson) return ok(stats, true)
+    if (isJson || readOption(argv, '--output')) return outputOrOk(stats, argv, true)
 
     const lines = [
       `Provider: ${stats.provider}  Path: ${stats.path}`,
@@ -703,8 +1052,12 @@ async function handleFiles(argv, env) {
   return fail(`Unknown files command: ${subcommand || ''}`.trim())
 }
 
-async function handleMedia(argv) {
+async function handleMedia(argv, env) {
   const subcommand = argv[1]
+  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+    return usage(mediaCommandUsage())
+  }
+  if (hasHelpFlag(argv.slice(2))) return usage(mediaCommandUsage(subcommand))
 
   if (subcommand === 'scan') {
     const inputPath = readOption(argv, '--input')
@@ -724,49 +1077,16 @@ async function handleMedia(argv) {
     return ok(matches, hasFlag(argv, '--json'))
   }
 
-  if (subcommand === 'organize-plan') {
-    const inputPath = readOption(argv, '--input')
-    if (!inputPath) return fail('Usage: clouddrive-cli media organize-plan --input files.json [--provider <p>] [--account <id>] [--style jellyfin] [--root <folder-id>] [--drive-id <d>] [--output plan.json] [--json]')
-    const provider = readOption(argv, '--provider') || 'aliyun'
-    const accountId = readOption(argv, '--account') || 'default'
-    const style = readOption(argv, '--style') || 'jellyfin'
-    const rootFileId = readOption(argv, '--root') || 'root'
-    const driveId = readOption(argv, '--drive-id') || ''
-    const outputPath = readOption(argv, '--output')
-    const items = await readJsonFile(inputPath)
-    if (!Array.isArray(items)) return fail('--input file must contain a JSON array of file items')
-    const plan = generateOrganizePlan({ provider, accountId, items, style, rootFileId, driveId })
-    if (outputPath) {
-      await writeFile(outputPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8')
-    }
-    return ok(plan, hasFlag(argv, '--json') || !outputPath)
-  }
-
-  if (subcommand !== 'rename-plan') return fail(`Unknown media command: ${subcommand || ''}`.trim())
-
-  const inputPath = readOption(argv, '--input')
-  if (!inputPath) return fail('Usage: clouddrive-cli media rename-plan --input files.json [--provider <p>] [--account <id>] [--style jellyfin] [--output plan.json] [--json]')
-
-  const provider = readOption(argv, '--provider') || 'aliyun'
-  const accountId = readOption(argv, '--account') || 'default'
-  const style = readOption(argv, '--style') || 'jellyfin'
-  const outputPath = readOption(argv, '--output')
-
-  const items = await readJsonFile(inputPath)
-  if (!Array.isArray(items)) return fail('--input file must contain a JSON array of file items')
-
-  const plan = generateMediaRenamePlan({ provider, accountId, items, style })
-
-  if (outputPath) {
-    await writeFile(outputPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8')
-  }
-
-  return ok(plan, hasFlag(argv, '--json') || !outputPath)
+  return fail(`Unknown media command: ${subcommand || ''}`.trim())
 }
 
 async function handleOps(argv, env) {
   const store = createOperationLogStore({ configDir: env.configDir })
   const subcommand = argv[1]
+  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+    return usage(opsCommandUsage())
+  }
+  if (hasHelpFlag(argv.slice(2))) return usage(opsCommandUsage(subcommand))
 
   if (subcommand === 'list') {
     return ok(await store.list(), hasFlag(argv, '--json'))
@@ -861,6 +1181,12 @@ async function handleOps(argv, env) {
 
 async function handleSettings(argv, env) {
   const subcommand = argv[1]
+  if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+    return usage('Usage: clouddrive-cli settings show [--json]')
+  }
+  if (subcommand === 'show' && hasHelpFlag(argv.slice(2))) {
+    return usage('Usage: clouddrive-cli settings show [--json]')
+  }
   if (!subcommand || subcommand === 'show' || subcommand === '--json') {
     const isJson = hasFlag(argv, '--json') || subcommand === '--json'
     const store = createAuthStore({ configDir: env.configDir })
@@ -899,27 +1225,78 @@ async function handleProviders(argv) {
   if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
     return { exitCode: EXIT_CODES.SUCCESS, stdout: 'clouddrive-cli providers <command>\n\nCommands:\n  clouddrive-cli providers capabilities [--json]\n', stderr: '' }
   }
+  if (hasHelpFlag(argv.slice(2))) return usage('Usage: clouddrive-cli providers capabilities [--json]')
   if (subcommand !== 'capabilities') return fail(`Unknown providers command: ${subcommand || ''}`.trim())
   return ok(providerCapabilities(), hasFlag(argv, '--json'))
 }
 
-async function handleDocs(argv) {
+async function handleList(argv) {
+  if (hasHelpFlag(argv.slice(1))) return usage('Usage: clouddrive-cli list [--group <name>] [--json]')
+  const group = readOption(argv, '--group')
+  const commands = listCommands({ group })
+  if (hasFlag(argv, '--json')) return ok(commands, true)
+  const lines = ['Command                         Access  Description']
+  lines.push('──────────────────────────────  ──────  ─────────────────────────────────────────')
+  for (const command of commands) {
+    lines.push(`${command.command.padEnd(30)}  ${command.access.padEnd(6)}  ${command.description}`)
+  }
+  return { exitCode: EXIT_CODES.SUCCESS, stdout: lines.join('\n') + '\n', stderr: '' }
+}
+
+async function handleSchema(argv) {
   const subcommand = argv[1]
-  if (subcommand !== 'read') return fail(`Unknown docs command: ${subcommand || ''}`.trim())
+  if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+    return usage('Usage: clouddrive-cli schema commands [--group <name>]')
+  }
+  if (subcommand === 'commands' && hasHelpFlag(argv.slice(2))) {
+    return usage('Usage: clouddrive-cli schema commands [--group <name>]')
+  }
+  if (!subcommand || subcommand === 'commands') {
+    return ok({
+      version: COMMAND_MANIFEST_VERSION,
+      commands: listCommands({ group: readOption(argv, '--group') }),
+    }, true)
+  }
+  return fail(`Unknown schema command: ${subcommand || ''}`.trim())
+}
+
+async function handleDocs(argv, env) {
+  const subcommand = argv[1]
+  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+    return usage('Usage: clouddrive-cli docs <read|convert> <path> [options]')
+  }
+  if (subcommand === 'read' && hasHelpFlag(argv.slice(2))) {
+    return usage('Usage: clouddrive-cli docs read <path> [--max-chars <n>] [--pdf-format <markdown|text|json|html>] [--pdf-pages <pages>] [--json]')
+  }
+  if (subcommand === 'convert' && hasHelpFlag(argv.slice(2))) {
+    return usage('Usage: clouddrive-cli docs convert <path> --output <dir> [--pdf-format <formats>] [--json]')
+  }
+  if (subcommand !== 'read' && subcommand !== 'convert') return fail(`Unknown docs command: ${subcommand || ''}`.trim())
 
   const inputPath = argv[2]
-  if (!inputPath) return fail('Usage: clouddrive-cli docs read <path> [--max-chars <n>] [--json]')
+  if (!inputPath) {
+    return fail(subcommand === 'convert'
+      ? 'Usage: clouddrive-cli docs convert <path> --output <dir> [--pdf-format <formats>] [--json]'
+      : 'Usage: clouddrive-cli docs read <path> [--max-chars <n>] [--pdf-format <markdown|text|json|html>] [--pdf-pages <pages>] [--json]')
+  }
 
   const resolvedPath = resolve(inputPath)
   const info = await stat(resolvedPath)
-  if (!info.isFile()) return fail(`Document path is not a file: ${resolvedPath}`)
+  if (subcommand === 'read' && !info.isFile()) return fail(`Document path is not a file: ${resolvedPath}`)
+  if (subcommand === 'convert') {
+    if (!info.isFile() && !info.isDirectory()) return fail(`Document path is not a file or directory: ${resolvedPath}`)
+    return ok(await convertPdfWithOpenDataLoader(resolvedPath, argv, env), true)
+  }
 
   const maxChars = readPositiveIntegerOption(argv, '--max-chars', 20000)
-  const raw = await readFile(resolvedPath, 'utf8')
+  const format = detectDocumentFormat(resolvedPath)
+  const converted = format === 'pdf' ? await convertPdfDocument(resolvedPath, argv, env) : null
+  const raw = converted ? converted.content : await readFile(resolvedPath, 'utf8')
   const content = raw.length > maxChars ? raw.slice(0, maxChars) : raw
   const payload = {
     path: resolvedPath,
-    format: detectDocumentFormat(resolvedPath),
+    format,
+    ...(converted ? { sourceFormat: converted.sourceFormat } : {}),
     chars: raw.length,
     truncated: raw.length > maxChars,
     content,
@@ -928,8 +1305,12 @@ async function handleDocs(argv) {
   return hasFlag(argv, '--json') ? ok(payload, true) : ok(content, false)
 }
 
-async function handleUpload(argv) {
+async function handleUpload(argv, env) {
   const subcommand = argv[1]
+  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
+    return usage(uploadCommandUsage())
+  }
+  if (hasHelpFlag(argv.slice(2))) return usage(uploadCommandUsage(subcommand))
 
   if (subcommand === 'plan') {
     const localPath = readOption(argv, '--local')
@@ -951,7 +1332,9 @@ async function handleUpload(argv) {
     const planPath = argv[2]
     if (!planPath) return fail('Usage: clouddrive-cli upload apply <plan.json> [--dry-run] [--json]')
     const plan = await readJsonFile(planPath)
+    const rationale = readOption(argv, '--rationale')
     const dryRun = dryRunUploadPlan(plan)
+    if (rationale) dryRun.rationale = rationale
     if (hasFlag(argv, '--dry-run')) return ok(dryRun, hasFlag(argv, '--json'))
     if (!dryRun.ok) return ok(dryRun, hasFlag(argv, '--json'))
 
@@ -960,7 +1343,12 @@ async function handleUpload(argv) {
     if (!provider.capabilities.uploadFile) {
       return fail(`Provider "${plan.provider}" does not support CLI upload yet`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
     }
-    return fail(`Provider "${plan.provider}" upload adapter is not wired in this build`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
+    const token = await resolveToken(env, plan.provider, plan.account_id)
+    const driveId = plan.drive_id || token.default_drive_id || token.backup_drive_id || plan.provider
+    const result = await executeUploadPlan(plan, { provider, token, driveId })
+    if (rationale) result.rationale = rationale
+    const exitCode = result.ok ? EXIT_CODES.SUCCESS : result.succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
+    return { exitCode, stdout: jsonOut(result), stderr: '' }
   }
 
   return fail(`Unknown upload command: ${subcommand || ''}`.trim())
@@ -969,14 +1357,17 @@ async function handleUpload(argv) {
 async function handleOrganize(argv, env) {
   const subcommand = argv[1]
   if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    return usage('Usage: clouddrive-cli organize <analyze|plan|apply> [--summary] [--json]')
+    return usage(organizeCommandUsage())
   }
+  if (hasHelpFlag(argv.slice(2))) return usage(organizeCommandUsage(subcommand))
 
   if (subcommand === 'analyze') {
+    const removedPath = rejectRemovedPath(argv)
+    if (removedPath) return removedPath
     const inputPath = readOption(argv, '--input')
     const providerName = readOption(argv, '--provider') || 'aliyun'
     const accountId = readOption(argv, '--account') || 'default'
-    const rootFileId = readOptionWithDefault(argv, '--path', defaultRootForProvider(providerName))
+    const rootFileId = readCloudFileId(argv, providerName)
     const outputPath = readOption(argv, '--output')
     const maxDepth = readPositiveIntegerOption(argv, '--depth', 5)
     const summaryOnly = hasFlag(argv, '--summary')
@@ -1049,6 +1440,11 @@ function printHelp() {
   clouddrive-cli <命令> [子命令] [选项]
 
 命令：
+  list [--group <name>] [--json]
+                                机器可发现的命令清单
+  schema commands [--group <name>]
+                                输出命令 schema/manifest
+
   auth
     list                        列出所有已保存账号
     default <provider> <id>     设置默认账号
@@ -1061,13 +1457,14 @@ function printHelp() {
     capabilities [--json]       列出 provider 能力矩阵
 
   files
-    list    --provider <p> --account <id> [--drive-id <d>] [--path <p>] [--json]
+    list    --provider <p> --account <id> [--drive-id <d>] [--file-id <id>]
+            [--limit <n>] [--cursor <token>] [--json]
                                 列出目录文件
-    walk    --provider <p> --account <id> [--drive-id <d>] [--path <p>] [--json]
+    walk    --provider <p> --account <id> [--drive-id <d>] [--file-id <id>] [--json]
                                 递归遍历文件
-    tree    --provider <p> [--path <p>] [--depth 3] [--json]
+    tree    --provider <p> [--file-id <id>] [--depth 3] [--json]
                                 输出目录树摘要（更适合 AI 上下文）
-    stats   --provider <p> [--path <p>] [--depth 10] [--json]
+    stats   --provider <p> [--file-id <id>] [--depth 10] [--json]
                                 统计目录大小/文件数/视频数
     info    --file-id <id> --provider <p> [--drive-id <d>] [--json]
                                 查看文件详情
@@ -1083,13 +1480,16 @@ function printHelp() {
                                 执行重命名计划
 
   media
-    rename-plan --input <files.json> [--provider <p>] [--account <id>]
-                [--style jellyfin] [--output <plan.json>] [--json]
-                                生成媒体重命名计划
+    scan    --input <files.json> [--json]
+                                扫描媒体文件类型
+    match   --input <files.json> [--json]
+                                提取媒体命名信息
 
   docs
     read <path> [--max-chars <n>] [--json]
                                 读取本地文档作为 AI 上下文
+    convert <path> --output <dir> [--pdf-format <formats>] [--json]
+                                使用 OpenDataLoader 转换 PDF 文件/目录
 
   upload
     plan --local <path> [--provider <p>] [--account <id>]
@@ -1100,7 +1500,7 @@ function printHelp() {
 
   organize
     analyze [--input <files.json>] [--provider <p>] [--account <id>]
-            [--path <folder-id>] [--depth <n>] [--output <analysis.json>] [--json]
+            [--file-id <folder-id>] [--depth <n>] [--output <analysis.json>] [--json]
                                 分析网盘目录结构
     plan --analysis <analysis.json> [--rules <doc>] [--output <plan.json>] [--json]
                                 生成目录整理计划
@@ -1114,17 +1514,16 @@ function printHelp() {
 
   help, --help, -h              显示此帮助信息
 
-支持的 provider：aliyun · pikpak · dropbox · onedrive · box · baidu · 115
+支持的 provider：aliyun · cloud123 · 115 · 139 · 189 · quark · pikpak · dropbox · onedrive · box · baidu
 
 示例：
   clouddrive-cli auth list
+  clouddrive-cli list --format json
   clouddrive-cli docs read ./README.md --json
   clouddrive-cli providers capabilities --json
   clouddrive-cli files list --provider aliyun --json
-  clouddrive-cli media rename-plan --input files.json --output plan.json
   clouddrive-cli media scan --input files.json --json
   clouddrive-cli media match --input files.json --json
-  clouddrive-cli media organize-plan --input files.json --output organize-plan.json
 `,
     stderr: '',
   }
@@ -1138,18 +1537,22 @@ export async function runBoxPlayerCli(argv, env = {}) {
   }
   try {
     const command = argv[0]
-    if (!command || command === 'help' || command === '--help' || command === '-h') return printHelp()
-    if (command === 'auth') return await handleAuth(argv, runtime)
-    if (command === 'providers') return await handleProviders(argv)
-    if (command === 'files') return await handleFiles(argv, runtime)
-    if (command === 'media') return await handleMedia(argv, runtime)
-    if (command === 'docs') return await handleDocs(argv)
-    if (command === 'upload') return await handleUpload(argv, runtime)
-    if (command === 'organize') return await handleOrganize(argv, runtime)
-    if (command === 'ops') return await handleOps(argv, runtime)
-    if (command === 'settings') return await handleSettings(argv, runtime)
-    return fail(`未知命令: ${command}\n运行 clouddrive-cli --help 查看可用命令`)
+    let result
+    if (!command || command === 'help' || command === '--help' || command === '-h') result = printHelp()
+    else if (command === 'list') result = await handleList(argv)
+    else if (command === 'schema') result = await handleSchema(argv)
+    else if (command === 'auth') result = await handleAuth(argv, runtime)
+    else if (command === 'providers') result = await handleProviders(argv)
+    else if (command === 'files') result = await handleFiles(argv, runtime)
+    else if (command === 'media') result = await handleMedia(argv, runtime)
+    else if (command === 'docs') result = await handleDocs(argv, runtime)
+    else if (command === 'upload') result = await handleUpload(argv, runtime)
+    else if (command === 'organize') result = await handleOrganize(argv, runtime)
+    else if (command === 'ops') result = await handleOps(argv, runtime)
+    else if (command === 'settings') result = await handleSettings(argv, runtime)
+    else result = fail(`未知命令: ${command}\n运行 clouddrive-cli --help 查看可用命令`)
+    return maybeJsonError(result, argv)
   } catch (error) {
-    return fail(error?.message || 'Unknown error', classifyError(error))
+    return maybeJsonError(fail(error?.message || 'Unknown error', classifyError(error)), argv)
   }
 }

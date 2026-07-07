@@ -125,9 +125,6 @@ const handleForward = () => {
 
 <template>
   <div v-show='!siteUrl'>
-    <p class='site-title'>
-      搜索到的一些阿里云盘分享网站,欢迎<a @click="openExternal('https://gitee.com/odomu/aliyunpan')" style='color: red'>投稿</a>
-    </p>
     <a-tabs class='share-site-tabs'>
       <template #extra>
         <a-button type='text' size='large' tabindex='-1' @click='handleRefreshSiteList'>

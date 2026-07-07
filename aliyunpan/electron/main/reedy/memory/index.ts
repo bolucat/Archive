@@ -1,0 +1,1 @@
+export { consolidateMemories } from './MemoryConsolidator'

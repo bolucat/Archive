@@ -1,17 +1,27 @@
 // vitest.config.ts
 import { defineConfig } from 'vitest/config'
+import path from 'path'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      '@shared': path.resolve(__dirname, 'shared'),
+      '@main':   path.resolve(__dirname, 'electron/main')
+    }
+  },
   test: {
     environment: 'node',
     include: [
-      'electron/main/download/__tests__/**/*.test.ts',
       'electron/main/core/__tests__/**/*.test.ts',
+      'electron/main/aria/__tests__/**/*.test.ts',
+      'shared/__tests__/**/*.test.ts',
+      'src/down/motrix-integration/**/*.test.ts',
       'scripts/__tests__/**/*.test.mjs',
       'src/media-server/__tests__/**/*.test.ts',
       'src/utils/__tests__/**/*.test.ts',
       'src/aliapi/__tests__/**/*.test.ts',
       'src/pikpak/__tests__/**/*.test.ts',
+      'src/quark/__tests__/**/*.test.ts',
       'src/dropbox/__tests__/**/*.test.ts',
       'src/onedrive/__tests__/**/*.test.ts',
       'src/box/__tests__/**/*.test.ts',

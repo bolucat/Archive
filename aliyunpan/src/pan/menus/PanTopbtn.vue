@@ -9,10 +9,10 @@ import {
   modalShowShareLink
 } from '../../utils/modal'
 import AliShare from '../../aliapi/share'
-import { usePanTreeStore } from '../../store'
+import { usePanTreeStore, usePanFileStore } from '../../store'
 import message from '../../utils/message'
 import PanDAL from '../pandal'
-import { isAliyunUser, isBoxUser, isDropboxUser, isOneDriveUser } from '../../aliapi/utils'
+import { isAliyunUser, isBoxUser, isCloud123User, isDropboxUser, isOneDriveUser, isQuarkUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
 
 const props = defineProps({
@@ -36,11 +36,15 @@ const props = defineProps({
 
 const videoSelectType = ref('recent')
 const panTreeStore = usePanTreeStore()
+const panFileStore = usePanFileStore()
+
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
 const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
 const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
+const isQuark = computed(() => isQuarkUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'quark')
 const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value)
+const isShareImportSupported = computed(() => isAliyunUser(panTreeStore.user_id || '') || isQuark.value || isCloud123User(panTreeStore.user_id || ''))
 
 const isShowBtn = computed(() => {
   return (props.dirtype === 'pic' && props.inputpicType != 'mypic')
@@ -226,10 +230,15 @@ const handleClickBottleFish = async () => {
         </a-dgroup>
       </template>
     </a-dropdown>
-    <a-button v-if="!dirtype.includes('pic') && isAliyunUser(panTreeStore.user_id || '')" type='text' size='small' tabindex='-1' title='Ctrl+L'
+    <a-button v-if="!dirtype.includes('pic') && isShareImportSupported" type='text' size='small' tabindex='-1' title='Ctrl+L'
               @click='modalDaoRuShareLink()'>
       <IconFont name="iconlink2" />导入分享
     </a-button>
+    <!-- AI 整理暂时隐藏 -->
+    <!-- <a-button v-if="!isselected && ['pan', 'pic', 'mypic'].includes(dirtype)" type='text' size='small' tabindex='-1'
+              @click='handleAiOrganizeCurrentDir'>
+      <IconFont name="iconscan" />AI 整理
+    </a-button> -->
   </div>
 </template>
 <style></style>

@@ -10,8 +10,11 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { EventEmitter } from 'node:events'
 import exception from './core/exception'
 import ipcEvent from './core/ipcEvent'
+import MotrixApplication from './aria/MotrixApplication'
+import { registerExternalDownloadProtocol } from './core/protocol'
+import { destroyDb } from './reedy/ReedyService'
 
-const OAUTH_PROTOCOLS = ['xbyboxplayer-oauth', 'boxplayer-onedriveoauth']
+const OAUTH_PROTOCOLS = ['xbyboxplayer-oauth', 'boxplayer-onedriveoauth', 'boxplayer-auth']
 
 type UserToken = {
   access_token: string;
@@ -23,6 +26,36 @@ type UserToken = {
 
 const DEFAULT_DOWN_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) aDrive/4.12.0 Chrome/108.0.5359.215 Electron/22.3.24 Safari/537.36'
+const QUARK_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Core/1.94.225.400 QQBrowser/12.2.5544.400'
+const QUARK_DOWNLOAD_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.56 Chrome/100.0.4896.160 Electron/18.3.5.12-a038f7b798 Safari/537.36 Channel/pckk_other_ch'
+const QUARK_OSS_DOWNLOAD_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0'
+
+const getUrlPath = (url: string) => {
+  try {
+    return new URL(url).pathname
+  } catch {
+    return ''
+  }
+}
+
+const getHeaderValue = (headers: Record<string, string | string[] | undefined>, name: string) => {
+  const item = Object.entries(headers || {}).find(([key]) => key.toLowerCase() === name.toLowerCase())
+  const value = item?.[1]
+  return Array.isArray(value) ? value.join('; ') : value || ''
+}
+
+const mergeCookieHeader = (loginCookie: string, existingCookie = '') => {
+  if (!loginCookie) return existingCookie
+  const loginKeys = new Set(loginCookie.split(';').map((item) => item.trim().split('=')[0].toLowerCase()).filter(Boolean))
+  const extraCookies = existingCookie
+    .split(';')
+    .map((item) => item.trim())
+    .filter((item) => item && !loginKeys.has(item.split('=')[0].toLowerCase()))
+  return [loginCookie, ...extraCookies].filter(Boolean).join('; ')
+}
 
 export default class launch extends EventEmitter {
   private userToken: UserToken = {
@@ -31,7 +64,9 @@ export default class launch extends EventEmitter {
     user_id: '',
     refresh: false
   }
+  private quarkCookie = ''
   private pendingOAuthUrl: string | null = null
+  public motrixApp!: MotrixApplication
 
   constructor() {
     super()
@@ -145,6 +180,7 @@ export default class launch extends EventEmitter {
       .whenReady()
       .then(() => {
         registerMediaImageCacheProtocol()
+        registerExternalDownloadProtocol(() => AppWindow.mainWindow)
         this.registerProtocol()
         try {
           const localVersion = getResourcesPath('localVersion')
@@ -164,19 +200,33 @@ export default class launch extends EventEmitter {
           const should115 = /(^https?:\/\/[^/]*115\.com\/)/i.test(details.url) || details.url.includes('cdnfhnfile.115cdn.net')
           const shouldBiliBili = details.url.indexOf('bilibili.com') > 0
           const shouldQQTv = details.url.indexOf('v.qq.com') > 0 || details.url.indexOf('video.qq.com') > 0
+          const shouldQuark = /(^https?:\/\/[^/]*quark\.cn\/)/i.test(details.url)
+          const shouldQuarkDownload = shouldQuark && details.url.includes('drive-pc.quark.cn/1/clouddrive/file/download')
+          const shouldQuarkOssDownload = shouldQuark && /(^https?:\/\/[^/]*\.pds\.quark\.cn\/)/i.test(details.url)
+          const quarkUrlPath = shouldQuarkOssDownload ? getUrlPath(details.url) : ''
           const shouldAliPanOrigin =   details.url.indexOf('.aliyundrive.com') > 0 || details.url.indexOf('.alipan.com') > 0
-          const shouldAliReferer = !shouldQQTv && !shouldBiliBili && !shouldGieeReferer && (!details.referrer || details.referrer.trim() === '' || /(\/localhost:)|(^file:\/\/)|(\/127.0.0.1:)/.exec(details.referrer) !== null)
+          const shouldAliReferer = !shouldQuark && !shouldQQTv && !shouldBiliBili && !shouldGieeReferer && (!details.referrer || details.referrer.trim() === '' || /(\/localhost:)|(^file:\/\/)|(\/127.0.0.1:)/.exec(details.referrer) !== null)
           const shouldToken = shouldAliPanOrigin && details.url.includes('download')
           const shouldOpenApiToken = details.url.includes('adrive/v1.0') || details.url.includes('adrive/v1.1')
           const forbidUrl = details.url.includes('younoyes') || details.url.includes('onatoshi')
           const hasAuthorizationHeader = Object.keys(details.requestHeaders || {}).some((key) => key.toLowerCase() === 'authorization')
           const fallbackAccessToken = this.userToken?.access_token || ''
           const fallbackOpenApiToken = this.userToken?.open_api_access_token || ''
+          const fallbackQuarkCookie = this.quarkCookie || (this.userToken?.tokenfrom === 'quark' ? fallbackAccessToken : '')
+          const quarkCookieHeader = shouldQuark && fallbackQuarkCookie
+            ? mergeCookieHeader(fallbackQuarkCookie, getHeaderValue(details.requestHeaders || {}, 'cookie'))
+            : ''
+          const baseRequestHeaders = { ...details.requestHeaders }
+          if (shouldQuark && quarkCookieHeader) {
+            Object.keys(baseRequestHeaders).forEach((key) => {
+              if (key.toLowerCase() === 'cookie') delete baseRequestHeaders[key]
+            })
+          }
 
           cb({
             cancel: false,
             requestHeaders: {
-              ...details.requestHeaders,
+              ...baseRequestHeaders,
               ...(shouldGieeReferer && {
                 Referer: 'https://gitee.com/',
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0'
@@ -184,6 +234,13 @@ export default class launch extends EventEmitter {
               ...(shouldAliPanOrigin && {
                 Origin: 'https://www.aliyundrive.com',
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0'
+              }),
+              ...(shouldQuark && {
+                Origin: 'https://pan.quark.cn',
+                Referer: 'https://pan.quark.cn/',
+                ...(quarkCookieHeader ? { Cookie: quarkCookieHeader } : {}),
+                ...(shouldQuarkOssDownload && quarkUrlPath ? { 'x-urlp': quarkUrlPath } : {}),
+                'user-agent': shouldQuarkOssDownload ? QUARK_OSS_DOWNLOAD_AGENT : shouldQuarkDownload ? QUARK_DOWNLOAD_AGENT : QUARK_AGENT
               }),
               ...(shouldAliReferer && {
                 Referer: 'https://www.aliyundrive.com/',
@@ -221,11 +278,16 @@ export default class launch extends EventEmitter {
                 Authorization: 'Bearer ' + fallbackOpenApiToken,
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0'
               }),
-              'X-Canary': 'client=windows,app=adrive,version=v4.12.0',
+              ...(shouldAliPanOrigin && {
+                'X-Canary': 'client=windows,app=adrive,version=v4.12.0'
+              }),
               'Accept-Language': 'zh-CN,zh;q=0.9'
             }
           })
         })
+        this.motrixApp = new MotrixApplication()
+        this.motrixApp.init().catch((err: any) => console.error('[MotrixApp] init failed', err))
+
         session.defaultSession.loadExtension(getStaticPath('crx'), { allowFileAccess: true }).then(() => {
           createMainWindow()
           createTray()
@@ -243,6 +305,9 @@ export default class launch extends EventEmitter {
 
   handleUserToken() {
     ipcMain.on('WebUserToken', (event, data) => {
+      if (data?.tokenfrom === 'quark' && data.access_token) {
+        this.quarkCookie = data.access_token
+      }
       if (data.login) {
         this.userToken = data
       } else if (this.userToken.user_id == data.user_id) {
@@ -266,15 +331,15 @@ export default class launch extends EventEmitter {
   }
 
   handleAppWillQuit() {
-    app.on('will-quit', () => {
+    app.on('will-quit', async () => {
+      try { await this.motrixApp?.quit() } catch {}
+      try { destroyDb() } catch {}
       try {
         if (AppWindow.appTray) {
           AppWindow.appTray.destroy()
           AppWindow.appTray = undefined
         }
-      } catch {
-
-      }
+      } catch {}
     })
   }
 
@@ -313,7 +378,25 @@ export default class launch extends EventEmitter {
   private dispatchOAuthUrl(url: string) {
     if (!url) return
     if (AppWindow.mainWindow && AppWindow.mainWindow.isDestroyed() === false) {
-      AppWindow.mainWindow.webContents.send('cloud123-oauth-callback', url)
+      if (url.startsWith('boxplayer-auth://payment-success')) {
+        try {
+          const params = new URLSearchParams(url.includes('?') ? url.split('?')[1] : '')
+          AppWindow.mainWindow.webContents.send('payment-callback', {
+            checkout_id: params.get('checkout_id') || '',
+          })
+        } catch {}
+      } else if (url.startsWith('boxplayer-auth://')) {
+        try {
+          const hash = url.includes('#') ? url.split('#')[1] : ''
+          const params = new URLSearchParams(hash)
+          AppWindow.mainWindow.webContents.send('auth-callback', {
+            access_token: params.get('access_token') || '',
+            refresh_token: params.get('refresh_token') || '',
+          })
+        } catch {}
+      } else {
+        AppWindow.mainWindow.webContents.send('cloud123-oauth-callback', url)
+      }
       AppWindow.mainWindow.show()
       AppWindow.mainWindow.focus()
     } else {

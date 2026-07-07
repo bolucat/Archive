@@ -15,8 +15,8 @@ import {
   Tag, ShieldAlert, Box as BoxIcon, FileText as DocIcon, ChevronDown as ChevronDownAlt,
   Image, AlertCircle, Files, Star, Heart, Grid3X3, Palette, AlertTriangle, Shuffle,
   RotateCcw, RadioTower, Compass, FileVideo as FileVideoIcon, AlertOctagon, Box, Volume2,
-  Minus, RefreshCw,
-  FileArchive, Disc3, Package, Smartphone
+  Minus, RefreshCw, Play, Pin, PinOff, ArrowUp,
+  FileArchive, Disc3, Package, Smartphone, BookOpen, ScanSearch
 } from 'lucide-vue-next'
 
 interface Props {
@@ -53,6 +53,7 @@ const ICON_MAP: Record<string, Component> = {
   iconlink2: Link2,
   iconscissor: Scissors,
   iconjietu: Camera2,
+  iconscan: ScanSearch,
   iconxuanzhuan: RotateCw,
   iconxiaotumoshi: Layout,
   iconsuoluetumoshi: Grid3X3,
@@ -77,6 +78,7 @@ const ICON_MAP: Record<string, Component> = {
 
   // 文件类型
   iconwenjian: FileText,
+  iconbook: BookOpen,
   'iconfile-audio': FileAudio,
   'iconfile-mp3': FileAudio,
   'iconfile-flac': FileAudio,
@@ -127,6 +129,8 @@ const ICON_MAP: Record<string, Component> = {
   'iconnode-tree1': Network,
   iconfullscreen: Maximize2,
   iconzuixiaohua: Minus,
+  iconzhiding: Pin,
+  iconquxiaozhiding: PinOff,
 
   // 状态/提示
   iconbulb: Lightbulb,
@@ -163,7 +167,7 @@ const ICON_MAP: Record<string, Component> = {
   iconcalendar: Calendar,
   iconhourglass: Hourglass,
   iconyibu: Shuffle,
-  iconyouxian: RotateCcw,
+  iconyouxian: ArrowUp,
 
   // 系统/外观
   iconchrome: Chrome,
@@ -184,7 +188,7 @@ const ICON_MAP: Record<string, Component> = {
   iconrss: Rss,
   iconrss_video: RadioTower,
   iconstar: Star,
-  iconstart: Star,
+  iconstart: Play,
   icontouping2: Cast,
   icongengduo: MoreHorizontal,
   icongengduo1: MoreVertical,

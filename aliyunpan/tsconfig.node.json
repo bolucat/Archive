@@ -7,9 +7,15 @@
     "jsx": "preserve",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
+    "baseUrl": "./",
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@main/*":   ["electron/main/*"]
+    },
     "types": [
       "vite-plugin-electron/electron-env"
     ]
   },
-  "include": ["package.json", "electron"]
+  "include": ["package.json", "electron", "shared"],
+  "exclude": ["shared/__tests__", "shared/types/reedy.ts", "shared/utils/vector.ts"]
 }

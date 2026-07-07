@@ -48,7 +48,6 @@ import PanTopbtn from './menus/PanTopbtn.vue'
 import FileTopbtn from './menus/FileTopbtn.vue'
 import FileRightMenu from './menus/FileRightMenu.vue'
 import TrashRightMenu from './menus/TrashRightMenu.vue'
-import MediaLibraryMenu from './menus/MediaLibraryMenu.vue'
 import TrashTopbtn from './menus/TrashTopbtn.vue'
 import DirTopPath from './menus/DirTopPath.vue'
 import message from '../utils/message'
@@ -58,7 +57,7 @@ import { TestButton } from '../utils/mosehelper'
 import usePanTreeStore from './pantreestore'
 import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User } from '../aliapi/utils'
 import { xorWith } from 'lodash'
-import FolderPreviewPopover from './menus/FolderPreviewPopover.vue'
+
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -105,9 +104,6 @@ panfileStore.$subscribe((_m: any, state: PanFileState) => {
   if (menuShowVideo.value != isShowVideo) menuShowVideo.value = isShowVideo
   const isShowZip = !isTrash && panfileStore.ListSelected.size == 1 && (selectItem?.ext == 'zip' || selectItem?.ext == 'rar')
   if (menuShowZip.value != isShowZip) menuShowZip.value = isShowZip
-  // 媒体库菜单：选中单个文件夹时显示
-  const isShowMediaLibrary = !isTrash && panfileStore.ListSelected.size == 1 && (selectItem?.isDir ?? false)
-  if (menuShowMediaLibrary.value != isShowMediaLibrary) menuShowMediaLibrary.value = isShowMediaLibrary
 })
 
 watchEffect(() => {
@@ -318,7 +314,6 @@ const handleSearchEnter = (event: any) => {
 
 const menuShowVideo = ref(false)
 const menuShowZip = ref(false)
-const menuShowMediaLibrary = ref(false)
 const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   const key = e.node.key
   if (!panfileStore.ListSelected.has(key)) panfileStore.mMouseSelect(key, false, false)
@@ -458,39 +453,7 @@ const onSelectRang = (file_id: string) => {
 
 const dragingRowItem = ref(false)
 
-const folderPreviewRef = ref<{ open: (target: HTMLElement, params: any) => void; leave: () => void; cancel: () => void } | null>(null)
-
-const isFolderPreviewable = (item: IAliGetFileModel | undefined): boolean => {
-  if (!settingStore.uiFolderPreviewEnabled) return false
-  if (!item || !item.isDir) return false
-  const dirType = panfileStore.SelectDirType
-  if (dirType === 'trash' || dirType === 'recover') return false
-  if (item.description && item.description.includes('xbyEncrypt')) return false
-  return true
-}
-
-const cancelFolderPreview = () => {
-  folderPreviewRef.value?.cancel()
-}
-
-const onFolderItemEnter = (ev: MouseEvent, item: IAliGetFileModel) => {
-  if (!isFolderPreviewable(item)) return
-  if (dragingRowItem.value || rangIsSelecting.value || showDragUpload.value) return
-  const target = ev.currentTarget as HTMLElement
-  if (!target) return
-  const userId = (item as any).user_id || panTreeStore.user_id
-  folderPreviewRef.value?.open(target, {
-    user_id: userId,
-    drive_id: item.drive_id,
-    file_id: item.file_id,
-    name: item.name,
-    path: (item as any).path || ''
-  })
-}
-
-const onFolderItemLeave = () => {
-  folderPreviewRef.value?.leave()
-}
+const cancelFolderPreview = () => {}
 
 const onRowItemDragStart = (ev: any, file_id: string) => {
   cancelFolderPreview()
@@ -890,8 +853,6 @@ const onPanDragEnd = (ev: any) => {
             draggable='true'
             @click='handleSelect(item.file_id, $event)'
             @mouseover='onSelectRang(item.file_id)'
-            @mouseenter='(ev:MouseEvent)=>onFolderItemEnter(ev, item)'
-            @mouseleave='onFolderItemLeave'
             @contextmenu='(event:MouseEvent)=>handleRightClick({event,node:{key:item.file_id}} )'
             @dragstart='(ev) => onRowItemDragStart(ev, item.file_id)'
             @dragend='onRowItemDragEnd'
@@ -1059,8 +1020,6 @@ const onPanDragEnd = (ev: any) => {
                 draggable='true'
                 @click='handleSelect(grid.file_id, $event)'
                 @mouseover='() => onSelectRang(grid.file_id)'
-                @mouseenter='(ev:MouseEvent)=>onFolderItemEnter(ev, grid)'
-                @mouseleave='onFolderItemLeave'
                 @contextmenu='(event:MouseEvent)=>handleRightClick({event,node:{key:grid.file_id}} )'
                 @dragstart='(ev) => onRowItemDragStart(ev, grid.file_id)'
                 @dragend='onRowItemDragEnd'
@@ -1218,8 +1177,6 @@ const onPanDragEnd = (ev: any) => {
                 draggable='true'
                 @click='handleSelect(grid.file_id, $event)'
                 @mouseover='onSelectRang(grid.file_id)'
-                @mouseenter='(ev:MouseEvent)=>onFolderItemEnter(ev, grid)'
-                @mouseleave='onFolderItemLeave'
                 @contextmenu='(event:MouseEvent)=>handleRightClick({event,node:{key:grid.file_id}} )'
                 @dragstart='(ev) => onRowItemDragStart(ev, grid.file_id)'
                 @dragend='onRowItemDragEnd'
@@ -1351,11 +1308,6 @@ const onPanDragEnd = (ev: any) => {
                    :inputpicType='inputpicType'
                    :isallfavored='panfileStore.IsListSelectedFavAll' />
     <TrashRightMenu :dirtype='panfileStore.SelectDirType' />
-    <MediaLibraryMenu v-if='menuShowMediaLibrary'
-                      :selectedItem='panfileStore.GetSelectedFirst()'
-                      :x='0'
-                      :y='0'
-                      @close='onHideRightMenuScroll' />
   </div>
 
   <div id='PanRightShowUpload' :style="{ display: showDragUpload ? '' : 'none' }" @drop='onPanDrop'
@@ -1368,7 +1320,7 @@ const onPanDragEnd = (ev: any) => {
     </div>
   </div>
 
-  <FolderPreviewPopover ref='folderPreviewRef' />
+
 </template>
 
 <style>

@@ -25,16 +25,33 @@ config/keys.json
 
 # 包含机密信息的恢复脚本
 scripts/
+!scripts/
+scripts/*
+!scripts/koodo-reader-smoke.mjs
 
-# 外部项目/子模块 - 不提交到主仓库
-CloudServiceKit/
-XbyVideoHub/
-boxplayer_macos/
+
 docs/
-jellyfin-sdk/
+!docs/
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/fixtures/
+!docs/superpowers/plans/fixtures/koodo-smoke-book.md
 plans/
+!docs/superpowers/plans/
+!docs/superpowers/plans/fixtures/
+!docs/superpowers/plans/fixtures/koodo-smoke-book.md
 *.swift
-PikPakAPI/
 AGENT.md
 SKILL_ITERATION_LOG.md
 node_modules/
+
+# stale tsc compile output for ts source files (must be regenerated only via vite-plugin-electron)
+electron/**/*.js
+electron/**/*.d.ts
+electron/**/*.js.map
+electron/**/*.d.ts.map
+!electron/preload/preload-env.d.ts
+!electron/main/**/__tests__/**

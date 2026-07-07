@@ -11,10 +11,18 @@
     "baseUrl": "./",
     "strict": true,
     "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "paths": {
+      "@shared/*": ["shared/*"],
+      "@main/*":   ["electron/main/*"]
+    }
   },
   "include": [
-    "src"
+    "src",
+    "shared"
+  ],
+  "exclude": [
+    "shared/__tests__"
   ],
   "references": [
     { "path": "./tsconfig.node.json" }

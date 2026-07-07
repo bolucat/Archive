@@ -134,6 +134,18 @@ window.WebGetCookies = async function(data: any) {
   } catch {
   }
 }
+window.WebQuarkAccountInfo = async function(data: any) {
+  try {
+    return await ipcRenderer.invoke('WebQuarkAccountInfo', data)
+  } catch {
+  }
+}
+window.WebQuarkDownloadUrl = async function(data: any) {
+  try {
+    return await ipcRenderer.invoke('WebQuarkDownloadUrl', data)
+  } catch {
+  }
+}
 window.WebSetCookies = function(cookies: any) {
   try {
     ipcRenderer.send('WebSetCookies', cookies)
@@ -144,6 +156,24 @@ window.WebSetCookies = function(cookies: any) {
 window.WebOpenWindow = function(data: any) {
   try {
     ipcRenderer.send('WebOpenWindow', data)
+  } catch {
+  }
+}
+window.WebOpenLyric = function() {
+  try {
+    ipcRenderer.send('WebOpenLyric')
+  } catch {
+  }
+}
+window.WebSendLyric = function(data: any) {
+  try {
+    ipcRenderer.send('WebSendLyric', data)
+  } catch {
+  }
+}
+window.WebCloseLyric = function() {
+  try {
+    ipcRenderer.send('WebCloseLyric')
   } catch {
   }
 }
@@ -196,6 +226,14 @@ window.TvBoxInvoke = async function(channel: string, data: unknown) {
   }
 }
 
+window.ReedyInvoke = async function(channel: string, ...args: any[]) {
+  try {
+    return await ipcRenderer.invoke(channel, ...args)
+  } catch (e: unknown) {
+    throw e
+  }
+}
+
 function createRightMenu() {
   window.addEventListener('contextmenu', (e) => {
       if (e) e.preventDefault()
@@ -231,6 +269,10 @@ function isEleEditable(e: any): boolean {
 }
 
 createRightMenu()
+
+window.onExternalDownloadOpen = (callback: (payload: string) => void) => {
+  ipcRenderer.on('external-download:open', (_event, payload: string) => callback(payload))
+}
 
 // fix: new-windows event
 ipcRenderer.on('webview-new-window', (e, webContentsId, details) => {

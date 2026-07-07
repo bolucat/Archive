@@ -16,27 +16,38 @@ export function OrderNode(order: string, list: DirData[]) {
 }
 
 export function OrderDir(orderby: string, order: string, list: IAliGetFileModel[]) {
-  orderby = orderby.toLowerCase()
-  order = order.toLowerCase()
-  if (orderby == 'size' && order == 'asc') return OrderBySizeAsc(list)
-  if (orderby == 'size' && order == 'desc') return OrderBySizeDesc(list)
-  if (orderby == 'updated_at' && order == 'asc') return OrderByTimeAsc(list)
-  if (orderby == 'updated_at' && order == 'desc') return OrderByTimeDesc(list)
-  if (orderby == 'name' && order == 'asc') return OrderByNameAsc(list)
-  if (orderby == 'name' && order == 'desc') return OrderByNameDesc(list)
-  return list
+  // 始终将文件夹置顶：先拆分文件夹和文件，分别排序后再合并
+  const dirs = list.filter((item) => item.isDir)
+  const files = list.filter((item) => !item.isDir)
+  const sortFn = (items: IAliGetFileModel[]) => {
+    orderby = orderby.toLowerCase()
+    order = order.toLowerCase()
+    if (orderby == 'size' && order == 'asc') return OrderBySizeAsc(items)
+    if (orderby == 'size' && order == 'desc') return OrderBySizeDesc(items)
+    if (orderby == 'updated_at' && order == 'asc') return OrderByTimeAsc(items)
+    if (orderby == 'updated_at' && order == 'desc') return OrderByTimeDesc(items)
+    if (orderby == 'name' && order == 'asc') return OrderByNameAsc(items)
+    if (orderby == 'name' && order == 'desc') return OrderByNameDesc(items)
+    return items
+  }
+  return [...sortFn(dirs), ...sortFn(files)]
 }
 
 export function OrderFile(orderby: string, order: string, list: IAliGetFileModel[]) {
-  orderby = orderby.toLowerCase()
-  order = order.toLowerCase()
-  if (orderby == 'size' && order == 'asc') return OrderBySizeAsc(list)
-  if (orderby == 'size' && order == 'desc') return OrderBySizeDesc(list)
-  if (orderby == 'updated_at' && order == 'asc') return OrderByTimeAsc(list)
-  if (orderby == 'updated_at' && order == 'desc') return OrderByTimeDesc(list)
-  if (orderby == 'name' && order == 'asc') return OrderByNameAsc(list)
-  if (orderby == 'name' && order == 'desc') return OrderByNameDesc(list)
-  return list
+  const dirs = list.filter((item) => item.isDir)
+  const files = list.filter((item) => !item.isDir)
+  const sortFn = (items: IAliGetFileModel[]) => {
+    orderby = orderby.toLowerCase()
+    order = order.toLowerCase()
+    if (orderby == 'size' && order == 'asc') return OrderBySizeAsc(items)
+    if (orderby == 'size' && order == 'desc') return OrderBySizeDesc(items)
+    if (orderby == 'updated_at' && order == 'asc') return OrderByTimeAsc(items)
+    if (orderby == 'updated_at' && order == 'desc') return OrderByTimeDesc(items)
+    if (orderby == 'name' && order == 'asc') return OrderByNameAsc(items)
+    if (orderby == 'name' && order == 'desc') return OrderByNameDesc(items)
+    return items
+  }
+  return [...sortFn(dirs), ...sortFn(files)]
 }
 
 

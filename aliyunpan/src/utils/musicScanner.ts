@@ -5,11 +5,14 @@ import {
   isAliyunUser,
   isBaiduUser,
   isBoxUser,
+  isCloud139User,
+  isCloud189User,
   isCloud123User,
   isDrive115User,
   isDropboxUser,
   isOneDriveUser,
-  isPikPakUser
+  isPikPakUser,
+  isQuarkUser
 } from '../aliapi/utils'
 import UserDAL from '../user/userdal'
 import { ITokenInfo } from '../user/userstore'
@@ -25,6 +28,9 @@ import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelis
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
+import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
+import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
+import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
 
 const AUDIO_EXTS = new Set([
   '.mp3', '.flac', '.wav', '.ape', '.ogg', '.aac',
@@ -83,6 +89,9 @@ function readableTokenLabel(token: ITokenInfo): string {
     case 'dropbox': return `Dropbox · ${token.nick_name || token.user_name || ''}`.trim()
     case 'onedrive': return `OneDrive · ${token.nick_name || token.user_name || ''}`.trim()
     case 'box': return `Box · ${token.nick_name || token.user_name || ''}`.trim()
+    case 'quark': return `夸克网盘 · ${token.nick_name || token.user_name || ''}`.trim()
+    case '139': return `139 云盘 · ${token.nick_name || token.user_name || ''}`.trim()
+    case '189': return `天翼云盘 · ${token.nick_name || token.user_name || ''}`.trim()
     default: return token.nick_name || token.user_name || token.user_id
   }
 }
@@ -260,7 +269,10 @@ class MusicScanner {
       'pikpak': 'pikpak_root',
       'dropbox': 'dropbox_root',
       'onedrive': 'onedrive_root',
-      'box': '0'
+      'box': '0',
+      'quark': '0',
+      '139': 'cloud139_root',
+      '189': 'cloud189_root'
     }
     const driveId =
       token.tokenfrom === 'cloud123' ? 'cloud123' :
@@ -270,6 +282,9 @@ class MusicScanner {
       token.tokenfrom === 'dropbox' ? 'dropbox' :
       token.tokenfrom === 'onedrive' ? 'onedrive' :
       token.tokenfrom === 'box' ? 'box' :
+      token.tokenfrom === 'quark' ? 'quark' :
+      token.tokenfrom === '139' ? 'cloud139' :
+      token.tokenfrom === '189' ? 'cloud189' :
       ''
     if (!driveId) return
     const rootId = sentinelMap[token.tokenfrom] || ''
@@ -307,7 +322,7 @@ class MusicScanner {
           'root',
           '',
           'updated_at desc',
-          'audio',
+          'file',
           0
         )
         const items = resp?.items || []
@@ -444,6 +459,33 @@ class MusicScanner {
       const list = await apiBoxFileList(user_id, parentId, 500)
       return list.map((item: any) => {
         const mapped = mapBoxItemToAliModel(item, drive_id, parentId)
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      const resp = await apiQuarkFileList(user_id, fileId || '0', 100, 1)
+      return resp.items.map((item: any) => {
+        const mapped = mapQuarkFileToAliModel(item, drive_id, fileId || '0')
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      const list = await apiCloud139FileList(user_id, fileId || 'cloud139_root', 100)
+      return list.map((item: any) => {
+        const mapped = mapCloud139FileToAliModel(item, drive_id, fileId || 'cloud139_root')
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      const list = await apiCloud189FileList(user_id, fileId || 'cloud189_root', 1000)
+      return list.map((item: any) => {
+        const mapped = mapCloud189FileToAliModel(item, drive_id, fileId || 'cloud189_root')
         ;(mapped as any).user_id = user_id
         return mapped
       })

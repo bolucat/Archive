@@ -3,7 +3,7 @@ import { humanDateTime, humanDateTimeDateStr, humanExpiration, humanSize } from 
 import message from '../utils/message'
 import AliHttp, { IUrlRespData } from './alihttp'
 import ServerHttp from './server'
-import { ApiBatch, ApiBatchMaker, ApiBatchSuccess, isBoxUser, isCloud123User, isDropboxUser, isOneDriveUser, isPikPakUser } from './utils'
+import { ApiBatch, ApiBatchMaker, ApiBatchSuccess, isBoxUser, isCloud123User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
 import { useSettingStore, useMyShareStore } from '../store'
 import { IAliFileItem, IAliShareAnonymous, IAliShareBottleFish, IAliShareFileItem, IAliShareItem } from './alimodels'
 import getFileIcon from './fileicon'
@@ -13,6 +13,17 @@ import { apiPikPakShareCreate } from '../pikpak/share'
 import { apiDropboxShareCreate } from '../dropbox/share'
 import { apiOneDriveShareCreate } from '../onedrive/share'
 import { apiBoxShareCreate } from '../box/share'
+import {
+  apiQuarkSaveShareFilesBatch,
+  apiQuarkShareAnonymous,
+  apiQuarkShareCancelBatch,
+  apiQuarkShareCreate,
+  apiQuarkShareFileList,
+  apiQuarkShareToken,
+  apiQuarkShareUpdateBatch,
+  decodeQuarkShareId,
+  isQuarkShareId
+} from '../quark/share'
 
 export interface IAliShareFileResp {
   items: IAliShareFileItem[]
@@ -49,7 +60,8 @@ export default class AliShare {
     return []
   }
 
-  static async ApiGetShareAnonymous(share_id: string): Promise<IAliShareAnonymous> {
+  static async ApiGetShareAnonymous(share_id: string, share_pwd = ''): Promise<IAliShareAnonymous> {
+    if (isQuarkShareId(share_id)) return apiQuarkShareAnonymous(share_id, share_pwd)
     const share: IAliShareAnonymous = {
       shareinfo: {
         share_id: share_id,
@@ -121,6 +133,7 @@ export default class AliShare {
 
 
   static async ApiGetShareToken(share_id: string, pwd: string): Promise<string> {
+    if (isQuarkShareId(share_id)) return apiQuarkShareToken(decodeQuarkShareId(share_id), pwd)
     if (!share_id) return '，分享链接错误'
     const url = 'v2/share_link/get_share_token'
     const postData = { share_id: share_id, share_pwd: pwd }
@@ -159,6 +172,19 @@ export default class AliShare {
 
 
   static async ApiShareFileList(share_id: string, share_token: string, dirID: string): Promise<IAliShareFileResp> {
+    if (isQuarkShareId(share_id)) {
+      const resp = await apiQuarkShareFileList(share_id, share_token, dirID)
+      return {
+        items: resp.items,
+        itemsKey: new Set(resp.items.map(item => item.file_id)),
+        punished_file_count: 0,
+        next_marker: resp.next_marker,
+        m_user_id: '',
+        m_share_id: share_id,
+        dirID,
+        dirName: ''
+      }
+    }
     const dir: IAliShareFileResp = {
       items: [],
       itemsKey: new Set(),
@@ -335,6 +361,9 @@ export default class AliShare {
       if (result.error || !result.item) return result.error || '创建 Box 分享链接失败'
       return result.item
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      return await apiQuarkShareCreate(user_id, expiration, share_pwd, share_name, file_id_list)
+    }
     const url = 'adrive/v2/share_link/create'
     const postData = { drive_id, expiration, share_pwd, share_name, file_id_list }
     const resp = await AliHttp.Post(url, postData, user_id, '')
@@ -383,6 +412,7 @@ export default class AliShare {
 
 
   static async ApiCancelShareBatch(user_id: string, share_idList: string[]): Promise<string[]> {
+    if (isQuarkUser(user_id)) return apiQuarkShareCancelBatch(user_id, share_idList)
     if (isCloud123User(user_id) || isPikPakUser(user_id) || isDropboxUser(user_id) || isOneDriveUser(user_id) || isBoxUser(user_id)) {
       message.info('当前网盘类型不支持')
       return []
@@ -403,6 +433,11 @@ export default class AliShare {
     if (isDropboxUser(user_id)) {
       message.info('当前网盘类型不支持')
       return []
+    }
+    if (isQuarkUser(user_id)) {
+      const updated = await apiQuarkShareUpdateBatch(user_id, share_idList, expirationList, share_pwdList, share_nameList)
+      if (!updated.length) message.info('当前夸克分享可能不支持编辑该字段')
+      return updated
     }
     if (isCloud123User(user_id)) {
       const update = await apiCloud123ShareUpdate(user_id, share_idList)
@@ -487,6 +522,9 @@ export default class AliShare {
   static async ApiSaveShareFilesBatch(share_id: string, share_token: string, user_id: string, drive_id: string, parent_file_id: string, file_idList: string[]): Promise<string> {
     if (!share_id || !share_token || !user_id || !drive_id || !parent_file_id) return 'error'
     if (!file_idList || file_idList.length == 0) return 'success'
+    if (isQuarkShareId(share_id) || isQuarkUser(user_id) || drive_id === 'quark') {
+      return apiQuarkSaveShareFilesBatch(share_id, share_token, user_id, parent_file_id, file_idList)
+    }
     if (parent_file_id.includes('root')) parent_file_id = 'root'
     const batchList: string[] = []
     for (let i = 0, maxi = file_idList.length; i < maxi; i++) {

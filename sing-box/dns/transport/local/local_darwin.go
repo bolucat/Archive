@@ -10,13 +10,11 @@ import (
 	"io"
 	"net"
 	"os"
-	"syscall"
 
 	"github.com/sagernet/sing-box/dns"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	mDNS "github.com/miekg/dns"
-	"golang.org/x/sys/unix"
 )
 
 func (t *Transport) systemExchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
@@ -52,10 +50,12 @@ const (
 	mdnsResponderFlagMoreComing          = 0x1
 	mdnsResponderFlagAdd                 = 0x2
 	mdnsResponderFlagReturnIntermediates = 0x1000
+	mdnsResponderFlagTimeout             = 0x10000
 
 	mdnsResponderErrNoError      = 0
 	mdnsResponderErrNoSuchName   = -65538
 	mdnsResponderErrNoSuchRecord = -65554
+	mdnsResponderErrTimeout      = -65568
 )
 
 func darwinLookupSystemDNS(ctx context.Context, name string, qtype, qclass uint16) (*mDNS.Msg, error) {
@@ -91,37 +91,33 @@ func darwinLookupSystemDNS(ctx context.Context, name string, qtype, qclass uint1
 
 func readQueryResponse(ctx context.Context, conn net.Conn, name string, qtype, qclass uint16) (*mDNS.Msg, error) {
 	var answers []mDNS.RR
-	var resolverErrorCode int32
-	var hasResolverError bool
+	var hasFinalAnswer bool
 	for {
 		reply, replyErr := readReply(conn)
 		if replyErr != nil {
 			return nil, contextError(ctx, E.Cause(replyErr, "read mDNSResponder reply"))
 		}
-		moreComing := reply.flags&mdnsResponderFlagMoreComing != 0
-		if !moreComing {
-			// Apple's client stub also treats already-readable bytes as MoreComing.
-			var moreBytesErr error
-			moreComing, moreBytesErr = mdnsResponderHasMoreBytes(conn)
-			if moreBytesErr != nil {
-				return nil, contextError(ctx, E.Cause(moreBytesErr, "check mDNSResponder reply queue"))
-			}
-		}
 		if reply.errorCode != mdnsResponderErrNoError {
-			resolverErrorCode = reply.errorCode
-			hasResolverError = true
-		} else if reply.flags&mdnsResponderFlagAdd != 0 && len(reply.rdata) > 0 {
+			if len(answers) == 0 {
+				return nil, darwinResolverError(name, reply.errorCode)
+			}
+			break
+		}
+		if reply.flags&mdnsResponderFlagAdd != 0 && len(reply.rdata) > 0 {
 			record, buildErr := buildResourceRecord(reply)
 			if buildErr == nil {
 				answers = append(answers, record)
+				if record.Header().Rrtype == qtype {
+					hasFinalAnswer = true
+				}
 			}
 		}
-		if !moreComing {
+		if reply.flags&mdnsResponderFlagMoreComing != 0 {
+			continue
+		}
+		if hasFinalAnswer && reply.rrtype == qtype {
 			break
 		}
-	}
-	if len(answers) == 0 && hasResolverError {
-		return nil, darwinResolverError(name, resolverErrorCode)
 	}
 
 	response := new(mDNS.Msg)
@@ -130,41 +126,9 @@ func readQueryResponse(ctx context.Context, conn net.Conn, name string, qtype, q
 	return response, nil
 }
 
-func mdnsResponderHasMoreBytes(conn net.Conn) (bool, error) {
-	syscallConn, loaded := conn.(syscall.Conn)
-	if !loaded {
-		return false, E.New("mDNSResponder connection has no raw fd")
-	}
-	rawConn, err := syscallConn.SyscallConn()
-	if err != nil {
-		return false, err
-	}
-	var hasMoreBytes bool
-	var pollErr error
-	controlErr := rawConn.Control(func(fd uintptr) {
-		pollFDs := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		for {
-			var n int
-			n, pollErr = unix.Poll(pollFDs, 0)
-			if pollErr == unix.EINTR {
-				continue
-			}
-			hasMoreBytes = n > 0 && pollFDs[0].Revents&unix.POLLIN != 0
-			return
-		}
-	})
-	if controlErr != nil {
-		return false, controlErr
-	}
-	if pollErr != nil {
-		return false, pollErr
-	}
-	return hasMoreBytes, nil
-}
-
 func buildQueryRequest(name string, qtype, qclass uint16) []byte {
 	payload := make([]byte, 0, 8+len(name)+1+4)
-	payload = binary.BigEndian.AppendUint32(payload, mdnsResponderFlagReturnIntermediates)
+	payload = binary.BigEndian.AppendUint32(payload, mdnsResponderFlagReturnIntermediates|mdnsResponderFlagTimeout)
 	payload = binary.BigEndian.AppendUint32(payload, 0) // interfaceIndex
 	payload = append(payload, name...)
 	payload = append(payload, 0) // C string terminator
@@ -253,6 +217,8 @@ func darwinResolverError(name string, code int32) error {
 		return dns.RcodeSuccess
 	case mdnsResponderErrNoSuchName:
 		return dns.RcodeNameError
+	case mdnsResponderErrTimeout:
+		return E.New("mDNSResponder query timeout for ", name)
 	default:
 		return E.New("mDNSResponder query failed for ", name, ": error ", code)
 	}

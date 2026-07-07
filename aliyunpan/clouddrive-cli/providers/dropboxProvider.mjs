@@ -1,4 +1,4 @@
-import { dropboxRefreshToken, dropboxListDir, dropboxWalk, dropboxRenameBatch, dropboxSearch, dropboxGetFile, dropboxMove, dropboxMkdir, dropboxDelete } from './dropbox.mjs'
+import { dropboxRefreshToken, dropboxListDir, dropboxWalk, dropboxRenameBatch, dropboxSearch, dropboxGetFile, dropboxMove, dropboxMkdir, dropboxDelete, dropboxUploadFile } from './dropbox.mjs'
 
 export function createDropboxProvider() {
   return {
@@ -15,7 +15,7 @@ export function createDropboxProvider() {
       fileIdAddressable: true,
       mkdir: true,
       move: true,
-      uploadFile: false,
+      uploadFile: true,
     },
     auth: {
       async login() {
@@ -37,6 +37,9 @@ export function createDropboxProvider() {
       async mkdir({ token, parentPath = '', name }) { return dropboxMkdir(token, parentPath, name) },
       // Dropbox has no trash: use permanent delete
       async trash({ token, items }) { return dropboxDelete(token, items) },
+      async uploadFile({ token, parentId, parentPath, localPath, name, size, conflict }) {
+        return dropboxUploadFile(token, { parentId: parentPath || parentId, localPath, name, size, conflict })
+      },
     },
   }
 }

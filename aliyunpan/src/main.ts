@@ -135,6 +135,8 @@ window.Electron.ipcRenderer.on('setPage', (_event: any, args: any) => {
     appStore.pagePdf = args.data
   } else if (args.page == 'PageEpub') {
     appStore.pageEpub = args.data
+  } else if (args.page == 'PageBookReader') {
+    appStore.pageEpub = args.data
   } else if (args.page == 'PageDocx') {
     appStore.pageDocx = args.data
   } else if (args.page == 'PageSheet') {
@@ -147,6 +149,8 @@ window.Electron.ipcRenderer.on('setPage', (_event: any, args: any) => {
     appStore.pageVideo = args.data
   } else if (args.page == 'PageMusic') {
     appStore.pageMusic = args.data
+  } else if (args.page == 'PageLyric') {
+    // Desktop lyric window - just toggle page, no data needed
   }
   if (args.page) appStore.togglePage(args.page)
 })

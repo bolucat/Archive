@@ -6,6 +6,9 @@ import { boxRefreshToken, boxListDir, boxRenameBatch } from '../providers/box.mj
 import { baiduRefreshToken, baiduListDir, baiduRenameBatch, baiduGetFile } from '../providers/baidu.mjs'
 import { drive115RefreshToken, drive115ListDir, drive115RenameBatch } from '../providers/drive115.mjs'
 import { cloud123ListDir, cloud123RenameBatch } from '../providers/cloud123.mjs'
+import { quarkListDir, quarkRenameBatch } from '../providers/quark.mjs'
+import { cloud139ListDir, cloud139RenameBatch } from '../providers/cloud139.mjs'
+import { cloud189ListDir, cloud189RenameBatch } from '../providers/cloud189.mjs'
 import { createPikpakProvider } from '../providers/pikpakProvider.mjs'
 import { createDropboxProvider } from '../providers/dropboxProvider.mjs'
 import { createOnedriveProvider } from '../providers/onedriveProvider.mjs'
@@ -13,6 +16,9 @@ import { createBoxProvider } from '../providers/boxProvider.mjs'
 import { createBaiduProvider } from '../providers/baiduProvider.mjs'
 import { createDrive115Provider } from '../providers/drive115Provider.mjs'
 import { createCloud123Provider } from '../providers/cloud123Provider.mjs'
+import { createQuarkProvider } from '../providers/quarkProvider.mjs'
+import { createCloud139Provider } from '../providers/cloud139Provider.mjs'
+import { createCloud189Provider } from '../providers/cloud189Provider.mjs'
 
 function mockFetch(data: unknown, status = 200) {
   return vi.fn().mockResolvedValue({
@@ -448,5 +454,140 @@ describe('createCloud123Provider', () => {
     expect(p.capabilities.batchRename).toBe(true)
     expect(p.capabilities.fileIdAddressable).toBe(true)
     expect(p.capabilities.mkdir).toBe(true)
+  })
+})
+
+// ─── 夸克网盘 ────────────────────────────────────────────────────────────────
+describe('Quark - list dir', () => {
+  it('maps drive-pc file list to FileItem[]', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      code: 0,
+      data: {
+        list: [
+          { fid: 'd1', pdir_fid: '0', file_name: 'Movies', file_type: 0 },
+          { fid: 'f1', pdir_fid: '0', file_name: 'Movie.mkv', file_type: 1, size: 2048 },
+        ],
+      },
+    }))
+
+    const items = await quarkListDir({ ...TOKEN, access_token: '__uid=u1; __kps=k' }, 'quark_root')
+
+    expect(items[0]).toMatchObject({ provider: 'quark', fileId: 'd1', type: 'folder', name: 'Movies' })
+    expect(items[1]).toMatchObject({ provider: 'quark', fileId: 'f1', type: 'file', size: 2048 })
+  })
+})
+
+describe('Quark - rename batch', () => {
+  it('posts fid and file_name', async () => {
+    const fetchMock = mockFetch({ code: 0, data: { fid: 'f1' } })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const results = await quarkRenameBatch({ ...TOKEN, access_token: '__uid=u1; __kps=k' }, [{ fileId: 'f1', newName: 'New.mkv' }])
+    const [, opts] = fetchMock.mock.calls[0]
+
+    expect(JSON.parse(opts.body)).toMatchObject({ fid: 'f1', file_name: 'New.mkv' })
+    expect(results[0]).toMatchObject({ fileId: 'f1', status: 'success', newName: 'New.mkv' })
+  })
+})
+
+describe('createQuarkProvider', () => {
+  it('has correct capabilities', () => {
+    const p = createQuarkProvider()
+    expect(p.id).toBe('quark')
+    expect(p.capabilities.serverSideSearch).toBe(true)
+    expect(p.capabilities.uploadFile).toBe(false)
+  })
+})
+
+// ─── 139云盘 ────────────────────────────────────────────────────────────────
+describe('139云盘 - list dir', () => {
+  it('routes then maps list response to FileItem[]', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { routePolicyList: [{ modName: 'personal', httpsUrl: 'https://cloud139.test' }] } }),
+        text: async () => '',
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { list: [{ fileId: 'f1', parentFileId: '/', name: 'Movie.mkv', type: 'file', size: 1024 }] } }),
+        text: async () => '',
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const auth = Buffer.from('pc:13900000000:token|x|x|9999999999999').toString('base64')
+    const items = await cloud139ListDir({ ...TOKEN, access_token: auth, user_name: '13900000000' }, 'cloud139_root')
+
+    expect(fetchMock.mock.calls[0][0]).toContain('qryRoutePolicy')
+    expect(fetchMock.mock.calls[1][0]).toContain('/orchestration/file/list')
+    expect(items[0]).toMatchObject({ provider: '139', fileId: 'f1', type: 'file', size: 1024 })
+  })
+})
+
+describe('139云盘 - rename batch', () => {
+  it('posts fileId and fileName', async () => {
+    const auth = Buffer.from('pc:13900000001:token|x|x|9999999999999').toString('base64')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: { routePolicyList: [{ modName: 'personal', httpsUrl: 'https://cloud139.test' }] } }), text: async () => '' })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: {} }), text: async () => '' })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const results = await cloud139RenameBatch({ ...TOKEN, user_id: 'u139_rename', access_token: auth, user_name: '13900000001' }, [{ fileId: 'f1', newName: 'New.mkv' }])
+    const [, opts] = fetchMock.mock.calls[1]
+
+    expect(JSON.parse(opts.body)).toMatchObject({ fileId: 'f1', fileName: 'New.mkv' })
+    expect(results[0]).toMatchObject({ fileId: 'f1', status: 'success', newName: 'New.mkv' })
+  })
+})
+
+describe('createCloud139Provider', () => {
+  it('has correct capabilities', () => {
+    const p = createCloud139Provider()
+    expect(p.id).toBe('139')
+    expect(p.capabilities.fileIdAddressable).toBe(true)
+    expect(p.capabilities.uploadFile).toBe(false)
+  })
+})
+
+// ─── 天翼云盘 ────────────────────────────────────────────────────────────────
+describe('189云盘 - list dir', () => {
+  it('maps folderList and fileList to FileItem[]', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      res_code: 0,
+      fileListAO: {
+        folderList: [{ id: 'd1', name: 'Movies', parentId: '-11' }],
+        fileList: [{ id: 'f1', name: 'Movie.mkv', parentId: '-11', size: 4096 }],
+      },
+    }))
+
+    const items = await cloud189ListDir({ ...TOKEN, open_api_access_token: 'sk', open_api_refresh_token: 'ss' }, 'cloud189_root')
+
+    expect(items[0]).toMatchObject({ provider: '189', fileId: 'd1', type: 'folder', name: 'Movies' })
+    expect(items[1]).toMatchObject({ provider: '189', fileId: 'f1', type: 'file', size: 4096 })
+  })
+})
+
+describe('189云盘 - rename batch', () => {
+  it('posts renameFile.action first', async () => {
+    const fetchMock = mockFetch({ res_code: 0 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const results = await cloud189RenameBatch({ ...TOKEN, open_api_access_token: 'sk', open_api_refresh_token: 'ss' }, [{ fileId: 'f1', newName: 'New.mkv' }])
+    const [url] = fetchMock.mock.calls[0]
+
+    expect(url).toContain('renameFile.action')
+    expect(url).toContain('destFileName=New.mkv')
+    expect(results[0]).toMatchObject({ fileId: 'f1', status: 'success', newName: 'New.mkv' })
+  })
+})
+
+describe('createCloud189Provider', () => {
+  it('has correct capabilities', () => {
+    const p = createCloud189Provider()
+    expect(p.id).toBe('189')
+    expect(p.capabilities.recursiveWalk).toBe(true)
+    expect(p.capabilities.uploadFile).toBe(false)
   })
 })

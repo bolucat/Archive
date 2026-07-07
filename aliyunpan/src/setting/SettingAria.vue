@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import useSettingStore from './settingstore'
-import { AriaChangeToLocal, AriaChangeToRemote, AriaTest } from '../utils/aria2c'
+import { AriaChangeToLocal, AriaChangeToRemote, AriaTest, AriaApplyAdvancedOptions } from '../utils/aria2c'
+import { fetchTrackerSource, normalizeTrackerText } from '../down/integration/tracker'
 import message from '../utils/message'
 
 import { Checkbox as AntdCheckbox } from 'ant-design-vue'
@@ -15,6 +16,7 @@ const ariaLoading = ref(settingStore.ariaLoading)
 const ariaSavePath = ref(settingStore.ariaSavePath)
 const ariaUrl = ref(settingStore.ariaUrl)
 const ariaPwd = ref(settingStore.ariaPwd)
+const trackerSyncing = ref(false)
 
 const handleAriaConn = () => {
   ariaSavePath.value = ariaSavePath.value.trim()
@@ -85,6 +87,23 @@ const handleAriaOff = (tip: boolean) => {
       settingStore.ariaLoading = false
       message.error('已经从远程断开，连接到本地Aria失败')
     })
+}
+
+const handleSyncTrackers = async () => {
+  trackerSyncing.value = true
+  try {
+    const texts = await Promise.all(
+      settingStore.ariaTrackerSources.map((url) => fetchTrackerSource(url))
+    )
+    const ariaBtTracker = normalizeTrackerText(texts.join('\n'))
+    settingStore.updateStore({ ariaBtTracker })
+    await AriaApplyAdvancedOptions()
+    message.success('Tracker 已同步')
+  } catch (error: any) {
+    message.error(error?.message || 'Tracker 同步失败')
+  } finally {
+    trackerSyncing.value = false
+  }
 }
 </script>
 
@@ -177,6 +196,70 @@ const handleAriaOff = (tip: boolean) => {
     </div>
     <div class="settingrow" v-show="!settingStore.ariaLoading && !settingStore.AriaIsLocal">
       <a-typography-text type="secondary">远程模式，新创建的下载任务都会下载到Aria服务器上，不会下载到本地，只能管理远程的下载任务。注意：远程下载时不能退出小白羊</a-typography-text>
+    </div>
+
+    <div class="settingspace"></div>
+    <div class="settinghead">BT Tracker</div>
+    <div class="settingrow">
+      <a-textarea
+        :model-value="settingStore.ariaBtTracker"
+        :auto-size="{ minRows: 3, maxRows: 6 }"
+        placeholder="每行一个 tracker URL"
+        @update:model-value="(v: string) => cb({ ariaBtTracker: v })"
+        style="width: 460px; font-size: 12px"
+      />
+    </div>
+    <div class="settingrow">
+      <a-button :loading="trackerSyncing" size="small" type="outline" tabindex="-1" @click="handleSyncTrackers">立即同步 Tracker</a-button>
+      <span class="settingitem">（每 12 小时自动同步一次）</span>
+    </div>
+    <div class="settingrow">
+      <AntdCheckbox tabindex="-1" :checked="settingStore.ariaAutoSyncTracker" @change="(e:any)=>cb({ ariaAutoSyncTracker: e.target.checked })">启动时自动同步 BT Tracker</AntdCheckbox>
+    </div>
+
+    <div class="settingspace"></div>
+    <div class="settinghead">上传限速（KB/s，0 = 不限）</div>
+    <div class="settingrow">
+      <a-input-number
+        tabindex="-1"
+        :model-value="settingStore.ariaMaxOverallUploadLimit"
+        :min="0"
+        :step="100"
+        :style="{ width: '140px' }"
+        @update:model-value="(v: number) => cb({ ariaMaxOverallUploadLimit: v || 0 })"
+      />
+      <span class="settingitem">KB/s</span>
+    </div>
+
+    <div class="settingspace"></div>
+    <div class="settinghead">BT 做种设置</div>
+    <div class="settingrow">
+      <AntdCheckbox tabindex="-1" :checked="settingStore.ariaKeepSeeding" @change="(e:any)=>cb({ ariaKeepSeeding: e.target.checked })">一直做种（忽略比例和时间限制）</AntdCheckbox>
+    </div>
+    <div class="settingrow" v-show="!settingStore.ariaKeepSeeding">
+      <span class="settinglabel">做种比例</span>
+      <a-input-number tabindex="-1" :model-value="settingStore.ariaSeedRatio" :min="0" :step="0.5" :style="{ width: '100px' }" @update:model-value="(v: number) => cb({ ariaSeedRatio: v || 0 })" />
+      <span class="settingitem">倍</span>
+      <span class="settinglabel" style="margin-left: 16px">做种时间</span>
+      <a-input-number tabindex="-1" :model-value="settingStore.ariaSeedTime" :min="0" :step="60" :style="{ width: '100px' }" @update:model-value="(v: number) => cb({ ariaSeedTime: v || 0 })" />
+      <span class="settingitem">分钟</span>
+    </div>
+    <div class="settingrow">
+      <AntdCheckbox tabindex="-1" :checked="settingStore.ariaResumeAllWhenLaunched" @change="(e:any)=>cb({ ariaResumeAllWhenLaunched: e.target.checked })">启动时自动恢复未完成任务</AntdCheckbox>
+    </div>
+
+    <div class="settingspace"></div>
+    <div class="settinghead">浏览器扩展对接</div>
+    <div class="settingrow">
+      <span class="settinglabel">RPC 地址</span>
+      <a-input readonly :model-value="`http://localhost:${settingStore.ariaRpcListenPort}/jsonrpc`" :style="{ width: '260px' }" />
+    </div>
+    <div class="settingrow">
+      <span class="settinglabel">密钥（Token）</span>
+      <a-input readonly :model-value="settingStore.ariaRpcSecret" :style="{ width: '260px' }" />
+    </div>
+    <div class="settingrow">
+      <a-alert type="info" content="将以上地址和密钥填入 Aria2 for Chrome 等扩展的设置中，即可从浏览器直接发送下载任务" />
     </div>
   </div>
 </template>

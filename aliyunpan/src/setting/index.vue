@@ -15,6 +15,8 @@ import SettingLog from './SettingLog.vue'
 import SettingProxy from './SettingProxy.vue'
 import SettingWebDav from './SettingWebDav.vue'
 import SettingSecurity from './SettingSecurity.vue'
+import SettingDownloadAdvanced from './SettingDownloadAdvanced.vue'
+import SettingAPI from './SettingAPI.vue'
 
 const appStore = useAppStore()
 
@@ -47,11 +49,13 @@ onMounted(() => {
     'SettingDanmaku',
     'SettingPan',
     'SettingDown',
+    'SettingDownloadAdvanced',
     'SettingUpload',
     'SettingWebDav',
     'SettingDebug',
     'SettingProxy',
     'SettingAria',
+    'SettingAPI',
     'SettingLog'
   ]
 
@@ -86,6 +90,10 @@ onUnmounted(() => {
           <template #icon><IconFont name="iconrobot" /></template>
           账户设置
         </a-menu-item>
+        <a-menu-item key="SettingAPI">
+          <template #icon><IconFont name="iconlock" /></template>
+          AI 模型
+        </a-menu-item>
         <a-menu-item key="SettingSecurity">
           <template #icon><IconFont name="iconchrome" /></template>
           安全设置
@@ -109,6 +117,10 @@ onUnmounted(() => {
         <a-menu-item key="SettingDown">
           <template #icon><IconFont name="icondownload" /></template>
           下载文件
+        </a-menu-item>
+        <a-menu-item key="SettingDownloadAdvanced">
+          <template #icon><IconFont name="iconcloud-download" /></template>
+          高级下载
         </a-menu-item>
         <a-menu-item key="SettingUpload">
           <template #icon><IconFont name="iconupload" /></template>
@@ -156,6 +168,12 @@ onUnmounted(() => {
           </div>
           <SettingUI />
         </section>
+        <section id="SettingAPI" class="settings-section">
+          <div>
+            <a-divider :size="2" orientation="center" class="settinghr">AI 模型</a-divider>
+          </div>
+          <SettingAPI />
+        </section>
         <section id="SettingAccount" class="settings-section">
           <div>
             <a-divider :size="2" orientation="center" class="settinghr">账户设置</a-divider>
@@ -197,6 +215,12 @@ onUnmounted(() => {
             <a-divider :size="2" orientation="center" class="settinghr">下载文件</a-divider>
           </div>
           <SettingDown />
+        </section>
+        <section id="SettingDownloadAdvanced" class="settings-section">
+          <div>
+            <a-divider :size="2" orientation="center" class="settinghr">高级下载</a-divider>
+          </div>
+          <SettingDownloadAdvanced />
         </section>
 
         <section id="SettingUpload" class="settings-section">

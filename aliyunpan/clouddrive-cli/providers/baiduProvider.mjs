@@ -1,4 +1,4 @@
-import { baiduRefreshToken, baiduListDir, baiduWalk, baiduRenameBatch, baiduSearch, baiduGetFile, baiduMove, baiduMkdir, baiduTrash } from './baidu.mjs'
+import { baiduRefreshToken, baiduListDir, baiduWalk, baiduRenameBatch, baiduSearch, baiduGetFile, baiduMove, baiduMkdir, baiduTrash, baiduUploadFile } from './baidu.mjs'
 
 export function createBaiduProvider() {
   return {
@@ -15,7 +15,7 @@ export function createBaiduProvider() {
       fileIdAddressable: false,
       mkdir: true,
       move: true,
-      uploadFile: false,
+      uploadFile: true,
     },
     auth: {
       async login() {
@@ -38,6 +38,9 @@ export function createBaiduProvider() {
       async moveBatch({ token, moves }) { return baiduMove(token, moves) },
       async mkdir({ token, parentPath = '/', name }) { return baiduMkdir(token, parentPath, name) },
       async trash({ token, items }) { return baiduTrash(token, items) },
+      async uploadFile({ token, parentPath = '/', parentId, localPath, name, size, conflict }) {
+        return baiduUploadFile(token, { parentPath: parentPath || parentId || '/', localPath, name, size, conflict })
+      },
     },
   }
 }

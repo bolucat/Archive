@@ -2,7 +2,7 @@ import DebugLog from '../utils/debuglog'
 import AliHttp from './alihttp'
 import { IAliFileItem, IAliGetFileModel } from './alimodels'
 import AliDirFileList from './dirfilelist'
-import { ApiBatch, ApiBatchMaker, ApiBatchMaker2, ApiBatchSuccess, EncodeEncName, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from './utils'
+import { ApiBatch, ApiBatchMaker, ApiBatchMaker2, ApiBatchSuccess, EncodeEncName, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
 import { IDownloadUrl } from './models'
 import AliFile from './file'
 import message from '../utils/message'
@@ -19,6 +19,9 @@ import { apiBaiduCopy, apiBaiduDelete, apiBaiduMove, apiBaiduRename } from '../c
 import { apiBaiduCreateDir, buildBaiduUploadPath } from '../cloudbaidu/upload'
 import { copyWebDavPath, createWebDavDirectory, deleteWebDavPath, getWebDavConnection, getWebDavConnectionId, isWebDavDrive, moveWebDavPath, normalizeWebDavPath, renameWebDavPath } from '../utils/webdavClient'
 import { apiPikPakCopyBatch, apiPikPakMkdir, apiPikPakMoveBatch, apiPikPakRename, apiPikPakTrashBatch, apiPikPakTrashDelete, apiPikPakTrashRestore } from '../pikpak/filecmd'
+import { apiQuarkMkdir, apiQuarkMoveBatch, apiQuarkRename, apiQuarkTrashBatch } from '../quark/filecmd'
+import { apiCloud139CopyBatch, apiCloud139Mkdir, apiCloud139MoveBatch, apiCloud139Rename, apiCloud139TrashBatch } from '../cloud139/filecmd'
+import { apiCloud189CopyBatch, apiCloud189Mkdir, apiCloud189MoveBatch, apiCloud189Rename, apiCloud189TrashBatch } from '../cloud189/filecmd'
 import { apiDropboxCopyBatch, apiDropboxDeleteBatch, apiDropboxMkdir, apiDropboxMoveBatch, apiDropboxRename } from '../dropbox/filecmd'
 import { apiOneDriveCopyBatch, apiOneDriveDeleteBatch, apiOneDriveMkdir, apiOneDriveMoveBatch, apiOneDriveRename } from '../onedrive/filecmd'
 import { apiBoxCopyBatch, apiBoxDeleteBatch, apiBoxMkdir, apiBoxMoveBatch, apiBoxRename } from '../box/filecmd'
@@ -95,6 +98,15 @@ export default class AliFileCmd {
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakMkdir(user_id, parent_file_id.includes('root') ? 'pikpak_root' : parent_file_id, creatDirName)
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      return apiQuarkMkdir(user_id, parent_file_id.includes('root') ? 'quark_root' : parent_file_id, creatDirName)
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      return apiCloud139Mkdir(user_id, parent_file_id.includes('root') ? 'cloud139_root' : parent_file_id, creatDirName)
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      return apiCloud189Mkdir(user_id, parent_file_id.includes('root') ? 'cloud189_root' : parent_file_id, creatDirName)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxMkdir(user_id, parent_file_id.includes('root') ? 'dropbox_root' : parent_file_id, creatDirName)
     }
@@ -145,6 +157,15 @@ export default class AliFileCmd {
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakTrashBatch(user_id, file_idList)
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      return apiQuarkTrashBatch(user_id, file_idList)
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      return apiCloud139TrashBatch(user_id, file_idList)
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      return apiCloud189TrashBatch(user_id, file_idList)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxDeleteBatch(user_id, file_idList)
     }
@@ -193,6 +214,15 @@ export default class AliFileCmd {
     }
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakTrashDelete(user_id, file_idList)
+    }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      return apiQuarkTrashBatch(user_id, file_idList)
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      return apiCloud139TrashBatch(user_id, file_idList)
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      return apiCloud189TrashBatch(user_id, file_idList)
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxDeleteBatch(user_id, file_idList)
@@ -274,6 +304,31 @@ export default class AliFileCmd {
       }
       return successList
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
+      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
+        const file_id = file_idList[i]
+        const name = names[i] || ''
+        if (!file_id || !name) continue
+        const resp = await apiQuarkRename(user_id, file_id, name)
+        if (resp.success) {
+          successList.push({ file_id, name: resp.name, parent_file_id: resp.parent_file_id, isDir: resp.isDir })
+        }
+      }
+      return successList
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189') {
+      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
+      const rename = isCloud139User(user_id) || drive_id === 'cloud139' ? apiCloud139Rename : apiCloud189Rename
+      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
+        const file_id = file_idList[i]
+        const name = names[i] || ''
+        if (!file_id || !name) continue
+        const resp = await rename(user_id, file_id, name)
+        if (resp.success) successList.push({ file_id, name: resp.name, parent_file_id: resp.parent_file_id, isDir: resp.isDir })
+      }
+      return successList
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
       for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
@@ -350,6 +405,9 @@ export default class AliFileCmd {
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakTrashDelete(user_id, file_idList)
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      return apiQuarkTrashBatch(user_id, file_idList)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       message.info('Dropbox 已删除文件请在官方客户端恢复或彻底删除')
       return []
@@ -370,6 +428,14 @@ export default class AliFileCmd {
     }
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakTrashRestore(user_id, file_idList)
+    }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      message.info('夸克网盘请在官方客户端恢复回收站文件')
+      return []
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189') {
+      message.info('请在官方客户端恢复回收站文件')
+      return []
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       message.info('Dropbox 已删除文件请在官方客户端恢复')
@@ -404,6 +470,7 @@ export default class AliFileCmd {
     if (isDrive115User(user_id) || drive_id === 'drive115') return
     if (isBaiduUser(user_id) || drive_id === 'baidu') return
     if (isPikPakUser(user_id) || drive_id === 'pikpak') return
+    if (isQuarkUser(user_id) || drive_id === 'quark') return
     if (isDropboxUser(user_id) || drive_id === 'dropbox') return
     // 防止加密标记清空
     let parts = description.split(',') || []
@@ -518,6 +585,15 @@ export default class AliFileCmd {
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'pikpak_root' : to_parent_file_id)
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      return apiQuarkMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'quark_root' : to_parent_file_id)
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      return apiCloud139MoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud139_root' : to_parent_file_id)
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      return apiCloud189MoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud189_root' : to_parent_file_id)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'dropbox_root' : to_parent_file_id, to_parent_description)
     }
@@ -587,6 +663,16 @@ export default class AliFileCmd {
     }
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
       return apiPikPakCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'pikpak_root' : to_parent_file_id)
+    }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      message.info('夸克网盘暂不支持复制')
+      return []
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      return apiCloud139CopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud139_root' : to_parent_file_id)
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      return apiCloud189CopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud189_root' : to_parent_file_id)
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'dropbox_root' : to_parent_file_id, to_parent_description)

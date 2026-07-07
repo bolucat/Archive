@@ -151,7 +151,7 @@ export default class ShareDAL {
     }
 
     const savefunc = (one: IID) => {
-      return AliShare.ApiGetShareAnonymous(one.id).then((info) => {
+      return AliShare.ApiGetShareAnonymous(one.id, one.pwd).then((info) => {
         if (info.error == '429') return
         return ShareDAL.SaveOtherShare(one.pwd, info, false)
       })
@@ -170,7 +170,7 @@ export default class ShareDAL {
       return false
     }
     const savefunc = (share: IOtherShareLinkModel) => {
-      return AliShare.ApiGetShareAnonymous(share.share_id).then((info) => {
+      return AliShare.ApiGetShareAnonymous(share.share_id, share.share_pwd).then((info) => {
         if (info.error == '429') return
         if (info.error != '') {
           share.expired = false

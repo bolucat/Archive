@@ -23,12 +23,14 @@ import { copyToClipboard, getFromClipboard, openExternal } from '../../utils/ele
 import message from '../../utils/message'
 
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
-import { modalShowShareLink } from '../../utils/modal'
+import { modalSelectPanDir, modalShowShareLink } from '../../utils/modal'
 import { ArrayKeyList } from '../../utils/utils'
 import { GetShareUrlFormate } from '../../utils/shareurl'
 import { TestButton } from '../../utils/mosehelper'
 import { xorWith } from 'lodash'
 import { Modal } from '@arco-design/web-vue'
+import AliShare from '../../aliapi/share'
+import PanDAL from '../../pan/pandal'
 
 const daoruModel = ref(false)
 const daoruModelLoading = ref(false)
@@ -40,6 +42,9 @@ const inputsearch = ref()
 const appStore = useAppStore()
 const winStore = useWinStore()
 const othershareStore = useOtherShareStore()
+const shareUrl = (share: IOtherShareLinkModel) => share.share_id.startsWith('quark:')
+  ? `https://pan.quark.cn/s/${share.share_id.replace('quark:', '')}`
+  : `https://www.aliyundrive.com/s/${share.share_id}`
 
 const keyboardStore = useKeyboardStore()
 keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
@@ -203,7 +208,7 @@ const handleCopySelectedLink = () => {
   let link = ''
   for (let i = 0, maxi = list.length; i < maxi; i++) {
     const item = list[i]
-    link += GetShareUrlFormate(item.share_name, 'https://www.aliyundrive.com/s/' + item.share_id, item.share_pwd) + '\n'
+    link += GetShareUrlFormate(item.share_name, shareUrl(item), item.share_pwd) + '\n'
   }
   if (list.length == 0) {
     message.error('没有选中分享链接！')
@@ -215,7 +220,7 @@ const handleCopySelectedLink = () => {
 const handleBrowserLink = () => {
   const first = othershareStore.GetSelectedFirst()
   if (!first) return
-  if (first.share_id) openExternal('https://www.aliyundrive.com/s/' + first.share_id)
+  if (first.share_id) openExternal(shareUrl(first))
   if (first.share_pwd) {
     copyToClipboard(first.share_pwd)
     message.success('提取码已复制到剪切板')
@@ -268,7 +273,7 @@ const handleDeleteSelectedLink = (delby: any) => {
 const handleDaoRuLink = () => {
   daoruModel.value = true
   const txt = getFromClipboard()
-  if (txt.indexOf('.aliyundrive.com/s/') > 0 || txt.indexOf('.alipan.com/s/') > 0) {
+  if (txt.indexOf('.aliyundrive.com/s/') > 0 || txt.indexOf('.alipan.com/s/') > 0 || txt.indexOf('pan.quark.cn/s/') >= 0) {
     daoruModelText.value = txt
     setTimeout(() => {
       document.getElementById('OSRDaoRuLink')?.focus()
@@ -293,6 +298,40 @@ const handleSaveDaoRuLink = () => {
 }
 const handleRefreshStats = () => {
   ShareDAL.SaveOtherShareRefresh()
+}
+
+const handleBatchSaveSelected = () => {
+  const list = othershareStore.GetSelected()
+  if (!list.length) {
+    message.error('没有选中分享链接！')
+    return
+  }
+  modalSelectPanDir('share', '', async function(user_id: string, drive_id: string, selectFile: any) {
+    if (!drive_id || !selectFile.drive_id || !selectFile.file_id) return
+    let success = 0
+    const errors: string[] = []
+    for (const share of list) {
+      const shareToken = await AliShare.ApiGetShareToken(share.share_id, share.share_pwd)
+      if (!shareToken || shareToken.startsWith('，')) {
+        errors.push(`${share.share_name}: ${shareToken || '获取 token 失败'}`)
+        continue
+      }
+      const files = await AliShare.ApiShareFileList(share.share_id, shareToken, 'root')
+      if (files.next_marker) {
+        errors.push(`${share.share_name}: ${files.next_marker}`)
+        continue
+      }
+      const ids = files.items.map(item => item.file_id)
+      const save = await AliShare.ApiSaveShareFilesBatch(share.share_id, shareToken, user_id, selectFile.drive_id, selectFile.file_id, ids)
+      if (save === 'success' || save === 'async') success += 1
+      else errors.push(`${share.share_name}: ${save}`)
+    }
+    if (success) {
+      message.success(`批量转存完成 ${success}/${list.length}，请稍后手动刷新保存到的文件夹`)
+      await PanDAL.aReLoadOneDirToRefreshTree(user_id, selectFile.drive_id, selectFile.file_id)
+    }
+    if (errors.length) message.error(`批量转存失败 ${errors.length} 条：${errors.slice(0, 3).join('；')}`)
+  })
 }
 
 const handleSearchInput = (value: string) => {
@@ -355,6 +394,9 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink">
         <IconFont name="iconchrome" />浏览器
+      </a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleBatchSaveSelected">
+        <IconFont name="iconxuanzhuan" />批量转存
       </a-button>
       <a-button type="text" size="small" tabindex="-1" class="danger" title="Ctrl+Delete"
                 @click="handleDeleteSelectedLink('selected')">
@@ -468,7 +510,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               <IconFont name="iconlink2" aria-hidden="true" />
             </div>
             <div class="filename">
-              <div :title="'https://www.aliyundrive.com/s/' + item.share_id" @click="handleOpenLink(item)">
+              <div :title="shareUrl(item)" @click="handleOpenLink(item)">
                 {{ item.share_name }}
               </div>
             </div>
@@ -499,6 +541,10 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
           <template #icon><IconFont name="iconchrome" /></template>
           <template #default>浏览器</template>
         </a-doption>
+        <a-doption @click="handleBatchSaveSelected">
+          <template #icon><IconFont name="iconxuanzhuan" /></template>
+          <template #default>批量转存</template>
+        </a-doption>
 
         <a-doption class="danger" @click="handleDeleteSelectedLink('selected')">
           <template #icon><IconFont name="icondelete" /></template>
@@ -514,7 +560,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <div style="margin-bottom: 32px">
         <div class="arco-textarea-wrapper arco-textarea-scroll">
           <textarea v-model="daoruModelText" class="arco-textarea daoruinput"
-                    placeholder="请粘贴，每行一条分享链接，例如：https://www.aliyundrive.com/s/9inQ0eeZ8w8 提取码: CNp7"></textarea>
+                    placeholder="请粘贴，每行一条分享链接，例如：https://www.aliyundrive.com/s/9inQ0eeZ8w8 提取码: CNp7 或 https://pan.quark.cn/s/abcd?pwd=123456"></textarea>
         </div>
         <div>
           <span class="oporg">注：仅导入记录，不会导入分享的文件</span>

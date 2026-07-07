@@ -6,6 +6,12 @@ import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import pkg from './package.json'
 
+const sharedAlias = {
+  '@shared': path.resolve(__dirname, 'shared'),
+  '@main':   path.resolve(__dirname, 'electron/main')
+}
+const electronMainExternal = [...Object.keys('dependencies' in pkg ? pkg.dependencies : {}), '@motrix/nat-api', 'aria2-lib']
+
 // https://vitejs.dev/config/
 // @ts-ignore
 export default defineConfig(({ command }) => {
@@ -16,6 +22,7 @@ export default defineConfig(({ command }) => {
 
   const isBuild = command === 'build'
   return {
+    resolve: { alias: sharedAlias },
     build: {
       rollupOptions: {
         output: {
@@ -36,7 +43,6 @@ export default defineConfig(({ command }) => {
       }),
       electron([
         {
-          // Main process entry file of the Electron App.
           entry: 'electron/main/index.ts',
           onstart({ startup }) {
             if (process.env.VSCODE_DEBUG) {
@@ -46,21 +52,20 @@ export default defineConfig(({ command }) => {
             }
           },
           vite: {
+            resolve: { alias: sharedAlias },
             build: {
               minify: isBuild,
               outDir: 'dist/electron/main',
               rollupOptions: {
-                // ChunkWorker must be a separate file — worker_threads requires a physical path
                 input: {
-                  index: path.resolve(__dirname, 'electron/main/index.ts'),
-                  ChunkWorker: path.resolve(__dirname, 'electron/main/download/ChunkWorker.ts')
+                  index: path.resolve(__dirname, 'electron/main/index.ts')
                 },
                 output: {
                   entryFileNames: '[name].js',
                   chunkFileNames: '[name].js'
                 },
                 // @ts-ignore
-                external: Object.keys('dependencies' in pkg ? pkg.dependencies : {})
+                external: electronMainExternal
               }
             }
           }
@@ -68,11 +73,10 @@ export default defineConfig(({ command }) => {
         {
           entry: path.join(__dirname, 'electron/preload/index.ts'),
           onstart({ reload }) {
-            // Notify the Renderer process to reload the page when the Preload scripts build is complete,
-            // instead of restarting the entire Electron App.
             reload()
           },
           vite: {
+            resolve: { alias: sharedAlias },
             build: {
               minify: isBuild,
               outDir: 'dist/electron/preload',
@@ -84,7 +88,6 @@ export default defineConfig(({ command }) => {
           }
         }
       ]),
-      // Use Node.js API in the Renderer process
       renderer()
     ],
     server:

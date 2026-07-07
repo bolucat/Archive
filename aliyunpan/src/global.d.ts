@@ -18,12 +18,17 @@ declare global {
     WebClearCache: any
     WebRelaunch: any
     WebGetCookies: any
+    WebQuarkAccountInfo: any
     WebSetCookies: any
     WebClearCookies: any
     WebShutDown: any
     WebOpenWindow: any
+    WebOpenLyric: () => void
+    WebSendLyric: (data: any) => void
+    WebCloseLyric: () => void
     WebOpenUrl: any
     WebShowOpenDialogSync: any
+    WebShowItemInFolder: any
     WebExecSync: any
     WebSpawnSync: any
     WebPlatformSync: any
@@ -41,6 +46,8 @@ declare global {
     speedLimte: number
     WebSetProgressBar: any
     TvBoxInvoke: (channel: string, data: unknown) => Promise<unknown>
+    ReedyInvoke: (channel: string, ...args: any[]) => Promise<any>
+    onExternalDownloadOpen: (callback: (payload: string) => void) => void
     MsImageCacheSyncConfig: any
     MsImageCacheStats: () => Promise<{ totalBytes: number; servers: unknown[] }>
     MsImageCacheClear: (serverId?: string) => Promise<{ cleared: number }>

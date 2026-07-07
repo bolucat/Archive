@@ -1,4 +1,5 @@
 import { useSettingStore } from '../store'
+import { parseQuarkShareLink } from '../quark/share'
 
 export function GetShareUrlFormate(share_name: string, share_url: string, share_pwd: string): string {
   let Formate = useSettingStore().uiShareFormate.replaceAll('\\n', '\n')
@@ -39,6 +40,8 @@ export function ParseShareIDOne(txt: string): IID {
 
 
 function GetShareID(txt: string): IID {
+  const quark = parseQuarkShareLink(txt)
+  if (quark.id) return quark
   const ret = { id: '', pwd: '' }
   const id = txt.match(/(?<=\/s\/)[0-9a-zA-Z]{11,12}/)
   if (id && id.length > 0) ret.id = id[0]

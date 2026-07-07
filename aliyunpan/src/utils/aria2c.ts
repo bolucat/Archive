@@ -14,7 +14,8 @@ import path from 'path'
 import fs from 'fs'
 import { getRawUrl } from './proxyhelper'
 import { isBaiduUser, isCloud123User, isDrive115User } from '../aliapi/utils'
-import { getAriaAddUriGid, isAriaDuplicateGidError } from './aria2Rpc'
+import { callAriaClient, getAriaAddUriGid, isAriaDuplicateGidError } from './aria2Rpc'
+import { buildAriaAddOptions } from '../down/integration/aria2AddOptions'
 
 export const localPwd = 'S4znWTaZYQi3cpRNb'
 
@@ -35,11 +36,6 @@ function GetAria() {
   return Aria2EngineRemote
 }
 
-/** Use native DownloadManager only when aria2c module is disabled */
-function useNative(): boolean {
-  return !useSettingStore().downUseAria2c
-}
-
 function SetAriaOnline(isOnline: boolean, ariaState: string = '') {
   if (!ariaState) ariaState = useSettingStore().ariaState
   if (ariaState == 'local') {
@@ -58,9 +54,11 @@ function CloseRemote() {
     IsAria2cOnlineRemote = false
     if (Aria2EngineRemote) {
       try {
-        Aria2EngineRemote.close().catch().then()
-      } catch {
-      }
+        Aria2EngineRemote.call('aria2.forceShutdown').catch(() => {})
+      } catch {}
+      try {
+        Aria2EngineRemote.close()
+      } catch {}
       Aria2EngineRemote = undefined
     }
   }
@@ -128,16 +126,29 @@ export async function AriaChangeToRemote() {
     const secret = settingStore.ariaPwd
 
     const options = { host, port, secure: settingStore.ariaHttps, secret, path: '/jsonrpc' }
-    Aria2EngineRemote = new Aria2({ WebSocket: global.WebSocket, fetch: window.fetch.bind(window), ...options })
+    Aria2EngineRemote = new Aria2({ WebSocket: global.WebSocket, fetch: (...args: any[]) => (window.fetch as any)(...args), ...options })
 
     Aria2EngineRemote.on('close', () => {
       if (IsAria2cOnlineRemote && !Aria2cChangeing) {
+        Aria2cRemoteRetryTime = 0 // 重置远程重试计数
         if (!settingStore.AriaIsLocal) {
           message.error('Aria2远程连接已断开')
           SetAriaOnline(false, 'remote')
+          // 延迟 3 秒后自动重连
+          setTimeout(() => {
+            if (!IsAria2cOnlineRemote && !useSettingStore().AriaIsLocal) {
+              AriaChangeToRemote()
+            }
+          }, 3000)
         }
       }
     })
+    const _remoteNotifyRefresh = () => { AriaGetDowningList().catch(() => {}) }
+    Aria2EngineRemote.on('onDownloadStart', _remoteNotifyRefresh)
+    Aria2EngineRemote.on('onDownloadComplete', _remoteNotifyRefresh)
+    Aria2EngineRemote.on('onDownloadError', _remoteNotifyRefresh)
+    Aria2EngineRemote.on('onDownloadStop', _remoteNotifyRefresh)
+    Aria2EngineRemote.on('onBtDownloadComplete', _remoteNotifyRefresh)
     await Sleep(500)
     await Aria2EngineRemote.open()
       .then(() => {
@@ -153,7 +164,7 @@ export async function AriaChangeToRemote() {
       const url = host + ':' + port + ' secret=' + secret
       if (!settingStore.AriaIsLocal && Aria2cRemoteRetryTime % 10 == 1) message.error('无法连接到远程Aria2 ' + url)
     } else {
-      await AriaGlobalSpeed()
+      await AriaGlobalSpeed(); await AriaApplyAdvancedOptions()
     }
   } catch (e) {
     SetAriaOnline(false, 'remote')
@@ -165,34 +176,35 @@ export async function AriaChangeToRemote() {
 
 export async function AriaChangeToLocal() {
   CloseRemote()
-  if (!useSettingStore().downUseAria2c) {
-    // Native DownloadManager — no aria2c process needed
-    try {
-      IsAria2cOnlineLocal = true
-      SetAriaOnline(true, 'local')
-      await AriaGlobalSpeed()
-    } catch (e) {
-      SetAriaOnline(false, 'local')
-    }
-    return true
-  }
-  // Local aria2c via WebSocket
   if (Aria2cLocalRelaunchTime < 5) {
     try {
       let port = 16800
       if (Aria2EngineLocal == undefined) {
         port = window.WebRelaunchAria ? await window.WebRelaunchAria() : 16800
         const options = { host: '127.0.0.1', port, secure: false, secret: localPwd, path: '/jsonrpc' }
-        Aria2EngineLocal = new Aria2({ WebSocket: global.WebSocket, fetch: window.fetch.bind(window), ...options })
+        Aria2EngineLocal = new Aria2({ WebSocket: global.WebSocket, fetch: (...args: any[]) => (window.fetch as any)(...args), ...options })
         Aria2EngineLocal.on('close', () => {
           IsAria2cOnlineLocal = false
           if (useSettingStore().AriaIsLocal) {
+            Aria2cLocalRelaunchTime = 0 // 重置重试计数，允许重新连接
             if (Aria2cLocalRelaunchTime < 2) {
               message.error('Aria2本地连接已断开')
             }
             SetAriaOnline(false, 'local')
+            // 延迟 2 秒后自动重连，避免频繁重试
+            setTimeout(() => {
+              if (!IsAria2cOnlineLocal && useSettingStore().AriaIsLocal) {
+                AriaChangeToLocal()
+              }
+            }, 2000)
           }
         })
+        const _notifyRefresh = () => { AriaGetDowningList().catch(() => {}) }
+        Aria2EngineLocal.on('onDownloadStart', _notifyRefresh)
+        Aria2EngineLocal.on('onDownloadComplete', _notifyRefresh)
+        Aria2EngineLocal.on('onDownloadError', _notifyRefresh)
+        Aria2EngineLocal.on('onDownloadStop', _notifyRefresh)
+        Aria2EngineLocal.on('onBtDownloadComplete', _notifyRefresh)
         Aria2EngineLocal.setMaxListeners(0)
       }
       await Sleep(800)
@@ -212,7 +224,7 @@ export async function AriaChangeToLocal() {
         const url = `127.0.0.1:${port} secret=${localPwd}`
         if (Aria2cLocalRelaunchTime < 2) message.error('无法连接到本地Aria2 ' + url)
       } else {
-        await AriaGlobalSpeed()
+        await AriaGlobalSpeed(); await AriaApplyAdvancedOptions()
       }
     } catch (e) {
       SetAriaOnline(false, 'local')
@@ -228,43 +240,62 @@ export async function AriaGlobalSpeed() {
   try {
     const settingStore = useSettingStore()
     const limit = settingStore.downGlobalSpeed.toString() + (settingStore.downGlobalSpeedM == 'MB' ? 'M' : 'K')
-    if (useNative()) {
-      await window.Electron.ipcRenderer.invoke('download:setSpeed', { limit })
-    } else {
-      await GetAria()?.call('aria2.changeGlobalOption', { 'max-overall-download-limit': limit }).catch((e: any) => {
-        if (e && e.message == 'Unauthorized') message.error('Aria2密码错误(密码不要有 ^ 或特殊字符)')
-        IsAria2cOnlineLocal = false
-      })
-    }
+    await GetAria()?.call('aria2.changeGlobalOption', { 'max-overall-download-limit': limit }).catch((e: any) => {
+      if (e && e.message == 'Unauthorized') message.error('Aria2密码错误(密码不要有 ^ 或特殊字符)')
+      IsAria2cOnlineLocal = false
+    })
   } catch {
     SetAriaOnline(false)
   }
 }
 
+export async function AriaApplyAdvancedOptions(): Promise<boolean> {
+  const client = GetAria()
+  if (!client) return false
+  try {
+    const settingStore = useSettingStore()
+    const btTracker = settingStore.ariaBtTracker.split(/[\r\n,]+/).filter(Boolean).join(',')
+    const uploadLimit = `${settingStore.ariaMaxOverallUploadLimit || 0}K`
+    const options: Record<string, string> = {
+      ...(btTracker ? { 'bt-tracker': btTracker } : {}),
+      'max-overall-upload-limit': uploadLimit,
+      'seed-ratio': String(settingStore.ariaSeedRatio || 2),
+      'seed-time': String(settingStore.ariaSeedTime || 2880),
+      // ↓ Download 迁移选项
+      'max-connection-per-server': String(settingStore.ariaMaxConnectionPerServer || 16),
+      'bt-force-encryption': settingStore.ariaBtForceEncryption ? 'true' : 'false',
+      'enable-upnp': settingStore.ariaEnableUpnp ? 'true' : 'false',
+      'listen-port': String(settingStore.ariaListenPort || 6881),
+      'dht-listen-port': String(settingStore.ariaDhtListenPort || 6881),
+      'bt-save-metadata': settingStore.ariaBtSaveMetadata ? 'true' : 'false',
+      'follow-torrent': settingStore.ariaBtAutoDownloadContent ? 'true' : 'false',
+      'follow-metalink': settingStore.ariaBtAutoDownloadContent ? 'true' : 'false',
+      'pause-metadata': settingStore.ariaBtAutoDownloadContent ? 'false' : 'true',
+      'continue': settingStore.ariaContinueDownload ? 'true' : 'false',
+    }
+    if (settingStore.ariaUserAgent) {
+      options['user-agent'] = settingStore.ariaUserAgent
+    }
+    await client.call('aria2.changeGlobalOption', options)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function AriaConnect() {
-  if (!useSettingStore().downUseAria2c || useSettingStore().AriaIsLocal) {
-    // Native IPC (downUseAria2c=false) or local aria2c (downUseAria2c=true, ariaState=local)
-    if (!IsAria2cOnlineLocal) await AriaChangeToLocal()
+  const settingStore = useSettingStore()
+  if (settingStore.AriaIsLocal) {
+    if (!IsAria2cOnlineLocal || !Aria2EngineLocal) await AriaChangeToLocal()
     return IsAria2cOnlineLocal
   } else {
-    if (!IsAria2cOnlineRemote) await AriaChangeToRemote()
+    if (!IsAria2cOnlineRemote || !Aria2EngineRemote) await AriaChangeToRemote()
     return IsAria2cOnlineRemote
   }
 }
 
 
 export async function AriaGetDowningList() {
-  if (useNative()) {
-    try {
-      const list: IAriaDownProgress[] = await window.Electron.ipcRenderer.invoke('download:list')
-      DownDAL.mSpeedEvent(list || [])
-      SetAriaOnline(true)
-    } catch (e: any) {
-      DebugLog.mSaveLog('danger', 'AriaGetDowningList' + (e.message || ''), e)
-      SetAriaOnline(false)
-    }
-    return
-  }
   const multicall = [
     ['aria2.tellActive', ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
     ['aria2.tellWaiting', 0, 1000, ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
@@ -291,15 +322,6 @@ export async function AriaGetDowningList() {
 
 
 export async function AriaDeleteList(list: string[]) {
-  if (useNative()) {
-    try {
-      await window.Electron.ipcRenderer.invoke('download:remove', list)
-      SetAriaOnline(true)
-    } catch {
-      SetAriaOnline(false)
-    }
-    return
-  }
   const multicall = []
   for (let i = 0, maxi = list.length; i < maxi; i++) {
     multicall.push(['aria2.forceRemove', list[i]])
@@ -315,15 +337,6 @@ export async function AriaDeleteList(list: string[]) {
 
 
 export async function AriaStopList(list: string[]) {
-  if (useNative()) {
-    try {
-      await window.Electron.ipcRenderer.invoke('download:pause', list)
-      SetAriaOnline(true)
-    } catch {
-      SetAriaOnline(false)
-    }
-    return
-  }
   const multicall = []
   for (let i = 0, maxi = list.length; i < maxi; i++) {
     multicall.push(['aria2.forcePause', list[i]])
@@ -338,19 +351,48 @@ export async function AriaStopList(list: string[]) {
 
 
 export function AriaShoutDown() {
-  if (useNative()) {
-    // Native engine runs in the Electron main process; nothing to shut down from the renderer
-    return
+  try {
+    const aria = GetAria()
+    if (aria) {
+      aria.call('aria2.forceShutdown').catch(() => {})
+    }
+  } catch {}
+  // 断开 WebSocket
+  CloseRemote()
+  // 清理本地引擎引用
+  if (Aria2EngineLocal) {
+    try { Aria2EngineLocal.close() } catch {}
+    Aria2EngineLocal = undefined
   }
-  GetAria()?.call('aria2.forceShutdown').catch(() => {})
+  IsAria2cOnlineLocal = false
+}
+
+export async function AriaRawCall(method: string, ...args: any[]): Promise<any> {
+  return GetAria()?.call(method, ...args)
 }
 
 export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
   try {
+    // 提交任务前先确保 Aria2 连接正常
+    const connected = await AriaConnect()
+    if (!connected) {
+      if (useSettingStore().AriaIsLocal) {
+        // 尝试重新连接本地 Aria2
+        await AriaChangeToLocal()
+        if (!IsAria2cOnlineLocal) return 'Aria2未连接，请检查本地Aria连接状态'
+      } else {
+        return 'Aria2未连接，请检查远程Aria连接状态'
+      }
+    }
+
     const info = file.Info
     const token = UserDAL.GetUserToken(info.user_id)
-    const hasPresetDownloadUrl = typeof file.Down.DownUrl === 'string' && /^https?:\/\//i.test(file.Down.DownUrl.trim())
-    if ((!token || !token.access_token) && !(info.drive_id === 'media_server' && hasPresetDownloadUrl)) return '账号失效，操作取消'
+    const sourceType = info.sourceType || ''
+    const isExternalSource = sourceType === 'url' || sourceType === 'magnet' || sourceType === 'torrent' || sourceType === 'torrent-url'
+    const isBtSource = sourceType === 'magnet' || sourceType === 'torrent' || sourceType === 'torrent-url'
+    const presetSource = typeof file.Down.DownUrl === 'string' ? file.Down.DownUrl.trim() : ''
+    const hasPresetDownloadUrl = /^https?:\/\//i.test(presetSource) || /^magnet:\?/i.test(presetSource) || sourceType === 'torrent'
+    if ((!token || !token.access_token) && !isExternalSource && !(info.drive_id === 'media_server' && hasPresetDownloadUrl)) return '账号失效，操作取消'
     if (info.isDir) {
       const dirFull = path.join(info.DownSavePath, info.name)
       if (!info.ariaRemote) {
@@ -414,7 +456,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
             )
             return errorMessage
           }
-          if (info.size == 0) {
+          if (info.size == 0 && !isExternalSource) {
             try {
               await (await fs.promises.open(fileFull, 'w')).close()
               return 'downed'
@@ -426,7 +468,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       }
       let downloadUrl = typeof file.Down.DownUrl === 'string' ? file.Down.DownUrl : ''
       downloadUrl = downloadUrl.trim()
-      if (downloadUrl && downloadUrl.includes('x-oss-expires=')) {
+      if (downloadUrl && !isBtSource && downloadUrl.includes('x-oss-expires=')) {
         const expires = downloadUrl.split('x-oss-expires=')[1].split('&')[0]
         const lastTime = parseInt(expires) - Date.now() / 1000
         const needTime = (info.size + 1) / 1024 / 1024
@@ -434,7 +476,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
           downloadUrl = ''
         }
       }
-      if (!downloadUrl) {
+      if (!downloadUrl && !isExternalSource) {
         const durl = await getRawUrl(info.user_id, info.drive_id, info.file_id, info.encType)
         if (typeof durl == 'string') {
           console.warn('[aria2] getRawUrl failed', info.drive_id, info.file_id, durl)
@@ -447,7 +489,10 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         downloadUrl = durl.url || durl.qualities?.[0]?.url || ''
         file.Down.DownUrl = downloadUrl
       }
-      if (!downloadUrl) {
+      if (sourceType === 'torrent') {
+        downloadUrl = ''
+        if (!info.torrentBase64) return '种子内容为空'
+      } else if (!downloadUrl) {
         console.warn('[aria2] no downloadUrl before addUri', info.drive_id, info.file_id)
         return '生成下载链接失败, 下载地址为空'
       }
@@ -456,64 +501,77 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         console.warn('[aria2] normalize url', info.drive_id, info.file_id)
         downloadUrl = safeUrl
       }
-      if (!/^https?:\/\//i.test(downloadUrl)) {
+      if (sourceType === 'magnet' && !/^magnet:\?/i.test(downloadUrl)) {
+        console.warn('[aria2] invalid magnet', info.drive_id, info.file_id, downloadUrl)
+        return '磁力链接无效'
+      }
+      if ((sourceType !== 'magnet' && sourceType !== 'torrent') && !/^https?:\/\//i.test(downloadUrl)) {
         console.warn('[aria2] invalid downloadUrl', info.drive_id, info.file_id, downloadUrl)
         return '生成下载链接失败, 下载地址无效'
       }
-      console.log('[aria2] addUri', info.drive_id, info.file_id, {
-        url: downloadUrl
-      })
+      console.log('[aria2] addUri', info.drive_id, info.file_id, { url: downloadUrl, sourceType })
       if (file.Down.IsStop) return '已暂停'
-      const split = useSettingStore().downThreadMax
-      const referer = Config.referer
-      const userAgent = Config.downAgent
       const token = UserDAL.GetUserToken(info.user_id)
+      const split = info.split || useSettingStore().downThreadMax
+      const isBaiduDownload = isBaiduUser(token || '') || info.drive_id === 'baidu'
+      const referer = info.referer || (isBaiduDownload ? 'https://pan.baidu.com/' : Config.referer)
+      const userAgent = info.userAgent || useSettingStore().ariaUserAgent || Config.downAgent
       const headers: string[] = []
       for (const [key, value] of Object.entries(info.downloadHeaders || {})) {
         if (key && value) headers.push(`${key}: ${value}`)
       }
+      headers.push(...(info.externalHeaders || []))
       if (token?.access_token && (isCloud123User(token) || isDrive115User(token) || isBaiduUser(token))) {
         headers.push(`Authorization: Bearer ${token.access_token}`)
       }
-      if (isBaiduUser(token || '')) {
+      if (info.drive_id === 'baidu') {
         headers.push(`User-Agent: pan.baidu.com`)
       } else {
         if (userAgent) {
           headers.push(`User-Agent: ${userAgent}`)
         }
       }
-      if (useNative()) {
-        // Native DownloadManager path: submit via IPC
-        const headersRecord: Record<string, string> = {}
-        for (const h of headers) {
-          const colonIdx = h.indexOf(':')
-          if (colonIdx > 0) {
-            headersRecord[h.slice(0, colonIdx).trim()] = h.slice(colonIdx + 1).trim()
-          }
-        }
-        const result: any = await window.Electron.ipcRenderer.invoke('download:add', {
-          gid: info.GID,
-          user_id: info.user_id,
-          drive_id: info.drive_id,
-          file_id: info.file_id,
-          encType: info.encType,
-          url: downloadUrl,
-          headers: headersRecord,
-          savePath: dirPath,
-          fileName: info.name,
-          fileSize: info.size,
-          split
+      const addOptions: any = buildAriaAddOptions({
+        gid: info.GID,
+        dir: dirPath,
+        split,
+        referer,
+        userAgent,
+        headers,
+        outFileName,
+        sourceType,
+        selectFile: info.selectFile,
+        allProxy: info.allProxy
+      })
+      const client = GetAria()
+      if (!client) return 'Aria2未连接，请检查本地或远程Aria连接状态'
+      if (sourceType === 'torrent') {
+        let torrentError: any = undefined
+        const torrentResult: any = await callAriaClient(client, 'aria2.addTorrent', info.torrentBase64, [], addOptions, (error: unknown) => {
+          torrentError = error
         })
-        if (result === 'success') return 'success'
-        return '创建下载任务失败: ' + (result || '未知错误')
+        const torrentGid = getAriaAddUriGid(torrentResult)
+        if (torrentGid) {
+          info.GID = torrentGid
+          return 'success'
+        }
+        if (isAriaDuplicateGidError(torrentResult) || isAriaDuplicateGidError(torrentError)) return 'success'
+        delete addOptions.gid
+        torrentError = undefined
+        const fallbackTorrentResult: any = await callAriaClient(client, 'aria2.addTorrent', info.torrentBase64, [], addOptions, (error: unknown) => {
+          torrentError = error
+        })
+        const fallbackTorrentGid = getAriaAddUriGid(fallbackTorrentResult)
+        if (fallbackTorrentGid) {
+          info.GID = fallbackTorrentGid
+          return 'success'
+        }
+        return '创建BT任务失败，稍后自动重试' + ((fallbackTorrentResult && fallbackTorrentResult.message) || (torrentError && torrentError.message) || (torrentResult && torrentResult.message) || '')
       }
       const multicall = [
         ['aria2.forceRemove', info.GID],
         ['aria2.removeDownloadResult', info.GID],
-        ['aria2.addUri', [downloadUrl], {
-          gid: info.GID, dir: dirPath, out: outFileName,
-          split, 'user-agent': userAgent, header: headers
-        }]
+        ['aria2.addUri', [downloadUrl], addOptions]
       ]
       const result: any = await GetAria()?.multicall(multicall)
       console.log('[aria2] addUri result', info.drive_id, info.file_id, JSON.stringify(result))
@@ -524,14 +582,9 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         return 'success'
       }
       // GID 不存在时忽略清理错误，尝试单独 addUri
-      const addOptions: any = {
-        gid: info.GID, dir: dirPath, out: outFileName,
-        split, referer, 'user-agent': userAgent, header: headers
-      }
       let singleError: any = undefined
-      let singleResult: any = await GetAria()?.call('aria2.addUri', [downloadUrl], addOptions).catch((error: any) => {
+      let singleResult: any = await callAriaClient(client, 'aria2.addUri', [downloadUrl], addOptions, (error: unknown) => {
         singleError = error
-        return undefined
       })
       const singleGid = getAriaAddUriGid(singleResult)
       if (singleGid) {
@@ -539,14 +592,29 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         return 'success'
       }
       if (isAriaDuplicateGidError(singleResult) || isAriaDuplicateGidError(singleError)) {
-        return 'success'
+        // GID 重复说明旧任务残留，先强制清理再重建
+        await callAriaClient(client, 'aria2.forceRemove', info.GID)
+        await callAriaClient(client, 'aria2.removeDownloadResult', info.GID)
+        delete addOptions.gid
+        singleError = undefined
+        singleResult = await callAriaClient(client, 'aria2.addUri', [downloadUrl], addOptions, (error: unknown) => {
+          singleError = error
+        })
+        const retryGid = getAriaAddUriGid(singleResult)
+        if (retryGid) {
+          info.GID = retryGid
+          return 'success'
+        }
+        if (isAriaDuplicateGidError(singleResult) || isAriaDuplicateGidError(singleError)) {
+          return 'success'
+        }
+        return '创建aria任务失败，稍后自动重试' + ((singleResult && singleResult.message) || (singleError && singleError.message) || '')
       }
       if (!singleResult || singleResult.code) {
         delete addOptions.gid
         singleError = undefined
-        singleResult = await GetAria()?.call('aria2.addUri', [downloadUrl], addOptions).catch((error: any) => {
+        singleResult = await callAriaClient(client, 'aria2.addUri', [downloadUrl], addOptions, (error: unknown) => {
           singleError = error
-          return undefined
         })
         const fallbackGid = getAriaAddUriGid(singleResult)
         if (fallbackGid) {
@@ -559,7 +627,8 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
   } catch (e: any) {
     SetAriaOnline(false)
     DebugLog.mSaveLog('danger', 'AriaAddUrl' + (e.message || ''), e)
-    return Promise.resolve('创建Aria任务失败连接断开')
+    SetAriaOnline(false)
+    return Promise.resolve('创建Aria任务失败连接断开：' + (e.message || '未知错误'))
   }
   return Promise.resolve('创建Aria任务失败1')
 }
@@ -567,6 +636,10 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
 
 export function AriaHashFile(downitem: IStateDownFile): { DownID: string; Check: boolean } {
   const DownID = downitem.DownID
+  const sourceType = downitem.Info.sourceType || ''
+  if (sourceType === 'magnet' || sourceType === 'torrent' || sourceType === 'torrent-url') {
+    return { DownID, Check: true }
+  }
   const dir = downitem.Info.DownSavePath
   const out = downitem.Info.ariaRemote ? downitem.Info.name : downitem.Info.name + '.td'
   const sha1 = downitem.Info.sha1
@@ -580,33 +653,18 @@ export function AriaHashFile(downitem: IStateDownFile): { DownID: string; Check:
     check: crc64 || sha1 || ''
   }
   let success = false
-  if (useNative()) {
-    // Native engine renames .td → final on completion; just verify the final file exists
-    if (data.inputfile === data.movetofile || fs.existsSync(data.movetofile)) {
+  if (data.inputfile == data.movetofile) {
+    success = true
+  } else {
+    try {
+      fs.renameSync(data.inputfile, data.movetofile)
       success = true
-    } else if (fs.existsSync(data.inputfile)) {
-      // Fallback: manual rename if .td file still present
+    } catch {
       try {
         fs.renameSync(data.inputfile, data.movetofile)
         success = true
       } catch (e: any) {
         DebugLog.mSaveLog('danger', 'AriaRename file=' + data.inputfile + ' error=' + (e.message || ''), e)
-      }
-    }
-  } else {
-    if (data.inputfile == data.movetofile) {
-      success = true
-    } else {
-      try {
-        fs.renameSync(data.inputfile, data.movetofile)
-        success = true
-      } catch {
-        try {
-          fs.renameSync(data.inputfile, data.movetofile)
-          success = true
-        } catch (e: any) {
-          DebugLog.mSaveLog('danger', 'AriaRename file=' + data.inputfile + ' error=' + (e.message || ''), e)
-        }
       }
     }
   }

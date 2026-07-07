@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BoxPlayer Settings Login Redesign</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --panel: #ffffff;
+        --panel-2: #f9fafb;
+        --line: #dfe3ea;
+        --line-2: #edf0f4;
+        --text: #1f2937;
+        --muted: #667085;
+        --subtle: #98a2b3;
+        --accent: #2868d8;
+        --accent-soft: #e9f0ff;
+        --success: #15803d;
+        --success-soft: #e8f7ee;
+        --warning: #b45309;
+        --warning-soft: #fff4df;
+        --danger: #c2410c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", sans-serif;
+        font-size: 14px;
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 224px 1fr;
+        min-height: 100vh;
+      }
+      .sidebar {
+        border-right: 1px solid var(--line);
+        background: #fbfcfd;
+        padding: 18px 14px;
+      }
+      .brand {
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0 0 18px 8px;
+      }
+      .nav-item {
+        height: 32px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 6px;
+        padding: 0 10px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .nav-item.active {
+        color: var(--text);
+        background: #eef2f7;
+        font-weight: 600;
+      }
+      .content {
+        padding: 28px 36px 64px;
+        overflow: auto;
+      }
+      .page-title {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        max-width: 920px;
+        margin-bottom: 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.3;
+        letter-spacing: 0;
+      }
+      .page-subtitle {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+      }
+      .setting-card {
+        max-width: 920px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 18px;
+      }
+      .setting-row {
+        display: grid;
+        grid-template-columns: minmax(150px, 230px) 1fr;
+        gap: 24px;
+        padding: 18px 20px;
+        border-top: 1px solid var(--line-2);
+      }
+      .setting-row:first-child { border-top: 0; }
+      .label {
+        font-weight: 650;
+        color: var(--text);
+      }
+      .hint {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .control {
+        min-width: 0;
+      }
+      .btn {
+        height: 30px;
+        border-radius: 6px;
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--text);
+        padding: 0 12px;
+        font: inherit;
+        font-size: 13px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .btn.primary {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+      .btn.warning {
+        border-color: #d97706;
+        background: #d97706;
+        color: #fff;
+      }
+      .btn.ghost {
+        background: transparent;
+      }
+      .btn.full {
+        width: 100%;
+        height: 36px;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        height: 24px;
+        border-radius: 999px;
+        padding: 0 9px;
+        font-size: 12px;
+        font-weight: 650;
+      }
+      .pill.free {
+        color: var(--muted);
+        background: #f1f3f6;
+      }
+      .pill.pro {
+        color: var(--success);
+        background: var(--success-soft);
+      }
+      .pill.waiting {
+        color: var(--warning);
+        background: var(--warning-soft);
+      }
+      .account-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-2);
+        overflow: hidden;
+      }
+      .account-main {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px;
+      }
+      .identity {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .avatar {
+        width: 34px;
+        height: 34px;
+        border-radius: 8px;
+        background: #e6ebf2;
+        border: 1px solid var(--line);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .email {
+        font-size: 13px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .account-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .provider-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+      }
+      .provider {
+        height: 36px;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-weight: 600;
+      }
+      .email-box {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        padding: 12px;
+        border-top: 1px solid var(--line);
+        background: #fff;
+      }
+      input {
+        height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0 10px;
+        font: inherit;
+        min-width: 0;
+      }
+      .option-heading {
+        max-width: 920px;
+        margin: 26px 0 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      h2 {
+        margin: 0;
+        font-size: 15px;
+        letter-spacing: 0;
+      }
+      .recommend {
+        color: var(--accent);
+        background: var(--accent-soft);
+      }
+      .split-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 14px;
+      }
+      .mini-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: var(--panel-2);
+      }
+      .mini-title {
+        font-weight: 700;
+        margin-bottom: 8px;
+      }
+      .feature-list {
+        display: grid;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .status-strip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-2);
+        padding: 10px 12px;
+      }
+      .strip-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .spacer { height: 12px; }
+      @media (max-width: 760px) {
+        .shell { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .content { padding: 18px 14px 44px; }
+        .page-title { display: block; }
+        .toolbar { margin-top: 12px; }
+        .setting-row { grid-template-columns: 1fr; gap: 10px; padding: 16px; }
+        .provider-grid { grid-template-columns: 1fr; }
+        .email-box { grid-template-columns: 1fr; }
+        .account-main, .status-strip { align-items: stretch; flex-direction: column; }
+        .account-actions { width: 100%; }
+        .account-actions .btn { flex: 1; }
+        .split-panel { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar">
+        <div class="brand">BoxPlayer</div>
+        <div class="nav-item active">⚙ 应用设置</div>
+        <div class="nav-item">🤖 AI 模型</div>
+        <div class="nav-item">👤 账户设置</div>
+        <div class="nav-item">🔒 安全设置</div>
+        <div class="nav-item">▶ 播放设置</div>
+      </aside>
+      <main class="content">
+        <div class="page-title">
+          <div>
+            <h1>应用设置</h1>
+            <div class="page-subtitle">登录、版本权益、外观和启动行为集中在当前页面。</div>
+          </div>
+          <div class="toolbar">
+            <button class="btn">更新日志</button>
+            <button class="btn">检查更新</button>
+          </div>
+        </div>
+
+        <div class="option-heading">
+          <h2>方案 A：嵌入式账号行</h2>
+          <span class="pill recommend">推荐</span>
+        </div>
+        <section class="setting-card">
+          <div class="setting-row">
+            <div>
+              <div class="label">账号与专业版</div>
+              <div class="hint">用于跨设备识别购买状态。暂时覆盖 Windows、Linux、macOS。</div>
+            </div>
+            <div class="control">
+              <div class="account-card">
+                <div class="account-main">
+                  <div class="identity">
+                    <div class="avatar">B</div>
+                    <div>
+                      <div class="email">未登录</div>
+                      <div class="meta">登录后可购买终身专业版并同步权益</div>
+                    </div>
+                  </div>
+                  <span class="pill free">开源版</span>
+                </div>
+                <div class="email-box">
+                  <div class="provider-grid">
+                    <button class="provider">GitHub</button>
+                    <button class="provider">Google</button>
+                    <button class="provider">邮箱</button>
+                  </div>
+                  <button class="btn primary">登录</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="label">界面颜色</div>
+              <div class="hint">跟随系统或手动指定主题。</div>
+            </div>
+            <div class="control"><button class="btn primary">跟随系统</button> <button class="btn">浅色</button> <button class="btn">深色</button></div>
+          </div>
+        </section>
+
+        <div class="option-heading">
+          <h2>方案 B：独立账号面板</h2>
+          <span class="pill waiting">更突出购买转化</span>
+        </div>
+        <section class="setting-card">
+          <div class="setting-row">
+            <div>
+              <div class="label">BoxPlayer 账号</div>
+              <div class="hint">把登录和专业版权益做成一个较完整的面板。</div>
+            </div>
+            <div class="control split-panel">
+              <div class="account-card">
+                <div class="account-main">
+                  <div class="identity">
+                    <div class="avatar">G</div>
+                    <div>
+                      <div class="email">user@example.com</div>
+                      <div class="meta">已登录，正在使用开源版</div>
+                    </div>
+                  </div>
+                  <div class="account-actions">
+                    <button class="btn ghost">退出</button>
+                  </div>
+                </div>
+                <div class="email-box">
+                  <span class="pill free">开源版</span>
+                  <button class="btn warning full">购买终身专业版 · $199</button>
+                </div>
+              </div>
+              <div class="mini-card">
+                <div class="mini-title">专业版权益</div>
+                <div class="feature-list">
+                  <span>AI 智能搜索无限使用</span>
+                  <span>AI 文件整理与查重</span>
+                  <span>AI 阅读助手、翻译、朗读</span>
+                  <span>TMDB + 豆瓣电影发现</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div class="option-heading">
+          <h2>方案 C：紧凑状态条</h2>
+          <span class="pill free">最少干扰</span>
+        </div>
+        <section class="setting-card">
+          <div class="setting-row">
+            <div>
+              <div class="label">账号</div>
+              <div class="hint">只在设置页顶部提供状态和主要操作。</div>
+            </div>
+            <div class="control">
+              <div class="status-strip">
+                <div class="strip-left">
+                  <div class="avatar">P</div>
+                  <div>
+                    <div class="email">user@example.com</div>
+                    <div class="meta">专业版已激活</div>
+                  </div>
+                </div>
+                <div class="account-actions">
+                  <span class="pill pro">PRO</span>
+                  <button class="btn">刷新状态</button>
+                  <button class="btn ghost">退出</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

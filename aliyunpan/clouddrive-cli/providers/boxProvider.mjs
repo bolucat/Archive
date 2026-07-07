@@ -1,4 +1,4 @@
-import { boxRefreshToken, boxListDir, boxWalk, boxRenameBatch, boxSearch, boxGetFile, boxMove, boxMkdir, boxTrash } from './box.mjs'
+import { boxRefreshToken, boxListDir, boxWalk, boxRenameBatch, boxSearch, boxGetFile, boxMove, boxMkdir, boxTrash, boxUploadFile } from './box.mjs'
 
 export function createBoxProvider() {
   return {
@@ -15,7 +15,7 @@ export function createBoxProvider() {
       fileIdAddressable: true,
       mkdir: true,
       move: true,
-      uploadFile: false,
+      uploadFile: true,
     },
     auth: {
       async login() {
@@ -36,6 +36,9 @@ export function createBoxProvider() {
       async moveBatch({ token, moves }) { return boxMove(token, moves) },
       async mkdir({ token, parentId, name }) { return boxMkdir(token, parentId, name) },
       async trash({ token, items }) { return boxTrash(token, items) },
+      async uploadFile({ token, parentId, localPath, name, size, conflict }) {
+        return boxUploadFile(token, { parentId, localPath, name, size, conflict })
+      },
     },
   }
 }

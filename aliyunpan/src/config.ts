@@ -10,6 +10,17 @@ export default class Config {
   static APPLE_PASSWORD = ''
   static APPLE_TEAM_ID = ''
 
+  // Supabase 认证
+  static SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
+  static SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0cWlwb2ZqanFqbGJiZnNnaWhpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDA0OTQxNjgsImV4cCI6MjA1NjA3MDE2OH0.g1vk-DaWbicHnSVZoGqskd0vOu-NuWtsDaMvFhe22mE'
+
   // TMDB 配置
   static TMDB_API_KEY = ''
+
+  // 用户认证后端
+  static AUTH_API_BASE = 'http://localhost:3000'
+
+  static CREEM_API_KEY = ''   // 测试环境
+  static CREEM_PRODUCT_ID = 'prod_4DB3OByC3DoLNN9pe54QqS'
+
 }

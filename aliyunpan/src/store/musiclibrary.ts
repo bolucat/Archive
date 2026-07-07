@@ -133,19 +133,28 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   const byFolder = computed(() => {
     const map = new Map<string, IMusicTrack[]>()
     for (const t of tracks.value) {
-      const key = (t.parent_path || t.parent_file_id || '').trim() || '未分组'
+      const path = (t.parent_path || t.parent_file_id || '').trim() || '未分组'
+      const key = `${t.user_id || ''}|${t.drive_id || ''}|${path}`
       const arr = map.get(key)
       if (arr) arr.push(t)
       else map.set(key, [t])
     }
-    return Array.from(map.entries())
-      .map(([path, items]) => ({
-        path,
-        name: path.split('/').pop() || path,
-        items,
-        count: items.length,
-        scanned_at: items.reduce((m, t) => Math.max(m, t.scanned_at || 0), 0)
-      }))
+    return Array.from(map.values())
+      .map((items) => {
+        const first = items[0]
+        const path = (first.parent_path || first.parent_file_id || '').trim() || '未分组'
+        const key = `${first.user_id || ''}|${first.drive_id || ''}|${path}`
+        return {
+          key,
+          path,
+          name: path.split('/').pop() || path,
+          user_id: first.user_id || '',
+          drive_id: first.drive_id || '',
+          items,
+          count: items.length,
+          scanned_at: items.reduce((m, t) => Math.max(m, t.scanned_at || 0), 0)
+        }
+      })
       .sort((a, b) => b.scanned_at - a.scanned_at)
   })
 
@@ -234,6 +243,13 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     tracks.value = tracks.value.filter((t) => !removeSet.has(t.id))
   }
 
+  async function deleteTracksByIds(ids: string[]) {
+    if (!ids || ids.length === 0) return 0
+    const deleted = await DB.deleteMusicTracksByIds(ids).catch(() => 0)
+    removeTracksByIds(ids)
+    return deleted || ids.length
+  }
+
   async function updateTrackEnrichment(id: string, patch: Partial<IMusicTrack>) {
     const idx = tracks.value.findIndex((t) => t.id === id)
     if (idx < 0) return
@@ -311,6 +327,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     setScanProgress,
     appendTracks,
     removeTracksByIds,
+    deleteTracksByIds,
     updateTrackEnrichment,
     setIsScanning,
     markScanFinished,

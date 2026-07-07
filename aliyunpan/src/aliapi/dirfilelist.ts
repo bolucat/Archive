@@ -327,6 +327,20 @@ export default class AliDirFileList {
   //   return AliDirFileList._FileListOnePage(orderby, order, dir, resp, pageIndex)
   // }
 
+  static async ApiSearchByName(user_id: string, drive_id: string, keyword: string, limit: number = 50): Promise<IAliGetFileModel[]> {
+    if (!keyword || !user_id || !drive_id) return []
+    const query = `name match "${keyword.replaceAll('"', '\\"')}"`
+    const postData = {
+      drive_id,
+      limit,
+      fields: '*',
+      query,
+      order_by: 'updated_at DESC'
+    }
+    const resp = await AliHttp.Post('adrive/v1.0/openFile/search', postData, user_id, '')
+    const items = (resp?.body?.items || []) as any[]
+    return items.map((item: any) => AliDirFileList.getFileInfo(user_id, item, ''))
+  }
 
   static async ApiDirFileList(user_id: string, drive_id: string, dirID: string, dirName: string, order: string, type: string = '', albumID?: string, refresh: boolean = true): Promise<IAliFileResp> {
     const dir: IAliFileResp = {

@@ -1,5 +1,6 @@
 import axios from 'axios'
 import DebugLog from './debuglog'
+import { fetchLyricDetailed as sdkFetchLyricDetailed, fetchCover as sdkFetchCover, type LyricFetchDebug } from '../module/musicsdk/index'
 
 export interface LyricLine {
   time: number // seconds
@@ -15,6 +16,22 @@ export interface MusicMetadata {
   lrc: string // raw LRC text
   lines: LyricLine[]
   fromCache?: boolean
+  debug?: MusicMetadataDebug
+}
+
+export interface MusicMetadataDebug {
+  query: {
+    filename: string
+    artist: string
+    title: string
+    album: string
+    durationSec?: number
+  }
+  lyricProvider: 'musicsdk'
+  lyric?: LyricFetchDebug
+  lrcLength: number
+  parsedLineCount: number
+  reason: string
 }
 
 interface MetaQuery {
@@ -203,19 +220,66 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
   if (existing) return existing
 
   const promise = (async () => {
-    const [lrcRes, itunesRes] = await Promise.all([
-      fetchLrclib(artist, title, q.durationSec, album || undefined),
-      fetchITunes(artist, title)
-    ])
-    const data: MusicMetadata = {
-      title: itunesRes?.title || title || guess.title,
-      artist: itunesRes?.artist || artist || guess.artist,
-      album: itunesRes?.album || lrcRes?.album || album || '',
-      cover: itunesRes?.cover || '',
-      durationMs: lrcRes?.durationMs,
-      lrc: lrcRes?.lrc || '',
-      lines: parseLrc(lrcRes?.lrc || '')
+    let lrcText = ''
+    let coverUrl = ''
+    let lyricDebug: LyricFetchDebug | undefined
+
+    // iTunes cover
+    try {
+      const itunesRes = await fetchITunes(artist, title)
+      if (itunesRes) {
+        coverUrl = itunesRes.cover || ''
+      }
+    } catch {}
+
+    // SDK fallback for lyrics (skip LRCLIB)
+    if (title) {
+      try {
+        const sdkLyric = await sdkFetchLyricDetailed({ name: title, singer: artist })
+        lyricDebug = sdkLyric.debug
+        if (sdkLyric.lyric?.lyric) lrcText = sdkLyric.lyric.lyric
+      } catch (e: any) {
+        lyricDebug = {
+          query: { name: title, singer: artist },
+          steps: [{ source: 'search', status: 'error', message: e?.message || String(e) }],
+          finalStatus: 'error'
+        }
+      }
     }
+
+    // SDK fallback for cover
+    if (!coverUrl && title) {
+      try {
+        const sdkCover = await sdkFetchCover({ name: title, singer: artist })
+        if (sdkCover) coverUrl = sdkCover
+      } catch {}
+    }
+
+    const lines = parseLrc(lrcText)
+    const lyricReason = getLyricDebugReason(lyricDebug, lrcText, lines.length)
+    const data: MusicMetadata = {
+      title: title || guess.title,
+      artist: artist || guess.artist,
+      album: album || '',
+      cover: coverUrl,
+      lrc: lrcText,
+      lines,
+      debug: {
+        query: {
+          filename: q.filename,
+          artist,
+          title,
+          album,
+          durationSec: q.durationSec
+        },
+        lyricProvider: 'musicsdk',
+        lyric: lyricDebug,
+        lrcLength: lrcText.length,
+        parsedLineCount: lines.length,
+        reason: lyricReason
+      }
+    }
+    logMusicMetadataDebug(data)
     memCache.set(key, { ts: Date.now(), data })
     return data
   })().finally(() => {
@@ -241,4 +305,35 @@ export function findActiveLineIndex(lines: LyricLine[], currentSec: number): num
 export function clearMusicMetaCache(): void {
   memCache.clear()
   inflight.clear()
+}
+
+function getLyricDebugReason(debug: LyricFetchDebug | undefined, lrc: string, lineCount: number): string {
+  if (lrc && lineCount > 0) return `歌词已获取并解析 ${lineCount} 行`
+  if (lrc && lineCount === 0) return `歌词接口返回 ${lrc.length} 字符，但没有解析出时间轴行`
+  if (!debug) return '未执行歌词接口请求'
+  if (debug.finalStatus === 'no-match') return '搜索接口未匹配到歌曲'
+  const lastError = [...debug.steps].reverse().find((step) => step.status === 'error')
+  if (lastError) return `${lastError.source} 歌词接口失败：${lastError.message}`
+  const empty = debug.steps.find((step) => step.status === 'empty')
+  if (empty) return `${empty.source} ${empty.message}`
+  const skipped = debug.steps.find((step) => step.status === 'skipped')
+  if (skipped) return `${skipped.source} ${skipped.message}`
+  return '歌词接口未返回可用歌词'
+}
+
+function logMusicMetadataDebug(data: MusicMetadata) {
+  const debug = data.debug
+  if (!debug) return
+  const matched = debug.lyric?.matched
+    ? ` matched=${debug.lyric.matched.source}:${debug.lyric.matched.name}/${debug.lyric.matched.singer}`
+    : ''
+  const steps = (debug.lyric?.steps || [])
+    .map((step) => `${step.source}:${step.status}${step.lyricLength !== undefined ? `(${step.lyricLength})` : ''}`)
+    .join(',')
+  const message = `[MusicMetadata] ${debug.reason}; query="${debug.query.artist ? `${debug.query.artist} - ` : ''}${debug.query.title}" file="${debug.query.filename}"${matched} steps=[${steps}] lrc=${debug.lrcLength} lines=${debug.parsedLineCount}`
+  if (debug.parsedLineCount > 0) console.info(message)
+  else {
+    console.warn(message)
+    DebugLog.mSaveWarning(message)
+  }
 }

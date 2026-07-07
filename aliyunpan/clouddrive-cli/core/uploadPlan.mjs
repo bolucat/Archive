@@ -1,5 +1,5 @@
 import { readdir, stat } from 'node:fs/promises'
-import { basename, join, relative, resolve, sep } from 'node:path'
+import { basename, join, posix, relative, resolve, sep } from 'node:path'
 
 function normalizeRelativePath(path) {
   return path.split(sep).join('/')
@@ -113,5 +113,134 @@ export function dryRunUploadPlan(plan) {
       size: item.size || 0,
     })) : [],
     errors,
+  }
+}
+
+function parentRelativePath(relativePath) {
+  if (!relativePath) return ''
+  const parent = posix.dirname(relativePath)
+  return parent === '.' ? '' : parent
+}
+
+function remoteRefForCreatedFolder(folder, fallbackName, fallbackParent) {
+  return {
+    id: folder?.fileId || folder?.file_id || folder?.id || '',
+    path: folder?.path || (fallbackParent.path ? `${fallbackParent.path}/${fallbackName}`.replace(/\/+/g, '/') : ''),
+  }
+}
+
+export async function executeUploadPlan(plan, { provider, token, driveId } = {}) {
+  const dryRun = dryRunUploadPlan(plan)
+  if (!dryRun.ok) return dryRun
+  if (!provider?.files?.uploadFile) {
+    return {
+      ok: false,
+      provider: plan.provider,
+      account_id: plan.account_id,
+      remote_parent_file_id: plan.remote_parent_file_id,
+      succeeded: 0,
+      failed: dryRun.fileCount + dryRun.folderCount,
+      fileCount: dryRun.fileCount,
+      folderCount: dryRun.folderCount,
+      totalBytes: dryRun.totalBytes,
+      results: [],
+      errors: [{ code: 'upload_adapter_missing', message: `Provider "${plan.provider}" upload adapter is not wired` }],
+    }
+  }
+
+  const refs = new Map()
+  refs.set('', { id: plan.remote_parent_file_id, path: plan.remote_parent_file_id })
+  const results = []
+
+  for (const item of plan.items) {
+    const parentRel = parentRelativePath(item.relative_path)
+    const parentRef = refs.get(parentRel)
+    if (!parentRef) {
+      results.push({
+        type: item.type,
+        relative_path: item.relative_path,
+        target_name: item.target_name,
+        status: 'error',
+        code: 'missing_parent',
+        message: `Parent folder was not created: ${parentRel}`,
+      })
+      continue
+    }
+
+    try {
+      if (item.type === 'folder') {
+        const created = await provider.files.mkdir({
+          token,
+          driveId,
+          parentId: parentRef.id,
+          parentPath: parentRef.path,
+          name: item.target_name,
+          conflict: plan.conflict,
+        })
+        const ref = remoteRefForCreatedFolder(created, item.target_name, parentRef)
+        refs.set(item.relative_path, ref)
+        results.push({
+          type: 'folder',
+          relative_path: item.relative_path,
+          target_name: item.target_name,
+          fileId: ref.id,
+          path: ref.path,
+          status: 'success',
+        })
+        continue
+      }
+
+      const uploaded = await provider.files.uploadFile({
+        token,
+        driveId,
+        parentId: parentRef.id,
+        parentPath: parentRef.path,
+        localPath: item.local_path,
+        name: item.target_name,
+        size: Number(item.size) || 0,
+        conflict: plan.conflict,
+        relativePath: item.relative_path,
+      })
+      results.push({
+        type: 'file',
+        relative_path: item.relative_path,
+        target_name: item.target_name,
+        size: Number(item.size) || 0,
+        fileId: uploaded?.fileId || uploaded?.file_id || uploaded?.id || '',
+        path: uploaded?.path,
+        rapid: !!(uploaded?.rapid || uploaded?.isRapid),
+        status: 'success',
+      })
+    } catch (e) {
+      results.push({
+        type: item.type,
+        relative_path: item.relative_path,
+        target_name: item.target_name,
+        size: Number(item.size) || 0,
+        status: 'error',
+        code: e?.code || 'ERR_UPLOAD',
+        message: e?.message || 'Upload failed',
+      })
+    }
+  }
+
+  const succeeded = results.filter((item) => item.status === 'success').length
+  const failed = results.length - succeeded
+  return {
+    ok: failed === 0,
+    provider: plan.provider,
+    account_id: plan.account_id,
+    remote_parent_file_id: plan.remote_parent_file_id,
+    succeeded,
+    failed,
+    fileCount: dryRun.fileCount,
+    folderCount: dryRun.folderCount,
+    totalBytes: dryRun.totalBytes,
+    results,
+    errors: results.filter((item) => item.status !== 'success').map((item) => ({
+      code: item.code || 'ERR_UPLOAD',
+      message: item.message || `Failed: ${item.relative_path}`,
+      relative_path: item.relative_path,
+    })),
   }
 }

@@ -1,5 +1,11 @@
 const BASE = 'https://api.dropboxapi.com/2'
+const CONTENT_BASE = 'https://content.dropboxapi.com/2'
 const TOKEN_URL = 'https://api.dropboxapi.com/oauth2/token'
+const SMALL_UPLOAD_LIMIT = 150 * 1024 * 1024
+const SESSION_CHUNK_SIZE = 8 * 1024 * 1024
+
+import { open } from 'node:fs/promises'
+import { readFileBuffer, readSlice, toConflictMode } from './uploadUtils.mjs'
 
 function dropboxHeaders(token) {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.access_token}` }
@@ -191,4 +197,78 @@ export async function dropboxDelete(token, items) {
     }
   }
   return results
+}
+
+function dropboxUploadPath(parentId, name) {
+  const parent = !parentId || parentId === 'dropbox_root' ? '' : String(parentId)
+  const normalizedParent = parent.startsWith('/') ? parent : parent ? `/${parent}` : ''
+  return `${normalizedParent.replace(/\/+$/g, '')}/${name}`.replace(/\/+/g, '/')
+}
+
+function dropboxCommitInfo(path, conflict) {
+  const mode = toConflictMode(conflict)
+  return {
+    path,
+    mode: mode === 'overwrite' ? 'overwrite' : 'add',
+    autorename: mode === 'auto_rename',
+    mute: false,
+    strict_conflict: false,
+  }
+}
+
+async function dropboxContent(endpoint, arg, body, token) {
+  const resp = await fetch(`${CONTENT_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token.access_token}`,
+      'Dropbox-API-Arg': JSON.stringify(arg),
+      'Content-Type': 'application/octet-stream',
+      'Content-Length': String(body.length),
+    },
+    body,
+  })
+  const text = await resp.text()
+  const data = text ? JSON.parse(text) : {}
+  if (!resp.ok || data?.error_summary) {
+    const err = new Error(data?.error_summary || data?.error_description || `Dropbox upload failed ${resp.status}`)
+    err.code = 'ERR_DROPBOX_UPLOAD'
+    throw err
+  }
+  return data
+}
+
+export async function dropboxUploadFile(token, { parentId = '', localPath, name, size = 0, conflict = 'skip' }) {
+  const path = dropboxUploadPath(parentId, name)
+  if (size <= SMALL_UPLOAD_LIMIT) {
+    const body = await readFileBuffer(localPath)
+    const data = await dropboxContent('/files/upload', dropboxCommitInfo(path, conflict), body, token)
+    return mapFileItem(data, token.user_id)
+  }
+
+  const handle = await open(localPath, 'r')
+  let sessionId = ''
+  let uploaded
+  try {
+    let offset = 0
+    const first = await readSlice(handle, offset, Math.min(SESSION_CHUNK_SIZE, size))
+    const started = await dropboxContent('/files/upload_session/start', { close: false }, first, token)
+    sessionId = started.session_id
+    if (!sessionId) throw new Error('Dropbox upload_session/start returned no session_id')
+    offset += first.length
+    while (offset < size) {
+      const body = await readSlice(handle, offset, Math.min(SESSION_CHUNK_SIZE, size - offset))
+      const isLast = offset + body.length >= size
+      const cursor = { session_id: sessionId, offset }
+      uploaded = await dropboxContent(
+        isLast ? '/files/upload_session/finish' : '/files/upload_session/append_v2',
+        isLast ? { cursor, commit: dropboxCommitInfo(path, conflict) } : { cursor, close: false },
+        body,
+        token
+      )
+      offset += body.length
+    }
+  } finally {
+    await handle.close().catch(() => {})
+  }
+  return mapFileItem(uploaded || { path_display: path, name }, token.user_id)
 }

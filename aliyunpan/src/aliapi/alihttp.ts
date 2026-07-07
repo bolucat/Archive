@@ -7,7 +7,7 @@ import AliUser from './user'
 import message from '../utils/message'
 import DebugLog from '../utils/debuglog'
 import { v4 } from 'uuid'
-import { isBaiduUser, isCloud123User, isDrive115User, isPikPakUser } from './utils'
+import { isNonAliyunProvider } from './utils'
 
 export interface IUrlRespData {
   code: number
@@ -100,7 +100,7 @@ export default class AliHttp {
           // 自动刷新Token
           if (data.code == 'AccessTokenInvalid' || data.code == 'AccessTokenExpired') {
             if (token) {
-              if (isDrive115User(token) || isBaiduUser(token) || isCloud123User(token) || isPikPakUser(token)) {
+              if (isNonAliyunProvider(token)) {
                 return {
                   code: error.response.status || 403,
                   header: JSON.stringify(error.response.headers || {}),
@@ -133,7 +133,7 @@ export default class AliHttp {
             || data.code == 'UserDeviceOffline'
             || data.code == 'DeviceSessionSignatureInvalid') {
             if (token) {
-              if (isDrive115User(token) || isBaiduUser(token) || isCloud123User(token) || isPikPakUser(token)) {
+              if (isNonAliyunProvider(token)) {
                 return {
                   code: error.response.status || 403,
                   header: JSON.stringify(error.response.headers || {}),

@@ -3,6 +3,10 @@ const AUTH_URL = `${BASE}/api/v1/oauth2/access_token`
 const CLIENT_ID = ''
 const CLIENT_SECRET = ''
 
+import { open } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { buildMultipart, hashFile, readSlice } from './uploadUtils.mjs'
+
 function headers(token) {
   return {
     'Content-Type': 'application/json',
@@ -190,4 +194,87 @@ export async function cloud123Trash(token, fileIds) {
     body: JSON.stringify({ fileIDs }),
   })
   return fileIDs.map((fileId) => ({ fileId: String(fileId), status: 'success' }))
+}
+
+function normalizeServer(server) {
+  if (!server) return ''
+  if (server.startsWith('http://') || server.startsWith('https://')) return server
+  return `https://${server}`
+}
+
+async function upload123Slice(server, token, preuploadID, sliceNo, sliceMD5, body) {
+  const form = buildMultipart({ preuploadID, sliceNo: String(sliceNo), sliceMD5 }, {
+    name: 'slice',
+    filename: 'slice',
+    body,
+  })
+  const resp = await fetch(`${normalizeServer(server)}/upload/v2/file/slice`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': `multipart/form-data; boundary=${form.boundary}`,
+      'Content-Length': String(form.body.length),
+      Platform: 'open_platform',
+      Authorization: `Bearer ${token.access_token}`,
+    },
+    body: form.body,
+  })
+  if (!resp.ok) {
+    const err = new Error(`123 upload slice failed ${resp.status}`)
+    err.code = 'ERR_CLOUD123_UPLOAD_SLICE'
+    throw err
+  }
+}
+
+export async function cloud123UploadFile(token, { parentId = '0', localPath, name, size = 0, conflict = 'skip' }) {
+  const { hash: etag } = await hashFile(localPath, 'md5')
+  const duplicate = conflict === 'overwrite' ? 2 : 1
+  const created = await requestJson(`${BASE}/upload/v2/file/create`, token, {
+    method: 'POST',
+    body: JSON.stringify({
+      parentFileID: Number(parentId || 0),
+      filename: name,
+      etag,
+      size,
+      duplicate,
+      containDir: false,
+    }),
+  })
+  const data = created.data || {}
+  if (data.reuse) {
+    return { provider: 'cloud123', accountId: token.user_id, driveId: 'cloud123', fileId: String(data.fileID || data.fileId || ''), parentFileId: String(parentId || '0'), name, type: 'file', size }
+  }
+  const preuploadID = data.preuploadID || ''
+  const sliceSize = Number(data.sliceSize || 0)
+  const servers = Array.isArray(data.servers) ? data.servers : []
+  if (!preuploadID || !sliceSize || servers.length === 0) {
+    const err = new Error('123 upload create returned incomplete upload info')
+    err.code = 'ERR_CLOUD123_UPLOAD_CREATE'
+    throw err
+  }
+  const handle = await open(localPath, 'r')
+  try {
+    let offset = 0
+    let sliceNo = 1
+    while (offset < size) {
+      const body = await readSlice(handle, offset, Math.min(sliceSize, size - offset))
+      const sliceMD5 = createHash('md5').update(body).digest('hex')
+      await upload123Slice(servers[0], token, preuploadID, sliceNo, sliceMD5, body)
+      offset += body.length
+      sliceNo += 1
+    }
+  } finally {
+    await handle.close().catch(() => {})
+  }
+
+  let completed = null
+  for (let i = 0; i < 30; i++) {
+    completed = await requestJson(`${BASE}/upload/v2/file/upload_complete`, token, {
+      method: 'POST',
+      body: JSON.stringify({ preuploadID }),
+    })
+    if (completed?.data?.completed) break
+    await new Promise((resolve) => setTimeout(resolve, 1000))
+  }
+  const fileID = completed?.data?.fileID || data.fileID || data.fileId
+  return { provider: 'cloud123', accountId: token.user_id, driveId: 'cloud123', fileId: String(fileID || ''), parentFileId: String(parentId || '0'), name, type: 'file', size }
 }

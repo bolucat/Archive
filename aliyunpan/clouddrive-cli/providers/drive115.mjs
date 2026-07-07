@@ -1,7 +1,13 @@
 const BASE = 'https://proapi.115.com/open'
+const UPLOAD_BASE = 'https://proapi.115.com'
 const REFRESH_URL = 'https://passportapi.115.com/open/refreshToken'
 const CLIENT_ID = ''
 const CLIENT_SECRET = ''
+
+import { open } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { hashFile, readSlice } from './uploadUtils.mjs'
+import { ossCompleteMultipart, ossInitiateMultipart, ossUploadPart } from './ossUpload.mjs'
 
 function drive115Headers(token) {
   return { 'Authorization': `Bearer ${token.access_token}` }
@@ -196,4 +202,99 @@ export async function drive115Trash(token, fileIds) {
   fileIds.forEach((id, i) => { formBody[`fid[${i}]`] = String(id) })
   await drive115Post(`${BASE}/ufile/delete`, formBody, token)
   return fileIds.map((fileId) => ({ fileId, status: 'success' }))
+}
+
+function build115Target(parentId) {
+  const id = parentId === undefined || parentId === null || parentId === '' ? 0 : Number(parentId)
+  return `U_1_${Number.isFinite(id) ? id : 0}`
+}
+
+async function drive115UploadInit(token, fields) {
+  const data = await drive115Post(`${UPLOAD_BASE}/open/upload/init`, fields, token)
+  return data.data || data
+}
+
+async function drive115UploadToken(token) {
+  const data = await drive115Get(`${UPLOAD_BASE}/open/upload/get_token`, token)
+  const list = Array.isArray(data.data) ? data.data : []
+  return list[0] || null
+}
+
+async function sha1Range(localPath, start, end) {
+  const handle = await open(localPath, 'r')
+  try {
+    return createHash('sha1').update(await readSlice(handle, start, end - start + 1)).digest('hex')
+  } finally {
+    await handle.close().catch(() => {})
+  }
+}
+
+export async function drive115UploadFile(token, { parentId = '0', localPath, name, size = 0 }) {
+  const { hash: fileSha1, firstSlice: preSha1 } = await hashFile(localPath, 'sha1', { firstSliceSize: 128 * 1024 })
+  const target = build115Target(parentId)
+  let init = await drive115UploadInit(token, {
+    file_name: name,
+    file_size: String(size),
+    target,
+    fileid: fileSha1,
+    preid: preSha1,
+    topupload: '0',
+  })
+  if (init.sign_key && init.sign_check) {
+    const [start, end] = String(init.sign_check).split('-').map((value) => Number(value))
+    const signVal = Number.isFinite(start) && Number.isFinite(end) ? (await sha1Range(localPath, start, end)).toUpperCase() : ''
+    init = await drive115UploadInit(token, {
+      file_name: name,
+      file_size: String(size),
+      target,
+      fileid: fileSha1,
+      preid: preSha1,
+      topupload: '0',
+      sign_key: init.sign_key,
+      sign_val: signVal,
+    })
+  }
+  if (Number(init.status) === 2) {
+    return { provider: '115', accountId: token.user_id, driveId: '115', fileId: String(init.file_id || ''), parentFileId: String(parentId || '0'), name, type: 'file', size, rapid: true }
+  }
+  if (!init.bucket || !init.object || !init.pick_code) {
+    const err = new Error('115 upload init returned incomplete upload info')
+    err.code = 'ERR_115_UPLOAD_INIT'
+    throw err
+  }
+  const ossToken = await drive115UploadToken(token)
+  if (!ossToken?.endpoint || !ossToken.AccessKeyId || !ossToken.AccessKeySecrett || !ossToken.SecurityToken) {
+    const err = new Error('115 upload token is incomplete')
+    err.code = 'ERR_115_UPLOAD_TOKEN'
+    throw err
+  }
+  const cred = {
+    endpoint: ossToken.endpoint,
+    accessKeyId: ossToken.AccessKeyId,
+    accessKeySecret: ossToken.AccessKeySecrett,
+    securityToken: ossToken.SecurityToken,
+  }
+  const initOss = await ossInitiateMultipart(cred, init.bucket, init.object, { callback: init.callback, callback_var: init.callback_var })
+  if (initOss.status !== 200) throw new Error(`115 OSS initiate failed ${initOss.status}`)
+  const uploadId = initOss.body.match(/<UploadId>(.+)<\/UploadId>/i)?.[1]
+  if (!uploadId) throw new Error('115 OSS initiate returned no UploadId')
+  const handle = await open(localPath, 'r')
+  const parts = []
+  try {
+    let offset = 0
+    let partNumber = 1
+    while (offset < size) {
+      const body = await readSlice(handle, offset, Math.min(8 * 1024 * 1024, size - offset))
+      const uploaded = await ossUploadPart(cred, init.bucket, init.object, uploadId, partNumber, body)
+      if (uploaded.status !== 200 || !uploaded.etag) throw new Error(`115 OSS part failed ${uploaded.status}`)
+      parts.push({ partNumber, etag: uploaded.etag.replace(/"/g, '') })
+      offset += body.length
+      partNumber += 1
+    }
+  } finally {
+    await handle.close().catch(() => {})
+  }
+  const complete = await ossCompleteMultipart(cred, init.bucket, init.object, uploadId, parts, { callback: init.callback, callback_var: init.callback_var })
+  if (complete.status !== 200) throw new Error(`115 OSS complete failed ${complete.status}`)
+  return { provider: '115', accountId: token.user_id, driveId: '115', fileId: String(init.file_id || init.pick_code || ''), parentFileId: String(parentId || '0'), name, type: 'file', size }
 }

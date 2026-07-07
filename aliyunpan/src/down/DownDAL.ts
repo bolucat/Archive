@@ -21,6 +21,7 @@ import { DecodeEncName } from '../aliapi/utils'
 import { getEncType } from '../utils/proxyhelper'
 import { SHA256 } from 'crypto-js'
 import { shouldRemoveAriaStoppedResult } from '../utils/aria2Rpc'
+import { resolveAriaProgressErrorState } from './integration/downloadProgressState'
 
 export interface IStateDownFile {
   DownID: string
@@ -71,6 +72,15 @@ export interface IStateDownInfo {
 
   localFilePath?: string
   downloadHeaders?: Record<string, string>
+  externalHeaders?: string[]
+  referer?: string
+  userAgent?: string
+  allProxy?: string
+  sourceType?: 'url' | 'magnet' | 'torrent' | 'torrent-url'
+  torrentBase64?: string
+  torrentUrl?: string
+  selectFile?: string
+  split?: number
   offlineProvider?: 'cloud123' | 'pikpak'
   offlineTaskId?: string
   offlineDirId?: string
@@ -174,7 +184,7 @@ export default class DownDAL {
 
     let cPid = ''
     let cPath = ''
-    const ariaRemote = settingStore.downUseAria2c && settingStore.ariaState == 'remote'
+    const ariaRemote = settingStore.ariaState == 'remote'
     const sep = settingStore.ariaSavePath.indexOf('/') >= 0 ? '/' : '\\'
     for (let f = 0; f < fileList.length; f++) {
       const file = fileList[f]
@@ -260,7 +270,7 @@ export default class DownDAL {
   }) {
     const settingStore = useSettingStore()
     const name = ClearFileName(params.fileName || 'media')
-    const ariaRemote = settingStore.downUseAria2c && settingStore.ariaState == 'remote'
+    const ariaRemote = settingStore.ariaState == 'remote'
     let fullPath = params.savePath
     if (fullPath.endsWith('/') || fullPath.endsWith('\\')) fullPath = fullPath.substr(0, fullPath.length - 1)
     if (ariaRemote) {
@@ -305,6 +315,98 @@ export default class DownDAL {
       }
     }
     useDowningStore().mAddDownload({ downlist: [downitem] })
+  }
+
+  static aAddExternalDownload(params: {
+    source: string
+    sourceType: 'url' | 'magnet' | 'torrent' | 'torrent-url'
+    savePath: string
+    fileName?: string
+    torrentBase64?: string
+    selectFile?: string
+    split?: number
+    userAgent?: string
+    authorization?: string
+    referer?: string
+    cookie?: string
+    allProxy?: string
+  }) {
+    const settingStore = useSettingStore()
+    const userID = useUserStore().user_id || 'external'
+    const ariaRemote = settingStore.ariaState == 'remote'
+    let fullPath = params.savePath || (ariaRemote ? settingStore.ariaSavePath : settingStore.downSavePath)
+    if (!fullPath) return { success: false, message: '请先选择保存目录' }
+    if (fullPath.endsWith('/') || fullPath.endsWith('\\')) fullPath = fullPath.substr(0, fullPath.length - 1)
+
+    if (ariaRemote) {
+      const sep = settingStore.ariaSavePath.indexOf('/') >= 0 ? '/' : '\\'
+      fullPath = sep == '/' ? fullPath.replace(/\\/g, '/') : fullPath.replace(/\//g, '\\')
+    }
+
+    const source = params.source.trim()
+    const inferredName = (() => {
+      if (params.fileName?.trim()) return params.fileName.trim()
+      if (params.sourceType === 'magnet') return 'BT 磁力任务'
+      if (params.sourceType === 'torrent') return 'BT 种子任务'
+      try {
+        const url = new URL(source)
+        const name = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '')
+        return name || (params.sourceType === 'torrent-url' ? 'BT 种子任务' : 'URL 下载任务')
+      } catch {
+        return params.sourceType === 'torrent-url' ? 'BT 种子任务' : 'URL 下载任务'
+      }
+    })()
+    const name = ClearFileName(inferredName)
+    const gid = buildUrlTaskGid(`${params.sourceType}|${source}|${params.torrentBase64 || ''}|${params.selectFile || ''}`)
+    const downitem: IStateDownFile = {
+      DownID: `${userID}|external|${gid}`,
+      Info: {
+        GID: gid,
+        user_id: userID,
+        DownSavePath: fullPath,
+        ariaRemote,
+        file_id: gid,
+        drive_id: 'external',
+        name,
+        size: 0,
+        sizestr: '',
+        isDir: false,
+        icon: params.sourceType === 'url' ? 'iconcloud-download' : 'iconfile-bt',
+        encType: '',
+        sha1: '',
+        crc64: '',
+        externalHeaders: [
+          params.authorization ? `Authorization: ${params.authorization}` : '',
+          params.cookie ? `Cookie: ${params.cookie}` : ''
+        ].filter(Boolean),
+        referer: params.referer,
+        userAgent: params.userAgent,
+        allProxy: params.allProxy,
+        sourceType: params.sourceType,
+        torrentBase64: params.torrentBase64,
+        torrentUrl: params.sourceType === 'torrent-url' ? source : undefined,
+        selectFile: params.selectFile,
+        split: params.split
+      },
+      Down: {
+        DownState: '队列中',
+        DownTime: Date.now(),
+        DownSize: 0,
+        DownSpeed: 0,
+        DownSpeedStr: '',
+        DownProcess: 0,
+        IsStop: false,
+        IsDowning: false,
+        IsCompleted: false,
+        IsFailed: false,
+        FailedCode: 0,
+        FailedMessage: '',
+        AutoTry: 0,
+        DownUrl: source
+      }
+    }
+    useDowningStore().mAddDownload({ downlist: [downitem] })
+    return { success: true, message: '' }
   }
 
   /**
@@ -377,7 +479,7 @@ export default class DownDAL {
     const downingStore = useDowningStore()
     const settingStore = useSettingStore()
     const DowningList: IStateDownFile[] = downingStore.ListDataRaw
-    const ariaRemote = settingStore.downUseAria2c && !settingStore.AriaIsLocal
+    const ariaRemote = !settingStore.AriaIsLocal
 
     const dellist: string[] = []
     const saveList: IStateDownFile[] = []
@@ -401,12 +503,14 @@ export default class DownDAL {
         Down.DownProcess = Math.floor((Down.DownSize * 100) / (totalLengthInt + 1)) % 100
         Down.IsCompleted = isComplete
         Down.IsDowning = isDowning
-        Down.IsFailed = isError
-        Down.IsStop = isStop
-        if (errorCode && errorCode !== '0') {
-          Down.FailedCode = parseInt(errorCode) || 0
-          Down.FailedMessage = FormatAriaError(errorCode, errorMessage)
+        const errorState = resolveAriaProgressErrorState({ status, errorCode, errorMessage }, FormatAriaError)
+        Down.IsFailed = errorState.isFailed
+        // 保护 '队列中' 状态不被 Aria2 'paused' 覆盖（用户刚点开始，aria2.unpause 尚未生效）
+        if (Down.DownState !== '队列中') {
+          Down.IsStop = isStop
         }
+        Down.FailedCode = errorState.failedCode
+        Down.FailedMessage = errorState.failedMessage
         if (isComplete) {
           downingStore.mUpdateDownState(downingItem, 'valid')
           const check = AriaHashFile(downingItem)
@@ -415,16 +519,14 @@ export default class DownDAL {
               sound.play()
             }
             downingStore.mUpdateDownState(downingItem, 'downed')
+            window.WebToElectron?.({ cmd: 'downloadCompleted', fileName: Info.name })
           } else {
             downingStore.mUpdateDownState(downingItem, 'error', '移动文件失败，请重新下载')
           }
-        } else if (isStop) {
+        } else if (isStop && Down.DownState !== '队列中') {
           downingStore.mUpdateDownState(downingItem, 'stop')
           if (shouldRemoveAriaStoppedResult(status)) dellist.push(gid)
         } else if (isError) {
-          if (!Down.FailedMessage) {
-            Down.FailedMessage = '下载失败'
-          }
           downingStore.mUpdateDownState(downingItem, 'error', Down.FailedMessage)
           if (shouldRemoveAriaStoppedResult(status)) dellist.push(gid)
         } else if (isDowning) {
@@ -454,6 +556,13 @@ export default class DownDAL {
       AriaDeleteList(dellist).then()
     }
     useFootStore().mSaveDownTotalSpeedInfo(hasSpeed && humanSizeSpeed(hasSpeed) || '')
+
+    const totalCount = DowningList.filter((d) => !d.Down.IsCompleted).length
+    const activeCount = DowningList.filter((d) => d.Down.IsDowning && !d.Down.IsCompleted).length
+    const totalBytes = DowningList.reduce((s, d) => s + (parseInt(String(d.Info.size)) || 0), 0)
+    const doneBytes = DowningList.reduce((s, d) => s + (d.Down.DownSize || 0), 0)
+    const overallProgress = totalBytes > 0 ? doneBytes / totalBytes : -1
+    window.WebToElectron?.({ cmd: 'downloadProgress', progress: overallProgress, activeCount, totalCount })
   }
 
   static async deleteDowning(isAll: boolean, deleteList: IStateDownFile[], gidList: string[]) {

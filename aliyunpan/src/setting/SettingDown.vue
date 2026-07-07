@@ -36,18 +36,14 @@ const handleSelectDownSavePath = () => {
   <div class='settingcard'>
     <div class='settinghead'>下载引擎</div>
     <div class='settingrow'>
-      <MySwitch :value='settingStore.downUseAria2c'
-                @update:value='cb({ downUseAria2c: $event })'>
-        使用 aria2c 下载模块
-      </MySwitch>
+      <span>使用 aria2c 下载模块</span>
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>开启（使用 aria2c）</span>
+            当前：<span class='opred'>固定使用 aria2c</span>
             <hr />
-            开启：使用内置 aria2c 模块下载（稳定）<br /><br />
-            关闭：使用新版原生下载器（实验性）
+            下载任务统一走 Download aria2 引擎，原生下载器实验分支已停用。
           </div>
         </template>
       </a-popover>
@@ -143,6 +139,30 @@ const handleSelectDownSavePath = () => {
             <hr />
             下载线程太多，时间久了账号容易被限速<br /><br />
             请设置为可以跑满 你的宽带的 最小值
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div class='settingspace'></div>
+    <div class='settinghead'>每服务器最大连接数 <span style="font-weight:400;color:var(--color-text-3);font-size:12px">Max Connection Per Server</span></div>
+    <div class='settingrow'>
+      <a-input-number
+        tabindex='-1' :style="{ width: '252px' }"
+        mode='button'
+        :min='1' :max='64' :step='1'
+        :model-value='settingStore.ariaMaxConnectionPerServer'
+        @update:model-value='cb({ ariaMaxConnectionPerServer: $event })'>
+        <template #prefix> 每服务器</template>
+        <template #suffix> 个连接</template>
+      </a-input-number>
+      <a-popover position='right'>
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class='opred'>16</span>
+            <hr />
+            控制 aria2 对单个服务器打开的最大连接数<br />
+            增大可提高单文件下载速度，但过度增加可能被限速
           </div>
         </template>
       </a-popover>

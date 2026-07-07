@@ -155,7 +155,7 @@ describe('generateMediaRenamePlan - plan metadata', () => {
   })
 })
 
-describe('media rename-plan CLI command', () => {
+describe('removed media plan CLI commands', () => {
   let tmpDir: string
 
   beforeEach(async () => {
@@ -166,54 +166,16 @@ describe('media rename-plan CLI command', () => {
     await rm(tmpDir, { recursive: true, force: true })
   })
 
-  it('generates a rename plan JSON from --input file', async () => {
-    const items = [
-      { file_id: 'f1', parent_file_id: 'p1', drive_id: 'd1', type: 'file', name: 'The.Dark.Knight.2008.BluRay.mkv' },
-      { file_id: 'f2', parent_file_id: 'p1', drive_id: 'd1', type: 'file', name: 'Inception.2010.1080p.mkv' },
-    ]
-    const inputPath = join(tmpDir, 'files.json')
-    await writeFile(inputPath, JSON.stringify(items), 'utf8')
-
-    const result = await runBoxPlayerCli(
-      ['media', 'rename-plan', '--input', inputPath, '--provider', 'aliyun', '--account', 'acc1', '--json'],
-      { configDir: tmpDir }
-    )
-
-    expect(result.exitCode).toBe(0)
-    const plan = JSON.parse(result.stdout)
-    expect(plan.version).toBe(1)
-    expect(plan.operation).toBe('rename')
-    expect(plan.items.length).toBeGreaterThan(0)
-    const darkKnight = plan.items.find((i: { old_name: string }) => i.old_name.includes('Dark.Knight'))
-    expect(darkKnight.new_name).toBe('The Dark Knight (2008).mkv')
-  })
-
-  it('writes output file when --output is specified', async () => {
-    const items = [
-      { file_id: 'f1', parent_file_id: 'p1', drive_id: 'd1', type: 'file', name: 'Dune.2021.2160p.mkv' },
-    ]
-    const inputPath = join(tmpDir, 'files.json')
-    const outputPath = join(tmpDir, 'plan.json')
-    await writeFile(inputPath, JSON.stringify(items), 'utf8')
-
-    const result = await runBoxPlayerCli(
-      ['media', 'rename-plan', '--input', inputPath, '--output', outputPath, '--json'],
-      { configDir: tmpDir }
-    )
-
-    expect(result.exitCode).toBe(0)
-    const { readFile: rf } = await import('node:fs/promises')
-    const written = JSON.parse(await rf(outputPath, 'utf8'))
-    expect(written.items[0].new_name).toBe('Dune (2021).mkv')
-  })
-
-  it('returns error when --input is missing', async () => {
-    const result = await runBoxPlayerCli(
-      ['media', 'rename-plan'],
-      { configDir: tmpDir }
-    )
+  it('rejects media rename-plan', async () => {
+    const result = await runBoxPlayerCli(['media', 'rename-plan'], { configDir: tmpDir })
     expect(result.exitCode).toBe(1)
-    expect(result.stderr).toMatch(/--input/)
+    expect(result.stderr).toMatch(/Unknown media command: rename-plan/)
+  })
+
+  it('rejects media organize-plan', async () => {
+    const result = await runBoxPlayerCli(['media', 'organize-plan'], { configDir: tmpDir })
+    expect(result.exitCode).toBe(1)
+    expect(result.stderr).toMatch(/Unknown media command: organize-plan/)
   })
 
   it('returns error for unknown media subcommand', async () => {
@@ -408,27 +370,6 @@ describe('media scan / match / organize-plan CLI commands', () => {
     expect(matches).toHaveLength(1)
     expect(matches[0].match.type).toBe('movie')
     expect(matches[0].match.jellyfin_name).toBe('The Dark Knight (2008).mkv')
-  })
-
-  it('media organize-plan writes output file', async () => {
-    const items = [
-      { file_id: 'f1', parent_file_id: 'p', drive_id: 'd', type: 'file', name: 'Inception.2010.1080p.mkv' },
-    ]
-    const inputPath = join(tmpDir, 'files.json')
-    const outputPath = join(tmpDir, 'organize-plan.json')
-    await writeFile(inputPath, JSON.stringify(items), 'utf8')
-
-    const result = await runBoxPlayerCli(
-      ['media', 'organize-plan', '--input', inputPath, '--output', outputPath, '--provider', 'aliyun', '--account', 'acc1'],
-      { configDir: tmpDir }
-    )
-
-    expect(result.exitCode).toBe(0)
-    const { readFile } = await import('node:fs/promises')
-    const plan = JSON.parse(await readFile(outputPath, 'utf8'))
-    expect(plan.operation).toBe('organize')
-    expect(plan.mkdirs.length).toBeGreaterThan(0)
-    expect(plan.moves.length).toBeGreaterThan(0)
   })
 
   it('media scan returns error when --input is missing', async () => {

@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createAuthStore } from '../core/authStore.mjs'
 import { createOperationLogStore, createUndoRenamePlan } from '../core/operationLog.mjs'
-import { generateMediaRenamePlan } from '../media/mediaRenamePlanner.mjs'
 import { runBoxPlayerCli } from '../core/commands.mjs'
+import { listCommands } from '../core/commandManifest.mjs'
+import { commandToToolName } from '../core/mcpToolSchema.mjs'
 
 async function sendMcpRequest(method: string, params?: unknown, id = 1) {
   const { runMcpServer } = await import('../core/mcpServer.mjs')
@@ -51,29 +52,17 @@ describe('MCP server - protocol', () => {
     expect(res?.result?.capabilities?.tools).toBeDefined()
   })
 
-  it('tools/list returns all 18 tools', async () => {
+  it('tools/list is generated from the command manifest', async () => {
     const res = await sendMcpRequest('tools/list')
     const tools: any[] = res?.result?.tools || []
-    expect(tools.length).toBe(18)
+    const expectedNames = listCommands().map((command) => commandToToolName(command.command))
+    expect(tools.length).toBe(expectedNames.length)
     const names = tools.map((t: any) => t.name)
-    expect(names).toContain('files_list')
-    expect(names).toContain('files_walk')
-    expect(names).toContain('files_search')
-    expect(names).toContain('files_tree')
-    expect(names).toContain('files_stats')
-    expect(names).toContain('files_info')
-    expect(names).toContain('files_mkdir')
-    expect(names).toContain('files_move_apply')
-    expect(names).toContain('files_trash_apply')
-    expect(names).toContain('media_rename_plan')
-    expect(names).toContain('media_scan')
-    expect(names).toContain('media_match')
-    expect(names).toContain('media_organize_plan')
-    expect(names).toContain('files_rename_apply')
-    expect(names).toContain('ops_list')
-    expect(names).toContain('ops_show')
-    expect(names).toContain('ops_undo')
-    expect(names).toContain('auth_list')
+    expect(names).toEqual(expectedNames)
+    expect(names).toContain('settings_show')
+    expect(names).toContain('docs_read')
+    expect(names).toContain('upload_plan')
+    expect(names).toContain('organize_apply')
   })
 
   it('unknown method returns -32601', async () => {
@@ -105,6 +94,12 @@ describe('MCP server - tools/call auth_list', () => {
     const accounts = JSON.parse(result.stdout)
     expect(accounts).toHaveLength(1)
     expect(accounts[0].accountId).toBe('u1')
+  })
+
+  it('tools/call auth_list runs through MCP', async () => {
+    const res = await sendMcpRequest('tools/call', { name: 'auth_list', arguments: {} })
+    const text = res?.result?.content?.[0]?.text
+    expect(JSON.parse(text)).toEqual([])
   })
 })
 
@@ -146,18 +141,12 @@ describe('MCP server - tools/call ops_list and ops_undo plan', () => {
   })
 })
 
-describe('MCP server - media_rename_plan tool', () => {
-  it('generates rename plan from items array', () => {
-    const items = [
-      { file_id: 'f1', parent_file_id: 'p1', drive_id: 'd1', type: 'file' as const,
-        name: 'The.Dark.Knight.2008.BluRay.mkv' },
-      { file_id: 'f2', parent_file_id: 'p1', drive_id: 'd1', type: 'file' as const,
-        name: 'Breaking.Bad.S03E07.mkv' },
-    ]
-    const plan = generateMediaRenamePlan({ provider: 'aliyun', accountId: 'u1', items })
-    expect(plan.items).toHaveLength(2)
-    expect(plan.items.find((i) => i.old_name.includes('Dark.Knight'))?.new_name).toBe('The Dark Knight (2008).mkv')
-    expect(plan.items.find((i) => i.old_name.includes('Breaking'))?.new_name).toBe('Breaking Bad - S03E07.mkv')
+describe('MCP server - removed media plan tools', () => {
+  it('does not expose media_rename_plan or media_organize_plan', async () => {
+    const mod = await import('../core/mcpServer.mjs') as any
+    const toolNames = (mod.TOOLS || []).map((tool: { name: string }) => tool.name)
+    expect(toolNames).not.toContain('media_rename_plan')
+    expect(toolNames).not.toContain('media_organize_plan')
   })
 })
 
@@ -172,13 +161,45 @@ describe('MCP server - JSON schema validation', () => {
     }
   })
 
-  it('files_list and media_scan tools have correct required fields', async () => {
+  it('required fields are derived from manifest args and options', async () => {
     const mod = await import('../core/mcpServer.mjs') as any
     const TOOLS: any[] = mod.TOOLS || []
     const filesList = TOOLS.find((t: any) => t.name === 'files_list')
     expect(filesList).toBeDefined()
+    expect(filesList.inputSchema.properties.file_id).toBeDefined()
+    expect(filesList.inputSchema.properties.path).toBeUndefined()
+    expect(filesList.inputSchema.properties.limit).toBeDefined()
+    expect(filesList.inputSchema.properties.cursor).toBeDefined()
     const mediaScan = TOOLS.find((t: any) => t.name === 'media_scan')
     expect(mediaScan).toBeDefined()
-    expect(mediaScan.inputSchema.required).toContain('items')
+    const docsRead = TOOLS.find((t: any) => t.name === 'docs_read')
+    expect(docsRead.inputSchema.required).toContain('path')
+    expect(docsRead.inputSchema.properties.pdf_format).toBeDefined()
+    expect(docsRead.inputSchema.properties.pdf_pages).toBeDefined()
+    const docsConvert = TOOLS.find((t: any) => t.name === 'docs_convert')
+    expect(docsConvert.inputSchema.required).toContain('path')
+    expect(docsConvert.inputSchema.properties.output).toBeDefined()
+    expect(docsConvert.inputSchema.properties.pdf_content_safety_off).toBeDefined()
+    expect(docsConvert.inputSchema.properties.pdf_hybrid_hancom_ai_ocr_strategy).toBeDefined()
+    expect(docsConvert.inputSchema.properties.pdf_threads).toBeDefined()
+    expect(mediaScan.inputSchema.required).toContain('input')
+    const filesInfo = TOOLS.find((t: any) => t.name === 'files_info')
+    expect(filesInfo.inputSchema.required).toContain('file_id')
+  })
+
+  it('exposes agent contract metadata from the manifest', async () => {
+    const mod = await import('../core/mcpServer.mjs') as any
+    const TOOLS: any[] = mod.TOOLS || []
+    const uploadApply = TOOLS.find((t: any) => t.name === 'upload_apply')
+    expect(uploadApply._meta).toMatchObject({
+      largeOutput: false,
+      safety: { dryRunRequired: true, destructive: false },
+      providerRequirements: { capability: 'uploadFile' },
+    })
+    expect(uploadApply._meta.examples[0]).toContain('clouddrive-cli upload apply')
+    expect(uploadApply.inputSchema.properties.rationale).toBeDefined()
+    const filesWalk = TOOLS.find((t: any) => t.name === 'files_walk')
+    expect(filesWalk._meta.largeOutput).toBe(true)
+    expect(filesWalk.inputSchema.properties.output).toBeDefined()
   })
 })

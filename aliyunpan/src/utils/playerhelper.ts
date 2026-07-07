@@ -18,13 +18,14 @@ import { IPageVideo } from '../store/appstore'
 import { Input, InputNumber, Modal } from '@arco-design/web-vue'
 import { h } from 'vue'
 import path from 'path'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { apiDrive115FileDetailResult } from '../cloud115/filecmd'
 import { apiDrive115VideoHistory } from '../cloud115/video'
 import { apiDrive115FileList, mapDrive115DetailToAliModel, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
+import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
@@ -181,6 +182,7 @@ const PlayerUtils = {
     if (isCloud123User(user_id) || drive_id === 'cloud123') return undefined
     if (isBaiduUser(user_id) || drive_id === 'baidu') return undefined
     if (isPikPakUser(user_id) || drive_id === 'pikpak') return undefined
+    if (isQuarkUser(user_id) || drive_id === 'quark') return undefined
     if (isDropboxUser(user_id) || drive_id === 'dropbox') return undefined
     if (isOneDriveUser(user_id) || drive_id === 'onedrive') return undefined
     if (isBoxUser(user_id) || drive_id === 'box') return undefined
@@ -245,6 +247,10 @@ const PlayerUtils = {
       const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'pikpak_root'
       const list = await apiPikPakFileList(user_id, parentId, 500)
       items = list.items.map(item => mapPikPakFileToAliModel(item, drive_id, parentId))
+    } else if (isQuarkUser(user_id) || drive_id === 'quark') {
+      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : '0'
+      const list = await apiQuarkFileList(user_id, parentId, 500)
+      items = list.items.map(item => mapQuarkFileToAliModel(item, drive_id, parentId))
     } else if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'dropbox_root'
       const list = await apiDropboxFileList(user_id, parentId, 500)
@@ -397,7 +403,7 @@ const PlayerUtils = {
           currentFileInfo = playList[status.value]
           // 自动标记
           const { drive_id, file_id, description } = currentFileInfo
-          if (uiAutoColorVideo && !isPikPakUser(token) && !isDropboxUser(token) && !isOneDriveUser(token) && !isBoxUser(token) && drive_id !== 'pikpak' && drive_id !== 'dropbox' && drive_id !== 'onedrive' && drive_id !== 'box' && (!description || !description.includes('ce74c3c'))) {
+          if (uiAutoColorVideo && !isPikPakUser(token) && !isQuarkUser(token) && !isDropboxUser(token) && !isOneDriveUser(token) && !isBoxUser(token) && drive_id !== 'pikpak' && drive_id !== 'quark' && drive_id !== 'dropbox' && drive_id !== 'onedrive' && drive_id !== 'box' && (!description || !description.includes('ce74c3c'))) {
             AliFileCmd.ApiFileColorBatch(token.user_id, drive_id, description, 'ce74c3c', [file_id])
           }
         }

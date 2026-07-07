@@ -73,7 +73,7 @@ import { MediaScanner } from '../utils/mediaScanner'
 import UserDAL from '../user/userdal'
 import message from '../utils/message'
 import type { MediaLibraryFolder } from '../types/media'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import AliDirFileList from '../aliapi/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
@@ -163,6 +163,7 @@ const resolveFolderRuntimeContext = async (folder: MediaLibraryFolder): Promise<
     if (folder.driveId === 'drive115' || folder.driveServerId === 'drive115') return isDrive115User(token)
     if (folder.driveId === 'baidu' || folder.driveServerId === 'baidu') return isBaiduUser(token)
     if (folder.driveId === 'pikpak' || folder.driveServerId === 'pikpak') return isPikPakUser(token)
+    if (folder.driveId === 'quark' || folder.driveServerId === 'quark') return isQuarkUser(token)
     if (folder.driveId === 'dropbox' || folder.driveServerId === 'dropbox') return isDropboxUser(token)
     if (folder.driveId === 'onedrive' || folder.driveServerId === 'onedrive') return isOneDriveUser(token)
     if (folder.driveId === 'box' || folder.driveServerId === 'box') return isBoxUser(token)
@@ -284,6 +285,12 @@ const loadFolderContent = async (folder: MediaLibraryFolder) => {
       const { items: list } = await apiPikPakFileList(userId, parentId, 100)
       items = list.map((item) => { const mapped = mapPikPakFileToAliModel(item, driveId, parentId); (mapped as any).user_id = userId; return mapped })
       console.log('使用PikPak API获取文件列表')
+    } else if (isQuarkUser(userId) || driveId === 'quark') {
+      const { apiQuarkFileList, mapQuarkFileToAliModel } = await import('../quark/dirfilelist')
+      const parentId = fileId === 'quark_root' ? '0' : fileId
+      const { items: list } = await apiQuarkFileList(userId, parentId, 200)
+      items = list.map((item) => { const mapped = mapQuarkFileToAliModel(item, driveId, fileId); (mapped as any).user_id = userId; return mapped })
+      console.log('使用夸克网盘 API获取文件列表')
     } else if (isDropboxUser(userId) || driveId === 'dropbox') {
       const { apiDropboxFileList, mapDropboxFileToAliModel } = await import('../dropbox/dirfilelist')
       const parentId = fileId === 'dropbox_root' ? 'dropbox_root' : fileId

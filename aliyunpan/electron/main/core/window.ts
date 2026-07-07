@@ -11,6 +11,7 @@ export const AppWindow: {
   mainWindow: BrowserWindow | undefined
   uploadWindow: BrowserWindow | undefined
   downloadWindow: BrowserWindow | undefined
+  readerWindow: BrowserWindow | undefined
   appTray: Tray | undefined
   winWidth: number
   winHeight: number
@@ -19,6 +20,7 @@ export const AppWindow: {
   mainWindow: undefined,
   uploadWindow: undefined,
   downloadWindow: undefined,
+  readerWindow: undefined,
   appTray: undefined,
   winWidth: 0,
   winHeight: 0,
@@ -376,6 +378,28 @@ function handleWinCmd(win: BrowserWindow) {
       } else {
         event.returnValue = 'missing'
       }
+    } else if (data.cmd && data.cmd === 'fullscreen') {
+      if (currentWin && !currentWin.isDestroyed()) {
+        const isFullScreen = currentWin.isFullScreen()
+        currentWin.setFullScreen(!isFullScreen)
+        event.returnValue = isFullScreen ? 'unfullscreen' : 'fullscreen'
+      } else {
+        event.returnValue = 'missing'
+      }
+    } else if (data.cmd && data.cmd === 'enterfullscreen') {
+      if (currentWin && !currentWin.isDestroyed()) {
+        if (!currentWin.isFullScreen()) currentWin.setFullScreen(true)
+        event.returnValue = 'fullscreen'
+      } else {
+        event.returnValue = 'missing'
+      }
+    } else if (data.cmd && data.cmd === 'exitfullscreen') {
+      if (currentWin && !currentWin.isDestroyed()) {
+        if (currentWin.isFullScreen()) currentWin.setFullScreen(false)
+        event.returnValue = 'unfullscreen'
+      } else {
+        event.returnValue = 'missing'
+      }
     } else {
       event.returnValue = 'unknown'
     }
@@ -450,4 +474,73 @@ function createDownload() {
 
   AppWindow.downloadWindow.webContents.closeDevTools()
   AppWindow.downloadWindow.hide()
+}
+
+export function createReaderWindow(bookData: any) {
+  if (AppWindow.readerWindow && !AppWindow.readerWindow.isDestroyed()) {
+    AppWindow.readerWindow.focus()
+    AppWindow.readerWindow.webContents.send('setPage', { page: 'PageBookReader', data: bookData })
+    return
+  }
+
+  const display = screen.getPrimaryDisplay()
+  const { width: screenWidth, height: screenHeight } = display.workAreaSize
+  const winWidth = Math.min(Math.round(screenWidth * 0.75), 1200)
+  const winHeight = Math.min(Math.round(screenHeight * 0.85), 900)
+
+  AppWindow.readerWindow = new BrowserWindow({
+    show: false,
+    width: winWidth,
+    height: winHeight,
+    minWidth: 680,
+    minHeight: 500,
+    center: true,
+    icon: getStaticPath('icon_256x256.ico'),
+    useContentSize: true,
+    frame: false,
+    transparent: false,
+    title: 'BoxPlayer 阅读器',
+    backgroundColor: '#1a1a1a',
+    webPreferences: {
+      spellcheck: false,
+      devTools: true,
+      webviewTag: true,
+      nodeIntegration: true,
+      nodeIntegrationInWorker: true,
+      sandbox: false,
+      webSecurity: false,
+      allowRunningInsecureContent: true,
+      contextIsolation: false,
+      backgroundThrottling: false,
+      enableWebSQL: true,
+      disableBlinkFeatures: 'OutOfBlinkCors,SameSiteByDefaultCookies,CookiesWithoutSameSiteMustBeSecure',
+      preload: getAsarPath('dist/electron/preload/index.js')
+    }
+  })
+
+  AppWindow.readerWindow.removeMenu()
+
+  if (DEBUGGING) {
+    AppWindow.readerWindow.loadURL(process.env.VITE_DEV_SERVER_URL!, { userAgent: ua, httpReferrer: Referer })
+  } else {
+    AppWindow.readerWindow.loadURL('file://' + getAsarPath('dist/main.html'), { userAgent: ua, httpReferrer: Referer })
+  }
+
+  AppWindow.readerWindow.on('ready-to-show', () => {
+    AppWindow.readerWindow!.webContents.send('setPage', { page: 'PageBookReader', data: bookData })
+    AppWindow.readerWindow!.show()
+  })
+
+  AppWindow.readerWindow.on('closed', () => {
+    AppWindow.readerWindow = undefined
+  })
+
+  handleWinCmd(AppWindow.readerWindow)
+
+  AppWindow.readerWindow.webContents.on('will-navigate', (e, url) => {
+    e.preventDefault()
+    if (!url.includes(process.env.VITE_DEV_SERVER_URL || '')) {
+      shell.openExternal(url)
+    }
+  })
 }

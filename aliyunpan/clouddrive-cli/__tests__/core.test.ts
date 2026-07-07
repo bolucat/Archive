@@ -9,7 +9,7 @@ import { createOperationLogStore, createUndoRenamePlan } from '../core/operation
 import { analyzeDriveItems, createOrganizePlan, dryRunOrganizePlan } from '../core/organizePlan.mjs'
 import { createProviderRegistry } from '../core/providerRegistry.mjs'
 import { dryRunRenamePlan, validateRenamePlan } from '../core/renamePlan.mjs'
-import { createUploadPlanFromLocalPath, dryRunUploadPlan } from '../core/uploadPlan.mjs'
+import { createUploadPlanFromLocalPath, dryRunUploadPlan, executeUploadPlan } from '../core/uploadPlan.mjs'
 import { createAliyunProvider } from '../providers/aliyun.mjs'
 
 const tempDirs: string[] = []
@@ -462,6 +462,47 @@ describe('upload plans', () => {
       totalBytes: 8,
       errors: [],
     })
+  })
+
+  it('executes upload plans by creating folders before uploading files', async () => {
+    const dir = await makeTempDir()
+    const filePath = join(dir, 'Season 01', 'Episode 01.mkv')
+    await mkdir(join(dir, 'Season 01'))
+    await writeFile(filePath, 'video', 'utf8')
+
+    const calls: string[] = []
+    const provider = {
+      files: {
+        async mkdir({ parentId, name }: { parentId: string; name: string }) {
+          calls.push(`mkdir:${parentId}/${name}`)
+          return { fileId: `remote-${name}` }
+        },
+        async uploadFile({ parentId, localPath, name, size }: { parentId: string; localPath: string; name: string; size: number }) {
+          calls.push(`upload:${parentId}/${name}:${localPath}:${size}`)
+          return { fileId: `file-${name}` }
+        },
+      },
+    }
+
+    const result = await executeUploadPlan({
+      version: 1,
+      operation: 'upload',
+      provider: 'aliyun',
+      account_id: 'default',
+      local_root: dir,
+      remote_parent_file_id: 'root',
+      conflict: 'skip',
+      items: [
+        { type: 'folder', local_path: join(dir, 'Season 01'), relative_path: 'Season 01', target_name: 'Season 01' },
+        { type: 'file', local_path: filePath, relative_path: 'Season 01/Episode 01.mkv', target_name: 'Episode 01.mkv', size: 5 },
+      ],
+    }, { provider, token: { user_id: 'u1' }, driveId: 'drive' } as any)
+
+    expect(result).toMatchObject({ ok: true, succeeded: 2, failed: 0, fileCount: 1, folderCount: 1 })
+    expect(calls).toEqual([
+      'mkdir:root/Season 01',
+      `upload:remote-Season 01/Episode 01.mkv:${filePath}:5`,
+    ])
   })
 })
 

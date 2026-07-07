@@ -9,10 +9,14 @@ import { GetSignature } from '../aliapi/utils'
 import getUuid from 'uuid-by-string'
 import AliUser from '../aliapi/user'
 import { Input, Modal, Space } from '@arco-design/web-vue'
+import { QRCode as AntQRCode } from 'ant-design-vue'
 import { buildCloud123AuthUrl, exchangeCloud123CodeForToken } from '../utils/cloud123'
 import { buildBaiduAuthUrl, exchangeBaiduCodeForToken } from '../utils/baidu'
 import { buildQrImageUrl, DRIVE115_APP_ID, exchangeDeviceCode, generatePkce, normalize115Token, pollDeviceStatus, requestDeviceCode } from '../utils/drive115'
 import { loginPikPak } from '../pikpak/auth'
+import { completeQuarkQrLogin, pollQuarkQrStatus, requestQuarkQrCode } from '../quark/auth'
+import { normalizeCloud139Token } from '../cloud139/auth'
+import { Cloud189QrState, pollCloud189QrLogin, requestCloud189QrCode } from '../cloud189/auth'
 import { DROPBOX_APP_KEY, buildDropboxAuthUrl, createDropboxPkceVerifier, exchangeDropboxCodeForToken } from '../dropbox/auth'
 import { ONEDRIVE_CLIENT_ID, buildOneDriveAuthUrl, createOneDrivePkceVerifier, exchangeOneDriveCodeForToken } from '../onedrive/auth'
 import { BOX_CLIENT_ID, buildBoxAuthUrl, createBoxPkceVerifier, exchangeBoxCodeForToken } from '../box/auth'
@@ -34,10 +38,10 @@ const qrCodeUrl = ref('')
 const qrCodeStatusType = ref()
 const qrCodeStatusTips = ref()
 
-type LoginProvider = 'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'dropbox' | 'onedrive' | 'box'
+type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box'
 
 const loginProvider = ref<LoginProvider>('aliyun')
-const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box']
+const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box']
 const getLoginProviderMeta = (provider: LoginProvider) => getDriveProviderMeta(provider)
 const activeLoginProviderMeta = computed(() => getLoginProviderMeta(loginProvider.value))
 const cloud123Code = ref('')
@@ -48,6 +52,18 @@ const baiduAuthUrl = ref('')
 const pikpakUsername = ref('')
 const pikpakPassword = ref('')
 const pikpakLoading = ref(false)
+const quarkLoading = ref(false)
+const quarkTips = ref('请使用夸克 App 扫码')
+const quarkQrToken = ref('')
+const quarkQrImageUrl = ref('')
+const quarkQrStatusType = ref<'info' | 'success' | 'warning' | 'error'>('info')
+const cloud139Authorization = ref('')
+const cloud139Loading = ref(false)
+const cloud189Loading = ref(false)
+const cloud189Tips = ref('请使用天翼云盘 App 扫码')
+const cloud189QrState = ref<Cloud189QrState | null>(null)
+const cloud189QrStatusType = ref<'info' | 'success' | 'warning' | 'error'>('info')
+const cloud189QrUrl = ref('')
 const dropboxAppKey = ref('')
 const dropboxVerifier = ref('')
 const dropboxLoading = ref(false)
@@ -69,6 +85,10 @@ const drive115Tips = ref('请使用 115 App 扫码')
 const drive115Loading = ref(false)
 const drive115Polling = ref(false)
 let drive115Timer: any = null
+let quarkTimer: any = null
+let quarkPolling = false
+let cloud189Timer: any = null
+let cloud189Polling = false
 let loginOpenTimer: any = null
 let cloud123OpenTimer: any = null
 let baiduOpenTimer: any = null
@@ -90,7 +110,7 @@ const clearOpenTimers = () => {
 
 const handleModalOpen = () => {
   const stored = localStorage.getItem('login_provider')
-  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === 'baidu' || stored === 'pikpak' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box') {
+  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box') {
     loginProvider.value = stored
   }
   dropboxAppKey.value = localStorage.getItem('dropbox_app_key') || DROPBOX_APP_KEY
@@ -104,6 +124,12 @@ const handleModalOpen = () => {
     handleOpen115()
   } else if (loginProvider.value === 'pikpak') {
     loginLoading.value = false
+  } else if (loginProvider.value === 'quark') {
+    handleOpenQuark()
+  } else if (loginProvider.value === '139') {
+    loginLoading.value = false
+  } else if (loginProvider.value === '189') {
+    handleOpen189()
   } else if (loginProvider.value === 'dropbox') {
     handleOpenDropbox()
   } else if (loginProvider.value === 'onedrive') {
@@ -161,6 +187,12 @@ watch(loginProvider, () => {
     handleOpen115()
   } else if (loginProvider.value === 'pikpak') {
     loginLoading.value = false
+  } else if (loginProvider.value === 'quark') {
+    handleOpenQuark()
+  } else if (loginProvider.value === '139') {
+    loginLoading.value = false
+  } else if (loginProvider.value === '189') {
+    handleOpen189()
   } else if (loginProvider.value === 'dropbox') {
     handleOpenDropbox()
   } else if (loginProvider.value === 'onedrive') {
@@ -249,6 +281,8 @@ const handleClose = () => {
     clearTimeout(drive115Timer)
     drive115Timer = null
   }
+  clearQuarkTimer()
+  clearCloud189Timer()
   refreshStepTips('process', 1)
   refreshQrCodeStatus()
   cloud123Code.value = ''
@@ -265,6 +299,18 @@ const handleClose = () => {
   drive115Polling.value = false
   pikpakPassword.value = ''
   pikpakLoading.value = false
+  quarkLoading.value = false
+  quarkTips.value = '请使用夸克 App 扫码'
+  quarkQrToken.value = ''
+  quarkQrImageUrl.value = ''
+  quarkQrStatusType.value = 'info'
+  cloud139Authorization.value = ''
+  cloud139Loading.value = false
+  cloud189Loading.value = false
+  cloud189Tips.value = '请使用天翼云盘 App 扫码'
+  cloud189QrState.value = null
+  cloud189QrStatusType.value = 'info'
+  cloud189QrUrl.value = ''
   dropboxVerifier.value = ''
   dropboxLoading.value = false
   dropboxAuthUrl.value = ''
@@ -487,6 +533,179 @@ const submitPikPakLogin = async () => {
     message.error(err?.message || 'PikPak 登录失败')
   } finally {
     pikpakLoading.value = false
+  }
+}
+
+const submitCloud139Login = async () => {
+  if (cloud139Loading.value) return
+  if (!cloud139Authorization.value.trim()) {
+    message.error('请输入 139 云盘 Authorization')
+    return
+  }
+  cloud139Loading.value = true
+  try {
+    const token = normalizeCloud139Token(cloud139Authorization.value.trim())
+    await UserDAL.UserLogin(token, true)
+    useUserStore().userShowLogin = false
+  } catch (err: any) {
+    message.error(err?.message || '139 云盘登录失败')
+  } finally {
+    cloud139Loading.value = false
+  }
+}
+
+const clearCloud189Timer = () => {
+  if (cloud189Timer) {
+    clearTimeout(cloud189Timer)
+    cloud189Timer = null
+  }
+}
+
+const handleOpen189 = async () => {
+  clearOpenTimers()
+  clearCloud189Timer()
+  if (cloud189Loading.value) return
+  loginLoading.value = true
+  cloud189Loading.value = true
+  cloud189QrStatusType.value = 'info'
+  cloud189Tips.value = '正在获取天翼云盘登录二维码...'
+  cloud189QrUrl.value = ''
+  cloud189QrState.value = null
+  try {
+    const state = await requestCloud189QrCode()
+    cloud189QrState.value = state
+    cloud189QrUrl.value = state.qrUrl
+    cloud189Tips.value = '请使用天翼云盘 App 扫码'
+    loginLoading.value = false
+    pollCloud189Status()
+  } catch (err: any) {
+    cloud189QrStatusType.value = 'error'
+    cloud189Tips.value = err?.message || '获取天翼云盘二维码失败'
+    message.error(cloud189Tips.value)
+    loginLoading.value = false
+  } finally {
+    cloud189Loading.value = false
+  }
+}
+
+const pollCloud189Status = async () => {
+  if (loginProvider.value !== '189' || !useUser.userShowLogin || !cloud189QrState.value) return
+  if (cloud189Polling) return
+  cloud189Polling = true
+  const state = cloud189QrState.value
+  try {
+    const result = await pollCloud189QrLogin(state)
+    if (cloud189QrState.value !== state) return
+    if (result.status === 'success' && result.token) {
+      clearCloud189Timer()
+      cloud189QrStatusType.value = 'success'
+      cloud189Tips.value = '扫码成功，正在登录...'
+      await UserDAL.UserLogin(result.token, true)
+      useUserStore().userShowLogin = false
+      return
+    }
+    if (result.status === 'expired' || result.status === 'failed') {
+      clearCloud189Timer()
+      cloud189QrStatusType.value = result.status === 'expired' ? 'warning' : 'error'
+      cloud189Tips.value = result.message
+      return
+    }
+    cloud189QrStatusType.value = 'info'
+    cloud189Tips.value = result.message || '请使用天翼云盘 App 扫码'
+    cloud189Timer = setTimeout(pollCloud189Status, 1500)
+  } catch (err: any) {
+    cloud189QrStatusType.value = 'error'
+    cloud189Tips.value = err?.message || '获取天翼云盘扫码状态失败'
+    cloud189Timer = setTimeout(pollCloud189Status, 2000)
+  } finally {
+    cloud189Polling = false
+  }
+}
+
+const clearQuarkTimer = () => {
+  if (quarkTimer) {
+    clearTimeout(quarkTimer)
+    quarkTimer = null
+  }
+}
+
+const handleOpenQuark = async () => {
+  clearOpenTimers()
+  clearQuarkTimer()
+  if (quarkLoading.value) return
+  loginLoading.value = true
+  quarkLoading.value = true
+  quarkQrImageUrl.value = ''
+  quarkQrToken.value = ''
+  quarkQrStatusType.value = 'info'
+  quarkTips.value = '正在获取夸克登录二维码...'
+  try {
+    const qr = await requestQuarkQrCode()
+    quarkQrToken.value = qr.token
+    quarkQrImageUrl.value = qr.qrImageUrl
+    quarkTips.value = '请使用夸克 App 扫码'
+    loginLoading.value = false
+    quarkLoading.value = false
+    pollQuarkStatus()
+  } catch (err: any) {
+    quarkQrStatusType.value = 'error'
+    quarkTips.value = err?.message || '获取夸克登录二维码失败'
+    message.error(quarkTips.value)
+    loginLoading.value = false
+    quarkLoading.value = false
+  }
+}
+
+const pollQuarkStatus = async () => {
+  if (loginProvider.value !== 'quark' || !useUser.userShowLogin || !quarkQrToken.value) return
+  if (quarkPolling) return
+  quarkPolling = true
+  const pollingToken = quarkQrToken.value
+  try {
+    const status = await pollQuarkQrStatus(pollingToken)
+    if (quarkQrToken.value !== pollingToken) return
+    if (status.status === 'confirmed') {
+      clearQuarkTimer()
+      quarkQrToken.value = ''
+      quarkLoading.value = true
+      quarkQrStatusType.value = 'success'
+      quarkTips.value = '扫码成功，正在登录...'
+      try {
+        const token = await completeQuarkQrLogin(status.serviceTicket)
+        await UserDAL.UserLogin(token, true)
+        useUserStore().userShowLogin = false
+      } catch (err: any) {
+        quarkQrStatusType.value = 'error'
+        quarkTips.value = err?.message || '获取夸克账号信息失败'
+        message.error(quarkTips.value)
+      }
+      return
+    }
+    if (status.status === 'expired') {
+      clearQuarkTimer()
+      quarkQrStatusType.value = 'warning'
+      quarkTips.value = status.message || '二维码已失效，请刷新'
+      return
+    }
+    if (status.status === 'failed') {
+      clearQuarkTimer()
+      quarkQrStatusType.value = 'error'
+      quarkTips.value = status.message || '夸克登录失败'
+      return
+    }
+    quarkQrStatusType.value = 'info'
+    quarkTips.value = status.message || '请使用夸克 App 扫码'
+    quarkTimer = setTimeout(pollQuarkStatus, 1500)
+  } catch (err: any) {
+    if (quarkQrToken.value !== pollingToken) return
+    quarkQrStatusType.value = 'error'
+    quarkTips.value = err?.message || '获取夸克扫码状态失败'
+    if (loginProvider.value === 'quark' && useUser.userShowLogin && quarkQrToken.value) {
+      quarkTimer = setTimeout(pollQuarkStatus, 2000)
+    }
+  } finally {
+    quarkPolling = false
+    quarkLoading.value = false
   }
 }
 
@@ -778,34 +997,38 @@ const loginSuccess = (token: ITokenInfo) => {
   <a-modal title="网盘账号登录" v-model:visible='useUser.userShowLogin'
            :mask-closable='false' unmount-on-close :footer='false'
            class='userloginmodal' @before-open='handleModalOpen' @close='handleClose'>
-    <div class="modalbody" style="width: fit-content;height: fit-content;overflow: hidden">
-      <a-tabs size="small" v-model:active-key="loginProvider" class="login-provider-tabs">
-        <a-tab-pane v-for="provider in loginProviders" :key="provider">
-          <template #title>
-            <span class="login-provider-tab" :title="getLoginProviderMeta(provider).label">
-              <span v-if="getLoginProviderMeta(provider).icon" class="login-provider-icon">
-                <img :src="getLoginProviderMeta(provider).icon" :alt="getLoginProviderMeta(provider).label" />
-              </span>
-              <span>{{ getLoginProviderMeta(provider).label }}</span>
-            </span>
-          </template>
-        </a-tab-pane>
-      </a-tabs>
+    <div class="modalbody login-modal-body">
+      <aside class="login-provider-sidebar">
+        <button
+          v-for="provider in loginProviders"
+          :key="provider"
+          class="login-provider-side-item"
+          :class="{ active: loginProvider === provider }"
+          :title="getLoginProviderMeta(provider).label"
+          @click="loginProvider = provider"
+        >
+          <span v-if="getLoginProviderMeta(provider).icon" class="login-provider-icon">
+            <img :src="getLoginProviderMeta(provider).icon" :alt="getLoginProviderMeta(provider).label" />
+          </span>
+          <span class="login-provider-side-label">{{ getLoginProviderMeta(provider).label }}</span>
+        </button>
+      </aside>
 
-      <div class="login-provider-heading" :title="activeLoginProviderMeta.label">
-        <span v-if="activeLoginProviderMeta.icon" class="login-provider-heading-icon">
-          <img :src="activeLoginProviderMeta.icon" :alt="activeLoginProviderMeta.label" />
-        </span>
-        <span>{{ activeLoginProviderMeta.label }}</span>
-      </div>
+      <section class="login-provider-content">
+        <div class="login-provider-heading" :title="activeLoginProviderMeta.label">
+          <span v-if="activeLoginProviderMeta.icon" class="login-provider-heading-icon">
+            <img :src="activeLoginProviderMeta.icon" :alt="activeLoginProviderMeta.label" />
+          </span>
+          <span>{{ activeLoginProviderMeta.label }}</span>
+        </div>
 
-      <div v-if="loginProvider === 'aliyun'">
-        <a-steps v-model:current="loginCur" :status="loginStatus">
-          <a-step description="扫码或账号登录">第一次扫码</a-step>
-          <a-step description="手机授权">第二次扫码</a-step>
-        </a-steps>
-        <div id='logindiv'>
-          <div class='logincontent'>
+        <div v-if="loginProvider === 'aliyun'">
+          <a-steps v-model:current="loginCur" :status="loginStatus">
+            <a-step description="扫码或账号登录">第一次扫码</a-step>
+            <a-step description="手机授权">第二次扫码</a-step>
+          </a-steps>
+          <div id='logindiv'>
+            <div class='logincontent'>
             <div id="loginframediv" class="loginframe">
               <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
               <Webview id="loginiframe" v-show='!loginLoading && loginCur === 1'
@@ -830,7 +1053,7 @@ const loginSuccess = (token: ITokenInfo) => {
             </div>
           </div>
         </div>
-      </div>
+        </div>
 
       <div v-else-if="loginProvider === 'cloud123'">
         <div id='logindiv'>
@@ -874,6 +1097,36 @@ const loginSuccess = (token: ITokenInfo) => {
         </div>
       </div>
 
+      <div v-else-if="loginProvider === '139'">
+        <div id='logindiv'>
+          <div class='logincontent'>
+            <div class="pikpak-login-form">
+              <a-textarea v-model="cloud139Authorization" placeholder="粘贴 139 云盘 Authorization（Basic 后面的完整值也可以）" :auto-size="{ minRows: 4, maxRows: 6 }" allow-clear />
+              <a-button type="primary" long :loading="cloud139Loading" @click="submitCloud139Login">登录 139 云盘</a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="loginProvider === '189'">
+        <div id='logindiv'>
+          <div class='logincontent'>
+            <div id="loginframediv" class="loginframe">
+              <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
+              <div class="qrcodeframe" v-if="!loginLoading">
+                <AntQRCode :value="cloud189QrUrl || 'cloud189'" :size="250" />
+                <a-alert banner center :show-icon="false" :type="cloud189QrStatusType">
+                  {{ cloud189Tips }}
+                </a-alert>
+              </div>
+            </div>
+            <div class="quark-login-toolbar" v-if="!loginLoading">
+              <a-button type="primary" :loading="cloud189Loading" @click="handleOpen189">刷新二维码</a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-else-if="loginProvider === 'baidu'">
         <div id='logindiv'>
           <div class='logincontent'>
@@ -893,6 +1146,32 @@ const loginSuccess = (token: ITokenInfo) => {
               <a-input v-model="pikpakUsername" placeholder="PikPak 邮箱 / 手机号 / 用户名" allow-clear />
               <a-input-password v-model="pikpakPassword" placeholder="PikPak 密码" allow-clear @press-enter="submitPikPakLogin" />
               <a-button type="primary" long :loading="pikpakLoading" @click="submitPikPakLogin">登录 PikPak</a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="loginProvider === 'quark'">
+        <div id='logindiv'>
+          <div class='logincontent quark-logincontent'>
+            <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
+            <div class="qrcodeframe" v-if="!loginLoading">
+              <a-image
+                width='250'
+                height='250'
+                :hide-footer='true'
+                :preview='false'
+                :show-loader="true"
+                @click="handleOpenQuark"
+                style="display:inline-block;"
+                :src="quarkQrImageUrl">
+              </a-image>
+              <a-alert banner center :show-icon="false" :type="quarkQrStatusType">
+                {{ quarkTips }}
+              </a-alert>
+            </div>
+            <div class="quark-login-toolbar" v-if="!loginLoading">
+              <a-button type="primary" :loading="quarkLoading" @click="handleOpenQuark">刷新二维码</a-button>
             </div>
           </div>
         </div>
@@ -933,7 +1212,7 @@ const loginSuccess = (token: ITokenInfo) => {
           </div>
         </div>
       </div>
-
+      </section>
     </div>
   </a-modal>
 </template>
@@ -976,12 +1255,77 @@ const loginSuccess = (token: ITokenInfo) => {
 }
 
 .userloginmodal .arco-modal-body {
-  min-height: 400px;
+  min-height: 440px;
   padding: 0 16px 16px 16px !important;
 }
 
-.login-provider-tabs {
-  margin: 8px 0 8px;
+.login-modal-body {
+  display: flex;
+  width: 540px;
+  height: 458px;
+  overflow: hidden;
+}
+
+.login-provider-sidebar {
+  flex: 0 0 148px;
+  height: 100%;
+  padding: 8px 8px 8px 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid var(--color-border-2);
+}
+
+.login-provider-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.login-provider-sidebar::-webkit-scrollbar-thumb {
+  background: var(--color-fill-3);
+  border-radius: 999px;
+}
+
+.login-provider-side-item {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  margin-bottom: 3px;
+  color: var(--color-text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.login-provider-side-item:hover {
+  color: var(--color-text-1);
+  background: var(--color-fill-2);
+}
+
+.login-provider-side-item.active {
+  color: rgb(var(--primary-6));
+  background: rgba(var(--primary-6), 0.12);
+  font-weight: 600;
+}
+
+.login-provider-side-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+
+.login-provider-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 8px 0 0 16px;
+  overflow: hidden;
 }
 
 .login-provider-tab {
@@ -1060,6 +1404,18 @@ const loginSuccess = (token: ITokenInfo) => {
   gap: 12px;
   width: 300px;
   margin: 64px auto 0;
+}
+
+.quark-logincontent {
+  height: 430px !important;
+  min-height: 430px !important;
+}
+
+.quark-login-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 0;
 }
 
 </style>

@@ -24,6 +24,16 @@ const driveProviderMap: Record<DriveProvider, DriveProviderMeta> = {
     label: '115网盘',
     icon: 'images/drive-icons/drive115.svg'
   },
+  '139': {
+    key: '139',
+    label: '139云盘',
+    icon: 'images/drive-icons/cloud139.svg'
+  },
+  '189': {
+    key: '189',
+    label: '天翼云盘',
+    icon: 'images/drive-icons/cloud189.svg'
+  },
   baidu: {
     key: 'baidu',
     label: '百度网盘',
@@ -33,6 +43,11 @@ const driveProviderMap: Record<DriveProvider, DriveProviderMeta> = {
     key: 'pikpak',
     label: 'PikPak',
     icon: 'images/drive-icons/pikpak.png'
+  },
+  quark: {
+    key: 'quark',
+    label: '夸克网盘',
+    icon: 'images/drive-icons/quark.svg'
   },
   dropbox: {
     key: 'dropbox',

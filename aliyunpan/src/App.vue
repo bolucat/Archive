@@ -11,11 +11,13 @@ import PageCode from './layout/PageCode.vue'
 import PageOffice from './layout/PageOffice.vue'
 import PagePdf from './layout/PagePdf.vue'
 import PageEpub from './layout/PageEpub.vue'
+import PageBookReader from './layout/PageBookReader.vue'
 import PageDocx from './layout/PageDocx.vue'
 import PageSheet from './layout/PageSheet.vue'
 import PageImage from './layout/PageImage.vue'
 import PageVideo from './layout/PageVideo.vue'
 import PageMusic from './layout/PageMusic.vue'
+import PageLyric from './lyric/PageLyric.vue'
 import PageWorker from './layout/PageWorker.vue'
 
 export default {
@@ -27,6 +29,7 @@ export default {
       if (appStore.appPage == 'PageOffice') return h(PageOffice)
       if (appStore.appPage == 'PagePdf') return h(PagePdf)
       if (appStore.appPage == 'PageEpub') return h(PageEpub)
+      if (appStore.appPage == 'PageBookReader') return h(PageBookReader)
       if (appStore.appPage == 'PageDocx') return h(PageDocx)
       if (appStore.appPage == 'PageSheet') return h(PageSheet)
       if (appStore.appPage == 'PageVideoXBT') return h(PageVideoXBTVue)
@@ -34,6 +37,7 @@ export default {
       if (appStore.appPage == 'PageImage') return h(PageImage)
       if (appStore.appPage == 'PageVideo') return h(PageVideo)
       if (appStore.appPage == 'PageMusic') return h(PageMusic)
+      if (appStore.appPage == 'PageLyric') return h(PageLyric)
       if (appStore.appPage == 'PageWorker') return h(PageWorker)
       return h(PageLoading)
     }

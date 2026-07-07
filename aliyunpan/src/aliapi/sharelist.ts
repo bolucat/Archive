@@ -5,9 +5,10 @@ import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliShareBottleFishItem, IAliShareItem, IAliShareRecentItem } from './alimodels'
 import AliDirFileList from './dirfilelist'
 import { useSettingStore } from '../store'
-import { isAliyunUser, isCloud123User, isDropboxUser } from './utils'
+import { isAliyunUser, isCloud123User, isDropboxUser, isQuarkUser } from './utils'
 import { apiCloud123ShareList } from '../cloud123/share'
 import { apiDropboxListSharedLinks, mapDropboxSharedLinkToAliShareItem } from '../dropbox/share'
+import { apiQuarkShareList } from '../quark/share'
 
 export interface IAliShareResp {
   items: IAliShareItem[]
@@ -46,6 +47,12 @@ export default class AliShareList {
     if (isDropboxUser(user_id)) {
       return await AliShareList.ApiDropboxShareListAll(user_id)
     }
+    if (isQuarkUser(user_id)) {
+      const dir = AliShareList.EmptyShareResp(user_id)
+      dir.items = await apiQuarkShareList(user_id)
+      for (const item of dir.items) dir.itemsKey.add(item.share_id)
+      return dir
+    }
     if (!isAliyunUser(user_id)) {
       return AliShareList.EmptyShareResp(user_id)
     }
@@ -69,6 +76,17 @@ export default class AliShareList {
   static async ApiShareListOnePage(dir: IAliShareResp): Promise<boolean> {
     if (isCloud123User(dir.m_user_id)) {
       return await AliShareList.ApiCloud123ShareListOnePage(dir)
+    }
+    if (isQuarkUser(dir.m_user_id)) {
+      const list = await apiQuarkShareList(dir.m_user_id)
+      for (const item of list) {
+        if (!dir.itemsKey.has(item.share_id)) {
+          dir.items.push(item)
+          dir.itemsKey.add(item.share_id)
+        }
+      }
+      dir.next_marker = ''
+      return true
     }
     if (!isAliyunUser(dir.m_user_id)) {
       dir.next_marker = ''
@@ -298,6 +316,10 @@ export default class AliShareList {
     if (isDropboxUser(user_id)) {
       const links = await apiDropboxListSharedLinks(user_id, '')
       return links.some((link) => (link.id || link.url) === share_id)
+    }
+    if (isQuarkUser(user_id)) {
+      const links = await apiQuarkShareList(user_id)
+      return links.some((link) => link.share_id === share_id)
     }
     if (!isAliyunUser(user_id)) return false
     const url = 'adrive/v3/share_link/list'

@@ -1,4 +1,4 @@
-import { cloud123RefreshToken, cloud123ListDir, cloud123Walk, cloud123GetFile, cloud123Search, cloud123RenameBatch, cloud123MoveBatch, cloud123Mkdir, cloud123Trash } from './cloud123.mjs'
+import { cloud123RefreshToken, cloud123ListDir, cloud123Walk, cloud123GetFile, cloud123Search, cloud123RenameBatch, cloud123MoveBatch, cloud123Mkdir, cloud123Trash, cloud123UploadFile } from './cloud123.mjs'
 
 export function createCloud123Provider() {
   return {
@@ -15,7 +15,7 @@ export function createCloud123Provider() {
       fileIdAddressable: true,
       mkdir: true,
       move: true,
-      uploadFile: false,
+      uploadFile: true,
     },
     auth: {
       async login() {
@@ -36,6 +36,9 @@ export function createCloud123Provider() {
       async moveBatch({ token, moves }) { return cloud123MoveBatch(token, moves) },
       async mkdir({ token, parentId = '0', name }) { return cloud123Mkdir(token, parentId, name) },
       async trash({ token, items }) { return cloud123Trash(token, items.map((i) => i.fileId)) },
+      async uploadFile({ token, parentId = '0', localPath, name, size, conflict }) {
+        return cloud123UploadFile(token, { parentId, localPath, name, size, conflict })
+      },
     },
   }
 }

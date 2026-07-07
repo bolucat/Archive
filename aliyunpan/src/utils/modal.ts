@@ -2,6 +2,8 @@ import { IAliGetFileModel, IAliShareItem } from '../aliapi/alimodels'
 import { useModalStore } from '../store'
 import { IServerVerData } from '../aliapi/server'
 import { IRawUrl } from './proxyhelper'
+import message from './message'
+import { checkAndIncrement } from './usageLimit'
 
 export function modalCloseAll() {
   useModalStore().showModal('', {})
@@ -36,6 +38,8 @@ export function modalCreatNewShareLink(sharetype: string, driveType: string, fil
 }
 
 export function modalDaoRuShareLink(shareUrl: string = '', sharePwd: string = '') {
+  const uc = checkAndIncrement('panHubSave')
+  if (!uc.allowed) { message.warning(uc.message!); return }
   useModalStore().showModal('daorushare', { shareUrl, sharePwd })
 }
 

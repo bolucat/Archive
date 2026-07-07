@@ -48,11 +48,12 @@ import { simpleToTradition, traditionToSimple } from 'chinese-simple2traditional
 import path from 'path'
 import UserDAL from '../user/userdal'
 import Config from '../config'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
+import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
@@ -1214,6 +1215,10 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
       const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'pikpak_root'
       const list = await apiPikPakFileList(pageVideo.user_id, parentId, 500)
       items = list.items.map(item => mapPikPakFileToAliModel(item, pageVideo.drive_id, parentId))
+    } else if (isQuarkUser(pageVideo.user_id) || pageVideo.drive_id === 'quark') {
+      const parentId = dir_id && !dir_id.includes('root') ? dir_id : '0'
+      const list = await apiQuarkFileList(pageVideo.user_id, parentId, 500)
+      items = list.items.map(item => mapQuarkFileToAliModel(item, pageVideo.drive_id, parentId))
     } else if (isDropboxUser(pageVideo.user_id) || pageVideo.drive_id === 'dropbox') {
       const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'dropbox_root'
       const list = await apiDropboxFileList(pageVideo.user_id, parentId, 500)
@@ -1283,7 +1288,7 @@ const refreshSetting = async (art: Artplayer, item: any) => {
   // 更新标记
   const settingStore = useSettingStore()
   const description = item.description
-  if (settingStore.uiAutoColorVideo && !isDropboxUser(pageVideo.user_id) && !isOneDriveUser(pageVideo.user_id) && !isBoxUser(pageVideo.user_id) && pageVideo.drive_id !== 'dropbox' && pageVideo.drive_id !== 'onedrive' && pageVideo.drive_id !== 'box' && (!description || !description.includes('ce74c3c'))) {
+  if (settingStore.uiAutoColorVideo && !isQuarkUser(pageVideo.user_id) && !isDropboxUser(pageVideo.user_id) && !isOneDriveUser(pageVideo.user_id) && !isBoxUser(pageVideo.user_id) && pageVideo.drive_id !== 'quark' && pageVideo.drive_id !== 'dropbox' && pageVideo.drive_id !== 'onedrive' && pageVideo.drive_id !== 'box' && (!description || !description.includes('ce74c3c'))) {
     AliFileCmd.ApiFileColorBatch(pageVideo.user_id, pageVideo.drive_id, item.description, 'ce74c3c', [item.file_id])
   }
   if (onlineSubData.dataUrl) {
@@ -2239,6 +2244,22 @@ const hasSubtitleSource = (item?: selectorItem) => {
 
 const readSubtitleItemText = async (item: selectorItem) => {
   if (!item.file_id) return ''
+  if (isQuarkUser(pageVideo.user_id) || pageVideo.drive_id === 'quark') {
+    const raw = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, item.file_id, item.encType, item.password, false, 'other')
+    if (typeof raw === 'string' || !raw.url) return ''
+    const url = getProxyUrl({
+      user_id: pageVideo.user_id,
+      drive_id: pageVideo.drive_id,
+      file_id: item.file_id,
+      encType: item.encType,
+      password: item.password,
+      file_size: raw.size,
+      quality: 'Origin',
+      proxy_url: raw.url
+    })
+    const response = await fetch(url)
+    return response.ok ? response.text() : ''
+  }
   return AliFile.ApiFileDownText(pageVideo.user_id, pageVideo.drive_id, item.file_id, -1, -1, item.encType)
 }
 
@@ -2545,6 +2566,7 @@ const getSubTitleList = async (art: Artplayer) => {
 
 const updateVideoTime = async () => {
   if (pageVideo.drive_id === 'media_server') return
+  if (isQuarkUser(pageVideo.user_id) || pageVideo.drive_id === 'quark') return
   await AliFile.ApiUpdateVideoTime(
     pageVideo.user_id,
     pageVideo.drive_id,

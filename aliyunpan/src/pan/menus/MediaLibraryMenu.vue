@@ -22,6 +22,11 @@
         <template #default>扫描音频</template>
       </a-doption>
 
+      <a-doption @click="handleScanBooks" v-if="selectedItem?.isdir && !isMediaLibraryFolder">
+        <template #icon><IconFont name="iconbook" /></template>
+        <template #default>扫描书籍</template>
+      </a-doption>
+
       <a-doption @click="handleViewInLibrary" v-if="isInLibrary && !isMediaLibraryFolder">
         <template #icon><IconFont name="iconmovie" /></template>
         <template #default>在媒体库中查看</template>
@@ -42,6 +47,7 @@ import { useAppStore, usePanTreeStore } from '../../store'
 import { useMediaLibraryStore } from '../../store/medialibrary'
 import { MediaScanner } from '../../utils/mediaScanner'
 import MusicScanner from '../../utils/musicScanner'
+import BookScanner from '../../utils/bookScanner'
 import { Modal } from '@arco-design/web-vue'
 import message from '../../utils/message'
 import type { MediaLibraryFolder } from '../../types/media'
@@ -60,6 +66,7 @@ const panTreeStore = usePanTreeStore()
 const mediaStore = useMediaLibraryStore()
 const mediaScanner = MediaScanner.getInstance()
 const musicScanner = MusicScanner.getInstance()
+const bookScanner = BookScanner.getInstance()
 
 // 计算属性
 const isInLibrary = computed(() => {
@@ -169,6 +176,36 @@ const handleScanAudio = async () => {
   } catch (error) {
     console.error('音频扫描失败:', error)
     message.error('音频扫描失败')
+  } finally {
+    emit('close')
+  }
+}
+
+const handleScanBooks = async () => {
+  if (!props.selectedItem || !props.selectedItem.isdir) {
+    message.error('只能选择文件夹进行扫描')
+    emit('close')
+    return
+  }
+  if (bookScanner.isScanning) {
+    message.warning('书籍扫描进行中，请稍后...')
+    emit('close')
+    return
+  }
+  const userId = (props.selectedItem as any).user_id || panTreeStore.user_id || ''
+  if (!userId) {
+    message.error('未识别到当前账号，无法扫描')
+    emit('close')
+    return
+  }
+  try {
+    message.info(`开始扫描文件夹 "${props.selectedItem.name}" 的书籍文件`)
+    appStore.toggleTab('book')
+    const res = await bookScanner.scanFolder(props.selectedItem, userId)
+    message.success(`书籍扫描完成：收录 ${res.found} 本`)
+  } catch (error) {
+    console.error('书籍扫描失败:', error)
+    message.error('书籍扫描失败')
   } finally {
     emit('close')
   }

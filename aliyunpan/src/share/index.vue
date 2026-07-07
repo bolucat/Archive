@@ -12,17 +12,19 @@ import FollowingDAL from './following/FollowingDAL'
 import { computed, ref } from 'vue'
 import ShareHistoryRight from './share/ShareHistoryRight.vue'
 import ShareBottleFishRight from './share/ShareBottleFishRight.vue'
-import { isAliyunUser } from '../aliapi/utils'
+import { isAliyunUser, isQuarkUser } from '../aliapi/utils'
 
 const appStore = useAppStore()
 const hideLeft = ref(false)
 const userStore = useUserStore()
 const isAliyunAccount = computed(() => isAliyunUser(userStore.user_id || userStore.GetUserToken))
+const isQuarkAccount = computed(() => isQuarkUser(userStore.user_id || userStore.GetUserToken))
 
 appStore.$subscribe(() => {
   const appPage = appStore.GetAppTabMenu
   const uid = userStore.user_id
   if (!isAliyunAccount.value) {
+    if (isQuarkAccount.value && appPage == 'OtherShareRight') ShareDAL.aReloadOtherShare()
     if (appPage == 'MyShareRight') ShareDAL.aReloadMyShare(uid, false)
     return
   }
@@ -81,6 +83,10 @@ const handleHideLeft = (val: boolean) => {
       </a-menu>
       <a-menu v-else :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">
+        <a-menu-item v-if="isQuarkAccount" key='OtherShareRight'>
+          <template #icon><IconFont name="iconfenxiang1" /></template>
+          我的导入
+        </a-menu-item>
         <a-menu-item key='MyShareRight'>
           <template #icon><IconFont name="iconfenxiang" /></template>
           我的分享
@@ -94,6 +100,9 @@ const handleHideLeft = (val: boolean) => {
           <ShareSiteRight @hide-left='handleHideLeft' />
         </a-tab-pane>
         <a-tab-pane v-if="isAliyunAccount" key='OtherShareRight' title='2'>
+          <OtherShareRight />
+        </a-tab-pane>
+        <a-tab-pane v-if="isQuarkAccount" key='OtherShareRight' title='2'>
           <OtherShareRight />
         </a-tab-pane>
         <a-tab-pane key='MyShareRight' title='3'>

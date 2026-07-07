@@ -6,7 +6,7 @@ import AliHttp from './alihttp'
 import { IAliFileItem, IAliGetDirModel, IAliGetFileModel, IAliGetForderSizeModel } from './alimodels'
 import AliDirFileList from './dirfilelist'
 import { ICompilationList, IDownloadUrl, IOfficePreViewUrl, IVideoPreviewUrl, IVideoXBTUrl } from './models'
-import { DecodeEncName, GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from './utils'
+import { DecodeEncName, GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
 import { getRawUrl } from '../utils/proxyhelper'
 import { apiCloud123DownloadInfo, apiCloud123FileDetail } from '../cloud123/filecmd'
 import { mapCloud123InfoToAliModel } from '../cloud123/dirfilelist'
@@ -18,11 +18,15 @@ import { apiDrive115VideoHistoryUpdate, apiDrive115VideoPlay, getDrive115PickCod
 import { apiBaiduFileList } from '../cloudbaidu/dirfilelist'
 import { apiBaiduFileMetas, mapBaiduMetaToAliFileItem } from '../cloudbaidu/filecmd'
 import { apiPikPakDownloadInfo, apiPikPakFileDetail, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
+import { apiQuarkDownloadUrl, apiQuarkFileDetail, mapQuarkFileToAliModel } from '../quark/dirfilelist'
+import { apiCloud139DownloadInfo, apiCloud139FileDetail, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
+import { apiCloud189DownloadInfo, apiCloud189FileDetail, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
 import { apiDropboxFileDetail, apiDropboxTemporaryLink, mapDropboxFileToAliModel, resolveDropboxParentIdFromPath } from '../dropbox/dirfilelist'
 import { apiOneDriveFileDetail, getOneDriveDownloadUrl, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileDetail, buildBoxDownloadUrl, getBoxToken, mapBoxItemToAliModel } from '../box/dirfilelist'
 import TreeStore from '../store/treestore'
 import UserDAL from '../user/userdal'
+import { ITokenInfo } from '../user/userstore'
 import { getWebDavConnection, getWebDavConnectionId, getWebDavDownloadUrl, isWebDavDrive } from '../utils/webdavClient'
 import { getAlipanDownloadPromotionReason, getAlipanVideoPromotionReason, showAlipanMemberPromotion } from '../utils/alipanPromotion'
 
@@ -37,10 +41,20 @@ const parseBaiduPath = (file_path: string) => {
 
 const getBaiduMetaByPath = async (user_id: string, file_id: string) => {
   if (!file_id) return null
-  const fsid = Number(file_id)
+  let fsid = Number(file_id)
+  // file_id 可能是路径格式，尝试从 description 或直接字符串中提取 fsid
+  if (!Number.isFinite(fsid)) {
+    const descMatch = file_id.match(/baidu_fsid:(\d+)/)
+    if (descMatch) {
+      fsid = Number(descMatch[1])
+    }
+  }
   if (!Number.isFinite(fsid)) return null
   const metas = await apiBaiduFileMetas(user_id, [fsid], 1)
-  if (!metas || metas.length === 0) return null
+  if (!metas || metas.length === 0) {
+    console.warn('[baidu] filemetas returned empty for fsid:', fsid)
+    return null
+  }
   return { meta: metas[0], fs_id: fsid, size: Number(metas[0].size || 0) }
 }
 
@@ -119,6 +133,43 @@ export default class AliFile {
       const detail = await apiPikPakFileDetail(user_id, file_id)
       if (!detail) return undefined
       const mapped = mapPikPakFileToAliModel(detail, drive_id, detail.parent_id || 'pikpak_root') as any
+      mapped.type = mapped.isDir ? 'folder' : 'file'
+      return mapped
+    }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      if (file_id === 'quark_root' || file_id === '0') {
+        return {
+          drive_id,
+          file_id: 'quark_root',
+          parent_file_id: '',
+          name: '网盘文件',
+          type: 'folder',
+          isDir: true
+        }
+      }
+      const detail = await apiQuarkFileDetail(user_id, file_id)
+      if (!detail) return undefined
+      const mapped = mapQuarkFileToAliModel(detail, drive_id, detail.pdir_fid || 'quark_root') as any
+      mapped.type = mapped.isDir ? 'folder' : 'file'
+      return mapped
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      if (file_id === 'cloud139_root' || file_id === '/' || file_id === '0') {
+        return { drive_id, file_id: 'cloud139_root', parent_file_id: '', name: '网盘文件', type: 'folder', isDir: true }
+      }
+      const detail = await apiCloud139FileDetail(user_id, file_id)
+      if (!detail) return undefined
+      const mapped = mapCloud139FileToAliModel(detail, drive_id, detail.parentFileId || detail.parentCatalogId || 'cloud139_root') as any
+      mapped.type = mapped.isDir ? 'folder' : 'file'
+      return mapped
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      if (file_id === 'cloud189_root' || file_id === '-11' || file_id === '0') {
+        return { drive_id, file_id: 'cloud189_root', parent_file_id: '', name: '网盘文件', type: 'folder', isDir: true }
+      }
+      const detail = await apiCloud189FileDetail(user_id, file_id)
+      if (!detail) return undefined
+      const mapped = mapCloud189FileToAliModel(detail, drive_id, detail.parentId || detail.parentFolderId || 'cloud189_root') as any
       mapped.type = mapped.isDir ? 'folder' : 'file'
       return mapped
     }
@@ -266,9 +317,12 @@ export default class AliFile {
       const metaInfo = await getBaiduMetaByPath(user_id, file_id)
       if (!metaInfo?.meta?.dlink) return '获取下载地址失败'
       let dlink = metaInfo.meta.dlink
-      const token = UserDAL.GetUserToken(user_id)
+      let token = UserDAL.GetUserToken(user_id)
+      if (!token?.access_token) {
+        token = await UserDAL.GetUserTokenFromDB(user_id) as ITokenInfo
+      }
       if (token?.access_token && !dlink.includes('access_token=')) {
-        dlink += (dlink.includes('?') ? '&' : '?') + `access_token=${token.access_token}`
+        dlink += (dlink.includes('?') ? '&' : '?') + `access_token=${encodeURIComponent(token.access_token)}`
       }
       return {
         drive_id,
@@ -315,6 +369,27 @@ export default class AliFile {
         url,
         size: Number(detail?.size || 0)
       }
+    }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      const info = await apiQuarkDownloadUrl(user_id, file_id)
+      if (info.error) return info.error
+      return {
+        drive_id,
+        file_id,
+        expire_time: GetExpiresTime(info.url),
+        url: info.url,
+        size: Number(info.size || 0)
+      }
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      const info = await apiCloud139DownloadInfo(user_id, file_id)
+      if (info.error) return info.error
+      return { drive_id, file_id, expire_time: GetExpiresTime(info.url), url: info.url, size: Number(info.size || 0) }
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      const info = await apiCloud189DownloadInfo(user_id, file_id)
+      if (info.error) return info.error
+      return { drive_id, file_id, expire_time: GetExpiresTime(info.url), url: info.url, size: Number(info.size || 0) }
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       const info = await apiDropboxTemporaryLink(user_id, file_id)
@@ -407,6 +482,9 @@ export default class AliFile {
       return '暂无转码信息'
     }
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
+      return '暂无转码信息'
+    }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
       return '暂无转码信息'
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
@@ -715,6 +793,21 @@ export default class AliFile {
       if (!detail) return undefined
       return mapPikPakFileToAliModel(detail, drive_id, detail.parent_id || 'pikpak_root')
     }
+    if (isQuarkUser(user_id) || drive_id === 'quark') {
+      const detail = await apiQuarkFileDetail(user_id, file_id)
+      if (!detail) return undefined
+      return mapQuarkFileToAliModel(detail, drive_id, detail.pdir_fid || 'quark_root')
+    }
+    if (isCloud139User(user_id) || drive_id === 'cloud139') {
+      const detail = await apiCloud139FileDetail(user_id, file_id)
+      if (!detail) return undefined
+      return mapCloud139FileToAliModel(detail, drive_id, detail.parentFileId || detail.parentCatalogId || 'cloud139_root')
+    }
+    if (isCloud189User(user_id) || drive_id === 'cloud189') {
+      const detail = await apiCloud189FileDetail(user_id, file_id)
+      if (!detail) return undefined
+      return mapCloud189FileToAliModel(detail, drive_id, detail.parentId || detail.parentFolderId || 'cloud189_root')
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') return undefined
     const url = 'v2/file/get'
     const postData = {
@@ -739,7 +832,7 @@ export default class AliFile {
 
   static async ApiFileGetPath(user_id: string, drive_id: string, file_id: string): Promise<IAliGetDirModel[]> {
     if (!user_id || !drive_id || !file_id) return []
-    if (isPikPakUser(user_id) || drive_id === 'pikpak' || isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') {
+    if (isPikPakUser(user_id) || drive_id === 'pikpak' || isQuarkUser(user_id) || drive_id === 'quark' || isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') {
       return TreeStore.GetDirPath(drive_id, file_id) as IAliGetDirModel[]
     }
     const url = 'adrive/v1/file/get_path'

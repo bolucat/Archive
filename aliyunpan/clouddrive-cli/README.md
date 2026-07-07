@@ -1,71 +1,153 @@
 # clouddrive-cli
 
-Multi-cloud storage CLI with AI-driven media organization.  
-Supports 阿里云盘, OneDrive, Dropbox, Box, 百度网盘, 115网盘, PikPak.
+> **Turn BoxPlayer cloud-drive accounts into an agent-friendly CLI.**  
+> List, search, organize, rename, upload-plan, and roll back files across multiple cloud-drive providers through one deterministic command surface.
 
-中文 | [English](#english)
+[中文](#中文) | [English](#english)
 
 ---
 
-## Install CLI
+# 中文
+
+`clouddrive-cli` 是 BoxPlayer 面向终端、人类用户和 AI Agent 暴露的多网盘自动化入口。它把 Electron App 里已登录的网盘账号，或独立 CLI 登录得到的账号，统一变成可发现、可 dry-run、可回滚的命令接口。
+
+支持 provider：
+
+`aliyun` · `cloud123` · `115` · `baidu` · `pikpak` · `onedrive` · `box` · `dropbox`
+
+## 快速开始
+
+### 1. 安装 CLI
+
+方式 A：跟随 BoxPlayer Electron App 安装。
+
+```bash
+clouddrive-cli --help
+clouddrive-cli auth list --format json
+```
+
+方式 B：独立 npm 安装。
 
 ```bash
 npm install -g clouddrive-cli
-```
-
-Or install from the BoxPlayer desktop app: **账户设置 → 安装命令行工具**
-
-### Verify
-
-```bash
-clouddrive-cli auth list
 clouddrive-cli --help
 ```
 
----
+开发源码入口：
 
-## Install Claude Code Skill
+```bash
+node clouddrive-cli/bin/cli.mjs --help
+node clouddrive-cli/bin/cli.mjs list --format json
+```
 
-The skill lets Claude run `clouddrive-cli` commands on your behalf directly in the terminal.
+### 2. 发现命令面
 
-### Method A — npx (recommended)
+不要把 README 当作完整命令注册表。实时命令清单来自 CLI 自己：
+
+```bash
+clouddrive-cli list --format json
+clouddrive-cli schema commands
+```
+
+`list --format json` 会返回每个命令的 `group`、`name`、`command`、`access`、`args`、`options`、`requiresDryRun`、`destructive`、`undoable` 和 `output`。
+
+### 3. 查看账号与能力
+
+```bash
+clouddrive-cli auth list --format json
+clouddrive-cli settings show --format json
+clouddrive-cli providers capabilities --format json
+```
+
+AI Agent 在任何写操作前都应先读取 provider 能力矩阵。
+
+### 4. 跑第一个只读命令
+
+```bash
+clouddrive-cli files stats --provider aliyun --account default --file-id root --depth 1 --format json
+clouddrive-cli files list --provider aliyun --account default --file-id root --format json
+```
+
+## 给人类用户
+
+常用命令：
+
+- `clouddrive-cli auth list` 查看已登录账号。
+- `clouddrive-cli files list` 列出目录。
+- `clouddrive-cli files search` 搜索文件。
+- `clouddrive-cli files tree` 快速看目录结构。
+- `clouddrive-cli docs read` 读取本地规则文档。
+- `clouddrive-cli ops list` 查看历史操作。
+
+如果只是想确认当前 CLI 有什么能力：
+
+```bash
+clouddrive-cli list
+clouddrive-cli providers capabilities
+```
+
+## 给 AI Agent
+
+AI Agent 不应该猜命令、猜 file id、猜 provider 能力。推荐起手式：
+
+```bash
+clouddrive-cli list --format json
+clouddrive-cli auth list --format json
+clouddrive-cli providers capabilities --format json
+```
+
+JSON 模式下，错误也会返回结构化 envelope：
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "UNSUPPORTED_CAPABILITY",
+    "message": "Unknown provider: demo",
+    "exitCode": 5
+  }
+}
+```
+
+Agent 应该根据 `error.code` 分支，而不是解析自然语言错误文本。
+
+### 安装 skill
+
+如果通过 npm 包安装：
 
 ```bash
 npx skills add boxplayer/clouddrive-cli -g
 ```
 
-This installs the skill to `~/.claude/skills/clouddrive-cli/`.
+如果从本机包安装，可读取：
 
-### Method B — paste to your AI agent
+```bash
+$(npm root -g)/clouddrive-cli/skill/SKILL.md
+```
 
-Copy this prompt and paste it to Claude:
+BoxPlayer App 内置安装模式下，skill 文件位于 app resources 的 `clouddrive-cli/skill/SKILL.md`。
 
-> Install the clouddrive-cli Claude Code skill. Read the file at `$(npm root -g)/clouddrive-cli/skill/SKILL.md` and copy it to `~/.claude/skills/clouddrive-cli/SKILL.md`.
+### Agent 安全规则
 
----
-
-# BoxPlayer CLI 使用说明
-
-`clouddrive-cli` 是 BoxPlayer 面向终端和 AI Agent 暴露的安全自动化入口。它可以读取 Electron App 导出的已登录网盘账号，列出或递归遍历网盘文件，生成媒体重命名计划，先 dry-run 校验，再执行可追踪、可撤销的批量重命名操作。
-
-适合的场景：
-
-- 让 AI 批量整理网盘中的电影、剧集、动漫文件名。
-- 将文件命名规范化为 Jellyfin、Emby、Plex 更容易刮削的格式。
-- 在执行写操作前生成计划、检查差异、保留操作日志。
-- 读取本地文档，把命名规则、整理要求、媒体库约定提供给 AI 作为上下文。
-- 通过 `clouddrive-mcp` 把同一套能力暴露给支持 MCP 的 AI 客户端。
+| 规则 | 说明 |
+|------|------|
+| 先发现 | 先跑 `list --format json`，不要硬编码 README 中的命令列表。 |
+| 先能力 | 写操作前跑 `providers capabilities --format json`。 |
+| 先 dry-run | 标记 `requiresDryRun` 的命令必须先预览。 |
+| 不编造 ID | file id 必须来自 `files list`、`files walk`、`files search`、`files tree` 或 `files info`。 |
+| 大输出落盘 | `largeOutput: true` 的命令优先使用 `--output <file.json>`，CLI 会写完整 JSON，并在 stdout 返回摘要。 |
+| 写入理由 | 写操作使用 `--rationale <reason>` 记录 Agent 为什么执行该动作。 |
 
 ## 安装模式
 
-`clouddrive-cli` 支持两种安装模式。
+### 模式 1：跟随 Electron App
 
-### 模式 1：跟随 Electron App 安装
+BoxPlayer App 会注册：
 
-安装 BoxPlayer Electron App 后，应用会注册：
-
-- `clouddrive-cli`
-- `clouddrive-mcp`
+```text
+clouddrive-cli
+clouddrive-mcp
+```
 
 macOS / Linux 默认写入：
 
@@ -81,70 +163,30 @@ Windows 默认写入：
 %LOCALAPPDATA%\BoxPlayer\bin\clouddrive-mcp.cmd
 ```
 
-如果终端提示找不到命令，请重启终端，或确认上述目录已经加入 `PATH`。
-
-这种模式下，Electron App 会把已登录的网盘账号 token 导出到：
+这种模式会复用 App 导出的账号 token：
 
 ```bash
 ~/.clouddrive-cli/tokens.json
 ```
 
-因此安装 App 并登录账号后，终端可以直接运行：
+### 模式 2：独立安装
+
+独立模式适合服务器、CI 或只需要 CLI 的用户。
 
 ```bash
-clouddrive-cli auth list --json
-clouddrive-cli files list --provider aliyun --account default --path root --json
+npm install -g clouddrive-cli
+clouddrive-cli auth login aliyun --format json
+clouddrive-cli auth login 115 --format json
+clouddrive-cli auth login dropbox --browser chrome --format json
+clouddrive-cli auth login box --browser chrome --format json
+clouddrive-cli auth login 123 --browser chrome --format json
 ```
 
-### 模式 2：独立安装 clouddrive-cli
+`aliyun` 和 `115` 使用终端二维码。`dropbox`、`box`、`123`、`onedrive` 使用浏览器 OAuth loopback。若 provider 限制回调地址，使用已登记的 `http://127.0.0.1:<port>/callback`，或从 Electron App 导入 token。
 
-独立模式不依赖 Electron App，适合服务器、CI、自动化环境，或者只想让 AI 使用 CLI 的用户。
+## 配置
 
-从源码构建独立 CLI 包：
-
-```bash
-pnpm run build:clouddrive-cli
-```
-
-构建产物位于：
-
-```bash
-dist/clouddrive-cli-package
-```
-
-本机安装：
-
-```bash
-npm install -g ./dist/clouddrive-cli-package
-clouddrive-cli --help
-```
-
-开发时也可以直接 link：
-
-```bash
-cd dist/clouddrive-cli-package
-npm link
-clouddrive-cli --help
-```
-
-独立安装后，CLI 同样使用：
-
-```bash
-~/.clouddrive-cli
-```
-
-它不会自动拥有 Electron App 里的账号，需要通过 `auth login` 或 `auth import-token` 添加账号。
-
-开发环境也可以直接使用脚本入口：
-
-```bash
-node scripts/clouddrive-cli.mjs --help
-node scripts/clouddrive-mcp.mjs
-```
-
-## 配置与账号
-
-CLI 使用独立配置目录：
+默认配置目录：
 
 ```bash
 ~/.clouddrive-cli
@@ -153,1440 +195,407 @@ CLI 使用独立配置目录：
 主要文件：
 
 ```text
-~/.clouddrive-cli/tokens.json
-~/.clouddrive-cli/config.json
-~/.clouddrive-cli/operations/
+tokens.json
+config.json
+operations/
 ```
 
-Electron App 会把已登录账号导出到 CLI 配置目录。CLI 本身不做交互式网页登录，自动化流程应先查看已可用账号：
+环境变量：
+
+| 变量 | 说明 |
+|------|------|
+| `CLOUDDRIVE_CLI_CONFIG_DIR` | 覆盖默认配置目录。 |
+
+## 输出与错误
+
+`--json` 与 `--format json` 等价。建议 Agent 始终使用 JSON。
+
+大输出命令支持 `--output <file.json>`。使用后完整结果写入文件，stdout 只返回适合 Agent 读取的摘要：
 
 ```bash
-clouddrive-cli auth list --json
+clouddrive-cli files stats --provider aliyun --account default --file-id root --output stats.json --format json
 ```
-
-支持的 provider：
-
-```text
-aliyun
-pikpak
-dropbox
-onedrive
-box
-baidu
-115
-```
-
-## 通用约定
-
-推荐给 AI Agent 使用 `--json`，这样输出稳定、可解析。
-
-写操作必须采用三步走：
-
-1. 生成或读取计划。
-2. 先 `--dry-run` 校验。
-3. 用户确认后再执行非 dry-run 操作。
-
-执行成功的写操作会生成 operation id。后续可以用 `ops show` 查看，也可以用 `ops undo --dry-run` 预览撤销计划。
 
 常见退出码：
 
-| 退出码 | 含义 |
-| --- | --- |
-| `0` | 成功 |
-| `1` | 参数或校验错误 |
-| `2` | 账号缺失或认证错误 |
-| `3` | Provider API 错误 |
-| `4` | 部分成功 |
-| `5` | 不支持的 provider 或能力 |
+| 退出码 | 错误码 | 含义 |
+|--------|--------|------|
+| `0` | - | 成功 |
+| `1` | `VALIDATION_ERROR` | 参数、输入文件或计划校验错误 |
+| `2` | `AUTH_ERROR` | 账号缺失、过期或认证失败 |
+| `3` | `PROVIDER_API_ERROR` | provider API/HTTP 错误 |
+| `4` | `PARTIAL_SUCCESS` | 部分成功 |
+| `5` | `UNSUPPORTED_CAPABILITY` | provider 或命令能力不支持 |
 
-## 命令总览
-
-```bash
-clouddrive-cli --help
-clouddrive-cli help
-```
-
-当前命令组：
-
-```text
-auth    账号发现与默认账号设置
-providers provider 能力矩阵
-files   网盘文件读取、递归遍历、重命名执行
-media   媒体文件命名计划生成
-docs    本地文档读取，给 AI 作为上下文
-upload  本地到网盘的上传计划与 dry-run
-organize 网盘目录分析、整理计划与 dry-run
-ops     操作日志查看与撤销
-```
-
-## auth
-
-### auth list
-
-列出所有已经导出到 CLI 的账号。
+## 命令发现
 
 ```bash
-clouddrive-cli auth list
-clouddrive-cli auth list --json
+clouddrive-cli list --format json
+clouddrive-cli list --group files --format json
+clouddrive-cli schema commands
 ```
 
-JSON 输出示例：
+命令 manifest 会包含 Agent 契约字段：`examples`、`largeOutput`、`safety`、`providerRequirements`。MCP tool schema 也从同一份 manifest 生成。
 
-```json
-[
-  {
-    "provider": "aliyun",
-    "accountId": "aliyun_demo",
-    "displayName": "Demo",
-    "isDefault": true
-  }
-]
-```
+顶层命令组：
 
-注意：输出不会包含 token、refresh token 等敏感字段。
+| 组 | 用途 |
+|----|------|
+| `auth` | 账号发现、默认账号、登录、token 导入 |
+| `settings` | 配置目录、账号和 provider 摘要 |
+| `providers` | provider 能力矩阵 |
+| `files` | 文件读取、搜索、目录、重命名、移动、回收站 |
+| `media` | 媒体扫描、匹配、命名计划 |
+| `docs` | 本地文档读取，提供给 AI 作为上下文 |
+| `upload` | 本地上传计划与 dry-run |
+| `organize` | 网盘目录分析、整理计划与 dry-run |
+| `ops` | 操作日志与撤销 |
+| `schema` | 命令 schema/manifest |
 
-### auth default
+## 典型工作流
 
-设置某个 provider 的默认账号。
+### 读取目录
 
 ```bash
-clouddrive-cli auth default <provider> <account-id>
-clouddrive-cli auth default aliyun aliyun_demo --json
+clouddrive-cli files stats --provider aliyun --account default --file-id root --depth 2 --format json
+clouddrive-cli files tree --provider aliyun --account default --file-id root --depth 1
+clouddrive-cli files list --provider aliyun --account default --file-id root --format json
+clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --format json
+clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --cursor <nextCursor> --format json
 ```
 
-设置默认账号后，后续命令可以用 `--account default` 或省略 `--account`。
-
-### auth import-token
-
-从本地 JSON 文件导入 token。适合服务端部署、迁移、或用户已经从其他安全渠道拿到 token 的场景。
+### 媒体重命名
 
 ```bash
-clouddrive-cli auth import-token \
-  --provider aliyun \
-  --account aliyun_main \
-  --name "Aliyun Main" \
-  --token ./aliyun-token.json \
-  --default \
-  --json
+clouddrive-cli docs read ./rename-rules.md --max-chars 50000 --format json
+clouddrive-cli docs read ./rules.pdf --pdf-format markdown --pdf-pages 1-3 --format json
+clouddrive-cli docs convert ./pdf-folder --output ./out --pdf-format json,html,pdf,markdown,tagged-pdf,text --format json
+clouddrive-cli files walk --provider aliyun --account default --file-id <folder-id> --output files.json --format json
+clouddrive-cli media match --input files.json --format json
+# AI 基于规则、文件清单和 match 结果生成 rename-plan.json
+clouddrive-cli files rename-apply rename-plan.json --dry-run --format json
 ```
 
-`token.json` 会被写入 `~/.clouddrive-cli/tokens.json`。CLI 保存文件时使用私有权限 `0600`。
+`docs read` 会通过 OpenDataLoader 读取 PDF；`docs convert` 会把 OpenDataLoader 的 PDF 转换能力完整暴露出来，支持输出 `json`、`text`、`html`、`pdf`、`markdown`、`tagged-pdf`，并支持 `--pdf-content-safety-off`、`--pdf-sanitize`、`--pdf-keep-line-breaks`、`--pdf-use-struct-tree`、`--pdf-table-method`、`--pdf-reading-order`、页面分隔符、图片输出、`--pdf-pages`、header/footer、strikethrough、hybrid backend、Hancom AI 参数和 `--pdf-threads`。运行 PDF 转换需要 Node.js 20+，并且系统 `PATH` 中可用 Java 11+。
 
-### auth login
-
-独立 CLI 可以调起浏览器完成 OAuth 登录，并把 token 保存到本地 auth store。
+用户确认后再执行：
 
 ```bash
-clouddrive-cli auth
-clouddrive-cli auth login aliyun --browser chrome --json
-clouddrive-cli auth login dropbox --browser chrome --json
-clouddrive-cli auth login box --browser chrome --json
-clouddrive-cli auth login 123 --browser chrome --json
-clouddrive-cli auth login 115 --json
+clouddrive-cli files rename-apply rename-plan.json --rationale "Normalize media filenames for metadata scraping" --format json
 ```
 
-当前支持 `auth login` 的 provider：
-
-```text
-aliyun
-dropbox
-box
-123
-115
-onedrive
-```
-
-说明：
-
-- `aliyun` 使用阿里云盘 OpenAPI 扫码登录。CLI 会打开二维码页面，扫码确认后保存账号。
-- `115` 使用 115 网盘 device-code 扫码登录。二维码直接渲染在终端里，不会打开浏览器。
-- `dropbox`、`box`、`123` 使用浏览器 OAuth + 本地 loopback callback。
-- `onedrive` 仍然保留支持，方便需要 Microsoft Graph 的独立 CLI 用户。
-
-#### 终端里的 CLI 能被正确回调吗？
-
-可以，但前提是 provider 允许你的 redirect URI。实现方式不是让 Chrome 直接唤醒 `clouddrive-cli` 这个命令，而是：
-
-1. `clouddrive-cli auth login <provider>` 启动一个临时本地 HTTP server。
-2. CLI 生成 `http://127.0.0.1:<port>/callback` 作为 OAuth redirect URI。
-3. CLI 打开 Chrome 或系统默认浏览器。
-4. 浏览器登录完成后跳转到本地 callback URL。
-5. CLI 从 callback 请求里读取 `code`，再向 provider token endpoint 换取 token。
-6. CLI 保存账号到 `~/.clouddrive-cli/tokens.json`，并设置为默认账号。
-
-也就是说，回调命中的是 CLI 当前进程里的本地 loopback server。只要终端进程没有退出、provider 允许该 loopback redirect URI，这条链路就能工作。
-
-如果 provider 后台必须登记固定回调地址，可以固定端口：
+### 上传计划
 
 ```bash
-clouddrive-cli auth login dropbox \
-  --browser chrome \
-  --redirect-uri http://127.0.0.1:53682/callback \
-  --json
-
-clouddrive-cli auth login box \
-  --browser chrome \
-  --redirect-uri http://127.0.0.1:53683/callback \
-  --json
-
-clouddrive-cli auth login 123 \
-  --browser chrome \
-  --redirect-uri http://127.0.0.1:53684/callback \
-  --json
+clouddrive-cli upload plan --local ./Media --provider aliyun --account default --remote-parent <folder-id> --output upload-plan.json --format json
+clouddrive-cli upload apply upload-plan.json --dry-run --format json
+clouddrive-cli upload apply upload-plan.json --format json
 ```
 
-然后把同一个 redirect URI 填到对应 provider 的开发者后台。不要给独立 CLI 配置 `xbyboxplayer-oauth://callback` 这类自定义 scheme；它适合 Electron App，不适合纯终端进程接收回调。独立 CLI 只直接处理 `http://127.0.0.1:<port>/callback` 或 `http://localhost:<port>/callback`。
+真实上传要求 provider 的 `uploadFile` 能力为 `true`。当前 CLI 已接入 `aliyun`、`cloud123`、`115`、`baidu`、`dropbox`、`onedrive`、`box` 的本地文件上传；`pikpak` 暂不声明本地字节上传能力。
 
-注意：
-
-- OneDrive 公共客户端通常支持 loopback redirect。
-- Dropbox、Box 和 123 云盘可能要求在开发者后台登记 redirect URI；如果使用项目内置 client id 失败，可以用环境变量指定自己的应用：
+### 网盘目录整理
 
 ```bash
-export CLOUDDRIVE_DROPBOX_CLIENT_ID=...
-export CLOUDDRIVE_DROPBOX_CLIENT_SECRET=...
-export CLOUDDRIVE_BOX_CLIENT_ID=...
-export CLOUDDRIVE_BOX_CLIENT_SECRET=...
-export CLOUDDRIVE_CLOUD123_CLIENT_ID=...
-export CLOUDDRIVE_CLOUD123_CLIENT_SECRET=...
-export CLOUDDRIVE_ONEDRIVE_CLIENT_ID=...
-export CLOUDDRIVE_ALIYUN_CLIENT_ID=...
-export CLOUDDRIVE_ALIYUN_CLIENT_SECRET=...
+clouddrive-cli organize analyze --provider aliyun --account default --file-id <folder-id> --depth 5 --output analysis.json --summary --format json
+clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.md --output organize-plan.json --summary --format json
+clouddrive-cli organize apply organize-plan.json --dry-run --summary --format json
 ```
 
-## providers
+全盘整理风险高。即使 dry-run 成功，也应抽样检查移动目标，避免把已有结构打平成 `Movies` / `TV Shows`。
 
-### providers capabilities
-
-列出每个 provider 明确支持的能力。AI Agent 应先读取能力矩阵，再决定是否可以执行上传、移动、建目录等操作。
+### 回滚
 
 ```bash
-clouddrive-cli providers capabilities --json
+clouddrive-cli ops list --format json
+clouddrive-cli ops show <operation-id> --format json
+clouddrive-cli ops undo <operation-id> --dry-run --format json
+clouddrive-cli ops undo <operation-id> --format json
 ```
 
-输出示例：
-
-```json
-[
-  {
-    "id": "aliyun",
-    "displayName": "Aliyun Drive",
-    "capabilities": {
-      "batchRename": true,
-      "recursiveWalk": true,
-      "mkdir": false,
-      "move": false,
-      "uploadFile": false
-    }
-  }
-]
-```
-
-`uploadFile: false` 表示当前 CLI 已支持上传计划与 dry-run，但该 provider 的真实字节上传适配器尚未开启。
-
-## files
-
-### files list
-
-列出网盘目录中的文件。
-
-```bash
-clouddrive-cli files list \
-  --provider aliyun \
-  --account default \
-  --path root \
-  --json
-```
-
-参数：
-
-| 参数 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `--provider <p>` | 否 | `aliyun` | provider id |
-| `--account <id>` | 否 | `default` | 账号 id 或 `default` |
-| `--path <p>` | 否 | `root` | 父目录 file id |
-| `--drive-id <d>` | 否 | 账号默认 drive | drive id |
-| `--json` | 否 | 关闭 | 输出 JSON |
-
-### files walk
-
-递归遍历网盘目录树。
-
-```bash
-clouddrive-cli files walk \
-  --provider aliyun \
-  --account default \
-  --path <folder-file-id> \
-  --json
-```
-
-`files walk` 适合给 AI 做全目录分析，但输出可能很大。处理大型目录时，建议先从较小目录开始。
-
-省略 `--path` 时，CLI 会按 provider 自动选择根目录：`aliyun=root`、`cloud123=0`、`115=0`、`baidu=/`、`pikpak=*`、`dropbox=` 空字符串、`onedrive=onedrive_root`、`box=box_root`。
-
-### files rename-apply
-
-校验或执行重命名计划。
-
-```bash
-clouddrive-cli files rename-apply rename-plan.json \
-  --current current-files.json \
-  --dry-run \
-  --json
-```
-
-执行真实重命名：
-
-```bash
-clouddrive-cli files rename-apply rename-plan.json \
-  --current current-files.json \
-  --json
-```
-
-参数：
-
-| 参数 | 必填 | 说明 |
-| --- | --- | --- |
-| `<plan.json>` | 是 | 重命名计划文件 |
-| `--current <file>` | 否 | 当前文件列表，用于 dry-run 校验旧文件名 |
-| `--dry-run` | 否 | 只校验，不写入云盘 |
-| `--json` | 否 | 输出 JSON |
-
-AI Agent 默认必须先运行 dry-run。只有用户明确批准后，才执行不带 `--dry-run` 的命令。
-
-## media
-
-### media rename-plan
-
-根据文件列表生成媒体重命名计划。
-
-```bash
-clouddrive-cli media rename-plan \
-  --input files.json \
-  --provider aliyun \
-  --account default \
-  --style jellyfin \
-  --output rename-plan.json
-```
-
-直接输出 JSON：
-
-```bash
-clouddrive-cli media rename-plan \
-  --input files.json \
-  --provider aliyun \
-  --account default \
-  --style jellyfin \
-  --json
-```
-
-参数：
-
-| 参数 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `--input <files.json>` | 是 | 无 | 文件列表 JSON，通常来自 `files list` 或 `files walk` |
-| `--provider <p>` | 否 | `aliyun` | 写入计划中的 provider |
-| `--account <id>` | 否 | `default` | 写入计划中的账号 |
-| `--style <style>` | 否 | `jellyfin` | 命名风格，当前主要面向 Jellyfin 兼容格式 |
-| `--output <plan.json>` | 否 | 无 | 保存计划到文件 |
-| `--json` | 否 | 关闭 | 输出 JSON |
-
-典型流程：
-
-```bash
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli media rename-plan --input files.json --provider aliyun --account default --output rename-plan.json
-clouddrive-cli files rename-apply rename-plan.json --current files.json --dry-run --json
-```
-
-## docs
-
-### docs read
-
-读取本地文档，作为 AI 上下文。
-
-```bash
-clouddrive-cli docs read ./rename-rules.md --json
-clouddrive-cli docs read ./rename-rules.md --max-chars 50000 --json
-clouddrive-cli docs read ./rename-rules.md --max-chars 2000
-```
-
-参数：
-
-| 参数 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `<path>` | 是 | 无 | 本地文档路径 |
-| `--max-chars <n>` | 否 | `20000` | 最多返回字符数 |
-| `--json` | 否 | 关闭 | 输出包含元数据的 JSON |
-
-JSON 输出示例：
-
-```json
-{
-  "path": "/Users/me/project/rename-rules.md",
-  "format": "markdown",
-  "chars": 1200,
-  "truncated": false,
-  "content": "# 命名规则\n..."
-}
-```
-
-格式识别基于扩展名：
-
-| 扩展名 | format |
-| --- | --- |
-| `.md`, `.markdown` | `markdown` |
-| `.txt`, `.text` | `text` |
-| `.json` | `json` |
-| `.csv` | `csv` |
-| `.log` | `log` |
-| 其他扩展名 | 去掉点号后的扩展名 |
-| 无扩展名 | `text` |
-
-当前能力面向 UTF-8 文本文档。PDF、Word、Excel 等二进制文档应先转换为文本或 Markdown。
-
-## upload
-
-### upload plan
-
-递归扫描本地路径，生成上传计划。计划会保留目录结构，并把文件夹放在文件之前，方便后续先建目录再上传文件。
-
-```bash
-clouddrive-cli upload plan \
-  --local ./Media \
-  --provider aliyun \
-  --account default \
-  --remote-parent root \
-  --conflict skip \
-  --output upload-plan.json \
-  --json
-```
-
-参数：
-
-| 参数 | 必填 | 默认值 | 说明 |
-| --- | --- | --- | --- |
-| `--local <path>` | 是 | 无 | 本地文件或文件夹路径 |
-| `--provider <p>` | 否 | `aliyun` | 目标 provider |
-| `--account <id>` | 否 | `default` | 目标账号 |
-| `--remote-parent <id>` | 否 | `root` | 目标网盘父目录 file id |
-| `--conflict <mode>` | 否 | `skip` | 冲突策略，当前写入计划供后续 adapter 使用 |
-| `--output <plan.json>` | 否 | 无 | 保存上传计划 |
-| `--json` | 否 | 关闭 | 输出 JSON |
-
-### upload apply
-
-校验上传计划。第一版已支持完整 dry-run 汇总；真实上传会在 provider `uploadFile` 能力开启后执行。
-
-```bash
-clouddrive-cli upload apply upload-plan.json --dry-run --json
-```
-
-dry-run 输出包含：
-
-```json
-{
-  "ok": true,
-  "fileCount": 12,
-  "folderCount": 3,
-  "totalBytes": 987654321,
-  "errors": []
-}
-```
-
-非 dry-run：
-
-```bash
-clouddrive-cli upload apply upload-plan.json --json
-```
-
-如果 provider 尚未支持 CLI 上传，会返回退出码 `5`，不会写入云盘。
-
-## organize
-
-### organize analyze
-
-分析网盘文件导出，生成适合 AI 理解的目录摘要。
-
-从已有 `files walk` 结果分析：
-
-```bash
-clouddrive-cli organize analyze \
-  --input files.json \
-  --provider aliyun \
-  --account default \
-  --path root \
-  --output analysis.json \
-  --json
-```
-
-也可以直接让 CLI 遍历网盘：
-
-```bash
-clouddrive-cli organize analyze \
-  --provider aliyun \
-  --account default \
-  --path <folder-id> \
-  --depth 5 \
-  --output analysis.json \
-  --summary \
-  --json
-```
-
-`--summary` 会把完整分析写入 `--output`，终端只输出适合 AI 快速判断的统计摘要。
-
-### organize plan
-
-根据分析结果和可选规则文档生成整理计划。
-
-```bash
-clouddrive-cli organize plan \
-  --analysis analysis.json \
-  --rules ./organize-rules.md \
-  --output organize-plan.json \
-  --summary \
-  --json
-```
-
-当前内置保守规则：
-
-- 视频文件按文件名判断电影或剧集。
-- 剧集类文件建议移动到 `TV Shows`。
-- 电影类文件建议移动到 `Movies`。
-- 缺少 `Movies` 或 `TV Shows` 时生成 `mkdir` 动作。
-- 不生成删除动作。
-
-### organize apply
-
-校验整理计划。
-
-```bash
-clouddrive-cli organize apply organize-plan.json --dry-run --summary --json
-```
-
-dry-run 输出会统计动作数量：
-
-```json
-{
-  "ok": true,
-  "actionCount": 3,
-  "counts": {
-    "mkdir": 1,
-    "move": 2,
-    "rename": 0,
-    "copy": 0,
-    "trash": 0
-  }
-}
-```
-
-不带 `--summary` 时会输出完整动作列表，适合小计划或需要人工逐项审查的场景。全盘整理时建议始终先用 `--summary`，再抽样检查完整计划文件。
-
-非 dry-run 只有在 provider 明确支持计划中的所有动作时才会继续。当前 provider 的 `mkdir` / `move` 能力尚未开启，因此默认只适合生成计划和 dry-run。
-
-## ops
-
-### ops list
-
-列出历史操作日志。
-
-```bash
-clouddrive-cli ops list
-clouddrive-cli ops list --json
-```
-
-### ops show
-
-查看某次操作详情。
-
-```bash
-clouddrive-cli ops show <operation-id>
-clouddrive-cli ops show <operation-id> --json
-```
-
-### ops undo
-
-生成或执行某次重命名操作的反向计划。
-
-先 dry-run：
-
-```bash
-clouddrive-cli ops undo <operation-id> --dry-run --json
-```
-
-用户确认后执行撤销：
-
-```bash
-clouddrive-cli ops undo <operation-id> --json
-```
-
-撤销本身也会生成新的操作日志。
-
-## AI Agent 推荐工作流
-
-### 读取规则并整理媒体目录
-
-```bash
-clouddrive-cli docs read ./rename-rules.md --json
-clouddrive-cli auth list --json
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli media rename-plan --input files.json --provider aliyun --account default --style jellyfin --output rename-plan.json
-clouddrive-cli files rename-apply rename-plan.json --current files.json --dry-run --json
-```
-
-在 dry-run 结果中确认：
-
-- `ok` 是否为 `true`。
-- 是否有重名冲突。
-- 是否有非法文件名。
-- `old_name` 到 `new_name` 是否符合用户要求。
-
-确认无误后：
-
-```bash
-clouddrive-cli files rename-apply rename-plan.json --current files.json --json
-```
-
-保存返回的 `operationId`。
-
-### 上传本地目录到网盘
-
-```bash
-clouddrive-cli providers capabilities --json
-clouddrive-cli upload plan --local ./Media --provider aliyun --account default --remote-parent <folder-id> --output upload-plan.json --json
-clouddrive-cli upload apply upload-plan.json --dry-run --json
-```
-
-确认 provider 支持 `uploadFile` 且 dry-run 无误后，再执行：
-
-```bash
-clouddrive-cli upload apply upload-plan.json --json
-```
-
-### AI 分析并整理网盘目录
-
-```bash
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli organize analyze --input files.json --provider aliyun --account default --path <folder-id> --output analysis.json --json
-clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.md --output organize-plan.json --json
-clouddrive-cli organize apply organize-plan.json --dry-run --json
-```
-
-整理计划默认不会删除文件。非 dry-run 执行前，必须确认 provider 能力矩阵支持计划中的所有动作。
-
-### 回滚一次重命名
-
-```bash
-clouddrive-cli ops show <operation-id> --json
-clouddrive-cli ops undo <operation-id> --dry-run --json
-clouddrive-cli ops undo <operation-id> --json
-```
+只有 rename 和 move 支持 CLI undo。trash 不支持 undo。
 
 ## MCP
 
-`clouddrive-mcp` 是可选的 MCP Server，它把部分 CLI 能力包装成结构化工具，方便 Claude Desktop、Cursor、Windsurf 等支持 MCP 的客户端调用。
-
-启动：
+`clouddrive-mcp` 是可选 MCP Server，适合支持 MCP 的 AI 客户端直接调用工具。MCP tool 名称和 input schema 从同一个 CLI command manifest 自动生成，也就是 `clouddrive-cli list --format json` / `schema commands` 的接口源。
 
 ```bash
 clouddrive-mcp
 ```
 
-当前工具：
+需要 plan 文件、输出重定向、细粒度本地处理或调试 provider 行为时，优先使用 CLI。
 
-| MCP tool | 对应能力 |
-| --- | --- |
-| `auth_list` | `clouddrive-cli auth list --json` |
-| `files_list` | `clouddrive-cli files list ... --json` |
-| `files_walk` | `clouddrive-cli files walk ... --json` |
-| `media_rename_plan` | 生成媒体重命名计划 |
-| `files_rename_apply` | dry-run 或执行重命名计划 |
-| `ops_list` | `clouddrive-cli ops list --json` |
-| `ops_show` | `clouddrive-cli ops show ... --json` |
-| `ops_undo` | dry-run 或执行撤销 |
+## Provider 注意事项
 
-CLI 是主入口，MCP 是集成层。实现和安全模型应保持一致：先计划、先 dry-run、再执行、可撤销。
-
-当前 `upload` 和 `organize` 新命令已先进入 CLI；MCP 工具应在命令稳定后再按同一安全模型补齐。
-
-## Skills
-
-`skills/clouddrive-cli/SKILL.md` 是给 AI Agent 的使用说明。它不执行任何代码，而是告诉 Agent 应该怎样安全地调用 CLI 或 MCP。
-
-推荐组合：
-
-```text
-clouddrive-cli   稳定命令行边界
-clouddrive-mcp   可选结构化工具接口
-skills          AI 使用手册和安全规则
-```
-
-## 故障排查
-
-### 命令不存在
-
-确认安装目录在 `PATH` 中：
-
-```bash
-echo "$PATH"
-which clouddrive-cli
-```
-
-macOS / Linux 可以临时执行：
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-### 没有账号
-
-先打开 BoxPlayer Electron App 登录网盘账号，再导出或刷新 CLI 账号配置，然后运行：
-
-```bash
-clouddrive-cli auth list --json
-```
-
-### Provider 不支持某能力
-
-不同 provider 的能力可能不同。先运行：
-
-```bash
-clouddrive-cli providers capabilities --json
-```
-
-遇到 `does not support batch rename`、`does not support CLI upload yet` 或退出码 `5`，说明当前 provider 暂不支持该写操作。
-
-### 输出过大
-
-`files walk` 可能返回大量文件。建议缩小 `--path` 范围，或让 AI 分批处理目录。
-
-`docs read` 可用 `--max-chars` 控制上下文长度。
-
-
+- OneDrive `files search` 可能因 Microsoft Graph `generalException` / HTTP 500 间歇失败，可回退到 `files walk` 后本地过滤。
+- PikPak `files search --name` 可能忽略查询并返回 root items，可回退到 `files walk` 后本地过滤。
+- Baidu `files info` 已兼容 `filemetas` 的 `list` / `info` 响应；若仍返回 `errno=12`，按 API/token 限制处理。
+- 115 部分文件夹可能被 API 字段映射成 `type: file`，可通过 `files list --file-id <fileId>` 验证是否可作为目录读取。
 
 ---
 
-<a id="english"></a>
+# English
 
-# clouddrive-cli
+`clouddrive-cli` is the BoxPlayer automation interface for terminals, humans, and AI agents. It exposes logged-in cloud-drive accounts from the Electron app or standalone CLI auth as one discoverable command surface with dry-run planning and rollback support.
 
-Multi-cloud storage CLI with AI-driven media organization.  
-Supports Aliyun Drive, OneDrive, Dropbox, Box, Baidu Netdisk, 115 Drive, PikPak.
+Supported providers:
 
-[中文](#readme) | English
+`aliyun` · `cloud123` · `115` · `baidu` · `pikpak` · `onedrive` · `box` · `dropbox`
 
+## Quick Start
 
----
+### 1. Install
 
-## Install CLI
+Install through the BoxPlayer Electron app, or install the standalone package:
 
 ```bash
 npm install -g clouddrive-cli
-```
-
-Or install from the BoxPlayer desktop app: **Account Settings → Install CLI**
-
-### Verify
-
-```bash
-clouddrive-cli auth list
 clouddrive-cli --help
 ```
 
----
+From source:
 
-## Install Claude Code Skill
+```bash
+node clouddrive-cli/bin/cli.mjs --help
+node clouddrive-cli/bin/cli.mjs list --format json
+```
 
-The skill lets Claude run `clouddrive-cli` commands on your behalf directly in the terminal.
+### 2. Discover commands
 
-### Method A — npx (recommended)
+Do not treat this README as the complete command registry. Ask the CLI:
+
+```bash
+clouddrive-cli list --format json
+clouddrive-cli schema commands
+```
+
+### 3. Inspect accounts and capabilities
+
+```bash
+clouddrive-cli auth list --format json
+clouddrive-cli settings show --format json
+clouddrive-cli providers capabilities --format json
+```
+
+### 4. Run a read command
+
+```bash
+clouddrive-cli files stats --provider aliyun --account default --file-id root --depth 1 --format json
+clouddrive-cli files list --provider aliyun --account default --file-id root --format json
+```
+
+## For Humans
+
+Use the CLI directly when you need repeatable cloud-drive operations:
+
+- `clouddrive-cli auth list` lists configured accounts.
+- `clouddrive-cli files list` lists a directory.
+- `clouddrive-cli files search` searches files.
+- `clouddrive-cli files tree` previews structure.
+- `clouddrive-cli docs read` reads a local rules document.
+- `clouddrive-cli ops list` shows operation history.
+
+## For AI Agents
+
+Start every session with:
+
+```bash
+clouddrive-cli list --format json
+clouddrive-cli auth list --format json
+clouddrive-cli providers capabilities --format json
+```
+
+JSON-mode failures return:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "UNSUPPORTED_CAPABILITY",
+    "message": "Unknown provider: demo",
+    "exitCode": 5
+  }
+}
+```
+
+Branch on `error.code`, not natural-language text.
+
+### Install the skill
 
 ```bash
 npx skills add boxplayer/clouddrive-cli -g
 ```
 
-This installs the skill to `~/.claude/skills/clouddrive-cli/`.
-
-### Method B — paste to your AI agent
-
-Copy this prompt and paste it to Claude:
-
-> Install the clouddrive-cli Claude Code skill. Read the file at `$(npm root -g)/clouddrive-cli/skill/SKILL.md` and copy it to `~/.claude/skills/clouddrive-cli/SKILL.md`.
-
----
-
-## Overview
-
-`clouddrive-cli` is the secure automation interface BoxPlayer exposes for terminals and AI Agents. It reads cloud drive accounts exported by the Electron App, lists or recursively walks drive files, generates media rename plans, validates them with dry-run, and then executes trackable, reversible batch rename operations.
-
-Typical use cases:
-
-- Let an AI batch-organize movies, series, and anime filenames on cloud drives.
-- Normalize file names into formats that Jellyfin, Emby, and Plex can scrape more easily.
-- Generate a plan, review the diff, and keep an operation log before any write operation.
-- Read local documents and provide naming rules, organization requirements, and media library conventions to the AI as context.
-- Expose the same capabilities to MCP-compatible AI clients via `clouddrive-mcp`.
-
-## Installation Modes
-
-`clouddrive-cli` supports two installation modes.
-
-### Mode 1: Installed with the Electron App
-
-After installing the BoxPlayer Electron App, the application registers:
-
-- `clouddrive-cli`
-- `clouddrive-mcp`
-
-macOS / Linux default paths:
+Or read the packaged skill from:
 
 ```bash
-~/.local/bin/clouddrive-cli
-~/.local/bin/clouddrive-mcp
+$(npm root -g)/clouddrive-cli/skill/SKILL.md
 ```
 
-Windows default paths:
+## Install Modes
+
+### Mode 1: BoxPlayer App
+
+The Electron app registers:
 
 ```text
-%LOCALAPPDATA%\BoxPlayer\bin\clouddrive-cli.cmd
-%LOCALAPPDATA%\BoxPlayer\bin\clouddrive-mcp.cmd
+clouddrive-cli
+clouddrive-mcp
 ```
 
-If the terminal reports a command not found, restart the terminal or confirm that the directory above is in your `PATH`.
-
-In this mode, the Electron App exports logged-in account tokens to:
+It also exports app accounts into:
 
 ```bash
 ~/.clouddrive-cli/tokens.json
 ```
 
-After installing the App and logging in, you can run directly in the terminal:
+### Mode 2: Standalone CLI
+
+Use `auth login` or `auth import-token`:
 
 ```bash
-clouddrive-cli auth list --json
-clouddrive-cli files list --provider aliyun --account default --path root --json
+clouddrive-cli auth login aliyun --format json
+clouddrive-cli auth login 115 --format json
+clouddrive-cli auth login dropbox --browser chrome --format json
+clouddrive-cli auth import-token --provider aliyun --account <id> --token token.json --default --format json
 ```
 
-### Mode 2: Standalone Installation
+Aliyun and 115 render QR codes in the terminal. Dropbox, Box, 123Pan, and OneDrive use browser OAuth loopback.
 
-Standalone mode does not depend on the Electron App. It is suitable for servers, CI, automation environments, or users who only want the AI to use the CLI.
+## Configuration
 
-Build the standalone CLI package from source:
-
-```bash
-pnpm run build:clouddrive-cli
-```
-
-The build output is at:
-
-```bash
-dist/clouddrive-cli-package
-```
-
-Install locally:
-
-```bash
-npm install -g ./dist/clouddrive-cli-package
-clouddrive-cli --help
-```
-
-Or link during development:
-
-```bash
-cd dist/clouddrive-cli-package
-npm link
-clouddrive-cli --help
-```
-
-After a standalone installation, the CLI still uses:
+Default config directory:
 
 ```bash
 ~/.clouddrive-cli
 ```
 
-It will not automatically have the accounts from the Electron App. Use `auth login` or `auth import-token` to add accounts.
-
-In development you can also use the script entry point directly:
-
-```bash
-node scripts/clouddrive-cli.mjs --help
-node scripts/clouddrive-mcp.mjs
-```
-
-## Configuration and Accounts
-
-The CLI uses an independent configuration directory:
-
-```bash
-~/.clouddrive-cli
-```
-
-Key files:
+Main files:
 
 ```text
-~/.clouddrive-cli/tokens.json
-~/.clouddrive-cli/config.json
-~/.clouddrive-cli/operations/
+tokens.json
+config.json
+operations/
 ```
 
-The Electron App exports logged-in accounts to the CLI config directory. The CLI itself does not perform interactive web login. Automation flows should first check available accounts:
+Environment:
+
+| Variable | Purpose |
+|----------|---------|
+| `CLOUDDRIVE_CLI_CONFIG_DIR` | Override the default config directory. |
+
+## Output and Errors
+
+`--json` and `--format json` are equivalent.
+
+Large-output commands support `--output <file.json>`. The complete result is written to disk and stdout returns a compact summary:
 
 ```bash
-clouddrive-cli auth list --json
+clouddrive-cli files stats --provider aliyun --account default --file-id root --output stats.json --format json
 ```
 
-Supported providers:
+| Exit code | Error code | Meaning |
+|-----------|------------|---------|
+| `0` | - | Success |
+| `1` | `VALIDATION_ERROR` | Invalid args, input, or plan |
+| `2` | `AUTH_ERROR` | Missing or expired account |
+| `3` | `PROVIDER_API_ERROR` | Provider API/HTTP failure |
+| `4` | `PARTIAL_SUCCESS` | Partial success |
+| `5` | `UNSUPPORTED_CAPABILITY` | Unsupported provider or capability |
 
-```text
-aliyun
-pikpak
-dropbox
-onedrive
-box
-baidu
-115
-```
-
-## General Conventions
-
-Use `--json` for AI Agent output — it is stable and parseable.
-
-Write operations must follow three steps:
-
-1. Generate or read the plan.
-2. Validate with `--dry-run` first.
-3. Execute the non-dry-run operation only after user confirmation.
-
-Successful write operations generate an operation ID. Use `ops show` to view it later, and `ops undo --dry-run` to preview the undo plan.
-
-Common exit codes:
-
-| Exit code | Meaning |
-| --- | --- |
-| `0` | Success |
-| `1` | Argument or validation error |
-| `2` | Missing account or authentication error |
-| `3` | Provider API error |
-| `4` | Partial success |
-| `5` | Unsupported provider or capability |
-
-## Command Overview
+## Command Discovery
 
 ```bash
-clouddrive-cli --help
-clouddrive-cli help
+clouddrive-cli list --format json
+clouddrive-cli list --group files --format json
+clouddrive-cli schema commands
 ```
 
-Current command groups:
+The manifest includes agent contract fields: `examples`, `largeOutput`, `safety`, and `providerRequirements`. MCP tool schemas are generated from the same manifest.
 
-```text
-auth        Account discovery and default account settings
-providers   Provider capability matrix
-files       Cloud drive file reading, recursive walking, rename execution
-media       Media file rename plan generation
-docs        Read local documents for AI context
-upload      Upload plan from local to cloud and dry-run
-organize    Cloud drive directory analysis, organization plan, and dry-run
-ops         Operation log viewing and undo
-```
+Top-level groups:
 
-## auth
+| Group | Purpose |
+|-------|---------|
+| `auth` | Accounts, defaults, login, token import |
+| `settings` | Config/account/provider summary |
+| `providers` | Provider capability matrix |
+| `files` | File reads, search, mkdir, rename, move, trash |
+| `media` | Media scan, match, rename plans |
+| `docs` | Local document context |
+| `upload` | Upload planning and dry-run |
+| `organize` | Cloud directory analysis and organization plans |
+| `ops` | Operation history and undo |
+| `schema` | Command schema/manifest |
 
-### auth list
+## Common Workflows
 
-List all accounts exported to the CLI.
+### Read a directory
 
 ```bash
-clouddrive-cli auth list
-clouddrive-cli auth list --json
+clouddrive-cli files stats --provider aliyun --account default --file-id root --depth 2 --format json
+clouddrive-cli files tree --provider aliyun --account default --file-id root --depth 1
+clouddrive-cli files list --provider aliyun --account default --file-id root --format json
+clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --format json
+clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --cursor <nextCursor> --format json
 ```
 
-JSON output example:
-
-```json
-[
-  {
-    "provider": "aliyun",
-    "accountId": "aliyun_demo",
-    "displayName": "Demo",
-    "isDefault": true
-  }
-]
-```
-
-Note: output does not include tokens, refresh tokens, or other sensitive fields.
-
-### auth default
-
-Set the default account for a provider.
+### Rename media
 
 ```bash
-clouddrive-cli auth default <provider> <account-id>
-clouddrive-cli auth default aliyun aliyun_demo --json
+clouddrive-cli docs read ./rename-rules.md --max-chars 50000 --format json
+clouddrive-cli docs read ./rules.pdf --pdf-format markdown --pdf-pages 1-3 --format json
+clouddrive-cli docs convert ./pdf-folder --output ./out --pdf-format json,html,pdf,markdown,tagged-pdf,text --format json
+clouddrive-cli files walk --provider aliyun --account default --file-id <folder-id> --output files.json --format json
+clouddrive-cli media match --input files.json --format json
+# Let the AI generate rename-plan.json from the rules, inventory, and match output.
+clouddrive-cli files rename-apply rename-plan.json --dry-run --format json
 ```
 
-After setting a default account, subsequent commands can use `--account default` or omit `--account`.
+`docs read` uses OpenDataLoader for PDF files. `docs convert` exposes the full OpenDataLoader PDF conversion surface, including `json`, `text`, `html`, `pdf`, `markdown`, and `tagged-pdf` outputs plus content safety, sanitization, structure tree, table/reading-order, page separator, image output, page selection, header/footer, strikethrough, hybrid backend, Hancom AI, and thread options. PDF conversion requires Node.js 20+ and Java 11+ available on `PATH`.
 
-### auth import-token
-
-Import a token from a local JSON file. Suitable for server deployments, migrations, or users who already have a token from another secure source.
+### Plan uploads
 
 ```bash
-clouddrive-cli auth import-token \
-  --provider aliyun \
-  --account aliyun_main \
-  --name "Aliyun Main" \
-  --token ./aliyun-token.json \
-  --default \
-  --json
+clouddrive-cli upload plan --local ./Media --provider aliyun --account default --remote-parent <folder-id> --output upload-plan.json --format json
+clouddrive-cli upload apply upload-plan.json --dry-run --format json
+clouddrive-cli upload apply upload-plan.json --format json
 ```
 
-`token.json` is written to `~/.clouddrive-cli/tokens.json`. The CLI saves the file with private permissions `0600`.
+Real upload requires provider capability `uploadFile: true`. The CLI currently wires real local-byte upload for `aliyun`, `cloud123`, `115`, `baidu`, `dropbox`, `onedrive`, and `box`; `pikpak` does not advertise local-byte upload yet.
 
-### auth login
-
-The standalone CLI can launch a browser to complete OAuth login and save the token locally.
+### Organize a cloud directory
 
 ```bash
-clouddrive-cli auth login aliyun --browser chrome --json
-clouddrive-cli auth login dropbox --browser chrome --json
-clouddrive-cli auth login box --browser chrome --json
-clouddrive-cli auth login 123 --browser chrome --json
-clouddrive-cli auth login 115 --json
+clouddrive-cli organize analyze --provider aliyun --account default --file-id <folder-id> --depth 5 --output analysis.json --summary --format json
+clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.md --output organize-plan.json --summary --format json
+clouddrive-cli organize apply organize-plan.json --dry-run --summary --format json
 ```
 
-Providers supporting `auth login`:
-
-```text
-aliyun
-dropbox
-box
-123
-115
-onedrive
-```
-
-Notes:
-
-- `aliyun` uses Aliyun Drive OpenAPI QR code login. The CLI opens a QR code page; scan to confirm and the account is saved.
-- `115` uses a device-code QR login. The QR code is rendered directly in the terminal — no browser is opened.
-- `dropbox`, `box`, and `123` use browser OAuth with a local loopback callback.
-- `onedrive` is supported for standalone CLI users who need Microsoft Graph.
-
-The callback works by starting a temporary local HTTP server. The CLI generates `http://127.0.0.1:<port>/callback` as the OAuth redirect URI, opens the browser, reads the `code` from the callback, exchanges it for a token, and saves the account to `~/.clouddrive-cli/tokens.json`.
-
-If the provider requires a fixed redirect URI, use a fixed port:
+### Roll back
 
 ```bash
-clouddrive-cli auth login dropbox \
-  --browser chrome \
-  --redirect-uri http://127.0.0.1:53682/callback \
-  --json
+clouddrive-cli ops list --format json
+clouddrive-cli ops show <operation-id> --format json
+clouddrive-cli ops undo <operation-id> --dry-run --format json
+clouddrive-cli ops undo <operation-id> --format json
 ```
 
-You can override the built-in client credentials with environment variables:
-
-```bash
-export CLOUDDRIVE_DROPBOX_CLIENT_ID=...
-export CLOUDDRIVE_DROPBOX_CLIENT_SECRET=...
-export CLOUDDRIVE_BOX_CLIENT_ID=...
-export CLOUDDRIVE_BOX_CLIENT_SECRET=...
-export CLOUDDRIVE_CLOUD123_CLIENT_ID=...
-export CLOUDDRIVE_CLOUD123_CLIENT_SECRET=...
-export CLOUDDRIVE_ONEDRIVE_CLIENT_ID=...
-export CLOUDDRIVE_ALIYUN_CLIENT_ID=...
-export CLOUDDRIVE_ALIYUN_CLIENT_SECRET=...
-```
-
-## providers
-
-### providers capabilities
-
-List the capabilities explicitly supported by each provider. AI Agents should read the capability matrix before deciding whether to execute upload, move, or mkdir operations.
-
-```bash
-clouddrive-cli providers capabilities --json
-```
-
-Output example:
-
-```json
-[
-  {
-    "id": "aliyun",
-    "displayName": "Aliyun Drive",
-    "capabilities": {
-      "batchRename": true,
-      "recursiveWalk": true,
-      "mkdir": false,
-      "move": false,
-      "uploadFile": false
-    }
-  }
-]
-```
-
-`uploadFile: false` means the CLI supports upload planning and dry-run, but the real byte-upload adapter for this provider is not yet enabled.
-
-## files
-
-### files list
-
-List files in a cloud drive directory.
-
-```bash
-clouddrive-cli files list \
-  --provider aliyun \
-  --account default \
-  --path root \
-  --json
-```
-
-| Parameter | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--provider <p>` | No | `aliyun` | Provider ID |
-| `--account <id>` | No | `default` | Account ID or `default` |
-| `--path <p>` | No | `root` | Parent directory file ID |
-| `--drive-id <d>` | No | account default drive | Drive ID |
-| `--json` | No | off | JSON output |
-
-### files walk
-
-Recursively walk the cloud drive directory tree.
-
-```bash
-clouddrive-cli files walk \
-  --provider aliyun \
-  --account default \
-  --path <folder-file-id> \
-  --json
-```
-
-`files walk` is suitable for AI full-directory analysis, but output can be large. For large directories, start with a smaller subdirectory.
-
-When `--path` is omitted, the CLI chooses provider-specific roots automatically: `aliyun=root`, `cloud123=0`, `115=0`, `baidu=/`, `pikpak=*`, `dropbox=` empty string, `onedrive=onedrive_root`, and `box=box_root`.
-
-### files rename-apply
-
-Validate or execute a rename plan.
-
-Dry-run:
-
-```bash
-clouddrive-cli files rename-apply rename-plan.json \
-  --current current-files.json \
-  --dry-run \
-  --json
-```
-
-Execute real rename:
-
-```bash
-clouddrive-cli files rename-apply rename-plan.json \
-  --current current-files.json \
-  --json
-```
-
-| Parameter | Required | Description |
-| --- | --- | --- |
-| `<plan.json>` | Yes | Rename plan file |
-| `--current <file>` | No | Current file list for dry-run old name validation |
-| `--dry-run` | No | Validate only, do not write to cloud drive |
-| `--json` | No | JSON output |
-
-AI Agents must run dry-run first by default. Only execute without `--dry-run` after explicit user approval.
-
-## media
-
-### media rename-plan
-
-Generate a media rename plan from a file list.
-
-```bash
-clouddrive-cli media rename-plan \
-  --input files.json \
-  --provider aliyun \
-  --account default \
-  --style jellyfin \
-  --output rename-plan.json
-```
-
-| Parameter | Required | Default | Description |
-| --- | --- | --- | --- |
-| `--input <files.json>` | Yes | — | File list JSON, typically from `files list` or `files walk` |
-| `--provider <p>` | No | `aliyun` | Provider written into the plan |
-| `--account <id>` | No | `default` | Account written into the plan |
-| `--style <style>` | No | `jellyfin` | Naming style, primarily Jellyfin-compatible format |
-| `--output <plan.json>` | No | — | Save plan to file |
-| `--json` | No | off | JSON output |
-
-Typical workflow:
-
-```bash
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli media rename-plan --input files.json --provider aliyun --account default --output rename-plan.json
-clouddrive-cli files rename-apply rename-plan.json --current files.json --dry-run --json
-```
-
-## docs
-
-### docs read
-
-Read a local document as AI context.
-
-```bash
-clouddrive-cli docs read ./rename-rules.md --json
-clouddrive-cli docs read ./rename-rules.md --max-chars 50000 --json
-```
-
-| Parameter | Required | Default | Description |
-| --- | --- | --- | --- |
-| `<path>` | Yes | — | Local document path |
-| `--max-chars <n>` | No | `20000` | Maximum characters to return |
-| `--json` | No | off | Output JSON with metadata |
-
-## upload
-
-### upload plan
-
-Recursively scan a local path and generate an upload plan.
-
-```bash
-clouddrive-cli upload plan \
-  --local ./Media \
-  --provider aliyun \
-  --account default \
-  --remote-parent root \
-  --conflict skip \
-  --output upload-plan.json \
-  --json
-```
-
-### upload apply
-
-Validate or execute an upload plan.
-
-```bash
-clouddrive-cli upload apply upload-plan.json --dry-run --json
-```
-
-Dry-run output:
-
-```json
-{
-  "ok": true,
-  "fileCount": 12,
-  "folderCount": 3,
-  "totalBytes": 987654321,
-  "errors": []
-}
-```
-
-If the provider does not yet support CLI upload, exit code `5` is returned and nothing is written.
-
-## organize
-
-### organize analyze
-
-Analyze a cloud drive file export and generate a directory summary suitable for AI understanding.
-
-```bash
-clouddrive-cli organize analyze \
-  --input files.json \
-  --provider aliyun \
-  --account default \
-  --path root \
-  --output analysis.json \
-  --summary \
-  --json
-```
-
-### organize plan
-
-Generate an organization plan from analysis results and an optional rules document.
-
-```bash
-clouddrive-cli organize plan \
-  --analysis analysis.json \
-  --rules ./organize-rules.md \
-  --output organize-plan.json \
-  --summary \
-  --json
-```
-
-Built-in conservative rules: classify video files as movies or episodes by filename; suggest moving episodes to `TV Shows` and movies to `Movies`; generate `mkdir` actions when those folders are missing; never generate delete actions.
-
-### organize apply
-
-Validate an organization plan.
-
-```bash
-clouddrive-cli organize apply organize-plan.json --dry-run --summary --json
-```
-
-Use `--summary` for large plans so stdout contains counts and destination distribution rather than the full action list. Inspect the saved plan file before applying broad root-level organization.
-
-## ops
-
-### ops list
-
-List operation history.
-
-```bash
-clouddrive-cli ops list --json
-```
-
-### ops show
-
-View details of an operation.
-
-```bash
-clouddrive-cli ops show <operation-id> --json
-```
-
-### ops undo
-
-Generate or execute the reverse plan for a rename operation.
-
-Dry-run first:
-
-```bash
-clouddrive-cli ops undo <operation-id> --dry-run --json
-```
-
-Execute after user confirmation:
-
-```bash
-clouddrive-cli ops undo <operation-id> --json
-```
-
-## AI Agent Recommended Workflows
-
-### Read rules and organize a media directory
-
-```bash
-clouddrive-cli docs read ./rename-rules.md --json
-clouddrive-cli auth list --json
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli media rename-plan --input files.json --provider aliyun --account default --style jellyfin --output rename-plan.json
-clouddrive-cli files rename-apply rename-plan.json --current files.json --dry-run --json
-```
-
-Verify the dry-run: `ok` is `true`, no name conflicts, no illegal filenames, `old_name` → `new_name` matches user intent. Then execute:
-
-```bash
-clouddrive-cli files rename-apply rename-plan.json --current files.json --json
-```
-
-Save the returned `operationId`.
-
-### Upload a local directory to the cloud
-
-```bash
-clouddrive-cli providers capabilities --json
-clouddrive-cli upload plan --local ./Media --provider aliyun --account default --remote-parent <folder-id> --output upload-plan.json --json
-clouddrive-cli upload apply upload-plan.json --dry-run --json
-```
-
-Confirm the provider supports `uploadFile` and the dry-run is clean, then execute:
-
-```bash
-clouddrive-cli upload apply upload-plan.json --json
-```
-
-### AI analyze and organize a cloud drive directory
-
-```bash
-clouddrive-cli files walk --provider aliyun --account default --path <folder-id> --json > files.json
-clouddrive-cli organize analyze --input files.json --provider aliyun --account default --path <folder-id> --output analysis.json --summary --json
-clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.md --output organize-plan.json --summary --json
-clouddrive-cli organize apply organize-plan.json --dry-run --summary --json
-```
-
-Organization plans never delete files. Before non-dry-run execution, confirm the provider capability matrix supports all actions in the plan and inspect sampled moves from the saved plan file.
-
-### Roll back a rename operation
-
-```bash
-clouddrive-cli ops show <operation-id> --json
-clouddrive-cli ops undo <operation-id> --dry-run --json
-clouddrive-cli ops undo <operation-id> --json
-```
+Only rename and move operations support CLI undo.
 
 ## MCP
 
-`clouddrive-mcp` is an optional MCP Server that wraps some CLI capabilities as structured tools for MCP-compatible clients such as Claude Desktop, Cursor, and Windsurf.
-
-Start:
+`clouddrive-mcp` exposes the CLI command manifest as MCP tools. Tool names and input schemas are generated from the same source used by `clouddrive-cli list --format json` and `schema commands`:
 
 ```bash
 clouddrive-mcp
 ```
 
-Current tools:
+Use direct CLI commands for plan files, output redirection, local post-processing, and provider debugging.
 
-| MCP tool | Corresponding capability |
-| --- | --- |
-| `auth_list` | `clouddrive-cli auth list --json` |
-| `files_list` | `clouddrive-cli files list ... --json` |
-| `files_walk` | `clouddrive-cli files walk ... --json` |
-| `media_rename_plan` | Generate media rename plan |
-| `files_rename_apply` | Dry-run or execute rename plan |
-| `ops_list` | `clouddrive-cli ops list --json` |
-| `ops_show` | `clouddrive-cli ops show ... --json` |
-| `ops_undo` | Dry-run or execute undo |
+## Provider Notes
 
-The CLI is the primary interface; MCP is the integration layer. The implementation and safety model should remain consistent: plan first, dry-run first, execute, undo-able.
-
-## Skills
-
-`skills/clouddrive-cli/SKILL.md` is the usage guide for AI Agents. It does not execute any code; it tells the Agent how to safely call the CLI or MCP.
-
-Recommended combination:
-
-```text
-clouddrive-cli   stable CLI boundary
-clouddrive-mcp   optional structured tool interface
-skills          AI usage guide and safety rules
-```
-
-## Troubleshooting
-
-### Command not found
-
-Confirm the install directory is in `PATH`:
-
-```bash
-echo "$PATH"
-which clouddrive-cli
-```
-
-Temporarily add it on macOS / Linux:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
-
-### No accounts
-
-Open the BoxPlayer Electron App, log in to a cloud drive account, then export or refresh the CLI account config and run:
-
-```bash
-clouddrive-cli auth list --json
-```
-
-### Provider does not support a capability
-
-Run first:
-
-```bash
-clouddrive-cli providers capabilities --json
-```
-
-If you see `does not support batch rename`, `does not support CLI upload yet`, or exit code `5`, the current provider does not support that write operation yet.
-
-### Output too large
-
-`files walk` may return a large number of files. Narrow the `--path` scope or have the AI process directories in batches.
-
-`docs read` supports `--max-chars` to control context length.
+- OneDrive search may intermittently fail with Microsoft Graph HTTP 500. Fall back to walk plus local filtering.
+- PikPak search by name may be ignored by the API. Fall back to walk plus local filtering.
+- Baidu file info handles `filemetas` under `list` or `info`; `errno=12` remains a possible API/token limitation.
+- 115 folder fields may be ambiguous; confirm by listing the item path before folder operations.
