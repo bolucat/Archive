@@ -548,7 +548,7 @@ export default class UserDAL {
     await UserDAL.LoadPanData(token)
     // 刷新所有状态
     PanDAL.aReLoadQuickFile(token.user_id)
-    useAppStore().resetTab()
+    useAppStore().resetTab(useSettingStore().uiDefaultTab || 'pan')
     useMyShareStore().$reset()
     useMyFollowingStore().$reset()
     useOtherFollowingStore().$reset()

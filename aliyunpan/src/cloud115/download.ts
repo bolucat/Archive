@@ -1,11 +1,11 @@
 import UserDAL from '../user/userdal'
 import message from '../utils/message'
-import Config from '../config'
+import { DRIVE115_DOWN_AGENT } from './constants'
 
 export const apiDrive115DownUrl = async (
   user_id: string,
   pick_code: string
-): Promise<{ url: string; size: number } | string> => {
+): Promise<{ url: string; size: number; headers: Record<string, string> } | string> => {
   let token = UserDAL.GetUserToken(user_id)
   if (!token?.access_token) {
     const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
@@ -25,7 +25,7 @@ export const apiDrive115DownUrl = async (
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': Config.downAgent || '',
+        'User-Agent': DRIVE115_DOWN_AGENT,
         Authorization: `Bearer ${token.access_token}`
       },
       body
@@ -37,7 +37,14 @@ export const apiDrive115DownUrl = async (
     const info = firstKey ? data.data[firstKey] : null
     const url = info?.url?.url || ''
     if (!url) return '获取下载地址失败'
-    return { url, size: Number(info?.file_size || 0) }
+    return {
+      url,
+      size: Number(info?.file_size || 0),
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        'User-Agent': DRIVE115_DOWN_AGENT
+      }
+    }
   } catch (err: any) {
     message.error('获取下载地址失败 ' + (err?.message || ''))
     return '获取下载地址失败'

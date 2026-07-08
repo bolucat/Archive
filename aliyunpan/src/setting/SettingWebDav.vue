@@ -269,7 +269,7 @@ const handleJumpPath = () => {
         </a-form>
       </a-space>
       <div class='modalfoot'>
-        <div style='flex-grow: 1'></div>
+        <div class='modalfoot-spacer'></div>
         <a-button v-if='!okLoading' type='outline' size='small' @click='handleAddCancel'>取消</a-button>
         <a-button type='primary' size='small' :loading='okLoading' @click='handleAddOk'>添加</a-button>
       </div>
@@ -277,28 +277,21 @@ const handleJumpPath = () => {
     <div class='settingspace'></div>
     <div class='settingrow'>
       <a-button type='primary' status='normal' size='small' tabindex='-1' @click='handleAddUser'>添加</a-button>
-      <a-button type='primary' status='success' size='small' style='margin-left: 5px' tabindex='-1'
-                @click='handleModifyUser'>修改
-      </a-button>
+      <a-button type='primary' status='success' size='small' @click='handleModifyUser'>修改</a-button>
       <a-popconfirm content='确认要删除当前用户？' @ok='handleDelUser'>
-        <a-button type='primary' status='danger' size='small' style='margin-left: 5px' tabindex='-1'>
-          删除
-        </a-button>
+        <a-button type='primary' status='danger' size='small'>删除</a-button>
       </a-popconfirm>
     </div>
     <template v-if="settingStore.webDavStrategy === 'proxy'">
       <div class='settingspace'></div>
       <div class="settinghead">
         缓存大小
-        <span class="opblue" style="margin-left: 12px; padding: 0 12px">( {{ settingStore.debugCacheSize }} )</span>
+        <span class="opblue cache-size-badge">( {{ settingStore.debugCacheSize }} )</span>
       </div>
       <div class="settingrow">
-        <a-button type='outline' size='small' tabindex='-1' style='margin-right: 16px' @click='handleJumpPath'>
-          打开位置
-        </a-button>
+        <a-button type='outline' size='small' @click='handleJumpPath'>打开位置</a-button>
         <a-popconfirm content="确认要清理缓存？" @ok="AppCache.aClearCache()">
-          <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">清理缓存
-          </a-button>
+          <a-button type="outline" size="small" status="danger">清理缓存</a-button>
         </a-popconfirm>
       </div>
     </template>
@@ -306,5 +299,6 @@ const handleJumpPath = () => {
 </template>
 
 <style scoped>
-
+.modalfoot-spacer { flex: 1; }
+.cache-size-badge { margin-left: 12px; padding: 0 12px; }
 </style>

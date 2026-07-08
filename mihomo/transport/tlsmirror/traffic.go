@@ -138,6 +138,10 @@ func trafficGeneratorWaitsForReady(cfg *TrafficGenerator) bool {
 }
 
 func runTrafficStep(ctx context.Context, transport trafficHTTPTransport, step TrafficStep, alpn string) error {
+	return runTrafficStepWithClock(ctx, transport, step, alpn, time.Now, waitTrafficStep)
+}
+
+func runTrafficStepWithClock(ctx context.Context, transport trafficHTTPTransport, step TrafficStep, alpn string, now func() time.Time, wait func(context.Context, time.Duration) error) error {
 	requestURL := &url.URL{
 		Scheme: "https",
 		Host:   step.Host,
@@ -163,7 +167,7 @@ func runTrafficStep(ctx context.Context, transport trafficHTTPTransport, step Tr
 		}
 	}
 
-	start := time.Now()
+	start := now()
 	resp, err := transport.RoundTrip(req)
 	if err != nil {
 		return err
@@ -182,19 +186,24 @@ func runTrafficStep(ctx context.Context, transport trafficHTTPTransport, step Tr
 	} else if err := finishRequest(); err != nil {
 		return err
 	}
-	elapsed := time.Since(start)
+	elapsed := now().Sub(start)
 	if delay, err := step.WaitTime.Duration(); err != nil {
 		return err
 	} else if delay > elapsed {
-		timer := time.NewTimer(delay - elapsed)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
+		return wait(ctx, delay-elapsed)
 	}
 	return nil
+}
+
+func waitTrafficStep(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func chooseNextTrafficStep(step TrafficStep, current int) (int, bool, error) {

@@ -5,6 +5,7 @@ const CLIENT_ID = ''
 const CLIENT_SECRET = ''
 
 import { readFileBuffer } from './uploadUtils.mjs'
+import { downloadResponseToFile } from '../core/downloadFile.mjs'
 
 function boxHeaders(token) {
   return {
@@ -171,6 +172,16 @@ export async function boxGetFile(token, fileId, itemType = 'file') {
     }
     throw e
   }
+}
+
+export async function boxDownloadFile(token, fileId, outputPath) {
+  const meta = await boxGet(`${BASE}/files/${fileId}?fields=${FIELDS}`, token)
+  const resp = await fetch(`${BASE}/files/${fileId}/content`, {
+    headers: { Authorization: `Bearer ${token.access_token}` },
+    redirect: 'follow',
+  })
+  await downloadResponseToFile(resp, outputPath)
+  return { ok: true, provider: 'box', accountId: token.user_id, driveId: 'box', fileId, name: meta.name || '', size: meta.size || 0, output: outputPath }
 }
 
 export async function boxMove(token, moves) {

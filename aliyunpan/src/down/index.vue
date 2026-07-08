@@ -12,7 +12,7 @@ const appStore = useAppStore()
 
 <template>
   <a-layout style="height: 100%">
-    <a-layout-sider hide-trigger :width="158" class="xbyleft">
+    <a-layout-sider hide-trigger :width="218" class="xbyleft">
       <div class="headdesc">传输文件</div>
       <a-menu :style="{ width: '100%' }" class="xbyleftmenu" :selected-keys="[appStore.GetAppTabMenu]" @update:selected-keys="appStore.toggleTabMenu('down', $event[0])">
         <a-menu-item key="DowningRight">

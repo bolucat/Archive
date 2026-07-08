@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { useAppStore, usePanTreeStore } from '../store'
+import { useSettingStore } from '../store'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import type { MediaLibraryItem, MediaSeason, MediaEpisode, CastMember, CrewMember, DriveFileItem } from '../types/media'
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import type { IPageVideoPlaylistEntry } from '../store/appstore'
+import DownDAL from '../down/DownDAL'
 import { menuOpenFile } from '../utils/openfile'
+import { tmdbImageUrl } from '../utils/tmdb'
+import message from '../utils/message'
 import path from 'path'
 
 // Props
@@ -19,10 +22,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   back: []
   tagClick: [tagType: string, tagValue: string]
+  aiRescrape: [item: MediaLibraryItem]
 }>()
 
-const appStore = useAppStore()
-const panTreeStore = usePanTreeStore()
+const settingStore = useSettingStore()
 const mediaStore = useMediaLibraryStore()
 
 // 响应式状态
@@ -164,6 +167,13 @@ const currentFileName = computed(() => {
     return currentEpisode.value?.driveFiles?.[0]?.name || ''
   }
   return props.mediaItem.driveFiles?.[0]?.name || ''
+})
+
+const currentDownloadFile = computed(() => {
+  if (props.mediaItem.type === 'tv') {
+    return currentEpisode.value?.driveFiles?.[0] || null
+  }
+  return props.mediaItem.driveFiles?.[0] || null
 })
 
 const backgroundStyle = computed(() => {
@@ -436,6 +446,27 @@ const playMovie = () => {
   }
 }
 
+const handleDownloadCurrent = () => {
+  const driveFile = currentDownloadFile.value
+  if (!driveFile) {
+    message.warning('当前媒体没有可下载的视频文件')
+    return
+  }
+
+  const savePath = settingStore.AriaIsLocal ? settingStore.downSavePath : settingStore.ariaSavePath
+  if (!savePath || !savePath.trim()) {
+    message.error('未设置保存路径，请先在下载设置中配置')
+    return
+  }
+
+  try {
+    DownDAL.aAddDownload([buildAliFileModel(driveFile)], savePath, settingStore.downSavePathFull)
+    message.success('成功创建下载任务')
+  } catch (error: any) {
+    message.error(error?.message || '创建下载任务失败')
+  }
+}
+
 const getFavoriteMode = () => {
   if (props.mediaItem.type !== 'tv') return null
   const episode = currentEpisode.value
@@ -520,7 +551,7 @@ const handleImageError = (event: Event) => {
 const getCastAvatarUrl = (path?: string): string => {
   if (!path) return ''
   if (path.startsWith('http')) return path
-  return `https://tmdb-673444103572.asia-east2.run.app/image/t/p/original/${path}`
+  return tmdbImageUrl(path)
 }
 
 const getCastInitial = (name?: string): string => {
@@ -623,6 +654,14 @@ const getCastInitial = (name?: string): string => {
                     <span class="play-glyph">▶</span>
                     {{ playButtonLabel }}
                   </span>
+                </button>
+                <button
+                  type="button"
+                  class="download-button"
+                  @click="handleDownloadCurrent"
+                >
+                  <span class="play-glyph">↓</span>
+                  <span>下载</span>
                 </button>
               </div>
             </div>
@@ -816,44 +855,43 @@ const getCastInitial = (name?: string): string => {
     </div>
 
     <!-- 播放列表 -->
-    <a-modal v-model:visible="showPlaylistModal" title="添加到播放列表" :footer="false" :z-index="3000" class="playlist-modal">
-      <div class="playlist-modal-header">
-        <div class="playlist-title">选择播放列表</div>
-        <div class="playlist-subtitle">勾选后立即添加或移除当前条目</div>
-      </div>
+    <a-modal v-model:visible="showPlaylistModal" title="添加到播放列表" :footer="false" :z-index="3000" class="playlist-modal detail-media-modal">
+      <div class="playlist-manager-panel home-library-manager-panel">
+        <p class="home-library-manager-hint">勾选后立即添加或移除当前条目，也可以在这里新建播放列表。</p>
 
-      <div class="playlist-create">
-        <a-input v-model="newPlaylistName" placeholder="新建播放列表名称" />
-        <a-button type="primary" @click="handleCreatePlaylist">创建</a-button>
-      </div>
-
-      <div v-if="renameTarget" class="playlist-create">
-        <a-input v-model="renameValue" placeholder="新的播放列表名称" />
-        <a-button type="primary" @click="handleRenamePlaylist">保存</a-button>
-        <a-button @click="renameTarget = ''">取消</a-button>
-      </div>
-
-      <div class="playlist-list">
-        <div v-for="(itemIds, name) in mediaStore.playlists" :key="name" class="playlist-row">
-          <a-checkbox
-            class="playlist-checkbox"
-            :model-value="mediaStore.isInPlaylist(name, currentPlaylistItemId)"
-            @change="() => handleTogglePlaylistItem(name)"
-          >
-            <span class="playlist-name">{{ name }}</span>
-            <span class="playlist-count">{{ itemIds.length }} 项</span>
-          </a-checkbox>
-          <div class="playlist-actions">
-            <a-button type="text" size="mini" @click="handleStartRename(name)">
-              重命名
-            </a-button>
-            <a-button type="text" status="danger" size="mini" @click="handleRemovePlaylist(name)">
-              删除
-            </a-button>
-          </div>
+        <div class="playlist-create">
+          <a-input v-model="newPlaylistName" placeholder="新建播放列表名称" />
+          <a-button type="primary" @click="handleCreatePlaylist">创建</a-button>
         </div>
-        <div v-if="Object.keys(mediaStore.playlists).length === 0" class="playlist-empty">
-          暂无播放列表，请先创建一个
+
+        <div v-if="renameTarget" class="playlist-create">
+          <a-input v-model="renameValue" placeholder="新的播放列表名称" />
+          <a-button type="primary" @click="handleRenamePlaylist">保存</a-button>
+          <a-button @click="renameTarget = ''">取消</a-button>
+        </div>
+
+        <div class="playlist-list home-library-manager-list">
+          <div v-for="(itemIds, name) in mediaStore.playlists" :key="name" class="playlist-row home-library-manager-item">
+            <a-checkbox
+              class="playlist-checkbox"
+              :model-value="mediaStore.isInPlaylist(name, currentPlaylistItemId)"
+              @change="() => handleTogglePlaylistItem(name)"
+            >
+              <span class="playlist-name">{{ name }}</span>
+              <span class="playlist-count">{{ itemIds.length }} 项</span>
+            </a-checkbox>
+            <div class="playlist-actions">
+              <a-button type="text" size="mini" @click="handleStartRename(name)">
+                重命名
+              </a-button>
+              <a-button type="text" status="danger" size="mini" @click="handleRemovePlaylist(name)">
+                删除
+              </a-button>
+            </div>
+          </div>
+          <div v-if="Object.keys(mediaStore.playlists).length === 0" class="playlist-empty home-library-manager-empty">
+            暂无播放列表，请先创建一个
+          </div>
         </div>
       </div>
     </a-modal>
@@ -1138,7 +1176,8 @@ const getCastInitial = (name?: string): string => {
 }
 
 .action-button,
-.play-button {
+.play-button,
+.download-button {
   border: 1px solid rgba(255, 255, 255, 0.72);
   background: rgba(250, 245, 240, 0.52);
   box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
@@ -1188,6 +1227,26 @@ const getCastInitial = (name?: string): string => {
   background: linear-gradient(180deg, rgba(59, 130, 246, 0.98), rgba(96, 165, 250, 0.9));
   border-color: rgba(147, 197, 253, 0.48);
   box-shadow: 0 26px 52px rgba(24, 70, 166, 0.42);
+}
+
+.download-button {
+  width: 100%;
+  min-width: 0;
+  height: 52px;
+  border-radius: 18px;
+  color: rgba(22, 22, 22, 0.92);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.download-button:hover {
+  background: rgba(250, 245, 240, 0.66);
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 16px 34px rgba(63, 46, 37, 0.14);
 }
 
 .play-button-progress {
@@ -1267,12 +1326,19 @@ const getCastInitial = (name?: string): string => {
 }
 
 .episodes-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  display: flex;
+  flex-wrap: nowrap;
   gap: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 2px 12px;
+  scroll-padding-inline: 2px;
 }
 
 .episode-card {
+  flex: 0 0 320px;
+  width: 320px;
+  min-width: 320px;
   border-radius: 28px;
   padding: 12px;
   background: rgba(255, 255, 255, 0.22);
@@ -1531,28 +1597,37 @@ const getCastInitial = (name?: string): string => {
 }
 
 .playlist-modal :deep(.arco-modal-content) {
-  border-radius: 30px;
-  background: rgba(255, 255, 255, 0.56);
-  backdrop-filter: blur(30px) saturate(170%);
-  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
+    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
+    var(--app-mineradio-bg, #08090b);
+  border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.08));
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
 
-.playlist-modal-header {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 16px;
+.playlist-modal :deep(.arco-modal-header) {
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06));
 }
 
-.playlist-title {
-  font-size: 18px;
-  font-weight: 800;
-  color: rgba(20, 28, 40, 0.96);
+.playlist-modal :deep(.arco-modal-title) {
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
-.playlist-subtitle {
-  font-size: 13px;
-  color: rgba(94, 103, 119, 0.82);
+.playlist-manager-panel {
+  padding: 8px 4px 2px;
+}
+
+.home-library-manager-hint {
+  margin: 0 0 14px 8px;
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.56;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .playlist-create {
@@ -1562,25 +1637,94 @@ const getCastInitial = (name?: string): string => {
   margin-bottom: 16px;
 }
 
+.playlist-modal :deep(.arco-input-wrapper) {
+  min-height: 40px;
+  border-radius: 12px;
+  background: var(--app-glass-panel, rgba(255, 255, 255, 0.06));
+  border-color: var(--app-glass-line, rgba(255, 255, 255, 0.08));
+  color: var(--app-mineradio-ink, #e8ecef);
+}
+
+.playlist-modal :deep(.arco-input) {
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-weight: 600;
+}
+
+.playlist-modal :deep(.arco-input::placeholder) {
+  color: color-mix(in srgb, var(--app-mineradio-ink, #e8ecef) 48%, transparent);
+}
+
+.playlist-modal :deep(.arco-btn) {
+  min-height: 40px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
 .playlist-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0;
+  padding: 8px 18px;
+  border-radius: 16px;
+  border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06));
+  background: var(--app-glass-panel, rgba(255, 255, 255, 0.06));
+  min-height: 240px;
 }
 
 .playlist-row {
+  min-height: 58px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(247, 248, 250, 0.92);
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.05));
+  color: var(--app-mineradio-ink, #e8ecef);
+}
+
+.playlist-row:last-child {
+  border-bottom: 0;
+}
+
+.playlist-checkbox {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-modal :deep(.arco-checkbox-label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.playlist-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .playlist-count,
 .playlist-empty {
-  color: rgba(94, 103, 119, 0.82);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.48;
+}
+
+.playlist-empty {
+  padding: 56px 12px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.playlist-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 [arco-theme='dark'] .media-detail {
@@ -1685,6 +1829,7 @@ const getCastInitial = (name?: string): string => {
 }
 
 [arco-theme='dark'] .action-button,
+[arco-theme='dark'] .download-button,
 [arco-theme='dark'] .episode-card,
 [arco-theme='dark'] .cast-card,
 [arco-theme='dark'] .tag-item,
@@ -1695,6 +1840,7 @@ const getCastInitial = (name?: string): string => {
 }
 
 [arco-theme='dark'] .action-button,
+[arco-theme='dark'] .download-button,
 [arco-theme='dark'] .tag-item {
   color: rgba(233, 239, 247, 0.92);
 }
@@ -1736,22 +1882,10 @@ const getCastInitial = (name?: string): string => {
   color: rgba(233, 239, 247, 0.9);
 }
 
-[arco-theme='dark'] .playlist-modal :deep(.arco-modal-content) {
-  background: rgba(18, 22, 30, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.4);
-}
-
-[arco-theme='dark'] .playlist-row {
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(233, 239, 247, 0.92);
-}
-
-[arco-theme='dark'] .playlist-modal :deep(.arco-input-wrapper),
-[arco-theme='dark'] .playlist-modal :deep(.arco-btn) {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: rgba(233, 239, 247, 0.92);
+[arco-theme='dark'] .download-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.3);
 }
 
 @media (max-width: 1180px) {
@@ -1813,12 +1947,58 @@ const getCastInitial = (name?: string): string => {
   }
 
   .episodes-grid {
-    grid-template-columns: 1fr;
+    padding-bottom: 12px;
+  }
+
+  .episode-card {
+    flex-basis: min(320px, 86vw);
+    width: min(320px, 86vw);
+    min-width: min(320px, 86vw);
   }
 
   .details-card {
     width: 100%;
     min-height: auto;
   }
+}
+</style>
+
+<style>
+/* 播放列表弹窗使用和视频页媒体管理弹窗一致的 Arco portal 外壳 */
+body[arco-theme='dark'] .playlist-modal.detail-media-modal .arco-modal,
+body[arco-theme='dark'] .playlist-modal.detail-media-modal .arco-modal-content {
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
+    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
+    var(--app-mineradio-bg, #08090b) !important;
+  border-color: var(--app-glass-line, rgba(255, 255, 255, 0.08)) !important;
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+}
+
+body[arco-theme='dark'] .playlist-modal.detail-media-modal .arco-modal-header {
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06)) !important;
+}
+
+body[arco-theme='dark'] .playlist-modal.detail-media-modal .arco-modal-title,
+body[arco-theme='dark'] .playlist-modal.detail-media-modal .arco-modal-close-btn {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+}
+
+body:not([arco-theme='dark']) .playlist-modal.detail-media-modal .arco-modal,
+body:not([arco-theme='dark']) .playlist-modal.detail-media-modal .arco-modal-content {
+  --app-mineradio-ink: rgba(17, 24, 39, 0.94);
+  --app-glass-panel: rgba(255, 255, 255, 0.72);
+  --app-glass-line: rgba(15, 23, 42, 0.08);
+  background:
+    radial-gradient(circle at 72% 8%, rgba(37, 99, 235, 0.1), transparent 30%),
+    radial-gradient(circle at 12% 72%, rgba(20, 184, 166, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  color: rgba(17, 24, 39, 0.94) !important;
+}
+
+body:not([arco-theme='dark']) .playlist-modal.detail-media-modal .arco-modal-title,
+body:not([arco-theme='dark']) .playlist-modal.detail-media-modal .arco-modal-close-btn {
+  color: rgba(17, 24, 39, 0.94) !important;
 }
 </style>

@@ -20,6 +20,11 @@ describe('pageMusicEvents', () => {
     expect(shouldHandleMusicPlayerDblClick(eventFromClassName('amp-icon-btn active'))).toBe(false)
   })
 
+  it('ignores double clicks from the immersive console and queue panel', () => {
+    expect(shouldHandleMusicPlayerDblClick(eventFromClassName('music-console'))).toBe(false)
+    expect(shouldHandleMusicPlayerDblClick(eventFromClassName('music-queue-panel'))).toBe(false)
+  })
+
   it('allows double clicks from the passive player surface', () => {
     expect(shouldHandleMusicPlayerDblClick(eventFromClassName('amp-stage-cover'))).toBe(true)
   })

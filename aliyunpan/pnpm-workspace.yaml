@@ -1,11 +1,12 @@
+packages:
+  - .
 allowBuilds:
-  '3': true
-  '-': true
-  b: true
-  e: true
-  i: true
-  l: true
-  q: true
-  r: true
-  s: true
-  t: true
+  better-sqlite3: set this to true or false
+  canvas: set this to true or false
+  core-js: set this to true or false
+  electron: set this to true or false
+  es5-ext: set this to true or false
+  esbuild: set this to true or false
+  lzma-native: set this to true or false
+  secp256k1: set this to true or false
+  vue-demi: set this to true or false

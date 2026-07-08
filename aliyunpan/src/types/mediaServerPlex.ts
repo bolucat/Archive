@@ -17,6 +17,9 @@ export interface PlexConnection {
 
 export interface PlexResource {
   name: string
+  provides?: string | null
+  product?: string | null
+  owned?: boolean
   accessToken?: string | null
   clientIdentifier?: string | null
   connections: PlexConnection[]

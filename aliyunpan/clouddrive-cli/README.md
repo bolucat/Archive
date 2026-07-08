@@ -75,6 +75,7 @@ clouddrive-cli files list --provider aliyun --account default --file-id root --f
 - `clouddrive-cli auth list` 查看已登录账号。
 - `clouddrive-cli files list` 列出目录。
 - `clouddrive-cli files search` 搜索文件。
+- `clouddrive-cli files download` 下载单个文件到本地。
 - `clouddrive-cli files tree` 快速看目录结构。
 - `clouddrive-cli docs read` 读取本地规则文档。
 - `clouddrive-cli ops list` 查看历史操作。
@@ -262,6 +263,7 @@ clouddrive-cli files tree --provider aliyun --account default --file-id root --d
 clouddrive-cli files list --provider aliyun --account default --file-id root --format json
 clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --format json
 clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --cursor <nextCursor> --format json
+clouddrive-cli files download --provider aliyun --account default --file-id <file-id> --output ./download.bin --format json
 ```
 
 ### 媒体重命名
@@ -302,6 +304,7 @@ clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.m
 clouddrive-cli organize apply organize-plan.json --dry-run --summary --format json
 ```
 
+`--rules` 当前会写入计划作为审计上下文；内置 planner 仍使用确定性的 `Movies` / `TV Shows` 分类策略。
 全盘整理风险高。即使 dry-run 成功，也应抽样检查移动目标，避免把已有结构打平成 `Movies` / `TV Shows`。
 
 ### 回滚
@@ -391,6 +394,7 @@ Use the CLI directly when you need repeatable cloud-drive operations:
 - `clouddrive-cli auth list` lists configured accounts.
 - `clouddrive-cli files list` lists a directory.
 - `clouddrive-cli files search` searches files.
+- `clouddrive-cli files download` downloads one file to a local path.
 - `clouddrive-cli files tree` previews structure.
 - `clouddrive-cli docs read` reads a local rules document.
 - `clouddrive-cli ops list` shows operation history.
@@ -538,6 +542,7 @@ clouddrive-cli files tree --provider aliyun --account default --file-id root --d
 clouddrive-cli files list --provider aliyun --account default --file-id root --format json
 clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --format json
 clouddrive-cli files list --provider aliyun --account default --file-id root --limit 50 --cursor <nextCursor> --format json
+clouddrive-cli files download --provider aliyun --account default --file-id <file-id> --output ./download.bin --format json
 ```
 
 ### Rename media
@@ -571,6 +576,8 @@ clouddrive-cli organize analyze --provider aliyun --account default --file-id <f
 clouddrive-cli organize plan --analysis analysis.json --rules ./organize-rules.md --output organize-plan.json --summary --format json
 clouddrive-cli organize apply organize-plan.json --dry-run --summary --format json
 ```
+
+`--rules` is recorded in the plan as audit context. The built-in planner still uses deterministic `Movies` / `TV Shows` placement.
 
 ### Roll back
 

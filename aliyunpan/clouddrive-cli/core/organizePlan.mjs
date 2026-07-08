@@ -1,3 +1,5 @@
+import { matchMediaItems } from '../media/mediaScanner.mjs'
+
 const VIDEO_EXTENSIONS = new Set(['.mkv', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.m4v', '.ts'])
 
 function hasText(value) {
@@ -17,12 +19,17 @@ function isEpisodeLike(name) {
   return /s\d{1,2}e\d{1,3}/i.test(String(name || ''))
 }
 
+function mediaMatchById(items) {
+  return new Map(matchMediaItems(items).map((result) => [result.fileId, result.match]))
+}
+
 function folderKey(name) {
   return String(name || '').trim().toLocaleLowerCase()
 }
 
 export function analyzeDriveItems({ provider = 'aliyun', accountId = 'default', rootFileId = 'root', items = [] } = {}) {
   const normalized = Array.isArray(items) ? items : []
+  const matchesById = mediaMatchById(normalized)
   const files = normalized.filter((item) => item.type !== 'folder')
   const folders = normalized.filter((item) => item.type === 'folder')
   const videos = normalized.filter(isVideo)
@@ -51,7 +58,8 @@ export function analyzeDriveItems({ provider = 'aliyun', accountId = 'default', 
       name: item.name,
       size: Number(item.size) || 0,
       category: isVideo(item) ? 'video' : (item.category || ''),
-      media_kind: isVideo(item) ? (isEpisodeLike(item.name) ? 'episode' : 'movie') : '',
+      media_kind: isVideo(item) ? ((matchesById.get(item.fileId || item.file_id)?.type === 'episode' || isEpisodeLike(item.name)) ? 'episode' : 'movie') : '',
+      media_match: matchesById.get(item.fileId || item.file_id),
     })),
   }
 }
@@ -100,7 +108,7 @@ export function createOrganizePlan({ analysis, rulesText = '' } = {}) {
     account_id: analysis.account_id,
     root_file_id: rootFileId,
     created_at: new Date().toISOString(),
-    rules: rulesText ? { text: rulesText } : undefined,
+    rules: rulesText ? { text: rulesText, applied: false, note: 'Rules are recorded for audit context; the built-in planner uses deterministic Movies/TV Shows placement.' } : undefined,
     actions,
   }
 }

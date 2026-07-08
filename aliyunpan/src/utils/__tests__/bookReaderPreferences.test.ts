@@ -27,20 +27,22 @@ describe('bookReaderPreferences', () => {
       readerIndent: 'yes',
       readerHyphenation: 'no',
       readerBionic: null,
-      readerParaSpacing: '9',
+      readerParaSpacing: '',
       readerLineHeight: '9',
       readerTextAlign: 'center',
       readerPageWidth: 2000,
-      readerBackgroundColor: '#fff',
-      readerTextColor: 'red',
+      readerBackgroundColor: '',
+      readerTextColor: '',
       readerVoiceLocale: 42,
       readerVoiceName: false,
       readerVoiceURI: null,
       readerVoiceRate: 9,
-      readerPopupActionKeys: ['not-real']
+      readerPopupActionKeys: ['not-real'],
+      readerTranslationTarget: ''
     })).toEqual({
       ...DEFAULT_BOOK_READER_PREFERENCES,
       fontSize: 40,
+      readerMargin: 0,
       readerPageWidth: 1600,
       readerVoiceRate: 8
     })
@@ -65,7 +67,8 @@ describe('bookReaderPreferences', () => {
         readerVoiceName: 'Tingting',
         readerVoiceURI: 'voice-zh-cn-1',
         readerVoiceRate: 1.5,
-        readerPopupActionKeys: ['note', 'highlight', 'translation', 'copy', 'speech-start']
+        readerPopupActionKeys: ['note', 'highlight', 'translation', 'copy', 'speech-start'],
+        readerTranslationTarget: 'en'
       })
     })
 
@@ -87,7 +90,9 @@ describe('bookReaderPreferences', () => {
       readerVoiceName: 'Tingting',
       readerVoiceURI: 'voice-zh-cn-1',
       readerVoiceRate: 1.5,
-      readerPopupActionKeys: ['note', 'highlight', 'translation', 'copy', 'speech-start']
+      readerMargin: 0,
+      readerPopupActionKeys: ['note', 'highlight', 'translation', 'copy', 'speech-start'],
+      readerTranslationTarget: 'en'
     })
   })
 
@@ -96,12 +101,13 @@ describe('bookReaderPreferences', () => {
       'bookReader.preferences': JSON.stringify(DEFAULT_BOOK_READER_PREFERENCES)
     })
 
-    const saved = saveBookReaderPreferences({ fontSize: 12, readerLayoutMode: 'double' }, storage)
+    const saved = saveBookReaderPreferences({ fontSize: 12, readerLayoutMode: 'double', readerTranslationTarget: 'en' }, storage)
 
     expect(saved).toEqual({
       ...DEFAULT_BOOK_READER_PREFERENCES,
       fontSize: 14,
-      readerLayoutMode: 'double'
+      readerLayoutMode: 'double',
+      readerTranslationTarget: 'en'
     })
     expect(loadBookReaderPreferences(storage)).toEqual(saved)
   })

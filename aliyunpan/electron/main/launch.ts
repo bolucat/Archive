@@ -197,7 +197,7 @@ export default class launch extends EventEmitter {
         session.defaultSession.webRequest.onBeforeSendHeaders((details, cb) => {
           const shouldGieeReferer = details.url.indexOf('gitee.com') > 0
           const shouldBaidu = /baidu|baidupcs|bdstatic|bcebos/i.test(details.url)
-          const should115 = /(^https?:\/\/[^/]*115\.com\/)/i.test(details.url) || details.url.includes('cdnfhnfile.115cdn.net')
+          const should115 = /(^https?:\/\/[^/]*115\.com\/)/i.test(details.url) || /(^https?:\/\/[^/]*115cdn\.net\/)/i.test(details.url)
           const shouldBiliBili = details.url.indexOf('bilibili.com') > 0
           const shouldQQTv = details.url.indexOf('v.qq.com') > 0 || details.url.indexOf('video.qq.com') > 0
           const shouldQuark = /(^https?:\/\/[^/]*quark\.cn\/)/i.test(details.url)
@@ -265,7 +265,7 @@ export default class launch extends EventEmitter {
                 'user-agent': 'SenPlayer'
               }),
               ...(should115 && {
-                ...(this.userToken.tokenfrom === '115' && this.userToken.access_token
+                ...(!hasAuthorizationHeader && this.userToken.tokenfrom === '115' && this.userToken.access_token
                   ? { Authorization: `Bearer ${this.userToken.access_token}` }
                   : {}),
                 'user-agent': DEFAULT_DOWN_AGENT
@@ -378,11 +378,18 @@ export default class launch extends EventEmitter {
   private dispatchOAuthUrl(url: string) {
     if (!url) return
     if (AppWindow.mainWindow && AppWindow.mainWindow.isDestroyed() === false) {
-      if (url.startsWith('boxplayer-auth://payment-success')) {
+      if (url.startsWith('boxplayer-auth://payment-')) {
         try {
           const params = new URLSearchParams(url.includes('?') ? url.split('?')[1] : '')
+          const status = url.startsWith('boxplayer-auth://payment-cancelled') || url.startsWith('boxplayer-auth://payment-canceled')
+            ? 'cancelled'
+            : url.startsWith('boxplayer-auth://payment-failed') || url.startsWith('boxplayer-auth://payment-failure')
+              ? 'failed'
+              : 'success'
           AppWindow.mainWindow.webContents.send('payment-callback', {
+            status,
             checkout_id: params.get('checkout_id') || '',
+            reason: params.get('reason') || '',
           })
         } catch {}
       } else if (url.startsWith('boxplayer-auth://')) {

@@ -44,6 +44,7 @@ export interface BookReaderPreferences {
   readerBookLayout: BookReaderBookLayout
   readerConvertChinese: BookReaderConvertChinese
   readerFullTranslationMode: BookReaderFullTranslationMode
+  readerTranslationTarget: string
   readerTextOrientation: string
   readerCustomCSS: string
   readerIsCustomCSS: boolean
@@ -103,6 +104,7 @@ export const DEFAULT_BOOK_READER_PREFERENCES: BookReaderPreferences = {
   readerBookLayout: '',
   readerConvertChinese: '',
   readerFullTranslationMode: 'no',
+  readerTranslationTarget: 'zh',
   readerTextOrientation: '',
   readerCustomCSS: '',
   readerIsCustomCSS: false,
@@ -166,6 +168,10 @@ function isBookReaderFullTranslationMode(value: unknown): value is BookReaderFul
   return value === 'no' || value === 'both' || value === 'target'
 }
 
+function normalizeTranslationTarget(value: unknown): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_BOOK_READER_PREFERENCES.readerTranslationTarget
+}
+
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   const n = Number(value)
   return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback
@@ -218,6 +224,7 @@ export function normalizeBookReaderPreferences(value: unknown): BookReaderPrefer
     readerBookLayout: isBookReaderBookLayout(raw.readerBookLayout) ? raw.readerBookLayout : '',
     readerConvertChinese: isBookReaderConvertChinese(raw.readerConvertChinese) ? raw.readerConvertChinese : '',
     readerFullTranslationMode: isBookReaderFullTranslationMode(raw.readerFullTranslationMode) ? raw.readerFullTranslationMode : 'no',
+    readerTranslationTarget: normalizeTranslationTarget(raw.readerTranslationTarget),
     readerTextOrientation: typeof raw.readerTextOrientation === 'string' ? raw.readerTextOrientation : '',
     readerCustomCSS: typeof raw.readerCustomCSS === 'string' ? raw.readerCustomCSS : '',
     readerIsCustomCSS: typeof raw.readerIsCustomCSS === 'boolean' ? raw.readerIsCustomCSS : false,

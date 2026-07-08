@@ -15,6 +15,7 @@ import {
   Grid3X3,
   Highlighter,
   List,
+  LoaderCircle,
   Pin,
   PinOff,
   Plus,
@@ -71,8 +72,8 @@ import {
   type ChatMessage,
   type ScoredChunk
 } from '../utils/bookAI'
+import { createBookFullTranslationController } from '../utils/bookFullTranslation'
 import { translators, setTranslator, translateText, transLanguages } from '../utils/translators'
-import { getAzureTTSConfig, isAzureConfigured, isAzureTTSEnabled, setAzureTTSEnabled, getSavedAzureVoice, saveAzureVoice, getAzureVoices, getAzureVoiceLabel, speakChunkedWithAzure, stopAzureSpeech, type AzureVoice } from '../utils/bookAzureTTS'
 import { buildSpeechStartText, buildSpeechText, speakTextSequence, splitSpeechText, stopSpeaking as stopSpeechSynthesis, SPEECH_SPEED_VALUES, type SpeechSession } from '../utils/bookTextToSpeech'
 import { copyBookImageToClipboard, downloadBookImage, getBookImageRatio, getBookImageScaleStyle, getBookImageTransform, normalizeBookImageSource, shouldPreviewBookImage, type BookImagePreview } from '../utils/bookImageViewer'
 import { buildBookLookupLinks, normalizeLookupText, type BookLookupLink, type BookLookupMode } from '../utils/bookLookup'
@@ -82,7 +83,8 @@ import { getEncType, getProxyUrl, getRawUrl } from '../utils/proxyhelper'
 import useBookLibraryStore from '../store/booklibrary'
 import useSettingStore from '../setting/settingstore'
 import message from '../utils/message'
-import { checkAndIncrement } from '../utils/usageLimit'
+import { checkAndIncrement, isPro } from '../utils/usageLimit'
+import { isBoxPlayerCloudProvider, translateWithBoxPlayerCloud } from '../utils/boxplayerCloudAI'
 import ReaderPanelButton from './book-reader/ReaderPanelButton.vue'
 import ReaderShell from './book-reader/ReaderShell.vue'
 import ReaderBackground from './book-reader/ReaderBackground.vue'
@@ -234,6 +236,8 @@ let readerTouchStart: { x: number; y: number; time: number } | null = null
 let keyThrottleTimer: number | undefined
 let pageTurnLock = 0
 let aiHistoryLoadRequestId = 0
+let readerLifecycleToken = 0
+let fullTranslationRerenderRequestId = 0
 const readingTimeSeconds = ref(0)
 const settingsLocked = ref(false)
 const noSelectionPopup = ref(managerPrefs.isDisablePopup)
@@ -249,17 +253,22 @@ const aiAnswer = ref('')
 const aiStatusText = ref('')
 const aiMode = ref<'ask' | 'chat'>('ask')
 const aiProviderOverride = ref('')
+watch(aiProviderOverride, (v) => {
+  if (v === 'boxplayer-cloud' && !isPro()) {
+    message.warning('内置 AI 需购买 Pro 后使用')
+    aiProviderOverride.value = ''
+  }
+})
 const rightTab = ref<'settings' | 'chat'>('settings')
 const leftPanelWidth = ref(300)
 const rightPanelWidth = ref(400)
 const translateResult = ref('')
 const translateSource = ref('')
 const transLoading = ref(false)
-const transTarget = ref('zh')
+const transTarget = ref(savedPreferences.readerTranslationTarget)
 const transHeight = ref(320)
 const dictMode = ref(false)
 const bilingualMode = ref(false)
-const azureTTSEnabled = ref(isAzureTTSEnabled())
 const aiIndexingStatus = ref<'idle' | 'indexing' | 'done' | 'error'>('idle')
 const aiIndexingText = ref('')
 const aiConvId = ref(String(Date.now()))
@@ -268,12 +277,25 @@ const aiShowConvList = ref(false)
 const aiShowSidebar = ref(true)
 
 const transProvider = ref(translators.defaultName)
-const azureVoice = ref(getSavedAzureVoice() || '')
+const fullTranslationLoading = ref(false)
+const fullTranslationError = ref('')
 const readerIsSeperateStyle = ref(savedPreferences.readerIsSeperateStyle)
 const readerIsWordDefinition = ref(savedPreferences.readerIsWordDefinition)
 const remainingTimeSeconds = ref(0)
 const pageJumpText = ref('')
 const isShowClearStyleMenu = ref(false)
+const fullTranslationController = createBookFullTranslationController({
+  translate: (text, target) => translateWithBoxPlayerCloud(text, target),
+  checkUsage: (characters) => checkAndIncrement('readerTranslation', characters, { metered: false }),
+  onStateChange: ({ loading, error }) => {
+    fullTranslationLoading.value = loading
+    fullTranslationError.value = error || ''
+    if (error) {
+      message.warning(error)
+    }
+  }
+})
+let applyFullTranslationPromise = Promise.resolve()
 
 function jumpToChapter() {
   const raw = chapterJumpText.value.trim()
@@ -418,6 +440,12 @@ const isBottomPanelVisible = computed(() => getPanelVisible(openPanels.value.bot
 const stageOffsetStyle = computed(() => ({
   left: lockedPanels.value.left ? `${leftPanelWidth.value}px` : '0',
   right: lockedPanels.value.right ? `${rightPanelWidth.value}px` : '0'
+}))
+const rightFloatingControlsStyle = computed(() => ({
+  right: isRightPanelVisible.value ? `${rightPanelWidth.value + 5}px` : '5px'
+}))
+const rightPageTurnStyle = computed(() => ({
+  right: isRightPanelVisible.value ? `${rightPanelWidth.value + 15}px` : '15px'
 }))
 const readerStageStyle = computed(() =>
   buildReaderStageStyle({
@@ -587,6 +615,9 @@ function flushReadingSession() {
 }
 
 function cleanup() {
+  readerLifecycleToken += 1
+  fullTranslationRerenderRequestId += 1
+  finishPanelResize()
   flushReadingSession()
   stopReaderSpeech()
   if (readerSaveTimer) {
@@ -602,10 +633,10 @@ function cleanup() {
     readerIframeEventCleanup()
     readerIframeEventCleanup = null
   }
-  if (readerRenderedCleanup) {
-    readerRenderedCleanup()
-    readerRenderedCleanup = null
-  }
+  cleanupReaderRenditionListeners()
+  fullTranslationController.clear()
+  applyFullTranslationPromise = Promise.resolve()
+  readerRerenderPromise = Promise.resolve(true)
   readerTouchStart = null
   if (bookReader) {
     bookReader.destroy()
@@ -736,6 +767,40 @@ function hideBookImagePreview() {
   imagePreview.value = { src: '', name: '', ratio: 'horizontal' }
   imagePreviewZoomIndex.value = 0
   imagePreviewRotateIndex.value = 0
+}
+
+function cleanupReaderRenditionListeners() {
+  if (readerRenderedCleanup) {
+    readerRenderedCleanup()
+    readerRenderedCleanup = null
+  }
+}
+
+function scheduleFullTranslation() {
+  if (!bookReader || readerFullTranslationMode.value === 'no') return Promise.resolve()
+  return fullTranslationController.schedule({
+    reader: bookReader,
+    mode: readerFullTranslationMode.value,
+    provider: 'boxplayer-cloud',
+    target: transTarget.value
+  })
+}
+
+function queueFullTranslationRerender() {
+  const lifecycleToken = readerLifecycleToken
+  const requestId = ++fullTranslationRerenderRequestId
+  applyFullTranslationPromise = applyFullTranslationPromise
+    .catch(() => {})
+    .then(async () => {
+      if (lifecycleToken !== readerLifecycleToken || requestId !== fullTranslationRerenderRequestId) return
+      if (!bookReader) return
+      fullTranslationController.invalidate()
+      const rerendered = await rerenderBookReader()
+      if (!rerendered) return
+      if (lifecycleToken !== readerLifecycleToken || requestId !== fullTranslationRerenderRequestId) return
+      await scheduleFullTranslation().catch(() => {})
+    })
+  return applyFullTranslationPromise
 }
 
 function zoomBookImagePreview(delta: number) {
@@ -941,93 +1006,144 @@ function bindIframeColumnGuard(iframe: HTMLIFrameElement) {
 }
 
 function bindRenderedHook() {
-  if (!bookReader?.rendition?.on) return
-  try {
-    bookReader.rendition.on('rendered', () => {
-      if (!readerContainer.value) return
-      // 断开旧的 observer
-      iframeStyleObservers.forEach((o) => o.disconnect())
-      iframeStyleObservers = []
-      // 多次延迟覆盖，对抗引擎的异步写入
-      const apply = () => {
-        applyDoublePageCss(readerContainer.value!, readerLayoutMode.value)
-        const fontFamily = readerFontFamily.value === 'Built-in font' ? '' : readerFontFamily.value
-        const iframes = readerContainer.value!.querySelectorAll('iframe')
-        iframes.forEach((iframe) => {
-          bindIframeColumnGuard(iframe as HTMLIFrameElement)
-          if (fontFamily) {
-            const doc = iframe.contentDocument
-            if (doc?.head) {
-              let fontStyle = doc.getElementById('reader-font-override') as HTMLStyleElement | null
-              if (!fontStyle) {
-                fontStyle = doc.createElement('style')
-                fontStyle.id = 'reader-font-override'
-                doc.head.appendChild(fontStyle)
-              }
-              fontStyle.textContent = `body *{font-family:"${fontFamily}",sans-serif!important}`
+  cleanupReaderRenditionListeners()
+  const currentReader = bookReader
+  const rendition = currentReader?.rendition
+  if (!rendition?.on || !currentReader) return
+  function handlePageChanged() {
+    if (currentReader !== bookReader) return
+    scheduleFullTranslation().catch(() => {})
+  }
+  function handleRendered() {
+    if (currentReader !== bookReader || !readerContainer.value) return
+    // 断开旧的 observer
+    iframeStyleObservers.forEach((o) => o.disconnect())
+    iframeStyleObservers = []
+    // 多次延迟覆盖，对抗引擎的异步写入
+    const apply = () => {
+      if (currentReader !== bookReader || !readerContainer.value) return
+      applyDoublePageCss(readerContainer.value!, readerLayoutMode.value)
+      const fontFamily = readerFontFamily.value === 'Built-in font' ? '' : readerFontFamily.value
+      const iframes = readerContainer.value!.querySelectorAll('iframe')
+      iframes.forEach((iframe) => {
+        bindIframeColumnGuard(iframe as HTMLIFrameElement)
+        if (fontFamily) {
+          const doc = iframe.contentDocument
+          if (doc?.head) {
+            let fontStyle = doc.getElementById('reader-font-override') as HTMLStyleElement | null
+            if (!fontStyle) {
+              fontStyle = doc.createElement('style')
+              fontStyle.id = 'reader-font-override'
+              doc.head.appendChild(fontStyle)
             }
+            fontStyle.textContent = `body *{font-family:"${fontFamily}",sans-serif!important}`
           }
-          if (readerLayoutMode.value === 'scroll') {
-            const el = iframe as HTMLIFrameElement
-            el.style.setProperty('overflow', 'visible', 'important')
-            const doc = el.contentDocument
-            if (doc) syncScrollIframeHeight(el, doc)
-          }
-        })
-        if (readerLayoutMode.value === 'scroll') {
-          readerContainer.value!.style.setProperty('overflow-y', 'auto', 'important')
         }
+        if (readerLayoutMode.value === 'scroll') {
+          const el = iframe as HTMLIFrameElement
+          el.style.setProperty('overflow', 'visible', 'important')
+          const doc = el.contentDocument
+          if (doc) syncScrollIframeHeight(el, doc)
+        }
+        const iframeDoc = iframe.contentDocument
+        if (iframeDoc) injectTranslationLoadingOverride(iframeDoc)
+      })
+      if (readerLayoutMode.value === 'scroll') {
+        readerContainer.value!.style.setProperty('overflow-y', 'auto', 'important')
       }
-      apply()
-      requestAnimationFrame(() => apply())
-      ;[50, 150, 400, 1000].forEach((ms) => setTimeout(() => apply(), ms))
-    })
+    }
+    apply()
+    requestAnimationFrame(() => apply())
+    ;[50, 150, 400, 1000].forEach((ms) => setTimeout(() => apply(), ms))
+    scheduleFullTranslation().catch(() => {})
+  }
+  try {
+    rendition.on('rendered', handleRendered)
+    rendition.on('page-changed', handlePageChanged)
+    readerRenderedCleanup = () => {
+      rendition.off?.('rendered', handleRendered)
+      rendition.off?.('page-changed', handlePageChanged)
+    }
   } catch {
-    /* rendition may not support events */
+    readerRenderedCleanup = null
   }
 }
 
 async function loadReaderBookBook(_url: string, book: any) {
+  const lifecycleToken = readerLifecycleToken
+  const currentBookId = props.book?.id || book?.id || ''
+  const currentReader = bookReader
   await nextTick()
   if (!readerContainer.value) throw new Error('无法创建 Reader 阅读区域')
-  bookReader = await createBookReader(buildCurrentReaderOptions())
-  bookChapters.value = bookReader.getChapters()
+  const nextReader = await createBookReader(buildCurrentReaderOptions())
+  if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== currentReader || (props.book?.id || '') !== currentBookId) {
+    nextReader.destroy()
+    return
+  }
+  bookReader = nextReader
+  bookChapters.value = nextReader.getChapters()
   bindRenderedHook()
   const notes = book ? await bookStore.loadNotesByBookId(book.id) : []
+  if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
   if (book) await bookStore.loadBookmarksByBookId(book.id)
-  await bookReader.renderHighlights(notes)
+  if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
+  await nextReader.renderHighlights(notes)
+  if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
   await locateAnnotationTarget()
+  if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
   syncReaderProgress(6)
   await nextTick()
+  if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
   bindReaderIframeEventListeners()
   applyReaderStyles()
+  await scheduleFullTranslation().catch(() => {})
 }
 
-let rerenderLock = false
+let readerRerenderPromise = Promise.resolve(true)
 async function rerenderBookReader() {
-  if (rerenderLock || !bookReader || !readerContainer.value) return
-  rerenderLock = true
-  const position = bookReader.getPosition()
-  const cachedContent = bookReader._contentBuffer
-  try {
-    bookReader.destroy()
-    bookReader = await createBookReader(buildCurrentReaderOptions(), cachedContent)
-    bindRenderedHook()
-    bookChapters.value = bookReader.getChapters()
-    const book = props.book as IBookItem | null
-    const notes = book ? await bookStore.loadNotesByBookId(book.id) : []
-    if (book) await bookStore.loadBookmarksByBookId(book.id)
-    await bookReader.renderHighlights(notes)
-    await bookReader.goToPosition(position)
-    syncReaderProgress(6)
-    await nextTick()
-    bindReaderIframeEventListeners()
-    applyReaderStyles()
-  } catch (e) {
-    console.error(e)
-  } finally {
-    rerenderLock = false
-  }
+  const lifecycleToken = readerLifecycleToken
+  const queuedRerender = readerRerenderPromise
+    .catch(() => false)
+    .then(async () => {
+      if (lifecycleToken !== readerLifecycleToken || !bookReader || !readerContainer.value) return false
+      const currentReader = bookReader
+      const currentBookId = props.book?.id || ''
+      const position = currentReader.getPosition()
+      const cachedContent = currentReader._contentBuffer
+      try {
+        fullTranslationController.invalidate()
+        cleanupReaderRenditionListeners()
+        currentReader.destroy()
+        const nextReader = await createBookReader(buildCurrentReaderOptions(), cachedContent)
+        if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== currentReader || (props.book?.id || '') !== currentBookId) {
+          nextReader.destroy()
+          return false
+        }
+        bookReader = nextReader
+        bindRenderedHook()
+        bookChapters.value = nextReader.getChapters()
+        const book = props.book as IBookItem | null
+        const notes = book ? await bookStore.loadNotesByBookId(book.id) : []
+        if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return false
+        if (book) await bookStore.loadBookmarksByBookId(book.id)
+        if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return false
+        await nextReader.renderHighlights(notes)
+        if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return false
+        await nextReader.goToPosition(position)
+        if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return false
+        syncReaderProgress(6)
+        await nextTick()
+        if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return false
+        bindReaderIframeEventListeners()
+        applyReaderStyles()
+        return true
+      } catch (e) {
+        console.error(e)
+        return false
+      }
+    })
+  readerRerenderPromise = queuedRerender
+  return queuedRerender
 }
 
 function rgbaToHex(rgba: string): string {
@@ -1065,6 +1181,28 @@ function syncScrollIframeHeight(iframe: HTMLIFrameElement, doc: Document) {
   // 引擎刚把 body innerHTML 替换、布局尚未结算的情况）
   measure()
   requestAnimationFrame(() => measure())
+}
+
+function injectTranslationLoadingOverride(doc: Document) {
+  let overrideStyle = doc.querySelector('#reader-translation-loading-override') as HTMLStyleElement | null
+  if (!overrideStyle) {
+    overrideStyle = doc.createElement('style')
+    overrideStyle.id = 'reader-translation-loading-override'
+    doc.head.appendChild(overrideStyle)
+  }
+  // 替换 readerkit 的 border spinner（缺口椭圆旋转）为简洁的脉冲圆点
+  overrideStyle.textContent = [
+    `.kookit-translation-loading:after{`,
+    `content:"";display:inline-block;width:5px;height:5px;margin:2px 0 0 6px;`,
+    `border:none;border-radius:50%;background-color:currentColor;`,
+    `opacity:.35;vertical-align:middle;`,
+    `animation:reader-trans-pulse 1.2s ease-in-out infinite`,
+    `}`,
+    `@keyframes reader-trans-pulse{`,
+    `0%,100%{opacity:.15}`,
+    `50%{opacity:.5}`,
+    `}`
+  ].join('')
 }
 
 function applyReaderStyles() {
@@ -1113,6 +1251,8 @@ function applyReaderStyles() {
     }
     marginStyle.textContent = buildReaderContentMarginCss(readerMargin.value, readerLayoutMode.value)
 
+    injectTranslationLoadingOverride(doc)
+
     if (isScroll) {
       iframe.setAttribute('scrolling', 'no')
       iframe.style.setProperty('display', 'block', 'important')
@@ -1151,6 +1291,7 @@ function buildCurrentReaderOptions(): BookReaderOptions {
     subFontFamily: readerFontFamily.value === 'Built-in font' ? '' : readerFontFamily.value,
     bookLayout: readerBookLayout.value,
     convertChinese: readerConvertChinese.value,
+    fullTranslationMode: readerFullTranslationMode.value,
     textOrientation: readerTextOrientation.value,
     customCSS: readerIsCustomCSS.value ? readerCustomCSS.value : '',
     isBold: readerIsBold.value,
@@ -1559,48 +1700,12 @@ function startReaderSpeech(text: string, autoNextReader = false, runId = ++speec
   const uc = checkAndIncrement('readerTTS', speechText.length)
   if (!uc.allowed) { message.warning(uc.message!); return false }
   speechSession?.stop()
-  stopAzureSpeech()
   speechActive.value = false
   speechControllable.value = false
   speechPaused.value = false
   speechChunkIndex.value = 0
   speechChunkTotal.value = 0
 
-  // Azure TTS
-  if (azureTTSEnabled.value && isAzureConfigured()) {
-    const chunks = splitSpeechText(speechText, undefined, !highlightReader)
-    if (!chunks.length) return false
-    speechActive.value = true
-    speechControllable.value = true
-    speakChunkedWithAzure(
-      chunks,
-      getAzureTTSConfig()!,
-      azureVoice.value || 'zh-CN-XiaoxiaoNeural',
-      readerVoiceRate.value,
-      (chunk, index, total) => {
-        if (runId !== speechRunId) return
-        speechChunkIndex.value = index + 1
-        speechChunkTotal.value = total
-        if (highlightReader && bookReader) bookReader.highlightAudioText(chunk)
-      },
-      () => {
-        if (runId !== speechRunId) return
-        speechActive.value = autoNextReader
-        speechControllable.value = false
-        speechPaused.value = false
-        speechChunkIndex.value = 0
-        speechChunkTotal.value = 0
-        if (autoNextReader) continueReaderSpeech(runId)
-      },
-      (err) => {
-        if (runId !== speechRunId) return
-        speechActive.value = false
-        speechControllable.value = false
-        message.error(err || 'Azure 朗读失败')
-      }
-    )
-    return true
-  }
   speechSession = speakTextSequence(speechText, {
     onChunkStart: (chunk, index, total) => {
       speechChunkIndex.value = index + 1
@@ -1734,29 +1839,42 @@ async function indexBookForAI() {
   }
 }
 
-let panelDragState: { side: 'left' | 'right'; startX: number; startWidth: number } | null = null
+let panelDragState: { side: 'left' | 'right'; startX: number; startWidth: number; bodyUserSelect: string } | null = null
+const panelResizingSide = ref<'left' | 'right' | null>(null)
+
+function updatePanelResize(ev: MouseEvent) {
+  if (!panelDragState) return
+  ev.preventDefault()
+  const { side, startX, startWidth } = panelDragState
+  const delta = ev.clientX - startX
+  const newWidth = side === 'left' ? startWidth + delta : startWidth - delta
+  const maxW = side === 'left' ? 520 : 720
+  const clamped = Math.max(220, Math.min(maxW, newWidth))
+  if (side === 'left') leftPanelWidth.value = clamped
+  else rightPanelWidth.value = clamped
+}
+
+function finishPanelResize() {
+  if (!panelDragState) return
+  document.body.style.userSelect = panelDragState.bodyUserSelect
+  panelDragState = null
+  panelResizingSide.value = null
+  document.removeEventListener('mousemove', updatePanelResize)
+  document.removeEventListener('mouseup', finishPanelResize)
+  window.removeEventListener('blur', finishPanelResize)
+}
 
 function startPanelResize(side: 'left' | 'right', e: MouseEvent) {
   e.preventDefault()
   e.stopPropagation()
   const startX = e.clientX
   const startWidth = side === 'left' ? leftPanelWidth.value : rightPanelWidth.value
-  panelDragState = { side, startX, startWidth }
-  const onMove = (ev: MouseEvent) => {
-    const delta = ev.clientX - startX
-    const newWidth = side === 'left' ? startWidth + delta : startWidth - delta
-    const maxW = side === 'left' ? 520 : 720
-    const clamped = Math.max(220, Math.min(maxW, newWidth))
-    if (side === 'left') leftPanelWidth.value = clamped
-    else rightPanelWidth.value = clamped
-  }
-  const onUp = () => {
-    panelDragState = null
-    document.removeEventListener('mousemove', onMove)
-    document.removeEventListener('mouseup', onUp)
-  }
-  document.addEventListener('mousemove', onMove)
-  document.addEventListener('mouseup', onUp)
+  panelDragState = { side, startX, startWidth, bodyUserSelect: document.body.style.userSelect }
+  panelResizingSide.value = side
+  document.body.style.userSelect = 'none'
+  document.addEventListener('mousemove', updatePanelResize)
+  document.addEventListener('mouseup', finishPanelResize)
+  window.addEventListener('blur', finishPanelResize)
 }
 
 function startTransResize(e: MouseEvent) {
@@ -1862,6 +1980,10 @@ async function deleteAIConv(convId: string) {
 }
 
 function openAIAssistant() {
+  const provider = aiProviderOverride.value || settingStore.apiAIModelProvider
+  const isBYOK = !!provider && !isBoxPlayerCloudProvider(provider)
+  const uc = checkAndIncrement('readerAIChat', 1, { metered: false, isBYOK })
+  if (!uc.allowed) { message.warning(uc.message!); return }
   loadAIHistory()
   aiAnswer.value = ''
   aiStatusText.value = ''
@@ -1890,14 +2012,16 @@ async function extractAndSaveCover(book: IBookItem) {
 async function askAI(question: string) {
   const prompt = question.trim()
   if (!prompt || aiStreaming.value) return
-  const uc = checkAndIncrement('readerAIChat')
+  const provider = aiProviderOverride.value || settingStore.apiAIModelProvider
+  const isBYOK = !!provider && !isBoxPlayerCloudProvider(provider)
+  const uc = checkAndIncrement('readerAIChat', 1, { metered: false, isBYOK })
   if (!uc.allowed) { message.warning(uc.message!); return }
   if (!isAIConfigured()) {
     message.warning('请先在 设置 → API 密钥 中配置 AI 模型')
     return
   }
   const cfg = resolveAIProviderConfig(aiProviderOverride.value)
-  if (!cfg || !cfg.modelId || (cfg.providerName !== 'ai-gateway' && !cfg.endpoint)) {
+  if (!cfg || !cfg.modelId || (cfg.providerName !== 'ai-gateway' && !isBoxPlayerCloudProvider(cfg.providerName) && !cfg.endpoint)) {
     message.warning('AI 模型配置不完整，请检查模型和 Base URL')
     return
   }
@@ -2106,6 +2230,7 @@ function copyAIMessage(content: string) {
 
 const providerOptions = [
   { value: '', label: '默认 (全局设置)' },
+  { value: 'boxplayer-cloud', label: '内置 AI' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'qwen', label: '通义千问' },
@@ -2118,15 +2243,31 @@ const providerOptions = [
 ]
 
 const availableProviderOptions = computed(() => {
-  const globalProvider = settingStore.apiAIModelProvider || ''
-  const hasKey = !!(settingStore.apiAIModelKey) || globalProvider === 'ollama'
-  if (!hasKey) return providerOptions.filter((p) => !p.value)
-  // Only show: default, the global provider, and ollama
-  return providerOptions.filter((p) => {
-    if (!p.value) return true
-    if (p.value === 'ollama') return true
-    return p.value === globalProvider
-  })
+  const result = providerOptions.filter((p) => !p.value)
+  // Only show built-in model for Pro users
+  if (isPro()) {
+    result.push(providerOptions.find((p) => p.value === 'boxplayer-cloud')!)
+  }
+  // Show all providers with saved configs (BYOK)
+  for (const p of providerOptions) {
+    if (!p.value || p.value === 'boxplayer-cloud') continue
+    try {
+      const raw = localStorage.getItem(`ai_provider_config_${p.value}`)
+      if (raw) {
+        const cfg = JSON.parse(raw)
+        if (cfg.apiKey || cfg.modelId) result.push(p)
+      }
+    } catch {}
+  }
+  return result
+})
+
+const currentAIModelLabel = computed(() => {
+  const provider = aiProviderOverride.value || settingStore.apiAIModelProvider || ''
+  const modelId = settingStore.apiAIModelId || ''
+  if (!provider) return ''
+  if (isBoxPlayerCloudProvider(provider)) return '内置模型'
+  return modelId || provider
 })
 
 function handleAIKeydown(e: KeyboardEvent) {
@@ -2204,7 +2345,9 @@ function openBookLookupPopup(mode: BookLookupMode) {
 }
 
 async function askAIForTranslation(text: string, target: string) {
-  const uc = checkAndIncrement('readerTranslation', text.length)
+  const aiProvider = aiProviderOverride.value || settingStore.apiAIModelProvider
+  const isBYOK = transProvider.value === 'ai' && !!aiProvider && !isBoxPlayerCloudProvider(aiProvider)
+  const uc = checkAndIncrement('readerTranslation', text.length, { metered: transProvider.value !== 'ai', isBYOK })
   if (!uc.allowed) { message.warning(uc.message!); return }
   transLoading.value = true
   translateResult.value = ''
@@ -2472,6 +2615,25 @@ async function deleteAllCurrentAnnotations() {
   }
 }
 
+function detectCloudTTSLang(text: string, fallback: string): string {
+  const sample = text.slice(0, 400)
+  let cjk = 0
+  let latin = 0
+  for (const ch of sample) {
+    const code = ch.codePointAt(0) || 0
+    if (code >= 0x4e00 && code <= 0x9fff) cjk++
+    else if (code >= 0x3040 && code <= 0x30ff) cjk++ // 平假名/片假名
+    else if (code >= 0xac00 && code <= 0xd7af) cjk++ // 韩文
+    else if ((code >= 0x41 && code <= 0x5a) || (code >= 0x61 && code <= 0x7a)) latin++
+  }
+  if (cjk > latin) {
+    // 进一步区分中日韩；多数字符是 CJK 汉字视为中文
+    return 'zh'
+  }
+  const primary = (fallback || '').trim().split('-')[0].toLowerCase()
+  return primary || 'en'
+}
+
 async function speakCurrentPage() {
   const runId = reserveSpeechRun()
   const text = buildSpeechText([bookReader ? await bookReader.getAudioText() : ''])
@@ -2516,6 +2678,7 @@ function saveReaderPreferences() {
     readerBookLayout: readerBookLayout.value,
     readerConvertChinese: readerConvertChinese.value,
     readerFullTranslationMode: readerFullTranslationMode.value,
+    readerTranslationTarget: transTarget.value,
     readerTextOrientation: readerTextOrientation.value,
     readerCustomCSS: readerCustomCSS.value,
     readerIsCustomCSS: readerIsCustomCSS.value,
@@ -2569,14 +2732,19 @@ function clearAllStyles() {
 
 async function loadReader() {
   cleanup()
+  const lifecycleToken = readerLifecycleToken
   const book = props.book
+  const currentBookId = props.book?.id || ''
+  const currentReader = bookReader
   if (!props.visible || !book) return
   loading.value = true
   errorText.value = ''
   try {
     const url = await resolveSourceUrl(book)
+    if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== currentReader || (props.book?.id || '') !== currentBookId) return
     sourceUrl.value = url
     await loadReaderBookBook(url, book)
+    if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader === currentReader || (props.book?.id || '') !== currentBookId) return
     startReadingSession(book)
     extractAndSaveCover(book)
   } catch (e: any) {
@@ -2800,11 +2968,22 @@ watch(
     readerCustomCSS,
     readerIsInvert
   ],
-  () => {
+  async () => {
     saveReaderPreferences()
-    if (bookReader) rerenderBookReader()
+    if (!bookReader) return
+    if (readerFullTranslationMode.value === 'no') {
+      await rerenderBookReader()
+      return
+    }
+    await queueFullTranslationRerender()
   }
 )
+
+watch(readerFullTranslationMode, async () => {
+  saveReaderPreferences()
+  if (!bookReader) return
+  await queueFullTranslationRerender()
+})
 
 watch([readerBackgroundColor, readerTextColor], () => {
   saveReaderPreferences()
@@ -2818,6 +2997,16 @@ watch([readerMargin], () => {
 
 watch([readerBrightness, readerSelectAction], () => {
   saveReaderPreferences()
+})
+
+watch(transProvider, () => {
+  setTranslator(transProvider.value)
+})
+
+watch(transTarget, async () => {
+  saveReaderPreferences()
+  if (readerFullTranslationMode.value === 'no') return
+  await queueFullTranslationRerender()
 })
 
 function switchReaderVoice() {
@@ -2906,6 +3095,7 @@ onBeforeUnmount(() => {
           <button v-if="bookPopupActions.some((item) => item.key === 'translation')" title="翻译" @click="openBookLookupPopup('translation')">
             <Globe2 :size="14" :stroke-width="1.8" />
             <span>翻译</span>
+            <span class="pro-pill">Pro</span>
           </button>
           <button v-if="bookPopupActions.some((item) => item.key === 'copy')" title="复制" @click="copyBookSelectionText">
             <Copy :size="14" :stroke-width="1.8" />
@@ -2921,13 +3111,16 @@ onBeforeUnmount(() => {
           </button>
           <button v-if="bookPopupActions.some((item) => item.key === 'speaker')" title="朗读" @click="speakBookSelectionText">
             <Type :size="14" :stroke-width="1.8" />
+            <span class="pro-dot">Pro</span>
           </button>
           <button v-if="bookPopupActions.some((item) => item.key === 'speech-start')" title="从这里朗读" @click="speakBookSelectionFromHere">
             <Type :size="14" :stroke-width="1.8" />
             <span>从这里</span>
+            <span class="pro-pill">Pro</span>
           </button>
           <button v-if="bookPopupActions.some((item) => item.key === 'assistant')" title="AI 助手" @click="openBookAssistantFallback">
             <Sparkles :size="14" :stroke-width="1.8" />
+            <span class="pro-dot">Pro</span>
           </button>
           <button title="关闭" @click="hideBookSelectionPopup">
             <X :size="14" :stroke-width="1.8" />
@@ -3001,7 +3194,7 @@ onBeforeUnmount(() => {
       <div class="edge-trigger trigger-left" @mouseenter="showPanel('left')" @click="openPanels.left = true">
         <Grid3X3 :size="18" :stroke-width="1.5" />
       </div>
-      <div class="edge-trigger trigger-right" @mouseenter="showPanel('right')" @click="openPanels.right = true">
+      <div :class="['edge-trigger', 'trigger-right', isRightPanelVisible ? 'hidden' : '']" @mouseenter="showPanel('right')" @click="openPanels.right = true">
         <Grid3X3 :size="18" :stroke-width="1.5" />
       </div>
       <div class="edge-trigger trigger-top" @mouseenter="showPanel('top')" @click="openPanels.top = true">
@@ -3015,20 +3208,22 @@ onBeforeUnmount(() => {
       <button v-if="isReader && !readerIsHidePageButton" class="page-turn-prev" :style="{ left: lockedPanels.left ? '315px' : '15px' }" type="button" @pointerdown.stop.prevent="handleReaderPrevButton" title="上一页">
         <ChevronLeft :size="20" :stroke-width="2.5" />
       </button>
-      <div class="page-turn-cluster" :style="{ right: lockedPanels.right ? '325px' : '15px' }">
+      <div class="page-turn-cluster" :style="rightPageTurnStyle">
         <button v-if="isReader && !readerIsHidePageButton" class="page-turn-btn page-turn-next" type="button" @pointerdown.stop.prevent="handleReaderNextButton" title="下一页">
           <ChevronRight :size="20" :stroke-width="2.5" />
         </button>
         <button v-if="canUseTextToSpeech && !readerIsHideAudiobookButton" class="page-turn-btn" :class="{ active: speechActive }" type="button" @click.stop.prevent="speechActive ? stopReaderSpeech() : speakCurrentPage()" title="朗读">
           <Volume2 :size="20" :stroke-width="speechActive ? 2.5 : 1.8" />
+          <span class="pro-corner">Pro</span>
         </button>
         <button v-if="!readerIsHideAIButton" class="page-turn-btn" type="button" @click.stop.prevent="openAIAssistant" title="AI 助手">
           <Sparkles :size="18" :stroke-width="1.8" />
+          <span class="pro-corner">Pro</span>
         </button>
       </div>
 
       <!-- Top-right corner: scale + PDF convert + grid menu (koodo-style) -->
-      <div class="reader-topright-controls" :style="{ right: lockedPanels.right ? '305px' : '5px' }">
+      <div v-show="!isRightPanelVisible" class="reader-topright-controls" :style="rightFloatingControlsStyle">
         <div v-if="(readerLayoutMode === 'scroll' || readerLayoutMode === 'single') && !readerIsHideScaleButton" class="reader-scale-wrap">
           <div class="reader-scale-btn" @click="isShowScale = !isShowScale">
             <ZoomIn :size="18" :stroke-width="1.8" />
@@ -3045,6 +3240,8 @@ onBeforeUnmount(() => {
           <Grid3X3 :size="18" :stroke-width="1.8" />
         </div>
       </div>
+
+      <div v-if="panelResizingSide" class="panel-resize-shield" @mousemove="updatePanelResize" @mouseup="finishPanelResize"></div>
 
       <!-- koodo-style Top Panel (OperationPanel) -->
       <div :class="['edge-panel', 'panel-top', isTopPanelVisible ? 'open' : '']" @mouseleave="hidePanel('top')">
@@ -3225,10 +3422,10 @@ onBeforeUnmount(() => {
             <button :class="['panel-tab', rightTab === 'chat' ? 'active' : '']" @click="openAIAssistant">
               <Sparkles :size="14" :stroke-width="1.8" />
               {{ t('chat') }}
+              <span class="pro-pill">Pro</span>
             </button>
           </div>
           <button v-if="rightTab === 'settings'" class="lang-toggle-btn" :title="locale === 'zh' ? 'Switch to English' : '切换到中文'" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? 'EN' : '中' }}</button>
-          <a-switch v-if="rightTab === 'settings'" v-model="settingsLocked" size="small" title="锁定设置" style="margin-right: 2px" />
         </div>
         <div v-if="rightTab === 'settings'" class="panel-body panel-settings" :class="{ 'settings-locked': settingsLocked }" style="overflow-y: auto; flex: 1">
           <!-- View Mode (match koodo ModeControl) -->
@@ -3459,19 +3656,29 @@ onBeforeUnmount(() => {
             <div class="setting-section-title">{{ t('action.after.select') }}</div>
             <a-select v-model="readerSelectAction" size="small" style="width: 100%" @change="saveReaderPreferences()">
               <a-option value="">Default</a-option>
-              <a-option value="translation">Translate</a-option>
+              <a-option value="translation">Translate · Pro</a-option>
               <a-option value="dict">Dictionary</a-option>
               <a-option value="highlight">Highlight</a-option>
               <a-option value="note">Take a note</a-option>
-              <a-option value="speaker">Speak the text</a-option>
+              <a-option value="speaker">Speak the text · Pro</a-option>
             </a-select>
           </div>
 
           <div class="setting-section">
-            <div class="setting-section-title">{{ t('full.text.translation') }}</div>
+            <div class="setting-section-title">{{ t('full.text.translation') }} <span class="pro-pill">Pro</span></div>
             <a-select v-model="readerFullTranslationMode" size="small" style="width: 100%">
               <a-option v-for="opt in fullTranslationModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
             </a-select>
+            <div v-if="readerFullTranslationMode !== 'no'" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
+              <a-select v-model="transTarget" size="small" style="width: 100%">
+                <a-option v-for="lang in transLanguages" :key="lang.value" :value="lang.value">{{ lang.label }}</a-option>
+              </a-select>
+              <div v-if="fullTranslationLoading || fullTranslationError" class="full-translation-status" :class="{ 'is-error': !!fullTranslationError && !fullTranslationLoading }">
+                <LoaderCircle v-if="fullTranslationLoading" class="full-translation-spinner" :size="12" :stroke-width="2" />
+                <span v-if="fullTranslationLoading">翻译中...</span>
+                <span v-else>{{ fullTranslationError }}</span>
+              </div>
+            </div>
           </div>
 
           <!-- Toggle Switches (match koodo SettingSwitch order) -->
@@ -3714,21 +3921,6 @@ onBeforeUnmount(() => {
                 <a-button size="small" @click="previewReaderSpeechVoice">{{ t('tts.test') }}</a-button>
               </div>
             </div>
-            <div class="setting-section">
-              <div class="setting-section-title">{{ t('azure.tts') }}</div>
-              <div class="setting-row">
-                <span>{{ t('azure.tts.enable') }}</span>
-                <a-switch v-model="azureTTSEnabled" size="small" @change="(v: boolean) => setAzureTTSEnabled(v)" />
-              </div>
-              <div v-if="azureTTSEnabled" class="setting-stack">
-                <span v-if="!isAzureConfigured()" style="font-size: 12px; color: var(--color-text-3)">{{ t('azure.tts.not.configured') }}</span>
-                <template v-else>
-                  <a-select v-model="azureVoice" size="small" placeholder="选择语音角色" @change="(v: string) => saveAzureVoice(v)">
-                    <a-option v-for="voice in getAzureVoices()" :key="voice.name" :value="voice.name">{{ getAzureVoiceLabel(voice) }}</a-option>
-                  </a-select>
-                </template>
-              </div>
-            </div>
           </template>
         </div>
         <div v-if="rightTab === 'chat'" class="panel-body panel-chat">
@@ -3739,6 +3931,8 @@ onBeforeUnmount(() => {
               </button>
               <Sparkles :size="14" :stroke-width="1.8" />
               <span class="chat-header-title">AI 阅读助手</span>
+              <span class="pro-pill">Pro</span>
+              <span v-if="currentAIModelLabel" class="chat-header-model">{{ currentAIModelLabel }}</span>
             </div>
             <div class="chat-header-right">
               <button class="chat-header-btn" title="新建对话" @click="newAIChat">
@@ -3812,7 +4006,12 @@ onBeforeUnmount(() => {
                   <div class="chat-composer-inner">
                     <div class="chat-composer-actions">
                       <a-select v-if="isAIConfigured()" v-model="aiProviderOverride" size="mini" class="composer-provider-select" :disabled="aiStreaming">
-                        <a-option v-for="p in availableProviderOptions" :key="p.value" :value="p.value">{{ p.label === '默认 (全局设置)' ? '默认' : p.label }}</a-option>
+                        <a-option v-for="p in availableProviderOptions" :key="p.value" :value="p.value" :disabled="p.value === 'boxplayer-cloud' && !isPro()">
+                          <span class="provider-option-label">
+                            <span>{{ p.label === '默认 (全局设置)' ? '默认' : p.label }}</span>
+                            <span v-if="p.value === 'boxplayer-cloud'" class="pro-badge">Pro</span>
+                          </span>
+                        </a-option>
                       </a-select>
                       <button class="composer-mode-btn" :class="{ active: aiMode === 'ask' }" title="阅读问答" @click="toggleAIMode('ask')">📖</button>
                       <button class="composer-mode-btn" :class="{ active: aiMode === 'chat' }" title="自由聊天" @click="toggleAIMode('chat')">💡</button>
@@ -4100,6 +4299,18 @@ onBeforeUnmount(() => {
 .edge-trigger:hover {
   opacity: 1;
 }
+.edge-trigger.hidden {
+  display: none;
+}
+
+.panel-resize-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 1200;
+  cursor: col-resize;
+  user-select: none;
+  background: transparent;
+}
 
 .trigger-left {
   width: 40px;
@@ -4164,6 +4375,7 @@ onBeforeUnmount(() => {
   z-index: 12;
 }
 .page-turn-btn {
+  position: relative;
   width: 40px;
   height: 40px;
   border-radius: 50%;
@@ -4845,6 +5057,28 @@ onBeforeUnmount(() => {
   color: var(--panel-fg);
   opacity: 0.55;
 }
+.full-translation-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 18px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--color-text-3);
+  word-break: break-word;
+}
+.full-translation-status.is-error {
+  color: rgb(var(--danger-6));
+}
+.full-translation-spinner {
+  flex: 0 0 auto;
+  animation: reader-spin 0.9s linear infinite;
+}
+@keyframes reader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .setting-row {
   display: flex;
   justify-content: space-between;
@@ -5207,6 +5441,45 @@ onBeforeUnmount(() => {
 .selection-popup-actions button:hover {
   background: rgba(var(--primary-6), 0.12);
   color: rgb(var(--primary-6));
+}
+
+.pro-pill,
+.pro-dot,
+.pro-corner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.28);
+}
+
+.pro-pill {
+  height: 15px;
+  padding: 0 5px;
+  font-size: 9px;
+}
+
+.pro-dot {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  height: 13px;
+  padding: 0 4px;
+  font-size: 8px;
+}
+
+.pro-corner {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  height: 14px;
+  padding: 0 5px;
+  font-size: 8px;
 }
 
 .selection-popup-actions button:disabled {
@@ -5579,6 +5852,15 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 600;
 }
+.chat-header-model {
+  font-size: 11px;
+  color: var(--color-text-3);
+  margin-left: 4px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .chat-header-right {
   display: flex;
   gap: 2px;
@@ -5868,6 +6150,24 @@ onBeforeUnmount(() => {
 .composer-provider-select {
   width: 110px;
   font-size: 11px;
+}
+.provider-option-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pro-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
 }
 .composer-mode-btn {
   width: 26px;

@@ -1,5 +1,5 @@
 import { aliRefreshToken } from './aliyunHttp.mjs'
-import { aliListAll, aliListDir, aliWalk, aliRenameBatch, aliSearch, aliGetFile, aliMove, aliMkdir, aliTrash, aliUploadFile } from './aliyunFiles.mjs'
+import { aliListAll, aliListDir, aliWalk, aliRenameBatch, aliSearch, aliGetFile, aliMove, aliMkdir, aliTrash, aliUploadFile, aliDownloadFile } from './aliyunFiles.mjs'
 
 export function createAliyunProvider() {
   return {
@@ -17,6 +17,7 @@ export function createAliyunProvider() {
       mkdir: true,
       move: true,
       uploadFile: true,
+      downloadFile: true,
     },
 
     auth: {
@@ -83,6 +84,10 @@ export function createAliyunProvider() {
 
       async uploadFile({ token, driveId, parentId, localPath, name, size, conflict }) {
         return aliUploadFile(token, driveId, { parentId, localPath, name, size, conflict })
+      },
+
+      async downloadFile({ token, driveId, fileId, outputPath }) {
+        return aliDownloadFile(token, driveId, { fileId, outputPath })
       },
     },
   }

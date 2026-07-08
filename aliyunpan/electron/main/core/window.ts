@@ -97,6 +97,12 @@ export function createMainWindow() {
   }
   AppWindow.mainWindow = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main', AppWindow.winTheme)
 
+  const showMainPage = () => {
+    if (!AppWindow.mainWindow || AppWindow.mainWindow.isDestroyed()) return
+    AppWindow.mainWindow.webContents.send('setPage', { page: 'PageMain' })
+    AppWindow.mainWindow.webContents.send('setTheme', { dark: nativeTheme.shouldUseDarkColors })
+  }
+
   AppWindow.mainWindow.on('resize', () => {
     debounceResize(function() {
       try {
@@ -126,9 +132,13 @@ export function createMainWindow() {
     app.quit()
   })
 
+  AppWindow.mainWindow.webContents.once('dom-ready', showMainPage)
+  AppWindow.mainWindow.webContents.once('did-finish-load', showMainPage)
+  setTimeout(showMainPage, 500)
+  setTimeout(showMainPage, 1500)
+
   AppWindow.mainWindow.on('ready-to-show', function() {
-    AppWindow.mainWindow!.webContents.send('setPage', { page: 'PageMain' })
-    AppWindow.mainWindow!.webContents.send('setTheme', { dark: nativeTheme.shouldUseDarkColors })
+    showMainPage()
     AppWindow.mainWindow!.setTitle('BoxPlayer')
     if (is.windows() && process.argv && process.argv.join(' ').indexOf('--openAsHidden') < 0) {
       AppWindow.mainWindow!.show()

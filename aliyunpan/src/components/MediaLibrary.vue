@@ -12,11 +12,11 @@
         </a-tabs>
       </div>
 
-      <!-- 筛选器和视图切换 - 只在显示媒体内容时显示，文件夹文件列表时隐藏 -->
+      <!-- 控件行：返回按钮 + 快捷搜索 + 结果计数 + 视图切换 — 同一行 -->
       <div v-if="!props.selectedFolder || folderFileList.length === 0" class="library-controls">
         <div class="library-controls-left">
           <button
-            v-if="showHeaderBackButton"
+            v-if="showHeaderBackButton || showTopBar"
             type="button"
             class="library-arrow-back library-header-back-button"
             :title="resultBarTitle"
@@ -26,40 +26,62 @@
             <span class="library-arrow-back-title">{{ resultBarTitle }}</span>
           </button>
         </div>
+        <div class="library-controls-center" />
         <div class="library-filters-right">
-<!--          <a-select v-model:value="selectedGenre" placeholder="按类型筛选" style="width: 120px;">-->
-<!--            <a-option value="">全部类型</a-option>-->
-<!--            <a-option v-for="genre in mediaStore.genres" :key="genre" :value="genre">-->
-<!--              {{ genre }}-->
-<!--            </a-option>-->
-<!--          </a-select>-->
+          <template v-if="showQuickSearch">
+            <button
+              v-if="!searchExpanded"
+              class="view-toggle-seg"
+              title="搜索筛选"
+              @click="searchExpanded = true"
+            >
+              <IconFont name="iconsearch" />
+            </button>
+            <a-input-search
+              v-else
+              ref="quickSearchInputRef"
+              v-model="localSearchQuery"
+              allow-clear
+              placeholder="输入关键词筛选..."
+              size="small"
+              class="library-quick-search"
+              @blur="onQuickSearchBlur"
+            >
+              <template #prefix>
+                <IconFont name="iconsearch" />
+              </template>
+            </a-input-search>
+          </template>
+          <div v-if="showResultCount" class="library-result-count">共 {{ filteredItems.length }} 项结果</div>
 
-<!--          <a-select v-model:value="selectedYear" placeholder="按年份筛选" style="width: 120px;">-->
-<!--            <a-option value="">全部年份</a-option>-->
-<!--            <a-option v-for="year in mediaStore.years" :key="year" :value="year.toString()">-->
-<!--              {{ year }}-->
-<!--            </a-option>-->
-<!--          </a-select>-->
-
-<!--          <a-select v-model:value="selectedRating" placeholder="按评分筛选" style="width: 120px;">-->
-<!--            <a-option value="">全部评分</a-option>-->
-<!--            <a-option value="9-10">9-10分</a-option>-->
-<!--            <a-option value="8-9">8-9分</a-option>-->
-<!--            <a-option value="7-8">7-8分</a-option>-->
-<!--            <a-option value="6-7">6-7分</a-option>-->
-<!--            <a-option value="1-5">1-5分</a-option>-->
-<!--          </a-select>-->
-
-          <!-- 视图切换按钮 -->
-          <div v-if="showBrowseModeToggle" class="view-toggle">
-            <div class="view-toggle-group">
-              <a-button :type="viewMode === 'grid' ? 'primary' : 'outline'" @click="viewMode = 'grid'">网格</a-button>
-              <a-button :type="viewMode === 'list' ? 'primary' : 'outline'" @click="viewMode = 'list'">列表</a-button>
-            </div>
-            <div v-if="showPosterTypeToggle" class="view-toggle-group">
-              <a-button :type="posterType === 'portrait' ? 'primary' : 'outline'" @click="posterType = 'portrait'">竖版海报</a-button>
-              <a-button :type="posterType === 'landscape' ? 'primary' : 'outline'" @click="posterType = 'landscape'">横版海报</a-button>
-            </div>
+          <!-- 视图切换 — 毛玻璃分段胶囊 -->
+          <div v-if="showBrowseModeToggle" class="view-toggle-pill">
+            <button
+              class="view-toggle-seg"
+              :class="{ active: viewMode === 'grid' }"
+              title="网格视图"
+              @click="viewMode = 'grid'"
+            >
+              <IconFont name="iconfangkuang" />
+            </button>
+            <button
+              class="view-toggle-seg"
+              :class="{ active: viewMode === 'list' }"
+              title="列表视图"
+              @click="viewMode = 'list'"
+            >
+              <IconFont name="iconlist" />
+            </button>
+            <span v-if="showPosterTypeToggle" class="view-toggle-divider" />
+            <button
+              v-if="showPosterTypeToggle"
+              class="view-toggle-seg view-toggle-seg--label"
+              :class="{ active: posterType === 'landscape' }"
+              :title="posterType === 'portrait' ? '切换为横版海报' : '切换为竖版海报'"
+              @click="posterType = posterType === 'portrait' ? 'landscape' : 'portrait'"
+            >
+              <span class="view-toggle-seg-label">{{ posterType === 'portrait' ? '竖版' : '横版' }}</span>
+            </button>
           </div>
         </div>
       </div>
@@ -67,20 +89,6 @@
 
     <!-- 内容区域 -->
     <div class="library-content">
-      <div v-if="showResultBackBar && !showingDetail" class="library-result-bar">
-        <button
-          type="button"
-          class="library-arrow-back library-top-back-button"
-          :title="resultBarTitle"
-          @click="handleResultBack"
-        >
-          <IconFont name="iconarrow-left-2-icon" />
-          <span class="library-arrow-back-title">{{ resultBarTitle }}</span>
-        </button>
-        <div class="library-result-bar-main">
-          <div class="library-result-bar-subtitle">共 {{ filteredItems.length }} 项结果</div>
-        </div>
-      </div>
 
       <!-- 搜索界面 -->
       <div v-if="isSearchView && !showingDetail" class="search-panel">
@@ -101,6 +109,7 @@
         :media-item="currentMediaItem"
         :active-playlist-name="selectedPlaylist"
         :playlist-items="selectedPlaylist ? filteredItems : []"
+        @ai-rescrape="handleManualAIScrape"
         @back="handleDetailBack"
         @tag-click="handleDetailTagClick"
       />
@@ -114,23 +123,28 @@
         <div class="library-home-toolbar">
           <div class="library-home-toolbar-spacer" />
           <div class="library-home-toolbar-right">
-            <a-button type="outline" @click="openLocalHomeManager">
-              <template #icon><IconFont name="iconlist" /></template>
-              媒体管理
-            </a-button>
-            <div class="home-poster-toggle">
-              <a-button
-                :type="localHomePosterMode === 'landscape' ? 'primary' : 'outline'"
+            <button type="button" class="toolbar-btn" @click="openLocalHomeManager">
+              <IconFont name="iconlist" />
+              <span>媒体管理</span>
+            </button>
+            <div class="view-toggle-pill">
+              <button
+                class="view-toggle-seg"
+                :class="{ active: localHomePosterMode === 'landscape' }"
+                title="横版海报"
                 @click="setLocalHomePosterMode('landscape')"
               >
-                横版
-              </a-button>
-              <a-button
-                :type="localHomePosterMode === 'portrait' ? 'primary' : 'outline'"
+                <IconFont name="iconfangkuang" />
+              </button>
+              <span class="view-toggle-divider" />
+              <button
+                class="view-toggle-seg"
+                :class="{ active: localHomePosterMode === 'portrait' }"
+                title="竖版海报"
                 @click="setLocalHomePosterMode('portrait')"
               >
-                竖版
-              </a-button>
+                <IconFont name="iconxiaotumoshi" />
+              </button>
             </div>
           </div>
         </div>
@@ -165,38 +179,39 @@
           >
             <div class="home-section-header">
               <h4>{{ section.title }}</h4>
-              <a-button
+              <button
                 v-if="section.key === 'genres' || section.key === 'ratings' || section.key === 'years' || section.key === 'playlists'"
-                type="text"
-                class="see-all-button"
+                type="button"
+                class="toolbar-btn"
                 @click="handleLocalShortcutSeeAll(section.key)"
               >
                 查看全部 ({{ getLocalHomeSectionTotalCount(section) }})
-              </a-button>
+              </button>
               <span v-else>{{ (section.entries || []).length }} 项</span>
             </div>
             <div
               class="library-home-row"
               :class="section.variant === 'banner' ? 'library-home-row-banner' : 'library-home-row-category'"
             >
+              <CategoryCard
+                v-for="entry in (section.entries || [])"
+                v-show="section.variant === 'banner'"
+                :key="entry.key"
+                :name="entry.title"
+                :count="entry.count ?? 0"
+                :type="entry.cardType ?? 'genre'"
+                :cover-images="entry.coverImages ?? []"
+                class="library-home-category-card"
+                @click="handleLocalShortcutSelect(entry)"
+              />
               <button
                 v-for="entry in (section.entries || [])"
+                v-show="section.variant === 'mini'"
                 :key="entry.key"
                 type="button"
-                class="library-home-shortcut-card"
-                :class="section.variant === 'banner' ? 'library-home-banner-card' : 'library-home-mini-card'"
-                :style="entry.style"
+                class="library-home-shortcut-card library-home-mini-card"
                 @click="handleLocalShortcutSelect(entry)"
               >
-                <template v-if="section.variant === 'banner'">
-                  <div class="library-home-banner-image" :style="entry.style"></div>
-                  <div class="category-list-overlay" :style="entry.overlayStyle"></div>
-                  <div class="category-list-content">
-                    <h3 class="category-list-title">{{ entry.title }}</h3>
-                  </div>
-                  <div v-if="entry.count !== undefined" class="category-list-count">{{ entry.count }}</div>
-                </template>
-                <template v-else>
                   <div class="library-home-mini-icon">
                     <i class="iconfont" :class="entry.icon" />
                   </div>
@@ -205,7 +220,6 @@
                     <p>{{ entry.description }}</p>
                   </div>
                   <div v-if="entry.count !== undefined" class="library-home-mini-count">{{ entry.count }}</div>
-                </template>
               </button>
             </div>
           </section>
@@ -517,8 +531,7 @@
             :name="item.name"
             :count="item.count"
             :type="item.type"
-            :gradient="getCategoryGradient(item.type)"
-            :cover-image="getRandomCoverImage(item)"
+            :cover-images="getDeterministicCoverImages(item)"
             @click="handleCategoryClick"
           />
         </div>
@@ -556,7 +569,6 @@
               :name="item.name"
               :count="item.count"
               :type="item.type as 'year' | 'rating' | 'genre'"
-              :gradient="getCategoryGradient('genre')"
               :cover-image="item.coverImage"
               @click="handleCategoryClick"
             />
@@ -629,7 +641,7 @@
                 @error="handleImageError"
               />
               <div class="poster-placeholder">
-                <IconFont name="iconfile-video" />
+                <img class="poster-placeholder-app-icon" src="/icon.svg" alt="BoxPlayer" />
               </div>
 
               <div v-if="isContinueWatchingView && item.watchProgress !== undefined" class="watch-progress">
@@ -693,7 +705,7 @@
                 @error="handleImageError"
               />
               <div class="poster-placeholder">
-                <IconFont name="iconfile-video" />
+                <img class="poster-placeholder-app-icon" src="/icon.svg" alt="BoxPlayer" />
               </div>
               <div class="type-badge">
                 {{ getItemTypeLabel(item) }}
@@ -803,6 +815,10 @@
               <span class="library-card-context-icon">≡</span>
               <span>{{ contextMenuInPlaylist ? '移除播放列表' : '添加到播放列表' }}</span>
             </button>
+            <button type="button" class="library-card-context-item" @click="aiRescrapeFromMenu">
+              <span class="library-card-context-icon">AI</span>
+              <span>AI 重刮削 <span class="ai-pro-badge">Pro</span></span>
+            </button>
             <div class="library-card-context-divider" />
             <button type="button" class="library-card-context-item danger" @click="deleteMediaFromMenu">
               <span class="library-card-context-icon">✕</span>
@@ -843,6 +859,7 @@ import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilel
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import { menuOpenFile } from '../utils/openfile'
 import message from '../utils/message'
+import { manualAIScrapeItems } from '../utils/mediaAIScrape'
 import useLocalMediaHomePreferencesStore from '../store/localMediaHomePreferences'
 import type { LocalMediaHomePosterType, LocalMediaHomeSectionKey } from '../store/localMediaHomePreferences'
 
@@ -864,6 +881,8 @@ type LocalHomeMediaSection = {
     description: string
     icon: string
     count?: number
+    coverImages?: string[]
+    cardType?: 'genre' | 'rating' | 'year' | 'playlist'
     style?: CSSProperties
     overlayStyle?: CSSProperties
     action: () => void
@@ -1147,6 +1166,23 @@ const showHomeBackBar = computed(() => {
 })
 const showHeaderBackButton = computed(() => showHomeBackBar.value)
 const showResultBackBar = computed(() => showDrillDownBackBar.value || showPlaylistBackBar.value)
+
+// 顶部操作栏：返回按钮 + 快捷搜索 + 结果计数
+const showTopBar = computed(() => {
+  if (showDrillDownBackBar.value || showPlaylistBackBar.value) return true
+  if (showHomeBackBar.value) return true
+  return false
+})
+const showQuickSearch = computed(() => showDrillDownBackBar.value || showPlaylistBackBar.value)
+const showResultCount = computed(() => showDrillDownBackBar.value || showPlaylistBackBar.value)
+const searchExpanded = ref(false)
+const quickSearchInputRef = ref<InstanceType<typeof HTMLInputElement>>()
+
+const onQuickSearchBlur = () => {
+  if (!localSearchQuery.value.trim()) {
+    searchExpanded.value = false
+  }
+}
 const homeNavigationTitleMap: Record<string, string> = {
   'continue-watching': '继续观看',
   'recently-added': '最近添加',
@@ -1308,8 +1344,8 @@ const localShortcutSections = computed(() => {
     description: `${item.count} 项`,
     icon: 'iconwbiaoqian',
     count: item.count,
-    style: getBannerCardImageStyle(getRandomCoverImage(item)),
-    overlayStyle: getBannerCardOverlayStyle(item.name, item.type || 'genre'),
+    coverImages: getDeterministicCoverImages(item),
+    cardType: 'genre' as const,
     action: () => handleCategoryClick({ name: item.name, type: 'genre', count: item.count })
   }))
 
@@ -1319,8 +1355,8 @@ const localShortcutSections = computed(() => {
     description: `${item.count} 项`,
     icon: 'iconcrown2',
     count: item.count,
-    style: getBannerCardImageStyle(getRandomCoverImage(item)),
-    overlayStyle: getBannerCardOverlayStyle(item.name, 'rating'),
+    coverImages: getDeterministicCoverImages(item),
+    cardType: 'rating' as const,
     action: () => handleCategoryClick({ name: item.name, type: 'rating', count: item.count })
   }))
 
@@ -1330,8 +1366,8 @@ const localShortcutSections = computed(() => {
     description: `${item.count} 项`,
     icon: 'iconcalendar',
     count: item.count,
-    style: getBannerCardImageStyle(getRandomCoverImage(item)),
-    overlayStyle: getBannerCardOverlayStyle(item.name, 'year'),
+    coverImages: getDeterministicCoverImages(item),
+    cardType: 'year' as const,
     action: () => handleCategoryClick({ name: item.name, type: 'year', count: item.count })
   }))
 
@@ -1341,8 +1377,8 @@ const localShortcutSections = computed(() => {
     description: `${item.count} 项`,
     icon: 'iconlist',
     count: item.count,
-    style: getBannerCardImageStyle(item.coverImage),
-    overlayStyle: getBannerCardOverlayStyle(item.name, 'playlist'),
+    coverImages: item.coverImage ? [item.coverImage] : [],
+    cardType: 'playlist' as const,
     action: () => {
       selectedPlaylist.value = item.name
       emit('navigateCategory', 'playlist')
@@ -1845,6 +1881,31 @@ const removeFromContinueWatchingFromMenu = () => {
   handleContextMenuClose()
 }
 
+const handleManualAIScrape = async (item: MediaLibraryItem) => {
+  const scrapedItems = await manualAIScrapeItems(item)
+  if (!scrapedItems.length) return
+  if (!scrapedItems.some(scraped => scraped.id === item.id)) {
+    mediaStore.removeMediaItem(item.id)
+  }
+  for (const scraped of scrapedItems) {
+    if (scraped.type === 'tv') {
+      mediaStore.addOrMergeTvSeries(scraped)
+    } else {
+      mediaStore.addMediaItem(scraped)
+    }
+    mediaStore.addToRecentlyAdded(scraped)
+  }
+  currentMediaItem.value = scrapedItems[0]
+  message.success('AI 重刮削完成')
+}
+
+const aiRescrapeFromMenu = async () => {
+  const target = contextMenuItem.value
+  handleContextMenuClose()
+  if (!target) return
+  await handleManualAIScrape(target)
+}
+
 const getBaseMediaId = (item: MediaLibraryItem) => {
   const parts = String(item.id).split('_')
   if (parts.length >= 3) return parts.slice(0, -2).join('_')
@@ -1907,16 +1968,6 @@ const handleDetailTagClick = (tagType: string, tagValue: string) => {
   }
 }
 
-// 获取分类卡片渐变色
-const getCategoryGradient = (type: string) => {
-  const gradients = {
-    genre: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-    rating: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-    year: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)'
-  }
-  return gradients[type as keyof typeof gradients] || gradients.genre
-}
-
 const categoryListPalette = [
   ['#5b7cfa', '#7c4dff'],
   ['#10b981', '#06b6d4'],
@@ -1936,41 +1987,34 @@ const getSeededGradient = (seedSource: string, fallbackType: string) => {
   return `linear-gradient(135deg, ${from} 0%, ${to} 100%)`
 }
 
-const getBannerCardImageStyle = (coverImage?: string) => {
-  if (!coverImage) return {}
-  return {
-    backgroundImage: `url(${coverImage})`,
-    backgroundSize: 'cover',
-    backgroundPosition: 'center center',
-    backgroundRepeat: 'no-repeat'
-  } as CSSProperties
-}
-
-const getBannerCardOverlayStyle = (seedSource: string, fallbackType: string) => ({
-  backgroundImage: getSeededGradient(seedSource, fallbackType),
-  opacity: '0.68'
-} as CSSProperties)
-
-// 获取随机封面图
-const getRandomCoverImage = (categoryItem: any) => {
+// 获取确定性封面图（基于分类名哈希，避免每次渲染变化）
+const getDeterministicCoverImages = (categoryItem: any): string[] => {
   if (categoryItem.items && categoryItem.items.length > 0) {
-    // 随机选择一个有封面的项目
     const itemsWithCover = categoryItem.items.filter((item: any) => item.posterUrl || item.backdropUrl)
-    if (itemsWithCover.length > 0) {
-      const randomItem = itemsWithCover[Math.floor(Math.random() * itemsWithCover.length)]
-      return randomItem.posterUrl || randomItem.backdropUrl
+    if (itemsWithCover.length === 0) return []
+    // 基于分类名确定性洗牌，选取最多 4 张
+    const seed = String(categoryItem.name || '')
+    let hash = 0
+    for (let i = 0; i < seed.length; i++) hash = (hash * 37 + seed.charCodeAt(i)) >>> 0
+    const shuffled = [...itemsWithCover]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      hash = (hash * 1103515245 + 12345) >>> 0
+      const j = hash % (i + 1)
+      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
     }
+    return shuffled.slice(0, 4).map((item: any) => item.posterUrl || item.backdropUrl)
   }
-  return undefined
+  return []
 }
 
 // 获取列表卡片样式
 const getListCardStyle = (item: any) => {
-  const coverImage = getRandomCoverImage(item)
+  const covers = getDeterministicCoverImages(item)
   const gradient = getSeededGradient(item.name, item.type || 'genre')
-  if (coverImage) {
+  if (covers.length > 0) {
+    const coverUrl = covers[0]
     return {
-      backgroundImage: `${gradient}, url(${coverImage})`,
+      backgroundImage: `${gradient}, url(${coverUrl})`,
       backgroundSize: '100% 100%, auto 100%',
       backgroundPosition: 'center center, center center',
       backgroundRepeat: 'no-repeat, no-repeat'
@@ -2842,28 +2886,89 @@ defineExpose({
 
 .library-controls-left {
   min-width: 0;
+  flex: 0 0 auto;
+}
+
+.library-controls-center {
   flex: 1 1 auto;
+  display: flex;
+  justify-content: center;
+  max-width: 360px;
 }
 
 .library-filters-right {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: center;
   justify-content: flex-end;
   flex: 0 0 auto;
 }
 
-.view-toggle {
-  margin-left: 8px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+/* 视图切换 — 毛玻璃分段胶囊 */
+.view-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
-.view-toggle-group {
+.view-toggle-seg {
   display: inline-flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  width: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.view-toggle-seg:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.view-toggle-seg.active {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.view-toggle-seg:active {
+  transform: scale(0.94);
+}
+
+/* 带文字标签的分段按钮 */
+.view-toggle-seg--label {
+  width: auto;
+  padding: 0 10px;
+}
+
+.view-toggle-seg-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1;
+}
+
+/* 分段之间的分隔线 */
+.view-toggle-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 1px;
+  flex-shrink: 0;
 }
 
 .media-library :deep(.arco-btn) {
@@ -2913,32 +3018,35 @@ defineExpose({
   overflow-y: auto;
 }
 
-.library-result-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 16px 20px 10px;
+.library-quick-search {
+  width: 240px;
+}
+
+.library-result-count {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .library-arrow-back {
-  height: 46px;
-  max-width: min(420px, calc(100vw - 80px));
+  height: 42px;
+  max-width: min(380px, calc(100vw - 120px));
   padding: 0 18px;
   gap: 10px;
-  width: auto;
-  height: 46px;
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.36);
-  box-shadow: 0 10px 30px rgba(130, 137, 152, 0.18);
-  backdrop-filter: blur(26px) saturate(165%);
-  -webkit-backdrop-filter: blur(26px) saturate(165%);
-  color: #253045;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: rgba(255, 255, 255, 0.88);
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  flex-shrink: 0;
 }
 
 .library-arrow-back .iconfont {
@@ -2964,27 +3072,6 @@ defineExpose({
 .library-header-back-button,
 .library-top-back-button {
   flex: 0 0 auto;
-}
-
-.library-result-bar-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-}
-
-.library-result-bar-title {
-  color: #111827;
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.25;
-}
-
-.library-result-bar-subtitle {
-  margin-top: 4px;
-  color: #64748b;
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .search-panel {
@@ -3355,6 +3442,25 @@ defineExpose({
   background:
     radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.72), transparent 34%),
     linear-gradient(180deg, rgba(240, 244, 248, 0.94), rgba(221, 228, 236, 0.92));
+}
+
+.poster-placeholder-app-icon {
+  width: 42px !important;
+  height: 42px !important;
+  max-width: 42px !important;
+  min-width: 0 !important;
+  object-fit: contain !important;
+  display: block !important;
+  opacity: .72;
+  filter: drop-shadow(0 8px 14px rgba(15, 23, 42, .14)) !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+.media-item:hover .poster-placeholder-app-icon,
+.media-list-item:hover .poster-placeholder-app-icon {
+  transform: none !important;
+  filter: drop-shadow(0 8px 14px rgba(15, 23, 42, .14)) !important;
 }
 
 .media-poster.has-image .poster-placeholder,
@@ -3744,7 +3850,6 @@ defineExpose({
 }
 
 [arco-theme='dark'] .search-panel-hint,
-[arco-theme='dark'] .library-result-bar-subtitle,
 [arco-theme='dark'] .search-media-server-state,
 [arco-theme='dark'] .search-media-server-result-year,
 [arco-theme='dark'] .search-media-server-result-meta {
@@ -3887,7 +3992,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 28px;
-  padding: 4px 2px 2px;
+  padding: 20px 2px 2px;
 }
 
 .library-home-toolbar {
@@ -3905,14 +4010,42 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-.home-poster-toggle {
+.toolbar-btn {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 36px;
+  cursor: pointer;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.toolbar-btn:active {
+  transform: scale(0.97);
+}
+
+.toolbar-btn .iconfont {
+  font-size: 14px;
+  opacity: 0.72;
 }
 
 .home-settings-menu {
@@ -4092,28 +4225,11 @@ defineExpose({
 }
 
 .home-section-header span {
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.see-all-button {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(250, 245, 240, 0.52);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  color: rgba(24, 24, 24, 0.88);
-  font-weight: 700;
-  font-size: 14px;
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
-  backdrop-filter: blur(18px) saturate(135%);
-  cursor: pointer;
-}
-
-.see-all-button:hover {
-  background: rgba(255, 255, 255, 0.68);
-  border-color: rgba(255, 255, 255, 0.86);
-  color: rgba(24, 24, 24, 0.96);
-  box-shadow: 0 16px 34px rgba(63, 46, 37, 0.12);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.48;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 30px;
 }
 
 .library-home-row {
@@ -4240,52 +4356,11 @@ defineExpose({
   padding-top: 2px;
 }
 
-.library-home-banner-card {
-  width: 320px;
-  height: 170px;
-  position: relative;
-  border-radius: 20px;
-  overflow: hidden;
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
-}
-
-.library-home-banner-image {
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
-  transform: scale(1.02);
-  filter: saturate(1.02) contrast(1.02);
-}
-
-.library-home-banner-card .category-list-overlay {
-  background: linear-gradient(135deg, rgba(15, 23, 42, 0.28) 0%, rgba(15, 23, 42, 0.42) 100%);
-  mix-blend-mode: multiply;
-}
-
-.library-home-banner-card .category-list-content {
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px 56px;
-  text-align: center;
-}
-
-.library-home-banner-card .category-list-title {
-  font-size: 18px;
-  font-weight: 800;
-  margin: 0;
-  width: 100%;
-}
-
-.library-home-banner-card .category-list-count {
-  top: auto;
-  right: 16px;
-  bottom: 16px;
-  padding: 6px 12px;
-  font-size: 15px;
+/* CategoryCard on home page — fixed size for horizontal scroll */
+.library-home-category-card {
+  flex: 0 0 auto;
+  width: 260px;
+  min-height: 162px;
 }
 
 .library-home-mini-card {
@@ -4362,10 +4437,24 @@ defineExpose({
 
 .detail-media-modal :deep(.arco-modal-content) {
   border-radius: 28px;
-  background: rgba(247, 241, 234, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
+    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
+    var(--app-mineradio-bg, #08090b);
+  border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.08));
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(24px);
-  box-shadow: 0 28px 60px rgba(56, 44, 30, 0.18);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.detail-media-modal :deep(.arco-modal-header) {
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06));
+}
+
+.detail-media-modal :deep(.arco-modal-title) {
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .home-library-manager-panel {
@@ -4374,16 +4463,17 @@ defineExpose({
 
 .home-library-manager-hint {
   margin: 0 0 14px 8px;
-  color: rgba(24, 24, 24, 0.86);
-  font-size: 17px;
-  font-weight: 800;
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.56;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .home-library-manager-list {
   padding: 8px 18px;
   border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06));
+  background: var(--app-glass-panel);
   min-height: 280px;
 }
 
@@ -4392,7 +4482,7 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 14px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.05));
   cursor: default;
   transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
 }
@@ -4407,7 +4497,7 @@ defineExpose({
 }
 
 .home-library-manager-item:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .home-library-manager-item :deep(.arco-checkbox) {
@@ -4416,14 +4506,15 @@ defineExpose({
 }
 
 .home-library-manager-item :deep(.arco-checkbox-label) {
-  color: rgba(24, 24, 24, 0.88);
-  font-size: 18px;
-  font-weight: 700;
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .home-library-manager-drag-icon {
   flex: 0 0 auto;
-  color: rgba(24, 24, 24, 0.42);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.32;
   font-size: 18px;
   cursor: grab;
   padding: 6px;
@@ -4433,8 +4524,8 @@ defineExpose({
 }
 
 .home-library-manager-drag-icon:hover {
-  background: rgba(255, 255, 255, 0.48);
-  color: rgba(24, 24, 24, 0.72);
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0.6;
 }
 
 .home-library-manager-drag-icon:active {
@@ -4444,9 +4535,10 @@ defineExpose({
 .home-library-manager-empty {
   padding: 56px 12px;
   text-align: center;
-  color: rgba(24, 24, 24, 0.48);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.32;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .home-library-manager-footer {
@@ -4474,12 +4566,6 @@ defineExpose({
   color: rgba(203, 213, 225, 0.78);
 }
 
-[arco-theme='dark'] .see-all-button {
-  background: rgba(15, 23, 42, 0.52);
-  border-color: rgba(255, 255, 255, 0.1);
-  color: rgba(233, 239, 247, 0.92);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
-}
 
 [arco-theme='dark'] .home-settings-menu {
   background:
@@ -4495,9 +4581,7 @@ defineExpose({
 [arco-theme='dark'] .home-settings-group-title,
 [arco-theme='dark'] .home-settings-check,
 [arco-theme='dark'] .home-settings-label,
-[arco-theme='dark'] .home-settings-row,
-[arco-theme='dark'] .home-library-manager-hint,
-[arco-theme='dark'] .home-library-manager-item :deep(.arco-checkbox-label) {
+[arco-theme='dark'] .home-settings-row {
   color: rgba(244, 247, 252, 0.96);
 }
 
@@ -4528,10 +4612,6 @@ defineExpose({
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
 }
 
-[arco-theme='dark'] .library-home-banner-card {
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.24);
-}
-
 [arco-theme='dark'] .library-home-mini-card:hover {
   border-color: rgba(96, 165, 250, 0.26);
   background: linear-gradient(180deg, rgba(35, 45, 68, 0.92), rgba(20, 27, 42, 0.86));
@@ -4547,28 +4627,6 @@ defineExpose({
   background: rgba(255, 255, 255, 0.08);
 }
 
-[arco-theme='dark'] .detail-media-modal :deep(.arco-modal-content) {
-  background: rgba(18, 22, 30, 0.9);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-[arco-theme='dark'] .home-library-manager-list {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-[arco-theme='dark'] .home-library-manager-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
-
-[arco-theme='dark'] .home-library-manager-drag-icon {
-  color: rgba(203, 213, 225, 0.56);
-}
-
-[arco-theme='dark'] .home-library-manager-empty {
-  color: rgba(203, 213, 225, 0.56);
-}
-
 /* 分类聚合视图样式 */
 .category-view {
   width: 100%;
@@ -4579,7 +4637,7 @@ defineExpose({
 .category-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  gap: 20px;
   padding: 22px 24px 28px;
 }
 
@@ -4587,26 +4645,27 @@ defineExpose({
 .category-list {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   padding: 16px;
 }
 
 .category-list-card {
   position: relative;
-  height: 120px;
-  border-radius: 12px;
+  height: 140px;
+  border-radius: 16px;
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
   cursor: pointer;
   overflow: hidden;
-  transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .category-list-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  transform: translateY(-3px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
 }
 
 .category-list-overlay {
@@ -4616,15 +4675,16 @@ defineExpose({
   right: 0;
   bottom: 0;
   background: linear-gradient(
-    135deg,
-    rgba(0, 0, 0, 0.4) 0%,
-    rgba(0, 0, 0, 0.6) 100%
+    0deg,
+    rgba(12, 14, 18, 0.78) 0%,
+    rgba(12, 14, 18, 0.28) 55%,
+    rgba(12, 14, 18, 0.08) 100%
   );
   transition: opacity 0.3s ease;
 }
 
 .category-list-card:hover .category-list-overlay {
-  opacity: 0.8;
+  opacity: 0.88;
 }
 
 .category-list-content {
@@ -4632,31 +4692,33 @@ defineExpose({
   bottom: 0;
   left: 0;
   right: 0;
-  padding: 20px 24px;
+  padding: 18px 20px;
   color: white;
   z-index: 2;
 }
 
 .category-list-title {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
   line-height: 1.2;
+  letter-spacing: -0.2px;
 }
 
 .category-list-count {
   position: absolute;
-  top: 20px;
-  right: 24px;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  top: 16px;
+  right: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: rgba(255, 255, 255, 0.9);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .playlist-card-context-menu {
@@ -4728,6 +4790,22 @@ defineExpose({
 
 .library-card-context-item.danger {
   color: #b91c1c;
+}
+
+.ai-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 14px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 14px;
+  vertical-align: middle;
 }
 
 .library-card-context-icon {
@@ -4822,8 +4900,8 @@ defineExpose({
     justify-content: flex-start;
   }
 
-  .view-toggle {
-    margin-left: 0;
+  .view-toggle-pill {
+    align-self: flex-start;
   }
 
   /* 移动端列表视图调整 */
@@ -4853,4 +4931,110 @@ defineExpose({
   }
 }
 
+</style>
+
+<style>
+/* 媒体管理弹窗 — 非 scoped，覆盖 Arco Design portal 渲染的 modal 样式 */
+body[arco-theme='dark'] .detail-media-modal .arco-modal,
+body[arco-theme='dark'] .detail-media-modal .arco-modal-content {
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
+    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
+    var(--app-mineradio-bg, #08090b) !important;
+  border-color: var(--app-glass-line, rgba(255, 255, 255, 0.08)) !important;
+}
+
+body[arco-theme='dark'] .detail-media-modal .arco-modal-header {
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06)) !important;
+}
+
+body[arco-theme='dark'] .detail-media-modal .arco-modal-title {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library {
+  --app-mineradio-ink: rgba(17, 24, 39, 0.94);
+  --app-glass-panel: rgba(255, 255, 255, 0.72);
+  --app-glass-line: rgba(15, 23, 42, 0.08);
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library .toolbar-btn,
+body:not([arco-theme='dark']) #xbybody .media-library .library-arrow-back,
+body:not([arco-theme='dark']) #xbybody .media-library .view-toggle-pill {
+  color: rgba(17, 24, 39, 0.88) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.66) !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library .toolbar-btn:hover,
+body:not([arco-theme='dark']) #xbybody .media-library .library-arrow-back:hover {
+  color: rgba(17, 24, 39, 0.96) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  background: rgba(255, 255, 255, 0.84) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library .view-toggle-seg {
+  color: rgba(17, 24, 39, 0.54) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library .view-toggle-seg:hover,
+body:not([arco-theme='dark']) #xbybody .media-library .view-toggle-seg.active {
+  color: rgba(17, 24, 39, 0.94) !important;
+  background: rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library .toolbar-btn .iconfont,
+body:not([arco-theme='dark']) #xbybody .media-library .library-arrow-back .iconfont,
+body:not([arco-theme='dark']) #xbybody .media-library .view-toggle-seg .iconfont {
+  color: currentColor !important;
+  opacity: 0.82 !important;
+  text-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-library .view-toggle-divider {
+  background: rgba(15, 23, 42, 0.1) !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .arco-modal,
+body:not([arco-theme='dark']) .detail-media-modal .arco-modal-content {
+  color: rgba(17, 24, 39, 0.94) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.14) !important;
+  backdrop-filter: blur(24px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.2) !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .arco-modal-header {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .arco-modal-title {
+  color: rgba(17, 24, 39, 0.94) !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .home-library-manager-hint {
+  color: rgba(31, 41, 55, 0.76) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .home-library-manager-list {
+  color: rgba(17, 24, 39, 0.94) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .home-library-manager-item .arco-checkbox-label,
+body:not([arco-theme='dark']) .detail-media-modal .home-library-manager-empty {
+  color: rgba(17, 24, 39, 0.92) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) .detail-media-modal .home-library-manager-drag-icon {
+  color: rgba(17, 24, 39, 0.54) !important;
+  opacity: 1 !important;
+}
 </style>

@@ -2,11 +2,11 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import { Flame } from 'lucide-vue-next'
 
-const props = defineProps<{ apiBase: string }>()
+const props = defineProps<{ apiBase: string; cachedItems?: {term:string;score:number}[] }>()
 const emit = defineEmits<{ 'select': [term: string] }>()
 const loading=ref(false);const items=ref<{term:string;score:number}[]>([]);const hasInitialized=ref(false);const cloudRef=ref<HTMLElement|null>(null);let tagCloudInstance:any=null
 
-async function fetchHotSearches(){loading.value=true;try{const resp=await fetch(`${props.apiBase}/hot-searches?limit=25`);const data=await resp.json();if(data?.code===0&&Array.isArray(data?.data?.hotSearches)){items.value=(data.data.hotSearches as any[]).sort((a:any,b:any)=>(b.score||0)-(a.score||0)).slice(0,25)}}catch{};loading.value=false}
+async function fetchHotSearches(){if(props.cachedItems?.length){items.value=props.cachedItems;hasInitialized.value=true;return}loading.value=true;try{const resp=await fetch(`${props.apiBase}/hot-searches?limit=25`);const data=await resp.json();if(data?.code===0&&Array.isArray(data?.data?.hotSearches)){items.value=(data.data.hotSearches as any[]).sort((a:any,b:any)=>(b.score||0)-(a.score||0)).slice(0,25)}}catch{};loading.value=false}
 function destroyCloud(){if(tagCloudInstance){try{tagCloudInstance.destroy?.()}catch{};tagCloudInstance=null}}
 async function initCloud(){if(items.value.length===0||!cloudRef.value)return;await nextTick();destroyCloud();try{const TagCloud=(await import('TagCloud')as any).default;tagCloudInstance=TagCloud(cloudRef.value,items.value.map(i=>i.term),{radius:150,maxSpeed:'slow',initSpeed:'slow',direction:135,keep:true,containerClass:'ph-tagcloud',itemClass:'ph-tagcloud-item'})}catch{}}
 function onClick(e:MouseEvent){const el=(e.target as HTMLElement).closest('.ph-tagcloud-item') as HTMLElement;if(el?.innerText)emit('select',el.innerText.trim())}

@@ -93,6 +93,15 @@ function sortSingers(singer: string): string {
     .join('')
 }
 
+function parseIntervalSec(interval: string | undefined): number {
+  if (!interval) return 0
+  const parts = interval.split(':').map((part) => Number(part))
+  if (parts.some((part) => !Number.isFinite(part))) return 0
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  return 0
+}
+
 export async function findMusic(params: FindMusicParams): Promise<OldMusicInfo | null> {
   const searchParams: FindMusicParams = {
     name: cleanStr(params.name),
@@ -113,6 +122,7 @@ export async function findMusic(params: FindMusicParams): Promise<OldMusicInfo |
 
   const cleanName = cleanStr(params.name)
   const cleanSinger = sortSingers(searchParams.singer || '')
+  const targetDuration = parseIntervalSec(params.interval)
 
   let best: OldMusicInfo | null = null
   let bestScore = -1
@@ -125,8 +135,17 @@ export async function findMusic(params: FindMusicParams): Promise<OldMusicInfo |
     if (itemName === cleanName) score += 50
     else if (itemName.includes(cleanName) || cleanName.includes(itemName)) score += 30
 
-    if (itemSinger === cleanSinger) score += 40
-    else if (itemSinger.includes(cleanSinger) || cleanSinger.includes(itemSinger)) score += 15
+    if (cleanSinger && itemSinger === cleanSinger) score += 40
+    else if (cleanSinger && (itemSinger.includes(cleanSinger) || cleanSinger.includes(itemSinger))) score += 15
+
+    const itemDuration = item._interval || parseIntervalSec(item.interval)
+    if (targetDuration && itemDuration) {
+      const diff = Math.abs(itemDuration - targetDuration)
+      if (diff <= 2) score += 25
+      else if (diff <= 5) score += 16
+      else if (diff <= 10) score += 8
+      else if (diff > 30) score -= 20
+    }
 
     if (score > bestScore) {
       bestScore = score

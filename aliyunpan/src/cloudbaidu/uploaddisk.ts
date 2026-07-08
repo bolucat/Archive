@@ -67,8 +67,7 @@ export default class BaiduUploadDisk {
 
     if (precreate.return_type !== 2) {
       const locate = await apiBaiduLocateUpload(fileui.user_id, remotePath, uploadid)
-      if (!locate || locate.errno !== 0 || !locate.host || locate.host.length === 0) return '获取上传服务器失败'
-      const server = locate.host[0]
+      const server = locate?.errno === 0 && locate.host && locate.host.length > 0 ? locate.host[0] : 'https://d.pcs.baidu.com'
       const blockSize = 4 * 1024 * 1024
       const total = fileui.File.size
       let offset = 0

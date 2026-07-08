@@ -4,6 +4,7 @@ import { useAppStore } from '../store'
 import SettingPlay from './SettingPlay.vue'
 import SettingMediaServerPlayback from './SettingMediaServerPlayback.vue'
 import SettingDanmaku from './SettingDanmaku.vue'
+import SettingFeedback from './SettingFeedback.vue'
 import SettingPan from './SettingPan.vue'
 import SettingUI from './SettingUI.vue'
 import SettingAccount from './SettingAccount.vue'
@@ -47,6 +48,7 @@ onMounted(() => {
     'SettingPlay',
     'SettingMediaServerPlayback',
     'SettingDanmaku',
+    'SettingFeedback',
     'SettingPan',
     'SettingDown',
     'SettingDownloadAdvanced',
@@ -93,6 +95,10 @@ onUnmounted(() => {
         <a-menu-item key="SettingAPI">
           <template #icon><IconFont name="iconlock" /></template>
           AI 模型
+        </a-menu-item>
+        <a-menu-item key="SettingFeedback">
+          <template #icon><IconFont name="iconbulb" /></template>
+          功能与反馈
         </a-menu-item>
         <a-menu-item key="SettingSecurity">
           <template #icon><IconFont name="iconchrome" /></template>
@@ -162,101 +168,23 @@ onUnmounted(() => {
 <!--          </div>-->
 <!--        </div>-->
 
-        <section id="SettingUI" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">应用设置</a-divider>
-          </div>
-          <SettingUI />
-        </section>
-        <section id="SettingAPI" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">AI 模型</a-divider>
-          </div>
-          <SettingAPI />
-        </section>
-        <section id="SettingAccount" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">账户设置</a-divider>
-          </div>
-          <SettingAccount />
-        </section>
-        <section id="SettingSecurity" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">安全设置</a-divider>
-          </div>
-          <SettingSecurity />
-        </section>
-        <section id="SettingPlay" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">在线预览</a-divider>
-          </div>
-          <SettingPlay />
-        </section>
-        <section id="SettingMediaServerPlayback" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">媒体服务器</a-divider>
-          </div>
-          <SettingMediaServerPlayback />
-        </section>
-        <section id="SettingDanmaku" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">弹幕库</a-divider>
-          </div>
-          <SettingDanmaku />
-        </section>
-        <section id="SettingPan" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">网盘设置</a-divider>
-          </div>
-          <SettingPan />
-        </section>
-        <section id="SettingDown" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">下载文件</a-divider>
-          </div>
-          <SettingDown />
-        </section>
-        <section id="SettingDownloadAdvanced" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">高级下载</a-divider>
-          </div>
-          <SettingDownloadAdvanced />
-        </section>
-
-        <section id="SettingUpload" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">上传文件</a-divider>
-          </div>
-          <SettingUpload />
-        </section>
-        <section id='SettingWebDav' class="settings-section">
-          <div>
-            <a-divider :size="2" orientation='center' class='settinghr'>WebDav</a-divider>
-          </div>
-          <SettingWebDav />
-        </section>
-        <section id="SettingDebug" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">高级选项</a-divider>
-          </div>
-          <SettingDebug />
-        </section>
-        <section id="SettingProxy" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">网络代理</a-divider>
-          </div>
-          <SettingProxy />
-        </section>
-        <section id="SettingAria" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">远程Aria</a-divider>
-          </div>
-          <SettingAria />
-        </section>
+        <section id="SettingUI" class="settings-section"><SettingUI /></section>
+        <section id="SettingAccount" class="settings-section"><SettingAccount /></section>
+        <section id="SettingAPI" class="settings-section"><SettingAPI /></section>
+        <section id="SettingSecurity" class="settings-section"><SettingSecurity /></section>
+        <section id="SettingPlay" class="settings-section"><SettingPlay /></section>
+        <section id="SettingMediaServerPlayback" class="settings-section"><SettingMediaServerPlayback /></section>
+        <section id="SettingDanmaku" class="settings-section"><SettingDanmaku /></section>
+        <section id="SettingFeedback" class="settings-section"><SettingFeedback /></section>
+        <section id="SettingPan" class="settings-section"><SettingPan /></section>
+        <section id="SettingDown" class="settings-section"><SettingDown /></section>
+        <section id="SettingDownloadAdvanced" class="settings-section"><SettingDownloadAdvanced /></section>
+        <section id="SettingUpload" class="settings-section"><SettingUpload /></section>
+        <section id='SettingWebDav' class="settings-section"><SettingWebDav /></section>
+        <section id="SettingDebug" class="settings-section"><SettingDebug /></section>
+        <section id="SettingProxy" class="settings-section"><SettingProxy /></section>
+        <section id="SettingAria" class="settings-section"><SettingAria /></section>
         <section id="SettingLog" class="settings-section">
-          <div>
-            <a-divider :size="2" orientation="center" class="settinghr">运行日志</a-divider>
-          </div>
           <div v-if="hideSetting" style="min-height: 602px"></div>
           <SettingLog v-else />
         </section>
@@ -400,41 +328,39 @@ onUnmounted(() => {
 
 .settings-section {
   position: relative;
-}
-
-.settinghr {
-  margin: 30px 0 22px !important;
-  user-select: none;
+  margin-top: 32px;
 }
 
 .settingcard {
   padding: 26px 28px;
   margin: 18px 0;
-  border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(246, 249, 255, 0.62));
-  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.16);
   user-select: none;
   -webkit-user-drag: none;
-  box-shadow:
-    0 18px 40px rgba(78, 97, 128, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(22px) saturate(135%);
+  box-shadow: 0 4px 16px rgba(78, 97, 128, 0.08);
 }
 
 .settingcard .iconbulb,
 .settingrow .iconbulb {
-  display: inline-block;
-  height: 26px;
-  width: 26px;
-  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  width: 20px;
+  margin-left: 6px;
   border-radius: 999px;
   color: #b7791f;
-  font-size: 16px;
-  line-height: 26px;
-  text-align: center;
+  font-size: 13px;
   background: rgba(255, 196, 82, 0.18);
   cursor: help;
+  flex-shrink: 0;
+}
+html.dark .settingcard .iconbulb,
+html.dark .settingrow .iconbulb {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.14);
 }
 
 .settinghead {
@@ -445,11 +371,11 @@ onUnmounted(() => {
   gap: 10px;
   width: 100%;
   margin-bottom: 12px;
-  padding: 0 0 14px 0;
+  padding: 0 0 12px 0;
   color: #1a2740;
-  font-size: 17px;
-  line-height: 1.45;
-  font-weight: 800;
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 700;
   user-select: none;
   word-break: keep-all;
 }
@@ -493,22 +419,12 @@ onUnmounted(() => {
   padding-top: 8px;
 }
 
-.opred {
-  padding: 0 2px;
-  color: rgb(223, 86, 89);
-  background: rgba(223, 86, 89, 0.1);
-}
-
-.oporg {
-  padding: 0 2px;
-  color: rgb(255, 111, 0);
-  background: rgba(255, 111, 0, 0.1);
-}
-
+.opred,
+.oporg,
 .opblue {
   padding: 0 2px;
-  color: rgb(30, 136, 229);
-  background: rgba(30, 136, 229, 0.1);
+  color: rgb(211, 80, 75);
+  background: rgba(211, 80, 75, 0.1);
 }
 
 .arco-popover-content hr {
@@ -607,11 +523,26 @@ onUnmounted(() => {
 .settingcard .arco-radio-group-button .arco-radio-button {
   border-radius: 14px;
   margin-right: 8px;
-  border-color: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.settingcard .arco-radio-group-button .arco-radio-button:hover {
+  border-color: rgba(var(--primary-6), 0.35);
+}
+
+.settingcard .arco-radio-group-button .arco-radio-button.arco-radio-checked {
+  background: rgb(var(--primary-6));
+  border-color: rgb(var(--primary-6));
 }
 
 .settingcard .arco-radio-group-button .arco-radio-button-content {
   font-weight: 700;
+  color: var(--color-text-2);
+}
+
+.settingcard .arco-radio-group-button .arco-radio-checked .arco-radio-button-content {
+  color: #fff;
 }
 
 .settingcard .arco-switch {
@@ -619,10 +550,10 @@ onUnmounted(() => {
 }
 
 .settingcard .arco-divider-text {
-  padding: 0 14px;
+  padding: 0 10px;
   color: #2a3a56;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
   background: transparent;
 }
 
@@ -658,13 +589,18 @@ body[arco-theme='dark'] .settings-side-title {
     inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
 }
 
-body[arco-theme='dark'] .settings-hero,
-body[arco-theme='dark'] .settingcard {
+body[arco-theme='dark'] .settings-hero {
   background: rgba(18, 24, 34, 0.74) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
   box-shadow:
     0 18px 40px rgba(0, 0, 0, 0.26),
     inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+body[arco-theme='dark'] .settingcard {
+  background: rgba(255, 255, 255, 0.045) !important;
+  border-color: rgba(255, 255, 255, 0.07) !important;
+  box-shadow: 0 18px 48px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.052);
+  backdrop-filter: blur(20px) saturate(1.12);
 }
 
 body[arco-theme='dark'] .xbyleftmenu {
@@ -702,17 +638,13 @@ body[arco-theme='dark'] .xbyleftmenu .arco-menu-item {
 }
 
 body[arco-theme='dark'] .xbyleftmenu .arco-menu-item {
-  background:
-    linear-gradient(180deg, rgba(34, 38, 50, 0.72), rgba(25, 29, 39, 0.64)) !important;
-  border: 1px solid rgba(255, 255, 255, 0.04) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.03),
-    0 10px 24px rgba(0, 0, 0, 0.16);
-  backdrop-filter: blur(20px) saturate(125%);
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
 }
 
 body[arco-theme='dark'] .settinghead::after {
-  background: linear-gradient(90deg, rgba(129, 176, 255, 0.9), rgba(110, 231, 255, 0.24));
+  background: linear-gradient(90deg, var(--app-mineradio-accent, #00f5d4), rgba(0,245,212,.18));
 }
 
 body[arco-theme='dark'] .xbyleftmenu .arco-menu-item:hover {
@@ -726,15 +658,16 @@ body[arco-theme='dark'] .xbyleftmenu .arco-menu-item:hover {
 
 body[arco-theme='dark'] .xbyleftmenu .arco-menu-selected {
   background:
-    linear-gradient(135deg, rgba(31, 54, 96, 0.88), rgba(20, 30, 52, 0.8)) !important;
-  border-color: rgba(96, 165, 250, 0.16) !important;
+    linear-gradient(135deg, rgba(0,245,212,.10), rgba(8,9,11,.80)) !important;
+  border-color: rgba(0,245,212,.22) !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 14px 30px rgba(37, 99, 235, 0.18) !important;
+    inset 0 0 0 1px rgba(0,245,212,.14),
+    0 14px 30px rgba(0,245,212,.10) !important;
 }
 
 body[arco-theme='dark'] .xbyleftmenu .arco-menu-selected::before {
-  background: linear-gradient(180deg, #60a5fa, #93c5fd);
+  background: linear-gradient(180deg, var(--app-mineradio-accent, #00f5d4), #8ff5ea);
 }
 
 body[arco-theme='dark'] .settingcard .arco-input-wrapper,
@@ -745,6 +678,24 @@ body[arco-theme='dark'] .settingcard .arco-picker,
 body[arco-theme='dark'] .settingcard .arco-picker-size-medium {
   background: rgba(255, 255, 255, 0.04) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body[arco-theme='dark'] .settingcard .arco-radio-group-button .arco-radio-button {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+body[arco-theme='dark'] .settingcard .arco-radio-group-button .arco-radio-button:hover {
+  border-color: rgba(var(--primary-6), 0.4);
+}
+body[arco-theme='dark'] .settingcard .arco-radio-group-button .arco-radio-button-content {
+  color: rgba(220, 226, 240, 0.7);
+}
+body[arco-theme='dark'] .settingcard .arco-radio-group-button .arco-radio-checked {
+  background: rgb(var(--primary-6));
+  border-color: rgb(var(--primary-6));
+}
+body[arco-theme='dark'] .settingcard .arco-radio-group-button .arco-radio-checked .arco-radio-button-content {
+  color: #fff;
 }
 
 @media (max-width: 1080px) {

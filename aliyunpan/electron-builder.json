@@ -34,7 +34,7 @@
     "extraResources": [
       { "from": "./static/images/icon.icns", "to": "./images/icon.icns"},
       { "from": "./static/images/icon_30x30.png", "to": "./images/icon_30x30.png"},
-      { "from": "./static/engine/darwin/${arch}", "to": "./engine"}
+      { "from": "./static/engine/darwin/${arch}", "to": "./engine/darwin/${arch}"}
     ],
     "target": [
       { "target": "dmg", "arch": [ "x64", "arm64" ] },
@@ -51,7 +51,7 @@
       { "from": "./static/images/icon_30x30.png", "to": "./images/icon_30x30.png"},
       { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
       { "from": "./static/images/icon_256x256.png", "to": "./images/icon_256x256.png"},
-      { "from": "./static/engine/linux/${arch}", "to": "./engine"}
+      { "from": "./static/engine/linux/${arch}", "to": "./engine/linux/${arch}"}
     ],
     "target": [
       { "target": "AppImage", "arch": [  "x64", "arm64"] },
@@ -69,7 +69,7 @@
     "extraResources": [
       { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
       { "from": "./static/images/icon_256x256.ico", "to": "./images/icon_256x256.ico"},
-      { "from": "./static/engine/win32/${arch}", "to": "./engine"}
+      { "from": "./static/engine/win32/${arch}", "to": "./engine/win32/${arch}"}
     ],
     "target": [
       { "target": "nsis", "arch": [ "x64", "ia32", "arm64" ] }

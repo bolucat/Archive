@@ -1,10 +1,39 @@
-# BoxPlayer v4.2.0 Release Notes
+# BoxPlayer v5.0.0 Release Notes
 
-> 本次更新带来 **6 大模块、45+ 项重磅升级**,覆盖 AI 阅读 / 智能朗读 / AI 翻译 / 多模型对话 / 专业音乐播放 / 全新下载引擎 / 新增 3 大网盘 / AI 媒体整理代理。
+> 本次更新带来 **BoxPlayer 5.0** 的完整媒体中心体验:覆盖粒子音乐播放器、AI 影视刮削、本地聚合搜索、全网网盘资源搜索、AI Agent、BYOK 模型接入、专业版账号体系、AI 阅读 / 翻译 / 朗读、媒体服务器客户端、全新下载引擎和多网盘能力。
 
 ---
 
 ## ✨ 新功能
+
+### 🚀 v5.0 核心新增
+
+#### 🎵 粒子音乐播放器
+
+- **沉浸式粒子播放界面**:音乐播放器新增实时粒子背景、频谱可视化、专辑封面舞台和沉浸式播放布局,让网盘音乐不再只是文件列表
+- **专业音效链路**:保留 10 段 EQ、混响、声像、变调不变速、实时频谱等高级控制,适合长时间桌面播放
+- **歌词与封面补全**:支持逐字卡拉 OK 歌词、桌面浮动歌词、多源歌词 / 封面 fallback,网盘音乐也能拥有接近流媒体 App 的播放体验
+- **音乐资料库**:从网盘和本地文件夹扫描音乐,按歌曲、艺人、专辑、文件夹、本地歌单组织资料库
+
+#### 🎬 AI 影视刮削与媒体库
+
+- **AI 辅助刮削**:在传统 TMDB 元数据刮削之外,新增 AI 辅助识别能力,帮助处理命名混乱、年份缺失、剧集信息不完整的媒体文件
+- **网盘 / 本地 / WebDAV 统一媒体源**:视频媒体库支持扫描网盘、本地文件夹和 WebDAV 媒体源,自动构建电影、电视剧、纪录片、动画等分类
+- **详情页与播放体验升级**:海报墙、最近添加、继续观看、收藏、播放列表、分类、评分、年份等视图持续完善,更接近完整家庭媒体库体验
+- **媒体服务器客户端**:Jellyfin / Emby / Plex 服务器可作为独立媒体源接入,支持服务器首页、继续观看、分类浏览和搜索
+
+#### 🔍 本地聚合搜索与全网网盘资源搜索
+
+- **本地聚合搜索**:统一搜索网盘文件、视频媒体库、音乐库、书籍库和媒体服务器内容,减少在多个 Tab 之间来回切换
+- **全网网盘资源搜索**:接入公开资源检索能力,可从全网网盘资源结果中发现内容,再回到 BoxPlayer 内导入 / 保存 / 播放
+- **结果卡片化**:搜索结果支持媒体信息、云盘来源、可用操作和播放入口联动,从"找到资源"到"开始使用"路径更短
+
+#### 🤖 AI Agent 与 BYOK 模型
+
+- **AI Agent 智能助手**:新增面向资源检索、媒体查找、内容理解的 Agent 对话窗口,支持自然语言描述需求并联动搜索结果
+- **非 Pro 可预览对话窗口**:未开通 Pro 的用户也可以打开 AI Agent 窗口了解能力边界;已登录非 Pro 用户可通过 BYOK 发送对话,内置 AI 仅 Pro 可用
+- **BYOK 模型接入**:继续支持 OpenAI / DeepSeek / OpenRouter / Vercel AI Gateway / Ollama 等 OpenAI-compatible 服务商,已登录用户可使用自己的 API Key
+- **内置 BoxPlayer AI**:专业版可使用托管 AI 能力,无需自行配置模型 Key,适合不想维护模型服务的用户
 
 ### 📚 全新「图书库」— AI 加持的个人电子书阅读器
 
@@ -79,75 +108,23 @@
 
 ---
 
-### 🤖 AI 媒体整理代理
+## 🧩 专业版 vs 开源版
 
-- **AgentMediaOrganizer 抽屉**:在网盘任意目录右键打开"AI 整理",让 AI 直接看清当前目录、按你描述的规则在网盘中执行重命名 / 移动 / 分类,支持多轮对话
-- **基于 Vercel AI SDK**:兼容所有 OpenAI 协议模型(GPT / 通过 Gateway 接入 Claude / DeepSeek / 通义千问 / 智谱 / Moonshot / Ollama 等)
-- **可撤销操作日志**:每次 AI 操作都写入 `operationHistory`,可一键回滚到操作前的状态
-- **Pan 上下文工具集**:内置 `walkDirectory` / `renamePlan` / `movePlan` / `mediaClassifier` 等可被 AI 调用的安全工具
-- **clouddrive-cli `organize` 命令**:把同一套能力暴露给 Claude Code、Cursor 等 AI 终端,远程让 AI 整理云盘
+BoxPlayer 继续保持核心客户端免费开源:多网盘文件管理、基础播放、本地资料库、媒体服务器客户端、下载引擎和 clouddrive-cli 自动化能力仍然可以直接使用。专业版主要覆盖需要持续服务端成本的托管 AI、账号订阅、全网资源能力和优先支持。
 
----
+| 能力 | 开源版 / 未登录 | 登录免费版 | 专业版 Pro |
+|---|---|---|---|
+| 多网盘文件管理、上传下载、基础预览 | ✅ | ✅ | ✅ |
+| 视频 / 音乐 / 书籍本地资料库 | ✅ | ✅ | ✅ |
+| 粒子音乐播放器、歌词、EQ、主题 | ✅ | ✅ | ✅ |
+| Jellyfin / Emby / Plex 媒体服务器客户端 | ✅ | ✅ | ✅ |
+| clouddrive-cli / MCP Agent 工具 | ✅ | ✅ | ✅ |
+| BYOK:使用自己的 OpenAI-compatible API Key | ❌ 需登录 | ✅ 消耗自建 Key 额度 | ✅ 消耗自建 Key 额度 |
+| 内置 BoxPlayer AI 托管模型 | ❌ | ❌ | ✅ |
+| AI Agent 智能助手发送对话 | ❌ 可预览窗口 | ✅ BYOK 可发送 | ✅ 内置 AI / BYOK |
+| AI 智能搜索 / 语义索引 / AI 影视刮削 | ❌ | ❌ | ✅ |
+| 全网网盘资源搜索 | 5 次/天 | 5 次/天 | ✅ 无限 |
+| PDF / EPUB AI 阅读助手、AI 翻译、云端 TTS | ❌ | ❌ | ✅ 托管 AI credit |
+| 优先支持、专业版权益同步 | ❌ | ❌ | ✅ |
 
-### ⚙️ 设置与基础设施重构
-
-- **统一 AI / API 密钥配置页**(`SettingAPI.vue`):集中管理 OpenAI / DeepSeek / Azure TTS / Vercel AI Gateway / 翻译 API 等密钥,所有阅读器、整理代理共享
-- **高级下载设置区**(`SettingDownloadAdvanced.vue`):聚合 aria2、做种、Tracker、协议关联等高级参数
-- **`shared/` 共享层**:主进程 / 渲染端 / CLI 三方复用的常量、UA、`configKeys`、`tracker`、`rename` 工具函数
-- **协议处理重构**:统一的 `electron/main/core/protocol.ts` 处理 magnet / 文件 / 自定义协议,单元测试覆盖
-- **aria2 引擎策略**(`aria2EnginePolicy.ts`):根据平台和架构自动选择最佳 aria2c 二进制和配置
-- **下载应用框架**:Logger / Context / ConfigManager / Engine / EngineClient / UPnPManager / EnergyManager / ProtocolManager 全套基础设施模块化
-
----
-
-## 📦 新增主要文件
-
-### 图书库
-
-- `src/layout/book-manager/` · `book-reader/` · `BookReaderModal.vue` · `PageBookLibrary.vue` · `PageBookReader.vue` · `BookCardItem.vue` · `BookCoverItem.vue` · `BookListItem.vue`
-- `src/utils/bookAI.ts` · `bookAzureTTS.ts` · `bookTextToSpeech.ts` · `bookReader.ts` · `bookReaderLayout.ts` · `bookReaderState.ts` · `bookNotes.ts` · `bookBookmarks.ts` · `bookOpds.ts` · `bookAnnotationExport.ts` · `bookLookup.ts` · `bookRefer.ts` · `bookScanner.ts` · `bookEpubMeta.ts`
-- `src/utils/translators/` · `readerI18n.ts`
-- `src/store/booklibrary.ts` · `src/types/{book,bookBookmark,bookNote,bookShelf}.ts`
-
-### 音乐
-
-- `src/module/audioplayer/` · `lyricplayer/` · `musicsdk/` · `theme/`
-- `src/lyric/` · `public/mainLyric.html` · `public/pitch-shifter.worklet.js`
-- `src/store/musicplayerstore.ts` · `src/components/{SoundEffectBtn,Speedometer,ThemeSelector}.vue`
-
-### 下载引擎
-
-- `electron/main/aria/` — Logger / Context / ConfigManager / Engine / EngineClient / UPnPManager / EnergyManager / ProtocolManager
-- `electron/main/core/protocol.ts` + `__tests__/protocol.test.ts`
-- `src/down/{TaskDetailDrawer,TorrentFileSelector,UrlDownloadModal}.vue` · `src/components/DragDropZone.vue`
-- `src/utils/aria2EnginePolicy.ts`
-- `static/engine/{darwin,linux,win32}/*/aria2.conf`(7 份)
-
-### AI 媒体整理
-
-- `src/agent/mediaOrganizer/` · `src/components/AgentMediaOrganizerDrawer.vue` · `src/store/agentMediaOrganizer.ts`
-- `clouddrive-cli/core/{commandManifest,mcpToolSchema}.mjs`
-
-### 新增网盘
-
-- `src/quark/` · `src/cloud189/` · `src/cloud139/`
-- `clouddrive-cli/providers/{quark,quarkProvider,cloud139,cloud139Provider,cloud189,cloud189Provider,ossUpload,uploadUtils}.mjs`
-
-### 设置与共享层
-
-- `src/setting/{SettingAPI,SettingDownloadAdvanced}.vue`
-- `shared/`(常量、UA、configKeys、tracker、rename 工具)
-
----
-
-## 🔗 主要新增依赖
-
-- `ai`(Vercel AI SDK,AI 阅读助手 + 媒体整理代理底座)
-- `microsoft-cognitiveservices-speech-sdk`(Azure 神经 TTS)
-- `aria2-lib`(aria2 RPC 客户端)
-- `electron-store`(配置持久化)
-- `bittorrent-peerid`(Peer ID 解析)
-
----
-
-**Full Changelog**: `v4.1.0...v4.2.0`
+> **AI 用量说明**:Pro 的托管 AI 功能通过统一 credit 池计量,按月重置。BYOK(自带 Key)需要登录 BoxPlayer 账号后使用,不消耗 BoxPlayer 托管 credit,但会消耗用户自己的第三方模型额度。非 Pro 用户每天可进行 5 次全网资源搜索;Pro 用户不限制。

@@ -132,8 +132,10 @@ export interface IPageMusicTrack {
   icon?: string
   thumbnail?: string
   description?: string
+  duration_ms?: number
   encType?: string
   password?: string
+  local_url?: string
 }
 
 export interface IPageMusic {
@@ -227,9 +229,9 @@ const useAppStore = defineStore('app', {
       if (page == this.appPage) return
       this.appPage = page
     },
-    resetTab() {
+    resetTab(defaultTab = 'pan') {
       this.$patch({
-        appTab: 'pan',
+        appTab: defaultTab,
         appTabMenuMap: new Map<string, string>([
           ['pan', 'wangpan'],
           ['down', 'DowningRight'],

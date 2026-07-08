@@ -1,9 +1,9 @@
 <template>
   <div class="server-section">
     <div v-if="registry.filteredServers.length > 0" class="nav-section">
-      <div class="nav-header">
-        <span>服务器列表</span>
-      </div>
+<!--      <div class="nav-header">-->
+<!--        <span>服务器列表</span>-->
+<!--      </div>-->
 
       <div class="nav-items">
         <div class="server-sublist">
@@ -15,7 +15,7 @@
             @click="handleServerClick(server.id)"
           >
             <div class="server-icon-wrap">
-              <img class="server-icon" :src="serverDisplayIcon(server)" :alt="serverTypeLabel(server.type)" />
+              <img class="server-icon" :src="serverDisplayIcon(server)" :alt="serverTypeLabel(server.type)" @error="handleServerIconError($event, server.type)" />
             </div>
             <div class="server-main">
               <div class="server-texts">
@@ -62,6 +62,13 @@ const serverTypeIcon = (type: MediaServerType) => {
 }
 
 const serverDisplayIcon = (server: MediaServerConfig) => server.customIconUrl || serverTypeIcon(server.type)
+
+const handleServerIconError = (event: Event, type: MediaServerType) => {
+  const image = event.target as HTMLImageElement | null
+  if (!image) return
+  image.onerror = null
+  image.src = serverTypeIcon(type)
+}
 
 const handleServerClick = (serverId: string) => {
   registry.setCurrentServer(serverId)
@@ -118,7 +125,7 @@ onMounted(() => {
 .nav-item:hover {
   background: var(--color-fill-2);
   color: var(--color-text-1);
-  transform: translateX(2px);
+  transform: none;
 }
 
 .nav-item.active {
@@ -126,7 +133,7 @@ onMounted(() => {
   color: var(--color-primary-6);
   font-weight: 600;
   box-shadow: 0 10px 24px rgba(var(--primary-6), 0.12);
-  transform: translateX(2px);
+  transform: none;
 }
 
 .nav-item.active::before {
@@ -183,7 +190,7 @@ onMounted(() => {
 }
 
 .server-item:hover {
-  transform: translateX(2px);
+  transform: none;
 }
 
 .server-item.active {

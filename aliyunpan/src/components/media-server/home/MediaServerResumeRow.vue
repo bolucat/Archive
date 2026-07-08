@@ -127,15 +127,18 @@ const handleMediaImageLoad = (event: Event) => {
 
 .home-section-header h4 {
   margin: 0;
-  font-size: 24px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   letter-spacing: -0.02em;
-  color: #111827;
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .home-section-header span {
-  color: #94a3b8;
-  font-size: 13px;
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.48;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 36px;
 }
 
 .resume-strip {
@@ -152,35 +155,35 @@ const handleMediaImageLoad = (event: Event) => {
   padding: 18px;
   border-radius: 18px;
   border: 1px solid rgba(239, 68, 68, 0.16);
-  background: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.04);
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
 .resume-error-card :deep(.arco-btn) {
-  background: rgba(250, 245, 240, 0.52);
-  border-color: rgba(255, 255, 255, 0.72);
-  color: rgba(24, 24, 24, 0.88);
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--app-mineradio-ink, #e8ecef);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(18px) saturate(135%);
 }
 
 .resume-error-card :deep(.arco-btn:hover) {
-  background: rgba(255, 255, 255, 0.68);
-  border-color: rgba(255, 255, 255, 0.86);
-  color: rgba(24, 24, 24, 0.96);
-  box-shadow: 0 16px 34px rgba(63, 46, 37, 0.12);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--app-mineradio-ink, #e8ecef);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
 }
 
 .resume-error-title {
   font-size: 14px;
   font-weight: 700;
-  color: #111827;
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .resume-error-text {
-  color: #64748b;
+  color: var(--app-mineradio-ink, #e8ecef); opacity: 0.56;
   font-size: 13px;
   line-height: 1.6;
 }
@@ -212,7 +215,7 @@ const handleMediaImageLoad = (event: Event) => {
 }
 
 .skeleton-block {
-  background: linear-gradient(90deg, rgba(226, 232, 240, 0.85), rgba(241, 245, 249, 0.95), rgba(226, 232, 240, 0.85));
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.06));
   background-size: 200% 100%;
   animation: skeletonShimmer 1.4s linear infinite;
 }
@@ -237,8 +240,8 @@ const handleMediaImageLoad = (event: Event) => {
   min-width: 184px;
   padding: 7px;
   border-radius: 18px;
-  background: rgba(250, 246, 239, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(18, 22, 30, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 18px 42px rgba(45, 35, 25, 0.2);
   backdrop-filter: blur(22px) saturate(145%);
 }
@@ -253,7 +256,7 @@ const handleMediaImageLoad = (event: Event) => {
   border: 0;
   border-radius: 12px;
   background: transparent;
-  color: rgba(24, 24, 24, 0.92);
+  color: var(--app-mineradio-ink, #e8ecef);
   font-size: 16px;
   line-height: 1;
   text-align: left;
@@ -322,8 +325,8 @@ const handleMediaImageLoad = (event: Event) => {
   position: relative;
   overflow: hidden;
   border-radius: 18px;
-  background: linear-gradient(135deg, #dbeafe, #f8fafc);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 20px 42px rgba(15, 23, 42, 0.12);
   width: 320px;
   height: 180px;
@@ -383,7 +386,7 @@ const handleMediaImageLoad = (event: Event) => {
   flex-direction: column;
   justify-content: space-between;
   padding: 12px;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.18) 0%, rgba(15, 23, 42, 0.06) 45%, rgba(15, 23, 42, 0.75) 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.18) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(15, 23, 42, 0.75) 100%);
 }
 
 .resume-badge {
@@ -400,7 +403,7 @@ const handleMediaImageLoad = (event: Event) => {
   height: 6px;
   border-radius: 999px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .media-progress-bar {
@@ -418,7 +421,7 @@ const handleMediaImageLoad = (event: Event) => {
   margin: 0 0 6px;
   font-size: 17px;
   font-weight: 700;
-  color: #111827;
+  color: var(--app-mineradio-ink, #e8ecef);
   line-height: 1.4;
   min-height: 1.4em;
   max-height: 1.4em;

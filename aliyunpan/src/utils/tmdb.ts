@@ -7,7 +7,30 @@ import type {
   TvSeriesItemResponse
 } from '../types/media'
 
-const TMDB_BASE_URL = 'https://tmdb-673444103572.asia-east2.run.app'
+const TMDB_BASE_URL = 'https://api.xbyvideohub.com/api/tmdb'
+
+async function fetchWithRetry(url: string, retries = 3, delayMs = 2000): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const resp = await fetch(url)
+    if (resp.ok) return resp
+    if (resp.status === 429 && attempt < retries) {
+      await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)))
+      continue
+    }
+    throw new Error(`TMDB fetch failed: ${resp.status}`)
+  }
+  throw new Error(`TMDB fetch failed after ${retries} retries`)
+}
+
+export const TMDB_BASE = TMDB_BASE_URL
+export const TMDB_BASE_URL_PROXY = `${TMDB_BASE_URL}/proxy`
+
+export function tmdbImageUrl(path?: string | null, size: string = 'w500'): string {
+  const imagePath = String(path || '').replace(/^\/+/, '')
+  return imagePath ? `https://api.xbyvideohub.com/api/tmdb/image/${size}/${imagePath}` : ''
+}
+
+export { TMDB_BASE_URL }
 
 export class TmdbService {
   private static instance: TmdbService
@@ -47,8 +70,7 @@ export class TmdbService {
         params.append('fileName', fileName)
       }
 
-      const response = await fetch(`${TMDB_BASE_URL}/movie?${params}`)
-      if (!response.ok) throw new Error('Failed to search movies')
+      const response = await fetchWithRetry(`${TMDB_BASE_URL}/movie?${params}`)
 
       const data: MovieItemResponse = await response.json()
       return data.data || null
@@ -88,8 +110,7 @@ export class TmdbService {
         params.append('fileName', fileName)
       }
 
-      const response = await fetch(`${TMDB_BASE_URL}/tv?${params}`)
-      if (!response.ok) throw new Error('Failed to search TV shows')
+      const response = await fetchWithRetry(`${TMDB_BASE_URL}/tv?${params}`)
 
       const data: TvSeriesItemResponse = await response.json()
       return data.data || null
@@ -249,8 +270,8 @@ export class TmdbService {
           type: 'tv',
           name: tvResult.tv.name || tvResult.tv.original_name,
           overview: tvResult.tv.overview,
-          posterUrl: tvResult.tv.poster_path ? `https://image.tmdb.org/t/p/w500${tvResult.tv.poster_path}` : undefined,
-          backdropUrl: tvResult.tv.backdrop_path ? `https://image.tmdb.org/t/p/original${tvResult.tv.backdrop_path}` : undefined,
+          posterUrl: tvResult.tv.poster_path ? tmdbImageUrl(tvResult.tv.poster_path) : undefined,
+          backdropUrl: tvResult.tv.backdrop_path ? tmdbImageUrl(tvResult.tv.backdrop_path, 'original') : undefined,
           year: tvResult.tv.first_air_date?.substring(0, 4),
           rating: tvResult.tv.vote_average,
           genres: tvResult.tv.genres?.map(g => g.name) || [],
@@ -282,8 +303,8 @@ export class TmdbService {
           type: 'movie',
           name: movieResult.title || movieResult.original_title,
           overview: movieResult.overview,
-          posterUrl: movieResult.poster_path ? `https://image.tmdb.org/t/p/w500${movieResult.poster_path}` : undefined,
-          backdropUrl: movieResult.backdrop_path ? `https://image.tmdb.org/t/p/original${movieResult.backdrop_path}` : undefined,
+          posterUrl: movieResult.poster_path ? tmdbImageUrl(movieResult.poster_path) : undefined,
+          backdropUrl: movieResult.backdrop_path ? tmdbImageUrl(movieResult.backdrop_path, 'original') : undefined,
           year: movieResult.release_date?.substring(0, 4),
           rating: movieResult.vote_average,
           genres: movieResult.genres?.map(g => g.name) || [],

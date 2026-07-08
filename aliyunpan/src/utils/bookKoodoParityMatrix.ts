@@ -286,7 +286,7 @@ export const KOODO_PARITY_FEATURES: KoodoParityFeature[] = [
     area: 'reader',
     status: 'partial',
     koodoSource: ['koodo-reader/src/components/textToSpeech', 'koodo-reader/src/utils/reader/ttsUtil.ts'],
-    targetFiles: ['src/utils/bookTextToSpeech.ts', 'src/utils/bookAzureTTS.ts', 'src/layout/BookReaderModal.vue'],
+    targetFiles: ['src/utils/bookTextToSpeech.ts', 'src/layout/BookReaderModal.vue'],
   },
   {
     id: 'reader-ai-preserve-migrate',

@@ -15,49 +15,54 @@
       :class="{ 'workspace-page-detail': currentRoute.kind === 'item-detail' || currentRoute.kind === 'person-page' }"
       @scroll.passive="handleWorkspaceScroll"
     >
-      <div v-if="currentRoute.kind !== 'item-detail' && currentRoute.kind !== 'person-page'" class="workspace-toolbar">
+      <div v-if="currentRoute.kind === 'home'" class="workspace-toolbar">
         <div class="toolbar-left">
-          <a-button type="text" class="back-button" @click="handleBack">
-            <template #icon><IconFont name="iconarrow-left-2-icon" /></template>
+          <button v-if="currentRoute.kind !== 'home'" type="button" class="toolbar-btn" @click="handleBack">
+            <IconFont name="iconarrow-left-2-icon" />
             <span class="back-button-server-icon">
-              <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" />
+              <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" @error="handleCurrentServerIconError" />
             </span>
-            {{ currentBackLabel }}
-          </a-button>
+            <span>{{ currentBackLabel }}</span>
+          </button>
         </div>
 
         <div class="toolbar-center">
           <div class="workspace-tabs">
-            <div class="workspace-tab" :class="{ active: currentRoute.kind === 'home' }" @click="navigation.goHome()">主页</div>
-            <div class="workspace-tab" :class="{ active: currentRoute.kind === 'search' }" @click="navigation.goSearch()">搜索</div>
-            <div class="workspace-tab" :class="{ active: currentRoute.kind === 'library-root' || currentRoute.kind === 'library-page' }" @click="navigation.goLibraryRoot()">媒体库</div>
+            <div class="workspace-tab active" @click="navigation.goHome()">主页</div>
+            <div class="workspace-tab" @click="navigation.goSearch()">搜索</div>
+            <div class="workspace-tab" @click="navigation.goLibraryRoot()">媒体库</div>
           </div>
         </div>
 
         <div class="toolbar-right">
-          <a-button v-if="currentRoute.kind === 'home'" type="outline" @click="openHomeLibraryManager">
-            <template #icon><IconFont name="iconlist" /></template>
-            媒体管理
-          </a-button>
-          <div v-if="currentRoute.kind === 'home'" class="home-poster-toggle">
-            <a-button
-              :type="homePosterMode === 'landscape' ? 'primary' : 'outline'"
+          <button v-if="currentRoute.kind === 'home'" type="button" class="toolbar-btn" @click="openHomeLibraryManager">
+            <IconFont name="iconlist" />
+            <span>媒体管理</span>
+          </button>
+          <div v-if="currentRoute.kind === 'home'" class="view-toggle-pill">
+            <button
+              class="view-toggle-seg"
+              :class="{ active: homePosterMode === 'landscape' }"
+              title="横版海报"
               @click="setHomePosterMode('landscape')"
             >
-              横版
-            </a-button>
-            <a-button
-              :type="homePosterMode === 'portrait' ? 'primary' : 'outline'"
+              <IconFont name="iconfangkuang" />
+            </button>
+            <span class="view-toggle-divider" />
+            <button
+              class="view-toggle-seg"
+              :class="{ active: homePosterMode === 'portrait' }"
+              title="竖版海报"
               @click="setHomePosterMode('portrait')"
             >
-              竖版
-            </a-button>
+              <IconFont name="iconxiaotumoshi" />
+            </button>
           </div>
           <a-dropdown trigger="click" class="server-switch-dropdown">
             <a-button type="outline">
               <span class="server-switch-trigger">
                 <span class="server-switch-trigger-icon">
-                  <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer.name" />
+                  <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer.name" @error="handleCurrentServerIconError" />
                 </span>
                 <span
                   class="server-switch-trigger-text"
@@ -117,10 +122,6 @@
               </div>
             </template>
           </a-dropdown>
-          <a-button type="outline" @click="handleRefresh">
-            <template #icon><IconFont name="iconreload-1-icon" /></template>
-            刷新
-          </a-button>
 <!--          <a-button type="outline" @click="navigation.openRegistry()">管理服务器</a-button>-->
 <!--          <a-button type="primary" @click="handleAddServer">添加服务器</a-button>-->
         </div>
@@ -150,7 +151,8 @@
         class="workspace-content"
         :class="{
           'placeholder-card': currentRoute.kind !== 'item-detail' && currentRoute.kind !== 'person-page',
-          'workspace-content-detail': currentRoute.kind === 'item-detail' || currentRoute.kind === 'person-page'
+          'workspace-content-detail': currentRoute.kind === 'item-detail' || currentRoute.kind === 'person-page',
+          'workspace-content-search': currentRoute.kind === 'search'
         }"
       >
         <template v-if="currentRoute.kind === 'home'">
@@ -241,6 +243,13 @@
 
         <template v-else-if="currentRoute.kind === 'search'">
           <div class="search-shell search-shell-media-server">
+            <div class="listing-page-header">
+              <button type="button" class="detail-back-button listing-back-button" @click="navigation.goHome()">
+                <IconFont name="iconarrow-left-2-icon" />
+                <span>{{ currentPageTitle }}</span>
+              </button>
+            </div>
+
             <a-input-search
               v-model="searchText"
               class="search-input search-input-hero"
@@ -331,46 +340,25 @@
 
         <template v-else-if="currentRoute.kind === 'library-root' || currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page'">
           <div class="home-page">
-            <div class="home-intro listing-intro">
-              <div>
-                <h3>{{ currentRoute.kind === 'library-root' ? '' : currentRoute.title }}</h3>
-<!--                <p>-->
-<!--                  {{-->
-<!--                    currentRoute.kind === 'library-root'-->
-<!--                      ? '这里展示当前服务器的顶层媒体库。'-->
-<!--                      : '查看全部页面按媒体递归展开，不再显示文件夹，并支持和首页一致的海报样式。'-->
-<!--                  }}-->
-<!--                </p>-->
-              </div>
-              <div v-if="currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page'" class="listing-display-toggle">
-                <div class="listing-toggle-group">
-                  <a-button
-                    :type="currentListingBrowseMode === 'grid' ? 'primary' : 'outline'"
-                    @click="setCurrentListingBrowseMode('grid')"
-                  >
-                    网格
-                  </a-button>
-                  <a-button
-                    :type="currentListingBrowseMode === 'list' ? 'primary' : 'outline'"
-                    @click="setCurrentListingBrowseMode('list')"
-                  >
-                    列表
-                  </a-button>
-                </div>
-                <div class="listing-toggle-group">
-                  <a-button
-                    :type="currentListingPosterType === 'portrait' ? 'primary' : 'outline'"
-                    @click="setCurrentListingPosterType('portrait')"
-                  >
-                    竖版海报
-                  </a-button>
-                  <a-button
-                    :type="currentListingPosterType === 'landscape' ? 'primary' : 'outline'"
-                    @click="setCurrentListingPosterType('landscape')"
-                  >
-                    横版海报
-                  </a-button>
-                </div>
+            <div class="listing-page-header">
+              <button type="button" class="detail-back-button listing-back-button" @click="navigation.goHome()">
+                <IconFont name="iconarrow-left-2-icon" />
+                <span>{{ currentPageTitle }}</span>
+              </button>
+              <div v-if="currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page'" class="listing-page-actions listing-display-toggle view-toggle-pill">
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'grid' }" title="网格视图" @click="setCurrentListingBrowseMode('grid')">
+                  <IconFont name="iconfangkuang" />
+                </button>
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'list' }" title="列表视图" @click="setCurrentListingBrowseMode('list')">
+                  <IconFont name="iconlist" />
+                </button>
+                <span class="view-toggle-divider" />
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'portrait' }" title="竖版海报" @click="setCurrentListingPosterType('portrait')">
+                  <IconFont name="iconxiaotumoshi" />
+                </button>
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'landscape' }" title="横版海报" @click="setCurrentListingPosterType('landscape')">
+                  <IconFont name="iconfangkuang" />
+                </button>
               </div>
             </div>
 
@@ -455,41 +443,29 @@
 
         <template v-else-if="currentRoute.kind === 'collection-page'">
           <div class="home-page">
-            <div class="home-intro listing-intro">
-              <div>
-                <h3>{{ currentRoute.title }}</h3>
-                <p>这里展示首页卡片对应的完整列表，行为和 macOS 里的“查看全部”一致，并支持滚动分页加载。</p>
+            <div class="listing-page-header">
+              <button type="button" class="detail-back-button listing-back-button" @click="navigation.goHome()">
+                <IconFont name="iconarrow-left-2-icon" />
+                <span>{{ currentPageTitle }}</span>
+              </button>
+              <div class="listing-page-actions listing-display-toggle view-toggle-pill">
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'grid' }" title="网格视图" @click="setCurrentListingBrowseMode('grid')">
+                  <IconFont name="iconfangkuang" />
+                </button>
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'list' }" title="列表视图" @click="setCurrentListingBrowseMode('list')">
+                  <IconFont name="iconlist" />
+                </button>
+                <span class="view-toggle-divider" />
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'portrait' }" title="竖版海报" @click="setCurrentListingPosterType('portrait')">
+                  <IconFont name="iconxiaotumoshi" />
+                </button>
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'landscape' }" title="横版海报" @click="setCurrentListingPosterType('landscape')">
+                  <IconFont name="iconfangkuang" />
+                </button>
               </div>
-              <div class="listing-display-toggle">
-                <div class="listing-toggle-group">
-                  <a-button
-                    :type="currentListingBrowseMode === 'grid' ? 'primary' : 'outline'"
-                    @click="setCurrentListingBrowseMode('grid')"
-                  >
-                    网格
-                  </a-button>
-                  <a-button
-                    :type="currentListingBrowseMode === 'list' ? 'primary' : 'outline'"
-                    @click="setCurrentListingBrowseMode('list')"
-                  >
-                    列表
-                  </a-button>
-                </div>
-                <div class="listing-toggle-group">
-                  <a-button
-                    :type="currentListingPosterType === 'portrait' ? 'primary' : 'outline'"
-                    @click="setCurrentListingPosterType('portrait')"
-                  >
-                    竖版海报
-                  </a-button>
-                  <a-button
-                    :type="currentListingPosterType === 'landscape' ? 'primary' : 'outline'"
-                    @click="setCurrentListingPosterType('landscape')"
-                  >
-                    横版海报
-                  </a-button>
-                </div>
-              </div>
+            </div>
+            <div class="home-intro listing-intro listing-intro-description">
+              <p>这里展示首页卡片对应的完整列表，行为和 macOS 里的“查看全部”一致，并支持滚动分页加载。</p>
             </div>
 
             <div class="library-shell" :class="listingShellClass">
@@ -588,13 +564,13 @@
                   <div class="person-hero-mask" />
 
                   <div class="detail-top-back">
-                    <a-button type="text" class="detail-back-button" @click="handleBack">
-                      <template #icon><IconFont name="iconarrow-left-2-icon" /></template>
+                    <button type="button" class="detail-back-button" @click="handleBack">
+                      <IconFont name="iconarrow-left-2-icon" />
                       <span class="back-button-server-icon">
-                        <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" />
+                        <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" @error="handleCurrentServerIconError" />
                       </span>
-                      {{ currentBackLabel }}
-                    </a-button>
+                      <span>{{ currentBackLabel }}</span>
+                    </button>
                   </div>
 
                   <div class="person-hero-overlay">
@@ -817,13 +793,13 @@
                   <div class="detail-backdrop-bottom-haze" />
 
                   <div class="detail-top-back">
-                    <a-button type="text" class="detail-back-button" @click="handleBack">
-                      <template #icon><IconFont name="iconarrow-left-2-icon" /></template>
+                    <button type="button" class="detail-back-button" @click="handleBack">
+                      <IconFont name="iconarrow-left-2-icon" />
                       <span class="back-button-server-icon">
-                        <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" />
+                        <img :src="serverDisplayIcon(registry.currentServer)" :alt="registry.currentServer?.name || 'server'" @error="handleCurrentServerIconError" />
                       </span>
-                      {{ currentBackLabel }}
-                    </a-button>
+                      <span>{{ currentBackLabel }}</span>
+                    </button>
                   </div>
 
                   <div class="detail-hero-copy">
@@ -1175,15 +1151,16 @@
         <a-modal
           v-model:visible="homeLibraryManagerVisible"
           title="媒体管理"
-          width="760px"
-          class="home-library-manager-modal"
-          modal-class="home-library-manager-modal-shell"
+          width="560px"
+          class="home-library-manager-modal detail-media-modal"
+          modal-class="home-library-manager-modal-shell detail-media-modal-shell"
+          :footer="false"
           :mask-closable="false"
           :esc-to-close="false"
           @cancel="cancelHomeLibraryManager"
         >
           <div class="home-library-manager-panel">
-            <div class="home-library-manager-hint">长按可拖动排序</div>
+            <p class="home-library-manager-hint">拖动调整首页分区顺序，也可以隐藏你不想显示的栏目。</p>
             <div class="home-library-manager-list">
               <div
                 v-for="item in homeLibraryManagerDraft"
@@ -1196,29 +1173,27 @@
                 @drop="handleHomeLibraryDrop(item.key)"
                 @dragend="handleHomeLibraryDragEnd"
               >
+                <IconFont name="iconmenu-unfold" class="home-library-manager-drag-icon" draggable="true"
+                  title="拖动排序"
+                  @mousedown.prevent="handleHomeLibraryPointerDragStart(item.key)"
+                  @dragstart="handleHomeLibraryDragStart($event, item.key)"
+                  @dragend="handleHomeLibraryDragEnd" />
                 <a-checkbox
                   :model-value="item.visible"
                   @change="toggleHomeLibraryDraftVisible(item.key, $event)"
                 >
                   {{ item.title }}
                 </a-checkbox>
-                <IconFont name="iconlist" class="home-library-manager-drag-icon" draggable="true"
-                  title="拖动排序"
-                  @mousedown.prevent="handleHomeLibraryPointerDragStart(item.key)"
-                  @dragstart="handleHomeLibraryDragStart($event, item.key)"
-                  @dragend="handleHomeLibraryDragEnd" />
               </div>
               <div v-if="homeLibraryManagerDraft.length === 0" class="home-library-manager-empty">
                 当前服务器还没有可管理的媒体库
               </div>
             </div>
-          </div>
-          <template #footer>
             <div class="home-library-manager-footer">
               <a-button @click="cancelHomeLibraryManager">取消</a-button>
               <a-button type="primary" @click="saveHomeLibraryManager">保存</a-button>
             </div>
-          </template>
+          </div>
         </a-modal>
 
         <a-modal
@@ -1517,6 +1492,15 @@ const providerIconByType = (type: MediaServerType) => {
   return plexIcon
 }
 const serverDisplayIcon = (server?: MediaServerConfig) => server?.customIconUrl || providerIconByType(server?.type || 'jellyfin')
+const handleServerIconError = (event: Event, type: MediaServerType) => {
+  const image = event.target as HTMLImageElement | null
+  if (!image) return
+  image.onerror = null
+  image.src = providerIconByType(type)
+}
+const handleCurrentServerIconError = (event: Event) => {
+  handleServerIconError(event, registry.currentServer?.type || 'jellyfin')
+}
 const serverLineOptions = (server: MediaServerConfig) => {
   const options = [{
     key: MEDIA_SERVER_PRIMARY_LINE_KEY,
@@ -1797,6 +1781,19 @@ const currentPanelLabel = computed(() => {
     case 'collection-page': return currentRoute.value.title || '集合'
     case 'registry': return '管理服务器'
     default: return '媒体服务器'
+  }
+})
+const currentPageTitle = computed(() => {
+  switch (currentRoute.value.kind) {
+    case 'search': return '搜索'
+    case 'library-root': return '媒体库'
+    case 'library-page':
+    case 'genre-page':
+    case 'studio-page':
+    case 'collection-page':
+      return currentRoute.value.title || currentPanelLabel.value
+    default:
+      return currentPanelLabel.value
   }
 })
 const currentBackLabel = computed(() => {
@@ -3479,7 +3476,10 @@ onUnmounted(() => {
 .media-server-workspace {
   height: 100%;
   overflow: hidden;
-  background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.06), transparent 28%),
+    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.08), transparent 34%),
+    var(--app-mineradio-bg, #08090b);
 }
 
 .server-empty-shell,
@@ -3516,16 +3516,26 @@ onUnmounted(() => {
 
 .workspace-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, auto);
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 16px;
   margin-bottom: 18px;
-  padding: 12px 18px;
+  padding: 10px 20px;
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.7));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
   backdrop-filter: blur(22px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.14);
+}
+
+.toolbar-center {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+}
+
+.toolbar-left {
+  min-width: 0;
 }
 
 .workspace-toolbar :deep(.arco-btn),
@@ -3537,11 +3547,19 @@ onUnmounted(() => {
 .home-settings-menu :deep(.arco-select-view),
 .home-settings-menu :deep(.arco-input-wrapper),
 .home-settings-menu :deep(.arco-input-number) {
-  background: rgba(250, 245, 240, 0.52);
-  border-color: rgba(255, 255, 255, 0.72);
-  color: rgba(24, 24, 24, 0.88);
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
-  backdrop-filter: blur(18px) saturate(135%);
+  min-height: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 36px;
+  box-shadow: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .workspace-toolbar :deep(.arco-btn:hover),
@@ -3550,20 +3568,10 @@ onUnmounted(() => {
 .library-shell :deep(.arco-btn:hover),
 .collection-shell :deep(.arco-btn:hover),
 .server-empty-shell :deep(.arco-btn:hover) {
-  background: rgba(255, 255, 255, 0.68);
-  border-color: rgba(255, 255, 255, 0.86);
-  color: rgba(24, 24, 24, 0.96);
-  box-shadow: 0 16px 34px rgba(63, 46, 37, 0.12);
-}
-
-.toolbar-left {
-  min-width: 0;
-}
-
-.toolbar-center {
-  display: flex;
-  justify-content: center;
-  min-width: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--app-mineradio-ink, #e8ecef);
+  box-shadow: none;
 }
 
 .toolbar-right {
@@ -3576,9 +3584,90 @@ onUnmounted(() => {
   max-width: 100%;
 }
 
-.home-poster-toggle {
+.toolbar-btn {
   display: inline-flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 36px;
+  cursor: pointer;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toolbar-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.toolbar-btn:active {
+  transform: scale(0.97);
+}
+
+.toolbar-btn .iconfont {
+  font-size: 14px;
+  opacity: 0.72;
+}
+
+.view-toggle-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  padding: 3px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.view-toggle-seg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 30px;
+  width: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.view-toggle-seg:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.view-toggle-seg.active {
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.view-toggle-seg:active {
+  transform: scale(0.94);
+}
+
+.view-toggle-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 1px;
+  flex-shrink: 0;
 }
 
 .home-settings-menu {
@@ -3591,7 +3680,7 @@ onUnmounted(() => {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(244, 248, 255, 0.4));
   border: 1px solid rgba(255, 255, 255, 0.64);
   box-shadow:
-    0 18px 40px rgba(63, 46, 37, 0.12),
+    0 18px 40px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
   backdrop-filter: blur(22px) saturate(140%);
 }
@@ -3620,7 +3709,7 @@ onUnmounted(() => {
   gap: 10px;
   padding: 12px 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.28);
 }
 
@@ -3636,7 +3725,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: rgba(17, 24, 39, 0.92);
+  color: var(--app-mineradio-ink, #e8ecef);
   font-size: 14px;
   font-weight: 700;
 }
@@ -3663,7 +3752,7 @@ onUnmounted(() => {
     linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(244, 248, 255, 0.36));
   border: 1px solid rgba(255, 255, 255, 0.56);
   box-shadow:
-    0 22px 48px rgba(63, 46, 37, 0.12),
+    0 22px 48px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.42);
   backdrop-filter: blur(24px) saturate(145%);
 }
@@ -3684,9 +3773,9 @@ onUnmounted(() => {
   margin-bottom: 24px;
   padding: 20px 22px;
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(18px);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.04);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
 }
 
@@ -3713,8 +3802,8 @@ onUnmounted(() => {
   min-width: 120px;
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.74);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .summary-item strong {
@@ -3739,35 +3828,54 @@ onUnmounted(() => {
 
 .workspace-tabs {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
   flex-wrap: wrap;
+  width: max-content;
+  max-width: 100%;
+  padding: 4px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
 }
 
 .workspace-tab {
-  min-height: 52px;
+  height: 34px;
+  min-width: 72px;
   padding: 0 18px;
-  border-radius: 18px;
+  border-radius: 11px;
   font-weight: 700;
-  color: rgba(17, 24, 39, 0.92);
+  font-size: 13px;
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.62;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  white-space: nowrap;
+}
+
+.workspace-tab:hover {
+  opacity: 0.82;
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .workspace-tab.active {
-  background: rgba(240, 235, 230, 0.74);
-  color: rgba(22, 22, 22, 0.92);
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 1;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .placeholder-card {
   padding: 28px;
   border-radius: 28px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.72));
-  backdrop-filter: blur(20px);
-  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .placeholder-card h3 {
@@ -3809,9 +3917,6 @@ onUnmounted(() => {
 }
 
 .listing-display-toggle {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
   flex-shrink: 0;
 }
 
@@ -3837,9 +3942,9 @@ onUnmounted(() => {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.46),
     0 14px 30px rgba(148, 163, 184, 0.22),
-    0 4px 12px rgba(15, 23, 42, 0.06);
+    0 4px 12px rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(24px) saturate(145%);
-  color: rgba(22, 22, 22, 0.92);
+  color: var(--app-mineradio-ink, #e8ecef);
   font-weight: 700;
 }
 
@@ -3871,8 +3976,8 @@ onUnmounted(() => {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.54),
     0 18px 36px rgba(96, 165, 250, 0.2),
-    0 4px 12px rgba(15, 23, 42, 0.06);
-  color: rgba(22, 22, 22, 0.92);
+    0 4px 12px rgba(255, 255, 255, 0.04);
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .workspace-toolbar :deep(.arco-btn.arco-btn-primary),
@@ -3890,8 +3995,8 @@ onUnmounted(() => {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.52),
     0 18px 38px rgba(96, 165, 250, 0.24),
-    0 4px 12px rgba(15, 23, 42, 0.06);
-  color: rgba(22, 22, 22, 0.92);
+    0 4px 12px rgba(255, 255, 255, 0.04);
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .home-loading,
@@ -3901,7 +4006,7 @@ onUnmounted(() => {
   gap: 14px;
   padding: 18px 20px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .home-error {
@@ -3935,7 +4040,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(22px);
   box-shadow: 0 16px 40px rgba(45, 34, 24, 0.12);
 }
@@ -3988,9 +4093,9 @@ onUnmounted(() => {
   position: relative;
   overflow: hidden;
   border-radius: 18px;
-  background: linear-gradient(135deg, #dbeafe, #f8fafc);
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
 }
 
 .resume-card-poster {
@@ -4031,7 +4136,7 @@ onUnmounted(() => {
   flex-direction: column;
   justify-content: space-between;
   padding: 12px;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.18) 0%, rgba(15, 23, 42, 0.06) 45%, rgba(15, 23, 42, 0.75) 100%);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.18) 0%, rgba(255, 255, 255, 0.04) 45%, rgba(15, 23, 42, 0.75) 100%);
 }
 
 .resume-badge {
@@ -4085,29 +4190,43 @@ onUnmounted(() => {
 .home-section-header h4 {
   margin: 0;
   font-size: 18px;
-  color: #111827;
+  font-weight: 700;
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .home-section-header span {
-  color: #94a3b8;
-  font-size: 13px;
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.48;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .see-all-button {
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(250, 245, 240, 0.52);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  color: rgba(24, 24, 24, 0.88);
-  font-weight: 700;
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
-  backdrop-filter: blur(18px) saturate(135%);
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 36px;
+  cursor: pointer;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .see-all-button:hover {
-  background: rgba(255, 255, 255, 0.68);
-  border-color: rgba(255, 255, 255, 0.86);
-  color: rgba(24, 24, 24, 0.96);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.see-all-button:active {
+  transform: scale(0.97);
 }
 
 .home-card-grid {
@@ -4120,9 +4239,9 @@ onUnmounted(() => {
   padding: 0;
   overflow: hidden;
   border-radius: 22px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 36px rgba(0, 0, 0, 0.18);
 }
 
 .interactive-card {
@@ -4140,7 +4259,7 @@ onUnmounted(() => {
 .media-card-poster {
   position: relative;
   aspect-ratio: 2 / 3;
-  background: linear-gradient(135deg, #dbeafe, #f8fafc);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .media-card-poster img {
@@ -4195,7 +4314,7 @@ onUnmounted(() => {
   bottom: 12px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.04);
   overflow: hidden;
 }
 
@@ -4231,7 +4350,7 @@ onUnmounted(() => {
 .empty-placeholder {
   padding: 18px 20px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
   color: #94a3b8;
   font-size: 14px;
 }
@@ -4246,8 +4365,8 @@ onUnmounted(() => {
 .placeholder-block {
   padding: 18px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .placeholder-block h4 {
@@ -4263,7 +4382,7 @@ onUnmounted(() => {
 .server-switcher-block {
   margin-top: 24px;
   padding-top: 24px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .server-switcher-header {
@@ -4291,13 +4410,17 @@ onUnmounted(() => {
 }
 
 .server-switcher-chip {
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(250, 245, 240, 0.52);
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
-  backdrop-filter: blur(18px) saturate(135%);
-  border-radius: 999px;
-  padding: 10px 16px;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: 0 14px;
   font-weight: 700;
+  font-size: 12px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -4395,8 +4518,8 @@ onUnmounted(() => {
 .stat-card {
   padding: 18px 16px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   text-align: center;
 }
 
@@ -4502,7 +4625,7 @@ onUnmounted(() => {
   overflow: hidden;
   border-radius: 16px;
   aspect-ratio: 16 / 9;
-  background: linear-gradient(135deg, #dbeafe, #f8fafc);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .library-cover.library-cover-fallback {
@@ -4516,7 +4639,7 @@ onUnmounted(() => {
 .library-card-hero .library-cover {
   margin-bottom: 0;
   border-radius: 24px;
-  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 32px rgba(255, 255, 255, 0.06);
 }
 
 .listing-overlay-badge {
@@ -4635,7 +4758,7 @@ onUnmounted(() => {
   bottom: 24px;
   height: 180px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.42);
+  background: rgba(255, 255, 255, 0.04);
   filter: blur(80px);
 }
 
@@ -4644,7 +4767,7 @@ onUnmounted(() => {
   z-index: 1;
   padding: 24px;
   border-radius: 28px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.58));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
   border: 1px solid rgba(255, 255, 255, 0.45);
   box-shadow: 0 26px 56px rgba(15, 23, 42, 0.12);
   backdrop-filter: blur(26px);
@@ -4661,8 +4784,8 @@ onUnmounted(() => {
   overflow: hidden;
   border-radius: 24px;
   aspect-ratio: 2 / 3;
-  background: linear-gradient(135deg, #dbeafe, #f8fafc);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 22px 42px rgba(15, 23, 42, 0.14);
 }
 
@@ -4700,8 +4823,8 @@ onUnmounted(() => {
 .detail-attribute-chip {
   padding: 7px 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: #1f2937;
   font-size: 12px;
   font-weight: 700;
@@ -4726,8 +4849,8 @@ onUnmounted(() => {
 .detail-action-button {
   padding: 10px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
   color: #111827;
   font-size: 14px;
   font-weight: 700;
@@ -4739,7 +4862,7 @@ onUnmounted(() => {
 .detail-action-button:hover {
   transform: translateY(-1px);
   border-color: rgba(22, 119, 255, 0.16);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 14px 28px rgba(255, 255, 255, 0.06);
 }
 
 .detail-action-button-primary {
@@ -4757,8 +4880,8 @@ onUnmounted(() => {
 .detail-pill-button {
   padding: 10px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
   color: #1f2937;
   font-size: 14px;
   font-weight: 700;
@@ -4770,7 +4893,7 @@ onUnmounted(() => {
 .detail-pill-button:hover {
   transform: translateY(-1px);
   border-color: rgba(22, 119, 255, 0.16);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 14px 28px rgba(255, 255, 255, 0.06);
 }
 
 .detail-tags {
@@ -4782,7 +4905,7 @@ onUnmounted(() => {
 .detail-tag {
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.04);
   color: #2563eb;
   font-size: 12px;
   font-weight: 700;
@@ -4796,7 +4919,7 @@ onUnmounted(() => {
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.68));
   border: 1px solid rgba(255, 255, 255, 0.48);
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 18px 42px rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(20px);
 }
 
@@ -4809,9 +4932,9 @@ onUnmounted(() => {
 .detail-info-card {
   padding: 18px;
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.76));
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 14px 28px rgba(255, 255, 255, 0.04);
 }
 
 .detail-info-title {
@@ -4857,7 +4980,7 @@ onUnmounted(() => {
   padding: 7px 12px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.66);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   color: #374151;
   font-size: 12px;
   font-weight: 700;
@@ -4880,9 +5003,9 @@ onUnmounted(() => {
 .person-card {
   padding: 16px 14px;
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.76));
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: 0 14px 28px rgba(255, 255, 255, 0.04);
   text-align: center;
 }
 
@@ -4908,7 +5031,7 @@ onUnmounted(() => {
   margin: 0 auto 12px;
   overflow: hidden;
   border-radius: 999px;
-  background: linear-gradient(135deg, #dbeafe, #f8fafc);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .person-avatar img {
@@ -5056,7 +5179,7 @@ onUnmounted(() => {
   min-height: 30px;
   padding: 0 12px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   color: rgba(15, 23, 42, 0.76);
   font-size: 12px;
   font-weight: 800;
@@ -5303,7 +5426,7 @@ onUnmounted(() => {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 250, 255, 0.82));
   box-shadow:
-    0 22px 44px rgba(15, 23, 42, 0.08),
+    0 22px 44px rgba(255, 255, 255, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(20px);
 }
@@ -5336,7 +5459,7 @@ onUnmounted(() => {
   padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition: 0.18s ease;
 }
@@ -5423,7 +5546,7 @@ onUnmounted(() => {
   padding: 14px 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
   transition: 0.18s ease;
 }
@@ -5618,7 +5741,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.5);
-  background: rgba(250, 245, 240, 0.48);
+  background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(16px);
   color: rgba(20, 20, 20, 0.92);
   cursor: pointer;
@@ -5676,7 +5799,7 @@ onUnmounted(() => {
 .person-content-divider {
   height: 1px;
   margin-bottom: 20px;
-  background: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .person-section {
@@ -5732,7 +5855,7 @@ onUnmounted(() => {
   overflow: hidden;
   border-radius: 14px;
   background: rgba(243, 244, 246, 0.92);
-  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 26px rgba(255, 255, 255, 0.06);
   position: relative;
 }
 
@@ -5950,21 +6073,83 @@ onUnmounted(() => {
 }
 
 .detail-back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   height: 44px;
-  padding: 0 18px;
-  border-radius: 18px;
-  color: rgba(17, 17, 17, 0.92);
-  font-size: 15px;
+  padding: 0 20px;
+  border-radius: 14px;
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 14px;
   font-weight: 700;
-  background: rgba(250, 245, 240, 0.52);
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.12);
-  backdrop-filter: blur(18px) saturate(135%);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .detail-back-button:hover {
-  background: rgba(255, 255, 255, 0.58);
-  border-color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.detail-back-button:active {
+  transform: scale(0.97);
+}
+
+.detail-back-button .iconfont {
+  font-size: 16px;
+  opacity: 0.72;
+}
+
+.listing-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-height: 44px;
+  margin-bottom: 28px;
+}
+
+.listing-back-button {
+  width: auto !important;
+  max-width: min(520px, 100%);
+  flex: 0 0 auto;
+  justify-content: flex-start;
+}
+
+.listing-back-button span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listing-page-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.listing-intro-description {
+  margin-top: -12px;
+}
+
+.back-button-server-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.back-button-server-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .detail-hero-copy {
@@ -6059,8 +6244,8 @@ onUnmounted(() => {
 .detail-chip-button,
 .detail-chip-link {
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(250, 245, 240, 0.52);
-  box-shadow: 0 12px 30px rgba(63, 46, 37, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(18px);
 }
 
@@ -6071,12 +6256,12 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: rgba(22, 22, 22, 0.92);
+  color: var(--app-mineradio-ink, #e8ecef);
   cursor: pointer;
 }
 
 .detail-square-action.active {
-  background: rgba(240, 235, 230, 0.74);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .detail-square-glyph {
@@ -6115,16 +6300,16 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: rgba(22, 22, 22, 0.92);
+  color: var(--app-mineradio-ink, #e8ecef);
   font-size: 15px;
   font-weight: 800;
   cursor: pointer;
 }
 
 .detail-secondary-download:hover {
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 16px 34px rgba(63, 46, 37, 0.12);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.22);
 }
 
 .detail-primary-play:hover {
@@ -6168,7 +6353,7 @@ onUnmounted(() => {
   padding: 12px 14px;
   border: 1px solid transparent;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.52);
+  background: rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -6178,7 +6363,7 @@ onUnmounted(() => {
 }
 
 .detail-version-option:hover {
-  background: rgba(255, 255, 255, 0.74);
+  background: rgba(255, 255, 255, 0.04);
   border-color: rgba(53, 93, 255, 0.22);
   transform: translateY(-1px);
 }
@@ -6556,8 +6741,8 @@ onUnmounted(() => {
   padding: 20px 22px;
   border-radius: 28px;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(250, 245, 240, 0.52);
-  box-shadow: 0 16px 36px rgba(63, 46, 37, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16);
   backdrop-filter: blur(18px);
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
@@ -6565,7 +6750,7 @@ onUnmounted(() => {
 
 .detail-media-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 22px 42px rgba(63, 46, 37, 0.16);
+  box-shadow: 0 22px 42px rgba(0, 0, 0, 0.2);
 }
 
 .detail-media-card.selected {
@@ -6649,9 +6834,9 @@ onUnmounted(() => {
   padding: 18px 26px;
   border-radius: 26px;
   border: 1px solid rgba(255, 255, 255, 0.74);
-  background: rgba(250, 245, 240, 0.52);
+  background: rgba(255, 255, 255, 0.06);
   text-align: center;
-  box-shadow: 0 16px 36px rgba(63, 46, 37, 0.12);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16);
   backdrop-filter: blur(18px);
 }
 
@@ -6665,28 +6850,21 @@ onUnmounted(() => {
 
 .home-library-manager-panel {
   padding: 8px 4px 2px;
-  border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(244, 248, 255, 0.36));
-  border: 1px solid rgba(255, 255, 255, 0.56);
-  box-shadow:
-    0 22px 48px rgba(63, 46, 37, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
-  backdrop-filter: blur(24px) saturate(145%);
 }
 
 .home-library-manager-hint {
   margin: 0 0 14px 8px;
-  color: rgba(24, 24, 24, 0.86);
-  font-size: 17px;
-  font-weight: 800;
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.56;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .home-library-manager-list {
   padding: 8px 18px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06));
+  background: var(--app-glass-panel, rgba(255, 255, 255, 0.06));
   min-height: 280px;
 }
 
@@ -6695,7 +6873,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 14px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
   cursor: default;
   transition: opacity 0.16s ease, transform 0.16s ease, background 0.16s ease;
 }
@@ -6710,7 +6888,7 @@ onUnmounted(() => {
 }
 
 .home-library-manager-item:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .home-library-manager-item :deep(.arco-checkbox) {
@@ -6719,14 +6897,15 @@ onUnmounted(() => {
 }
 
 .home-library-manager-item :deep(.arco-checkbox-label) {
-  color: rgba(24, 24, 24, 0.88);
-  font-size: 18px;
-  font-weight: 700;
+  color: var(--app-mineradio-ink, #e8ecef);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .home-library-manager-drag-icon {
   flex: 0 0 auto;
-  color: rgba(24, 24, 24, 0.42);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.32;
   font-size: 18px;
   cursor: grab;
   padding: 6px;
@@ -6736,8 +6915,8 @@ onUnmounted(() => {
 }
 
 .home-library-manager-drag-icon:hover {
-  background: rgba(255, 255, 255, 0.22);
-  color: rgba(24, 24, 24, 0.72);
+  background: rgba(255, 255, 255, 0.06);
+  opacity: 0.6;
 }
 
 .home-library-manager-drag-icon:active {
@@ -6747,9 +6926,10 @@ onUnmounted(() => {
 .home-library-manager-empty {
   padding: 56px 12px;
   text-align: center;
-  color: rgba(24, 24, 24, 0.48);
+  color: var(--app-mineradio-ink, #e8ecef);
+  opacity: 0.32;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .home-library-manager-footer {
@@ -6757,6 +6937,7 @@ onUnmounted(() => {
   justify-content: flex-end;
   gap: 14px;
   width: 100%;
+  margin-top: 18px;
 }
 
 .home-library-manager-footer :deep(.arco-btn) {
@@ -6771,8 +6952,8 @@ onUnmounted(() => {
   padding: 20px 22px;
   border-radius: 28px;
   border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(250, 245, 240, 0.52);
-  box-shadow: 0 16px 36px rgba(63, 46, 37, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.16);
   backdrop-filter: blur(18px);
 }
 
@@ -7130,7 +7311,6 @@ onUnmounted(() => {
 
 [arco-theme='dark'] .workspace-toolbar,
 [arco-theme='dark'] .workspace-header-card,
-[arco-theme='dark'] .placeholder-card,
 [arco-theme='dark'] .search-shell,
 [arco-theme='dark'] .detail-loading-state,
 [arco-theme='dark'] .library-card:not(.library-card-hero),
@@ -7195,7 +7375,6 @@ onUnmounted(() => {
   color: rgba(191, 201, 216, 0.62);
 }
 
-[arco-theme='dark'] .workspace-tab,
 [arco-theme='dark'] .detail-chip-button,
 [arco-theme='dark'] .detail-chip-link,
 [arco-theme='dark'] .detail-square-action,
@@ -7212,14 +7391,7 @@ onUnmounted(() => {
   box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
 }
 
-[arco-theme='dark'] .workspace-toolbar :deep(.arco-btn),
-[arco-theme='dark'] .home-page :deep(.arco-btn),
-[arco-theme='dark'] .search-shell-media-server :deep(.arco-btn),
-[arco-theme='dark'] .library-shell :deep(.arco-btn),
-[arco-theme='dark'] .collection-shell :deep(.arco-btn),
-[arco-theme='dark'] .server-empty-shell :deep(.arco-btn),
 [arco-theme='dark'] .back-button,
-[arco-theme='dark'] .workspace-tab,
 [arco-theme='dark'] .server-switcher-chip {
   background: linear-gradient(180deg, rgba(28, 32, 42, 0.96), rgba(20, 24, 33, 0.94));
   border-color: rgba(255, 255, 255, 0.1);
@@ -7231,14 +7403,7 @@ onUnmounted(() => {
   color: rgba(244, 247, 252, 0.96);
 }
 
-[arco-theme='dark'] .workspace-toolbar :deep(.arco-btn:hover),
-[arco-theme='dark'] .home-page :deep(.arco-btn:hover),
-[arco-theme='dark'] .search-shell-media-server :deep(.arco-btn:hover),
-[arco-theme='dark'] .library-shell :deep(.arco-btn:hover),
-[arco-theme='dark'] .collection-shell :deep(.arco-btn:hover),
-[arco-theme='dark'] .server-empty-shell :deep(.arco-btn:hover),
 [arco-theme='dark'] .back-button:hover,
-[arco-theme='dark'] .workspace-tab:hover,
 [arco-theme='dark'] .server-switcher-chip:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.18);
@@ -7409,13 +7574,11 @@ onUnmounted(() => {
 }
 
 [arco-theme='dark'] .detail-chip-button,
-[arco-theme='dark'] .detail-chip-link,
-[arco-theme='dark'] .workspace-tab {
+[arco-theme='dark'] .detail-chip-link {
   color: rgba(248, 250, 252, 0.92);
 }
 
-[arco-theme='dark'] .detail-chip-button.active,
-[arco-theme='dark'] .workspace-tab.active {
+[arco-theme='dark'] .detail-chip-button.active {
   color: #fff;
 }
 
@@ -7428,8 +7591,6 @@ onUnmounted(() => {
 [arco-theme='dark'] .home-settings-menu :deep(.arco-select-view),
 [arco-theme='dark'] .home-settings-menu :deep(.arco-input-wrapper),
 [arco-theme='dark'] .home-settings-menu :deep(.arco-input-number),
-[arco-theme='dark'] .back-button,
-[arco-theme='dark'] .detail-back-button,
 [arco-theme='dark'] .server-switcher-chip {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.08);
@@ -7437,21 +7598,13 @@ onUnmounted(() => {
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
 }
 
-[arco-theme='dark'] .workspace-toolbar :deep(.arco-btn:hover),
-[arco-theme='dark'] .home-page :deep(.arco-btn:hover),
-[arco-theme='dark'] .search-shell-media-server :deep(.arco-btn:hover),
-[arco-theme='dark'] .library-shell :deep(.arco-btn:hover),
-[arco-theme='dark'] .collection-shell :deep(.arco-btn:hover),
-[arco-theme='dark'] .server-empty-shell :deep(.arco-btn:hover),
 [arco-theme='dark'] .back-button:hover,
-[arco-theme='dark'] .detail-back-button:hover,
 [arco-theme='dark'] .server-switcher-chip:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.16);
   color: rgba(255, 255, 255, 0.98);
 }
 
-[arco-theme='dark'] .workspace-tab.active,
 [arco-theme='dark'] .workspace-toolbar :deep(.arco-btn.arco-btn-primary),
 [arco-theme='dark'] .home-page :deep(.arco-btn.arco-btn-primary),
 [arco-theme='dark'] .search-shell-media-server :deep(.arco-btn.arco-btn-primary),
@@ -7505,5 +7658,1042 @@ onUnmounted(() => {
 
 [arco-theme='dark'] .person-content-divider {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.media-server-workspace {
+  color: var(--color-text-1);
+  background: transparent !important;
+}
+
+.workspace-toolbar,
+.workspace-header-card,
+.placeholder-card,
+.home-intro,
+.home-error,
+.home-loading,
+.empty-placeholder,
+.search-feedback-card {
+  color: var(--color-text-1) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06) !important;
+  backdrop-filter: blur(22px);
+}
+
+.library-card,
+.library-card:not(.library-card-hero),
+.detail-section,
+.person-shelf-card,
+.person-rail-card {
+  color: var(--color-text-1) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.detail-glass-panel,
+.detail-section-block,
+.detail-info-card,
+.detail-media-card,
+.detail-file-bar,
+.detail-episode-card,
+.detail-recommendation-card,
+.person-card,
+.person-about-card {
+  color: var(--color-text-1) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06) !important;
+}
+
+.workspace-toolbar,
+.listing-toggle-group,
+.home-settings-menu,
+.server-switch-menu,
+.home-library-manager-list {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(14px);
+}
+
+.workspace-toolbar :deep(.arco-btn),
+.home-page :deep(.arco-btn),
+.search-shell-media-server :deep(.arco-btn),
+.library-shell :deep(.arco-btn),
+.collection-shell :deep(.arco-btn),
+.server-empty-shell :deep(.arco-btn) {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+  font-weight: 600;
+}
+
+.workspace-toolbar :deep(.arco-btn:hover),
+.home-page :deep(.arco-btn:hover),
+.search-shell-media-server :deep(.arco-btn:hover),
+.library-shell :deep(.arco-btn:hover),
+.collection-shell :deep(.arco-btn:hover),
+.server-empty-shell :deep(.arco-btn:hover) {
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.workspace-toolbar :deep(.arco-btn.arco-btn-primary),
+.home-page :deep(.arco-btn.arco-btn-primary),
+.search-shell-media-server :deep(.arco-btn.arco-btn-primary),
+.library-shell :deep(.arco-btn.arco-btn-primary),
+.collection-shell :deep(.arco-btn.arco-btn-primary),
+.server-empty-shell :deep(.arco-btn.arco-btn-primary),
+.detail-primary-play {
+  color: #fff !important;
+  border-color: rgba(96, 165, 250, 0.38) !important;
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.96), rgba(59, 130, 246, 0.88)) !important;
+  box-shadow: 0 22px 42px rgba(24, 70, 166, 0.32) !important;
+}
+
+.workspace-header h2,
+.workspace-header-card h2,
+.home-intro h2,
+.detail-section-title,
+.detail-section-header h4,
+.library-list-title,
+.person-shelf-title,
+.person-rail-title,
+.detail-main h3 {
+  color: var(--color-text-1) !important;
+}
+
+.workspace-header p,
+.workspace-header-card p,
+.library-meta-line,
+.library-list-overview,
+.person-rail-subtitle,
+.person-rail-overview,
+.detail-overview,
+.detail-tech-line,
+.detail-file-meta,
+.detail-episode-overview {
+  color: var(--color-text-2) !important;
+}
+
+.workspace-tab,
+.detail-chip-button,
+.detail-chip-link,
+.listing-toggle-group button {
+  color: var(--color-text-2) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.workspace-tab.active,
+.detail-chip-button.active,
+.detail-square-action.active,
+.person-mini-action.active,
+.detail-version-option.active,
+.server-switcher-chip.active,
+.listing-toggle-group button.active {
+  color: var(--color-text-1) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[arco-theme='dark'] .workspace-header-card,
+[arco-theme='dark'] .placeholder-card,
+[arco-theme='dark'] .home-intro,
+[arco-theme='dark'] .home-error,
+[arco-theme='dark'] .home-loading,
+[arco-theme='dark'] .empty-placeholder,
+[arco-theme='dark'] .search-feedback-card,
+[arco-theme='dark'] .detail-glass-panel,
+[arco-theme='dark'] .detail-section-block,
+[arco-theme='dark'] .detail-info-card,
+[arco-theme='dark'] .detail-media-card,
+[arco-theme='dark'] .detail-file-bar,
+[arco-theme='dark'] .detail-episode-card,
+[arco-theme='dark'] .detail-recommendation-card,
+[arco-theme='dark'] .person-card,
+[arco-theme='dark'] .person-about-card {
+  color: rgba(244, 247, 252, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(18, 24, 36, 0.72) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+[arco-theme='dark'] .library-card,
+[arco-theme='dark'] .library-card:not(.library-card-hero),
+[arco-theme='dark'] .detail-section,
+[arco-theme='dark'] .person-shelf-card,
+[arco-theme='dark'] .person-rail-card {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[arco-theme='dark'] .workspace-toolbar,
+[arco-theme='dark'] .listing-toggle-group,
+[arco-theme='dark'] .home-settings-menu,
+[arco-theme='dark'] .server-switch-menu,
+[arco-theme='dark'] .home-library-manager-list {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+[arco-theme='dark'] .workspace-header h2,
+[arco-theme='dark'] .workspace-header-card h2,
+[arco-theme='dark'] .home-intro h2,
+[arco-theme='dark'] .detail-section-title,
+[arco-theme='dark'] .detail-section-header h4,
+[arco-theme='dark'] .library-list-title,
+[arco-theme='dark'] .person-shelf-title,
+[arco-theme='dark'] .person-rail-title,
+[arco-theme='dark'] .detail-main h3 {
+  color: rgba(244, 247, 252, 0.96) !important;
+}
+
+[arco-theme='dark'] .workspace-header p,
+[arco-theme='dark'] .workspace-header-card p,
+[arco-theme='dark'] .library-meta-line,
+[arco-theme='dark'] .library-list-overview,
+[arco-theme='dark'] .person-rail-subtitle,
+[arco-theme='dark'] .person-rail-overview,
+[arco-theme='dark'] .detail-overview,
+[arco-theme='dark'] .detail-tech-line,
+[arco-theme='dark'] .detail-file-meta,
+[arco-theme='dark'] .detail-episode-overview {
+  color: rgba(191, 201, 216, 0.78) !important;
+}
+
+[arco-theme='dark'] .workspace-tab,
+[arco-theme='dark'] .detail-chip-button,
+[arco-theme='dark'] .detail-chip-link,
+[arco-theme='dark'] .listing-toggle-group button {
+  color: rgba(255, 255, 255, 0.68) !important;
+  background: transparent !important;
+}
+
+[arco-theme='dark'] .workspace-tab.active,
+[arco-theme='dark'] .detail-chip-button.active,
+[arco-theme='dark'] .detail-square-action.active,
+[arco-theme='dark'] .person-mini-action.active,
+[arco-theme='dark'] .detail-version-option.active,
+[arco-theme='dark'] .server-switcher-chip.active,
+[arco-theme='dark'] .listing-toggle-group button.active {
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+</style>
+
+<style>
+body[arco-theme='dark'] .media-server-workspace .workspace-header-card,
+body[arco-theme='dark'] .media-server-workspace .placeholder-card,
+body[arco-theme='dark'] .media-server-workspace .home-intro,
+body[arco-theme='dark'] .media-server-workspace .home-error,
+body[arco-theme='dark'] .media-server-workspace .home-loading,
+body[arco-theme='dark'] .media-server-workspace .empty-placeholder,
+body[arco-theme='dark'] .media-server-workspace .search-feedback-card,
+body[arco-theme='dark'] .media-server-workspace .detail-glass-panel,
+body[arco-theme='dark'] .media-server-workspace .detail-section-block,
+body[arco-theme='dark'] .media-server-workspace .detail-info-card,
+body[arco-theme='dark'] .media-server-workspace .detail-media-card,
+body[arco-theme='dark'] .media-server-workspace .detail-file-bar,
+body[arco-theme='dark'] .media-server-workspace .detail-episode-card,
+body[arco-theme='dark'] .media-server-workspace .detail-recommendation-card,
+body[arco-theme='dark'] .media-server-workspace .person-card,
+body[arco-theme='dark'] .media-server-workspace .person-about-card {
+  color: rgba(244, 247, 252, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(18, 24, 36, 0.72) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22) !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-toolbar,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tabs,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-content,
+body[arco-theme='dark'] #xbybody .media-server-workspace .placeholder-card,
+body[arco-theme='dark'] #xbybody .media-server-workspace .home-intro,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-lower-content,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-section,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-section-header,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-section-episodes,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-media-card-rail,
+body[arco-theme='dark'] #xbybody .media-server-workspace .home-page,
+body[arco-theme='dark'] #xbybody .media-server-workspace .library-shell,
+body[arco-theme='dark'] #xbybody .media-server-workspace .collection-shell {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .library-card,
+body[arco-theme='dark'] .media-server-workspace .library-card:not(.library-card-hero),
+body[arco-theme='dark'] .media-server-workspace .detail-section,
+body[arco-theme='dark'] .media-server-workspace .person-shelf-card,
+body[arco-theme='dark'] .media-server-workspace .person-rail-card {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-toolbar,
+body[arco-theme='dark'] .media-server-workspace .listing-toggle-group,
+body[arco-theme='dark'] .media-server-workspace .home-settings-menu,
+body[arco-theme='dark'] .media-server-workspace .server-switch-menu,
+body[arco-theme='dark'] .media-server-workspace .home-library-manager-list {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab:hover,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab.active {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-toolbar .arco-btn,
+body[arco-theme='dark'] .media-server-workspace .home-page .arco-btn,
+body[arco-theme='dark'] .media-server-workspace .search-shell-media-server .arco-btn,
+body[arco-theme='dark'] .media-server-workspace .library-shell .arco-btn,
+body[arco-theme='dark'] .media-server-workspace .collection-shell .arco-btn,
+body[arco-theme='dark'] .media-server-workspace .server-empty-shell .arco-btn {
+  min-height: 36px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.72) !important;
+  font-weight: 600;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-toolbar .arco-btn:hover,
+body[arco-theme='dark'] .media-server-workspace .home-page .arco-btn:hover,
+body[arco-theme='dark'] .media-server-workspace .search-shell-media-server .arco-btn:hover,
+body[arco-theme='dark'] .media-server-workspace .library-shell .arco-btn:hover,
+body[arco-theme='dark'] .media-server-workspace .collection-shell .arco-btn:hover,
+body[arco-theme='dark'] .media-server-workspace .server-empty-shell .arco-btn:hover {
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-toolbar .arco-btn-primary,
+body[arco-theme='dark'] .media-server-workspace .home-page .arco-btn-primary,
+body[arco-theme='dark'] .media-server-workspace .search-shell-media-server .arco-btn-primary,
+body[arco-theme='dark'] .media-server-workspace .library-shell .arco-btn-primary,
+body[arco-theme='dark'] .media-server-workspace .collection-shell .arco-btn-primary,
+body[arco-theme='dark'] .media-server-workspace .server-empty-shell .arco-btn-primary,
+body[arco-theme='dark'] .media-server-workspace .detail-primary-play {
+  color: #fff !important;
+  border-color: rgba(96, 165, 250, 0.38) !important;
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.96), rgba(59, 130, 246, 0.88)) !important;
+  box-shadow: 0 22px 42px rgba(24, 70, 166, 0.32) !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-header h2,
+body[arco-theme='dark'] .media-server-workspace .workspace-header-card h2,
+body[arco-theme='dark'] .media-server-workspace .home-intro h2,
+body[arco-theme='dark'] .media-server-workspace .detail-section-title,
+body[arco-theme='dark'] .media-server-workspace .detail-section-header h4,
+body[arco-theme='dark'] .media-server-workspace .library-list-title,
+body[arco-theme='dark'] .media-server-workspace .person-shelf-title,
+body[arco-theme='dark'] .media-server-workspace .person-rail-title,
+body[arco-theme='dark'] .media-server-workspace .detail-main h3 {
+  color: rgba(244, 247, 252, 0.96) !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-header p,
+body[arco-theme='dark'] .media-server-workspace .workspace-header-card p,
+body[arco-theme='dark'] .media-server-workspace .library-meta-line,
+body[arco-theme='dark'] .media-server-workspace .library-list-overview,
+body[arco-theme='dark'] .media-server-workspace .person-rail-subtitle,
+body[arco-theme='dark'] .media-server-workspace .person-rail-overview,
+body[arco-theme='dark'] .media-server-workspace .detail-overview,
+body[arco-theme='dark'] .media-server-workspace .detail-tech-line,
+body[arco-theme='dark'] .media-server-workspace .detail-file-meta,
+body[arco-theme='dark'] .media-server-workspace .detail-episode-overview {
+  color: rgba(191, 201, 216, 0.78) !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-tab,
+body[arco-theme='dark'] .media-server-workspace .detail-chip-button,
+body[arco-theme='dark'] .media-server-workspace .detail-chip-link,
+body[arco-theme='dark'] .media-server-workspace .listing-toggle-group button {
+  color: rgba(255, 255, 255, 0.68) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[arco-theme='dark'] .media-server-workspace .workspace-tab.active,
+body[arco-theme='dark'] .media-server-workspace .detail-chip-button.active,
+body[arco-theme='dark'] .media-server-workspace .detail-square-action.active,
+body[arco-theme='dark'] .media-server-workspace .person-mini-action.active,
+body[arco-theme='dark'] .media-server-workspace .detail-version-option.active,
+body[arco-theme='dark'] .media-server-workspace .server-switcher-chip.active,
+body[arco-theme='dark'] .media-server-workspace .listing-toggle-group button.active {
+  color: rgba(255, 255, 255, 0.92) !important;
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-toolbar,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tabs,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-content,
+body[arco-theme='dark'] #xbybody .media-server-workspace .home-intro,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-lower-content,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-section,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-section-header,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-section-episodes,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-media-card-rail,
+body[arco-theme='dark'] #xbybody .media-server-workspace .home-page,
+body[arco-theme='dark'] #xbybody .media-server-workspace .library-shell,
+body[arco-theme='dark'] #xbybody .media-server-workspace .collection-shell {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab:hover,
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab.active {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+#xbybody .media-server-workspace .workspace-toolbar,
+#xbybody .media-server-workspace .workspace-tabs,
+#xbybody .media-server-workspace .workspace-content,
+#xbybody .media-server-workspace .home-page,
+#xbybody .media-server-workspace .home-intro,
+#xbybody .media-server-workspace .home-section,
+#xbybody .media-server-workspace .home-section-header,
+#xbybody .media-server-workspace .home-card-grid,
+#xbybody .media-server-workspace .resume-strip,
+#xbybody .media-server-workspace .poster-row,
+#xbybody .media-server-workspace .detail-page,
+#xbybody .media-server-workspace .detail-lower-content,
+#xbybody .media-server-workspace .detail-section,
+#xbybody .media-server-workspace .detail-section-header,
+#xbybody .media-server-workspace .detail-section-episodes,
+#xbybody .media-server-workspace .detail-episodes-rail,
+#xbybody .media-server-workspace .detail-media-card-rail,
+#xbybody .media-server-workspace .library-shell,
+#xbybody .media-server-workspace .collection-shell {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#xbybody .media-server-workspace .workspace-toolbar::before,
+#xbybody .media-server-workspace .workspace-toolbar::after,
+#xbybody .media-server-workspace .workspace-tabs::before,
+#xbybody .media-server-workspace .workspace-tabs::after,
+#xbybody .media-server-workspace .home-section::before,
+#xbybody .media-server-workspace .home-section::after,
+#xbybody .media-server-workspace .home-section-header::before,
+#xbybody .media-server-workspace .home-section-header::after,
+#xbybody .media-server-workspace .detail-lower-content::before,
+#xbybody .media-server-workspace .detail-lower-content::after,
+#xbybody .media-server-workspace .detail-section::before,
+#xbybody .media-server-workspace .detail-section::after,
+#xbybody .media-server-workspace .detail-section-header::before,
+#xbybody .media-server-workspace .detail-section-header::after {
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#xbybody .media-server-workspace .workspace-tab,
+#xbybody .media-server-workspace .workspace-tab:hover,
+#xbybody .media-server-workspace .workspace-tab.active {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace {
+  --app-mineradio-ink: rgba(17, 24, 39, 0.94);
+  --app-glass-panel: rgba(255, 255, 255, 0.72);
+  --app-glass-line: rgba(15, 23, 42, 0.08);
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .toolbar-btn,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-back-button,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .server-switch-dropdown .arco-btn {
+  color: rgba(17, 24, 39, 0.88) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.66) !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .server-switch-dropdown .arco-btn-content,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .server-switch-trigger,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .server-switch-trigger-text {
+  color: rgba(17, 24, 39, 0.92) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .toolbar-btn:hover,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-back-button:hover,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .server-switch-dropdown .arco-btn:hover {
+  color: rgba(17, 24, 39, 0.96) !important;
+  border-color: rgba(15, 23, 42, 0.12) !important;
+  background: rgba(255, 255, 255, 0.84) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .toolbar-btn .iconfont,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-back-button .iconfont,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .view-toggle-seg .iconfont {
+  color: currentColor !important;
+  opacity: 0.82 !important;
+  text-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .view-toggle-pill {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.66) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .view-toggle-seg {
+  color: rgba(17, 24, 39, 0.5) !important;
+  background: transparent !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .view-toggle-seg:hover,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .view-toggle-seg.active {
+  color: rgba(17, 24, 39, 0.92) !important;
+  background: rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .view-toggle-divider {
+  background: rgba(15, 23, 42, 0.1) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .listing-back-button {
+  width: auto !important;
+  max-width: min(520px, 100%) !important;
+  flex: 0 0 auto !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .arco-modal-header,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .arco-modal-header {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .arco-modal-content,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .arco-modal-content,
+body:not([arco-theme='dark']) .detail-media-modal-shell .arco-modal-content {
+  color: rgba(17, 24, 39, 0.94) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.14) !important;
+  backdrop-filter: blur(24px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.2) !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .arco-modal-title,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .arco-modal-title,
+body:not([arco-theme='dark']) .home-library-manager-modal .home-library-manager-item .arco-checkbox-label,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .home-library-manager-item .arco-checkbox-label {
+  color: rgba(17, 24, 39, 0.92) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .home-library-manager-hint,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .home-library-manager-hint {
+  color: rgba(31, 41, 55, 0.76) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .home-library-manager-list,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .home-library-manager-list,
+body:not([arco-theme='dark']) .server-switch-menu {
+  color: rgba(17, 24, 39, 0.94) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .home-library-manager-empty,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .home-library-manager-empty {
+  color: rgba(17, 24, 39, 0.72) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) .home-library-manager-modal .home-library-manager-drag-icon,
+body:not([arco-theme='dark']) .home-library-manager-modal-shell .home-library-manager-drag-icon {
+  color: rgba(17, 24, 39, 0.54) !important;
+  opacity: 1 !important;
+}
+
+body:not([arco-theme='dark']) .server-switch-menu {
+  color: rgba(17, 24, 39, 0.92) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  box-shadow: 0 24px 52px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(24px) saturate(1.2) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.2) !important;
+}
+
+body:not([arco-theme='dark']) .server-switch-menu .arco-dropdown-option,
+body:not([arco-theme='dark']) .server-switch-menu .arco-dropdown-submenu {
+  background: rgba(255, 255, 255, 0.4) !important;
+}
+
+body:not([arco-theme='dark']) .server-switch-menu .server-option-main > span,
+body:not([arco-theme='dark']) .server-switch-menu .server-option-check {
+  color: rgba(17, 24, 39, 0.92) !important;
+}
+
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .arco-modal,
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .arco-modal-content,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .arco-modal-content {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+  border-color: var(--app-glass-line, rgba(255, 255, 255, 0.08)) !important;
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 245, 212, 0.08), transparent 28%),
+    radial-gradient(circle at 12% 72%, rgba(36, 66, 255, 0.1), transparent 34%),
+    var(--app-mineradio-bg, #08090b) !important;
+  box-shadow:
+    0 28px 60px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(24px) !important;
+  -webkit-backdrop-filter: blur(24px) !important;
+}
+
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .arco-modal-header,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .arco-modal-header {
+  border-bottom: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.06)) !important;
+}
+
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .arco-modal-title,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .arco-modal-title {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+}
+
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .home-library-manager-panel,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .home-library-manager-panel {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .home-library-manager-list,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .home-library-manager-list {
+  border-color: var(--app-glass-line, rgba(255, 255, 255, 0.06)) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  box-shadow: none !important;
+}
+
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .home-library-manager-hint,
+body[arco-theme='dark'] .home-library-manager-modal.detail-media-modal .home-library-manager-item .arco-checkbox-label,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .home-library-manager-hint,
+body[arco-theme='dark'] .home-library-manager-modal-shell.detail-media-modal-shell .home-library-manager-item .arco-checkbox-label {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+}
+
+#xbybody .media-server-workspace .workspace-tabs {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 3px !important;
+  width: max-content !important;
+  max-width: 100% !important;
+  padding: 4px !important;
+  border-radius: 16px !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+#xbybody .media-server-workspace .workspace-tab {
+  height: 34px !important;
+  min-width: 72px !important;
+  padding: 0 18px !important;
+  border-radius: 11px !important;
+  border: 0 !important;
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+  opacity: 0.62 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#xbybody .media-server-workspace .workspace-tab:hover {
+  opacity: 0.82 !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+#xbybody .media-server-workspace .workspace-tab.active {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .workspace-tabs {
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.66) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .workspace-tab {
+  color: rgba(17, 24, 39, 0.58) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .workspace-tab:hover,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .workspace-tab.active {
+  color: rgba(17, 24, 39, 0.94) !important;
+  background: rgba(15, 23, 42, 0.08) !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tabs {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+  opacity: 0.62 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab:hover {
+  opacity: 0.82 !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-tab.active {
+  color: var(--app-mineradio-ink, #e8ecef) !important;
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+#xbybody .media-server-workspace .workspace-content-search,
+#xbybody .media-server-workspace .search-shell-media-server,
+#xbybody .media-server-workspace .search-result-stack,
+#xbybody .media-server-workspace .search-feedback-card {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body[arco-theme='dark'] #xbybody .media-server-workspace .workspace-content-search,
+body[arco-theme='dark'] #xbybody .media-server-workspace .search-shell-media-server,
+body[arco-theme='dark'] #xbybody .media-server-workspace .search-result-stack,
+body[arco-theme='dark'] #xbybody .media-server-workspace .search-feedback-card,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .workspace-content-search,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .search-shell-media-server,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .search-result-stack,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .search-feedback-card {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-lower-content,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section-header,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section-episodes,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-chip-row,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-people-rail,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-recommendation-rail,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-media-card-rail {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section::before,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section::after,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section-header::before,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section-header::after {
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-section-header h4 {
+  color: rgba(17, 24, 39, 0.94) !important;
+  text-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-chip-button,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-chip-link {
+  color: rgba(31, 41, 55, 0.78) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.42) !important;
+  box-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .person-card,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-media-card,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-file-bar {
+  color: rgba(17, 24, 39, 0.92) !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+  background: rgba(255, 255, 255, 0.48) !important;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+#xbybody .media-server-workspace .detail-hero-title,
+#xbybody .media-server-workspace .detail-rating-line,
+#xbybody .media-server-workspace .detail-tech-line,
+#xbybody .media-server-workspace .detail-overview,
+#xbybody .media-server-workspace .detail-section-header h4,
+#xbybody .media-server-workspace .detail-media-card-title,
+#xbybody .media-server-workspace .detail-media-row span,
+#xbybody .media-server-workspace .detail-media-row strong {
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#xbybody .media-server-workspace .detail-hero-logo {
+  filter: none !important;
+}
+
+#xbybody .media-server-workspace .detail-hero-poster,
+#xbybody .media-server-workspace .detail-square-action,
+#xbybody .media-server-workspace .detail-primary-play,
+#xbybody .media-server-workspace .detail-secondary-download,
+#xbybody .media-server-workspace .detail-chip-button,
+#xbybody .media-server-workspace .detail-chip-link,
+#xbybody .media-server-workspace .detail-media-card {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#xbybody .media-server-workspace .detail-section-header h4 {
+  font-size: 20px !important;
+  line-height: 1.25 !important;
+  font-weight: 760 !important;
+  letter-spacing: 0 !important;
+}
+
+#xbybody .media-server-workspace .detail-media-card-title {
+  margin-bottom: 14px !important;
+  font-size: 16px !important;
+  line-height: 1.35 !important;
+  font-weight: 720 !important;
+}
+
+#xbybody .media-server-workspace .detail-media-card-heading {
+  gap: 10px !important;
+}
+
+#xbybody .media-server-workspace .detail-media-kind-badge {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 10px !important;
+  font-size: 14px !important;
+  font-weight: 760 !important;
+}
+
+#xbybody .media-server-workspace .detail-media-card {
+  min-height: 238px !important;
+  padding: 18px 20px !important;
+  border-radius: 20px !important;
+}
+
+#xbybody .media-server-workspace .detail-media-row {
+  grid-template-columns: 96px minmax(0, 1fr) !important;
+  gap: 14px !important;
+}
+
+#xbybody .media-server-workspace .detail-media-row span,
+#xbybody .media-server-workspace .detail-media-row strong {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+#xbybody .media-server-workspace .detail-hero-title {
+  font-size: clamp(30px, 3.4vw, 52px) !important;
+  letter-spacing: 0 !important;
+}
+
+#xbybody .media-server-workspace .detail-rating-line,
+#xbybody .media-server-workspace .detail-tech-line {
+  font-size: 14px !important;
+  line-height: 1.45 !important;
+}
+
+#xbybody .media-server-workspace .detail-overview {
+  font-size: 14px !important;
+  line-height: 1.65 !important;
+}
+
+#xbybody .media-server-workspace .detail-backdrop-mask {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.42) 34%, rgba(0, 0, 0, 0.16) 72%, rgba(0, 0, 0, 0.08) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.2) 0%, rgba(0, 0, 0, 0.08) 48%, rgba(0, 0, 0, 0.42) 100%) !important;
+}
+
+#xbybody .media-server-workspace .detail-hero-title,
+#xbybody .media-server-workspace .detail-episode-heading,
+#xbybody .media-server-workspace .detail-rating-line,
+#xbybody .media-server-workspace .detail-rating-line span,
+#xbybody .media-server-workspace .detail-tech-line,
+#xbybody .media-server-workspace .detail-overview {
+  color: rgba(255, 255, 255, 0.96) !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.38) !important;
+}
+
+#xbybody .media-server-workspace .detail-meta-badge {
+  color: rgba(255, 255, 255, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  background: rgba(0, 0, 0, 0.28) !important;
+}
+
+#xbybody .media-server-workspace .detail-square-action,
+#xbybody .media-server-workspace .detail-secondary-download {
+  color: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  background: rgba(7, 12, 20, 0.54) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24) !important;
+}
+
+#xbybody .media-server-workspace .detail-square-action:hover,
+#xbybody .media-server-workspace .detail-secondary-download:hover {
+  background: rgba(7, 12, 20, 0.68) !important;
+}
+
+#xbybody .media-server-workspace .detail-episode-card,
+body[arco-theme='dark'] #xbybody .media-server-workspace .detail-episode-card,
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-episode-card {
+  background: transparent !important;
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#xbybody .media-server-workspace .detail-episode-card::before,
+#xbybody .media-server-workspace .detail-episode-card::after {
+  display: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#xbybody .media-server-workspace .detail-episode-cover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.18) !important;
+}
+
+#xbybody .media-server-workspace .detail-episode-kicker,
+#xbybody .media-server-workspace .detail-episode-title {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-episode-kicker {
+  color: rgba(31, 41, 55, 0.72) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .media-server-workspace .detail-episode-title {
+  color: rgba(17, 24, 39, 0.94) !important;
+}
+
+/* Keep the media-server home renderer stable in Electron.
+   Backdrop blur plus hover transforms can trigger layer invalidation and make the home nav/content flicker. */
+#xbybody .media-server-workspace .workspace-page,
+#xbybody .media-server-workspace .workspace-toolbar,
+#xbybody .media-server-workspace .workspace-tabs,
+#xbybody .media-server-workspace .workspace-content,
+#xbybody .media-server-workspace .home-page,
+#xbybody .media-server-workspace .home-section,
+#xbybody .media-server-workspace .resume-strip,
+#xbybody .media-server-workspace .poster-row {
+  backface-visibility: hidden !important;
+  -webkit-backface-visibility: hidden !important;
+  transform: translateZ(0) !important;
+}
+
+#xbybody .media-server-workspace .workspace-toolbar,
+#xbybody .media-server-workspace .workspace-tabs,
+#xbybody .media-server-workspace .view-toggle-pill,
+#xbybody .media-server-workspace .toolbar-btn,
+#xbybody .media-server-workspace .see-all-button,
+#xbybody .media-server-workspace .poster-overlay-badge,
+#xbybody .media-server-workspace .section-error-card .arco-btn,
+#xbybody .media-server-workspace .workspace-toolbar .arco-btn,
+#xbybody .media-server-workspace .home-page .arco-btn {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+#xbybody .media-server-workspace .toolbar-btn:active,
+#xbybody .media-server-workspace .view-toggle-seg:active,
+#xbybody .media-server-workspace .see-all-button:active,
+#xbybody .media-server-workspace .interactive-card:hover,
+#xbybody .media-server-workspace .poster-tile:hover,
+#xbybody .media-server-workspace .poster-tile:hover .poster-image img,
+#xbybody .media-server-workspace .poster-tile:hover .poster-meta,
+#xbybody .media-server-workspace .resume-card:hover,
+#xbybody .media-server-workspace .resume-card:hover .resume-card-poster img,
+#xbybody .media-server-workspace .resume-card:hover .resume-card-body {
+  transform: none !important;
+}
+
+/* ── popup/dropdown glass background ── */
+#xbybody .arco-select-popup-container .arco-select-popup-inner,
+#xbybody .arco-trigger-popup-wrapper .arco-dropdown-list,
+#xbybody .arco-trigger-popup {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(20px) saturate(1.2);
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+}
+
+body[arco-theme='dark'] #xbybody .arco-select-popup-container .arco-select-popup-inner,
+body[arco-theme='dark'] #xbybody .arco-trigger-popup-wrapper .arco-dropdown-list,
+body[arco-theme='dark'] #xbybody .arco-trigger-popup {
+  background: linear-gradient(180deg, rgba(24, 29, 40, 0.92), rgba(17, 21, 30, 0.88));
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
 }
 </style>

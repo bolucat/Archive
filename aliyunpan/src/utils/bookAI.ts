@@ -7,6 +7,7 @@ import { aiStore } from '../services/ai/storage/aiStore'
 import { withRetryAndTimeout, AI_TIMEOUTS } from '../services/ai/utils/retry'
 import { chunkSection, SIZE_PER_PAGE } from '../services/ai/utils/chunker'
 import useSettingStore from '../setting/settingstore'
+import { completeBoxPlayerCloudChat, isBoxPlayerCloudProvider, streamBoxPlayerCloudChat } from './boxplayerCloudAI'
 
 // ── re‑exports for backward compat ──────────────────────────────────
 export type { AISettings as BookAISettings } from '../services/ai/types'
@@ -48,6 +49,7 @@ export interface BookAIRequest { system: string; messages: ChatMessage[] }
 
 // ── settings bridge ─────────────────────────────────────────────────
 const PROVIDER_ENDPOINTS: Record<string, string> = {
+  'boxplayer-cloud': '',
   ollama: 'http://127.0.0.1:11434',
   'ai-gateway': '',
   openai: 'https://api.openai.com/v1',
@@ -61,7 +63,7 @@ const PROVIDER_ENDPOINTS: Record<string, string> = {
 
 function buildAISettings(): AISettings {
   const store = useSettingStore()
-  const provider = (store.apiAIModelProvider as string) || 'ai-gateway'
+  const provider = (store.apiAIModelProvider as string) || ''
   // 优先用 store 里存的，否则用 provider 默认 endpoint
   const baseUrl = store.apiAIBaseUrl || PROVIDER_ENDPOINTS[provider] || ''
   return {
@@ -79,7 +81,7 @@ function buildAISettings(): AISettings {
     spoilerProtection: store.apiAISpoilerProtection,
     maxContextChunks: store.apiAIMaxContextChunks || 10,
     indexingMode: (store.apiAIIndexingMode as any) || 'on-demand',
-    reedy: { enabled: store.apiAIReedyEnabled, runtime: store.apiAIReedyRuntime || 'mvp' },
+    reedy: { enabled: isBoxPlayerCloudProvider(provider) ? false : store.apiAIReedyEnabled, runtime: store.apiAIReedyRuntime || 'mvp' },
   }
 }
 
@@ -87,9 +89,9 @@ export function getAIConfig(): AIModelConfig | null {
   const store = useSettingStore()
   const provider = store.apiAIModelProvider
   if (!provider || !store.apiAIModelId) return null
-  if (provider !== 'ollama' && !store.apiAIModelKey) return null
+  if (provider !== 'ollama' && !isBoxPlayerCloudProvider(provider) && !store.apiAIModelKey) return null
   const s = buildAISettings()
-  return { endpoint: s.openRouterBaseUrl || s.ollamaUrl, modelId: s.openRouterModel || s.ollamaModel, apiKey: s.openRouterApiKey || s.aiGatewayApiKey, providerName: provider }
+  return { endpoint: isBoxPlayerCloudProvider(provider) ? '' : s.openRouterBaseUrl || s.ollamaUrl, modelId: s.openRouterModel || s.ollamaModel, apiKey: s.openRouterApiKey || s.aiGatewayApiKey, providerName: provider }
 }
 
 export function isAIConfigured(): boolean { return !!getAIConfig() }
@@ -108,14 +110,27 @@ function createAIModel(config: AIModelConfig) {
 export function resolveAIProviderConfig(providerOverride = ''): AIModelConfig | null {
   const store = useSettingStore()
   const provider = providerOverride || store.apiAIModelProvider
-  if (!provider || !store.apiAIModelId) return null
-  const s = buildAISettings()
-  return {
-    endpoint: s.openRouterBaseUrl || s.ollamaUrl,
-    modelId: s.openRouterModel || s.ollamaModel,
-    apiKey: store.apiAIModelKey,
-    providerName: provider,
+  if (!provider) return null
+  if (isBoxPlayerCloudProvider(provider)) {
+    return { endpoint: '', modelId: store.apiAIModelId || 'deepseek/deepseek-v4-pro', apiKey: '', providerName: provider }
   }
+  let modelId = store.apiAIModelId
+  let apiKey = store.apiAIModelKey
+  let baseUrl = store.apiAIBaseUrl
+  if (providerOverride && providerOverride !== store.apiAIModelProvider) {
+    try {
+      const raw = localStorage.getItem(`ai_provider_config_${providerOverride}`)
+      if (raw) {
+        const cfg = JSON.parse(raw) as { apiKey: string; modelId: string; embeddingModelId: string; baseUrl: string }
+        apiKey = cfg.apiKey
+        modelId = cfg.modelId
+        baseUrl = cfg.baseUrl
+      }
+    } catch {}
+  }
+  if (!modelId) return null
+  if (provider !== 'ollama' && !apiKey) return null
+  return { endpoint: baseUrl || '', modelId, apiKey, providerName: provider }
 }
 
 // ── prompt builder ──────────────────────────────────────────────────
@@ -141,6 +156,14 @@ interface SSECallback { onToken: (text: string) => void; onDone: () => void; onE
 export async function chatStreamCompletion(
   config: AIModelConfig, request: BookAIRequest, callback: SSECallback, options: { idleTimeoutMs?: number } = {}
 ): Promise<void> {
+  if (isBoxPlayerCloudProvider(config.providerName)) {
+    await streamBoxPlayerCloudChat({
+      feature: 'reader_chat',
+      messages: [{ role: 'system', content: request.system }, ...request.messages]
+    }, callback)
+    return
+  }
+
   const model = createAIModel(config)
   try {
     const result = streamText({ model, system: request.system, messages: request.messages })
@@ -161,6 +184,13 @@ export async function chatStreamCompletion(
 }
 
 export async function generateAIText(config: AIModelConfig, prompt: string, maxOutputTokens = 3000): Promise<string> {
+  if (isBoxPlayerCloudProvider(config.providerName)) {
+    return completeBoxPlayerCloudChat({
+      feature: 'reader_chat',
+      messages: [{ role: 'user', content: prompt }]
+    })
+  }
+
   const { generateText } = await import('ai')
   const result = await generateText({ model: createAIModel(config), prompt, maxOutputTokens })
   return result.text
@@ -175,6 +205,15 @@ export async function testAIConnection(): Promise<{ ok: boolean; message: string
     // Validate config
     const modelId = store.apiAIModelId
     if (!modelId) return { ok: false, message: '请先选择或输入 AI 模型' }
+    if (isBoxPlayerCloudProvider(s.provider)) {
+      const { isPro } = await import('../utils/usageLimit')
+      if (!isPro()) return { ok: false, message: '内置 AI 需购买 Pro 后使用' }
+      await completeBoxPlayerCloudChat({
+        feature: 'reader_chat',
+        messages: [{ role: 'user', content: '请只回复 OK' }]
+      })
+      return { ok: true, message: '连接成功' }
+    }
     if (s.provider !== 'ollama' && !store.apiAIModelKey) return { ok: false, message: '请先填写 API Key' }
 
     const provider = getAIProvider(s)

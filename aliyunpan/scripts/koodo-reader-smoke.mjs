@@ -18,6 +18,9 @@ const modalBookExt = process.env.KOODO_SMOKE_MODAL_BOOK_EXT || path.extname(moda
 const modalBookTitle = process.env.KOODO_SMOKE_MODAL_BOOK_TITLE || (modalBookUrl.split('/').pop() || 'Koodo Scroll Smoke Book')
 const modalExpectedText = process.env.KOODO_SMOKE_MODAL_EXPECTED_TEXT || modalBookTitle
 const modalLayoutMode = process.env.KOODO_SMOKE_MODAL_LAYOUT || 'scroll'
+const modalFullTranslationMode = process.env.KOODO_SMOKE_MODAL_TRANSLATION || 'no'
+const modalTranslationStub = process.env.KOODO_SMOKE_TRANSLATION_STUB === '1'
+const modalRightPanelCheck = process.env.KOODO_SMOKE_MODAL_RIGHT_PANEL === '1'
 const directSmokeUrl = `${viteUrl}/koodo-smoke.html`
 const modalSmokeUrl = `${viteUrl}/koodo-modal-smoke.html`
 const childTimeoutMs = Number(process.env.KOODO_SMOKE_CHILD_TIMEOUT_MS || 30000)
@@ -196,7 +199,7 @@ async function writeSmokeFiles() {
             .map((iframe) => iframe.contentDocument?.body?.innerText || '')
             .join('\\n')
           combinedText = [visibleText, bodyText, iframeText].join('\\n')
-          if (combinedText.includes('Koodo Smoke Book') || combinedText.includes('nebula')) break
+	          if (combinedText.includes('Koodo Smoke Book') || combinedText.includes('nebula')) break
           await new Promise((resolve) => setTimeout(resolve, 250))
         }
         const result = {
@@ -250,17 +253,33 @@ async function writeSmokeFiles() {
     </style>
   </head>
   <body>
-    <div id="status">loading</div>
-    <div id="app"></div>
-    <script type="module">
-      window.__koodoSmokeErrors = []
-      window.addEventListener('error', (event) => {
-        window.__koodoSmokeErrors.push(String(event.error?.message || event.message || 'error'))
-      })
-      window.addEventListener('unhandledrejection', (event) => {
-        window.__koodoSmokeErrors.push(String(event.reason?.message || event.reason || 'rejection'))
-      })
-      localStorage.setItem('bookReader.preferences', JSON.stringify({ readerLayoutMode: ${JSON.stringify(modalLayoutMode)}, readerIsHidePageButton: false }))
+	    <div id="status">loading</div>
+	    <div id="app"></div>
+	    <script type="module">
+	      if (${JSON.stringify(modalTranslationStub)}) {
+	        const originalFetch = window.fetch.bind(window)
+	        window.fetch = async (input, init) => {
+	          const url = String(input?.url || input)
+	          if (url.includes('translate.googleapis.com/translate_a/single')) {
+	            const source = new URL(url).searchParams.get('q') || ''
+	            return new Response(JSON.stringify([[[\`译文 \${source.slice(0, 80)}\`, source, null, null]]]), { headers: { 'content-type': 'application/json' } })
+	          }
+	          return originalFetch(input, init)
+	        }
+	      }
+	      window.__koodoSmokeErrors = []
+	      window.addEventListener('error', (event) => {
+	        window.__koodoSmokeErrors.push(String(event.error?.message || event.message || 'error'))
+	      })
+	      window.addEventListener('unhandledrejection', (event) => {
+	        window.__koodoSmokeErrors.push(String(event.reason?.message || event.reason || 'rejection'))
+	      })
+	      localStorage.setItem('bookReader.preferences', JSON.stringify({ readerLayoutMode: ${JSON.stringify(modalLayoutMode)}, readerFullTranslationMode: ${JSON.stringify(modalFullTranslationMode)}, readerIsHidePageButton: false }))
+	      localStorage.setItem('bookReader.translator', 'google')
+	      if (${JSON.stringify(modalFullTranslationMode)} !== 'no') {
+	        localStorage.setItem('app_user_authed', '1')
+	        localStorage.setItem(\`usage_\${new Date().toISOString().slice(0, 10)}_readerTranslation\`, '-100000')
+	      }
 
       const smokeBook = {
         id: 'koodo-modal-smoke-book',
@@ -309,10 +328,30 @@ async function writeSmokeFiles() {
               }
             })
           }
-        }).use(pinia).use(ArcoVue).mount('#app')
-
-        const status = document.getElementById('status')
-        const started = Date.now()
+	        }).use(pinia).use(ArcoVue).mount('#app')
+	
+	        const status = document.getElementById('status')
+	        const collectTranslationHosts = () =>
+	          Array.from(document.querySelectorAll('#page-area iframe')).flatMap((iframe) =>
+	            Array.from(iframe.contentDocument?.querySelectorAll('.kookit-translation-host') || []).map((node) => ({
+	              text: node.textContent?.slice(0, 120) || '',
+	              translation: node.getAttribute('data-kookit-translation') || '',
+	              className: node.getAttribute('class') || '',
+	              style: node.getAttribute('style') || ''
+	            }))
+	          )
+	        const waitForTranslationHosts = async () => {
+	          if (${JSON.stringify(modalFullTranslationMode)} === 'no') return collectTranslationHosts()
+	          const translationStarted = Date.now()
+	          let hosts = collectTranslationHosts()
+	          while (Date.now() - translationStarted < 15000) {
+	            hosts = collectTranslationHosts()
+	            if (hosts.some((host) => host.translation.includes('译文'))) return hosts
+	            await new Promise((resolve) => setTimeout(resolve, 300))
+	          }
+	          return hosts
+	        }
+	        const started = Date.now()
         let combinedText = ''
         let stage = null
         while (Date.now() - started < 10000) {
@@ -321,12 +360,66 @@ async function writeSmokeFiles() {
             .map((iframe) => iframe.contentDocument?.body?.innerText || '')
             .join('\\n')
           combinedText = [document.body.innerText || '', iframeText].join('\\n')
-          if (combinedText.includes('Koodo Smoke Book') || combinedText.includes('nebula')) break
+	          if (combinedText.includes(${JSON.stringify(modalExpectedText)}) || combinedText.includes('nebula')) break
           await new Promise((resolve) => setTimeout(resolve, 250))
-        }
-        await new Promise((resolve) => setTimeout(resolve, 600))
-        stage = document.querySelector('#page-area')
-        const beforeScrollTop = stage?.scrollTop ?? -1
+	        }
+		        await new Promise((resolve) => setTimeout(resolve, 600))
+		        stage = document.querySelector('#page-area')
+		        const checkRightPanel = async () => {
+		          if (!${JSON.stringify(modalRightPanelCheck)}) return { requested: false, ok: true }
+		          const trigger = document.querySelector('.trigger-right')
+		          trigger?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: window.innerWidth - 2, clientY: Math.round(window.innerHeight / 2) }))
+		          await new Promise((resolve) => setTimeout(resolve, 350))
+		          const panel = document.querySelector('.panel-right.setting-panel')
+		          const lang = document.querySelector('.panel-right.setting-panel .lang-toggle-btn')
+		          const topControls = document.querySelector('.reader-topright-controls')
+		          const rectOf = (el) => {
+		            if (!el) return null
+		            const rect = el.getBoundingClientRect()
+		            return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, width: rect.width, height: rect.height }
+		          }
+		          const intersects = (a, b) => !!a && !!b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+		          const panelRectBefore = panel?.getBoundingClientRect()
+		          const widthBefore = panelRectBefore?.width || 0
+		          const handle = document.querySelector('.panel-right.setting-panel .panel-resize-left')
+		          handle?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: Math.round((panelRectBefore?.left || 0) + 2), clientY: 120 }))
+		          await new Promise((resolve) => setTimeout(resolve, 50))
+		          const shield = document.querySelector('.panel-resize-shield')
+		          const move = new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: Math.round((panelRectBefore?.left || 0) - 140), clientY: 120 })
+		          ;(shield || document).dispatchEvent(move)
+		          const up = new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: Math.round((panelRectBefore?.left || 0) - 140), clientY: 120 })
+		          ;(shield || document).dispatchEvent(up)
+		          await new Promise((resolve) => setTimeout(resolve, 80))
+		          const panelRectAfter = panel?.getBoundingClientRect()
+		          const widthAfter = panelRectAfter?.width || 0
+		          const langRect = rectOf(lang)
+		          const topControlsRect = rectOf(topControls)
+		          const triggerRect = rectOf(trigger)
+		          const triggerStyle = trigger ? getComputedStyle(trigger) : null
+		          const triggerVisible = !!trigger && triggerStyle?.display !== 'none' && triggerStyle?.visibility !== 'hidden'
+		          const topControlsOverlapLang = intersects(langRect, topControlsRect)
+		          const triggerOverlapLang = triggerVisible && intersects(langRect, triggerRect)
+		          const resized = widthAfter > widthBefore + 80
+		          const ok = !!panel?.classList.contains('open') && !!lang && !!topControls && !topControlsOverlapLang && !triggerOverlapLang && !!shield && resized
+		          return {
+		            requested: true,
+		            ok,
+		            panelOpen: !!panel?.classList.contains('open'),
+		            shieldSeen: !!shield,
+		            resized,
+		            widthBefore,
+		            widthAfter,
+		            topControlsOverlapLang,
+		            triggerOverlapLang,
+		            triggerVisible,
+		            langRect,
+		            topControlsRect,
+		            triggerRect
+		          }
+		        }
+		        const rightPanelCheck = await checkRightPanel()
+		        const beforeTranslationHosts = await waitForTranslationHosts()
+		        const beforeScrollTop = stage?.scrollTop ?? -1
         const scrollHeight = stage?.scrollHeight ?? 0
         const clientHeight = stage?.clientHeight ?? 0
         const iframeMetricsBefore = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => ({
@@ -339,37 +432,58 @@ async function writeSmokeFiles() {
           docElementScrollHeight: iframe.contentDocument?.documentElement?.scrollHeight || 0,
           docBodyTextLength: iframe.contentDocument?.body?.innerText?.length || 0
         }))
-        const beforeReaderText = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => iframe.contentDocument?.body?.innerText || '').join('\\n')
-        const beforeBodyText = document.body.innerText || ''
-        const beforeFooterText = document.querySelector('.pw-footer')?.textContent || ''
-        document.querySelector('.page-turn-next')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse' }))
-        await new Promise((resolve) => setTimeout(resolve, 1800))
-        const afterClickScrollTop = stage?.scrollTop ?? -1
-        const afterClickReaderText = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => iframe.contentDocument?.body?.innerText || '').join('\\n')
-        const afterClickBodyText = document.body.innerText || ''
-        const afterClickFooterText = document.querySelector('.pw-footer')?.textContent || ''
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
-        await new Promise((resolve) => setTimeout(resolve, 1800))
-        const afterKeyboardScrollTop = stage?.scrollTop ?? -1
-        const afterKeyboardReaderText = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => iframe.contentDocument?.body?.innerText || '').join('\\n')
-        const afterKeyboardBodyText = document.body.innerText || ''
-        const afterKeyboardFooterText = document.querySelector('.pw-footer')?.textContent || ''
-        const arrowDownBefore = stage?.scrollTop ?? -1
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }))
-        await new Promise((resolve) => setTimeout(resolve, 500))
-        const arrowDownAfter = stage?.scrollTop ?? -1
-        const arrowDownDelta = arrowDownAfter - arrowDownBefore
-        const footerShowsPageNumber = /Page\\s+\\d+/.test([beforeFooterText, afterClickFooterText, afterKeyboardFooterText].join(' '))
-        const isScrollLayout = ${JSON.stringify(modalLayoutMode)} === 'scroll'
-        const scrollNavigationWorked = scrollHeight > clientHeight && (afterClickScrollTop > beforeScrollTop || afterClickReaderText !== beforeReaderText || afterClickBodyText !== beforeBodyText) && (afterKeyboardScrollTop > afterClickScrollTop || afterKeyboardReaderText !== afterClickReaderText || afterKeyboardBodyText !== afterClickBodyText)
-        const paginatedNavigationWorked = scrollHeight <= clientHeight + 2 && afterClickFooterText !== beforeFooterText && afterKeyboardFooterText !== afterClickFooterText
-        const navigationWorked = isScrollLayout ? scrollNavigationWorked : paginatedNavigationWorked
-        const result = {
-          ok: combinedText.includes(${JSON.stringify(modalExpectedText)}) && navigationWorked && footerShowsPageNumber,
-          hasModal: !!document.querySelector('.reader-modal'),
-          hasStage: !!stage,
-          layoutMode: ${JSON.stringify(modalLayoutMode)},
-          navigationWorked,
+	        const beforeReaderText = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => iframe.contentDocument?.body?.innerText || '').join('\\n')
+	        const beforeBodyText = document.body.innerText || ''
+	        const beforeFooterText = document.querySelector('.pw-footer')?.textContent || ''
+	        const modalTranslationRequested = ${JSON.stringify(modalFullTranslationMode)} !== 'no'
+		        document.querySelector('.page-turn-next')?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse' }))
+		        await new Promise((resolve) => setTimeout(resolve, 1800))
+		        const afterClickTranslationHosts = await waitForTranslationHosts()
+		        const afterClickScrollTop = stage?.scrollTop ?? -1
+	        const afterClickReaderText = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => iframe.contentDocument?.body?.innerText || '').join('\\n')
+	        const afterClickBodyText = document.body.innerText || ''
+	        const afterClickFooterText = document.querySelector('.pw-footer')?.textContent || ''
+	        let afterKeyboardTranslationHosts = afterClickTranslationHosts
+	        let afterKeyboardScrollTop = afterClickScrollTop
+	        let afterKeyboardReaderText = afterClickReaderText
+	        let afterKeyboardBodyText = afterClickBodyText
+	        let afterKeyboardFooterText = afterClickFooterText
+	        let arrowDownBefore = stage?.scrollTop ?? -1
+	        let arrowDownAfter = arrowDownBefore
+	        if (!modalTranslationRequested) {
+	          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }))
+	          await new Promise((resolve) => setTimeout(resolve, 1800))
+	          afterKeyboardTranslationHosts = await waitForTranslationHosts()
+	          afterKeyboardScrollTop = stage?.scrollTop ?? -1
+	          afterKeyboardReaderText = Array.from(document.querySelectorAll('#page-area iframe')).map((iframe) => iframe.contentDocument?.body?.innerText || '').join('\\n')
+	          afterKeyboardBodyText = document.body.innerText || ''
+	          afterKeyboardFooterText = document.querySelector('.pw-footer')?.textContent || ''
+	          arrowDownBefore = stage?.scrollTop ?? -1
+	          window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }))
+	          await new Promise((resolve) => setTimeout(resolve, 500))
+	          arrowDownAfter = stage?.scrollTop ?? -1
+	        }
+	        const arrowDownDelta = arrowDownAfter - arrowDownBefore
+		        const footerShowsPageNumber = /Page\\s+\\d+/.test([beforeFooterText, afterClickFooterText, afterKeyboardFooterText].join(' '))
+		        const isScrollLayout = ${JSON.stringify(modalLayoutMode)} === 'scroll'
+			        const translationHosts = [...beforeTranslationHosts, ...afterClickTranslationHosts, ...afterKeyboardTranslationHosts]
+	        const translationOk =
+	          ${JSON.stringify(modalFullTranslationMode)} === 'no' ||
+	          (translationHosts.some((host) => host.translation.includes('译文')) &&
+	            (${JSON.stringify(modalFullTranslationMode)} !== 'target' || translationHosts.some((host) => /font-size:\\s*0px/i.test(host.style))))
+		        const scrollNavigationWorked = scrollHeight > clientHeight && (afterClickScrollTop > beforeScrollTop || afterClickReaderText !== beforeReaderText || afterClickBodyText !== beforeBodyText) && (afterKeyboardScrollTop > afterClickScrollTop || afterKeyboardReaderText !== afterClickReaderText || afterKeyboardBodyText !== afterClickBodyText)
+		        const paginatedNavigationWorked = scrollHeight <= clientHeight + 2 && afterClickFooterText !== beforeFooterText && afterKeyboardFooterText !== afterClickFooterText
+		        const navigationWorked = isScrollLayout ? scrollNavigationWorked : paginatedNavigationWorked
+		        const result = {
+		          ok: combinedText.includes(${JSON.stringify(modalExpectedText)}) && footerShowsPageNumber && translationOk && (modalTranslationRequested || navigationWorked) && rightPanelCheck.ok,
+	          hasModal: !!document.querySelector('.reader-modal'),
+	          hasStage: !!stage,
+	          layoutMode: ${JSON.stringify(modalLayoutMode)},
+	          fullTranslationMode: ${JSON.stringify(modalFullTranslationMode)},
+	          navigationWorked,
+		          translationOk,
+		          rightPanelCheck,
+	          translationHosts: translationHosts.slice(0, 5),
           scrollNavigationWorked,
           paginatedNavigationWorked,
           footerShowsPageNumber,

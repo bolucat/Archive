@@ -7,6 +7,7 @@ const CLIENT_SECRET = ''
 import { open } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { buildMultipart, hashBlocks, readSlice, toConflictMode } from './uploadUtils.mjs'
+import { downloadUrlToFile } from '../core/downloadFile.mjs'
 
 async function baiduGet(path, params, token) {
   const qs = new URLSearchParams({ ...params, access_token: token.access_token })
@@ -175,6 +176,37 @@ export async function baiduGetFile(token, fsId) {
     throw err
   }
   return mapFileItem(item, accountId)
+}
+
+export async function baiduDownloadFile(token, fsId, outputPath) {
+  const accountId = token.user_id
+  const data = await baiduGet('/multimedia', {
+    method: 'filemetas',
+    fsids: JSON.stringify([Number(fsId)]),
+    dlink: '1',
+    thumb: '0',
+  }, token)
+  const metas = Array.isArray(data.list) ? data.list : Array.isArray(data.info) ? data.info : []
+  const item = metas[0]
+  if (!item) {
+    const err = new Error(`File not found: ${fsId}`)
+    err.code = 'ERR_BAIDU_NOT_FOUND'
+    throw err
+  }
+  if (item.isdir === 1) {
+    const err = new Error(`Cannot download folder: ${fsId}`)
+    err.code = 'ERR_BAIDU_DOWNLOAD_FOLDER'
+    throw err
+  }
+  if (!item.dlink) {
+    const err = new Error(`Baidu returned no dlink for file: ${fsId}`)
+    err.code = 'ERR_BAIDU_DOWNLOAD_URL'
+    throw err
+  }
+  const url = new URL(item.dlink)
+  if (!url.searchParams.has('access_token')) url.searchParams.set('access_token', token.access_token)
+  await downloadUrlToFile(url.toString(), outputPath, { headers: { 'User-Agent': 'pan.baidu.com' } })
+  return { ok: true, provider: 'baidu', accountId, driveId: 'baidu', fileId: String(fsId), name: item.server_filename || item.filename || '', size: item.size || 0, output: outputPath }
 }
 
 export async function baiduMove(token, moves) {

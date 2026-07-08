@@ -16,6 +16,7 @@ export function createCloud123Provider() {
       mkdir: true,
       move: true,
       uploadFile: true,
+      downloadFile: false,
     },
     auth: {
       async login() {

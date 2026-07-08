@@ -1,6 +1,6 @@
 import { request as httpsRequest } from 'https'
 
-const PANHUB_ORIGIN = 'https://panhub.shenzjd.com'
+const PANHUB_ALLOWED_ORIGINS = ['https://api.xbyvideohub.com']
 
 export interface PanHubRequestData {
   url: string
@@ -45,7 +45,7 @@ function requestWithHttps(url: URL, method: string, headers?: Record<string, str
 
 export async function requestPanHub(data: PanHubRequestData, fetchImpl?: PanHubFetch): Promise<PanHubRequestResult> {
   const url = new URL(data.url)
-  if (url.origin !== PANHUB_ORIGIN || !url.pathname.startsWith('/api/')) throw new Error('不允许的 PanHub 请求地址')
+  if (!PANHUB_ALLOWED_ORIGINS.includes(url.origin) || !url.pathname.startsWith('/api/')) throw new Error('不允许的 PanHub 请求地址')
 
   const method = (data.method || 'GET').toUpperCase()
   if (method !== 'GET' && method !== 'POST') throw new Error('不允许的 PanHub 请求方法')

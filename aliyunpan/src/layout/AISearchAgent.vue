@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { Sparkles, User, Bot, Loader2 } from 'lucide-vue-next'
 import { useAppStore } from '../store'
+import message from '../utils/message'
 import { useAISearchChat } from './aisearch/useAISearchChat'
 import ReasonChain from './aisearch/ReasonChain.vue'
 import ClarifyCard from './aisearch/ClarifyCard.vue'
@@ -21,6 +22,7 @@ import { renderMarkdown } from './aisearch/markdown'
 import type { FileResult } from './aisearch/types'
 
 const props = defineProps<{ aiEnabled: boolean; keyword: string; trigger: number; phSearch: (kw: string) => Promise<any> }>()
+const emit = defineEmits<{ 'search-resource': [title: string] }>()
 
 const appStore = useAppStore()
 const { messages, loading, sendMessage, clear, confirmAction, cancelAction } = useAISearchChat(props.phSearch)
@@ -29,8 +31,21 @@ const inputText = ref('')
 
 function handleSend(q?: string) {
   const kw = (q || props.keyword || '').trim()
-  if (!kw) return
+  if (!kw) return false
+  if (!props.aiEnabled) {
+    message.warning('AI Agent 对话需登录后配置 BYOK 模型或升级 Pro 后使用')
+    return false
+  }
   sendMessage(kw)
+  return true
+}
+
+function handleInputSend() {
+  if (handleSend(inputText.value)) inputText.value = ''
+}
+
+function handleSearchResource(title: string) {
+  emit('search-resource', title)
 }
 
 function handleClarifySelect(option: string) {
@@ -105,7 +120,7 @@ const DEFAULT_FOLLOWUPS = [
       <div v-if="messages.length === 0 && !loading" class="ai-empty">
         <Sparkles :size="48" :stroke-width="1" class="ai-empty-icon" />
         <div class="ai-empty-title">AI 智能搜索</div>
-        <div class="ai-empty-desc">在下方输入框描述你想做什么，AI 帮你搜索和整理文件</div>
+        <div class="ai-empty-desc">{{ aiEnabled ? '在下方输入框描述你想做什么，AI 帮你搜索和整理文件' : '未登录用户可以预览 AI Agent；登录后配置 BYOK 或升级 Pro 才能发送对话' }}</div>
       </div>
 
       <!-- message list -->
@@ -132,7 +147,10 @@ const DEFAULT_FOLLOWUPS = [
               @confirm="handleDriveConfirm"
             />
 
-            <!-- text -->
+            <!-- text (user) -->
+            <div v-else-if="part.type === 'text' && msg.role === 'user'" class="ai-msg-text">{{ (part as any).text }}</div>
+
+            <!-- text (assistant, markdown) -->
             <div v-else-if="part.type === 'text'" class="ai-msg-text" v-html="renderMarkdown((part as any).text)" />
 
             <!-- reasoning -->
@@ -201,8 +219,10 @@ const DEFAULT_FOLLOWUPS = [
               :state="(part as any).state"
               :category="(part as any).category"
               :movies="(part as any).movies"
+              :tv="(part as any).tv"
               :error="(part as any).error"
               @search="(title: string) => handleSend(title)"
+              @search-resource="(title: string) => handleSearchResource(title)"
               @retry="handleRetryTool(msg.id, 'tool-getMovies', {})"
             />
 
@@ -279,6 +299,7 @@ const DEFAULT_FOLLOWUPS = [
           v-for="hint in DEFAULT_FOLLOWUPS"
           :key="hint"
           class="ai-hint"
+          :disabled="!aiEnabled || loading"
           type="button"
           @click="handleSend(hint)"
         >
@@ -289,13 +310,13 @@ const DEFAULT_FOLLOWUPS = [
         <input
           v-model="inputText"
           class="ai-input"
-          placeholder="描述你想做什么..."
-          @keydown.enter="handleSend(inputText); inputText = ''"
+          :placeholder="aiEnabled ? '描述你想做什么...' : '登录后配置 BYOK 或升级 Pro 后可发送对话'"
+          @keydown.enter="handleInputSend"
         />
         <button
           class="ai-send-btn"
-          :disabled="!inputText.trim() || loading"
-          @click="handleSend(inputText); inputText = ''"
+          :disabled="!aiEnabled || !inputText.trim() || loading"
+          @click="handleInputSend"
         >
           发送
         </button>
@@ -311,18 +332,24 @@ const DEFAULT_FOLLOWUPS = [
 </template>
 
 <style scoped>
-.ai-chat { display: flex; flex-direction: column; height: 100%; background: var(--color-bg-1); }
+.ai-chat { display: flex; flex-direction: column; height: 100%; background: transparent; }
 
 .ai-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; padding: 40px 24px; text-align: center; }
 .ai-empty-icon { color: var(--color-text-4); opacity: 0.3; margin-bottom: 12px; }
 .ai-empty-title { font-size: 18px; font-weight: 600; color: var(--color-text-2); margin-bottom: 6px; }
+.ai-pro-badge, .ai-send-pro { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: linear-gradient(135deg, #f59e0b, #f97316); color: #fff; font-weight: 700; line-height: 1; letter-spacing: 0; }
+.ai-pro-badge { height: 16px; padding: 0 6px; font-size: 10px; vertical-align: middle; margin-left: 4px; }
+.ai-send-pro { height: 14px; padding: 0 5px; font-size: 9px; margin-left: 2px; }
 .ai-empty-desc { font-size: 13px; color: var(--color-text-4); margin-bottom: 20px; }
 .ai-empty-hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.ai-hint { padding: 6px 14px; font-size: 13px; color: var(--color-text-3); background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 16px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
-.ai-hint:hover { color: rgb(var(--primary-6)); border-color: rgb(var(--primary-6)); }
+.ai-hint { padding: 6px 14px; font-size: 13px; color: var(--color-text-3); background: transparent; border: 1px solid rgba(var(--primary-6), 0.16); border-radius: 16px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.ai-hint:hover { color: rgb(var(--primary-6)); background: rgba(var(--primary-6), 0.08); border-color: rgba(var(--primary-6), 0.42); }
+.ai-hint:disabled { opacity: 0.45; cursor: default; }
+.ai-hint:disabled:hover { color: var(--color-text-3); background: transparent; border-color: rgba(var(--primary-6), 0.16); }
 
-.ai-messages { flex: 1; overflow-y: auto; padding: 16px 48px; display: flex; flex-direction: column; gap: 16px; }
-.ai-msg { display: flex; gap: 10px; max-width: 85%; }
+.ai-messages { flex: 1; overflow-y: auto; padding: 16px 48px; display: flex; flex-direction: column; }
+.ai-msg { display: flex; gap: 10px; max-width: 85%; margin-bottom: 24px; }
+.ai-msg:last-child { margin-bottom: 0; }
 .ai-msg--user { align-self: flex-end; flex-direction: row-reverse; }
 .ai-msg--assistant { align-self: flex-start; }
 .ai-msg-avatar { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; }
@@ -330,25 +357,42 @@ const DEFAULT_FOLLOWUPS = [
 .ai-msg--assistant .ai-msg-avatar { background: var(--color-fill-2); color: var(--color-text-3); }
 .ai-msg-body { min-width: 0; flex: 1; }
 .ai-msg--user .ai-msg-body { text-align: right; }
-.ai-msg-text { font-size: 14px; line-height: 1.65; color: var(--color-text-1); word-break: break-word; }
-.ai-msg--user .ai-msg-text { background: rgb(var(--primary-6)); color: #fff; padding: 10px 14px; border-radius: 12px 12px 4px 12px; display: inline-block; text-align: left; max-width: 100%; }
+.ai-msg-text { font-size: 14px; line-height: 1.65; color: var(--color-text-1); word-break: break-word; white-space: pre-wrap; }
+.ai-msg--user .ai-msg-text { padding: 4px 0; text-align: right; }
 .ai-msg--assistant .ai-msg-text { padding: 4px 0; }
 .ai-msg-text :deep(strong) { font-weight: 600; }
-.ai-msg-text :deep(code) { padding: 1px 4px; font-size: 12px; background: var(--color-fill-2); border-radius: 3px; }
-.ai-msg-text :deep(a) { color: rgb(var(--primary-6)); }
+.ai-msg-text :deep(em) { font-style: italic; }
+.ai-msg-text :deep(del) { text-decoration: line-through; opacity: 0.7; }
+.ai-msg-text :deep(code) { padding: 1px 5px; font-size: 12px; background: var(--color-fill-2); border-radius: 3px; font-family: 'SF Mono', 'Menlo', 'Monaco', monospace; }
+.ai-msg-text :deep(a) { color: rgb(var(--primary-6)); text-decoration: underline; }
+.ai-msg-text :deep(a:hover) { opacity: 0.8; }
+.ai-msg-text :deep(h1), .ai-msg-text :deep(h2), .ai-msg-text :deep(h3), .ai-msg-text :deep(h4) { margin: 8px 0 4px; font-weight: 600; line-height: 1.3; }
+.ai-msg-text :deep(h1) { font-size: 18px; }
+.ai-msg-text :deep(h2) { font-size: 16px; }
+.ai-msg-text :deep(h3) { font-size: 15px; }
+.ai-msg-text :deep(h4) { font-size: 14px; }
+.ai-msg-text :deep(ul), .ai-msg-text :deep(ol) { padding-left: 20px; margin: 4px 0; }
+.ai-msg-text :deep(li) { margin: 2px 0; }
+.ai-msg-text :deep(blockquote) { margin: 6px 0; padding: 4px 12px; border-left: 3px solid rgb(var(--primary-6)); color: var(--color-text-2); background: var(--color-fill-1); border-radius: 0 4px 4px 0; }
+.ai-msg-text :deep(hr) { border: 0; border-top: 1px solid var(--color-border-2); margin: 10px 0; }
+.ai-msg-text :deep(table) { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+.ai-msg-text :deep(th), .ai-msg-text :deep(td) { padding: 6px 10px; border: 1px solid var(--color-border-2); text-align: left; }
+.ai-msg-text :deep(th) { background: var(--color-fill-1); font-weight: 600; }
+.ai-msg-text :deep(pre) { margin: 6px 0; padding: 10px 12px; background: var(--color-fill-1); border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.5; }
+.ai-msg-text :deep(pre code) { padding: 0; background: transparent; font-size: inherit; }
 
-.ai-bottom { flex-shrink: 0; padding: 0 48px 12px; background: var(--color-bg-1); }
+.ai-bottom { flex-shrink: 0; padding: 0 48px 12px; background: transparent; }
 .ai-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
 .ai-suggestions-label { font-size: 12px; color: var(--color-text-4); flex-shrink: 0; margin-right: 2px; }
 .ai-input-bar { display: flex; gap: 8px; }
-.ai-input { flex: 1; padding: 10px 16px; font-size: 14px; color: var(--color-text-1); background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 10px; outline: none; font-family: inherit; }
+.ai-input { flex: 1; padding: 10px 16px; font-size: 14px; color: var(--color-text-1); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(var(--primary-6), 0.14); border-radius: 10px; outline: none; font-family: inherit; }
 .ai-input:focus { border-color: rgb(var(--primary-6)); box-shadow: 0 0 0 2px rgba(var(--primary-6), 0.12); }
 .ai-input::placeholder { color: var(--color-text-4); }
 .ai-send-btn { padding: 8px 20px; font-size: 14px; font-weight: 500; color: #fff; background: rgb(var(--primary-6)); border: 0; border-radius: 10px; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
 .ai-send-btn:hover { opacity: 0.9; }
 .ai-send-btn:disabled { opacity: 0.4; cursor: default; }
 
-.ai-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 48px; border-top: 1px solid var(--color-border-2); background: var(--color-bg-1); }
+.ai-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 48px; border-top: 1px solid rgba(var(--primary-6), 0.12); background: transparent; }
 .ai-clear-btn { padding: 4px 12px; font-size: 12px; color: var(--color-text-4); background: transparent; border: 0; border-radius: 4px; cursor: pointer; font-family: inherit; }
 .ai-clear-btn:hover { color: rgb(var(--danger-6)); background: var(--color-fill-2); }
 .ai-msg-count { font-size: 12px; color: var(--color-text-4); }

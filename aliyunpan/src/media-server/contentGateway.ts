@@ -26,6 +26,29 @@ import {
   type MediaServerPlaybackCompatibility,
   type MediaServerPlaybackQuality
 } from './playbackQuality'
+import {
+  getPlexMediaServerCollectionPage,
+  getPlexMediaServerDownloadInfo,
+  getPlexMediaServerExcludedLibraries,
+  getPlexMediaServerFilteredPagedItems,
+  getPlexMediaServerHomeLatest,
+  getPlexMediaServerHomeLibraryLatest,
+  getPlexMediaServerHomeNextUp,
+  getPlexMediaServerHomeResume,
+  getPlexMediaServerHomeShell,
+  getPlexMediaServerHomeWithPreferences,
+  getPlexMediaServerItemDetail,
+  getPlexMediaServerLibraries,
+  getPlexMediaServerLibraryPagedItems,
+  getPlexMediaServerPersonPagedItems,
+  getPlexMediaServerPlaybackInfo,
+  getPlexMediaServerSearch,
+  getPlexMediaServerSimilarItems,
+  getPlexMediaServerSuggestions,
+  reportPlexMediaServerPlaybackProgress,
+  updatePlexMediaServerFavoriteState,
+  updatePlexMediaServerPlayedState
+} from './plexContent'
 
 const HOME_ITEM_FIELDS = 'Overview,PrimaryImageAspectRatio,ProductionYear,PremiereDate,DateCreated'
 
@@ -546,6 +569,7 @@ const homeLibraryIncludeTypes = (collectionType?: string) => {
 }
 
 export const getMediaServerHome = async (config: MediaServerConfig): Promise<MediaServerHomeData> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeWithPreferences(config)
   ensureServerContext(config)
 
   const [resumePayload, latestPayload, nextUpPayload, libraryPayload, countsPayload, userPayload] = await Promise.all([
@@ -608,6 +632,7 @@ export const getMediaServerHomeWithPreferences = async (
   config: MediaServerConfig,
   preferences: MediaServerHomePreferencesState
 ): Promise<MediaServerHomeData> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeWithPreferences(config)
   ensureServerContext(config)
 
   const nextUpDateCutoff = preferences.maxNextUpDays > 0
@@ -674,6 +699,7 @@ export const getMediaServerHomeWithPreferences = async (
 }
 
 export const getMediaServerHomeShell = async (config: MediaServerConfig): Promise<Pick<MediaServerHomeData, 'libraries' | 'statistics'>> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeShell(config)
   ensureServerContext(config)
 
   const [libraryPayload, countsPayload] = await Promise.all([
@@ -698,12 +724,14 @@ export const getMediaServerHomeShell = async (config: MediaServerConfig): Promis
 }
 
 export const getMediaServerExcludedLibraries = async (config: MediaServerConfig): Promise<string[]> => {
+  if (config.type === 'plex') return getPlexMediaServerExcludedLibraries()
   ensureServerContext(config)
   const userPayload = await mediaServerFetch<UserDetailResult>(config, `/Users/${config.userId}`)
   return userPayload.Configuration?.LatestItemsExcludes || []
 }
 
 export const getMediaServerHomeResume = async (config: MediaServerConfig): Promise<MediaServerCardItem[]> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeResume(config)
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
@@ -713,6 +741,7 @@ export const getMediaServerHomeResume = async (config: MediaServerConfig): Promi
 }
 
 export const getMediaServerHomeLatest = async (config: MediaServerConfig): Promise<{ items: MediaServerCardItem[]; total: number }> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeLatest(config)
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
@@ -728,6 +757,7 @@ export const getMediaServerHomeNextUp = async (
   config: MediaServerConfig,
   preferences: Pick<MediaServerHomePreferencesState, 'resumeNextUp' | 'maxNextUpDays'>
 ): Promise<{ items: MediaServerCardItem[]; total: number }> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeNextUp(config)
   ensureServerContext(config)
   const nextUpDateCutoff = preferences.maxNextUpDays > 0
     ? new Date(Date.now() - preferences.maxNextUpDays * 86400 * 1000).toISOString()
@@ -747,6 +777,7 @@ export const getMediaServerHomeLibraryLatest = async (
   libraryId: string,
   collectionType?: string
 ): Promise<{ items: MediaServerLibraryNode[]; total: number }> => {
+  if (config.type === 'plex') return getPlexMediaServerHomeLibraryLatest(config, libraryId)
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
@@ -760,6 +791,7 @@ export const getMediaServerHomeLibraryLatest = async (
 }
 
 export const getMediaServerLibraries = async (config: MediaServerConfig): Promise<MediaServerLibraryNode[]> => {
+  if (config.type === 'plex') return getPlexMediaServerLibraries(config)
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(config, `/Users/${config.userId}/Views`)
   return (payload.Items || []).map((item) => mapLibraryNode(config, item))
@@ -769,6 +801,7 @@ export const getMediaServerLibraryItems = async (
   config: MediaServerConfig,
   parentId: string
 ): Promise<MediaServerLibraryNode[]> => {
+  if (config.type === 'plex') return (await getPlexMediaServerLibraryPagedItems(config, parentId, 0, { recursiveMedia: true })).items
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
@@ -781,6 +814,7 @@ export const getMediaServerItemDetail = async (
   config: MediaServerConfig,
   itemId: string
 ): Promise<MediaServerItemDetail> => {
+  if (config.type === 'plex') return getPlexMediaServerItemDetail(config, itemId)
   ensureServerContext(config)
   const payload = await mediaServerFetch<MediaServerBaseItem>(
     config,
@@ -869,6 +903,7 @@ export const getMediaServerPlaybackInfo = async (
   customDeviceProfile?: MediaServerCustomDeviceProfile,
   bitrateTestSize: MediaServerBitrateTestSize = '5000000'
 ): Promise<MediaServerPlaybackInfo> => {
+  if (config.type === 'plex') return getPlexMediaServerPlaybackInfo(config, itemId, sourceId, videoStreamIndex)
   ensureServerContext(config)
 
   const detailPayload = await mediaServerFetch<MediaServerBaseItem>(
@@ -879,26 +914,6 @@ export const getMediaServerPlaybackInfo = async (
   const fallbackPlayCursorSeconds = detailPayload.UserData?.PlaybackPositionTicks
     ? Math.max(0, Math.floor(detailPayload.UserData.PlaybackPositionTicks / 10_000_000))
     : 0
-
-  if (config.type === 'plex') {
-    const plexSource = (detailPayload.MediaSources || []).find((source) => source.Id === sourceId) || detailPayload.MediaSources?.[0]
-    if (!plexSource) throw new Error('Plex 未返回可播放媒体源')
-    const partKey = plexSource.PartKey || plexSource.DirectStreamUrl || plexSource.XOriginDirectStreamUrl || plexSource.Path
-    if (!partKey) throw new Error('Plex 未返回可播放地址')
-    return {
-      url: withMediaServerPlaybackAuth(config, buildAbsoluteMediaServerUrl(config, partKey)),
-      headers: {
-        'X-Plex-Token': config.accessToken || '',
-        'X-Plex-Client-Identifier': config.deviceId || '',
-        'X-Plex-Product': 'XbyBoxPlayer'
-      },
-      playSessionId: plexSource.Id,
-      playCursorSeconds: fallbackPlayCursorSeconds,
-      videoStreamIndex: typeof videoStreamIndex === 'number' && videoStreamIndex >= 0
-        ? videoStreamIndex
-        : plexSource.MediaStreams?.find((stream) => (stream.Type || '').toLowerCase() === 'video')?.Index
-    }
-  }
 
   const maxStreamingBitrate = playbackQuality === 'auto'
     ? await testMediaServerBitrate(config, bitrateTestSize)
@@ -990,6 +1005,7 @@ export const getMediaServerDownloadInfo = async (
   itemId: string,
   sourceId?: string
 ): Promise<MediaServerDownloadInfo> => {
+  if (config.type === 'plex') return getPlexMediaServerDownloadInfo(config, itemId, sourceId)
   ensureServerContext(config)
 
   const detailPayload = await mediaServerFetch<MediaServerBaseItem>(
@@ -1000,27 +1016,21 @@ export const getMediaServerDownloadInfo = async (
   if (!source) throw new Error('媒体服务器未返回可下载媒体源')
 
   let downloadUrl = ''
-  if (config.type === 'plex') {
-    const partKey = source.PartKey || source.DirectStreamUrl || source.XOriginDirectStreamUrl || source.Path
-    if (!partKey) throw new Error('Plex 未返回可下载地址')
-    downloadUrl = buildAbsoluteMediaServerUrl(config, partKey)
+  const directUrl = source.DirectStreamUrl || source.XOriginDirectStreamUrl
+  const isHttpProtocol = (source.Protocol || '').toLowerCase() === 'http'
+  if (isHttpProtocol && directUrl) {
+    downloadUrl = buildAbsoluteMediaServerUrl(config, directUrl)
+  } else if (isHttpProtocol && source.Path) {
+    downloadUrl = source.Path
+  } else if (config.type === 'emby' && directUrl) {
+    downloadUrl = buildAbsoluteMediaServerUrl(config, directUrl)
   } else {
-    const directUrl = source.DirectStreamUrl || source.XOriginDirectStreamUrl
-    const isHttpProtocol = (source.Protocol || '').toLowerCase() === 'http'
-    if (isHttpProtocol && directUrl) {
-      downloadUrl = buildAbsoluteMediaServerUrl(config, directUrl)
-    } else if (isHttpProtocol && source.Path) {
-      downloadUrl = source.Path
-    } else if (config.type === 'emby' && directUrl) {
-      downloadUrl = buildAbsoluteMediaServerUrl(config, directUrl)
-    } else {
-      const streamQuery = new URLSearchParams({
-        static: 'true',
-        mediaSourceId: source.Id || sourceId || ''
-      })
-      if (detailPayload.ETag) streamQuery.set('tag', detailPayload.ETag)
-      downloadUrl = `${config.baseUrl.replace(/\/+$/, '')}/Videos/${encodeURIComponent(itemId)}/stream?${streamQuery.toString()}`
-    }
+    const streamQuery = new URLSearchParams({
+      static: 'true',
+      mediaSourceId: source.Id || sourceId || ''
+    })
+    if (detailPayload.ETag) streamQuery.set('tag', detailPayload.ETag)
+    downloadUrl = `${config.baseUrl.replace(/\/+$/, '')}/Videos/${encodeURIComponent(itemId)}/stream?${streamQuery.toString()}`
   }
 
   if (!downloadUrl) throw new Error('媒体服务器未返回可下载地址')
@@ -1095,7 +1105,7 @@ export const reportMediaServerPlaybackStart = async (
 ) => {
   ensureServerContext(config)
   if (config.type === 'plex') {
-    await reportPlexPlaybackProgress(config, itemId, 'playing', positionSeconds)
+    await reportPlexMediaServerPlaybackProgress(config, itemId, 'playing', positionSeconds)
     return
   }
   await mediaServerFetchVoid(config, '/Sessions/Playing', {
@@ -1123,7 +1133,7 @@ export const reportMediaServerPlaybackProgress = async (
 ) => {
   ensureServerContext(config)
   if (config.type === 'plex') {
-    await reportPlexPlaybackProgress(config, itemId, 'playing', positionSeconds)
+    await reportPlexMediaServerPlaybackProgress(config, itemId, 'playing', positionSeconds)
     return
   }
   await mediaServerFetchVoid(config, '/Sessions/Playing/Progress', {
@@ -1151,7 +1161,7 @@ export const reportMediaServerPlaybackStop = async (
 ) => {
   ensureServerContext(config)
   if (config.type === 'plex') {
-    await reportPlexPlaybackProgress(config, itemId, 'stopped', positionSeconds)
+    await reportPlexMediaServerPlaybackProgress(config, itemId, 'stopped', positionSeconds)
     return
   }
   await mediaServerFetchVoid(config, '/Sessions/Playing/Stopped', {
@@ -1176,7 +1186,8 @@ export const updateMediaServerPlayedState = async (
 ) => {
   ensureServerContext(config)
   if (config.type === 'plex') {
-    throw new Error('Plex 暂未接入标记观看接口')
+    await updatePlexMediaServerPlayedState(config, itemId, isPlayed)
+    return
   }
   await mediaServerFetchVoid(
     config,
@@ -1192,7 +1203,8 @@ export const updateMediaServerFavoriteState = async (
 ) => {
   ensureServerContext(config)
   if (config.type === 'plex') {
-    throw new Error('Plex 暂未接入收藏接口')
+    await updatePlexMediaServerFavoriteState(config, itemId, isFavorite)
+    return
   }
   await mediaServerFetchVoid(
     config,
@@ -1205,6 +1217,7 @@ export const getMediaServerSimilarItems = async (
   config: MediaServerConfig,
   itemId: string
 ): Promise<MediaServerLibraryNode[]> => {
+  if (config.type === 'plex') return getPlexMediaServerSimilarItems(config, itemId)
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
@@ -1220,6 +1233,7 @@ export const getMediaServerCollectionPage = async (
   excludeItemIds: string[] = [],
   preferences?: Pick<MediaServerHomePreferencesState, 'resumeNextUp' | 'maxNextUpDays'>
 ): Promise<MediaServerPagedCollection> => {
+  if (config.type === 'plex') return getPlexMediaServerCollectionPage(config, kind, page)
   ensureServerContext(config)
 
   const pageSize = 50
@@ -1268,6 +1282,7 @@ export const getMediaServerLibraryPagedItems = async (
     collectionType?: string
   }
 ): Promise<MediaServerPagedLibraryPage> => {
+  if (config.type === 'plex') return getPlexMediaServerLibraryPagedItems(config, parentId, page, options)
   ensureServerContext(config)
   const pageSize = 50
   const recursive = options?.recursiveMedia === true
@@ -1299,6 +1314,7 @@ export const getMediaServerPersonPagedItems = async (
   personId: string,
   page: number
 ): Promise<MediaServerPagedLibraryPage> => {
+  if (config.type === 'plex') return getPlexMediaServerPersonPagedItems(config, personId, page)
   ensureServerContext(config)
   const pageSize = 120
   const startIndex = page * pageSize
@@ -1343,6 +1359,7 @@ export const getMediaServerFilteredPagedItems = async (
     parentId?: string
   }
 ): Promise<MediaServerPagedLibraryPage> => {
+  if (config.type === 'plex') return getPlexMediaServerFilteredPagedItems(config, page, options)
   ensureServerContext(config)
   const pageSize = 50
   const params = new URLSearchParams()
@@ -1377,16 +1394,8 @@ export const getMediaServerFilteredPagedItems = async (
 export const getMediaServerSuggestions = async (
   config: MediaServerConfig
 ): Promise<MediaServerLibraryNode[]> => {
+  if (config.type === 'plex') return getPlexMediaServerSuggestions(config)
   ensureServerContext(config)
-
-  if (config.type === 'plex') {
-    const payload = await mediaServerFetch<BaseQueryResult>(
-      config,
-      `/hubs/home/recentlyAdded?type=2&X-Plex-Container-Start=0&X-Plex-Container-Size=16&excludeContinueWatching=1&includeMeta=1&excludeFields=summary`
-    )
-    const items = (payload.Items || []).map((item) => mapLibraryNode(config, item))
-    return items.filter((item) => item.kind === 'series' || item.kind === 'movie')
-  }
 
   const payload = await mediaServerFetch<BaseQueryResult>(
     config,
@@ -1401,6 +1410,7 @@ export const getMediaServerSearch = async (
   config: MediaServerConfig,
   query: string
 ): Promise<MediaServerSearchData> => {
+  if (config.type === 'plex') return getPlexMediaServerSearch(config, query)
   ensureServerContext(config)
   const trimmedQuery = query.trim()
   if (!trimmedQuery) {

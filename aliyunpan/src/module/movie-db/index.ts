@@ -136,6 +136,7 @@ import {
 } from './request-types'
 
 const PromiseThrottle = require('promise-throttle')
+const BOXPLAYER_API_BASE_URL = 'https://api.xbyvideohub.com/api'
 
 class MovieDb {
   private readonly apiKey: string
@@ -146,7 +147,7 @@ class MovieDb {
   private sessionId: string | undefined
 
   constructor(apiKey: string,
-              baseUrl: string = 'https://api.themoviedb.org/3/',
+              baseUrl: string = `${BOXPLAYER_API_BASE_URL.replace(/\/+$/, '')}/tmdb/proxy/`,
               language: string = 'zh_CN',
               requestsPerSecondLimit: number = 50) {
     this.apiKey = apiKey

@@ -242,7 +242,7 @@ func updateDNS(c *config.DNS, generalIPv6 bool) {
 		resolver.DefaultService = nil
 		resolver.ProxyServerHostResolver = nil
 		resolver.DirectHostResolver = nil
-		dns.ReCreateServer("", nil)
+		dns.ReCreateServer("", nil, nil)
 		return
 	}
 
@@ -254,6 +254,7 @@ func updateDNS(c *config.DNS, generalIPv6 bool) {
 		IPv6Timeout:          c.IPv6Timeout,
 		FallbackIPFilter:     c.FallbackIPFilter,
 		FallbackDomainFilter: c.FallbackDomainFilter,
+		FallbackLazyQuery:    c.FallbackLazyQuery,
 		Default:              c.DefaultNameserver,
 		Policy:               c.NameServerPolicy,
 		ProxyServer:          c.ProxyServerNameserver,
@@ -297,7 +298,9 @@ func updateDNS(c *config.DNS, generalIPv6 bool) {
 		resolver.DirectHostResolver = r.Resolver
 	}
 
-	dns.ReCreateServer(c.Listen, s)
+	lc := inbound.NewListenConfig()
+	lc.SetRouteMark(c.ListenRoutingMark)
+	dns.ReCreateServer(c.Listen, lc, s)
 }
 
 func updateHosts(tree *trie.DomainTrie[resolver.HostValue]) {

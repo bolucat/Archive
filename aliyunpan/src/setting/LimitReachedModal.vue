@@ -3,19 +3,42 @@ import { ref, watch } from 'vue'
 import { X, Loader2, Sparkles } from 'lucide-vue-next'
 import { openExternal } from '../utils/electronhelper'
 import message from '../utils/message'
+import { createClient } from '@supabase/supabase-js'
+
+const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
+const BOXPLAYER_SITE_URL = 'https://xbysite.pages.dev'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [v: boolean] }>()
 
 const upgrading = ref(false)
 const isLoggedIn = ref(false)
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 watch(() => props.visible, (v) => {
   if (v) try { isLoggedIn.value = localStorage.getItem('app_user_authed') === '1' } catch {}
 })
 
 async function handleUpgrade() {
-  openExternal('https://xbysite.pages.dev/#pricing')
-}
+  if (!supabase) { message.error('未配置 Supabase'); return }
+  upgrading.value = true
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (!token) { message.warning('请先登录后升级'); return }
+    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/creem/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ cycle: 'lifetime', source: 'app' })
+    })
+    const checkout = await response.json()
+    if (!response.ok || !checkout.checkoutUrl) throw new Error(checkout.error || '创建支付订单失败')
+    openExternal(checkout.checkoutUrl)
+  } catch (error: any) {
+    message.error(error?.message || '网络请求失败')
+  } finally {
+    upgrading.value = false
+  }
 }
 </script>
 
@@ -25,7 +48,7 @@ async function handleUpgrade() {
       <button class="lim-close" @click="emit('update:visible', false)"><X :size="18" /></button>
       <div class="lim-icon"><Sparkles :size="32" /></div>
       <h2 class="lim-title">升级到专业版</h2>
-      <p class="lim-desc">解锁全部高级功能，提升你的云盘管理体验</p>
+      <p class="lim-desc">解锁内置 AI、阅读器助手、翻译、朗读和语义搜索。订阅提供 7 天免费试用。</p>
 
       <table class="lim-table">
         <thead>
@@ -36,29 +59,29 @@ async function handleUpgrade() {
           <tr><td>视频播放 & 音乐播放</td><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><td>本地书籍阅读</td><td class="yes">✓</td><td class="yes">✓</td></tr>
           <tr><td>多网盘同时连接</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>AI 智能搜索</td><td class="limit">5次/天</td><td class="yes">无限</td></tr>
-          <tr><td>全网资源搜索</td><td class="limit">5次/天</td><td class="yes">无限</td></tr>
-          <tr><td>AI 文件整理 & 查重</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>内置 BoxPlayer AI 模型</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>AI 智能搜索 + 语义索引</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>AI Agent 网盘搜索</td><td class="limit">BYOK</td><td class="yes">✓</td></tr>
           <tr><td>AI 阅读助手（PDF/EPUB）</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>语音朗读（5000字/天）</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>即时翻译（5000字/天）</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>全网资源一键保存</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>TMDB + 豆瓣电影发现</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>阅读器语音朗读（本地）</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>阅读器云端高品质朗读</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>阅读器即时翻译</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>全网资源搜索</td><td class="limit">5次/天</td><td class="yes">✓</td></tr>
           <tr><td>优先技术支持</td><td class="no">—</td><td class="yes">✓</td></tr>
         </tbody>
       </table>
 
       <div class="lim-price-row">
         <span class="lim-price-free">开源版 · 永久免费</span>
-        <span class="lim-price-pro">专业版 · $10 / 月</span>
+        <span class="lim-price-pro"><span class="lim-old-price">$199</span> $139 终身 · 7 折</span>
       </div>
 
       <button v-if="isLoggedIn" class="lim-btn" :disabled="upgrading" @click="handleUpgrade">
         <Loader2 v-if="upgrading" :size="16" class="lim-spin" />
-        <span v-else>升级到专业版 — $10/月</span>
+        <span v-else>购买终身专业版 — $139</span>
       </button>
-      <button v-else class="lim-btn lim-btn-disabled" @click="message.info('请先登录后再购买（设置 → 应用账户）')">
-        登录后购买
+      <button v-else class="lim-btn" @click="message.info('请先登录后再购买（设置 → 应用账户）')">
+        先登录，再购买或试用
       </button>
       <button class="lim-skip" @click="emit('update:visible', false)">暂不升级，继续使用免费版</button>
     </div>
@@ -86,10 +109,10 @@ async function handleUpgrade() {
 .lim-price-row{display:flex;justify-content:center;gap:20px;margin-bottom:14px}
 .lim-price-free{font-size:13px;color:var(--color-text-3)}
 .lim-price-pro{font-size:13px;font-weight:700;color:#b45309}
+.lim-old-price{color:var(--color-text-4);text-decoration:line-through;margin-right:6px}
 .lim-btn{width:100%;padding:12px 0;font-size:15px;font-weight:600;color:#fff;background:linear-gradient(135deg,#f59e0b,#eab308);border:0;border-radius:10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px}
 .lim-btn:hover:not(:disabled){opacity:.9}
 .lim-btn:disabled{opacity:.5;cursor:default}
-.lim-btn-disabled{background:var(--color-text-4)}
 .lim-skip{display:block;width:100%;padding:8px 0;font-size:13px;color:var(--color-text-4);background:transparent;border:0;cursor:pointer;font-family:inherit;margin-top:4px}
 .lim-skip:hover{color:var(--color-text-3)}
 .lim-spin{animation:lim-spin 1s linear infinite}

@@ -44,7 +44,7 @@ const handleHideLeft = (val: boolean) => {
 
 <template>
   <a-layout style='height: 100%'>
-    <a-layout-sider hide-trigger :width='158' class='xbyleft' :hidden='hideLeft'>
+    <a-layout-sider hide-trigger :width='218' class='xbyleft' :hidden='hideLeft'>
       <div class='headdesc'>云盘分享</div>
       <a-menu v-if="isAliyunAccount" :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">

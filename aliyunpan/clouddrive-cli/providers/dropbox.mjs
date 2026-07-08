@@ -6,6 +6,7 @@ const SESSION_CHUNK_SIZE = 8 * 1024 * 1024
 
 import { open } from 'node:fs/promises'
 import { readFileBuffer, readSlice, toConflictMode } from './uploadUtils.mjs'
+import { downloadResponseToFile } from '../core/downloadFile.mjs'
 
 function dropboxHeaders(token) {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.access_token}` }
@@ -235,6 +236,22 @@ async function dropboxContent(endpoint, arg, body, token) {
     throw err
   }
   return data
+}
+
+export async function dropboxDownloadFile(token, fileId, outputPath) {
+  const path = fileId.startsWith('id:') || fileId.startsWith('/') ? fileId : `/${fileId}`
+  const resp = await fetch(`${CONTENT_BASE}/files/download`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token.access_token}`,
+      'Dropbox-API-Arg': JSON.stringify({ path }),
+    },
+  })
+  await downloadResponseToFile(resp, outputPath)
+  const metaRaw = resp.headers.get('dropbox-api-result') || '{}'
+  let meta = {}
+  try { meta = JSON.parse(metaRaw) } catch {}
+  return { ok: true, provider: 'dropbox', accountId: token.user_id, driveId: 'dropbox', fileId, name: meta.name || '', size: meta.size || 0, output: outputPath }
 }
 
 export async function dropboxUploadFile(token, { parentId = '', localPath, name, size = 0, conflict = 'skip' }) {

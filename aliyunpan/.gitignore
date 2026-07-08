@@ -33,6 +33,12 @@ scripts/*
 docs/
 !docs/
 docs/*
+!docs/releases/
+docs/releases/*
+!docs/releases/*.md
+!docs/promotion/
+docs/promotion/*
+!docs/promotion/*.md
 !docs/superpowers/
 docs/superpowers/*
 !docs/superpowers/plans/
@@ -47,6 +53,13 @@ plans/
 AGENT.md
 SKILL_ITERATION_LOG.md
 node_modules/
+jellyfin-sdk/
+boxplayer-site/
+boxplayer-ai-api/
+boxplayer-api/
+tmp_video_frames/
+tmp_video_xhs/
+.codeflicker/
 
 # stale tsc compile output for ts source files (must be regenerated only via vite-plugin-electron)
 electron/**/*.js
@@ -55,3 +68,12 @@ electron/**/*.js.map
 electron/**/*.d.ts.map
 !electron/preload/preload-env.d.ts
 !electron/main/**/__tests__/**
+
+# 文档与媒体产物：只保留 README 类 Markdown
+*.md
+!README*.md
+!**/README*.md
+*.html
+*.mp4
+*.mov
+*.py

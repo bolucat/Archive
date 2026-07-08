@@ -134,27 +134,28 @@ const handlerExportCliTokens = async () => {
       </a-button>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>账号导入导出</div>
-    <a-popover position="bottom">
-      <IconFont name="iconbulb" />
-      <template #content>
-        <div>
-          可以一键恢复所有账户的数据（加密）<br />
-          <hr />
-          <div class="hrspace"></div>
-          <span class="opred">批量导入导出所有账户的数据</span><br />
-        </div>
-      </template>
-    </a-popover>
+    <div class='settinghead'>账号导入导出
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            可以一键恢复所有账户的数据（加密）<br />
+            <hr />
+            <div class="hrspace"></div>
+            <span class="opred">批量导入导出所有账户的数据</span><br />
+          </div>
+        </template>
+      </a-popover>
+    </div>
     <div class="settingrow">
-      <a-button type='outline' style='margin-right: 12px' status="danger" size='small' tabindex='-1'
+      <a-button type='outline' status="danger" size='small' tabindex='-1'
                 @click='handlerAccountExport'>
         导出账号
       </a-button>
       <a-button type='outline' size='small' status="success" tabindex='-1' @click='handlerAccountImport'>
         导入账号
       </a-button>
-      <a-button type='outline' style='margin-left: 12px' size='small' tabindex='-1'
+      <a-button type='outline' size='small' tabindex='-1'
                 @click='handlerExportCliTokens'>
         导出到 CLI
       </a-button>

@@ -4,6 +4,7 @@ export interface IDownloadUrl {
   expire_time: number
   url: string
   size: number
+  headers?: Record<string, string>
 }
 
 

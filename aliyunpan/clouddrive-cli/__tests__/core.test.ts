@@ -528,6 +528,22 @@ describe('organize plans', () => {
     })
   })
 
+  it('uses media matching when classifying episodes for organization', () => {
+    const analysis = analyzeDriveItems({
+      provider: 'aliyun',
+      accountId: 'acc',
+      rootFileId: 'root',
+      items: [
+        { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'f1', parentFileId: 'root', name: '知否知否应是绿肥红瘦第03集.mp4', type: 'file', size: 20 },
+      ],
+    })
+
+    expect(analysis.files[0]).toMatchObject({
+      media_kind: 'episode',
+      media_match: expect.objectContaining({ type: 'episode', episode: 3 }),
+    })
+  })
+
   it('creates a conservative organize plan and dry-runs action counts', () => {
     const analysis = analyzeDriveItems({ provider: 'aliyun', accountId: 'acc', rootFileId: 'root', items })
     const plan = createOrganizePlan({ analysis, rulesText: 'Move episodes to TV Shows and movies to Movies.' })
@@ -538,6 +554,7 @@ describe('organize plans', () => {
       provider: 'aliyun',
       account_id: 'acc',
       root_file_id: 'root',
+      rules: { applied: false },
     })
     expect(plan.actions).toEqual([
       { type: 'mkdir', parent_file_id: 'root', name: 'TV Shows', ref: 'folder:TV Shows', reason: 'Required media category folder is missing' },

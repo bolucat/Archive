@@ -32,6 +32,11 @@ declare interface Window {
   WebQuarkDownloadUrl: any
   WebSetCookies: any
   WebOpenWindow: any
+  WebOpenLyric: any
+  WebSendLyric: any
+  WebCloseLyric: any
+  WebConfigureGlobalHotkeys: any
+  WebOnGlobalHotkey: any
   WebOpenUrl: any
   WebShutDown: any
   WebSetProxy: any

@@ -16,6 +16,7 @@ export function createPikpakProvider() {
       mkdir: true,
       move: true,
       uploadFile: false,
+      downloadFile: false,
     },
     auth: {
       async login() {

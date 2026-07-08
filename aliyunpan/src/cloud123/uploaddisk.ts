@@ -117,9 +117,21 @@ const uploadSlice = (server: string, accessToken: string, preuploadID: string, s
       }
     }
     const req: ClientRequest = nodehttps.request(options, (res) => {
-      res.on('data', () => {})
+      let raw = ''
+      res.on('data', (chunk) => {
+        raw += chunk
+      })
       res.on('end', () => {
-        resolve(res.statusCode === 200)
+        if (res.statusCode !== 200) {
+          resolve(false)
+          return
+        }
+        try {
+          const data = JSON.parse(raw)
+          resolve(data?.code === 0)
+        } catch {
+          resolve(false)
+        }
       })
     })
     req.on('error', () => resolve(false))

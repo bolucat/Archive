@@ -13,9 +13,10 @@ import AliTrash from '../aliapi/trash'
 import path from 'path'
 import fs from 'fs'
 import { getRawUrl } from './proxyhelper'
-import { isBaiduUser, isCloud123User, isDrive115User } from '../aliapi/utils'
+import { isBaiduUser, isDrive115User } from '../aliapi/utils'
 import { callAriaClient, getAriaAddUriGid, isAriaDuplicateGidError } from './aria2Rpc'
 import { buildAriaAddOptions } from '../down/integration/aria2AddOptions'
+import { DRIVE115_DOWN_AGENT } from '../cloud115/constants'
 
 export const localPwd = 'S4znWTaZYQi3cpRNb'
 
@@ -468,6 +469,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       }
       let downloadUrl = typeof file.Down.DownUrl === 'string' ? file.Down.DownUrl : ''
       downloadUrl = downloadUrl.trim()
+      let resolvedDownloadHeaders: Record<string, string> = {}
       if (downloadUrl && !isBtSource && downloadUrl.includes('x-oss-expires=')) {
         const expires = downloadUrl.split('x-oss-expires=')[1].split('&')[0]
         const lastTime = parseInt(expires) - Date.now() / 1000
@@ -487,6 +489,9 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
           return `生成下载链接失败,${JSON.stringify(durl)}`
         }
         downloadUrl = durl.url || durl.qualities?.[0]?.url || ''
+        if (durl.headers) {
+          resolvedDownloadHeaders = durl.headers
+        }
         file.Down.DownUrl = downloadUrl
       }
       if (sourceType === 'torrent') {
@@ -512,16 +517,22 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       console.log('[aria2] addUri', info.drive_id, info.file_id, { url: downloadUrl, sourceType })
       if (file.Down.IsStop) return '已暂停'
       const token = UserDAL.GetUserToken(info.user_id)
-      const split = info.split || useSettingStore().downThreadMax
       const isBaiduDownload = isBaiduUser(token || '') || info.drive_id === 'baidu'
-      const referer = info.referer || (isBaiduDownload ? 'https://pan.baidu.com/' : Config.referer)
-      const userAgent = info.userAgent || useSettingStore().ariaUserAgent || Config.downAgent
+      const isDrive115Download = isDrive115User(token || '') || info.drive_id === 'drive115'
+      const split = isDrive115Download ? 1 : (info.split || useSettingStore().downThreadMax)
+      const referer = info.referer || (isBaiduDownload ? 'https://pan.baidu.com/' : isDrive115Download ? '' : Config.referer)
+      const userAgent = isBaiduDownload ? 'pan.baidu.com' : isDrive115Download ? DRIVE115_DOWN_AGENT : (info.userAgent || useSettingStore().ariaUserAgent || Config.downAgent)
       const headers: string[] = []
-      for (const [key, value] of Object.entries(info.downloadHeaders || {})) {
+      const downloadHeaders = {
+        ...(info.downloadHeaders || {}),
+        ...resolvedDownloadHeaders
+      }
+      for (const [key, value] of Object.entries(downloadHeaders)) {
         if (key && value) headers.push(`${key}: ${value}`)
       }
       headers.push(...(info.externalHeaders || []))
-      if (token?.access_token && (isCloud123User(token) || isDrive115User(token) || isBaiduUser(token))) {
+      const hasAuthorizationHeader = headers.some((header) => /^authorization\s*:/i.test(header))
+      if (!hasAuthorizationHeader && token?.access_token && (isDrive115User(token) || isBaiduUser(token))) {
         headers.push(`Authorization: Bearer ${token.access_token}`)
       }
       if (info.drive_id === 'baidu') {
@@ -529,6 +540,36 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       } else {
         if (userAgent) {
           headers.push(`User-Agent: ${userAgent}`)
+        }
+      }
+      if (isDrive115Download) {
+        try {
+          const url = new URL(downloadUrl)
+          const sanitizedHeaders = headers.map((header) => {
+            const index = header.indexOf(':')
+            const key = index >= 0 ? header.slice(0, index).trim() : header
+            const value = index >= 0 ? header.slice(index + 1).trim() : ''
+            if (/^authorization$/i.test(key)) return `${key}: ${value ? 'Bearer ***' : ''}`
+            if (/^cookie$/i.test(key)) return `${key}: ***`
+            return `${key}: ${value}`
+          })
+          console.log('[drive115] aria2 addUri options', {
+            host: url.host,
+            pathname: url.pathname,
+            hasQuery: !!url.search,
+            split,
+            referer,
+            userAgent,
+            headers: sanitizedHeaders
+          })
+        } catch {
+          console.log('[drive115] aria2 addUri options', {
+            urlValid: false,
+            split,
+            referer,
+            userAgent,
+            headers: headers.map((header) => header.replace(/Authorization:\\s*Bearer\\s+.+/i, 'Authorization: Bearer ***'))
+          })
         }
       }
       const addOptions: any = buildAriaAddOptions({

@@ -17,10 +17,10 @@
       </div>
     </div>
 
-    <!-- 媒体库标题 -->
-    <div class="media-library-title">
-      <h2>媒体库</h2>
-    </div>
+<!--    &lt;!&ndash; 媒体库标题 &ndash;&gt;-->
+<!--    <div class="media-library-title">-->
+<!--      <h2>媒体库</h2>-->
+<!--    </div>-->
 
     <!-- 媒体库主菜单 -->
     <div class="nav-section">
@@ -242,26 +242,36 @@
       </div>
     </div>
 
-    <!-- 操作按钮 -->
-    <div class="nav-actions">
-      <a-button
-        type="text"
-        size="small"
-        @click="handleImportLocalFolder"
-        :loading="mediaStore.isScanning"
+    <!-- 扫描操作 -->
+    <div class="nav-scan-actions-wrapper">
+      <LibraryScanPanel
+        v-model:selected-ids="selectedScanSourceIds"
+        :drive-options="scanSourceOptions"
+        :is-scanning="mediaStore.isScanning"
+        :idle-status-text="mediaStore.folders.length ? `${mediaStore.folders.length} 个媒体源` : '尚未扫描'"
+        :scanning-status-text="`正在扫描 ${mediaStore.scanProgress}/${mediaStore.scanTotal}`"
+        import-label="导入本地视频"
+        import-icon-name="iconfolder"
+        :import-disabled="mediaStore.isScanning"
+        clear-confirm-text="确定清空整个媒体库？此操作不可恢复"
+        :clear-disabled="!hasLibraryData"
+        @start-scan="handleIncrementalScan"
+        @stop-scan="mediaStore.setScanning(false)"
+        @import-local="handleImportLocalFolder"
+        @clear-library="handleClearLibrary"
       >
-        <IconFont name="iconfolder" />
-        导入本地文件夹
-      </a-button>
-      <a-button
-        type="text"
-        size="small"
-        @click="showWebDavModal = true"
-        :loading="webDavLoading"
-      >
-        <IconFont name="iconlink" />
-        连接到 WebDAV
-      </a-button>
+        <template #extra-actions>
+          <button
+            class="library-scan-import-btn"
+            type="button"
+            :disabled="webDavLoading"
+            @click="showWebDavModal = true"
+          >
+            <IconFont name="iconlink" />
+            <span>连接到 WebDAV</span>
+          </button>
+        </template>
+      </LibraryScanPanel>
     </div>
 
     <!-- 文件夹右键菜单 -->
@@ -326,14 +336,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import type { MediaLibraryFolder } from '../types/media'
+import type { IAliGetFileModel } from '../aliapi/alimodels'
 import { Modal } from '@arco-design/web-vue'
 import { MediaScanner } from '../utils/mediaScanner'
 import message from '../utils/message'
 import AddWebDavModal from './media-server/AddWebDavModal.vue'
+import LibraryScanPanel from './LibraryScanPanel.vue'
 import { createWebDavConnection, getWebDavConnectionId, getWebDavConnections, removeWebDavConnection, saveWebDavConnection, testWebDavConnection } from '../utils/webdavClient'
+import UserDAL from '../user/userdal'
+import type { ITokenInfo } from '../user/userstore'
 
 const mediaStore = useMediaLibraryStore()
 const mediaScanner = MediaScanner.getInstance()
@@ -482,6 +496,168 @@ const getFolderSourceClass = (folder: MediaLibraryFolder) => {
   return 'source-aliyun'
 }
 
+const selectedScanSourceIds = ref<string[]>([])
+const scanAccounts = ref<ITokenInfo[]>([])
+
+type ScanSourceTarget = {
+  value: string
+  label: string
+  folder: IAliGetFileModel
+  driveServerId: string
+}
+
+const getFolderScanSourceId = (folder: MediaLibraryFolder) => `folder:${folder.id}`
+
+const scanSourceTargets = computed<ScanSourceTarget[]>(() => {
+  const options = new Map<string, ScanSourceTarget>()
+  for (const token of scanAccounts.value) {
+    for (const target of tokenRootScanFolders(token)) {
+      if (!options.has(target.value)) options.set(target.value, target)
+    }
+  }
+  for (const folder of mediaStore.folders) {
+    const value = getFolderScanSourceId(folder)
+    if (!value || options.has(value)) continue
+    const folderModel = mediaFolderToAliModel(folder)
+    options.set(value, {
+      value,
+      label: `${getFolderSourceLabel(folder)} · ${folder.name}`,
+      folder: folderModel,
+      driveServerId: folder.driveServerId || folder.driveId || 'local'
+    })
+  }
+  return Array.from(options.values())
+})
+
+const scanSourceOptions = computed(() => scanSourceTargets.value.map(({ value, label }) => ({ value, label })))
+
+const hasLibraryData = computed(() => {
+  return mediaStore.mediaItems.length > 0
+    || mediaStore.folders.length > 0
+    || mediaStore.recentlyAdded.length > 0
+    || mediaStore.continueWatching.length > 0
+    || mediaStore.favorites.length > 0
+    || mediaStore.watchedItems.length > 0
+    || Object.keys(mediaStore.playlists || {}).length > 0
+})
+
+watch(scanSourceOptions, (options) => {
+  const available = new Set(options.map((option) => option.value))
+  const current = selectedScanSourceIds.value.filter((id) => available.has(id))
+  selectedScanSourceIds.value = current.length || !options.length ? current : options.map((option) => option.value)
+}, { immediate: true })
+
+function driveLabelFromToken(token: ITokenInfo): string {
+  if (token.tokenfrom === 'cloud123') return '123 网盘'
+  if (token.tokenfrom === '115') return '115 网盘'
+  if (token.tokenfrom === 'baidu') return '百度网盘'
+  if (token.tokenfrom === 'pikpak') return 'PikPak'
+  if (token.tokenfrom === 'quark') return '夸克网盘'
+  if (token.tokenfrom === '139') return '139 云盘'
+  if (token.tokenfrom === '189') return '天翼云盘'
+  if (token.tokenfrom === 'dropbox') return 'Dropbox'
+  if (token.tokenfrom === 'onedrive') return 'OneDrive'
+  if (token.tokenfrom === 'box') return 'Box'
+  return '阿里云盘'
+}
+
+function scanAccountLabel(token: ITokenInfo): string {
+  return `${driveLabelFromToken(token)} · ${token.nick_name || token.user_name || token.name || token.user_id}`
+}
+
+function makeScanFolder(token: ITokenInfo, driveId: string, fileId: string, name: string, path = ''): IAliGetFileModel {
+  const folder = {
+    __v_skip: true,
+    drive_id: driveId,
+    file_id: fileId,
+    parent_file_id: '',
+    name,
+    namesearch: name.toLowerCase(),
+    path,
+    ext: '',
+    mime_type: '',
+    mime_extension: '',
+    category: 'folder',
+    icon: '',
+    size: 0,
+    sizeStr: '',
+    time: Date.now(),
+    timeStr: '',
+    starred: false,
+    isDir: true,
+    thumbnail: '',
+    description: ''
+  } as IAliGetFileModel
+  ;(folder as any).user_id = token.user_id
+  return folder
+}
+
+function tokenRootScanFolders(token: ITokenInfo): ScanSourceTarget[] {
+  if (!token?.user_id || !token?.access_token) return []
+  const label = scanAccountLabel(token)
+  if (token.tokenfrom === 'aliyun') {
+    const drives = [
+      { driveId: token.default_drive_id, name: '默认盘' },
+      { driveId: token.resource_drive_id, name: '资源盘' },
+      { driveId: token.backup_drive_id, name: '备份盘' }
+    ].filter((item): item is { driveId: string; name: string } => !!item.driveId)
+    return drives.map((item) => ({
+      value: `account:${token.user_id}:${item.driveId}:root`,
+      label: `${label} · ${item.name}`,
+      folder: makeScanFolder(token, item.driveId, 'root', item.name),
+      driveServerId: item.driveId
+    }))
+  }
+
+  const nonAliRoot: Record<string, { driveId: string; fileId: string; path?: string }> = {
+    cloud123: { driveId: 'cloud123', fileId: '0' },
+    '115': { driveId: 'drive115', fileId: '0' },
+    baidu: { driveId: 'baidu', fileId: '/', path: '/' },
+    pikpak: { driveId: 'pikpak', fileId: 'pikpak_root' },
+    quark: { driveId: 'quark', fileId: '0' },
+    '139': { driveId: 'cloud139', fileId: 'cloud139_root' },
+    '189': { driveId: 'cloud189', fileId: 'cloud189_root' },
+    dropbox: { driveId: 'dropbox', fileId: 'dropbox_root' },
+    onedrive: { driveId: 'onedrive', fileId: 'onedrive_root' },
+    box: { driveId: 'box', fileId: '0' }
+  }
+  const root = nonAliRoot[token.tokenfrom]
+  if (!root) return []
+  return [{
+    value: `account:${token.user_id}:${root.driveId}:${root.fileId}`,
+    label,
+    folder: makeScanFolder(token, root.driveId, root.fileId, '/', root.path || ''),
+    driveServerId: root.driveId
+  }]
+}
+
+function mediaFolderToAliModel(folder: MediaLibraryFolder): IAliGetFileModel {
+  const model = {
+    __v_skip: true,
+    drive_id: folder.driveId,
+    file_id: folder.fileId,
+    parent_file_id: '',
+    name: folder.name,
+    namesearch: folder.name.toLowerCase(),
+    path: folder.path || '',
+    ext: '',
+    mime_type: '',
+    mime_extension: '',
+    category: 'folder',
+    icon: '',
+    size: 0,
+    sizeStr: '',
+    time: folder.scanDate ? new Date(folder.scanDate).getTime() : Date.now(),
+    timeStr: '',
+    starred: false,
+    isDir: true,
+    thumbnail: '',
+    description: ''
+  } as IAliGetFileModel
+  ;(model as any).user_id = folder.userId || ''
+  return model
+}
+
 // 处理文件夹右键菜单
 const handleFolderRightClick = (event: MouseEvent, folder: MediaLibraryFolder) => {
   event.preventDefault()
@@ -576,6 +752,32 @@ const handleImportLocalFolder = () => {
     )
   } else {
     message.error('当前环境不支持选择本地文件夹')
+  }
+}
+
+const handleClearLibrary = () => {
+  mediaStore.clearAllData()
+  message.success('媒体库已清空')
+}
+
+const handleIncrementalScan = async () => {
+  if (mediaStore.isScanning) return
+  const selected = new Set(selectedScanSourceIds.value)
+  const targets = selected.size ? scanSourceTargets.value.filter((target) => selected.has(target.value)) : scanSourceTargets.value
+  if (!targets.length) {
+    handleImportLocalFolder()
+    return
+  }
+  try {
+    mediaStore.setScanning(true)
+    for (const target of targets) {
+      await mediaScanner.scanFolder(target.folder, target.driveServerId, { incremental: true })
+    }
+  } catch (error) {
+    console.error('增量扫描失败:', error)
+    message.error('扫描失败，请稍后重试')
+  } finally {
+    mediaStore.setScanning(false)
   }
 }
 
@@ -691,7 +893,9 @@ const handleGlobalClick = (event: MouseEvent) => {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  const users = await UserDAL.GetUserListFromDB().catch(() => [])
+  scanAccounts.value = users.filter((u) => !!u?.user_id && !!u?.access_token)
   const savedConnections = getWebDavConnections()
   for (const connection of savedConnections) {
     const folderId = `webdav_webdav:${connection.id}_/`
@@ -721,8 +925,13 @@ onUnmounted(() => {
 <style scoped>
 .media-library-nav {
   height: 100%;
-  background-color: var(--color-bg-1);
-  border-right: 1px solid var(--color-neutral-3);
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 42% 0%, rgba(0, 245, 212, 0.12), transparent 34%),
+    radial-gradient(circle at 0% 86%, rgba(244, 210, 138, 0.07), transparent 26%),
+    linear-gradient(180deg, rgba(14, 16, 20, 0.8), rgba(8, 9, 11, 0.94));
+  border-right: 1px solid rgba(255, 255, 255, 0.075);
   overflow-y: auto;
   padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -732,15 +941,17 @@ onUnmounted(() => {
 
 .media-library-title {
   padding: 20px 24px 16px 24px;
-  border-bottom: 1px solid var(--color-neutral-3);
-  background: linear-gradient(135deg, var(--color-bg-1), var(--color-bg-2));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.09), transparent 32%),
+    rgba(255, 255, 255, 0.042);
 }
 
 .media-library-title h2 {
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: var(--color-text-1);
+  color: rgba(255, 255, 255, 0.92);
   line-height: 1.2;
   letter-spacing: -0.5px;
 }
@@ -749,10 +960,12 @@ onUnmounted(() => {
 .scan-progress-section {
   padding: 16px;
   margin: 16px 16px 0 16px;
-  background: linear-gradient(135deg, var(--color-primary-light-3), var(--color-primary-light-2));
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.09), transparent 32%),
+    rgba(255, 255, 255, 0.042);
   border-radius: 12px;
-  border: 1px solid var(--color-primary-light-1);
-  box-shadow: 0 4px 12px rgba(var(--primary-6), 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.075);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.065);
 }
 
 .scan-header {
@@ -880,13 +1093,13 @@ onUnmounted(() => {
   transform: scale(1.1);
 }
 
-.nav-item span:first-of-type {
+.nav-item > span:first-of-type {
   flex: 1;
   line-height: 1.4;
   font-weight: inherit;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
 }
 
@@ -991,6 +1204,9 @@ onUnmounted(() => {
   border-top: 1px solid var(--color-neutral-3);
   margin-top: auto;
   background: var(--color-bg-2);
+}
+.nav-scan-actions-wrapper {
+  margin: 18px 12px 0;
 }
 
 .nav-actions .arco-btn {

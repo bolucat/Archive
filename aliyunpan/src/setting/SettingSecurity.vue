@@ -81,11 +81,10 @@ const disabled = computed(() => {
     </div>
     <div class="settingrow">
       <a-button v-if='!settingStore.securityPassword' type='outline' size='small' tabindex='-1'
-                style='margin-right: 16px' @click='handlerPassword("new", "")'>
+                @click='handlerPassword("new", "")'>
         设置安全密码
       </a-button>
-      <a-button v-else type='outline' size='small' tabindex='-1' style='margin-right: 12px'
-                @click='handlerPassword("modify", "")'>
+      <a-button v-else type='outline' size='small' tabindex='-1'                @click='handlerPassword("modify", "")'>
         修改安全密码
       </a-button>
       <a-popconfirm v-if='settingStore.securityPassword' content="确认要删除密码？" @ok="handlerPassword('del', '')">

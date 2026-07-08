@@ -32,7 +32,7 @@ watch(
 
 <template>
   <a-layout style="height: 100%">
-    <a-layout-sider hide-trigger :width="208" class="xbyleft rss-sider">
+    <a-layout-sider hide-trigger :width="218" class="xbyleft rss-sider">
       <div class="headdesc">好玩的插件</div>
       <a-menu :style="{ width: '100%' }" class="xbyleftmenu rss-leftmenu"
               :selected-keys="[appStore.GetAppTabMenu]"
@@ -71,7 +71,7 @@ watch(
         </a-menu-item>
       </a-menu>
     </a-layout-sider>
-    <a-layout-content>
+    <a-layout-content class="rss-content-panel">
       <a-tabs type="text" :direction="'horizontal'" class="hidetabs" :justify="true" :active-key="appStore.GetAppTabMenu">
         <a-tab-pane key="RssXiMa" title="1"><RssXiMa /></a-tab-pane>
         <a-tab-pane key="RssRename" title="2"><RssRename /></a-tab-pane>
@@ -95,10 +95,27 @@ watch(
 }
 
 .rss-sider {
-  min-width: 208px;
+  min-width: 218px;
 }
 
 .rss-leftmenu .arco-menu-item {
   padding-right: 14px !important;
+}
+
+.rss-content-panel {
+  min-width: 0;
+  height: 100%;
+  padding: 18px 18px 18px 14px;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+.rss-content-panel .hidetabs {
+  height: 100%;
+}
+
+.rss-content-panel .rightbg {
+  height: 100%;
+  margin: 0;
 }
 </style>

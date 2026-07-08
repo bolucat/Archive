@@ -40,7 +40,7 @@ type Listener struct {
 	services     []*hysteria2.Service[string]
 }
 
-func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
+func New(config LC.Hysteria2Server, lc C.InboundListenConfig, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
 	var sl *Listener
 	var err error
 	if len(additions) == 0 {
@@ -191,7 +191,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 				if ipv4 && !ipv6 {
 					return resolver.LookupIPv4WithResolver(ctx, host, resolver.ProxyServerHostResolver)
 				} else if ipv6 && !ipv4 {
-					return resolver.LookupIPv4WithResolver(ctx, host, resolver.ProxyServerHostResolver)
+					return resolver.LookupIPv6WithResolver(ctx, host, resolver.ProxyServerHostResolver)
 				}
 				return resolver.LookupIPWithResolver(ctx, host, resolver.ProxyServerHostResolver)
 			},
@@ -250,7 +250,7 @@ func New(config LC.Hysteria2Server, tunnel C.Tunnel, additions ...inbound.Additi
 		_service := *service
 		service := &_service // make a copy
 
-		ul, err := inbound.ListenPacket("udp", addr)
+		ul, err := lc.ListenPacket(context.Background(), "udp", addr)
 		if err != nil {
 			return nil, err
 		}

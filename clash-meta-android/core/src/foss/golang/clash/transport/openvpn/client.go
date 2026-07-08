@@ -17,8 +17,7 @@ import (
 )
 
 const (
-	DefaultHandshakeTimeout = 30 * time.Second
-	ControlRetransmitDelay  = time.Second
+	ControlRetransmitDelay = time.Second
 )
 
 type Client struct {
@@ -32,7 +31,7 @@ type Client struct {
 
 	cancel context.CancelFunc
 
-	writeSem semaphore.Weighted
+	writeSem *semaphore.Weighted
 
 	lastSendNano    atomic.Int64
 	lastReceiveNano atomic.Int64
@@ -61,10 +60,11 @@ func NewClient(config *ClientConfig, io PacketIO) (*Client, error) {
 	mux := NewPacketMux(io)
 	go mux.Run(runCtx)
 	client := &Client{
-		config:  config,
-		mux:     mux,
-		control: NewControlChannel(mux, crypt, local),
-		cancel:  cancel,
+		config:   config,
+		mux:      mux,
+		control:  NewControlChannel(mux, crypt, local),
+		cancel:   cancel,
+		writeSem: semaphore.NewWeighted(1),
 	}
 	client.markSend()
 	client.markReceive()
@@ -74,11 +74,6 @@ func NewClient(config *ClientConfig, io PacketIO) (*Client, error) {
 func (c *Client) Handshake(ctx context.Context) (*PushReply, error) {
 	if c == nil {
 		return nil, errors.New("nil openvpn client")
-	}
-	if _, ok := ctx.Deadline(); !ok {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, DefaultHandshakeTimeout)
-		defer cancel()
 	}
 	if err := c.control.SendReset(ctx); err != nil {
 		return nil, fmt.Errorf("send hard reset: %w", err)
@@ -102,7 +97,7 @@ func (c *Client) Handshake(ctx context.Context) (*PushReply, error) {
 
 	clientRecord, err := NewClientKeyMethod2Record(
 		InstallScriptOptionsString(c.config.Proto, c.config.Cipher, c.config.Auth, c.config.CompLZO),
-		InstallScriptPeerInfo(c.config.Cipher, c.config.CompLZO),
+		InstallScriptPeerInfo(c.config.Cipher, c.config.CompLZO, c.config.PeerInfo),
 		strings.TrimSpace(c.config.Username),
 		c.config.Password,
 	)

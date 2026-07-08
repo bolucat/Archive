@@ -1,4 +1,4 @@
-export const COMMAND_MANIFEST_VERSION = 6
+export const COMMAND_MANIFEST_VERSION = 7
 
 const LARGE_OUTPUT_COMMANDS = new Set([
   'files list',
@@ -15,6 +15,7 @@ const PROVIDER_REQUIREMENTS = {
   'files move-apply': { capability: 'move' },
   'files trash-apply': { capability: 'trash' },
   'upload apply': { capability: 'uploadFile' },
+  'files download': { capability: 'downloadFile' },
   'organize apply': { capability: 'mkdir/move/batchRename' },
 }
 
@@ -182,6 +183,16 @@ export const COMMAND_MANIFEST = [
     args: [],
     options: [opt('file-id', { type: 'string', required: true }), opt('provider', { type: 'string' }), opt('account', { type: 'string' }), opt('drive-id', { type: 'string' }), opt('json', { type: 'boolean' })],
     output: 'FileItem',
+  },
+  {
+    group: 'files',
+    name: 'download',
+    command: 'files download',
+    description: 'Download one cloud-drive file to a local path.',
+    access: 'read',
+    args: [],
+    options: [opt('file-id', { type: 'string', required: true }), opt('output', { type: 'path', required: true }), opt('provider', { type: 'string' }), opt('account', { type: 'string' }), opt('drive-id', { type: 'string' }), opt('json', { type: 'boolean' })],
+    output: 'DownloadResult',
   },
   {
     group: 'files',
@@ -387,6 +398,7 @@ function examplesFor(command) {
   if (c === 'auth list') return ['clouddrive-cli auth list --format json']
   if (c === 'providers capabilities') return ['clouddrive-cli providers capabilities --format json']
   if (c === 'files list') return ['clouddrive-cli files list --provider aliyun --account default --file-id root --limit 100 --format json']
+  if (c === 'files download') return ['clouddrive-cli files download --provider aliyun --account default --file-id <file-id> --output ./download.bin --format json']
   if (c === 'files walk') return ['clouddrive-cli files walk --provider aliyun --account default --file-id <folder-id> --output files.json --format json']
   if (c === 'files stats') return ['clouddrive-cli files stats --provider aliyun --account default --file-id root --depth 2 --output stats.json --format json']
   if (c === 'docs read') return ['clouddrive-cli docs read ./rules.pdf --pdf-format markdown --pdf-pages 1-3 --format json']

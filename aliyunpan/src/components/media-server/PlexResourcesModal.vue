@@ -118,7 +118,7 @@ const handleConfirm = () => {
 .plex-resource-row {
   width: 100%;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  background: linear-gradient(180deg, rgba(252, 252, 252, 0.98), rgba(241, 243, 247, 0.95));
+  background: rgba(255, 255, 255, 0.04);
   border-radius: 18px;
   padding: 16px 18px;
   display: flex;
@@ -162,7 +162,7 @@ const handleConfirm = () => {
 .plex-resource-name {
   font-size: 17px;
   font-weight: 700;
-  color: #111827;
+  color: var(--app-mineradio-ink, #e8ecef);
   line-height: 1.4;
 }
 

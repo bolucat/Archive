@@ -5,16 +5,18 @@ import (
 	"strings"
 
 	C "github.com/metacubex/mihomo/constant"
+	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/snell"
 	"github.com/metacubex/mihomo/log"
 )
 
 type SnellOption struct {
 	BaseOption
-	Psk      string          `inbound:"psk"`
-	Version  int             `inbound:"version,omitempty"`
-	UDP      bool            `inbound:"udp,omitempty"`
-	ObfsOpts SnellObfsOption `inbound:"obfs-opts,omitempty"`
+	Psk       string          `inbound:"psk"`
+	Version   int             `inbound:"version,omitempty"`
+	UDP       bool            `inbound:"udp,omitempty"`
+	ObfsOpts  SnellObfsOption `inbound:"obfs-opts,omitempty"`
+	ShadowTLS ShadowTLS       `inbound:"shadow-tls,omitempty"`
 }
 
 func (o SnellOption) Equal(config C.InboundConfig) bool {
@@ -30,7 +32,7 @@ type Snell struct {
 	*Base
 	config *SnellOption
 	l      C.MultiAddrListener
-	snell  snell.Config
+	snell  LC.SnellServer
 }
 
 func NewSnell(options *SnellOption) (*Snell, error) {
@@ -41,20 +43,21 @@ func NewSnell(options *SnellOption) (*Snell, error) {
 	if options.Version == 0 {
 		options.Version = 4
 	}
-	if options.Version != 4 && options.Version != 5 {
+	if options.Version < 1 || options.Version > 5 {
 		return nil, fmt.Errorf("snell inbound version %d is not supported", options.Version)
 	}
 
 	return &Snell{
 		Base:   base,
 		config: options,
-		snell: snell.Config{
-			Listen:   base.RawAddress(),
-			Psk:      options.Psk,
-			Version:  options.Version,
-			UDP:      options.UDP,
-			ObfsMode: options.ObfsOpts.Mode,
-			ObfsHost: options.ObfsOpts.Host,
+		snell: LC.SnellServer{
+			Listen:    base.RawAddress(),
+			Psk:       options.Psk,
+			Version:   options.Version,
+			UDP:       options.UDP,
+			ObfsMode:  options.ObfsOpts.Mode,
+			ObfsHost:  options.ObfsOpts.Host,
+			ShadowTLS: options.ShadowTLS.Build(),
 		},
 	}, nil
 }
@@ -75,7 +78,7 @@ func (s *Snell) Address() string {
 
 func (s *Snell) Listen(tunnel C.Tunnel) error {
 	var err error
-	s.l, err = snell.New(s.snell, tunnel, s.Additions()...)
+	s.l, err = snell.New(s.snell, s.ListenConfig(), tunnel, s.Additions()...)
 	if err != nil {
 		return err
 	}

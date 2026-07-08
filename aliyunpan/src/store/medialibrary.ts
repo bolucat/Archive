@@ -383,6 +383,12 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     // 删除该文件夹相关的所有媒体项目
     mediaItems.value = mediaItems.value.filter(item => item.folderId !== id)
 
+    // 清理孤儿项：folderId 不属于任何现有文件夹的未匹配项
+    const remainingFolderIds = new Set(folders.value.map(f => f.id))
+    mediaItems.value = mediaItems.value.filter(item =>
+      item.type !== 'unmatched' || !item.folderId || remainingFolderIds.has(item.folderId)
+    )
+
     // 从继续观看列表中移除相关项目
     continueWatching.value = continueWatching.value.filter(item => item.folderId !== id)
 

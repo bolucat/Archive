@@ -26,6 +26,8 @@ declare global {
     WebOpenLyric: () => void
     WebSendLyric: (data: any) => void
     WebCloseLyric: () => void
+    WebConfigureGlobalHotkeys: (data: any) => Promise<any>
+    WebOnGlobalHotkey: (callback: (data: any) => void) => (() => void)
     WebOpenUrl: any
     WebShowOpenDialogSync: any
     WebShowItemInFolder: any

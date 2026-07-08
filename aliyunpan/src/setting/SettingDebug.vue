@@ -251,8 +251,8 @@ onMounted(loadCacheStats)
                :readonly='true' />
     </div>
     <div class="settingspace"></div>
-    <div class='settingrow' style='display: flex'>
-      <a-button type='outline' size='small' tabindex='-1' style='margin-right: 16px' @click='handleJumpPath'>
+    <div class='settingrow'>
+      <a-button type='outline' size='small' @click='handleJumpPath'>
         打开位置
       </a-button>
       <a-popconfirm content="确认要清理数据库？" @ok="AppCache.aClearDir('db')">

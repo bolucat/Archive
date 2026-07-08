@@ -53,7 +53,7 @@ const handleSelectDownSavePath = () => {
   <div class='settingcard'>
     <div class='settinghead'>下载文件保存的位置</div>
     <div class='settingrow'>
-      <a-input-search tabindex='-1' style='max-width: 420px' :readonly='true' button-text='更改' search-button
+      <a-input-search tabindex='-1' class='down-path-input' :readonly='true' button-text='更改' search-button
                       :model-value='settingStore.downSavePath' @search='handleSelectDownSavePath' />
     </div>
     <div class='settingrow'>
@@ -169,7 +169,7 @@ const handleSelectDownSavePath = () => {
     </div>
     <div class='settingspace'></div>
     <div class='settinghead'>下载时 总下载速度限制</div>
-    <div class='settingrow' style='display: flex; align-items: center'>
+    <div class='settingrow'>
       <a-input-number
         tabindex='-1' :style="{ width: '128px' }"
         mode='button' :min='0'
@@ -178,7 +178,7 @@ const handleSelectDownSavePath = () => {
         :model-value='settingStore.downGlobalSpeed'
         @update:model-value='cb({ downGlobalSpeed: $event })'>
       </a-input-number>
-      <div style='height: 32px; border-left: 1px solid var(--color-neutral-3)'></div>
+      <div class='down-divider'></div>
       <a-radio-group type='button'
                      tabindex='-1' :model-value='settingStore.downGlobalSpeedM'
                      @update:model-value='cb({ downGlobalSpeedM: $event, downGlobalSpeed: 0 })'>
@@ -201,4 +201,7 @@ const handleSelectDownSavePath = () => {
   </div>
 </template>
 
-<style></style>
+<style>
+.down-path-input { max-width: 420px; }
+.down-divider { height: 32px; border-left: 1px solid var(--color-neutral-3); }
+</style>

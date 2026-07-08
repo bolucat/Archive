@@ -28,7 +28,7 @@ import TreeStore from '../store/treestore'
 import UserDAL from '../user/userdal'
 import { ITokenInfo } from '../user/userstore'
 import { getWebDavConnection, getWebDavConnectionId, getWebDavDownloadUrl, isWebDavDrive } from '../utils/webdavClient'
-import { getAlipanDownloadPromotionReason, getAlipanVideoPromotionReason, showAlipanMemberPromotion } from '../utils/alipanPromotion'
+import { getAlipanVideoPromotionReason } from '../utils/alipanPromotion'
 
 const parseBaiduPath = (file_path: string) => {
   let p = file_path || '/'
@@ -353,7 +353,8 @@ export default class AliFile {
         file_id: file_id,
         expire_time: GetExpiresTime(down.url),
         url: down.url,
-        size: down.size || detail.size || 0
+        size: down.size || detail.size || 0,
+        headers: down.headers
       }
     }
     if (isPikPakUser(user_id) || drive_id === 'pikpak') {
@@ -452,8 +453,6 @@ export default class AliFile {
     }
     const resp = await AliHttp.Post(url, postData, user_id, '')
     if (AliHttp.IsSuccess(resp.code)) {
-      const promotionReason = !isPic ? getAlipanDownloadPromotionReason(resp.body) : ''
-      if (promotionReason) showAlipanMemberPromotion(promotionReason, { userId: user_id })
       data.url = resp.body.cdn_url || resp.body.url
       data.size = resp.body.size
       data.expire_time = GetExpiresTime(data.url)
@@ -621,8 +620,6 @@ export default class AliFile {
       return '视频正在转码中，稍后重试'
     }
     if (resp.body.code == 'ExceedCapacityForbidden') {
-      const promotionReason = getAlipanVideoPromotionReason(resp.body)
-      if (promotionReason) showAlipanMemberPromotion(promotionReason, { userId: user_id, skuCode: promotionSkuCode })
       return '容量超限限制播放，需要扩容或者删除不必要的文件释放空间'
     }
     const data: IVideoPreviewUrl = {
@@ -645,7 +642,6 @@ export default class AliFile {
       }
       const taskList = resp.body.video_preview_play_info?.live_transcoding_task_list || []
       const promotionReason = getAlipanVideoPromotionReason(resp.body)
-      if (promotionReason) showAlipanMemberPromotion(promotionReason, { userId: user_id, skuCode: promotionSkuCode })
       const qualityMap: any = {
         'LD': { label: '低清', value: '480p' },
         'SD': { label: '标清', value: '540P' },

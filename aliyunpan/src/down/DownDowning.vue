@@ -546,13 +546,15 @@ const handleTorrentFiles = () => {
 
 .text-error {
   width: 100%;
-  height: 16px;
+  min-height: 16px;
+  max-height: 48px;
   margin: 0;
-  overflow: visible;
+  overflow: auto;
   color: #f35b51;
   font-size: 12px;
   line-height: 16px;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .progress-total {

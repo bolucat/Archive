@@ -1,4 +1,4 @@
-import { onedriveRefreshToken, onedriveListDir, onedriveWalk, onedriveRenameBatch, onedriveSearch, onedriveGetFile, onedriveMove, onedriveMkdir, onedriveTrash, onedriveUploadFile } from './onedrive.mjs'
+import { onedriveRefreshToken, onedriveListDir, onedriveWalk, onedriveRenameBatch, onedriveSearch, onedriveGetFile, onedriveMove, onedriveMkdir, onedriveTrash, onedriveUploadFile, onedriveDownloadFile } from './onedrive.mjs'
 
 export function createOnedriveProvider() {
   return {
@@ -16,6 +16,7 @@ export function createOnedriveProvider() {
       mkdir: true,
       move: true,
       uploadFile: true,
+      downloadFile: true,
     },
     auth: {
       async login() {
@@ -38,6 +39,9 @@ export function createOnedriveProvider() {
       async trash({ token, items }) { return onedriveTrash(token, items.map((i) => i.fileId)) },
       async uploadFile({ token, parentId, localPath, name, size, conflict }) {
         return onedriveUploadFile(token, { parentId, localPath, name, size, conflict })
+      },
+      async downloadFile({ token, fileId, outputPath }) {
+        return onedriveDownloadFile(token, fileId, outputPath)
       },
     },
   }

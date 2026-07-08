@@ -66,7 +66,7 @@
         >
           <div class="server-leading">
             <div class="server-icon" :class="`type-${server.type}`">
-              <img :src="serverDisplayIcon(server)" :alt="server.type" />
+              <img :src="serverDisplayIcon(server)" :alt="server.type" @error="handleServerIconError($event, server.type)" />
             </div>
 
             <div class="server-info">
@@ -320,7 +320,7 @@ import plexIcon from '../../assets/media-server/plex.svg'
 import AddMediaServerModal from './AddMediaServerModal.vue'
 import PlexResourcesModal from './PlexResourcesModal.vue'
 import { fetchMediaServerLoginProfile, signInMediaServer } from '../../media-server/auth'
-import { createPlexServerConfigs, signInPlex } from '../../media-server/plexAuth'
+import { createPlexServerConfigs, signInPlex, verifyPlexServerConfig } from '../../media-server/plexAuth'
 
 const registry = useMediaServerRegistryStore()
 const navigation = useMediaServerNavigationStore()
@@ -418,6 +418,13 @@ const providerIcon = (type: MediaServerType) => {
   return plexIcon
 }
 const serverDisplayIcon = (server: MediaServerConfig) => server.customIconUrl || providerIcon(server.type)
+
+const handleServerIconError = (event: Event, type: MediaServerType) => {
+  const image = event.target as HTMLImageElement | null
+  if (!image) return
+  image.onerror = null
+  image.src = providerIcon(type)
+}
 
 const formatRelativeTime = (value?: number) => {
   if (!value) return '未观看'
@@ -732,9 +739,27 @@ const handleConfirmPlexResources = async (resources: PlexResource[]) => {
       return
     }
     let firstServerId = ''
+    let savedCount = 0
+    let failedCount = 0
     for (const server of servers) {
-      const saved = registry.addServer(server)
-      if (!firstServerId) firstServerId = saved.id
+      try {
+        const serverName = await verifyPlexServerConfig(server)
+        const saved = registry.addServer({
+          ...server,
+          name: server.nameCustomized ? server.name : (serverName || server.name),
+          loginStatus: 'success',
+          lastLoginCheckedAt: Date.now()
+        })
+        savedCount += 1
+        if (!firstServerId) firstServerId = saved.id
+      } catch (error) {
+        failedCount += 1
+        console.warn('跳过不可连接的 Plex 服务器:', server.name, error)
+      }
+    }
+    if (savedCount === 0) {
+      message.error('选择的 Plex 服务器当前不可连接')
+      return
     }
     if (firstServerId) {
       registry.setCurrentServer(firstServerId)
@@ -742,7 +767,7 @@ const handleConfirmPlexResources = async (resources: PlexResource[]) => {
     }
     showPlexResourcesModal.value = false
     plexResources.value = []
-    message.success(`已添加 ${servers.length} 个 Plex 服务器`)
+    message.success(failedCount > 0 ? `已添加 ${savedCount} 个 Plex 服务器，${failedCount} 个不可连接已跳过` : `已添加 ${savedCount} 个 Plex 服务器`)
   } catch (error: any) {
     console.error('保存 Plex 服务器失败:', error)
     message.error(error?.message || '保存 Plex 服务器失败')
@@ -772,6 +797,17 @@ const handleSubmitServer = async (payload: {
       showServerModal.value = false
       await handlePlexSignIn()
       return
+    }
+    if (payload.type === 'plex' && editingServer.value) {
+      const accessToken = editingServer.value.accessToken
+      if (!accessToken) {
+        message.error('当前 Plex 服务器缺少访问令牌，请重新登录')
+        return
+      }
+      await verifyPlexServerConfig({
+        baseUrl: payload.baseUrl,
+        accessToken
+      })
     }
 
     const shouldVerifyInBackground = payload.type !== 'plex'
@@ -834,7 +870,7 @@ const handleSubmitServer = async (payload: {
   align-items: center;
   padding: 0 18px 14px;
   margin-bottom: 8px;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 .toolbar-left,
@@ -849,8 +885,8 @@ const handleSubmitServer = async (payload: {
   height: 46px;
   border-radius: 18px;
   border: 1px solid rgba(15, 23, 42, 0.06);
-  background: rgba(248, 250, 252, 0.96);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .toolbar-iconfont {
@@ -890,14 +926,14 @@ const handleSubmitServer = async (payload: {
   padding: 18px 22px;
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.05);
   cursor: pointer;
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .server-row:hover {
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.04);
   transform: translateY(-1px);
 }
 
@@ -911,10 +947,10 @@ const handleSubmitServer = async (payload: {
   position: relative;
   display: block;
   min-height: 172px;
-  border: 1px solid rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.12);
   border-radius: 20px;
-  background: linear-gradient(180deg, rgba(252, 252, 252, 0.98), rgba(241, 243, 247, 0.95));
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
   padding: 16px 18px;
 }
 
@@ -1151,8 +1187,8 @@ const handleSubmitServer = async (payload: {
   min-width: 150px;
   padding: 7px;
   border-radius: 18px;
-  border: 1px solid rgba(255, 255, 255, 0.72);
-  background: rgba(250, 246, 239, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(18, 22, 30, 0.94);
   box-shadow: 0 22px 48px rgba(35, 28, 21, 0.18);
   backdrop-filter: blur(22px) saturate(145%);
 }
@@ -1167,7 +1203,7 @@ const handleSubmitServer = async (payload: {
   align-items: center;
   gap: 10px;
   background: transparent;
-  color: rgba(24, 24, 24, 0.9);
+  color: var(--app-mineradio-ink, #e8ecef);
   font-size: 14px;
   font-weight: 700;
   text-align: left;
@@ -1175,7 +1211,7 @@ const handleSubmitServer = async (payload: {
 }
 
 .server-context-item:hover {
-  background: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .server-context-item:disabled {
@@ -1187,7 +1223,7 @@ const handleSubmitServer = async (payload: {
   width: 18px;
   font-size: 16px;
   text-align: center;
-  color: rgba(24, 24, 24, 0.72);
+  color: var(--app-mineradio-ink, #e8ecef); opacity: 0.56;
 }
 
 .server-context-item.danger,
@@ -1224,7 +1260,7 @@ const handleSubmitServer = async (payload: {
 .server-icon-manager-title {
   font-size: 24px;
   font-weight: 800;
-  color: #111827;
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .server-icon-manager-subtitle,
@@ -1257,8 +1293,8 @@ const handleSubmitServer = async (payload: {
 .server-icon-add-panel {
   border: 1px solid rgba(148, 163, 184, 0.18);
   border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 250, 255, 0.82));
-  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 22px 44px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(20px);
 }
 
@@ -1290,7 +1326,7 @@ const handleSubmitServer = async (payload: {
   padding: 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: 0.18s ease;
 }
@@ -1298,7 +1334,7 @@ const handleSubmitServer = async (payload: {
 .server-icon-set-card:hover,
 .server-icon-set-card.active {
   border-color: rgba(59, 130, 246, 0.28);
-  background: linear-gradient(180deg, rgba(240, 247, 255, 0.92), rgba(230, 240, 255, 0.84));
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 16px 30px rgba(37, 99, 235, 0.12);
 }
 
@@ -1377,7 +1413,7 @@ const handleSubmitServer = async (payload: {
   padding: 14px 12px;
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.56);
+  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
   transition: 0.18s ease;
 }
@@ -1385,7 +1421,7 @@ const handleSubmitServer = async (payload: {
 .server-icon-item:hover,
 .server-icon-item.active {
   border-color: rgba(59, 130, 246, 0.3);
-  background: linear-gradient(180deg, rgba(240, 247, 255, 0.94), rgba(230, 240, 255, 0.86));
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 16px 28px rgba(37, 99, 235, 0.12);
 }
 

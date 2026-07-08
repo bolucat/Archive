@@ -210,6 +210,7 @@ func TestInboundVMess_Mekya(t *testing.T) {
 			MaxWriteDelay:          20,
 			MaxRequestSize:         96000,
 			PollingIntervalInitial: 20,
+			H2PoolSize:             8,
 			KCP: outbound.MKCPOptions{
 				TTI: 15,
 			},

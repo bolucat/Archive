@@ -16,6 +16,9 @@ export interface IMusicTrack {
   title?: string
   album?: string
   cover_url?: string
+  duration_ms?: number
+  lyric_source?: string
+  metadata_source?: string
   scanned_at: number
   updated_at?: number
   enriched_at?: number

@@ -7,6 +7,7 @@ import type { IBookItem } from '../types/book'
 import type { IBookNote } from '../types/bookNote'
 import type { IBookBookmark } from '../types/bookBookmark'
 import { extractTextFromHtml, type BookAIContextSource } from './bookAI'
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.js?url'
 
 export interface BookReaderOptions {
   sourceUrl: string
@@ -107,6 +108,20 @@ export interface BookReaderHandle {
   _contentBuffer: ArrayBuffer
 }
 
+async function configurePdfJsWorker() {
+  const pdfjsLib = await import('pdfjs-dist')
+  const pdfjs = pdfjsLib as any
+  if (pdfjs?.GlobalWorkerOptions) {
+    pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl
+  }
+  const scope = globalThis as any
+  scope.pdfjsLib = {
+    ...(scope.pdfjsLib || {}),
+    ...pdfjs,
+    GlobalWorkerOptions: pdfjs?.GlobalWorkerOptions
+  }
+}
+
 type RenderKitModule = typeof import('../vendor/reader/readerkit.min.js')
 const READER_RENDER_SETTLE_TIMEOUT_MS = 1800
 
@@ -151,6 +166,7 @@ function createReaderOptions(options: BookReaderOptions) {
 }
 
 export function createReaderStyleConfig(options: BookReaderOptions) {
+  const fullTranslationEnabled = options.fullTranslationMode === 'both' || options.fullTranslationMode === 'target'
   const readerConfig: Record<string, string> = {
     readerMode: options.readerMode || 'double',
     backgroundColor: options.backgroundColor || '',
@@ -175,11 +191,12 @@ export function createReaderStyleConfig(options: BookReaderOptions) {
     isShadow: options.isShadow ? 'yes' : 'no',
     isSliding: options.isSliding ? 'yes' : 'no',
     margin: String(options.margin ?? 0),
-    letterSpacing: String(options.letterSpacing ?? 0)
+    letterSpacing: String(options.letterSpacing ?? 0),
+    fullTranslationMode: options.fullTranslationMode || 'no'
   }
   return {
     getReaderConfig: (key: string) => readerConfig[key] || '',
-    getAllListConfig: () => [],
+    getAllListConfig: (key?: string) => (key === 'fullTranslationBooks' && fullTranslationEnabled ? [''] : []),
     getObjectConfig: () => ({})
   }
 }
@@ -408,6 +425,7 @@ export function normalizeReaderSearchResults(items: any[]): BookSearchResult[] {
 }
 
 export async function createBookReader(options: BookReaderOptions, cachedContent?: ArrayBuffer): Promise<BookReaderHandle> {
+  await configurePdfJsWorker()
   const ReaderKit: RenderKitModule = await import('../vendor/reader/readerkit.min.js')
   const content = cachedContent || await fetchBookBuffer(options.sourceUrl)
   const readerOptions = createReaderOptions(options)

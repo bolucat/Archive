@@ -6,7 +6,7 @@ describe('PanHub main-process request proxy', () => {
   it('allows only the configured PanHub HTTPS origin', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ status: 'ok' }), { status: 200 }))
 
-    await expect(requestPanHub({ url: 'https://panhub.shenzjd.com/api/health' }, fetchImpl)).resolves.toEqual({
+    await expect(requestPanHub({ url: 'https://api.xbyvideohub.com/api/health' }, fetchImpl)).resolves.toEqual({
       ok: true,
       status: 200,
       data: { status: 'ok' }

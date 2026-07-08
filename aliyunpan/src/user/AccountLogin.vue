@@ -3,8 +3,10 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { X, Loader2, Github, Chrome, Mail } from 'lucide-vue-next'
 import { createClient } from '@supabase/supabase-js'
 import { openExternal } from '../utils/electronhelper'
-import Config from '../config'
 import message from '../utils/message'
+
+const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [v: boolean]; login: [user: { email: string }] }>()
@@ -16,8 +18,8 @@ const emailCode = ref('')
 
 const CALLBACK_URL = 'boxplayer-auth://callback'
 
-const supabase = Config.SUPABASE_URL && Config.SUPABASE_ANON_KEY
-  ? createClient(Config.SUPABASE_URL, Config.SUPABASE_ANON_KEY)
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
   : null
 
 function saveUser(email: string) {

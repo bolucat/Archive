@@ -38,7 +38,7 @@ defineProps<{
 .stat-card {
   padding: 18px 16px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(15, 23, 42, 0.08);
   text-align: center;
 }
@@ -47,11 +47,11 @@ defineProps<{
   display: block;
   margin-bottom: 6px;
   font-size: 22px;
-  color: #111827;
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .stat-card span {
-  color: #64748b;
+  color: var(--app-mineradio-ink, #e8ecef); opacity: 0.56;
   font-size: 13px;
 }
 

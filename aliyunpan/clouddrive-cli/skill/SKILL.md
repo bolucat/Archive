@@ -16,7 +16,7 @@ This skill is the orientation layer. Discover the live CLI surface first, then c
 ## The three pillars
 
 - **Account and provider discovery** — `auth list`, `settings show`, and `providers capabilities` tell you which accounts exist and which operations each provider supports.
-- **Cloud file operations** — `files list|walk|tree|stats|info|search|mkdir|rename-apply|move-apply|trash-apply` provide the stable boundary for reading and changing cloud files.
+- **Cloud file operations** — `files list|walk|tree|stats|info|download|search|mkdir|rename-apply|move-apply|trash-apply` provide the stable boundary for reading and changing cloud files.
 - **Agent workflows** — `docs read`, `media *`, `upload *`, `organize *`, and `ops *` let agents combine local instructions, cloud inventory, dry-run plans, execution, and rollback.
 
 ## Install and locate
@@ -80,6 +80,7 @@ clouddrive-cli files tree --provider aliyun --account default --file-id root --d
 clouddrive-cli files list --provider aliyun --account default --file-id root --format json
 clouddrive-cli files list --provider aliyun --account default --file-id root --limit 100 --format json
 clouddrive-cli files list --provider aliyun --account default --file-id root --limit 100 --cursor <nextCursor> --format json
+clouddrive-cli files download --provider aliyun --account default --file-id <file-id> --output ./download.bin --format json
 clouddrive-cli files search --provider aliyun --account default --name "movie" --limit 50 --format json
 ```
 

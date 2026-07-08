@@ -3,7 +3,7 @@ import AliArchive from '../aliapi/archive'
 import AliFile from '../aliapi/file'
 import AliFileCmd from '../aliapi/filecmd'
 import ServerHttp from '../aliapi/server'
-import { ITokenInfo, useFootStore, usePanFileStore, useSettingStore, useUserStore } from '../store'
+import { ITokenInfo, useAppStore, useFootStore, usePanFileStore, useSettingStore, useUserStore } from '../store'
 import { IPageCode, IPageDocx, IPageEpub, IPageImage, IPageMusic, IPageMusicTrack, IPageOffice, IPagePdf, IPageSheet, IPageVideo, IPageVideoPlaylistEntry } from '../store/appstore'
 import UserDAL from '../user/userdal'
 import { clickWait } from './debounce'
@@ -618,7 +618,9 @@ async function Audio(file: IAliGetFileModel, password: string = ''): Promise<voi
   }
 
   if (typeof window !== 'undefined' && (window as any).WebOpenWindow) {
-    ;(window as any).WebOpenWindow({ page: 'PageMusic', data: pageMusic, theme: 'dark' })
+    const appStore = useAppStore()
+    const theme = appStore.appTheme === 'system' ? (appStore.appDark ? 'dark' : 'light') : appStore.appTheme
+    ;(window as any).WebOpenWindow({ page: 'PageMusic', data: pageMusic, theme })
   } else {
     // 兜底：旧版底部播放器
     const data = await getRawUrl(token.user_id, file.drive_id, file.file_id, getEncType(file), password, weifa, 'audio')

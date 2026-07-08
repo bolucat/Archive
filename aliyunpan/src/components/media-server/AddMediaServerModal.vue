@@ -295,6 +295,33 @@ const handleSubmit = () => {
 }
 </script>
 
+<style>
+/* ── media-server modal glass background ── */
+.media-server-modal .arco-modal-content {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1px solid rgba(148, 163, 184, 0.14) !important;
+  border-radius: 20px !important;
+  box-shadow: 0 28px 60px rgba(15, 23, 42, 0.14) !important;
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+}
+
+body[arco-theme='dark'] .media-server-modal .arco-modal-content {
+  background: linear-gradient(180deg, rgba(24, 29, 40, 0.94), rgba(17, 21, 30, 0.9)) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.28) !important;
+}
+
+/* ── panel card glass background ── */
+.panel-card {
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+
+body[arco-theme='dark'] .panel-card {
+  background: rgba(24, 29, 40, 0.5) !important;
+}
+</style>
+
 <style scoped>
 .server-modal {
   padding: 6px 4px 2px;
@@ -317,7 +344,7 @@ const handleSubmit = () => {
 .panel-card {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
 }
 
@@ -400,7 +427,7 @@ const handleSubmit = () => {
   margin-bottom: 10px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(248, 250, 252, 0.92);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(15, 23, 42, 0.06);
 }
 

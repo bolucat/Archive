@@ -4,7 +4,7 @@ import { Loader2, CheckCircle, AlertCircle } from 'lucide-vue-next'
 defineProps<{
   state: 'parsing' | 'listing' | 'saving' | 'done' | 'error'
   input?: { url: string; password: string }
-  output?: { shareName: string; fileCount: number; savedCount: number; platform: string }
+  output?: { shareName: string; fileCount: number; savedCount: number; platform: string; asyncStatus?: boolean }
   error?: string
 }>()
 
@@ -16,6 +16,10 @@ const emit = defineEmits<{ (e: 'retry'): void }>()
     <div v-if="state === 'parsing'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> 解析分享链接...</div>
     <div v-else-if="state === 'listing'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> 列出分享文件...</div>
     <div v-else-if="state === 'saving'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> 正在转存到你的网盘...</div>
+    <div v-else-if="state === 'done' && output && output.asyncStatus" class="is-status is-done">
+      <CheckCircle :size="16" :stroke-width="1.5" />
+      <span>已从 {{ output.platform }} 分享「{{ output.shareName }}」提交转存 {{ output.fileCount }} 个文件，后台处理中</span>
+    </div>
     <div v-else-if="state === 'done' && output" class="is-status is-done">
       <CheckCircle :size="16" :stroke-width="1.5" />
       <span>已从 {{ output.platform }} 分享「{{ output.shareName }}」转存 {{ output.savedCount }}/{{ output.fileCount }} 个文件</span>

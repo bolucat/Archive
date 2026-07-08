@@ -11,11 +11,15 @@ import PanHubDoubanHot from './PanHubDoubanHot.vue'
 import PanHubSearchBox from './PanHubSearchBox.vue'
 import PanHubSettingsDrawer, { type PanHubSettings } from './PanHubSettingsDrawer.vue'
 import AISearchAgent from './AISearchAgent.vue'
+import { checkAndIncrement, isLoggedIn, isPro } from '../utils/usageLimit'
+import { getAIConfig } from '../utils/bookAI'
+import { isBoxPlayerCloudProvider } from '../utils/boxplayerCloudAI'
+import message from '../utils/message'
 
 const appStore = useAppStore()
 const HISTORY_KEY = 'global_search_history'
 const MAX_HISTORY = 20
-const PANHUB_API_BASE = 'https://panhub.shenzjd.com/api'
+const PANHUB_API_BASE = 'https://api.xbyvideohub.com/api'
 const panHubFetch = createPanHubFetch(window.Electron?.ipcRenderer?.invoke?.bind(window.Electron.ipcRenderer))
 
 const searchMode = ref<'local' | 'panhub' | 'ai'>('local')
@@ -168,10 +172,17 @@ const PH_PLATFORM_INFO: Record<string,{name:string;color:string}> = {
 }
 const phHasResults = computed(() => Object.keys(phMerged.value).length > 0)
 const phPlatforms=computed(()=>{const p:{key:string;name:string;count:number}[]=[];for(const[k,v]of Object.entries(phMerged.value))p.push({key:k,name:PH_PLATFORM_INFO[k]?.name||k,count:v.length});return p})
+const aiAgentCanSend = computed(() => {
+  if (isPro()) return true
+  const cfg = getAIConfig()
+  return isLoggedIn() && !!cfg && !isBoxPlayerCloudProvider(cfg.providerName)
+})
 
 async function phDoSearch(){
   const kw=keyword.value.trim()
   if(kw.length<2){phMerged.value={};phSearched.value=false;return}
+  const usage = checkAndIncrement('panHubSearch')
+  if(!usage.allowed){message.warning(usage.message || '今日全网资源搜索次数已用完');return}
   addToHistory(kw)
   if(phController)phController.abort()
   const controller=new AbortController()
@@ -182,7 +193,7 @@ async function phDoSearch(){
   try{
     panHubFetch(`${PANHUB_API_BASE}/hot-searches`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term:kw})}).catch(()=>{})
     const sources=await discoverPanHubSources(PANHUB_API_BASE,panHubFetch,controller.signal)
-        if(!phAllPlugins.length){phAllPlugins.value=sources.plugins;phAllChannels.value=sources.channels;phSources.value={plugins:sources.plugins,channels:sources.channels}}
+        if(!phAllPlugins.value.length){phAllPlugins.value=sources.plugins;phAllChannels.value=sources.channels;phSources.value={plugins:sources.plugins,channels:sources.channels}}
     const result=await searchPanHubSources({
       apiBase:PANHUB_API_BASE,
       keyword:kw,
@@ -218,6 +229,10 @@ function onSearchBoxSubmit() {
 
 const aiTrigger = ref(0)
 const aiKeyword = ref('')
+
+function activateAiMode() {
+  searchMode.value = 'ai'
+}
 
 function doSearch() {
   if (searchMode.value === 'panhub') { phDoSearch(); return }
@@ -402,16 +417,16 @@ onUnmounted(() => {
     <div class="gs-page-header">
       <div class="gs-page-tabs">
         <button :class="['gs-page-tab', searchMode === 'local' ? 'active' : '']" @click="searchMode = 'local'">搜索我的</button>
-        <button :class="['gs-page-tab', searchMode === 'panhub' ? 'active' : '']" @click="searchMode = 'panhub'">搜索全网</button>
-        <button :class="['gs-page-tab', searchMode === 'ai' ? 'active' : '']" @click="searchMode = 'ai'">AI Agent</button>
+        <button :class="['gs-page-tab', searchMode === 'panhub' ? 'active' : '']" @click="searchMode = 'panhub'">搜索全网 <span class="gs-pro-badge">Pro</span></button>
+        <button :class="['gs-page-tab', searchMode === 'ai' ? 'active' : '']" @click="activateAiMode">AI Agent <span class="gs-pro-badge">Pro</span></button>
       </div>
 
       <PanHubSearchBox
         v-if="searchMode !== 'ai'"
         v-model="keyword"
-        :loading="searchMode === 'ai' ? false : (searchMode === 'local' ? searching : phLoading)"
-        :searched="searchMode === 'ai' ? false : (searchMode === 'local' ? (searching === false && hasInput) : phSearched)"
-        :placeholder="searchMode === 'ai' ? '描述你想找什么，AI 帮你搜索...' : (searchMode === 'panhub' ? '搜索全网公开网盘资源...' : '搜索所有网盘和媒体服务器...')"
+        :loading="searchMode === 'local' ? searching : phLoading"
+        :searched="searchMode === 'local' ? (searching === false && hasInput) : phSearched"
+        :placeholder="searchMode === 'panhub' ? '搜索全网公开网盘资源...' : '搜索所有网盘和媒体服务器...'"
         @search="onSearchBoxSubmit()"
         @pause="phController?.abort(); phLoading = false"
         @reset="searchMode === 'local' ? (keyword = '') : phReset()"
@@ -616,7 +631,7 @@ onUnmounted(() => {
       <section v-if="!phSearched" class="ph-douban-section"><PanHubDoubanHot :api-base="PANHUB_API_BASE" @select="phHotSelect" /></section>
       </template>
       <template v-else>
-        <AISearchAgent :ai-enabled="true" :keyword="aiKeyword" :trigger="aiTrigger" :ph-search="phDoSearch" />
+        <AISearchAgent :ai-enabled="aiAgentCanSend" :keyword="aiKeyword" :trigger="aiTrigger" :ph-search="phDoSearch" @search-resource="(t: string) => { searchMode = 'panhub'; keyword = t; phDoSearch() }" />
       </template>
     </div>
   </div>
@@ -646,6 +661,10 @@ onUnmounted(() => {
   border-radius: 10px;
 }
 .gs-page-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   flex: 1;
   padding: 7px 0;
   border: 0;
@@ -658,6 +677,22 @@ onUnmounted(() => {
   transition: all 0.2s;
   text-align: center;
   line-height: 22px;
+}
+
+.gs-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 15px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.28);
 }
 .gs-page-tab:hover:not(.active) {
   color: var(--color-text-2);
@@ -1249,5 +1284,243 @@ onUnmounted(() => {
   .ph-douban-section { padding: 0 16px 24px; }
   .ph-status-msg { padding: 40px 16px; }
   .ph-error { margin: 12px 16px 0; }
+}
+</style>
+
+<style>
+/* ===== Mineradio dark-theme alignment for Global Search ===== */
+body[arco-theme='dark'] .gs-page {
+  color: var(--app-mineradio-ink);
+  background: transparent;
+}
+
+body[arco-theme='dark'] .gs-page-tabs {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+body[arco-theme='dark'] .gs-page-tab {
+  color: rgba(255,255,255,.60);
+  border-radius: 10px;
+  background: transparent;
+}
+
+body[arco-theme='dark'] .gs-page-tab:hover:not(.active) {
+  color: rgba(255,255,255,.82);
+}
+
+body[arco-theme='dark'] .gs-page-tab.active {
+  color: #fff;
+  background: rgba(255,255,255,.085);
+  box-shadow: inset 0 0 0 1px rgba(0,245,212,.22), 0 10px 28px rgba(0,245,212,.055);
+}
+
+body[arco-theme='dark'] .gs-page-search {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 16px;
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+body[arco-theme='dark'] .gs-page-search:focus-within {
+  border-color: rgba(0,245,212,.22);
+  box-shadow: 0 0 0 3px rgba(0,245,212,.08);
+}
+
+body[arco-theme='dark'] .gs-page-input {
+  color: #fff;
+}
+
+body[arco-theme='dark'] .gs-page-input::placeholder {
+  color: rgba(255,255,255,.36);
+}
+
+body[arco-theme='dark'] .gs-page-search-icon,
+body[arco-theme='dark'] .gs-page-clear {
+  color: rgba(255,255,255,.42);
+}
+
+body[arco-theme='dark'] .gs-page-clear:hover {
+  background: rgba(255,255,255,.08);
+  color: #fff;
+}
+
+body[arco-theme='dark'] .gs-page-empty-icon {
+  color: rgba(255,255,255,.25);
+}
+
+body[arco-theme='dark'] .gs-page-empty-text {
+  color: rgba(255,255,255,.72);
+}
+
+body[arco-theme='dark'] .gs-page-empty-sub {
+  color: rgba(255,255,255,.40);
+}
+
+body[arco-theme='dark'] .gs-page-status {
+  color: rgba(255,255,255,.55);
+}
+
+body[arco-theme='dark'] .gs-spinner {
+  border-color: rgba(255,255,255,.15);
+  border-top-color: var(--app-mineradio-accent);
+}
+
+body[arco-theme='dark'] .gs-section-header {
+  color: rgba(255,255,255,.92);
+  border-bottom-color: rgba(255,255,255,.07);
+}
+
+body[arco-theme='dark'] .gs-section-count {
+  color: var(--app-mineradio-accent);
+}
+
+body[arco-theme='dark'] .gs-page-group-title {
+  color: rgba(255,255,255,.60);
+  border-bottom-color: rgba(255,255,255,.06);
+}
+
+body[arco-theme='dark'] .gs-page-group-title:hover {
+  color: rgba(255,255,255,.85);
+}
+
+body[arco-theme='dark'] .gs-page-result-item {
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  transition: background .15s, border-color .15s;
+}
+
+body[arco-theme='dark'] .gs-page-result-item:hover,
+body[arco-theme='dark'] .gs-page-result-item.selected {
+  background: rgba(255,255,255,.075);
+  border-color: rgba(244,210,138,.18);
+  box-shadow: 0 10px 28px rgba(0,0,0,.18);
+}
+
+body[arco-theme='dark'] .gs-page-result-name {
+  color: rgba(255,255,255,.92);
+}
+
+body[arco-theme='dark'] .gs-page-result-meta,
+body[arco-theme='dark'] .gs-page-result-path {
+  color: rgba(255,255,255,.42);
+}
+
+body[arco-theme='dark'] .gs-page-ext {
+  color: rgba(255,255,255,.72);
+  background: rgba(255,255,255,.06);
+}
+
+body[arco-theme='dark'] .gs-page-source {
+  color: var(--app-mineradio-accent);
+  background: rgba(0,245,212,.10);
+}
+
+body[arco-theme='dark'] .gs-page-result-go {
+  color: rgba(255,255,255,.42);
+}
+
+body[arco-theme='dark'] .gs-ms-card {
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  background: rgba(255,255,255,.042);
+  transition: background .15s, transform .15s, border-color .15s, box-shadow .15s;
+}
+
+body[arco-theme='dark'] .gs-ms-card:hover {
+  transform: translateY(-2px);
+  background: rgba(255,255,255,.068);
+  border-color: rgba(0,245,212,.20);
+  box-shadow: 0 14px 38px rgba(0,0,0,.26);
+}
+
+body[arco-theme='dark'] .gs-ms-poster-wrap {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.06);
+}
+
+body[arco-theme='dark'] .gs-ms-poster-fallback {
+  color: rgba(255,255,255,.30);
+  background: rgba(255,255,255,.04);
+}
+
+body[arco-theme='dark'] .gs-ms-type-badge {
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(4px);
+}
+
+body[arco-theme='dark'] .gs-ms-title {
+  color: rgba(255,255,255,.90);
+}
+
+body[arco-theme='dark'] .gs-ms-source {
+  color: rgba(255,255,255,.40);
+}
+
+body[arco-theme='dark'] .gs-split-left {
+  border-right-color: rgba(255,255,255,.07);
+}
+
+body[arco-theme='dark'] .gs-history-drop {
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 14px;
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+body[arco-theme='dark'] .gs-history-drop-header {
+  color: rgba(255,255,255,.60);
+}
+
+body[arco-theme='dark'] .gs-history-item {
+  color: rgba(255,255,255,.72);
+  background: rgba(255,255,255,.055);
+  border: 1px solid rgba(255,255,255,.06);
+}
+
+body[arco-theme='dark'] .gs-history-item:hover {
+  background: rgba(255,255,255,.085);
+}
+
+body[arco-theme='dark'] .gs-history-item-icon {
+  color: rgba(255,255,255,.40);
+}
+
+body[arco-theme='dark'] .gs-history-item-del:hover {
+  color: #ff8f9d;
+  background: rgba(255,143,157,.12);
+}
+
+body[arco-theme='dark'] .gs-chevron {
+  color: rgba(255,255,255,.40);
+}
+
+body[arco-theme='dark'] .gs-pro-badge {
+  box-shadow: 0 2px 8px rgba(245,158,11,.32);
+}
+
+body[arco-theme='dark'] .ph-results-section {
+  padding-top: 18px;
+}
+
+body[arco-theme='dark'] .ph-stats-bar {
+  background: rgba(255,255,255,.045);
+  border-color: rgba(255,255,255,.085);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+body[arco-theme='dark'] .ph-stat-item,
+body[arco-theme='dark'] .ph-filter-pill,
+body[arco-theme='dark'] .ph-sort-select {
+  background: rgba(255,255,255,.055);
+  border-color: rgba(255,255,255,.075);
+}
+
+body[arco-theme='dark'] .ph-filter-pill.active {
+  background: rgba(105,121,255,.92);
+  border-color: rgba(158,169,255,.45);
 }
 </style>

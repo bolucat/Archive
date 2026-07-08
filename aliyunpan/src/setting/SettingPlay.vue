@@ -66,7 +66,7 @@ const handleClearDanmuCache = () => {
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
         <template #content>
-          <div style='min-width: 400px'>
+          <div class='play-col-wide'>
             默认：<span class='opred'>内置网页播放器</span>
             <hr />
             <span class='opred'>内置网页播放器</span>：<br />
@@ -173,7 +173,7 @@ const handleClearDanmuCache = () => {
             <a-popover position='bottom'>
               <IconFont name="iconbulb" />
               <template #content>
-                <div style='min-width: 400px'>
+                <div class='play-col-wide'>
                   默认：<span class='opred'>自动加载同名字幕</span>
                   <hr />
                   <span class='opred'>关闭字幕加载</span>：<br />
@@ -204,7 +204,7 @@ const handleClearDanmuCache = () => {
             <a-popover position='bottom'>
               <IconFont name="iconbulb" />
               <template #content>
-                <div style='min-width: 200px'>
+                <div class='play-col-md'>
                   <span class='opred'>PotPlayer开启播放列表：</span><br>
                   无法自动加载字幕和跳转播放历史 <br>
                   <hr />
@@ -254,7 +254,7 @@ const handleClearDanmuCache = () => {
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
-              <div style='min-width: 400px'>
+              <div class='play-col-wide'>
                 <span class='opblue'>仅Mpv支持同步 播放进度</span> <br>
                 其他播放器只能够跳转到网页播放器历史进度
                 <hr />
@@ -276,7 +276,7 @@ const handleClearDanmuCache = () => {
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
-              <div style='min-width: 400px'>
+              <div class='play-col-wide'>
                 <span class='opred'>自定义播放器参数, 使用,【逗号】分割</span> <br>
                 <span class='opred'>参数错误可能无法启动</span> <br>
                 <hr />
@@ -303,7 +303,7 @@ const handleClearDanmuCache = () => {
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
-              <div style='min-width: 400px'>
+              <div class='play-col-wide'>
                 <span class='opred'>windows</span>：选择一个播放软件.exe
                 <hr />
                 直接手动选择播放软件的exe文件即可<br />
@@ -336,7 +336,7 @@ const handleClearDanmuCache = () => {
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
-              <div style='min-width: 400px'>
+              <div class='play-col-wide'>
                 <span class='opred'>macOS</span>：选择一个播放软件.app
                 <hr />
                 1.点击 选择播放软件按钮 <span class='opblue'>--></span> 弹出文件选择框，<br />
@@ -358,7 +358,7 @@ const handleClearDanmuCache = () => {
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
-              <div style='min-width: 400px'>
+              <div class='play-col-wide'>
                 <span class='opred'>linux</span>：手动填写一个播放命令
                 <hr />
                 你必须先自己在电脑上安装（sudo apt install xxx），<br />
@@ -404,7 +404,7 @@ const handleClearDanmuCache = () => {
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
         <template #content>
-          <div style='min-width: 400px'>只有使用 <span class='opblue'>内置网页播放器或者MPV播放器</span> 时才支持同步
+          <div class='play-col-wide'>只有使用 <span class='opblue'>内置网页播放器或者MPV播放器</span> 时才支持同步
             播放进度
           </div>
         </template>
@@ -498,7 +498,9 @@ const handleClearDanmuCache = () => {
 
 .play-setting-row {
   width: 100%;
-  min-width: 0 !important;
+}
+.play-setting-row.settingrow {
+  min-width: 0;
 }
 
 .play-setting-row--stack {
@@ -508,6 +510,8 @@ const handleClearDanmuCache = () => {
 .play-player-path {
   width: min(520px, 100%);
 }
+.play-col-wide { min-width: 400px; }
+.play-col-md   { min-width: 200px; }
 
 .play-settings-card :deep(.settinghead) {
   width: auto;

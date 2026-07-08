@@ -37,11 +37,18 @@ export function startPaymentServer(win: BrowserWindow): Promise<number> {
   return new Promise((resolve) => {
     stopPaymentServer()
     paymentServer = createServer((req, res) => {
-      if (req.url?.startsWith('/payment-success')) {
+      const url = req.url || ''
+      if (url.startsWith('/payment-success') || url.startsWith('/payment-cancelled') || url.startsWith('/payment-canceled') || url.startsWith('/payment-failed') || url.startsWith('/payment-failure')) {
         const params = new URLSearchParams((req.url || '').split('?')[1] || '')
-        win.webContents.send('payment-callback', { checkout_id: params.get('checkout_id') || '' })
+        const status = url.startsWith('/payment-cancelled') || url.startsWith('/payment-canceled')
+          ? 'cancelled'
+          : url.startsWith('/payment-failed') || url.startsWith('/payment-failure')
+            ? 'failed'
+            : 'success'
+        win.webContents.send('payment-callback', { status, checkout_id: params.get('checkout_id') || '', reason: params.get('reason') || '' })
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-        res.end('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="text-align:center;padding-top:40px;font-family:sans-serif"><h2>支付完成 ✓</h2><p>正在返回 App…</p></body></html>')
+        const title = status === 'success' ? '支付完成 ✓' : status === 'cancelled' ? '已取消购买' : '支付未完成'
+        res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="text-align:center;padding-top:40px;font-family:sans-serif"><h2>${title}</h2><p>正在返回 App…</p></body></html>`)
       }
     })
     paymentServer.listen(3004, '127.0.0.1', () => resolve(3004))

@@ -1,5 +1,5 @@
 import { useMediaLibraryStore } from '../store/medialibrary'
-import { TmdbService } from './tmdb'
+import { TmdbService, tmdbImageUrl } from './tmdb'
 import type { MediaLibraryItem, DriveFileItem, MediaLibraryFolder } from '../types/media'
 import { IAliGetFileModel } from '../aliapi/alimodels'
 import AliDirFileList from '../aliapi/dirfilelist'
@@ -12,7 +12,10 @@ import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelis
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
+import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
+import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory, type WebDavConnectionConfig } from './webdavClient'
 import UserDAL from '../user/userdal'
 
@@ -48,7 +51,7 @@ export class MediaScanner {
   async scanFolder(
     folder: IAliGetFileModel,
     driveServerId: string,
-    options: { incremental?: boolean; silent?: boolean } = {}
+    options: { incremental?: boolean; silent?: boolean; aiScrape?: boolean } = {}
   ): Promise<void> {
     if (this.isScanning) {
       if (!options.silent) message.warning('正在扫描中，请稍后...')
@@ -60,86 +63,165 @@ export class MediaScanner {
     this.mediaStore.setScanning(true)
     this.mediaStore.setScanProgress(0, 0)
 
+    // 保存断点：如果非增量模式，记录扫描信息以便异常退出后恢复
+    if (!options.incremental) {
+      this.saveScanCheckpoint({ folder, driveServerId })
+    }
+
+    const scanContext = await this.resolveScanContext(folder, driveServerId)
+    folder.drive_id = scanContext.driveId
+    ;(folder as any).user_id = scanContext.userId
+
+    const folderKey = scanContext.driveServerId === 'webdav' ? `webdav_${folder.drive_id}_${folder.file_id}` : `${folder.file_id}`
+    const existingIds = options.incremental ? new Set(this.mediaStore.mediaItems.map((m: any) => m.id)) : new Set<string>()
+    let totalProcessed = 0
+
+    // 立即添加文件夹到源列表，用户无需等待刮削完成即可看到
+    this.mediaStore.addFolder({
+      id: folderKey,
+      fileId: folder.file_id,
+      name: folder.name,
+      path: folder.path || '',
+      userId: scanContext.userId,
+      driveId: scanContext.driveId,
+      driveServerId: scanContext.driveServerId,
+      scanDate: new Date(),
+      itemCount: 0
+    })
+
     try {
       console.log('开始扫描网盘文件夹:', folder.name)
 
-      const scanContext = await this.resolveScanContext(folder, driveServerId)
-      folder.drive_id = scanContext.driveId
-      ;(folder as any).user_id = scanContext.userId
-
-      // 先收集所有视频文件
-      const videoFiles: DriveFileItem[] = []
-      await this.collectVideoFiles(folder, scanContext, videoFiles, 0, folder.name)
-
-      // 增量模式：跳过 mediaStore 中已存在 id 的文件，避免重复 TMDB 请求
-      let toProcess = videoFiles
-      if (options.incremental) {
-        const existingIds = new Set(this.mediaStore.mediaItems.map((m: any) => m.id))
-        toProcess = videoFiles.filter((f) => !existingIds.has(f.id))
-        if (toProcess.length === 0) {
-          if (!options.silent) message.info('增量扫描：没有新增视频')
-          return
+      // Phase 1: 边遍历边 TMDB 匹配（跳过 AI 兜底）
+      const { unmatched: unmatchedFiles, totalFound } = await this.scrapeFolderRecursive(folder, scanContext, folderKey, existingIds, options.incremental,
+        ({ processed }) => {
+          totalProcessed += processed
+          this.mediaStore.setScanProgress(totalProcessed, Math.max(1, totalFound || totalProcessed))
         }
-        console.log(`增量扫描：${videoFiles.length} 个视频中 ${toProcess.length} 个为新增`)
-      }
+      )
 
-      if (videoFiles.length === 0) {
-        if (!options.silent) message.info('未在该文件夹中找到视频文件')
-        return
-      }
-
-      this.mediaStore.setScanProgress(0, toProcess.length)
-      console.log(`找到 ${videoFiles.length} 个视频文件，处理 ${toProcess.length} 个...`)
-
-      // 批量处理视频文件
-      const batchSize = 5 // 每次处理5个文件
-      const folderKey = scanContext.driveServerId === 'webdav' ? `webdav_${folder.drive_id}_${folder.file_id}` : `${folder.file_id}`
-      for (let i = 0; i < toProcess.length && !this.shouldStop; i += batchSize) {
-        const batch = toProcess.slice(i, i + batchSize)
-        const promises = batch.map(file => this.processVideoFile(file, folder.name, folderKey))
-
-        try {
-          await Promise.allSettled(promises)
-        } catch (error) {
-          console.error('批量处理视频文件时出错:', error)
-        }
-
-        this.mediaStore.setScanProgress(Math.min(i + batchSize, toProcess.length), toProcess.length)
-
-        // 给UI一些时间更新
-        await new Promise(resolve => setTimeout(resolve, 100))
+      // Phase 2: 仅 AI 刮削模式才把 TMDB 未匹配文件交给 AI 判断。
+      if (options.aiScrape && unmatchedFiles.length > 0 && !this.shouldStop) {
+        const aiSaved = await this.applyBatchAIScrapeResults(unmatchedFiles, folder.name)
+        totalProcessed += aiSaved
+        if (aiSaved > 0) console.log(`🤖 AI 兜底成功: ${aiSaved}/${unmatchedFiles.length}`)
       }
 
       if (!this.shouldStop) {
-        // 添加文件夹到媒体库
         const mediaFolder: MediaLibraryFolder = {
           id: folderKey,
-          fileId: folder.file_id, // 真正的云盘文件ID
+          fileId: folder.file_id,
           name: folder.name,
-          path: folder.path || '', // 保存文件夹路径信息（对百度网盘很重要）
+          path: folder.path || '',
           userId: scanContext.userId,
           driveId: scanContext.driveId,
           driveServerId: scanContext.driveServerId,
           scanDate: new Date(),
-          itemCount: videoFiles.length
+          itemCount: totalFound
         }
-
         this.mediaStore.addFolder(mediaFolder)
-
         if (!options.silent) {
-          message.success(`扫描完成！共处理 ${toProcess.length} 个视频文件`)
+          message.success(`扫描完成！共处理 ${totalProcessed} 个视频文件`)
         }
       } else {
         if (!options.silent) message.info('扫描已停止')
       }
-
     } catch (error) {
       console.error('扫描文件夹时出错:', error)
       if (!options.silent) message.error('扫描失败: ' + (error as Error).message)
     } finally {
       this.isScanning = false
       this.mediaStore.setScanning(false)
+      if (!this.shouldStop) {
+        this.clearScanCheckpoint()
+      }
     }
+  }
+
+  // 边遍历边刮削：列出文件夹 → TMDB 匹配（跳过 AI）→ 递归子文件夹 → 返回 { unmatched, totalFound }
+  private async scrapeFolderRecursive(
+    folder: IAliGetFileModel,
+    scanContext: ScanContext,
+    folderKey: string,
+    existingIds: Set<string>,
+    incremental: boolean | undefined,
+    onProgress: (stats: { processed: number }) => void,
+    depth = 0
+  ): Promise<{ unmatched: DriveFileItem[]; totalFound: number }> {
+    if (this.shouldStop || depth > 10) return { unmatched: [], totalFound: 0 }
+
+    const unmatchedFiles: DriveFileItem[] = []
+    let totalFound = 0
+
+    try {
+      console.log(`正在扫描: ${folder.name} (深度: ${depth})`)
+      const items = await this.getFolderItemsWithRetry(folder, scanContext)
+      if (!items?.length) return { unmatched: [], totalFound: 0 }
+
+      // 收集当前文件夹下的视频文件和子文件夹
+      const videoFiles: DriveFileItem[] = []
+      const subFolders: IAliGetFileModel[] = []
+
+      for (const item of items) {
+        if (this.shouldStop) break
+        if (item.isDir) {
+          subFolders.push(item)
+        } else if (this.isVideoFile(item.name)) {
+          const itemPath = folder.name ? `${folder.name}/${item.name}` : item.name
+          videoFiles.push({
+            id: item.file_id,
+            name: item.name,
+            path: itemPath,
+            userId: scanContext.userId,
+            driveId: item.drive_id || scanContext.driveId,
+            driveServerId: scanContext.driveServerId,
+            fileSize: item.size || 0,
+            contentHash: item.description || '',
+            thumbnailLink: item.thumbnail || undefined,
+            videoDuration: item.media_duration,
+            height: item.media_height
+          })
+        }
+      }
+
+      // 过滤增量模式
+      const toProcess = incremental
+        ? videoFiles.filter(f => !existingIds.has(f.id))
+        : videoFiles
+
+      totalFound = videoFiles.length
+
+      if (toProcess.length > 0) {
+        console.log(`  📂 ${folder.name}: ${toProcess.length} 个视频，TMDB 匹配（跳过 AI）`)
+        const batchSize = 3
+        for (let i = 0; i < toProcess.length && !this.shouldStop; i += batchSize) {
+          const batch = toProcess.slice(i, i + batchSize)
+          const results = await Promise.allSettled(
+            batch.map(f => this.processVideoFileWithoutAI(f, folder.name, folderKey))
+          )
+          for (const r of results) {
+            if (r.status === 'fulfilled' && r.value) {
+              unmatchedFiles.push(r.value)
+            }
+          }
+          onProgress({ processed: batch.length })
+        }
+      }
+
+      // 递归子文件夹
+      for (const sub of subFolders) {
+        if (this.shouldStop) break
+        const subResult = await this.scrapeFolderRecursive(
+          sub, scanContext, folderKey, existingIds, incremental, onProgress, depth + 1
+        )
+        unmatchedFiles.push(...subResult.unmatched)
+        totalFound += subResult.totalFound
+      }
+    } catch (error) {
+      console.error(`扫描文件夹失败: ${folder.name}`, error)
+    }
+
+    return { unmatched: unmatchedFiles, totalFound }
   }
 
   async scanAliyunFolder(folder: IAliGetFileModel, driveServerId: string): Promise<void> {
@@ -200,6 +282,19 @@ export class MediaScanner {
         return
       }
 
+      // 立即添加文件夹到源列表，用户无需等待刮削完成即可看到
+      this.mediaStore.addFolder({
+        id: `local_${folderPath}`,
+        fileId: folderPath,
+        name: folderName,
+        path: folderPath,
+        userId: 'local',
+        driveId: 'local',
+        driveServerId: 'local',
+        scanDate: new Date(),
+        itemCount: 0
+      })
+
       this.mediaStore.setScanProgress(0, videoFiles.length)
 
       const batchSize = 5
@@ -257,7 +352,7 @@ export class MediaScanner {
     try {
       console.log(`正在扫描文件夹: ${folder.name} (深度: ${depth})`)
 
-      const items = await this.getFolderItems(folder, scanContext)
+      const items = await this.getFolderItemsWithRetry(folder, scanContext)
       if (!items || items.length === 0) {
         console.log(`文件夹 ${folder.name} 无内容或获取失败`)
         return
@@ -297,6 +392,29 @@ export class MediaScanner {
     } catch (error) {
       console.error(`获取文件夹内容失败: ${folder.name}`, error)
     }
+  }
+
+  // 网盘 list API 限速重试包装：遇到 BlockException/TooManyRequests 自动退避重试
+  private async getFolderItemsWithRetry(folder: IAliGetFileModel, scanContext: ScanContext, maxRetries = 4): Promise<IAliGetFileModel[]> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await this.getFolderItems(folder, scanContext)
+      } catch (e: any) {
+        const isRateLimited =
+          e?.code === 'BlockException' ||
+          e?.resultCode === 'BlockException' ||
+          String(e?.message || '').includes('TooManyRequests') ||
+          String(e?.message || '').includes('BlockException')
+        if (isRateLimited && attempt < maxRetries) {
+          const delay = 1500 * Math.pow(2, attempt)
+          console.log(`[MediaScanner] 网盘 API 限速，${delay}ms 后重试 (${attempt + 1}/${maxRetries})`)
+          await new Promise(r => setTimeout(r, delay))
+          continue
+        }
+        throw e
+      }
+    }
+    return []
   }
 
   private async getFolderItems(folder: IAliGetFileModel, scanContext: ScanContext): Promise<IAliGetFileModel[]> {
@@ -355,6 +473,20 @@ export class MediaScanner {
       const list = await apiBoxFileList(userId, parentId, 500)
       return list.map((item) => this.withScanUser(mapBoxItemToAliModel(item, driveId, parentId), userId, driveId))
     }
+    if (isQuarkUser(userId) || driveId === 'quark') {
+      const list = await apiQuarkFileList(userId, folder.file_id || '0', 100)
+      return list.items.map((item) => this.withScanUser(mapQuarkFileToAliModel(item, driveId, folder.file_id || '0'), userId, driveId))
+    }
+    if (isCloud139User(userId) || driveId === 'cloud139') {
+      const parentId = folder.file_id || 'cloud139_root'
+      const list = await apiCloud139FileList(userId, parentId, 100)
+      return list.map((item) => this.withScanUser(mapCloud139FileToAliModel(item, driveId, parentId), userId, driveId))
+    }
+    if (isCloud189User(userId) || driveId === 'cloud189') {
+      const parentId = folder.file_id || 'cloud189_root'
+      const list = await apiCloud189FileList(userId, parentId, 1000)
+      return list.map((item) => this.withScanUser(mapCloud189FileToAliModel(item, driveId, parentId), userId, driveId))
+    }
     if (!isAliyunUser(userId)) {
       console.warn('[MediaScanner] skip Aliyun file list for non-Aliyun source', {
         userId,
@@ -407,7 +539,10 @@ export class MediaScanner {
     if (driveId === 'dropbox' && isDropboxUser(userId)) return userId
     if (driveId === 'onedrive' && isOneDriveUser(userId)) return userId
     if (driveId === 'box' && isBoxUser(userId)) return userId
-    if (driveId !== 'cloud123' && driveId !== 'drive115' && driveId !== 'baidu' && driveId !== 'pikpak' && driveId !== 'dropbox' && driveId !== 'onedrive' && driveId !== 'box') return userId
+    if (driveId === 'quark' && isQuarkUser(userId)) return userId
+    if (driveId === 'cloud139' && isCloud139User(userId)) return userId
+    if (driveId === 'cloud189' && isCloud189User(userId)) return userId
+    if (driveId !== 'cloud123' && driveId !== 'drive115' && driveId !== 'baidu' && driveId !== 'pikpak' && driveId !== 'dropbox' && driveId !== 'onedrive' && driveId !== 'box' && driveId !== 'quark' && driveId !== 'cloud139' && driveId !== 'cloud189') return userId
     return ''
   }
 
@@ -421,6 +556,9 @@ export class MediaScanner {
       if (driveId === 'dropbox') return isDropboxUser(token)
       if (driveId === 'onedrive') return isOneDriveUser(token)
       if (driveId === 'box') return isBoxUser(token)
+      if (driveId === 'quark') return isQuarkUser(token)
+      if (driveId === 'cloud139') return isCloud139User(token)
+      if (driveId === 'cloud189') return isCloud189User(token)
       return token.default_drive_id === driveId
         || token.resource_drive_id === driveId
         || token.backup_drive_id === driveId
@@ -438,6 +576,9 @@ export class MediaScanner {
     if (isDropboxUser(userId) || driveId === 'dropbox') return 'dropbox'
     if (isOneDriveUser(userId) || driveId === 'onedrive') return 'onedrive'
     if (isBoxUser(userId) || driveId === 'box') return 'box'
+    if (isQuarkUser(userId) || driveId === 'quark') return 'quark'
+    if (isCloud139User(userId) || driveId === 'cloud139') return 'cloud139'
+    if (isCloud189User(userId) || driveId === 'cloud189') return 'cloud189'
     return fallback
   }
 
@@ -611,6 +752,136 @@ export class MediaScanner {
     }
   }
 
+  // TMDB 匹配（不含 AI 兜底）：成功返回 null，失败返回未匹配文件供批量 AI 处理
+  private async processVideoFileWithoutAI(file: DriveFileItem, folderName: string, folderId?: string): Promise<DriveFileItem | null> {
+    try {
+      const fileName = file.name.replace(/\.[^/.]+$/, '')
+      const seasonEpisode = this.tmdbService.parseSeasonEpisode(fileName)
+      const cleanedFileName = this.tmdbService.cleanFileName(fileName)
+      const cleanedFolderName = this.tmdbService.cleanFileName(folderName)
+      const lookupName = cleanedFileName.replace(/\s/g, '').length > 0 ? cleanedFileName : cleanedFolderName
+
+      if (lookupName.replace(/\s/g, '').length === 0) return file
+
+      if (seasonEpisode) {
+        const existingTvItem = this.tryMatchExistingTvSeries(file, folderName, lookupName, seasonEpisode, folderId)
+        if (existingTvItem) return null
+
+        const tmdbId = this.parseTmdbId(fileName)
+        const year = this.tmdbService.parseYear(fileName)
+        const shouldUseYear = Boolean(year && !lookupName.includes(year))
+        const fileHash = file.fileHash || file.contentHash
+
+        const tvResult = tmdbId
+          ? await this.tmdbService.searchTV(lookupName, seasonEpisode.season, shouldUseYear ? year : undefined, tmdbId, fileHash)
+          : await this.tmdbService.searchTV(lookupName, seasonEpisode.season, shouldUseYear ? year : undefined, undefined, fileHash, fileName)
+
+        const matchedEpisode = tvResult?.current_season?.episodes?.find(ep => ep.episode_number === seasonEpisode.episode)
+        if (tvResult && tvResult.current_season && matchedEpisode) {
+          const mediaItem = this.buildTvMediaItem(tvResult, matchedEpisode, seasonEpisode, file, folderName, folderId)
+          this.mediaStore.addOrMergeTvSeries(mediaItem)
+          this.mediaStore.addToRecentlyAdded(mediaItem)
+          console.log(`✅ 电视剧: ${file.name} -> ${mediaItem.name} S${seasonEpisode.season}E${seasonEpisode.episode} (TMDB)`)
+          return null
+        }
+        return file
+      }
+
+      // 电影处理
+      const year = this.tmdbService.parseYear(fileName)
+      const movie = await this.tmdbService.searchMovie(lookupName, year, undefined, file.fileHash || file.contentHash, file.name)
+      if (movie) {
+        const mediaItem: MediaLibraryItem = {
+          id: `${movie.id}`,
+          parentId: folderName,
+          folderId: folderId || `${file.driveId}`,
+          folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
+          type: 'movie',
+          name: movie.title || movie.original_title || lookupName,
+          overview: movie.overview,
+          posterUrl: tmdbImageUrl(movie.poster_path) || undefined,
+          backdropUrl: tmdbImageUrl(movie.backdrop_path) || undefined,
+          year: movie.release_date?.substring(0, 4),
+          rating: movie.vote_average,
+          genres: movie.genres?.map(g => g.name) || [],
+          credits: movie.credits,
+          productionCountries: movie.production_countries?.map(c => c.name) || [],
+          tmdbId: movie.id,
+          imdbId: movie.imdb_id,
+          driveFiles: [file],
+          metadataSource: 'tmdb',
+          addedAt: new Date()
+        }
+        this.mediaStore.addOrMergeTvSeries(mediaItem)
+        this.mediaStore.addToRecentlyAdded(mediaItem)
+        console.log(`✅ 电影: ${file.name} -> ${mediaItem.name} (TMDB)`)
+        return null
+      }
+
+      return file
+    } catch (error) {
+      console.error(`处理文件失败: ${file.name}`, error)
+      return file
+    }
+  }
+
+  // 构建电视剧 MediaLibraryItem（从 processVideoFileWithoutAI 抽取）
+  private buildTvMediaItem(
+    tvResult: any,
+    matchedEpisode: any,
+    seasonEpisode: { season: number; episode: number },
+    file: DriveFileItem,
+    folderName: string,
+    folderId?: string
+  ): MediaLibraryItem {
+    const currentEpisode = {
+      id: matchedEpisode.id,
+      episodeNumber: matchedEpisode.episode_number,
+      seasonNumber: matchedEpisode.season_number,
+      name: matchedEpisode.name,
+      overview: matchedEpisode.overview,
+      stillPath: tmdbImageUrl(matchedEpisode.still_path) || undefined,
+      airDate: matchedEpisode.air_date,
+      runtime: matchedEpisode.runtime,
+      crew: matchedEpisode.crew,
+      driveFiles: [file]
+    }
+    const currentSeason = {
+      id: tvResult.current_season.id,
+      seasonNumber: tvResult.current_season.season_number,
+      name: tvResult.current_season.name,
+      overview: tvResult.current_season.overview,
+      posterPath: tvResult.current_season.poster_path,
+      episodeCount: tvResult.current_season.episode_count || tvResult.current_season.episodes?.length || 0,
+      airDate: tvResult.current_season.air_date,
+      credits: tvResult.current_season.credits,
+      episodes: [currentEpisode]
+    }
+    return {
+      id: `${tvResult.tv.id}`,
+      parentId: folderName,
+      folderId: folderId,
+      folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
+      type: 'tv',
+      name: tvResult.tv.name || tvResult.tv.original_name || '',
+      overview: tvResult.tv.overview,
+      posterUrl: tmdbImageUrl(tvResult.tv.poster_path) || undefined,
+      backdropUrl: tmdbImageUrl(tvResult.tv.backdrop_path) || undefined,
+      year: tvResult.tv.first_air_date?.substring(0, 4),
+      rating: tvResult.tv.vote_average,
+      genres: tvResult.tv.genres?.map((g: any) => g.name) || [],
+      credits: tvResult.current_season?.credits,
+      productionCountries: tvResult.tv.production_countries?.map((c: any) => c.name) || [],
+      tmdbId: tvResult.tv.id,
+      imdbId: tvResult.tv.imdbId,
+      tvdbId: tvResult.tv.tvdbId,
+      metadataSource: 'tmdb',
+      seasons: [currentSeason],
+      driveFiles: [],
+      addedAt: new Date()
+    }
+  }
+
   // 处理单个视频文件 - 参考Swift版本的元数据匹配逻辑
   private async processVideoFile(file: DriveFileItem, folderName: string, folderId?: string): Promise<void> {
     try {
@@ -680,9 +951,7 @@ export class MediaScanner {
         )
 
         if (tvResult && tvResult.current_season && matchedEpisode) {
-          const episodeStillPath = matchedEpisode.still_path
-            ? `https://image.tmdb.org/t/p/w500${matchedEpisode.still_path}`
-            : undefined
+          const episodeStillPath = tmdbImageUrl(matchedEpisode.still_path) || undefined
 
           const currentEpisode = {
             id: matchedEpisode.id,
@@ -717,8 +986,8 @@ export class MediaScanner {
             type: 'tv',
             name: tvResult.tv.name || tvResult.tv.original_name || lookupName,
             overview: tvResult.tv.overview,
-            posterUrl: tvResult.tv.poster_path ? `https://image.tmdb.org/t/p/w500${tvResult.tv.poster_path}` : undefined,
-            backdropUrl: tvResult.tv.backdrop_path ? `https://image.tmdb.org/t/p/original${tvResult.tv.backdrop_path}` : undefined,
+            posterUrl: tmdbImageUrl(tvResult.tv.poster_path) || undefined,
+            backdropUrl: tmdbImageUrl(tvResult.tv.backdrop_path) || undefined,
             year: tvResult.tv.first_air_date?.substring(0, 4),
             rating: tvResult.tv.vote_average,
             genres: tvResult.tv.genres?.map(g => g.name) || [],
@@ -727,6 +996,7 @@ export class MediaScanner {
             tmdbId: tvResult.tv.id,
             imdbId: tvResult.tv.imdbId,
             tvdbId: tvResult.tv.tvdbId,
+            metadataSource: 'tmdb',
             seasons: [currentSeason],
             driveFiles: [],
             addedAt: new Date()
@@ -777,6 +1047,7 @@ export class MediaScanner {
             tmdbId: mediaInfo.tmdbId,
             imdbId: mediaInfo.imdbId,
             tvdbId: mediaInfo.tvdbId,
+            metadataSource: 'tmdb',
             driveFiles: [file],
             addedAt: new Date()
           }
@@ -819,5 +1090,107 @@ export class MediaScanner {
   // 检查是否正在扫描
   get isCurrentlyScanning(): boolean {
     return this.isScanning
+  }
+
+  // AI 批量刮削：收集文件夹内所有视频文件，一次性发给 AI 识别
+  async batchAIScrapeFolder(folder: IAliGetFileModel, driveServerId: string): Promise<number> {
+    if (this.isScanning) {
+      message.warning('正在扫描中，请稍后...')
+      return 0
+    }
+
+    const { canUseMediaAIScrape } = await import('./mediaAIScrape')
+    const { resolveAIProviderConfig } = await import('./bookAI')
+    const cfg = resolveAIProviderConfig()
+    const isBYOK = !!cfg && cfg.providerName !== 'boxplayer-cloud'
+    const gate = canUseMediaAIScrape({ manual: true, isBYOK })
+    if (!gate.allowed) {
+      message.warning(gate.message || 'AI 影视刮削不可用')
+      return 0
+    }
+
+    await this.scanFolder(folder, driveServerId, { aiScrape: true })
+    return 0
+  }
+
+  private async applyBatchAIScrapeResults(unmatchedFiles: DriveFileItem[], folderName: string): Promise<number> {
+    const { batchScrapeMediaWithAI } = await import('./mediaAIScrape')
+
+    if (!unmatchedFiles.length) {
+      message.warning(`"${folderName}" 中没有需要 AI 判断的未匹配视频`)
+      return 0
+    }
+
+    message.info(`"${folderName}" 中有 ${unmatchedFiles.length} 个未匹配视频，正在 AI 识别…`)
+    const fileInfos = unmatchedFiles.map(f => ({ name: f.name, path: f.path, fileSize: f.fileSize, driveFile: f }))
+    const results = await batchScrapeMediaWithAI(fileInfos, folderName)
+
+    let saved = 0
+    for (const r of results) {
+      if (r.mediaItem) {
+        if (r.mediaItem.type === 'tv') {
+          this.mediaStore.addOrMergeTvSeries(r.mediaItem)
+        } else {
+          this.mediaStore.addMediaItem(r.mediaItem)
+        }
+        saved++
+      }
+    }
+
+    if (saved > 0) {
+      message.success(`AI 识别完成：${saved}/${results.length} 个文件匹配成功`)
+    } else {
+      message.warning('AI 未能识别出任何影视作品')
+    }
+    return saved
+  }
+
+  // 断点续刮：保存/读取/清除扫描断点
+  private SCAN_CHECKPOINT_KEY = 'media_scan_checkpoint'
+  private saveScanCheckpoint(info: { folder: IAliGetFileModel; driveServerId: string }) {
+    try {
+      localStorage.setItem(this.SCAN_CHECKPOINT_KEY, JSON.stringify({
+        folderName: info.folder.name,
+        fileId: info.folder.file_id,
+        driveId: info.folder.drive_id || info.driveServerId,
+        driveServerId: info.driveServerId,
+        timestamp: Date.now()
+      }))
+    } catch {}
+  }
+
+  getScanCheckpoint(): { folderName: string; fileId: string; driveId: string; driveServerId: string; timestamp: number } | null {
+    try {
+      const raw = localStorage.getItem(this.SCAN_CHECKPOINT_KEY)
+      if (!raw) return null
+      const parsed = JSON.parse(raw)
+      // 超过 24 小时的断点视为过期
+      if (Date.now() - parsed.timestamp > 86400000) { this.clearScanCheckpoint(); return null }
+      return parsed
+    } catch { return null }
+  }
+
+  clearScanCheckpoint() {
+    try { localStorage.removeItem(this.SCAN_CHECKPOINT_KEY) } catch {}
+  }
+
+  // 从断点恢复扫描
+  async resumeScanFromCheckpoint(): Promise<boolean> {
+    const cp = this.getScanCheckpoint()
+    if (!cp) return false
+    const folder: IAliGetFileModel = {
+      __v_skip: true,
+      drive_id: cp.driveId,
+      file_id: cp.fileId,
+      parent_file_id: '',
+      name: cp.folderName,
+      namesearch: cp.folderName.toLowerCase(),
+      ext: '', mime_type: '', mime_extension: '', category: 'folder',
+      icon: 'iconfolder', file_count: 0, size: 0, sizeStr: '',
+      time: Date.now(), timeStr: '', starred: false, isDir: true,
+      thumbnail: '', path: ''
+    } as any
+    await this.scanFolder(folder, cp.driveServerId, { incremental: true, silent: true })
+    return true
   }
 }

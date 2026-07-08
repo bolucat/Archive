@@ -6,6 +6,7 @@ const SESSION_CHUNK_SIZE = 10 * 1024 * 1024
 
 import { open } from 'node:fs/promises'
 import { readFileBuffer, readSlice, toConflictMode } from './uploadUtils.mjs'
+import { downloadResponseToFile } from '../core/downloadFile.mjs'
 
 function odHeaders(token) {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token.access_token}` }
@@ -161,6 +162,21 @@ export async function onedriveGetFile(token, fileId) {
   const accountId = token.user_id
   const data = await odGet(`${BASE}/me/drive/items/${fileId}`, token)
   return mapFileItem(data, accountId)
+}
+
+export async function onedriveDownloadFile(token, fileId, outputPath) {
+  const meta = await odGet(`${BASE}/me/drive/items/${fileId}`, token)
+  if (meta.folder) {
+    const err = new Error(`Cannot download folder: ${fileId}`)
+    err.code = 'ERR_ONEDRIVE_DOWNLOAD_FOLDER'
+    throw err
+  }
+  const resp = await fetch(`${BASE}/me/drive/items/${fileId}/content`, {
+    headers: { Authorization: `Bearer ${token.access_token}` },
+    redirect: 'follow',
+  })
+  await downloadResponseToFile(resp, outputPath)
+  return { ok: true, provider: 'onedrive', accountId: token.user_id, driveId: 'onedrive', fileId, name: meta.name || '', size: meta.size || 0, output: outputPath }
 }
 
 export async function onedriveMove(token, moves) {

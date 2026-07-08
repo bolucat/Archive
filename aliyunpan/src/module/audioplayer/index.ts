@@ -297,6 +297,17 @@ export function setGainVolume(vol: number) {
   if (audio) audio.volume = vol
 }
 
+// ---- Audio Fade ----
+export function fadeTo(targetGain: number, durationMs = 400) {
+  if (!gainNode || !audioContext) return
+  if (targetGain < 0.01) targetGain = 0.0001
+  gainNode.gain.cancelScheduledValues(audioContext.currentTime)
+  gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
+  gainNode.gain.linearRampToValueAtTime(targetGain, audioContext.currentTime + durationMs / 1000)
+}
+export function fadeIn(durationMs = 460) { fadeTo(1, durationMs) }
+export function fadeOut(durationMs = 420) { fadeTo(0.0001, durationMs) }
+
 export function setGainMuted(muted: boolean) {
   if (audio) audio.muted = muted
 }
@@ -315,11 +326,14 @@ export function setCurrentTime(time: number) {
   if (audio) audio.currentTime = time
 }
 
+export function getAudioAnalyser(): AnalyserNode | null {
+  initAdvancedAudioFeatures()
+  return analyser
+}
+
 export function getDuration() {
   return audio?.duration ?? 0
 }
-
-// ---- Watchers: react to settings changes ----
 
 function setupWatchers() {
   // Watch EQ changes

@@ -1,13 +1,14 @@
 <script setup lang='ts'>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
-import { Archive, BarChart3, BookMarked, BookOpen, Bookmark, Copy, Database, Download, Edit3, FileText, Folder, Globe2, Grid3X3, Heart, Highlighter, Info, Languages, LibraryBig, Lightbulb, List, MoreVertical, Palette, PanelLeft, PanelLeftClose, PencilLine, Plus, RefreshCw, Search, Settings, Star, StickyNote, Tag, Trash2, X } from 'lucide-vue-next'
+import { Archive, BarChart3, BookMarked, BookOpen, Bookmark, Copy, Database, Edit3, FileText, Folder, Globe2, Grid3X3, Heart, Highlighter, Info, Languages, LibraryBig, Lightbulb, List, MoreVertical, Palette, PanelLeft, PanelLeftClose, PencilLine, Plus, RefreshCw, Search, Settings, Star, StickyNote, Tag, Trash2, X } from 'lucide-vue-next'
 import useBookLibraryStore, { parseBookMeta } from '../store/booklibrary'
 import type { IBookItem } from '../types/book'
 import type { IBookBookmark } from '../types/bookBookmark'
 import type { IBookNote } from '../types/bookNote'
 import type { BookShelfGroup, BookViewMode, BookManagerSortMode, BookManagerSortOrder, BookManagerView } from '../types/bookShelf'
 import BookScanner from '../utils/bookScanner'
+import LibraryScanPanel from '../components/LibraryScanPanel.vue'
 import { isReaderFormat, isLegacyScanOnlyBookFormat } from '../utils/bookReaderCapabilities'
 import { DEFAULT_SHELF_ID, buildDefaultShelfName, buildNoteLink, filterBooksByReadingStatus, filterBooksForManagerView, filterAnnotations, filterBookmarks, getAnnotationTags, getBookManagerTabs, saveGlobalNoteTags, sortBooksForManagerView, sortAnnotations } from '../utils/bookManagerParity'
 import type { BookAnnotationSortMode, ReadingStatus } from '../utils/bookManagerParity'
@@ -364,6 +365,13 @@ const activeManagerSubtitle = computed(() => {
   if (activeManagerView.value === 'trash') return `${bookStore.deletedCount} 本已移入回收站的书籍库记录`
   return '从网盘里扫描 epub、mobi、pdf、txt、azw3 等常见书籍格式'
 })
+
+function formatTime(ts: number): string {
+  if (!ts) return '从未扫描'
+  const d = new Date(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 const folderContextStyle = computed<CSSProperties>(() => ({
   position: 'fixed',
@@ -794,13 +802,6 @@ function extractCategoryFromExt(ext: string): string {
   }
   return catMap[ext] || 'book'
 }
-
-function toggleScanAccount(userId: string) {
-  const idx = selectedScanUserIds.value.indexOf(userId)
-  if (idx === -1) selectedScanUserIds.value = [...selectedScanUserIds.value, userId]
-  else selectedScanUserIds.value = selectedScanUserIds.value.filter((id) => id !== userId)
-}
-
 
 async function clearLibrary() {
   await bookStore.clearAll()
@@ -1382,43 +1383,22 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
         </button>
       </div>
 
-      <template v-if='isCollectionManagerView && !groupDetail'>
+      <template v-if='!groupDetail'>
         <div class='book-sidebar-divider'></div>
-        <div class='book-sidebar-scan'>
-          <div class='book-sidebar-scan-title'>扫描</div>
-          <a-dropdown trigger='click' :disabled='bookStore.isScanning'>
-            <a-button size='mini' long class='book-drive-select-btn'>
-              {{ selectedScanUserIds.length === scanAccountOptions.length ? '全部网盘' : `${selectedScanUserIds.length} 个网盘` }}
-            </a-button>
-            <template #content>
-              <div class='book-drive-dropdown'>
-                <label
-                  v-for='opt in scanAccountOptions'
-                  :key='opt.value'
-                  class='book-drive-item'
-                  @click.stop
-                >
-                  <a-checkbox
-                    :model-value='selectedScanUserIds.includes(opt.value)'
-                    @change='toggleScanAccount(opt.value)'
-                  />
-                  <span>{{ opt.label }}</span>
-                </label>
-                <div class='book-drive-footer'>
-                  <a-link size='small' @click='selectedScanUserIds = scanAccountOptions.map(o => o.value)'>全选</a-link>
-                  <a-link size='small' @click='selectedScanUserIds = []'>清空</a-link>
-                </div>
-              </div>
-            </template>
-          </a-dropdown>
-          <div class='book-scan-btns'>
-            <a-button v-if='bookStore.isScanning' status='warning' size='mini' long @click='stopScan'>停止扫描</a-button>
-            <a-button v-else type='primary' size='mini' long @click='scanBooks'>开始扫描</a-button>
-          </div>
-          <a-popconfirm content='确定清空整个书籍库？此操作不可恢复' @ok='clearLibrary'>
-            <a-button size='mini' long status='danger' :disabled='!hasAnyBookRecords'>清空资料库</a-button>
-          </a-popconfirm>
-        </div>
+        <LibraryScanPanel
+          v-model:selected-ids='selectedScanUserIds'
+          :drive-options='scanAccountOptions'
+          :is-scanning='bookStore.isScanning'
+          :scanning-status-text="bookStore.scanLabel || '扫描中...'"
+          :idle-status-text="bookStore.lastScanAt ? formatTime(bookStore.lastScanAt) : '尚未扫描'"
+          import-label='导入本地图书'
+          clear-confirm-text='确定清空整个书籍库？此操作不可恢复'
+          :clear-disabled='!hasAnyBookRecords'
+          @start-scan='scanBooks'
+          @stop-scan='stopScan'
+          @import-local='triggerLocalImport'
+          @clear-library='clearLibrary'
+        />
       </template>
     </aside>
 
@@ -1490,9 +1470,6 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           <div v-if='isCollectionManagerView && bookStore.viewMode === "grid"' class='book-card-scale'>
             <a-slider v-model='cardScale' :min='0.6' :max='2' :step='0.1' class='book-card-scale-slider' title='卡片缩放' />
           </div>
-          <a-button size='small' class='book-settings-btn' title='导入本地图书' @click='triggerLocalImport'>
-            <template #icon><Download :size='15' :stroke-width='1.9' /></template>
-          </a-button>
           <input
             ref='localFileInput'
             type='file'
@@ -2385,8 +2362,8 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
   overflow: hidden;
   display: flex;
   flex-direction: row;
-  background: var(--color-bg-1);
-  color: var(--color-text-1);
+  background: transparent;
+  color: var(--app-mineradio-ink, #e8ecef);
   font-family: var(--book-manager-font-family, inherit);
   position: relative;
 }
@@ -2839,7 +2816,7 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 .book-sidebar.collapsed .book-brand-text { display: none; }
 .book-sidebar.collapsed .book-nav-item span { display: none; }
 .book-sidebar.collapsed .book-nav-item { justify-content: center; padding: 0; }
-.book-sidebar.collapsed .book-sidebar-scan { display: none; }
+.book-sidebar.collapsed .library-scan-panel { display: none; }
 
 .book-sidebar-toggle {
   width: 28px;
@@ -2860,32 +2837,6 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
   margin: 12px 4px;
   height: 1px;
   background: var(--color-border);
-}
-
-.book-sidebar-scan {
-  padding: 0 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.book-sidebar-scan-title {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-bottom: 2px;
-}
-
-.book-drive-select-btn:deep(.arco-btn) {
-  font-size: 12px;
-  justify-content: flex-start;
-}
-
-.book-scan-btns {
-  display: flex;
-  gap: 4px;
 }
 
 .book-brand-text { transition: opacity .15s ease; }
@@ -2930,11 +2881,13 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 
 .book-main {
   position: relative;
-  height: 100%;
   min-width: 0;
+  min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  margin: 18px 18px 18px 14px;
 }
 
 .book-header {
@@ -3077,33 +3030,6 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 .book-drive-btn {
   min-width: 84px;
   flex-shrink: 0;
-}
-
-.book-drive-dropdown {
-  min-width: 180px;
-  padding: 6px 0;
-}
-
-.book-drive-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--color-text-1);
-}
-
-.book-drive-item:hover {
-  background: var(--color-fill-2);
-}
-
-.book-drive-footer {
-  display: flex;
-  gap: 12px;
-  padding: 4px 14px 2px;
-  border-top: 1px solid var(--color-border);
-  margin-top: 4px;
 }
 
 .book-actions {

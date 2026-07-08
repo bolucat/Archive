@@ -1,43 +1,39 @@
 <template>
   <div class="media-library-view">
-    <MySplit :visible="props.navVisible ?? true">
-      <template #first>
-        <!-- 左侧导航 -->
-        <div class="library-sidebar">
-          <MediaLibraryNav
-            ref="mediaNav"
-            @folderSelected="handleFolderSelected"
-            @categorySelected="handleCategorySelected"
-            @genreSelected="handleGenreSelected"
-            @yearSelected="handleYearSelected"
-            @ratingSelected="handleRatingSelected"
-            @refresh="handleRefresh"
-            @categoryDrillDown="handleCategoryDrillDown"
-          />
-        </div>
-      </template>
+    <div class="media-library-shell">
+      <!-- 左侧导航 -->
+      <div v-show="props.navVisible ?? true" class="library-sidebar">
+        <MediaLibraryNav
+          ref="mediaNav"
+          @folderSelected="handleFolderSelected"
+          @categorySelected="handleCategorySelected"
+          @genreSelected="handleGenreSelected"
+          @yearSelected="handleYearSelected"
+          @ratingSelected="handleRatingSelected"
+          @refresh="handleRefresh"
+          @categoryDrillDown="handleCategoryDrillDown"
+        />
+      </div>
 
-      <template #second>
-        <!-- 右侧内容 -->
-        <div class="library-content">
-          <MediaLibrary
-            ref="mediaLibrary"
-            :activeCategory="activeCategory"
-            :selectedFolder="selectedFolder"
-            :selectedGenre="selectedGenre"
-            :selectedYear="selectedYear"
-            :selectedRating="selectedRating"
-            :fromHomeNavigation="homeNavigationActive"
-            @categoryDrillDown="handleCategoryDrillDown"
-            @categoryDrillBack="handleCategoryDrillBack"
-            @navigateCategory="handleHomeNavigateCategory"
-            @navigateFolder="handleFolderSelected"
-            @homeNavigationBack="handleHomeNavigationBack"
-            @manageLibrary="handleManageLibrary"
-          />
-        </div>
-      </template>
-    </MySplit>
+      <!-- 右侧内容 -->
+      <div class="media-library-pane">
+        <MediaLibrary
+          ref="mediaLibrary"
+          :activeCategory="activeCategory"
+          :selectedFolder="selectedFolder"
+          :selectedGenre="selectedGenre"
+          :selectedYear="selectedYear"
+          :selectedRating="selectedRating"
+          :fromHomeNavigation="homeNavigationActive"
+          @categoryDrillDown="handleCategoryDrillDown"
+          @categoryDrillBack="handleCategoryDrillBack"
+          @navigateCategory="handleHomeNavigateCategory"
+          @navigateFolder="handleFolderSelected"
+          @homeNavigationBack="handleHomeNavigationBack"
+          @manageLibrary="handleManageLibrary"
+        />
+      </div>
+    </div>
     
     <!-- 扫描进度对话框 -->
     <a-modal
@@ -59,6 +55,19 @@
         </p>
       </div>
     </a-modal>
+
+    <!-- 断点续刮提示 -->
+    <a-modal
+      v-model:visible="showResumeDialog"
+      title="继续刮削？"
+      :closable="true"
+      :mask-closable="false"
+      @ok="handleResumeScan"
+      @cancel="handleCancelResume"
+    >
+      <p>检测到上次刮削未完成：<strong>{{ resumeInfo?.folderName }}</strong></p>
+      <p style="color: var(--color-text-3);">是否从断点继续？已刮削完成的文件将跳过。</p>
+    </a-modal>
   </div>
 </template>
 
@@ -66,7 +75,6 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MediaLibraryNav from '../components/MediaLibraryNav.vue'
 import MediaLibrary from '../components/MediaLibrary.vue'
-import MySplit from '../layout/MySplit.vue'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import { usePanTreeStore } from '../store'
 import { MediaScanner } from '../utils/mediaScanner'
@@ -602,12 +610,36 @@ const handleStorageSync = (event: StorageEvent) => {
 }
 
 // 生命周期
+// 断点续刮
+const showResumeDialog = ref(false)
+const resumeInfo = ref<{ folderName: string; timestamp: number } | null>(null)
+
+const checkScanResume = () => {
+  const cp = mediaScanner.getScanCheckpoint()
+  if (cp) {
+    resumeInfo.value = { folderName: cp.folderName, timestamp: cp.timestamp }
+    showResumeDialog.value = true
+  }
+}
+
+const handleResumeScan = async () => {
+  showResumeDialog.value = false
+  showScanProgress.value = true
+  await mediaScanner.resumeScanFromCheckpoint()
+}
+
+const handleCancelResume = () => {
+  showResumeDialog.value = false
+  mediaScanner.clearScanCheckpoint()
+}
+
 onMounted(() => {
-  // 初始化媒体库
   console.log('Media library initialized')
   window.addEventListener('storage', handleStorageSync)
   syncContinueWatchingFromStorage()
   syncTimer = window.setInterval(syncContinueWatchingFromStorage, 500)
+  // 延迟检查断点，等页面渲染完成
+  setTimeout(() => checkScanResume(), 500)
 })
 
 onUnmounted(() => {
@@ -627,17 +659,101 @@ defineExpose({
   width: 100%;
 }
 
-.library-sidebar {
+.media-library-shell {
+  display: flex;
+  width: 100%;
   height: 100%;
-  border-right: 1px solid var(--color-neutral-3);
+  overflow: hidden;
 }
 
-.library-content {
+.library-sidebar {
+  flex: 0 0 218px;
+  width: 218px;
+  min-width: 218px;
+  max-width: 218px;
+  height: calc(100% - 36px);
+  margin: 18px 0 18px 18px;
+  padding: 14px 12px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 42% 0%, rgba(0, 245, 212, 0.16), transparent 34%),
+    radial-gradient(circle at 0% 86%, rgba(244, 210, 138, 0.07), transparent 26%),
+    linear-gradient(180deg, rgba(14, 16, 20, 0.92), rgba(8, 9, 11, 0.98));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.075);
+}
+
+.media-library-pane {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: 100%;
+  height: calc(100% - 36px);
+  margin: 18px 18px 18px 14px;
+}
+
+:global(#xbybody .media-library-view .media-library-pane) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: none !important;
+  contain: none !important;
+}
+
+:global(#xbybody .media-library-view .library-sidebar) {
+  flex: 0 0 252px !important;
+  width: 252px !important;
+  min-width: 252px !important;
+  max-width: 252px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  transform: none !important;
+  contain: none !important;
+}
+
+:global(#xbybody .media-library-view .library-sidebar::before) {
+  display: none !important;
+}
+
+:global(#xbybody .media-library-view .library-sidebar > .media-library-nav) {
+  height: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+:global(#xbybody .media-library-view .media-library-nav),
+:global(#xbybody .media-library-view .media-library),
+:global(#xbybody .media-library-view .media-library *) {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:global(#xbybody .media-library-view .nav-item:hover),
+:global(#xbybody .media-library-view .nav-item.active),
+:global(#xbybody .media-library-view .nav-item:hover i),
+:global(#xbybody .media-library-view .nav-item.active i),
+:global(#xbybody .media-library-view .media-item:hover),
+:global(#xbybody .media-library-view .media-item:hover .media-poster img),
+:global(#xbybody .media-library-view .media-list-item:hover),
+:global(#xbybody .media-library-view .media-list-item:hover .list-poster img),
+:global(#xbybody .media-library-view .library-home-mini-card:hover),
+:global(#xbybody .media-library-view .category-list-card:hover),
+:global(#xbybody .media-library-view .search-media-server-result:hover),
+:global(#xbybody .media-library-view .toolbar-btn:active) {
+  transform: none !important;
+}
+
+:global(#xbybody .media-library-view .library-home-resume-poster img),
+:global(#xbybody .media-library-view .library-home-poster-image img),
+:global(#xbybody .media-library-view .media-poster img),
+:global(#xbybody .media-library-view .list-poster img) {
+  will-change: auto !important;
+  transform: none !important;
+  filter: none !important;
 }
 
 
@@ -645,9 +761,12 @@ defineExpose({
   display: flex;
   gap: 4px;
   padding: 6px 12px;
-  border-bottom: 1px solid var(--color-neutral-3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.075);
   flex-shrink: 0;
-  background: var(--color-bg-1);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.075), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.026));
+  backdrop-filter: blur(20px) saturate(1.12);
 }
 
 .workspace-tab {
@@ -658,18 +777,19 @@ defineExpose({
   border-radius: 16px;
   font-size: 13px;
   cursor: pointer;
-  color: var(--color-text-2);
+  color: rgba(255, 255, 255, 0.68);
   transition: background-color .2s, color .2s;
 }
 
 .workspace-tab:hover {
-  background: var(--color-fill-2);
-  color: var(--color-text-1);
+  background: rgba(255, 255, 255, 0.072);
+  color: #fff;
 }
 
 .workspace-tab.active {
-  background: rgb(var(--primary-6));
+  background: rgba(255, 255, 255, 0.085);
   color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 245, 212, 0.22), 0 10px 28px rgba(0, 245, 212, 0.055);
 }
 
 .workspace-tab i {
@@ -688,7 +808,10 @@ defineExpose({
 
 @media (max-width: 768px) {
   .library-sidebar {
-    border-right: 1px solid var(--color-neutral-3);
+    flex-basis: 218px;
+    width: 218px;
+    min-width: 218px;
+    max-width: 218px;
   }
 }
 </style>

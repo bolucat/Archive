@@ -3,8 +3,11 @@ import { streamText, stepCountIs } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { z } from 'zod'
+import Config from '../../config'
 import type { AIModelConfig } from '../../utils/bookAI'
 import { getAIConfig } from '../../utils/bookAI'
+import { isBoxPlayerCloudProvider } from '../../utils/boxplayerCloudAI'
+import { getBoxPlayerAccessToken } from '../../utils/boxplayerAuth'
 import { searchAllDrives } from '../../utils/globalSearch'
 import type { GlobalSearchResult } from '../../utils/globalSearch'
 import type { ChatMessage, MessagePart, FileResult, LinkResult } from './types'
@@ -12,6 +15,32 @@ import AliShare from '../../aliapi/share'
 import AliFileCmd from '../../aliapi/filecmd'
 import UserDAL from '../../user/userdal'
 import { parseQuarkShareLink } from '../../quark/share'
+import { TMDB_BASE_URL, TMDB_BASE_URL_PROXY, tmdbImageUrl } from '../../utils/tmdb'
+
+function getCloudAIBaseURL(): string {
+  return ((Config as any).BOXPLAYER_AI_API_URL || 'https://ai.xbyvideohub.com').replace(/\/+$/, '')
+}
+
+function createBoxPlayerCloudModel(modelId: string) {
+  const baseURL = getCloudAIBaseURL()
+  const provider = createOpenAICompatible({
+    name: 'boxplayer-cloud',
+    baseURL: `${baseURL}/v1`,
+    fetch: async (url: any, init?: any) => {
+      const token = await getBoxPlayerAccessToken()
+      let body = init?.body
+      if (typeof body === 'string') {
+        try { body = JSON.stringify({ ...JSON.parse(body), feature: 'ai_search' }) } catch {}
+      }
+      return globalThis.fetch(url, {
+        ...init,
+        headers: { ...(init?.headers || {}), Authorization: `Bearer ${token}` },
+        body,
+      })
+    },
+  })
+  return provider(modelId)
+}
 
 const CHAT_KEY = 'ai_search_chat_history_v2'
 
@@ -34,7 +63,6 @@ function saveHistory(messages: ChatMessage[]) {
 export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
   const messages = ref<ChatMessage[]>(loadHistory())
   const loading = ref(false)
-  const streamingMessageId = ref('')
   let abortController: AbortController | null = null
 
   function appendPart(msgId: string, part: MessagePart) {
@@ -42,14 +70,26 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     if (msg) msg.parts = [...msg.parts, part]
   }
 
+  function getMatchKey(input: any): string | null {
+    if (input?.keyword) return `k:${input.keyword}`
+    if (input?.url) return `u:${input.url}`
+    return null
+  }
+
   function updateToolPart(msgId: string, toolType: string, input: any, fn: (part: any) => void) {
     const msg = messages.value.find(m => m.id === msgId)
     if (!msg) return
     const parts = [...msg.parts]
+    const inputKey = getMatchKey(input)
     let idx = -1
     for (let i = parts.length - 1; i >= 0; i--) {
       const p = parts[i]
-      if (p.type === toolType && (p as any).input?.keyword === input?.keyword) { idx = i; break }
+      if (p.type !== toolType) continue
+      if (inputKey) {
+        if (getMatchKey((p as any).input) === inputKey) { idx = i; break }
+      } else {
+        idx = i; break
+      }
     }
     if (idx >= 0) {
       const updated = { ...parts[idx] }
@@ -70,15 +110,17 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
   async function scanAllDrives(platforms?: string[]): Promise<GlobalSearchResult[]> {
     const patterns = ['pdf', 'mp4', 'mkv', 'txt', 'jpg', 'png', 'mp3', 'zip', 'doc', 'xls', 'ppt', 'epub', 'mobi', 'flac', 'rar', '7z', 'avi', 'wmv', 'mov']
     const seen = new Set<string>()
+    const results = await Promise.all(
+      patterns.map(p =>
+        searchAllDrives(p, { platforms, includeMediaServers: false }).catch(() => [] as GlobalSearchResult[])
+      )
+    )
     const all: GlobalSearchResult[] = []
-    for (const p of patterns) {
-      try {
-        const results = await searchAllDrives(p, { platforms, includeMediaServers: false })
-        for (const r of results) {
-          const key = `${r.drive_id}:${r.file_id}`
-          if (!seen.has(key)) { seen.add(key); all.push(r) }
-        }
-      } catch {}
+    for (const batch of results) {
+      for (const r of batch) {
+        const key = `${r.drive_id}:${r.file_id}`
+        if (!seen.has(key)) { seen.add(key); all.push(r) }
+      }
     }
     return all
   }
@@ -97,30 +139,38 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     const kw = text.trim()
     if (!kw || loading.value) return
 
-    const { checkAndIncrement } = await import('../../utils/usageLimit')
-    const uc = checkAndIncrement('aiAgentChat')
-    if (!uc.allowed) { const { default: msg } = await import('../../utils/message'); msg.warning(uc.message!); return }
-
     const config = getAIConfig()
-    if (!config) return
+    if (!config) {
+      const { default: msg } = await import('../../utils/message')
+      msg.warning('请先在设置中配置 AI 模型')
+      return
+    }
+    const { default: msg } = await import('../../utils/message')
 
-    if (abortController) { abortController.abort(); abortController = null }
+    const { checkAndIncrement } = await import('../../utils/usageLimit')
+    const isBYOK = !isBoxPlayerCloudProvider(config.providerName)
+    const uc = checkAndIncrement('aiAgentChat', 1, { metered: false, isBYOK })
+    if (!uc.allowed) { msg.warning(uc.message!); return }
+
+    if (abortController) { abortController.abort() }
+    abortController = new AbortController()
 
     const userMsgId = `${Date.now()}-u`
     const aiMsgId = `${Date.now()}-a`
 
     messages.value = [...messages.value, { id: userMsgId, role: 'user', parts: [{ type: 'text', text: kw }] }]
     messages.value = [...messages.value, { id: aiMsgId, role: 'assistant', parts: [] }]
-    streamingMessageId.value = aiMsgId
     loading.value = true
     saveHistory(messages.value)
     scrollBottom()
 
     try {
       const isOpenAI = config.providerName === 'openai' || config.providerName === 'ai-gateway'
-      const model = isOpenAI
-        ? createOpenAI({ name: config.providerName || 'openai', apiKey: config.apiKey, baseURL: config.endpoint })(config.modelId)
-        : createOpenAICompatible({ name: config.providerName, apiKey: config.apiKey, baseURL: config.endpoint })(config.modelId)
+      const model = isBoxPlayerCloudProvider(config.providerName)
+        ? createBoxPlayerCloudModel(config.modelId)
+        : isOpenAI
+          ? createOpenAI({ name: config.providerName || 'openai', apiKey: config.apiKey, baseURL: config.endpoint })(config.modelId)
+          : createOpenAICompatible({ name: config.providerName, apiKey: config.apiKey, baseURL: config.endpoint })(config.modelId)
 
       const apiMessages = messages.value
         .filter(m => m.role === 'user' || m.role === 'assistant')
@@ -143,7 +193,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 - importShare: 导入阿里云盘/夸克分享链接，转存到用户网盘
 - downloadFiles: 添加文件下载任务
 - moveFiles: 移动文件到指定目录（需用户确认）
-- getTMDBMovies: 获取 TMDB 最新电影（热映/流行/高分/即将上映）
+- getTMDBMovies: 获取 TMDB 最新电影（热映/流行/高分）
+- searchTMDB: 在 TMDB 中搜索电影和电视剧，查询影视详细信息
 - getDoubanMovies: 获取豆瓣电影排行榜（Top250/新片/口碑/北美票房）
 - deleteFiles: 删除文件移入回收站（需用户确认）
 
@@ -157,6 +208,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
    - 用户选择后你会收到类似"用户选择了: 阿里云盘(zxm)、百度网盘。platforms: aliyun,baidu"的消息，提取 platforms 列表传给工具
    - 然后你再执行对应操作
    - 用户想看热门电影/新片/排行榜 → 调用 getTMDBMovies（国外）或 getDoubanMovies（国内），无需 listDrives
+   - 用户查询特定电影/电视剧信息 → 调用 searchTMDB
    - 导入分享：必须问用户保存到阿里云盘还是夸克
 4. 工具返回结果后，简要总结即可
 5. moveFiles 和 deleteFiles 必须先展示确认信息
@@ -186,7 +238,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
                 if (platform === 'aliyun') {
                   drives.push({ userId: u.user_id, name, platform, driveId: u.resource_drive_id || u.backup_drive_id || u.default_drive_id || '' })
                 } else {
-                  drives.push({ userId: u.user_id, name, platform, driveId: u.default_drive_id || u.drive_id || '' })
+                  drives.push({ userId: u.user_id, name, platform, driveId: u.default_drive_id || '' })
                 }
               }
               appendPart(aiMsgId, { type: 'tool-listDrives', state: 'select', drives } as MessagePart)
@@ -197,7 +249,10 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 
           searchMyFiles: {
             description: '搜索用户所有已登录云盘中的文件',
-            inputSchema: z.object({ keyword: z.string().describe('搜索关键词') }),
+            inputSchema: z.object({
+              keyword: z.string().describe('搜索关键词'),
+              platforms: z.array(z.string()).optional().describe('限定搜索的网盘平台名列表，如 ["aliyun","baidu"]'),
+            }),
             execute: async (args: any) => {
               const keyword = args.keyword
               appendPart(aiMsgId, {
@@ -208,7 +263,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               scrollBottom()
 
               try {
-                const r = await searchAllDrives(keyword)
+                const r = await searchAllDrives(keyword, { platforms: args.platforms, includeMediaServers: false })
                 const files: FileResult[] = r.slice(0, 30).map((f: GlobalSearchResult) => ({
                   name: f.name, ext: f.ext, size: f.size, isDir: f.isDir,
                   provider: f.provider, providerName: f.providerName,
@@ -236,6 +291,17 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             inputSchema: z.object({ keyword: z.string().describe('搜索关键词') }),
             execute: async (args: any) => {
               const keyword = args.keyword
+              const panHubUsage = checkAndIncrement('panHubSearch')
+              if (!panHubUsage.allowed) {
+                appendPart(aiMsgId, {
+                  type: 'tool-searchPanHub',
+                  state: 'error',
+                  input: { keyword },
+                  error: panHubUsage.message || '今日全网资源搜索次数已用完',
+                } as MessagePart)
+                scrollBottom()
+                return { total: 0, links: [], error: panHubUsage.message || '今日全网资源搜索次数已用完' }
+              }
               appendPart(aiMsgId, {
                 type: 'tool-searchPanHub',
                 state: 'running',
@@ -245,7 +311,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 
               try {
                 const resp = await fetch(
-                  `https://searchdrive.vercel.app/api/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=all`
+                  `https://api.xbyvideohub.com/api/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=all`
                 )
                 const d = await resp.json()
                 if (d?.code === 0 && d?.data?.merged_by_type) {
@@ -262,12 +328,13 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
                   scrollBottom()
                   return { total: all.length, links: all.slice(0, 30) }
                 }
+                const errMsg = d?.message || (d?.code !== 0 ? `API 错误 (code: ${d?.code})` : '未找到匹配资源')
                 updateToolPart(aiMsgId, 'tool-searchPanHub', { keyword }, (part: any) => {
-                  part.state = 'done'
-                  part.output = { total: 0, links: [] }
+                  part.state = 'error'
+                  part.error = errMsg
                 })
                 scrollBottom()
-                return { total: 0, links: [] }
+                return { total: 0, links: [], error: errMsg }
               } catch (e: any) {
                 updateToolPart(aiMsgId, 'tool-searchPanHub', { keyword }, (part: any) => {
                   part.state = 'error'
@@ -344,9 +411,16 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 
         const result = await AliShare.ApiSaveShareFilesBatch(shareId, shareToken, account.userId, account.driveId, 'quark_root', fileIds)
                 updateToolPart(aiMsgId, 'tool-importShare', { url }, (p: any) => {
-                  p.state = result === 'success' ? 'done' : 'error'
-                  p.output = { shareName: (fileResp as any)?.share_name || files[0]?.name || '', fileCount: files.length, savedCount: result === 'success' ? files.length : 0, platform: platform === 'quark' ? '夸克网盘' : '阿里云盘' }
-                  if (result !== 'success') p.error = result
+                  if (result === 'success') {
+                    p.state = 'done'
+                    p.output = { shareName: (fileResp as any)?.share_name || files[0]?.name || '', fileCount: files.length, savedCount: files.length, platform: platform === 'quark' ? '夸克网盘' : '阿里云盘' }
+                  } else if (result === 'async') {
+                    p.state = 'done'
+                    p.output = { shareName: (fileResp as any)?.share_name || files[0]?.name || '', fileCount: files.length, savedCount: files.length, platform: platform === 'quark' ? '夸克网盘' : '阿里云盘', asyncStatus: true }
+                  } else {
+                    p.state = 'error'
+                    p.error = result || '转存失败'
+                  }
                 })
                 scrollBottom()
                 return { savedCount: result === 'success' ? files.length : 0, fileCount: files.length, shareName: (fileResp as any)?.share_name || '' }
@@ -488,41 +562,73 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
           },
 
           getTMDBMovies: {
-            description: '从 TMDB 获取电影数据（热映、流行、高分、即将上映），获取最新电影信息',
+            description: '从 TMDB 获取电影数据（热映、流行、高分），获取最新电影和电视剧信息',
             inputSchema: z.object({
-              category: z.enum(['trending','popular','top_rated','now_playing']).optional().describe('类别：trending=热映, popular=流行, top_rated=高分, now_playing=即将上映'),
+              category: z.enum(['trending','popular','top_rated']).optional().describe('类别：trending=热映, popular=流行, top_rated=高分'),
               page: z.number().optional().describe('页码，默认1'),
             }),
             execute: async (args: any) => {
-              const category = args.category || 'trending'
+              const category: string = args.category || 'trending'
               const page = args.page || 1
-              const label = { trending: 'TMDB 热映', popular: 'TMDB 流行', top_rated: 'TMDB 高分', now_playing: 'TMDB 即将上映' }[category] || 'TMDB 电影'
+              const labelMap: Record<string, string> = { trending: 'TMDB 热映', popular: 'TMDB 流行', top_rated: 'TMDB 高分' }
+              const label = labelMap[category] || 'TMDB 电影'
               appendPart(aiMsgId, { type: 'tool-getMovies', state: 'loading', category: label } as MessagePart)
               scrollBottom()
+              let items: { title: string; desc: string }[] = []
               try {
-                const { default: Config } = await import('../../config')
-                const API_KEY = Config.TMDB_API_KEY
-                const PROXY = 'https://tmdb-673444103572.asia-east2.run.app'
-                const endpoint = category === 'trending' ? '/trending/movie/week' : `/movie/${category}`
-                const resp = await fetch(`${PROXY}${endpoint}?api_key=${API_KEY}&language=zh-CN&page=${page}`)
-                const data = await resp.json()
-                if (data?.results) {
-                  const movies = data.results.slice(0, 25).map((m: any) => ({
-                    id: String(m.id || ''),
-                    title: m.title || '',
-                    cover: m.poster_path ? `https://image.tmdb.org/t/p/w342${m.poster_path}` : '',
-                    desc: `评分: ${m.vote_average?.toFixed(1) || '?'} · ${m.release_date?.slice(0,4) || ''}`,
-                    url: `https://www.themoviedb.org/movie/${m.id}`,
-                  }))
-                  updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'done'; p.category = `${label} · ${movies.length}部`; p.movies = movies })
+                let movieResults: any[] = []
+                let tvResults: any[] = []
+
+                if (category === 'top_rated') {
+                  const resp = await fetch(`${TMDB_BASE_URL}/movie/top_rated?language=zh-CN`)
+                  const data = await resp.json()
+                  if (data?.code === 0) {
+                    movieResults = data.movies || []
+                    tvResults = data.tv || []
+                  }
                 } else {
-                  updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'error'; p.error = data?.status_message || data?.message || '获取失败' })
+                  const typeMap: Record<string, string[]> = {
+                    trending: ['/trending/movie/week', '/trending/tv/week'],
+                    popular: ['/movie/popular', '/tv/popular'],
+                  }
+                  const endpoints = typeMap[category] || ['/trending/movie/week', '/trending/tv/week']
+                  const [movieResp, tvResp] = await Promise.all([
+                    fetch(`${TMDB_BASE_URL_PROXY}${endpoints[0]}?language=zh-CN&page=${page}`),
+                    fetch(`${TMDB_BASE_URL_PROXY}${endpoints[1]}?language=zh-CN&page=${page}`),
+                  ])
+                  const movieData = await movieResp.json()
+                  const tvData = await tvResp.json()
+                  if (movieData?.results) movieResults = movieData.results
+                  if (tvData?.results) tvResults = tvData.results
+                }
+
+                const movieItems = movieResults.slice(0, 25).map((m: any) => ({
+                  id: String(m.id || ''),
+                  title: m.title || m.name || '',
+                  cover: tmdbImageUrl(m.poster_path),
+                  desc: `评分: ${m.vote_average?.toFixed(1) || '?'} · ${(m.release_date || m.first_air_date || '').slice(0, 4)}`,
+                  url: `https://www.themoviedb.org/movie/${m.id}`,
+                }))
+                const tvItems = tvResults.slice(0, 10).map((t: any) => ({
+                  id: String(t.id || ''),
+                  title: `📺 ${t.name || t.title || ''}`,
+                  cover: tmdbImageUrl(t.poster_path),
+                  desc: `评分: ${t.vote_average?.toFixed(1) || '?'} · ${(t.first_air_date || '').slice(0, 4)}`,
+                  url: `https://www.themoviedb.org/tv/${t.id}`,
+                }))
+                const allItems = [...movieItems, ...tvItems]
+                items = allItems.map(i => ({ title: i.title, desc: i.desc }))
+
+                if (movieItems.length || tvItems.length) {
+                  updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'done'; p.category = `${label} · ${movieItems.length + tvItems.length}部`; p.movies = movieItems; p.tv = tvItems })
+                } else {
+                  updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'error'; p.error = '获取失败' })
                 }
               } catch (e: any) {
                 updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'error'; p.error = e?.message || '请求失败' })
               }
               scrollBottom()
-              return {}
+              return { category: label, total: items.length, items }
             },
           },
 
@@ -533,11 +639,13 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               const category = args.category || 'douban-top250'
               appendPart(aiMsgId, { type: 'tool-getMovies', state: 'loading', category } as MessagePart)
               scrollBottom()
+              let items: { title: string; desc: string }[] = []
               try {
-                const resp = await fetch(`https://panhub.shenzjd.com/api/douban-hot?category=${category}&page=1&limit=25`)
+                const resp = await fetch(`https://api.xbyvideohub.com/api/douban-hot?category=${category}&page=1&limit=25`)
                 const data = await resp.json()
                 if (data?.code === 0 && data?.data?.items) {
                   const movies = data.data.items.map((item: any) => ({ id: String(item.id || ''), title: item.title || '', cover: item.cover || '', desc: item.desc || '', url: item.url || '' }))
+                  items = movies.map((m: any) => ({ title: m.title, desc: m.desc }))
                   updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'done'; p.category = category; p.movies = movies })
                 } else {
                   updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'error'; p.error = data?.message || '获取电影数据失败' })
@@ -546,7 +654,50 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
                 updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'error'; p.error = e?.message || '请求失败' })
               }
               scrollBottom()
-              return {}
+              return { category, total: items.length, items }
+            },
+          },
+
+          searchTMDB: {
+            description: '在 TMDB 中搜索电影和电视剧，查询详细的影视信息',
+            inputSchema: z.object({ query: z.string().describe('搜索关键词') }),
+            execute: async (args: any) => {
+              const query = args.query
+              appendPart(aiMsgId, { type: 'tool-getMovies', state: 'loading', category: `搜索: ${query}` } as MessagePart)
+              scrollBottom()
+              let items: { title: string; desc: string }[] = []
+              try {
+                const [movieResp, tvResp] = await Promise.all([
+                  fetch(`${TMDB_BASE_URL_PROXY}/search/movie?query=${encodeURIComponent(query)}&language=zh-CN`),
+                  fetch(`${TMDB_BASE_URL_PROXY}/search/tv?query=${encodeURIComponent(query)}&language=zh-CN`),
+                ])
+                const movieData = await movieResp.json()
+                const tvData = await tvResp.json()
+                const movieResults: any[] = movieData?.results || []
+                const tvResults: any[] = tvData?.results || []
+
+                const movies = movieResults.slice(0, 10).map((m: any) => ({
+                  id: String(m.id || ''),
+                  title: m.title || '',
+                  cover: tmdbImageUrl(m.poster_path),
+                  desc: `评分: ${m.vote_average?.toFixed(1) || '?'} · ${(m.release_date || '').slice(0, 4)}`,
+                  url: `https://www.themoviedb.org/movie/${m.id}`,
+                }))
+                const tvItems = tvResults.slice(0, 10).map((t: any) => ({
+                  id: String(t.id || ''),
+                  title: `📺 ${t.name || ''}`,
+                  cover: tmdbImageUrl(t.poster_path),
+                  desc: `评分: ${t.vote_average?.toFixed(1) || '?'} · ${(t.first_air_date || '').slice(0, 4)}`,
+                  url: `https://www.themoviedb.org/tv/${t.id}`,
+                }))
+                const allResults = [...movies, ...tvItems]
+                items = allResults.map((m: any) => ({ title: m.title, desc: m.desc }))
+                updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'done'; p.category = `搜索: ${query} · ${allResults.length}个结果`; p.movies = movies; p.tv = tvItems })
+              } catch (e: any) {
+                updateToolPart(aiMsgId, 'tool-getMovies', {}, (p: any) => { p.state = 'error'; p.error = e?.message || '请求失败' })
+              }
+              scrollBottom()
+              return { query, total: items.length, items }
             },
           },
 
@@ -565,6 +716,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
         toolChoice: 'auto',
           stopWhen: stepCountIs(5),
         temperature: 0.7,
+        abortSignal: abortController?.signal,
       })
 
       // stream text delta, split reasoning from text
@@ -603,7 +755,6 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
       })
     } finally {
       loading.value = false
-      streamingMessageId.value = ''
       saveHistory(messages.value)
     }
   }
@@ -612,7 +763,6 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     if (abortController) { abortController.abort(); abortController = null }
     messages.value = []
     loading.value = false
-    streamingMessageId.value = ''
     localStorage.removeItem(CHAT_KEY)
   }
 
@@ -659,5 +809,5 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     saveHistory(messages.value)
   }
 
-  return { messages, loading, streamingMessageId, sendMessage, clear, confirmAction, cancelAction }
+  return { messages, loading, sendMessage, clear, confirmAction, cancelAction }
 }

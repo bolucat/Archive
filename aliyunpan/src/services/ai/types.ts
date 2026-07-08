@@ -1,6 +1,6 @@
 import type { LanguageModel, EmbeddingModel } from 'ai'
 
-export type AIProviderName = 'ollama' | 'ai-gateway' | 'openrouter' | 'deepseek'
+export type AIProviderName = 'ollama' | 'ai-gateway' | 'openrouter' | 'deepseek' | 'boxplayer-cloud'
 
 export interface AISettings {
   provider: AIProviderName

@@ -12,6 +12,7 @@ export interface MusicMetadata {
   artist: string
   album: string
   cover: string // url
+  metadataSources?: string[]
   durationMs?: number
   lrc: string // raw LRC text
   lines: LyricLine[]
@@ -31,6 +32,7 @@ export interface MusicMetadataDebug {
   lyric?: LyricFetchDebug
   lrcLength: number
   parsedLineCount: number
+  lyricLineSource?: 'timed' | 'plain' | 'empty'
   reason: string
 }
 
@@ -64,15 +66,27 @@ function cleanFragment(s: string): string {
     .trim()
 }
 
+function stripLeadingTrackNo(s: string): string {
+  return s.replace(/^\s*(?:cd\s*\d+\s*)?\d{1,3}\s+[-–—.]?\s*/i, '').trim()
+}
+
+function formatDurationForSdk(durationSec?: number): string | undefined {
+  if (!Number.isFinite(durationSec) || !durationSec || durationSec <= 0) return undefined
+  const sec = Math.max(0, Math.round(durationSec))
+  const m = Math.floor(sec / 60).toString().padStart(2, '0')
+  const s = Math.floor(sec % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
+
 export function guessArtistTitle(filename: string): { artist: string, title: string } {
-  const base = cleanFragment(stripExt(filename))
+  const base = stripLeadingTrackNo(cleanFragment(stripExt(filename)))
   if (!base) return { artist: '', title: '' }
   const seps = [' - ', '_-_', ' – ', '–', ' — ', '—']
   for (const sep of seps) {
     const i = base.indexOf(sep)
     if (i > 0) {
-      const a = base.slice(0, i).trim()
-      const t = base.slice(i + sep.length).trim()
+      const a = stripLeadingTrackNo(base.slice(0, i).trim())
+      const t = stripLeadingTrackNo(base.slice(i + sep.length).trim())
       if (a && t) return { artist: a, title: t }
     }
   }
@@ -87,11 +101,21 @@ function buildKey(q: MetaQuery): string {
   return `${artist}|${title}|${dur}`.toLowerCase()
 }
 
-export function parseLrc(lrc: string): LyricLine[] {
-  if (!lrc) return []
+export function parseLrc(lrc: string, durationSec?: number): LyricLine[] {
+  return parseLyricText(lrc, durationSec).lines
+}
+
+function parseLyricText(lrc: string, durationSec?: number): { lines: LyricLine[], source: MusicMetadataDebug['lyricLineSource'] } {
+  if (!lrc) return { lines: [], source: 'empty' }
   const out: LyricLine[] = []
   const lines = lrc.split(/\r?\n/)
   const tagRe = /\[(\d{1,2}):(\d{1,2}(?:[\.:]\d{1,3})?)\]/g
+  const krcTagRe = /\[(\d{1,8})(?:,\d{1,8})?\]/g
+  const offsetSec = (Number(lrc.match(/\[offset:([+-]?\d+)\]/i)?.[1]) || 0) / 1000
+  const cleanTimedText = (text: string) => text
+    .replace(/<\d+,\d+>/g, '')
+    .replace(/\(\d+,\d+,\d+\)/g, '')
+    .trim()
   for (const raw of lines) {
     if (!raw) continue
     const stamps: number[] = []
@@ -100,10 +124,17 @@ export function parseLrc(lrc: string): LyricLine[] {
     while ((m = tagRe.exec(raw)) !== null) {
       const min = parseInt(m[1], 10) || 0
       const sec = parseFloat(String(m[2]).replace(':', '.')) || 0
-      stamps.push(min * 60 + sec)
+      stamps.push(Math.max(0, min * 60 + sec + offsetSec))
+    }
+    if (!stamps.length) {
+      krcTagRe.lastIndex = 0
+      while ((m = krcTagRe.exec(raw)) !== null) {
+        const ms = parseInt(m[1], 10) || 0
+        stamps.push(Math.max(0, ms / 1000 + offsetSec))
+      }
     }
     if (!stamps.length) continue
-    const text = raw.replace(tagRe, '').trim()
+    const text = cleanTimedText(raw.replace(tagRe, '').replace(krcTagRe, ''))
     if (!text) continue
     for (const s of stamps) out.push({ time: s, text })
   }
@@ -115,7 +146,34 @@ export function parseLrc(lrc: string): LyricLine[] {
     if (prev && Math.abs(prev.time - line.time) < 0.001 && prev.text === line.text) continue
     dedup.push(line)
   }
-  return dedup
+  if (dedup.length) return { lines: dedup, source: 'timed' }
+  const plainLines = parsePlainLyricLines(lrc, durationSec)
+  return { lines: plainLines, source: plainLines.length ? 'plain' : 'empty' }
+}
+
+function parsePlainLyricLines(lrc: string, durationSec?: number): LyricLine[] {
+  const lines = lrc
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\[[^\]]+\]/g, '').trim())
+    .filter((line) => line && !/^(暂无歌词|纯音乐，请欣赏|歌词获取失败)$/i.test(line))
+  const safeDuration = Number.isFinite(durationSec) && durationSec && durationSec > 0 ? Math.max(4, durationSec) : 0
+  const step = safeDuration && lines.length > 1 ? safeDuration / lines.length : 4
+  return lines.map((text, index) => ({
+    time: index * step,
+    text
+  }))
+}
+
+function chooseLyricText(lyric: { lyric?: string, lxlyric?: string, tlyric?: string, rlyric?: string } | null | undefined, durationSec?: number): { text: string, source: MusicMetadataDebug['lyricLineSource'] } {
+  const candidates = [lyric?.lyric || '', lyric?.lxlyric || '', lyric?.tlyric || '', lyric?.rlyric || ''].filter(Boolean)
+  let bestPlain = ''
+  for (const candidate of candidates) {
+    const parsed = parseLyricText(candidate, durationSec)
+    if (parsed.source === 'timed') return { text: candidate, source: parsed.source }
+    if (!bestPlain && parsed.source === 'plain') bestPlain = candidate
+  }
+  if (bestPlain) return { text: bestPlain, source: 'plain' }
+  return { text: candidates[0] || '', source: candidates[0] ? 'empty' : undefined }
 }
 
 async function fetchLrclib(artist: string, title: string, durationSec?: number, album?: string): Promise<{ lrc: string, durationMs?: number, album?: string } | null> {
@@ -206,6 +264,7 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
     artist: artist || guess.artist,
     album,
     cover: '',
+    metadataSources: ['filename'],
     lrc: '',
     lines: []
   })
@@ -221,23 +280,32 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
 
   const promise = (async () => {
     let lrcText = ''
+    let lyricLineSource: MusicMetadataDebug['lyricLineSource'] = 'empty'
     let coverUrl = ''
     let lyricDebug: LyricFetchDebug | undefined
+    const metadataSources = new Set<string>(['filename'])
 
     // iTunes cover
     try {
       const itunesRes = await fetchITunes(artist, title)
       if (itunesRes) {
         coverUrl = itunesRes.cover || ''
+        if (itunesRes.cover) metadataSources.add('itunes:cover')
+        if (itunesRes.album || itunesRes.artist || itunesRes.title) metadataSources.add('itunes:metadata')
       }
     } catch {}
 
     // SDK fallback for lyrics (skip LRCLIB)
     if (title) {
       try {
-        const sdkLyric = await sdkFetchLyricDetailed({ name: title, singer: artist })
+        const sdkLyric = await sdkFetchLyricDetailed({ name: title, singer: artist, interval: formatDurationForSdk(q.durationSec) })
         lyricDebug = sdkLyric.debug
-        if (sdkLyric.lyric?.lyric) lrcText = sdkLyric.lyric.lyric
+        if (sdkLyric.lyric?.lyric) {
+          const chosen = chooseLyricText(sdkLyric.lyric, q.durationSec)
+          lrcText = chosen.text
+          lyricLineSource = chosen.source || 'empty'
+          metadataSources.add('musicsdk:lyrics')
+        }
       } catch (e: any) {
         lyricDebug = {
           query: { name: title, singer: artist },
@@ -251,17 +319,23 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
     if (!coverUrl && title) {
       try {
         const sdkCover = await sdkFetchCover({ name: title, singer: artist })
-        if (sdkCover) coverUrl = sdkCover
+        if (sdkCover) {
+          coverUrl = sdkCover
+          metadataSources.add('musicsdk:cover')
+        }
       } catch {}
     }
 
-    const lines = parseLrc(lrcText)
-    const lyricReason = getLyricDebugReason(lyricDebug, lrcText, lines.length)
+    const parsedLyric = parseLyricText(lrcText, q.durationSec)
+    const lines = parsedLyric.lines
+    lyricLineSource = parsedLyric.source || lyricLineSource
+    const lyricReason = getLyricDebugReason(lyricDebug, lrcText, lines.length, lyricLineSource)
     const data: MusicMetadata = {
       title: title || guess.title,
       artist: artist || guess.artist,
       album: album || '',
       cover: coverUrl,
+      metadataSources: Array.from(metadataSources),
       lrc: lrcText,
       lines,
       debug: {
@@ -276,6 +350,7 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
         lyric: lyricDebug,
         lrcLength: lrcText.length,
         parsedLineCount: lines.length,
+        lyricLineSource,
         reason: lyricReason
       }
     }
@@ -307,7 +382,8 @@ export function clearMusicMetaCache(): void {
   inflight.clear()
 }
 
-function getLyricDebugReason(debug: LyricFetchDebug | undefined, lrc: string, lineCount: number): string {
+function getLyricDebugReason(debug: LyricFetchDebug | undefined, lrc: string, lineCount: number, source?: MusicMetadataDebug['lyricLineSource']): string {
+  if (lrc && lineCount > 0 && source === 'plain') return `歌词接口返回纯文本，已按行展示 ${lineCount} 行`
   if (lrc && lineCount > 0) return `歌词已获取并解析 ${lineCount} 行`
   if (lrc && lineCount === 0) return `歌词接口返回 ${lrc.length} 字符，但没有解析出时间轴行`
   if (!debug) return '未执行歌词接口请求'

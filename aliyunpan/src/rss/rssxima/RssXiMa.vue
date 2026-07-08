@@ -123,19 +123,22 @@ const handleClickXiMa = async () => {
 <style>
 .rightbg {
   background:
-    radial-gradient(circle at top left, rgba(88, 153, 255, 0.12), transparent 28%),
-    radial-gradient(circle at top right, rgba(255, 162, 94, 0.12), transparent 24%),
-    linear-gradient(180deg, #f8fbff 0%, #f3f6fb 36%, #eef2f7 100%);
+    radial-gradient(circle at top left, rgba(0, 245, 212, 0.08), transparent 28%),
+    radial-gradient(circle at top right, rgba(244, 210, 138, 0.08), transparent 24%),
+    transparent;
   padding: 20px 24px 40px !important;
+  color: var(--app-mineradio-ink, #e8ecef);
 }
 
 .rightbg .settingcard {
   margin-bottom: 22px;
   padding: 24px 26px;
   border-radius: 24px;
-  border: 1px solid rgba(126, 145, 170, 0.16);
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 18px 45px rgba(44, 62, 92, 0.08);
+  border: 1px solid var(--app-glass-line, rgba(255, 255, 255, 0.082));
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255, 255, 255, 0.075), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.026));
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.052);
   backdrop-filter: blur(18px);
 }
 
@@ -143,13 +146,13 @@ const handleClickXiMa = async () => {
   margin-bottom: 14px;
   font-size: 19px;
   font-weight: 800;
-  color: #1e293b;
+  color: rgba(255, 255, 255, 0.92);
   letter-spacing: 0.01em;
 }
 
 .rightbg .settingrow {
   line-height: 1.8;
-  color: #475569;
+  color: rgba(232, 236, 239, 0.68);
 }
 
 .rightbg .settingspace {
@@ -160,18 +163,18 @@ const handleClickXiMa = async () => {
 .rightbg .arco-input-group-wrapper,
 .rightbg .arco-textarea-wrapper {
   border-radius: 18px;
-  background: rgba(248, 250, 252, 0.88);
-  border-color: rgba(148, 163, 184, 0.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.052);
+  border-color: rgba(255, 255, 255, 0.088);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
 }
 
 .rightbg .arco-input-wrapper:focus-within,
 .rightbg .arco-input-group-wrapper:focus-within,
 .rightbg .arco-textarea-wrapper:focus-within {
-  border-color: rgba(63, 119, 223, 0.34);
+  border-color: rgba(0, 245, 212, 0.28);
   box-shadow:
-    0 0 0 4px rgba(63, 119, 223, 0.08),
-    inset 0 1px 0 rgba(255, 255, 255, 0.92);
+    0 0 0 4px rgba(0, 245, 212, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .rightbg .arco-btn {
@@ -195,12 +198,12 @@ const handleClickXiMa = async () => {
 
 .rightbg li {
   margin-bottom: 8px;
-  color: #475569;
+  color: rgba(232, 236, 239, 0.68);
 }
 
 .helptxt {
   margin-top: 8px;
-  color: #64748b;
+  color: rgba(232, 236, 239, 0.58);
   font-size: 13px;
   line-height: 1.7;
 }

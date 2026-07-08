@@ -17,6 +17,8 @@ export interface MediaLibraryItem {
   tmdbId?: number
   imdbId?: string
   tvdbId?: string
+  aiScrape?: { provider: string; confidence: number; reason: string; updatedAt: number }
+  metadataSource?: 'tmdb' | 'ai-tmdb' | 'filename' | 'manual'
   seasons?: MediaSeason[]
   credits?: Credits
   // 删除冗余的episodes?: MediaEpisode[] - 集数信息应该在seasons中管理

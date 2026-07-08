@@ -1,6 +1,7 @@
 import { aliPost } from './aliyunHttp.mjs'
 import { open } from 'node:fs/promises'
 import { readSlice, toConflictMode } from './uploadUtils.mjs'
+import { downloadUrlToFile } from '../core/downloadFile.mjs'
 
 function mapFileItem(raw, driveId, accountId) {
   return {
@@ -129,6 +130,24 @@ export async function aliGetFile(token, driveId, fileId) {
   const accountId = token.user_id
   const data = await aliPost('v2/file/get', { drive_id: driveId, file_id: fileId, fields: '*' }, token)
   return mapFileItem(data, driveId, accountId)
+}
+
+export async function aliDownloadFile(token, driveId, { fileId, outputPath }) {
+  const accountId = token.user_id
+  const data = await aliPost('v2/file/get', { drive_id: driveId, file_id: fileId, fields: '*', url_expire_sec: 14400 }, token)
+  if (data.type === 'folder') {
+    const err = new Error(`Cannot download folder: ${fileId}`)
+    err.code = 'ERR_ALIYUN_DOWNLOAD_FOLDER'
+    throw err
+  }
+  const url = data.download_url || data.url
+  if (!url) {
+    const err = new Error(`Aliyun returned no download url for file: ${fileId}`)
+    err.code = 'ERR_ALIYUN_DOWNLOAD_URL'
+    throw err
+  }
+  await downloadUrlToFile(url, outputPath, { headers: { Referer: 'https://www.aliyundrive.com/' } })
+  return { ok: true, provider: 'aliyun', accountId, driveId, fileId, name: data.name || '', size: data.size || 0, output: outputPath }
 }
 
 export async function aliMove(token, driveId, moves) {

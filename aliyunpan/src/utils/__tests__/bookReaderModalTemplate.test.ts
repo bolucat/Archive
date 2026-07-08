@@ -20,6 +20,16 @@ function findClosingDiv(template: string, openingDivIndex: number): number {
   return -1
 }
 
+function sliceBetween(source: string, startMarker: string, endMarker: string): string {
+  const start = source.indexOf(startMarker)
+  const end = source.indexOf(endMarker, start + startMarker.length)
+
+  expect(start, `missing start marker: ${startMarker}`).toBeGreaterThan(-1)
+  expect(end, `missing end marker after ${startMarker}: ${endMarker}`).toBeGreaterThan(start)
+
+  return source.slice(start, end)
+}
+
 describe('BookReaderModal template structure', () => {
   it('keeps the translation popup inside the fullscreen reader shell', () => {
     const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
@@ -50,7 +60,7 @@ describe('BookReaderModal template structure', () => {
 
     expect(source).toContain('let aiHistoryLoadRequestId = 0')
     expect(source).toContain('aiStatusText')
-    expect(source).toContain("cfg.providerName !== 'ai-gateway'")
+    expect(source).toContain("cfg.providerName !== 'ai-gateway' && !isBoxPlayerCloudProvider(cfg.providerName)")
     expect(source).toContain('findLastIndex')
     expect(source).not.toContain('!cfg.endpoint || !cfg.modelId')
   })
@@ -152,6 +162,18 @@ describe('BookReaderModal template structure', () => {
     expect(readerSource).toContain("applyDoublePageCss(options.container, options.readerMode || 'single')")
   })
 
+  it('configures the pdf.js worker before readerkit parses PDF files', () => {
+    const readerSource = readFileSync(resolve(__dirname, '../bookReader.ts'), 'utf8')
+    const createReaderSource = sliceBetween(readerSource, 'export async function createBookReader', '  const content = cachedContent')
+
+    expect(readerSource).toContain("await import('pdfjs-dist')")
+    expect(readerSource).toContain("import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.js?url'")
+    expect(readerSource).toContain('pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl')
+    expect(readerSource).toContain('scope.pdfjsLib')
+    expect(createReaderSource).toContain('await configurePdfJsWorker()')
+    expect(createReaderSource.indexOf('await configurePdfJsWorker()')).toBeLessThan(createReaderSource.indexOf("import('../vendor/reader/readerkit.min.js')"))
+  })
+
   it('does not reset custom reader colors when font size changes', () => {
     const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
     const themeWatchStart = source.indexOf('watch([readerMode')
@@ -195,7 +217,8 @@ describe('BookReaderModal template structure', () => {
     const iframeKeySource = source.slice(iframeKeyStart, iframeKeyEnd)
 
     expect(source).toContain('function scrollReaderByNativeArrow')
-    expect(keySource).toContain('scrollReaderByNativeArrow(key ===')
+    expect(keySource).toContain('scrollReaderByNativeArrow(-1)')
+    expect(keySource).toContain('scrollReaderByNativeArrow(1)')
     expect(keySource).toContain('scrollPageUp()')
     expect(keySource).toContain('scrollPageDown()')
     expect(keySource).toContain("key === 'arrowleft' || key === 'pageup'")
@@ -205,5 +228,191 @@ describe('BookReaderModal template structure', () => {
     expect(keySource).not.toContain('if (isScroll) return // native scroll')
     expect(iframeKeySource).toContain('handleKeyDown(event)')
     expect(iframeKeySource).not.toContain('滚动模式下让浏览器处理原生滚动按键')
+  })
+
+  it('keeps right panel controls from overlapping the visible settings panel', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const rightControlsStart = source.indexOf('const rightFloatingControlsStyle')
+    const rightControlsEnd = source.indexOf('const readerStageStyle', rightControlsStart)
+    const rightControlsSource = source.slice(rightControlsStart, rightControlsEnd)
+
+    expect(source).toContain("['edge-trigger', 'trigger-right', isRightPanelVisible ? 'hidden' : '']")
+    expect(source).toContain('<div v-show="!isRightPanelVisible" class="reader-topright-controls" :style="rightFloatingControlsStyle">')
+    expect(source).toContain('<div class="page-turn-cluster" :style="rightPageTurnStyle">')
+    expect(rightControlsSource).toContain('isRightPanelVisible.value')
+    expect(rightControlsSource).toContain('rightPanelWidth.value')
+    expect(rightControlsSource).not.toContain('lockedPanels.value.right')
+  })
+
+  it('captures right panel resize drags before the reader iframe can steal mouse events', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const resizeStart = source.indexOf("let panelDragState: { side: 'left' | 'right'")
+    const resizeEnd = source.indexOf('function startTransResize', resizeStart)
+    const resizeSource = source.slice(resizeStart, resizeEnd)
+
+    expect(source).toContain('v-if="panelResizingSide" class="panel-resize-shield"')
+    expect(source).toContain('@mousemove="updatePanelResize"')
+    expect(source).toContain('@mouseup="finishPanelResize"')
+    expect(source).toContain('finishPanelResize()')
+    expect(resizeSource).toContain("const panelResizingSide = ref<'left' | 'right' | null>(null)")
+    expect(resizeSource).toContain('panelResizingSide.value = side')
+    expect(resizeSource).toContain("document.body.style.userSelect = 'none'")
+    expect(resizeSource).toContain("document.removeEventListener('mousemove', updatePanelResize)")
+    expect(resizeSource).toContain("window.removeEventListener('blur', finishPanelResize)")
+    expect(resizeSource).not.toContain("document.addEventListener('mousemove', onMove)")
+  })
+
+  it('wires full-page translation through a dedicated controller and serialized rerender watchers', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const cleanupSource = sliceBetween(source, 'function cleanup() {', 'function readBookSelection()')
+    const bindHookSource = sliceBetween(source, 'function bindRenderedHook()', 'async function loadReaderBookBook')
+    const loadSource = sliceBetween(source, 'async function loadReaderBookBook', 'async function rerenderBookReader()')
+    const rerenderSource = sliceBetween(source, 'async function rerenderBookReader()', 'function rgbaToHex')
+    const modeWatchSource = sliceBetween(source, 'watch(readerFullTranslationMode,', 'watch([readerBackgroundColor, readerTextColor], () => {')
+    const providerWatchSource = sliceBetween(source, 'watch(transProvider,', 'watch(transTarget,')
+    const targetWatchSource = sliceBetween(source, 'watch(transTarget,', 'watch([readerVoiceLocale, readerVoiceURI, readerVoiceRate], () => {')
+
+    expect(source).toContain("import { createBookFullTranslationController } from '../utils/bookFullTranslation'")
+    expect(source).toContain("const fullTranslationLoading = ref(false)")
+    expect(source).toContain("const fullTranslationError = ref('')")
+    expect(source).toContain("const transTarget = ref(savedPreferences.readerTranslationTarget)")
+    expect(source).toContain('const fullTranslationController = createBookFullTranslationController({')
+    expect(source).toContain("checkUsage: (characters) => checkAndIncrement('readerTranslation', characters, { metered: false })")
+    expect(source).toContain("import { isBoxPlayerCloudProvider, translateWithBoxPlayerCloud } from '../utils/boxplayerCloudAI'")
+    expect(source).toContain('translate: (text, target) => translateWithBoxPlayerCloud(text, target)')
+    expect(source).toContain('function scheduleFullTranslation()')
+    expect(source).toContain("if (!bookReader || readerFullTranslationMode.value === 'no') return Promise.resolve()")
+    expect(source).toContain('return fullTranslationController.schedule({')
+    expect(source).toContain('let applyFullTranslationPromise = Promise.resolve()')
+    expect(source).toContain('let readerRerenderPromise = Promise.resolve(true)')
+    expect(source).toContain('function queueFullTranslationRerender()')
+    expect(cleanupSource).toContain('cleanupReaderRenditionListeners()')
+    expect(cleanupSource).toContain('fullTranslationController.clear()')
+    expect(cleanupSource).toContain('readerRerenderPromise = Promise.resolve(true)')
+    expect(loadSource).toContain('await scheduleFullTranslation().catch(() => {})')
+    expect(rerenderSource).toContain('fullTranslationController.invalidate()')
+    expect(rerenderSource).toContain('cleanupReaderRenditionListeners()')
+
+    expect(bindHookSource).toContain('function handleRendered()')
+    expect(bindHookSource).toContain('function handlePageChanged()')
+    expect(bindHookSource).toContain("rendition.on('rendered', handleRendered)")
+    expect(bindHookSource).toContain("rendition.on('page-changed', handlePageChanged)")
+    expect(bindHookSource).toContain("rendition.off?.('rendered', handleRendered)")
+    expect(bindHookSource).toContain("rendition.off?.('page-changed', handlePageChanged)")
+    expect(bindHookSource).toContain('scheduleFullTranslation().catch(() => {})')
+
+    expect(modeWatchSource).toContain('saveReaderPreferences()')
+    expect(modeWatchSource).toContain('await queueFullTranslationRerender()')
+    expect(modeWatchSource).not.toContain('applyFullTranslationPromise = applyFullTranslationPromise')
+    expect(modeWatchSource).not.toContain('watch([')
+
+    expect(providerWatchSource).toContain('setTranslator(transProvider.value)')
+    expect(providerWatchSource).not.toContain('queueFullTranslationRerender')
+    expect(targetWatchSource).toContain("if (readerFullTranslationMode.value === 'no') return")
+    expect(targetWatchSource).toContain('saveReaderPreferences()')
+    expect(targetWatchSource).toContain('await queueFullTranslationRerender()')
+  })
+
+  it('uses cloud translation API for full-page translation independent of the popup provider', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const fullTranslationSection = sliceBetween(source, "<div class=\"setting-section-title\">{{ t('full.text.translation') }} <span class=\"pro-pill\">Pro</span></div>", '<!-- Toggle Switches')
+    const controllerSource = sliceBetween(source, 'const fullTranslationController = createBookFullTranslationController({', 'let applyFullTranslationPromise = Promise.resolve()')
+
+    expect(source).toContain("import { isBoxPlayerCloudProvider, translateWithBoxPlayerCloud } from '../utils/boxplayerCloudAI'")
+    expect(controllerSource).toContain('translate: (text, target) => translateWithBoxPlayerCloud(text, target)')
+    expect(controllerSource).toContain("checkUsage: (characters) => checkAndIncrement('readerTranslation', characters, { metered: false })")
+    expect(fullTranslationSection).not.toContain('v-model="transProvider"')
+    expect(fullTranslationSection).not.toContain('translators.providers')
+  })
+
+  it('passes full translation mode through reader options', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const optionsSource = sliceBetween(source, 'function buildCurrentReaderOptions(): BookReaderOptions {', 'async function locateAnnotationTarget()')
+    const readerSource = readFileSync(resolve(__dirname, '../bookReader.ts'), 'utf8')
+    const styleConfigSource = sliceBetween(readerSource, 'export function createReaderStyleConfig', 'export function applyReaderDefaultCss')
+
+    expect(optionsSource).toContain('fullTranslationMode: readerFullTranslationMode.value')
+    expect(styleConfigSource).toContain("fullTranslationMode: options.fullTranslationMode || 'no'")
+    expect(styleConfigSource).toContain("key === 'fullTranslationBooks' && fullTranslationEnabled ? [''] : []")
+  })
+
+  it('guards full translation lifecycle with tokens across cleanup, load, and rerender queues', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const varsSource = sliceBetween(source, 'let bookReader: BookReaderHandle | null = null', 'const readingTimeSeconds = ref(0)')
+    const cleanupSource = sliceBetween(source, 'function cleanup() {', 'function readBookSelection()')
+    const queueSource = sliceBetween(source, 'function queueFullTranslationRerender()', 'function zoomBookImagePreview')
+    const loadSource = sliceBetween(source, 'async function loadReaderBookBook', 'async function rerenderBookReader()')
+    const rerenderSource = sliceBetween(source, 'async function rerenderBookReader()', 'function rgbaToHex')
+
+    expect(varsSource).toContain('let readerLifecycleToken = 0')
+    expect(varsSource).toContain('let fullTranslationRerenderRequestId = 0')
+    expect(varsSource).not.toContain('let rerenderToken = 0')
+    expect(source).toContain('let readerRerenderPromise = Promise.resolve(true)')
+
+    expect(cleanupSource).toContain('readerLifecycleToken += 1')
+    expect(cleanupSource).toContain('fullTranslationRerenderRequestId += 1')
+    expect(cleanupSource).not.toContain('rerenderToken += 1')
+    expect(cleanupSource).toContain('readerRerenderPromise = Promise.resolve(true)')
+
+    expect(queueSource).toContain('const lifecycleToken = readerLifecycleToken')
+    expect(queueSource).toContain('const requestId = ++fullTranslationRerenderRequestId')
+    expect(queueSource).toContain('if (lifecycleToken !== readerLifecycleToken || requestId !== fullTranslationRerenderRequestId) return')
+    expect(queueSource).toContain('const rerendered = await rerenderBookReader()')
+    expect(queueSource).toContain('if (!rerendered) return')
+    expect(queueSource).toContain('await scheduleFullTranslation().catch(() => {})')
+    expect(queueSource.indexOf('if (!rerendered) return')).toBeLessThan(queueSource.indexOf('await scheduleFullTranslation().catch(() => {})'))
+
+    expect(loadSource).toContain('const lifecycleToken = readerLifecycleToken')
+    expect(loadSource).toContain('const currentBookId = props.book?.id || book?.id || \'\'')
+    expect(loadSource).toContain('const currentReader = bookReader')
+    expect(loadSource).toContain('const nextReader = await createBookReader(buildCurrentReaderOptions())')
+    expect(loadSource).toContain('if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== currentReader || (props.book?.id || \'\') !== currentBookId)')
+    expect(loadSource).toContain('nextReader.destroy()')
+    expect(loadSource).toContain('bookReader = nextReader')
+
+    expect(rerenderSource).toContain('const lifecycleToken = readerLifecycleToken')
+    expect(rerenderSource).toContain('const queuedRerender = readerRerenderPromise')
+    expect(rerenderSource).toContain('.catch(() => false)')
+    expect(rerenderSource).toContain('if (lifecycleToken !== readerLifecycleToken || !bookReader || !readerContainer.value) return false')
+    expect(rerenderSource).toContain('const currentReader = bookReader')
+    expect(rerenderSource).toContain('const currentBookId = props.book?.id || \'\'')
+    expect(rerenderSource).toContain('const nextReader = await createBookReader(buildCurrentReaderOptions(), cachedContent)')
+    expect(rerenderSource).toContain('if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== currentReader || (props.book?.id || \'\') !== currentBookId)')
+    expect(rerenderSource).not.toContain('activeRerenderToken')
+    expect(rerenderSource).toContain('nextReader.destroy()')
+    expect(rerenderSource).toContain('return true')
+    expect(rerenderSource).toContain('readerRerenderPromise = queuedRerender')
+    expect(rerenderSource).toContain('return queuedRerender')
+    expect(rerenderSource).not.toContain('if (rerenderLock || !bookReader || !readerContainer.value) return')
+    expect(rerenderSource).not.toContain('let rerenderLock = false')
+  })
+
+  it('shows target controls under full text translation settings and keeps provider controls in the selection popup', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const fullTranslationSection = sliceBetween(source, "<div class=\"setting-section-title\">{{ t('full.text.translation') }} <span class=\"pro-pill\">Pro</span></div>", '<!-- Toggle Switches')
+    const popupSource = sliceBetween(source, '<div v-if="translateSource || translateResult" class="trans-popup-layer" @mousedown.stop>', '</Teleport>')
+
+    expect(fullTranslationSection).toContain('v-if="readerFullTranslationMode !== \'no\'"')
+    expect(fullTranslationSection).not.toContain('v-model="transProvider"')
+    expect(fullTranslationSection).not.toContain('translators.providers')
+    expect(fullTranslationSection).toContain('v-model="transTarget"')
+    expect(fullTranslationSection).toContain('transLanguages')
+    expect(fullTranslationSection).toContain('fullTranslationLoading')
+    expect(fullTranslationSection).toContain('fullTranslationError')
+
+    expect(popupSource).toContain('v-model="transProvider"')
+    expect(popupSource).toContain('v-model="transTarget"')
+  })
+
+  it('uses a compact inline status for full text translation loading', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const fullTranslationSection = sliceBetween(source, "<div class=\"setting-section-title\">{{ t('full.text.translation') }} <span class=\"pro-pill\">Pro</span></div>", '<!-- Toggle Switches')
+
+    expect(source).toContain('LoaderCircle,')
+    expect(fullTranslationSection).toContain('class="full-translation-status"')
+    expect(fullTranslationSection).toContain('class="full-translation-spinner"')
+    expect(fullTranslationSection).toContain('<LoaderCircle v-if="fullTranslationLoading" class="full-translation-spinner" :size="12"')
+    expect(fullTranslationSection).not.toContain('<a-spin')
+    expect(fullTranslationSection).not.toContain('style="font-size: 11px')
   })
 })

@@ -126,7 +126,7 @@ const handleSubmit = () => {
 .panel-card {
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
+  background: rgba(255, 255, 255, 0.04);
   box-shadow: 0 12px 26px rgba(15, 23, 42, 0.06);
 }
 

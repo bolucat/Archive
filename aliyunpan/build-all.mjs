@@ -12,6 +12,8 @@ function run(command, args, options = {}) {
   const env = {
     ...process.env,
     CSC_IDENTITY_AUTO_DISCOVERY: 'true',
+    ELECTRON_MIRROR: process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
+    npm_config_electron_mirror: process.env.npm_config_electron_mirror || process.env.ELECTRON_MIRROR || 'https://npmmirror.com/mirrors/electron/',
     PATH: `${toolDir}:${process.env.PATH || ''}`,
     ...options.env,
   }

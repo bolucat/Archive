@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"strings"
@@ -9,7 +10,9 @@ import (
 	N "github.com/metacubex/mihomo/common/net"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/listener/inner"
 	"github.com/metacubex/mihomo/listener/sing"
+	"github.com/metacubex/mihomo/transport/restls"
 	"github.com/metacubex/mihomo/transport/shadowsocks/core"
 	obfs "github.com/metacubex/mihomo/transport/simple-obfs"
 	"github.com/metacubex/mihomo/transport/socks5"
@@ -22,12 +25,13 @@ type Listener struct {
 	udpListeners []*UDPListener
 	pickCipher   core.Cipher
 	handler      *sing.ListenerHandler
+	resTLS       *restls.ServerConfig
 	simpleObfs   func(net.Conn) net.Conn
 }
 
 var _listener *Listener
 
-func New(config LC.ShadowsocksServer, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
+func New(config LC.ShadowsocksServer, lc C.InboundListenConfig, tunnel C.Tunnel, additions ...inbound.Addition) (*Listener, error) {
 	pickCipher, err := core.PickCipher(config.Cipher, nil, config.Password)
 	if err != nil {
 		return nil, err
@@ -46,6 +50,18 @@ func New(config LC.ShadowsocksServer, tunnel C.Tunnel, additions ...inbound.Addi
 	sl := &Listener{config: config, pickCipher: pickCipher, handler: h}
 	_listener = sl
 
+	if config.ResTLS.Enable {
+		sl.resTLS = &restls.ServerConfig{
+			ServerHostname: config.ResTLS.Dest,
+			Password:       config.ResTLS.Password,
+			RestlsScript:   config.ResTLS.RestlsScript,
+			MinRecordLen:   config.ResTLS.MinRecordLen,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				return inner.HandleTcp(tunnel, address, config.ResTLS.Proxy)
+			},
+		}
+	}
+
 	if config.SimpleObfs.Enable {
 		switch config.SimpleObfs.Mode {
 		case "http":
@@ -62,7 +78,7 @@ func New(config LC.ShadowsocksServer, tunnel C.Tunnel, additions ...inbound.Addi
 
 		if config.Udp {
 			//UDP
-			ul, err := NewUDP(addr, pickCipher, tunnel, additions...)
+			ul, err := NewUDP(addr, lc, pickCipher, tunnel, additions...)
 			if err != nil {
 				return nil, err
 			}
@@ -70,7 +86,7 @@ func New(config LC.ShadowsocksServer, tunnel C.Tunnel, additions ...inbound.Addi
 		}
 
 		//TCP
-		l, err := inbound.Listen("tcp", addr)
+		l, err := lc.Listen(context.Background(), "tcp", addr)
 		if err != nil {
 			return nil, err
 		}
@@ -125,6 +141,14 @@ func (l *Listener) AddrList() (addrList []net.Addr) {
 }
 
 func (l *Listener) HandleConn(conn net.Conn, tunnel C.Tunnel, additions ...inbound.Addition) {
+	if l.resTLS != nil {
+		c, err := restls.Server(context.TODO(), conn, l.resTLS)
+		if err != nil {
+			_ = conn.Close()
+			return
+		}
+		conn = c
+	}
 	if l.simpleObfs != nil {
 		conn = l.simpleObfs(conn)
 	}

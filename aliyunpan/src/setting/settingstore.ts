@@ -212,8 +212,6 @@ export interface SettingState {
   ariaResumeAllWhenLaunched: boolean
 
   // API 密钥 (BYOK)
-  apiAzureSpeechKey: string
-  apiAzureSpeechRegion: string
   apiAIModelKey: string
   apiAIModelProvider: string
   apiAIModelId: string
@@ -420,8 +418,6 @@ const setting: SettingState = {
   ariaSeedTime: 2880,
   ariaResumeAllWhenLaunched: false,
 
-  apiAzureSpeechKey: '',
-  apiAzureSpeechRegion: '',
   apiAIModelKey: '',
   apiAIModelProvider: '',
   apiAIModelId: '',
@@ -638,8 +634,6 @@ function _loadSetting(val: any) {
   setting.ariaResumeAllWhenLaunched = defaultBool(val.ariaResumeAllWhenLaunched, false)
 
   // API 密钥
-  setting.apiAzureSpeechKey = defaultString(val.apiAzureSpeechKey, '')
-  setting.apiAzureSpeechRegion = defaultString(val.apiAzureSpeechRegion, '')
   setting.apiAIModelKey = defaultString(val.apiAIModelKey, '')
   setting.apiAIModelProvider = defaultString(val.apiAIModelProvider, '')
   setting.apiAIModelId = defaultString(val.apiAIModelId, '')

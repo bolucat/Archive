@@ -17,7 +17,7 @@ import {
 } from '../topbtns/topbtn'
 import { modalRename, modalShuXing } from '../../utils/modal'
 import { useSettingStore, usePanFileStore, useAppStore, usePanTreeStore } from '../../store'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { MediaScanner } from '../../utils/mediaScanner'
 import MusicScanner from '../../utils/musicScanner'
 import BookScanner from '../../utils/bookScanner'
@@ -49,8 +49,42 @@ const pickFolderForScan = () => {
   return folder
 }
 
-// 扫描视频
-const handleScanVideo = async () => {
+// 扫描类型勾选
+const scanVideo = ref(true)
+const scanAudio = ref(false)
+const scanBook = ref(false)
+const isScanning = computed(() => mediaScanner.isCurrentlyScanning || musicScanner.isScanning || bookScanner.isScanning)
+
+const handleStartScan = async () => {
+  const folder = pickFolderForScan()
+  if (!folder) return
+  if (isScanning.value) { message.warning('正在扫描中，请稍后...'); return }
+  if (!scanVideo.value && !scanAudio.value && !scanBook.value) { message.warning('请至少勾选一种扫描类型'); return }
+
+  const userId = (folder as any).user_id || panTreeStore.user_id || ''
+  const tasks: Promise<any>[] = []
+
+  if (scanVideo.value && !mediaScanner.isCurrentlyScanning) {
+    message.info(`开始扫描 "${folder.name}" 视频`)
+    appStore.toggleTab('media')
+    tasks.push(mediaScanner.scanFolder(folder, folder.drive_id).catch(e => console.error('视频扫描失败:', e)))
+  }
+  if (scanAudio.value && !musicScanner.isScanning) {
+    if (!userId) { message.error('无法识别当前账号'); return }
+    appStore.toggleTab('music')
+    tasks.push(musicScanner.scanFolder(folder, userId).then(r => message.success(`音频扫描完成: ${r.found} 首`)).catch(e => console.error('音频扫描失败:', e)))
+  }
+  if (scanBook.value && !bookScanner.isScanning) {
+    if (!userId) { message.error('无法识别当前账号'); return }
+    appStore.toggleTab('book')
+    tasks.push(bookScanner.scanFolder(folder, userId).then(r => message.success(`书籍扫描完成: ${r.found} 本`)).catch(e => console.error('书籍扫描失败:', e)))
+  }
+
+  await Promise.allSettled(tasks)
+}
+
+// AI 批量刮削
+const handleAIBatchScrape = async () => {
   const folder = pickFolderForScan()
   if (!folder) return
   if (mediaScanner.isCurrentlyScanning) {
@@ -58,60 +92,11 @@ const handleScanVideo = async () => {
     return
   }
   try {
-    message.info(`开始扫描文件夹 "${folder.name}" 的视频文件`)
     appStore.toggleTab('media')
-    await mediaScanner.scanFolder(folder, folder.drive_id)
+    await mediaScanner.batchAIScrapeFolder(folder, (folder as any).drive_id)
   } catch (error) {
-    console.error('视频扫描失败:', error)
-    message.error('视频扫描失败，请稍后重试')
-  }
-}
-
-// 扫描音频
-const handleScanAudio = async () => {
-  const folder = pickFolderForScan()
-  if (!folder) return
-  if (musicScanner.isScanning) {
-    message.warning('音频扫描进行中，请稍后...')
-    return
-  }
-  const userId = (folder as any).user_id || panTreeStore.user_id || ''
-  if (!userId) {
-    message.error('未识别到当前账号，无法扫描')
-    return
-  }
-  try {
-    message.info(`开始扫描文件夹 "${folder.name}" 的音频文件`)
-    appStore.toggleTab('music')
-    const res = await musicScanner.scanFolder(folder, userId)
-    message.success(`音频扫描完成：收录 ${res.found} 首`)
-  } catch (error) {
-    console.error('音频扫描失败:', error)
-    message.error('音频扫描失败，请稍后重试')
-  }
-}
-
-// 扫描书籍
-const handleScanBook = async () => {
-  const folder = pickFolderForScan()
-  if (!folder) return
-  if (bookScanner.isScanning) {
-    message.warning('书籍扫描进行中，请稍后...')
-    return
-  }
-  const userId = (folder as any).user_id || panTreeStore.user_id || ''
-  if (!userId) {
-    message.error('未识别到当前账号，无法扫描')
-    return
-  }
-  try {
-    message.info(`开始扫描文件夹 "${folder.name}" 的书籍文件`)
-    appStore.toggleTab('book')
-    const res = await bookScanner.scanFolder(folder, userId)
-    message.success(`书籍扫描完成：收录 ${res.found} 本`)
-  } catch (error) {
-    console.error('书籍扫描失败:', error)
-    message.error('书籍扫描失败，请稍后重试')
+    console.error('AI 批量刮削失败:', error)
+    message.error('AI 批量刮削失败，请稍后重试')
   }
 }
 
@@ -186,7 +171,7 @@ const isSelectedFolder = computed(() => {
         <template #default>快传</template>
       </a-doption>
 
-      <!-- AI 整理此目录 暂时隐藏 -->
+      <!-- 扫描数据 -->
       <a-dsubmenu v-if="isSelectedFolder && isShowBtn" class='rightmenu' trigger='hover'>
         <template #default>
           <div @click.stop='() => {}'>
@@ -197,17 +182,31 @@ const isSelectedFolder = computed(() => {
           </div>
         </template>
         <template #content>
-          <a-doption @click="handleScanVideo">
-            <template #icon><IconFont name="iconshipin" /></template>
-            <template #default>扫描视频</template>
+          <a-doption @click.stop="scanVideo = !scanVideo">
+            <template #icon>
+              <IconFont :name="scanVideo ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanVideo ? 'color: rgb(var(--primary-6))' : ''" />
+            </template>
+            <template #default>视频</template>
           </a-doption>
-          <a-doption @click="handleScanAudio">
-            <template #icon><IconFont name="iconmusic" /></template>
-            <template #default>扫描音频</template>
+          <a-doption @click.stop="scanAudio = !scanAudio">
+            <template #icon>
+              <IconFont :name="scanAudio ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanAudio ? 'color: rgb(var(--primary-6))' : ''" />
+            </template>
+            <template #default>音频</template>
           </a-doption>
-          <a-doption @click="handleScanBook">
-            <template #icon><IconFont name="iconbook" /></template>
-            <template #default>扫描书籍</template>
+          <a-doption @click.stop="scanBook = !scanBook">
+            <template #icon>
+              <IconFont :name="scanBook ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanBook ? 'color: rgb(var(--primary-6))' : ''" />
+            </template>
+            <template #default>书籍</template>
+          </a-doption>
+          <a-doption @click="handleStartScan">
+            <template #icon><IconFont name="iconstart" /></template>
+            <template #default>开始扫描</template>
+          </a-doption>
+          <a-doption @click="handleAIBatchScrape">
+            <template #icon><IconFont name="iconscan" /></template>
+            <template #default>AI 重刮削 <span class="ai-pro-badge">Pro</span></template>
           </a-doption>
         </template>
       </a-dsubmenu>
@@ -350,4 +349,6 @@ const isSelectedFolder = computed(() => {
     </template>
   </a-dropdown>
 </template>
-<style></style>
+<style>
+.ai-pro-badge { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: linear-gradient(135deg, #f59e0b, #f97316); color: #fff; font-weight: 700; line-height: 1; height: 14px; padding: 0 5px; font-size: 9px; vertical-align: middle; margin-left: 4px; }
+</style>

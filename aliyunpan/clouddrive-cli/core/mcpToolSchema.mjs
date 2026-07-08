@@ -25,7 +25,7 @@ const DESCRIPTIONS = {
   local: 'Local file or directory path.',
   'max-chars': 'Maximum number of characters to read.',
   name: 'Name or display name, depending on command.',
-  output: 'Optional output JSON path.',
+  output: 'Output path. For downloads this is the local file path; for large read commands this is a JSON output path.',
   parent: 'Parent folder id.',
   path: 'Local document path.',
   'pdf-content-safety-off': 'Disable OpenDataLoader content safety filters: all, hidden-text, off-page, tiny, hidden-ocg.',

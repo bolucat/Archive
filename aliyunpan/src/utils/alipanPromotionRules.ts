@@ -25,15 +25,12 @@ export const getAlipanDownloadPromotionReason = (body: any): string => {
   const description = normalizeReason(body?.description)
   if (!description) return ''
   if (!THIRD_PARTY_MEMBER_KEYWORDS.some(keyword => description.includes(keyword))) return ''
-  return description
+  return ''
 }
 
 export const getAlipanVideoPromotionReason = (body: any): string => {
   if (body?.code === 'ExceedCapacityForbidden') {
-    return '云存储空间已超限，播放受限。可购买 VIP 服务或空间扩容套餐。'
+    return '云存储空间已超限，播放受限。'
   }
-  const taskList = body?.video_preview_play_info?.live_transcoding_task_list || []
-  if (!Array.isArray(taskList)) return ''
-  const blockedTask = taskList.find((item: any) => !item?.url && normalizeReason(item?.description))
-  return normalizeReason(blockedTask?.description)
+  return ''
 }

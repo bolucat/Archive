@@ -349,13 +349,16 @@ Output example:
       "recursiveWalk": true,
       "mkdir": false,
       "move": false,
-      "uploadFile": false
+      "uploadFile": false,
+      "downloadFile": false
     }
   }
 ]
 ```
 
 `uploadFile: false` means the CLI supports upload planning and dry-run, but the real byte-upload adapter for this provider is not yet enabled.
+
+`downloadFile: false` means the provider cannot download file bytes through the CLI yet.
 
 ## files
 
@@ -383,6 +386,30 @@ clouddrive-cli files list \
 | `--json` | No | off | JSON output |
 
 Without `--limit` and `--cursor`, `files list` returns the full directory as `FileItem[]`. With either pagination option, it returns `{ provider, driveId, parentFileId, limit, cursor, nextCursor, hasMore, items }`.
+
+### files download
+
+Download one cloud drive file to a local path.
+
+```bash
+clouddrive-cli files download \
+  --provider aliyun \
+  --account default \
+  --file-id <file-id> \
+  --output ./download.bin \
+  --json
+```
+
+| Parameter | Required | Default | Description |
+| --- | --- | --- | --- |
+| `--provider <p>` | No | `aliyun` | Provider ID |
+| `--account <id>` | No | `default` | Account ID or `default` |
+| `--file-id <id>` | Yes | — | File ID to download |
+| `--output <path>` | Yes | — | Local output path |
+| `--drive-id <d>` | No | account default drive | Drive ID |
+| `--json` | No | off | JSON output |
+
+Real download requires provider capability `downloadFile: true`.
 
 ### files walk
 

@@ -233,6 +233,7 @@ function handleSearchResult(rawList: any[]): OldMusicInfo[] {
         albumId: data.al?.id || 0,
         source: 'wy',
         interval: formatPlayTime((data.dt || 0) / 1000),
+        _interval: Math.round((data.dt || 0) / 1000),
         songmid: data.id,
         img: data.al?.picUrl || null,
         lrc: null,

@@ -367,7 +367,9 @@ function saveCustomProfile() {
 
 .play-setting-row {
   width: 100%;
-  min-width: 0 !important;
+}
+.play-setting-row.settingrow {
+  min-width: 0;
 }
 
 .play-settings-card :deep(.settinghead) {

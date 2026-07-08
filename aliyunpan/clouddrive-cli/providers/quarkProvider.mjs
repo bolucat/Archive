@@ -16,6 +16,7 @@ export function createQuarkProvider() {
       mkdir: true,
       move: true,
       uploadFile: false,
+      downloadFile: false,
     },
     auth: {
       async login() {

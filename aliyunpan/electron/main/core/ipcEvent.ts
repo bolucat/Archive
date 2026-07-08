@@ -1,12 +1,12 @@
 import { AppWindow, createElectronWindow, createReaderWindow, Referer, ua } from './window'
 import path from 'path'
 import is from 'electron-is'
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, powerSaveBlocker, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, net, powerSaveBlocker, session, shell } from 'electron'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { exec, execFile, spawn, SpawnOptions } from 'child_process'
 import os from 'os'
 import { ShowError } from './dialog'
-import { getStaticPath, getUserDataPath } from '../utils/mainfile'
+import { getAsarPath, getStaticPath, getUserDataPath } from '../utils/mainfile'
 import { registerMediaImageCacheIpc } from '../mediaImageCache'
 import { createHash } from 'crypto'
 import { getMotrixApplicationRpcPort } from '../aria/runtime'
@@ -191,9 +191,10 @@ export default class ipcEvent {
     this.handleOfficePreviewConvertToPdf()
     this.handleOpenDataLoaderConvertPdf()
     this.handleWebOpenWindow()
-    // this.handleWebOpenLyric()
-    // this.handleWebSendLyric()
-    // this.handleWebCloseLyric()
+    this.handleWebOpenLyric()
+    this.handleWebSendLyric()
+    this.handleWebCloseLyric()
+    this.handleWebConfigureGlobalHotkeys()
     this.handleWebOpenUrl()
     this.handleExportCliTokens()
     this.handleInstallCli()
@@ -859,70 +860,96 @@ export default class ipcEvent {
     })
   }
 
-  // private static lyricWin: BrowserWindow | null = null
-  //
-  // private static handleWebOpenLyric() {
-  //   ipcMain.on('WebOpenLyric', () => {
-  //     if (ipcEvent.lyricWin && !ipcEvent.lyricWin.isDestroyed()) {
-  //       ipcEvent.lyricWin.show()
-  //       return
-  //     }
-  //     const win = new BrowserWindow({
-  //       show: false,
-  //       width: 900,
-  //       height: 180,
-  //       x: undefined,
-  //       y: undefined,
-  //       center: true,
-  //       frame: false,
-  //       transparent: true,
-  //       hasShadow: false,
-  //       resizable: true,
-  //       skipTaskbar: true,
-  //       alwaysOnTop: true,
-  //       backgroundColor: '#00000000',
-  //       webPreferences: {
-  //         nodeIntegration: true,
-  //         contextIsolation: false,
-  //         webSecurity: false,
-  //         sandbox: false,
-  //         preload: getAsarPath('dist/electron/preload/index.js'),
-  //       },
-  //     })
-  //     win.removeMenu()
-  //
-  //     if (!app.isPackaged) {
-  //       win.loadURL(process.env.VITE_DEV_SERVER_URL + '/mainLyric.html')
-  //     } else {
-  //       win.loadFile(getStaticPath('mainLyric.html'))
-  //     }
-  //     win.on('ready-to-show', () => {
-  //       win.webContents.send('setPage', { page: 'PageLyric' })
-  //       win.show()
-  //     })
-  //     win.on('closed', () => {
-  //       ipcEvent.lyricWin = null
-  //     })
-  //     ipcEvent.lyricWin = win
-  //   })
-  // }
-  //
-  // private static handleWebSendLyric() {
-  //   ipcMain.on('WebSendLyric', (_event, data) => {
-  //     if (ipcEvent.lyricWin && !ipcEvent.lyricWin.isDestroyed()) {
-  //       ipcEvent.lyricWin.webContents.send('lyricData', data)
-  //     }
-  //   })
-  // }
-  //
-  // private static handleWebCloseLyric() {
-  //   ipcMain.on('WebCloseLyric', () => {
-  //     if (ipcEvent.lyricWin && !ipcEvent.lyricWin.isDestroyed()) {
-  //       ipcEvent.lyricWin.close()
-  //       ipcEvent.lyricWin = null
-  //     }
-  //   })
-  // }
+  private static lyricWin: BrowserWindow | null = null
+  private static globalHotkeyAccelerators: string[] = []
+
+  private static handleWebOpenLyric() {
+    ipcMain.on('WebOpenLyric', () => {
+      if (ipcEvent.lyricWin && !ipcEvent.lyricWin.isDestroyed()) {
+        ipcEvent.lyricWin.show()
+        return
+      }
+      const win = new BrowserWindow({
+        show: false,
+        width: 960,
+        height: 180,
+        center: true,
+        frame: false,
+        transparent: true,
+        hasShadow: false,
+        resizable: true,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        backgroundColor: '#00000000',
+        webPreferences: {
+          nodeIntegration: true,
+          contextIsolation: false,
+          webSecurity: false,
+          sandbox: false,
+          preload: getAsarPath('dist/electron/preload/index.js')
+        }
+      })
+      win.removeMenu()
+      win.setAlwaysOnTop(true, 'screen-saver')
+      if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) win.loadURL(process.env.VITE_DEV_SERVER_URL + '/desktop-lyrics.html')
+      else win.loadFile(getStaticPath('desktop-lyrics.html'))
+      win.on('ready-to-show', () => win.show())
+      win.on('closed', () => {
+        ipcEvent.lyricWin = null
+      })
+      ipcEvent.lyricWin = win
+    })
+  }
+
+  private static handleWebSendLyric() {
+    ipcMain.on('WebSendLyric', (_event, data) => {
+      if (!ipcEvent.lyricWin || ipcEvent.lyricWin.isDestroyed()) return
+      if (data?.clickThrough !== undefined) ipcEvent.lyricWin.setIgnoreMouseEvents(!!data.clickThrough, { forward: true })
+      ipcEvent.lyricWin.webContents.send('lyricData', data)
+    })
+  }
+
+  private static handleWebCloseLyric() {
+    ipcMain.on('WebCloseLyric', () => {
+      if (ipcEvent.lyricWin && !ipcEvent.lyricWin.isDestroyed()) {
+        ipcEvent.lyricWin.close()
+        ipcEvent.lyricWin = null
+      }
+    })
+  }
+
+  private static handleWebConfigureGlobalHotkeys() {
+    ipcMain.handle('WebConfigureGlobalHotkeys', (event, bindings: Array<{ action: string; accelerator: string; enabled?: boolean }>) => {
+      for (const accelerator of ipcEvent.globalHotkeyAccelerators) {
+        try { globalShortcut.unregister(accelerator) } catch {}
+      }
+      ipcEvent.globalHotkeyAccelerators = []
+      if (!Array.isArray(bindings) || !bindings.length) return { ok: true, registered: [], failed: [] }
+      const sender = BrowserWindow.fromWebContents(event.sender)
+      const registered: string[] = []
+      const failed: string[] = []
+      for (const binding of bindings) {
+        const accelerator = String(binding?.accelerator || '').trim()
+        const action = String(binding?.action || '').trim()
+        if (!accelerator || !action || binding.enabled === false) continue
+        try {
+          const ok = globalShortcut.register(accelerator, () => {
+            const win = sender && !sender.isDestroyed() ? sender : AppWindow.mainWindow
+            win?.webContents.send('WebGlobalHotkey', { action, accelerator })
+          })
+          if (ok) {
+            registered.push(accelerator)
+            ipcEvent.globalHotkeyAccelerators.push(accelerator)
+          } else {
+            failed.push(accelerator)
+          }
+        } catch {
+          failed.push(accelerator)
+        }
+      }
+      return { ok: failed.length === 0, registered, failed }
+    })
+  }
 
   private static handleWebOpenUrl() {
     ipcMain.on('WebOpenUrl', (event, data) => {
@@ -1038,7 +1065,10 @@ export default class ipcEvent {
               return { ok: false, error: `CLI script not found: ${scriptFile}` }
             }
             const linkPath = path.join(installDir, name)
-            const wrapper = `#!/bin/sh\nexec node ${shellQuote(scriptFile)} "$@"\n`
+            const nodeCommand = nodeExe
+              ? `ELECTRON_RUN_AS_NODE=1 exec ${shellQuote(nodeExe)} ${shellQuote(scriptFile)} "$@"`
+              : `exec node ${shellQuote(scriptFile)} "$@"`
+            const wrapper = `#!/bin/sh\n${nodeCommand}\n`
             writeFileSync(linkPath, wrapper, { mode: 0o755 })
             try { chmodSync(linkPath, 0o755) } catch { /* ignore */ }
           }
@@ -1088,7 +1118,8 @@ export default class ipcEvent {
               return { ok: false, error: `CLI script not found: ${scriptFile}` }
             }
             const nodeCmd = nodeExe ? nodeExe : 'node'
-            const batContent = `@echo off\n"${nodeCmd}" "${scriptFile}" %*\n`
+            const envLine = nodeExe ? 'set ELECTRON_RUN_AS_NODE=1\n' : ''
+            const batContent = `@echo off\nsetlocal\n${envLine}"${nodeCmd}" "${scriptFile}" %*\n`
             writeFileSync(path.join(installDir, `${name}.cmd`), batContent)
           }
 

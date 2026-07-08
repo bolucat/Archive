@@ -17,7 +17,26 @@ export const signInMediaServer = async (input: MediaServerSignInInput) => {
 
 
 export const fetchMediaServerLoginProfile = async (config: Pick<MediaServerConfig, 'type' | 'baseUrl' | 'accessToken'>): Promise<MediaServerLoginProfile> => {
-  if (config.type === 'plex') return {}
+  if (config.type === 'plex') {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'X-Plex-Token': config.accessToken || '',
+      'X-Plex-Product': 'XbyBoxPlayer'
+    }
+    for (const path of ['/identity', '/']) {
+      try {
+        const response = await fetch(`${config.baseUrl.replace(/\/+$/, '')}${path}`, { headers })
+        if (!response.ok) continue
+        const payload = await response.json() as any
+        const container = payload.MediaContainer || payload
+        const serverName = container.friendlyName || container.machineIdentifier || container.identifier || container.name
+        if (serverName) return { serverName }
+      } catch {
+        // ignore and try next path
+      }
+    }
+    return {}
+  }
   const headers: Record<string, string> = {}
   if (config.accessToken) {
     if (config.type === 'emby') {

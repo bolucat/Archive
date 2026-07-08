@@ -63,6 +63,12 @@ describe('BoxPlayer CLI commands', () => {
         providerRequirements: expect.objectContaining({ capability: 'uploadFile' }),
       }),
       expect.objectContaining({
+        command: 'files download',
+        access: 'read',
+        providerRequirements: expect.objectContaining({ capability: 'downloadFile' }),
+        examples: expect.arrayContaining([expect.stringContaining('clouddrive-cli files download')]),
+      }),
+      expect.objectContaining({
         command: 'files list',
         options: expect.arrayContaining([
           expect.objectContaining({ name: 'file-id' }),
@@ -523,6 +529,7 @@ describe('BoxPlayer CLI commands', () => {
         batchRename: true,
         recursiveWalk: true,
         uploadFile: true,
+        downloadFile: true,
         mkdir: true,
         move: true,
       },
@@ -747,6 +754,94 @@ describe('BoxPlayer CLI commands', () => {
     expect(JSON.parse(result.stdout)).toEqual([{ type: 'file', fileId: 'file-1', name: 'Movie.mkv' }])
   })
 
+  it('downloads one cloud file through the provider download capability', async () => {
+    const configDir = await makeTempDir()
+    const outputPath = join(configDir, 'downloads', 'movie.mkv')
+    const store = createAuthStore({ configDir })
+    await store.saveAccount({
+      provider: 'aliyun',
+      accountId: 'u1',
+      displayName: 'Aliyun',
+      token: { user_id: 'u1', default_drive_id: 'drive' },
+    })
+    await store.setDefaultAccount('aliyun', 'u1')
+
+    const result = await runBoxPlayerCli([
+      'files', 'download',
+      '--provider', 'aliyun',
+      '--account', 'default',
+      '--file-id', 'file-1',
+      '--output', outputPath,
+      '--json',
+    ], {
+      configDir,
+      providers: {
+        aliyun: {
+          id: 'aliyun',
+          capabilities: { downloadFile: true },
+          files: {
+            async downloadFile({ token, driveId, fileId, outputPath: target }: { token: any; driveId: string; fileId: string; outputPath: string }) {
+              expect(token.user_id).toBe('u1')
+              expect(driveId).toBe('drive')
+              expect(fileId).toBe('file-1')
+              await mkdir(join(target, '..'), { recursive: true })
+              await writeFile(target, 'movie-bytes', 'utf8')
+              return { ok: true, provider: 'aliyun', accountId: token.user_id, driveId, fileId, output: target, size: 11 }
+            },
+          },
+        },
+      } as any,
+    })
+
+    expect(result.exitCode).toBe(0)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true,
+      provider: 'aliyun',
+      fileId: 'file-1',
+      output: outputPath,
+    })
+    expect(await readFile(outputPath, 'utf8')).toBe('movie-bytes')
+  })
+
+  it('rejects download when a provider does not declare download capability', async () => {
+    const configDir = await makeTempDir()
+    const store = createAuthStore({ configDir })
+    await store.saveAccount({
+      provider: 'pikpak',
+      accountId: 'u1',
+      displayName: 'PikPak',
+      token: { user_id: 'u1' },
+    })
+    await store.setDefaultAccount('pikpak', 'u1')
+
+    const result = await runBoxPlayerCli([
+      'files', 'download',
+      '--provider', 'pikpak',
+      '--file-id', 'file-1',
+      '--output', join(configDir, 'file.bin'),
+      '--json',
+    ], {
+      configDir,
+      providers: {
+        pikpak: {
+          id: 'pikpak',
+          capabilities: { downloadFile: false },
+          files: {},
+        },
+      } as any,
+    })
+
+    expect(result.exitCode).toBe(5)
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: false,
+      error: {
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: 'Provider "pikpak" does not support CLI download yet',
+        exitCode: 5,
+      },
+    })
+  })
+
   it('prints files list help without reading the cloud drive', async () => {
     const configDir = await makeTempDir()
     const result = await runBoxPlayerCli(['files', 'list', '--help'], {
@@ -789,6 +884,7 @@ describe('BoxPlayer CLI commands', () => {
       { argv: ['files', 'tree', '--help'], contains: 'clouddrive-cli files tree' },
       { argv: ['files', 'stats', '--help'], contains: 'clouddrive-cli files stats' },
       { argv: ['files', 'info', '--help'], contains: 'clouddrive-cli files info' },
+      { argv: ['files', 'download', '--help'], contains: 'clouddrive-cli files download' },
       { argv: ['files', 'search', '--help'], contains: 'clouddrive-cli files search' },
       { argv: ['files', 'mkdir', '--help'], contains: 'clouddrive-cli files mkdir' },
       { argv: ['files', 'rename-apply', '--help'], contains: 'clouddrive-cli files rename-apply' },
@@ -1011,6 +1107,84 @@ describe('BoxPlayer CLI commands', () => {
       moveTargets: { 'folder:Movies': 1, 'folder:TV Shows': 1 },
     })
     expect(JSON.parse(summarized.stdout).actions).toBeUndefined()
+  })
+
+  it('applies an organize plan with mkdir and move, then exposes an undo dry-run', async () => {
+    const configDir = await makeTempDir()
+    const planPath = join(configDir, 'organize-plan.json')
+    const store = createAuthStore({ configDir })
+    await store.saveAccount({
+      provider: 'aliyun',
+      accountId: 'acc',
+      displayName: 'Aliyun',
+      token: { user_id: 'acc', access_token: 'token', default_drive_id: 'drive' },
+    })
+    await store.setDefaultAccount('aliyun', 'acc')
+
+    const calls: string[] = []
+    const provider = {
+      capabilities: { mkdir: true, move: true, batchRename: true },
+      files: {
+        async mkdir({ parentId, name }: { parentId: string; name: string }) {
+          calls.push(`mkdir:${parentId}/${name}`)
+          return { fileId: `folder-${name}` }
+        },
+        async moveBatch({ moves }: { moves: Array<{ fileId: string; toParentId: string }> }) {
+          calls.push(...moves.map((move) => `move:${move.fileId}->${move.toParentId}`))
+          return moves.map((move) => ({ status: 'success', fileId: move.fileId }))
+        },
+        async renameBatch() {
+          return []
+        },
+      },
+    }
+
+    await writeJson(planPath, {
+      version: 1,
+      operation: 'organize',
+      provider: 'aliyun',
+      account_id: 'acc',
+      root_file_id: 'root',
+      actions: [
+        { type: 'mkdir', parent_file_id: 'root', name: 'TV Shows', ref: 'folder:TV Shows' },
+        { type: 'move', file_id: 'f1', from_parent_file_id: 'root', to_parent_file_id: '', to_parent_ref: 'folder:TV Shows', name: 'Show.S01E01.mkv' },
+      ],
+    })
+
+    const applied = await runBoxPlayerCli(['organize', 'apply', planPath, '--summary', '--json'], { configDir, providers: { aliyun: provider } })
+
+    expect(applied.exitCode).toBe(0)
+    const result = JSON.parse(applied.stdout)
+    expect(result).toMatchObject({ ok: true, succeeded: 2, failed: 0, mkdirCount: 1, moveCount: 1 })
+    expect(calls).toEqual(['mkdir:root/TV Shows', 'move:f1->folder-TV Shows'])
+
+    const undo = await runBoxPlayerCli(['ops', 'undo', result.operationId, '--dry-run', '--json'], { configDir, providers: { aliyun: provider } })
+    expect(undo.exitCode).toBe(0)
+    expect(JSON.parse(undo.stdout).undoPlan.items).toEqual([
+      expect.objectContaining({ file_id: 'f1', from_parent_file_id: 'folder-TV Shows', to_parent_file_id: 'root' }),
+    ])
+  })
+
+  it('returns a clear error when undoing a non-undoable operation', async () => {
+    const configDir = await makeTempDir()
+    const store = createOperationLogStore({ configDir })
+    await store.save({
+      id: 'op_trash',
+      type: 'trash',
+      provider: 'aliyun',
+      account_id: 'acc',
+      started_at: '2026-01-01T00:00:00.000Z',
+      finished_at: '2026-01-01T00:00:00.000Z',
+      items: [],
+    })
+
+    const result = await runBoxPlayerCli(['ops', 'undo', 'op_trash', '--json'], { configDir })
+
+    expect(result.exitCode).toBe(5)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('Only rename and move operations are undoable') },
+    })
   })
 
   it('prints help for positional plan commands without reading --help as a file', async () => {

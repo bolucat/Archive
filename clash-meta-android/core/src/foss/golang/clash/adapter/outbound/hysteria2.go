@@ -105,7 +105,7 @@ func (h *Hysteria2) ListenPacketContext(ctx context.Context, metadata *C.Metadat
 	if pc == nil {
 		return nil, errors.New("packetConn is nil")
 	}
-	return newPacketConn(N.NewThreadSafePacketConn(pc), h), nil
+	return NewPacketConn(N.NewThreadSafePacketConn(pc), h), nil
 }
 
 // Close implements C.ProxyAdapter
@@ -297,7 +297,7 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 				if ipv4 && !ipv6 {
 					return resolver.LookupIPv4WithResolver(ctx, host, resolver.ProxyServerHostResolver)
 				} else if ipv6 && !ipv4 {
-					return resolver.LookupIPv4WithResolver(ctx, host, resolver.ProxyServerHostResolver)
+					return resolver.LookupIPv6WithResolver(ctx, host, resolver.ProxyServerHostResolver)
 				}
 				return resolver.LookupIPWithResolver(ctx, host, resolver.ProxyServerHostResolver)
 			},

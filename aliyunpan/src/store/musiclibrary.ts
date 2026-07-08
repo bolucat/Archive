@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { IMusicTrack } from '../types/music'
 import DB from '../utils/db'
+import { loadMusicTrackList } from '../utils/musicPlayerStorage'
 
 const LS_AUTOSCAN = 'musicLibrary.autoScan'
 const LS_LASTSCAN = 'musicLibrary.lastScanAt'
@@ -160,7 +161,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
 
   const favoritesTracks = computed<IMusicTrack[]>(() => {
     try {
-      const favs: any[] = JSON.parse(localStorage.getItem('pageMusic.favorites') || '[]') || []
+      const favs: any[] = loadMusicTrackList('pm.favs', { legacyKeys: ['pageMusic.favorites'] })
       const ids = new Set<string>(favs.map((f) => `${f.user_id || ''}|${f.drive_id || ''}|${f.file_id || ''}`))
       const found = tracks.value.filter((t) => ids.has(t.id))
       // 已收藏但不在库里的（可能是其它来源），用 favs 自身合成

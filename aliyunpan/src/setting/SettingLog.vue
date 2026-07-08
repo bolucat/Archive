@@ -60,11 +60,9 @@ const handleSaveLogCopy = () => {
 
     <div class="settingspace"></div>
     <div class="settingrow">
-      <a-button type="outline" size="small" tabindex="-1" @click="handleSaveLogRefresh">刷新</a-button>
-      <span style="margin-right: 16px"></span>
-      <a-button type="outline" size="small" tabindex="-1" @click="handleSaveLogClear">清空日志</a-button>
-      <span style="margin-right: 16px"></span>
-      <a-button type="outline" size="small" tabindex="-1" @click="handleSaveLogCopy">复制日志</a-button>
+      <a-button type="outline" size="small" @click="handleSaveLogRefresh">刷新</a-button>
+      <a-button type="outline" size="small" @click="handleSaveLogClear">清空日志</a-button>
+      <a-button type="outline" size="small" @click="handleSaveLogCopy">复制日志</a-button>
     </div>
   </div>
 </template>
@@ -111,14 +109,21 @@ const handleSaveLogCopy = () => {
 .loglist .arco-list-item {
   padding: 8px 12px !important;
   font-size: 12px;
+  color: var(--color-text-2);
+}
+html.dark .loglist .arco-list-item {
+  color: rgba(232, 238, 249, 0.88);
+}
+html.dark .loglist .arco-list-item .arco-typography {
+  color: inherit;
 }
 .loglist .arco-list-item-content {
   user-select: text;
   -webkit-user-drag: none;
 }
 html.dark .loglist {
-  border-color: rgba(140, 158, 183, 0.2);
-  background: rgba(28, 34, 45, 0.55);
+  border-color: rgba(140, 158, 183, 0.18);
+  background: rgba(22, 27, 36, 0.78);
 }
 html.dark .settings-log-kicker {
   background: rgba(120, 160, 255, 0.2);

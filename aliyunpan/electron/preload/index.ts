@@ -177,6 +177,22 @@ window.WebCloseLyric = function() {
   } catch {
   }
 }
+window.WebConfigureGlobalHotkeys = async function(data: any) {
+  try {
+    return await ipcRenderer.invoke('WebConfigureGlobalHotkeys', data)
+  } catch {
+    return { ok: false, error: 'global hotkey ipc failed' }
+  }
+}
+window.WebOnGlobalHotkey = function(callback: any) {
+  try {
+    const listener = (_event: any, data: any) => callback?.(data)
+    ipcRenderer.on('WebGlobalHotkey', listener)
+    return () => ipcRenderer.removeListener('WebGlobalHotkey', listener)
+  } catch {
+    return () => {}
+  }
+}
 window.WebOpenUrl = function(data: any) {
   try {
     ipcRenderer.send('WebOpenUrl', data)

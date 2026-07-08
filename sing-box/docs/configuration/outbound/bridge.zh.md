@@ -8,13 +8,18 @@ icon: material/new-box
 
 !!! quote ""
 
-    需要特权。支持 Linux、macOS、rooted Android 和越狱 iOS。
+    需要特权。支持 Linux、macOS、Windows、rooted Android 和越狱 iOS。
 
     对于图形客户端：macOS 仅独立版本可用，且需要 Root Helper；Android 需要 root 权限；iOS 需要越狱。
 
 `bridge` 是 `direct` 出站的 L3 版本：它将 L3 连接（TCP、UDP 和 ICMP）直接从网络接口转发出去。
 通过[预匹配](/zh/configuration/shared/pre-match/)中的 `route` 动作，将 L3 流量从 TUN
 或其他 L3 endpoints 路由到它；L4 连接将被拒绝。
+
+到本机本地地址（loopback 或分配给本机网络接口的地址）的流量将被拒绝。
+
+建议使用 [`preferred_by`](/zh/configuration/route/rule/#preferred_by) 作为 `route`
+规则的门禁：它仅在[预匹配](/zh/configuration/shared/pre-match/)中匹配，且排除了无法路由的本地地址。
 
 ### 结构
 

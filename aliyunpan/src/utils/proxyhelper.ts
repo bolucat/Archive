@@ -29,6 +29,7 @@ export interface IRawUrl {
   file_id: string
   url: string
   size: number
+  headers?: Record<string, string>
   qualities: {
     html: string
     quality: string
@@ -270,6 +271,7 @@ export async function getRawUrl(
         data.url = downUrl.url
       }
       data.size = downUrl.size
+      if (downUrl.headers) data.headers = downUrl.headers
     } else {
       return downUrl as string
     }

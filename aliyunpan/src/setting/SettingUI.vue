@@ -1,12 +1,11 @@
 <script setup lang='ts'>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import LimitReachedModal from './LimitReachedModal.vue'
 import { createClient } from '@supabase/supabase-js'
-import Config from '../config'
 import { openExternal } from '../utils/electronhelper'
-import { Github, Chrome, Mail, Loader2, LogOut } from 'lucide-vue-next'
+import { CheckCircle2, Chrome, Crown, Github, Loader2, LogOut, Mail, RefreshCw } from 'lucide-vue-next'
 import ServerHttp from '../aliapi/server'
 import os from 'os'
 import { getAppNewPath, getResourcesPath } from '../utils/electronhelper'
@@ -17,12 +16,17 @@ import fs from 'node:fs'
 import message from '../utils/message'
 import { Sleep } from '../utils/format'
 
+const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
+const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
+const BOXPLAYER_SITE_URL = 'https://xbysite.pages.dev'
+
 const platform = window.platform
 const settingStore = useSettingStore()
 
 const isPro = ref(false)
 const isLoggedIn = ref(false)
 const accountEmail = ref('')
+const accountInitial = computed(() => (accountEmail.value.trim().charAt(0) || 'B').toUpperCase())
 try {
   isPro.value = localStorage.getItem('app_user_pro') === '1'
   isLoggedIn.value = localStorage.getItem('app_user_authed') === '1'
@@ -32,24 +36,26 @@ const showUpgradeModal = ref(false)
 
 onMounted(() => {
   setupAuthCallback()
+  setupPaymentCallback()
   if (isLoggedIn.value) syncProStatus()
-  // Listen for payment success callback from website
-  if (window.Electron?.ipcRenderer) {
-    window.Electron.ipcRenderer.on('payment-callback', () => {
-      syncProStatus()
-      message.success('支付完成，正在同步 Pro 状态…')
-    })
-  }
   if (localStorage.getItem('boxplayer_show_pricing') === '1') {
     localStorage.removeItem('boxplayer_show_pricing')
     if (!isPro.value) showUpgradeModal.value = true
   }
 })
 
+onUnmounted(() => {
+  if (!window.Electron?.ipcRenderer) return
+  if (authCallbackHandler) window.Electron.ipcRenderer.removeListener('auth-callback', authCallbackHandler)
+  if (paymentCallbackHandler) window.Electron.ipcRenderer.removeListener('payment-callback', paymentCallbackHandler)
+})
+
 function handleLogout() {
   localStorage.removeItem('app_user_email')
   localStorage.removeItem('app_user_authed')
+  localStorage.removeItem('app_user_pro')
   isLoggedIn.value = false
+  isPro.value = false
   accountEmail.value = ''
   supabase?.auth.signOut().catch(() => {})
   message.success('已退出登录')
@@ -63,9 +69,10 @@ const authEmail = ref('')
 const upgrading = ref(false)
 
 const CALLBACK_URL = 'boxplayer-auth://callback'
+const PAYMENT_POLL_DELAYS = [0, 2000, 5000, 10000, 20000]
 
-const supabase = Config.SUPABASE_URL && Config.SUPABASE_ANON_KEY
-  ? createClient(Config.SUPABASE_URL, Config.SUPABASE_ANON_KEY) : null
+const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 
 function saveLogin(email: string) {
   localStorage.setItem('app_user_email', email)
@@ -76,16 +83,42 @@ function saveLogin(email: string) {
 }
 
 async function syncProStatus() {
-  if (!isLoggedIn.value || !supabase) return
+  if (!isLoggedIn.value || !supabase) return false
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data: subs } = await supabase.from('user_subscriptions').select('status').eq('user_id', user.id).maybeSingle()
-    if (subs?.status === 'active' || subs?.status === 'trialing') {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (!token) return false
+    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/me/subscription`, { headers: { Authorization: `Bearer ${token}` } })
+    if (!response.ok) return false
+    const subscription = await response.json()
+    isPro.value = subscription.isPro === true
+    if (isPro.value) {
       localStorage.setItem('app_user_pro', '1')
-      isPro.value = true
+    } else {
+      localStorage.removeItem('app_user_pro')
     }
+    return isPro.value
   } catch {}
+  return false
+}
+
+async function pollProStatusAfterPayment() {
+  if (!isLoggedIn.value) {
+    message.warning('支付完成，请先登录后同步专业版状态')
+    return
+  }
+
+  for (let i = 0; i < PAYMENT_POLL_DELAYS.length; i += 1) {
+    const delay = PAYMENT_POLL_DELAYS[i]
+    if (delay > 0) await Sleep(delay)
+    const active = await syncProStatus()
+    if (active) {
+      message.success('Pro 已激活！')
+      return
+    }
+  }
+
+  message.warning('支付已完成，专业版授权仍在同步中，请稍后点击同步状态')
 }
 
 async function handleOAuth(provider: 'github' | 'google') {
@@ -126,34 +159,54 @@ async function handleEmailVerify() {
 }
 
 async function handleUpgrade() {
-  openExternal('https://xbysite.pages.dev/#pricing')
+  if (!supabase) { message.error('未配置 Supabase'); return }
+  upgrading.value = true
+  try {
+    const { data } = await supabase.auth.getSession()
+    const token = data.session?.access_token
+    if (!token) { message.warning('请先登录后升级'); return }
+    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/creem/checkout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ cycle: 'lifetime', source: 'app' })
+    })
+    const checkout = await response.json()
+    if (!response.ok || !checkout.checkoutUrl) throw new Error(checkout.error || '创建支付订单失败')
+    openExternal(checkout.checkoutUrl)
   } catch (e: any) { message.error(e?.message || '网络请求失败') }
   finally { upgrading.value = false }
 }
 
+let authCallbackHandler: ((_e: any, params: { access_token?: string; refresh_token?: string }) => void) | null = null
+let paymentCallbackHandler: ((_e: any, params?: { status?: string; checkout_id?: string; reason?: string }) => void) | null = null
+
 function setupAuthCallback() {
   if (!window.Electron?.ipcRenderer) return
-  const handler = async (_e: any, params: { access_token?: string; refresh_token?: string }) => {
+  authCallbackHandler = async (_e: any, params: { access_token?: string; refresh_token?: string }) => {
     if (!params.access_token || !supabase) return
     const { data, error } = await supabase.auth.setSession({ access_token: params.access_token, refresh_token: params.refresh_token || '' })
     if (!error && data.user) { saveLogin(data.user.email || ''); message.success('登录成功') }
   }
-  window.Electron.ipcRenderer.on('auth-callback', handler)
+  window.Electron.ipcRenderer.on('auth-callback', authCallbackHandler)
 }
 
 function setupPaymentCallback() {
   if (!window.Electron?.ipcRenderer) return
-  const handler = async (_e: any, params: { checkout_id?: string }) => {
-    if (params.checkout_id && Config.CREEM_API_KEY) {
-      try {
-        const apiBase = Config.CREEM_API_KEY.startsWith('creem_test_') ? 'https://test-api.creem.io' : 'https://api.creem.io'
-        const resp = await fetch(`${apiBase}/v1/checkouts/${params.checkout_id}`, { headers: { 'x-api-key': Config.CREEM_API_KEY } })
-        const data = await resp.json()
-        if (data?.status === 'completed') { localStorage.setItem('app_user_pro', '1'); isPro.value = true; message.success('Pro 已激活！') }
-      } catch {}
+  paymentCallbackHandler = async (_e: any, params?: { status?: string; checkout_id?: string; reason?: string }) => {
+    const status = params?.status || 'success'
+    if (status === 'cancelled' || status === 'canceled') {
+      message.info('已取消购买，未产生专业版授权')
+      return
     }
+    if (status === 'failed' || status === 'failure') {
+      message.error('支付未完成，请重试或稍后再试')
+      return
+    }
+
+    message.info('支付完成，正在同步专业版状态…')
+    await pollProStatusAfterPayment()
   }
-  window.Electron.ipcRenderer.on('payment-callback', handler)
+  window.Electron.ipcRenderer.on('payment-callback', paymentCallbackHandler)
 }
 
 const cb = (val: any) => {
@@ -214,50 +267,93 @@ const handleImportAsar = () => {
       <div class='settings-app-subtitle'>统一配置桌面外观、启动行为、更新策略与系统集成体验</div>
     </div>
     <div class='settings-app-actions'>
-      <a-button type='outline' status='success' size='small' tabindex='-1' @click='handleUpdateLog'>
+      <a-button type='outline' status='success' size='small' @click='handleUpdateLog'>
         更新日志
       </a-button>
-      <a-button style='margin-left: 10px' type='outline' size='small' tabindex='-1' :loading='verLoading'
-                @click='handleCheckVer'>
+      <a-button type='outline' size='small' :loading='verLoading' @click='handleCheckVer'>
         检查更新
       </a-button>
-      <a-button style='margin-left: 10px'
-                v-if='platform !== "linux"'
-                status='warning' type='outline' size='small' tabindex='-1'
-                @click='handleImportAsar'>
+      <a-button v-if='platform !== "linux"' status='warning' type='outline' size='small' @click='handleImportAsar'>
         手动导入
       </a-button>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>账号登录</div>
-    <div class='settingrow' style='flex-direction:column;align-items:stretch;gap:10px'>
-      <template v-if="isLoggedIn">
-        <div style='display:flex;align-items:center;gap:10px'>
-          <span style='font-size:14px;font-weight:500;color:var(--color-text-1)'>{{ accountEmail }}</span>
-          <button class="arco-btn arco-btn-outline arco-btn-size-small" @click="handleLogout"><LogOut :size="13" /> 退出</button>
-        </div>
-        <button v-if="!isPro" class="arco-btn arco-btn-primary" @click="showUpgradeModal = true" style="width:100%;height:40px;font-size:14px">升级到专业版 — $10/月</button>
-        <span v-else style="font-size:12px;color:rgb(var(--success-6));font-weight:600">✓ 已是专业版</span>
-      </template>
-      <template v-else>
-        <div style='display:flex;gap:10px'>
-          <button class="sa-provider sa-gh" :disabled="loading" @click="handleOAuth('github')" title="GitHub"><Github :size="20" /><span style="margin-left:6px">GitHub</span></button>
-          <button class="sa-provider sa-go" :disabled="loading" @click="handleOAuth('google')" title="Google"><Chrome :size="20" /><span style="margin-left:6px">Google</span></button>
-          <button class="sa-provider sa-em" :class="{ active: showEmail }" :disabled="loading" @click="showEmail = !showEmail" title="邮箱"><Mail :size="20" /><span style="margin-left:6px">邮箱</span></button>
-        </div>
-      </template>
-      <div v-if="showEmail && !isLoggedIn" style='display:flex;gap:8px'>
-        <template v-if="!codeSent">
-          <input v-model="authEmail" type="email" placeholder="邮箱地址" class="sa-input" style='flex:1' />
-          <button class="sa-send-btn" :disabled="loading || !authEmail.trim()" @click="handleEmailSend">
-            <Loader2 v-if="loading" :size="13" class="spin" /><span v-else>发送验证码</span>
+    <div class='settinghead'>账号与专业版</div>
+    <div class='settingrow setting-account-row'>
+      <div class='setting-account-copy'>
+        <div class='setting-account-title'>BoxPlayer 账号</div>
+        <div class='setting-account-desc'>登录后同步专业版状态，终身授权暂时覆盖 Windows、Linux、MacOS。</div>
+      </div>
+
+      <div class='setting-account-panel'>
+        <template v-if="isLoggedIn">
+          <div class='setting-account-main'>
+            <div class='setting-account-avatar' aria-hidden='true'>{{ accountInitial }}</div>
+            <div class='setting-account-identity'>
+              <div class='setting-account-email'>{{ accountEmail }}</div>
+              <div class='setting-account-meta'>
+                <span class='setting-pro-badge' :class="{ active: isPro }">
+                  <CheckCircle2 v-if="isPro" :size='13' />
+                  <Crown v-else :size='13' />
+                  {{ isPro ? '专业版已激活' : '开源版' }}
+                </span>
+              </div>
+            </div>
+            <button class='setting-icon-btn' title='同步状态' :disabled='loading' @click='syncProStatus'>
+              <RefreshCw :size='15' />
+            </button>
+            <button class='setting-icon-btn danger' title='退出登录' @click='handleLogout'>
+              <LogOut :size='15' />
+            </button>
+          </div>
+
+          <button v-if="!isPro" class='setting-upgrade-btn' :disabled='upgrading' @click='handleUpgrade'>
+            <Loader2 v-if="upgrading" :size='15' class='spin' />
+            <Crown v-else :size='15' />
+            <span>{{ upgrading ? '正在创建订单' : '购买终身专业版 — $139' }}</span>
           </button>
         </template>
+
         <template v-else>
-          <input v-model="emailCode" type="text" placeholder="验证码" maxlength="6" class="sa-input" style='flex:1' />
-          <button class="sa-send-btn" :disabled="loading || emailCode.length < 4" @click="handleEmailVerify">
-            <Loader2 v-if="loading" :size="13" class="spin" /><span v-else>验证并登录</span>
-          </button>
+          <div class='setting-account-main'>
+            <div class='setting-account-avatar muted' aria-hidden='true'>B</div>
+            <div class='setting-account-identity'>
+              <div class='setting-account-email'>未登录</div>
+              <div class='setting-account-meta'>选择一种方式登录后再购买专业版</div>
+            </div>
+          </div>
+
+          <div class='setting-provider-grid'>
+            <button class="sa-provider sa-gh" :disabled="loading" title="GitHub" @click="handleOAuth('github')">
+              <Github :size="18" />
+              <span>GitHub</span>
+            </button>
+            <button class="sa-provider sa-go" :disabled="loading" title="Google" @click="handleOAuth('google')">
+              <Chrome :size="18" />
+              <span>Google</span>
+            </button>
+            <button class="sa-provider sa-em" :class="{ active: showEmail }" :disabled="loading" title="邮箱" @click="showEmail = !showEmail">
+              <Mail :size="18" />
+              <span>邮箱</span>
+            </button>
+          </div>
+
+          <div v-if="showEmail" class='setting-email-form'>
+            <template v-if="!codeSent">
+              <input v-model="authEmail" type="email" placeholder="邮箱地址" class="sa-input" @keydown.enter="handleEmailSend" />
+              <button class="sa-send-btn" :disabled="loading || !authEmail.trim()" @click="handleEmailSend">
+                <Loader2 v-if="loading" :size="13" class="spin" />
+                <span v-else>发送验证码</span>
+              </button>
+            </template>
+            <template v-else>
+              <input v-model="emailCode" type="text" placeholder="验证码" maxlength="6" class="sa-input" @keydown.enter="handleEmailVerify" />
+              <button class="sa-send-btn" :disabled="loading || emailCode.length < 4" @click="handleEmailVerify">
+                <Loader2 v-if="loading" :size="13" class="spin" />
+                <span v-else>验证并登录</span>
+              </button>
+            </template>
+          </div>
         </template>
       </div>
     </div>
@@ -408,29 +504,288 @@ const handleImportAsar = () => {
 
 .appver-badge{display:inline-block;margin-left:10px;padding:3px 12px;font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--color-text-3);background:var(--color-fill-2);border:1px solid var(--color-border);border-radius:6px;vertical-align:middle}
 .appver-badge.pro{color:#b45309;background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.4);box-shadow:0 1px 3px rgba(245,158,11,.15)}
-.appver-actions{display:flex;align-items:center;gap:8px;margin-top:8px}
-.appver-email{font-size:12px;color:var(--color-text-3)}
-.appver-login{padding:3px 10px;font-size:11px;color:rgb(var(--primary-6));background:transparent;border:1px solid rgb(var(--primary-6));border-radius:5px;cursor:pointer;font-family:inherit}
-.appver-login:hover{background:rgba(var(--primary-6),.08)}
-.appver-logout{padding:3px 10px;font-size:11px;color:var(--color-text-4);background:transparent;border:1px solid var(--color-border);border-radius:5px;cursor:pointer;font-family:inherit}
-.appver-logout:hover{color:rgb(var(--danger-6));border-color:rgb(var(--danger-6))}
-.appver-upgrade{padding:3px 12px;font-size:11px;font-weight:600;color:#fff;background:linear-gradient(135deg,#f59e0b,#eab308);border:0;border-radius:6px;cursor:pointer;font-family:inherit}
-.appver-upgrade:hover{opacity:.9}
+:global(html.dark) .appver-badge.pro{color:#fbbf24;background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35)}
 
-.sa-provider{display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;font-size:13px;font-weight:500;border:1px solid var(--color-border);border-radius:8px;cursor:pointer;font-family:inherit;transition:all .15s;flex:1}
-.sa-provider:hover:not(:disabled){transform:translateY(-1px)}
-.sa-provider:disabled{opacity:.4;cursor:default}
-.sa-gh{background:#24292e;color:#fff;border-color:#24292e}
-.sa-gh:hover:not(:disabled){box-shadow:0 2px 8px rgba(36,41,46,.3)}
-.sa-go{background:var(--color-bg-1);color:var(--color-text-3)}
-.sa-go:hover:not(:disabled){color:var(--color-text-1);border-color:var(--color-border-2)}
-.sa-em{background:var(--color-bg-1);color:var(--color-text-3)}
-.sa-em:hover:not(:disabled),.sa-em.active{color:rgb(var(--primary-6));border-color:rgb(var(--primary-6))}
-.sa-input{padding:6px 10px;font-size:12px;color:var(--color-text-1);background:var(--color-fill-1);border:1px solid var(--color-border);border-radius:6px;outline:none;font-family:inherit}
-.sa-input:focus{border-color:rgb(var(--primary-6))}
-.sa-send-btn{display:flex;align-items:center;gap:4px;padding:6px 12px;font-size:12px;font-weight:500;color:#fff;background:rgb(var(--primary-6));border:0;border-radius:6px;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0}
-.sa-send-btn:hover:not(:disabled){opacity:.9}
-.sa-send-btn:disabled{opacity:.4;cursor:default}
+.setting-account-row {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.setting-account-copy {
+  min-width: 180px;
+  padding-top: 5px;
+}
+
+.setting-account-title {
+  color: var(--color-text-1);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.setting-account-desc {
+  max-width: 360px;
+  margin-top: 4px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.setting-account-panel {
+  width: min(100%, 460px);
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-1);
+}
+
+.setting-account-main {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  gap: 10px;
+}
+
+.setting-account-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 8px;
+  background: rgba(var(--primary-6), 0.12);
+  color: rgb(var(--primary-6));
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.setting-account-avatar.muted {
+  background: var(--color-fill-2);
+  color: var(--color-text-3);
+}
+
+.setting-account-identity {
+  min-width: 0;
+  flex: 1;
+}
+
+.setting-account-email {
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.setting-account-meta {
+  display: flex;
+  align-items: center;
+  min-height: 18px;
+  margin-top: 2px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.setting-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-fill-1);
+  color: var(--color-text-3);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.setting-pro-badge.active {
+  border-color: rgba(var(--success-6), 0.35);
+  background: rgba(var(--success-6), 0.1);
+  color: rgb(var(--success-6));
+}
+
+.setting-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-1);
+  color: var(--color-text-3);
+  font-family: inherit;
+}
+
+.setting-icon-btn:hover:not(:disabled) {
+  border-color: var(--color-border-2);
+  color: var(--color-text-1);
+}
+
+.setting-icon-btn.danger:hover:not(:disabled) {
+  border-color: rgba(var(--danger-6), 0.4);
+  color: rgb(var(--danger-6));
+}
+
+.setting-icon-btn:disabled {
+  opacity: 0.45;
+}
+
+.setting-upgrade-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 38px;
+  margin-top: 12px;
+  gap: 7px;
+  border: 1px solid rgba(217, 119, 6, 0.35);
+  border-radius: 6px;
+  background: #d97706;
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.setting-upgrade-btn:hover:not(:disabled) {
+  background: #b45309;
+}
+
+.setting-upgrade-btn:disabled {
+  opacity: 0.65;
+}
+
+.setting-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sa-provider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 36px;
+  gap: 6px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sa-provider:disabled {
+  opacity: 0.45;
+}
+
+.sa-gh {
+  background: #24292e;
+  color: #fff;
+  border-color: #24292e;
+}
+
+.sa-go,
+.sa-em {
+  background: var(--color-bg-1);
+  color: var(--color-text-2);
+}
+
+.sa-go:hover:not(:disabled),
+.sa-em:hover:not(:disabled),
+.sa-em.active {
+  border-color: rgb(var(--primary-6));
+  color: rgb(var(--primary-6));
+}
+
+.setting-email-form {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sa-input {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  outline: none;
+  background: var(--color-fill-1);
+  color: var(--color-text-1);
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.sa-input:focus {
+  border-color: rgb(var(--primary-6));
+  background: var(--color-bg-1);
+}
+
+.sa-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 94px;
+  height: 34px;
+  flex: 0 0 auto;
+  gap: 5px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: rgb(var(--primary-6));
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sa-send-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.sa-send-btn:disabled {
+  opacity: 0.45;
+}
+
+@media (max-width: 720px) {
+  .setting-account-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .setting-account-copy,
+  .setting-account-panel {
+    width: 100%;
+  }
+
+  .setting-provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .setting-email-form {
+    flex-direction: column;
+  }
+
+  .sa-send-btn {
+    width: 100%;
+  }
+}
 
 .spin{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}

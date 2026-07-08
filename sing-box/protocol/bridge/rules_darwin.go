@@ -17,9 +17,18 @@ func buildBridgeAnchorRules(ruleLogger logger.ContextLogger, tunName string, egr
 	if err != nil {
 		return nil
 	}
+	// The flowswitch aggregates forwarded TCP into packets larger than the tun
+	// MTU, and pf_route() only fragments when they exceed the egress MTU: a
+	// large-MTU utun target feeds them whole into the overflow described at
+	// bridgeTunMTUDarwin.
+	if egressInterface.Flags&net.FlagBroadcast == 0 || egressInterface.Flags&net.FlagLoopback != 0 ||
+		egressInterface.Flags&net.FlagPointToPoint != 0 {
+		ruleLogger.Error("bridge egress ", egress, " is not a physical interface, dropping forwarded traffic")
+		return nil
+	}
 	mtu := egressInterface.MTU
-	if mtu < 576 || mtu > bridgeTunMTU {
-		mtu = bridgeTunMTU
+	if mtu < 576 || mtu > bridgeTunMTUDarwin {
+		mtu = bridgeTunMTUDarwin
 	}
 	localPrefixes, inet4Interfaces, inet6Interfaces := collectLocalSegments(egress, boundInterface, inet4Port.IsValid(), inet6Port.IsValid())
 	var rules []pfAnchorRule
@@ -50,6 +59,7 @@ func buildBridgeAnchorRules(ruleLogger logger.ContextLogger, tunName string, egr
 		gateway := interfaceGateway(egressInterface.Index, true)
 		if gateway.IsValid() {
 			rules = append(rules, pfRouteToRule(tunName, egress, gateway, inet4Port))
+			rules = append(rules, pfReplyToRule(tunName, egress, inet4Port))
 		} else {
 			ruleLogger.Debug("no IPv4 gateway on ", egress, ", relying on the default route")
 		}
@@ -58,29 +68,20 @@ func buildBridgeAnchorRules(ruleLogger logger.ContextLogger, tunName string, egr
 		gateway := interfaceGateway(egressInterface.Index, false)
 		if gateway.IsValid() {
 			rules = append(rules, pfRouteToRule(tunName, egress, gateway, inet6Port))
+			rules = append(rules, pfReplyToRule(tunName, egress, inet6Port))
 		} else {
 			ruleLogger.Debug("no IPv6 gateway on ", egress, ", relying on the default route")
 		}
 	}
 	// pf rules are last-match: the pass rules below override the route-to pin
-	// for destinations in connected subnets and for addresses owned by the host
-	// itself, so they reach local delivery on their own interface.
+	// for destinations in connected subnets, so the routing table delivers them
+	// on their own interface.
 	for _, prefix := range localPrefixes {
 		port := inet4Port
 		if !prefix.Addr().Is4() {
 			port = inet6Port
 		}
 		rules = append(rules, pfPassInRule(tunName, port, prefix))
-	}
-	for _, address := range hostAddresses() {
-		port := inet4Port
-		if !address.Is4() {
-			port = inet6Port
-		}
-		if !port.IsValid() {
-			continue
-		}
-		rules = append(rules, pfPassInRule(tunName, port, netip.PrefixFrom(address, address.BitLen())))
 	}
 	return rules
 }
@@ -153,31 +154,6 @@ func collectLocalSegments(egress string, boundInterface string, inet4Active bool
 	return
 }
 
-// hostAddresses stands in for pfctl's `self`, which expands to every address
-// assigned to any interface at ruleset load time.
-func hostAddresses() []netip.Addr {
-	interfaceAddrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return nil
-	}
-	var addresses []netip.Addr
-	for _, interfaceAddr := range interfaceAddrs {
-		ipNet, isIPNet := interfaceAddr.(*net.IPNet)
-		if !isIPNet {
-			continue
-		}
-		address, valid := netip.AddrFromSlice(ipNet.IP)
-		if !valid {
-			continue
-		}
-		address = address.Unmap()
-		if !slices.Contains(addresses, address) {
-			addresses = append(addresses, address)
-		}
-	}
-	return addresses
-}
-
 func pfScrubRule(egress string, port netip.Addr, maxMSS uint16) pfAnchorRule {
 	rule := pfRule{
 		Action: pfActionScrub,
@@ -223,9 +199,38 @@ func pfPassInRule(tunName string, port netip.Addr, destination netip.Prefix) pfA
 func pfRouteToRule(tunName string, egress string, gateway netip.Addr, port netip.Addr) pfAnchorRule {
 	anchorRule := pfPassInRule(tunName, port, netip.Prefix{})
 	anchorRule.Rule.RouteAction = pfRouteActionRouteTo
+	copy(anchorRule.Rule.TagName[:], bridgeTagName(tunName))
 	anchorRule.Pool = pfPoolAddr{Addr: pfHostAddress(gateway)}
 	copy(anchorRule.Pool.IfName[:], egress)
 	return anchorRule
+}
+
+// NECP's drop-all enforcement for includeAllNetworks runs in ip_output, which
+// forwarded replies traverse (ip_forward -> ip_output toward the bridge tun)
+// while route-to'd packets do not (pf_route emits via ifnet_output directly).
+// A reply-to state built from the tag left by the route-to rule sends replies
+// back through pf_route on the egress in side, skipping ip_output the same way.
+func pfReplyToRule(tunName string, egress string, port netip.Addr) pfAnchorRule {
+	rule := pfRule{
+		Action:      pfActionPass,
+		Direction:   pfDirectionOut,
+		AF:          pfFamily(port.Is4()),
+		KeepState:   pfStateNormal,
+		RouteAction: pfRouteActionReplyTo,
+	}
+	copy(rule.IfName[:], egress)
+	copy(rule.MatchTagName[:], bridgeTagName(tunName))
+	anchorRule := pfAnchorRule{
+		RulesetIndex: pfRulesetFilter,
+		Rule:         rule,
+		Pool:         pfPoolAddr{Addr: pfHostAddress(port)},
+	}
+	copy(anchorRule.Pool.IfName[:], tunName)
+	return anchorRule
+}
+
+func bridgeTagName(tunName string) string {
+	return "sing-box-" + tunName
 }
 
 // Assigning the port as the utun's point-to-point destination makes the kernel

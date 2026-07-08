@@ -71,7 +71,7 @@ export interface ToolImportSharePart {
   type: 'tool-importShare'
   state: 'parsing' | 'listing' | 'saving' | 'done' | 'error'
   input?: { url: string; password: string }
-  output?: { shareName: string; fileCount: number; savedCount: number; platform: string }
+  output?: { shareName: string; fileCount: number; savedCount: number; platform: string; asyncStatus?: boolean }
   error?: string
 }
 
