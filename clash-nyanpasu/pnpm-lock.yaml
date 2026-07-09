@@ -237,8 +237,8 @@ importers:
         specifier: 12.1.1
         version: 12.1.1
       '@iconify/json':
-        specifier: 2.2.497
-        version: 2.2.497
+        specifier: 2.2.498
+        version: 2.2.498
       '@monaco-editor/react':
         specifier: 4.7.0
         version: 4.7.0(monaco-editor@0.55.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -309,8 +309,8 @@ importers:
         specifier: 3.49.0
         version: 3.49.0
       filesize:
-        specifier: 11.0.19
-        version: 11.0.19
+        specifier: 11.0.22
+        version: 11.0.22
       meta-json-schema:
         specifier: 1.19.27
         version: 1.19.27
@@ -1180,8 +1180,8 @@ packages:
       prettier-plugin-ember-template-tag:
         optional: true
 
-  '@iconify/json@2.2.497':
-    resolution: {integrity: sha512-pjrsxrbU5v2DLK44uMCPINVjMbrH4U6HV2ESvvzthLHZR1keQ6r6M3Gn3L7DFFRAxrepTd18AIixLTRIYvjD2A==}
+  '@iconify/json@2.2.498':
+    resolution: {integrity: sha512-aHeANR4JvpCcGZBOHXwsPDf8C5YtrZjZjb7NwC8kwoVRtA2vyQImp5U3wzqe8HIbKgQgjAtqYEPPVHtqIj62JA==}
 
   '@iconify/types@2.0.0':
     resolution: {integrity: sha512-+wluvCrRhXrhyOmRDJ3q8mux9JkKy5SJ/v8ol2tu4FVjyYvtEzkc/3pK15ET6RKg4b4w4BmTk1+gsCUhf21Ykg==}
@@ -4343,8 +4343,8 @@ packages:
   filelist@1.0.4:
     resolution: {integrity: sha512-w1cEuf3S+DrLCQL7ET6kz+gmlJdbq9J7yXCSjK/OZCPA+qEN1WyF4ZAf0YYJa4/shHJra2t/d/r8SV4Ji+x+8Q==}
 
-  filesize@11.0.19:
-    resolution: {integrity: sha512-9Q2itINBvCHwFw9v5X7czZm855yAiFIYlnugrh7+8tYO4ITHZMzV91m35q2FngL9hoZwwjSTQACFF/W52OzJZQ==}
+  filesize@11.0.22:
+    resolution: {integrity: sha512-RlCVs9CY+oSsRnNZn95J9vDXjNjOwddKyTFjOYtA4yxYVIxBnwiVVGJX+TFhsmu3uUf81JDGyijtYL9xgawlTw==}
     engines: {node: '>= 10.8.0'}
 
   fill-range@7.1.1:
@@ -7332,7 +7332,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@iconify/json@2.2.497':
+  '@iconify/json@2.2.498':
     dependencies:
       '@iconify/types': 2.0.0
       pathe: 2.0.3
@@ -10292,7 +10292,7 @@ snapshots:
     dependencies:
       minimatch: 5.1.6
 
-  filesize@11.0.19: {}
+  filesize@11.0.22: {}
 
   fill-range@7.1.1:
     dependencies:

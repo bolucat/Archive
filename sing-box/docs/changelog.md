@@ -6,6 +6,8 @@ icon: material/alert-decagram
 
 * Add windows bridge **1**
 * Add `preferred_by` support for bridge **2**
+* Add hysteria2 realm IP version restriction **3**
+* Add hysteria2 realm port mapping **4**
 * Fixes and improvements
 
 **1**:
@@ -20,6 +22,19 @@ The [`bridge`](/configuration/outbound/bridge/) outbound now works with the
 It is recommended to use `preferred_by` as a gate in the `route` rule: it only
 matches in [pre-match](/configuration/shared/pre-match/) and excludes local
 addresses that cannot be routed.
+
+**3**:
+
+The new [`realm.ip_version`](/configuration/outbound/hysteria2/#realmip_version)
+inbound and outbound field restricts realm connections (STUN, hole punching,
+and the resulting QUIC path) to a single IP version.
+
+**4**:
+
+The new [`realm.port_mapping`](/configuration/outbound/hysteria2/#realmport_mapping)
+inbound and outbound field maintains a UDP port mapping on the local gateway
+via UPnP or NAT-PMP, improving hole-punching reliability behind gateways that
+support it.
 
 #### 1.14.0-alpha.40
 
