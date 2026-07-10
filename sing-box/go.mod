@@ -50,12 +50,12 @@ require (
 	github.com/sagernet/sing-shadowsocks v0.2.8
 	github.com/sagernet/sing-shadowsocks2 v0.2.1
 	github.com/sagernet/sing-shadowtls v0.2.1
-	github.com/sagernet/sing-snell v0.0.0-20260709045721-90e5a65e1f85
-	github.com/sagernet/sing-tun v0.8.12-0.20260709141858-8a2ff73b8074
+	github.com/sagernet/sing-snell v0.0.0-20260710094516-a4e97ee24beb
+	github.com/sagernet/sing-tun v0.8.12-0.20260710165757-8c8594272daa
 	github.com/sagernet/sing-usbip v0.0.0-20260616101517-efb91521eddb
 	github.com/sagernet/sing-vmess v0.2.8-0.20250909125414-3aed155119a1
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1
-	github.com/sagernet/tailscale v1.92.4-sing-box-1.13-mod.7.0.20260706062137-ae2dde1295a3
+	github.com/sagernet/tailscale v1.92.4-sing-box-1.13-mod.7.0.20260710153914-5c37a0c76403
 	github.com/sagernet/wireguard-go v0.0.5-0.20260706153856-2c27bbf4f97f
 	github.com/sagernet/ws v0.0.0-20231204124109-acfe8907c854
 	github.com/spf13/cobra v1.10.2

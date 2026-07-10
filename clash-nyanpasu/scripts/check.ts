@@ -19,14 +19,10 @@ interface BinInfo {
 }
 
 type SupportedArch =
-  | "windows-i386"
   | "windows-x86_64"
   | "windows-arm64"
   | "linux-aarch64"
   | "linux-amd64"
-  | "linux-i386"
-  | "linux-armv7"
-  | "linux-armv7hf"
   | "darwin-arm64"
   | "darwin-x64";
 
@@ -260,13 +256,9 @@ function mapArch(platform: string, arch: string): SupportedArch {
     "darwin-x64": "darwin-x64",
     "darwin-arm64": "darwin-arm64",
     "win32-x64": "windows-x86_64",
-    "win32-ia32": "windows-i386",
     "win32-arm64": "windows-arm64",
     "linux-x64": "linux-amd64",
-    "linux-ia32": "linux-i386",
-    "linux-arm": "linux-armv7hf",
     "linux-arm64": "linux-aarch64",
-    "linux-armel": "linux-armv7",
   };
   const result = mapping[`${platform}-${arch}`];
   if (!result) {

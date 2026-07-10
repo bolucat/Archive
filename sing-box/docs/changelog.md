@@ -2,6 +2,28 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.43
+
+* Add network namespace support **1**
+* Fixes and improvements
+
+**1**:
+
+The new [`network_namespaces`](/configuration/network-namespace/) option defines
+Linux network namespaces for inbounds and outbounds, referenced by tag from the
+new tun [`netns`](/configuration/inbound/tun/#netns) field and the existing
+[Listen](/configuration/shared/listen/#netns) and
+[Dial](/configuration/shared/dial/#netns) `netns` fields.
+
+The [`unshare`](/configuration/network-namespace/unshare/) type creates the
+namespace at startup without requiring root privileges: a rootless sing-box can
+provide a tun (including `auto_route` and `auto_redirect`) inside a namespace,
+which can be entered with `nsenter`.
+
+#### 1.14.0-alpha.42
+
+* Fixes and improvements
+
 #### 1.14.0-alpha.41
 
 * Add windows bridge **1**

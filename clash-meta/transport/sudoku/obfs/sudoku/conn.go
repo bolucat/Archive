@@ -233,11 +233,11 @@ func sudokuReadSize(decodedRemaining, maxRaw int) int {
 	if maxRaw <= minDecodeReadSize || decodedRemaining <= 0 {
 		return maxRaw
 	}
-	if decodedRemaining > (maxRaw-minDecodeReadSize)/5 {
+	if decodedRemaining > (maxRaw-minDecodeReadSize)/9 {
 		return maxRaw
 	}
 
-	return decodedRemaining*5 + minDecodeReadSize
+	return decodedRemaining*9 + minDecodeReadSize
 }
 
 func readRawLimited(conn net.Conn, reader *bufio.Reader, dst []byte) (int, error) {

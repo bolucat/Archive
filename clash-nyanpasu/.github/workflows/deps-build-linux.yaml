@@ -19,10 +19,7 @@ on:
         default: 'x86_64'
         options:
           - x86_64
-          - i686
           - aarch64
-          - armel
-          - armhf
 
   workflow_call:
     inputs:
@@ -63,14 +60,8 @@ jobs:
         shell: bash
         run: |
           case "${{ inputs.arch }}" in
-            "i686")
-              rustup target add i686-unknown-linux-gnu ;;
             "aarch64")
               rustup target add aarch64-unknown-linux-gnu ;;
-            "armel")
-              rustup target add armv7-unknown-linux-gnueabi ;;
-            "armhf")
-              rustup target add armv7-unknown-linux-gnueabihf ;;
           esac
           cargo binstall -y cross
 
@@ -121,14 +112,8 @@ jobs:
           case "${{ inputs.arch }}" in
             "x86_64")
               pnpm prepare:check ;;
-            "i686")
-              pnpm prepare:check --arch ia32 --sidecar-host i686-unknown-linux-gnu ;;
             "aarch64")
               pnpm prepare:check --arch arm64 --sidecar-host aarch64-unknown-linux-gnu ;;
-            "armel")
-              pnpm prepare:check --arch armel --sidecar-host armv7-unknown-linux-gnueabi ;;
-            "armhf")
-              pnpm prepare:check --arch arm --sidecar-host armv7-unknown-linux-gnueabihf ;;
           esac
 
       - name: Nightly Prepare
@@ -151,14 +136,8 @@ jobs:
           case "${{ inputs.arch }}" in
             "x86_64")
               TARGET_DIR="backend/target/release" ;;
-            "i686")
-              TARGET_DIR="backend/target/i686-unknown-linux-gnu/release" ;;
             "aarch64")
               TARGET_DIR="backend/target/aarch64-unknown-linux-gnu/release" ;;
-            "armel")
-              TARGET_DIR="backend/target/armv7-unknown-linux-gnueabi/release" ;;
-            "armhf")
-              TARGET_DIR="backend/target/armv7-unknown-linux-gnueabihf/release" ;;
             *)
               TARGET_DIR="backend/target/release" ;;
           esac
@@ -204,14 +183,8 @@ jobs:
           NIGHTLY: ${{ inputs.nightly == true && 'true' || 'false' }}
         run: |
           case "${{ inputs.arch }}" in
-            "i686")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target i686-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target i686-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
             "aarch64")
               ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb"' || 'pnpm build -r cross --target aarch64-unknown-linux-gnu -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
-            "armel")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabi -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
-            "armhf")
-              ${{ inputs.nightly == true && 'pnpm build:nightly -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb"' || 'pnpm build -r cross --target armv7-unknown-linux-gnueabihf -b "rpm,deb" -c "{ "bundle": { "createUpdaterArtifacts": false } }"' }} ;;
           esac
 
       - name: Calc the archive signature
