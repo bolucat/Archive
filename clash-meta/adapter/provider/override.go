@@ -23,6 +23,7 @@ type overrideSchema struct {
 	AdditionalPrefix *string                   `provider:"additional-prefix,omitempty"`
 	AdditionalSuffix *string                   `provider:"additional-suffix,omitempty"`
 	ProxyName        []overrideProxyNameSchema `provider:"proxy-name,omitempty"`
+	OverrideExpr     []overrideExpr            `provider:"override-expr,omitempty"`
 }
 
 type overrideProxyNameSchema struct {
@@ -32,7 +33,10 @@ type overrideProxyNameSchema struct {
 	Target string `provider:"target"`
 }
 
-var _ encoding.TextUnmarshaler = (*regexp2.Regexp)(nil) // ensure *regexp2.Regexp can decode direct by structure package
+var (
+	_ encoding.TextUnmarshaler = (*regexp2.Regexp)(nil) // ensure *regexp2.Regexp can decode direct by structure package
+	_ encoding.TextUnmarshaler = (*overrideExpr)(nil)
+)
 
 func (o *overrideSchema) Apply(mapping map[string]any) error {
 	if o.TFO != nil {
@@ -82,6 +86,11 @@ func (o *overrideSchema) Apply(mapping map[string]any) error {
 	}
 	if o.AdditionalSuffix != nil {
 		mapping["name"] = fmt.Sprintf("%s%s", mapping["name"], *o.AdditionalSuffix)
+	}
+	for idx, expr := range o.OverrideExpr {
+		if err := expr.Apply(mapping); err != nil {
+			return fmt.Errorf("override-expr[%d] %q: %w", idx, expr.source, err)
+		}
 	}
 
 	return nil

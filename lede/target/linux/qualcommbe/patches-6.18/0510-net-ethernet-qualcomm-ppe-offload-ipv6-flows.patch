@@ -1,0 +1,302 @@
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Sun, 05 Jul 2026 00:00:00 +0000
+Subject: [PATCH] net: ethernet: qualcomm: ppe: offload IPv6 flows
+
+Extend the flow engine accessors and the flowtable offload to IPv6.
+
+An IPv6 flow spans two flow table entries (9 words) and its host entry
+two host table entries (5 words, key type 2), issued through the same
+combined flow-and-host operation registers; the entry type in the data
+words selects the width. Words 0 and 1 and the L4 port positions match
+the IPv4 layout, the 128-bit addresses are stored as wide little-endian
+integers, the source inline from bit 12 of word 4, the destination in
+the host entry from bit 22 of word 0. The ingress L3 interfaces
+already carried the IPv6 MTU and MRU; the IPV6_UC_ROUTE_EN bit is now
+set alongside the IPv4 one.
+
+IPv6 flows are only routed: the hardware has no NAT66, so a mangled L4
+port sends the flow to the software path, and address mangles are
+rejected already (only the ETH, IP4, TCP and UDP mangle types are
+accepted). The flow hit counter of an IPv6 flow is assumed to sit at
+the base index of its double-width entry.
+
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c
+@@ -5,8 +5,9 @@
+ 
+ /* Low level accessors of the PPE L3 flow engine.
+  *
+- * The flow engine forwards IPv4 5-tuple flows in hardware, optionally
+- * applying NAT: packets addressed to a router MAC of the MY_MAC table
++ * The flow engine forwards IPv4 and IPv6 5-tuple flows in hardware,
++ * optionally applying NAT to the IPv4 ones: packets addressed to a
++ * router MAC of the MY_MAC table
+  * take the L3 route path, and a hit in the hardware flow table forwards
+  * the packet through its next hop entry, which rewrites the MACs, the
+  * VLAN and the translated addresses. Flow misses take the ordinary
+@@ -72,10 +73,21 @@ static int ppe_flow_op_issue(struct ppe_
+  * this layout. Setting LAN/WAN bits would flip the key selection of
+  * the affected directions (FLOW_CTRL1) out from under the entries.
+  */
++/* Split an IPv6 address into CPU-order words, least significant first,
++ * the order of the wide little-endian address fields of the flow and
++ * host tables.
++ */
++static void ppe_flow_ip6_words(const struct in6_addr *addr, u32 *ip)
++{
++	int i;
++
++	for (i = 0; i < 4; i++)
++		ip[i] = be32_to_cpu(addr->s6_addr32[3 - i]);
++}
++
+ static void ppe_flow_entry_pack(const struct ppe_flow_entry *flow,
+ 				u32 *val, u32 *host)
+ {
+-	u32 ip = be32_to_cpu(flow->sip);
+ 	u16 dport = be16_to_cpu(flow->dport);
+ 
+ 	val[0] = PPE_FLOW_W0_VALID;
+@@ -86,15 +98,44 @@ static void ppe_flow_entry_pack(const st
+ 	val[1] = FIELD_PREP(PPE_FLOW_W1_NEXT_HOP, flow->nexthop);
+ 	val[1] |= FIELD_PREP(PPE_FLOW_W1_L4_PORT,
+ 			     be16_to_cpu(flow->nat_port));
+-	val[2] = FIELD_PREP(PPE_FLOW_W2_IP_ADDR_LO, ip & GENMASK(19, 0));
+-	val[3] = FIELD_PREP(PPE_FLOW_W3_IP_ADDR_HI, ip >> 20);
+-	val[3] |= FIELD_PREP(PPE_FLOW_W3_L4_SPORT,
+-			     be16_to_cpu(flow->sport));
++	val[3] = FIELD_PREP(PPE_FLOW_W3_L4_SPORT,
++			    be16_to_cpu(flow->sport));
+ 	val[3] |= FIELD_PREP(PPE_FLOW_W3_L4_DPORT_LO, dport & GENMASK(3, 0));
+ 	val[4] = FIELD_PREP(PPE_FLOW_W4_L4_DPORT_HI, dport >> 4);
+ 
+ 	host[0] = PPE_HOST_W0_VALID;
+-	host[1] = be32_to_cpu(flow->dip);
++
++	if (flow->is_ipv6) {
++		u32 sip[4], dip[4];
++
++		ppe_flow_ip6_words(&flow->sip.ip6, sip);
++		ppe_flow_ip6_words(&flow->dip.ip6, dip);
++
++		val[0] |= PPE_FLOW_W0_ENTRY_TYPE;
++		val[4] |= FIELD_PREP(PPE_FLOW_V6_W4_IP_ADDR_0,
++				     sip[0] & GENMASK(19, 0));
++		val[5] = sip[0] >> 20 | sip[1] << 12;
++		val[6] = sip[1] >> 20 | sip[2] << 12;
++		val[7] = sip[2] >> 20 | sip[3] << 12;
++		val[8] = FIELD_PREP(PPE_FLOW_V6_W8_IP_ADDR_4, sip[3] >> 20);
++
++		host[0] |= FIELD_PREP(PPE_HOST_W0_KEY_TYPE,
++				      PPE_HOST_KEY_TYPE_IPV6);
++		host[0] |= FIELD_PREP(PPE_HOST_V6_W0_IP_ADDR_0,
++				      dip[0] & GENMASK(9, 0));
++		host[1] = dip[0] >> 10 | dip[1] << 22;
++		host[2] = dip[1] >> 10 | dip[2] << 22;
++		host[3] = dip[2] >> 10 | dip[3] << 22;
++		host[4] = FIELD_PREP(PPE_HOST_V6_W4_IP_ADDR_4, dip[3] >> 10);
++	} else {
++		u32 ip = be32_to_cpu(flow->sip.ip4);
++
++		val[2] = FIELD_PREP(PPE_FLOW_W2_IP_ADDR_LO,
++				    ip & GENMASK(19, 0));
++		val[3] |= FIELD_PREP(PPE_FLOW_W3_IP_ADDR_HI, ip >> 20);
++
++		host[1] = be32_to_cpu(flow->dip.ip4);
++	}
+ }
+ 
+ static int ppe_flow_entry_op(struct ppe_device *ppe_dev, u32 op_type,
+@@ -244,6 +285,7 @@ int ppe_l3_if_set(struct ppe_device *ppe
+ 	in[0] = FIELD_PREP(PPE_IN_L3_IF_W0_MRU, mtu);
+ 	in[0] |= FIELD_PREP(PPE_IN_L3_IF_W0_MTU, mtu);
+ 	in[0] |= PPE_IN_L3_IF_W0_IPV4_UC_ROUTE_EN;
++	in[0] |= PPE_IN_L3_IF_W0_IPV6_UC_ROUTE_EN;
+ 	in[1] = FIELD_PREP(PPE_IN_L3_IF_W1_TTL_EXCEED_CMD,
+ 			   PPE_ACTION_REDIRECT_TO_CPU);
+ 	in[1] |= FIELD_PREP(PPE_IN_L3_IF_W1_MAC_BITMAP, 0xff);
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flow.h
+@@ -12,6 +12,7 @@
+ #define __PPE_FLOW_H__
+ 
+ #include <linux/if_ether.h>
++#include <linux/in6.h>
+ #include <linux/types.h>
+ 
+ struct ppe_device;
+@@ -35,20 +36,26 @@ struct ppe_flow_nexthop {
+ };
+ 
+ /**
+- * struct ppe_flow_entry - An IPv4 5-tuple flow.
++ * struct ppe_flow_entry - An IPv4 or IPv6 5-tuple flow.
+  * @sip: Source IP address of the matched packets.
+  * @dip: Destination IP address of the matched packets.
++ * @is_ipv6: Address family of the flow. An IPv6 flow occupies two
++ * flow table entries and two host table entries.
+  * @sport: Source L4 port.
+  * @dport: Destination L4 port.
+  * @proto: IP protocol, TCP or UDP.
+- * @fwd_type: Forward type of the flow (PPE_FLOW_FWD_TYPE_*).
++ * @fwd_type: Forward type of the flow (PPE_FLOW_FWD_TYPE_*). IPv6
++ * flows are never translated, only routed.
+  * @nexthop: Next hop entry index of the flow.
+  * @nat_port: Translated source port of SNAT flows, translated
+  * destination port of DNAT flows.
+  */
+ struct ppe_flow_entry {
+-	__be32 sip;
+-	__be32 dip;
++	union {
++		__be32 ip4;
++		struct in6_addr ip6;
++	} sip, dip;
++	bool is_ipv6;
+ 	__be16 sport;
+ 	__be16 dport;
+ 	u8 proto;
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -451,10 +451,13 @@ static int ppe_ft_flow_replace(struct pp
+ 	int i, nexthop, ret;
+ 
+ 	if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_BASIC) ||
+-	    !flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS) ||
+ 	    !flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_PORTS))
+ 		return -EOPNOTSUPP;
+ 
++	if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS) &&
++	    !flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS))
++		return -EOPNOTSUPP;
++
+ 	/* VLAN-tagged ingress is not translated to a flow key yet. */
+ 	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_VLAN))
+ 		return -EOPNOTSUPP;
+@@ -472,7 +475,13 @@ static int ppe_ft_flow_replace(struct pp
+ 		struct flow_match_basic match;
+ 
+ 		flow_rule_match_basic(rule, &match);
+-		if (match.key->n_proto != htons(ETH_P_IP)) {
++		switch (ntohs(match.key->n_proto)) {
++		case ETH_P_IP:
++			break;
++		case ETH_P_IPV6:
++			flow->entry.is_ipv6 = true;
++			break;
++		default:
+ 			ret = -EOPNOTSUPP;
+ 			goto err_free;
+ 		}
+@@ -490,12 +499,28 @@ static int ppe_ft_flow_replace(struct pp
+ 		}
+ 	}
+ 
+-	{
++	if (flow->entry.is_ipv6) {
++		struct flow_match_ipv6_addrs match;
++
++		if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS)) {
++			ret = -EOPNOTSUPP;
++			goto err_free;
++		}
++
++		flow_rule_match_ipv6_addrs(rule, &match);
++		flow->entry.sip.ip6 = match.key->src;
++		flow->entry.dip.ip6 = match.key->dst;
++	} else {
+ 		struct flow_match_ipv4_addrs match;
+ 
++		if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV4_ADDRS)) {
++			ret = -EOPNOTSUPP;
++			goto err_free;
++		}
++
+ 		flow_rule_match_ipv4_addrs(rule, &match);
+-		flow->entry.sip = match.key->src;
+-		flow->entry.dip = match.key->dst;
++		flow->entry.sip.ip4 = match.key->src;
++		flow->entry.dip.ip4 = match.key->dst;
+ 	}
+ 
+ 	{
+@@ -506,8 +531,8 @@ static int ppe_ft_flow_replace(struct pp
+ 		flow->entry.dport = match.key->dst;
+ 	}
+ 
+-	data.sip = flow->entry.sip;
+-	data.dip = flow->entry.dip;
++	data.sip = flow->entry.sip.ip4;
++	data.dip = flow->entry.dip.ip4;
+ 	data.sport = flow->entry.sport;
+ 	data.dport = flow->entry.dport;
+ 
+@@ -566,10 +591,23 @@ static int ppe_ft_flow_replace(struct pp
+ 	 */
+ 	mutex_lock(&ft->lock);
+ 
+-	if (data.sip != flow->entry.sip && data.dip != flow->entry.dip) {
++	if (flow->entry.is_ipv6) {
++		/* The hardware routes IPv6 but has no NAT66. Mangles of
++		 * the addresses were rejected above already, a mangled
++		 * port implies NAT as well.
++		 */
++		if (data.sport != flow->entry.sport ||
++		    data.dport != flow->entry.dport) {
++			ret = -EOPNOTSUPP;
++			goto err_unlock;
++		}
++
++		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_ROUTE;
++	} else if (data.sip != flow->entry.sip.ip4 &&
++		   data.dip != flow->entry.dip.ip4) {
+ 		ret = -EOPNOTSUPP;
+ 		goto err_unlock;
+-	} else if (data.sip != flow->entry.sip ||
++	} else if (data.sip != flow->entry.sip.ip4 ||
+ 		   data.sport != flow->entry.sport) {
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_SNAT;
+ 		flow->entry.nat_port = data.sport;
+@@ -580,7 +618,7 @@ static int ppe_ft_flow_replace(struct pp
+ 			goto err_unlock;
+ 		}
+ 		nh.pub_ip_index = flow->pub_ip;
+-	} else if (data.dip != flow->entry.dip ||
++	} else if (data.dip != flow->entry.dip.ip4 ||
+ 		   data.dport != flow->entry.dport) {
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_DNAT;
+ 		flow->entry.nat_port = data.dport;
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
+@@ -598,6 +598,14 @@
+ #define PPE_HOST_W0_LAN_WAN			BIT(20)
+ #define PPE_HOST_W1_IP_ADDR			GENMASK(31, 0)
+ 
++/* An IPv6 host entry (key type 2) spans two host table entries: 5
++ * words, with the 128-bit address stored from bit 22 of word 0 upwards
++ * as a little-endian wide integer.
++ */
++#define PPE_HOST_KEY_TYPE_IPV6			2
++#define PPE_HOST_V6_W0_IP_ADDR_0		GENMASK(31, 22)
++#define PPE_HOST_V6_W4_IP_ADDR_4		GENMASK(21, 0)
++
+ /* L3 flow table, keyed by the hardware-hashed 5-tuple. One IP address
+  * of the tuple is inline, the other is referenced in the host table.
+  * The forward type selects the routing and NAT behavior; the next hop
+@@ -628,6 +636,14 @@
+ #define PPE_FLOW_W3_L4_DPORT_LO			GENMASK(31, 28)
+ #define PPE_FLOW_W4_L4_DPORT_HI			GENMASK(11, 0)
+ 
++/* An IPv6 flow entry (entry type 1) spans two flow table entries: 9
++ * words. Words 0 and 1 match the IPv4 layout and the L4 ports sit at
++ * the IPv4 positions of words 3 and 4; the 128-bit address is stored
++ * from bit 12 of word 4 upwards as a little-endian wide integer.
++ */
++#define PPE_FLOW_V6_W4_IP_ADDR_0		GENMASK(31, 12)
++#define PPE_FLOW_V6_W8_IP_ADDR_4		GENMASK(11, 0)
++
+ #define PPE_FLOW_FWD_TYPE_FORWARD		0
+ #define PPE_FLOW_FWD_TYPE_SNAT			1
+ #define PPE_FLOW_FWD_TYPE_DNAT			2

@@ -1,0 +1,267 @@
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Mon, 06 Jul 2026 00:00:00 +0000
+Subject: [PATCH] net: ethernet: qualcomm: ppe: intercept a virtual port's uplink
+
+Drive the uplink inject. The previous patch added the primitive that
+tags a received frame with a virtual port as its source and pushes it
+into the PPE; this hooks the wireless receive path so real packets
+reach it, completing the wireless-to-wired offload.
+
+The interception is a netfilter ingress hook on the bound device, not
+a netdev_rx_handler. The device a virtual port binds is a wireless VAP
+that is a port of the software bridge, and the bridge already owns its
+rx_handler; a second rx_handler cannot be registered, and the bind
+runs in the flowtable offload work context without the rtnl lock a
+handler registration needs. A NETDEV_INGRESS hook runs earlier on the
+receive path, coexists with the bridge, is per-device, and registers
+under netfilter's own lock. It needs CONFIG_NETFILTER_INGRESS, which
+the netfilter flowtable this offload builds on already selects.
+
+The hook injects unicast IPv4/IPv6 addressed to the router and passes
+everything else up unchanged. At the ingress point the receive path has
+pulled the L2 header and, for a routed frame crossing a bridged VAP, has
+not yet reclassified pkt_type (it is still PACKET_OTHERHOST), so the
+decision keys on the L2/L3 headers; the L2 header is restored before the
+inject because the PPE parses it to route. To keep intra-LAN switched
+traffic on the bridge, the hook injects only frames whose destination is
+the router's MAC - the bridge master's address, cached when the port is
+bound; a routed VAP with no bridge master injects all its unicast IP,
+since that is all for routing. A frame with no hardware flow (a new or
+locally-terminated connection) is punted by the PPE to the CPU on the
+WAN receive path - not back onto this device - so it does not re-enter
+the hook (confirmed as a bring-up item in the design notes).
+
+The hook is registered when a virtual port is first bound and removed
+on release, on device unregister and on teardown, mirroring the slot
+lifecycle; teardown takes the slot lock so a late release cannot
+unregister the same hook twice. This completes the virtual-port uplink;
+the whole wireless path - both directions of a routed, NAT'd flow - is
+now offloaded.
+
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_vp.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_vp.c
+@@ -17,16 +17,30 @@
+  * The address of a wireless station is owned by the software bridge,
+  * so a VP does no learning of its own - the same assisted-learning
+  * split the rest of the series uses for foreign ports.
++ *
++ * The reverse (wireless->wired) direction is offloaded too: a netfilter
++ * ingress hook on the bound device injects a received frame into the PPE
++ * tagged with the virtual port as its source (edma_tx_vp_inject), so the
++ * hardware routes and NATs the uplink. The ingress hook is used rather
++ * than a netdev_rx_handler because the bound VAP is a bridge port and the
++ * bridge already owns its rx_handler; the ingress hook runs before the
++ * bridge and coexists with it. Requires CONFIG_NETFILTER_INGRESS (already
++ * pulled in by the netfilter flowtable this offload depends on).
+  */
+ 
+ #include <linux/bitfield.h>
++#include <linux/etherdevice.h>
++#include <linux/if_ether.h>
+ #include <linux/kernel.h>
+ #include <linux/mutex.h>
+ #include <linux/netdevice.h>
++#include <linux/netfilter.h>
+ #include <linux/rcupdate.h>
+ #include <linux/regmap.h>
++#include <linux/skbuff.h>
+ 
+ #include "edma.h"
++#include "edma_tx.h"
+ #include "ppe.h"
+ #include "ppe_config.h"
+ #include "ppe_flowtable.h"
+@@ -38,6 +52,9 @@
+ 
+ struct ppe_vp_slot {
+ 	struct net_device __rcu *dev;
++	struct nf_hook_ops nf_ops;
++	u8 host_mac[ETH_ALEN];	/* router (bridge) MAC; zero = inject all unicast */
++	int vp;			/* PPE port id, read by the ingress hook */
+ 	int refcnt;
+ };
+ 
+@@ -94,6 +111,104 @@ static int ppe_vp_hw_set(struct ppe_devi
+ 					EDMA_CPU_PORT_PROFILE_ID);
+ }
+ 
++/* Netfilter ingress hook on a virtual port's bound device: offload the
++ * wireless->wired uplink. It runs on the receive path before the bridge,
++ * so it sees the frame with its L2 header already pulled and, for a routed
++ * frame crossing a bridged VAP, pkt_type still PACKET_OTHERHOST (the bridge
++ * reclassifies later) - so the decision keys on the L2/L3 headers, not
++ * pkt_type.
++ *
++ * Only unicast IPv4/IPv6 addressed to the router (the bridge's MAC) is
++ * injected; broadcast, multicast, ARP, VLAN-tagged, non-IP, and frames
++ * L2-switched to another host on the bridge go up the stack unchanged. The
++ * router-MAC test keeps intra-LAN switched traffic on the bridge; without a
++ * bridge master (a routed VAP) it is skipped, since all its unicast IP is
++ * for routing. An injected frame that has no PPE flow (a new or
++ * locally-terminated connection) is punted by the hardware to the CPU on the
++ * WAN/CPU receive path - not re-received on this device - so it does not
++ * re-enter this hook. (Board item: confirm the flow-miss punt path at
++ * bring-up; see tools/DESIGN-vp-uplink.md.)
++ */
++static unsigned int ppe_vp_ingress(void *priv, struct sk_buff *skb,
++				   const struct nf_hook_state *state)
++{
++	struct ppe_vp_slot *slot = priv;
++	const struct ethhdr *eth;
++	int mac_len;
++
++	if (skb->protocol != htons(ETH_P_IP) &&
++	    skb->protocol != htons(ETH_P_IPV6))
++		return NF_ACCEPT;
++
++	eth = eth_hdr(skb);
++	if (is_multicast_ether_addr(eth->h_dest))
++		return NF_ACCEPT;
++
++	/* Route only frames addressed to us; leave L2-switched intra-LAN
++	 * traffic to the bridge. Skipped for a VAP with no bridge master.
++	 */
++	if (!is_zero_ether_addr(slot->host_mac) &&
++	    !ether_addr_equal(eth->h_dest, slot->host_mac))
++		return NF_ACCEPT;
++
++	/* The PPE parses the ethernet header to route, so restore the L2
++	 * header the receive path pulled before handing the frame over.
++	 */
++	mac_len = skb->data - skb_mac_header(skb);
++	skb_push(skb, mac_len);
++
++	/* On success the transmit path owns the frame (freed at Tx
++	 * completion) and it must not continue up the stack. On any failure
++	 * restore the L2 header and let it fall back to the software path.
++	 */
++	if (edma_tx_vp_inject(slot->vp, skb) == 0)
++		return NF_STOLEN;
++
++	skb_pull(skb, mac_len);
++
++	return NF_ACCEPT;
++}
++
++/* Register or remove the ingress hook that drives a virtual port's uplink.
++ * nf_register_net_hook() serialises on its own mutex (no rtnl needed), so
++ * this is safe from the slot-allocation path; the hook is lockless and
++ * never takes the slot mutex, so registering it under that mutex cannot
++ * deadlock against a packet arriving the moment it goes live.
++ */
++static int ppe_vp_hook_register(struct ppe_vp_slot *slot,
++				struct net_device *dev, int vp)
++{
++	struct net_device *master;
++
++	slot->vp = vp;
++
++	/* Cache the router (bridge) MAC so the hook can inject only frames
++	 * addressed to us; a routed VAP with no master leaves it zero.
++	 */
++	rcu_read_lock();
++	master = netdev_master_upper_dev_get_rcu(dev);
++	if (master)
++		ether_addr_copy(slot->host_mac, master->dev_addr);
++	else
++		eth_zero_addr(slot->host_mac);
++	rcu_read_unlock();
++
++	slot->nf_ops.hook = ppe_vp_ingress;
++	slot->nf_ops.pf = NFPROTO_NETDEV;
++	slot->nf_ops.hooknum = NF_NETDEV_INGRESS;
++	slot->nf_ops.priority = 0;
++	slot->nf_ops.dev = dev;
++	slot->nf_ops.priv = slot;
++
++	return nf_register_net_hook(dev_net(dev), &slot->nf_ops);
++}
++
++static void ppe_vp_hook_unregister(struct ppe_vp_slot *slot,
++				   struct net_device *dev)
++{
++	nf_unregister_net_hook(dev_net(dev), &slot->nf_ops);
++}
++
+ /**
+  * ppe_vp_get - Get a virtual port for a net device
+  * @ppe_dev: PPE device
+@@ -138,6 +253,13 @@ int ppe_vp_get(struct ppe_device *ppe_de
+ 		return ret;
+ 	}
+ 
++	ret = ppe_vp_hook_register(&vp->slots[free], dev, PPE_VP_PORT_BASE + free);
++	if (ret) {
++		ppe_vp_hw_set(ppe_dev, PPE_VP_PORT_BASE + free, false);
++		mutex_unlock(&vp->lock);
++		return ret;
++	}
++
+ 	vp->slots[free].refcnt = 1;
+ 	rcu_assign_pointer(vp->slots[free].dev, dev);
+ 	mutex_unlock(&vp->lock);
+@@ -170,9 +292,9 @@ void ppe_vp_put(struct ppe_device *ppe_d
+ 	mutex_lock(&vpt->lock);
+ 
+ 	/* Drop a reference. The device may already have unregistered (dev NULL,
+-	 * hardware already off); the slot stays reserved until its last flow
+-	 * releases it, so its id is never reused underneath a flow that still
+-	 * points at it.
++	 * hardware already off and hook removed); the slot stays reserved until
++	 * its last flow releases it, so its id is never reused underneath a flow
++	 * that still points at it.
+ 	 */
+ 	if (!vpt->slots[i].refcnt || --vpt->slots[i].refcnt) {
+ 		mutex_unlock(&vpt->lock);
+@@ -180,6 +302,8 @@ void ppe_vp_put(struct ppe_device *ppe_d
+ 	}
+ 
+ 	if (rcu_access_pointer(vpt->slots[i].dev)) {
++		ppe_vp_hook_unregister(&vpt->slots[i],
++				       rcu_access_pointer(vpt->slots[i].dev));
+ 		ppe_vp_hw_set(ppe_dev, vp, false);
+ 		rcu_assign_pointer(vpt->slots[i].dev, NULL);
+ 	}
+@@ -229,11 +353,14 @@ static int ppe_vp_netdev_event(struct no
+ 			continue;
+ 
+ 		if (event == NETDEV_UNREGISTER) {
+-			/* The device is going away. Drop it and turn the
+-			 * hardware off, but keep the refcount: the slot stays
+-			 * reserved (dev NULL) until its last flow's put releases
+-			 * it, so its id is not reused underneath those flows.
++			/* The device is going away. Remove the ingress hook
++			 * while the device (and its net namespace) is still
++			 * valid, drop it and turn the hardware off, but keep the
++			 * refcount: the slot stays reserved (dev NULL) until its
++			 * last flow's put releases it, so its id is not reused
++			 * underneath those flows.
+ 			 */
++			ppe_vp_hook_unregister(&vp->slots[i], dev);
+ 			ppe_vp_hw_set(vp->ppe_dev, PPE_VP_PORT_BASE + i, false);
+ 			rcu_assign_pointer(vp->slots[i].dev, NULL);
+ 			cleared = true;
+@@ -301,12 +428,20 @@ void ppe_vp_teardown(struct ppe_device *
+ 	ppe_dev->vp = NULL;
+ 	unregister_netdevice_notifier(&vp->notifier);
+ 
++	/* Serialise against a late ppe_vp_put() that already sampled ppe_dev->vp
++	 * so the same slot is not unregistered twice.
++	 */
++	mutex_lock(&vp->lock);
+ 	for (i = 0; i < PPE_VP_SLOTS; i++) {
+-		if (rcu_access_pointer(vp->slots[i].dev)) {
++		struct net_device *dev = rcu_access_pointer(vp->slots[i].dev);
++
++		if (dev) {
++			ppe_vp_hook_unregister(&vp->slots[i], dev);
+ 			ppe_vp_hw_set(ppe_dev, PPE_VP_PORT_BASE + i, false);
+ 			rcu_assign_pointer(vp->slots[i].dev, NULL);
+ 		}
+ 	}
++	mutex_unlock(&vp->lock);
+ 
+ 	synchronize_rcu();
+ 	mutex_destroy(&vp->lock);

@@ -19,9 +19,9 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  NormalizedProfileBuilder,
-  RemoteProfile_Serialize,
+  getRemoteSource,
   useProfile,
+  type ProfileItem_Serialize,
 } from '@nyanpasu/interface'
 import AnimatedErrorItem from '../../../_modules/error-item'
 
@@ -29,27 +29,37 @@ const formSchema = z.object({
   user_agent: z.string().optional(),
   with_proxy: z.boolean().optional(),
   self_proxy: z.boolean().optional(),
-  update_interval: z.number().optional(),
+  update_interval: z
+    .number()
+    .min(1, {
+      message: m.profile_form_option_update_interval_min_error(),
+    })
+    .nullable()
+    .optional(),
 })
+
+const remoteOptionOf = (profile: ProfileItem_Serialize) =>
+  getRemoteSource(profile)?.option
 
 export default function UpdateOptionEditor({
   profile,
   ...props
 }: ComponentProps<typeof ModalTrigger> & {
-  profile: RemoteProfile_Serialize
+  profile: ProfileItem_Serialize
 }) {
-  const { patch } = useProfile()
+  const { patchRemoteOptions } = useProfile()
 
   const [open, setOpen] = useState(false)
 
   const getDefaultValues = useCallback(() => {
+    const option = remoteOptionOf(profile)
     return {
-      user_agent: profile.option?.user_agent ?? '',
-      with_proxy: profile.option?.with_proxy ?? false,
-      self_proxy: profile.option?.self_proxy ?? false,
-      update_interval: profile.option?.update_interval ?? 0,
+      user_agent: option?.user_agent ?? '',
+      with_proxy: option?.with_proxy ?? false,
+      self_proxy: option?.self_proxy ?? false,
+      update_interval: option?.update_interval_minutes ?? null,
     }
-  }, [profile.option])
+  }, [profile])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -71,15 +81,14 @@ export default function UpdateOptionEditor({
     form.handleSubmit(
       async (data) => {
         try {
-          await patch.mutateAsync({
+          await patchRemoteOptions.mutateAsync({
             uid: profile.uid,
-            profile: {
-              ...profile,
-              option: {
-                ...profile.option,
-                ...data,
-              },
-            } as NormalizedProfileBuilder,
+            patch: {
+              user_agent: data.user_agent || null,
+              with_proxy: data.with_proxy ?? null,
+              self_proxy: data.self_proxy ?? null,
+              update_interval_minutes: data.update_interval ?? null,
+            },
           })
           handleClose()
         } catch (error) {
@@ -142,8 +151,9 @@ export default function UpdateOptionEditor({
                   <NumericInput
                     label={m.profile_update_interval_label()}
                     variant="outlined"
-                    min={0}
+                    min={1}
                     step={1}
+                    placeholder={m.profile_form_option_update_interval_placeholder()}
                     {...field}
                   />
 

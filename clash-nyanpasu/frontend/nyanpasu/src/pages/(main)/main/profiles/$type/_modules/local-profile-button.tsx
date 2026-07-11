@@ -29,35 +29,27 @@ import { formatError } from '@/utils'
 import { message } from '@/utils/notification'
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  LocalProfileBuilder_Serialize,
   ProfileTemplate,
   useProfile,
+  type NewProfileRequest_Deserialize,
 } from '@nyanpasu/interface'
 import { useLocation } from '@tanstack/react-router'
 import AnimatedErrorItem from '../../_modules/error-item'
 import { Action, Route as IndexRoute } from '../index'
 
 const formSchema = z.object({
-  uid: z.string().nullable(),
   name: z.string().nullable(),
   file: z.string().nullable(),
   desc: z.string().nullable(),
-  updated: z.number().nullable(),
-  symlinks: z.string().nullable(),
-  chain: z.array(z.string()).nullable(),
-}) satisfies z.ZodType<LocalProfileBuilder_Serialize>
+})
 
 const acceptFiles = ['.yaml', '.yml']
 
 const getDefaultValues = () => {
   return {
-    uid: null,
     name: `${m.profile_import_local_title()} - ${dayjs().format('YYYY-MM-DD HH:mm:ss')}`,
     file: null,
     desc: null,
-    updated: null,
-    symlinks: null,
-    chain: null,
   } satisfies z.infer<typeof formSchema>
 }
 
@@ -103,13 +95,27 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
     `create-local-profile`,
     form.handleSubmit(async (data) => {
       try {
+        const request: NewProfileRequest_Deserialize = {
+          metadata: { name: data.name ?? '', desc: data.desc ?? null },
+          definition: {
+            type: 'config',
+            config: {
+              type: 'file',
+              source: {
+                type: 'local',
+                binding: {
+                  type: 'managed',
+                  file: 'pending.yaml',
+                },
+              },
+              transforms: [],
+            },
+          },
+        }
         await create.mutateAsync({
           type: 'manual',
           data: {
-            item: {
-              type: 'local',
-              ...data,
-            },
+            request,
             fileData: profileContent || ProfileTemplate.profile,
           },
         })
@@ -137,9 +143,8 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
       },
     })
 
-    if (value) {
-      form.reset(getDefaultValues())
-    }
+    form.reset(getDefaultValues())
+    setProfileContent(null)
   }
 
   const handleSubmit = useLockFn(blockTask.execute)
@@ -211,7 +216,7 @@ export default function LocalProfileButton({ children }: PropsWithChildren) {
                       accept={acceptFiles}
                       value={field.value}
                       onChange={(name) => {
-                        form.setValue('desc', name)
+                        form.setValue('file', name)
                       }}
                       onFileRead={(value) => {
                         setProfileContent(value)

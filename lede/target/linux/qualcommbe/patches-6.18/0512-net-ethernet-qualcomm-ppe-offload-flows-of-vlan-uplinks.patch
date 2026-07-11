@@ -1,0 +1,483 @@
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Sun, 05 Jul 2026 00:00:00 +0000
+Subject: [PATCH] net: ethernet: qualcomm: ppe: offload flows of VLAN uplinks
+
+Offload routed flows which ingress VLAN-tagged, such as a tagged WAN
+or a routed VLAN over a port. The VLAN match key of the decap
+direction maps to a refcounted uplink slot of (ingress port, VID),
+resolved through the META ingress interface of the rule. A slot owns
+one of the reserved top ingress translation rules, VSIs and an L3
+interface: the rule classifies the tagged packets into the VSI, and
+the L3_VSI binding assigns them the L3 interface, which routes. The
+VSI stays in the CPU-only parked state the PPE core initialized, so
+tagged packets the router MAC check does not claim keep reaching the
+CPU untouched. The egress push of the reverse direction already comes
+from the next hop entry, and PPPoE over VLAN composes: the uplink
+classifies the tag, the session table terminates the session.
+
+The bridge offload allocates VSIs and translation rules below the
+reserved top entries, so the two never collide. The uplink L3
+interface only terminates ingress; no next hop points at it and it
+carries no egress MAC.
+
+Also reject a second VLAN push instead of silently overwriting the
+VLAN ID of the first, and keep rejecting anything but 802.1Q,
+including QinQ ingress (a CVLAN key stays outside the supported set).
+
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_bridge.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_bridge.c
+@@ -208,7 +208,8 @@ static int ppe_bridge_vsi_find(struct pp
+ }
+ 
+ /* Get the VSI backing (bridge, VID), allocating a free VSI when there
+- * is none. Negative when the VSIs are exhausted.
++ * is none, below the VSIs reserved for the VLAN uplinks of the
++ * flowtable offload. Negative when the VSIs are exhausted.
+  */
+ static int ppe_bridge_vsi_get(struct ppe_bridge *pb, struct net_device *br,
+ 			      u16 vid)
+@@ -219,7 +220,7 @@ static int ppe_bridge_vsi_get(struct ppe
+ 	if (vsi >= 0)
+ 		return vsi;
+ 
+-	for (i = 0; i < ARRAY_SIZE(pb->vsis); i++) {
++	for (i = 0; i < ARRAY_SIZE(pb->vsis) - PPE_L3_VLAN_UPLINKS; i++) {
+ 		if (pb->vsis[i].br)
+ 			continue;
+ 
+@@ -348,8 +349,10 @@ static int ppe_bridge_vsi_xlt_update(str
+ 
+ 		if (idx < 0) {
+ 			idx = find_first_zero_bit(pb->xlt_used,
+-						  PPE_XLT_RULE_TBL_ENTRIES);
+-			if (idx >= PPE_XLT_RULE_TBL_ENTRIES)
++						  PPE_XLT_RULE_TBL_ENTRIES -
++						  PPE_L3_VLAN_UPLINKS);
++			if (idx >= PPE_XLT_RULE_TBL_ENTRIES -
++				   PPE_L3_VLAN_UPLINKS)
+ 				return -ENOSPC;
+ 		}
+ 
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_config.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_config.h
+@@ -307,6 +307,12 @@ enum ppe_stp_state {
+  */
+ #define PPE_FDB_PORT_NONE			0xff
+ 
++/* The top VSIs and ingress VLAN translation rules are reserved for the
++ * VLAN uplinks of the flowtable offload; the bridge offload allocates
++ * below them.
++ */
++#define PPE_L3_VLAN_UPLINKS			8
++
+ /**
+  * struct ppe_fdb_entry - PPE hardware FDB entry.
+  * @addr: MAC address.
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flow.c
+@@ -372,6 +372,30 @@ int ppe_pppoe_session_set(struct ppe_dev
+ }
+ 
+ /**
++ * ppe_vsi_l3_if_set - Bind a VSI to an L3 interface
++ * @ppe_dev: PPE device
++ * @vsi: VSI to configure
++ * @l3_if: L3 interface index, negative to unbind
++ *
++ * Routed packets classified into the VSI take this ingress L3
++ * interface instead of the one bound to their ingress port.
++ *
++ * Return: 0 on success, negative error code on failure.
++ */
++int ppe_vsi_l3_if_set(struct ppe_device *ppe_dev, int vsi, int l3_if)
++{
++	u32 reg = PPE_L3_VSI_ADDR + PPE_L3_VSI_INC * vsi;
++	u32 mask = PPE_L3_VSI_L3_IF_VALID | PPE_L3_VSI_L3_IF_INDEX;
++	u32 val = 0;
++
++	if (l3_if >= 0)
++		val = PPE_L3_VSI_L3_IF_VALID |
++		      FIELD_PREP(PPE_L3_VSI_L3_IF_INDEX, l3_if);
++
++	return regmap_update_bits(ppe_dev->regmap, reg, mask, val);
++}
++
++/**
+  * ppe_port_l3_if_set - Bind a PPE port to an L3 interface
+  * @ppe_dev: PPE device
+  * @port: PPE port to configure
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flow.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flow.h
+@@ -69,6 +69,7 @@ int ppe_my_mac_set(struct ppe_device *pp
+ 		   bool valid);
+ int ppe_l3_if_set(struct ppe_device *ppe_dev, int index, const u8 *addr,
+ 		  int mtu, int pppoe_sid);
++int ppe_vsi_l3_if_set(struct ppe_device *ppe_dev, int vsi, int l3_if);
+ int ppe_port_l3_if_set(struct ppe_device *ppe_dev, int port, int l3_if);
+ int ppe_pppoe_session_set(struct ppe_device *ppe_dev, int index, int port,
+ 			  u16 sid, int l3_if);
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -93,6 +93,27 @@ static_assert(offsetof(struct ppe_ft_ppp
+ #define PPE_FT_PPPOE_SESSIONS	8
+ 
+ /**
++ * struct ppe_ft_vlan - A refcounted VLAN uplink of an ingress port.
++ * @ref: Reference count of the uplink.
++ * @vid: VLAN ID of the uplink.
++ * @port: PPE port the tagged packets ingress on.
++ *
++ * A VLAN uplink owns one of the reserved top ingress translation
++ * rules, VSIs and an L3 interface, all of its slot index: the rule
++ * classifies tagged ingress of (port, VID) into the VSI, and the VSI
++ * assigns the L3 interface, which routes. The VSI stays in the
++ * CPU-only parked state the PPE core initialized, so tagged packets
++ * the router MAC check does not claim still reach the CPU.
++ */
++struct ppe_ft_vlan {
++	struct ppe_ft_ref ref;
++	u16 vid;
++	u8 port;
++};
++
++static_assert(offsetof(struct ppe_ft_vlan, ref) == 0);
++
++/**
+  * struct ppe_ft_flow - An offloaded flow.
+  * @node: Hash table node, keyed by the flow cookie.
+  * @cookie: Flow cookie of the rule.
+@@ -102,6 +123,7 @@ static_assert(offsetof(struct ppe_ft_ppp
+  * @my_mac: Router MAC slot held by the flow, negative when none.
+  * @pub_ip: Public IP slot held by the flow, negative when none.
+  * @pppoe: PPPoE session slot held by the flow, negative when none.
++ * @vlan: VLAN uplink slot held by the flow, negative when none.
+  * @packets: Hit packet count at the last stats read.
+  * @bytes: Hit byte count at the last stats read.
+  */
+@@ -114,6 +136,7 @@ struct ppe_ft_flow {
+ 	int my_mac;
+ 	int pub_ip;
+ 	int pppoe;
++	int vlan;
+ 	u32 packets;
+ 	u64 bytes;
+ };
+@@ -143,6 +166,7 @@ struct ppe_ft_host {
+  * @my_macs: Refcounted router MAC slots.
+  * @pub_ips: Refcounted public IP slots.
+  * @pppoe: Refcounted PPPoE session slots.
++ * @vlans: Refcounted VLAN uplink slots.
+  * @block_cb_list: Flow block callbacks bound to the PPE ports.
+  * @hosts: Refcount of the flows sharing a destination host entry.
+  */
+@@ -155,6 +179,7 @@ struct ppe_flowtable {
+ 	struct ppe_ft_my_mac my_macs[PPE_MY_MAC_TBL_ENTRIES];
+ 	struct ppe_ft_pub_ip pub_ips[PPE_PUB_IP_TBL_ENTRIES];
+ 	struct ppe_ft_pppoe pppoe[PPE_FT_PPPOE_SESSIONS];
++	struct ppe_ft_vlan vlans[PPE_L3_VLAN_UPLINKS];
+ 	struct list_head block_cb_list;
+ };
+ 
+@@ -179,6 +204,8 @@ struct ppe_ft_data {
+ 	__be16 sport;
+ 	__be16 dport;
+ 	int pppoe_sid;
++	int ingress_vid;
++	int ingress_ifindex;
+ };
+ 
+ static void ppe_ft_mangle_eth(const struct flow_action_entry *act, void *eth)
+@@ -424,6 +451,90 @@ static void ppe_ft_pppoe_put(struct ppe_
+ 	ppe_pppoe_session_set(ft->ppe_dev, index, -1, 0, 0);
+ }
+ 
++/* The reserved resources a VLAN uplink slot owns; its L3 interface
++ * region starts where the PPPoE one ends.
++ */
++static int ppe_ft_vlan_l3_if(struct ppe_flowtable *ft, int index)
++{
++	return ppe_ft_pppoe_l3_if(ft, PPE_FT_PPPOE_SESSIONS) + index;
++}
++
++static int ppe_ft_vlan_vsi(int index)
++{
++	return PPE_VSI_TBL_ENTRIES - PPE_L3_VLAN_UPLINKS + index;
++}
++
++static int ppe_ft_vlan_xlt(int index)
++{
++	return PPE_XLT_RULE_TBL_ENTRIES - PPE_L3_VLAN_UPLINKS + index;
++}
++
++/* Get a refcounted VLAN uplink slot of (port, VID), programming its
++ * L3 interface, VSI binding and translation rule on first use. Must
++ * be called with the flowtable lock held.
++ */
++static bool ppe_ft_vlan_match(const void *entry, const void *key)
++{
++	const struct ppe_ft_vlan *uplink = entry, *want = key;
++
++	return uplink->vid == want->vid && uplink->port == want->port;
++}
++
++static int ppe_ft_vlan_get(struct ppe_flowtable *ft, int port, u16 vid,
++			   int mtu)
++{
++	struct ppe_ft_vlan want = { .vid = vid, .port = port };
++	const u8 no_mac[ETH_ALEN] = {};
++	bool is_new;
++	int i, ret;
++
++	i = ppe_ft_ref_get(ft->vlans, sizeof(*ft->vlans),
++			   PPE_L3_VLAN_UPLINKS, ppe_ft_vlan_match,
++			   &want, &is_new);
++	if (i < 0 || !is_new)
++		return i;
++
++	/* The L3 interface only terminates ingress, no next hop points
++	 * at it: it carries no egress MAC.
++	 */
++	ret = ppe_l3_if_set(ft->ppe_dev, ppe_ft_vlan_l3_if(ft, i),
++			    no_mac, mtu, -1);
++	if (ret)
++		return ret;
++
++	ret = ppe_vsi_l3_if_set(ft->ppe_dev, ppe_ft_vlan_vsi(i),
++				ppe_ft_vlan_l3_if(ft, i));
++	if (ret)
++		return ret;
++
++	ret = ppe_ing_xlt_rule_set(ft->ppe_dev, ppe_ft_vlan_xlt(i),
++				   BIT(port), vid, ppe_ft_vlan_vsi(i));
++	if (ret) {
++		ppe_vsi_l3_if_set(ft->ppe_dev, ppe_ft_vlan_vsi(i), -1);
++		return ret;
++	}
++
++	want.ref.refcnt = 1;
++	ft->vlans[i] = want;
++
++	return i;
++}
++
++static void ppe_ft_vlan_put(struct ppe_flowtable *ft, int index)
++{
++	if (!ppe_ft_ref_put(ft->vlans, sizeof(*ft->vlans), index))
++		return;
++
++	ppe_ing_xlt_rule_clear(ft->ppe_dev, ppe_ft_vlan_xlt(index));
++	ppe_vsi_l3_if_set(ft->ppe_dev, ppe_ft_vlan_vsi(index), -1);
++
++	/* The hardware learned the source MACs of the uplink segment
++	 * into the VSI; nothing ages them (the FDB synchronization
++	 * skips VSIs without a bridge), so flush them with the slot.
++	 */
++	ppe_fdb_vsi_flush(ft->ppe_dev, ppe_ft_vlan_vsi(index));
++}
++
+ /* Hash key of a flow's destination IP for the host refcount table. */
+ static u32 ppe_ft_host_key(const struct ppe_flow_entry *flow)
+ {
+@@ -527,7 +638,7 @@ static int ppe_ft_flow_replace(struct pp
+ 	struct ppe_flow_nexthop nh = {};
+ 	struct ppe_ft_data data = {};
+ 	struct ppe_ft_flow *flow;
+-	int i, nexthop, ret;
++	int i, nexthop, ret, iport = -1, imtu = 0;
+ 
+ 	if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_BASIC) ||
+ 	    !flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_PORTS))
+@@ -538,10 +649,9 @@ static int ppe_ft_flow_replace(struct pp
+ 		return -EOPNOTSUPP;
+ 
+ 	/* Match keys outside the supported set must reject the rule,
+-	 * not be skipped: VLAN-tagged ingress is not translated to a
+-	 * flow key yet, and a tunnel route arrives as ENC_* keys,
+-	 * which offloaded as a plain routed flow would transmit the
+-	 * packets unencapsulated. The TCP flags key is a knowing
++	 * not be skipped: a tunnel route, for example, arrives as
++	 * ENC_* keys, which offloaded as a plain routed flow would
++	 * transmit the packets unencapsulated. The TCP flags key is a knowing
+ 	 * exception: the hardware forwards FIN/RST packets instead of
+ 	 * punting them, which only delays the flow teardown until the
+ 	 * flow idles out.
+@@ -553,7 +663,8 @@ static int ppe_ft_flow_replace(struct pp
+ 	      BIT_ULL(FLOW_DISSECTOR_KEY_IPV4_ADDRS) |
+ 	      BIT_ULL(FLOW_DISSECTOR_KEY_IPV6_ADDRS) |
+ 	      BIT_ULL(FLOW_DISSECTOR_KEY_TCP) |
+-	      BIT_ULL(FLOW_DISSECTOR_KEY_PORTS)))
++	      BIT_ULL(FLOW_DISSECTOR_KEY_PORTS) |
++	      BIT_ULL(FLOW_DISSECTOR_KEY_VLAN)))
+ 		return -EOPNOTSUPP;
+ 
+ 	flow = kzalloc(sizeof(*flow), GFP_KERNEL);
+@@ -564,8 +675,10 @@ static int ppe_ft_flow_replace(struct pp
+ 	flow->my_mac = -1;
+ 	flow->pub_ip = -1;
+ 	flow->pppoe = -1;
++	flow->vlan = -1;
+ 	nh.vid = -1;
+ 	data.pppoe_sid = -1;
++	data.ingress_vid = -1;
+ 
+ 	{
+ 		struct flow_match_basic match;
+@@ -627,6 +740,33 @@ static int ppe_ft_flow_replace(struct pp
+ 		flow->entry.dport = match.key->dst;
+ 	}
+ 
++	/* A VLAN key means the flow ingresses tagged: the ingress port
++	 * needs a VLAN uplink slot, resolved from the META key below.
++	 */
++	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_VLAN)) {
++		struct flow_match_vlan match;
++
++		flow_rule_match_vlan(rule, &match);
++		if (match.key->vlan_tpid != htons(ETH_P_8021Q)) {
++			ret = -EOPNOTSUPP;
++			goto err_free;
++		}
++
++		data.ingress_vid = match.key->vlan_id;
++
++		if (!flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_META)) {
++			ret = -EOPNOTSUPP;
++			goto err_free;
++		}
++	}
++
++	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_META)) {
++		struct flow_match_meta match;
++
++		flow_rule_match_meta(rule, &match);
++		data.ingress_ifindex = match.key->ingress_ifindex;
++	}
++
+ 	data.sip = flow->entry.sip.ip4;
+ 	data.dip = flow->entry.dip.ip4;
+ 	data.sport = flow->entry.sport;
+@@ -655,12 +795,18 @@ static int ppe_ft_flow_replace(struct pp
+ 			}
+ 			break;
+ 		case FLOW_ACTION_VLAN_PUSH:
+-			if (act->vlan.proto != htons(ETH_P_8021Q)) {
++			if (act->vlan.proto != htons(ETH_P_8021Q) ||
++			    nh.vid >= 0) {
+ 				ret = -EOPNOTSUPP;
+ 				goto err_free;
+ 			}
+ 			nh.vid = act->vlan.vid;
+ 			break;
++		case FLOW_ACTION_VLAN_POP:
++			/* The VLAN uplink of the ingress side terminates
++			 * the tag, nothing to program per flow.
++			 */
++			break;
+ 		case FLOW_ACTION_PPPOE_PUSH:
+ 			data.pppoe_sid = act->pppoe.sid;
+ 			break;
+@@ -686,6 +832,32 @@ static int ppe_ft_flow_replace(struct pp
+ 		goto err_free;
+ 	}
+ 
++	/* Tagged ingress must arrive on a PPE port to be classified by
++	 * a VLAN uplink.
++	 */
++	if (data.ingress_vid >= 0) {
++		struct net_device *idev;
++
++		idev = dev_get_by_index(dev_net(odev), data.ingress_ifindex);
++		if (!idev) {
++			ret = -EOPNOTSUPP;
++			goto err_free;
++		}
++
++		if (edma_port_dev_check(idev)) {
++			struct edma_port_priv *ipriv = netdev_priv(idev);
++
++			iport = ipriv->ppe_port->port_id;
++			imtu = idev->mtu;
++		}
++		dev_put(idev);
++
++		if (iport < 0) {
++			ret = -EOPNOTSUPP;
++			goto err_free;
++		}
++	}
++
+ 	port_priv = netdev_priv(odev);
+ 	nh.port = port_priv->ppe_port->port_id;
+ 	nh.l3_if = nh.port;
+@@ -734,6 +906,15 @@ static int ppe_ft_flow_replace(struct pp
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_ROUTE;
+ 	}
+ 
++	if (data.ingress_vid >= 0) {
++		flow->vlan = ppe_ft_vlan_get(ft, iport, data.ingress_vid,
++					     imtu);
++		if (flow->vlan < 0) {
++			ret = flow->vlan;
++			goto err_pub_ip;
++		}
++	}
++
+ 	/* A PPPoE push routes the flow through the L3 interface of its
+ 	 * session, which encapsulates on egress; the session table
+ 	 * entry of the slot terminates the reverse direction, whose
+@@ -743,7 +924,7 @@ static int ppe_ft_flow_replace(struct pp
+ 		flow->pppoe = ppe_ft_pppoe_get(ft, nh.port, data.pppoe_sid);
+ 		if (flow->pppoe < 0) {
+ 			ret = flow->pppoe;
+-			goto err_pub_ip;
++			goto err_vlan;
+ 		}
+ 		nh.l3_if = ppe_ft_pppoe_l3_if(ft, flow->pppoe);
+ 	}
+@@ -824,6 +1005,8 @@ err_my_mac:
+ 	ppe_ft_my_mac_put(ft, flow->my_mac);
+ err_pppoe:
+ 	ppe_ft_pppoe_put(ft, flow->pppoe);
++err_vlan:
++	ppe_ft_vlan_put(ft, flow->vlan);
+ err_pub_ip:
+ 	ppe_ft_pub_ip_put(ft, flow->pub_ip);
+ err_unlock:
+@@ -853,6 +1036,7 @@ static int ppe_ft_flow_destroy(struct pp
+ 		clear_bit(flow->nexthop, ft->nexthop_used);
+ 		ppe_ft_my_mac_put(ft, flow->my_mac);
+ 		ppe_ft_pppoe_put(ft, flow->pppoe);
++		ppe_ft_vlan_put(ft, flow->vlan);
+ 		ppe_ft_pub_ip_put(ft, flow->pub_ip);
+ 	}
+ 
+@@ -990,7 +1174,7 @@ int ppe_flowtable_setup(struct ppe_devic
+ 	 * a runtime base (the port count); refuse a layout that would
+ 	 * overrun the interface tables.
+ 	 */
+-	if (WARN_ON(ppe_ft_pppoe_l3_if(ft, PPE_FT_PPPOE_SESSIONS) >
++	if (WARN_ON(ppe_ft_vlan_l3_if(ft, PPE_L3_VLAN_UPLINKS) >
+ 		    PPE_IN_L3_IF_TBL_ENTRIES)) {
+ 		kfree(ft);
+ 		return -ERANGE;
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_regs.h
+@@ -711,6 +711,16 @@
+ #define PPE_PPPOE_SESSION_EXT2_L3_IF		GENMASK(15, 8)
+ #define PPE_PPPOE_SESSION_EXT2_L3_IF_VALID	BIT(16)
+ 
++/* Per-VSI L3 interface binding: routed packets classified into the VSI
++ * take this ingress L3 interface instead of the one bound to their
++ * ingress port.
++ */
++#define PPE_L3_VSI_ADDR				0x201148
++#define PPE_L3_VSI_ENTRIES			64
++#define PPE_L3_VSI_INC				4
++#define PPE_L3_VSI_L3_IF_VALID			BIT(0)
++#define PPE_L3_VSI_L3_IF_INDEX			GENMASK(8, 1)
++
+ /* Per-flow hit counters, indexed like the flow table. */
+ #define PPE_FLOW_CNT_TBL_ADDR			0x120000
+ #define PPE_FLOW_CNT_TBL_ENTRIES		4096

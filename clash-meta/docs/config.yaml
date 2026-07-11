@@ -1626,6 +1626,54 @@ proxy-providers:
       #     target: "TEST"
       #   - pattern: "IPLC-(.*?)倍"
       #     target: "iplc x $1"
+      # # 这是 yq v4 风格的配置覆盖子集。数组项按顺序执行，且晚于上面的固定字段覆盖。
+      # # 路径：.、.name、."a.b"、.["a.b"]、.items[0]、.items[-1]。[] 可以遍历数组或 mapping。
+      # # 读取缺失路径或穿过标量时返回 null。赋值会创建缺失的 mapping 和非负数组索引，但不会穿过标量更新。
+      # # 赋值：=、|=、+=、-=、*=。删除：del(.field)、del(.a, .b)。
+      # # 值：null（或 ~）、布尔值、十进制/十六进制整数、浮点数、双引号字符串、数组及双引号键的 mapping。
+      # # 负号只用于十进制整数和浮点数。浮点数支持科学计数法。
+      # # 字符串按 yq 规则解码 \n、\"、\\；其他反斜杠序列保留原文。
+      # # 数组会收集每一项的全部结果。mapping 的 value 为零结果时省略 key，多结果时保留最后一个。
+      # # 运算：+、-、*、/、%、==、!=、<、<=、>、>=、and、or、//（默认值）。
+      # # + 可拼接字符串/数组或浅合并 mapping；* 可做数乘、字符串重复、数组替换或深合并 mapping；/ 可分割字符串。
+      # # 流：管道 |、逗号 union、select。使用 [...] 将零到多个结果收集为数组。
+      # # 字符串支持 "[\(.type)] \(.name)" 形式的插值。插值表达式有多个结果时使用第一个。
+      # # 字符串外的 # 会忽略该数组项中的后续表达式内容。
+      # # 查询函数：length、keys、has(key/index)、contains(value)、select(condition)。字符串 length 按 UTF-8 字节数计算。
+      # # 数组函数：reverse、sort、unique、flatten([depth])、any、all。
+      # # 转换函数：map、map_values、filter、to_entries、from_entries、with_entries、any_c、all_c。
+      # # map/filter/map_values 支持数组或 mapping。with_entries 只支持 mapping，any_c/all_c 只支持数组。
+      # # map/filter 返回数组，map_values 保持输入集合类型。to_entries(null) 不产生结果。
+      # # from_entries 只接受具有字符串 key 的 entries 数组。
+      # # 字符串函数：test(pattern[, "g"])、sub(pattern, replacement)、split(separator)、join(separator)、upcase、downcase、trim。
+      # # split(null) 不产生结果，join 只接受数组。
+      # # 类型函数：tostring、tonumber、type、not。tonumber 支持十进制、0x 十六进制、0o 八进制和浮点字符串。
+      # override-expr:
+      #   - '.name = "[provider1] " + .name'                   # 普通赋值
+      #   - '.plugin-opts.mode = "tls"'                        # 自动创建缺失的 mapping
+      #   - '.alpn[] |= upcase'                                # 更新数组中的每一项
+      #   - 'del(.skip-cert-verify)'                           # 删除字段
+      #   - '.name = (.name | trim | upcase)'                  # 赋值右侧的管道需加括号
+      #   - '.name = "[\(.type)] \(.name):\(.port)"'           # 字符串插值
+      #   - '(select(.port == 443) | .tls) = true'             # 条件不匹配时不修改
+      #   - '.tags |= (unique | sort)'                         # 去重后排序
+      #   - '.names = [.servers[] | select(.enabled) | .name]' # 收集多个结果
+      #   - '.servers |= map(select(.enabled))'                # 筛选数组
+      #   - '.options |= with_entries(.key |= upcase)'         # 转换 mapping
+      #   - '. | with_entries(.key |= upcase)'                 # 整体过滤结果仍须为 mapping
+      # # 每一项最终必须恰好产生一个 mapping。未收集的多结果及 del(.) 不受支持。
+      # # 赋值右侧使用管道或 and/or 时必须加括号。from_entries 只接受字符串 key。
+      # # sort 只支持标量数组。any/all 只支持无参数形式。
+      # # ==/!= 按 yq 的标量文本值比较，不对数组或 mapping 做结构化比较。
+      # # <、<=、>、>= 只支持数字、字符串和 null。只有 false 和 null 按假值处理。
+      # # 普通函数参数不得产生多个结果；map/filter 等接收表达式的函数允许参数产生结果流。
+      # # 函数参数可使用逗号或分号分隔。
+      # # 求值采用值语义。越界读取不会扩展源数组，右侧的 flatten/map_values 也不会隐式修改源路径。
+      # # 需要修改源路径时请使用 |=。右侧没有结果时保留目标原值，不会自动创建 null。
+      # # mapping 流、keys 和 entries 转换按 key 排序，因为 map[string]any 不保留 YAML key 顺序。
+      # # 不支持的语言功能：变量（as/$x）、reduce、动态路径（.[$key]）、递归下降（..）。
+      # # 不支持的外部功能：多文档、文件/环境访问、YAML tag/样式/注释处理、yq CLI 参数。
+      # # 未在上面列出的 yq 语法、运算符和函数也不受支持。条件分支可改用 select 后串联多个赋值。
 
   provider2:
     type: inline

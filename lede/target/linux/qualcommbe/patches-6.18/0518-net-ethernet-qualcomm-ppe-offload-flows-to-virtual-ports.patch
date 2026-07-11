@@ -1,0 +1,236 @@
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Sun, 05 Jul 2026 00:00:00 +0000
+Subject: [PATCH] net: ethernet: qualcomm: ppe: offload flows egressing a virtual port
+
+Offload the wired-to-wireless direction of a routed or NAT'd flow whose
+egress net device is not a PPE port, by forwarding it to a virtual
+port. The egress source MAC rewrite is programmed on an L3 interface
+reserved for the virtual port, past the physical, PPPoE and VLAN-uplink
+ones, and the next hop carries the virtual port as the egress port. The
+packet is delivered to the host already rewritten, for transmit out the
+device by the receive path that follows.
+
+The reverse, wireless-to-wired, direction is left on the software fast
+path; only the heavier downlink is hardware assisted. The carrier
+bitmap that keeps a link-down egress from refreshing its flows widens
+to cover the virtual port range.
+
+Only a device reached by routing is offloaded this way. A device
+bridged in hardware keeps forwarding through its bridge, and virtual
+ports are not added to the flood bitmaps.
+
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -29,6 +29,7 @@
+ #include "ppe_config.h"
+ #include "ppe_flow.h"
+ #include "ppe_flowtable.h"
++#include "ppe_vp.h"
+ #include "ppe_regs.h"
+ 
+ /**
+@@ -92,6 +93,9 @@ static_assert(offsetof(struct ppe_ft_ppp
+ 
+ #define PPE_FT_PPPOE_SESSIONS	8
+ 
++/* The carrier bitmap covers the physical ports and the virtual ports. */
++#define PPE_FT_CARRIER_PORTS	(PPE_VP_PORT_BASE + PPE_VP_SLOTS)
++
+ /**
+  * struct ppe_ft_vlan - A refcounted VLAN uplink of an ingress port.
+  * @ref: Reference count of the uplink.
+@@ -138,6 +142,7 @@ struct ppe_ft_flow {
+ 	int pub_ip;
+ 	int pppoe;
+ 	int vlan;
++	int vp;
+ 	u8 eport;
+ 	u32 packets;
+ 	u64 bytes;
+@@ -183,7 +188,7 @@ struct ppe_flowtable {
+ 	struct ppe_ft_pub_ip pub_ips[PPE_PUB_IP_TBL_ENTRIES];
+ 	struct ppe_ft_pppoe pppoe[PPE_FT_PPPOE_SESSIONS];
+ 	struct ppe_ft_vlan vlans[PPE_L3_VLAN_UPLINKS];
+-	unsigned long carrier_ok;
++	DECLARE_BITMAP(carrier_ok, PPE_FT_CARRIER_PORTS);
+ 	struct list_head block_cb_list;
+ };
+ 
+@@ -473,6 +478,15 @@ static int ppe_ft_vlan_xlt(int index)
+ 	return PPE_XLT_RULE_TBL_ENTRIES - PPE_L3_VLAN_UPLINKS + index;
+ }
+ 
++/* The egress L3 interface a virtual port owns; its region starts
++ * where the VLAN-uplink one ends.
++ */
++static int ppe_ft_vp_l3_if(struct ppe_flowtable *ft, int vp)
++{
++	return ppe_ft_vlan_l3_if(ft, PPE_L3_VLAN_UPLINKS) +
++	       (vp - PPE_VP_PORT_BASE);
++}
++
+ /* Get a refcounted VLAN uplink slot of (port, VID), programming its
+  * L3 interface, VSI binding and translation rule on first use. Must
+  * be called with the flowtable lock held.
+@@ -714,6 +728,7 @@ static int ppe_ft_flow_replace(struct pp
+ 	flow->pub_ip = -1;
+ 	flow->pppoe = -1;
+ 	flow->vlan = -1;
++	flow->vp = -1;
+ 	nh.vid = -1;
+ 	data.pppoe_sid = -1;
+ 	data.ingress_vid = -1;
+@@ -856,8 +871,17 @@ static int ppe_ft_flow_replace(struct pp
+ 		}
+ 	}
+ 
+-	if (!odev || !edma_port_dev_check(odev) ||
+-	    is_zero_ether_addr(data.eth.dst)) {
++	if (!odev || is_zero_ether_addr(data.eth.dst)) {
++		ret = -EOPNOTSUPP;
++		goto err_free;
++	}
++
++	/* The egress device is either a PPE port or, where the SoC has
++	 * virtual ports, any net device reachable through one (a
++	 * wireless VAP); other devices cannot be offloaded.
++	 */
++	if (!edma_port_dev_check(odev) &&
++	    !ft->ppe_dev->variant->has_vports) {
+ 		ret = -EOPNOTSUPP;
+ 		goto err_free;
+ 	}
+@@ -896,9 +920,24 @@ static int ppe_ft_flow_replace(struct pp
+ 		}
+ 	}
+ 
+-	port_priv = netdev_priv(odev);
+-	nh.port = port_priv->ppe_port->port_id;
+-	nh.l3_if = nh.port;
++	if (edma_port_dev_check(odev)) {
++		port_priv = netdev_priv(odev);
++		nh.port = port_priv->ppe_port->port_id;
++		nh.l3_if = nh.port;
++	} else {
++		/* Egress to a non-PPE net device (a wireless VAP) runs
++		 * through a virtual port: the flow is forwarded to the VP,
++		 * delivered to the host and transmitted out the device.
++		 * Only this wired-to-wireless direction is offloaded; the
++		 * reverse stays on the software path.
++		 */
++		ret = ppe_vp_get(ft->ppe_dev, odev);
++		if (ret < 0)
++			goto err_free;
++		flow->vp = ret;
++		nh.port = ret;
++		nh.l3_if = ppe_ft_vp_l3_if(ft, ret);
++	}
+ 	flow->eport = nh.port;
+ 	ether_addr_copy(nh.mac, data.eth.dst);
+ 
+@@ -917,14 +956,14 @@ static int ppe_ft_flow_replace(struct pp
+ 		if (data.sport != flow->entry.sport ||
+ 		    data.dport != flow->entry.dport) {
+ 			ret = -EOPNOTSUPP;
+-			goto err_unlock;
++			goto err_vp;
+ 		}
+ 
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_ROUTE;
+ 	} else if (data.sip != flow->entry.sip.ip4 &&
+ 		   data.dip != flow->entry.dip.ip4) {
+ 		ret = -EOPNOTSUPP;
+-		goto err_unlock;
++		goto err_vp;
+ 	} else if (data.sip != flow->entry.sip.ip4 ||
+ 		   data.sport != flow->entry.sport) {
+ 		flow->entry.fwd_type = PPE_FLOW_FWD_TYPE_SNAT;
+@@ -933,7 +972,7 @@ static int ppe_ft_flow_replace(struct pp
+ 		flow->pub_ip = ppe_ft_pub_ip_get(ft, data.sip);
+ 		if (flow->pub_ip < 0) {
+ 			ret = flow->pub_ip;
+-			goto err_unlock;
++			goto err_vp;
+ 		}
+ 		nh.pub_ip_index = flow->pub_ip;
+ 	} else if (data.dip != flow->entry.dip.ip4 ||
+@@ -960,6 +999,15 @@ static int ppe_ft_flow_replace(struct pp
+ 	 * rule arrives as a plain flow of the inner tuple.
+ 	 */
+ 	if (data.pppoe_sid >= 0) {
++		/* A PPPoE session is matched by an ingress physical-port
++		 * bitmap that cannot represent a virtual port, so a PPPoE
++		 * flow egressing a VAP is not offloadable.
++		 */
++		if (flow->vp >= 0) {
++			ret = -EOPNOTSUPP;
++			goto err_vlan;
++		}
++
+ 		flow->pppoe = ppe_ft_pppoe_get(ft, nh.port, data.pppoe_sid);
+ 		if (flow->pppoe < 0) {
+ 			ret = flow->pppoe;
+@@ -986,9 +1034,11 @@ static int ppe_ft_flow_replace(struct pp
+ 
+ 		/* The port binding classifies plain ingress on the
+ 		 * port; PPPoE ingress resolves its L3 interface
+-		 * through the session table instead.
++		 * through the session table instead, and a virtual
++		 * port has no hardware ingress at all (only the
++		 * wired-to-wireless direction is offloaded).
+ 		 */
+-		if (data.pppoe_sid < 0) {
++		if (data.pppoe_sid < 0 && flow->vp < 0) {
+ 			ret = ppe_port_l3_if_set(ft->ppe_dev, nh.port,
+ 						 nh.l3_if);
+ 			if (ret)
+@@ -1048,6 +1098,9 @@ err_vlan:
+ 	ppe_ft_vlan_put(ft, flow->vlan);
+ err_pub_ip:
+ 	ppe_ft_pub_ip_put(ft, flow->pub_ip);
++err_vp:
++	if (flow->vp >= 0)
++		ppe_vp_put(ft->ppe_dev, flow->vp);
+ err_unlock:
+ 	mutex_unlock(&ft->lock);
+ err_free:
+@@ -1077,6 +1130,7 @@ static int ppe_ft_flow_destroy(struct pp
+ 		ppe_ft_pppoe_put(ft, flow->pppoe);
+ 		ppe_ft_vlan_put(ft, flow->vlan);
+ 		ppe_ft_pub_ip_put(ft, flow->pub_ip);
++		ppe_vp_put(ft->ppe_dev, flow->vp);
+ 	}
+ 
+ 	mutex_unlock(&ft->lock);
+@@ -1109,7 +1163,7 @@ static int ppe_ft_flow_stats(struct ppe_
+ 	 * black-holing. Going quiet instead lets the flowtable expire
+ 	 * and re-offload it.
+ 	 */
+-	if (!test_bit(flow->eport, &ft->carrier_ok)) {
++	if (!test_bit(flow->eport, ft->carrier_ok)) {
+ 		mutex_unlock(&ft->lock);
+ 		return 0;
+ 	}
+@@ -1168,9 +1222,9 @@ void ppe_flowtable_port_carrier(struct p
+ 		return;
+ 
+ 	if (up)
+-		set_bit(port, &ft->carrier_ok);
++		set_bit(port, ft->carrier_ok);
+ 	else
+-		clear_bit(port, &ft->carrier_ok);
++		clear_bit(port, ft->carrier_ok);
+ }
+ 
+ /**
+@@ -1248,7 +1302,7 @@ int ppe_flowtable_setup(struct ppe_devic
+ 	 * a runtime base (the port count); refuse a layout that would
+ 	 * overrun the interface tables.
+ 	 */
+-	if (WARN_ON(ppe_ft_vlan_l3_if(ft, PPE_L3_VLAN_UPLINKS) >
++	if (WARN_ON(ppe_ft_vp_l3_if(ft, PPE_VP_PORT_BASE + PPE_VP_SLOTS) >
+ 		    PPE_IN_L3_IF_TBL_ENTRIES)) {
+ 		kfree(ft);
+ 		return -ERANGE;

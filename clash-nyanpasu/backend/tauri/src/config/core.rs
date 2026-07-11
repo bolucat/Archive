@@ -1,11 +1,6 @@
-use super::{Draft, IClashTemp, IRuntime, IVerge, Profiles};
-use crate::{
-    core::state::ManagedState,
-    enhance,
-    utils::{dirs, help},
-};
+use super::{Draft, IClashTemp, IRuntime, IVerge};
+use crate::utils::{dirs, help};
 use anyhow::{Result, anyhow};
-use nyanpasu_utils::runtime::block_on;
 use once_cell::sync::OnceCell;
 use std::{env::temp_dir, path::PathBuf};
 
@@ -16,7 +11,6 @@ pub const CHECK_CONFIG: &str = "clash-config-check.yaml";
 pub struct Config {
     clash_config: Draft<IClashTemp>,
     verge_config: Draft<IVerge>,
-    profiles_config: ManagedState<Profiles>,
     runtime_config: Draft<IRuntime>,
 }
 
@@ -27,7 +21,6 @@ impl Config {
         CONFIG.get_or_init(|| Config {
             clash_config: Draft::from(IClashTemp::new()),
             verge_config: Draft::from(IVerge::new()),
-            profiles_config: ManagedState::from(Profiles::new()),
             runtime_config: Draft::from(IRuntime::new()),
         })
     }
@@ -40,34 +33,8 @@ impl Config {
         Self::global().verge_config.clone()
     }
 
-    pub fn profiles() -> &'static ManagedState<Profiles> {
-        &Self::global().profiles_config
-    }
-
     pub fn runtime() -> Draft<IRuntime> {
         Self::global().runtime_config.clone()
-    }
-
-    /// 初始化配置
-    pub fn init_config() -> Result<()> {
-        crate::log_err!(block_on(Self::generate()));
-        if let Err(err) = Self::generate_file(ConfigType::Run) {
-            log::error!(target: "app", "{err:?}");
-
-            let runtime_path = Self::runtime_config_path()?;
-            // 如果不存在就将默认的clash文件拿过来
-            if !runtime_path.exists() {
-                if let Some(parent) = runtime_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                help::save_yaml(
-                    &runtime_path,
-                    &Config::clash().latest().0,
-                    Some("# Clash Nyanpasu Runtime"),
-                )?;
-            }
-        }
-        Ok(())
     }
 
     /// 将配置丢到对应的文件中
@@ -91,20 +58,7 @@ impl Config {
         Ok(path)
     }
 
-    /// 生成配置存好
-    pub async fn generate() -> Result<()> {
-        let (config, exists_keys, postprocessing_outputs) = enhance::enhance().await;
-
-        *Config::runtime().draft() = IRuntime {
-            config: Some(config),
-            exists_keys,
-            postprocessing_output: postprocessing_outputs,
-        };
-
-        Ok(())
-    }
-
-    fn runtime_config_path() -> Result<PathBuf> {
+    pub(crate) fn runtime_config_path() -> Result<PathBuf> {
         Ok(dirs::app_config_dir()?
             .join(RUNTIME_CONFIG_DIR)
             .join(RUNTIME_CONFIG))

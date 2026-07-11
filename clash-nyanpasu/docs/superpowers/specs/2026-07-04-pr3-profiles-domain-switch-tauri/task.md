@@ -427,6 +427,7 @@ impl RuntimeBuilder {
 impl NyanpasuClient {
     pub async fn get_profiles(&self) -> Result<Arc<Profiles>>;
     pub async fn add_profile(&self, req: NewProfileRequest, initial_file: Option<String>) -> Result<ProfileId>; // 2026-07-06:返回服务端生成 uid(import 条件激活用)
+    pub async fn import_profile(&self, url: Url, options: Option<RemoteProfileOptionsPatch>) -> Result<ProfileId>; // 2026-07-06 T08:add→首刷→条件激活的复合编排
     pub async fn delete_profile(&self, uid: ProfileId) -> Result<()>;
     pub async fn reorder_profile(&self, active: ProfileId, over: ProfileId) -> Result<()>;
     pub async fn reorder_profiles_by_list(&self, list: Vec<ProfileId>) -> Result<()>;
@@ -463,6 +464,22 @@ impl NyanpasuClient {
 - 锚点修正:删「旧 `patch_profiles_config:80` 本卡保留」条——`NyanpasuClient` 无此方法(唯一同名物 `ipc.rs:284` 命令,归 T08);profiles 域作为 `NyanpasuClientInner` 第四成员(现 application/session_state/clash_config 三成员)。
 - 迁移顺序现状已满足:`setup.rs:22-26` `run_pending()` 先于 client 构造,ProfilesClient 插入同一序列;存在双迁移机制(`lib.rs:120` 子进程 + `setup.rs` in-process),plan 时核实 rev3 实际生效路径。
 
+**2026-07-06 执行修正(T07 实物,plan 期即发现)**:
+
+- spec 缺口:`Config::generate()` 实有 6 个调用点(update_config/run_core:469/core.rs:561/feat.rs:279,339,363)+ `init_config` 首铸。处置:`generate()`/`init_config()` 删除;新增 `client/rebuild.rs` 再生成桥(FIXME 全局,oneshot 保序)供 update_config/core.rs:561/feat×3;run_core 内再生成删除(重启=应用当前 draft);首铸与端口回写移入 `resolve_setup`(client 取自 app state)。`CoreManager` 拆出 `apply_config()`(check+file+put),facade 经 `RunningCoreBridge` 适配器调用。
+- 台账:新增 TODO/FIXME(actor-migration) 注释块恰好 7 处(regenerate draft 写入/LegacyCoreBridge×2/桥定义/resolve_setup 端口回写/enhance dead_code/update_config legacy 路径);「恰好三处」勘误作废。
+- UI 事件走注入 `UiEventSink`(与 Handle 同 URI 同 payload,不占台账);`ClientSetupArgs` 增 `ui_sink`/`core` 两注入点。
+- 端口:`SessionPortResolver`(pick_and_try_port + 指纹缓存,eager 首解析于核启动前)兼任 `SelfProxyPortSource`;legacy 镜像回写 mixed-port/external-controller,`prepare_external_controller_port` 双头解析删除。**T11 必查**:typed `overrides.secret` 与 legacy IClashTemp secret 的一致性(api 客户端 401 风险,本卡未回写 secret——字段私有)。
+- 映射:exists_keys←applied_fields(artifact.rs §9.3);postprocessing 按 SnapshotNodeKey 变体表(Scoped→scopes[host]transforms[idx]]、Global→global[global_transforms[idx]]、BuiltinTransform→global[builtin 名]、其余→advice)。文件三方法 fs 直调为有意取舍(小 IO,与 legacy ipc 等同)。
+
+**2026-07-07 评审处置(codex 49/100 NEEDS_IMPROVEMENT;antigravity 3 连败超时跳过;修复由 Claude 接管——codex 后端故障复发)**:
+
+- Critical(已修,部分确认):再生成桥原从 typed 快照取数,而 legacy 副作用写者**先 draft 后 reseed**(`feat::patch_clash`/`patch_verge` tun+service 路径/`change_core`),regen 时 typed 落后一拍(旧端口/secret/核)。→ facade 增 `legacy_regen_inputs()`(读 legacy `latest()` 经 reseed 转换器 `typed_config_from_legacy_parts` 组装 clash/app 输入,**不动 typed actor**,discard 语义保真)+ `regenerate_runtime_for_legacy()`,REGEN_BRIDGE handler 切换至此;新 caller 的 `regenerate_runtime()` 仍走 typed 快照。分项核实:patch_clash **确认**(ipc:503 直调,无 reseed);change_core **确认**(reseed 在 mutation 完成后);patch_verge tun/service **确认**(桥内 mutation 先行);`patch_profiles_config_inner` **不修**——profiles 命令面 T08 整体重写(中间态不可运行属预期),桥内 profiles 仍取 typed actor。
+- Major①(已修):`run_core_inner` 残留 `prepare_external_controller_port` 二次选端口(Random 策略核重启时会另选新口与 api 客户端脱节)→ 删除,端口所有权归 `SessionPortResolver`(`config/clash/mod.rs:105` 定义成为无调用者,T10 一并清)。
+- Major②(部分补):新增回归钉 `legacy_regen_inputs_see_uncommitted_legacy_drafts`(draft mixed-port/clash_core 必须进桥输入);run_core_inner 不二次选口无法离核测试,以删除代码 + 注释锁定。
+- Minor(已注):REGEN_BRIDGE first-install-wins 限制注释补记。
+- **台账修正:7→8 处**(新增 `legacy_regen_inputs` 的 FIXME legacy-draft-aware 输入组装块)。
+
 ---
 
 ### T08 — IPC BC 切换(13 → 16 条)
@@ -495,6 +512,36 @@ impl NyanpasuClient {
 - `patch_profiles_config_inner`(`ipc.rs:288-310`)随两条旧命令在本卡删除,不留 T10。
 - 现状 13 条命令清单实测与本卡一致;16 条目标名单不变。
 
+**2026-07-06 执行修正(T08 实物)**:
+
+- import 编排收编 facade `import_profile`(add 占位名 → refresh 首次物化,失败回删 → current==None 激活);命名 BC:content-disposition 命名退役,fallback = url 末段(去 `.yaml`/`.yml`)/host。`ProfileSource::Remote.subscription` 为 `SubscriptionInfo`(非 `Option`),import 构造用 `SubscriptionInfo::default()`,Add 会覆写。
+- `create_profile` 请求 DTO = `NewProfileRequest`(uid 服务端生成,D13);`NewProfileRequest` 补 derive `serde::Deserialize` + `specta::Type`(actor.rs,仅注解);自动激活在命令层按快照判定(`Config` 定义 + `current==None`)。
+- `save_profile_file` 参数收紧为必填 `String`(legacy `Option::None` 分支为无操作)。
+- `enhance_profiles` 不再显式 refresh_clash(rebuild 内 UiEventSink 同事件,避免双发)。
+- facade import 测试注入**真实 `ProfileFileService`**(非 mock fs)+ mock fetcher:activate 触发的 rebuild 经 `FsProfileContentSource` 读磁盘物化文件,mock fs 不落盘会致 rebuild 失败(plan Step 1/2 的 mock-fs 写法与此冲突,已按实物调整,断言不变)。
+- `specta_export.rs` 的 `export_typescript_bindings` 冻结测试:BC 切换后 legacy `Profiles`/`RemoteProfileOptions` 类型名退役(域文档/选项类型经 `#[specta(remote)]` 影子名 `ProfileDocument`/`ProfileRemoteOptions` 断言),断言名单去此两项。
+- bindings.ts 导出移交 T09 首步:该冻结测试每次 `cargo test` 都会重生成 bindings.ts,但提交它会触发 pre-commit lint-staged 的前端 `tsc`(use-profile.ts 仍调旧命令)而失败——故本卡**不提交 bindings.ts**(测试后 `git checkout` 还原);T09 首步重生成 + 改 callers 同一 commit 落账(前端红形态见 §4)。
+- 台账(TODO/FIXME(actor-migration),backend/tauri/src):20 → 18,净 −2(删 `ipc.rs` 的 get_profiles bridge + patch_profiles_config_inner bridge);本卡零新增。
+
+**2026-07-07 评审处置(codex 持续宕机、antigravity 3 连败超时——本卡评审由 Claude 替补完成,外部双模型复审延期)**:
+
+- Claude 独立对账:台账 18 ✓、`ipc.rs` 零 `Config::profiles()`/`ProfilesBuilder` ✓、specta 16 命令注册 ✓、actor.rs 仅 derive 注解 ✓;`import_profile` 失败语义(占位回删/条件激活)与薄适配器纪律逐条核过,无 Critical/Major。
+- 执行报告揭露的 flaky 测试(T07 的 `legacy_regen_inputs_see_uncommitted_legacy_drafts`)根因 = legacy 全局单例非密闭(隔离跑时惰性加载宿主真实配置且反序列化失败;全量跑时与共享 draft 槽竞态,discard 可吞并发提交)→ 已修 `3b529c55`:`legacy_regen_inputs` 拆出纯转换半段 `legacy_regen_inputs_from` 直接测,生产包装 3 行保持 draft 可见的 `latest()` 读(注释锁定)。
+
+**2026-07-07 T08 后端补审处置(codex 恢复后 68/100 NEEDS_IMPROVEMENT,无 Critical;4 Major + 测试缺口;修复 commit `bc2b296b`,纯后端、命令签名不变故 bindings/前端零改)**:
+
+- **T8-M1 — `create_profile` 命令层编排**:**CONFIRMED**(ipc 读快照、判 Config-kind、命令层调 `activate_profile`,违 CLAUDE.md §12)。修:auto-activation 收编 facade `create_profile(request, initial_file) -> Result<ProfileId>`(镜像 `import_profile` 形态,内含 add + design §9 条件激活);ipc 变纯适配器(parse → facade → map);命令签名不变,前端无感。
+- **T8-M2 — create 接受 remote 源可激活未物化壳**:**CONFIRMED**(actor Add 对 Remote 不下载,占位 `{uid}.yaml` 未写;current==None 时 create 会激活 → 提交后 rebuild 读缺失文件失败)。修:facade `create_profile` 前置拒绝 remote 源(`definition.source().is_remote()` → `ClientError::Custom`,指引走 `import_profile`)。
+- **T8-M3 — import `was_empty` 竞态**:**CONFIRMED**(`was_empty` 在 await 首刷之前捕获,下载窗口内的并发选择会被刷后激活覆盖)。修:删 `was_empty`,首刷成功后**重读快照** `current.is_none()` 才激活。
+- **T8-M4 — import 清理吞错**:**CONFIRMED**(`let _ = delete` 静默)。修:回删失败走 `tracing::warn!(uid, error, ...)`(降级效应模式,不改 all-or-nothing 观感)。
+- **测试缺口(T8-m1)**:新增 3 例(`facade_import_failure_deletes_placeholder` 首刷失败回删占位;`facade_create_auto_activates_config_and_rejects_remote` 钉 auto-activation 规则 + remote 拒绝;`facade_import_does_not_steal_existing_current` 钉 T8-M3 非空 current 不激活)。M3 真正的下载窗口并发竞态无 test hook 难以确定性复现,以重读快照的代码不变式 + 上述非空 current 用例覆盖观察面。
+- 复验全绿:后端包级 225 绿(+3);workspace 全绿;golden diff vs `ea863cd9` = 0;clippy 净;interface+nyanpasu tsc + `pnpm web:build` exit 0;bindings 稳定(命令签名未变,`cargo test` 后仅 `.serena` + 两后端文件);台账不变(18)。
+
+**2026-07-07 SetCurrentIfNone 原子化处置(codex T08 补审 1 PARTIAL 收口,Medium;修复 commit `4dfdd88b`,纯后端、命令签名不变故 bindings/前端零改)**:
+
+- **T8-M3 收口 — import/create 自动激活原子性**:T08 修复以「首刷后重读快照 + `current.is_none()` 才激活」覆盖非空 current,但读与激活仍是两次独立 actor RPC,下载窗口内落地的并发选择仍可能被覆盖(codex 判 PARTIAL/Medium)。根治:actor 新增 `SetCurrentIfNone { uid, reply }`,在**单条序列化消息**内判 `current.is_some()` 则回 `None`、否则复用 `run_write` 七步事务激活并回 `Some(report)`(不复制事务逻辑);typed client `set_current_if_none(uid) -> Result<Option<CommitReport>>`;`import_profile`/`create_profile` 组合改走此单条 RPC,`after_commit`/rebuild 仅在实际激活(`Some`)时触发。序列化消息处理使读-写免竞,并发 `SetCurrent` 不再能被覆盖。
+- 三组组合测试改经新路径;`facade_import_does_not_steal_existing_current` 钉原子不偷占语义;新增 `set_current_if_none_only_activates_when_empty` 单测。包级 205 绿(+1);golden 原样;bindings 零漂移;台账不变。
+
 ---
 
 ### T09 — 前端适配
@@ -522,6 +569,31 @@ impl NyanpasuClient {
 
 - 前端锚点:`use-profile.ts` 唯一导出 hook 为 `useProfile`(内部消费 `getProfiles`/`viewProfile` + update/drop mutations);其余消费点仍按本卡原话 plan 时全量盘点。
 - `postprocessing_output` 前端不感知:T07 映射保持 `IRuntime` 对外 shape,`get_postprocessing_output` 返回类型不变,本卡无此项工作。
+
+**2026-07-07 执行修正(T09 实物)**:
+
+- **命令面 16→17**:新增 `set_profile_valid_fields`(actor `SetValidFields` 消息,`AffectsRule::Always` → 恒 rebuild;`ProfilesClient::set_valid_fields` + facade `set_profile_valid_fields` + ipc + specta,全链)。design §9 表补一行。Task 0 单独 commit,后端包级 222 绿,台账不变(18,无新增 actor-migration 块)。
+- **`NormalizedProfile` 崩塌层退役**:`useProfile` 直吐 `ProfileItem_Serialize`(扁平:`{uid, name, desc?, type:'config'|'transform', config|transform}`,**无嵌套 metadata**);判别 helpers `isConfigItem/isTransformItem/isRemoteItem/scopedTransformsOf` 从 `@nyanpasu/interface` 导出。**bindings 已导出同名 union 类型**(`export type * from './bindings'`),故 hook **不再重导出** `ProfileItem`/`ProfileDocument`/`NewProfileRequest`/`ProfileDefinition`/`ProfileMetadataPatch`/`RemoteProfileOptionsPatch` 别名(避免 TS2308 歧义);页面直用 bindings 具体 `_Serialize`(读)/`_Deserialize`(命令入参)类型。
+- **mutation 拆解**:`upsert` → `activate`(current 单值)+ `setValidFields`;`patch` → `patchMetadata`/`patchRemoteOptions`/`replaceDefinition`。命令入参用 `_Deserialize` 变体(`with_proxy/self_proxy/update_interval_minutes` required-nullable)。
+- **4-way ProfileType 分类法保留**(路由 `$type`/tab/header/navigate 深度依赖,collapse 风险大):`$type/_modules/utils.ts` 的 classifiers 从新域重派生(`isProxyProfile=isConfigItem`;JS/Lua/Merge 按 `item.transform.script?.runtime` / `item.transform.overlay`),`categoryProfiles` 保留 4 桶;`consts.ts` 删 `PROFILE_TYPES`(消费者 chain-profile-import/profiles-navigate 改用 categoryProfiles / 内联)。
+- **chain 编辑器语义迁移**:`chian-editor-card` 编辑对象从 `profile.chain` 改为当前 config item 的 scoped `transforms`(`scopedTransformsOf`),Apply 走 `replaceDefinition`(File/Composition 皆重建定义、仅换 transforms、原子替换);DnD 两列骨架零改动。
+- **create 三件**:local-profile-button 产 File Config `NewProfileRequest`(source `local/managed`,占位 `pending.yaml` 后端 Add 重写);remote-profile-button「手动 Remote」改走 URL 导入(`create({type:'url'})` → importProfile);chain-profile-import 按路由 type 产 Overlay/Script transform 定义 + 对应模板。
+- **detail 编辑四件**:profile-name-editor→`patchMetadata`;update-option-editor→`patchRemoteProfileOptions`(读写走 remote source `option`);subscription-url-editor→`replaceDefinition`(URL 属定义,重建 Remote 定义换 url);subscription-card 读 remote source 的 `subscription`/`materialized.updated_at`/`option.update_interval_minutes`,刷新按钮 `update({option:null})` 纯刷新。
+- **`deleteConnections(null)` 保留**(active-button,契约修正 5,与后端统一中断可能双断连,幂等)。
+- **mutation-provider**:`'profiles'` 事件映射补 `RROFILES_QUERY_KEY`(前向兼容;当前 rebuild 走 `clash_config` 事件已间接覆盖)。
+- **Composition 最小交互**:`create-composition-button.tsx` 为**自包含 modal**(toggle 多选 ≥2 File Config → `extend_proxies_from` → Composition `NewProfileRequest`),挂载于 `profiles-list` 的 profile tab。**偏离 plan 的「card grid 内多选态」**——自包含 modal 不动既有 DnD 列表,降风险且同样满足「最小交互」;完整管理界面(base 切换/成员编辑)仍为非目标。新 UI 文案用纯字符串("Create Composition"),避免新增 Paraglide 消息的编译依赖。
+- **bindings.ts 本卡提交**(17 命令):Task 1 起 committed 版与冻结测试(`export_typescript_bindings`)输出一致,`cargo test` 后工作树不再漂移(仅 `.serena` 脏)。
+- 出口判据全绿:interface tsc、nyanpasu tsc、`pnpm -F interface build`、`pnpm web:build` 均 exit 0;残留 grep(`patch_profiles_config`/`patchProfilesConfig`/`Profiles_Serialize`/`ProfileBuilder`/profile 链字段 `.chain`)零命中(唯一 `NormalizedProfile` 命中为退役注释;connections 页的 `.chains` 为 Clash 连接链概念,与 profile chain 无关,不在判据范围)。
+
+**2026-07-07 T09 评审处置(codex 64/100 NEEDS_IMPROVEMENT,无 Critical;4 Major + 2 Minor;修复 commit `7335658f`/`4669d668`/`6c1194cd`/`69ce9144`)**:
+
+- **Major 1 — 过滤态拖拽发部分列表 → InvalidReorderList**:**CONFIRMED**(actor `ReorderOp::ByList` 要求 `list.len() == items.len()`,`actor.rs:610`)。修:`profiles-list.tsx` onDragEnd 将过滤态重排结果按 uid 拼回全量 `profiles.items` 顺序(非过滤项位置不变),再发 `sort.mutate`。
+- **Major 2 — remote 表单 name/desc 丢弃**:**CONFIRMED**(URL 导入后端按 url 派生名,表单 name/desc 未落)。修:`import_profile` ipc 返回 `Result<ProfileId>`(facade 已返回),再生 bindings(`importProfile` → `ProfileId`);`remote-profile-button` 导入成功后以 `patchMetadata` 落 name(及非空 desc)。三面同 commit(后端+bindings+前端),freshness 稳定。
+- **Major 3 — URL 变更后旧内容仍被服务**:**CONFIRMED**(replaceDefinition 只换 url,物化文件仍旧内容,active rebuild 服务旧订阅)。plan Step 5 只提 replaceDefinition、未显式 defer;stale 为实缺陷。修:`subscription-url-editor` 在 replaceDefinition 成功后立即 `update({uid, option:null})`(refresh)重新物化新 url。
+- **Major 4 — Composition 显示文件类操作**:**CONFIRMED**(Composition 无物化文件,ViewContent/OpenLocally → `ProfileHasNoFile`)。修:`action-card` 增 `hasMaterializedFile`(File config 有 `config.file` 或 Transform 项),门控 ViewContent/OpenLocally。
+- **Minor 1 — `view()` 返回裸 envelope**:**CONFIRMED**。修:`use-profile.ts` 的 `view` 改 `async () => unwrapResult(await commands.viewProfile(uid))`,与 update/drop 一致。
+- **Minor 2 — chain 编辑器 apply 失败吞错**:**CONFIRMED**(空 catch)。修:`chian-editor-card` catch 走 `message(...)` + `formatError`(与 profiles 页既有错误反馈模式一致)。
+- 复验全绿:后端包级 222 绿;golden diff vs `d3f25eaa` = 0;clippy 净;interface+nyanpasu tsc + `pnpm web:build` exit 0;bindings.ts 稳定(`cargo test` 后仅 `.serena` 脏)。台账不变(18)。
 
 ---
 
@@ -553,6 +625,22 @@ impl NyanpasuClient {
 - 增补删除面:`enhance/utils.rs`——全仓唯一 `crate::config::profile` 直接 import(`utils.rs:5`),随旧 `enhance()` 清理一并处理。
 - 切换面基数实测(2026-07-06):`Config::profiles()` 共 24 处(ipc 18 / feat 3 / enhance 1 / jobs 2)——T08 清 ipc 后本卡清余下 6 处;grep 判据不变。
 
+**2026-07-07 执行修正(T10 实物;commit `51098a52`/`f9ad0698`/`c754138b`/`72e2a157`)**:
+
+- **删除顺序(消费者先行,每步编译+测试绿)**:①`core/tasks/jobs/profiles.rs`(`ProfilesJob`/`ProfilesJobGuard`)+ `jobs/mod.rs` re-export + `core/tasks/mod.rs:24-30` 注册块;②`feat::update_profile` 本体 + 孤儿 `Borrow`/`config::profile::{builder,item}` import;③legacy enhance;④`config/profile/**` 全目录 + `Config::profiles()` accessor/字段/init。
+- **legacy enhance 退役(Task 3)实测**:`enhance/{advice,field,tun}.rs` **全删**;`merge.rs` **全删**(plan 说「部分删保 create_lua_context」为基线误记——`create_lua_context` 实在 `script/lua/mod.rs`,adapter 用 script 版;`merge.rs` 全 legacy YAML merge,新 executor overlay 替代);`chain.rs` 仅存 `PostProcessingOutput`/`ScriptType`/`ScriptWrapper`(`PostProcessingOutput` 的 `ProfileUid` 内联为 `String`,解耦即将删除的 config::profile);`utils.rs` 仅存 `LogSpan`/`Logs`/`LogsExt`/`take_logs`(`take_logs` 为 script/lua 存活消费);`mod.rs` 删 `enhance()`+`use_include_all_proxy_groups`+`use_cache`+tests,re-export 收敛到 4 行。`script/lua/mod.rs` 两处 `crate::enhance::runner` 路径(旧 `script::*` glob 提供)改 `crate::enhance::script::runner`(编译器牵引,不重加 glob)。
+- **`SubscriptionInfo` 迁址(非纯删)**:`config::profile::item::SubscriptionInfo` 实为 clash providers REST API 内联订阅用量类型(`ProxyProviderItem.subscription_info`,specta 导出,前端消费),非 profiles 域;随目录删除会破坏 `core/clash/api.rs`。→ 原样迁入 `core/clash/api.rs`(同名同形,3 测同迁);注释用 `//`(非 `///`)避免 specta doc 注入使 `bindings.ts` 漂移——最终 bindings **零变化**。
+- **首铸路径修**(startup 关键):`utils/init/mod.rs:157` 首次写 `profiles.yaml` 的默认值由 legacy `Profiles::default()` 改 `nyanpasu_config::profile::Profiles::default()`(新 schema 明文,与 `ProfilesClient` 加载/migration 一致)。
+- **migration rev-3 保留**:`core/migration/modules/profiles.rs` 全程 Value/`Mapping` 层操作(`is_clean_schema`/`migrate_profile_data`),零 `config::profile` 类型依赖——按 design D3 保留(on-disk legacy→clean 转换);仅删一 `#[ignore]` 遗留测试 `test_profile_parse_migrated_data`(用 legacy `Profiles` 解析已迁移数据,冗余无意义)。
+- **advice**:legacy 配置分析建议随 enhance 退役(已接受 BC;新 `advice` 面 = executor Guard/Whitelist/Finalizing 日志,T11 前端复核)。
+- **台账**:18 → 17,净 −1(删 `enhance/mod.rs:38` 的 legacy-enhance `FIXME(actor-migration)`)。profiles 域桥已在 T07/T08 清尽,余 17 皆 verge/clash/window/core/runtime 桥(PR-4/5/6 范围),本卡不动;本卡的「大幅下降」是 legacy **代码**(~4300 行:jobs 221 + feat 71 + enhance 2047 + config/profile ~2000),非桥注释。
+- **验证**:§16 grep 三判据全零;golden fixtures byte-identical vs `35f26303`(diff 0)+ golden filter 绿;后端包级 204 绿(225→204,删 legacy merge/chain/cache/config-profile 单测,golden 回归网原样);workspace 全绿;clippy 净;`pnpm web:build` exit 0(前端未触,app 恢复端到端可构建,运行留 T11)。
+
+**2026-07-07 T10 评审处置(codex APPROVE 93/100,无 Critical/Major;1 Minor + 1 Suggestion;修复 commit `d1486837`,纯后端、命令签名不变故 bindings/前端零改)**:
+
+- **T10-Minor — `CoreManager::update_config` 迁移桥注释过期**:codex 基于 `35f26303`(切换组前 tip)审查,彼时注释仍写「pre-T08 callers(enhance_profiles/delete_profile ipc etc.)... Remove after T10」。核实:该注释**已由 commit `dc8b9777` 订正**(本轮 on-branch 修复,parent=`5829dc7b`,15:49;非本代理提交——系 team-lead 于共享 worktree 独立修复,与本代理提交无文件重叠),现文准确点名唯一残留调用链 `feat::patch_verge`(TUN/service)→ `update_core_config` → `update_config`、指引 `rebuild_running_config()`、移除条件「PR-4/5 迁 verge 特性流」,并保留 `FIXME(actor-migration)`——与评审诉求逐字吻合,故本代理**无需改码**(no-op)。附带:`client/mod.rs:670` 另一处过期注释(profiles 写者「T08 rewritten」)于本代理跟进轮 commit `5829dc7b` 一并订正(实为 T08 迁 IPC + T10 删除),非 codex 所指该条。
+- **T10-Suggestion(接受)— 孤儿 `ConfigChangedNotifier` 清除**:核实 `notify_config_changed` 全 workspace 零 caller(trait 方法早带 `#[allow(dead_code)]`),自 profiles 迁移(T08/T10)链路退役后彻底孤立。删 `core/tasks/utils.rs` trait + `core/tasks/jobs/mod.rs` `JobsManager` impl + 随之孤儿的 `use anyhow::anyhow` / `utils::Result` import(编译器/grep 双证零消费);`JobsManager::setup` 仅注册 `EventsRotateJob` 不受影响。包级 205 绿;clippy 净;golden 原样;bindings 零漂移;台账不变(17)。
+
 ---
 
 ### T11 — 端到端验证 + 文档收尾
@@ -572,6 +660,60 @@ impl NyanpasuClient {
 
 - e2e 迁移路径:存在双迁移机制(`lib.rs:120` 子进程 + `setup.rs:22-26` in-process runner),plan 时核实 rev3 实际生效路径,e2e 步骤以实测为准;`.bak` 由 CLEAN_SCHEMA step 写入(design §10 安全行)。
 
+**2026-07-07 T11 执行修正(e2e 验证 + 文档收尾;opus 子代理 t08-executor;tip `20cfbf3c`,全程本地未推送)**:
+
+design §16 判据 1–8 逐条取证(全部在 tip `20cfbf3c`,当前 env 规则:`RUSTUP_TOOLCHAIN=nightly-2026-05-27`、无 `CARGO_TARGET_DIR`、G 盘默认 target):
+
+- **判据 1(零残留)**:`Config::profiles(` / `crate::config::profile::`(限定 legacy 路径——裸 `config::profile::` 会误中合法的 `nyanpasu_config::profile::`)/ `ProfilesJob(Guard)` 在 `backend/tauri/src` 均 0 命中;`config/profile/` 目录不存在。
+- **判据 2(迁移 e2e)——迁移+生成半由测试确定性取证,活体启动半移交用户清单(见下)**:`cargo test -p clash-nyanpasu --lib migration` **52 passed / 0 failed**,含 `core::migration::runner::tests::real_1_6_1_fixture_migrates_to_2_0_shape`(真实 1.6.1 legacy fixture → 2.0 形态端到端迁移)、`modules::profiles::tests::test_migrate_existing_data`(rev-3 legacy→clean)、`modules::typed_config::tests::*`(legacy verge/clash/window → typed application/clash-config/session-state)。rev-3 迁移 + `.bak` 语义、typed 首铸均经测试钉死。「启动→激活→生成→**核心可运行**」的活体观测因涉及在用户真机拉起真实 clash/mihomo 核心(outward,不可逆),按 plan 保障条 C.2 移交用户手动清单。
+- **判据 3(纯度)**:`tauri::|crate::config::Config` 在 `state/profiles` + `client/profiles.rs` 0 命中。
+- **判据 4/5(读写断言/引用保护)**:`cargo test -p clash-nyanpasu --lib client::profiles::` **32 passed / 0 failed / 1 ignored**(含引用保护、下载-提交分离、`validation_failure_leaves_disk_untouched`、`replace_definition_is_atomic`、`set_current_rejects_missing_and_transform_targets`、新增 `set_current_if_none_only_activates_when_empty`);`state::profiles::` 1 passed。
+- **判据 6(golden)**:`cargo test -p clash-nyanpasu --lib golden_` **5 passed / 0 failed**(`enhance::golden::*` ×4 + `runtime_builder::tests::golden_selected_file_with_script_transform_end_to_end`;plan 原记 4 条,实为 5)。golden fixtures byte-identical(`git status` 除 `.serena` 外净)。
+- **判据 7(台账)**:`(TODO|FIXME)(actor-migration)` 在 `backend/tauri/src` **17 处**(与账本 17 一致),逐处枚举:`bridge/clash.rs:18`、`bridge/mod.rs:23`、`bridge/verge.rs:{88,193,253}`、`bridge/window.rs:18`、`client/core_bridge.rs:{20,27}`、`client/mod.rs:{638,708}`、`client/rebuild.rs:44`、`core/clash/core.rs:596`、`core/hotkey.rs:199`、`feat.rs:110`、`ipc.rs:353`、`lib.rs:279`、`utils/resolve.rs:153`——全属 verge/clash/window/core/runtime 桥(PR-4/5/6 范围),profiles 域零残留。
+- **判据 8(构建面)**:`cargo build -p clash-nyanpasu`(lib+bin)**exit 0**(1m02s,app 端到端可构建);`cargo test -p clash-nyanpasu --lib` 全量 **205 passed**;`pnpm -F interface build` + `pnpm web:build` **绿**。
+
+**契约修正 1–3 实测**:
+
+1. **rev-3 迁移生效路径 + `.bak`**:双机制并存(`lib.rs` 子进程 + `setup.rs` in-process runner);`registry.rs` 注册 `modules::profiles::MIGRATOR`,`detect_baseline` 遇 legacy 文件返 0 → `setup.rs`(client 构造前)路径必然生效;`.bak` 由 CLEAN_SCHEMA step 写 `profiles.yaml.bak`。哪条路径**先**落 `.bak` 属活体时序观测,移交用户清单。
+2. **判据 7 台账**:17 处(上枚举),roadmap §5 B8 行同步引用本枚举。
+3. **secret 一致性(挂账①)静态处置**:api 客户端 secret 读自 `Config::clash().data().get_client_info()`(`core/clash/api.rs:410`);运行时生成经 `legacy_regen_inputs()` 读 `Config::clash().latest()`(`client/mod.rs:648-653`)——**同一 legacy IClashTemp 源**;composition root `sync_legacy_mirrors`(`client/mod.rs:107`)启动时把 typed clash config 镜像入 legacy,故 api 读到的即镜像后的 typed secret。静态无发散证据(单一 secret 源)。残留:typed→legacy 镜像是否逐字段搬运 `secret`(尤其新装随机 uuid 首铸)、以及 401/200 终局需活体核心 + api 调用确认,移交用户清单。
+
+**§16-2 活体半 + 前端全功能 = 用户手动验证清单(pending user manual verification)**:
+
+> 隔离启动准备(已核实,供用户或后续执行):无环境变量式配置目录覆盖;隔离机制 = **便携模式**——在可执行体同目录放 `.config/PORTABLE` 空标记(`target/debug/.config/PORTABLE`),则 `app_config_dir` 解析为 `target/debug/.config/clash-nyanpasu/`(构建树内,绝不触宿主 `%APPDATA%\Clash Nyanpasu`)。默认 `enable_system_proxy=false`(`config/nyanpasu/mod.rs:460`)、`enable_tun_mode=false`(`config/draft.rs:86`),启动不改系统代理/TUN。
+
+- [ ] 隔离目录放 legacy 样本 `profiles.yaml`(含 `current`、chain、remote item、local item 旧 schema)+ `profiles/` 旧物化文件;启动应用 → `profiles.yaml` 变 rev-3 clean schema、`profiles.yaml.bak` 在位、窗口起、日志无 panic。
+- [ ] `clash-config.yaml` 生成且含 guard 注入 `mixed-port`(值 = SessionPortResolver 解析);核心进程在跑(日志 `run core` / 任务管理器)。
+- [ ] UI 切换激活另一 profile → `clash-config.yaml` 重写、核心 api 收 put(日志)、连接不中断。
+- [ ] 连接/代理面板数据正常(api 200)——**secret 一致性活体确认**;若 401/空,回 plan 契约修正 3 最小修复(resolve_setup 回写 secret 至 IClashTemp,单独 commit)。
+- [ ] 日志/后处理输出面板显示 executor 阶段日志(scoped/global/builtin 键位)——**advice BC 活体确认**。
+- [ ] Task 2 前端全功能:导入订阅(名称 = url 末段 fallback)、新建 Local(current 空时自动激活)、单值 current 切换、拖拽重排、编辑(metadata 改名 / remote interval / definition 原子替换三类分开)、文件编辑(Remote 只读拒写 toast / Composition 无文件提示)、删除(被引用弹 `ProfileInUse`)、手动+到期自动订阅刷新、多选 File Config → 创建 Composition 最小交互。
+
+**PR-3 BC 清单(供 PR 描述汇编;未推送,发布属用户决策)**:
+
+- IPC 命令面 **13 → 17 条**(T08 重写 13→16 + T09 补第 17 条 `set_profile_valid_fields`),profile 命令全部为 thin adapter(签名见 T08/T09 卡)。
+- profiles `current` **单值化**——旧多选激活 → 单值 `current` + 最小 Composition 创建交互(T09)。
+- 域模型 BC:`chain` → `transforms`(Overlay/Script);`ProfileItem` 扁平化(无嵌套 metadata);`ProfileDefinition` = Config/Transform 二分。
+- import 命名:content-disposition 退役,fallback = url 末段(去 `.yaml`/`.yml`)/host。
+- 文件写入参数收紧(Remote 只读拒写;Composition 无独立文件)。
+- advice 面 BC:legacy 配置分析建议退役 → executor 阶段日志(Guard/Whitelist/Finalizing),前端渲染见用户清单。
+- on-disk BC:`profiles.yaml` rev-3 迁移(新 clean schema),真实旧数据首启自动迁移 + `.bak`(自 T02 起中间态,整分支单 PR 合入无实害)。
+- 连接中断处理挂全量 rebuild(用户决策项,记录待定)。
+
+**评审缺口 + 遗留**:
+
+- **antigravity(前端视角评审)全日宕机**——T08/T09/T11 前端视角外部评审缺席,记为已知评审缺口(codex 后端评审已覆盖 T07–T10)。
+- **孤儿 `ConfigChangedNotifier` 已清除**(commit `d1486837`,非遗留):原属 T10 codex Suggestion,经核实全 workspace 零 caller,team-lead 明确接受删除;技术上略超「严格既存死代码」范围,post-hoc 接受在案。
+- **codex T05/T06 评审延期**项仍挂账(其后端故障期未复审;后续可补)。
+
+**2026-07-07 T11 评审处置(codex 83/100 NEEDS_IMPROVEMENT → 修复;全部为文档一致性,无代码问题;Claude 直接修复)**:
+
+- Major①(已修):roadmap §5 收尾行「B8 归零」与实物矛盾(client/mod.rs:708 仍存 B8 runtime draft 写入 TODO,B8 表行本就记有残余)→ 改述为「B8 输入装配面归零」并点名两处残余桥(runtime draft 写入 + CoreManager apply,PR-4/5 清偿)。
+- Major②(已修):迁移指南头部「已实施」与正文规划期口径(「本期零改动/后期迭代」:11/:17/:21)及 :731 旧命令别名建议矛盾 → 头部重分类为**历史设计材料**(正文按撰写期口径原样保留,注明所列"未完成"已全部落地);:731 加执行期勘误(别名建议未采纳,按 §11 走原子切换)。
+- Minor①(已修):判据 1 的 `config::profile::` grep 会误中合法 `nyanpasu_config::profile::` → 限定为 `crate::config::profile::`。
+- Minor②(已修):T09 出口判据「`.chain` 零命中」被 connections 页 `.chains`(Clash 连接链概念)反证 → 限定为 profile 链字段。
+- 顺带更正 BC 清单命令面终态 13→17(原记 13→16 漏 T09 第 17 条)。
+
 ---
 
 ## 4. 原子切换组说明(T07–T10)
@@ -589,3 +731,39 @@ impl NyanpasuClient {
 1. **逐卡出 plan**: 每张卡以「本卡 + design.md 对应章节 + 卡内 Interfaces 契约」为输入,用 `superpowers:writing-plans` 展开为 bite-sized plan(TDD、每步一动作、含完整代码);卡与卡之间只通过 Interfaces 契约耦合,plan 之间不需要互读。
 2. **推荐排程**: 先并行 T01/T02/T03(+ T06 若 PR-3-pre② 已合),再 T04→T05,最后一口气完成切换组 T07–T10 + T11。(2026-07-06 增补:T01–T06 已执行完毕;T06A 加固卡排 T07 前,不入原子组。)
 3. **契约变更规则**: 实施中若需改动任务卡 Produces 签名,先改本文件对应卡(及下游 Consumes),再改代码——本文件是跨卡契约的唯一权威。
+
+---
+
+## 6. 2026-07-11 PR #4889 双模型复审处置(codex 55/100 NEEDS_IMPROVEMENT + antigravity 91/100 REQUEST_CHANGES;修复随本节同 commit)
+
+**已修(6 项,均经现场核实 CONFIRMED)**:
+
+- **C-M1 运行配置重建无串行化**:actor 只保证提交序,慢构建可用旧快照晚写覆盖新 runtime draft。修:`NyanpasuClientInner.rebuild_gate`(tokio Mutex)串行「快照→构建→draft 写入→core apply」整段(rebuild_running_config / regenerate_runtime / regenerate_runtime_for_legacy);快照在闸门内读取,最后写入者必反映最新状态。
+- **C-M2(前半)`CommitReport.warnings` 降级通道被 facade 丢弃**:T04 契约明言 warnings 不代表事务失败,但 facade 原样丢弃。修:`after_commit` 逐条 `tracing::warn`;import 失败清理路径同样记录 delete 报告的 warnings(此前只覆盖 `Err`,真正的文件删除失败以 Ok+warning 形态返回)。
+- **C-M3 刷新提交与 `ReplaceDefinition` 无版本一致性**:下载任务捕获旧 URL 且在提交检查前就写盘,旧订阅响应可覆盖新 URL 的文件与元数据。修:文件写入移入 `CommitRefreshed` 提交段,提交前比对当前定义 URL == 下载发起 URL,不符则丢弃(`RefreshFailed: changed during refresh`);删除期间不再产生孤儿文件(旧清扫逻辑移除);`same_slot` 增加 Remote URL 等值判定,URL 变更重置 updated_at/subscription。回归钉 `refresh_commit_is_fenced_when_url_changed_mid_download`。
+- **C-M4(前半)端口指纹整体重探测**:任一端口字段变更即重探全部端口,而运行核正占用未变更端口(Fixed 策略自撞报「不可用」,AllowFallback 静默漂移)。修:`SessionPortResolver` 按字段复用缓存 pick,仅重探变更字段。回归钉 `unchanged_fields_are_not_reprobed_while_core_occupies_them`。
+- **C-Min1 订阅内容校验退化**:legacy(remote.rs)要求 `proxies`/`proxy-providers`,新链路只查 YAML mapping,`{}` 可被持久化并自动激活。修:`validate_fetched_content` Config 分支恢复 legacy 键校验(测试 fixture 同步)。
+- **A-Major i18n/a11y/导入错误语义**:composition 创建 UI 硬编码英文、选中态无辅助技术语义、导入后改名失败误报「创建失败」且不关窗(重试会重复导入)。修:新增 5 个 message key(en/zh-cn/zh-tw/ru),候选按钮加 `aria-pressed`,增 min-members 提示;`remote-profile-button` 的 patchMetadata 失败降为 warning 并照常关窗。
+
+**驳回(1 项)**:
+
+- **A-Critical 拖拽重排「状态竞态致列表损坏」**:REFUTED——`onDragEnd` 闭包内 `filteredProfiles` 与 `profiles?.items` 派生自同一渲染快照(评审误认后者为「最新查询数据」),两者自洽;且 actor `ByList` 校验长度+去重+全量排列,陈旧列表被 `InvalidReorderList` 拒绝。最坏情形 = 陈旧请求报错,不存在「复活已删项/静默丢项」的数据损坏。
+
+**待用户决策(1 项)**:
+
+- **C-M5 `run_core_inner` 仍 `Config::clash().reload()` 但重启不再 regenerate**:「重启=应用当前 draft」为 2026-07-07 明确决策,reload 现为半死代码(只影响后续 regen 输入,且可能吞未提交 draft)。选项:pr3f 删 reload / restart 路径走 regen 桥。
+
+**2026-07-11 用户决策与处置:**
+
+- **C-M2(后半):** 本次维持现状;「committed/degraded」IPC 结果模型延至 PR-4 讨论。
+- **C-Min2:** 已处置——恢复 `profile-update-interval` 小时→分钟解析,仅首次导入且用户未显式设置 interval 时由 actor 在成功提交事务内采纳;manual/scheduled refresh 忽略建议。
+
+**知悉不修(本 PR)**:C-M4 后半(端口生命周期编排 stop→resolve→mirror→start 与 legacy sysproxy/API 镜像回写时机,PR-4);A-Minor 空列表早退、chain 编辑器后台刷新重置本地顺序、query cache 存闭包(均 pre-existing 模式);C-Suggestion 并发 rebuild/HoldingFetcher+Replace/降级可观察三测试与 URL 协议白名单(挂账)。
+
+**第 2 轮复审(antigravity APPROVE 100/100,含对拖拽驳回的独立确认;codex 61/100 余 3 Major)与处置**:
+
+- **R2-M3 external-controller host-only 变更仍重探端口**:CONFIRMED,已修——host 与 port strategy 分开比较,host 变更复用缓存 pick 仅重格式化 `host:port`;回归钉 `external_host_change_keeps_port_pick`。
+- **R2-M2 URL fence 不识别同 URL 定义变化/ABA**:部分接受——提交段增加**按当前定义的内容复校验**(封堵 Overlay→Config 同 URL 的校验洞);URL ABA 与同 URL 选项变更为已知残余(内容仍来自正确 URL,等价于稍早完成的下载),接受;完整 definition generation fence 挂账。
+- **R2-Suggestion 提交段同步写阻塞 actor mailbox**:已修——`spawn_blocking` + handler await(与 mirror sync 同模式,消息序不变)。
+- **R2-M1 rebuild gate 未覆盖 legacy runtime 直写**(`feat::patch_clash` 的 `Config::runtime().latest().patch_config` / `change_core` 的 runtime apply/discard):属 legacy 写者路径,pre-existing 且为 PR-4/5 迁移对象(runtime 镜像本身即 TODO B8);gate 的边界=新管线内部串行,**记录不修**。
+- **R2-Minor 测试缺口**:已补 validate 正反钉(`config_content_requires_proxies_key`/`overlay_content_needs_only_a_mapping`)与 external host-only 钉;并发 rebuild 顺序、真实 HoldingFetcher→ReplaceDefinition fence 测试仍挂账。

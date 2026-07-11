@@ -1,0 +1,84 @@
+From: Kenneth Kasilag <kenneth@kasilag.me>
+Date: Sun, 05 Jul 2026 00:00:00 +0000
+Subject: [PATCH] net: ethernet: qualcomm: ppe: add a seam for tunnel flow offload
+
+Dispatch flowtable rules carrying tunnel (ENC_*) match keys, which a
+route through a VXLAN or GENEVE device produces, to a dedicated
+handler. The handler declines them for now, keeping them on the
+software path, and gates on the variant tunnel-engine flag so a
+generation without the engine (HPPE) rejects them outright. It also
+marks where a tunnel implementation slots in: the SoC has an on-die
+tunnel engine - the tunnel lookup block, whose PPPoE session table is
+already in use, and the tunnel fields of the egress L3 interfaces -
+which can terminate and generate these encapsulations without an
+external accelerator. IPsec stays out of scope either way, it runs on
+the separate EIP-197 crypto engine with its own firmware.
+
+Behavior is unchanged: such rules were already rejected by the match
+key whitelist.
+
+Signed-off-by: Kenneth Kasilag <kenneth@kasilag.me>
+---
+--- a/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
++++ b/drivers/net/ethernet/qualcomm/ppe/ppe_flowtable.c
+@@ -535,6 +535,38 @@ static void ppe_ft_vlan_put(struct ppe_f
+ 	ppe_fdb_vsi_flush(ft->ppe_dev, ppe_ft_vlan_vsi(index));
+ }
+ 
++/* The match keys of a flow whose route terminates in a tunnel device
++ * (the tunnel parameters of a VXLAN or GENEVE destination).
++ */
++#define PPE_FT_TUNNEL_KEYS	(BIT_ULL(FLOW_DISSECTOR_KEY_ENC_CONTROL) | \
++				 BIT_ULL(FLOW_DISSECTOR_KEY_ENC_KEYID) | \
++				 BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IPV4_ADDRS) | \
++				 BIT_ULL(FLOW_DISSECTOR_KEY_ENC_IPV6_ADDRS))
++
++/* Tunneled flows stay on the software path for now. The SoC carries a
++ * tunnel engine that could take them: the tunnel lookup block (which
++ * already hosts the PPPoE session table) terminates encapsulations
++ * into tunnel L3 interfaces, and the tunnel fields of the egress L3
++ * interfaces generate them. Driving it means programming the tunnel
++ * decap and encap header tables from the ENC keys of the rule pair,
++ * analogous to what the PPPoE session slots do.
++ */
++static int ppe_ft_tunnel_replace(struct ppe_flowtable *ft,
++				 struct flow_cls_offload *f)
++{
++	/* Tunnelled flows can only be offloaded on generations with the
++	 * on-die tunnel engine (APPE); elsewhere they stay on the
++	 * software path. Driving the engine (programming the decap and
++	 * encap header tables from the ENC keys, as the PPPoE slots do)
++	 * is not yet implemented, so the flow is declined for now even
++	 * where the engine exists.
++	 */
++	if (!ft->ppe_dev->variant->has_tunnel_engine)
++		return -EOPNOTSUPP;
++
++	return -EOPNOTSUPP;	/* TODO: program the tunnel engine */
++}
++
+ /* Hash key of a flow's destination IP for the host refcount table. */
+ static u32 ppe_ft_host_key(const struct ppe_flow_entry *flow)
+ {
+@@ -648,13 +680,15 @@ static int ppe_ft_flow_replace(struct pp
+ 	    !flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_IPV6_ADDRS))
+ 		return -EOPNOTSUPP;
+ 
++	if (rule->match.dissector->used_keys & PPE_FT_TUNNEL_KEYS)
++		return ppe_ft_tunnel_replace(ft, f);
++
+ 	/* Match keys outside the supported set must reject the rule,
+-	 * not be skipped: a tunnel route, for example, arrives as
+-	 * ENC_* keys, which offloaded as a plain routed flow would
+-	 * transmit the packets unencapsulated. The TCP flags key is a knowing
+-	 * exception: the hardware forwards FIN/RST packets instead of
+-	 * punting them, which only delays the flow teardown until the
+-	 * flow idles out.
++	 * not be skipped: offloading a partially matched rule as a
++	 * plain routed flow would misforward the packets. The TCP
++	 * flags key is a knowing exception: the hardware forwards
++	 * FIN/RST packets instead of punting them, which only delays
++	 * the flow teardown until the flow idles out.
+ 	 */
+ 	if (rule->match.dissector->used_keys &
+ 	    ~(BIT_ULL(FLOW_DISSECTOR_KEY_META) |
