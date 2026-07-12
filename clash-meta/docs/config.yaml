@@ -379,6 +379,7 @@ proxies: # socks5
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
     # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # udp: true
     # ip-version: ipv6
 
@@ -391,6 +392,7 @@ proxies: # socks5
     # password: password
     # tls: true # https
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # sni: custom.com
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # 下面两项如果填写则开启 mTLS（需要同时填写）
@@ -489,6 +491,7 @@ proxies: # socks5
       #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
       #   # query-server-name: xxx.com # 可选项，不为空时用于指定通过dns解析时的域名
       # skip-cert-verify: true
+      # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
       # host: bing.com
       # path: "/"
       # mux: true
@@ -526,11 +529,25 @@ proxies: # socks5
       # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
       # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
       # skip-cert-verify: true
+      # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
       # host: bing.com
       # path: "/"
       # mux: true
       # headers:
       #   custom: value
+
+  - name: "ss-jls"
+    type: ss
+    server: server
+    port: 443
+    cipher: chacha20-ietf-poly1305
+    password: "password"
+    plugin: jls
+    plugin-opts:
+      host: "www.example.com"
+      username: "jls-user"
+      password: "jls-password"
+      # alpn: [h2, http/1.1]
 
   - name: "gost-relay-hop"
     type: gost-relay
@@ -549,6 +566,7 @@ proxies: # socks5
     # certificate: ./client.crt
     # private-key: ./client.key
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
 
   - name: "ss6-gost-relay"
     type: ss
@@ -677,8 +695,9 @@ proxies: # socks5
     # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # client-fingerprint: chrome    # Available: "chrome","firefox","safari","ios","random", currently only support TLS transport in TCP/GRPC/WS/HTTP for VLESS/Vmess and trojan.
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # servername: example.com # priority over wss host
-    # 如果填写 tlsmirror-opts 则开启 tlsmirror（当 tls: true 时）。tlsmirror 的 TLS 载体会使用同一出站中的 `servername`、`alpn`、`skip-cert-verify`、`fingerprint`、`certificate`、`private-key`、`client-fingerprint` 和 `ech-opts` 配置；`servername` 为空时使用 `server`。
+    # 如果填写 tlsmirror-opts 则开启 tlsmirror（当 tls: true 时）。tlsmirror 的 TLS 载体会使用同一出站中的 `servername`、`alpn`、`skip-cert-verify`、`name-cert-verify`、`fingerprint`、`certificate`、`private-key`、`client-fingerprint` 和 `ech-opts` 配置；`servername` 为空时使用 `server`。
     # tlsmirror-opts:
     #   primary-key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= # 必填，32 字节主密钥的 base64 编码
     #   explicit-nonce-ciphersuites: [156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 49195, 49196, 49197, 49198, 49199, 49200, 49201, 49202, 49290, 49291, 49293, 49316, 49317, 49318, 49319, 49320, 49321, 49322, 49323, 49324, 49325, 49326, 49327, 52392, 52393, 52394, 52395, 52396, 52397, 52398] # TLS 1.2 载体使用显式 nonce 的加密套件
@@ -816,6 +835,7 @@ proxies: # socks5
     # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     servername: example.com
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     grpc-opts:
       grpc-service-name: "example"
       # grpc-user-agent: "grpc-go/1.36.0"
@@ -834,6 +854,7 @@ proxies: # socks5
     network: tcp
     servername: example.com # AKA SNI
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # 下面两项如果填写则开启 mTLS（需要同时填写）
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
     # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
@@ -860,6 +881,7 @@ proxies: # socks5
     # private-key: ./client.key # 证书对应的私钥 PEM 格式，或者私钥路径
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
 
   - name: "vless-encryption"
     type: vless
@@ -908,6 +930,7 @@ proxies: # socks5
     udp: true
     flow:
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     client-fingerprint: chrome
     servername: testingcf.jsdelivr.net
     grpc-opts:
@@ -934,6 +957,7 @@ proxies: # socks5
     # client-fingerprint: random # Available: "chrome","firefox","safari","random","none"
     servername: example.com # priority over wss host
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # 下面两项如果填写则开启 mTLS（需要同时填写）
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
@@ -957,6 +981,7 @@ proxies: # socks5
     # ech-opts: ...
     # reality-opts: ...
     # skip-cert-verify: false
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # fingerprint: ...
     # certificate: ...
     # private-key: ...
@@ -1014,6 +1039,7 @@ proxies: # socks5
       #   ech-opts: ...
       #   reality-opts: ...
       #   skip-cert-verify: false
+      #   name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
       #   fingerprint: ...
       #   certificate: ...
       #   private-key: ...
@@ -1038,6 +1064,7 @@ proxies: # socks5
     #   - h2
     #   - http/1.1
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # ss-opts: # like trojan-go's `shadowsocks` config
     #   enabled: false
     #   method: aes-128-gcm # aes-128-gcm/aes-256-gcm/chacha20-ietf-poly1305
@@ -1056,6 +1083,7 @@ proxies: # socks5
     network: grpc
     sni: example.com
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # 下面两项如果填写则开启 mTLS（需要同时填写）
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
@@ -1077,6 +1105,7 @@ proxies: # socks5
     network: ws
     sni: example.com
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # 下面两项如果填写则开启 mTLS（需要同时填写）
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
@@ -1099,6 +1128,7 @@ proxies: # socks5
     # udp: true
     # sni: example.com # aka server name
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # 下面两项如果填写则开启 mTLS（需要同时填写）
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
@@ -1124,6 +1154,7 @@ proxies: # socks5
     #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     #   # query-server-name: xxx.com # 可选项，不为空时用于指定通过dns解析时的域名
     # skip-cert-verify: false
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # recv-window-conn: 12582912
     # recv-window: 52428800
     # disable-mtu-discovery: false
@@ -1156,6 +1187,7 @@ proxies: # socks5
     #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     #   # query-server-name: xxx.com # 可选项，不为空时用于指定通过dns解析时的域名
     # skip-cert-verify: false
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # fingerprint: xxxx # 配置指纹将实现 SSL Pining 效果, 可使用 openssl x509 -noout -fingerprint -sha256 -inform pem -in yourcert.pem 获取
     # 下面两项如果填写则开启 mTLS（需要同时填写）
     # certificate: ./client.crt # 证书 PEM 格式，或者 证书的路径
@@ -1171,8 +1203,9 @@ proxies: # socks5
     #     - stun.nextcloud.com:3478
     #     - stun.sip.us:3478
     #     - global.stun.twilio.com:3478
-    #   # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, fingerprint, certificate, private-key, alpn)
+    #   # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, name-cert-verify, fingerprint, certificate, private-key, alpn)
     #   # skip-cert-verify： false
+    #   # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     #   # ......
     ###quic-go特殊配置项，不要随意修改除非你知道你在干什么###
     # initial-stream-receive-window： 8388608
@@ -1283,6 +1316,13 @@ proxies: # socks5
       -----BEGIN PRIVATE KEY-----
       MIIE...example
       -----END PRIVATE KEY-----
+    # 从 .ovpn 中复制 <tls-auth></tls-auth> 内的内容，不需要保留 <tls-auth> 标签；与 tls-crypt 互斥
+    # tls-auth: |
+    #   -----BEGIN OpenVPN Static key V1-----
+    #   00000000000000000000000000000000
+    #   ...
+    #   -----END OpenVPN Static key V1-----
+    # key-direction: "1" # tls-auth 使用，支持 "1" 或 "0"；如果不填或为空字符串，则为双向模式（bidirectional）
     # 从 .ovpn 中复制 <tls-crypt></tls-crypt> 内的内容，不需要保留 <tls-crypt> 标签；没有 tls-crypt 的配置可省略
     # tls-crypt: |
     #   -----BEGIN OpenVPN Static key V1-----
@@ -1377,6 +1417,7 @@ proxies: # socks5
     # max-udp-relay-packet-size: 1500
     # fast-open: true
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     # max-open-streams: 20 # default 100, too many open streams may hurt performance
     # sni: example.com
     # ech-opts:
@@ -1389,6 +1430,28 @@ proxies: # socks5
     # 警告，与原版 tuic 不兼容！！！
     # udp-over-stream: false
     # udp-over-stream-version: 1
+
+  # shadowquic
+  - name: shadowquic
+    server: www.example.com
+    port: 10443
+    type: shadowquic
+    username: username
+    password: password
+    # sni: example.com
+    # alpn: [h3]
+    # quic-versions: [v1] # support v1/v2, default v1
+    # udp-over-stream: false # UDP over stream, default false
+    # zero-rtt: false # 官方 server 的 0-RTT 路径可能在 JLS 认证完成前读取用户状态（已确认影响 v0.3.11）；使用官方 server 时必须在服务端关闭 zero-rtt
+    # keep-alive-interval: 10000
+    # congestion-controller: bbr # Available: "cubic", "new_reno", "bbr". Default: "cubic"
+    # cwnd: 10 # default: 32
+    # bbr-profile: "" # Available: "standard", "conservative", "aggressive". Default: "standard"
+    # max-datagram-frame-size: 1400
+    # max-open-streams: 1024
+    # recv-window-conn: 0
+    # recv-window: 0
+    # disable-mtu-discovery: false
 
   # ShadowsocksR
   # The supported ciphers (encryption methods): all stream ciphers in ss
@@ -1448,6 +1511,7 @@ proxies: # socks5
     table-type: prefer_ascii    # 可选值：prefer_ascii、prefer_entropy、up_ascii_down_entropy、up_entropy_down_ascii
     # custom-table: xpxvvpvv    # 可选，自定义字节布局，必须包含2个x、2个p、4个v，可随意组合；只对 entropy 方向生效
     # custom-tables: ["xpxvvpvv", "vxpvxvvp"] # 可选，自定义字节布局列表（x/v/p），非空时覆盖 custom-table
+    # multiplex: "off" # 可选：off（默认）、auto（仅复用 HTTPMask 底层连接）、on（在原始 TCP 或 HTTPMask 上启用 Sudoku 单会话多目标 mux）
     # 推荐：使用 httpmask 对象统一管理 HTTPMask 相关字段：
     httpmask:
       disable: false # true 禁用所有 HTTP 伪装/隧道
@@ -1455,7 +1519,7 @@ proxies: # socks5
       # tls: true # 可选：按需开启 HTTPS/WSS
       # host: "" # 可选：覆盖 Host/SNI（支持 example.com 或 example.com:443）；仅在 mode 为 stream/poll/auto/ws 时生效
       # path-root: "" # 可选：HTTP 隧道端点一级路径前缀（双方需一致），例如 "aabbcc" 或 "/aabbcc/" => /aabbcc/session、/aabbcc/stream、/aabbcc/api/v1/upload、/aabbcc/ws
-      # multiplex: "off" # 可选字符串：off（默认）、auto（复用底层 HTTP 连接，减少建链 RTT）、on（Sudoku mux 单隧道多目标；仅在 mode=stream/poll/auto 生效；ws 强制 off）
+      # multiplex: "off" # 兼容旧配置；设置时优先于顶层 multiplex
     enable-pure-downlink: false # 可选：false=带宽优化下行；true=纯 Sudoku 下行
 
   # anytls
@@ -1474,6 +1538,7 @@ proxies: # socks5
     #   - h2
     #   - http/1.1
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
 
   # trusttunnel
   - name: trusttunnel
@@ -1489,6 +1554,7 @@ proxies: # socks5
     # alpn:
     #   - h2
     # skip-cert-verify: true
+    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     ### quic options
     # quic: true # 默认为false
     # congestion-controller: bbr
@@ -1611,6 +1677,7 @@ proxy-providers:
       # expected-status: 204 # 当健康检查返回状态码与期望值不符时，认为节点不可用
     override: # 覆写节点加载时的一些配置项
       skip-cert-verify: true
+      name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
       udp: true
       # down: "50 Mbps"
       # up: "10 Mbps"
@@ -1890,6 +1957,16 @@ listeners:
     #   restls-script: ""
     #   min-record-len: 0
     #   proxy: ""
+    # jls-config: # 仅封装 TCP；JLS 认证失败或普通 TLS 连接会透明回落到 dest
+    #   enable: false
+    #   users:
+    #     - username: jls-user
+    #       password: jls-password
+    #   dest: www.example.com:443
+    #   # sni: www.example.com # 留空时从 dest 推导
+    #   # alpn: [h2, http/1.1]
+    #   # proxy: ""
+    #   # rate-limit: 0 # 转发限速，单位 bit/s，0 表示不限速
     # kcp-tun:
     #   enable: false
     #   key: it's a secrect # pre-shared secret between client and server
@@ -2059,6 +2136,35 @@ listeners:
     #  alpn:
     #    - h3
     #  max-udp-relay-packet-size: 1500
+
+  - name: shadowquic-in-1
+    type: shadowquic
+    port: 10822 # 支持使用ports格式，例如200,302 or 200,204,401-429,501-503
+    listen: 0.0.0.0
+    # routing-mark: 0 # 为监听socket设置routing-mark（仅支持linux）
+    # rule: sub-rule-name1 # 默认使用 rules，如果未找到 sub-rule 则直接使用 rules
+    # proxy: proxy # 如果不为空则直接将该入站流量交由指定 proxy 处理 (当 proxy 不为空时，这里的 proxy 名称必须合法，否则会出错)
+    users:
+      - username: username
+        password: password
+    jls-upstream:
+      addr: www.example.com:443 # 未通过 JLS 认证的连接将转发到该 QUIC 伪装上游
+      # sni: example.com # JLS 伪装目标 SNI，留空时从 addr 推导
+      # proxy: proxy # 伪装上游使用的代理
+      # rate-limit: 0 # 转发限速，单位 bit/s，0 表示不限速
+      # quic-version-probe: false # 在首次连接时探测伪装上游版本
+    # alpn:
+    #   - h3
+    # quic-versions: [v1] # 本机手动配置及探测失败时的版本；支持 v1/v2
+    # zero-rtt: true
+    # congestion-controller: bbr
+    # cwnd: 10 # default: 32
+    # bbr-profile: "" # Available: "standard", "conservative", "aggressive". Default: "standard"
+    # max-idle-time: 30000
+    # max-datagram-frame-size: 1400
+    # recv-window-conn: 0
+    # recv-window: 0
+    # disable-mtu-discovery: false
 
   - name: tunnel-in-1
     type: tunnel
@@ -2315,8 +2421,9 @@ listeners:
     #      - stun.sip.us:3478
     #      - global.stun.twilio.com:3478
     #    # proxy: DIRECT # 设置server-url通过哪个代理进行连接
-    #    # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, fingerprint, certificate, private-key, alpn)
+    #    # 下面支持填写针对server-url的TLS配置(sni, skip-cert-verify, name-cert-verify, fingerprint, certificate, private-key, alpn)
     #    # skip-cert-verify： false
+    #    # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
     #    # ......
 
   # 注意，这是用于自建hysteria2入站和出站中realm-opts中server-url的HTTP/HTTPS服务器，请勿混淆

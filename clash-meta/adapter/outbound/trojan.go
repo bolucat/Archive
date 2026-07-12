@@ -44,6 +44,7 @@ type TrojanOption struct {
 	ALPN              []string       `proxy:"alpn,omitempty"`
 	SNI               string         `proxy:"sni,omitempty"`
 	SkipCertVerify    bool           `proxy:"skip-cert-verify,omitempty"`
+	NameCertVerify    string         `proxy:"name-cert-verify,omitempty"`
 	Fingerprint       string         `proxy:"fingerprint,omitempty"`
 	Certificate       string         `proxy:"certificate,omitempty"`
 	PrivateKey        string         `proxy:"private-key,omitempty"`
@@ -105,9 +106,10 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 				InsecureSkipVerify: t.option.SkipCertVerify,
 				ServerName:         t.option.SNI,
 			},
-			Fingerprint: t.option.Fingerprint,
-			Certificate: t.option.Certificate,
-			PrivateKey:  t.option.PrivateKey,
+			Fingerprint:    t.option.Fingerprint,
+			NameCertVerify: t.option.NameCertVerify,
+			Certificate:    t.option.Certificate,
+			PrivateKey:     t.option.PrivateKey,
 		})
 		if err != nil {
 			return nil, err
@@ -126,6 +128,7 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 		c, err = vmess.StreamTLSConn(ctx, c, &vmess.TLSConfig{
 			Host:              t.option.SNI,
 			SkipCertVerify:    t.option.SkipCertVerify,
+			NameCertVerify:    t.option.NameCertVerify,
 			FingerPrint:       t.option.Fingerprint,
 			Certificate:       t.option.Certificate,
 			PrivateKey:        t.option.PrivateKey,
@@ -307,6 +310,7 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 		tlsConfig := &vmess.TLSConfig{
 			Host:              option.SNI,
 			SkipCertVerify:    option.SkipCertVerify,
+			NameCertVerify:    option.NameCertVerify,
 			FingerPrint:       option.Fingerprint,
 			Certificate:       option.Certificate,
 			PrivateKey:        option.PrivateKey,

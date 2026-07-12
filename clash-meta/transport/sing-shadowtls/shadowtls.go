@@ -30,6 +30,7 @@ type ShadowTLSOption struct {
 	PrivateKey        string
 	ClientFingerprint string
 	SkipCertVerify    bool
+	NameCertVerify    string
 	Version           int
 	ALPN              []string
 }
@@ -42,9 +43,10 @@ func NewShadowTLS(ctx context.Context, conn net.Conn, option *ShadowTLSOption) (
 			InsecureSkipVerify: option.SkipCertVerify,
 			ServerName:         option.Host,
 		},
-		Fingerprint: option.Fingerprint,
-		Certificate: option.Certificate,
-		PrivateKey:  option.PrivateKey,
+		Fingerprint:    option.Fingerprint,
+		NameCertVerify: option.NameCertVerify,
+		Certificate:    option.Certificate,
+		PrivateKey:     option.PrivateKey,
 	})
 	if err != nil {
 		return nil, err

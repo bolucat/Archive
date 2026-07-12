@@ -16,6 +16,7 @@ import (
 type TLSConfig struct {
 	Host              string
 	SkipCertVerify    bool
+	NameCertVerify    string
 	FingerPrint       string
 	Certificate       string
 	PrivateKey        string
@@ -34,9 +35,10 @@ func (cfg *TLSConfig) ToStdConfig() (*tls.Config, error) {
 			InsecureSkipVerify: cfg.SkipCertVerify,
 			NextProtos:         cfg.NextProtos,
 		},
-		Fingerprint: cfg.FingerPrint,
-		Certificate: cfg.Certificate,
-		PrivateKey:  cfg.PrivateKey,
+		Fingerprint:    cfg.FingerPrint,
+		NameCertVerify: cfg.NameCertVerify,
+		Certificate:    cfg.Certificate,
+		PrivateKey:     cfg.PrivateKey,
 	})
 }
 
@@ -46,6 +48,7 @@ func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn
 			Config:             *cfg.TLSMirror,
 			ServerName:         cfg.Host,
 			SkipCertVerify:     cfg.SkipCertVerify,
+			NameCertVerify:     cfg.NameCertVerify,
 			ALPN:               cfg.NextProtos,
 			Fingerprint:        cfg.FingerPrint,
 			Certificate:        cfg.Certificate,

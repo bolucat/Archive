@@ -9,11 +9,13 @@ import (
 	"github.com/metacubex/mihomo/common/structure"
 )
 
-func mustOverrideExprs(t *testing.T, sources ...string) []overrideExpr {
+func mustOverrideExprs(t *testing.T, sources ...string) []OverrideExpr {
 	t.Helper()
-	expressions := make([]overrideExpr, len(sources))
+	expressions := make([]OverrideExpr, len(sources))
 	for idx, source := range sources {
-		require.NoError(t, expressions[idx].UnmarshalText([]byte(source)))
+		expr, err := NewOverrideExpr(source)
+		require.NoError(t, err)
+		expressions[idx] = expr
 	}
 	return expressions
 }
@@ -29,8 +31,19 @@ func TestOverrideExprDecode(t *testing.T) {
 	}, &schema)
 	require.NoError(t, err)
 	require.Len(t, schema.OverrideExpr, 2)
-	require.Equal(t, ".udp = true", schema.OverrideExpr[0].source)
-	require.Equal(t, `.name = "prefix-" + .name`, schema.OverrideExpr[1].source)
+	require.Equal(t, ".udp = true", schema.OverrideExpr[0].String())
+	require.Equal(t, `.name = "prefix-" + .name`, schema.OverrideExpr[1].String())
+}
+
+func TestOverrideExprTextRoundTrip(t *testing.T) {
+	const source = `  .name = "prefix-" + .name  # keep formatting`
+	var expr OverrideExpr
+	require.NoError(t, expr.UnmarshalText([]byte(source)))
+
+	text, err := expr.MarshalText()
+	require.NoError(t, err)
+	require.Equal(t, source, string(text))
+	require.Equal(t, source, expr.String())
 }
 
 func TestOverrideExprAssignments(t *testing.T) {

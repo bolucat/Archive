@@ -57,6 +57,7 @@ type VmessOption struct {
 	TLS                 bool             `proxy:"tls,omitempty"`
 	ALPN                []string         `proxy:"alpn,omitempty"`
 	SkipCertVerify      bool             `proxy:"skip-cert-verify,omitempty"`
+	NameCertVerify      string           `proxy:"name-cert-verify,omitempty"`
 	Fingerprint         string           `proxy:"fingerprint,omitempty"`
 	Certificate         string           `proxy:"certificate,omitempty"`
 	PrivateKey          string           `proxy:"private-key,omitempty"`
@@ -198,9 +199,10 @@ func (v *Vmess) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 						InsecureSkipVerify: v.option.SkipCertVerify,
 						NextProtos:         []string{"http/1.1"},
 					},
-					Fingerprint: v.option.Fingerprint,
-					Certificate: v.option.Certificate,
-					PrivateKey:  v.option.PrivateKey,
+					Fingerprint:    v.option.Fingerprint,
+					NameCertVerify: v.option.NameCertVerify,
+					Certificate:    v.option.Certificate,
+					PrivateKey:     v.option.PrivateKey,
 				})
 				if err != nil {
 					return nil, err
@@ -321,6 +323,7 @@ func (v *Vmess) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 		tlsOpts := mihomoVMess.TLSConfig{
 			Host:              host,
 			SkipCertVerify:    v.option.SkipCertVerify,
+			NameCertVerify:    v.option.NameCertVerify,
 			FingerPrint:       v.option.Fingerprint,
 			Certificate:       v.option.Certificate,
 			PrivateKey:        v.option.PrivateKey,
@@ -538,6 +541,7 @@ func NewVmess(option VmessOption) (*Vmess, error) {
 			tlsConfig = &mihomoVMess.TLSConfig{
 				Host:              option.ServerName,
 				SkipCertVerify:    option.SkipCertVerify,
+				NameCertVerify:    option.NameCertVerify,
 				FingerPrint:       option.Fingerprint,
 				Certificate:       option.Certificate,
 				PrivateKey:        option.PrivateKey,

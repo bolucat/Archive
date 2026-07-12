@@ -33,6 +33,7 @@ type AnyTLSOption struct {
 	ECHOpts                  ECHOptions `proxy:"ech-opts,omitempty"`
 	ClientFingerprint        string     `proxy:"client-fingerprint,omitempty"`
 	SkipCertVerify           bool       `proxy:"skip-cert-verify,omitempty"`
+	NameCertVerify           string     `proxy:"name-cert-verify,omitempty"`
 	Fingerprint              string     `proxy:"fingerprint,omitempty"`
 	Certificate              string     `proxy:"certificate,omitempty"`
 	PrivateKey               string     `proxy:"private-key,omitempty"`
@@ -118,6 +119,7 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 	tlsConfig := &vmess.TLSConfig{
 		Host:              option.SNI,
 		SkipCertVerify:    option.SkipCertVerify,
+		NameCertVerify:    option.NameCertVerify,
 		NextProtos:        option.ALPN,
 		FingerPrint:       option.Fingerprint,
 		Certificate:       option.Certificate,

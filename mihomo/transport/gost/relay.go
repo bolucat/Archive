@@ -58,6 +58,7 @@ type RelayOption struct {
 	Username          string `proxy:"username,omitempty"`
 	Password          string `proxy:"password,omitempty"`
 	SkipCertVerify    bool   `proxy:"skip-cert-verify,omitempty"`
+	NameCertVerify    string `proxy:"name-cert-verify,omitempty"`
 	Fingerprint       string `proxy:"fingerprint,omitempty"`
 	Certificate       string `proxy:"certificate,omitempty"`
 	PrivateKey        string `proxy:"private-key,omitempty"`
@@ -175,6 +176,7 @@ func (d *relayDialer) dialRelayServer(ctx context.Context, fallbackAddress strin
 		tlsConn, err := mihomoVMess.StreamTLSConn(ctx, conn, &mihomoVMess.TLSConfig{
 			Host:              d.serverName(relayAddress),
 			SkipCertVerify:    d.option.SkipCertVerify,
+			NameCertVerify:    d.option.NameCertVerify,
 			FingerPrint:       d.option.Fingerprint,
 			Certificate:       d.option.Certificate,
 			PrivateKey:        d.option.PrivateKey,

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding"
 	"fmt"
 	"math"
 	"reflect"
@@ -13,7 +14,7 @@ import (
 	"github.com/metacubex/mihomo/common/yaml"
 )
 
-// overrideExpr is an update-oriented subset of yq expressions for modifying a single proxy provider mapping.
+// OverrideExpr is an update-oriented subset of yq expressions for modifying a single proxy provider mapping.
 // Configure it as an ordered string array; each item observes the result of all previous items:
 //
 //	proxy-providers:
@@ -110,19 +111,25 @@ import (
 // A right-side expression with no result leaves its target untouched instead of auto-creating a null value.
 // Mapping streams, keys, and entry transforms use sorted keys because map[string]any does not retain YAML key order.
 // Expressions are parsed while overrideSchema is decoded through encoding.TextUnmarshaler, so syntax errors are reported before providers run.
-type overrideExpr struct {
+type OverrideExpr struct {
 	source     string
 	statements []overrideStatement
 }
+
+var (
+	_ encoding.TextMarshaler   = OverrideExpr{}
+	_ encoding.TextUnmarshaler = (*OverrideExpr)(nil)
+)
 
 type overrideStatement interface {
 	apply(map[string]any) error
 }
 
-func parseOverrideExpr(source string) (overrideExpr, error) {
+// NewOverrideExpr parses source into an OverrideExpr.
+func NewOverrideExpr(source string) (OverrideExpr, error) {
 	tokens, err := lexOverrideExpr(source)
 	if err != nil {
-		return overrideExpr{}, err
+		return OverrideExpr{}, err
 	}
 	p := overrideExprParser{tokens: tokens}
 	expr, err := p.parse()
@@ -130,8 +137,9 @@ func parseOverrideExpr(source string) (overrideExpr, error) {
 	return expr, err
 }
 
-func (e *overrideExpr) UnmarshalText(text []byte) error {
-	expr, err := parseOverrideExpr(string(text))
+// UnmarshalText parses text into e.
+func (e *OverrideExpr) UnmarshalText(text []byte) error {
+	expr, err := NewOverrideExpr(string(text))
 	if err != nil {
 		return err
 	}
@@ -139,7 +147,18 @@ func (e *overrideExpr) UnmarshalText(text []byte) error {
 	return nil
 }
 
-func (e overrideExpr) Apply(mapping map[string]any) error {
+// MarshalText returns the original expression text.
+func (e OverrideExpr) MarshalText() ([]byte, error) {
+	return []byte(e.source), nil
+}
+
+// String returns the original expression text.
+func (e OverrideExpr) String() string {
+	return e.source
+}
+
+// Apply applies the expression to mapping.
+func (e OverrideExpr) Apply(mapping map[string]any) error {
 	for _, statement := range e.statements {
 		if err := statement.apply(mapping); err != nil {
 			return err
@@ -415,26 +434,26 @@ type overrideExprParser struct {
 	pos    int
 }
 
-func (p *overrideExprParser) parse() (overrideExpr, error) {
-	result := overrideExpr{}
+func (p *overrideExprParser) parse() (OverrideExpr, error) {
+	result := OverrideExpr{}
 	if p.peek().kind == overrideTokenEOF {
 		return result, fmt.Errorf("expression is empty")
 	}
 	for {
 		statement, err := p.parseStatement()
 		if err != nil {
-			return overrideExpr{}, err
+			return OverrideExpr{}, err
 		}
 		result.statements = append(result.statements, statement)
 		if !p.match(overrideTokenPipe) {
 			break
 		}
 		if p.peek().kind == overrideTokenEOF {
-			return overrideExpr{}, p.errorf(p.peek(), "expected expression after pipe")
+			return OverrideExpr{}, p.errorf(p.peek(), "expected expression after pipe")
 		}
 	}
 	if token := p.peek(); token.kind != overrideTokenEOF {
-		return overrideExpr{}, p.errorf(token, "unexpected %q", token.text)
+		return OverrideExpr{}, p.errorf(token, "unexpected %q", token.text)
 	}
 	return result, nil
 }

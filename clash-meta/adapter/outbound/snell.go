@@ -180,6 +180,7 @@ func NewSnell(option SnellOption) (*Snell, error) {
 			PrivateKey:        opt.PrivateKey,
 			ClientFingerprint: option.ClientFingerprint,
 			SkipCertVerify:    opt.SkipCertVerify,
+			NameCertVerify:    opt.NameCertVerify,
 			Version:           opt.Version,
 		}
 
