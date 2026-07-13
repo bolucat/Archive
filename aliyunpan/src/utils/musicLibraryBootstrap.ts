@@ -80,13 +80,15 @@ async function triggerIfDue(force: boolean = false): Promise<boolean> {
     if (mode === 'manual') {
       await MusicScanner.getInstance().scanRegisteredFolders({
         folders: manualFolders,
-        userIdAllowList: allowed
+        userIdAllowList: allowed,
+        silent: true
       })
     } else {
       await MusicScanner.getInstance().scanAllUsers({
         force,
         sinceMs,
-        userIdAllowList: allowed
+        userIdAllowList: allowed,
+        silent: true
       })
     }
     return true

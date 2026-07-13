@@ -5,7 +5,7 @@ import (
 	LC "github.com/metacubex/mihomo/listener/config"
 )
 
-type JLS struct {
+type JLSConfig struct {
 	Enable    bool      `inbound:"enable"`
 	Users     []JLSUser `inbound:"users"`
 	SNI       string    `inbound:"sni,omitempty"`
@@ -20,8 +20,8 @@ type JLSUser struct {
 	Password string `inbound:"password"`
 }
 
-func (j JLS) Build() LC.JLS {
-	return LC.JLS{
+func (j JLSConfig) Build() LC.JLSConfig {
+	return LC.JLSConfig{
 		Enable:    j.Enable,
 		Users:     utils.Map(j.Users, JLSUser.Build),
 		SNI:       j.SNI,

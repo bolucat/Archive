@@ -278,6 +278,38 @@ func TestInboundVless_Grpc2(t *testing.T) {
 	testInboundVlessTLS(t, inboundOptions, outboundOptions, false)
 }
 
+func testInboundVlessJLS(t *testing.T, inboundOptions inbound.VlessOption, outboundOptions outbound.VlessOption) {
+	t.Parallel()
+	t.Run("Conn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		testInboundVless(t, inboundOptions, outboundOptions)
+	})
+	t.Run("UConn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		outboundOptions.ClientFingerprint = "chrome"
+		testInboundVless(t, inboundOptions, outboundOptions)
+	})
+}
+
+func TestInboundVless_JLS(t *testing.T) {
+	const username = "jls-user"
+	const password = "jls-password"
+	inboundOptions := inbound.VlessOption{
+		JLSConfig: inbound.JLSConfig{
+			Enable: true,
+			Users:  []inbound.JLSUser{{Username: username, Password: password}},
+			SNI:    realityDest,
+			Dest:   net.JoinHostPort(realityDest, "443"),
+		},
+	}
+	outboundOptions := outbound.VlessOption{
+		TLS:        true,
+		ServerName: realityDest,
+		JLSOpts:    outbound.JLSOptions{Username: username, Password: password},
+	}
+	testInboundVlessJLS(t, inboundOptions, outboundOptions)
+}
+
 func TestInboundVless_Reality(t *testing.T) {
 	inboundOptions := inbound.VlessOption{
 		RealityConfig: inbound.RealityConfig{

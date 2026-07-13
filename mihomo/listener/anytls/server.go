@@ -15,6 +15,7 @@ import (
 	"github.com/metacubex/mihomo/component/ech"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/listener/jls"
 	"github.com/metacubex/mihomo/listener/sing"
 	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/anytls/padding"
@@ -43,6 +44,7 @@ func New(config LC.AnyTLSServer, lc C.InboundListenConfig, tunnel C.Tunnel, addi
 		}
 	}
 
+	var jlsBuilder *jls.Builder
 	tlsConfig := &tls.Config{Time: ntp.Now}
 	if config.Certificate != "" && config.PrivateKey != "" {
 		certLoader, err := ca.NewTLSKeyPairLoader(config.Certificate, config.PrivateKey)
@@ -72,6 +74,18 @@ func New(config LC.AnyTLSServer, lc C.InboundListenConfig, tunnel C.Tunnel, addi
 			return nil, err
 		}
 		tlsConfig.ClientCAs = pool
+	}
+	if config.JLSConfig.Enable {
+		if tlsConfig.GetCertificate != nil {
+			return nil, errors.New("certificate is unavailable in JLS")
+		}
+		if tlsConfig.ClientAuth != tls.NoClientCert {
+			return nil, errors.New("client-auth is unavailable in JLS")
+		}
+		jlsBuilder, err = jls.New(config.JLSConfig, tunnel)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	sl = &Listener{
@@ -110,10 +124,12 @@ func New(config LC.AnyTLSServer, lc C.InboundListenConfig, tunnel C.Tunnel, addi
 		if err != nil {
 			return nil, err
 		}
-		if tlsConfig.GetCertificate != nil {
+		if jlsBuilder != nil {
+			l = jlsBuilder.NewListener(l)
+		} else if tlsConfig.GetCertificate != nil {
 			l = tls.NewListener(l, tlsConfig)
 		} else if !config.AllowInsecure {
-			return nil, errors.New("disallow using AnyTLS without certificates/allow-insecure config")
+			return nil, errors.New("disallow using AnyTLS without certificates/jls/allow-insecure config")
 		}
 		sl.listeners = append(sl.listeners, l)
 

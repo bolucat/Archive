@@ -106,7 +106,7 @@ onUnmounted(() => {
         </a-menu-item>
         <a-menu-item key="SettingPlay">
           <template #icon><IconFont name="iconshipin" /></template>
-          在线预览
+          播放器
         </a-menu-item>
         <a-menu-item key="SettingMediaServerPlayback">
           <template #icon><IconFont name="iconshipin" /></template>

@@ -9,11 +9,9 @@ import type { OpenRouterModelInfo } from '../services/ai/providers/OpenRouterPro
 import { GATEWAY_MODELS } from '../services/ai/constants'
 import { isPro } from '../utils/usageLimit'
 import { openExternal } from '../utils/electronhelper'
-import { createClient } from '@supabase/supabase-js'
+import { BOXPLAYER_SITE_URL } from '../utils/boxplayerAuth'
 
-const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
-const BOXPLAYER_SITE_URL = 'https://xbysite.pages.dev'
+const PRICING_URL = `${BOXPLAYER_SITE_URL}/pricing/`
 
 const settingStore = useSettingStore()
 const isLoggedIn = ref(false)
@@ -153,25 +151,11 @@ function setAsDefault(provider: string) {
 
 async function handleUpgradeToPro() {
   if (!isLoggedIn.value) {
-    message.warning('请先登录后再升级到 Pro')
     try { localStorage.setItem('boxplayer_show_pricing', '1') } catch {}
-    return
   }
-  const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
-  if (!supabase) { message.error('未配置 Supabase'); return }
   try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (!token) { message.warning('请先登录后升级'); return }
-    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/creem/checkout`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ cycle: 'lifetime', source: 'app' })
-    })
-    const checkout = await response.json()
-    if (!response.ok || !checkout.checkoutUrl) throw new Error(checkout.error || '创建支付订单失败')
-    openExternal(checkout.checkoutUrl)
-  } catch (e: any) { message.error(e?.message || '网络请求失败') }
+    openExternal(PRICING_URL)
+  } catch (e: any) { message.error(e?.message || '打开官网购买页面失败') }
 }
 
 function editProvider(provider: string) {

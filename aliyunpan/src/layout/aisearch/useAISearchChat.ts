@@ -16,9 +16,19 @@ import AliFileCmd from '../../aliapi/filecmd'
 import UserDAL from '../../user/userdal'
 import { parseQuarkShareLink } from '../../quark/share'
 import { TMDB_BASE_URL, TMDB_BASE_URL_PROXY, tmdbImageUrl } from '../../utils/tmdb'
+import { normalizeMiaochuanPayload } from '../../utils/drive-tools/miaochuan'
+import { apiGuangyaImportMiaochuan } from '../../guangya/miaochuan'
+import { driveToolDriveIdForPlatform, driveToolPlatformMatches, driveToolRootIdFor, exportDirectLinks, normalizeDriveToolDriveId, normalizeDriveToolPlatform, type DirectLinkFormat } from '../../utils/drive-tools/directLinks'
+import { extractMagnetLinks, importGuangyaMagnets } from '../../utils/drive-tools/magnet'
+import { deleteDriveEmptyDirs, scanDriveEmptyDirs } from '../../utils/drive-tools/emptyDirs'
+import { scanDriveDuplicates, type DuplicateDriveTarget, type DuplicateScanMode } from '../../utils/drive-tools/duplicates'
+import { scanDriveLargeFiles, type LargeFileScanMode } from '../../utils/drive-tools/largeFiles'
+import { flattenDriveToolFolders, moveDriveToolFiles, type OrganizeFileItem } from '../../utils/drive-tools/organize'
+import { buildMediaOrganizePlan, executeMediaOrganizePlan } from '../../utils/drive-tools/mediaOrganize'
+import { getWebDavConnections } from '../../utils/webdavClient'
 
 function getCloudAIBaseURL(): string {
-  return ((Config as any).BOXPLAYER_AI_API_URL || 'https://ai.xbyvideohub.com').replace(/\/+$/, '')
+  return Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')
 }
 
 function createBoxPlayerCloudModel(modelId: string) {
@@ -125,14 +135,70 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     return all
   }
 
-  async function getUserIdForPlatform(platform: 'aliyun' | 'quark'): Promise<{ userId: string; driveId: string } | null> {
+  async function getUserIdForPlatform(platform: 'aliyun' | 'quark' | 'guangya'): Promise<{ userId: string; driveId: string } | null> {
     const users = await UserDAL.GetUserListFromDB()
     for (const u of users) {
       if (!u?.user_id || !u?.access_token) continue
       if (platform === 'quark' && u.tokenfrom === 'quark') return { userId: u.user_id, driveId: 'quark' }
+      if (platform === 'guangya' && u.tokenfrom === 'guangya') return { userId: u.user_id, driveId: 'guangya' }
       if (platform === 'aliyun' && u.tokenfrom === 'aliyun') return { userId: u.user_id, driveId: u.default_drive_id || '' }
     }
     return null
+  }
+
+  function defaultRootForDrive(driveId: string): string {
+    return driveToolRootIdFor(driveId)
+  }
+
+  async function resolveDriveForTool(args: any): Promise<{ userId: string; driveId: string; rootId: string } | null> {
+    if (args.userId && args.driveId) {
+      const driveId = normalizeDriveToolDriveId(args.driveId)
+      return { userId: args.userId, driveId, rootId: args.rootId || defaultRootForDrive(driveId) }
+    }
+    const users = await UserDAL.GetUserListFromDB()
+    const user = users.find((u: any) => u?.user_id && u?.access_token && driveToolPlatformMatches(u.tokenfrom || 'aliyun', args.platform))
+    if (!user) return null
+    const driveId = user.tokenfrom === 'aliyun'
+      ? (user.resource_drive_id || user.backup_drive_id || user.default_drive_id)
+      : driveToolDriveIdForPlatform(user.tokenfrom || '', user.default_drive_id)
+    if (!driveId) return null
+    return { userId: user.user_id, driveId, rootId: args.rootId || defaultRootForDrive(driveId) }
+  }
+
+  async function buildDriveTargetsForTool(platforms?: string[]): Promise<DuplicateDriveTarget[]> {
+    const users = await UserDAL.GetUserListFromDB()
+    const targets: DuplicateDriveTarget[] = []
+    const shouldUsePlatform = (platform: string) => !platforms?.length || platforms.some((requested: string) => driveToolPlatformMatches(platform, requested))
+    for (const user of users) {
+      const platform = user?.tokenfrom || 'aliyun'
+      if (!user?.user_id || !user?.access_token || !shouldUsePlatform(platform)) continue
+      const name = user.nick_name || user.user_name || user.name || user.user_id
+      const add = (driveId: string, rootId: string, suffix: string) => { if (driveId) targets.push({ userId: user.user_id, driveId, rootId, name: `${name}${suffix}` }) }
+      if (platform === 'aliyun') {
+        add(user.resource_drive_id, 'resource_root', ' / 资源盘')
+        add(user.backup_drive_id, 'backup_root', ' / 备份盘')
+        add(user.default_drive_id, 'root', ' / 默认盘')
+      } else {
+        const driveId = driveToolDriveIdForPlatform(platform, user.default_drive_id)
+        add(driveId, driveToolRootIdFor(driveId), ` / ${platform}`)
+      }
+    }
+    if (!platforms?.length || platforms.some((platform: string) => driveToolPlatformMatches('webdav', platform))) {
+      for (const connection of getWebDavConnections()) {
+        targets.push({ userId: connection.id, driveId: `webdav:${connection.id}`, rootId: '/', name: `${connection.name} / WebDAV` })
+      }
+    }
+    return targets
+  }
+
+  function driveSupportsRecycleBin(userId: string, driveId: string): boolean {
+    if (!userId || !driveId || driveId.startsWith('webdav:')) return false
+    const token = UserDAL.GetUserToken(userId)
+    const platform = normalizeDriveToolPlatform(token?.tokenfrom || '')
+    if (platform === 'aliyun') return true
+    if (['cloud123', 'drive115', 'pikpak', 'cloud139'].includes(platform)) return true
+    const normalizedDriveId = normalizeDriveToolDriveId(driveId)
+    return ['cloud123', 'drive115', 'pikpak', 'cloud139'].includes(normalizedDriveId)
   }
 
   async function sendMessage(text: string) {
@@ -187,16 +253,26 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 - listDrives: 列出用户所有已登录的网盘
 - searchMyFiles: 搜索用户所有云盘中的文件
 - searchPanHub: 搜索全网公开网盘分享链接
-- findDuplicates: 扫描云盘查找重复文件（需传 platforms 参数限定网盘）
+- findDuplicates: 扫描云盘查找重复文件（可传 platforms 限定网盘，mode 可选 helperName 或 contentHash）
 - analyzeStorage: 分析存储空间（需传 platforms 参数限定网盘）
 - categorizeFiles: 按类型分类文件（需传 platforms 参数限定网盘）
 - importShare: 导入阿里云盘/夸克分享链接，转存到用户网盘
-- downloadFiles: 添加文件下载任务
-- moveFiles: 移动文件到指定目录（需用户确认）
+- parseMiaochuanJson: 解析网盘互通/秒传 JSON 清单
+- importMiaochuanToGuangya: 将秒传 JSON 清单导入光鸭云盘（需用户确认）
+- exportDirectLinks: 批量导出文件/文件夹直链，支持 URL 和 aria2 格式
+- importGuangyaMagnets: 批量提交 magnet 链接到光鸭云添加（需用户确认）
+   - scanDriveEmptyDirs: 扫描任意已接入网盘的空目录
+   - deleteDriveEmptyDirs: 删除任意已接入网盘的空目录（需用户确认）
+   - scanDriveLargeFiles: 扫描任意已接入网盘的大文件
+   - findDuplicates: 扫描任意已接入网盘的重复文件
+   - organizeFiles: 移动整理、拆开文件夹、移动到指定目录（需用户确认）
+   - mediaOrganizeFiles: 按影视命名规则进行媒体整理（需用户确认）
+   - downloadFiles: 添加文件下载任务
+   - moveFiles: 移动文件到指定目录（需用户确认）
 - getTMDBMovies: 获取 TMDB 最新电影（热映/流行/高分）
 - searchTMDB: 在 TMDB 中搜索电影和电视剧，查询影视详细信息
 - getDoubanMovies: 获取豆瓣电影排行榜（Top250/新片/口碑/北美票房）
-- deleteFiles: 删除文件移入回收站（需用户确认）
+- deleteFiles: 将文件移入回收站（需用户确认；仅支持明确有回收站能力的网盘，不支持的网盘必须拒绝）
 
 ## 核心规则（必须遵守）
 1. 用户提到文件相关操作，必须调用对应工具，不能只回复文字
@@ -210,8 +286,9 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
    - 用户想看热门电影/新片/排行榜 → 调用 getTMDBMovies（国外）或 getDoubanMovies（国内），无需 listDrives
    - 用户查询特定电影/电视剧信息 → 调用 searchTMDB
    - 导入分享：必须问用户保存到阿里云盘还是夸克
+   - 用户提到秒传、网盘互通、导入光鸭、helper JSON：先调用 parseMiaochuanJson；如果用户明确要导入光鸭，再调用 importMiaochuanToGuangya
 4. 工具返回结果后，简要总结即可
-5. moveFiles 和 deleteFiles 必须先展示确认信息
+5. moveFiles、deleteFiles、organizeFiles、mediaOrganizeFiles、importMiaochuanToGuangya、importGuangyaMagnets 和 deleteDriveEmptyDirs 必须先展示确认信息
 6. 完全无关的问题可以正常简短回复
 7. 最多调用工具 5 次
 
@@ -227,18 +304,15 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             inputSchema: z.object({}),
             execute: async () => {
               const users = await UserDAL.GetUserListFromDB()
-              const drives: { userId: string; name: string; platform: string; driveId: string }[] = []
-              const seenPlatform = new Set<string>()
-              for (const u of users) {
-                if (!u?.user_id || !u?.access_token) continue
-                const name = u.nick_name || u.user_name || u.name || u.user_id
-                const platform = u.tokenfrom || 'aliyun'
-                if (seenPlatform.has(platform)) continue
-                seenPlatform.add(platform)
-                if (platform === 'aliyun') {
+	              const drives: { userId: string; name: string; platform: string; driveId: string }[] = []
+	              for (const u of users) {
+	                if (!u?.user_id || !u?.access_token) continue
+	                const name = u.nick_name || u.user_name || u.name || u.user_id
+	                const platform = u.tokenfrom || 'aliyun'
+	                if (platform === 'aliyun') {
                   drives.push({ userId: u.user_id, name, platform, driveId: u.resource_drive_id || u.backup_drive_id || u.default_drive_id || '' })
                 } else {
-                  drives.push({ userId: u.user_id, name, platform, driveId: u.default_drive_id || '' })
+                  drives.push({ userId: u.user_id, name, platform, driveId: driveToolDriveIdForPlatform(platform, u.default_drive_id) })
                 }
               }
               appendPart(aiMsgId, { type: 'tool-listDrives', state: 'select', drives } as MessagePart)
@@ -310,9 +384,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               scrollBottom()
 
               try {
-                const resp = await fetch(
-                  `https://api.xbyvideohub.com/api/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=all`
-                )
+                const resp = await fetch(`${getCloudAIBaseURL()}/api/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=all`)
                 const d = await resp.json()
                 if (d?.code === 0 && d?.data?.merged_by_type) {
                   const all: LinkResult[] = []
@@ -343,6 +415,200 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
                 scrollBottom()
                 return { total: 0, links: [], error: e?.message }
               }
+            },
+          },
+          parseMiaochuanJson: {
+            description: '解析网盘互通/秒传 JSON 清单，支持 MD5、base64 MD5、GCID、path/name/size 等字段',
+            inputSchema: z.object({
+              jsonText: z.string().describe('秒传 JSON 文本'),
+            }),
+            execute: async (args: any) => {
+              appendPart(aiMsgId, { type: 'tool-miaochuan', state: 'parsing' } as MessagePart)
+              scrollBottom()
+              try {
+                const parsed = normalizeMiaochuanPayload(args.jsonText || '')
+                updateToolPart(aiMsgId, 'tool-miaochuan', {}, (part: any) => {
+                  part.state = parsed.files.length ? 'done' : 'error'
+                  if (parsed.files.length) part.output = { total: parsed.files.length, report: parsed.report }
+                  else part.error = parsed.errors[0] || '没有识别到可秒传文件'
+                })
+                scrollBottom()
+                return {
+                  total: parsed.files.length,
+                  errors: parsed.errors.slice(0, 10),
+                  files: parsed.files.slice(0, 30).map(file => ({ path: file.path, name: file.name, size: file.size, sourceProvider: file.sourceProvider }))
+                }
+              } catch (e: any) {
+                updateToolPart(aiMsgId, 'tool-miaochuan', {}, (part: any) => {
+                  part.state = 'error'
+                  part.error = e?.message || '解析秒传 JSON 失败'
+                })
+                scrollBottom()
+                return { total: 0, error: e?.message }
+              }
+            },
+          },
+          importMiaochuanToGuangya: {
+            description: '将秒传 JSON 清单导入光鸭云盘，需要用户确认后才会执行写入操作',
+            inputSchema: z.object({
+              jsonText: z.string().describe('秒传 JSON 文本'),
+              parentId: z.string().optional().describe('光鸭目标目录 ID，默认根目录 guangya_root'),
+            }),
+            execute: async (args: any) => {
+              const parsed = normalizeMiaochuanPayload(args.jsonText || '')
+              if (!parsed.files.length) {
+                appendPart(aiMsgId, { type: 'tool-miaochuan', state: 'error', error: parsed.errors[0] || '没有识别到可秒传文件' } as MessagePart)
+                scrollBottom()
+                return { pending: false, error: 'no valid files' }
+              }
+              const account = await getUserIdForPlatform('guangya')
+              if (!account) {
+                appendPart(aiMsgId, { type: 'tool-miaochuan', state: 'error', error: '请先登录光鸭云盘' } as MessagePart)
+                scrollBottom()
+                return { pending: false, error: 'no guangya account' }
+              }
+              appendPart(aiMsgId, {
+                type: 'tool-miaochuan',
+                state: 'confirm',
+                input: {
+                  parentId: args.parentId || 'guangya_root',
+                  files: parsed.files.map(file => ({ path: file.path, name: file.name, size: file.size, md5: file.md5, gcid: file.gcid }))
+                },
+                output: { total: parsed.files.length, report: parsed.report }
+              } as MessagePart)
+              scrollBottom()
+              return { pending: true, total: parsed.files.length, target: args.parentId || 'guangya_root' }
+            },
+          },
+          exportDirectLinks: {
+            description: '批量导出文件或文件夹的直链，支持 url 或 aria2 格式；可用于光鸭、夸克、阿里云盘等已接入下载 URL 的网盘',
+            inputSchema: z.object({
+              files: z.array(z.object({ name: z.string(), fileId: z.string(), driveId: z.string(), userId: z.string(), isDir: z.boolean().optional(), size: z.number().optional() })),
+              format: z.enum(['url', 'aria2']).optional().describe('导出格式，默认 aria2'),
+            }),
+            execute: async (args: any) => {
+              const files = args.files || []
+              const format: DirectLinkFormat = args.format || 'aria2'
+              if (!files.length) return { total: 0, success: 0, failed: 0, error: 'no files' }
+              appendPart(aiMsgId, { type: 'tool-directLinks', state: 'running', input: { files, format } } as MessagePart)
+              scrollBottom()
+              try {
+                const userId = files[0].userId
+                const models = files.map((file: any) => ({
+                  __v_skip: true,
+                  user_id: file.userId,
+                  drive_id: file.driveId,
+                  file_id: file.fileId,
+                  parent_file_id: '',
+                  name: file.name,
+                  namesearch: file.name,
+                  ext: '',
+                  mime_type: '',
+                  mime_extension: '',
+                  category: '',
+                  starred: false,
+                  time: 0,
+                  file_count: 0,
+                  size: file.size || 0,
+                  sizeStr: '',
+                  timeStr: '',
+                  icon: '',
+                  isDir: !!file.isDir,
+                  thumbnail: '',
+                  description: ''
+                }))
+                const result = await exportDirectLinks(models as any, userId, format, 100)
+                updateToolPart(aiMsgId, 'tool-directLinks', {}, (part: any) => {
+                  part.state = 'done'
+                  part.output = { total: result.total, success: result.success, failed: result.failed, text: result.text }
+                })
+                scrollBottom()
+                return { total: result.total, success: result.success, failed: result.failed, textPreview: result.text.slice(0, 4000) }
+              } catch (e: any) {
+                updateToolPart(aiMsgId, 'tool-directLinks', {}, (part: any) => {
+                  part.state = 'error'
+                  part.error = e?.message || '直链导出失败'
+                })
+                scrollBottom()
+                return { total: 0, success: 0, failed: files.length, error: e?.message }
+              }
+            },
+          },
+          importGuangyaMagnets: {
+            description: '批量提交 magnet 链接到光鸭云添加，需要用户确认后才会创建离线任务',
+            inputSchema: z.object({
+              text: z.string().describe('包含 magnet 链接的文本或 JSON'),
+              parentId: z.string().optional().describe('光鸭目标目录 ID，默认根目录 guangya_root'),
+            }),
+            execute: async (args: any) => {
+              const magnets = extractMagnetLinks(args.text || '')
+              if (!magnets.length) {
+                appendPart(aiMsgId, { type: 'tool-guangyaMagnets', state: 'error', error: '没有识别到 magnet 链接' } as MessagePart)
+                scrollBottom()
+                return { pending: false, error: 'no magnets' }
+              }
+              const account = await getUserIdForPlatform('guangya')
+              if (!account) {
+                appendPart(aiMsgId, { type: 'tool-guangyaMagnets', state: 'error', error: '请先登录光鸭云盘' } as MessagePart)
+                scrollBottom()
+                return { pending: false, error: 'no guangya account' }
+              }
+              appendPart(aiMsgId, {
+                type: 'tool-guangyaMagnets',
+                state: 'confirm',
+                input: { text: args.text || '', parentId: args.parentId || 'guangya_root', magnets }
+              } as MessagePart)
+              scrollBottom()
+              return { pending: true, total: magnets.length }
+            },
+          },
+          scanDriveEmptyDirs: {
+            description: '扫描任意已接入网盘指定目录下的最里层空目录',
+            inputSchema: z.object({
+              userId: z.string().optional().describe('网盘账号 userId；可从 listDrives 获取'),
+              driveId: z.string().optional().describe('网盘 driveId；可从 listDrives 获取'),
+              platform: z.string().optional().describe('网盘平台名，如 aliyun、quark、guangya、baidu'),
+              rootId: z.string().optional().describe('扫描根目录 ID；不传则使用该网盘根目录'),
+            }),
+            execute: async (args: any) => {
+              const target = await resolveDriveForTool(args)
+              if (!target) {
+                appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'error', error: '请先选择或登录要扫描的网盘' } as MessagePart)
+                scrollBottom()
+                return { error: 'no drive account' }
+              }
+              appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'scanning', input: { rootId: target.rootId } } as MessagePart)
+              scrollBottom()
+              try {
+                const result = await scanDriveEmptyDirs(target.userId, target.driveId, target.rootId)
+                updateToolPart(aiMsgId, 'tool-guangyaEmptyDirs', {}, (part: any) => {
+                  part.state = 'done'
+                  part.input = { rootId: target.rootId, dirs: result.emptyDirs }
+                  part.output = { scannedDirs: result.scannedDirs, total: result.emptyDirs.length, report: result.report }
+                })
+                scrollBottom()
+                return { scannedDirs: result.scannedDirs, total: result.emptyDirs.length, dirs: result.emptyDirs.slice(0, 50) }
+              } catch (e: any) {
+                updateToolPart(aiMsgId, 'tool-guangyaEmptyDirs', {}, (part: any) => {
+                  part.state = 'error'
+                  part.error = e?.message || '扫描空目录失败'
+                })
+                scrollBottom()
+                return { error: e?.message }
+              }
+            },
+          },
+          deleteDriveEmptyDirs: {
+            description: '删除任意已接入网盘的空目录，需要用户确认；dirs 应来自 scanDriveEmptyDirs 的结果',
+            inputSchema: z.object({
+              dirs: z.array(z.object({ name: z.string(), fileId: z.string(), parentFileId: z.string(), driveId: z.string(), userId: z.string(), path: z.string() })),
+            }),
+            execute: async (args: any) => {
+              const dirs = args.dirs || []
+              if (!dirs.length) return { pending: false, total: 0 }
+              appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'confirm', input: { dirs } } as MessagePart)
+              scrollBottom()
+              return { pending: true, total: dirs.length }
             },
           },
           importShare: {
@@ -455,32 +721,70 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             },
           },
 
-          findDuplicates: {
-            description: '扫描云盘查找重复文件，platforms 参数指定要扫描的网盘',
-            inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表，如 ["aliyun","baidu"]') }),
-            execute: async (args: any) => {
-              appendPart(aiMsgId, { type: 'tool-findDuplicates', state: 'scanning' } as MessagePart)
-              scrollBottom()
-              try {
-                const allFiles = await scanAllDrives(args.platforms)
-                const map = new Map<string, FileResult[]>()
-                for (const f of allFiles) {
-                  if (f.isDir) continue
-                  const key = `${f.name}::${f.size}`
-                  if (!map.has(key)) map.set(key, [])
-                  map.get(key)!.push({ name: f.name, ext: f.ext, size: f.size, isDir: false, provider: f.provider, providerName: f.providerName, driveId: f.drive_id, fileId: f.file_id, parentFileId: f.parent_file_id, userId: f.user_id, source: f.source })
-                }
-                const groups = Array.from(map.entries()).filter(([, files]) => files.length > 1).map(([key, files]) => ({ name: key.split('::')[0], size: Number(key.split('::')[1]), files })).sort((a, b) => b.size * (b.files.length - 1) - a.size * (a.files.length - 1)).slice(0, 20)
-                updateToolPart(aiMsgId, 'tool-findDuplicates', {}, (p: any) => { p.state = 'done'; p.output = { totalFiles: allFiles.length, groups } })
+	          findDuplicates: {
+	            description: '扫描云盘查找重复文件；mode=helperName 匹配光鸭助手的 (1)/(2)/(3) 命名规则，mode=contentHash 按文件内容哈希判重',
+	            inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表，如 ["aliyun","baidu"]'), mode: z.enum(['helperName', 'contentHash']).optional().describe('判重模式，默认 helperName') }),
+	            execute: async (args: any) => {
+	              appendPart(aiMsgId, { type: 'tool-findDuplicates', state: 'scanning' } as MessagePart)
+	              scrollBottom()
+	              try {
+	                const targets = await buildDriveTargetsForTool(args.platforms)
+	                const data = await scanDriveDuplicates(targets, (args.mode || 'helperName') as DuplicateScanMode)
+                const groups = data.groups.slice(0, 20).map(group => ({
+                  name: group.label,
+                  size: group.files[0]?.size || 0,
+                  files: group.files.map(file => ({ name: file.name, ext: file.name.includes('.') ? file.name.split('.').pop() || '' : '', size: file.size, isDir: false, provider: file.driveId, providerName: file.path.split('/')[0] || file.driveId, driveId: file.driveId, fileId: file.fileId, parentFileId: file.parentFileId, userId: file.userId, source: file.path }))
+                }))
+                updateToolPart(aiMsgId, 'tool-findDuplicates', {}, (p: any) => { p.state = 'done'; p.output = { totalFiles: data.scannedFiles, groups } })
                 scrollBottom()
-                return { totalFiles: allFiles.length, groupCount: groups.length }
+                return { totalFiles: data.scannedFiles, groupCount: groups.length, report: data.report }
               } catch (e: any) {
                 updateToolPart(aiMsgId, 'tool-findDuplicates', {}, (p: any) => { p.state = 'error'; p.error = e?.message || '扫描失败' })
                 scrollBottom()
                 return { error: e?.message }
               }
-            },
-          },
+	            },
+	          },
+
+	          scanDriveLargeFiles: {
+	            description: '扫描任意已接入网盘的大文件；支持 size/video/doc/zip/others/size5000/size1000/size100 模式',
+	            inputSchema: z.object({
+	              platforms: z.array(z.string()).optional().describe('网盘平台名列表，如 ["aliyun","115","guangya"]'),
+	              mode: z.enum(['size', 'video', 'doc', 'zip', 'others', 'size5000', 'size1000', 'size100']).optional().describe('扫描模式，默认 size1000'),
+	              customSizeMB: z.number().optional().describe('mode=size 时使用的阈值，单位 MB')
+	            }),
+	            execute: async (args: any) => {
+	              appendPart(aiMsgId, { type: 'tool-analyzeStorage', state: 'scanning' } as MessagePart)
+	              scrollBottom()
+	              try {
+	                const targets = await buildDriveTargetsForTool(args.platforms)
+	                const data = await scanDriveLargeFiles(targets, (args.mode || 'size1000') as LargeFileScanMode, { customSizeMB: args.customSizeMB || 100 })
+	                const topLarge: FileResult[] = data.files.slice(0, 30).map(file => ({
+	                  name: file.name,
+	                  ext: file.ext,
+	                  size: file.size,
+	                  isDir: false,
+	                  provider: file.driveId,
+	                  providerName: file.path.split('/')[0] || file.driveId,
+	                  driveId: file.driveId,
+	                  fileId: file.fileId,
+	                  parentFileId: file.parentFileId,
+	                  userId: file.userId,
+	                  source: file.path
+	                }))
+	                updateToolPart(aiMsgId, 'tool-analyzeStorage', {}, (p: any) => {
+	                  p.state = 'done'
+	                  p.output = { drives: [{ name: '大文件扫描', totalSize: data.files.reduce((sum, file) => sum + file.size, 0), fileCount: data.files.length, topLarge }], oldestFiles: [], unusedFiles: [] }
+	                })
+	                scrollBottom()
+	                return { total: data.files.length, scannedDirs: data.scannedDirs, scannedFiles: data.scannedFiles, report: data.report, files: topLarge }
+	              } catch (e: any) {
+	                updateToolPart(aiMsgId, 'tool-analyzeStorage', {}, (p: any) => { p.state = 'error'; p.error = e?.message || '扫描大文件失败' })
+	                scrollBottom()
+	                return { error: e?.message }
+	              }
+	            },
+	          },
 
           analyzeStorage: {
             description: '分析存储空间使用情况，platforms 参数指定要分析的网盘',
@@ -549,19 +853,54 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             },
           },
 
-          moveFiles: {
-            description: '移动文件到指定目录（需要用户确认）',
-            inputSchema: z.object({ files: z.array(z.object({ name: z.string(), fileId: z.string(), driveId: z.string(), userId: z.string() })), targetDir: z.string() }),
-            execute: async (args: any) => {
+	          moveFiles: {
+	            description: '移动文件到指定目录（需要用户确认）',
+	            inputSchema: z.object({ files: z.array(z.object({ name: z.string(), fileId: z.string(), driveId: z.string(), userId: z.string() })), targetDir: z.string() }),
+	            execute: async (args: any) => {
               const { files, targetDir } = args
               if (!files?.length) return { total: 0, success: 0 }
               appendPart(aiMsgId, { type: 'tool-moveFiles', state: 'confirm', input: { files, targetDir } } as MessagePart)
               scrollBottom()
-              return { pending: true }
-            },
-          },
+	              return { pending: true }
+	            },
+	          },
 
-          getTMDBMovies: {
+	          organizeFiles: {
+	            description: '移动整理文件；mode=moveToParent 整体上移一层，mode=flatten 拆开文件夹到目标目录，mode=moveToDir 移动到指定目录；需要用户确认',
+	            inputSchema: z.object({
+	              mode: z.enum(['moveToParent', 'flatten', 'moveToDir']).describe('整理方式'),
+	              files: z.array(z.object({ name: z.string(), fileId: z.string(), driveId: z.string(), userId: z.string(), parentFileId: z.string().optional() })),
+	              targetDir: z.string().optional().describe('目标目录 ID；moveToParent 可不传，默认使用第一个文件的 parentFileId')
+	            }),
+	            execute: async (args: any) => {
+	              const files = args.files || []
+	              if (!files.length) return { total: 0, success: 0 }
+	              const targetDir = args.targetDir || files[0]?.parentFileId || ''
+	              if (!targetDir) return { pending: false, error: 'missing targetDir' }
+	              appendPart(aiMsgId, { type: 'tool-organizeFiles', state: 'confirm', input: { mode: args.mode || 'moveToDir', files, targetDir } } as MessagePart)
+	              scrollBottom()
+	              return { pending: true, total: files.length, mode: args.mode || 'moveToDir' }
+	            },
+	          },
+
+	          mediaOrganizeFiles: {
+	            description: '按影视命名规则进行媒体整理，自动创建 电影/电视剧/动漫/综艺 等目录并移动媒体文件或文件夹；需要用户确认',
+	            inputSchema: z.object({
+	              files: z.array(z.object({ name: z.string(), fileId: z.string(), driveId: z.string(), userId: z.string(), isDir: z.boolean().optional() })),
+	              rootParentId: z.string().describe('整理根目录 ID，通常是当前目录 ID')
+	            }),
+	            execute: async (args: any) => {
+	              const files = args.files || []
+	              if (!files.length || !args.rootParentId) return { total: 0, success: 0, error: 'missing files or rootParentId' }
+	              const plans = buildMediaOrganizePlan(files.map((file: any) => ({ userId: file.userId, driveId: file.driveId, fileId: file.fileId, name: file.name, isDir: !!file.isDir })), args.rootParentId)
+	              if (!plans.length) return { pending: false, total: 0, error: '没有识别到可整理的媒体文件或文件夹' }
+	              appendPart(aiMsgId, { type: 'tool-organizeFiles', state: 'confirm', input: { mode: 'media', files, targetDir: args.rootParentId, plans } } as MessagePart)
+	              scrollBottom()
+	              return { pending: true, total: plans.length, preview: plans.slice(0, 8).map(plan => ({ name: plan.name, targetPath: plan.targetPath })) }
+	            },
+	          },
+
+	          getTMDBMovies: {
             description: '从 TMDB 获取电影数据（热映、流行、高分），获取最新电影和电视剧信息',
             inputSchema: z.object({
               category: z.enum(['trending','popular','top_rated']).optional().describe('类别：trending=热映, popular=流行, top_rated=高分'),
@@ -641,7 +980,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               scrollBottom()
               let items: { title: string; desc: string }[] = []
               try {
-                const resp = await fetch(`https://api.xbyvideohub.com/api/douban-hot?category=${category}&page=1&limit=25`)
+                const resp = await fetch(`${getCloudAIBaseURL()}/api/douban-hot?category=${category}&page=1&limit=25`)
                 const data = await resp.json()
                 if (data?.code === 0 && data?.data?.items) {
                   const movies = data.data.items.map((item: any) => ({ id: String(item.id || ''), title: item.title || '', cover: item.cover || '', desc: item.desc || '', url: item.url || '' }))
@@ -701,8 +1040,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             },
           },
 
-          deleteFiles: {
-            description: '删除文件（需要用户确认，移入回收站）',
+	          deleteFiles: {
+	            description: '将文件移入回收站（需要用户确认）；仅支持明确有回收站能力的网盘，不支持的网盘会拒绝执行',
             inputSchema: z.object({ files: z.array(z.object({ name: z.string(), fileId: z.string(), driveId: z.string(), userId: z.string() })) }),
             execute: async (args: any) => {
               const { files } = args
@@ -770,26 +1109,94 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     const msg = messages.value.find(m => m.id === msgId)
     if (!msg) return
     const part = msg.parts[partIndex] as any
-    if (!part || (part.type !== 'tool-moveFiles' && part.type !== 'tool-deleteFiles')) return
+	    if (!part || (part.type !== 'tool-moveFiles' && part.type !== 'tool-organizeFiles' && part.type !== 'tool-deleteFiles' && part.type !== 'tool-miaochuan' && part.type !== 'tool-guangyaMagnets' && part.type !== 'tool-guangyaEmptyDirs')) return
     if (part.state !== 'confirm') return
     part.state = 'running'
     scrollBottom()
     try {
-      const { files, targetDir } = part.input || {}
-      const userId = files[0]?.userId
-      const driveId = files[0]?.driveId
-      const fileIds = files.map((f: any) => f.fileId)
-      if (part.type === 'tool-moveFiles') {
-        const result = await AliFileCmd.ApiMoveBatch(userId, driveId, fileIds, driveId, targetDir || 'root')
-        const failed = result?.length || 0
+      if (part.type === 'tool-miaochuan') {
+        const account = await getUserIdForPlatform('guangya')
+        if (!account) throw new Error('请先登录光鸭云盘')
+        const files = part.input?.files || []
+        const result = await apiGuangyaImportMiaochuan(account.userId, part.input?.parentId || 'guangya_root', files)
         part.state = 'done'
-        part.output = { total: files.length, success: files.length - failed, failed }
-      } else {
-        const result = await AliFileCmd.ApiDeleteBatch(userId, driveId, fileIds)
-        const failed = result?.length || 0
-        part.state = 'done'
-        part.output = { total: files.length, success: files.length - failed, failed }
+        part.output = {
+          total: result.total,
+          success: result.success,
+          failed: result.failed,
+          skipped: result.skipped,
+          report: `导入完成：成功 ${result.success}/${result.total}，失败 ${result.failed}，跳过 ${result.skipped}${result.failures.length ? `\n失败示例：${result.failures.slice(0, 5).map(item => `${item.path}(${item.reason})`).join('；')}` : ''}`
+        }
+        scrollBottom()
+        saveHistory(messages.value)
+        return
       }
+      if (part.type === 'tool-guangyaMagnets') {
+        const account = await getUserIdForPlatform('guangya')
+        if (!account) throw new Error('请先登录光鸭云盘')
+        const result = await importGuangyaMagnets(account.userId, part.input?.parentId || 'guangya_root', part.input?.text || '')
+        part.state = 'done'
+        part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
+        scrollBottom()
+        saveHistory(messages.value)
+        return
+      }
+      if (part.type === 'tool-guangyaEmptyDirs') {
+        const result = await deleteDriveEmptyDirs(part.input?.dirs || [])
+        part.state = 'done'
+        part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
+        scrollBottom()
+        saveHistory(messages.value)
+        return
+      }
+	      const { files, targetDir } = part.input || {}
+	      const userId = files[0]?.userId
+	      const driveId = files[0]?.driveId
+	      const fileIds = files.map((f: any) => f.fileId)
+	      if (part.type === 'tool-moveFiles') {
+	        if (files.some((file: any) => file.driveId !== driveId || file.userId !== userId)) throw new Error('移动文件必须来自同一个网盘账号')
+	        const result = await moveDriveToolFiles(files.map((file: any) => ({ userId: file.userId, driveId: file.driveId, fileId: file.fileId, name: file.name } as OrganizeFileItem)), targetDir || 'root', driveId)
+	        part.state = 'done'
+	        part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
+	      } else if (part.type === 'tool-organizeFiles') {
+	        if (files.some((file: any) => file.driveId !== driveId || file.userId !== userId)) throw new Error('整理文件必须来自同一个网盘账号')
+	        const items = files.map((file: any) => ({ userId: file.userId, driveId: file.driveId, fileId: file.fileId, name: file.name } as OrganizeFileItem))
+	        const mode = part.input?.mode || 'moveToDir'
+	        const result = mode === 'flatten'
+	          ? await flattenDriveToolFolders(items, targetDir || 'root', driveId)
+	          : mode === 'media'
+	            ? await executeMediaOrganizePlan(part.input?.plans || buildMediaOrganizePlan(files.map((file: any) => ({ userId: file.userId, driveId: file.driveId, fileId: file.fileId, name: file.name, isDir: !!file.isDir })), targetDir || 'root'), targetDir || 'root')
+	            : await moveDriveToolFiles(items, targetDir || 'root', driveId)
+	        part.state = 'done'
+	        part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
+	      } else {
+	        const groups = new Map<string, any[]>()
+	        for (const file of files) {
+	          const key = `${file.userId}\n${file.driveId}`
+	          groups.set(key, [...(groups.get(key) || []), file])
+	        }
+	        let success = 0
+	        const unsupported: string[] = []
+	        for (const [key, group] of groups) {
+	          const [groupUserId, groupDriveId] = key.split('\n')
+	          if (!driveSupportsRecycleBin(groupUserId, groupDriveId)) {
+	            unsupported.push(...group.map((file: any) => `${file.name}(${groupDriveId})`))
+	            continue
+	          }
+	          const successIds = await AliFileCmd.ApiTrashBatch(groupUserId, groupDriveId, group.map((file: any) => file.fileId))
+	          success += successIds.length
+	        }
+	        const failed = files.length - success
+	        part.state = 'done'
+	        part.output = {
+	          total: files.length,
+	          success,
+	          failed,
+	          report: unsupported.length
+	            ? `已跳过 ${unsupported.length} 个不支持安全移入回收站的文件：${unsupported.slice(0, 8).join('；')}${unsupported.length > 8 ? '…' : ''}`
+	            : `已移入回收站：成功 ${success}/${files.length}${failed ? `，失败 ${failed}` : ''}`
+	        }
+	      }
     } catch (e: any) {
       part.state = 'error'
       part.error = e?.message || '操作失败'
@@ -802,9 +1209,9 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     const msg = messages.value.find(m => m.id === msgId)
     if (!msg) return
     const part = msg.parts[partIndex] as any
-    if (part && (part.type === 'tool-moveFiles' || part.type === 'tool-deleteFiles') && part.state === 'confirm') {
+	    if (part && (part.type === 'tool-moveFiles' || part.type === 'tool-organizeFiles' || part.type === 'tool-deleteFiles' || part.type === 'tool-miaochuan' || part.type === 'tool-guangyaMagnets' || part.type === 'tool-guangyaEmptyDirs') && part.state === 'confirm') {
       part.state = 'done'
-      part.output = { total: part.input?.files?.length || 0, success: 0, failed: 0 }
+      part.output = { total: part.input?.files?.length || part.input?.magnets?.length || part.input?.dirs?.length || 0, success: 0, failed: 0, report: '已取消' }
     }
     saveHistory(messages.value)
   }

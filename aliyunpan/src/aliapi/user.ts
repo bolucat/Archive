@@ -9,6 +9,7 @@ import { GetSignature, isCloud123User } from './utils'
 import getUuid from 'uuid-by-string'
 import { useSettingStore } from '../store'
 import { refreshCloud123AccessToken } from '../utils/cloud123'
+import { ALIYUN_APP_ID, ALIYUN_APP_SECRET } from '../secrets.generated'
 
 export const TokenReTimeMap = new Map<string, number>()
 export const TokenLockMap = new Map<string, number>()
@@ -170,8 +171,6 @@ export default class AliUser {
     }
     let { uiEnableOpenApiType, uiOpenApiClientId, uiOpenApiClientSecret } = useSettingStore()
     let url = 'https://openapi.alipan.com/oauth/access_token'
-    let ALIYUN_APP_ID = ''
-    let ALIYUN_APP_SECRET = ''
     const postData = {
       refresh_token: token.open_api_refresh_token,
       grant_type: 'refresh_token',
@@ -218,6 +217,19 @@ export default class AliUser {
     DebugLog.mSaveWarning('ApiOpenUserBuyToken err=' + (resp.code || '') + ' ' + (resp.body?.code || ''), resp.body)
     message.error(resp.body?.message || resp.body?.display_message || '获取阿里云盘免登录购买凭证失败')
     return ''
+  }
+
+  static async LoginByOAuthCode(code: string): Promise<any> {
+    const url = 'https://api.aliyundrive.com/token/get'
+    console.info('[AliyunLogin] exchange callback code', { url, hasCode: !!code })
+    const resp = await AliHttp.Post(url, { code }, '', '')
+    console.info('[AliyunLogin] callback code response', {
+      url,
+      code: resp.code,
+      bodyCode: resp.body?.code,
+      hasAccessToken: !!(resp.body?.access_token || resp.body?.accessToken || resp.body?.token_info?.access_token)
+    })
+    return resp
   }
 
   static async OpenApiQrCodeUrl(client_id: string, client_secret: string, width: number = 348, height: number = 348): Promise<any> {

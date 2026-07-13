@@ -1,10 +1,12 @@
 import { HmacSHA1 } from 'crypto-js'
 import type { ITokenInfo } from '../user/userstore'
+import { CLOUD189_APP_ID } from '../secrets.generated'
+
+export { CLOUD189_APP_ID }
 
 export const CLOUD189_WEB_URL = 'https://cloud.189.cn'
 export const CLOUD189_AUTH_URL = 'https://open.e.189.cn'
 export const CLOUD189_API_URL = 'https://api.cloud.189.cn'
-export const CLOUD189_APP_ID = ''
 export const CLOUD189_CLIENT_TYPE = '10020'
 export const CLOUD189_VERSION = '6.2'
 export const CLOUD189_PC = 'TELEPC'

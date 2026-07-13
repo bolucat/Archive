@@ -176,7 +176,7 @@ const handleImportTorrent = () => {
 
 const handleDrop = (event: DragEvent) => {
   dragOver.value = false
-  const filePath = event.dataTransfer?.files?.[0]?.path
+  const filePath = (event.dataTransfer?.files?.[0] as (File & { path?: string }) | undefined)?.path
   if (!filePath) return
   if (!filePath.toLowerCase().endsWith('.torrent')) {
     message.error('请先选择种子文件')

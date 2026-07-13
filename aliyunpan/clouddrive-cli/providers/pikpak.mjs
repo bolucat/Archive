@@ -1,7 +1,7 @@
 const BASE_API = 'https://api-drive.mypikpak.com'
 const BASE_USER = 'https://user.mypikpak.com'
-const CLIENT_ID = 'YNxT9w7GMdWvEOKa'
-const CLIENT_SECRET = 'dbw2OtmVEeuUvIptb1Coyg'
+const CLIENT_ID = process.env.CLOUDDRIVE_PIKPAK_CLIENT_ID || process.env.PIKPAK_CLIENT_ID || ''
+const CLIENT_SECRET = process.env.CLOUDDRIVE_PIKPAK_CLIENT_SECRET || process.env.PIKPAK_CLIENT_SECRET || ''
 
 async function pikpakPost(url, body, token) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8' }

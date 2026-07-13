@@ -17,7 +17,7 @@ type ShadowSocksOption struct {
 	MuxOption  MuxOption  `inbound:"mux-option,omitempty"`
 	ShadowTLS  ShadowTLS  `inbound:"shadow-tls,omitempty"`
 	ResTLS     ResTLS     `inbound:"res-tls,omitempty"`
-	JLSConfig  JLS        `inbound:"jls-config,omitempty"`
+	JLSConfig  JLSConfig  `inbound:"jls-config,omitempty"`
 	KcpTun     KcpTun     `inbound:"kcp-tun,omitempty"`
 	SimpleObfs SimpleObfs `inbound:"simple-obfs,omitempty"`
 }

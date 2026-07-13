@@ -26,15 +26,22 @@ const (
 
 var (
 	DefaultALPN          = []string{"h2", "http/1.1"}
+	ErrJLSAuthFailed     = tls.ErrJLSAuthFailed
 	ErrFallbackCompleted = errors.New("jls: connection relayed to fallback")
 )
 
 type User = tls.JLSUser
 
 type ClientConfig struct {
-	ServerName string
-	User       User
-	ALPN       []string
+	Config
+
+	ServerName        string
+	ALPN              []string
+	ClientFingerprint string
+}
+
+type Config struct {
+	User User
 }
 
 type ServerConfig struct {
@@ -44,41 +51,57 @@ type ServerConfig struct {
 	DialContext func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-type Conn struct {
-	*tls.Conn
-}
-
-func (c *Conn) Upstream() any {
-	return c.Conn.NetConn()
-}
-
-func NewClientConfig(serverName, username, password string, alpn []string) (*ClientConfig, error) {
-	if serverName == "" {
-		return nil, errors.New("jls: server name is required")
-	}
+func NewConfig(username, password string) (*Config, error) {
 	if username == "" {
 		return nil, errors.New("jls: username is required")
 	}
 	if password == "" {
 		return nil, errors.New("jls: password is required")
 	}
-	if alpn == nil {
-		alpn = DefaultALPN
+	return &Config{User: User{Username: username, Password: password}}, nil
+}
+
+func NewClientConfig(serverName, username, password string, alpn []string) (*ClientConfig, error) {
+	if serverName == "" {
+		return nil, errors.New("jls: server name is required")
 	}
-	return &ClientConfig{
+	authConfig, err := NewConfig(username, password)
+	if err != nil {
+		return nil, err
+	}
+	config := &ClientConfig{
+		Config:     *authConfig,
 		ServerName: serverName,
-		User:       User{Username: username, Password: password},
-		ALPN:       append([]string(nil), alpn...),
-	}, nil
+	}
+	if alpn != nil {
+		config.ALPN = append([]string{}, alpn...)
+	}
+	return config, nil
 }
 
 func NewClient(ctx context.Context, conn net.Conn, config *ClientConfig) (net.Conn, error) {
 	if config == nil {
 		return nil, errors.New("jls: nil client config")
 	}
+	if config.ServerName == "" {
+		return nil, errors.New("jls: server name is required")
+	}
+	if config.User.Username == "" {
+		return nil, errors.New("jls: username is required")
+	}
+	if config.User.Password == "" {
+		return nil, errors.New("jls: password is required")
+	}
+	if client, ok, err := newUTLSClient(ctx, conn, config); ok {
+		return client, err
+	}
+	alpn := config.ALPN
+	if alpn == nil {
+		alpn = DefaultALPN
+	}
 	tlsConn := tls.Client(conn, &tls.Config{
 		ServerName: config.ServerName,
-		NextProtos: append([]string(nil), config.ALPN...),
+		NextProtos: append([]string(nil), alpn...),
 		RootCAs:    ca.GetCertPool(),
 		Time:       ntp.Now,
 		JLSConfig: &tls.JLSConfig{
@@ -90,9 +113,9 @@ func NewClient(ctx context.Context, conn net.Conn, config *ClientConfig) (net.Co
 		return nil, err
 	}
 	if !tlsConn.ConnectionState().JLS.Authenticated {
-		return nil, tls.ErrJLSAuthFailed
+		return nil, ErrJLSAuthFailed
 	}
-	return &Conn{Conn: tlsConn}, nil
+	return tlsConn, nil
 }
 
 func NewServerConfig(sni, dest string, users []User, alpn []string, rateLimit uint64, dialContext func(context.Context, string, string) (net.Conn, error)) (*ServerConfig, error) {
@@ -166,9 +189,9 @@ func Server(ctx context.Context, conn net.Conn, config *ServerConfig) (net.Conn,
 	}
 	recorder.discard()
 	if !tlsConn.ConnectionState().JLS.Authenticated {
-		return nil, tls.ErrJLSAuthFailed
+		return nil, ErrJLSAuthFailed
 	}
-	return &Conn{Conn: tlsConn}, nil
+	return tlsConn, nil
 }
 
 func relayFallback(ctx context.Context, inbound net.Conn, prefix []byte, config *ServerConfig) error {

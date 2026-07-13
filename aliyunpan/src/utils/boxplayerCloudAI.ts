@@ -13,13 +13,32 @@ export interface BoxPlayerCloudChatRequest {
   messages: BoxPlayerCloudAIMessage[]
 }
 
+export interface BoxPlayerCloudMediaScrapeItem {
+  id?: string
+  filename: string
+  folderHint?: string
+  pathHint?: string
+}
+
+export interface BoxPlayerCloudMediaScrapeResult {
+  idx?: number
+  id?: string | null
+  type?: 'movie' | 'tv' | null
+  title?: string | null
+  year?: number | null
+  tmdb_id?: number | null
+  season?: number | null
+  episode?: number | null
+  confidence?: number | null
+}
+
 export interface BoxPlayerCloudStreamCallbacks {
   onToken: (text: string) => void
   onDone: () => void
   onError: (message: string) => void
 }
 
-const CLOUD_AI_BASE_URL = (Config as any).BOXPLAYER_AI_API_URL || 'https://ai.xbyvideohub.com'
+const CLOUD_AI_BASE_URL = Config.BOXPLAYER_AI_API_URL
 
 export function isBoxPlayerCloudProvider(providerName?: string): boolean {
   return providerName === 'boxplayer-cloud'
@@ -86,6 +105,14 @@ export async function completeBoxPlayerCloudChat(request: BoxPlayerCloudChatRequ
     onError: (message) => { throw new Error(message) }
   })
   return text
+}
+
+export async function scrapeMediaWithBoxPlayerCloud(items: BoxPlayerCloudMediaScrapeItem[]): Promise<BoxPlayerCloudMediaScrapeResult[]> {
+  const response = await postCloudAI('/v1/media-scrape', { items })
+  if (!response.ok) throw new Error(await readCloudAIError(response))
+  const data = await response.json() as { results?: BoxPlayerCloudMediaScrapeResult[] }
+  if (!Array.isArray(data.results)) throw new Error('AI 刮削没有返回结果')
+  return data.results
 }
 
 function detectSourceLang(text: string): string {

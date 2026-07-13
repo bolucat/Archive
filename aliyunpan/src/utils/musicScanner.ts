@@ -10,6 +10,7 @@ import {
   isCloud123User,
   isDrive115User,
   isDropboxUser,
+  isGuangyaUser,
   isOneDriveUser,
   isPikPakUser,
   isQuarkUser
@@ -31,6 +32,7 @@ import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
 import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 
 const AUDIO_EXTS = new Set([
   '.mp3', '.flac', '.wav', '.ape', '.ogg', '.aac',
@@ -104,6 +106,7 @@ class MusicScanner {
   private static instance: MusicScanner | null = null
   private isRunning = false
   private shouldStop = false
+  private silent = false
 
   static getInstance(): MusicScanner {
     if (!MusicScanner.instance) MusicScanner.instance = new MusicScanner()
@@ -126,6 +129,7 @@ class MusicScanner {
     }
     this.isRunning = true
     this.shouldStop = false
+    this.silent = false
     const store = useMusicLibraryStore()
     store.setIsScanning(true)
     const drive_id = folder.drive_id || ''
@@ -149,6 +153,7 @@ class MusicScanner {
       store.setIsScanning(false)
       this.isRunning = false
       this.shouldStop = false
+      this.silent = false
     }
     return counters
   }
@@ -161,12 +166,14 @@ class MusicScanner {
   async scanRegisteredFolders(opts: {
     folders: { user_id: string; drive_id: string; file_id: string; name?: string; path?: string }[]
     userIdAllowList?: Set<string>
+    silent?: boolean
   }): Promise<{ scanned: number; found: number; folderCount: number }> {
     const summary = { scanned: 0, found: 0, folderCount: 0 }
     if (!opts.folders.length) return summary
     if (this.isRunning) return summary
     this.isRunning = true
     this.shouldStop = false
+    this.silent = !!opts.silent
     const store = useMusicLibraryStore()
     store.setIsScanning(true)
     try {
@@ -198,6 +205,7 @@ class MusicScanner {
       store.setIsScanning(false)
       this.isRunning = false
       this.shouldStop = false
+      this.silent = false
     }
     return summary
   }
@@ -220,7 +228,7 @@ class MusicScanner {
     await setting.updateStore({ uiMusicAutoScanFolders: list })
   }
 
-  async scanAllUsers(forceOrOpts: boolean | { force?: boolean; sinceMs?: number; userIdAllowList?: Set<string> } = false): Promise<void> {
+  async scanAllUsers(forceOrOpts: boolean | { force?: boolean; sinceMs?: number; userIdAllowList?: Set<string>; silent?: boolean } = false): Promise<void> {
     const opts = typeof forceOrOpts === 'boolean' ? { force: forceOrOpts } : forceOrOpts
     const force = !!opts.force
     const sinceMs = opts.sinceMs || 0
@@ -228,6 +236,7 @@ class MusicScanner {
     if (this.isRunning) return
     this.isRunning = true
     this.shouldStop = false
+    this.silent = !!opts.silent
     const store = useMusicLibraryStore()
     store.setIsScanning(true)
     try {
@@ -248,6 +257,7 @@ class MusicScanner {
       store.setIsScanning(false)
       this.isRunning = false
       this.shouldStop = false
+      this.silent = false
     }
   }
 
@@ -272,7 +282,8 @@ class MusicScanner {
       'box': '0',
       'quark': '0',
       '139': 'cloud139_root',
-      '189': 'cloud189_root'
+      '189': 'cloud189_root',
+      'guangya': 'guangya_root'
     }
     const driveId =
       token.tokenfrom === 'cloud123' ? 'cloud123' :
@@ -285,6 +296,7 @@ class MusicScanner {
       token.tokenfrom === 'quark' ? 'quark' :
       token.tokenfrom === '139' ? 'cloud139' :
       token.tokenfrom === '189' ? 'cloud189' :
+      token.tokenfrom === 'guangya' ? 'guangya' :
       ''
     if (!driveId) return
     const rootId = sentinelMap[token.tokenfrom] || ''
@@ -406,7 +418,7 @@ class MusicScanner {
     }
 
     if (isDrive115User(user_id) || drive_id === 'drive115') {
-      const list = await apiDrive115FileList(user_id, fileId || '0', 500, 0, true)
+      const list = await apiDrive115FileList(user_id, fileId || '0', 500, 0, true, { silent: this.silent })
       return list.map((item: any) => {
         const mapped = mapDrive115FileToAliModel(item, drive_id)
         ;(mapped as any).user_id = user_id
@@ -486,6 +498,15 @@ class MusicScanner {
       const list = await apiCloud189FileList(user_id, fileId || 'cloud189_root', 1000)
       return list.map((item: any) => {
         const mapped = mapCloud189FileToAliModel(item, drive_id, fileId || 'cloud189_root')
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      const list = await apiGuangyaFileList(user_id, fileId || 'guangya_root', 200)
+      return list.map((item: any) => {
+        const mapped = mapGuangyaFileToAliModel(item, drive_id, fileId || 'guangya_root')
         ;(mapped as any).user_id = user_id
         return mapped
       })

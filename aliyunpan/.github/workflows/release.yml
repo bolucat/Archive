@@ -1,7 +1,14 @@
 name: Build Release
 
 on:
-  workflow_dispatch:  # 仅手动触发，禁用 tag 自动发布
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
 
 jobs:
   release:
@@ -9,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ windows-latest, ubuntu-latest ]  # 移除 macOS
+        os: [ windows-latest, ubuntu-latest, macos-14 ]
     runs-on: ${{ matrix.os }}
 
     permissions:
@@ -22,14 +29,13 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          registry-url: https://registry.npmjs.org/
+          node-version: 22.12.0
 
       - uses: pnpm/action-setup@v3
         name: Install pnpm
         id: pnpm-install
         with:
-          version: 8
+          version: 10.32.1
           run_install: false
 
       - name: Get Pnpm Store Directory
@@ -68,7 +74,7 @@ jobs:
 
       - name: Setup Cache Electron Builder
         uses: actions/cache@v4
-        if: matrix.os != 'macos-latest'
+        if: matrix.os != 'macos-14'
         with:
           path: ${{ env.ELECTRON_BUILDER_STORE_PATH }}
           key: ${{ runner.os }}-electron-builder-cache-${{ hashFiles('**/pnpm-lock.yaml') }}
@@ -77,7 +83,42 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pnpm install
+          pnpm install --frozen-lockfile
+
+      - name: Generate Release Secrets
+        env:
+          REQUIRED_RELEASE_SECRETS: ALIYUN_APP_ID,ALIYUN_APP_SECRET,BAIDU_APP_ID,BAIDU_APP_SECRET,CLOUD123_APP_ID,CLOUD123_APP_SECRET,DRIVE115_APP_ID,DRIVE115_APP_SECRET,DROPBOX_APP_KEY,ONEDRIVE_CLIENT_ID,BOX_CLIENT_ID,PIKPAK_CLIENT_ID,PIKPAK_CLIENT_SECRET,GUANGYA_CLIENT_ID,CLOUD189_APP_ID,BOXPLAYER_AI_API_URL,BOXPLAYER_SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,BOXPLAYER_SITE_URL
+          ALIYUN_APP_ID: ${{ secrets.ALIYUN_APP_ID }}
+          ALIYUN_APP_SECRET: ${{ secrets.ALIYUN_APP_SECRET }}
+          BAIDU_APP_ID: ${{ secrets.BAIDU_APP_ID }}
+          BAIDU_APP_SECRET: ${{ secrets.BAIDU_APP_SECRET }}
+          BAIDU_PCS_APP_ID: ${{ secrets.BAIDU_PCS_APP_ID }}
+          CLOUD123_APP_ID: ${{ secrets.CLOUD123_APP_ID }}
+          CLOUD123_APP_SECRET: ${{ secrets.CLOUD123_APP_SECRET }}
+          DRIVE115_APP_ID: ${{ secrets.DRIVE115_APP_ID }}
+          DRIVE115_APP_SECRET: ${{ secrets.DRIVE115_APP_SECRET }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          ONEDRIVE_CLIENT_ID: ${{ secrets.ONEDRIVE_CLIENT_ID }}
+          ONEDRIVE_CLIENT_SECRET: ${{ secrets.ONEDRIVE_CLIENT_SECRET }}
+          BOX_CLIENT_ID: ${{ secrets.BOX_CLIENT_ID }}
+          BOX_CLIENT_SECRET: ${{ secrets.BOX_CLIENT_SECRET }}
+          PIKPAK_CLIENT_ID: ${{ secrets.PIKPAK_CLIENT_ID }}
+          PIKPAK_CLIENT_SECRET: ${{ secrets.PIKPAK_CLIENT_SECRET }}
+          GUANGYA_CLIENT_ID: ${{ secrets.GUANGYA_CLIENT_ID }}
+          CLOUD189_APP_ID: ${{ secrets.CLOUD189_APP_ID }}
+          SUBTITLE_SEARCH_API_KEY: ${{ secrets.SUBTITLE_SEARCH_API_KEY }}
+          SUBTITLE_DOWNLOAD_API_KEY: ${{ secrets.SUBTITLE_DOWNLOAD_API_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          BOXPLAYER_AI_API_URL: ${{ secrets.BOXPLAYER_AI_API_URL }}
+          BOXPLAYER_SUPABASE_URL: ${{ secrets.BOXPLAYER_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          BOXPLAYER_SITE_URL: ${{ secrets.BOXPLAYER_SITE_URL }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          node scripts/generate-secrets.mjs --mode=ci --strict
 
       - name: Install Lib For Pacman Build
         if: matrix.os == 'ubuntu-latest'
@@ -91,8 +132,62 @@ jobs:
 
       - name: Build Electron App
         uses: paneron/action-electron-builder@v1.8.1
+        env:
+          ALIYUN_APP_ID: ${{ secrets.ALIYUN_APP_ID }}
+          ALIYUN_APP_SECRET: ${{ secrets.ALIYUN_APP_SECRET }}
+          BAIDU_APP_ID: ${{ secrets.BAIDU_APP_ID }}
+          BAIDU_APP_SECRET: ${{ secrets.BAIDU_APP_SECRET }}
+          BAIDU_PCS_APP_ID: ${{ secrets.BAIDU_PCS_APP_ID }}
+          CLOUD123_APP_ID: ${{ secrets.CLOUD123_APP_ID }}
+          CLOUD123_APP_SECRET: ${{ secrets.CLOUD123_APP_SECRET }}
+          DRIVE115_APP_ID: ${{ secrets.DRIVE115_APP_ID }}
+          DRIVE115_APP_SECRET: ${{ secrets.DRIVE115_APP_SECRET }}
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          ONEDRIVE_CLIENT_ID: ${{ secrets.ONEDRIVE_CLIENT_ID }}
+          ONEDRIVE_CLIENT_SECRET: ${{ secrets.ONEDRIVE_CLIENT_SECRET }}
+          BOX_CLIENT_ID: ${{ secrets.BOX_CLIENT_ID }}
+          BOX_CLIENT_SECRET: ${{ secrets.BOX_CLIENT_SECRET }}
+          PIKPAK_CLIENT_ID: ${{ secrets.PIKPAK_CLIENT_ID }}
+          PIKPAK_CLIENT_SECRET: ${{ secrets.PIKPAK_CLIENT_SECRET }}
+          GUANGYA_CLIENT_ID: ${{ secrets.GUANGYA_CLIENT_ID }}
+          CLOUD189_APP_ID: ${{ secrets.CLOUD189_APP_ID }}
+          SUBTITLE_SEARCH_API_KEY: ${{ secrets.SUBTITLE_SEARCH_API_KEY }}
+          SUBTITLE_DOWNLOAD_API_KEY: ${{ secrets.SUBTITLE_DOWNLOAD_API_KEY }}
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+          BOXPLAYER_AI_API_URL: ${{ secrets.BOXPLAYER_AI_API_URL }}
+          BOXPLAYER_SUPABASE_URL: ${{ secrets.BOXPLAYER_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+          BOXPLAYER_SITE_URL: ${{ secrets.BOXPLAYER_SITE_URL }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SKIP_VERSION_BUMP: true
+          NODE_OPTIONS: --max-old-space-size=6144
         with:
           package_manager: pnpm
           release: true           # 自动创建 Release
-          draft: true            # 创建为草稿状态，不自动发布
           github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate GitHub Release Notes
+        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          release_doc="docs/releases/${GITHUB_REF_NAME}.md"
+          if [[ -f "${release_doc}" ]]; then
+            cp "${release_doc}" release-notes.md
+          else
+            gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              -f tag_name="${GITHUB_REF_NAME}" \
+              --jq .body > release-notes.md
+          fi
+          gh release edit "${GITHUB_REF_NAME}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "BoxPlayer ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md \
+            --prerelease \
+            --draft=false

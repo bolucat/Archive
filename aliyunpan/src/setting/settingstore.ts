@@ -105,11 +105,13 @@ export interface SettingState {
   uiFolderPreviewAutoHide: number
   uiLibraryAutoScanMusic: boolean
   uiLibraryAutoScanVideo: boolean
+  uiLibraryAutoScanBook: boolean
   uiLibraryIncrementalScan: boolean
   uiLibraryScanIntervalHours: number
   uiLibraryAutoScanPromptedUsers: string[]
   uiLibraryAutoScanMusicDisabledUsers: string[]
   uiLibraryAutoScanVideoDisabledUsers: string[]
+  uiLibraryAutoScanBookDisabledUsers: string[]
   uiLibraryFollowManualScans: boolean
   uiMusicAutoScanFolders: { user_id: string; drive_id: string; file_id: string; name: string; path?: string }[]
   uiFileOrderDuli: string
@@ -304,11 +306,13 @@ const setting: SettingState = {
   uiFolderPreviewAutoHide: 6,
   uiLibraryAutoScanMusic: false,
   uiLibraryAutoScanVideo: false,
+  uiLibraryAutoScanBook: false,
   uiLibraryIncrementalScan: true,
   uiLibraryScanIntervalHours: 24,
   uiLibraryAutoScanPromptedUsers: [],
   uiLibraryAutoScanMusicDisabledUsers: [],
   uiLibraryAutoScanVideoDisabledUsers: [],
+  uiLibraryAutoScanBookDisabledUsers: [],
   uiLibraryFollowManualScans: true,
   uiMusicAutoScanFolders: [],
   uiFileOrderDuli: 'null',
@@ -470,7 +474,7 @@ function _loadSetting(val: any) {
   setting.uiMediaServerCustomDeviceProfile = normalizeMediaServerCustomDeviceProfile(val.uiMediaServerCustomDeviceProfile)
   setting.uiVideoQualityTips = defaultBool(val.uiVideoQualityTips, false)
   setting.uiVideoQualityLastSelect = defaultBool(val.uiVideoQualityLastSelect, true)
-  setting.uiVideoPlayer = defaultValue(val.uiVideoPlayer, ['web', 'other'])
+  setting.uiVideoPlayer = defaultValue(val.uiVideoPlayer, ['web', 'mpv', 'other'])
   setting.uiVideoEnablePlayerList = defaultBool(val.uiVideoEnablePlayerList, false)
   setting.uiVideoPlayerExit = defaultBool(val.uiVideoPlayerExit, false)
   setting.uiVideoPlayerHistory = defaultBool(val.uiVideoPlayerHistory, false)
@@ -519,6 +523,7 @@ function _loadSetting(val: any) {
   setting.uiFolderPreviewAutoHide = defaultNumber(val.uiFolderPreviewAutoHide, 6)
   setting.uiLibraryAutoScanMusic = defaultBool(val.uiLibraryAutoScanMusic, false)
   setting.uiLibraryAutoScanVideo = defaultBool(val.uiLibraryAutoScanVideo, false)
+  setting.uiLibraryAutoScanBook = defaultBool(val.uiLibraryAutoScanBook, false)
   setting.uiLibraryIncrementalScan = defaultBool(val.uiLibraryIncrementalScan, true)
   setting.uiLibraryScanIntervalHours = defaultNumberSub(val.uiLibraryScanIntervalHours, 24, 1, 24 * 30)
   setting.uiLibraryAutoScanPromptedUsers = Array.isArray(val.uiLibraryAutoScanPromptedUsers)
@@ -529,6 +534,9 @@ function _loadSetting(val: any) {
     : []
   setting.uiLibraryAutoScanVideoDisabledUsers = Array.isArray(val.uiLibraryAutoScanVideoDisabledUsers)
     ? val.uiLibraryAutoScanVideoDisabledUsers.filter((s: unknown) => typeof s === 'string')
+    : []
+  setting.uiLibraryAutoScanBookDisabledUsers = Array.isArray(val.uiLibraryAutoScanBookDisabledUsers)
+    ? val.uiLibraryAutoScanBookDisabledUsers.filter((s: unknown) => typeof s === 'string')
     : []
   setting.uiLibraryFollowManualScans = defaultBool(val.uiLibraryFollowManualScans, true)
   setting.uiMusicAutoScanFolders = Array.isArray(val.uiMusicAutoScanFolders)
@@ -595,7 +603,10 @@ function _loadSetting(val: any) {
   setting.debugDownedListMax = defaultNumberSub(val.debugDownedListMax, 5000, 1000, 50000)
   setting.debugFolderSizeCacheHour = defaultValue(val.debugFolderSizeCacheHour, [72, 2, 8, 24, 48, 72])
   setting.debugProxyHost = defaultString(val.debugProxyHost, '127.0.0.1')
-  setting.debugProxyPort = defaultString(val.debugProxyPort, '6666')
+  // Chromium blocks a number of ports, including 6666 (ERR_UNSAFE_PORT).
+  // Migrate the historical default so media playback can reach the local proxy.
+  const debugProxyPort = defaultString(val.debugProxyPort, '18888')
+  setting.debugProxyPort = debugProxyPort === '6666' ? '18888' : debugProxyPort
   // 自动填写 分享链接提取码
   setting.yinsiLinkPassword = defaultBool(val.yinsiLinkPassword, false)
   setting.yinsiZipPassword = defaultBool(val.yinsiZipPassword, false)

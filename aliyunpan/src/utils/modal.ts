@@ -114,8 +114,8 @@ export function modalDownload(istree: boolean) {
   useModalStore().showModal('download', { istree })
 }
 
-export function modalCloud123OfflineDownload() {
-  useModalStore().showModal('cloud123offline', {})
+export function modalCloud123OfflineDownload(offlineForm?: { dirId?: string; dirName?: string }) {
+  useModalStore().showModal('cloud123offline', offlineForm ? { offlineForm } : {})
 }
 
 export function modalUpdateLog() {

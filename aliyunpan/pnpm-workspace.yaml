@@ -4,7 +4,8 @@ allowBuilds:
   better-sqlite3: set this to true or false
   canvas: set this to true or false
   core-js: set this to true or false
-  electron: set this to true or false
+  electron: true
+  electron-winstaller: true
   es5-ext: set this to true or false
   esbuild: set this to true or false
   lzma-native: set this to true or false

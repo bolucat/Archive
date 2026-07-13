@@ -9,19 +9,23 @@ import RssXiMa from './rssxima/RssXiMa.vue'
 import RssScanSame from './rssscansame/RssScanSame.vue'
 import RssScanPunish from './rssscanpunish/RssScanPunish.vue'
 import RssScanEnmpty from './rssscanenmpty/RssScanEnmpty.vue'
-import RssUserCopy from './rssusercopy/RssUserCopy.vue'
 import RssJiaMi from './rssjiami/RssJiaMi.vue'
 import RssDriveCopy from './rssdrivecopy/RssDriveCopy.vue'
-import RssRename from './rssrename/RssRename.vue'
+import RssEmptyDirs from './drivetools/RssEmptyDirs.vue'
 
 const appStore = useAppStore()
 const panTreeStore = usePanTreeStore()
 const isAliyunAccount = computed(() => isAliyunUser(panTreeStore.user_id || ''))
-const aliyunOnlyMenus = new Set(['AppSame', 'RssScanClean', 'RssScanSame', 'RssScanPunish', 'RssScanEnmpty', 'RssDriveCopy'])
+const aliyunOnlyMenus = new Set(['AppSame', 'RssScanPunish', 'RssScanEnmpty', 'RssDriveCopy'])
+const removedMenus = new Set(['RssDriveTools', 'RssMoveOrganize', 'RssMediaOrganize', 'RssRename', 'RssUserCopy'])
 
 watch(
   () => [isAliyunAccount.value, appStore.GetAppTabMenu],
   ([isAliyun]) => {
+    if (removedMenus.has(appStore.GetAppTabMenu)) {
+      appStore.toggleTabMenu('rss', 'RssEmptyDirs')
+      return
+    }
     if (!isAliyun && aliyunOnlyMenus.has(appStore.GetAppTabMenu)) {
       appStore.toggleTabMenu('rss', 'RssXiMa')
     }
@@ -45,15 +49,19 @@ watch(
           <template #icon><IconFont name="iconsafebox" /></template>
           文件加密解密
         </a-menu-item>
+        <a-menu-item key="RssEmptyDirs">
+          <template #icon><IconFont name="iconempty" /></template>
+          空目录扫描
+        </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="AppSame">
           <template #icon><IconFont name="iconcopy" /></template>
           重复文件清理
         </a-menu-item>
-        <a-menu-item v-if="isAliyunAccount" key="RssScanClean">
+        <a-menu-item key="RssScanClean">
           <template #icon><IconFont name="iconclear" /></template>
           扫描大文件
         </a-menu-item>
-        <a-menu-item v-if="isAliyunAccount" key="RssScanSame">
+        <a-menu-item key="RssScanSame">
           <template #icon><IconFont name="iconcopy" /></template>
           扫描重复文件
         </a-menu-item>
@@ -74,15 +82,14 @@ watch(
     <a-layout-content class="rss-content-panel">
       <a-tabs type="text" :direction="'horizontal'" class="hidetabs" :justify="true" :active-key="appStore.GetAppTabMenu">
         <a-tab-pane key="RssXiMa" title="1"><RssXiMa /></a-tab-pane>
-        <a-tab-pane key="RssRename" title="2"><RssRename /></a-tab-pane>
         <a-tab-pane key="RssJiaMi" title="3"><RssJiaMi /></a-tab-pane>
+        <a-tab-pane key="RssEmptyDirs" title="7"><RssEmptyDirs /></a-tab-pane>
         <a-tab-pane v-if="isAliyunAccount" key="AppSame" title="4"><AppSame /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssScanClean" title="6"><RssScanClean /></a-tab-pane>
-        <a-tab-pane v-if="isAliyunAccount" key="RssScanSame" title="7"><RssScanSame /></a-tab-pane>
+        <a-tab-pane key="RssScanClean" title="6"><RssScanClean /></a-tab-pane>
+        <a-tab-pane key="RssScanSame" title="7"><RssScanSame /></a-tab-pane>
         <a-tab-pane v-if="isAliyunAccount" key="RssScanPunish" title="8"><RssScanPunish /></a-tab-pane>
         <a-tab-pane v-if="isAliyunAccount" key="RssScanEnmpty" title="9"><RssScanEnmpty /></a-tab-pane>
         <a-tab-pane v-if="isAliyunAccount" key="RssDriveCopy" title="10"><RssDriveCopy /></a-tab-pane>
-        <a-tab-pane key="RssUserCopy" title="11"><RssUserCopy /></a-tab-pane>
       </a-tabs>
     </a-layout-content>
   </a-layout>
@@ -117,5 +124,7 @@ watch(
 .rss-content-panel .rightbg {
   height: 100%;
   margin: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 </style>

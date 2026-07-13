@@ -1,4 +1,9 @@
+import { BOXPLAYER_AI_API_URL } from './secrets.generated'
+
 export default class Config {
+  // BoxPlayer Cloud AI API
+  static BOXPLAYER_AI_API_URL = BOXPLAYER_AI_API_URL
+
   // 网络请求配置
   static referer = 'https://www.aliyundrive.com/drive'
   static downAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/89.0.4577.63 Safari/537.36'

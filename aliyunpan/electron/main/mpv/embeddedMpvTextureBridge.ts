@@ -1,0 +1,321 @@
+import { BrowserWindow, SharedTextureHandle, sharedTexture } from 'electron'
+import { EmbeddedMpvCapability, getEmbeddedMpvCapability } from './embeddedMpvCapability'
+import { EmbeddedMpvNativeAddonLoadResult, EmbeddedMpvNativeInstance, EmbeddedMpvNativeResourceStatus, EmbeddedMpvStatus, EmbeddedMpvTextureInfo, getEmbeddedMpvNativeResourceStatus, loadEmbeddedMpvNativeAddon } from './embeddedMpvNativeAddon'
+import type { EmbeddedMpvControlRequest, EmbeddedMpvControlResult, EmbeddedMpvLoadRequest, EmbeddedMpvLoadResult } from './embeddedMpvBridge'
+
+export interface EmbeddedMpvTextureBridgeOptions {
+  nativeAddonAvailable?: boolean
+}
+
+export class EmbeddedMpvTextureBridge {
+  private window: BrowserWindow | null = null
+  private initialized = false
+  private frameIndex = 0
+  private sendingFrame = false
+  private pendingFrame: EmbeddedMpvTextureInfo | null = null
+  private nativeLoadResult: EmbeddedMpvNativeAddonLoadResult | null = null
+  private nativeResourceStatus: EmbeddedMpvNativeResourceStatus | null = null
+  private mpv: EmbeddedMpvNativeInstance | null = null
+  private latestStatus: EmbeddedMpvStatus | null = null
+  private consecutiveFrameErrors = 0
+  private frameStats = { received: 0, dropped: 0, sent: 0, errors: 0, importMs: 0, sendMs: 0, sendCount: 0 }
+  private frameStatsTimer: ReturnType<typeof setInterval> | null = null
+
+  constructor(private readonly options: EmbeddedMpvTextureBridgeOptions = {}) {}
+
+  private loadNativeAddon(): EmbeddedMpvNativeAddonLoadResult {
+    if (!this.nativeLoadResult) this.nativeLoadResult = loadEmbeddedMpvNativeAddon()
+    return this.nativeLoadResult
+  }
+
+  private getNativeResourceStatus(): EmbeddedMpvNativeResourceStatus {
+    if (!this.nativeResourceStatus) this.nativeResourceStatus = getEmbeddedMpvNativeResourceStatus(this.loadNativeAddon().searchedPaths)
+    return this.nativeResourceStatus
+  }
+
+  getCapability(): EmbeddedMpvCapability {
+    const nativeLoadResult = this.loadNativeAddon()
+    const nativeResourceStatus = this.getNativeResourceStatus()
+    return getEmbeddedMpvCapability({
+      nativeAddonAvailable: this.options.nativeAddonAvailable === true || Boolean(nativeLoadResult.addon),
+      nativeResourcesComplete: nativeResourceStatus.complete
+    })
+  }
+
+  async initialize(window: BrowserWindow): Promise<boolean> {
+    const capability = this.getCapability()
+    if (!capability.enabled) return false
+    const nativeLoadResult = this.loadNativeAddon()
+    if (!nativeLoadResult.addon) return false
+    this.window = window
+    this.mpv = nativeLoadResult.addon.mpvTexture
+    try {
+      this.mpv.create()
+    } catch (error) {
+      console.error('[mpv] native addon create failed:', error)
+      this.mpv = null
+      return false
+    }
+    this.mpv.onFrame((textureInfo) => this.handleFrame(textureInfo))
+    this.mpv.onStatus((status) => {
+      this.latestStatus = status
+    })
+    this.mpv.onError((error) => console.error('[mpv] native addon error:', error))
+    this.initialized = true
+    this.frameStatsTimer = setInterval(() => {
+      if (this.frameStats.received === 0) return
+      const averageImport = this.frameStats.sendCount > 0 ? (this.frameStats.importMs / this.frameStats.sendCount).toFixed(1) : '?'
+      const averageSend = this.frameStats.sendCount > 0 ? (this.frameStats.sendMs / this.frameStats.sendCount).toFixed(1) : '?'
+      console.log(`[mpv] texture frames sent:${this.frameStats.sent} dropped:${this.frameStats.dropped} received:${this.frameStats.received} errors:${this.frameStats.errors} import:${averageImport}ms send:${averageSend}ms`)
+      this.frameStats = { received: 0, dropped: 0, sent: 0, errors: 0, importMs: 0, sendMs: 0, sendCount: 0 }
+    }, 2000)
+    return true
+  }
+
+  async load(window: BrowserWindow, request: EmbeddedMpvLoadRequest): Promise<EmbeddedMpvLoadResult> {
+    const capability = this.getCapability()
+    if (!capability.enabled) {
+      return {
+        ok: false,
+        capability,
+        error: capability.reason || 'macOS 内嵌 MPV 尚未启用。'
+      }
+    }
+
+    if (!this.initialized && !(await this.initialize(window))) {
+      return {
+        ok: false,
+        capability,
+        error: 'macOS 内嵌 MPV 初始化失败。'
+      }
+    }
+
+    // sbtlTV owns one fixed main window. BoxPlayer creates a new preview
+    // window for each video, so the singleton bridge must follow the current
+    // sender instead of keeping the first window's mainFrame forever.
+    if (this.window !== window) {
+      this.window = window
+      this.pendingFrame = null
+      this.frameIndex = 0
+    }
+
+    this.clearTexture()
+    this.pendingFrame = null
+    this.latestStatus = null
+    try {
+      await this.mpv?.load(request.url || '', buildMpvLoadOptions())
+    } catch (error: any) {
+      return {
+        ok: false,
+        capability,
+        error: error?.message || 'MPV 加载视频失败。'
+      }
+    }
+
+    return {
+      ok: true,
+      capability
+    }
+  }
+
+  async control(request: EmbeddedMpvControlRequest): Promise<EmbeddedMpvControlResult> {
+    const capability = this.getCapability()
+    if (!capability.enabled || !this.initialized || !this.mpv) {
+      return {
+        ok: false,
+        capability,
+        error: capability.reason || 'macOS 内嵌 MPV 尚未初始化。'
+      }
+    }
+
+    switch (request.action) {
+      case 'play':
+        this.mpv.play()
+        break
+      case 'pause':
+        this.mpv.pause()
+        break
+      case 'stop':
+        this.mpv.stop()
+        this.clearTexture()
+        break
+      case 'seek':
+        if (typeof request.value !== 'number') return { ok: false, capability, error: 'seek 需要数字位置。' }
+        this.mpv.seek(request.value)
+        break
+      case 'setVolume':
+        if (typeof request.value !== 'number') return { ok: false, capability, error: 'setVolume 需要数字音量。' }
+        this.mpv.setVolume(request.value)
+        break
+      case 'setSpeed':
+        if (typeof request.value !== 'number') return { ok: false, capability, error: 'setSpeed 需要数字倍速。' }
+        if (!this.mpv.setSpeed) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露倍速控制。')
+        this.mpv.setSpeed(request.value)
+        break
+      case 'setAudioTrack':
+        if (typeof request.value !== 'number') return { ok: false, capability, error: 'setAudioTrack 需要数字轨道 ID。' }
+        if (!this.mpv.setAudioTrack) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露音轨控制。')
+        this.mpv.setAudioTrack(request.value)
+        break
+      case 'setSubtitleTrack':
+        if (typeof request.value !== 'number') return { ok: false, capability, error: 'setSubtitleTrack 需要数字轨道 ID。' }
+        if (!this.mpv.setSubtitleTrack) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露字幕轨控制。')
+        this.mpv.setSubtitleTrack(request.value)
+        break
+      case 'setSubtitleStyle':
+        if (!request.style) return { ok: false, capability, error: 'setSubtitleStyle 需要字幕样式。' }
+        if (!this.mpv.setSubtitleStyle) return this.getUnsupportedOptionalControlResult(capability, '当前 MPV 内核尚未暴露字幕样式控制。')
+        this.mpv.setSubtitleStyle(request.style)
+        break
+      case 'setVideoProperty':
+        if (!request.property || request.propertyValue == null) return { ok: false, capability, error: 'setVideoProperty 参数不完整。' }
+        if (!this.mpv.setVideoProperty) return this.getUnsupportedOptionalControlResult(capability, '当前 MPV 内核尚未暴露视频属性控制。')
+        this.mpv.setVideoProperty(request.property, String(request.propertyValue))
+        break
+      case 'addAudio':
+        if (!request.url) return { ok: false, capability, error: 'addAudio 需要音频文件路径。' }
+        if (!this.mpv.addAudio) return this.getUnsupportedOptionalControlResult(capability, '当前 MPV 内核尚未暴露外置音频控制。')
+        this.mpv.addAudio(request.url, request.title || '')
+        break
+      case 'addSubtitle':
+        if (!request.url) return { ok: false, capability, error: 'addSubtitle 需要字幕 URL。' }
+        if (!this.mpv.addSubtitle) return this.getUnsupportedOptionalControlResult(capability, '当前 sbtlTV MPV 内核尚未暴露外挂字幕控制。')
+        {
+          let lastError: unknown
+          for (const delay of [0, 250, 750]) {
+            if (delay > 0) await waitForMpvCommand(delay)
+            try {
+              this.mpv.addSubtitle(request.url, request.title || '')
+              lastError = undefined
+              break
+            } catch (error) {
+              lastError = error
+            }
+          }
+          if (lastError) {
+            const message = lastError instanceof Error ? lastError.message : 'MPV 添加外挂字幕失败。'
+            return { ok: false, capability, error: `字幕加载失败：${message}` }
+          }
+        }
+        break
+      default:
+        return { ok: false, capability, error: '未知的 macOS 内嵌 MPV 控制命令。' }
+    }
+
+    return {
+      ok: true,
+      capability,
+      status: this.latestStatus || this.mpv.getStatus?.(),
+      trackStatus: this.mpv.getTrackStatus?.()
+    }
+  }
+
+  private getUnsupportedOptionalControlResult(capability: EmbeddedMpvCapability, warning: string): EmbeddedMpvControlResult {
+    return {
+      ok: true,
+      capability,
+      warning,
+      status: this.latestStatus || this.mpv?.getStatus?.(),
+      trackStatus: this.mpv?.getTrackStatus?.()
+    }
+  }
+
+  async getStatus(): Promise<EmbeddedMpvControlResult> {
+    const capability = this.getCapability()
+    if (!capability.enabled || !this.initialized || !this.mpv) {
+      return {
+        ok: false,
+        capability,
+        error: capability.reason || 'macOS 内嵌 MPV 尚未初始化。'
+      }
+    }
+
+    return {
+      ok: true,
+      capability,
+      status: this.latestStatus || this.mpv.getStatus?.(),
+      trackStatus: this.mpv.getTrackStatus?.()
+    }
+  }
+
+  private handleFrame(textureInfo: EmbeddedMpvTextureInfo): void {
+    if (!this.window || !this.mpv) return
+    this.frameStats.received++
+    if (this.sendingFrame) this.frameStats.dropped++
+    this.pendingFrame = textureInfo
+    if (!this.sendingFrame) void this.sendFrameLoop()
+  }
+
+  private async sendFrameLoop(): Promise<void> {
+    if (!this.window || this.window.isDestroyed()) return
+    this.sendingFrame = true
+    while (this.pendingFrame && this.window && !this.window.isDestroyed()) {
+      const textureInfo = this.pendingFrame
+      this.pendingFrame = null
+      let imported: ReturnType<typeof sharedTexture.importSharedTexture> | null = null
+      try {
+        let handle: SharedTextureHandle
+        const handleBuffer = Buffer.alloc(8)
+        handleBuffer.writeBigUInt64LE(textureInfo.handle)
+        handle = process.platform === 'darwin' ? { ioSurface: handleBuffer } : { ntHandle: handleBuffer }
+        const startImport = performance.now()
+        imported = sharedTexture.importSharedTexture({
+          textureInfo: {
+            handle,
+            codedSize: { width: textureInfo.width, height: textureInfo.height },
+            visibleRect: { x: 0, y: 0, width: textureInfo.width, height: textureInfo.height },
+            pixelFormat: textureInfo.format === 'nv12' ? 'rgba' : textureInfo.format
+          }
+        })
+        const startSend = performance.now()
+        await sharedTexture.sendSharedTexture(
+          {
+            frame: this.window.webContents.mainFrame,
+            importedSharedTexture: imported
+          },
+          this.frameIndex++
+        )
+        this.frameStats.importMs += startSend - startImport
+        this.frameStats.sendMs += performance.now() - startSend
+        this.frameStats.sendCount++
+        this.frameStats.sent++
+        this.consecutiveFrameErrors = 0
+      } catch (error) {
+        this.frameStats.errors++
+        this.consecutiveFrameErrors++
+        if (this.consecutiveFrameErrors === 1 || this.consecutiveFrameErrors === 5) console.error(`[mpv] sharedTexture send failed (${this.consecutiveFrameErrors} consecutive):`, error)
+      } finally {
+        imported?.release()
+      }
+    }
+
+    this.sendingFrame = false
+  }
+
+  clearTexture(): void {
+    if (!this.window || this.window.isDestroyed()) return
+    this.window.webContents.send('MpvEmbedded:clearTexture')
+  }
+
+  destroy(): void {
+    if (this.frameStatsTimer) {
+      clearInterval(this.frameStatsTimer)
+      this.frameStatsTimer = null
+    }
+    this.clearTexture()
+    this.pendingFrame = null
+    this.latestStatus = null
+    this.mpv?.destroy()
+    this.mpv = null
+    this.window = null
+    this.initialized = false
+  }
+}
+
+function buildMpvLoadOptions(): string {
+  return ''
+}
+
+function waitForMpvCommand(delay: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delay))
+}

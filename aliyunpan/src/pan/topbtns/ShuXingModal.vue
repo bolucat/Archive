@@ -9,7 +9,7 @@ import { humanDateTimeDateStr, humanSize, humanTime } from '../../utils/format'
 import { ref } from 'vue'
 import { Modal } from '@arco-design/web-vue'
 import DebugLog from '../../utils/debuglog'
-import { GetDriveID, isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
+import { GetDriveID, isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { getEncType, getRawUrl } from '../../utils/proxyhelper'
 import { apiCloud123FileDetail } from '../../cloud123/filecmd'
 import { apiDrive115FileDetail } from '../../cloud115/filecmd'
@@ -23,6 +23,7 @@ import type { DropboxMetadata } from '../../dropbox/dirfilelist'
 import { apiDropboxListRevisions, apiDropboxRestoreRevision } from '../../dropbox/revisions'
 import { apiOneDriveFileDetail, mapOneDriveItemToAliModel } from '../../onedrive/dirfilelist'
 import { apiOneDriveListVersions, apiOneDriveRestoreVersion, OneDriveVersion } from '../../onedrive/revisions'
+import { apiGuangyaFileDetail, mapGuangyaFileToAliModel } from '../../guangya/dirfilelist'
 
 const props = defineProps({
   visible: {
@@ -84,6 +85,7 @@ const handleOpen = async () => {
     const isPikPak = isPikPakUser(pantreeStore.user_id) || drive_id === 'pikpak'
     const isDropbox = isDropboxUser(pantreeStore.user_id) || drive_id === 'dropbox'
     const isOneDrive = isOneDriveUser(pantreeStore.user_id) || drive_id === 'onedrive'
+    const isGuangya = isGuangyaUser(pantreeStore.user_id) || drive_id === 'guangya'
     isDropboxFile.value = isDropbox
     isOneDriveFile.value = isOneDrive
     if (isCloudUser) {
@@ -187,6 +189,19 @@ const handleOpen = async () => {
         mapped.content_hash = detail.file?.hashes?.sha1Hash || detail.file?.hashes?.quickXorHash || ''
         fileInfo.value = mapped
       }
+    } else if (isGuangya) {
+      const pathList = TreeStore.GetDirPath(drive_id, file_id)
+      const pathNames = pathList.map((item) => item.name).filter((name) => name)
+      dirPath.value = '/' + pathNames.join('/')
+      const detail = await apiGuangyaFileDetail(pantreeStore.user_id, file_id)
+      if (detail) {
+        const mapped: any = mapGuangyaFileToAliModel(detail, drive_id || 'guangya', detail.parentId || detail.parentFileId || 'guangya_root')
+        mapped.type = mapped.isDir ? 'folder' : 'file'
+        mapped.created_at = detail.createAt || detail.createdAt || detail.created_at || detail.createTime || ''
+        mapped.updated_at = detail.updateAt || detail.updatedAt || detail.updated_at || detail.updateTime || mapped.created_at
+        mapped.content_hash = detail.contentHash || detail.content_hash || detail.md5 || detail.sha1 || detail.gcid || ''
+        fileInfo.value = mapped
+      }
     } else {
       let path_file_id = props.ispic ? 'pic_root' : file_id
       let fileName = pantreeStore.selectDir.name
@@ -209,7 +224,7 @@ const handleOpen = async () => {
         fileInfo.value.thumbnail = rawUrl.url
       }
     }
-    if (fileInfo.value?.type == 'folder' && !isCloudUser && !is115User && !isBaidu && !isPikPak && !isDropbox && !isOneDrive) {
+    if (fileInfo.value?.type == 'folder' && !isCloudUser && !is115User && !isBaidu && !isPikPak && !isDropbox && !isOneDrive && !isGuangya) {
       dirInfo.value = await AliFile.ApiFileGetFolderSize(pantreeStore.user_id, drive_id, file_id)
     }
   }

@@ -22,6 +22,7 @@ type VlessOption struct {
 	ClientAuthCert  string        `inbound:"client-auth-cert,omitempty"`
 	EchKey          string        `inbound:"ech-key,omitempty"`
 	AllowInsecure   bool          `inbound:"allow-insecure,omitempty"`
+	JLSConfig       JLSConfig     `inbound:"jls-config,omitempty"`
 	RealityConfig   RealityConfig `inbound:"reality-config,omitempty"`
 	MuxOption       MuxOption     `inbound:"mux-option,omitempty"`
 }
@@ -123,6 +124,7 @@ func NewVless(options *VlessOption) (*Vless, error) {
 			ClientAuthCert:  options.ClientAuthCert,
 			EchKey:          options.EchKey,
 			AllowInsecure:   options.AllowInsecure,
+			JLSConfig:       options.JLSConfig.Build(),
 			RealityConfig:   options.RealityConfig.Build(),
 			MuxOption:       options.MuxOption.Build(),
 		},

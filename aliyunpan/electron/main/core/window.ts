@@ -95,7 +95,7 @@ export function createMainWindow() {
       AppWindow.winHeight = 680
     }
   }
-  AppWindow.mainWindow = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main', AppWindow.winTheme)
+  AppWindow.mainWindow = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main', AppWindow.winTheme, true, 'app')
 
   const showMainPage = () => {
     if (!AppWindow.mainWindow || AppWindow.mainWindow.isDestroyed()) return
@@ -234,7 +234,7 @@ export function createTray() {
   })
 }
 
-export function createElectronWindow(width: number, height: number, center: boolean, page: string, theme: string, devTools: boolean = true) {
+export function createElectronWindow(width: number, height: number, center: boolean, page: string, theme: string, devTools: boolean = true, splash?: 'app' | 'music') {
   const win = new BrowserWindow({
     show: false,
     width: width,
@@ -267,9 +267,18 @@ export function createElectronWindow(width: number, height: number, center: bool
   })
   win.removeMenu()
   if (DEBUGGING) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL, { userAgent: ua, httpReferrer: Referer })
+    const devUrl = process.env.VITE_DEV_SERVER_URL || ''
+    let loadUrl = devUrl
+    if (splash && devUrl) {
+      try {
+        const url = new URL(devUrl)
+        url.searchParams.set('splash', splash)
+        loadUrl = url.toString()
+      } catch {}
+    }
+    win.loadURL(loadUrl, { userAgent: ua, httpReferrer: Referer })
   } else {
-    win.loadURL('file://' + getAsarPath('dist/' + page + '.html'), {
+    win.loadURL('file://' + getAsarPath('dist/' + page + '.html') + (splash ? `?splash=${splash}` : ''), {
       userAgent: ua,
       httpReferrer: Referer
     })
@@ -335,12 +344,10 @@ function handleWebView(win: BrowserWindow) {
       return { action: 'deny' }
     })
     webContent.on('will-redirect', (e, url) => {
-      if (!/(aliyundrive|alipan).com\/s\/[0-9a-zA-Z_]{11,}/.test(url)) {
-        webContent.loadURL(url)
-      } else {
+      if (/(aliyundrive|alipan).com\/s\/[0-9a-zA-Z_]{11,}/.test(url)) {
+        e.preventDefault()
         win.webContents.send('webview-redirect', webContent.id, url)
       }
-      e.preventDefault()
     })
     // 拦截链接跳转
     webContent.on('will-navigate', (e, url) => {

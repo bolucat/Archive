@@ -1,8 +1,8 @@
 <script setup lang='ts'>
-import { KeyboardState, useAppStore, useKeyboardStore, useSettingStore } from '../store'
+import { KeyboardState, useAppStore, useKeyboardStore, usePanFileStore, useSettingStore } from '../store'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import type { MediaLibraryItem } from '../types/media'
-import { h, onBeforeUnmount, onMounted, ref } from 'vue'
+import { h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Button, Input, Modal, Option as AOption, Select } from '@arco-design/web-vue'
 import Artplayer from 'artplayer'
 import HlsJs from 'hls.js'
@@ -48,8 +48,9 @@ import { simpleToTradition, traditionToSimple } from 'chinese-simple2traditional
 import path from 'path'
 import UserDAL from '../user/userdal'
 import Config from '../config'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
@@ -57,8 +58,11 @@ import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
+import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
+import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
+import MpvEmbeddedSurface from '../components/MpvEmbeddedSurface.vue'
 import {
   getMediaServerItemDetail,
   getMediaServerPlaybackInfo,
@@ -84,6 +88,16 @@ let pendingMediaServerSeekTime: number | null = null
 const mediaServerControlNames = new Set<string>()
 let danmakuAutoLoadingKey = ''
 let danmakuAutoLoadedKey = ''
+const useMacEmbeddedMpv = useSettingStore().uiVideoPlayer === 'mpv' && window.platform === 'darwin'
+const mpvEmbeddedUrl = ref('')
+const mpvEmbeddedHeaders = ref<Record<string, string>>({})
+const mpvEmbeddedError = ref('')
+const mpvEmbeddedStatus = ref<any>(null)
+const mpvEmbeddedQualityLabel = ref('')
+const mpvEmbeddedQuality = ref('')
+const mpvEmbeddedQualities = ref<selectorItem[]>([])
+const mpvEmbeddedExternalSubtitle = ref<{ url: string; title?: string } | undefined>(undefined)
+const mpvPlaylistReady = ref(false)
 
 const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
 
@@ -207,14 +221,7 @@ const refreshMediaServerPlayback = async (
   if (subtitleStreamIndex >= 0) {
     pageVideo.media_server_subtitle_label = (pageVideo.media_server_subtitle_options || []).find((item) => item.streamIndex === subtitleStreamIndex)?.label || pageVideo.media_server_subtitle_label || ''
   }
-  const nextProxyUrl = getProxyUrl({
-    user_id: pageVideo.user_id,
-    drive_id: pageVideo.drive_id,
-    file_id: pageVideo.file_id,
-    proxy_url: playback.url,
-    proxy_headers: playback.headers ? JSON.stringify(playback.headers) : ''
-  })
-  setArtVideoUrl(art, nextProxyUrl, getArtVideoType(playback.url))
+  setArtVideoUrl(art, playback.url, getArtVideoType(playback.url))
   mediaServerReportStarted = false
   mediaServerStopReported = false
   await sendMediaServerStartReport(resumeTime)
@@ -228,6 +235,11 @@ const getCurrentMediaServer = () => {
   return mediaServerRegistry.servers.find((item) => item.id === serverId)
 }
 
+const getCurrentPlaybackDuration = () => {
+  if (useMacEmbeddedMpv) return Number(mpvEmbeddedStatus.value?.duration || 0)
+  return Number(ArtPlayerRef?.duration || 0)
+}
+
 const sendMediaServerStartReport = async (positionSeconds = 0) => {
   if (pageVideo.drive_id !== 'media_server' || mediaServerReportStarted) return
   const server = getCurrentMediaServer()
@@ -239,7 +251,7 @@ const sendMediaServerStartReport = async (positionSeconds = 0) => {
       pageVideo.media_server_source_id,
       pageVideo.media_server_play_session_id,
       positionSeconds,
-      ArtPlayerRef?.duration || 0
+      getCurrentPlaybackDuration()
     )
     mediaServerReportStarted = true
     mediaServerStopReported = false
@@ -259,7 +271,7 @@ const sendMediaServerProgressReport = async (positionSeconds = 0) => {
       pageVideo.media_server_source_id,
       pageVideo.media_server_play_session_id,
       positionSeconds,
-      ArtPlayerRef?.duration || 0
+      getCurrentPlaybackDuration()
     )
   } catch (error) {
     console.error('媒体服务器播放进度上报失败:', error)
@@ -277,7 +289,7 @@ const sendMediaServerStopReport = async (positionSeconds = 0) => {
       pageVideo.media_server_source_id,
       pageVideo.media_server_play_session_id,
       positionSeconds,
-      ArtPlayerRef?.duration || 0
+      getCurrentPlaybackDuration()
     )
     mediaServerStopReported = true
   } catch (error) {
@@ -408,9 +420,11 @@ const safeRemoveArtControl = (art: Artplayer, name: string) => {
 
 const safeRemoveArtSetting = (art: Artplayer, name: string) => {
   try {
-    if (art.setting.find?.(name)) art.setting.remove(name)
+    // `find` can miss an item while its setting panel is being rebuilt.
+    // `remove` is idempotent for an absent setting and also clears the cached item.
+    art.setting.remove(name)
   } catch (error) {
-    console.warn(`移除播放器设置失败: ${name}`, error)
+    if ((art.setting as any).cache?.has?.(name)) console.warn(`移除播放器设置失败: ${name}`, error)
   }
 }
 
@@ -450,7 +464,7 @@ const ensureHlsControlPlugin = (art: Artplayer) => {
   if (getHlsControlPlugin(art)) return
   art.plugins.add(artplayerPluginHlsControl({
     quality: {
-      control: true,
+      control: false,
       setting: true,
       getName: (level: any) => level.name || (level.height ? `${level.height}P` : '未知'),
       title: '清晰度',
@@ -474,7 +488,7 @@ const ensureDashControlPlugin = (art: Artplayer) => {
   if (getDashControlPlugin(art)) return
   art.plugins.add(artplayerPluginDashControl({
     quality: {
-      control: true,
+      control: false,
       setting: true,
       getName: (level: any) => level.height ? `${level.height}P` : '未知',
       title: '清晰度',
@@ -525,7 +539,12 @@ const updateVideoChapters = (art: Artplayer) => {
 type selectorItem = {
   url: string;
   html: string;
+  quality?: string;
   type?: string;
+  width?: number;
+  height?: number;
+  label?: string;
+  value?: string;
   name?: string;
   data?: string;
   default?: boolean;
@@ -538,6 +557,49 @@ type selectorItem = {
   parent_file_id?: string;
   password?: string;
   encType?: string;
+  headers?: Record<string, string>;
+  isDir?: boolean;
+}
+
+const videoQualityAliases: Record<string, string[]> = {
+  Origin: ['Origin', '100', '原画', '原始文件'],
+  QHD: ['QHD', '5', '4K', '2160P', '2160p', '2560P', '2560p', '超高清'],
+  FHD: ['FHD', '4', '1080P', '1080p', '全高清'],
+  HD: ['HD', '3', '2', '720P', '720p', '高清', '超清'],
+  SD: ['SD', '540P', '540p', '标清'],
+  LD: ['LD', '1', '480P', '480p', '流畅']
+}
+
+const videoQualityTargetHeight: Record<string, number> = {
+  QHD: 2560,
+  FHD: 1080,
+  HD: 720,
+  SD: 540,
+  LD: 480
+}
+
+const normalizeQualityText = (value?: string | number) => String(value || '').trim().toLowerCase()
+
+const qualityMatchesPreference = (quality: selectorItem, preference: string) => {
+  const aliases = videoQualityAliases[preference] || [preference]
+  const values = [quality.quality, quality.html, quality.label, quality.value, quality.name].map(normalizeQualityText)
+  return aliases.map(normalizeQualityText).some(alias => values.includes(alias))
+}
+
+const resolvePreferredVideoQuality = (qualities: selectorItem[], preference: string): selectorItem => {
+  const candidates = qualities.filter(q => q.width || q.height)
+  const exact = qualities.find(q => q.quality === preference) || qualities.find(q => qualityMatchesPreference(q, preference))
+  if (exact) return exact
+
+  const targetHeight = videoQualityTargetHeight[preference]
+  if (targetHeight) {
+    const belowTarget = candidates
+      .filter(q => Number(q.height || 0) > 0 && Number(q.height || 0) <= targetHeight)
+      .sort((a, b) => Number(b.height || 0) - Number(a.height || 0))[0]
+    if (belowTarget) return belowTarget
+  }
+
+  return candidates[0] || qualities[0]
 }
 
 type MultipleSubtitleTrack = {
@@ -811,18 +873,18 @@ const renderMediaServerControls = (art: Artplayer) => {
 const refreshMediaServerPlayList = async (art: Artplayer, itemId?: string) => {
   const entries = pageVideo.media_server_episode_playlist || []
   if (entries.length <= 1) {
-    playList = []
+    playList.splice(0, playList.length)
     return
   }
 
   const currentItemId = itemId || pageVideo.media_server_item_id || pageVideo.file_id
-  playList = entries.map((item) => ({
+  playList.splice(0, playList.length, ...entries.map((item) => ({
     url: '',
     html: item.title,
     name: item.title,
     file_id: item.id,
     default: item.id === currentItemId
-  }))
+  })))
 
   autoPlayNumber = Math.max(0, playList.findIndex((item) => item.file_id === currentItemId))
   lastPlayNumber = autoPlayNumber - 1
@@ -978,8 +1040,14 @@ onMounted(async () => {
   document.body.setAttribute('arco-theme', 'dark')
   setTimeout(() => {
     updateWindowTitle(name)
-    document.getElementById('artPlayer')?.focus()
+    document.getElementById(useMacEmbeddedMpv ? 'mpvEmbeddedPlayer' : 'artPlayer')?.focus()
   }, 1000)
+  if (useMacEmbeddedMpv) {
+    await buildPageVideoPlayList()
+    mpvPlaylistReady.value = playList.length > 1
+    if (await loadMpvEmbeddedCurrentVideo()) await sendMediaServerStartReport(pageVideo.play_cursor || 0)
+    return
+  }
   // 创建播放窗口
   await createVideo(name)
   // 获取视频信息
@@ -1076,6 +1144,9 @@ const initHotKey = (art: Artplayer) => {
 
 const initEvent = (art: Artplayer) => {
   // 监听事件
+  art.on('video:error', () => {
+    art.notice.show = '不支持当前媒体类型'
+  })
   art.on('ready', async () => {
     await art.play().catch()
     await getVideoCursor(art, pageVideo.play_cursor)
@@ -1194,8 +1265,18 @@ const jumpToNextVideo = async (art: Artplayer) => {
 
 const curDirFileList: any[] = []
 const childDirFileList: any[] = []
-const getDirFileList = async (dir_id: string, hasDir: boolean, category: string = '', filter?: RegExp): Promise<any[]> => {
-  if (curDirFileList.length === 0 || (hasDir && childDirFileList.length === 0)) {
+let curDirFileListDirId: string | null = null
+let childDirFileListDirId: string | null = null
+const getDirFileList = async (dir_id: string, hasDir: boolean, category: string = '', filter?: RegExp, refresh = false): Promise<any[]> => {
+  const cacheNeedsRefresh = refresh || (hasDir ? childDirFileListDirId !== dir_id : curDirFileListDirId !== dir_id)
+  if (cacheNeedsRefresh) {
+    if (hasDir) {
+      childDirFileList.splice(0, childDirFileList.length)
+      childDirFileListDirId = dir_id
+    } else {
+      curDirFileList.splice(0, curDirFileList.length)
+      curDirFileListDirId = dir_id
+    }
     let items: any[] = []
     if (isWebDavDrive(pageVideo.drive_id)) {
       const connection = getWebDavConnection(getWebDavConnectionId(pageVideo.drive_id))
@@ -1205,6 +1286,10 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
     } else if (isCloud123User(pageVideo.user_id) || pageVideo.drive_id === 'cloud123') {
       const list = await apiCloud123FileList(pageVideo.user_id, dir_id, 500, false)
       items = list.map(item => mapCloud123FileToAliModel(item))
+    } else if (isGuangyaUser(pageVideo.user_id) || pageVideo.drive_id === 'guangya') {
+      const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'guangya_root'
+      const list = await apiGuangyaFileList(pageVideo.user_id, parentId, 500)
+      items = list.map(item => mapGuangyaFileToAliModel(item, pageVideo.drive_id, parentId))
     } else if (isDrive115User(pageVideo.user_id) || pageVideo.drive_id === 'drive115') {
       const list = await apiDrive115FileList(pageVideo.user_id, dir_id, 200, 0, true)
       items = list.map(item => mapDrive115FileToAliModel(item, pageVideo.drive_id))
@@ -1231,9 +1316,17 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
       const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'box_root'
       const list = await apiBoxFileList(pageVideo.user_id, parentId, 500)
       items = list.map(item => mapBoxItemToAliModel(item, pageVideo.drive_id, parentId))
+    } else if (isCloud139User(pageVideo.user_id) || pageVideo.drive_id === 'cloud139') {
+      const parentId = dir_id || 'cloud139_root'
+      const list = await apiCloud139FileList(pageVideo.user_id, parentId, 500)
+      items = list.map(item => mapCloud139FileToAliModel(item, pageVideo.drive_id, parentId))
+    } else if (isCloud189User(pageVideo.user_id) || pageVideo.drive_id === 'cloud189') {
+      const parentId = dir_id || 'cloud189_root'
+      const list = await apiCloud189FileList(pageVideo.user_id, parentId, 1000)
+      items = list.map(item => mapCloud189FileToAliModel(item, pageVideo.drive_id, parentId))
     } else if (canUseAliyunFileList(pageVideo.user_id)) {
       const dir = await AliDirFileList.ApiDirFileList(pageVideo.user_id, pageVideo.drive_id, dir_id, '', 'name asc', '')
-      if (!dir.next_marker) items = dir.items
+      items = dir.items || []
     } else {
       console.warn('[PageVideo] skip Aliyun file list for non-Aliyun source', {
         user_id: pageVideo.user_id,
@@ -1951,6 +2044,235 @@ const loadPlugins = async (art: Artplayer) => {
   clearJassubSubtitle(art)
 }
 
+const resolveRawMpvQualitySource = (data: IRawUrl, preferredQuality?: string): { quality: selectorItem; url: string; headers?: Record<string, string>; type?: string; qualityLabel: string } => {
+  const uiVideoQuality = preferredQuality || useSettingStore().uiVideoQuality
+  let defaultQuality: selectorItem
+  if (uiVideoQuality === 'Origin' && pageVideo.drive_id != 'baidu' && pageVideo.drive_id != 'drive115') {
+    defaultQuality = data.qualities[0]
+  } else {
+    defaultQuality = resolvePreferredVideoQuality(data.qualities, uiVideoQuality)
+  }
+
+  const defaultHeaders = defaultQuality.headers || data.headers
+  const defaultUrl = pageVideo.encType
+    ? getProxyUrl({
+      user_id: pageVideo.user_id,
+      drive_id: pageVideo.drive_id,
+      file_id: pageVideo.file_id,
+      encType: pageVideo.encType,
+      password: pageVideo.password,
+      file_size: data.size,
+      quality: defaultQuality.quality,
+      proxy_url: defaultQuality.url,
+      proxy_headers: JSON.stringify(defaultHeaders)
+    })
+    : defaultQuality.url
+  const defaultQualityWidth = (defaultQuality as any).width
+  return {
+    quality: defaultQuality,
+    url: defaultUrl,
+    headers: defaultHeaders,
+    type: defaultQuality.type,
+    qualityLabel: defaultQuality.html || defaultQuality.quality || (defaultQualityWidth ? `${defaultQualityWidth}p` : '原画')
+  }
+}
+
+const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Record<string, string>; type?: string; qualityLabel?: string; quality?: string; qualities?: selectorItem[]; error?: string }> => {
+  if (pageVideo.drive_id === 'local') {
+    const urlModule = window.require?.('url')
+    const filePath = pageVideo.file_id || (pageVideo as any).file_path || ''
+    if (!filePath) return { url: '', error: '本地视频路径为空' }
+    return { url: urlModule?.pathToFileURL ? urlModule.pathToFileURL(filePath).href : `file://${encodeURI(filePath)}`, qualityLabel: '本地' }
+  }
+
+  if (pageVideo.drive_id === 'media_server') {
+    if (!(pageVideo.media_server_source_options || []).length) {
+      try {
+        await loadMediaServerSourceState(pageVideo.media_server_source_id || '')
+      } catch (error) {
+        console.error('加载媒体服务器版本信息失败:', error)
+      }
+    }
+    const mediaUrl = pageVideo.media_url || ''
+    if (!mediaUrl) return { url: '', error: '获取媒体服务器播放地址失败' }
+    return { url: mediaUrl, headers: pageVideo.media_headers, type: getArtVideoType(mediaUrl), qualityLabel: pageVideo.media_server_source_label || '媒体服务器' }
+  }
+
+  const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty')
+  if (typeof data === 'string') return { url: '', error: data }
+  if (!data.qualities.length) return { url: '', error: '获取视频链接失败' }
+
+  const source = resolveRawMpvQualitySource(data, mpvEmbeddedQuality.value)
+  const defaultQuality = source.quality
+  const qualities = data.qualities.map(q => ({
+    ...q,
+    default: q.quality === defaultQuality.quality
+  }))
+  pageVideo.expire_time = GetExpiresTime(defaultQuality.url)
+  return { url: source.url, headers: source.headers, type: source.type, qualityLabel: source.qualityLabel, quality: defaultQuality.quality, qualities }
+}
+
+const resolveMpvEmbeddedExternalSubtitle = async (): Promise<{ url: string; title?: string } | undefined> => {
+  if (!useMacEmbeddedMpv) return undefined
+  if (useSettingStore().uiVideoSubtitleMode !== 'auto') return undefined
+  if (pageVideo.drive_id === 'local' || pageVideo.drive_id === 'media_server') return undefined
+  if (!pageVideo.parent_file_id || !pageVideo.file_name) return undefined
+
+  const subtitleFiles = await getDirFileList(pageVideo.parent_file_id, false, '', /srt|vtt|ass|ssa/) || []
+  if (!subtitleFiles.length) return undefined
+  const subtitleFile = PlayerUtils.filterSubtitleFile(pageVideo.file_name, subtitleFiles as any) as selectorItem | undefined
+  if (!subtitleFile?.file_id) return undefined
+
+  const data = await AliFile.ApiFileDownloadUrl(pageVideo.user_id, subtitleFile.drive_id || pageVideo.drive_id, subtitleFile.file_id, 14400)
+  if (typeof data === 'string' || !data.url) return undefined
+  const subtitleUrl = data.headers
+    ? getProxyUrl({
+      user_id: pageVideo.user_id,
+      drive_id: subtitleFile.drive_id || pageVideo.drive_id,
+      file_id: subtitleFile.file_id,
+      encType: subtitleFile.encType,
+      password: pageVideo.password,
+      file_size: data.size,
+      quality: 'Origin',
+      proxy_url: data.url,
+      proxy_headers: JSON.stringify(data.headers)
+    })
+    : data.url
+
+  return {
+    url: subtitleUrl,
+    title: subtitleFile.name || subtitleFile.html || '自动字幕'
+  }
+}
+
+const loadMpvEmbeddedCurrentVideo = async () => {
+  const source = await resolvePageVideoMpvSource()
+  if (source.error || !source.url) {
+    mpvEmbeddedError.value = source.error || '获取 MPV 播放地址失败'
+    message.error(mpvEmbeddedError.value)
+    return false
+  }
+  mpvEmbeddedError.value = ''
+  mpvEmbeddedUrl.value = source.url
+  mpvEmbeddedHeaders.value = source.headers || {}
+  mpvEmbeddedQualityLabel.value = source.qualityLabel || ''
+  mpvEmbeddedQuality.value = source.quality || ''
+  mpvEmbeddedQualities.value = source.qualities || []
+  try {
+    mpvEmbeddedExternalSubtitle.value = await resolveMpvEmbeddedExternalSubtitle()
+  } catch (error) {
+    console.warn('MPV 自动加载同目录字幕失败:', error)
+    mpvEmbeddedExternalSubtitle.value = undefined
+  }
+  return true
+}
+
+const handleMpvEmbeddedQualitySelect = async (quality: string) => {
+  if (!quality || quality === mpvEmbeddedQuality.value) return
+  const status = await window.WebMpvEmbeddedStatus?.().catch(() => undefined)
+  pageVideo.play_cursor = Math.floor(Number(status?.status?.position || mpvEmbeddedStatus.value?.position || pageVideo.play_cursor || 0))
+  mpvEmbeddedQuality.value = quality
+  await loadMpvEmbeddedCurrentVideo()
+}
+
+const applyPlaylistItemToPageVideo = (item: selectorItem) => {
+  pageVideo.html = item.html
+  pageVideo.play_cursor = item.play_cursor || 0
+  pageVideo.file_name = item.name || item.html
+  pageVideo.file_id = item.file_id || ''
+  if (item.user_id) pageVideo.user_id = item.user_id
+  if (item.drive_id) pageVideo.drive_id = item.drive_id
+  if (item.parent_file_id) pageVideo.parent_file_id = item.parent_file_id
+  if (typeof item.password === 'string') pageVideo.password = item.password
+  if (typeof item.encType === 'string' && item.encType) {
+    pageVideo.encType = getEncType({ description: item.encType })
+  } else if (item.description) {
+    pageVideo.encType = getEncType({ description: item.description })
+  }
+  autoPlayNumber = playList.findIndex(list => list.file_id == pageVideo.file_id)
+  updateWindowTitle(pageVideo.file_name)
+}
+
+const switchMpvEmbeddedPlaylistItem = async (item: selectorItem) => {
+  if (!item.file_id || item.file_id === pageVideo.file_id) return
+  const position = mpvEmbeddedStatus.value?.position || pageVideo.play_cursor || 0
+  const duration = mpvEmbeddedStatus.value?.duration || 0
+  if (pageVideo.drive_id === 'media_server') {
+    if (position > 0) {
+      await sendMediaServerProgressReport(position)
+      await sendMediaServerStopReport(position)
+    }
+    await switchMpvMediaServerPlaylistItem(item)
+    return
+  }
+  if (position > 0) await updateVideoTime(position, duration)
+  applyPlaylistItemToPageVideo(item)
+  await buildPageVideoPlayList(item.file_id)
+  await loadMpvEmbeddedCurrentVideo()
+}
+
+const switchMpvMediaServerPlaylistItem = async (item: selectorItem) => {
+  const server = getCurrentMediaServer()
+  const nextItemId = item.file_id || ''
+  if (!server || !nextItemId) {
+    mpvEmbeddedError.value = '媒体服务器不存在或剧集信息不完整'
+    message.error(mpvEmbeddedError.value)
+    return
+  }
+
+  try {
+    const detail = await getMediaServerItemDetail(server, nextItemId)
+    pageVideo.file_id = detail.id
+    pageVideo.media_server_item_id = detail.id
+    const state = await loadMediaServerSourceState('')
+    const playback = await getMediaServerPlaybackInfo(
+      server,
+      detail.id,
+      state?.sourceId || '',
+      state?.videoStreamIndex ?? -1,
+      state?.audioStreamIndex ?? -1,
+      state?.subtitleStreamIndex ?? -1,
+      useSettingStore().uiMediaServerVideoQuality,
+      useSettingStore().uiMediaServerCompatibilityMode,
+      useSettingStore().uiMediaServerCustomDeviceProfile,
+      useSettingStore().uiMediaServerBitrateTestSize
+    )
+
+    pageVideo.file_name = detail.title
+    pageVideo.html = detail.title
+    pageVideo.parent_file_name = detail.parentTitle || pageVideo.parent_file_name
+    pageVideo.play_cursor = playback.playCursorSeconds || 0
+    pageVideo.media_url = playback.url
+    pageVideo.media_headers = playback.headers
+    pageVideo.media_server_source_id = state?.sourceId || ''
+    pageVideo.media_server_source_label = state?.sourceLabel || ''
+    pageVideo.media_server_play_session_id = playback.playSessionId || ''
+    mediaServerReportStarted = false
+    mediaServerStopReported = false
+    mediaServerLastProgressSecond = -1
+    updateWindowTitle(detail.title)
+    await buildPageVideoPlayList(detail.id)
+    if (await loadMpvEmbeddedCurrentVideo()) await sendMediaServerStartReport(pageVideo.play_cursor || 0)
+  } catch (error: any) {
+    console.error('MPV 切换媒体服务器剧集失败:', error)
+    mpvEmbeddedError.value = error?.message || '切换剧集失败'
+    message.error(mpvEmbeddedError.value)
+  }
+}
+
+const handleMpvPlaylistSelect = async (fileId: string) => {
+  const item = playList.find((list) => list.file_id === fileId)
+  if (item) await switchMpvEmbeddedPlaylistItem(item)
+}
+
+const handleMpvPlaylistStep = async (step: number) => {
+  if (!playList.length) return
+  const currentIndex = playList.findIndex((list) => list.file_id === pageVideo.file_id)
+  const nextIndex = currentIndex + step
+  if (nextIndex < 0 || nextIndex >= playList.length) return
+  await switchMpvEmbeddedPlaylistItem(playList[nextIndex])
+}
+
 const getVideoInfo = async (art: Artplayer) => {
   if (pageVideo.drive_id === 'local') {
     const urlModule = window.require?.('url')
@@ -1976,14 +2298,7 @@ const getVideoInfo = async (art: Artplayer) => {
       art.emit('video:error', '获取媒体服务器播放地址失败')
       return
     }
-    const proxyUrl = getProxyUrl({
-      user_id: pageVideo.user_id,
-      drive_id: pageVideo.drive_id,
-      file_id: pageVideo.file_id,
-      proxy_url: mediaUrl,
-      proxy_headers: pageVideo.media_headers ? JSON.stringify(pageVideo.media_headers) : ''
-    })
-    setArtVideoUrl(art, proxyUrl, getArtVideoType(mediaUrl))
+    setArtVideoUrl(art, mediaUrl, getArtVideoType(mediaUrl))
     renderMediaServerControls(art)
     return
   }
@@ -1994,23 +2309,25 @@ const getVideoInfo = async (art: Artplayer) => {
     let uiVideoQuality = useSettingStore().uiVideoQuality
     let defaultQuality: selectorItem
     if (uiVideoQuality === 'Origin' && pageVideo.drive_id != 'baidu' && pageVideo.drive_id != 'drive115') {
-      // 代理播放
-      data.qualities[0].url = getProxyUrl({
+      defaultQuality = data.qualities[0]
+    } else {
+      defaultQuality = resolvePreferredVideoQuality(data.qualities, uiVideoQuality)
+    }
+    const defaultHeaders = defaultQuality.headers || data.headers
+  const defaultUrl = pageVideo.encType
+    ? getProxyUrl({
         user_id: pageVideo.user_id,
         drive_id: pageVideo.drive_id,
         file_id: pageVideo.file_id,
         encType: pageVideo.encType,
         password: pageVideo.password,
         file_size: data.size,
-        quality: 'Origin',
-        proxy_url: data.url
+        quality: defaultQuality.quality,
+        proxy_url: defaultQuality.url,
+        proxy_headers: JSON.stringify(defaultHeaders)
       })
-      defaultQuality = data.qualities[0]
-    } else {
-      let preData = data.qualities.filter(q => q.width)
-      defaultQuality = preData.find(q => q.quality === uiVideoQuality) || preData[0] || data.qualities[0]
-    }
-    setArtVideoUrl(art, defaultQuality.url, defaultQuality.type)
+    : defaultQuality.url
+    setArtVideoUrl(art, defaultUrl, defaultQuality.type)
     defaultQuality.default = true
     pageVideo.expire_time = GetExpiresTime(defaultQuality.url)
     art.controls.update({
@@ -2026,7 +2343,21 @@ const getVideoInfo = async (art: Artplayer) => {
         art.type = artType as any
         if (!isHlsVideoType(artType)) destroyArtHls(art)
         if (!isDashVideoType(artType)) destroyArtDash(art)
-        art.switchQuality(item.url).then(() => {
+        const itemHeaders = item.headers || data.headers
+        const itemUrl = pageVideo.encType
+          ? getProxyUrl({
+            user_id: pageVideo.user_id,
+            drive_id: pageVideo.drive_id,
+            file_id: pageVideo.file_id,
+            encType: pageVideo.encType,
+            password: pageVideo.password,
+            file_size: data.size,
+            quality: item.quality,
+            proxy_url: item.url,
+            proxy_headers: JSON.stringify(itemHeaders)
+          })
+          : item.url
+        art.switchQuality(itemUrl).then(() => {
           scheduleCleanupInactiveStreamingControls(art)
           art.playbackRate = playbackRate
         })
@@ -2038,10 +2369,21 @@ const getVideoInfo = async (art: Artplayer) => {
     if (subtitles.length > 0) {
       embedSubSelector = []
       for (let i = 0; i < subtitles.length; i++) {
+        const subtitle = subtitles[i]
+        const subtitleUrl = subtitle.headers
+          ? getProxyUrl({
+            user_id: pageVideo.user_id,
+            drive_id: pageVideo.drive_id,
+            file_id: pageVideo.file_id,
+            proxy_kind: 'subtitle',
+            proxy_url: subtitle.url,
+            proxy_headers: JSON.stringify(subtitle.headers)
+          })
+          : subtitle.url
         embedSubSelector.push({
-          html: '内嵌:  ' + subtitles[i].language,
-          name: subtitles[i].language,
-          url: subtitles[i].url,
+          html: '内嵌:  ' + subtitle.language,
+          name: subtitle.language,
+          url: subtitleUrl,
           default: i === 0
         })
       }
@@ -2057,11 +2399,34 @@ const getVideoInfo = async (art: Artplayer) => {
   }
 }
 
-let playList: selectorItem[] = []
-const refreshPlayList = async (art: Artplayer, file_id?: string) => {
+const playList = reactive<selectorItem[]>([])
+const videoPlaylistExtensions = new Set(['3gp', 'avi', 'flv', 'm2ts', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'webm', 'wmv'])
+const isVideoPlaylistItem = (item: any) => {
+  if (!item || item.isDir) return false
+  const name = String(item.name || item.file_name || item.html || '')
+  const extension = name.includes('.')
+    ? name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+    : String(item.ext || '').replace(/^\./, '').toLowerCase()
+  return videoPlaylistExtensions.has(extension)
+}
+const buildPageVideoPlayList = async (file_id?: string) => {
+  if (pageVideo.drive_id === 'media_server') {
+    const entries = pageVideo.media_server_episode_playlist || []
+    if (entries.length <= 1) return
+    const currentItemId = file_id || pageVideo.media_server_item_id || pageVideo.file_id
+    playList.splice(0, playList.length, ...entries.map((item) => ({
+      url: '',
+      html: item.title,
+      name: item.title,
+      file_id: item.id,
+      default: item.id === currentItemId
+    })))
+    return
+  }
+
   if (pageVideo.custom_playlist && pageVideo.custom_playlist.length > 1) {
     if (!file_id) {
-      playList = pageVideo.custom_playlist.map((item) => ({
+      playList.splice(0, playList.length, ...pageVideo.custom_playlist.map((item) => ({
         url: '',
         html: item.html || path.parse(item.file_name).name,
         name: item.file_name,
@@ -2075,7 +2440,7 @@ const refreshPlayList = async (art: Artplayer, file_id?: string) => {
         password: item.password,
         encType: item.encType,
         default: item.file_id === pageVideo.file_id
-      }))
+      })))
     } else {
       for (let list of playList) {
         if (list.file_id === file_id) {
@@ -2084,33 +2449,83 @@ const refreshPlayList = async (art: Artplayer, file_id?: string) => {
         }
       }
     }
-  } else {
-    if (pageVideo.drive_id === 'local') return
-  if (pageVideo.drive_id === 'media_server') {
-    await refreshMediaServerPlayList(art, file_id)
     return
   }
+
+  if (pageVideo.drive_id === 'local') {
+    const fs = window.require?.('fs')
+    const pathModule = window.require?.('path')
+    const currentPath = pageVideo.file_id || (pageVideo as any).file_path || ''
+    const directory = currentPath && pathModule?.dirname ? pathModule.dirname(currentPath) : ''
+    if (!fs?.readdirSync || !pathModule || !directory) {
+      playList.splice(0, playList.length)
+      return
+    }
+
+    const videoExtensions = /\.(3gp|avi|flv|m2ts|m4v|mkv|mov|mp4|mpeg|mpg|ts|webm|wmv)$/i
+    try {
+      const localItems = fs.readdirSync(directory, { withFileTypes: true })
+        .filter((entry: any) => entry.isFile?.() && videoExtensions.test(entry.name))
+        .map((entry: any) => {
+          const filePath = pathModule.join(directory, entry.name)
+          return {
+            url: '',
+            html: pathModule.parse(entry.name).name,
+            name: entry.name,
+            file_id: filePath,
+            drive_id: 'local',
+            parent_file_id: directory,
+            default: filePath === currentPath
+          }
+        })
+        .sort((left: selectorItem, right: selectorItem) => String(left.name || '').localeCompare(String(right.name || ''), undefined, { numeric: true, sensitivity: 'base' }))
+      playList.splice(0, playList.length, ...localItems)
+    } catch (error) {
+      console.warn('读取本地视频播放列表失败:', error)
+      playList.splice(0, playList.length)
+    }
+    return
+  }
+
   if (!file_id) {
-    let fileList: any = await getDirFileList(pageVideo.parent_file_id, false, 'video') || []
-    if (fileList && fileList.length > 1) {
-      playList = []
-      for (let i = 0; i < fileList.length; i++) {
-        // 移除扩展名
-        let fileExt = fileList[i].ext
-        let fileName = fileList[i].name
+    const rawFolderItems = (usePanFileStore().ListDataRaw || []).filter((item: any) => !item.isDir)
+    const currentFolderItems = rawFolderItems.filter((item: any) => item.parent_file_id === pageVideo.parent_file_id)
+    const rawVideoItems = (currentFolderItems.length > 1 ? currentFolderItems : rawFolderItems).filter(isVideoPlaylistItem)
+    let fileList: any[] = rawVideoItems.length > 1
+      ? rawVideoItems
+      : await getDirFileList(pageVideo.parent_file_id, false, '', undefined, true) || []
+    const videoFiles = fileList.filter(isVideoPlaylistItem)
+    const currentFileInList = videoFiles.some((item) => item.file_id === pageVideo.file_id)
+    if (!currentFileInList && pageVideo.file_id && pageVideo.file_name) {
+      videoFiles.push({
+        html: path.parse(pageVideo.file_name).name,
+        name: pageVideo.file_name,
+        file_id: pageVideo.file_id,
+        drive_id: pageVideo.drive_id,
+        parent_file_id: pageVideo.parent_file_id,
+        default: true
+      })
+    }
+    videoFiles.sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''), undefined, { numeric: true, sensitivity: 'base' }))
+    if (videoFiles.length > 0) {
+      playList.splice(0, playList.length)
+      for (let i = 0; i < videoFiles.length; i++) {
+        const file = videoFiles[i]
+        let fileExt = file.ext
+        let fileName = file.name
         let html = path.parse(fileName).name
         playList.push({
           url: '',
           html: html,
-          name: fileList[i].name,
-          file_id: fileList[i].file_id,
+          name: file.name,
+          file_id: file.file_id,
           ext: fileExt,
-          description: fileList[i].description,
-          play_cursor: fileList[i].play_cursor,
+          description: file.description,
+          play_cursor: file.play_cursor,
           user_id: pageVideo.user_id,
-          drive_id: fileList[i].drive_id || pageVideo.drive_id,
-          parent_file_id: fileList[i].parent_file_id || pageVideo.parent_file_id,
-          default: fileList[i].file_id === pageVideo.file_id
+          drive_id: file.drive_id || pageVideo.drive_id,
+          parent_file_id: file.parent_file_id || pageVideo.parent_file_id,
+          default: file.file_id === pageVideo.file_id
         })
       }
     }
@@ -2122,7 +2537,15 @@ const refreshPlayList = async (art: Artplayer, file_id?: string) => {
       }
     }
   }
+}
+
+const refreshPlayList = async (art: Artplayer, file_id?: string) => {
+  if (pageVideo.drive_id === 'local') return
+  if (pageVideo.drive_id === 'media_server') {
+    await refreshMediaServerPlayList(art, file_id)
+    return
   }
+  await buildPageVideoPlayList(file_id)
   if (playList.length > 1) {
     autoPlayNumber = playList.findIndex(list => list.file_id == pageVideo.file_id)
     lastPlayNumber = autoPlayNumber - 1
@@ -2564,16 +2987,16 @@ const getSubTitleList = async (art: Artplayer) => {
   })
 }
 
-const updateVideoTime = async () => {
+const updateVideoTime = async (positionSeconds = ArtPlayerRef?.currentTime || 0, durationSeconds = ArtPlayerRef?.duration || 0) => {
   if (pageVideo.drive_id === 'media_server') return
   if (isQuarkUser(pageVideo.user_id) || pageVideo.drive_id === 'quark') return
   await AliFile.ApiUpdateVideoTime(
     pageVideo.user_id,
     pageVideo.drive_id,
     pageVideo.file_id,
-    ArtPlayerRef.currentTime
+    positionSeconds
   )
-  updateContinueWatching()
+  updateContinueWatching(positionSeconds, durationSeconds)
 }
 
 const findMediaItemByFileId = (fileId: string): MediaLibraryItem | undefined => {
@@ -2597,20 +3020,59 @@ const findMediaItemByFileId = (fileId: string): MediaLibraryItem | undefined => 
   return undefined
 }
 
-const updateContinueWatching = () => {
+const updateContinueWatching = (positionSeconds = ArtPlayerRef?.currentTime || 0, durationSeconds = ArtPlayerRef?.duration || 0) => {
   const fileId = pageVideo.file_id
   const item = findMediaItemByFileId(fileId)
   if (!item) return
-  const duration = ArtPlayerRef?.duration || 0
-  const progress = duration > 0 ? ArtPlayerRef.currentTime / duration : 0
+  const duration = durationSeconds || 0
+  const progress = duration > 0 ? positionSeconds / duration : 0
   item.watchProgress = Math.max(0, Math.min(1, progress))
   item.lastWatched = new Date()
   mediaStore.addToContinueWatching(item)
 }
 
+const handleMpvEmbeddedStatus = async (status: any) => {
+  if (!useMacEmbeddedMpv || !status) return
+  mpvEmbeddedStatus.value = status
+  const currentSecond = Math.floor(Number(status.position || 0))
+  const duration = Number(status.duration || 0)
+  if (currentSecond <= 0) return
+  pageVideo.play_cursor = currentSecond
+  if (pageVideo.expire_time && pageVideo.expire_time <= Date.now() + 60 * 1000) {
+    pageVideo.expire_time = 0
+    await loadMpvEmbeddedCurrentVideo()
+    return
+  }
+  if (!status.paused && duration > 30 && duration - currentSecond <= 2 && playList.length > 1) {
+    await handleMpvPlaylistStep(1)
+    return
+  }
+  if (pageVideo.drive_id === 'media_server') {
+    if (currentSecond % 10 === 0 && currentSecond !== mediaServerLastProgressSecond) {
+      mediaServerLastProgressSecond = currentSecond
+      await sendMediaServerProgressReport(currentSecond)
+    }
+    return
+  }
+  if (!status.paused && currentSecond % 10 === 0 && currentSecond !== mediaServerLastProgressSecond) {
+    mediaServerLastProgressSecond = currentSecond
+    await updateVideoTime(currentSecond, duration)
+  }
+}
+
 const handleHideClick = async () => {
   if (pageVideo.drive_id === 'media_server') {
-    await sendMediaServerStopReport(ArtPlayerRef?.currentTime || 0)
+    const mpvStatus = useMacEmbeddedMpv ? await window.WebMpvEmbeddedStatus?.().catch(() => undefined) : undefined
+    await sendMediaServerStopReport(useMacEmbeddedMpv ? mpvStatus?.status?.position || pageVideo.play_cursor || 0 : ArtPlayerRef?.currentTime || 0)
+  }
+  if (useMacEmbeddedMpv) {
+    const status = await window.WebMpvEmbeddedStatus?.().catch(() => undefined)
+    const position = status?.status?.position || mpvEmbeddedStatus.value?.position || pageVideo.play_cursor || 0
+    const duration = status?.status?.duration || mpvEmbeddedStatus.value?.duration || 0
+    if (position > 0) await updateVideoTime(position, duration)
+    await window.WebMpvEmbeddedControl?.({ action: 'stop' }).catch(() => undefined)
+    window.close()
+    return
   }
   await ArtPlayerRef.emit('video:pause')
   await updateVideoTime()
@@ -2631,7 +3093,13 @@ const handleTop = (_e: any) => {
 
 onBeforeUnmount(() => {
   if (pageVideo.drive_id === 'media_server') {
-    void sendMediaServerStopReport(ArtPlayerRef?.currentTime || 0)
+    void sendMediaServerStopReport(useMacEmbeddedMpv ? mpvEmbeddedStatus.value?.position || pageVideo.play_cursor || 0 : ArtPlayerRef?.currentTime || 0)
+  }
+  if (useMacEmbeddedMpv) {
+    const position = mpvEmbeddedStatus.value?.position || pageVideo.play_cursor || 0
+    const duration = mpvEmbeddedStatus.value?.duration || 0
+    if (position > 0) void updateVideoTime(position, duration)
+    void window.WebMpvEmbeddedControl?.({ action: 'stop' })
   }
   if (onlineSubData.dataUrl) {
     URL.revokeObjectURL(onlineSubData.dataUrl)
@@ -2652,7 +3120,15 @@ onBeforeUnmount(() => {
 <template>
   <a-layout style='height: 100vh' draggable='false'>
     <a-layout-header id='xbyhead' draggable='false'>
-      <div id='xbyhead2' class='q-electron-drag'>
+      <div v-if="useMacEmbeddedMpv" class="mpv-video-titlebar q-electron-drag">
+        <div class="mpv-window-controls">
+          <button class="mpv-window-dot close" type="button" aria-label="关闭窗口" @click.stop="handleHideClick"></button>
+          <button class="mpv-window-dot min" type="button" aria-label="最小化窗口" @click.stop="handleMinClick"></button>
+          <button class="mpv-window-dot max" type="button" aria-label="最大化窗口" @click.stop="handleMaxClick"></button>
+        </div>
+        <div class="mpv-window-title">{{ pageVideo?.file_name || '视频在线预览' }}</div>
+      </div>
+      <div v-else id='xbyhead2' class='q-electron-drag'>
         <a-button type='text' tabindex='-1'>
           <IconFont name="iconfile_video" />
         </a-button>
@@ -2673,7 +3149,29 @@ onBeforeUnmount(() => {
       </div>
     </a-layout-header>
     <a-layout-content>
-      <div id='artPlayer' style='width: 100%; height: 100%;text-overflow: ellipsis;white-space: nowrap;' />
+      <MpvEmbeddedSurface
+        v-if="useMacEmbeddedMpv && mpvEmbeddedUrl"
+        id="mpvEmbeddedPlayer"
+        :current-file-id="pageVideo.drive_id === 'media_server' ? pageVideo.media_server_item_id || pageVideo.file_id : pageVideo.file_id"
+        :current-quality="mpvEmbeddedQuality"
+        :chapters="pageVideo.media_server_chapters || []"
+        :external-subtitle="mpvEmbeddedExternalSubtitle"
+        :headers="mpvEmbeddedHeaders"
+        :playlist="[...playList]"
+        :qualities="mpvEmbeddedQualities"
+        :quality-label="mpvEmbeddedQualityLabel"
+        :start-position="pageVideo.play_cursor || 0"
+        :title="pageVideo.file_name"
+        :url="mpvEmbeddedUrl"
+        @error="(error) => mpvEmbeddedError = error"
+        @quality-select="handleMpvEmbeddedQualitySelect"
+        @playlist-next="handleMpvPlaylistStep(1)"
+        @playlist-prev="handleMpvPlaylistStep(-1)"
+        @playlist-select="handleMpvPlaylistSelect"
+        @status="handleMpvEmbeddedStatus"
+      />
+      <div v-else-if="useMacEmbeddedMpv" id="mpvEmbeddedPlayer" class="mpv-embedded-page-error">{{ mpvEmbeddedError || '正在准备 MPV 播放...' }}</div>
+      <div v-else id='artPlayer' style='width: 100%; height: 100%;text-overflow: ellipsis;white-space: nowrap;' />
     </a-layout-content>
   </a-layout>
 </template>
@@ -2684,6 +3182,68 @@ onBeforeUnmount(() => {
   pointer-events: none;
   background-color: transparent;
   color: #ACA899;
+}
+
+.mpv-embedded-page-error {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  color: rgba(255, 255, 255, .72);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.mpv-video-titlebar {
+  position: relative;
+  display: flex;
+  height: 40px;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  background: rgba(23, 24, 26, .96);
+  color: rgba(255, 255, 255, .72);
+  z-index: 4;
+}
+
+.mpv-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+}
+
+.mpv-window-dot {
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: .92;
+}
+
+.mpv-window-dot:hover {
+  opacity: 1;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, .1);
+}
+
+.mpv-window-dot.close { background: #ff5f57; }
+.mpv-window-dot.min { background: #febc2e; }
+.mpv-window-dot.max { background: #28c840; }
+
+.mpv-window-title {
+  position: absolute;
+  left: 50%;
+  max-width: 55%;
+  overflow: hidden;
+  color: rgba(255, 255, 255, .48);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .art-list-icon {

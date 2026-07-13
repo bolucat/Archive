@@ -159,8 +159,8 @@ export default class TreeStore {
         console.log('SaveOneDirFileList LoadCacheAllDir')
         driverData = await TreeStore.ConvertToOneDriver(oneDir.m_user_id, oneDir.m_drive_id, cache as DirData[], false, true)
       } else {
-        console.log('SaveOneDirFileList 找不到cache直接退出')
-        return
+        console.log('SaveOneDirFileList 初始化空目录树')
+        driverData = await TreeStore.ConvertToOneDriver(oneDir.m_user_id, oneDir.m_drive_id, [], false, true)
       }
     }
 
@@ -182,12 +182,16 @@ export default class TreeStore {
 
 
     const dirList: DirData[] = []
+    const driveType = GetDriveType(oneDir.m_user_id, oneDir.m_drive_id)
+    const isRootDir = oneDir.dirID == driveType.key
     for (let i = 0, maxi = dirs.length; i < maxi; i++) {
       const item = dirs[i]
+      let parent_file_id = item.parent_file_id || oneDir.dirID
+      if (isRootDir && (!parent_file_id || parent_file_id == '0' || parent_file_id == '/' || parent_file_id == 'root')) parent_file_id = driveType.key
       const dirItem: DirData = {
         file_id: item.file_id,
         drive_id: item.drive_id,
-        parent_file_id: item.parent_file_id,
+        parent_file_id,
         path: item.path,
         name: item.name,
         time: item.time,

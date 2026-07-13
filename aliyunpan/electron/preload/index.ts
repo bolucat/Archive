@@ -212,6 +212,124 @@ window.WebSetProxy = function(data: { proxyUrl: string }) {
   }
 }
 
+window.WebMpvEmbeddedCapability = async function() {
+  try {
+    return await ipcRenderer.invoke('MpvEmbedded:getCapability')
+  } catch (error: any) {
+    return { enabled: false, status: 'disabled', reason: error?.message || 'mpv embedded capability ipc failed' }
+  }
+}
+
+function normalizeMpvEmbeddedLoadData(data: any) {
+  const headers: Record<string, string> = {}
+  for (const [key, value] of Object.entries(data?.headers || {})) {
+    if (!key || value == null) continue
+    headers[String(key)] = String(value)
+  }
+  return {
+    url: String(data?.url || ''),
+    headers,
+    title: String(data?.title || ''),
+    startPosition: typeof data?.startPosition === 'number' ? data.startPosition : Number(data?.startPosition || 0)
+  }
+}
+
+window.WebMpvEmbeddedLoad = async function(data: any) {
+  try {
+    return await ipcRenderer.invoke('MpvEmbedded:load', normalizeMpvEmbeddedLoadData(data))
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'mpv embedded load ipc failed' }
+  }
+}
+
+window.WebMpvEmbeddedControl = async function(data: any) {
+  try {
+    return await ipcRenderer.invoke('MpvEmbedded:control', data)
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'mpv embedded control ipc failed' }
+  }
+}
+
+window.WebMpvEmbeddedStatus = async function() {
+  try {
+    return await ipcRenderer.invoke('MpvEmbedded:getStatus')
+  } catch (error: any) {
+    return { ok: false, error: error?.message || 'mpv embedded status ipc failed' }
+  }
+}
+
+window.WebMpvSharedTextureCapability = function() {
+  if (process.platform !== 'darwin') {
+    return { available: false, platform: process.platform, reason: 'sharedTexture receiver is only planned for macOS embedded MPV' }
+  }
+  try {
+    const sharedTexture = (require('electron') as any).sharedTexture
+    return {
+      available: Boolean(sharedTexture?.setSharedTextureReceiver),
+      platform: process.platform,
+      reason: sharedTexture ? undefined : 'macOS 内嵌 MPV 渲染桥接尚未启用'
+    }
+  } catch (error: any) {
+    return { available: false, platform: process.platform, reason: error?.message || 'macOS 内嵌 MPV 渲染桥接检测失败' }
+  }
+}
+
+let mpvSharedTextureFrameCallback: ((videoFrame: VideoFrame, index: number) => void) | null = null
+let mpvSharedTextureClearCallback: (() => void) | null = null
+let mpvSharedTextureReceiverReady = false
+
+ipcRenderer.on('MpvEmbedded:clearTexture', () => {
+  mpvSharedTextureClearCallback?.()
+})
+
+const registerMpvSharedTextureReceiver = (): boolean => {
+  try {
+    const sharedTexture = (require('electron') as any).sharedTexture
+    if (process.platform !== 'darwin' || !sharedTexture?.setSharedTextureReceiver) return false
+    sharedTexture.setSharedTextureReceiver(async (data: { importedSharedTexture?: { getVideoFrame: () => VideoFrame; release: () => void } }, ...args: unknown[]) => {
+      const imported = data?.importedSharedTexture
+      try {
+        if (imported && mpvSharedTextureFrameCallback) {
+          const frameIndex = typeof args[0] === 'number' ? args[0] : 0
+          const videoFrame = imported.getVideoFrame()
+          mpvSharedTextureFrameCallback(videoFrame, frameIndex)
+        }
+      } catch (error) {
+        console.error('[mpv] sharedTexture receiver error:', error)
+      } finally {
+        try { imported?.release() } catch {}
+      }
+    })
+    mpvSharedTextureReceiverReady = true
+    console.log('[mpv] sharedTexture receiver registered')
+    return true
+  } catch (error) {
+    mpvSharedTextureReceiverReady = false
+    console.warn('[mpv] sharedTexture receiver is not available:', error)
+    return false
+  }
+}
+
+// Match sbtlTV's lifecycle: Electron's receiver belongs to the preload
+// renderer process, while the UI component only owns the frame callback.
+registerMpvSharedTextureReceiver()
+
+window.WebMpvSharedTexture = {
+  isAvailable: () => mpvSharedTextureReceiverReady,
+  onFrame: (callback: (videoFrame: VideoFrame, index: number) => void) => {
+    mpvSharedTextureFrameCallback = callback
+  },
+  removeFrameListener: () => {
+    mpvSharedTextureFrameCallback = null
+  },
+  onClear: (callback: () => void) => {
+    mpvSharedTextureClearCallback = callback
+  },
+  removeClearListener: () => {
+    mpvSharedTextureClearCallback = null
+  }
+}
+
 window.MsImageCacheSyncConfig = function(configs: any[]) {
   try {
     ipcRenderer.send('MsImageCache:syncConfig', configs)

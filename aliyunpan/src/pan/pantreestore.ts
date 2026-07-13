@@ -4,7 +4,7 @@ import { h } from 'vue'
 import IconFont from '../components/IconFont.vue'
 import PanDAL from './pandal'
 import TreeStore, { TreeNodeData } from '../store/treestore'
-import { GetDriveID, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { GetDriveID, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import message from '../utils/message'
 
 export interface PanTreeState {
@@ -141,6 +141,7 @@ const usePanTreeStore = defineStore('pantree', {
       const isQuark = isQuarkUser(this.user_id || '')
       const isCloud139 = isCloud139User(this.user_id || '')
       const isCloud189 = isCloud189User(this.user_id || '')
+      const isGuangya = isGuangyaUser(this.user_id || '')
       if (isCloudUser) {
         const unsupported = ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite']
         if (unsupported.includes(key)) {
@@ -160,8 +161,8 @@ const usePanTreeStore = defineStore('pantree', {
         message.info('夸克网盘不支持此功能')
         return
       }
-      if ((isCloud139 || isCloud189) && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite', 'trash'].includes(key)) {
-        message.info((isCloud139 ? '139云盘' : '天翼云盘') + '不支持此功能')
+      if ((isCloud139 || isCloud189 || isGuangya) && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite', 'trash'].includes(key)) {
+        message.info((isCloud139 ? '139云盘' : isCloud189 ? '天翼云盘' : '光鸭云盘') + '不支持此功能')
         return
       }
       if (isDropbox && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite', 'trash'].includes(key)) {

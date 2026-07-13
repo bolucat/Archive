@@ -6,7 +6,7 @@ defineProps<{
   state: 'confirm' | 'running' | 'done' | 'error'
   files: { name: string; fileId: string; driveId: string; userId: string }[]
   targetDir?: string
-  output?: { total: number; success: number; failed: number }
+  output?: { total: number; success: number; failed: number; report?: string }
   error?: string
 }>()
 
@@ -18,7 +18,7 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void; (e: 'retry
     <template v-if="state === 'confirm'">
       <div class="ba-header">
         <AlertCircle :size="16" :stroke-width="1.5" />
-        <span>{{ action === 'delete' ? '确认删除' : '确认移动' }} {{ files.length }} 个文件{{ action === 'move' && targetDir ? `到 ${targetDir}` : '' }}？</span>
+        <span>{{ action === 'delete' ? '确认移入回收站' : '确认移动' }} {{ files.length }} 个文件{{ action === 'move' && targetDir ? `到 ${targetDir}` : '' }}？</span>
       </div>
       <div class="ba-file-list">
         <div v-for="(f, i) in files.slice(0, 10)" :key="i" class="ba-file-name">{{ f.name }}</div>
@@ -26,7 +26,7 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void; (e: 'retry
       </div>
       <div class="ba-actions">
         <button class="ba-btn ba-btn-danger" @click="emit('confirm')">
-          {{ action === 'delete' ? '确认删除' : '确认移动' }}
+          {{ action === 'delete' ? '确认移入回收站' : '确认移动' }}
         </button>
         <button class="ba-btn ba-btn-cancel" @click="emit('cancel')">取消</button>
       </div>
@@ -34,12 +34,12 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void; (e: 'retry
 
     <div v-else-if="state === 'running'" class="ba-status">
       <Loader2 :size="14" :stroke-width="2" class="ba-spin" />
-      <span>正在{{ action === 'delete' ? '删除' : '移动' }}...</span>
+      <span>正在{{ action === 'delete' ? '移入回收站' : '移动' }}...</span>
     </div>
 
     <div v-else-if="state === 'done'" class="ba-status ba-done">
       <CheckCircle :size="16" :stroke-width="1.5" />
-      <span>{{ action === 'delete' ? '已删除' : '已移动' }} {{ output?.success || 0 }}/{{ output?.total || 0 }}{{ output?.failed ? `，${output.failed} 失败` : '' }}</span>
+      <span>{{ action === 'delete' ? '已移入回收站' : '已移动' }} {{ output?.success || 0 }}/{{ output?.total || 0 }}{{ output?.failed ? `，${output.failed} 失败` : '' }}{{ output?.report ? `。${output.report}` : '' }}</span>
     </div>
 
     <div v-else-if="state === 'error'" class="ba-status ba-error">

@@ -40,6 +40,18 @@ declare interface Window {
   WebOpenUrl: any
   WebShutDown: any
   WebSetProxy: any
+  WebMpvEmbeddedCapability: () => Promise<any>
+  WebMpvEmbeddedLoad: (data: any) => Promise<any>
+  WebMpvEmbeddedControl: (data: any) => Promise<any>
+  WebMpvEmbeddedStatus: () => Promise<any>
+  WebMpvSharedTextureCapability: () => { available: boolean; platform: string; reason?: string }
+  WebMpvSharedTexture: {
+    isAvailable: () => boolean
+    onFrame: (callback: (videoFrame: VideoFrame, index: number) => void) => void
+    removeFrameListener: () => void
+    onClear: (callback: () => void) => void
+    removeClearListener: () => void
+  }
   MsImageCacheSyncConfig: any
   MsImageCacheStats: () => Promise<{ totalBytes: number; servers: unknown[] }>
   MsImageCacheClear: (serverId?: string) => Promise<{ cleared: number }>

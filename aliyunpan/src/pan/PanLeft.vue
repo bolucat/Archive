@@ -14,7 +14,7 @@ import { TreeNodeData } from '../store/treestore'
 import { dropMoveSelectedFile } from './topbtns/topbtn'
 import message from '../utils/message'
 import { modalUpload } from '../utils/modal'
-import { GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 
 const treeref = ref()
 const inputselectType = ref('backup')
@@ -218,7 +218,7 @@ const isPreviewableNode = (data: TreeNodeData | undefined): boolean => {
     // leaf placeholder, but still might be a real folder; only block if no drive_id
   }
   const userId = pantreeStore.user_id || ''
-  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isQuarkUser(userId) || isCloud139User(userId) || isCloud189User(userId)
+  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isQuarkUser(userId) || isCloud139User(userId) || isCloud189User(userId) || isGuangyaUser(userId)
   if (!isSingleRootDrive && key.length < 40) return false
   return true
 }

@@ -15,11 +15,12 @@ import { checkAndIncrement, isLoggedIn, isPro } from '../utils/usageLimit'
 import { getAIConfig } from '../utils/bookAI'
 import { isBoxPlayerCloudProvider } from '../utils/boxplayerCloudAI'
 import message from '../utils/message'
+import Config from '../config'
 
 const appStore = useAppStore()
 const HISTORY_KEY = 'global_search_history'
 const MAX_HISTORY = 20
-const PANHUB_API_BASE = 'https://api.xbyvideohub.com/api'
+const PANHUB_API_BASE = `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/api`
 const panHubFetch = createPanHubFetch(window.Electron?.ipcRenderer?.invoke?.bind(window.Electron.ipcRenderer))
 
 const searchMode = ref<'local' | 'panhub' | 'ai'>('local')

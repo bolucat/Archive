@@ -6,7 +6,7 @@ import { getBoxPlayerAccessToken } from '../../../utils/boxplayerAuth'
 import { completeBoxPlayerCloudChat } from '../../../utils/boxplayerCloudAI'
 import { aiLogger } from '../logger'
 
-const CLOUD_AI_BASE_URL = ((Config as any).BOXPLAYER_AI_API_URL || 'https://ai.xbyvideohub.com').replace(/\/+$/, '')
+const CLOUD_AI_BASE_URL = Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')
 
 function getCloudAIBaseURL(): string {
   return CLOUD_AI_BASE_URL
@@ -58,7 +58,7 @@ export class BoxPlayerCloudProvider implements AIProvider {
       supportsParallelCalls: false,
       async doEmbed({ values, abortSignal }: { values: string[]; abortSignal?: AbortSignal }) {
         const token = await getBoxPlayerAccessToken()
-        const resp = await fetch(`${getCloudAIBaseURL()}/v1/embeddings`, {
+        const resp = await fetch(`https://ai.xbyvideohub.com/v1/embeddings`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

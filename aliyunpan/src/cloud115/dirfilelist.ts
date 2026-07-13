@@ -4,6 +4,7 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
 import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import DebugLog from '../utils/debuglog'
 
 export type Drive115FileItem = {
   fid: string | number
@@ -26,6 +27,51 @@ export type Drive115FileListResp = {
 
 const API_URL = 'https://proapi.115.com/open/ufile/files'
 const SEARCH_URL = 'https://proapi.115.com/open/ufile/search'
+const LIST_REQUEST_GAP_MS = 900
+const ERROR_TOAST_GAP_MS = 60 * 1000
+const RATE_LIMIT_COOLDOWN_MS = 2 * 60 * 1000
+
+type Drive115RequestOptions = {
+  silent?: boolean
+}
+
+let listQueue: Promise<unknown> = Promise.resolve()
+let lastListRequestAt = 0
+let rateLimitedUntil = 0
+const lastErrorNoticeAt = new Map<string, number>()
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
+const isRateLimitMessage = (text: string) => /访问上限|频繁|稍后再试|rate/i.test(text)
+
+const enqueueListRequest = async <T>(runner: () => Promise<T>): Promise<T> => {
+  const run = async () => {
+    const wait = Math.max(0, LIST_REQUEST_GAP_MS - (Date.now() - lastListRequestAt))
+    if (wait > 0) await sleep(wait)
+    lastListRequestAt = Date.now()
+    return runner()
+  }
+  const next = listQueue.then(run, run)
+  listQueue = next.catch(() => undefined)
+  return next
+}
+
+const reportDrive115ListError = (text: string, options: Drive115RequestOptions = {}) => {
+  const msg = text || '获取 115 网盘文件列表失败'
+  const now = Date.now()
+  const noticeKey = `${options.silent ? 'silent' : 'toast'}:${msg}`
+  const last = lastErrorNoticeAt.get(noticeKey) || 0
+  if (now - last < ERROR_TOAST_GAP_MS) {
+    DebugLog.mSaveWarning(`[drive115] suppressed repeated list error: ${msg}`)
+    return
+  }
+  lastErrorNoticeAt.set(noticeKey, now)
+  if (options.silent) {
+    DebugLog.mSaveWarning(`[drive115] list error: ${msg}`)
+  } else {
+    message.error(msg)
+  }
+}
 
 const toTime = (val?: number | string) => {
   if (val === undefined || val === null) return 0
@@ -39,7 +85,8 @@ export const apiDrive115FileList = async (
   cid: string | number,
   limit = 200,
   offset = 0,
-  showDir = true
+  showDir = true,
+  options: Drive115RequestOptions = {}
 ): Promise<Drive115FileItem[]> => {
   let token = UserDAL.GetUserToken(user_id)
   if (!token?.access_token) {
@@ -49,7 +96,11 @@ export const apiDrive115FileList = async (
     }
   }
   if (!token?.access_token) {
-    message.error('未登录 115 网盘')
+    reportDrive115ListError('未登录 115 网盘', options)
+    return []
+  }
+  if (rateLimitedUntil > Date.now()) {
+    reportDrive115ListError('已达到当前访问上限，请稍后再试', options)
     return []
   }
   const params = new URLSearchParams()
@@ -59,19 +110,20 @@ export const apiDrive115FileList = async (
   params.set('cur', '1')
   params.set('show_dir', showDir ? '1' : '0')
   const url = `${API_URL}?${params.toString()}`
-  const resp = await fetch(url, {
+  const resp = await enqueueListRequest(() => fetch(url, {
     headers: {
       Authorization: `Bearer ${token.access_token}`
     }
-  })
+  }))
   if (!resp.ok) {
-    message.error('获取 115 网盘文件列表失败')
+    reportDrive115ListError('获取 115 网盘文件列表失败', options)
     return []
   }
   const data = (await resp.json()) as Drive115FileListResp
   if (data?.code !== 0 || !Array.isArray(data.data)) {
-    if (data?.message) message.error(data.message)
-    else message.error('获取 115 网盘文件列表失败')
+    const msg = data?.message || '获取 115 网盘文件列表失败'
+    if (isRateLimitMessage(msg)) rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
+    reportDrive115ListError(msg, options)
     return []
   }
   return data.data

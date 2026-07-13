@@ -1,8 +1,9 @@
 {
   "name": "boxplayer",
   "description": "BoxPlayer",
-  "version": "5.0.0",
+  "version": "5.0.3",
   "main": "dist/electron/main/index.js",
+  "packageManager": "pnpm@10.32.1",
   "author": {
     "name": "gaozhangmin",
     "email": "gaozhangmin@gmail.com"
@@ -14,24 +15,26 @@
     "clouddrive-mcp": "scripts/clouddrive-mcp.mjs"
   },
   "scripts": {
+    "secrets:generate": "node scripts/generate-secrets.mjs --mode=local",
+    "predev": "node scripts/generate-secrets.mjs --mode=local",
     "dev": "vite",
+    "prebuild": "node scripts/generate-secrets.mjs --mode=local",
     "build": "node version.mjs && vue-tsc --noEmit && vite build",
     "build:version": "node version.mjs",
     "build:electron": "pnpm run build && electron-builder",
     "build:test": "pnpm run build && electron-builder --dir",
     "build:mac": "pnpm run build && electron-builder --mac",
     "build:mac:signed": "pnpm run build && CSC_IDENTITY_AUTO_DISCOVERY=true electron-builder --mac",
-    "build:linux": "pnpm run build && electron-builder --linux",
+    "build:linux": "pnpm run build && node build-linux.mjs",
     "build:windows": "pnpm run build && electron-builder --win",
     "build:all": "node build-all.mjs",
     "build:clouddrive-cli": "node scripts/build-clouddrive-cli-package.mjs",
-    "config:clean": "node scripts/clean-config.js",
-    "config:restore": "node scripts/restore-config.js",
+    "pretest": "node scripts/generate-secrets.mjs --mode=local",
     "test": "vitest run electron/main/aria/__tests__ src/down/motrix-integration src/utils/__tests__/aria2EnginePolicy.test.ts src/utils/__tests__/aria2Rpc.test.ts",
     "test:clouddrive-cli": "vitest run clouddrive-cli/__tests__"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12.0"
   },
   "devDependencies": {
     "@ai-sdk/openai": "^3.0.68",
@@ -87,8 +90,8 @@
     "docx-preview": "^0.3.7",
     "dom-to-image": "^2.6.0",
     "dompurify": "3.4.0",
-    "electron": "21.4.4",
-    "electron-builder": "^24.13.3",
+    "electron": "40.10.6",
+    "electron-builder": "^26.15.3",
     "electron-is": "^3.0.0",
     "electron-rebuild": "^3.2.9",
     "electron-store": "8.2.0",
@@ -169,5 +172,10 @@
   ],
   "dependencies": {
     "qrcode-terminal": "^0.12.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "@electron/get": "3.1.0"
+    }
   }
 }

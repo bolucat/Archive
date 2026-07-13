@@ -12,6 +12,7 @@ import (
 	"github.com/metacubex/mihomo/component/ech"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/listener/jls"
 	"github.com/metacubex/mihomo/listener/reality"
 	"github.com/metacubex/mihomo/listener/sing"
 	"github.com/metacubex/mihomo/listener/tlsmirror"
@@ -94,6 +95,7 @@ func New(config LC.VmessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 		Protocols:   new(http.Protocols),
 	}
 	tlsConfig := &tls.Config{Time: ntp.Now}
+	var jlsBuilder *jls.Builder
 	var realityBuilder *reality.Builder
 	var tlsMirrorBuilder *tlsmirror.Builder
 
@@ -150,6 +152,27 @@ func New(config LC.VmessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 			SequenceWatermarkingEnabled:   config.TLSMirrorConfig.SequenceWatermarkingEnabled,
 		}.Build(tunnel)
 		h.Tunnel = tlsMirrorBuilder.WrapTunnel(tunnel)
+	}
+	if config.JLSConfig.Enable {
+		if tlsConfig.GetCertificate != nil {
+			return nil, errors.New("certificate is unavailable in JLS")
+		}
+		if tlsConfig.ClientAuth != tls.NoClientCert {
+			return nil, errors.New("client-auth is unavailable in JLS")
+		}
+		if realityBuilder != nil {
+			return nil, errors.New("REALITY is unavailable in JLS")
+		}
+		if tlsMirrorBuilder != nil {
+			return nil, errors.New("TLSMirror is unavailable in JLS")
+		}
+		if config.MKCPConfig.Enable {
+			return nil, errors.New("JLS only supports TCP transports")
+		}
+		jlsBuilder, err = jls.New(config.JLSConfig, tunnel)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if config.WsPath != "" {
 		httpMux := http.NewServeMux()
@@ -214,7 +237,9 @@ func New(config LC.VmessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 				return nil, err
 			}
 		}
-		if tlsMirrorBuilder != nil {
+		if jlsBuilder != nil {
+			l = jlsBuilder.NewListener(l)
+		} else if tlsMirrorBuilder != nil {
 			l = tlsMirrorBuilder.NewListener(l)
 		} else if realityBuilder != nil {
 			l = realityBuilder.NewListener(l)

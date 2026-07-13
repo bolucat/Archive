@@ -1,0 +1,19 @@
+{
+  "name": "boxplayer-mpv-texture",
+  "version": "0.0.0",
+  "private": true,
+  "gypfile": true,
+  "main": "build/Release/boxplayer-mpv-texture.node",
+  "scripts": {
+    "check:libmpv": "scripts/check-libmpv-mac.sh",
+    "sync:mpv:mac": "bash scripts/sync-mpv-deps-mac.sh",
+    "build": "bash scripts/node-gyp-rebuild.sh",
+    "build:stub": "bash scripts/node-gyp-rebuild.sh",
+    "build:libmpv": "npm_config_enable_libmpv=1 bash scripts/node-gyp-rebuild.sh",
+    "bundle:mac": "bash scripts/bundle-dylibs-mac.sh",
+    "clean": "node-gyp clean"
+  },
+  "dependencies": {
+    "node-addon-api": "5.1.0"
+  }
+}

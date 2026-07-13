@@ -617,6 +617,7 @@ function tokenRootScanFolders(token: ITokenInfo): ScanSourceTarget[] {
     quark: { driveId: 'quark', fileId: '0' },
     '139': { driveId: 'cloud139', fileId: 'cloud139_root' },
     '189': { driveId: 'cloud189', fileId: 'cloud189_root' },
+    guangya: { driveId: 'guangya', fileId: 'guangya_root' },
     dropbox: { driveId: 'dropbox', fileId: 'dropbox_root' },
     onedrive: { driveId: 'onedrive', fileId: 'onedrive_root' },
     box: { driveId: 'box', fileId: '0' }

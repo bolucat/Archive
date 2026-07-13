@@ -6,8 +6,9 @@ import type {
   MovieItemResponse,
   TvSeriesItemResponse
 } from '../types/media'
+import Config from '../config'
 
-const TMDB_BASE_URL = 'https://api.xbyvideohub.com/api/tmdb'
+const TMDB_BASE_URL = `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/api/tmdb`
 
 async function fetchWithRetry(url: string, retries = 3, delayMs = 2000): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -27,7 +28,7 @@ export const TMDB_BASE_URL_PROXY = `${TMDB_BASE_URL}/proxy`
 
 export function tmdbImageUrl(path?: string | null, size: string = 'w500'): string {
   const imagePath = String(path || '').replace(/^\/+/, '')
-  return imagePath ? `https://api.xbyvideohub.com/api/tmdb/image/${size}/${imagePath}` : ''
+  return imagePath ? `${TMDB_BASE_URL}/image/${size}/${imagePath}` : ''
 }
 
 export { TMDB_BASE_URL }

@@ -35,8 +35,22 @@ export const apiCloud123FileList = async (
   limit = 100,
   trashed: boolean = false,
   searchData: string = '',
-  searchMode: number = 0
+  searchMode: number = 0,
+  lastFileId: string | number = ''
 ): Promise<Cloud123FileItem[]> => {
+  const page = await apiCloud123FileListPage(user_id, parentFileId, limit, trashed, searchData, searchMode, lastFileId)
+  return page.items
+}
+
+export const apiCloud123FileListPage = async (
+  user_id: string,
+  parentFileId: string | number,
+  limit = 100,
+  trashed: boolean = false,
+  searchData: string = '',
+  searchMode: number = 0,
+  lastFileId: string | number = ''
+): Promise<{ items: Cloud123FileItem[]; lastFileId: number }> => {
   let token = UserDAL.GetUserToken(user_id)
   if (!token?.access_token) {
     const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
@@ -49,12 +63,13 @@ export const apiCloud123FileList = async (
   }
   if (!token?.access_token) {
     message.error('未登录 123 网盘')
-    return []
+    return { items: [], lastFileId: -1 }
   }
   const params = new URLSearchParams()
   params.set('parentFileId', String(parentFileId))
   params.set('limit', String(limit))
   params.set('trashed', trashed ? '1' : '0')
+  if (lastFileId !== '' && lastFileId !== undefined && lastFileId !== null) params.set('lastFileId', String(lastFileId))
   if (searchData) {
     params.set('parentFileId', '0')
     params.set('searchData', searchData)
@@ -70,12 +85,12 @@ export const apiCloud123FileList = async (
   })
   if (!resp.ok) {
     message.error('获取 123 网盘文件列表失败')
-    return []
+    return { items: [], lastFileId: -1 }
   }
   const data = (await resp.json()) as Cloud123FileListResp
-  if (data.code !== 0 || !data.data?.fileList) return []
-  if (trashed) return data.data.fileList.filter((item) => item.trashed === 1)
-  return data.data.fileList.filter((item) => item.trashed !== 1)
+  if (data.code !== 0 || !data.data?.fileList) return { items: [], lastFileId: -1 }
+  const items = trashed ? data.data.fileList.filter((item) => item.trashed === 1) : data.data.fileList.filter((item) => item.trashed !== 1)
+  return { items, lastFileId: Number(data.data.lastFileId || -1) }
 }
 
 export const mapCloud123FileToAliModel = (item: Cloud123FileItem): IAliGetFileModel => {

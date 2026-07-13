@@ -11,10 +11,24 @@ import (
 
 	"github.com/metacubex/mihomo/component/ca"
 
+	"github.com/metacubex/http"
+	"github.com/metacubex/http/httptest"
 	tls "github.com/metacubex/jls-tls"
 )
 
 func TestJLSClientServer(t *testing.T) {
+	for _, clientFingerprint := range []string{"", "chrome"} {
+		name := "Go"
+		if clientFingerprint != "" {
+			name = "uTLS"
+		}
+		t.Run(name, func(t *testing.T) {
+			testJLSClientServer(t, clientFingerprint)
+		})
+	}
+}
+
+func testJLSClientServer(t *testing.T, clientFingerprint string) {
 	user := User{Username: "test-user", Password: "test-password"}
 	serverConfig, err := NewServerConfig("camouflage.example", "camouflage.example:443", []User{user}, nil, 0, func(context.Context, string, string) (net.Conn, error) {
 		return nil, errors.New("authenticated JLS connection dialed fallback")
@@ -26,8 +40,9 @@ func TestJLSClientServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	clientConfig.ClientFingerprint = clientFingerprint
 
-	serverSide, clientSide := net.Pipe()
+	serverSide, clientSide := newLocalTCPPair(t)
 	serverDone := make(chan error, 1)
 	go func() {
 		conn, err := Server(context.Background(), serverSide, serverConfig)
@@ -36,7 +51,7 @@ func TestJLSClientServer(t *testing.T) {
 			return
 		}
 		defer conn.Close()
-		state := conn.(*Conn).ConnectionState()
+		state := conn.(*tls.Conn).ConnectionState()
 		if !state.JLS.Authenticated || state.JLS.User != user.Username {
 			serverDone <- errors.New("server did not authenticate JLS user")
 			return
@@ -63,6 +78,111 @@ func TestJLSClientServer(t *testing.T) {
 	_ = client.Close()
 	if err = <-serverDone; err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestJLSUTLSClientRejectsInvalidFallbackCertificate(t *testing.T) {
+	tlsConfig := newTestTLSServerConfig(t, tls.VersionTLS13)
+	serverSide, clientSide := newLocalTCPPair(t)
+	serverDone := make(chan error, 1)
+	go func() {
+		server := tls.Server(serverSide, tlsConfig)
+		serverDone <- server.Handshake()
+		_ = serverSide.Close()
+	}()
+
+	config, err := NewClientConfig("camouflage.example", "user", "password", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.ClientFingerprint = "chrome"
+	if conn, clientErr := NewClient(context.Background(), clientSide, config); clientErr == nil || errors.Is(clientErr, ErrJLSAuthFailed) {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		t.Fatalf("client error = %v, want fallback certificate verification error", clientErr)
+	}
+	<-serverDone
+}
+
+func TestJLSUTLSClientFallback(t *testing.T) {
+	for _, protocol := range []string{"http/1.1", "h2"} {
+		t.Run(protocol, func(t *testing.T) {
+			requestProtocol := make(chan string, 1)
+			server := httptest.NewUnstartedServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				requestProtocol <- request.Proto
+				writer.WriteHeader(http.StatusNoContent)
+			}))
+			server.EnableHTTP2 = protocol == "h2"
+			server.StartTLS()
+			defer func() {
+				server.CloseClientConnections()
+				server.Close()
+			}()
+			ca.GetCertPool().AddCert(server.Certificate())
+
+			clientSide, err := net.Dial("tcp", server.Listener.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			config, err := NewClientConfig("example.com", "user", "password", []string{protocol})
+			if err != nil {
+				t.Fatal(err)
+			}
+			config.ClientFingerprint = "chrome"
+			if conn, clientErr := NewClient(context.Background(), clientSide, config); !errors.Is(clientErr, ErrJLSAuthFailed) {
+				if conn != nil {
+					_ = conn.Close()
+				}
+				t.Fatalf("client error = %v, want %v", clientErr, ErrJLSAuthFailed)
+			}
+
+			wantProtocol := "HTTP/1.1"
+			if protocol == "h2" {
+				wantProtocol = "HTTP/2.0"
+			}
+			select {
+			case got := <-requestProtocol:
+				if got != wantProtocol {
+					t.Fatalf("fallback protocol = %q, want %q", got, wantProtocol)
+				}
+			default:
+				t.Fatal("fallback HTTP request was not sent")
+			}
+		})
+	}
+}
+
+func TestJLSUTLSClientRejectsHelloRetryRequest(t *testing.T) {
+	user := User{Username: "user", Password: "password"}
+	serverConfig, err := NewServerConfig("camouflage.example", "camouflage.example:443", []User{user}, nil, 0, func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("HRR failure dialed fallback")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverConfig.TLSConfig.CurvePreferences = []tls.CurveID{tls.CurveP256}
+
+	serverSide, clientSide := newLocalTCPPair(t)
+	serverDone := make(chan error, 1)
+	go func() {
+		defer serverSide.Close()
+		_, serverErr := Server(context.Background(), serverSide, serverConfig)
+		serverDone <- serverErr
+	}()
+
+	clientConfig, err := NewClientConfig("camouflage.example", user.Username, user.Password, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientConfig.ClientFingerprint = "chrome"
+	if conn, clientErr := NewClient(context.Background(), clientSide, clientConfig); clientErr == nil {
+		_ = conn.Close()
+		t.Fatal("uTLS client unexpectedly completed a HelloRetryRequest handshake")
+	}
+	_ = clientSide.Close()
+	if err = <-serverDone; err == nil {
+		t.Fatal("JLS server unexpectedly completed a HelloRetryRequest handshake")
 	}
 }
 
@@ -262,4 +382,38 @@ func newTestTLSServerConfig(t *testing.T, version uint16) *tls.Config {
 		MinVersion:   version,
 		MaxVersion:   version,
 	}
+}
+
+// newLocalTCPPair mirrors crypto/tls's test helper. A real TCP connection has
+// enough buffering to avoid net.Pipe deadlocks when TLS handshake writes cross,
+// such as a server ticket flight and the client's Finished message.
+func newLocalTCPPair(t *testing.T) (server, client net.Conn) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+
+	accepted := make(chan struct {
+		conn net.Conn
+		err  error
+	}, 1)
+	go func() {
+		conn, acceptErr := listener.Accept()
+		accepted <- struct {
+			conn net.Conn
+			err  error
+		}{conn: conn, err: acceptErr}
+	}()
+	client, err = net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := <-accepted
+	if result.err != nil {
+		_ = client.Close()
+		t.Fatal(result.err)
+	}
+	return result.conn, client
 }

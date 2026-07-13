@@ -4,10 +4,11 @@ import axios from 'axios'
 import AliUpload from './upload'
 import AliUploadHashPool from './uploadhashpool'
 import { getFlowEnc } from '../utils/proxyhelper'
-import { isBoxUser, isDropboxUser, isOneDriveUser } from './utils'
+import { isBoxUser, isDropboxUser, isGuangyaUser, isOneDriveUser } from './utils'
 import { apiDropboxUploadBuffer } from '../dropbox/upload'
 import { apiOneDriveUploadBuffer } from '../onedrive/upload'
 import { apiBoxUploadBuffer } from '../box/upload'
+import { apiGuangyaUploadBuffer } from '../guangya/upload'
 
 export default class AliUploadMem {
   
@@ -27,6 +28,11 @@ export default class AliUploadMem {
     if (isBoxUser(user_id) || drive_id === 'box') {
       if (encType) return 'Box 暂不支持加密新建文件'
       const resp = await apiBoxUploadBuffer(user_id, parent_file_id, CreatFileName, Buffer.from(context || '', 'utf-8'), 'refuse')
+      return resp.error || 'success'
+    }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      if (encType) return '光鸭云盘暂不支持加密新建文件'
+      const resp = await apiGuangyaUploadBuffer(user_id, parent_file_id, CreatFileName, Buffer.from(context || '', 'utf-8'))
       return resp.error || 'success'
     }
     let hash = 'DA39A3EE5E6B4B0D3255BFEF95601890AFD80709' 

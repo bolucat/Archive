@@ -1,6 +1,9 @@
 import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
+import { ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET } from '../secrets.generated'
+
+export { ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET }
 
 const ONEDRIVE_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
 const ONEDRIVE_TOKEN_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/token'
@@ -8,9 +11,7 @@ const ONEDRIVE_ME_URL = 'https://graph.microsoft.com/v1.0/me'
 const ONEDRIVE_DRIVE_URL = 'https://graph.microsoft.com/v1.0/me/drive'
 const ONEDRIVE_REDIRECT_URL = 'boxplayer-onedriveoauth://callback'
 export const ONEDRIVE_SCOPE = 'offline_access Files.ReadWrite User.Read'
-export const ONEDRIVE_CLIENT_ID = ''
 // OneDrive desktop OAuth uses the PKCE public-client flow; token requests must not send client_secret.
-export const ONEDRIVE_CLIENT_SECRET = ''
 
 const hashString = (value: string): string => {
   let hash = 0

@@ -9,6 +9,7 @@ import {
   isCloud189User,
   isDrive115User,
   isDropboxUser,
+  isGuangyaUser,
   isOneDriveUser,
   isPikPakUser,
   isQuarkUser
@@ -157,6 +158,17 @@ async function fetchFolderItemsRaw(p: FolderPreviewParams): Promise<IAliGetFileM
       const list = await mod.apiCloud189FileList(user_id, parentId, MAX_PREVIEW_FILES)
       return (list || []).map((item: any) => {
         const mapped = mod.mapCloud189FileToAliModel(item, drive_id, parentId)
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      const mod = await tryDynamicImport(() => import('../guangya/dirfilelist'))
+      if (!mod) return []
+      const parentId = file_id === 'guangya_root' ? 'guangya_root' : file_id
+      const list = await mod.apiGuangyaFileList(user_id, parentId, MAX_PREVIEW_FILES)
+      return (list || []).map((item: any) => {
+        const mapped = mod.mapGuangyaFileToAliModel(item, drive_id, parentId)
         ;(mapped as any).user_id = user_id
         return mapped
       })

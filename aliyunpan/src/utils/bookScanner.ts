@@ -9,6 +9,7 @@ import {
   isCloud189User,
   isDrive115User,
   isDropboxUser,
+  isGuangyaUser,
   isOneDriveUser,
   isPikPakUser,
   isQuarkUser
@@ -44,6 +45,7 @@ import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
 import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 
 const FOLDER_THROTTLE_MS = 50
 const BFS_MAX_DEPTH = 8
@@ -114,6 +116,7 @@ class BookScanner {
   private static instance: BookScanner | null = null
   private isRunning = false
   private shouldStop = false
+  private silent = false
 
   static getInstance(): BookScanner {
     if (!BookScanner.instance) BookScanner.instance = new BookScanner()
@@ -130,6 +133,7 @@ class BookScanner {
     if (this.isRunning) return { found: 0, scanned: 0 }
     this.isRunning = true
     this.shouldStop = false
+    this.silent = false
     const store = useBookLibraryStore()
     const drive_id = folder.drive_id || ''
     const label = folder.name || '指定文件夹'
@@ -145,14 +149,16 @@ class BookScanner {
       store.setIsScanning(false)
       this.isRunning = false
       this.shouldStop = false
+      this.silent = false
     }
     return counters
   }
 
-  async scanAllUsers(opts: { userIdAllowList?: Set<string> } = {}): Promise<void> {
+  async scanAllUsers(opts: { userIdAllowList?: Set<string>; silent?: boolean } = {}): Promise<void> {
     if (this.isRunning) return
     this.isRunning = true
     this.shouldStop = false
+    this.silent = !!opts.silent
     const store = useBookLibraryStore()
     store.setIsScanning(true)
     try {
@@ -172,6 +178,7 @@ class BookScanner {
       store.setIsScanning(false)
       this.isRunning = false
       this.shouldStop = false
+      this.silent = false
     }
   }
 
@@ -196,7 +203,8 @@ class BookScanner {
       box: '0',
       quark: '0',
       '139': 'cloud139_root',
-      '189': 'cloud189_root'
+      '189': 'cloud189_root',
+      guangya: 'guangya_root'
     }
     const driveId =
       token.tokenfrom === 'cloud123' ? 'cloud123' :
@@ -209,6 +217,7 @@ class BookScanner {
       token.tokenfrom === 'quark' ? 'quark' :
       token.tokenfrom === '139' ? 'cloud139' :
       token.tokenfrom === '189' ? 'cloud189' :
+      token.tokenfrom === 'guangya' ? 'guangya' :
       ''
     if (!driveId) return
 
@@ -299,7 +308,7 @@ class BookScanner {
       })
     }
     if (isDrive115User(user_id) || drive_id === 'drive115') {
-      const list = await apiDrive115FileList(user_id, fileId || '0', 500, 0, true)
+      const list = await apiDrive115FileList(user_id, fileId || '0', 500, 0, true, { silent: this.silent })
       return list.map((item: any) => {
         const mapped = mapDrive115FileToAliModel(item, drive_id)
         ;(mapped as any).user_id = user_id
@@ -371,6 +380,14 @@ class BookScanner {
       const list = await apiCloud189FileList(user_id, fileId || 'cloud189_root', 1000)
       return list.map((item: any) => {
         const mapped = mapCloud189FileToAliModel(item, drive_id, fileId || 'cloud189_root')
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      const list = await apiGuangyaFileList(user_id, fileId || 'guangya_root', 200)
+      return list.map((item: any) => {
+        const mapped = mapGuangyaFileToAliModel(item, drive_id, fileId || 'guangya_root')
         ;(mapped as any).user_id = user_id
         return mapped
       })

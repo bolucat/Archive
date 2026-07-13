@@ -44,6 +44,8 @@ const winStore = useWinStore()
 const othershareStore = useOtherShareStore()
 const shareUrl = (share: IOtherShareLinkModel) => share.share_id.startsWith('quark:')
   ? `https://pan.quark.cn/s/${share.share_id.replace('quark:', '')}`
+  : share.share_id.startsWith('guangya:')
+    ? `https://www.guangyapan.com/s/${share.share_id.replace('guangya:', '')}`
   : `https://www.aliyundrive.com/s/${share.share_id}`
 
 const keyboardStore = useKeyboardStore()

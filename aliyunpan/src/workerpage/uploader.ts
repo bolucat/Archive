@@ -18,7 +18,8 @@ import BaiduUploadDisk from '../cloudbaidu/uploaddisk'
 import Drive115UploadDisk from '../cloud115/uploaddisk'
 import DropboxUploadDisk from '../dropbox/upload'
 import OneDriveUploadDisk from '../onedrive/upload'
-import { isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import GuangyaUploadDisk from '../guangya/uploaddisk'
+import { isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
 import { apiCloud123Mkdir } from '../cloud123/filecmd'
 
 export async function StartUpload(fileui: IUploadingUI): Promise<void> {
@@ -43,6 +44,20 @@ export async function StartUpload(fileui: IUploadingUI): Promise<void> {
   if (isCloud123User(fileui.user_id || '')) {
     await checkFileSize(fileui)
     const uploadResult = await Cloud123UploadDisk.UploadOneFile(fileui)
+    if (uploadResult == 'success') {
+      fileui.Info.uploadState = 'success'
+    } else if (!fileui.IsRunning) {
+      fileui.Info.uploadState = '已暂停'
+    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
+      fileui.Info.uploadState = 'error'
+      fileui.Info.failedCode = 505
+      fileui.Info.failedMessage = uploadResult
+    }
+    return
+  }
+  if (isGuangyaUser(fileui.user_id || '')) {
+    await checkFileSize(fileui)
+    const uploadResult = await GuangyaUploadDisk.UploadOneFile(fileui)
     if (uploadResult == 'success') {
       fileui.Info.uploadState = 'success'
     } else if (!fileui.IsRunning) {

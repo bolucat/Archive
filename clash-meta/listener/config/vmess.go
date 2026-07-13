@@ -25,7 +25,8 @@ type VmessServer struct {
 	ClientAuthType  string
 	ClientAuthCert  string
 	EchKey          string
-	RealityConfig   reality.Config
+	JLSConfig       JLSConfig       `yaml:"jls-config" json:"jls-config,omitempty"`
+	RealityConfig   reality.Config  `yaml:"reality-config" json:"reality-config,omitempty"`
 	TLSMirrorConfig TLSMirrorConfig `yaml:"tlsmirror-config" json:"tlsmirror-config,omitempty"`
 	MekyaConfig     MekyaConfig     `yaml:"mekya-config" json:"mekya-config,omitempty"`
 	MKCPConfig      MKCPConfig      `yaml:"mkcp-config" json:"mkcp-config,omitempty"`

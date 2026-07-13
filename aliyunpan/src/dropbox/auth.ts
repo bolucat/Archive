@@ -1,6 +1,9 @@
 import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
+import { DROPBOX_APP_KEY, DROPBOX_APP_SECRET } from '../secrets.generated'
+
+export { DROPBOX_APP_KEY, DROPBOX_APP_SECRET }
 
 const DROPBOX_AUTH_URL = 'https://www.dropbox.com/oauth2/authorize'
 const DROPBOX_TOKEN_URL = 'https://api.dropboxapi.com/oauth2/token'
@@ -8,8 +11,6 @@ const DROPBOX_ACCOUNT_URL = 'https://api.dropboxapi.com/2/users/get_current_acco
 const DROPBOX_SPACE_URL = 'https://api.dropboxapi.com/2/users/get_space_usage'
 const DROPBOX_REDIRECT_URL = 'xbyboxplayer-oauth://callback'
 const DROPBOX_SCOPE = 'account_info.read files.metadata.read files.content.read files.content.write sharing.read sharing.write'
-export const DROPBOX_APP_KEY = ''
-export const DROPBOX_APP_SECRET = ''
 
 const hashString = (value: string): string => {
   let hash = 0

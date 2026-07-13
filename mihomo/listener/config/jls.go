@@ -1,6 +1,6 @@
 package config
 
-type JLS struct {
+type JLSConfig struct {
 	Enable    bool
 	Users     []JLSUser
 	SNI       string

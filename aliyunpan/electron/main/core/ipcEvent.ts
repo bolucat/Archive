@@ -12,6 +12,7 @@ import { createHash } from 'crypto'
 import { getMotrixApplicationRpcPort } from '../aria/runtime'
 import { pathToFileURL } from 'url'
 import { requestPanHub } from './panHubRequest'
+import { embeddedMpvBridge } from '../mpv/embeddedMpvBridge'
 import {
   getBookMeta,
   isBookIndexed,
@@ -199,6 +200,7 @@ export default class ipcEvent {
     this.handleExportCliTokens()
     this.handleInstallCli()
     this.handlePowerSaveBlocker()
+    this.handleMpvEmbedded()
     if (app.isPackaged) {
       this.installCli(true).catch((err: any) => {
         console.warn('Auto install BoxPlayer CLI failed', err?.message || err)
@@ -206,6 +208,13 @@ export default class ipcEvent {
     }
     registerMediaImageCacheIpc()
     this.handleReedy()
+  }
+
+  private static handleMpvEmbedded() {
+    ipcMain.handle('MpvEmbedded:getCapability', async () => embeddedMpvBridge.getCapability())
+    ipcMain.handle('MpvEmbedded:load', async (event, data) => embeddedMpvBridge.load(data || {}, event.sender))
+    ipcMain.handle('MpvEmbedded:control', async (_event, data) => embeddedMpvBridge.control(data || {}))
+    ipcMain.handle('MpvEmbedded:getStatus', async () => embeddedMpvBridge.getStatus())
   }
 
   private static handleWebToElectron() {
@@ -848,7 +857,7 @@ export default class ipcEvent {
     let winWidth = AppWindow.winWidth
     if (winWidth < 1080) winWidth = 1080
     ipcMain.on('WebOpenWindow', (event, data) => {
-      const win = createElectronWindow(winWidth, AppWindow.winHeight, true, 'main2', data.theme)
+      const win = createElectronWindow(winWidth, AppWindow.winHeight, true, 'main2', data.theme, true, data.page === 'PageMusic' ? 'music' : undefined)
       win.on('ready-to-show', function() {
         win.webContents.send('setPage', data)
         win.setTitle('预览窗口')

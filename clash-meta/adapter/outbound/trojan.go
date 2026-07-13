@@ -13,6 +13,7 @@ import (
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
+	"github.com/metacubex/mihomo/transport/jls"
 	"github.com/metacubex/mihomo/transport/shadowsocks/core"
 	"github.com/metacubex/mihomo/transport/trojan"
 	"github.com/metacubex/mihomo/transport/vmess"
@@ -29,8 +30,9 @@ type Trojan struct {
 	// for gun mux
 	gunClient *gun.Client
 
-	realityConfig *tlsC.RealityConfig
 	echConfig     *ech.Config
+	jlsConfig     *jls.Config
+	realityConfig *tlsC.RealityConfig
 
 	ssCipher core.Cipher
 }
@@ -51,6 +53,7 @@ type TrojanOption struct {
 	UDP               bool           `proxy:"udp,omitempty"`
 	Network           string         `proxy:"network,omitempty"`
 	ECHOpts           ECHOptions     `proxy:"ech-opts,omitempty"`
+	JLSOpts           JLSOptions     `proxy:"jls-opts,omitempty"`
 	RealityOpts       RealityOptions `proxy:"reality-opts,omitempty"`
 	GrpcOpts          GrpcOptions    `proxy:"grpc-opts,omitempty"`
 	WSOpts            WSOptions      `proxy:"ws-opts,omitempty"`
@@ -98,21 +101,33 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 			alpn = t.option.ALPN
 		}
 
-		wsOpts.TLS = true
-		wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
-			TLSConfig: &tls.Config{
-				NextProtos:         alpn,
-				MinVersion:         tls.VersionTLS12,
-				InsecureSkipVerify: t.option.SkipCertVerify,
-				ServerName:         t.option.SNI,
-			},
-			Fingerprint:    t.option.Fingerprint,
-			NameCertVerify: t.option.NameCertVerify,
-			Certificate:    t.option.Certificate,
-			PrivateKey:     t.option.PrivateKey,
-		})
-		if err != nil {
-			return nil, err
+		if t.jlsConfig != nil {
+			c, err = vmess.StreamTLSConn(ctx, c, &vmess.TLSConfig{
+				Host:              t.option.SNI,
+				ClientFingerprint: t.option.ClientFingerprint,
+				NextProtos:        []string{"http/1.1"},
+				JLS:               t.jlsConfig,
+			})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			wsOpts.TLS = true
+			wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
+				TLSConfig: &tls.Config{
+					NextProtos:         alpn,
+					MinVersion:         tls.VersionTLS12,
+					InsecureSkipVerify: t.option.SkipCertVerify,
+					ServerName:         t.option.SNI,
+				},
+				Fingerprint:    t.option.Fingerprint,
+				NameCertVerify: t.option.NameCertVerify,
+				Certificate:    t.option.Certificate,
+				PrivateKey:     t.option.PrivateKey,
+			})
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		c, err = vmess.StreamWebsocketConn(ctx, c, wsOpts)
@@ -135,6 +150,7 @@ func (t *Trojan) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.
 			ClientFingerprint: t.option.ClientFingerprint,
 			NextProtos:        alpn,
 			ECH:               t.echConfig,
+			JLS:               t.jlsConfig,
 			Reality:           t.realityConfig,
 		})
 	}
@@ -274,14 +290,20 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 	t.dialer = option.NewDialer(t.DialOptions())
 
 	var err error
+	t.echConfig, err = option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+	t.jlsConfig, err = option.JLSOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
 	t.realityConfig, err = option.RealityOpts.Parse()
 	if err != nil {
 		return nil, err
 	}
-
-	t.echConfig, err = option.ECHOpts.Parse()
-	if err != nil {
-		return nil, err
+	if t.jlsConfig != nil && t.realityConfig != nil {
+		return nil, errors.New("JLS is incompatible with REALITY")
 	}
 
 	if option.SSOpts.Enabled {
@@ -317,6 +339,7 @@ func NewTrojan(option TrojanOption) (*Trojan, error) {
 			ClientFingerprint: option.ClientFingerprint,
 			NextProtos:        []string{"h2"},
 			ECH:               t.echConfig,
+			JLS:               t.jlsConfig,
 			Reality:           t.realityConfig,
 		}
 

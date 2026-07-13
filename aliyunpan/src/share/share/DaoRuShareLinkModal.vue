@@ -5,6 +5,7 @@ import message from '../../utils/message'
 import { modalCloseAll, modalShowShareLink } from '../../utils/modal'
 import { reactive, ref } from 'vue'
 import { parseQuarkShareLink } from '../../quark/share'
+import { parseGuangyaShareLink } from '../../guangya/share'
 
 const props = defineProps({
   visible: {
@@ -31,6 +32,10 @@ const FixFormate = (text: string, enmpty: boolean) => {
   const quark = parseQuarkShareLink(text || '')
   if (quark.id) {
     return { linkTxt: `pan.quark.cn/s/${quark.id.replace('quark:', '')}`, linkPwd: quark.pwd }
+  }
+  const guangya = parseGuangyaShareLink(text || '')
+  if (guangya.id) {
+    return { linkTxt: `guangyapan.com/s/${guangya.id.replace('guangya:', '')}`, linkPwd: guangya.pwd }
   }
   if (text && text.indexOf('密码') >= 0) text = text.replaceAll('密码', '提取码')
   if (text && text.indexOf('提取码') >= 0) {
@@ -82,20 +87,21 @@ const handleOK = () => {
     if (data) return
     let sharelink = form.sharelink
     const quark = parseQuarkShareLink(sharelink + (form.password ? ` 提取码:${form.password}` : ''))
-    if (sharelink.indexOf('aliyundrive.com/s/') < 0 && sharelink.indexOf('alipan.com/s/') < 0 && !quark.id) {
-      message.error('解析链接出错，必须为阿里云盘或夸克网盘分享链接')
+    const guangya = parseGuangyaShareLink(sharelink + (form.password ? ` 提取码:${form.password}` : ''))
+    if (sharelink.indexOf('aliyundrive.com/s/') < 0 && sharelink.indexOf('alipan.com/s/') < 0 && !quark.id && !guangya.id) {
+      message.error('解析链接出错，必须为阿里云盘、夸克网盘或光鸭云盘分享链接')
       return
     }
 
     okLoading.value = true
-    const share_id = quark.id || sharelink.split(/\.com\/s\/([\w]+)/)[1]
-    AliShare.ApiGetShareToken(share_id, form.password)
+    const share_id = guangya.id || quark.id || sharelink.split(/\.com\/s\/([\w]+)/)[1]
+    AliShare.ApiGetShareToken(share_id, guangya.pwd || quark.pwd || form.password)
       .then((share_token) => {
         okLoading.value = false
         if (!share_token || share_token.startsWith('，')) {
           message.error('解析链接出错' + share_token)
         } else {
-          modalShowShareLink(share_id, form.password, share_token, true, [], save_db.value)
+          modalShowShareLink(share_id, guangya.pwd || quark.pwd || form.password, share_token, true, [], save_db.value)
         }
       })
       .catch((err: any) => {

@@ -1,7 +1,7 @@
 <script setup lang='ts'>
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import cache from '../utils/cache'
 import message from '../utils/message'
 
@@ -11,6 +11,7 @@ const cb = (val: any) => {
 }
 
 const platform = window.platform
+const supportsEmbeddedMpv = platform === 'darwin'
 
 function handleSelectPlayer() {
   if (window.WebShowOpenDialogSync) {
@@ -32,8 +33,42 @@ function handleSelectPlayer() {
 }
 
 const playerType = computed(() => {
-  return settingStore.uiVideoPlayerPath.toLowerCase()
+  const path = settingStore.uiVideoPlayer === 'mpv' ? 'mpv' : settingStore.uiVideoPlayerPath
+  return path.toLowerCase()
 })
+
+const embeddedMpvCapability = ref<any>()
+const sharedTextureCapability = ref<{ available: boolean; platform: string; reason?: string }>()
+const isMpvPlayer = computed(() => settingStore.uiVideoPlayer === 'mpv')
+const mpvStatusText = computed(() => {
+  if (!isMpvPlayer.value) return ''
+  if (embeddedMpvCapability.value?.enabled) return 'macOS 内嵌 MPV 已启用。'
+  const reason = embeddedMpvCapability.value?.reason || 'macOS 内嵌 MPV 尚未启用。'
+  const textureReason = sharedTextureCapability.value && !sharedTextureCapability.value.available ? sharedTextureCapability.value.reason : ''
+  return [reason, textureReason].filter(Boolean).join('；')
+})
+
+async function refreshMpvEmbeddedStatus() {
+  if (platform !== 'darwin') return
+  const capability = await window.WebMpvEmbeddedCapability?.()
+  if (capability) embeddedMpvCapability.value = capability
+  if (window.WebMpvSharedTextureCapability) sharedTextureCapability.value = window.WebMpvSharedTextureCapability()
+}
+
+async function handleUseMpv() {
+  if (!supportsEmbeddedMpv) {
+    settingStore.updateStore({ uiVideoPlayer: 'other' })
+    message.warning('内置 MPV 仅支持 macOS，请使用自定义播放软件。')
+    return
+  }
+  settingStore.updateStore({ uiVideoPlayer: 'mpv' })
+  await refreshMpvEmbeddedStatus()
+  if (embeddedMpvCapability.value?.enabled) {
+    message.success('已设置为 macOS 内嵌 MPV 播放')
+  } else {
+    message.warning(mpvStatusText.value || 'macOS 内嵌 MPV 尚未启用')
+  }
+}
 
 const handleClearOutDateDanmuCache = () => {
   cache.clearOutDate()
@@ -43,6 +78,13 @@ const handleClearDanmuCache = () => {
   cache.clearSelf()
   message.success('清理弹幕搜索缓存成功')
 }
+
+onMounted(() => {
+  if (!supportsEmbeddedMpv && settingStore.uiVideoPlayer === 'mpv') {
+    settingStore.updateStore({ uiVideoPlayer: 'other' })
+  }
+  refreshMpvEmbeddedStatus()
+})
 
 </script>
 
@@ -61,6 +103,7 @@ const handleClearDanmuCache = () => {
       <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiVideoPlayer'
                      @update:model-value='cb({ uiVideoPlayer: $event })'>
         <a-radio tabindex='-1' value='web'>内置网页播放器</a-radio>
+        <a-radio v-if='supportsEmbeddedMpv' tabindex='-1' value='mpv'>内置 MPV 播放器</a-radio>
         <a-radio tabindex='-1' value='other'>自定义播放软件</a-radio>
       </a-radio-group>
       <a-popover position='bottom'>
@@ -73,6 +116,9 @@ const handleClearDanmuCache = () => {
             使用ArtPlayer网页，在线播放视频<br />
             支持 选择清晰度、倍速播放、字幕选择、画中画模式，播放加密视频
             <div class='hrspace'></div>
+            <span class='opred'>内置 MPV 播放器</span>：<br />
+            仅 macOS 可用，使用 BoxPlayer 内嵌 libmpv 播放高级格式
+            <div class='hrspace'></div>
             <span class='opred'>自定义播放软件</span>：<br />
             是实验性的功能，可以<span class='oporg'>自己选择</span>电脑上安装的播放软件<br />
             例如:PotPlayer,MPV,Infuse,IINA等等<br />
@@ -81,6 +127,10 @@ const handleClearDanmuCache = () => {
       </a-popover>
       <div v-show="settingStore.uiVideoPlayer === 'web'" class='hitText'>
         【内置网页播放器】 支持倍速！支持选择清晰度！支持播放历史！支持播放列表！支持字幕选择！
+      </div>
+      <div v-show="supportsEmbeddedMpv && settingStore.uiVideoPlayer === 'mpv'" class='hitText mpv-status'>
+        <div>{{ mpvStatusText }}</div>
+        <a-button size='mini' tabindex='-1' type='outline' @click='handleUseMpv'>重新检测 MPV</a-button>
       </div>
       </div>
     </div>
@@ -141,7 +191,7 @@ const handleClearDanmuCache = () => {
         </div>
       </div>
     </template>
-    <template v-if="settingStore.uiVideoPlayer === 'other'">
+    <template v-if="settingStore.uiVideoPlayer !== 'web'">
       <div class='play-setting-group'>
         <div class='play-setting-header'>
           <div class='settinghead'>每次播放前提示选择清晰度</div>
@@ -297,7 +347,7 @@ const handleClearDanmuCache = () => {
         </div>
       </div>
 
-      <div class='play-setting-group'>
+      <div v-if='settingStore.uiVideoPlayer === "other"' class='play-setting-group'>
         <div class='play-setting-header'>
           <div class='settinghead'>自定义播放器路径</div>
           <a-popover position='bottom'>
@@ -330,7 +380,7 @@ const handleClearDanmuCache = () => {
           <a-input-search tabindex='-1' class='play-player-path' :readonly='true' button-text='选择播放软件' search-button
                           :model-value='settingStore.uiVideoPlayerPath' @search='handleSelectPlayer' />
         </div>
-        <div class='settingrow play-setting-row' :style="{ display: platform === 'darwin' ? '' : 'none' }">
+        <div class='settingrow play-setting-row' :style="{ display: settingStore.uiVideoPlayer === 'other' && platform === 'darwin' ? '' : 'none' }">
           <a-input-search tabindex='-1' class='play-player-path' :readonly='true' button-text='选择播放软件' search-button
                           :model-value='settingStore.uiVideoPlayerPath' @search='handleSelectPlayer' />
           <a-popover position='bottom'>
@@ -351,7 +401,7 @@ const handleClearDanmuCache = () => {
           </a-popover>
         </div>
         <div class='settingrow play-setting-row'
-             :style="{ display:  platform == 'linux' ? '' : 'none' }">
+             :style="{ display: settingStore.uiVideoPlayer === 'other' && platform == 'linux' ? '' : 'none' }">
           <a-auto-complete :data="['mpv', 'vlc', 'totem', 'mplayer', 'smplayer', 'xine', 'parole', 'kodi']"
                            :style="{ width: '420px', maxWidth: '100%' }" placeholder='请填写一个播放软件' strict
                            :model-value='settingStore.uiVideoPlayerPath' @change='cb({ uiVideoPlayerPath: $event })' />
@@ -539,6 +589,13 @@ const handleClearDanmuCache = () => {
   font-size: 13px;
   color: var(--color-text-2);
   line-height: 1.6;
+}
+
+.mpv-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
 }
 
 :global(html.dark) .play-settings-kicker {

@@ -24,6 +24,14 @@ import { QUARK_DOWNLOAD_AGENT, readQuarkCookieStringFromElectron } from '../quar
 const httpsAgent = new HttpsAgent({ keepAlive: true })
 const httpAgent = new HttpAgent({ keepAlive: true })
 
+const detectProxyVideoType = (url: string) => {
+  const lower = String(url || '').split('?')[0].split('#')[0].toLowerCase()
+  if (lower.endsWith('.m3u8')) return 'm3u8'
+  if (lower.endsWith('.mpd')) return 'mpd'
+  if (lower.endsWith('.ts')) return 'ts'
+  return ''
+}
+
 export interface IRawUrl {
   drive_id: string
   file_id: string
@@ -38,10 +46,13 @@ export interface IRawUrl {
     label: string
     value: string
     url: string
+    type?: string
+    headers?: Record<string, string>
   }[]
   subtitles: {
     language: string
     url: string
+    headers?: Record<string, string>
   }[]
 }
 
@@ -236,11 +247,18 @@ export async function getRawUrl(
         if (typeof previewData != 'string') {
           Object.assign(data, previewData)
           if (quality && quality != 'Origin') {
-            data.url = data.qualities.find((q: any) => q.quality === quality)?.url || data.qualities[0]?.url
+            const selectedQuality = data.qualities.find((q: any) => q.quality === quality) || data.qualities[0]
+            data.url = selectedQuality?.url || ''
+            if (selectedQuality?.headers) data.headers = selectedQuality.headers
+            if (selectedQuality?.type) data.type = selectedQuality.type
           } else if (data.qualities.length > 0 && (drive_id === 'drive115' || drive_id === 'cloud123')) {
             data.url = data.qualities[0].url
+            if (data.qualities[0].headers) data.headers = data.qualities[0].headers
+            if (data.qualities[0].type) data.type = data.qualities[0].type
           } else if (data.qualities.length > 0 && !data.url) {
             data.url = data.qualities[0].url
+            if (data.qualities[0].headers) data.headers = data.qualities[0].headers
+            if (data.qualities[0].type) data.type = data.qualities[0].type
           }
         } else if (drive_id === 'drive115') {
           return previewData
@@ -265,7 +283,7 @@ export async function getRawUrl(
         return '不支持预览的加密音频格式'
       }
       if (!encType && preview_type && !data.qualities.some((q: any) => q.quality === 'Origin')) {
-        data.qualities.unshift({ quality: 'Origin', html: '原画', label: '原画', value: '', url: downUrl.url })
+        data.qualities.unshift({ quality: 'Origin', html: '原画', label: '原画', value: '', url: downUrl.url, type: detectProxyVideoType(downUrl.url) })
       }
       if (!data.url || quality === 'Origin' || uiVideoQuality === 'Origin') {
         data.url = downUrl.url
@@ -302,7 +320,7 @@ export async function createProxyServer(port: number) {
   const url = require('url')
   const proxyServer: Server = http.createServer(async (clientReq: IncomingMessage, clientRes: ServerResponse) => {
     const { pathname, query } = url.parse(clientReq.url, true)
-    const { user_id, drive_id, file_id, file_size, encType, password, weifa, quality, proxy_url, proxy_headers, content_disposition, file_name } = query
+    const { user_id, drive_id, file_id, file_size, encType, password, weifa, quality, proxy_url, proxy_headers, proxy_kind, content_disposition, file_name } = query
     console.info('proxy query: ', query)
     if (pathname === '/proxy') {
       const driveId = String(drive_id || '')
@@ -321,7 +339,8 @@ export async function createProxyServer(port: number) {
         proxyInfo
       })) {
         // 获取地址
-        let data = await getRawUrl(user_id, drive_id, file_id, encType, '', weifa, 'other', selectQuality)
+        const refreshQuality = content_disposition === 'inline' ? 'Origin' : selectQuality
+        let data = await getRawUrl(user_id, drive_id, file_id, encType, '', weifa, 'other', refreshQuality)
         console.error('proxy getRawUrl', data)
         if (typeof data != 'string' && data.url) {
           let subtitleData = data.subtitles.find((sub: any) => sub.language === 'chi') || data.subtitles[0]
@@ -336,7 +355,7 @@ export async function createProxyServer(port: number) {
         clientRes.end()
         await Db.deleteValueObject('ProxyInfo')
         return
-      } else if (!proxyInfo && !isMediaServerProxy) {
+      } else if (!proxyInfo && !isMediaServerProxy && proxy_kind !== 'subtitle') {
         let info: FileInfo = {
           user_id, drive_id, file_id, file_size, encType,
           videoQuality: selectQuality,

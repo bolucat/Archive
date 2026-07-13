@@ -90,22 +90,34 @@ func stopDriver(t *testing.T) {
 	serviceNameW, err := windows.UTF16PtrFromString(driverServiceName)
 	require.NoError(t, err)
 	service, err := windows.OpenService(manager, serviceNameW, windows.SERVICE_STOP|windows.SERVICE_QUERY_STATUS)
-	if errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST) {
-		return
+	if err == nil {
+		defer windows.CloseServiceHandle(service)
+		var status windows.SERVICE_STATUS
+		err = windows.ControlService(service, windows.SERVICE_CONTROL_STOP, &status)
+		if err != nil &&
+			!errors.Is(err, windows.ERROR_SERVICE_NOT_ACTIVE) &&
+			!errors.Is(err, windows.ERROR_SERVICE_CANNOT_ACCEPT_CTRL) {
+			require.NoError(t, err)
+		}
+		require.Eventually(t, func() bool {
+			queryErr := windows.QueryServiceStatus(service, &status)
+			return queryErr == nil && status.CurrentState == windows.SERVICE_STOPPED
+		}, 60*time.Second, 200*time.Millisecond, "driver did not reach SERVICE_STOPPED")
+	} else {
+		require.True(t, errors.Is(err, windows.ERROR_SERVICE_DOES_NOT_EXIST), "open driver service: %v", err)
 	}
-	require.NoError(t, err)
-	defer windows.CloseServiceHandle(service)
-	var status windows.SERVICE_STATUS
-	err = windows.ControlService(service, windows.SERVICE_CONTROL_STOP, &status)
-	if err != nil &&
-		!errors.Is(err, windows.ERROR_SERVICE_NOT_ACTIVE) &&
-		!errors.Is(err, windows.ERROR_SERVICE_CANNOT_ACCEPT_CTRL) {
-		require.NoError(t, err)
-	}
+	// SCM can report SERVICE_STOPPED before the driver finishes deleting its
+	// device object. Wait for the absence acquireDevice uses to trigger install.
 	require.Eventually(t, func() bool {
-		queryErr := windows.QueryServiceStatus(service, &status)
-		return queryErr == nil && status.CurrentState == windows.SERVICE_STOPPED
-	}, 60*time.Second, 200*time.Millisecond, "driver did not reach SERVICE_STOPPED")
+		device, openErr := openDevice()
+		if openErr == nil {
+			_ = windows.CloseHandle(device)
+			return false
+		}
+		return errors.Is(openErr, windows.ERROR_FILE_NOT_FOUND) ||
+			errors.Is(openErr, windows.ERROR_PATH_NOT_FOUND) ||
+			errors.Is(openErr, windows.ERROR_NO_SUCH_DEVICE)
+	}, 60*time.Second, 200*time.Millisecond, "driver device remained openable after stop")
 }
 
 // The image lock on the cached .sys can outlive SERVICE_STOPPED by tens of

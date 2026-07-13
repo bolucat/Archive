@@ -85,6 +85,7 @@ function driveLabel(token: ITokenInfo): string {
   if (token.tokenfrom === 'box') return 'Box'
   if (token.tokenfrom === '139') return '139 云盘'
   if (token.tokenfrom === '189') return '天翼云盘'
+  if (token.tokenfrom === 'guangya') return '光鸭云盘'
   if (token.tokenfrom === 'pikpak') return 'PikPak'
   return '阿里云盘'
 }
@@ -221,6 +222,18 @@ async function searchBox(token: ITokenInfo, keyword: string): Promise<GlobalSear
   }
 }
 
+async function searchGuangya(token: ITokenInfo, keyword: string): Promise<GlobalSearchResult[]> {
+  try {
+    const { apiGuangyaSearch } = await import('../guangya/search')
+    const items = await apiGuangyaSearch(token.user_id, keyword, 30)
+    const label = driveLabel(token)
+    const uname = userName(token)
+    return items.map((item) => cloudResult(item, 'guangya', label, uname, token.user_id))
+  } catch {
+    return []
+  }
+}
+
 async function searchMediaServers(keyword: string): Promise<GlobalSearchResult[]> {
   try {
     const { default: useMediaServerRegistryStore } = await import('../store/mediaServerRegistry')
@@ -257,6 +270,7 @@ function dispatchSearch(token: ITokenInfo, keyword: string): Promise<GlobalSearc
   if (tf === 'onedrive') return searchOneDrive(token, keyword)
   if (tf === 'dropbox') return searchDropbox(token, keyword)
   if (tf === 'box') return searchBox(token, keyword)
+  if (tf === 'guangya') return searchGuangya(token, keyword)
   return searchAliyun(token, keyword)
 }
 

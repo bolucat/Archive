@@ -31,6 +31,9 @@ export function GetDriveID(user_id: string, drive: string): string {
     if (isCloud189User(user_id)) {
       return token.default_drive_id || 'cloud189'
     }
+    if (isGuangyaUser(user_id)) {
+      return token.default_drive_id || 'guangya'
+    }
     if (isBaiduUser(user_id)) {
       return token.default_drive_id || 'baidu'
     }
@@ -79,6 +82,9 @@ export function GetDriveType(user_id: string, drive_id: string): any {
     }
     if (isCloud189User(user_id)) {
       return { title: '网盘文件', name: 'cloud189', key: 'cloud189_root' }
+    }
+    if (isGuangyaUser(user_id)) {
+      return { title: '网盘文件', name: 'guangya', key: 'guangya_root' }
     }
     if (isBaiduUser(user_id)) {
       return { title: '网盘文件', name: 'baidu', key: 'baidu_root' }
@@ -151,6 +157,12 @@ export function isCloud189User(user: string | { user_id?: string; tokenfrom?: st
   return user_id.startsWith('cloud189_')
 }
 
+export function isGuangyaUser(user: string | { user_id?: string; tokenfrom?: string }): boolean {
+  const { user_id, tokenfrom } = resolveUserTokenInfo(user)
+  if (tokenfrom === 'guangya') return true
+  return user_id.startsWith('guangya_')
+}
+
 export function isAliyunUser(user: string | { user_id?: string; tokenfrom?: string }): boolean {
   const { user_id, tokenfrom } = resolveUserTokenInfo(user)
   if (tokenfrom === 'aliyun') return true
@@ -199,6 +211,7 @@ export function isNonAliyunProvider(user: string | { user_id?: string; tokenfrom
     || isDrive115User(user)
     || isCloud139User(user)
     || isCloud189User(user)
+    || isGuangyaUser(user)
     || isBaiduUser(user)
     || isPikPakUser(user)
     || isQuarkUser(user)

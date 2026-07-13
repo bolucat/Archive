@@ -108,7 +108,15 @@ export interface ToolMoveFilesPart {
   type: 'tool-moveFiles'
   state: 'confirm' | 'running' | 'done' | 'error'
   input?: { files: { name: string; fileId: string; driveId: string; userId: string }[]; targetDir: string }
-  output?: { total: number; success: number; failed: number }
+  output?: { total: number; success: number; failed: number; report?: string }
+  error?: string
+}
+
+export interface ToolOrganizeFilesPart {
+  type: 'tool-organizeFiles'
+  state: 'confirm' | 'running' | 'done' | 'error'
+  input?: { mode: 'moveToParent' | 'flatten' | 'moveToDir' | 'media'; files: { name: string; fileId: string; driveId: string; userId: string; parentFileId?: string; isDir?: boolean }[]; targetDir: string; plans?: any[] }
+  output?: { total: number; success: number; failed: number; report?: string }
   error?: string
 }
 
@@ -128,6 +136,38 @@ export interface ToolDeleteFilesPart {
   error?: string
 }
 
+export interface ToolMiaochuanPart {
+  type: 'tool-miaochuan'
+  state: 'parsing' | 'confirm' | 'running' | 'done' | 'error'
+  input?: { parentId?: string; files?: { path: string; name: string; size: number }[] }
+  output?: { total: number; success?: number; failed?: number; skipped?: number; report?: string }
+  error?: string
+}
+
+export interface ToolDirectLinksPart {
+  type: 'tool-directLinks'
+  state: 'running' | 'done' | 'error'
+  input?: { format: 'url' | 'aria2'; files: { name: string; fileId: string; driveId: string; userId: string }[] }
+  output?: { total: number; success: number; failed: number; text: string }
+  error?: string
+}
+
+export interface ToolGuangyaMagnetsPart {
+  type: 'tool-guangyaMagnets'
+  state: 'confirm' | 'running' | 'done' | 'error'
+  input?: { text: string; parentId?: string; magnets: string[] }
+  output?: { total: number; success: number; failed: number; report: string }
+  error?: string
+}
+
+export interface ToolGuangyaEmptyDirsPart {
+  type: 'tool-guangyaEmptyDirs'
+  state: 'scanning' | 'confirm' | 'running' | 'done' | 'error'
+  input?: { rootId?: string; dirs?: { name: string; fileId: string; parentFileId: string; driveId: string; userId: string; path: string }[] }
+  output?: { scannedDirs?: number; total: number; success?: number; failed?: number; report: string }
+  error?: string
+}
+
 export type MessagePart =
   | TextPart
   | ReasoningPart
@@ -142,8 +182,13 @@ export type MessagePart =
   | ToolAnalyzeStoragePart
   | ToolCategorizeFilesPart
   | ToolMoveFilesPart
+  | ToolOrganizeFilesPart
   | ToolGetMoviesPart
   | ToolDeleteFilesPart
+  | ToolMiaochuanPart
+  | ToolDirectLinksPart
+  | ToolGuangyaMagnetsPart
+  | ToolGuangyaEmptyDirsPart
 
 export interface ChatMessage {
   id: string

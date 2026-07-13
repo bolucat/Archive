@@ -1,11 +1,10 @@
 import { MD5 } from 'crypto-js'
 import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
+import { PIKPAK_CLIENT_ID, PIKPAK_CLIENT_SECRET } from '../secrets.generated'
 
 const PIKPAK_API_HOST = 'https://api-drive.mypikpak.com'
 const PIKPAK_USER_HOST = 'https://user.mypikpak.com'
-const PIKPAK_CLIENT_ID = ''
-const PIKPAK_CLIENT_SECRET = ''
 const CLIENT_VERSION = '1.47.1'
 const PACKAGE_NAME = 'com.pikcloud.pikpak'
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'

@@ -1,338 +1,195 @@
-<script setup lang='ts'>
-import message from '../../utils/message'
-import { humanSize } from '../../utils/format'
-import { computed, ref, watch } from 'vue'
-import { ChevronRight } from 'lucide-vue-next'
-import MyLoading from '../../layout/MyLoading.vue'
-import { useSettingStore, useUserStore, useWinStore } from '../../store'
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue'
+import { Checkbox as AntdCheckbox } from 'ant-design-vue'
+import { useUserStore, useWinStore } from '../../store'
 import UserDAL from '../../user/userdal'
-import AliFileCmd from '../../aliapi/filecmd'
-import {
-  foldericonfn,
-  LoadScanDir,
-  NewScanDriver,
-  ResetScanDriver,
-  TreeCheckFileChild,
-  TreeNodeData,
-  TreeSelectAll,
-  TreeSelectOne
-} from '../ScanDAL'
-import { DeleteFromScanClean, GetCleanFile, GetTreeCheckedSize, GetTreeNodes } from './ScanClean'
+import message from '../../utils/message'
+import { getWebDavConnections } from '../../utils/webdavClient'
+import { deleteDriveLargeFiles, scanDriveLargeFiles, type LargeFileItem, type LargeFileScanMode } from '../../utils/drive-tools/largeFiles'
+import type { DuplicateDriveTarget } from '../../utils/drive-tools/duplicates'
+import { driveToolDriveIdForPlatform, driveToolRootIdFor } from '../../utils/drive-tools/directLinks'
 
-import { Checkbox as AntdCheckbox, Tree as AntdTree } from 'ant-design-vue'
-import { EventDataNode } from 'ant-design-vue/es/tree'
-import { GetDriveID } from '../../aliapi/utils'
-
-const winStore = useWinStore()
 const userStore = useUserStore()
+const winStore = useWinStore()
 const treeHeight = computed(() => winStore.height - 268)
-
-const treeref = ref()
-
-const scanLoading = ref(false)
-const scanLoaded = ref(false)
-const delLoading = ref(false)
-const Processing = ref(0)
-const scanCount = ref(0)
+const driveOptions = ref<DuplicateDriveTarget[]>([])
+const selectedDriveKeys = ref<string[]>([])
+const mode = ref<LargeFileScanMode>('size')
 const fileSize = ref(100)
-const totalDirCount = ref(0)
-const totalFileCount = ref(0)
-const scanType = ref('size')
-const panType = ref('backup')
+const loading = ref(false)
+const deleting = ref(false)
+const result = ref('')
+const files = ref<LargeFileItem[]>([])
+const selected = ref(new Set<string>())
 
-const ScanPanData = NewScanDriver('')
+const driveKey = (target: DuplicateDriveTarget) => `${target.userId}\n${target.driveId}`
+const fileKey = (file: LargeFileItem) => `${file.userId}\n${file.driveId}\n${file.fileId}`
 
-const checkedKeys = ref<string[]>([])
-const checkedSize = ref(0)
-let checkedKeysBak: string[] = []
-const expandedKeys = ref<string[]>([])
-const treeData = ref<TreeNodeData[]>([])
-
-const handleSelectAll = () => {
-  TreeSelectAll(checkedKeys, checkedKeysBak)
-  checkedSize.value = GetTreeCheckedSize(ScanPanData, panType.value, checkedKeys.value)
-}
-const handleTreeSelect = (keys: any, info: {
-  node: EventDataNode
-}) => TreeSelectOne([info.node.key as string], checkedKeys)
-const handleTreeCheck = (keys: any, e: any) => {
-  TreeCheckFileChild(e.node, checkedKeys)
-  checkedSize.value = GetTreeCheckedSize(ScanPanData, panType.value, checkedKeys.value)
-}
-
-const handleReset = () => {
-  scanLoading.value = false
-  scanLoaded.value = false
-  delLoading.value = false
-  Processing.value = 0
-  scanCount.value = 0
-  totalDirCount.value = 0
-
-  ResetScanDriver(ScanPanData)
-
-  checkedKeys.value = []
-  checkedSize.value = 0
-  checkedKeysBak = []
-  expandedKeys.value = []
-  treeData.value = []
-}
-watch(userStore.$state, handleReset)
-
-const RefreshTree = (checkall: boolean) => {
-  const expandedkeys: string[] = []
-  const checkedkeys: string[] = []
-  let checkedsize = 0
-  const treeDataMap = new Map<string, TreeNodeData>()
-  const treeDataNodes = GetTreeNodes(ScanPanData, panType.value + '_root', treeDataMap)
-  Object.freeze(treeDataNodes)
-  treeData.value = treeDataNodes
-  const values = treeDataMap.values()
-  let clen = 0
-
-  for (let i = 0, maxi = treeDataMap.size; i < maxi; i++) {
-    const node = values.next().value as TreeNodeData
-    clen = node.children!.length
-    node.selectable = clen == 0 && node.icon != foldericonfn
-    if (checkall) node.checkable = true
-    if (clen > 0) expandedkeys.push(node.key as string)
-    else if (checkall && node.icon != foldericonfn) {
-      checkedkeys.push(node.key as string)
-      checkedsize += node.size
-      scanCount.value += 1
+const loadDriveOptions = async () => {
+  const users = await UserDAL.GetUserListFromDB()
+  const options: DuplicateDriveTarget[] = []
+  const seen = new Set<string>()
+  for (const user of users) {
+    if (!user?.user_id || !user?.access_token) continue
+    const platform = user.tokenfrom || 'aliyun'
+    const name = user.nick_name || user.user_name || user.name || user.user_id
+    const add = (driveId: string, rootId: string, suffix = '') => {
+      if (!driveId) return
+      const target = { userId: user.user_id, driveId, rootId, name: `${name}${suffix}` }
+      const key = driveKey(target)
+      if (!seen.has(key)) {
+        seen.add(key)
+        options.push(target)
+      }
+    }
+    if (platform === 'aliyun') {
+      add(user.resource_drive_id, 'resource_root', ' / 资源盘')
+      add(user.backup_drive_id, 'backup_root', ' / 备份盘')
+      add(user.default_drive_id, 'root', ' / 默认盘')
+    } else {
+      const driveId = driveToolDriveIdForPlatform(platform, user.default_drive_id)
+      add(driveId, driveToolRootIdFor(driveId), ` / ${platform}`)
     }
   }
-  Object.freeze(expandedkeys)
-  expandedKeys.value = expandedkeys
-  checkedKeys.value = checkedkeys
-  checkedSize.value = checkedsize
-  checkedKeysBak = checkedkeys.concat()
+  for (const connection of getWebDavConnections()) {
+    options.push({ userId: connection.id, driveId: `webdav:${connection.id}`, rootId: '/', name: `${connection.name} / WebDAV` })
+  }
+  driveOptions.value = options
+  if (!selectedDriveKeys.value.length && options.length) selectedDriveKeys.value = [driveKey(options[0])]
 }
 
-const handleDelete = () => {
-  const user = UserDAL.GetUserToken(userStore.user_id)
-  if (!user || !user.user_id) {
-    message.error('账号错误')
-    return
-  }
-  if (!checkedKeys.value.length) {
-    message.error('没有选中需要删除的文件')
-    return
-  }
-  delLoading.value = true
-  let drive_id = GetDriveID(user.user_id, panType.value)
-  AliFileCmd.ApiTrashBatch(user.user_id, drive_id, checkedKeys.value).then((success: string[]) => {
-    delLoading.value = false
-    DeleteFromScanClean(ScanPanData, checkedKeys.value)
-    checkedKeys.value = []
-    checkedSize.value = 0
-    RefreshTree(false)
-  })
+const selectedTargets = computed(() => driveOptions.value.filter(target => selectedDriveKeys.value.includes(driveKey(target))))
+
+const reset = () => {
+  result.value = ''
+  files.value = []
+  selected.value = new Set()
 }
 
-const handleScan = () => {
-  const user = UserDAL.GetUserToken(userStore.user_id)
-  if (!user || !user.user_id) {
-    message.error('账号错误')
+const handleScan = async () => {
+  if (loading.value) return
+  if (!selectedTargets.value.length) {
+    message.warning('请至少选择一个网盘')
     return
   }
-  handleReset()
-  scanLoading.value = true
-
-  const add = () => {
-    if (Processing.value < 50) {
-      Processing.value++
-      setTimeout(add, 1500)
-    }
+  reset()
+  loading.value = true
+  try {
+    const data = await scanDriveLargeFiles(selectedTargets.value, mode.value, { customSizeMB: fileSize.value })
+    result.value = data.report
+    files.value = data.files
+    if (!data.files.length) message.success('未发现大文件')
+  } catch (error: any) {
+    message.error(error?.message || '扫描大文件失败')
+  } finally {
+    loading.value = false
   }
-  setTimeout(add, 1500)
-
-  const refresh = () => {
-    if (scanLoading.value) {
-      RefreshTree(false)
-      setTimeout(refresh, 3000)
-    }
-  }
-  setTimeout(refresh, 3000)
-  let drive_id = GetDriveID(user.user_id, panType.value)
-  LoadScanDir(user.user_id, drive_id, panType.value + '_root', totalDirCount, Processing, ScanPanData)
-    .then(() => {
-      return GetCleanFile(user.user_id, ScanPanData, Processing, scanCount, totalFileCount, scanType.value, fileSize.value)
-    })
-    .catch((err: any) => {
-      message.error(err.message || '扫描失败')
-    })
-    .then(() => {
-      scanLoading.value = false
-      RefreshTree(true)
-      scanLoaded.value = true
-      Processing.value = 0
-    })
 }
 
+const toggleFile = (file: LargeFileItem) => {
+  const next = new Set(selected.value)
+  const key = fileKey(file)
+  if (next.has(key)) next.delete(key)
+  else next.add(key)
+  selected.value = next
+}
+
+const toggleAll = () => {
+  const keys = files.value.map(fileKey)
+  const allSelected = keys.length > 0 && keys.every(key => selected.value.has(key))
+  selected.value = allSelected ? new Set() : new Set(keys)
+}
+
+const handleDelete = async () => {
+  if (deleting.value) return
+  const selectedFiles = files.value.filter(file => selected.value.has(fileKey(file)))
+  if (!selectedFiles.length) {
+    message.warning('请先勾选需要删除的文件')
+    return
+  }
+  if (!window.confirm(`准备删除 ${selectedFiles.length} 个文件，是否继续？`)) return
+  deleting.value = true
+  try {
+    const data = await deleteDriveLargeFiles(selectedFiles)
+    result.value = data.report
+    const deleted = new Set(data.deletedFileKeys)
+    files.value = files.value.filter(file => !deleted.has(fileKey(file)))
+    selected.value = new Set()
+    if (data.failed) message.warning('部分文件删除失败，请查看报告')
+    else message.success('大文件删除操作完成')
+  } catch (error: any) {
+    message.error(error?.message || '删除大文件失败')
+  } finally {
+    deleting.value = false
+  }
+}
+
+onMounted(loadDriveOptions)
+watch(userStore.$state, async () => {
+  reset()
+  await loadDriveOptions()
+})
 </script>
 
 <template>
-  <div class='scanfill rightbg'>
-    <div class='settingcard scanfix' style='padding: 12px 24px 8px 24px'>
+  <div class="scanfill rightbg">
+    <div class="settingcard scanfix" style="padding: 12px 24px 8px 24px">
       <a-steps>
-        <a-step
-          :description="scanLoaded ? '扫描出 ' + scanCount + ' 个大文件' : scanLoading ? '扫描进度：' + (Processing > 50 ? Math.floor((Processing * 100) / totalDirCount) + '%' : Processing) : '在网盘中查找一遍'">
-          查找
-          <template #icon>
-            <MyLoading v-if='scanLoading' />
-            <IconFont name="iconrsearch" v-else />
-          </template>
-        </a-step>
-        <a-step description='勾选 需要删除的'>
-          勾选
-          <template #icon>
-            <IconFont name="iconedit-square" />
-          </template>
-        </a-step>
-        <a-step description='删除 放入回收站'>
-          删除
-          <template #icon>
-            <IconFont name="icondelete" />
-          </template>
-        </a-step>
+        <a-step :description="loading ? '正在扫描目录和文件' : result || '选择网盘后开始扫描'">扫描</a-step>
+        <a-step description="勾选需要删除的文件">勾选</a-step>
+        <a-step description="按网盘能力执行删除">删除</a-step>
       </a-steps>
     </div>
 
-    <div class='settingcard scanauto' style='padding: 4px; margin-top: 4px'>
-      <a-row justify='space-between' align='center'
-             style='margin: 12px; height: 28px; flex-grow: 0; flex-shrink: 0; flex-wrap: nowrap; overflow: hidden'>
-        <AntdCheckbox :disabled='scanLoaded == false' :checked='scanCount > 0 && checkedKeys.length == scanCount'
-                      style='margin-left: 12px; margin-right: 12px' @click.stop.prevent='handleSelectAll'>全选
-        </AntdCheckbox>
-        <span v-if='scanLoaded' class='checkedInfo'>
-          已选中 {{ checkedKeys.length }} 个文件 {{ humanSize(checkedSize) }}
-        </span>
-        <span v-else-if='totalDirCount > 0' class='checkedInfo'>
-          正在列出文件 {{ Processing }} / {{ totalDirCount }}
-        </span>
-        <span v-else class='checkedInfo'>网盘中文件很多时，需要扫描很长时间</span>
-        <div style='flex: auto'></div>
-
-        <a-button v-if='scanLoaded' size='small' tabindex='-1' style='margin-right: 12px' @click='handleReset'>取消
-        </a-button>
-        <template v-else>
-          <a-select v-model:model-value='panType' size='small' tabindex='-1'
-                    style='width: 100px; flex-shrink: 0; margin-right: 2px' :disabled='scanLoading'>
-            <a-option value='backup' :disabled="useSettingStore().securityHideBackupDrive">备份盘</a-option>
-            <a-option value='resource' :disabled="useSettingStore().securityHideResourceDrive">资源盘</a-option>
-          </a-select>
-          <a-select v-model:model-value='scanType' size='small' tabindex='-1'
-                    style='width: 136px; flex-shrink: 0; margin-right: 2px' :disabled='scanLoading'>
-            <a-option value='size'>自定义</a-option>
-            <a-option value='video'>视频>1G</a-option>
-            <a-option value='doc'>文档>1G</a-option>
-            <a-option value='zip'>压缩包>1G</a-option>
-            <a-option value='others'>其他>1G</a-option>
-            <a-option value='size5000'>全部>5G</a-option>
-            <a-option value='size1000'>全部>1G</a-option>
-            <a-option value='size100'>全部>100MB</a-option>
-          </a-select>
-        </template>
-        <a-input-number v-if="scanType === 'size' && !scanLoaded"
-                        tabindex='-1' v-model='fileSize' size='small' :disabled='scanLoading'
-                        style='width: 180px;margin-right: 10px' placeholder='文件大小' :min='100' :max='100000'
-                        :step='100'>
+    <div class="settingcard scanauto" style="padding: 12px; margin-top: 4px">
+      <div class="scan-toolbar">
+        <a-select v-model="selectedDriveKeys" multiple allow-clear placeholder="选择网盘" :disabled="loading" style="min-width: 260px; flex: 1">
+          <a-option v-for="target in driveOptions" :key="driveKey(target)" :value="driveKey(target)">{{ target.name }}</a-option>
+        </a-select>
+        <a-select v-model="mode" :disabled="loading" style="width: 150px">
+          <a-option value="size">自定义</a-option>
+          <a-option value="video">视频&gt;1G</a-option>
+          <a-option value="doc">文档&gt;1G</a-option>
+          <a-option value="zip">压缩包&gt;1G</a-option>
+          <a-option value="others">其他&gt;1G</a-option>
+          <a-option value="size5000">全部&gt;5G</a-option>
+          <a-option value="size1000">全部&gt;1G</a-option>
+          <a-option value="size100">全部&gt;100MB</a-option>
+        </a-select>
+        <a-input-number v-if="mode === 'size'" v-model="fileSize" :disabled="loading" style="width: 150px" :min="1" :max="100000" :step="100">
           <template #prefix>大于</template>
           <template #suffix>MB</template>
         </a-input-number>
-        <a-button v-if='scanLoaded' type='primary' size='small' tabindex='-1' status='danger' :loading='delLoading'
-                  style='margin-right: 12px' title='把选中的文件放入回收站' @click='handleDelete'>删除选中
-        </a-button>
-        <a-button v-else type='primary' size='small' tabindex='-1' :loading='scanLoading' @click='handleScan'>
-          开始扫描
-        </a-button>
-      </a-row>
-      <a-spin v-if='scanLoading || scanLoaded' :loading='scanLoading' tip='耐心等待，很慢的...'
-              :style="{ width: '100%', height: treeHeight + 'px', overflow: 'hidden' }">
-        <AntdTree
-          ref='treeref'
-          :expanded-keys='expandedKeys'
-          :checked-keys='checkedKeys'
-          :tree-data='treeData'
-          :tabindex='-1'
-          :focusable='false'
-          class='cleantree'
-          checkable
-          block-node
-          :selectable='false'
-          check-strictly
-          show-icon
-          auto-expand-parent
-          :height='treeHeight'
-          :style="{ height: treeHeight + 'px' }"
-          :show-line='{ showLeafIcon: false }'
-          @select='handleTreeSelect'
-          @check='handleTreeCheck'>
-          <template #switcherIcon>
-            <ChevronRight :size='14' :stroke-width='1.8' class='ant-tree-switcher-lucide' />
+        <a-button type="primary" :loading="loading" @click="handleScan">开始扫描</a-button>
+        <a-button :disabled="!files.length" @click="toggleAll">全选/取消</a-button>
+        <a-button status="danger" :disabled="!selected.size" :loading="deleting" @click="handleDelete">删除选中</a-button>
+      </div>
+      <div class="scan-hint">按当前阈值递归扫描所选网盘。不同网盘返回的分类信息可能不同，文档/压缩包模式会同时参考文件扩展名。</div>
+      <pre v-if="result" class="scan-report">{{ result }}</pre>
+      <a-spin :loading="loading" :style="{ width: '100%', minHeight: treeHeight + 'px' }">
+        <a-list :bordered="false" :split="false" :max-height="treeHeight" :data="files">
+          <template #empty><a-empty description="扫描结束，未发现大文件" /></template>
+          <template #item="{ item }">
+            <div :key="fileKey(item)" class="largefile-item">
+              <AntdCheckbox :checked="selected.has(fileKey(item))" @change="toggleFile(item)" />
+              <IconFont :name="item.icon" aria-hidden="true" />
+              <div class="largefile-name" :title="item.name">{{ item.name }}</div>
+              <div class="largefile-path" :title="item.path">{{ item.path }}</div>
+              <div class="largefile-size">{{ item.sizeStr }}</div>
+            </div>
           </template>
-          <template #title='{ dataRef }'>
-            <span class='cleantitleleft'>{{ dataRef.title }}</span>
-            <span class='cleantitleright'>{{ dataRef.sizeStr }}</span>
-          </template>
-        </AntdTree>
+        </a-list>
       </a-spin>
-      <a-empty v-else class='beginscan'>
-        <template #image>
-          <IconFont name="iconrsearch" />
-        </template>
-        请点击上方 开始扫描 按钮
-      </a-empty>
     </div>
   </div>
 </template>
+
 <style>
-.beginscan {
-  margin-top: 15%;
-  width: 100%;
-}
-
-.beginscan svg {
-  width: 48px !important;
-  height: 48px !important;
-}
-
-.ant-tree-switcher-lucide {
-  transition: transform 0.15s ease;
-}
-.ant-tree-switcher_open .ant-tree-switcher-lucide {
-  transform: rotate(90deg);
-}
-
-.cleantree .ant-tree-node-content-wrapper {
-  flex: auto;
-  display: flex !important;
-  flex-direction: row;
-}
-
-.cleantree .ant-tree-title {
-  flex: auto;
-  display: flex !important;
-  flex-direction: row;
-}
-
-.cleantree .cleantitleleft {
-  flex-shrink: 1;
-  flex-grow: 1;
-  display: -webkit-box;
-  max-height: 48px;
-  word-break: break-all;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  -webkit-line-clamp: 2;
-}
-
-.cleantree .cleantitleright {
-  padding-left: 12px;
-  padding-right: 12px;
-  font-size: 12px;
-  color: var(--color-text-3);
-  flex-shrink: 0;
-  flex-grow: 0;
-}
+.scan-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.scan-hint { margin: 10px 0; color: var(--color-text-3); font-size: 12px; line-height: 1.6; }
+.scan-report { margin: 0 0 8px; white-space: pre-wrap; word-break: break-word; color: var(--color-text-2); font-size: 12px; }
+.largefile-item { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border-bottom: 1px solid var(--color-border-1); }
+.largefile-name { width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.largefile-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text-4); font-size: 12px; }
+.largefile-size { color: var(--color-text-4); font-size: 12px; white-space: nowrap; }
 </style>

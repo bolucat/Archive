@@ -14,6 +14,15 @@ const cb = (val: any) => {
 }
 const userData = getUserData()
 
+const CHROMIUM_BLOCKED_PORTS = new Set([6665, 6666, 6667, 6668, 6669, 10080])
+const getSafeProxyPort = () => {
+  let port = 0
+  do {
+    port = Math.floor(Math.random() * (10000 - 2000 + 1) + 2000)
+  } while (CHROMIUM_BLOCKED_PORTS.has(port))
+  return port
+}
+
 const handleJumpPath = () => {
   openExternal(userData)
 }
@@ -29,7 +38,7 @@ const handleResetHost = () => {
 const handleResetPort = async () => {
   // 重启软件服务
   if (window.MainProxyServer) {
-    const debugProxyPort = Math.floor(Math.random() * (10000 - 2000 + 1) + 2000)
+    const debugProxyPort = getSafeProxyPort()
     const loadingKey = 'proxyServer' + Date.now().toString()
     message.loading('重启软件服务中...', 60, loadingKey)
     await window.MainProxyServer.close()

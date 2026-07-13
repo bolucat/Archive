@@ -1,19 +1,19 @@
 <script setup lang="ts"></script>
 
 <template>
-  <div class="desktop-loading boxplayer-radio-loading">
-    <div class="boxplayer-radio-loading-noise"></div>
-    <div class="boxplayer-radio-loading-wordmark" aria-label="BoxPlayer Radio">
-      <span class="boxplayer-loading-word-main">BoxPlayer</span>
-      <span class="boxplayer-loading-word-sub">Radio</span>
+  <div class="desktop-loading boxplayer-splash-loading">
+    <div class="boxplayer-splash-noise"></div>
+    <div class="boxplayer-splash-wordmark" aria-label="BoxPlayer">
+      <span class="boxplayer-splash-word-main">Box</span>
+      <span class="boxplayer-splash-word-accent">Player</span>
     </div>
-    <div class="boxplayer-radio-loading-line"></div>
-    <div class="boxplayer-radio-loading-state">LOADING</div>
+    <div class="boxplayer-splash-line"></div>
+    <div class="boxplayer-splash-state">LOADING</div>
   </div>
 </template>
 
 <style>
-.desktop-loading.boxplayer-radio-loading {
+.desktop-loading.boxplayer-splash-loading {
   position: absolute;
   inset: 0;
   display: grid;
@@ -28,7 +28,7 @@
     linear-gradient(180deg, #020606 0%, #050607 42%, #000 100%);
 }
 
-.boxplayer-radio-loading::after {
+.boxplayer-splash-loading::after {
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -38,7 +38,7 @@
     linear-gradient(180deg, rgba(0, 0, 0, 0.68), transparent 32%, transparent 64%, rgba(0, 0, 0, 0.74));
 }
 
-.boxplayer-radio-loading-noise {
+.boxplayer-splash-noise {
   position: absolute;
   inset: 0;
   opacity: 0.04;
@@ -47,45 +47,74 @@
   mix-blend-mode: screen;
 }
 
-.boxplayer-radio-loading-wordmark {
+.boxplayer-splash-wordmark {
   position: relative;
   z-index: 2;
-  width: min(940px, 82vw);
-  height: clamp(70px, 12vw, 136px);
-  font-size: clamp(38px, 7vw, 104px);
-  font-weight: 760;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  width: min(760px, 84vw);
+  height: clamp(72px, 11vw, 132px);
+  font-family: 'Avenir Next', 'Inter', 'SF Pro Display', 'Segoe UI', sans-serif;
+  font-size: clamp(42px, 7.2vw, 106px);
+  font-weight: 850;
   letter-spacing: 0;
+  font-variant-ligatures: none;
   text-shadow:
     0 0 28px rgba(0, 245, 212, 0.22),
     0 22px 78px rgba(0, 0, 0, 0.56);
-  animation: boxplayerLoadingWord 1.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: boxplayerSplashWord 1.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.boxplayer-loading-word-main,
-.boxplayer-loading-word-sub {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+.boxplayer-splash-word-main,
+.boxplayer-splash-word-accent {
+  position: relative;
+  display: inline-block;
   white-space: nowrap;
-  transform: translate(-50%, -50%);
 }
 
-.boxplayer-loading-word-main {
+.boxplayer-splash-word-main {
   color: #f8f8f2;
-  animation: boxplayerLoadingMain 1.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: boxplayerSplashMain 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.boxplayer-loading-word-sub {
+.boxplayer-splash-word-accent {
+  margin-left: 0.04em;
   color: transparent;
-  background: linear-gradient(94deg, rgba(255, 255, 255, 0.06), #fff 26%, rgba(244, 210, 138, 0.98) 48%, rgba(122, 215, 194, 0.9) 68%, rgba(255, 255, 255, 0.82));
+  background: linear-gradient(94deg, #fff 4%, rgba(244, 210, 138, 0.98) 36%, rgba(122, 215, 194, 0.94) 70%, rgba(255, 255, 255, 0.88));
   background-clip: text;
   background-size: 300% 100%;
   -webkit-text-fill-color: transparent;
   -webkit-background-clip: text;
-  animation: boxplayerLoadingSub 1.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: boxplayerSplashAccent 1.9s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.boxplayer-radio-loading-line {
+.boxplayer-splash-wordmark::before,
+.boxplayer-splash-wordmark::after {
+  position: absolute;
+  left: 50%;
+  z-index: -1;
+  width: min(560px, 62vw);
+  height: 34%;
+  pointer-events: none;
+  content: '';
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.boxplayer-splash-wordmark::before {
+  top: 18%;
+  background: linear-gradient(90deg, transparent, rgba(0, 245, 212, 0.13), transparent);
+  filter: blur(14px);
+}
+
+.boxplayer-splash-wordmark::after {
+  bottom: 18%;
+  background: linear-gradient(90deg, transparent, rgba(244, 210, 138, 0.14), transparent);
+  filter: blur(18px);
+}
+
+.boxplayer-splash-line {
   position: absolute;
   top: calc(50% + 78px);
   left: 50%;
@@ -98,10 +127,10 @@
     0 0 34px rgba(122, 215, 194, 0.1);
   transform: translateX(-50%) scaleX(0.2);
   transform-origin: center;
-  animation: boxplayerLoadingLine 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: boxplayerSplashLine 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-.boxplayer-radio-loading-state {
+.boxplayer-splash-state {
   position: absolute;
   top: calc(50% + 106px);
   left: 50%;
@@ -114,14 +143,14 @@
     0 0 18px rgba(244, 210, 138, 0.24),
     0 0 34px rgba(122, 215, 194, 0.12);
   transform: translateX(-50%);
-  animation: boxplayerLoadingState 1.8s ease-in-out infinite alternate;
+  animation: boxplayerSplashState 1.8s ease-in-out infinite alternate;
 }
 
-@keyframes boxplayerLoadingWord {
+@keyframes boxplayerSplashWord {
   0% {
-    opacity: 0;
-    filter: blur(16px);
-    transform: translateY(18px) scale(0.96);
+    opacity: 0.48;
+    filter: blur(10px);
+    transform: translateY(10px) scale(0.98);
   }
   32% {
     opacity: 1;
@@ -133,30 +162,30 @@
   }
 }
 
-@keyframes boxplayerLoadingMain {
+@keyframes boxplayerSplashMain {
   0% {
-    opacity: 0;
-    clip-path: inset(48% 0 49% 0);
-    transform: translate(calc(-50% - 10px), -42%) skewX(-10deg) scaleX(1.08);
+    opacity: 0.62;
+    clip-path: inset(16% 0 18% 0);
+    transform: translateX(-10px) skewX(-5deg) scaleX(1.04);
   }
   46% {
     opacity: 1;
     clip-path: inset(0);
-    transform: translate(-50%, -50%) skewX(0) scaleX(1);
+    transform: translateX(0) skewX(0) scaleX(1);
   }
   100% {
     opacity: 1;
-    transform: translate(calc(-50% - clamp(62px, 9vw, 128px)), -50%) scale(0.998);
+    transform: translateX(0) scale(0.998);
   }
 }
 
-@keyframes boxplayerLoadingSub {
+@keyframes boxplayerSplashAccent {
   0%,
   28% {
-    opacity: 0;
-    clip-path: inset(52% 0 44% 0);
+    opacity: 0.42;
+    clip-path: inset(18% 0 20% 0);
     background-position: 0 0;
-    transform: translate(calc(-50% + clamp(70px, 11vw, 130px)), -50%) skewX(9deg) scaleX(1.06);
+    transform: translateX(12px) skewX(5deg) scaleX(1.03);
   }
   58% {
     opacity: 0.9;
@@ -167,11 +196,11 @@
     opacity: 1;
     clip-path: inset(0);
     background-position: 100% 0;
-    transform: translate(calc(-50% + clamp(126px, 17vw, 230px)), -50%) scale(1);
+    transform: translateX(0) scale(1);
   }
 }
 
-@keyframes boxplayerLoadingLine {
+@keyframes boxplayerSplashLine {
   0% {
     opacity: 0;
     transform: translateX(-50%) scaleX(0.05);
@@ -182,7 +211,7 @@
   }
 }
 
-@keyframes boxplayerLoadingState {
+@keyframes boxplayerSplashState {
   0% {
     opacity: 0.42;
   }

@@ -20,6 +20,7 @@ import { onHideRightMenu, TestAlt, TestCtrl, TestKey, TestShift } from '../utils
 import { copyToClipboard, openExternal } from '../utils/electronhelper'
 import { bootstrapMusicLibrary, shutdownMusicLibrary } from '../utils/musicLibraryBootstrap'
 import { bootstrapMediaLibrary, shutdownMediaLibrary } from '../utils/mediaLibraryBootstrap'
+import { bootstrapBookLibrary, shutdownBookLibrary } from '../utils/bookLibraryBootstrap'
 import { QRCode as AntQRCode } from 'ant-design-vue'
 import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
@@ -31,7 +32,7 @@ import Down from '../down/index.vue'
 import Pan from '../pan/index.vue'
 import MediaLibraryView from '../views/MediaLibraryView.vue'
 import MediaServerView from '../views/MediaServerView.vue'
-import DropOverlay from '../components/mineradio/DropOverlay.vue'
+import DropOverlay from '../components/radio/DropOverlay.vue'
 import PageMusicLibrary from './PageMusicLibrary.vue'
 import PageBookLibrary from './PageBookLibrary.vue'
 import PageGlobalSearch from './PageGlobalSearch.vue'
@@ -297,7 +298,7 @@ onMounted(() => {
   }, 300)
   window.addEventListener('click', onHideRightMenu, { passive: true })
   bootstrapMusicLibrary()
-  bookStore.loadFromDB()
+  bootstrapBookLibrary()
   bootstrapMediaLibrary()
 })
 
@@ -308,6 +309,7 @@ onUnmounted(() => {
   window.removeEventListener('click', onHideRightMenu)
   shutdownMusicLibrary()
   shutdownMediaLibrary()
+  shutdownBookLibrary()
 })
 </script>
 <template>

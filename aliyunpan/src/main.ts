@@ -43,6 +43,12 @@ window.addEventListener('unhandledrejection', function (event) {
     // DebugLog.mSaveDanger('unhandledrejection')
     const reason = event.reason
     if (reason && reason.message) {
+      if (/no supported source/i.test(reason.message)) {
+        message.error('不支持当前媒体类型', 1)
+        event.stopPropagation()
+        event.preventDefault()
+        return
+      }
       DebugLog.mSaveDanger('unhandledrejection', reason)
       message.error('rejection ' + reason.message, 1)
     }
@@ -171,4 +177,3 @@ window.Electron.ipcRenderer.on('cloud123-oauth-callback', (_event: any, url: str
 try {
   process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
 } catch {}
-

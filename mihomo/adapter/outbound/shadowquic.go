@@ -3,12 +3,10 @@ package outbound
 import (
 	"context"
 	"net"
-	"net/netip"
 	"strconv"
 	"time"
 
 	"github.com/metacubex/mihomo/component/ca"
-	"github.com/metacubex/mihomo/component/dialer"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/ntp"
 	"github.com/metacubex/mihomo/transport/shadowquic"
@@ -175,7 +173,7 @@ func NewShadowQuic(option ShadowQuicOption) (*ShadowQuic, error) {
 	outbound.client = shadowquic.NewClient(&shadowquic.ClientOption{
 		UDPOverStream: option.UDPOverStream,
 		Dial: func(ctx context.Context) (*quic.Conn, error) {
-			_, quicConn, err := dialShadowQuic(ctx, outbound.addr, outbound.DialOptions(), outbound.dialer, outbound.tlsConfig, outbound.quicConfig, option.ZeroRTT)
+			_, quicConn, err := shadowquic.DialQuic(ctx, outbound.addr, outbound.DialOptions(), outbound.dialer, outbound.tlsConfig, outbound.quicConfig, option.ZeroRTT)
 			if err != nil {
 				return nil, err
 			}
@@ -186,117 +184,3 @@ func NewShadowQuic(option ShadowQuicOption) (*ShadowQuic, error) {
 
 	return outbound, nil
 }
-
-type shadowQuicPacketDialer interface {
-	ListenPacket(ctx context.Context, network, address string, rAddrPort netip.AddrPort) (net.PacketConn, error)
-}
-
-func dialShadowQuic(ctx context.Context, address string, opts []dialer.Option, pDialer shadowQuicPacketDialer, tlsConf *tls.Config, conf *quic.Config, early bool) (net.PacketConn, *quic.Conn, error) {
-	monitorAuthEarly := early
-	if _, err := netip.ParseAddrPort(address); err != nil {
-		// A hostname can resolve to multiple candidates. Authenticate each one
-		// before the dialer selects it, so a failed candidate can fall back.
-		monitorAuthEarly = false
-	}
-	d := dialer.NewDialer(
-		dialer.WithOptions(opts...),
-		dialer.WithNetDialer(dialer.NetDialerFunc(func(ctx context.Context, network, address string) (net.Conn, error) {
-			addrPort, err := netip.ParseAddrPort(address)
-			if err != nil {
-				return nil, err
-			}
-			udpAddr := net.UDPAddrFromAddrPort(addrPort)
-			packetConn, err := pDialer.ListenPacket(ctx, "udp", "", udpAddr.AddrPort())
-			if err != nil {
-				return nil, err
-			}
-			transport := quic.Transport{Conn: packetConn}
-			transport.SetCreatedConn(true)
-			transport.SetSingleUse(true)
-
-			var quicConn *quic.Conn
-			if early {
-				quicConn, err = transport.DialEarly(ctx, udpAddr, tlsConf, conf)
-			} else {
-				quicConn, err = transport.Dial(ctx, udpAddr, tlsConf, conf)
-			}
-			if err != nil {
-				_ = packetConn.Close()
-				return nil, err
-			}
-			if err := monitorShadowQuicJLSAuth(quicConn, packetConn, tlsConf, monitorAuthEarly); err != nil {
-				return nil, err
-			}
-			return shadowQuicNetConn{Conn: quicConn, pc: packetConn}, nil
-		})),
-	)
-	c, err := d.DialContext(ctx, "udp", address)
-	if err != nil {
-		return nil, nil, err
-	}
-	nc := c.(shadowQuicNetConn)
-	return nc.pc, nc.Conn, nil
-}
-
-func monitorShadowQuicJLSAuth(quicConn *quic.Conn, packetConn net.PacketConn, tlsConf *tls.Config, early bool) error {
-	if tlsConf == nil || tlsConf.JLSConfig == nil || !tlsConf.JLSConfig.Enable {
-		return nil
-	}
-	closeConn := func() {
-		_ = quicConn.CloseWithError(0, "")
-		_ = packetConn.Close()
-	}
-	checkAuth := func() bool {
-		return quicConn.ConnectionState().TLS.JLS.Authenticated
-	}
-	if !early {
-		if checkAuth() {
-			return nil
-		}
-		closeConn()
-		return tls.ErrJLSAuthFailed
-	}
-	go func() {
-		select {
-		case <-quicConn.HandshakeComplete():
-			if !checkAuth() {
-				closeConn()
-			}
-		case <-quicConn.Context().Done():
-		}
-	}()
-	return nil
-}
-
-type shadowQuicNetConn struct {
-	*quic.Conn
-	pc net.PacketConn
-}
-
-func (q shadowQuicNetConn) Close() error {
-	err := q.Conn.CloseWithError(0, "")
-	_ = q.pc.Close()
-	return err
-}
-
-func (q shadowQuicNetConn) Read([]byte) (int, error) {
-	panic("should not call Read on shadowQuicNetConn")
-}
-
-func (q shadowQuicNetConn) Write([]byte) (int, error) {
-	panic("should not call Write on shadowQuicNetConn")
-}
-
-func (q shadowQuicNetConn) SetDeadline(time.Time) error {
-	panic("should not call SetDeadline on shadowQuicNetConn")
-}
-
-func (q shadowQuicNetConn) SetReadDeadline(time.Time) error {
-	panic("should not call SetReadDeadline on shadowQuicNetConn")
-}
-
-func (q shadowQuicNetConn) SetWriteDeadline(time.Time) error {
-	panic("should not call SetWriteDeadline on shadowQuicNetConn")
-}
-
-var _ net.Conn = shadowQuicNetConn{}

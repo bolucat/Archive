@@ -7,7 +7,7 @@ import DB from '../utils/db'
 import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
 import usePanTreeStore from './pantreestore'
-import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import AliAlbum from '../aliapi/album'
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
 import { apiDrive115Search, mapDrive115SearchToAliModel, mapDrive115TrashToAliModel } from '../cloud115/dirfilelist'
@@ -18,6 +18,7 @@ import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelis
 import { apiQuarkFileList, apiQuarkSearch, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiDropboxSearch, filterDropboxSearchResults, parseDropboxSearchId } from '../dropbox/search'
 import { apiDropboxThumbnail } from '../dropbox/thumbnail'
@@ -238,6 +239,25 @@ export default class PanDAL {
         const mapped = mapCloud189FileToAliModel(item, drive_id, driveType.key)
         return { file_id: mapped.file_id, drive_id, parent_file_id: driveType.key, name: mapped.name, description: mapped.description || '', time: mapped.time, size: 0 }
       })
+    await TreeStore.ConvertToOneDriver(user_id, drive_id, dirs, false, true)
+    PanDAL.RefreshPanTreeAllNode(drive_id)
+    useFootStore().mSaveLoading('')
+  }
+
+  static async aReLoadGuangyaDrive(token: ITokenInfo): Promise<void> {
+    const { user_id } = token
+    const drive_id = token.default_drive_id || 'guangya'
+    const pantreeStore = usePanTreeStore()
+    pantreeStore.mSaveUser(user_id, drive_id, '', '', '')
+    pantreeStore.drive_id = drive_id
+    if (!user_id) return
+    useFootStore().mSaveLoading('加载光鸭云盘文件夹...')
+    const list = await apiGuangyaFileList(user_id, 'guangya_root', 100)
+    const driveType = GetDriveType(user_id, drive_id)
+    const dirs = list
+      .map((item) => mapGuangyaFileToAliModel(item, drive_id, driveType.key))
+      .filter((item) => item.isDir)
+      .map((item) => ({ file_id: item.file_id, drive_id, parent_file_id: driveType.key, name: item.name, description: item.description || '', time: item.time, size: 0 }))
     await TreeStore.ConvertToOneDriver(user_id, drive_id, dirs, false, true)
     PanDAL.RefreshPanTreeAllNode(drive_id)
     useFootStore().mSaveLoading('')
@@ -492,16 +512,16 @@ export default class PanDAL {
         } as IAliGetDirModel
         dirPath = [dir]
       } else {
-      let findPath = []
-      if (!album_id) {
-        findPath = await AliFile.ApiFileGetPath(panTreeStore.user_id, drive_id, file_id)
-      } else {
-        findPath = await AliAlbum.ApiAlbumGetPath(panTreeStore.user_id, drive_id, album_id)
-      }
-      if (findPath.length > 0) {
-        dirPath = findPath
-        dir = { ...dirPath[dirPath.length - 1] }
-      }
+        let findPath = []
+        if (!album_id) {
+          findPath = await AliFile.ApiFileGetPath(panTreeStore.user_id, drive_id, file_id)
+        } else {
+          findPath = await AliAlbum.ApiAlbumGetPath(panTreeStore.user_id, drive_id, album_id)
+        }
+        if (findPath.length > 0) {
+          dirPath = findPath
+          dir = { ...dirPath[dirPath.length - 1] }
+        }
       }
     }
     if (!dir || (dirPath.length == 0 && !file_id.includes('root'))) {
@@ -849,6 +869,35 @@ export default class PanDAL {
             dir.itemsKey = new Set(items.map((item) => item.file_id))
             dir.next_marker = ''
             dir.itemsTotal = total || items.length
+            const panfileStore = usePanFileStore()
+            panfileStore.mSaveDirFileLoadingPart(0, dir, dir.itemsTotal || 0)
+            TreeStore.SaveOneDirFileList(dir, hasFiles).then(() => {
+              if (hasFiles) panfileStore.mSaveDirFileLoadingFinish(drive_id, dirID, dir.items, dir.itemsTotal || 0)
+              PanDAL.RefreshPanTreeAllNode(drive_id)
+              resolve(true)
+            })
+          })
+          .catch(() => {
+            if (hasFiles) usePanFileStore().mSaveDirFileLoadingFinish(drive_id, dirID, [])
+            resolve(false)
+          })
+        return
+      }
+
+      if (isGuangyaUser(user_id)) {
+        const parentId = dirID === 'guangya_root' ? 'guangya_root' : dirID
+        apiGuangyaFileList(user_id, parentId, 200)
+          .then((list) => {
+            const allItems = list.map((item) => mapGuangyaFileToAliModel(item, drive_id, dirID))
+            const items = hasFiles ? allItems : allItems.filter((item) => item.isDir)
+            const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ')
+            const orders = order.split(' ')
+            OrderDir(orders[0], orders[1], items)
+            const dir = NewIAliFileResp(user_id, drive_id, dirID, dirName)
+            dir.items = items
+            dir.itemsKey = new Set(items.map((item) => item.file_id))
+            dir.next_marker = ''
+            dir.itemsTotal = items.length
             const panfileStore = usePanFileStore()
             panfileStore.mSaveDirFileLoadingPart(0, dir, dir.itemsTotal || 0)
             TreeStore.SaveOneDirFileList(dir, hasFiles).then(() => {

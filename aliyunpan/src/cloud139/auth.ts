@@ -44,12 +44,17 @@ const randomString = (length = 16) => {
   return value
 }
 
+const pad = (value: number) => String(value).padStart(2, '0')
+
+const cloud139Timestamp = (date = new Date()) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+
 export const cloud139Headers = (authorization: string, body: string, route = false, svcType = '1') => {
-  const ts = String(Date.now())
+  const ts = cloud139Timestamp()
   const rand = randomString()
   const sign = cloud139Sign(body, ts, rand)
   return {
     Accept: 'application/json, text/plain, */*',
+    'CMS-DEVICE': 'default',
     'Content-Type': 'application/json;charset=UTF-8',
     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
     'User-Agent': CLOUD139_USER_AGENT,
@@ -63,14 +68,13 @@ export const cloud139Headers = (authorization: string, body: string, route = fal
     'Inner-Hcy-Router-Https': '1',
     'x-SvcType': svcType,
     Authorization: `Basic ${authorization}`,
+    'mcloud-channel': '1000101',
+    'mcloud-client': '10701',
     'mcloud-sign': `${ts},${rand},${sign}`,
+    'mcloud-version': '7.14.0',
     ...(route ? {} : {
       Caller: 'web',
-      'CMS-DEVICE': 'default',
       'mcloud-route': '001',
-      'mcloud-channel': '1000101',
-      'mcloud-client': '10701',
-      'mcloud-version': '7.14.0',
       'x-yun-api-version': 'v1',
       'x-yun-app-channel': '10000034',
       'x-yun-channel-source': '10000034',

@@ -8,6 +8,7 @@ import (
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/component/ech"
 	tlsC "github.com/metacubex/mihomo/component/tls"
+	"github.com/metacubex/mihomo/transport/jls"
 	"github.com/metacubex/mihomo/transport/tlsmirror"
 
 	"github.com/metacubex/tls"
@@ -23,6 +24,7 @@ type TLSConfig struct {
 	ClientFingerprint string
 	NextProtos        []string
 	ECH               *ech.Config
+	JLS               *jls.Config
 	Reality           *tlsC.RealityConfig
 	TLSMirror         *tlsmirror.Config
 	TLSMirrorDialer   tlsmirror.EnrollmentDialer
@@ -43,6 +45,14 @@ func (cfg *TLSConfig) ToStdConfig() (*tls.Config, error) {
 }
 
 func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn, error) {
+	if cfg.JLS != nil {
+		return jls.NewClient(ctx, conn, &jls.ClientConfig{
+			Config:            *cfg.JLS,
+			ServerName:        cfg.Host,
+			ALPN:              cfg.NextProtos,
+			ClientFingerprint: cfg.ClientFingerprint,
+		})
+	}
 	if cfg.TLSMirror != nil {
 		return tlsmirror.Dial(ctx, conn, tlsmirror.ClientConfig{
 			Config:             *cfg.TLSMirror,

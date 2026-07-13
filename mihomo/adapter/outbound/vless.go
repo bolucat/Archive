@@ -16,6 +16,7 @@ import (
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
+	"github.com/metacubex/mihomo/transport/jls"
 	"github.com/metacubex/mihomo/transport/tuic/common"
 	"github.com/metacubex/mihomo/transport/vless"
 	"github.com/metacubex/mihomo/transport/vless/encryption"
@@ -43,8 +44,9 @@ type Vless struct {
 	// for xhttp
 	xhttpClient *xhttp.Client
 
-	realityConfig *tlsC.RealityConfig
 	echConfig     *ech.Config
+	jlsConfig     *jls.Config
+	realityConfig *tlsC.RealityConfig
 }
 
 type VlessOption struct {
@@ -63,6 +65,7 @@ type VlessOption struct {
 	Encryption        string            `proxy:"encryption,omitempty"`
 	Network           string            `proxy:"network,omitempty"`
 	ECHOpts           ECHOptions        `proxy:"ech-opts,omitempty"`
+	JLSOpts           JLSOptions        `proxy:"jls-opts,omitempty"`
 	RealityOpts       RealityOptions    `proxy:"reality-opts,omitempty"`
 	HTTPOpts          HTTPOptions       `proxy:"http-opts,omitempty"`
 	HTTP2Opts         HTTP2Options      `proxy:"h2-opts,omitempty"`
@@ -128,6 +131,7 @@ type XHTTPDownloadSettings struct {
 	TLS               *bool           `proxy:"tls,omitempty"`
 	ALPN              *[]string       `proxy:"alpn,omitempty"`
 	ECHOpts           *ECHOptions     `proxy:"ech-opts,omitempty"`
+	JLSOpts           *JLSOptions     `proxy:"jls-opts,omitempty"`
 	RealityOpts       *RealityOptions `proxy:"reality-opts,omitempty"`
 	SkipCertVerify    *bool           `proxy:"skip-cert-verify,omitempty"`
 	NameCertVerify    *string         `proxy:"name-cert-verify,omitempty"`
@@ -161,26 +165,39 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 			}
 		}
 		if v.option.TLS {
-			wsOpts.TLS = true
-			wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
-				TLSConfig: &tls.Config{
-					ServerName:         host,
-					InsecureSkipVerify: v.option.SkipCertVerify,
-					NextProtos:         []string{"http/1.1"},
-				},
-				Fingerprint:    v.option.Fingerprint,
-				NameCertVerify: v.option.NameCertVerify,
-				Certificate:    v.option.Certificate,
-				PrivateKey:     v.option.PrivateKey,
-			})
-			if err != nil {
-				return nil, err
+			serverName := host
+			if v.option.ServerName != "" {
+				serverName = v.option.ServerName
+			} else if host := wsOpts.Headers.Get("Host"); host != "" {
+				serverName = host
 			}
 
-			if v.option.ServerName != "" {
-				wsOpts.TLSConfig.ServerName = v.option.ServerName
-			} else if host := wsOpts.Headers.Get("Host"); host != "" {
-				wsOpts.TLSConfig.ServerName = host
+			if v.jlsConfig != nil {
+				c, err = vmess.StreamTLSConn(ctx, c, &vmess.TLSConfig{
+					Host:              serverName,
+					ClientFingerprint: v.option.ClientFingerprint,
+					NextProtos:        []string{"http/1.1"},
+					JLS:               v.jlsConfig,
+				})
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				wsOpts.TLS = true
+				wsOpts.TLSConfig, err = ca.GetTLSConfig(ca.Option{
+					TLSConfig: &tls.Config{
+						ServerName:         serverName,
+						InsecureSkipVerify: v.option.SkipCertVerify,
+						NextProtos:         []string{"http/1.1"},
+					},
+					Fingerprint:    v.option.Fingerprint,
+					NameCertVerify: v.option.NameCertVerify,
+					Certificate:    v.option.Certificate,
+					PrivateKey:     v.option.PrivateKey,
+				})
+				if err != nil {
+					return nil, err
+				}
 			}
 		} else {
 			if host := wsOpts.Headers.Get("Host"); host == "" {
@@ -282,6 +299,7 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 			PrivateKey:        v.option.PrivateKey,
 			ClientFingerprint: v.option.ClientFingerprint,
 			ECH:               v.echConfig,
+			JLS:               v.jlsConfig,
 			Reality:           v.realityConfig,
 			NextProtos:        v.option.ALPN,
 		}
@@ -476,14 +494,25 @@ func NewVless(option VlessOption) (*Vless, error) {
 		return nil, err
 	}
 
+	v.echConfig, err = v.option.ECHOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+	v.jlsConfig, err = option.JLSOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
 	v.realityConfig, err = v.option.RealityOpts.Parse()
 	if err != nil {
 		return nil, err
 	}
-
-	v.echConfig, err = v.option.ECHOpts.Parse()
-	if err != nil {
-		return nil, err
+	if v.jlsConfig != nil {
+		if !option.TLS {
+			return nil, errors.New("JLS requires TLS")
+		}
+		if v.realityConfig != nil {
+			return nil, errors.New("JLS is incompatible with REALITY")
+		}
 	}
 
 	switch option.Network {
@@ -521,6 +550,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 				ClientFingerprint: option.ClientFingerprint,
 				NextProtos:        []string{"h2"},
 				ECH:               v.echConfig,
+				JLS:               v.jlsConfig,
 				Reality:           v.realityConfig,
 			}
 			if option.ServerName == "" {
@@ -616,6 +646,9 @@ func NewVless(option VlessOption) (*Vless, error) {
 					if !v.option.TLS {
 						return nil, errors.New("xhttp HTTP/3 requires TLS")
 					}
+					if v.jlsConfig != nil {
+						return nil, errors.New("xhttp HTTP/3 does not support JLS")
+					}
 					if v.realityConfig != nil {
 						return nil, errors.New("xhttp HTTP/3 does not support reality")
 					}
@@ -652,6 +685,13 @@ func NewVless(option VlessOption) (*Vless, error) {
 			downloadEchConfig := v.echConfig
 			if ds.ECHOpts != nil {
 				downloadEchConfig, err = ds.ECHOpts.Parse()
+				if err != nil {
+					return nil, err
+				}
+			}
+			downloadJLSConfig := v.jlsConfig
+			if ds.JLSOpts != nil {
+				downloadJLSConfig, err = ds.JLSOpts.Parse()
 				if err != nil {
 					return nil, err
 				}
@@ -720,6 +760,7 @@ func NewVless(option VlessOption) (*Vless, error) {
 								PrivateKey:        downloadPrivateKey,
 								ClientFingerprint: downloadClientFingerprint,
 								ECH:               downloadEchConfig,
+								JLS:               downloadJLSConfig,
 								Reality:           downloadRealityCfg,
 								NextProtos:        downloadALPN,
 							}
@@ -756,6 +797,9 @@ func NewVless(option VlessOption) (*Vless, error) {
 						}
 						if !downloadTLS {
 							return nil, errors.New("xhttp HTTP/3 requires TLS")
+						}
+						if downloadJLSConfig != nil {
+							return nil, errors.New("xhttp HTTP/3 does not support JLS")
 						}
 						if downloadRealityCfg != nil {
 							return nil, errors.New("xhttp HTTP/3 does not support reality")

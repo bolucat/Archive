@@ -3,9 +3,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import LimitReachedModal from './LimitReachedModal.vue'
-import { createClient } from '@supabase/supabase-js'
 import { openExternal } from '../utils/electronhelper'
-import { CheckCircle2, Chrome, Crown, Github, Loader2, LogOut, Mail, RefreshCw } from 'lucide-vue-next'
+import { CheckCircle2, Chrome, Crown, Github, Gift, Loader2, LogOut, Mail, RefreshCw } from 'lucide-vue-next'
 import ServerHttp from '../aliapi/server'
 import os from 'os'
 import { getAppNewPath, getResourcesPath } from '../utils/electronhelper'
@@ -15,10 +14,7 @@ import { modalUpdateLog } from '../utils/modal'
 import fs from 'node:fs'
 import message from '../utils/message'
 import { Sleep } from '../utils/format'
-
-const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
-const BOXPLAYER_SITE_URL = 'https://xbysite.pages.dev'
+import { BOXPLAYER_SITE_URL, fetchBoxPlayerSubscription, getBoxPlayerSupabase } from '../utils/boxplayerAuth'
 
 const platform = window.platform
 const settingStore = useSettingStore()
@@ -67,12 +63,14 @@ const codeSent = ref(false)
 const emailCode = ref('')
 const authEmail = ref('')
 const upgrading = ref(false)
+const redeeming = ref(false)
+const redeemCode = ref('')
 
 const CALLBACK_URL = 'boxplayer-auth://callback'
+const PRICING_URL = `${BOXPLAYER_SITE_URL}/pricing/`
 const PAYMENT_POLL_DELAYS = [0, 2000, 5000, 10000, 20000]
 
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
+const supabase = getBoxPlayerSupabase()
 
 function saveLogin(email: string) {
   localStorage.setItem('app_user_email', email)
@@ -85,12 +83,7 @@ function saveLogin(email: string) {
 async function syncProStatus() {
   if (!isLoggedIn.value || !supabase) return false
   try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (!token) return false
-    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/me/subscription`, { headers: { Authorization: `Bearer ${token}` } })
-    if (!response.ok) return false
-    const subscription = await response.json()
+    const subscription = await fetchBoxPlayerSubscription()
     isPro.value = subscription.isPro === true
     if (isPro.value) {
       localStorage.setItem('app_user_pro', '1')
@@ -98,7 +91,9 @@ async function syncProStatus() {
       localStorage.removeItem('app_user_pro')
     }
     return isPro.value
-  } catch {}
+  } catch (e: any) {
+    message.error(e?.message || '同步专业版状态失败')
+  }
   return false
 }
 
@@ -159,22 +154,53 @@ async function handleEmailVerify() {
 }
 
 async function handleUpgrade() {
-  if (!supabase) { message.error('未配置 Supabase'); return }
   upgrading.value = true
+  try {
+    openExternal(PRICING_URL)
+  } catch (e: any) { message.error(e?.message || '打开官网购买页面失败') }
+  finally { upgrading.value = false }
+}
+
+function getRedeemErrorMessage(code: string): string {
+  const map: Record<string, string> = {
+    invalid_redeem_code: '请输入有效的兑换码',
+    redeem_code_not_found: '兑换码无效',
+    redeem_code_inactive: '兑换码已取消',
+    redeem_code_not_started: '兑换码尚未开始',
+    redeem_code_expired: '兑换码已过期',
+    redeem_code_used: '兑换码已被使用',
+    redeem_code_already_used_by_user: '当前账号已兑换过这个兑换码',
+  }
+  return map[code] || code || '兑换失败'
+}
+
+async function handleRedeemCode() {
+  const code = redeemCode.value.trim()
+  if (!code) { message.warning('请输入兑换码'); return }
+  if (!supabase) { message.error('未配置 Supabase'); return }
+  redeeming.value = true
   try {
     const { data } = await supabase.auth.getSession()
     const token = data.session?.access_token
-    if (!token) { message.warning('请先登录后升级'); return }
-    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/creem/checkout`, {
+    if (!token) { message.warning('请先登录后再兑换'); return }
+    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/redeem/code`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ cycle: 'lifetime', source: 'app' })
+      body: JSON.stringify({ code })
     })
-    const checkout = await response.json()
-    if (!response.ok || !checkout.checkoutUrl) throw new Error(checkout.error || '创建支付订单失败')
-    openExternal(checkout.checkoutUrl)
-  } catch (e: any) { message.error(e?.message || '网络请求失败') }
-  finally { upgrading.value = false }
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok || result.ok === false) throw new Error(result.error || 'redeem_failed')
+    redeemCode.value = ''
+    await syncProStatus()
+    isPro.value = true
+    localStorage.setItem('app_user_pro', '1')
+    const planLabel = result.plan === 'monthly' ? '包月专业版' : result.plan === 'yearly' ? '包年专业版' : '终身专业版'
+    message.success(`兑换成功：${planLabel}`)
+  } catch (e: any) {
+    message.error(getRedeemErrorMessage(e?.message || 'redeem_failed'))
+  } finally {
+    redeeming.value = false
+  }
 }
 
 let authCallbackHandler: ((_e: any, params: { access_token?: string; refresh_token?: string }) => void) | null = null
@@ -310,8 +336,22 @@ const handleImportAsar = () => {
           <button v-if="!isPro" class='setting-upgrade-btn' :disabled='upgrading' @click='handleUpgrade'>
             <Loader2 v-if="upgrading" :size='15' class='spin' />
             <Crown v-else :size='15' />
-            <span>{{ upgrading ? '正在创建订单' : '购买终身专业版 — $139' }}</span>
+            <span>{{ upgrading ? '正在打开官网' : '去官网购买终身专业版' }}</span>
           </button>
+
+          <div class='setting-redeem-box'>
+            <div class='setting-redeem-title'>
+              <Gift :size='14' />
+              <span>兑换码</span>
+            </div>
+            <div class='setting-redeem-form'>
+              <input v-model='redeemCode' type='text' placeholder='输入包月 / 包年 / 终身兑换码' class='sa-input setting-redeem-input' @keydown.enter='handleRedeemCode' />
+              <button class='sa-send-btn setting-redeem-btn' :disabled='redeeming || !redeemCode.trim()' @click='handleRedeemCode'>
+                <Loader2 v-if='redeeming' :size='13' class='spin' />
+                <span v-else>兑换</span>
+              </button>
+            </div>
+          </div>
         </template>
 
         <template v-else>
@@ -666,6 +706,43 @@ const handleImportAsar = () => {
   opacity: 0.65;
 }
 
+.setting-redeem-box {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.setting-redeem-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.setting-redeem-form {
+  display: flex;
+  gap: 8px;
+}
+
+.setting-redeem-input {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.setting-redeem-input::placeholder {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.setting-redeem-btn {
+  min-width: 72px;
+}
+
 .setting-provider-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -779,6 +856,10 @@ const handleImportAsar = () => {
   }
 
   .setting-email-form {
+    flex-direction: column;
+  }
+
+  .setting-redeem-form {
     flex-direction: column;
   }
 

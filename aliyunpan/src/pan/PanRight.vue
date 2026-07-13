@@ -41,7 +41,9 @@ import {
   modalDaoRuShareLink,
   modalPassword,
   modalRename,
-  modalUpload
+  modalSelectPanDir,
+  modalUpload,
+  modalCloud123OfflineDownload
 } from '../utils/modal'
 import { PanFileState } from './panfilestore'
 import PanTopbtn from './menus/PanTopbtn.vue'
@@ -55,8 +57,10 @@ import { menuOpenFile } from '../utils/openfile'
 import { throttle } from '../utils/debounce'
 import { TestButton } from '../utils/mosehelper'
 import usePanTreeStore from './pantreestore'
-import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User } from '../aliapi/utils'
+import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User, isGuangyaUser, isPikPakUser } from '../aliapi/utils'
 import { xorWith } from 'lodash'
+import { flattenDriveToolFolders, moveDriveToolFiles, type OrganizeFileItem } from '../utils/drive-tools/organize'
+import { buildMediaOrganizePlan, executeMediaOrganizePlan, mapMediaOrganizeFiles } from '../utils/drive-tools/mediaOrganize'
 
 
 const viewlist = ref()
@@ -84,6 +88,123 @@ const settingStore = useSettingStore()
 const winStore = useWinStore()
 const panfileStore = usePanFileStore()
 const panTreeStore = usePanTreeStore()
+
+const isOfflineDownloadSupported = computed(() => {
+  if (panfileStore.SelectDirType !== 'pan') return false
+  const user = panTreeStore.user_id || ''
+  const drive = panTreeStore.drive_id || panfileStore.DriveID
+  return isCloud123User(user) || isPikPakUser(user) || isGuangyaUser(user) || isDrive115User(user)
+    || ['cloud123', 'pikpak', 'guangya', 'drive115'].includes(drive)
+})
+
+const handleOfflineDownload = () => {
+  if (!isOfflineDownloadSupported.value) return
+  const isRoot = !panfileStore.DirID || panfileStore.DirID.includes('root')
+  const isDrive115 = isDrive115User(panTreeStore.user_id || '') || (panTreeStore.drive_id || panfileStore.DriveID) === 'drive115'
+  modalCloud123OfflineDownload({
+    dirId: isRoot ? (isDrive115 ? '0' : '') : panfileStore.DirID,
+    dirName: isRoot ? (isDrive115 ? '根目录' : '默认（来自:离线下载）') : panfileStore.DirName
+  })
+}
+
+const getSelectedOrganizeFiles = (): OrganizeFileItem[] => {
+  const userId = panTreeStore.user_id || ''
+  return panfileStore.GetSelected().map((file: any) => ({ userId, driveId: file.drive_id || panfileStore.DriveID, fileId: file.file_id, name: file.name || file.file_name }))
+}
+
+const allSelectedInCurrentDrive = (files: OrganizeFileItem[]) => files.every(file => file.driveId === panfileStore.DriveID)
+
+const handleMoveOrganizeToParent = async () => {
+  const files = getSelectedOrganizeFiles()
+  const parentId = panTreeStore.selectDir?.parent_file_id || ''
+  if (!files.length) {
+    message.warning('请先选中文件或文件夹')
+    return
+  }
+  if (!parentId) {
+    message.warning('当前目录没有可用的上级目录')
+    return
+  }
+  if (!allSelectedInCurrentDrive(files)) {
+    message.warning('当前仅支持整理当前网盘内的项目')
+    return
+  }
+  if (!window.confirm(`把选中的 ${files.length} 项整体上移一层，是否继续？`)) return
+  const result = await moveDriveToolFiles(files, parentId, panfileStore.DriveID)
+  if (result.failed) message.warning(result.report)
+  else message.success(result.report)
+  await PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+}
+
+const handleMoveOrganizeFlatten = async () => {
+  const files = getSelectedOrganizeFiles()
+  const currentDirId = panfileStore.DirID || ''
+  if (!files.length) {
+    message.warning('请先选中文件夹')
+    return
+  }
+  if (!currentDirId) {
+    message.warning('无法识别当前目录')
+    return
+  }
+  if (!allSelectedInCurrentDrive(files)) {
+    message.warning('当前仅支持整理当前网盘内的项目')
+    return
+  }
+  if (!window.confirm('把选中文件夹里的直接内容移动到当前目录，是否继续？')) return
+  const result = await flattenDriveToolFolders(files, currentDirId, panfileStore.DriveID)
+  if (result.failed) message.warning(result.report)
+  else message.success(result.report)
+  await PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+}
+
+const handleMoveOrganizeToSelectedDir = () => {
+  const files = getSelectedOrganizeFiles()
+  if (!files.length) {
+    message.warning('请先选中文件或文件夹')
+    return
+  }
+  modalSelectPanDir('cut', panfileStore.DirID || '', async (_userId: string, driveId: string, selectFile: any) => {
+    if (files.some(file => file.driveId !== driveId)) {
+      message.warning('当前仅支持在同一个网盘内移动整理')
+      return
+    }
+    if (!window.confirm(`把选中的 ${files.length} 项移动到「${selectFile.name}」，是否继续？`)) return
+    const result = await moveDriveToolFiles(files, selectFile.file_id, driveId)
+    if (result.failed) message.warning(result.report)
+    else message.success(result.report)
+    await PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+  })
+}
+
+const handleMediaOrganize = async () => {
+  const userId = panTreeStore.user_id || ''
+  const rootId = panfileStore.DirID || ''
+  const files = panfileStore.GetSelected()
+  if (!files.length) {
+    message.warning('请先选中媒体文件或文件夹')
+    return
+  }
+  if (!rootId || !userId) {
+    message.warning('无法识别当前整理目录')
+    return
+  }
+  const plans = buildMediaOrganizePlan(mapMediaOrganizeFiles(files, userId), rootId)
+  if (!plans.every(plan => plan.driveId === panfileStore.DriveID)) {
+    message.warning('当前仅支持整理当前网盘内的媒体项目')
+    return
+  }
+  if (!plans.length) {
+    message.warning('没有识别到可整理的媒体文件或文件夹')
+    return
+  }
+  const preview = plans.slice(0, 8).map(item => `${item.name} → ${item.targetPath}`).join('\n')
+  if (!window.confirm(`准备整理 ${plans.length} 项到当前目录：\n${preview}${plans.length > 8 ? '\n...' : ''}\n是否继续？`)) return
+  const result = await executeMediaOrganizePlan(plans, rootId)
+  if (result.failed) message.warning(result.report)
+  else message.success(result.report)
+  await PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+}
 
 let dirID = ''
 let DriveID = panfileStore.DriveID
@@ -634,6 +755,35 @@ const onPanDragEnd = (ev: any) => {
           <IconFont name="icondingwei" />
         </template>
       </a-button>
+      <a-button v-if='isOfflineDownloadSupported' type='text' size='small' tabindex='-1' title='云下载'
+                @click='handleOfflineDownload'>
+        <template #icon>
+          <IconFont name="iconcloud-download" />
+        </template>
+        云下载
+      </a-button>
+      <a-dropdown v-if="panfileStore.SelectDirType === 'pan' && panfileStore.IsListSelected" trigger="click">
+        <a-button type='text' size='small' tabindex='-1' title='整理选中项'>
+          <template #icon>
+            <IconFont name="iconmoveto" />
+          </template>
+          整理
+        </a-button>
+        <template #content>
+          <a-doption @click="handleMoveOrganizeToParent">
+            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" /></span>整体上移一层
+          </a-doption>
+          <a-doption @click="handleMoveOrganizeFlatten">
+            <span class="arco-dropdown-option-icon"><IconFont name="iconfile-folder" /></span>拆开到当前目录
+          </a-doption>
+          <a-doption @click="handleMoveOrganizeToSelectedDir">
+            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" /></span>选择目录并移动
+          </a-doption>
+          <a-doption @click="handleMediaOrganize">
+            <span class="arco-dropdown-option-icon"><IconFont name="iconscan" /></span>媒体整理
+          </a-doption>
+        </template>
+      </a-dropdown>
     </div>
     <div v-show="!panfileStore.IsListSelected && panfileStore.SelectDirType.includes('pic')" class='toppanbtn'>
       <a-select v-model:model-value='inputpicType' size='small' tabindex='-1'

@@ -1,6 +1,6 @@
 import { request as httpsRequest } from 'https'
 
-const PANHUB_ALLOWED_ORIGINS = ['https://api.xbyvideohub.com']
+const PANHUB_ALLOWED_ORIGINS = ['https://boxplayer-api-673444103572.europe-west1.run.app']
 
 export interface PanHubRequestData {
   url: string

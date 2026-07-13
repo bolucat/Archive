@@ -54,27 +54,27 @@ export const apiBoxRename = async (user_id: string, fileId: string, name: string
 }
 
 export const apiBoxMoveBatch = async (user_id: string, fileIdList: string[], parentId: string, isFolder = false): Promise<string[]> => {
-  const errors: string[] = []
+  const success: string[] = []
   for (const fileId of fileIdList) {
     const data = await boxApiRequest<any>(user_id, `/${isFolder ? 'folders' : 'files'}/${encodeURIComponent(fileId)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildBoxMoveBody(parentId))
     }, '移动 Box 文件失败')
-    if (!data) errors.push(fileId)
+    if (data) success.push(fileId)
   }
-  return errors
+  return success
 }
 
 export const apiBoxCopyBatch = async (user_id: string, fileIdList: string[], parentId: string, isFolder = false): Promise<string[]> => {
-  const errors: string[] = []
+  const success: string[] = []
   for (const fileId of fileIdList) {
     const data = await boxApiRequest<any>(user_id, `/${isFolder ? 'folders' : 'files'}/${encodeURIComponent(fileId)}/copy`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(buildBoxCopyBody(parentId))
     }, '复制 Box 文件失败')
-    if (!data) errors.push(fileId)
+    if (data) success.push(fileId)
   }
-  return errors
+  return success
 }

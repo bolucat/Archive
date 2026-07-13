@@ -31,6 +31,7 @@ type AnyTLSOption struct {
 	ALPN                     []string   `proxy:"alpn,omitempty"`
 	SNI                      string     `proxy:"sni,omitempty"`
 	ECHOpts                  ECHOptions `proxy:"ech-opts,omitempty"`
+	JLSOpts                  JLSOptions `proxy:"jls-opts,omitempty"`
 	ClientFingerprint        string     `proxy:"client-fingerprint,omitempty"`
 	SkipCertVerify           bool       `proxy:"skip-cert-verify,omitempty"`
 	NameCertVerify           string     `proxy:"name-cert-verify,omitempty"`
@@ -116,6 +117,10 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 	if err != nil {
 		return nil, err
 	}
+	jlsConfig, err := option.JLSOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
 	tlsConfig := &vmess.TLSConfig{
 		Host:              option.SNI,
 		SkipCertVerify:    option.SkipCertVerify,
@@ -126,6 +131,7 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 		PrivateKey:        option.PrivateKey,
 		ClientFingerprint: option.ClientFingerprint,
 		ECH:               echConfig,
+		JLS:               jlsConfig,
 	}
 	if tlsConfig.Host == "" {
 		tlsConfig.Host = option.Server

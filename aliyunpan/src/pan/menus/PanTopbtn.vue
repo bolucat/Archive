@@ -12,7 +12,7 @@ import AliShare from '../../aliapi/share'
 import { usePanTreeStore, usePanFileStore } from '../../store'
 import message from '../../utils/message'
 import PanDAL from '../pandal'
-import { isAliyunUser, isBoxUser, isCloud123User, isDropboxUser, isOneDriveUser, isQuarkUser } from '../../aliapi/utils'
+import { isAliyunUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser, isQuarkUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
 
 const props = defineProps({
@@ -42,9 +42,10 @@ const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeSt
 const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
 const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
+const isGuangya = computed(() => isGuangyaUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'guangya')
 const isQuark = computed(() => isQuarkUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'quark')
-const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value)
-const isShareImportSupported = computed(() => isAliyunUser(panTreeStore.user_id || '') || isQuark.value || isCloud123User(panTreeStore.user_id || ''))
+const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
+const isShareImportSupported = computed(() => isAliyunUser(panTreeStore.user_id || '') || isQuark.value || isCloud123User(panTreeStore.user_id || '') || isGuangya.value)
 
 const isShowBtn = computed(() => {
   return (props.dirtype === 'pic' && props.inputpicType != 'mypic')

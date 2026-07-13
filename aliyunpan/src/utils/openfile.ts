@@ -12,7 +12,7 @@ import message from './message'
 import { modalArchive, modalArchivePassword, modalSelectPanDir, modalSelectVideoQuality } from './modal'
 import PlayerUtils from './playerhelper'
 import { getEncType, getProxyUrl, getRawUrl } from './proxyhelper'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
 
 async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo | undefined> {
   const explicitUserId = (file as any).user_id as string | undefined
@@ -31,7 +31,10 @@ async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo |
     || (driveId === 'dropbox' && isDropboxUser(currentToken))
     || (driveId === 'onedrive' && isOneDriveUser(currentToken))
     || (driveId === 'box' && isBoxUser(currentToken))
-    || (!['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box'].includes(driveId) && isAliyunUser(currentToken))
+    || (driveId === 'guangya' && isGuangyaUser(currentToken))
+    || (driveId === 'cloud139' && isCloud139User(currentToken))
+    || (driveId === 'cloud189' && isCloud189User(currentToken))
+    || (!['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'guangya', 'cloud139', 'cloud189'].includes(driveId) && isAliyunUser(currentToken))
   )
   if (matchesCurrent && currentToken?.access_token) return currentToken
 
@@ -44,14 +47,49 @@ async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo |
     || (driveId === 'dropbox' && isDropboxUser(token))
     || (driveId === 'onedrive' && isOneDriveUser(token))
     || (driveId === 'box' && isBoxUser(token))
-    || (!['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box'].includes(driveId) && isAliyunUser(token))
+    || (driveId === 'guangya' && isGuangyaUser(token))
+    || (driveId === 'cloud139' && isCloud139User(token))
+    || (driveId === 'cloud189' && isCloud189User(token))
+    || (!['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'guangya', 'cloud139', 'cloud189'].includes(driveId) && isAliyunUser(token))
   ))
   if (!matched?.user_id) return currentToken || undefined
   return await UserDAL.GetUserTokenFromDB(matched.user_id) || undefined
 }
 
+const videoPlaylistExtensions = new Set(['3gp', 'avi', 'flv', 'm2ts', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'webm', 'wmv'])
+
+function buildSiblingVideoPlaylist(file: IAliGetFileModel, provided?: IPageVideoPlaylistEntry[]): IPageVideoPlaylistEntry[] {
+  if (provided && provided.length > 0) return provided
+  const rawItems = usePanFileStore().ListDataRaw || []
+  const visibleItems = rawItems.filter((item: any) => !item.isDir)
+  const sameDirectory = visibleItems.filter((item: any) => item.parent_file_id === file.parent_file_id)
+  const candidates = (sameDirectory.length > 1 ? sameDirectory : visibleItems).filter((item: any) => {
+    const name = String(item.name || item.file_name || item.html || '')
+    const extension = name.includes('.')
+      ? name.slice(name.lastIndexOf('.') + 1).toLowerCase()
+      : String(item.ext || '').replace(/^\./, '').toLowerCase()
+    return videoPlaylistExtensions.has(extension)
+  })
+  if (!candidates.some((item: any) => item.file_id === file.file_id)) candidates.push(file)
+  if (candidates.length <= 1) return []
+  return candidates
+    .sort((left: any, right: any) => String(left.name || left.file_name || '').localeCompare(String(right.name || right.file_name || ''), undefined, { numeric: true, sensitivity: 'base' }))
+    .map((item: any): IPageVideoPlaylistEntry => ({
+      user_id: item.user_id || (file as any).user_id || '',
+      drive_id: item.drive_id || file.drive_id,
+      file_id: item.file_id,
+      parent_file_id: item.parent_file_id || file.parent_file_id,
+      file_name: item.name || item.file_name || item.html,
+      html: item.name || item.file_name || item.html,
+      ext: item.ext,
+      description: item.description,
+      play_cursor: item.play_cursor,
+      password: item.file_id === file.file_id ? undefined : ''
+    }))
+}
+
 const TEXT_PREVIEW_EXTS = new Set(['txt', 'text', 'log', 'csv', 'tsv', 'nfo', 'srt', 'vtt', 'ass', 'ssa'])
-const PDF_PREVIEW_DRIVES = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box'])
+const PDF_PREVIEW_DRIVES = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'guangya', 'cloud139', 'cloud189'])
 const EPUB_PREVIEW_DRIVES = PDF_PREVIEW_DRIVES
 const DOCX_PREVIEW_DRIVES = PDF_PREVIEW_DRIVES
 const OFFICE_TO_PDF_DRIVES = PDF_PREVIEW_DRIVES
@@ -144,9 +182,10 @@ export async function menuOpenFile(
     // 选择字幕
     let subTitleFile: any
     const { uiVideoPlayer, uiVideoSubtitleMode } = useSettingStore()
+    const useMacEmbeddedMpv = uiVideoPlayer === 'mpv' && window.platform === 'darwin'
     const listDataRaw: IAliGetFileModel[] = usePanFileStore().ListDataRaw || []
     const subTitlesList: IAliGetFileModel[] = listDataRaw.filter((file) => /srt|vtt|ass/.test(file.ext))
-    if (uiVideoPlayer === 'other') {
+    if (uiVideoPlayer !== 'web' && !useMacEmbeddedMpv) {
       if (uiVideoSubtitleMode === 'auto') {
         subTitleFile = PlayerUtils.filterSubtitleFile(file.name, subTitlesList)
       } else if (uiVideoSubtitleMode === 'select') {
@@ -252,10 +291,15 @@ async function Video(
     uiVideoPlayer,
     uiVideoPlayerPath
   } = useSettingStore()
+  if (uiVideoPlayer === 'mpv' && window.platform !== 'darwin') {
+    useSettingStore().updateStore({ uiVideoPlayer: 'other' })
+    message.error('内置 MPV 仅支持 macOS，请在设置中选择“自定义播放软件”并指定播放器路径。')
+    return
+  }
   if (uiAutoColorVideo && !isPikPakUser(token) && !isDropboxUser(token) && !isOneDriveUser(token) && !isBoxUser(token) && file.drive_id !== 'pikpak' && file.drive_id !== 'dropbox' && file.drive_id !== 'onedrive' && file.drive_id !== 'box' && (!desc || !desc.includes('ce74c3c'))) {
     AliFileCmd.ApiFileColorBatch(token.user_id, file.drive_id, file.description, 'ce74c3c', [file.file_id])
   }
-  if (uiVideoPlayer == 'web') {
+  if (uiVideoPlayer == 'web' || (uiVideoPlayer === 'mpv' && window.platform === 'darwin')) {
     let play_cursor = 0
     let playCursorInfo = await PlayerUtils.getPlayCursor(token.user_id, file.drive_id, file.file_id)
     if (playCursorInfo) {
@@ -282,7 +326,7 @@ async function Video(
       encType: getEncType(playCursorInfo?.info || ''),
       play_cursor: play_cursor,
       custom_playlist_label: options?.customPlaylistLabel || '',
-      custom_playlist: options?.customPlaylist || []
+      custom_playlist: buildSiblingVideoPlaylist(file, options?.customPlaylist)
     }
     window.WebOpenWindow({ page: 'PageVideo', data: pageVideo, theme: 'dark' })
     return
@@ -292,6 +336,10 @@ async function Video(
   const isMacOrLinux = ['darwin', 'linux'].includes(window.platform)
   if (!isWindows && !isMacOrLinux) {
     message.error('不支持的系统，操作取消')
+    return
+  }
+  if (uiVideoPlayer === 'other' && !uiVideoPlayerPath.trim()) {
+    message.error('请先在设置中选择或填写自定义播放器')
     return
   }
   let rawData: any = undefined

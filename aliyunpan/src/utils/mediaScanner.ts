@@ -15,7 +15,8 @@ import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
 import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory, type WebDavConnectionConfig } from './webdavClient'
 import UserDAL from '../user/userdal'
 
@@ -23,6 +24,7 @@ type ScanContext = {
   userId: string
   driveId: string
   driveServerId: string
+  silent?: boolean
 }
 
 export class MediaScanner {
@@ -69,6 +71,7 @@ export class MediaScanner {
     }
 
     const scanContext = await this.resolveScanContext(folder, driveServerId)
+    scanContext.silent = !!options.silent
     folder.drive_id = scanContext.driveId
     ;(folder as any).user_id = scanContext.userId
 
@@ -91,9 +94,10 @@ export class MediaScanner {
 
     try {
       console.log('开始扫描网盘文件夹:', folder.name)
+      const shouldRunAIScrape = Boolean(options.aiScrape && await this.canRunInternalAIScrape())
 
       // Phase 1: 边遍历边 TMDB 匹配（跳过 AI 兜底）
-      const { unmatched: unmatchedFiles, totalFound } = await this.scrapeFolderRecursive(folder, scanContext, folderKey, existingIds, options.incremental,
+      const { unmatched: unmatchedFiles, totalFound } = await this.scrapeFolderRecursive(folder, scanContext, folderKey, existingIds, options.incremental, shouldRunAIScrape,
         ({ processed }) => {
           totalProcessed += processed
           this.mediaStore.setScanProgress(totalProcessed, Math.max(1, totalFound || totalProcessed))
@@ -101,8 +105,8 @@ export class MediaScanner {
       )
 
       // Phase 2: 仅 AI 刮削模式才把 TMDB 未匹配文件交给 AI 判断。
-      if (options.aiScrape && unmatchedFiles.length > 0 && !this.shouldStop) {
-        const aiSaved = await this.applyBatchAIScrapeResults(unmatchedFiles, folder.name)
+      if (shouldRunAIScrape && unmatchedFiles.length > 0 && !this.shouldStop) {
+        const aiSaved = await this.applyBatchAIScrapeResults(unmatchedFiles, folder.name, folderKey)
         totalProcessed += aiSaved
         if (aiSaved > 0) console.log(`🤖 AI 兜底成功: ${aiSaved}/${unmatchedFiles.length}`)
       }
@@ -145,6 +149,7 @@ export class MediaScanner {
     folderKey: string,
     existingIds: Set<string>,
     incremental: boolean | undefined,
+    deferUnmatchedForAI: boolean,
     onProgress: (stats: { processed: number }) => void,
     depth = 0
   ): Promise<{ unmatched: DriveFileItem[]; totalFound: number }> {
@@ -201,7 +206,8 @@ export class MediaScanner {
           )
           for (const r of results) {
             if (r.status === 'fulfilled' && r.value) {
-              unmatchedFiles.push(r.value)
+              if (deferUnmatchedForAI) unmatchedFiles.push(r.value)
+              else this.addUnmatchedMediaItem(r.value, folder.name, folderKey)
             }
           }
           onProgress({ processed: batch.length })
@@ -212,7 +218,7 @@ export class MediaScanner {
       for (const sub of subFolders) {
         if (this.shouldStop) break
         const subResult = await this.scrapeFolderRecursive(
-          sub, scanContext, folderKey, existingIds, incremental, onProgress, depth + 1
+          sub, scanContext, folderKey, existingIds, incremental, deferUnmatchedForAI, onProgress, depth + 1
         )
         unmatchedFiles.push(...subResult.unmatched)
         totalFound += subResult.totalFound
@@ -442,7 +448,7 @@ export class MediaScanner {
     }
 
     if (isDrive115User(userId) || driveId === 'drive115') {
-      const list = await apiDrive115FileList(userId, folder.file_id, 200, 0, true)
+      const list = await apiDrive115FileList(userId, folder.file_id, 200, 0, true, { silent: !!scanContext.silent })
       return list.map((item) => this.withScanUser(mapDrive115FileToAliModel(item, driveId), userId, driveId))
     }
 
@@ -486,6 +492,11 @@ export class MediaScanner {
       const parentId = folder.file_id || 'cloud189_root'
       const list = await apiCloud189FileList(userId, parentId, 1000)
       return list.map((item) => this.withScanUser(mapCloud189FileToAliModel(item, driveId, parentId), userId, driveId))
+    }
+    if (isGuangyaUser(userId) || driveId === 'guangya') {
+      const parentId = folder.file_id || 'guangya_root'
+      const list = await apiGuangyaFileList(userId, parentId, 200)
+      return list.map((item) => this.withScanUser(mapGuangyaFileToAliModel(item, driveId, parentId), userId, driveId))
     }
     if (!isAliyunUser(userId)) {
       console.warn('[MediaScanner] skip Aliyun file list for non-Aliyun source', {
@@ -542,7 +553,8 @@ export class MediaScanner {
     if (driveId === 'quark' && isQuarkUser(userId)) return userId
     if (driveId === 'cloud139' && isCloud139User(userId)) return userId
     if (driveId === 'cloud189' && isCloud189User(userId)) return userId
-    if (driveId !== 'cloud123' && driveId !== 'drive115' && driveId !== 'baidu' && driveId !== 'pikpak' && driveId !== 'dropbox' && driveId !== 'onedrive' && driveId !== 'box' && driveId !== 'quark' && driveId !== 'cloud139' && driveId !== 'cloud189') return userId
+    if (driveId === 'guangya' && isGuangyaUser(userId)) return userId
+    if (driveId !== 'cloud123' && driveId !== 'drive115' && driveId !== 'baidu' && driveId !== 'pikpak' && driveId !== 'dropbox' && driveId !== 'onedrive' && driveId !== 'box' && driveId !== 'quark' && driveId !== 'cloud139' && driveId !== 'cloud189' && driveId !== 'guangya') return userId
     return ''
   }
 
@@ -559,6 +571,7 @@ export class MediaScanner {
       if (driveId === 'quark') return isQuarkUser(token)
       if (driveId === 'cloud139') return isCloud139User(token)
       if (driveId === 'cloud189') return isCloud189User(token)
+      if (driveId === 'guangya') return isGuangyaUser(token)
       return token.default_drive_id === driveId
         || token.resource_drive_id === driveId
         || token.backup_drive_id === driveId
@@ -579,6 +592,7 @@ export class MediaScanner {
     if (isQuarkUser(userId) || driveId === 'quark') return 'quark'
     if (isCloud139User(userId) || driveId === 'cloud139') return 'cloud139'
     if (isCloud189User(userId) || driveId === 'cloud189') return 'cloud189'
+    if (isGuangyaUser(userId) || driveId === 'guangya') return 'guangya'
     return fallback
   }
 
@@ -823,6 +837,21 @@ export class MediaScanner {
       console.error(`处理文件失败: ${file.name}`, error)
       return file
     }
+  }
+
+  private addUnmatchedMediaItem(file: DriveFileItem, folderName: string, folderId?: string): void {
+    this.mediaStore.addMediaItem({
+      id: `${file.id}`,
+      parentId: folderName,
+      folderId: folderId || `${file.driveId}`,
+      folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
+      type: 'unmatched',
+      name: file.name.replace(/\.[^/.]+$/, '') || file.name,
+      posterUrl: file.thumbnailLink || undefined,
+      genres: [],
+      driveFiles: [file],
+      addedAt: new Date()
+    })
   }
 
   // 构建电视剧 MediaLibraryItem（从 processVideoFileWithoutAI 抽取）
@@ -1099,21 +1128,16 @@ export class MediaScanner {
       return 0
     }
 
-    const { canUseMediaAIScrape } = await import('./mediaAIScrape')
-    const { resolveAIProviderConfig } = await import('./bookAI')
-    const cfg = resolveAIProviderConfig()
-    const isBYOK = !!cfg && cfg.providerName !== 'boxplayer-cloud'
-    const gate = canUseMediaAIScrape({ manual: true, isBYOK })
-    if (!gate.allowed) {
-      message.warning(gate.message || 'AI 影视刮削不可用')
-      return 0
-    }
-
-    await this.scanFolder(folder, driveServerId, { aiScrape: true })
+    await this.scanFolder(folder, driveServerId, { aiScrape: await this.canRunInternalAIScrape() })
     return 0
   }
 
-  private async applyBatchAIScrapeResults(unmatchedFiles: DriveFileItem[], folderName: string): Promise<number> {
+  private async canRunInternalAIScrape(): Promise<boolean> {
+    const [{ resolveAIProviderConfig }, { isPro }] = await Promise.all([import('./bookAI'), import('./usageLimit')])
+    return isPro() && resolveAIProviderConfig()?.providerName === 'boxplayer-cloud'
+  }
+
+  private async applyBatchAIScrapeResults(unmatchedFiles: DriveFileItem[], folderName: string, folderId: string): Promise<number> {
     const { batchScrapeMediaWithAI } = await import('./mediaAIScrape')
 
     if (!unmatchedFiles.length) {
@@ -1134,7 +1158,7 @@ export class MediaScanner {
           this.mediaStore.addMediaItem(r.mediaItem)
         }
         saved++
-      }
+      } else if (r.file.driveFile) this.addUnmatchedMediaItem(r.file.driveFile, folderName, folderId)
     }
 
     if (saved > 0) {

@@ -83,7 +83,7 @@ const handleLogin = () => {
   useUserStore().userShowLogin = true
 }
 
-const activeProvider = ref<'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'dropbox' | 'onedrive' | 'box'>('aliyun')
+const activeProvider = ref<'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'guangya' | 'dropbox' | 'onedrive' | 'box'>('aliyun')
 const userListState = ref<ITokenInfo[]>([])
 
 const refreshUserList = async () => {
@@ -107,6 +107,11 @@ const handleBaiduLogin = () => {
 
 const handlePikPakLogin = () => {
   localStorage.setItem('login_provider', 'pikpak')
+  useUserStore().userShowLogin = true
+}
+
+const handleGuangyaLogin = () => {
+  localStorage.setItem('login_provider', 'guangya')
   useUserStore().userShowLogin = true
 }
 
@@ -326,6 +331,7 @@ watch(
           <a-tab-pane key='115' title='115网盘' />
           <a-tab-pane key='baidu' title='百度网盘' />
           <a-tab-pane key='pikpak' title='PikPak' />
+          <a-tab-pane key='guangya' title='光鸭云盘' />
           <a-tab-pane key='dropbox' title='Dropbox' />
           <a-tab-pane key='onedrive' title='OneDrive' />
           <a-tab-pane key='box' title='Box' />
@@ -395,6 +401,16 @@ watch(
             @click='handlePikPakLogin()'
           >
             登录 PikPak
+          </a-button>
+          <a-button
+            v-else-if="activeProvider === 'guangya'"
+            type='outline'
+            size='small'
+            tabindex='-1'
+            style='margin: 0 0 8px 0'
+            @click='handleGuangyaLogin()'
+          >
+            登录 光鸭云盘
           </a-button>
           <a-button
             v-else-if="activeProvider === 'dropbox'"

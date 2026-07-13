@@ -1,13 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
-import { Github, Chrome, Mail, Loader2, LogOut, X } from 'lucide-vue-next'
-import { createClient } from '@supabase/supabase-js'
+import { Github, Chrome, Mail, Loader2, LogOut, X, Gift } from 'lucide-vue-next'
 import message from '../utils/message'
 import { openExternal } from '../utils/electronhelper'
-
-const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
-const BOXPLAYER_SITE_URL = 'https://xbysite.pages.dev'
+import { BOXPLAYER_SITE_URL, fetchBoxPlayerSubscription, getBoxPlayerSupabase } from '../utils/boxplayerAuth'
 
 const loading = ref(false)
 const emailInput = ref('')
@@ -23,13 +19,14 @@ try {
   isPro.value = localStorage.getItem('app_user_pro') === '1'
 } catch {}
 const upgrading = ref(false)
+const redeeming = ref(false)
+const redeemCode = ref('')
 const showUpgradeModal = ref(false)
 
 const CALLBACK_URL = 'boxplayer-auth://callback'
+const PRICING_URL = `${BOXPLAYER_SITE_URL}/pricing/`
 
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY
-  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-  : null
+const supabase = getBoxPlayerSupabase()
 
 function saveLogin(email: string) {
   localStorage.setItem('app_user_email', email)
@@ -90,49 +87,69 @@ async function handleEmailVerify() {
 }
 
 async function handleUpgrade() {
-  if (!supabase) { message.error('未配置 Supabase'); return }
   upgrading.value = true
+  try {
+    openExternal(PRICING_URL)
+  } catch (e: any) { message.error(e?.message || '打开官网购买页面失败') }
+  finally { upgrading.value = false }
+}
+
+function getRedeemErrorMessage(code: string): string {
+  const map: Record<string, string> = {
+    invalid_redeem_code: '请输入有效的兑换码',
+    redeem_code_not_found: '兑换码无效',
+    redeem_code_inactive: '兑换码已取消',
+    redeem_code_not_started: '兑换码尚未开始',
+    redeem_code_expired: '兑换码已过期',
+    redeem_code_used: '兑换码已被使用',
+    redeem_code_already_used_by_user: '当前账号已兑换过这个兑换码',
+  }
+  return map[code] || code || '兑换失败'
+}
+
+async function handleRedeemCode() {
+  const code = redeemCode.value.trim()
+  if (!code) { message.warning('请输入兑换码'); return }
+  if (!supabase) { message.error('未配置 Supabase'); return }
+  redeeming.value = true
   try {
     const { data: sessionData, error } = await supabase.auth.getSession()
     if (error) throw error
     const token = sessionData.session?.access_token
     if (!token) {
-      message.info('请先登录后再购买')
+      message.info('请先登录后再兑换')
       return
     }
-    const resp = await fetch(`${BOXPLAYER_SITE_URL}/api/creem/checkout`, {
+    const resp = await fetch(`${BOXPLAYER_SITE_URL}/api/redeem/code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        cycle: 'lifetime',
-        source: 'app',
-      }),
+      body: JSON.stringify({ code }),
     })
-    const data = await resp.json()
-    if (data.checkoutUrl) {
-      openExternal(data.checkoutUrl)
-    } else {
-      message.error(data.error || data.message || '创建支付链接失败')
-    }
-  } catch (e: any) { message.error(e?.message || '网络请求失败') }
-  finally { upgrading.value = false }
+    const data = await resp.json().catch(() => ({}))
+    if (!resp.ok || data.ok === false) throw new Error(data.error || 'redeem_failed')
+    redeemCode.value = ''
+    await refreshSubscription()
+    isPro.value = true
+    localStorage.setItem('app_user_pro', '1')
+    const planLabel = data.plan === 'monthly' ? '包月专业版' : data.plan === 'yearly' ? '包年专业版' : '终身专业版'
+    message.success(`兑换成功：${planLabel}`)
+  } catch (e: any) {
+    message.error(getRedeemErrorMessage(e?.message || 'redeem_failed'))
+  } finally {
+    redeeming.value = false
+  }
 }
 
 async function refreshSubscription() {
   if (!supabase || !isLoggedIn.value) return
   try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (!token) return
-    const resp = await fetch(`${BOXPLAYER_SITE_URL}/api/me/subscription`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-    if (!resp.ok) return
-    const sub = await resp.json()
+    const sub = await fetchBoxPlayerSubscription()
     isPro.value = Boolean(sub.isPro)
     if (isPro.value) localStorage.setItem('app_user_pro', '1')
     else localStorage.removeItem('app_user_pro')
-  } catch {}
+  } catch (e: any) {
+    message.error(e?.message || '同步专业版状态失败')
+  }
 }
 
 function setupPaymentCallback() {
@@ -213,6 +230,20 @@ onMounted(() => {
           <span class='acc-version-badge' :class="{ pro: isPro }">{{ isPro ? '专业版 PRO' : '开源版' }}</span>
           <button v-if="!isPro" class='acc-upgrade-btn' @click="showUpgradeModal = true">升级到专业版</button>
         </div>
+
+        <div v-if="isLoggedIn" class='acc-redeem'>
+          <div class='acc-redeem-head'>
+            <Gift :size="14" />
+            <span>兑换码</span>
+          </div>
+          <div class='acc-redeem-form'>
+            <input v-model="redeemCode" type="text" placeholder="输入包月 / 包年 / 终身兑换码" class='acc-input acc-redeem-input' @keydown.enter="handleRedeemCode" />
+            <button :disabled="redeeming || !redeemCode.trim()" @click="handleRedeemCode" class='acc-send-btn acc-redeem-btn'>
+              <Loader2 v-if="redeeming" :size="13" class="spin" />
+              <span v-else>兑换</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -251,10 +282,10 @@ onMounted(() => {
         </div>
 
         <button v-if="isLoggedIn" class="upg-btn" :disabled="upgrading" @click="handleUpgrade">
-          <Loader2 v-if="upgrading" :size="14" class="spin" /> <span v-else>升级到专业版 — $139</span>
+          <Loader2 v-if="upgrading" :size="14" class="spin" /> <span v-else>去官网购买终身专业版</span>
         </button>
-        <button v-else class="upg-btn upg-btn-login" @click="message.info('请先使用上方 GitHub / Google / 邮箱登录后再购买'); showUpgradeModal = false">
-          登录后购买
+        <button v-else class="upg-btn upg-btn-login" @click="handleUpgrade">
+          去官网购买
         </button>
       </div>
     </div>
@@ -302,6 +333,14 @@ onMounted(() => {
 .acc-version-badge.pro { color: #b45309; background: rgba(245,158,11,.15); border-color: rgba(245,158,11,.3); }
 .acc-upgrade-btn { margin-left: auto; padding: 6px 14px; font-size: 12px; font-weight: 700; color: #fff; background: linear-gradient(135deg,#f59e0b,#eab308); border:0; border-radius:7px; cursor:pointer; font-family:inherit; }
 .acc-upgrade-btn:hover { opacity:.9; }
+
+/* ── redeem ── */
+.acc-redeem { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border); }
+.acc-redeem-head { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; color: var(--color-text-2); font-size: 12px; font-weight: 700; }
+.acc-redeem-form { display: flex; gap: 8px; }
+.acc-redeem-input { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.acc-redeem-input::placeholder { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.acc-redeem-btn { min-width: 72px; justify-content: center; }
 
 /* ── upgrade modal ── */
 .upg-mask{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:2000}

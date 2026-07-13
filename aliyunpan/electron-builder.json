@@ -40,7 +40,7 @@
       { "target": "dmg", "arch": [ "x64", "arm64" ] },
       { "target": "zip", "arch": [ "x64", "arm64" ] }
     ],
-    "notarize": false
+    "notarize": true
   },
   "linux": {
     "executableName": "boxplayer",
@@ -69,10 +69,10 @@
     "extraResources": [
       { "from": "./static/images/icon_64x64.png", "to": "./images/icon_64x64.png"},
       { "from": "./static/images/icon_256x256.ico", "to": "./images/icon_256x256.ico"},
-      { "from": "./static/engine/win32/${arch}", "to": "./engine/win32/${arch}"}
+      { "from": "./static/engine/win32/${arch}", "to": "./engine/win32/${arch}", "filter": ["**/*", "!mpv{,/**}"]}
     ],
     "target": [
-      { "target": "nsis", "arch": [ "x64", "ia32", "arm64" ] }
+      { "target": "nsis", "arch": [ "x64" ] }
     ]
   },
   "dmg": {

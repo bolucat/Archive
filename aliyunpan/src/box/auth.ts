@@ -1,14 +1,15 @@
 import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
+import { BOX_CLIENT_ID, BOX_CLIENT_SECRET } from '../secrets.generated'
+
+export { BOX_CLIENT_ID, BOX_CLIENT_SECRET }
 
 const BOX_AUTH_URL = 'https://account.box.com/api/oauth2/authorize'
 const BOX_TOKEN_URL = 'https://api.box.com/oauth2/token'
 const BOX_ME_URL = 'https://api.box.com/2.0/users/me'
 export const BOX_DEFAULT_REDIRECT_URL = 'xbyboxplayer-oauth://callback'
 export const BOX_SCOPE = 'root_readwrite'
-export const BOX_CLIENT_ID = ''
-export const BOX_CLIENT_SECRET = ''
 
 const hashString = (value: string): string => {
   let hash = 0

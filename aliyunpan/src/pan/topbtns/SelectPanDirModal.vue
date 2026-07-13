@@ -13,7 +13,7 @@ import { Sleep } from '../../utils/format'
 import { treeSelectToExpand } from '../../utils/antdtree'
 import AliTrash from '../../aliapi/trash'
 import { fileiconfn } from '../pantreestore'
-import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
+import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
 import { IAliGetDirModel } from '../../aliapi/alimodels'
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../../cloud123/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../../cloud115/dirfilelist'
@@ -25,6 +25,7 @@ import { apiBoxFileList, mapBoxItemToAliModel } from '../../box/dirfilelist'
 import { apiQuarkFileList, mapQuarkFileToAliModel } from '../../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../../cloud189/dirfilelist'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../../guangya/dirfilelist'
 
 const iconfolder = h(IconFont, { name: 'iconfile-folder' })
 const foldericonfn = () => iconfolder
@@ -39,7 +40,8 @@ const isSingleRootDriveUser = (userId: string) => {
     isBoxUser(userId) ||
     isQuarkUser(userId) ||
     isCloud139User(userId) ||
-    isCloud189User(userId)
+    isCloud189User(userId) ||
+    isGuangyaUser(userId)
 }
 
 const props = defineProps({
@@ -580,6 +582,38 @@ const apiLoad = (key: any) => {
         const addList: TreeNodeData[] = []
         for (let i = 0, maxi = list.length; i < maxi; i++) {
           const mapped = mapCloud189FileToAliModel(list[i], drive_id.value, parentId)
+          if (!mapped.isDir) {
+            if (onlyDirs) continue
+            if (props.category && mapped.category !== props.category) continue
+            if (props.extFilter && !props.extFilter.test(mapped.ext)) continue
+          }
+          addList.push({
+            __v_skip: true,
+            key: mapped.file_id,
+            parent_file_id: mapped.parent_file_id,
+            path: mapped.path || '',
+            title: mapped.name,
+            children: [],
+            isDir: mapped.isDir,
+            isLeaf: !mapped.isDir,
+            description: mapped.description,
+            icon: mapped.isDir ? foldericonfn : () => fileiconfn(mapped.icon)
+          } as TreeNodeData)
+        }
+        autoExpand(addList)
+        return addList
+      })
+      .catch(() => {
+        return [] as TreeNodeData[]
+      })
+  }
+  if (isGuangyaUser(user_id.value)) {
+    const parentId = key.includes('root') ? 'guangya_root' : key
+    return apiGuangyaFileList(user_id.value, parentId, 200)
+      .then((list) => {
+        const addList: TreeNodeData[] = []
+        for (let i = 0, maxi = list.length; i < maxi; i++) {
+          const mapped = mapGuangyaFileToAliModel(list[i], drive_id.value, parentId)
           if (!mapped.isDir) {
             if (onlyDirs) continue
             if (props.category && mapped.category !== props.category) continue

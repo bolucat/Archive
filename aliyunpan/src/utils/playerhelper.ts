@@ -18,7 +18,7 @@ import { IPageVideo } from '../store/appstore'
 import { Input, InputNumber, Modal } from '@arco-design/web-vue'
 import { h } from 'vue'
 import path from 'path'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { apiDrive115FileDetailResult } from '../cloud115/filecmd'
 import { apiDrive115VideoHistory } from '../cloud115/video'
 import { apiDrive115FileList, mapDrive115DetailToAliModel, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
@@ -29,9 +29,12 @@ import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
+import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
+import { buildPlayerCommand, isMpvCommand, redactMpvArgs, shellQuote } from './mpvPlayerPolicy'
 
 const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
+const currentPlayerPlatform = () => (is.windows() ? 'win32' : is.macOS() ? 'darwin' : is.linux() ? 'linux' : process.platform)
 
 const PlayerUtils = {
   filterSubtitleFile(name: string, subTitlesList: IAliGetFileModel[]) {
@@ -186,6 +189,7 @@ const PlayerUtils = {
     if (isDropboxUser(user_id) || drive_id === 'dropbox') return undefined
     if (isOneDriveUser(user_id) || drive_id === 'onedrive') return undefined
     if (isBoxUser(user_id) || drive_id === 'box') return undefined
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') return undefined
     if (isDrive115User(user_id) || drive_id === 'drive115') {
       const { detail, error } = await apiDrive115FileDetailResult(user_id, file_id)
       if (!detail) {
@@ -263,6 +267,10 @@ const PlayerUtils = {
       const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'box_root'
       const list = await apiBoxFileList(user_id, parentId, 500)
       items = list.map(item => mapBoxItemToAliModel(item, drive_id, parentId))
+    } else if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'guangya_root'
+      const list = await apiGuangyaFileList(user_id, parentId, 500)
+      items = list.map(item => mapGuangyaFileToAliModel(item, drive_id, parentId))
     } else if (canUseAliyunFileList(user_id)) {
       const dir = await AliDirFileList.ApiDirFileList(user_id, drive_id, parent_file_id, '', 'name asc', '')
       items = dir.items
@@ -403,7 +411,7 @@ const PlayerUtils = {
           currentFileInfo = playList[status.value]
           // 自动标记
           const { drive_id, file_id, description } = currentFileInfo
-          if (uiAutoColorVideo && !isPikPakUser(token) && !isQuarkUser(token) && !isDropboxUser(token) && !isOneDriveUser(token) && !isBoxUser(token) && drive_id !== 'pikpak' && drive_id !== 'quark' && drive_id !== 'dropbox' && drive_id !== 'onedrive' && drive_id !== 'box' && (!description || !description.includes('ce74c3c'))) {
+          if (uiAutoColorVideo && !isPikPakUser(token) && !isQuarkUser(token) && !isDropboxUser(token) && !isOneDriveUser(token) && !isBoxUser(token) && !isGuangyaUser(token) && drive_id !== 'pikpak' && drive_id !== 'quark' && drive_id !== 'dropbox' && drive_id !== 'onedrive' && drive_id !== 'box' && drive_id !== 'guangya' && (!description || !description.includes('ce74c3c'))) {
             AliFileCmd.ApiFileColorBatch(token.user_id, drive_id, description, 'ce74c3c', [file_id])
           }
         }
@@ -460,19 +468,18 @@ const PlayerUtils = {
   },
 
   async startPlayer(token: ITokenInfo, command: string, otherArgs: any) {
+    if (!command) {
+      message.error('请先在设置中选择或填写自定义播放器')
+      return
+    }
     if ((is.windows() || is.macOS()) && !existsSync(command)) {
       message.error(`启动失败，找不到文件, ${command}`)
       return
     }
-    const argsToStr = (args: string) => (is.windows() ? `"${args}"` : `'${args}'`)
-    const isMPV = command.toLowerCase().includes('mpv')
+    const argsToStr = (args: string) => (is.windows() ? `"${args}"` : shellQuote(args))
+    const isMPV = isMpvCommand(command)
     const isPotplayer = command.toLowerCase().includes('potplayer')
-    let commandStr
-    if (is.macOS()) {
-      commandStr = `open -a ${argsToStr(command)} ${command.includes('mpv.app') ? '--args ' : ''}`
-    } else {
-      commandStr = `${argsToStr(command)}`
-    }
+    const commandStr = buildPlayerCommand(currentPlayerPlatform(), command)
     // 构造播放参数
     let { file, subTitleFile, rawData, quality } = otherArgs
     let encType = getEncType(file)
@@ -487,6 +494,7 @@ const PlayerUtils = {
     let playerArgs: any = []
     let options: SpawnOptions = { detached: !uiVideoPlayerExit }
     let subTitleUrl = ''
+    let rawHeaders: Record<string, string> = {}
     if (rawData) {
       // 加载转码的内嵌字幕
       if (rawData.subtitles && quality != 'Origin') {
@@ -494,7 +502,9 @@ const PlayerUtils = {
         subTitleUrl = (subTitleData && subTitleData.url) || ''
       }
       if (rawData.qualities) {
-        play_url = rawData.qualities.find((q: any) => q.quality === quality)?.url || rawData.qualities[0].url
+        const selectedQuality = rawData.qualities.find((q: any) => q.quality === quality) || rawData.qualities[0]
+        play_url = selectedQuality?.url || ''
+        rawHeaders = selectedQuality?.headers || rawData.headers || {}
       }
     }
     // 优先加载网盘内字幕文件
@@ -530,6 +540,8 @@ const PlayerUtils = {
           playerArgs.push(`/sub=${argsToStr(subTitleUrl)}`)
         }
       }
+      if (rawHeaders['User-Agent']) playerArgs.push(`/user_agent=${argsToStr(rawHeaders['User-Agent'])}`)
+      if (rawHeaders.Authorization) playerArgs.push(`/headers=${argsToStr(`Authorization: ${rawHeaders.Authorization}`)}`)
     } else if (isMPV) {
       playerArgs = [
         '--force-window=immediate',
@@ -553,6 +565,8 @@ const PlayerUtils = {
           playerArgs.push(`--sub-file=${argsToStr(subTitleUrl)}`)
         }
       }
+      if (rawHeaders['User-Agent']) playerArgs.push(`--user-agent=${argsToStr(rawHeaders['User-Agent'])}`)
+      if (rawHeaders.Authorization) playerArgs.push(`--http-header-fields=${argsToStr(`Authorization: ${rawHeaders.Authorization}`)}`)
     }
     if (uiVideoPlayerParams.length > 0) {
       const params = uiVideoPlayerParams.replaceAll(/\s+/g, '').split(',')
@@ -585,7 +599,7 @@ const PlayerUtils = {
     } else {
       playArgs.unshift(argsToStr(play_url))
     }
-    console.warn('playArgs', playArgs)
+    console.warn('playArgs', redactMpvArgs(playArgs))
     const exitCallBack = () => {
       if (uiVideoEnablePlayerList) {
         delTmpFile(otherArgs.playFileListPath)
@@ -602,6 +616,7 @@ const PlayerUtils = {
         videoQuality: quality,
         expires_time: GetExpiresTime(play_url),
         proxy_url: play_url,
+        proxy_headers: Object.keys(rawHeaders).length ? JSON.stringify(rawHeaders) : undefined,
         play_cursor: play_cursor
       }
       await Db.saveValueObject('ProxyInfo', info)

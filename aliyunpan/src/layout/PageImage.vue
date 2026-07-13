@@ -51,7 +51,7 @@ const isPlaying = ref(false)
 const drive_id = pageImage.drive_id || ''
 const file_id = pageImage.file_id || ''
 const imageList = pageImage.imageList || []
-const thirdPartyImageDrives = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box'])
+const thirdPartyImageDrives = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'quark', 'cloud139', 'cloud189', 'dropbox', 'onedrive', 'box', 'guangya'])
 
 const rawList: OneImageModel[] = []
 for (let i = 0, maxi = imageList.length; i < maxi; i++) {

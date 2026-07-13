@@ -3,39 +3,25 @@ import { ref, watch } from 'vue'
 import { X, Loader2, Sparkles } from 'lucide-vue-next'
 import { openExternal } from '../utils/electronhelper'
 import message from '../utils/message'
-import { createClient } from '@supabase/supabase-js'
+import { BOXPLAYER_SITE_URL } from '../utils/boxplayerAuth'
 
-const SUPABASE_URL = 'https://ltqipofjjqjlbbfsgihi.supabase.co'
-const SUPABASE_ANON_KEY = 'sb_publishable_VzoE4CzxiTaNpFVkFUc8cA_XARw0T3r'
-const BOXPLAYER_SITE_URL = 'https://xbysite.pages.dev'
+const PRICING_URL = `${BOXPLAYER_SITE_URL}/pricing/`
 
 const props = defineProps<{ visible: boolean }>()
 const emit = defineEmits<{ 'update:visible': [v: boolean] }>()
 
 const upgrading = ref(false)
 const isLoggedIn = ref(false)
-const supabase = SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 watch(() => props.visible, (v) => {
   if (v) try { isLoggedIn.value = localStorage.getItem('app_user_authed') === '1' } catch {}
 })
 
 async function handleUpgrade() {
-  if (!supabase) { message.error('未配置 Supabase'); return }
   upgrading.value = true
   try {
-    const { data } = await supabase.auth.getSession()
-    const token = data.session?.access_token
-    if (!token) { message.warning('请先登录后升级'); return }
-    const response = await fetch(`${BOXPLAYER_SITE_URL}/api/creem/checkout`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ cycle: 'lifetime', source: 'app' })
-    })
-    const checkout = await response.json()
-    if (!response.ok || !checkout.checkoutUrl) throw new Error(checkout.error || '创建支付订单失败')
-    openExternal(checkout.checkoutUrl)
+    openExternal(PRICING_URL)
   } catch (error: any) {
-    message.error(error?.message || '网络请求失败')
+    message.error(error?.message || '打开官网购买页面失败')
   } finally {
     upgrading.value = false
   }
@@ -78,10 +64,10 @@ async function handleUpgrade() {
 
       <button v-if="isLoggedIn" class="lim-btn" :disabled="upgrading" @click="handleUpgrade">
         <Loader2 v-if="upgrading" :size="16" class="lim-spin" />
-        <span v-else>购买终身专业版 — $139</span>
+        <span v-else>去官网购买终身专业版</span>
       </button>
-      <button v-else class="lim-btn" @click="message.info('请先登录后再购买（设置 → 应用账户）')">
-        先登录，再购买或试用
+      <button v-else class="lim-btn" @click="handleUpgrade">
+        去官网购买
       </button>
       <button class="lim-skip" @click="emit('update:visible', false)">暂不升级，继续使用免费版</button>
     </div>

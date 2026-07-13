@@ -4,6 +4,12 @@ import { bumpPatchVersion } from './scripts/version-utils.mjs'
 const packageJsonPath = './package.json'
 
 try {
+  if (process.env.SKIP_VERSION_BUMP === 'true') {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
+    console.info(`跳过版本升级，当前版本为 ${packageJson.version}`)
+    process.exit(0)
+  }
+
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'))
   const nextVersion = bumpPatchVersion(packageJson.version)
 

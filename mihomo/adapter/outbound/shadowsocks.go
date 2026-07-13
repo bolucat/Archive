@@ -450,6 +450,7 @@ func NewShadowSocks(option ShadowSocksOption) (*ShadowSocks, error) {
 		if err != nil {
 			return nil, fmt.Errorf("ss %s initialize jls-plugin error: %w", addr, err)
 		}
+		jlsConfig.ClientFingerprint = option.ClientFingerprint
 	} else if option.Plugin == kcptun.Mode {
 		obfsMode = kcptun.Mode
 		kcptunOpt := &kcpTunOption{}

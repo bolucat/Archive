@@ -1,3 +1,5 @@
+import { SUBTITLE_DOWNLOAD_API_KEY, SUBTITLE_SEARCH_API_KEY } from '../secrets.generated'
+
 export interface SubtitleSearchResult {
   id: string
   name: string
@@ -13,8 +15,8 @@ export interface SubtitleDownloadResult {
 
 type FetchLike = typeof fetch
 
-const SEARCH_API_KEY = ''
-const DOWNLOAD_API_KEY = ''
+const SEARCH_API_KEY = SUBTITLE_SEARCH_API_KEY
+const DOWNLOAD_API_KEY = SUBTITLE_DOWNLOAD_API_KEY
 const OPEN_SUBTITLES_API = 'https://api.opensubtitles.com/api/v1'
 
 async function readJson<T>(response: Response): Promise<T> {

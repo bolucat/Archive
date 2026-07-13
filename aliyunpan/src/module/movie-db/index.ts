@@ -1,5 +1,6 @@
 import axios, { AxiosRequestConfig } from 'axios'
 import { isObject, isString, merge, omit } from 'lodash'
+import Config from '../../config'
 import { HttpMethod, RequestParams } from './types'
 import {
   AccountInfoResponse,
@@ -136,7 +137,7 @@ import {
 } from './request-types'
 
 const PromiseThrottle = require('promise-throttle')
-const BOXPLAYER_API_BASE_URL = 'https://api.xbyvideohub.com/api'
+const BOXPLAYER_API_BASE_URL = `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/api`
 
 class MovieDb {
   private readonly apiKey: string

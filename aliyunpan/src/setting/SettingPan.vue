@@ -37,6 +37,7 @@ const tokenLabel = (t: ITokenInfo) => {
 
 const isMusicOn = (uid: string) => !(settingStore.uiLibraryAutoScanMusicDisabledUsers || []).includes(uid)
 const isVideoOn = (uid: string) => !(settingStore.uiLibraryAutoScanVideoDisabledUsers || []).includes(uid)
+const isBookOn = (uid: string) => !(settingStore.uiLibraryAutoScanBookDisabledUsers || []).includes(uid)
 
 const toggleMusicForUser = (uid: string, on: boolean) => {
   const list = new Set(settingStore.uiLibraryAutoScanMusicDisabledUsers || [])
@@ -50,6 +51,13 @@ const toggleVideoForUser = (uid: string, on: boolean) => {
   if (on) list.delete(uid)
   else list.add(uid)
   cb({ uiLibraryAutoScanVideoDisabledUsers: Array.from(list) })
+}
+
+const toggleBookForUser = (uid: string, on: boolean) => {
+  const list = new Set(settingStore.uiLibraryAutoScanBookDisabledUsers || [])
+  if (on) list.delete(uid)
+  else list.add(uid)
+  cb({ uiLibraryAutoScanBookDisabledUsers: Array.from(list) })
 }
 
 const allMusicOff = () => {
@@ -66,6 +74,13 @@ const allVideoOff = () => {
 const allVideoOn = () => {
   cb({ uiLibraryAutoScanVideoDisabledUsers: [] })
 }
+const allBookOff = () => {
+  const ids = userList.value.map((t) => t.user_id).filter(Boolean)
+  cb({ uiLibraryAutoScanBookDisabledUsers: ids })
+}
+const allBookOn = () => {
+  cb({ uiLibraryAutoScanBookDisabledUsers: [] })
+}
 
 const removeMusicFolder = (f: { user_id: string; drive_id: string; file_id: string }) => {
   const list = (settingStore.uiMusicAutoScanFolders || []).filter(
@@ -76,7 +91,7 @@ const removeMusicFolder = (f: { user_id: string; drive_id: string; file_id: stri
 
 const hasUsers = computed(() => userList.value.length > 0)
 const showAccountList = computed(() =>
-  (settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo) && hasUsers.value
+  (settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo || settingStore.uiLibraryAutoScanBook) && hasUsers.value
 )
 </script>
 
@@ -192,7 +207,21 @@ const showAccountList = computed(() =>
         </template>
       </a-popover>
     </div>
-    <div v-if="settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo" class="settingrow">
+    <div class="settingrow">
+      <MySwitch :value="settingStore.uiLibraryAutoScanBook" @update:value="cb({ uiLibraryAutoScanBook: $event })">书籍库：启动后后台扫描网盘内的电子书文件</MySwitch>
+      <a-popover position="bottom">
+        <IconFont name="iconbulb" />
+        <template #content>
+          <div>
+            默认：<span class="opred">关闭</span>
+            <hr />
+            开启后，每次打开 App 会按设定间隔在后台静默扫描电子书并入库<br />
+            首次登录新网盘账号时会单独弹窗征求同意
+          </div>
+        </template>
+      </a-popover>
+    </div>
+    <div v-if="settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo || settingStore.uiLibraryAutoScanBook" class="settingrow">
       <MySwitch :value="settingStore.uiLibraryIncrementalScan" @update:value="cb({ uiLibraryIncrementalScan: $event })">仅扫描增量（建议开启，按时间间隔节流，避免每次启动重跑）</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
@@ -206,7 +235,7 @@ const showAccountList = computed(() =>
         </template>
       </a-popover>
     </div>
-    <div v-if="(settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo) && settingStore.uiLibraryIncrementalScan" class="settingrow">
+    <div v-if="(settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo || settingStore.uiLibraryAutoScanBook) && settingStore.uiLibraryIncrementalScan" class="settingrow">
       <span style="margin-right: 12px; color: var(--color-text-2)">扫描间隔</span>
       <a-select tabindex="-1" :style="{ width: '180px' }"
                 :model-value="settingStore.uiLibraryScanIntervalHours"
@@ -260,6 +289,8 @@ const showAccountList = computed(() =>
           <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" status="warning" @click="allMusicOff">全关音乐</a-button>
           <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" @click="allVideoOn">全开视频</a-button>
           <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" status="warning" @click="allVideoOff">全关视频</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanBook" type="text" size="mini" @click="allBookOn">全开书籍</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanBook" type="text" size="mini" status="warning" @click="allBookOff">全关书籍</a-button>
         </div>
       </div>
       <div class="library-scan-account-list">
@@ -273,6 +304,10 @@ const showAccountList = computed(() =>
             <span v-if="settingStore.uiLibraryAutoScanVideo" class="library-scan-toggle">
               <span class="library-scan-toggle-label">视频</span>
               <MySwitch :value="isVideoOn(t.user_id)" @update:value="toggleVideoForUser(t.user_id, $event)">&nbsp;</MySwitch>
+            </span>
+            <span v-if="settingStore.uiLibraryAutoScanBook" class="library-scan-toggle">
+              <span class="library-scan-toggle-label">书籍</span>
+              <MySwitch :value="isBookOn(t.user_id)" @update:value="toggleBookForUser(t.user_id, $event)">&nbsp;</MySwitch>
             </span>
           </div>
         </div>

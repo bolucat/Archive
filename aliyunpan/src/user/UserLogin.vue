@@ -8,6 +8,7 @@ import DebugLog from '../utils/debuglog'
 import { GetSignature } from '../aliapi/utils'
 import getUuid from 'uuid-by-string'
 import AliUser from '../aliapi/user'
+import AliHttp from '../aliapi/alihttp'
 import { Input, Modal, Space } from '@arco-design/web-vue'
 import { QRCode as AntQRCode } from 'ant-design-vue'
 import { buildCloud123AuthUrl, exchangeCloud123CodeForToken } from '../utils/cloud123'
@@ -17,15 +18,15 @@ import { loginPikPak } from '../pikpak/auth'
 import { completeQuarkQrLogin, pollQuarkQrStatus, requestQuarkQrCode } from '../quark/auth'
 import { normalizeCloud139Token } from '../cloud139/auth'
 import { Cloud189QrState, pollCloud189QrLogin, requestCloud189QrCode } from '../cloud189/auth'
+import { GuangyaSmsState, generateGuangyaDid, requestGuangyaSmsCode, submitGuangyaSmsCode } from '../guangya/auth'
 import { DROPBOX_APP_KEY, buildDropboxAuthUrl, createDropboxPkceVerifier, exchangeDropboxCodeForToken } from '../dropbox/auth'
 import { ONEDRIVE_CLIENT_ID, buildOneDriveAuthUrl, createOneDrivePkceVerifier, exchangeOneDriveCodeForToken } from '../onedrive/auth'
 import { BOX_CLIENT_ID, buildBoxAuthUrl, createBoxPkceVerifier, exchangeBoxCodeForToken } from '../box/auth'
 import { getDriveProviderMeta } from '../utils/driveProvider'
+import { ALIYUN_APP_ID, ALIYUN_APP_SECRET } from '../secrets.generated'
 
 const useUser = useUserStore()
 const settingStore = useSettingStore()
-const ALIYUN_APP_ID = ''
-const ALIYUN_APP_SECRET = ''
 const loginCur = ref(1)
 const loginToken = ref<ITokenInfo>()
 const loginStatus = ref<'wait' | 'error' | 'finish' | 'process'>('process')
@@ -38,10 +39,10 @@ const qrCodeUrl = ref('')
 const qrCodeStatusType = ref()
 const qrCodeStatusTips = ref()
 
-type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box'
+type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'guangya' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box'
 
 const loginProvider = ref<LoginProvider>('aliyun')
-const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box']
+const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'guangya', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box']
 const getLoginProviderMeta = (provider: LoginProvider) => getDriveProviderMeta(provider)
 const activeLoginProviderMeta = computed(() => getLoginProviderMeta(loginProvider.value))
 const cloud123Code = ref('')
@@ -64,6 +65,11 @@ const cloud189Tips = ref('请使用天翼云盘 App 扫码')
 const cloud189QrState = ref<Cloud189QrState | null>(null)
 const cloud189QrStatusType = ref<'info' | 'success' | 'warning' | 'error'>('info')
 const cloud189QrUrl = ref('')
+const guangyaPhone = ref('')
+const guangyaCode = ref('')
+const guangyaDeviceId = ref(generateGuangyaDid())
+const guangyaSmsState = ref<GuangyaSmsState | null>(null)
+const guangyaLoading = ref(false)
 const dropboxAppKey = ref('')
 const dropboxVerifier = ref('')
 const dropboxLoading = ref(false)
@@ -92,6 +98,19 @@ let cloud189Polling = false
 let loginOpenTimer: any = null
 let cloud123OpenTimer: any = null
 let baiduOpenTimer: any = null
+let aliyunLoginHandled = false
+
+const getAliyunLoginWebview = () => document.getElementById('loginiframe') as any
+
+const stopAliyunLoginWebview = () => {
+  const webview = getAliyunLoginWebview()
+  if (!webview) return
+  try {
+    webview.stop()
+  } catch {
+    // ignore webview stop errors while switching providers
+  }
+}
 
 const clearOpenTimers = () => {
   if (loginOpenTimer) {
@@ -110,7 +129,7 @@ const clearOpenTimers = () => {
 
 const handleModalOpen = () => {
   const stored = localStorage.getItem('login_provider')
-  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box') {
+  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'guangya' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box') {
     loginProvider.value = stored
   }
   dropboxAppKey.value = localStorage.getItem('dropbox_app_key') || DROPBOX_APP_KEY
@@ -130,6 +149,8 @@ const handleModalOpen = () => {
     loginLoading.value = false
   } else if (loginProvider.value === '189') {
     handleOpen189()
+  } else if (loginProvider.value === 'guangya') {
+    loginLoading.value = false
   } else if (loginProvider.value === 'dropbox') {
     handleOpenDropbox()
   } else if (loginProvider.value === 'onedrive') {
@@ -179,6 +200,7 @@ onBeforeUnmount(() => {
 watch(loginProvider, () => {
   if (!useUser.userShowLogin) return
   clearOpenTimers()
+  if (loginProvider.value !== 'aliyun') stopAliyunLoginWebview()
   if (loginProvider.value === 'cloud123') {
     handleOpenCloud123()
   } else if (loginProvider.value === 'baidu') {
@@ -193,6 +215,8 @@ watch(loginProvider, () => {
     loginLoading.value = false
   } else if (loginProvider.value === '189') {
     handleOpen189()
+  } else if (loginProvider.value === 'guangya') {
+    loginLoading.value = false
   } else if (loginProvider.value === 'dropbox') {
     handleOpenDropbox()
   } else if (loginProvider.value === 'onedrive') {
@@ -247,26 +271,94 @@ const handleOpen = () => {
   clearOpenTimers()
   loginOpenTimer = setTimeout(() => {
     if (loginProvider.value !== 'aliyun' || !useUser.userShowLogin) return
-    const webview = document.getElementById('loginiframe') as any
+    const webview = getAliyunLoginWebview()
     if (!webview) {
       message.error('严重错误：无法打开登录弹窗，请退出小白羊后重新运行')
       return
     }
-    webview.openDevTools({ mode: 'bottom', activate: false })
-    webview.loadURL(Config.loginUrl, { httpReferrer: Config.referer })
+    if (import.meta.env.DEV) {
+      try {
+        webview.openDevTools({ mode: 'bottom', activate: false })
+      } catch (err: any) {
+        DebugLog.mSaveWarning('Aliyun login webview DevTools open failed ' + (err?.message || err))
+      }
+    }
+    aliyunLoginHandled = false
+    const extractBizExt = (payload: string) => {
+      try {
+        const parsed = JSON.parse(payload)
+        if (parsed?.bizExt) return String(parsed.bizExt)
+      } catch {
+        // Some versions of the login page print a JavaScript object instead of JSON.
+      }
+      const match = payload.match(/["']?bizExt["']?\s*[:=]\s*["']([^"']+)["']/i)
+      return match?.[1] || ''
+    }
+    const handleLoginPayload = (payload: string) => {
+      try {
+        const parsed = JSON.parse(payload)
+        if (parsed?.code && !aliyunLoginHandled) {
+          aliyunLoginHandled = true
+          loginStepFirst(payload)
+          try {
+            webview.stop()
+          } catch {
+            // ignore navigation stop errors after the OAuth callback is received
+          }
+          return true
+        }
+      } catch {
+        // Continue with the legacy bizExt parser below.
+      }
+      const bizExt = extractBizExt(payload)
+      if (aliyunLoginHandled || !bizExt) return false
+      aliyunLoginHandled = true
+      loginStepFirst(JSON.stringify({ bizExt }))
+      try {
+        webview.stop()
+      } catch {
+        // ignore navigation stop errors after the login callback is received
+      }
+      return true
+    }
+    const handleLoginNavigation = (event: any) => {
+      const url = event?.url || ''
+      if (!url) return
+      try {
+        const parsed = new URL(url)
+        const code = parsed.searchParams.get('code') || ''
+        if (code && handleLoginPayload(JSON.stringify({ code }))) {
+          event?.preventDefault?.()
+          return
+        }
+        if (!url.includes('bizExt')) return
+        const bizExt = parsed.searchParams.get('bizExt') || new URLSearchParams(parsed.hash.replace(/^#\??/, '')).get('bizExt')
+        if (bizExt && handleLoginPayload(JSON.stringify({ bizExt }))) event?.preventDefault?.()
+      } catch (err: any) {
+        DebugLog.mSaveWarning('Aliyun login callback parse failed ' + (err?.message || err))
+      }
+    }
+    webview.addEventListener('will-navigate', handleLoginNavigation)
+    webview.addEventListener('did-navigate', handleLoginNavigation)
+    webview.addEventListener('did-redirect-navigation', handleLoginNavigation)
+    webview.addEventListener('did-navigate-in-page', handleLoginNavigation)
+    webview.addEventListener('console-message', (e: any) => {
+      const msg = e.message || ''
+      loginLoading.value = false
+      handleLoginPayload(msg)
+    })
+    const load = webview.loadURL(Config.loginUrl, { httpReferrer: Config.referer })
+    if (load?.catch) {
+      load.catch((err: any) => {
+        loginLoading.value = false
+        if (loginProvider.value === 'aliyun' && useUser.userShowLogin) DebugLog.mSaveWarning('Aliyun login webview load failed ' + (err?.message || err))
+      })
+    }
     webview.addEventListener('did-finish-load', () => {
       loginLoading.value = false
     })
     webview.addEventListener('did-fail-load', () => {
       loginLoading.value = false
-    })
-    webview.addEventListener('console-message', (e: any) => {
-      const msg = e.message || ''
-      loginLoading.value = false
-      if (msg.indexOf('bizExt') > 0) {
-        loginStepFirst(msg)
-        webview.stop()
-      }
     })
   }, 1000)
 }
@@ -277,6 +369,7 @@ const handleClose = () => {
   client_secret.value = ALIYUN_APP_SECRET
   clearInterval(intervalId.value)
   clearOpenTimers()
+  stopAliyunLoginWebview()
   if (drive115Timer) {
     clearTimeout(drive115Timer)
     drive115Timer = null
@@ -311,6 +404,9 @@ const handleClose = () => {
   cloud189QrState.value = null
   cloud189QrStatusType.value = 'info'
   cloud189QrUrl.value = ''
+  guangyaCode.value = ''
+  guangyaSmsState.value = null
+  guangyaLoading.value = false
   dropboxVerifier.value = ''
   dropboxLoading.value = false
   dropboxAuthUrl.value = ''
@@ -554,6 +650,48 @@ const submitCloud139Login = async () => {
   }
 }
 
+const sendGuangyaSmsCode = async () => {
+  if (guangyaLoading.value) return
+  const phone = guangyaPhone.value.trim()
+  if (!phone) {
+    message.error('请输入光鸭云盘手机号，例如 +86 13800138000')
+    return
+  }
+  guangyaLoading.value = true
+  try {
+    guangyaDeviceId.value = guangyaDeviceId.value || generateGuangyaDid()
+    guangyaSmsState.value = await requestGuangyaSmsCode(phone, guangyaDeviceId.value)
+    message.success('验证码已发送')
+  } catch (err: any) {
+    message.error(err?.message || '发送光鸭云盘验证码失败')
+  } finally {
+    guangyaLoading.value = false
+  }
+}
+
+const submitGuangyaLogin = async () => {
+  if (guangyaLoading.value) return
+  if (!guangyaSmsState.value) {
+    message.error('请先发送短信验证码')
+    return
+  }
+  const code = guangyaCode.value.trim()
+  if (!code) {
+    message.error('请输入短信验证码')
+    return
+  }
+  guangyaLoading.value = true
+  try {
+    const token = await submitGuangyaSmsCode(guangyaSmsState.value, code, guangyaDeviceId.value)
+    await UserDAL.UserLogin(token, true)
+    useUserStore().userShowLogin = false
+  } catch (err: any) {
+    message.error(err?.message || '光鸭云盘登录失败')
+  } finally {
+    guangyaLoading.value = false
+  }
+}
+
 const clearCloud189Timer = () => {
   if (cloud189Timer) {
     clearTimeout(cloud189Timer)
@@ -793,19 +931,42 @@ const handleStorageChange = (val: any) => {
 }
 
 const loginStepFirst = async (msg: string) => {
-  let data = { bizExt: '' }
+  let data: { bizExt?: string; code?: string } = {}
   try {
     data = JSON.parse(msg)
   } catch {
   }
-  if (!data.bizExt) {
+  if (!data.bizExt && !data.code) {
     refreshStepTips('error', 1)
     DebugLog.mSaveDanger('登录失败：' + msg)
     return
   }
-  readData(data.bizExt).then((jsonstr: string) => {
+  const resultPromise = data.code
+    ? AliUser.LoginByOAuthCode(data.code).then((resp: any) => {
+      if (!AliHttp.IsSuccess(resp.code)) throw new Error(resp.body?.message || resp.body?.code || `OAuth code exchange failed: ${resp.code}`)
+      const body = resp.body?.token_info || resp.body?.tokenInfo || resp.body
+      return {
+        accessToken: body.accessToken || body.access_token,
+        refreshToken: body.refreshToken || body.refresh_token,
+        tokenType: body.tokenType || body.token_type,
+        expiresIn: body.expiresIn || body.expires_in,
+        userId: body.userId || body.user_id,
+        userName: body.userName || body.user_name,
+        avatar: body.avatar,
+        nickName: body.nickName || body.nick_name,
+        defaultSboxDriveId: body.defaultSboxDriveId || body.default_sbox_drive_id,
+        role: body.role,
+        status: body.status,
+        expireTime: body.expireTime || body.expire_time,
+        state: body.state,
+        dataPinSetup: body.dataPinSetup || body.data_pin_setup,
+        isFirstLogin: body.isFirstLogin || body.is_first_login,
+        needRpVerify: body.needRpVerify || body.need_rp_verify
+      }
+    })
+    : readData(data.bizExt || '').then((jsonstr: string) => JSON.parse(jsonstr).pds_login_result)
+  resultPromise.then((result: any) => {
     try {
-      const result = JSON.parse(jsonstr).pds_login_result
       const deviceId = getUuid(result.userId.toString(), 5)
       const { signature } = GetSignature(0, result.userId.toString(), deviceId)
       const token: ITokenInfo = {
@@ -869,6 +1030,10 @@ const loginStepFirst = async (msg: string) => {
       message.error('登录失败：' + (err.message || '解析失败'))
       DebugLog.mSaveDanger('登录失败：' + (err.message || '解析失败'), JSON.stringify(err))
     }
+  }).catch((err: any) => {
+    refreshStepTips('error', 1)
+    message.error('登录结果读取失败：' + (err?.message || '请重试'))
+    DebugLog.mSaveDanger('Aliyun login result read failed', err)
   })
 }
 
@@ -880,7 +1045,15 @@ const loginStepSecond = async (token: ITokenInfo) => {
   }
   loginLoading.value = false
   clearInterval(intervalId.value)
-  let codeUrl = await AliUser.OpenApiQrCodeUrl(client_id.value, client_secret.value, 250, 250)
+  let codeUrl = ''
+  try {
+    codeUrl = await AliUser.OpenApiQrCodeUrl(client_id.value, client_secret.value, 250, 250)
+  } catch (err: any) {
+    refreshQrCodeStatus('', 'error', '获取第二个二维码失败，请检查网络或开发者配置')
+    refreshStepTips('error', 2)
+    DebugLog.mSaveDanger('Aliyun second QR code request failed', err)
+    return
+  }
   if (!codeUrl) {
     refreshQrCodeStatus('', 'error', '获取二维码失败')
     refreshStepTips('error', 2)
@@ -891,7 +1064,10 @@ const loginStepSecond = async (token: ITokenInfo) => {
   refreshStepTips('process', 2)
   // 监听状态
   intervalId.value = setInterval(async () => {
-    const { authCode, statusCode, statusType, statusTips } = await AliUser.OpenApiQrCodeStatus(codeUrl)
+    try {
+      const result = await AliUser.OpenApiQrCodeStatus(codeUrl)
+      if (!result || typeof result !== 'object') return
+      const { authCode, statusCode, statusType, statusTips } = result
     if (!statusCode) {
       refreshQrCodeStatus()
       clearInterval(intervalId.value)
@@ -903,11 +1079,16 @@ const loginStepSecond = async (token: ITokenInfo) => {
       refreshQrCodeStatus()
       return
     }
-    if (authCode && statusCode === 'LoginSuccess') {
+      if (authCode && statusCode === 'LoginSuccess') {
       // 构造请求体
       await AliUser.OpenApiLoginByAuthCode(token, client_id.value, client_secret.value, authCode)
       loginSuccess(token)
+        clearInterval(intervalId.value)
+      }
+    } catch (err: any) {
       clearInterval(intervalId.value)
+      refreshQrCodeStatus('', 'error', '第二个二维码状态获取失败，请点击二维码刷新')
+      DebugLog.mSaveWarning('Aliyun second QR code status failed', err)
     }
   }, 1500)
 }
@@ -1114,7 +1295,9 @@ const loginSuccess = (token: ITokenInfo) => {
             <div id="loginframediv" class="loginframe">
               <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
               <div class="qrcodeframe" v-if="!loginLoading">
-                <AntQRCode :value="cloud189QrUrl || 'cloud189'" :size="250" />
+                <div class="cloud189-qrcode-wrap">
+                  <AntQRCode :value="cloud189QrUrl || 'cloud189'" :size="250" color="#000" bg-color="#fff" />
+                </div>
                 <a-alert banner center :show-icon="false" :type="cloud189QrStatusType">
                   {{ cloud189Tips }}
                 </a-alert>
@@ -1122,6 +1305,21 @@ const loginSuccess = (token: ITokenInfo) => {
             </div>
             <div class="quark-login-toolbar" v-if="!loginLoading">
               <a-button type="primary" :loading="cloud189Loading" @click="handleOpen189">刷新二维码</a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="loginProvider === 'guangya'">
+        <div id='logindiv'>
+          <div class='logincontent'>
+            <div class="pikpak-login-form">
+              <a-input v-model="guangyaPhone" placeholder="手机号，例如 +86 13800138000" allow-clear />
+              <a-input v-model="guangyaCode" placeholder="短信验证码" allow-clear @press-enter="submitGuangyaLogin" />
+              <a-space direction="vertical" fill>
+                <a-button type="outline" long :loading="guangyaLoading" @click="sendGuangyaSmsCode">{{ guangyaSmsState ? '重新发送验证码' : '发送验证码' }}</a-button>
+                <a-button type="primary" long :loading="guangyaLoading" @click="submitGuangyaLogin">登录光鸭云盘</a-button>
+              </a-space>
             </div>
           </div>
         </div>
@@ -1242,6 +1440,11 @@ const loginSuccess = (token: ITokenInfo) => {
       padding: 5px;
       box-shadow: grey 0 0 10px;
       margin: 40px 15px 15px 15px;
+    }
+
+    .cloud189-qrcode-wrap {
+      display: flex;
+      justify-content: center;
     }
 
     .loading {

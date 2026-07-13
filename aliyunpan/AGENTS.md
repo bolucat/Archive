@@ -17,7 +17,7 @@ Never use `npm install` or `yarn`.
 
 ## Node version
 
-`engines.node >= 18.0.0` in package.json.
+`engines.node >= 22.12.0` in package.json. Electron 40 requires Node 22.12+ during install/build.
 
 ## Build pipeline order matters
 
@@ -34,17 +34,17 @@ pnpm run build:windows
 pnpm run build:all       # cross-platform, sequential
 ```
 
-## Sensitive config: clean/restore cycle
+## Sensitive config: generated secrets
 
-API keys live in `src/config.ts`. Committing real keys is prevented by a pre-commit hook (`nano-staged`) that calls `scripts/clean-config.js` to blank the values. After commit, restore with:
+Private client IDs, client secrets, API keys, and private API URLs live outside git:
 
 ```bash
-pnpm run config:restore
+pnpm run secrets:generate
 ```
 
-Before building for distribution, ensure `src/config.ts` has real keys — never build from the cleaned version.
+Local development reads them from `.env.local` and generates `src/secrets.generated.ts`. GitHub Actions reads the same keys from GitHub Secrets and runs `scripts/generate-secrets.mjs --mode=ci --strict` before building.
 
-`scripts/` directory has 10 scripts. Only `scripts/koodo-reader-smoke.mjs` is tracked in git (see `.gitignore`).
+`.env.local` and `src/secrets.generated.ts` are ignored and must never be committed. `src/config.ts` should import generated secrets or use placeholders, not contain real private values.
 
 ## Architecture: Electron + Vue 3 + Vite
 
@@ -79,13 +79,9 @@ Default `pnpm run test` runs only a subset (aria2 tests, motrix integration, a c
 
 When adding tests in a new directory, update `vitest.config.ts`.
 
-## Pre-commit hooks (nano-staged)
+## Pre-commit hooks
 
-Defined in `nano-staged.mjs`:
-- JS/TS: `prettier --write` + `eslint --cache --fix`
-- Vue files: `stylelint --fix` + `prettier --write` + `eslint --cache --fix`
-- CSS/Less: `stylelint --fix` + `prettier --write`
-- Typecheck (`npm run typecheck`) runs on changed files under `src/`
+Do not rely on pre-commit cleanup for secrets. Secret safety is handled by keeping real values in ignored/generated files and GitHub Secrets.
 
 ## Formatting conventions
 
@@ -102,9 +98,151 @@ From `.prettierrc`:
 - Includes `src/` and `shared/`, excludes `shared/__tests__`
 - References `tsconfig.node.json` for Electron-side code
 
-## provider integration checklist
+## Provider Integration Checklist
 
-When adding new cloud-drive providers, follow the 15-step checklist in `AGENT.md`. This file is in `.gitignore`, thus local-only. Key steps: OAuth flow, provider detection, file listing, download/playback, search, thumbnails, file operations, sharing, upload, media scanning, folder picker, capability boundaries, properties/recycle bin, tests, and verification.
+When adding a new cloud-drive provider, implement the following in order unless the user explicitly excludes a step. Do not stop after only wiring file listing. Sync/change-listening is not required by default.
+
+### 1. Account And Auth
+
+- Read the official OAuth/API documentation and prefer stable API versions.
+- Add `src/<provider>/auth.ts` with auth URL, authorization-code token exchange, and refresh token support.
+- Define `CLIENT_ID` / `CLIENT_SECRET` placeholder constants, defaulting to empty strings.
+- Add app key / secret fields to `.env.example`, `src/secrets.example.ts`, and `scripts/generate-secrets.mjs`.
+- Add the provider to `tokenfrom` in `src/user/userstore.ts`.
+- Wire login, token refresh, and drive loading in `src/user/userdal.ts`.
+- Add login entry points in `src/user/UserLogin.vue` and `src/user/UserInfo.vue`.
+
+### 2. Provider Detection And Drive Model
+
+- Add `is<Provider>User` in `src/aliapi/utils.ts`.
+- Update `GetDriveID` and `GetDriveType`, modeling third-party drives as a single-root drive.
+- Filter unsupported virtual directories in `src/pan/PanLeft.vue` and `src/pan/pantreestore.ts`.
+
+### 3. File List And Detail
+
+- Add `src/<provider>/dirfilelist.ts`.
+- Implement root listing, child directory pagination, and file detail.
+- Map official file models to `IAliGetFileModel`; at minimum fill `drive_id`, `file_id`, `parent_file_id`, `name`, `isDir`, `category`, `icon`, `size`, `time`, `thumbnail`, and `content_hash`.
+- Store provider-specific path, parent id, download URL, or similar metadata in `description`.
+- Wire root loading, directory listing, and search-listing branches in `src/pan/pandal.ts`.
+- Wire provider file detail in `src/aliapi/file.ts` `ApiFileInfo`.
+
+### 4. Download And Playback
+
+- Wire provider direct download URLs in `src/aliapi/file.ts` `ApiFileDownloadUrl`.
+- Third-party drives usually do not have Aliyun transcode APIs; `ApiVideoPreviewUrl` / `ApiAudioPreviewUrl` should return `暂无转码信息` or `undefined`, letting playback use the raw download URL.
+- Wire same-directory playlist loading in `src/layout/PageVideo.vue`, `src/utils/openfile.ts`, and `src/utils/playerhelper.ts`.
+- Confirm clicking provider videos does not call Aliyun APIs.
+
+### 5. Search
+
+- Add `src/<provider>/search.ts`.
+- Support keyword search.
+- If the existing UI uses special `file_id` values for search conditions, implement parse/build/filter helpers.
+- Wire search-directory branches in `src/pan/pandal.ts`.
+
+### 6. Thumbnails And Preview
+
+- Prefer thumbnails returned by list/detail APIs.
+- If the provider needs a separate thumbnail API, add `src/<provider>/thumbnail.ts`.
+- Fill `thumbnail` during file mapping so media library and file lists can use it directly.
+
+### 7. File Operations
+
+- Add `src/<provider>/filecmd.ts`.
+- Implement create folder, move to recycle bin, permanent delete, rename, move, and copy. Clearly report unsupported official capabilities.
+- Wire `ApiCreatNewForder`, `ApiTrashBatch`, `ApiDeleteBatch`, `ApiRenameBatch`, `ApiMoveBatch`, and `ApiCopyBatch` in `src/aliapi/filecmd.ts`.
+- Unsupported capabilities must not fall through to the Aliyun default branch.
+
+### 8. Sharing
+
+- Add `src/<provider>/share.ts` with share-link creation.
+- If the provider does not support password, expiration, or multi-file sharing, block it clearly in `src/aliapi/share.ts`.
+- Update context-menu and top-menu share visibility.
+
+### 9. Upload And New Files
+
+- Add or extend `src/<provider>/upload.ts`.
+- Implement in-memory upload for new text files.
+- Implement local-file upload worker support for ordinary file/folder uploads.
+- Implement large files using the provider-recommended session/chunk API.
+- Wire `src/aliapi/uploadmem.ts` and `src/workerpage/uploader.ts`.
+- Third-party drives do not support app custom encrypted/private uploads by default; hide those menu items.
+
+### 10. Media Library Scanning
+
+- Wire provider folder traversal in `src/utils/mediaScanner.ts`.
+- Wire provider subfolder entry in `src/components/MediaLibrary.vue`.
+- Show the provider name in media-library source labels.
+- Confirm scanning does not call Aliyun list APIs.
+
+### 11. Folder Picker Modal
+
+- Treat the provider as a single-root drive in `src/pan/topbtns/SelectPanDirModal.vue`.
+- Wire lazy child directory loading.
+- Move, copy, and save-location picker modals must browse provider directories.
+
+### 12. Menu Capability Boundaries
+
+- Update `src/pan/menus/FileRightMenu.vue`, `src/pan/menus/FileTopbtn.vue`, `src/pan/menus/DirLeftMenu.vue`, and `src/pan/menus/PanTopbtn.vue`.
+- Show common capabilities: download, share, rename, move to, copy to, delete, properties, scan media library, normal upload, and normal new file/folder.
+- Hide Aliyun-only capabilities: lucky bottle, fast transfer, favorite, transcode-related actions, mark encrypted, clear history, color labels, copy directory tree, encrypted/private new file, encrypted/private upload, and import share.
+
+### 13. Properties, Versions, And Recycle Bin
+
+- Wire provider file detail in `src/pan/topbtns/ShuXingModal.vue`.
+- If folder size has no official API, return 0 or hide it; do not call Aliyun folder-size APIs.
+- If the provider supports file versions, add `src/<provider>/revisions.ts` and expose version listing/restoration in properties.
+- If the provider supports recycle bin list/restore, add `src/<provider>/recyclebin.ts` and wire recycle-bin directory, restore, and permanent delete.
+- If the official API supports only some account types or needs higher permissions, record the limitation and keep it disabled by default.
+
+### 14. Tests
+
+- Add provider helper tests under `src/<provider>/__tests__/`.
+- Cover at least OAuth URL/token body, file-list path/body, model mapping, search path/body, share body/result mapping, file-operation body, upload session/chunk path, and version/recycle-bin path where applicable.
+- Update `vitest.config.ts` to include provider tests.
+
+### 15. Verification
+
+- Run provider unit tests.
+- Run `pnpm run build`.
+- If playback/media library is involved, verify provider videos use provider download URLs, same-directory playlists use provider list APIs, media-library scans use provider list APIs, and context menus do not expose unsupported capabilities.
+
+### Recommended File Structure
+
+```text
+src/<provider>/
+  auth.ts
+  dirfilelist.ts
+  filecmd.ts
+  search.ts
+  share.ts
+  upload.ts
+  revisions.ts       # optional
+  recyclebin.ts      # optional
+  thumbnail.ts       # optional
+  __tests__/
+```
+
+### Completion Criteria
+
+- Login and token refresh work.
+- The left tree shows root and folders.
+- File list opens root, subdirectories, and search results.
+- File detail, download, and video playback do not call the wrong provider API.
+- Context menus and top menus expose only supported capabilities.
+- Create folder, rename, move, copy, and delete call provider APIs.
+- Share, upload, and media-library scanning are wired or explicitly reported unsupported.
+- Provider unit tests pass.
+- `pnpm run build` passes.
+
+### Current Experience Notes
+
+- Dropbox and OneDrive should both be treated as single-root third-party drives.
+- Third-party drive video playback should prefer raw download URLs and must not reuse Aliyun transcode APIs.
+- Media-library scanning and same-directory playlists are the easiest provider branches to miss.
+- Auth pages should usually open in the system browser unless the provider explicitly requires an embedded flow.
+- App key / secret placeholder constants must be included in the generated-secrets flow, not committed as real values.
 
 ## clouddrive-cli
 

@@ -5,10 +5,11 @@ import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliShareBottleFishItem, IAliShareItem, IAliShareRecentItem } from './alimodels'
 import AliDirFileList from './dirfilelist'
 import { useSettingStore } from '../store'
-import { isAliyunUser, isCloud123User, isDropboxUser, isQuarkUser } from './utils'
+import { isAliyunUser, isCloud123User, isDropboxUser, isGuangyaUser, isQuarkUser } from './utils'
 import { apiCloud123ShareList } from '../cloud123/share'
 import { apiDropboxListSharedLinks, mapDropboxSharedLinkToAliShareItem } from '../dropbox/share'
 import { apiQuarkShareList } from '../quark/share'
+import { apiGuangyaShareList } from '../guangya/share'
 
 export interface IAliShareResp {
   items: IAliShareItem[]
@@ -47,6 +48,9 @@ export default class AliShareList {
     if (isDropboxUser(user_id)) {
       return await AliShareList.ApiDropboxShareListAll(user_id)
     }
+    if (isGuangyaUser(user_id)) {
+      return await AliShareList.ApiGuangyaShareListAll(user_id)
+    }
     if (isQuarkUser(user_id)) {
       const dir = AliShareList.EmptyShareResp(user_id)
       dir.items = await apiQuarkShareList(user_id)
@@ -76,6 +80,9 @@ export default class AliShareList {
   static async ApiShareListOnePage(dir: IAliShareResp): Promise<boolean> {
     if (isCloud123User(dir.m_user_id)) {
       return await AliShareList.ApiCloud123ShareListOnePage(dir)
+    }
+    if (isGuangyaUser(dir.m_user_id)) {
+      return await AliShareList.ApiGuangyaShareListOnePage(dir)
     }
     if (isQuarkUser(dir.m_user_id)) {
       const list = await apiQuarkShareList(dir.m_user_id)
@@ -317,6 +324,17 @@ export default class AliShareList {
       const links = await apiDropboxListSharedLinks(user_id, '')
       return links.some((link) => (link.id || link.url) === share_id)
     }
+    if (isGuangyaUser(user_id)) {
+      let page = 0
+      do {
+        const resp = await apiGuangyaShareList(user_id, page, 100)
+        if (resp.error) return false
+        if (resp.list.some((item) => item.share_id === share_id)) return true
+        if (!resp.nextMarker) break
+        page = Number(resp.nextMarker)
+      } while (!Number.isNaN(page))
+      return false
+    }
     if (isQuarkUser(user_id)) {
       const links = await apiQuarkShareList(user_id)
       return links.some((link) => link.share_id === share_id)
@@ -377,6 +395,32 @@ export default class AliShareList {
       dir.itemsKey.add(add.share_id)
     }
     return dir
+  }
+
+  private static async ApiGuangyaShareListAll(user_id: string): Promise<IAliShareResp> {
+    const dir = AliShareList.EmptyShareResp(user_id)
+    do {
+      const isGet = await AliShareList.ApiGuangyaShareListOnePage(dir)
+      if (!isGet) break
+    } while (dir.next_marker)
+    return dir
+  }
+
+  private static async ApiGuangyaShareListOnePage(dir: IAliShareResp): Promise<boolean> {
+    const page = dir.next_marker ? Number(dir.next_marker) : 0
+    const resp = await apiGuangyaShareList(dir.m_user_id, Number.isNaN(page) ? 0 : page, 100)
+    if (resp.error) {
+      message.error(resp.error)
+      dir.next_marker = ''
+      return false
+    }
+    for (const item of resp.list) {
+      if (dir.itemsKey.has(item.share_id)) continue
+      dir.items.push(item)
+      dir.itemsKey.add(item.share_id)
+    }
+    dir.next_marker = resp.nextMarker
+    return true
   }
 
   private static async ApiCloud123ShareListOnePage(dir: IAliShareResp): Promise<boolean> {

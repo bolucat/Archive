@@ -168,6 +168,37 @@ func TestInboundTrojan_Grpc2(t *testing.T) {
 	testInboundTrojanTLS(t, inboundOptions, outboundOptions)
 }
 
+func testInboundTrojanJLS(t *testing.T, inboundOptions inbound.TrojanOption, outboundOptions outbound.TrojanOption) {
+	t.Parallel()
+	t.Run("Conn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
+	t.Run("UConn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		outboundOptions.ClientFingerprint = "chrome"
+		testInboundTrojan(t, inboundOptions, outboundOptions)
+	})
+}
+
+func TestInboundTrojan_JLS(t *testing.T) {
+	const username = "jls-user"
+	const password = "jls-password"
+	inboundOptions := inbound.TrojanOption{
+		JLSConfig: inbound.JLSConfig{
+			Enable: true,
+			Users:  []inbound.JLSUser{{Username: username, Password: password}},
+			SNI:    realityDest,
+			Dest:   net.JoinHostPort(realityDest, "443"),
+		},
+	}
+	outboundOptions := outbound.TrojanOption{
+		SNI:     realityDest,
+		JLSOpts: outbound.JLSOptions{Username: username, Password: password},
+	}
+	testInboundTrojanJLS(t, inboundOptions, outboundOptions)
+}
+
 func TestInboundTrojan_Reality(t *testing.T) {
 	inboundOptions := inbound.TrojanOption{
 		RealityConfig: inbound.RealityConfig{

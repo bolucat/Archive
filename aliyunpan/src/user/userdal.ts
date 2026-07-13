@@ -22,7 +22,8 @@ import { applyDropboxQuota, refreshDropboxAccessToken } from '../dropbox/auth'
 import { applyOneDriveQuota, refreshOneDriveAccessToken } from '../onedrive/auth'
 import { applyBoxQuota, refreshBoxAccessToken } from '../box/auth'
 import { refreshCloud189Token } from '../cloud189/auth'
-import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { fetchGuangyaUserInfo, refreshGuangyaAccessToken } from '../guangya/auth'
+import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
@@ -193,6 +194,17 @@ export default class UserDAL {
         }
         return token.user_id && token.refresh_token ? token : null
       }
+      if (isGuangyaUser(token)) {
+        token.default_drive_id = token.default_drive_id || 'guangya'
+        const expireTime = new Date(token.expire_time || 0).getTime()
+        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+          const refreshed = await refreshGuangyaAccessToken(token)
+          if (!refreshed?.access_token) return null
+          this.SaveUserToken(refreshed)
+          return refreshed
+        }
+        return token.user_id && token.access_token ? token : null
+      }
       const ok = !!(token.user_id && (await AliUser.ApiTokenRefreshAccount(token, false)))
       return ok ? token : null
     } catch (err: any) {
@@ -353,6 +365,17 @@ export default class UserDAL {
           }
           continue
         }
+        if (isGuangyaUser(token)) {
+          const expireTime = new Date(token.expire_time || 0).getTime()
+          if (expireTime && expireTime - dateNow <= 1000 * 60 * 5) {
+            const refreshed = await refreshGuangyaAccessToken(token)
+            if (refreshed) {
+              UserTokenMap.set(refreshed.user_id, refreshed)
+              await DB.saveUser(refreshed)
+            }
+          }
+          continue
+        }
         if (isNonAliyunProvider(token)) {
           continue
         }
@@ -502,6 +525,18 @@ export default class UserDAL {
         const refreshed = await refreshCloud189Token(token)
         if (refreshed) Object.assign(token, refreshed)
       }
+    } else if (isGuangyaUser(token)) {
+      token.default_drive_id = token.default_drive_id || 'guangya'
+      const userInfo = await fetchGuangyaUserInfo(token).catch(() => null)
+      const info = userInfo?.data || userInfo || null
+      if (info) {
+        token.user_name = info.username || info.phone_number || info.phoneNumber || token.user_name
+        token.nick_name = info.nickname || info.nick_name || info.name || token.nick_name
+        token.name = info.name || token.nick_name || token.name
+        token.avatar = info.avatar || token.avatar
+        token.used_size = Number(info.used_size || info.usedSize || token.used_size || 0)
+        token.total_size = Number(info.total_size || info.totalSize || token.total_size || 0)
+      }
     } else if (isDropboxUser(token)) {
       await applyDropboxQuota(token)
     } else if (isOneDriveUser(token)) {
@@ -595,6 +630,11 @@ export default class UserDAL {
     if (isCloud189User(token)) {
       await PanDAL.aReLoadCloud189Drive(token)
       await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'cloud189', 'cloud189_root', true)
+      return
+    }
+    if (isGuangyaUser(token)) {
+      await PanDAL.aReLoadGuangyaDrive(token)
+      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'guangya', 'guangya_root', true)
       return
     }
     if (isDropboxUser(token)) {

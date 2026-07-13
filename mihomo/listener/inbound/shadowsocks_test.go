@@ -200,11 +200,24 @@ func TestInboundShadowSocks_Restls_tls13(t *testing.T) {
 	testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherShortLists, false)
 }
 
+func testInboundShadowSocksJLS(t *testing.T, inboundOptions inbound.ShadowSocksOption, outboundOptions outbound.ShadowSocksOption) {
+	t.Parallel()
+	t.Run("Conn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherShortLists, false)
+	})
+	t.Run("UConn", func(t *testing.T) {
+		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
+		outboundOptions.ClientFingerprint = "chrome"
+		testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherShortLists, false)
+	})
+}
+
 func TestInboundShadowSocks_JLS(t *testing.T) {
 	username := "jls-user"
 	password := "jls-password"
 	inboundOptions := inbound.ShadowSocksOption{
-		JLSConfig: inbound.JLS{
+		JLSConfig: inbound.JLSConfig{
 			Enable: true,
 			Users:  []inbound.JLSUser{{Username: username, Password: password}},
 			SNI:    realityDest,
@@ -219,7 +232,7 @@ func TestInboundShadowSocks_JLS(t *testing.T) {
 			"password": password,
 		},
 	}
-	testInboundShadowSocks(t, inboundOptions, outboundOptions, shadowsocksCipherShortLists, false)
+	testInboundShadowSocksJLS(t, inboundOptions, outboundOptions)
 }
 
 func TestInboundShadowSocks_SimpleObfs_Http(t *testing.T) {

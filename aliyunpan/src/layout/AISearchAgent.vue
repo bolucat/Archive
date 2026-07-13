@@ -18,6 +18,10 @@ import StorageCard from './aisearch/StorageCard.vue'
 import OrganizeCard from './aisearch/OrganizeCard.vue'
 import BatchActionCard from './aisearch/BatchActionCard.vue'
 import MovieListCard from './aisearch/MovieListCard.vue'
+import MiaochuanCard from './aisearch/MiaochuanCard.vue'
+import DirectLinksCard from './aisearch/DirectLinksCard.vue'
+import GuangyaMagnetsCard from './aisearch/GuangyaMagnetsCard.vue'
+import GuangyaEmptyDirsCard from './aisearch/GuangyaEmptyDirsCard.vue'
 import { renderMarkdown } from './aisearch/markdown'
 import type { FileResult } from './aisearch/types'
 
@@ -270,6 +274,19 @@ const DEFAULT_FOLLOWUPS = [
               @cancel="handleCancelAction(msg.id, pi)"
             />
 
+            <!-- tool: organizeFiles -->
+            <BatchActionCard
+              v-else-if="part.type === 'tool-organizeFiles'"
+              action="move"
+              :state="(part as any).state"
+              :files="(part as any).input?.files || []"
+              :target-dir="(part as any).input?.targetDir"
+              :output="(part as any).output"
+              :error="(part as any).error"
+              @confirm="handleConfirmAction(msg.id, pi)"
+              @cancel="handleCancelAction(msg.id, pi)"
+            />
+
             <!-- tool: deleteFiles -->
             <BatchActionCard
               v-else-if="part.type === 'tool-deleteFiles'"
@@ -281,6 +298,49 @@ const DEFAULT_FOLLOWUPS = [
               @confirm="handleConfirmAction(msg.id, pi)"
               @cancel="handleCancelAction(msg.id, pi)"
             />
+
+            <!-- tool: miaochuan -->
+            <MiaochuanCard
+              v-else-if="part.type === 'tool-miaochuan'"
+              :state="(part as any).state"
+              :input="(part as any).input"
+              :output="(part as any).output"
+              :error="(part as any).error"
+              @confirm="handleConfirmAction(msg.id, pi)"
+              @cancel="handleCancelAction(msg.id, pi)"
+            />
+
+            <!-- tool: directLinks -->
+            <DirectLinksCard
+              v-else-if="part.type === 'tool-directLinks'"
+              :state="(part as any).state"
+              :input="(part as any).input"
+              :output="(part as any).output"
+              :error="(part as any).error"
+            />
+
+            <!-- tool: guangyaMagnets -->
+            <GuangyaMagnetsCard
+              v-else-if="part.type === 'tool-guangyaMagnets'"
+              :state="(part as any).state"
+              :input="(part as any).input"
+              :output="(part as any).output"
+              :error="(part as any).error"
+              @confirm="handleConfirmAction(msg.id, pi)"
+              @cancel="handleCancelAction(msg.id, pi)"
+            />
+
+            <!-- tool: guangyaEmptyDirs -->
+            <GuangyaEmptyDirsCard
+              v-else-if="part.type === 'tool-guangyaEmptyDirs'"
+              :state="(part as any).state"
+              :input="(part as any).input"
+              :output="(part as any).output"
+              :error="(part as any).error"
+              @confirm="handleConfirmAction(msg.id, pi)"
+              @cancel="handleCancelAction(msg.id, pi)"
+            />
+
           </template>
         </div>
       </div>

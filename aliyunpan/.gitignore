@@ -1,4 +1,6 @@
- node_modules
+node_modules
+.pnpm-store/
+.tools/
 .DS_Store
 dist*
 *.local
@@ -27,7 +29,13 @@ config/keys.json
 scripts/
 !scripts/
 scripts/*
+!scripts/clouddrive-cli.mjs
+!scripts/clouddrive-mcp.mjs
 !scripts/koodo-reader-smoke.mjs
+!scripts/generate-secrets.mjs
+!scripts/version-utils.mjs
+
+src/secrets.generated.ts
 
 
 docs/

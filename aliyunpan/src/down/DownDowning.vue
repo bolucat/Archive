@@ -11,7 +11,6 @@ import {
   useUploadingStore,
   useWinStore
 } from '../store'
-import { isCloud123User, isPikPakUser } from '../aliapi/utils'
 import {
   onHideRightMenuScroll,
   onShowRightMenu,
@@ -25,7 +24,6 @@ import {
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
 import { TestButton } from '../utils/mosehelper'
 import { xorWith } from 'lodash'
-import { modalCloud123OfflineDownload } from '../utils/modal'
 import UrlDownloadModal from './UrlDownloadModal.vue'
 import TaskDetailDrawer from './TaskDetailDrawer.vue'
 import TorrentFileSelector from './TorrentFileSelector.vue'
@@ -43,8 +41,6 @@ const appStore = useAppStore()
 const winStore = useWinStore()
 const downingStore = useDowningStore()
 const userStore = useUserStore()
-const isCloudUser = computed(() => isCloud123User(userStore.user_id || '') || isPikPakUser(userStore.user_id || ''))
-
 const isDowning = computed(() => downingStore.ListDataDowningCount > 0)
 watch(isDowning, (value, oldValue) => {
   if (value !== oldValue && window.WebToElectron) {
@@ -228,11 +224,6 @@ const focusedIsBT = computed(() => {
   return st === 'magnet' || st === 'torrent' || st === 'torrent-url'
 })
 
-const handleCloud123Offline = () => {
-  if (!isCloudUser.value) return
-  modalCloud123OfflineDownload()
-}
-
 const handleUrlDownload = () => {
   dropPrefilledUrl.value = ''
   urlDownloadVisible.value = true
@@ -306,9 +297,6 @@ const handleTorrentFiles = () => {
       </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />删除全部
       </a-button>
-      <a-button v-if='isCloudUser' type='text' size='small' tabindex='-1' @click='handleCloud123Offline'>
-        <IconFont name="iconcloud-download" />离线下载
-      </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleUrlDownload'>
         <IconFont name="iconcloud-download" />新建下载
       </a-button>
@@ -322,9 +310,6 @@ const handleTorrentFiles = () => {
       <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />暂停全部
       </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />删除全部
-      </a-button>
-      <a-button v-if='isCloudUser' type='text' size='small' tabindex='-1' @click='handleCloud123Offline'>
-        <IconFont name="iconcloud-download" />离线下载
       </a-button>
     </div>
     <div style='flex-grow: 1'></div>

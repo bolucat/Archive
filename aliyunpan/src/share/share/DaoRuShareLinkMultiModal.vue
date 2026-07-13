@@ -4,6 +4,7 @@ import { getFromClipboard } from '../../utils/electronhelper'
 import message from '../../utils/message'
 import { modalCloseAll, modalDaoRuShareLinkMulti } from '../../utils/modal'
 import { defineComponent, reactive, ref } from 'vue'
+import { parseGuangyaShareLink } from '../../guangya/share'
 
 export default defineComponent({
   props: {
@@ -24,6 +25,10 @@ export default defineComponent({
     const FixFormate = (text: string, enmpty: boolean) => {
       let linkTxt = ''
       let linkPwd = ''
+      const guangya = parseGuangyaShareLink(text || '')
+      if (guangya.id) {
+        return { linkTxt: `guangyapan.com/s/${guangya.id.replace('guangya:', '')}`, linkPwd: guangya.pwd }
+      }
       if (text && text.indexOf('密码') >= 0) text = text.replaceAll('密码', '提取码')
       if (text && text.indexOf('提取码') >= 0) {
         text = text.replace('提取码:', '提取码').replace('提取码：', '提取码').replace('提取码 ', '提取码').trim()
@@ -80,14 +85,15 @@ export default defineComponent({
       this.formRef.validate((data: any) => {
         if (data) return
         let sharelink = this.form.sharelink
-        if (sharelink.indexOf('aliyundrive.com/s/') < 0 && sharelink.indexOf('alipan.com/s/') < 0) {
-          message.error('解析链接出错，必须为 aliyundrive.com/s/xxxxxxxxxxx 或 alipan.com/s/xxxxxxxxxxx 格式的链接')
+        const guangya = parseGuangyaShareLink(sharelink + (this.form.password ? ` 提取码:${this.form.password}` : ''))
+        if (sharelink.indexOf('aliyundrive.com/s/') < 0 && sharelink.indexOf('alipan.com/s/') < 0 && !guangya.id) {
+          message.error('解析链接出错，必须为阿里云盘或光鸭云盘分享链接')
           return
         }
 
         this.okLoading = true
-        const sid = sharelink.split(/\.com\/s\/([\w]+)/)[1]
-        AliShare.ApiGetShareToken(sid, this.form.password)
+        const sid = guangya.id || sharelink.split(/\.com\/s\/([\w]+)/)[1]
+        AliShare.ApiGetShareToken(sid, guangya.pwd || this.form.password)
           .then((share_token) => {
             this.okLoading = false
             if (!share_token || share_token.startsWith('，')) {

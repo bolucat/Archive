@@ -34,6 +34,11 @@ const driveProviderMap: Record<DriveProvider, DriveProviderMeta> = {
     label: '天翼云盘',
     icon: 'images/drive-icons/cloud189.svg'
   },
+  guangya: {
+    key: 'guangya',
+    label: '光鸭云盘',
+    icon: 'images/drive-icons/guangya.svg'
+  },
   baidu: {
     key: 'baidu',
     label: '百度网盘',

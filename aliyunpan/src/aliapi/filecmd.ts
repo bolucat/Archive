@@ -2,7 +2,7 @@ import DebugLog from '../utils/debuglog'
 import AliHttp from './alihttp'
 import { IAliFileItem, IAliGetFileModel } from './alimodels'
 import AliDirFileList from './dirfilelist'
-import { ApiBatch, ApiBatchMaker, ApiBatchMaker2, ApiBatchSuccess, EncodeEncName, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
+import { ApiBatch, ApiBatchMaker, ApiBatchMaker2, ApiBatchSuccess, EncodeEncName, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
 import { IDownloadUrl } from './models'
 import AliFile from './file'
 import message from '../utils/message'
@@ -22,6 +22,7 @@ import { apiPikPakCopyBatch, apiPikPakMkdir, apiPikPakMoveBatch, apiPikPakRename
 import { apiQuarkMkdir, apiQuarkMoveBatch, apiQuarkRename, apiQuarkTrashBatch } from '../quark/filecmd'
 import { apiCloud139CopyBatch, apiCloud139Mkdir, apiCloud139MoveBatch, apiCloud139Rename, apiCloud139TrashBatch } from '../cloud139/filecmd'
 import { apiCloud189CopyBatch, apiCloud189Mkdir, apiCloud189MoveBatch, apiCloud189Rename, apiCloud189TrashBatch } from '../cloud189/filecmd'
+import { apiGuangyaCopyBatch, apiGuangyaMkdir, apiGuangyaMoveBatch, apiGuangyaRename, apiGuangyaTrashBatch } from '../guangya/filecmd'
 import { apiDropboxCopyBatch, apiDropboxDeleteBatch, apiDropboxMkdir, apiDropboxMoveBatch, apiDropboxRename } from '../dropbox/filecmd'
 import { apiOneDriveCopyBatch, apiOneDriveDeleteBatch, apiOneDriveMkdir, apiOneDriveMoveBatch, apiOneDriveRename } from '../onedrive/filecmd'
 import { apiBoxCopyBatch, apiBoxDeleteBatch, apiBoxMkdir, apiBoxMoveBatch, apiBoxRename } from '../box/filecmd'
@@ -107,6 +108,9 @@ export default class AliFileCmd {
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       return apiCloud189Mkdir(user_id, parent_file_id.includes('root') ? 'cloud189_root' : parent_file_id, creatDirName)
     }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      return apiGuangyaMkdir(user_id, parent_file_id.includes('root') ? 'guangya_root' : parent_file_id, creatDirName)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxMkdir(user_id, parent_file_id.includes('root') ? 'dropbox_root' : parent_file_id, creatDirName)
     }
@@ -166,6 +170,9 @@ export default class AliFileCmd {
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       return apiCloud189TrashBatch(user_id, file_idList)
     }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      return apiGuangyaTrashBatch(user_id, file_idList)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxDeleteBatch(user_id, file_idList)
     }
@@ -223,6 +230,9 @@ export default class AliFileCmd {
     }
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       return apiCloud189TrashBatch(user_id, file_idList)
+    }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      return apiGuangyaTrashBatch(user_id, file_idList)
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxDeleteBatch(user_id, file_idList)
@@ -317,9 +327,13 @@ export default class AliFileCmd {
       }
       return successList
     }
-    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189') {
+    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isGuangyaUser(user_id) || drive_id === 'guangya') {
       const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      const rename = isCloud139User(user_id) || drive_id === 'cloud139' ? apiCloud139Rename : apiCloud189Rename
+      const rename = isGuangyaUser(user_id) || drive_id === 'guangya'
+        ? apiGuangyaRename
+        : isCloud139User(user_id) || drive_id === 'cloud139'
+          ? apiCloud139Rename
+          : apiCloud189Rename
       for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
         const file_id = file_idList[i]
         const name = names[i] || ''
@@ -386,6 +400,7 @@ export default class AliFileCmd {
 
 
   static async ApiFavorBatch(user_id: string, drive_id: string, isfavor: boolean, ismessage: boolean, file_idList: string[]): Promise<string[]> {
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') return []
     if (isDropboxUser(user_id) || drive_id === 'dropbox') return []
     const batchList = ApiBatchMaker('/file/update', file_idList, (file_id: string) => {
       return { drive_id: drive_id, file_id: file_id, custom_index_key: isfavor ? 'starred_yes' : '', starred: isfavor }
@@ -407,6 +422,10 @@ export default class AliFileCmd {
     }
     if (isQuarkUser(user_id) || drive_id === 'quark') {
       return apiQuarkTrashBatch(user_id, file_idList)
+    }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      message.info('光鸭云盘请在官方客户端彻底删除回收站文件')
+      return []
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       message.info('Dropbox 已删除文件请在官方客户端恢复或彻底删除')
@@ -433,7 +452,7 @@ export default class AliFileCmd {
       message.info('夸克网盘请在官方客户端恢复回收站文件')
       return []
     }
-    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189') {
+    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isGuangyaUser(user_id) || drive_id === 'guangya') {
       message.info('请在官方客户端恢复回收站文件')
       return []
     }
@@ -471,6 +490,7 @@ export default class AliFileCmd {
     if (isBaiduUser(user_id) || drive_id === 'baidu') return
     if (isPikPakUser(user_id) || drive_id === 'pikpak') return
     if (isQuarkUser(user_id) || drive_id === 'quark') return
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') return
     if (isDropboxUser(user_id) || drive_id === 'dropbox') return
     // 防止加密标记清空
     let parts = description.split(',') || []
@@ -594,6 +614,9 @@ export default class AliFileCmd {
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       return apiCloud189MoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud189_root' : to_parent_file_id)
     }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      return apiGuangyaMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'guangya_root' : to_parent_file_id)
+    }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'dropbox_root' : to_parent_file_id, to_parent_description)
     }
@@ -673,6 +696,9 @@ export default class AliFileCmd {
     }
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       return apiCloud189CopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud189_root' : to_parent_file_id)
+    }
+    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
+      return apiGuangyaCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'guangya_root' : to_parent_file_id)
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return apiDropboxCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'dropbox_root' : to_parent_file_id, to_parent_description)

@@ -12,6 +12,7 @@ import (
 	"github.com/metacubex/mihomo/component/ech"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/listener/jls"
 	"github.com/metacubex/mihomo/listener/reality"
 	"github.com/metacubex/mihomo/listener/sing"
 	"github.com/metacubex/mihomo/ntp"
@@ -84,6 +85,7 @@ func New(config LC.VlessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 		Protocols:   new(http.Protocols),
 	}
 	tlsConfig := &tls.Config{Time: ntp.Now}
+	var jlsBuilder *jls.Builder
 	var realityBuilder *reality.Builder
 
 	if config.Certificate != "" && config.PrivateKey != "" {
@@ -123,6 +125,21 @@ func New(config LC.VlessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 			return nil, errors.New("client-auth is unavailable in reality")
 		}
 		realityBuilder, err = config.RealityConfig.Build(tunnel)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if config.JLSConfig.Enable {
+		if tlsConfig.GetCertificate != nil {
+			return nil, errors.New("certificate is unavailable in JLS")
+		}
+		if tlsConfig.ClientAuth != tls.NoClientCert {
+			return nil, errors.New("client-auth is unavailable in JLS")
+		}
+		if realityBuilder != nil {
+			return nil, errors.New("REALITY is unavailable in JLS")
+		}
+		jlsBuilder, err = jls.New(config.JLSConfig, tunnel)
 		if err != nil {
 			return nil, err
 		}
@@ -225,12 +242,14 @@ func New(config LC.VlessServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 		if err != nil {
 			return nil, err
 		}
-		if realityBuilder != nil {
+		if jlsBuilder != nil {
+			l = jlsBuilder.NewListener(l)
+		} else if realityBuilder != nil {
 			l = realityBuilder.NewListener(l)
 		} else if tlsConfig.GetCertificate != nil {
 			l = tls.NewListener(l, tlsConfig)
 		} else if sl.decryption == nil && !config.AllowInsecure {
-			return nil, errors.New("disallow using Vless without any certificates/reality/decryption/allow-insecure config")
+			return nil, errors.New("disallow using Vless without any certificates/jls/reality/decryption/allow-insecure config")
 		}
 		sl.listeners = append(sl.listeners, l)
 
