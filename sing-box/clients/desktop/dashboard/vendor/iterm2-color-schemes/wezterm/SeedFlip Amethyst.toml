@@ -1,0 +1,12 @@
+# SeedFlip Amethyst
+[colors]
+foreground = "#1a0a2e"
+background = "#f8f7f6"
+cursor_bg = "#635bff"
+cursor_border = "#635bff"
+cursor_fg = "#1a0a2e"
+selection_bg = "#ffffff"
+selection_fg = "#1a0a2e"
+
+ansi = ["#d7d1cb","#bd0f0f","#0fbd49","#bda00f","#0f58bd","#bd0fbd","#0fbdbd","#0e0519"]
+brights = ["#b5aba0","#ee2b2b","#12d452","#d4b312","#2b7cee","#ee2bee","#05c8c8","#1a0a2e"]

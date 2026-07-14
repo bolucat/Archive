@@ -1,0 +1,23 @@
+{
+  "name": "Dalton Dark",
+  "black": "#282828",
+  "red": "#d85050",
+  "green": "#5b914e",
+  "yellow": "#c4c40c",
+  "blue": "#7aa2f7",
+  "purple": "#a050d0",
+  "cyan": "#56717f",
+  "white": "#b8b8b8",
+  "brightBlack": "#494949",
+  "brightRed": "#f07068",
+  "brightGreen": "#88b97d",
+  "brightYellow": "#eded02",
+  "brightBlue": "#97b1f1",
+  "brightPurple": "#c070f0",
+  "brightCyan": "#6691a7",
+  "brightWhite": "#d8d8d8",
+  "background": "#1b1b1b",
+  "foreground": "#c8c9cc",
+  "cursor": "#9a9a9a",
+  "selection": "#c8c9cc"
+}

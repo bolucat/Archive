@@ -1,0 +1,43 @@
+!
+! Dalton Dark
+!
+*.foreground:  #c8c9cc
+*.background:  #1b1b1b
+*.cursorColor: #9a9a9a
+!
+! Black
+*.color0:      #282828
+*.color8:      #494949
+!
+! Red
+*.color1:      #d85050
+*.color9:      #f07068
+!
+! Green
+*.color2:      #5b914e
+*.color10:     #88b97d
+!
+! Yellow
+*.color3:      #c4c40c
+*.color11:     #eded02
+!
+! Blue
+*.color4:      #7aa2f7
+*.color12:     #97b1f1
+!
+! Magenta
+*.color5:      #a050d0
+*.color13:     #c070f0
+!
+! Cyan
+*.color6:      #56717f
+*.color14:     #6691a7
+!
+! White
+*.color7:      #b8b8b8
+*.color15:     #d8d8d8
+!
+! Bold, Italic, Underline
+*.colorBD:     #c8c9cc
+!*.colorIT:
+!*.colorUL:

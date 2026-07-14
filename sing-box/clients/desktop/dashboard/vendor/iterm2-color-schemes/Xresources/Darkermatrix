@@ -1,0 +1,43 @@
+!
+! Darkermatrix
+!
+*.foreground:  #35451a
+*.background:  #070c0e
+*.cursorColor: #444733
+!
+! Black
+*.color0:      #091013
+*.color8:      #404040
+!
+! Red
+*.color1:      #1a4831
+*.color9:      #0d452a
+!
+! Green
+*.color2:      #6fa64c
+*.color10:     #90d762
+!
+! Yellow
+*.color3:      #595900
+*.color11:     #e2e500
+!
+! Blue
+*.color4:      #00cb6b
+*.color12:     #00ff87
+!
+! Magenta
+*.color5:      #4e375a
+*.color13:     #4e375a
+!
+! Cyan
+*.color6:      #125459
+*.color14:     #176c73
+!
+! White
+*.color7:      #1a4833
+*.color15:     #00381e
+!
+! Bold, Italic, Underline
+*.colorBD:     #00cd6d
+!*.colorIT:
+*.colorUL:     #302c2c

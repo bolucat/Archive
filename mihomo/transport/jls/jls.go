@@ -194,6 +194,18 @@ func Server(ctx context.Context, conn net.Conn, config *ServerConfig) (net.Conn,
 	return tlsConn, nil
 }
 
+func UserFromConn(conn net.Conn) (string, bool) {
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return "", false
+	}
+	state := tlsConn.ConnectionState().JLS
+	if !state.Authenticated || state.User == "" {
+		return "", false
+	}
+	return state.User, true
+}
+
 func relayFallback(ctx context.Context, inbound net.Conn, prefix []byte, config *ServerConfig) error {
 	upstream, err := config.DialContext(ctx, "tcp", config.Dest)
 	if err != nil {
@@ -201,7 +213,9 @@ func relayFallback(ctx context.Context, inbound net.Conn, prefix []byte, config 
 	}
 	inbound = N.NewCachedConn(inbound, prefix)
 	upstream = newRateLimitedConn(upstream, config.RateLimit)
-	N.Relay(inbound, upstream)
+	if err = N.RelayContext(ctx, inbound, upstream); err != nil {
+		return err
+	}
 	return ErrFallbackCompleted
 }
 

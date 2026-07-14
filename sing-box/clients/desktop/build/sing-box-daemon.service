@@ -1,0 +1,14 @@
+[Unit]
+Description=sing-box Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+StateDirectory=sing-box-daemon
+ExecStart=/opt/sing-box/resources/daemon/sing-box-daemon run --working-directory /var/lib/sing-box-daemon --socket /run/sing-box.socket
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+{
+  "name": "Coffee Theme",
+  "black": "#000000",
+  "red": "#c91b00",
+  "green": "#00c200",
+  "yellow": "#adaa00",
+  "blue": "#0225c7",
+  "purple": "#ca30c7",
+  "cyan": "#00b8ba",
+  "white": "#a1a1a1",
+  "brightBlack": "#686868",
+  "brightRed": "#ff6e67",
+  "brightGreen": "#1fba28",
+  "brightYellow": "#b2af1b",
+  "brightBlue": "#6871ff",
+  "brightPurple": "#f26af2",
+  "brightCyan": "#20bdbf",
+  "brightWhite": "#ffffff",
+  "background": "#f5deb3",
+  "foreground": "#000000",
+  "cursorColor": "#a1a1a1",
+  "selectionBackground": "#c1deff"
+}

@@ -1,0 +1,43 @@
+!
+! Builtin Light
+!
+*.foreground:  #000000
+*.background:  #ffffff
+*.cursorColor: #000000
+!
+! Black
+*.color0:      #000000
+*.color8:      #555555
+!
+! Red
+*.color1:      #bb0000
+*.color9:      #ff5555
+!
+! Green
+*.color2:      #00bb00
+*.color10:     #2fd92f
+!
+! Yellow
+*.color3:      #bbbb00
+*.color11:     #bfbf15
+!
+! Blue
+*.color4:      #0000bb
+*.color12:     #5555ff
+!
+! Magenta
+*.color5:      #bb00bb
+*.color13:     #ff55ff
+!
+! Cyan
+*.color6:      #00bbbb
+*.color14:     #22cccc
+!
+! White
+*.color7:      #bbbbbb
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #000000
+!*.colorIT:
+!*.colorUL:

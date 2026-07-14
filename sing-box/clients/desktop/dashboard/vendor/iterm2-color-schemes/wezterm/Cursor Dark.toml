@@ -1,0 +1,12 @@
+# Cursor Dark
+[colors]
+foreground = "#d4d4d4"
+background = "#141414"
+cursor_bg = "#d4d4d4"
+cursor_border = "#d4d4d4"
+cursor_fg = "#141414"
+selection_bg = "#2c2c2c"
+selection_fg = "#e4e4e4"
+
+ansi = ["#242424","#fc6b83","#3fa266","#d2943e","#81a1c1","#b48ead","#88c0d0","#e4e4e4"]
+brights = ["#4a4a4a","#fc6b83","#70b489","#f1b467","#87a6c4","#b48ead","#88c0d0","#e4e4e4"]

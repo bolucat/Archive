@@ -1,0 +1,23 @@
+{
+  "name": "Horizon Bright",
+  "black": "#16161d",
+  "red": "#fc4777",
+  "green": "#00ca86",
+  "yellow": "#f2a682",
+  "blue": "#00bedd",
+  "purple": "#ff58b1",
+  "cyan": "#00cdcb",
+  "white": "#bfafac",
+  "brightBlack": "#1a1c24",
+  "brightRed": "#fe5f87",
+  "brightGreen": "#00d193",
+  "brightYellow": "#e5a688",
+  "brightBlue": "#00c9e2",
+  "brightPurple": "#ff6cba",
+  "brightCyan": "#00c3c2",
+  "brightWhite": "#fff2ef",
+  "background": "#fdf0ed",
+  "foreground": "#16161d",
+  "cursorColor": "#d3a89d",
+  "selectionBackground": "#f9cec3"
+}

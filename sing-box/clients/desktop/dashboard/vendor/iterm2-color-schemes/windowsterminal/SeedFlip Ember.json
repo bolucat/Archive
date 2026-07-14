@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Ember",
+  "black": "#050505",
+  "red": "#f04242",
+  "green": "#42f07c",
+  "yellow": "#f0d342",
+  "blue": "#428bf0",
+  "purple": "#f042f0",
+  "cyan": "#42f0f0",
+  "white": "#fafafa",
+  "brightBlack": "#3d3d3d",
+  "brightRed": "#f58989",
+  "brightGreen": "#89f5ad",
+  "brightYellow": "#f5e389",
+  "brightBlue": "#89b6f5",
+  "brightPurple": "#f589f5",
+  "brightCyan": "#89f5f5",
+  "brightWhite": "#ffffff",
+  "background": "#0a0a0a",
+  "foreground": "#ededed",
+  "cursorColor": "#ff6b3d",
+  "selectionBackground": "#141414"
+}

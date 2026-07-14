@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Ivory",
+  "black": "#d9d9d9",
+  "red": "#bd0f0f",
+  "green": "#0fbd49",
+  "yellow": "#bda00f",
+  "blue": "#0f58bd",
+  "purple": "#bd0fbd",
+  "cyan": "#0fbdbd",
+  "white": "#07182a",
+  "brightBlack": "#b3b3b3",
+  "brightRed": "#ee2b2b",
+  "brightGreen": "#12d452",
+  "brightYellow": "#e1c01e",
+  "brightBlue": "#2b7cee",
+  "brightPurple": "#ee2bee",
+  "brightCyan": "#12d4d4",
+  "brightWhite": "#0a2540",
+  "background": "#ffffff",
+  "foreground": "#0a2540",
+  "cursorColor": "#635bff",
+  "selectionBackground": "#f6f9fc"
+}

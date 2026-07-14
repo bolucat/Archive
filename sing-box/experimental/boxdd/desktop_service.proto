@@ -25,6 +25,9 @@ service DesktopService {
   rpc ExportOOMReport(OOMReportExportRequest) returns (CrashReportArchive) {}
   rpc DeleteOOMReport(OOMReportRequest) returns (google.protobuf.Empty) {}
   rpc DeleteAllOOMReports(google.protobuf.Empty) returns (google.protobuf.Empty) {}
+  rpc InstallUpdate(InstallUpdateRequest) returns (InstallUpdateResponse) {}
+  rpc GetDataProtection(google.protobuf.Empty) returns (DataProtectionInfo) {}
+  rpc SetDataProtection(SetDataProtectionRequest) returns (DataProtectionInfo) {}
 }
 
 service ApplicationService {
@@ -170,4 +173,28 @@ message OOMReportFile {
   string name = 1;
   bytes content = 2;
   bool is_profile = 3;
+}
+
+message DataProtectionInfo {
+  bool enabled = 1;
+  bytes key = 2;
+}
+
+message SetDataProtectionRequest {
+  bool enabled = 1;
+}
+
+message InstallUpdateRequest {
+  string installer_path = 1;
+}
+
+message InstallUpdateResponse {
+  InstallUpdateResult result = 1;
+}
+
+enum InstallUpdateResult {
+  INSTALL_UPDATE_RESULT_UNSPECIFIED = 0;
+  INSTALL_UPDATE_RESULT_STARTED = 1;
+  INSTALL_UPDATE_RESULT_SIGNER_MISMATCH = 2;
+  INSTALL_UPDATE_RESULT_NOT_NEWER = 3;
 }

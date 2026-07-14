@@ -1,0 +1,12 @@
+# SeedFlip Pulse
+[colors]
+foreground = "#ffffff"
+background = "#121212"
+cursor_bg = "#1db954"
+cursor_border = "#1db954"
+cursor_fg = "#121212"
+selection_bg = "#1a1a1a"
+selection_fg = "#ffffff"
+
+ansi = ["#0d0d0d","#e34f4f","#4fe380","#e3cb4f","#4f8de3","#e34fe3","#4fe3e3","#ffffff"]
+brights = ["#454545","#ee9191","#91eeb0","#eede91","#91b8ee","#ee91ee","#91eeee","#ffffff"]

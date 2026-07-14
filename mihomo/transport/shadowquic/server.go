@@ -2,6 +2,7 @@ package shadowquic
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 
@@ -21,9 +22,12 @@ type ServerOption struct {
 	TLSConfig  *tls.Config
 	QUICConfig *quic.Config
 
-	CongestionController string
-	CWND                 int
-	BBRProfile           string
+	CongestionController  string
+	SendBPS               uint64
+	ReceiveBPS            uint64
+	IgnoreClientBandwidth bool
+	CWND                  int
+	BBRProfile            string
 }
 
 type Server struct {
@@ -45,7 +49,9 @@ func (s *Server) Serve() error {
 		if err != nil {
 			return err
 		}
-		SetCongestionController(conn, s.option.CongestionController, s.option.CWND, s.option.BBRProfile)
+		if !s.brutalRequired() {
+			SetCongestionController(conn, s.option.CongestionController, s.option.CWND, s.option.BBRProfile)
+		}
 		state := newConnState(conn)
 		go s.handleConnection(state)
 	}
@@ -70,6 +76,10 @@ func (s *Server) handleStream(state *connState, stream *quic.Stream) {
 	conn := NewQuicStreamConn(stream, state.quicConn.LocalAddr(), state.quicConn.RemoteAddr(), nil)
 	command, err := ReadCommand(conn)
 	if err != nil {
+		_ = conn.Close()
+		return
+	}
+	if command != CommandExtension && s.brutalRequired() && !state.isBrutalNegotiated() {
 		_ = conn.Close()
 		return
 	}
@@ -112,6 +122,41 @@ func (s *Server) handleStream(state *connState, stream *quic.Stream) {
 	}
 }
 
+func (s *Server) brutalRequired() bool {
+	return s.option.SendBPS > 0 || s.option.ReceiveBPS > 0
+}
+
+func (s *Server) handleBrutalNegotiation(state *connState, conn net.Conn) {
+	rx, err := ReadBrutalNegotiationRequest(conn)
+	if err != nil {
+		return
+	}
+	rxAuto, err := s.configureBrutalCongestion(state.quicConn, rx)
+	if err != nil {
+		return
+	}
+	state.markBrutalNegotiated()
+	if err = WriteBrutalNegotiationResponse(conn, s.option.ReceiveBPS, rxAuto); err != nil {
+		return
+	}
+}
+
+func (s *Server) configureBrutalCongestion(quicConn *quic.Conn, clientRx uint64) (bool, error) {
+	if s.option.ReceiveBPS > 0 && s.option.IgnoreClientBandwidth && clientRx == 0 {
+		return false, errors.New("shadowquic: brutal negotiation failed")
+	}
+	if !(s.option.ReceiveBPS == 0 && s.option.IgnoreClientBandwidth) && clientRx > 0 {
+		rx := clientRx
+		if s.option.SendBPS > 0 && rx > s.option.SendBPS {
+			rx = s.option.SendBPS
+		}
+		setBrutalCongestionController(quicConn, rx)
+		return false, nil
+	}
+	SetCongestionController(quicConn, "bbr", s.option.CWND, s.option.BBRProfile)
+	return true, nil
+}
+
 func (s *Server) handleExtension(state *connState, conn net.Conn) {
 	defer conn.Close()
 
@@ -120,6 +165,12 @@ func (s *Server) handleExtension(state *connState, conn net.Conn) {
 		return
 	}
 	switch opcode {
+	case extensionOpcodeMihomoBrutal:
+		if state == nil || s.option == nil {
+			_ = WriteExtensionErrorResult(conn, extensionErrNotAvailable, "")
+			return
+		}
+		s.handleBrutalNegotiation(state, conn)
 	case extensionOpcodeConn:
 		subcommand, err := readExtensionSubcommand(conn)
 		if err != nil {

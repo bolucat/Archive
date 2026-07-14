@@ -1,0 +1,12 @@
+# SeedFlip Inkwell
+[colors]
+foreground = "#e8e4df"
+background = "#0a0a0a"
+cursor_bg = "#c8b8a0"
+cursor_border = "#c8b8a0"
+cursor_fg = "#0a0a0a"
+selection_bg = "#141414"
+selection_fg = "#e8e4df"
+
+ansi = ["#050505","#cc6666","#66cc88","#ccbb66","#6690cc","#cc66cc","#66cccc","#f3f1ee"]
+brights = ["#3d3d3d","#df9f9f","#9fdfb5","#dfd49f","#9fbadf","#df9fdf","#9fdfdf","#ffffff"]

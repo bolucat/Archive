@@ -1,0 +1,43 @@
+!
+! Oxocarbon
+!
+*.foreground:  #f2f4f8
+*.background:  #161616
+*.cursorColor: #ffffff
+!
+! Black
+*.color0:      #161616
+*.color8:      #585858
+!
+! Red
+*.color1:      #00dfdb
+*.color9:      #00dfdb
+!
+! Green
+*.color2:      #00b4ff
+*.color10:     #00b4ff
+!
+! Yellow
+*.color3:      #ff4297
+*.color11:     #ff4297
+!
+! Blue
+*.color4:      #00c15a
+*.color12:     #00c15a
+!
+! Magenta
+*.color5:      #c693ff
+*.color13:     #c693ff
+!
+! Cyan
+*.color6:      #ff74b8
+*.color14:     #ff74b8
+!
+! White
+*.color7:      #f2f4f8
+*.color15:     #f2f4f8
+!
+! Bold, Italic, Underline
+*.colorBD:     #ffffff
+!*.colorIT:
+!*.colorUL:

@@ -4,7 +4,6 @@ import (
 	context "context"
 
 	daemon "github.com/sagernet/sing-box/daemon"
-
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -35,6 +34,9 @@ const (
 	DesktopService_ExportOOMReport_FullMethodName         = "/desktop.DesktopService/ExportOOMReport"
 	DesktopService_DeleteOOMReport_FullMethodName         = "/desktop.DesktopService/DeleteOOMReport"
 	DesktopService_DeleteAllOOMReports_FullMethodName     = "/desktop.DesktopService/DeleteAllOOMReports"
+	DesktopService_InstallUpdate_FullMethodName           = "/desktop.DesktopService/InstallUpdate"
+	DesktopService_GetDataProtection_FullMethodName       = "/desktop.DesktopService/GetDataProtection"
+	DesktopService_SetDataProtection_FullMethodName       = "/desktop.DesktopService/SetDataProtection"
 )
 
 // DesktopServiceClient is the client API for DesktopService service.
@@ -59,6 +61,9 @@ type DesktopServiceClient interface {
 	ExportOOMReport(ctx context.Context, in *OOMReportExportRequest, opts ...grpc.CallOption) (*CrashReportArchive, error)
 	DeleteOOMReport(ctx context.Context, in *OOMReportRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 	DeleteAllOOMReports(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	InstallUpdate(ctx context.Context, in *InstallUpdateRequest, opts ...grpc.CallOption) (*InstallUpdateResponse, error)
+	GetDataProtection(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*DataProtectionInfo, error)
+	SetDataProtection(ctx context.Context, in *SetDataProtectionRequest, opts ...grpc.CallOption) (*DataProtectionInfo, error)
 }
 
 type desktopServiceClient struct {
@@ -249,6 +254,36 @@ func (c *desktopServiceClient) DeleteAllOOMReports(ctx context.Context, in *empt
 	return out, nil
 }
 
+func (c *desktopServiceClient) InstallUpdate(ctx context.Context, in *InstallUpdateRequest, opts ...grpc.CallOption) (*InstallUpdateResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InstallUpdateResponse)
+	err := c.cc.Invoke(ctx, DesktopService_InstallUpdate_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *desktopServiceClient) GetDataProtection(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*DataProtectionInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DataProtectionInfo)
+	err := c.cc.Invoke(ctx, DesktopService_GetDataProtection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *desktopServiceClient) SetDataProtection(ctx context.Context, in *SetDataProtectionRequest, opts ...grpc.CallOption) (*DataProtectionInfo, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DataProtectionInfo)
+	err := c.cc.Invoke(ctx, DesktopService_SetDataProtection_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DesktopServiceServer is the server API for DesktopService service.
 // All implementations must embed UnimplementedDesktopServiceServer
 // for forward compatibility.
@@ -271,6 +306,9 @@ type DesktopServiceServer interface {
 	ExportOOMReport(context.Context, *OOMReportExportRequest) (*CrashReportArchive, error)
 	DeleteOOMReport(context.Context, *OOMReportRequest) (*emptypb.Empty, error)
 	DeleteAllOOMReports(context.Context, *emptypb.Empty) (*emptypb.Empty, error)
+	InstallUpdate(context.Context, *InstallUpdateRequest) (*InstallUpdateResponse, error)
+	GetDataProtection(context.Context, *emptypb.Empty) (*DataProtectionInfo, error)
+	SetDataProtection(context.Context, *SetDataProtectionRequest) (*DataProtectionInfo, error)
 	mustEmbedUnimplementedDesktopServiceServer()
 }
 
@@ -351,6 +389,18 @@ func (UnimplementedDesktopServiceServer) DeleteOOMReport(context.Context, *OOMRe
 
 func (UnimplementedDesktopServiceServer) DeleteAllOOMReports(context.Context, *emptypb.Empty) (*emptypb.Empty, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteAllOOMReports not implemented")
+}
+
+func (UnimplementedDesktopServiceServer) InstallUpdate(context.Context, *InstallUpdateRequest) (*InstallUpdateResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InstallUpdate not implemented")
+}
+
+func (UnimplementedDesktopServiceServer) GetDataProtection(context.Context, *emptypb.Empty) (*DataProtectionInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDataProtection not implemented")
+}
+
+func (UnimplementedDesktopServiceServer) SetDataProtection(context.Context, *SetDataProtectionRequest) (*DataProtectionInfo, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetDataProtection not implemented")
 }
 func (UnimplementedDesktopServiceServer) mustEmbedUnimplementedDesktopServiceServer() {}
 func (UnimplementedDesktopServiceServer) testEmbeddedByValue()                        {}
@@ -697,6 +747,60 @@ func _DesktopService_DeleteAllOOMReports_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DesktopService_InstallUpdate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InstallUpdateRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DesktopServiceServer).InstallUpdate(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DesktopService_InstallUpdate_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DesktopServiceServer).InstallUpdate(ctx, req.(*InstallUpdateRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DesktopService_GetDataProtection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DesktopServiceServer).GetDataProtection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DesktopService_GetDataProtection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DesktopServiceServer).GetDataProtection(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DesktopService_SetDataProtection_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetDataProtectionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DesktopServiceServer).SetDataProtection(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DesktopService_SetDataProtection_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DesktopServiceServer).SetDataProtection(ctx, req.(*SetDataProtectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DesktopService_ServiceDesc is the grpc.ServiceDesc for DesktopService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -775,6 +879,18 @@ var DesktopService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteAllOOMReports",
 			Handler:    _DesktopService_DeleteAllOOMReports_Handler,
+		},
+		{
+			MethodName: "InstallUpdate",
+			Handler:    _DesktopService_InstallUpdate_Handler,
+		},
+		{
+			MethodName: "GetDataProtection",
+			Handler:    _DesktopService_GetDataProtection_Handler,
+		},
+		{
+			MethodName: "SetDataProtection",
+			Handler:    _DesktopService_SetDataProtection_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

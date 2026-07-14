@@ -1,0 +1,43 @@
+!
+! Horizon
+!
+*.foreground:  #d5d8da
+*.background:  #1c1e26
+*.cursorColor: #6c6f93
+!
+! Black
+*.color0:      #000000
+*.color8:      #666666
+!
+! Red
+*.color1:      #e95678
+*.color9:      #ec6a88
+!
+! Green
+*.color2:      #29d398
+*.color10:     #3fdaa4
+!
+! Yellow
+*.color3:      #fab795
+*.color11:     #fbc3a7
+!
+! Blue
+*.color4:      #26bbd9
+*.color12:     #3fc4de
+!
+! Magenta
+*.color5:      #ee64ac
+*.color13:     #f075b5
+!
+! Cyan
+*.color6:      #59e1e3
+*.color14:     #6be4e6
+!
+! White
+*.color7:      #e5e5e5
+*.color15:     #e5e5e5
+!
+! Bold, Italic, Underline
+*.colorBD:     #d5d8da
+!*.colorIT:
+!*.colorUL:

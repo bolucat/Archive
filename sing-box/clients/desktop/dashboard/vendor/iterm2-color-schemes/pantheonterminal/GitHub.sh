@@ -1,0 +1,9 @@
+#!/bin/bash
+dconf load /org/pantheon/terminal/settings/ <<COLORS
+[/]
+name='GitHub'
+cursor-color='#3f3f3f'
+foreground='#3e3e3e'
+background='rgba(244,244,244,.95)'
+palette='#3e3e3e:#970b16:#07962a:#c5bb94:#003e8a:#e94691:#7cc4df:#b2b2b2:#666666:#de0000:#7ac895:#d7b600:#2e6cba:#f29592:#00c7cb:#ffffff'
+COLORS

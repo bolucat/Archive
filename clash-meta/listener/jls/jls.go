@@ -41,3 +41,7 @@ func (b Builder) NewListener(listener net.Listener) net.Listener {
 		return jls.Server(ctx, conn, b.config)
 	}, nil)
 }
+
+func UserFromConn(conn net.Conn) (string, bool) {
+	return jls.UserFromConn(conn)
+}

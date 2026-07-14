@@ -1,0 +1,282 @@
+name: Create Terminal Themes Release
+
+on:
+  schedule:
+    - cron: "0 15 * * 1" # Run every Monday at 15:00 UTC
+  workflow_dispatch: # Allows manual triggering
+    inputs:
+      release_name:
+        description: "Custom release name (optional)"
+        required: false
+        default: ""
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up variables
+        id: vars
+        run: |
+          # Generate timestamp-based tag for releases
+          TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+          SHORT_SHA=${GITHUB_SHA::7}
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.release_name }}" ]; then
+            echo "tag_name=release-$TIMESTAMP-$SHORT_SHA" >> $GITHUB_OUTPUT
+            echo "release_name=${{ github.event.inputs.release_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag_name=release-$TIMESTAMP-$SHORT_SHA" >> $GITHUB_OUTPUT
+            echo "release_name=Terminal Themes - $(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+          fi
+
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+
+      - name: Check for changes since last release
+        id: changes
+        run: |
+          # Find the latest release tag matching your pattern
+          LAST_TAG=$(git tag --list 'release-*' --sort=-creatordate | head -n 1)
+          echo "Latest release tag: $LAST_TAG"
+
+          # If no previous release, always proceed
+          if [ -z "$LAST_TAG" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Check for changes since last release tag, excluding screenshots and backgrounds
+          CHANGED=$(git diff --name-only "$LAST_TAG"..HEAD | grep -vE '^screenshots/|^backgrounds/' | wc -l)
+          echo "Changed files count: $CHANGED"
+
+          if [ "$CHANGED" -gt 0 ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check for existing release and clean up if needed
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          # Delete the 'latest' release and tag if they exist to avoid conflicts
+          gh release delete latest --yes --cleanup-tag 2>/dev/null || echo "No existing 'latest' release to delete"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release archives
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          # Dynamically discover all directories, excluding screenshots and backgrounds
+          mv schemes iterm2
+          mv terminal terminal.app
+          ALL_DIRS=($(find . -maxdepth 1 -type d -name '[a-zA-Z]*' ! -name 'screenshots' ! -name 'backgrounds' ! -name '.*' ! -name 'tools' ! -name 'gh-pages' | sed 's|./||' | sort))
+          mkdir -p releases
+
+          # Create individual archives for each terminal emulator directory
+          for dir in "${ALL_DIRS[@]}"; do
+            if [ -d "$dir" ]; then
+              echo "Creating archive for $dir..."
+
+              # Count files to ensure directory is not empty
+              file_count=$(find "$dir" -type f | wc -l)
+              if [ $file_count -gt 0 ]; then
+                # Create tar.gz archive
+                tar -czf "releases/${dir}-themes.tgz" "$dir"
+
+                # Create 7z archive
+                7z a "releases/${dir}-themes.7z" "$dir"
+
+                echo "✓ Created archives for $dir ($file_count files)"
+              else
+                echo "⚠️ Skipping empty directory: $dir"
+              fi
+            else
+              echo "⚠️ Directory not found: $dir"
+            fi
+          done
+
+          # Create a complete archive
+          echo "Creating complete archive (excluding screenshots and backgrounds)..."
+          tar -czf "releases/all-terminal-themes.tgz" "${ALL_DIRS[@]}"
+
+          7z a "releases/all-terminal-themes.7z" "${ALL_DIRS[@]}"
+
+          echo "✓ Created complete archives"
+
+          # List created archives
+          echo "📦 Created archives:"
+          ls -la releases/
+
+      - name: Generate release notes
+        if: steps.changes.outputs.changed == 'true'
+        id: release_notes
+        run: |
+          # Generate timestamp-based release notes
+          cat > release_notes.md << EOF
+          # Terminal Themes - $(date +'%Y%m%d')
+
+          **Commit:** [\`${{ steps.vars.outputs.short_sha }}\`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})
+          **Build:** ${{ steps.vars.outputs.timestamp }}
+
+          ## What's Updated
+
+          $(if [ "${{ github.event_name }}" = "push" ]; then
+            echo "This release was triggered by changes to the following directories:"
+            echo ""
+            echo "${{ steps.changes.outputs.changed_dirs }}" | while read -r dir; do
+              if [ -n "$dir" ] && [ -d "$dir" ]; then
+                echo "- **$dir** - $(echo $dir | tr '_' ' ' | sed 's/\b\w/\U&/g') themes"
+              fi
+            done
+            echo ""
+            echo "### Recent Changes"
+            echo ""
+            echo "\`\`\`"
+            git log --oneline -5 --no-merges
+            echo "\`\`\`"
+          else
+            echo "This is a scheduled release containing all available themes."
+          fi)
+
+          ## Individual Downloads
+
+          Choose the archive for your specific terminal emulator:
+
+          ### Terminal Emulators
+          - **alacritty** - Alacritty (https://alacritty.org/)
+          - **electerm** - Electerm (https://electerm.html5beta.com/)
+          - **foot** - Foot (https://codeberg.org/dnkl/foot)
+          - **ghostty** - Ghostty (https://ghostty.org/)
+          - **iterm2** - iTerm2 (https://iterm2.com/)
+          - **kitty** - Kitty (https://sw.kovidgoyal.net/kitty/)
+          - **konsole** - KDE Konsole (https://konsole.kde.org/)
+          - **lxterminal** - LXTerminal (https://lxde.org/)
+          - **mobaxterm** - MobaXterm (https://mobaxterm.mobatek.net/)
+          - **pantheon-terminal** - Pantheon Terminal (https://elementary.io/)
+          - **putty** - PuTTY (https://www.putty.org/)
+          - **rio** - Rio (https://rioterm.com/)
+          - **royalts** - RoyalTS (https://royalts.com/ts/)
+          - **terminal.app** - macOS Terminal.app (https://support.apple.com/guide/terminal)
+          - **terminator** - Terminator (https://gnome-terminator.org/)
+          - **termux** - Termux (https://termux.com/)
+          - **tilda** - Tilda (https://github.com/lanoxx/tilda)
+          - **wayst** - Wayst (https://github.com/91861/wayst)
+          - **wezterm** - WezTerm (https://wezterm.org/)
+          - **windowsterminal** - Windows Terminal (https://github.com/microsoft/terminal)
+          - **xfce4terminal** - XFCE Terminal (https://docs.xfce.org/apps/xfce4-terminal/)
+
+          ### Console
+          - **freebsd_vt** - FreeBSD VT console color themes
+          - **linux_console** - Linux console color themes
+
+          ### Shell
+          - **dynamic-colors** - OSC4 (shell) dynamic color themes
+          - **generic** - Universal shell scripts using OSC escape codes
+          - **iterm-dynamic** - iTerm2 (shell) dynamic color themes
+
+          ### Formats & Standards
+          - **yaml** - YAML format color definitions
+          - **xrdb** - X11 resource database format
+          - **generic** - Universal shell scripts using OSC escape codes
+
+          ### Applications & Tools
+          - **hexchat** - HexChat IRC client (https://hexchat.github.io/)
+          - **remmina** - Remmina Remote Desktop Client (https://remmina.org/)
+          - **termframe** - TermFrame (https://terminaltrove.com/termframe/)
+          - **vhs** - VHS (https://github.com/charmbracelet/vhs)
+          - **vscode** - Visual Studio Code (https://code.visualstudio.com/)
+
+          ### Legacy
+          - **termite** - Termite (https://github.com/thestinger/termite)
+
+          ## Complete Archive
+
+          The `all-terminal-themes` archives contain all terminal emulator formats in a single download (screenshots excluded to reduce size).
+
+          ## Installation
+
+          See the [README](https://github.com/mbadolato/iTerm2-Color-Schemes/blob/master/README.md) for detailed installation instructions for each terminal emulator.
+
+          ---
+
+          **📅 Generated:** $(date '+%Y-%m-%d %H:%M:%S UTC')
+          **🔗 Commit:** ${{ github.sha }}
+          **⚡ Auto-release:** This release is automatically generated when terminal emulator folders are updated
+
+          **Note:** Screenshots and backgrounds have been excluded from release archives to reduce download size. You can view all color scheme previews in the [screenshots directory](https://github.com/mbadolato/iTerm2-Color-Schemes/tree/master/screenshots) on GitHub.
+          EOF
+
+          # Set output for the release notes
+          {
+            echo 'notes<<EOF'
+            cat release_notes.md
+            echo EOF
+          } >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        if: steps.changes.outputs.changed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag_name }}
+          name: ${{ steps.vars.outputs.release_name }}
+          body: ${{ steps.release_notes.outputs.notes }}
+          files: releases/*
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release summary
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          echo "## 🎉 Auto-Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** \`${{ steps.vars.outputs.tag_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Release:** ${{ steps.vars.outputs.release_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** [\`${{ steps.vars.outputs.short_sha }}\`](https://github.com/${{ github.repository }}/commit/${{ github.sha }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "**Triggered by:** Changes to terminal emulator directories" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Changed directories:**" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            echo "${{ steps.changes.outputs.changed_dirs }}" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Triggered by:** Manual workflow dispatch" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📦 Archives Created:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Archive | Size | Type |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|------|------|" >> $GITHUB_STEP_SUMMARY
+
+          for file in releases/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              size=$(ls -lh "$file" | awk '{print $5}')
+              if [[ "$filename" == *".tgz" ]]; then
+                filetype="tar.gz"
+              else
+                filetype="7z"
+              fi
+              echo "| $filename | $size | $filetype |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🔗 Release Links" >> $GITHUB_STEP_SUMMARY
+          echo "- **Release Page:** [View Release](https://github.com/${{ github.repository }}/releases/tag/${{ steps.vars.outputs.tag_name }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **Latest Release:** [Always Latest](https://github.com/${{ github.repository }}/releases/latest)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Auto-release completed successfully!**" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,43 @@
+!
+! Havn Skumring
+!
+*.foreground:  #d6dbeb
+*.background:  #111522
+*.cursorColor: #277a6f
+!
+! Black
+*.color0:      #252c47
+*.color8:      #38425c
+!
+! Red
+*.color1:      #ea563e
+*.color9:      #d17264
+!
+! Green
+*.color2:      #6ead7b
+*.color10:     #8c9e8f
+!
+! Yellow
+*.color3:      #f8b330
+*.color11:     #eac58c
+!
+! Blue
+*.color4:      #596cf7
+*.color12:     #5186cb
+!
+! Magenta
+*.color5:      #7c719e
+*.color13:     #9b7cee
+!
+! Cyan
+*.color6:      #d588c1
+*.color14:     #d17ab6
+!
+! White
+*.color7:      #dce0ee
+*.color15:     #fff6e1
+!
+! Bold, Italic, Underline
+*.colorBD:     #d0d4e2
+!*.colorIT:
+!*.colorUL:

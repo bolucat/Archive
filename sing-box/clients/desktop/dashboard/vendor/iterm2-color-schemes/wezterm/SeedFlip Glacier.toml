@@ -1,0 +1,12 @@
+# SeedFlip Glacier
+[colors]
+foreground = "#0f172a"
+background = "#f8fafc"
+cursor_bg = "#0ea5e9"
+cursor_border = "#0ea5e9"
+cursor_fg = "#0f172a"
+selection_bg = "#ffffff"
+selection_fg = "#0f172a"
+
+ansi = ["#c2d4e5","#bd0f0f","#0fbd49","#bda00f","#0f58bd","#bd0fbd","#0fbdbd","#080d17"]
+brights = ["#8dadce","#ee2b2b","#12d452","#d4b312","#2b7cee","#ee2bee","#12d4d4","#0f172a"]

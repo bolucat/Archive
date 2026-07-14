@@ -1,0 +1,12 @@
+# Pierre Dark
+[colors]
+foreground = "#fbfbfb"
+background = "#070707"
+cursor_bg = "#009fff"
+cursor_border = "#009fff"
+cursor_fg = "#070707"
+selection_bg = "#19283c"
+selection_fg = "#fbfbfb"
+
+ansi = ["#141415","#ff2e3f","#0dbe4e","#ffca00","#009fff","#c635e4","#08c0ef","#c6c6c8"]
+brights = ["#6c6c71","#ff6762","#5ecc71","#ffd452","#69b1ff","#d568ea","#68cdf2","#fbfbfb"]

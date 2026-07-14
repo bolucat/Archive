@@ -1,0 +1,69 @@
+name: Generate iTerm2 Color Schemes, Screenshots, README, and Deploy Website
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 14 * * 1" # Run every Monday at 14:00 UTC
+  push:
+    branches:
+      - master
+    paths:
+      - "schemes/**"
+      - "yaml/**"
+      - "screenshots/README.md"
+
+jobs:
+  generate-themes:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y libjpeg-dev
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run gen.py to generate themes
+        run: |
+          cd tools
+          python gen.py
+
+      - name: Run iterm2terminal.py to generate Terminal.app color schemes
+        run: |
+          cd tools
+          python iterm2terminal.py ../schemes ../terminal
+
+      - name: Run screenshot_gen to generate screenshot images
+        run: |
+          rm -rf screenshots/*
+          cd tools
+          python -m screenshot_gen
+
+      - name: Run generate_screenshots_readme.py to generate screenshots/README.md
+        run: |
+          cd tools
+          python generate_screenshots_readme.py
+
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v6
+        with:
+          commit_message: "Auto-generate color schemes, screenshots, screenshots/README.md"
+
+      - name: Build static site
+        run: python tools/generate_pages_index.py
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages
+          cname: iterm2colorschemes.com

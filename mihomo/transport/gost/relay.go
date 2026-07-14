@@ -273,11 +273,11 @@ func writeRelayRequest(w io.Writer, command byte, address string, network uint16
 		byte(payloadLen >> 8),
 		byte(payloadLen),
 	}
-	if err := writeFull(w, header); err != nil {
+	if _, err := w.Write(header); err != nil {
 		return err
 	}
 	for _, feature := range features {
-		if err := writeFull(w, feature); err != nil {
+		if _, err := w.Write(feature); err != nil {
 			return err
 		}
 	}
@@ -322,10 +322,10 @@ func (c *relayPacketConn) WriteTo(p []byte, addr net.Addr) (int, error) {
 
 	var header [2]byte
 	binary.BigEndian.PutUint16(header[:], uint16(len(p)))
-	if err := writeFull(c.conn, header[:]); err != nil {
+	if _, err := c.conn.Write(header[:]); err != nil {
 		return 0, err
 	}
-	if err := writeFull(c.conn, p); err != nil {
+	if _, err := c.conn.Write(p); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -349,20 +349,6 @@ func (c *relayPacketConn) SetReadDeadline(t time.Time) error {
 
 func (c *relayPacketConn) SetWriteDeadline(t time.Time) error {
 	return c.conn.SetWriteDeadline(t)
-}
-
-func writeFull(w io.Writer, p []byte) error {
-	for len(p) > 0 {
-		n, err := w.Write(p)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrShortWrite
-		}
-		p = p[n:]
-	}
-	return nil
 }
 
 func readRelayConnectResponse(r io.Reader) error {

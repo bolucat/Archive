@@ -8,8 +8,8 @@ type AnyTLSServer struct {
 	Enable         bool              `yaml:"enable" json:"enable"`
 	Listen         string            `yaml:"listen" json:"listen"`
 	Users          map[string]string `yaml:"users" json:"users,omitempty"`
-	Certificate    string            `yaml:"certificate" json:"certificate"`
-	PrivateKey     string            `yaml:"private-key" json:"private-key"`
+	Certificate    string            `yaml:"certificate,omitempty" json:"certificate,omitempty"`
+	PrivateKey     string            `yaml:"private-key,omitempty" json:"private-key,omitempty"`
 	ClientAuthType string            `yaml:"client-auth-type" json:"client-auth-type,omitempty"`
 	ClientAuthCert string            `yaml:"client-auth-cert" json:"client-auth-cert,omitempty"`
 	EchKey         string            `yaml:"ech-key" json:"ech-key,omitempty"`

@@ -14,8 +14,13 @@ import (
 type DialFunc func(ctx context.Context) (*quic.Conn, error)
 
 type ClientOption struct {
-	Dial          DialFunc
-	UDPOverStream bool
+	Dial                 DialFunc
+	UDPOverStream        bool
+	CongestionController string
+	SendBPS              uint64
+	ReceiveBPS           uint64
+	CWND                 int
+	BBRProfile           string
 }
 
 type Client struct {
@@ -47,8 +52,47 @@ func (c *Client) getConn(ctx context.Context) (*connState, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err = c.configureCongestion(ctx, quicConn); err != nil {
+		_ = quicConn.CloseWithError(0, err.Error())
+		return nil, err
+	}
 	c.conn = newConnState(quicConn)
 	return c.conn, nil
+}
+
+func (c *Client) configureCongestion(ctx context.Context, quicConn *quic.Conn) error {
+	if !c.brutalEnabled() {
+		SetCongestionController(quicConn, c.option.CongestionController, c.option.CWND, c.option.BBRProfile)
+		return nil
+	}
+
+	stream, err := quicConn.OpenStreamSync(ctx)
+	if err != nil {
+		return err
+	}
+	defer stream.Close()
+
+	if err = WriteBrutalNegotiationRequest(stream, c.option.ReceiveBPS); err != nil {
+		return err
+	}
+	rx, rxAuto, err := ReadBrutalNegotiationResponse(stream)
+	if err != nil {
+		return err
+	}
+	actualTx := rx
+	if actualTx == 0 || actualTx > c.option.SendBPS {
+		actualTx = c.option.SendBPS
+	}
+	if !rxAuto && actualTx > 0 {
+		setBrutalCongestionController(quicConn, actualTx)
+	} else {
+		SetCongestionController(quicConn, "bbr", c.option.CWND, c.option.BBRProfile)
+	}
+	return nil
+}
+
+func (c *Client) brutalEnabled() bool {
+	return c.option.SendBPS > 0 || c.option.ReceiveBPS > 0
 }
 
 func (c *Client) DialContext(ctx context.Context, metadata *C.Metadata) (net.Conn, error) {

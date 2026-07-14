@@ -1,0 +1,43 @@
+!
+! One Double Dark
+!
+*.foreground:  #dbdfe5
+*.background:  #282c34
+*.cursorColor: #f5e0dc
+!
+! Black
+*.color0:      #3d4452
+*.color8:      #525d6f
+!
+! Red
+*.color1:      #f16372
+*.color9:      #ff777b
+!
+! Green
+*.color2:      #8cc570
+*.color10:     #82d882
+!
+! Yellow
+*.color3:      #ecbe70
+*.color11:     #f5c065
+!
+! Blue
+*.color4:      #3fb1f5
+*.color12:     #6dcaff
+!
+! Magenta
+*.color5:      #d373e3
+*.color13:     #ff7bf4
+!
+! Cyan
+*.color6:      #17b9c4
+*.color14:     #00e5fb
+!
+! White
+*.color7:      #dbdfe5
+*.color15:     #f7f9fc
+!
+! Bold, Italic, Underline
+*.colorBD:     #f7f9fc
+!*.colorIT:
+*.colorUL:     #783232

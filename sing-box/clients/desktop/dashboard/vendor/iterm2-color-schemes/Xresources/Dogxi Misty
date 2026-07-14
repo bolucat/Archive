@@ -1,0 +1,43 @@
+!
+! Dogxi Misty
+!
+*.foreground:  #eff0eb
+*.background:  #282a36
+*.cursorColor: #eaeaea
+!
+! Black
+*.color0:      #000000
+*.color8:      #686868
+!
+! Red
+*.color1:      #ff5c57
+*.color9:      #ff5c57
+!
+! Green
+*.color2:      #94e362
+*.color10:     #94e362
+!
+! Yellow
+*.color3:      #eebd70
+*.color11:     #efc781
+!
+! Blue
+*.color4:      #99ecfe
+*.color12:     #99ecfe
+!
+! Magenta
+*.color5:      #ff6ac1
+*.color13:     #ff6ac1
+!
+! Cyan
+*.color6:      #5fdeed
+*.color14:     #87e0f0
+!
+! White
+*.color7:      #f1f1f0
+*.color15:     #f1f1f0
+!
+! Bold, Italic, Underline
+*.colorBD:     #f8f8f8
+!*.colorIT:
+!*.colorUL:

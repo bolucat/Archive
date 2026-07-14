@@ -2,6 +2,19 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.44
+
+* Introducing our [new Windows client application](/clients/desktop/) **1**
+* Fixes and improvements
+
+**1**:
+
+The new [Windows client](/clients/desktop/) provides an experience equal to
+other standard sing-box graphical clients, is available for Windows 10+
+(x64 / x86 / arm64), and is distributed as an installer from
+[GitHub Releases](https://github.com/SagerNet/sing-box/releases)
+(`SFW-<version>-<architecture>.exe`).
+
 #### 1.14.0-alpha.43
 
 * Add network namespace support **1**

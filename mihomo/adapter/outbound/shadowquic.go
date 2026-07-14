@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/ntp"
@@ -39,6 +40,8 @@ type ShadowQuicOption struct {
 	ZeroRTT              bool     `proxy:"zero-rtt,omitempty"`
 	KeepAliveInterval    int      `proxy:"keep-alive-interval,omitempty"`
 	CongestionController string   `proxy:"congestion-controller,omitempty"`
+	Up                   string   `proxy:"up,omitempty"`
+	Down                 string   `proxy:"down,omitempty"`
 	CWND                 int      `proxy:"cwnd,omitempty"`
 	BBRProfile           string   `proxy:"bbr-profile,omitempty"`
 	ReceiveWindowConn    int      `proxy:"recv-window-conn,omitempty"`
@@ -171,13 +174,17 @@ func NewShadowQuic(option ShadowQuicOption) (*ShadowQuic, error) {
 	}
 	outbound.dialer = option.NewDialer(outbound.DialOptions())
 	outbound.client = shadowquic.NewClient(&shadowquic.ClientOption{
-		UDPOverStream: option.UDPOverStream,
+		UDPOverStream:        option.UDPOverStream,
+		CongestionController: option.CongestionController,
+		SendBPS:              utils.StringToBps(option.Up),
+		ReceiveBPS:           utils.StringToBps(option.Down),
+		CWND:                 option.CWND,
+		BBRProfile:           option.BBRProfile,
 		Dial: func(ctx context.Context) (*quic.Conn, error) {
 			_, quicConn, err := shadowquic.DialQuic(ctx, outbound.addr, outbound.DialOptions(), outbound.dialer, outbound.tlsConfig, outbound.quicConfig, option.ZeroRTT)
 			if err != nil {
 				return nil, err
 			}
-			shadowquic.SetCongestionController(quicConn, option.CongestionController, option.CWND, option.BBRProfile)
 			return quicConn, nil
 		},
 	})

@@ -1,0 +1,43 @@
+!
+! SeedFlip Phosphor
+!
+*.foreground:  #b3ffb3
+*.background:  #0c0c0c
+*.cursorColor: #00ff88
+!
+! Black
+*.color0:      #070707
+*.color8:      #3f3f3f
+!
+! Red
+*.color1:      #f04242
+*.color9:      #f58989
+!
+! Green
+*.color2:      #42f07c
+*.color10:     #89f5ad
+!
+! Yellow
+*.color3:      #f0d342
+*.color11:     #f5e389
+!
+! Blue
+*.color4:      #428bf0
+*.color12:     #89b6f5
+!
+! Magenta
+*.color5:      #f042f0
+*.color13:     #f589f5
+!
+! Cyan
+*.color6:      #42f0f0
+*.color14:     #89f5f5
+!
+! White
+*.color7:      #cdffcd
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #b3ffb3
+!*.colorIT:
+!*.colorUL:

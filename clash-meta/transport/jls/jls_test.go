@@ -56,6 +56,10 @@ func testJLSClientServer(t *testing.T, clientFingerprint string) {
 			serverDone <- errors.New("server did not authenticate JLS user")
 			return
 		}
+		if authenticatedUser, ok := UserFromConn(conn); !ok || authenticatedUser != user.Username {
+			serverDone <- errors.New("server did not expose JLS user")
+			return
+		}
 		_, err = io.Copy(conn, conn)
 		serverDone <- err
 	}()

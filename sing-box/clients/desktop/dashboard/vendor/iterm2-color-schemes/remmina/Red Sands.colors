@@ -1,0 +1,26 @@
+[ssh_colors]
+background = #7a251e
+cursor = #ffffff
+cursor_foreground = #000000
+foreground = #d7c9a7
+highlight = #a4a390
+highlight_foreground = #000000
+color0 = #000000
+color1 = #ff3f00
+color2 = #00bb00
+color3 = #e7b000
+color4 = #0072ff
+color5 = #bb00bb
+color6 = #00bbbb
+color7 = #bbbbbb
+color8 = #6e6e6e
+color9 = #d41a1a
+color10 = #00bb00
+color11 = #e7b000
+color12 = #0072ae
+color13 = #ff55ff
+color14 = #55ffff
+color15 = #ffffff
+colorBD = #dfbd22
+colorIT =
+colorUL =

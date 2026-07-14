@@ -1,0 +1,23 @@
+{
+  "name": "Tango Half Adapted",
+  "black": "#000000",
+  "red": "#ff0000",
+  "green": "#4cc300",
+  "yellow": "#e2c000",
+  "blue": "#008ef6",
+  "purple": "#a96cb3",
+  "cyan": "#00bdc3",
+  "white": "#babfb5",
+  "brightBlack": "#797d76",
+  "brightRed": "#ff0013",
+  "brightGreen": "#70dc00",
+  "brightYellow": "#d9c600",
+  "brightBlue": "#76bfff",
+  "brightPurple": "#d898d1",
+  "brightCyan": "#00d0d4",
+  "brightWhite": "#f4f4f2",
+  "background": "#ffffff",
+  "foreground": "#000000",
+  "cursorColor": "#000000",
+  "selectionBackground": "#c1deff"
+}

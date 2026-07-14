@@ -1,0 +1,7 @@
+#!/bin/sh
+# SeedFlip Ivory
+printf "\033]4;0;#d9d9d9;1;#bd0f0f;2;#0fbd49;3;#bda00f;4;#0f58bd;5;#bd0fbd;6;#0fbdbd;7;#07182a;8;#b3b3b3;9;#ee2b2b;10;#12d452;11;#e1c01e;12;#2b7cee;13;#ee2bee;14;#12d4d4;15;#0a2540\007"
+printf "\033]10;#0a2540;#ffffff;#635bff\007"
+printf "\033]17;#f6f9fc\007"
+printf "\033]19;#0a2540\007"
+printf "\033]5;0;#0a2540\007"

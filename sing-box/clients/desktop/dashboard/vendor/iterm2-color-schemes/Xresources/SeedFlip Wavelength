@@ -1,0 +1,43 @@
+!
+! SeedFlip Wavelength
+!
+*.foreground:  #e6edf3
+*.background:  #0d1117
+*.cursorColor: #238636
+!
+! Black
+*.color0:      #090c10
+*.color8:      #364255
+!
+! Red
+*.color1:      #d55d5d
+*.color9:      #e59a9a
+!
+! Green
+*.color2:      #5dd585
+*.color10:     #9ae5b3
+!
+! Yellow
+*.color3:      #d5c15d
+*.color11:     #e5d89a
+!
+! Blue
+*.color4:      #5d8fd5
+*.color12:     #9ab9e5
+!
+! Magenta
+*.color5:      #d55dd5
+*.color13:     #e59ae5
+!
+! Cyan
+*.color6:      #5dd5d5
+*.color14:     #9ae5e5
+!
+! White
+*.color7:      #f7f9fb
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #e6edf3
+!*.colorIT:
+!*.colorUL:

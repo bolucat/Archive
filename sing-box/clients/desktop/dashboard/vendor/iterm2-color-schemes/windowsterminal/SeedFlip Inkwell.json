@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Inkwell",
+  "black": "#050505",
+  "red": "#cc6666",
+  "green": "#66cc88",
+  "yellow": "#ccbb66",
+  "blue": "#6690cc",
+  "purple": "#cc66cc",
+  "cyan": "#66cccc",
+  "white": "#f3f1ee",
+  "brightBlack": "#3d3d3d",
+  "brightRed": "#df9f9f",
+  "brightGreen": "#9fdfb5",
+  "brightYellow": "#dfd49f",
+  "brightBlue": "#9fbadf",
+  "brightPurple": "#df9fdf",
+  "brightCyan": "#9fdfdf",
+  "brightWhite": "#ffffff",
+  "background": "#0a0a0a",
+  "foreground": "#e8e4df",
+  "cursorColor": "#c8b8a0",
+  "selectionBackground": "#141414"
+}

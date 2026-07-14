@@ -1,0 +1,112 @@
+appId: com.sagernet.sing-box-desktop
+productName: sing-box
+publish: null
+afterPack: scripts/afterPack.cjs
+afterSign: scripts/afterSign.cjs
+artifactBuildStarted: scripts/artifactBuildStarted.cjs
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  loadBrowserProcessSpecificV8Snapshot: false
+  grantFileProtocolExtraPrivileges: true
+toolsets:
+  nsis: "1.2.1"
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**
+  - "!**/*.map"
+extraResources:
+  - from: resources/trayTemplate.png
+    to: trayTemplate.png
+  - from: resources/trayTemplate@2x.png
+    to: trayTemplate@2x.png
+  - from: dashboard/public/licenses/NotoColorEmoji-OFL.txt
+    to: licenses/NotoColorEmoji-OFL.txt
+  - from: resources/icons/512x512.png
+    to: icons/512x512.png
+fileAssociations:
+  - ext: bpf
+    name: sing-box profile
+    description: sing-box profile
+    mimeType: application/x-sing-box-profile
+win:
+  forceCodeSigning: true
+  icon: resources/icon.ico
+  signtoolOptions:
+    signingHashAlgorithms:
+      - sha256
+  electronLanguages:
+    - en-US
+    - zh-CN
+    - zh-TW
+    - fa
+    - ru
+  extraResources:
+    - from: resources/tray.ico
+      to: tray.ico
+    - from: bin/windows/${arch}/sing-box-daemon.exe
+      to: daemon/sing-box-daemon.exe
+    - from: bin/windows/${arch}
+      to: daemon
+      filter:
+        - libcronet.dll
+  target:
+    - nsis
+  artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}
+nsis:
+  oneClick: false
+  buildUniversalInstaller: false
+  differentialPackage: false
+  installerLanguages:
+    - en_US
+    - zh_CN
+    - zh_TW
+    - ru_RU
+  license: LICENSE
+  perMachine: true
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  include: build/installer.nsh
+  artifactName: SFW-${version}-${env.SFW_ARCHITECTURE}.${ext}
+linux:
+  executableName: sing-box
+  icon: resources/icons
+  synopsis: The universal proxy platform
+  category: Network
+  maintainer: 世界 <i@sekai.icu>
+  protocols:
+    - name: sing-box
+      schemes:
+        - sing-box
+  extraResources:
+    - from: resources/tray.png
+      to: tray.png
+    - from: resources/tray@2x.png
+      to: tray@2x.png
+    - from: bin/sing-box-daemon
+      to: daemon/sing-box-daemon
+  desktop:
+    entry:
+      StartupWMClass: sing-box
+  target:
+    - deb
+    - rpm
+  artifactName: SFL-${version}-${arch}.${ext}
+deb:
+  afterInstall: build/linux-after-install.sh
+  afterRemove: build/linux-after-remove.sh
+  fpm:
+    - --before-remove=build/linux-before-remove.sh
+    - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service
+rpm:
+  afterInstall: build/linux-after-install.sh
+  afterRemove: build/linux-after-remove.sh
+  fpm:
+    - --before-remove=build/linux-before-remove.sh
+    - build/sing-box-daemon.service=/usr/lib/systemd/system/sing-box-daemon.service

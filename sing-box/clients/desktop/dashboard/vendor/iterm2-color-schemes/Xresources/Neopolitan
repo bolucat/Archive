@@ -1,0 +1,43 @@
+!
+! Neopolitan
+!
+*.foreground:  #ffffff
+*.background:  #271f19
+*.cursorColor: #ffffff
+!
+! Black
+*.color0:      #000000
+*.color8:      #4c4c4c
+!
+! Red
+*.color1:      #9a1a1a
+*.color9:      #9a1a1a
+!
+! Green
+*.color2:      #61ce3c
+*.color10:     #61ce3c
+!
+! Yellow
+*.color3:      #fbde2d
+*.color11:     #fbde2d
+!
+! Blue
+*.color4:      #324883
+*.color12:     #324883
+!
+! Magenta
+*.color5:      #ff0080
+*.color13:     #ff0080
+!
+! Cyan
+*.color6:      #8da6ce
+*.color14:     #8da6ce
+!
+! White
+*.color7:      #f8f8f8
+*.color15:     #f8f8f8
+!
+! Bold, Italic, Underline
+*.colorBD:     #ffffff
+!*.colorIT:
+!*.colorUL:

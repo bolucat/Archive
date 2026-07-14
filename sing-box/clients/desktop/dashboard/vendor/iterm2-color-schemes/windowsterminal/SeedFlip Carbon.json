@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Carbon",
+  "black": "#d4d4d4",
+  "red": "#993333",
+  "green": "#339955",
+  "yellow": "#998833",
+  "blue": "#335d99",
+  "purple": "#993399",
+  "cyan": "#339999",
+  "white": "#000000",
+  "brightBlack": "#aeaeae",
+  "brightRed": "#c65353",
+  "brightGreen": "#53c679",
+  "brightYellow": "#c6b353",
+  "brightBlue": "#5383c6",
+  "brightPurple": "#c653c6",
+  "brightCyan": "#53c6c6",
+  "brightWhite": "#000000",
+  "background": "#fafafa",
+  "foreground": "#000000",
+  "cursorColor": "#000000",
+  "selectionBackground": "#ffffff"
+}

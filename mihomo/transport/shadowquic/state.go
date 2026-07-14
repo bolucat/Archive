@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 
 	"github.com/metacubex/mihomo/transport/socks5"
 
@@ -35,6 +36,8 @@ type connState struct {
 	nextID     uint16
 	activeSend map[uint16]struct{}
 	recv       map[uint16]*recvSlot
+
+	brutalNegotiated atomic.Bool
 }
 
 type recvSlot struct {
@@ -79,6 +82,14 @@ func (s *connState) closed() bool {
 func (s *connState) closeWithError(code quic.ApplicationErrorCode, message string) error {
 	s.cancel()
 	return s.quicConn.CloseWithError(code, message)
+}
+
+func (s *connState) markBrutalNegotiated() {
+	s.brutalNegotiated.Store(true)
+}
+
+func (s *connState) isBrutalNegotiated() bool {
+	return s.brutalNegotiated.Load()
 }
 
 func (s *connState) handleDatagrams() {

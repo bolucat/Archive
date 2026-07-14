@@ -1,0 +1,23 @@
+{
+  "name": "Builtin Tango Light",
+  "black": "#000000",
+  "red": "#cc0000",
+  "green": "#4e9a06",
+  "yellow": "#c4a000",
+  "blue": "#3465a4",
+  "purple": "#75507b",
+  "cyan": "#06989a",
+  "white": "#b9bdb5",
+  "brightBlack": "#555753",
+  "brightRed": "#ef2929",
+  "brightGreen": "#7dd527",
+  "brightYellow": "#d6c329",
+  "brightBlue": "#729fcf",
+  "brightPurple": "#ad7fa8",
+  "brightCyan": "#27d5d5",
+  "brightWhite": "#eeeeec",
+  "background": "#ffffff",
+  "foreground": "#000000",
+  "cursorColor": "#000000",
+  "selectionBackground": "#b5d5ff"
+}

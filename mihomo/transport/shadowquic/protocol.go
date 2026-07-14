@@ -66,10 +66,11 @@ func WriteRequest(w io.Writer, command byte, addr socks5.Addr) error {
 	if addr == nil {
 		return errInvalidAddress
 	}
-	if err := writeFull(w, []byte{command}); err != nil {
+	if _, err := w.Write([]byte{command}); err != nil {
 		return err
 	}
-	return writeFull(w, addr)
+	_, err := w.Write(addr)
+	return err
 }
 
 func ReadCommand(r io.Reader) (byte, error) {
@@ -96,12 +97,13 @@ func WriteUDPControl(w io.Writer, addr socks5.Addr, id uint16) error {
 	if addr == nil {
 		return errInvalidAddress
 	}
-	if err := writeFull(w, addr); err != nil {
+	if _, err := w.Write(addr); err != nil {
 		return err
 	}
 	var buf [2]byte
 	binary.BigEndian.PutUint16(buf[:], id)
-	return writeFull(w, buf[:])
+	_, err := w.Write(buf[:])
+	return err
 }
 
 func ReadUDPControl(r io.Reader) (socks5.Addr, uint16, error) {
@@ -136,7 +138,8 @@ func DecodeDatagram(packet []byte) (uint16, []byte, error) {
 func WritePacketStreamHeader(w io.Writer, id uint16) error {
 	var buf [2]byte
 	binary.BigEndian.PutUint16(buf[:], id)
-	return writeFull(w, buf[:])
+	_, err := w.Write(buf[:])
+	return err
 }
 
 func WritePacketStreamPayload(w io.Writer, payload []byte) error {
@@ -145,10 +148,11 @@ func WritePacketStreamPayload(w io.Writer, payload []byte) error {
 	}
 	var buf [2]byte
 	binary.BigEndian.PutUint16(buf[:], uint16(len(payload)))
-	if err := writeFull(w, buf[:]); err != nil {
+	if _, err := w.Write(buf[:]); err != nil {
 		return err
 	}
-	return writeFull(w, payload)
+	_, err := w.Write(payload)
+	return err
 }
 
 func ReadUint16(r io.Reader) (uint16, error) {
@@ -157,20 +161,6 @@ func ReadUint16(r io.Reader) (uint16, error) {
 		return 0, err
 	}
 	return binary.BigEndian.Uint16(buf[:]), nil
-}
-
-func writeFull(w io.Writer, p []byte) error {
-	for len(p) > 0 {
-		n, err := w.Write(p)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrShortWrite
-		}
-		p = p[n:]
-	}
-	return nil
 }
 
 type socksNetAddr struct {

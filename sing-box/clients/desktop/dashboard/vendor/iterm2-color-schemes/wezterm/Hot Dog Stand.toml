@@ -1,0 +1,12 @@
+# Hot Dog Stand
+[colors]
+foreground = "#ffffff"
+background = "#ea3323"
+cursor_bg = "#ffff54"
+cursor_border = "#ffff54"
+cursor_fg = "#ea3323"
+selection_bg = "#ffff54"
+selection_fg = "#000000"
+
+ansi = ["#000000","#ffff54","#ffff54","#ffff54","#000000","#ffff54","#ffffff","#c6c6c6"]
+brights = ["#000000","#ffff54","#ffff54","#ffff54","#000000","#ffff54","#ffffff","#c6c6c6"]

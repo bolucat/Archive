@@ -1,0 +1,43 @@
+!
+! Apple System Colors Light
+!
+*.foreground:  #000000
+*.background:  #feffff
+*.cursorColor: #98989d
+!
+! Black
+*.color0:      #1a1a1a
+*.color8:      #464646
+!
+! Red
+*.color1:      #cc372e
+*.color9:      #ff453a
+!
+! Green
+*.color2:      #26a439
+*.color10:     #32d74b
+!
+! Yellow
+*.color3:      #cdac08
+*.color11:     #e5bc00
+!
+! Blue
+*.color4:      #0869cb
+*.color12:     #0a84ff
+!
+! Magenta
+*.color5:      #9647bf
+*.color13:     #bf5af2
+!
+! Cyan
+*.color6:      #479ec2
+*.color14:     #69c9f2
+!
+! White
+*.color7:      #98989d
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #000000
+!*.colorIT:
+!*.colorUL:

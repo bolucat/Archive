@@ -12,8 +12,8 @@ import (
 type AnyTLSOption struct {
 	BaseOption
 	Users          map[string]string `inbound:"users,omitempty"`
-	Certificate    string            `inbound:"certificate"`
-	PrivateKey     string            `inbound:"private-key"`
+	Certificate    string            `inbound:"certificate,omitempty"`
+	PrivateKey     string            `inbound:"private-key,omitempty"`
 	ClientAuthType string            `inbound:"client-auth-type,omitempty"`
 	ClientAuthCert string            `inbound:"client-auth-cert,omitempty"`
 	EchKey         string            `inbound:"ech-key,omitempty"`

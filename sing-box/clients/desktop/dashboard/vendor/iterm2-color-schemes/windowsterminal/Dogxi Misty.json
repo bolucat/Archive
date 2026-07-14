@@ -1,0 +1,23 @@
+{
+  "name": "Dogxi Misty",
+  "black": "#000000",
+  "red": "#ff5c57",
+  "green": "#94e362",
+  "yellow": "#eebd70",
+  "blue": "#99ecfe",
+  "purple": "#ff6ac1",
+  "cyan": "#5fdeed",
+  "white": "#f1f1f0",
+  "brightBlack": "#686868",
+  "brightRed": "#ff5c57",
+  "brightGreen": "#94e362",
+  "brightYellow": "#efc781",
+  "brightBlue": "#99ecfe",
+  "brightPurple": "#ff6ac1",
+  "brightCyan": "#87e0f0",
+  "brightWhite": "#f1f1f0",
+  "background": "#282a36",
+  "foreground": "#eff0eb",
+  "cursorColor": "#eaeaea",
+  "selectionBackground": "#92bcd0"
+}

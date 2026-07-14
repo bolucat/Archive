@@ -1,0 +1,43 @@
+!
+! Unikitty
+!
+*.foreground:  #0b0b0b
+*.background:  #ff8cd9
+*.cursorColor: #c7ff98
+!
+! Black
+*.color0:      #0c0c0c
+*.color8:      #434343
+!
+! Red
+*.color1:      #a80f20
+*.color9:      #d91329
+!
+! Green
+*.color2:      #c7ff98
+*.color10:     #d3ffaf
+!
+! Yellow
+*.color3:      #fff964
+*.color11:     #ffef50
+!
+! Blue
+*.color4:      #145fcd
+*.color12:     #0075ea
+!
+! Magenta
+*.color5:      #ffe9ff
+*.color13:     #ffefff
+!
+! Cyan
+*.color6:      #9effef
+*.color14:     #93ffef
+!
+! White
+*.color7:      #fcf1fb
+*.color15:     #fff3fe
+!
+! Bold, Italic, Underline
+*.colorBD:     #000000
+!*.colorIT:
+*.colorUL:     #38a276

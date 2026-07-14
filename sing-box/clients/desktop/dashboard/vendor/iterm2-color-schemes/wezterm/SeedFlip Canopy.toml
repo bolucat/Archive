@@ -1,0 +1,12 @@
+# SeedFlip Canopy
+[colors]
+foreground = "#ededed"
+background = "#0f1714"
+cursor_bg = "#3ecf8e"
+cursor_border = "#3ecf8e"
+cursor_fg = "#0f1714"
+selection_bg = "#171f1b"
+selection_fg = "#ededed"
+
+ansi = ["#0b110f","#d65c5c","#5cd685","#d6c25c","#5c8fd6","#d65cd6","#5cd6d6","#fafafa"]
+brights = ["#2d453c","#e69999","#99e6b2","#e6d999","#99b9e6","#e699e6","#99e6e6","#ffffff"]

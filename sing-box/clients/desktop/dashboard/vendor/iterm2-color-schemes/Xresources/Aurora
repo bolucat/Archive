@@ -1,0 +1,43 @@
+!
+! Aurora
+!
+*.foreground:  #ffca28
+*.background:  #23262e
+*.cursorColor: #ee5d43
+!
+! Black
+*.color0:      #23262e
+*.color8:      #4f545e
+!
+! Red
+*.color1:      #f0266f
+*.color9:      #f92672
+!
+! Green
+*.color2:      #8fd46d
+*.color10:     #8fd46d
+!
+! Yellow
+*.color3:      #ffe66d
+*.color11:     #ffe66d
+!
+! Blue
+*.color4:      #102ee4
+*.color12:     #03d6b8
+!
+! Magenta
+*.color5:      #ee5d43
+*.color13:     #ee5d43
+!
+! Cyan
+*.color6:      #03d6b8
+*.color14:     #03d6b8
+!
+! White
+*.color7:      #c74ded
+*.color15:     #c74ded
+!
+! Bold, Italic, Underline
+*.colorBD:     #fbfbff
+!*.colorIT:
+*.colorUL:     #596181

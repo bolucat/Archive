@@ -1,0 +1,12 @@
+# Ayu Mirage
+[colors]
+foreground = "#cccac2"
+background = "#1f2430"
+cursor_bg = "#ffcc66"
+cursor_border = "#ffcc66"
+cursor_fg = "#1f2430"
+selection_bg = "#409fff"
+selection_fg = "#1f2430"
+
+ansi = ["#171b24","#ed8274","#87d96c","#facc6e","#6dcbfa","#dabafa","#90e1c6","#c7c7c7"]
+brights = ["#686868","#f28779","#d5ff80","#ffd173","#73d0ff","#dfbfff","#95e6cb","#ffffff"]

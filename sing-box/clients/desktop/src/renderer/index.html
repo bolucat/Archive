@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>sing-box</title>
+    <script>
+      const storedTheme = window.desktop.preferences.initial.theme;
+      document.documentElement.dataset.theme =
+        storedTheme === "dark" ||
+        (storedTheme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches)
+          ? "dark"
+          : "light";
+      const storedAccent = window.desktop.preferences.initial.accent;
+      document.documentElement.dataset.accent =
+        typeof storedAccent === "string" && /^[a-z]+$/.test(storedAccent)
+          ? storedAccent
+          : "default";
+    </script>
+    <style>
+      #splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #splash span {
+        box-sizing: border-box;
+        width: 21px;
+        height: 21px;
+        border: 2px solid var(--neutral-soft, transparent);
+        border-top-color: var(--accent, transparent);
+        border-radius: 50%;
+        animation: splash-spin 0.8s linear infinite;
+      }
+      @keyframes splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div id="splash"><span></span></div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

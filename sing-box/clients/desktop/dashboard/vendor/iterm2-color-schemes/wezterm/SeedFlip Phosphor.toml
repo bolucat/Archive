@@ -1,0 +1,12 @@
+# SeedFlip Phosphor
+[colors]
+foreground = "#b3ffb3"
+background = "#0c0c0c"
+cursor_bg = "#00ff88"
+cursor_border = "#00ff88"
+cursor_fg = "#0c0c0c"
+selection_bg = "#141414"
+selection_fg = "#b3ffb3"
+
+ansi = ["#070707","#f04242","#42f07c","#f0d342","#428bf0","#f042f0","#42f0f0","#cdffcd"]
+brights = ["#3f3f3f","#f58989","#89f5ad","#f5e389","#89b6f5","#f589f5","#89f5f5","#ffffff"]

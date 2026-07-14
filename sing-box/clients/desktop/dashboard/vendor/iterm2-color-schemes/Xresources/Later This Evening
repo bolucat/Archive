@@ -1,0 +1,43 @@
+!
+! Later This Evening
+!
+*.foreground:  #959595
+*.background:  #222222
+*.cursorColor: #4f4f4f
+!
+! Black
+*.color0:      #2b2b2b
+*.color8:      #525454
+!
+! Red
+*.color1:      #d45a60
+*.color9:      #d3232f
+!
+! Green
+*.color2:      #afba67
+*.color10:     #aabb39
+!
+! Yellow
+*.color3:      #e5d289
+*.color11:     #e5be39
+!
+! Blue
+*.color4:      #a0bad6
+*.color12:     #6699d6
+!
+! Magenta
+*.color5:      #c092d6
+*.color13:     #ab53d6
+!
+! Cyan
+*.color6:      #91bfb7
+*.color14:     #5fc0ae
+!
+! White
+*.color7:      #494a4a
+*.color15:     #c1c2c2
+!
+! Bold, Italic, Underline
+*.colorBD:     #ffffff
+!*.colorIT:
+!*.colorUL:

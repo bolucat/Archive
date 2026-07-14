@@ -1,0 +1,23 @@
+{
+  "name": "Squirrelsong Dark",
+  "black": "#372920",
+  "red": "#ba4138",
+  "green": "#468336",
+  "yellow": "#d4b139",
+  "blue": "#4395c6",
+  "purple": "#855fb8",
+  "cyan": "#2f9794",
+  "white": "#d3b9a2",
+  "brightBlack": "#704f39",
+  "brightRed": "#df4d43",
+  "brightGreen": "#659a4c",
+  "brightYellow": "#e8c23f",
+  "brightBlue": "#4ca4db",
+  "brightPurple": "#9d70da",
+  "brightCyan": "#60aca9",
+  "brightWhite": "#f2d4bb",
+  "background": "#372920",
+  "foreground": "#b19b89",
+  "cursorColor": "#b19b89",
+  "selectionBackground": "#5b402e"
+}

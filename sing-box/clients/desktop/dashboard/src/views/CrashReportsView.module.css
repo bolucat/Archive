@@ -1,0 +1,76 @@
+.report-row {
+  gap: var(--space-8);
+}
+
+.report-row > .report-dot {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  border-radius: 50%;
+}
+
+.report-row > .report-dot.unread {
+  background: var(--info);
+}
+
+.report-row > .report-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.report-date {
+  font-weight: var(--weight-normal);
+}
+
+.report-date.unread {
+  font-weight: var(--weight-semibold);
+}
+
+.report-origin {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  color: var(--text-faint);
+}
+
+.empty-row {
+  padding: var(--space-12) var(--space-16);
+  font-weight: var(--weight-normal);
+  color: var(--text-faint);
+}
+
+.section-footer {
+  padding: var(--space-8) var(--space-4) 0;
+}
+
+.static-row {
+  cursor: default;
+}
+
+.share-section {
+  display: grid;
+  gap: var(--space-4);
+  margin-bottom: var(--space-14);
+}
+
+.file-content {
+  max-height: calc(100vh - 170px);
+  padding: var(--space-12) var(--space-14);
+  margin: 0;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}

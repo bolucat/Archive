@@ -1,0 +1,6 @@
+[Scheme]
+Name=Electron Highlighter
+ColorForeground=#a5b6d4
+ColorBackground=#23283d
+ColorCursor=#a5b6d4
+ColorPalette=#15161f;#ff6c8d;#00ffc3;#ffebb1;#77abff;#daa4f4;#00e5ff;#7187b7;#4b5b8c;#ff6c8d;#00ffc3;#ffebb1;#77abff;#daa4f4;#00e5ff;#c3cde2

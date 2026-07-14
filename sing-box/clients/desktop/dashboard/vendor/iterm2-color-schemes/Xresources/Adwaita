@@ -1,0 +1,43 @@
+!
+! Adwaita
+!
+*.foreground:  #1d1d20
+*.background:  #ffffff
+*.cursorColor: #1d1d20
+!
+! Black
+*.color0:      #1d1d20
+*.color8:      #5d5d5d
+!
+! Red
+*.color1:      #c01c28
+*.color9:      #f66151
+!
+! Green
+*.color2:      #26a269
+*.color10:     #33d17a
+!
+! Yellow
+*.color3:      #a2734c
+*.color11:     #e9ad0c
+!
+! Blue
+*.color4:      #12488b
+*.color12:     #2a7bde
+!
+! Magenta
+*.color5:      #a347ba
+*.color13:     #c061cb
+!
+! Cyan
+*.color6:      #2aa1b3
+*.color14:     #33c7de
+!
+! White
+*.color7:      #c2c2c2
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #1d1d20
+!*.colorIT:
+!*.colorUL:

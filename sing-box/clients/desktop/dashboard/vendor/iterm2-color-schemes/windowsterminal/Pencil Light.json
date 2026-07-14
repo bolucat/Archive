@@ -1,0 +1,23 @@
+{
+  "name": "Pencil Light",
+  "black": "#212121",
+  "red": "#c30771",
+  "green": "#10a778",
+  "yellow": "#a89c14",
+  "blue": "#008ec4",
+  "purple": "#523c79",
+  "cyan": "#20a5ba",
+  "white": "#b3b3b3",
+  "brightBlack": "#424242",
+  "brightRed": "#fb007a",
+  "brightGreen": "#52caa2",
+  "brightYellow": "#c0b100",
+  "brightBlue": "#20bbfc",
+  "brightPurple": "#6855de",
+  "brightCyan": "#4fb8cc",
+  "brightWhite": "#f1f1f1",
+  "background": "#f1f1f1",
+  "foreground": "#424242",
+  "cursorColor": "#20bbfc",
+  "selectionBackground": "#b6d6fd"
+}

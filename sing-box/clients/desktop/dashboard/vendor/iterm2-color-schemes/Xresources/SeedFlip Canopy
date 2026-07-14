@@ -1,0 +1,43 @@
+!
+! SeedFlip Canopy
+!
+*.foreground:  #ededed
+*.background:  #0f1714
+*.cursorColor: #3ecf8e
+!
+! Black
+*.color0:      #0b110f
+*.color8:      #2d453c
+!
+! Red
+*.color1:      #d65c5c
+*.color9:      #e69999
+!
+! Green
+*.color2:      #5cd685
+*.color10:     #99e6b2
+!
+! Yellow
+*.color3:      #d6c25c
+*.color11:     #e6d999
+!
+! Blue
+*.color4:      #5c8fd6
+*.color12:     #99b9e6
+!
+! Magenta
+*.color5:      #d65cd6
+*.color13:     #e699e6
+!
+! Cyan
+*.color6:      #5cd6d6
+*.color14:     #99e6e6
+!
+! White
+*.color7:      #fafafa
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #ededed
+!*.colorIT:
+!*.colorUL:

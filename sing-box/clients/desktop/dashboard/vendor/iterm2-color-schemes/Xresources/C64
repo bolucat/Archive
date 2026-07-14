@@ -1,0 +1,43 @@
+!
+! C64
+!
+*.foreground:  #7869c4
+*.background:  #40318d
+*.cursorColor: #7869c4
+!
+! Black
+*.color0:      #090300
+*.color8:      #000000
+!
+! Red
+*.color1:      #a2524c
+*.color9:      #a2524c
+!
+! Green
+*.color2:      #55a049
+*.color10:     #55a049
+!
+! Yellow
+*.color3:      #bfce72
+*.color11:     #bfce72
+!
+! Blue
+*.color4:      #6657b3
+*.color12:     #6657b3
+!
+! Magenta
+*.color5:      #984ca3
+*.color13:     #984ca3
+!
+! Cyan
+*.color6:      #67b6bd
+*.color14:     #67b6bd
+!
+! White
+*.color7:      #ffffff
+*.color15:     #f7f7f7
+!
+! Bold, Italic, Underline
+*.colorBD:     #a5a2a2
+!*.colorIT:
+!*.colorUL:

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+src/gen/
+src/lib/terminalThemes.generated.ts
+*.local
+*.tsbuildinfo
+.DS_Store
+/CLAUDE.md
+/.claude/

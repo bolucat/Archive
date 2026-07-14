@@ -1,0 +1,12 @@
+# SeedFlip Ultraviolet
+[colors]
+foreground = "#e8e0f5"
+background = "#0b0014"
+cursor_bg = "#c77dff"
+cursor_border = "#c77dff"
+cursor_fg = "#0b0014"
+selection_bg = "#13082a"
+selection_fg = "#e8e0f5"
+
+ansi = ["#05000a","#f04242","#42f07c","#f0d342","#428bf0","#f042f0","#42f0f0","#f6f3fb"]
+brights = ["#5b2687","#f58989","#89f5ad","#f5e389","#89b6f5","#f589f5","#89f5f5","#ffffff"]

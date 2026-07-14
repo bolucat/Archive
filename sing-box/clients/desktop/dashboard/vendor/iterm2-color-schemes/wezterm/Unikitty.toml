@@ -1,0 +1,12 @@
+# Unikitty
+[colors]
+foreground = "#0b0b0b"
+background = "#ff8cd9"
+cursor_bg = "#c7ff98"
+cursor_border = "#c7ff98"
+cursor_fg = "#202020"
+selection_bg = "#3ea9fe"
+selection_fg = "#ffffff"
+
+ansi = ["#0c0c0c","#a80f20","#c7ff98","#fff964","#145fcd","#ffe9ff","#9effef","#fcf1fb"]
+brights = ["#434343","#d91329","#d3ffaf","#ffef50","#0075ea","#ffefff","#93ffef","#fff3fe"]

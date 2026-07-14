@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Glacier",
+  "black": "#c2d4e5",
+  "red": "#bd0f0f",
+  "green": "#0fbd49",
+  "yellow": "#bda00f",
+  "blue": "#0f58bd",
+  "purple": "#bd0fbd",
+  "cyan": "#0fbdbd",
+  "white": "#080d17",
+  "brightBlack": "#8dadce",
+  "brightRed": "#ee2b2b",
+  "brightGreen": "#12d452",
+  "brightYellow": "#d4b312",
+  "brightBlue": "#2b7cee",
+  "brightPurple": "#ee2bee",
+  "brightCyan": "#12d4d4",
+  "brightWhite": "#0f172a",
+  "background": "#f8fafc",
+  "foreground": "#0f172a",
+  "cursorColor": "#0ea5e9",
+  "selectionBackground": "#ffffff"
+}

@@ -1,0 +1,37 @@
+diff --git a/templates/nsis/installSection.nsh b/templates/nsis/installSection.nsh
+index 4508b2c..415298e 100644
+--- a/templates/nsis/installSection.nsh
++++ b/templates/nsis/installSection.nsh
+@@ -38,3 +38,6 @@ ${ifNot} ${UAC_IsInnerInstance}
+ !endif
+-
++!ifmacrodef customInstallBeforeApplicationFiles
++  !insertmacro customInstallBeforeApplicationFiles
++!endif
++
+ Var /GLOBAL keepShortcuts
+diff --git a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
+index b0937c5..2c14203 100644
+--- a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
++++ b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
+@@ -119,5 +119,2 @@
+       ${endIf}
+-      MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION "$(appRunning)" /SD IDOK IDOK doStopProcess
+-      Quit
+-
+       doStopProcess:
+diff --git a/templates/nsis/multiUser.nsh b/templates/nsis/multiUser.nsh
+index 5b95e10..ddc04eb 100644
+--- a/templates/nsis/multiUser.nsh
++++ b/templates/nsis/multiUser.nsh
+@@ -84,3 +84,9 @@
+       !endif
+-
++      !ifdef APP_ARM64
++        ${if} ${RunningX64}
++        ${orif} ${IsNativeARM64}
++          StrCpy $0 "$PROGRAMFILES64"
++        ${endif}
++      !endif
++
+       !ifdef MENU_FILENAME

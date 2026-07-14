@@ -1,0 +1,43 @@
+!
+! Hot Dog Stand
+!
+*.foreground:  #ffffff
+*.background:  #ea3323
+*.cursorColor: #ffff54
+!
+! Black
+*.color0:      #000000
+*.color8:      #000000
+!
+! Red
+*.color1:      #ffff54
+*.color9:      #ffff54
+!
+! Green
+*.color2:      #ffff54
+*.color10:     #ffff54
+!
+! Yellow
+*.color3:      #ffff54
+*.color11:     #ffff54
+!
+! Blue
+*.color4:      #000000
+*.color12:     #000000
+!
+! Magenta
+*.color5:      #ffff54
+*.color13:     #ffff54
+!
+! Cyan
+*.color6:      #ffffff
+*.color14:     #ffffff
+!
+! White
+*.color7:      #c6c6c6
+*.color15:     #c6c6c6
+!
+! Bold, Italic, Underline
+*.colorBD:     #ffffff
+!*.colorIT:
+!*.colorUL:

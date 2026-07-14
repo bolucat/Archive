@@ -1,0 +1,43 @@
+!
+! SeedFlip Inkwell
+!
+*.foreground:  #e8e4df
+*.background:  #0a0a0a
+*.cursorColor: #c8b8a0
+!
+! Black
+*.color0:      #050505
+*.color8:      #3d3d3d
+!
+! Red
+*.color1:      #cc6666
+*.color9:      #df9f9f
+!
+! Green
+*.color2:      #66cc88
+*.color10:     #9fdfb5
+!
+! Yellow
+*.color3:      #ccbb66
+*.color11:     #dfd49f
+!
+! Blue
+*.color4:      #6690cc
+*.color12:     #9fbadf
+!
+! Magenta
+*.color5:      #cc66cc
+*.color13:     #df9fdf
+!
+! Cyan
+*.color6:      #66cccc
+*.color14:     #9fdfdf
+!
+! White
+*.color7:      #f3f1ee
+*.color15:     #ffffff
+!
+! Bold, Italic, Underline
+*.colorBD:     #e8e4df
+!*.colorIT:
+!*.colorUL:

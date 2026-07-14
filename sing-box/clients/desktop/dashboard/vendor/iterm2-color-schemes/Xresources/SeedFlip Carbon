@@ -1,0 +1,43 @@
+!
+! SeedFlip Carbon
+!
+*.foreground:  #000000
+*.background:  #fafafa
+*.cursorColor: #000000
+!
+! Black
+*.color0:      #d4d4d4
+*.color8:      #aeaeae
+!
+! Red
+*.color1:      #993333
+*.color9:      #c65353
+!
+! Green
+*.color2:      #339955
+*.color10:     #53c679
+!
+! Yellow
+*.color3:      #998833
+*.color11:     #c6b353
+!
+! Blue
+*.color4:      #335d99
+*.color12:     #5383c6
+!
+! Magenta
+*.color5:      #993399
+*.color13:     #c653c6
+!
+! Cyan
+*.color6:      #339999
+*.color14:     #53c6c6
+!
+! White
+*.color7:      #000000
+*.color15:     #000000
+!
+! Bold, Italic, Underline
+*.colorBD:     #000000
+!*.colorIT:
+!*.colorUL:

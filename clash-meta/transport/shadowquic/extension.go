@@ -57,11 +57,12 @@ func WriteExtensionConnStatsResult(w io.Writer, stats ExtensionConnStats) error 
 	binary.BigEndian.PutUint64(buf[13:21], stats.SentPackets)
 	binary.BigEndian.PutUint64(buf[21:29], math.Float64bits(stats.RTT))
 	binary.BigEndian.PutUint16(buf[29:31], stats.CurrentMTU)
-	return writeFull(w, buf[:])
+	_, err := w.Write(buf[:])
+	return err
 }
 
 func WriteExtensionErrorResult(w io.Writer, code byte, message string) error {
-	if err := writeFull(w, []byte{extensionResultErr, code}); err != nil {
+	if _, err := w.Write([]byte{extensionResultErr, code}); err != nil {
 		return err
 	}
 	if code != extensionErrOther {
@@ -70,10 +71,11 @@ func WriteExtensionErrorResult(w io.Writer, code byte, message string) error {
 	msg := []byte(message)
 	var lenBuf [4]byte
 	binary.BigEndian.PutUint32(lenBuf[:], uint32(len(msg)))
-	if err := writeFull(w, lenBuf[:]); err != nil {
+	if _, err := w.Write(lenBuf[:]); err != nil {
 		return err
 	}
-	return writeFull(w, msg)
+	_, err := w.Write(msg)
+	return err
 }
 
 func shadowQUICConnStats(conn *quic.Conn) ExtensionConnStats {

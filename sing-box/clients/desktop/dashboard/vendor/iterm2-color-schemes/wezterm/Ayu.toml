@@ -1,0 +1,12 @@
+# Ayu
+[colors]
+foreground = "#bfbdb6"
+background = "#0b0e14"
+cursor_bg = "#e6b450"
+cursor_border = "#e6b450"
+cursor_fg = "#0b0e14"
+selection_bg = "#409fff"
+selection_fg = "#0b0e14"
+
+ansi = ["#11151c","#ea6c73","#7fd962","#f9af4f","#53bdfa","#cda1fa","#90e1c6","#c7c7c7"]
+brights = ["#686868","#f07178","#aad94c","#ffb454","#59c2ff","#d2a6ff","#95e6cb","#ffffff"]

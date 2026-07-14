@@ -10,6 +10,7 @@ import (
 
 	"github.com/metacubex/mihomo/adapter/inbound"
 	"github.com/metacubex/mihomo/common/sockopt"
+	"github.com/metacubex/mihomo/common/utils"
 	"github.com/metacubex/mihomo/component/ca"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
@@ -156,13 +157,16 @@ func New(config LC.ShadowQuicServer, lc C.InboundListenConfig, tunnel C.Tunnel, 
 	}
 
 	option := &shadowquic.ServerOption{
-		HandleTcpFn:          handleTcpFn,
-		HandleUdpFn:          handleUdpFn,
-		TLSConfig:            tlsConfig,
-		QUICConfig:           quicConfig,
-		CongestionController: config.CongestionController,
-		CWND:                 config.CWND,
-		BBRProfile:           config.BBRProfile,
+		HandleTcpFn:           handleTcpFn,
+		HandleUdpFn:           handleUdpFn,
+		TLSConfig:             tlsConfig,
+		QUICConfig:            quicConfig,
+		CongestionController:  config.CongestionController,
+		SendBPS:               utils.StringToBps(config.Up),
+		ReceiveBPS:            utils.StringToBps(config.Down),
+		IgnoreClientBandwidth: config.IgnoreClientBandwidth,
+		CWND:                  config.CWND,
+		BBRProfile:            config.BBRProfile,
 	}
 
 	sl := &Listener{config: config}

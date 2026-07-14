@@ -1,0 +1,23 @@
+{
+  "name": "Man Page",
+  "black": "#000000",
+  "red": "#cc0000",
+  "green": "#00a600",
+  "yellow": "#999900",
+  "blue": "#0000b2",
+  "purple": "#b200b2",
+  "cyan": "#00a6b2",
+  "white": "#b2b2b2",
+  "brightBlack": "#666666",
+  "brightRed": "#e50000",
+  "brightGreen": "#00cc00",
+  "brightYellow": "#bfbf00",
+  "brightBlue": "#0000ff",
+  "brightPurple": "#e500e5",
+  "brightCyan": "#00cbcb",
+  "brightWhite": "#e5e5e5",
+  "background": "#fef49c",
+  "foreground": "#000000",
+  "cursorColor": "#7f7f7f",
+  "selectionBackground": "#a4c9cd"
+}

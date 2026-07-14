@@ -1,0 +1,51 @@
+{
+  "name": "sing-box-for-desktop",
+  "private": true,
+  "description": "sing-box",
+  "homepage": "https://github.com/sagernet/sing-box-for-desktop",
+  "type": "module",
+  "packageManager": "pnpm@11.13.0",
+  "main": "./out/main/index.js",
+  "sideEffects": [
+    "./src/renderer/src/main.tsx",
+    "./src/renderer/src/tray.tsx"
+  ],
+  "scripts": {
+    "generate": "tsx scripts/generate.ts",
+    "icons": "tsx scripts/icons.ts",
+    "dev": "tsx scripts/development.ts",
+    "build": "electron-vite build",
+    "package-dev:win": "tsx scripts/package.ts win-dev x64",
+    "package:win": "tsx scripts/package.ts win",
+    "package:linux": "tsx scripts/package.ts linux",
+    "postinstall": "electron-builder install-app-deps",
+    "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@bufbuild/buf": "^1.71.0",
+    "@bufbuild/protobuf": "^2.12.1",
+    "@bufbuild/protoc-gen-es": "^2.12.1",
+    "@connectrpc/connect": "^2.1.2",
+    "@connectrpc/connect-node": "^2.1.2",
+    "@connectrpc/connect-web": "^2.1.2",
+    "@electron/asar": "^4.2.0",
+    "@fontsource-variable/schibsted-grotesk": "^5.2.8",
+    "@fontsource-variable/source-serif-4": "^5.2.9",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/noto-color-emoji": "^5.2.12",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "cross-spawn": "^7.0.6",
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.6"
+  }
+}

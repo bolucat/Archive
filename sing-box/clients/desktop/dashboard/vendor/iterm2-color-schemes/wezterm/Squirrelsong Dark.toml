@@ -1,0 +1,12 @@
+# Squirrelsong Dark
+[colors]
+foreground = "#b19b89"
+background = "#372920"
+cursor_bg = "#b19b89"
+cursor_border = "#b19b89"
+cursor_fg = "#372920"
+selection_bg = "#5b402e"
+selection_fg = "#b19b89"
+
+ansi = ["#372920","#ba4138","#468336","#d4b139","#4395c6","#855fb8","#2f9794","#d3b9a2"]
+brights = ["#704f39","#df4d43","#659a4c","#e8c23f","#4ca4db","#9d70da","#60aca9","#f2d4bb"]

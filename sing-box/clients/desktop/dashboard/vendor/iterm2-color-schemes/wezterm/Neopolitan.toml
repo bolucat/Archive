@@ -1,0 +1,12 @@
+# Neopolitan
+[colors]
+foreground = "#ffffff"
+background = "#271f19"
+cursor_bg = "#ffffff"
+cursor_border = "#ffffff"
+cursor_fg = "#bfbfbf"
+selection_bg = "#253b76"
+selection_fg = "#ffffff"
+
+ansi = ["#000000","#9a1a1a","#61ce3c","#fbde2d","#324883","#ff0080","#8da6ce","#f8f8f8"]
+brights = ["#4c4c4c","#9a1a1a","#61ce3c","#fbde2d","#324883","#ff0080","#8da6ce","#f8f8f8"]

@@ -2304,20 +2304,6 @@ func writeSessionPullResponseHeader(w io.Writer) error {
 	return err
 }
 
-func writeFull(w io.Writer, p []byte) error {
-	for len(p) > 0 {
-		n, err := w.Write(p)
-		if err != nil {
-			return err
-		}
-		if n == 0 {
-			return io.ErrShortWrite
-		}
-		p = p[n:]
-	}
-	return nil
-}
-
 func writeSimpleHTTPResponse(w io.Writer, code int, body string) error {
 	if body == "" {
 		body = http.StatusText(code)
@@ -2628,7 +2614,7 @@ func (s *TunnelServer) pollPush(rawConn net.Conn, token string, body io.Reader) 
 			continue
 		}
 		_ = sess.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		werr := writeFull(sess.conn, decoded[:n])
+		_, werr := sess.conn.Write(decoded[:n])
 		_ = sess.conn.SetWriteDeadline(time.Time{})
 		if werr != nil {
 			s.sessionClose(token)
@@ -2669,7 +2655,7 @@ func (s *TunnelServer) streamPush(rawConn net.Conn, token string, body io.Reader
 
 	if len(payload) > 0 {
 		_ = sess.conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		werr := writeFull(sess.conn, payload)
+		_, werr := sess.conn.Write(payload)
 		_ = sess.conn.SetWriteDeadline(time.Time{})
 		if werr != nil {
 			s.sessionClose(token)
@@ -2685,7 +2671,10 @@ func (s *TunnelServer) streamPush(rawConn net.Conn, token string, body io.Reader
 }
 
 func (s *TunnelServer) streamPull(rawConn net.Conn, token string) (HandleResult, net.Conn, error) {
-	return s.sessionPull(rawConn, token, false, writeFull)
+	return s.sessionPull(rawConn, token, false, func(w io.Writer, payload []byte) error {
+		_, err := w.Write(payload)
+		return err
+	})
 }
 
 func (s *TunnelServer) pollPull(rawConn net.Conn, token string) (HandleResult, net.Conn, error) {
@@ -2695,7 +2684,8 @@ func (s *TunnelServer) pollPull(rawConn net.Conn, token string) (HandleResult, n
 		line := encoded[:encodedLen+1]
 		base64.StdEncoding.Encode(line[:encodedLen], payload)
 		line[encodedLen] = '\n'
-		return writeFull(w, line)
+		_, err := w.Write(line)
+		return err
 	})
 }
 

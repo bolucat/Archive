@@ -1,0 +1,12 @@
+# 3024 Day
+[colors]
+foreground = "#4a4543"
+background = "#f7f7f7"
+cursor_bg = "#4a4543"
+cursor_border = "#4a4543"
+cursor_fg = "#f7f7f7"
+selection_bg = "#a5a2a2"
+selection_fg = "#4a4543"
+
+ansi = ["#090300","#db2d20","#01a252","#caba00","#01a0e4","#a16a94","#8fbece","#a5a2a2"]
+brights = ["#5c5855","#dbaec3","#3a3432","#4a4543","#807d7c","#bcbbba","#cdab53","#f7f7f7"]

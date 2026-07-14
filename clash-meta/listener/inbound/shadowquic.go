@@ -12,20 +12,23 @@ import (
 
 type ShadowQuicOption struct {
 	BaseOption
-	Users                []ShadowQuicUser      `inbound:"users,omitempty"`
-	JLSUpstream          ShadowQuicJLSUpstream `inbound:"jls-upstream"`
-	ALPN                 []string              `inbound:"alpn,omitempty"`
-	QUICVersions         []string              `inbound:"quic-versions,omitempty"`
-	ZeroRTT              bool                  `inbound:"zero-rtt,omitempty"`
-	CongestionController string                `inbound:"congestion-controller,omitempty"`
-	MaxIdleTime          int                   `inbound:"max-idle-time,omitempty"`
-	MaxDatagramFrameSize int                   `inbound:"max-datagram-frame-size,omitempty"`
-	ReceiveWindowConn    int                   `inbound:"recv-window-conn,omitempty"`
-	ReceiveWindow        int                   `inbound:"recv-window,omitempty"`
-	DisableMTUDiscovery  bool                  `inbound:"disable-mtu-discovery,omitempty"`
-	CWND                 int                   `inbound:"cwnd,omitempty"`
-	BBRProfile           string                `inbound:"bbr-profile,omitempty"`
-	MuxOption            MuxOption             `inbound:"mux-option,omitempty"`
+	Users                 []ShadowQuicUser      `inbound:"users,omitempty"`
+	JLSUpstream           ShadowQuicJLSUpstream `inbound:"jls-upstream"`
+	ALPN                  []string              `inbound:"alpn,omitempty"`
+	QUICVersions          []string              `inbound:"quic-versions,omitempty"`
+	ZeroRTT               bool                  `inbound:"zero-rtt,omitempty"`
+	CongestionController  string                `inbound:"congestion-controller,omitempty"`
+	Up                    string                `inbound:"up,omitempty"`
+	Down                  string                `inbound:"down,omitempty"`
+	IgnoreClientBandwidth bool                  `inbound:"ignore-client-bandwidth,omitempty"`
+	MaxIdleTime           int                   `inbound:"max-idle-time,omitempty"`
+	MaxDatagramFrameSize  int                   `inbound:"max-datagram-frame-size,omitempty"`
+	ReceiveWindowConn     int                   `inbound:"recv-window-conn,omitempty"`
+	ReceiveWindow         int                   `inbound:"recv-window,omitempty"`
+	DisableMTUDiscovery   bool                  `inbound:"disable-mtu-discovery,omitempty"`
+	CWND                  int                   `inbound:"cwnd,omitempty"`
+	BBRProfile            string                `inbound:"bbr-profile,omitempty"`
+	MuxOption             MuxOption             `inbound:"mux-option,omitempty"`
 }
 
 type ShadowQuicUser struct {
@@ -78,22 +81,25 @@ func NewShadowQuic(options *ShadowQuicOption) (*ShadowQuic, error) {
 		Base:   base,
 		config: options,
 		ss: LC.ShadowQuicServer{
-			Enable:               true,
-			Listen:               base.RawAddress(),
-			Users:                utils.Map(options.Users, ShadowQuicUser.Build),
-			JLSUpstream:          options.JLSUpstream.Build(),
-			ALPN:                 options.ALPN,
-			QUICVersions:         options.QUICVersions,
-			ZeroRTT:              options.ZeroRTT,
-			CongestionController: options.CongestionController,
-			MaxIdleTime:          options.MaxIdleTime,
-			MaxDatagramFrameSize: options.MaxDatagramFrameSize,
-			ReceiveWindowConn:    options.ReceiveWindowConn,
-			ReceiveWindow:        options.ReceiveWindow,
-			DisableMTUDiscovery:  options.DisableMTUDiscovery,
-			CWND:                 options.CWND,
-			BBRProfile:           options.BBRProfile,
-			MuxOption:            options.MuxOption.Build(),
+			Enable:                true,
+			Listen:                base.RawAddress(),
+			Users:                 utils.Map(options.Users, ShadowQuicUser.Build),
+			JLSUpstream:           options.JLSUpstream.Build(),
+			ALPN:                  options.ALPN,
+			QUICVersions:          options.QUICVersions,
+			ZeroRTT:               options.ZeroRTT,
+			CongestionController:  options.CongestionController,
+			Up:                    options.Up,
+			Down:                  options.Down,
+			IgnoreClientBandwidth: options.IgnoreClientBandwidth,
+			MaxIdleTime:           options.MaxIdleTime,
+			MaxDatagramFrameSize:  options.MaxDatagramFrameSize,
+			ReceiveWindowConn:     options.ReceiveWindowConn,
+			ReceiveWindow:         options.ReceiveWindow,
+			DisableMTUDiscovery:   options.DisableMTUDiscovery,
+			CWND:                  options.CWND,
+			BBRProfile:            options.BBRProfile,
+			MuxOption:             options.MuxOption.Build(),
 		},
 	}, nil
 }

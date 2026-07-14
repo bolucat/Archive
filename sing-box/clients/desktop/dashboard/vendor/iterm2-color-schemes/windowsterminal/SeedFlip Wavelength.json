@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Wavelength",
+  "black": "#090c10",
+  "red": "#d55d5d",
+  "green": "#5dd585",
+  "yellow": "#d5c15d",
+  "blue": "#5d8fd5",
+  "purple": "#d55dd5",
+  "cyan": "#5dd5d5",
+  "white": "#f7f9fb",
+  "brightBlack": "#364255",
+  "brightRed": "#e59a9a",
+  "brightGreen": "#9ae5b3",
+  "brightYellow": "#e5d89a",
+  "brightBlue": "#9ab9e5",
+  "brightPurple": "#e59ae5",
+  "brightCyan": "#9ae5e5",
+  "brightWhite": "#ffffff",
+  "background": "#0d1117",
+  "foreground": "#e6edf3",
+  "cursorColor": "#238636",
+  "selectionBackground": "#161b22"
+}

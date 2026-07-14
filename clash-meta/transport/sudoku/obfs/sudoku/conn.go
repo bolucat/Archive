@@ -148,7 +148,10 @@ func (sc *Conn) Write(p []byte) (n int, err error) {
 	defer sc.writeMu.Unlock()
 
 	sc.writeBuf = encodeSudokuPayload(sc.writeBuf[:0], sc.table, sc.rng, sc.paddingThreshold, p)
-	return len(p), writeFull(sc.Conn, sc.writeBuf)
+	if _, err := sc.Conn.Write(sc.writeBuf); err != nil {
+		return len(p), err
+	}
+	return len(p), nil
 }
 
 func (sc *Conn) Read(p []byte) (n int, err error) {

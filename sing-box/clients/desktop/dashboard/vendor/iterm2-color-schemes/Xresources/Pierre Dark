@@ -1,0 +1,43 @@
+!
+! Pierre Dark
+!
+*.foreground:  #fbfbfb
+*.background:  #070707
+*.cursorColor: #009fff
+!
+! Black
+*.color0:      #141415
+*.color8:      #6c6c71
+!
+! Red
+*.color1:      #ff2e3f
+*.color9:      #ff6762
+!
+! Green
+*.color2:      #0dbe4e
+*.color10:     #5ecc71
+!
+! Yellow
+*.color3:      #ffca00
+*.color11:     #ffd452
+!
+! Blue
+*.color4:      #009fff
+*.color12:     #69b1ff
+!
+! Magenta
+*.color5:      #c635e4
+*.color13:     #d568ea
+!
+! Cyan
+*.color6:      #08c0ef
+*.color14:     #68cdf2
+!
+! White
+*.color7:      #c6c6c8
+*.color15:     #fbfbfb
+!
+! Bold, Italic, Underline
+*.colorBD:     #fbfbfb
+!*.colorIT:
+!*.colorUL:

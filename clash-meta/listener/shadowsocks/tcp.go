@@ -11,8 +11,9 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
 	"github.com/metacubex/mihomo/listener/inner"
+	"github.com/metacubex/mihomo/listener/jls"
+	"github.com/metacubex/mihomo/listener/shadowtls"
 	"github.com/metacubex/mihomo/listener/sing"
-	"github.com/metacubex/mihomo/transport/jls"
 	"github.com/metacubex/mihomo/transport/restls"
 	"github.com/metacubex/mihomo/transport/shadowsocks/core"
 	obfs "github.com/metacubex/mihomo/transport/simple-obfs"
@@ -27,7 +28,6 @@ type Listener struct {
 	pickCipher   core.Cipher
 	handler      *sing.ListenerHandler
 	resTLS       *restls.ServerConfig
-	jls          *jls.ServerConfig
 	simpleObfs   func(net.Conn) net.Conn
 }
 
@@ -52,6 +52,14 @@ func New(config LC.ShadowsocksServer, lc C.InboundListenConfig, tunnel C.Tunnel,
 	sl := &Listener{config: config, pickCipher: pickCipher, handler: h}
 	_listener = sl
 
+	var shadowTLSBuilder *shadowtls.Builder
+	if config.ShadowTLS.Enable {
+		shadowTLSBuilder, err = shadowtls.New(config.ShadowTLS, tunnel)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if config.ResTLS.Enable {
 		sl.resTLS = &restls.ServerConfig{
 			ServerHostname: config.ResTLS.Dest,
@@ -64,21 +72,9 @@ func New(config LC.ShadowsocksServer, lc C.InboundListenConfig, tunnel C.Tunnel,
 		}
 	}
 
+	var jlsBuilder *jls.Builder
 	if config.JLSConfig.Enable {
-		users := make([]jls.User, len(config.JLSConfig.Users))
-		for i, user := range config.JLSConfig.Users {
-			users[i] = jls.User{Username: user.Username, Password: user.Password}
-		}
-		sl.jls, err = jls.NewServerConfig(
-			config.JLSConfig.SNI,
-			config.JLSConfig.Dest,
-			users,
-			config.JLSConfig.ALPN,
-			config.JLSConfig.RateLimit,
-			func(ctx context.Context, network, address string) (net.Conn, error) {
-				return inner.HandleTcp(tunnel, address, config.JLSConfig.Proxy)
-			},
-		)
+		jlsBuilder, err = jls.New(config.JLSConfig, tunnel)
 		if err != nil {
 			return nil, err
 		}
@@ -111,6 +107,12 @@ func New(config LC.ShadowsocksServer, lc C.InboundListenConfig, tunnel C.Tunnel,
 		l, err := lc.Listen(context.Background(), "tcp", addr)
 		if err != nil {
 			return nil, err
+		}
+		if shadowTLSBuilder != nil {
+			l = shadowTLSBuilder.NewListener(l)
+		}
+		if jlsBuilder != nil {
+			l = jlsBuilder.NewListener(l)
 		}
 		sl.listeners = append(sl.listeners, l)
 
@@ -163,13 +165,12 @@ func (l *Listener) AddrList() (addrList []net.Addr) {
 }
 
 func (l *Listener) HandleConn(conn net.Conn, tunnel C.Tunnel, additions ...inbound.Addition) {
-	if l.jls != nil {
-		c, err := jls.Server(context.TODO(), conn, l.jls)
-		if err != nil {
-			_ = conn.Close()
-			return
-		}
-		conn = c
+	user, loaded := shadowtls.UserFromConn(conn)
+	if jlsUser, jlsLoaded := jls.UserFromConn(conn); jlsLoaded {
+		user, loaded = jlsUser, true
+	}
+	if loaded {
+		additions = append(append([]inbound.Addition(nil), additions...), inbound.WithInUser(user))
 	}
 	if l.resTLS != nil {
 		c, err := restls.Server(context.TODO(), conn, l.resTLS)

@@ -1,0 +1,23 @@
+bg-color = "#f8fafc"
+fg-color = "#0f172a"
+
+color-0 = "#c2d4e5"
+color-1 = "#bd0f0f"
+color-2 = "#0fbd49"
+color-3 = "#bda00f"
+color-4 = "#0f58bd"
+color-5 = "#bd0fbd"
+color-6 = "#0fbdbd"
+color-7 = "#080d17"
+color-8 = "#8dadce"
+color-9 = "#ee2b2b"
+color-10 = "#12d452"
+color-11 = "#d4b312"
+color-12 = "#2b7cee"
+color-13 = "#ee2bee"
+color-14 = "#12d4d4"
+color-15 = "#0f172a"
+
+highlight-bg-color = "#ffffff"
+highlight-fg-color = "#0f172a"
+

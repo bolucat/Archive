@@ -46,6 +46,15 @@ func SetCongestionController(quicConn *quic.Conn, cc string, cwnd int, profile s
 	}
 }
 
+func setBrutalCongestionController(quicConn *quic.Conn, bps uint64) {
+	if bps == 0 {
+		return
+	}
+	quicConn.SetCongestionControl(newCongestionAdapter(
+		congestionv2.NewBrutalSender(bps),
+	))
+}
+
 func newCongestionAdapter(cc oldcongestion.CongestionControl) jcongestion.CongestionControl {
 	return &congestionAdapter{cc: cc}
 }
@@ -119,6 +128,48 @@ func (a *congestionAdapter) InRecovery() bool {
 
 func (a *congestionAdapter) GetCongestionWindow() jcongestion.ByteCount {
 	return jcongestion.ByteCount(a.cc.GetCongestionWindow())
+}
+
+func (a *congestionAdapter) OnCongestionEventEx(priorInFlight jcongestion.ByteCount, eventTime jmonotime.Time, ackedPackets []jcongestion.AckedPacketInfo, lostPackets []jcongestion.LostPacketInfo) {
+	ex, ok := a.cc.(oldcongestion.CongestionControlEx)
+	if !ok {
+		return
+	}
+	ex.OnCongestionEventEx(
+		oldcongestion.ByteCount(priorInFlight),
+		oldmonotime.Time(eventTime),
+		adaptAckedPacketInfo(ackedPackets),
+		adaptLostPacketInfo(lostPackets),
+	)
+}
+
+func adaptAckedPacketInfo(packets []jcongestion.AckedPacketInfo) []oldcongestion.AckedPacketInfo {
+	if len(packets) == 0 {
+		return nil
+	}
+	adapted := make([]oldcongestion.AckedPacketInfo, len(packets))
+	for i, packet := range packets {
+		adapted[i] = oldcongestion.AckedPacketInfo{
+			PacketNumber: oldcongestion.PacketNumber(packet.PacketNumber),
+			BytesAcked:   oldcongestion.ByteCount(packet.BytesAcked),
+			ReceivedTime: oldmonotime.Time(packet.ReceivedTime),
+		}
+	}
+	return adapted
+}
+
+func adaptLostPacketInfo(packets []jcongestion.LostPacketInfo) []oldcongestion.LostPacketInfo {
+	if len(packets) == 0 {
+		return nil
+	}
+	adapted := make([]oldcongestion.LostPacketInfo, len(packets))
+	for i, packet := range packets {
+		adapted[i] = oldcongestion.LostPacketInfo{
+			PacketNumber: oldcongestion.PacketNumber(packet.PacketNumber),
+			BytesLost:    oldcongestion.ByteCount(packet.BytesLost),
+		}
+	}
+	return adapted
 }
 
 type rttStatsProviderAdapter struct {

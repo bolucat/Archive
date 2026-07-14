@@ -1,0 +1,128 @@
+.toolbar {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-10);
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 var(--space-12);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  -webkit-app-region: drag;
+}
+
+:global(body[data-platform="darwin"]) .toolbar-window {
+  --titlebar-inset: 96px;
+
+  padding-inline-start: var(--titlebar-inset);
+}
+
+:global(body[data-platform="win32"]) .toolbar {
+  --window-controls-inset: 150px;
+
+  padding-inline-end: var(--window-controls-inset);
+}
+
+.toolbar :global(button),
+.toolbar :global(.select) {
+  -webkit-app-region: no-drag;
+}
+
+.toolbar :global(.icon-button),
+.toolbar :global(.select) {
+  background: var(--hover);
+  border: 0;
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+.toolbar :global(.icon-button):hover,
+.toolbar :global(.select):hover,
+.toolbar :global(button.select[aria-expanded="true"]) {
+  background: var(--neutral-soft);
+  box-shadow: none;
+}
+
+.toolbar :global(.icon-button.active) {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.toolbar :global(.select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  box-shadow: none;
+}
+
+.toolbar-end :global(.icon-button) {
+  background: transparent;
+}
+
+.toolbar-end :global(.icon-button):hover {
+  background: var(--hover);
+}
+
+.toolbar-section {
+  display: flex;
+  gap: var(--space-10);
+  align-items: center;
+  min-width: 0;
+}
+
+.toolbar-end {
+  justify-content: flex-end;
+}
+
+.toolbar-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.toolbar-lead {
+  display: flex;
+  align-items: center;
+}
+
+.toolbar-lead:empty {
+  display: none;
+}
+
+.toolbar-server :global(.select) {
+  width: 180px;
+}
+
+.toolbar-service {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.toolbar-service .toolbar-service-button {
+  gap: var(--space-6);
+  width: auto;
+  min-width: var(--control-height);
+  padding: 0 var(--space-10);
+}
+
+.toolbar-spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  background: var(--hover);
+  border-radius: var(--radius-md);
+}
+
+.toolbar-spinner :global(.spinner) {
+  border-top-color: var(--text-secondary);
+}
+
+.toolbar-uptime {
+  composes: text-mono-caption from global;
+  color: var(--text-secondary);
+}

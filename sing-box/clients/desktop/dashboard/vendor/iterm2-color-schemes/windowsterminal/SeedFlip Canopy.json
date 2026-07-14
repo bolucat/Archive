@@ -1,0 +1,23 @@
+{
+  "name": "SeedFlip Canopy",
+  "black": "#0b110f",
+  "red": "#d65c5c",
+  "green": "#5cd685",
+  "yellow": "#d6c25c",
+  "blue": "#5c8fd6",
+  "purple": "#d65cd6",
+  "cyan": "#5cd6d6",
+  "white": "#fafafa",
+  "brightBlack": "#2d453c",
+  "brightRed": "#e69999",
+  "brightGreen": "#99e6b2",
+  "brightYellow": "#e6d999",
+  "brightBlue": "#99b9e6",
+  "brightPurple": "#e699e6",
+  "brightCyan": "#99e6e6",
+  "brightWhite": "#ffffff",
+  "background": "#0f1714",
+  "foreground": "#ededed",
+  "cursorColor": "#3ecf8e",
+  "selectionBackground": "#171f1b"
+}

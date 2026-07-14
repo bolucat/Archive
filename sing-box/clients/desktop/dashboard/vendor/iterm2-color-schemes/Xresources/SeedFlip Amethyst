@@ -1,0 +1,43 @@
+!
+! SeedFlip Amethyst
+!
+*.foreground:  #1a0a2e
+*.background:  #f8f7f6
+*.cursorColor: #635bff
+!
+! Black
+*.color0:      #d7d1cb
+*.color8:      #b5aba0
+!
+! Red
+*.color1:      #bd0f0f
+*.color9:      #ee2b2b
+!
+! Green
+*.color2:      #0fbd49
+*.color10:     #12d452
+!
+! Yellow
+*.color3:      #bda00f
+*.color11:     #d4b312
+!
+! Blue
+*.color4:      #0f58bd
+*.color12:     #2b7cee
+!
+! Magenta
+*.color5:      #bd0fbd
+*.color13:     #ee2bee
+!
+! Cyan
+*.color6:      #0fbdbd
+*.color14:     #05c8c8
+!
+! White
+*.color7:      #0e0519
+*.color15:     #1a0a2e
+!
+! Bold, Italic, Underline
+*.colorBD:     #1a0a2e
+!*.colorIT:
+!*.colorUL:

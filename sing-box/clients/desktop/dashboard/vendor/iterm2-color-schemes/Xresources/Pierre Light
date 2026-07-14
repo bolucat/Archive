@@ -1,0 +1,43 @@
+!
+! Pierre Light
+!
+*.foreground:  #070707
+*.background:  #ffffff
+*.cursorColor: #009fff
+!
+! Black
+*.color0:      #1f1f21
+*.color8:      #8e8e95
+!
+! Red
+*.color1:      #d52c36
+*.color9:      #ff2e3f
+!
+! Green
+*.color2:      #1d8138
+*.color10:     #0dbe4e
+!
+! Yellow
+*.color3:      #ac8816
+*.color11:     #d5a910
+!
+! Blue
+*.color4:      #216cab
+*.color12:     #009fff
+!
+! Magenta
+*.color5:      #a631be
+*.color13:     #c635e4
+!
+! Cyan
+*.color6:      #2182a1
+*.color14:     #08c0ef
+!
+! White
+*.color7:      #79797f
+*.color15:     #dbdbdd
+!
+! Bold, Italic, Underline
+*.colorBD:     #070707
+!*.colorIT:
+!*.colorUL:
