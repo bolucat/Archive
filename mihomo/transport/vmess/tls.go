@@ -9,6 +9,8 @@ import (
 	"github.com/metacubex/mihomo/component/ech"
 	tlsC "github.com/metacubex/mihomo/component/tls"
 	"github.com/metacubex/mihomo/transport/jls"
+	"github.com/metacubex/mihomo/transport/restls"
+	"github.com/metacubex/mihomo/transport/shadowtls"
 	"github.com/metacubex/mihomo/transport/tlsmirror"
 
 	"github.com/metacubex/tls"
@@ -24,6 +26,8 @@ type TLSConfig struct {
 	ClientFingerprint string
 	NextProtos        []string
 	ECH               *ech.Config
+	ShadowTLS         *shadowtls.Config
+	Restls            *restls.Config
 	JLS               *jls.Config
 	Reality           *tlsC.RealityConfig
 	TLSMirror         *tlsmirror.Config
@@ -45,6 +49,38 @@ func (cfg *TLSConfig) ToStdConfig() (*tls.Config, error) {
 }
 
 func StreamTLSConn(ctx context.Context, conn net.Conn, cfg *TLSConfig) (net.Conn, error) {
+	if cfg.ShadowTLS != nil {
+		alpn := cfg.NextProtos
+		if alpn == nil {
+			alpn = shadowtls.DefaultALPN
+		}
+		return shadowtls.NewShadowTLS(ctx, conn, &shadowtls.ShadowTLSOption{
+			Password:          cfg.ShadowTLS.Password,
+			Host:              cfg.Host,
+			Fingerprint:       cfg.FingerPrint,
+			Certificate:       cfg.Certificate,
+			PrivateKey:        cfg.PrivateKey,
+			ClientFingerprint: cfg.ClientFingerprint,
+			SkipCertVerify:    cfg.SkipCertVerify,
+			NameCertVerify:    cfg.NameCertVerify,
+			Version:           cfg.ShadowTLS.Version,
+			ALPN:              alpn,
+		})
+	}
+	if cfg.Restls != nil {
+		restlsConfig := cfg.Restls.Clone()
+		restlsConfig.ServerName = cfg.Host
+		restlsConfig.NextProtos = cfg.NextProtos
+		restlsConfig.InsecureSkipVerify = cfg.SkipCertVerify
+		if cfg.FingerPrint != "" {
+			if err := restls.SetFingerprint(restlsConfig, cfg.FingerPrint, cfg.NameCertVerify); err != nil {
+				return nil, err
+			}
+		} else if cfg.NameCertVerify != "" {
+			restls.SetNameCertVerify(restlsConfig, cfg.NameCertVerify)
+		}
+		return restls.NewRestls(ctx, conn, restlsConfig)
+	}
 	if cfg.JLS != nil {
 		return jls.NewClient(ctx, conn, &jls.ClientConfig{
 			Config:            *cfg.JLS,

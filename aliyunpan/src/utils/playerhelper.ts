@@ -31,7 +31,7 @@ import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirf
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
 import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
-import { buildPlayerCommand, isMpvCommand, redactMpvArgs, shellQuote } from './mpvPlayerPolicy'
+import { buildDirectPlayerInvocation, buildPlayerCommand, formatPlayerArg, isMpvCommand, redactMpvArgs } from './mpvPlayerPolicy'
 
 const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
 const currentPlayerPlatform = () => (is.windows() ? 'win32' : is.macOS() ? 'darwin' : is.linux() ? 'linux' : process.platform)
@@ -476,10 +476,12 @@ const PlayerUtils = {
       message.error(`启动失败，找不到文件, ${command}`)
       return
     }
-    const argsToStr = (args: string) => (is.windows() ? `"${args}"` : shellQuote(args))
     const isMPV = isMpvCommand(command)
     const isPotplayer = command.toLowerCase().includes('potplayer')
+    const directMpvControl = (useSettingStore().uiVideoEnablePlayerList || useSettingStore().uiVideoPlayerHistory) && isMPV
+    const argsToStr = (args: string) => formatPlayerArg(currentPlayerPlatform(), args, directMpvControl)
     const commandStr = buildPlayerCommand(currentPlayerPlatform(), command)
+    const directInvocation = buildDirectPlayerInvocation(currentPlayerPlatform(), command)
     // 构造播放参数
     let { file, subTitleFile, rawData, quality } = otherArgs
     let encType = getEncType(file)
@@ -495,6 +497,9 @@ const PlayerUtils = {
     let options: SpawnOptions = { detached: !uiVideoPlayerExit }
     let subTitleUrl = ''
     let rawHeaders: Record<string, string> = {}
+    const headerFields = () => Object.entries(rawHeaders)
+      .filter(([key, value]) => !!key && !!value)
+      .map(([key, value]) => `${key}: ${value}`)
     if (rawData) {
       // 加载转码的内嵌字幕
       if (rawData.subtitles && quality != 'Origin') {
@@ -541,7 +546,8 @@ const PlayerUtils = {
         }
       }
       if (rawHeaders['User-Agent']) playerArgs.push(`/user_agent=${argsToStr(rawHeaders['User-Agent'])}`)
-      if (rawHeaders.Authorization) playerArgs.push(`/headers=${argsToStr(`Authorization: ${rawHeaders.Authorization}`)}`)
+      const potHeaders = headerFields().filter(header => !/^user-agent\s*:/i.test(header))
+      if (potHeaders.length) playerArgs.push(`/headers=${argsToStr(potHeaders.join('\\r\\n'))}`)
     } else if (isMPV) {
       playerArgs = [
         '--force-window=immediate',
@@ -565,8 +571,9 @@ const PlayerUtils = {
           playerArgs.push(`--sub-file=${argsToStr(subTitleUrl)}`)
         }
       }
+      const mpvHeaders = headerFields().filter(header => !/^user-agent\s*:/i.test(header))
       if (rawHeaders['User-Agent']) playerArgs.push(`--user-agent=${argsToStr(rawHeaders['User-Agent'])}`)
-      if (rawHeaders.Authorization) playerArgs.push(`--http-header-fields=${argsToStr(`Authorization: ${rawHeaders.Authorization}`)}`)
+      if (mpvHeaders.length) playerArgs.push(`--http-header-fields=${argsToStr(mpvHeaders.join(','))}`)
     }
     if (uiVideoPlayerParams.length > 0) {
       const params = uiVideoPlayerParams.replaceAll(/\s+/g, '').split(',')
@@ -621,8 +628,8 @@ const PlayerUtils = {
       }
       await Db.saveValueObject('ProxyInfo', info)
     }
-    if ((uiVideoEnablePlayerList || uiVideoPlayerHistory) && isMPV) {
-      await this.mpvPlayer(token, commandStr, playArgs, otherArgs, options, exitCallBack)
+    if (directMpvControl) {
+      await this.mpvPlayer(token, directInvocation.binary, [...directInvocation.args, ...playArgs], otherArgs, options, exitCallBack)
     } else {
       this.commandSpawn(commandStr, playArgs, options, exitCallBack)
     }

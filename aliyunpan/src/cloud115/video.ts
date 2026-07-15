@@ -97,15 +97,16 @@ export const apiDrive115VideoSubtitle = async (user_id: string, pick_code: strin
   }
   if (!token?.access_token || !pick_code) return []
   try {
+    const headers = buildDrive115Headers(token.access_token)
     const resp = await fetch(`${SUBTITLE_URL}?${new URLSearchParams({ pick_code }).toString()}`, {
-      headers: buildDrive115Headers(token.access_token)
+      headers
     })
     if (!resp.ok) return []
     const body = await resp.json()
     if (body?.code !== 0 || !body?.data) return []
     const data = body.data
     const items = Array.isArray(data) ? data : data.list || data.subtitles || data.subtitle_list || []
-    return mapDrive115SubtitleItems(items)
+    return mapDrive115SubtitleItems(items).map((item) => ({ ...item, headers }))
   } catch {
     return []
   }

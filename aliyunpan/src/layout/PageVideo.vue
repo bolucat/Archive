@@ -221,7 +221,7 @@ const refreshMediaServerPlayback = async (
   if (subtitleStreamIndex >= 0) {
     pageVideo.media_server_subtitle_label = (pageVideo.media_server_subtitle_options || []).find((item) => item.streamIndex === subtitleStreamIndex)?.label || pageVideo.media_server_subtitle_label || ''
   }
-  setArtVideoUrl(art, playback.url, getArtVideoType(playback.url))
+  setArtVideoUrl(art, resolveHeaderAwareVideoUrl(playback.url, playback.headers, 0, 'media_server'), getArtVideoType(playback.url))
   mediaServerReportStarted = false
   mediaServerStopReported = false
   await sendMediaServerStartReport(resumeTime)
@@ -379,6 +379,30 @@ const getArtVideoType = (url: string, type?: string) => {
 
 const isHlsVideoType = (type: string) => ['m3u8', 'hls', 'ts'].includes(type)
 const isDashVideoType = (type: string) => ['mpd', 'dash'].includes(type)
+
+const hasPlaybackHeaders = (headers?: Record<string, string>) => !!headers && Object.values(headers).some(Boolean)
+
+const resolveHeaderAwareVideoUrl = (
+  url: string,
+  headers: Record<string, string> | undefined,
+  fileSize: number,
+  quality: string,
+  proxyKind = ''
+) => {
+  if (!pageVideo.encType && !hasPlaybackHeaders(headers)) return url
+  return getProxyUrl({
+    user_id: pageVideo.user_id,
+    drive_id: pageVideo.drive_id,
+    file_id: pageVideo.file_id,
+    encType: pageVideo.encType,
+    password: pageVideo.password,
+    file_size: fileSize,
+    quality,
+    proxy_url: url,
+    proxy_headers: hasPlaybackHeaders(headers) ? JSON.stringify(headers) : undefined,
+    proxy_kind: proxyKind
+  })
+}
 
 const destroyArtHls = (art: Artplayer) => {
   if ((art as any).hls) {
@@ -2054,19 +2078,7 @@ const resolveRawMpvQualitySource = (data: IRawUrl, preferredQuality?: string): {
   }
 
   const defaultHeaders = defaultQuality.headers || data.headers
-  const defaultUrl = pageVideo.encType
-    ? getProxyUrl({
-      user_id: pageVideo.user_id,
-      drive_id: pageVideo.drive_id,
-      file_id: pageVideo.file_id,
-      encType: pageVideo.encType,
-      password: pageVideo.password,
-      file_size: data.size,
-      quality: defaultQuality.quality,
-      proxy_url: defaultQuality.url,
-      proxy_headers: JSON.stringify(defaultHeaders)
-    })
-    : defaultQuality.url
+  const defaultUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '')
   const defaultQualityWidth = (defaultQuality as any).width
   return {
     quality: defaultQuality,
@@ -2298,7 +2310,7 @@ const getVideoInfo = async (art: Artplayer) => {
       art.emit('video:error', '获取媒体服务器播放地址失败')
       return
     }
-    setArtVideoUrl(art, mediaUrl, getArtVideoType(mediaUrl))
+    setArtVideoUrl(art, resolveHeaderAwareVideoUrl(mediaUrl, pageVideo.media_headers, 0, 'media_server'), getArtVideoType(mediaUrl))
     renderMediaServerControls(art)
     return
   }
@@ -2314,19 +2326,7 @@ const getVideoInfo = async (art: Artplayer) => {
       defaultQuality = resolvePreferredVideoQuality(data.qualities, uiVideoQuality)
     }
     const defaultHeaders = defaultQuality.headers || data.headers
-  const defaultUrl = pageVideo.encType
-    ? getProxyUrl({
-        user_id: pageVideo.user_id,
-        drive_id: pageVideo.drive_id,
-        file_id: pageVideo.file_id,
-        encType: pageVideo.encType,
-        password: pageVideo.password,
-        file_size: data.size,
-        quality: defaultQuality.quality,
-        proxy_url: defaultQuality.url,
-        proxy_headers: JSON.stringify(defaultHeaders)
-      })
-    : defaultQuality.url
+    const defaultUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '')
     setArtVideoUrl(art, defaultUrl, defaultQuality.type)
     defaultQuality.default = true
     pageVideo.expire_time = GetExpiresTime(defaultQuality.url)
@@ -2344,19 +2344,7 @@ const getVideoInfo = async (art: Artplayer) => {
         if (!isHlsVideoType(artType)) destroyArtHls(art)
         if (!isDashVideoType(artType)) destroyArtDash(art)
         const itemHeaders = item.headers || data.headers
-        const itemUrl = pageVideo.encType
-          ? getProxyUrl({
-            user_id: pageVideo.user_id,
-            drive_id: pageVideo.drive_id,
-            file_id: pageVideo.file_id,
-            encType: pageVideo.encType,
-            password: pageVideo.password,
-            file_size: data.size,
-            quality: item.quality,
-            proxy_url: item.url,
-            proxy_headers: JSON.stringify(itemHeaders)
-          })
-          : item.url
+        const itemUrl = resolveHeaderAwareVideoUrl(item.url, itemHeaders, data.size, item.quality || '')
         art.switchQuality(itemUrl).then(() => {
           scheduleCleanupInactiveStreamingControls(art)
           art.playbackRate = playbackRate

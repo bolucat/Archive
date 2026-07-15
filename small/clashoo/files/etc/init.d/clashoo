@@ -881,11 +881,12 @@ _migrate_dns_roles() {
 }
 
 _user_dns_fields() {
-	local field out=""
+	local field out="" force="${1:-}"
 	command -v yq >/dev/null 2>&1 || return 0
 	[ -s "$CONFIG_YAML" ] || return 0
 	for field in nameserver proxy-server-nameserver fallback direct-nameserver \
 		default-nameserver nameserver-policy respect-rules; do
+		case ",$force," in *,"$field",*) continue ;; esac
 		[ "$(yq -M e "(.dns // {}) | has(\"${field}\")" "$CONFIG_YAML" 2>/dev/null)" = "true" ] &&
 			out="${out}${out:+,}${field}"
 	done
@@ -894,13 +895,143 @@ _user_dns_fields() {
 	printf '%s' "$out"
 }
 
+_dns_list_values() {
+	local field="$1"
+	command -v yq >/dev/null 2>&1 || return 0
+	yq -M e -r "(.dns.\"${field}\" // [])[]" "$CONFIG_YAML" 2>/dev/null | sed '/^null$/d'
+}
+
+_dns_value_is_domestic() {
+	case "$1" in
+		*223.5.5.5*|*119.29.29.29*|*114.114.114.114*|*180.184.*|*1.2.4.8*|*doh.pub*|*alidns*|*dns.pub*|*dnspod*)
+			return 0 ;;
+	esac
+	return 1
+}
+
+_dns_list_all_domestic() {
+	local field="$1" value seen=0
+	for value in $(_dns_list_values "$field"); do
+		seen=1
+		_dns_value_is_domestic "$value" || return 1
+	done
+	[ "$seen" = "1" ]
+}
+
+_dns_has_cn_rule_set() {
+	_dns_list_values "fake-ip-filter" | grep -qx 'rule-set:cn_domain' || return 1
+	yq -M e -r '(.dns."nameserver-policy"."rule-set:cn_domain" // [])[]' "$CONFIG_YAML" 2>/dev/null | grep -q .
+}
+
+_clashoo_dns_force_fields() {
+	command -v yq >/dev/null 2>&1 || return 0
+	[ -s "$CONFIG_YAML" ] || return 0
+	local managed legacy fields
+	fields="nameserver,proxy-server-nameserver,direct-nameserver,default-nameserver,nameserver-policy,respect-rules"
+	managed="$(yq -M e '(.dns."x-clashoo-managed-dns" // false) == true' "$CONFIG_YAML" 2>/dev/null)"
+	if [ "$managed" = "true" ]; then
+		printf '%s' "$fields"
+		return 0
+	fi
+	legacy=0
+	if _dns_has_cn_rule_set &&
+		_dns_list_all_domestic "nameserver" &&
+		_dns_list_all_domestic "proxy-server-nameserver"; then
+		legacy=1
+	fi
+	[ "$legacy" = "1" ] && printf '%s' "$fields"
+	return 0
+}
+
 yml_change() {
-	CLASHOO_DNS_PRESENT="$(_user_dns_fields)"
+	CLASHOO_DNS_FORCE="$(_clashoo_dns_force_fields)"
+	CLASHOO_DNS_PRESENT="$(_user_dns_fields "$CLASHOO_DNS_FORCE")"
+	export CLASHOO_DNS_FORCE
 	export CLASHOO_DNS_PRESENT
+	CLASHOO_KEEP_FAKEIP_FILTER=""
+	CLASHOO_KEEP_SNIFFER=""
+	if command -v yq >/dev/null 2>&1 && [ -s "$CONFIG_YAML" ]; then
+		[ "$(yq -M e '(.dns // {}) | has("fake-ip-filter")' "$CONFIG_YAML" 2>/dev/null)" = "true" ] &&
+			CLASHOO_KEEP_FAKEIP_FILTER=1
+		[ "$(yq -M e 'has("sniffer")' "$CONFIG_YAML" 2>/dev/null)" = "true" ] &&
+			CLASHOO_KEEP_SNIFFER=1
+	fi
+	export CLASHOO_KEEP_FAKEIP_FILTER
+	export CLASHOO_KEEP_SNIFFER
 	ucode /usr/share/clashoo/runtime/mixin.uc 2>/dev/null | yq -M -p json -o yaml > /tmp/_clashoo_mixin.yaml 2>/dev/null &&
 		yq -M eval-all '. as $item ireduce ({}; . * $item)' "$CONFIG_YAML" /tmp/_clashoo_mixin.yaml > "${CONFIG_YAML}.mixin" 2>/dev/null && 
 		mv -f "${CONFIG_YAML}.mixin" "$CONFIG_YAML" 2>/dev/null && 
 		rm -f /tmp/_clashoo_mixin.yaml 2>/dev/null
+}
+
+_uci_fake_ip_filter_extras() {
+	local line item key
+	key='clashoo.config.fake_ip_filter'
+	uci -q show "$key" 2>/dev/null | while IFS= read -r line; do
+		item="${line#${key}=}"
+		[ "$item" != "$line" ] || continue
+		item="${item#\'}"
+		item="${item%\'}"
+		case "$item" in
+			'*.lan'|'localhost.ptlogin2.qq.com'|'rule-set:cn_domain')
+				continue ;;
+			geosite:cn)
+				printf '%s\n' 'rule-set:cn_domain' ;;
+			*)
+				printf '%s\n' "$item" ;;
+		esac
+	done
+}
+
+_ensure_cn_domain_rule_provider() {
+	command -v yq >/dev/null 2>&1 || return 0
+	[ -s "$CONFIG_YAML" ] || return 0
+	yq -M e -i '
+		.["rule-providers"].cn_domain = {
+			"type": "file",
+			"path": "./ruleset/cn.mrs",
+			"format": "mrs",
+			"behavior": "domain"
+		}
+	' "$CONFIG_YAML" 2>/dev/null || true
+}
+
+append_luci_fake_ip_filter_extras() {
+	[ -n "${CLASHOO_KEEP_FAKEIP_FILTER:-}" ] || return 0
+	command -v yq >/dev/null 2>&1 || return 0
+	[ -s "$CONFIG_YAML" ] || return 0
+
+	local item needs_cn_file
+	needs_cn_file="/tmp/.clashoo_need_cn_rs.$$"
+	rm -f "$needs_cn_file" 2>/dev/null
+	_uci_fake_ip_filter_extras | while IFS= read -r item; do
+		[ -n "$item" ] || continue
+		[ "$item" = "rule-set:cn_domain" ] && : > "$needs_cn_file"
+		CLASHOO_FAKEIP_FILTER_ITEM="$item" yq -M e -i '
+			.dns."fake-ip-filter" = (((.dns."fake-ip-filter" // []) + [strenv(CLASHOO_FAKEIP_FILTER_ITEM)]) | unique)
+		' "$CONFIG_YAML" 2>/dev/null || true
+	done
+	[ -f "$needs_cn_file" ] && _ensure_cn_domain_rule_provider
+	rm -f "$needs_cn_file" 2>/dev/null
+}
+
+ensure_dns_cn_policy_fallback() {
+	command -v yq >/dev/null 2>&1 || return 0
+	[ -s "$CONFIG_YAML" ] || return 0
+	[ "$(yq -M e '(.dns // {}) | has("nameserver-policy")' "$CONFIG_YAML" 2>/dev/null)" = "true" ] || return 0
+	[ "$(yq -M e '((.dns."nameserver-policy" // {}) | type) == "!!map"' "$CONFIG_YAML" 2>/dev/null)" = "true" ] || return 0
+
+	if [ "$(yq -M e '(.dns."nameserver-policy" // {}) | has("rule-set:cn_domain")' "$CONFIG_YAML" 2>/dev/null)" = "true" ]; then
+		_ensure_cn_domain_rule_provider
+		return 0
+	fi
+
+	if [ "$(yq -M e '(.dns."nameserver-policy" // {}) | has("geosite:cn")' "$CONFIG_YAML" 2>/dev/null)" = "true" ]; then
+		yq -M e -i '.dns."nameserver-policy"."rule-set:cn_domain" = .dns."nameserver-policy"."geosite:cn"' "$CONFIG_YAML" 2>/dev/null || true
+	else
+		yq -M e -i '.dns."nameserver-policy"."rule-set:cn_domain" = ["https://223.5.5.5/dns-query", "https://doh.pub/dns-query"]' "$CONFIG_YAML" 2>/dev/null || true
+	fi
+	_ensure_cn_domain_rule_provider
 }
 
 ip_rules() {
@@ -1227,7 +1358,7 @@ _config_needs_geosite() {
 	# Matches: routing rules (- GEOSITE,...), geosite: child blocks, and
 	# list-item refs like `- geosite:cn` / `- 'geosite:cn'` used in
 	# fake-ip-filter (the default config ships one, easy to miss).
-	grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,|^[[:space:]]*geosite:[[:space:]]*|^[[:space:]]*'geosite:|^[[:space:]]*-[[:space:]]*[\"']?geosite:" "$CONFIG_YAML"
+	grep -Eq "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,|^[[:space:]]*geosite:[[:space:]]*|^[[:space:]]*[\"']geosite:|^[[:space:]]*-[[:space:]]*[\"']?geosite:" "$CONFIG_YAML"
 }
 
 _has_valid_local_geosite() {
@@ -1338,7 +1469,9 @@ _prepare_geo_bootstrap_mode() {
 		_strip_yaml_rule_lines "^[[:space:]]*-[[:space:]]*[\"']?GEOSITE,"
 		_strip_yaml_child_block '^[[:space:]]*geosite:[[:space:]]*$'
 		_strip_yaml_child_block "^[[:space:]]*'geosite:[^']*'[[:space:]]*:[[:space:]]*$"
-		sed -i '/^[[:space:]]*geosite:[[:space:]]*[^[:space:]].*/d' "$CONFIG_YAML" 2>/dev/null
+		_strip_yaml_child_block '^[[:space:]]*"geosite:[^"]*"[[:space:]]*:[[:space:]]*$'
+		_strip_yaml_child_block '^[[:space:]]*geosite:[^[:space:]]+:[[:space:]]*$'
+		_strip_yaml_rule_lines '^[[:space:]]*geosite:[[:space:]]+[^[:space:]].*'
 		# list-item refs (e.g. fake-ip-filter: - geosite:cn / - 'geosite:cn')
 		sed -i "/^[[:space:]]*-[[:space:]]*[\"']\{0,1\}geosite:/d" "$CONFIG_YAML" 2>/dev/null
 	fi
@@ -1496,6 +1629,7 @@ _start_prepare_config() {
 		fi
 	fi
 	yml_change >/dev/null 2>&1
+	append_luci_fake_ip_filter_extras >/dev/null 2>&1
 	dns_leak_protect=$(uci -q get clashoo.config.dns_leak_protect 2>/dev/null)
 	if command -v dns_mihomo_apply_leak_protect >/dev/null 2>&1; then
 		# dns_leak_protect=1 forces ipv6:false; otherwise follow UCI enable_ipv6 (omit when unset)
@@ -1518,6 +1652,7 @@ _start_prepare_config() {
 	fi
 
 	_prepare_geo_bootstrap_mode
+	ensure_dns_cn_policy_fallback >/dev/null 2>&1
 
 
 	if [ ! -f /etc/clashoo/config.yaml ];then

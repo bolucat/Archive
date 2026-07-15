@@ -634,10 +634,7 @@ export default class AliFile {
         if (first.headers) data.headers = first.headers
       }
       data.duration = Math.floor(Number(playInfo.play_long || meta.play_long || 0))
-      data.subtitles = subtitles.map((subtitle) => ({
-        ...subtitle,
-        headers: playInfo.video_url?.[0]?.headers
-      }))
+      data.subtitles = subtitles
       return data
     }
     let url = ''

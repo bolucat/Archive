@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha1"
-	stdTLS "crypto/tls"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/metacubex/mihomo/component/ca"
+	"github.com/metacubex/tls"
 )
 
 const (
@@ -108,10 +108,10 @@ func TestV3UnauthenticatedConnectionFallsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	setTestDeadline(t, rawClient)
-	client := stdTLS.Client(rawClient, &stdTLS.Config{
+	client := tls.Client(rawClient, &tls.Config{
 		ServerName:         testServerName,
 		InsecureSkipVerify: true,
-		MinVersion:         stdTLS.VersionTLS12,
+		MinVersion:         tls.VersionTLS12,
 	})
 	if err = client.HandshakeContext(context.Background()); err != nil {
 		t.Fatalf("fallback TLS handshake: %v", err)
@@ -465,23 +465,23 @@ func startCamouflageServer(t *testing.T, tls12Only bool) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	certificate, err := stdTLS.X509KeyPair([]byte(certificatePEM), []byte(privateKeyPEM))
+	certificate, err := tls.X509KeyPair([]byte(certificatePEM), []byte(privateKeyPEM))
 	if err != nil {
 		t.Fatal(err)
 	}
-	config := &stdTLS.Config{
-		Certificates: []stdTLS.Certificate{certificate},
+	config := &tls.Config{
+		Certificates: []tls.Certificate{certificate},
 		NextProtos:   append([]string(nil), DefaultALPN...),
-		MinVersion:   stdTLS.VersionTLS12,
+		MinVersion:   tls.VersionTLS12,
 	}
 	if tls12Only {
-		config.MaxVersion = stdTLS.VersionTLS12
+		config.MaxVersion = tls.VersionTLS12
 	}
 	rawListener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	listener := stdTLS.NewListener(rawListener, config)
+	listener := tls.NewListener(rawListener, config)
 	t.Cleanup(func() { _ = listener.Close() })
 	go func() {
 		for {
@@ -505,7 +505,7 @@ func captureClientHello(t *testing.T, serverName string) []byte {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		client := stdTLS.Client(clientSide, &stdTLS.Config{ServerName: serverName, InsecureSkipVerify: true})
+		client := tls.Client(clientSide, &tls.Config{ServerName: serverName, InsecureSkipVerify: true})
 		_ = client.Handshake()
 	}()
 	frame, err := readFrame(serverSide)

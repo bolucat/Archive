@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { buildPlayerCommand, redactMpvArgs, shellQuote } from '../mpvPlayerPolicy'
+import { buildDirectPlayerInvocation, buildPlayerCommand, formatPlayerArg, redactMpvArgs, shellQuote, shellSplit } from '../mpvPlayerPolicy'
 
 describe('mpvPlayerPolicy', () => {
   it('builds shell commands without breaking Linux command strings', () => {
     expect(buildPlayerCommand('linux', 'mpv')).toBe('mpv')
     expect(buildPlayerCommand('linux', 'custom-player --flag')).toBe('custom-player --flag')
     expect(buildPlayerCommand('linux', '/opt/mpv/bin/mpv')).toBe("'/opt/mpv/bin/mpv'")
+  })
+
+  it('builds unquoted direct-spawn invocation for Linux mpv control mode', () => {
+    expect(buildDirectPlayerInvocation('linux', '/usr/bin/mpv')).toEqual({ binary: '/usr/bin/mpv', args: [] })
+    expect(buildDirectPlayerInvocation('linux', 'mpv --profile=boxplayer')).toEqual({ binary: 'mpv', args: ['--profile=boxplayer'] })
+    expect(buildDirectPlayerInvocation('linux', "'/opt/mpv player/mpv' --profile=boxplayer")).toEqual({ binary: '/opt/mpv player/mpv', args: ['--profile=boxplayer'] })
+  })
+
+  it('splits simple quoted Linux command strings', () => {
+    expect(shellSplit("mpv --title='A B' --flag")).toEqual(['mpv', '--title=A B', '--flag'])
+  })
+
+  it('does not shell-quote arguments for direct spawn', () => {
+    expect(formatPlayerArg('linux', 'https://example.test/a b.mp4', true)).toBe('https://example.test/a b.mp4')
+    expect(formatPlayerArg('linux', 'https://example.test/a b.mp4', false)).toBe("'https://example.test/a b.mp4'")
   })
 
   it('builds macOS open command for mpv.app with args passthrough', () => {

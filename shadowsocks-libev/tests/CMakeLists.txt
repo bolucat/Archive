@@ -13,6 +13,10 @@ if(WITH_EMBEDDED_SRC)
     include_directories(${PROJECT_SOURCE_DIR}/libbloom)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(VALGRIND_EXECUTABLE NAMES valgrind)
+endif()
+
 # Helper function to add a unit test
 function(ss_add_test name sources libs)
     add_executable(${name} ${sources})
@@ -21,6 +25,24 @@ function(ss_add_test name sources libs)
     # Keep assertions enabled for tests even in Release builds.
     target_compile_options(${name} PRIVATE -UNDEBUG)
     add_test(NAME ${name} COMMAND ${name})
+    set_tests_properties(${name} PROPERTIES LABELS "unit")
+
+    if(VALGRIND_EXECUTABLE)
+        add_test(NAME memcheck_${name}
+            COMMAND ${VALGRIND_EXECUTABLE}
+                --tool=memcheck
+                --leak-check=full
+                --show-leak-kinds=definite,indirect
+                --errors-for-leak-kinds=definite,indirect
+                --error-exitcode=1
+                --track-origins=yes
+                --quiet
+                $<TARGET_FILE:${name}>)
+        set_tests_properties(memcheck_${name}
+            PROPERTIES
+                LABELS "memcheck"
+                TIMEOUT 120)
+    endif()
 endfunction()
 
 # test_base64 - no external deps
@@ -83,6 +105,17 @@ ss_add_test(test_rule
     "test_rule.c;${PROJECT_SOURCE_DIR}/src/rule.c;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_RULE_LIBS}")
 
+# test_acl - needs pcre, cork, and ipset
+set(TEST_ACL_LIBS ${TEST_RULE_LIBS})
+if(WITH_EMBEDDED_SRC)
+    list(APPEND TEST_ACL_LIBS ipset)
+else()
+    list(APPEND TEST_ACL_LIBS ${LIBCORKIPSET_SHARED})
+endif()
+ss_add_test(test_acl
+    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/rule.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "${TEST_ACL_LIBS}")
+
 # test_jconf - needs cork and json
 set(TEST_JCONF_LIBS
     ${LIBSODIUM_SHARED}
@@ -123,3 +156,4 @@ ss_add_test(test_crypto
 add_test(NAME test_ss_setup
     COMMAND bash "${PROJECT_SOURCE_DIR}/tests/test_ss_setup.sh"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}")
+set_tests_properties(test_ss_setup PROPERTIES LABELS "integration")

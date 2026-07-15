@@ -27,9 +27,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #ifndef __MINGW32__
 #include <unistd.h>
-#include <errno.h>
 #include <pwd.h>
 #include <grp.h>
 #else
@@ -102,6 +103,40 @@ ss_isnumeric(const char *s)
     while (isdigit((unsigned char)*s))
         ++s;
     return *s == '\0';
+}
+
+int
+ss_parse_int(const char *s, int min_value, int max_value, int *out)
+{
+    char *endptr;
+    long value;
+
+    if (s == NULL || *s == '\0' || out == NULL || min_value > max_value) {
+        return -1;
+    }
+
+    errno = 0;
+    value = strtol(s, &endptr, 10);
+    if (errno == ERANGE || endptr == s || *endptr != '\0' ||
+        value < min_value || value > max_value) {
+        return -1;
+    }
+
+    *out = (int)value;
+    return 0;
+}
+
+int
+ss_parse_uint16_port(const char *s, uint16_t *out)
+{
+    int value;
+
+    if (out == NULL || ss_parse_int(s, 1, UINT16_MAX, &value) == -1) {
+        return -1;
+    }
+
+    *out = (uint16_t)value;
+    return 0;
 }
 
 /*
@@ -214,16 +249,16 @@ run_as(const char *user)
 char *
 ss_strndup(const char *s, size_t n)
 {
-    size_t len = strlen(s);
     char *ret;
 
-    if (len <= n) {
-        return strdup(s);
+    size_t len = 0;
+    while (len < n && s[len] != '\0') {
+        len++;
     }
 
-    ret = ss_malloc(n + 1);
-    strncpy(ret, s, n);
-    ret[n] = '\0';
+    ret = ss_malloc(len + 1);
+    memcpy(ret, s, len);
+    ret[len] = '\0';
     return ret;
 }
 
@@ -535,27 +570,21 @@ get_default_conf(void)
 {
 #ifndef __MINGW32__
     static char sysconf[] = "/etc/shadowsocks-libev/config.json";
-    static char *userconf = NULL;
-    static int buf_size   = 0;
+    static char userconf[PATH_MAX];
     char *conf_home;
 
     conf_home = getenv("XDG_CONFIG_HOME");
 
-    // Memory of userconf only gets allocated once, and will not be
-    // freed. It is used as static buffer.
     if (!conf_home) {
-        if (buf_size == 0) {
-            buf_size = 50 + strlen(getenv("HOME"));
-            userconf = malloc(buf_size);
+        // HOME may be unset (e.g. when started by an init system)
+        const char *home = getenv("HOME");
+        if (home == NULL) {
+            return sysconf;
         }
-        snprintf(userconf, buf_size, "%s%s", getenv("HOME"),
+        snprintf(userconf, sizeof(userconf), "%s%s", home,
                  "/.config/shadowsocks-libev/config.json");
     } else {
-        if (buf_size == 0) {
-            buf_size = 50 + strlen(conf_home);
-            userconf = malloc(buf_size);
-        }
-        snprintf(userconf, buf_size, "%s%s", conf_home,
+        snprintf(userconf, sizeof(userconf), "%s%s", conf_home,
                  "/shadowsocks-libev/config.json");
     }
 
@@ -564,7 +593,6 @@ get_default_conf(void)
         return userconf;
 
     // If not, fall back to the system-wide config.
-    free(userconf);
     return sysconf;
 #else
     return "config.json";

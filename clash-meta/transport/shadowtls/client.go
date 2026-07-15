@@ -45,6 +45,24 @@ type ShadowTLSOption struct {
 	ALPN              []string
 }
 
+type Config struct {
+	Password string
+	Version  int
+}
+
+func NewConfig(password string, version int) (*Config, error) {
+	if version == 0 {
+		version = 2
+	}
+	if err := checkVersion(version); err != nil {
+		return nil, err
+	}
+	return &Config{
+		Password: password,
+		Version:  version,
+	}, nil
+}
+
 type ClientConfig struct {
 	Version      int
 	Password     string

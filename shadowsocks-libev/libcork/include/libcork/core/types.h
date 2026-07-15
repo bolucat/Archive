@@ -76,7 +76,6 @@
 /* Return a pointer to a @c struct, given a pointer to one of its
  * fields. */
 #define cork_container_of(field, struct_type, field_name) \
-    ((struct_type *) (- offsetof(struct_type, field_name) + \
-                      (void *) (field)))
+    ((struct_type *) ((char *) (field) - offsetof(struct_type, field_name)))
 
 #endif /* LIBCORK_CORE_TYPES_H */

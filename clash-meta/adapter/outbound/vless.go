@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/metacubex/mihomo/common/convert"
@@ -17,6 +18,8 @@ import (
 	C "github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/transport/gun"
 	"github.com/metacubex/mihomo/transport/jls"
+	"github.com/metacubex/mihomo/transport/restls"
+	"github.com/metacubex/mihomo/transport/shadowtls"
 	"github.com/metacubex/mihomo/transport/tuic/common"
 	"github.com/metacubex/mihomo/transport/vless"
 	"github.com/metacubex/mihomo/transport/vless/encryption"
@@ -44,9 +47,11 @@ type Vless struct {
 	// for xhttp
 	xhttpClient *xhttp.Client
 
-	echConfig     *ech.Config
-	jlsConfig     *jls.Config
-	realityConfig *tlsC.RealityConfig
+	echConfig       *ech.Config
+	shadowTLSConfig *shadowtls.Config
+	restlsConfig    *restls.Config
+	jlsConfig       *jls.Config
+	realityConfig   *tlsC.RealityConfig
 }
 
 type VlessOption struct {
@@ -65,6 +70,8 @@ type VlessOption struct {
 	Encryption        string            `proxy:"encryption,omitempty"`
 	Network           string            `proxy:"network,omitempty"`
 	ECHOpts           ECHOptions        `proxy:"ech-opts,omitempty"`
+	ShadowTLSOpts     ShadowTLSOptions  `proxy:"shadow-tls-opts,omitempty"`
+	RestlsOpts        RestlsOptions     `proxy:"restls-opts,omitempty"`
 	JLSOpts           JLSOptions        `proxy:"jls-opts,omitempty"`
 	RealityOpts       RealityOptions    `proxy:"reality-opts,omitempty"`
 	HTTPOpts          HTTPOptions       `proxy:"http-opts,omitempty"`
@@ -126,20 +133,22 @@ type XHTTPDownloadSettings struct {
 	Headers       *map[string]string  `proxy:"headers,omitempty"`
 	ReuseSettings *XHTTPReuseSettings `proxy:"reuse-settings,omitempty"` // aka XMUX
 	// proxy part
-	Server            *string         `proxy:"server,omitempty"`
-	Port              *int            `proxy:"port,omitempty"`
-	TLS               *bool           `proxy:"tls,omitempty"`
-	ALPN              *[]string       `proxy:"alpn,omitempty"`
-	ECHOpts           *ECHOptions     `proxy:"ech-opts,omitempty"`
-	JLSOpts           *JLSOptions     `proxy:"jls-opts,omitempty"`
-	RealityOpts       *RealityOptions `proxy:"reality-opts,omitempty"`
-	SkipCertVerify    *bool           `proxy:"skip-cert-verify,omitempty"`
-	NameCertVerify    *string         `proxy:"name-cert-verify,omitempty"`
-	Fingerprint       *string         `proxy:"fingerprint,omitempty"`
-	Certificate       *string         `proxy:"certificate,omitempty"`
-	PrivateKey        *string         `proxy:"private-key,omitempty"`
-	ServerName        *string         `proxy:"servername,omitempty"`
-	ClientFingerprint *string         `proxy:"client-fingerprint,omitempty"`
+	Server            *string           `proxy:"server,omitempty"`
+	Port              *int              `proxy:"port,omitempty"`
+	TLS               *bool             `proxy:"tls,omitempty"`
+	ALPN              *[]string         `proxy:"alpn,omitempty"`
+	ECHOpts           *ECHOptions       `proxy:"ech-opts,omitempty"`
+	ShadowTLSOpts     *ShadowTLSOptions `proxy:"shadow-tls-opts,omitempty"`
+	RestlsOpts        *RestlsOptions    `proxy:"restls-opts,omitempty"`
+	JLSOpts           *JLSOptions       `proxy:"jls-opts,omitempty"`
+	RealityOpts       *RealityOptions   `proxy:"reality-opts,omitempty"`
+	SkipCertVerify    *bool             `proxy:"skip-cert-verify,omitempty"`
+	NameCertVerify    *string           `proxy:"name-cert-verify,omitempty"`
+	Fingerprint       *string           `proxy:"fingerprint,omitempty"`
+	Certificate       *string           `proxy:"certificate,omitempty"`
+	PrivateKey        *string           `proxy:"private-key,omitempty"`
+	ServerName        *string           `proxy:"servername,omitempty"`
+	ClientFingerprint *string           `proxy:"client-fingerprint,omitempty"`
 }
 
 func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.Metadata) (_ net.Conn, err error) {
@@ -172,11 +181,18 @@ func (v *Vless) StreamConnContext(ctx context.Context, c net.Conn, metadata *C.M
 				serverName = host
 			}
 
-			if v.jlsConfig != nil {
+			if v.shadowTLSConfig != nil || v.restlsConfig != nil || v.jlsConfig != nil {
 				c, err = vmess.StreamTLSConn(ctx, c, &vmess.TLSConfig{
 					Host:              serverName,
+					SkipCertVerify:    v.option.SkipCertVerify,
+					NameCertVerify:    v.option.NameCertVerify,
+					FingerPrint:       v.option.Fingerprint,
+					Certificate:       v.option.Certificate,
+					PrivateKey:        v.option.PrivateKey,
 					ClientFingerprint: v.option.ClientFingerprint,
 					NextProtos:        []string{"http/1.1"},
+					ShadowTLS:         v.shadowTLSConfig,
+					Restls:            v.restlsConfig,
 					JLS:               v.jlsConfig,
 				})
 				if err != nil {
@@ -299,6 +315,8 @@ func (v *Vless) streamTLSConn(ctx context.Context, conn net.Conn, isH2 bool) (ne
 			PrivateKey:        v.option.PrivateKey,
 			ClientFingerprint: v.option.ClientFingerprint,
 			ECH:               v.echConfig,
+			ShadowTLS:         v.shadowTLSConfig,
+			Restls:            v.restlsConfig,
 			JLS:               v.jlsConfig,
 			Reality:           v.realityConfig,
 			NextProtos:        v.option.ALPN,
@@ -498,6 +516,14 @@ func NewVless(option VlessOption) (*Vless, error) {
 	if err != nil {
 		return nil, err
 	}
+	v.shadowTLSConfig, err = option.ShadowTLSOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+	v.restlsConfig, err = option.RestlsOpts.Parse(option.ServerName, option.ClientFingerprint)
+	if err != nil {
+		return nil, err
+	}
 	v.jlsConfig, err = option.JLSOpts.Parse()
 	if err != nil {
 		return nil, err
@@ -506,13 +532,28 @@ func NewVless(option VlessOption) (*Vless, error) {
 	if err != nil {
 		return nil, err
 	}
+	securityModes := make([]string, 0, 4)
+	if v.shadowTLSConfig != nil {
+		securityModes = append(securityModes, "ShadowTLS")
+	}
+	if v.restlsConfig != nil {
+		securityModes = append(securityModes, "Restls")
+	}
 	if v.jlsConfig != nil {
-		if !option.TLS {
-			return nil, errors.New("JLS requires TLS")
-		}
-		if v.realityConfig != nil {
-			return nil, errors.New("JLS is incompatible with REALITY")
-		}
+		securityModes = append(securityModes, "JLS")
+	}
+	if v.realityConfig != nil {
+		securityModes = append(securityModes, "REALITY")
+	}
+	if len(securityModes) > 1 {
+		return nil, errors.New("security modes are mutually exclusive: " + strings.Join(securityModes, ", "))
+	}
+	securityMode := ""
+	if len(securityModes) == 1 {
+		securityMode = securityModes[0]
+	}
+	if securityMode != "" && !option.TLS {
+		return nil, fmt.Errorf("%s requires TLS", securityMode)
 	}
 
 	switch option.Network {
@@ -550,6 +591,8 @@ func NewVless(option VlessOption) (*Vless, error) {
 				ClientFingerprint: option.ClientFingerprint,
 				NextProtos:        []string{"h2"},
 				ECH:               v.echConfig,
+				ShadowTLS:         v.shadowTLSConfig,
+				Restls:            v.restlsConfig,
 				JLS:               v.jlsConfig,
 				Reality:           v.realityConfig,
 			}
@@ -646,11 +689,8 @@ func NewVless(option VlessOption) (*Vless, error) {
 					if !v.option.TLS {
 						return nil, errors.New("xhttp HTTP/3 requires TLS")
 					}
-					if v.jlsConfig != nil {
-						return nil, errors.New("xhttp HTTP/3 does not support JLS")
-					}
-					if v.realityConfig != nil {
-						return nil, errors.New("xhttp HTTP/3 does not support reality")
+					if securityMode != "" {
+						return nil, fmt.Errorf("xhttp HTTP/3 does not support %s", securityMode)
 					}
 					tlsConfig, err := tlsOpts.ToStdConfig()
 					if err != nil {
@@ -682,9 +722,30 @@ func NewVless(option VlessOption) (*Vless, error) {
 			downloadPort := lo.FromPtrOr(ds.Port, v.option.Port)
 			downloadTLS := lo.FromPtrOr(ds.TLS, v.option.TLS)
 			downloadALPN := lo.FromPtrOr(ds.ALPN, v.option.ALPN)
+			downloadSkipCertVerify := lo.FromPtrOr(ds.SkipCertVerify, v.option.SkipCertVerify)
+			downloadNameCertVerify := lo.FromPtrOr(ds.NameCertVerify, v.option.NameCertVerify)
+			downloadFingerprint := lo.FromPtrOr(ds.Fingerprint, v.option.Fingerprint)
+			downloadCertificate := lo.FromPtrOr(ds.Certificate, v.option.Certificate)
+			downloadPrivateKey := lo.FromPtrOr(ds.PrivateKey, v.option.PrivateKey)
+			downloadServerName := lo.FromPtrOr(ds.ServerName, v.option.ServerName)
+			downloadClientFingerprint := lo.FromPtrOr(ds.ClientFingerprint, v.option.ClientFingerprint)
 			downloadEchConfig := v.echConfig
 			if ds.ECHOpts != nil {
 				downloadEchConfig, err = ds.ECHOpts.Parse()
+				if err != nil {
+					return nil, err
+				}
+			}
+			downloadShadowTLSConfig := v.shadowTLSConfig
+			if ds.ShadowTLSOpts != nil {
+				downloadShadowTLSConfig, err = ds.ShadowTLSOpts.Parse()
+				if err != nil {
+					return nil, err
+				}
+			}
+			downloadRestlsConfig := v.restlsConfig
+			if ds.RestlsOpts != nil {
+				downloadRestlsConfig, err = ds.RestlsOpts.Parse(downloadServerName, downloadClientFingerprint)
 				if err != nil {
 					return nil, err
 				}
@@ -703,13 +764,29 @@ func NewVless(option VlessOption) (*Vless, error) {
 					return nil, err
 				}
 			}
-			downloadSkipCertVerify := lo.FromPtrOr(ds.SkipCertVerify, v.option.SkipCertVerify)
-			downloadNameCertVerify := lo.FromPtrOr(ds.NameCertVerify, v.option.NameCertVerify)
-			downloadFingerprint := lo.FromPtrOr(ds.Fingerprint, v.option.Fingerprint)
-			downloadCertificate := lo.FromPtrOr(ds.Certificate, v.option.Certificate)
-			downloadPrivateKey := lo.FromPtrOr(ds.PrivateKey, v.option.PrivateKey)
-			downloadServerName := lo.FromPtrOr(ds.ServerName, v.option.ServerName)
-			downloadClientFingerprint := lo.FromPtrOr(ds.ClientFingerprint, v.option.ClientFingerprint)
+			downloadSecurityModes := make([]string, 0, 4)
+			if downloadShadowTLSConfig != nil {
+				downloadSecurityModes = append(downloadSecurityModes, "ShadowTLS")
+			}
+			if downloadRestlsConfig != nil {
+				downloadSecurityModes = append(downloadSecurityModes, "Restls")
+			}
+			if downloadJLSConfig != nil {
+				downloadSecurityModes = append(downloadSecurityModes, "JLS")
+			}
+			if downloadRealityCfg != nil {
+				downloadSecurityModes = append(downloadSecurityModes, "REALITY")
+			}
+			if len(downloadSecurityModes) > 1 {
+				return nil, errors.New("xhttp download-settings security modes are mutually exclusive: " + strings.Join(downloadSecurityModes, ", "))
+			}
+			downloadSecurityMode := ""
+			if len(downloadSecurityModes) == 1 {
+				downloadSecurityMode = downloadSecurityModes[0]
+			}
+			if downloadSecurityMode != "" && !downloadTLS {
+				return nil, fmt.Errorf("xhttp download-settings: %s requires TLS", downloadSecurityMode)
+			}
 
 			downloadAddr := net.JoinHostPort(downloadServer, strconv.Itoa(downloadPort))
 
@@ -760,6 +837,8 @@ func NewVless(option VlessOption) (*Vless, error) {
 								PrivateKey:        downloadPrivateKey,
 								ClientFingerprint: downloadClientFingerprint,
 								ECH:               downloadEchConfig,
+								ShadowTLS:         downloadShadowTLSConfig,
+								Restls:            downloadRestlsConfig,
 								JLS:               downloadJLSConfig,
 								Reality:           downloadRealityCfg,
 								NextProtos:        downloadALPN,
@@ -798,11 +877,8 @@ func NewVless(option VlessOption) (*Vless, error) {
 						if !downloadTLS {
 							return nil, errors.New("xhttp HTTP/3 requires TLS")
 						}
-						if downloadJLSConfig != nil {
-							return nil, errors.New("xhttp HTTP/3 does not support JLS")
-						}
-						if downloadRealityCfg != nil {
-							return nil, errors.New("xhttp HTTP/3 does not support reality")
+						if downloadSecurityMode != "" {
+							return nil, fmt.Errorf("xhttp HTTP/3 does not support %s", downloadSecurityMode)
 						}
 						tlsConfig, err := tlsOpts.ToStdConfig()
 						if err != nil {

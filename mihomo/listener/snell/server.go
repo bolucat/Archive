@@ -17,6 +17,8 @@ import (
 	"github.com/metacubex/mihomo/common/utils"
 	C "github.com/metacubex/mihomo/constant"
 	LC "github.com/metacubex/mihomo/listener/config"
+	"github.com/metacubex/mihomo/listener/jls"
+	"github.com/metacubex/mihomo/listener/restls"
 	"github.com/metacubex/mihomo/listener/shadowtls"
 	"github.com/metacubex/mihomo/transport/shadowsocks/shadowaead"
 	obfs "github.com/metacubex/mihomo/transport/simple-obfs"
@@ -51,10 +53,36 @@ func New(config LC.SnellServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 
 	l := &Listener{config: config}
 
+	securityModes := make([]string, 0, 3)
+	if config.ShadowTLS.Enable {
+		securityModes = append(securityModes, "shadow-tls")
+	}
+	if config.ResTLS.Enable {
+		securityModes = append(securityModes, "res-tls")
+	}
+	if config.JLSConfig.Enable {
+		securityModes = append(securityModes, "jls")
+	}
+	if len(securityModes) > 1 {
+		return nil, errors.New("security modes are mutually exclusive: " + strings.Join(securityModes, ", "))
+	}
+
 	var shadowTLSBuilder *shadowtls.Builder
 	if config.ShadowTLS.Enable {
 		var err error
 		shadowTLSBuilder, err = shadowtls.New(config.ShadowTLS, tunnel)
+		if err != nil {
+			return nil, err
+		}
+	}
+	var restlsBuilder *restls.Builder
+	if config.ResTLS.Enable {
+		restlsBuilder = restls.New(config.ResTLS, tunnel)
+	}
+	var jlsBuilder *jls.Builder
+	if config.JLSConfig.Enable {
+		var err error
+		jlsBuilder, err = jls.New(config.JLSConfig, tunnel)
 		if err != nil {
 			return nil, err
 		}
@@ -71,6 +99,10 @@ func New(config LC.SnellServer, lc C.InboundListenConfig, tunnel C.Tunnel, addit
 		}
 		if shadowTLSBuilder != nil {
 			ln = shadowTLSBuilder.NewListener(ln)
+		} else if restlsBuilder != nil {
+			ln = restlsBuilder.NewListener(ln)
+		} else if jlsBuilder != nil {
+			ln = jlsBuilder.NewListener(ln)
 		}
 		l.listeners = append(l.listeners, ln)
 		go func(ln net.Listener) {
@@ -113,7 +145,11 @@ func (l *Listener) AddrList() (addrList []net.Addr) {
 
 func (l *Listener) HandleConn(rawConn net.Conn, tunnel C.Tunnel, additions ...inbound.Addition) {
 	defer rawConn.Close()
-	if user, loaded := shadowtls.UserFromConn(rawConn); loaded {
+	user, loaded := shadowtls.UserFromConn(rawConn)
+	if jlsUser, jlsLoaded := jls.UserFromConn(rawConn); jlsLoaded {
+		user, loaded = jlsUser, true
+	}
+	if loaded {
 		additions = append(append([]inbound.Addition(nil), additions...), inbound.WithInUser(user))
 	}
 	conn := rawConn

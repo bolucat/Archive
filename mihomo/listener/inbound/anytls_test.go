@@ -96,7 +96,7 @@ func TestInboundAnyTLS_TLS(t *testing.T) {
 	})
 }
 
-func testInboundAnyTLSJLS(t *testing.T, inboundOptions inbound.AnyTLSOption, outboundOptions outbound.AnyTLSOption) {
+func testInboundAnyTLSUTLS(t *testing.T, inboundOptions inbound.AnyTLSOption, outboundOptions outbound.AnyTLSOption) {
 	t.Parallel()
 	t.Run("Conn", func(t *testing.T) {
 		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
@@ -107,6 +107,41 @@ func testInboundAnyTLSJLS(t *testing.T, inboundOptions inbound.AnyTLSOption, out
 		outboundOptions.ClientFingerprint = "chrome"
 		testInboundAnyTLS(t, inboundOptions, outboundOptions)
 	})
+}
+
+func TestInboundAnyTLS_ShadowTLS(t *testing.T) {
+	const password = "shadow-tls-password"
+	inboundOptions := inbound.AnyTLSOption{
+		ShadowTLS: inbound.ShadowTLS{
+			Enable:    true,
+			Version:   3,
+			Users:     []inbound.ShadowTLSUser{{Name: "test", Password: password}},
+			Handshake: inbound.ShadowTLSHandshakeOptions{Dest: net.JoinHostPort(realityDest, "443")},
+		},
+	}
+	outboundOptions := outbound.AnyTLSOption{
+		SNI:           realityDest,
+		Fingerprint:   tlsFingerprint,
+		ShadowTLSOpts: outbound.ShadowTLSOptions{Password: password, Version: 3},
+	}
+	testInboundAnyTLSUTLS(t, inboundOptions, outboundOptions)
+}
+
+func TestInboundAnyTLS_Restls(t *testing.T) {
+	const password = "restls-password"
+	inboundOptions := inbound.AnyTLSOption{
+		ResTLS: inbound.ResTLS{
+			Enable:   true,
+			Dest:     net.JoinHostPort(realityDest, "443"),
+			Password: password,
+		},
+	}
+	outboundOptions := outbound.AnyTLSOption{
+		SNI:         realityDest,
+		Fingerprint: tlsFingerprint,
+		RestlsOpts:  outbound.RestlsOptions{Password: password, VersionHint: "tls13"},
+	}
+	testInboundAnyTLSUTLS(t, inboundOptions, outboundOptions)
 }
 
 func TestInboundAnyTLS_JLS(t *testing.T) {
@@ -124,5 +159,5 @@ func TestInboundAnyTLS_JLS(t *testing.T) {
 		SNI:     realityDest,
 		JLSOpts: outbound.JLSOptions{Username: username, Password: password},
 	}
-	testInboundAnyTLSJLS(t, inboundOptions, outboundOptions)
+	testInboundAnyTLSUTLS(t, inboundOptions, outboundOptions)
 }

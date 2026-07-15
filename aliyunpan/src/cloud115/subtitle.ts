@@ -1,6 +1,7 @@
 export interface Drive115SubtitleSource {
   url: string
   language: string
+  headers?: Record<string, string>
 }
 
 export function mapDrive115SubtitleItems(items: unknown): Drive115SubtitleSource[] {

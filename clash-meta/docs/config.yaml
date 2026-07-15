@@ -410,7 +410,7 @@ proxies: # socks5
     # udp: true # support UDP on version 3/4/5
     # reuse: false # v4/5 only
     # obfs-opts:
-    #   mode: http # or tls/shadow-tls
+    #   mode: http # or tls/shadow-tls/restls/jls
 
   - name: "snell-shadow-tls"
     type: snell
@@ -427,6 +427,32 @@ proxies: # socks5
       password: "shadow_tls_password"
       version: 2 # support 1/2/3
       alpn: ["h2","http/1.1"]
+
+  - name: "snell-restls"
+    type: snell
+    server: server
+    port: 44046
+    psk: yourpsk
+    # version: 4 # support 1/2/3/4/5
+    # client-fingerprint: chrome
+    obfs-opts:
+      mode: restls
+      host: bing.com
+      password: "restls_password"
+      version-hint: tls13
+
+  - name: "snell-jls"
+    type: snell
+    server: server
+    port: 44046
+    psk: yourpsk
+    # version: 4 # support 1/2/3/4/5
+    # client-fingerprint: chrome
+    obfs-opts:
+      mode: jls
+      host: bing.com
+      username: jls-user
+      password: "jls_password"
 
   # Shadowsocks
   # cipher支持:
@@ -729,6 +755,13 @@ proxies: # socks5
     #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
     #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     #   # query-server-name: xxx.com # 可选项，不为空时用于指定通过dns解析时的域名
+    # shadow-tls-opts: # 需要 tls: true；使用 servername 作为 ShadowTLS SNI
+    #   version: 3 # 支持 v1/v2/v3；留空时默认为 v2
+    #   password: shadow-tls-password
+    # restls-opts: # 需要 tls: true；使用 servername 作为 Restls SNI
+    #   password: restls-password
+    #   version-hint: tls13 # 可选值：tls12、tls13
+    #   # restls-script: ""
     # jls-opts: # 需要 tls: true；使用 servername 作为 JLS SNI
     #   username: jls-user
     #   password: jls-password
@@ -870,6 +903,13 @@ proxies: # socks5
     #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
     #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     #   # query-server-name: xxx.com # 可选项，不为空时用于指定通过dns解析时的域名
+    # shadow-tls-opts: # 需要 tls: true；使用 servername 作为 ShadowTLS SNI
+    #   version: 3 # 支持 v1/v2/v3；留空时默认为 v2
+    #   password: shadow-tls-password
+    # restls-opts: # 需要 tls: true；使用 servername 作为 Restls SNI
+    #   password: restls-password
+    #   version-hint: tls13 # 可选值：tls12、tls13
+    #   # restls-script: ""
     # jls-opts: # 需要 tls: true；使用 servername 作为 JLS SNI
     #   username: jls-user
     #   password: jls-password
@@ -1046,6 +1086,8 @@ proxies: # socks5
       #   tls: true
       #   alpn: ...
       #   ech-opts: ...
+      #   shadow-tls-opts: ...
+      #   restls-opts: ...
       #   jls-opts: ...
       #   reality-opts: ...
       #   skip-cert-verify: false
@@ -1084,6 +1126,13 @@ proxies: # socks5
     #   # 如果config为空则通过dns解析，不为空则通过该值指定，格式为经过base64编码的ech参数（dig +short TYPE65 tls-ech.dev）
     #   config: AEn+DQBFKwAgACABWIHUGj4u+PIggYXcR5JF0gYk3dCRioBW8uJq9H4mKAAIAAEAAQABAANAEnB1YmxpYy50bHMtZWNoLmRldgAA
     #   # query-server-name: xxx.com # 可选项，不为空时用于指定通过dns解析时的域名
+    # shadow-tls-opts: # 使用 sni 作为 ShadowTLS SNI
+    #   version: 3 # 支持 v1/v2/v3；留空时默认为 v2
+    #   password: shadow-tls-password
+    # restls-opts: # 使用 sni 作为 Restls SNI
+    #   password: restls-password
+    #   version-hint: tls13 # 可选值：tls12、tls13
+    #   # restls-script: ""
     # jls-opts: # 使用 sni 作为 JLS SNI
     #   username: jls-user
     #   password: jls-password
@@ -1459,8 +1508,8 @@ proxies: # socks5
     # zero-rtt: false # 官方 server 的 0-RTT 路径可能在 JLS 认证完成前读取用户状态（已确认影响 v0.3.11）；使用官方 server 时必须在服务端关闭 zero-rtt
     # keep-alive-interval: 10000
     # congestion-controller: bbr # Available: "cubic", "new_reno", "bbr". Default: "cubic"
-    # up: 100 Mbps # enables brutal; client upload speed; requires mihomo ShadowQuic on both ends
-    # down: 100 Mbps # enables brutal; requested client download speed, capped by listener up; requires mihomo ShadowQuic on both ends
+    # up: 100 Mbps # enables brutal negotiation via a mihomo private extension; client upload speed; falls back to congestion-controller when unsupported
+    # down: 100 Mbps # enables brutal negotiation via a mihomo private extension; requested client download speed, capped by listener up; falls back to congestion-controller when unsupported
     # cwnd: 10 # default: 32
     # bbr-profile: "" # Available: "standard", "conservative", "aggressive". Default: "standard"
     # max-datagram-frame-size: 1400
@@ -1555,6 +1604,13 @@ proxies: # socks5
     #   - http/1.1
     # skip-cert-verify: true
     # name-cert-verify: example.com # 仅修改证书 DNSName 校验目标，不修改 SNI
+    # shadow-tls-opts: # 使用 sni 作为 ShadowTLS SNI
+    #   version: 3 # 支持 v1/v2/v3；留空时默认为 v2
+    #   password: shadow-tls-password
+    # restls-opts: # 使用 sni 作为 Restls SNI
+    #   password: restls-password
+    #   version-hint: tls13 # 可选值：tls12、tls13
+    #   # restls-script: ""
     # jls-opts: # 使用 sni 作为 JLS SNI
     #   username: jls-user
     #   password: jls-password
@@ -2033,6 +2089,17 @@ listeners:
     #       password: password
     #   handshake:
     #     dest: test.com:443
+    # res-tls:
+    #   enable: false
+    #   dest: test.com:443
+    #   password: restls-password
+    # jls-config:
+    #   enable: false
+    #   users:
+    #     - username: jls-user
+    #       password: jls-password
+    #   dest: test.com:443
+    ## shadow-tls, res-tls and jls-config are mutually exclusive
     # rule: sub-rule-name1
     # proxy: proxy
 
@@ -2101,6 +2168,23 @@ listeners:
     #   # alpn: [h2, http/1.1]
     #   # proxy: ""
     #   # rate-limit: 0 # fallback 转发限速，单位 bit/s；0 表示不限速
+    # shadow-tls:
+    #   enable: true
+    #   version: 3 # 支持 v1/v2/v3
+    #   # password: shadow-tls-password # v2 配置项
+    #   users: # v3 配置项
+    #     - name: shadow-tls-user
+    #       password: shadow-tls-password
+    #   handshake:
+    #     dest: www.example.com:443
+    #     # proxy: ""
+    # res-tls:
+    #   enable: true
+    #   dest: www.example.com:443
+    #   password: restls-password
+    #   # restls-script: ""
+    #   # min-record-len: 0
+    #   # proxy: ""
     # 如果填写reality-config则开启reality（注意不可与certificate和private-key同时填写）
     # reality-config:
     #   dest: test.com:443
@@ -2187,8 +2271,8 @@ listeners:
     # quic-versions: [v1] # 本机手动配置及探测失败时的版本；支持 v1/v2
     # zero-rtt: true
     # congestion-controller: bbr # Available: "cubic", "new_reno", "bbr". Default: "cubic"
-    # up: 100 Mbps # enables brutal; server upload/client download speed cap; requires mihomo ShadowQuic on both ends
-    # down: 100 Mbps # enables brutal; requested server download/client upload speed; requires mihomo ShadowQuic on both ends
+    # up: 100 Mbps # enables brutal negotiation via a mihomo private extension; server upload/client download speed cap; falls back to congestion-controller when unsupported
+    # down: 100 Mbps # enables brutal negotiation via a mihomo private extension; requested server download/client upload speed; falls back to congestion-controller when unsupported
     # ignore-client-bandwidth: false # for brutal; ignore outbound down and use listener down/auto instead
     # cwnd: 10 # default: 32
     # bbr-profile: "" # Available: "standard", "conservative", "aggressive". Default: "standard"
@@ -2299,7 +2383,24 @@ listeners:
         after-bytes: 0 # 传输指定字节后开始限速
         bytes-per-sec: 0 # 基准速率（字节/秒）
         burst-bytes-per-sec: 0 # 突发速率（字节/秒），大于 bytesPerSec 时生效
-    ### 注意，对于vless listener, 如果 "allow-insecure" 不为 true, 至少需要填写 “certificate和private-key” 或 “jls-config” 或 “reality-config” 或 “decryption” 的其中一项 ###
+    # shadow-tls:
+    #   enable: true
+    #   version: 3 # 支持 v1/v2/v3
+    #   # password: shadow-tls-password # v2 配置项
+    #   users: # v3 配置项
+    #     - name: shadow-tls-user
+    #       password: shadow-tls-password
+    #   handshake:
+    #     dest: www.example.com:443
+    #     # proxy: ""
+    # res-tls:
+    #   enable: true
+    #   dest: www.example.com:443
+    #   password: restls-password
+    #   # restls-script: ""
+    #   # min-record-len: 0
+    #   # proxy: ""
+    ### 注意，对于vless listener, 如果 "allow-insecure" 不为 true, 至少需要填写 “certificate和private-key” 或 “shadow-tls” 或 “res-tls” 或 “jls-config” 或 “reality-config” 或 “decryption” 的其中一项 ###
     # allow-insecure: false # 是否允许不开启tls加密（注意：仅用于有 nginx, caddy 前置的情况）
 
   - name: anytls-in-1
@@ -2310,7 +2411,7 @@ listeners:
     users:
       username1: password1
       username2: password2
-    # 未启用 "jls-config" 且 "allow-insecure" 不为 true 时，必须填写 "certificate" 和 "private-key"；启用 JLS 时不要填写
+    # "shadow-tls"、"res-tls" 和 "jls-config" 均未启用且 "allow-insecure" 不为 true 时，必须填写 "certificate" 和 "private-key"；启用 ShadowTLS、ResTLS 或 JLS 时不要填写
     certificate: ./server.crt # 证书 PEM 格式，或者 证书的路径
     private-key: ./server.key
     # 下面两项为mTLS配置项，如果client-auth-type设置为 "verify-if-given" 或 "require-and-verify" 则client-auth-cert必须不为空
@@ -2323,6 +2424,23 @@ listeners:
     #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
     #   dC5jb20AAA==
     #   -----END ECH KEYS-----
+    # shadow-tls:
+    #   enable: true
+    #   version: 3 # 支持 v1/v2/v3
+    #   # password: shadow-tls-password # v2 配置项
+    #   users: # v3 配置项
+    #     - name: shadow-tls-user
+    #       password: shadow-tls-password
+    #   handshake:
+    #     dest: www.example.com:443
+    #     # proxy: ""
+    # res-tls:
+    #   enable: true
+    #   dest: www.example.com:443
+    #   password: restls-password
+    #   # restls-script: ""
+    #   # min-record-len: 0
+    #   # proxy: ""
     # jls-config: # JLS 替代普通 TLS；未认证连接回落到 dest
     #   enable: true
     #   users:
@@ -2333,7 +2451,7 @@ listeners:
     #   # alpn: [h2, http/1.1]
     #   # proxy: ""
     #   # rate-limit: 0 # fallback 转发限速，单位 bit/s；0 表示不限速
-    ### 注意，anytls listener, 如果 "allow-insecure" 不为 true, 至少需要填写 “certificate和private-key” 或 “jls-config” 的其中一项 ###
+    ### 注意，anytls listener, 如果 "allow-insecure" 不为 true, 至少需要填写 “certificate和private-key” 或 “shadow-tls” 或 “res-tls” 或 “jls-config” 的其中一项 ###
     # allow-insecure: false # 是否允许不开启tls加密（注意：仅用于有 nginx, caddy 前置的情况）
     # padding-scheme: "" # https://github.com/anytls/anytls-go/blob/main/docs/protocol.md#cmdupdatepaddingscheme
 
@@ -2400,6 +2518,23 @@ listeners:
     #   madSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz
     #   dC5jb20AAA==
     #   -----END ECH KEYS-----
+    # shadow-tls:
+    #   enable: true
+    #   version: 3 # 支持 v1/v2/v3
+    #   # password: shadow-tls-password # v2 配置项
+    #   users: # v3 配置项
+    #     - name: shadow-tls-user
+    #       password: shadow-tls-password
+    #   handshake:
+    #     dest: www.example.com:443
+    #     # proxy: ""
+    # res-tls:
+    #   enable: true
+    #   dest: www.example.com:443
+    #   password: restls-password
+    #   # restls-script: ""
+    #   # min-record-len: 0
+    #   # proxy: ""
     # jls-config: # JLS 替代普通 TLS；未认证连接回落到 dest
     #   enable: true
     #   users:
@@ -2432,7 +2567,7 @@ listeners:
     #   enabled: false
     #   method: aes-128-gcm # aes-128-gcm/aes-256-gcm/chacha20-ietf-poly1305
     #   password: "example"
-    ### 注意，对于trojan listener, 如果 "allow-insecure" 不为 true, 至少需要填写 “certificate和private-key” 或 “jls-config” 或 “reality-config” 或 “ss-option” 的其中一项 ###
+    ### 注意，对于trojan listener, 如果 "allow-insecure" 不为 true, 至少需要填写 “certificate和private-key” 或 “shadow-tls” 或 “res-tls” 或 “jls-config” 或 “reality-config” 或 “ss-option” 的其中一项 ###
     # allow-insecure: false # 是否允许不开启tls加密（注意：仅用于有 nginx, caddy 前置的情况）
 
   - name: hysteria2-in-1

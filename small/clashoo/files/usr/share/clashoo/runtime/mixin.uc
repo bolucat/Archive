@@ -85,14 +85,19 @@ if (filter_mode != 'blacklist') cfg['dns']['fake-ip-filter-mode'] = filter_mode;
 
 /* map geosite:cn to bundled cn.mrs rule-set so mihomo skips the 10MB geosite.dat */
 let need_cn_rs = false;
-let push_filter = function(f) {
-	if (f == 'geosite:cn') { f = 'rule-set:cn_domain'; need_cn_rs = true; }
-	else if (f == 'rule-set:cn_domain') need_cn_rs = true;
-	push(cfg['dns']['fake-ip-filter'], f);
-};
-let filters = a('fake_ip_filter');
-if (type(filters) == 'array') { for (let f in filters) push_filter(f); }
-else if (filters != null) push_filter(filters);
+let keep_fakeip = length(s(getenv('CLASHOO_KEEP_FAKEIP_FILTER'), ''));
+if (keep_fakeip) {
+	delete cfg['dns']['fake-ip-filter'];
+} else {
+	let push_filter = function(f) {
+		if (f == 'geosite:cn') { f = 'rule-set:cn_domain'; need_cn_rs = true; }
+		else if (f == 'rule-set:cn_domain') need_cn_rs = true;
+		push(cfg['dns']['fake-ip-filter'], f);
+	};
+	let filters = a('fake_ip_filter');
+	if (type(filters) == 'array') { for (let f in filters) push_filter(f); }
+	else if (filters != null) push_filter(filters);
+}
 
 /* fallback-filter（默认 geoip:false，防止冷启动依赖 MMDB） */
 cfg['dns']['fallback-filter'] = { geoip: ab('fallback_filter_geoip') };
@@ -100,6 +105,16 @@ cfg['dns']['fallback-filter'] = { geoip: ab('fallback_filter_geoip') };
 let dns_present = {};
 for (let f in split(s(getenv('CLASHOO_DNS_PRESENT'), ''), ','))
 	if (length(trim(f))) dns_present[trim(f)] = true;
+let dns_force = {};
+for (let f in split(s(getenv('CLASHOO_DNS_FORCE'), ''), ','))
+	if (length(trim(f))) dns_force[trim(f)] = true;
+let dns_role_fields = ['nameserver', 'proxy-server-nameserver', 'direct-nameserver',
+	'default-nameserver', 'nameserver-policy', 'respect-rules'];
+let had_user_dns_roles = false;
+for (let f in dns_role_fields)
+	if (dns_present[f]) had_user_dns_roles = true;
+if (length(keys(dns_force)) || !had_user_dns_roles)
+	cfg['dns']['x-clashoo-managed-dns'] = true;
 
 function dns_scheme(protocol) {
 	switch (trim(protocol || '')) {
@@ -133,11 +148,12 @@ uci.foreach('clashoo', 'dnsservers', function(sec) {
 	push(dns_roles[role], srv);
 });
 for (let role in keys(dns_roles))
-	if (!dns_present[role]) cfg['dns'][role] = dns_roles[role];
+	if (!dns_present[role] || dns_force[role]) cfg['dns'][role] = dns_roles[role];
 
 let bootstrap = a('default_nameserver');
+if (bootstrap == null) bootstrap = a('defaul_nameserver');
 if (type(bootstrap) != 'array') bootstrap = bootstrap != null ? [bootstrap] : [];
-if (length(bootstrap) && !dns_present['default-nameserver'])
+if (length(bootstrap) && (!dns_present['default-nameserver'] || dns_force['default-nameserver']))
 	cfg['dns']['default-nameserver'] = bootstrap;
 
 let policies = {};
@@ -148,14 +164,15 @@ uci.foreach('clashoo', 'dns_policy', function(sec) {
 	let servers = sec.nameserver;
 	if (type(servers) != 'array') servers = servers != null ? [servers] : [];
 	if (!length(matcher) || !length(servers)) return;
+	if (matcher == 'geosite:cn') { matcher = 'rule-set:cn_domain'; need_cn_rs = true; }
 	policies[matcher] = servers;
 });
-if (length(keys(policies)) && !dns_present['nameserver-policy'])
+if (length(keys(policies)) && (!dns_present['nameserver-policy'] || dns_force['nameserver-policy']))
 	cfg['dns']['nameserver-policy'] = policies;
 
 let respect_rules = a('dns_respect_rules') == null ? true : ab('dns_respect_rules');
 if (respect_rules && length(cfg['dns']['proxy-server-nameserver'] || [])
-    && !dns_present['respect-rules'] && !dns_present['prefer-h3'])
+    && (!dns_present['respect-rules'] || dns_force['respect-rules']) && !dns_present['prefer-h3'])
 	cfg['dns']['respect-rules'] = true;
 
 /* profile */
@@ -203,7 +220,7 @@ uci.foreach('clashoo', 'hosts', function(sec) {
 if (length(keys(cfg['hosts'])) == 0) delete cfg['hosts'];
 
 /* ── sniffer ──────────────────────────────────────── */
-if (ab('sniffer_streaming')) {
+if (ab('sniffer_streaming') && !length(s(getenv('CLASHOO_KEEP_SNIFFER'), ''))) {
 	cfg['sniffer'] = {
 		enable:              true,
 		'force-dns-mapping': true,

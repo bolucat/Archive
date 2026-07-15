@@ -278,7 +278,7 @@ func TestInboundVless_Grpc2(t *testing.T) {
 	testInboundVlessTLS(t, inboundOptions, outboundOptions, false)
 }
 
-func testInboundVlessJLS(t *testing.T, inboundOptions inbound.VlessOption, outboundOptions outbound.VlessOption) {
+func testInboundVlessUTLS(t *testing.T, inboundOptions inbound.VlessOption, outboundOptions outbound.VlessOption) {
 	t.Parallel()
 	t.Run("Conn", func(t *testing.T) {
 		inboundOptions, outboundOptions := inboundOptions, outboundOptions // don't modify outside options value
@@ -289,6 +289,43 @@ func testInboundVlessJLS(t *testing.T, inboundOptions inbound.VlessOption, outbo
 		outboundOptions.ClientFingerprint = "chrome"
 		testInboundVless(t, inboundOptions, outboundOptions)
 	})
+}
+
+func TestInboundVless_ShadowTLS(t *testing.T) {
+	const password = "shadow-tls-password"
+	inboundOptions := inbound.VlessOption{
+		ShadowTLS: inbound.ShadowTLS{
+			Enable:    true,
+			Version:   3,
+			Users:     []inbound.ShadowTLSUser{{Name: "test", Password: password}},
+			Handshake: inbound.ShadowTLSHandshakeOptions{Dest: net.JoinHostPort(realityDest, "443")},
+		},
+	}
+	outboundOptions := outbound.VlessOption{
+		TLS:           true,
+		ServerName:    realityDest,
+		Fingerprint:   tlsFingerprint,
+		ShadowTLSOpts: outbound.ShadowTLSOptions{Password: password, Version: 3},
+	}
+	testInboundVlessUTLS(t, inboundOptions, outboundOptions)
+}
+
+func TestInboundVless_Restls(t *testing.T) {
+	const password = "restls-password"
+	inboundOptions := inbound.VlessOption{
+		ResTLS: inbound.ResTLS{
+			Enable:   true,
+			Dest:     net.JoinHostPort(realityDest, "443"),
+			Password: password,
+		},
+	}
+	outboundOptions := outbound.VlessOption{
+		TLS:         true,
+		ServerName:  realityDest,
+		Fingerprint: tlsFingerprint,
+		RestlsOpts:  outbound.RestlsOptions{Password: password, VersionHint: "tls13"},
+	}
+	testInboundVlessUTLS(t, inboundOptions, outboundOptions)
 }
 
 func TestInboundVless_JLS(t *testing.T) {
@@ -307,7 +344,7 @@ func TestInboundVless_JLS(t *testing.T) {
 		ServerName: realityDest,
 		JLSOpts:    outbound.JLSOptions{Username: username, Password: password},
 	}
-	testInboundVlessJLS(t, inboundOptions, outboundOptions)
+	testInboundVlessUTLS(t, inboundOptions, outboundOptions)
 }
 
 func TestInboundVless_Reality(t *testing.T) {

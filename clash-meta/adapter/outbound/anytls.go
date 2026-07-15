@@ -2,8 +2,10 @@ package outbound
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	N "github.com/metacubex/mihomo/common/net"
@@ -24,24 +26,26 @@ type AnyTLS struct {
 
 type AnyTLSOption struct {
 	BasicOption
-	Name                     string     `proxy:"name"`
-	Server                   string     `proxy:"server"`
-	Port                     int        `proxy:"port"`
-	Password                 string     `proxy:"password"`
-	ALPN                     []string   `proxy:"alpn,omitempty"`
-	SNI                      string     `proxy:"sni,omitempty"`
-	ECHOpts                  ECHOptions `proxy:"ech-opts,omitempty"`
-	JLSOpts                  JLSOptions `proxy:"jls-opts,omitempty"`
-	ClientFingerprint        string     `proxy:"client-fingerprint,omitempty"`
-	SkipCertVerify           bool       `proxy:"skip-cert-verify,omitempty"`
-	NameCertVerify           string     `proxy:"name-cert-verify,omitempty"`
-	Fingerprint              string     `proxy:"fingerprint,omitempty"`
-	Certificate              string     `proxy:"certificate,omitempty"`
-	PrivateKey               string     `proxy:"private-key,omitempty"`
-	UDP                      bool       `proxy:"udp,omitempty"`
-	IdleSessionCheckInterval int        `proxy:"idle-session-check-interval,omitempty"`
-	IdleSessionTimeout       int        `proxy:"idle-session-timeout,omitempty"`
-	MinIdleSession           int        `proxy:"min-idle-session,omitempty"`
+	Name                     string           `proxy:"name"`
+	Server                   string           `proxy:"server"`
+	Port                     int              `proxy:"port"`
+	Password                 string           `proxy:"password"`
+	ALPN                     []string         `proxy:"alpn,omitempty"`
+	SNI                      string           `proxy:"sni,omitempty"`
+	ECHOpts                  ECHOptions       `proxy:"ech-opts,omitempty"`
+	ShadowTLSOpts            ShadowTLSOptions `proxy:"shadow-tls-opts,omitempty"`
+	RestlsOpts               RestlsOptions    `proxy:"restls-opts,omitempty"`
+	JLSOpts                  JLSOptions       `proxy:"jls-opts,omitempty"`
+	ClientFingerprint        string           `proxy:"client-fingerprint,omitempty"`
+	SkipCertVerify           bool             `proxy:"skip-cert-verify,omitempty"`
+	NameCertVerify           string           `proxy:"name-cert-verify,omitempty"`
+	Fingerprint              string           `proxy:"fingerprint,omitempty"`
+	Certificate              string           `proxy:"certificate,omitempty"`
+	PrivateKey               string           `proxy:"private-key,omitempty"`
+	UDP                      bool             `proxy:"udp,omitempty"`
+	IdleSessionCheckInterval int              `proxy:"idle-session-check-interval,omitempty"`
+	IdleSessionTimeout       int              `proxy:"idle-session-timeout,omitempty"`
+	MinIdleSession           int              `proxy:"min-idle-session,omitempty"`
 }
 
 func (t *AnyTLS) DialContext(ctx context.Context, metadata *C.Metadata) (_ C.Conn, err error) {
@@ -117,9 +121,30 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 	if err != nil {
 		return nil, err
 	}
+	shadowTLSConfig, err := option.ShadowTLSOpts.Parse()
+	if err != nil {
+		return nil, err
+	}
+	restlsConfig, err := option.RestlsOpts.Parse(option.SNI, option.ClientFingerprint)
+	if err != nil {
+		return nil, err
+	}
 	jlsConfig, err := option.JLSOpts.Parse()
 	if err != nil {
 		return nil, err
+	}
+	securityModes := make([]string, 0, 3)
+	if shadowTLSConfig != nil {
+		securityModes = append(securityModes, "ShadowTLS")
+	}
+	if restlsConfig != nil {
+		securityModes = append(securityModes, "Restls")
+	}
+	if jlsConfig != nil {
+		securityModes = append(securityModes, "JLS")
+	}
+	if len(securityModes) > 1 {
+		return nil, errors.New("security modes are mutually exclusive: " + strings.Join(securityModes, ", "))
 	}
 	tlsConfig := &vmess.TLSConfig{
 		Host:              option.SNI,
@@ -131,6 +156,8 @@ func NewAnyTLS(option AnyTLSOption) (*AnyTLS, error) {
 		PrivateKey:        option.PrivateKey,
 		ClientFingerprint: option.ClientFingerprint,
 		ECH:               echConfig,
+		ShadowTLS:         shadowTLSConfig,
+		Restls:            restlsConfig,
 		JLS:               jlsConfig,
 	}
 	if tlsConfig.Host == "" {
