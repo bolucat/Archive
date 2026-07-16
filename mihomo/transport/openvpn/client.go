@@ -29,6 +29,7 @@ type Client struct {
 	data    *DataChannel
 	push    *PushReply
 
+	runCtx context.Context
 	cancel context.CancelFunc
 
 	writeSem *semaphore.Weighted
@@ -69,6 +70,7 @@ func NewClient(config *ClientConfig, io PacketIO) (*Client, error) {
 		config:   config,
 		mux:      mux,
 		control:  NewControlChannel(mux, crypt, local),
+		runCtx:   runCtx,
 		cancel:   cancel,
 		writeSem: semaphore.NewWeighted(1),
 	}
@@ -143,6 +145,8 @@ func (c *Client) Handshake(ctx context.Context) (*PushReply, error) {
 	}
 	c.markSend()
 	c.markReceive()
+	_ = c.tlsConn.SetDeadline(time.Time{})
+	go c.watchControl()
 	return push, nil
 }
 
@@ -203,6 +207,14 @@ func (c *Client) ReadIPPacket(ctx context.Context) ([]byte, error) {
 		}
 		return plain, nil
 	}
+}
+
+// watchControl terminates the client when the established control channel
+// starts a new key epoch or otherwise stops.
+func (c *Client) watchControl() {
+	_ = c.control.waitForSoftReset(c.runCtx)
+	c.cancel()
+	_ = c.mux.Close()
 }
 
 func (c *Client) SinceSend() time.Duration {

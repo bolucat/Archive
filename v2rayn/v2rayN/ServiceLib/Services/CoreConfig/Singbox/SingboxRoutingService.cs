@@ -10,18 +10,27 @@ public partial class CoreConfigSingboxService
             var simpleDnsItem = context.SimpleDnsItem;
 
             var defaultDomainResolverTag = Global.SingboxDirectDNSTag;
-            var directDnsStrategy = Utils.DomainStrategy4Sbox(simpleDnsItem.Strategy4Freedom);
+            var dialDnsStrategy = Utils.DomainStrategy4Sbox(simpleDnsItem.Strategy4ProxyDial);
 
             var rawDNSItem = context.RawDnsItem;
             if (rawDNSItem is { Enabled: true })
             {
                 defaultDomainResolverTag = Global.SingboxLocalDNSTag;
-                directDnsStrategy = rawDNSItem.DomainStrategy4Freedom.IsNullOrEmpty() ? null : rawDNSItem.DomainStrategy4Freedom;
+                dialDnsStrategy = rawDNSItem.DomainStrategy4Freedom.IsNullOrEmpty() ? null : rawDNSItem.DomainStrategy4Freedom;
+            }
+            else if (!simpleDnsItem.Strategy4Freedom.IsNullOrEmpty())
+            {
+                var directOutbound = _coreConfig.outbounds.FirstOrDefault(o => o.tag == Global.DirectTag);
+                directOutbound?.domain_resolver = new()
+                {
+                    server = defaultDomainResolverTag,
+                    strategy = Utils.DomainStrategy4Sbox(simpleDnsItem.Strategy4Freedom),
+                };
             }
             _coreConfig.route.default_domain_resolver = new()
             {
                 server = defaultDomainResolverTag,
-                strategy = directDnsStrategy
+                strategy = dialDnsStrategy
             };
 
             if (context.IsTunEnabled)
@@ -35,18 +44,21 @@ public partial class CoreConfigSingboxService
                 }
 
                 var lstDirectExe = BuildRoutingDirectExe();
-                _coreConfig.route.rules.Add(new()
+                if (lstDirectExe.Count > 0)
                 {
-                    port = [53],
-                    action = "hijack-dns",
-                    process_path = lstDirectExe
-                });
+                    _coreConfig.route.rules.Add(new()
+                    {
+                        port = [53],
+                        action = "hijack-dns",
+                        process_path = lstDirectExe,
+                    });
 
-                _coreConfig.route.rules.Add(new()
-                {
-                    outbound = Global.DirectTag,
-                    process_path = lstDirectExe
-                });
+                    _coreConfig.route.rules.Add(new()
+                    {
+                        outbound = Global.DirectTag,
+                        process_path = lstDirectExe,
+                    });
+                }
 
                 // ICMP Routing
                 var icmpRouting = _config.TunModeItem.IcmpRouting ?? "";

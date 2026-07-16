@@ -72,7 +72,7 @@ func monitorJLSAuth(quicConn *quic.Conn, packetConn net.PacketConn, tlsConf *tls
 		_ = packetConn.Close()
 	}
 	checkAuth := func() bool {
-		return quicConn.ConnectionState().TLS.JLS.Authenticated
+		return quicConn.ConnectionState().TLS.JLS.Status == tls.JLSAuthenticated
 	}
 	if !early {
 		if checkAuth() {

@@ -210,7 +210,7 @@ func (s *Server) jlsAdditions(state *connState) []inbound.Addition {
 
 func (s *Server) jlsUser(state *connState) string {
 	tlsState := state.quicConn.ConnectionState().TLS
-	if tlsState.JLS.Authenticated {
+	if tlsState.JLS.Status == tls.JLSAuthenticated {
 		return tlsState.JLS.User
 	}
 	return ""

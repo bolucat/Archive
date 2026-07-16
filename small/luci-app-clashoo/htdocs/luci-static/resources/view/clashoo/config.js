@@ -459,9 +459,10 @@ function dnsAutoSummaryNode(res) {
   var elapsed = Math.max(0, parseInt(res.elapsed_ms || 0, 10));
   var failed = parseInt(res.failed_count || 0, 10);
   return E('div', { 'class': 'cl-dns-auto-result' }, [
-    E('span', [E('b', _("Overseas")), res.nameserver || '-']),
-    E('span', [E('b', _("Domestic")), res.proxy_nameserver || '-']),
-    E('span', [E('b', 'Bootstrap'), res.bootstrap || res.direct_nameserver || '-']),
+    E('span', [E('b', _("Domestic")), res.nameserver || '-']),
+    E('span', [E('b', _("Proxy")), res.proxy_nameserver || '-']),
+    E('span', [E('b', _("Fallback")), res.fallback || '-']),
+    E('span', [E('b', _("Bootstrap")), res.bootstrap || res.direct_nameserver || '-']),
     E('span', [E('b', _("Time")), elapsed ? (elapsed / 1000).toFixed(1) + _(" seconds") : '-']),
     E('span', [E('b', _("Failed")), failed + _(" candidates")])
   ]);
@@ -857,7 +858,7 @@ return view.extend({
             click: function () {
               L.resolveDefault(callSetConfig(sub.name), {}).then(function () { location.reload(); });
             }
-          }, _("Switch")),
+          }, _("Switch Profile")),
           E('button', {
             'class': 'btn cbi-button cl-btn-sm cl-btn-delete',
             click: function () {
@@ -1033,7 +1034,7 @@ return view.extend({
               click: function () {
                 L.resolveDefault(callSetConfig(f.name), {}).then(function () { location.reload(); });
               }
-            }, _("Switch")),
+            }, _("Switch Profile")),
             E('button', {
               'class': 'btn cbi-button cl-btn-sm cl-btn-delete',
               click: function () {
@@ -1124,8 +1125,9 @@ return view.extend({
     o.value('redirect', 'Redirect'); o.value('tproxy', 'TPROXY'); o.value('tun', 'TUN'); o.value('off', _("Off"));
     o = s.option(form.ListValue, 'udp_mode', _("UDP Mode"));
     o.value('tun', 'TUN'); o.value('tproxy', 'TPROXY'); o.value('off', _("Off"));
-    o = s.option(form.ListValue, 'stack', _("Network Stack Type"));
+    o = s.option(form.ListValue, 'stack', _("TUN Network Stack"));
     o.value('system', 'System'); o.value('gvisor', 'gVisor'); o.value('mixed', 'Mixed');
+    o.description = _("TUN stack is used when either TCP or UDP mode is TUN.");
     o = s.option(form.Flag, 'disable_quic_gso', _("Disable QUIC GSO"));
     o = s.option(form.Flag, 'block_quic', _("Block QUIC"));
     o.description = _("Reject proxied UDP 443 so some apps fall back to TCP. Try only when downloads or video stall.");
@@ -1395,8 +1397,10 @@ return view.extend({
     o = s.option(form.ListValue,   'enhanced_mode',     _("Enhanced Mode"));
     o.value('fake-ip', 'Fake-IP'); o.value('redir-host', 'Redir-Host');
     o.default = 'fake-ip';
-    o.description = _("<span style=\"display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;font-weight:600;background:rgba(var(--primary-rgb),0.14);color:var(--cl-primary,#3886a1);\">Fake-IP · Recommended</span> Fast resolution and accurate routing; China routing is handled by the core.<br />") +
-      _("<span style=\"display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;background:rgba(128,128,128,0.16);color:var(--cl-label-muted,#888);\">Redir-Host</span> China traffic bypasses the core at firewall level; DNS behavior is slightly weaker. Choose as needed.");
+    o.description = '<span style="display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;font-weight:600;background:rgba(var(--primary-rgb),0.14);color:var(--cl-primary,#3886a1);">Fake-IP · ' + _("Recommended") + '</span> ' +
+      _("Fast resolution and accurate routing; China routing is handled by the core.") + '<br />' +
+      '<span style="display:inline-block;padding:1px 7px;border-radius:4px;font-size:12px;background:rgba(128,128,128,0.16);color:var(--cl-label-muted,#888);">Redir-Host</span> ' +
+      _("China traffic bypasses the core at firewall level; DNS behavior is slightly weaker. Choose as needed.");
     o = s.option(form.Value,       'fake_ip_range',     _("Fake-IP Range"));
     o.default = '198.18.0.1/16';
     o.placeholder = '198.18.0.1/16';
@@ -1641,7 +1645,7 @@ return view.extend({
                     if (r.success) location.reload();
                   });
                 }
-              }, _("Switch")),
+              }, _("Switch Profile")),
               p.source === 'native' && p.sub_url ? E('button', {
                 'class': 'btn cbi-button cl-btn-sm cl-btn-sb-action',
                 click: function (ev) {
@@ -1869,8 +1873,7 @@ return view.extend({
           fetchStatusEl
         ]),
         E('p', { 'class': 'cl-sb-note' },
-          _("For providers that directly offer sing-box JSON subscriptions, or links already converted by external tools.\n") +
-          _("After fetching, click Update on the corresponding item in the Configuration Files tab to fetch the latest configuration again.")
+          _("For providers that directly offer sing-box JSON subscriptions, or links already converted by external tools. After fetching, click Update on the corresponding item in the Configuration Files tab to fetch the latest configuration again.")
         )
       ]),
       E('div', { 'class': 'cl-section cl-card cl-sb-card' }, [
