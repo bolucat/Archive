@@ -152,13 +152,17 @@ func (e *Endpoint) Start(resolve bool) error {
 		return nil
 	}
 	var bind conn.Bind
-	wgListener, isWgListener := common.Cast[dialer.WireGuardListener](e.options.Dialer)
-	if isWgListener {
-		stdBind := conn.NewStdNetBind(wgListener.WireGuardControl())
+	udpListener, isUDPListener := common.Cast[dialer.UDPListener](e.options.Dialer)
+	if isUDPListener {
+		listenerControl, _ := udpListener.UDPListenerControl()
+		standardBind := conn.NewStdNetBind(listenerControl).(*conn.StdNetBind)
 		if e.options.ListenPort == 0 && len(e.peers) == 1 && e.peers[0].endpoint.IsValid() {
-			stdBind.(*conn.StdNetBind).SetSinglePeerMode()
+			standardBind.SetSinglePeerMode()
 		}
-		bind = stdBind
+		if e.options.EgressPool != nil {
+			standardBind.SetEgressProvider(e.options.EgressPool)
+		}
+		bind = standardBind
 	} else {
 		var (
 			isConnect   bool
@@ -172,7 +176,7 @@ func (e *Endpoint) Start(resolve bool) error {
 		}
 		bind = NewClientBind(e.options.Context, e.options.Logger, e.options.Dialer, isConnect, connectAddr, reserved)
 	}
-	if isWgListener || len(e.peers) > 1 {
+	if isUDPListener || len(e.peers) > 1 {
 		for _, peer := range e.peers {
 			if peer.reserved != [3]uint8{} {
 				bind.SetReservedForEndpoint(peer.endpoint, peer.reserved)
@@ -230,6 +234,9 @@ func (e *Endpoint) Close() error {
 	if e.pauseCallback != nil {
 		e.pause.UnregisterCallback(e.pauseCallback)
 		e.pauseCallback = nil
+	}
+	if e.options.EgressPool != nil {
+		e.options.EgressPool.Close()
 	}
 	if e.device != nil {
 		e.device.Down()
