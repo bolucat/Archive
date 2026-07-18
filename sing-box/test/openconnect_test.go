@@ -21,6 +21,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/sagernet/sing/common/json/badoption"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 
@@ -122,8 +123,10 @@ func TestOpenConnectDockerInterop(t *testing.T) {
 		))
 		endpoint := requireOpenConnectEndpoint(subtest, instance)
 		status := waitForOpenConnectState(subtest, endpoint, adapter.OpenConnectStateConnected, 45*time.Second)
-		require.Nil(subtest, status.AuthForm)
+		require.Nil(subtest, status.AuthChallenge)
 		err := exchangeOpenConnectTCPEcho(endpoint, 256*1024, 30*time.Second)
+		require.NoError(subtest, err)
+		err = exchangeOpenConnectUDPEcho(endpoint, 1400, 30*time.Second)
 		require.NoError(subtest, err)
 	})
 
@@ -164,7 +167,7 @@ func TestOpenConnectDockerInterop(t *testing.T) {
 
 		status := endpoint.OpenConnectStatus()
 		require.Equal(subtest, adapter.OpenConnectStateConnected, status.State, status.Error)
-		require.Nil(subtest, status.AuthForm)
+		require.Nil(subtest, status.AuthChallenge)
 		logs, err := openConnectDockerOutput(ctx, "logs", container.name)
 		require.NoError(subtest, err)
 		require.GreaterOrEqual(subtest, strings.Count(logs, "HTTP CONNECT /CSCOSSLC/tunnel"), 2, logs)
@@ -174,11 +177,15 @@ func TestOpenConnectDockerInterop(t *testing.T) {
 
 func openConnectInstanceOptions(server string, certificateAuthorityPath string, username string, password string) option.Options {
 	endpointOptions := option.OpenConnectEndpointOptions{
-		Server:   server,
-		Flavor:   "anyconnect",
-		Username: username,
-		Password: password,
-		NoUDP:    true,
+		Server:       server,
+		Flavor:       "anyconnect",
+		Username:     username,
+		Password:     password,
+		NoUDP:        true,
+		UDPTimeout:   badoption.Duration(time.Minute),
+		UDPMapping:   option.UDPNATBehaviorAddressDependent,
+		UDPFiltering: option.UDPNATBehaviorAddressAndPortDependent,
+		UDPNATMax:    128,
 		TLS: option.OpenConnectTLSOptions{
 			CertificateAuthorityPath: certificateAuthorityPath,
 		},
@@ -247,13 +254,15 @@ func driveOpenConnectInteractiveAuthentication(t *testing.T, endpoint adapter.Op
 		case adapter.OpenConnectStateError:
 			t.Fatal(status.Error)
 		case adapter.OpenConnectStateAuthPending:
-			form := status.AuthForm
-			require.NotNil(t, form)
-			require.NotEmpty(t, form.ID)
-			_, completed := completedForms[form.ID]
+			challenge := status.AuthChallenge
+			require.NotNil(t, challenge)
+			require.NotNil(t, challenge.Form)
+			require.Nil(t, challenge.Browser)
+			require.NotEmpty(t, challenge.ID)
+			_, completed := completedForms[challenge.ID]
 			if !completed {
-				values := make(map[string]string, len(form.Fields))
-				for _, field := range form.Fields {
+				values := make(map[string]string, len(challenge.Form.Fields))
+				for _, field := range challenge.Form.Fields {
 					require.NotEmpty(t, field.SubmissionKey)
 					switch field.Name {
 					case "username":
@@ -267,9 +276,11 @@ func driveOpenConnectInteractiveAuthentication(t *testing.T, endpoint adapter.Op
 					}
 				}
 				require.NotEmpty(t, values)
-				err := endpoint.CompleteAuthForm(form.ID, values)
+				err := endpoint.CompleteAuthChallenge(challenge.ID, adapter.OpenConnectAuthResponse{
+					Form: &adapter.OpenConnectAuthFormResponse{Values: values},
+				})
 				require.NoError(t, err)
-				completedForms[form.ID] = struct{}{}
+				completedForms[challenge.ID] = struct{}{}
 				continue
 			}
 		}
@@ -314,6 +325,38 @@ func exchangeOpenConnectTCPEcho(endpoint adapter.OpenConnectEndpoint, payloadSiz
 	}
 	if !bytes.Equal(response, payload) {
 		return E.New("ocserv tunnel echo payload mismatch")
+	}
+	return nil
+}
+
+func exchangeOpenConnectUDPEcho(endpoint adapter.OpenConnectEndpoint, payloadSize int, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	conn, err := endpoint.DialContext(ctx, N.NetworkUDP, M.ParseSocksaddrHostPort(openConnectTunnelAddress, openConnectEchoPort))
+	if err != nil {
+		return E.Cause(err, "dial ocserv tunnel UDP echo")
+	}
+	defer conn.Close()
+	err = conn.SetDeadline(time.Now().Add(timeout))
+	if err != nil {
+		return E.Cause(err, "set ocserv tunnel UDP echo deadline")
+	}
+	payload := make([]byte, payloadSize)
+	_, err = rand.Read(payload)
+	if err != nil {
+		return E.Cause(err, "generate ocserv tunnel UDP echo payload")
+	}
+	_, err = conn.Write(payload)
+	if err != nil {
+		return E.Cause(err, "write ocserv tunnel UDP echo payload")
+	}
+	response := make([]byte, payloadSize+1)
+	responseLength, err := conn.Read(response)
+	if err != nil {
+		return E.Cause(err, "read ocserv tunnel UDP echo payload")
+	}
+	if !bytes.Equal(response[:responseLength], payload) {
+		return E.New("ocserv tunnel UDP echo payload mismatch")
 	}
 	return nil
 }

@@ -180,7 +180,7 @@ function uploadConfigContent(name, content, type) {
 
   function sendNext() {
     var chunk = (content || '').slice(index * chunkSize, (index + 1) * chunkSize);
-    return L.resolveDefault(callUploadConfigChunk(name, chunk, type || '2', index, total), {}).then(function (r) {
+    return L.resolveDefault(callUploadConfigChunk(name, chunk, type || '2', String(index), String(total)), {}).then(function (r) {
       if (!r || !r.success)
         throw new Error((r && (r.message || r.error)) || _("Upload failed"));
       index++;
@@ -1411,6 +1411,7 @@ return view.extend({
     s = m.section(form.NamedSection, 'config', 'clashoo', _("Advanced DNS"));
     s.addremove = false;
     o = s.option(form.Flag,        'dnsforwader',       _("Force DNS Forwarding"));
+    o.depends('enable_dns', '1');
     o = s.option(form.ListValue,   'fake_ip_filter_mode', _("Fake-IP Filter Mode"));
     o.value('blacklist', _("Blocklist (listed items use real IP, default)"));
     o.value('whitelist', _("Allowlist (only listed items use fake-IP)"));

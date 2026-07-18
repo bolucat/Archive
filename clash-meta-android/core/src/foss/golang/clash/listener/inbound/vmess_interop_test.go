@@ -323,18 +323,67 @@ func vmessInteropRoundTripConn(conn net.Conn, payloadSize int) error {
 	if payloadSize == 0 {
 		payloadSize = len("vmess-interop-") * 256
 	}
-	payload := bytes.Repeat([]byte("x"), payloadSize)
-	_, err := conn.Write(payload)
-	if err != nil {
-		return fmt.Errorf("write: %w", err)
+	for round, payload := range vmessInteropRoundTripPayloads(payloadSize) {
+		if err := vmessInteropWritePayload(conn, payload, round); err != nil {
+			return fmt.Errorf("write round %d size %d: %w", round, len(payload), err)
+		}
+		got := make([]byte, len(payload))
+		if _, err := io.ReadFull(conn, got); err != nil {
+			return fmt.Errorf("read full round %d size %d: %w", round, len(payload), err)
+		}
+		if !bytes.Equal(payload, got) {
+			return fmt.Errorf("unexpected payload round %d size %d", round, len(payload))
+		}
 	}
-	got := make([]byte, len(payload))
-	_, err = io.ReadFull(conn, got)
-	if err != nil {
-		return fmt.Errorf("read full: %w", err)
+	return nil
+}
+
+func vmessInteropRoundTripPayloads(payloadSize int) [][]byte {
+	sizes := []int{1, 7, 64, 1024, payloadSize / 2, payloadSize}
+	payloads := make([][]byte, 0, len(sizes))
+	seen := make(map[int]struct{}, len(sizes))
+	for round, size := range sizes {
+		if size > payloadSize {
+			size = payloadSize
+		}
+		if size <= 0 {
+			continue
+		}
+		if _, ok := seen[size]; ok {
+			continue
+		}
+		seen[size] = struct{}{}
+		payloads = append(payloads, vmessInteropPayload(size, round))
 	}
-	if !bytes.Equal(payload, got) {
-		return fmt.Errorf("unexpected payload: got %d bytes", len(got))
+	return payloads
+}
+
+func vmessInteropPayload(size, round int) []byte {
+	payload := make([]byte, size)
+	for i := range payload {
+		payload[i] = byte((i*31 + round*17 + i>>8) % 251)
+	}
+	return payload
+}
+
+func vmessInteropWritePayload(conn net.Conn, payload []byte, round int) error {
+	if len(payload) <= 1 {
+		return vmessInteropWrite(conn, payload)
+	}
+	split := 1 + (round*37)%(len(payload)-1)
+	if err := vmessInteropWrite(conn, payload[:split]); err != nil {
+		return err
+	}
+	return vmessInteropWrite(conn, payload[split:])
+}
+
+func vmessInteropWrite(conn net.Conn, payload []byte) error {
+	n, err := conn.Write(payload)
+	if err != nil {
+		return err
+	}
+	if n != len(payload) {
+		return io.ErrShortWrite
 	}
 	return nil
 }

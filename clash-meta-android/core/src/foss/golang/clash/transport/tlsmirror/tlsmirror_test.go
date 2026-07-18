@@ -359,24 +359,35 @@ func TestTLSMirrorTrafficGenerator(t *testing.T) {
 	})
 
 	t.Run("wait time includes request time", func(t *testing.T) {
-		start := time.Now()
-		err := runTrafficStep(context.Background(), roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		now := time.Unix(0, 0)
+		requestTime := 120 * time.Millisecond
+		waitTime := 200 * time.Millisecond
+		fakeNow := func() time.Time {
+			return now
+		}
+		var waited time.Duration
+		fakeWait := func(ctx context.Context, delay time.Duration) error {
+			waited = delay
+			return ctx.Err()
+		}
+
+		err := runTrafficStepWithClock(context.Background(), roundTripFunc(func(req *http.Request) (*http.Response, error) {
 			return &http.Response{
 				StatusCode: http.StatusNoContent,
-				Body:       delayedEOFBody{delay: 120 * time.Millisecond},
+				Body: &readHookEOFBody{read: func() {
+					now = now.Add(requestTime)
+				}},
 			}, nil
 		}), TrafficStep{
 			Host:   "example.com",
 			Path:   "/",
 			Method: http.MethodGet,
 			WaitTime: TimeSpec{
-				BaseNanoseconds: uint64((200 * time.Millisecond).Nanoseconds()),
+				BaseNanoseconds: uint64(waitTime.Nanoseconds()),
 			},
-		}, "http/1.1")
+		}, "http/1.1", fakeNow, fakeWait)
 		require.NoError(t, err)
-		elapsed := time.Since(start)
-		require.GreaterOrEqual(t, elapsed, 200*time.Millisecond)
-		require.Less(t, elapsed, 300*time.Millisecond)
+		require.Equal(t, waitTime-requestTime, waited)
 	})
 
 	t.Run("uses v2ray host semantics", func(t *testing.T) {
@@ -576,20 +587,22 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
-type delayedEOFBody struct {
-	delay time.Duration
-	done  bool
+type readHookEOFBody struct {
+	read func()
+	done bool
 }
 
-func (b delayedEOFBody) Read([]byte) (int, error) {
+func (b *readHookEOFBody) Read([]byte) (int, error) {
 	if !b.done {
-		time.Sleep(b.delay)
 		b.done = true
+		if b.read != nil {
+			b.read()
+		}
 	}
 	return 0, io.EOF
 }
 
-func (b delayedEOFBody) Close() error {
+func (b *readHookEOFBody) Close() error {
 	return nil
 }
 

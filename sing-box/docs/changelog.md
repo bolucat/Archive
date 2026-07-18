@@ -2,6 +2,28 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-alpha.47
+
+* Add OpenVPN client and server support **1**
+* Add OpenConnect client support **2**
+* Fixes and improvements
+
+**1**:
+
+The new [OpenVPN Client](/configuration/endpoint/openvpn-client/) and
+[OpenVPN Server](/configuration/endpoint/openvpn-server/) endpoints are
+compatible with standard OpenVPN clients and servers. Interactive client
+authentication is available through the sing-box graphical clients and
+[Dashboard](https://github.com/SagerNet/sing-box-dashboard).
+
+**2**:
+
+The new [OpenConnect Client](/configuration/endpoint/openconnect/) endpoint
+supports Cisco AnyConnect, GlobalProtect, Fortinet, F5, Pulse Connect Secure,
+and Juniper Network Connect VPN servers. Interactive authentication is
+available through the sing-box graphical clients and
+[Dashboard](https://github.com/SagerNet/sing-box-dashboard).
+
 #### 1.14.0-alpha.46
 
 * Add multiple tags support to rule-sets **1**
