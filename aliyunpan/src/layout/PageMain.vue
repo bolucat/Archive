@@ -36,6 +36,7 @@ import DropOverlay from '../components/radio/DropOverlay.vue'
 import PageMusicLibrary from './PageMusicLibrary.vue'
 import PageBookLibrary from './PageBookLibrary.vue'
 import PageGlobalSearch from './PageGlobalSearch.vue'
+import PageAIWorkspace from './PageAIWorkspace.vue'
 
 import UserInfo from '../user/UserInfo.vue'
 import UserLogin from '../user/UserLogin.vue'
@@ -120,7 +121,8 @@ const themeTitle = computed(() => {
 const primaryTabDefinitions = [
   { key: 'pan', title: 'Alt+1', label: '网盘' },
   { key: 'media-server', title: 'Alt+6', label: '媒体服务器' },
-  { key: 'search', title: 'Ctrl+K', label: 'AI 搜索' },
+  { key: 'search', title: 'Ctrl+K', label: '搜索' },
+  { key: 'ai-workspace', title: 'AI 工作台', label: 'AI 工作台' },
   { key: 'media', title: 'Alt+5', label: '视频' },
   { key: 'music', title: 'Alt+8', label: '音乐' },
   { key: 'book', title: 'Alt+9', label: '书籍' }
@@ -388,6 +390,9 @@ onUnmounted(() => {
         </a-tab-pane>
         <a-tab-pane key='search' title='0'>
           <PageGlobalSearch />
+        </a-tab-pane>
+        <a-tab-pane key='ai-workspace' title='AI 工作台'>
+          <PageAIWorkspace />
         </a-tab-pane>
         <a-tab-pane key='setting' title='7'>
           <Setting />
@@ -839,6 +844,9 @@ onUnmounted(() => {
   --app-mineradio-ink: #e8ecef;
   --app-mineradio-accent: #00f5d4;
   --app-mineradio-champagne: #f4d28a;
+  --app-detail-bg:
+    linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.018)),
+    #080a0e;
   --app-glass-panel:
     radial-gradient(circle at 8% 0%, rgba(255,255,255,.075), transparent 34%),
     linear-gradient(135deg, rgba(255,255,255,.058), rgba(255,255,255,.026));
@@ -1551,6 +1559,7 @@ body:not([arco-theme='dark']) #xbybody {
   --app-glass-line: var(--color-border-2);
   --app-glass-hover: var(--color-fill-2);
   --app-sidebar-glass: var(--color-bg-1);
+  --app-detail-bg: var(--color-bg-1);
   color: var(--color-text-1);
   background: var(--color-bg-1);
 }

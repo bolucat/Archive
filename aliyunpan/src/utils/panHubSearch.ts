@@ -23,6 +23,23 @@ interface PanHubSearchOptions extends PanHubSourceConfig {
   onProgress?: (merged: PanHubMergedLinks, total: number) => void
 }
 
+interface PanHubStreamOptions {
+  apiBase: string
+  keyword: string
+  plugins?: string[]
+  channels?: string[]
+  concurrency?: number
+  pluginTimeoutMs?: number
+  signal?: AbortSignal
+  fetchImpl?: typeof fetch
+  onProgress?: (merged: PanHubMergedLinks, total: number) => void
+  ipcRenderer?: {
+    send: (channel: string, ...args: any[]) => void
+    on: (channel: string, listener: (...args: any[]) => void) => void
+    removeListener: (channel: string, listener: (...args: any[]) => void) => void
+  }
+}
+
 export interface PanHubSearchRunResult {
   merged: PanHubMergedLinks
   total: number
@@ -188,4 +205,111 @@ export async function searchPanHubSources(options: PanHubSearchOptions): Promise
 
   await Promise.all(Array.from({ length: Math.min(concurrency, urls.length) }, () => worker()))
   return { merged, total: countMerged(merged), failedSources, successfulSources }
+}
+
+export async function searchPanHubStream(options: PanHubStreamOptions): Promise<PanHubSearchRunResult> {
+  let merged: PanHubMergedLinks = {}
+  let failedSources = 0
+  let successfulSources = 0
+  let receivedDone = false
+
+  const consumeEvent = (event: any) => {
+    if (event?.type === 'results') {
+      successfulSources++
+      const incoming = extractPanHubMerged(event.data)
+      if (Object.keys(incoming).length) {
+        merged = mergePanHubMerged(merged, incoming)
+        options.onProgress?.(merged, countMerged(merged))
+      }
+    } else if (event?.type === 'warning') {
+      failedSources++
+    } else if (event?.type === 'done') {
+      receivedDone = true
+      const incoming = extractPanHubMerged(event.data)
+      if (Object.keys(incoming).length) merged = mergePanHubMerged(merged, incoming)
+    } else if (event?.type === 'error') {
+      throw new Error(event.message || 'PanHub 流式搜索失败')
+    }
+  }
+
+  const body = JSON.stringify({
+    kw: options.keyword.trim(),
+    src: 'all',
+    res: 'merged_by_type'
+  })
+  const url = `${normalizeApiBase(options.apiBase)}/search/stream`
+
+  if (options.ipcRenderer) {
+    const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    await new Promise<void>((resolve, reject) => {
+      const ipc = options.ipcRenderer!
+      const matches = (message: any) => message?.requestId === requestId
+      const cleanup = () => {
+        ipc.removeListener('PanHub:stream-event', onEvent)
+        ipc.removeListener('PanHub:stream-end', onEnd)
+        ipc.removeListener('PanHub:stream-error', onError)
+        options.signal?.removeEventListener('abort', onAbort)
+      }
+      const onEvent = (_ipcEvent: unknown, message: any) => {
+        if (!matches(message)) return
+        try {
+          consumeEvent(message.payload)
+        } catch (error) {
+          ipc.send('PanHub:stream-cancel', requestId)
+          cleanup()
+          reject(error)
+        }
+      }
+      const onEnd = (_ipcEvent: unknown, message: any) => {
+        if (!matches(message)) return
+        cleanup()
+        if (!receivedDone) reject(new Error('PanHub 流式响应提前结束'))
+        else resolve()
+      }
+      const onError = (_ipcEvent: unknown, message: any) => {
+        if (!matches(message)) return
+        cleanup()
+        reject(new Error(String(message.payload || 'PanHub 流式搜索失败')))
+      }
+      const onAbort = () => {
+        ipc.send('PanHub:stream-cancel', requestId)
+        cleanup()
+        reject(new DOMException('The operation was aborted.', 'AbortError'))
+      }
+      ipc.on('PanHub:stream-event', onEvent)
+      ipc.on('PanHub:stream-end', onEnd)
+      ipc.on('PanHub:stream-error', onError)
+      options.signal?.addEventListener('abort', onAbort, { once: true })
+      ipc.send('PanHub:stream-start', {
+        requestId,
+        request: { url, method: 'POST', headers: { 'Content-Type': 'application/json' }, body }
+      })
+    })
+  } else {
+    const response = await (options.fetchImpl || fetch)(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      signal: options.signal,
+      credentials: 'include'
+    })
+    if (!response.ok) throw new Error(`PanHub stream request failed: HTTP ${response.status}`)
+    if (!response.body) throw new Error('PanHub stream response body is empty')
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) if (line.trim()) consumeEvent(JSON.parse(line))
+    }
+    const tail = `${buffer}${decoder.decode()}`.trim()
+    if (tail) consumeEvent(JSON.parse(tail))
+    if (!receivedDone) throw new Error('PanHub stream response ended early')
+  }
+
+  return { merged, total: countMerged(merged), failedSources, successfulSources: Math.max(successfulSources, receivedDone ? 1 : 0) }
 }

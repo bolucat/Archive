@@ -67,7 +67,9 @@ interface FileInfo {
   [key: string]: string | number | undefined
 }
 
-const isUsableQuarkToken = (token: any) => token?.tokenfrom === 'quark' && !!token.access_token
+const hasQuarkLoginCookie = (cookie = '') => /(?:^|;\s*)__pus=/.test(cookie) && /(?:^|;\s*)(?:__uid|__kps)=/.test(cookie)
+
+const isUsableQuarkToken = (token: any) => token?.tokenfrom === 'quark' && hasQuarkLoginCookie(token.access_token || '')
 
 async function getQuarkProxyToken(userId: string) {
   const directToken = UserDAL.GetUserToken(userId)
@@ -117,19 +119,6 @@ function getQuarkProxyCookieKeys(cookie = '') {
     .split(';')
     .map((item) => item.trim().split('=')[0])
     .filter(Boolean)
-}
-
-function mergeCookieStrings(...cookies: string[]) {
-  const cookieMap = new Map<string, string>()
-  for (const cookieString of cookies) {
-    for (const part of cookieString.split(';')) {
-      const item = part.trim()
-      if (!item || !item.includes('=')) continue
-      const key = item.split('=')[0].trim()
-      if (key) cookieMap.set(key, item)
-    }
-  }
-  return Array.from(cookieMap.values()).join('; ')
 }
 
 function getQuarkUrlPath(proxyUrl: string) {
@@ -289,7 +278,8 @@ export async function getRawUrl(
         data.url = downUrl.url
       }
       data.size = downUrl.size
-      if (downUrl.headers) data.headers = downUrl.headers
+      const useQuarkSessionInterceptor = uiVideoPlayer === 'web' && !encType && (drive_id === 'quark' || isQuarkUser(user_id))
+      if (downUrl.headers && !useQuarkSessionInterceptor) data.headers = downUrl.headers
     } else {
       return downUrl as string
     }
@@ -403,7 +393,9 @@ export async function createProxyServer(port: number) {
       if (query.drive_id === 'quark' || isQuarkUser(String(query.user_id || ''))) {
         const token = await getQuarkProxyToken(String(query.user_id || ''))
         const sessionCookie = await readQuarkCookieStringFromElectron().catch(() => '')
-        const quarkCookie = mergeCookieStrings(token?.access_token || '', sessionCookie)
+        const quarkCookie = hasQuarkLoginCookie(token?.access_token || '')
+          ? token?.access_token || ''
+          : (hasQuarkLoginCookie(sessionCookie) ? sessionCookie : '')
         if (quarkCookie) {
           upstreamHeaders.cookie = quarkCookie
         }
@@ -418,6 +410,7 @@ export async function createProxyServer(port: number) {
         upstreamHeaders['sec-ch-ua'] = '"Not;A=Brand";v="99", "Chromium";v="106"'
         upstreamHeaders['sec-ch-ua-mobile'] = '?0'
         upstreamHeaders['sec-ch-ua-platform'] = '"macOS"'
+        delete upstreamHeaders['content-type']
         const urlPath = getQuarkUrlPath(String(proxyUrl || ''))
         if (urlPath) upstreamHeaders['x-urlp'] = urlPath
         const cookieKeys = getQuarkProxyCookieKeys(quarkCookie)
@@ -446,6 +439,23 @@ export async function createProxyServer(port: number) {
           agent: ~proxyUrl.indexOf('https') ? httpsAgent : httpAgent
         }, (httpResp: any) => {
           console.error('httpResp.headers', httpResp.statusCode, httpResp.headers)
+          const quarkErrorChunks: Buffer[] = []
+          let quarkErrorLength = 0
+          const shouldReportQuarkError = (query.drive_id === 'quark' || isQuarkUser(String(query.user_id || ''))) && httpResp.statusCode >= 400
+          let didReportQuarkError = false
+          const reportQuarkError = () => {
+            if (didReportQuarkError || !quarkErrorChunks.length) return
+            didReportQuarkError = true
+            console.error('proxy.quark.upstreamError', Buffer.concat(quarkErrorChunks).toString('utf8'))
+          }
+          if (shouldReportQuarkError) {
+            httpResp.on('data', (chunk: Buffer) => {
+              if (quarkErrorLength >= 8192) return
+              const limitedChunk = chunk.subarray(0, 8192 - quarkErrorLength)
+              quarkErrorChunks.push(limitedChunk)
+              quarkErrorLength += limitedChunk.length
+            })
+          }
           clientRes.statusCode = httpResp.statusCode
           for (const key in httpResp.headers) {
             clientRes.setHeader(key, httpResp.headers[key])
@@ -479,7 +489,11 @@ export async function createProxyServer(port: number) {
               clientRes.setHeader('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(decName + ext)};`)
             }
           }
-          httpResp.on('end', () => resolve(true))
+          httpResp.on('end', () => {
+            reportQuarkError()
+            resolve(true)
+          })
+          httpResp.on('close', reportQuarkError)
           if (decryptTransform) {
             httpResp.pipe(decryptTransform).pipe(clientRes)
           } else {

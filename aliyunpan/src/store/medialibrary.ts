@@ -252,6 +252,16 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
       console.log(`🔄 合并电视剧: ${newTvItem.name}`)
       const existingTv = mediaItems.value[existingTvIndex]
 
+      const expectedSeasonMap = new Map((existingTv.expectedSeasons || []).map(season => [season.seasonNumber, season]))
+      for (const season of newTvItem.expectedSeasons || []) {
+        const existing = expectedSeasonMap.get(season.seasonNumber)
+        expectedSeasonMap.set(season.seasonNumber, {
+          ...existing,
+          ...season,
+          episodes: season.episodes?.length ? season.episodes : existing?.episodes
+        })
+      }
+
       // 合并seasons
       const mergedSeasons = [...(existingTv.seasons || [])]
       if (newTvItem.seasons && newTvItem.seasons.length > 0) {
@@ -327,6 +337,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
       const updatedTv: MediaLibraryItem = {
         ...existingTv,
         seasons: mergedSeasonsCopy.sort((a, b) => a.seasonNumber - b.seasonNumber),
+        expectedSeasons: [...expectedSeasonMap.values()].sort((a, b) => a.seasonNumber - b.seasonNumber),
         driveFiles: mergedDriveFiles,
         credits: existingTv.credits || newTvItem.credits,
         addedAt: new Date() // 更新添加时间
@@ -355,6 +366,23 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     } else {
       folders.value.push(folder)
     }
+  }
+
+  const pruneOrphanDuplicateFolders = () => {
+    const referencedFolderIds = new Set(mediaItems.value.map(item => item.folderId).filter((id): id is string => Boolean(id)))
+    const referencedFolderPaths = new Set(mediaItems.value.map(item => item.folderPath).filter((path): path is string => Boolean(path)))
+    const sourceKey = (folder: MediaLibraryFolder) => [folder.userId || '', folder.driveServerId || '', folder.driveId || '', folder.name.trim().toLocaleLowerCase()].join('\n')
+    const referencedSourceKeys = new Set(folders.value.filter(folder => referencedFolderIds.has(folder.id) || (!!folder.path && referencedFolderPaths.has(folder.path))).map(sourceKey))
+    const originalCount = folders.value.length
+
+    folders.value = folders.value.filter(folder => {
+      if (referencedFolderIds.has(folder.id) || (!!folder.path && referencedFolderPaths.has(folder.path))) return true
+      return !referencedSourceKeys.has(sourceKey(folder))
+    })
+
+    const removedCount = originalCount - folders.value.length
+    if (removedCount > 0) saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
+    return removedCount
   }
 
   // 移除特定文件夹下的所有媒体项目
@@ -669,6 +697,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   }
 
   // 初始化时更新筛选器
+  pruneOrphanDuplicateFolders()
   updateFilters()
 
   return {
@@ -701,6 +730,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     removeMediaItem,
     removeMediaItemsByFolder,
     addFolder,
+    pruneOrphanDuplicateFolders,
     removeFolder,
     removeMediaSourceByUserId,
     getMediaItemsByFolder,

@@ -28,16 +28,29 @@ export const guangyaApiParentId = (parentId: string | number | undefined) => {
 }
 
 export const guangyaRequest = async (user_id: string, endpoint: string, body: any = {}, method: 'GET' | 'POST' = 'POST', allowedCodes: number[] = []): Promise<any> => {
-  const token = await getToken(user_id)
+  let token = await getToken(user_id)
   if (!token?.access_token) throw new Error('未登录光鸭云盘')
-  const resp = await fetch(`${GUANGYA_API_URL}${endpoint}`, {
-    method,
-    headers: guangyaApiHeaders(token),
-    body: method === 'POST' ? JSON.stringify(body || {}) : undefined
-  })
-  const data = await resp.json().catch(() => undefined)
+  const request = async (accessToken: typeof token) => {
+    const resp = await fetch(`${GUANGYA_API_URL}${endpoint}`, {
+      method,
+      headers: guangyaApiHeaders(accessToken),
+      body: method === 'POST' ? JSON.stringify(body || {}) : undefined
+    })
+    return { resp, data: await resp.json().catch(() => undefined) }
+  }
+  let { resp, data } = await request(token)
   const code = Number(data?.code)
-  if (!resp.ok || (data?.success === false && !allowedCodes.includes(code)) || data?.code === 401) throw new Error(data?.message || data?.msg || `光鸭云盘请求失败 HTTP ${resp.status}`)
+  const authFailed = resp.status === 401 || code === 401 || /access\s*token.*(?:invalid|expired)|accessToken.*(?:无效|过期)/i.test(String(data?.message || data?.msg || data?.error || ''))
+  if (authFailed && token.refresh_token) {
+    const refreshed = await refreshGuangyaAccessToken(token)
+    if (refreshed?.access_token) {
+      UserDAL.SaveUserToken(refreshed)
+      token = refreshed
+      ;({ resp, data } = await request(token))
+    }
+  }
+  const finalCode = Number(data?.code)
+  if (!resp.ok || (data?.success === false && !allowedCodes.includes(finalCode)) || finalCode === 401) throw new Error(data?.message || data?.msg || `光鸭云盘请求失败 HTTP ${resp.status}`)
   return data
 }
 

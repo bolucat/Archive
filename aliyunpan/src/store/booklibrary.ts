@@ -7,6 +7,8 @@ import type { BookViewMode, BookManagerSortMode, BookManagerSortOrder } from '..
 import { updateBookNote as applyBookNotePatch } from '../utils/bookNotes'
 import { buildShelfGroups, loadGlobalNoteTags, normalizeBookSortMode, normalizeBookSortOrder, renameAnnotationTag, saveGlobalNoteTags, stripGlobalTagFromNotes, syncGlobalTagsFromNotes } from '../utils/bookManagerParity'
 import DB from '../utils/db'
+import UserDAL from '../user/userdal'
+import AliHttp from '../aliapi/alihttp'
 
 const LS_LASTSCAN = 'bookLibrary.lastScanAt'
 const LS_SUBTAB = 'bookLibrary.subTab'
@@ -98,6 +100,20 @@ function ensureBookMeta(book: IBookItem): IBookItem {
   }
 }
 
+function isAliyunThumbnail(url?: string): boolean {
+  return /^https:\/\/api\.aliyundrive\.com\/v2\/file\/download(?:\?|$)/i.test(String(url || ''))
+}
+
+function withoutAliyunThumbnail(book: IBookItem): IBookItem {
+  const hasAliyunCover = isAliyunThumbnail(book.cover_url) || isAliyunThumbnail(book.thumbnail)
+  if (!hasAliyunCover) return book
+  return {
+    ...book,
+    cover_url: isAliyunThumbnail(book.cover_url) ? '' : book.cover_url,
+    thumbnail: isAliyunThumbnail(book.thumbnail) ? '' : book.thumbnail
+  }
+}
+
 const useBookLibraryStore = defineStore('booklibrary', () => {
   const books = ref<IBookItem[]>([])
   const notesByBookId = ref<Record<string, IBookNote[]>>({})
@@ -114,6 +130,33 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   const sortOrder = ref<BookManagerSortOrder>(normalizeBookSortOrder(loadJson<unknown>(LS_MANAGER_SORT_ORDER, undefined), sortMode.value))
   const viewMode = ref<BookViewMode>(loadJson<BookViewMode>(LS_VIEW_MODE, 'grid'))
   const noteTags = ref<string[]>(loadGlobalNoteTags())
+
+  async function hydrateAliyunThumbnails(sourceBooks: IBookItem[]) {
+    const blobUrls = new Map<string, Promise<string>>()
+    const resolveThumbnail = async (url: string, userId: string): Promise<string> => {
+      const key = `${userId}|${url}`
+      const cached = blobUrls.get(key)
+      if (cached) return cached
+      const request = (async () => {
+        const token = await UserDAL.GetUserTokenFromDB(userId)
+        if (!token?.access_token || token.tokenfrom !== 'aliyun') return ''
+        const response = await AliHttp.GetBlob(url, userId)
+        if (!AliHttp.IsSuccess(response.code) || !(response.body instanceof Blob)) return ''
+        return URL.createObjectURL(response.body)
+      })().catch(() => '')
+      blobUrls.set(key, request)
+      return request
+    }
+
+    for (const source of sourceBooks) {
+      const coverUrl = isAliyunThumbnail(source.cover_url) ? await resolveThumbnail(source.cover_url!, source.user_id) : source.cover_url
+      const thumbnail = isAliyunThumbnail(source.thumbnail) ? await resolveThumbnail(source.thumbnail!, source.user_id) : source.thumbnail
+      if (!coverUrl && !thumbnail) continue
+      const index = books.value.findIndex((book) => book.id === source.id)
+      if (index < 0) continue
+      books.value = books.value.map((book, currentIndex) => currentIndex === index ? { ...book, cover_url: coverUrl, thumbnail } : book)
+    }
+  }
 
   const activeBooks = computed(() => books.value.filter((book) => !book.deleted_at))
   const deletedBooks = computed(() => books.value.filter((book) => !!book.deleted_at))
@@ -196,9 +239,11 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     try {
       const list = await DB.getAllBookItems()
       const fixed = list.map(ensureBookMeta)
-      books.value = fixed
+      const displayBooks = fixed.map(withoutAliyunThumbnail)
+      books.value = displayBooks
       loaded.value = true
       if (fixed.length) DB.saveBookItems(fixed).catch(() => {})
+      void hydrateAliyunThumbnails(fixed)
     } catch (e) {
       console.warn('bookLibrary loadFromDB failed', e)
     }

@@ -23,7 +23,7 @@ const emit = defineEmits<{ (e: 'followup', query: string): void }>()
 </template>
 
 <style scoped>
-.summary-card { margin: 12px 0; padding: 12px 16px; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); }
+.summary-card { margin: 14px 0; padding: 16px 18px; border-radius: 13px; background: linear-gradient(135deg, rgba(var(--primary-6), .075), color-mix(in srgb, var(--color-fill-1) 76%, transparent) 52%); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); box-shadow: 0 12px 28px rgba(0, 0, 0, .055); }
 .summary-text { font-size: 14px; color: var(--color-text-1); line-height: 1.65; }
 .summary-text :deep(strong) { color: var(--color-text-1); font-weight: 600; }
 .summary-text :deep(code) { padding: 1px 4px; font-size: 12px; background: var(--color-fill-2); border-radius: 3px; }
@@ -41,8 +41,8 @@ const emit = defineEmits<{ (e: 'followup', query: string): void }>()
 .summary-text :deep(pre code) { padding: 0; background: transparent; font-size: inherit; }
 .summary-text :deep(blockquote) { margin: 6px 0; padding: 4px 12px; border-left: 3px solid rgb(var(--primary-6)); color: var(--color-text-2); background: var(--color-fill-1); border-radius: 0 4px 4px 0; }
 .summary-text :deep(hr) { border: 0; border-top: 1px solid var(--color-border-2); margin: 10px 0; }
-.summary-followups { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--color-border-2); }
+.summary-followups { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--color-border-2); }
 .summary-followups-label { font-size: 12px; color: var(--color-text-4); }
-.summary-followup-btn { padding: 4px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: rgba(var(--primary-6), 0.06); border: 1px solid rgba(var(--primary-6), 0.2); border-radius: 12px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
+.summary-followup-btn { padding: 5px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: rgba(var(--primary-6), .07); border: 1px solid rgba(var(--primary-6), .24); border-radius: 8px; cursor: pointer; transition: all .15s; font-family: inherit; }
 .summary-followup-btn:hover { background: rgba(var(--primary-6), 0.12); }
 </style>

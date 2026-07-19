@@ -137,7 +137,7 @@ import {
 } from './request-types'
 
 const PromiseThrottle = require('promise-throttle')
-const BOXPLAYER_API_BASE_URL = `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/api`
+const BOXPLAYER_API_BASE_URL = `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api`
 
 class MovieDb {
   private readonly apiKey: string

@@ -12,6 +12,8 @@ interface NodeMpvOptions {
   audio_only?: boolean;
   // Auto-restart on a crash
   auto_restart?: boolean;
+  // Maximum time to wait for the IPC socket during startup
+  start_timeout?: number;
   // Time update for timeposition event
   time_update?: number;
   // Path to mpv binary

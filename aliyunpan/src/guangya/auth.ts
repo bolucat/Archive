@@ -1,5 +1,6 @@
 import type { ITokenInfo } from '../user/userstore'
 import { GUANGYA_CLIENT_ID } from '../secrets.generated'
+import { humanSize } from '../utils/format'
 
 export { GUANGYA_CLIENT_ID }
 
@@ -169,6 +170,27 @@ export const fetchGuangyaUserInfo = async (token: ITokenInfo): Promise<any> => {
     }
   })
   return readJson(resp)
+}
+
+export const applyGuangyaQuota = async (token: ITokenInfo): Promise<boolean> => {
+  try {
+    const payload = await fetchGuangyaUserInfo(token)
+    const info = payload?.data || payload || {}
+    token.user_name = info.username || info.phone_number || info.phoneNumber || token.user_name
+    token.nick_name = info.nickname || info.nick_name || info.name || token.nick_name
+    token.name = info.name || token.nick_name || token.name
+    token.avatar = info.avatar || token.avatar
+    const total = Number(info.total_size ?? info.totalSize)
+    const used = Number(info.used_size ?? info.usedSize)
+    if (!Number.isFinite(total) && !Number.isFinite(used)) return false
+    token.total_size = Number.isFinite(total) ? total : token.total_size
+    token.used_size = Number.isFinite(used) ? used : token.used_size
+    token.free_size = Math.max(0, token.total_size - token.used_size)
+    token.spaceinfo = `${humanSize(token.used_size)} / ${humanSize(token.total_size)}`
+    return true
+  } catch {
+    return false
+  }
 }
 
 export const refreshGuangyaAccessToken = async (token: ITokenInfo): Promise<ITokenInfo | null> => {

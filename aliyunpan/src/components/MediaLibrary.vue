@@ -308,6 +308,9 @@
                     <div class="type-badge">
                       {{ item.type === 'movie' ? '电影' : item.type === 'tv' ? '电视剧' : '未匹配' }}
                     </div>
+                    <div v-if="getCoverageBadge(item)" class="media-coverage-badge" :title="getCoverageBadge(item)">
+                      <span>!</span>{{ getCoverageBadge(item) }}
+                    </div>
                   </div>
 
                   <div class="media-info">
@@ -348,6 +351,9 @@
                     />
                     <div v-else class="poster-placeholder">
                       <IconFont name="iconfile-video" />
+                    </div>
+                    <div v-if="getCoverageBadge(item)" class="media-coverage-badge" :title="getCoverageBadge(item)">
+                      <span>!</span>{{ getCoverageBadge(item) }}
                     </div>
                   </div>
 
@@ -405,58 +411,67 @@
             class="search-result-section"
             :class="{ 'search-result-section-divider': localSearchQuery.trim() }"
           >
-            <div class="search-result-section-title">
-              {{ localSearchQuery.trim() ? '媒体服务器结果' : '媒体服务器推荐' }}
-            </div>
-            <div v-if="mediaServerSearchLoading" class="search-media-server-state">
-              {{ localSearchQuery.trim() ? '正在搜索所有媒体服务器...' : '正在加载所有媒体服务器推荐...' }}
-            </div>
-            <div v-else-if="mediaServerSearchError" class="search-media-server-state error">{{ mediaServerSearchError }}</div>
-            <div v-else-if="mediaServerSearchGroups.length === 0" class="search-media-server-state">
-              {{ localSearchQuery.trim() ? '媒体服务器没有匹配结果' : '暂时没有可推荐的媒体内容' }}
-            </div>
-            <template v-else>
-              <div
-                v-for="group in mediaServerSearchGroups"
-                :key="group.server.id"
-                class="search-media-server-group"
-              >
-                <div class="search-media-server-group-title">{{ group.server.name }}</div>
-                <div class="search-media-server-grid">
-                  <button
-                    v-for="item in group.items"
-                    :key="`${group.server.id}-${item.id}`"
-                    class="search-media-server-result"
-                    type="button"
-                    @click="openMediaServerSearchResult(group.server.id, item)"
-                  >
-                    <div
-                      class="search-media-server-result-poster media-image-frame"
-                      :class="{ 'has-image': !!resolveMediaServerSearchImage(item) }"
-                    >
-                      <img
-                        v-if="resolveMediaServerSearchImage(item)"
-                        :src="resolveMediaServerSearchImage(item)"
-                        :alt="item.title"
-                        @load="handleMediaServerSearchImageLoad"
-                        @error="handleMediaServerSearchImageError"
-                      />
-                      <div class="media-card-placeholder media-image-placeholder">
-                        {{ item.title.slice(0, 1) }}
-                      </div>
-                    </div>
-                    <div class="search-media-server-result-main">
-                      <span class="search-media-server-result-title">{{ item.title }}</span>
-                      <span v-if="item.year" class="search-media-server-result-year">{{ item.year }}</span>
-                    </div>
-                    <div class="search-media-server-result-meta">
-                      <span>{{ mediaServerKindLabel(item.kind) }}</span>
-                      <span v-if="item.parentTitle">{{ item.parentTitle }}</span>
-                    </div>
-                  </button>
-                </div>
+            <button
+              type="button"
+              class="search-result-section-title"
+              :aria-expanded="!isMediaServerSectionCollapsed"
+              aria-controls="media-server-search-section"
+              @click="toggleMediaServerSection"
+            >
+              <span>{{ localSearchQuery.trim() ? '媒体服务器结果' : '媒体服务器推荐' }}</span>
+              <IconFont class="search-result-section-toggle" name="icondown" />
+            </button>
+            <div id="media-server-search-section" v-show="!isMediaServerSectionCollapsed">
+              <div v-if="mediaServerSearchLoading" class="search-media-server-state">
+                {{ localSearchQuery.trim() ? '正在搜索所有媒体服务器...' : '正在加载所有媒体服务器推荐...' }}
               </div>
-            </template>
+              <div v-else-if="mediaServerSearchError" class="search-media-server-state error">{{ mediaServerSearchError }}</div>
+              <div v-else-if="mediaServerSearchGroups.length === 0" class="search-media-server-state">
+                {{ localSearchQuery.trim() ? '媒体服务器没有匹配结果' : '暂时没有可推荐的媒体内容' }}
+              </div>
+              <template v-else>
+                <div
+                  v-for="group in mediaServerSearchGroups"
+                  :key="group.server.id"
+                  class="search-media-server-group"
+                >
+                  <div class="search-media-server-group-title">{{ group.server.name }}</div>
+                  <div class="search-media-server-grid">
+                    <button
+                      v-for="item in group.items"
+                      :key="`${group.server.id}-${item.id}`"
+                      class="search-media-server-result"
+                      type="button"
+                      @click="openMediaServerSearchResult(group.server.id, item)"
+                    >
+                      <div
+                        class="search-media-server-result-poster media-image-frame"
+                        :class="{ 'has-image': !!resolveMediaServerSearchImage(item) }"
+                      >
+                        <img
+                          v-if="resolveMediaServerSearchImage(item)"
+                          :src="resolveMediaServerSearchImage(item)"
+                          :alt="item.title"
+                          @load="handleMediaServerSearchImageLoad"
+                          @error="handleMediaServerSearchImageError"
+                        />
+                        <div class="media-card-placeholder media-image-placeholder">
+                          {{ item.title.slice(0, 1) }}
+                        </div>
+                      </div>
+                      <div class="search-media-server-result-main">
+                        <span class="search-media-server-result-title">{{ item.title }}</span>
+                        <span v-if="item.year" class="search-media-server-result-year">{{ item.year }}</span>
+                      </div>
+                      <div class="search-media-server-result-meta">
+                        <span>{{ mediaServerKindLabel(item.kind) }}</span>
+                        <span v-if="item.parentTitle">{{ item.parentTitle }}</span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </template>
+            </div>
           </div>
         </div>
       </div>
@@ -661,6 +676,9 @@
               >
                 {{ getPosterContextBadge(item) }}
               </div>
+              <div v-if="getCoverageBadge(item)" class="media-coverage-badge" :title="getCoverageBadge(item)">
+                <span>!</span>{{ getCoverageBadge(item) }}
+              </div>
             </div>
 
             <div class="media-info">
@@ -716,6 +734,9 @@
                 class="poster-context-badge"
               >
                 {{ getPosterContextBadge(item) }}
+              </div>
+              <div v-if="getCoverageBadge(item)" class="media-coverage-badge" :title="getCoverageBadge(item)">
+                <span>!</span>{{ getCoverageBadge(item) }}
               </div>
             </div>
 
@@ -861,6 +882,7 @@ import { menuOpenFile } from '../utils/openfile'
 import message from '../utils/message'
 import { manualAIScrapeItems } from '../utils/mediaAIScrape'
 import useLocalMediaHomePreferencesStore from '../store/localMediaHomePreferences'
+import { getMediaCoverage } from '../utils/mediaCoverage'
 import type { LocalMediaHomePosterType, LocalMediaHomeSectionKey } from '../store/localMediaHomePreferences'
 
 type MediaListItem = MediaLibraryItem & {
@@ -927,11 +949,28 @@ const showingDetail = ref(false)
 const currentMediaItem = ref<MediaLibraryItem>()
 const mediaServerSearchLoading = ref(false)
 const mediaServerSearchError = ref('')
+const mediaServerSearchCollapsed = ref(false)
+const mediaServerRecommendationCollapsed = ref(false)
 const mediaServerSearchGroups = ref<Array<{
   server: { id: string; name: string }
   items: MediaServerLibraryNode[]
 }>>([])
 let mediaServerSearchTimer: ReturnType<typeof setTimeout> | undefined
+
+const isMediaServerSectionCollapsed = computed(() => (
+  localSearchQuery.value.trim()
+    ? mediaServerSearchCollapsed.value
+    : mediaServerRecommendationCollapsed.value
+))
+
+const toggleMediaServerSection = () => {
+  if (localSearchQuery.value.trim()) {
+    mediaServerSearchCollapsed.value = !mediaServerSearchCollapsed.value
+  } else {
+    mediaServerRecommendationCollapsed.value = !mediaServerRecommendationCollapsed.value
+  }
+}
+
 const localHomeManagerVisible = ref(false)
 const draggingLocalHomeSectionId = ref<LocalMediaHomeSectionKey | ''>('')
 const localHomeManagerDraft = ref<Array<{ key: LocalMediaHomeSectionKey; title: string; visible: boolean }>>([])
@@ -1306,7 +1345,8 @@ const localItemToNode = (
     progress: options.progress,
     parentTitle: item.type === 'tv' && getEpisodeTitleSuffix(item) ? getEpisodeTitleSuffix(item) : undefined,
     isPlayed: mediaStore.isWatchedById?.(item.id) || false,
-    isFavorite: mediaStore.isFavorite?.(item.id) || false
+    isFavorite: mediaStore.isFavorite?.(item.id) || false,
+    coverageBadge: getMediaCoverage(item)?.summary
   }
 }
 
@@ -1741,6 +1781,8 @@ const getPosterContextBadge = (item: MediaLibraryItem) => {
   }
   return ''
 }
+
+const getCoverageBadge = (item: MediaLibraryItem) => getMediaCoverage(item)?.summary || ''
 
 const getItemMetaItems = (item: MediaLibraryItem) => {
   const parts = [
@@ -3326,9 +3368,24 @@ defineExpose({
   display: flex;
   align-items: center;
   gap: 10px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: #1f2937;
   font-size: 16px;
   font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.search-result-section-toggle {
+  flex: 0 0 auto;
+  transition: transform 0.2s ease;
+}
+
+.search-result-section-title[aria-expanded='false'] .search-result-section-toggle {
+  transform: rotate(-90deg);
 }
 
 .search-result-section-title::after {
@@ -3361,11 +3418,11 @@ defineExpose({
 }
 
 .media-grid.media-grid-portrait {
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, 150px);
 }
 
 .media-grid.media-grid-landscape {
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, 320px);
 }
 
 .media-list {
@@ -3412,6 +3469,67 @@ defineExpose({
 .media-item:hover .media-poster img {
   transform: scale(1.025);
   filter: saturate(1.04) contrast(1.02);
+}
+
+/* Keep cloud-drive search cards visually aligned with media-server search results. */
+.search-media-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px 12px;
+  padding: 0;
+}
+
+.search-media-grid .media-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-media-grid .media-poster {
+  aspect-ratio: 2 / 3;
+  border-radius: 14px;
+  border: 0;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+.search-media-grid .media-info {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  margin-top: 0;
+  padding: 0 2px;
+}
+
+.search-media-grid .media-title {
+  display: -webkit-box;
+  min-height: calc(1.45em * 2);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: normal;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.search-media-grid .media-year {
+  padding-top: 1px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.search-media-grid .media-genres,
+.search-media-grid .media-path,
+.search-media-grid .media-episode {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  color: #64748b;
+  font-size: 12px;
 }
 
 .watch-progress {
@@ -3509,6 +3627,40 @@ defineExpose({
   letter-spacing: 0.02em;
   backdrop-filter: blur(12px) saturate(140%);
   box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+}
+
+.media-coverage-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 16px);
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 190, 92, 0.45);
+  border-radius: 999px;
+  background: rgba(43, 27, 8, 0.86);
+  color: #ffd18a;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
+.media-coverage-badge span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f5a524;
+  color: #201506;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .media-info {
@@ -3954,6 +4106,21 @@ defineExpose({
 }
 
 [arco-theme='dark'] .search-media-server-result-poster {
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+[arco-theme='dark'] .search-media-grid .media-title {
+  color: rgba(244, 247, 252, 0.96);
+}
+
+[arco-theme='dark'] .search-media-grid .media-year,
+[arco-theme='dark'] .search-media-grid .media-genres,
+[arco-theme='dark'] .search-media-grid .media-path,
+[arco-theme='dark'] .search-media-grid .media-episode {
+  color: rgba(203, 213, 225, 0.72);
+}
+
+[arco-theme='dark'] .search-media-grid .media-poster {
   box-shadow: 0 16px 28px rgba(0, 0, 0, 0.28);
 }
 

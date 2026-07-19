@@ -1,12 +1,15 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { apiQuarkDownloadUrl, apiQuarkFileList, mapQuarkFileToAliModel } from '../dirfilelist'
+import { apiQuarkDownloadUrl, apiQuarkFileList, apiQuarkVideoPreviewUrl, mapQuarkFileToAliModel } from '../dirfilelist'
+import { apiQuarkMkdir } from '../filecmd'
 
 (globalThis as any).pinyinlite = (input: string) => input.split('').map((char) => [char])
 
 vi.mock('../../user/userdal', () => ({
   default: {
     GetUserToken: () => ({ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1' }),
-    GetUserTokenFromDB: async () => null
+    GetUserTokenFromDB: async () => null,
+    GetUserListFromDB: async () => [{ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1', tokenfrom: 'quark' }],
+    SaveUserToken: vi.fn()
   }
 }))
 
@@ -43,6 +46,23 @@ describe('apiQuarkFileList', () => {
   })
 })
 
+describe('apiQuarkMkdir', () => {
+  it('creates a folder in the root using the provider root id', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 0, data: { fid: 'folder-1' } }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(apiQuarkMkdir('quark_u1', 'quark_root', 'BoxPlayer-acquiring-test')).resolves.toEqual({ file_id: 'folder-1', error: '' })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toContain('/file?')
+    expect(JSON.parse(init.body as string)).toEqual({ pdir_fid: '0', file_name: 'BoxPlayer-acquiring-test', dir_init_lock: false, dir_path: '' })
+  })
+
+  it('preserves the Quark API error for acquisition activity logs', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ code: 41006, message: '父目录不存在' }) }))
+    await expect(apiQuarkMkdir('quark_u1', 'missing-folder', 'Test')).resolves.toEqual({ file_id: '', error: '父目录不存在' })
+  })
+})
+
 describe('apiQuarkDownloadUrl', () => {
   it('uses Quark desktop client download parameters and user agent', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
@@ -61,6 +81,11 @@ describe('apiQuarkDownloadUrl', () => {
     const result = await apiQuarkDownloadUrl('quark_u1', 'fid-video')
 
     expect(result).toMatchObject({ url: 'https://download.example/video.mp4', name: 'Movie.mp4', size: 2048, error: '' })
+    expect(result.headers).toMatchObject({
+      cookie: '__uid=u1; __kps=kps1',
+      referer: 'https://pan.quark.cn/',
+      'user-agent': expect.stringContaining('quark-cloud-drive/2.5.56')
+    })
     const [url, init] = fetchMock.mock.calls[0]
     expect(String(url)).toContain('/file/download?')
     expect(String(url)).toContain('sys=win32')
@@ -90,6 +115,34 @@ describe('apiQuarkDownloadUrl', () => {
 
     expect(result.url).toBe('')
     expect(result.error).toBe('download file size limit[fid-video]')
+  })
+})
+
+describe('apiQuarkVideoPreviewUrl', () => {
+  it('uses the Quark project playback API before falling back to the raw download URL', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 200,
+        data: {
+          size: 2048,
+          video_list: [{
+            resolution: 'high',
+            video_info: { url: 'https://play.quark.cn/video.m3u8', width: 1920, height: 1080, duration: 120, hls_type: 'm3u8' }
+          }]
+        }
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await apiQuarkVideoPreviewUrl('quark_u1', 'fid-video')
+
+    expect(result).not.toBeTypeOf('string')
+    expect(result).toMatchObject({ duration: 120, qualities: [{ url: 'https://play.quark.cn/video.m3u8', type: 'm3u8' }] })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toContain('drive.quark.cn/1/clouddrive/file/v2/play/project')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toMatchObject({ fid: 'fid-video', supports: 'fmp4_av,m3u8,dolby_vision' })
   })
 })
 

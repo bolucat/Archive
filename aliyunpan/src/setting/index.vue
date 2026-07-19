@@ -94,7 +94,7 @@ onUnmounted(() => {
         </a-menu-item>
         <a-menu-item key="SettingAPI">
           <template #icon><IconFont name="iconlock" /></template>
-          AI 模型
+          AI 设置
         </a-menu-item>
         <a-menu-item key="SettingFeedback">
           <template #icon><IconFont name="iconbulb" /></template>

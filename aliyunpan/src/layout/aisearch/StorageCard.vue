@@ -63,14 +63,14 @@ const showUnused = ref(false)
 </template>
 
 <style scoped>
-.sc-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.sc-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .sc-status { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 13px; color: var(--color-text-3); }
 .sc-error { color: rgb(var(--danger-6)); }
-.sc-header { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--color-text-3); border-bottom: 1px solid var(--color-border-2); }
+.sc-header { display: flex; align-items: center; gap: 7px; padding: 11px 14px; font-size: 12px; font-weight: 650; color: #45c5a3; border-bottom: 1px solid var(--color-border-2); background: rgba(69, 197, 163, .06); }
 .sc-drives { padding: 8px 14px; display: flex; flex-direction: column; gap: 10px; }
 .sc-drive-name { font-size: 13px; font-weight: 500; color: var(--color-text-2); }
 .sc-drive-bar { height: 6px; background: var(--color-fill-2); border-radius: 3px; margin: 4px 0; overflow: hidden; }
-.sc-drive-fill { height: 100%; background: rgb(var(--primary-6)); border-radius: 3px; transition: width 0.3s; }
+.sc-drive-fill { height: 100%; background: linear-gradient(90deg, #36bfa0, rgb(var(--primary-5))); border-radius: 3px; transition: width .3s; }
 .sc-drive-stat { font-size: 11px; color: var(--color-text-4); }
 .sc-section-btn { display: flex; align-items: center; gap: 6px; width: 100%; padding: 10px 14px; border: 0; border-top: 1px solid var(--color-border-2); background: transparent; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--color-text-3); font-family: inherit; }
 .sc-section-btn:hover { background: var(--color-fill-2); }

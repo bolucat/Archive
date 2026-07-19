@@ -46,14 +46,14 @@ require (
 	github.com/sagernet/sing v0.8.12-0.20260717153536-4f1ed45a99a5
 	github.com/sagernet/sing-cloudflared v0.1.3-0.20260706062323-d9787e794aa3
 	github.com/sagernet/sing-mux v0.3.5
-	github.com/sagernet/sing-openconnect v0.0.0-20260718163953-a1c7815e4f04
-	github.com/sagernet/sing-openvpn v0.0.0-20260718163953-26ecbeb6352c
+	github.com/sagernet/sing-openconnect v0.0.0-20260719094202-dc28b269c7ce
+	github.com/sagernet/sing-openvpn v0.0.0-20260719094204-c57d60b5c5a4
 	github.com/sagernet/sing-quic v0.6.4-0.20260709034545-e23afe1172dc
 	github.com/sagernet/sing-shadowsocks v0.2.8
 	github.com/sagernet/sing-shadowsocks2 v0.2.1
 	github.com/sagernet/sing-shadowtls v0.2.1
-	github.com/sagernet/sing-snell v0.0.0-20260710094516-a4e97ee24beb
-	github.com/sagernet/sing-tun v0.8.12-0.20260717024008-39eed1f6361d
+	github.com/sagernet/sing-snell v0.0.0-20260719094200-c43fbee0e839
+	github.com/sagernet/sing-tun v0.8.12-0.20260719094150-557ca930fccd
 	github.com/sagernet/sing-usbip v0.0.0-20260616101517-efb91521eddb
 	github.com/sagernet/sing-vmess v0.2.8-0.20250909125414-3aed155119a1
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1

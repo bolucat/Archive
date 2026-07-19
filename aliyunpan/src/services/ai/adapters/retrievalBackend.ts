@@ -21,6 +21,7 @@ import { getAIProvider } from '../providers'
 import { withRetryAndTimeout, AI_TIMEOUTS, AI_RETRY_CONFIGS } from '../utils/retry'
 import { aiLogger } from '../logger'
 import { ReedyBackend } from './ReedyBackend'
+import { canUseSemanticEmbeddings } from '../embeddingPolicy'
 
 export class LegacyIdbBackend implements RetrievalBackend {
   readonly kind = 'legacy-idb' as const
@@ -55,7 +56,7 @@ export class LegacyIdbBackend implements RetrievalBackend {
     aiLogger.chunker.complete('chunked', allChunks.length)
 
     // Embed
-    if (allChunks.length) {
+    if (allChunks.length && canUseSemanticEmbeddings(settings.provider)) {
       options?.onProgress?.({ current: 0, total: allChunks.length, phase: 'embedding' })
       aiLogger.embedding.start('embedMany', allChunks.length)
       try {
@@ -85,18 +86,20 @@ export class LegacyIdbBackend implements RetrievalBackend {
   }
 
   async searchForSystemPrompt(query: string, bookHash: string, settings: AISettings, topK = 10, maxPage?: number): Promise<ScoredChunk[]> {
-    const provider = getAIProvider(settings)
     let queryEmbedding: number[] | null = null
-    try {
-      const { embed } = await import('ai')
-      const result = await withRetryAndTimeout(
-        () => embed({ model: provider.getEmbeddingModel(), value: query }),
-        AI_TIMEOUTS.EMBEDDING_SINGLE,
-        AI_RETRY_CONFIGS.EMBEDDING
-      )
-      queryEmbedding = result.embedding
-    } catch {
-      aiLogger.embedding.error('query embedding failed, falling back to BM25')
+    if (canUseSemanticEmbeddings(settings.provider)) {
+      try {
+        const provider = getAIProvider(settings)
+        const { embed } = await import('ai')
+        const result = await withRetryAndTimeout(
+          () => embed({ model: provider.getEmbeddingModel(), value: query }),
+          AI_TIMEOUTS.EMBEDDING_SINGLE,
+          AI_RETRY_CONFIGS.EMBEDDING
+        )
+        queryEmbedding = result.embedding
+      } catch {
+        aiLogger.embedding.error('query embedding failed, falling back to BM25')
+      }
     }
     return aiStore.hybridSearch(bookHash, queryEmbedding, query, topK, maxPage)
   }

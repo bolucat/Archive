@@ -79,31 +79,51 @@ const startStop = {
         this.mpv_arguments.push(ipcCommand + '=' + this.options.socket)
         // spawns the mpv player
         this.mpvPlayer = spawn(this.options.binary, this.mpv_arguments.concat(mpv_args), this.options.spawnOptions)
+        let settled = false
+        const cleanup = () => {
+          clearTimeout(timeout)
+          this.mpvPlayer.stdout?.off('data', stdCallback)
+          this.mpvPlayer.stderr?.off('data', stdCallback)
+          this.mpvPlayer.off('error', errorCallback)
+          this.mpvPlayer.off('close', closeCallback)
+        }
+        const finish = (callback, value) => {
+          if (settled) return
+          settled = true
+          cleanup()
+          callback(value)
+        }
         // callback to listen to stdout + stderr to see, if MPV could bind the IPC socket
         const stdCallback = (data) => {
           // stdout/stderr output
           const output = data.toString()
           // "Listening to IPC socket" - message
           if (output.match(/Listening to IPC (socket|pipe)/)) {
-            // remove the event listener on stdout
-            this.mpvPlayer.stderr.removeAllListeners('data')
-            this.mpvPlayer.stdout.removeAllListeners('data')
-            resolve()
+            finish(resolve)
           }
           // "Could not bind IPC Socket" - message
           else if (output.match(/Could not bind IPC (socket|pipe)/)) {
-            // remove the event listener on stdout
-            this.mpvPlayer.stderr.removeAllListeners('data')
-            this.mpvPlayer.stdout.removeAllListeners('data')
-            reject(this.errorHandler.errorMessage(4, 'startStop()', [this.options.socket]))
+            finish(reject, this.errorHandler.errorMessage(4, 'startStop()', [this.options.socket]))
           }
         }
+        const errorCallback = (error) => {
+          finish(reject, this.errorHandler.errorMessage(2, 'start()', [this.options.binary], error?.message || String(error)))
+        }
+        const closeCallback = (code, signal) => {
+          finish(reject, this.errorHandler.errorMessage(0, 'start()', [this.options.binary], `MPV exited before IPC was ready (code=${code}, signal=${signal || 'none'})`))
+        }
+        const timeout = setTimeout(() => {
+          this.mpvPlayer.kill()
+          finish(reject, this.errorHandler.errorMessage(5, 'start()', [this.options.socket], `MPV IPC startup timed out after ${this.options.start_timeout}ms`))
+        }, Math.max(1000, Number(this.options.start_timeout) || 10000))
         // listen to stdout to check if the IPC socket is ready
-        this.mpvPlayer.stdout.on('data', stdCallback)
+        this.mpvPlayer.stdout?.on('data', stdCallback)
         // in some cases on windows, if you pipe your output to a file or another command, the messages that
         // are usually output via stdout are output via stderr instead. That's why it's required to listen
         // for the same messages on stderr as well
-        this.mpvPlayer.stderr.on('data', stdCallback)
+        this.mpvPlayer.stderr?.on('data', stdCallback)
+        this.mpvPlayer.once('error', errorCallback)
+        this.mpvPlayer.once('close', closeCallback)
       })
 
       // these steps are only necessary if a new MPV instance is created, if the module is hooking into an existing
@@ -116,6 +136,17 @@ const startStop = {
           // socket to check for the idle event to check if mpv fully loaded and
           // actually running
           const observeSocket = new net.Socket()
+          let settled = false
+          const finish = (callback, value) => {
+            if (settled) return
+            settled = true
+            clearTimeout(timeout)
+            observeSocket.destroy()
+            callback(value)
+          }
+          const timeout = setTimeout(() => {
+            finish(reject, this.errorHandler.errorMessage(5, 'start()', [this.options.socket], `MPV IPC connection timed out after ${this.options.start_timeout}ms`))
+          }, Math.max(1000, Number(this.options.start_timeout) || 10000))
           observeSocket.connect({ path: this.options.socket }, () => {
             // send any message to see if there's a MPV instance responding
             observeSocket.write(JSON.stringify({
@@ -138,18 +169,18 @@ const startStop = {
                 //     through the constructor. In that case mpv never goes into idle mode
                 if ('event' in message && ['idle', 'idle-active', 'file-loaded'].includes(message.event)) {
                   if (this.options.debug || this.options.verbose) console.log('[Node-MPV] idling')
-                  observeSocket.destroy()
-                  resolve()
+                  finish(resolve)
                 }
                 // check our stimulus response
                 // Check for our stimulus with idle-active
                 if ('data' in message && 'error' in message && message.error === 'success') {
                   if (this.options.debug || this.options.verbose) console.log('[Node-MPV] stimulus received', message.data)
-                  observeSocket.destroy()
-                  resolve()
+                  finish(resolve)
                 }
               }
             })
+          }).on('error', (error) => {
+            finish(reject, this.errorHandler.errorMessage(7, 'start()', [this.options.socket], error?.message || String(error)))
           })
         })
       }

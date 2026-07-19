@@ -1,13 +1,12 @@
 import { ref, nextTick } from 'vue'
-import { streamText, stepCountIs } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { z } from 'zod'
 import Config from '../../config'
-import type { AIModelConfig } from '../../utils/bookAI'
 import { getAIConfig } from '../../utils/bookAI'
-import { isBoxPlayerCloudProvider } from '../../utils/boxplayerCloudAI'
-import { getBoxPlayerAccessToken } from '../../utils/boxplayerAuth'
+import { isBoxPlayerCloudProvider, mapBoxPlayerCloudAIError } from '../../utils/boxplayerCloudAI'
+import { runBoxPlayerAgent } from '../../services/agent'
+import { buildBoxPlayerCapabilityKnowledge, BOXPLAYER_CAPABILITIES, getBoxPlayerCapability } from '../../services/agent/boxplayerCapabilities'
+import { buildWorkspaceMemoryContext, forgetWorkspaceMemory, listWorkspaceMemories, rememberWorkspaceFact, type WorkspaceMemory } from '../../services/agent/workspaceMemory'
+import useAppStore from '../../store/appstore'
 import { searchAllDrives } from '../../utils/globalSearch'
 import type { GlobalSearchResult } from '../../utils/globalSearch'
 import type { ChatMessage, MessagePart, FileResult, LinkResult } from './types'
@@ -26,33 +25,51 @@ import { scanDriveLargeFiles, type LargeFileScanMode } from '../../utils/drive-t
 import { flattenDriveToolFolders, moveDriveToolFiles, type OrganizeFileItem } from '../../utils/drive-tools/organize'
 import { buildMediaOrganizePlan, executeMediaOrganizePlan } from '../../utils/drive-tools/mediaOrganize'
 import { getWebDavConnections } from '../../utils/webdavClient'
+import { searchPanHubStream, type PanHubMergedLinks } from '../../utils/panHubSearch'
+import AliFile from '../../aliapi/file'
+import { createBookAISettings } from '../../utils/bookAI'
+import { getAIProvider } from '../../services/ai/providers'
+import { canUseSemanticEmbeddings } from '../../services/ai/embeddingPolicy'
+import { askIndexedDocument, indexDocumentLocally } from '../../services/documents'
+import { formatProviderCapabilities, getProviderCapabilities, normalizeProviderPlatform, type ProviderCapabilityManifest } from '../../services/agent/providerCapabilities'
+import { getMediaAcquisitionCapability, formatMediaAcquisitionCapability } from '../../services/mediaAcquisition/capabilities'
+import { unsupportedAgentToolMessage } from '../../services/agent/agentToolCapabilities'
+import { listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionTracking } from '../../services/mediaAcquisition/client'
+import { runMediaAcquisitionTrackingPatrol } from '../../services/mediaAcquisition/workflowRunner'
 
-function getCloudAIBaseURL(): string {
-  return Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')
-}
-
-function createBoxPlayerCloudModel(modelId: string) {
-  const baseURL = getCloudAIBaseURL()
-  const provider = createOpenAICompatible({
-    name: 'boxplayer-cloud',
-    baseURL: `${baseURL}/v1`,
-    fetch: async (url: any, init?: any) => {
-      const token = await getBoxPlayerAccessToken()
-      let body = init?.body
-      if (typeof body === 'string') {
-        try { body = JSON.stringify({ ...JSON.parse(body), feature: 'ai_search' }) } catch {}
-      }
-      return globalThis.fetch(url, {
-        ...init,
-        headers: { ...(init?.headers || {}), Authorization: `Bearer ${token}` },
-        body,
-      })
-    },
-  })
-  return provider(modelId)
+function getBoxPlayerAPIBaseURL(): string {
+  return Config.BOXPLAYER_API_URL.replace(/\/+$/, '')
 }
 
 const CHAT_KEY = 'ai_search_chat_history_v2'
+const CHAT_SESSION_KEY = 'ai_search_agent_session_v1'
+const CHAT_THREADS_KEY = 'ai_search_chat_threads_v1'
+const ACTIVE_THREAD_KEY = 'ai_search_active_thread_v1'
+
+export interface WorkspaceDocumentContext {
+  file: any
+  userId: string
+}
+
+export interface WorkspaceChatThread {
+  id: string
+  title: string
+  messages: ChatMessage[]
+  documentContext?: WorkspaceDocumentContext
+  updatedAt: number
+}
+
+function getSessionId(): string {
+  try {
+    const saved = localStorage.getItem(CHAT_SESSION_KEY)
+    if (saved) return saved
+    const id = crypto.randomUUID()
+    localStorage.setItem(CHAT_SESSION_KEY, id)
+    return id
+  } catch {
+    return crypto.randomUUID()
+  }
+}
 
 function loadHistory(): ChatMessage[] {
   try {
@@ -70,10 +87,130 @@ function saveHistory(messages: ChatMessage[]) {
   try { localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-50))) } catch {}
 }
 
-export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
-  const messages = ref<ChatMessage[]>(loadHistory())
+function createThread(documentContext?: WorkspaceDocumentContext): WorkspaceChatThread {
+  const name = documentContext?.file?.name || documentContext?.file?.file_name
+  return { id: crypto.randomUUID(), title: name ? `分析 · ${name}` : '新对话', messages: [], documentContext, updatedAt: Date.now() }
+}
+
+function loadThreads(): WorkspaceChatThread[] {
+  try {
+    const raw = localStorage.getItem(CHAT_THREADS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed)) {
+        const threads = parsed.filter((thread: any) => thread?.id && Array.isArray(thread.messages))
+        if (threads.length) return threads
+      }
+    }
+    const legacy = loadHistory()
+    return legacy.length ? [{ ...createThread(), title: '历史对话', messages: legacy }] : [createThread()]
+  } catch {
+    return [createThread()]
+  }
+}
+
+export function useAISearchChat() {
+  const appStore = useAppStore()
+  const threads = ref<WorkspaceChatThread[]>(loadThreads())
+  const activeThreadId = ref(localStorage.getItem(ACTIVE_THREAD_KEY) || threads.value[0].id)
+  if (!threads.value.some(thread => thread.id === activeThreadId.value)) activeThreadId.value = threads.value[0].id
+  const activeThread = () => threads.value.find(thread => thread.id === activeThreadId.value) || threads.value[0]
+  const messages = ref<ChatMessage[]>(activeThread().messages)
   const loading = ref(false)
+  const memories = ref<WorkspaceMemory[]>([])
+  const activeDocument = ref<WorkspaceDocumentContext | null>(activeThread().documentContext || null)
+  let sessionId = activeThread().id || getSessionId()
   let abortController: AbortController | null = null
+  let activeRun = 0
+
+  async function refreshMemories() {
+    memories.value = await listWorkspaceMemories().catch(() => [])
+  }
+
+  async function removeMemory(id: string) {
+    if (await forgetWorkspaceMemory(id).catch(() => false)) await refreshMemories()
+  }
+
+  function setDocumentContext(context: WorkspaceDocumentContext | null) {
+    if (!context) return
+    const current = activeDocument.value
+    if (current?.userId === context.userId && current.file?.file_id === context.file?.file_id && current.file?.content_hash === context.file?.content_hash && current.file?.etag === context.file?.etag) return
+    const thread = createThread(context)
+    threads.value = [thread, ...threads.value]
+    activeThreadId.value = thread.id
+    messages.value = thread.messages
+    activeDocument.value = context
+    sessionId = thread.id
+    persistThreads()
+  }
+
+  function persistThreads() {
+    const thread = activeThread()
+    thread.messages = messages.value.slice(-50)
+    thread.documentContext = activeDocument.value || undefined
+    thread.updatedAt = Date.now()
+    if (thread.title === '新对话' && messages.value[0]?.role === 'user') thread.title = String((messages.value[0].parts[0] as any)?.text || '新对话').slice(0, 30)
+    threads.value = [...threads.value].sort((a, b) => b.updatedAt - a.updatedAt)
+    try {
+      localStorage.setItem(CHAT_THREADS_KEY, JSON.stringify(threads.value))
+      localStorage.setItem(ACTIVE_THREAD_KEY, activeThreadId.value)
+    } catch {}
+  }
+
+  function saveCurrentHistory(_nextMessages: ChatMessage[]) { persistThreads() }
+
+  function openConversation(id: string) {
+    if (loading.value || id === activeThreadId.value) return
+    const thread = threads.value.find(item => item.id === id)
+    if (!thread) return
+    activeThreadId.value = thread.id
+    messages.value = thread.messages
+    activeDocument.value = thread.documentContext || null
+    sessionId = thread.id
+    persistThreads()
+  }
+
+  function newConversation() {
+    if (loading.value) return
+    const thread = createThread()
+    threads.value = [thread, ...threads.value]
+    activeThreadId.value = thread.id
+    messages.value = []
+    activeDocument.value = null
+    sessionId = thread.id
+    persistThreads()
+  }
+
+  function deleteConversation(id: string) {
+    if (loading.value) return
+    const remaining = threads.value.filter(thread => thread.id !== id)
+    threads.value = remaining.length ? remaining : [createThread()]
+    if (activeThreadId.value === id) {
+      const next = threads.value[0]
+      activeThreadId.value = next.id
+      messages.value = next.messages
+      activeDocument.value = next.documentContext || null
+      sessionId = next.id
+    }
+    persistThreads()
+  }
+
+  function getActiveDocumentDetails() {
+    const context = activeDocument.value
+    if (!context?.file?.file_id) return null
+    const file = context.file
+    const fileName = file.name || file.file_name || '文档'
+    const driveId = file.drive_id || ''
+    const version = file.content_hash || file.etag || `${file.size || 0}:${file.updated_at || file.time || ''}`
+    return {
+      ...context,
+      fileName,
+      driveId,
+      sourceId: `document:${context.userId}:${driveId}:${file.file_id}:${version}`
+    }
+  }
+
+  void refreshMemories()
 
   function appendPart(msgId: string, part: MessagePart) {
     const msg = messages.value.find(m => m.id === msgId)
@@ -194,11 +331,54 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
   function driveSupportsRecycleBin(userId: string, driveId: string): boolean {
     if (!userId || !driveId || driveId.startsWith('webdav:')) return false
     const token = UserDAL.GetUserToken(userId)
-    const platform = normalizeDriveToolPlatform(token?.tokenfrom || '')
-    if (platform === 'aliyun') return true
-    if (['cloud123', 'drive115', 'pikpak', 'cloud139'].includes(platform)) return true
-    const normalizedDriveId = normalizeDriveToolDriveId(driveId)
-    return ['cloud123', 'drive115', 'pikpak', 'cloud139'].includes(normalizedDriveId)
+    const platform = token?.tokenfrom || normalizeDriveToolPlatform(token?.tokenfrom || '') || normalizeDriveToolDriveId(driveId)
+    return getProviderCapabilities(platform).capabilities.recycleBin
+  }
+
+  function unsupportedFileToolMessage(files: Array<{ userId?: string }>, toolName: string): string | null {
+    for (const file of files) {
+      const token = UserDAL.GetUserToken(file.userId || '')
+      if (!token) return '无法确认目标文件所属网盘，已拒绝执行该操作。请先通过搜索或列表工具获取文件。'
+      const platform = token.tokenfrom || ''
+      const message = unsupportedAgentToolMessage(getProviderCapabilities(platform), toolName)
+      if (message) return message
+    }
+    return null
+  }
+
+  function unsupportedPlatformToolMessage(platforms: string[] | undefined, toolName: string): string | null {
+    for (const platform of platforms || []) {
+      const message = unsupportedAgentToolMessage(getProviderCapabilities(platform), toolName)
+      if (message) return message
+    }
+    return null
+  }
+
+  function unsupportedDriveTargetToolMessage(targets: DuplicateDriveTarget[], toolName: string): string | null {
+    for (const target of targets) {
+      const platform = target.driveId.startsWith('webdav:') ? 'webdav' : UserDAL.GetUserToken(target.userId)?.tokenfrom || ''
+      const message = unsupportedAgentToolMessage(getProviderCapabilities(platform), toolName)
+      if (message) return message
+    }
+    return null
+  }
+
+  async function unsupportedConnectedPlatformToolMessage(platforms: string[] | undefined, toolName: string): Promise<string | null> {
+    const users = await UserDAL.GetUserListFromDB()
+    for (const user of users) {
+      const platform = user?.tokenfrom || 'aliyun'
+      const selected = !platforms?.length || platforms.some(requested => driveToolPlatformMatches(platform, requested))
+      if (!user?.user_id || !user?.access_token || !selected) continue
+      const message = unsupportedAgentToolMessage(getProviderCapabilities(platform), toolName)
+      if (message) return message
+    }
+    return null
+  }
+
+  async function getConnectedProviderCapabilities(): Promise<ProviderCapabilityManifest[]> {
+    const users = await UserDAL.GetUserListFromDB()
+    const platforms = Array.from(new Set(users.filter(user => user?.user_id && user?.access_token).map(user => normalizeProviderPlatform(user.tokenfrom || 'aliyun'))))
+    return platforms.map(platform => getProviderCapabilities(platform))
   }
 
   async function sendMessage(text: string) {
@@ -220,6 +400,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 
     if (abortController) { abortController.abort() }
     abortController = new AbortController()
+    const runId = ++activeRun
 
     const userMsgId = `${Date.now()}-u`
     const aiMsgId = `${Date.now()}-a`
@@ -227,27 +408,45 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
     messages.value = [...messages.value, { id: userMsgId, role: 'user', parts: [{ type: 'text', text: kw }] }]
     messages.value = [...messages.value, { id: aiMsgId, role: 'assistant', parts: [] }]
     loading.value = true
-    saveHistory(messages.value)
+    saveCurrentHistory(messages.value)
     scrollBottom()
 
-    try {
-      const isOpenAI = config.providerName === 'openai' || config.providerName === 'ai-gateway'
-      const model = isBoxPlayerCloudProvider(config.providerName)
-        ? createBoxPlayerCloudModel(config.modelId)
-        : isOpenAI
-          ? createOpenAI({ name: config.providerName || 'openai', apiKey: config.apiKey, baseURL: config.endpoint })(config.modelId)
-          : createOpenAICompatible({ name: config.providerName, apiKey: config.apiKey, baseURL: config.endpoint })(config.modelId)
+    const selectedPlatforms = kw.match(/platforms:\s*([^。\n]+)/i)?.[1]?.split(',').map(item => item.trim()).filter(Boolean)
+    if (selectedPlatforms?.length) {
+      await rememberWorkspaceFact('preferred-drives', `用户最近选择操作的网盘：${selectedPlatforms.join('、')}。优先将它们作为后续网盘任务的候选范围，但仍需在涉及多网盘操作时征求确认。`, userMsgId).catch(() => null)
+      await refreshMemories()
+    }
 
-      const apiMessages = messages.value
+    try {
+      const connectedProviderCapabilities = await getConnectedProviderCapabilities()
+      const apiMessages = messages.value.slice(0, -2)
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({
           role: m.role as 'user' | 'assistant',
           content: m.parts.filter(p => p.type === 'text').map(p => (p as any).text).join('\n'),
         }))
 
-      const result = streamText({
-        model,
-        system: `你是 BoxPlayer 智能搜索助手。重要：你无法直接访问用户文件，唯一获取文件信息的方式是调用工具。任何涉及文件、网盘、存储的操作都必须调用对应工具。禁止用文字模拟工具结果、禁止编造文件名和大小。查不到就如实说查不到。
+      let textPart: any = null
+      const deferredApprovalTools = new Set(['moveFiles', 'organizeFiles', 'mediaOrganizeFiles', 'importMiaochuanToGuangya', 'importGuangyaMagnets', 'deleteDriveEmptyDirs', 'deleteFiles'])
+      await runBoxPlayerAgent({
+        surface: 'ai_search',
+        session: { id: sessionId, messages: apiMessages },
+        model: config,
+        systemPrompt: `你是 BoxPlayer 智能搜索助手。重要：你无法直接访问用户文件，唯一获取文件信息的方式是调用工具。任何涉及文件、网盘、存储的操作都必须调用对应工具。禁止用文字模拟工具结果、禁止编造文件名和大小。查不到就如实说查不到。
+
+## BoxPlayer 功能知识库
+${buildBoxPlayerCapabilityKnowledge()}
+
+## 用户长期记忆
+${buildWorkspaceMemoryContext(memories.value)}
+长期记忆只是辅助偏好，不能代替用户本次明确指令、不能绕过确认。只有用户明确说“记住/以后/默认使用”时，才能调用 rememberPreference 保存偏好。
+
+## 当前文档
+${getActiveDocumentDetails() ? `当前已选择《${getActiveDocumentDetails()!.fileName}》。用户询问该文档内容、摘要、要点、翻译或风险时，必须调用 analyzeActiveDocument；回答只可依据工具返回的内容和引用。` : '当前没有选中的文档。'}
+
+## 当前已登录网盘的运行时能力
+${formatProviderCapabilities(connectedProviderCapabilities)}
+只能对上面明确标记为支持的能力提出操作；网盘列表变化后，以 listDrives 或 getConnectedDriveCapabilities 的实时结果为准。
 
 ## 你的工具
 - listDrives: 列出用户所有已登录的网盘
@@ -273,6 +472,15 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 - searchTMDB: 在 TMDB 中搜索电影和电视剧，查询影视详细信息
 - getDoubanMovies: 获取豆瓣电影排行榜（Top250/新片/口碑/北美票房）
 - deleteFiles: 将文件移入回收站（需用户确认；仅支持明确有回收站能力的网盘，不支持的网盘必须拒绝）
+- getBoxPlayerCapabilities: 查询已注册的 BoxPlayer 功能、工具和限制
+- openBoxPlayerModule: 打开已注册的 BoxPlayer 功能页面；只导航，不改变设置或数据
+- rememberPreference: 仅在用户明确要求记住时保存偏好到本机长期记忆
+- analyzeActiveDocument: 本机解析、索引并分析当前从网盘打开的文档；返回可引用的内容
+- getConnectedDriveCapabilities: 查询当前已登录网盘及各自支持的操作
+- listMediaAcquisitionTasks: 查询媒体获取 Agent 的任务队列、进度、候选资源和最近事件
+- listMediaAcquisitionTracking: 查询追更剧集、已播缺集、已获取集数和下次巡检时间
+- listMediaAcquisitionNotifications: 查询媒体获取完成、部分完成、失败、取消或暂无资源的通知
+- runMediaAcquisitionPatrol: 触发追更巡检，发现已播缺集时创建补全任务
 
 ## 核心规则（必须遵守）
 1. 用户提到文件相关操作，必须调用对应工具，不能只回复文字
@@ -285,6 +493,9 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
    - 然后你再执行对应操作
    - 用户想看热门电影/新片/排行榜 → 调用 getTMDBMovies（国外）或 getDoubanMovies（国内），无需 listDrives
    - 用户查询特定电影/电视剧信息 → 调用 searchTMDB
+   - 用户询问“获取到哪了/追更哪些剧/缺哪几集/最近完成了什么” → 调用媒体获取相关工具
+   - 用户要求“触发巡检/跑一遍追更” → 调用 runMediaAcquisitionPatrol
+   - 用户要求新建媒体获取任务时，说明需要在搜索页或媒体详情页点击“获取/一键补全”并选择目标网盘和目录；不要跳过弹窗替用户决定目标网盘
    - 导入分享：必须问用户保存到阿里云盘还是夸克
    - 用户提到秒传、网盘互通、导入光鸭、helper JSON：先调用 parseMiaochuanJson；如果用户明确要导入光鸭，再调用 importMiaochuanToGuangya
 4. 工具返回结果后，简要总结即可
@@ -293,31 +504,184 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 7. 最多调用工具 5 次
 
 ## 回复格式
-每次回复必须先写一行【思考】说明你的分析和决策理由，然后再执行操作或给出结论。
-例如：
-【思考】用户想整理文件。需要先调用 listDrives 列出所有网盘让用户选择。
-然后调用对应工具。`,
-        messages: apiMessages,
+不要展示模型内部思考过程。需要调用工具时，先用一句简短的执行说明告知用户接下来要做什么；工具返回后用清晰结论、结果和可选后续操作回复。`,
+        prompt: kw,
         tools: {
           listDrives: {
             description: '列出用户所有已登录的网盘，让用户在界面中选择要操作的网盘',
             inputSchema: z.object({}),
             execute: async () => {
               const users = await UserDAL.GetUserListFromDB()
-	              const drives: { userId: string; name: string; platform: string; driveId: string }[] = []
+	              const drives: { userId: string; name: string; platform: string; driveId: string; capabilities: ProviderCapabilityManifest }[] = []
 	              for (const u of users) {
 	                if (!u?.user_id || !u?.access_token) continue
 	                const name = u.nick_name || u.user_name || u.name || u.user_id
 	                const platform = u.tokenfrom || 'aliyun'
 	                if (platform === 'aliyun') {
-                  drives.push({ userId: u.user_id, name, platform, driveId: u.resource_drive_id || u.backup_drive_id || u.default_drive_id || '' })
+                  drives.push({ userId: u.user_id, name, platform, driveId: u.resource_drive_id || u.backup_drive_id || u.default_drive_id || '', capabilities: getProviderCapabilities(platform) })
                 } else {
-                  drives.push({ userId: u.user_id, name, platform, driveId: driveToolDriveIdForPlatform(platform, u.default_drive_id) })
+                  drives.push({ userId: u.user_id, name, platform, driveId: driveToolDriveIdForPlatform(platform, u.default_drive_id), capabilities: getProviderCapabilities(platform) })
                 }
               }
               appendPart(aiMsgId, { type: 'tool-listDrives', state: 'select', drives } as MessagePart)
               scrollBottom()
               return { count: drives.length, drives }
+            },
+          },
+
+          getConnectedDriveCapabilities: {
+            description: '读取当前已登录网盘及其运行时能力清单，用于判断某个平台是否支持搜索、下载、移动、分享、回收站等操作',
+            inputSchema: z.object({}),
+            execute: async () => {
+              const users = await UserDAL.GetUserListFromDB()
+              return users.filter(user => user?.user_id && user?.access_token).map(user => {
+                const platform = normalizeProviderPlatform(user.tokenfrom || 'aliyun')
+                const capabilities = getProviderCapabilities(platform)
+                return { userId: user.user_id, accountName: user.nick_name || user.user_name || user.name || user.user_id, ...capabilities, mediaAcquisition: getMediaAcquisitionCapability(platform) ? formatMediaAcquisitionCapability(getMediaAcquisitionCapability(platform)!) : '' }
+              })
+            },
+          },
+
+          getBoxPlayerCapabilities: {
+            description: '查询 BoxPlayer 已注册功能、可执行工具和安全限制；用于回答“你能做什么”或确认模块能力边界',
+            inputSchema: z.object({ capabilityId: z.string().optional().describe('功能 ID，如 cloud-files、upload、playback、media-server、settings；不传返回全部') }),
+            execute: async (args: any) => {
+              const capability = args.capabilityId ? getBoxPlayerCapability(args.capabilityId) : undefined
+              if (args.capabilityId && !capability) return { error: `未知功能：${args.capabilityId}` }
+              return capability || BOXPLAYER_CAPABILITIES
+            },
+          },
+
+          listMediaAcquisitionTasks: {
+            description: '查看媒体获取 Agent 的实时任务队列、进度和最近事件。只读，不会创建或修改任务。',
+            inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional().describe('最多返回多少条任务，默认 20') }),
+            execute: async (args: any) => {
+              const runs = await listMediaAcquisitionRuns(args.limit || 20)
+              return {
+                total: runs.length,
+                tasks: runs.map(run => ({
+                  id: run.id,
+                  title: run.target.title,
+                  mediaType: run.target.mediaType,
+                  kind: run.kind,
+                  status: run.status,
+                  phase: run.phase,
+                  progress: run.progress,
+                  activity: run.activity,
+                  targetPlatform: run.target.targetPlatform,
+                  targetDriveId: run.target.targetDriveId,
+                  seasonNumber: run.target.seasonNumber,
+                  missingEpisodes: run.target.missingEpisodes || [],
+                  candidates: run.candidates.map(candidate => ({ id: candidate.id, kind: candidate.kind, sourcePlatform: candidate.sourcePlatform, title: candidate.title, status: candidate.status, lastError: candidate.lastError })),
+                  latestEvents: run.events.slice(-5).map(event => ({ level: event.level, phase: event.phase, message: event.message, createdAt: event.createdAt }))
+                }))
+              }
+            },
+          },
+
+          listMediaAcquisitionTracking: {
+            description: '查看正在追更的剧集、已播缺集、已获取集数和下次巡检时间。只读。',
+            inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional().describe('最多返回多少条追更记录，默认 50') }),
+            execute: async (args: any) => {
+              const items = await listMediaAcquisitionTracking(args.limit || 50)
+              return {
+                total: items.length,
+                tracking: items.map(item => ({
+                  id: item.id,
+                  title: item.title,
+                  mediaType: item.mediaType,
+                  seasonNumber: item.seasonNumber,
+                  status: item.status,
+                  totalEpisodes: item.totalEpisodes,
+                  latestAiredEpisode: item.latestAiredEpisode,
+                  obtainedEpisodeNumbers: item.obtainedEpisodeNumbers,
+                  missingEpisodes: item.missingEpisodes,
+                  providerAheadEpisodes: item.providerAheadEpisodes,
+                  nextCheckAt: item.nextCheckAt
+                }))
+              }
+            },
+          },
+
+          listMediaAcquisitionNotifications: {
+            description: '查看媒体获取完成、部分完成、失败、取消或暂无资源的通知。只读。',
+            inputSchema: z.object({ limit: z.number().int().min(1).max(100).optional().describe('最多返回多少条通知，默认 50') }),
+            execute: async (args: any) => {
+              const notifications = await listMediaAcquisitionNotifications(args.limit || 50)
+              return {
+                total: notifications.length,
+                notifications: notifications.map(item => ({ id: item.id, title: item.title, status: item.status, message: item.message, read: item.read, createdAt: item.createdAt }))
+              }
+            },
+          },
+
+          runMediaAcquisitionPatrol: {
+            description: '触发媒体获取 Agent 追更巡检；发现已播缺集时会创建补全任务。用户明确要求巡检时使用。',
+            inputSchema: z.object({ trackingId: z.string().optional().describe('只巡检某个追更记录；不传则巡检全部') }),
+            permission: 'write',
+            executionMode: 'sequential',
+            execute: async (args: any) => {
+              await runMediaAcquisitionTrackingPatrol({ force: true, trackingId: args.trackingId })
+              return { ok: true, message: args.trackingId ? '本季追更巡检已完成' : '全部追更巡检已完成' }
+            },
+          },
+
+          openBoxPlayerModule: {
+            description: '打开一个已注册的 BoxPlayer 模块页面；仅进行界面导航，不会修改任何数据或设置',
+            inputSchema: z.object({ capabilityId: z.string().describe('功能 ID，如 upload、playback、media-server、books、settings') }),
+            execute: async (args: any) => {
+              const capability = getBoxPlayerCapability(args.capabilityId)
+              if (!capability?.tab) return { error: `该功能当前不能打开：${args.capabilityId}` }
+              if (capability.menu) appStore.toggleTabMenu(capability.tab, capability.menu)
+              else appStore.toggleTab(capability.tab)
+              return { opened: capability.title, module: capability.module, tab: capability.tab }
+            },
+          },
+
+          rememberPreference: {
+            description: '保存用户明确要求长期记住的偏好，例如默认网盘、常用整理方式或内容偏好；仅本机保存，不能记录密钥、密码、令牌或敏感内容',
+            inputSchema: z.object({ key: z.string().describe('简短、稳定的偏好键名'), summary: z.string().describe('用户明确要求记住的偏好描述') }),
+            execute: async (args: any) => {
+              if (/密码|token|密钥|secret|access[_-]?token/i.test(`${args.key} ${args.summary}`)) return { error: '不能保存密码、令牌或密钥到长期记忆' }
+              const memory = await rememberWorkspaceFact(args.key, args.summary, userMsgId)
+              if (!memory) return { error: '本机长期记忆暂不可用' }
+              await refreshMemories()
+              return { saved: true, key: memory.key, summary: memory.summary }
+            },
+          },
+
+          analyzeActiveDocument: {
+            description: '本机解析、索引并分析当前工作台上下文中的 PDF、DOCX、EPUB、TXT 或 Markdown 文档；只能基于检索到的文档内容回答',
+            inputSchema: z.object({ query: z.string().describe('对当前文档的分析问题，例如“概括核心内容和风险”') }),
+            execute: async (args: any) => {
+              const document = getActiveDocumentDetails()
+              if (!document) return { error: '当前没有可分析的文档。请从网盘文件右键选择“用 AI 分析”。' }
+              try {
+                const download = await AliFile.ApiFileDownloadUrl(document.userId, document.driveId, document.file.file_id, 14_400)
+                if (typeof download === 'string') return { error: download }
+                const response = await fetch(download.url, { headers: download.headers || {} })
+                if (!response.ok) return { error: `下载文档失败: HTTP ${response.status}` }
+                const data = await response.arrayBuffer()
+                const settings = createBookAISettings()
+                const provider = getAIProvider(settings)
+                const embeddingModel = canUseSemanticEmbeddings(settings.provider) ? provider.getEmbeddingModel() : undefined
+                await indexDocumentLocally({ sourceId: document.sourceId, fileName: document.fileName, data, embeddingModel })
+                let answer = ''
+                const citations: Array<{ location: string; section: string; text: string }> = []
+                await askIndexedDocument({
+                  sourceId: document.sourceId,
+                  fileName: document.fileName,
+                  question: args.query,
+                  model: config,
+                  embeddingModel,
+                  signal: abortController?.signal,
+                  onToken: token => { answer += token },
+                  onCitation: citation => citations.push({ location: citation.location || (citation.page ? `页 ${citation.page}` : '正文'), section: citation.section || '正文', text: citation.text })
+                })
+                return { fileName: document.fileName, answer, citations: citations.slice(0, 5) }
+              } catch (e: any) {
+                return { error: e?.message || '文档分析失败' }
+              }
             },
           },
 
@@ -384,15 +748,33 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               scrollBottom()
 
               try {
-                const resp = await fetch(`${getCloudAIBaseURL()}/api/search?kw=${encodeURIComponent(keyword)}&res=merged_by_type&src=all`)
-                const d = await resp.json()
-                if (d?.code === 0 && d?.data?.merged_by_type) {
+                const flattenLinks = (merged: PanHubMergedLinks): LinkResult[] => {
                   const all: LinkResult[] = []
-                  for (const [, items] of Object.entries(d.data.merged_by_type as Record<string, any[]>)) {
+                  for (const [type, items] of Object.entries(merged)) {
                     all.push(...items.map((i: any) => ({
-                      type: i.type || '', url: i.url || '', note: i.note || '', password: i.password || '',
+                      type, url: i.url || '', note: i.note || '', password: i.password || '',
                     })))
                   }
+                  return all
+                }
+                const result = await searchPanHubStream({
+                  apiBase: `${getBoxPlayerAPIBaseURL()}/api`,
+                  keyword,
+                  plugins: [],
+                  channels: [],
+                  concurrency: 4,
+                  pluginTimeoutMs: 5000,
+                  signal: abortController?.signal,
+                  ipcRenderer: window.Electron?.ipcRenderer,
+                  onProgress: (merged, total) => {
+                    updateToolPart(aiMsgId, 'tool-searchPanHub', { keyword }, (part: any) => {
+                      part.output = { total, links: flattenLinks(merged).slice(0, 30) }
+                    })
+                    scrollBottom()
+                  },
+                })
+                if (result.total > 0) {
+                  const all = flattenLinks(result.merged)
                   updateToolPart(aiMsgId, 'tool-searchPanHub', { keyword }, (part: any) => {
                     part.state = 'done'
                     part.output = { total: all.length, links: all }
@@ -400,7 +782,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
                   scrollBottom()
                   return { total: all.length, links: all.slice(0, 30) }
                 }
-                const errMsg = d?.message || (d?.code !== 0 ? `API 错误 (code: ${d?.code})` : '未找到匹配资源')
+                const errMsg = '未找到匹配资源'
                 updateToolPart(aiMsgId, 'tool-searchPanHub', { keyword }, (part: any) => {
                   part.state = 'error'
                   part.error = errMsg
@@ -490,6 +872,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               const files = args.files || []
               const format: DirectLinkFormat = args.format || 'aria2'
               if (!files.length) return { total: 0, success: 0, failed: 0, error: 'no files' }
+              const unsupported = unsupportedFileToolMessage(files, 'exportDirectLinks')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-directLinks', state: 'running', input: { files, format } } as MessagePart)
               scrollBottom()
               try {
@@ -577,6 +961,9 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
                 scrollBottom()
                 return { error: 'no drive account' }
               }
+              const token = UserDAL.GetUserToken(target.userId)
+              const unsupported = unsupportedAgentToolMessage(getProviderCapabilities(token?.tokenfrom || (target.driveId.startsWith('webdav:') ? 'webdav' : '')), 'scanDriveEmptyDirs')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'scanning', input: { rootId: target.rootId } } as MessagePart)
               scrollBottom()
               try {
@@ -606,6 +993,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             execute: async (args: any) => {
               const dirs = args.dirs || []
               if (!dirs.length) return { pending: false, total: 0 }
+              const unsupported = unsupportedFileToolMessage(dirs, 'deleteDriveEmptyDirs')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'confirm', input: { dirs } } as MessagePart)
               scrollBottom()
               return { pending: true, total: dirs.length }
@@ -704,6 +1093,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             execute: async (args: any) => {
               const files = args.files || []
               if (!files.length) return { total: 0, success: 0 }
+              const unsupported = unsupportedFileToolMessage(files, 'downloadFiles')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-downloadFiles', state: 'running', input: { files } } as MessagePart)
               scrollBottom()
               try {
@@ -725,10 +1116,14 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 	            description: '扫描云盘查找重复文件；mode=helperName 匹配光鸭助手的 (1)/(2)/(3) 命名规则，mode=contentHash 按文件内容哈希判重',
 	            inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表，如 ["aliyun","baidu"]'), mode: z.enum(['helperName', 'contentHash']).optional().describe('判重模式，默认 helperName') }),
 	            execute: async (args: any) => {
+	              const unsupported = unsupportedPlatformToolMessage(args.platforms, 'findDuplicates')
+	              if (unsupported) return { error: unsupported }
 	              appendPart(aiMsgId, { type: 'tool-findDuplicates', state: 'scanning' } as MessagePart)
 	              scrollBottom()
 	              try {
 	                const targets = await buildDriveTargetsForTool(args.platforms)
+	                const targetUnsupported = unsupportedDriveTargetToolMessage(targets, 'findDuplicates')
+	                if (targetUnsupported) throw new Error(targetUnsupported)
 	                const data = await scanDriveDuplicates(targets, (args.mode || 'helperName') as DuplicateScanMode)
                 const groups = data.groups.slice(0, 20).map(group => ({
                   name: group.label,
@@ -754,10 +1149,14 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 	              customSizeMB: z.number().optional().describe('mode=size 时使用的阈值，单位 MB')
 	            }),
 	            execute: async (args: any) => {
+	              const unsupported = unsupportedPlatformToolMessage(args.platforms, 'scanDriveLargeFiles')
+	              if (unsupported) return { error: unsupported }
 	              appendPart(aiMsgId, { type: 'tool-analyzeStorage', state: 'scanning' } as MessagePart)
 	              scrollBottom()
 	              try {
 	                const targets = await buildDriveTargetsForTool(args.platforms)
+	                const targetUnsupported = unsupportedDriveTargetToolMessage(targets, 'scanDriveLargeFiles')
+	                if (targetUnsupported) throw new Error(targetUnsupported)
 	                const data = await scanDriveLargeFiles(targets, (args.mode || 'size1000') as LargeFileScanMode, { customSizeMB: args.customSizeMB || 100 })
 	                const topLarge: FileResult[] = data.files.slice(0, 30).map(file => ({
 	                  name: file.name,
@@ -790,6 +1189,10 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             description: '分析存储空间使用情况，platforms 参数指定要分析的网盘',
             inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表') }),
             execute: async (args: any) => {
+              const unsupported = unsupportedPlatformToolMessage(args.platforms, 'analyzeStorage')
+              if (unsupported) return { error: unsupported }
+              const connectedUnsupported = await unsupportedConnectedPlatformToolMessage(args.platforms, 'analyzeStorage')
+              if (connectedUnsupported) return { error: connectedUnsupported }
               appendPart(aiMsgId, { type: 'tool-analyzeStorage', state: 'scanning' } as MessagePart)
               scrollBottom()
               try {
@@ -819,6 +1222,10 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             description: '分析文件类型分布，platforms 参数指定要分类的网盘',
             inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表') }),
             execute: async (args: any) => {
+              const unsupported = unsupportedPlatformToolMessage(args.platforms, 'categorizeFiles')
+              if (unsupported) return { error: unsupported }
+              const connectedUnsupported = await unsupportedConnectedPlatformToolMessage(args.platforms, 'categorizeFiles')
+              if (connectedUnsupported) return { error: connectedUnsupported }
               appendPart(aiMsgId, { type: 'tool-categorizeFiles', state: 'planning' } as MessagePart)
               scrollBottom()
               try {
@@ -859,6 +1266,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 	            execute: async (args: any) => {
               const { files, targetDir } = args
               if (!files?.length) return { total: 0, success: 0 }
+              const unsupported = unsupportedFileToolMessage(files, 'moveFiles')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-moveFiles', state: 'confirm', input: { files, targetDir } } as MessagePart)
               scrollBottom()
 	              return { pending: true }
@@ -875,6 +1284,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 	            execute: async (args: any) => {
 	              const files = args.files || []
 	              if (!files.length) return { total: 0, success: 0 }
+                const unsupported = unsupportedFileToolMessage(files, 'organizeFiles')
+                if (unsupported) return { error: unsupported }
 	              const targetDir = args.targetDir || files[0]?.parentFileId || ''
 	              if (!targetDir) return { pending: false, error: 'missing targetDir' }
 	              appendPart(aiMsgId, { type: 'tool-organizeFiles', state: 'confirm', input: { mode: args.mode || 'moveToDir', files, targetDir } } as MessagePart)
@@ -892,6 +1303,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
 	            execute: async (args: any) => {
 	              const files = args.files || []
 	              if (!files.length || !args.rootParentId) return { total: 0, success: 0, error: 'missing files or rootParentId' }
+                const unsupported = unsupportedFileToolMessage(files, 'mediaOrganizeFiles')
+                if (unsupported) return { error: unsupported }
 	              const plans = buildMediaOrganizePlan(files.map((file: any) => ({ userId: file.userId, driveId: file.driveId, fileId: file.fileId, name: file.name, isDir: !!file.isDir })), args.rootParentId)
 	              if (!plans.length) return { pending: false, total: 0, error: '没有识别到可整理的媒体文件或文件夹' }
 	              appendPart(aiMsgId, { type: 'tool-organizeFiles', state: 'confirm', input: { mode: 'media', files, targetDir: args.rootParentId, plans } } as MessagePart)
@@ -980,7 +1393,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
               scrollBottom()
               let items: { title: string; desc: string }[] = []
               try {
-                const resp = await fetch(`${getCloudAIBaseURL()}/api/douban-hot?category=${category}&page=1&limit=25`)
+                const resp = await fetch(`${getBoxPlayerAPIBaseURL()}/api/douban-hot?category=${category}&page=1&limit=25`)
                 const data = await resp.json()
                 if (data?.code === 0 && data?.data?.items) {
                   const movies = data.data.items.map((item: any) => ({ id: String(item.id || ''), title: item.title || '', cover: item.cover || '', desc: item.desc || '', url: item.url || '' }))
@@ -1046,63 +1459,66 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
             execute: async (args: any) => {
               const { files } = args
               if (!files?.length) return { total: 0, success: 0 }
+              const unsupported = unsupportedFileToolMessage(files, 'deleteFiles')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-deleteFiles', state: 'confirm', input: { files } } as MessagePart)
               scrollBottom()
               return { pending: true }
             },
           },
         },
-        toolChoice: 'auto',
-          stopWhen: stepCountIs(5),
-        temperature: 0.7,
-        abortSignal: abortController?.signal,
-      })
-
-      // stream text delta, split reasoning from text
-      let textPart: any = null
-      let reasoningPart: any = null
-      for await (const part of result.fullStream) {
-        if (part.type === 'text-delta') {
-          const delta = part.text
-          // detect reasoning block: 【思考】... or 【分析】...
-          const reasoningMatch = delta.match(/【(思考|分析)】([\\s\\S]*)/)
-          if (reasoningMatch && !reasoningPart) {
-            reasoningPart = { type: 'reasoning', text: reasoningMatch[2] }
-            appendPart(aiMsgId, reasoningPart)
-            const afterReasoning = delta.slice(reasoningMatch[0].length).trim()
-            if (afterReasoning) {
-              textPart = { type: 'text', text: afterReasoning }
-              appendPart(aiMsgId, textPart)
-            }
-          } else if (reasoningPart && !textPart) {
-            reasoningPart.text += delta
-          } else {
+        signal: abortController?.signal,
+        requestApproval: async request => {
+          // These tools only create an existing Vue confirmation card; the actual mutation happens after the user confirms that card.
+          if (deferredApprovalTools.has(request.toolName)) return true
+          return window.confirm(`允许 AI 执行“${request.toolName}”操作吗？\n\n参数：${JSON.stringify(request.args).slice(0, 500)}`)
+        },
+        onEvent: event => {
+          if (event.type === 'text_delta') {
             if (!textPart) {
               textPart = { type: 'text', text: '' }
               appendPart(aiMsgId, textPart)
             }
-            textPart.text += delta
+            textPart.text += event.text
+            scrollBottom()
           }
-          scrollBottom()
+          if (event.type === 'error') {
+            if (!textPart) {
+              textPart = { type: 'text', text: '' }
+              appendPart(aiMsgId, textPart)
+            }
+            const errorMessage = isBoxPlayerCloudProvider(config.providerName) ? mapBoxPlayerCloudAIError(event.message) : event.message
+            textPart.text += `${textPart.text ? '\n\n' : ''}❌ ${errorMessage || 'AI 请求失败'}`
+            scrollBottom()
+          }
         }
-      }
+      })
     } catch (e: any) {
       if (e?.name === 'AbortError') return
       appendPart(aiMsgId, {
         type: 'text',
-        text: `\n\n❌ ${e?.message || 'AI 请求失败'}`,
+        text: `\n\n❌ ${isBoxPlayerCloudProvider(config.providerName) ? mapBoxPlayerCloudAIError(e?.message) : e?.message || 'AI 请求失败'}`,
       })
     } finally {
-      loading.value = false
-      saveHistory(messages.value)
+      if (runId === activeRun) {
+        loading.value = false
+        abortController = null
+      }
+      saveCurrentHistory(messages.value)
     }
   }
 
-  function clear() {
-    if (abortController) { abortController.abort(); abortController = null }
-    messages.value = []
+  function stop() {
+    activeRun++
+    abortController?.abort()
+    abortController = null
     loading.value = false
-    localStorage.removeItem(CHAT_KEY)
+  }
+
+  function clear() {
+    stop()
+    messages.value = []
+    persistThreads()
   }
 
   async function confirmAction(msgId: string, partIndex: number) {
@@ -1128,7 +1544,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
           report: `导入完成：成功 ${result.success}/${result.total}，失败 ${result.failed}，跳过 ${result.skipped}${result.failures.length ? `\n失败示例：${result.failures.slice(0, 5).map(item => `${item.path}(${item.reason})`).join('；')}` : ''}`
         }
         scrollBottom()
-        saveHistory(messages.value)
+        saveCurrentHistory(messages.value)
         return
       }
       if (part.type === 'tool-guangyaMagnets') {
@@ -1138,7 +1554,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
         part.state = 'done'
         part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
         scrollBottom()
-        saveHistory(messages.value)
+        saveCurrentHistory(messages.value)
         return
       }
       if (part.type === 'tool-guangyaEmptyDirs') {
@@ -1146,7 +1562,7 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
         part.state = 'done'
         part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
         scrollBottom()
-        saveHistory(messages.value)
+        saveCurrentHistory(messages.value)
         return
       }
 	      const { files, targetDir } = part.input || {}
@@ -1202,7 +1618,11 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
       part.error = e?.message || '操作失败'
     }
     scrollBottom()
-    saveHistory(messages.value)
+    saveCurrentHistory(messages.value)
+    if (part.state === 'done' && part.output?.success) {
+      await rememberWorkspaceFact('last-successful-operation', `最近成功操作：${part.type}，${part.output.report || `成功 ${part.output.success}/${part.output.total || part.output.success}`}`)
+      await refreshMemories()
+    }
   }
 
   function cancelAction(msgId: string, partIndex: number) {
@@ -1213,8 +1633,8 @@ export function useAISearchChat(phSearchFn: (kw: string) => Promise<any>) {
       part.state = 'done'
       part.output = { total: part.input?.files?.length || part.input?.magnets?.length || part.input?.dirs?.length || 0, success: 0, failed: 0, report: '已取消' }
     }
-    saveHistory(messages.value)
+    saveCurrentHistory(messages.value)
   }
 
-  return { messages, loading, sendMessage, clear, confirmAction, cancelAction }
+  return { messages, loading, memories, activeDocument, threads, activeThreadId, setDocumentContext, openConversation, newConversation, deleteConversation, sendMessage, stop, clear, refreshMemories, removeMemory, confirmAction, cancelAction }
 }

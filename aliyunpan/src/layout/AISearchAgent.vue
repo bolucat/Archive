@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
-import { Sparkles, User, Bot, Loader2 } from 'lucide-vue-next'
+import { computed, nextTick, ref, watch } from 'vue'
+import { Sparkles, User, Send, Square, RotateCcw, WandSparkles, Command, Plus, Search, Film, HardDrive, FolderCog, Activity, ShieldCheck, ArrowUpRight, Brain, Trash2 } from 'lucide-vue-next'
 import { useAppStore } from '../store'
 import message from '../utils/message'
 import { useAISearchChat } from './aisearch/useAISearchChat'
@@ -24,17 +24,40 @@ import GuangyaMagnetsCard from './aisearch/GuangyaMagnetsCard.vue'
 import GuangyaEmptyDirsCard from './aisearch/GuangyaEmptyDirsCard.vue'
 import { renderMarkdown } from './aisearch/markdown'
 import type { FileResult } from './aisearch/types'
+import type { WorkspaceDocumentContext } from './aisearch/useAISearchChat'
+import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
+import MediaAcquisitionTargetModal from '../components/MediaAcquisitionTargetModal.vue'
 
-const props = defineProps<{ aiEnabled: boolean; keyword: string; trigger: number; phSearch: (kw: string) => Promise<any> }>()
+const props = defineProps<{ aiEnabled: boolean; documentContext?: WorkspaceDocumentContext | null }>()
 const emit = defineEmits<{ 'search-resource': [title: string] }>()
 
 const appStore = useAppStore()
-const { messages, loading, sendMessage, clear, confirmAction, cancelAction } = useAISearchChat(props.phSearch)
+const { messages, loading, memories, activeDocument, threads, activeThreadId, setDocumentContext, openConversation, newConversation, deleteConversation, sendMessage, stop, clear, removeMemory, confirmAction, cancelAction } = useAISearchChat()
 const chatContainer = ref<HTMLElement>()
 const inputText = ref('')
+const acquisitionRequest = ref<MediaAcquisitionRequest | null>(null)
+const acquisitionVisible = ref(false)
+const visibleMessages = computed(() => messages.value.filter(message => message.role === 'user' || message.parts.some((part: any) => part.type !== 'text' || Boolean(part.text?.trim()))))
+const requestCount = computed(() => messages.value.filter(message => message.role === 'user').length)
+const toolActivityCount = computed(() => messages.value
+  .filter(message => message.role === 'assistant')
+  .flatMap(message => message.parts)
+  .filter(part => part.type.startsWith('tool-')).length)
+const pendingApprovalCount = computed(() => messages.value
+  .flatMap(message => message.parts)
+  .filter((part: any) => part.state === 'confirm').length)
+const recentToolActivities = computed(() => messages.value
+  .flatMap(message => message.parts)
+  .filter(part => part.type.startsWith('tool-'))
+  .slice(-4)
+  .reverse()
+  .map((part: any) => ({
+    title: TOOL_ACTIVITY_LABELS[part.type] || '已调用工具',
+    state: part.state === 'error' ? 'error' : part.state === 'confirm' ? 'approval' : part.state === 'running' ? 'running' : 'complete',
+  })))
 
 function handleSend(q?: string) {
-  const kw = (q || props.keyword || '').trim()
+  const kw = (q || '').trim()
   if (!kw) return false
   if (!props.aiEnabled) {
     message.warning('AI Agent 对话需登录后配置 BYOK 模型或升级 Pro 后使用')
@@ -48,8 +71,25 @@ function handleInputSend() {
   if (handleSend(inputText.value)) inputText.value = ''
 }
 
+function handleComposerKeydown(event: KeyboardEvent) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault()
+    handleInputSend()
+  }
+}
+
 function handleSearchResource(title: string) {
   emit('search-resource', title)
+}
+
+function handleAcquire(request: MediaAcquisitionRequest) {
+  acquisitionRequest.value = request
+  acquisitionVisible.value = true
+}
+
+function handleAcquisitionVisible(visible: boolean) {
+  acquisitionVisible.value = visible
+  if (!visible) acquisitionRequest.value = null
 }
 
 function handleClarifySelect(option: string) {
@@ -99,10 +139,15 @@ function handleDriveConfirm(selected: { userId: string; name: string; platform: 
 
 function handleConfirmAction(msgId: string, partIndex: number) { confirmAction(msgId, partIndex) }
 function handleCancelAction(msgId: string, partIndex: number) { cancelAction(msgId, partIndex) }
+function handleDeleteConversation(event: MouseEvent, id: string) { event.stopPropagation(); deleteConversation(id) }
 
-watch(() => props.trigger, () => {
-  if (props.keyword.trim()) handleSend()
-})
+watch(() => props.documentContext, context => {
+  setDocumentContext(context || null)
+  if (context?.file && props.aiEnabled) {
+    const name = context.file.name || context.file.file_name || '当前文档'
+    void nextTick(() => handleSend(`请分析当前文档《${name}》，先概括核心内容、关键要点与需要注意的风险。`))
+  }
+}, { immediate: true })
 
 const DEFAULT_FOLLOWUPS = [
   '豆瓣电影排行榜',
@@ -114,35 +159,119 @@ const DEFAULT_FOLLOWUPS = [
   '查找重复文件',
   '分析存储空间',
 ]
+
+const TOOL_ACTIVITY_LABELS: Record<string, string> = {
+  'tool-listDrives': '读取可用网盘',
+  'tool-searchMyFiles': '搜索网盘文件',
+  'tool-searchPanHub': '检索分享资源',
+  'tool-getMovies': '获取影视信息',
+  'tool-findDuplicates': '查找重复文件',
+  'tool-analyzeStorage': '分析存储空间',
+  'tool-categorizeFiles': '生成整理计划',
+  'tool-moveFiles': '移动文件',
+  'tool-organizeFiles': '整理文件',
+  'tool-deleteFiles': '删除文件',
+  'tool-importShare': '转存分享文件',
+  'tool-downloadFiles': '创建下载任务',
+}
 </script>
 
 <template>
   <div class="ai-chat">
+    <div class="ai-workspace-grid">
+      <aside class="ai-task-rail">
+        <div class="ai-rail-brand">
+          <span class="ai-rail-brand-mark"><Sparkles :size="17" /></span>
+          <span>BOXPLAYER<br><b>INTELLIGENCE</b></span>
+        </div>
+        <button class="ai-new-task" type="button" :disabled="loading" @click="newConversation"><Plus :size="16" /> 新对话</button>
+        <div class="ai-rail-section">
+          <span class="ai-rail-label">常用能力</span>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('帮我搜索网盘里的文件')"><Search :size="15" /><span>查找文件</span></button>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('推荐最近值得看的电影')"><Film :size="15" /><span>影视发现</span></button>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('分析我的存储空间')"><HardDrive :size="15" /><span>存储洞察</span></button>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('帮我整理文件')"><FolderCog :size="15" /><span>整理计划</span></button>
+        </div>
+        <div v-if="threads.length" class="ai-rail-section ai-rail-history">
+          <span class="ai-rail-label">历史对话</span>
+          <button v-for="thread in threads" :key="thread.id" type="button" class="ai-history-item" :class="{ active: thread.id === activeThreadId }" :disabled="loading" :title="thread.title" @click="openConversation(thread.id)">
+            <span>{{ thread.title }}</span>
+            <i title="删除历史对话" @click="handleDeleteConversation($event, thread.id)"><Trash2 :size="12" /></i>
+          </button>
+        </div>
+        <div v-if="memories.length" class="ai-rail-section ai-rail-memories">
+          <span class="ai-rail-label"><Brain :size="13" /> 长期记忆</span>
+          <div v-for="memory in memories" :key="memory.id" class="ai-memory-item" :title="memory.summary">
+            <span><b>{{ memory.key }}</b>{{ memory.summary }}</span>
+            <button type="button" title="删除这条记忆" @click="removeMemory(memory.id)"><Trash2 :size="12" /></button>
+          </div>
+        </div>
+        <div class="ai-rail-foot">
+          <span class="ai-rail-foot-dot" :class="{ active: aiEnabled }" />
+          {{ aiEnabled ? 'AI 服务可用' : '需要配置 AI' }}
+        </div>
+      </aside>
+
+      <main class="ai-workspace-main">
+    <header class="ai-workspace-header">
+      <div class="ai-workspace-title">
+        <span class="ai-workspace-mark"><WandSparkles :size="16" /></span>
+        <div>
+          <strong>智能工作台</strong>
+          <span>搜索、阅读与文件操作</span>
+        </div>
+      </div>
+      <div class="ai-workspace-status" :class="{ active: loading }">
+        <span class="ai-status-pulse" />
+        {{ loading ? '正在处理' : aiEnabled ? '已就绪' : '仅预览' }}
+      </div>
+    </header>
+    <div v-if="activeDocument" class="ai-document-context">
+      <span>当前文档</span>
+      <strong>{{ activeDocument.file?.name || activeDocument.file?.file_name }}</strong>
+      <small>回答将基于本机索引的文档片段</small>
+    </div>
+
     <!-- messages -->
     <div ref="chatContainer" class="ai-messages">
       <!-- empty -->
-      <div v-if="messages.length === 0 && !loading" class="ai-empty">
-        <Sparkles :size="48" :stroke-width="1" class="ai-empty-icon" />
-        <div class="ai-empty-title">AI 智能搜索</div>
-        <div class="ai-empty-desc">{{ aiEnabled ? '在下方输入框描述你想做什么，AI 帮你搜索和整理文件' : '未登录用户可以预览 AI Agent；登录后配置 BYOK 或升级 Pro 才能发送对话' }}</div>
+      <div v-if="visibleMessages.length === 0 && !loading" class="ai-empty">
+        <span class="ai-empty-icon"><Sparkles :size="26" :stroke-width="1.6" /></span>
+        <div class="ai-empty-kicker">BOXPLAYER AGENT</div>
+        <div class="ai-empty-title">从一个目标开始</div>
+        <div class="ai-empty-desc">{{ aiEnabled ? '描述你要找的内容或想完成的文件操作。Agent 会把检索结果和可执行操作整理成卡片。' : '登录后配置 BYOK 或升级 Pro，即可使用搜索、阅读和文件操作能力。' }}</div>
+        <div class="ai-starter-grid">
+          <button type="button" class="ai-starter-card ai-starter-card--search" :disabled="!aiEnabled" @click="handleSend('帮我搜索网盘里的文件')">
+            <span><Search :size="17" /></span><strong>查找文件</strong><small>跨网盘定位内容</small>
+          </button>
+          <button type="button" class="ai-starter-card ai-starter-card--film" :disabled="!aiEnabled" @click="handleSend('推荐最近值得看的电影')">
+            <span><Film :size="17" /></span><strong>影视发现</strong><small>推荐、检索与片单</small>
+          </button>
+          <button type="button" class="ai-starter-card ai-starter-card--storage" :disabled="!aiEnabled" @click="handleSend('分析我的存储空间')">
+            <span><HardDrive :size="17" /></span><strong>存储洞察</strong><small>大文件、空间与重复项</small>
+          </button>
+          <button type="button" class="ai-starter-card ai-starter-card--organize" :disabled="!aiEnabled" @click="handleSend('帮我整理文件')">
+            <span><FolderCog :size="17" /></span><strong>整理计划</strong><small>先预览，确认后执行</small>
+          </button>
+        </div>
       </div>
 
       <!-- message list -->
-      <div v-else>
+      <div v-else class="ai-message-list">
       <div
-        v-for="msg in messages"
+        v-for="msg in visibleMessages"
         :key="msg.id"
         class="ai-msg"
         :class="'ai-msg--' + msg.role"
       >
-        <!-- avatar -->
-        <div class="ai-msg-avatar">
+        <!-- Keep the user marker compact. Agent answers follow the Codex-style plain reading flow. -->
+        <div v-if="msg.role === 'user'" class="ai-msg-avatar" title="你">
           <User v-if="msg.role === 'user'" :size="16" :stroke-width="2" />
-          <Bot v-else :size="16" :stroke-width="2" />
         </div>
 
         <!-- parts -->
         <div class="ai-msg-body">
+          <div v-if="msg.role === 'user'" class="ai-msg-label">你</div>
           <template v-for="(part, pi) in msg.parts" :key="pi">
             <!-- tool: listDrives -->
             <DriveSelectorCard
@@ -157,7 +286,7 @@ const DEFAULT_FOLLOWUPS = [
             <!-- text (assistant, markdown) -->
             <div v-else-if="part.type === 'text'" class="ai-msg-text" v-html="renderMarkdown((part as any).text)" />
 
-            <!-- reasoning -->
+            <!-- legacy reasoning history is presented as a compact execution note -->
             <ReasonChain v-else-if="part.type === 'reasoning'" :text="(part as any).text" />
 
             <!-- clarification -->
@@ -227,6 +356,7 @@ const DEFAULT_FOLLOWUPS = [
               :error="(part as any).error"
               @search="(title: string) => handleSend(title)"
               @search-resource="(title: string) => handleSearchResource(title)"
+              @acquire="handleAcquire"
               @retry="handleRetryTool(msg.id, 'tool-getMovies', {})"
             />
 
@@ -348,13 +478,17 @@ const DEFAULT_FOLLOWUPS = [
       </div>
 
       <!-- streaming indicator -->
-      <LoadingIndicator v-if="loading" />
+      <div v-if="loading" class="ai-running-card">
+        <LoadingIndicator />
+        <span>Agent 正在组织下一步</span>
+      </div>
     </div>
 
     <!-- bottom bar -->
     <div class="ai-bottom">
       <div class="ai-suggestions">
-        <span class="ai-suggestions-label">试试问</span>
+        <Command :size="13" :stroke-width="1.8" />
+        <span class="ai-suggestions-label">快捷开始</span>
         <button
           v-for="hint in DEFAULT_FOLLOWUPS"
           :key="hint"
@@ -366,60 +500,135 @@ const DEFAULT_FOLLOWUPS = [
           {{ hint }}
         </button>
       </div>
-      <div class="ai-input-bar">
-        <input
+      <div class="ai-input-bar" :class="{ disabled: !aiEnabled }">
+        <textarea
           v-model="inputText"
           class="ai-input"
           :placeholder="aiEnabled ? '描述你想做什么...' : '登录后配置 BYOK 或升级 Pro 后可发送对话'"
-          @keydown.enter="handleInputSend"
+          rows="1"
+          :disabled="!aiEnabled || loading"
+          @keydown="handleComposerKeydown"
         />
         <button
+          v-if="loading"
+          class="ai-stop-btn"
+          type="button"
+          title="停止生成"
+          @click="stop"
+        ><Square :size="15" :fill="'currentColor'" /></button>
+        <button
+          v-else
           class="ai-send-btn"
           :disabled="!aiEnabled || !inputText.trim() || loading"
+          type="button"
           @click="handleInputSend"
-        >
-          发送
-        </button>
+        ><Send :size="16" :stroke-width="2" /><span>发送</span></button>
       </div>
     </div>
 
     <!-- footer -->
     <div v-if="messages.length > 0" class="ai-footer">
-      <button class="ai-clear-btn" type="button" @click="clear">清空对话</button>
-      <span class="ai-msg-count">{{ messages.filter(m => m.role === 'user').length }} 轮对话</span>
+      <button class="ai-clear-btn" type="button" :disabled="loading || !messages.length" @click="clear"><RotateCcw :size="13" /> 清空当前对话</button>
+      <span class="ai-msg-count">{{ requestCount }} 个请求 · {{ toolActivityCount }} 次工具活动</span>
     </div>
+      </main>
+
+      <aside class="ai-activity-panel">
+        <div class="ai-activity-heading">
+          <span>执行上下文</span>
+          <Activity :size="16" />
+        </div>
+        <section class="ai-activity-status" :class="{ running: loading }">
+          <span class="ai-activity-status-icon"><Activity v-if="loading" :size="16" /><ShieldCheck v-else :size="16" /></span>
+          <div>
+            <strong>{{ loading ? 'Agent 正在执行' : aiEnabled ? '工作区已就绪' : '等待 AI 配置' }}</strong>
+            <p>{{ loading ? '正在组合工具结果与下一步操作' : aiEnabled ? '检索和文件操作会在此显示进度' : '配置 BYOK 或开通 Pro 后开始任务' }}</p>
+          </div>
+        </section>
+        <section class="ai-activity-section">
+          <span class="ai-rail-label">本次会话</span>
+          <div class="ai-session-metric"><span>用户请求</span><b>{{ requestCount }}</b></div>
+          <div class="ai-session-metric"><span>工具活动</span><b>{{ toolActivityCount }}</b></div>
+          <div class="ai-session-metric"><span>待确认操作</span><b :class="{ warning: pendingApprovalCount }">{{ pendingApprovalCount }}</b></div>
+        </section>
+        <section v-if="recentToolActivities.length" class="ai-activity-section ai-activity-trail">
+          <span class="ai-rail-label">最近执行</span>
+          <div v-for="(activity, index) in recentToolActivities" :key="index" class="ai-activity-item">
+            <span class="ai-activity-dot" :class="activity.state" />
+            <span>{{ activity.title }}</span>
+            <small>{{ activity.state === 'running' ? '进行中' : activity.state === 'approval' ? '待确认' : activity.state === 'error' ? '未完成' : '完成' }}</small>
+          </div>
+        </section>
+        <section class="ai-activity-section ai-safety-note">
+          <span class="ai-rail-label">安全边界</span>
+          <p>涉及移动、删除、导入等操作，Agent 必须先生成计划并等待你的确认。</p>
+          <span><ShieldCheck :size="13" /> 你的网盘不会被自动修改</span>
+        </section>
+        <button class="ai-activity-link" type="button" @click="handleSend('列出我已登录的所有网盘')">查看可用网盘 <ArrowUpRight :size="14" /></button>
+      </aside>
+    </div>
+    <MediaAcquisitionTargetModal v-if="acquisitionRequest" :visible="acquisitionVisible" :request="acquisitionRequest" @update:visible="handleAcquisitionVisible" />
   </div>
 </template>
 
 <style scoped>
-.ai-chat { display: flex; flex-direction: column; height: 100%; background: transparent; }
+.ai-chat { --agent-accent: rgb(var(--primary-6)); display: flex; flex-direction: column; height: 100%; min-height: 0; background: radial-gradient(circle at 50% -180px, rgba(var(--primary-6), .10), transparent 420px); color: var(--color-text-1); }
+.ai-workspace-header { display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: 0 48px; border-bottom: 1px solid var(--color-border-2); background: color-mix(in srgb, var(--color-bg-1) 92%, transparent); }
+.ai-workspace-title { display: flex; gap: 10px; align-items: center; }
+.ai-workspace-mark { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: #fff; background: var(--agent-accent); border-radius: 10px; box-shadow: 0 5px 18px rgba(var(--primary-6), .23); }
+.ai-workspace-title strong, .ai-workspace-title span { display: block; }
+.ai-workspace-title strong { font-size: 14px; letter-spacing: -.01em; }
+.ai-workspace-title span { margin-top: 2px; font-size: 11px; color: var(--color-text-4); }
+.ai-workspace-status { display: inline-flex; gap: 7px; align-items: center; font-size: 12px; color: var(--color-text-3); }
+.ai-document-context { display: flex; align-items: center; gap: 8px; margin: 12px 34px 0; padding: 9px 12px; color: var(--color-text-3); font-size: 12px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 8px; }
+.ai-document-context > span { color: var(--color-text-4); }
+.ai-document-context strong { overflow: hidden; color: var(--color-text-2); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.ai-document-context small { margin-left: auto; color: var(--color-text-4); white-space: nowrap; }
+.ai-status-pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--color-text-4); }
+.ai-workspace-status.active .ai-status-pulse { background: var(--agent-accent); box-shadow: 0 0 0 4px rgba(var(--primary-6), .13); }
 
-.ai-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; padding: 40px 24px; text-align: center; }
-.ai-empty-icon { color: var(--color-text-4); opacity: 0.3; margin-bottom: 12px; }
-.ai-empty-title { font-size: 18px; font-weight: 600; color: var(--color-text-2); margin-bottom: 6px; }
+.ai-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; max-width: 620px; margin: auto; padding: 40px 24px; text-align: center; }
+.ai-empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; margin-bottom: 18px; color: var(--agent-accent); background: rgba(var(--primary-6), .10); border: 1px solid rgba(var(--primary-6), .16); border-radius: 17px; }
+.ai-empty-kicker { margin-bottom: 8px; color: var(--agent-accent); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
+.ai-empty-title { font-size: 25px; font-weight: 650; letter-spacing: -.04em; color: var(--color-text-1); margin-bottom: 8px; }
 .ai-pro-badge, .ai-send-pro { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: linear-gradient(135deg, #f59e0b, #f97316); color: #fff; font-weight: 700; line-height: 1; letter-spacing: 0; }
 .ai-pro-badge { height: 16px; padding: 0 6px; font-size: 10px; vertical-align: middle; margin-left: 4px; }
 .ai-send-pro { height: 14px; padding: 0 5px; font-size: 9px; margin-left: 2px; }
-.ai-empty-desc { font-size: 13px; color: var(--color-text-4); margin-bottom: 20px; }
+.ai-empty-desc { max-width: 440px; font-size: 13px; line-height: 1.75; color: var(--color-text-3); margin-bottom: 22px; }
+.ai-empty-prompts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.ai-empty-prompts button { padding: 8px 12px; color: var(--color-text-2); font: inherit; font-size: 12px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 9px; cursor: pointer; transition: border-color .18s, color .18s, transform .18s; }
+.ai-empty-prompts button:hover:not(:disabled) { color: var(--agent-accent); border-color: rgba(var(--primary-6), .4); transform: translateY(-1px); }
+.ai-starter-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; width: min(100%, 540px); text-align: left; }
+.ai-starter-card { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); column-gap: 9px; min-height: 76px; padding: 12px; overflow: hidden; color: var(--color-text-2); font: inherit; text-align: left; background: color-mix(in srgb, var(--color-fill-1) 76%, transparent); border: 1px solid var(--color-border-2); border-radius: 13px; cursor: pointer; transition: transform .18s, border-color .18s, background .18s; }
+.ai-starter-card:hover:not(:disabled) { border-color: rgba(var(--primary-6), .46); background: rgba(var(--primary-6), .08); transform: translateY(-2px); }
+.ai-starter-card:disabled { opacity: .48; cursor: default; }
+.ai-starter-card > span { display: inline-flex; grid-row: span 2; align-items: center; justify-content: center; width: 30px; height: 30px; color: rgb(var(--primary-5)); background: rgba(var(--primary-6), .12); border-radius: 9px; }
+.ai-starter-card strong { align-self: end; overflow: hidden; font-size: 12px; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; }
+.ai-starter-card small { align-self: start; overflow: hidden; color: var(--color-text-4); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
+.ai-starter-card--film > span { color: #f4b84f; background: rgba(244, 184, 79, .12); }
+.ai-starter-card--storage > span { color: #45c5a3; background: rgba(69, 197, 163, .12); }
+.ai-starter-card--organize > span { color: #a78bfa; background: rgba(167, 139, 250, .12); }
 .ai-empty-hints { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .ai-hint { padding: 6px 14px; font-size: 13px; color: var(--color-text-3); background: transparent; border: 1px solid rgba(var(--primary-6), 0.16); border-radius: 16px; cursor: pointer; transition: all 0.15s; font-family: inherit; }
 .ai-hint:hover { color: rgb(var(--primary-6)); background: rgba(var(--primary-6), 0.08); border-color: rgba(var(--primary-6), 0.42); }
 .ai-hint:disabled { opacity: 0.45; cursor: default; }
 .ai-hint:disabled:hover { color: var(--color-text-3); background: transparent; border-color: rgba(var(--primary-6), 0.16); }
 
-.ai-messages { flex: 1; overflow-y: auto; padding: 16px 48px; display: flex; flex-direction: column; }
-.ai-msg { display: flex; gap: 10px; max-width: 85%; margin-bottom: 24px; }
+.ai-messages { flex: 1; overflow-y: auto; padding: 28px max(48px, calc((100% - 920px) / 2)); display: flex; flex-direction: column; }
+.ai-msg { display: flex; gap: 10px; width: min(100%, 790px); margin-bottom: 28px; }
 .ai-msg:last-child { margin-bottom: 0; }
-.ai-msg--user { align-self: flex-end; flex-direction: row-reverse; }
+.ai-msg--user { align-self: flex-end; flex-direction: row-reverse; width: auto; max-width: min(78%, 620px); }
 .ai-msg--assistant { align-self: flex-start; }
-.ai-msg-avatar { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0; }
+.ai-msg-avatar { display: flex; align-items: center; justify-content: center; width: 30px; height: 30px; margin-top: 2px; border-radius: 10px; flex-shrink: 0; }
 .ai-msg--user .ai-msg-avatar { background: rgb(var(--primary-6)); color: #fff; }
 .ai-msg--assistant .ai-msg-avatar { background: var(--color-fill-2); color: var(--color-text-3); }
 .ai-msg-body { min-width: 0; flex: 1; }
 .ai-msg--user .ai-msg-body { text-align: right; }
-.ai-msg-text { font-size: 14px; line-height: 1.65; color: var(--color-text-1); word-break: break-word; white-space: pre-wrap; }
-.ai-msg--user .ai-msg-text { padding: 4px 0; text-align: right; }
-.ai-msg--assistant .ai-msg-text { padding: 4px 0; }
+.ai-msg-label { margin: 0 0 7px; color: var(--color-text-4); font-size: 10px; font-weight: 700; letter-spacing: .1em; }
+.ai-msg--user .ai-msg-label { display: none; }
+.ai-msg-text { font-size: 14px; line-height: 1.7; color: var(--color-text-1); word-break: break-word; white-space: pre-wrap; }
+.ai-msg--user .ai-msg-text { padding: 10px 14px; text-align: left; color: #fff; background: var(--agent-accent); border-radius: 15px 15px 4px 15px; box-shadow: 0 5px 18px rgba(var(--primary-6), .16); }
+.ai-msg--assistant .ai-msg-text { padding: 2px 0; }
 .ai-msg-text :deep(strong) { font-weight: 600; }
 .ai-msg-text :deep(em) { font-style: italic; }
 .ai-msg-text :deep(del) { text-decoration: line-through; opacity: 0.7; }
@@ -441,21 +650,135 @@ const DEFAULT_FOLLOWUPS = [
 .ai-msg-text :deep(pre) { margin: 6px 0; padding: 10px 12px; background: var(--color-fill-1); border-radius: 6px; overflow-x: auto; font-size: 12px; line-height: 1.5; }
 .ai-msg-text :deep(pre code) { padding: 0; background: transparent; font-size: inherit; }
 
-.ai-bottom { flex-shrink: 0; padding: 0 48px 12px; background: transparent; }
+.ai-running-card { display: inline-flex; align-items: center; align-self: flex-start; gap: 8px; margin: 0 0 10px 40px; padding: 8px 11px; color: var(--color-text-3); font-size: 12px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 10px; }
+.ai-bottom { flex-shrink: 0; padding: 0 max(48px, calc((100% - 920px) / 2)) 14px; background: linear-gradient(to bottom, transparent, var(--color-bg-1) 24%); }
 .ai-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
 .ai-suggestions-label { font-size: 12px; color: var(--color-text-4); flex-shrink: 0; margin-right: 2px; }
-.ai-input-bar { display: flex; gap: 8px; }
-.ai-input { flex: 1; padding: 10px 16px; font-size: 14px; color: var(--color-text-1); background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(var(--primary-6), 0.14); border-radius: 10px; outline: none; font-family: inherit; }
-.ai-input:focus { border-color: rgb(var(--primary-6)); box-shadow: 0 0 0 2px rgba(var(--primary-6), 0.12); }
+.ai-input-bar { display: flex; align-items: flex-end; gap: 8px; padding: 7px 8px 7px 14px; background: var(--color-bg-1); border: 1px solid var(--color-border-2); border-radius: 15px; box-shadow: 0 10px 28px rgba(0, 0, 0, .06); transition: border-color .18s, box-shadow .18s; }
+.ai-input-bar:focus-within { border-color: rgba(var(--primary-6), .65); box-shadow: 0 0 0 3px rgba(var(--primary-6), .11), 0 10px 28px rgba(0, 0, 0, .06); }
+.ai-input { flex: 1; min-height: 26px; max-height: 120px; padding: 6px 0; resize: none; font-size: 14px; line-height: 1.55; color: var(--color-text-1); background: transparent; border: 0; outline: none; font-family: inherit; }
 .ai-input::placeholder { color: var(--color-text-4); }
-.ai-send-btn { padding: 8px 20px; font-size: 14px; font-weight: 500; color: #fff; background: rgb(var(--primary-6)); border: 0; border-radius: 10px; cursor: pointer; font-family: inherit; transition: opacity 0.15s; }
+.ai-send-btn, .ai-stop-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: 40px; height: 34px; padding: 0 12px; font-size: 12px; font-weight: 650; color: #fff; background: var(--agent-accent); border: 0; border-radius: 10px; cursor: pointer; font-family: inherit; transition: opacity .15s, transform .15s; }
+.ai-stop-btn { background: var(--color-text-2); }
 .ai-send-btn:hover { opacity: 0.9; }
 .ai-send-btn:disabled { opacity: 0.4; cursor: default; }
 
-.ai-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 48px; border-top: 1px solid rgba(var(--primary-6), 0.12); background: transparent; }
-.ai-clear-btn { padding: 4px 12px; font-size: 12px; color: var(--color-text-4); background: transparent; border: 0; border-radius: 4px; cursor: pointer; font-family: inherit; }
+.ai-footer { display: flex; align-items: center; justify-content: space-between; padding: 7px max(48px, calc((100% - 920px) / 2)) 10px; background: var(--color-bg-1); }
+.ai-clear-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 12px; color: var(--color-text-4); background: transparent; border: 0; border-radius: 4px; cursor: pointer; font-family: inherit; }
 .ai-clear-btn:hover { color: rgb(var(--danger-6)); background: var(--color-fill-2); }
 .ai-msg-count { font-size: 12px; color: var(--color-text-4); }
 
-@media (max-width: 720px) { .ai-messages { padding: 16px; } .ai-footer { padding: 8px 16px; } }
+@media (max-width: 720px) { .ai-workspace-header { min-height: 56px; padding: 0 16px; } .ai-workspace-title span { display: none; } .ai-document-context { margin: 10px 16px 0; } .ai-document-context small { display: none; } .ai-messages { padding: 20px 16px; } .ai-bottom, .ai-footer { padding-left: 16px; padding-right: 16px; } .ai-msg { width: 100%; } .ai-msg--user { max-width: 88%; } .ai-suggestions { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 9px; } .ai-hint { flex: 0 0 auto; } }
+
+/* Agent workspace: navigation, conversation canvas, and live execution context. */
+.ai-chat { background: linear-gradient(115deg, #070b17 0%, var(--color-bg-1) 42%, #071a1c 100%); }
+.ai-workspace-grid { display: grid; grid-template-columns: 224px minmax(0, 1fr) 272px; height: 100%; min-height: 0; overflow: hidden; }
+.ai-task-rail, .ai-activity-panel { min-height: 0; padding: 20px 14px; background: color-mix(in srgb, var(--color-bg-1) 88%, #0a1020 12%); }
+.ai-task-rail { display: flex; flex-direction: column; gap: 20px; border-right: 1px solid color-mix(in srgb, var(--color-border-2) 80%, transparent); }
+.ai-activity-panel { display: flex; flex-direction: column; gap: 18px; border-left: 1px solid color-mix(in srgb, var(--color-border-2) 80%, transparent); }
+.ai-rail-brand { display: flex; align-items: center; gap: 9px; padding: 3px 8px; color: var(--color-text-3); font-size: 9px; font-weight: 700; line-height: 1.25; letter-spacing: .12em; }
+.ai-rail-brand b { color: var(--agent-accent); font-weight: 750; }
+.ai-rail-brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: #fff; border-radius: 10px; background: linear-gradient(145deg, rgb(var(--primary-5)), #8b5cf6); box-shadow: 0 8px 20px rgba(var(--primary-6), .28); }
+.ai-new-task { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; color: #fff; font: inherit; font-size: 12px; font-weight: 650; background: linear-gradient(110deg, rgb(var(--primary-6)), #735cff); border: 0; border-radius: 10px; cursor: pointer; box-shadow: 0 10px 20px rgba(var(--primary-6), .17); transition: transform .18s, filter .18s; }
+.ai-new-task:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); }
+.ai-new-task:disabled { cursor: default; opacity: .5; }
+.ai-rail-section { display: flex; flex-direction: column; gap: 3px; }
+.ai-rail-label { display: flex; align-items: center; gap: 5px; margin: 0 8px 7px; color: var(--color-text-4); font-size: 10px; font-weight: 700; letter-spacing: .11em; }
+.ai-rail-action, .ai-history-item { display: flex; align-items: center; gap: 9px; width: 100%; min-width: 0; padding: 8px 9px; color: var(--color-text-3); font: inherit; font-size: 12px; text-align: left; background: transparent; border: 0; border-radius: 8px; cursor: pointer; transition: color .16s, background .16s; }
+.ai-rail-action:hover:not(:disabled), .ai-history-item:hover:not(:disabled) { color: var(--color-text-1); background: rgba(var(--primary-6), .09); }
+.ai-rail-action:disabled, .ai-history-item:disabled { opacity: .45; cursor: default; }
+.ai-rail-history { min-height: 0; margin-top: 4px; }
+.ai-history-item { justify-content: space-between; overflow: hidden; color: var(--color-text-4); }
+.ai-history-item > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ai-history-item.active { color: var(--color-text-1); background: rgba(var(--primary-6), .12); }
+.ai-history-item i { display: inline-flex; flex: 0 0 auto; align-items: center; padding: 3px; color: var(--color-text-4); font-style: normal; border-radius: 5px; opacity: 0; }
+.ai-history-item:hover i, .ai-history-item.active i { opacity: .9; }
+.ai-history-item i:hover { color: #f87171; background: rgba(248, 113, 113, .12); }
+.ai-rail-memories { min-height: 0; margin-top: 8px; }
+.ai-memory-item { display: flex; align-items: flex-start; gap: 5px; padding: 5px 8px; color: var(--color-text-4); font-size: 10px; line-height: 1.45; }
+.ai-memory-item > span { display: -webkit-box; flex: 1; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.ai-memory-item b { display: block; color: var(--color-text-3); font-size: 10px; font-weight: 600; }
+.ai-memory-item button { display: inline-flex; flex: 0 0 auto; padding: 2px; color: var(--color-text-4); background: transparent; border: 0; border-radius: 4px; cursor: pointer; opacity: .7; }
+.ai-memory-item button:hover { color: #f87171; background: rgba(248, 113, 113, .12); opacity: 1; }
+.ai-rail-foot { display: flex; align-items: center; gap: 7px; margin-top: auto; padding: 9px 8px 1px; color: var(--color-text-4); font-size: 11px; }
+.ai-rail-foot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-4); }
+.ai-rail-foot-dot.active { background: #34d399; box-shadow: 0 0 0 4px rgba(52, 211, 153, .10); }
+
+.ai-workspace-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: color-mix(in srgb, var(--color-bg-1) 96%, #090d17 4%); }
+.ai-workspace-header { min-height: 70px; padding: 0 34px; border-bottom-color: color-mix(in srgb, var(--color-border-2) 80%, transparent); background: color-mix(in srgb, var(--color-bg-1) 68%, transparent); backdrop-filter: blur(18px); }
+.ai-workspace-mark { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(145deg, rgb(var(--primary-5)), #8b5cf6); }
+.ai-workspace-title strong { font-size: 15px; }
+.ai-workspace-title span { font-size: 11px; }
+.ai-workspace-status { padding: 6px 9px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 999px; }
+.ai-messages { padding: 30px clamp(28px, 5vw, 76px); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+.ai-message-list { display: flex; flex-direction: column; width: 100%; }
+:global(#xbybody .ai-workspace-main .ai-msg-body) { color: inherit !important; background: transparent !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; }
+.ai-msg { width: min(100%, 820px); gap: 8px; margin-bottom: 24px; }
+.ai-msg-avatar { width: 28px; height: 28px; border-radius: 9px; }
+.ai-msg--assistant { padding: 2px 0; }
+.ai-msg--assistant .ai-msg-body { max-width: 100%; }
+.ai-msg--user { align-self: flex-end; max-width: min(72%, 600px); }
+.ai-msg--user .ai-msg-body { flex: 0 1 auto; max-width: 100%; }
+.ai-msg--user .ai-msg-avatar { color: var(--color-text-2); background: var(--color-fill-2); box-shadow: none; }
+.ai-msg--user .ai-msg-text { display: inline-block; max-width: 100%; padding: 10px 13px; color: var(--color-text-1); background: var(--color-fill-2); border: 1px solid color-mix(in srgb, var(--color-border-2) 80%, transparent); border-radius: 12px 12px 4px 12px; box-shadow: none; }
+.ai-msg-text { font-size: 15px; line-height: 1.72; letter-spacing: .002em; }
+.ai-msg--assistant .ai-msg-text { padding: 0; color: var(--color-text-1); }
+.ai-msg-text :deep(h1), .ai-msg-text :deep(h2), .ai-msg-text :deep(h3), .ai-msg-text :deep(h4) { margin-top: 18px; margin-bottom: 8px; letter-spacing: -.012em; }
+.ai-msg-text :deep(h1) { font-size: 20px; }
+.ai-msg-text :deep(h2) { font-size: 17px; }
+.ai-msg-text :deep(h3) { font-size: 15px; }
+.ai-msg-text :deep(p) { margin: 0 0 10px; }
+.ai-msg-text :deep(ul), .ai-msg-text :deep(ol) { margin: 8px 0 12px; padding-left: 21px; }
+.ai-msg-text :deep(li) { margin: 4px 0; }
+.ai-msg-text :deep(code) { padding: 2px 5px; color: var(--color-text-2); background: color-mix(in srgb, var(--color-fill-2) 85%, transparent); border-radius: 5px; font-size: .88em; }
+.ai-msg-text :deep(blockquote) { margin: 12px 0; padding: 8px 12px; border-left: 2px solid rgb(var(--primary-5)); color: var(--color-text-2); background: color-mix(in srgb, var(--color-fill-1) 72%, transparent); border-radius: 0 7px 7px 0; }
+.ai-msg-text :deep(table) { margin: 12px 0; overflow: hidden; border: 1px solid var(--color-border-2); border-radius: 8px; font-size: 13px; }
+.ai-msg-text :deep(th), .ai-msg-text :deep(td) { padding: 8px 10px; border-width: 0 0 1px; border-color: var(--color-border-2); }
+.ai-msg-text :deep(tr:last-child td) { border-bottom: 0; }
+.ai-msg-text :deep(th) { color: var(--color-text-2); background: color-mix(in srgb, var(--color-fill-2) 72%, transparent); }
+.ai-msg-text :deep(pre) { margin: 12px 0; padding: 12px 14px; border: 1px solid var(--color-border-2); border-radius: 8px; background: color-mix(in srgb, var(--color-fill-2) 72%, transparent); }
+.ai-running-card { margin: 0 0 14px 39px; padding: 9px 12px; border-color: var(--color-border-2); border-radius: 9px; background: color-mix(in srgb, var(--color-fill-1) 84%, transparent); }
+.ai-bottom { padding: 0 clamp(28px, 5vw, 76px) 16px; background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--color-bg-1) 96%, #090d17 4%) 32%); }
+.ai-suggestions { padding: 8px 0 10px; }
+.ai-hint { padding: 5px 10px; color: var(--color-text-4); font-size: 11px; border-color: color-mix(in srgb, var(--color-border-2) 88%, transparent); border-radius: 7px; }
+.ai-hint:hover:not(:disabled) { color: rgb(var(--primary-5)); background: color-mix(in srgb, rgb(var(--primary-6)) 7%, transparent); border-color: color-mix(in srgb, rgb(var(--primary-6)) 40%, var(--color-border-2)); }
+.ai-input-bar { min-height: 56px; padding: 9px 10px 9px 16px; border-color: color-mix(in srgb, var(--color-border-2) 92%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--color-fill-1) 92%, var(--color-bg-1) 8%); box-shadow: none; }
+.ai-input-bar:focus-within { border-color: color-mix(in srgb, rgb(var(--primary-6)) 65%, var(--color-border-2)); box-shadow: 0 0 0 3px color-mix(in srgb, rgb(var(--primary-6)) 12%, transparent); }
+.ai-input { padding: 7px 0; font-size: 15px; line-height: 1.5; }
+.ai-send-btn, .ai-stop-btn { height: 37px; border-radius: 8px; }
+.ai-send-btn { background: rgb(var(--primary-6)); }
+.ai-send-btn:hover:not(:disabled) { background: rgb(var(--primary-5)); opacity: 1; transform: translateY(-1px); }
+.ai-footer { padding: 7px clamp(28px, 4vw, 64px) 11px; background: transparent; }
+
+.ai-activity-heading { display: flex; align-items: center; justify-content: space-between; padding: 3px 6px 0; color: var(--color-text-2); font-size: 12px; font-weight: 650; }
+.ai-activity-heading svg { color: var(--agent-accent); }
+.ai-activity-status { display: flex; gap: 10px; padding: 13px; border: 1px solid var(--color-border-2); border-radius: 12px; background: var(--color-fill-1); }
+.ai-activity-status.running { border-color: rgba(var(--primary-6), .34); background: rgba(var(--primary-6), .07); }
+.ai-activity-status-icon { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 29px; height: 29px; color: #34d399; background: rgba(52, 211, 153, .10); border-radius: 9px; }
+.ai-activity-status.running .ai-activity-status-icon { color: rgb(var(--primary-5)); background: rgba(var(--primary-6), .12); animation: ai-status-spin 1.5s linear infinite; }
+.ai-activity-status strong { display: block; margin: 1px 0 4px; color: var(--color-text-1); font-size: 12px; }
+.ai-activity-status p, .ai-safety-note p { margin: 0; color: var(--color-text-4); font-size: 11px; line-height: 1.55; }
+.ai-activity-section { padding: 15px 0; border-top: 1px solid var(--color-border-2); }
+.ai-session-metric { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; color: var(--color-text-3); font-size: 12px; }
+.ai-session-metric b { color: var(--color-text-1); font-size: 13px; }
+.ai-session-metric b.warning { color: #f59e0b; }
+.ai-activity-trail { min-height: 0; padding-bottom: 3px; }
+.ai-activity-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 7px; align-items: center; padding: 6px 8px; color: var(--color-text-3); font-size: 11px; }
+.ai-activity-item > span:nth-child(2) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ai-activity-item small { color: var(--color-text-4); font-size: 10px; }
+.ai-activity-dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; }
+.ai-activity-dot.running { background: rgb(var(--primary-5)); box-shadow: 0 0 0 4px rgba(var(--primary-6), .12); animation: ai-activity-pulse 1.25s ease-in-out infinite; }
+.ai-activity-dot.approval { background: #f59e0b; }
+.ai-activity-dot.error { background: #fb7185; }
+.ai-safety-note { margin-top: auto; padding: 14px; border: 1px solid color-mix(in srgb, var(--color-border-2) 84%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--color-fill-1) 72%, transparent); }
+.ai-safety-note .ai-rail-label { margin-left: 0; }
+.ai-safety-note > span { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: #34d399; font-size: 11px; }
+.ai-activity-link { display: inline-flex; align-items: center; justify-content: space-between; width: 100%; padding: 8px; color: rgb(var(--primary-5)); font: inherit; font-size: 12px; background: transparent; border: 0; cursor: pointer; }
+.ai-activity-link:hover { text-decoration: underline; }
+@keyframes ai-status-spin { to { transform: rotate(360deg); } }
+@keyframes ai-activity-pulse { 50% { opacity: .45; transform: scale(.8); } }
+
+@media (max-width: 1180px) { .ai-workspace-grid { grid-template-columns: 190px minmax(0, 1fr); } .ai-activity-panel { display: none; } }
+@media (max-width: 820px) { .ai-workspace-grid { grid-template-columns: 1fr; } .ai-task-rail { display: none; } .ai-workspace-header { padding: 0 20px; } .ai-messages { padding: 22px 20px; } .ai-bottom, .ai-footer { padding-left: 20px; padding-right: 20px; } }
+@media (max-width: 520px) { .ai-starter-grid { grid-template-columns: 1fr; } }
 </style>

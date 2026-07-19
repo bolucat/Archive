@@ -1,4 +1,4 @@
-export type FeatureName = 'aiAgentChat' | 'panHubSearch' | 'panHubSave' | 'readerAIChat' | 'readerTTS' | 'readerCloudTTS' | 'readerTranslation' | 'mediaAIScrape'
+export type FeatureName = 'aiAgentChat' | 'panHubSearch' | 'panHubSave' | 'readerAIChat' | 'readerTTS' | 'readerCloudTTS' | 'readerTranslation' | 'mediaAIScrape' | 'mediaAcquisition'
 
 export interface FeatureConfig { freeLimit: number; vipLimit: number | null; unit: string; freeMessage: string; vipMessage: string; vipOnlyMessage: string; requiresPro?: boolean }
 export interface UsageCheckResult { allowed: boolean; message?: string }
@@ -13,6 +13,7 @@ const CONFIGS: Record<FeatureName, FeatureConfig> = {
   readerCloudTTS:    { freeLimit: 0, vipLimit: null, unit: 'chars',   freeMessage: '', vipMessage: '', vipOnlyMessage: '云端高品质朗读需购买 Pro 后使用', requiresPro: true },
   readerTranslation: { freeLimit: 0, vipLimit: null, unit: 'chars', freeMessage: '', vipMessage: '', vipOnlyMessage: '翻译功能需购买 Pro 后使用', requiresPro: true },
   mediaAIScrape: { freeLimit: 0, vipLimit: null, unit: 'sessions', freeMessage: '', vipMessage: '', vipOnlyMessage: 'AI 影视刮削需购买 Pro 后使用', requiresPro: true },
+  mediaAcquisition: { freeLimit: 0, vipLimit: null, unit: 'tasks', freeMessage: '', vipMessage: '', vipOnlyMessage: 'Agent 获取资源和追更需购买 Pro 后使用', requiresPro: true },
 }
 
 let cleanedToday = false
@@ -51,6 +52,11 @@ export function isPro(): boolean {
   try {
     return localStorage.getItem('app_user_pro') === '1'
   } catch { return false }
+}
+
+export function requireMediaAcquisitionPro(): void {
+  const result = checkAndIncrement('mediaAcquisition', 1, { metered: false })
+  if (!result.allowed) throw new Error(result.message || 'Agent 获取资源和追更需购买 Pro 后使用')
 }
 
 export function getUsageCount(feature: FeatureName): number {

@@ -12,8 +12,9 @@ import AliShare from '../../aliapi/share'
 import { usePanTreeStore, usePanFileStore } from '../../store'
 import message from '../../utils/message'
 import PanDAL from '../pandal'
-import { isAliyunUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser, isQuarkUser } from '../../aliapi/utils'
+import { isAliyunUser, isGuangyaUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
+import { supportsCreateTextFile, supportsEncryptedFileOperations, supportsLocalUpload } from '../../aliapi/providerFeatures'
 
 const props = defineProps({
   dirtype: {
@@ -39,13 +40,12 @@ const panTreeStore = usePanTreeStore()
 const panFileStore = usePanFileStore()
 
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
-const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
-const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
-const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
 const isGuangya = computed(() => isGuangyaUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'guangya')
 const isQuark = computed(() => isQuarkUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'quark')
-const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
-const isShareImportSupported = computed(() => isAliyunUser(panTreeStore.user_id || '') || isQuark.value || isCloud123User(panTreeStore.user_id || '') || isGuangya.value)
+const isShareImportSupported = computed(() => isAliyunUser(panTreeStore.user_id || '') || isQuark.value || isPikPakUser(panTreeStore.user_id || '') || isGuangya.value)
+const canCreateTextFile = computed(() => supportsCreateTextFile(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const canUploadLocal = computed(() => supportsLocalUpload(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const canUseEncryption = computed(() => supportsEncryptedFileOperations(panTreeStore.user_id || ''))
 
 const isShowBtn = computed(() => {
   return (props.dirtype === 'pic' && props.inputpicType != 'mypic')
@@ -114,7 +114,7 @@ const handleClickBottleFish = async () => {
       </a-button>
       <template #content>
         <a-dgroup title="普通新建">
-          <a-doption v-if='!isWebDav' value='newfile' title='Ctrl+N' @click='() => modalCreatNewFile()'>
+          <a-doption v-if='canCreateTextFile' value='newfile' title='Ctrl+N' @click='() => modalCreatNewFile()'>
             <template #icon><IconFont name="iconwenjian" /></template>
             <template #default>新建文件</template>
           </a-doption>
@@ -127,7 +127,7 @@ const handleClickBottleFish = async () => {
             <template #default>日期+序号</template>
           </a-doption>
         </a-dgroup>
-        <a-dgroup v-if='!isWebDav && !isThirdPartyDrive' title="加密新建">
+        <a-dgroup v-if='canUseEncryption' title="加密新建">
           <a-doption value='newfile' @click='() => modalCreatNewFile("xbyEncrypt1")'>
             <template #icon><IconFont name="iconwenjian" /></template>
             <template #default>新建文件（加密）</template>
@@ -141,7 +141,7 @@ const handleClickBottleFish = async () => {
             <template #default>日期+序号（加密）</template>
           </a-doption>
         </a-dgroup>
-        <a-dgroup v-if='!isWebDav && !isThirdPartyDrive' title="私密新建">
+        <a-dgroup v-if='canUseEncryption' title="私密新建">
           <a-doption value='newfile' @click='() => modalCreatNewFile("xbyEncrypt2")'>
             <template #icon><IconFont name="iconwenjian" /></template>
             <template #default>新建文件（私密）</template>
@@ -162,7 +162,7 @@ const handleClickBottleFish = async () => {
               @click='modalCreatNewAlbum'>
       <IconFont name="iconplus" />创建相册
     </a-button>
-    <a-dropdown v-if='!dirtype.includes("pic") && !isWebDav' trigger='hover' class='rightmenu' position='bl'>
+    <a-dropdown v-if='!dirtype.includes("pic") && !isWebDav && canUploadLocal' trigger='hover' class='rightmenu' position='bl'>
       <a-button type='text' size='small' tabindex='-1'>
         <IconFont name="iconupload" />上传<IconFont name="icondown" />
       </a-button>
@@ -178,7 +178,7 @@ const handleClickBottleFish = async () => {
             <template #default>上传文件夹</template>
           </a-doption>
         </a-dgroup>
-        <a-dgroup v-if='!isWebDav && !isThirdPartyDrive' title="加密上传">
+        <a-dgroup v-if='canUseEncryption' title="加密上传">
           <a-doption value='uploadfile' title='Ctrl+J'
                      @click="() => handleUpload('file', 'xbyEncrypt1')">
             <template #icon><IconFont name="iconwenjian" /></template>
@@ -189,7 +189,7 @@ const handleClickBottleFish = async () => {
             <template #default>上传文件夹（加密）</template>
           </a-doption>
         </a-dgroup>
-        <a-dgroup v-if='!isWebDav && !isThirdPartyDrive' title="私密上传">
+        <a-dgroup v-if='canUseEncryption' title="私密上传">
           <a-doption value='uploadfile' title='Ctrl+M'
                      @click="() => handleUpload('file', 'xbyEncrypt2')">
             <template #icon><IconFont name="iconwenjian" /></template>

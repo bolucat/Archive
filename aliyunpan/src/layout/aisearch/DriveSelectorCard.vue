@@ -69,7 +69,7 @@ const PLATFORM_LABELS: Record<string, string> = {
 </template>
 
 <style scoped>
-.ds-card { margin: 8px 0; border-radius: 10px; background: rgba(var(--primary-6), 0.05); border: 1px solid rgba(var(--primary-6), 0.18); overflow: hidden; }
+.ds-card { margin: 12px 0; border-radius: 13px; background: linear-gradient(135deg, rgba(var(--primary-6), .10), color-mix(in srgb, var(--color-fill-1) 78%, transparent)); border: 1px solid rgba(var(--primary-6), .24); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .ds-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 14px; font-weight: 600; color: var(--color-text-1); border-bottom: 1px solid rgba(var(--primary-6), 0.1); }
 .ds-toggle-all { margin-left: auto; font-size: 12px; color: var(--color-text-4); background: transparent; border: 0; cursor: pointer; font-family: inherit; }
 .ds-toggle-all:hover { color: rgb(var(--primary-6)); }
@@ -82,7 +82,7 @@ const PLATFORM_LABELS: Record<string, string> = {
 .ds-platform { font-size: 13px; font-weight: 500; color: var(--color-text-2); }
 .ds-name { font-size: 12px; color: var(--color-text-4); }
 .ds-action { padding: 10px 14px; border-top: 1px solid rgba(var(--primary-6), 0.1); }
-.ds-confirm { padding: 6px 20px; font-size: 13px; font-weight: 500; color: #fff; background: rgb(var(--primary-6)); border: 0; border-radius: 8px; cursor: pointer; font-family: inherit; }
+.ds-confirm { padding: 7px 16px; font-size: 12px; font-weight: 650; color: #fff; background: linear-gradient(110deg, rgb(var(--primary-6)), #755bff); border: 0; border-radius: 8px; cursor: pointer; font-family: inherit; }
 .ds-confirm:hover { opacity: 0.9; }
 .ds-confirm:disabled { opacity: 0.3; cursor: default; }
 </style>

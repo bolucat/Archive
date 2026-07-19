@@ -13,6 +13,15 @@ describe('buildQuarkCookieString', () => {
 
     expect(cookie).toBe('__uid=u1; __kps=kps1')
   })
+
+  it('deduplicates same-name cookies from different Quark subdomains', () => {
+    const cookie = buildQuarkCookieString([
+      { name: '__pus', value: 'old', domain: '.pan.quark.cn' },
+      { name: '__pus', value: 'current', domain: '.drive-pc.quark.cn' }
+    ] as any)
+
+    expect(cookie).toBe('__pus=current')
+  })
 })
 
 describe('createQuarkTokenFromCookies', () => {
@@ -29,13 +38,21 @@ describe('createQuarkTokenFromCookies', () => {
       })
     }))
 
-    const token = await createQuarkTokenFromCookies('__uid=12345; __kps=kps1')
+    const token = await createQuarkTokenFromCookies('__uid=12345; __kps=kps1; __pus=pus1')
 
     expect(token.tokenfrom).toBe('quark')
-    expect(token.access_token).toBe('__uid=12345; __kps=kps1')
+    expect(token.access_token).toBe('__uid=12345; __kps=kps1; __pus=pus1')
     expect(token.user_id).toBe('quark_12345')
     expect(token.nick_name).toBe('Quark User')
     expect(token.default_drive_id).toBe('quark')
+  })
+
+  it('rejects a guest-only cookie before accepting it as an account credential', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(createQuarkTokenFromCookies('__puus=guest')).rejects.toThrow('夸克登录 Cookie 无效')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
@@ -74,7 +91,8 @@ describe('completeQuarkQrLogin', () => {
     vi.stubGlobal('window', {
       WebGetCookies: vi.fn().mockResolvedValue([
         { name: '__uid', value: '12345', domain: '.quark.cn' },
-        { name: '__kps', value: 'kps1', domain: '.quark.cn' }
+        { name: '__kps', value: 'kps1', domain: '.quark.cn' },
+        { name: '__pus', value: 'pus1', domain: '.quark.cn' }
       ])
     })
 
@@ -82,7 +100,7 @@ describe('completeQuarkQrLogin', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(String(fetchMock.mock.calls[0][0])).toContain('st=service-ticket')
-    expect(token.access_token).toBe('__uid=12345; __kps=kps1')
+    expect(token.access_token).toBe('__uid=12345; __kps=kps1; __pus=pus1')
     expect(token.user_id).toBe('quark_12345')
     expect(token.nick_name).toBe('Quark User')
   })
@@ -103,7 +121,8 @@ describe('completeQuarkQrLogin', () => {
     vi.stubGlobal('window', {
       WebGetCookies: vi.fn().mockResolvedValue([
         { name: '__uid', value: '666', domain: '.quark.cn' },
-        { name: '__kps', value: 'kps1', domain: '.quark.cn' }
+        { name: '__kps', value: 'kps1', domain: '.quark.cn' },
+        { name: '__pus', value: 'pus1', domain: '.quark.cn' }
       ])
     })
 

@@ -132,6 +132,13 @@ const useFootStore = defineStore('foot', {
       this.taskVisible = true
     },
 
+    mAddLocalTask(key: string, title: string, status: 'success' | 'error') {
+      const now = new Date().getTime()
+      const task: AsyncModel = { user_id: '', todrive_id: '', tofile_id: '', zipdrive_id: '', zipfile_id: '', zipdomain_id: '', key, type: '异步', title, status, starttime: now, endtime: now, usetime: '刚刚' }
+      this.taskList = [task].concat(this.taskList.filter(item => item.key !== key))
+      this.taskVisible = true
+    },
+
     aUpdateTask() {
       const list = this.taskList
       for (let i = 0, maxi = list.length; i < maxi; i++) {

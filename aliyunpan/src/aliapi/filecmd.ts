@@ -208,8 +208,7 @@ export default class AliFileCmd {
       return successList
     }
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      message.error("暂不支持彻底删除，请移步至官方客户端操作")
-      return []
+      return apiCloud123DeleteBatch(user_id, file_idList)
     }
     if (isDrive115User(user_id) || drive_id === 'drive115') {
       message.error('115网盘不支持直接彻底删除，请先移入回收站后再删除')
@@ -411,8 +410,7 @@ export default class AliFileCmd {
 
   static async ApiTrashCleanBatch(user_id: string, drive_id: string, ismessage: boolean, file_idList: string[]): Promise<string[]> {
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      message.error("暂不支持彻底删除，请移步至官方客户端操作")
-      return []
+      return apiCloud123DeleteBatch(user_id, file_idList)
     }
     if (isDrive115User(user_id) || drive_id === 'drive115') {
       return apiDrive115TrashDelete(user_id, file_idList)

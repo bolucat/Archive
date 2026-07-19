@@ -22,7 +22,7 @@ import { applyDropboxQuota, refreshDropboxAccessToken } from '../dropbox/auth'
 import { applyOneDriveQuota, refreshOneDriveAccessToken } from '../onedrive/auth'
 import { applyBoxQuota, refreshBoxAccessToken } from '../box/auth'
 import { refreshCloud189Token } from '../cloud189/auth'
-import { fetchGuangyaUserInfo, refreshGuangyaAccessToken } from '../guangya/auth'
+import { applyGuangyaQuota, refreshGuangyaAccessToken } from '../guangya/auth'
 import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
 
@@ -86,11 +86,11 @@ export default class UserDAL {
     }, 1000)
   }
 
-  private static async ensureTokenReady(token: ITokenInfo): Promise<ITokenInfo | null> {
+  private static async ensureTokenReady(token: ITokenInfo, force = false): Promise<ITokenInfo | null> {
     try {
       if (isCloud123User(token)) {
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshCloud123AccessToken(token.refresh_token)
           if (!refreshed) return null
           refreshed.user_id = token.user_id || refreshed.user_id
@@ -105,7 +105,7 @@ export default class UserDAL {
       }
       if (isBaiduUser(token)) {
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshBaiduAccessToken(token.refresh_token)
           if (!refreshed) return null
           refreshed.user_id = token.user_id || refreshed.user_id
@@ -120,7 +120,7 @@ export default class UserDAL {
       }
       if (isPikPakUser(token)) {
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshPikPakAccessToken(token)
           if (!refreshed?.access_token) return null
           this.SaveUserToken(refreshed)
@@ -130,7 +130,7 @@ export default class UserDAL {
       }
       if (isDropboxUser(token)) {
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshDropboxAccessToken(token)
           if (!refreshed?.access_token) return null
           this.SaveUserToken(refreshed)
@@ -140,7 +140,7 @@ export default class UserDAL {
       }
       if (isOneDriveUser(token)) {
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshOneDriveAccessToken(token)
           if (!refreshed?.access_token) return null
           this.SaveUserToken(refreshed)
@@ -150,7 +150,7 @@ export default class UserDAL {
       }
       if (isBoxUser(token)) {
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshBoxAccessToken(token)
           if (!refreshed?.access_token) return null
           this.SaveUserToken(refreshed)
@@ -164,7 +164,7 @@ export default class UserDAL {
           if (nextId) token.user_id = nextId
         }
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refresh115AccessToken(token.refresh_token)
           if (!refreshed?.access_token) return null
           token.access_token = refreshed.access_token
@@ -197,7 +197,7 @@ export default class UserDAL {
       if (isGuangyaUser(token)) {
         token.default_drive_id = token.default_drive_id || 'guangya'
         const expireTime = new Date(token.expire_time || 0).getTime()
-        if (!token.access_token || (expireTime && expireTime <= Date.now())) {
+        if (force || !token.access_token || (expireTime && expireTime <= Date.now())) {
           const refreshed = await refreshGuangyaAccessToken(token)
           if (!refreshed?.access_token) return null
           this.SaveUserToken(refreshed)
@@ -456,6 +456,12 @@ export default class UserDAL {
     return user
   }
 
+  static async EnsureUserTokenReady(user_id: string, force = false): Promise<ITokenInfo | null> {
+    if (!user_id) return null
+    const token = UserTokenMap.get(user_id) || await this.GetUserTokenFromDB(user_id)
+    return token ? this.ensureTokenReady(token, force) : null
+  }
+
 
   static async ClearUserTokenMap() {
     UserTokenMap.clear()
@@ -527,16 +533,7 @@ export default class UserDAL {
       }
     } else if (isGuangyaUser(token)) {
       token.default_drive_id = token.default_drive_id || 'guangya'
-      const userInfo = await fetchGuangyaUserInfo(token).catch(() => null)
-      const info = userInfo?.data || userInfo || null
-      if (info) {
-        token.user_name = info.username || info.phone_number || info.phoneNumber || token.user_name
-        token.nick_name = info.nickname || info.nick_name || info.name || token.nick_name
-        token.name = info.name || token.nick_name || token.name
-        token.avatar = info.avatar || token.avatar
-        token.used_size = Number(info.used_size || info.usedSize || token.used_size || 0)
-        token.total_size = Number(info.total_size || info.totalSize || token.total_size || 0)
-      }
+      await applyGuangyaQuota(token)
     } else if (isDropboxUser(token)) {
       await applyDropboxQuota(token)
     } else if (isOneDriveUser(token)) {
@@ -808,6 +805,11 @@ export default class UserDAL {
         token.default_drive_id = token.default_drive_id || 'quark'
         UserDAL.SaveUserToken(token)
         return true
+      } else if (isGuangyaUser(token)) {
+        token.default_drive_id = token.default_drive_id || 'guangya'
+        await applyGuangyaQuota(token)
+        UserDAL.SaveUserToken(token)
+        return true
       } else if (isDropboxUser(token)) {
         await applyDropboxQuota(token)
         UserDAL.SaveUserToken(token)
@@ -901,6 +903,9 @@ export default class UserDAL {
         await applyPikPakQuota(token)
       } else if (isQuarkUser(token)) {
         token.default_drive_id = token.default_drive_id || 'quark'
+      } else if (isGuangyaUser(token)) {
+        token.default_drive_id = token.default_drive_id || 'guangya'
+        await applyGuangyaQuota(token)
       } else if (isDropboxUser(token)) {
         await applyDropboxQuota(token)
       } else if (isOneDriveUser(token)) {

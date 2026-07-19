@@ -44,17 +44,17 @@ const emit = defineEmits<{ (e: 'organize', categories: { name: string; pattern: 
 </template>
 
 <style scoped>
-.oc-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.oc-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .oc-status { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 13px; color: var(--color-text-3); }
 .oc-error { color: rgb(var(--danger-6)); }
-.oc-header { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--color-text-3); border-bottom: 1px solid var(--color-border-2); }
+.oc-header { display: flex; align-items: center; gap: 7px; padding: 11px 14px; font-size: 12px; font-weight: 650; color: #a78bfa; border-bottom: 1px solid var(--color-border-2); background: rgba(167, 139, 250, .07); }
 .oc-table { padding: 4px 0; }
 .oc-row { display: grid; grid-template-columns: 2fr 1fr 0.8fr 1fr; gap: 8px; padding: 6px 14px; font-size: 12px; color: var(--color-text-2); }
 .oc-row-head { color: var(--color-text-4); font-weight: 600; border-bottom: 1px solid var(--color-border-2); }
 .oc-name { font-weight: 500; }
 .oc-pattern { color: var(--color-text-4); font-family: monospace; font-size: 11px; }
 .oc-action { padding: 10px 14px; border-top: 1px solid var(--color-border-2); }
-.oc-btn { padding: 4px 14px; font-size: 12px; color: #fff; background: rgb(var(--primary-6)); border: 0; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.oc-btn { padding: 6px 13px; font-size: 12px; color: #fff; background: linear-gradient(110deg, #8b5cf6, rgb(var(--primary-6))); border: 0; border-radius: 8px; cursor: pointer; font-family: inherit; }
 .oc-btn:hover { opacity: 0.9; }
 .oc-retry { margin-left: auto; padding: 2px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: transparent; border: 1px solid rgb(var(--primary-6)); border-radius: 4px; cursor: pointer; }
 .oc-spin { animation: oc-spin 1s linear infinite; }

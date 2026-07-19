@@ -5,7 +5,8 @@ import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, Selec
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import fs from 'fs'
-import path from 'path'
+import { resolveDownloadOpenPath, resolveLegacyMagnetPath } from './integration/btDownloadTarget'
+import { buildLocalVideoPage, isLocalVideoPath } from './integration/localVideoPlayback'
 
 type Item = IStateDownFile
 type State = DownState
@@ -254,10 +255,19 @@ const useDownStore = defineStore('down', {
      */
     mOpenUploadedFile(file: Item | null, downIDList: string[], isDir: boolean) {
       const DownedList = this.ListDataRaw
-      const openDir = (localFilePath: string) => {
+      const resolveExistingPath = (item: Item) => {
+        const recordedPath = resolveDownloadOpenPath(item.Info)
+        if (fs.existsSync(recordedPath)) return recordedPath
+        const legacyPath = resolveLegacyMagnetPath(item.Info.DownSavePath, item.Down.DownUrl || '')
+        return legacyPath && fs.existsSync(legacyPath) ? legacyPath : recordedPath
+      }
+
+      const openDir = (localFilePath: string, savePath: string) => {
         try {
           if (fs.existsSync(localFilePath)) {
             window.Electron.shell.showItemInFolder(localFilePath)
+          } else if (fs.existsSync(savePath)) {
+            window.Electron.shell.openPath(savePath)
           } else {
             message.error('文件夹可能已经被删除')
           }
@@ -268,7 +278,11 @@ const useDownStore = defineStore('down', {
       const openFile = (localFilePath: string) => {
         try {
           if (fs.existsSync(localFilePath)) {
-            window.Electron.shell.openPath(localFilePath)
+            if (isLocalVideoPath(localFilePath)) {
+              window.WebOpenWindow({ page: 'PageVideo', data: buildLocalVideoPage(localFilePath), theme: 'dark' })
+            } else {
+              window.Electron.shell.openPath(localFilePath)
+            }
           } else {
             message.error('文件可能已经被删除')
           }
@@ -281,9 +295,9 @@ const useDownStore = defineStore('down', {
           message.error('远程下载不支持该操作')
           return
         }
-        const localFilePath = path.join(file.Info.DownSavePath, file.Info.name)
+        const localFilePath = resolveExistingPath(file)
         if (isDir) {
-          openDir(localFilePath)
+          openDir(localFilePath, file.Info.DownSavePath)
         } else {
           openFile(localFilePath)
         }
@@ -302,9 +316,9 @@ const useDownStore = defineStore('down', {
             message.error('远程下载不支持该操作')
             continue
           }
-          const localFilePath = path.join(DownedList[j].Info.DownSavePath, DownedList[j].Info.name)
+          const localFilePath = resolveExistingPath(DownedList[j])
           if (isDir) {
-            openDir(localFilePath)
+            openDir(localFilePath, DownedList[j].Info.DownSavePath)
           } else {
             openFile(localFilePath)
           }

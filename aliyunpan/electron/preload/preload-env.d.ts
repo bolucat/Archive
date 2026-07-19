@@ -29,6 +29,7 @@ declare interface Window {
   WebSetProgressBar: any
   WebGetCookies: any
   WebQuarkAccountInfo: any
+  WebQuarkFileList: any
   WebQuarkDownloadUrl: any
   WebSetCookies: any
   WebOpenWindow: any

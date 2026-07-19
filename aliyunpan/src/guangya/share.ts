@@ -251,17 +251,27 @@ const mapGuangyaShareFile = (item: any, parentId: string): IAliShareFileItem => 
 
 export const apiGuangyaShareFileList = async (share_id: string, accessToken: string, parentId: string): Promise<{ items: IAliShareFileItem[]; next_marker: string; error: string }> => {
   try {
-    const data = await guangyaPublicPost('/nd.bizuserres.s/v1/get_share_page_files_list', {
-      accessToken,
-      parentId: parentId === 'root' ? '' : parentId,
-      page: 1,
-      pageSize: 100,
-      orderBy: 0,
-      sortType: 0
-    })
-    const body = data?.data || data || {}
-    const list = body?.list || body?.items || body?.records || body?.content || []
-    return { items: Array.isArray(list) ? list.map((item) => mapGuangyaShareFile(item, parentId)) : [], next_marker: '', error: '' }
+    const items: IAliShareFileItem[] = []
+    let page = 1
+    let hasMore = false
+    do {
+      const data = await guangyaPublicPost('/nd.bizuserres.s/v1/get_share_page_files_list', {
+        accessToken,
+        parentId: parentId === 'root' ? '' : parentId,
+        page,
+        pageSize: 100,
+        orderBy: 0,
+        sortType: 0
+      })
+      const body = data?.data || data || {}
+      const list = body?.list || body?.items || body?.records || body?.content || []
+      const pageItems = Array.isArray(list) ? list : []
+      items.push(...pageItems.map(item => mapGuangyaShareFile(item, parentId)))
+      const total = Number(body?.total || body?.totalCount || 0)
+      hasMore = total ? items.length < total : pageItems.length === 100
+      page += 1
+    } while (hasMore && items.length < 1000)
+    return { items, next_marker: hasMore ? String(page) : '', error: '' }
   } catch (error: any) {
     return { items: [], next_marker: '', error: error?.message || '获取光鸭云盘分享文件失败' }
   }

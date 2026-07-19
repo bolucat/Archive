@@ -152,6 +152,7 @@ const handleCreate = async () => {
           </div>
         </a-form-item>
         <div style="display: flex; justify-content: flex-end; gap: 8px">
+          <a-button v-if="provider === 'drive115'" type="outline" @click="modalStore.showModal('drive115management', {})">115 任务管理</a-button>
           <a-button type="outline" @click="handleHide">取消</a-button>
           <a-button type="primary" :loading="okLoading" @click="handleCreate">创建</a-button>
         </div>

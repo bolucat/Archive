@@ -122,3 +122,28 @@ export const apiDrive115TrashDelete = async (user_id: string, trash_ids?: string
     return []
   }
 }
+
+export const apiDrive115TrashClear = async (user_id: string): Promise<boolean> => {
+  const token = UserDAL.GetUserToken(user_id)
+  if (!token?.access_token) return false
+  try {
+    const resp = await fetch('https://proapi.115.com/open/rb/del', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Bearer ${token.access_token}`
+      },
+      body: new URLSearchParams()
+    })
+    if (!resp.ok) return false
+    const data = await resp.json()
+    if (data?.code !== 0) {
+      message.error(data?.message || '清空回收站失败')
+      return false
+    }
+    return true
+  } catch (err: any) {
+    message.error('清空回收站失败 ' + (err?.message || ''))
+    return false
+  }
+}

@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   apiQuarkShareCreate,
   apiQuarkShareDetail,
+  apiQuarkShareFileList,
   apiQuarkShareList,
+  apiQuarkSaveShareFilesBatch,
   apiQuarkShareToken,
   parseQuarkShareLink
 } from '../share'
@@ -10,7 +12,9 @@ import {
 vi.mock('../../user/userdal', () => ({
   default: {
     GetUserToken: () => ({ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1' }),
-    GetUserTokenFromDB: async () => null
+    GetUserTokenFromDB: async () => null,
+    GetUserListFromDB: async () => [{ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1', tokenfrom: 'quark' }],
+    SaveUserToken: vi.fn()
   }
 }))
 
@@ -115,8 +119,8 @@ describe('apiQuarkShareToken and detail', () => {
       })
     vi.stubGlobal('fetch', fetchMock)
 
-    const token = await apiQuarkShareToken('share1', '9xyz')
-    const detail = await apiQuarkShareDetail('share1', token)
+    const token = await apiQuarkShareToken('quark:share1', '9xyz', 'quark_u1')
+    const detail = await apiQuarkShareDetail('quark:share1', token, '0', 1, 'quark_u1')
 
     expect(token).toBe('st1')
     expect(detail.error).toBe('')
@@ -126,6 +130,49 @@ describe('apiQuarkShareToken and detail', () => {
       passcode: '9xyz',
       support_visit_limit_private_share: true
     })
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({ cookie: '__uid=u1; __kps=kps1' })
     expect(String(fetchMock.mock.calls[1][0])).toContain('https://drive.quark.cn/1/clouddrive/share/sharepage/detail?')
+    expect(fetchMock.mock.calls[1][1].headers).toMatchObject({ cookie: '__uid=u1; __kps=kps1' })
+  })
+
+  it('loads all share pages and keeps pagination separate from errors', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({ fid: `f${index}`, file_name: `f${index}.mkv`, file_type: 1, share_fid_token: `t${index}` }))
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 200, data: { list: firstPage, metadata: { _total: 101 } } }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 200, data: { list: [{ fid: 'f100', file_name: 'f100.mkv', file_type: 1, share_fid_token: 't100' }], metadata: { _total: 101 } } }) })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await apiQuarkShareFileList('quark:share1', 'st1', 'root')
+
+    expect(result.error).toBe('')
+    expect(result.items).toHaveLength(101)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('pwd_id=share1')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('_page=2')
+  })
+})
+
+describe('apiQuarkSaveShareFilesBatch', () => {
+  it('returns the synchronous task failure instead of reporting a false success', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ status: 200, data: { list: [{ fid: 'f1', file_name: 'movie.mkv', file_type: 1, share_fid_token: 'token1' }] } }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          status: 200,
+          code: 0,
+          data: {
+            task_id: 'task1',
+            task_sync: true,
+            task_resp: { status: 400, code: 32003, message: 'capacity limit[{0}]', metadata: { missing_capacity: 165011263325 } }
+          }
+        })
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const listed = await apiQuarkShareFileList('quark:share1', 'st1', 'root', 'quark_u1')
+    expect(listed.error).toBe('')
+    const result = await apiQuarkSaveShareFilesBatch('quark:share1', 'st1', 'quark_u1', '0', ['f1'])
+
+    expect(result).toContain('夸克网盘容量不足')
   })
 })

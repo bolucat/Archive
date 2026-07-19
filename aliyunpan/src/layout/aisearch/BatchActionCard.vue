@@ -51,13 +51,13 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void; (e: 'retry
 </template>
 
 <style scoped>
-.ba-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
-.ba-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 14px; font-weight: 500; color: var(--color-text-1); border-bottom: 1px solid var(--color-border-2); }
+.ba-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
+.ba-header { display: flex; align-items: center; gap: 8px; padding: 13px 14px; font-size: 13px; font-weight: 650; color: var(--color-text-1); border-bottom: 1px solid var(--color-border-2); background: rgba(245, 158, 11, .07); }
 .ba-file-list { padding: 8px 14px; max-height: 160px; overflow-y: auto; }
 .ba-file-name { font-size: 12px; color: var(--color-text-3); padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ba-more { font-size: 12px; color: var(--color-text-4); padding: 4px 0; }
 .ba-actions { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--color-border-2); }
-.ba-btn { padding: 4px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; font-family: inherit; border: 1px solid var(--color-border-2); background: var(--color-bg-2); color: var(--color-text-1); }
+.ba-btn { padding: 6px 13px; font-size: 12px; border-radius: 8px; cursor: pointer; font-family: inherit; border: 1px solid var(--color-border-2); background: var(--color-bg-2); color: var(--color-text-1); }
 .ba-btn-danger { background: rgb(var(--danger-6)); color: #fff; border-color: transparent; }
 .ba-btn-danger:hover { opacity: 0.9; }
 .ba-btn-cancel:hover { background: var(--color-fill-2); }

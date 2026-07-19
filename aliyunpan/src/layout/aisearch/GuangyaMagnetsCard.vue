@@ -46,13 +46,13 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
 </template>
 
 <style scoped>
-.gm-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.gm-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .gm-header, .gm-status, .gm-result { display: flex; gap: 8px; align-items: flex-start; padding: 12px 14px; font-size: 13px; color: var(--color-text-2); }
-.gm-header { align-items: center; font-weight: 500; color: var(--color-text-1); border-bottom: 1px solid var(--color-border-2); }
+.gm-header { align-items: center; font-weight: 650; color: #a78bfa; border-bottom: 1px solid var(--color-border-2); background: rgba(167, 139, 250, .07); }
 .gm-list { padding: 8px 14px; max-height: 150px; overflow-y: auto; }
 .gm-item, .gm-more { font-size: 12px; color: var(--color-text-3); padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gm-actions { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--color-border-2); }
-.gm-btn { padding: 4px 14px; font-size: 12px; border-radius: 6px; cursor: pointer; font-family: inherit; border: 1px solid var(--color-border-2); background: var(--color-bg-2); color: var(--color-text-1); }
+.gm-btn { padding: 6px 13px; font-size: 12px; border-radius: 8px; cursor: pointer; font-family: inherit; border: 1px solid var(--color-border-2); background: var(--color-bg-2); color: var(--color-text-1); }
 .gm-btn-primary { color: #fff; background: rgb(var(--primary-6)); border-color: transparent; }
 .gm-result { color: rgb(var(--success-6)); }
 .gm-result pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--color-text-2); }

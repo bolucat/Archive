@@ -9,7 +9,8 @@ import MusicScanner from '../../utils/musicScanner'
 import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
 import { computed, ref } from 'vue'
-import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser } from '../../aliapi/utils'
+import { isAliyunUser as isAliyunAccountUser } from '../../aliapi/utils'
+import { supportsCopy, supportsCreateShare } from '../../aliapi/providerFeatures'
 
 const istree = true
 const pantreeStore = usePanTreeStore()
@@ -17,13 +18,9 @@ const appStore = useAppStore()
 const mediaScanner = MediaScanner.getInstance()
 const musicScanner = MusicScanner.getInstance()
 const bookScanner = BookScanner.getInstance()
-const isCloudUser = computed(() => isCloud123User(pantreeStore.user_id || '') || pantreeStore.drive_id === 'cloud123')
 const isAliyunAccount = computed(() => isAliyunAccountUser(pantreeStore.user_id || ''))
-const isDropbox = computed(() => isDropboxUser(pantreeStore.user_id || '') || pantreeStore.drive_id === 'dropbox')
-const isOneDrive = computed(() => isOneDriveUser(pantreeStore.user_id || '') || pantreeStore.drive_id === 'onedrive')
-const isBox = computed(() => isBoxUser(pantreeStore.user_id || '') || pantreeStore.drive_id === 'box')
-const isGuangya = computed(() => isGuangyaUser(pantreeStore.user_id || '') || pantreeStore.drive_id === 'guangya')
-const isShareSupported = computed(() => props.inputselectType.includes('resource') || isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
+const isShareSupported = computed(() => supportsCreateShare(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
+const isCopySupported = computed(() => supportsCopy(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
 
 const props = defineProps({
   inputselectType: {
@@ -231,7 +228,7 @@ const isSelectedFolder = computed(() => {
             <template #icon> <IconFont name="iconscissor" /> </template>
             <template #default>移动到...</template>
           </a-doption>
-          <a-doption @click="() => menuCopySelectedFile(istree, 'copy')">
+          <a-doption v-if="isCopySupported" @click="() => menuCopySelectedFile(istree, 'copy')">
             <template #icon> <IconFont name="iconcopy" /> </template>
             <template #default>复制到...</template>
           </a-doption>

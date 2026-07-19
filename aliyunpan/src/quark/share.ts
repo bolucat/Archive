@@ -20,6 +20,11 @@ const getToken = async (user_id: string) => {
     const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
     if (dbToken) token = dbToken
   }
+  if (!token?.access_token || token.tokenfrom !== 'quark') {
+    const quarkTokens = (await UserDAL.GetUserListFromDB())
+      .filter(item => item.tokenfrom === 'quark' && item.access_token)
+    if (quarkTokens.length === 1) token = quarkTokens[0]
+  }
   return token
 }
 
@@ -168,11 +173,24 @@ export const apiQuarkSharePassword = async (user_id: string, shareId: string): P
   return { data: (data as any)?.data || {}, error: '' }
 }
 
+const getQuarkTaskError = (task: any): string => {
+  const code = Number(task?.code || 0)
+  const status = Number(task?.status || 0)
+  if ((code === 0 || code === 200) && status < 400 && status !== 3) return ''
+  const missingCapacity = Number(task?.metadata?.missing_capacity || task?.data?.metadata?.missing_capacity || 0)
+  if (code === 32003 || /capacity limit/i.test(String(task?.message || ''))) {
+    return missingCapacity > 0 ? `夸克网盘容量不足，还需 ${humanSize(missingCapacity)}` : '夸克网盘容量不足'
+  }
+  return task?.message || '夸克分享转存失败'
+}
+
 export const pollQuarkTask = async (user_id: string, taskId: string, retry = 40): Promise<any | string> => {
   for (let i = 0; i < retry; i++) {
     const data = await request(user_id, 'task', {}, { task_id: taskId, retry_index: i })
     if (isError(data)) return data.message || '夸克任务失败'
     const task = (data as any)?.data || {}
+    const taskError = getQuarkTaskError(task)
+    if (taskError) return taskError
     if (task.status === 2 || task.share_id) return task
     await new Promise(resolve => setTimeout(resolve, 600))
   }
@@ -280,25 +298,20 @@ export const apiQuarkShareAnonymous = async (shareId: string, passcode = ''): Pr
   return share
 }
 
-export const apiQuarkShareToken = async (pwdId: string, passcode = ''): Promise<string> => {
-  const data = await fetch(`${DRIVE}/share/sharepage/token?${quarkParams().toString()}`, {
+export const apiQuarkShareToken = async (pwdId: string, passcode = '', user_id = ''): Promise<string> => {
+  pwdId = decodeQuarkShareId(pwdId)
+  const data = await request<any>(user_id, 'share/sharepage/token', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      'content-type': 'application/json',
-      origin: 'https://pan.quark.cn',
-      referer: `https://pan.quark.cn/s/${pwdId}`
-    },
+    headers: { referer: `https://pan.quark.cn/s/${pwdId}` },
     body: JSON.stringify({ pwd_id: pwdId, passcode, support_visit_limit_private_share: true })
-  }).then(resp => resp.json()).catch(() => undefined)
-  if (data?.code !== 0 && data?.status !== 200) return `，${data?.message || '获取夸克分享 token 失败'}`
+  }, {}, DRIVE)
+  if (isError(data)) return `，${data.message || '获取夸克分享 token 失败'}`
   return data?.data?.stoken || '，获取夸克分享 token 失败'
 }
 
-export const apiQuarkShareDetail = async (pwdId: string, stoken: string, pdirFid = '0', page = 1): Promise<{ data: any; error: string }> => {
-  const params = quarkParams({
+export const apiQuarkShareDetail = async (pwdId: string, stoken: string, pdirFid = '0', page = 1, user_id = ''): Promise<{ data: any; error: string }> => {
+  pwdId = decodeQuarkShareId(pwdId)
+  const data = await request<any>(user_id, 'share/sharepage/detail', {}, {
     pwd_id: pwdId,
     stoken,
     pdir_fid: pdirFid,
@@ -308,17 +321,8 @@ export const apiQuarkShareDetail = async (pwdId: string, stoken: string, pdirFid
     _fetch_share: 1,
     _fetch_total: 1,
     _sort: 'file_type:asc,file_name:asc'
-  })
-  const data = await fetch(`${DRIVE}/share/sharepage/detail?${params.toString()}`, {
-    credentials: 'include',
-    headers: {
-      accept: 'application/json, text/plain, */*',
-      'accept-language': 'zh-CN,zh;q=0.9',
-      origin: 'https://pan.quark.cn',
-      referer: `https://pan.quark.cn/s/${pwdId}`
-    }
-  }).then(resp => resp.json()).catch(() => undefined)
-  if (data?.code !== 0 && data?.status !== 200) return { data, error: data?.message || '获取夸克分享详情失败' }
+  }, DRIVE)
+  if (isError(data)) return { data: undefined, error: data.message || '获取夸克分享详情失败' }
   return { data: data?.data || {}, error: '' }
 }
 
@@ -350,15 +354,21 @@ const mapShareFile = (item: QuarkFileItem & { share_fid_token?: string; dir?: bo
   }
 }
 
-export const apiQuarkShareFileList = async (shareId: string, stoken: string, dirId: string): Promise<{ items: IAliShareFileItem[]; next_marker: string }> => {
+export const apiQuarkShareFileList = async (shareId: string, stoken: string, dirId: string, user_id = ''): Promise<{ items: IAliShareFileItem[]; next_marker: string; error: string }> => {
   const pwdId = decodeQuarkShareId(shareId)
-  const data = await apiQuarkShareDetail(pwdId, stoken, dirId === 'root' ? '0' : dirId)
-  if (data.error) return { items: [], next_marker: data.error }
-  const list = data.data?.list || []
-  return {
-    items: Array.isArray(list) ? list.map((item: any) => mapShareFile(item, encodeQuarkShareId(pwdId))) : [],
-    next_marker: ''
-  }
+  const items: IAliShareFileItem[] = []
+  let page = 1
+  let hasMore = false
+  do {
+    const data = await apiQuarkShareDetail(pwdId, stoken, dirId === 'root' ? '0' : dirId, page, user_id)
+    if (data.error) return { items: [], next_marker: '', error: data.error }
+    const list = Array.isArray(data.data?.list) ? data.data.list : []
+    items.push(...list.map((item: any) => mapShareFile(item, encodeQuarkShareId(pwdId))))
+    const total = Number(data.data?.metadata?._total || data.data?.total || data.data?.count || 0)
+    hasMore = total ? items.length < total : list.length === 100
+    page += 1
+  } while (hasMore && items.length < 1000)
+  return { items, next_marker: hasMore ? String(page) : '', error: '' }
 }
 
 export const apiQuarkSaveShareFilesBatch = async (
@@ -389,6 +399,8 @@ export const apiQuarkSaveShareFilesBatch = async (
   }, {}, DRIVE)
   if (isError(data)) return data.message || '夸克分享转存失败'
   const taskId = (data as any)?.data?.task_id || ''
+  const taskError = getQuarkTaskError((data as any)?.data?.task_resp)
+  if (taskError) return taskError
   if (!taskId || (data as any)?.data?.task_sync) return 'success'
   const task = await pollQuarkTask(user_id, taskId)
   return typeof task === 'string' ? task : 'success'

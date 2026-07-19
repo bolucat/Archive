@@ -31,11 +31,15 @@ import UpdateModal from '../pan/topbtns/ShowUpdateModal.vue'
 import ShowUpdateModal from '../pan/topbtns/ShowUpdateModal.vue'
 import SelectVideoQualityModal from '../pan/topbtns/SelectVideoQualityModal.vue'
 import Cloud123OfflineDownloadModal from '../down/Cloud123OfflineDownloadModal.vue'
+import Drive115OfflineManagementModal from '../down/Drive115OfflineManagementModal.vue'
+import Cloud123PaidShareModal from '../share/share/Cloud123PaidShareModal.vue'
 
 export default defineComponent({
   components: {
     SelectVideoQualityModal,
     Cloud123OfflineDownloadModal,
+    Drive115OfflineManagementModal,
+    Cloud123PaidShareModal,
     ShowUpdateModal,
     UpdateModal,
     PasswordModal,
@@ -148,6 +152,8 @@ export default defineComponent({
   <SelectPanDirModal :visible="modalStore.modalName == 'selectpandir'"
                      :selecttype="modalStore.modalData.selecttype || ''"
                      :selectid="modalStore.modalData.selectid || ''"
+                     :initial-user-id="modalStore.modalData.user_id || ''"
+                     :initial-drive-id="modalStore.modalData.drive_id || ''"
                      :category='modalStore.modalData.category'
                      :extFilter='modalStore.modalData.extFilter'
                      :callback='modalStore.modalData.callback' />
@@ -161,6 +167,8 @@ export default defineComponent({
                            :callback="modalStore.modalData.callback" />
 
   <Cloud123OfflineDownloadModal :visible="modalStore.modalName == 'cloud123offline'" />
+  <Drive115OfflineManagementModal :visible="modalStore.modalName == 'drive115management'" />
+  <Cloud123PaidShareModal :visible="modalStore.modalName == 'cloud123paidshare'" />
 
   <PostModal :visible="modalStore.modalName == 'showpostmodal'"
              :msg='modalStore.modalData.msg || ""'

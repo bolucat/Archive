@@ -9,17 +9,19 @@ export interface PanHubLink { url: string; password: string; note: string; datet
 interface MergedLinks { [platform: string]: PanHubLink[] }
 
 const props = defineProps<{ merged: MergedLinks; platformInfo: Record<string,{name:string;color:string}>; filterPlatform: string; sortType: string; initialVisible?: number }>()
-const emit = defineEmits<{ copy: [url: string] }>()
+const emit = defineEmits<{ copy: [url: string]; magnet: [url: string, title: string] }>()
 const copiedUrl = ref('')
 let copyTimer: ReturnType<typeof setTimeout>|null = null
 
 const handleCopy = (url: string) => { navigator.clipboard.writeText(url).catch(()=>{}); copiedUrl.value = url; if(copyTimer)clearTimeout(copyTimer); copyTimer = setTimeout(()=>{copiedUrl.value=''},1500); emit('copy',url) }
 function canSave(url: string): boolean { return /aliyundrive\.com\/s\/|alipan\.com\/s\/|quark\.cn\/s\/|123pan\.com\/s\//i.test(url) }
+function isMagnet(url: string): boolean { return /^magnet:\?/i.test(url.trim()) }
+function handleLinkClick(event: MouseEvent, item: PanHubLink) { if(!isMagnet(item.url))return;event.preventDefault();emit('magnet',item.url,item.note||'') }
 function parseSharePwd(url: string, password: string): string { if(password)return password; const m=url.match(/[?&#]pwd=([0-9a-zA-Z]+)/i)||url.match(/(?:提取码|密码)[^0-9a-zA-Z]{0,8}([0-9a-zA-Z]{4,8})/i); return m?.[1]||'' }
 function handleSave(url: string, password: string) { if(canSave(url)){modalDaoRuShareLink(url,parseSharePwd(url,password))}else{message.info('暂不支持自动保存该网盘的分享链接，请手动复制链接后导入')} }
 function formatDate(d: string): string { if(!d)return'';const dt=new Date(d);if(isNaN(dt.getTime()))return d;const days=Math.floor((Date.now()-dt.getTime())/86400000);if(days===0)return'今天';if(days===1)return'昨天';if(days<30)return`${days}天前`;if(days<365)return`${Math.floor(days/30)}个月前`;return dt.toLocaleDateString('zh-CN') }
 function sortItems(items: PanHubLink[]): PanHubLink[]{ const s=[...items];if(props.sortType==='date-desc')s.sort((a,b)=>new Date(b.datetime||'').getTime()-new Date(a.datetime||'').getTime());else if(props.sortType==='date-asc')s.sort((a,b)=>new Date(a.datetime||'').getTime()-new Date(b.datetime||'').getTime());else if(props.sortType==='name-asc')s.sort((a,b)=>(a.note||'').localeCompare(b.note||''));else if(props.sortType==='name-desc')s.sort((a,b)=>(b.note||'').localeCompare(a.note||''));return s }
-function getHost(url: string): string { try { return new URL(url.startsWith('http') ? url : `https://${url}`).host.replace(/^www\./, '') } catch { return url.split('/')[0] || '分享链接' } }
+function getHost(url: string): string { if(isMagnet(url))return'磁力下载';try { return new URL(url.startsWith('http') ? url : `https://${url}`).host.replace(/^www\./, '') } catch { return url.split('/')[0] || '分享链接' } }
 
 const grouped = computed(()=>{const g:{key:string;name:string;color:string;items:PanHubLink[];total:number}[]=[];for(const[k,info]of Object.entries(props.platformInfo)){const items=props.merged[k];if(!items||!items.length)continue;if(props.filterPlatform!=='all'&&k!==props.filterPlatform)continue;g.push({key:k,name:info.name,color:info.color,items:sortItems(items),total:items.length})}return g})
 </script>
@@ -35,10 +37,11 @@ const grouped = computed(()=>{const g:{key:string;name:string;color:string;items
     </div>
     <div class="ph-group-grid">
       <article v-for="(item, idx) in group.items" :key="idx" class="ph-card" :style="{ '--platform-color': group.color }">
-        <a class="ph-card-link" :href="item.url" target="_blank" rel="noopener noreferrer nofollow" :title="item.url">
+        <a class="ph-card-link" :href="isMagnet(item.url) ? undefined : item.url" :target="isMagnet(item.url) ? undefined : '_blank'" rel="noopener noreferrer nofollow" :title="isMagnet(item.url) ? '添加到下载队列' : item.url" @click="handleLinkClick($event,item)">
           <span class="ph-card-kicker">{{ getHost(item.url) }}</span>
           <span class="ph-card-title">{{ item.note || item.url }}</span>
-          <ExternalLink :size="14" :stroke-width="1.7" class="ph-card-external" />
+          <Download v-if="isMagnet(item.url)" :size="14" :stroke-width="1.7" class="ph-card-external" />
+          <ExternalLink v-else :size="14" :stroke-width="1.7" class="ph-card-external" />
         </a>
         <div class="ph-card-footer">
           <div class="ph-card-meta">

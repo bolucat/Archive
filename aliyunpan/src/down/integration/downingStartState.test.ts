@@ -86,4 +86,28 @@ describe('DowningStore start state', () => {
     expect(store.ListDataRaw[0].Down.DownState).toBe('队列中')
     expect(batchResumeTasks).toHaveBeenCalledWith(['gid-1'])
   })
+
+  it('keeps task info mutable for aria2 gid and target path updates', async () => {
+    const { default: useDowningStore } = await import('../DowningStore')
+    const store = useDowningStore()
+    const task: any = {
+      DownID: 'task-2',
+      Info: {
+        GID: 'metadata-gid', user_id: 'external', DownSavePath: '/tmp', ariaRemote: false,
+        file_id: 'file-2', drive_id: 'external', name: 'BT 磁力任务', size: 0, sizestr: '',
+        icon: 'iconfile-bt', isDir: false, encType: '', sha1: '', crc64: '', sourceType: 'magnet'
+      },
+      Down: {
+        DownState: '队列中', DownTime: 1, DownSize: 0, DownSpeed: 0, DownSpeedStr: '',
+        DownProcess: 0, IsStop: false, IsDowning: false, IsCompleted: false, IsFailed: false,
+        FailedCode: 0, FailedMessage: '', AutoTry: 0, DownUrl: 'magnet:?xt=urn:btih:abc'
+      }
+    }
+
+    store.mAddDownload({ downlist: [task] })
+    expect(Object.isFrozen(store.ListDataRaw[0].Info)).toBe(false)
+    store.ListDataRaw[0].Info.GID = 'content-gid'
+    store.ListDataRaw[0].Info.localFilePath = '/tmp/movie.mkv'
+    expect(store.ListDataRaw[0].Info).toMatchObject({ GID: 'content-gid', localFilePath: '/tmp/movie.mkv' })
+  })
 })

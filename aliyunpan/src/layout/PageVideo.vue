@@ -52,6 +52,7 @@ import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, i
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
 import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
+import { apiDrive115VideoPush, getDrive115PickCode } from '../cloud115/video'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
 import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
@@ -2987,6 +2988,18 @@ const updateVideoTime = async (positionSeconds = ArtPlayerRef?.currentTime || 0,
   updateContinueWatching(positionSeconds, durationSeconds)
 }
 
+const submitDrive115VideoPush = async (op: 'vip_push' | 'pay_push') => {
+  if (!isDrive115User(pageVideo.user_id) && pageVideo.drive_id !== 'drive115') return
+  const meta = await getDrive115PickCode(pageVideo.user_id, pageVideo.file_id)
+  if (!meta?.pick_code) {
+    message.error(meta?.error || '获取 115 视频提取码失败')
+    return
+  }
+  const result = await apiDrive115VideoPush(pageVideo.user_id, meta.pick_code, op)
+  if (result.success) message.success(result.message)
+  else message.error(result.message)
+}
+
 const findMediaItemByFileId = (fileId: string): MediaLibraryItem | undefined => {
   for (const item of mediaStore.mediaItems) {
     if (item.driveFiles?.some(file => file.id === fileId)) {
@@ -3115,6 +3128,10 @@ onBeforeUnmount(() => {
           <button class="mpv-window-dot max" type="button" aria-label="最大化窗口" @click.stop="handleMaxClick"></button>
         </div>
         <div class="mpv-window-title">{{ pageVideo?.file_name || '视频在线预览' }}</div>
+        <template v-if="isDrive115User(pageVideo.user_id) || pageVideo.drive_id === 'drive115'">
+          <a-button type='text' tabindex='-1' title='115 VIP 加速转码' @click='submitDrive115VideoPush("vip_push")'>VIP 转码</a-button>
+          <a-button type='text' tabindex='-1' title='115 枫叶加速转码' @click='submitDrive115VideoPush("pay_push")'>枫叶转码</a-button>
+        </template>
       </div>
       <div v-else id='xbyhead2' class='q-electron-drag'>
         <a-button type='text' tabindex='-1'>
@@ -3122,6 +3139,10 @@ onBeforeUnmount(() => {
         </a-button>
         <div class='title'>{{ pageVideo?.file_name || '视频在线预览' }}</div>
         <div class='flexauto'></div>
+        <template v-if="isDrive115User(pageVideo.user_id) || pageVideo.drive_id === 'drive115'">
+          <a-button type='text' tabindex='-1' title='115 VIP 加速转码' @click='submitDrive115VideoPush("vip_push")'>VIP 转码</a-button>
+          <a-button type='text' tabindex='-1' title='115 枫叶加速转码' @click='submitDrive115VideoPush("pay_push")'>枫叶转码</a-button>
+        </template>
         <a-button type='text' tabindex='-1' :title="(isTop ? '取消置顶' : '置顶') + 'Alt+T'" @click='handleTop'>
           <IconFont :name="(isTop ? 'iconquxiaozhiding' : 'iconzhiding')" />
         </a-button>

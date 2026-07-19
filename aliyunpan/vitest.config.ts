@@ -6,7 +6,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@shared': path.resolve(__dirname, 'shared'),
-      '@main':   path.resolve(__dirname, 'electron/main')
+      '@main':   path.resolve(__dirname, 'electron/main'),
+      '@earendil-works/pi-ai/compat': path.resolve(__dirname, 'src/services/agent/piCompatBrowser.ts'),
+      '@earendil-works/pi-agent-core/dist/agent.js': path.resolve(__dirname, 'node_modules/@earendil-works/pi-agent-core/dist/agent.js')
     }
   },
   test: {
@@ -16,6 +18,7 @@ export default defineConfig({
       'electron/main/aria/__tests__/**/*.test.ts',
       'shared/__tests__/**/*.test.ts',
       'src/down/motrix-integration/**/*.test.ts',
+      'src/down/integration/**/*.test.ts',
       'scripts/__tests__/**/*.test.mjs',
       'src/media-server/__tests__/**/*.test.ts',
       'src/utils/__tests__/**/*.test.ts',

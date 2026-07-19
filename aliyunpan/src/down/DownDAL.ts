@@ -22,6 +22,7 @@ import { getEncType } from '../utils/proxyhelper'
 import { SHA256 } from 'crypto-js'
 import { shouldRemoveAriaStoppedResult } from '../utils/aria2Rpc'
 import { resolveAriaProgressErrorState } from './integration/downloadProgressState'
+import { buildBtControlFileCandidates, isBtContentComplete, resolveBtDownloadTarget, resolveFollowedBtGid } from './integration/btDownloadTarget'
 
 export interface IStateDownFile {
   DownID: string
@@ -94,6 +95,10 @@ export interface IAriaDownProgress {
   downloadSpeed: string
   errorCode: string
   errorMessage: string
+  dir?: string
+  files?: Array<{ path?: string; selected?: string | boolean; length?: string | number; completedLength?: string | number }>
+  bittorrent?: { info?: { name?: string } }
+  followedBy?: string[]
 }
 
 /** 存盘的时机：默认 10 时进行 */
@@ -151,12 +156,48 @@ export default class DownDAL {
 
   static async aReloadDowned() {
     const downedStore = useDownedStore()
+    const downingStore = useDowningStore()
     if (downedStore.ListLoading) return
     downedStore.ListLoading = true
     const max = useSettingStore().debugDownedListMax
     const showlist = await DBDown.getDownedByTop(max)
+    const completedList: IStateDownFile[] = []
+    for (const item of showlist) {
+      const isLocalBt = !item.Info.ariaRemote && (item.Info.sourceType === 'magnet' || item.Info.sourceType === 'torrent' || item.Info.sourceType === 'torrent-url')
+      let hasControlFile = false
+      if (isLocalBt) {
+        for (const controlFile of buildBtControlFileCandidates(item.Info, item.Down.DownUrl || '')) {
+          try {
+            await fsPromises.access(controlFile)
+            hasControlFile = true
+            break
+          } catch {}
+        }
+      }
+      if (!hasControlFile) {
+        completedList.push(item)
+        continue
+      }
+
+      item.Info.isDir = false
+      item.Info.icon = 'iconfile-bt'
+      item.Down.DownState = '队列中'
+      item.Down.DownProcess = 0
+      item.Down.DownSpeed = 0
+      item.Down.DownSpeedStr = ''
+      item.Down.IsStop = false
+      item.Down.IsDowning = false
+      item.Down.IsCompleted = false
+      item.Down.IsFailed = false
+      item.Down.FailedCode = 0
+      item.Down.FailedMessage = ''
+      await DBDown.saveDowning(item.DownID, JSON.parse(JSON.stringify(item)))
+      await DBDown.deleteDowned(item.DownID)
+      if (!downingStore.ListDataRaw.some((downing) => downing.DownID === item.DownID)) downingStore.ListDataRaw.push(item)
+    }
+    downingStore.mRefreshListDataShow(true)
     const count = await DBDown.getDownedTaskCount()
-    downedStore.aLoadListData(showlist, count)
+    downedStore.aLoadListData(completedList, count)
     downedStore.ListLoading = false
   }
 
@@ -491,14 +532,42 @@ export default class DownDAL {
     for (const listItem of list) {
       try {
         const { gid, status, totalLength, completedLength, downloadSpeed, errorCode, errorMessage } = listItem
-        const isComplete = status === 'complete'
-        const isDowning = isComplete || status === 'active' || status === 'waiting'
+        const ariaReportedComplete = status === 'complete'
         const isStop = status === 'paused' || status === 'removed'
         const isError = status === 'error'
         const downingItem: IStateDownFile | undefined = DowningList.find((item) => item.Info.ariaRemote === ariaRemote && item.Info.GID === gid)
         if (!downingItem) continue
         const { DownID, Down, Info } = downingItem
+        const isBtSource = Info.sourceType === 'magnet' || Info.sourceType === 'torrent' || Info.sourceType === 'torrent-url'
+        const followedGid = resolveFollowedBtGid(listItem)
+        if (followedGid && (Info.sourceType === 'magnet' || Info.sourceType === 'torrent-url')) {
+          Info.GID = followedGid
+          Down.IsCompleted = false
+          Down.IsDowning = true
+          Down.DownState = '解析完成，等待下载'
+          saveList.push(downingItem)
+          continue
+        }
         const totalLengthInt = parseInt(totalLength) || 0
+        if (isBtSource && totalLengthInt > 0) {
+          Info.size = totalLengthInt
+          Info.sizestr = humanSize(totalLengthInt)
+        }
+        const isComplete = ariaReportedComplete && (!isBtSource || isBtContentComplete(listItem))
+        const isDowning = isComplete || status === 'active' || status === 'waiting'
+        if (ariaReportedComplete && isBtSource && !isComplete) {
+          Down.DownSize = parseInt(completedLength) || 0
+          Down.DownSpeed = 0
+          Down.DownSpeedStr = ''
+          Down.DownProcess = totalLengthInt > 0 ? Math.min(99, Math.floor((Down.DownSize * 100) / totalLengthInt)) : 0
+          Down.IsCompleted = false
+          Down.IsDowning = true
+          Down.IsFailed = false
+          Down.IsStop = false
+          Down.DownState = '元数据已解析，等待内容下载'
+          saveList.push(downingItem)
+          continue
+        }
         Down.DownSize = parseInt(completedLength) || 0
         Down.DownSpeed = parseInt(downloadSpeed) || 0
         Down.DownSpeedStr = humanSize(Down.DownSpeed) + '/s'
@@ -514,6 +583,15 @@ export default class DownDAL {
         Down.FailedCode = errorState.failedCode
         Down.FailedMessage = errorState.failedMessage
         if (isComplete) {
+          if (isBtSource) {
+            const target = resolveBtDownloadTarget(listItem)
+            if (target) {
+              Info.localFilePath = target.localFilePath
+              Info.name = target.name
+              Info.isDir = target.isDir
+              Info.icon = target.isDir ? 'iconfile-folder' : 'iconfile-bt'
+            }
+          }
           downingStore.mUpdateDownState(downingItem, 'valid')
           const check = AriaHashFile(downingItem)
           if (check.Check) {

@@ -31,3 +31,6 @@ export const buildAriaAddOptions = (input: BuildAriaAddOptionsInput): Record<str
   if (input.sourceType === 'torrent-url') options['follow-torrent'] = 'mem'
   return options
 }
+
+export const shouldCheckExistingDownloadTarget = (sourceType: string): boolean =>
+  !['magnet', 'torrent', 'torrent-url'].includes(sourceType)

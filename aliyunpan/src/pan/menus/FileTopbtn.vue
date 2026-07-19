@@ -1,8 +1,9 @@
 <script setup lang='ts'>
 import { computed } from 'vue'
 import { usePanTreeStore } from '../../store'
-import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser } from '../../aliapi/utils'
+import { isAliyunUser as isAliyunAccountUser, isBoxUser, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
+import { supportsCopy, supportsCreateShare } from '../../aliapi/providerFeatures'
 
 import {
   menuAddAlbumSelectFile,
@@ -60,14 +61,15 @@ const props = defineProps({
 
 const istree = false
 const panTreeStore = usePanTreeStore()
-const isCloudUser = computed(() => isCloud123User(panTreeStore.user_id || '') || panTreeStore.drive_id === 'cloud123')
 const isAliyunAccount = computed(() => isAliyunAccountUser(panTreeStore.user_id || ''))
 const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
 const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
 const isGuangya = computed(() => isGuangyaUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'guangya')
-const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
-const isShareSupported = computed(() => props.inputselectType.includes('resource') || isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
+const isPikPak = computed(() => isPikPakUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'pikpak')
+const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value || isPikPak.value)
+const isShareSupported = computed(() => supportsCreateShare(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
 const isShowBtn = computed(() => {
   return (props.dirtype === 'pic' && props.inputpicType != 'mypic')
@@ -150,7 +152,7 @@ const isPic = computed(() => {
           <template #icon><IconFont name="iconscissor" /></template>
           <template #default>移动到...</template>
         </a-doption>
-        <a-doption v-show='isShowBtn' title='Ctrl+C' @click="() => menuCopySelectedFile(istree, 'copy')">
+        <a-doption v-show='isShowBtn && isCopySupported' title='Ctrl+C' @click="() => menuCopySelectedFile(istree, 'copy')">
           <template #icon><IconFont name="iconcopy" /></template>
           <template #default>复制到...</template>
         </a-doption>
@@ -172,7 +174,7 @@ const isPic = computed(() => {
           <template #icon><IconFont name="iconshipin" /></template>
           <template #default>清除历史</template>
         </a-doption>
-        <a-doption v-show='isShowBtn && isallcolored && !isWebDav && !isThirdPartyDrive' type='text' size='small' tabindex='-1' title='Ctrl+M'
+        <a-doption v-show='isShowBtn && isallcolored && !isWebDav && isAliyunAccount' type='text' size='small' tabindex='-1' title='Ctrl+M'
                    @click="() => menuFileColorChange(istree, '')">
           <template #icon><IconFont name="iconfangkuang" /></template>
           <template #default>清除标记</template>

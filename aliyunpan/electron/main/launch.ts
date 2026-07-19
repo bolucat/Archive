@@ -1,4 +1,5 @@
 import { AppWindow, createMainWindow, createTray } from './core/window'
+import { startMediaAcquisitionWakeScheduler } from './mediaAcquisition/MediaAcquisitionWakeScheduler'
 import { app, ipcMain, protocol, session } from 'electron'
 import { registerAutoUpdate } from './core/autoUpdate'
 import { registerMediaImageCacheProtocol } from './mediaImageCache'
@@ -296,6 +297,7 @@ export default class launch extends EventEmitter {
           })
           .finally(() => {
             createMainWindow()
+            startMediaAcquisitionWakeScheduler()
             createTray()
             registerAutoUpdate()
             if (this.pendingOAuthUrl) {

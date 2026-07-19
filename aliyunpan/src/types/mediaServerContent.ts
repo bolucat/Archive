@@ -34,6 +34,7 @@ export interface MediaServerCardItem {
   episodeNumber?: number
   isPlayed?: boolean
   isFavorite?: boolean
+  coverageBadge?: string
 }
 
 export interface MediaServerLibraryNode extends MediaServerCardItem {

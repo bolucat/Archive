@@ -2,10 +2,11 @@
 import { ref, computed } from 'vue'
 import { Film, Tv, Loader2, AlertCircle, Search, X, Star, Calendar, Clock, Info } from 'lucide-vue-next'
 import { TMDB_BASE_URL_PROXY, tmdbImageUrl } from '../../utils/tmdb'
+import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
 
 interface MediaItem { id: string; title: string; cover: string; desc: string; url: string }
 interface Detail {
-  title: string; poster: string; overview: string; rating: number; year: string
+  id: string; mediaType: 'movie' | 'tv'; title: string; poster: string; overview: string; rating: number; year: string
   runtime: string; genres: string[]; status: string; tagline: string
 }
 
@@ -17,7 +18,7 @@ const props = defineProps<{
   error?: string
 }>()
 
-const emit = defineEmits<{ (e: 'search', title: string): void; (e: 'search-resource', title: string): void; (e: 'retry'): void }>()
+const emit = defineEmits<{ (e: 'search', title: string): void; (e: 'search-resource', title: string): void; (e: 'acquire', request: MediaAcquisitionRequest): void; (e: 'retry'): void }>()
 const imgFailed = ref<Set<string>>(new Set())
 const detailLoading = ref(false)
 const detailItem = ref<Detail | null>(null)
@@ -49,6 +50,8 @@ async function fetchDetail(item: MediaItem) {
     const data = await resp.json()
     if (data?.title || data?.name) {
       detailItem.value = {
+        id: item.id,
+        mediaType: type,
         title: data.title || data.name || item.title,
         poster: tmdbImageUrl(data.poster_path) || item.cover,
         overview: data.overview || '',
@@ -67,6 +70,12 @@ async function fetchDetail(item: MediaItem) {
 }
 
 function closeDetail() { detailItem.value = null; detailError.value = '' }
+
+function requestAcquire() {
+  const detail = detailItem.value
+  if (!detail) return
+  emit('acquire', { tmdbId: Number(detail.id) || undefined, mediaType: detail.mediaType, title: extractTerm(detail.title), year: Number(detail.year) || undefined })
+}
 </script>
 
 <template>
@@ -136,7 +145,10 @@ function closeDetail() { detailItem.value = null; detailError.value = '' }
             <span v-for="g in detailItem.genres" :key="g" class="ml-genre-tag">{{ g }}</span>
           </div>
         <p v-if="detailItem.overview" class="ml-detail-overview">{{ detailItem.overview }}</p>
-        <button class="ml-search-res-btn" type="button" @click.stop="emit('search-resource', extractTerm(detailItem!.title))">🔍 搜索资源</button>
+        <div class="ml-detail-actions">
+          <button class="ml-search-res-btn" type="button" @click.stop="emit('search-resource', extractTerm(detailItem!.title))">搜索资源</button>
+          <button class="ml-acquire-btn" type="button" @click.stop="requestAcquire">获取</button>
+        </div>
       </div>
       </div>
 
@@ -152,15 +164,15 @@ function closeDetail() { detailItem.value = null; detailError.value = '' }
 </template>
 
 <style scoped>
-.ml-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.ml-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 12px 28px rgba(0, 0, 0, .075); }
 .ml-status { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 13px; color: var(--color-text-3); }
 .ml-error { color: rgb(var(--danger-6)); }
 .ml-section { border-bottom: 1px solid var(--color-border-2); }
 .ml-section:last-child { border-bottom: 0; }
-.ml-header { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--color-text-3); }
+.ml-header { display: flex; align-items: center; gap: 7px; padding: 12px 14px 8px; font-size: 12px; font-weight: 650; color: #f4b84f; }
 .ml-header-icon { color: var(--color-text-3); }
 .ml-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; padding: 10px 14px 14px; }
-.ml-item { cursor: pointer; border-radius: 6px; transition: transform 0.1s; }
+.ml-item { cursor: pointer; border-radius: 8px; transition: transform .16s, filter .16s; }
 .ml-item:hover { transform: translateY(-2px); }
 .ml-cover { position: relative; aspect-ratio: 2/3; border-radius: 6px; overflow: hidden; background: var(--color-fill-2); }
 .ml-poster { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -186,7 +198,7 @@ function closeDetail() { detailItem.value = null; detailError.value = '' }
 .ml-detail-genres { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
 .ml-genre-tag { padding: 1px 8px; font-size: 11px; color: var(--color-text-2); background: var(--color-fill-2); border-radius: 10px; }
 .ml-detail-overview { margin: 0 0 8px; font-size: 13px; line-height: 1.6; color: var(--color-text-2); }
-.ml-search-res-btn { margin-top: 6px; padding: 5px 14px; font-size: 13px; color: #fff; background: rgb(var(--primary-6)); border: 0; border-radius: 6px; cursor: pointer; }
+.ml-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }.ml-search-res-btn, .ml-acquire-btn { padding: 5px 14px; font-size: 13px; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }.ml-search-res-btn { background: rgb(var(--primary-6)); }.ml-acquire-btn { background: rgb(var(--success-6)); }
 .ml-search-res-btn:hover { background: rgb(var(--primary-5)); }
 .ml-retry { margin-left: auto; padding: 2px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: transparent; border: 1px solid rgb(var(--primary-6)); border-radius: 4px; cursor: pointer; }
 .ml-spin { animation: ml-spin 1s linear infinite; }

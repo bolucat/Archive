@@ -1,0 +1,2 @@
+import { commonDriveCapabilities, defineProviderCapabilities } from '../services/agent/providerCapabilityTypes'
+export default defineProviderCapabilities({ platform: 'cloud189', name: '天翼云盘', capabilities: { ...commonDriveCapabilities, search: false, upload: false, share: false }, notes: ['搜索、上传和分享尚未作为独立适配器能力验证。'], evidence: { list: { status: 'implemented', implementation: 'src/cloud189/dirfilelist.ts' }, move: { status: 'implemented', implementation: 'src/cloud189/filecmd.ts' } } })

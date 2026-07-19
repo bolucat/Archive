@@ -73,13 +73,13 @@ function formatSize(bytes: number): string {
 </template>
 
 <style scoped>
-.sf-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.sf-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .sf-status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px; color: var(--color-text-3); }
 .sf-muted { color: var(--color-text-4); }
-.sf-header { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--color-text-3); border-bottom: 1px solid var(--color-border-2); }
+.sf-header { display: flex; align-items: center; gap: 7px; padding: 11px 14px; font-size: 12px; font-weight: 650; color: rgb(var(--primary-5)); border-bottom: 1px solid var(--color-border-2); background: rgba(var(--primary-6), .055); }
 .sf-list { display: flex; flex-direction: column; }
 .sf-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 14px; border: 0; background: transparent; text-align: left; cursor: pointer; transition: background 0.1s; color: inherit; font-family: inherit; }
-.sf-item:hover { background: var(--color-fill-2); }
+.sf-item:hover { background: rgba(var(--primary-6), .075); }
 .sf-item-icon { font-size: 16px; flex-shrink: 0; }
 .sf-item-body { flex: 1; min-width: 0; }
 .sf-item-name { font-size: 13px; font-weight: 500; color: var(--color-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -89,7 +89,7 @@ function formatSize(bytes: number): string {
 .sf-more { padding: 6px 14px; font-size: 12px; color: var(--color-text-4); }
 .sf-empty { padding: 12px 14px; font-size: 13px; color: var(--color-text-4); }
 .sf-error { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px; color: rgb(var(--danger-6)); }
-.sf-retry { margin-left: auto; padding: 2px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: transparent; border: 1px solid rgb(var(--primary-6)); border-radius: 4px; cursor: pointer; }
+.sf-retry { margin-left: auto; padding: 4px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: rgba(var(--primary-6), .06); border: 1px solid rgba(var(--primary-6), .32); border-radius: 7px; cursor: pointer; }
 .sf-retry:hover { background: rgba(var(--primary-6), 0.08); }
 .sf-spin { animation: sf-spin 1s linear infinite; }
 @keyframes sf-spin { to { transform: rotate(360deg); } }

@@ -10,8 +10,9 @@ export const apiQuarkMkdir = async (user_id: string, parentId: string, name: str
       dir_path: ''
     })
   })
+  if ((data as any)?.__error) return { file_id: '', error: String((data as any).message || '新建夸克文件夹失败') }
   const fileId = (data as any)?.data?.fid || (data as any)?.data?.file?.fid || ''
-  return { file_id: String(fileId || ''), error: fileId ? '' : '新建文件夹失败' }
+  return { file_id: String(fileId || ''), error: fileId ? '' : String((data as any)?.message || '新建夸克文件夹失败') }
 }
 
 export const apiQuarkRename = async (user_id: string, fileId: string, name: string): Promise<{ success: boolean; name: string; parent_file_id: string; isDir: boolean }> => {

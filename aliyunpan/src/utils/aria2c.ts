@@ -15,7 +15,7 @@ import fs from 'fs'
 import { getRawUrl } from './proxyhelper'
 import { isBaiduUser, isDrive115User } from '../aliapi/utils'
 import { callAriaClient, getAriaAddUriGid, isAriaDuplicateGidError } from './aria2Rpc'
-import { buildAriaAddOptions } from '../down/integration/aria2AddOptions'
+import { buildAriaAddOptions, shouldCheckExistingDownloadTarget } from '../down/integration/aria2AddOptions'
 import { DRIVE115_DOWN_AGENT } from '../cloud115/constants'
 
 export const localPwd = 'S4znWTaZYQi3cpRNb'
@@ -297,10 +297,11 @@ export async function AriaConnect() {
 
 
 export async function AriaGetDowningList() {
+  const fields = ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage', 'dir', 'files', 'bittorrent', 'followedBy']
   const multicall = [
-    ['aria2.tellActive', ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
-    ['aria2.tellWaiting', 0, 1000, ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']],
-    ['aria2.tellStopped', 0, 1000, ['gid', 'status', 'totalLength', 'completedLength', 'downloadSpeed', 'errorCode', 'errorMessage']]
+    ['aria2.tellActive', fields],
+    ['aria2.tellWaiting', 0, 1000, fields],
+    ['aria2.tellStopped', 0, 1000, fields]
   ]
   try {
     const result: any = await GetAria()?.multicall(multicall)
@@ -437,7 +438,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       const dirPath = info.DownSavePath
       const outFileName = info.ariaRemote ? info.name : info.name + '.td'
       const fileFull = path.join(dirPath, info.name)
-      if (!info.ariaRemote) {
+      if (!info.ariaRemote && shouldCheckExistingDownloadTarget(sourceType)) {
         try {
           const fileStat = await fs.promises.stat(fileFull)
           if (fileStat && fileStat.size == info.size) return 'downed'

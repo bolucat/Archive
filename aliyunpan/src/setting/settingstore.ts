@@ -225,6 +225,18 @@ export interface SettingState {
   apiAIIndexingMode: 'on-demand' | 'background'
   apiAIReedyEnabled: boolean
   apiAIReedyRuntime: 'mvp' | 'agent'
+  mediaAcquisitionPreferredQuality: 'auto' | '2160p' | '1080p' | '720p' | '480p'
+  mediaAcquisitionFetchSubtitles: boolean
+  mediaAcquisitionSubtitleLanguage: 'zh-CN' | 'zh-Hant' | 'en' | 'ja' | 'ko' | 'auto'
+  mediaAcquisitionAssrtEnabled: boolean
+  mediaAcquisitionAssrtToken: string
+  mediaAcquisitionPatrolTimes: string
+  mediaAcquisitionAutoScanHistorical: boolean
+  mediaAcquisitionRememberTarget: boolean
+  mediaAcquisitionTargetUserId: string
+  mediaAcquisitionTargetDriveId: string
+  mediaAcquisitionTargetFolderId: string
+  mediaAcquisitionTargetFolderName: string
 }
 
 const setting: SettingState = {
@@ -432,7 +444,19 @@ const setting: SettingState = {
   apiAIMaxContextChunks: 6,
   apiAIIndexingMode: 'on-demand',
   apiAIReedyEnabled: false,
-  apiAIReedyRuntime: 'mvp'
+  apiAIReedyRuntime: 'mvp',
+  mediaAcquisitionPreferredQuality: 'auto',
+  mediaAcquisitionFetchSubtitles: true,
+  mediaAcquisitionSubtitleLanguage: 'zh-CN',
+  mediaAcquisitionAssrtEnabled: false,
+  mediaAcquisitionAssrtToken: '',
+  mediaAcquisitionPatrolTimes: '06:00,21:00',
+  mediaAcquisitionAutoScanHistorical: false,
+  mediaAcquisitionRememberTarget: false,
+  mediaAcquisitionTargetUserId: '',
+  mediaAcquisitionTargetDriveId: '',
+  mediaAcquisitionTargetFolderId: '',
+  mediaAcquisitionTargetFolderName: ''
 }
 
 function _loadSetting(val: any) {
@@ -656,6 +680,18 @@ function _loadSetting(val: any) {
   setting.apiAIIndexingMode = defaultValue(val.apiAIIndexingMode, ['on-demand', 'background'])
   setting.apiAIReedyEnabled = defaultBool(val.apiAIReedyEnabled, false)
   setting.apiAIReedyRuntime = defaultValue(val.apiAIReedyRuntime, ['mvp', 'agent']) as 'mvp' | 'agent'
+  setting.mediaAcquisitionPreferredQuality = defaultValue(val.mediaAcquisitionPreferredQuality, ['auto', '2160p', '1080p', '720p', '480p']) as SettingState['mediaAcquisitionPreferredQuality']
+  setting.mediaAcquisitionFetchSubtitles = defaultBool(val.mediaAcquisitionFetchSubtitles, true)
+  setting.mediaAcquisitionSubtitleLanguage = defaultValue(val.mediaAcquisitionSubtitleLanguage, ['zh-CN', 'zh-Hant', 'en', 'ja', 'ko', 'auto']) as SettingState['mediaAcquisitionSubtitleLanguage']
+  setting.mediaAcquisitionAssrtEnabled = defaultBool(val.mediaAcquisitionAssrtEnabled, false)
+  setting.mediaAcquisitionAssrtToken = defaultString(val.mediaAcquisitionAssrtToken, '')
+  setting.mediaAcquisitionPatrolTimes = defaultString(val.mediaAcquisitionPatrolTimes, '06:00,21:00')
+  setting.mediaAcquisitionAutoScanHistorical = defaultBool(val.mediaAcquisitionAutoScanHistorical, false)
+  setting.mediaAcquisitionRememberTarget = defaultBool(val.mediaAcquisitionRememberTarget, false)
+  setting.mediaAcquisitionTargetUserId = defaultString(val.mediaAcquisitionTargetUserId, '')
+  setting.mediaAcquisitionTargetDriveId = defaultString(val.mediaAcquisitionTargetDriveId, '')
+  setting.mediaAcquisitionTargetFolderId = defaultString(val.mediaAcquisitionTargetFolderId, '')
+  setting.mediaAcquisitionTargetFolderName = defaultString(val.mediaAcquisitionTargetFolderName, '')
 }
 
 let settingstr = ''

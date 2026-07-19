@@ -57,6 +57,14 @@ const props = defineProps({
     type: String,
     required: true
   },
+  initialUserId: {
+    type: String,
+    default: ''
+  },
+  initialDriveId: {
+    type: String,
+    default: ''
+  },
   category: {
     type: String,
     required: false
@@ -69,6 +77,8 @@ const props = defineProps({
     type: Function as PropType<(user_id: string, drive_id: string, selectFile: any) => void>
   }
 })
+
+const isScopedDrivePicker = () => props.selecttype === 'selectdir' && !!props.initialUserId && !!props.initialDriveId && !isSingleRootDriveUser(user_id.value)
 
 const okLoading = ref(false)
 const pantreeStore = usePanTreeStore()
@@ -94,18 +104,20 @@ const handleOpen = async () => {
   if (props.selecttype == 'share') title.value = '保存分享文件到. . .  '
   if (props.selecttype == 'unzip') title.value = '解压文件保存到. . .  '
   if (props.selecttype == 'select') title.value = '选择一个文件. . .  '
+  if (props.selecttype == 'selectdir') title.value = '选择保存目录. . .  '
   okLoading.value = true
-  user_id.value = pantreeStore.user_id
-  drive_id.value = pantreeStore.drive_id
+  user_id.value = props.initialUserId || pantreeStore.user_id
+  drive_id.value = props.initialDriveId || pantreeStore.drive_id
   const isSingleRootDrive = isSingleRootDriveUser(user_id.value)
+  const isScopedDrive = isScopedDrivePicker()
   const driveType = GetDriveType(user_id.value, drive_id.value)
-  const expandedKeys: string[] = isSingleRootDrive ? [driveType.key] : ['backup_root', 'resource_root']
+  const expandedKeys: string[] = isSingleRootDrive || isScopedDrive ? [driveType.key] : ['backup_root', 'resource_root']
   const selectid = props.selectid || localStorage.getItem('selectpandir-' + drive_id.value) || ''
   if (selectid) {
     let backup_data: IAliGetDirModel[] = []
     let resource_data: IAliGetDirModel[] = []
     let data: IAliGetDirModel[] = []
-    if (isSingleRootDrive) {
+    if (isSingleRootDrive || isScopedDrive) {
       const cloudDriveId = GetDriveID(user_id.value, driveType.key) || drive_id.value
       data = TreeStore.GetDirPath(cloudDriveId, selectid)
     } else {
@@ -140,7 +152,7 @@ const handleOpen = async () => {
       treeref.value?.treeRef?.scrollTo({ key: selectid, offset: 100, align: 'top' })
     }, 400)
   } else {
-    if (isSingleRootDrive) {
+    if (isSingleRootDrive || isScopedDrive) {
       selectFile.value = {
         drive_id: drive_id.value,
         name: driveType.title,
@@ -167,7 +179,7 @@ const handleOpen = async () => {
   treeExpandedKeys.value = expandedKeys
   // 网盘数据
   const flag = props.selecttype === 'select'
-  if (isSingleRootDrive) {
+  if (isSingleRootDrive || isScopedDrive) {
     const cloudDriveId = GetDriveID(user_id.value, driveType.key) || drive_id.value
     treeData.value = PanDAL.GetPanTreeAllNode(user_id.value, cloudDriveId, treeExpandedKeys.value, !flag, flag)
   } else {
@@ -264,7 +276,8 @@ const handleTreeSelect = (keys: any[], info: {
   nativeEvent: MouseEvent;
   node: any
 }) => {
-  let { key, title, isLeaf, description, parent_file_id } = info.node
+  if (!info?.node) return
+  let { key, title, isLeaf, isDir, description, parent_file_id } = info.node
   const getParentNode = (node: any): any => {
     return node.parent ? getParentNode(node.parent) : node
   }
@@ -278,7 +291,8 @@ const handleTreeSelect = (keys: any[], info: {
     parent_file_id: parent_file_id,
     path: info.node.path || '',
     description: description,
-    isDir: !isLeaf
+    // selectdir 在加载阶段只保留目录；不要依赖 Ant Tree 包装节点丢失的目录字段。
+    isDir: props.selecttype === 'selectdir' || (typeof isDir === 'boolean' ? isDir : !isLeaf)
   }
   treeSelectedKeys.value = [key]
   treeSelectToExpand(keys, info)
@@ -718,7 +732,10 @@ const handleTreeExpand = (keys: any[], info: {
       treeExpandedKeys.value = arr.filter((t) => t != key)
     } else {
       treeExpandedKeys.value = arr.concat([key])
-      if (props.selecttype !== 'select' && props.selecttype !== 'offline' && !isSingleRootDriveUser(user_id.value)) { // 仅显示文件夹
+      if (isScopedDrivePicker()) {
+        // 资源盘目标目录由 Ant Tree 懒加载；替换整棵缓存树会让当前事件节点失效。
+        return
+      } else if (props.selecttype !== 'select' && props.selecttype !== 'offline' && !isSingleRootDriveUser(user_id.value)) { // 仅显示文件夹
         let backupPan: TreeNodeData[] = []
         let resourcePan: TreeNodeData[] = []
         if (!useSettingStore().securityHideBackupDrive) {
@@ -809,15 +826,19 @@ const handleOKNewDir = () => {
           isDir: true
         }
         treeExpandedKeys.value = treeExpandedKeys.value.concat([selectFile.value.file_id, newdirid])
-        let backupPan: TreeNodeData[] = []
-        let resourcePan: TreeNodeData[] = []
-        if (!useSettingStore().securityHideBackupDrive) {
-          backupPan = PanDAL.GetPanTreeAllNode(user_id.value, pantreeStore.backup_drive_id, treeExpandedKeys.value)
+        if (isScopedDrivePicker()) {
+          treeData.value = PanDAL.GetPanTreeAllNode(user_id.value, drive_id.value, treeExpandedKeys.value)
+        } else {
+          let backupPan: TreeNodeData[] = []
+          let resourcePan: TreeNodeData[] = []
+          if (!useSettingStore().securityHideBackupDrive) {
+            backupPan = PanDAL.GetPanTreeAllNode(user_id.value, pantreeStore.backup_drive_id, treeExpandedKeys.value)
+          }
+          if (!useSettingStore().securityHideResourceDrive) {
+            resourcePan = PanDAL.GetPanTreeAllNode(user_id.value, pantreeStore.resource_drive_id, treeExpandedKeys.value)
+          }
+          treeData.value = [...backupPan, ...resourcePan]
         }
-        if (!useSettingStore().securityHideResourceDrive) {
-          resourcePan = PanDAL.GetPanTreeAllNode(user_id.value, pantreeStore.resource_drive_id, treeExpandedKeys.value)
-        }
-        treeData.value = [...backupPan, ...resourcePan]
         treeSelectedKeys.value = [newdirid]
         okLoading.value = false
         showCreatNewDir.value = false
@@ -829,7 +850,7 @@ const handleOK = () => {
     message.error('请选择一个文件')
     return
   }
-  if (props.selecttype === 'offline' && !selectFile.value.isDir) {
+  if ((props.selecttype === 'offline' || props.selecttype === 'selectdir') && !selectFile.value.isDir) {
     message.error('请选择一个文件夹')
     return
   }
@@ -851,7 +872,7 @@ const handleOK = () => {
            @before-open='handleOpen'
            @close='handleClose'>
     <template #title>
-      <span class='modaltitle'>{{ title }} {{ selecttype !== 'select' ? '选择一个位置' : '' }}</span>
+      <span class='modaltitle'>{{ title }} {{ selecttype !== 'select' && selecttype !== 'selectdir' ? '选择一个位置' : '' }}</span>
     </template>
     <div class='pandirmodalbody'>
       <AntdTree

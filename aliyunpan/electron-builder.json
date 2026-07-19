@@ -10,7 +10,7 @@
   "copyright": "copyright ©2026 GaoZhangMin",
   "asar": true,
   "compression": "maximum",
-  "npmRebuild": false,
+  "npmRebuild": true,
   "buildDependenciesFromSource": true,
   "directories": { "output": "release" },
   "files": [ "dist" ],

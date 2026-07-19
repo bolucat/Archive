@@ -26,7 +26,8 @@ import message from '../../utils/message'
 import AliShare from '../../aliapi/share'
 
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
-import { modalEditShareLink, modalShowShareLink } from '../../utils/modal'
+import { modalCloud123PaidShare, modalEditShareLink, modalShowShareLink } from '../../utils/modal'
+import { isCloud123User } from '../../aliapi/utils'
 import { ArrayKeyList } from '../../utils/utils'
 import { GetShareUrlFormate } from '../../utils/shareurl'
 import { TestButton } from '../../utils/mosehelper'
@@ -139,6 +140,7 @@ const onSelectRang = (share_id: string) => {
 }
 
 const handleRefresh = () => ShareDAL.aReloadMyShare(useUserStore().user_id, true)
+const handleCloud123PaidShare = () => modalCloud123PaidShare()
 const handleSelectAll = () => myshareStore.mSelectAll()
 const handleOrder = (order: string) => myshareStore.mOrderListData(order)
 const handleSelect = (share_id: string, event: any, isCtrl: boolean = false) => {
@@ -367,6 +369,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     </div>
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
+      <a-button v-if="isCloud123User(useUserStore().user_id)" type="text" size="small" tabindex="-1" @click="handleCloud123PaidShare">付费分享管理</a-button>
       <a-input-search ref="inputsearch" tabindex="-1"
                       size="small" title="Ctrl+F / F3 / Space"
                       placeholder="快速筛选"

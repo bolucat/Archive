@@ -131,6 +131,7 @@ const util = {
       socket: process.platform === 'win32' ? '\\\\.\\pipe\\mpvserver' : '/tmp/node-mpv.sock',
       audio_only: false,
       auto_restart: true,
+      start_timeout: 10000,
       time_update: 1,
       binary: null,
       spawnOptions: {
@@ -138,11 +139,15 @@ const util = {
         windowsVerbatimArguments: true
       }
     }
-    if (userInputOptions.spawnOptions) {
-      Object.assign(userInputOptions.spawnOptions, defaultOptions.spawnOptions)
+    const input = userInputOptions || {}
+    return {
+      ...defaultOptions,
+      ...input,
+      spawnOptions: {
+        ...defaultOptions.spawnOptions,
+        ...(input.spawnOptions || {})
+      }
     }
-    // merge the default options with the one specified by the user
-    return Object.assign(defaultOptions, userInputOptions)
   },
   // Determies the properties observed by default
   // If the player is NOT set to audio only, video properties are observed

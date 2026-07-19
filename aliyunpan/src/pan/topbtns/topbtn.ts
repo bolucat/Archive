@@ -29,12 +29,16 @@ import TreeStore from '../../store/treestore'
 import { copyToClipboard } from '../../utils/electronhelper'
 import DownDAL from '../../down/DownDAL'
 import { isEmpty } from 'lodash'
-import { GetDriveID, isAliyunUser, isCloud123User } from '../../aliapi/utils'
+import { GetDriveID, isAliyunUser, isCloud123User, isDrive115User, isPikPakUser } from '../../aliapi/utils'
 import AliAlbum from '../../aliapi/album'
 import { getEncType } from '../../utils/proxyhelper'
 import { Modal, Option, Select } from '@arco-design/web-vue'
 import { h } from 'vue'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, uploadWebDavLocalPaths } from '../../utils/webdavClient'
+import { apiCloud123TrashDeleteAll } from '../../cloud123/filecmd'
+import { apiDrive115TrashClear } from '../../cloud115/trash'
+import { apiPikPakFileList } from '../../pikpak/dirfilelist'
+import { apiPikPakTrashDelete } from '../../pikpak/filecmd'
 
 const topbtnLock = new Set()
 
@@ -667,14 +671,18 @@ export async function topFavorDeleteAll() {
 }
 
 
+export function canClearTrash(user_id: string, drive_id: string): boolean {
+  return isAliyunUser(user_id) || isCloud123User(user_id) || drive_id === 'cloud123' || isDrive115User(user_id) || drive_id === 'drive115' || isPikPakUser(user_id) || drive_id === 'pikpak'
+}
+
 export async function topTrashDeleteAll() {
   const selectedData = PanDAL.GetPanSelectedData(false)
   if (selectedData.isError) {
     message.error('清空回收站操作失败 父文件夹错误')
     return
   }
-  if (isCloud123User(selectedData.user_id || '') || selectedData.drive_id === 'cloud123') {
-    message.error("暂不支持清空回收站，请移步至官方客户端操作")
+  if (!canClearTrash(selectedData.user_id, selectedData.drive_id)) {
+    message.error('当前网盘暂不支持清空回收站')
     return
   }
 
@@ -684,6 +692,39 @@ export async function topTrashDeleteAll() {
   try {
     message.loading('清空回收站执行中...', 60, loadingKey)
     let count = 0
+    if (isCloud123User(selectedData.user_id) || selectedData.drive_id === 'cloud123') {
+      if (!await apiCloud123TrashDeleteAll(selectedData.user_id)) throw new Error('清空 123 云盘回收站失败')
+      message.success('清空回收站 成功!', 3, loadingKey)
+      if (usePanTreeStore().selectDir.file_id == 'trash') PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+      return
+    }
+    if (isDrive115User(selectedData.user_id) || selectedData.drive_id === 'drive115') {
+      if (!await apiDrive115TrashClear(selectedData.user_id)) throw new Error('清空 115 网盘回收站失败')
+      message.success('清空回收站 成功!', 3, loadingKey)
+      if (usePanTreeStore().selectDir.file_id == 'trash') PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+      return
+    }
+    if (isPikPakUser(selectedData.user_id) || selectedData.drive_id === 'pikpak') {
+      let pageToken = ''
+      const trashIds: string[] = []
+      do {
+        const page = await apiPikPakFileList(selectedData.user_id, 'pikpak_root', 100, pageToken, true)
+        trashIds.push(...page.items.map(item => item.id).filter(Boolean))
+        pageToken = page.nextPageToken
+      } while (pageToken)
+      for (let offset = 0; offset < trashIds.length; offset += 100) {
+        const ids = trashIds.slice(offset, offset + 100)
+        if (ids.length > 0) {
+          const deleted = await apiPikPakTrashDelete(selectedData.user_id, ids)
+          if (deleted.length !== ids.length) throw new Error('部分 PikPak 回收站文件删除失败')
+          count += deleted.length
+          message.loading('清空回收站执行中...(' + count.toString() + ')', 0, loadingKey)
+        }
+      }
+      message.success('清空回收站 成功!', 3, loadingKey)
+      if (usePanTreeStore().selectDir.file_id == 'trash') PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+      return
+    }
     while (true) {
 
       const resp: IAliFileResp = NewIAliFileResp(selectedData.user_id, selectedData.drive_id, 'trash', '回收站')
@@ -704,8 +745,9 @@ export async function topTrashDeleteAll() {
   } catch (err: any) {
     message.error(err.message, 3, loadingKey)
     DebugLog.mSaveDanger('topTrashDeleteAll', err)
+  } finally {
+    topbtnLock.delete('topTrashDeleteAll')
   }
-  topbtnLock.delete('topTrashDeleteAll')
 }
 
 

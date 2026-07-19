@@ -43,6 +43,7 @@ type Drive115VideoHistoryResp = {
 const PLAY_URL = 'https://proapi.115.com/open/video/play'
 const SUBTITLE_URL = 'https://proapi.115.com/open/video/subtitle'
 const HISTORY_URL = 'https://proapi.115.com/open/video/history'
+const VIDEO_PUSH_URL = 'https://proapi.115.com/open/video/video_push'
 
 type Drive115PickCodeResult = {
   pick_code: string
@@ -175,6 +176,25 @@ export const apiDrive115VideoHistoryUpdate = async (
     return data?.code === 0 && data?.state === true
   } catch {
     return false
+  }
+}
+
+export const apiDrive115VideoPush = async (user_id: string, pick_code: string, op: 'vip_push' | 'pay_push') => {
+  let token = UserDAL.GetUserToken(user_id)
+  if (!token?.access_token) token = await UserDAL.GetUserTokenFromDB(user_id) as typeof token
+  if (!token?.access_token || !pick_code) return { success: false, message: '参数错误' }
+  const body = new URLSearchParams({ pick_code, op })
+  try {
+    const resp = await fetch(VIDEO_PUSH_URL, {
+      method: 'POST',
+      headers: { ...buildDrive115Headers(token.access_token), 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    })
+    const data = await resp.json().catch(() => ({}))
+    if (!resp.ok || data?.code !== 0 || data?.state === false) return { success: false, message: data?.message || '提交视频转码失败' }
+    return { success: true, message: data?.message || '视频转码任务已提交' }
+  } catch (error: any) {
+    return { success: false, message: error?.message || '提交视频转码失败' }
   }
 }
 

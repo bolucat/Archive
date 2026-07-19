@@ -18,7 +18,7 @@ import { apiDrive115VideoHistoryUpdate, apiDrive115VideoPlay, apiDrive115VideoSu
 import { apiBaiduFileList } from '../cloudbaidu/dirfilelist'
 import { apiBaiduFileMetas, mapBaiduMetaToAliFileItem } from '../cloudbaidu/filecmd'
 import { apiPikPakDownloadInfo, apiPikPakFileDetail, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
-import { apiQuarkDownloadUrl, apiQuarkFileDetail, mapQuarkFileToAliModel } from '../quark/dirfilelist'
+import { apiQuarkDownloadUrl, apiQuarkFileDetail, apiQuarkVideoPreviewUrl, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiCloud139DownloadInfo, apiCloud139FileDetail, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
 import { apiCloud189DownloadInfo, apiCloud189FileDetail, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
 import { apiGuangyaDownloadInfo, apiGuangyaFileDetail, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
@@ -390,7 +390,8 @@ export default class AliFile {
         file_id,
         expire_time: GetExpiresTime(info.url),
         url: info.url,
-        size: Number(info.size || 0)
+        size: Number(info.size || 0),
+        headers: info.headers
       }
     }
     if (isCloud139User(user_id) || drive_id === 'cloud139') {
@@ -507,7 +508,7 @@ export default class AliFile {
       return '暂无转码信息'
     }
     if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return '暂无转码信息'
+      return apiQuarkVideoPreviewUrl(user_id, file_id)
     }
     if (isDropboxUser(user_id) || drive_id === 'dropbox') {
       return '暂无转码信息'

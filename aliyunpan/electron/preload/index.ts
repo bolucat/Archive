@@ -140,15 +140,21 @@ window.WebQuarkAccountInfo = async function(data: any) {
   } catch {
   }
 }
+window.WebQuarkFileList = async function(data: any) {
+  try {
+    return await ipcRenderer.invoke('WebQuarkFileList', data)
+  } catch {
+  }
+}
 window.WebQuarkDownloadUrl = async function(data: any) {
   try {
     return await ipcRenderer.invoke('WebQuarkDownloadUrl', data)
   } catch {
   }
 }
-window.WebSetCookies = function(cookies: any) {
+window.WebSetCookies = async function(cookies: any) {
   try {
-    ipcRenderer.send('WebSetCookies', cookies)
+    return await ipcRenderer.invoke('WebSetCookies', cookies)
   } catch {
   }
 }

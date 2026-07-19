@@ -11,19 +11,24 @@ export type Cloud123OfflineProcessResult = {
   error: string
 }
 
-export const apiCloud123OfflineCreate = async (user_id: string, url: string, fileName: string, dirID?: string) => {
+export const apiCloud123OfflineCreate = async (user_id: string, url: string, fileName: string, dirID?: string, callBackUrl?: string) => {
   const result: Cloud123OfflineCreateResult = { taskId: null, error: '创建离线下载失败' }
   const token = UserDAL.GetUserToken(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
   }
+  if (!/^https?:\/\//i.test(url)) {
+    result.error = '123云盘离线下载仅支持 HTTP/HTTPS 外链'
+    return result
+  }
   const body: any = { url }
   if (fileName) body.fileName = fileName
-  if (dirID && !dirID.includes('root')) {
+  if (dirID && dirID !== 'cloud123' && !dirID.includes('root')) {
     const dirNum = Number(dirID)
     if (!Number.isNaN(dirNum)) body.dirID = dirNum
   }
+  if (callBackUrl) body.callBackUrl = callBackUrl
   try {
     const resp = await fetch('https://open-api.123pan.com/api/v1/offline/download', {
       method: 'POST',
@@ -34,11 +39,15 @@ export const apiCloud123OfflineCreate = async (user_id: string, url: string, fil
       },
       body: JSON.stringify(body)
     })
-    if (!resp.ok) return result
-    const data = await resp.json()
+    const data = await resp.json().catch(() => undefined)
+    if (!resp.ok) {
+      result.error = data?.message || `创建离线下载失败（HTTP ${resp.status}）`
+      return result
+    }
     if (data?.code === 0) {
       const taskId = data?.data?.taskID ?? data?.data?.taskId
-      return { taskId: typeof taskId === 'number' ? taskId : Number(taskId), error: '' }
+      const normalizedTaskId = typeof taskId === 'number' ? taskId : Number(taskId)
+      return Number.isFinite(normalizedTaskId) && normalizedTaskId > 0 ? { taskId: normalizedTaskId, error: '' } : { taskId: null, error: '123 云盘未返回有效任务 ID' }
     }
     if (data?.message) result.error = data.message
   } catch (err: any) {
@@ -68,11 +77,11 @@ export const apiCloud123OfflineProcess = async (user_id: string, taskID: string)
         Authorization: `Bearer ${token.access_token}`
       }
     })
+    const data = await resp.json().catch(() => undefined)
     if (!resp.ok) {
-      result.error = '获取离线下载进度失败'
+      result.error = data?.message || `获取离线下载进度失败（HTTP ${resp.status}）`
       return result
     }
-    const data = await resp.json()
     if (data?.code === 0) {
       result.process = Number(data?.data?.process) || 0
       result.status = Number(data?.data?.status) || 0

@@ -232,7 +232,6 @@ const useDowningStore = defineStore('downing', {
       const haslist = new Set(DowningList.map(item => item.DownID))
       for (const downitem of downlist) {
         if (!haslist.has(downitem.DownID)) {
-          Object.freeze(downitem.Info)
           savelist.push(downitem)
           haslist.add(downitem.DownID)
         }

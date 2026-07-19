@@ -37,11 +37,11 @@ defineProps<{
 </template>
 
 <style scoped>
-.dl-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.dl-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .dl-status, .dl-result { display: flex; gap: 8px; align-items: flex-start; padding: 12px 14px; font-size: 13px; color: var(--color-text-2); }
 .dl-result { color: rgb(var(--success-6)); }
 .dl-body { flex: 1; min-width: 0; }
-.dl-textarea { width: 100%; min-height: 150px; margin-top: 8px; padding: 8px; border: 1px solid var(--color-border-2); border-radius: 6px; background: var(--color-bg-2); color: var(--color-text-2); font-size: 12px; line-height: 1.5; resize: vertical; box-sizing: border-box; }
+.dl-textarea { width: 100%; min-height: 150px; margin-top: 8px; padding: 9px; border: 1px solid var(--color-border-2); border-radius: 8px; background: var(--color-bg-2); color: var(--color-text-2); font-size: 12px; line-height: 1.5; resize: vertical; box-sizing: border-box; }
 .dl-error { color: rgb(var(--danger-6)); }
 .dl-footer { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-top: 1px solid var(--color-border-2); color: var(--color-text-4); font-size: 12px; }
 .dl-spin { animation: dl-spin 1s linear infinite; }

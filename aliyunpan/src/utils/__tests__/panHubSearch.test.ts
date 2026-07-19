@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildPanHubSearchUrls, createPanHubFetch, discoverPanHubSources, extractPanHubMerged, mergePanHubMerged, searchPanHubSources } from '../panHubSearch'
+import { buildPanHubSearchUrls, createPanHubFetch, discoverPanHubSources, extractPanHubMerged, mergePanHubMerged, searchPanHubSources, searchPanHubStream } from '../panHubSearch'
 
 describe('PanHub source search', () => {
   it('splits a blocking all-source search into plugin and Telegram batch requests', () => {
@@ -85,5 +85,32 @@ describe('PanHub source search', () => {
   it('deduplicates matching URLs while merging sources', () => {
     const item = { url: 'https://example.com/a', password: '', note: 'A', datetime: '' }
     expect(mergePanHubMerged({ aliyun: [item] }, { aliyun: [item] })).toEqual({ aliyun: [item] })
+  })
+
+  it('merges streamed result events before the final response', async () => {
+    const encoder = new TextEncoder()
+    const onProgress = vi.fn()
+    const fetchImpl = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: 'results', source: 'plugin', sourceName: 'test', data: { results: [{ title: 'A', datetime: '', channel: 'test', links: [{ type: 'quark', url: 'https://example.com/a', password: '' }] }] } })}\n`))
+        controller.enqueue(encoder.encode(`${JSON.stringify({ type: 'done', code: 0, data: { total: 1, merged_by_type: { quark: [{ url: 'https://example.com/a', password: '', note: 'A', datetime: '' }] } } })}\n`))
+        controller.close()
+      }
+    }), { status: 200 }))
+
+    const result = await searchPanHubStream({
+      apiBase: 'https://example.com/api',
+      keyword: 'test',
+      plugins: [],
+      channels: [],
+      concurrency: 2,
+      pluginTimeoutMs: 5000,
+      fetchImpl,
+      onProgress
+    })
+
+    expect(result.total).toBe(1)
+    expect(result.merged.quark).toHaveLength(1)
+    expect(onProgress).toHaveBeenCalledWith(expect.any(Object), 1)
   })
 })

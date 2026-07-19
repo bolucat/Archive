@@ -49,6 +49,9 @@ export function buildPlayerCommand(platform: PlayerPlatform, command: string): s
 }
 
 export function buildDirectPlayerInvocation(platform: PlayerPlatform, command: string): { binary: string; args: string[] } {
+  if (platform === 'darwin' && command.toLowerCase().endsWith('.app')) {
+    return { binary: `${command}/Contents/MacOS/mpv`, args: [] }
+  }
   if (platform !== 'linux') return { binary: command, args: [] }
   const parts = shellSplit(command)
   return {
@@ -62,11 +65,38 @@ export function formatPlayerArg(platform: PlayerPlatform, value: string, directS
   return platform === 'win32' ? `"${value}"` : shellQuote(value)
 }
 
+export function parsePlayerParams(input: string): string[] {
+  const result: string[] = []
+  let current = ''
+  let quote: '"' | "'" | '' = ''
+
+  const push = () => {
+    const value = current.trim()
+    if (value) result.push(value)
+    current = ''
+  }
+
+  for (const char of String(input || '')) {
+    if ((char === '"' || char === "'") && (!quote || quote === char)) {
+      quote = quote ? '' : char
+      continue
+    }
+    if (char === ',' && !quote) {
+      push()
+      continue
+    }
+    current += char
+  }
+  push()
+  return result
+}
+
 export function redactMpvArgs(args: any[]): any[] {
   return args.map((arg) => {
     const value = String(arg)
-    if (value.includes('Authorization:')) return value.replace(/Authorization:\s*[^'"]+/i, 'Authorization: [REDACTED]')
-    if (/access_token=|x-oss-signature=|X-Amz-Signature=/i.test(value)) return '[REDACTED_URL]'
-    return arg
+    if (/access_token=|refresh_token=|x-oss-signature=|X-Amz-Signature=|X-Amz-Credential=/i.test(value)) return '[REDACTED_URL]'
+    return value
+      .replace(/(authorization\s*:\s*)[^,]+/gi, '$1[REDACTED]')
+      .replace(/(cookie\s*:\s*)[^,]+/gi, '$1[REDACTED]')
   })
 }

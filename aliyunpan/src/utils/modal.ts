@@ -55,6 +55,10 @@ export function modalEditShareLink(sharelist: IAliShareItem[]) {
   useModalStore().showModal('editshare', { sharelist })
 }
 
+export function modalCloud123PaidShare() {
+  useModalStore().showModal('cloud123paidshare', {})
+}
+
 export function modalShowShareLink(share_id: string, share_pwd: string, share_token: string, withsave: boolean, file_id_list: string[], save_db: boolean = true) {
   useModalStore().showModal('showshare', { share_id, share_pwd, share_token, withsave, save_db, file_id_list })
 }
@@ -62,8 +66,9 @@ export function modalShowShareLink(share_id: string, share_pwd: string, share_to
 export function modalSelectPanDir(selecttype: string, selectid: string,
                                   callback: (user_id: string, drive_id: string, selectFile: any) => void,
                                   category?: string,
-                                  extFilter?: RegExp) {
-  useModalStore().showModal('selectpandir', { selecttype, selectid, category, extFilter, callback })
+                                  extFilter?: RegExp,
+                                  initialTarget?: { user_id: string; drive_id: string }) {
+  useModalStore().showModal('selectpandir', { selecttype, selectid, category, extFilter, callback, ...initialTarget })
 }
 
 export function modalSelectVideoQuality(fileInfo: IAliGetFileModel, qualityData: IRawUrl, callback: (quality: string) => void) {

@@ -23,6 +23,8 @@ import { Tooltip as AntdTooltip } from 'ant-design-vue'
 import { IStateDownFile } from './DownDAL'
 import { TestButton } from '../utils/mosehelper'
 import { xorWith } from 'lodash'
+import { isLocalVideoPath } from './integration/localVideoPlayback'
+import { resolveDownloadOpenPath } from './integration/btDownloadTarget'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -175,6 +177,8 @@ const handleOpenFile = (file: IStateDownFile | null) =>
 const handleOpenDir = (file: IStateDownFile | null) =>
   downedStore.mOpenUploadedFile(file, [...downedStore.ListSelected], true)
 
+const isDownloadedVideo = (file: IStateDownFile) => !file.Info.isDir && isLocalVideoPath(resolveDownloadOpenPath(file.Info))
+
 const handleDeleteAll = async () => await downedStore.mDeleteAllDowned()
 
 const handleSearchInput = (value: string) => {
@@ -315,14 +319,14 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
             <div class="fileicon">
               <IconFont :name="item.Info.icon" aria-hidden="true" />
             </div>
-            <div class="filename">
-              <div :title="item.Info.localFilePath">
+            <div class="filename" @dblclick.stop="handleOpenFile(item)">
+              <div :title="item.Info.localFilePath || '双击打开'">
                 {{ item.Info.name }}
               </div>
             </div>
             <div class="cell filesize">{{ item.Info.sizestr }}</div>
             <div class='toppanbtn'>
-              <a title='打开文件' v-if='!item.Info.ariaRemote' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
+              <a :title="isDownloadedVideo(item) ? '播放视频' : '打开文件'" v-if='!item.Info.ariaRemote' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
               <a title='打开目录' v-if='!item.Info.ariaRemote' @click="handleOpenDir(item)"><IconFont name="iconfolder" /></a>&nbsp;&nbsp;
               <a title='删除' @click="handleDelete"><IconFont name="icondelete" /></a>&nbsp;&nbsp;
             </div>

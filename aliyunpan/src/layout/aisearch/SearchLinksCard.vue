@@ -97,18 +97,18 @@ const PLATFORM_COLORS: Record<string, string> = {
 </template>
 
 <style scoped>
-.sl-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.sl-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .sl-status { display: flex; align-items: center; gap: 8px; padding: 10px 14px; font-size: 13px; color: var(--color-text-3); }
 .sl-muted { color: var(--color-text-4); }
-.sl-header { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--color-text-3); border-bottom: 1px solid var(--color-border-2); }
+.sl-header { display: flex; align-items: center; gap: 7px; padding: 11px 14px; font-size: 12px; font-weight: 650; color: rgb(var(--primary-5)); border-bottom: 1px solid var(--color-border-2); background: rgba(var(--primary-6), .055); }
 .sl-list { display: flex; flex-direction: column; }
-.sl-item { display: flex; align-items: center; gap: 8px; padding: 8px 14px; }
+.sl-item { display: flex; align-items: center; gap: 8px; padding: 9px 14px; }
 .sl-platform-badge { flex-shrink: 0; padding: 1px 6px; font-size: 10px; font-weight: 600; color: #fff; border-radius: 3px; text-transform: uppercase; }
 .sl-item-body { flex: 1; min-width: 0; }
 .sl-item-url { font-size: 12px; color: var(--color-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; }
 .sl-item-note { font-size: 11px; color: var(--color-text-4); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sl-copy-btn, .sl-open-btn, .sl-save-btn { flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: var(--color-text-4); cursor: pointer; border-radius: 4px; }
-.sl-copy-btn:hover, .sl-open-btn:hover, .sl-save-btn:hover { background: var(--color-fill-2); color: var(--color-text-2); }
+.sl-copy-btn:hover, .sl-open-btn:hover, .sl-save-btn:hover { background: rgba(var(--primary-6), .10); color: var(--color-text-2); }
 .sl-save-btn { color: rgb(var(--primary-6)); }
 .sl-save-btn:hover { color: rgb(var(--primary-6)); }
 .sl-pass { flex-shrink: 0; font-size: 11px; color: var(--color-text-3); }

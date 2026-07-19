@@ -1,7 +1,7 @@
 import Config from '../config'
 import { getBoxPlayerAccessToken } from './boxplayerAuth'
 
-export type BoxPlayerCloudAIFeature = 'ai_search' | 'reader_chat' | 'reader_translate' | 'reader_tts'
+export type BoxPlayerCloudAIFeature = 'ai_search' | 'reader_chat' | 'reader_translate' | 'reader_tts' | 'document_analysis'
 
 export interface BoxPlayerCloudAIMessage {
   role: 'system' | 'user' | 'assistant'
@@ -46,6 +46,10 @@ export function isBoxPlayerCloudProvider(providerName?: string): boolean {
 
 function apiUrl(path: string): string {
   return `${CLOUD_AI_BASE_URL.replace(/\/+$/, '')}${path}`
+}
+
+export function getBoxPlayerMediaScrapeUrl(): string {
+  return `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/v1/media-scrape`
 }
 
 async function postCloudAI(path: string, body: unknown): Promise<Response> {
@@ -108,7 +112,15 @@ export async function completeBoxPlayerCloudChat(request: BoxPlayerCloudChatRequ
 }
 
 export async function scrapeMediaWithBoxPlayerCloud(items: BoxPlayerCloudMediaScrapeItem[]): Promise<BoxPlayerCloudMediaScrapeResult[]> {
-  const response = await postCloudAI('/v1/media-scrape', { items })
+  const token = await getBoxPlayerAccessToken()
+  const response = await fetch(getBoxPlayerMediaScrapeUrl(), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ items })
+  })
   if (!response.ok) throw new Error(await readCloudAIError(response))
   const data = await response.json() as { results?: BoxPlayerCloudMediaScrapeResult[] }
   if (!Array.isArray(data.results)) throw new Error('AI 刮削没有返回结果')
@@ -165,13 +177,14 @@ function base64ToBlob(base64: string, type: string): Blob {
 async function readCloudAIError(response: Response): Promise<string> {
   try {
     const data = await response.json() as { error?: string; message?: string }
-    return mapCloudAIError(data.error || data.message || `HTTP ${response.status}`)
+    return mapBoxPlayerCloudAIError(data.error || data.message || `HTTP ${response.status}`)
   } catch {
     return `HTTP ${response.status}`
   }
 }
 
-function mapCloudAIError(code: string): string {
+export function mapBoxPlayerCloudAIError(error: unknown): string {
+  const code = String(error || '')
   const messages: Record<string, string> = {
     missing_auth_token: '请先登录 BoxPlayer 账号',
     invalid_auth_token: '登录已过期，请重新登录',
@@ -179,11 +192,21 @@ function mapCloudAIError(code: string): string {
     daily_char_quota_exceeded: '今日 AI 字符额度已用完',
     monthly_request_quota_exceeded: '本月 AI 请求次数已用完',
     monthly_char_quota_exceeded: '本月 AI 字符额度已用完',
+    monthly_ai_credit_quota_exceeded: '本月内置 AI 额度已用完。你可以等待下月重置，或在设置中改用自己的 AI API Key。',
     ai_provider_quota_exceeded: 'Cloudflare Unified Billing 余额不足，请先充值后再试',
     input_too_large: '输入内容过长',
     text_too_large: '文本过长'
   }
-  return messages[code] || code
+  for (const [key, message] of Object.entries(messages)) {
+    if (code.includes(key)) return message
+  }
+  // Pi's OpenAI-compatible stream reports body-less HTTP failures as a status
+  // string. The cloud worker reserves 429 exclusively for the monthly credit limit.
+  if (/\b429\b/.test(code)) return '本月内置 AI 额度已用完。你可以等待下月重置，或在设置中改用自己的 AI API Key。'
+  // The current Cloudflare streaming bridge can surface the same rejected
+  // request as a body-less 500 even though the Worker records the quota code.
+  if (/\b500 status code \(no body\)/.test(code)) return '本月内置 AI 额度已用完。你可以等待下月重置，或在设置中改用自己的 AI API Key。'
+  return code
 }
 
 function parseStreamLine(line: string): string {

@@ -8,13 +8,31 @@ const dbMock = vi.hoisted(() => ({
   deleteBookBookmarksByBookIds: vi.fn(),
   deleteBookItemsByIds: vi.fn(),
   deleteBookNotesByBookIds: vi.fn(),
+  getAllBookItems: vi.fn(),
   getAllBookBookmarks: vi.fn(),
   getAllBookNotes: vi.fn(),
   saveBookItems: vi.fn()
 }))
 
+const userDalMock = vi.hoisted(() => ({
+  GetUserTokenFromDB: vi.fn()
+}))
+
+const aliHttpMock = vi.hoisted(() => ({
+  GetBlob: vi.fn(),
+  IsSuccess: vi.fn(() => true)
+}))
+
 vi.mock('../../utils/db', () => ({
   default: dbMock
+}))
+
+vi.mock('../../user/userdal', () => ({
+  default: userDalMock
+}))
+
+vi.mock('../../aliapi/alihttp', () => ({
+  default: aliHttpMock
 }))
 
 function book(overrides: Partial<IBookItem>): IBookItem {
@@ -90,7 +108,10 @@ describe('booklibrary trash behavior', () => {
     dbMock.deleteBookNotesByBookIds.mockResolvedValue(0)
     dbMock.getAllBookBookmarks.mockResolvedValue([])
     dbMock.getAllBookNotes.mockResolvedValue([])
+    dbMock.getAllBookItems.mockResolvedValue([])
     dbMock.saveBookItems.mockResolvedValue(undefined)
+    userDalMock.GetUserTokenFromDB.mockResolvedValue(undefined)
+    aliHttpMock.GetBlob.mockResolvedValue({ code: 200, body: new Blob() })
   })
 
   it('moves books to trash and removes favorite state like Reader', async () => {
@@ -108,6 +129,40 @@ describe('booklibrary trash behavior', () => {
     expect(dbMock.saveBookItems).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'deleted', deleted_at: expect.any(Number), is_favorite: false })
     ])
+  })
+
+  it('does not render cached Aliyun thumbnails for a removed account', async () => {
+    dbMock.getAllBookItems.mockResolvedValue([
+      book({
+        id: 'stale-aliyun-book',
+        user_id: 'removed-aliyun-user',
+        thumbnail: 'https://api.aliyundrive.com/v2/file/download?t=1&drive_id=55307005&file_id=file&office_thumbnail_process=image',
+        cover_url: 'https://api.aliyundrive.com/v2/file/download?t=1&drive_id=55307005&file_id=file&office_thumbnail_process=image'
+      })
+    ])
+
+    const store = await createStore()
+    await store.loadFromDB()
+
+    expect(store.books[0]).toMatchObject({ thumbnail: '', cover_url: '' })
+    expect(dbMock.saveBookItems).toHaveBeenCalledWith([
+      expect.objectContaining({ id: 'stale-aliyun-book', thumbnail: expect.stringContaining('api.aliyundrive.com') })
+    ])
+  })
+
+  it('loads a cached Aliyun thumbnail with the book owner token', async () => {
+    const url = 'https://api.aliyundrive.com/v2/file/download?t=1&drive_id=55307005&file_id=file&office_thumbnail_process=image'
+    userDalMock.GetUserTokenFromDB.mockResolvedValue({ tokenfrom: 'aliyun', access_token: 'book-owner-token' })
+    aliHttpMock.GetBlob.mockResolvedValue({ code: 200, body: new Blob(['cover'], { type: 'image/jpeg' }) })
+    dbMock.getAllBookItems.mockResolvedValue([
+      book({ id: 'aliyun-book', user_id: 'book-owner', thumbnail: url, cover_url: url })
+    ])
+
+    const store = await createStore()
+    await store.loadFromDB()
+    await vi.waitFor(() => expect(store.books[0].cover_url).toMatch(/^blob:/))
+    expect(aliHttpMock.GetBlob).toHaveBeenCalledWith(url, 'book-owner')
+    expect(store.books[0].thumbnail).toMatch(/^blob:/)
   })
 
   it('permanently deletes books and clears attached notes and bookmarks', async () => {

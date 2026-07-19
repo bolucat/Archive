@@ -8,6 +8,7 @@ import DebugLog from './utils/debuglog'
 import { PageMain } from './layout/PageMain'
 import { WorkerPage } from './workerpage/workercmd'
 import ServerHttp from './aliapi/server'
+import { startMediaAcquisitionWorkflowRunner, wakeMediaAcquisitionWorkflowRunner } from './services/mediaAcquisition/workflowRunner'
 
 window.onerror = function (errorMessage, scriptURI, lineNo, columnNo, error) {
   try {
@@ -76,6 +77,8 @@ app.config.errorHandler = function (err: any, vm, info) {
 app.use(ArcoVue, {})
 app.use(store)
 app.mount('#app')
+startMediaAcquisitionWorkflowRunner()
+window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => wakeMediaAcquisitionWorkflowRunner())
 
 
 window.WinMsgToMain = function (event: any) {

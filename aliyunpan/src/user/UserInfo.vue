@@ -151,6 +151,7 @@ const baiduQuotaText = computed(() => {
   const expire = token.space_expire ? '是' : '否'
   return `可用 ${free} · 7天内到期 ${expire}`
 })
+const storageText = computed(() => userStore.GetUserToken.spaceinfo || '容量信息暂不可用')
 
 const activeProviderMeta = computed(() => getDriveProviderMeta(userStore.GetUserToken.tokenfrom))
 const activeProviderIcon = computed(() => activeProviderMeta.value.icon)
@@ -253,7 +254,7 @@ watch(
 
         <a-row class='userinfo-row' justify='space-between' align='center'>
           <a-col class='userinfo-left' flex='1'>
-            <span class='userspace'>{{ userStore.GetUserToken.spaceinfo }}</span>
+            <span class='userspace'>{{ storageText }}</span>
             <span v-if="isBaiduUser(userStore.user_id || userStore.GetUserToken) && baiduQuotaText" class='userspace userspace-sub'>
               {{ baiduQuotaText }}
             </span>

@@ -8,7 +8,7 @@ import type {
 } from '../types/media'
 import Config from '../config'
 
-const TMDB_BASE_URL = `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/api/tmdb`
+const TMDB_BASE_URL = `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api/tmdb`
 
 async function fetchWithRetry(url: string, retries = 3, delayMs = 2000): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {

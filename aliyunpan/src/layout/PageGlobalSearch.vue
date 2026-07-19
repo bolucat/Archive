@@ -1,29 +1,33 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Search, X, File, Folder, ArrowUpRight, Film, Tv, Monitor, Clock, ChevronRight, Sparkles } from 'lucide-vue-next'
-import { useAppStore } from '../store'
+import { Search, X, File, Folder, ArrowUpRight, Film, Tv, Monitor, Clock, ChevronRight } from 'lucide-vue-next'
+import { useAppStore, useSettingStore } from '../store'
 import { humanSize } from '../utils/format'
 import { searchAllDrives, searchResultGroupTitle, type GlobalSearchResult } from '../utils/globalSearch'
-import { createPanHubFetch, discoverPanHubSources, searchPanHubSources, type PanHubMergedLinks } from '../utils/panHubSearch'
+import { createPanHubFetch, searchPanHubStream, type PanHubMergedLinks } from '../utils/panHubSearch'
 import PanHubResultGroup from './PanHubResultGroup.vue'
 import PanHubHotSearches from './PanHubHotSearches.vue'
-import PanHubDoubanHot from './PanHubDoubanHot.vue'
+import PanHubTrending from './PanHubTrending.vue'
+import PanHubMediaResults, { type TmdbMediaResult } from './PanHubMediaResults.vue'
 import PanHubSearchBox from './PanHubSearchBox.vue'
-import PanHubSettingsDrawer, { type PanHubSettings } from './PanHubSettingsDrawer.vue'
-import AISearchAgent from './AISearchAgent.vue'
-import { checkAndIncrement, isLoggedIn, isPro } from '../utils/usageLimit'
-import { getAIConfig } from '../utils/bookAI'
-import { isBoxPlayerCloudProvider } from '../utils/boxplayerCloudAI'
+import { checkAndIncrement } from '../utils/usageLimit'
 import message from '../utils/message'
 import Config from '../config'
+import DownDAL from '../down/DownDAL'
+import TorrentFileSelector from '../down/TorrentFileSelector.vue'
+import { discardMagnetPreview, prepareMagnetFiles, type MagnetPreview } from '../down/integration/aria2TaskApi'
+import type { DownloadTaskFile } from '../down/integration/taskTypes'
+import MediaAcquisitionTargetModal from '../components/MediaAcquisitionTargetModal.vue'
+import type { MediaAcquisitionRequest, MediaAcquisitionState } from '@shared/types/mediaAcquisition'
+import { listMediaAcquisitionStates } from '../services/mediaAcquisition/client'
 
 const appStore = useAppStore()
 const HISTORY_KEY = 'global_search_history'
 const MAX_HISTORY = 20
-const PANHUB_API_BASE = `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/api`
+const PANHUB_API_BASE = `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api`
 const panHubFetch = createPanHubFetch(window.Electron?.ipcRenderer?.invoke?.bind(window.Electron.ipcRenderer))
 
-const searchMode = ref<'local' | 'panhub' | 'ai'>('local')
+const searchMode = ref<'local' | 'panhub'>('local')
 const keyword = ref('')
 const inputRef = ref<HTMLInputElement>()
 const cloudResults = ref<GlobalSearchResult[]>([])
@@ -132,35 +136,25 @@ const hasBoth = computed(() => totalCloud.value > 0 && totalMs.value > 0)
 
 const isLocalMode = () => searchMode.value === 'local'
 const isPanHubMode = () => searchMode.value === 'panhub'
-const isAiMode = () => searchMode.value === 'ai'
 
 const phLoading = ref(false); const phSearched = ref(false)
 const phTotal = ref(0); const phMerged = ref<PanHubMergedLinks>({})
 const phError = ref(''); const phFilterPlatform = ref('all')
 const phSortType = ref<'default'|'date-desc'|'date-asc'|'name-asc'|'name-desc'>('default')
 const phElapsedMs = ref(0); let phController: AbortController|null = null
-const SETTINGS_KEY = 'panhub.user_settings'
-const phAllPlugins = ref<string[]>([])
-const phAllChannels = ref<string[]>([])
-const showPhSettings = ref(false)
-async function openPhSettings() {
-  showPhSettings.value = true
-  if (!phAllPlugins.value.length) {
-    try {
-      const sources = await discoverPanHubSources(PANHUB_API_BASE, panHubFetch)
-      phAllPlugins.value = sources.plugins
-      phAllChannels.value = sources.channels
-      if (!phSources.value.plugins.length) phSources.value = { plugins: sources.plugins, channels: sources.channels }
-    } catch {}
-  }
-}
-function loadPhSettings(): PanHubSettings {
-  try { const raw = localStorage.getItem(SETTINGS_KEY); if (raw) return JSON.parse(raw) } catch {}
-  return { enabledPlugins: [], enabledChannels: [], concurrency: 4, pluginTimeoutMs: 5000 }
-}
-function savePhSettings(s: PanHubSettings) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)) }
-const phSettings = ref<PanHubSettings>(loadPhSettings())
-const phSources = ref<{ plugins: string[]; channels: string[] }>({ plugins: [], channels: [] })
+const phTmdbItems = ref<TmdbMediaResult[]>([])
+const phTmdbLoading = ref(false)
+const phTmdbError = ref('')
+const acquisitionStates = ref<MediaAcquisitionState[]>([])
+const acquisitionRequest = ref<MediaAcquisitionRequest | null>(null)
+const acquisitionVisible = ref(false)
+const magnetSelectorVisible = ref(false)
+const magnetSelectorLoading = ref(false)
+const magnetSelectorFiles = ref<DownloadTaskFile[]>([])
+const magnetPreview = ref<MagnetPreview | null>(null)
+const pendingMagnet = ref<{ url: string; title: string; savePath: string } | null>(null)
+let magnetPreviewController: AbortController | null = null
+let acquisitionStateTimer: ReturnType<typeof setInterval> | undefined
 
 const PH_PLATFORM_INFO: Record<string,{name:string;color:string}> = {
   aliyun:{name:'阿里云盘',color:'#7c3aed'},quark:{name:'夸克网盘',color:'#6366f1'},
@@ -173,11 +167,53 @@ const PH_PLATFORM_INFO: Record<string,{name:string;color:string}> = {
 }
 const phHasResults = computed(() => Object.keys(phMerged.value).length > 0)
 const phPlatforms=computed(()=>{const p:{key:string;name:string;count:number}[]=[];for(const[k,v]of Object.entries(phMerged.value))p.push({key:k,name:PH_PLATFORM_INFO[k]?.name||k,count:v.length});return p})
-const aiAgentCanSend = computed(() => {
-  if (isPro()) return true
-  const cfg = getAIConfig()
-  return isLoggedIn() && !!cfg && !isBoxPlayerCloudProvider(cfg.providerName)
-})
+
+async function phSearchTmdb(keyword: string, signal: AbortSignal) {
+  phTmdbLoading.value = true
+  phTmdbError.value = ''
+  try {
+    const query = new URLSearchParams({ query: keyword, language: 'zh-CN', include_adult: 'false', page: '1' })
+    const response = await fetch(`${PANHUB_API_BASE}/tmdb/proxy/search/multi?${query}`, { signal })
+    const payload = await response.json()
+    if (!response.ok || (payload?.code !== undefined && payload.code !== 0)) throw new Error(payload?.message || 'TMDB 搜索失败')
+    phTmdbItems.value = Array.isArray(payload?.results)
+      ? payload.results.filter((item: TmdbMediaResult) => item?.media_type === 'movie' || item?.media_type === 'tv').slice(0, 10)
+      : []
+  } catch (error: any) {
+    if (error?.name !== 'AbortError') phTmdbError.value = error?.message || 'TMDB 搜索失败'
+  } finally {
+    if (!signal.aborted) phTmdbLoading.value = false
+  }
+}
+
+function phAcquire(request: MediaAcquisitionRequest) {
+  const state = acquisitionStates.value.find(item => item.mediaKey === mediaAcquisitionKey(request))
+  if (state && !['failed', 'cancelled', 'no_coverage', 'partial'].includes(state.status)) return
+  acquisitionRequest.value = request
+  acquisitionVisible.value = true
+}
+
+function mediaAcquisitionKey(request: MediaAcquisitionRequest) {
+  if (request.tmdbId) return `${request.mediaType}:tmdb:${request.tmdbId}`
+  return `${request.mediaType}:title:${request.title.trim().toLowerCase().replace(/\s+/g, ' ')}:${request.year || ''}`
+}
+
+async function refreshAcquisitionStates() {
+  try {
+    acquisitionStates.value = await listMediaAcquisitionStates()
+  } catch {
+    // The search page remains usable when the desktop IPC service is unavailable.
+  }
+}
+
+function onAcquisitionVisibleChange(visible: boolean) {
+  acquisitionVisible.value = visible
+  if (!visible) acquisitionRequest.value = null
+}
+
+function onAcquisitionCreated() {
+  void refreshAcquisitionStates()
+}
 
 async function phDoSearch(){
   const kw=keyword.value.trim()
@@ -189,21 +225,17 @@ async function phDoSearch(){
   const controller=new AbortController()
   phController=controller
   phLoading.value=true;phSearched.value=true
-  phError.value='';phTotal.value=0;phMerged.value={};phFilterPlatform.value='all';phSortType.value='default'
+  phError.value='';phTotal.value=0;phMerged.value={};phTmdbItems.value=[];phTmdbError.value='';phFilterPlatform.value='all';phSortType.value='default'
   const start=Date.now()
   try{
     panHubFetch(`${PANHUB_API_BASE}/hot-searches`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({term:kw})}).catch(()=>{})
-    const sources=await discoverPanHubSources(PANHUB_API_BASE,panHubFetch,controller.signal)
-        if(!phAllPlugins.value.length){phAllPlugins.value=sources.plugins;phAllChannels.value=sources.channels;phSources.value={plugins:sources.plugins,channels:sources.channels}}
-    const result=await searchPanHubSources({
+    void phSearchTmdb(kw, controller.signal)
+    const result=await searchPanHubStream({
       apiBase:PANHUB_API_BASE,
       keyword:kw,
-      plugins:sources.plugins,
-      channels:sources.channels,
-      concurrency:4,
-      pluginTimeoutMs:5000,
       signal:controller.signal,
       fetchImpl:panHubFetch,
+      ipcRenderer:window.Electron?.ipcRenderer,
       onProgress:(merged,total)=>{
         if(phController!==controller)return
         phMerged.value=merged;phTotal.value=total
@@ -215,24 +247,93 @@ async function phDoSearch(){
   }catch(e:any){if(e?.name==='AbortError')return;phError.value=e?.message||'网络请求失败'}
   finally{if(phController===controller){phLoading.value=false;phElapsedMs.value=Date.now()-start;phController=null}}
 }
-function phReset(){if(phController)phController.abort();phController=null;phLoading.value=false;phSearched.value=false;phError.value='';phTotal.value=0;phMerged.value={};keyword.value=''}
+function phReset(){if(phController)phController.abort();phController=null;phLoading.value=false;phSearched.value=false;phError.value='';phTotal.value=0;phMerged.value={};phTmdbItems.value=[];phTmdbError.value='';phTmdbLoading.value=false;keyword.value=''}
 function phHotSelect(term:string){keyword.value=term;nextTick(()=>{if(searchTimer.value)clearTimeout(searchTimer.value);phDoSearch()})}
 function phCopy(url:string){navigator.clipboard.writeText(url).catch(()=>{})}
+async function phConfirmMagnetDownload(url:string,title:string){
+  const magnet=url.trim()
+  if(!/^magnet:\?/i.test(magnet))return
+  const settingStore=useSettingStore()
+  const savePath=settingStore.ariaState==='remote'?settingStore.ariaSavePath:settingStore.downSavePath
+  if(!savePath){message.error('请先在下载设置中选择保存目录');return}
+
+  magnetPreviewController?.abort()
+  await discardMagnetPreview(magnetPreview.value)
+  magnetPreview.value=null
+  magnetSelectorFiles.value=[]
+  pendingMagnet.value={url:magnet,title:(title||'').trim(),savePath}
+  magnetSelectorVisible.value=true
+  magnetSelectorLoading.value=true
+  const controller=new AbortController()
+  magnetPreviewController=controller
+  try{
+    const preview=await prepareMagnetFiles(magnet,savePath,{signal:controller.signal})
+    if(controller.signal.aborted||magnetPreviewController!==controller){await discardMagnetPreview(preview);return}
+    magnetPreview.value=preview
+    magnetSelectorFiles.value=preview.files
+    if(pendingMagnet.value&&!pendingMagnet.value.title)pendingMagnet.value.title=preview.name
+  }catch(e:any){
+    if(e?.name!=='AbortError'){
+      message.error(e?.message||'获取磁力文件列表失败')
+      magnetSelectorVisible.value=false
+      pendingMagnet.value=null
+    }
+  }finally{
+    if(magnetPreviewController===controller){magnetPreviewController=null;magnetSelectorLoading.value=false}
+  }
+}
+
+async function phCancelMagnetSelection(){
+  magnetSelectorVisible.value=false
+  magnetSelectorLoading.value=false
+  magnetPreviewController?.abort()
+  magnetPreviewController=null
+  const preview=magnetPreview.value
+  magnetPreview.value=null
+  magnetSelectorFiles.value=[]
+  pendingMagnet.value=null
+  await discardMagnetPreview(preview)
+}
+
+async function phCreateSelectedMagnet(indexes:number[]){
+  const pending=pendingMagnet.value
+  const preview=magnetPreview.value
+  if(!pending||!preview||!indexes.length)return
+  magnetPreview.value=null
+  pendingMagnet.value=null
+  magnetSelectorFiles.value=[]
+  await discardMagnetPreview(preview)
+  const settingStore=useSettingStore()
+  const selectFile=indexes.length===preview.files.length?undefined:indexes.join(',')
+  const result=DownDAL.aAddExternalDownload({source:pending.url,sourceType:'magnet',savePath:pending.savePath,fileName:(pending.title||preview.name).slice(0,200),selectFile,split:settingStore.downThreadMax})
+  if(!result.success){message.error(result.message||'添加磁力下载失败');return}
+  message.success(`已添加下载任务，共选择 ${indexes.length} 个文件`)
+}
+
+function phCreateMagnetDirect(){
+  const pending=pendingMagnet.value
+  if(!pending)return
+  const preview=magnetPreview.value
+  magnetPreviewController?.abort()
+  magnetPreviewController=null
+  magnetPreview.value=null
+  pendingMagnet.value=null
+  magnetSelectorFiles.value=[]
+  magnetSelectorLoading.value=false
+  magnetSelectorVisible.value=false
+  discardMagnetPreview(preview).catch(()=>undefined)
+  const settingStore=useSettingStore()
+  const result=DownDAL.aAddExternalDownload({source:pending.url,sourceType:'magnet',savePath:pending.savePath,fileName:pending.title.slice(0,200),split:settingStore.downThreadMax})
+  if(!result.success){message.error(result.message||'添加磁力下载失败');return}
+  message.success('已添加磁力任务，将下载全部文件')
+}
 function phFmt(ms:number):string{return ms<1000?`${ms}ms`:`${(ms/1000).toFixed(1)}s`}
 
 function handleSearchSubmit(){if(searchTimer.value){clearTimeout(searchTimer.value)};doSearch()}
 
 function onSearchBoxSubmit() {
   if (searchTimer.value) clearTimeout(searchTimer.value)
-  if (searchMode.value === 'ai') { aiTrigger.value++; aiKeyword.value = keyword.value; return }
   doSearch()
-}
-
-const aiTrigger = ref(0)
-const aiKeyword = ref('')
-
-function activateAiMode() {
-  searchMode.value = 'ai'
 }
 
 function doSearch() {
@@ -266,7 +367,7 @@ function doSearch() {
 watch(keyword, () => {
   if (searchTimer.value) clearTimeout(searchTimer.value)
   selectedSection.value = null; selectedIndex.value = 0
-  if (keyword.value.trim().length < 2) { cloudResults.value = []; msResults.value = []; phMerged.value = {}; searching.value = false; return }
+  if (keyword.value.trim().length < 2) { cloudResults.value = []; msResults.value = []; phMerged.value = {}; phTmdbItems.value = []; phTmdbError.value = ''; phTmdbLoading.value = false; searching.value = false; return }
   if (searchMode.value === 'panhub') { searchTimer.value = setTimeout(doSearch, 300); return }
   searching.value = true; searchTimer.value = setTimeout(doSearch, 300)
 })
@@ -400,16 +501,37 @@ function mediaKindLabel(kind: string | undefined) {
   return kind
 }
 
+function handleOpenPanHubSearch(event: Event) {
+  const requestedKeyword = (event as CustomEvent<{ keyword?: string }>).detail?.keyword?.trim() || ''
+  if (requestedKeyword) sessionStorage.removeItem('boxplayer:pending-panhub-search')
+  searchMode.value = 'panhub'
+  keyword.value = requestedKeyword
+  nextTick(() => phDoSearch())
+}
+
+function consumePendingPanHubSearch() {
+  const requestedKeyword = sessionStorage.getItem('boxplayer:pending-panhub-search')?.trim() || ''
+  if (requestedKeyword) handleOpenPanHubSearch(new CustomEvent('boxplayer:open-panhub-search', { detail: { keyword: requestedKeyword } }))
+}
+
 onMounted(() => {
   loadHistory()
+  void refreshAcquisitionStates()
+  acquisitionStateTimer = setInterval(() => void refreshAcquisitionStates(), 2000)
+  window.addEventListener('boxplayer:open-panhub-search', handleOpenPanHubSearch)
+  consumePendingPanHubSearch()
   nextTick(() => {
     if (inputRef.value) inputRef.value.focus()
   })
 })
 
 onUnmounted(() => {
+  if (acquisitionStateTimer) clearInterval(acquisitionStateTimer)
   if (searchTimer.value) clearTimeout(searchTimer.value)
   phController?.abort()
+  magnetPreviewController?.abort()
+  discardMagnetPreview(magnetPreview.value).catch(() => undefined)
+  window.removeEventListener('boxplayer:open-panhub-search', handleOpenPanHubSearch)
 })
 </script>
 
@@ -418,12 +540,10 @@ onUnmounted(() => {
     <div class="gs-page-header">
       <div class="gs-page-tabs">
         <button :class="['gs-page-tab', searchMode === 'local' ? 'active' : '']" @click="searchMode = 'local'">搜索我的</button>
-        <button :class="['gs-page-tab', searchMode === 'panhub' ? 'active' : '']" @click="searchMode = 'panhub'">搜索全网 <span class="gs-pro-badge">Pro</span></button>
-        <button :class="['gs-page-tab', searchMode === 'ai' ? 'active' : '']" @click="activateAiMode">AI Agent <span class="gs-pro-badge">Pro</span></button>
+        <button :class="['gs-page-tab', searchMode === 'panhub' ? 'active' : '']" @click="searchMode = 'panhub'">AI 搜索 <span class="gs-pro-badge">Pro</span></button>
       </div>
 
       <PanHubSearchBox
-        v-if="searchMode !== 'ai'"
         v-model="keyword"
         :loading="searchMode === 'local' ? searching : phLoading"
         :searched="searchMode === 'local' ? (searching === false && hasInput) : phSearched"
@@ -611,11 +731,8 @@ onUnmounted(() => {
       </div>
       </template>
       <template v-else-if="isPanHubMode()">
-        <div class="ph-settings-bar">
-      <button class="ph-settings-btn" type="button" title="搜索设置" @click="openPhSettings()">⚙ 并发:{{ phSettings.concurrency }} · 超时:{{ phSettings.pluginTimeoutMs }}ms</button>
-    </div>
     <div v-if="!phSearched" class="ph-hero-row">
-          <header class="ph-hero"><div class="ph-hero-badge">PanHub 搜索聚合引擎</div><h1 class="ph-hero-title"><span class="ph-hero-title-line">一键检索</span><span class="ph-hero-title-line ph-hero-title-accent">全网网盘资源</span></h1><p class="ph-hero-desc">聚合阿里云盘、夸克、百度网盘、115、迅雷等平台 · 快速、直达、少打扰</p><ul class="ph-hero-features"><li class="ph-hero-feature">实时聚合</li><li class="ph-hero-feature">多平台覆盖</li><li class="ph-hero-feature">结果去重</li></ul></header>
+          <header class="ph-hero"><div class="ph-hero-badge">PanHub 搜索聚合引擎 · Agent 媒体获取</div><h1 class="ph-hero-title"><span class="ph-hero-title-line">一键检索</span><span class="ph-hero-title-line ph-hero-title-accent">全网网盘资源</span></h1><p class="ph-hero-desc">聚合阿里云盘、夸克、百度网盘、115、迅雷等平台；选择影视结果后可交给 Pro Agent 导入目标网盘，剧集支持追更与缺集巡检。</p><ul class="ph-hero-features"><li class="ph-hero-feature">实时聚合</li><li class="ph-hero-feature">Agent 入库 · Pro</li><li class="ph-hero-feature">剧集追更</li><li class="ph-hero-feature">缺集巡检</li></ul></header>
 <aside class="ph-hero-aside"><PanHubHotSearches :api-base="PANHUB_API_BASE" @select="phHotSelect" /></aside>
         </div>
         <div v-if="phError" class="ph-error"><span class="ph-error-icon">⚠️</span>{{ phError }}</div>
@@ -626,14 +743,23 @@ onUnmounted(() => {
 
         </div>
         <div v-if="phLoading" class="ph-status-msg"><span class="gs-spinner" /> 正在搜索全网资源...</div>
-        <section v-if="phHasResults" class="ph-results-section"><div class="ph-results-grid"><PanHubResultGroup :merged="phMerged" :platform-info="PH_PLATFORM_INFO" :filter-platform="phFilterPlatform" :sort-type="phSortType" @copy="phCopy" /></div></section>
+        <PanHubMediaResults v-if="phSearched" :keyword="keyword" :items="phTmdbItems" :loading="phTmdbLoading" :error="phTmdbError" :states="acquisitionStates" @acquire="phAcquire" />
+        <section v-if="phHasResults" class="ph-results-section"><div class="ph-results-grid"><PanHubResultGroup :merged="phMerged" :platform-info="PH_PLATFORM_INFO" :filter-platform="phFilterPlatform" :sort-type="phSortType" @copy="phCopy" @magnet="phConfirmMagnetDownload" /></div></section>
         <section v-else-if="phSearched&&!phLoading&&!phHasResults" class="ph-empty-section"><div class="ph-empty-card"><div class="ph-empty-icon">🔍</div><h3>未找到相关资源</h3><p>试试其他关键词，或检查搜索源是否可用</p></div></section>
-        <PanHubSettingsDrawer v-model="phSettings" :open="showPhSettings" :all-plugins="phAllPlugins" :all-channels="phAllChannels" @update:open="showPhSettings = $event" @save="savePhSettings(phSettings)" />
-      <section v-if="!phSearched" class="ph-douban-section"><PanHubDoubanHot :api-base="PANHUB_API_BASE" @select="phHotSelect" /></section>
+      <section v-if="!phSearched" class="ph-douban-section">
+        <PanHubTrending :api-base="PANHUB_API_BASE" @select="phHotSelect" @acquire="phAcquire" />
+      </section>
       </template>
-      <template v-else>
-        <AISearchAgent :ai-enabled="aiAgentCanSend" :keyword="aiKeyword" :trigger="aiTrigger" :ph-search="phDoSearch" @search-resource="(t: string) => { searchMode = 'panhub'; keyword = t; phDoSearch() }" />
-      </template>
+      <TorrentFileSelector
+        :visible="magnetSelectorVisible"
+        :initial-files="magnetSelectorFiles"
+        :external-loading="magnetSelectorLoading"
+        :apply-to-task="false"
+        @update:visible="(visible) => { if (!visible) phCancelMagnetSelection() }"
+        @confirm-selection="phCreateSelectedMagnet"
+        @direct-confirm="phCreateMagnetDirect"
+      />
+      <MediaAcquisitionTargetModal v-if="acquisitionRequest" :visible="acquisitionVisible" :request="acquisitionRequest" @created="onAcquisitionCreated" @update:visible="onAcquisitionVisibleChange" />
     </div>
   </div>
 </template>
@@ -1236,10 +1362,6 @@ onUnmounted(() => {
 
 .ph-hero-aside{flex-shrink:0;width:340px}
 .ph-hero-aside :deep(.ph-hot){background:transparent;border:none;box-shadow:none}
-.ph-settings-bar{position:relative;display:flex;justify-content:flex-end;margin:0 48px 8px}
-.ph-settings-bar .ph-settings-btn{padding:6px 12px;font-size:12px;font-weight:500;color:var(--color-text-3);background:var(--color-fill-1);border:1px solid var(--color-border-2);border-radius:8px;cursor:pointer}
-.ph-settings-bar .ph-settings-btn:hover{color:var(--color-text-1);background:var(--color-fill-2)}
-.ph-settings-bar .ph-settings-drop{position:absolute;right:0;top:36px;z-index:100;padding:12px 14px;background:var(--color-bg-2);border:1px solid var(--color-border-2);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.12);min-width:180px;display:flex;flex-direction:column;gap:10px}
 .ph-stats-bar{margin:0 48px;background:var(--color-bg-2);border:1px solid var(--color-border-2);border-radius:12px;padding:16px 20px;display:flex;flex-direction:column;gap:14px}
 .ph-stats-main{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .ph-stat-item{display:flex;align-items:center;gap:8px;padding:8px 14px;background:var(--color-fill-1);border-radius:8px;border:1px solid var(--color-border-2)}
@@ -1252,7 +1374,6 @@ onUnmounted(() => {
 .ph-filter-pill.active{background:rgb(var(--primary-6));color:#fff;border-color:transparent}
 .ph-sort-select{padding:8px 14px;border:1px solid var(--color-border-2);background:var(--color-fill-1);border-radius:8px;font-size:13px;font-weight:500;color:var(--color-text-2);cursor:pointer;outline:none;min-width:140px}
 .ph-sort-select:focus{border-color:rgb(var(--primary-6));box-shadow:0 0 0 3px rgba(var(--primary-6),.12)}
-/* settings now use PanHubSettingsDrawer */
 .ph-status-msg{display:flex;align-items:center;justify-content:center;gap:10px;padding:60px 48px;font-size:14px;color:var(--color-text-3)}
 .ph-error{display:flex;align-items:center;gap:8px;margin:12px 48px 0;padding:12px 16px;background:rgba(var(--danger-6),.1);border:1px solid rgba(var(--danger-6),.3);border-radius:8px;color:rgb(var(--danger-6));font-weight:500;font-size:13px}
 .ph-error-icon{font-size:16px}

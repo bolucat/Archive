@@ -11,7 +11,8 @@ import { registerMediaImageCacheIpc } from '../mediaImageCache'
 import { createHash } from 'crypto'
 import { getMotrixApplicationRpcPort } from '../aria/runtime'
 import { pathToFileURL } from 'url'
-import { requestPanHub } from './panHubRequest'
+import { request as httpsRequest } from 'https'
+import { requestPanHub, requestPanHubStream } from './panHubRequest'
 import { embeddedMpvBridge } from '../mpv/embeddedMpvBridge'
 import {
   getBookMeta,
@@ -33,8 +34,12 @@ import {
   wipeAllData,
   destroyDb
 } from '../reedy/ReedyService'
+import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, beginMediaAcquisitionSearch, cancelMediaAcquisitionRun, claimRunnableMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, clearMediaAcquisitionNotifications, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, createMediaAcquisitionTracking, endMediaAcquisitionTracking, failMediaAcquisitionCandidate, failMediaAcquisitionRun, finishMediaAcquisitionSearchWithoutCandidates, getMediaAcquisitionAgentSandbox, getMediaAcquisitionAgentSession, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionCandidateLocator, getMediaAcquisitionTarget, listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionStates, listMediaAcquisitionTracking, listRunnableMediaAcquisitionRuns, markMediaAcquisitionCandidateTransferring, markMediaAcquisitionNoCoverage, markMediaAcquisitionNotificationsRead, partialMediaAcquisitionCandidate, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, retryMediaAcquisitionSearch, saveMediaAcquisitionAgentSandbox, saveMediaAcquisitionAgentSession, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from '../mediaAcquisition/MediaAcquisitionService'
+import type { CreateMediaAcquisitionCandidateInput, CreateMediaAcquisitionRunInput, CreateMediaAcquisitionTrackingInput, MediaAcquisitionEvent, MediaAcquisitionFileSnapshot, MediaAcquisitionPhase } from '@shared/types/mediaAcquisition'
+import { getAssrtSubtitleFiles, searchAssrtSubtitles } from '../mediaAcquisition/assrt'
 
 let psbId: any
+const panHubStreamControllers = new Map<string, AbortController>()
 
 const QUARK_DOWNLOAD_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.56 Chrome/100.0.4896.160 Electron/18.3.5.12-a038f7b798 Safari/537.36 Channel/pckk_other_ch'
@@ -179,6 +184,7 @@ export default class ipcEvent {
     this.handleWebClearCookies()
     this.handleWebGetCookies()
     this.handleWebQuarkAccountInfo()
+    this.handleWebQuarkFileList()
     this.handleWebQuarkDownloadUrl()
     this.handleWebSetCookies()
     this.handleWebClearCache()
@@ -208,6 +214,7 @@ export default class ipcEvent {
     }
     registerMediaImageCacheIpc()
     this.handleReedy()
+    this.handleMediaAcquisition()
   }
 
   private static handleMpvEmbedded() {
@@ -215,6 +222,55 @@ export default class ipcEvent {
     ipcMain.handle('MpvEmbedded:load', async (event, data) => embeddedMpvBridge.load(data || {}, event.sender))
     ipcMain.handle('MpvEmbedded:control', async (_event, data) => embeddedMpvBridge.control(data || {}))
     ipcMain.handle('MpvEmbedded:getStatus', async () => embeddedMpvBridge.getStatus())
+  }
+
+  private static handleMediaAcquisition() {
+    ipcMain.handle('mediaAcquisition:create', (_event, input: CreateMediaAcquisitionRunInput) => createMediaAcquisitionRun(input))
+    ipcMain.handle('mediaAcquisition:list', (_event, limit?: number) => listMediaAcquisitionRuns(limit))
+    ipcMain.handle('mediaAcquisition:listStates', () => listMediaAcquisitionStates())
+    ipcMain.handle('mediaAcquisition:listRunnable', (_event, limit?: number) => listRunnableMediaAcquisitionRuns(limit))
+    ipcMain.handle('mediaAcquisition:claimRunnable', (_event, workerId: string, runId?: string) => claimRunnableMediaAcquisitionRun(workerId, runId))
+    ipcMain.handle('mediaAcquisition:releaseClaim', (_event, runId: string, workerId: string) => releaseMediaAcquisitionRunClaim(runId, workerId))
+    ipcMain.handle('mediaAcquisition:renewClaim', (_event, runId: string, workerId: string) => renewMediaAcquisitionRunClaim(runId, workerId))
+    ipcMain.handle('mediaAcquisition:listTracking', (_event, limit?: number) => listMediaAcquisitionTracking(limit))
+    ipcMain.handle('mediaAcquisition:createTracking', (_event, input: CreateMediaAcquisitionTrackingInput) => createMediaAcquisitionTracking(input))
+    ipcMain.handle('mediaAcquisition:getTarget', (_event, targetId: string) => getMediaAcquisitionTarget(targetId))
+    ipcMain.handle('mediaAcquisition:endTracking', (_event, trackingId: string) => endMediaAcquisitionTracking(trackingId))
+    ipcMain.handle('mediaAcquisition:upsertTracking', (_event, data: { targetId: string; seasonNumber: number; totalEpisodes: number; latestAiredEpisode: number; obtainedEpisodeNumbers: number[]; missingEpisodes: number[]; status: 'tracking' | 'complete' | 'ended'; nextCheckAt?: number }) => upsertMediaAcquisitionTracking(data.targetId, data.seasonNumber, data.totalEpisodes, data.latestAiredEpisode, data.obtainedEpisodeNumbers, data.missingEpisodes, data.status, data.nextCheckAt))
+    ipcMain.handle('mediaAcquisition:listNotifications', (_event, limit?: number) => listMediaAcquisitionNotifications(limit))
+    ipcMain.handle('mediaAcquisition:markNotificationsRead', (_event, ids?: string[]) => markMediaAcquisitionNotificationsRead(ids))
+    ipcMain.handle('mediaAcquisition:clearNotifications', () => clearMediaAcquisitionNotifications())
+    ipcMain.handle('mediaAcquisition:clearCompletedRuns', () => clearCompletedMediaAcquisitionRuns())
+    ipcMain.handle('mediaAcquisition:getAgentSession', (_event, runId: string) => getMediaAcquisitionAgentSession(runId))
+    ipcMain.handle('mediaAcquisition:saveAgentSession', (_event, runId: string, messages: unknown[]) => saveMediaAcquisitionAgentSession(runId, messages))
+    ipcMain.handle('mediaAcquisition:getAgentSandbox', (_event, runId: string) => getMediaAcquisitionAgentSandbox(runId))
+    ipcMain.handle('mediaAcquisition:saveAgentSandbox', (_event, runId: string, state: Record<string, unknown>) => saveMediaAcquisitionAgentSandbox(runId, state))
+    ipcMain.handle('mediaAcquisition:cancel', (_event, runId: string) => cancelMediaAcquisitionRun(runId))
+    ipcMain.handle('mediaAcquisition:beginSearch', (_event, runId: string) => beginMediaAcquisitionSearch(runId))
+    ipcMain.handle('mediaAcquisition:finishSearchWithoutCandidates', (_event, runId: string) => finishMediaAcquisitionSearchWithoutCandidates(runId))
+    ipcMain.handle('mediaAcquisition:retrySearch', (_event, runId: string, message: string, delayMs: number, maxRetries?: number) => retryMediaAcquisitionSearch(runId, message, delayMs, maxRetries))
+    ipcMain.handle('mediaAcquisition:addCandidate', (_event, runId: string, input: CreateMediaAcquisitionCandidateInput) => addMediaAcquisitionCandidate(runId, input))
+    ipcMain.handle('mediaAcquisition:getCandidateLocator', (_event, runId: string, candidateId: string) => getMediaAcquisitionCandidateLocator(runId, candidateId))
+    ipcMain.handle('mediaAcquisition:recordCandidateBaseline', (_event, runId: string, candidateId: string, files: MediaAcquisitionFileSnapshot[]) => recordMediaAcquisitionCandidateBaseline(runId, candidateId, files))
+    ipcMain.handle('mediaAcquisition:getCandidateBaseline', (_event, runId: string, candidateId: string) => getMediaAcquisitionCandidateBaseline(runId, candidateId))
+    ipcMain.handle('mediaAcquisition:markCandidateTransferring', (_event, runId: string, candidateId: string) => markMediaAcquisitionCandidateTransferring(runId, candidateId))
+    ipcMain.handle('mediaAcquisition:recordTransferIntent', (_event, runId: string, candidateId: string, activity: string) => recordMediaAcquisitionTransferIntent(runId, candidateId, activity))
+    ipcMain.handle('mediaAcquisition:selectCandidate', (_event, runId: string, candidateId: string, reason: string) => selectMediaAcquisitionCandidate(runId, candidateId, reason))
+    ipcMain.handle('mediaAcquisition:recordExternalTask', (_event, runId: string, candidateId: string, taskId?: string, fileId?: string, activity?: string) => recordMediaAcquisitionExternalTask(runId, candidateId, taskId, fileId, activity || '已提交网盘任务，等待完成'))
+    ipcMain.handle('mediaAcquisition:updateExternalTask', (_event, runId: string, candidateId: string, progress: number, activity: string) => updateMediaAcquisitionExternalTaskProgress(runId, candidateId, progress, activity))
+    ipcMain.handle('mediaAcquisition:retryCandidate', (_event, runId: string, candidateId: string, message: string, delayMs?: number) => retryMediaAcquisitionCandidate(runId, candidateId, message, delayMs))
+    ipcMain.handle('mediaAcquisition:noCoverage', (_event, runId: string, reason: string) => markMediaAcquisitionNoCoverage(runId, reason))
+    ipcMain.handle('mediaAcquisition:failRun', (_event, runId: string, message: string) => failMediaAcquisitionRun(runId, message))
+    ipcMain.handle('mediaAcquisition:beginCandidateVerification', (_event, runId: string, candidateId: string, activity: string) => beginMediaAcquisitionCandidateVerification(runId, candidateId, activity))
+    ipcMain.handle('mediaAcquisition:beginOrganizing', (_event, runId: string, activity?: string) => beginMediaAcquisitionOrganizing(runId, activity))
+    ipcMain.handle('mediaAcquisition:completeCandidate', (_event, runId: string, candidateId: string, message: string) => completeMediaAcquisitionCandidate(runId, candidateId, message))
+    ipcMain.handle('mediaAcquisition:completeRun', (_event, runId: string, message: string, data?: Record<string, unknown>) => completeMediaAcquisitionRun(runId, message, data))
+    ipcMain.handle('mediaAcquisition:partialCandidate', (_event, runId: string, candidateId: string, message: string) => partialMediaAcquisitionCandidate(runId, candidateId, message))
+    ipcMain.handle('mediaAcquisition:continueAfterPartial', (_event, runId: string, candidateId: string, seasonTargets: Array<{ seasonNumber: number; missingEpisodes: number[] }>, message: string) => continueMediaAcquisitionAfterPartial(runId, candidateId, seasonTargets, message))
+    ipcMain.handle('mediaAcquisition:failCandidate', (_event, runId: string, candidateId: string, message: string, continueWithAlternatives?: boolean) => failMediaAcquisitionCandidate(runId, candidateId, message, continueWithAlternatives))
+    ipcMain.handle('mediaAcquisition:addEvent', (_event, runId: string, level: MediaAcquisitionEvent['level'], phase: MediaAcquisitionPhase, message: string, data?: Record<string, unknown>) => addMediaAcquisitionEvent(runId, level, phase, message, data))
+    ipcMain.handle('mediaAcquisition:assrtSearch', (_event, data: { token?: string; query?: string }) => searchAssrtSubtitles(data?.token, data?.query))
+    ipcMain.handle('mediaAcquisition:assrtDetail', (_event, data: { token?: string; subtitleId?: number }) => getAssrtSubtitleFiles(data?.token, data?.subtitleId))
   }
 
   private static handleWebToElectron() {
@@ -470,52 +526,50 @@ export default class ipcEvent {
     ipcMain.handle('WebQuarkAccountInfo', async (_event, data: { serviceTicket?: string }) => {
       const serviceTicket = String(data?.serviceTicket || '')
       if (!serviceTicket) return { ok: false, status: 0, body: '', cookies: [], error: '夸克登录凭证为空' }
-      const params = new URLSearchParams({ st: serviceTicket, lw: 'scan' })
-      const url = `https://pan.quark.cn/account/info?${params.toString()}`
+      const params = new URLSearchParams({ st: serviceTicket, fr: 'pc', platform: 'pc' })
+      const initialUrl = `https://pan.quark.cn/account/info?${params.toString()}`
       const existingCookies = await session.defaultSession.cookies.get({ domain: 'quark.cn' })
-      const cookieHeader = existingCookies
-        .filter((cookie) => cookie.name && cookie.value)
-        .map((cookie) => `${cookie.name}=${cookie.value}`)
-        .join('; ')
-
-      return await new Promise((resolve) => {
-        const request = net.request({
-          method: 'GET',
-          url,
-          useSessionCookies: true
-        } as any)
-        request.setHeader('Accept', 'application/json, text/plain, */*')
-        request.setHeader('Accept-Language', 'zh-CN,zh;q=0.9')
-        request.setHeader('Cache-Control', 'no-cache')
-        request.setHeader('Pragma', 'no-cache')
-        request.setHeader('Origin', 'https://pan.quark.cn')
-        request.setHeader('Referer', 'https://pan.quark.cn/')
-        request.setHeader('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Core/1.94.225.400 QQBrowser/12.2.5544.400')
-        if (cookieHeader) request.setHeader('Cookie', cookieHeader)
-        request.on('response', (response) => {
-          const chunks: Buffer[] = []
-          response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
-          response.on('end', async () => {
-            const body = Buffer.concat(chunks).toString('utf8')
-            const setCookie = response.headers['set-cookie']
-            const setCookieList = Array.isArray(setCookie) ? setCookie : (setCookie ? [String(setCookie)] : [])
-            for (const rawCookie of setCookieList) {
-              const cookie = ipcEvent.parseSetCookie(rawCookie, 'https://pan.quark.cn')
-              if (cookie) {
-                try {
-                  await session.defaultSession.cookies.set(cookie)
-                } catch (err) {
-                  console.error(err)
-                }
-              }
+      const cookieJar = new Map(existingCookies.filter((cookie) => cookie.name && cookie.value).map((cookie) => [cookie.name, cookie.value]))
+      const headers = {
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        Referer: 'https://pan.quark.cn/',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Core/1.94.225.400 QQBrowser/12.2.5544.400'
+      }
+      const requestHop = async (url: string, redirectsLeft: number): Promise<{ ok: boolean; status: number; body: string; error?: string }> => {
+        return await new Promise((resolve) => {
+          const request = httpsRequest(url, {
+            method: 'GET',
+            headers: {
+              ...headers,
+              ...(cookieJar.size ? { Cookie: Array.from(cookieJar, ([name, value]) => `${name}=${value}`).join('; ') } : {})
             }
-            const cookies = await session.defaultSession.cookies.get({ domain: 'quark.cn' })
-            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body, cookies })
+          }, (response) => {
+            const chunks: Buffer[] = []
+            response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+            response.on('end', async () => {
+              for (const rawCookie of response.headers['set-cookie'] || []) {
+                const pair = rawCookie.split(';', 1)[0] || ''
+                const separator = pair.indexOf('=')
+                if (separator > 0) cookieJar.set(pair.slice(0, separator).trim(), pair.slice(separator + 1).trim())
+                const cookie = ipcEvent.parseSetCookie(rawCookie, url)
+                if (cookie) await session.defaultSession.cookies.set(cookie).catch(() => undefined)
+              }
+              const location = response.headers.location
+              if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400 && location && redirectsLeft > 0) {
+                resolve(await requestHop(new URL(location, url).toString(), redirectsLeft - 1))
+                return
+              }
+              resolve({ ok: !!response.statusCode && response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode || 0, body: Buffer.concat(chunks).toString('utf8') })
+            })
           })
+          request.on('error', (error) => resolve({ ok: false, status: 0, body: '', error: error.message }))
+          request.end()
         })
-        request.on('error', (error) => resolve({ ok: false, status: 0, body: '', cookies: [], error: error.message }))
-        request.end()
-      })
+      }
+      const result = await requestHop(initialUrl, 5)
+      const cookies = Array.from(cookieJar, ([name, value]) => ({ name, value, domain: '.quark.cn' }))
+      return { ...result, cookies }
     })
   }
 
@@ -579,6 +633,36 @@ export default class ipcEvent {
     })
   }
 
+  private static handleWebQuarkFileList() {
+    ipcMain.handle('WebQuarkFileList', async (_event, data: { cookie?: string; parentId?: string; page?: number; size?: number }) => {
+      const params = new URLSearchParams({
+        pr: 'ucpro', fr: 'pc', uc_param_str: '', __t: String(Date.now()), __dt: '1000',
+        pdir_fid: String(data?.parentId || '0'), _page: String(data?.page || 1), _size: String(data?.size || 100),
+        _fetch_total: '1', fetch_all_file: '1', fetch_risk_file_name: '1', _sort: 'file_name:asc'
+      })
+      const url = `https://drive-pc.quark.cn/1/clouddrive/file/sort?${params.toString()}`
+      const existingCookies = await session.defaultSession.cookies.get({ domain: 'quark.cn' })
+      const cookieHeader = String(data?.cookie || '') || existingCookies.filter((cookie) => cookie.name && cookie.value).map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
+      return await new Promise((resolve) => {
+        const request = net.request({ method: 'GET', url, useSessionCookies: true } as any)
+        request.setHeader('Accept', 'application/json, text/plain, */*')
+        request.setHeader('Accept-Language', 'zh-CN,zh;q=0.9')
+        request.setHeader('Content-Type', 'application/json')
+        request.setHeader('Origin', 'https://pan.quark.cn')
+        request.setHeader('Referer', 'https://pan.quark.cn/')
+        request.setHeader('User-Agent', QUARK_DOWNLOAD_AGENT)
+        if (cookieHeader) request.setHeader('Cookie', cookieHeader)
+        request.on('response', (response) => {
+          const chunks: Buffer[] = []
+          response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+          response.on('end', () => resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') }))
+        })
+        request.on('error', (error) => resolve({ ok: false, status: 0, body: '', error: error.message }))
+        request.end()
+      })
+    })
+  }
+
   private static parseSetCookie(rawCookie: string, defaultUrl: string) {
     const parts = rawCookie.split(';').map((part) => part.trim()).filter(Boolean)
     const [nameValue, ...attrs] = parts
@@ -610,18 +694,20 @@ export default class ipcEvent {
   }
 
   private static handleWebSetCookies() {
-    ipcMain.on('WebSetCookies', (event, data) => {
-      for (let i = 0, maxi = data.length; i < maxi; i++) {
+    ipcMain.handle('WebSetCookies', async (_event, data) => {
+      const cookies = Array.isArray(data) ? data : []
+      await Promise.all(cookies.map(async (item) => {
         const cookie = {
-          url: data[i].url,
-          name: data[i].name,
-          value: data[i].value,
-          domain: '.' + data[i].url.substring(data[i].url.lastIndexOf('/') + 1),
-          secure: data[i].url.indexOf('https://') == 0,
-          expirationDate: data[i].expirationDate
+          url: item.url,
+          name: item.name,
+          value: item.value,
+          domain: item.domain || '.' + item.url.substring(item.url.lastIndexOf('/') + 1),
+          secure: item.url.indexOf('https://') == 0,
+          expirationDate: item.expirationDate
         }
-        session.defaultSession.cookies.set(cookie).catch((err: any) => console.error(err))
-      }
+        await session.defaultSession.cookies.set(cookie).catch((err: any) => console.error(err))
+      }))
+      return true
     })
   }
 
@@ -731,6 +817,28 @@ export default class ipcEvent {
 
   private static handlePanHubRequest() {
     ipcMain.handle('PanHub:request', async (_event, data) => requestPanHub(data))
+    ipcMain.on('PanHub:stream-start', (event, data: { requestId?: string; request?: any }) => {
+      const requestId = data?.requestId || ''
+      if (!requestId || !data?.request) return
+      panHubStreamControllers.get(requestId)?.abort()
+      const controller = new AbortController()
+      panHubStreamControllers.set(requestId, controller)
+      const send = (channel: string, payload?: unknown) => {
+        if (!event.sender.isDestroyed()) event.sender.send(channel, { requestId, payload })
+      }
+      requestPanHubStream(data.request, (payload) => send('PanHub:stream-event', payload), controller.signal)
+        .then(() => send('PanHub:stream-end'))
+        .catch((error) => {
+          if (!controller.signal.aborted) send('PanHub:stream-error', error instanceof Error ? error.message : String(error))
+        })
+        .finally(() => {
+          if (panHubStreamControllers.get(requestId) === controller) panHubStreamControllers.delete(requestId)
+        })
+    })
+    ipcMain.on('PanHub:stream-cancel', (_event, requestId: string) => {
+      panHubStreamControllers.get(requestId)?.abort()
+      panHubStreamControllers.delete(requestId)
+    })
   }
 
   private static handleOfficePreviewConvertToPdf() {

@@ -10,6 +10,11 @@ import { menuOpenFile } from '../utils/openfile'
 import { tmdbImageUrl } from '../utils/tmdb'
 import message from '../utils/message'
 import path from 'path'
+import MediaAcquisitionTargetModal from './MediaAcquisitionTargetModal.vue'
+import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
+import { getMediaCoverage } from '../utils/mediaCoverage'
+import { listMediaAcquisitionTracking } from '../services/mediaAcquisition/client'
+import type { MediaAcquisitionTrackingItem } from '@shared/types/mediaAcquisition'
 
 // Props
 const props = defineProps<{
@@ -55,6 +60,38 @@ const renameTarget = ref('')
 const renameValue = ref('')
 const actionButtonsRef = ref<HTMLElement | null>(null)
 const playButtonWidth = ref<number | null>(null)
+const acquisitionVisible = ref(false)
+const activeAcquisitionRequest = ref<MediaAcquisitionRequest | null>(null)
+const trackingItems = ref<MediaAcquisitionTrackingItem[]>([])
+
+const mediaCoverage = computed(() => getMediaCoverage(props.mediaItem))
+const acquisitionRequest = computed<MediaAcquisitionRequest | null>(() => {
+  const coverage = mediaCoverage.value
+  if (!coverage) return null
+  const seasonNumbers = coverage.seasonGaps.map(gap => gap.seasonNumber)
+  const isAnime = props.mediaItem.genres.some(genre => String(genre).includes('动画') || String(genre).includes('动漫'))
+  return {
+    mediaLibraryItemId: props.mediaItem.id,
+    tmdbId: props.mediaItem.tmdbId,
+    mediaType: isAnime ? 'anime' : 'tv',
+    title: props.mediaItem.name,
+    year: props.mediaItem.year ? Number(props.mediaItem.year) : undefined,
+    seasonNumber: seasonNumbers[0],
+    missingSeasonNumbers: seasonNumbers,
+    missingEpisodes: coverage.seasonGaps
+  }
+})
+const trackingRequest = computed<MediaAcquisitionRequest | null>(() => {
+  if (props.mediaItem.type !== 'tv' || !props.mediaItem.tmdbId) return null
+  const seasonNumbers = [...new Set([...(props.mediaItem.expectedSeasons || []).map(season => season.seasonNumber), ...(props.mediaItem.seasons || []).map(season => season.seasonNumber)])].filter(season => season > 0).sort((a, b) => a - b)
+  if (!seasonNumbers.length) return null
+  const isAnime = props.mediaItem.genres.some(genre => String(genre).includes('动画') || String(genre).includes('动漫'))
+  return {
+    mediaLibraryItemId: props.mediaItem.id, tmdbId: props.mediaItem.tmdbId, mediaType: isAnime ? 'anime' : 'tv', title: props.mediaItem.name,
+    year: props.mediaItem.year ? Number(props.mediaItem.year) : undefined, seasonNumber: selectedSeason.value || seasonNumbers[0], trackingOnly: true, trackingSeasonNumbers: seasonNumbers
+  }
+})
+const currentSeasonTracked = computed(() => trackingItems.value.some(item => item.tmdbId === props.mediaItem.tmdbId && item.seasonNumber === selectedSeason.value && item.status !== 'ended'))
 
 // 计算属性
 const currentSeason = computed(() => {
@@ -304,6 +341,26 @@ const handleBackClick = () => {
   emit('back')
 }
 
+const handleCompleteMissing = () => {
+  if (!acquisitionRequest.value) return
+  activeAcquisitionRequest.value = acquisitionRequest.value
+  acquisitionVisible.value = true
+}
+
+const handleStartTracking = () => {
+  if (!trackingRequest.value) return
+  activeAcquisitionRequest.value = trackingRequest.value
+  acquisitionVisible.value = true
+}
+
+const refreshTrackingItems = async () => {
+  try { trackingItems.value = await listMediaAcquisitionTracking(200) } catch {}
+}
+
+const handleAcquisitionCreated = () => {
+  void refreshTrackingItems()
+}
+
 const handleTagClick = (tagType: string, tagValue: string) => {
   emit('tagClick', tagType, tagValue)
 }
@@ -526,6 +583,7 @@ const syncPlayButtonWidth = async () => {
 
 onMounted(() => {
   syncPlayButtonWidth()
+  void refreshTrackingItems()
   window.addEventListener('resize', syncPlayButtonWidth)
 })
 
@@ -608,6 +666,14 @@ const getCastInitial = (name?: string): string => {
               {{ displayOverview }}
             </p>
 
+            <div v-if="mediaCoverage" class="coverage-alert">
+              <span class="coverage-alert-icon">!</span>
+              <div>
+                <strong>{{ mediaCoverage.summary }}</strong>
+                <span>{{ mediaCoverage.seasonGaps.map(gap => `S${String(gap.seasonNumber).padStart(2, '0')} 缺 ${gap.missingEpisodes.length} 集`).join(' · ') }}</span>
+              </div>
+            </div>
+
             <div class="hero-actions">
               <div class="actions-stack">
                 <div v-if="playEpisodeInfo" class="play-episode-info">{{ playEpisodeInfo }}</div>
@@ -662,6 +728,24 @@ const getCastInitial = (name?: string): string => {
                 >
                   <span class="play-glyph">↓</span>
                   <span>下载</span>
+                </button>
+                <button
+                  v-if="mediaCoverage"
+                  type="button"
+                  class="complete-missing-button"
+                  @click="handleCompleteMissing"
+                >
+                  <span class="complete-missing-icon">+</span>
+                  <span>一键补全</span>
+                </button>
+                <button
+                  v-if="trackingRequest"
+                  type="button"
+                  class="complete-missing-button"
+                  @click="handleStartTracking"
+                >
+                  <span class="complete-missing-icon">↻</span>
+                  <span>{{ currentSeasonTracked ? '管理追更' : '追更本季' }}</span>
                 </button>
               </div>
             </div>
@@ -895,6 +979,13 @@ const getCastInitial = (name?: string): string => {
         </div>
       </div>
     </a-modal>
+    <MediaAcquisitionTargetModal
+      v-if="activeAcquisitionRequest"
+      :visible="acquisitionVisible"
+      :request="activeAcquisitionRequest"
+      @created="handleAcquisitionCreated"
+      @update:visible="acquisitionVisible = $event"
+    />
   </div>
 </template>
 
@@ -1132,6 +1223,43 @@ const getCastInitial = (name?: string): string => {
   color: rgba(15, 23, 42, 0.35);
 }
 
+.coverage-alert {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 9px 12px;
+  border: 1px solid rgba(210, 132, 20, 0.26);
+  border-radius: 10px;
+  background: rgba(255, 244, 220, 0.72);
+  color: #6f4309;
+  backdrop-filter: blur(12px);
+}
+
+.coverage-alert-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #f5a524;
+  color: #291a05;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.coverage-alert div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.coverage-alert strong { font-size: 13px; }
+.coverage-alert div span { overflow: hidden; color: rgba(111, 67, 9, 0.76); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
 .hero-overview {
   max-width: 980px;
   margin: 0;
@@ -1248,6 +1376,27 @@ const getCastInitial = (name?: string): string => {
   border-color: rgba(255, 255, 255, 0.86);
   box-shadow: 0 16px 34px rgba(63, 46, 37, 0.14);
 }
+
+.complete-missing-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgba(245, 165, 36, 0.52);
+  border-radius: 12px;
+  background: rgba(48, 31, 8, 0.88);
+  color: #ffd18a;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+  backdrop-filter: blur(12px);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.complete-missing-button:hover { transform: translateY(-1px); background: rgba(64, 40, 8, 0.94); }
+.complete-missing-icon { font-size: 18px; line-height: 1; }
 
 .play-button-progress {
   position: absolute;
@@ -1821,6 +1970,16 @@ const getCastInitial = (name?: string): string => {
 [arco-theme='dark'] .hero-overview {
   color: rgba(230, 236, 244, 0.9);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+}
+
+[arco-theme='dark'] .coverage-alert {
+  border-color: rgba(245, 165, 36, 0.28);
+  background: rgba(43, 27, 8, 0.72);
+  color: #ffd18a;
+}
+
+[arco-theme='dark'] .coverage-alert div span {
+  color: rgba(255, 209, 138, 0.72);
 }
 
 [arco-theme='dark'] .hero-meta-secondary span + span::before,

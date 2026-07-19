@@ -5,11 +5,12 @@ import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliShareBottleFishItem, IAliShareItem, IAliShareRecentItem } from './alimodels'
 import AliDirFileList from './dirfilelist'
 import { useSettingStore } from '../store'
-import { isAliyunUser, isCloud123User, isDropboxUser, isGuangyaUser, isQuarkUser } from './utils'
-import { apiCloud123ShareList } from '../cloud123/share'
+import { isAliyunUser, isCloud123User, isDropboxUser, isGuangyaUser, isPikPakUser, isQuarkUser } from './utils'
+import { apiCloud123ShareList, getCloud123ShareUrl } from '../cloud123/share'
 import { apiDropboxListSharedLinks, mapDropboxSharedLinkToAliShareItem } from '../dropbox/share'
 import { apiQuarkShareList } from '../quark/share'
 import { apiGuangyaShareList } from '../guangya/share'
+import { apiPikPakShareList, encodePikPakShareId } from '../pikpak/share'
 
 export interface IAliShareResp {
   items: IAliShareItem[]
@@ -55,6 +56,23 @@ export default class AliShareList {
       const dir = AliShareList.EmptyShareResp(user_id)
       dir.items = await apiQuarkShareList(user_id)
       for (const item of dir.items) dir.itemsKey.add(item.share_id)
+      return dir
+    }
+    if (isPikPakUser(user_id)) {
+      const dir = AliShareList.EmptyShareResp(user_id)
+      const response = await apiPikPakShareList(user_id)
+      if (response.error) message.warning(response.error, 2)
+      for (const item of response.list) {
+        const shareId = encodePikPakShareId(item.shareId)
+        const add: IAliShareItem = {
+          created_at: item.createdAt || '', creator: '', description: '', display_name: '', display_label: '', download_count: item.downloadCount,
+          drive_id: 'pikpak', expiration: item.expiration, expired: item.expired, file_id: '', file_id_list: [], icon: 'iconwenjian', preview_count: item.previewCount,
+          save_count: item.saveCount, share_id: shareId, share_msg: item.expired ? '过期失效' : humanExpiration(item.expiration), full_share_msg: '', share_name: item.title,
+          share_policy: '', share_pwd: item.passCode, share_url: item.shareUrl, status: item.expired ? 'expired' : '', updated_at: '', is_share_saved: false, share_saved: ''
+        }
+        dir.items.push(add)
+        dir.itemsKey.add(shareId)
+      }
       return dir
     }
     if (!isAliyunUser(user_id)) {
@@ -435,7 +453,7 @@ export default class AliShareList {
       const item = resp.list[i]
       const share_id = String(item.shareId)
       if (dir.itemsKey.has(share_id)) continue
-      const share_url = item.shareKey ? `https://www.123pan.com/s/${item.shareKey}` : ''
+      const share_url = getCloud123ShareUrl(dir.m_user_id, item.shareKey)
       const add: IAliShareItem = {
         created_at: '',
         creator: '',

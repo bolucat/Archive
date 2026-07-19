@@ -96,10 +96,10 @@ function formatSize(bytes: number): string {
 </template>
 
 <style scoped>
-.dc-card { margin: 8px 0; border-radius: 8px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); overflow: hidden; }
+.dc-card { margin: 12px 0; border-radius: 13px; background: color-mix(in srgb, var(--color-fill-1) 78%, transparent); border: 1px solid color-mix(in srgb, var(--color-border-2) 88%, transparent); overflow: hidden; box-shadow: 0 10px 26px rgba(0, 0, 0, .06); }
 .dc-status { display: flex; align-items: center; gap: 8px; padding: 12px 14px; font-size: 13px; color: var(--color-text-3); }
 .dc-error { color: rgb(var(--danger-6)); }
-.dc-header { display: flex; align-items: center; gap: 6px; padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--color-text-3); border-bottom: 1px solid var(--color-border-2); }
+.dc-header { display: flex; align-items: center; gap: 7px; padding: 11px 14px; font-size: 12px; font-weight: 650; color: #f4b84f; border-bottom: 1px solid var(--color-border-2); background: rgba(244, 184, 79, .07); }
 .dc-groups { padding: 4px 0; }
 .dc-group { border-bottom: 1px solid var(--color-border-2); }
 .dc-group:last-child { border-bottom: none; }

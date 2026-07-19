@@ -50,6 +50,9 @@
             <div v-if="showTopOverlay && resolveOverlay(item)" class="poster-overlay-badge">
               {{ resolveOverlay(item) }}
             </div>
+            <div v-if="item.coverageBadge" class="poster-coverage-badge" :title="item.coverageBadge">
+              <span>!</span>{{ item.coverageBadge }}
+            </div>
           </div>
           <div v-if="showPosterLabels" class="poster-meta">
             <h5>{{ resolveHeading(item) }}</h5>
@@ -96,6 +99,9 @@
           <div class="media-card-placeholder media-image-placeholder">{{ item.title.slice(0, 1) }}</div>
           <div v-if="showTopOverlay && resolveOverlay(item)" class="poster-overlay-badge">
             {{ resolveOverlay(item) }}
+          </div>
+          <div v-if="item.coverageBadge" class="poster-coverage-badge" :title="item.coverageBadge">
+            <span>!</span>{{ item.coverageBadge }}
           </div>
         </div>
         <div v-if="showPosterLabels" class="poster-meta">
@@ -481,6 +487,39 @@ const handleMediaImageLoad = (event: Event) => {
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
+}
+
+.poster-coverage-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: calc(100% - 16px);
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 190, 92, 0.42);
+  border-radius: 999px;
+  background: rgba(43, 27, 8, 0.86);
+  color: #ffd18a;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
+.poster-coverage-badge span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #f5a524;
+  color: #201506;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .media-card-placeholder {

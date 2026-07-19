@@ -19,6 +19,7 @@ import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfile
 import { isAliyunUser, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory, type WebDavConnectionConfig } from './webdavClient'
 import UserDAL from '../user/userdal'
+import { buildExpectedSeasons } from './mediaCoverage'
 
 type ScanContext = {
   userId: string
@@ -124,6 +125,7 @@ export class MediaScanner {
           itemCount: totalFound
         }
         this.mediaStore.addFolder(mediaFolder)
+        this.mediaStore.pruneOrphanDuplicateFolders()
         if (!options.silent) {
           message.success(`扫描完成！共处理 ${totalProcessed} 个视频文件`)
         }
@@ -332,6 +334,7 @@ export class MediaScanner {
         }
 
         this.mediaStore.addFolder(mediaFolder)
+        this.mediaStore.pruneOrphanDuplicateFolders()
         message.success(`扫描完成！共处理 ${videoFiles.length} 个视频文件`)
       } else {
         message.info('扫描已停止')
@@ -906,6 +909,7 @@ export class MediaScanner {
       tvdbId: tvResult.tv.tvdbId,
       metadataSource: 'tmdb',
       seasons: [currentSeason],
+      expectedSeasons: buildExpectedSeasons(tvResult),
       driveFiles: [],
       addedAt: new Date()
     }
@@ -1027,6 +1031,7 @@ export class MediaScanner {
             tvdbId: tvResult.tv.tvdbId,
             metadataSource: 'tmdb',
             seasons: [currentSeason],
+            expectedSeasons: buildExpectedSeasons(tvResult),
             driveFiles: [],
             addedAt: new Date()
           }

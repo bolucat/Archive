@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAriaAddOptions } from './aria2AddOptions'
+import { buildAriaAddOptions, shouldCheckExistingDownloadTarget } from './aria2AddOptions'
 
 describe('buildAriaAddOptions', () => {
   it('keeps HTTP-only options on URI downloads', () => {
@@ -57,5 +57,11 @@ describe('buildAriaAddOptions', () => {
       split: 4,
       'select-file': '1,3'
     })
+  })
+
+  it('allows BT tasks to resume when their target directory already exists', () => {
+    expect(shouldCheckExistingDownloadTarget('magnet')).toBe(false)
+    expect(shouldCheckExistingDownloadTarget('torrent')).toBe(false)
+    expect(shouldCheckExistingDownloadTarget('url')).toBe(true)
   })
 })

@@ -1,4 +1,5 @@
 import { existsSync } from 'fs'
+import { tmpdir } from 'os'
 import message from './message'
 import is from 'electron-is'
 import { spawn, SpawnOptions } from 'child_process'
@@ -31,10 +32,14 @@ import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirf
 import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
 import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
-import { buildDirectPlayerInvocation, buildPlayerCommand, formatPlayerArg, isMpvCommand, redactMpvArgs } from './mpvPlayerPolicy'
+import { buildDirectPlayerInvocation, buildPlayerCommand, formatPlayerArg, isMpvCommand, parsePlayerParams, redactMpvArgs } from './mpvPlayerPolicy'
 
 const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
 const currentPlayerPlatform = () => (is.windows() ? 'win32' : is.macOS() ? 'darwin' : is.linux() ? 'linux' : process.platform)
+const createMpvSocketPath = () => {
+  const id = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  return is.windows() ? `\\\\.\\pipe\\boxplayer-mpv-${id}` : path.join(tmpdir(), `boxplayer-mpv-${id}.sock`)
+}
 
 const PlayerUtils = {
   filterSubtitleFile(name: string, subTitlesList: IAliGetFileModel[]) {
@@ -359,8 +364,14 @@ const PlayerUtils = {
         debug: false,
         verbose: false,
         binary: binary,
-        auto_restart: true,
-        spawnOptions: options
+        socket: createMpvSocketPath(),
+        auto_restart: false,
+        start_timeout: 10000,
+        spawnOptions: {
+          ...options,
+          shell: false,
+          windowsVerbatimArguments: false
+        }
       },
       playArgs
     )
@@ -408,7 +419,7 @@ const PlayerUtils = {
             delete otherArgs.subTitleFile
           }
           currentPlayIndex = status.value
-          currentFileInfo = playList[status.value]
+          currentFileInfo = playList[status.value] || currentFileInfo
           // 自动标记
           const { drive_id, file_id, description } = currentFileInfo
           if (uiAutoColorVideo && !isPikPakUser(token) && !isQuarkUser(token) && !isDropboxUser(token) && !isOneDriveUser(token) && !isBoxUser(token) && !isGuangyaUser(token) && drive_id !== 'pikpak' && drive_id !== 'quark' && drive_id !== 'dropbox' && drive_id !== 'onedrive' && drive_id !== 'box' && drive_id !== 'guangya' && (!description || !description.includes('ce74c3c'))) {
@@ -435,6 +446,10 @@ const PlayerUtils = {
         await AliFile.ApiUpdateVideoTime(token.user_id, currentFileInfo.drive_id, currentFileInfo.file_id, currentTime)
         exitCallBack()
       })
+      mpv.on('crashed', () => {
+        message.error('MPV 播放器异常退出，请检查播放器日志或启动参数')
+        exitCallBack()
+      })
       if (uiVideoPlayerExit) {
         mpv.on('stopped', async () => {
           message.info('播放完毕，自动退出软件', 8)
@@ -447,7 +462,7 @@ const PlayerUtils = {
       if (error.errcode == 6) {
         message.error('播放失败，重复运行MPV播放器', 8)
       } else {
-        message.error(`播放失败，${error.verbose}`)
+        message.error(`播放失败，${error.verbose || error.errmessage || error.message || String(error)}`)
       }
       exitCallBack()
     }
@@ -459,12 +474,28 @@ const PlayerUtils = {
       windowsVerbatimArguments: true,
       ...options
     })
-    childProcess.unref()
-    if (exitCallBack) {
-      childProcess.once('exit', async () => {
-        exitCallBack()
-      })
+    if (options.detached) childProcess.unref()
+    let stderr = ''
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      exitCallBack?.()
     }
+    childProcess.stderr?.on('data', (chunk: Buffer | string) => {
+      stderr = (stderr + String(chunk)).slice(-2000)
+    })
+    childProcess.once('error', (error: Error) => {
+      message.error(`播放器启动失败：${error.message}`)
+      finish()
+    })
+    childProcess.once('exit', (code: number | null, signal: NodeJS.Signals | null) => {
+      if (code && code !== 0) {
+        const detail = stderr.trim() || `退出码 ${code}${signal ? `，信号 ${signal}` : ''}`
+        message.error(`播放器异常退出：${detail}`)
+      }
+      finish()
+    })
   },
 
   async startPlayer(token: ITokenInfo, command: string, otherArgs: any) {
@@ -478,7 +509,7 @@ const PlayerUtils = {
     }
     const isMPV = isMpvCommand(command)
     const isPotplayer = command.toLowerCase().includes('potplayer')
-    const directMpvControl = (useSettingStore().uiVideoEnablePlayerList || useSettingStore().uiVideoPlayerHistory) && isMPV
+    const directMpvControl = isMPV
     const argsToStr = (args: string) => formatPlayerArg(currentPlayerPlatform(), args, directMpvControl)
     const commandStr = buildPlayerCommand(currentPlayerPlatform(), command)
     const directInvocation = buildDirectPlayerInvocation(currentPlayerPlatform(), command)
@@ -576,8 +607,7 @@ const PlayerUtils = {
       if (mpvHeaders.length) playerArgs.push(`--http-header-fields=${argsToStr(mpvHeaders.join(','))}`)
     }
     if (uiVideoPlayerParams.length > 0) {
-      const params = uiVideoPlayerParams.replaceAll(/\s+/g, '').split(',')
-      playerArgs.push(...params)
+      playerArgs.push(...parsePlayerParams(uiVideoPlayerParams))
     }
     const playArgs: any[] = [...Array.from(new Set(playerArgs))]
     let fileList: IAliGetFileModel[] = []
@@ -597,7 +627,7 @@ const PlayerUtils = {
       )
       // console.log('tmpFile', tmpFile)
       if (isMPV) {
-        otherArgs.currentPlayIndex = otherArgs.playList.findIndex((v: any) => v.file_id == file.file_id) || 0
+        otherArgs.currentPlayIndex = Math.max(0, otherArgs.playList.findIndex((v: any) => v.file_id == file.file_id))
         playArgs.unshift('--playlist-start=' + otherArgs.currentPlayIndex)
         playArgs.unshift('--playlist=' + otherArgs.playFileListPath)
       } else {
@@ -607,7 +637,10 @@ const PlayerUtils = {
       playArgs.unshift(argsToStr(play_url))
     }
     console.warn('playArgs', redactMpvArgs(playArgs))
+    let cleaned = false
     const exitCallBack = () => {
+      if (cleaned) return
+      cleaned = true
       if (uiVideoEnablePlayerList) {
         delTmpFile(otherArgs.playFileListPath)
       }
@@ -631,7 +664,11 @@ const PlayerUtils = {
     if (directMpvControl) {
       await this.mpvPlayer(token, directInvocation.binary, [...directInvocation.args, ...playArgs], otherArgs, options, exitCallBack)
     } else {
-      this.commandSpawn(commandStr, playArgs, options, exitCallBack)
+      if (currentPlayerPlatform() === 'linux') {
+        this.commandSpawn(directInvocation.binary, [...directInvocation.args, ...playArgs], { ...options, shell: false, windowsVerbatimArguments: false }, exitCallBack)
+      } else {
+        this.commandSpawn(commandStr, playArgs, options, exitCallBack)
+      }
     }
   }
 }

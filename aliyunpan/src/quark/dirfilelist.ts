@@ -1,10 +1,11 @@
 import type { IAliGetFileModel } from '../aliapi/alimodels'
+import type { IVideoPreviewUrl } from '../aliapi/models'
 import getFileIcon from '../aliapi/fileicon'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import message from '../utils/message'
 import UserDAL from '../user/userdal'
-import { buildQuarkCookieString, quarkAuthHeaders, quarkDownloadHeaders, readQuarkCookieStringFromElectron } from './auth'
+import { quarkAuthHeaders, quarkDownloadHeaders, syncQuarkCookiesToElectron } from './auth'
 
 export type QuarkFileItem = {
   fid: string
@@ -46,15 +47,6 @@ const getToken = async (user_id: string) => {
   return token
 }
 
-const hasQuarkCookieAuth = (cookieString: string) => /(?:^|;\s*)(?:__uid|__kps|__pus|__puus)=/.test(cookieString)
-
-const refreshQuarkTokenCookiesFromSession = async (token: any) => {
-  const cookieString = await readQuarkCookieStringFromElectron().catch(() => '')
-  if (!cookieString || !hasQuarkCookieAuth(cookieString) || cookieString === token.access_token) return
-  token.access_token = cookieString
-  UserDAL.SaveUserToken(token)
-}
-
 export const quarkRequest = async <T = any>(
   user_id: string,
   path: string,
@@ -67,6 +59,7 @@ export const quarkRequest = async <T = any>(
     message.error('未登录夸克网盘')
     return null
   }
+  await syncQuarkCookiesToElectron(token.access_token)
   const resp = await fetch(`${BASE}/${path.replace(/^\//, '')}?${quarkParams(params).toString()}`, {
     ...init,
     credentials: 'include',
@@ -75,7 +68,6 @@ export const quarkRequest = async <T = any>(
       ...(init.headers || {})
     }
   })
-  await refreshQuarkTokenCookiesFromSession(token)
   const data = await resp.json().catch(() => undefined)
   if (!resp.ok || data?.status === 'error' || (data?.code && data.code !== 0)) {
     const missingLoginCookie = data?.code === 31001 || /require login/i.test(data?.message || '')
@@ -105,10 +97,24 @@ export const apiQuarkFileList = async (
   size = 100,
   page = 1
 ): Promise<{ items: QuarkFileItem[]; total: number }> => {
+  const token = await getToken(user_id)
+  if (token?.access_token && typeof window !== 'undefined' && (window as any).WebQuarkFileList) {
+    const result = await (window as any).WebQuarkFileList({ cookie: token.access_token, parentId: parentId === 'quark_root' ? '0' : parentId, size, page })
+    const data = result?.body ? JSON.parse(result.body) : undefined
+    if (result?.ok && data && !isQuarkError(data) && !(data?.code && data.code !== 0)) {
+      const items = getListFromResponse(data)
+      return { items, total: Number(data?.metadata?._total || data?.data?.metadata?._total || items.length) }
+    }
+    if (data?.code === 31001 || /require login/i.test(data?.message || '')) message.error('夸克网盘登录 Cookie 无效或未写入，请重新登录夸克')
+    return { items: [], total: 0 }
+  }
   const data = await quarkRequest(user_id, 'file/sort', {}, {
     pdir_fid: parentId === 'quark_root' ? '0' : parentId,
     _page: page,
     _size: size,
+    _fetch_total: 1,
+    fetch_all_file: 1,
+    fetch_risk_file_name: 1,
     _sort: 'file_name:asc'
   })
   if (!data || isQuarkError(data)) return { items: [], total: 0 }
@@ -141,7 +147,7 @@ export const apiQuarkFileDetail = async (user_id: string, fileId: string): Promi
   return item || getListFromResponse(data)[0] || null
 }
 
-export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Promise<{ url: string; size: number; name: string; error: string }> => {
+export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Promise<{ url: string; size: number; name: string; error: string; headers?: Record<string, string> }> => {
   const token = await getToken(user_id)
   if (!token?.access_token) {
     message.error('未登录夸克网盘')
@@ -149,11 +155,6 @@ export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Prom
   }
   if (typeof window !== 'undefined' && (window as any).WebQuarkDownloadUrl) {
     const result = await (window as any).WebQuarkDownloadUrl({ fileId, cookie: token.access_token })
-    const cookieString = buildQuarkCookieString((result?.cookies || []) as any)
-    if (cookieString && hasQuarkCookieAuth(cookieString) && cookieString !== token.access_token) {
-      token.access_token = cookieString
-      UserDAL.SaveUserToken(token)
-    }
     const data = result?.body ? JSON.parse(result.body) : undefined
     if (!result?.ok || data?.status === 'error' || (data?.code && data.code !== 0)) {
       const error = data?.message || result?.error || '获取夸克下载地址失败'
@@ -166,7 +167,8 @@ export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Prom
       url,
       size: Number(info?.size || 0),
       name: info?.file_name || '',
-      error: url ? '' : '获取夸克下载地址失败'
+      error: url ? '' : '获取夸克下载地址失败',
+      headers: url ? quarkDownloadHeaders(token.access_token) as Record<string, string> : undefined
     }
   }
   const params = new URLSearchParams({
@@ -183,7 +185,6 @@ export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Prom
     headers: quarkDownloadHeaders(token.access_token),
     body: JSON.stringify({ fids: [fileId] })
   })
-  await refreshQuarkTokenCookiesFromSession(token)
   const data = await resp.json().catch(() => undefined)
   if (!resp.ok || data?.status === 'error' || (data?.code && data.code !== 0)) {
     const error = data?.message || '获取夸克下载地址失败'
@@ -201,7 +202,63 @@ export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Prom
     url,
     size: Number(info?.size || 0),
     name: info?.file_name || '',
-    error: url ? '' : '获取夸克下载地址失败'
+    error: url ? '' : '获取夸克下载地址失败',
+    headers: url ? quarkDownloadHeaders(token.access_token) as Record<string, string> : undefined
+  }
+}
+
+export const apiQuarkVideoPreviewUrl = async (user_id: string, fileId: string): Promise<IVideoPreviewUrl | string> => {
+  const token = await getToken(user_id)
+  if (!token?.access_token) return '未登录夸克网盘'
+  const params = quarkParams()
+  const resp = await fetch(`https://drive.quark.cn/1/clouddrive/file/v2/play/project?${params.toString()}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: quarkDownloadHeaders(token.access_token),
+    body: JSON.stringify({
+      fid: fileId,
+      resolutions: 'low,normal,high,super,2k,4k',
+      supports: 'fmp4_av,m3u8,dolby_vision'
+    })
+  })
+  const body = await resp.json().catch(() => undefined)
+  if (!resp.ok || body?.status === 'error' || (body?.code && body.code !== 0)) return body?.message || '获取夸克转码播放地址失败'
+
+  const videoList = Array.isArray(body?.data?.video_list) ? body.data.video_list : []
+  const qualities = videoList
+    .map((item: any) => {
+      const info = item?.video_info || {}
+      const url = String(info.url || '')
+      if (!url) return undefined
+      const resolution = String(item?.resolution || info.resolution || '')
+      const height = Number(info.height || 0)
+      const width = Number(info.width || 0)
+      const label = resolution || (height ? `${height}P` : '转码播放')
+      return {
+        html: label,
+        quality: label,
+        height,
+        width,
+        label,
+        value: label,
+        url,
+        type: /m3u8|hls/i.test(`${url} ${info.hls_type || ''}`) ? 'm3u8' : ''
+      }
+    })
+    .filter(Boolean) as IVideoPreviewUrl['qualities']
+  if (!qualities.length) return '暂无夸克转码信息'
+  qualities.sort((left, right) => (right.width || right.height || 0) - (left.width || left.height || 0))
+  const first = qualities[0]
+  return {
+    drive_id: 'quark',
+    file_id: fileId,
+    size: Number(body?.data?.size || 0),
+    duration: Math.floor(Number(first ? videoList.find((item: any) => (item?.video_info?.url || '') === first.url)?.video_info?.duration || 0 : 0)),
+    expire_time: 0,
+    width: first.width || 0,
+    height: first.height || 0,
+    qualities,
+    subtitles: []
   }
 }
 

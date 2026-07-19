@@ -59,11 +59,11 @@ export type QuarkQrStatus = {
 }
 
 export const buildQuarkCookieString = (cookies: QuarkCookie[]): string => {
-  return cookies
-    .filter((cookie) => (cookie.domain || '').includes('quark.cn'))
-    .filter((cookie) => cookie.name && cookie.value)
-    .map((cookie) => `${cookie.name}=${cookie.value}`)
-    .join('; ')
+  const cookieMap = new Map<string, string>()
+  for (const cookie of cookies) {
+    if ((cookie.domain || '').includes('quark.cn') && cookie.name && cookie.value) cookieMap.set(cookie.name, cookie.value)
+  }
+  return Array.from(cookieMap, ([name, value]) => `${name}=${value}`).join('; ')
 }
 
 const parseCookieValue = (cookieString: string, key: string): string => {
@@ -91,7 +91,19 @@ const getQuarkAccountId = (info: QuarkAccountInfo, cookieString: string): string
 }
 
 const hasQuarkAuthCookie = (cookieString: string): boolean => {
-  return ['__kps', '__pus', '__uid', '__puus'].some((key) => !!parseCookieValue(cookieString, key))
+  return !!parseCookieValue(cookieString, '__pus') && (!!parseCookieValue(cookieString, '__uid') || !!parseCookieValue(cookieString, '__kps'))
+}
+
+export const syncQuarkCookiesToElectron = async (cookieString: string): Promise<void> => {
+  if (!cookieString || typeof window === 'undefined' || !window.WebSetCookies) return
+  const cookies = cookieString.split(';')
+    .map((item) => item.trim())
+    .map((item) => {
+      const separator = item.indexOf('=')
+      return separator > 0 ? { name: item.slice(0, separator), value: item.slice(separator + 1), url: 'https://drive-pc.quark.cn', domain: '.quark.cn' } : undefined
+    })
+    .filter(Boolean)
+  if (cookies.length) await window.WebSetCookies(cookies)
 }
 
 const randomRequestId = () => {
@@ -259,6 +271,8 @@ export const quarkDownloadHeaders = (cookieString: string): HeadersInit => ({
 
 export const createQuarkTokenFromCookies = async (cookieString: string): Promise<ITokenInfo> => {
   if (!cookieString || !cookieString.includes('=')) throw new Error('夸克 Cookie 为空')
+  if (!hasQuarkAuthCookie(cookieString)) throw new Error('夸克登录 Cookie 无效，请重新登录夸克')
+  await syncQuarkCookiesToElectron(cookieString)
   const resp = await fetch(ACCOUNT_INFO_URL, {
     headers: quarkAuthHeaders(cookieString),
     credentials: 'include'
@@ -286,6 +300,10 @@ export const createQuarkTokenFromCookies = async (cookieString: string): Promise
 
 export const readQuarkCookieStringFromElectron = async (): Promise<string> => {
   if (typeof window === 'undefined' || !window.WebGetCookies) return ''
+  const driveCookies = await window.WebGetCookies({ url: 'https://drive-pc.quark.cn' }) as QuarkCookie[]
+  const driveCookieString = buildQuarkCookieString(driveCookies)
+  if (hasQuarkAuthCookie(driveCookieString)) return driveCookieString
+
   const cookieMap = new Map<string, QuarkCookie>()
   const appendCookies = (cookies: QuarkCookie[] = []) => {
     for (const cookie of cookies) {
@@ -293,7 +311,7 @@ export const readQuarkCookieStringFromElectron = async (): Promise<string> => {
     }
   }
   appendCookies(await window.WebGetCookies({ url: 'https://pan.quark.cn' }) as QuarkCookie[])
-  appendCookies(await window.WebGetCookies({ url: 'https://drive-pc.quark.cn' }) as QuarkCookie[])
+  appendCookies(driveCookies)
   appendCookies(await window.WebGetCookies({ url: 'https://uop.quark.cn' }) as QuarkCookie[])
   if (!cookieMap.size) appendCookies(await window.WebGetCookies({ domain: '.quark.cn' }) as QuarkCookie[])
   if (!cookieMap.size) appendCookies(await window.WebGetCookies({ domain: 'quark.cn' }) as QuarkCookie[])

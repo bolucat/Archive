@@ -58,7 +58,7 @@ export class BoxPlayerCloudProvider implements AIProvider {
       supportsParallelCalls: false,
       async doEmbed({ values, abortSignal }: { values: string[]; abortSignal?: AbortSignal }) {
         const token = await getBoxPlayerAccessToken()
-        const resp = await fetch(`https://ai.xbyvideohub.com/v1/embeddings`, {
+        const resp = await fetch(`${getCloudAIBaseURL()}/v1/embeddings`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

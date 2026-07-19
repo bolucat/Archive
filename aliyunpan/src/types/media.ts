@@ -20,12 +20,26 @@ export interface MediaLibraryItem {
   aiScrape?: { provider: string; confidence: number; reason: string; updatedAt: number }
   metadataSource?: 'tmdb' | 'ai-tmdb' | 'filename' | 'manual'
   seasons?: MediaSeason[]
+  expectedSeasons?: MediaExpectedSeason[]
   credits?: Credits
   // 删除冗余的episodes?: MediaEpisode[] - 集数信息应该在seasons中管理
   lastWatched?: Date
   watchProgress?: number
   lastPlayedFileId?: string
   addedAt: Date
+}
+
+export interface MediaExpectedSeason {
+  seasonNumber: number
+  episodeCount: number
+  latestAiredEpisode?: number
+  airDate?: string
+  episodes?: MediaExpectedEpisode[]
+}
+
+export interface MediaExpectedEpisode {
+  episodeNumber: number
+  airDate?: string
 }
 
 export type FavoriteId = string

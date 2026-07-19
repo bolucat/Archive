@@ -3,6 +3,7 @@ import type { RetrievalBackend } from './retrievalBackend'
 import { reedyClient } from '../../reedy/ReedyClient'
 import { getAIProvider } from '../providers'
 import type { EmbeddingModel } from 'ai'
+import { canUseSemanticEmbeddings } from '../embeddingPolicy'
 
 export class ReedyBackend implements RetrievalBackend {
   readonly kind = 'reedy' as const
@@ -15,6 +16,7 @@ export class ReedyBackend implements RetrievalBackend {
 
   private getEmbeddingModelName(): string {
     const s = this.settings
+    if (!canUseSemanticEmbeddings(s.provider)) return 'local-keyword'
     switch (s.provider) {
       case 'ollama':
         return s.ollamaEmbeddingModel || 'nomic-embed-text'
@@ -40,9 +42,9 @@ export class ReedyBackend implements RetrievalBackend {
       signal?: AbortSignal
     }
   ): Promise<void> {
-    const provider = getAIProvider(settings)
-    const embeddingModel = provider.getEmbeddingModel?.() as EmbeddingModel | undefined
-    if (!embeddingModel) throw new Error('No embedding model configured')
+    const embeddingModel = canUseSemanticEmbeddings(settings.provider)
+      ? getAIProvider(settings).getEmbeddingModel?.() as EmbeddingModel | undefined
+      : undefined
 
     // Chunking phase (still need to run in renderer for DOM access)
     options?.onProgress?.({ phase: 'chunking', current: 0, total: sections.length })
@@ -110,9 +112,9 @@ export class ReedyBackend implements RetrievalBackend {
     // Store chunks
     await reedyClient.storeChunks(allChunks)
 
-    // Embedding phase (may fail for providers that don't support embeddings)
     let dim = 0
-    try {
+    if (embeddingModel) {
+      try {
       const { embedMany } = await import('ai')
       const texts = allChunks.map((c) => c.text)
       const batchSize = this.getBatchSize()
@@ -132,9 +134,12 @@ export class ReedyBackend implements RetrievalBackend {
         await reedyClient.storeEmbeddings(embRows)
         options?.onProgress?.({ phase: 'embedding', current: Math.min(i + batchSize, texts.length), total: texts.length })
       }
-    } catch (embErr: any) {
-      console.warn('[ReedyBackend] embedding failed, using FTS-only index:', embErr?.message || embErr)
-      dim = 0
+      } catch (embErr: any) {
+        console.warn('[ReedyBackend] embedding failed, using FTS-only index:', embErr?.message || embErr)
+        dim = 0
+      }
+    } else {
+      options?.onProgress?.({ phase: 'embedding', current: allChunks.length, total: allChunks.length })
     }
 
     // Finalize meta
@@ -154,9 +159,13 @@ export class ReedyBackend implements RetrievalBackend {
   }
 
   async searchForSystemPrompt(query: string, bookHash: string, settings: AISettings, topK: number = 10, maxPage?: number): Promise<ScoredChunk[]> {
-    const provider = getAIProvider(settings)
-    const embeddingModel = provider.getEmbeddingModel?.() as EmbeddingModel | undefined
-    if (!embeddingModel) return []
+    const embeddingModel = canUseSemanticEmbeddings(settings.provider)
+      ? getAIProvider(settings).getEmbeddingModel?.() as EmbeddingModel | undefined
+      : undefined
+    if (!embeddingModel) {
+      const chunks = await reedyClient.search(bookHash, new Float32Array(0), query, topK, maxPage)
+      return chunks.map((c) => this.toAIScoredChunk(c))
+    }
 
     try {
       const { embed } = await import('ai')

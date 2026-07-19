@@ -17,5 +17,5 @@
     ]
   },
   "include": ["package.json", "electron", "shared"],
-  "exclude": ["shared/__tests__", "shared/types/reedy.ts", "shared/utils/vector.ts"]
+  "exclude": ["shared/__tests__", "shared/types/reedy.ts", "shared/types/mediaAcquisition.ts", "shared/utils/vector.ts"]
 }

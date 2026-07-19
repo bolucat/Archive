@@ -81,7 +81,7 @@ function buildAISettings(): AISettings {
     spoilerProtection: store.apiAISpoilerProtection,
     maxContextChunks: store.apiAIMaxContextChunks || 10,
     indexingMode: (store.apiAIIndexingMode as any) || 'on-demand',
-    reedy: { enabled: isBoxPlayerCloudProvider(provider) ? false : store.apiAIReedyEnabled, runtime: store.apiAIReedyRuntime || 'mvp' },
+    reedy: { enabled: isBoxPlayerCloudProvider(provider) ? true : store.apiAIReedyEnabled, runtime: store.apiAIReedyRuntime || 'pi-agent' },
   }
 }
 

@@ -69,6 +69,7 @@ export class ReedyDb {
         deleteMemory: db.prepare('DELETE FROM reedy_memory WHERE id = ?'),
         deleteMemoryEmbedding: db.prepare('DELETE FROM reedy_memory_embeddings WHERE memory_id = ?'),
         listMemories: db.prepare('SELECT * FROM reedy_memory WHERE scope = ? AND scope_key = ? ORDER BY updated_at DESC LIMIT ?'),
+        getMemoryByKey: db.prepare('SELECT * FROM reedy_memory WHERE scope = ? AND scope_key = ? AND key = ?'),
         upsertSkill: db.prepare(`
           INSERT INTO reedy_skills (id, name, description, instructions, tool_allowlist, builtin, enabled)
           VALUES (@id, @name, @description, @instructions, @tool_allowlist, @builtin, @enabled)
@@ -343,7 +344,9 @@ export class ReedyDb {
       })
     }
 
-    return this.getMemory(id)
+    const row = this.stmt.getMemoryByKey.get(args.scope, args.scope_key, args.key) as { id?: string } | undefined
+    if (!row?.id) throw new Error('Failed to save memory')
+    return this.getMemory(row.id)
   }
 
   getMemory(id: string): MemoryRow {

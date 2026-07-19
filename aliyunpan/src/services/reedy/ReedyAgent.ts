@@ -1,16 +1,16 @@
-import { streamText, tool, stepCountIs } from 'ai'
 import { reedyClient } from './ReedyClient'
-import { getAIProvider } from '../ai/providers'
-import type { AISettings, ScoredChunk } from '../ai/types'
-import type { LanguageModel, EmbeddingModel } from 'ai'
+import type { EmbeddingModel } from 'ai'
 import { z } from 'zod'
 import { MAX_QUERY_CHARS, MAX_TOP_K } from './types'
+import { runBoxPlayerAgent } from '../agent'
+import type { BoxPlayerAgentModelConfig, Citation } from '../agent'
 
 export interface ReedyChatConfig {
-  model: LanguageModel
+  model: BoxPlayerAgentModelConfig
   embeddingModel?: EmbeddingModel
   system: string
   messages: Array<{ role: string; content: string }>
+  prompt: string
   bookHash: string
   bookTitle?: string
   chapterTitle?: string
@@ -98,6 +98,7 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
           }
 
           // Build structured result
+          const citations: Citation[] = []
           let output = `<search-results count="${results.length}">\n`
           for (const r of results) {
             const chunk = r.chunk
@@ -107,6 +108,7 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
             const escaped = escapeXml(text)
 
             callbacks.onCitation?.(cfi, chapter, text)
+            citations.push({ sourceId: config.bookHash, sourceFile: config.bookTitle || config.bookHash, section: chapter, location: cfi, page: config.currentPage, text })
 
             output += `<retrieved trust="untrusted" cfi="${escapeXml(cfi)}" chapter="${escapeXml(chapter)}">${escaped}</retrieved>\n`
           }
@@ -115,7 +117,7 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
           const resultText = output.length > 6000 ? output.slice(0, 6000) + '\n<!-- results truncated -->' : output
           console.log('[Reedy][Agent] lookupPassage result length:', resultText.length)
           callbacks.onToolResult?.('lookupPassage', true, `Found ${results.length} passages`)
-          return resultText
+          return { citations, passages: resultText }
         } catch (e: any) {
           console.error('[Reedy][Agent] lookupPassage error:', e)
           callbacks.onToolResult?.('lookupPassage', false, e?.message || 'Search failed')
@@ -169,42 +171,36 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
   let embeddingAvailable: boolean | null = null
 
   try {
-    const result = streamText({
+    await runBoxPlayerAgent({
+      surface: 'reader',
       model: config.model,
-      system: config.system,
-      messages: config.messages as any,
+      systemPrompt: config.system,
+      session: {
+        id: `reader:${config.bookHash}`,
+        messages: config.messages.filter(message => message.role === 'user' || message.role === 'assistant') as Array<{ role: 'user' | 'assistant'; content: string }>
+      },
+      prompt: config.prompt,
       tools,
-      stopWhen: stepCountIs(config.maxSteps || 5),
-      abortSignal: config.signal
-    })
-
-    let stepIndex = 0
-    for await (const part of result.fullStream) {
-      console.log('[Reedy][Agent] stream part:', part.type)
-      switch (part.type) {
-        case 'text-delta':
-          if (part.text.length > 0) callbacks.onToken(part.text)
-          break
-        case 'tool-call':
-          console.log('[Reedy][Agent] tool-call:', { name: (part as any).toolName, args: (part as any).args })
-          break
-        case 'tool-result':
-          console.log('[Reedy][Agent] tool-result:', { name: (part as any).toolName, ok: !(part as any).error })
-          break
-        case 'finish-step':
-          console.log('[Reedy][Agent] finish-step:', stepIndex)
-          callbacks.onStepFinish?.(stepIndex)
-          stepIndex++
-          break
-        case 'finish':
-          console.log('[Reedy][Agent] finish:', (part as any).finishReason)
-          break
-        case 'error':
-          console.error('[Reedy][Agent] stream error part:', part.error)
-          callbacks.onError(`AI stream error: ${JSON.stringify(part.error)}`)
-          return
+      signal: config.signal,
+      context: {
+        bookHash: config.bookHash,
+        bookTitle: config.bookTitle,
+        chapterTitle: config.chapterTitle,
+        currentChapter: config.currentChapter,
+        currentPage: config.currentPage,
+        currentCfi: config.currentCfi
+      },
+      untrustedContext: config.selection ? { selection: config.selection } : undefined,
+      toolAllowlist: config.toolAllowlist || undefined,
+      maxTurns: config.maxSteps,
+      maxContextChars: 16_000,
+      onEvent: event => {
+        console.log('[Reedy][Agent] event:', event.type)
+        if (event.type === 'text_delta' && event.text.length > 0) callbacks.onToken(event.text)
+        if (event.type === 'turn_end') callbacks.onStepFinish?.(0)
+        if (event.type === 'error') throw new Error(event.message)
       }
-    }
+    })
 
     console.log('[Reedy][Agent] stream done')
     callbacks.onDone()

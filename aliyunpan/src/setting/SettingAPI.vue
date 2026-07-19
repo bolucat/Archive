@@ -27,6 +27,13 @@ const aiMaxContextChunks = ref(settingStore.apiAIMaxContextChunks)
 const aiIndexingMode = ref(settingStore.apiAIIndexingMode)
 const aiReedyEnabled = ref(settingStore.apiAIReedyEnabled)
 const aiReedyRuntime = ref(settingStore.apiAIReedyRuntime)
+const mediaAcquisitionPreferredQuality = ref(settingStore.mediaAcquisitionPreferredQuality)
+const mediaAcquisitionFetchSubtitles = ref(settingStore.mediaAcquisitionFetchSubtitles)
+const mediaAcquisitionSubtitleLanguage = ref(settingStore.mediaAcquisitionSubtitleLanguage)
+const mediaAcquisitionAssrtEnabled = ref(settingStore.mediaAcquisitionAssrtEnabled)
+const mediaAcquisitionAssrtToken = ref(settingStore.mediaAcquisitionAssrtToken)
+const mediaAcquisitionPatrolTimes = ref(settingStore.mediaAcquisitionPatrolTimes)
+const mediaAcquisitionAutoScanHistorical = ref(settingStore.mediaAcquisitionAutoScanHistorical)
 const aiFetching = ref(false)
 const aiModels = ref<{ id: string; name: string }[]>([])
 const aiEmbeddingModels = ref<{ id: string; name: string }[]>([])
@@ -196,6 +203,13 @@ watch(aiMaxContextChunks, (v) => settingStore.updateStore({ apiAIMaxContextChunk
 watch(aiIndexingMode, (v) => settingStore.updateStore({ apiAIIndexingMode: v }))
 watch(aiReedyEnabled, (v) => settingStore.updateStore({ apiAIReedyEnabled: v }))
 watch(aiReedyRuntime, (v) => settingStore.updateStore({ apiAIReedyRuntime: v }))
+watch(mediaAcquisitionPreferredQuality, (v) => settingStore.updateStore({ mediaAcquisitionPreferredQuality: v }))
+watch(mediaAcquisitionFetchSubtitles, (v) => settingStore.updateStore({ mediaAcquisitionFetchSubtitles: v }))
+watch(mediaAcquisitionSubtitleLanguage, (v) => settingStore.updateStore({ mediaAcquisitionSubtitleLanguage: v }))
+watch(mediaAcquisitionAssrtEnabled, (v) => settingStore.updateStore({ mediaAcquisitionAssrtEnabled: v }))
+watch(mediaAcquisitionAssrtToken, (v) => settingStore.updateStore({ mediaAcquisitionAssrtToken: v }))
+watch(mediaAcquisitionPatrolTimes, (v) => settingStore.updateStore({ mediaAcquisitionPatrolTimes: v }))
+watch(mediaAcquisitionAutoScanHistorical, (v) => settingStore.updateStore({ mediaAcquisitionAutoScanHistorical: v }))
 
 const hasAIConfig = computed(() => !!((aiKey.value || aiProvider.value === 'ollama' || aiProvider.value === 'ai-gateway') && aiModelId.value))
 
@@ -492,6 +506,58 @@ async function runConnectionTest() {
     </div>
     <div class='ai-footnote'>Agent 模式需要保存当前索引，切换后需重新索引</div>
   </div>
+
+  <div class='settingcard'>
+    <div class='settinghead'>媒体获取偏好</div>
+    <div class='settingrow'>
+      <span class='ai-reedy-label'>资源画质</span>
+      <a-select v-model:model-value='mediaAcquisitionPreferredQuality' style='width:150px'>
+        <a-option value='auto'>不限（默认）</a-option>
+        <a-option value='2160p'>4K（2160P）</a-option>
+        <a-option value='1080p'>全高清（1080P）</a-option>
+        <a-option value='720p'>高清（720P）</a-option>
+        <a-option value='480p'>标清（480P）</a-option>
+      </a-select>
+      <span class='ai-hint'>作为候选资源优先级；找不到时仍保留其它可导入版本。</span>
+    </div>
+    <div class='settingrow'>
+      <span class='ai-reedy-label'>获取字幕</span>
+      <a-switch v-model:model-value='mediaAcquisitionFetchSubtitles' />
+      <span class='ai-hint'>优先选择名称中标明字幕语言的资源。</span>
+    </div>
+    <div class='settingrow' :class='{ disabled: !mediaAcquisitionFetchSubtitles }'>
+      <span class='ai-reedy-label'>字幕语言</span>
+      <a-select v-model:model-value='mediaAcquisitionSubtitleLanguage' :disabled='!mediaAcquisitionFetchSubtitles' style='width:150px'>
+        <a-option value='zh-CN'>中文（默认）</a-option>
+        <a-option value='zh-Hant'>繁体中文</a-option>
+        <a-option value='en'>英文</a-option>
+        <a-option value='ja'>日文</a-option>
+        <a-option value='ko'>韩文</a-option>
+        <a-option value='auto'>不限</a-option>
+      </a-select>
+      <span class='ai-hint'>会随每个新建获取任务保存，不影响已经创建的任务。</span>
+    </div>
+    <div class='settingrow'>
+      <span class='ai-reedy-label'>自动中文字幕</span>
+      <a-switch v-model:model-value='mediaAcquisitionAssrtEnabled' :disabled='!mediaAcquisitionFetchSubtitles' />
+      <span class='ai-hint'>仅非国产内容，且目标网盘支持外链离线时从 ASSRT 补全外挂中文字幕。</span>
+    </div>
+    <div class='settingrow' :class='{ disabled: !mediaAcquisitionAssrtEnabled || !mediaAcquisitionFetchSubtitles }'>
+      <span class='ai-reedy-label'>ASSRT Token</span>
+      <a-input-password v-model:model-value='mediaAcquisitionAssrtToken' :disabled='!mediaAcquisitionAssrtEnabled || !mediaAcquisitionFetchSubtitles' allow-clear placeholder='留空使用内置服务；填写后优先使用你的 Token' style='width:320px' />
+      <span class='ai-hint'>自带 Token 仅保存于本机，不会发送给 BoxPlayer API。</span>
+    </div>
+    <div class='settingrow'>
+      <span class='ai-reedy-label'>追更巡检时间</span>
+      <a-input v-model:model-value='mediaAcquisitionPatrolTimes' placeholder='06:00,21:00' style='width:220px' />
+      <span class='ai-hint'>北京时间，逗号分隔，最多 6 个时间点；错过后下次启动会补跑。</span>
+    </div>
+    <div class='settingrow'>
+      <span class='ai-reedy-label'>历史媒体自动补全</span>
+      <a-switch v-model:model-value='mediaAcquisitionAutoScanHistorical' />
+      <span class='ai-hint'>默认关闭。开启后后台刷新已刮削剧集的播出进度，发现已播缺集时自动创建 Agent 获取任务。</span>
+    </div>
+  </div>
 </template>
 
 <style scoped>
@@ -780,6 +846,7 @@ async function runConnectionTest() {
   margin-top: 2px;
   padding-left: 96px;
 }
+.settingrow.disabled { opacity: 0.55; }
 
 /* ── misc ── */
 .ai-getkey-link {

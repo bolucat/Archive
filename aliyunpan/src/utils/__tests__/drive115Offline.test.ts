@@ -48,6 +48,14 @@ describe('115 offline download API', () => {
     expect(new URLSearchParams(request.body as string).get('wp_path_id')).toBe('0')
   })
 
+  it('keeps legacy drive115 root targets compatible', async () => {
+    getUserToken.mockReturnValue({ access_token: 'token-115' })
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ state: true, code: 0, data: [{ state: true, code: 0, info_hash: 'hash-root' }] }), { status: 200 }))
+    await apiDrive115OfflineCreate('115_user', 'magnet:?xt=urn:btih:hash-root', 'drive115')
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    expect(new URLSearchParams(request.body as string).get('wp_path_id')).toBe('0')
+  })
+
   it('maps task list status and progress', async () => {
     getUserToken.mockReturnValue({ access_token: 'token-115' })
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({

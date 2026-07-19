@@ -81,6 +81,15 @@ const onClose = () => emit('update:visible', false)
     :width='480'
     :title='taskName || "任务详情"'
     :footer='false'
+    popup-container='#xbybody'
+    :drawer-style='{
+      top: "30px",
+      height: "calc(100% - 30px)",
+      color: "var(--color-text-1)",
+      background: "var(--app-detail-bg, var(--color-bg-1))",
+      borderLeft: "1px solid var(--color-border-2)",
+      boxShadow: "-12px 0 32px rgba(0, 0, 0, 0.22)"
+    }'
     @cancel='onClose'
   >
     <div v-if='loading' class='task-detail-loading'>
@@ -121,6 +130,11 @@ const onClose = () => emit('update:visible', false)
   display: flex;
   justify-content: center;
   padding: 40px;
+}
+.task-detail {
+  min-width: 0;
+  color: var(--color-text-2);
+  background: transparent;
 }
 .task-detail-empty {
   text-align: center;

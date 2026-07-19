@@ -22,8 +22,9 @@ import { MediaScanner } from '../../utils/mediaScanner'
 import MusicScanner from '../../utils/musicScanner'
 import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
-import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser } from '../../aliapi/utils'
+import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
+import { supportsCopy, supportsCreateShare } from '../../aliapi/providerFeatures'
 
 let istree = false
 const settingStore = useSettingStore()
@@ -144,8 +145,10 @@ const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || pa
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
 const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
 const isGuangya = computed(() => isGuangyaUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'guangya')
-const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
-const isShareSupported = computed(() => props.inputselectType.includes('resource') || isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value)
+const isPikPak = computed(() => isPikPakUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'pikpak')
+const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value || isPikPak.value)
+const isShareSupported = computed(() => supportsCreateShare(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
 
 // 检查是否选中了文件夹
@@ -153,6 +156,25 @@ const isSelectedFolder = computed(() => {
   const selectedFiles = panFileStore.GetSelected()
   return selectedFiles.some(file => file.isDir)
 })
+
+const isDocumentAIAvailable = computed(() => {
+  const selected = panFileStore.GetSelected()
+  if (selected.length !== 1 || selected[0].isDir) return false
+  const name = String(selected[0].name || '').toLowerCase()
+  return ['.pdf', '.docx', '.epub', '.txt', '.md', '.markdown'].some(extension => name.endsWith(extension))
+})
+
+function openDocumentAI() {
+  const selected = panFileStore.GetSelected()
+  if (selected.length !== 1 || !isDocumentAIAvailable.value) {
+    message.warning('请选择一个 PDF、DOCX、EPUB、TXT 或 Markdown 文档')
+    return
+  }
+  const file = selected[0]
+  sessionStorage.setItem('boxplayer:pending-document-ai', JSON.stringify({ file, userId: (file as any).user_id || panTreeStore.user_id || '' }))
+  window.dispatchEvent(new CustomEvent('boxplayer:open-document-ai'))
+  appStore.toggleTab('ai-workspace')
+}
 </script>
 
 <template>
@@ -161,6 +183,10 @@ const isSelectedFolder = computed(() => {
       <a-doption @click='() => menuDownload(istree)'>
         <template #icon><IconFont name="icondownload" /></template>
         <template #default>下载</template>
+      </a-doption>
+      <a-doption v-if='isDocumentAIAvailable' @click='openDocumentAI'>
+        <template #icon><IconFont name="iconscan" /></template>
+        <template #default>用 AI 分析 <span class="ai-pro-badge">Pro</span></template>
       </a-doption>
       <a-doption v-show='isShareSupported'
                  @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
@@ -212,7 +238,7 @@ const isSelectedFolder = computed(() => {
         </template>
       </a-dsubmenu>
 
-      <a-dsubmenu v-if="dirtype !== 'pic' && !isWebDav && !isThirdPartyDrive" id='rightpansubbiaoji' class='rightmenu' trigger='hover'>
+      <a-dsubmenu v-if="dirtype !== 'pic' && !isWebDav && isAliyunAccount" id='rightpansubbiaoji' class='rightmenu' trigger='hover'>
         <template #default>
           <div @click.stop='() => {}'>
             <span class='arco-dropdown-option-icon'>
@@ -261,7 +287,7 @@ const isSelectedFolder = computed(() => {
             <template #icon><IconFont name="iconscissor" /></template>
             <template #default>移动到...</template>
           </a-doption>
-          <a-doption v-show='isShowBtn' @click="() => menuCopySelectedFile(istree, 'copy')">
+          <a-doption v-show='isShowBtn && isCopySupported' @click="() => menuCopySelectedFile(istree, 'copy')">
             <template #icon><IconFont name="iconcopy" /></template>
             <template #default>复制到...</template>
           </a-doption>
