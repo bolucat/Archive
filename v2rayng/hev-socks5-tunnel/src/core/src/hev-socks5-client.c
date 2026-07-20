@@ -20,6 +20,10 @@
 
 #include "hev-socks5-client.h"
 
+#ifndef MSG_MORE
+#define MSG_MORE 0
+#endif
+
 #define task_io_yielder hev_socks5_task_io_yielder
 
 static int
@@ -37,8 +41,9 @@ hev_socks5_client_write_auth_methods (HevSocks5Client *self)
     else
         auth.methods[0] = HEV_SOCKS5_AUTH_METHOD_USER;
 
-    res = hev_task_io_socket_send (HEV_SOCKS5 (self)->fd, &auth, 3, MSG_WAITALL,
-                                   task_io_yielder, self);
+    res = hev_task_io_socket_send (HEV_SOCKS5 (self)->fd, &auth, 3,
+                                   MSG_WAITALL | MSG_MORE, task_io_yielder,
+                                   self);
     if (res <= 0) {
         LOG_I ("%p socks5 client write auth methods", self);
         return -1;
@@ -74,8 +79,9 @@ hev_socks5_client_write_auth_creds (HevSocks5Client *self)
 
     mh.msg_iov = iov;
     mh.msg_iovlen = 4;
-    res = hev_task_io_socket_sendmsg (HEV_SOCKS5 (self)->fd, &mh, MSG_WAITALL,
-                                      task_io_yielder, self);
+    res = hev_task_io_socket_sendmsg (HEV_SOCKS5 (self)->fd, &mh,
+                                      MSG_WAITALL | MSG_MORE, task_io_yielder,
+                                      self);
     if (res <= 0) {
         LOG_I ("%p socks5 client write auth creds", self);
         return -1;

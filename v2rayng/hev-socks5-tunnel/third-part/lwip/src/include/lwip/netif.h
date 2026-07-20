@@ -105,11 +105,15 @@ extern "C" {
 /** If set, the netif has MLD6 capability.
  * Set by the netif driver in its init function. */
 #define NETIF_FLAG_MLD6         0x40U
-/** If set, the netif to pretend that every host for TCP and UDP packets.
- * Set by the netif driver in its set flags function. */
-#define NETIF_FLAG_PRETEND      0x80U
-#define NETIF_FLAG_PRETEND_TCP  NETIF_FLAG_PRETEND
-#define NETIF_FLAG_PRETEND_UDP  NETIF_FLAG_PRETEND
+/** If set, the netif to pretend that every host for TCP packets.
+ * Set by the user. */
+#define NETIF_FLAG_PRETEND_TCP  0x80U
+/** If set, the netif to pretend that every host for UDP packets.
+ * Set by the user. */
+#define NETIF_FLAG_PRETEND_UDP  0x100U
+/** If set, the netif to pretend that every host for ICMP packets.
+ * Set by the user. */
+#define NETIF_FLAG_PRETEND_ICMP 0x200U
 
 /**
  * @}
@@ -356,7 +360,7 @@ struct netif {
   /** number of bytes used in hwaddr */
   u8_t hwaddr_len;
   /** flags (@see @ref netif_flags) */
-  u8_t flags;
+  u16_t flags;
   /** descriptive abbreviation */
   char name[2];
   /** number of this interface. Used for @ref if_api and @ref netifapi_netif,
@@ -472,8 +476,8 @@ void netif_set_gw(struct netif *netif, const ip4_addr_t *gw);
 #define netif_ip_gw4(netif)      ((const ip_addr_t*)&((netif)->gw))
 #endif /* LWIP_IPV4 */
 
-#define netif_set_flags(netif, set_flags)     do { (netif)->flags = (u8_t)((netif)->flags |  (set_flags)); } while(0)
-#define netif_clear_flags(netif, clr_flags)   do { (netif)->flags = (u8_t)((netif)->flags & (u8_t)(~(clr_flags) & 0xff)); } while(0)
+#define netif_set_flags(netif, set_flags)     do { (netif)->flags = (u16_t)((netif)->flags |  (set_flags)); } while(0)
+#define netif_clear_flags(netif, clr_flags)   do { (netif)->flags = (u16_t)((netif)->flags & (u16_t)(~(clr_flags) & 0xffff)); } while(0)
 #define netif_is_flag_set(netif, flag)        (((netif)->flags & (flag)) != 0)
 
 void netif_set_up(struct netif *netif);

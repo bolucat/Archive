@@ -240,7 +240,8 @@
           "systemProxyTrayIcon": "Sistem Vekil Tepsi Simgesi",
           "tunTrayIcon": "Tun Tepsi Simgesi",
           "enableTrayIcon": "Tepsi Simgesini Etkinleştir",
-          "enableTraySpeed": "Tepsi Hızını Etkinleştir"
+          "enableTraySpeed": "Tepsi Hızını Etkinleştir",
+          "pauseRenderTrafficStatsOnBlur": "Odak kaybolduğunda trafik istatistiklerinin işlenmesini duraklat"
         },
         "tooltips": {
           "hoverNavigator": "Automatically scroll to the corresponding proxy group when hovering over alphabet letters",
@@ -359,7 +360,7 @@
         "scheduleHelper": "Create local backups in the background at the configured interval.",
         "intervalLabel": "Backup frequency",
         "changeLabel": "Backup on critical changes",
-        "changeHelper": "Automatically back up when the global extend config/script or subscriptions are added, removed, or edited.",
+        "changeHelper": "Automatically backup when Global Extend Config/Script changes.",
         "options": {
           "hours": "Every {{n}} hours",
           "days": "Every {{n}} days"
@@ -428,7 +429,6 @@
         "update": "Güncelle"
       },
       "messages": {
-        "portableError": "Taşınabilir sürüm uygulama içi güncellemeleri desteklemez. Lütfen manuel olarak indirip değiştirin",
         "breakChangeError": "Bu sürüm büyük bir güncellemedir ve uygulama içi güncellemeleri desteklemez. Lütfen kaldırın ve yeni sürümü manuel olarak indirip kurun"
       }
     },
@@ -489,7 +489,7 @@
     "dns": {
       "dialog": {
         "title": "DNS Üzerine Yazma",
-        "warning": "Bu ayarlarla ilgili bilginiz yoksa, lütfen bunları değiştirmeyin ve DNS Üzerine Yazma'yı etkin tutun"
+        "warning": "Bu ayarlarla ilgili bilginiz yoksa, lütfen bunları değiştirmeyin ve DNS Üzerine Yazma'yı devre dışı tutun"
       },
       "sections": {
         "general": "DNS Ayarları",
@@ -501,6 +501,7 @@
         "listen": "DNS Dinleme",
         "enhancedMode": "Geliştirilmiş Mod",
         "fakeIpRange": "Sahte IP Aralığı",
+        "fakeIpRange6": "Sahte IP Aralığı (IPv6)",
         "fakeIpFilterMode": "Sahte IP Filtre Modu",
         "ipv6": {
           "label": "IPv6",
@@ -605,11 +606,6 @@
         "entryLightweightMode": "Hafif Moda Gir",
         "direct": "Doğrudan Mod",
         "reactivateProfiles": "Profilleri Yeniden Etkinleştir"
-      }
-    },
-    "password": {
-      "prompts": {
-        "enterRoot": "Lütfen root şifrenizi girin"
       }
     },
     "networkInterface": {

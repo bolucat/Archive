@@ -7,7 +7,7 @@ on:
   push:
     # -rc tag 时预览发布, 跳过 telegram 通知、跳过 winget 提交、跳过 latest.json 文件更新
     tags:
-      - "v*.*.*"
+      - 'v*.*.*'
 permissions: write-all
 env:
   CARGO_INCREMENTAL: 0
@@ -15,7 +15,7 @@ env:
   HUSKY: 0
 concurrency:
   # only allow per workflow per commit (and not pr) to run at a time
-  group: "${{ github.workflow }} - ${{ github.head_ref || github.ref }}"
+  group: '${{ github.workflow }} - ${{ github.head_ref || github.ref }}'
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -63,13 +63,38 @@ jobs:
 
           echo "✅ Tag and package.json version are consistent."
 
+  prepare_release:
+    name: Prepare Draft Release
+    runs-on: ubuntu-latest
+    needs: [check_tag_version]
+    outputs:
+      release_id: ${{ steps.prepare_release.outputs.id }}
+    steps:
+      - name: Create or update draft release
+        id: prepare_release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          target_commitish: ${{ github.sha }}
+          name: 'Clash Verge Rev ${{ github.ref_name }}'
+          body: 'Draft release, will be updated later.'
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: ${{ contains(github.ref_name, '-rc') }}
+
   update_tag:
     name: Update tag
     runs-on: ubuntu-latest
-    needs: [release, release-for-linux-arm, release-for-fixed-webview2]
+    needs:
+      [
+        prepare_release,
+        release,
+        release-for-linux-arm,
+        release-for-fixed-webview2,
+      ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
@@ -125,20 +150,38 @@ jobs:
           Created at ${{ env.BUILDTIME }}.
           EOF
 
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.TAG_NAME }}
-          name: "Clash Verge Rev ${{ env.TAG_NAME }}"
-          body_path: release.txt
-          draft: false
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          # generate_release_notes: true
+      - name: Publish Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ contains(github.ref_name, '-rc') }}
+        run: |
+          release_id="${{ needs.prepare_release.outputs.release_id }}"
+
+          if [ -z "$release_id" ]; then
+            echo "::error::No prepared release ID found for $TAG_NAME."
+            exit 1
+          fi
+
+          release_info=$(gh api repos/{owner}/{repo}/releases/"$release_id" --jq '[.tag_name, .draft, (.assets | length), .html_url] | @tsv')
+          IFS=$'\t' read -r release_tag _ asset_count release_url <<< "$release_info"
+
+          if [ "$release_tag" != "$TAG_NAME" ]; then
+            echo "::error::Prepared release $release_id belongs to $release_tag, expected $TAG_NAME."
+            exit 1
+          fi
+
+          echo "Publishing release $release_id ($release_url) with $asset_count assets."
+
+          gh api --method PATCH repos/{owner}/{repo}/releases/"$release_id" \
+            -f name="Clash Verge Rev $TAG_NAME" \
+            -F body=@release.txt \
+            -F draft=false \
+            -F prerelease="$PRERELEASE" \
+            --silent
 
   release:
     name: Release Build
-    needs: [check_tag_version]
+    needs: [prepare_release]
     strategy:
       fail-fast: false
       matrix:
@@ -157,12 +200,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91.0"
+          toolchain: '1.96.1'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -172,8 +215,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-          prefix-key: "v1-rust"
-          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           workspaces: |
             . -> target
           cache-all-crates: true
@@ -185,21 +228,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
-      - name: Install x86 OpenSSL (macOS only)
-        if: matrix.target == 'x86_64-apple-darwin'
-        run: |
-          arch -x86_64 brew install openssl@3
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$(brew --prefix openssl@3)/include" >> $GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$(brew --prefix openssl@3)/lib" >> $GITHUB_ENV
-          echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
-
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.0"
+          node-version: '24.18.0'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -212,15 +246,15 @@ jobs:
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
-          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.95.0 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
       - name: Tauri build
         # 上游 5.24 修改了 latest.json 的生成逻辑，且依赖 tauri-plugin-update 2.10.0 暂未发布，故锁定在 0.5.23 版本
-        uses: tauri-apps/tauri-action@v0.6.1
+        uses: tauri-apps/tauri-action@v1.0.0
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -231,18 +265,36 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
+          releaseId: ${{ needs.prepare_release.outputs.release_id }}
           tagName: ${{ github.ref_name }}
-          releaseName: "Clash Verge Rev ${{ github.ref_name }}"
-          releaseBody: "Draft release, will be updated later."
-          releaseDraft: true
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
+          releaseBody: 'Draft release, will be updated later.'
           tauriScript: pnpm
           args: --target ${{ matrix.target }}
           includeUpdaterJson: true
 
+      - name: Attest Windows bundles
+        if: matrix.os == 'windows-latest'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/nsis/*setup*
+
+      - name: Attest macOS bundles
+        if: matrix.os == 'macos-latest'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - name: Attest Linux bundles
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            target/${{ matrix.target }}/release/bundle/deb/*.deb
+            target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+
   release-for-linux-arm:
     name: Release Build for Linux ARM
-    needs: [check_tag_version]
+    needs: [prepare_release]
     strategy:
       fail-fast: false
       matrix:
@@ -256,12 +308,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91.0"
+          toolchain: '1.96.1'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -271,8 +323,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-          prefix-key: "v1-rust"
-          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           workspaces: |
             . -> target
           cache-all-crates: true
@@ -281,10 +333,10 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.0"
+          node-version: '24.18.0'
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           run_install: false
 
@@ -293,7 +345,7 @@ jobs:
           pnpm i
           pnpm run prebuild ${{ matrix.target }}
 
-      - name: "Setup for linux"
+      - name: 'Setup for linux'
         run: |-
           sudo ls -lR /etc/apt/
 
@@ -323,14 +375,14 @@ jobs:
             patchelf:${{ matrix.arch }} \
             librsvg2-dev:${{ matrix.arch }}
 
-      - name: "Install aarch64 tools"
+      - name: 'Install aarch64 tools'
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo apt install -y \
             gcc-aarch64-linux-gnu \
             g++-aarch64-linux-gnu
 
-      - name: "Install armv7 tools"
+      - name: 'Install armv7 tools'
         if: matrix.target == 'armv7-unknown-linux-gnueabihf'
         run: |
           sudo apt install -y \
@@ -340,7 +392,7 @@ jobs:
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
-          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.95.0 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
@@ -356,32 +408,29 @@ jobs:
           fi
           pnpm build --target ${{ matrix.target }}
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
-      - name: Get Version
-        run: |
-          sudo apt-get update
-          sudo apt-get install jq
-          echo "VERSION=$(cat package.json | jq '.version' | tr -d '"')" >> $GITHUB_ENV
-          echo "BUILDTIME=$(TZ=Asia/Shanghai date)" >> $GITHUB_ENV
-
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
+      - name: Attest Linux bundles
+        uses: actions/attest-build-provenance@v4
         with:
-          tag_name: v${{env.VERSION}}
-          name: "Clash Verge Rev v${{env.VERSION}}"
-          body: "See release notes for detailed changelog."
-          token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          files: |
+          subject-path: |
             target/${{ matrix.target }}/release/bundle/deb/*.deb
             target/${{ matrix.target }}/release/bundle/rpm/*.rpm
 
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            target/${{ matrix.target }}/release/bundle/deb/*.deb \
+            target/${{ matrix.target }}/release/bundle/rpm/*.rpm \
+            --clobber
+
   release-for-fixed-webview2:
     name: Release Build for Fixed WebView2
-    needs: [check_tag_version]
+    needs: [prepare_release]
     strategy:
       fail-fast: false
       matrix:
@@ -395,12 +444,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.91.0"
+          toolchain: '1.96.1'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -410,8 +459,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/dev' }}
-          prefix-key: "v1-rust"
-          key: "rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}"
+          prefix-key: 'v1-rust'
+          key: 'rust-shared-stable-${{ matrix.os }}-${{ matrix.target }}'
           workspaces: |
             . -> target
           cache-all-crates: true
@@ -420,9 +469,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.0"
+          node-version: '24.18.0'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -442,15 +491,14 @@ jobs:
       - name: Add Rust Target
         run: |
           # Ensure cross target is installed for the pinned toolchain; fallback without explicit toolchain if needed
-          rustup target add ${{ matrix.target }} --toolchain 1.91.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.95.0 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
       - name: Tauri build
-        id: build
-        uses: tauri-apps/tauri-action@v0.6.1
+        uses: tauri-apps/tauri-action@v1.0.0
         env:
-          NODE_OPTIONS: "--max_old_space_size=4096"
+          NODE_OPTIONS: '--max_old_space_size=4096'
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -478,15 +526,18 @@ jobs:
             Rename-Item $file.FullName $newName
           }
 
-      - name: Upload Release
-        uses: softprops/action-gh-release@v2
+      - name: Attest Windows bundles
+        uses: actions/attest-build-provenance@v4
         with:
-          tag_name: v${{steps.build.outputs.appVersion}}
-          name: "Clash Verge Rev v${{steps.build.outputs.appVersion}}"
-          body: "See release notes for detailed changelog."
-          token: ${{ secrets.GITHUB_TOKEN }}
-          prerelease: ${{ contains(github.ref_name, '-rc') }}
-          files: target/${{ matrix.target }}/release/bundle/nsis/*setup*
+          subject-path: target/${{ matrix.target }}/release/bundle/nsis/*setup*
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $files = Get-ChildItem "target\${{ matrix.target }}\release\bundle\nsis\*setup*" | Select-Object -ExpandProperty FullName
+          gh release upload "${{ github.ref_name }}" $files --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Portable Bundle
         run: pnpm portable-fixed-webview2 ${{ matrix.target }}
@@ -500,14 +551,14 @@ jobs:
     needs: [update_tag]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.0"
+          node-version: '24.18.0'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -526,14 +577,14 @@ jobs:
     needs: [update_tag]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.0"
+          node-version: '24.18.0'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false
@@ -553,7 +604,7 @@ jobs:
     needs: [update_tag, release-update]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Get Version
@@ -583,7 +634,7 @@ jobs:
       ]
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Fetch UPDATE logs
         id: fetch_update_logs
@@ -593,9 +644,9 @@ jobs:
       - name: Install Node
         uses: actions/setup-node@v6
         with:
-          node-version: "24.14.0"
+          node-version: '24.18.0'
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         name: Install pnpm
         with:
           run_install: false

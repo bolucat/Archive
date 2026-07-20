@@ -1,89 +1,108 @@
-import { useEffect } from "react";
-import useSWR from "swr";
+import { useEffect, useRef, useState } from 'react'
 
-import { getRunningMode, isAdmin, isServiceAvailable } from "@/services/cmds";
-import { showNotice } from "@/services/notice-service";
+import { getRunningMode, isAdmin, isServiceAvailable } from '@/services/cmds'
+import { showNotice } from '@/services/notice-service'
+import { useQuery } from '@/services/query-client'
 
-import { useVerge } from "./use-verge";
+import { useVerge } from './use-verge'
+import { useVisibility } from './use-visibility'
 
-export interface SystemState {
-  runningMode: "Sidecar" | "Service";
-  isAdminMode: boolean;
-  isServiceOk: boolean;
+interface SystemState {
+  runningMode: 'Sidecar' | 'Service'
+  isAdminMode: boolean
+  isServiceOk: boolean
 }
 
 const defaultSystemState = {
-  runningMode: "Sidecar",
+  runningMode: 'Sidecar',
   isAdminMode: false,
   isServiceOk: false,
-} as SystemState;
+} as SystemState
 
-let disablingTunMode = false;
+// Grace period for service initialization during startup
+const STARTUP_GRACE_MS = 10_000
 
 /**
  * 自定义 hook 用于获取系统运行状态
  * 包括运行模式、管理员状态、系统服务是否可用
  */
 export function useSystemState() {
-  const { verge, patchVerge } = useVerge();
+  const { verge, patchVerge } = useVerge()
+  const pageVisible = useVisibility()
+  const disablingTunRef = useRef(false)
+  const [isStartingUp, setIsStartingUp] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsStartingUp(false), STARTUP_GRACE_MS)
+    return () => clearTimeout(timer)
+  }, [])
 
   const {
-    data: systemState,
-    mutate: mutateSystemState,
+    data: systemState = defaultSystemState,
+    refetch: mutateSystemState,
     isLoading,
-  } = useSWR(
-    "getSystemState",
-    async () => {
+  } = useQuery({
+    queryKey: ['getSystemState'],
+    queryFn: async () => {
       const [runningMode, isAdminMode, isServiceOk] = await Promise.all([
         getRunningMode(),
         isAdmin(),
         isServiceAvailable(),
-      ]);
-      return { runningMode, isAdminMode, isServiceOk } as SystemState;
+      ])
+      return { runningMode, isAdminMode, isServiceOk } as SystemState
     },
-    {
-      suspense: true,
-      refreshInterval: 30000,
-      fallback: defaultSystemState,
-    },
-  );
+    refetchInterval: pageVisible ? (isStartingUp ? 2000 : 30000) : false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+  })
 
-  const isSidecarMode = systemState.runningMode === "Sidecar";
-  const isServiceMode = systemState.runningMode === "Service";
-  const isTunModeAvailable = systemState.isAdminMode || systemState.isServiceOk;
+  const isSidecarMode = systemState.runningMode === 'Sidecar'
+  const isServiceMode = systemState.runningMode === 'Service'
+  const isTunModeAvailable = systemState.isAdminMode || systemState.isServiceOk
 
-  const enable_tun_mode = verge?.enable_tun_mode;
+  const enable_tun_mode = verge?.enable_tun_mode
+  const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
-    if (enable_tun_mode === undefined) return;
+    if (enable_tun_mode === undefined) return
 
     if (
-      !disablingTunMode &&
+      !disablingTunRef.current &&
       enable_tun_mode &&
       !isTunModeAvailable &&
-      !isLoading
+      !isLoading &&
+      !isStartingUp
     ) {
-      disablingTunMode = true;
+      disablingTunRef.current = true
       patchVerge({ enable_tun_mode: false })
         .then(() => {
           showNotice.info(
-            "settings.sections.system.notifications.tunMode.autoDisabled",
-          );
+            'settings.sections.system.notifications.tunMode.autoDisabled',
+          )
         })
         .catch((err) => {
-          console.error("[useVerge] 自动关闭TUN模式失败:", err);
+          console.error('[useVerge] 自动关闭TUN模式失败:', err)
           showNotice.error(
-            "settings.sections.system.notifications.tunMode.autoDisableFailed",
-          );
+            'settings.sections.system.notifications.tunMode.autoDisableFailed',
+          )
         })
         .finally(() => {
-          const tid = setTimeout(() => {
-            // 避免 verge 数据更新不及时导致重复执行关闭 Tun 模式
-            disablingTunMode = false;
-            clearTimeout(tid);
-          }, 1000);
-        });
+          // 避免 verge 数据更新不及时导致重复执行关闭 Tun 模式
+          cooldownTimerRef.current = setTimeout(() => {
+            disablingTunRef.current = false
+            cooldownTimerRef.current = null
+          }, 1000)
+        })
     }
-  }, [enable_tun_mode, isTunModeAvailable, patchVerge, isLoading]);
+
+    return () => {
+      if (cooldownTimerRef.current != null) {
+        clearTimeout(cooldownTimerRef.current)
+        cooldownTimerRef.current = null
+        disablingTunRef.current = false
+      }
+    }
+  }, [enable_tun_mode, isTunModeAvailable, patchVerge, isLoading, isStartingUp])
 
   return {
     runningMode: systemState.runningMode,
@@ -94,5 +113,5 @@ export function useSystemState() {
     isTunModeAvailable,
     mutateSystemState,
     isLoading,
-  };
+  }
 }

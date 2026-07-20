@@ -422,7 +422,9 @@ ip4_input_accept(struct netif *netif, const struct ip_hdr *iphdr)
 #if LWIP_NETIF_LOOPBACK && !LWIP_HAVE_LOOPIF
         || (ip4_addr_get_u32(ip4_current_dest_addr()) == PP_HTONL(IPADDR_LOOPBACK))
 #endif /* LWIP_NETIF_LOOPBACK && !LWIP_HAVE_LOOPIF */
-        || (netif_is_flag_set(netif, NETIF_FLAG_PRETEND) && ((IPH_PROTO(iphdr) == IP_PROTO_TCP) || (IPH_PROTO(iphdr) == IP_PROTO_UDP)))
+        || (IPH_PROTO(iphdr) == IP_PROTO_TCP && netif_is_flag_set(netif, NETIF_FLAG_PRETEND_TCP))
+        || (IPH_PROTO(iphdr) == IP_PROTO_UDP && netif_is_flag_set(netif, NETIF_FLAG_PRETEND_UDP))
+        || (IPH_PROTO(iphdr) == IP_PROTO_ICMP && netif_is_flag_set(netif, NETIF_FLAG_PRETEND_ICMP))
        ) {
       LWIP_DEBUGF(IP_DEBUG, ("ip4_input: packet accepted on interface %c%c\n",
                              netif->name[0], netif->name[1]));

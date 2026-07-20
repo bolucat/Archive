@@ -459,6 +459,10 @@ gateway_init (void)
     netif_set_link_up (&netif);
     netif_set_default (&netif);
     netif_set_flags (&netif, NETIF_FLAG_PRETEND_TCP);
+    netif_set_flags (&netif, NETIF_FLAG_PRETEND_UDP);
+
+    if (hev_config_get_tunnel_icmp ())
+        netif_set_flags (&netif, NETIF_FLAG_PRETEND_ICMP);
 
     tcp = tcp_new_ip_type (IPADDR_TYPE_ANY);
     tcp_bind_netif (tcp, &netif);

@@ -30,11 +30,11 @@ require (
 	github.com/metacubex/mlkem v0.1.0
 	github.com/metacubex/quic-go v0.59.1-0.20260606115121-0662b57ad5bf
 	github.com/metacubex/randv2 v0.2.0
-	github.com/metacubex/restls-client-go v0.1.8
+	github.com/metacubex/restls-client-go v0.1.9
 	github.com/metacubex/sevenzip v1.6.4
 	github.com/metacubex/sing v0.5.7
 	github.com/metacubex/sing-mux v0.3.10
-	github.com/metacubex/sing-quic v0.0.0-20260527143057-68e10a6afdc3
+	github.com/metacubex/sing-quic v0.0.0-20260720020849-6c62e17225e8
 	github.com/metacubex/sing-shadowsocks v0.2.12
 	github.com/metacubex/sing-shadowsocks2 v0.2.7
 	github.com/metacubex/sing-tun v0.4.21

@@ -104,7 +104,7 @@ tcp_client_entry (void *data)
 
     tcp = hev_socks5_client_tcp_new_name ("www.google.com", 443);
     hev_socks5_client_connect (HEV_SOCKS5_CLIENT (tcp), "127.0.0.1", 1080);
-    hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (tcp));
+    hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (tcp), 0);
 
     /*
      * splice data to/from a socket fd:
@@ -121,7 +121,7 @@ udp_client_entry (void *data)
 
     udp = hev_socks5_client_udp_new (HEV_SOCKS5_TYPE_UDP_IN_TCP);
     hev_socks5_client_connect (HEV_SOCKS5_CLIENT (udp), "127.0.0.1", 1080);
-    hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (udp));
+    hev_socks5_client_handshake (HEV_SOCKS5_CLIENT (udp), 0);
 
     /*
      * HevSocks5UDPMsg msgv[num];

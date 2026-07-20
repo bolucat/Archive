@@ -222,10 +222,10 @@ export function parseListener(cfg) {
 		rule: cfg.rule,
 		proxy: cfg.proxy, // raw data need post-processing
 
-		/* HTTP / SOCKS / Mieru / VMess / VLESS / Trojan / AnyTLS / Tuic / Hysteria2 / ShadowQUIC / TrustTunnel */
-		users: (cfg.type in ['http', 'socks', 'mixed', 'vmess', 'vless', 'trojan', 'shadowquic', 'trusttunnel']) ? [
+		/* HTTP / SOCKS / Mieru / VMess / VLESS / Trojan / AnyTLS / Tuic / Hysteria2 / TrustTunnel */
+		users: (cfg.type in ['http', 'socks', 'mixed', 'vmess', 'vless', 'trojan', 'trusttunnel']) ? [
 			(cfg.username || cfg.vmess_uuid) ? {
-				/* HTTP / SOCKS / Trojan / ShadowQUIC / TrustTunnel */
+				/* HTTP / SOCKS / Trojan / TrustTunnel */
 				username: cfg.username,
 				password: cfg.password,
 
@@ -326,20 +326,28 @@ export function parseListener(cfg) {
 		"realm-name-pattern": cfg.hysteria2_realmserver_realm_name_pattern,
 
 		/* ShadowQUIC */
+		...(cfg.type === 'shadowquic' ? {
+			users: [
+				{
+					username: cfg.plugin_opts_thetlsusername,
+					password: cfg.plugin_opts_thetlspassword
+				}
+			]
+		} : {}),
 		"quic-versions": cfg.shadowquic_quic_versions,
 		"zero-rtt": strToBool(cfg.shadowquic_zero_rtt),
 		"jls-upstream": cfg.type === 'shadowquic' ? {
 			addr: cfg.plugin_opts_handshake_dest,
-			sni: cfg.tls_sni,
+			sni: cfg.plugin_opts_host,
 			proxy: cfg.plugin_opts_dest_proxy, // raw data need post-processing
 			"rate-limit": strToInt(cfg.plugin_opts_rate_limit),
 			"quic-version-probe": strToBool(cfg.plugin_opts_quic_version_probe)
 		} : null,
-		// @# cwnd: 10 # default: 32,
-		// @# max-datagram-frame-size: 1400,
-		// @# recv-window-conn: 0,
-		// @# recv-window: 0,
-		// @# disable-mtu-discovery: false,
+		cwnd: strToInt(cfg.shadowquic_cwnd),
+		"max-datagram-frame-size": strToInt(cfg.shadowquic_max_datagram_frame_size),
+		"recv-window-conn": strToInt(cfg.shadowquic_recv_window_conn),
+		"recv-window": strToInt(cfg.shadowquic_recv_window),
+		"disable-mtu-discovery": cfg.shadowquic_mtu_discovery === '0' ? true : null,
 
 		/* TrustTunnel */
 
@@ -397,7 +405,8 @@ export function parseListener(cfg) {
 					password: cfg.plugin_opts_thetlspassword,
 					"restls-script": cfg.plugin_opts_restls_script,
 					//"min-record-len": 0,
-					proxy: cfg.plugin_opts_dest_proxy // raw data need post-processing
+					proxy: cfg.plugin_opts_dest_proxy, // raw data need post-processing
+					"rate-limit": strToInt(cfg.plugin_opts_rate_limit)
 				}
 			} : cfg.plugin_type === 'jls' ? {
 			// jls
@@ -410,7 +419,7 @@ export function parseListener(cfg) {
 						}
 					],
 					dest: cfg.plugin_opts_handshake_dest,
-					sni: cfg.tls_sni,
+					sni: cfg.plugin_opts_host,
 					alpn: cfg.tls_alpn,
 					proxy: cfg.plugin_opts_dest_proxy, // raw data need post-processing
 					"rate-limit": strToInt(cfg.plugin_opts_rate_limit)

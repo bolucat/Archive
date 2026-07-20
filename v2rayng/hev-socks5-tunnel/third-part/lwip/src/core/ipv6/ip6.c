@@ -471,7 +471,9 @@ ip6_input_accept(struct netif *netif, const struct ip6_hdr *ip6hdr)
   /* interface is up? */
   if (netif_is_up(netif)) {
     u8_t i;
-    if (netif_is_flag_set(netif, NETIF_FLAG_PRETEND) && ((IP6H_NEXTH(ip6hdr) == IP6_NEXTH_TCP) || (IP6H_NEXTH(ip6hdr) == IP6_NEXTH_UDP))) {
+    if ((IP6H_NEXTH(ip6hdr) == IP6_NEXTH_TCP && netif_is_flag_set(netif, NETIF_FLAG_PRETEND_TCP)) ||
+        (IP6H_NEXTH(ip6hdr) == IP6_NEXTH_UDP && netif_is_flag_set(netif, NETIF_FLAG_PRETEND_UDP)) ||
+        (IP6H_NEXTH(ip6hdr) == IP6_NEXTH_ICMP6 && netif_is_flag_set(netif, NETIF_FLAG_PRETEND_ICMP))) {
       /* accept on this netif */
       return 1;
     }

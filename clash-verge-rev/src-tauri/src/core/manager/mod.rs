@@ -6,10 +6,19 @@ use anyhow::Result;
 use arc_swap::{ArcSwap, ArcSwapOption};
 use clash_verge_logger::AsyncLogger;
 use once_cell::sync::Lazy;
-use std::{fmt, sync::Arc, time::Instant};
+use std::{
+    fmt,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::Instant,
+};
 use tauri_plugin_shell::process::CommandChild;
 
 use crate::singleton;
+#[cfg(target_os = "windows")]
+use std::os::windows::io::OwnedHandle;
 
 pub(crate) static CLASH_LOGGER: Lazy<Arc<AsyncLogger>> = Lazy::new(|| Arc::new(AsyncLogger::new()));
 
@@ -34,6 +43,15 @@ impl fmt::Display for RunningMode {
 pub struct CoreManager {
     state: ArcSwap<State>,
     last_update: ArcSwapOption<Instant>,
+    #[cfg(target_os = "windows")]
+    job_handle: ArcSwapOption<OwnedHandle>,
+    config_update_in_progress: AtomicBool,
+    // 串行化 start/stop/restart 和 sidecar→service 交接。
+    // 锁序固定为 config_update_in_progress → lifecycle_lock。
+    lifecycle_lock: tokio::sync::Mutex<()>,
+    // sidecar→service 交接 watcher 单实例标志。
+    #[cfg(target_os = "windows")]
+    handoff_watcher_running: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -56,6 +74,12 @@ impl Default for CoreManager {
         Self {
             state: ArcSwap::new(Arc::new(State::default())),
             last_update: ArcSwapOption::new(None),
+            #[cfg(target_os = "windows")]
+            job_handle: ArcSwapOption::new(None),
+            config_update_in_progress: AtomicBool::new(false),
+            lifecycle_lock: tokio::sync::Mutex::new(()),
+            #[cfg(target_os = "windows")]
+            handoff_watcher_running: AtomicBool::new(false),
         }
     }
 }
@@ -93,6 +117,25 @@ impl CoreManager {
 
     pub fn set_last_update(&self, time: Instant) {
         self.last_update.store(Some(Arc::new(time)));
+    }
+
+    /// Replaces the Windows Job Object handle owned by the core manager
+    ///
+    /// Passing `None` drops the current handle, which closes the Job Object
+    /// and terminates its assigned processes due to `KILL_ON_JOB_CLOSE`.
+    ///
+    /// This method is currently only used on Windows.
+    #[cfg(target_os = "windows")]
+    fn set_job_handle(&self, handle: Option<OwnedHandle>) {
+        self.job_handle.store(handle.map(Arc::new));
+    }
+
+    fn try_start_config_update(&self) -> bool {
+        !self.config_update_in_progress.swap(true, Ordering::AcqRel)
+    }
+
+    fn finish_config_update(&self) {
+        self.config_update_in_progress.store(false, Ordering::Release);
     }
 
     pub async fn init(&self) -> Result<()> {

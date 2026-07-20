@@ -6,8 +6,9 @@ This is a branch of liblwip with a simple build system.
 
 ## Features
 
-* UDP: Allow receiving packets are not destined to localhost.
-* TCP: Allow accepting connections are not destined to localhost.
+* TCP: Allow accepting connections not destined for localhost.
+* UDP: Allow receiving packets not destined for localhost.
+* ICMP: Allow responding to requests not destined for localhost.
 
 ## Examples
 
@@ -64,7 +65,7 @@ gateway_init(void)
 
     udp = udp_new_ip_type (IPADDR_TYPE_ANY);
 
-    // Bind TCP to netif first
+    // Bind UDP to netif first
     udp_bind_netif (udp, &netif);
 
     // Bind to receive packets to other hosts
@@ -101,6 +102,18 @@ udp_recv_handler (void *arg, struct udp_pcb *pcb, struct pbuf *p,
     // Send with source address
     udp_sendfrom (pcb, p, real_src_ip, real_src_port);
     pbuf_free (p);
+}
+```
+
+### ICMP
+
+```c
+static void
+gateway_init(void)
+{
+    // ...
+    // Allow to pretend ICMP on this netif
+    netif_set_flags (&netif, NETIF_FLAG_PRETEND_ICMP);
 }
 ```
 

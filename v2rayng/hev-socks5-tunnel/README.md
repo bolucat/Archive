@@ -9,6 +9,7 @@ A simple, lightweight tunnel over Socks5 proxy (tun2socks).
 * IPv4/IPv6. (dual stack)
 * Redirect TCP connections.
 * Redirect UDP packets. (Fullcone NAT, UDP-in-UDP and UDP-in-TCP [^1])
+* Optional local ICMP Echo (ping) replies.
 * Linux/Android/FreeBSD/macOS/iOS/Windows.
 
 ## Benchmarks
@@ -95,6 +96,8 @@ tunnel:
   ipv4: 198.18.0.1
   # IPv6 address
   ipv6: 'fc00::1'
+  # ICMP Echo mode (off|reply)
+  icmp: 'off'
   # Post up script
 # post-up-script: up.sh
   # Pre down script
@@ -262,6 +265,8 @@ services:
       TUN: tun0 # optional, tun interface name, default `tun0`
       MTU: 8500 # optional, MTU is MTU, default `8500`
       IPV4: 198.18.0.1 # optional, tun interface ip, default `198.18.0.1`
+      IPV6: fc00::1 # optional, tun interface ip
+      ICMP: off # optional, ICMP Echo mode, default `off`, other option `reply`
       TABLE: 20 # optional, ip route table id, default `20`
       MARK: 438 # optional, ip route rule mark, dec or hex format, default `438`
       SOCKS5_ADDR: a.b.c.d # socks5 proxy server address
@@ -366,10 +371,7 @@ void hev_socks5_tunnel_stats (size_t *tx_packets, size_t *tx_bytes,
 ### Android VPN
 
 * [SocksTun](https://github.com/heiher/sockstun)
-
-### HarmonyOS NEXT
-
-* [Hey VPN](https://github.com/popsiclelmlm/Hey)
+* [Orbot](https://github.com/guardianproject/orbot-android)
 
 ### iOS
 

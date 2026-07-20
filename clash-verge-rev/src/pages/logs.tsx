@@ -2,11 +2,10 @@ import {
   PlayCircleOutlineRounded,
   PauseCircleOutlineRounded,
   SwapVertRounded,
-} from "@mui/icons-material";
-import { Box, Button, IconButton, MenuItem } from "@mui/material";
-import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { Virtuoso } from "react-virtuoso";
+} from '@mui/icons-material'
+import { Box, Button, IconButton, MenuItem } from '@mui/material'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   BaseEmpty,
@@ -14,29 +13,31 @@ import {
   BaseSearchBox,
   BaseStyledSelect,
   type SearchState,
-} from "@/components/base";
-import LogItem from "@/components/log/log-item";
-import { useClashLog } from "@/hooks/use-clash-log";
-import { useLogData } from "@/hooks/use-log-data";
+  VirtualList,
+  type VirtualListHandle,
+} from '@/components/base'
+import LogItem from '@/components/log/log-item'
+import { useClashLog } from '@/hooks/use-clash-log'
+import { useLogData } from '@/hooks/use-log-data'
 
 const LogPage = () => {
-  const { t } = useTranslation();
-  const [clashLog, setClashLog] = useClashLog();
-  const enableLog = clashLog.enable;
-  const logState = clashLog.logFilter;
-  const logOrder = clashLog.logOrder ?? "asc";
-  const isDescending = logOrder === "desc";
+  const { t } = useTranslation()
+  const [clashLog, setClashLog] = useClashLog()
+  const enableLog = clashLog.enable
+  const logState = clashLog.logFilter
+  const logOrder = clashLog.logOrder ?? 'asc'
+  const isDescending = logOrder === 'desc'
 
-  const [match, setMatch] = useState(() => (_: string) => true);
-  const [searchState, setSearchState] = useState<SearchState>();
+  const [match, setMatch] = useState(() => (_: string) => true)
+  const [searchState, setSearchState] = useState<SearchState>()
   const {
     response: { data: logData },
     refreshGetClashLog,
-  } = useLogData();
+  } = useLogData()
 
   const filterLogs = useMemo(() => {
     if (!logData || logData.length === 0) {
-      return [];
+      return []
     }
 
     // Server-side filtering handles level filtering via query parameters
@@ -44,55 +45,66 @@ const LogPage = () => {
     return logData.filter((data) => {
       // 构建完整的搜索文本，包含时间、类型和内容
       const searchText =
-        `${data.time || ""} ${data.type} ${data.payload}`.toLowerCase();
+        `${data.time || ''} ${data.type} ${data.payload}`.toLowerCase()
 
-      const matchesSearch = match(searchText);
+      const matchesSearch = match(searchText)
 
       return (
-        (logState == "all" ? true : data.type.includes(logState)) &&
+        (logState == 'all' ? true : data.type.includes(logState)) &&
         matchesSearch
-      );
-    });
-  }, [logData, logState, match]);
+      )
+    })
+  }, [logData, logState, match])
 
   const filteredLogs = useMemo(
     () => (isDescending ? [...filterLogs].reverse() : filterLogs),
     [filterLogs, isDescending],
-  );
+  )
 
-  const handleLogLevelChange = (newLevel: string) => {
-    setClashLog((pre: any) => ({ ...pre, logFilter: newLevel }));
-  };
+  const scrollRef = useRef({ isNearBottom: true })
+  const virtuosoRef = useRef<VirtualListHandle>(null)
+
+  useEffect(() => {
+    if (!isDescending && scrollRef.current.isNearBottom) {
+      virtuosoRef.current?.scrollToIndex(filteredLogs.length - 1, {
+        behavior: 'smooth',
+      })
+    }
+  }, [isDescending, filteredLogs.length])
+
+  const handleLogLevelChange = (newLevel: LogFilter) => {
+    setClashLog((pre) => ({ ...pre!, logFilter: newLevel }))
+  }
 
   const handleToggleLog = async () => {
-    setClashLog((pre: any) => ({ ...pre, enable: !enableLog }));
-  };
+    setClashLog((pre) => ({ ...pre!, enable: !enableLog }))
+  }
 
   const handleToggleOrder = () => {
-    setClashLog((pre: any) => ({
-      ...pre,
-      logOrder: pre.logOrder === "desc" ? "asc" : "desc",
-    }));
-  };
+    setClashLog((pre) => ({
+      ...pre!,
+      logOrder: pre!.logOrder === 'desc' ? 'asc' : 'desc',
+    }))
+  }
 
   return (
     <BasePage
       full
-      title={t("logs.page.title")}
+      title={t('logs.page.title')}
       contentStyle={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "auto",
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'auto',
       }}
       header={
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <IconButton
             title={t(
-              enableLog ? "shared.actions.pause" : "shared.actions.resume",
+              enableLog ? 'shared.actions.pause' : 'shared.actions.resume',
             )}
             aria-label={t(
-              enableLog ? "shared.actions.pause" : "shared.actions.resume",
+              enableLog ? 'shared.actions.pause' : 'shared.actions.resume',
             )}
             size="small"
             color="inherit"
@@ -107,13 +119,13 @@ const LogPage = () => {
           <IconButton
             title={t(
               isDescending
-                ? "logs.actions.showAscending"
-                : "logs.actions.showDescending",
+                ? 'logs.actions.showAscending'
+                : 'logs.actions.showDescending',
             )}
             aria-label={t(
               isDescending
-                ? "logs.actions.showAscending"
-                : "logs.actions.showDescending",
+                ? 'logs.actions.showAscending'
+                : 'logs.actions.showDescending',
             )}
             size="small"
             color="inherit"
@@ -121,8 +133,8 @@ const LogPage = () => {
           >
             <SwapVertRounded
               sx={{
-                transform: isDescending ? "scaleY(-1)" : "none",
-                transition: "transform 0.2s ease",
+                transform: isDescending ? 'scaleY(-1)' : 'none',
+                transition: 'transform 0.2s ease',
               }}
             />
           </IconButton>
@@ -131,10 +143,10 @@ const LogPage = () => {
             size="small"
             variant="contained"
             onClick={() => {
-              refreshGetClashLog(true);
+              refreshGetClashLog(true)
             }}
           >
-            {t("shared.actions.clear")}
+            {t('shared.actions.clear')}
           </Button>
         </Box>
       }
@@ -143,49 +155,53 @@ const LogPage = () => {
         sx={{
           pt: 1,
           mb: 0.5,
-          mx: "10px",
-          height: "39px",
-          display: "flex",
-          alignItems: "center",
+          mx: '10px',
+          height: '39px',
+          display: 'flex',
+          alignItems: 'center',
         }}
       >
         <BaseStyledSelect
           value={logState}
           onChange={(e) => handleLogLevelChange(e.target.value as LogFilter)}
         >
-          <MenuItem value="all">{t("shared.filters.logLevels.all")}</MenuItem>
+          <MenuItem value="all">{t('shared.filters.logLevels.all')}</MenuItem>
           <MenuItem value="debug">
-            {t("shared.filters.logLevels.debug")}
+            {t('shared.filters.logLevels.debug')}
           </MenuItem>
-          <MenuItem value="info">{t("shared.filters.logLevels.info")}</MenuItem>
-          <MenuItem value="warn">{t("shared.filters.logLevels.warn")}</MenuItem>
-          <MenuItem value="err">{t("shared.filters.logLevels.error")}</MenuItem>
+          <MenuItem value="info">{t('shared.filters.logLevels.info')}</MenuItem>
+          <MenuItem value="warn">{t('shared.filters.logLevels.warn')}</MenuItem>
+          <MenuItem value="err">{t('shared.filters.logLevels.error')}</MenuItem>
         </BaseStyledSelect>
         <BaseSearchBox
           onSearch={(matcher, state) => {
-            setMatch(() => matcher);
-            setSearchState(state);
+            setMatch(() => matcher)
+            setSearchState(state)
           }}
         />
       </Box>
 
       {filteredLogs.length > 0 ? (
-        <Virtuoso
-          initialTopMostItemIndex={isDescending ? 0 : 999}
-          data={filteredLogs}
-          style={{
-            flex: 1,
-          }}
-          itemContent={(index, item) => (
-            <LogItem value={item} searchState={searchState} />
+        <VirtualList
+          ref={virtuosoRef}
+          count={filteredLogs.length}
+          estimateSize={50}
+          renderItem={(i) => (
+            <LogItem value={filteredLogs[i]} searchState={searchState} />
           )}
-          followOutput={isDescending ? false : "smooth"}
+          onScroll={(event) => {
+            const element = event.currentTarget as HTMLDivElement
+            scrollRef.current.isNearBottom =
+              element.scrollHeight - element.scrollTop - element.clientHeight <=
+              20
+          }}
+          style={{ flex: 1 }}
         />
       ) : (
         <BaseEmpty />
       )}
     </BasePage>
-  );
-};
+  )
+}
 
-export default LogPage;
+export default LogPage

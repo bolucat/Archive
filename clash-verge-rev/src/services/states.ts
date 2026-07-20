@@ -1,16 +1,16 @@
-import { createContextState } from "foxact/create-context-state";
+import { createContextState } from 'foxact/create-context-state'
 
 const [ThemeModeProvider, useThemeMode, useSetThemeMode] = createContextState<
-  "light" | "dark"
->();
+  'light' | 'dark'
+>()
 
 // save the state of each profile item loading
 const [LoadingCacheProvider, useLoadingCache, useSetLoadingCache] =
-  createContextState<Record<string, boolean>>({});
+  createContextState<Set<string>>(new Set())
 
 // save update state
 const [UpdateStateProvider, useUpdateState, useSetUpdateState] =
-  createContextState<boolean>(false);
+  createContextState<boolean>(false)
 
 export {
   ThemeModeProvider,
@@ -22,4 +22,4 @@ export {
   UpdateStateProvider,
   useUpdateState,
   useSetUpdateState,
-};
+}
