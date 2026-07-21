@@ -40,10 +40,13 @@ export type Drive115OfflineTask = {
   status?: number
 }
 
-const getToken = (user_id: string) => UserDAL.GetUserToken(user_id)?.access_token
+const getToken = async (user_id: string) => {
+  const token = await UserDAL.EnsureUserTokenReady(user_id)
+  return token?.access_token || ''
+}
 
 const formRequest = async (user_id: string, path: string, fields: Record<string, string>) => {
-  const accessToken = getToken(user_id)
+  const accessToken = await getToken(user_id)
   if (!accessToken) throw new Error('请先登录 115 网盘')
   const body = new URLSearchParams(fields)
   const resp = await fetch(`${API_BASE}/${path}`, {
@@ -79,7 +82,7 @@ export const apiDrive115OfflineCreate = async (user_id: string, url: string, dir
 
 export const apiDrive115OfflineProcess = async (user_id: string, taskId: string): Promise<Drive115OfflineProcessResult> => {
   const result: Drive115OfflineProcessResult = { process: 0, status: 0, name: '', size: 0, error: '' }
-  const accessToken = getToken(user_id)
+  const accessToken = await getToken(user_id)
   if (!accessToken) return { ...result, error: '请先登录 115 网盘' }
   try {
     const first = await fetch115OfflineTasks(accessToken, 1)
@@ -116,7 +119,7 @@ const fetch115OfflineTasks = async (accessToken: string, page: number) => {
 }
 
 export const apiDrive115OfflineTasks = async (user_id: string) => {
-  const accessToken = getToken(user_id)
+  const accessToken = await getToken(user_id)
   if (!accessToken) return { tasks: [] as Drive115OfflineTask[], error: '' }
   try {
     const first = await fetch115OfflineTasks(accessToken, 1)
@@ -134,7 +137,7 @@ export const apiDrive115OfflineTasks = async (user_id: string) => {
 }
 
 export const apiDrive115OfflineQuota = async (user_id: string): Promise<{ items: Drive115OfflineQuota[]; error: string }> => {
-  const accessToken = getToken(user_id)
+  const accessToken = await getToken(user_id)
   if (!accessToken) return { items: [], error: '请先登录 115 网盘' }
   try {
     const resp = await fetch(`${API_BASE}/get_quota_info`, { headers: { Authorization: `Bearer ${accessToken}` } })

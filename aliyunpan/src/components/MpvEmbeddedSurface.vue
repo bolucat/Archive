@@ -57,6 +57,9 @@ const noticeText = ref('')
 const audioTrackId = ref(-1)
 const subtitleTrackId = ref(-1)
 let autoSelectedSubtitleTrackId: number | undefined
+let resumeGuardTarget = 0
+let resumeGuardUntil = 0
+let resumeGuardLastSeekAt = 0
 const secondarySubtitleTrackId = ref(-1)
 const subtitleDelay = ref(0)
 const subtitleScale = ref(1)
@@ -132,6 +135,7 @@ let controlsHideTimer: number | null = null
 let noticeTimer: number | null = null
 let lastPointerY: number | null = null
 let pendingResumePosition = 0
+let loadSequence = 0
 const CONTROLS_REVEAL_ZONE = 180
 const CONTROLS_HIDE_ZONE = 220
 const CONTROLS_DIRECTION_THRESHOLD = 2
@@ -426,8 +430,20 @@ const handleSurfacePointerLeave = () => {
 const updateStatus = async () => {
   const result = await window.WebMpvEmbeddedStatus?.()
   if (!result?.ok) return
-  emit('status', result.status)
+  const status = { ...result.status, __loading: !loaded.value }
+  emit('status', status)
   applyStatusResult(result)
+  if (
+    loaded.value
+    && resumeGuardTarget > 0
+    && Date.now() < resumeGuardUntil
+    && typeof position.value === 'number'
+    && position.value < resumeGuardTarget - 2
+    && Date.now() - resumeGuardLastSeekAt > 300
+  ) {
+    resumeGuardLastSeekAt = Date.now()
+    void control('seek', resumeGuardTarget)
+  }
 }
 
 const applyStatusResult = (result: any) => {
@@ -447,15 +463,31 @@ const applyStatusResult = (result: any) => {
   statusText.value = duration.value > 0 ? `${formatTime(position.value)} / ${formatTime(duration.value)}` : ''
   if (result.status?.playing || position.value > 0 || frameCount.value > 0) errorText.value = ''
   handleIntroOutroSkip()
-  if (pendingResumePosition > 0 && duration.value > 0 && loaded.value) {
-    const nextPosition = pendingResumePosition
-    pendingResumePosition = 0
-    void control('seek', nextPosition)
+}
+
+const restorePendingResumePosition = async (sequence: number) => {
+  const target = pendingResumePosition
+  if (target <= 0) return
+
+  // MPV accepts the seek command asynchronously. Do not clear the pending
+  // position until a later status confirms that the seek actually landed.
+  for (let attempt = 0; attempt < 8 && sequence === loadSequence; attempt++) {
+    await control('seek', target)
+    await new Promise(resolve => window.setTimeout(resolve, 100))
+    await updateStatus()
+    if (position.value >= Math.max(0, target - 2)) {
+      pendingResumePosition = 0
+      resumeGuardTarget = target
+      resumeGuardUntil = Date.now() + 6000
+      resumeGuardLastSeekAt = Date.now()
+      return
+    }
   }
 }
 
 const load = async () => {
   if (!props.url) return
+  const sequence = ++loadSequence
   if (!isAvailable.value) {
     const message = 'macOS 内嵌 MPV surface 尚不可用。'
     errorText.value = message
@@ -465,18 +497,28 @@ const load = async () => {
 
   loading.value = true
   loaded.value = false
+  resumeGuardTarget = 0
+  resumeGuardUntil = 0
+  resumeGuardLastSeekAt = 0
   autoSelectedSubtitleTrackId = undefined
   pendingResumePosition = props.startPosition && props.startPosition > 0 ? Math.floor(props.startPosition) : 0
   introSkipped.value = false
   outroTriggered.value = false
   errorText.value = ''
   const headers = Object.fromEntries(Object.entries(props.headers || {}).map(([key, value]) => [key, String(value)]))
+  console.info('[播放][MPV] 提交播放链接', {
+    url: props.url,
+    position: props.startPosition || 0,
+    hasAuthorization: Object.keys(headers).some((key) => key.toLowerCase() === 'authorization'),
+    userAgent: Object.entries(headers).find(([key]) => key.toLowerCase() === 'user-agent')?.[1] || ''
+  })
   const result = await window.WebMpvEmbeddedLoad({
     url: props.url,
     headers,
     title: props.title || '',
     startPosition: props.startPosition || 0
   })
+  if (sequence !== loadSequence) return
   loading.value = false
 
   if (!result?.ok) {
@@ -487,10 +529,14 @@ const load = async () => {
   }
 
   await updateStatus()
+  if (sequence !== loadSequence) return
   loaded.value = true
-  await control('play')
   await applySubtitleStyle()
   if (props.externalSubtitle?.url) await control('addSubtitle', undefined, { url: props.externalSubtitle.url, title: props.externalSubtitle.title || '自动字幕' })
+  // Subtitle setup may reload/reset the native stream. It must happen before
+  // the final seek; otherwise a successful resume can be overwritten by 0.
+  await control('play')
+  await restorePendingResumePosition(sequence)
 }
 
 const control = async (action: 'play' | 'pause' | 'stop' | 'seek' | 'setVolume' | 'setSpeed' | 'setAudioTrack' | 'setSubtitleTrack' | 'setSubtitleStyle' | 'setVideoProperty' | 'addAudio' | 'addSubtitle', value?: number, extra?: { url?: string; title?: string; property?: string; propertyValue?: string | number | boolean; style?: { fontSize?: number; color?: string; position?: number; bold?: boolean; italic?: boolean } }) => {
@@ -506,7 +552,8 @@ const control = async (action: 'play' | 'pause' | 'stop' | 'seek' | 'setVolume' 
     }
     return
   }
-  emit('status', result.status)
+  const status = { ...result.status, __loading: !loaded.value }
+  emit('status', status)
   applyStatusResult(result)
   if (action === 'stop') clearFrame()
 }
@@ -770,6 +817,7 @@ const openSubtitleSearchModal = () => {
   const keyword = ref(props.title || '')
   const language = ref('zh-cn')
   const loadingResults = ref(false)
+  const downloadingFileId = ref<number>()
   const error = ref('')
   const results = ref<SubtitleSearchResult[]>([])
   let modal: any
@@ -793,6 +841,7 @@ const openSubtitleSearchModal = () => {
 
   const loadSubtitle = async (subtitle: SubtitleSearchResult) => {
     loadingResults.value = true
+    downloadingFileId.value = subtitle.fileId
     error.value = ''
     try {
       const detail = await getSubtitleDownload(subtitle.fileId)
@@ -803,6 +852,7 @@ const openSubtitleSearchModal = () => {
       error.value = err?.message || '下载字幕失败'
     } finally {
       loadingResults.value = false
+      downloadingFileId.value = undefined
     }
   }
 
@@ -817,7 +867,7 @@ const openSubtitleSearchModal = () => {
       h('span', { class: 'mpv-subtitle-result-title' }, subtitle.name),
       h('span', { class: 'mpv-subtitle-result-meta' }, `${subtitle.language} · 下载 ${formatSubtitleDownloadCount(subtitle.downloadCount)}`)
     ]),
-    h('span', { class: 'mpv-subtitle-result-arrow' }, '↓')
+    h('span', { class: 'mpv-subtitle-result-arrow' }, downloadingFileId.value === subtitle.fileId ? '加载中' : '加载')
   ])
 
   const renderContent = () => {
@@ -840,14 +890,20 @@ const openSubtitleSearchModal = () => {
     content: () => h('div', { class: 'mpv-subtitle-modal' }, [
       h('div', { class: 'mpv-subtitle-modal-header' }, [
         h('button', { class: 'mpv-subtitle-modal-close', type: 'button', onClick: () => modal?.close?.() }, '×'),
-        h('div', { class: 'mpv-subtitle-modal-title' }, '在线字幕搜索')
+        h('div', { class: 'mpv-subtitle-modal-heading' }, [
+          h('div', { class: 'mpv-subtitle-modal-title' }, '在线字幕搜索'),
+          h('div', { class: 'mpv-subtitle-modal-subtitle' }, '按片名或 TMDB ID 查找并加载字幕')
+        ])
       ]),
       h('div', { class: 'mpv-subtitle-modal-searchbar' }, [
         h(Select, {
           class: 'mpv-subtitle-language-select',
           modelValue: language.value,
           triggerProps: { autoFitPopupMinWidth: true },
-          'onUpdate:modelValue': (value: unknown) => { language.value = toStringValue(value) }
+          'onUpdate:modelValue': (value: unknown) => {
+            language.value = toStringValue(value)
+            if (keyword.value.trim()) void runSearch()
+          }
         }, () => subtitleLanguages.map((item) => h(AOption, { value: item.code }, () => item.name))),
         h(Input, {
           class: 'mpv-subtitle-search-input',
@@ -865,7 +921,13 @@ const openSubtitleSearchModal = () => {
           onClick: runSearch
         }, () => '搜索')
       ]),
-      h('div', { class: 'mpv-subtitle-result-list' }, renderContent())
+      h('div', { class: 'mpv-subtitle-result-shell' }, [
+        h('div', { class: 'mpv-subtitle-result-toolbar' }, [
+          h('span', {}, loadingResults.value ? '正在搜索' : results.value.length ? `找到 ${results.value.length} 个字幕` : '搜索结果'),
+          h('span', {}, subtitleLanguages.find(item => item.code === language.value)?.name || '')
+        ]),
+        h('div', { class: 'mpv-subtitle-result-list' }, renderContent())
+      ])
     ])
   })
 }
@@ -886,6 +948,7 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  loadSequence++
   if (statusTimer != null) window.clearInterval(statusTimer)
   statusTimer = null
   if (noticeTimer != null) window.clearTimeout(noticeTimer)
@@ -1873,7 +1936,8 @@ watch(chapters, (nextChapters) => {
 }
 
 :global(.mpv-subtitle-search-modal .arco-modal) {
-  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 18px;
   background: rgba(11, 13, 18, .96);
   box-shadow: 0 28px 80px rgba(0, 0, 0, .56);
   overflow: hidden;
@@ -1885,18 +1949,18 @@ watch(chapters, (nextChapters) => {
 }
 
 :global(.mpv-subtitle-modal) {
-  min-height: 520px;
+  min-height: 560px;
   color: rgba(255, 255, 255, .9);
 }
 
 :global(.mpv-subtitle-modal-header) {
   display: flex;
-  height: 72px;
+  height: 68px;
   align-items: center;
   gap: 16px;
   padding: 0 24px;
   border-bottom: 1px solid rgba(255, 255, 255, .08);
-  background: radial-gradient(circle at 18% 0, rgba(79, 255, 158, .16), transparent 42%), linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(255, 255, 255, .02));
+  background: radial-gradient(circle at 18% 0, rgba(63, 131, 255, .14), transparent 42%), linear-gradient(180deg, rgba(255, 255, 255, .07), rgba(255, 255, 255, .02));
 }
 
 :global(.mpv-subtitle-modal-close) {
@@ -1912,34 +1976,64 @@ watch(chapters, (nextChapters) => {
 }
 
 :global(.mpv-subtitle-modal-title) {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: .02em;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+:global(.mpv-subtitle-modal-heading) {
+  display: grid;
+  gap: 3px;
+}
+
+:global(.mpv-subtitle-modal-subtitle) {
+  color: rgba(255, 255, 255, .46);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 :global(.mpv-subtitle-modal-searchbar) {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr) 110px;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 16px 20px 12px;
+}
+
+:global(.mpv-subtitle-result-shell) {
+  margin: 0 20px 20px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, .12);
+}
+
+:global(.mpv-subtitle-result-toolbar) {
+  display: flex;
+  height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  color: rgba(255, 255, 255, .48);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 :global(.mpv-subtitle-result-list) {
   display: grid;
   gap: 10px;
-  max-height: 380px;
-  padding: 0 24px 24px;
+  max-height: 390px;
+  padding: 10px;
   overflow: auto;
 }
 
 :global(.mpv-subtitle-result-row) {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 36px;
+  grid-template-columns: 54px minmax(0, 1fr) 52px;
   align-items: center;
   gap: 14px;
-  min-height: 68px;
+  min-height: 66px;
   border: 1px solid rgba(255, 255, 255, .1);
-  border-radius: 16px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, .045);
   color: inherit;
   cursor: pointer;
@@ -1947,16 +2041,16 @@ watch(chapters, (nextChapters) => {
 }
 
 :global(.mpv-subtitle-result-row:hover:not(:disabled)) {
-  border-color: rgba(122, 255, 170, .28);
-  background: rgba(122, 255, 170, .08);
+  border-color: rgba(63, 131, 255, .36);
+  background: rgba(63, 131, 255, .09);
 }
 
 :global(.mpv-subtitle-result-icon) {
   justify-self: end;
   border-radius: 999px;
   padding: 6px 8px;
-  background: rgba(122, 255, 170, .12);
-  color: rgba(183, 255, 207, .92);
+  background: rgba(63, 131, 255, .14);
+  color: rgba(153, 191, 255, .96);
   font-size: 11px;
   font-weight: 900;
 }
@@ -1982,9 +2076,9 @@ watch(chapters, (nextChapters) => {
 }
 
 :global(.mpv-subtitle-result-arrow) {
-  color: rgba(183, 255, 207, .84);
-  font-size: 18px;
-  font-weight: 900;
+  color: rgba(153, 191, 255, .96);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 :global(.mpv-subtitle-empty) {

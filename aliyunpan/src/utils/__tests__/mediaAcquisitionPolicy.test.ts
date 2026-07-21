@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getMediaAcquisitionCapability, normalizeMediaAcquisitionRootFolder, supportsMediaAcquisition } from '../../services/mediaAcquisition/capabilities'
-import { assessMediaAcquisitionEpisodeCoverage, canTryNextMediaAcquisitionCandidate, isMediaAcquisitionCandidateDiscoverable, isMediaAcquisitionCandidateEligible, isMediaAcquisitionCandidateGapFocused, isMediaAcquisitionCandidateSupported, isMediaAcquisitionCandidateTitleMatched, isMediaAcquisitionCandidateTransparent, isMediaAcquisitionCandidateYearCompatible, isSystemicMediaAcquisitionFailure, isTransientMediaAcquisitionFailure, mediaAcquisitionCandidateCoveragePlan, scoreMediaAcquisitionCandidate } from '../../services/mediaAcquisition/candidatePolicy'
+import { assessMediaAcquisitionEpisodeCoverage, canTryNextMediaAcquisitionCandidate, isMediaAcquisitionCandidateDiscoverable, isMediaAcquisitionCandidateEligible, isMediaAcquisitionCandidateGapFocused, isMediaAcquisitionCandidateSupported, isMediaAcquisitionCandidateTitleMatched, isMediaAcquisitionCandidateTransparent, isMediaAcquisitionCandidateYearCompatible, isSystemicMediaAcquisitionFailure, isTransientMediaAcquisitionFailure, mediaAcquisitionCandidateCoveragePlan, pickMediaAcquisitionFallbackCandidate, scoreMediaAcquisitionCandidate } from '../../services/mediaAcquisition/candidatePolicy'
 import { buildHistoricalGapPlans, selectHistoricalScanBatch } from '../../services/mediaAcquisition/historicalPolicy'
 import { buildMediaAcquisitionLeafPath, isMediaAcquisitionMatchingSidecar, isMediaAcquisitionPrimaryVideoName } from '../../services/mediaAcquisition/organizerPolicy'
 import { extractMediaAcquisitionEpisodeNumber, findMediaAcquisitionDuplicateEpisodes, selectRequestedEpisodeFiles } from '../../services/mediaAcquisition/duplicatePolicy'
@@ -35,6 +35,17 @@ describe('media acquisition provider policy', () => {
     expect(capability).toMatchObject({ shareImport: false, magnetOfflineDownload: true, externalUrlOfflineDownload: true })
     expect(isMediaAcquisitionCandidateSupported('115', capability, { kind: 'share', sourcePlatform: '115', title: 'Demo' })).toBe(false)
     expect(isMediaAcquisitionCandidateSupported('115', capability, { kind: 'magnet', sourcePlatform: 'magnet', title: 'Demo' })).toBe(true)
+  })
+
+  it('chooses the highest-scoring compatible 115 offline candidate when Agent selection is missing', () => {
+    const capability = getMediaAcquisitionCapability('115')!
+    const target = { targetPlatform: '115', title: '阿甘正传', year: 1994, preferredQuality: '1080p' }
+    const candidate = pickMediaAcquisitionFallbackCandidate(target, capability, [
+      { id: 'share', status: 'pending', kind: 'share', sourcePlatform: '115', title: '阿甘正传 1994 1080P' },
+      { id: 'low', status: 'pending', kind: 'magnet', sourcePlatform: 'magnet', title: '阿甘正传 1994 720P' },
+      { id: 'best', status: 'pending', kind: 'http', sourcePlatform: 'http', title: '阿甘正传 1994 1080P WEB-DL' }
+    ])
+    expect(candidate?.id).toBe('best')
   })
 
 
@@ -131,6 +142,15 @@ describe('media acquisition provider policy', () => {
   it('uses season and year fallback keywords for episodic media', () => {
     const keywords = buildMediaAcquisitionSearchKeywords({ mediaType: 'tv', title: '权力的游戏', alternativeTitles: ['Game of Thrones'], year: 2011, seasonNumber: 2, missingEpisodes: [4] })
     expect(keywords.map(item => item.keyword)).toEqual(['权力的游戏', 'Game of Thrones', '权力的游戏 S02E04', '权力的游戏 2011'])
+  })
+
+  it('ignores stale season coverage metadata for movie candidates', () => {
+    const target = { mediaType: 'movie' as const, seasonNumber: 1, missingEpisodes: [1, 2] }
+    const candidate = { kind: 'share' as const, sourcePlatform: 'quark', title: '千与千寻 2001 1080p' }
+    expect(buildMediaAcquisitionSearchKeywords({ ...target, title: '千与千寻', year: 2001 }).map(item => item.keyword)).toEqual(['千与千寻'])
+    expect(assessMediaAcquisitionEpisodeCoverage(target, candidate)).toEqual({ covers: true, matchedEpisodes: [], reason: '电影无需缺集覆盖判断' })
+    expect(mediaAcquisitionCandidateCoveragePlan(target, [{ id: 'movie', ...candidate }])).toEqual({ covered: true, candidateIds: [], remaining: [] })
+    expect(scoreMediaAcquisitionCandidate(target, candidate)).toBe(scoreMediaAcquisitionCandidate({ mediaType: 'movie' }, candidate))
   })
 
   it('keeps one cross-season task searchable and eligible one season at a time', () => {

@@ -8,7 +8,7 @@ const LS_AUTOSCAN = 'musicLibrary.autoScan'
 const LS_LASTSCAN = 'musicLibrary.lastScanAt'
 const LS_SUBTAB = 'musicLibrary.subTab'
 
-export type MusicSubTab = 'home' | 'all' | 'artists' | 'albums' | 'folders' | 'fav'
+export type MusicSubTab = 'home' | 'all' | 'artists' | 'albums' | 'folders' | 'fav' | 'server'
 
 const ARTIST_TITLE_RE = /^(.+?)\s*[-–—_]\s*(.+)$/
 const COMMON_BRACKETS = /[\(\[（【][^\)\]）】]*[\)\]）】]/g

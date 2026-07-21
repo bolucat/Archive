@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CircleAlert, Clock3, Download, LoaderCircle, RefreshCw, Trash2, X } from 'lucide-vue-next'
 import message from '../../utils/message'
-import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, cancelMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, listMediaAcquisitionRuns, selectMediaAcquisitionCandidate } from '../../services/mediaAcquisition/client'
+import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, clearCompletedMediaAcquisitionRuns, forceCancelMediaAcquisitionRun, listMediaAcquisitionRuns, selectMediaAcquisitionCandidate } from '../../services/mediaAcquisition/client'
 import type { MediaAcquisitionRunView } from '@shared/types/mediaAcquisition'
 import { createMediaAcquisitionCandidateInput } from '../../services/mediaAcquisition/shareExecutor'
 import { runMediaAcquisitionWorkflow } from '../../services/mediaAcquisition/workflowRunner'
@@ -22,7 +22,7 @@ const processingRuns = computed(() => runs.value.filter(run => ['searching', 'se
 const queuedRuns = computed(() => runs.value.filter(run => ['reserved', 'queued', 'retry_wait'].includes(run.status)))
 const completedRuns = computed(() => runs.value.filter(run => ['completed', 'partial', 'no_coverage', 'failed', 'cancelled'].includes(run.status)))
 const sourceRecoverableStatuses = new Set<MediaAcquisitionRunView['status']>(['partial', 'no_coverage', 'failed'])
-const cancelableStatuses = new Set<MediaAcquisitionRunView['status']>(['reserved', 'queued', 'searching', 'selecting', 'retry_wait'])
+const endableStatuses = new Set<MediaAcquisitionRunView['status']>(['reserved', 'queued', 'searching', 'selecting', 'transferring', 'verifying', 'organizing', 'retry_wait'])
 
 async function refresh() {
   loading.value = true
@@ -36,12 +36,22 @@ async function refresh() {
 }
 
 async function cancel(run: MediaAcquisitionRunView) {
-  const result = await cancelMediaAcquisitionRun(run.id)
-  if (!result || result.status !== 'cancelled') {
-    message.warning('该任务已进入外部转存或入库核验，当前无法安全取消')
+  const result = await forceCancelMediaAcquisitionRun(run.id)
+  await refresh()
+  const current = runs.value.find(item => item.id === run.id) || result
+  if (current?.status === 'cancelled') {
+    message.success('任务已强制结束')
     return
   }
-  await refresh()
+  if (current && completedRuns.value.some(item => item.id === current.id)) {
+    message.info(`任务已${current.status === 'completed' ? '完成' : '进入结束状态'}`)
+    return
+  }
+  message.warning('任务状态仍在处理中，请稍后重试')
+}
+
+function endActionLabel(status: MediaAcquisitionRunView['status']) {
+  return ['transferring', 'verifying', 'organizing'].includes(status) ? '强制结束' : '取消'
 }
 
 async function clearCompleted() {
@@ -130,9 +140,25 @@ function candidateStatusLabel(candidate: MediaAcquisitionRunView['candidates'][n
 function candidateHint(run: MediaAcquisitionRunView, candidate: MediaAcquisitionRunView['candidates'][number]) {
   if (candidate.lastError) return candidate.lastError
   const decision = [...(run.decisions || [])].reverse().find(item => item.candidateId === candidate.id && (item.decision === 'select' || item.decision === 'reject'))
-  if (decision?.reason) return decision.reason
+  if (decision?.reason) {
+    const normalize = (value: string) => value.replace(/[\s\u3000]+/g, '').toLowerCase()
+    const targetTitle = normalize(run.target.title)
+    // Older runs may contain an Agent-generated reason copied from another title.
+    // Do not expose it as if it were evidence for this task.
+    if (targetTitle.length >= 2 && !normalize(decision.reason).includes(targetTitle)) return `候选「${candidate.title}」与目标「${run.target.title}」匹配，详情以实际落盘核验为准。`
+    return decision.reason
+  }
   if (candidate.status === 'rejected') return 'Agent 已选择更匹配的候选，此资源暂不执行。'
   return ''
+}
+
+function eventMessage(run: MediaAcquisitionRunView, event: MediaAcquisitionRunView['events'][number]) {
+  const candidateId = typeof event.data?.candidateId === 'string' ? event.data.candidateId : undefined
+  if (event.phase === 'select' && event.data?.tool === 'transferCandidate' && candidateId && event.message.startsWith('Agent 决策：')) {
+    const candidate = run.candidates.find(item => item.id === candidateId)
+    if (candidate) return `Agent 决策：候选「${candidate.title}」与目标「${run.target.title}」匹配，详情以实际落盘核验为准。`
+  }
+  return event.message
 }
 
 function duplicateGroups(run: MediaAcquisitionRunView): MediaAcquisitionDuplicateGroup[] {
@@ -210,7 +236,7 @@ onBeforeUnmount(() => timer && clearInterval(timer))
           <div v-if="run.events.length" class="media-task-ticker">
             <div v-for="event in run.events.slice(-8).reverse()" :key="event.id" class="media-task-ticker-row" :class="event.level">
               <span class="media-task-ticker-phase">{{ phaseLabel(event.phase) }}</span>
-              <span class="media-task-ticker-message">{{ event.message }}</span>
+              <span class="media-task-ticker-message">{{ eventMessage(run, event) }}</span>
               <time>{{ formatTime(event.createdAt) }}</time>
             </div>
           </div>
@@ -226,7 +252,7 @@ onBeforeUnmount(() => timer && clearInterval(timer))
           </div>
           <div class="media-task-actions">
             <span>{{ formatTime(run.startedAt) }}</span>
-            <button v-if="cancelableStatuses.has(run.status)" type="button" @click="cancel(run)"><X :size="13" />取消</button>
+            <button v-if="endableStatuses.has(run.status)" type="button" @click="cancel(run)"><X :size="13" />{{ endActionLabel(run.status) }}</button>
           </div>
         </article>
       </section>
@@ -249,7 +275,7 @@ onBeforeUnmount(() => timer && clearInterval(timer))
           </div>
           <div class="media-task-actions">
             <span>{{ formatTime(run.startedAt) }}</span>
-            <button v-if="cancelableStatuses.has(run.status)" type="button" @click="cancel(run)"><X :size="13" />取消</button>
+            <button v-if="endableStatuses.has(run.status)" type="button" @click="cancel(run)"><X :size="13" />{{ endActionLabel(run.status) }}</button>
           </div>
         </article>
       </section>

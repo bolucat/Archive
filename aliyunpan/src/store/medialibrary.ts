@@ -79,6 +79,16 @@ const normalizeFolders = (folderList: MediaLibraryFolder[]): MediaLibraryFolder[
   })
 }
 
+export const syncMediaLibraryStoreFromStorage = (store: {
+  mediaItems: MediaLibraryItem[]
+  folders: MediaLibraryFolder[]
+  updateFilters: () => void
+}) => {
+  store.mediaItems = loadFromStorage(STORAGE_KEYS.MEDIA_ITEMS, [])
+  store.folders = normalizeFolders(loadFromStorage(STORAGE_KEYS.FOLDERS, []))
+  store.updateFilters()
+}
+
 export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   // 状态 - 从localStorage加载初始数据
   const mediaItems = ref<MediaLibraryItem[]>(loadFromStorage(STORAGE_KEYS.MEDIA_ITEMS, []))

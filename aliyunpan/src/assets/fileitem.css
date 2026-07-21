@@ -429,9 +429,18 @@ body[arco-theme='dark'] .griditem .select:hover {
     flex-grow: 0;
 }
 
-.gridicon i {
+.gridicon i,
+.gridicon .iconfont-svg {
     font-size: 56px;
     opacity: 0.75;
+}
+
+.griditem.image .gridicon .iconfont-svg {
+    font-size: 72px;
+}
+
+.griditem.bigimage .gridicon .iconfont-svg {
+    font-size: 96px;
 }
 
 .gridicon .iconfile-folder {

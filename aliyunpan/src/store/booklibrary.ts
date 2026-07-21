@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef } from 'vue'
 import type { IBookItem } from '../types/book'
 import type { IBookNote } from '../types/bookNote'
 import type { IBookBookmark } from '../types/bookBookmark'
@@ -15,6 +15,9 @@ const LS_SUBTAB = 'bookLibrary.subTab'
 const LS_MANAGER_SORT = 'bookLibrary.readerSort'
 const LS_MANAGER_SORT_ORDER = 'bookLibrary.readerSortOrder'
 const LS_VIEW_MODE = 'bookLibrary.readerViewMode'
+const BOOK_THUMBNAIL_HYDRATE_LIMIT = 72
+const BOOK_THUMBNAIL_HYDRATE_CONCURRENCY = 6
+const BOOK_PAGE_SIZE = 240
 
 export type BookSubTab = 'shelf' | 'all' | 'authors' | 'formats' | 'folders'
 
@@ -115,7 +118,13 @@ function withoutAliyunThumbnail(book: IBookItem): IBookItem {
 }
 
 const useBookLibraryStore = defineStore('booklibrary', () => {
-  const books = ref<IBookItem[]>([])
+  // Book records are replaced as whole items; proxying every field in a large library is unnecessary overhead.
+  const books = shallowRef<IBookItem[]>([])
+  const bookRecordCount = ref(0)
+  const deletedBookRecordCount = ref(0)
+  const loadedBookRecordCount = ref(0)
+  const isLoadingNextPage = ref(false)
+  const hydratedThumbnailIds = new Set<string>()
   const notesByBookId = ref<Record<string, IBookNote[]>>({})
   const bookmarksByBookId = ref<Record<string, IBookBookmark[]>>({})
   const loaded = ref(false)
@@ -148,21 +157,38 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
       return request
     }
 
-    for (const source of sourceBooks) {
-      const coverUrl = isAliyunThumbnail(source.cover_url) ? await resolveThumbnail(source.cover_url!, source.user_id) : source.cover_url
-      const thumbnail = isAliyunThumbnail(source.thumbnail) ? await resolveThumbnail(source.thumbnail!, source.user_id) : source.thumbnail
-      if (!coverUrl && !thumbnail) continue
-      const index = books.value.findIndex((book) => book.id === source.id)
-      if (index < 0) continue
-      books.value = books.value.map((book, currentIndex) => currentIndex === index ? { ...book, cover_url: coverUrl, thumbnail } : book)
+    const sources = sourceBooks
+      .filter((book) => !hydratedThumbnailIds.has(book.id) && (isAliyunThumbnail(book.cover_url) || isAliyunThumbnail(book.thumbnail)))
+      .slice(0, BOOK_THUMBNAIL_HYDRATE_LIMIT)
+    for (const book of sources) hydratedThumbnailIds.add(book.id)
+    const updates = new Map<string, Pick<IBookItem, 'cover_url' | 'thumbnail'>>()
+
+    for (let index = 0; index < sources.length; index += BOOK_THUMBNAIL_HYDRATE_CONCURRENCY) {
+      const batch = sources.slice(index, index + BOOK_THUMBNAIL_HYDRATE_CONCURRENCY)
+      const resolved = await Promise.all(batch.map(async (source) => {
+        const coverUrl = isAliyunThumbnail(source.cover_url) ? await resolveThumbnail(source.cover_url!, source.user_id) : source.cover_url
+        const thumbnail = isAliyunThumbnail(source.thumbnail) ? await resolveThumbnail(source.thumbnail!, source.user_id) : source.thumbnail
+        return { id: source.id, cover_url: coverUrl, thumbnail }
+      }))
+      for (const item of resolved) {
+        if (item.cover_url || item.thumbnail) updates.set(item.id, item)
+      }
+    }
+
+    if (updates.size) {
+      books.value = books.value.map((book) => {
+        const update = updates.get(book.id)
+        return update ? { ...book, ...update } : book
+      })
     }
   }
 
   const activeBooks = computed(() => books.value.filter((book) => !book.deleted_at))
   const deletedBooks = computed(() => books.value.filter((book) => !!book.deleted_at))
   const activeBookIds = computed(() => new Set(activeBooks.value.map((book) => book.id)))
-  const totalCount = computed(() => activeBooks.value.length)
-  const deletedCount = computed(() => deletedBooks.value.length)
+  const totalCount = computed(() => Math.max(0, bookRecordCount.value - deletedBookRecordCount.value))
+  const deletedCount = computed(() => deletedBookRecordCount.value)
+  const hasMoreBooks = computed(() => loadedBookRecordCount.value < bookRecordCount.value)
   const allHighlights = computed(() => Object.values(notesByBookId.value)
     .flat()
     .filter((note) => activeBookIds.value.has(note.book_id) && note.kind === 'highlight')
@@ -234,16 +260,41 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
       .sort((a, b) => b.scanned_at - a.scanned_at)
   })
 
+  async function refreshBookCounts() {
+    const counts = await DB.getBookItemCounts()
+    bookRecordCount.value = counts.total
+    deletedBookRecordCount.value = counts.deleted
+  }
+
+  async function loadNextPage(): Promise<boolean> {
+    if (isLoadingNextPage.value || !hasMoreBooks.value) return false
+    isLoadingNextPage.value = true
+    try {
+      const list = await DB.getBookItemsPage(loadedBookRecordCount.value, BOOK_PAGE_SIZE)
+      const fixed = list.map(ensureBookMeta)
+      const displayBooks = fixed.map(withoutAliyunThumbnail)
+      const updates = new Map(displayBooks.map((book) => [book.id, book]))
+      const loadedIds = new Set(books.value.map((book) => book.id))
+      books.value = [...books.value.map((book) => updates.get(book.id) || book), ...displayBooks.filter((book) => !loadedIds.has(book.id))]
+      loadedBookRecordCount.value += list.length
+      if (fixed.length) DB.saveBookItems(fixed).catch(() => {})
+      void hydrateAliyunThumbnails(fixed)
+      return fixed.length > 0
+    } finally {
+      isLoadingNextPage.value = false
+    }
+  }
+
+  async function loadAllBooks() {
+    while (hasMoreBooks.value && await loadNextPage()) {}
+  }
+
   async function loadFromDB() {
     if (loaded.value) return
     try {
-      const list = await DB.getAllBookItems()
-      const fixed = list.map(ensureBookMeta)
-      const displayBooks = fixed.map(withoutAliyunThumbnail)
-      books.value = displayBooks
+      await refreshBookCounts()
+      await loadNextPage()
       loaded.value = true
-      if (fixed.length) DB.saveBookItems(fixed).catch(() => {})
-      void hydrateAliyunThumbnails(fixed)
     } catch (e) {
       console.warn('bookLibrary loadFromDB failed', e)
     }
@@ -255,7 +306,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     scanFound.value = found
   }
 
-  async function appendBooks(newBooks: IBookItem[]) {
+  async function appendBooks(newBooks: IBookItem[], opts: { addToLoaded?: boolean } = {}) {
     if (!newBooks.length) return
     const existingById = new Map(books.value.map((book) => [book.id, book]))
     const normalized = newBooks
@@ -263,10 +314,21 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
       .filter((book) => !existingById.get(book.id)?.deleted_at)
     if (!normalized.length) return
     await DB.saveBookItems(normalized).catch(() => {})
-    const map = new Map<string, IBookItem>()
-    for (const b of books.value) map.set(b.id, b)
-    for (const b of normalized) map.set(b.id, b)
-    books.value = Array.from(map.values())
+    const existingByLoadedId = new Map(books.value.map((book) => [book.id, book]))
+    const updates = new Map<string, IBookItem>()
+    const additions: IBookItem[] = []
+    for (const b of normalized) {
+      if (existingByLoadedId.has(b.id)) updates.set(b.id, b)
+      else if (opts.addToLoaded !== false) additions.push(b)
+    }
+    if (updates.size || additions.length) books.value = [...books.value.map((book) => updates.get(book.id) || book), ...additions]
+    if (opts.addToLoaded !== false) {
+      books.value = []
+      loadedBookRecordCount.value = 0
+      hydratedThumbnailIds.clear()
+      await refreshBookCounts()
+      await loadNextPage()
+    }
   }
 
   async function updateBookMetadata(id: string, patch: Partial<IBookItem>) {
@@ -320,6 +382,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
 
   async function deleteBooksByIds(ids: string[]) {
     if (!ids || ids.length === 0) return 0
+    const deletedRecordIds = new Set(books.value.filter((book) => ids.includes(book.id) && book.deleted_at).map((book) => book.id))
     await Promise.all([
       DB.deleteBookNotesByBookIds(ids).catch(() => 0),
       DB.deleteBookBookmarksByBookIds(ids).catch(() => 0)
@@ -329,7 +392,10 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     notesByBookId.value = Object.fromEntries(Object.entries(notesByBookId.value).filter(([bookId]) => !idSet.has(bookId)))
     bookmarksByBookId.value = Object.fromEntries(Object.entries(bookmarksByBookId.value).filter(([bookId]) => !idSet.has(bookId)))
     removeBooksByIds(ids)
-    return deleted || ids.length
+    const removed = deleted || ids.length
+    bookRecordCount.value = Math.max(0, bookRecordCount.value - removed)
+    deletedBookRecordCount.value = Math.max(0, deletedBookRecordCount.value - deletedRecordIds.size)
+    return removed
   }
 
   async function moveBooksToTrash(ids: string[]) {
@@ -353,6 +419,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
         metadata_updated_at: deletedAt
       }
     })
+    deletedBookRecordCount.value += changed.length
     return changed.length
   }
 
@@ -375,6 +442,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
         metadata_updated_at: updatedAt
       }
     })
+    deletedBookRecordCount.value = Math.max(0, deletedBookRecordCount.value - changed.length)
     return changed.length
   }
 
@@ -560,9 +628,14 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     scanError.value = errMsg
   }
 
-  function markScanFinished() {
+  async function markScanFinished() {
     lastScanAt.value = Date.now()
     saveJson(LS_LASTSCAN, lastScanAt.value)
+    books.value = []
+    loadedBookRecordCount.value = 0
+    hydratedThumbnailIds.clear()
+    await refreshBookCounts()
+    await loadNextPage()
   }
 
   function setSubTab(t: BookSubTab) {
@@ -591,6 +664,10 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   async function clearAll() {
     await DB.clearBookItems().catch(() => {})
     books.value = []
+    bookRecordCount.value = 0
+    deletedBookRecordCount.value = 0
+    loadedBookRecordCount.value = 0
+    hydratedThumbnailIds.clear()
     notesByBookId.value = {}
     bookmarksByBookId.value = {}
     lastScanAt.value = 0
@@ -599,6 +676,8 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
 
   return {
     books,
+    hasMoreBooks,
+    isLoadingNextPage,
     activeBooks,
     deletedBooks,
     notesByBookId,
@@ -626,6 +705,8 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     byFormat,
     byFolder,
     loadFromDB,
+    loadNextPage,
+    loadAllBooks,
     setScanProgress,
     appendBooks,
     updateBookMetadata,

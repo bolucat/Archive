@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useAppStore } from '../store'
-import { getAIConfig } from '../utils/bookAI'
+import { getAIConfig, migrateSoleSavedBYOKAsDefault } from '../utils/bookAI'
 import { isBoxPlayerCloudProvider } from '../utils/boxplayerCloudAI'
 import { isLoggedIn, isPro } from '../utils/usageLimit'
 import AISearchAgent from './AISearchAgent.vue'
@@ -12,6 +12,7 @@ import { listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaA
 import type { WorkspaceDocumentContext } from './aisearch/useAISearchChat'
 
 const appStore = useAppStore()
+migrateSoleSavedBYOKAsDefault()
 const documentContext = ref<WorkspaceDocumentContext | null>(null)
 const activeView = ref<'chat' | 'mediaTasks' | 'tracking' | 'notifications'>('chat')
 const activeTaskCount = ref(0)

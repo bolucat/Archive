@@ -714,7 +714,7 @@ describe('Mineradio music UI shell', () => {
     expect(player).toContain('music-fx-color-row')
     expect(player).toContain('music-fx-toggle-grid')
     expect(player).toContain('music-fx-toggle')
-    expect(player).not.toContain('SoundEffectBtn')
+    expect(player).toContain('SoundEffectBtn')
     expect(player).not.toContain('setSleep')
     expect(player).not.toContain('sleepEndTrack')
 

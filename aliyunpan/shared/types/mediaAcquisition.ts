@@ -171,10 +171,11 @@ export interface MediaAcquisitionRunView extends MediaAcquisitionRun {
   decisions?: MediaAcquisitionDecision[]
 }
 
-export type MediaAcquisitionState = Pick<MediaAcquisitionRun, 'id' | 'status' | 'phase' | 'progress' | 'activity' | 'finishedAt'> & { mediaKey: string }
+export type MediaAcquisitionState = Pick<MediaAcquisitionRun, 'id' | 'status' | 'phase' | 'progress' | 'activity' | 'finishedAt'> & { mediaKey: string; title: string; mediaType: MediaAcquisitionTarget['mediaType']; targetUserId: string; targetDriveId: string; targetParentFileId: string }
 
 export interface CreateMediaAcquisitionRunInput {
   existingTargetId?: string
+  force?: boolean
   kind: MediaAcquisitionRunKind
   mediaLibraryItemId?: string
   tmdbId?: number

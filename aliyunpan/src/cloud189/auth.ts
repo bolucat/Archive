@@ -1,6 +1,7 @@
 import { HmacSHA1 } from 'crypto-js'
 import type { ITokenInfo } from '../user/userstore'
 import { CLOUD189_APP_ID } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 export { CLOUD189_APP_ID }
 
@@ -197,25 +198,28 @@ export const normalizeCloud189Token = (data: any): ITokenInfo => {
 }
 
 export const refreshCloud189Token = async (token: ITokenInfo): Promise<ITokenInfo | null> => {
-  if (!token.refresh_token) return null
-  const form = new URLSearchParams({
-    clientId: CLOUD189_APP_ID,
-    refreshToken: token.refresh_token,
-    grantType: 'refresh_token',
-    format: 'json'
+  const key = tokenRefreshKey('cloud189', token.user_id || token.device_id || token.refresh_token)
+  return withTokenRefreshLock(key, async () => {
+    if (!token.refresh_token) return null
+    const form = new URLSearchParams({
+      clientId: CLOUD189_APP_ID,
+      refreshToken: token.refresh_token,
+      grantType: 'refresh_token',
+      format: 'json'
+    })
+    const resp = await fetch(`${CLOUD189_AUTH_URL}/api/oauth2/refreshToken.do`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': CLOUD189_USER_AGENT },
+      body: form
+    })
+    const data = await resp.json().catch(() => undefined)
+    if (!resp.ok || !data?.accessToken) return null
+    const params = new URLSearchParams({ ...cloud189ClientSuffix(), appId: CLOUD189_APP_ID, accessToken: data.accessToken })
+    const sessionResp = await fetch(`${CLOUD189_API_URL}/getSessionForPC.action?${params.toString()}`, {
+      headers: { Accept: 'application/json;charset=UTF-8', 'User-Agent': CLOUD189_USER_AGENT }
+    })
+    const session = await sessionResp.json().catch(() => undefined)
+    if (!sessionResp.ok || Number(session?.res_code || 0) !== 0) return null
+    return normalizeCloud189Token({ ...data, ...session, refreshToken: data.refreshToken || token.refresh_token })
   })
-  const resp = await fetch(`${CLOUD189_AUTH_URL}/api/oauth2/refreshToken.do`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': CLOUD189_USER_AGENT },
-    body: form
-  })
-  const data = await resp.json().catch(() => undefined)
-  if (!resp.ok || !data?.accessToken) return null
-  const params = new URLSearchParams({ ...cloud189ClientSuffix(), appId: CLOUD189_APP_ID, accessToken: data.accessToken })
-  const sessionResp = await fetch(`${CLOUD189_API_URL}/getSessionForPC.action?${params.toString()}`, {
-    headers: { Accept: 'application/json;charset=UTF-8', 'User-Agent': CLOUD189_USER_AGENT }
-  })
-  const session = await sessionResp.json().catch(() => undefined)
-  if (!sessionResp.ok || Number(session?.res_code || 0) !== 0) return null
-  return normalizeCloud189Token({ ...data, ...session, refreshToken: data.refreshToken || token.refresh_token })
 }

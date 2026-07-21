@@ -54,6 +54,10 @@ export function cancelMediaAcquisitionRun(runId: string): Promise<MediaAcquisiti
   return terminalRun(invoke('mediaAcquisition:cancel', runId))
 }
 
+export function forceCancelMediaAcquisitionRun(runId: string): Promise<MediaAcquisitionRunView | null> {
+  return terminalRun(invoke('mediaAcquisition:forceCancel', runId))
+}
+
 export function beginMediaAcquisitionSearch(runId: string): Promise<MediaAcquisitionRunView | null> {
   return invoke('mediaAcquisition:beginSearch', runId)
 }

@@ -5,6 +5,8 @@ import useMusicPlayerStore, { type MusicPlayerState } from '../store/musicplayer
 import message from '../utils/message'
 import { TestAlt, TestKey, TestShift } from '../utils/keyboardhelper'
 import { getRawUrl } from '../utils/proxyhelper'
+import useMediaServerRegistryStore from '../store/mediaServerRegistry'
+import { getMediaServerPlaybackInfo } from '../media-server/contentGateway'
 import type { IPageMusicTrack } from '../store/appstore'
 import { fetchMusicMetadata, findActiveLineIndex, parseLrc, type LyricLine, type MusicMetadata } from '../utils/musicMetadata'
 import { bindAudio, ensureInit as initAudioEngine } from '../module/audioplayer/index'
@@ -18,6 +20,7 @@ import { fadeTo } from '../module/audioplayer/index'
 import MusicQueuePanel from './music/MusicQueuePanel.vue'
 import CustomLyricModal from '../components/radio/CustomLyricModal.vue'
 import CoverCropModal from '../components/radio/CoverCropModal.vue'
+import SoundEffectBtn from '../components/SoundEffectBtn.vue'
 import { DEFAULT_MUSIC_FX, MUSIC_FX_PRESETS, normalizeMusicFxConfig, parseMusicFxConfigJson, type MusicFxConfig } from '../utils/radio/FxConfig'
 import type { ShelfCard } from '../utils/radio/ShelfManager'
 import { deleteMineradioValue, getMineradioValue, setMineradioValue } from '../utils/radio/MineradioStorage'
@@ -33,6 +36,7 @@ const emit = defineEmits<{ (e: 'state-change', state: MusicPlayerState): void }>
 const appStore = useAppStore()
 const keyboardStore = useKeyboardStore()
 const musicPlayerStore = useMusicPlayerStore()
+const mediaServerRegistry = useMediaServerRegistryStore()
 
 keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
   if (TestAlt('f4', state.KeyDownEvent, handleHide)) return
@@ -821,6 +825,13 @@ async function resolveUrl(idx: number) {
   const t = playlist.value[idx]
   if (!t) return ''
   if (t.local_url) return t.local_url
+  if (t.media_server_id && t.media_server_item_id) {
+    mediaServerRegistry.ensureLoaded()
+    const config = mediaServerRegistry.servers.find((server) => server.id === t.media_server_id)
+    if (!config) throw new Error('媒体服务器配置不存在，请重新连接服务器')
+    const playback = await getMediaServerPlaybackInfo(config, t.media_server_item_id, t.media_server_source_id)
+    return playback.url
+  }
   const d = await getRawUrl(t.user_id, t.drive_id, t.file_id, t.encType || '', t.password || '', false, 'audio')
   if (typeof d === 'string') throw new Error(d || '获取地址失败')
   return d.url || ''
@@ -1162,7 +1173,7 @@ function emitState() {
 function loadPageMusic(d: any) {
   playlist.value = (d.playlist || []).slice()
   if (!playlist.value.length) playlist.value = [{ user_id: d.user_id, drive_id: d.drive_id, file_id: d.file_id, parent_file_id: d.parent_file_id, file_name: d.file_name, encType: d.encType, password: d.password }]
-  let idx = playlist.value.findIndex((t) => t.file_id === d.file_id)
+  let idx = playlist.value.findIndex((t) => t.file_id === d.file_id && t.drive_id === d.drive_id && t.user_id === d.user_id)
   if (idx < 0) idx = 0
   curIdx.value = idx
   loadIdx(idx, true)
@@ -1322,6 +1333,9 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       <button class="win-dot close" @click.stop="handleHide"></button>
       <button class="win-dot min" @click.stop="handleMin"></button>
       <button class="win-dot max" @click.stop="handleMax"></button>
+    </div>
+    <div class="mineradio-sound-effect">
+      <SoundEffectBtn />
     </div>
 
     <MusicImmersiveStage
@@ -1979,6 +1993,18 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
   background: var(--music-stage-bg);
   user-select: none;
   -webkit-font-smoothing: antialiased;
+}
+
+.mineradio-sound-effect {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  z-index: 12;
+}
+
+.mineradio-player.embedded .mineradio-sound-effect {
+  top: 10px;
+  right: 12px;
 }
 .control-glass-filter-svg {
   position: absolute;

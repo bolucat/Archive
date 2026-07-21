@@ -244,6 +244,30 @@ src/<provider>/
 - Auth pages should usually open in the system browser unless the provider explicitly requires an embedded flow.
 - App key / secret placeholder constants must be included in the generated-secrets flow, not committed as real values.
 
+## Cloud Download URL And Subtitle Contract
+
+Treat a cloud download URL and its request headers as one value. `ApiFileDownloadUrl` must return every provider-required header in `IDownloadUrl.headers`; callers must preserve those headers through playback, downloads, previews, and subtitles.
+
+| Provider | Download request requirements |
+|---|---|
+| Aliyun / Alipan | Signed CDN URL; Electron may add the Aliyun Referer/Origin for direct renderer requests. |
+| 115 | `Authorization: Bearer <account token>` and `DRIVE115_DOWN_AGENT`. The User-Agent used to consume the URL must match the one used to obtain it. Direct renderer playback must register URL-to-account auth context; never rely only on the currently selected account. |
+| Baidu | URL includes `access_token`; send `User-Agent: pan.baidu.com` and `Referer: https://pan.baidu.com/`. |
+| 123 | The returned signed download URL is self-authorizing; API Authorization is only for obtaining the URL. |
+| Quark | Account Cookie plus Quark download User-Agent, `Referer: https://pan.quark.cn/`, `Origin: https://pan.quark.cn`, and `x-urlp` when required by the OSS URL. |
+| 139 | `cloud139DownloadHeaders()`: provider User-Agent, Referer, and Origin. |
+| 189 | `cloud189DownloadHeaders()`: provider User-Agent and Referer. |
+| PikPak | Temporary download/stream URL returned by the provider. |
+| Dropbox / OneDrive | Temporary or pre-authenticated download URL returned by the provider. |
+| Box | Access token is encoded into the constructed download URL. |
+
+Subtitle rules:
+- Same-directory cloud subtitles must use `ApiFileDownloadUrl`; never fetch a guessed provider URL directly.
+- The web player and external players must use the subtitle-specific local proxy URL and pass `IDownloadUrl.headers` as `proxy_headers`.
+- The subtitle proxy must identify the account with `user_id` and the provider with `drive_id`; do not use a global/current-account token when an account-specific token is available.
+- Video streams remain direct URLs unless encryption requires the proxy. DLNA behavior is separate and must not be changed as part of subtitle or direct-play fixes.
+- Any provider download-header change requires regression coverage for both the video/download URL contract and same-directory subtitle loading.
+
 ## clouddrive-cli
 
 Standalone CLI + MCP server for agent-driven cloud-drive operations. Docs: `clouddrive-cli/README.md`. The CLI supports 8 providers and has its own npm package (`clouddrive-cli`). Separate test command: `pnpm run test:clouddrive-cli`.

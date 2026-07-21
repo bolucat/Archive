@@ -12,7 +12,7 @@ require (
 	github.com/golang/snappy v1.0.0
 	github.com/metacubex/age v0.0.0-20260603010618-28d156b4ea78
 	github.com/metacubex/amneziawg-go v0.0.0-20260612143004-19b4f1cdd5ec
-	github.com/metacubex/bart v0.26.0
+	github.com/metacubex/bart v0.29.0
 	github.com/metacubex/bbolt v0.0.0-20260706163408-d4ec34ad7c48
 	github.com/metacubex/blake3 v0.1.0
 	github.com/metacubex/chacha v0.1.5

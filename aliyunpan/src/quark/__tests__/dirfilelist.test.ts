@@ -84,6 +84,7 @@ describe('apiQuarkDownloadUrl', () => {
     expect(result.headers).toMatchObject({
       cookie: '__uid=u1; __kps=kps1',
       referer: 'https://pan.quark.cn/',
+      'x-urlp': '/video.mp4',
       'user-agent': expect.stringContaining('quark-cloud-drive/2.5.56')
     })
     const [url, init] = fetchMock.mock.calls[0]
@@ -119,30 +120,26 @@ describe('apiQuarkDownloadUrl', () => {
 })
 
 describe('apiQuarkVideoPreviewUrl', () => {
-  it('uses the Quark project playback API before falling back to the raw download URL', async () => {
+  it('uses the authenticated original download without calling the broken project playback API', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         status: 200,
-        data: {
-          size: 2048,
-          video_list: [{
-            resolution: 'high',
-            video_info: { url: 'https://play.quark.cn/video.m3u8', width: 1920, height: 1080, duration: 120, hls_type: 'm3u8' }
-          }]
-        }
+        data: [{ download_url: 'https://download.quark.cn/video.mkv', file_name: 'Movie.mkv', size: 4096 }]
       })
     })
     vi.stubGlobal('fetch', fetchMock)
 
     const result = await apiQuarkVideoPreviewUrl('quark_u1', 'fid-video')
 
-    expect(result).not.toBeTypeOf('string')
-    expect(result).toMatchObject({ duration: 120, qualities: [{ url: 'https://play.quark.cn/video.m3u8', type: 'm3u8' }] })
-    const [url, init] = fetchMock.mock.calls[0]
-    expect(String(url)).toContain('drive.quark.cn/1/clouddrive/file/v2/play/project')
-    expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toMatchObject({ fid: 'fid-video', supports: 'fmp4_av,m3u8,dolby_vision' })
+    expect(result).toMatchObject({
+      drive_id: 'quark',
+      file_id: 'fid-video',
+      size: 4096,
+      qualities: [{ html: '原画', quality: 'Origin', url: 'https://download.quark.cn/video.mkv', headers: { cookie: '__uid=u1; __kps=kps1' } }]
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/file/download?')
   })
 })
 

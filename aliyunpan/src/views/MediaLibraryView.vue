@@ -75,7 +75,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MediaLibraryNav from '../components/MediaLibraryNav.vue'
 import MediaLibrary from '../components/MediaLibrary.vue'
-import { useMediaLibraryStore } from '../store/medialibrary'
+import { syncMediaLibraryStoreFromStorage, useMediaLibraryStore } from '../store/medialibrary'
 import { usePanTreeStore } from '../store'
 import { MediaScanner } from '../utils/mediaScanner'
 import UserDAL from '../user/userdal'
@@ -605,8 +605,13 @@ const syncContinueWatchingFromStorage = () => {
 }
 
 const handleStorageSync = (event: StorageEvent) => {
-  if (event.key !== 'MediaLibrary_ContinueWatching') return
-  syncContinueWatchingFromStorage()
+  if (event.key === 'MediaLibrary_ContinueWatching') {
+    syncContinueWatchingFromStorage()
+    return
+  }
+  if (event.key === 'MediaLibrary_MediaItems' || event.key === 'MediaLibrary_Folders') {
+    syncMediaLibraryStoreFromStorage(mediaStore)
+  }
 }
 
 // 生命周期
@@ -615,6 +620,7 @@ const showResumeDialog = ref(false)
 const resumeInfo = ref<{ folderName: string; timestamp: number } | null>(null)
 
 const checkScanResume = () => {
+  if (mediaScanner.isCurrentlyScanning) return
   const cp = mediaScanner.getScanCheckpoint()
   if (cp) {
     resumeInfo.value = { folderName: cp.folderName, timestamp: cp.timestamp }

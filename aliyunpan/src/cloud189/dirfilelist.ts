@@ -110,7 +110,7 @@ export const apiCloud189FileList = async (user_id: string, parentId: string | nu
 }
 
 export const apiCloud189FileDetail = async (user_id: string, fileId: string): Promise<Cloud189FileItem | null> => {
-  if (fileId === 'cloud189_root' || fileId === '0' || fileId === '-11') return { id: '-11', name: '网盘文件', isFolder: true }
+  if (fileId === 'cloud189_root' || fileId === '0' || fileId === '-11') return { id: '-11', name: '根目录', isFolder: true }
   const list = await apiCloud189FileList(user_id, '-11')
   return list.find((item) => String(item.id || item.fileId || item.folderId) === String(fileId)) || null
 }

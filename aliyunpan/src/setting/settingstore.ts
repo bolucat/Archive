@@ -30,6 +30,7 @@ export interface SettingState {
   // 应用设置
   uiTheme: string
   uiDefaultTab: string
+  uiHiddenTopTabs: string[]
   uiImageMode: string
   uiExitOnClose: boolean
   uiLaunchAutoCheckUpdate: boolean
@@ -243,6 +244,7 @@ const setting: SettingState = {
   // 应用设置
   uiTheme: 'system',
   uiDefaultTab: 'pan',
+  uiHiddenTopTabs: [],
   uiImageMode: 'fill',
   uiExitOnClose: false,
   uiLaunchAutoCheckUpdate: false,
@@ -464,6 +466,7 @@ function _loadSetting(val: any) {
   // 应用设置
   setting.uiTheme = defaultValue(val.uiTheme, ['system', 'light', 'dark'])
   setting.uiDefaultTab = defaultValue(val.uiDefaultTab, ['pan', 'media', 'media-server', 'music'])
+  setting.uiHiddenTopTabs = Array.isArray(val.uiHiddenTopTabs) ? val.uiHiddenTopTabs.filter((tab: unknown) => typeof tab === 'string' && ['media-server', 'search', 'ai-workspace', 'media', 'music', 'book', 'share', 'rss'].includes(tab)) : []
   setting.uiImageMode = defaultValue(val.uiImageMode, ['fill', 'width', 'web'])
   setting.uiExitOnClose = defaultBool(val.uiExitOnClose, false)
   setting.uiLaunchAutoCheckUpdate = defaultBool(val.uiLaunchAutoCheckUpdate, false)

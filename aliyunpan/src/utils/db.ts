@@ -345,6 +345,22 @@ class XBYDB3 extends Dexie {
     return this.ibook_item.toArray()
   }
 
+  async getBookItemsPage(offset: number, limit: number): Promise<IBookItem[]> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.ibook_item.orderBy('scanned_at').reverse().offset(Math.max(0, offset)).limit(Math.max(1, limit)).toArray()
+  }
+
+  async getBookItemCounts(): Promise<{ total: number; deleted: number }> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    let total = 0
+    let deleted = 0
+    await this.ibook_item.each((book) => {
+      total++
+      if (book.deleted_at) deleted++
+    })
+    return { total, deleted }
+  }
+
   async deleteBookItemsByIds(ids: string[]): Promise<number> {
     if (!ids || ids.length === 0) return 0
     if (!this.isOpen()) await this.open().catch(() => {})

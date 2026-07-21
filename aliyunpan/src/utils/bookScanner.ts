@@ -142,7 +142,7 @@ class BookScanner {
     store.setScanProgress(`正在扫描 ${label}`, 0, 0)
     try {
       await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0)
-      store.markScanFinished()
+      await store.markScanFinished()
     } catch (e) {
       DebugLog.mSaveWarning('bookScanner.scanFolder failed: ' + (e as Error).message)
     } finally {
@@ -173,7 +173,7 @@ class BookScanner {
           DebugLog.mSaveWarning('bookScanner.scanUser failed: ' + (e as Error).message)
         }
       }
-      store.markScanFinished()
+      await store.markScanFinished()
     } finally {
       store.setIsScanning(false)
       this.isRunning = false
@@ -281,7 +281,7 @@ class BookScanner {
     counters.scanned += items.length
     const books = items.filter(isBookFile)
     if (books.length) {
-      await store.appendBooks(books.map((it) => bookFromAliModel(it, user_id, drive_id, parent_path)))
+      await store.appendBooks(books.map((it) => bookFromAliModel(it, user_id, drive_id, parent_path)), { addToLoaded: false })
       counters.found += books.length
     }
     store.setScanProgress(`正在扫描 ${label}`, counters.scanned, counters.found)

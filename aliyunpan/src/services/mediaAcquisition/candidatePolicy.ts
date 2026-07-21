@@ -4,7 +4,7 @@ import { getMediaAcquisitionCapability, normalizeMediaAcquisitionPlatform } from
 
 type CandidateLike = Pick<CreateMediaAcquisitionCandidateInput, 'kind' | 'sourcePlatform' | 'title' | 'detail'> | Pick<MediaAcquisitionCandidate, 'kind' | 'sourcePlatform' | 'title' | 'detail'>
 type RetryCandidateLike = CandidateLike & Pick<MediaAcquisitionCandidate, 'id' | 'status'>
-type ScoreTarget = Partial<Pick<MediaAcquisitionTarget, 'year' | 'seasonNumber' | 'missingEpisodes' | 'seasonTargets' | 'preferredQuality' | 'fetchSubtitles' | 'preferredLanguage' | 'title' | 'alternativeTitles'>>
+type ScoreTarget = Partial<Pick<MediaAcquisitionTarget, 'mediaType' | 'year' | 'seasonNumber' | 'missingEpisodes' | 'seasonTargets' | 'preferredQuality' | 'fetchSubtitles' | 'preferredLanguage' | 'title' | 'alternativeTitles'>>
 type EligibilityTarget = ScoreTarget & Pick<MediaAcquisitionTarget, 'targetPlatform'>
 
 const QUALITY_TOKENS: Array<{ tier: number; pattern: RegExp }> = [
@@ -32,6 +32,7 @@ export function isMediaAcquisitionCandidateSupported(targetPlatform: string, cap
 }
 
 export function assessMediaAcquisitionEpisodeCoverage(target: ScoreTarget, candidate: CandidateLike): { covers: boolean; matchedEpisodes: number[]; reason: string } {
+  if (target.mediaType === 'movie') return { covers: true, matchedEpisodes: [], reason: '电影无需缺集覆盖判断' }
   const seasonTargets = target.seasonTargets?.filter(item => Number.isInteger(item.seasonNumber) && item.seasonNumber > 0) || []
   if (seasonTargets.length > 1) {
     const matches = seasonTargets.map(item => ({ seasonNumber: item.seasonNumber, coverage: assessMediaAcquisitionEpisodeCoverage({ ...target, seasonTargets: undefined, seasonNumber: item.seasonNumber, missingEpisodes: item.missingEpisodes }, candidate) })).filter(item => item.coverage.covers)
@@ -77,6 +78,7 @@ export function assessMediaAcquisitionEpisodeCoverage(target: ScoreTarget, candi
 }
 
 export function mediaAcquisitionCandidateCoveragePlan(target: ScoreTarget, candidates: Array<CandidateLike & { id: string }>): { covered: boolean; candidateIds: string[]; remaining: Array<{ seasonNumber: number; missingEpisodes: number[] }> } {
+  if (target.mediaType === 'movie') return { covered: true, candidateIds: [], remaining: [] }
   const targets = target.seasonTargets?.length ? target.seasonTargets : target.missingEpisodes?.length ? [{ seasonNumber: target.seasonNumber || 1, missingEpisodes: target.missingEpisodes }] : []
   const remaining = new Map(targets.map(item => [item.seasonNumber, new Set(item.missingEpisodes.filter(episode => Number.isInteger(episode) && episode > 0))]))
   const selected: string[] = []
@@ -134,6 +136,12 @@ export function isMediaAcquisitionCandidateEligible(target: EligibilityTarget, c
   return isMediaAcquisitionCandidateSupported(target.targetPlatform, capability, candidate) && isMediaAcquisitionCandidateTitleMatched(target, candidate) && isMediaAcquisitionCandidateYearCompatible(target, candidate) && assessMediaAcquisitionEpisodeCoverage(target, candidate).covers
 }
 
+export function pickMediaAcquisitionFallbackCandidate(target: EligibilityTarget, capability: MediaAcquisitionCapability, candidates: RetryCandidateLike[]): RetryCandidateLike | undefined {
+  return candidates
+    .filter(candidate => candidate.status === 'pending' && isMediaAcquisitionCandidateEligible(target, capability, candidate))
+    .sort((left, right) => scoreMediaAcquisitionCandidate(target, right) - scoreMediaAcquisitionCandidate(target, left))[0]
+}
+
 /**
  * Keep recall deliberately broader than execution eligibility.  The sandbox
  * must be able to inspect an otherwise plausible package before deciding
@@ -176,7 +184,7 @@ export function scoreMediaAcquisitionCandidate(target: ScoreTarget, candidate: C
 
   if (target.fetchSubtitles !== false && target.preferredLanguage && target.preferredLanguage !== 'auto' && LANGUAGE_TOKENS[target.preferredLanguage]?.test(text)) score += 16
 
-  const seasonTargets = target.seasonTargets?.length ? target.seasonTargets : target.missingEpisodes?.length ? [{ seasonNumber: target.seasonNumber || 1, missingEpisodes: target.missingEpisodes }] : []
+  const seasonTargets = target.mediaType === 'movie' ? [] : target.seasonTargets?.length ? target.seasonTargets : target.missingEpisodes?.length ? [{ seasonNumber: target.seasonNumber || 1, missingEpisodes: target.missingEpisodes }] : []
   if (seasonTargets.length) {
     const matched = seasonTargets.reduce((count, target) => count + target.missingEpisodes.filter(episode => new RegExp(`S0?${target.seasonNumber}[ ._\\-]*E(?:P)?[ ._\\-]*0?${episode}(?!\\d)`, 'i').test(text)).length, 0)
     score += matched * 25

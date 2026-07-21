@@ -1,5 +1,6 @@
 import { ITokenInfo } from '../user/userstore'
 import { DRIVE115_APP_ID, DRIVE115_APP_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 export { DRIVE115_APP_ID, DRIVE115_APP_SECRET }
 
@@ -97,7 +98,7 @@ export const exchangeDeviceCode = async (uid: string, codeVerifier: string) => {
   return { data: data?.data || data, error: '' }
 }
 
-export const refresh115AccessToken = async (refreshToken: string) => {
+const refresh115AccessTokenInternal = async (refreshToken: string) => {
   const body = new URLSearchParams({ refresh_token: refreshToken })
   if (DRIVE115_APP_ID) body.set('client_id', DRIVE115_APP_ID)
   if (DRIVE115_APP_SECRET) body.set('client_secret', DRIVE115_APP_SECRET)
@@ -115,12 +116,15 @@ export const refresh115AccessToken = async (refreshToken: string) => {
   if (!payload?.access_token) return { error: '刷新 access_token 失败' }
   return {
     access_token: payload.access_token as string,
-    refresh_token: payload.refresh_token as string,
+    refresh_token: (payload.refresh_token || refreshToken) as string,
     expires_in: payload.expires_in as number,
     token_type: payload.token_type || 'Bearer',
     error: ''
   }
 }
+
+export const refresh115AccessToken = async (refreshToken: string) =>
+  withTokenRefreshLock(tokenRefreshKey('115', refreshToken), () => refresh115AccessTokenInternal(refreshToken))
 
 const hashString = (value: string): string => {
   let hash = 0

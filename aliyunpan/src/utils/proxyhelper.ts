@@ -13,12 +13,12 @@ import os from 'os'
 import DebugLog from './debuglog'
 import message from './message'
 import UserDAL, { UserTokenMap } from '../user/userdal'
-import Config from '../config'
 import { buildUpstreamProxyHeaders } from './proxyHeaders'
 import { MEDIA_SERVER_DRIVE_ID, shouldRefreshProxyUrl } from './proxyCache'
 import { isAliyunUser, isQuarkUser } from '../aliapi/utils'
 import { isWebDavDrive } from './webdavClient'
 import { QUARK_DOWNLOAD_AGENT, readQuarkCookieStringFromElectron } from '../quark/auth'
+import { DRIVE115_DOWN_AGENT } from '@shared/drive115'
 
 // 默认maxFreeSockets=256
 const httpsAgent = new HttpsAgent({ keepAlive: true })
@@ -278,7 +278,7 @@ export async function getRawUrl(
         data.url = downUrl.url
       }
       data.size = downUrl.size
-      const useQuarkSessionInterceptor = uiVideoPlayer === 'web' && !encType && (drive_id === 'quark' || isQuarkUser(user_id))
+      const useQuarkSessionInterceptor = (preview_type === 'video' || preview_type === 'audio') && uiVideoPlayer === 'web' && !encType && (drive_id === 'quark' || isQuarkUser(user_id))
       if (downUrl.headers && !useQuarkSessionInterceptor) data.headers = downUrl.headers
     } else {
       return downUrl as string
@@ -321,7 +321,7 @@ export async function createProxyServer(port: number) {
       let { uiVideoQuality, securityEncType, securityFileNameAutoDecrypt } = useSettingStore()
       let selectQuality = quality || uiVideoQuality
       let subtitle_url = ''
-      if (shouldRefreshProxyUrl({
+      if (proxy_kind !== 'mpv' && proxy_kind !== 'quark-download' && shouldRefreshProxyUrl({
         driveId,
         fileId,
         proxyUrl: String(proxyUrl || ''),
@@ -345,7 +345,7 @@ export async function createProxyServer(port: number) {
         clientRes.end()
         await Db.deleteValueObject('ProxyInfo')
         return
-      } else if (!proxyInfo && !isMediaServerProxy && proxy_kind !== 'subtitle') {
+      } else if (!proxyInfo && !isMediaServerProxy && proxy_kind !== 'subtitle' && proxy_kind !== 'mpv' && proxy_kind !== 'quark-download') {
         let info: FileInfo = {
           user_id, drive_id, file_id, file_size, encType,
           videoQuality: selectQuality,
@@ -388,7 +388,7 @@ export async function createProxyServer(port: number) {
         if (token?.access_token) {
           upstreamHeaders.authorization = `Bearer ${token.access_token}`
         }
-        upstreamHeaders['user-agent'] = Config.downAgent || upstreamHeaders['user-agent'] || clientReq.headers['user-agent'] || ''
+        upstreamHeaders['user-agent'] = DRIVE115_DOWN_AGENT
       }
       if (query.drive_id === 'quark' || isQuarkUser(String(query.user_id || ''))) {
         const token = await getQuarkProxyToken(String(query.user_id || ''))
@@ -411,6 +411,7 @@ export async function createProxyServer(port: number) {
         upstreamHeaders['sec-ch-ua-mobile'] = '?0'
         upstreamHeaders['sec-ch-ua-platform'] = '"macOS"'
         delete upstreamHeaders['content-type']
+        if (!upstreamHeaders.range) upstreamHeaders.range = 'bytes=0-'
         const urlPath = getQuarkUrlPath(String(proxyUrl || ''))
         if (urlPath) upstreamHeaders['x-urlp'] = urlPath
         const cookieKeys = getQuarkProxyCookieKeys(quarkCookie)

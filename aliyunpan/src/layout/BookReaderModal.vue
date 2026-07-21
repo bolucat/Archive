@@ -1461,6 +1461,7 @@ async function resolveSourceUrl(book: IBookItem): Promise<string> {
     file_id: book.file_id,
     file_size: rawData.size || book.size,
     proxy_url: rawData.url,
+    proxy_headers: JSON.stringify(rawData.headers || {}),
     content_disposition: 'inline',
     file_name: book.file_name
   })

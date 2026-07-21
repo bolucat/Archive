@@ -32,7 +32,8 @@ export class MediaAcquisitionDb {
     const existing = isGapRun && seasonTargets.length <= 1
       ? this.db.prepare(`SELECT r.* FROM media_acquisition_runs r JOIN media_acquisition_targets t ON t.id = r.target_id WHERE t.media_key = ? AND COALESCE(t.season_number, -1) = ? AND t.target_user_id = ? AND t.target_drive_id = ? AND t.target_parent_file_id = ? AND r.status NOT IN ('failed', 'cancelled', 'no_coverage', 'completed') ORDER BY r.started_at DESC LIMIT 1`).get(mediaKey, input.seasonNumber ?? -1, input.targetUserId, input.targetDriveId, input.targetParentFileId) as RunRow | undefined
       : this.db.prepare(`SELECT r.* FROM media_acquisition_runs r JOIN media_acquisition_targets t ON t.id = r.target_id WHERE t.media_key = ? AND t.target_user_id = ? AND t.target_drive_id = ? AND t.target_parent_file_id = ? AND r.status NOT IN ('failed', 'cancelled', 'no_coverage') ORDER BY r.started_at DESC LIMIT 1`).get(mediaKey, input.targetUserId, input.targetDriveId, input.targetParentFileId) as RunRow | undefined
-    if (existing) throw new Error(this.toRun(existing).status === 'completed' ? '该媒体已加入媒体库，不能重复获取' : '该媒体已有进行中的获取任务')
+    const existingStatus = existing ? this.toRun(existing).status : undefined
+    if (existing && !(input.force && (existingStatus === 'completed' || existingStatus === 'partial'))) throw new Error(existingStatus === 'completed' ? '该媒体已加入媒体库，不能重复获取' : '该媒体已有进行中的获取任务')
     const targetId = input.existingTargetId || randomUUID()
     const runId = randomUUID()
     const releaseAt = input.mediaType === 'movie' && isMediaAcquisitionMovieUnreleased(input.releaseDate, new Date(now)) ? mediaAcquisitionReleaseAt(input.releaseDate) : undefined
@@ -74,14 +75,18 @@ export class MediaAcquisitionDb {
   }
 
   listStates(): MediaAcquisitionState[] {
-    const rows = this.db.prepare(`SELECT r.*, t.media_key FROM media_acquisition_runs r JOIN media_acquisition_targets t ON t.id = r.target_id ORDER BY r.started_at DESC`).all() as RunRow[]
+    const rows = this.db.prepare(`SELECT r.*, t.media_key, t.title, t.media_type, t.target_user_id, t.target_drive_id, t.target_parent_file_id FROM media_acquisition_runs r JOIN media_acquisition_targets t ON t.id = r.target_id ORDER BY r.started_at DESC`).all() as RunRow[]
     const seen = new Set<string>()
     return rows.flatMap(row => {
       const mediaKey = String(row.media_key)
-      if (seen.has(mediaKey)) return []
-      seen.add(mediaKey)
+      const targetUserId = String(row.target_user_id)
+      const targetDriveId = String(row.target_drive_id)
+      const targetParentFileId = String(row.target_parent_file_id)
+      const stateKey = `${mediaKey}:${targetUserId}:${targetDriveId}:${targetParentFileId}`
+      if (seen.has(stateKey)) return []
+      seen.add(stateKey)
       const run = this.toRun(row)
-      return [{ id: run.id, mediaKey, status: run.status, phase: run.phase, progress: run.progress, activity: run.activity, finishedAt: run.finishedAt }]
+      return [{ id: run.id, mediaKey, title: String(row.title), mediaType: row.media_type as MediaAcquisitionState['mediaType'], targetUserId, targetDriveId, targetParentFileId, status: run.status, phase: run.phase, progress: run.progress, activity: run.activity, finishedAt: run.finishedAt }]
     })
   }
 
@@ -218,12 +223,37 @@ export class MediaAcquisitionDb {
 
   cancelRun(runId: string, now = Date.now()): MediaAcquisitionRunView | null {
     const run = this.getRun(runId)
-    if (!run || !['reserved', 'queued', 'searching', 'selecting', 'retry_wait'].includes(run.status)) return run
+    if (!run || TERMINAL_RUN_STATUSES.has(run.status)) return run
+    const endedAfterTransfer = ['transferring', 'verifying', 'organizing'].includes(run.status)
+    const eventMessage = endedAfterTransfer
+      ? '用户结束了媒体获取任务，停止后续转存核验。'
+      : '用户取消了媒体获取任务。'
+    const notificationMessage = endedAfterTransfer
+      ? '任务已结束，已停止后续转存核验。'
+      : '任务已取消，未进入外部转存。'
+    const activity = endedAfterTransfer ? '已结束' : '已取消'
     this.db.transaction(() => {
-      this.db.prepare("UPDATE media_acquisition_runs SET status = 'cancelled', phase = 'finalize', activity = '已取消', next_attempt_at = NULL, finished_at = ? WHERE id = ?").run(now, runId)
-      this.appendEvent(runId, 'info', 'finalize', '用户取消了尚未进入外部转存的媒体获取任务。', { previousStatus: run.status }, now)
+      this.db.prepare("UPDATE media_acquisition_runs SET status = 'cancelled', phase = 'finalize', activity = ?, next_attempt_at = NULL, worker_id = NULL, worker_lease_expires_at = NULL, finished_at = ? WHERE id = ?").run(activity, now, runId)
+      this.appendEvent(runId, 'info', 'finalize', eventMessage, { previousStatus: run.status, endedAfterTransfer }, now)
       const target = this.db.prepare('SELECT media_key, title FROM media_acquisition_targets WHERE id = ?').get(run.targetId) as TargetRow
-      this.db.prepare('INSERT INTO media_acquisition_notifications (id, run_id, media_key, title, status, message, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(randomUUID(), runId, String(target.media_key), String(target.title), 'cancelled', '任务已取消，未进入外部转存。', now)
+      this.db.prepare('INSERT INTO media_acquisition_notifications (id, run_id, media_key, title, status, message, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(randomUUID(), runId, String(target.media_key), String(target.title), 'cancelled', notificationMessage, now)
+    })()
+    return this.getRun(runId)
+  }
+
+  forceCancelRun(runId: string, now = Date.now()): MediaAcquisitionRunView | null {
+    const run = this.getRun(runId)
+    if (!run || TERMINAL_RUN_STATUSES.has(run.status)) return run
+    const endedAfterTransfer = ['transferring', 'verifying', 'organizing'].includes(run.status)
+    const eventMessage = endedAfterTransfer ? '用户强制结束了媒体获取任务，已阻止后续转存核验。' : '用户强制取消了媒体获取任务。'
+    const notificationMessage = endedAfterTransfer ? '任务已强制结束，已停止后续转存核验。' : '任务已强制取消，未进入外部转存。'
+    const activity = endedAfterTransfer ? '已强制结束' : '已强制取消'
+    this.db.transaction(() => {
+      const result = this.db.prepare("UPDATE media_acquisition_runs SET status = 'cancelled', phase = 'finalize', activity = ?, next_attempt_at = NULL, worker_id = NULL, worker_lease_expires_at = NULL, finished_at = ? WHERE id = ? AND status NOT IN ('completed', 'partial', 'no_coverage', 'failed', 'cancelled')").run(activity, now, runId)
+      if (!result.changes) return
+      this.appendEvent(runId, 'warning', 'finalize', eventMessage, { forced: true, previousStatus: run.status, endedAfterTransfer }, now)
+      const target = this.db.prepare('SELECT media_key, title FROM media_acquisition_targets WHERE id = ?').get(run.targetId) as TargetRow
+      this.db.prepare('INSERT INTO media_acquisition_notifications (id, run_id, media_key, title, status, message, read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?)').run(randomUUID(), runId, String(target.media_key), String(target.title), 'cancelled', notificationMessage, now)
     })()
     return this.getRun(runId)
   }
@@ -257,7 +287,7 @@ export class MediaAcquisitionDb {
     const retryNumber = run.searchAttemptCount + 1
     const retryAt = now + delayMs
     this.db.transaction(() => {
-      this.db.prepare("UPDATE media_acquisition_runs SET status = 'queued', phase = 'search', progress = 3, activity = ?, search_attempt_count = ?, next_attempt_at = ?, error_message = ? WHERE id = ?")
+      this.db.prepare("UPDATE media_acquisition_runs SET status = 'queued', phase = 'search', progress = 3, activity = ?, search_attempt_count = ?, next_attempt_at = ?, error_message = ? WHERE id = ? AND status = 'searching'")
         .run(`资源暂未可用，等待自动重试（${retryNumber}/${maxRetries}）`, retryNumber, retryAt, message, runId)
       this.appendEvent(runId, 'warning', 'search', `${message}，将在 ${Math.ceil(delayMs / 1000)} 秒后自动重试（${retryNumber}/${maxRetries}）。`, { retryNumber, maxRetries, retryAt, reason: message }, now)
     })()
@@ -297,7 +327,7 @@ export class MediaAcquisitionDb {
           id, run_id, kind, source_platform, title, detail, locator, locator_key, password, status, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(candidateId, runId, input.kind, input.sourcePlatform, input.title.trim(), input.detail ?? null, locator, locatorKey, input.password ?? null, now)
-      this.db.prepare("UPDATE media_acquisition_runs SET status = 'selecting', phase = 'select', progress = 15, activity = '已找到候选资源，等待确认导入', attempt_count = 0, next_attempt_at = NULL, finished_at = NULL, error_message = NULL WHERE id = ?").run(runId)
+      this.db.prepare("UPDATE media_acquisition_runs SET status = 'selecting', phase = 'select', progress = 15, activity = '已找到候选资源，等待确认导入', attempt_count = 0, next_attempt_at = NULL, finished_at = NULL, error_message = NULL WHERE id = ? AND status IN ('queued', 'searching', 'selecting', 'no_coverage', 'failed', 'partial')").run(runId)
       const candidateLabel = input.kind === 'magnet' ? '磁力' : input.kind === 'http' ? 'HTTP 外链' : input.sourcePlatform + ' 分享'
       this.appendEvent(runId, 'info', 'select', `已添加 ${candidateLabel}候选资源。`, { candidateId, kind: input.kind }, now)
     })()
@@ -411,7 +441,7 @@ export class MediaAcquisitionDb {
     if (!run || TERMINAL_RUN_STATUSES.has(run.status)) return run
     this.db.transaction(() => {
       this.db.prepare('UPDATE media_acquisition_candidates SET last_error = ?, updated_at = ? WHERE id = ? AND run_id = ?').run(message, now, candidateId, runId)
-      this.db.prepare("UPDATE media_acquisition_runs SET status = 'retry_wait', phase = 'verify', activity = ?, next_attempt_at = ?, attempt_count = attempt_count + 1, error_message = ? WHERE id = ?")
+      this.db.prepare("UPDATE media_acquisition_runs SET status = 'retry_wait', phase = 'verify', activity = ?, next_attempt_at = ?, attempt_count = attempt_count + 1, error_message = ? WHERE id = ? AND status IN ('verifying', 'retry_wait')")
         .run('网盘暂时不可用，等待重试', retryAt, message, runId)
       this.appendEvent(runId, 'warning', 'verify', message, { candidateId, retryAt }, now)
     })()
@@ -503,7 +533,7 @@ export class MediaAcquisitionDb {
       this.db.prepare('UPDATE media_acquisition_targets SET missing_episodes_json = ?, season_targets_json = ? WHERE id = (SELECT target_id FROM media_acquisition_runs WHERE id = ?)').run(JSON.stringify(primaryMissing), JSON.stringify(remaining), runId)
       this.db.prepare('INSERT INTO media_acquisition_decisions (id, run_id, candidate_id, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)')
         .run(randomUUID(), runId, candidateId, 'retry', message, now)
-      this.db.prepare("UPDATE media_acquisition_runs SET status = 'selecting', phase = 'select', progress = 35, activity = '已部分入库，继续补齐缺集', attempt_count = 0, next_attempt_at = NULL, finished_at = NULL, error_message = NULL WHERE id = ?").run(runId)
+      this.db.prepare("UPDATE media_acquisition_runs SET status = 'selecting', phase = 'select', progress = 35, activity = '已部分入库，继续补齐缺集', attempt_count = 0, next_attempt_at = NULL, finished_at = NULL, error_message = NULL WHERE id = ? AND status IN ('verifying', 'organizing')").run(runId)
       this.appendEvent(runId, 'warning', 'select', message, { candidateId, seasonTargets: remaining }, now)
     })()
     return this.getRun(runId)
@@ -526,7 +556,7 @@ export class MediaAcquisitionDb {
         this.db.prepare("UPDATE media_acquisition_candidates SET status = 'pending', selected_at = NULL, updated_at = ? WHERE run_id = ? AND status = 'rejected'").run(now, runId)
         this.db.prepare('INSERT INTO media_acquisition_decisions (id, run_id, candidate_id, decision, reason, created_at) VALUES (?, ?, ?, ?, ?, ?)')
           .run(randomUUID(), runId, candidateId, 'retry', `当前候选失败，继续尝试下一个候选：${message}`, now)
-        this.db.prepare("UPDATE media_acquisition_runs SET status = 'selecting', phase = 'select', progress = 25, activity = '当前资源失败，正在尝试下一个候选', attempt_count = 0, next_attempt_at = NULL, finished_at = NULL, error_message = NULL WHERE id = ?").run(runId)
+        this.db.prepare("UPDATE media_acquisition_runs SET status = 'selecting', phase = 'select', progress = 25, activity = '当前资源失败，正在尝试下一个候选', attempt_count = 0, next_attempt_at = NULL, finished_at = NULL, error_message = NULL WHERE id = ? AND status NOT IN ('completed', 'partial', 'no_coverage', 'failed', 'cancelled')").run(runId)
         this.appendEvent(runId, 'warning', 'select', `当前资源失败，已切换到下一个候选：${message}`, { candidateId, fallbackCandidateId: String(fallback.id) }, now)
         return
       }
@@ -604,7 +634,7 @@ export class MediaAcquisitionDb {
   }
 
   private updateRun(runId: string, status: MediaAcquisitionRunStatus, phase: MediaAcquisitionPhase, progress: number, activity: string, errorMessage: string | undefined, now: number): void {
-    this.db.prepare('UPDATE media_acquisition_runs SET status = ?, phase = ?, progress = ?, activity = ?, error_message = ?, finished_at = ? WHERE id = ?')
+    this.db.prepare("UPDATE media_acquisition_runs SET status = ?, phase = ?, progress = ?, activity = ?, error_message = ?, finished_at = ? WHERE id = ? AND status NOT IN ('completed', 'partial', 'no_coverage', 'failed', 'cancelled')")
       .run(status, phase, progress, activity, errorMessage ?? null, ['completed', 'partial', 'no_coverage', 'failed', 'cancelled'].includes(status) ? now : null, runId)
   }
 

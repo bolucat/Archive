@@ -14,6 +14,8 @@ import ipcEvent from './core/ipcEvent'
 import MotrixApplication from './aria/MotrixApplication'
 import { registerExternalDownloadProtocol } from './core/protocol'
 import { destroyDb } from './reedy/ReedyService'
+import { DRIVE115_DOWN_AGENT } from '@shared/drive115'
+import { Drive115PlaybackAuthRegistry } from './drive115PlaybackAuth'
 
 const OAUTH_PROTOCOLS = ['xbyboxplayer-oauth', 'boxplayer-onedriveoauth', 'boxplayer-auth']
 
@@ -25,23 +27,10 @@ type UserToken = {
   refresh: boolean
 }
 
-const DEFAULT_DOWN_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) aDrive/4.12.0 Chrome/108.0.5359.215 Electron/22.3.24 Safari/537.36'
 const QUARK_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36 Core/1.94.225.400 QQBrowser/12.2.5544.400'
 const QUARK_DOWNLOAD_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.56 Chrome/100.0.4896.160 Electron/18.3.5.12-a038f7b798 Safari/537.36 Channel/pckk_other_ch'
-const QUARK_OSS_DOWNLOAD_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0'
-
-const getUrlPath = (url: string) => {
-  try {
-    return new URL(url).pathname
-  } catch {
-    return ''
-  }
-}
-
 const getHeaderValue = (headers: Record<string, string | string[] | undefined>, name: string) => {
   const item = Object.entries(headers || {}).find(([key]) => key.toLowerCase() === name.toLowerCase())
   const value = item?.[1]
@@ -66,6 +55,7 @@ export default class launch extends EventEmitter {
     refresh: false
   }
   private quarkCookie = ''
+  private drive115PlaybackAuth = new Drive115PlaybackAuthRegistry()
   private pendingOAuthUrl: string | null = null
   public motrixApp!: MotrixApplication
 
@@ -195,16 +185,16 @@ export default class launch extends EventEmitter {
           }
         } catch (err) {
         }
-        session.defaultSession.webRequest.onBeforeSendHeaders((details, cb) => {
+        session.defaultSession.webRequest.onBeforeSendHeaders(async (details, cb) => {
           const shouldGieeReferer = details.url.indexOf('gitee.com') > 0
           const shouldBaidu = /baidu|baidupcs|bdstatic|bcebos/i.test(details.url)
           const should115 = /(^https?:\/\/[^/]*115\.com\/)/i.test(details.url) || /(^https?:\/\/[^/]*115cdn\.net\/)/i.test(details.url)
+          const drive115Auth = should115 ? this.drive115PlaybackAuth.resolve(details.url) : undefined
           const shouldBiliBili = details.url.indexOf('bilibili.com') > 0
           const shouldQQTv = details.url.indexOf('v.qq.com') > 0 || details.url.indexOf('video.qq.com') > 0
           const shouldQuark = /(^https?:\/\/[^/]*quark\.cn\/)/i.test(details.url)
-          const shouldQuarkDownload = shouldQuark && details.url.includes('drive-pc.quark.cn/1/clouddrive/file/download')
+          const shouldQuarkDownload = shouldQuark && /drive(?:-pc)?\.quark\.cn\/1\/clouddrive\/file\/download/.test(details.url)
           const shouldQuarkOssDownload = shouldQuark && /(^https?:\/\/[^/]*\.pds\.quark\.cn\/)/i.test(details.url)
-          const quarkUrlPath = shouldQuarkOssDownload ? getUrlPath(details.url) : ''
           const shouldAliPanOrigin =   details.url.indexOf('.aliyundrive.com') > 0 || details.url.indexOf('.alipan.com') > 0
           const shouldAliReferer = !shouldQuark && !shouldQQTv && !shouldBiliBili && !shouldGieeReferer && (!details.referrer || details.referrer.trim() === '' || /(\/localhost:)|(^file:\/\/)|(\/127.0.0.1:)/.exec(details.referrer) !== null)
           const shouldToken = shouldAliPanOrigin && details.url.includes('download')
@@ -214,8 +204,11 @@ export default class launch extends EventEmitter {
           const fallbackAccessToken = this.userToken?.access_token || ''
           const fallbackOpenApiToken = this.userToken?.open_api_access_token || ''
           const fallbackQuarkCookie = this.quarkCookie || (this.userToken?.tokenfrom === 'quark' ? fallbackAccessToken : '')
-          const quarkCookieHeader = shouldQuark && fallbackQuarkCookie
-            ? mergeCookieHeader(fallbackQuarkCookie, getHeaderValue(details.requestHeaders || {}, 'cookie'))
+          const quarkSessionCookie = shouldQuark
+            ? (await session.defaultSession.cookies.get({ url: 'https://pan.quark.cn' })).filter((cookie) => cookie.name && cookie.value).map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
+            : ''
+          const quarkCookieHeader = shouldQuark
+            ? mergeCookieHeader(fallbackQuarkCookie, mergeCookieHeader(quarkSessionCookie, getHeaderValue(details.requestHeaders || {}, 'cookie')))
             : ''
           const baseRequestHeaders = { ...details.requestHeaders }
           if (shouldQuark && quarkCookieHeader) {
@@ -237,11 +230,10 @@ export default class launch extends EventEmitter {
                 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36 Edg/121.0.0.0'
               }),
               ...(shouldQuark && {
-                Origin: 'https://pan.quark.cn',
-                Referer: 'https://pan.quark.cn/',
+                ...(!shouldQuarkOssDownload ? { Origin: 'https://pan.quark.cn' } : {}),
+                Referer: 'https://pan.quark.cn',
                 ...(quarkCookieHeader ? { Cookie: quarkCookieHeader } : {}),
-                ...(shouldQuarkOssDownload && quarkUrlPath ? { 'x-urlp': quarkUrlPath } : {}),
-                'user-agent': shouldQuarkOssDownload ? QUARK_OSS_DOWNLOAD_AGENT : shouldQuarkDownload ? QUARK_DOWNLOAD_AGENT : QUARK_AGENT
+                'user-agent': shouldQuarkDownload || shouldQuarkOssDownload ? QUARK_DOWNLOAD_AGENT : QUARK_AGENT
               }),
               ...(shouldAliReferer && {
                 Referer: 'https://www.aliyundrive.com/',
@@ -266,10 +258,11 @@ export default class launch extends EventEmitter {
                 'user-agent': 'SenPlayer'
               }),
               ...(should115 && {
-                ...(!hasAuthorizationHeader && this.userToken.tokenfrom === '115' && this.userToken.access_token
-                  ? { Authorization: `Bearer ${this.userToken.access_token}` }
+                ...(!hasAuthorizationHeader && (drive115Auth?.authorization || (this.userToken.tokenfrom === '115' && this.userToken.access_token))
+                  ? { Authorization: drive115Auth?.authorization || `Bearer ${this.userToken.access_token}` }
                   : {}),
-                'user-agent': DEFAULT_DOWN_AGENT
+                'user-agent': DRIVE115_DOWN_AGENT,
+                ...(drive115Auth?.userAgent ? { 'user-agent': drive115Auth.userAgent } : {})
               }),
               ...(shouldToken && !hasAuthorizationHeader && fallbackAccessToken && {
                 Authorization: fallbackAccessToken,
@@ -312,6 +305,13 @@ export default class launch extends EventEmitter {
   }
 
   handleUserToken() {
+    ipcMain.on('Drive115:RegisterPlaybackAuth', (_event, data) => {
+      const urls = Array.isArray(data?.urls) ? data.urls.filter((url: unknown): url is string => typeof url === 'string') : []
+      this.drive115PlaybackAuth.register(urls, {
+        authorization: typeof data?.authorization === 'string' ? data.authorization : '',
+        userAgent: typeof data?.userAgent === 'string' ? data.userAgent : DRIVE115_DOWN_AGENT
+      }, Number(data?.expiresAt) || undefined)
+    })
     ipcMain.on('WebUserToken', (event, data) => {
       if (data?.tokenfrom === 'quark' && data.access_token) {
         this.quarkCookie = data.access_token

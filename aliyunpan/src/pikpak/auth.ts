@@ -2,6 +2,7 @@ import { MD5 } from 'crypto-js'
 import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import { PIKPAK_CLIENT_ID, PIKPAK_CLIENT_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 const PIKPAK_API_HOST = 'https://api-drive.mypikpak.com'
 const PIKPAK_USER_HOST = 'https://user.mypikpak.com'
@@ -168,25 +169,28 @@ export const loginPikPak = async (username: string, password: string): Promise<I
 }
 
 export const refreshPikPakAccessToken = async (token: ITokenInfo): Promise<ITokenInfo | null> => {
-  if (!token.refresh_token) return null
-  const auth = await pikpakJson<PikPakAuthResp>(`${PIKPAK_USER_HOST}/v1/auth/token`, {
-    method: 'POST',
-    headers: buildHeaders(token.device_id),
-    body: JSON.stringify({
-      client_id: PIKPAK_CLIENT_ID,
-      refresh_token: token.refresh_token,
-      grant_type: 'refresh_token'
-    })
-  }, '刷新 PikPak Token 失败')
-  token.access_token = auth.access_token
-  token.refresh_token = auth.refresh_token || token.refresh_token
-  token.expires_in = Number(auth.expires_in || token.expires_in || 7200)
-  token.token_type = auth.token_type || token.token_type || 'Bearer'
-  token.user_id = token.user_id || `pikpak_${auth.sub || ''}`
-  token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
-  token.tokenfrom = 'pikpak'
-  token.default_drive_id = token.default_drive_id || 'pikpak'
-  return token
+  const key = tokenRefreshKey('pikpak', token.user_id || token.device_id || token.refresh_token)
+  return withTokenRefreshLock(key, async () => {
+    if (!token.refresh_token) return null
+    const auth = await pikpakJson<PikPakAuthResp>(`${PIKPAK_USER_HOST}/v1/auth/token`, {
+      method: 'POST',
+      headers: buildHeaders(token.device_id),
+      body: JSON.stringify({
+        client_id: PIKPAK_CLIENT_ID,
+        refresh_token: token.refresh_token,
+        grant_type: 'refresh_token'
+      })
+    }, '刷新 PikPak Token 失败')
+    token.access_token = auth.access_token
+    token.refresh_token = auth.refresh_token || token.refresh_token
+    token.expires_in = Number(auth.expires_in || token.expires_in || 7200)
+    token.token_type = auth.token_type || token.token_type || 'Bearer'
+    token.user_id = token.user_id || `pikpak_${auth.sub || ''}`
+    token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
+    token.tokenfrom = 'pikpak'
+    token.default_drive_id = token.default_drive_id || 'pikpak'
+    return token
+  })
 }
 
 export const apiPikPakAbout = async (token: ITokenInfo): Promise<any | null> => {

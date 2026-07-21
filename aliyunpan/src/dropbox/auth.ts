@@ -2,6 +2,7 @@ import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import { DROPBOX_APP_KEY, DROPBOX_APP_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 export { DROPBOX_APP_KEY, DROPBOX_APP_SECRET }
 
@@ -183,28 +184,32 @@ export const exchangeDropboxCodeForToken = async (code: string, appKey: string, 
 }
 
 export const refreshDropboxAccessToken = async (token: ITokenInfo): Promise<ITokenInfo | null> => {
-  const appKey = token.device_id || ''
-  if (!appKey || !token.refresh_token) return null
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: token.refresh_token,
-    client_id: appKey
+  const key = tokenRefreshKey('dropbox', token.user_id || token.device_id || token.refresh_token)
+  return withTokenRefreshLock(key, async () => {
+    const appKey = token.device_id || ''
+    if (!appKey || !token.refresh_token) return null
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: token.refresh_token,
+      client_id: appKey
+    })
+    if (DROPBOX_APP_SECRET.trim()) body.set('client_secret', DROPBOX_APP_SECRET.trim())
+    const data = await dropboxJson<any>(DROPBOX_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    }, '刷新 Dropbox Token 失败')
+    if (!data?.access_token) return null
+    token.access_token = data.access_token
+    if (data.refresh_token) token.refresh_token = data.refresh_token
+    token.expires_in = Number(data.expires_in || token.expires_in || 14400)
+    token.token_type = data.token_type || token.token_type || 'Bearer'
+    token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
+    token.tokenfrom = 'dropbox'
+    token.default_drive_id = token.default_drive_id || 'dropbox'
+    await applyDropboxAccount(token)
+    return token
   })
-  if (DROPBOX_APP_SECRET.trim()) body.set('client_secret', DROPBOX_APP_SECRET.trim())
-  const data = await dropboxJson<any>(DROPBOX_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  }, '刷新 Dropbox Token 失败')
-  if (!data?.access_token) return null
-  token.access_token = data.access_token
-  token.expires_in = Number(data.expires_in || token.expires_in || 14400)
-  token.token_type = data.token_type || token.token_type || 'Bearer'
-  token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
-  token.tokenfrom = 'dropbox'
-  token.default_drive_id = token.default_drive_id || 'dropbox'
-  await applyDropboxAccount(token)
-  return token
 }
 
 export const applyDropboxQuota = async (token: ITokenInfo): Promise<boolean> => {

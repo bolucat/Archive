@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { MediaAcquisitionDb } from '../../mediaAcquisition/MediaAcquisitionDb'
+import { MediaAcquisitionDb } from '../../mediaAcquisition/MediaAcquisitionDb.ts'
 
 const tempDirs: string[] = []
 
@@ -32,7 +32,7 @@ describe('MediaAcquisitionDb', () => {
     db.close()
   })
 
-  it('cancels runs before they enter external transfer and records an auditable event', () => {
+  it('cancels runs before transfer and ends runs that are already being verified', () => {
     const db = createDb()
     const run = db.createRun({
       kind: 'movie', mediaType: 'movie', title: '示例电影', targetUserId: 'user-1', targetDriveId: 'drive-1', targetPlatform: 'aliyun', targetParentFileId: 'movies', trackingEnabled: false
@@ -56,7 +56,14 @@ describe('MediaAcquisitionDb', () => {
     }, 4000)
     const candidate = db.addCandidate(transferring.id, { kind: 'share', sourcePlatform: 'aliyun', title: '转存中电影', locator: 'https://www.alipan.com/s/transferring' }, 4100)!.candidates[0]
     db.updateCandidateStatus(transferring.id, candidate.id, 'transferring', 4200)
-    expect(db.cancelRun(transferring.id, 4300)).toMatchObject({ status: 'transferring', finishedAt: undefined })
+    db.recordExternalTask(transferring.id, candidate.id, 'guangya-task-1', undefined, '等待光鸭云盘完成', 4250)
+    const ended = db.cancelRun(transferring.id, 4300)!
+    expect(ended).toMatchObject({ status: 'cancelled', finishedAt: 4300, activity: '已结束' })
+    expect(ended.events.at(-1)).toMatchObject({ phase: 'finalize', message: expect.stringContaining('结束') })
+    expect(db.listNotifications()).toContainEqual(expect.objectContaining({ title: '转存中电影', status: 'cancelled', message: '任务已结束，已停止后续转存核验。' }))
+    expect(db.listRunnableRuns(10, 5000).some(item => item.id === transferring.id)).toBe(false)
+    db.updateCandidateStatus(transferring.id, candidate.id, 'transferring', 4350)
+    expect(db.getRun(transferring.id)?.status).toBe('cancelled')
     db.close()
   })
 
@@ -116,7 +123,10 @@ describe('MediaAcquisitionDb', () => {
     expect(db.listStates()).toEqual([expect.objectContaining({ mediaKey: 'movie:tmdb:42', status: 'completed', progress: 100 })])
     expect(db.listNotifications()).toEqual([expect.objectContaining({ title: '示例电影', status: 'completed', message: '入库完成，已加入媒体库', read: false })])
     expect(() => db.createRun(input, 1500)).toThrow('不能重复获取')
-    expect(db.createRun({ ...input, kind: 'patrol' }, 1600)).toMatchObject({ kind: 'patrol', status: 'queued' })
+    const repeated = db.createRun({ ...input, force: true }, 1600)
+    expect(repeated).toMatchObject({ status: 'queued' })
+    db.forceCancelRun(repeated.id, 1700)
+    expect(db.createRun({ ...input, kind: 'patrol' }, 1800)).toMatchObject({ kind: 'patrol', status: 'queued' })
     db.close()
   })
 
@@ -370,13 +380,14 @@ describe('MediaAcquisitionDb', () => {
     db.close()
   })
 
-  it('isolates active missing-season tasks by target drive and folder', () => {
+  it('isolates active missing-season tasks by cloud-drive account and target directory', () => {
     const db = createDb()
     const base = {
       kind: 'missing' as const, tmdbId: 301, mediaType: 'tv' as const, title: 'Multi Drive Show', seasonNumber: 1, missingEpisodes: [2], trackingEnabled: true
     }
     db.createRun({ ...base, targetUserId: 'user-a', targetDriveId: 'drive-a', targetPlatform: '115', targetParentFileId: 'shows-a' }, 1000)
-    expect(() => db.createRun({ ...base, targetUserId: 'user-a', targetDriveId: 'drive-a', targetPlatform: '115', targetParentFileId: 'shows-a' }, 1100)).toThrow('进行中的获取任务')
+    expect(db.createRun({ ...base, targetUserId: 'user-a', targetDriveId: 'drive-a', targetPlatform: '115', targetParentFileId: 'shows-b' }, 1100)).toMatchObject({ status: 'queued' })
+    expect(() => db.createRun({ ...base, targetUserId: 'user-a', targetDriveId: 'drive-a', targetPlatform: '115', targetParentFileId: 'shows-b' }, 1150)).toThrow('进行中的获取任务')
     expect(db.createRun({ ...base, targetUserId: 'user-b', targetDriveId: 'drive-b', targetPlatform: 'cloud123', targetParentFileId: 'shows-b' }, 1200)).toMatchObject({ status: 'queued' })
     db.close()
   })

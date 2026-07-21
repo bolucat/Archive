@@ -52,7 +52,7 @@ export default defineConfig(({ command }) => {
             if (process.env.VSCODE_DEBUG) {
               console.log(/* For `.vscode/.debug.script.mjs` */ '[startup] Electron App')
             } else {
-              startup()
+          startup(['.', '--no-sandbox', '--remote-debugging-port=9223'])
             }
           },
           vite: {

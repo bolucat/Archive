@@ -18,6 +18,18 @@ import { BOXPLAYER_SITE_URL, fetchBoxPlayerSubscription, getBoxPlayerSupabase } 
 
 const platform = window.platform
 const settingStore = useSettingStore()
+const topTabOptions = [
+  { key: 'media-server', label: '媒体服务器' }, { key: 'search', label: '搜索' }, { key: 'ai-workspace', label: 'AI 工作台' },
+  { key: 'media', label: '视频' }, { key: 'music', label: '音乐' }, { key: 'book', label: '书籍' },
+  { key: 'share', label: '分享' }, { key: 'rss', label: '插件' }
+]
+
+function toggleTopTab(key: string, hidden: boolean) {
+  const tabs = new Set(settingStore.uiHiddenTopTabs || [])
+  if (hidden) tabs.add(key)
+  else tabs.delete(key)
+  cb({ uiHiddenTopTabs: Array.from(tabs) })
+}
 
 const isPro = ref(false)
 const isLoggedIn = ref(false)
@@ -407,6 +419,10 @@ const handleImportAsar = () => {
         <a-radio tabindex='-1' value='light'>浅色模式</a-radio>
         <a-radio tabindex='-1' value='dark'>深色模式</a-radio>
       </a-radio-group>
+    </div>
+    <div class='settingrow'>
+      <span style='margin-right: 12px'>隐藏顶部标签</span>
+      <a-checkbox v-for='tab in topTabOptions' :key='tab.key' :checked='settingStore.uiHiddenTopTabs.includes(tab.key)' @update:model-value='(hidden: boolean) => toggleTopTab(tab.key, hidden)'>{{ tab.label }}</a-checkbox>
     </div>
     <div class='settingspace'></div>
     <div class='settinghead'>默认启动 Tab</div>

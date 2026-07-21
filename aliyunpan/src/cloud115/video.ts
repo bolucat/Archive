@@ -3,6 +3,7 @@ import message from '../utils/message'
 import { DRIVE115_DOWN_AGENT } from './constants'
 import { apiDrive115FileDetailResult } from './filecmd'
 import { mapDrive115SubtitleItems, type Drive115SubtitleSource } from './subtitle'
+import { registerDrive115PlaybackAuth } from './playbackAuth'
 
 export { mapDrive115SubtitleItems } from './subtitle'
 
@@ -83,6 +84,7 @@ export const apiDrive115VideoPlay = async (user_id: string, pick_code: string): 
     }
     const headers = buildDrive115Headers(token.access_token)
     data.data.video_url = (data.data.video_url || []).map(item => ({ ...item, headers }))
+    registerDrive115PlaybackAuth(data.data.video_url.map(item => item.url).filter(Boolean), headers)
     return data.data
   } catch (err: any) {
     message.error('获取播放地址失败 ' + (err?.message || ''))
@@ -90,17 +92,20 @@ export const apiDrive115VideoPlay = async (user_id: string, pick_code: string): 
   }
 }
 
-export const apiDrive115VideoSubtitle = async (user_id: string, pick_code: string): Promise<Drive115SubtitleSource[]> => {
+export const apiDrive115VideoSubtitle = async (user_id: string, pick_code: string, timeoutMs = 1500): Promise<Drive115SubtitleSource[]> => {
   let token = UserDAL.GetUserToken(user_id)
   if (!token?.access_token) {
     const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
     if (dbToken) token = dbToken
   }
   if (!token?.access_token || !pick_code) return []
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
   try {
     const headers = buildDrive115Headers(token.access_token)
     const resp = await fetch(`${SUBTITLE_URL}?${new URLSearchParams({ pick_code }).toString()}`, {
-      headers
+      headers,
+      signal: controller.signal
     })
     if (!resp.ok) return []
     const body = await resp.json()
@@ -110,6 +115,8 @@ export const apiDrive115VideoSubtitle = async (user_id: string, pick_code: strin
     return mapDrive115SubtitleItems(items).map((item) => ({ ...item, headers }))
   } catch {
     return []
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

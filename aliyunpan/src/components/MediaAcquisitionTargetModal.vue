@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
+import type { CreateMediaAcquisitionRunInput, MediaAcquisitionRequest, MediaAcquisitionState } from '@shared/types/mediaAcquisition'
 import type { ITokenInfo } from '../user/userstore'
 import UserDAL from '../user/userdal'
 import { GetDriveID, GetDriveType, isDrive115User, isQuarkUser } from '../aliapi/utils'
@@ -13,7 +13,7 @@ import { getDriveProviderIcon, getDriveProviderLabel } from '../utils/driveProvi
 import useSettingStore from '../setting/settingstore'
 import { isPro, requireMediaAcquisitionPro } from '../utils/usageLimit'
 
-const props = defineProps<{ visible: boolean; request: MediaAcquisitionRequest }>()
+const props = withDefaults(defineProps<{ visible: boolean; request: MediaAcquisitionRequest; states?: MediaAcquisitionState[] }>(), { states: () => [] })
 const emit = defineEmits<{ 'update:visible': [value: boolean]; created: [] }>()
 
 type EligibleAccount = { key: string; token: ITokenInfo; driveId: string; capabilityLabel: string; displayName: string; providerLabel: string; providerIcon: string }
@@ -32,6 +32,31 @@ const settingStore = useSettingStore()
 const selectedAccount = computed(() => accounts.value.find(account => account.key === selectedAccountKey.value))
 const selectedCapability = computed(() => selectedAccount.value ? getMediaAcquisitionCapability(selectedAccount.value.token.tokenfrom) : null)
 const isSeries = computed(() => ['tv', 'anime'].includes(props.request.mediaType))
+const mediaKey = computed(() => props.request.tmdbId ? `${props.request.mediaType}:tmdb:${props.request.tmdbId}` : `${props.request.mediaType}:title:${props.request.title.trim().toLowerCase().replace(/\s+/g, ' ')}:${props.request.year || ''}`)
+
+function accountState(account: EligibleAccount) {
+  const matchesAccount = (state: MediaAcquisitionState) => state.targetUserId === account.token.user_id && state.targetDriveId === account.driveId && state.targetParentFileId === targetFolderId.value
+  const exact = props.states.find(state => state.mediaKey === mediaKey.value && matchesAccount(state))
+  if (exact) return exact
+  const title = props.request.title.replace(/[\s\u3000]+/g, '').toLowerCase()
+  return props.states.find(state => state.mediaType === props.request.mediaType && state.title.replace(/[\s\u3000]+/g, '').toLowerCase() === title && matchesAccount(state))
+}
+function isRetryableState(state?: MediaAcquisitionState) { return !state || ['failed', 'cancelled', 'no_coverage', 'partial'].includes(state.status) }
+function isAccountBlocked(account: EligibleAccount) {
+  const status = accountState(account)?.status
+  return !!status && ['reserved', 'queued', 'searching', 'selecting', 'transferring', 'verifying', 'organizing', 'retry_wait'].includes(status)
+}
+function accountStatus(account: EligibleAccount) {
+  const state = accountState(account)
+  if (!state) return ''
+  if (state.status === 'completed') return '已获取'
+  if (state.status === 'reserved') return '已预定'
+  return isRetryableState(state) ? '可重新获取' : '获取中'
+}
+
+function isCompletedDuplicateError(error: unknown) {
+  return /该媒体已加入媒体库|不能重复获取/.test(String((error as { message?: string })?.message || error || ''))
+}
 
 function close() { emit('update:visible', false) }
 
@@ -63,14 +88,14 @@ async function loadAccounts() {
   const rememberedAccount = settingStore.mediaAcquisitionRememberTarget
     ? accounts.value.find(account => account.token.user_id === settingStore.mediaAcquisitionTargetUserId && account.driveId === settingStore.mediaAcquisitionTargetDriveId)
     : undefined
-  if (rememberedAccount && settingStore.mediaAcquisitionTargetFolderId) {
+  if (rememberedAccount && !isAccountBlocked(rememberedAccount) && settingStore.mediaAcquisitionTargetFolderId) {
     skipNextFolderReset.value = true
     selectedAccountKey.value = rememberedAccount.key
     targetFolderId.value = settingStore.mediaAcquisitionTargetFolderId
     targetFolderName.value = settingStore.mediaAcquisitionTargetFolderName || '已选目录'
     return
   }
-  selectedAccountKey.value = accounts.value[0]?.key || ''
+  selectedAccountKey.value = accounts.value.find(account => !isAccountBlocked(account))?.key || ''
   resetFolder()
 }
 
@@ -110,6 +135,9 @@ async function create() {
   creating.value = true
   try {
     requireMediaAcquisitionPro()
+    const previousState = accountState(account)
+    const force = previousState?.status === 'completed' || previousState?.status === 'partial'
+    if (force && !window.confirm(`《${props.request.title}》${previousState?.status === 'partial' ? '上次仅部分完成' : '已获取完成'}，确定再次创建获取任务吗？`)) return
     await settingStore.updateStore(rememberTarget.value
       ? {
           mediaAcquisitionRememberTarget: true,
@@ -148,8 +176,9 @@ async function create() {
     const requestedSeasons = missingSeasons.length ? missingSeasons : [props.request.seasonNumber].filter((season): season is number => typeof season === 'number' && Number.isInteger(season) && season > 0)
     const seasonTargets = isSeries.value ? requestedSeasons.map(seasonNumber => ({ seasonNumber, missingEpisodes: props.request.missingEpisodes?.find(gap => gap.seasonNumber === seasonNumber)?.missingEpisodes || [] })) : []
     const primarySeason = seasonTargets[0]
-    const runs = [await createMediaAcquisitionRun({
+    const runInput: CreateMediaAcquisitionRunInput = {
       kind: missingSeasons.length ? 'missing' : isSeries.value ? 'season' : 'movie', mediaLibraryItemId: props.request.mediaLibraryItemId, tmdbId: props.request.tmdbId,
+      force,
       mediaType: props.request.mediaType, title: props.request.title, alternativeTitles: props.request.alternativeTitles, year: props.request.year, releaseDate: props.request.releaseDate,
       seasonNumber: primarySeason?.seasonNumber, missingEpisodes: primarySeason?.missingEpisodes, seasonTargets,
       targetUserId: account.token.user_id, targetDriveId: account.driveId, targetPlatform: account.token.tokenfrom,
@@ -158,7 +187,19 @@ async function create() {
       fetchSubtitles: settingStore.mediaAcquisitionFetchSubtitles,
       preferredLanguage: settingStore.mediaAcquisitionFetchSubtitles ? settingStore.mediaAcquisitionSubtitleLanguage : undefined,
       trackingEnabled: isSeries.value
-    })]
+    }
+    let run
+    try {
+      run = await createMediaAcquisitionRun(runInput)
+    } catch (error) {
+      if (!force && isCompletedDuplicateError(error)) {
+        if (!window.confirm(`《${props.request.title}》已获取完成，确定再次创建获取任务吗？`)) return
+        run = await createMediaAcquisitionRun({ ...runInput, force: true })
+      } else {
+        throw error
+      }
+    }
+    const runs = [run]
     for (const run of runs.filter(run => run.status !== 'reserved')) {
       void runMediaAcquisitionWorkflow(run.id).catch(() => {
         message.warning('Agent 已进入后台队列，将自动继续处理')
@@ -198,11 +239,11 @@ watch(selectedAccountKey, () => {
       </template>
       <label>目标网盘</label>
       <a-select v-model="selectedAccountKey" placeholder="选择支持自动获取的网盘">
-        <a-option v-for="account in accounts" :key="account.key" :value="account.key" :label="`${account.displayName} · ${account.providerLabel}`">
+        <a-option v-for="account in accounts" :key="account.key" :value="account.key" :label="`${account.displayName} · ${account.providerLabel}`" :disabled="isAccountBlocked(account)">
           <span class="acquisition-account-option">
             <img v-if="account.providerIcon" :src="account.providerIcon" :alt="account.providerLabel" />
             <span v-else class="acquisition-account-icon-fallback">{{ account.providerLabel.slice(0, 1) }}</span>
-            <strong class="acquisition-account-copy">{{ account.displayName }} · {{ account.providerLabel }}</strong>
+            <strong class="acquisition-account-copy">{{ account.displayName }} · {{ account.providerLabel }}<small v-if="accountStatus(account)"> · {{ accountStatus(account) }}</small></strong>
           </span>
         </a-option>
       </a-select>
@@ -211,6 +252,7 @@ watch(selectedAccountKey, () => {
       <div class="acquisition-folder"><span>{{ targetFolderName }}</span><a-button type="outline" size="small" :loading="selectingFolder" :disabled="!selectedAccount" @click="chooseFolder">选择目录</a-button></div>
       <a-checkbox v-model="rememberTarget">记住当前网盘和目录，下次直接写入此目录</a-checkbox>
       <div v-if="!accounts.length" class="acquisition-empty">暂无支持分享导入、磁力离线或 HTTP 外链离线的已登录网盘。</div>
+      <div v-else-if="!selectedAccount" class="acquisition-empty">该媒体已在所有已登录网盘账号中获取或处理中。</div>
       <div class="acquisition-actions"><a-button @click="close">取消</a-button><a-button type="primary" :loading="creating" :disabled="!selectedAccount || !proAllowed" @click="create">{{ proAllowed ? request.trackingOnly ? '开始追更' : '创建获取任务' : '升级 Pro 后使用' }}</a-button></div>
     </div>
   </a-modal>

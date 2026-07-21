@@ -10,6 +10,7 @@
     "sourceMap": false,
     "baseUrl": "./",
     "strict": true,
+    "noEmit": true,
     "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "paths": {
@@ -23,8 +24,5 @@
   ],
   "exclude": [
     "shared/__tests__"
-  ],
-  "references": [
-    { "path": "./tsconfig.node.json" }
   ]
 }

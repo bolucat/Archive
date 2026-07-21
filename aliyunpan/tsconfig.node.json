@@ -1,7 +1,8 @@
 {
   "compilerOptions": {
     "target": "ESNext",
-    "composite": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "module": "ESNext",
     "moduleResolution": "Node",
     "jsx": "preserve",

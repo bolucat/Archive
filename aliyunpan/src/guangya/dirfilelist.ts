@@ -4,7 +4,7 @@ import UserDAL from '../user/userdal'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import message from '../utils/message'
 import { HanToPin } from '../utils/utils'
-import { GUANGYA_API_URL, guangyaApiHeaders, refreshGuangyaAccessToken } from './auth'
+import { GUANGYA_API_URL, guangyaApiHeaders } from './auth'
 
 export type GuangyaFileItem = Record<string, any>
 
@@ -13,11 +13,8 @@ const getToken = async (user_id: string) => {
   if (!token?.access_token) token = await UserDAL.GetUserTokenFromDB(user_id) as any
   const expireTime = new Date(token?.expire_time || 0).getTime()
   if (token?.refresh_token && (!token.access_token || (expireTime && expireTime <= Date.now()))) {
-    const refreshed = await refreshGuangyaAccessToken(token)
-    if (refreshed) {
-      UserDAL.SaveUserToken(refreshed)
-      token = refreshed
-    }
+    const refreshed = await UserDAL.EnsureUserTokenReady(user_id)
+    if (refreshed) token = refreshed
   }
   return token
 }
@@ -42,7 +39,7 @@ export const guangyaRequest = async (user_id: string, endpoint: string, body: an
   const code = Number(data?.code)
   const authFailed = resp.status === 401 || code === 401 || /access\s*token.*(?:invalid|expired)|accessToken.*(?:无效|过期)/i.test(String(data?.message || data?.msg || data?.error || ''))
   if (authFailed && token.refresh_token) {
-    const refreshed = await refreshGuangyaAccessToken(token)
+    const refreshed = await UserDAL.EnsureUserTokenReady(user_id, true)
     if (refreshed?.access_token) {
       UserDAL.SaveUserToken(refreshed)
       token = refreshed
@@ -123,7 +120,7 @@ export const apiGuangyaVideoList = async (user_id: string, size = 200): Promise<
 }
 
 export const apiGuangyaFileDetail = async (user_id: string, fileId: string): Promise<GuangyaFileItem | null> => {
-  if (fileId === 'guangya_root' || fileId === '0' || fileId === '/' || fileId === '') return { fileId: 'guangya_root', name: '网盘文件', isDir: true }
+  if (fileId === 'guangya_root' || fileId === '0' || fileId === '/' || fileId === '') return { fileId: 'guangya_root', name: '根目录', isDir: true }
   try {
     const data = await guangyaRequest(user_id, '/nd.bizuserres.s/v1/file/get_file_detail', { fileId })
     return data?.data || data || null

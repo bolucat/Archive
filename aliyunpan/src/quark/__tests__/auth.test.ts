@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { buildQuarkCookieString, completeQuarkQrLogin, createQuarkTokenFromCookies, pollQuarkQrStatus, requestQuarkQrCode } from '../auth'
+import { buildQuarkCookieString, completeQuarkQrLogin, createQuarkTokenFromCookies, pollQuarkQrStatus, refreshQuarkAccountInfo, requestQuarkQrCode } from '../auth'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -53,6 +53,58 @@ describe('createQuarkTokenFromCookies', () => {
 
     await expect(createQuarkTokenFromCookies('__puus=guest')).rejects.toThrow('夸克登录 Cookie 无效')
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('reads the display name from nested member info and camel-case fields', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: {
+          member_info: {
+            uid: '12345',
+            nickName: '夸克昵称'
+          }
+        }
+      })
+    }))
+
+    const token = await createQuarkTokenFromCookies('__uid=12345; __kps=kps1; __pus=pus1')
+
+    expect(token.user_id).toBe('quark_12345')
+    expect(token.nick_name).toBe('夸克昵称')
+  })
+
+  it('does not expose the cookie uid as the account display name', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ success: true, data: {} })
+    }))
+
+    const token = await createQuarkTokenFromCookies('__uid=AAQKNprO2OEl; __kps=kps1; __pus=pus1')
+
+    expect(token.user_id).toBe('quark_AAQKNprO2OEl')
+    expect(token.nick_name).toBe('夸克用户')
+  })
+
+  it('refreshes the display name without changing the stored account id', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        data: { uid: 'new-provider-id', nickname: '更新后的昵称' }
+      })
+    }))
+
+    const token = await refreshQuarkAccountInfo({
+      tokenfrom: 'quark',
+      user_id: 'quark_existing-id',
+      access_token: '__uid=new-provider-id; __kps=kps1; __pus=pus1',
+      default_drive_id: 'quark'
+    } as any)
+
+    expect(token.user_id).toBe('quark_existing-id')
+    expect(token.nick_name).toBe('更新后的昵称')
   })
 })
 

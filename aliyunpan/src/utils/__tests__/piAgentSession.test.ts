@@ -169,6 +169,109 @@ describe('BoxPlayer PI Agent runtime', () => {
     expect(events.some(event => event.type === 'tool_start' && event.toolName === 'searchMyFiles')).toBe(true)
   })
 
+  it('enforces one tool call per turn for observe-act workflows', async () => {
+    const inspect = vi.fn().mockResolvedValue({ snapshotId: 'snapshot-1' })
+    const extraInspect = vi.fn().mockResolvedValue({ files: [] })
+    let call = 0
+
+    await runBoxPlayerAgent({
+      surface: 'ai_search',
+      model: { endpoint: 'https://example.com/v1', modelId: 'fake', apiKey: 'key', providerName: 'fake' },
+      systemPrompt: 'Observe, then act.',
+      prompt: 'Choose a resource',
+      maxToolCallsPerTurn: 1,
+      tools: {
+        viewResourceSnapshot: { description: 'View candidates', inputSchema: z.object({}), execute: inspect },
+        inspectTargetDir: { description: 'Inspect target', inputSchema: z.object({}), execute: extraInspect }
+      },
+      streamFn: () => {
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() => {
+          if (call++ === 0) {
+            stream.push({ type: 'done', reason: 'toolUse', message: assistantMessage([
+              { type: 'toolCall', id: 'snapshot-1', name: 'viewResourceSnapshot', arguments: {} },
+              { type: 'toolCall', id: 'target-1', name: 'inspectTargetDir', arguments: {} }
+            ], 'toolUse') })
+          } else {
+            stream.push({ type: 'done', reason: 'stop', message: assistantMessage([{ type: 'text', text: 'done' }], 'stop') })
+          }
+        })
+        return stream
+      }
+    })
+
+    expect(inspect).toHaveBeenCalledOnce()
+    expect(extraInspect).not.toHaveBeenCalled()
+  })
+
+  it('can require a tool action while disabling parallel tool batches', async () => {
+    let capturedPayload: unknown
+
+    await runBoxPlayerAgent({
+      surface: 'ai_search',
+      model: { endpoint: 'https://example.com/v1', modelId: 'fake', apiKey: 'key', providerName: 'fake' },
+      systemPrompt: 'Act with one tool.',
+      prompt: 'Choose a resource',
+      maxToolCallsPerTurn: 1,
+      requireToolCall: true,
+      tools: {
+        reportNoCoverage: { description: 'Stop', inputSchema: z.object({}), execute: () => ({ noCoverage: true }) }
+      },
+      shouldStopAfterToolResult: ({ toolName }) => toolName === 'reportNoCoverage' ? 'done' : undefined,
+      streamFn: (_model, _context, options) => {
+        capturedPayload = options?.onPayload?.({ model: 'fake', stream: true }, _model)
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() => stream.push({ type: 'done', reason: 'toolUse', message: assistantMessage([{ type: 'toolCall', id: 'stop-1', name: 'reportNoCoverage', arguments: {} }], 'toolUse') }))
+        return stream
+      }
+    })
+
+    expect(capturedPayload).toEqual(expect.objectContaining({ feature: 'ai_search', parallel_tool_calls: false, tool_choice: 'required' }))
+  })
+
+  it('exposes only terminal decision tools after a candidate observation', async () => {
+    const payloadTools: string[][] = []
+    let call = 0
+
+    await runBoxPlayerAgent({
+      surface: 'ai_search',
+      model: { endpoint: 'https://example.com/v1', modelId: 'fake', apiKey: 'key', providerName: 'fake' },
+      systemPrompt: 'Observe and decide.',
+      prompt: 'Choose a resource',
+      requireToolCall: true,
+      terminalToolsAfterObservation: {
+        observationTools: ['viewResourceSnapshot'],
+        terminalTools: ['transferCandidate', 'reportNoCoverage']
+      },
+      tools: {
+        readSkill: { description: 'Read', inputSchema: z.object({}), execute: () => ({ body: 'rules' }) },
+        viewResourceSnapshot: { description: 'Observe', inputSchema: z.object({}), execute: () => ({ snapshotId: 'snapshot-1' }) },
+        transferCandidate: { description: 'Transfer', inputSchema: z.object({}), execute: () => ({ submitted: true }) },
+        reportNoCoverage: { description: 'Stop', inputSchema: z.object({}), execute: () => ({ noCoverage: true }) }
+      },
+      shouldStopAfterToolResult: ({ toolName }) => toolName === 'transferCandidate' ? 'done' : undefined,
+      streamFn: (_model, _context, options) => {
+        const payload = options?.onPayload?.({
+          model: 'fake',
+          stream: true,
+          tools: ['readSkill', 'viewResourceSnapshot', 'transferCandidate', 'reportNoCoverage'].map(name => ({ type: 'function', function: { name } }))
+        }, _model) as any
+        payloadTools.push(payload.tools.map((tool: any) => tool.function.name))
+        const stream = createAssistantMessageEventStream()
+        queueMicrotask(() => {
+          const toolCall = call++ === 0
+            ? { type: 'toolCall', id: 'observe-1', name: 'viewResourceSnapshot', arguments: {} }
+            : { type: 'toolCall', id: 'transfer-1', name: 'transferCandidate', arguments: {} }
+          stream.push({ type: 'done', reason: 'toolUse', message: assistantMessage([toolCall], 'toolUse') })
+        })
+        return stream
+      }
+    })
+
+    expect(payloadTools[0]).toEqual(['readSkill', 'viewResourceSnapshot', 'transferCandidate', 'reportNoCoverage'])
+    expect(payloadTools[1]).toEqual(['transferCandidate', 'reportNoCoverage'])
+  })
+
   it('uses the browser-safe OpenAI stream when no stream function is supplied', async () => {
     const events: any[] = []
     streamOpenAICompletions.mockImplementation(() => {

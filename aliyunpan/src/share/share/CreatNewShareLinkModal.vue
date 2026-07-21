@@ -115,7 +115,7 @@ const handleOK = async (multi: boolean) => {
     if (shareType.value.type === 's') {
       result = form.paid && isCloud123.value
         ? await AliShare.ApiCreatCloud123PaidShare(user_id, drive_id, share_name, file_id_list, Number(form.payAmount), form.resourceDesc, form.isReward ? 1 : 0)
-        : await AliShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list)
+        : await AliShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list, Boolean(props.filelist[0]?.isDir))
       if (typeof result == 'string') {
         okLoading.value = false
         message.error(result)
@@ -152,7 +152,7 @@ const handleOK = async (multi: boolean) => {
       if (shareType.value.type === 's') {
         result = form.paid && isCloud123.value
           ? await AliShare.ApiCreatCloud123PaidShare(user_id, drive_id, share_name, file_id_list.slice(i, i + 1), Number(form.payAmount), form.resourceDesc, form.isReward ? 1 : 0)
-          : await AliShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list.slice(i, i + 1))
+          : await AliShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list.slice(i, i + 1), Boolean(props.filelist[i]?.isDir))
       } else {
         result = await AliTransferShare.ApiCreatTransferShare(user_id, drive_id, file_id_list.slice(i, i + 1))
       }

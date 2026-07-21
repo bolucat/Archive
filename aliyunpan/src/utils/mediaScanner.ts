@@ -28,6 +28,8 @@ type ScanContext = {
   silent?: boolean
 }
 
+type MediaScanHint = { tmdbId?: number; title: string; year?: number; mediaType: 'movie' | 'tv' | 'anime' }
+
 export class MediaScanner {
   private static instance: MediaScanner
   private tmdbService = TmdbService.getInstance()
@@ -35,6 +37,7 @@ export class MediaScanner {
   private panTreeStore = usePanTreeStore()
   private isScanning = false
   private shouldStop = false
+  private scanWaiters: Array<() => void> = []
 
   // 支持的视频文件扩展名
   private readonly VIDEO_EXTENSIONS = new Set([
@@ -54,11 +57,14 @@ export class MediaScanner {
   async scanFolder(
     folder: IAliGetFileModel,
     driveServerId: string,
-    options: { incremental?: boolean; silent?: boolean; aiScrape?: boolean } = {}
+    options: { incremental?: boolean; silent?: boolean; aiScrape?: boolean; mediaHint?: MediaScanHint } = {}
   ): Promise<void> {
-    if (this.isScanning) {
-      if (!options.silent) message.warning('正在扫描中，请稍后...')
-      return
+    while (this.isScanning) {
+      if (!options.silent) {
+        message.warning('正在扫描中，请稍后...')
+        return
+      }
+      await new Promise<void>((resolve) => this.scanWaiters.push(resolve))
     }
 
     this.isScanning = true
@@ -66,8 +72,9 @@ export class MediaScanner {
     this.mediaStore.setScanning(true)
     this.mediaStore.setScanProgress(0, 0)
 
-    // 保存断点：如果非增量模式，记录扫描信息以便异常退出后恢复
-    if (!options.incremental) {
+    // 断点恢复只服务于用户主动发起的完整刮削。Agent 的静默扫描由任务
+    // 自身负责重试，不能让视频页把正在运行的后台扫描识别成异常中断。
+    if (!options.incremental && !options.silent) {
       this.saveScanCheckpoint({ folder, driveServerId })
     }
 
@@ -96,14 +103,16 @@ export class MediaScanner {
     try {
       console.log('开始扫描网盘文件夹:', folder.name)
       const shouldRunAIScrape = Boolean(options.aiScrape && await this.canRunInternalAIScrape())
+      let totalFound = 0
 
       // Phase 1: 边遍历边 TMDB 匹配（跳过 AI 兜底）
-      const { unmatched: unmatchedFiles, totalFound } = await this.scrapeFolderRecursive(folder, scanContext, folderKey, existingIds, options.incremental, shouldRunAIScrape,
+      const { unmatched: unmatchedFiles, totalFound: scannedTotalFound } = await this.scrapeFolderRecursive(folder, scanContext, folderKey, existingIds, options.incremental, shouldRunAIScrape, options.mediaHint,
         ({ processed }) => {
           totalProcessed += processed
           this.mediaStore.setScanProgress(totalProcessed, Math.max(1, totalFound || totalProcessed))
         }
       )
+      totalFound = scannedTotalFound
 
       // Phase 2: 仅 AI 刮削模式才把 TMDB 未匹配文件交给 AI 判断。
       if (shouldRunAIScrape && unmatchedFiles.length > 0 && !this.shouldStop) {
@@ -135,12 +144,18 @@ export class MediaScanner {
     } catch (error) {
       console.error('扫描文件夹时出错:', error)
       if (!options.silent) message.error('扫描失败: ' + (error as Error).message)
+      // 后台调用方（例如媒体获取 Agent）必须知道扫描是否真正成功。
+      // 否则 workflow 会继续写入“媒体库扫描已完成”并把任务标记完成，
+      // 只能等下次启动的自动扫描补齐媒体库。
+      if (options.silent) throw error
     } finally {
       this.isScanning = false
       this.mediaStore.setScanning(false)
       if (!this.shouldStop) {
         this.clearScanCheckpoint()
       }
+      const waiters = this.scanWaiters.splice(0)
+      waiters.forEach((resolve) => resolve())
     }
   }
 
@@ -152,6 +167,7 @@ export class MediaScanner {
     existingIds: Set<string>,
     incremental: boolean | undefined,
     deferUnmatchedForAI: boolean,
+    mediaHint: MediaScanHint | undefined,
     onProgress: (stats: { processed: number }) => void,
     depth = 0
   ): Promise<{ unmatched: DriveFileItem[]; totalFound: number }> {
@@ -179,6 +195,7 @@ export class MediaScanner {
             id: item.file_id,
             name: item.name,
             path: itemPath,
+            parentFileId: item.parent_file_id || folder.file_id,
             userId: scanContext.userId,
             driveId: item.drive_id || scanContext.driveId,
             driveServerId: scanContext.driveServerId,
@@ -204,7 +221,7 @@ export class MediaScanner {
         for (let i = 0; i < toProcess.length && !this.shouldStop; i += batchSize) {
           const batch = toProcess.slice(i, i + batchSize)
           const results = await Promise.allSettled(
-            batch.map(f => this.processVideoFileWithoutAI(f, folder.name, folderKey))
+              batch.map(f => this.processVideoFileWithoutAI(f, folder.name, folderKey, mediaHint))
           )
           for (const r of results) {
             if (r.status === 'fulfilled' && r.value) {
@@ -220,13 +237,14 @@ export class MediaScanner {
       for (const sub of subFolders) {
         if (this.shouldStop) break
         const subResult = await this.scrapeFolderRecursive(
-          sub, scanContext, folderKey, existingIds, incremental, deferUnmatchedForAI, onProgress, depth + 1
+          sub, scanContext, folderKey, existingIds, incremental, deferUnmatchedForAI, mediaHint, onProgress, depth + 1
         )
         unmatchedFiles.push(...subResult.unmatched)
         totalFound += subResult.totalFound
       }
     } catch (error) {
       console.error(`扫描文件夹失败: ${folder.name}`, error)
+      if (scanContext.silent) throw error
     }
 
     return { unmatched: unmatchedFiles, totalFound }
@@ -384,6 +402,7 @@ export class MediaScanner {
               id: item.file_id,
               name: item.name,
               path: itemPath,
+              parentFileId: item.parent_file_id || folder.file_id,
               userId: scanContext.userId,
               driveId: item.drive_id || scanContext.driveId,
               driveServerId: scanContext.driveServerId,
@@ -770,7 +789,7 @@ export class MediaScanner {
   }
 
   // TMDB 匹配（不含 AI 兜底）：成功返回 null，失败返回未匹配文件供批量 AI 处理
-  private async processVideoFileWithoutAI(file: DriveFileItem, folderName: string, folderId?: string): Promise<DriveFileItem | null> {
+  private async processVideoFileWithoutAI(file: DriveFileItem, folderName: string, folderId?: string, mediaHint?: MediaScanHint): Promise<DriveFileItem | null> {
     try {
       const fileName = file.name.replace(/\.[^/.]+$/, '')
       const seasonEpisode = this.tmdbService.parseSeasonEpisode(fileName)
@@ -784,7 +803,12 @@ export class MediaScanner {
         const existingTvItem = this.tryMatchExistingTvSeries(file, folderName, lookupName, seasonEpisode, folderId)
         if (existingTvItem) return null
 
-        const tmdbId = this.parseTmdbId(fileName)
+        // Acquisition already resolved the title identity.  Do not send an
+        // imported TV/anime file back through title search merely because its
+        // release name has no embedded TMDB id.
+        const tmdbId = (mediaHint?.mediaType === 'tv' || mediaHint?.mediaType === 'anime') && mediaHint.tmdbId
+          ? String(mediaHint.tmdbId)
+          : this.parseTmdbId(fileName)
         const year = this.tmdbService.parseYear(fileName)
         const shouldUseYear = Boolean(year && !lookupName.includes(year))
         const fileHash = file.fileHash || file.contentHash
@@ -804,9 +828,10 @@ export class MediaScanner {
         return file
       }
 
-      // 电影处理
-      const year = this.tmdbService.parseYear(fileName)
-      const movie = await this.tmdbService.searchMovie(lookupName, year, undefined, file.fileHash || file.contentHash, file.name)
+      // 电影处理：Agent 已确认 TMDB ID 时，直接按 ID 获取元数据；只有旧任务没有 ID 时才按标题搜索。
+      const movie = mediaHint?.mediaType === 'movie' && mediaHint.tmdbId
+        ? await this.tmdbService.getMovieByTmdbId(mediaHint.tmdbId)
+        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : this.tmdbService.parseYear(fileName), undefined, file.fileHash || file.contentHash, file.name)
       if (movie) {
         const mediaItem: MediaLibraryItem = {
           id: `${movie.id}`,

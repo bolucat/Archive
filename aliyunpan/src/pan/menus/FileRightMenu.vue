@@ -10,27 +10,30 @@ import {
   menuFileClearHistory,
   menuFileColorChange,
   menuFileEncTypeChange,
+  menuDrive115VideoPush,
   menuJumpToDir,
   menuM3U8Download,
   menuTrashSelectFile,
   menuVideoXBT
 } from '../topbtns/topbtn'
 import { modalRename, modalShuXing } from '../../utils/modal'
-import { useSettingStore, usePanFileStore, useAppStore, usePanTreeStore } from '../../store'
+import { useSettingStore, usePanFileStore, useAppStore, usePanTreeStore, useModalStore } from '../../store'
 import { computed, ref } from 'vue'
 import { MediaScanner } from '../../utils/mediaScanner'
 import MusicScanner from '../../utils/musicScanner'
 import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
-import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
+import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
 import { supportsCopy, supportsCreateShare } from '../../aliapi/providerFeatures'
+import { apiDrive115FileDetailResult } from '../../cloud115/filecmd'
 
 let istree = false
 const settingStore = useSettingStore()
 const panFileStore = usePanFileStore()
 const appStore = useAppStore()
 const panTreeStore = usePanTreeStore()
+const modalStore = useModalStore()
 const mediaScanner = MediaScanner.getInstance()
 const musicScanner = MusicScanner.getInstance()
 const bookScanner = BookScanner.getInstance()
@@ -150,6 +153,35 @@ const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || 
 const isShareSupported = computed(() => supportsCreateShare(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
+const isDrive115Video = computed(() => {
+  const selected = panFileStore.GetSelected()
+  const file = selected[0]
+  return props.isvideo && selected.length === 1 && !!file && !file.isDir && (isDrive115User((file as any).user_id || panTreeStore.user_id || '') || file.drive_id === 'drive115')
+})
+const isDrive115Torrent = computed(() => {
+  const selected = panFileStore.GetSelected()
+  const file = selected[0]
+  return selected.length === 1 && !!file && !file.isDir && String(file.name || '').toLowerCase().endsWith('.torrent')
+    && (isDrive115User((file as any).user_id || panTreeStore.user_id || '') || file.drive_id === 'drive115')
+})
+
+const openDrive115Torrent = async () => {
+  const file = panFileStore.GetSelected()[0]
+  if (!file || !isDrive115Torrent.value) return
+  const userId = (file as any).user_id || panTreeStore.user_id || ''
+  const result = await apiDrive115FileDetailResult(userId, file.file_id)
+  if (!result.detail?.sha1 || !result.detail?.pick_code) {
+    message.error(result.error || '无法读取 115 种子文件信息')
+    return
+  }
+  modalStore.showModal('drive115management', {
+    torrent: {
+      sha1: result.detail.sha1,
+      pickCode: result.detail.pick_code,
+      name: String(file.name || '').replace(/\.torrent$/i, '')
+    }
+  })
+}
 
 // 检查是否选中了文件夹
 const isSelectedFolder = computed(() => {
@@ -187,6 +219,10 @@ function openDocumentAI() {
       <a-doption v-if='isDocumentAIAvailable' @click='openDocumentAI'>
         <template #icon><IconFont name="iconscan" /></template>
         <template #default>用 AI 分析 <span class="ai-pro-badge">Pro</span></template>
+      </a-doption>
+      <a-doption v-if='isDrive115Torrent' @click='openDrive115Torrent'>
+        <template #icon><IconFont name="icondownload" /></template>
+        <template #default>115 云下载</template>
       </a-doption>
       <a-doption v-show='isShareSupported'
                  @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
@@ -362,6 +398,15 @@ function openDocumentAI() {
             <template #icon><IconFont name="iconluxiang" /></template>
             <template #default>M3U8下载</template>
           </a-doption>
+          <a-dsubmenu v-if='isDrive115Video' class='rightmenu' trigger='hover'>
+            <template #default>
+              <span class='arco-dropdown-option-icon'><IconFont name="iconshipin" /></span>115 转码
+            </template>
+            <template #content>
+              <a-doption @click='() => menuDrive115VideoPush("vip_push")'>VIP 加速转码</a-doption>
+              <a-doption @click='() => menuDrive115VideoPush("pay_push")'>枫叶加速转码</a-doption>
+            </template>
+          </a-dsubmenu>
           <a-doption v-show='isselected' @click='() => menuCopyFileName()'>
             <template #icon><IconFont name="iconlist" /></template>
             <template #default>复制文件名</template>

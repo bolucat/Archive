@@ -136,6 +136,9 @@ export interface IPageMusicTrack {
   encType?: string
   password?: string
   local_url?: string
+  media_server_id?: string
+  media_server_item_id?: string
+  media_server_source_id?: string
 }
 
 export interface IPageMusic {

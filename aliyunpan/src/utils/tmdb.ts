@@ -81,6 +81,10 @@ export class TmdbService {
     }
   }
 
+  async getMovieByTmdbId(tmdbId: number | string): Promise<MovieItem | null> {
+    return this.searchMovie('', undefined, String(tmdbId))
+  }
+
   async searchTV(
     queryName: string,
     season: number,

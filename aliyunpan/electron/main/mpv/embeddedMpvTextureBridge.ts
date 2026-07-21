@@ -2,6 +2,7 @@ import { BrowserWindow, SharedTextureHandle, sharedTexture } from 'electron'
 import { EmbeddedMpvCapability, getEmbeddedMpvCapability } from './embeddedMpvCapability'
 import { EmbeddedMpvNativeAddonLoadResult, EmbeddedMpvNativeInstance, EmbeddedMpvNativeResourceStatus, EmbeddedMpvStatus, EmbeddedMpvTextureInfo, getEmbeddedMpvNativeResourceStatus, loadEmbeddedMpvNativeAddon } from './embeddedMpvNativeAddon'
 import type { EmbeddedMpvControlRequest, EmbeddedMpvControlResult, EmbeddedMpvLoadRequest, EmbeddedMpvLoadResult } from './embeddedMpvBridge'
+import { buildMpvLoadOptions } from './embeddedMpvLoadOptions'
 
 export interface EmbeddedMpvTextureBridgeOptions {
   nativeAddonAvailable?: boolean
@@ -103,7 +104,13 @@ export class EmbeddedMpvTextureBridge {
     this.pendingFrame = null
     this.latestStatus = null
     try {
-      await this.mpv?.load(request.url || '', buildMpvLoadOptions())
+      console.info('[播放][MPV] native 加载链接', {
+        url: request.url || '',
+        startPosition: request.startPosition || 0,
+        hasAuthorization: Object.keys(request.headers || {}).some((key) => key.toLowerCase() === 'authorization'),
+        userAgent: Object.entries(request.headers || {}).find(([key]) => key.toLowerCase() === 'user-agent')?.[1] || ''
+      })
+      await this.mpv?.load(request.url || '', buildMpvLoadOptions(request))
     } catch (error: any) {
       return {
         ok: false,
@@ -205,7 +212,7 @@ export class EmbeddedMpvTextureBridge {
     return {
       ok: true,
       capability,
-      status: this.latestStatus || this.mpv.getStatus?.(),
+      status: this.mpv.getStatus?.() || this.latestStatus,
       trackStatus: this.mpv.getTrackStatus?.()
     }
   }
@@ -233,7 +240,7 @@ export class EmbeddedMpvTextureBridge {
     return {
       ok: true,
       capability,
-      status: this.latestStatus || this.mpv.getStatus?.(),
+      status: this.mpv.getStatus?.() || this.latestStatus,
       trackStatus: this.mpv.getTrackStatus?.()
     }
   }
@@ -310,10 +317,6 @@ export class EmbeddedMpvTextureBridge {
     this.window = null
     this.initialized = false
   }
-}
-
-function buildMpvLoadOptions(): string {
-  return ''
 }
 
 function waitForMpvCommand(delay: number): Promise<void> {

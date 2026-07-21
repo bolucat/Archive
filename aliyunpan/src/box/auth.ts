@@ -2,6 +2,7 @@ import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import { BOX_CLIENT_ID, BOX_CLIENT_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 export { BOX_CLIENT_ID, BOX_CLIENT_SECRET }
 
@@ -174,29 +175,32 @@ export const exchangeBoxCodeForToken = async (
 }
 
 export const refreshBoxAccessToken = async (token: ITokenInfo): Promise<ITokenInfo | null> => {
-  const clientId = token.device_id || BOX_CLIENT_ID
-  if (!clientId || !token.refresh_token) return null
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: token.refresh_token,
-    client_id: clientId
+  const key = tokenRefreshKey('box', token.user_id || token.device_id || token.refresh_token)
+  return withTokenRefreshLock(key, async () => {
+    const clientId = token.device_id || BOX_CLIENT_ID
+    if (!clientId || !token.refresh_token) return null
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: token.refresh_token,
+      client_id: clientId
+    })
+    if (BOX_CLIENT_SECRET.trim()) body.set('client_secret', BOX_CLIENT_SECRET.trim())
+    const data = await boxJson<any>(BOX_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    }, '刷新 Box Token 失败')
+    if (!data?.access_token) return null
+    token.access_token = data.access_token
+    if (data.refresh_token) token.refresh_token = data.refresh_token
+    token.expires_in = Number(data.expires_in || token.expires_in || 3600)
+    token.token_type = data.token_type || token.token_type || 'Bearer'
+    token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
+    token.tokenfrom = 'box'
+    token.default_drive_id = token.default_drive_id || 'box'
+    await applyBoxAccount(token)
+    return token
   })
-  if (BOX_CLIENT_SECRET.trim()) body.set('client_secret', BOX_CLIENT_SECRET.trim())
-  const data = await boxJson<any>(BOX_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  }, '刷新 Box Token 失败')
-  if (!data?.access_token) return null
-  token.access_token = data.access_token
-  if (data.refresh_token) token.refresh_token = data.refresh_token
-  token.expires_in = Number(data.expires_in || token.expires_in || 3600)
-  token.token_type = data.token_type || token.token_type || 'Bearer'
-  token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
-  token.tokenfrom = 'box'
-  token.default_drive_id = token.default_drive_id || 'box'
-  await applyBoxAccount(token)
-  return token
 }
 
 export const applyBoxQuota = async (token: ITokenInfo): Promise<boolean> => {

@@ -599,7 +599,7 @@ export default class DownDAL {
               sound.play()
             }
             downingStore.mUpdateDownState(downingItem, 'downed')
-            window.WebToElectron?.({ cmd: 'downloadCompleted', fileName: Info.name })
+            window.WebToElectron?.({ cmd: 'downloadCompleted', fileName: Info.name, showNotification: useSettingStore().ariaTaskNotification })
           } else {
             downingStore.mUpdateDownState(downingItem, 'error', '移动文件失败，请重新下载')
           }
@@ -731,10 +731,15 @@ export default class DownDAL {
     const { apiCloud123OfflineCreate } = await import('../cloud123/offline')
     const resp = await apiCloud123OfflineCreate(userID, url, fileName, dirID)
     if (!resp.taskId) return { success: false, message: resp.error || '创建离线下载失败' }
+    DownDAL.aTrackCloud123OfflineDownload(userID, url, fileName, dirID, String(resp.taskId))
+    return { success: true, message: '' }
+  }
+
+  static aTrackCloud123OfflineDownload(userID: string, url: string, fileName: string, dirID: string | undefined, taskId: string) {
     const downitem: IStateDownFile = {
-      DownID: `${userID}|cloud123_offline_${resp.taskId}`,
+      DownID: `${userID}|cloud123_offline_${taskId}`,
       Info: {
-        GID: `cloud123_offline_${resp.taskId}`,
+        GID: `cloud123_offline_${taskId}`,
         user_id: userID,
         DownSavePath: '',
         ariaRemote: false,
@@ -749,7 +754,7 @@ export default class DownDAL {
         sha1: '',
         crc64: '',
         offlineProvider: 'cloud123',
-        offlineTaskId: String(resp.taskId),
+        offlineTaskId: taskId,
         offlineDirId: dirID || ''
       },
       Down: {
@@ -770,7 +775,6 @@ export default class DownDAL {
       }
     }
     useDowningStore().mAddDownload({ downlist: [downitem] })
-    return { success: true, message: '' }
   }
 
   static async aAddPikPakOfflineDownload(url: string, fileName: string, dirID: string | undefined) {
@@ -780,6 +784,11 @@ export default class DownDAL {
     const resp = await apiPikPakOfflineCreate(userID, url, fileName, dirID)
     if (!resp.taskId && !resp.fileId) return { success: false, message: resp.error || '创建离线下载失败' }
     const taskId = String(resp.taskId || resp.fileId)
+    DownDAL.aTrackPikPakOfflineDownload(userID, url, fileName, dirID, taskId, resp.fileId)
+    return { success: true, message: '' }
+  }
+
+  static aTrackPikPakOfflineDownload(userID: string, url: string, fileName: string, dirID: string | undefined, taskId: string, fileId?: string) {
     const downitem: IStateDownFile = {
       DownID: `${userID}|pikpak_offline_${taskId}`,
       Info: {
@@ -787,7 +796,7 @@ export default class DownDAL {
         user_id: userID,
         DownSavePath: '',
         ariaRemote: false,
-        file_id: resp.fileId,
+        file_id: fileId || '',
         drive_id: 'pikpak',
         name: fileName || url,
         size: 0,
@@ -819,7 +828,6 @@ export default class DownDAL {
       }
     }
     useDowningStore().mAddDownload({ downlist: [downitem] })
-    return { success: true, message: '' }
   }
 
   static async aAddGuangyaOfflineDownload(url: string, fileName: string, dirID: string | undefined) {
@@ -829,6 +837,11 @@ export default class DownDAL {
     const resp = await apiGuangyaOfflineCreate(userID, url, fileName, dirID)
     if (!resp.taskId && !resp.fileId) return { success: false, message: resp.error || '创建离线下载失败' }
     const taskId = String(resp.taskId || resp.fileId)
+    DownDAL.aTrackGuangyaOfflineDownload(userID, url, fileName, dirID, taskId, resp.fileId)
+    return { success: true, message: '' }
+  }
+
+  static aTrackGuangyaOfflineDownload(userID: string, url: string, fileName: string, dirID: string | undefined, taskId: string, fileId?: string) {
     const downitem: IStateDownFile = {
       DownID: `${userID}|guangya_offline_${taskId}`,
       Info: {
@@ -836,7 +849,7 @@ export default class DownDAL {
         user_id: userID,
         DownSavePath: '',
         ariaRemote: false,
-        file_id: resp.fileId,
+        file_id: fileId || '',
         drive_id: 'guangya',
         name: fileName || url,
         size: 0,
@@ -868,7 +881,6 @@ export default class DownDAL {
       }
     }
     useDowningStore().mAddDownload({ downlist: [downitem] })
-    return { success: true, message: '' }
   }
 
   static async aAddDrive115OfflineDownload(url: string, dirID: string | undefined) {
@@ -877,7 +889,12 @@ export default class DownDAL {
     const { apiDrive115OfflineCreate } = await import('../cloud115/offline')
     const resp = await apiDrive115OfflineCreate(userID, url, dirID)
     if (!resp.taskIds.length) return { success: false, message: resp.error || '创建 115 云下载失败' }
-    const downlist: IStateDownFile[] = resp.taskIds.map(taskId => ({
+    DownDAL.aTrackDrive115OfflineDownload(userID, url, dirID, resp.taskIds)
+    return { success: true, message: '' }
+  }
+
+  static aTrackDrive115OfflineDownload(userID: string, url: string, dirID: string | undefined, taskIds: string[], displayName?: string) {
+    const downlist: IStateDownFile[] = taskIds.map(taskId => ({
       DownID: `${userID}|drive115_offline_${taskId}`,
       Info: {
         GID: `drive115_offline_${taskId}`,
@@ -886,7 +903,7 @@ export default class DownDAL {
         ariaRemote: false,
         file_id: '',
         drive_id: 'drive115',
-        name: url,
+        name: displayName || url,
         size: 0,
         sizestr: '',
         icon: 'iconcloud-download',
@@ -916,7 +933,6 @@ export default class DownDAL {
       }
     }))
     useDowningStore().mAddDownload({ downlist })
-    return { success: true, message: '' }
   }
 
   private static cloud123OfflineTick = 0

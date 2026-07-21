@@ -403,9 +403,9 @@ const playMainContent = () => {
 
 const buildAliFileModel = (driveFile: DriveFileItem): IAliGetFileModel => {
   const ext = driveFile.name.split('.').pop() || ''
-  const parentFileId = (driveFile.driveId || '').startsWith('webdav:')
+  const parentFileId = driveFile.parentFileId || ((driveFile.driveId || '').startsWith('webdav:')
     ? (path.posix.dirname(driveFile.id || '/') || '/')
-    : 'root'
+    : 'root')
   return {
     __v_skip: true,
     drive_id: driveFile.driveId,

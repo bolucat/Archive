@@ -1,18 +1,18 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashoo
-PKG_SHORT_SHA:=05b5334
+PKG_SHORT_SHA:=e40b596
 PKG_COMMIT_DATE:=2026.07.20
 
 PKG_VERSION:=$(PKG_COMMIT_DATE)~$(PKG_SHORT_SHA)
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-alpha-$(PKG_SHORT_SHA).tar.gz
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-alpha-$(PKG_SHORT_SHA)
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-alpha-$(PKG_SHORT_SHA)
 PKG_SOURCE_URL:=https://github.com/kenzok8/openwrt-clashoo/releases/download/mihomo-src
-PKG_SOURCE_VERSION:=05b5334ce0e9ca1a6c5b47aa94ca74eed3297ba4
-PKG_HASH:=c5bd92a2e6de0ec39f0d7e35686cfe9702c88f9a2b2d072ccbdfa2d07882c413
+PKG_SOURCE_VERSION:=e40b5962e47aa683bb41b708efc52c7d228f5bf4
+PKG_HASH:=2be72135ac99968b18182c6125291836528b761028ab3a66301ae9a2160b2e51
 PKG_BUILD_VERSION:=alpha-$(PKG_SHORT_SHA)
 
 PKG_LICENSE:=GPL3.0+
@@ -80,26 +80,17 @@ endef
 
 define Package/clashoo/postinst
 #!/bin/sh
-if [ -z "${IPKG_INSTROOT}" ]; then
+if [ -z "$${IPKG_INSTROOT}" ]; then
 	[ -x /usr/bin/mihomo ] && [ ! -x /usr/bin/clash-meta ] && ln -sf /usr/bin/mihomo /usr/bin/clash-meta
 	rm -f /usr/share/clashoo/check_luci_version.sh /usr/share/clashoo/check_clash_meta_version.sh /usr/share/clashoo/check_mihomo_core_version.sh
 	rm -f /usr/share/clashoo/cuslist.sh /usr/share/clashoo/groups.sh /usr/share/clashoo/load_groups.sh /usr/share/clashoo/panel_diag.sh
 	rm -f /usr/share/clashoo/rmlist.sh /usr/share/clashoo/uplist.sh /usr/share/clashoo/rpc_restart_async.sh /usr/share/clashoo/rpc_update_china_ip_async.sh
 	rm -rf /usr/share/clashoo/create
-	if [ "$(uci -q get clashoo.config.enable 2>/dev/null)" = "1" ]; then
+	if [ "$$(uci -q get clashoo.config.enable 2>/dev/null)" = "1" ]; then
 		/etc/init.d/clashoo enable 2>/dev/null || true
 	else
 		/etc/init.d/clashoo disable 2>/dev/null || true
 	fi
-fi
-exit 0
-endef
-
-define Package/clashoo/prerm
-#!/bin/sh
-if [ -z "${IPKG_INSTROOT}" ]; then
-	/etc/init.d/clashoo stop >/dev/null 2>&1
-	/etc/init.d/clashoo disable 2>/dev/null
 fi
 exit 0
 endef

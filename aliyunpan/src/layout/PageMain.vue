@@ -144,7 +144,10 @@ const trailingTabs = [
   { key: 'rss', title: 'Alt+4', label: '插件' }
 ]
 
-const topNavTabs = computed(() => [...orderedPrimaryTabs.value, ...trailingTabs])
+const topNavTabs = computed(() => {
+  const hidden = new Set(settingStore.uiHiddenTopTabs || [])
+  return [...orderedPrimaryTabs.value, ...trailingTabs].filter((tab) => !hidden.has(tab.key))
+})
 
 const handleHideClick = (_e: any) => {
   if (window.WebToElectron) window.WebToElectron({ cmd: useSettingStore().uiExitOnClose ? 'exit' : 'close' })
@@ -612,7 +615,7 @@ onUnmounted(() => {
     </a-layout-footer>
   </a-layout>
 
-    <DropOverlay @files-dropped="handleMineradioFilesDropped" />
+    <DropOverlay v-if="appStore.appTab === 'music'" @files-dropped="handleMineradioFilesDropped" />
     <LimitReachedModal :visible="showLimitModal" @update:visible="showLimitModal = $event" />
   </template>
 

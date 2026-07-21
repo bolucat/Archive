@@ -37,6 +37,7 @@ import { h } from 'vue'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, uploadWebDavLocalPaths } from '../../utils/webdavClient'
 import { apiCloud123TrashDeleteAll } from '../../cloud123/filecmd'
 import { apiDrive115TrashClear } from '../../cloud115/trash'
+import { apiDrive115VideoPush, getDrive115PickCode } from '../../cloud115/video'
 import { apiPikPakFileList } from '../../pikpak/dirfilelist'
 import { apiPikPakTrashDelete } from '../../pikpak/filecmd'
 
@@ -925,6 +926,26 @@ export function menuM3U8Download() {
     return
   }
   modalM3U8Download()
+}
+
+export async function menuDrive115VideoPush(op: 'vip_push' | 'pay_push') {
+  const selected = usePanFileStore().GetSelected()
+  const first = selected[0]
+  if (selected.length !== 1 || !first || first.isDir) {
+    message.warning('请选择一个 115 视频文件')
+    return
+  }
+  const userId = (first as any).user_id || usePanTreeStore().user_id
+  if (!isDrive115User(userId) && first.drive_id !== 'drive115') return
+
+  const meta = await getDrive115PickCode(userId, first.file_id)
+  if (!meta?.pick_code) {
+    message.error(meta?.error || '获取 115 视频提取码失败')
+    return
+  }
+  const result = await apiDrive115VideoPush(userId, meta.pick_code, op)
+  if (result.success) message.success(result.message)
+  else message.error(result.message)
 }
 
 export function menuCopyFileName() {

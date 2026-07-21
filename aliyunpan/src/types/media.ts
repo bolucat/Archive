@@ -75,6 +75,7 @@ export interface DriveFileItem {
   id: string
   name: string
   path: string
+  parentFileId?: string
   userId?: string
   driveId: string
   driveServerId: string

@@ -77,8 +77,9 @@ app.config.errorHandler = function (err: any, vm, info) {
 app.use(ArcoVue, {})
 app.use(store)
 app.mount('#app')
-startMediaAcquisitionWorkflowRunner()
-window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => wakeMediaAcquisitionWorkflowRunner())
+window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => {
+  if (window.IsMainPage) wakeMediaAcquisitionWorkflowRunner()
+})
 
 
 window.WinMsgToMain = function (event: any) {
@@ -134,6 +135,7 @@ window.Electron.ipcRenderer.on('setPage', (_event: any, args: any) => {
   if (args.page == 'PageMain') {
     PageMain()
     window.IsMainPage = true
+    startMediaAcquisitionWorkflowRunner()
   } else if (args.page == 'PageWorker') {
     WorkerPage(args.data.type)
   } else if (args.page == 'PageCode') {

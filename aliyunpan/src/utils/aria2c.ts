@@ -12,11 +12,12 @@ import AliTrash from '../aliapi/trash'
 
 import path from 'path'
 import fs from 'fs'
-import { getRawUrl } from './proxyhelper'
-import { isBaiduUser, isDrive115User } from '../aliapi/utils'
+import { getProxyUrl, getRawUrl } from './proxyhelper'
+import { isBaiduUser, isDrive115User, isQuarkUser } from '../aliapi/utils'
 import { callAriaClient, getAriaAddUriGid, isAriaDuplicateGidError } from './aria2Rpc'
 import { buildAriaAddOptions, shouldCheckExistingDownloadTarget } from '../down/integration/aria2AddOptions'
 import { DRIVE115_DOWN_AGENT } from '../cloud115/constants'
+import { QUARK_DOWNLOAD_AGENT } from '../quark/auth'
 
 export const localPwd = 'S4znWTaZYQi3cpRNb'
 
@@ -388,13 +389,13 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
     }
 
     const info = file.Info
-    const token = UserDAL.GetUserToken(info.user_id)
+    const accountToken = UserDAL.GetUserToken(info.user_id)
     const sourceType = info.sourceType || ''
     const isExternalSource = sourceType === 'url' || sourceType === 'magnet' || sourceType === 'torrent' || sourceType === 'torrent-url'
     const isBtSource = sourceType === 'magnet' || sourceType === 'torrent' || sourceType === 'torrent-url'
     const presetSource = typeof file.Down.DownUrl === 'string' ? file.Down.DownUrl.trim() : ''
     const hasPresetDownloadUrl = /^https?:\/\//i.test(presetSource) || /^magnet:\?/i.test(presetSource) || sourceType === 'torrent'
-    if ((!token || !token.access_token) && !isExternalSource && !(info.drive_id === 'media_server' && hasPresetDownloadUrl)) return '账号失效，操作取消'
+    if ((!accountToken || !accountToken.access_token) && !isExternalSource && !(info.drive_id === 'media_server' && hasPresetDownloadUrl)) return '账号失效，操作取消'
     if (info.isDir) {
       const dirFull = path.join(info.DownSavePath, info.name)
       if (!info.ariaRemote) {
@@ -507,6 +508,20 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         console.warn('[aria2] normalize url', info.drive_id, info.file_id)
         downloadUrl = safeUrl
       }
+      const isLocalQuarkDownload = !info.ariaRemote && (info.drive_id === 'quark' || isQuarkUser(accountToken || ''))
+      if (isLocalQuarkDownload && /^https?:\/\//i.test(downloadUrl) && !downloadUrl.includes('/proxy?')) {
+        downloadUrl = getProxyUrl({
+          user_id: info.user_id,
+          drive_id: info.drive_id,
+          file_id: info.file_id,
+          file_size: info.size,
+          proxy_url: downloadUrl,
+          proxy_headers: JSON.stringify({ ...resolvedDownloadHeaders, ...(info.downloadHeaders || {}) }),
+          proxy_kind: 'quark-download'
+        })
+        resolvedDownloadHeaders = {}
+        file.Down.DownUrl = ''
+      }
       if (sourceType === 'magnet' && !/^magnet:\?/i.test(downloadUrl)) {
         console.warn('[aria2] invalid magnet', info.drive_id, info.file_id, downloadUrl)
         return '磁力链接无效'
@@ -520,9 +535,10 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
       const token = UserDAL.GetUserToken(info.user_id)
       const isBaiduDownload = isBaiduUser(token || '') || info.drive_id === 'baidu'
       const isDrive115Download = isDrive115User(token || '') || info.drive_id === 'drive115'
+      const isQuarkDownload = isQuarkUser(token || '') || info.drive_id === 'quark'
       const split = isDrive115Download ? 1 : (info.split || useSettingStore().downThreadMax)
-      const referer = info.referer || (isBaiduDownload ? 'https://pan.baidu.com/' : isDrive115Download ? '' : Config.referer)
-      const userAgent = isBaiduDownload ? 'pan.baidu.com' : isDrive115Download ? DRIVE115_DOWN_AGENT : (info.userAgent || useSettingStore().ariaUserAgent || Config.downAgent)
+      const referer = info.referer || (isBaiduDownload ? 'https://pan.baidu.com/' : isQuarkDownload ? 'https://pan.quark.cn/' : isDrive115Download ? '' : Config.referer)
+      const userAgent = isBaiduDownload ? 'pan.baidu.com' : isQuarkDownload ? QUARK_DOWNLOAD_AGENT : isDrive115Download ? DRIVE115_DOWN_AGENT : (info.userAgent || useSettingStore().ariaUserAgent || Config.downAgent)
       const headers: string[] = []
       const downloadHeaders = {
         ...(info.downloadHeaders || {}),
@@ -696,6 +712,8 @@ export function AriaHashFile(downitem: IStateDownFile): { DownID: string; Check:
   }
   let success = false
   if (data.inputfile == data.movetofile) {
+    success = true
+  } else if (fs.existsSync(data.movetofile)) {
     success = true
   } else {
     try {

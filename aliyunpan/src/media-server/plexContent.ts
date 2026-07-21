@@ -11,6 +11,7 @@ import type {
   MediaServerPagedCollection,
   MediaServerPagedLibraryPage,
   MediaServerPlaybackInfo,
+  MediaServerMusicTrack,
   MediaServerPerson,
   MediaServerSearchData,
   MediaServerSourceOption
@@ -650,6 +651,41 @@ export const getPlexMediaServerLibraries = async (config: MediaServerConfig): Pr
       childCount: section.childCount,
       collectionType: collectionTypeFromSection(section.type)
     }
+  })
+}
+
+export const getPlexMediaServerMusicTracks = async (config: MediaServerConfig): Promise<MediaServerMusicTrack[]> => {
+  ensurePlexContext(config)
+  const sections = (await fetchPlexSections(config)).filter((section) => (section.type || '').toLowerCase() === 'artist')
+  const results = await Promise.all(sections.map(async (section) => {
+    const sectionId = String(section.key || section.ratingKey || '')
+    if (!sectionId) return [] as PlexMetadata[]
+    const query = new URLSearchParams({
+      type: '10',
+      'X-Plex-Container-Start': '0',
+      'X-Plex-Container-Size': '5000',
+      includeMeta: '1'
+    })
+    const payload = await mediaServerFetch<PlexMediaContainer>(config, `/library/sections/${encodeURIComponent(sectionId)}/all?${query.toString()}`)
+    return metadataOf(payload)
+  }))
+  const seen = new Set<string>()
+  return results.flat().flatMap((item) => {
+    const id = String(item.ratingKey || item.key || '')
+    if (!id || seen.has(id)) return []
+    seen.add(id)
+    return [{
+      id,
+      serverId: config.id,
+      provider: 'plex' as const,
+      serverName: config.name,
+      title: item.title || '未命名曲目',
+      artist: item.grandparentTitle,
+      album: item.parentTitle,
+      thumbnail: buildPlexImageUrl(config, item.thumb || item.parentThumb || item.grandparentThumb, 720, 720),
+      durationMs: item.duration,
+      sourceId: item.Media?.[0]?.Part?.[0]?.id ? String(item.Media[0].Part[0].id) : undefined
+    }]
   })
 }
 

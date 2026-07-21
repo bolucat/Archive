@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { getStaticPath } from './utils/mainfile'
-import launch from './launch'
+import launch from './launch.ts'
 
 app.setAboutPanelOptions({
   applicationName: 'BoxPlayer',

@@ -34,7 +34,7 @@ import {
   wipeAllData,
   destroyDb
 } from '../reedy/ReedyService'
-import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, beginMediaAcquisitionSearch, cancelMediaAcquisitionRun, claimRunnableMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, clearMediaAcquisitionNotifications, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, createMediaAcquisitionTracking, endMediaAcquisitionTracking, failMediaAcquisitionCandidate, failMediaAcquisitionRun, finishMediaAcquisitionSearchWithoutCandidates, getMediaAcquisitionAgentSandbox, getMediaAcquisitionAgentSession, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionCandidateLocator, getMediaAcquisitionTarget, listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionStates, listMediaAcquisitionTracking, listRunnableMediaAcquisitionRuns, markMediaAcquisitionCandidateTransferring, markMediaAcquisitionNoCoverage, markMediaAcquisitionNotificationsRead, partialMediaAcquisitionCandidate, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, retryMediaAcquisitionSearch, saveMediaAcquisitionAgentSandbox, saveMediaAcquisitionAgentSession, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from '../mediaAcquisition/MediaAcquisitionService'
+import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, beginMediaAcquisitionSearch, cancelMediaAcquisitionRun, claimRunnableMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, clearMediaAcquisitionNotifications, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, createMediaAcquisitionTracking, endMediaAcquisitionTracking, failMediaAcquisitionCandidate, failMediaAcquisitionRun, finishMediaAcquisitionSearchWithoutCandidates, forceCancelMediaAcquisitionRun, getMediaAcquisitionAgentSandbox, getMediaAcquisitionAgentSession, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionCandidateLocator, getMediaAcquisitionTarget, listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionStates, listMediaAcquisitionTracking, listRunnableMediaAcquisitionRuns, markMediaAcquisitionCandidateTransferring, markMediaAcquisitionNoCoverage, markMediaAcquisitionNotificationsRead, partialMediaAcquisitionCandidate, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, retryMediaAcquisitionSearch, saveMediaAcquisitionAgentSandbox, saveMediaAcquisitionAgentSession, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from '../mediaAcquisition/MediaAcquisitionService'
 import type { CreateMediaAcquisitionCandidateInput, CreateMediaAcquisitionRunInput, CreateMediaAcquisitionTrackingInput, MediaAcquisitionEvent, MediaAcquisitionFileSnapshot, MediaAcquisitionPhase } from '@shared/types/mediaAcquisition'
 import { getAssrtSubtitleFiles, searchAssrtSubtitles } from '../mediaAcquisition/assrt'
 
@@ -43,6 +43,21 @@ const panHubStreamControllers = new Map<string, AbortController>()
 
 const QUARK_DOWNLOAD_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) quark-cloud-drive/2.5.56 Chrome/100.0.4896.160 Electron/18.3.5.12-a038f7b798 Safari/537.36 Channel/pckk_other_ch'
+
+const mergeQuarkCookie = (preferredCookie: string, supplementalCookie = '') => {
+  if (!preferredCookie) return supplementalCookie
+  const preferredKeys = new Set(preferredCookie.split(';').map((item) => item.trim().split('=')[0].toLowerCase()).filter(Boolean))
+  const supplemental = supplementalCookie.split(';').map((item) => item.trim()).filter((item) => item && !preferredKeys.has(item.split('=')[0].toLowerCase()))
+  return [preferredCookie, ...supplemental].filter(Boolean).join('; ')
+}
+
+const getQuarkSessionCookieHeader = async () => {
+  const cookies = await session.defaultSession.cookies.get({})
+  return cookies
+    .filter((cookie) => /(^|\.)quark\.cn$/i.test(String(cookie.domain || '').replace(/^\./, '')) && cookie.name && cookie.value)
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join('; ')
+}
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`
@@ -246,6 +261,7 @@ export default class ipcEvent {
     ipcMain.handle('mediaAcquisition:getAgentSandbox', (_event, runId: string) => getMediaAcquisitionAgentSandbox(runId))
     ipcMain.handle('mediaAcquisition:saveAgentSandbox', (_event, runId: string, state: Record<string, unknown>) => saveMediaAcquisitionAgentSandbox(runId, state))
     ipcMain.handle('mediaAcquisition:cancel', (_event, runId: string) => cancelMediaAcquisitionRun(runId))
+    ipcMain.handle('mediaAcquisition:forceCancel', (_event, runId: string) => forceCancelMediaAcquisitionRun(runId))
     ipcMain.handle('mediaAcquisition:beginSearch', (_event, runId: string) => beginMediaAcquisitionSearch(runId))
     ipcMain.handle('mediaAcquisition:finishSearchWithoutCandidates', (_event, runId: string) => finishMediaAcquisitionSearchWithoutCandidates(runId))
     ipcMain.handle('mediaAcquisition:retrySearch', (_event, runId: string, message: string, delayMs: number, maxRetries?: number) => retryMediaAcquisitionSearch(runId, message, delayMs, maxRetries))
@@ -349,7 +365,7 @@ export default class ipcEvent {
           const progress = typeof data.progress === 'number' ? data.progress : -1
           win.setProgressBar(progress)
         }
-      } else if (data.cmd && data.cmd === 'downloadCompleted') {
+      } else if (data.cmd && data.cmd === 'downloadCompleted' && data.showNotification !== false) {
         const { Notification } = require('electron') as typeof import('electron')
         if (Notification.isSupported()) {
           const n = new Notification({
@@ -579,18 +595,12 @@ export default class ipcEvent {
       if (!fileId) return { ok: false, status: 0, body: '', cookies: [], error: '夸克文件 ID 为空' }
       const params = new URLSearchParams({
         pr: 'ucpro',
-        fr: 'pc',
-        sys: 'win32',
-        ve: '2.5.56',
-        ut: '',
-        guid: ''
+        fr: 'pc'
       })
-      const url = `https://drive-pc.quark.cn/1/clouddrive/file/download?${params.toString()}`
-      const existingCookies = await session.defaultSession.cookies.get({ domain: 'quark.cn' })
-      const cookieHeader = String(data?.cookie || '') || existingCookies
-        .filter((cookie) => cookie.name && cookie.value)
-        .map((cookie) => `${cookie.name}=${cookie.value}`)
-        .join('; ')
+      const url = `https://drive.quark.cn/1/clouddrive/file/download?${params.toString()}`
+      const sessionCookieHeader = await getQuarkSessionCookieHeader()
+      const accountCookieHeader = String(data?.cookie || '')
+      const cookieHeader = mergeQuarkCookie(sessionCookieHeader, accountCookieHeader)
 
       return await new Promise((resolve) => {
         const request = net.request({
@@ -602,7 +612,7 @@ export default class ipcEvent {
         request.setHeader('Accept-Language', 'zh-CN,zh;q=0.9')
         request.setHeader('Content-Type', 'application/json')
         request.setHeader('Origin', 'https://pan.quark.cn')
-        request.setHeader('Referer', 'https://pan.quark.cn/')
+        request.setHeader('Referer', 'https://pan.quark.cn')
         request.setHeader('User-Agent', QUARK_DOWNLOAD_AGENT)
         if (cookieHeader) request.setHeader('Cookie', cookieHeader)
         request.on('response', (response) => {
@@ -622,8 +632,8 @@ export default class ipcEvent {
                 }
               }
             }
-            const cookies = await session.defaultSession.cookies.get({ domain: 'quark.cn' })
-            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body, cookies })
+            const latestSessionCookie = await getQuarkSessionCookieHeader()
+            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body, cookie: mergeQuarkCookie(latestSessionCookie, accountCookieHeader) })
           })
         })
         request.on('error', (error) => resolve({ ok: false, status: 0, body: '', cookies: [], error: error.message }))
@@ -641,8 +651,8 @@ export default class ipcEvent {
         _fetch_total: '1', fetch_all_file: '1', fetch_risk_file_name: '1', _sort: 'file_name:asc'
       })
       const url = `https://drive-pc.quark.cn/1/clouddrive/file/sort?${params.toString()}`
-      const existingCookies = await session.defaultSession.cookies.get({ domain: 'quark.cn' })
-      const cookieHeader = String(data?.cookie || '') || existingCookies.filter((cookie) => cookie.name && cookie.value).map((cookie) => `${cookie.name}=${cookie.value}`).join('; ')
+      const accountCookieHeader = String(data?.cookie || '')
+      const cookieHeader = mergeQuarkCookie(await getQuarkSessionCookieHeader(), accountCookieHeader)
       return await new Promise((resolve) => {
         const request = net.request({ method: 'GET', url, useSessionCookies: true } as any)
         request.setHeader('Accept', 'application/json, text/plain, */*')
@@ -655,7 +665,16 @@ export default class ipcEvent {
         request.on('response', (response) => {
           const chunks: Buffer[] = []
           response.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
-          response.on('end', () => resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body: Buffer.concat(chunks).toString('utf8') }))
+          response.on('end', async () => {
+            const setCookie = response.headers['set-cookie']
+            const setCookieList = Array.isArray(setCookie) ? setCookie : (setCookie ? [String(setCookie)] : [])
+            for (const rawCookie of setCookieList) {
+              const cookie = ipcEvent.parseSetCookie(rawCookie, 'https://drive.quark.cn')
+              if (cookie) await session.defaultSession.cookies.set(cookie).catch(() => undefined)
+            }
+            const latestSessionCookie = await getQuarkSessionCookieHeader()
+            resolve({ ok: response.statusCode >= 200 && response.statusCode < 300, status: response.statusCode, body: Buffer.concat(chunks).toString('utf8'), cookie: mergeQuarkCookie(latestSessionCookie, accountCookieHeader) })
+          })
         })
         request.on('error', (error) => resolve({ ok: false, status: 0, body: '', error: error.message }))
         request.end()

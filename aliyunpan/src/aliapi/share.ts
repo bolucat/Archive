@@ -12,7 +12,7 @@ import { apiCloud123PaidShareCreate, apiCloud123ShareCreate, getCloud123ShareUrl
 import { apiPikPakSaveShareFilesBatch, apiPikPakShareAnonymous, apiPikPakShareCreate, apiPikPakShareDelete, apiPikPakShareFileList, apiPikPakShareToken, apiPikPakShareUpdate, isPikPakShareId } from '../pikpak/share'
 import { apiDropboxShareCreate } from '../dropbox/share'
 import { apiOneDriveShareCreate } from '../onedrive/share'
-import { apiBoxShareCreate } from '../box/share'
+import { apiBoxShareCreate, apiBoxShareRemove, apiBoxShareUpdate } from '../box/share'
 import { apiGuangyaSaveShareFilesBatch, apiGuangyaShareAnonymous, apiGuangyaShareCreate, apiGuangyaShareDelete, apiGuangyaShareFileList, apiGuangyaShareToken, apiGuangyaShareUpdate, isGuangyaShareId } from '../guangya/share'
 import {
   apiQuarkSaveShareFilesBatch,
@@ -321,7 +321,7 @@ export default class AliShare {
   }
 
 
-  static async ApiCreatShare(user_id: string, drive_id: string, expiration: string, share_pwd: string, share_name: string, file_id_list: string[]): Promise<string | IAliShareItem> {
+  static async ApiCreatShare(user_id: string, drive_id: string, expiration: string, share_pwd: string, share_name: string, file_id_list: string[], isFolder = false): Promise<string | IAliShareItem> {
     if (!user_id || !drive_id || file_id_list.length == 0) return '创建分享链接失败数据错误'
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       const shareExpire = AliShare.toCloud123ShareExpire(expiration)
@@ -408,7 +408,7 @@ export default class AliShare {
     }
     if (isBoxUser(user_id) || drive_id === 'box') {
       if (share_pwd || expiration) return 'Box 分享暂不支持提取码或有效期，请清空后重试'
-      const result = await apiBoxShareCreate(user_id, drive_id || 'box', file_id_list, share_name)
+      const result = await apiBoxShareCreate(user_id, drive_id || 'box', file_id_list, share_name, isFolder)
       if (result.error || !result.item) return result.error || '创建 Box 分享链接失败'
       return result.item
     }
@@ -465,7 +465,14 @@ export default class AliShare {
   static async ApiCancelShareBatch(user_id: string, share_idList: string[]): Promise<string[]> {
     if (isQuarkUser(user_id)) return apiQuarkShareCancelBatch(user_id, share_idList)
     if (isGuangyaUser(user_id)) return apiGuangyaShareDelete(user_id, share_idList)
-    if (isCloud123User(user_id) || isDropboxUser(user_id) || isOneDriveUser(user_id) || isBoxUser(user_id)) {
+    if (isBoxUser(user_id)) {
+      const successList: string[] = []
+      for (const shareId of share_idList) {
+        if (await apiBoxShareRemove(user_id, shareId)) successList.push(shareId)
+      }
+      return successList
+    }
+    if (isCloud123User(user_id) || isDropboxUser(user_id) || isOneDriveUser(user_id)) {
       message.info('当前网盘类型不支持')
       return []
     }
@@ -479,6 +486,22 @@ export default class AliShare {
 
   static async ApiUpdateShareBatch(user_id: string, share_idList: string[], expirationList: string[], share_pwdList: string[], share_nameList: string[] | undefined): Promise<UpdateShareModel[]> {
     if (!share_idList || share_idList.length == 0) return []
+    if (isBoxUser(user_id)) {
+      const successList: UpdateShareModel[] = []
+      for (let i = 0; i < share_idList.length; i++) {
+        const item = await apiBoxShareUpdate(user_id, share_idList[i], expirationList[i] || '', share_pwdList[i] || '')
+        if (item?.shared_link) {
+          successList.push({
+            share_id: share_idList[i],
+            share_pwd: item.shared_link.password || '',
+            expiration: item.shared_link.unshared_at || '',
+            share_name: item.name || share_nameList?.[i] || ''
+          })
+        }
+      }
+      if (!successList.length) message.error('修改 Box 分享链接失败')
+      return successList
+    }
     if (isPikPakUser(user_id)) {
       const successList: UpdateShareModel[] = []
       for (let i = 0; i < share_idList.length; i++) {

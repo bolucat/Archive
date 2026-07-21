@@ -2,6 +2,7 @@ import type { ITokenInfo } from '../user/userstore'
 import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import { ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 export { ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET }
 
@@ -173,29 +174,32 @@ export const exchangeOneDriveCodeForToken = async (code: string, clientId: strin
 }
 
 export const refreshOneDriveAccessToken = async (token: ITokenInfo): Promise<ITokenInfo | null> => {
-  const clientId = token.device_id || ONEDRIVE_CLIENT_ID
-  if (!clientId || !token.refresh_token) return null
-  const body = new URLSearchParams({
-    client_id: clientId.trim(),
-    scope: ONEDRIVE_SCOPE,
-    refresh_token: token.refresh_token,
-    grant_type: 'refresh_token'
+  const key = tokenRefreshKey('onedrive', token.user_id || token.device_id || token.refresh_token)
+  return withTokenRefreshLock(key, async () => {
+    const clientId = token.device_id || ONEDRIVE_CLIENT_ID
+    if (!clientId || !token.refresh_token) return null
+    const body = new URLSearchParams({
+      client_id: clientId.trim(),
+      scope: ONEDRIVE_SCOPE,
+      refresh_token: token.refresh_token,
+      grant_type: 'refresh_token'
+    })
+    const data = await graphJson<any>(ONEDRIVE_TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body
+    }, '刷新 OneDrive Token 失败')
+    if (!data?.access_token) return null
+    token.access_token = data.access_token
+    if (data.refresh_token) token.refresh_token = data.refresh_token
+    token.expires_in = Number(data.expires_in || token.expires_in || 3600)
+    token.token_type = data.token_type || token.token_type || 'Bearer'
+    token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
+    token.tokenfrom = 'onedrive'
+    token.default_drive_id = token.default_drive_id || 'onedrive'
+    await applyOneDriveAccount(token)
+    return token
   })
-  const data = await graphJson<any>(ONEDRIVE_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body
-  }, '刷新 OneDrive Token 失败')
-  if (!data?.access_token) return null
-  token.access_token = data.access_token
-  if (data.refresh_token) token.refresh_token = data.refresh_token
-  token.expires_in = Number(data.expires_in || token.expires_in || 3600)
-  token.token_type = data.token_type || token.token_type || 'Bearer'
-  token.expire_time = new Date(Date.now() + token.expires_in * 1000).toISOString()
-  token.tokenfrom = 'onedrive'
-  token.default_drive_id = token.default_drive_id || 'onedrive'
-  await applyOneDriveAccount(token)
-  return token
 }
 
 export const applyOneDriveQuota = async (token: ITokenInfo): Promise<boolean> => {

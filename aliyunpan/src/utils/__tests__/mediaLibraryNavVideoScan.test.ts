@@ -44,6 +44,36 @@ describe('video library scan controls', () => {
     expect(scanner).toContain('apiCloud189FileList')
   })
 
+  it('does not show a stale-resume dialog for a scan that is currently running', () => {
+    const view = readSource('src/views/MediaLibraryView.vue')
+
+    expect(view).toMatch(/const checkScanResume = \(\) => \{\s+if \(mediaScanner\.isCurrentlyScanning\) return/)
+    expect(view).toContain("event.key === 'MediaLibrary_MediaItems' || event.key === 'MediaLibrary_Folders'")
+    expect(view).toContain('syncMediaLibraryStoreFromStorage(mediaStore)')
+    expect(view).not.toContain('mediaStore.reloadLibraryFromStorage()')
+  })
+
+  it('labels non-Aliyun media folders by their actual provider instead of falling back to Aliyun', () => {
+    const nav = readSource('src/components/MediaLibraryNav.vue')
+    const library = readSource('src/components/MediaLibrary.vue')
+
+    const providers = [
+      ['quark', '夸克', '夸克网盘'],
+      ['dropbox', 'Dropbox', 'Dropbox'],
+      ['onedrive', 'OneDrive', 'OneDrive'],
+      ['box', 'Box', 'Box'],
+      ['cloud139', '139', '139 云盘'],
+      ['cloud189', '天翼', '天翼云盘'],
+      ['guangya', '光鸭', '光鸭云盘']
+    ]
+    for (const [driveId, shortLabel, fullLabel] of providers) {
+      expect(nav).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return '${shortLabel}'`)
+      expect(nav).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return 'source-${driveId}'`)
+      expect(library).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return '${fullLabel}'`)
+    }
+    expect(nav).toContain("if (token.tokenfrom === 'guangya') return '光鸭云盘'")
+  })
+
   it('keeps local import and WebDAV actions visually aligned with the scan panel buttons', () => {
     const panel = readSource('src/components/LibraryScanPanel.vue')
 
@@ -54,5 +84,12 @@ describe('video library scan controls', () => {
     expect(panel).toContain('font-weight: 500 !important')
     expect(panel).toContain('box-shadow: none !important')
     expect(panel).toContain('.media-library-nav .library-scan-import-btn:hover')
+  })
+
+  it('starts the acquisition runner only after this renderer is identified as PageMain', () => {
+    const main = readSource('src/main.ts')
+    expect(main).not.toMatch(/app\.mount\('#app'\)\s*\nstartMediaAcquisitionWorkflowRunner\(\)/)
+    expect(main).toContain("if (args.page == 'PageMain')")
+    expect(main).toContain('startMediaAcquisitionWorkflowRunner()')
   })
 })

@@ -17,9 +17,13 @@ import type { LocalPlaylist } from '../utils/radio/LocalPlaylistManager'
 import MusicLibraryRail from './music/MusicLibraryRail.vue'
 import UserDAL from '../user/userdal'
 import type { ITokenInfo } from '../user/userstore'
+import useMediaServerRegistryStore from '../store/mediaServerRegistry'
+import { getMediaServerMusicTracks } from '../media-server/contentGateway'
+import type { MediaServerMusicTrack } from '../types/mediaServerContent'
 
 const musicStore = useMusicLibraryStore()
 const appStore = useAppStore()
+const mediaServerRegistry = useMediaServerRegistryStore()
 
 const searchQuery = ref('')
 const groupDetail = ref<{ type: 'artist' | 'album' | 'folder'; title: string; items: IMusicTrack[] } | null>(null)
@@ -43,11 +47,15 @@ const externalPodcastFeeds = ref<ExternalPodcastFeed[]>([])
 const folderContextVisible = ref(false)
 const folderContextPosition = ref({ x: 0, y: 0 })
 const folderContextGroup = ref<MusicFolderGroup | null>(null)
+const mediaServerTracks = ref<MediaServerMusicTrack[]>([])
+const mediaServerLoading = ref(false)
+const mediaServerError = ref('')
 
 const lastScanText = computed(() => musicStore.lastScanAt ? formatTime(musicStore.lastScanAt) : '尚未扫描')
 const heroTracks = computed(() => musicStore.recentlyAdded.slice(0, 5))
 const heroTrack = computed(() => heroTracks.value[0] || musicStore.tracks[0])
 const homeSubtitle = computed(() => `${musicStore.totalCount} 首网盘音乐 · ${musicStore.byArtist.length} 位艺人 · ${musicStore.byAlbum.length} 张专辑`)
+const mediaServerSubtitle = computed(() => `${mediaServerTracks.value.length} 首服务器音乐 · ${mediaServerRegistry.servers.length} 台媒体服务器`)
 
 const filteredAll = computed<IMusicTrack[]>(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -60,6 +68,11 @@ const filteredAll = computed<IMusicTrack[]>(() => {
       (t.album || '').toLowerCase().includes(q)
     )
   })
+})
+const filteredMediaServerTracks = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q) return mediaServerTracks.value
+  return mediaServerTracks.value.filter((track) => `${track.title} ${track.artist || ''} ${track.album || ''} ${track.serverName}`.toLowerCase().includes(q))
 })
 
 const folderContextStyle = computed<CSSProperties>(() => ({
@@ -82,6 +95,7 @@ const selectedFolderGroups = computed(() => {
 const musicWindowTheme = computed(() => appStore.appTheme === 'system' ? (appStore.appDark ? 'dark' : 'light') : appStore.appTheme)
 const currentPanelTracks = computed<IPageMusicTrack[]>(() => {
   if (groupDetail.value) return groupDetail.value.items.map(trackToPlaylist)
+  if (musicStore.subTab === 'server') return mediaServerTracks.value.map(mediaServerTrackToPlaylist)
   if (musicStore.subTab === 'fav') return musicStore.favoritesTracks.map(trackToPlaylist)
   if (musicStore.subTab === 'home') return musicStore.randomPicks.length ? musicStore.randomPicks.map(trackToPlaylist) : musicStore.tracks.slice(0, 20).map(trackToPlaylist)
   return filteredAll.value.slice(0, 80).map(trackToPlaylist)
@@ -132,6 +146,26 @@ function trackToPlaylist(t: IMusicTrack): IPageMusicTrack {
   }
 }
 
+function mediaServerTrackToPlaylist(track: MediaServerMusicTrack): IPageMusicTrack {
+  return {
+    user_id: `media-server:${track.serverId}`,
+    drive_id: `media-server:${track.serverId}`,
+    file_id: track.id,
+    parent_file_id: track.serverId,
+    file_name: track.title,
+    category: 'audio',
+    icon: '',
+    thumbnail: track.thumbnail,
+    description: [track.artist, track.album, track.serverName].filter(Boolean).join(' · '),
+    duration_ms: track.durationMs,
+    encType: '',
+    password: '',
+    media_server_id: track.serverId,
+    media_server_item_id: track.id,
+    media_server_source_id: track.sourceId
+  }
+}
+
 function playFromList(list: IMusicTrack[], target: IMusicTrack) {
   if (!list.length) return
   const playlist = list.map(trackToPlaylist)
@@ -152,6 +186,12 @@ function playFromList(list: IMusicTrack[], target: IMusicTrack) {
     playlist
   }
   window.WebOpenWindow({ page: 'PageMusic', data: pageMusic, theme: musicWindowTheme.value })
+}
+
+function playMediaServerList(list: MediaServerMusicTrack[], target: MediaServerMusicTrack) {
+  const playlist = list.map(mediaServerTrackToPlaylist)
+  const selected = mediaServerTrackToPlaylist(target)
+  playPageTracks(playlist, selected)
 }
 
 function playPageTracks(tracks: IPageMusicTrack[], target: IPageMusicTrack = tracks[0]) {
@@ -255,6 +295,31 @@ function playHeroTrack() {
   const track = heroTrack.value
   if (!track) return
   playFromList(musicStore.tracks, track)
+}
+
+async function refreshMediaServerMusic() {
+  mediaServerRegistry.ensureLoaded()
+  const servers = mediaServerRegistry.servers.filter((server) => !!server.accessToken && !!server.baseUrl)
+  if (!servers.length) {
+    mediaServerTracks.value = []
+    mediaServerError.value = '还没有可用的媒体服务器，请先在“媒体服务器”中登录。'
+    return
+  }
+  mediaServerLoading.value = true
+  mediaServerError.value = ''
+  try {
+    const results = await Promise.allSettled(servers.map((server) => getMediaServerMusicTracks(server)))
+    const tracks: MediaServerMusicTrack[] = []
+    const failures: string[] = []
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') tracks.push(...result.value)
+      else failures.push(servers[index].name)
+    })
+    mediaServerTracks.value = tracks.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
+    if (failures.length) mediaServerError.value = `${failures.join('、')} 的音乐库暂时无法读取`
+  } finally {
+    mediaServerLoading.value = false
+  }
 }
 
 function openGroupDetail(type: 'artist' | 'album' | 'folder', title: string, items: IMusicTrack[]) {
@@ -605,6 +670,7 @@ onMounted(async () => {
     map[u.user_id] = u.nick_name || u.user_name || u.name || u.user_id
   }
   userLabelMap.value = map
+  await refreshMediaServerMusic()
   try {
     podcastProgressMap.value = JSON.parse(localStorage.getItem('mr.podcast.progress') || '{}')
   } catch {
@@ -655,7 +721,7 @@ onMounted(async () => {
             <span v-if="groupDetail" class="aml-back" @click="closeGroupDetail">
               <ArrowLeft :size="18" :stroke-width="1.5" />
             </span>
-            <h2 class="aml-title">{{ groupDetail ? groupDetail.title : '音乐' }}</h2>
+            <h2 class="aml-title">{{ groupDetail ? groupDetail.title : musicStore.subTab === 'server' ? '服务器音乐' : '音乐' }}</h2>
             <span v-if="groupDetail" class="aml-title-sub">{{ groupTypeLabel(groupDetail.type) }} · {{ groupDetail.items.length }} 首</span>
           </div>
           <div class="aml-header-right">
@@ -666,6 +732,9 @@ onMounted(async () => {
             </div>
             <a-button v-if="groupDetail" type="primary" size="small" @click="playFromList(groupDetail.items, groupDetail.items[0])">
               <Play :size="14" :stroke-width="2" /> 播放
+            </a-button>
+            <a-button v-else-if="musicStore.subTab === 'server'" size="small" :loading="mediaServerLoading" @click="refreshMediaServerMusic">
+              <RefreshCw :size="14" :stroke-width="2" /> 刷新
             </a-button>
           </div>
         </div>
@@ -829,6 +898,34 @@ onMounted(async () => {
                 </div>
               </section>
             </template>
+          </div>
+
+          <div v-else-if="musicStore.subTab === 'server'" class="aml-all-songs">
+            <div class="aml-server-note">{{ mediaServerSubtitle }}</div>
+            <div v-if="mediaServerError" class="aml-server-error">{{ mediaServerError }}</div>
+            <div v-if="mediaServerLoading" class="aml-empty-state">
+              <RefreshCw :size="38" :stroke-width="1.2" class="aml-empty-icon" />
+              <div class="aml-empty-title">正在读取媒体服务器音乐…</div>
+            </div>
+            <div v-else-if="!filteredMediaServerTracks.length" class="aml-empty-state">
+              <Music :size="48" :stroke-width="1" class="aml-empty-icon" />
+              <div class="aml-empty-title">暂无服务器音乐</div>
+              <div class="aml-empty-sub">请确认媒体服务器已登录且拥有音乐媒体库</div>
+            </div>
+            <div v-else class="aml-tracklist">
+              <div v-for="(t, i) in filteredMediaServerTracks" :key="`${t.serverId}:${t.id}`" class="aml-track" @click="playMediaServerList(filteredMediaServerTracks, t)">
+                <span class="aml-track-idx">{{ i + 1 }}</span>
+                <div class="aml-track-cover">
+                  <img v-if="t.thumbnail" :src="t.thumbnail" alt="" />
+                  <Music v-else :size="16" :stroke-width="1.5" />
+                </div>
+                <div class="aml-track-meta">
+                  <div class="aml-track-title">{{ t.title }}</div>
+                  <div class="aml-track-artist">{{ t.artist || '未知艺人' }}<span v-if="t.album"> — {{ t.album }}</span></div>
+                </div>
+                <div class="aml-track-source">{{ t.serverName }} · {{ t.provider === 'plex' ? 'Plex' : t.provider === 'emby' ? 'Emby' : 'Jellyfin' }}</div>
+              </div>
+            </div>
           </div>
 
           <!-- All songs -->
@@ -2294,6 +2391,26 @@ onMounted(async () => {
   text-align: right;
 }
 
+.aml-server-note,
+.aml-server-error {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.aml-server-note {
+  color: rgba(232,236,239,.66);
+  background: rgba(0,245,212,.07);
+  border: 1px solid rgba(0,245,212,.16);
+}
+
+.aml-server-error {
+  color: #ffb4b7;
+  background: rgba(255,91,102,.09);
+  border: 1px solid rgba(255,91,102,.18);
+}
+
 /* Empty state */
 
 .aml-empty-state {
@@ -2389,6 +2506,16 @@ body:not([arco-theme='dark']) .aml-track-source,
 body:not([arco-theme='dark']) .aml-empty-sub,
 body:not([arco-theme='dark']) .aml-scan-text {
   color: var(--color-text-2);
+}
+
+body:not([arco-theme='dark']) .aml-server-note {
+  color: var(--color-text-2);
+  background: var(--color-primary-light-1);
+}
+
+body:not([arco-theme='dark']) .aml-server-error {
+  color: rgb(var(--danger-6));
+  background: var(--color-danger-light-1);
 }
 
 body:not([arco-theme='dark']) .aml-search-box,

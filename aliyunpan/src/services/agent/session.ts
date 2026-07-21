@@ -134,10 +134,14 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
   const allowedTools = Object.fromEntries(Object.entries(options.tools || {}).filter(([name]) => !options.toolAllowlist || options.toolAllowlist.includes(name)))
   const permissions = new Map(Object.entries(allowedTools).map(([name, tool]) => [name, tool.permission || inferToolPermission(name)]))
   let toolCallCount = 0
+  let toolCallsThisTurn = 0
   let turnCount = 0
   const toolCallArgs = new Map<string, unknown>()
   const completedToolSteps: string[] = []
+  const repeatedToolCallExemptions = new Set(options.repeatedToolCallExemptions || [])
+  let payloadToolAllowlist: Set<string> | undefined
   let repetitionStopped = false
+  let expectedStop = false
   const agent = new Agent({
     initialState: {
       systemPrompt: systemPromptWithContext(options.systemPrompt, options.context),
@@ -151,12 +155,25 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
     // The renderer aliases pi-ai/compat to a browser-safe stub. Always provide
     // the concrete OpenAI-compatible stream rather than falling back to that stub.
     streamFn: options.streamFn || streamOpenAICompletions,
-    onPayload: (payload: unknown) => addAgentFeatureToPayload(payload, options.surface),
+    onPayload: (payload: unknown) => {
+      const featured = addAgentFeatureToPayload(payload, options.surface)
+      if (!featured || typeof featured !== 'object' || Array.isArray(featured)) return featured
+      return {
+        ...(featured as Record<string, unknown>),
+        ...(payloadToolAllowlist && Array.isArray((featured as Record<string, unknown>).tools)
+          ? { tools: ((featured as Record<string, unknown>).tools as Array<any>).filter(tool => payloadToolAllowlist?.has(tool?.function?.name)) }
+          : {}),
+        ...(options.maxToolCallsPerTurn === 1 ? { parallel_tool_calls: false } : {}),
+        ...(options.requireToolCall ? { tool_choice: 'required' } : {})
+      }
+    },
     transformContext: async messages => pruneContext(messages, options.maxContextChars || DEFAULT_MAX_CONTEXT_CHARS),
     toolExecution: options.toolExecution || 'parallel',
     beforeToolCall: async ({ toolCall, args }) => {
       toolCallCount++
       if (toolCallCount > (options.maxToolCalls || 5)) return { block: true, reason: 'Tool call limit reached.' }
+      toolCallsThisTurn++
+      if (options.maxToolCallsPerTurn && toolCallsThisTurn > options.maxToolCallsPerTurn) return { block: true, reason: 'Only one tool call is allowed per Agent turn. Observe its result before choosing the next action.' }
       const permission = permissions.get(toolCall.name) || 'read'
       if (permission === 'write' || permission === 'destructive') {
         const request = await createApprovalRequest(toolCall.id, toolCall.name, permission, args)
@@ -173,24 +190,30 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
     if (event.type === 'tool_execution_end' && options.maxRepeatedToolCalls && !repetitionStopped) {
       const args = toolCallArgs.get(event.toolCallId)
       toolCallArgs.delete(event.toolCallId)
-      const signature = `${event.toolName}\u0000${safeAgentLoopValue(args)}\u0000${safeAgentLoopValue(event.result)}`
-      completedToolSteps.push(signature)
-      if (shouldStopForRepeatedAgentToolSteps(completedToolSteps, options.maxRepeatedToolCalls)) {
-        repetitionStopped = true
-        agent.abort()
-        await options.onEvent?.({ type: 'error', message: 'Repeated tool call limit reached.' })
+      if (!repeatedToolCallExemptions.has(event.toolName)) {
+        const signature = `${event.toolName}\u0000${safeAgentLoopValue(args)}\u0000${safeAgentLoopValue(event.result)}`
+        completedToolSteps.push(signature)
+        if (shouldStopForRepeatedAgentToolSteps(completedToolSteps, options.maxRepeatedToolCalls)) {
+          repetitionStopped = true
+          agent.abort()
+          await options.onEvent?.({ type: 'error', message: 'Repeated tool call limit reached.' })
+        }
       }
+    }
+    if (event.type === 'tool_execution_end' && !event.isError && options.terminalToolsAfterObservation?.observationTools.includes(event.toolName)) {
+      payloadToolAllowlist = new Set(options.terminalToolsAfterObservation.terminalTools)
     }
     if (event.type === 'tool_execution_end' && !repetitionStopped) {
       const reason = options.shouldStopAfterToolResult?.({ toolName: event.toolName, result: event.result, isError: event.isError })
       if (reason) {
         repetitionStopped = true
+        expectedStop = true
         agent.abort()
-        await options.onEvent?.({ type: 'error', message: reason })
       }
     }
     if (event.type === 'turn_start') {
       turnCount++
+      toolCallsThisTurn = 0
       if (turnCount > (options.maxTurns || 5)) {
         agent.abort()
         await options.onEvent?.({ type: 'error', message: 'Maximum agent turns reached.' })
@@ -204,9 +227,12 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
 
   try {
     await agent.prompt(promptWithUntrustedContext(options.prompt, options.untrustedContext))
-    if (agent.state.errorMessage) await options.onEvent?.({ type: 'error', message: formatAgentModelError(options.model, agent.state.errorMessage) })
+    // A sandbox may deliberately stop after a terminal tool result. Pi reports
+    // that as an abort; surfacing it as a model error makes a successful import
+    // look failed and can poison the task's subsequent event interpretation.
+    if (!expectedStop && agent.state.errorMessage) await options.onEvent?.({ type: 'error', message: formatAgentModelError(options.model, agent.state.errorMessage) })
   } catch (error) {
-    await options.onEvent?.({ type: 'error', message: formatAgentModelError(options.model, error) })
+    if (!expectedStop) await options.onEvent?.({ type: 'error', message: formatAgentModelError(options.model, error) })
   } finally {
     options.signal?.removeEventListener('abort', abort)
     unsubscribe()

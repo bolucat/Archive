@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { Modal } from '@arco-design/web-vue'
 import { modalCloseAll } from '../utils/modal'
-import { useUserStore } from '../store'
+import { useModalStore, useUserStore } from '../store'
 import message from '../utils/message'
 import {
   apiDrive115OfflineAddTorrent,
@@ -17,7 +17,10 @@ import {
 defineProps<{ visible: boolean }>()
 
 const userStore = useUserStore()
+const modalStore = useModalStore()
 const loading = ref(false)
+const activeTab = ref('tasks')
+const hasTorrentPreset = ref(false)
 const tasks = ref<Drive115OfflineTask[]>([])
 const quota = ref<Drive115OfflineQuota[]>([])
 const torrentSha1 = ref('')
@@ -103,14 +106,30 @@ const addTorrent = async () => {
   await refresh()
 }
 
-const handleOpen = () => {
+const handleOpen = async () => {
+  const preset = modalStore.modalData?.torrent
+  if (preset?.sha1 && preset?.pickCode) {
+    hasTorrentPreset.value = true
+    activeTab.value = 'torrent'
+    torrentSha1.value = String(preset.sha1)
+    torrentPickCode.value = String(preset.pickCode)
+    savePath.value = String(preset.name || '')
+    torrentInfoHash.value = ''
+    torrentName.value = ''
+    torrentFiles.value = []
+    wanted.value = []
+    await parseTorrent()
+  } else {
+    hasTorrentPreset.value = false
+    activeTab.value = 'tasks'
+  }
   void refresh()
 }
 </script>
 
 <template>
   <a-modal :visible="visible" :footer="false" :unmount-on-close="true" title="115 云下载管理" @before-open="handleOpen" @cancel="modalCloseAll">
-    <a-tabs>
+    <a-tabs v-model:active-key="activeTab">
       <a-tab-pane key="tasks" title="任务管理">
         <div class="drive115-actions">
           <a-button :loading="loading" @click="refresh">刷新</a-button>
@@ -127,19 +146,17 @@ const handleOpen = () => {
           <div v-for="item in quota" :key="`${item.name}-${item.expire_time}`">{{ item.name || '云下载配额' }}：剩余 {{ item.surplus ?? '-' }} / {{ item.count ?? '-' }}</div>
         </div>
       </a-tab-pane>
-      <a-tab-pane key="torrent" title="BT 任务">
+      <a-tab-pane v-if="hasTorrentPreset" key="torrent" title="BT 任务">
         <a-form layout="vertical">
-          <a-form-item label="种子 SHA1"><a-input v-model="torrentSha1" placeholder="上传种子后填写 SHA1" /></a-form-item>
-          <a-form-item label="种子提取码"><a-input v-model="torrentPickCode" /></a-form-item>
-          <a-button type="outline" @click="parseTorrent">解析种子</a-button>
           <div v-if="torrentFiles.length" class="drive115-torrent-files">
             <div class="drive115-torrent-name">{{ torrentName || 'BT 任务' }}</div>
             <a-checkbox-group v-model="wanted">
               <a-checkbox v-for="file in torrentFiles" :key="file.index" :value="String(file.index)">{{ file.name }}</a-checkbox>
             </a-checkbox-group>
           </div>
+          <div v-else class="drive115-torrent-empty">正在解析种子文件...</div>
           <a-form-item label="保存路径"><a-input v-model="savePath" placeholder="例如：Season 01" /></a-form-item>
-          <a-button type="primary" @click="addTorrent">创建 BT 任务</a-button>
+          <a-button type="primary" :disabled="!torrentFiles.length" @click="addTorrent">创建 BT 任务</a-button>
         </a-form>
       </a-tab-pane>
     </a-tabs>
@@ -152,4 +169,5 @@ const handleOpen = () => {
 .drive115-torrent-files { display: grid; gap: 8px; margin: 14px 0; }
 .drive115-torrent-files :deep(.arco-checkbox-group) { display: grid; gap: 6px; }
 .drive115-torrent-name { font-weight: 600; }
+.drive115-torrent-empty { margin: 14px 0; color: var(--color-text-3); }
 </style>

@@ -19,8 +19,8 @@ import { apiBaiduFileList } from '../cloudbaidu/dirfilelist'
 import { apiBaiduFileMetas, mapBaiduMetaToAliFileItem } from '../cloudbaidu/filecmd'
 import { apiPikPakDownloadInfo, apiPikPakFileDetail, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
 import { apiQuarkDownloadUrl, apiQuarkFileDetail, apiQuarkVideoPreviewUrl, mapQuarkFileToAliModel } from '../quark/dirfilelist'
-import { apiCloud139DownloadInfo, apiCloud139FileDetail, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
-import { apiCloud189DownloadInfo, apiCloud189FileDetail, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
+import { apiCloud139DownloadInfo, apiCloud139FileDetail, cloud139DownloadHeaders, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
+import { apiCloud189DownloadInfo, apiCloud189FileDetail, cloud189DownloadHeaders, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
 import { apiGuangyaDownloadInfo, apiGuangyaFileDetail, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 import { apiDropboxFileDetail, apiDropboxTemporaryLink, mapDropboxFileToAliModel, resolveDropboxParentIdFromPath } from '../dropbox/dirfilelist'
 import { apiOneDriveFileDetail, getOneDriveDownloadUrl, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
@@ -107,7 +107,7 @@ export default class AliFile {
           drive_id,
           file_id,
           parent_file_id: '',
-          name: '网盘文件',
+          name: '根目录',
           type: 'folder',
           isDir: true
         }
@@ -126,7 +126,7 @@ export default class AliFile {
           drive_id,
           file_id,
           parent_file_id: '',
-          name: '网盘文件',
+          name: '根目录',
           type: 'folder',
           isDir: true
         }
@@ -143,7 +143,7 @@ export default class AliFile {
           drive_id,
           file_id: 'quark_root',
           parent_file_id: '',
-          name: '网盘文件',
+          name: '根目录',
           type: 'folder',
           isDir: true
         }
@@ -156,7 +156,7 @@ export default class AliFile {
     }
     if (isCloud139User(user_id) || drive_id === 'cloud139') {
       if (file_id === 'cloud139_root' || file_id === '/' || file_id === '0') {
-        return { drive_id, file_id: 'cloud139_root', parent_file_id: '', name: '网盘文件', type: 'folder', isDir: true }
+        return { drive_id, file_id: 'cloud139_root', parent_file_id: '', name: '根目录', type: 'folder', isDir: true }
       }
       const detail = await apiCloud139FileDetail(user_id, file_id)
       if (!detail) return undefined
@@ -166,7 +166,7 @@ export default class AliFile {
     }
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       if (file_id === 'cloud189_root' || file_id === '-11' || file_id === '0') {
-        return { drive_id, file_id: 'cloud189_root', parent_file_id: '', name: '网盘文件', type: 'folder', isDir: true }
+        return { drive_id, file_id: 'cloud189_root', parent_file_id: '', name: '根目录', type: 'folder', isDir: true }
       }
       const detail = await apiCloud189FileDetail(user_id, file_id)
       if (!detail) return undefined
@@ -176,7 +176,7 @@ export default class AliFile {
     }
     if (isGuangyaUser(user_id) || drive_id === 'guangya') {
       if (file_id === 'guangya_root' || file_id === '0' || file_id === '/') {
-        return { drive_id, file_id: 'guangya_root', parent_file_id: '', name: '网盘文件', type: 'folder', isDir: true }
+        return { drive_id, file_id: 'guangya_root', parent_file_id: '', name: '根目录', type: 'folder', isDir: true }
       }
       const detail = await apiGuangyaFileDetail(user_id, file_id)
       if (!detail) return undefined
@@ -190,7 +190,7 @@ export default class AliFile {
           drive_id,
           file_id,
           parent_file_id: '',
-          name: '网盘文件',
+          name: '根目录',
           type: 'folder',
           isDir: true
         }
@@ -208,7 +208,7 @@ export default class AliFile {
           drive_id,
           file_id,
           parent_file_id: '',
-          name: '网盘文件',
+          name: '根目录',
           type: 'folder',
           isDir: true
         }
@@ -225,7 +225,7 @@ export default class AliFile {
           drive_id,
           file_id,
           parent_file_id: '',
-          name: '网盘文件',
+          name: '根目录',
           type: 'folder',
           isDir: true
         }
@@ -397,12 +397,12 @@ export default class AliFile {
     if (isCloud139User(user_id) || drive_id === 'cloud139') {
       const info = await apiCloud139DownloadInfo(user_id, file_id)
       if (info.error) return info.error
-      return { drive_id, file_id, expire_time: GetExpiresTime(info.url), url: info.url, size: Number(info.size || 0) }
+      return { drive_id, file_id, expire_time: GetExpiresTime(info.url), url: info.url, size: Number(info.size || 0), headers: cloud139DownloadHeaders() }
     }
     if (isCloud189User(user_id) || drive_id === 'cloud189') {
       const info = await apiCloud189DownloadInfo(user_id, file_id)
       if (info.error) return info.error
-      return { drive_id, file_id, expire_time: GetExpiresTime(info.url), url: info.url, size: Number(info.size || 0) }
+      return { drive_id, file_id, expire_time: GetExpiresTime(info.url), url: info.url, size: Number(info.size || 0), headers: cloud189DownloadHeaders() }
     }
     if (isGuangyaUser(user_id) || drive_id === 'guangya') {
       const info = await apiGuangyaDownloadInfo(user_id, file_id)
@@ -926,7 +926,7 @@ export default class AliFile {
 
   static async ApiFileGetPathString(user_id: string, drive_id: string, file_id: string, dirsplit: string): Promise<string> {
     if (!user_id || !drive_id || !file_id) return ''
-    if (isCloud123User(user_id) || drive_id === 'cloud123' || isPikPakUser(user_id) || drive_id === 'pikpak' || isGuangyaUser(user_id) || drive_id === 'guangya' || isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') {
+    if (isCloud123User(user_id) || drive_id === 'cloud123' || isPikPakUser(user_id) || drive_id === 'pikpak' || isQuarkUser(user_id) || drive_id === 'quark' || isGuangyaUser(user_id) || drive_id === 'guangya' || isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') {
       const pathList = TreeStore.GetDirPath(drive_id, file_id)
       const pathNames = pathList.map((item) => item.name).filter((name) => name)
       return pathNames.join(dirsplit)
@@ -963,7 +963,7 @@ export default class AliFile {
 
   static async ApiFileGetFolderSize(user_id: string, drive_id: string, file_id: string): Promise<IAliGetForderSizeModel | undefined> {
     if (!user_id || !drive_id || !file_id) return undefined
-    if (isCloud123User(user_id) || drive_id === 'cloud123' || isPikPakUser(user_id) || drive_id === 'pikpak' || isGuangyaUser(user_id) || drive_id === 'guangya' || isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') {
+    if (isCloud123User(user_id) || drive_id === 'cloud123' || isPikPakUser(user_id) || drive_id === 'pikpak' || isQuarkUser(user_id) || drive_id === 'quark' || isGuangyaUser(user_id) || drive_id === 'guangya' || isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isDropboxUser(user_id) || drive_id === 'dropbox' || isOneDriveUser(user_id) || drive_id === 'onedrive' || isBoxUser(user_id) || drive_id === 'box') {
       return { size: 0, folder_count: 0, file_count: 0, reach_limit: undefined }
     }
     const url = 'adrive/v1/file/get_folder_size_info'

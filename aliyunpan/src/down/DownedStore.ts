@@ -291,6 +291,7 @@ const useDownStore = defineStore('down', {
       }
 
       if (file) {
+        if (file.Info.offlineProvider) return
         if (file.Info.ariaRemote) {
           message.error('远程下载不支持该操作')
           return
@@ -312,6 +313,7 @@ const useDownStore = defineStore('down', {
       for (let j = 0; j < DownedList.length; j++) {
         const downID = DownedList[j].DownID
         if (opDownIDList.includes(downID)) {
+          if (DownedList[j].Info.offlineProvider) continue
           if (DownedList[j].Info.ariaRemote) {
             message.error('远程下载不支持该操作')
             continue

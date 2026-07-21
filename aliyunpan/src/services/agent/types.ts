@@ -32,8 +32,16 @@ export interface AgentSessionConfig {
   toolExecution?: AgentExecutionMode
   maxTurns?: number
   maxToolCalls?: number
+  /** Enforce observe-act sequencing even when a compatible model emits a tool batch. */
+  maxToolCallsPerTurn?: number
+  /** Require a tool action instead of accepting a prose-only turn. */
+  requireToolCall?: boolean
+  /** After an observation succeeds, expose only the tools that can conclude that decision. */
+  terminalToolsAfterObservation?: { observationTools: string[]; terminalTools: string[] }
   /** Abort a tool loop when the same tool is called with the same input too many times. */
   maxRepeatedToolCalls?: number
+  /** Idempotent context tools that should not contribute to the repeated-action fuse. */
+  repeatedToolCallExemptions?: string[]
   maxContextChars?: number
 }
 

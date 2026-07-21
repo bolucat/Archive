@@ -5,8 +5,9 @@ import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliShareBottleFishItem, IAliShareItem, IAliShareRecentItem } from './alimodels'
 import AliDirFileList from './dirfilelist'
 import { useSettingStore } from '../store'
-import { isAliyunUser, isCloud123User, isDropboxUser, isGuangyaUser, isPikPakUser, isQuarkUser } from './utils'
+import { isAliyunUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isPikPakUser, isQuarkUser } from './utils'
 import { apiCloud123ShareList, getCloud123ShareUrl } from '../cloud123/share'
+import { apiBoxShareList } from '../box/share'
 import { apiDropboxListSharedLinks, mapDropboxSharedLinkToAliShareItem } from '../dropbox/share'
 import { apiQuarkShareList } from '../quark/share'
 import { apiGuangyaShareList } from '../guangya/share'
@@ -43,6 +44,12 @@ export interface IAliShareBottleFishResp {
 export default class AliShareList {
 
   static async ApiShareListAll(user_id: string): Promise<IAliShareResp> {
+    if (isBoxUser(user_id)) {
+      const dir = AliShareList.EmptyShareResp(user_id)
+      dir.items = await apiBoxShareList(user_id)
+      for (const item of dir.items) dir.itemsKey.add(item.share_id)
+      return dir
+    }
     if (isCloud123User(user_id)) {
       return await AliShareList.ApiCloud123ShareListAll(user_id)
     }
@@ -325,6 +332,10 @@ export default class AliShareList {
   }
 
   static async ApiShareListUntilShareID(user_id: string, share_id: string): Promise<boolean> {
+    if (isBoxUser(user_id)) {
+      const links = await apiBoxShareList(user_id)
+      return links.some((link) => link.share_id === share_id)
+    }
     if (isCloud123User(user_id)) {
       let lastShareId = 0
       do {

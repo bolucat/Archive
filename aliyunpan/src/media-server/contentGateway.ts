@@ -10,6 +10,7 @@ import type {
   MediaServerSourceOption,
   MediaServerItemDetail,
   MediaServerLibraryNode,
+  MediaServerMusicTrack,
   MediaServerPagedLibraryPage,
   MediaServerPagedCollection,
   MediaServerPerson,
@@ -39,6 +40,7 @@ import {
   getPlexMediaServerHomeWithPreferences,
   getPlexMediaServerItemDetail,
   getPlexMediaServerLibraries,
+  getPlexMediaServerMusicTracks,
   getPlexMediaServerLibraryPagedItems,
   getPlexMediaServerPersonPagedItems,
   getPlexMediaServerPlaybackInfo,
@@ -69,6 +71,9 @@ interface MediaServerBaseItem {
   IndexNumber?: number
   SeriesName?: string
   Album?: string
+  AlbumArtist?: string
+  Artists?: string[]
+  ArtistItems?: Array<{ Name?: string }>
   ParentBackdropItemId?: string
   ParentBackdropImageTags?: string[]
   ImageTags?: Record<string, string>
@@ -795,6 +800,32 @@ export const getMediaServerLibraries = async (config: MediaServerConfig): Promis
   ensureServerContext(config)
   const payload = await mediaServerFetch<BaseQueryResult>(config, `/Users/${config.userId}/Views`)
   return (payload.Items || []).map((item) => mapLibraryNode(config, item))
+}
+
+export const getMediaServerMusicTracks = async (config: MediaServerConfig): Promise<MediaServerMusicTrack[]> => {
+  if (config.type === 'plex') return getPlexMediaServerMusicTracks(config)
+  ensureServerContext(config)
+  const payload = await mediaServerFetch<BaseQueryResult>(
+    config,
+    `/Users/${config.userId}/Items?Recursive=true&IncludeItemTypes=Audio&EnableUserData=true&Fields=Album,AlbumArtist,Artists,ArtistItems,PrimaryImageAspectRatio,MediaSources,RunTimeTicks&SortBy=SortName&SortOrder=Ascending&Limit=5000&StartIndex=0`
+  )
+  return (payload.Items || []).flatMap((item) => {
+    const id = item.Id || ''
+    if (!id) return []
+    const source = item.MediaSources?.[0]
+    return [{
+      id,
+      serverId: config.id,
+      provider: config.type,
+      serverName: config.name,
+      title: item.Name || '未命名曲目',
+      artist: item.Artists?.[0] || item.ArtistItems?.[0]?.Name || item.AlbumArtist,
+      album: item.Album,
+      thumbnail: buildImageUrlFromTag(config, id, 'Primary', item.ImageTags?.Primary, true),
+      durationMs: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 10_000) : undefined,
+      sourceId: source?.Id
+    }]
+  })
 }
 
 export const getMediaServerLibraryItems = async (

@@ -41,6 +41,25 @@ const createMpvSocketPath = () => {
   return is.windows() ? `\\\\.\\pipe\\boxplayer-mpv-${id}` : path.join(tmpdir(), `boxplayer-mpv-${id}.sock`)
 }
 
+const buildExternalSubtitleProxyUrl = (userId: string, driveId: string, fileId: string, url: string, size = 0, headers?: Record<string, string>) => {
+  return getProxyUrl({
+    user_id: userId,
+    drive_id: driveId,
+    file_id: fileId,
+    file_size: size,
+    quality: 'Origin',
+    proxy_kind: 'subtitle',
+    proxy_url: url,
+    proxy_headers: headers && Object.values(headers).some(Boolean) ? JSON.stringify(headers) : undefined
+  })
+}
+
+const resolveExternalSubtitleUrl = async (userId: string, subtitleFile: IAliGetFileModel) => {
+  const data = await AliFile.ApiFileDownloadUrl(userId, subtitleFile.drive_id, subtitleFile.file_id, 14400)
+  if (typeof data === 'string' || !data.url) return ''
+  return buildExternalSubtitleProxyUrl(userId, subtitleFile.drive_id, subtitleFile.file_id, data.url, data.size, data.headers)
+}
+
 const PlayerUtils = {
   filterSubtitleFile(name: string, subTitlesList: IAliGetFileModel[]) {
     // 自动加载同名字幕
@@ -402,10 +421,8 @@ const PlayerUtils = {
               if (subTitlesList.length > 0) {
                 let subTitleFile = this.filterSubtitleFile(currentFileInfo.name, subTitlesList)
                 if (subTitleFile) {
-                  const data = await AliFile.ApiFileDownloadUrl(token.user_id, subTitleFile.drive_id, subTitleFile.file_id, 14400)
-                  if (typeof data !== 'string' && data.url && data.url != '') {
-                    await mpv.addSubtitles(data.url, 'select', subTitleFile.name || currentFileInfo.name)
-                  }
+                  const subtitleUrl = await resolveExternalSubtitleUrl(token.user_id, subTitleFile)
+                  if (subtitleUrl) await mpv.addSubtitles(subtitleUrl, 'select', subTitleFile.name || currentFileInfo.name)
                 }
               }
             }
@@ -535,7 +552,9 @@ const PlayerUtils = {
       // 加载转码的内嵌字幕
       if (rawData.subtitles && quality != 'Origin') {
         let subTitleData = rawData.subtitles.find((sub: any) => sub.language === 'chi') || rawData.subtitles[0]
-        subTitleUrl = (subTitleData && subTitleData.url) || ''
+        if (subTitleData?.url) {
+          subTitleUrl = buildExternalSubtitleProxyUrl(token.user_id, file.drive_id, file.file_id, subTitleData.url, 0, subTitleData.headers)
+        }
       }
       if (rawData.qualities) {
         const selectedQuality = rawData.qualities.find((q: any) => q.quality === quality) || rawData.qualities[0]
@@ -545,10 +564,7 @@ const PlayerUtils = {
     }
     // 优先加载网盘内字幕文件
     if (subTitleFile && !subTitleFile.isDir) {
-      const data = await AliFile.ApiFileDownloadUrl(token.user_id, subTitleFile.drive_id, subTitleFile.file_id, 14400)
-      if (typeof data !== 'string' && data.url && data.url != '') {
-        subTitleUrl = data.url
-      }
+      subTitleUrl = await resolveExternalSubtitleUrl(token.user_id, subTitleFile)
     }
     // 获取播放进度
     let play_cursor = 0

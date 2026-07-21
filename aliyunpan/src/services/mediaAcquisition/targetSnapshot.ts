@@ -13,6 +13,17 @@ export { newMediaAcquisitionFiles } from './snapshotDiff'
 export type MediaAcquisitionDirectoryEntry = MediaAcquisitionFileSnapshot & { isDir: boolean }
 
 const VIDEO_EXT = /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|rmvb|ts|m2ts|mts|vob)$/i
+const DIRECTORY_READ_TIMEOUT_MS = 15_000
+
+function withDirectoryReadTimeout<T>(promise: Promise<T>, platform: string, parentId: string): Promise<T> {
+  let timer: number | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(`${platform} 目录读取超时：${parentId}`)), DIRECTORY_READ_TIMEOUT_MS)
+  })
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) window.clearTimeout(timer)
+  })
+}
 
 export async function listMediaAcquisitionTargetFiles(target: MediaAcquisitionTarget): Promise<MediaAcquisitionFileSnapshot[]> {
   const platform = normalizeMediaAcquisitionPlatform(target.targetPlatform)
@@ -53,6 +64,17 @@ export async function resolveMediaAcquisitionLeafFolder(target: MediaAcquisition
   return { id: parentId, path: parentPath || '/' }
 }
 
+export async function listMediaAcquisitionTargetLeafFiles(target: MediaAcquisitionTarget): Promise<MediaAcquisitionFileSnapshot[]> {
+  const leaf = await resolveMediaAcquisitionLeafFolder(target)
+  if (!leaf) return []
+  const entries = await listMediaAcquisitionDirectoryEntries(target, leaf.id, leaf.path)
+  return entries.filter(entry => !entry.isDir).map(({ isDir: _isDir, ...file }) => file)
+}
+
+export function listMediaAcquisitionTransferBaselineFiles(target: MediaAcquisitionTarget): Promise<MediaAcquisitionFileSnapshot[]> {
+  return target.mediaType === 'movie' ? listMediaAcquisitionTargetLeafFiles(target) : listMediaAcquisitionTargetFiles(target)
+}
+
 /** Final side-effect gate: reread the real season directory immediately before a transfer. */
 export interface MediaAcquisitionEpisodeCoverage {
   seasonNumber: number
@@ -91,7 +113,7 @@ async function listDirectory(target: MediaAcquisitionTarget, platform: string, p
     const entries: MediaAcquisitionDirectoryEntry[] = []
     let offset = 0
     while (true) {
-      const page = await apiDrive115FileList(target.targetUserId, parentId.includes('root') ? '0' : parentId, 200, offset, true, { silent: true })
+      const page = await withDirectoryReadTimeout(apiDrive115FileList(target.targetUserId, parentId.includes('root') ? '0' : parentId, 200, offset, true, { silent: true }), '115', parentId)
       entries.push(...page.map(item => toEntry(String(item.fid), item.fn, String(item.fc) === '0', Number(item.fs || 0), parentPath, parentId)))
       if (page.length < 200) break
       offset += page.length

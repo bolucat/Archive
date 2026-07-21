@@ -2,6 +2,7 @@ import { ITokenInfo } from '../user/userstore'
 import UserDAL from '../user/userdal'
 import message from './message'
 import { CLOUD123_APP_ID, CLOUD123_APP_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 const CLOUD123_AUTH_URL = 'https://yun.123pan.com/auth'
 const CLOUD123_ACCESS_TOKEN_URL = 'https://open-api.123pan.com/api/v1/oauth2/access_token'
@@ -57,16 +58,16 @@ export const buildCloud123AuthUrl = () => {
   return `${CLOUD123_AUTH_URL}?${params.toString()}`
 }
 
-const normalizeToken = (data: any): ITokenInfo | null => {
+const normalizeToken = (data: any, fallbackRefreshToken = ''): ITokenInfo | null => {
   if (!data?.access_token) return null
   const payload = parseJwtPayload(data.access_token) || {}
-  const userId = payload.user_id || payload.id || payload.uid || `cloud123_${hashString(data.refresh_token || data.access_token)}`
+  const userId = payload.user_id || payload.id || payload.uid || `cloud123_${hashString(data.refresh_token || fallbackRefreshToken || data.access_token)}`
   const expireTime = new Date(Date.now() + (data.expires_in || 0) * 1000).toISOString()
 
   return {
     tokenfrom: 'cloud123',
     access_token: data.access_token,
-    refresh_token: data.refresh_token || '',
+    refresh_token: data.refresh_token || fallbackRefreshToken,
     session_expires_in: 0,
     open_api_token_type: '',
     open_api_access_token: '',
@@ -171,7 +172,7 @@ export const exchangeCloud123CodeForToken = async (code: string): Promise<IToken
   return token
 }
 
-export const refreshCloud123AccessToken = async (refreshToken: string): Promise<ITokenInfo | null> => {
+const refreshCloud123AccessTokenInternal = async (refreshToken: string): Promise<ITokenInfo | null> => {
   const body = new URLSearchParams({
     client_id: CLOUD123_APP_ID,
     client_secret: CLOUD123_APP_SECRET,
@@ -185,7 +186,7 @@ export const refreshCloud123AccessToken = async (refreshToken: string): Promise<
   })
   if (!response.ok) return null
   const data = await response.json()
-  const token = normalizeToken(data)
+  const token = normalizeToken(data, refreshToken)
   if (token) {
     try {
     const userInfo = await fetchCloud123UserInfo(token.access_token)
@@ -214,3 +215,6 @@ export const refreshCloud123AccessToken = async (refreshToken: string): Promise<
   }
   return token
 }
+
+export const refreshCloud123AccessToken = async (refreshToken: string): Promise<ITokenInfo | null> =>
+  withTokenRefreshLock(tokenRefreshKey('cloud123', refreshToken), () => refreshCloud123AccessTokenInternal(refreshToken))

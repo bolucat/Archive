@@ -61,6 +61,36 @@ const PROVIDER_ENDPOINTS: Record<string, string> = {
   openrouter: 'https://openrouter.ai/api/v1',
 }
 
+interface StoredAIProviderConfig {
+  apiKey?: string
+  modelId?: string
+  baseUrl?: string
+}
+
+function findSoleStoredBYOKConfig(): AIModelConfig | null {
+  if (typeof localStorage === 'undefined') return null
+  const prefix = 'ai_provider_config_'
+  const configs: AIModelConfig[] = []
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key?.startsWith(prefix)) continue
+      const provider = key.slice(prefix.length)
+      if (!provider || isBoxPlayerCloudProvider(provider)) continue
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const config = JSON.parse(raw) as StoredAIProviderConfig
+      const modelId = config.modelId?.trim() || ''
+      const apiKey = config.apiKey?.trim() || ''
+      if (!modelId || (provider !== 'ollama' && !apiKey)) continue
+      configs.push({ endpoint: config.baseUrl?.trim() || PROVIDER_ENDPOINTS[provider] || '', modelId, apiKey, providerName: provider })
+    }
+  } catch {
+    return null
+  }
+  return configs.length === 1 ? configs[0] : null
+}
+
 function buildAISettings(): AISettings {
   const store = useSettingStore()
   const provider = (store.apiAIModelProvider as string) || ''
@@ -88,10 +118,31 @@ function buildAISettings(): AISettings {
 export function getAIConfig(): AIModelConfig | null {
   const store = useSettingStore()
   const provider = store.apiAIModelProvider
-  if (!provider || !store.apiAIModelId) return null
+  if (!provider) return findSoleStoredBYOKConfig()
+  if (!store.apiAIModelId) return null
   if (provider !== 'ollama' && !isBoxPlayerCloudProvider(provider) && !store.apiAIModelKey) return null
   const s = buildAISettings()
   return { endpoint: isBoxPlayerCloudProvider(provider) ? '' : s.openRouterBaseUrl || s.ollamaUrl, modelId: s.openRouterModel || s.ollamaModel, apiKey: s.openRouterApiKey || s.aiGatewayApiKey, providerName: provider }
+}
+
+export function migrateSoleSavedBYOKAsDefault(): boolean {
+  const store = useSettingStore()
+  if (store.apiAIModelProvider) return false
+  const config = findSoleStoredBYOKConfig()
+  if (!config) return false
+  let embeddingModelId = ''
+  try {
+    const raw = localStorage.getItem(`ai_provider_config_${config.providerName}`)
+    if (raw) embeddingModelId = (JSON.parse(raw) as { embeddingModelId?: string }).embeddingModelId || ''
+  } catch {}
+  store.updateStore({
+    apiAIModelProvider: config.providerName,
+    apiAIModelKey: config.apiKey,
+    apiAIModelId: config.modelId,
+    apiAIEmbeddingModelId: embeddingModelId,
+    apiAIBaseUrl: config.endpoint
+  })
+  return true
 }
 
 export function isAIConfigured(): boolean { return !!getAIConfig() }
@@ -130,7 +181,7 @@ export function resolveAIProviderConfig(providerOverride = ''): AIModelConfig | 
   }
   if (!modelId) return null
   if (provider !== 'ollama' && !apiKey) return null
-  return { endpoint: baseUrl || '', modelId, apiKey, providerName: provider }
+  return { endpoint: baseUrl || PROVIDER_ENDPOINTS[provider] || '', modelId, apiKey, providerName: provider }
 }
 
 // ── prompt builder ──────────────────────────────────────────────────

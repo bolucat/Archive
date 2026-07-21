@@ -15,9 +15,24 @@ jobs:
     name: Verify Linux MPV
     uses: ./.github/workflows/mpv-linux.yml
 
+  create-release:
+    name: Create Release Draft
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create shared release draft
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1 || \
+            gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft --title "BoxPlayer ${GITHUB_REF_NAME}"
+
   release:
     name: Build Release
-    needs: linux-mpv-test
+    needs: [linux-mpv-test, create-release]
     strategy:
       fail-fast: false
       matrix:
@@ -178,8 +193,21 @@ jobs:
           release: true           # 自动创建 Release
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+  finalize-release:
+    name: Finalize Release
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Git repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Generate GitHub Release Notes
-        if: matrix.os == 'ubuntu-latest' && startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -191,6 +219,19 @@ jobs:
             gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
               -f tag_name="${GITHUB_REF_NAME}" \
               --jq .body > release-notes.md
+          fi
+          if [[ ! -s release-notes.md ]]; then
+            previous_tag="$(git tag --sort=-version:refname | grep -Fxv "${GITHUB_REF_NAME}" | head -n 1 || true)"
+            printf '## 更新内容\n\n' > release-notes.md
+            if [[ -n "${previous_tag}" ]]; then
+              git log --format="- %s (%h)" "${previous_tag}..${GITHUB_SHA}" >> release-notes.md
+            else
+              git log --format="- %s (%h)" -1 "${GITHUB_SHA}" >> release-notes.md
+            fi
+          fi
+          if [[ ! -s release-notes.md ]]; then
+            echo 'Release notes are empty; refusing to publish' >&2
+            exit 1
           fi
           gh release edit "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \

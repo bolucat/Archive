@@ -7,6 +7,7 @@ import {
   createLegacyRetrievalBackend,
   generateAIText,
   getAIConfig,
+  migrateSoleSavedBYOKAsDefault,
   migrateLegacyAIHistory,
   resolveAIProviderConfig,
   resolveBookAIProvider,
@@ -27,6 +28,7 @@ const settingStore = {
   apiAIMaxContextChunks: 4,
   apiAIIndexingMode: 'on-demand',
   apiAIReedyEnabled: false,
+  updateStore(fields: Record<string, unknown>) { Object.assign(this, fields) }
 }
 
 const { streamText, generateText, embed, embedMany, createGateway, createOpenAI, dbStore } = vi.hoisted(() => ({
@@ -167,6 +169,44 @@ describe('bookAI', () => {
     settingStore.apiAIModelId = ''
 
     expect(getAIConfig()).toBeNull()
+  })
+
+  it('uses the only complete saved BYOK model when an older config has no default provider', () => {
+    settingStore.apiAIModelProvider = ''
+    settingStore.apiAIModelKey = ''
+    settingStore.apiAIModelId = ''
+    const previousStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+    const values = new Map<string, string>([[
+      'ai_provider_config_deepseek',
+      JSON.stringify({ apiKey: 'saved-key', modelId: 'deepseek-v4-pro', embeddingModelId: '', baseUrl: '' })
+    ]])
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: {
+        get length() { return values.size },
+        getItem: (key: string) => values.get(key) ?? null,
+        key: (index: number) => [...values.keys()][index] ?? null
+      }
+    })
+
+    try {
+      expect(getAIConfig()).toEqual({
+        endpoint: 'https://api.deepseek.com/v1',
+        modelId: 'deepseek-v4-pro',
+        apiKey: 'saved-key',
+        providerName: 'deepseek'
+      })
+      expect(migrateSoleSavedBYOKAsDefault()).toBe(true)
+      expect(settingStore).toMatchObject({
+        apiAIModelProvider: 'deepseek',
+        apiAIModelKey: 'saved-key',
+        apiAIModelId: 'deepseek-v4-pro',
+        apiAIBaseUrl: 'https://api.deepseek.com/v1'
+      })
+    } finally {
+      if (previousStorage) Object.defineProperty(globalThis, 'localStorage', previousStorage)
+      else delete (globalThis as { localStorage?: Storage }).localStorage
+    }
   })
 
   it('builds reader assistant messages without leaking system context into visible history', () => {

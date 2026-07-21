@@ -14,7 +14,14 @@ type QuarkAccountInfo = {
   member_id?: string | number
   nickname?: string
   nick_name?: string
+  nickName?: string
   username?: string
+  user_name?: string
+  userName?: string
+  display_name?: string
+  displayName?: string
+  mobile?: string
+  phone?: string
   avatar_url?: string
   avatarUri?: string
   avatar?: string
@@ -227,8 +234,32 @@ const emptyQuarkToken = (): ITokenInfo => ({
 })
 
 const normalizeAccountInfo = (data: any): QuarkAccountInfo => {
-  const body = data?.data?.member || data?.data?.user_info || data?.data || data?.member || data || {}
+  const payload = data?.data || data || {}
+  const body = payload?.member || payload?.user_info || payload?.userInfo || payload?.member_info || payload?.memberInfo || data?.member || payload
   return body as QuarkAccountInfo
+}
+
+const getQuarkDisplayName = (info: QuarkAccountInfo): string => {
+  const values = [info.nickname, info.nick_name, info.nickName, info.username, info.user_name, info.userName, info.display_name, info.displayName, info.mobile, info.phone]
+  return values.map((value) => String(value || '').trim()).find(Boolean) || '夸克用户'
+}
+
+const createQuarkToken = (cookieString: string, data: any): ITokenInfo => {
+  const info = normalizeAccountInfo(data)
+  const uid = getQuarkAccountId(info, cookieString)
+  const name = getQuarkDisplayName(info)
+  const token = emptyQuarkToken()
+  token.access_token = cookieString
+  token.user_id = uid.startsWith('quark_') ? uid : `quark_${uid}`
+  token.user_name = name
+  token.nick_name = name
+  token.name = name
+  token.avatar = info.avatar_url || info.avatarUri || info.avatar || ''
+  token.total_size = Number(info.total_capacity || 0)
+  token.used_size = Number(info.used_capacity || 0)
+  token.free_size = Math.max(0, token.total_size - token.used_size)
+  if (token.total_size || token.used_size) token.spaceinfo = `${humanSize(token.used_size)} / ${humanSize(token.total_size)}`
+  return token
 }
 
 const readQuarkResponse = async (resp: Response): Promise<{ data: any; text: string }> => {
@@ -281,21 +312,18 @@ export const createQuarkTokenFromCookies = async (cookieString: string): Promise
   if (!resp.ok || isQuarkAccountResponseError(data)) {
     throw new Error(data?.message || '验证夸克登录失败')
   }
-  const info = normalizeAccountInfo(data)
-  const uid = getQuarkAccountId(info, cookieString)
-  const name = info.nickname || info.nick_name || info.username || uid
-  const token = emptyQuarkToken()
-  token.access_token = cookieString
-  token.user_id = uid.startsWith('quark_') ? uid : `quark_${uid}`
-  token.user_name = name
-  token.nick_name = name
-  token.name = name
-  token.avatar = info.avatar_url || info.avatarUri || info.avatar || ''
-  token.total_size = Number(info.total_capacity || 0)
-  token.used_size = Number(info.used_capacity || 0)
-  token.free_size = Math.max(0, token.total_size - token.used_size)
-  if (token.total_size || token.used_size) token.spaceinfo = `${humanSize(token.used_size)} / ${humanSize(token.total_size)}`
-  return token
+  return createQuarkToken(cookieString, data)
+}
+
+export const refreshQuarkAccountInfo = async (token: ITokenInfo): Promise<ITokenInfo> => {
+  const refreshed = await createQuarkTokenFromCookies(token.access_token)
+  return {
+    ...token,
+    ...refreshed,
+    user_id: token.user_id || refreshed.user_id,
+    access_token: token.access_token,
+    default_drive_id: token.default_drive_id || refreshed.default_drive_id || 'quark'
+  }
 }
 
 export const readQuarkCookieStringFromElectron = async (): Promise<string> => {
@@ -321,21 +349,7 @@ export const readQuarkCookieStringFromElectron = async (): Promise<string> => {
 const createQuarkTokenFromAccountInfo = (cookieString: string, data: any): ITokenInfo => {
   if (!cookieString || !cookieString.includes('=')) throw new Error('未获取到夸克 Cookie，请刷新二维码重试')
   if (!hasQuarkAuthCookie(cookieString)) throw new Error('未获取到夸克登录 Cookie，请刷新二维码重试')
-  const info = normalizeAccountInfo(data)
-  const uid = getQuarkAccountId(info, cookieString)
-  const name = info.nickname || info.nick_name || info.username || uid
-  const token = emptyQuarkToken()
-  token.access_token = cookieString
-  token.user_id = uid.startsWith('quark_') ? uid : `quark_${uid}`
-  token.user_name = name
-  token.nick_name = name
-  token.name = name
-  token.avatar = info.avatar_url || info.avatarUri || info.avatar || ''
-  token.total_size = Number(info.total_capacity || 0)
-  token.used_size = Number(info.used_capacity || 0)
-  token.free_size = Math.max(0, token.total_size - token.used_size)
-  if (token.total_size || token.used_size) token.spaceinfo = `${humanSize(token.used_size)} / ${humanSize(token.total_size)}`
-  return token
+  return createQuarkToken(cookieString, data)
 }
 
 export const createQuarkTokenFromElectronCookies = async (): Promise<ITokenInfo> => {

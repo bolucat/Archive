@@ -23,6 +23,7 @@ import { applyOneDriveQuota, refreshOneDriveAccessToken } from '../onedrive/auth
 import { applyBoxQuota, refreshBoxAccessToken } from '../box/auth'
 import { refreshCloud189Token } from '../cloud189/auth'
 import { applyGuangyaQuota, refreshGuangyaAccessToken } from '../guangya/auth'
+import { refreshQuarkAccountInfo } from '../quark/auth'
 import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
 
@@ -178,6 +179,17 @@ export default class UserDAL {
       }
       if (isQuarkUser(token)) {
         token.default_drive_id = token.default_drive_id || 'quark'
+        const accountId = token.user_id.replace(/^quark_/, '')
+        const displayName = token.nick_name || token.user_name || token.name
+        if (force || !displayName || displayName === token.user_id || displayName === accountId || displayName.startsWith('cookie_')) {
+          try {
+            const refreshed = await refreshQuarkAccountInfo(token)
+            Object.assign(token, refreshed)
+            this.SaveUserToken(token)
+          } catch {
+            // 昵称刷新失败不应阻断已登录账号继续使用。
+          }
+        }
         return token.user_id && token.access_token ? token : null
       }
       if (isCloud139User(token)) {
@@ -671,11 +683,9 @@ export default class UserDAL {
     UserTokenMap.delete(user_id)
 
     let newUserID = ''
-    for (const [user_id, token] of UserTokenMap) {
-      const isLogin = (isDrive115User(token) || isBaiduUser(token) || isPikPakUser(token) || isQuarkUser(token) || isDropboxUser(token) || isOneDriveUser(token) || isBoxUser(token))
-        ? !!token.user_id
-        : (token.user_id && (await AliUser.ApiTokenRefreshAccount(token, false)))
-      if (isLogin) {
+    for (const [user_id] of UserTokenMap) {
+      const token = await this.EnsureUserTokenReady(user_id)
+      if (token) {
         await this.UserLogin(token)
         newUserID = user_id
         break
@@ -697,82 +707,9 @@ export default class UserDAL {
 
 
   static async UserChange(user_id: string): Promise<boolean> {
-    if (!UserTokenMap.has(user_id)) return false
-    const token = UserTokenMap.get(user_id)!
-    // 切换账号
-    let isLogin = false
-    if (isDrive115User(token)) {
-      const expireTime = new Date(token.expire_time || 0).getTime()
-      if (!token.access_token || (expireTime && expireTime <= Date.now())) {
-        const refreshed = await refresh115AccessToken(token.refresh_token)
-        if (refreshed?.access_token) {
-          token.access_token = refreshed.access_token
-          if (refreshed.refresh_token) token.refresh_token = refreshed.refresh_token
-          if (typeof refreshed.expires_in === 'number') token.expires_in = refreshed.expires_in
-          token.token_type = refreshed.token_type || token.token_type
-          token.expire_time = new Date(Date.now() + (token.expires_in || 0) * 1000).toISOString()
-          UserDAL.SaveUserToken(token)
-        }
-      }
-      isLogin = !!token.access_token && !!token.user_id
-    } else if (isBaiduUser(token)) {
-      const expireTime = new Date(token.expire_time || 0).getTime()
-      if (!token.access_token || (expireTime && expireTime <= Date.now())) {
-        const refreshed = await refreshBaiduAccessToken(token.refresh_token)
-        if (refreshed?.access_token) {
-          token.access_token = refreshed.access_token
-          if (refreshed.refresh_token) token.refresh_token = refreshed.refresh_token
-          if (typeof refreshed.expires_in === 'number') token.expires_in = refreshed.expires_in
-          token.token_type = refreshed.token_type || token.token_type
-          token.expire_time = new Date(Date.now() + (token.expires_in || 0) * 1000).toISOString()
-          UserDAL.SaveUserToken(token)
-        }
-      }
-      isLogin = !!token.access_token && !!token.user_id
-    } else if (isPikPakUser(token)) {
-      const expireTime = new Date(token.expire_time || 0).getTime()
-      if (!token.access_token || (expireTime && expireTime <= Date.now())) {
-        const refreshed = await refreshPikPakAccessToken(token)
-        if (refreshed?.access_token) {
-          UserDAL.SaveUserToken(refreshed)
-        }
-      }
-      isLogin = !!token.access_token && !!token.user_id
-    } else if (isQuarkUser(token)) {
-      token.default_drive_id = token.default_drive_id || 'quark'
-      isLogin = !!token.access_token && !!token.user_id
-    } else if (isDropboxUser(token)) {
-      const expireTime = new Date(token.expire_time || 0).getTime()
-      if (!token.access_token || (expireTime && expireTime <= Date.now())) {
-        const refreshed = await refreshDropboxAccessToken(token)
-        if (refreshed?.access_token) {
-          UserDAL.SaveUserToken(refreshed)
-        }
-      }
-      isLogin = !!token.access_token && !!token.user_id
-    } else if (isOneDriveUser(token)) {
-      const expireTime = new Date(token.expire_time || 0).getTime()
-      if (!token.access_token || (expireTime && expireTime <= Date.now())) {
-        const refreshed = await refreshOneDriveAccessToken(token)
-        if (refreshed?.access_token) {
-          UserDAL.SaveUserToken(refreshed)
-        }
-      }
-      isLogin = !!token.access_token && !!token.user_id
-    } else if (isBoxUser(token)) {
-      const expireTime = new Date(token.expire_time || 0).getTime()
-      if (!token.access_token || (expireTime && expireTime <= Date.now())) {
-        const refreshed = await refreshBoxAccessToken(token)
-        if (refreshed?.access_token) {
-          UserDAL.SaveUserToken(refreshed)
-        }
-      }
-      isLogin = !!token.access_token && !!token.user_id
-    } else {
-      isLogin = !!(token.user_id && (await AliUser.ApiTokenRefreshAccount(token, false)))
-    }
-    if (!isLogin) {
-      message.warning('该账号需要重新登陆[' + token.name + ']')
+    const token = await this.EnsureUserTokenReady(user_id)
+    if (!token) {
+      message.warning('该账号需要重新登陆[' + (UserTokenMap.get(user_id)?.name || user_id) + ']')
       return false
     }
     await this.UserLogin(token).catch()
@@ -802,7 +739,8 @@ export default class UserDAL {
         UserDAL.SaveUserToken(token)
         return true
       } else if (isQuarkUser(token)) {
-        token.default_drive_id = token.default_drive_id || 'quark'
+        const refreshed = await refreshQuarkAccountInfo(token)
+        Object.assign(token, refreshed)
         UserDAL.SaveUserToken(token)
         return true
       } else if (isGuangyaUser(token)) {
@@ -867,7 +805,6 @@ export default class UserDAL {
           UserDAL.SaveUserToken(refreshed)
         } else if (isQuarkUser(token)) {
           token.default_drive_id = token.default_drive_id || 'quark'
-          UserDAL.SaveUserToken(token)
         } else if (isDropboxUser(token)) {
           const refreshed = await refreshDropboxAccessToken(token)
           if (!refreshed?.access_token) return false
@@ -902,7 +839,8 @@ export default class UserDAL {
       } else if (isPikPakUser(token)) {
         await applyPikPakQuota(token)
       } else if (isQuarkUser(token)) {
-        token.default_drive_id = token.default_drive_id || 'quark'
+        const refreshed = await refreshQuarkAccountInfo(token)
+        Object.assign(token, refreshed)
       } else if (isGuangyaUser(token)) {
         token.default_drive_id = token.default_drive_id || 'guangya'
         await applyGuangyaQuota(token)

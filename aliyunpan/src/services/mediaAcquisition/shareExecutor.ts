@@ -8,7 +8,7 @@ import type { CreateMediaAcquisitionCandidateInput, MediaAcquisitionRunView } fr
 import { addMediaAcquisitionEvent, failMediaAcquisitionCandidate, getMediaAcquisitionCandidateLocator, markMediaAcquisitionCandidateTransferring, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent } from './client'
 import { canTryNextMediaAcquisitionCandidate } from './candidatePolicy'
 import { normalizeMediaAcquisitionPlatform } from './capabilities'
-import { listMediaAcquisitionTargetFiles } from './targetSnapshot'
+import { listMediaAcquisitionTargetFiles, listMediaAcquisitionTransferBaselineFiles } from './targetSnapshot'
 import { cleanupFailedMediaAcquisitionStagingTarget, ensureMediaAcquisitionStagingTarget, hasMaterializedMediaAcquisitionContent, rereadMediaAcquisitionStagingTarget, stopMediaAcquisitionTransferWhenCoverageMet, type MediaAcquisitionStagingTarget } from './staging'
 
 type ParsedShare = { platform: 'aliyun' | 'quark' | 'guangya' | 'pikpak'; shareId: string; password: string }
@@ -59,7 +59,7 @@ export async function executeMediaAcquisitionShareCandidate(run: MediaAcquisitio
     const prepared = await prepareShareImport(run, parsed)
     step = '读取入库目录快照'
     const importTarget = parsed.platform === 'pikpak' ? { ...run.target, targetParentFileId: 'pikpak_root' } : run.target
-    const baseline = await listMediaAcquisitionTargetFiles(importTarget)
+    const baseline = parsed.platform === 'pikpak' ? await listMediaAcquisitionTargetFiles(importTarget) : await listMediaAcquisitionTransferBaselineFiles(run.target)
     if (parsed.platform !== 'pikpak') {
       step = '创建暂存目录'
       staging = await ensureMediaAcquisitionStagingTarget(run.target, run.id, candidateId)

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const { getUserToken } = vi.hoisted(() => ({ getUserToken: vi.fn() }))
 
 vi.mock('../../user/userdal', () => ({
-  default: { GetUserToken: getUserToken }
+  default: { EnsureUserTokenReady: getUserToken }
 }))
 
 import { apiDrive115OfflineCreate, apiDrive115OfflineProcess } from '../../cloud115/offline'

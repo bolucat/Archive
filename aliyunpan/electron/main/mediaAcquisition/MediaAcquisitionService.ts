@@ -47,6 +47,10 @@ export function cancelMediaAcquisitionRun(runId: string): MediaAcquisitionRunVie
   return getDb().cancelRun(runId)
 }
 
+export function forceCancelMediaAcquisitionRun(runId: string): MediaAcquisitionRunView | null {
+  return getDb().forceCancelRun(runId)
+}
+
 export function beginMediaAcquisitionSearch(runId: string): MediaAcquisitionRunView | null {
   return getDb().beginSearch(runId)
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   KeyboardState,
   MouseState,
@@ -25,12 +25,24 @@ import { TestButton } from '../utils/mosehelper'
 import { xorWith } from 'lodash'
 import { isLocalVideoPath } from './integration/localVideoPlayback'
 import { resolveDownloadOpenPath } from './integration/btDownloadTarget'
+import UserDAL from '../user/userdal'
+import { getCloudDownloadSourceLabel } from './cloudDownloadSource'
 
 const viewlist = ref()
 const inputsearch = ref()
 const appStore = useAppStore()
 const winStore = useWinStore()
 const downedStore = useDownedStore()
+const selectedItems = computed(() => downedStore.ListDataShow.filter(item => downedStore.ListSelected.has(item.DownID)))
+const canOpenSelectedLocal = computed(() => selectedItems.value.some(item => !item.Info.offlineProvider && !item.Info.ariaRemote))
+const isCloudDownload = (file: IStateDownFile) => !!file.Info.offlineProvider
+const accountNames = ref<Record<string, string>>({})
+const cloudSourceLabel = (item: IStateDownFile) => getCloudDownloadSourceLabel(item.Info, accountNames.value[item.Info.user_id])
+
+onMounted(async () => {
+  const users = await UserDAL.GetUserListFromDB().catch(() => [])
+  accountNames.value = Object.fromEntries(users.filter((user) => user?.user_id).map((user) => [user.user_id, user.nick_name || user.user_name || user.name || user.user_id]))
+})
 
 const keyboardStore = useKeyboardStore()
 keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
@@ -171,11 +183,15 @@ const handleSelect = (file_id: string, event: any, isCtrl: boolean = false) => {
 
 const handleDelete = async () => await downedStore.mDeleteDowned([...downedStore.ListSelected])
 
-const handleOpenFile = (file: IStateDownFile | null) =>
+const handleOpenFile = (file: IStateDownFile | null) => {
+  if (file && isCloudDownload(file)) return
   downedStore.mOpenUploadedFile(file, [...downedStore.ListSelected], false)
+}
 
-const handleOpenDir = (file: IStateDownFile | null) =>
+const handleOpenDir = (file: IStateDownFile | null) => {
+  if (file && isCloudDownload(file)) return
   downedStore.mOpenUploadedFile(file, [...downedStore.ListSelected], true)
+}
 
 const isDownloadedVideo = (file: IStateDownFile) => !file.Info.isDir && isLocalVideoPath(resolveDownloadOpenPath(file.Info))
 
@@ -214,8 +230,8 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div style="height: 14px"></div>
   <div class="toppanbtns" style="height: 26px">
     <div class="toppanbtn" v-show="downedStore.IsListSelected">
-      <a-button type="text" size="small" tabindex="-1" @click="handleOpenFile(null)"><IconFont name="iconwenjian" />打开文件</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleOpenDir(null)"><IconFont name="iconfolder" />打开目录</a-button>
+      <a-button v-if="canOpenSelectedLocal" type="text" size="small" tabindex="-1" @click="handleOpenFile(null)"><IconFont name="iconwenjian" />打开文件</a-button>
+      <a-button v-if="canOpenSelectedLocal" type="text" size="small" tabindex="-1" @click="handleOpenDir(null)"><IconFont name="iconfolder" />打开目录</a-button>
       <a-button type="text" size="small" tabindex="-1" @click="handleDelete"><IconFont name="icondelete" />删除</a-button>
       <a-button type="text" size="small" tabindex="-1"><IconFont name="icondian" /></a-button>
 
@@ -319,15 +335,19 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
             <div class="fileicon">
               <IconFont :name="item.Info.icon" aria-hidden="true" />
             </div>
-            <div class="filename" @dblclick.stop="handleOpenFile(item)">
-              <div :title="item.Info.localFilePath || '双击打开'">
+            <div class="filename" @dblclick.stop="!isCloudDownload(item) && handleOpenFile(item)">
+              <div :title="isCloudDownload(item) ? '文件保存在网盘中' : item.Info.localFilePath || '双击打开'">
                 {{ item.Info.name }}
+                <span v-if='item.Info.offlineProvider' class='cloud-origin' :title='cloudSourceLabel(item)'>
+                  <IconFont name='iconcloud-download' aria-hidden='true' />
+                </span>
+                <span v-if='item.Info.offlineProvider' class='cloud-source'>{{ cloudSourceLabel(item) }}</span>
               </div>
             </div>
             <div class="cell filesize">{{ item.Info.sizestr }}</div>
             <div class='toppanbtn'>
-              <a :title="isDownloadedVideo(item) ? '播放视频' : '打开文件'" v-if='!item.Info.ariaRemote' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
-              <a title='打开目录' v-if='!item.Info.ariaRemote' @click="handleOpenDir(item)"><IconFont name="iconfolder" /></a>&nbsp;&nbsp;
+              <a :title="isDownloadedVideo(item) ? '播放视频' : '打开文件'" v-if='!item.Info.ariaRemote && !isCloudDownload(item)' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
+              <a title='打开目录' v-if='!item.Info.ariaRemote && !isCloudDownload(item)' @click="handleOpenDir(item)"><IconFont name="iconfolder" /></a>&nbsp;&nbsp;
               <a title='删除' @click="handleDelete"><IconFont name="icondelete" /></a>&nbsp;&nbsp;
             </div>
           </div>
@@ -336,11 +356,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     </a-list>
     <a-dropdown id="downedrightmenu" class="rightmenu" :popup-visible="true" tabindex="-1" :draggable="false" style="z-index: -1; left: -200px; opacity: 0">
       <template #content>
-        <a-doption @click="handleOpenFile(null)">
+        <a-doption v-if="canOpenSelectedLocal" @click="handleOpenFile(null)">
           <template #icon> <IconFont name="iconwenjian" /> </template>
           <template #default>打开文件</template>
         </a-doption>
-        <a-doption @click="handleOpenDir(null)">
+        <a-doption v-if="canOpenSelectedLocal" @click="handleOpenDir(null)">
           <template #icon> <IconFont name="iconfolder" /> </template>
           <template #default>打开目录</template>
         </a-doption>
@@ -353,6 +373,19 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   </div>
 </template>
 
-<style>
+<style scoped>
+.cloud-origin {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: #637dff;
+  vertical-align: middle;
+}
+
+.cloud-source {
+  margin-left: 6px;
+  color: var(--color-text-4);
+  font-size: 11px;
+}
 
 </style>

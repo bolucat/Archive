@@ -483,6 +483,13 @@ const getFolderSourceLabel = (folder: MediaLibraryFolder) => {
   if (folder.driveId === 'drive115' || folder.driveServerId === 'drive115') return '115'
   if (folder.driveId === 'baidu' || folder.driveServerId === 'baidu') return '百度'
   if (folder.driveId === 'pikpak' || folder.driveServerId === 'pikpak') return 'PikPak'
+  if (folder.driveId === 'quark' || folder.driveServerId === 'quark') return '夸克'
+  if (folder.driveId === 'dropbox' || folder.driveServerId === 'dropbox') return 'Dropbox'
+  if (folder.driveId === 'onedrive' || folder.driveServerId === 'onedrive') return 'OneDrive'
+  if (folder.driveId === 'box' || folder.driveServerId === 'box') return 'Box'
+  if (folder.driveId === 'cloud139' || folder.driveServerId === 'cloud139') return '139'
+  if (folder.driveId === 'cloud189' || folder.driveServerId === 'cloud189') return '天翼'
+  if (folder.driveId === 'guangya' || folder.driveServerId === 'guangya') return '光鸭'
   return '阿里'
 }
 
@@ -493,6 +500,13 @@ const getFolderSourceClass = (folder: MediaLibraryFolder) => {
   if (folder.driveId === 'drive115' || folder.driveServerId === 'drive115') return 'source-115'
   if (folder.driveId === 'baidu' || folder.driveServerId === 'baidu') return 'source-baidu'
   if (folder.driveId === 'pikpak' || folder.driveServerId === 'pikpak') return 'source-pikpak'
+  if (folder.driveId === 'quark' || folder.driveServerId === 'quark') return 'source-quark'
+  if (folder.driveId === 'dropbox' || folder.driveServerId === 'dropbox') return 'source-dropbox'
+  if (folder.driveId === 'onedrive' || folder.driveServerId === 'onedrive') return 'source-onedrive'
+  if (folder.driveId === 'box' || folder.driveServerId === 'box') return 'source-box'
+  if (folder.driveId === 'cloud139' || folder.driveServerId === 'cloud139') return 'source-cloud139'
+  if (folder.driveId === 'cloud189' || folder.driveServerId === 'cloud189') return 'source-cloud189'
+  if (folder.driveId === 'guangya' || folder.driveServerId === 'guangya') return 'source-guangya'
   return 'source-aliyun'
 }
 
@@ -555,6 +569,7 @@ function driveLabelFromToken(token: ITokenInfo): string {
   if (token.tokenfrom === 'quark') return '夸克网盘'
   if (token.tokenfrom === '139') return '139 云盘'
   if (token.tokenfrom === '189') return '天翼云盘'
+  if (token.tokenfrom === 'guangya') return '光鸭云盘'
   if (token.tokenfrom === 'dropbox') return 'Dropbox'
   if (token.tokenfrom === 'onedrive') return 'OneDrive'
   if (token.tokenfrom === 'box') return 'Box'
@@ -1186,6 +1201,33 @@ onUnmounted(() => {
   color: #0f766e;
   background: rgba(15, 118, 110, 0.12);
   border-color: rgba(15, 118, 110, 0.18);
+}
+
+.folder-source.source-quark {
+  color: #f59f00;
+  background: rgba(245, 159, 0, 0.12);
+  border-color: rgba(245, 159, 0, 0.18);
+}
+
+.folder-source.source-dropbox,
+.folder-source.source-onedrive,
+.folder-source.source-box,
+.folder-source.source-cloud139 {
+  color: #228be6;
+  background: rgba(34, 139, 230, 0.12);
+  border-color: rgba(34, 139, 230, 0.18);
+}
+
+.folder-source.source-cloud189 {
+  color: #f76707;
+  background: rgba(247, 103, 7, 0.12);
+  border-color: rgba(247, 103, 7, 0.18);
+}
+
+.folder-source.source-guangya {
+  color: #0ca678;
+  background: rgba(12, 166, 120, 0.12);
+  border-color: rgba(12, 166, 120, 0.18);
 }
 
 .folder-source.source-local {

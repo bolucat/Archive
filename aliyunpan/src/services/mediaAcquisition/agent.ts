@@ -4,7 +4,7 @@ import { createPanHubFetch, discoverPanHubSources, searchPanHubStream } from '..
 import { createMediaAcquisitionCandidateInput } from './shareExecutor'
 import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionSearch } from './client'
 import { getMediaAcquisitionCapability } from './capabilities'
-import { isMediaAcquisitionCandidateDiscoverable, isMediaAcquisitionCandidateTitleMatched, isMediaAcquisitionCandidateYearCompatible, scoreMediaAcquisitionCandidate } from './candidatePolicy'
+import { isMediaAcquisitionCandidateSupported, scoreMediaAcquisitionCandidate } from './candidatePolicy'
 import { buildMediaAcquisitionSearchKeywords, keywordReferencesTitle, stripQualitySubtitleTokens } from './searchGuard'
 
 const API_BASE = `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api`
@@ -15,7 +15,10 @@ const MAX_ADDITIONAL_CANDIDATES = 120
 
 function supportsCandidate(run: MediaAcquisitionRunView, candidate: NonNullable<ReturnType<typeof createMediaAcquisitionCandidateInput>>): boolean {
   const capability = getMediaAcquisitionCapability(run.target.targetPlatform)
-  return !!capability && isMediaAcquisitionCandidateDiscoverable(run.target, capability, candidate)
+  // Keep the raw snapshot faithful to mediary-scout: provider payload is only
+  // filtered by whether the target drive can execute it.  Title/year/episode
+  // text is evidence for the Agent to judge, never a pre-Agent recall filter.
+  return !!capability && isMediaAcquisitionCandidateSupported(run.target.targetPlatform, capability, candidate)
 }
 
 export async function searchAdditionalMediaAcquisitionCandidates(run: MediaAcquisitionRunView, keyword: string, reason = 'Agent 追加搜索'): Promise<number> {
@@ -92,25 +95,15 @@ export async function searchMediaAcquisitionCandidates(run: MediaAcquisitionRunV
       }
       const links = Object.values(result.merged).flat()
       let compatibleCount = 0
-      let titleRejectedCount = 0
-      let yearRejectedCount = 0
       for (const link of links) {
         const candidate = createMediaAcquisitionCandidateInput(link.url, link.password, link.note || '')
         if (!candidate || seen.has(candidate.locator)) continue
         seen.add(candidate.locator)
-        if (!isMediaAcquisitionCandidateTitleMatched(run.target, candidate)) {
-          titleRejectedCount++
-          continue
-        }
-        if (!isMediaAcquisitionCandidateYearCompatible(run.target, candidate)) {
-          yearRejectedCount++
-          continue
-        }
         if (!supportsCandidate(run, candidate)) continue
         compatibleCount++
         candidates.push(candidate)
       }
-      await addMediaAcquisitionEvent(run.id, compatibleCount ? 'info' : 'warning', 'search', `搜索快照「${plan.keyword}」返回 ${links.length} 个资源，兼容目标网盘 ${compatibleCount} 个；标题证据不足已跳过 ${titleRejectedCount} 个，年份明确不符已跳过 ${yearRejectedCount} 个。`, { tool: 'primeRawSnapshot', keyword: plan.keyword, total: links.length, compatible: compatibleCount, titleRejected: titleRejectedCount, yearRejected: yearRejectedCount, state: 'completed' })
+      await addMediaAcquisitionEvent(run.id, compatibleCount ? 'info' : 'warning', 'search', `搜索快照「${plan.keyword}」返回 ${links.length} 个资源，兼容目标网盘 ${compatibleCount} 个。标题和年份将由 Agent 在已观察快照中判断。`, { tool: 'primeRawSnapshot', keyword: plan.keyword, total: links.length, compatible: compatibleCount, state: 'completed' })
       if (candidates.length >= MAX_INITIAL_CANDIDATES) break
     }
     if (!successfulSearches && failedSearches > 0) throw new Error(`全部资源搜索请求失败：${lastSearchError}`)

@@ -8,6 +8,8 @@ const dbMock = vi.hoisted(() => ({
   deleteBookBookmarksByBookIds: vi.fn(),
   deleteBookItemsByIds: vi.fn(),
   deleteBookNotesByBookIds: vi.fn(),
+  getBookItemCounts: vi.fn(),
+  getBookItemsPage: vi.fn(),
   getAllBookItems: vi.fn(),
   getAllBookBookmarks: vi.fn(),
   getAllBookNotes: vi.fn(),
@@ -109,6 +111,11 @@ describe('booklibrary trash behavior', () => {
     dbMock.getAllBookBookmarks.mockResolvedValue([])
     dbMock.getAllBookNotes.mockResolvedValue([])
     dbMock.getAllBookItems.mockResolvedValue([])
+    dbMock.getBookItemsPage.mockImplementation(async (offset: number, limit: number) => (await dbMock.getAllBookItems()).slice(offset, offset + limit))
+    dbMock.getBookItemCounts.mockImplementation(async () => {
+      const items = await dbMock.getAllBookItems()
+      return { total: items.length, deleted: items.filter((item: IBookItem) => item.deleted_at).length }
+    })
     dbMock.saveBookItems.mockResolvedValue(undefined)
     userDalMock.GetUserTokenFromDB.mockResolvedValue(undefined)
     aliHttpMock.GetBlob.mockResolvedValue({ code: 200, body: new Blob() })
@@ -200,7 +207,7 @@ describe('booklibrary trash behavior', () => {
     await store.appendBooks([
       book({ id: 'deleted', title: 'Scanned again' }),
       book({ id: 'active', title: 'Updated title' })
-    ])
+    ], { addToLoaded: false })
 
     expect(dbMock.saveBookItems).toHaveBeenCalledWith([
       expect.objectContaining({ id: 'active', title: 'Updated title' })
@@ -214,6 +221,22 @@ describe('booklibrary trash behavior', () => {
     }))
     expect(store.deletedBooks.map((item) => item.id)).toEqual(['deleted'])
     expect(store.activeBooks.map((item) => item.id)).toEqual(['active'])
+  })
+
+  it('loads book records in pages instead of retaining the entire database at startup', async () => {
+    dbMock.getAllBookItems.mockResolvedValue(Array.from({ length: 241 }, (_, index) => book({ id: `book-${index}` })))
+
+    const store = await createStore()
+    await store.loadFromDB()
+
+    expect(store.books).toHaveLength(240)
+    expect(store.totalCount).toBe(241)
+    expect(store.hasMoreBooks).toBe(true)
+
+    await store.loadNextPage()
+
+    expect(store.books).toHaveLength(241)
+    expect(store.hasMoreBooks).toBe(false)
   })
 
   it('loads global annotations for active books without requiring each book to be opened', async () => {

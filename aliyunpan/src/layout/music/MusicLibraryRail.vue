@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Disc3, Folder, Heart, House, ListMusic, Mic2, Music } from 'lucide-vue-next'
+import { Disc3, Folder, Heart, House, ListMusic, Mic2, Music, Server } from 'lucide-vue-next'
 import useMusicLibraryStore, { type MusicSubTab } from '../../store/musiclibrary'
 import LibraryScanPanel from '../../components/LibraryScanPanel.vue'
 
@@ -25,6 +25,7 @@ const tabs = [
   { key: 'artists' as const, label: '艺人', icon: Mic2 },
   { key: 'albums' as const, label: '专辑', icon: Disc3 },
   { key: 'folders' as const, label: '文件夹', icon: Folder },
+  { key: 'server' as const, label: '服务器音乐', icon: Server },
   { key: 'fav' as const, label: '收藏', icon: Heart }
 ]
 </script>

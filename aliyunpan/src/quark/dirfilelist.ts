@@ -24,6 +24,15 @@ export type QuarkFileItem = {
 
 const BASE = 'https://drive-pc.quark.cn/1/clouddrive'
 
+const quarkDownloadRequestHeaders = (cookie: string, url: string): Record<string, string> => {
+  const headers = quarkDownloadHeaders(cookie) as Record<string, string>
+  try {
+    const path = new URL(url).pathname
+    if (path) headers['x-urlp'] = path
+  } catch {}
+  return headers
+}
+
 const quarkParams = (params: Record<string, string | number | undefined> = {}) => {
   const qs = new URLSearchParams({
     pr: 'ucpro',
@@ -139,7 +148,7 @@ export const apiQuarkSearch = async (user_id: string, keyword: string, size = 20
 
 export const apiQuarkFileDetail = async (user_id: string, fileId: string): Promise<QuarkFileItem | null> => {
   if (fileId === 'quark_root' || fileId === '0') {
-    return { fid: '0', pdir_fid: '', file_name: '网盘文件', file_type: 0 }
+    return { fid: '0', pdir_fid: '', file_name: '根目录', file_type: 0 }
   }
   const data = await quarkRequest(user_id, 'file', {}, { fids: fileId })
   if (!data || isQuarkError(data)) return null
@@ -163,12 +172,13 @@ export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Prom
     }
     const info = Array.isArray(data?.data) ? data.data[0] : null
     const url = info?.download_url || ''
+    const playbackCookie = String(result?.cookie || token.access_token)
     return {
       url,
       size: Number(info?.size || 0),
       name: info?.file_name || '',
       error: url ? '' : '获取夸克下载地址失败',
-      headers: url ? quarkDownloadHeaders(token.access_token) as Record<string, string> : undefined
+      headers: url ? quarkDownloadRequestHeaders(playbackCookie, url) : undefined
     }
   }
   const params = new URLSearchParams({
@@ -203,61 +213,36 @@ export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Prom
     size: Number(info?.size || 0),
     name: info?.file_name || '',
     error: url ? '' : '获取夸克下载地址失败',
-    headers: url ? quarkDownloadHeaders(token.access_token) as Record<string, string> : undefined
+    headers: url ? quarkDownloadRequestHeaders(token.access_token, url) : undefined
   }
 }
 
 export const apiQuarkVideoPreviewUrl = async (user_id: string, fileId: string): Promise<IVideoPreviewUrl | string> => {
-  const token = await getToken(user_id)
-  if (!token?.access_token) return '未登录夸克网盘'
-  const params = quarkParams()
-  const resp = await fetch(`https://drive.quark.cn/1/clouddrive/file/v2/play/project?${params.toString()}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: quarkDownloadHeaders(token.access_token),
-    body: JSON.stringify({
-      fid: fileId,
-      resolutions: 'low,normal,high,super,2k,4k',
-      supports: 'fmp4_av,m3u8,dolby_vision'
-    })
-  })
-  const body = await resp.json().catch(() => undefined)
-  if (!resp.ok || body?.status === 'error' || (body?.code && body.code !== 0)) return body?.message || '获取夸克转码播放地址失败'
-
-  const videoList = Array.isArray(body?.data?.video_list) ? body.data.video_list : []
-  const qualities = videoList
-    .map((item: any) => {
-      const info = item?.video_info || {}
-      const url = String(info.url || '')
-      if (!url) return undefined
-      const resolution = String(item?.resolution || info.resolution || '')
-      const height = Number(info.height || 0)
-      const width = Number(info.width || 0)
-      const label = resolution || (height ? `${height}P` : '转码播放')
-      return {
-        html: label,
-        quality: label,
-        height,
-        width,
-        label,
-        value: label,
-        url,
-        type: /m3u8|hls/i.test(`${url} ${info.hls_type || ''}`) ? 'm3u8' : ''
-      }
-    })
-    .filter(Boolean) as IVideoPreviewUrl['qualities']
-  if (!qualities.length) return '暂无夸克转码信息'
-  qualities.sort((left, right) => (right.width || right.height || 0) - (left.width || left.height || 0))
-  const first = qualities[0]
+  // Quark's browser-cookie playback endpoint currently returns 14018/plf_invalid.
+  // Use the authenticated original stream directly so playback never sends the
+  // known-failing play/project request or exposes a false transcode error.
+  const download = await apiQuarkDownloadUrl(user_id, fileId)
+  if (download.error || !download.url) return download.error || '获取夸克播放地址失败'
+  const type = /m3u8|hls/i.test(download.url) ? 'm3u8' : ''
   return {
     drive_id: 'quark',
     file_id: fileId,
-    size: Number(body?.data?.size || 0),
-    duration: Math.floor(Number(first ? videoList.find((item: any) => (item?.video_info?.url || '') === first.url)?.video_info?.duration || 0 : 0)),
+    size: download.size,
+    duration: 0,
     expire_time: 0,
-    width: first.width || 0,
-    height: first.height || 0,
-    qualities,
+    width: 0,
+    height: 0,
+    qualities: [{
+      html: '原画',
+      quality: 'Origin',
+      height: 0,
+      width: 0,
+      label: '原画',
+      value: 'Origin',
+      url: download.url,
+      type,
+      headers: download.headers
+    }],
     subtitles: []
   }
 }

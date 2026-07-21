@@ -72,37 +72,37 @@ export function GetDriveType(user_id: string, drive_id: string): any {
   const token = UserDAL.GetUserToken(user_id)
   if (token) {
     if (isCloud123User(user_id)) {
-      return { title: '网盘文件', name: 'cloud', key: 'cloud_root' }
+      return { title: '根目录', name: 'cloud', key: 'cloud_root' }
     }
     if (isDrive115User(user_id)) {
-      return { title: '网盘文件', name: 'drive115', key: 'drive115_root' }
+      return { title: '根目录', name: 'drive115', key: 'drive115_root' }
     }
     if (isCloud139User(user_id)) {
-      return { title: '网盘文件', name: 'cloud139', key: 'cloud139_root' }
+      return { title: '根目录', name: 'cloud139', key: 'cloud139_root' }
     }
     if (isCloud189User(user_id)) {
-      return { title: '网盘文件', name: 'cloud189', key: 'cloud189_root' }
+      return { title: '根目录', name: 'cloud189', key: 'cloud189_root' }
     }
     if (isGuangyaUser(user_id)) {
-      return { title: '网盘文件', name: 'guangya', key: 'guangya_root' }
+      return { title: '根目录', name: 'guangya', key: 'guangya_root' }
     }
     if (isBaiduUser(user_id)) {
-      return { title: '网盘文件', name: 'baidu', key: 'baidu_root' }
+      return { title: '根目录', name: 'baidu', key: 'baidu_root' }
     }
     if (isPikPakUser(user_id)) {
-      return { title: '网盘文件', name: 'pikpak', key: 'pikpak_root' }
+      return { title: '根目录', name: 'pikpak', key: 'pikpak_root' }
     }
     if (isQuarkUser(user_id)) {
-      return { title: '网盘文件', name: 'quark', key: 'quark_root' }
+      return { title: '根目录', name: 'quark', key: 'quark_root' }
     }
     if (isDropboxUser(user_id)) {
-      return { title: '网盘文件', name: 'dropbox', key: 'dropbox_root' }
+      return { title: '根目录', name: 'dropbox', key: 'dropbox_root' }
     }
     if (isOneDriveUser(user_id)) {
-      return { title: '网盘文件', name: 'onedrive', key: 'onedrive_root' }
+      return { title: '根目录', name: 'onedrive', key: 'onedrive_root' }
     }
     if (isBoxUser(user_id)) {
-      return { title: '网盘文件', name: 'box', key: 'box_root' }
+      return { title: '根目录', name: 'box', key: 'box_root' }
     }
     switch (drive_id) {
       case token.backup_drive_id:

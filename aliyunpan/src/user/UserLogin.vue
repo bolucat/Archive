@@ -99,18 +99,9 @@ let loginOpenTimer: any = null
 let cloud123OpenTimer: any = null
 let baiduOpenTimer: any = null
 let aliyunLoginHandled = false
+let aliyunWebviewInitialized = false
 
 const getAliyunLoginWebview = () => document.getElementById('loginiframe') as any
-
-const stopAliyunLoginWebview = () => {
-  const webview = getAliyunLoginWebview()
-  if (!webview) return
-  try {
-    webview.stop()
-  } catch {
-    // ignore webview stop errors while switching providers
-  }
-}
 
 const clearOpenTimers = () => {
   if (loginOpenTimer) {
@@ -200,7 +191,6 @@ onBeforeUnmount(() => {
 watch(loginProvider, () => {
   if (!useUser.userShowLogin) return
   clearOpenTimers()
-  if (loginProvider.value !== 'aliyun') stopAliyunLoginWebview()
   if (loginProvider.value === 'cloud123') {
     handleOpenCloud123()
   } else if (loginProvider.value === 'baidu') {
@@ -276,6 +266,11 @@ const handleOpen = () => {
       message.error('严重错误：无法打开登录弹窗，请退出小白羊后重新运行')
       return
     }
+    if (aliyunWebviewInitialized) {
+      loginLoading.value = typeof webview.isLoading === 'function' ? webview.isLoading() : false
+      return
+    }
+    aliyunWebviewInitialized = true
     if (import.meta.env.DEV) {
       try {
         webview.openDevTools({ mode: 'bottom', activate: false })
@@ -364,12 +359,12 @@ const handleOpen = () => {
 }
 
 const handleClose = () => {
+  aliyunWebviewInitialized = false
   loginLoading.value = true
   client_id.value = ALIYUN_APP_ID
   client_secret.value = ALIYUN_APP_SECRET
   clearInterval(intervalId.value)
   clearOpenTimers()
-  stopAliyunLoginWebview()
   if (drive115Timer) {
     clearTimeout(drive115Timer)
     drive115Timer = null
@@ -1203,7 +1198,7 @@ const loginSuccess = (token: ITokenInfo) => {
           <span>{{ activeLoginProviderMeta.label }}</span>
         </div>
 
-        <div v-if="loginProvider === 'aliyun'">
+        <div v-show="loginProvider === 'aliyun'">
           <a-steps v-model:current="loginCur" :status="loginStatus">
             <a-step description="扫码或账号登录">第一次扫码</a-step>
             <a-step description="手机授权">第二次扫码</a-step>
@@ -1236,7 +1231,8 @@ const loginSuccess = (token: ITokenInfo) => {
         </div>
         </div>
 
-      <div v-else-if="loginProvider === 'cloud123'">
+      <template v-if="loginProvider !== 'aliyun'">
+      <div v-if="loginProvider === 'cloud123'">
         <div id='logindiv'>
           <div class='logincontent'>
             <div class="browser-login-hint">
@@ -1410,6 +1406,7 @@ const loginSuccess = (token: ITokenInfo) => {
           </div>
         </div>
       </div>
+      </template>
       </section>
     </div>
   </a-modal>

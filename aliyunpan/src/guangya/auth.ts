@@ -1,6 +1,7 @@
 import type { ITokenInfo } from '../user/userstore'
 import { GUANGYA_CLIENT_ID } from '../secrets.generated'
 import { humanSize } from '../utils/format'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 export { GUANGYA_CLIENT_ID }
 
@@ -194,26 +195,30 @@ export const applyGuangyaQuota = async (token: ITokenInfo): Promise<boolean> => 
 }
 
 export const refreshGuangyaAccessToken = async (token: ITokenInfo): Promise<ITokenInfo | null> => {
-  if (!token.refresh_token) return null
-  const deviceId = token.device_id || generateGuangyaDid()
-  const resp = await fetch(`${GUANGYA_ACCOUNT_URL}/v1/auth/token`, {
-    method: 'POST',
-    headers: {
-      ...guangyaAccountHeaders(deviceId),
-      'x-action': '401'
-    },
-    body: JSON.stringify({
-      client_id: GUANGYA_CLIENT_ID,
-      grant_type: 'refresh_token',
-      refresh_token: token.refresh_token
+  const key = tokenRefreshKey('guangya', token.user_id || token.device_id || token.refresh_token)
+  return withTokenRefreshLock(key, async () => {
+    if (!token.refresh_token) return null
+    const deviceId = token.device_id || generateGuangyaDid()
+    const resp = await fetch(`${GUANGYA_ACCOUNT_URL}/v1/auth/token`, {
+      method: 'POST',
+      headers: {
+        ...guangyaAccountHeaders(deviceId),
+        'x-action': '401'
+      },
+      body: JSON.stringify({
+        client_id: GUANGYA_CLIENT_ID,
+        grant_type: 'refresh_token',
+        refresh_token: token.refresh_token
+      })
     })
+    const data = await readJson(resp)
+    const refreshed = normalizeGuangyaToken(data, deviceId, token.user_name || token.nick_name || token.user_id)
+    refreshed.refresh_token = refreshed.refresh_token || token.refresh_token
+    refreshed.user_id = token.user_id || refreshed.user_id
+    refreshed.user_name = token.user_name || refreshed.user_name
+    refreshed.nick_name = token.nick_name || refreshed.nick_name
+    return refreshed
   })
-  const data = await readJson(resp)
-  const refreshed = normalizeGuangyaToken(data, deviceId, token.user_name || token.nick_name || token.user_id)
-  refreshed.user_id = token.user_id || refreshed.user_id
-  refreshed.user_name = token.user_name || refreshed.user_name
-  refreshed.nick_name = token.nick_name || refreshed.nick_name
-  return refreshed
 }
 
 export const normalizeGuangyaToken = (data: any, deviceId: string, fallbackName = '光鸭云盘'): ITokenInfo => {

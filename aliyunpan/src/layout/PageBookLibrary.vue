@@ -36,6 +36,7 @@ import { useReaderI18n } from '../utils/readerI18n'
 
 const bookStore = useBookLibraryStore()
 const query = ref('')
+const bookRenderLimit = ref(240)
 const selectedBook = ref<IBookItem | null>(null)
 const pendingAnnotationTarget = ref<{ type: 'note' | 'highlight' | 'bookmark'; id: string; action?: 'show' | 'edit'; requestId: number } | null>(null)
 const groupDetail = ref<{ type: 'author' | 'format' | 'folder' | 'shelf'; title: string; items: IBookItem[] } | null>(null)
@@ -282,6 +283,18 @@ const readerVisibleBooks = computed(() => {
   return sortBooksForManagerView(filtered, effectiveSortMode.value, effectiveSortOrder.value)
 })
 
+const renderedBooks = computed(() => readerVisibleBooks.value.slice(0, bookRenderLimit.value))
+
+const showMoreBooks = async () => {
+  await bookStore.loadNextPage()
+  bookRenderLimit.value += 240
+}
+
+watch([query, readingStatusFilter, activeManagerView, () => bookStore.viewMode], async () => {
+  bookRenderLimit.value = 240
+  if (query.value.trim()) await bookStore.loadAllBooks()
+})
+
 const trashVisibleBooks = computed(() => {
   const q = query.value.trim().toLowerCase()
   const items = q
@@ -418,6 +431,7 @@ async function openManagerView(tab: BookManagerView) {
   activeManagerView.value = tab
   groupDetail.value = null
   selectedBookIds.value = []
+  if (!['home', 'recent', 'favorites'].includes(tab)) await bookStore.loadAllBooks()
   if (tab === 'notes' || tab === 'highlights' || tab === 'bookmarks') {
     await bookStore.loadAllBookAnnotations()
     selectedAnnotationTags.value = selectedAnnotationTags.value.filter((tag) => annotationTagOptions.value.includes(tag))
@@ -1916,7 +1930,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           <template v-else-if="bookStore.viewMode === 'list'">
             <div class='book-list book-list-linear'>
               <div
-                v-for='book in readerVisibleBooks'
+                v-for='book in renderedBooks'
                 :key='book.id'
                 :class="['book-list-item', isBookSelected(book) ? 'multi-selected' : '']"
                 role='button'
@@ -1962,7 +1976,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           <template v-else-if="bookStore.viewMode === 'cover'">
             <div class='book-cover-list'>
               <div
-                v-for='book in readerVisibleBooks'
+                v-for='book in renderedBooks'
                 :key='book.id'
                 :class="['book-cover-item', isBookSelected(book) ? 'multi-selected' : '']"
                 @click='openBook(book)'
@@ -2003,7 +2017,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           <template v-else>
             <div class='book-card-grid' :style="{ '--card-scale': cardScale }">
               <div
-                v-for='book in readerVisibleBooks'
+                v-for='book in renderedBooks'
                 :key='book.id'
                 :class="['book-card-item', isBookSelected(book) ? 'multi-selected' : '']"
                 :style="{ '--cover-color': formatCoverColor(book) }"
@@ -2029,6 +2043,9 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               </div>
             </div>
           </template>
+          <div v-if='bookStore.hasMoreBooks || renderedBooks.length < readerVisibleBooks.length' class='book-load-more'>
+            <a-button @click='showMoreBooks'>显示更多（已显示 {{ renderedBooks.length }} / {{ readerVisibleBooks.length }}）</a-button>
+          </div>
         </template>
       </section>
     </main>
@@ -3105,6 +3122,12 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(calc(133px * var(--card-scale, 1)), 1fr));
   gap: 12px;
+}
+
+.book-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 8px;
 }
 
 .book-card-item {

@@ -9,7 +9,7 @@ import { humanDateTimeDateStr, humanSize, humanTime } from '../../utils/format'
 import { ref } from 'vue'
 import { Modal } from '@arco-design/web-vue'
 import DebugLog from '../../utils/debuglog'
-import { GetDriveID, isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
+import { GetDriveID, isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
 import { getEncType, getRawUrl } from '../../utils/proxyhelper'
 import { apiCloud123FileDetail } from '../../cloud123/filecmd'
 import { apiDrive115FileDetail } from '../../cloud115/filecmd'
@@ -24,6 +24,7 @@ import { apiDropboxListRevisions, apiDropboxRestoreRevision } from '../../dropbo
 import { apiOneDriveFileDetail, mapOneDriveItemToAliModel } from '../../onedrive/dirfilelist'
 import { apiOneDriveListVersions, apiOneDriveRestoreVersion, OneDriveVersion } from '../../onedrive/revisions'
 import { apiGuangyaFileDetail, mapGuangyaFileToAliModel } from '../../guangya/dirfilelist'
+import { apiQuarkFileDetail, mapQuarkFileToAliModel } from '../../quark/dirfilelist'
 
 const props = defineProps({
   visible: {
@@ -83,6 +84,7 @@ const handleOpen = async () => {
     const is115User = isDrive115User(pantreeStore.user_id) || drive_id === 'drive115'
     const isBaidu = isBaiduUser(pantreeStore.user_id) || drive_id === 'baidu'
     const isPikPak = isPikPakUser(pantreeStore.user_id) || drive_id === 'pikpak'
+    const isQuark = isQuarkUser(pantreeStore.user_id) || drive_id === 'quark'
     const isDropbox = isDropboxUser(pantreeStore.user_id) || drive_id === 'dropbox'
     const isOneDrive = isOneDriveUser(pantreeStore.user_id) || drive_id === 'onedrive'
     const isGuangya = isGuangyaUser(pantreeStore.user_id) || drive_id === 'guangya'
@@ -162,6 +164,18 @@ const handleOpen = async () => {
         mapped.updated_at = detail.modified_time || detail.created_time || ''
         fileInfo.value = mapped
       }
+    } else if (isQuark) {
+      const pathList = TreeStore.GetDirPath(drive_id, file_id)
+      const pathNames = pathList.map((item) => item.name).filter((name) => name)
+      dirPath.value = '/' + pathNames.join('/')
+      const detail = await apiQuarkFileDetail(pantreeStore.user_id, file_id)
+      if (detail) {
+        const mapped: any = mapQuarkFileToAliModel(detail, drive_id, detail.pdir_fid || 'quark_root')
+        mapped.type = mapped.isDir ? 'folder' : 'file'
+        mapped.created_at = detail.created_at || ''
+        mapped.updated_at = detail.updated_at || mapped.created_at
+        fileInfo.value = mapped
+      }
     } else if (isDropbox) {
       const detail = await apiDropboxFileDetail(pantreeStore.user_id, file_id)
       if (detail) {
@@ -224,7 +238,7 @@ const handleOpen = async () => {
         fileInfo.value.thumbnail = rawUrl.url
       }
     }
-    if (fileInfo.value?.type == 'folder' && !isCloudUser && !is115User && !isBaidu && !isPikPak && !isDropbox && !isOneDrive && !isGuangya) {
+    if (fileInfo.value?.type == 'folder' && !isCloudUser && !is115User && !isBaidu && !isPikPak && !isQuark && !isDropbox && !isOneDrive && !isGuangya) {
       dirInfo.value = await AliFile.ApiFileGetFolderSize(pantreeStore.user_id, drive_id, file_id)
     }
   }

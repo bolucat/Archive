@@ -12,9 +12,9 @@
       ref='viewlist'
       :bordered='false'
       :split='false'
-      :max-height='500'
+      :max-height='listViewportHeight'
       :virtual-list-props="{
-        height: 500,
+        height: listViewportHeight,
         fixedSize: true,
         estimatedSize: 50,
         threshold: 1,
@@ -36,7 +36,7 @@
             @dblclick='handleOpenFile($event, item)'>
             <!-- 选择框 -->
             <div class='rangselect'>
-              <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
+              <a-button shape='circle' type='text' tabindex='-1' class='select media-file-action' :title='index'
                         @click.prevent.stop='handleSelect(item.file_id, $event, true)'>
                 <IconFont :name="mediaPanFileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconcrown3' : 'iconrsuccess') : item.starred ? 'iconcrown' : 'iconpic2'" />
               </a-button>
@@ -55,7 +55,7 @@
             <div class='filebtn'>
               <a-popover v-if='item.thumbnail'
                          content-class='popimg' position='lt'>
-                <a-button type='text' tabindex='-1' class='gengduo' title='缩略图'>
+                <a-button type='text' tabindex='-1' class='gengduo media-file-action' title='缩略图'>
                   <IconFont name="icongengduo" />
                 </a-button>
                 <template #content>
@@ -64,7 +64,7 @@
                   </div>
                 </template>
               </a-popover>
-              <a-button v-else type='text' tabindex='-1' class='gengduo' disabled></a-button>
+              <a-button v-else type='text' tabindex='-1' class='gengduo media-file-action' disabled></a-button>
             </div>
             <!-- 文件大小 -->
             <div class='filesize'>{{ item.sizeStr }}</div>
@@ -81,7 +81,7 @@
             @dblclick='handleOpenFile($event, item)'>
             <!-- 选择框 -->
             <div class='rangselect'>
-              <a-button shape='circle' type='text' tabindex='-1' class='select' :title='index'
+              <a-button shape='circle' type='text' tabindex='-1' class='select media-file-action' :title='index'
                         @click.prevent.stop='handleSelect(item.file_id, $event, true)'>
                 <IconFont :name="mediaPanFileStore.ListSelected.has(item.file_id) ? (item.starred ? 'iconcrown3' : 'iconrsuccess') : item.starred ? 'iconcrown' : 'iconpic2'" />
               </a-button>
@@ -100,7 +100,7 @@
             <div class='filebtn'>
               <a-popover v-if='item.thumbnail' content-class='popimg'
                          position='lt'>
-                <a-button type='text' tabindex='-1' class='gengduo'>
+                <a-button type='text' tabindex='-1' class='gengduo media-file-action'>
                   <IconFont name="icontupianyulan" />
                 </a-button>
                 <template #content>
@@ -109,7 +109,7 @@
                   </div>
                 </template>
               </a-popover>
-              <a-button v-else type='text' tabindex='-1' class='gengduo' disabled></a-button>
+              <a-button v-else type='text' tabindex='-1' class='gengduo media-file-action' disabled></a-button>
             </div>
             <!-- 文件大小 -->
             <div class='filesize'>
@@ -131,7 +131,7 @@
 </template>
 
 <script setup lang='ts'>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { IAliGetFileModel } from '../aliapi/alimodels'
 import { useMediaPanFileStore } from './stores'
 import { menuOpenFile } from '../utils/openfile'
@@ -143,6 +143,7 @@ const emit = defineEmits<{
 
 const viewlist = ref()
 const mediaPanFileStore = useMediaPanFileStore()
+const listViewportHeight = computed(() => Math.min(500, Math.max(50, mediaPanFileStore.ListDataShow.length * 50)))
 
 const handleListScroll = () => {
   // 处理滚动事件（媒体库中不需要复杂的滚动逻辑）
@@ -215,20 +216,16 @@ defineExpose({
 
 .rangselect {
   width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.rangselect .select {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-}
-
 .fileicon {
   width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -257,6 +254,7 @@ defineExpose({
 
 .filebtn {
   width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -264,10 +262,30 @@ defineExpose({
   margin-right: 12px;
 }
 
-.filebtn .gengduo {
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
+.media-pan-right :deep(.media-file-action.arco-btn) {
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.media-pan-right :deep(.media-file-action.arco-btn:hover) {
+  border: 0;
+  background: var(--color-fill-2);
+  box-shadow: none;
+}
+
+.media-pan-right :deep(.media-file-action .iconfont) {
+  font-size: 20px;
+  line-height: 1;
 }
 
 .filebtn .gengduo[disabled] {

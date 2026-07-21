@@ -187,15 +187,8 @@ async function phSearchTmdb(keyword: string, signal: AbortSignal) {
 }
 
 function phAcquire(request: MediaAcquisitionRequest) {
-  const state = acquisitionStates.value.find(item => item.mediaKey === mediaAcquisitionKey(request))
-  if (state && !['failed', 'cancelled', 'no_coverage', 'partial'].includes(state.status)) return
   acquisitionRequest.value = request
   acquisitionVisible.value = true
-}
-
-function mediaAcquisitionKey(request: MediaAcquisitionRequest) {
-  if (request.tmdbId) return `${request.mediaType}:tmdb:${request.tmdbId}`
-  return `${request.mediaType}:title:${request.title.trim().toLowerCase().replace(/\s+/g, ' ')}:${request.year || ''}`
 }
 
 async function refreshAcquisitionStates() {
@@ -747,7 +740,7 @@ onUnmounted(() => {
         <section v-if="phHasResults" class="ph-results-section"><div class="ph-results-grid"><PanHubResultGroup :merged="phMerged" :platform-info="PH_PLATFORM_INFO" :filter-platform="phFilterPlatform" :sort-type="phSortType" @copy="phCopy" @magnet="phConfirmMagnetDownload" /></div></section>
         <section v-else-if="phSearched&&!phLoading&&!phHasResults" class="ph-empty-section"><div class="ph-empty-card"><div class="ph-empty-icon">🔍</div><h3>未找到相关资源</h3><p>试试其他关键词，或检查搜索源是否可用</p></div></section>
       <section v-if="!phSearched" class="ph-douban-section">
-        <PanHubTrending :api-base="PANHUB_API_BASE" @select="phHotSelect" @acquire="phAcquire" />
+        <PanHubTrending :api-base="PANHUB_API_BASE" :states="acquisitionStates" @select="phHotSelect" @acquire="phAcquire" />
       </section>
       </template>
       <TorrentFileSelector
@@ -759,7 +752,7 @@ onUnmounted(() => {
         @confirm-selection="phCreateSelectedMagnet"
         @direct-confirm="phCreateMagnetDirect"
       />
-      <MediaAcquisitionTargetModal v-if="acquisitionRequest" :visible="acquisitionVisible" :request="acquisitionRequest" @created="onAcquisitionCreated" @update:visible="onAcquisitionVisibleChange" />
+      <MediaAcquisitionTargetModal v-if="acquisitionRequest" :visible="acquisitionVisible" :request="acquisitionRequest" :states="acquisitionStates" @created="onAcquisitionCreated" @update:visible="onAcquisitionVisibleChange" />
     </div>
   </div>
 </template>

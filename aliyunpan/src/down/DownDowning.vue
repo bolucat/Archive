@@ -1,5 +1,5 @@
 <script setup lang='ts'>
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   KeyboardState,
   MouseState,
@@ -28,6 +28,9 @@ import UrlDownloadModal from './UrlDownloadModal.vue'
 import TaskDetailDrawer from './TaskDetailDrawer.vue'
 import TorrentFileSelector from './TorrentFileSelector.vue'
 import DragDropZone from '../components/DragDropZone.vue'
+import UserDAL from '../user/userdal'
+import { getCloudDownloadSourceLabel } from './cloudDownloadSource'
+import { IStateDownFile } from './DownDAL'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -41,6 +44,18 @@ const appStore = useAppStore()
 const winStore = useWinStore()
 const downingStore = useDowningStore()
 const userStore = useUserStore()
+const selectedHasLocalTask = computed(() => downingStore.ListDataShow.some(item => downingStore.ListSelected.has(item.DownID) && !item.Info.offlineProvider))
+const focusedIsCloudTask = computed(() => {
+  const key = downingStore.ListFocusKey || [...downingStore.ListSelected][0]
+  return !!downingStore.ListDataShow.find(item => item.DownID === key)?.Info.offlineProvider
+})
+const accountNames = ref<Record<string, string>>({})
+const cloudSourceLabel = (item: IStateDownFile) => getCloudDownloadSourceLabel(item.Info, accountNames.value[item.Info.user_id])
+
+onMounted(async () => {
+  const users = await UserDAL.GetUserListFromDB().catch(() => [])
+  accountNames.value = Object.fromEntries(users.filter((user) => user?.user_id).map((user) => [user.user_id, user.nick_name || user.user_name || user.name || user.user_id]))
+})
 const isDowning = computed(() => downingStore.ListDataDowningCount > 0)
 watch(isDowning, (value, oldValue) => {
   if (value !== oldValue && window.WebToElectron) {
@@ -281,11 +296,11 @@ const handleTorrentFiles = () => {
   <div style='height: 14px'></div>
   <div class='toppanbtns' style='height: 26px'>
     <div class='toppanbtn' v-show='downingStore.IsListSelected'>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStart'><IconFont name="iconstart" />开始
+      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleStart'><IconFont name="iconstart" />开始
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStop'><IconFont name="iconpause" />暂停
+      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleStop'><IconFont name="iconpause" />暂停
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleTop'><IconFont name="iconyouxian" />优先传输
+      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleTop'><IconFont name="iconyouxian" />优先传输
       </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleDelete'><IconFont name="icondelete" />删除
       </a-button>
@@ -411,6 +426,10 @@ const handleTorrentFiles = () => {
             <div class='filename'>
               <div :title='item.Info.localFilePath'>
                 {{ item.Info.name }}
+                <span v-if='item.Info.offlineProvider' class='cloud-origin' :title='cloudSourceLabel(item)'>
+                  <IconFont name='iconcloud-download' aria-hidden='true' />
+                </span>
+                <span v-if='item.Info.offlineProvider' class='cloud-source'>{{ cloudSourceLabel(item) }}</span>
               </div>
             </div>
             <div class='cell filesize'>{{ item.Info.sizestr }}</div>
@@ -434,15 +453,15 @@ const handleTorrentFiles = () => {
     <a-dropdown id='downingrightmenu' class='rightmenu' :popup-visible='true' tabindex='-1' :draggable='false'
                 style='z-index: -1; left: -200px; opacity: 0'>
       <template #content>
-        <a-doption @click='handleStart'>
+        <a-doption v-if='!focusedIsCloudTask' @click='handleStart'>
           <template #icon><IconFont name="iconstart" /></template>
           <template #default>开始</template>
         </a-doption>
-        <a-doption @click='handleStop'>
+        <a-doption v-if='!focusedIsCloudTask' @click='handleStop'>
           <template #icon><IconFont name="iconpause" /></template>
           <template #default>暂停</template>
         </a-doption>
-        <a-doption @click='handleTop'>
+        <a-doption v-if='!focusedIsCloudTask' @click='handleTop'>
           <template #icon><IconFont name="iconyouxian" /></template>
           <template #default>优先传输</template>
         </a-doption>
@@ -450,7 +469,7 @@ const handleTorrentFiles = () => {
           <template #icon><IconFont name="icondelete" /></template>
           <template #default>删除</template>
         </a-doption>
-        <a-doption @click='handleTaskDetail'>
+        <a-doption v-if='!focusedIsCloudTask' @click='handleTaskDetail'>
           <template #icon><IconFont name="iconinfo" /></template>
           <template #default>任务详情</template>
         </a-doption>
@@ -468,6 +487,24 @@ const handleTorrentFiles = () => {
 </template>
 
 <style scoped>
+.cloud-origin {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: #637dff;
+  vertical-align: middle;
+}
+
+.cloud-origin :deep(svg) {
+  width: 14px;
+  height: 14px;
+}
+
+.cloud-source {
+  margin-left: 6px;
+  color: var(--color-text-4);
+  font-size: 11px;
+}
 .downprogress {
   flex-grow: 0;
   flex-shrink: 0;

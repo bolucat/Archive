@@ -1,0 +1,171 @@
+
+    <!DOCTYPE html>
+<html lang="en">
+    <head>
+        <script>window.host={"HOST_PAN":"pan.baidu.com","HOST_D_PCS":"d.pcs.baidu.com","HOST_C_PCS":"c.pcs.baidu.com","HOST_NEST":"yq01nest.pcs.baidu.com","HOST_PCS_DATA":"pcsdata.baidu.com","HOST_PCS":"pcs.baidu.com","HOST_BAIDU_PCS":"baidupcs.com","HOST_THUMBNAIL":"thumbnail.baidupcs.com","PASS_TPL":"netdisk","SOURCE_VALUE":"10"}</script>
+        <title>百度网盘-链接不存在</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+        <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+        <meta http-equiv="Cache-Control" content="max-age=30"/>
+        <meta name="renderer" content="origin"/>
+        <meta name="baidu-tc-verification" content="b31ebb7c3759312418b3645de4991aef"/>
+        <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover"/>
+        <meta name="keywords" content="网盘,百度网盘,百度云,网络U盘,网络硬盘,免费网盘,网盘下载,网盘资源,同步,云存储,外链分享,离线下载"/>
+        <meta name="description" content="百度网盘为您提供文件的网络备份、同步和分享服务。空间大、速度快、安全稳固，支持教育网加速，支持手机端。注册使用百度网盘即可享受免费存储空间"/>
+        <link rel="dns-prefetch" href="//pcs.baidu.com"/>
+        <link rel="dns-prefetch" href="//pcsdata.baidu.com"/>
+        <link rel="dns-prefetch" href="//passport.baidu.com"/>
+        <link rel="dns-prefetch" href="//yun.baidu.com"/>
+        <link rel="dns-prefetch" href="//d.pcs.baidu.com"/>
+        <link rel="dns-prefetch" href="//c.pcs.baidu.com"/>
+        <link rel="dns-prefetch" href="//webpush.pan.baidu.com"/>
+        <link rel="dns-prefetch" href="//hm.baidu.com"/>
+        <link rel="shortcut icon" type="image/x-icon" href="/m-static/base/static/images/favicon.ico"/>
+        <style>
+            html{font-feature-settings:"lnum";-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}body,div,dl,dt,dd,ul,ol,li,h1,h2,h3,h4,h5,h6,pre,code,form,textarea,select,optgroup,option,fieldset,legend,p,blockquote,th,td{margin:0;padding:0}body{background:#fff;font-family:PingFangSC-Regular,"Helvetica Neue",Helvetica,Arial,sans-serif,"Microsoft YaHei"}fieldset,img{border:0}ul,li,ol{list-style:none}h1,h2,h3,h4,h5,h6{font-size:100%}legend{color:#000}input,button,textarea,select,optgroup,option{font-family:inherit;font-size:inherit;font-style:inherit;font-weight:inherit}input,button,select{margin:0;*font-size:100%;line-height:1.2}a{color:#09AAFF;text-decoration:none}a img,img{-ms-interpolation-mode:bicubic}a:hover,a:active,a:focus{color:#0098EA;text-decoration:underline}table{border-collapse:collapse;border-spacing:0}header,aside,section{display:block}input::-ms-clear{display:none}#TANGRAM__PSP_10__qrcode .tips{margin-top:10px;text-align:center;font-size:12px;color:#999}p.Qrcode-status-animation{background:url(https://nd-static.bdstatic.com/m-static/base/static/images/app-intr-bg_99e9d55.png) no-repeat center}.tang-pass-pop-login .tang-pass-qrcode .tips{text-align:center}.nd-tang-pass-v4 .pass-login-pop-content{border-radius:0!important}.tang-pass-pop-login div.tang-title{height:0!important}.tang-pass-pop-login .pass-login-pop-form{padding-top:20px}body,button,input,select,textarea{font-size:12px;line-height:1.5;color:#666}a{color:#09AAFF;text-decoration:none;outline:0}a:hover,a:active,a:focus{color:#0098EA;text-decoration:underline}.global-clearfix:after,.g-clearfix:after{content:'.';display:block;visibility:hidden;height:0;line-height:0;font-size:0;clear:both}.global-clearfix,.g-clearfix{zoom:1}.global-clear,.g-clear{clear:both}.global-hide,.g-hide{display:none}.global-bold,.g-bold{font-weight:700}.global-center,.g-center{text-align:center}.global-float-left,.g-float-left{float:left}.global-float-right,.g-float-right{float:right}.global-ellipsis,.g-ellipsis{word-break:break-all;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.global-disabled,.global-disabled:hover,.global-disabled:active,.g-disabled,.g-disabled:hover,.g-disabled:active{filter:alpha(opacity=50);-ms-filter:"alpha(opacity=50)";opacity:.5;color:#ccc;cursor:default!important}.global-border-radius-3,.g-border-radius-3{-moz-border-radius:3px;-webkit-border-radius:3px;border-radius:3px}.global-box-shadow,.g-box-shadow{-moz-box-shadow:1px 2px 5px rgba(0,0,0,.5);-webkit-box-shadow:1px 2px 5px rgba(0,0,0,.5);box-shadow:1px 2px 5px rgba(0,0,0,.5)}
+        </style>
+        
+    <script>
+        if (window.performance && window.performance.now && typeof window.performance.now === 'function') {
+            window.__perf_white_screen = performance.now();
+        }
+    </script>
+    <!--[if !IE]><!-->
+    <script type="text/javascript" src="https://staticiot.cdn.bcebos.com/union/badjs-sdk-min-2.0.1.js"></script>
+    <!--<![endif]-->
+    <script>
+        if (window.BadJs) {
+            var HOST_PAN = ((window.host && window.host.HOST_PAN) || 'pan.baidu.com');
+            window.BadSDK = new BadJs({
+                host: 'https://' + HOST_PAN, path: '/bpapi/analytics', namespace: 'netdisk_share',
+                productId: '100710', rules: {path: /(\/s\/\w|.*)/, hash: false}, clienttype: 0, promiseError: true,
+                vueError: false, env: window, downgrade: {
+                    error: {p2: [/Script error/, /chrome-extension/, /moz-extension/]},
+                    resource: {p2: [/hm.baidu.com/, /webpush.pan.baidu.com/]}}
+            });
+        }
+    </script>
+    
+    <!--[if !IE]><!-->
+    <script
+        src="https://staticsns.cdn.bcebos.com/amis/2026-5/1779934953939/nd-sentry.loader.legacy.0.0.4.min.js"
+        data-src="https://staticsns.cdn.bcebos.com/amis/2026-5/1779934954229/nd-sentry.0.0.4.min.js"
+        data-src-legacy="https://staticsns.cdn.bcebos.com/amis/2026-5/1779934954525/nd-sentry.legacy.0.0.4.min.js"
+        crossorigin="anonymous"
+    ></script>
+    <!--<![endif]-->
+    <script>
+        function initNdSentry() {
+            var config = {
+                appInfo: {
+                    webAppId: "10016",
+                    webAppVersion:'0.0.0'
+                },
+                moduleName: "ShareError",
+                namespace: "10016",
+                rules: { path: /(\/s\/\w|.*)/, hash: false },
+                analytics: {
+                    reportViaAnalytics: true
+                }
+            };
+            NdSentry.ready(function () {
+                NdSentry.init(NdSentry.withNetdiskDefaults(config));
+            });
+        }
+
+        if (window.NdSentry) {
+            try {
+                initNdSentry();
+            } catch (err) {
+                console.warn("NdSentry 初始化失败:", err);
+            }
+        }
+    </script>
+
+    <script type="text/javascript" src="https://staticiot.cdn.bcebos.com/union/bpdatajs-sdk-min-1.3.3.js"></script>
+    <script>
+        if (window.BpData) {
+            window.BpDataInstance = new BpData({
+                serverId: 13328,
+                from: 'main',
+                page: 'share_common_page',
+                parasitifer: 'web'
+            })
+        }
+    </script>
+    
+    
+    
+
+    <link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/system-core/pkg/context-all_b7ee195.css" /><link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/file-widget-1/pkg/videoPlay-all_b50fdf1.css" /><link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/disk-share/pkg/singleNew-all_dbf1462.css" /><link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/disk-share/pkg/single-all_0478c8b.css" /><link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/disk-share/pkg/multiNew-all_c7692bc.css" /><link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/disk-share/pkg/errorNew-all_dbed599.css" /><link rel="stylesheet" href="https://nd-static.bdstatic.com/m-static/disk-share/css/cover_8d02d44.css" /></head>
+    
+    <body >
+        
+    
+
+    
+    
+    <div id="error-new" class="error-new">
+        <a class="pan-logo" href="/disk/home"></a>
+        <div class="error-new-content">
+    <!-- 错误信息提示卡片 -->
+    <div id="shareError" class="share-error">
+        <div class="error-icon"></div>
+        <div class="error-reason"></div>
+        
+            <a class="btnLogin" href="/disk/home">登 录</a>
+            <a class="btnRegister" href="https://passport.baidu.com">立即注册</a>
+            <div class="btnTips">登录百度网盘，发现更多惊喜</div>
+        
+    </div>
+    <!-- 分享者风控解除申诉弹框 -->
+    <div id="appealCard" class="appeal-card link-appeal-dialog">
+        <div class="title">
+            <div id="appealCardBack" class="appealCardBack"></div>
+            链接失效申诉
+        </div>
+        <textarea maxlength="200" class="content link-appeal-input"></textarea>
+        <div class="appealTips link-appeal-error">不可键入更多内容</div>
+        <div class="btns">
+            <div id="appealCancel" class="appealCancel link-appeal-cancel">取消</div>
+            <div id="appealSure" class="appealSure link-appeal-submit">确定</div>
+        </div>
+    </div>
+</div>
+
+    </div>
+    
+
+
+
+
+    <div class="module-share-footer" id="ft">
+        <div>&copy;2026 Baidu <a target="_blank" href="/disk/duty/">服务协议</a>|<a target="_blank" href="//yun.baidu.com/disk/privacy">权利声明</a>|<a href="//yun.baidu.com/disk/version" target="_blank">版本更新</a>|<a target="_blank" href="http://yun.baidu.com/disk/help">帮助中心</a>|<a id="feedback-link" target="_blank" href="https://pan.baidu.com/embed/service?theme=light&client=web&version=0&from=share_bottom&source=web_share&clienttype=0">问题反馈</a>|<a href="http://copyright.baidu.com/index.php/index/complaint" target="_blank">版权投诉</a>|<a target="_blank" id="panHostBase" class="b-lnk-gy" >企业认证</a></div>
+    </div>
+
+    <script>
+        var HOST_PAN = ((window.host && window.host.HOST_PAN) || 'pan.baidu.com');
+        document.querySelector('#panHostBase').href = '//' + HOST_PAN + '/disk/cert/#/web/home?from=shareFooter';
+    </script>
+
+    
+    
+
+    <script type="text/javascript" src="https://nd-static.bdstatic.com/m-static/base/static/js/lib/mod.js?t=1783082941395"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/system-core/pkg/context-all_5bdfc43.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/base/pkg/base_c13666e.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/file-widget-1/pkg/videoPlay-all_58d4195.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/disk-share/pkg/common-chunks-all_b5699e1.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/disk-share/pkg/errorNew-all_f1d8841.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/disk-share/widget/system/util/deviceType_48d87b6.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/disk-share/widget/system/util/browser_4f04d62.js"></script><script type="text/javascript" crossorigin="anonymous"  src="https://nd-static.bdstatic.com/m-static/disk-share/js/boot_ab53fe4.js"></script><script type="text/javascript">!function() {
+        window.yunData={skinName:'white', neglect:1, bdstoken:'', uk:'0', loginstate:'0', share_uk:"1099873673477", shareid:"47529306385"};
+        locals.set('servertime', 1784562338860);
+        locals.mset({"csrf":"cJwhQPoB-B3HtPAwk9MOuQOTJYaA9I0urgOk","uk":0,"username":"","loginstate":0,"skinName":"white","bdstoken":"","photo":"","is_vip":0,"is_svip":0,"is_evip":0,"vip_identity":1,"now":"2026-07-20T15:45:38.860Z","XDUSS":"","curr_activity_code":0,"show_vip_ad":0,"share_photo":"https://himg.bdimg.com/sys/portrait/item/public.1.ca1d54b2.P5loIWPgUySgmIKwkhPSiA.jpg","share_uk":"1099873673477","shareid":47529306385,"hit_ogc":false,"expiredType":0,"public":0,"ctime":1741916584,"description":"","followFlag":-1,"access_list_flag":false,"Elink_info":{"isElink":0,"eflag_disable":false},"Clink_info":null,"sharetype":0,"view_visited":0,"view_limit":0,"owner_vip_level":4,"owner_svip10_id":"","owner_vip_type":2,"linkusername":"dus****ji2","errortype":0,"share_page_type":"error","errno":145,"ufcTime":224,"error":0,"data":{},"file_list":[],"self":0,"elink_self":0});
+        window.BadSDK && window.BadSDK.updateConfig({
+            uk: locals.get('uk'),
+            sessionId: window.BpDataInstance && window.BpDataInstance.sessionId
+        });
+    }();
+!function() {
+        require('disk-share:widget/pageModule/start/error-new.js');
+    }();</script></body>
+    
+    <script async defer type="text/javascript" src="https://hm.baidu.com/h.js?7a3960b6f067eb0085b7f96ff5e660b0"></script>
+</html>
+
+
+

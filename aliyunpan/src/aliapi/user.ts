@@ -65,10 +65,9 @@ export default class AliUser {
     if (token.user_id?.startsWith('cloud123_')) { return true }
     if (!token.refresh_token) return false
     if (!forceRefresh && new Date(token.expire_time).getTime() >= Date.now()) return true
-    if (forceRefresh) {
-      TokenLockMap.delete(token.user_id)
-      TokenReTimeMap.delete(token.user_id)
-    }
+    // Invalidate only the cached timestamp. Keep an in-flight lock intact so
+    // a 401 retry and the periodic refresher cannot spend the same token.
+    if (forceRefresh && !TokenLockMap.has(token.user_id)) TokenReTimeMap.delete(token.user_id)
     while (true) {
       const lock = TokenLockMap.has(token.user_id)
       if (lock) await Sleep(1000)
@@ -89,7 +88,7 @@ export default class AliUser {
       TokenReTimeMap.set(resp.body.user_id, Date.now())
       token.tokenfrom = 'aliyun'
       token.access_token = resp.body.access_token
-      token.refresh_token = resp.body.refresh_token
+      token.refresh_token = resp.body.refresh_token || token.refresh_token
       token.expires_in = resp.body.expires_in
       token.token_type = resp.body.token_type
       token.user_id = resp.body.user_id
@@ -154,10 +153,7 @@ export default class AliUser {
     if (!token.open_api_refresh_token) return false
     if (!forceRefresh && new Date(token.open_api_expires_in).getTime() >= Date.now()) return true
     // 防止重复刷新
-    if (forceRefresh) {
-      OpenApiTokenLockMap.delete(token.user_id)
-      OpenApiTokenReTimeMap.delete(token.user_id)
-    }
+    if (forceRefresh && !OpenApiTokenLockMap.has(token.user_id)) OpenApiTokenReTimeMap.delete(token.user_id)
     while (true) {
       const lock = OpenApiTokenLockMap.has(token.user_id)
       if (lock) await Sleep(1000)
@@ -184,7 +180,7 @@ export default class AliUser {
       OpenApiTokenReTimeMap.set(token.user_id, Date.now())
       token.open_api_token_type = token_type
       token.open_api_access_token = access_token
-      token.open_api_refresh_token = refresh_token
+      token.open_api_refresh_token = refresh_token || token.open_api_refresh_token
       token.open_api_expires_in = Date.now() + expires_in * 1000
       window.WebUserToken({
         user_id: token.user_id,

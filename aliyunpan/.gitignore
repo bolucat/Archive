@@ -68,7 +68,6 @@ boxplayer-api/
 OpenList/
 tmp_video_frames/
 tmp_video_xhs/
-.codeflicker/
 
 # stale tsc compile output for ts source files (must be regenerated only via vite-plugin-electron)
 electron/**/*.js

@@ -254,7 +254,7 @@ async function creatDirAndReadChildren(fileui: IUploadingUI): Promise<void> {
     localFilePath: fileui.localFilePath,
     filetime: fileTime,
     encType: fileui.encType,
-    ingoredList: [...settingStore.downIngoredList]
+    ingoredList: Array.isArray(settingStore.downIngoredList) ? settingStore.downIngoredList.filter((item): item is string => typeof item === 'string') : []
   }
   const read = await readChildren(fileui.File.partPath, fileui.File.name, readConfig, fileui.Info)
   if (read.error) {
@@ -455,6 +455,7 @@ async function readDir(fullDirPath: string, ingoredList: string[]): Promise<{
     .then((files: Dirent[]) => {
       for (let i = 0, maxi = files.length; i < maxi; i++) {
         const stat = files[i]
+        if (!stat || typeof stat.name !== 'string') continue
         if (stat.isSymbolicLink()) continue
         if (CheckWindowsBreakPath(stat.name)) continue
         if (stat.isDirectory()) dirList.push(stat.name)
@@ -462,7 +463,8 @@ async function readDir(fullDirPath: string, ingoredList: string[]): Promise<{
           const filePathLower = stat.name.toLowerCase()
           let ingored = false
           for (let j = 0, maxj = ingoredList.length; j < maxj; j++) {
-            if (filePathLower.endsWith(ingoredList[j])) {
+            const ignoredSuffix = ingoredList[j]
+            if (ignoredSuffix && filePathLower.endsWith(ignoredSuffix.toLowerCase())) {
               ingored = true
               break
             }

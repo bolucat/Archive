@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import useSettingStore from './settingstore'
 import IconFont from '../components/IconFont.vue'
-import { testAIConnection } from '../utils/bookAI'
+import { migrateSoleSavedBYOKAsDefault, testAIConnection } from '../utils/bookAI'
 import message from '../utils/message'
 import { fetchOpenRouterModels } from '../services/ai/providers/OpenRouterProvider'
 import type { OpenRouterModelInfo } from '../services/ai/providers/OpenRouterProvider'
@@ -14,6 +14,7 @@ import { BOXPLAYER_SITE_URL } from '../utils/boxplayerAuth'
 const PRICING_URL = `${BOXPLAYER_SITE_URL}/pricing/`
 
 const settingStore = useSettingStore()
+migrateSoleSavedBYOKAsDefault()
 const isLoggedIn = ref(false)
 try { isLoggedIn.value = localStorage.getItem('app_user_authed') === '1' } catch {}
 
@@ -123,9 +124,11 @@ function saveCurrentConfig() {
   if (v !== 'ollama' && !aiKey.value) { message.warning('请填写 API Key'); return }
   if (!aiModelId.value) { message.warning('请填写或选择模型 ID'); return }
   saveProviderConfig(v, { apiKey: aiKey.value, modelId: aiModelId.value, embeddingModelId: aiEmbeddingModelId.value, baseUrl: aiBaseUrl.value })
+  const shouldSetAsDefault = !settingStore.apiAIModelProvider
+  if (shouldSetAsDefault) setAsDefault(v)
   showAddForm.value = false
   aiProvider.value = ''
-  message.success(`${PROVIDER_INFO[v]?.name || v} 配置已保存`)
+  if (!shouldSetAsDefault) message.success(`${PROVIDER_INFO[v]?.name || v} 配置已保存`)
 }
 
 function deleteProviderConfig(provider: string) {

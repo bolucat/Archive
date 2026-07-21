@@ -7,7 +7,7 @@ import { modalUserRewardSpace, modalUserSpace } from '../utils/modal'
 import AliUser from '../aliapi/user'
 import { humanSize } from '../utils/format'
 import type { ITokenInfo } from './userstore'
-import { isAliyunUser, isBaiduUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isQuarkUser } from '../aliapi/utils'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import { Modal } from '@arco-design/web-vue'
 import { showAlipanMemberPromotion, showAlipanMemberQrPromotion } from '../utils/alipanPromotion'
@@ -21,11 +21,15 @@ const avatarErrorKeys = ref<Set<string>>(new Set())
 const handleUserChange = (val: any, user_id: string) => {
   if (val) UserDAL.UserChange(user_id)
 }
-const handleRefreshUserInfo = () => {
-  UserDAL.UserRefreshByUserFace(userStore.user_id, false).then((success) => {
+const handleRefreshUserInfo = async () => {
+  try {
+    const success = await UserDAL.UserRefreshByUserFace(userStore.user_id, false)
     if (success) message.info('刷新用户信息成功')
     else message.error('刷新用户信息失败')
-  })
+    await refreshUserList()
+  } catch {
+    message.error('刷新用户信息失败')
+  }
 }
 
 const handleSign = () => {
@@ -134,8 +138,17 @@ const userList = computed(() => {
   return userListState.value
 })
 
+const getAccountDisplayName = (token: ITokenInfo) => {
+  const displayName = token.nick_name || token.user_name || token.name || ''
+  if (isQuarkUser(token)) {
+    const accountId = token.user_id.replace(/^quark_/, '')
+    if (!displayName || displayName === token.user_id || displayName === accountId || displayName.startsWith('cookie_')) return getDriveProviderLabel(token.tokenfrom)
+  }
+  return displayName || getDriveProviderLabel(token.tokenfrom)
+}
+
 const getUserName = computed(() => {
-  let userName = userStore.GetUserToken.nick_name || userStore.GetUserToken.user_name
+  const userName = getAccountDisplayName(userStore.GetUserToken)
   const limit = isAliyunAccount.value ? 3 : 10
   if (userName.length > limit) {
     return userName.substring(0, limit) + '...'
@@ -171,7 +184,7 @@ const handleAvatarError = (token: ITokenInfo) => {
 }
 
 const getAvatarText = (token: ITokenInfo) => {
-  const name = token.nick_name || token.user_name || getProviderLabel(token.tokenfrom)
+  const name = getAccountDisplayName(token)
   return name.substring(0, 2).toUpperCase()
 }
 
@@ -294,7 +307,7 @@ watch(
                   <span v-else>{{ getProviderLabel(item.tokenfrom).substring(0, 1) }}</span>
                 </div>
                 <div class='user-list-main'>
-                  <span class='user-list-name' :title='item.user_name'>{{ item.nick_name ? item.nick_name : item.user_name }}</span>
+                  <span class='user-list-name' :title='getAccountDisplayName(item)'>{{ getAccountDisplayName(item) }}</span>
                   <span class='user-provider' :title='getProviderLabel(item.tokenfrom)'>{{ getProviderLabel(item.tokenfrom) }}</span>
                 </div>
                 <div class='user-list-actions'>

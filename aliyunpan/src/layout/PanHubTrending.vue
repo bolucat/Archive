@@ -2,12 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { Bot, Film, RefreshCw } from 'lucide-vue-next'
 import { tmdbImageUrl } from '../utils/tmdb'
-import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
+import { getPanHubSearchTitle } from '../utils/panHubMediaTitle'
+import type { MediaAcquisitionRequest, MediaAcquisitionState } from '@shared/types/mediaAcquisition'
 
 type TrendingKind = 'movie' | 'tv' | 'anime' | 'douban-top250' | 'douban-movie' | 'douban-weekly' | 'douban-us-box'
 type TrendingItem = { id: number | string; title?: string; name?: string; poster_path?: string; cover?: string; release_date?: string; first_air_date?: string; media_type?: 'movie' | 'tv' }
 
-const props = defineProps<{ apiBase: string }>()
+const props = defineProps<{ apiBase: string; states?: MediaAcquisitionState[] }>()
 const emit = defineEmits<{ select: [title: string]; acquire: [request: MediaAcquisitionRequest] }>()
 
 const recentTabs: { id: TrendingKind; label: string; path: string }[] = [
@@ -31,7 +32,24 @@ const failedImages = ref<Set<string | number>>(new Set())
 const activeTab = computed(() => recentTabs.find(tab => tab.id === activeKind.value))
 
 function titleOf(item: TrendingItem) { return item.title || item.name || '未命名媒体' }
+function searchTitleOf(item: TrendingItem) { return getPanHubSearchTitle(titleOf(item)) }
 function yearOf(item: TrendingItem) { return (item.release_date || item.first_air_date || '').slice(0, 4) }
+function mediaTypeOf(item: TrendingItem) { return item.media_type || (activeKind.value === 'tv' ? 'tv' : activeKind.value === 'anime' ? 'anime' : 'movie') }
+function mediaKeyOf(item: TrendingItem) {
+  const mediaType = mediaTypeOf(item)
+  if (activeTab.value && typeof item.id === 'number') return `${mediaType}:tmdb:${item.id}`
+  return `${mediaType}:title:${searchTitleOf(item).trim().toLowerCase().replace(/\s+/g, ' ')}:${yearOf(item) || ''}`
+}
+function normalizeTitle(value: string) { return value.replace(/[\s\u3000]+/g, '').toLowerCase() }
+function stateOf(item: TrendingItem) {
+  const exact = props.states?.find(state => state.mediaKey === mediaKeyOf(item))
+  if (exact) return exact
+  const title = normalizeTitle(titleOf(item))
+  return props.states?.find(state => state.mediaType === mediaTypeOf(item) && normalizeTitle(state.title) === title)
+}
+function stateLabel(state?: MediaAcquisitionState) { return state?.status === 'completed' ? '已成功' : state?.status === 'failed' ? '失败' : state?.status === 'cancelled' ? '已取消' : state?.status === 'partial' ? '部分完成' : state?.status === 'no_coverage' ? '暂无资源' : state?.status === 'reserved' ? '已预定' : state ? state.activity : '' }
+function stateClass(state?: MediaAcquisitionState) { return state?.status === 'completed' ? 'completed' : state && ['failed', 'cancelled'].includes(state.status) ? 'failed' : state && ['partial', 'no_coverage'].includes(state.status) ? 'warning' : 'working' }
+function stateProgress(state?: MediaAcquisitionState) { return state?.status === 'completed' ? 100 : Math.max(0, Math.min(100, state?.progress || 0)) }
 
 async function loadPage(page: number, append = false) {
   if (loading.value || loadingMore.value) return
@@ -94,7 +112,7 @@ function acquire(item: TrendingItem) {
   emit('acquire', {
     tmdbId: activeTab.value && typeof item.id === 'number' ? item.id : undefined,
     mediaType,
-    title: titleOf(item),
+    title: searchTitleOf(item),
     year: Number(yearOf(item)) || undefined,
     releaseDate: item.release_date || item.first_air_date
   })
@@ -122,12 +140,13 @@ onMounted(() => void load())
       <div v-for="index in 10" :key="index" class="media-trending-skeleton"><i /><b /></div>
     </div>
     <div v-else-if="items.length" class="media-trending-grid">
-      <article v-for="(item, index) in items" :key="`${item.media_type || activeKind}-${item.id}`" class="media-trending-card" role="button" tabindex="0" @click="emit('select', titleOf(item))" @keydown.enter="emit('select', titleOf(item))" @keydown.space.prevent="emit('select', titleOf(item))">
+      <article v-for="(item, index) in items" :key="`${item.media_type || activeKind}-${item.id}`" class="media-trending-card" role="button" tabindex="0" @click="emit('select', searchTitleOf(item))" @keydown.enter="emit('select', searchTitleOf(item))" @keydown.space.prevent="emit('select', searchTitleOf(item))">
         <span class="media-trending-poster">
           <img v-if="imageOf(item) && !failedImages.has(item.id)" :src="imageOf(item)" :alt="titleOf(item)" loading="lazy" referrerpolicy="no-referrer" @error="failedImages = new Set(failedImages).add(item.id)" />
           <Film v-else :size="26" :stroke-width="1.3" />
           <i class="media-trending-rank">#{{ index + 1 }}</i>
-          <button class="media-trending-acquire" type="button" :aria-label="`AI 获取 ${titleOf(item)}`" @click.stop="acquire(item)"><Bot :size="13" />AI 获取</button>
+          <button :class="['media-trending-acquire', { 'has-state': stateOf(item) }]" type="button" :aria-label="`AI 获取 ${titleOf(item)}`" @click.stop="acquire(item)"><Bot :size="13" />AI 获取</button>
+          <div v-if="stateOf(item)" :class="['media-trending-poster-acquisition-state', stateClass(stateOf(item))]"><b>{{ stateLabel(stateOf(item)) }}</b><i><em :style="{ width: `${Math.max(4, stateProgress(stateOf(item)))}%` }" /></i></div>
         </span>
         <strong>{{ titleOf(item) }}</strong>
         <small>{{ subtitleOf(item) }}</small>
@@ -143,6 +162,7 @@ onMounted(() => void load())
 .media-trending { padding: 20px 24px 24px; color: #e8ebf2; background: #151617; border-radius: 10px; }
 .media-trending-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }.media-trending-tabs { display: flex; flex: 1; flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; }.media-trending-tabs::-webkit-scrollbar { display: none; }.media-trending-tabs h2 { flex: 0 0 auto; margin: 0 8px 0 0; font-size: 21px; line-height: 30px; }.media-trending-tab { flex: 0 0 auto; border: 0; border-radius: 999px; padding: 6px 12px; color: #9da1ab; background: #242527; font-size: 13px; font-weight: 650; cursor: pointer; }.media-trending-tab.active { color: #171719; background: #f3f3f4; }.media-trending-divider { flex: 0 0 auto; padding-left: 9px; color: #70757e; font-size: 12px; font-weight: 650; }.media-trending-refresh { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; color: #b9bec8; background: transparent; cursor: pointer; }.media-trending-refresh:hover { color: #fff; background: #282a2d; }.media-trending-refresh:disabled { cursor: wait; }.spin { animation: trending-spin .8s linear infinite; }
 .media-trending-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 14px; }.media-trending-card { min-width: 0; padding: 0; border: 0; color: inherit; background: transparent; text-align: left; cursor: pointer; outline: none; }.media-trending-card:focus-visible .media-trending-poster { outline: 2px solid #6b7df6; outline-offset: 3px; }.media-trending-poster { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; aspect-ratio: 2 / 3; overflow: hidden; border-radius: 9px; color: #808691; background: #292b2e; box-shadow: 0 6px 14px rgba(0,0,0,.25); }.media-trending-poster img { width: 100%; height: 100%; object-fit: cover; }.media-trending-rank { position: absolute; left: 6px; top: 6px; padding: 2px 6px; border-radius: 999px; color: #fff; background: rgba(0,0,0,.68); font-size: 11px; font-style: normal; font-weight: 750; }.media-trending-acquire { position: absolute; right: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 3px; padding: 5px 7px; border: 0; border-radius: 5px; color: #071a13; background: #6de8b0; box-shadow: 0 2px 8px rgba(0,0,0,.28); font-size: 11px; font-weight: 750; cursor: pointer; }.media-trending-acquire:hover { background: #91f2c4; }.media-trending-card strong, .media-trending-card small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.media-trending-card strong { margin-top: 7px; color: #eef0f3; font-size: 13px; line-height: 18px; }.media-trending-card small { margin-top: 1px; color: #8e939d; font-size: 11px; line-height: 16px; }.media-trending-card:hover .media-trending-poster { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(0,0,0,.34); }.media-trending-poster { transition: transform .16s, box-shadow .16s; }.media-trending-skeleton i { display: block; width: 100%; aspect-ratio: 2/3; border-radius: 9px; background: #292b2e; animation: trending-pulse 1.2s ease-in-out infinite; }.media-trending-skeleton b { display: block; width: 70%; height: 12px; margin-top: 8px; border-radius: 4px; background: #292b2e; }.media-trending-empty { padding: 32px 0; color: #8e939d; font-size: 13px; text-align: center; }
+.media-trending-acquire.has-state { top: 6px; bottom: auto; }.media-trending-poster-acquisition-state { position: absolute; right: 6px; bottom: 6px; left: 6px; z-index: 2; padding: 5px 6px; border-radius: 5px; color: #fff; background: rgba(12,14,18,.86); font-size: 10px; backdrop-filter: blur(5px); }.media-trending-poster-acquisition-state b { display: block; overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }.media-trending-poster-acquisition-state i { display: block; height: 3px; margin-top: 4px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.18); }.media-trending-poster-acquisition-state em { display: block; height: 100%; border-radius: inherit; background: #60dd83; transition: width .25s ease; }.media-trending-poster-acquisition-state.failed em { background: #f06c6c; }.media-trending-poster-acquisition-state.warning em { background: #e6b45e; }
 .media-trending-more, .media-trending-more-loading { display: block; margin: 18px auto 0; padding: 6px 14px; border: 0; border-radius: 999px; color: #aeb4bf; background: #242527; font-size: 12px; font-weight: 650; }.media-trending-more { cursor: pointer; }.media-trending-more:hover { color: #fff; background: #303236; }.media-trending-more-loading { background: transparent; color: #7d838e; }
 @keyframes trending-spin { to { transform: rotate(360deg); } } @keyframes trending-pulse { 50% { opacity: .45; } }
 @media (max-width: 720px) { .media-trending { padding: 16px; }.media-trending-grid { grid-template-columns: repeat(auto-fill, minmax(94px, 1fr)); gap: 10px; }.media-trending-tabs h2 { width: 100%; margin-bottom: 2px; } }

@@ -48,7 +48,7 @@ export function buildMediaAcquisitionSearchKeywords(target: SearchTarget): Media
   appendKeyword(plans, seen, target.title, '裸标题预热', titles)
   for (const title of titles.slice(1)) appendKeyword(plans, seen, title, '原始标题/别名', titles)
 
-  const seasonTargets = target.seasonTargets?.length ? target.seasonTargets : target.seasonNumber ? [{ seasonNumber: target.seasonNumber, missingEpisodes: target.missingEpisodes || [] }] : []
+  const seasonTargets = target.mediaType === 'movie' ? [] : target.seasonTargets?.length ? target.seasonTargets : target.seasonNumber ? [{ seasonNumber: target.seasonNumber, missingEpisodes: target.missingEpisodes || [] }] : []
   for (const seasonTarget of seasonTargets) {
     const seasonToken = `S${String(seasonTarget.seasonNumber).padStart(2, '0')}`
     const episodeToken = seasonTarget.missingEpisodes.length && seasonTarget.missingEpisodes.length <= 3 ? seasonTarget.missingEpisodes.map(episode => `${seasonToken}E${String(episode).padStart(2, '0')}`).join(' ') : seasonToken

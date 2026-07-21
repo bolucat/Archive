@@ -169,3 +169,16 @@ export interface MediaServerPagedLibraryPage {
   currentPage: number
   hasNextPage: boolean
 }
+
+export interface MediaServerMusicTrack {
+  id: string
+  serverId: string
+  provider: MediaServerType
+  serverName: string
+  title: string
+  artist?: string
+  album?: string
+  thumbnail?: string
+  durationMs?: number
+  sourceId?: string
+}

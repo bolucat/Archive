@@ -2,6 +2,7 @@ import { ITokenInfo } from '../user/userstore'
 import UserDAL from '../user/userdal'
 import message from './message'
 import { BAIDU_APP_ID, BAIDU_APP_SECRET } from '../secrets.generated'
+import { tokenRefreshKey, withTokenRefreshLock } from '../user/tokenRefresh'
 
 const BAIDU_AUTH_URL = 'https://openapi.baidu.com/oauth/2.0/authorize'
 const BAIDU_TOKEN_URL = 'https://openapi.baidu.com/oauth/2.0/token'
@@ -20,14 +21,14 @@ const hashString = (value: string): string => {
   return Math.abs(hash).toString(36)
 }
 
-const normalizeToken = (data: any): ITokenInfo | null => {
+const normalizeToken = (data: any, fallbackRefreshToken = ''): ITokenInfo | null => {
   if (!data?.access_token) return null
   const expiresIn = Number(data.expires_in || 0)
   const expireTime = new Date(Date.now() + expiresIn * 1000).toISOString()
   return {
     tokenfrom: 'baidu',
     access_token: data.access_token,
-    refresh_token: data.refresh_token || '',
+    refresh_token: data.refresh_token || fallbackRefreshToken,
     session_expires_in: 0,
     open_api_token_type: '',
     open_api_access_token: '',
@@ -168,7 +169,7 @@ export const exchangeBaiduCodeForToken = async (code: string): Promise<ITokenInf
   return token
 }
 
-export const refreshBaiduAccessToken = async (refreshToken: string): Promise<ITokenInfo | null> => {
+const refreshBaiduAccessTokenInternal = async (refreshToken: string): Promise<ITokenInfo | null> => {
   if (!refreshToken) return null
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -184,7 +185,7 @@ export const refreshBaiduAccessToken = async (refreshToken: string): Promise<ITo
   })
   if (!resp.ok) return null
   const data = await resp.json()
-  const token = normalizeToken(data)
+  const token = normalizeToken(data, refreshToken)
   if (token) {
     try {
       const info = await fetchBaiduUserInfo(token.access_token)
@@ -213,3 +214,6 @@ export const refreshBaiduAccessToken = async (refreshToken: string): Promise<ITo
   }
   return token
 }
+
+export const refreshBaiduAccessToken = async (refreshToken: string): Promise<ITokenInfo | null> =>
+  withTokenRefreshLock(tokenRefreshKey('baidu', refreshToken), () => refreshBaiduAccessTokenInternal(refreshToken))

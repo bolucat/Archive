@@ -1,6 +1,7 @@
 import UserDAL from '../user/userdal'
 import message from '../utils/message'
 import { DRIVE115_DOWN_AGENT } from './constants'
+import { registerDrive115PlaybackAuth } from './playbackAuth'
 
 export const apiDrive115DownUrl = async (
   user_id: string,
@@ -37,13 +38,15 @@ export const apiDrive115DownUrl = async (
     const info = firstKey ? data.data[firstKey] : null
     const url = info?.url?.url || ''
     if (!url) return '获取下载地址失败'
+    const headers = {
+      Authorization: `Bearer ${token.access_token}`,
+      'User-Agent': DRIVE115_DOWN_AGENT
+    }
+    registerDrive115PlaybackAuth([url], headers)
     return {
       url,
       size: Number(info?.file_size || 0),
-      headers: {
-        Authorization: `Bearer ${token.access_token}`,
-        'User-Agent': DRIVE115_DOWN_AGENT
-      }
+      headers
     }
   } catch (err: any) {
     message.error('获取下载地址失败 ' + (err?.message || ''))

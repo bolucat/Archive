@@ -6,8 +6,9 @@ import type { MediaAcquisitionRunView } from '@shared/types/mediaAcquisition'
 import { addMediaAcquisitionEvent, failMediaAcquisitionCandidate, getMediaAcquisitionCandidateLocator, markMediaAcquisitionCandidateTransferring, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent } from './client'
 import { normalizeMediaAcquisitionPlatform, normalizeMediaAcquisitionRootFolder } from './capabilities'
 import { canTryNextMediaAcquisitionCandidate } from './candidatePolicy'
-import { listMediaAcquisitionTargetFiles } from './targetSnapshot'
+import { listMediaAcquisitionTransferBaselineFiles } from './targetSnapshot'
 import { cleanupFailedMediaAcquisitionStagingTarget, ensureMediaAcquisitionStagingTarget, hasMaterializedMediaAcquisitionContent, rereadMediaAcquisitionStagingTarget, stopMediaAcquisitionTransferWhenCoverageMet, type MediaAcquisitionStagingTarget } from './staging'
+import DownDAL from '../../down/DownDAL'
 
 export async function executeMediaAcquisitionMagnetCandidate(run: MediaAcquisitionRunView, candidateId: string): Promise<void> {
   const candidate = run.candidates.find(item => item.id === candidateId)
@@ -26,7 +27,7 @@ export async function executeMediaAcquisitionMagnetCandidate(run: MediaAcquisiti
     if (!claimed) return
     if (await stopMediaAcquisitionTransferWhenCoverageMet(run)) return
     await addMediaAcquisitionEvent(run.id, 'info', 'transfer', `开始${platformName(platform)}磁力离线诊断。`, { tool: 'magnetOffline', candidateId, platform, targetDriveId: run.target.targetDriveId })
-    const baseline = await listMediaAcquisitionTargetFiles(run.target)
+    const baseline = await listMediaAcquisitionTransferBaselineFiles(run.target)
     step = '创建暂存目录'
     staging = await ensureMediaAcquisitionStagingTarget(run.target, run.id, candidateId)
     const parentId = normalizeMediaAcquisitionRootFolder(platform, staging.target.targetParentFileId)
@@ -37,6 +38,7 @@ export async function executeMediaAcquisitionMagnetCandidate(run: MediaAcquisiti
     if (platform === '115') {
       const result = await apiDrive115OfflineCreate(run.target.targetUserId, source.locator, parentId)
       if (result.error) throw new Error(result.error)
+      DownDAL.aTrackDrive115OfflineDownload(run.target.targetUserId, source.locator, parentId, result.taskIds, candidate.title)
       externalTaskCreated = true
       step = '回读暂存目录'
       await recordMediaAcquisitionExternalTask(run.id, candidateId, result.taskIds[0], undefined, `已创建 115 云下载任务${result.taskIds.length ? `（${result.taskIds.length} 项）` : ''}，等待网盘完成`)
@@ -46,6 +48,7 @@ export async function executeMediaAcquisitionMagnetCandidate(run: MediaAcquisiti
     if (platform === 'guangya') {
       const result = await apiGuangyaOfflineCreate(run.target.targetUserId, source.locator, candidate.title, parentId)
       if (result.error) throw new Error(result.error)
+      DownDAL.aTrackGuangyaOfflineDownload(run.target.targetUserId, source.locator, candidate.title, parentId, String(result.taskId || result.fileId), result.fileId)
       externalTaskCreated = true
       step = '回读暂存目录'
       await recordMediaAcquisitionExternalTask(run.id, candidateId, result.taskId, result.fileId, '已创建光鸭云盘离线下载任务，等待网盘完成')
@@ -54,6 +57,7 @@ export async function executeMediaAcquisitionMagnetCandidate(run: MediaAcquisiti
     }
     const pikpak = await apiPikPakOfflineCreate(run.target.targetUserId, source.locator, candidate.title, parentId)
     if (pikpak.error) throw new Error(pikpak.error)
+    DownDAL.aTrackPikPakOfflineDownload(run.target.targetUserId, source.locator, candidate.title, parentId, String(pikpak.taskId || pikpak.fileId), pikpak.fileId)
     externalTaskCreated = true
     step = '回读暂存目录'
     await recordMediaAcquisitionExternalTask(run.id, candidateId, pikpak.taskId || undefined, pikpak.fileId || undefined, '已创建 PikPak 离线下载任务，等待网盘完成')
@@ -85,7 +89,7 @@ export async function executeMediaAcquisitionHttpCandidate(run: MediaAcquisition
     if (!claimed) return
     if (await stopMediaAcquisitionTransferWhenCoverageMet(run)) return
     await addMediaAcquisitionEvent(run.id, 'info', 'transfer', `开始${platformName(platform)} HTTP 外链离线诊断。`, { tool: 'httpOffline', candidateId, platform, targetDriveId: run.target.targetDriveId })
-    const baseline = await listMediaAcquisitionTargetFiles(run.target)
+    const baseline = await listMediaAcquisitionTransferBaselineFiles(run.target)
     step = '创建暂存目录'
     staging = await ensureMediaAcquisitionStagingTarget(run.target, run.id, candidateId)
     const parentId = normalizeMediaAcquisitionRootFolder(platform, staging.target.targetParentFileId)
@@ -96,21 +100,25 @@ export async function executeMediaAcquisitionHttpCandidate(run: MediaAcquisition
     if (platform === '115') {
       const result = await apiDrive115OfflineCreate(run.target.targetUserId, source.locator, parentId)
       if (result.error) throw new Error(result.error)
+      DownDAL.aTrackDrive115OfflineDownload(run.target.targetUserId, source.locator, parentId, result.taskIds, candidate.title)
       externalTaskCreated = true
       await recordMediaAcquisitionExternalTask(run.id, candidateId, result.taskIds[0], undefined, '已创建 115 HTTP 云下载任务，等待网盘完成')
     } else if (platform === 'guangya') {
       const result = await apiGuangyaOfflineCreate(run.target.targetUserId, source.locator, candidate.title, parentId)
       if (result.error) throw new Error(result.error)
+      DownDAL.aTrackGuangyaOfflineDownload(run.target.targetUserId, source.locator, candidate.title, parentId, String(result.taskId || result.fileId), result.fileId)
       externalTaskCreated = true
       await recordMediaAcquisitionExternalTask(run.id, candidateId, result.taskId, result.fileId, '已创建光鸭云盘 HTTP 离线下载任务，等待网盘完成')
     } else if (platform === 'pikpak') {
       const result = await apiPikPakOfflineCreate(run.target.targetUserId, source.locator, candidate.title, parentId)
       if (result.error) throw new Error(result.error)
+      DownDAL.aTrackPikPakOfflineDownload(run.target.targetUserId, source.locator, candidate.title, parentId, String(result.taskId || result.fileId), result.fileId)
       externalTaskCreated = true
       await recordMediaAcquisitionExternalTask(run.id, candidateId, result.taskId || undefined, result.fileId || undefined, '已创建 PikPak HTTP 离线下载任务，等待网盘完成')
     } else {
       const result = await apiCloud123OfflineCreate(run.target.targetUserId, source.locator, candidate.title, parentId)
       if (result.error || !result.taskId) throw new Error(result.error || '创建 123 云盘离线下载任务失败')
+      DownDAL.aTrackCloud123OfflineDownload(run.target.targetUserId, source.locator, candidate.title, parentId, String(result.taskId))
       externalTaskCreated = true
       await recordMediaAcquisitionExternalTask(run.id, candidateId, String(result.taskId), undefined, '已创建 123 云盘 HTTP 离线下载任务，等待网盘完成')
     }

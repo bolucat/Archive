@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getMediaServerPlaybackInfo, withMediaServerPlaybackAuth } from '../contentGateway'
+import { getMediaServerMusicTracks, getMediaServerPlaybackInfo, withMediaServerPlaybackAuth } from '../contentGateway'
 import type { MediaServerConfig } from '../../types/mediaServer'
 
 const baseConfig = (type: MediaServerConfig['type']): MediaServerConfig => ({
@@ -42,6 +42,45 @@ describe('withMediaServerPlaybackAuth', () => {
     const config = { ...baseConfig('emby'), accessToken: '' }
     expect(withMediaServerPlaybackAuth(config, 'http://127.0.0.1:8096/video.mkv')).toBe('http://127.0.0.1:8096/video.mkv')
     expect(withMediaServerPlaybackAuth(baseConfig('emby'), '')).toBe('')
+  })
+})
+
+describe('getMediaServerMusicTracks', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('lists and maps Jellyfin or Emby audio items with playback source metadata', async () => {
+    const fetchMock = vi.fn(async (_url: string) => ({
+      ok: true,
+      json: async () => ({
+        Items: [{
+          Id: 'track-1',
+          Name: '夜航',
+          Artists: ['周杰伦'],
+          Album: '范特西',
+          RunTimeTicks: 225_000_000,
+          ImageTags: { Primary: 'cover-tag' },
+          MediaSources: [{ Id: 'source-1' }]
+        }]
+      })
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const tracks = await getMediaServerMusicTracks(baseConfig('jellyfin'))
+
+    expect(tracks).toEqual([expect.objectContaining({
+      id: 'track-1',
+      serverId: 'server-1',
+      title: '夜航',
+      artist: '周杰伦',
+      album: '范特西',
+      durationMs: 22_500,
+      sourceId: 'source-1'
+    })])
+    const requestUrl = new URL(String(fetchMock.mock.calls[0][0]))
+    expect(requestUrl.searchParams.get('IncludeItemTypes')).toBe('Audio')
+    expect(requestUrl.searchParams.get('Recursive')).toBe('true')
   })
 })
 
