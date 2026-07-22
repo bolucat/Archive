@@ -19,6 +19,7 @@ on:
           - Windows
           - Linux
           - Apple
+          - Apple-release
           - iOS
           - macOS
           - tvOS
@@ -1206,7 +1207,7 @@ jobs:
   build_apple_library:
     name: Build Apple library (${{ matrix.artifact }})
     runs-on: ${{ matrix.build && 'macos-26' || 'ubuntu-latest' }}
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone' || inputs.build == 'iOS-jailbreak'
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'Apple-release' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone' || inputs.build == 'iOS-jailbreak'
     needs:
       - calculate_version
     strategy:
@@ -1215,16 +1216,16 @@ jobs:
         include:
           - artifact: ios-arm64
             platform: ios/arm64
-            build: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' || inputs.build == 'iOS-jailbreak' }}
+            build: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'Apple-release' || inputs.build == 'iOS' || inputs.build == 'iOS-jailbreak' }}
           - artifact: tvos-arm64
             platform: tvos/arm64
             build: ${{ github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'tvOS') }}
           - artifact: macos-arm64
             platform: macos/arm64
-            build: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS' || inputs.build == 'macOS-standalone' }}
+            build: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'Apple-release' || inputs.build == 'macOS' || inputs.build == 'macOS-standalone' }}
           - artifact: macos-amd64
             platform: macos/amd64
-            build: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS' || inputs.build == 'macOS-standalone' }}
+            build: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'Apple-release' || inputs.build == 'macOS' || inputs.build == 'macOS-standalone' }}
     steps:
       - name: Checkout
         if: matrix.build
@@ -1270,9 +1271,9 @@ jobs:
           path: dist
           compression-level: 1
   build_apple:
-    name: Build Apple clients
+    name: Build Apple release clients
     runs-on: ${{ matrix.if && 'macos-26' || 'ubuntu-latest' }}
-    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS' || inputs.build == 'macOS-standalone' || inputs.build == 'iOS-jailbreak'
+    if: github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple-release' || inputs.build == 'macOS-standalone' || inputs.build == 'iOS-jailbreak'
     needs:
       - calculate_version
       - build_apple_library
@@ -1280,41 +1281,27 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: iOS
-            if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS') }}
-            type: app-store
-            platform: ios
-            scheme: SFI
-            destination: 'generic/platform=iOS'
-            archive: build/SFI.xcarchive
-            upload: SFI/Upload.plist
-          - name: macOS
-            if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS') }}
-            type: app-store
-            platform: macos
-            scheme: SFM
-            destination: 'generic/platform=macOS'
-            archive: build/SFM.xcarchive
-            upload: SFI/Upload.plist
-          - name: tvOS
-            if: ${{ github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'tvOS') }}
-            type: app-store
-            platform: tvos
-            scheme: SFT
-            destination: 'generic/platform=tvOS'
-            archive: build/SFT.xcarchive
-            upload: SFI/Upload.plist
           - name: macOS-standalone
-            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS-standalone' }}
+            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple-release' || inputs.build == 'macOS-standalone' }}
             type: standalone
             platform: macos
             variant: all
             library_arch: '*'
+            scheme: ''
+            destination: ''
+            archive: ''
+            upload: ''
           - name: iOS-jailbreak
-            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS-jailbreak' }}
+            if: ${{ github.event_name != 'workflow_dispatch' || inputs.build == 'All' || inputs.build == 'Apple-release' || inputs.build == 'iOS-jailbreak' }}
             type: jailbreak
             platform: ios
-    steps:
+            variant: ''
+            library_arch: ''
+            scheme: ''
+            destination: ''
+            archive: ''
+            upload: ''
+    steps: &build_apple_steps
       - name: Checkout
         if: matrix.if
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -1582,9 +1569,51 @@ jobs:
         with:
           name: binary-apple-${{ matrix.type }}${{ matrix.variant && format('-{0}', matrix.variant) || '' }}
           path: 'dist'
+  build_apple_app_store:
+    name: Build Apple App Store clients
+    runs-on: ${{ matrix.if && 'macos-26' || 'ubuntu-latest' }}
+    if: github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' || inputs.build == 'macOS' || inputs.build == 'tvOS')
+    needs:
+      - calculate_version
+      - build_apple_library
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: iOS
+            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'iOS' }}
+            type: app-store
+            platform: ios
+            scheme: SFI
+            destination: 'generic/platform=iOS'
+            archive: build/SFI.xcarchive
+            upload: SFI/Upload.plist
+            variant: ''
+            library_arch: ''
+          - name: macOS
+            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'macOS' }}
+            type: app-store
+            platform: macos
+            scheme: SFM
+            destination: 'generic/platform=macOS'
+            archive: build/SFM.xcarchive
+            upload: SFI/Upload.plist
+            variant: ''
+            library_arch: ''
+          - name: tvOS
+            if: ${{ inputs.build == 'All' || inputs.build == 'Apple' || inputs.build == 'tvOS' }}
+            type: app-store
+            platform: tvos
+            scheme: SFT
+            destination: 'generic/platform=tvOS'
+            archive: build/SFT.xcarchive
+            upload: SFI/Upload.plist
+            variant: ''
+            library_arch: ''
+    steps: *build_apple_steps
   upload:
     name: Upload builds
-    if: "!failure() && github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Binary' || inputs.build == 'Android' || inputs.build == 'Windows' || inputs.build == 'Linux' || inputs.build == 'Apple' || inputs.build == 'macOS-standalone' || inputs.build == 'iOS-jailbreak')"
+    if: "!failure() && github.event_name == 'workflow_dispatch' && (inputs.build == 'All' || inputs.build == 'Binary' || inputs.build == 'Android' || inputs.build == 'Windows' || inputs.build == 'Linux' || inputs.build == 'Apple-release' || inputs.build == 'macOS-standalone' || inputs.build == 'iOS-jailbreak')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1666,6 +1695,7 @@ jobs:
       - build_linux_client
       - build_apple_library
       - build_apple
+      - build_apple_app_store
       - upload
     steps:
       - name: Delete superseded caches

@@ -1067,6 +1067,10 @@ function gen_config(var)
 						valid_nodes[#valid_nodes + 1] = outboundTag
 					end
 				end
+				-- Check if balancing node duplicates fallback node
+				if _node.fallback_node == blc_node_id then
+					_node.fallback_node = nil
+				end
 			end
 			if #valid_nodes == 0 then return nil end
 

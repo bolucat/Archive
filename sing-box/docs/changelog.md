@@ -6,6 +6,7 @@ icon: material/alert-decagram
 
 * Improve OpenVPN interoperability **1**
 * Improve OpenConnect interoperability **2**
+* Add Fortinet host check support **3**
 * Fixes and improvements
 
 **1**:
@@ -27,6 +28,15 @@ fields, AnyConnect compression, and controls for MTU, DPD and reconnect timing,
 TCP keep alive, and TLS trust and certificate pinning. The new
 [OpenConnect DNS server](/configuration/dns/server/openconnect/) can use pushed
 split-DNS resolvers and, when enabled, general pushed resolvers.
+
+**3**:
+
+The [OpenConnect Client](/configuration/endpoint/openconnect/) endpoint can now
+submit Fortinet host check results using the new
+[`fortinet_host_check`](/configuration/endpoint/openconnect/#fortinet_host_check)
+option. This behavior is modeled after openfortivpn and is not an OpenConnect
+feature. sing-box only submits explicitly configured values when requested by
+the Fortinet server and does not collect system information automatically.
 
 #### 1.14.0-alpha.48
 
