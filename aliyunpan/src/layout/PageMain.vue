@@ -24,6 +24,7 @@ import { bootstrapBookLibrary, shutdownBookLibrary } from '../utils/bookLibraryB
 import { QRCode as AntQRCode } from 'ant-design-vue'
 import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
+import { t } from '../i18n'
 
 import Setting from '../setting/index.vue'
 import Rss from '../rss/index.vue'
@@ -92,7 +93,7 @@ const handleMediaNavVisible = () => {
 
 const handleCopyCryptoDonationAddress = () => {
   copyToClipboard(cryptoDonationAddress)
-  message.success('加密货币捐赠地址已复制')
+  message.success(t('footer.cryptoCopied'))
 }
 
 const handleThemeClick = (val: any) => {
@@ -110,22 +111,22 @@ const handleThemeClick = (val: any) => {
 }
 const themeTitle = computed(() => {
   if (appStore.appTheme == 'system') {
-    return '自动'
+    return t('theme.auto')
   } else if (appStore.appTheme === 'light') {
-    return '浅色'
+    return t('theme.light')
   } else if (appStore.appTheme === 'dark') {
-    return '黑色'
+    return t('theme.dark')
   }
 })
 
 const primaryTabDefinitions = [
-  { key: 'pan', title: 'Alt+1', label: '网盘' },
-  { key: 'media-server', title: 'Alt+6', label: '媒体服务器' },
-  { key: 'search', title: 'Ctrl+K', label: '搜索' },
-  { key: 'ai-workspace', title: 'AI 工作台', label: 'AI 工作台' },
-  { key: 'media', title: 'Alt+5', label: '视频' },
-  { key: 'music', title: 'Alt+8', label: '音乐' },
-  { key: 'book', title: 'Alt+9', label: '书籍' }
+  { key: 'pan', title: 'Alt+1', labelKey: 'nav.pan' },
+  { key: 'media-server', title: 'Alt+6', labelKey: 'nav.mediaServer' },
+  { key: 'search', title: 'Ctrl+K', labelKey: 'nav.search' },
+  { key: 'ai-workspace', title: 'AI Workspace', labelKey: 'nav.aiWorkspace' },
+  { key: 'media', title: 'Alt+5', labelKey: 'nav.video' },
+  { key: 'music', title: 'Alt+8', labelKey: 'nav.music' },
+  { key: 'book', title: 'Alt+9', labelKey: 'nav.books' }
 ]
 
 const orderedPrimaryTabs = computed(() => {
@@ -139,9 +140,9 @@ const orderedPrimaryTabs = computed(() => {
 })
 
 const trailingTabs = [
-  { key: 'down', title: 'Alt+2', label: '传输' },
-  { key: 'share', title: 'Alt+3', label: '分享' },
-  { key: 'rss', title: 'Alt+4', label: '插件' }
+  { key: 'down', title: 'Alt+2', labelKey: 'nav.transfer' },
+  { key: 'share', title: 'Alt+3', labelKey: 'nav.share' },
+  { key: 'rss', title: 'Alt+4', labelKey: 'nav.plugins' }
 ]
 
 const topNavTabs = computed(() => {
@@ -274,15 +275,15 @@ const handleMineradioFilesDropped = (files: File[]) => {
   const audioCount = files.filter((file) => /^audio\//i.test(file.type) || /\.(mp3|flac|wav|ogg|m4a|aac)$/i.test(file.name)).length
   const imageCount = files.filter((file) => /^image\//i.test(file.type) || /\.(jpg|jpeg|png|webp)$/i.test(file.name)).length
   if (audioCount > 0) {
-    message.info('音乐库只播放网盘内音频。本地音频不会作为播放源导入。')
+    message.info(t('music.cloudOnlyInfo'))
     appStore.toggleTab('music')
     return
   }
   if (imageCount > 0) {
-    message.info('封面裁剪请在音乐播放器的视觉控制台中使用。')
+    message.info(t('music.cropInVisualConsole'))
     return
   }
-  message.warning('当前拖放文件类型暂不支持')
+  message.warning(t('music.dropUnsupported'))
 }
 
 // Apply saved default tab — watch ensures it fires after store + template are ready
@@ -338,11 +339,10 @@ onUnmounted(() => {
             :key='item.key'
             :title='item.title'
           >
-            {{ item.label }}
+            {{ t(item.labelKey as Parameters<typeof t>[0]) }}
           </a-menu-item>
         </a-menu>
 
-        <div class='flexauto'></div>
         <ShutDown />
         <UserInfo />
         <UserLogin />
@@ -350,17 +350,17 @@ onUnmounted(() => {
           <IconFont name="iconnight" v-if="appStore.appTheme === 'dark' || (appStore.appTheme == 'system' && appStore.appDark)" />
           <IconFont name="iconday" v-else />
         </a-button>
-        <a-button type='text' tabindex='-1' title='设置 Alt+7' :class="appStore.appTab == 'setting' ? 'active' : ''"
+        <a-button type='text' tabindex='-1' :title="`${t('common.settings')} Alt+7`" :class="appStore.appTab == 'setting' ? 'active' : ''"
                   @click="appStore.toggleTab('setting')">
           <IconFont name="iconsetting" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
+        <a-button type='text' tabindex='-1' :title="`${t('common.minimize')} Alt+M`" @click='handleMinClick'>
           <IconFont name="iconzuixiaohua" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
+        <a-button type='text' tabindex='-1' :title="`${t('common.maximize')} Alt+Enter`" @click='handleMaxClick'>
           <IconFont name="iconfullscreen" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
+        <a-button type='text' tabindex='-1' :title="`${t('common.close')} Alt+F4`" @click='handleHideClick'>
           <IconFont name="iconclose" />
         </a-button>
       </div>
@@ -394,7 +394,7 @@ onUnmounted(() => {
         <a-tab-pane key='search' title='0'>
           <PageGlobalSearch />
         </a-tab-pane>
-        <a-tab-pane key='ai-workspace' title='AI 工作台'>
+        <a-tab-pane key='ai-workspace' :title="t('ai.workspace')">
           <PageAIWorkspace />
         </a-tab-pane>
         <a-tab-pane key='setting' title='7'>
@@ -422,14 +422,14 @@ onUnmounted(() => {
         <div
           v-if="musicPlayerStore.state.hasTrack"
           class='footer-music-player'
-          :title='musicPlayerStore.state.title'
+          :title="musicPlayerStore.state.title || t('music.player')"
         >
           <div class='footer-music-cover' @click='musicPlayerStore.togglePanel()'>
             <img v-if='musicPlayerStore.state.coverUrl' :src='musicPlayerStore.state.coverUrl' alt='' />
             <Music v-else :size='14' :stroke-width='1.8' />
           </div>
           <div class='footer-music-meta' @click='musicPlayerStore.togglePanel()'>
-            <div class='footer-music-title'>{{ musicPlayerStore.state.title || '音乐播放器' }}</div>
+            <div class='footer-music-title'>{{ musicPlayerStore.state.title || t('music.player') }}</div>
             <div class='footer-music-bar'>
               <div class='footer-music-bar-fill' :style="{ width: musicPlayerStore.state.progressPercent + '%' }"></div>
             </div>
@@ -437,54 +437,54 @@ onUnmounted(() => {
           <span class='footer-music-time'>
             {{ formatFooterMusicTime(musicPlayerStore.state.currentTime) }}
           </span>
-          <button class='footer-music-btn' title='上一首' @click.stop='handleFooterMusicPrev'>
+          <button class='footer-music-btn' :title="t('music.previousTrack')" @click.stop='handleFooterMusicPrev'>
             <SkipBack :size='13' :stroke-width='2' />
           </button>
-          <button class='footer-music-btn primary' :title="musicPlayerStore.state.isPlaying ? '暂停' : '播放'" @click.stop='handleFooterMusicToggle'>
+          <button class='footer-music-btn primary' :title="musicPlayerStore.state.isPlaying ? t('music.pause') : t('music.play')" @click.stop='handleFooterMusicToggle'>
             <Pause v-if='musicPlayerStore.state.isPlaying' :size='13' :stroke-width='2' :fill="'currentColor'" />
             <Play v-else :size='13' :stroke-width='2' :fill="'currentColor'" />
           </button>
-          <button class='footer-music-btn' title='下一首' @click.stop='handleFooterMusicNext'>
+          <button class='footer-music-btn' :title="t('music.nextTrack')" @click.stop='handleFooterMusicNext'>
             <SkipForward :size='13' :stroke-width='2' />
           </button>
-          <button class='footer-music-toggle' @click.stop='musicPlayerStore.togglePanel()'>
-            {{ musicPlayerStore.panelVisible ? '收起' : '展开' }}
+          <button class='footer-music-toggle' :title="musicPlayerStore.panelVisible ? t('music.collapse') : t('music.expand')" @click.stop='musicPlayerStore.togglePanel()'>
+            {{ musicPlayerStore.panelVisible ? t('music.collapse') : t('music.expand') }}
           </button>
         </div>
         <div
           v-if="musicStore.isScanning && appStore.appTab !== 'music'"
           class='footerBar fix music-scan-foot'
           style='cursor: pointer; gap: 6px'
-          :title='musicStore.scanLabel || "正在扫描音乐库"'
+          :title="musicStore.scanLabel || t('music.scanningLibrary')"
           @click='handleMusicLibraryClick'
         >
           <Music :size="14" :stroke-width="1.8" class="music-scan-spin" />
           <span class='music-scan-text'>
-            {{ musicStore.scanLabel || '正在扫描音乐库' }} · {{ musicStore.scanFound }} 首
+            {{ musicStore.scanLabel || t('music.scanningLibrary') }} · {{ musicStore.scanFound }} {{ t('music.songsUnit') }}
           </span>
         </div>
         <div
           v-if="mediaStore.isScanning && appStore.appTab !== 'media'"
           class='footerBar fix music-scan-foot'
           style='cursor: pointer; gap: 6px'
-          :title='`正在扫描视频媒体库 ${mediaStore.scanProgress}/${mediaStore.scanTotal}`'
+          :title="`${t('footer.scanningMedia')} ${mediaStore.scanProgress}/${mediaStore.scanTotal}`"
           @click='handleMediaLibraryClick'
         >
           <Video :size="14" :stroke-width="1.8" class="music-scan-spin" />
           <span class='music-scan-text'>
-            视频媒体库扫描 {{ mediaStore.scanProgress }}/{{ mediaStore.scanTotal }}
+            {{ t('footer.scanningMedia') }} {{ mediaStore.scanProgress }}/{{ mediaStore.scanTotal }}
           </span>
         </div>
         <div
           v-if="bookStore.isScanning && appStore.appTab !== 'book'"
           class='footerBar fix music-scan-foot'
           style='cursor: pointer; gap: 6px'
-          :title='bookStore.scanLabel || "正在扫描书籍库"'
+          :title="bookStore.scanLabel || t('footer.scanningBooks')"
           @click='handleBookLibraryClick'
         >
           <BookOpen :size="14" :stroke-width="1.8" class="music-scan-spin" />
           <span class='music-scan-text'>
-            {{ bookStore.scanLabel || '正在扫描书籍库' }} · {{ bookStore.scanFound }} 本
+            {{ bookStore.scanLabel || t('footer.scanningBooks') }} · {{ bookStore.scanFound }} {{ t('file.book') }}
           </span>
         </div>
         <div class='flexauto' />
@@ -498,7 +498,7 @@ onUnmounted(() => {
                    :src='footStore.audioUrl'>no audio
             </audio>
           </div>
-          <div v-if='footStore.audioUrl' class='footerBar fix' title='关闭音频预览' style='cursor: pointer'
+          <div v-if='footStore.audioUrl' class='footerBar fix' :title="t('footer.audioPreviewClose')" style='cursor: pointer'
                @click.stop='handleAudioStop()'>
             <IconFont name="iconclose" />
           </div>
@@ -517,35 +517,35 @@ onUnmounted(() => {
             </span>
           </div>
 
-          <div class='footerBar fix' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100'>
+          <div class='footerBar fix' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100' :title="`${t('footer.newVersion')} ${footStore.updateDownloadProgress}%`">
             <IconFont name="iconxiazaisudu" />
-            <span class='footspeedstr'>新版本 {{ footStore.updateDownloadProgress }}%</span>
+            <span class='footspeedstr'>{{ t('footer.newVersion') }} {{ footStore.updateDownloadProgress }}%</span>
           </div>
 
           <div class='footerBar fix'>
-            <span class='footAria' title='Aria已连接' v-if='footStore.ariaInfo'> {{ footStore.ariaInfo }} </span>
-            <span class='footAria' title='Aria已离线' v-else> Aria ⚯ Offline </span>
+            <span class='footAria' :title="t('footer.ariaConnected')" v-if='footStore.ariaInfo'> {{ footStore.ariaInfo }} </span>
+            <span class='footAria' :title="t('footer.ariaOffline')" v-else> Aria ⚯ Offline </span>
           </div>
 
           <a-popover v-model:popup-visible='footStore.taskVisible' trigger='click' position='top' class='asynclist'>
-            <div class='footerBar fix' style='cursor: pointer'>
+            <div class='footerBar fix' :title="t('footer.asyncNotifications')" style='cursor: pointer'>
               <span :class="footStore.GetIsRunning ? 'shake' : ''">
                 <IconFont name="icontongzhiblue" />
               </span>
-              <span>异步通知</span>
+              <span>{{ t('footer.asyncNotifications') }}</span>
             </div>
             <template #content>
               <div style='width: 360px; min-height: 120px; max-height: 50vh; overflow-y: auto; overflow-x: hidden'>
                 <div style="display:flex;" v-if="footStore.taskList.length > 0">
-                  <div style="flex: 1;">任务列表</div>
+                  <div style="flex: 1;" :title="t('footer.taskList')">{{ t('footer.taskList') }}</div>
                   <div style="flex: 1;text-align: right">
                     <a-button-group>
-                      <a-button type="outline" size='mini' @click.stop="handleAsyncClear">
-                        清理完成
+                      <a-button type="outline" size='mini' :title="t('footer.clearCompleted')" @click.stop="handleAsyncClear">
+                        {{ t('footer.clearCompleted') }}
                       </a-button>
-                      <a-popconfirm content="清理所有任务？" @ok="handleAsyncDeleteAll">
-                        <a-button type="outline" size='mini' tabindex="-1" status="danger" style="margin-left: 2px">
-                          清理全部
+                      <a-popconfirm :content="t('footer.clearAllTasksConfirm')" @ok="handleAsyncDeleteAll">
+                        <a-button type="outline" size='mini' tabindex="-1" status="danger" :title="t('footer.clearAll')" style="margin-left: 2px">
+                          {{ t('footer.clearAll') }}
                         </a-button>
                       </a-popconfirm>
                     </a-button-group>
@@ -558,56 +558,56 @@ onUnmounted(() => {
                     </div>
                     <div v-else class='asynclistitem-name' :title='item.title'>{{ item.title }}</div>
                     <span v-if="item.status == 'running'" class='asynclistitem-progress asynclistitem-icon-running'
-                          title='执行中'><IconFont name="iconhourglass" />{{ item.usetime }}</span>
+                          :title="t('footer.running')"><IconFont name="iconhourglass" />{{ item.usetime }}</span>
                     <span v-if="item.status == 'success'" class='asynclistitem-progress asynclistitem-icon-success'
-                          title='成功'><IconFont name="iconcheck" />{{ item.usetime }}</span>
+                          :title="t('footer.success')"><IconFont name="iconcheck" />{{ item.usetime }}</span>
                     <span v-if="item.status == 'error'" class='asynclistitem-progress asynclistitem-icon-error'
-                          title='失败'><IconFont name="iconclose" />{{ item.usetime }}</span>
+                          :title="t('footer.failed')"><IconFont name="iconclose" />{{ item.usetime }}</span>
                   </div>
                   <div class='asynclistitem-operation'>
-                    <a-button type='text' size='mini' @click.stop='handleAsyncDelete(item.key)'>删除</a-button>
+                    <a-button type='text' size='mini' :title="t('footer.delete')" @click.stop='handleAsyncDelete(item.key)'>{{ t('footer.delete') }}</a-button>
                   </div>
                 </div>
-                <a-empty v-if='footStore.taskList.length == 0' style='margin-top: 24px'>没有正在执行的异步任务</a-empty>
+                <a-empty v-if='footStore.taskList.length == 0' style='margin-top: 24px'>{{ t('footer.noAsyncTasks') }}</a-empty>
               </div>
             </template>
           </a-popover>
           <a-popover trigger='hover' position='top' class='sponsor-popover'>
-            <div class='footerBar fix footer-sponsor-button' title='赞助 APP'>
+            <div class='footerBar fix footer-sponsor-button' :title="t('footer.sponsorApp')">
               <IconFont name="iconbiaozhang" />
-              <span>赞助 APP</span>
+              <span>{{ t('footer.sponsorApp') }}</span>
             </div>
             <template #content>
               <div class='sponsor-qrcode-panel'>
                 <div class='sponsor-qrcode-item'>
-                  <img :src='wechatPayImage' alt='微信赞赏码' />
-                  <span>微信</span>
+                  <img :src='wechatPayImage' :alt="t('footer.wechatRewardCode')" />
+                  <span>{{ t('footer.wechat') }}</span>
                 </div>
                 <div class='sponsor-qrcode-item'>
-                  <img :src='alipayImage' alt='支付宝赞赏码' />
-                  <span>支付宝</span>
+                  <img :src='alipayImage' :alt="t('footer.alipayRewardCode')" />
+                  <span>{{ t('footer.alipay') }}</span>
                 </div>
               </div>
               <div class='sponsor-crypto-panel'>
-                <div class='sponsor-crypto-title'>加密货币 USDT/USDC</div>
+                <div class='sponsor-crypto-title' :title="t('footer.cryptoDonation')">{{ t('footer.cryptoDonation') }}</div>
                 <div class='sponsor-crypto-address' :title='cryptoDonationAddress'>{{ cryptoDonationAddress }}</div>
                 <a-button
                   type='primary'
                   size='mini'
                   long
                   tabindex='-1'
-                  title='复制加密货币捐赠地址'
+                  :title="t('footer.copyCryptoAddress')"
                   @click='handleCopyCryptoDonationAddress'
                 >
                   <template #icon><IconFont name="iconcopy" /></template>
-                  复制地址
+                  {{ t('footer.copyAddress') }}
                 </a-button>
               </div>
             </template>
           </a-popover>
-          <div class='footerBar fix' style='margin: 0; cursor: pointer' @click='handleHelpPage'>
+          <div class='footerBar fix' :title="t('footer.project')" style='margin: 0; cursor: pointer' @click='handleHelpPage'>
             <IconFont name="iconrss" />
-            项目地址
+            {{ t('footer.project') }}
           </div>
         </div>
       </div>
@@ -1172,6 +1172,45 @@ onUnmounted(() => {
   display: none !important;
 }
 
+#xbybody .single-boundary-sidebar > .single-boundary-sidebar-menu {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#xbybody .single-boundary-sidebar > .single-boundary-sidebar-menu .arco-menu-inner {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#xbybody .single-boundary-sidebar .single-boundary-sidebar-menu .arco-menu-item {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#xbybody .single-boundary-sidebar .single-boundary-sidebar-menu .arco-menu-item:hover {
+  border: 0 !important;
+  background: rgba(255,255,255,.055) !important;
+  box-shadow: none !important;
+}
+
+#xbybody .single-boundary-sidebar .single-boundary-sidebar-menu .arco-menu-selected {
+  border-color: transparent !important;
+  background: rgba(0,245,212,.090) !important;
+  box-shadow: none !important;
+}
+
+#xbybody .single-boundary-sidebar .single-boundary-sidebar-menu .arco-menu-item::before,
+#xbybody .single-boundary-sidebar .single-boundary-sidebar-menu .arco-menu-item::after {
+  display: none !important;
+}
+
 #xbybody .settings-side-title,
 #xbybody .book-brand,
 #xbybody .media-library-title,
@@ -1572,6 +1611,13 @@ body:not([arco-theme='dark']) #xbybody::after {
   display: none;
 }
 
+body:not([arco-theme='dark']) #xbybody .xbyright > .hidetabs {
+  border-color: var(--color-border-2) !important;
+  background: var(--color-bg-1) !important;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 body:not([arco-theme='dark']) #xbybody .xbyleft,
 body:not([arco-theme='dark']) #xbybody .settings-sider,
 body:not([arco-theme='dark']) #xbybody .book-sidebar,
@@ -1583,6 +1629,10 @@ body:not([arco-theme='dark']) #xbybody .library-sidebar {
   border-right: 1px solid var(--color-neutral-3) !important;
   box-shadow: none;
   backdrop-filter: none;
+}
+
+body:not([arco-theme='dark']) #xbybody .single-boundary-sidebar {
+  border: 1px solid var(--color-neutral-3) !important;
 }
 
 body:not([arco-theme='dark']) #xbybody .xbyleft::before,
@@ -2115,7 +2165,19 @@ body[arco-theme='dark'] #footer2 audio::-webkit-media-controls-time-remaining-di
 
 .footspeedstr {
   min-width: 52px;
+  max-width: 140px;
+  overflow: hidden;
   display: inline-block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.footerBar.fix > span:last-child {
+  min-width: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .music-scan-foot {

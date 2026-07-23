@@ -1,9 +1,11 @@
 import { IAliGetFileModel, IAliShareItem } from '../aliapi/alimodels'
-import { useModalStore } from '../store'
+import { useModalStore, useSettingStore } from '../store'
 import { IServerVerData } from '../aliapi/server'
 import { IRawUrl } from './proxyhelper'
 import message from './message'
 import { checkAndIncrement } from './usageLimit'
+import usePanTreeStore from '../pan/pantreestore'
+import UploadingDAL from '../transfer/uploadingdal'
 
 export function modalCloseAll() {
   useModalStore().showModal('', {})
@@ -112,7 +114,9 @@ export function modalArchivePassword(user_id: string, drive_id: string, file_id:
 }
 
 export function modalUpload(file_id: string, filelist: string[], ispic: boolean = false, encType: string = '') {
-  useModalStore().showModal('upload', { file_id, filelist, ispic, encType })
+  const panTreeStore = usePanTreeStore()
+  const settingStore = useSettingStore()
+  UploadingDAL.aUploadLocalFiles(panTreeStore.user_id, panTreeStore.drive_id, file_id, filelist, settingStore.downUploadWhatExist, true, encType)
 }
 
 export function modalDownload(istree: boolean) {

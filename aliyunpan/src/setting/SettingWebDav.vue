@@ -10,6 +10,7 @@ import AppCache from '../utils/appcache'
 import { getUserData, openExternal } from '../utils/electronhelper'
 import path from 'path'
 import { getIPAddress } from '../utils/proxyhelper'
+import { t } from '../i18n'
 
 const cb = (val: any) => {
   if (Object.hasOwn(val, 'webDavPort') && val.webDavPort !== settingStore.webDavPort) {
@@ -38,7 +39,7 @@ const form = reactive({
 
 const handleWebDav = async (newVal: any) => {
   if (!WebDavServer) {
-    message.error('【WebDav】:服务初始化失败，请重启软件')
+    message.error(t('settings.webdav.initFailed'))
     cb({ webDavEnable: false })
     return false
   }
@@ -51,15 +52,15 @@ const handleWebDav = async (newVal: any) => {
         requireAuthentification: false
       }).start()
       if (status) {
-        message.success('【WebDav】:服务已启动')
+        message.success(t('settings.webdav.started'))
         cb({ webDavEnable: true })
       } else {
-        message.error('【WebDav】:服务启动失败')
+        message.error(t('settings.webdav.startFailed'))
         cb({ webDavEnable: false })
       }
     } else {
       await WebDavServer.stop()
-      message.success('【WebDav】:服务已关闭')
+      message.success(t('settings.webdav.stopped'))
       cb({ webDavEnable: false })
     }
     await Sleep(200)
@@ -110,14 +111,14 @@ const handleModifyUser = () => {
     form.webDavPath = selectUser.value.path || ''
     form.webDavRights = selectUser.value.rights
   } else {
-    message.error('未选择用户')
+    message.error(t('settings.webdav.noUserSelected'))
   }
 }
 const handleDelUser = () => {
   if (selectUser.value) {
     WebDavServer.delUser(selectUser.value.username)
   } else {
-    message.error('未选择用户')
+    message.error(t('settings.webdav.noUserSelected'))
   }
 }
 const handleAddOk = async () => {
@@ -126,9 +127,9 @@ const handleAddOk = async () => {
     // 添加用户
     const success = await WebDavServer.setUser(form.webDavUsername, form.webDavPassword, form.webDavPath, form.webDavRights, false)
     if (success) {
-      message.success('添加用户成功')
+      message.success(t('settings.webdav.addUserSuccess'))
     } else {
-      message.error('添加用户失败')
+      message.error(t('settings.webdav.addUserFailed'))
     }
     addVisible.value = false
   })
@@ -158,20 +159,20 @@ const handleJumpPath = () => {
 
 <template>
   <div class='settingcard'>
-    <div class='settinghead'>WebDav设置</div>
+    <div class='settinghead'>{{ t('settings.webdav.settings') }}</div>
     <div class='settingrow'>
       <MySwitch v-model:value='settingStore.webDavEnable' :beforeChange='handleWebDav'>
-        开启WebDav服务
+        {{ t('settings.webdav.enable') }}
       </MySwitch>
     </div>
     <div class='settingrow'>
       <MySwitch :value="settingStore.webDavAutoEnable"
                 @update:value="cb({ webDavAutoEnable: $event })">
-        自动启动WebDav服务
+        {{ t('settings.webdav.autoStart') }}
       </MySwitch>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>主机(Host)</div>
+    <div class='settinghead'>{{ t('settings.webdav.host') }}</div>
     <div class='settingrow'>
       <a-input-search tabindex="-1"
                       :disabled="settingStore.webDavEnable"
@@ -181,43 +182,43 @@ const handleJumpPath = () => {
                       allow-clear
                       search-button
                       @search="handleGetLocalIp"
-                      placeholder="地址（IP）" @update:model-value='cb({ webDavHost: $event })'>
+                      :placeholder="t('settings.webdav.hostPlaceholder')" @update:model-value='cb({ webDavHost: $event })'>
         <template #prefix> http://</template>
         <template #suffix> /webdav</template>
       </a-input-search>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>端口(Port)</div>
+    <div class='settinghead'>{{ t('settings.webdav.port') }}</div>
     <div class='settingrow'>
       <a-input-number
         :disabled="settingStore.webDavEnable"
         tabindex='-1' :style="{ width: '320px' }"
-        placeholder='默认：2000'
+        :placeholder="t('settings.webdav.defaultPort')"
         :model-value='settingStore.webDavPort'
         @update:model-value='cb({ webDavPort: $event })' />
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>目录缓存时间(秒)</div>
+    <div class='settinghead'>{{ t('settings.webdav.cacheSeconds') }}</div>
     <div class='settingrow'>
       <a-input-number
         tabindex='-1' :style="{ width: '320px' }"
-        hide-button placeholder='默认：40s'
+        hide-button :placeholder="t('settings.webdav.defaultCache')"
         :model-value='settingStore.webDavListCache'
         @update:model-value='cb({ webDavListCache: $event })' />
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>资源访问策略</div>
+    <div class='settinghead'>{{ t('settings.webdav.accessStrategy') }}</div>
     <div class='settingrow'>
       <a-select tabindex="-1" :style="{ width: '320px' }"
                 :model-value="settingStore.webDavStrategy"
                 :popup-container="'#SettingDiv'"
                 @update:model-value="cb({ webDavStrategy: $event })">
-        <a-option value='redirect'>302重定向</a-option>
-        <a-option value='proxy'>本地代理</a-option>
+        <a-option value='redirect'>{{ t('settings.webdav.redirect') }}</a-option>
+        <a-option value='proxy'>{{ t('settings.webdav.localProxy') }}</a-option>
       </a-select>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>用户列表（修改和查看）</div>
+    <div class='settinghead'>{{ t('settings.webdav.userList') }}</div>
     <div class='settingrow'>
       <a-select @popup-visible-change='handleGetUsers'
                 @change='handleChangeUser'
@@ -225,73 +226,73 @@ const handleJumpPath = () => {
                 :virtual-list-props='{height:120}'
                 :options='options'
                 :style="{width:'320px'}"
-                placeholder='选择一个用户'
+                :placeholder="t('settings.webdav.selectUser')"
                 :popup-container="'#SettingDiv'"
                 :loading='loading' allow-clear
                 :allow-search='{ retainInputValue: true }' scrollbar>
       </a-select>
     </div>
     <a-modal modal-class='modalclass' :footer='false'
-             v-model:visible='addVisible' title='添加一个用户' unmountOnClose
+             v-model:visible='addVisible' :title="t('settings.webdav.addUser')" unmountOnClose
              @cancel='handleAddCancel' @before-close='handleBeforeClose'>
       <a-space direction='vertical' size='large' :style="{width: '400px'}">
         <a-form ref='formRef' auto-label-width :model='form'>
-          <a-form-item field='webDavUsername' label='用户名' :rules="{ required: true, message:'用户名必填'}">
+          <a-form-item field='webDavUsername' :label="t('settings.webdav.username')" :rules="{ required: true, message: t('settings.webdav.usernameRequired') }">
             <a-input tabindex='-1'
                      v-model.trim='form.webDavUsername'
-                     placeholder='用户名(Username)'
+                     :placeholder="t('settings.webdav.usernamePlaceholder')"
                      allow-clear />
           </a-form-item>
-          <a-form-item field='webDavPassword' label='密码'
+          <a-form-item field='webDavPassword' :label="t('settings.webdav.password')"
                        :rules="[
-                         { required: true, message:'密码必填'},
-                         { minLength: 6, message: '密码最小长度为6个字符' }
+                         { required: true, message: t('settings.webdav.passwordRequired') },
+                         { minLength: 6, message: t('settings.webdav.passwordMin') }
                        ]">
             <a-input
               tabindex='-1'
               v-model.trim='form.webDavPassword'
-              placeholder='密码(Password)'
+              :placeholder="t('settings.webdav.passwordPlaceholder')"
               allow-clear />
           </a-form-item>
-          <a-form-item field='webDavPath' label='挂载路径' :rules="{ required: true, message:'挂载路径必填'}">
-            <a-input v-model.trim='form.webDavPath' placeholder='挂载路径(Path)' />
+          <a-form-item field='webDavPath' :label="t('settings.webdav.mountPath')" :rules="{ required: true, message: t('settings.webdav.mountPathRequired') }">
+            <a-input v-model.trim='form.webDavPath' :placeholder="t('settings.webdav.mountPathPlaceholder')" />
           </a-form-item>
-          <a-form-item field='webDavRights' label='挂载权限' :rules="{ required: true, message:'挂载权限必填'}">
+          <a-form-item field='webDavRights' :label="t('settings.webdav.mountRights')" :rules="{ required: true, message: t('settings.webdav.mountRightsRequired') }">
             <a-select v-model='form.webDavRights'
                       @change='handleRightsOption'
                       multiple :max-tag-count='3'
-                      placeholder='挂载权限(Rights)'>
-              <a-option value='all'>全部权限</a-option>
-              <a-option value='canRead'>可读</a-option>
-              <a-option value='canWrite'>可写</a-option>
+                      :placeholder="t('settings.webdav.mountRightsPlaceholder')">
+              <a-option value='all'>{{ t('settings.webdav.rightsAll') }}</a-option>
+              <a-option value='canRead'>{{ t('settings.webdav.rightsRead') }}</a-option>
+              <a-option value='canWrite'>{{ t('settings.webdav.rightsWrite') }}</a-option>
             </a-select>
           </a-form-item>
         </a-form>
       </a-space>
       <div class='modalfoot'>
         <div class='modalfoot-spacer'></div>
-        <a-button v-if='!okLoading' type='outline' size='small' @click='handleAddCancel'>取消</a-button>
-        <a-button type='primary' size='small' :loading='okLoading' @click='handleAddOk'>添加</a-button>
+        <a-button v-if='!okLoading' type='outline' size='small' @click='handleAddCancel'>{{ t('common.cancel') }}</a-button>
+        <a-button type='primary' size='small' :loading='okLoading' @click='handleAddOk'>{{ t('common.add') }}</a-button>
       </div>
     </a-modal>
     <div class='settingspace'></div>
     <div class='settingrow'>
-      <a-button type='primary' status='normal' size='small' tabindex='-1' @click='handleAddUser'>添加</a-button>
-      <a-button type='primary' status='success' size='small' @click='handleModifyUser'>修改</a-button>
-      <a-popconfirm content='确认要删除当前用户？' @ok='handleDelUser'>
-        <a-button type='primary' status='danger' size='small'>删除</a-button>
+      <a-button type='primary' status='normal' size='small' tabindex='-1' @click='handleAddUser'>{{ t('common.add') }}</a-button>
+      <a-button type='primary' status='success' size='small' @click='handleModifyUser'>{{ t('common.edit') }}</a-button>
+      <a-popconfirm :content="t('settings.webdav.confirmDeleteUser')" @ok='handleDelUser'>
+        <a-button type='primary' status='danger' size='small'>{{ t('common.delete') }}</a-button>
       </a-popconfirm>
     </div>
     <template v-if="settingStore.webDavStrategy === 'proxy'">
       <div class='settingspace'></div>
       <div class="settinghead">
-        缓存大小
+        {{ t('settings.webdav.cacheSize') }}
         <span class="opblue cache-size-badge">( {{ settingStore.debugCacheSize }} )</span>
       </div>
       <div class="settingrow">
-        <a-button type='outline' size='small' @click='handleJumpPath'>打开位置</a-button>
-        <a-popconfirm content="确认要清理缓存？" @ok="AppCache.aClearCache()">
-          <a-button type="outline" size="small" status="danger">清理缓存</a-button>
+        <a-button type='outline' size='small' @click='handleJumpPath'>{{ t('settings.debug.openLocation') }}</a-button>
+        <a-popconfirm :content="t('settings.debug.confirmClearCache')" @ok="AppCache.aClearCache()">
+          <a-button type="outline" size="small" status="danger">{{ t('settings.debug.clearCache') }}</a-button>
         </a-popconfirm>
       </div>
     </template>

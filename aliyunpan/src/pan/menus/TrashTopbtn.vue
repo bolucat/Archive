@@ -9,6 +9,7 @@ import {
 import { computed } from 'vue'
 import usePanTreeStore from '../pantreestore'
 import { supportsTrashPermanentDelete, supportsTrashRestore } from '../../aliapi/providerFeatures'
+import { t } from '../../i18n'
 
 const props = defineProps({
   dirtype: {
@@ -30,18 +31,18 @@ const showTrashPermanentDelete = computed(() => props.dirtype === 'trash' && pro
 
 <template>
   <div v-show="showClearTrash" class="toppanbtn">
-    <a-button type="text" size="small" tabindex="-1" class="danger" @click="topTrashDeleteAll"><IconFont name="iconqingkong" />清空回收站
+    <a-button type="text" size="small" tabindex="-1" class="danger" @click="topTrashDeleteAll"><IconFont name="iconqingkong" />{{ t('file.clearTrash') }}
     </a-button>
   </div>
   <div v-show="showTrashRestore || showTrashPermanentDelete" class="toppanbtn">
-    <a-button v-if="showTrashRestore" type="text" size="small" tabindex="-1" @click="topRestoreSelectedFile"><IconFont name="iconrecover" />还原选中
+    <a-button v-if="showTrashRestore" type="text" size="small" tabindex="-1" @click="topRestoreSelectedFile"><IconFont name="iconrecover" />{{ t('file.restoreSelected') }}
     </a-button>
-    <a-button v-if="showTrashPermanentDelete" type="text" size="small" tabindex="-1" class="danger" @click="() => menuTrashSelectFile(false, true)"><IconFont name="iconrest" />彻底删除
+    <a-button v-if="showTrashPermanentDelete" type="text" size="small" tabindex="-1" class="danger" @click="() => menuTrashSelectFile(false, true)"><IconFont name="iconrest" />{{ t('file.deletePermanently') }}
     </a-button>
   </div>
 
   <div v-show="dirtype == 'recover' && isselected" class="toppanbtn">
-    <a-button type="text" size="small" tabindex="-1" @click="topRecoverSelectedFile"><IconFont name="iconrecover" />恢复选中
+    <a-button type="text" size="small" tabindex="-1" @click="topRecoverSelectedFile"><IconFont name="iconrecover" />{{ t('file.restore') }}
     </a-button>
   </div>
 </template>

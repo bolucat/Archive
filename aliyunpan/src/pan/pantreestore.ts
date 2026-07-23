@@ -6,6 +6,8 @@ import PanDAL from './pandal'
 import TreeStore, { TreeNodeData } from '../store/treestore'
 import { GetDriveID, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import message from '../utils/message'
+import type { QuickFileEntry } from './quickFiles'
+import { t } from '../i18n'
 
 export interface PanTreeState {
   user_id: string
@@ -62,7 +64,7 @@ const usePanTreeStore = defineStore('pantree', {
     treeData: [
       {
         __v_skip: true,
-        title: '收藏夹',
+        title: t('pan.favorite'),
         namesearch: '',
         key: 'favorite',
         icon: () => fileiconfn('iconcrown'),
@@ -71,7 +73,7 @@ const usePanTreeStore = defineStore('pantree', {
       },
       {
         __v_skip: true,
-        title: '放映室',
+        title: t('pan.screeningRoom'),
         namesearch: '',
         key: 'video',
         icon: () => fileiconfn('iconrss_video'),
@@ -80,7 +82,7 @@ const usePanTreeStore = defineStore('pantree', {
       },
       {
         __v_skip: true,
-        title: '回收站',
+        title: t('pan.trash'),
         namesearch: '',
         key: 'trash',
         icon: () => fileiconfn('icondelete'),
@@ -89,7 +91,7 @@ const usePanTreeStore = defineStore('pantree', {
       },
       {
         __v_skip: true,
-        title: '文件恢复',
+        title: t('pan.recover'),
         namesearch: '',
         key: 'recover',
         icon: () => fileiconfn('iconrecover'),
@@ -98,7 +100,7 @@ const usePanTreeStore = defineStore('pantree', {
       },
       {
         __v_skip: true,
-        title: '全盘搜索',
+        title: t('pan.globalSearch'),
         namesearch: '',
         key: 'search',
         icon: () => fileiconfn('iconsearch'),
@@ -107,15 +109,15 @@ const usePanTreeStore = defineStore('pantree', {
       },
       {
         __v_skip: true,
-        title: '相册管理',
+        title: t('pan.albumManagement'),
         namesearch: '',
         key: 'pic_root',
         icon: () => fileiconfn('iconjietu'),
         isLeaf: true,
         children: []
       },
-      { __v_skip: true, title: '备份盘', namesearch: '', key: 'backup_root', children: [] },
-      { __v_skip: true, title: '资源盘', namesearch: '', key: 'resource_root', children: [] }
+      { __v_skip: true, title: t('drive.backup'), namesearch: '', key: 'backup_root', children: [] },
+      { __v_skip: true, title: t('drive.resource'), namesearch: '', key: 'resource_root', children: [] }
     ],
     treeExpandedKeys: [],
     treeSelectedKeys: [],
@@ -145,36 +147,36 @@ const usePanTreeStore = defineStore('pantree', {
       if (isCloudUser) {
         const unsupported = ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite']
         if (unsupported.includes(key)) {
-          message.info('123云盘不支持此功能')
+          message.info(t('pan.unsupportedFeature', { provider: t('drive.cloud123') }))
           return
         }
       }
       if ((isDrive115 || isBaidu) && key === 'resource_root') {
-        message.info((isDrive115 ? '115网盘' : '百度网盘') + '不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: isDrive115 ? t('drive.drive115') : t('drive.baiduFull') }))
         return
       }
       if (isPikPak && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite'].includes(key)) {
-        message.info('PikPak 不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: 'PikPak' }))
         return
       }
       if (isQuark && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite'].includes(key)) {
-        message.info('夸克网盘不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: t('drive.quarkFull') }))
         return
       }
       if ((isCloud139 || isCloud189 || isGuangya) && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite', 'trash'].includes(key)) {
-        message.info((isCloud139 ? '139云盘' : isCloud189 ? '天翼云盘' : '光鸭云盘') + '不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: isCloud139 ? t('drive.cloud139') : isCloud189 ? t('drive.cloud189') : t('drive.guangya') }))
         return
       }
       if (isDropbox && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite', 'trash'].includes(key)) {
-        message.info('Dropbox 不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: 'Dropbox' }))
         return
       }
       if (isOneDrive && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite'].includes(key)) {
-        message.info('OneDrive 不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: 'OneDrive' }))
         return
       }
       if (isBox && ['video', 'recover', 'pic_root', 'backup_root', 'resource_root', 'favorite'].includes(key)) {
-        message.info('Box 不支持此功能')
+        message.info(t('pan.unsupportedFeature', { provider: 'Box' }))
         return
       }
       if (!kuaijie) {
@@ -285,16 +287,25 @@ const usePanTreeStore = defineStore('pantree', {
 
       TreeStore.RenameDirs(this.drive_id, fileList)
     },
-    mSaveQuick(list: { key: string; drive_id: string; drive_name: string; title: string }[]) {
+    mSaveQuick(list: QuickFileEntry[]) {
       const nodeList: TreeNodeData[] = []
       for (let i = 0; i < list.length; i++) {
         nodeList.push({
           __v_skip: true,
-          key: list[i].key,
+          key: list[i].id,
+          shortcut_id: list[i].id,
+          user_id: list[i].user_id,
+          user_name: list[i].user_name,
+          provider: list[i].provider,
           drive_id: list[i].drive_id,
           drive_name: list[i].drive_name,
-          title: list[i].title || list[i].key,
-          namesearch: i < 9 ? '快捷键 Ctrl+' + (i + 1) : '',
+          file_id: list[i].file_id,
+          parent_file_id: list[i].parent_file_id,
+          path: list[i].path,
+          description: list[i].description,
+          dir_path: list[i].dir_path,
+          title: list[i].title || list[i].file_id,
+          namesearch: i < 9 ? t('pan.shortcut', { number: i + 1 }) : '',
           children: [],
           isLeaf: true
         } as TreeNodeData)

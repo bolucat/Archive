@@ -2,25 +2,26 @@
   <div class="statistics-row">
     <div class="stat-card">
       <strong>{{ statistics.libraryCount }}</strong>
-      <span>媒体库</span>
+      <span>{{ t('mediaServer.libraryCount') }}</span>
     </div>
     <div class="stat-card">
       <strong>{{ statistics.movieCount }}</strong>
-      <span>电影</span>
+      <span>{{ t('mediaServer.movies') }}</span>
     </div>
     <div class="stat-card">
       <strong>{{ statistics.seriesCount }}</strong>
-      <span>剧集</span>
+      <span>{{ t('mediaServer.episodes') }}</span>
     </div>
     <div class="stat-card">
       <strong>{{ statistics.episodeCount }}</strong>
-      <span>集</span>
+      <span>{{ t('mediaServer.episodeShort') }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import type { MediaServerHomeStatistics } from '../../../types/mediaServerContent'
+import { t } from '../../../i18n'
 
 defineProps<{
   statistics: MediaServerHomeStatistics

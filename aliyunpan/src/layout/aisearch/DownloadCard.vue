@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'running' | 'done' | 'error'
@@ -15,16 +16,16 @@ const emit = defineEmits<{ (e: 'retry'): void }>()
   <div class="dl-card">
     <div v-if="state === 'running'" class="dl-status">
       <Loader2 :size="14" :stroke-width="2" class="dl-spin" />
-      <span>正在添加 {{ input?.files.length || 0 }} 个下载任务...</span>
+      <span>{{ t('ai.card.addingDownloadTasks') }} {{ input?.files.length || 0 }} {{ t('ai.card.downloadTasks') }}...</span>
     </div>
     <div v-else-if="state === 'done' && output" class="dl-status dl-done">
       <CheckCircle :size="16" :stroke-width="1.5" />
-      <span>已添加 {{ output.success }}/{{ output.total }} 个下载任务，请在下载页面查看进度</span>
+      <span>{{ t('ai.card.addedDownloadTasks') }} {{ output.success }}/{{ output.total }} {{ t('ai.card.downloadTasks') }}，{{ t('ai.card.viewDownloadProgress') }}</span>
     </div>
     <div v-else-if="state === 'error'" class="dl-status dl-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>{{ error || '添加下载失败' }}</span>
-      <button class="dl-retry" @click="emit('retry')">重试</button>
+      <span>{{ error || t('ai.card.addDownloadFailed') }}</span>
+      <button class="dl-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
   </div>
 </template>

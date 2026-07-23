@@ -24,8 +24,11 @@ import { applyBoxQuota, refreshBoxAccessToken } from '../box/auth'
 import { refreshCloud189Token } from '../cloud189/auth'
 import { applyGuangyaQuota, refreshGuangyaAccessToken } from '../guangya/auth'
 import { refreshQuarkAccountInfo } from '../quark/auth'
-import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isNonAliyunProvider, isOneDriveUser, isPikPakUser, isQuarkUser, isRemoteDriveUser } from '../aliapi/utils'
 import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
+import { getWebDavConnection, getWebDavConnectionId, getWebDavConnections } from '../utils/webdavClient'
+import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
+import { supportsAliyunAutoSign } from './autoSignPolicy'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
 
@@ -71,7 +74,7 @@ export default class UserDAL {
     if (!window.TvBoxInvoke) return null
     const userList = await DB.getUserAll()
     const accounts = userList
-      .filter((token) => token.user_id)
+      .filter((token) => token.user_id && !isRemoteDriveUser(token))
       .map((token) => this.toCliAccount(token))
     return await window.TvBoxInvoke('ExportCliTokens', { accounts }) as { ok?: boolean; exported?: number; path?: string; error?: string } | null
   }
@@ -217,6 +220,9 @@ export default class UserDAL {
         }
         return token.user_id && token.access_token ? token : null
       }
+      if (isRemoteDriveUser(token)) {
+        return getWebDavConnection(getWebDavConnectionId(token.default_drive_id)) ? token : null
+      }
       const ok = !!(token.user_id && (await AliUser.ApiTokenRefreshAccount(token, false)))
       return ok ? token : null
     } catch (err: any) {
@@ -227,6 +233,12 @@ export default class UserDAL {
 
   static async aLoadFromDB() {
     const tokenList = await DB.getUserAll()
+    for (const connection of getWebDavConnections()) {
+      const token = createRemoteDriveAccount(connection).token
+      if (tokenList.some((item) => item.user_id === token.user_id)) continue
+      await DB.saveUser(token)
+      tokenList.push(token)
+    }
     const defaultUser = await DB.getValueString('uiDefaultUser')
     UserTokenMap.clear()
     // 先把所有账号塞进 UserTokenMap，保证 UserInfo 历史账号列表 + 切换可用，
@@ -606,59 +618,60 @@ export default class UserDAL {
 
   static async LoadPanData(token: ITokenInfo) {
     console.warn('LoadPanData....')
+    const loadSingleRootDrive = async (reload: () => Promise<void>, drive_id: string, root_id: string) => {
+      try {
+        await reload()
+        await PanDAL.aReLoadOneDirToShow(drive_id, root_id, true)
+      } finally {
+        useFootStore().mSaveLoading('')
+      }
+    }
     if (isCloud123User(token)) {
-      await PanDAL.aReLoadCloudDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'cloud123', 'cloud_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloudDrive(token), token.default_drive_id || 'cloud123', 'cloud_root')
       return
     }
     if (isBaiduUser(token)) {
-      await PanDAL.aReLoadBaiduDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'baidu', 'baidu_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadBaiduDrive(token), token.default_drive_id || 'baidu', 'baidu_root')
       return
     }
     if (isDrive115User(token)) {
-      await PanDAL.aReLoadDrive115(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'drive115', 'drive115_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadDrive115(token), token.default_drive_id || 'drive115', 'drive115_root')
       return
     }
     if (isPikPakUser(token)) {
-      await PanDAL.aReLoadPikPakDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'pikpak', 'pikpak_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadPikPakDrive(token), token.default_drive_id || 'pikpak', 'pikpak_root')
       return
     }
     if (isQuarkUser(token)) {
-      await PanDAL.aReLoadQuarkDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'quark', 'quark_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadQuarkDrive(token), token.default_drive_id || 'quark', 'quark_root')
       return
     }
     if (isCloud139User(token)) {
-      await PanDAL.aReLoadCloud139Drive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'cloud139', 'cloud139_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloud139Drive(token), token.default_drive_id || 'cloud139', 'cloud139_root')
       return
     }
     if (isCloud189User(token)) {
-      await PanDAL.aReLoadCloud189Drive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'cloud189', 'cloud189_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloud189Drive(token), token.default_drive_id || 'cloud189', 'cloud189_root')
       return
     }
     if (isGuangyaUser(token)) {
-      await PanDAL.aReLoadGuangyaDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'guangya', 'guangya_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadGuangyaDrive(token), token.default_drive_id || 'guangya', 'guangya_root')
       return
     }
     if (isDropboxUser(token)) {
-      await PanDAL.aReLoadDropboxDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'dropbox', 'dropbox_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadDropboxDrive(token), token.default_drive_id || 'dropbox', 'dropbox_root')
       return
     }
     if (isOneDriveUser(token)) {
-      await PanDAL.aReLoadOneDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'onedrive', 'onedrive_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadOneDrive(token), token.default_drive_id || 'onedrive', 'onedrive_root')
       return
     }
     if (isBoxUser(token)) {
-      await PanDAL.aReLoadBoxDrive(token)
-      await PanDAL.aReLoadOneDirToShow(token.default_drive_id || 'box', 'box_root', true)
+      await loadSingleRootDrive(() => PanDAL.aReLoadBoxDrive(token), token.default_drive_id || 'box', 'box_root')
+      return
+    }
+    if (isRemoteDriveUser(token)) {
+      await loadSingleRootDrive(() => PanDAL.aReLoadWebDavDrive(token), token.default_drive_id, '/')
       return
     }
     // 刷新网盘数据
@@ -866,7 +879,7 @@ export default class UserDAL {
 
   static async UserAutoSign(token: ITokenInfo) {
     // 自动签到
-    if (isDrive115User(token) || isCloud123User(token) || isBaiduUser(token) || isPikPakUser(token) || isQuarkUser(token) || isDropboxUser(token) || isOneDriveUser(token) || isBoxUser(token)) {
+    if (!supportsAliyunAutoSign(token)) {
       UserDAL.SaveUserToken(token)
       return
     }

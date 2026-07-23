@@ -1,8 +1,8 @@
 <template>
   <div class="home-section">
     <div class="home-section-header">
-      <h4>继续观看</h4>
-      <span>{{ loading ? '加载中...' : `${items.length} 项` }}</span>
+      <h4>{{ t('mediaServer.continueWatching') }}</h4>
+      <span>{{ loading ? t('mediaServer.loading') : t('mediaServer.itemsCount', { count: items.length }) }}</span>
     </div>
 
     <div class="resume-strip">
@@ -36,7 +36,7 @@
             />
             <div class="media-card-placeholder media-image-placeholder">{{ item.title.slice(0, 1) }}</div>
             <div class="resume-overlay">
-              <div class="resume-badge">{{ typeof item.progress === 'number' ? `已观看 ${Math.round(item.progress)}%` : '继续观看' }}</div>
+              <div class="resume-badge">{{ typeof item.progress === 'number' ? t('mediaServer.watchedPercent', { percent: Math.round(item.progress) }) : t('mediaServer.continueWatching') }}</div>
               <div v-if="typeof item.progress === 'number'" class="media-progress cinematic-progress">
                 <div class="media-progress-bar" :style="{ width: `${Math.min(100, Math.max(0, item.progress || 0))}%` }" />
               </div>
@@ -51,24 +51,24 @@
           <div class="home-card-context-menu">
             <button type="button" class="home-card-context-item" @click="$emit('play', item)">
               <span class="home-card-context-icon">▷</span>
-              <span>播放</span>
+              <span>{{ t('mediaServer.play') }}</span>
             </button>
             <button type="button" class="home-card-context-item" @click="$emit('action', item, 'favorite')">
               <span class="home-card-context-icon">{{ item.isFavorite ? '♥' : '♡' }}</span>
-              <span>{{ item.isFavorite ? '从收藏夹移除' : '添加到收藏夹' }}</span>
+              <span>{{ item.isFavorite ? t('mediaServer.removeFavorite') : t('mediaServer.addFavorite') }}</span>
             </button>
             <div class="home-card-context-divider" />
             <button type="button" class="home-card-context-item" @click="$emit('action', item, 'watched')">
               <span class="home-card-context-icon context-icon-filled">✓</span>
-              <span>{{ item.isPlayed ? '标记为未观看' : '标记为已观看' }}</span>
+              <span>{{ item.isPlayed ? t('mediaServer.markUnwatched') : t('mediaServer.markWatched') }}</span>
             </button>
           </div>
         </template>
       </a-trigger>
       <div v-if="errorText && items.length === 0 && !loading" class="resume-error-card">
-        <div class="resume-error-title">继续观看加载失败</div>
+        <div class="resume-error-title">{{ t('mediaServer.resumeLoadFailed') }}</div>
         <div class="resume-error-text">{{ errorText }}</div>
-        <a-button type="outline" size="small" @click="$emit('retry')">重试</a-button>
+        <a-button type="outline" size="small" @click="$emit('retry')">{{ t('mediaServer.retry') }}</a-button>
       </div>
     </div>
   </div>
@@ -79,6 +79,7 @@ import type { MediaServerCardItem } from '../../../types/mediaServerContent'
 import { resolveMediaServerImage } from '../../../media-server/imageSources'
 import { toMsCacheUrl } from '../../../media-server/imageCache'
 import useMediaServerRegistryStore from '../../../store/mediaServerRegistry'
+import { t } from '../../../i18n'
 
 defineProps<{
   items: MediaServerCardItem[]

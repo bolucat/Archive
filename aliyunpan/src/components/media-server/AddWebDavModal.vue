@@ -1,8 +1,8 @@
 <template>
   <a-modal
     :visible="visible"
-    title="连接到 WebDAV"
-    ok-text="连接"
+    :title="t('mediaServer.connectWebDav')"
+    :ok-text="t('mediaServer.connect')"
     width="920px"
     modal-class="webdav-connect-modal"
     :ok-loading="loading"
@@ -12,42 +12,42 @@
     <div class="webdav-modal">
       <div class="webdav-grid">
         <div class="panel-card form-section">
-          <div class="section-title">基本信息</div>
+          <div class="section-title">{{ t('mediaServer.basicInfo') }}</div>
 
           <div class="field-row">
-            <div class="field-label">名称</div>
-            <a-input v-model="form.name" class="field-input" placeholder="例如：NAS 影视库" allow-clear />
+            <div class="field-label">{{ t('mediaServer.name') }}</div>
+            <a-input v-model="form.name" class="field-input" :placeholder="t('mediaServer.exampleNas')" allow-clear />
           </div>
 
           <div class="field-row">
-            <div class="field-label">挂载路径</div>
-            <a-input v-model="form.rootPath" class="field-input" placeholder="默认：/" allow-clear />
+            <div class="field-label">{{ t('mediaServer.mountPath') }}</div>
+            <a-input v-model="form.rootPath" class="field-input" :placeholder="t('mediaServer.defaultRoot')" allow-clear />
           </div>
         </div>
 
         <div class="panel-card form-section">
-          <div class="section-title">登录信息</div>
+          <div class="section-title">{{ t('mediaServer.loginInfo') }}</div>
 
           <div class="field-row">
-            <div class="field-label">用户名</div>
+            <div class="field-label">{{ t('mediaServer.username') }}</div>
             <a-input v-model="form.username" class="field-input" allow-clear />
           </div>
 
           <div class="field-row">
-            <div class="field-label">密码</div>
+            <div class="field-label">{{ t('mediaServer.password') }}</div>
             <a-input-password v-model="form.password" class="field-input" allow-clear />
           </div>
         </div>
 
         <div class="panel-card form-section panel-wide">
-          <div class="section-title">服务器地址</div>
+          <div class="section-title">{{ t('mediaServer.serverAddress') }}</div>
 
           <div class="field-row no-margin">
-            <div class="field-label">地址</div>
-            <a-input v-model="form.url" class="field-input" placeholder="例如：http://127.0.0.1:5244/dav" allow-clear />
+            <div class="field-label">{{ t('mediaServer.address') }}</div>
+            <a-input v-model="form.url" class="field-input" :placeholder="t('mediaServer.webDavAddressPlaceholder')" allow-clear />
           </div>
 
-          <div class="hint-text">支持 HTTP / HTTPS，建议填写完整 WebDAV 服务地址。</div>
+          <div class="hint-text">{{ t('mediaServer.webDavHint') }}</div>
         </div>
       </div>
     </div>
@@ -57,6 +57,7 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue'
 import message from '../../utils/message'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   visible: boolean
@@ -105,7 +106,7 @@ watch(form, () => {
 
 const handleSubmit = () => {
   if (!form.url.trim() || !form.username.trim() || !form.password.trim()) {
-    message.error('请至少填写 WebDAV 地址、用户名和密码')
+    message.error(t('mediaServer.fillWebDav'))
     return
   }
   emit('submit')

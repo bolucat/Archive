@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { CircleAlert, Clock3, Download, LoaderCircle, RefreshCw, Trash2, X } from 'lucide-vue-next'
 import message from '../../utils/message'
+import { t } from '../../i18n'
 import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, clearCompletedMediaAcquisitionRuns, forceCancelMediaAcquisitionRun, listMediaAcquisitionRuns, selectMediaAcquisitionCandidate } from '../../services/mediaAcquisition/client'
 import type { MediaAcquisitionRunView } from '@shared/types/mediaAcquisition'
 import { createMediaAcquisitionCandidateInput } from '../../services/mediaAcquisition/shareExecutor'
@@ -29,7 +30,7 @@ async function refresh() {
   try {
     runs.value = await listMediaAcquisitionRuns(60)
   } catch (error: any) {
-    message.error(error?.message || '读取媒体任务失败')
+    message.error(error?.message || t('ai.media.tasks.readFailed'))
   } finally {
     loading.value = false
   }
@@ -40,18 +41,18 @@ async function cancel(run: MediaAcquisitionRunView) {
   await refresh()
   const current = runs.value.find(item => item.id === run.id) || result
   if (current?.status === 'cancelled') {
-    message.success('任务已强制结束')
+    message.success(t('ai.media.tasks.forceEnded'))
     return
   }
   if (current && completedRuns.value.some(item => item.id === current.id)) {
-    message.info(`任务已${current.status === 'completed' ? '完成' : '进入结束状态'}`)
+    message.info(current.status === 'completed' ? t('ai.media.tasks.alreadyCompleted') : t('ai.media.tasks.enteredEndState'))
     return
   }
-  message.warning('任务状态仍在处理中，请稍后重试')
+  message.warning(t('ai.media.tasks.stillProcessing'))
 }
 
 function endActionLabel(status: MediaAcquisitionRunView['status']) {
-  return ['transferring', 'verifying', 'organizing'].includes(status) ? '强制结束' : '取消'
+  return ['transferring', 'verifying', 'organizing'].includes(status) ? t('ai.media.tasks.forceEnd') : t('common.cancel')
 }
 
 async function clearCompleted() {
@@ -59,10 +60,10 @@ async function clearCompleted() {
   clearingCompleted.value = true
   try {
     const count = await clearCompletedMediaAcquisitionRuns()
-    message.success(`已清理 ${count} 条已结束任务`)
+    message.success(t('ai.media.tasks.clearCompletedSuccess', { count }))
     await refresh()
   } catch (error: any) {
-    message.error(error?.message || '清理已结束任务失败')
+    message.error(error?.message || t('ai.media.tasks.clearCompletedFailed'))
   } finally {
     clearingCompleted.value = false
   }
@@ -71,7 +72,7 @@ async function clearCompleted() {
 async function addShare(run: MediaAcquisitionRunView) {
   const input = createMediaAcquisitionCandidateInput(pendingLinks.value[run.id] || '', pendingPasswords.value[run.id] || '', run.target.title)
   if (!input) {
-    message.warning('请输入分享链接、磁力或 HTTP/HTTPS 链接')
+    message.warning(t('ai.media.tasks.enterLink'))
     return
   }
   try {
@@ -81,7 +82,7 @@ async function addShare(run: MediaAcquisitionRunView) {
     pendingPasswords.value[run.id] = ''
     await refresh()
   } catch (error: any) {
-    message.error(error?.message || '添加候选资源失败')
+    message.error(error?.message || t('ai.media.tasks.addCandidateFailed'))
   }
 }
 
@@ -90,13 +91,13 @@ async function executeCandidate(run: MediaAcquisitionRunView, candidateId: strin
   try {
     const selected = await selectMediaAcquisitionCandidate(run.id, candidateId, '用户手动确认执行该候选')
     if (!selected?.candidates.some(candidate => candidate.id === candidateId && candidate.status === 'selected')) {
-      message.warning('该候选已被其他任务执行器接管')
+      message.warning(t('ai.media.tasks.candidateTaken'))
       return
     }
     void runMediaAcquisitionWorkflow(run.id)
-    message.success('已交给 Agent 执行转存')
+    message.success(t('ai.media.tasks.agentTransferQueued'))
   } catch (error: any) {
-    message.error(error?.message || '分享导入失败')
+    message.error(error?.message || t('ai.media.tasks.importFailed'))
   } finally {
     executingCandidateId.value = ''
     await refresh()
@@ -104,11 +105,11 @@ async function executeCandidate(run: MediaAcquisitionRunView, candidateId: strin
 }
 
 function statusLabel(status: MediaAcquisitionRunView['status']) {
-  return ({ reserved: '已预定', queued: '排队中', searching: '搜索中', selecting: 'Agent 挑选资源', transferring: '转存中', verifying: '核对入库目录', organizing: '扫描媒体库', retry_wait: '等待重试', completed: '已完成', partial: '部分完成', no_coverage: '暂无资源', failed: '失败', cancelled: '已取消' } as Record<string, string>)[status] || status
+  return ({ reserved: t('ai.media.tasks.status.reserved'), queued: t('ai.media.tasks.status.queued'), searching: t('ai.media.tasks.status.searching'), selecting: t('ai.media.tasks.status.selecting'), transferring: t('ai.media.tasks.status.transferring'), verifying: t('ai.media.tasks.status.verifying'), organizing: t('ai.media.tasks.status.organizing'), retry_wait: t('ai.media.tasks.status.retryWait'), completed: t('ai.media.tasks.status.completed'), partial: t('ai.media.tasks.status.partial'), no_coverage: t('ai.media.tasks.status.noCoverage'), failed: t('ai.media.tasks.status.failed'), cancelled: t('ai.media.tasks.status.cancelled') } as Record<string, string>)[status] || status
 }
 
 function phaseLabel(phase: string) {
-  return ({ queued: '排队', search: '搜索', select: '筛选', transfer: '转存', verify: '核验', organize: '整理', finalize: '完成' } as Record<string, string>)[phase] || phase
+  return ({ queued: t('ai.media.tasks.phase.queued'), search: t('ai.media.tasks.phase.search'), select: t('ai.media.tasks.phase.select'), transfer: t('ai.media.tasks.phase.transfer'), verify: t('ai.media.tasks.phase.verify'), organize: t('ai.media.tasks.phase.organize'), finalize: t('ai.media.tasks.phase.finalize') } as Record<string, string>)[phase] || phase
 }
 
 function formatTime(time: number) {
@@ -117,24 +118,24 @@ function formatTime(time: number) {
 
 function formatDuration(ms: number) {
   const seconds = Math.max(0, Math.ceil(ms / 1000))
-  if (seconds < 60) return `${seconds} 秒`
+  if (seconds < 60) return t('ai.media.tasks.seconds', { count: seconds })
   const minutes = Math.ceil(seconds / 60)
-  if (minutes < 60) return `${minutes} 分钟`
+  if (minutes < 60) return t('ai.media.tasks.minutes', { count: minutes })
   const hours = Math.floor(minutes / 60)
   const restMinutes = minutes % 60
-  return restMinutes ? `${hours} 小时 ${restMinutes} 分钟` : `${hours} 小时`
+  return restMinutes ? t('ai.media.tasks.hoursMinutes', { hours, minutes: restMinutes }) : t('ai.media.tasks.hours', { count: hours })
 }
 
 function retryHint(run: MediaAcquisitionRunView) {
   if (!['reserved', 'retry_wait', 'queued'].includes(run.status) || !run.nextAttemptAt) return ''
-  if (run.status === 'reserved') return `将于 ${formatTime(run.nextAttemptAt)} 上映后自动开始获取`
+  if (run.status === 'reserved') return t('ai.media.tasks.reservedHint', { time: formatTime(run.nextAttemptAt) })
   const remaining = run.nextAttemptAt - Date.now()
-  if (run.status === 'queued' && run.searchAttemptCount) return remaining > 0 ? `第 ${run.searchAttemptCount} 次搜索重试将在 ${formatDuration(remaining)} 后开始` : '搜索重试时间已到，等待调度器接管'
-  return remaining > 0 ? `第 ${run.attemptCount} 次重试将在 ${formatDuration(remaining)} 后开始` : '重试时间已到，等待调度器接管'
+  if (run.status === 'queued' && run.searchAttemptCount) return remaining > 0 ? t('ai.media.tasks.searchRetryLater', { count: run.searchAttemptCount, duration: formatDuration(remaining) }) : t('ai.media.tasks.searchRetryDue')
+  return remaining > 0 ? t('ai.media.tasks.retryLater', { count: run.attemptCount, duration: formatDuration(remaining) }) : t('ai.media.tasks.retryDue')
 }
 
 function candidateStatusLabel(candidate: MediaAcquisitionRunView['candidates'][number]) {
-  return ({ selected: 'Agent 已选中', imported: '等待网盘完成', transferring: '转存中', failed: '失败', rejected: '已跳过', pending: '待选择' } as Record<string, string>)[candidate.status] || candidate.status
+  return ({ selected: t('ai.media.tasks.candidate.selected'), imported: t('ai.media.tasks.candidate.imported'), transferring: t('ai.media.tasks.candidate.transferring'), failed: t('ai.media.tasks.candidate.failed'), rejected: t('ai.media.tasks.candidate.rejected'), pending: t('ai.media.tasks.candidate.pending') } as Record<string, string>)[candidate.status] || candidate.status
 }
 
 function candidateHint(run: MediaAcquisitionRunView, candidate: MediaAcquisitionRunView['candidates'][number]) {
@@ -145,10 +146,10 @@ function candidateHint(run: MediaAcquisitionRunView, candidate: MediaAcquisition
     const targetTitle = normalize(run.target.title)
     // Older runs may contain an Agent-generated reason copied from another title.
     // Do not expose it as if it were evidence for this task.
-    if (targetTitle.length >= 2 && !normalize(decision.reason).includes(targetTitle)) return `候选「${candidate.title}」与目标「${run.target.title}」匹配，详情以实际落盘核验为准。`
+    if (targetTitle.length >= 2 && !normalize(decision.reason).includes(targetTitle)) return t('ai.media.tasks.candidateMatched', { candidate: candidate.title, target: run.target.title })
     return decision.reason
   }
-  if (candidate.status === 'rejected') return 'Agent 已选择更匹配的候选，此资源暂不执行。'
+  if (candidate.status === 'rejected') return t('ai.media.tasks.rejectedHint')
   return ''
 }
 
@@ -156,7 +157,7 @@ function eventMessage(run: MediaAcquisitionRunView, event: MediaAcquisitionRunVi
   const candidateId = typeof event.data?.candidateId === 'string' ? event.data.candidateId : undefined
   if (event.phase === 'select' && event.data?.tool === 'transferCandidate' && candidateId && event.message.startsWith('Agent 决策：')) {
     const candidate = run.candidates.find(item => item.id === candidateId)
-    if (candidate) return `Agent 决策：候选「${candidate.title}」与目标「${run.target.title}」匹配，详情以实际落盘核验为准。`
+    if (candidate) return t('ai.media.tasks.agentDecision', { reason: t('ai.media.tasks.candidateMatched', { candidate: candidate.title, target: run.target.title }) })
   }
   return event.message
 }
@@ -171,21 +172,21 @@ async function cleanDuplicates(run: MediaAcquisitionRunView) {
   const groups = duplicateGroups(run)
   const count = groups.reduce((total, group) => total + group.deleteCandidates.length, 0)
   if (!count) return
-  if (!window.confirm(`将把 ${count} 个较小重复集移入网盘回收站，保留每集较大的文件。是否继续？`)) return
+  if (!window.confirm(t('ai.media.tasks.confirmCleanDuplicates', { count }))) return
   cleaningRunId.value = run.id
   try {
     const result = await trashVerifiedMediaAcquisitionDuplicates(run, groups)
-    await addMediaAcquisitionEvent(run.id, result.errors.length ? 'warning' : 'info', 'organize', result.errors.length ? `重复集清理完成，${result.removed} 个文件已移入回收站，另有 ${result.errors.length} 个失败。` : `重复集清理完成，${result.removed} 个较小副本已移入回收站。`, {
+    await addMediaAcquisitionEvent(run.id, result.errors.length ? 'warning' : 'info', 'organize', result.errors.length ? t('ai.media.tasks.duplicateCleanupEventWithErrors', { removed: result.removed, errors: result.errors.length }) : t('ai.media.tasks.duplicateCleanupEvent', { removed: result.removed }), {
       tool: 'duplicateEpisodeCleanup',
       removed: result.removed,
       errors: result.errors,
       groups: groups.map(group => ({ episode: group.episode, keep: group.keep.name, removed: group.deleteCandidates.map(file => file.name) }))
     })
-    if (result.errors.length) message.warning(`已移入回收站 ${result.removed} 个文件；${result.errors.join('；')}`)
-    else message.success(`已将 ${result.removed} 个较小重复集移入回收站`)
+    if (result.errors.length) message.warning(t('ai.media.tasks.duplicateCleanupWarning', { removed: result.removed, errors: result.errors.join('; ') }))
+    else message.success(t('ai.media.tasks.duplicateCleanupSuccess', { removed: result.removed }))
     await refresh()
   } catch (error: any) {
-    message.error(error?.message || '清理重复集失败')
+    message.error(error?.message || t('ai.media.tasks.duplicateCleanupFailed'))
   } finally {
     cleaningRunId.value = ''
   }
@@ -204,12 +205,12 @@ onBeforeUnmount(() => timer && clearInterval(timer))
     <header class="media-task-head">
       <div>
         <span class="media-task-kicker">MEDIA ACQUISITION</span>
-        <h2>媒体任务</h2>
-        <p>任务绑定目标网盘和目录；候选资源由 Agent 或你手动添加，确认后才会转存。</p>
+        <h2>{{ t('ai.media.tasks.title') }}</h2>
+        <p>{{ t('ai.media.tasks.subtitle') }}</p>
       </div>
       <div class="media-task-head-actions">
-        <button type="button" class="media-task-clear" :disabled="clearingCompleted || !completedRuns.length" title="清理已结束任务" @click="clearCompleted"><Trash2 :size="15" />清空</button>
-        <button type="button" class="media-task-refresh" :disabled="loading" title="刷新任务" @click="refresh">
+        <button type="button" class="media-task-clear" :disabled="clearingCompleted || !completedRuns.length" :title="t('ai.media.tasks.clearCompletedTitle')" @click="clearCompleted"><Trash2 :size="15" />{{ t('common.clear') }}</button>
+        <button type="button" class="media-task-refresh" :disabled="loading" :title="t('ai.media.tasks.refreshTitle')" @click="refresh">
           <LoaderCircle v-if="loading" :size="16" class="spin" />
           <RefreshCw v-else :size="16" />
         </button>
@@ -218,19 +219,19 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 
     <div v-if="!runs.length && !loading" class="media-task-empty">
       <Clock3 :size="28" />
-      <strong>还没有媒体获取任务</strong>
-      <span>在媒体详情中选择目标网盘和目录后，任务会出现在这里。</span>
+      <strong>{{ t('ai.media.tasks.emptyTitle') }}</strong>
+      <span>{{ t('ai.media.tasks.emptyDesc') }}</span>
     </div>
 
     <div v-else class="media-task-list">
       <section v-if="processingRuns.length" class="media-task-section">
-        <h3>获取中 <span>{{ processingRuns.length }}</span></h3>
+        <h3>{{ t('ai.media.tasks.processing') }} <span>{{ processingRuns.length }}</span></h3>
         <article v-for="run in processingRuns" :key="run.id" class="media-task-card is-active">
           <div class="media-task-card-head">
             <strong>{{ run.target.title }}</strong>
             <span class="media-task-status">{{ statusLabel(run.status) }}</span>
           </div>
-          <div class="media-task-meta">{{ run.target.targetPlatform }} · {{ run.target.targetDriveId }} · {{ run.kind === 'season' ? '单季获取' : '媒体获取' }}</div>
+          <div class="media-task-meta">{{ run.target.targetPlatform }} · {{ run.target.targetDriveId }} · {{ run.kind === 'season' ? t('ai.media.tasks.singleSeason') : t('ai.media.tasks.mediaAcquire') }}</div>
           <div class="media-task-progress"><i :style="{ width: `${Math.max(4, run.progress)}%` }" /></div>
           <div class="media-task-activity">{{ run.activity }}</div>
           <div v-if="run.events.length" class="media-task-ticker">
@@ -246,7 +247,7 @@ onBeforeUnmount(() => timer && clearInterval(timer))
                 <span>{{ candidate.sourcePlatform }} · {{ candidate.title }}</span>
                 <small v-if="candidateHint(run, candidate)">{{ candidateHint(run, candidate) }}</small>
               </div>
-              <a-button v-if="candidate.status === 'pending'" size="mini" type="primary" :loading="executingCandidateId === candidate.id" @click="executeCandidate(run, candidate.id)"><Download :size="12" />立即执行</a-button>
+              <a-button v-if="candidate.status === 'pending'" size="mini" type="primary" :loading="executingCandidateId === candidate.id" @click="executeCandidate(run, candidate.id)"><Download :size="12" />{{ t('ai.media.tasks.runNow') }}</a-button>
               <em v-else>{{ candidateStatusLabel(candidate) }}</em>
             </div>
           </div>
@@ -258,20 +259,20 @@ onBeforeUnmount(() => timer && clearInterval(timer))
       </section>
 
       <section v-if="queuedRuns.length" class="media-task-section">
-        <h3>排队中 <span>{{ queuedRuns.length }}</span></h3>
+        <h3>{{ t('ai.media.tasks.queued') }} <span>{{ queuedRuns.length }}</span></h3>
         <article v-for="run in queuedRuns" :key="run.id" class="media-task-card">
           <div class="media-task-card-head"><strong>{{ run.target.title }}</strong><span class="media-task-status">{{ statusLabel(run.status) }}</span></div>
-          <div class="media-task-meta">{{ run.target.targetPlatform }} · {{ run.target.targetDriveId }} · {{ run.kind === 'season' ? '单季获取' : '媒体获取' }}</div>
+          <div class="media-task-meta">{{ run.target.targetPlatform }} · {{ run.target.targetDriveId }} · {{ run.kind === 'season' ? t('ai.media.tasks.singleSeason') : t('ai.media.tasks.mediaAcquire') }}</div>
           <div class="media-task-activity">{{ run.activity }}</div>
           <div v-if="retryHint(run)" class="media-task-retry">
             <Clock3 :size="13" />
             <span>{{ retryHint(run) }}</span>
-            <time v-if="run.nextAttemptAt">下次：{{ formatTime(run.nextAttemptAt) }}</time>
+            <time v-if="run.nextAttemptAt">{{ t('ai.media.tasks.next') }}{{ formatTime(run.nextAttemptAt) }}</time>
           </div>
           <div v-if="run.status === 'queued'" class="media-task-add-source">
-            <a-input v-model.trim="pendingLinks[run.id]" size="small" placeholder="粘贴分享链接、magnet 或 HTTP/HTTPS 链接" />
-            <a-input v-model.trim="pendingPasswords[run.id]" size="small" placeholder="提取码" class="media-task-password" />
-            <a-button size="small" @click="addShare(run)">添加候选</a-button>
+            <a-input v-model.trim="pendingLinks[run.id]" size="small" :placeholder="t('ai.media.tasks.linkPlaceholder')" />
+            <a-input v-model.trim="pendingPasswords[run.id]" size="small" :placeholder="t('ai.media.tasks.passwordPlaceholder')" class="media-task-password" />
+            <a-button size="small" @click="addShare(run)">{{ t('ai.media.tasks.addCandidate') }}</a-button>
           </div>
           <div class="media-task-actions">
             <span>{{ formatTime(run.startedAt) }}</span>
@@ -281,7 +282,7 @@ onBeforeUnmount(() => timer && clearInterval(timer))
       </section>
 
       <section v-if="completedRuns.length" class="media-task-section">
-        <h3>已完成 <span>{{ completedRuns.length }}</span></h3>
+        <h3>{{ t('ai.media.tasks.completed') }} <span>{{ completedRuns.length }}</span></h3>
         <article v-for="run in completedRuns" :key="run.id" class="media-task-card">
           <div class="media-task-card-head">
             <strong>{{ run.target.title }}</strong>
@@ -289,10 +290,10 @@ onBeforeUnmount(() => timer && clearInterval(timer))
           </div>
           <div class="media-task-meta">{{ run.target.targetPlatform }} · {{ formatTime(run.startedAt) }}</div>
           <div v-if="run.errorMessage" class="media-task-error"><CircleAlert :size="14" />{{ run.errorMessage }}</div>
-          <div class="media-task-activity">{{ run.status === 'completed' ? '已加入媒体库' : (run.events.at(-1)?.message || run.activity) }}</div>
+          <div class="media-task-activity">{{ run.status === 'completed' ? t('ai.media.status.completedLibrary') : (run.events.at(-1)?.message || run.activity) }}</div>
           <div v-if="duplicateGroups(run).length" class="media-task-duplicate-audit">
-            <span>发现 {{ duplicateGroups(run).length }} 组重复集，已按文件大小保留较大版本。</span>
-            <a-button size="small" status="warning" :loading="cleaningRunId === run.id" @click="cleanDuplicates(run)"><Trash2 :size="12" />清理较小副本</a-button>
+            <span>{{ t('ai.media.tasks.duplicateGroups', { count: duplicateGroups(run).length }) }}</span>
+            <a-button size="small" status="warning" :loading="cleaningRunId === run.id" @click="cleanDuplicates(run)"><Trash2 :size="12" />{{ t('ai.media.tasks.cleanSmallerCopies') }}</a-button>
           </div>
           <div v-if="run.events.length" class="media-task-ticker compact">
             <div v-for="event in run.events.slice(-4).reverse()" :key="event.id" class="media-task-ticker-row" :class="event.level">
@@ -302,9 +303,9 @@ onBeforeUnmount(() => timer && clearInterval(timer))
             </div>
           </div>
           <div v-if="sourceRecoverableStatuses.has(run.status)" class="media-task-add-source">
-            <a-input v-model.trim="pendingLinks[run.id]" size="small" placeholder="粘贴分享链接、magnet 或 HTTP/HTTPS 链接后由 Agent 执行" />
-            <a-input v-model.trim="pendingPasswords[run.id]" size="small" placeholder="提取码" class="media-task-password" />
-            <a-button size="small" @click="addShare(run)">交给 Agent</a-button>
+            <a-input v-model.trim="pendingLinks[run.id]" size="small" :placeholder="t('ai.media.tasks.linkAgentPlaceholder')" />
+            <a-input v-model.trim="pendingPasswords[run.id]" size="small" :placeholder="t('ai.media.tasks.passwordPlaceholder')" class="media-task-password" />
+            <a-button size="small" @click="addShare(run)">{{ t('ai.media.tasks.handToAgent') }}</a-button>
           </div>
         </article>
       </section>

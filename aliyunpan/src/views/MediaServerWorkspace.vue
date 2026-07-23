@@ -3,9 +3,9 @@
     <MediaServerRegistryPanel v-if="currentRoute.kind === 'registry'" />
 
     <div v-else-if="!registry.currentServer" class="server-empty-shell">
-      <h2>还没有可用的媒体服务器</h2>
-      <p>先在左侧的“管理服务器”里添加一台服务器，我们再把 Home / Search / Library 主链路接进来。</p>
-      <a-button type="primary" @click="navigation.openRegistry()">去管理服务器</a-button>
+      <h2>{{ t('mediaServer.noServerTitle') }}</h2>
+      <p>{{ t('mediaServer.noServerDesc') }}</p>
+      <a-button type="primary" @click="navigation.openRegistry()">{{ t('mediaServer.goManage') }}</a-button>
     </div>
 
     <div
@@ -28,22 +28,22 @@
 
         <div class="toolbar-center">
           <div class="workspace-tabs">
-            <div class="workspace-tab active" @click="navigation.goHome()">主页</div>
-            <div class="workspace-tab" @click="navigation.goSearch()">搜索</div>
-            <div class="workspace-tab" @click="navigation.goLibraryRoot()">媒体库</div>
+            <div class="workspace-tab active" @click="navigation.goHome()">{{ t('mediaServer.home') }}</div>
+            <div class="workspace-tab" @click="navigation.goSearch()">{{ t('mediaServer.search') }}</div>
+            <div class="workspace-tab" @click="navigation.goLibraryRoot()">{{ t('mediaServer.library') }}</div>
           </div>
         </div>
 
         <div class="toolbar-right">
           <button v-if="currentRoute.kind === 'home'" type="button" class="toolbar-btn" @click="openHomeLibraryManager">
             <IconFont name="iconlist" />
-            <span>媒体管理</span>
+            <span>{{ t('mediaServer.mediaManagement') }}</span>
           </button>
           <div v-if="currentRoute.kind === 'home'" class="view-toggle-pill">
             <button
               class="view-toggle-seg"
               :class="{ active: homePosterMode === 'landscape' }"
-              title="横版海报"
+              :title="t('mediaServer.landscapePoster')"
               @click="setHomePosterMode('landscape')"
             >
               <IconFont name="iconfangkuang" />
@@ -52,7 +52,7 @@
             <button
               class="view-toggle-seg"
               :class="{ active: homePosterMode === 'portrait' }"
-              title="竖版海报"
+              :title="t('mediaServer.portraitPoster')"
               @click="setHomePosterMode('portrait')"
             >
               <IconFont name="iconxiaotumoshi" />
@@ -74,7 +74,7 @@
             </a-button>
             <template #content>
               <div class="server-switch-menu">
-                <div class="server-switch-section-title">媒体服务器</div>
+                <div class="server-switch-section-title">{{ t('mediaServer.title') }}</div>
                 <template v-for="server in registry.filteredServers" :key="server.id">
                   <a-dsubmenu
                     v-if="hasServerBackupLines(server)"
@@ -86,7 +86,7 @@
                         <div class="server-option-main">
                           <span>{{ server.name }}</span>
                         </div>
-                        <span v-if="registry.currentServer?.id === server.id" class="server-option-check">当前</span>
+                        <span v-if="registry.currentServer?.id === server.id" class="server-option-check">{{ t('mediaServer.current') }}</span>
                       </div>
                     </template>
                     <template #content>
@@ -100,7 +100,7 @@
                           <div class="server-option-main">
                             <span>{{ line.name }}</span>
                           </div>
-                          <span v-if="isServerLineActive(server.id, line.key)" class="server-option-check">当前</span>
+                          <span v-if="isServerLineActive(server.id, line.key)" class="server-option-check">{{ t('mediaServer.current') }}</span>
                         </div>
                       </a-doption>
                     </template>
@@ -115,7 +115,7 @@
                       <div class="server-option-main">
                         <span>{{ server.name }}</span>
                       </div>
-                      <span v-if="registry.currentServer?.id === server.id" class="server-option-check">当前</span>
+                      <span v-if="registry.currentServer?.id === server.id" class="server-option-check">{{ t('mediaServer.current') }}</span>
                     </div>
                   </a-doption>
                 </template>
@@ -163,7 +163,7 @@
 
             <div v-else-if="content.homeError" class="home-error">
               <div class="home-error-text">{{ content.homeError }}</div>
-              <a-button type="primary" @click="loadCurrentServerHome(true)">重试</a-button>
+              <a-button type="primary" @click="loadCurrentServerHome(true)">{{ t('mediaServer.retry') }}</a-button>
             </div>
 
             <template v-else>
@@ -180,26 +180,26 @@
 
                 <MediaServerPosterRow
                   v-else-if="section.kind === 'nextup' && (currentHome.nextUp.length > 0 || currentHomeSectionLoading.nextUp || currentHomeSectionError.nextUp)"
-                  title="下一集"
+                  :title="t('mediaServer.nextUp')"
                   :items="currentHome.nextUp as MediaServerLibraryNode[]"
                   :loading="currentHomeSectionLoading.nextUp"
                   :error-text="currentHomeSectionError.nextUp"
                   :poster-type="homePreferences.nextUpPosterType"
                   :show-poster-labels="homePreferences.showPosterLabels"
                   :enable-context-menu="true"
-                  :see-all-label="`查看全部 (${currentHome.nextUpTotal || currentHome.nextUp.length})`"
+                  :see-all-label="t('mediaServer.seeAll', { count: currentHome.nextUpTotal || currentHome.nextUp.length })"
                   heading-mode="parent-or-title"
                   subtitle-mode="year-only"
                   @select="handleLibraryItemClick($event.id, $event.title, $event)"
                   @play="playHomeMediaItem"
                   @action="handleHomeMediaAction"
-                  @see-all="openHomeCollection('nextup', '下一集')"
+                  @see-all="openHomeCollection('nextup', t('mediaServer.nextUp'))"
                   @retry="retryHomeSection('nextup')"
                 />
 
                 <MediaServerPosterRow
                   v-else-if="section.kind === 'latest' && homePreferences.showRecentlyAdded && (currentHome.latest.length > 0 || currentHomeSectionLoading.latest || currentHomeSectionError.latest)"
-                  title="最近添加"
+                  :title="t('mediaServer.recentlyAdded')"
                   :items="currentHome.latest as MediaServerLibraryNode[]"
                   :loading="currentHomeSectionLoading.latest"
                   :error-text="currentHomeSectionError.latest"
@@ -207,12 +207,12 @@
                   :show-poster-labels="homePreferences.showPosterLabels"
                   :enable-context-menu="true"
                   :show-top-overlay="true"
-                  :see-all-label="`查看全部 (${currentHome.latestTotal || currentHome.latest.length})`"
+                  :see-all-label="t('mediaServer.seeAll', { count: currentHome.latestTotal || currentHome.latest.length })"
                   subtitle-mode="year-only"
                   @select="handleLibraryItemClick($event.id, $event.title, $event)"
                   @play="playHomeMediaItem"
                   @action="handleHomeMediaAction"
-                  @see-all="openHomeCollection('latest', '最近添加')"
+                  @see-all="openHomeCollection('latest', t('mediaServer.recentlyAdded'))"
                   @retry="retryHomeSection('latest')"
                 />
 
@@ -226,7 +226,7 @@
                   :show-poster-labels="homePreferences.showPosterLabels"
                   :enable-context-menu="true"
                   :show-top-overlay="true"
-                  :see-all-label="`查看全部 (${section.library.total || section.library.items.length})`"
+                  :see-all-label="t('mediaServer.seeAll', { count: section.library.total || section.library.items.length })"
                   subtitle-mode="year-only"
                   @select="handleLibraryItemClick($event.id, $event.title, $event)"
                   @play="playHomeMediaItem"
@@ -253,7 +253,7 @@
             <a-input-search
               v-model="searchText"
               class="search-input search-input-hero"
-              placeholder="搜索电影、电视剧、人物、合集"
+              :placeholder="t('mediaServer.searchPlaceholder')"
               allow-clear
               @search="handleSearch"
               @press-enter="handleSearch"
@@ -261,19 +261,19 @@
 
             <div v-if="normalizedSearchQuery && content.loadingSearch" class="home-loading search-feedback-card">
               <a-spin size="large" />
-              <span>正在搜索“{{ normalizedSearchQuery }}”...</span>
+              <span>{{ t('mediaServer.searchingFor', { query: normalizedSearchQuery }) }}</span>
             </div>
 
             <div v-else-if="normalizedSearchQuery && content.searchError" class="home-error search-feedback-card">
               <div class="home-error-text">{{ content.searchError }}</div>
-              <a-button type="primary" @click="loadCurrentSearch(true)">重试</a-button>
+              <a-button type="primary" @click="loadCurrentSearch(true)">{{ t('mediaServer.retry') }}</a-button>
             </div>
 
             <template v-else-if="normalizedSearchQuery">
               <div v-if="currentSearch.items.length > 0" class="search-result-stack">
                 <MediaServerPosterRow
                   v-if="searchSeriesItems.length > 0"
-                  title="电视剧"
+                  :title="t('mediaServer.series')"
                   :items="searchSeriesItems"
                   poster-type="portrait"
                   :show-see-all="false"
@@ -282,7 +282,7 @@
                 />
                 <MediaServerPosterRow
                   v-if="searchMovieItems.length > 0"
-                  title="电影"
+                  :title="t('mediaServer.movies')"
                   :items="searchMovieItems"
                   poster-type="portrait"
                   :show-see-all="false"
@@ -291,7 +291,7 @@
                 />
                 <MediaServerPosterRow
                   v-if="searchEpisodeItems.length > 0"
-                  title="剧集"
+                  :title="t('mediaServer.episodes')"
                   :items="searchEpisodeItems"
                   poster-type="landscape"
                   :show-see-all="false"
@@ -301,7 +301,7 @@
                 />
                 <MediaServerPosterRow
                   v-if="searchPersonItems.length > 0"
-                  title="人物"
+                  :title="t('mediaServer.people')"
                   :items="searchPersonItems"
                   poster-type="portrait"
                   :show-see-all="false"
@@ -309,21 +309,21 @@
                   @select="handleSearchItemSelect"
                 />
               </div>
-              <div v-else class="empty-placeholder">没有找到“{{ normalizedSearchQuery }}”相关内容</div>
+              <div v-else class="empty-placeholder">{{ t('mediaServer.noSearchResults', { query: normalizedSearchQuery }) }}</div>
             </template>
 
             <template v-else>
               <div v-if="content.loadingSearchSuggestions" class="home-loading search-feedback-card">
                 <a-spin size="large" />
-                <span>正在加载推荐剧集...</span>
+                <span>{{ t('mediaServer.loadingRecommendations') }}</span>
               </div>
               <div v-else-if="content.searchSuggestionsError" class="home-error search-feedback-card">
                 <div class="home-error-text">{{ content.searchSuggestionsError }}</div>
-                <a-button type="primary" @click="loadCurrentSearchSuggestions(true)">重试</a-button>
+                <a-button type="primary" @click="loadCurrentSearchSuggestions(true)">{{ t('mediaServer.retry') }}</a-button>
               </div>
               <MediaServerPosterRow
                 v-else-if="searchSuggestionItems.length > 0"
-                title="推荐剧集"
+                :title="t('mediaServer.recommendedEpisodes')"
                 :items="searchSuggestionItems"
                 poster-type="portrait"
                 :show-see-all="false"
@@ -332,7 +332,7 @@
               />
               <div v-else class="empty-placeholder search-empty-state">
                 <IconFont name="iconsearch" />
-                <span>暂时还没有可推荐的剧集</span>
+                <span>{{ t('mediaServer.noRecommendations') }}</span>
               </div>
             </template>
           </div>
@@ -346,17 +346,17 @@
                 <span>{{ currentPageTitle }}</span>
               </button>
               <div v-if="currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page'" class="listing-page-actions listing-display-toggle view-toggle-pill">
-                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'grid' }" title="网格视图" @click="setCurrentListingBrowseMode('grid')">
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'grid' }" :title="t('mediaServer.gridView')" @click="setCurrentListingBrowseMode('grid')">
                   <IconFont name="iconfangkuang" />
                 </button>
-                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'list' }" title="列表视图" @click="setCurrentListingBrowseMode('list')">
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'list' }" :title="t('mediaServer.listView')" @click="setCurrentListingBrowseMode('list')">
                   <IconFont name="iconlist" />
                 </button>
                 <span class="view-toggle-divider" />
-                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'portrait' }" title="竖版海报" @click="setCurrentListingPosterType('portrait')">
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'portrait' }" :title="t('mediaServer.portraitPoster')" @click="setCurrentListingPosterType('portrait')">
                   <IconFont name="iconxiaotumoshi" />
                 </button>
-                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'landscape' }" title="横版海报" @click="setCurrentListingPosterType('landscape')">
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'landscape' }" :title="t('mediaServer.landscapePoster')" @click="setCurrentListingPosterType('landscape')">
                   <IconFont name="iconfangkuang" />
                 </button>
               </div>
@@ -368,7 +368,7 @@
 
             <div v-else-if="currentLibraryError && currentLibraryItems.length === 0" class="home-error">
               <div class="home-error-text">{{ currentLibraryError }}</div>
-              <a-button type="primary" @click="loadCurrentLibrary(true)">重试</a-button>
+              <a-button type="primary" @click="loadCurrentLibrary(true)">{{ t('mediaServer.retry') }}</a-button>
             </div>
 
             <template v-else>
@@ -421,22 +421,22 @@
                         </span>
                       </div>
                       <p class="library-list-overview" :class="{ 'is-empty': !getListingOverview(item) }">
-                        {{ getListingOverview(item) || '暂无简介' }}
+                        {{ getListingOverview(item) || t('mediaServer.noOverview') }}
                       </p>
                     </div>
                   </template>
                 </button>
               </div>
-              <div v-if="currentLibraryItems.length === 0" class="empty-placeholder">当前媒体库下还没有内容</div>
+              <div v-if="currentLibraryItems.length === 0" class="empty-placeholder">{{ t('mediaServer.emptyLibrary') }}</div>
               <div v-else-if="(currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page') && currentLibraryPageLoading" class="home-loading collection-loading-inline">
                 <a-spin />
-                <span>正在加载更多内容...</span>
+                <span>{{ t('mediaServer.loadingMore') }}</span>
               </div>
               <div v-else-if="(currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page') && currentLibraryError" class="home-error inline-home-error">
                 <div class="home-error-text">{{ currentLibraryError }}</div>
-                <a-button type="primary" @click="loadCurrentLibrary(false)">重试</a-button>
+                <a-button type="primary" @click="loadCurrentLibrary(false)">{{ t('mediaServer.retry') }}</a-button>
               </div>
-              <div v-else-if="(currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page') && !currentPagedLibrary.hasNextPage" class="empty-placeholder">已经到底了</div>
+              <div v-else-if="(currentRoute.kind === 'library-page' || currentRoute.kind === 'genre-page' || currentRoute.kind === 'studio-page') && !currentPagedLibrary.hasNextPage" class="empty-placeholder">{{ t('mediaServer.endReached') }}</div>
             </template>
           </div>
         </template>
@@ -449,17 +449,17 @@
                 <span>{{ currentPageTitle }}</span>
               </button>
               <div class="listing-page-actions listing-display-toggle view-toggle-pill">
-                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'grid' }" title="网格视图" @click="setCurrentListingBrowseMode('grid')">
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'grid' }" :title="t('mediaServer.gridView')" @click="setCurrentListingBrowseMode('grid')">
                   <IconFont name="iconfangkuang" />
                 </button>
-                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'list' }" title="列表视图" @click="setCurrentListingBrowseMode('list')">
+                <button class="view-toggle-seg" :class="{ active: currentListingBrowseMode === 'list' }" :title="t('mediaServer.listView')" @click="setCurrentListingBrowseMode('list')">
                   <IconFont name="iconlist" />
                 </button>
                 <span class="view-toggle-divider" />
-                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'portrait' }" title="竖版海报" @click="setCurrentListingPosterType('portrait')">
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'portrait' }" :title="t('mediaServer.portraitPoster')" @click="setCurrentListingPosterType('portrait')">
                   <IconFont name="iconxiaotumoshi" />
                 </button>
-                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'landscape' }" title="横版海报" @click="setCurrentListingPosterType('landscape')">
+                <button class="view-toggle-seg" :class="{ active: currentListingPosterType === 'landscape' }" :title="t('mediaServer.landscapePoster')" @click="setCurrentListingPosterType('landscape')">
                   <IconFont name="iconfangkuang" />
                 </button>
               </div>
@@ -515,7 +515,7 @@
                       </span>
                     </div>
                     <p class="library-list-overview" :class="{ 'is-empty': !getListingOverview(item) }">
-                      {{ getListingOverview(item) || '暂无简介' }}
+                      {{ getListingOverview(item) || t('mediaServer.noOverview') }}
                     </p>
                   </div>
                 </template>
@@ -523,18 +523,18 @@
             </div>
             <div v-if="currentCollectionError && currentCollectionItems.length === 0" class="home-error inline-home-error">
               <div class="home-error-text">{{ currentCollectionError }}</div>
-              <a-button type="primary" @click="loadCurrentCollection(true)">重试</a-button>
+              <a-button type="primary" @click="loadCurrentCollection(true)">{{ t('mediaServer.retry') }}</a-button>
             </div>
-            <div v-else-if="currentCollectionItems.length === 0" class="empty-placeholder">当前列表还没有内容</div>
+            <div v-else-if="currentCollectionItems.length === 0" class="empty-placeholder">{{ t('mediaServer.emptyLibrary') }}</div>
             <div v-else-if="currentCollectionLoading" class="home-loading collection-loading-inline">
               <a-spin />
-              <span>正在加载更多内容...</span>
+              <span>{{ t('mediaServer.loadingMore') }}</span>
             </div>
             <div v-else-if="currentCollectionError" class="home-error inline-home-error">
               <div class="home-error-text">{{ currentCollectionError }}</div>
-              <a-button type="primary" @click="loadCurrentCollection(false)">重试</a-button>
+              <a-button type="primary" @click="loadCurrentCollection(false)">{{ t('mediaServer.retry') }}</a-button>
             </div>
-            <div v-else-if="!currentCollection.hasNextPage" class="empty-placeholder">已经到底了</div>
+            <div v-else-if="!currentCollection.hasNextPage" class="empty-placeholder">{{ t('mediaServer.endReached') }}</div>
           </div>
         </template>
 
@@ -548,7 +548,7 @@
 
             <div v-else-if="showDetailErrorState" class="home-error">
               <div class="home-error-text">{{ content.detailError }}</div>
-              <a-button type="primary" @click="loadCurrentDetail(true)">重试</a-button>
+              <a-button type="primary" @click="loadCurrentDetail(true)">{{ t('mediaServer.retry') }}</a-button>
             </div>
             <template v-else-if="currentDetail && currentRoute.kind === 'person-page'">
               <div class="person-shell">
@@ -638,7 +638,7 @@
                         class="person-section-more"
                         @click="openPersonSection(section)"
                       >
-                        查看所有
+                        {{ t('mediaServer.seeAllPlain') }}
                         <IconFont name="iconarrow-right-2-icon" />
                       </button>
                     </div>
@@ -662,7 +662,7 @@
                         </div>
                         <div class="person-rail-kicker">{{ item.parentTitle || section.title }}</div>
                         <div class="person-rail-title person-rail-title-episode">{{ detailEpisodeTitle(item) }}</div>
-                        <div class="person-rail-overview">{{ item.overview || '无简介' }}</div>
+                        <div class="person-rail-overview">{{ item.overview || t('mediaServer.noOverview') }}</div>
                       </button>
                     </div>
 
@@ -726,7 +726,7 @@
                     <div class="detail-section-header person-section-header">
                       <h4>推荐</h4>
                     </div>
-                    <div v-if="detailSimilarLoading" class="detail-inline-state">正在加载推荐内容...</div>
+                    <div v-if="detailSimilarLoading" class="detail-inline-state">{{ t('mediaServer.loadingRecommendations') }}</div>
                     <div v-else-if="detailSimilarError" class="detail-inline-state">{{ detailSimilarError }}</div>
                     <div class="person-poster-rail">
                       <button
@@ -845,9 +845,9 @@
                             <p
                               class="detail-overview"
                               :class="{ 'is-empty': !currentOverviewText }"
-                              :title="currentOverviewText || '暂无简介'"
+                              :title="currentOverviewText || t('mediaServer.noOverview')"
                             >
-                              {{ currentOverviewText || '暂无简介' }}
+                              {{ currentOverviewText || t('mediaServer.noOverview') }}
                             </p>
                           </div>
                         </div>
@@ -893,7 +893,7 @@
                                     <span>{{ source.title }}</span>
                                     <small v-if="source.fileSubLabel">{{ source.fileSubLabel }}</small>
                                   </div>
-                                  <span v-if="selectedSourceOption?.id === source.id" class="detail-version-check">当前</span>
+                                  <span v-if="selectedSourceOption?.id === source.id" class="detail-version-check">{{ t('mediaServer.current') }}</span>
                                 </button>
                                 </div>
                               </template>
@@ -915,7 +915,7 @@
                           >
                             <button class="detail-secondary-download">
                               <span class="detail-play-glyph">↓</span>
-                              <span class="detail-play-label">下载</span>
+                              <span class="detail-play-label">{{ t('mediaServer.download') }}</span>
                             </button>
                             <template #content>
                               <div class="detail-version-menu">
@@ -936,7 +936,7 @@
                           </a-trigger>
                           <button v-else class="detail-secondary-download" @click="handleDetailDownload('current')">
                             <span class="detail-play-glyph">↓</span>
-                            <span class="detail-play-label">下载</span>
+                            <span class="detail-play-label">{{ t('mediaServer.download') }}</span>
                           </button>
                         </div>
                       </div>
@@ -1150,7 +1150,7 @@
 
         <a-modal
           v-model:visible="homeLibraryManagerVisible"
-          title="媒体管理"
+          :title="t('mediaServer.mediaManagement')"
           width="560px"
           class="home-library-manager-modal detail-media-modal"
           modal-class="home-library-manager-modal-shell detail-media-modal-shell"
@@ -1186,12 +1186,12 @@
                 </a-checkbox>
               </div>
               <div v-if="homeLibraryManagerDraft.length === 0" class="home-library-manager-empty">
-                当前服务器还没有可管理的媒体库
+                {{ t('mediaServer.emptyLibrary') }}
               </div>
             </div>
             <div class="home-library-manager-footer">
-              <a-button @click="cancelHomeLibraryManager">取消</a-button>
-              <a-button type="primary" @click="saveHomeLibraryManager">保存</a-button>
+              <a-button @click="cancelHomeLibraryManager">{{ t('common.cancel') }}</a-button>
+              <a-button type="primary" @click="saveHomeLibraryManager">{{ t('common.save') }}</a-button>
             </div>
           </div>
         </a-modal>
@@ -1235,9 +1235,9 @@
           <div class="server-icon-manager">
             <div class="server-icon-manager-header">
               <div>
-                <div class="server-icon-manager-title">媒体服务器图标</div>
+                <div class="server-icon-manager-title">{{ t('mediaServer.iconManagerTitle') }}</div>
                 <div class="server-icon-manager-subtitle">
-                  导入图标集 URL，选择图标后会保存到本地并应用到当前媒体服务器
+                  {{ t('mediaServer.iconManagerSubtitle') }}
                 </div>
               </div>
               <div class="server-icon-manager-actions">
@@ -1245,21 +1245,21 @@
                   v-model="serverIconSearchText"
                   allow-clear
                   class="server-icon-search"
-                  placeholder="搜索图标集或图标"
+                  :placeholder="t('mediaServer.searchIconPlaceholder')"
                 />
-                <a-button type="outline" @click="openAddServerIconSetModal">添加图标集 URL</a-button>
+                <a-button type="outline" @click="openAddServerIconSetModal">{{ t('mediaServer.addIconSetUrl') }}</a-button>
               </div>
             </div>
 
             <div class="server-icon-manager-layout">
               <div class="server-icon-set-column">
-                <div class="server-icon-column-heading">图标集</div>
+                <div class="server-icon-column-heading">{{ t('mediaServer.iconSets') }}</div>
                 <div v-if="serverIconSetsLoading" class="server-icon-empty">
                   <a-spin size="small" />
-                  <span>正在加载图标集…</span>
+                  <span>{{ t('mediaServer.loadingIconSets') }}</span>
                 </div>
                 <div v-else-if="filteredServerIconSets.length === 0" class="server-icon-empty">
-                  <span>{{ serverIconSetError || '还没有可用的图标集' }}</span>
+                  <span>{{ serverIconSetError || t('mediaServer.noIconSets') }}</span>
                 </div>
                 <div v-else class="server-icon-set-list">
                   <button
@@ -1272,11 +1272,11 @@
                   >
                     <div class="server-icon-set-preview">
                       <img v-if="iconSet.previewImageURL" :src="iconSet.previewImageURL" :alt="iconSet.name" />
-                      <div v-else class="server-icon-set-preview-empty">图标</div>
+                      <div v-else class="server-icon-set-preview-empty">{{ t('mediaServer.icon') }}</div>
                     </div>
                     <div class="server-icon-set-meta">
                       <strong>{{ iconSet.name }}</strong>
-                      <span>{{ iconSet.description || '没有描述' }}</span>
+                      <span>{{ iconSet.description || t('mediaServer.noDescription') }}</span>
                     </div>
                   </button>
                 </div>
@@ -1285,7 +1285,7 @@
               <div class="server-icon-grid-column">
                 <div class="server-icon-grid-header">
                   <div>
-                    <div class="server-icon-column-heading">{{ selectedServerIconSet?.name || '图标' }}</div>
+                    <div class="server-icon-column-heading">{{ selectedServerIconSet?.name || t('mediaServer.icon') }}</div>
                     <div v-if="selectedServerIconSet?.description" class="server-icon-grid-subtitle">
                       {{ selectedServerIconSet.description }}
                     </div>
@@ -1297,7 +1297,7 @@
                       size="small"
                       @click="refreshServerIconSet(selectedServerIconSet)"
                     >
-                      刷新图标集
+                      {{ t('mediaServer.refreshIconSet') }}
                     </a-button>
                     <a-button
                       v-if="selectedServerIconSet"
@@ -1306,15 +1306,15 @@
                       status="danger"
                       @click="removeServerIconSet(selectedServerIconSet.id)"
                     >
-                      删除图标集
+                      {{ t('mediaServer.deleteIconSet') }}
                     </a-button>
                   </div>
                 </div>
                 <div v-if="!selectedServerIconSet" class="server-icon-empty">
-                  <span>先在左侧选择一个图标集</span>
+                  <span>{{ t('mediaServer.selectIconSetFirst') }}</span>
                 </div>
                 <div v-else-if="filteredSelectedServerIcons.length === 0" class="server-icon-empty">
-                  <span>没有匹配的图标</span>
+                  <span>{{ t('mediaServer.noMatchedIcons') }}</span>
                 </div>
                 <div v-else class="server-icon-grid">
                   <button
@@ -1343,9 +1343,9 @@
           class="server-icon-add-modal"
         >
           <div class="server-icon-add-panel">
-            <div class="server-icon-manager-title">添加图标集 URL</div>
+            <div class="server-icon-manager-title">{{ t('mediaServer.addIconSetUrl') }}</div>
             <div class="server-icon-manager-subtitle">
-              远程 JSON 需要包含 `name`、`description` 和 `icons[{ name, url }]`
+              {{ t('mediaServer.iconSetJsonHint') }}
             </div>
             <a-input
               v-model="serverIconSetUrlInput"
@@ -1355,8 +1355,8 @@
               @press-enter="submitServerIconSetUrl"
             />
             <div class="server-icon-add-footer">
-              <a-button @click="addServerIconSetVisible = false">取消</a-button>
-              <a-button type="primary" :loading="serverIconAdding" @click="submitServerIconSetUrl">导入图标集</a-button>
+              <a-button @click="addServerIconSetVisible = false">{{ t('common.cancel') }}</a-button>
+              <a-button type="primary" :loading="serverIconAdding" @click="submitServerIconSetUrl">{{ t('mediaServer.importIconSet') }}</a-button>
             </div>
           </div>
         </a-modal>
@@ -1388,6 +1388,7 @@ import type { MediaServerCardItem, MediaServerHomeLibrarySection, MediaServerIte
 import useMediaServerHomePreferencesStore, { type MediaServerPosterType } from '../store/mediaServerHomePreferences'
 import useSettingStore from '../setting/settingstore'
 import DownDAL from '../down/DownDAL'
+import { t } from '../i18n'
 
 const registry = useMediaServerRegistryStore()
 const wrapCacheUrl = (url: string): string => toMsCacheUrl(registry.currentServer?.id, url)

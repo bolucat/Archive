@@ -20,6 +20,7 @@ import type { ITokenInfo } from '../user/userstore'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import { getMediaServerMusicTracks } from '../media-server/contentGateway'
 import type { MediaServerMusicTrack } from '../types/mediaServerContent'
+import { t as tt } from '../i18n'
 
 const musicStore = useMusicLibraryStore()
 const appStore = useAppStore()
@@ -51,11 +52,11 @@ const mediaServerTracks = ref<MediaServerMusicTrack[]>([])
 const mediaServerLoading = ref(false)
 const mediaServerError = ref('')
 
-const lastScanText = computed(() => musicStore.lastScanAt ? formatTime(musicStore.lastScanAt) : '尚未扫描')
+const lastScanText = computed(() => musicStore.lastScanAt ? formatTime(musicStore.lastScanAt) : tt('music.notScannedYet'))
 const heroTracks = computed(() => musicStore.recentlyAdded.slice(0, 5))
 const heroTrack = computed(() => heroTracks.value[0] || musicStore.tracks[0])
-const homeSubtitle = computed(() => `${musicStore.totalCount} 首网盘音乐 · ${musicStore.byArtist.length} 位艺人 · ${musicStore.byAlbum.length} 张专辑`)
-const mediaServerSubtitle = computed(() => `${mediaServerTracks.value.length} 首服务器音乐 · ${mediaServerRegistry.servers.length} 台媒体服务器`)
+const homeSubtitle = computed(() => `${tt('music.cloudMusicCount', { count: musicStore.totalCount })} · ${tt('music.artistCount', { count: musicStore.byArtist.length })} · ${tt('music.albumCount', { count: musicStore.byAlbum.length })}`)
+const mediaServerSubtitle = computed(() => `${tt('music.serverMusicCount', { count: mediaServerTracks.value.length })} · ${tt('music.mediaServerCount', { count: mediaServerRegistry.servers.length })}`)
 
 const filteredAll = computed<IMusicTrack[]>(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -121,7 +122,7 @@ const scanAccountOptions = computed(() => {
 })
 
 function formatTime(ts: number): string {
-  if (!ts) return '从未扫描'
+  if (!ts) return tt('music.neverScanned')
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
@@ -229,7 +230,7 @@ function shuffleTracks<T>(items: T[]): T[] {
 
 function playWeatherRadio() {
   if (!musicStore.tracks.length) {
-    message.warning('音乐库为空，请先扫描网盘音乐')
+    message.warning(tt('music.libraryEmptyScanFirst'))
     return
   }
   const mood = getWeatherRadioMood(weather.value)
@@ -238,13 +239,13 @@ function playWeatherRadio() {
     return mood.keywords.test(name)
   })
   const picks = shuffleTracks(pool.length ? pool : musicStore.tracks).slice(0, 30)
-  message.success(weather.value ? `${mood.label} · ${weather.value.city} ${weather.value.condition}` : `${mood.label} 已生成`)
+  message.success(weather.value ? `${mood.label} · ${weather.value.city} ${weather.value.condition}` : mood.label)
   playPageTracks(picks.map(trackToPlaylist))
 }
 
 function playLocalPlaylist(list: LocalPlaylist) {
   if (!list.tracks.length) {
-    message.warning('歌单为空')
+    message.warning(tt('music.playlistEmpty'))
     return
   }
   playPageTracks(list.tracks)
@@ -252,7 +253,7 @@ function playLocalPlaylist(list: LocalPlaylist) {
 
 function addLocalPlaylistToQueue(tracks: IPageMusicTrack[]) {
   if (!tracks.length) {
-    message.warning('歌单为空')
+    message.warning(tt('music.playlistEmpty'))
     return
   }
   playPageTracks(tracks)
@@ -266,7 +267,7 @@ function importLocalSongs() {
   input.onchange = () => {
     const files = Array.from(input.files || []).filter((file) => file.type.startsWith('audio/') || /\.(mp3|flac|wav|m4a|aac|ogg|opus)$/i.test(file.name))
     if (!files.length) {
-      message.warning('请选择音频文件')
+      message.warning(tt('music.selectAudioFiles'))
       return
     }
     const tracks: IPageMusicTrack[] = files.map((file, index) => ({
@@ -280,12 +281,12 @@ function importLocalSongs() {
       category: 'audio',
       icon: '',
       thumbnail: '',
-      description: '本地临时歌曲',
+      description: tt('music.localTempSong'),
       encType: '',
       password: '',
       local_url: URL.createObjectURL(file)
     }))
-    message.success(`已导入 ${tracks.length} 首本地歌曲，仅用于本次播放`)
+    message.success(tt('music.importLocalSuccess', { count: tracks.length }))
     playPageTracks(tracks)
   }
   input.click()
@@ -302,7 +303,7 @@ async function refreshMediaServerMusic() {
   const servers = mediaServerRegistry.servers.filter((server) => !!server.accessToken && !!server.baseUrl)
   if (!servers.length) {
     mediaServerTracks.value = []
-    mediaServerError.value = '还没有可用的媒体服务器，请先在“媒体服务器”中登录。'
+    mediaServerError.value = tt('music.noMediaServer')
     return
   }
   mediaServerLoading.value = true
@@ -316,7 +317,7 @@ async function refreshMediaServerMusic() {
       else failures.push(servers[index].name)
     })
     mediaServerTracks.value = tracks.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'))
-    if (failures.length) mediaServerError.value = `${failures.join('、')} 的音乐库暂时无法读取`
+    if (failures.length) mediaServerError.value = tt('music.mediaServerReadFailed', { names: failures.join(', ') })
   } finally {
     mediaServerLoading.value = false
   }
@@ -327,40 +328,40 @@ function openGroupDetail(type: 'artist' | 'album' | 'folder', title: string, ite
 }
 
 function groupTypeLabel(type: 'artist' | 'album' | 'folder'): string {
-  if (type === 'artist') return '艺人'
-  if (type === 'album') return '专辑'
-  return '文件夹'
+  if (type === 'artist') return tt('music.artist')
+  if (type === 'album') return tt('music.album')
+  return tt('common.folder')
 }
 
 function driveLabel(driveId: string, userId = ''): string {
-  if (driveId === 'cloud123') return '123 网盘'
-  if (driveId === 'drive115') return '115 网盘'
-  if (driveId === 'cloud139') return '139 云盘'
-  if (driveId === 'cloud189') return '天翼云盘'
-  if (driveId === 'baidu') return '百度网盘'
+  if (driveId === 'cloud123') return tt('drive.cloud123')
+  if (driveId === 'drive115') return tt('drive.drive115')
+  if (driveId === 'cloud139') return tt('drive.cloud139')
+  if (driveId === 'cloud189') return tt('drive.cloud189')
+  if (driveId === 'baidu') return tt('drive.baiduFull')
   if (driveId === 'pikpak') return 'PikPak'
-  if (driveId === 'quark') return '夸克网盘'
+  if (driveId === 'quark') return tt('drive.quarkFull')
   if (driveId === 'dropbox') return 'Dropbox'
   if (driveId === 'onedrive') return 'OneDrive'
   if (driveId === 'box') return 'Box'
-  if (driveId.includes('resource')) return '阿里云盘资源盘'
-  if (driveId.includes('backup')) return '阿里云盘备份盘'
-  if (userId.startsWith('aliyun_') || driveId) return '阿里云盘'
-  return '未知网盘'
+  if (driveId.includes('resource')) return `${tt('drive.aliyun')} ${tt('drive.resource')}`
+  if (driveId.includes('backup')) return `${tt('drive.aliyun')} ${tt('drive.backup')}`
+  if (userId.startsWith('aliyun_') || driveId) return tt('drive.aliyun')
+  return tt('music.unknownDrive')
 }
 
 function driveLabelFromToken(token: ITokenInfo): string {
-  if (token.tokenfrom === 'cloud123') return '123 网盘'
-  if (token.tokenfrom === '115') return '115 网盘'
-  if (token.tokenfrom === '139') return '139 云盘'
-  if (token.tokenfrom === '189') return '天翼云盘'
-  if (token.tokenfrom === 'baidu') return '百度网盘'
+  if (token.tokenfrom === 'cloud123') return tt('drive.cloud123')
+  if (token.tokenfrom === '115') return tt('drive.drive115')
+  if (token.tokenfrom === '139') return tt('drive.cloud139')
+  if (token.tokenfrom === '189') return tt('drive.cloud189')
+  if (token.tokenfrom === 'baidu') return tt('drive.baiduFull')
   if (token.tokenfrom === 'pikpak') return 'PikPak'
-  if (token.tokenfrom === 'quark') return '夸克网盘'
+  if (token.tokenfrom === 'quark') return tt('drive.quarkFull')
   if (token.tokenfrom === 'dropbox') return 'Dropbox'
   if (token.tokenfrom === 'onedrive') return 'OneDrive'
   if (token.tokenfrom === 'box') return 'Box'
-  return '阿里云盘'
+  return tt('drive.aliyun')
 }
 
 function scanAccountLabel(token: ITokenInfo): string {
@@ -368,7 +369,7 @@ function scanAccountLabel(token: ITokenInfo): string {
 }
 
 function userLabel(userId: string): string {
-  return userLabelMap.value[userId] || userId || '未知账号'
+  return userLabelMap.value[userId] || userId || tt('music.unknownAccount')
 }
 
 function sourceLabel(t?: IMusicTrack): string {
@@ -423,7 +424,7 @@ function togglePodcastFolder(folder: PodcastFolder) {
   hidden.add(folder.key)
   podcastHiddenKeys.value = Array.from(hidden)
   localStorage.setItem('mr.podcast.hidden', JSON.stringify(podcastHiddenKeys.value))
-  message.success(`已从播客面板隐藏「${folder.name}」`)
+  message.success(tt('music.hiddenFromPodcast', { name: folder.name }))
 }
 
 function toggleContextFolderPodcast() {
@@ -434,11 +435,11 @@ function toggleContextFolderPodcast() {
   const hidden = new Set(podcastHiddenKeys.value)
   if (manual.has(g.key)) {
     manual.delete(g.key)
-    message.success(`已取消播客标记「${g.name}」`)
+    message.success(tt('music.unmarkedPodcast', { name: g.name }))
   } else {
     manual.add(g.key)
     hidden.delete(g.key)
-    message.success(`已标记为播客「${g.name}」`)
+    message.success(tt('music.markedPodcast', { name: g.name }))
   }
   podcastManualKeys.value = Array.from(manual)
   podcastHiddenKeys.value = Array.from(hidden)
@@ -450,7 +451,7 @@ function restoreHiddenPodcasts() {
   if (!podcastHiddenKeys.value.length) return
   podcastHiddenKeys.value = []
   localStorage.setItem('mr.podcast.hidden', JSON.stringify([]))
-  message.success('已恢复隐藏的播客候选')
+  message.success(tt('music.restoredPodcastCandidates'))
 }
 
 function normalizeExternalPodcastUrl(url: string): string {
@@ -462,11 +463,11 @@ function normalizeExternalPodcastUrl(url: string): string {
 function addExternalPodcastFeed(feed: { title: string; url: string }) {
   const url = normalizeExternalPodcastUrl(feed.url)
   if (!/^https?:\/\/[^/\s]+/i.test(url)) {
-    message.warning('请输入有效的播客链接')
+    message.warning(tt('music.enterValidPodcastLink'))
     return
   }
   if (externalPodcastFeeds.value.some((item) => item.url === url)) {
-    message.warning('该播客链接已导入')
+    message.warning(tt('music.podcastLinkImported'))
     return
   }
   const title = feed.title.trim() || new URL(url).hostname
@@ -478,13 +479,13 @@ function addExternalPodcastFeed(feed: { title: string; url: string }) {
   }
   externalPodcastFeeds.value = [next, ...externalPodcastFeeds.value].slice(0, 24)
   localStorage.setItem('mr.podcast.externalFeeds', JSON.stringify(externalPodcastFeeds.value))
-  message.success(`已导入播客链接「${title}」`)
+  message.success(tt('music.importedPodcastLink', { title }))
 }
 
 function removeExternalPodcastFeed(feed: ExternalPodcastFeed) {
   externalPodcastFeeds.value = externalPodcastFeeds.value.filter((item) => item.id !== feed.id)
   localStorage.setItem('mr.podcast.externalFeeds', JSON.stringify(externalPodcastFeeds.value))
-  message.success(`已删除播客链接「${feed.title || feed.url}」`)
+  message.success(tt('music.deletedPodcastLink', { title: feed.title || feed.url }))
 }
 
 function openExternalPodcastFeed(feed: ExternalPodcastFeed) {
@@ -513,14 +514,14 @@ async function deleteFolderGroups(groups: MusicFolderGroup[]) {
   }
   if (!uniq.size) return
   const groupCount = groups.length
-  const ok = window.confirm(`确定删除 ${groupCount} 个文件夹的音乐库记录？将移除 ${trackCount} 首已刮削音乐，不会删除网盘文件。`)
+  const ok = window.confirm(tt('music.confirmDeleteFolderRecords', { groupCount, trackCount }))
   if (!ok) return
   await musicStore.deleteTracksByIds(Array.from(uniq))
   selectedFolderKeys.value = selectedFolderKeys.value.filter((key) => musicStore.byFolder.some((g) => g.key === key))
   if (groupDetail.value?.type === 'folder' && groups.some((g) => g.items.some((t) => groupDetail.value?.items.some((gt) => gt.id === t.id)))) {
     groupDetail.value = null
   }
-  message.success(`已删除 ${trackCount} 首音乐库记录`)
+  message.success(tt('music.deletedLibraryRecords', { count: trackCount }))
 }
 
 function deleteCurrentFolderFromMenu() {
@@ -549,23 +550,23 @@ function closeGroupDetail() {
 
 async function startScan() {
   if (musicStore.isScanning) {
-    message.info('扫描进行中…')
+    message.info(tt('music.scanInProgress'))
     return
   }
   if (!selectedScanUserIds.value.length) {
-    message.warning('请选择要扫描的网盘')
+    message.warning(tt('music.selectDriveToScan'))
     return
   }
-  message.info('开始扫描，将在后台进行')
+  message.info(tt('music.scanStarted'))
   try {
     await MusicScanner.getInstance().scanAllUsers({
       force: false,
       userIdAllowList: new Set(selectedScanUserIds.value)
     })
-    message.success(`扫描完成，共 ${musicStore.totalCount} 首`)
+    message.success(tt('music.scanCompleted', { count: musicStore.totalCount }))
     scheduleEnrich(800)
   } catch (e) {
-    message.error('扫描失败：' + (e as Error).message)
+    message.error(tt('music.scanFailed', { message: (e as Error).message }))
   }
 }
 
@@ -575,7 +576,7 @@ function stopScan() {
 
 async function clearLibrary() {
   await musicStore.clearAll()
-  message.success('音乐库已清空')
+  message.success(tt('music.libraryCleared'))
 }
 
 function selectTab(t: MusicSubTab) {
@@ -708,7 +709,7 @@ onMounted(async () => {
       <div class="aml-content-area">
         <!-- Header -->
         <TrialBanner v-if="musicStore.totalCount > 0" :track-count="musicStore.totalCount" :is-scanning="musicStore.isScanning" :last-scan-at="musicStore.lastScanAt" @import-local-songs="importLocalSongs" @start-scan="startScan" />
-        <button v-if="weather && musicStore.subTab === 'home'" class="aml-weather-chip" title="播放天气电台" @click="playWeatherRadio">
+        <button v-if="weather && musicStore.subTab === 'home'" class="aml-weather-chip" :title="tt('music.playWeatherRadio')" @click="playWeatherRadio">
           <span class="aml-weather-icon">{{ weather.icon }}</span>
           <span class="aml-weather-temp">{{ weather.temperature }}°</span>
           <span class="aml-weather-city">{{ weather.city }}</span>
@@ -721,20 +722,20 @@ onMounted(async () => {
             <span v-if="groupDetail" class="aml-back" @click="closeGroupDetail">
               <ArrowLeft :size="18" :stroke-width="1.5" />
             </span>
-            <h2 class="aml-title">{{ groupDetail ? groupDetail.title : musicStore.subTab === 'server' ? '服务器音乐' : '音乐' }}</h2>
-            <span v-if="groupDetail" class="aml-title-sub">{{ groupTypeLabel(groupDetail.type) }} · {{ groupDetail.items.length }} 首</span>
+            <h2 class="aml-title">{{ groupDetail ? groupDetail.title : musicStore.subTab === 'server' ? tt('music.serverMusic') : tt('music.music') }}</h2>
+            <span v-if="groupDetail" class="aml-title-sub">{{ groupTypeLabel(groupDetail.type) }} · {{ groupDetail.items.length }} {{ tt('music.tracksUnit') }}</span>
           </div>
           <div class="aml-header-right">
             <div class="aml-search-box">
               <Search :size="14" :stroke-width="1.5" class="aml-search-icon" />
-              <input v-model="searchQuery" placeholder="搜索资料库…" class="aml-search-input" />
+              <input v-model="searchQuery" :placeholder="tt('music.searchLibrary')" class="aml-search-input" />
               <button v-if="searchQuery" class="aml-search-clear" @click="searchQuery = ''">✕</button>
             </div>
             <a-button v-if="groupDetail" type="primary" size="small" @click="playFromList(groupDetail.items, groupDetail.items[0])">
-              <Play :size="14" :stroke-width="2" /> 播放
+              <Play :size="14" :stroke-width="2" /> {{ tt('music.play') }}
             </a-button>
             <a-button v-else-if="musicStore.subTab === 'server'" size="small" :loading="mediaServerLoading" @click="refreshMediaServerMusic">
-              <RefreshCw :size="14" :stroke-width="2" /> 刷新
+              <RefreshCw :size="14" :stroke-width="2" /> {{ tt('common.refresh') }}
             </a-button>
           </div>
         </div>
@@ -745,7 +746,7 @@ onMounted(async () => {
             <div class="aml-scan-fill"></div>
           </div>
           <span class="aml-scan-text">
-            {{ musicStore.scanLabel || '正在扫描…' }} · {{ musicStore.scanScanned }} 个文件 · 已收录 {{ musicStore.scanFound }} 首
+            {{ musicStore.scanLabel || tt('music.scanning') }} · {{ musicStore.scanScanned }} {{ tt('music.filesUnit') }} · {{ tt('music.indexed') }} {{ musicStore.scanFound }} {{ tt('music.tracksUnit') }}
           </span>
         </div>
 
@@ -768,7 +769,7 @@ onMounted(async () => {
                 </div>
                 <div class="aml-track-meta">
                   <div class="aml-track-title">{{ t.title || stripExt(t.file_name) }}</div>
-                  <div class="aml-track-artist">{{ t.artist || '未知艺人' }}<span v-if="t.album"> — {{ t.album }}</span></div>
+                  <div class="aml-track-artist">{{ t.artist || tt('music.unknownArtist') }}<span v-if="t.album"> — {{ t.album }}</span></div>
                 </div>
                 <div class="aml-track-source">{{ sourceLabel(t) }}</div>
               </div>
@@ -779,8 +780,8 @@ onMounted(async () => {
           <div v-else-if="musicStore.subTab === 'home'" class="aml-home">
             <div v-if="!musicStore.totalCount" class="aml-empty-state">
               <Music :size="56" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">资料库为空</div>
-              <div class="aml-empty-sub">选择左侧网盘，点击「开始扫描」收录音乐</div>
+              <div class="aml-empty-title">{{ tt('music.libraryEmpty') }}</div>
+              <div class="aml-empty-sub">{{ tt('music.libraryEmptyDesc') }}</div>
             </div>
             <template v-else>
               <section class="aml-home-hero mineradio-library">
@@ -789,14 +790,14 @@ onMounted(async () => {
                     <Sparkles :size="15" :stroke-width="1.7" />
                     BoxPlayer
                   </div>
-                  <h1>{{ heroTrack?.title || stripExt(heroTrack?.file_name || '网盘音乐') }}</h1>
+                  <h1>{{ heroTrack?.title || stripExt(heroTrack?.file_name || tt('music.cloudMusic')) }}</h1>
                   <p>{{ heroTrack?.artist || heroTrack?.album || homeSubtitle }}</p>
                   <div class="aml-home-actions">
                     <button class="aml-home-play" @click="playHeroTrack">
-                      <Play :size="18" :stroke-width="2" fill="currentColor" /> 播放
+                      <Play :size="18" :stroke-width="2" fill="currentColor" /> {{ tt('music.play') }}
                     </button>
                     <button class="aml-home-ghost" @click="musicStore.rerollRandom()">
-                      <RefreshCw :size="16" :stroke-width="1.6" /> 换一组
+                      <RefreshCw :size="16" :stroke-width="1.6" /> {{ tt('music.shuffleGroup') }}
                     </button>
                     <button v-if="weather" class="aml-home-ghost" @click="playWeatherRadio">
                       <Radio :size="16" :stroke-width="1.6" /> {{ weatherMood.label }}
@@ -819,7 +820,7 @@ onMounted(async () => {
 
               <section class="aml-hscroll-section aml-home-section-panel aml-home-tile-panel">
                 <div class="aml-home-section-head">
-                  <div class="aml-section-label">最近添加</div>
+                  <div class="aml-section-label">{{ tt('media.recentlyAdded') }}</div>
                   <div class="aml-home-section-note">RECENT CLOUD TRACKS</div>
                 </div>
                 <div class="aml-home-tile-row">
@@ -834,7 +835,7 @@ onMounted(async () => {
                       <img v-if="t.cover_url || t.thumbnail" :src="coverSource(t)" alt="" @load="debugCoverLoad(t, 'recently-added', $event)" @error="debugCoverError(t, 'recently-added', $event)" />
                     </span>
                     <span class="aml-home-tile-title">{{ t.title || stripExt(t.file_name) }}</span>
-                    <span class="aml-home-tile-sub">{{ t.artist || t.album || sourceLabel(t) || '未知艺人' }}</span>
+                    <span class="aml-home-tile-sub">{{ t.artist || t.album || sourceLabel(t) || tt('music.unknownArtist') }}</span>
                   </button>
                 </div>
               </section>
@@ -842,7 +843,7 @@ onMounted(async () => {
               <section class="aml-section aml-home-section-panel aml-home-card-panel">
                 <div class="aml-home-section-head">
                   <div class="aml-section-label">
-                    推荐
+                    {{ tt('music.recommended') }}
                     <button class="aml-reroll-btn" @click="musicStore.rerollRandom()">
                       <RefreshCw :size="13" :stroke-width="1.5" />
                     </button>
@@ -859,7 +860,7 @@ onMounted(async () => {
                   >
                     <span class="aml-home-card-label">{{ (t.ext || coverSourceType(t)).replace('.', '').toUpperCase() }}</span>
                     <span class="aml-home-card-title">{{ t.title || stripExt(t.file_name) }}</span>
-                    <span class="aml-home-card-sub">{{ t.artist || t.album || sourceLabel(t) || '未知艺人' }}</span>
+                    <span class="aml-home-card-sub">{{ t.artist || t.album || sourceLabel(t) || tt('music.unknownArtist') }}</span>
                     <span :class="['aml-home-card-art', coverSource(t) ? 'has-cover' : '']">
                       <img v-if="t.cover_url || t.thumbnail" :src="coverSource(t)" alt="" @load="debugCoverLoad(t, 'random-picks', $event)" @error="debugCoverError(t, 'random-picks', $event)" />
                     </span>
@@ -870,7 +871,7 @@ onMounted(async () => {
               <section class="aml-section aml-home-section-panel aml-home-track-panel">
                 <div class="aml-home-section-head">
                   <div class="aml-section-label">
-                    歌曲
+                    {{ tt('music.songs') }}
                   <button class="aml-reroll-btn" @click="musicStore.rerollRandom()">
                     <RefreshCw :size="13" :stroke-width="1.5" />
                   </button>
@@ -891,7 +892,7 @@ onMounted(async () => {
                     </span>
                     <span class="aml-home-song-main">
                       <span class="aml-home-song-title">{{ t.title || stripExt(t.file_name) }}</span>
-                      <span class="aml-home-song-sub">{{ t.artist || '未知艺人' }}<span v-if="t.album"> · {{ t.album }}</span></span>
+                      <span class="aml-home-song-sub">{{ t.artist || tt('music.unknownArtist') }}<span v-if="t.album"> · {{ t.album }}</span></span>
                     </span>
                     <span class="aml-home-song-source">{{ sourceLabel(t) }}</span>
                   </button>
@@ -905,12 +906,12 @@ onMounted(async () => {
             <div v-if="mediaServerError" class="aml-server-error">{{ mediaServerError }}</div>
             <div v-if="mediaServerLoading" class="aml-empty-state">
               <RefreshCw :size="38" :stroke-width="1.2" class="aml-empty-icon" />
-              <div class="aml-empty-title">正在读取媒体服务器音乐…</div>
+              <div class="aml-empty-title">{{ tt('music.loadingServerMusic') }}</div>
             </div>
             <div v-else-if="!filteredMediaServerTracks.length" class="aml-empty-state">
               <Music :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">暂无服务器音乐</div>
-              <div class="aml-empty-sub">请确认媒体服务器已登录且拥有音乐媒体库</div>
+              <div class="aml-empty-title">{{ tt('music.noServerMusic') }}</div>
+              <div class="aml-empty-sub">{{ tt('music.noServerMusicDesc') }}</div>
             </div>
             <div v-else class="aml-tracklist">
               <div v-for="(t, i) in filteredMediaServerTracks" :key="`${t.serverId}:${t.id}`" class="aml-track" @click="playMediaServerList(filteredMediaServerTracks, t)">
@@ -921,7 +922,7 @@ onMounted(async () => {
                 </div>
                 <div class="aml-track-meta">
                   <div class="aml-track-title">{{ t.title }}</div>
-                  <div class="aml-track-artist">{{ t.artist || '未知艺人' }}<span v-if="t.album"> — {{ t.album }}</span></div>
+                  <div class="aml-track-artist">{{ t.artist || tt('music.unknownArtist') }}<span v-if="t.album"> — {{ t.album }}</span></div>
                 </div>
                 <div class="aml-track-source">{{ t.serverName }} · {{ t.provider === 'plex' ? 'Plex' : t.provider === 'emby' ? 'Emby' : 'Jellyfin' }}</div>
               </div>
@@ -932,7 +933,7 @@ onMounted(async () => {
           <div v-else-if="musicStore.subTab === 'all'" class="aml-all-songs">
             <div v-if="!filteredAll.length" class="aml-empty-state">
               <ListMusic :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">暂无歌曲</div>
+              <div class="aml-empty-title">{{ tt('music.noSongs') }}</div>
             </div>
             <div v-else class="aml-tracklist">
               <div
@@ -948,7 +949,7 @@ onMounted(async () => {
                 </div>
                 <div class="aml-track-meta">
                   <div class="aml-track-title">{{ t.title || stripExt(t.file_name) }}</div>
-                  <div class="aml-track-artist">{{ t.artist || '未知艺人' }}</div>
+                  <div class="aml-track-artist">{{ t.artist || tt('music.unknownArtist') }}</div>
                 </div>
                 <div class="aml-track-album">{{ t.album || '' }}</div>
               </div>
@@ -959,7 +960,7 @@ onMounted(async () => {
           <div v-else-if="musicStore.subTab === 'artists'" class="aml-grid-view">
             <div v-if="!musicStore.byArtist.length" class="aml-empty-state">
               <Mic2 :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">暂无艺人</div>
+              <div class="aml-empty-title">{{ tt('music.noArtists') }}</div>
             </div>
             <div v-else class="aml-grid">
               <div
@@ -973,7 +974,7 @@ onMounted(async () => {
                   <User v-else :size="32" :stroke-width="1.5" />
                 </div>
                 <div class="aml-card-title">{{ g.artist }}</div>
-                <div class="aml-card-sub">{{ g.count }} 首</div>
+                <div class="aml-card-sub">{{ g.count }} {{ tt('music.tracksUnit') }}</div>
               </div>
             </div>
           </div>
@@ -982,7 +983,7 @@ onMounted(async () => {
           <div v-else-if="musicStore.subTab === 'albums'" class="aml-grid-view">
             <div v-if="!musicStore.byAlbum.length" class="aml-empty-state">
               <Disc3 :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">暂无专辑</div>
+              <div class="aml-empty-title">{{ tt('music.noAlbums') }}</div>
             </div>
             <div v-else class="aml-grid">
               <div
@@ -996,7 +997,7 @@ onMounted(async () => {
                   <Disc3 v-else :size="32" :stroke-width="1.5" />
                 </div>
                 <div class="aml-card-title">{{ g.album }}</div>
-                <div class="aml-card-sub">{{ g.count }} 首</div>
+                <div class="aml-card-sub">{{ g.count }} {{ tt('music.tracksUnit') }}</div>
               </div>
             </div>
           </div>
@@ -1005,7 +1006,7 @@ onMounted(async () => {
           <div v-else-if="musicStore.subTab === 'folders'" class="aml-grid-view">
             <div v-if="!musicStore.byFolder.length" class="aml-empty-state">
               <Folder :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">暂无文件夹</div>
+              <div class="aml-empty-title">{{ tt('music.noFolders') }}</div>
             </div>
             <div v-else class="aml-grid">
               <div
@@ -1022,7 +1023,7 @@ onMounted(async () => {
                   <Folder :size="36" :stroke-width="1.5" />
                 </div>
                 <div class="aml-card-title">{{ g.name }}</div>
-                <div class="aml-card-sub">{{ g.count }} 首 · {{ folderSourceLabel(g) }}</div>
+                <div class="aml-card-sub">{{ g.count }} {{ tt('music.tracksUnit') }} · {{ folderSourceLabel(g) }}</div>
               </div>
             </div>
           </div>
@@ -1031,8 +1032,8 @@ onMounted(async () => {
           <div v-else-if="musicStore.subTab === 'fav'" class="aml-fav-songs">
             <div v-if="!musicStore.favoritesTracks.length" class="aml-empty-state">
               <Heart :size="48" :stroke-width="1" class="aml-empty-icon" />
-              <div class="aml-empty-title">暂无收藏</div>
-              <div class="aml-empty-sub">在播放器页面点击心形收藏歌曲</div>
+              <div class="aml-empty-title">{{ tt('music.noFavorites') }}</div>
+              <div class="aml-empty-sub">{{ tt('music.noFavoritesDesc') }}</div>
             </div>
             <div v-else class="aml-tracklist">
               <div
@@ -1048,7 +1049,7 @@ onMounted(async () => {
                 </div>
                 <div class="aml-track-meta">
                   <div class="aml-track-title">{{ t.title || stripExt(t.file_name) }}</div>
-                  <div class="aml-track-artist">{{ t.artist || '未知艺人' }}</div>
+                  <div class="aml-track-artist">{{ t.artist || tt('music.unknownArtist') }}</div>
                 </div>
               </div>
             </div>
@@ -1088,14 +1089,14 @@ onMounted(async () => {
         <template #content>
           <div class="aml-folder-menu">
             <button class="aml-folder-menu-item" @click="toggleContextFolderSelected">
-              {{ folderContextSelected ? '取消选择' : '选择文件夹' }}
+              {{ folderContextSelected ? tt('transfer.cancelSelection') : tt('music.selectFolder') }}
             </button>
             <button class="aml-folder-menu-item" @click="toggleContextFolderPodcast">
-              {{ folderContextGroup && podcastManualKeys.includes(folderContextGroup.key) ? '取消播客标记' : '标记为播客' }}
+              {{ folderContextGroup && podcastManualKeys.includes(folderContextGroup.key) ? tt('music.unmarkPodcast') : tt('music.markAsPodcast') }}
             </button>
-            <button class="aml-folder-menu-item danger" @click="deleteCurrentFolderFromMenu">删除此文件夹记录</button>
+            <button class="aml-folder-menu-item danger" @click="deleteCurrentFolderFromMenu">{{ tt('music.deleteFolderRecord') }}</button>
             <button class="aml-folder-menu-item danger" :disabled="!selectedFolderGroups.length" @click="deleteSelectedFoldersFromMenu">
-              删除已选文件夹（{{ selectedFolderGroups.length }}）
+              {{ tt('music.deleteSelectedFolders') }}（{{ selectedFolderGroups.length }}）
             </button>
           </div>
         </template>
@@ -1108,6 +1109,8 @@ onMounted(async () => {
 /* ===== Mineradio Music Library ===== */
 
 .aml {
+  --music-ui-text: #fff;
+  --music-ui-muted: rgba(255,255,255,.78);
   --fc-bg: #08090b;
   --fc-paper: #0e1014;
   --fc-ink: #e8ecef;
@@ -1539,6 +1542,7 @@ onMounted(async () => {
   color: #07110f;
   background: linear-gradient(135deg, var(--fc-accent), var(--champagne));
   font: inherit;
+  font-size: 13px;
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 18px 42px rgba(0,245,212,.14);
@@ -1774,7 +1778,7 @@ onMounted(async () => {
   display: -webkit-box;
   overflow: hidden;
   color: rgba(255,255,255,.90);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 720;
   line-height: 1.28;
   -webkit-line-clamp: 2;
@@ -2462,17 +2466,35 @@ onMounted(async () => {
   &:disabled { opacity: 0.3; cursor: default; }
 }
 
+.aml-section-label,
+.aml-card-title,
+.aml-card-h-title,
+.aml-track-title,
+.aml-home-tile-title,
+.aml-home-card-title,
+.aml-home-song-title {
+  color: var(--music-ui-text);
+}
+
 </style>
 
 <style>
 body:not([arco-theme='dark']) .aml {
+  --music-ui-text: #111827;
+  --music-ui-muted: #374151;
   --fc-bg: var(--color-bg-1);
   --fc-paper: var(--color-bg-2);
   --fc-ink: var(--color-text-1);
   --fc-accent: rgb(var(--primary-6));
   --champagne: rgb(var(--primary-5));
-  color: var(--color-text-1);
+  color: var(--music-ui-text);
   background: var(--color-bg-1);
+}
+
+body:not([arco-theme='dark']) .aml-content-area {
+  border-color: var(--color-border-2);
+  background: var(--color-bg-1);
+  box-shadow: none;
 }
 
 body:not([arco-theme='dark']) .aml::before,
@@ -2490,7 +2512,7 @@ body:not([arco-theme='dark']) .aml-card-title,
 body:not([arco-theme='dark']) .aml-card-h-title,
 body:not([arco-theme='dark']) .aml-track-title,
 body:not([arco-theme='dark']) .aml-empty-title {
-  color: var(--color-text-1);
+  color: var(--music-ui-text);
 }
 
 body:not([arco-theme='dark']) .aml-title-sub,
@@ -2505,7 +2527,7 @@ body:not([arco-theme='dark']) .aml-track-album,
 body:not([arco-theme='dark']) .aml-track-source,
 body:not([arco-theme='dark']) .aml-empty-sub,
 body:not([arco-theme='dark']) .aml-scan-text {
-  color: var(--color-text-2);
+  color: var(--music-ui-muted);
 }
 
 body:not([arco-theme='dark']) .aml-server-note {
@@ -2575,7 +2597,7 @@ body:not([arco-theme='dark']) .aml-search-icon {
 body:not([arco-theme='dark']) .aml-home-ghost,
 body:not([arco-theme='dark']) .aml-reroll-btn,
 body:not([arco-theme='dark']) .aml-folder-menu-item {
-  color: var(--color-text-2);
+  color: var(--music-ui-text);
   background: var(--color-fill-2);
 }
 
@@ -2598,7 +2620,7 @@ body:not([arco-theme='dark']) .aml-home-tile-title,
 body:not([arco-theme='dark']) .aml-home-card-title,
 body:not([arco-theme='dark']) .aml-home-song-title,
 body:not([arco-theme='dark']) .aml-weather-temp {
-  color: var(--color-text-1);
+  color: var(--music-ui-text);
 }
 
 body:not([arco-theme='dark']) .aml-home-tile-cover,
@@ -2620,7 +2642,7 @@ body:not([arco-theme='dark']) .aml .podcast-btn,
 body:not([arco-theme='dark']) .aml .podcast-rm {
   border-color: var(--color-border-2);
   background: var(--color-bg-1);
-  color: var(--color-text-2);
+  color: var(--music-ui-text);
   box-shadow: none;
 }
 
@@ -2638,7 +2660,7 @@ body:not([arco-theme='dark']) .aml .plm-empty,
 body:not([arco-theme='dark']) .aml .podcast-count,
 body:not([arco-theme='dark']) .aml .podcast-info,
 body:not([arco-theme='dark']) .aml .podcast-empty {
-  color: var(--color-text-2);
+  color: var(--music-ui-muted);
 }
 
 body:not([arco-theme='dark']) .aml .plm-row:hover,
@@ -2650,6 +2672,6 @@ body:not([arco-theme='dark']) .aml .plm-act:hover,
 body:not([arco-theme='dark']) .aml .podcast-btn:hover {
   border-color: rgba(var(--primary-6), .24);
   background: rgba(var(--primary-6), .08);
-  color: var(--color-text-1);
+  color: var(--music-ui-text);
 }
 </style>

@@ -2,6 +2,7 @@
 import { ref, watch, computed } from 'vue'
 import { getTaskStatus, getTaskFiles } from './integration/aria2TaskApi'
 import type { DownloadTask, DownloadTaskFile } from './integration/taskTypes'
+import { t } from '../i18n'
 
 const props = defineProps<{
   visible: boolean
@@ -79,7 +80,7 @@ const onClose = () => emit('update:visible', false)
   <a-drawer
     :visible='visible'
     :width='480'
-    :title='taskName || "任务详情"'
+    :title='taskName || t("transfer.taskDetail")'
     :footer='false'
     popup-container='#xbybody'
     :drawer-style='{
@@ -97,31 +98,31 @@ const onClose = () => emit('update:visible', false)
     </div>
     <div v-else-if='task' class='task-detail'>
       <a-descriptions :column='2' size='small' bordered>
-        <a-descriptions-item label='状态'>{{ task.status }}</a-descriptions-item>
-        <a-descriptions-item label='进度'>{{ progress }}%</a-descriptions-item>
-        <a-descriptions-item label='已下载'>{{ formatBytes(task.completedLength) }}</a-descriptions-item>
-        <a-descriptions-item label='总大小'>{{ formatBytes(task.totalLength) }}</a-descriptions-item>
-        <a-descriptions-item label='下载速度'>{{ formatSpeed(task.downloadSpeed) }}</a-descriptions-item>
-        <a-descriptions-item label='上传速度'>{{ formatSpeed(task.uploadSpeed) }}</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.status")'>{{ task.status }}</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.progress")'>{{ progress }}%</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.downloadedSize")'>{{ formatBytes(task.completedLength) }}</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.totalSize")'>{{ formatBytes(task.totalLength) }}</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.downloadSpeed")'>{{ formatSpeed(task.downloadSpeed) }}</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.uploadSpeed")'>{{ formatSpeed(task.uploadSpeed) }}</a-descriptions-item>
         <template v-if='isBt'>
-          <a-descriptions-item label='做种数'>{{ task.numSeeders || '0' }}</a-descriptions-item>
-          <a-descriptions-item label='连接数'>{{ task.connections || '0' }}</a-descriptions-item>
+          <a-descriptions-item :label='t("transfer.seeders")'>{{ task.numSeeders || '0' }}</a-descriptions-item>
+          <a-descriptions-item :label='t("transfer.connections")'>{{ task.connections || '0' }}</a-descriptions-item>
           <a-descriptions-item v-if='task.bittorrent?.infoHash' label='InfoHash' :span='2'>
             <span class='hash-text'>{{ task.bittorrent.infoHash }}</span>
           </a-descriptions-item>
         </template>
-        <a-descriptions-item label='保存路径' :span='2'>{{ task.dir }}</a-descriptions-item>
+        <a-descriptions-item :label='t("transfer.savePath")' :span='2'>{{ task.dir }}</a-descriptions-item>
       </a-descriptions>
 
       <div v-if='files.length' class='task-files'>
-        <div class='task-files-title'>文件列表</div>
+        <div class='task-files-title'>{{ t('transfer.fileList') }}</div>
         <div v-for='f in files' :key='f.index' class='task-file-item'>
           <span class='task-file-name'>{{ f.path.split('/').pop() || f.path }}</span>
           <span class='task-file-size'>{{ formatBytes(f.length) }}</span>
         </div>
       </div>
     </div>
-    <div v-else class='task-detail-empty'>暂无数据</div>
+    <div v-else class='task-detail-empty'>{{ t('transfer.noData') }}</div>
   </a-drawer>
 </template>
 

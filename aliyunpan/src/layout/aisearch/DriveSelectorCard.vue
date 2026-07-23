@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { HardDrive, Check } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   drives: { userId: string; name: string; platform: string; driveId: string }[]
@@ -30,8 +31,8 @@ function confirm() {
 }
 
 const PLATFORM_LABELS: Record<string, string> = {
-  aliyun: '阿里云盘', quark: '夸克网盘', baidu: '百度网盘', '115': '115网盘',
-  '123': '123云盘', tianyi: '天翼云盘', xunlei: '迅雷云盘', pikpak: 'PikPak',
+  aliyun: t('drive.aliyun'), quark: t('drive.quarkFull'), baidu: t('drive.baiduFull'), '115': t('drive.drive115'),
+  '123': t('drive.cloud123'), tianyi: t('drive.cloud189'), xunlei: 'Xunlei Drive', pikpak: 'PikPak',
   dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box',
 }
 </script>
@@ -40,9 +41,9 @@ const PLATFORM_LABELS: Record<string, string> = {
   <div class="ds-card">
     <div class="ds-header">
       <HardDrive :size="14" :stroke-width="1.5" />
-      <span>选择要操作的网盘</span>
+      <span>{{ t('ai.card.selectDrive') }}</span>
       <button class="ds-toggle-all" @click="toggleAll">
-        {{ selected.size === drives.length ? '取消全选' : '全选' }}
+        {{ selected.size === drives.length ? t('ai.card.clearAll') : t('scan.selectAll') }}
       </button>
     </div>
     <div class="ds-list">
@@ -62,7 +63,7 @@ const PLATFORM_LABELS: Record<string, string> = {
     </div>
     <div class="ds-action">
       <button class="ds-confirm" :disabled="!selected.size" @click="confirm">
-        确定 ({{ selected.size }})
+        {{ t('common.confirm') }} ({{ selected.size }})
       </button>
     </div>
   </div>

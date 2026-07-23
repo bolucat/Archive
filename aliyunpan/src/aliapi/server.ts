@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'fs'
 import message from '../utils/message'
 import path from 'path'
 import DebugLog from '../utils/debuglog'
+import { buildUpdateProxyUrl } from '../utils/updateProxy'
 
 export interface IServerRespData {
   state: string
@@ -232,9 +233,8 @@ export default class ServerHttp {
               configVer = readFileSync(localVersion, 'utf-8').replaceAll('v', '').trim()
             }
           }
-          if (useSettingStore().uiUpdateProxyEnable &&
-            useSettingStore().uiUpdateProxyUrl.length > 0) {
-            verData.verUrl = useSettingStore().uiUpdateProxyUrl + '/' + verData.verUrl
+          if (useSettingStore().uiUpdateProxyEnable) {
+            verData.verUrl = buildUpdateProxyUrl(useSettingStore().uiUpdateProxyUrl, verData.verUrl)
           }
           if (this.compareVer(remoteVer, configVer) > 0) {
             // 打开更新弹窗

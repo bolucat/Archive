@@ -4,7 +4,7 @@
     <div v-if="mediaStore.isScanning" class="scan-progress-section">
       <div class="scan-header">
         <IconFont name="iconreload-1-icon" class="spin" />
-        <span>正在扫描...</span>
+        <span>{{ t('scan.scanning') }}</span>
       </div>
       <a-progress
         :percent="scanPercent"
@@ -13,7 +13,7 @@
         size="small"
       />
       <div class="scan-info">
-        {{ mediaStore.scanProgress }}/{{ mediaStore.scanTotal }} 个文件
+        {{ mediaStore.scanProgress }}/{{ mediaStore.scanTotal }} {{ t('media.filesUnit') }}
       </div>
     </div>
 
@@ -31,7 +31,7 @@
           @click="handleCategoryClick('home')"
         >
           <IconFont name="iconhome" />
-          <span>首页</span>
+          <span>{{ t('nav.home') }}</span>
         </div>
 
         <!-- 搜索 -->
@@ -41,7 +41,7 @@
           @click="handleCategoryClick('search')"
         >
           <IconFont name="iconsearch" />
-          <span>搜索</span>
+          <span>{{ t('nav.search') }}</span>
         </div>
 
         <!-- 继续观看 -->
@@ -51,7 +51,7 @@
           @click="handleCategoryClick('continue-watching')"
         >
           <IconFont name="iconstart" />
-          <span>继续观看</span>
+          <span>{{ t('media.continueWatching') }}</span>
           <span v-if="mediaStore.continueWatching.length > 0" class="count">
             {{ mediaStore.continueWatching.length }}
           </span>
@@ -64,7 +64,7 @@
           @click="handleCategoryClick('recently-added')"
         >
           <IconFont name="iconplus" />
-          <span>最近添加</span>
+          <span>{{ t('media.recentlyAdded') }}</span>
           <span v-if="mediaStore.recentlyAdded.length > 0" class="count">
             {{ mediaStore.recentlyAdded.length }}
           </span>
@@ -77,7 +77,7 @@
           @click="handleCategoryClick('movies')"
         >
           <IconFont name="iconfile_video" />
-          <span>电影</span>
+          <span>{{ t('media.movie') }}</span>
           <span v-if="mediaStore.movies.length > 0" class="count">
             {{ mediaStore.movies.length }}
           </span>
@@ -90,7 +90,7 @@
           @click="handleCategoryClick('tv-shows')"
         >
           <IconFont name="iconshipin" />
-          <span>电视剧</span>
+          <span>{{ t('media.tv') }}</span>
           <span v-if="mediaStore.tvShows.length > 0" class="count">
             {{ mediaStore.tvShows.length }}
           </span>
@@ -103,7 +103,7 @@
           @click="handleCategoryClick('documentary')"
         >
           <IconFont name="iconluxiang" />
-          <span>纪录片</span>
+          <span>{{ t('media.documentary') }}</span>
           <span v-if="documentaryCount > 0" class="count">
             {{ documentaryCount }}
           </span>
@@ -116,7 +116,7 @@
           @click="handleCategoryClick('animation')"
         >
           <IconFont name="iconbiaozhang" />
-          <span>动画</span>
+          <span>{{ t('media.animation') }}</span>
           <span v-if="animationCount > 0" class="count">
             {{ animationCount }}
           </span>
@@ -129,7 +129,7 @@
           @click="handleCategoryClick('unmatched')"
         >
           <IconFont name="iconinfo_circle" />
-          <span>未匹配</span>
+          <span>{{ t('media.unmatched') }}</span>
           <span v-if="mediaStore.unmatchedItems.length > 0" class="count">
             {{ mediaStore.unmatchedItems.length }}
           </span>
@@ -142,7 +142,7 @@
           @click="handleCategoryClick('unwatched')"
         >
           <IconFont name="iconclose" />
-          <span>未观看</span>
+          <span>{{ t('media.unwatched') }}</span>
         </div>
 
         <!-- 收藏 -->
@@ -152,7 +152,7 @@
           @click="handleCategoryClick('favorites')"
         >
           <IconFont name="iconcrown3" />
-          <span>收藏</span>
+          <span>{{ t('tree.favorites') }}</span>
         </div>
 
         <!-- 播放列表 -->
@@ -162,7 +162,7 @@
           @click="handleCategoryClick('playlist')"
         >
           <IconFont name="iconlist" />
-          <span>播放列表</span>
+          <span>{{ t('media.playlist') }}</span>
         </div>
       </div>
     </div>
@@ -170,7 +170,7 @@
     <!-- 分类筛选 -->
     <div class="nav-section">
       <div class="nav-header">
-        <span>分类</span>
+        <span>{{ t('media.categories') }}</span>
       </div>
 
       <div class="nav-items">
@@ -181,7 +181,7 @@
           @click="handleCategoryClick('genres')"
         >
           <IconFont name="iconwbiaoqian" />
-          <span>类型</span>
+          <span>{{ t('media.genre') }}</span>
           <span v-if="mediaStore.genres.length > 0" class="count">
             {{ mediaStore.genres.length }}
           </span>
@@ -194,7 +194,7 @@
           @click="handleCategoryClick('ratings')"
         >
           <IconFont name="iconcrown2" />
-          <span>评分</span>
+          <span>{{ t('media.rating') }}</span>
           <span v-if="mediaStore.ratingCategories.length > 0" class="count">
             {{ mediaStore.ratingCategories.length }}
           </span>
@@ -207,7 +207,7 @@
           @click="handleCategoryClick('years')"
         >
           <IconFont name="iconcalendar" />
-          <span>年份</span>
+          <span>{{ t('media.year') }}</span>
           <span v-if="mediaStore.years.length > 0" class="count">
             {{ mediaStore.years.length }}
           </span>
@@ -219,7 +219,7 @@
     <div class="nav-section" v-if="mediaStore.folders.length > 0">
       <div class="nav-header">
         <IconFont name="iconfolder" />
-        <span>文件源</span>
+        <span>{{ t('media.fileSources') }}</span>
       </div>
 
       <div class="nav-items">
@@ -248,29 +248,18 @@
         v-model:selected-ids="selectedScanSourceIds"
         :drive-options="scanSourceOptions"
         :is-scanning="mediaStore.isScanning"
-        :idle-status-text="mediaStore.folders.length ? `${mediaStore.folders.length} 个媒体源` : '尚未扫描'"
-        :scanning-status-text="`正在扫描 ${mediaStore.scanProgress}/${mediaStore.scanTotal}`"
-        import-label="导入本地视频"
+        :idle-status-text="mediaStore.folders.length ? `${mediaStore.folders.length} ${t('media.sourcesUnit')}` : t('scan.notScanned')"
+        :scanning-status-text="`${t('scan.scanning')} ${mediaStore.scanProgress}/${mediaStore.scanTotal}`"
+        :import-label="t('media.importLocalVideo')"
         import-icon-name="iconfolder"
         :import-disabled="mediaStore.isScanning"
-        clear-confirm-text="确定清空整个媒体库？此操作不可恢复"
+        :clear-confirm-text="t('media.clearConfirm')"
         :clear-disabled="!hasLibraryData"
         @start-scan="handleIncrementalScan"
         @stop-scan="mediaStore.setScanning(false)"
         @import-local="handleImportLocalFolder"
         @clear-library="handleClearLibrary"
       >
-        <template #extra-actions>
-          <button
-            class="library-scan-import-btn"
-            type="button"
-            :disabled="webDavLoading"
-            @click="showWebDavModal = true"
-          >
-            <IconFont name="iconlink" />
-            <span>连接到 WebDAV</span>
-          </button>
-        </template>
       </LibraryScanPanel>
     </div>
 
@@ -292,21 +281,14 @@
       <template #content>
         <a-doption @click="handleDeleteFolder" class="danger">
           <template #icon><IconFont name="icondelete" /></template>
-          <template #default>从媒体库删除</template>
+          <template #default>{{ t('media.removeFromLibrary') }}</template>
         </a-doption>
       </template>
     </a-dropdown>
 
-    <AddWebDavModal
-      v-model:visible="showWebDavModal"
-      v-model="webDavForm"
-      :loading="webDavLoading"
-      @submit="handleConnectWebDav"
-    />
-
     <a-modal
       v-model:visible="showLibraryManagerModal"
-      title="媒体管理"
+      :title="t('media.manager')"
       :footer="false"
       width="520px"
     >
@@ -316,20 +298,11 @@
             <IconFont name="iconfolder" />
           </div>
           <div class="library-manager-card-main">
-            <strong>导入本地文件夹</strong>
-            <span>把本地媒体文件夹扫描并加入媒体库</span>
+            <strong>{{ t('media.importLocalFolder') }}</strong>
+            <span>{{ t('media.importLocalFolderDesc') }}</span>
           </div>
         </button>
 
-        <button type="button" class="library-manager-card" @click="handleLibraryManagerWebDav">
-          <div class="library-manager-card-icon">
-            <IconFont name="iconlink" />
-          </div>
-          <div class="library-manager-card-main">
-            <strong>连接到 WebDAV</strong>
-            <span>添加 WebDAV 媒体源并同步到本地媒体库</span>
-          </div>
-        </button>
       </div>
     </a-modal>
   </div>
@@ -343,11 +316,11 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import { Modal } from '@arco-design/web-vue'
 import { MediaScanner } from '../utils/mediaScanner'
 import message from '../utils/message'
-import AddWebDavModal from './media-server/AddWebDavModal.vue'
 import LibraryScanPanel from './LibraryScanPanel.vue'
-import { createWebDavConnection, getWebDavConnectionId, getWebDavConnections, removeWebDavConnection, saveWebDavConnection, testWebDavConnection } from '../utils/webdavClient'
+import { getWebDavConnection, getWebDavConnectionId, getWebDavConnections } from '../utils/webdavClient'
 import UserDAL from '../user/userdal'
 import type { ITokenInfo } from '../user/userstore'
+import { t } from '../i18n'
 
 const mediaStore = useMediaLibraryStore()
 const mediaScanner = MediaScanner.getInstance()
@@ -360,18 +333,9 @@ const selectedYear = ref('')
 const selectedRating = ref('')
 const showAddFolderModal = ref(false)
 const showLibraryManagerModal = ref(false)
-const showWebDavModal = ref(false)
-const webDavLoading = ref(false)
 const addFolderForm = ref({
   folderId: '',
   name: ''
-})
-const webDavForm = ref({
-  name: '',
-  url: '',
-  username: '',
-  password: '',
-  rootPath: '/'
 })
 
 // 右键菜单状态
@@ -384,19 +348,19 @@ const folderTreeData = computed(() => {
   // 这里应该从实际的文件夹结构生成
   return [
     {
-      title: '备份盘',
+      title: t('drive.backup'),
       value: 'backup',
       children: [
-        { title: '电影', value: 'backup_movies' },
-        { title: '电视剧', value: 'backup_tv' }
+        { title: t('media.movie'), value: 'backup_movies' },
+        { title: t('media.tv'), value: 'backup_tv' }
       ]
     },
     {
-      title: '资源盘',
+      title: t('drive.resource'),
       value: 'resource',
       children: [
-        { title: '电影', value: 'resource_movies' },
-        { title: '电视剧', value: 'resource_tv' }
+        { title: t('media.movie'), value: 'resource_movies' },
+        { title: t('media.tv'), value: 'resource_tv' }
       ]
     }
   ]
@@ -477,23 +441,27 @@ const isWebDavFolderSource = (folder: MediaLibraryFolder) => {
 }
 
 const getFolderSourceLabel = (folder: MediaLibraryFolder) => {
+  const connectionId = folder.userId || getWebDavConnectionId(folder.driveId)
+  if (connectionId && getWebDavConnection(connectionId)?.kind === 'alist') return 'AList'
   if (isWebDavFolderSource(folder)) return 'WebDAV'
-  if (folder.driveId === 'local' || folder.driveServerId === 'local') return '本地'
+  if (folder.driveId === 'local' || folder.driveServerId === 'local') return t('drive.local')
   if (folder.driveId === 'cloud123' || folder.driveServerId === 'cloud123') return '123'
   if (folder.driveId === 'drive115' || folder.driveServerId === 'drive115') return '115'
-  if (folder.driveId === 'baidu' || folder.driveServerId === 'baidu') return '百度'
+  if (folder.driveId === 'baidu' || folder.driveServerId === 'baidu') return t('drive.baidu')
   if (folder.driveId === 'pikpak' || folder.driveServerId === 'pikpak') return 'PikPak'
-  if (folder.driveId === 'quark' || folder.driveServerId === 'quark') return '夸克'
+  if (folder.driveId === 'quark' || folder.driveServerId === 'quark') return t('drive.quark')
   if (folder.driveId === 'dropbox' || folder.driveServerId === 'dropbox') return 'Dropbox'
   if (folder.driveId === 'onedrive' || folder.driveServerId === 'onedrive') return 'OneDrive'
   if (folder.driveId === 'box' || folder.driveServerId === 'box') return 'Box'
   if (folder.driveId === 'cloud139' || folder.driveServerId === 'cloud139') return '139'
-  if (folder.driveId === 'cloud189' || folder.driveServerId === 'cloud189') return '天翼'
-  if (folder.driveId === 'guangya' || folder.driveServerId === 'guangya') return '光鸭'
-  return '阿里'
+  if (folder.driveId === 'cloud189' || folder.driveServerId === 'cloud189') return t('drive.cloud189Short')
+  if (folder.driveId === 'guangya' || folder.driveServerId === 'guangya') return t('drive.guangyaShort')
+  return t('drive.aliyunShort')
 }
 
 const getFolderSourceClass = (folder: MediaLibraryFolder) => {
+  const connectionId = folder.userId || getWebDavConnectionId(folder.driveId)
+  if (connectionId && getWebDavConnection(connectionId)?.kind === 'alist') return 'source-alist'
   if (isWebDavFolderSource(folder)) return 'source-webdav'
   if (folder.driveId === 'local' || folder.driveServerId === 'local') return 'source-local'
   if (folder.driveId === 'cloud123' || folder.driveServerId === 'cloud123') return 'source-123'
@@ -562,18 +530,18 @@ watch(scanSourceOptions, (options) => {
 }, { immediate: true })
 
 function driveLabelFromToken(token: ITokenInfo): string {
-  if (token.tokenfrom === 'cloud123') return '123 网盘'
-  if (token.tokenfrom === '115') return '115 网盘'
-  if (token.tokenfrom === 'baidu') return '百度网盘'
+  if (token.tokenfrom === 'cloud123') return t('drive.cloud123')
+  if (token.tokenfrom === '115') return t('drive.drive115')
+  if (token.tokenfrom === 'baidu') return t('drive.baiduFull')
   if (token.tokenfrom === 'pikpak') return 'PikPak'
-  if (token.tokenfrom === 'quark') return '夸克网盘'
-  if (token.tokenfrom === '139') return '139 云盘'
-  if (token.tokenfrom === '189') return '天翼云盘'
-  if (token.tokenfrom === 'guangya') return '光鸭云盘'
+  if (token.tokenfrom === 'quark') return t('drive.quarkFull')
+  if (token.tokenfrom === '139') return t('drive.cloud139')
+  if (token.tokenfrom === '189') return t('drive.cloud189')
+  if (token.tokenfrom === 'guangya') return t('drive.guangya')
   if (token.tokenfrom === 'dropbox') return 'Dropbox'
   if (token.tokenfrom === 'onedrive') return 'OneDrive'
   if (token.tokenfrom === 'box') return 'Box'
-  return '阿里云盘'
+  return t('drive.aliyun')
 }
 
 function scanAccountLabel(token: ITokenInfo): string {
@@ -612,9 +580,9 @@ function tokenRootScanFolders(token: ITokenInfo): ScanSourceTarget[] {
   const label = scanAccountLabel(token)
   if (token.tokenfrom === 'aliyun') {
     const drives = [
-      { driveId: token.default_drive_id, name: '默认盘' },
-      { driveId: token.resource_drive_id, name: '资源盘' },
-      { driveId: token.backup_drive_id, name: '备份盘' }
+      { driveId: token.default_drive_id, name: t('drive.default') },
+      { driveId: token.resource_drive_id, name: t('drive.resource') },
+      { driveId: token.backup_drive_id, name: t('drive.backup') }
     ].filter((item): item is { driveId: string; name: string } => !!item.driveId)
     return drives.map((item) => ({
       value: `account:${token.user_id}:${item.driveId}:root`,
@@ -697,16 +665,15 @@ const handleDeleteFolder = () => {
 
   const folder = contextMenuFolder.value
   Modal.confirm({
-    title: '删除文件夹',
-    content: `确定要从媒体库删除"${folder.name}"文件夹吗？这将删除该文件夹及其所有已刮削的媒体信息。`,
-    okText: '删除',
+    title: t('media.deleteFolder'),
+    content: `${t('media.deleteFolderConfirmPrefix')}${folder.name}${t('media.deleteFolderConfirmSuffix')}`,
+    okText: t('file.delete'),
     okButtonProps: { status: 'danger' },
-    cancelText: '取消',
+    cancelText: t('common.cancel'),
     onOk: () => {
       if (isWebDavFolderSource(folder)) {
         const connectionId = folder.userId || getWebDavConnectionId(folder.driveId)
         if (connectionId) {
-          removeWebDavConnection(connectionId)
           const relatedFolders = mediaStore.folders.filter(item =>
             isWebDavFolderSource(item)
             && ((item.userId && item.userId === connectionId) || item.driveId === `webdav:${connectionId}`)
@@ -751,8 +718,8 @@ const handleImportLocalFolder = () => {
   if (window.WebShowOpenDialogSync) {
     window.WebShowOpenDialogSync(
       {
-        title: '选择本地媒体文件夹',
-        buttonLabel: '导入',
+        title: t('media.selectLocalFolder'),
+        buttonLabel: t('settings.import'),
         properties: ['openDirectory', 'createDirectory']
       },
       async (result: string[] | undefined) => {
@@ -762,18 +729,18 @@ const handleImportLocalFolder = () => {
           await mediaScanner.scanLocalFolder(folderPath)
         } catch (error) {
           console.error('导入本地文件夹失败:', error)
-          message.error('导入失败，请稍后重试')
+          message.error(t('media.importFailed'))
         }
       }
     )
   } else {
-    message.error('当前环境不支持选择本地文件夹')
+    message.error(t('media.localFolderUnsupported'))
   }
 }
 
 const handleClearLibrary = () => {
   mediaStore.clearAllData()
-  message.success('媒体库已清空')
+  message.success(t('media.libraryCleared'))
 }
 
 const handleIncrementalScan = async () => {
@@ -791,53 +758,11 @@ const handleIncrementalScan = async () => {
     }
   } catch (error) {
     console.error('增量扫描失败:', error)
-    message.error('扫描失败，请稍后重试')
+    message.error(t('media.scanFailed'))
   } finally {
     mediaStore.setScanning(false)
   }
 }
-
-const handleConnectWebDav = async () => {
-  const form = webDavForm.value
-  if (!form.url.trim() || !form.username.trim() || !form.password.trim()) {
-    message.error('请填写完整的 WebDAV 连接信息')
-    return
-  }
-
-  webDavLoading.value = true
-  try {
-    const connection = createWebDavConnection(form)
-    await testWebDavConnection(connection)
-    saveWebDavConnection(connection)
-    mediaStore.addFolder({
-      id: `webdav_webdav:${connection.id}_/`,
-      fileId: '/',
-      name: connection.name,
-      path: '/',
-      userId: connection.id,
-      driveId: `webdav:${connection.id}`,
-      driveServerId: 'webdav',
-      scanDate: new Date(),
-      itemCount: 0
-    })
-    await mediaScanner.scanWebDavConnection(connection)
-    message.success('WebDAV 连接成功，已开始扫描视频元数据')
-    showWebDavModal.value = false
-    webDavForm.value = {
-      name: '',
-      url: '',
-      username: '',
-      password: '',
-      rootPath: '/'
-    }
-  } catch (error: any) {
-    console.error('连接 WebDAV 服务器失败:', error)
-    message.error(`连接 WebDAV 服务器失败: ${error?.message || '未知错误'}`)
-  } finally {
-    webDavLoading.value = false
-  }
-}
-
 
 const handleAddFolder = () => {
   // 这里需要调用扫描服务
@@ -858,11 +783,6 @@ const openLibraryManager = () => {
 const handleLibraryManagerImport = () => {
   showLibraryManagerModal.value = false
   handleImportLocalFolder()
-}
-
-const handleLibraryManagerWebDav = () => {
-  showLibraryManagerModal.value = false
-  showWebDavModal.value = true
 }
 
 const syncActiveCategory = (category: string) => {
@@ -1240,6 +1160,12 @@ onUnmounted(() => {
   color: #0b7285;
   background: rgba(11, 114, 133, 0.12);
   border-color: rgba(11, 114, 133, 0.18);
+}
+
+.folder-source.source-alist {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+  border-color: rgba(124, 58, 237, 0.2);
 }
 
 .nav-actions {

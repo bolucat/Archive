@@ -31,6 +31,7 @@ import DragDropZone from '../components/DragDropZone.vue'
 import UserDAL from '../user/userdal'
 import { getCloudDownloadSourceLabel } from './cloudDownloadSource'
 import { IStateDownFile } from './DownDAL'
+import { t } from '../i18n'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -277,54 +278,54 @@ const handleTorrentFiles = () => {
   <div class='toppanbtns' style='height: 26px'>
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
       <div class="toppannav">
-        <div class="toppannavitem" title="下载中">
-          <span> 下载中 </span>
+        <div class="toppannavitem" :title="t('transfer.downloading')">
+          <span> {{ t('transfer.downloading') }} </span>
         </div>
       </div>
     </div>
     <div class='flex flexauto'></div>
-    <div class='flex flexnoauto cellcount' title='总共文件数量'>
-      <a-badge color='#637dff' :text="'总数 ' + downingStore.ListStats.count" />
+    <div class='flex flexnoauto cellcount' :title="t('transfer.totalFileCount')">
+      <a-badge color='#637dff' :text="t('transfer.total') + ' ' + downingStore.ListStats.count" />
     </div>
-    <div class='flex flexnoauto cellcount' title='正在执行下载数'>
-      <a-badge color='#637dff' :text="'下载 ' + downingStore.ListStats.runningCount" />
+    <div class='flex flexnoauto cellcount' :title="t('transfer.runningDownloadCount')">
+      <a-badge color='#637dff' :text="t('transfer.download') + ' ' + downingStore.ListStats.runningCount" />
     </div>
-    <div class='flex flexnoauto cellcount' title='总共文件大小'>
-      <a-badge color='#637dff' :text="'大小 ' + downingStore.ListStats.totalSizeStr" />
+    <div class='flex flexnoauto cellcount' :title="t('transfer.totalFileSize')">
+      <a-badge color='#637dff' :text="t('transfer.size') + ' ' + downingStore.ListStats.totalSizeStr" />
     </div>
   </div>
   <div style='height: 14px'></div>
   <div class='toppanbtns' style='height: 26px'>
     <div class='toppanbtn' v-show='downingStore.IsListSelected'>
-      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleStart'><IconFont name="iconstart" />开始
+      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleStart'><IconFont name="iconstart" />{{ t('transfer.start') }}
       </a-button>
-      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleStop'><IconFont name="iconpause" />暂停
+      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleStop'><IconFont name="iconpause" />{{ t('transfer.pause') }}
       </a-button>
-      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleTop'><IconFont name="iconyouxian" />优先传输
+      <a-button v-if='selectedHasLocalTask' type='text' size='small' tabindex='-1' @click='handleTop'><IconFont name="iconyouxian" />{{ t('transfer.prioritize') }}
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleDelete'><IconFont name="icondelete" />删除
+      <a-button type='text' size='small' tabindex='-1' @click='handleDelete'><IconFont name="icondelete" />{{ t('common.delete') }}
       </a-button>
       <a-button type='text' size='small' tabindex='-1'><IconFont name="icondian" /></a-button>
 
-      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />开始全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />{{ t('transfer.startAll') }}
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />暂停全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />{{ t('transfer.pauseAll') }}
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />删除全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />{{ t('transfer.deleteAll') }}
       </a-button>
       <a-button type='text' size='small' tabindex='-1' @click='handleUrlDownload'>
-        <IconFont name="iconcloud-download" />新建下载
+        <IconFont name="iconcloud-download" />{{ t('transfer.newDownload') }}
       </a-button>
     </div>
     <div class='toppanbtn' v-show='!downingStore.IsListSelected'>
       <a-button type='text' size='small' tabindex='-1' @click='handleUrlDownload'>
-        <IconFont name="iconcloud-download" />新建下载
+        <IconFont name="iconcloud-download" />{{ t('transfer.newDownload') }}
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />开始全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStartAll'><IconFont name="iconstart" />{{ t('transfer.startAll') }}
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />暂停全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleStopAll'><IconFont name="iconpause" />{{ t('transfer.pauseAll') }}
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />删除全部
+      <a-button type='text' size='small' tabindex='-1' @click='handleDeleteAll'><IconFont name="icondelete" />{{ t('transfer.deleteAll') }}
       </a-button>
     </div>
     <div style='flex-grow: 1'></div>
@@ -334,7 +335,7 @@ const handleTorrentFiles = () => {
         ref='inputsearch'
         size='small'
         title='Ctrl+F / F3 / Space'
-        placeholder='快速筛选'
+        :placeholder="t('transfer.quickFilter')"
         allow-clear
         v-model='downingStore.ListSearchKey'
         @clear='(e:any)=>handleSearchInput("")'
@@ -348,7 +349,7 @@ const handleTorrentFiles = () => {
   <div style='height: 9px'></div>
   <div class='toppanarea'>
     <div style='margin: 0 3px'>
-      <AntdTooltip title='点击全选' placement='left'>
+      <AntdTooltip :title="t('transfer.selectAllTooltip')" placement='left'>
         <a-button shape='circle' type='text' tabindex='-1' class='select all' @click='handleSelectAll' title='Ctrl+A'>
           <IconFont :name="downingStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -359,15 +360,15 @@ const handleTorrentFiles = () => {
       <AntdTooltip placement='rightTop' v-if="downingStore.ListDataShow.length > 0">
         <a-button shape='square' type='text' tabindex='-1' class='qujian'
                   :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-          {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+          {{ rangIsSelecting ? t('transfer.cancelSelection') : t('transfer.rangeSelect') }}
         </a-button>
         <template #title>
           <div>
-            第1步: 点击 区间选择 这个按钮
+            {{ t('transfer.rangeStep1') }}
             <br />
-            第2步: 鼠标点击一个文件
+            {{ t('transfer.rangeStep2') }}
             <br />
-            第3步: 移动鼠标点击另外一个文件
+            {{ t('transfer.rangeStep3') }}
           </div>
         </template>
       </AntdTooltip>
@@ -377,12 +378,12 @@ const handleTorrentFiles = () => {
                 tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectReverse'>
-        反向选择
+        {{ t('transfer.invertSelection') }}
       </a-button>
       <a-button shape='square' v-if='!rangIsSelecting && downingStore.ListSelected.size > 0' type='text' tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectCancel'>
-        取消已选
+        {{ t('transfer.cancelSelected') }}
       </a-button>
     </div>
   </div>
@@ -455,27 +456,27 @@ const handleTorrentFiles = () => {
       <template #content>
         <a-doption v-if='!focusedIsCloudTask' @click='handleStart'>
           <template #icon><IconFont name="iconstart" /></template>
-          <template #default>开始</template>
+          <template #default>{{ t('transfer.start') }}</template>
         </a-doption>
         <a-doption v-if='!focusedIsCloudTask' @click='handleStop'>
           <template #icon><IconFont name="iconpause" /></template>
-          <template #default>暂停</template>
+          <template #default>{{ t('transfer.pause') }}</template>
         </a-doption>
         <a-doption v-if='!focusedIsCloudTask' @click='handleTop'>
           <template #icon><IconFont name="iconyouxian" /></template>
-          <template #default>优先传输</template>
+          <template #default>{{ t('transfer.prioritize') }}</template>
         </a-doption>
         <a-doption @click='handleDelete' class='danger'>
           <template #icon><IconFont name="icondelete" /></template>
-          <template #default>删除</template>
+          <template #default>{{ t('common.delete') }}</template>
         </a-doption>
         <a-doption v-if='!focusedIsCloudTask' @click='handleTaskDetail'>
           <template #icon><IconFont name="iconinfo" /></template>
-          <template #default>任务详情</template>
+          <template #default>{{ t('transfer.taskDetail') }}</template>
         </a-doption>
         <a-doption v-if='focusedIsBT' @click='handleTorrentFiles'>
           <template #icon><IconFont name="iconfile" /></template>
-          <template #default>选择文件</template>
+          <template #default>{{ t('common.select') }}{{ t('transfer.file') }}</template>
         </a-doption>
       </template>
     </a-dropdown>

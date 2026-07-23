@@ -9,6 +9,7 @@ class FakeUpdater extends EventEmitter {
   checkForUpdates = vi.fn()
   downloadUpdate = vi.fn().mockResolvedValue(undefined)
   quitAndInstall = vi.fn()
+  setFeedURL = vi.fn()
 }
 
 describe('createAutoUpdateController', () => {
@@ -34,6 +35,7 @@ describe('createAutoUpdateController', () => {
     expect(updater.allowPrerelease).toBe(true)
     expect(updater.autoDownload).toBe(false)
     expect(updater.autoInstallOnAppQuit).toBe(true)
+    expect(updater.setFeedURL).toHaveBeenCalledWith('https://gh-proxy.com/https://github.com/gaozhangmin/boxplayer/releases/latest/download/')
   })
 
   it('prompts to restart after an update is downloaded', async () => {

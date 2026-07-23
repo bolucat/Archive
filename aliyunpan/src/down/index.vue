@@ -6,30 +6,31 @@ import DownDowned from './DownDowned.vue'
 import DownUploading from './DownUploading.vue'
 import DownUploaded from './DownUploaded.vue'
 import DownM3U8 from './DownM3U8.vue'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 </script>
 
 <template>
   <a-layout style="height: 100%">
-    <a-layout-sider hide-trigger :width="218" class="xbyleft">
-      <div class="headdesc">传输文件</div>
-      <a-menu :style="{ width: '100%' }" class="xbyleftmenu" :selected-keys="[appStore.GetAppTabMenu]" @update:selected-keys="appStore.toggleTabMenu('down', $event[0])">
+    <a-layout-sider hide-trigger :width="218" class="xbyleft single-boundary-sidebar">
+      <div class="headdesc">{{ t('transfer.title') }}</div>
+      <a-menu :style="{ width: '100%' }" class="xbyleftmenu single-boundary-sidebar-menu" :selected-keys="[appStore.GetAppTabMenu]" @update:selected-keys="appStore.toggleTabMenu('down', $event[0])">
         <a-menu-item key="DowningRight">
           <template #icon><IconFont name="icondownload" /></template>
-          下载中
+          {{ t('transfer.downloading') }}
         </a-menu-item>
         <a-menu-item key="DownedRight">
           <template #icon><IconFont name="icondesktop" /></template>
-          已下载
+          {{ t('transfer.downloaded') }}
         </a-menu-item>
         <a-menu-item key="UploadingRight">
           <template #icon><IconFont name="iconcloud-upload" /></template>
-          上传中
+          {{ t('transfer.uploading') }}
         </a-menu-item>
         <a-menu-item key="UploadedRight">
           <template #icon><IconFont name="iconcloud_success" /></template>
-          已上传
+          {{ t('transfer.uploaded') }}
         </a-menu-item>
 <!--        <a-menu-item key="SyncRight">-->
 <!--          <template #icon><IconFont name="iconcloud-sync" /></template>-->

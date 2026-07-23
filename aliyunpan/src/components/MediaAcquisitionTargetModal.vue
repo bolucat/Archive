@@ -12,6 +12,7 @@ import { formatMediaAcquisitionCapability, getMediaAcquisitionCapability, normal
 import { getDriveProviderIcon, getDriveProviderLabel } from '../utils/driveProvider'
 import useSettingStore from '../setting/settingstore'
 import { isPro, requireMediaAcquisitionPro } from '../utils/usageLimit'
+import { t } from '../i18n'
 
 const props = withDefaults(defineProps<{ visible: boolean; request: MediaAcquisitionRequest; states?: MediaAcquisitionState[] }>(), { states: () => [] })
 const emit = defineEmits<{ 'update:visible': [value: boolean]; created: [] }>()
@@ -20,7 +21,7 @@ type EligibleAccount = { key: string; token: ITokenInfo; driveId: string; capabi
 const accounts = ref<EligibleAccount[]>([])
 const selectedAccountKey = ref('')
 const targetFolderId = ref('')
-const targetFolderName = ref('根目录')
+const targetFolderName = ref(t('media.root'))
 const creating = ref(false)
 const selectingFolder = ref(false)
 const rememberTarget = ref(false)
@@ -49,9 +50,9 @@ function isAccountBlocked(account: EligibleAccount) {
 function accountStatus(account: EligibleAccount) {
   const state = accountState(account)
   if (!state) return ''
-  if (state.status === 'completed') return '已获取'
-  if (state.status === 'reserved') return '已预定'
-  return isRetryableState(state) ? '可重新获取' : '获取中'
+  if (state.status === 'completed') return t('media.acquired')
+  if (state.status === 'reserved') return t('media.reserved')
+  return isRetryableState(state) ? t('media.retryable') : t('media.acquiring')
 }
 
 function isCompletedDuplicateError(error: unknown) {
@@ -65,7 +66,7 @@ function resetFolder() {
   if (!account) return
   const type = GetDriveType(account.token.user_id, account.driveId)
   targetFolderId.value = normalizeMediaAcquisitionRootFolder(account.token.tokenfrom, type.key || account.driveId)
-  targetFolderName.value = '根目录'
+  targetFolderName.value = t('media.root')
 }
 
 async function loadAccounts() {
@@ -92,7 +93,7 @@ async function loadAccounts() {
     skipNextFolderReset.value = true
     selectedAccountKey.value = rememberedAccount.key
     targetFolderId.value = settingStore.mediaAcquisitionTargetFolderId
-    targetFolderName.value = settingStore.mediaAcquisitionTargetFolderName || '已选目录'
+    targetFolderName.value = settingStore.mediaAcquisitionTargetFolderName || t('media.selectedFolder')
     return
   }
   selectedAccountKey.value = accounts.value.find(account => !isAccountBlocked(account))?.key || ''
@@ -117,10 +118,10 @@ async function chooseFolder() {
     account.driveId = GetDriveID(ready.user_id, '') || ready.resource_drive_id || ready.default_drive_id || account.driveId
     modalSelectPanDir('selectdir', targetFolderId.value, (_userId, _driveId, folder) => {
       targetFolderId.value = String(folder?.file_id || targetFolderId.value)
-      targetFolderName.value = String(folder?.path || folder?.name || '已选目录')
+      targetFolderName.value = String(folder?.path || folder?.name || t('media.selectedFolder'))
     }, undefined, undefined, { user_id: ready.user_id, drive_id: account.driveId })
   } catch (error: any) {
-    message.error(error?.message || '无法刷新网盘登录状态')
+    message.error(error?.message || t('media.refreshLoginFailed'))
   } finally {
     selectingFolder.value = false
   }
@@ -129,7 +130,7 @@ async function chooseFolder() {
 async function create() {
   const account = selectedAccount.value
   if (!account || !targetFolderId.value) {
-    message.warning('请选择目标网盘和保存目录')
+    message.warning(t('media.selectTargetWarning'))
     return
   }
   creating.value = true
@@ -202,14 +203,14 @@ async function create() {
     const runs = [run]
     for (const run of runs.filter(run => run.status !== 'reserved')) {
       void runMediaAcquisitionWorkflow(run.id).catch(() => {
-        message.warning('Agent 已进入后台队列，将自动继续处理')
+        message.warning(t('media.queued'))
       })
     }
-    message.success(runs.every(run => run.status === 'reserved') ? '已预定，上映后 Agent 将自动开始获取' : seasonTargets.length > 1 ? `已创建跨 ${seasonTargets.length} 季的补全任务，Agent 正在检索资源` : '媒体任务已创建，Agent 正在检索资源')
+    message.success(runs.every(run => run.status === 'reserved') ? t('media.reserved') : seasonTargets.length > 1 ? t('media.created') : t('media.created'))
     emit('created')
     close()
   } catch (error: any) {
-    message.error(error?.message || '创建媒体任务失败')
+    message.error(error?.message || t('media.createFailed'))
   } finally {
     creating.value = false
   }
@@ -226,19 +227,19 @@ watch(selectedAccountKey, () => {
 </script>
 
 <template>
-  <a-modal :visible="visible" :footer="false" :width="560" unmount-on-close :title="request.trackingOnly ? '追更到哪里' : '获取到哪里'" @cancel="close">
+  <a-modal :visible="visible" :footer="false" :width="560" unmount-on-close :title="request.trackingOnly ? t('media.trackTarget') : t('media.acquireTarget')" @cancel="close">
     <div class="acquisition-modal">
       <p class="acquisition-subtitle">{{ request.title }}<template v-if="request.missingSeasonNumbers?.length"> · 补全第 {{ request.missingSeasonNumbers.join('、') }} 季</template><template v-else-if="isSeries && request.seasonNumber"> · 第 {{ request.seasonNumber }} 季</template></p>
-      <div v-if="!proAllowed" class="acquisition-pro-lock">Agent 获取资源、自动入库和追更巡检仅限 Pro 用户使用。</div>
+      <div v-if="!proAllowed" class="acquisition-pro-lock">{{ t('media.proOnly') }}</div>
       <template v-if="request.trackingOnly && (request.trackingSeasonNumbers?.length || 0) > 1">
-        <label>追更范围</label>
+        <label>{{ t('media.trackingScope') }}</label>
         <a-radio-group v-model="trackingScope" type="button">
-          <a-radio value="current">第 {{ request.seasonNumber }} 季</a-radio>
-          <a-radio value="all">全部 {{ request.trackingSeasonNumbers?.length }} 季</a-radio>
+          <a-radio value="current">{{ t('media.currentSeason') }} {{ request.seasonNumber }} {{ t('media.season') }}</a-radio>
+          <a-radio value="all">{{ t('media.allSeasons') }} {{ request.trackingSeasonNumbers?.length }} {{ t('media.season') }}</a-radio>
         </a-radio-group>
       </template>
-      <label>目标网盘</label>
-      <a-select v-model="selectedAccountKey" placeholder="选择支持自动获取的网盘">
+      <label>{{ t('media.targetDrive') }}</label>
+      <a-select v-model="selectedAccountKey" :placeholder="t('media.selectTargetDrive')">
         <a-option v-for="account in accounts" :key="account.key" :value="account.key" :label="`${account.displayName} · ${account.providerLabel}`" :disabled="isAccountBlocked(account)">
           <span class="acquisition-account-option">
             <img v-if="account.providerIcon" :src="account.providerIcon" :alt="account.providerLabel" />
@@ -247,13 +248,13 @@ watch(selectedAccountKey, () => {
           </span>
         </a-option>
       </a-select>
-      <p v-if="selectedCapability" class="acquisition-note">此任务只会使用该网盘的 {{ formatMediaAcquisitionCapability(selectedCapability) }} 能力，不会自动切换其它账号。</p>
-      <label>保存目录</label>
-      <div class="acquisition-folder"><span>{{ targetFolderName }}</span><a-button type="outline" size="small" :loading="selectingFolder" :disabled="!selectedAccount" @click="chooseFolder">选择目录</a-button></div>
-      <a-checkbox v-model="rememberTarget">记住当前网盘和目录，下次直接写入此目录</a-checkbox>
-      <div v-if="!accounts.length" class="acquisition-empty">暂无支持分享导入、磁力离线或 HTTP 外链离线的已登录网盘。</div>
-      <div v-else-if="!selectedAccount" class="acquisition-empty">该媒体已在所有已登录网盘账号中获取或处理中。</div>
-      <div class="acquisition-actions"><a-button @click="close">取消</a-button><a-button type="primary" :loading="creating" :disabled="!selectedAccount || !proAllowed" @click="create">{{ proAllowed ? request.trackingOnly ? '开始追更' : '创建获取任务' : '升级 Pro 后使用' }}</a-button></div>
+      <p v-if="selectedCapability" class="acquisition-note">{{ t('media.capabilityNotePrefix') }} {{ formatMediaAcquisitionCapability(selectedCapability) }} {{ t('media.capabilityNoteSuffix') }}</p>
+      <label>{{ t('media.saveFolder') }}</label>
+      <div class="acquisition-folder"><span>{{ targetFolderName }}</span><a-button type="outline" size="small" :loading="selectingFolder" :disabled="!selectedAccount" @click="chooseFolder">{{ t('media.selectFolder') }}</a-button></div>
+      <a-checkbox v-model="rememberTarget">{{ t('media.rememberTarget') }}</a-checkbox>
+      <div v-if="!accounts.length" class="acquisition-empty">{{ t('media.noSupportedAccount') }}</div>
+      <div v-else-if="!selectedAccount" class="acquisition-empty">{{ t('media.accountBusy') }}</div>
+      <div class="acquisition-actions"><a-button @click="close">{{ t('common.cancel') }}</a-button><a-button type="primary" :loading="creating" :disabled="!selectedAccount || !proAllowed" @click="create">{{ proAllowed ? request.trackingOnly ? t('media.startTracking') : t('media.createTask') : t('media.upgradePro') }}</a-button></div>
     </div>
   </a-modal>
 </template>

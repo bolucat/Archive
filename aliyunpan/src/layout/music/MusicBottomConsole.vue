@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { FileText, Heart, List, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, SlidersHorizontal, Volume2, VolumeX } from 'lucide-vue-next'
+import { t as tt } from '../../i18n'
 
 type PlayMode = 'list' | 'loop-list' | 'loop-one' | 'shuffle'
 
@@ -49,23 +50,23 @@ const emit = defineEmits<{
 const qualityOpen = ref(false)
 const statusText = computed(() => {
   if (props.errMsg) return props.errMsg
-  if (props.loading) return '加载中...'
-  if (props.metaLoad) return '获取歌词...'
+  if (props.loading) return tt('common.loading')
+  if (props.metaLoad) return tt('music.fetchingLyrics')
   return ''
 })
 
-const sourceLabel = computed(() => props.ext || '网盘')
+const sourceLabel = computed(() => props.ext || tt('music.cloudMusic'))
 const qualityOptions = [
-  { key: 'jymaster', label: '超清母带', meta: '外部源禁用', locked: true },
-  { key: 'hires', label: '高清臻音', meta: '外部源禁用', locked: true },
-  { key: 'lossless', label: '无损 SQ', meta: '网盘原始', locked: false },
-  { key: 'exhigh', label: '极高 HQ', meta: '外部源禁用', locked: true },
-  { key: 'standard', label: '标准', meta: '外部源禁用', locked: true }
+  { key: 'jymaster', label: tt('music.qualityMaster'), meta: tt('music.externalSourceDisabled'), locked: true },
+  { key: 'hires', label: tt('music.qualityHiRes'), meta: tt('music.externalSourceDisabled'), locked: true },
+  { key: 'lossless', label: tt('music.qualityLossless'), meta: tt('music.cloudOriginal'), locked: false },
+  { key: 'exhigh', label: tt('music.qualityHigh'), meta: tt('music.externalSourceDisabled'), locked: true },
+  { key: 'standard', label: tt('music.qualityStandard'), meta: tt('music.externalSourceDisabled'), locked: true }
 ]
 </script>
 
 <template>
-  <button class="bottom-handle mineradio-bottom-handle" type="button" aria-label="播放器控制台"><span></span></button>
+  <button class="bottom-handle mineradio-bottom-handle" type="button" :aria-label="tt('music.playerConsole')"><span></span></button>
   <div class="bottom-bar mineradio-bottom-bar visible">
     <div class="progress-bar" @mousedown="emit('progress-down', $event)">
       <div class="progress-fill" :style="{ width: progressPercent + '%' }"></div>
@@ -77,14 +78,14 @@ const qualityOptions = [
         <div class="control-track">
           <div :class="['control-cover', !coverUrl ? 'cover-empty' : '']" :style="coverUrl ? { backgroundImage: `url(${coverUrl})` } : {}"></div>
           <div class="control-meta">
-            <div class="control-title" :title="title || '未在播放'">{{ title || '未在播放' }}</div>
-            <div class="control-artist" :title="artist || album || '未知艺人'">
-              {{ artist || (album || '未知艺人') }}<span v-if="artist && album"> · {{ album }}</span>
+            <div class="control-title" :title="title || tt('music.notPlaying')">{{ title || tt('music.notPlaying') }}</div>
+            <div class="control-artist" :title="artist || album || tt('music.unknownArtist')">
+              {{ artist || (album || tt('music.unknownArtist')) }}<span v-if="artist && album"> · {{ album }}</span>
             </div>
           </div>
         </div>
         <div :class="['quality-control', 'source-control', qualityOpen ? 'open' : '']">
-          <button id="quality-btn" class="ctrl-btn quality-pill" title="音质：网盘原始文件" @click="qualityOpen = !qualityOpen">
+          <button id="quality-btn" class="ctrl-btn quality-pill" :title="tt('music.qualityCloudOriginalTitle')" @click="qualityOpen = !qualityOpen">
             <span id="quality-btn-label">{{ sourceLabel }}</span>
           </button>
           <div class="quality-popover">
@@ -94,10 +95,10 @@ const qualityOptions = [
             </button>
           </div>
         </div>
-        <button :class="['ctrl-btn', 'heart-btn', isFav ? 'liked' : '']" :disabled="!total" title="喜欢" @click="emit('toggle-fav')">
+        <button :class="['ctrl-btn', 'heart-btn', isFav ? 'liked' : '']" :disabled="!total" :title="tt('music.like')" @click="emit('toggle-fav')">
           <Heart class="heart-svg" :size="21" :stroke-width="1.8" :fill="isFav ? 'currentColor' : 'none'" />
         </button>
-        <button class="ctrl-btn lyrics-toggle-btn" :class="{ active: showLyrics }" title="歌词" @click="emit('toggle-lyrics')">
+        <button class="ctrl-btn lyrics-toggle-btn" :class="{ active: showLyrics }" :title="tt('music.lyrics')" @click="emit('toggle-lyrics')">
           <FileText :size="21" :stroke-width="1.8" />
         </button>
       </div>
@@ -109,28 +110,28 @@ const qualityOptions = [
           <Repeat v-else-if="mode === 'loop-list'" id="play-mode-icon" :size="21" :stroke-width="1.9" />
           <List v-else id="play-mode-icon" :size="21" :stroke-width="1.9" />
         </button>
-        <button class="ctrl-btn" title="上一首" @click="emit('prev')">
+        <button class="ctrl-btn" :title="tt('music.previousTrack')" @click="emit('prev')">
           <SkipBack :size="22" :stroke-width="1.8" />
         </button>
-        <button id="play-btn" class="ctrl-btn" title="播放/暂停" @click="emit('toggle-play')">
+        <button id="play-btn" class="ctrl-btn" :title="tt('music.playPause')" @click="emit('toggle-play')">
           <Pause v-if="playing" :size="24" fill="currentColor" :stroke-width="0" />
           <Play v-else :size="24" fill="currentColor" :stroke-width="0" style="margin-left:3px" />
         </button>
-        <button class="ctrl-btn" title="下一首" @click="emit('next')">
+        <button class="ctrl-btn" :title="tt('music.nextTrack')" @click="emit('next')">
           <SkipForward :size="22" :stroke-width="1.8" />
         </button>
         <div id="time-display">{{ displayTime }} / {{ durationText }}</div>
       </div>
 
       <div class="control-cluster modes">
-        <button id="visual-console-btn" :class="['ctrl-btn', showFxPanel ? 'active' : '']" title="视觉控制台" @click="emit('toggle-fx')">
+        <button id="visual-console-btn" :class="['ctrl-btn', showFxPanel ? 'active' : '']" :title="tt('music.visualConsole')" @click="emit('toggle-fx')">
           <SlidersHorizontal :size="21" :stroke-width="1.85" />
         </button>
-        <button id="mini-queue-btn" :class="['ctrl-btn', showPanel ? 'active' : '']" title="播放列表" @click="emit('toggle-panel')">
+        <button id="mini-queue-btn" :class="['ctrl-btn', showPanel ? 'active' : '']" :title="tt('music.playlist')" @click="emit('toggle-panel')">
           <List :size="21" :stroke-width="1.8" />
         </button>
         <div :class="['volume-control', muted || vol === 0 ? 'muted' : '']">
-          <button class="ctrl-btn" title="音量" @click="emit('toggle-mute')">
+          <button class="ctrl-btn" :title="tt('music.volume')" @click="emit('toggle-mute')">
             <VolumeX v-if="muted || vol === 0" :size="21" :stroke-width="1.8" />
             <Volume2 v-else :size="21" :stroke-width="1.8" />
           </button>

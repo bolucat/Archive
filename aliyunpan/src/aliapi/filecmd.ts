@@ -17,7 +17,7 @@ import { apiDrive115Rename } from '../cloud115/rename'
 import { apiDrive115TrashBatch, apiDrive115TrashDelete, apiDrive115TrashRestore } from '../cloud115/trash'
 import { apiBaiduCopy, apiBaiduDelete, apiBaiduMove, apiBaiduRename } from '../cloudbaidu/filemanager'
 import { apiBaiduCreateDir, buildBaiduUploadPath } from '../cloudbaidu/upload'
-import { copyWebDavPath, createWebDavDirectory, deleteWebDavPath, getWebDavConnection, getWebDavConnectionId, isWebDavDrive, moveWebDavPath, normalizeWebDavPath, renameWebDavPath } from '../utils/webdavClient'
+import { isWebDavDrive } from '../utils/webdavClient'
 import { apiPikPakCopyBatch, apiPikPakMkdir, apiPikPakMoveBatch, apiPikPakRename, apiPikPakTrashBatch, apiPikPakTrashDelete, apiPikPakTrashRestore } from '../pikpak/filecmd'
 import { apiQuarkMkdir, apiQuarkMoveBatch, apiQuarkRename, apiQuarkTrashBatch } from '../quark/filecmd'
 import { apiCloud139CopyBatch, apiCloud139Mkdir, apiCloud139MoveBatch, apiCloud139Rename, apiCloud139TrashBatch } from '../cloud139/filecmd'
@@ -67,17 +67,7 @@ export default class AliFileCmd {
     const result = { file_id: '', error: '新建文件夹失败' }
     if (!user_id || !drive_id || !parent_file_id) return result
     if (isWebDavDrive(drive_id)) {
-      const connectionId = getWebDavConnectionId(drive_id)
-      const connection = getWebDavConnection(connectionId)
-      if (!connection) return result
-      const parentPath = parent_file_id.includes('root') ? '/' : parent_file_id
-      const targetPath = normalizeWebDavPath(`${parentPath}/${creatDirName}`)
-      try {
-        await createWebDavDirectory(connection, targetPath)
-        return { file_id: targetPath, error: '' }
-      } catch (error: any) {
-        return { file_id: '', error: error?.message || result.error }
-      }
+      return { file_id: '', error: 'WebDAV / AList 文件源为只读' }
     }
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       if (parent_file_id.includes('root')) parent_file_id = '0'
@@ -191,21 +181,7 @@ export default class AliFileCmd {
 
   static async ApiDeleteBatch(user_id: string, drive_id: string, file_idList: string[]): Promise<string[]> {
     if (isWebDavDrive(drive_id)) {
-      const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
-      if (!connection) {
-        message.error('WebDAV 连接不存在，请重新连接')
-        return []
-      }
-      const successList: string[] = []
-      for (const file_id of file_idList) {
-        try {
-          await deleteWebDavPath(connection, file_id)
-          successList.push(file_id)
-        } catch (error: any) {
-          console.error('WebDAV 删除失败:', error)
-        }
-      }
-      return successList
+      return []
     }
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       return apiCloud123DeleteBatch(user_id, file_idList)
@@ -256,21 +232,7 @@ export default class AliFileCmd {
     isDir: boolean
   }[]> {
     if (isWebDavDrive(drive_id)) {
-      const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
-      if (!connection) return []
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        try {
-          const targetPath = await renameWebDavPath(connection, file_id, name)
-          successList.push({ file_id: targetPath, parent_file_id: normalizeWebDavPath(targetPath.split('/').slice(0, -1).join('/')), name, isDir: true })
-        } catch (error) {
-          console.error('WebDAV 重命名失败:', error)
-        }
-      }
-      return successList
+      return []
     }
     if (isBaiduUser(user_id) || drive_id === 'baidu') {
       const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
@@ -567,24 +529,7 @@ export default class AliFileCmd {
 
   static async ApiMoveBatch(user_id: string, drive_id: string, file_idList: string[], to_drive_id: string, to_parent_file_id: string, to_parent_description: string = ''): Promise<string[]> {
     if (isWebDavDrive(drive_id)) {
-      if (drive_id !== to_drive_id) {
-        message.error('WebDAV 暂不支持跨来源移动')
-        return []
-      }
-      const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
-      if (!connection) return []
-      const targetParent = to_parent_file_id.includes('root') ? '/' : normalizeWebDavPath(to_parent_file_id)
-      const successList: string[] = []
-      for (const file_id of file_idList) {
-        try {
-          const targetPath = normalizeWebDavPath(`${targetParent}/${file_id.split('/').pop() || ''}`)
-          await moveWebDavPath(connection, file_id, targetPath)
-          successList.push(file_id)
-        } catch (error) {
-          console.error('WebDAV 移动失败:', error)
-        }
-      }
-      return successList
+      return []
     }
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       if (to_parent_file_id.includes('root')) to_parent_file_id = '0'
@@ -646,24 +591,7 @@ export default class AliFileCmd {
 
   static async ApiCopyBatch(user_id: string, drive_id: string, file_idList: string[], to_drive_id: string, to_parent_file_id: string, to_parent_description: string = ''): Promise<string[]> {
     if (isWebDavDrive(drive_id)) {
-      if (drive_id !== to_drive_id) {
-        message.error('WebDAV 暂不支持跨来源复制')
-        return []
-      }
-      const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
-      if (!connection) return []
-      const targetParent = to_parent_file_id.includes('root') ? '/' : normalizeWebDavPath(to_parent_file_id)
-      const successList: string[] = []
-      for (const file_id of file_idList) {
-        try {
-          const targetPath = normalizeWebDavPath(`${targetParent}/${file_id.split('/').pop() || ''}`)
-          await copyWebDavPath(connection, file_id, targetPath)
-          successList.push(file_id)
-        } catch (error) {
-          console.error('WebDAV 复制失败:', error)
-        }
-      }
-      return successList
+      return []
     }
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       if (to_parent_file_id.includes('root')) to_parent_file_id = '0'

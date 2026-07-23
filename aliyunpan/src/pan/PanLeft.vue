@@ -10,11 +10,14 @@ import UserDAL from '../user/userdal'
 import { onHideRightMenuScroll, onShowRightMenu, TestCtrl } from '../utils/keyboardhelper'
 import DirLeftMenu from './menus/DirLeftMenu.vue'
 import FolderPreviewPopover from './menus/FolderPreviewPopover.vue'
-import { TreeNodeData } from '../store/treestore'
+import TreeStore, { TreeNodeData } from '../store/treestore'
 import { dropMoveSelectedFile } from './topbtns/topbtn'
 import message from '../utils/message'
 import { modalUpload } from '../utils/modal'
-import { GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser, isRemoteDriveUser } from '../aliapi/utils'
+import { t } from '../i18n'
+import { supportsLocalUpload, supportsMove } from '../aliapi/providerFeatures'
+import { quickFileId, type QuickFileEntry } from './quickFiles'
 
 const treeref = ref()
 const inputselectType = ref('backup')
@@ -41,10 +44,10 @@ keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
   if (TestCtrl('9', state.KeyDownEvent, () => handleQuickSelect(9))) return
 })
 
-const switchValues = [
-  { key: 'wangpan', title: '网盘文件', alt: '' },
-  { key: 'kuaijie', title: '快捷方式', alt: '' }
-]
+const switchValues = computed(() => [
+  { key: 'wangpan', title: t('pan.files'), alt: '' },
+  { key: 'kuaijie', title: t('pan.shortcuts'), alt: '' }
+])
 
 let DriveID = pantreeStore.drive_id
 pantreeStore.$subscribe((_m: any, state: PanTreeState) => {
@@ -82,13 +85,14 @@ watchEffect(() => {
 const handleTreeRightClick = (e: { event: MouseEvent; node: any }) => {
   const { parent = undefined, key } = e.node
   if (key.startsWith('search')) return
-  const isSingleRootDrive = isCloud123User(pantreeStore.user_id || '') || isDrive115User(pantreeStore.user_id || '') || isBaiduUser(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '')
+  const isSingleRootDrive = isCloud123User(pantreeStore.user_id || '') || isDrive115User(pantreeStore.user_id || '') || isBaiduUser(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDriveUser(pantreeStore.user_id || '')
   if (!isSingleRootDrive && key.length < 40) return
   pantreeStore.mTreeSelected(e)
   onShowRightMenu('leftpanmenu', e.event.clientX, e.event.clientY)
 }
 
 const onRowItemDragEnter = (ev: any) => {
+  if (!supportsMove(pantreeStore.user_id || '', pantreeStore.drive_id || '') && !supportsLocalUpload(pantreeStore.user_id || '', pantreeStore.drive_id || '')) return
   ev.stopPropagation()
   ev.preventDefault()
   ev.target.style.outline = '2px dotted #637dff'
@@ -102,8 +106,23 @@ const onRowItemDragLeave = (ev: any) => {
   ev.target.style.background = ''
 }
 const onRowItemDragOver = (ev: any) => {
+  if (!supportsMove(pantreeStore.user_id || '', pantreeStore.drive_id || '') && !supportsLocalUpload(pantreeStore.user_id || '', pantreeStore.drive_id || '')) return
   ev.stopPropagation()
   ev.preventDefault()
+}
+
+const onQuickDragEnter = (ev: any) => {
+  ev.stopPropagation()
+  ev.preventDefault()
+  ev.target.style.outline = '2px dotted #637dff'
+  ev.target.style.background = 'rgba(var(--primary-6),0.3)'
+  ev.dataTransfer.dropEffect = 'copy'
+}
+
+const onQuickDragOver = (ev: any) => {
+  ev.stopPropagation()
+  ev.preventDefault()
+  ev.dataTransfer.dropEffect = 'copy'
 }
 
 const onRowItemDrop = (ev: any, data: any) => {
@@ -113,6 +132,10 @@ const onRowItemDrop = (ev: any, data: any) => {
   ev.target.style.background = ''
   const filesList = ev.dataTransfer.files
   if (filesList && filesList.length > 0) {
+    if (!supportsLocalUpload(pantreeStore.user_id || '', data.drive_id || pantreeStore.drive_id || '')) {
+      message.warning(t('pan.readOnlyNoUpload'))
+      return
+    }
     const files: string[] = []
     for (let i = 0, maxi = filesList.length; i < maxi; i++) {
       const path = filesList[i].path
@@ -120,6 +143,10 @@ const onRowItemDrop = (ev: any, data: any) => {
     }
     modalUpload(data.key, files)
   } else {
+    if (!supportsMove(pantreeStore.user_id || '', pantreeStore.drive_id || '')) {
+      message.warning(t('pan.readOnlyNoMove'))
+      return
+    }
     dropMoveSelectedFile(data.drive_id, data.key, true)
   }
 }
@@ -129,50 +156,84 @@ const onQuickDrop = (ev: any) => {
   ev.target.style.outline = 'none'
   ev.target.style.background = ''
 
-  const list: { key: string; drive_id: string; drive_name: string; title: string }[] = []
+  const list: QuickFileEntry[] = []
   const selectedFile = usePanFileStore().GetSelected()
   for (let i = 0, maxi = selectedFile.length; i < maxi; i++) {
     if (selectedFile[i].isDir) {
+      const item = selectedFile[i]
+      const driveType = GetDriveType(pantreeStore.user_id, item.drive_id)
+      const userToken = UserDAL.GetUserToken(pantreeStore.user_id)
+      const dirPath = TreeStore.GetDirPath(item.drive_id, item.file_id).map(node => ({
+        drive_id: node.drive_id,
+        file_id: node.file_id,
+        parent_file_id: node.parent_file_id,
+        name: node.name,
+        path: node.path,
+        description: node.description
+      }))
       list.push({
-        key: selectedFile[i].file_id,
-        drive_id: selectedFile[i].drive_id,
-        drive_name: GetDriveType(pantreeStore.user_id, selectedFile[i].drive_id).title,
-        title: selectedFile[i].name
+        id: quickFileId(pantreeStore.user_id, item.drive_id, item.file_id),
+        user_id: pantreeStore.user_id,
+        user_name: userToken.nick_name || userToken.user_name || userToken.name || pantreeStore.user_id,
+        provider: driveType.name || '',
+        drive_id: item.drive_id,
+        drive_name: driveType.title,
+        file_id: item.file_id,
+        parent_file_id: item.parent_file_id,
+        path: item.path || '',
+        title: item.name,
+        description: item.description || '',
+        dir_path: dirPath
       })
     }
   }
   if (list.length == 0) {
-    message.error('没有选择任何文件夹！')
+    message.error(t('pan.noFolderSelected'))
     return
   }
   PanDAL.updateQuickFile(list)
 }
-const handleQuickDelete = (key: string) => {
-  PanDAL.deleteQuickFile(key)
+const handleQuickDelete = (id: string) => {
+  PanDAL.deleteQuickFile(id)
 }
-const handleQuickSelect = (index: number) => {
+const openQuickFile = async (item: QuickFileEntry) => {
+  if (item.user_id !== pantreeStore.user_id) {
+    const changed = await UserDAL.UserChange(item.user_id)
+    if (!changed) return
+  }
+  await PanDAL.aOpenQuickFile(item)
+}
+const handleQuickSelect = async (index: number) => {
   const array = PanDAL.getQuickFileList()
   if (array.length >= index) {
-    const key = array[index - 1].key
-    const drive_id = array[index - 1].drive_id
-    console.log('handleQuickSelect', array)
-    PanDAL.aReLoadOneDirToShow(drive_id, key, true)
+    await openQuickFile(array[index - 1])
   }
 }
+const handleQuickTreeSelect = async (_keys: any[], e: any) => {
+  const item = PanDAL.getQuickFileList().find(shortcut => shortcut.id === e.node.key)
+  if (item) await openQuickFile(item)
+}
+const handleColorTreeSelect = (_keys: any[], e: any) => {
+  const drive_id = pantreeStore.backup_drive_id || pantreeStore.resource_drive_id
+  pantreeStore.mTreeSelected({ ...e, node: { ...e.node, drive_id } }, true)
+}
+const quickSelectedKeys = computed(() => {
+  const item = PanDAL.getQuickFileList().find(shortcut => shortcut.user_id === pantreeStore.user_id && shortcut.drive_id === pantreeStore.drive_id && shortcut.file_id === pantreeStore.selectDir.file_id)
+  return item ? [item.id] : []
+})
 const filterTreeData = computed(() => {
-  const isCloudUser = isCloud123User(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '')
-  const isWebDavNode = (item: any) => (item?.drive_id || '').startsWith('webdav:')
+  const isRemoteDrive = isRemoteDriveUser(pantreeStore.user_id || '')
+  const isCloudUser = isCloud123User(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDrive
   const baseList = isCloudUser
     ? pantreeStore.treeData.filter((item) => {
-      if (isWebDavNode(item)) return false
       if (item.key === 'backup_root') return false
       if (item.key === 'resource_root') return false
       if (item.key === 'pic_root') return false
-      if ((isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '')) && (item.key === 'video' || item.key === 'recover' || item.key === 'favorite')) return false
+      if ((isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDrive) && (item.key === 'video' || item.key === 'recover' || item.key === 'favorite')) return false
+      if (isRemoteDrive && (item.key === 'trash' || item.key === 'search')) return false
       return true
     })
     : pantreeStore.treeData.filter((item) => {
-      if (isWebDavNode(item)) return false
       if (!isAliyunAccount.value && (item.key === 'backup_root' || item.key === 'resource_root')) {
         return false
       }
@@ -217,8 +278,8 @@ const isPreviewableNode = (data: TreeNodeData | undefined): boolean => {
   if (data.isLeaf === true) {
     // leaf placeholder, but still might be a real folder; only block if no drive_id
   }
-  const userId = pantreeStore.user_id || ''
-  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isQuarkUser(userId) || isCloud139User(userId) || isCloud189User(userId) || isGuangyaUser(userId)
+  const userId = (data as any).user_id || pantreeStore.user_id || ''
+  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isQuarkUser(userId) || isCloud139User(userId) || isCloud189User(userId) || isGuangyaUser(userId) || isRemoteDriveUser(userId)
   if (!isSingleRootDrive && key.length < 40) return false
   return true
 }
@@ -228,12 +289,12 @@ const onTreeNodeEnter = (ev: MouseEvent, data: TreeNodeData) => {
   const target = ev.currentTarget as HTMLElement
   if (!target) return
   const driveId = data.drive_id || pantreeStore.drive_id
-  const userId = pantreeStore.user_id || ''
+  const userId = (data as any).user_id || pantreeStore.user_id || ''
   if (!userId || !driveId) return
   folderPreviewRef.value?.open(target, {
     user_id: userId,
     drive_id: driveId,
-    file_id: data.key,
+    file_id: (data as any).file_id || data.key,
     name: data.title,
     path: (data as any).path || ''
   })
@@ -275,7 +336,7 @@ const onTreeScroll = () => {
             :height='treeHeight'
             :style="{ height: treeHeight + 'px' }"
             :item-height='30'
-            :show-line='{ showLeafIcon: false }'
+            :show-line='false'
             :open-animation='{}'
             :expanded-keys='pantreeStore.treeExpandedKeys'
             :selected-keys='pantreeStore.treeSelectedKeys'
@@ -285,7 +346,7 @@ const onTreeScroll = () => {
             @right-click='handleTreeRightClick'
             @scroll='onTreeScroll'>
             <template #switcherIcon>
-              <i class='ant-tree-switcher-icon iconfont Arrow' />
+              <IconFont class="ant-tree-switcher-lucide" name="iconArrow-Right2" :size="15" />
             </template>
             <template #icon>
               <IconFont name="iconfile-folder" />
@@ -325,21 +386,21 @@ const onTreeScroll = () => {
             :open-animation='{}'
             :selected-keys='pantreeStore.treeSelectedKeys'
             :tree-data='colorTreeData'
-            @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, true)'>
+            @select='handleColorTreeSelect'>
             <template #icon='{ dataRef }'>
               <IconFont name="iconwbiaoqian" :class='dataRef.namesearch' />
             </template>
             <template #title='{ dataRef }'>
-              <span :class="'dirtitle ' + dataRef.namesearch">标记 · {{ dataRef.title }}</span>
+              <span :class="'dirtitle ' + dataRef.namesearch">{{ t('pan.mark') }} · {{ dataRef.title }}</span>
             </template>
           </AntdTree>
           <div class='quickdrop'
                @drop='onQuickDrop($event)'
-               @dragover='onRowItemDragOver'
-               @dragenter='onRowItemDragEnter'
+               @dragover='onQuickDragOver'
+               @dragenter='onQuickDragEnter'
                @dragleave='onRowItemDragLeave'>
-            把右侧的文件夹拖放到这里<br />
-            创建快捷方式(Ctrl 1-9)
+            {{ t('pan.quickDropHint1') }}<br />
+            {{ t('pan.quickDropHint2') }}
           </div>
           <AntdTree
             :tabindex='-1'
@@ -354,9 +415,9 @@ const onTreeScroll = () => {
             :item-height='30'
             :show-line='false'
             :open-animation='{}'
-            :selected-keys='pantreeStore.treeSelectedKeys'
+            :selected-keys='quickSelectedKeys'
             :tree-data='pantreeStore.quickData'
-            @select='(_:any[],e:any)=>pantreeStore.mTreeSelected(e, true)'>
+            @select='handleQuickTreeSelect'>
             <template #icon>
               <IconFont name="iconfile-folder" />
             </template>
@@ -364,12 +425,13 @@ const onTreeScroll = () => {
               <div class="quickitem"
                    @mouseenter='(ev:MouseEvent)=>onTreeNodeEnter(ev, dataRef)'
                    @mouseleave='onTreeNodeLeave'>
-                 <span class='quicktitle' :title='dataRef.namesearch'>
+                 <span class='quicktitle' :title='dataRef.title + " · " + (dataRef.user_name || dataRef.user_id) + " · " + dataRef.drive_name'>
                 {{ dataRef.title }}
+                <small class="quicksource">{{ dataRef.user_name || dataRef.user_id }} · {{ dataRef.drive_name }}</small>
               </span>
                 <span class='quickbtn'>
                 <a-button type='text' size='mini' @click.stop='handleQuickDelete(dataRef.key)'>
-                  删除
+                  {{ t('common.delete') }}
                 </a-button>
               </span>
               </div>
@@ -390,16 +452,6 @@ const onTreeScroll = () => {
 
 .dirtree {
   height: 100%;
-}
-
-.ant-tree.ant-tree-show-line .ant-tree-child-tree li:not(:last-child)::before {
-  border-left: none !important;
-}
-
-.ant-tree.ant-tree-show-line li:not(:last-child)::before {
-  border-left: 1px dashed #d9d9d9;
-  top: 10px;
-  left: 11px
 }
 
 .dirtree .iconfont,
@@ -578,6 +630,12 @@ body[arco-theme='dark'] .ant-tree-node-selected .ant-tree-title > span {
   overflow: hidden;
   text-overflow: ellipsis;
   -webkit-line-clamp: 1;
+}
+
+.quicksource {
+  margin-left: 6px;
+  color: var(--color-text-3);
+  font-size: 11px;
 }
 
 .quickitem .quickbtn {

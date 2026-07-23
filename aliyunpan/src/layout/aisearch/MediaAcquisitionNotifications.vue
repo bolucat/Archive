@@ -2,6 +2,7 @@
 import { Bell, CheckCircle2, CircleAlert, LoaderCircle, RefreshCw, Trash2 } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import message from '../../utils/message'
+import { t } from '../../i18n'
 import { clearMediaAcquisitionNotifications, listMediaAcquisitionNotifications, markMediaAcquisitionNotificationsRead } from '../../services/mediaAcquisition/client'
 import type { MediaAcquisitionNotification } from '@shared/types/mediaAcquisition'
 
@@ -45,7 +46,7 @@ async function refresh(markRead = false) {
       }, 12000)
     }
   } catch (error: any) {
-    message.error(error?.message || '读取媒体通知失败')
+    message.error(error?.message || t('ai.media.notifications.readFailed'))
   } finally {
     loading.value = false
   }
@@ -59,9 +60,9 @@ async function clearAll() {
     notifications.value = []
     visibleUnreadIds.value = new Set()
     emit('cleared')
-    message.success(`已清空 ${count} 条通知`)
+    message.success(t('ai.media.notifications.clearSuccess', { count }))
   } catch (error: any) {
-    message.error(error?.message || '清空通知失败')
+    message.error(error?.message || t('ai.media.notifications.clearFailed'))
   } finally {
     clearing.value = false
   }
@@ -76,8 +77,8 @@ function formatDateLabel(time: number) {
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(today.getDate() - 1)
-  if (date.toDateString() === today.toDateString()) return '今天'
-  if (date.toDateString() === yesterday.toDateString()) return '昨天'
+  if (date.toDateString() === today.toDateString()) return t('ai.media.notifications.today')
+  if (date.toDateString() === yesterday.toDateString()) return t('ai.media.notifications.yesterday')
   return date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'short' })
 }
 
@@ -86,7 +87,7 @@ function hasUnreadDot(item: MediaAcquisitionNotification) {
 }
 
 function statusText(status: MediaAcquisitionNotification['status']) {
-  return ({ completed: '已加入媒体库', partial: '部分入库', no_coverage: '暂无资源', failed: '获取失败', cancelled: '已取消' } as Record<MediaAcquisitionNotification['status'], string>)[status]
+  return ({ completed: t('ai.media.status.completedLibrary'), partial: t('ai.media.status.partialLibrary'), no_coverage: t('ai.media.status.noCoverage'), failed: t('ai.media.status.failedAcquire'), cancelled: t('ai.media.status.cancelled') } as Record<MediaAcquisitionNotification['status'], string>)[status]
 }
 
 onMounted(() => {
@@ -103,20 +104,20 @@ onBeforeUnmount(() => {
 <template>
   <section class="media-notifications-page">
     <header class="media-notifications-head">
-      <div><h2>通知</h2><p>每天的资源获取与追踪日报</p></div>
+      <div><h2>{{ t('ai.media.notifications.title') }}</h2><p>{{ t('ai.media.notifications.subtitle') }}</p></div>
       <div class="media-notifications-actions">
-        <button type="button" class="media-notifications-clear" :disabled="clearing || !notifications.length" title="清空全部通知" @click="clearAll"><Trash2 :size="15" />清空</button>
-        <button type="button" :disabled="loading" title="刷新通知" @click="refresh()"><LoaderCircle v-if="loading" :size="16" class="spin" /><RefreshCw v-else :size="16" /></button>
+        <button type="button" class="media-notifications-clear" :disabled="clearing || !notifications.length" :title="t('ai.media.notifications.clearAllTitle')" @click="clearAll"><Trash2 :size="15" />{{ t('common.clear') }}</button>
+        <button type="button" :disabled="loading" :title="t('ai.media.notifications.refreshTitle')" @click="refresh()"><LoaderCircle v-if="loading" :size="16" class="spin" /><RefreshCw v-else :size="16" /></button>
       </div>
     </header>
     <div v-if="!notifications.length && !loading" class="media-notifications-empty">
       <Bell :size="32" stroke-width="1.7" />
-      <strong>还没有任何记录</strong>
-      <span>发起获取或等待例行检查后，这里会按日期展示结果。</span>
+      <strong>{{ t('ai.media.notifications.emptyTitle') }}</strong>
+      <span>{{ t('ai.media.notifications.emptyDesc') }}</span>
     </div>
     <div v-else class="media-notifications-list">
       <section v-for="group in groupedNotifications" :key="group.key" class="media-notification-day">
-        <div class="media-notification-day-head"><span>{{ group.label }}</span><em>{{ group.items.length }} 条</em></div>
+        <div class="media-notification-day-head"><span>{{ group.label }}</span><em>{{ group.items.length }} {{ t('ai.media.notifications.itemsUnit') }}</em></div>
         <article v-for="item in group.items" :key="item.id" :class="['media-notification', { unread: hasUnreadDot(item), failed: item.status === 'failed', warning: item.status === 'partial' || item.status === 'no_coverage', cancelled: item.status === 'cancelled' }]">
           <span v-if="hasUnreadDot(item)" class="media-notification-dot" />
           <CheckCircle2 v-if="item.status === 'completed'" :size="20" />

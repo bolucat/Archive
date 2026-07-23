@@ -27,6 +27,7 @@ import { isLocalVideoPath } from './integration/localVideoPlayback'
 import { resolveDownloadOpenPath } from './integration/btDownloadTarget'
 import UserDAL from '../user/userdal'
 import { getCloudDownloadSourceLabel } from './cloudDownloadSource'
+import { t } from '../i18n'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -217,28 +218,28 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div class='toppanbtns' style='height: 26px'>
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
       <div class="toppannav">
-        <div class="toppannavitem" title="已下载">
-          <span> 已下载 </span>
+        <div class="toppannavitem" :title="t('transfer.downloaded')">
+          <span> {{ t('transfer.downloaded') }} </span>
         </div>
       </div>
     </div>
     <div class='flex flexauto'></div>
-    <div class="flex flexnoauto cellcount" title="总共已下载完记录数">
-      <a-badge color="#637dff" :text="'总记录数 ' + downedStore.ListStats.count" />
+    <div class="flex flexnoauto cellcount" :title="t('down.totalDownloadedRecords')">
+      <a-badge color="#637dff" :text="`${t('down.totalRecords')} ${downedStore.ListStats.count}`" />
     </div>
   </div>
   <div style="height: 14px"></div>
   <div class="toppanbtns" style="height: 26px">
     <div class="toppanbtn" v-show="downedStore.IsListSelected">
-      <a-button v-if="canOpenSelectedLocal" type="text" size="small" tabindex="-1" @click="handleOpenFile(null)"><IconFont name="iconwenjian" />打开文件</a-button>
-      <a-button v-if="canOpenSelectedLocal" type="text" size="small" tabindex="-1" @click="handleOpenDir(null)"><IconFont name="iconfolder" />打开目录</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleDelete"><IconFont name="icondelete" />删除</a-button>
+      <a-button v-if="canOpenSelectedLocal" type="text" size="small" tabindex="-1" :title="t('down.openFile')" @click="handleOpenFile(null)"><IconFont name="iconwenjian" />{{ t('down.openFile') }}</a-button>
+      <a-button v-if="canOpenSelectedLocal" type="text" size="small" tabindex="-1" :title="t('down.openFolder')" @click="handleOpenDir(null)"><IconFont name="iconfolder" />{{ t('down.openFolder') }}</a-button>
+      <a-button type="text" size="small" tabindex="-1" :title="t('file.delete')" @click="handleDelete"><IconFont name="icondelete" />{{ t('file.delete') }}</a-button>
       <a-button type="text" size="small" tabindex="-1"><IconFont name="icondian" /></a-button>
 
-      <a-button type="text" size="small" tabindex="-1" @click="handleDeleteAll"><IconFont name="icondelete" />清除全部下载记录</a-button>
+      <a-button type="text" size="small" tabindex="-1" :title="t('down.clearAllDownloaded')" @click="handleDeleteAll"><IconFont name="icondelete" />{{ t('down.clearAllDownloaded') }}</a-button>
     </div>
     <div class="toppanbtn" v-show="!downedStore.IsListSelected">
-      <a-button type="text" size="small" tabindex="-1" @click="handleDeleteAll"><IconFont name="icondelete" />清除全部下载记录</a-button>
+      <a-button type="text" size="small" tabindex="-1" :title="t('down.clearAllDownloaded')" @click="handleDeleteAll"><IconFont name="icondelete" />{{ t('down.clearAllDownloaded') }}</a-button>
     </div>
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
@@ -247,7 +248,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
         ref="inputsearch"
         size="small"
         title="Ctrl+F / F3 / Space"
-        placeholder="快速筛选"
+        :placeholder="t('share.quickFilter')"
         allow-clear
         v-model="downedStore.ListSearchKey"
         @clear='(e:any)=>handleSearchInput("")'
@@ -261,7 +262,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div style="height: 9px"></div>
   <div class="toppanarea">
     <div style="margin: 0 3px">
-      <AntdTooltip title="点击全选" placement="left">
+      <AntdTooltip :title="t('share.selectAll')" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" @click="handleSelectAll" title="Ctrl+A">
           <IconFont :name="downedStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -272,15 +273,15 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <AntdTooltip placement='rightTop' v-if="downedStore.ListDataShow.length > 0">
         <a-button shape='square' type='text' tabindex='-1' class='qujian'
                   :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-          {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+          {{ rangIsSelecting ? t('share.cancelSelect') : t('share.rangeSelect') }}
         </a-button>
         <template #title>
           <div>
-            第1步: 点击 区间选择 这个按钮
+            {{ t('share.rangeStep1') }}
             <br />
-            第2步: 鼠标点击一个文件
+            {{ t('share.rangeStep2') }}
             <br />
-            第3步: 移动鼠标点击另外一个文件
+            {{ t('share.rangeStep3') }}
           </div>
         </template>
       </AntdTooltip>
@@ -290,11 +291,11 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                 tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectReverse'>
-        反向选择
+        {{ t('share.reverseSelect') }}
       </a-button>
       <a-button shape='square' v-if='!rangIsSelecting && downedStore.ListSelected.size > 0' type='text' tabindex='-1' class='qujian'
                 status='normal' @click='onSelectCancel'>
-        取消已选
+        {{ t('share.cancelSelectedItems') }}
       </a-button>
     </div>
   </div>
@@ -336,7 +337,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               <IconFont :name="item.Info.icon" aria-hidden="true" />
             </div>
             <div class="filename" @dblclick.stop="!isCloudDownload(item) && handleOpenFile(item)">
-              <div :title="isCloudDownload(item) ? '文件保存在网盘中' : item.Info.localFilePath || '双击打开'">
+              <div :title="isCloudDownload(item) ? t('down.savedInCloud') : item.Info.localFilePath || t('down.doubleClickOpen')">
                 {{ item.Info.name }}
                 <span v-if='item.Info.offlineProvider' class='cloud-origin' :title='cloudSourceLabel(item)'>
                   <IconFont name='iconcloud-download' aria-hidden='true' />
@@ -346,9 +347,9 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
             </div>
             <div class="cell filesize">{{ item.Info.sizestr }}</div>
             <div class='toppanbtn'>
-              <a :title="isDownloadedVideo(item) ? '播放视频' : '打开文件'" v-if='!item.Info.ariaRemote && !isCloudDownload(item)' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
-              <a title='打开目录' v-if='!item.Info.ariaRemote && !isCloudDownload(item)' @click="handleOpenDir(item)"><IconFont name="iconfolder" /></a>&nbsp;&nbsp;
-              <a title='删除' @click="handleDelete"><IconFont name="icondelete" /></a>&nbsp;&nbsp;
+              <a :title="isDownloadedVideo(item) ? t('down.playVideo') : t('down.openFile')" v-if='!item.Info.ariaRemote && !isCloudDownload(item)' @click="handleOpenFile(item)"><IconFont name="iconwenjian" /></a>&nbsp;&nbsp;
+              <a :title="t('down.openFolder')" v-if='!item.Info.ariaRemote && !isCloudDownload(item)' @click="handleOpenDir(item)"><IconFont name="iconfolder" /></a>&nbsp;&nbsp;
+              <a :title="t('file.delete')" @click="handleDelete"><IconFont name="icondelete" /></a>&nbsp;&nbsp;
             </div>
           </div>
         </div>
@@ -358,15 +359,15 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <template #content>
         <a-doption v-if="canOpenSelectedLocal" @click="handleOpenFile(null)">
           <template #icon> <IconFont name="iconwenjian" /> </template>
-          <template #default>打开文件</template>
+          <template #default>{{ t('down.openFile') }}</template>
         </a-doption>
         <a-doption v-if="canOpenSelectedLocal" @click="handleOpenDir(null)">
           <template #icon> <IconFont name="iconfolder" /> </template>
-          <template #default>打开目录</template>
+          <template #default>{{ t('down.openFolder') }}</template>
         </a-doption>
         <a-doption @click="handleDelete" class="danger">
           <template #icon> <IconFont name="icondelete" /> </template>
-          <template #default>删除</template>
+          <template #default>{{ t('file.delete') }}</template>
         </a-doption>
       </template>
     </a-dropdown>

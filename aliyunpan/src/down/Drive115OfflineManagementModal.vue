@@ -4,6 +4,7 @@ import { Modal } from '@arco-design/web-vue'
 import { modalCloseAll } from '../utils/modal'
 import { useModalStore, useUserStore } from '../store'
 import message from '../utils/message'
+import { t } from '../i18n'
 import {
   apiDrive115OfflineAddTorrent,
   apiDrive115OfflineClear,
@@ -49,7 +50,7 @@ const clearTasks = async (flag: number) => {
     message.error(result.error)
     return
   }
-  message.success('云下载任务已清理')
+  message.success(t('transfer.cloudTasksCleared'))
   await refresh()
 }
 
@@ -59,15 +60,15 @@ const confirmClearTasks = (flag: number) => {
     return
   }
   Modal.confirm({
-    title: '清空全部云下载任务？',
-    content: '此操作会清除 115 云下载列表中的全部任务，是否继续？',
+    title: t('transfer.clearCloudTasksConfirmTitle'),
+    content: t('transfer.clearCloudTasksConfirmContent'),
     onOk: () => clearTasks(flag)
   })
 }
 
 const parseTorrent = async () => {
   if (!torrentSha1.value || !torrentPickCode.value) {
-    message.error('请填写种子 SHA1 和提取码')
+    message.error(t('transfer.fillTorrentSha1AndCode'))
     return
   }
   const result = await apiDrive115TorrentParse(userStore.user_id, torrentSha1.value.trim(), torrentPickCode.value.trim())
@@ -79,16 +80,16 @@ const parseTorrent = async () => {
   torrentName.value = result.name
   torrentFiles.value = result.files
   wanted.value = result.files.filter((file: { wanted: boolean }) => file.wanted).map((file: { index: number }) => String(file.index))
-  message.success('BT 种子解析完成')
+  message.success(t('transfer.torrentParsed'))
 }
 
 const addTorrent = async () => {
   if (!torrentInfoHash.value || !wanted.value.length) {
-    message.error('请先解析种子并选择文件')
+    message.error(t('transfer.parseTorrentAndSelectFiles'))
     return
   }
   if (!savePath.value.trim()) {
-    message.error('请填写 BT 保存路径')
+    message.error(t('transfer.fillBtSavePath'))
     return
   }
   const result = await apiDrive115OfflineAddTorrent(userStore.user_id, {
@@ -102,7 +103,7 @@ const addTorrent = async () => {
     message.error(result.error)
     return
   }
-  message.success('BT 云下载任务已创建')
+  message.success(t('transfer.btCloudTaskCreated'))
   await refresh()
 }
 
@@ -128,35 +129,35 @@ const handleOpen = async () => {
 </script>
 
 <template>
-  <a-modal :visible="visible" :footer="false" :unmount-on-close="true" title="115 云下载管理" @before-open="handleOpen" @cancel="modalCloseAll">
+  <a-modal :visible="visible" :footer="false" :title="t('transfer.drive115Management')" :unmount-on-close="true" @before-open="handleOpen" @cancel="modalCloseAll">
     <a-tabs v-model:active-key="activeTab">
-      <a-tab-pane key="tasks" title="任务管理">
+      <a-tab-pane key="tasks" :title="t('transfer.taskManagement')">
         <div class="drive115-actions">
-          <a-button :loading="loading" @click="refresh">刷新</a-button>
-          <a-button @click="confirmClearTasks(0)">清空已完成</a-button>
-          <a-button status="danger" @click="confirmClearTasks(1)">清空全部</a-button>
+          <a-button :loading="loading" @click="refresh">{{ t('common.refresh') }}</a-button>
+          <a-button @click="confirmClearTasks(0)">{{ t('transfer.clearCompleted') }}</a-button>
+          <a-button status="danger" @click="confirmClearTasks(1)">{{ t('transfer.clearAll') }}</a-button>
         </div>
         <a-list v-if="tasks.length" :bordered="false">
           <a-list-item v-for="task in tasks" :key="task.info_hash">
-            <a-list-item-meta :title="task.name || task.url || task.info_hash" :description="`进度 ${task.percentDone || 0}% · 状态 ${task.status}`" />
+            <a-list-item-meta :title="task.name || task.url || task.info_hash" :description="t('transfer.taskProgressStatus', { progress: task.percentDone || 0, status: task.status || '-' })" />
           </a-list-item>
         </a-list>
-        <a-empty v-else description="暂无云下载任务" />
+        <a-empty v-else :description="t('transfer.noCloudDownloadTasks')" />
         <div v-if="quota.length" class="drive115-quota">
-          <div v-for="item in quota" :key="`${item.name}-${item.expire_time}`">{{ item.name || '云下载配额' }}：剩余 {{ item.surplus ?? '-' }} / {{ item.count ?? '-' }}</div>
+          <div v-for="item in quota" :key="`${item.name}-${item.expire_time}`">{{ t('transfer.quotaRemain', { name: item.name || t('transfer.cloudDownloadQuota'), surplus: item.surplus ?? '-', count: item.count ?? '-' }) }}</div>
         </div>
       </a-tab-pane>
-      <a-tab-pane v-if="hasTorrentPreset" key="torrent" title="BT 任务">
+      <a-tab-pane v-if="hasTorrentPreset" key="torrent" :title="t('transfer.btTask')">
         <a-form layout="vertical">
           <div v-if="torrentFiles.length" class="drive115-torrent-files">
-            <div class="drive115-torrent-name">{{ torrentName || 'BT 任务' }}</div>
+            <div class="drive115-torrent-name">{{ torrentName || t('transfer.btTask') }}</div>
             <a-checkbox-group v-model="wanted">
               <a-checkbox v-for="file in torrentFiles" :key="file.index" :value="String(file.index)">{{ file.name }}</a-checkbox>
             </a-checkbox-group>
           </div>
-          <div v-else class="drive115-torrent-empty">正在解析种子文件...</div>
-          <a-form-item label="保存路径"><a-input v-model="savePath" placeholder="例如：Season 01" /></a-form-item>
-          <a-button type="primary" :disabled="!torrentFiles.length" @click="addTorrent">创建 BT 任务</a-button>
+          <div v-else class="drive115-torrent-empty">{{ t('transfer.parsingTorrent') }}</div>
+          <a-form-item :label="t('transfer.savePath')"><a-input v-model="savePath" :placeholder="t('transfer.savePathExample')" /></a-form-item>
+          <a-button type="primary" :disabled="!torrentFiles.length" @click="addTorrent">{{ t('transfer.createBtTask') }}</a-button>
         </a-form>
       </a-tab-pane>
     </a-tabs>

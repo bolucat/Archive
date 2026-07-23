@@ -2,6 +2,7 @@
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import { AriaGlobalSpeed } from '../utils/aria2c'
+import { t } from '../i18n'
 
 const settingStore = useSettingStore()
 
@@ -17,8 +18,8 @@ const handleSelectDownSavePath = () => {
   if (window.WebShowOpenDialogSync) {
     window.WebShowOpenDialogSync(
       {
-        title: '选择一个文件夹，把所有文件下载到此文件夹内',
-        buttonLabel: '选择',
+        title: t('settings.download.selectSaveFolder'),
+        buttonLabel: t('media.selectFolder'),
         properties: ['openDirectory', 'createDirectory'],
         defaultPath: settingStore.downSavePath
       },
@@ -33,72 +34,70 @@ const handleSelectDownSavePath = () => {
 </script>
 
 <template>
-  <div class='settingcard'>
-    <div class='settinghead'>下载引擎</div>
-    <div class='settingrow'>
-      <span>使用 aria2c 下载模块</span>
-      <a-popover position='bottom'>
-        <IconFont name="iconbulb" />
-        <template #content>
-          <div>
-            当前：<span class='opred'>固定使用 aria2c</span>
-            <hr />
-            下载任务统一走 Download aria2 引擎，原生下载器实验分支已停用。
-          </div>
-        </template>
-      </a-popover>
-    </div>
-  </div>
+<!--  <div class='settingcard'>-->
+<!--    <div class='settinghead'>{{ t('settings.download.engine') }}</div>-->
+<!--    <div class='settingrow'>-->
+<!--      <span>{{ t('settings.download.useAria2') }}</span>-->
+<!--      <a-popover position='bottom'>-->
+<!--        <IconFont name="iconbulb" />-->
+<!--        <template #content>-->
+<!--          <div>-->
+<!--            <span class='opred'>{{ t('settings.download.engineCurrent') }}</span>-->
+<!--            <hr />-->
+<!--            {{ t('settings.download.engineTip') }}-->
+<!--          </div>-->
+<!--        </template>-->
+<!--      </a-popover>-->
+<!--    </div>-->
+<!--  </div>-->
 
   <div class='settingcard'>
-    <div class='settinghead'>下载文件保存的位置</div>
+    <div class='settinghead'>{{ t('settings.download.savePath') }}</div>
     <div class='settingrow'>
-      <a-input-search tabindex='-1' class='down-path-input' :readonly='true' button-text='更改' search-button
+      <a-input-search tabindex='-1' class='down-path-input' :readonly='true' :button-text="t('settings.download.change')" search-button
                       :model-value='settingStore.downSavePath' @search='handleSelectDownSavePath' />
     </div>
     <div class='settingrow'>
-      <MySwitch :value='settingStore.downSavePathDefault' @update:value='cb({ downSavePathDefault: $event })'> 新建下载任务时
-        默认使用此路径
+      <MySwitch :value='settingStore.downSavePathDefault' @update:value='cb({ downSavePathDefault: $event })'> {{ t('settings.download.newTask') }}
+        {{ t('settings.download.defaultUsePath') }}
       </MySwitch>
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>开启</span>
+            <span class='opred'>{{ t('settings.defaultOn') }}</span>
             <hr />
-            推荐开启，点击下载按钮直接下载不询问<br /><br />
-            关闭此设置后，点击下载按钮会弹窗提示选择保存路径
+            {{ t('settings.download.defaultPathTip') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class='settingrow'>
-      <MySwitch :value='settingStore.downSavePathFull' @update:value='cb({ downSavePathFull: $event })'> 新建下载任务时
-        按照网盘完整路径保存
+      <MySwitch :value='settingStore.downSavePathFull' @update:value='cb({ downSavePathFull: $event })'> {{ t('settings.download.newTask') }}
+        {{ t('settings.download.fullPath') }}
       </MySwitch>
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>开启</span>
+            <span class='opred'>{{ t('settings.defaultOn') }}</span>
             <hr />
-            推荐开启，因为关闭此设置后，遇到重名的文件会下载失败
+            {{ t('settings.download.fullPathTip') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class='settingrow'>
-      <MySwitch :value='settingStore.downSaveBreakWeiGui' @update:value='cb({ downSaveBreakWeiGui: $event })'> 新建下载任务时
-        自动跳过违规文件
+      <MySwitch :value='settingStore.downSaveBreakWeiGui' @update:value='cb({ downSaveBreakWeiGui: $event })'> {{ t('settings.download.newTask') }}
+        {{ t('settings.download.skipRestricted') }}
       </MySwitch>
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>开启</span>
+            <span class='opred'>{{ t('settings.defaultOn') }}</span>
             <hr />
-            推荐开启，遇到违规文件跳过不下载<br /><br />
-            关闭此设置后，会正常的下载，3MB的违规视频文件
+            {{ t('settings.download.skipRestrictedTip') }}
           </div>
         </template>
       </a-popover>
@@ -106,7 +105,7 @@ const handleSelectDownSavePath = () => {
   </div>
 
   <div class='settingcard'>
-    <div class='settinghead'>下载时 最大并行任务数</div>
+    <div class='settinghead'>{{ t('settings.download.maxParallel') }}</div>
     <div class='settingrow'>
       <a-input-number
         tabindex='-1' :style="{ width: '252px' }"
@@ -114,37 +113,36 @@ const handleSelectDownSavePath = () => {
         :min='1' :max='5' :step='1'
         :model-value='settingStore.downFileMax'
         @update:model-value='cb({ downFileMax: $event })'>
-        <template #prefix> 同时下载</template>
-        <template #suffix> 个文件</template>
+        <template #prefix> {{ t('settings.download.simultaneous') }}</template>
+        <template #suffix> {{ t('settings.download.files') }}</template>
       </a-input-number>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>下载时 每个文件的线程</div>
+    <div class='settinghead'>{{ t('settings.download.threadsPerFile') }}</div>
     <div class='settingrow'>
       <a-select tabindex='-1' :style="{ width: '252px' }" :model-value='settingStore.downThreadMax'
                 :popup-container="'#SettingDiv'" @update:model-value='cb({ downThreadMax: $event })'>
-        <a-option :value='1'>每个文件使用 1 个线程</a-option>
-        <a-option :value='2'>每个文件使用 2 个线程</a-option>
-        <a-option :value='4'>每个文件使用 4 个线程</a-option>
-        <a-option :value='8'>每个文件使用 8 个线程</a-option>
-        <a-option :value='16'>每个文件使用16个线程</a-option>
-        <a-option :value='24'>每个文件使用24个线程</a-option>
-        <a-option :value='32'>每个文件使用32个线程</a-option>
+        <a-option :value='1'>{{ t('settings.download.threadOptionPrefix') }} 1 {{ t('settings.download.threadOptionSuffix') }}</a-option>
+        <a-option :value='2'>{{ t('settings.download.threadOptionPrefix') }} 2 {{ t('settings.download.threadOptionSuffix') }}</a-option>
+        <a-option :value='4'>{{ t('settings.download.threadOptionPrefix') }} 4 {{ t('settings.download.threadOptionSuffix') }}</a-option>
+        <a-option :value='8'>{{ t('settings.download.threadOptionPrefix') }} 8 {{ t('settings.download.threadOptionSuffix') }}</a-option>
+        <a-option :value='16'>{{ t('settings.download.threadOptionPrefix') }} 16 {{ t('settings.download.threadOptionSuffix') }}</a-option>
+        <a-option :value='24'>{{ t('settings.download.threadOptionPrefix') }} 24 {{ t('settings.download.threadOptionSuffix') }}</a-option>
+        <a-option :value='32'>{{ t('settings.download.threadOptionPrefix') }} 32 {{ t('settings.download.threadOptionSuffix') }}</a-option>
       </a-select>
       <a-popover position='right'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>4个线程</span>
+            <span class='opred'>{{ t('settings.download.threadDefault') }}</span>
             <hr />
-            下载线程太多，时间久了账号容易被限速<br /><br />
-            请设置为可以跑满 你的宽带的 最小值
+            {{ t('settings.download.threadTip') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>每服务器最大连接数 <span style="font-weight:400;color:var(--color-text-3);font-size:12px">Max Connection Per Server</span></div>
+    <div class='settinghead'>{{ t('settings.download.maxConnPerServer') }} <span style="font-weight:400;color:var(--color-text-3);font-size:12px">Max Connection Per Server</span></div>
     <div class='settingrow'>
       <a-input-number
         tabindex='-1' :style="{ width: '252px' }"
@@ -152,23 +150,22 @@ const handleSelectDownSavePath = () => {
         :min='1' :max='64' :step='1'
         :model-value='settingStore.ariaMaxConnectionPerServer'
         @update:model-value='cb({ ariaMaxConnectionPerServer: $event })'>
-        <template #prefix> 每服务器</template>
-        <template #suffix> 个连接</template>
+        <template #prefix> {{ t('settings.download.perServer') }}</template>
+        <template #suffix> {{ t('settings.download.connections') }}</template>
       </a-input-number>
       <a-popover position='right'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>16</span>
+            <span class='opred'>16</span>
             <hr />
-            控制 aria2 对单个服务器打开的最大连接数<br />
-            增大可提高单文件下载速度，但过度增加可能被限速
+            {{ t('settings.download.maxConnTip') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>下载时 总下载速度限制</div>
+    <div class='settinghead'>{{ t('settings.download.globalSpeed') }}</div>
     <div class='settingrow'>
       <a-input-number
         tabindex='-1' :style="{ width: '128px' }"
@@ -189,11 +186,11 @@ const handleSelectDownSavePath = () => {
         <IconFont name="iconbulb" />
         <template #content>
           <div :style="{ width: '360px' }">
-            默认：<span class='opred'>0 (不限速，满速下载)</span>
+            <span class='opred'>{{ t('settings.download.speedDefault') }}</span>
             <hr />
-            <span class='opred'>0-100MB/s</span> 百兆宽带最高跑到 12MB/s<br />
-            <span class='opred'>0-999KB/s</span> 超慢的宽带请选择KB/s (1MB/s=1000KB/s)<br />
-            适当的限速可以不影响其他人上网
+            <span class='opred'>{{ t('settings.download.speedTip100') }}</span><br />
+            <span class='opred'>{{ t('settings.download.speedTipKb') }}</span><br />
+            {{ t('settings.download.speedTip') }}
           </div>
         </template>
       </a-popover>

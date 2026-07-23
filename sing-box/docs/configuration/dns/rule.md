@@ -242,7 +242,7 @@ icon: material/alert-decagram
     (`source_port` || `source_port_range`) &&  
     `other fields`
 
-    Additionally, each branch inside an included rule-set can be considered merged into the outer rule, while different branches keep OR semantics.
+    When a rule-set contains only a single default rule without `invert`, its fields are considered merged into the outer rule per the logic above; otherwise, it is matched as an `other field`; different rule-sets always keep OR semantics.
 
 #### inbound
 
@@ -562,7 +562,11 @@ Enable response-based matching. When enabled, this rule matches against the eval
 (set by a preceding [`evaluate`](/configuration/dns/rule_action/#evaluate) action)
 instead of only matching the original query.
 
-The evaluated response can also be returned directly by a later [`respond`](/configuration/dns/rule_action/#respond) action.
+`true` or the `tag` of an `evaluate` action: `true` matches against the response of the latest
+`evaluate` action without `tag`; a tag matches against the response of the `evaluate` action with the tag.
+
+The evaluated response can also be returned directly by a later [`respond`](/configuration/dns/rule_action/#respond) action;
+in a rule with a `match_response` tag, `respond` returns the tagged response.
 
 Required for Response Match Fields (`response_rcode`, `response_answer`, `response_ns`, `response_extra`).
 Also required for `ip_cidr`, `ip_is_private`, and `ip_accept_any` when used with `evaluate` or Response Match Fields.

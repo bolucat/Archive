@@ -4,6 +4,7 @@ import { X, Loader2, Sparkles } from 'lucide-vue-next'
 import { openExternal } from '../utils/electronhelper'
 import message from '../utils/message'
 import { BOXPLAYER_SITE_URL } from '../utils/boxplayerAuth'
+import { t } from '../i18n'
 
 const PRICING_URL = `${BOXPLAYER_SITE_URL}/pricing/`
 
@@ -21,7 +22,7 @@ async function handleUpgrade() {
   try {
     openExternal(PRICING_URL)
   } catch (error: any) {
-    message.error(error?.message || '打开官网购买页面失败')
+    message.error(error?.message || t('settings.upgradeOpening'))
   } finally {
     upgrading.value = false
   }
@@ -33,43 +34,43 @@ async function handleUpgrade() {
     <div class="lim-modal">
       <button class="lim-close" @click="emit('update:visible', false)"><X :size="18" /></button>
       <div class="lim-icon"><Sparkles :size="32" /></div>
-      <h2 class="lim-title">升级到专业版</h2>
-      <p class="lim-desc">解锁内置 AI、阅读器助手、翻译、朗读和语义搜索。订阅提供 7 天免费试用。</p>
+      <h2 class="lim-title">{{ t('upgrade.title') }}</h2>
+      <p class="lim-desc">{{ t('upgrade.desc') }}</p>
 
       <table class="lim-table">
         <thead>
-          <tr><th>功能</th><th>开源版</th><th class="pro-th">专业版</th></tr>
+          <tr><th>{{ t('upgrade.feature') }}</th><th>{{ t('upgrade.openSource') }}</th><th class="pro-th">{{ t('upgrade.pro') }}</th></tr>
         </thead>
         <tbody>
-          <tr><td>网盘文件管理</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>视频播放 & 音乐播放</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>本地书籍阅读</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>多网盘同时连接</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>内置 BoxPlayer AI 模型</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>AI 智能搜索 + 语义索引</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>AI Agent 网盘搜索</td><td class="limit">BYOK</td><td class="yes">✓</td></tr>
-          <tr><td>AI 阅读助手（PDF/EPUB）</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>阅读器语音朗读（本地）</td><td class="yes">✓</td><td class="yes">✓</td></tr>
-          <tr><td>阅读器云端高品质朗读</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>阅读器即时翻译</td><td class="no">—</td><td class="yes">✓</td></tr>
-          <tr><td>全网资源搜索</td><td class="limit">5次/天</td><td class="yes">✓</td></tr>
-          <tr><td>优先技术支持</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.cloudFileManagement') }}</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.videoMusicPlayback') }}</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.localBookReading') }}</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.multiDrive') }}</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.builtInAi') }}</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.aiSemanticSearch') }}</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.aiAgentDriveSearch') }}</td><td class="limit">BYOK</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.aiReaderAssistant') }}</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.localTts') }}</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.cloudTts') }}</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.instantTranslate') }}</td><td class="no">—</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.webResourceSearch') }}</td><td class="limit">{{ t('upgrade.fivePerDay') }}</td><td class="yes">✓</td></tr>
+          <tr><td>{{ t('upgrade.prioritySupport') }}</td><td class="no">—</td><td class="yes">✓</td></tr>
         </tbody>
       </table>
 
       <div class="lim-price-row">
-        <span class="lim-price-free">开源版 · 永久免费</span>
-        <span class="lim-price-pro"><span class="lim-old-price">$199</span> $139 终身 · 7 折</span>
+        <span class="lim-price-free">{{ t('upgrade.freePrice') }}</span>
+        <span class="lim-price-pro"><span class="lim-old-price">$199</span> {{ t('upgrade.proPrice') }}</span>
       </div>
 
       <button v-if="isLoggedIn" class="lim-btn" :disabled="upgrading" @click="handleUpgrade">
         <Loader2 v-if="upgrading" :size="16" class="lim-spin" />
-        <span v-else>去官网购买终身专业版</span>
+        <span v-else>{{ t('settings.buyLifetimePro') }}</span>
       </button>
       <button v-else class="lim-btn" @click="handleUpgrade">
-        去官网购买
+        {{ t('upgrade.buyOnWebsite') }}
       </button>
-      <button class="lim-skip" @click="emit('update:visible', false)">暂不升级，继续使用免费版</button>
+      <button class="lim-skip" @click="emit('update:visible', false)">{{ t('upgrade.skip') }}</button>
     </div>
   </div>
 </template>

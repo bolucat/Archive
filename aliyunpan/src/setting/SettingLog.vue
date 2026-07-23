@@ -4,6 +4,7 @@ import message from '../utils/message'
 import DebugLog from '../utils/debuglog'
 import { useLogStore, useWinStore } from '../store'
 import { copyToClipboard } from '../utils/electronhelper'
+import { t } from '../i18n'
 
 const logStore = useLogStore()
 const winStore = useWinStore()
@@ -26,7 +27,7 @@ const handleSaveLogCopy = () => {
     logstr += item.logtime + ' : ' + item.logtype + ' : ' + item.logmessage + '\n'
   }
   copyToClipboard(logstr)
-  message.success('运行日志已复制到剪切板')
+  message.success(t('settings.log.copied'))
 }
 </script>
 
@@ -35,9 +36,9 @@ const handleSaveLogCopy = () => {
     <div class="settings-log-header">
       <div>
         <div class="settings-log-kicker">Diagnostics</div>
-        <div class="settinghead">运行日志</div>
+        <div class="settinghead">{{ t('settings.logs') }}</div>
       </div>
-      <div class="settings-log-caption">用于排查启动、网络、播放器与同步相关问题</div>
+      <div class="settings-log-caption">{{ t('settings.log.caption') }}</div>
     </div>
     <a-list
       :bordered="false"
@@ -60,9 +61,9 @@ const handleSaveLogCopy = () => {
 
     <div class="settingspace"></div>
     <div class="settingrow">
-      <a-button type="outline" size="small" @click="handleSaveLogRefresh">刷新</a-button>
-      <a-button type="outline" size="small" @click="handleSaveLogClear">清空日志</a-button>
-      <a-button type="outline" size="small" @click="handleSaveLogCopy">复制日志</a-button>
+      <a-button type="outline" size="small" @click="handleSaveLogRefresh">{{ t('common.refresh') }}</a-button>
+      <a-button type="outline" size="small" @click="handleSaveLogClear">{{ t('settings.log.clear') }}</a-button>
+      <a-button type="outline" size="small" @click="handleSaveLogCopy">{{ t('settings.log.copy') }}</a-button>
     </div>
   </div>
 </template>
@@ -111,25 +112,42 @@ const handleSaveLogCopy = () => {
   font-size: 12px;
   color: var(--color-text-2);
 }
-html.dark .loglist .arco-list-item {
+body[arco-theme='dark'] #xbybody .loglist .arco-list-item {
   color: rgba(232, 238, 249, 0.88);
 }
-html.dark .loglist .arco-list-item .arco-typography {
+body[arco-theme='dark'] #xbybody .loglist .arco-list-item .arco-typography {
   color: inherit;
 }
 .loglist .arco-list-item-content {
   user-select: text;
   -webkit-user-drag: none;
 }
-html.dark .loglist {
+body[arco-theme='dark'] #xbybody .loglist {
   border-color: rgba(140, 158, 183, 0.18);
-  background: rgba(22, 27, 36, 0.78);
+  background: #05070a;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
-html.dark .settings-log-kicker {
+body[arco-theme='dark'] #xbybody .loglist .arco-list,
+body[arco-theme='dark'] #xbybody .loglist .arco-list-content,
+body[arco-theme='dark'] #xbybody .loglist .arco-list-content-wrapper,
+body[arco-theme='dark'] #xbybody .loglist .arco-list-item,
+body[arco-theme='dark'] #xbybody .loglist .arco-virtual-list,
+body[arco-theme='dark'] #xbybody .loglist .arco-virtual-list-list,
+body[arco-theme='dark'] #xbybody .loglist .arco-empty {
+  background: transparent !important;
+}
+body[arco-theme='dark'] #xbybody .loglist .arco-empty {
+  color: rgba(232, 238, 249, 0.42);
+}
+body[arco-theme='dark'] #xbybody .loglist .arco-empty-image {
+  opacity: 0.42;
+}
+body[arco-theme='dark'] #xbybody .settings-log-kicker {
   background: rgba(120, 160, 255, 0.2);
   color: #dbe6ff;
 }
-html.dark .settings-log-caption {
+body[arco-theme='dark'] #xbybody .settings-log-caption {
   color: rgba(236, 242, 255, 0.62);
 }
 </style>

@@ -5,9 +5,11 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
 
 const STORAGE_KEY = 'MediaLibrary_WebDavConnections'
+const aListTokenCache = new Map<string, string>()
 
 export interface WebDavConnectionConfig {
   id: string
+  kind?: 'webdav' | 'alist'
   name: string
   url: string
   username: string
@@ -23,6 +25,11 @@ const VIDEO_EXTENSIONS = new Set([
 ])
 
 const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, '')
+
+const getAListDavUrl = (url: string) => {
+  const normalized = normalizeUrl(url)
+  return normalized.endsWith('/dav') ? normalized : `${normalized}/dav`
+}
 
 export const normalizeWebDavPath = (value: string) => {
   const trimmed = (value || '/').trim()
@@ -144,6 +151,7 @@ export const saveWebDavConnection = (config: WebDavConnectionConfig) => {
 export const removeWebDavConnection = (id: string) => {
   const list = getWebDavConnections().filter(item => item.id !== id)
   saveWebDavConnections(list)
+  aListTokenCache.delete(id)
 }
 
 export const getWebDavConnection = (id: string) => {
@@ -161,9 +169,34 @@ export const createWebDavConnection = (input: {
   const normalizedRoot = normalizeWebDavPath(input.rootPath || '/')
   const timestamp = Date.now().toString()
   const idSeed = `${normalizedUrl}|${input.username}|${normalizedRoot}|${timestamp}`
-  const id = btoa(idSeed).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)
+  const id = btoa(encodeURIComponent(idSeed)).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)
   return {
     id,
+    kind: 'webdav',
+    name: input.name.trim() || new URL(normalizedUrl).host,
+    url: normalizedUrl,
+    username: input.username.trim(),
+    password: input.password,
+    rootPath: normalizedRoot,
+    createdAt: new Date().toISOString()
+  }
+}
+
+export const createAListConnection = (input: {
+  name: string
+  url: string
+  username: string
+  password: string
+  rootPath?: string
+}): WebDavConnectionConfig => {
+  const normalizedUrl = getAListDavUrl(input.url)
+  const normalizedRoot = normalizeWebDavPath(input.rootPath || '/')
+  const timestamp = Date.now().toString()
+  const idSeed = `alist|${normalizedUrl}|${input.username}|${normalizedRoot}|${timestamp}`
+  const id = btoa(encodeURIComponent(idSeed)).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24)
+  return {
+    id,
+    kind: 'alist',
     name: input.name.trim() || new URL(normalizedUrl).host,
     url: normalizedUrl,
     username: input.username.trim(),
@@ -202,7 +235,11 @@ const getApiBaseUrl = (config: WebDavConnectionConfig): string => {
   return currentUrl.toString()
 }
 
-const fetchWebDavApiToken = async (config: WebDavConnectionConfig): Promise<string> => {
+const fetchWebDavApiToken = async (config: WebDavConnectionConfig, force = false): Promise<string> => {
+  if (!force) {
+    const cached = aListTokenCache.get(config.id)
+    if (cached) return cached
+  }
   const loginUrl = new URL('api/auth/login', getApiBaseUrl(config)).toString()
   const response = await fetch(loginUrl, {
     method: 'POST',
@@ -218,7 +255,25 @@ const fetchWebDavApiToken = async (config: WebDavConnectionConfig): Promise<stri
   const payload = await response.json().catch(() => null) as any
   const token = payload?.data?.token
   if (!token) throw new Error(payload?.message || '获取 WebDAV token 失败')
+  aListTokenCache.set(config.id, token)
   return token
+}
+
+const requestAListApi = async <T>(config: WebDavConnectionConfig, endpoint: string, body: Record<string, unknown>): Promise<T> => {
+  const request = async (forceToken: boolean) => {
+    const token = await fetchWebDavApiToken(config, forceToken)
+    return fetch(new URL(endpoint.replace(/^\//, ''), getApiBaseUrl(config)).toString(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: token },
+      body: JSON.stringify(body)
+    })
+  }
+  let response = await request(false)
+  if (response.status === 401) response = await request(true)
+  if (!response.ok) throw new Error(`AList 请求失败 (${response.status})`)
+  const payload = await response.json().catch(() => null) as any
+  if (!payload || (payload.code !== 200 && payload.code !== 0)) throw new Error(payload?.message || 'AList 请求失败')
+  return payload.data as T
 }
 
 const getWebDavStoragePath = (config: WebDavConnectionConfig, relativePath: string) => {
@@ -227,24 +282,13 @@ const getWebDavStoragePath = (config: WebDavConnectionConfig, relativePath: stri
 }
 
 export const getWebDavPlayUrl = async (config: WebDavConnectionConfig, relativePath: string): Promise<string> => {
-  const token = await fetchWebDavApiToken(config)
-  const apiUrl = new URL('api/fs/get', getApiBaseUrl(config)).toString()
   const requestPath = getWebDavStoragePath(config, relativePath)
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: token
-    },
-    body: JSON.stringify({ path: relativePath })
-  })
-  if (!response.ok) throw new Error(`获取 WebDAV 播放地址失败 (${response.status})`)
-  const payload = await response.json().catch(() => null) as any
-  const rawUrl = payload?.data?.raw_url
+  const data = await requestAListApi<{ raw_url?: string }>(config, '/api/fs/get', { path: requestPath, password: '' })
+  const rawUrl = data?.raw_url
   if (!rawUrl || typeof rawUrl !== 'string') {
-    throw new Error(payload?.message || '获取 WebDAV 播放地址失败')
+    throw new Error('获取 AList 播放地址失败')
   }
-  return rawUrl
+  return new URL(rawUrl, getApiBaseUrl(config)).toString()
 }
 
 export const getWebDavDownloadUrl = async (config: WebDavConnectionConfig, relativePath: string): Promise<string> => {
@@ -263,6 +307,52 @@ export const listWebDavDirectory = async (
 ): Promise<IAliGetFileModel[]> => {
   const normalizedRelativePath = normalizeWebDavPath(relativePath)
   const requestPath = joinDavPath(config.rootPath, normalizedRelativePath)
+  if (config.kind === 'alist') {
+    const data = await requestAListApi<{ content?: Array<{
+      id?: string
+      path?: string
+      name?: string
+      size?: number
+      is_dir?: boolean
+      modified?: string
+      created?: string
+      thumb?: string
+      type?: number
+      hash_info?: { md5?: string } | null
+    }> }>(config, '/api/fs/list', { path: requestPath, password: '', page: 1, per_page: 0, refresh: false })
+    return (data?.content || []).map((item) => {
+      const name = item.name || path.posix.basename(item.path || '') || '未命名'
+      const itemRequestPath = normalizeWebDavPath(`${requestPath}/${name}`)
+      const relativeItemPath = stripPathPrefix(itemRequestPath, config.rootPath)
+      const ext = item.is_dir ? '' : path.extname(name).replace('.', '').toLowerCase()
+      const size = Number(item.size || 0)
+      const iconInfo = item.is_dir ? ['folder', 'iconfile-folder'] : getFileIcon(VIDEO_EXTENSIONS.has(`.${ext}`) ? 'video' : 'others', ext, ext, '', size)
+      const updatedAt = item.modified || item.created
+      return {
+        __v_skip: true,
+        drive_id: `webdav:${config.id}`,
+        file_id: relativeItemPath,
+        parent_file_id: normalizedRelativePath,
+        name,
+        namesearch: name.toLowerCase(),
+        path: relativeItemPath,
+        ext,
+        mime_type: '',
+        mime_extension: ext,
+        category: iconInfo[0],
+        icon: iconInfo[1],
+        size,
+        sizeStr: '',
+        time: updatedAt ? new Date(updatedAt).getTime() : Date.now(),
+        timeStr: '',
+        starred: false,
+        isDir: !!item.is_dir,
+        thumbnail: item.thumb ? new URL(item.thumb, getApiBaseUrl(config)).toString() : '',
+        description: item.hash_info?.md5 ? `md5:${item.hash_info.md5}` : '',
+        content_hash: item.hash_info?.md5 || ''
+      } as IAliGetFileModel
+    })
+  }
   const client = createWebDavClient(config)
   const stats = await client.getDirectoryContents(requestPath) as FileStat[]
   return stats

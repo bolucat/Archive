@@ -9,6 +9,7 @@ import { PageMain } from './layout/PageMain'
 import { WorkerPage } from './workerpage/workercmd'
 import ServerHttp from './aliapi/server'
 import { startMediaAcquisitionWorkflowRunner, wakeMediaAcquisitionWorkflowRunner } from './services/mediaAcquisition/workflowRunner'
+import { setLocale } from './i18n'
 
 window.onerror = function (errorMessage, scriptURI, lineNo, columnNo, error) {
   try {
@@ -76,6 +77,9 @@ app.config.errorHandler = function (err: any, vm, info) {
 }
 app.use(ArcoVue, {})
 app.use(store)
+const settingStore = useSettingStore()
+setLocale(settingStore.uiLanguage)
+settingStore.$subscribe((_mutation, state) => setLocale(state.uiLanguage))
 app.mount('#app')
 window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => {
   if (window.IsMainPage) wakeMediaAcquisitionWorkflowRunner()

@@ -33,15 +33,15 @@
           </a-button>
           <template #content>
             <a-doption @click="toggleSortOrder">
-              {{ registry.preferences.serverSortOrder === 'desc' ? '切换为正序' : '切换为倒序' }}
+              {{ registry.preferences.serverSortOrder === 'desc' ? t('mediaServer.switchAsc') : t('mediaServer.switchDesc') }}
             </a-doption>
             <a-dsubmenu>
-              <template #default>排序方式</template>
+              <template #default>{{ t('mediaServer.sortBy') }}</template>
               <template #content>
-                <a-doption @click="handleSortByChange('lastUsedAt')">按最近使用</a-doption>
-                <a-doption @click="handleSortByChange('name')">按名称</a-doption>
-                <a-doption @click="handleSortByChange('createdAt')">按创建时间</a-doption>
-                <a-doption @click="handleSortByChange('updatedAt')">按更新时间</a-doption>
+                <a-doption @click="handleSortByChange('lastUsedAt')">{{ t('mediaServer.sortLastUsed') }}</a-doption>
+                <a-doption @click="handleSortByChange('name')">{{ t('mediaServer.sortName') }}</a-doption>
+                <a-doption @click="handleSortByChange('createdAt')">{{ t('mediaServer.sortCreated') }}</a-doption>
+                <a-doption @click="handleSortByChange('updatedAt')">{{ t('mediaServer.sortUpdated') }}</a-doption>
               </template>
             </a-dsubmenu>
           </template>
@@ -82,9 +82,9 @@
                     v-if="isServerPinned(server.id) && registry.preferences.serverListView !== 'grid'"
                     class="pinned-badge"
                   >
-                    置顶
+                    {{ t('mediaServer.pinned') }}
                   </span>
-                  <span v-if="registry.currentServer?.id === server.id && registry.preferences.serverListView !== 'grid'" class="current-badge">当前</span>
+                  <span v-if="registry.currentServer?.id === server.id && registry.preferences.serverListView !== 'grid'" class="current-badge">{{ t('mediaServer.current') }}</span>
                 </div>
               </div>
               <div class="server-subtitle">{{ server.type }} - {{ normalizeServerHost(server.baseUrl) }}</div>
@@ -102,28 +102,28 @@
           </div>
 
           <div v-if="registry.preferences.serverListView === 'grid'" class="server-grid-meta">
-            <span class="server-grid-note">{{ server.notes || '未备注' }}</span>
+            <span class="server-grid-note">{{ server.notes || t('mediaServer.noNotes') }}</span>
             <span class="server-grid-time">{{ formatRelativeTime(server.lastUsedAt || server.updatedAt || server.createdAt) }}</span>
           </div>
-          <span v-if="registry.preferences.serverListView === 'grid' && isServerPinned(server.id)" class="pinned-badge pinned-badge-grid">置顶</span>
+          <span v-if="registry.preferences.serverListView === 'grid' && isServerPinned(server.id)" class="pinned-badge pinned-badge-grid">{{ t('mediaServer.pinned') }}</span>
         </div>
         <template #content>
           <div class="server-context-menu">
             <button class="server-context-item" type="button" @click="handleEditServer(server.id)">
               <IconFont name="iconedit-square" />
-              <span>编辑</span>
+              <span>{{ t('mediaServer.edit') }}</span>
             </button>
             <button class="server-context-item" type="button" @click="openRenameServer(server.id)">
               <IconFont name="iconedit-square" />
-              <span>重命名</span>
+              <span>{{ t('mediaServer.rename') }}</span>
             </button>
             <button class="server-context-item" type="button" @click="openIconManager(server.id)">
               <IconFont name="icontupianyulan" />
-              <span>修改图标</span>
+              <span>{{ t('mediaServer.changeIcon') }}</span>
             </button>
             <button class="server-context-item" type="button" @click="toggleServerPinned(server.id)">
               <IconFont name="iconcrown2" />
-              <span>{{ isServerPinned(server.id) ? '取消置顶' : '置顶' }}</span>
+              <span>{{ isServerPinned(server.id) ? t('mediaServer.unpin') : t('mediaServer.pinned') }}</span>
             </button>
             <button
               class="server-context-item"
@@ -132,12 +132,12 @@
               @click="resetServerIcon(server.id)"
             >
               <IconFont name="iconreload-1-icon" />
-              <span>恢复默认图标</span>
+              <span>{{ t('mediaServer.restoreDefaultIcon') }}</span>
             </button>
             <div class="server-context-divider" />
             <button class="server-context-item danger" type="button" @click="handleDeleteServer(server.id)">
               <IconFont name="icondelete" />
-              <span>删除</span>
+              <span>{{ t('common.delete') }}</span>
             </button>
           </div>
         </template>
@@ -145,7 +145,7 @@
     </div>
 
     <div class="connect-section">
-      <div class="connect-title">连接 ...</div>
+      <div class="connect-title">{{ t('mediaServer.connectDots') }}</div>
 
       <div class="provider-list">
         <button class="provider-item" @click="handleQuickAdd('jellyfin')">
@@ -165,21 +165,21 @@
 
     <a-modal
       v-model:visible="renameModalVisible"
-      title="重命名媒体服务器"
+      :title="t('mediaServer.renameServer')"
       width="420px"
       :mask-closable="false"
       @cancel="closeRenameServer"
     >
       <a-input
         v-model="renameServerName"
-        placeholder="请输入新的服务器名称"
+        :placeholder="t('mediaServer.renamePlaceholder')"
         allow-clear
         @press-enter="confirmRenameServer"
       />
       <template #footer>
         <div class="rename-modal-footer">
-          <a-button @click="closeRenameServer">取消</a-button>
-          <a-button type="primary" @click="confirmRenameServer">保存</a-button>
+          <a-button @click="closeRenameServer">{{ t('common.cancel') }}</a-button>
+          <a-button type="primary" @click="confirmRenameServer">{{ t('common.save') }}</a-button>
         </div>
       </template>
     </a-modal>
@@ -193,9 +193,9 @@
       <div class="server-icon-manager">
         <div class="server-icon-manager-header">
           <div>
-            <div class="server-icon-manager-title">媒体服务器图标</div>
+            <div class="server-icon-manager-title">{{ t('mediaServer.iconManagerTitle') }}</div>
             <div class="server-icon-manager-subtitle">
-              导入图标集 URL，选择图标后会保存到本地并应用到当前媒体服务器
+              {{ t('mediaServer.iconManagerSubtitle') }}
             </div>
           </div>
           <div class="server-icon-manager-actions">
@@ -203,21 +203,21 @@
               v-model="iconSearchText"
               allow-clear
               class="server-icon-search"
-              placeholder="搜索图标集或图标"
+              :placeholder="t('mediaServer.searchIconPlaceholder')"
             />
-            <a-button type="outline" @click="addIconSetVisible = true">添加图标集 URL</a-button>
+            <a-button type="outline" @click="addIconSetVisible = true">{{ t('mediaServer.addIconSetUrl') }}</a-button>
           </div>
         </div>
 
         <div class="server-icon-manager-layout">
           <div class="server-icon-set-column">
-            <div class="server-icon-column-heading">图标集</div>
+            <div class="server-icon-column-heading">{{ t('mediaServer.iconSets') }}</div>
             <div v-if="iconSetsLoading" class="server-icon-empty">
               <a-spin size="small" />
-              <span>正在加载图标集…</span>
+              <span>{{ t('mediaServer.loadingIconSets') }}</span>
             </div>
             <div v-else-if="filteredIconSets.length === 0" class="server-icon-empty">
-              <span>{{ iconSetError || '还没有可用的图标集' }}</span>
+              <span>{{ iconSetError || t('mediaServer.noIconSets') }}</span>
             </div>
             <div v-else class="server-icon-set-list">
               <button
@@ -230,11 +230,11 @@
               >
                 <div class="server-icon-set-preview">
                   <img v-if="iconSet.previewImageURL" :src="iconSet.previewImageURL" :alt="iconSet.name" />
-                  <div v-else class="server-icon-set-preview-empty">图标</div>
+                  <div v-else class="server-icon-set-preview-empty">{{ t('mediaServer.icon') }}</div>
                 </div>
                 <div class="server-icon-set-meta">
                   <strong>{{ iconSet.name }}</strong>
-                  <span>{{ iconSet.description || '没有描述' }}</span>
+                  <span>{{ iconSet.description || t('mediaServer.noDescription') }}</span>
                 </div>
               </button>
             </div>
@@ -243,21 +243,21 @@
           <div class="server-icon-grid-column">
             <div class="server-icon-grid-header">
               <div>
-                <div class="server-icon-column-heading">{{ selectedIconSet?.name || '图标' }}</div>
+                <div class="server-icon-column-heading">{{ selectedIconSet?.name || t('mediaServer.icon') }}</div>
                 <div v-if="selectedIconSet?.description" class="server-icon-grid-subtitle">
                   {{ selectedIconSet.description }}
                 </div>
               </div>
               <div class="server-icon-grid-tools">
-                <a-button v-if="selectedIconSet" type="text" size="small" @click="refreshIconSet(selectedIconSet)">刷新图标集</a-button>
-                <a-button v-if="selectedIconSet" type="text" size="small" status="danger" @click="removeIconSet(selectedIconSet.id)">删除图标集</a-button>
+                <a-button v-if="selectedIconSet" type="text" size="small" @click="refreshIconSet(selectedIconSet)">{{ t('mediaServer.refreshIconSet') }}</a-button>
+                <a-button v-if="selectedIconSet" type="text" size="small" status="danger" @click="removeIconSet(selectedIconSet.id)">{{ t('mediaServer.deleteIconSet') }}</a-button>
               </div>
             </div>
             <div v-if="!selectedIconSet" class="server-icon-empty">
-              <span>先在左侧选择一个图标集</span>
+              <span>{{ t('mediaServer.selectIconSetFirst') }}</span>
             </div>
             <div v-else-if="filteredSelectedIcons.length === 0" class="server-icon-empty">
-              <span>没有匹配的图标</span>
+              <span>{{ t('mediaServer.noMatchedIcons') }}</span>
             </div>
             <div v-else class="server-icon-grid">
               <button
@@ -286,9 +286,9 @@
       class="server-icon-add-modal"
     >
       <div class="server-icon-add-panel">
-        <div class="server-icon-manager-title">添加图标集 URL</div>
+        <div class="server-icon-manager-title">{{ t('mediaServer.addIconSetUrl') }}</div>
         <div class="server-icon-manager-subtitle">
-          远程 JSON 需要包含 `name`、`description` 和 `icons[{ name, url }]`
+          {{ t('mediaServer.iconSetJsonHint') }}
         </div>
         <a-input
           v-model="iconSetUrlInput"
@@ -298,8 +298,8 @@
           @press-enter="submitIconSetUrl"
         />
         <div class="server-icon-add-footer">
-          <a-button @click="addIconSetVisible = false">取消</a-button>
-          <a-button type="primary" :loading="iconSetAdding" @click="submitIconSetUrl">导入图标集</a-button>
+          <a-button @click="addIconSetVisible = false">{{ t('common.cancel') }}</a-button>
+          <a-button type="primary" :loading="iconSetAdding" @click="submitIconSetUrl">{{ t('mediaServer.importIconSet') }}</a-button>
         </div>
       </div>
     </a-modal>
@@ -321,6 +321,7 @@ import AddMediaServerModal from './AddMediaServerModal.vue'
 import PlexResourcesModal from './PlexResourcesModal.vue'
 import { fetchMediaServerLoginProfile, signInMediaServer } from '../../media-server/auth'
 import { createPlexServerConfigs, signInPlex, verifyPlexServerConfig } from '../../media-server/plexAuth'
+import { t } from '../../i18n'
 
 const registry = useMediaServerRegistryStore()
 const navigation = useMediaServerNavigationStore()
@@ -427,17 +428,17 @@ const handleServerIconError = (event: Event, type: MediaServerType) => {
 }
 
 const formatRelativeTime = (value?: number) => {
-  if (!value) return '未观看'
+  if (!value) return t('mediaServer.notWatched')
   const diff = Date.now() - value
   const minute = 60 * 1000
   const hour = 60 * minute
   const day = 24 * hour
   const month = 30 * day
-  if (diff < minute) return '刚刚'
-  if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))}分钟前`
-  if (diff < day) return `${Math.max(1, Math.floor(diff / hour))}小时前`
-  if (diff < month) return `${Math.max(1, Math.floor(diff / day))}天前`
-  return `${Math.max(1, Math.floor(diff / month))}月前`
+  if (diff < minute) return t('mediaServer.justNow')
+  if (diff < hour) return t('mediaServer.minutesAgo', { count: Math.max(1, Math.floor(diff / minute)) })
+  if (diff < day) return t('mediaServer.hoursAgo', { count: Math.max(1, Math.floor(diff / hour)) })
+  if (diff < month) return t('mediaServer.daysAgo', { count: Math.max(1, Math.floor(diff / day)) })
+  return t('mediaServer.monthsAgo', { count: Math.max(1, Math.floor(diff / month)) })
 }
 
 const handleAddServer = () => {
@@ -473,12 +474,12 @@ const handleDeleteServer = (id: string) => {
   const server = registry.servers.find((item) => item.id === id)
   if (!server) return
   Modal.confirm({
-    title: '删除媒体服务器',
-    content: `确定删除 "${server.name}" 的本地登录信息吗？`,
+    title: t('mediaServer.deleteServerTitle'),
+    content: t('mediaServer.deleteServerConfirm', { name: server.name }),
     onOk: () => {
       registry.removeServer(id)
       if (!registry.currentServer) navigation.openRegistry()
-      message.success('已删除媒体服务器')
+      message.success(t('mediaServer.serverDeleted'))
     }
   })
 }
@@ -499,7 +500,7 @@ const toggleServerPinned = (id: string) => {
     }
   })
   registry.save()
-  message.success(isServerPinned(id) ? '已置顶媒体服务器' : '已取消置顶')
+  message.success(isServerPinned(id) ? t('mediaServer.serverPinned') : t('mediaServer.serverUnpinned'))
 }
 
 const writeIconSetUrls = (items: string[]) => {
@@ -515,14 +516,14 @@ const selectFirstAvailableIconSet = () => {
 const normalizeIconSet = (sourceUrl: string, payload: IconSetPayload): IconSet => ({
   id: sourceUrl,
   sourceUrl,
-  name: payload.name?.trim() || '未命名图标集',
+  name: payload.name?.trim() || t('mediaServer.unnamedIconSet'),
   description: payload.description?.trim() || '',
   previewImageURL: payload.icons[0]?.url || '',
   icons: (payload.icons || [])
     .filter((icon) => typeof icon?.url === 'string' && icon.url.trim())
     .map((icon, index) => ({
       id: `${sourceUrl}#${index}`,
-      name: icon.name?.trim() || `图标 ${index + 1}`,
+      name: icon.name?.trim() || t('mediaServer.iconName', { index: index + 1 }),
       url: icon.url.trim()
     }))
 })
@@ -531,9 +532,9 @@ const loadIconSetFromUrl = async (sourceUrl: string) => {
   const response = await fetch(sourceUrl)
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   const payload = await response.json() as IconSetPayload
-  if (!payload || !Array.isArray(payload.icons)) throw new Error('图标集格式不正确')
+  if (!payload || !Array.isArray(payload.icons)) throw new Error(t('mediaServer.invalidIconSet'))
   const iconSet = normalizeIconSet(sourceUrl, payload)
-  if (!iconSet.icons.length) throw new Error('图标集里没有可用图标')
+  if (!iconSet.icons.length) throw new Error(t('mediaServer.emptyIconSet'))
   return iconSet
 }
 
@@ -551,7 +552,7 @@ const loadAllIconSets = async () => {
       loaded.push(await loadIconSetFromUrl(sourceUrl))
     } catch (error: any) {
       console.error(`failed to load media server icon set from ${sourceUrl}`, error)
-      iconSetError.value = `部分图标集加载失败：${error?.message || '未知错误'}`
+      iconSetError.value = t('mediaServer.iconSetLoadPartialFailed', { message: error?.message || t('mediaServer.unknownError') })
     }
   }
   iconSets.value = loaded
@@ -568,11 +569,11 @@ const openIconManager = (id: string) => {
 const submitIconSetUrl = async () => {
   const sourceUrl = iconSetUrlInput.value.trim()
   if (!sourceUrl) {
-    message.error('先输入图标集 URL')
+    message.error(t('mediaServer.enterIconSetUrl'))
     return
   }
   if (iconSetUrls.value.includes(sourceUrl)) {
-    message.info('这个图标集已经导入过了')
+    message.info(t('mediaServer.iconSetImportedAlready'))
     addIconSetVisible.value = false
     iconSetUrlInput.value = ''
     return
@@ -587,9 +588,9 @@ const submitIconSetUrl = async () => {
     addIconSetVisible.value = false
     iconSetUrlInput.value = ''
     iconSetError.value = ''
-    message.success('图标集已导入')
+    message.success(t('mediaServer.iconSetImported'))
   } catch (error: any) {
-    message.error(`导入失败：${error?.message || '未知错误'}`)
+    message.error(t('mediaServer.importFailed', { message: error?.message || t('mediaServer.unknownError') }))
   } finally {
     iconSetAdding.value = false
   }
@@ -600,9 +601,9 @@ const refreshIconSet = async (iconSet: IconSet) => {
     const refreshed = await loadIconSetFromUrl(iconSet.sourceUrl)
     iconSets.value = iconSets.value.map((item) => item.id === iconSet.id ? refreshed : item)
     if (selectedIconSetId.value === iconSet.id) selectedIconSetId.value = refreshed.id
-    message.success('图标集已刷新')
+    message.success(t('mediaServer.iconSetRefreshed'))
   } catch (error: any) {
-    message.error(`刷新失败：${error?.message || '未知错误'}`)
+    message.error(t('mediaServer.refreshFailed', { message: error?.message || t('mediaServer.unknownError') }))
   }
 }
 
@@ -613,18 +614,18 @@ const removeIconSet = (iconSetId: string) => {
   iconSetUrls.value = iconSetUrls.value.filter((url) => url !== target.sourceUrl)
   writeIconSetUrls(iconSetUrls.value)
   if (selectedIconSetId.value === iconSetId) selectedIconSetId.value = iconSets.value[0]?.id || ''
-  message.success('图标集已删除')
+  message.success(t('mediaServer.iconSetDeleted'))
 }
 
 const applyServerIcon = (iconUrl: string) => {
   if (!currentIconServerId.value) return
   registry.updateServer(currentIconServerId.value, { customIconUrl: iconUrl })
-  message.success('媒体服务器图标已更新')
+  message.success(t('mediaServer.iconUpdated'))
 }
 
 const resetServerIcon = (id: string) => {
   registry.updateServer(id, { customIconUrl: '' })
-  message.success('已恢复默认图标')
+  message.success(t('mediaServer.defaultIconRestored'))
 }
 
 const openRenameServer = (id: string) => {
@@ -644,7 +645,7 @@ const closeRenameServer = () => {
 const confirmRenameServer = () => {
   const name = renameServerName.value.trim()
   if (!renameServerId.value || !name) {
-    message.error('请输入服务器名称')
+    message.error(t('mediaServer.enterServerName'))
     return
   }
   registry.updateServer(renameServerId.value, {
@@ -652,7 +653,7 @@ const confirmRenameServer = () => {
     nameCustomized: true
   })
   closeRenameServer()
-  message.success('已重命名媒体服务器')
+  message.success(t('mediaServer.serverRenamed'))
 }
 
 const handleSortByChange = (value: MediaServerSortBy) => {
@@ -678,7 +679,7 @@ const handlePlexSignIn = async () => {
     showPlexResourcesModal.value = true
   } catch (error: any) {
     console.error('Plex 登录失败:', error)
-    message.error(error?.message || 'Plex 登录失败')
+    message.error(error?.message || t('mediaServer.plexLoginFailed'))
   } finally {
     submitting.value = false
   }
@@ -735,7 +736,7 @@ const handleConfirmPlexResources = async (resources: PlexResource[]) => {
     submitting.value = true
     const servers = createPlexServerConfigs(resources)
     if (servers.length === 0) {
-      message.error('没有可保存的 Plex 服务器')
+      message.error(t('mediaServer.noPlexServerToSave'))
       return
     }
     let firstServerId = ''
@@ -758,7 +759,7 @@ const handleConfirmPlexResources = async (resources: PlexResource[]) => {
       }
     }
     if (savedCount === 0) {
-      message.error('选择的 Plex 服务器当前不可连接')
+      message.error(t('mediaServer.selectedPlexUnavailable'))
       return
     }
     if (firstServerId) {
@@ -767,10 +768,10 @@ const handleConfirmPlexResources = async (resources: PlexResource[]) => {
     }
     showPlexResourcesModal.value = false
     plexResources.value = []
-    message.success(failedCount > 0 ? `已添加 ${savedCount} 个 Plex 服务器，${failedCount} 个不可连接已跳过` : `已添加 ${savedCount} 个 Plex 服务器`)
+    message.success(failedCount > 0 ? t('mediaServer.plexServersAddedPartial', { saved: savedCount, failed: failedCount }) : t('mediaServer.plexServersAdded', { saved: savedCount }))
   } catch (error: any) {
     console.error('保存 Plex 服务器失败:', error)
-    message.error(error?.message || '保存 Plex 服务器失败')
+    message.error(error?.message || t('mediaServer.savePlexFailed'))
   } finally {
     submitting.value = false
   }
@@ -801,7 +802,7 @@ const handleSubmitServer = async (payload: {
     if (payload.type === 'plex' && editingServer.value) {
       const accessToken = editingServer.value.accessToken
       if (!accessToken) {
-        message.error('当前 Plex 服务器缺少访问令牌，请重新登录')
+        message.error(t('mediaServer.plexMissingToken'))
         return
       }
       await verifyPlexServerConfig({
@@ -834,11 +835,11 @@ const handleSubmitServer = async (payload: {
     }
 
     if (payload.type === 'plex') {
-      message.success('已保存媒体服务器')
+      message.success(t('mediaServer.serverSaved'))
     } else if (shouldVerifyInBackground) {
-      message.success('已保存媒体服务器，正在后台验证登录')
+      message.success(t('mediaServer.serverSavedChecking'))
     } else {
-      message.success('已保存媒体服务器')
+      message.success(t('mediaServer.serverSaved'))
     }
 
     showServerModal.value = false
@@ -849,7 +850,7 @@ const handleSubmitServer = async (payload: {
     }
   } catch (error: any) {
     console.error('保存媒体服务器失败:', error)
-    message.error(error?.message || '保存媒体服务器失败')
+    message.error(error?.message || t('mediaServer.saveServerFailed'))
   } finally {
     submitting.value = false
   }

@@ -2,6 +2,7 @@
 import { Globe, Loader2, AlertCircle, Copy, ExternalLink, Download } from 'lucide-vue-next'
 import { modalDaoRuShareLink } from '../../utils/modal'
 import type { LinkResult } from './types'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   state: 'pending' | 'running' | 'done' | 'error'
@@ -42,14 +43,14 @@ const PLATFORM_COLORS: Record<string, string> = {
     <!-- running -->
     <div v-if="state === 'running'" class="sl-status">
       <Loader2 :size="14" :stroke-width="2" class="sl-spin" />
-      <span>正在搜索全网资源 "{{ input?.keyword }}" ...</span>
+      <span>{{ t('ai.card.searchingWeb') }} "{{ input?.keyword }}" ...</span>
     </div>
 
     <!-- done -->
     <template v-else-if="state === 'done' && output">
       <div class="sl-header">
         <Globe :size="14" :stroke-width="1.5" />
-        <span>全网分享 — "{{ input?.keyword }}" — {{ output.total }} 个链接</span>
+        <span>{{ t('ai.card.webShares') }} — "{{ input?.keyword }}" — {{ output.total }} {{ t('ai.card.links') }}</span>
       </div>
       <div v-if="output.links.length" class="sl-list">
         <div v-for="(l, i) in output.links.slice(0, 10)" :key="i" class="sl-item">
@@ -63,35 +64,35 @@ const PLATFORM_COLORS: Record<string, string> = {
             <div class="sl-item-url">{{ l.url }}</div>
             <div v-if="l.note" class="sl-item-note">{{ l.note }}</div>
           </div>
-          <button v-if="canSave(l.url)" class="sl-save-btn" title="保存到网盘" @click="handleSave(l.url, l.password || '')">
+          <button v-if="canSave(l.url)" class="sl-save-btn" :title="t('ai.card.saveToDrive')" @click="handleSave(l.url, l.password || '')">
             <Download :size="13" :stroke-width="1.5" />
           </button>
-          <button class="sl-copy-btn" title="复制链接" @click="copyText(l.url)">
+          <button class="sl-copy-btn" :title="t('share.copyLink')" @click="copyText(l.url)">
             <Copy :size="13" :stroke-width="1.5" />
           </button>
-          <a :href="l.url" target="_blank" class="sl-open-btn" title="打开">
+          <a :href="l.url" target="_blank" class="sl-open-btn" :title="t('common.open')">
             <ExternalLink :size="13" :stroke-width="1.5" />
           </a>
           <span v-if="l.password" class="sl-pass">🔑 {{ l.password }}</span>
         </div>
         <div v-if="output.links.length > 10" class="sl-more">
-          ...还有 {{ output.links.length - 10 }} 个链接
+          ...{{ t('ai.card.more') }} {{ output.links.length - 10 }} {{ t('ai.card.links') }}
         </div>
       </div>
-      <div v-else class="sl-empty">未找到匹配链接</div>
+      <div v-else class="sl-empty">{{ t('ai.card.noMatchingLinks') }}</div>
     </template>
 
     <!-- error -->
     <div v-else-if="state === 'error'" class="sl-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>搜索失败: {{ error }}</span>
-      <button class="sl-retry" @click="emit('retry')">重试</button>
+      <span>{{ t('ai.card.searchFailed') }}: {{ error }}</span>
+      <button class="sl-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
 
     <!-- pending -->
     <div v-else class="sl-status sl-muted">
       <Globe :size="14" :stroke-width="1.5" />
-      准备搜索全网...
+      {{ t('ai.card.prepareSearchWeb') }}
     </div>
   </div>
 </template>

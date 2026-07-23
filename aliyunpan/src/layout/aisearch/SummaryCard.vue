@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { renderMarkdown } from './markdown'
+import { t } from '../../i18n'
 
 const props = defineProps<{ text: string; followups: string[] }>()
 const emit = defineEmits<{ (e: 'followup', query: string): void }>()
@@ -9,7 +10,7 @@ const emit = defineEmits<{ (e: 'followup', query: string): void }>()
   <div v-if="text || followups.length" class="summary-card">
     <div v-if="text" class="summary-text" v-html="renderMarkdown(text)" />
     <div v-if="followups.length" class="summary-followups">
-      <span class="summary-followups-label">继续搜索:</span>
+      <span class="summary-followups-label">{{ t('ai.continueSearch') }}</span>
       <button
         v-for="(q, i) in followups"
         :key="i"

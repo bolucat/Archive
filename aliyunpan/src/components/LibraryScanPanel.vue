@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { Upload } from 'lucide-vue-next'
 import IconFont from './IconFont.vue'
+import { t } from '../i18n'
 
 interface DriveOption {
   value: string
@@ -26,15 +28,15 @@ const props = withDefaults(
   }>(),
   {
     isScanning: false,
-    title: '网盘扫描',
-    startLabel: '开始扫描',
-    stopLabel: '停止扫描',
-    scanningStatusText: '扫描中...',
-    idleStatusText: '尚未扫描',
+    title: '',
+    startLabel: '',
+    stopLabel: '',
+    scanningStatusText: '',
+    idleStatusText: '',
     importLabel: '',
     importIconName: '',
     importDisabled: false,
-    clearLabel: '清空资料库',
+    clearLabel: '',
     clearConfirmText: '',
     clearDisabled: false
   }
@@ -65,15 +67,21 @@ function clearAll() {
   if (props.isScanning) return
   emit('update:selectedIds', [])
 }
+
+const titleText = computed(() => props.title || t('scan.cloudDriveScan'))
+const startText = computed(() => props.startLabel || t('scan.start'))
+const stopText = computed(() => props.stopLabel || t('scan.stop'))
+const clearText = computed(() => props.clearLabel || t('scan.clearLibrary'))
+const driveButtonText = computed(() => props.selectedIds.length === props.driveOptions.length ? t('scan.allDrives') : `${props.selectedIds.length} ${t('scan.drives')}`)
 </script>
 
 <template>
   <div class="library-scan-panel">
-    <div class="library-scan-label">{{ title }}</div>
+    <div class="library-scan-label" :title="titleText">{{ titleText }}</div>
 
     <a-dropdown trigger="click" :disabled="isScanning">
-      <a-button size="mini" long class="library-scan-drive-btn">
-        {{ selectedIds.length === driveOptions.length ? '全部网盘' : `${selectedIds.length} 个网盘` }}
+      <a-button size="mini" long class="library-scan-drive-btn" :title="driveButtonText">
+        {{ driveButtonText }}
       </a-button>
       <template #content>
         <div class="library-scan-drive-list" :aria-disabled="isScanning">
@@ -84,30 +92,30 @@ function clearAll() {
             @click.stop
           >
             <a-checkbox :disabled="isScanning" :model-value="selectedIds.includes(opt.value)" @change="toggleId(opt.value)" />
-            <span>{{ opt.label }}</span>
+            <span :title="opt.label">{{ opt.label }}</span>
           </label>
-          <div v-if="!driveOptions.length" class="library-scan-drive-empty">暂无可扫描网盘</div>
+          <div v-if="!driveOptions.length" class="library-scan-drive-empty">{{ t('scan.noDrives') }}</div>
           <div class="library-scan-drive-footer">
-            <a-link size="small" :disabled="isScanning" @click="selectAll">全选</a-link>
-            <a-link size="small" :disabled="isScanning" @click="clearAll">清空</a-link>
+            <a-link size="small" :disabled="isScanning" @click="selectAll">{{ t('scan.selectAll') }}</a-link>
+            <a-link size="small" :disabled="isScanning" @click="clearAll">{{ t('scan.clear') }}</a-link>
           </div>
         </div>
       </template>
     </a-dropdown>
 
-    <a-button v-if="isScanning" status="warning" size="mini" long @click="emit('stop-scan')">{{ stopLabel }}</a-button>
-    <a-button v-else type="primary" size="mini" long @click="emit('start-scan')">{{ startLabel }}</a-button>
+    <a-button v-if="isScanning" status="warning" size="mini" long :title="stopText" @click="emit('stop-scan')">{{ stopText }}</a-button>
+    <a-button v-else type="primary" size="mini" long :title="startText" @click="emit('start-scan')">{{ startText }}</a-button>
 
-    <button v-if="importLabel" class="library-scan-import-btn" type="button" :disabled="importDisabled" @click="emit('import-local')">
+    <button v-if="importLabel" class="library-scan-import-btn" type="button" :title="importLabel" :disabled="importDisabled" @click="emit('import-local')">
       <IconFont v-if="importIconName" :name="importIconName" />
       <Upload v-else :size="14" :stroke-width="1.8" />
       <span>{{ importLabel }}</span>
     </button>
 
     <a-popconfirm v-if="clearConfirmText" :content="clearConfirmText" @ok="emit('clear-library')">
-      <a-button size="mini" long status="danger" :disabled="clearDisabled">{{ clearLabel }}</a-button>
+      <a-button size="mini" long status="danger" :title="clearText" :disabled="clearDisabled">{{ clearText }}</a-button>
     </a-popconfirm>
-    <a-button v-else size="mini" long status="danger" :disabled="clearDisabled" @click="emit('clear-library')">{{ clearLabel }}</a-button>
+    <a-button v-else size="mini" long status="danger" :title="clearText" :disabled="clearDisabled" @click="emit('clear-library')">{{ clearText }}</a-button>
 
     <slot name="extra-actions" />
 
@@ -131,11 +139,14 @@ function clearAll() {
 }
 
 .library-scan-label {
+  overflow: hidden;
   color: rgba(0, 245, 212, .58);
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: .12em;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .library-scan-drive-list {
@@ -257,6 +268,11 @@ function clearAll() {
   font-weight: 790;
   cursor: pointer;
   transition: transform .18s, border-color .18s, background .18s, color .18s;
+}
+.library-scan-import-btn span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .library-scan-import-btn:hover {
   color: #fff8df;
@@ -426,5 +442,27 @@ body:not([arco-theme='dark']) #xbybody .media-library-nav .library-scan-import-b
   border-color: rgb(var(--primary-6)) !important;
   background: var(--color-fill-2) !important;
   color: rgb(var(--primary-6)) !important;
+}
+
+#xbybody .music-rail .library-scan-label {
+  color: #fff;
+  font-size: 13px;
+}
+
+#xbybody .music-rail .library-scan-panel .arco-btn:not(.arco-btn-primary),
+#xbybody .music-rail .library-scan-import-btn,
+#xbybody .music-rail .library-scan-drive-card {
+  color: #fff !important;
+  font-size: 13px !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .music-rail .library-scan-label {
+  color: #111827;
+}
+
+body:not([arco-theme='dark']) #xbybody .music-rail .library-scan-panel .arco-btn:not(.arco-btn-primary),
+body:not([arco-theme='dark']) #xbybody .music-rail .library-scan-import-btn,
+body:not([arco-theme='dark']) #xbybody .music-rail .library-scan-drive-card {
+  color: #111827 !important;
 }
 </style>

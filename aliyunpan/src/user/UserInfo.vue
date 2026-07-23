@@ -7,11 +7,13 @@ import { modalUserRewardSpace, modalUserSpace } from '../utils/modal'
 import AliUser from '../aliapi/user'
 import { humanSize } from '../utils/format'
 import type { ITokenInfo } from './userstore'
-import { isAliyunUser, isBaiduUser, isQuarkUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isQuarkUser, isRemoteDriveUser } from '../aliapi/utils'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import { Modal } from '@arco-design/web-vue'
 import { showAlipanMemberPromotion, showAlipanMemberQrPromotion } from '../utils/alipanPromotion'
 import { getDriveProviderIcon, getDriveProviderLabel, getDriveProviderMeta } from '../utils/driveProvider'
+import { t } from '../i18n'
+import { getWebDavConnectionId, removeWebDavConnection } from '../utils/webdavClient'
 
 const userStore = useUserStore()
 const mediaLibraryStore = useMediaLibraryStore()
@@ -67,7 +69,9 @@ const handleDeleteLocalAccount = (token: ITokenInfo) => {
     okButtonProps: { status: 'danger' },
     cancelText: '取消',
     onOk: async () => {
-      mediaLibraryStore.removeMediaSourceByUserId(token.user_id)
+      const remoteConnectionId = isRemoteDriveUser(token) ? getWebDavConnectionId(token.default_drive_id) : ''
+      mediaLibraryStore.removeMediaSourceByUserId(remoteConnectionId || token.user_id)
+      if (remoteConnectionId) removeWebDavConnection(remoteConnectionId)
       if (userStore.user_id === token.user_id) {
         await UserDAL.UserLogOff(token.user_id)
       } else {
@@ -87,7 +91,7 @@ const handleLogin = () => {
   useUserStore().userShowLogin = true
 }
 
-const activeProvider = ref<'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'guangya' | 'dropbox' | 'onedrive' | 'box'>('aliyun')
+const activeProvider = ref<'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'guangya' | 'dropbox' | 'onedrive' | 'box' | 'webdav' | 'alist'>('aliyun')
 const userListState = ref<ITokenInfo[]>([])
 
 const refreshUserList = async () => {
@@ -131,6 +135,11 @@ const handleOneDriveLogin = () => {
 
 const handleBoxLogin = () => {
   localStorage.setItem('login_provider', 'box')
+  useUserStore().userShowLogin = true
+}
+
+const handleRemoteDriveLogin = (provider: 'webdav' | 'alist') => {
+  localStorage.setItem('login_provider', provider)
   useUserStore().userShowLogin = true
 }
 
@@ -224,7 +233,7 @@ watch(
         <img :src='activeProviderIcon' :alt='activeProviderMeta.label' />
       </span>
     </div>
-    <a-avatar v-else :size='28' style='margin-right: 12px' :style="{ backgroundColor: '#3370ff' }">登录</a-avatar>
+    <a-avatar v-else :size='28' style='margin-right: 12px' :style="{ backgroundColor: '#3370ff' }">{{ t('user.login') }}</a-avatar>
 
     <template #content>
       <div v-if='userStore.userLogined' style='width: 430px'>
@@ -250,17 +259,17 @@ watch(
             <a-button type='text' size='small' tabindex='-1'
                       style='min-width: 20px; padding: 0 8px'
                       title='刷新账号信息'
-                      @click='handleRefreshUserInfo()'>刷新
+                      @click='handleRefreshUserInfo()'>{{ t('user.refresh') }}
             </a-button>
             <a-button v-if='isAliyunAccount' type='text' size='small' tabindex='-1'
                       style='min-width: 20px; padding: 0 8px'
                       title='每日签到'
-                      @click='handleSign()'>签到
+                      @click='handleSign()'>{{ t('user.signIn') }}
             </a-button>
             <a-button type='text' size='small' tabindex='-1'
                       style='min-width: 20px; padding: 0 8px'
                       title='退出该账号'
-                      @click='handleLogOff()'> 退出
+                      @click='handleLogOff()'> {{ t('user.logout') }}
             </a-button>
           </a-col>
         </a-row>
@@ -294,7 +303,7 @@ watch(
         <a-list style='margin: 12px 0 24px 0' :max-height='300' size='small' :data='userList' class='userlist'
                 :data-refresh='userStore.user_id'>
           <template #header>
-            <div class='userspace'>切换到其他账号</div>
+            <div class='userspace'>{{ t('user.switchAccount') }}</div>
           </template>
           <template #item='{ item, index }'>
             <a-list-item :key='index'>
@@ -313,8 +322,8 @@ watch(
                 <div class='user-list-actions'>
                   <a-switch size='small' :model-value='userStore.user_id == item.user_id' title='切换到这个账号'
                             tabindex='-1' @change='handleUserChange($event, item.user_id) '>
-                    <template #checked> 当前</template>
-                    <template #unchecked> 选我</template>
+                    <template #checked> {{ t('user.current') }}</template>
+                    <template #unchecked> {{ t('user.selectMe') }}</template>
                   </a-switch>
                   <a-button
                     type='text'
@@ -324,7 +333,7 @@ watch(
                     title='彻底删除本地保存的该帐号'
                     @click='handleDeleteLocalAccount(item)'
                   >
-                    删除
+                    {{ t('user.delete') }}
                   </a-button>
                 </div>
               </div>
@@ -334,7 +343,7 @@ watch(
 
         <a-row justify='center'>
           <a-button type='outline' size='small' tabindex='-1' style='margin: 0 0 8px 0' title='Alt+L'
-                    @click='handleLogin()'> 登录一个新账号
+                    @click='handleLogin()'> {{ t('user.loginNew') }}
           </a-button>
         </a-row>
       </div>
@@ -349,6 +358,8 @@ watch(
           <a-tab-pane key='dropbox' title='Dropbox' />
           <a-tab-pane key='onedrive' title='OneDrive' />
           <a-tab-pane key='box' title='Box' />
+          <a-tab-pane key='webdav' title='WebDAV' />
+          <a-tab-pane key='alist' title='AList' />
         </a-tabs>
         <a-row align='stretch'>
           <a-col flex='60px'>
@@ -360,7 +371,7 @@ watch(
           <a-col flex='auto'>
             <span class='username'>Welcome</span>
             <br />
-            <span class='userspace'>还没登录账号?</span>
+            <span class='userspace'>{{ t('user.notLoggedIn') }}</span>
           </a-col>
         </a-row>
         <a-divider />
@@ -455,6 +466,16 @@ watch(
             @click='handleBoxLogin()'
           >
             登录 Box
+          </a-button>
+          <a-button
+            v-else-if="activeProvider === 'webdav' || activeProvider === 'alist'"
+            type='outline'
+            size='small'
+            tabindex='-1'
+            style='margin: 0 0 8px 0'
+            @click="handleRemoteDriveLogin(activeProvider)"
+          >
+            添加 {{ activeProvider === 'alist' ? 'AList' : 'WebDAV' }}
           </a-button>
         </a-row>
       </div>

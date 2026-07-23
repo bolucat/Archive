@@ -38,13 +38,13 @@ describe('drive-tools organize', () => {
     })
   })
 
-  it('moves WebDAV items without calling provider move api', async () => {
+  it('keeps WebDAV items read-only', async () => {
     await expect(moveDriveToolFiles([
       { userId: 'dav', driveId: 'webdav:dav', fileId: '/old/a.mkv', name: 'a.mkv' }
     ], '/target', 'webdav:dav')).resolves.toMatchObject({
       total: 1,
-      success: 1,
-      failed: 0
+      success: 0,
+      failed: 1
     })
   })
 

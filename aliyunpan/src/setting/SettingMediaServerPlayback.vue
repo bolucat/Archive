@@ -10,6 +10,7 @@ import {
   type MediaServerCustomDeviceProfile,
   type MediaServerDeviceProfileEntry
 } from '../media-server/playbackQuality'
+import { t } from '../i18n'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -84,6 +85,43 @@ function saveCustomProfile() {
   cb({ uiMediaServerCustomDeviceProfile: normalizeMediaServerCustomDeviceProfile(profileDraft) })
   showCustomProfileModal.value = false
 }
+
+const qualityLabel = (value: string, fallback: string) => {
+  if (value === 'auto') return t('settings.mediaServer.auto')
+  if (value === 'max') return t('settings.mediaServer.maxDirectPlay')
+  return fallback
+}
+
+const bitrateTestSizeLabel = (value: string) => {
+  const map: Record<string, string> = {
+    '10000000': t('settings.mediaServer.sizeMax'),
+    '7500000': t('settings.mediaServer.sizeLarge'),
+    '5000000': t('settings.mediaServer.sizeRegular'),
+    '2500000': t('settings.mediaServer.sizeSmall'),
+    '1000000': t('settings.mediaServer.sizeMin')
+  }
+  return map[value] || value
+}
+
+const compatibilityLabel = (value: string) => {
+  const map: Record<string, string> = {
+    auto: t('settings.mediaServer.auto'),
+    mostCompatible: t('settings.mediaServer.compatible'),
+    directPlay: t('settings.mediaServer.directPlay'),
+    custom: t('settings.mediaServer.custom')
+  }
+  return map[value] || value
+}
+
+const compatibilityDescription = (value: string) => {
+  const map: Record<string, string> = {
+    auto: t('settings.mediaServer.compatAutoDesc'),
+    mostCompatible: t('settings.mediaServer.compatCompatibleDesc'),
+    directPlay: t('settings.mediaServer.compatDirectPlayDesc'),
+    custom: t('settings.mediaServer.compatCustomDesc')
+  }
+  return map[value] || value
+}
 </script>
 
 <template>
@@ -91,89 +129,89 @@ function saveCustomProfile() {
     <div class="play-settings-intro">
       <div class="play-settings-kicker">Media Server</div>
       <div class="play-settings-copy">
-        单独控制 Jellyfin / Emby / Plex 媒体服务器播放质量和兼容性。低码率或兼容模式会让服务器优先返回浏览器更容易播放的转码流。
+        {{ t('settings.mediaServer.intro') }}
       </div>
     </div>
 
     <div class="play-setting-group">
       <div class="play-setting-header">
-        <div class="settinghead">默认码率</div>
+        <div class="settinghead">{{ t('settings.mediaServer.defaultBitrate') }}</div>
       </div>
       <div class="settingrow play-setting-row">
         <a-select :model-value="settingStore.uiMediaServerVideoQuality"
                   tabindex="-1"
                   :style="{ width: '252px' }"
-                  placeholder="最大码率"
+                  :placeholder="t('settings.mediaServer.maxBitrate')"
                   :trigger-props="{ autoFitPopupMinWidth: true }"
                   @update:model-value="cb({ uiMediaServerVideoQuality: $event })">
           <a-option v-for="option in MEDIA_SERVER_PLAYBACK_QUALITY_OPTIONS"
                     :key="option.value"
                     :value="option.value">
-            {{ option.label }}
+            {{ qualityLabel(option.value, option.label) }}
           </a-option>
         </a-select>
       </div>
       <div class="hitText">
-        限制媒体服务器播放使用的最高码率。选择“最高”时尽量直连；选择较低码率时会请求服务器返回转码播放地址。
+        {{ t('settings.mediaServer.defaultBitrateHint') }}
       </div>
     </div>
 
     <div v-if="settingStore.uiMediaServerVideoQuality === 'auto'" class="play-setting-group">
       <div class="play-setting-header">
-        <div class="settinghead">测速大小</div>
+        <div class="settinghead">{{ t('settings.mediaServer.testSize') }}</div>
       </div>
       <div class="settingrow play-setting-row">
         <a-select :model-value="settingStore.uiMediaServerBitrateTestSize"
                   tabindex="-1"
                   :style="{ width: '252px' }"
-                  placeholder="测速大小"
+                  :placeholder="t('settings.mediaServer.testSize')"
                   :trigger-props="{ autoFitPopupMinWidth: true }"
                   @update:model-value="cb({ uiMediaServerBitrateTestSize: $event })">
           <a-option v-for="option in MEDIA_SERVER_BITRATE_TEST_SIZE_OPTIONS"
                     :key="option.value"
                     :value="option.value">
-            {{ option.label }}
+            {{ bitrateTestSizeLabel(option.value) }}
           </a-option>
         </a-select>
       </div>
       <div class="hitText">
-        对应 iOS 的 Auto 码率测速大小设置。桌面端当前保留该偏好，自动码率不会强制限制服务器码率。
+        {{ t('settings.mediaServer.testSizeHint') }}
       </div>
     </div>
 
     <div class="play-setting-group">
       <div class="play-setting-header">
-        <div class="settinghead">设备配置</div>
+        <div class="settinghead">{{ t('settings.mediaServer.deviceProfile') }}</div>
       </div>
       <div class="settingrow play-setting-row">
         <a-select :model-value="settingStore.uiMediaServerCompatibilityMode"
                   tabindex="-1"
                   :style="{ width: '252px' }"
-                  placeholder="兼容性"
+                  :placeholder="t('settings.mediaServer.compatibility')"
                   :trigger-props="{ autoFitPopupMinWidth: true }"
                   @update:model-value="cb({ uiMediaServerCompatibilityMode: $event })">
           <a-option v-for="option in MEDIA_SERVER_COMPATIBILITY_OPTIONS"
                     :key="option.value"
                     :value="option.value">
-            {{ option.label }}
+            {{ compatibilityLabel(option.value) }}
           </a-option>
         </a-select>
       </div>
       <div class="compatibility-help">
         <div v-for="option in MEDIA_SERVER_COMPATIBILITY_OPTIONS" :key="option.value">
-          <strong>{{ option.label }}</strong>
-          <span>{{ option.description }}</span>
+          <strong>{{ compatibilityLabel(option.value) }}</strong>
+          <span>{{ compatibilityDescription(option.value) }}</span>
         </div>
       </div>
       <div v-if="settingStore.uiMediaServerCompatibilityMode === 'custom'" class="custom-profile-actions">
-        <a-button type="outline" @click="openCustomProfileModal">配置文件</a-button>
-        <span>编辑并持久化媒体服务器 PlaybackInfo 使用的 DeviceProfile。</span>
+        <a-button type="outline" @click="openCustomProfileModal">{{ t('settings.mediaServer.profile') }}</a-button>
+        <span>{{ t('settings.mediaServer.profileHint') }}</span>
       </div>
     </div>
 
     <a-modal
       v-model:visible="showCustomProfileModal"
-      title="媒体服务器配置文件"
+      :title="t('settings.mediaServer.profileTitle')"
       :footer="false"
       :unmount-on-close="true"
       modal-class="media-server-profile-modal"
@@ -182,16 +220,16 @@ function saveCustomProfile() {
         <div class="profile-section">
           <div class="profile-section-head">
             <div>
-              <strong>行为</strong>
-              <span>与 iOS 的 Add / Replace 保持一致，决定自定义配置如何合并默认配置。</span>
+              <strong>{{ t('settings.mediaServer.behavior') }}</strong>
+              <span>{{ t('settings.mediaServer.behaviorHint') }}</span>
             </div>
           </div>
           <div class="profile-grid">
             <label>
               <span>CustomDeviceProfileAction</span>
               <a-select v-model="profileDraft.Action" :style="{ width: '100%' }">
-                <a-option value="add">添加到默认配置</a-option>
-                <a-option value="replace">替换默认配置</a-option>
+                <a-option value="add">{{ t('settings.mediaServer.addToDefault') }}</a-option>
+                <a-option value="replace">{{ t('settings.mediaServer.replaceDefault') }}</a-option>
               </a-select>
             </label>
           </div>
@@ -200,22 +238,22 @@ function saveCustomProfile() {
         <div class="profile-section">
           <div class="profile-section-head">
             <div>
-              <strong>码率限制</strong>
-              <span>留空表示不在自定义配置中指定，由上方默认码率决定。</span>
+              <strong>{{ t('settings.mediaServer.bitrateLimits') }}</strong>
+              <span>{{ t('settings.mediaServer.bitrateLimitsHint') }}</span>
             </div>
           </div>
           <div class="profile-grid three">
             <label>
               <span>MaxStreamingBitrate</span>
-              <a-input-number v-model="profileDraft.MaxStreamingBitrate" :min="1" :step="1000000" placeholder="空" />
+              <a-input-number v-model="profileDraft.MaxStreamingBitrate" :min="1" :step="1000000" :placeholder="t('settings.mediaServer.empty')" />
             </label>
             <label>
               <span>MaxStaticBitrate</span>
-              <a-input-number v-model="profileDraft.MaxStaticBitrate" :min="1" :step="1000000" placeholder="空" />
+              <a-input-number v-model="profileDraft.MaxStaticBitrate" :min="1" :step="1000000" :placeholder="t('settings.mediaServer.empty')" />
             </label>
             <label>
               <span>MusicStreamingTranscodingBitrate</span>
-              <a-input-number v-model="profileDraft.MusicStreamingTranscodingBitrate" :min="1" :step="1000000" placeholder="空" />
+              <a-input-number v-model="profileDraft.MusicStreamingTranscodingBitrate" :min="1" :step="1000000" :placeholder="t('settings.mediaServer.empty')" />
             </label>
           </div>
         </div>
@@ -224,15 +262,15 @@ function saveCustomProfile() {
           <div class="profile-section-head">
             <div>
               <strong>DirectPlayProfiles</strong>
-              <span>服务器会按这些容器和编码判断是否可以直连。</span>
+              <span>{{ t('settings.mediaServer.directProfilesHint') }}</span>
             </div>
-            <a-button size="small" type="outline" @click="addDirectPlayProfile">添加</a-button>
+            <a-button size="small" type="outline" @click="addDirectPlayProfile">{{ t('common.add') }}</a-button>
           </div>
           <div class="profile-entry-list">
             <div v-for="(profile, index) in profileDraft.DirectPlayProfiles" :key="`direct-${index}`" class="profile-entry">
               <div class="profile-entry-title">
-                <strong>直连规则 {{ index + 1 }}</strong>
-                <a-button size="mini" status="danger" type="text" :disabled="profileDraft.DirectPlayProfiles.length <= 1" @click="removeDirectPlayProfile(index)">删除</a-button>
+                <strong>{{ t('settings.mediaServer.directRule') }} {{ index + 1 }}</strong>
+                <a-button size="mini" status="danger" type="text" :disabled="profileDraft.DirectPlayProfiles.length <= 1" @click="removeDirectPlayProfile(index)">{{ t('common.delete') }}</a-button>
               </div>
               <div class="profile-grid">
                 <label>
@@ -256,15 +294,15 @@ function saveCustomProfile() {
           <div class="profile-section-head">
             <div>
               <strong>TranscodingProfiles</strong>
-              <span>服务器需要转码时可返回的目标格式。</span>
+              <span>{{ t('settings.mediaServer.transcodingProfilesHint') }}</span>
             </div>
-            <a-button size="small" type="outline" @click="addTranscodingProfile">添加</a-button>
+            <a-button size="small" type="outline" @click="addTranscodingProfile">{{ t('common.add') }}</a-button>
           </div>
           <div class="profile-entry-list">
             <div v-for="(profile, index) in profileDraft.TranscodingProfiles" :key="`transcode-${index}`" class="profile-entry">
               <div class="profile-entry-title">
-                <strong>转码规则 {{ index + 1 }}</strong>
-                <a-button size="mini" status="danger" type="text" @click="removeTranscodingProfile(index)">删除</a-button>
+                <strong>{{ t('settings.mediaServer.transcodingRule') }} {{ index + 1 }}</strong>
+                <a-button size="mini" status="danger" type="text" @click="removeTranscodingProfile(index)">{{ t('common.delete') }}</a-button>
               </div>
               <div class="profile-grid">
                 <label>
@@ -305,10 +343,10 @@ function saveCustomProfile() {
         </div>
 
         <div class="profile-modal-actions">
-          <a-button @click="resetCustomProfile">恢复默认</a-button>
+          <a-button @click="resetCustomProfile">{{ t('common.restoreDefault') }}</a-button>
           <div>
-            <a-button @click="showCustomProfileModal = false">取消</a-button>
-            <a-button type="primary" @click="saveCustomProfile">保存</a-button>
+            <a-button @click="showCustomProfileModal = false">{{ t('common.cancel') }}</a-button>
+            <a-button type="primary" @click="saveCustomProfile">{{ t('common.save') }}</a-button>
           </div>
         </div>
       </div>

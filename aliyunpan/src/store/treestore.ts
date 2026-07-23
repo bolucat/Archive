@@ -6,6 +6,7 @@ import { usePanTreeStore, useSettingStore } from '../store'
 import { throttle } from '../utils/debounce'
 import { OrderNode } from '../utils/filenameorder'
 import { GetDriveType } from '../aliapi/utils'
+import { t } from '../i18n'
 
 export interface TreeNodeData {
   __v_skip: true
@@ -294,7 +295,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'backup_root',
       parent_file_id: '',
-      name: '备份盘',
+      name: t('media.backupDrive'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -305,7 +306,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'resource_root',
       parent_file_id: '',
-      name: '资源盘',
+      name: t('media.resourceDrive'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -316,7 +317,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'pic_root',
       parent_file_id: '',
-      name: '全部相册',
+      name: t('tree.allAlbums'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -327,7 +328,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'mypic',
       parent_file_id: '',
-      name: '我的相册',
+      name: t('tree.myAlbums'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -338,7 +339,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'favorite',
       parent_file_id: '',
-      name: '收藏夹',
+      name: t('tree.favorites'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -349,7 +350,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'trash',
       parent_file_id: '',
-      name: '回收站',
+      name: t('tree.trash'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -360,7 +361,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'recover',
       parent_file_id: '',
-      name: '文件恢复',
+      name: t('tree.recover'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -371,7 +372,7 @@ export default class TreeStore {
       drive_id,
       file_id: file_id,
       parent_file_id: '',
-      name: ('搜索 ' + file_id.substring(6)).trimEnd(),
+      name: (t('tree.search') + ' ' + file_id.substring(6)).trimEnd(),
       namesearch: '',
       size: 0,
       time: 0,
@@ -382,7 +383,7 @@ export default class TreeStore {
       drive_id,
       file_id: file_id,
       parent_file_id: '',
-      name: '标记 · ' + file_id.substring(file_id.indexOf(' ') + 1),
+      name: t('tree.mark') + ' · ' + file_id.substring(file_id.indexOf(' ') + 1),
       namesearch: '',
       size: 0,
       time: 0,
@@ -393,7 +394,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'video',
       parent_file_id: '',
-      name: '放映室',
+      name: t('tree.screeningRoom'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -403,16 +404,16 @@ export default class TreeStore {
       let videoType = file_id.substring('video'.length)
       // console.log('videoType', videoType)
       if (videoType == '.compilation') {
-        videoType = '全部专辑'
+        videoType = t('file.allAlbums')
       } else if (videoType == '.recentplay') {
-        videoType = '正在观看'
+        videoType = t('file.nowWatching')
       }
       return {
         __v_skip: true,
         drive_id,
         file_id: file_id,
         parent_file_id: '',
-        name: '放映室 · ' + videoType,
+        name: t('tree.screeningRoom') + ' · ' + videoType,
         namesearch: '',
         size: 0,
         time: 0,
@@ -439,7 +440,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'backup_root',
       parent_file_id: '',
-      name: '备份盘',
+      name: t('media.backupDrive'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -450,7 +451,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'resource_root',
       parent_file_id: '',
-      name: '资源盘',
+      name: t('media.resourceDrive'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -461,7 +462,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'pic_root',
       parent_file_id: '',
-      name: '全部相册',
+      name: t('tree.allAlbums'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -472,7 +473,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'mypic',
       parent_file_id: '',
-      name: '我的相册',
+      name: t('tree.myAlbums'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -483,7 +484,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'favorite',
       parent_file_id: '',
-      name: '收藏夹',
+      name: t('tree.favorites'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -494,7 +495,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'trash',
       parent_file_id: '',
-      name: '回收站',
+      name: t('tree.trash'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -505,7 +506,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'recover',
       parent_file_id: '',
-      name: '文件恢复',
+      name: t('tree.recover'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -516,7 +517,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'search',
       parent_file_id: '',
-      name: '全盘搜索',
+      name: t('tree.globalSearch'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -529,7 +530,7 @@ export default class TreeStore {
           drive_id,
           file_id: 'search',
           parent_file_id: '',
-          name: '全盘搜索',
+          name: t('tree.globalSearch'),
           namesearch: '',
           size: 0,
           time: 0,
@@ -553,7 +554,7 @@ export default class TreeStore {
       drive_id,
       file_id: file_id,
       parent_file_id: '',
-      name: '标记 · ' + file_id.substring(file_id.indexOf(' ') + 1),
+      name: t('tree.mark') + ' · ' + file_id.substring(file_id.indexOf(' ') + 1),
       namesearch: '',
       size: 0,
       time: 0,
@@ -564,7 +565,7 @@ export default class TreeStore {
       drive_id,
       file_id: 'video',
       parent_file_id: '',
-      name: '放映室',
+      name: t('tree.screeningRoom'),
       namesearch: '',
       size: 0,
       time: 0,
@@ -573,9 +574,9 @@ export default class TreeStore {
     if (file_id.startsWith('video')) {
       let videoType = file_id.substring('video'.length)
       if (videoType == '.compilation') {
-        videoType = '全部专辑'
+        videoType = t('file.allAlbums')
       } else if (videoType == '.recentplay') {
-        videoType = '正在观看'
+        videoType = t('file.nowWatching')
       }
       return [
         {
@@ -583,7 +584,7 @@ export default class TreeStore {
           drive_id,
           file_id: 'video',
           parent_file_id: '',
-          name: '放映室',
+          name: t('tree.screeningRoom'),
           namesearch: '',
           size: 0,
           time: 0,
@@ -594,7 +595,7 @@ export default class TreeStore {
           drive_id,
           file_id: file_id,
           parent_file_id: '',
-          name: '放映室 · ' + videoType,
+          name: t('tree.screeningRoom') + ' · ' + videoType,
           namesearch: '',
           size: 0,
           time: 0,

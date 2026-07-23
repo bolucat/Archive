@@ -22,6 +22,8 @@ const selected = ref(new Set<string>())
 
 const driveKey = (target: DuplicateDriveTarget) => `${target.userId}\n${target.driveId}`
 const dirKey = (dir: EmptyDirItem) => `${dir.userId}\n${dir.driveId}\n${dir.fileId}`
+const isReadOnlyDir = (dir: EmptyDirItem) => dir.driveId.startsWith('webdav:')
+const hasWritableResults = computed(() => emptyDirs.value.some(dir => !isReadOnlyDir(dir)))
 
 const loadDriveOptions = async () => {
   const users = await UserDAL.GetUserListFromDB()
@@ -90,6 +92,7 @@ const handleScan = async () => {
 }
 
 const toggleDir = (dir: EmptyDirItem) => {
+  if (isReadOnlyDir(dir)) return
   const next = new Set(selected.value)
   const key = dirKey(dir)
   if (next.has(key)) next.delete(key)
@@ -98,14 +101,14 @@ const toggleDir = (dir: EmptyDirItem) => {
 }
 
 const toggleAll = () => {
-  const keys = emptyDirs.value.map(dirKey)
+  const keys = emptyDirs.value.filter(dir => !isReadOnlyDir(dir)).map(dirKey)
   const allSelected = keys.length > 0 && keys.every(key => selected.value.has(key))
   selected.value = allSelected ? new Set() : new Set(keys)
 }
 
 const handleDelete = async () => {
   if (deleting.value) return
-  const dirs = emptyDirs.value.filter(dir => selected.value.has(dirKey(dir)))
+  const dirs = emptyDirs.value.filter(dir => !isReadOnlyDir(dir) && selected.value.has(dirKey(dir)))
   if (!dirs.length) {
     message.warning('请先勾选需要删除的空目录')
     return
@@ -150,8 +153,8 @@ watch(userStore.$state, async () => {
           <a-option v-for="target in driveOptions" :key="driveKey(target)" :value="driveKey(target)">{{ target.name }}</a-option>
         </a-select>
         <a-button type="primary" :loading="loading" @click="handleScan">开始扫描</a-button>
-        <a-button :disabled="!emptyDirs.length" @click="toggleAll">全选/取消</a-button>
-        <a-button status="danger" :disabled="!selected.size" :loading="deleting" @click="handleDelete">删除选中</a-button>
+        <a-button v-if="hasWritableResults" :disabled="!emptyDirs.length" @click="toggleAll">全选/取消</a-button>
+        <a-button v-if="hasWritableResults" status="danger" :disabled="!selected.size" :loading="deleting" @click="handleDelete">删除选中</a-button>
       </div>
       <div class="scan-hint">扫描每个网盘根目录下最里层且完全空的目录。删除会按对应网盘能力执行，部分网盘可能不支持回收站。</div>
       <pre v-if="result" class="scan-report">{{ result }}</pre>
@@ -160,7 +163,7 @@ watch(userStore.$state, async () => {
           <template #empty><a-empty description="扫描结束，未发现空目录" /></template>
           <template #item="{ item }">
             <div :key="dirKey(item)" class="emptydir-item">
-              <AntdCheckbox :checked="selected.has(dirKey(item))" @change="toggleDir(item)" />
+              <AntdCheckbox v-if="!isReadOnlyDir(item)" :checked="selected.has(dirKey(item))" @change="toggleDir(item)" />
               <IconFont name="iconfile-folder" aria-hidden="true" />
               <div class="emptydir-name" :title="item.name">{{ item.name }}</div>
               <div class="emptydir-path" :title="item.path">{{ item.path }}</div>

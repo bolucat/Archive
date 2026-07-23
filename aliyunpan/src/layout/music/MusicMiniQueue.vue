@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { X } from 'lucide-vue-next'
 import type { IPageMusicTrack } from '../../store/appstore'
+import { t as tt } from '../../i18n'
 
 const props = defineProps<{
   visible: boolean
@@ -25,8 +26,8 @@ const displayList = computed(() => {
 <template>
   <div v-if="visible" :class="['mini-queue-pop', 'mini-queue-popover', visible ? 'show' : '']" @click.stop>
     <div class="mini-queue-head">
-      <span class="mini-queue-title">当前队列</span>
-      <span class="mini-queue-count">{{ tracks.length }} 首</span>
+      <span class="mini-queue-title">{{ tt('music.currentQueue') }}</span>
+      <span class="mini-queue-count">{{ tracks.length }} {{ tt('music.tracksUnit') }}</span>
       <button class="mini-queue-close" @click="emit('close')"><X :size="14" /></button>
     </div>
     <div class="mini-queue-list">
@@ -38,9 +39,9 @@ const displayList = computed(() => {
       >
         <span class="mini-queue-idx">{{ item.globalIndex + 1 }}</span>
         <span class="mini-queue-name">{{ item.track.file_name }}</span>
-        <button class="mini-queue-rm" @click.stop="emit('remove', item.globalIndex)" title="移除">×</button>
+        <button class="mini-queue-rm" @click.stop="emit('remove', item.globalIndex)" :title="tt('music.remove')">×</button>
       </div>
-      <div v-if="!tracks.length" class="mini-queue-empty">队列为空</div>
+      <div v-if="!tracks.length" class="mini-queue-empty">{{ tt('music.queueEmpty') }}</div>
     </div>
   </div>
 </template>

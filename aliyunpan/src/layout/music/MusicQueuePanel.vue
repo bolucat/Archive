@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Clock, Heart, ListMusic, Music, SkipForward, Trash2, X } from 'lucide-vue-next'
 import type { IPageMusicTrack } from '../../store/appstore'
 import { musicTrackKey } from '../../utils/musicPlayerStorage'
+import { t as tt } from '../../i18n'
 
 type PanelTab = 'queue' | 'fav' | 'recent'
 
@@ -57,14 +58,14 @@ function stripExt(name: string) {
   <aside v-show="visible" :class="['music-queue-panel', 'playlist-panel', visible ? 'show' : '']">
     <div class="music-queue-head">
       <div class="music-queue-tabs">
-        <button :class="['panel-tab', { on: panelTab === 'queue' }]" @click="emit('update:panelTab', 'queue')"><ListMusic :size="14" /> 待播 {{ playlist.length }}</button>
-        <button :class="['panel-tab', { on: panelTab === 'fav' }]" @click="emit('update:panelTab', 'fav')"><Heart :size="14" /> 收藏 {{ favs.length }}</button>
-        <button :class="['panel-tab', { on: panelTab === 'recent' }]" @click="emit('update:panelTab', 'recent')"><Clock :size="14" /> 最近 {{ recents.length }}</button>
+        <button :class="['panel-tab', { on: panelTab === 'queue' }]" @click="emit('update:panelTab', 'queue')"><ListMusic :size="14" /> {{ tt('music.upNext') }} {{ playlist.length }}</button>
+        <button :class="['panel-tab', { on: panelTab === 'fav' }]" @click="emit('update:panelTab', 'fav')"><Heart :size="14" /> {{ tt('music.favorites') }} {{ favs.length }}</button>
+        <button :class="['panel-tab', { on: panelTab === 'recent' }]" @click="emit('update:panelTab', 'recent')"><Clock :size="14" /> {{ tt('music.recent') }} {{ recents.length }}</button>
       </div>
       <button class="music-queue-close" @click="emit('close')"><X :size="16" /></button>
     </div>
     <div class="music-queue-search">
-      <input :value="filter" placeholder="搜索队列..." @input="emit('update:filter', ($event.target as HTMLInputElement).value)" />
+      <input :value="filter" :placeholder="tt('music.searchQueue')" @input="emit('update:filter', ($event.target as HTMLInputElement).value)" />
       <button v-if="filter" @click="emit('update:filter', '')"><X :size="13" /></button>
     </div>
     <div class="music-queue-list queue-list">
@@ -82,18 +83,18 @@ function stripExt(name: string) {
         <span v-else class="music-queue-cover empty"><Music :size="15" :stroke-width="1.5" /></span>
         <span class="music-queue-meta">
           <span class="music-queue-title">{{ stripExt(row.track.file_name || '') }}</span>
-          <span class="music-queue-sub">{{ row.track.ext ? String(row.track.ext).replace(/^\./, '').toUpperCase() : '网盘音乐' }}</span>
+          <span class="music-queue-sub">{{ row.track.ext ? String(row.track.ext).replace(/^\./, '').toUpperCase() : tt('music.cloudMusic') }}</span>
         </span>
-        <button v-if="panelTab === 'queue'" class="music-queue-action qi-act" title="下一首播放" @click.stop="emit('next-play', row.sourceIndex)"><SkipForward :size="13" /></button>
-        <button v-if="panelTab === 'queue'" class="music-queue-action qi-act" title="从队列移除" @click.stop="emit('remove-queue', row.sourceIndex)"><Trash2 :size="13" /></button>
-        <button v-else-if="panelTab === 'fav'" class="music-queue-action qi-act liked" title="移除收藏" @click.stop="emit('remove-fav', row.track)"><X :size="13" /></button>
-        <button v-else :class="['music-queue-action', 'qi-act', favSet.has(musicTrackKey(row.track)) ? 'liked' : '']" title="收藏" @click.stop="emit('toggle-fav', row.track)">
+        <button v-if="panelTab === 'queue'" class="music-queue-action qi-act" :title="tt('music.playNext')" @click.stop="emit('next-play', row.sourceIndex)"><SkipForward :size="13" /></button>
+        <button v-if="panelTab === 'queue'" class="music-queue-action qi-act" :title="tt('music.removeFromQueue')" @click.stop="emit('remove-queue', row.sourceIndex)"><Trash2 :size="13" /></button>
+        <button v-else-if="panelTab === 'fav'" class="music-queue-action qi-act liked" :title="tt('music.removeFavorite')" @click.stop="emit('remove-fav', row.track)"><X :size="13" /></button>
+        <button v-else :class="['music-queue-action', 'qi-act', favSet.has(musicTrackKey(row.track)) ? 'liked' : '']" :title="tt('music.favorites')" @click.stop="emit('toggle-fav', row.track)">
           <Heart :size="14" :fill="favSet.has(musicTrackKey(row.track)) ? 'currentColor' : 'none'" />
         </button>
       </div>
-      <div v-if="!totalFiltered" class="music-queue-empty">暂无内容</div>
-      <button v-if="totalFiltered > filteredRows.length" class="music-queue-more" @click="renderLimit += 80">继续显示</button>
-      <button v-if="panelTab === 'recent' && recents.length" class="music-queue-clear" @click="emit('clear-recents')">清空最近播放</button>
+      <div v-if="!totalFiltered" class="music-queue-empty">{{ tt('music.noContent') }}</div>
+      <button v-if="totalFiltered > filteredRows.length" class="music-queue-more" @click="renderLimit += 80">{{ tt('music.showMore') }}</button>
+      <button v-if="panelTab === 'recent' && recents.length" class="music-queue-clear" @click="emit('clear-recents')">{{ tt('music.clearRecentPlays') }}</button>
     </div>
   </aside>
 </template>

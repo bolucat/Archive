@@ -4,7 +4,7 @@ import AliHttp from './alihttp'
 import { IAliGetDirModel, IAliGetFileModel } from './alimodels'
 import dayjs from 'dayjs'
 import AliTrash from './trash'
-import { DirData } from '../store/treestore'
+import type { DirData } from '../store/treestore'
 import AliUser from './user'
 
 export interface IAliDirResp {
@@ -397,13 +397,17 @@ export default class AliDirList {
               index: allMap.size,
               total: dirCount
             })
-          } else if (!AliHttp.HttpCodeBreak(resp.code)) {
-            errorMessage = (resp.code || '').toString()
-            DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''), resp.body)
+          } else {
+            errorMessage = (resp.code || 'unknown').toString()
+            DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + errorMessage, resp.body)
+            dirList.length = 0
+            break
           }
         } catch (err: any) {
-          errorMessage = err.message || ''
+          errorMessage = err.message || 'unknown'
           DebugLog.mSaveWarning('ApiBatchDirFileList', err)
+          dirList.length = 0
+          break
         }
       }
     }
@@ -516,13 +520,17 @@ export default class AliDirList {
             index: allMap.size,
             total: dirCount
           })
-        } else if (!AliHttp.HttpCodeBreak(resp.code)) {
-          errorMessage = (resp.code || '').toString()
-          DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + (resp.code || ''), resp.body)
+        } else {
+          errorMessage = (resp.code || 'unknown').toString()
+          DebugLog.mSaveWarning('SSApiBatchDirFileList err=' + errorMessage, resp.body)
+          dirList.length = 0
+          break
         }
       } catch (err: any) {
-        errorMessage = err.message || ''
+        errorMessage = err.message || 'unknown'
         DebugLog.mSaveWarning('ApiBatchDirFileList', err)
+        dirList.length = 0
+        break
       }
     }
   }

@@ -8,6 +8,7 @@ import { useSettingStore } from '../store'
 import message from '../utils/message'
 import { parseExternalDownloadPayload } from './integration/protocolPayload'
 import { parseTorrentMeta, type ParsedTorrentFile } from './integration/torrentMeta'
+import { t } from '../i18n'
 
 const props = defineProps({
   visible: {
@@ -130,7 +131,7 @@ const handleClose = () => {
 const handleSelectSavePath = () => {
   if (!window.WebShowOpenDialogSync) return
   window.WebShowOpenDialogSync({
-    title: '选择下载保存目录',
+    title: t('transfer.selectSaveDirectory'),
     defaultPath: form.savePath || defaultSavePath(),
     properties: ['openDirectory', 'createDirectory', 'showHiddenFiles', 'noResolveAliases', 'dontAddToRecent']
   }, (result: string[] | undefined) => {
@@ -145,7 +146,7 @@ const buildTorrentItem = (filePath: string): LocalTorrentItem => {
   const displayName = parsed.name || path.basename(filePath)
   return {
     source: filePath,
-    fileName: path.basename(filePath, path.extname(filePath)) || displayName || 'BT 种子任务',
+    fileName: path.basename(filePath, path.extname(filePath)) || displayName || t('transfer.btTorrentTask'),
     displayName,
     torrentBase64,
     files: parsed.files,
@@ -158,14 +159,14 @@ const loadTorrentFile = (filePath: string) => {
     localTorrent.value = buildTorrentItem(filePath)
     activeTab.value = 'torrent'
   } catch (e: any) {
-    message.error('读取种子失败: ' + (e.message || filePath))
+    message.error(t('transfer.readTorrentFailed', { message: e.message || filePath }))
   }
 }
 
 const handleImportTorrent = () => {
   if (!window.WebShowOpenDialogSync) return
   window.WebShowOpenDialogSync({
-    title: '选择 BT 种子文件',
+    title: t('transfer.selectBtTorrentFile'),
     defaultPath: form.savePath || defaultSavePath(),
     filters: [{ name: 'Torrent', extensions: ['torrent'] }],
     properties: ['openFile', 'showHiddenFiles', 'noResolveAliases', 'dontAddToRecent']
@@ -179,7 +180,7 @@ const handleDrop = (event: DragEvent) => {
   const filePath = (event.dataTransfer?.files?.[0] as (File & { path?: string }) | undefined)?.path
   if (!filePath) return
   if (!filePath.toLowerCase().endsWith('.torrent')) {
-    message.error('请先选择种子文件')
+    message.error(t('transfer.selectTorrentFirst'))
     return
   }
   loadTorrentFile(filePath)
@@ -212,17 +213,17 @@ const formatBytes = (value: number | string) => {
 
 const validateSources = () => {
   if (activeTab.value === 'torrent') {
-    if (!localTorrent.value) return '请先选择种子文件'
-    if (!localTorrent.value.selectedFileIndexes.length) return '请至少选择一个种子文件'
+    if (!localTorrent.value) return t('transfer.selectTorrentFirst')
+    if (!localTorrent.value.selectedFileIndexes.length) return t('transfer.selectAtLeastOneTorrentFile')
   } else {
     const lines = parseSourceLines()
     for (const item of lines) {
       if (item.sourceType === 'magnet') continue
-      if (!/^https?:\/\//i.test(item.source)) return '仅支持 http/https、magnet 链接或本地 .torrent 文件'
+      if (!/^https?:\/\//i.test(item.source)) return t('transfer.externalLinkUnsupported')
     }
-    if (!lines.length) return '请输入下载链接'
+    if (!lines.length) return t('transfer.enterDownloadLink')
   }
-  if (!form.savePath.trim()) return '请选择保存目录'
+  if (!form.savePath.trim()) return t('transfer.selectSavePath')
   return ''
 }
 
@@ -268,11 +269,11 @@ const handleCreate = async () => {
       allProxy: form.allProxy.trim()
     })
     if (result.success) successCount++
-    else message.error(result.message || '创建下载任务失败')
+    else message.error(result.message || t('transfer.createDownloadTaskFailed'))
   }
   okLoading.value = false
   if (successCount > 0) {
-    message.success(`已创建 ${successCount} 个下载任务`)
+    message.success(t('transfer.createdDownloadTasks', { count: successCount }))
     handleHide()
   }
 }
@@ -321,7 +322,7 @@ onMounted(() => {
           type="button"
           @click="activeTab = 'uri'"
         >
-          链接任务
+          {{ t('transfer.linkTask') }}
         </button>
         <button
           class="boxplayer-tab"
@@ -329,7 +330,7 @@ onMounted(() => {
           type="button"
           @click="activeTab = 'torrent'"
         >
-          种子任务
+          {{ t('transfer.torrentTask') }}
         </button>
       </div>
 
@@ -339,7 +340,7 @@ onMounted(() => {
             v-model="form.sources"
             class="boxplayer-uri-input"
             :auto-size="{ minRows: 3, maxRows: 5 }"
-            placeholder="添加多个下载链接时，请确保每行只有一个链接（支持磁力链）"
+            :placeholder="t('transfer.multiLinkPlaceholder')"
             @keydown.stop
           />
         </div>
@@ -354,12 +355,12 @@ onMounted(() => {
             @drop.prevent="handleDrop"
           >
             <UploadCloud :size="20" />
-            <span>将种子拖到此处，或点击选择</span>
+            <span>{{ t('transfer.dropTorrentHint') }}</span>
           </div>
           <div v-else class="torrent-selected">
             <div class="torrent-info-row">
               <span class="torrent-name" :title="localTorrent.displayName">{{ localTorrent.displayName }}</span>
-              <button class="icon-btn" type="button" aria-label="移除种子" @click="handleRemoveTorrent">
+              <button class="icon-btn" type="button" :aria-label="t('transfer.removeTorrent')" @click="handleRemoveTorrent">
                 <Trash2 :size="16" />
               </button>
             </div>
@@ -369,8 +370,8 @@ onMounted(() => {
                 :indeterminate="localTorrent.selectedFileIndexes.length > 0 && localTorrent.selectedFileIndexes.length < localTorrent.files.length"
                 @change="(checked:boolean) => toggleAllTorrentFiles(checked)"
               />
-              <span class="torrent-file-title">文件名</span>
-              <span class="torrent-file-size">大小</span>
+              <span class="torrent-file-title">{{ t('transfer.fileName') }}</span>
+              <span class="torrent-file-size">{{ t('transfer.size') }}</span>
             </div>
             <div class="torrent-file-list">
               <div
@@ -388,9 +389,9 @@ onMounted(() => {
         </div>
 
         <div class="boxplayer-form-grid">
-          <label>重命名:</label>
-          <a-input v-model.trim="form.fileName" placeholder="选填" />
-          <label>分片数:</label>
+          <label>{{ t('transfer.rename') }}</label>
+          <a-input v-model.trim="form.fileName" :placeholder="t('transfer.optional')" />
+          <label>{{ t('transfer.splitCount') }}</label>
           <a-input-number
             v-model="form.split"
             :min="1"
@@ -401,13 +402,13 @@ onMounted(() => {
         </div>
 
         <div class="boxplayer-dir-row">
-          <label>存储路径:</label>
+          <label>{{ t('transfer.storagePath') }}</label>
           <div class="boxplayer-dir-input">
-            <button class="dir-prefix" type="button" aria-label="历史路径">
+            <button class="dir-prefix" type="button" :aria-label="t('transfer.historyPath')">
               <Clock3 :size="18" />
             </button>
             <a-input v-model="form.savePath" readonly />
-            <button class="dir-suffix" type="button" aria-label="选择目录" @click="handleSelectSavePath">
+            <button class="dir-suffix" type="button" :aria-label="t('transfer.chooseDirectory')" @click="handleSelectSavePath">
               <Folder :size="20" />
             </button>
           </div>
@@ -431,21 +432,21 @@ onMounted(() => {
             <a-textarea v-model="form.cookie" :auto-size="{ minRows: 2, maxRows: 3 }" />
           </div>
           <div class="advanced-row">
-            <label>代理:</label>
+            <label>{{ t('transfer.proxy') }}</label>
             <a-input v-model="form.allProxy" placeholder="[http://][USER:PASSWORD@]HOST[:PORT]" />
           </div>
           <div class="advanced-row advanced-check">
             <span></span>
-            <a-checkbox v-model="form.newTaskShowDownloading">提交后跳转到下载中</a-checkbox>
+            <a-checkbox v-model="form.newTaskShowDownloading">{{ t('transfer.jumpToDownloadingAfterSubmit') }}</a-checkbox>
           </div>
         </div>
       </div>
 
       <div class="boxplayer-footer">
-        <a-checkbox v-model="showAdvanced">高级选项</a-checkbox>
+        <a-checkbox v-model="showAdvanced">{{ t('transfer.advancedOptions') }}</a-checkbox>
         <div class="boxplayer-footer-actions">
-          <a-button size="small" @click="handleHide">取 消</a-button>
-          <a-button size="small" type="primary" :loading="okLoading" @click="handleCreate">提 交</a-button>
+          <a-button size="small" @click="handleHide">{{ t('common.cancel') }}</a-button>
+          <a-button size="small" type="primary" :loading="okLoading" @click="handleCreate">{{ t('transfer.submit') }}</a-button>
         </div>
       </div>
     </div>

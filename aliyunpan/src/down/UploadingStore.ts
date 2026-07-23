@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { GetFocusNext, GetSelectedList, KeyboardSelectOne, MouseSelectOne, SelectAll } from '../utils/selecthelper'
+import { t } from '../i18n'
 
 
 export interface IUploadingModel {
@@ -75,7 +76,7 @@ const useUploadingStore = defineStore('uploading', {
       return state.ListSelected.size
     },
     ListDataSelectCountInfo(state: State): string {
-      return '已选中 ' + state.ListSelected.size + ' / ' + state.ListDataShow.length + ' 个'
+      return t('transfer.selectedCount', { selected: state.ListSelected.size, total: state.ListDataShow.length })
     },
     IsListSelectedAll(state: State): boolean {
       return state.ListSelected.size > 0 && state.ListSelected.size == state.ListDataShow.length

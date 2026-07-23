@@ -34,11 +34,11 @@ describe('drive-tools empty dirs', () => {
     expect(result.deletedFileKeys).toEqual(['u\nguangya\na'])
   })
 
-  it('deletes WebDAV empty directories directly', async () => {
+  it('keeps WebDAV empty directories read-only', async () => {
     const result = await deleteDriveEmptyDirs([
       { userId: 'dav', driveId: 'webdav:dav', fileId: '/empty', parentFileId: '/', name: 'empty', path: 'empty' }
     ])
-    expect(result).toMatchObject({ total: 1, success: 1, failed: 0 })
-    expect(result.deletedFileKeys).toEqual(['dav\nwebdav:dav\n/empty'])
+    expect(result).toMatchObject({ total: 1, success: 0, failed: 1 })
+    expect(result.deletedFileKeys).toEqual([])
   })
 })

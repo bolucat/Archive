@@ -64,27 +64,28 @@ function LoadAllDirList(user_id: string, drive_id: string, drive_root: string): 
   if (lock) {
     if (time - lock < 300) {
       console.log('AllDirList Break')
-      window.WinMsgToMain({ cmd: 'MainSaveAllDir', OneDriver: undefined, ErrorMessage: 'time' })
+      window.WinMsgToMain({ cmd: 'MainSaveAllDir', drive_id, OneDriver: undefined, ErrorMessage: 'time' })
       return 
     }
   }
   AllDirLock.set(drive_id, time)
   AliDirList.ApiFastAllDirListByPID(user_id, drive_id, drive_root)
-    .then((data) => {
+    .then(async (data) => {
       console.timeEnd('AllDirList')
-      AllDirLock.delete(drive_id)
       if (!data.next_marker) {
-        TreeStore.ConvertToOneDriver(user_id, drive_id, data.items, true, false).then((one) => {
-          window.WinMsgToMain({ cmd: 'MainSaveAllDir', OneDriver: one, ErrorMessage: '' })
-        })
+        const one = await TreeStore.ConvertToOneDriver(user_id, drive_id, data.items, true, false)
+        window.WinMsgToMain({ cmd: 'MainSaveAllDir', drive_id, OneDriver: one, ErrorMessage: '' })
       } else {
         DebugLog.mSaveWarning('列出文件夹失败file_id=all' + ' next_marker=' + data.next_marker)
-        window.WinMsgToMain({ cmd: 'MainSaveAllDir', OneDriver: undefined, ErrorMessage: data.next_marker })
+        window.WinMsgToMain({ cmd: 'MainSaveAllDir', drive_id, OneDriver: undefined, ErrorMessage: data.next_marker })
       }
     })
     .catch((err: any) => {
       DebugLog.mSaveWarning('列出文件夹失败file_id=all', err)
-      window.WinMsgToMain({ cmd: 'MainSaveAllDir', OneDriver: undefined, ErrorMessage: err.message || '未知错误' })
+      window.WinMsgToMain({ cmd: 'MainSaveAllDir', drive_id, OneDriver: undefined, ErrorMessage: err.message || '未知错误' })
+    })
+    .finally(() => {
+      AllDirLock.delete(drive_id)
     })
 }
 

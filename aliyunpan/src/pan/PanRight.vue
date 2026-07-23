@@ -22,6 +22,7 @@ import {
   TestKeyboardSelect
 } from '../utils/keyboardhelper'
 import { computed, onMounted, ref, watchEffect } from 'vue'
+import { t } from '../i18n'
 import PanDAL from './pandal'
 
 import { Tooltip as AntdTooltip } from 'ant-design-vue'
@@ -61,6 +62,18 @@ import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User,
 import { xorWith } from 'lodash'
 import { flattenDriveToolFolders, moveDriveToolFiles, type OrganizeFileItem } from '../utils/drive-tools/organize'
 import { buildMediaOrganizePlan, executeMediaOrganizePlan, mapMediaOrganizeFiles } from '../utils/drive-tools/mediaOrganize'
+import {
+  supportsCopy,
+  supportsCreateFolder,
+  supportsCreateShare,
+  supportsCreateTextFile,
+  supportsLocalUpload,
+  supportsMove,
+  supportsRename,
+  supportsShareImport,
+  supportsTrashMove,
+  supportsTrashPermanentDelete
+} from '../aliapi/providerFeatures'
 
 
 const viewlist = ref()
@@ -88,6 +101,18 @@ const settingStore = useSettingStore()
 const winStore = useWinStore()
 const panfileStore = usePanFileStore()
 const panTreeStore = usePanTreeStore()
+const currentDriveId = computed(() => panTreeStore.drive_id || panfileStore.DriveID || '')
+const currentUserId = computed(() => panTreeStore.user_id || '')
+const canCopy = computed(() => supportsCopy(currentUserId.value, currentDriveId.value))
+const canCreateFolder = computed(() => supportsCreateFolder(currentUserId.value, currentDriveId.value))
+const canCreateTextFile = computed(() => supportsCreateTextFile(currentUserId.value, currentDriveId.value))
+const canCreateShare = computed(() => supportsCreateShare(currentUserId.value, currentDriveId.value))
+const canImportShare = computed(() => supportsShareImport(currentUserId.value, currentDriveId.value))
+const canMove = computed(() => supportsMove(currentUserId.value, currentDriveId.value))
+const canRename = computed(() => supportsRename(currentUserId.value, currentDriveId.value))
+const canTrash = computed(() => supportsTrashMove(currentUserId.value, currentDriveId.value))
+const canDeletePermanently = computed(() => supportsTrashPermanentDelete(currentUserId.value, currentDriveId.value))
+const canUpload = computed(() => supportsLocalUpload(currentUserId.value, currentDriveId.value))
 
 const isOfflineDownloadSupported = computed(() => {
   if (panfileStore.SelectDirType !== 'pan') return false
@@ -103,7 +128,7 @@ const handleOfflineDownload = () => {
   const isDrive115 = isDrive115User(panTreeStore.user_id || '') || (panTreeStore.drive_id || panfileStore.DriveID) === 'drive115'
   modalCloud123OfflineDownload({
     dirId: isRoot ? (isDrive115 ? '0' : '') : panfileStore.DirID,
-    dirName: isRoot ? (isDrive115 ? '根目录' : '默认（来自:离线下载）') : panfileStore.DirName
+    dirName: isRoot ? (isDrive115 ? t('pan.rootFolder') : t('pan.defaultOfflineFolder')) : panfileStore.DirName
   })
 }
 
@@ -118,18 +143,18 @@ const handleMoveOrganizeToParent = async () => {
   const files = getSelectedOrganizeFiles()
   const parentId = panTreeStore.selectDir?.parent_file_id || ''
   if (!files.length) {
-    message.warning('请先选中文件或文件夹')
+    message.warning(t('pan.selectFileOrFolderFirst'))
     return
   }
   if (!parentId) {
-    message.warning('当前目录没有可用的上级目录')
+    message.warning(t('pan.noParentFolder'))
     return
   }
   if (!allSelectedInCurrentDrive(files)) {
-    message.warning('当前仅支持整理当前网盘内的项目')
+    message.warning(t('pan.currentDriveOnly'))
     return
   }
-  if (!window.confirm(`把选中的 ${files.length} 项整体上移一层，是否继续？`)) return
+  if (!window.confirm(t('pan.confirmMoveUp', { count: files.length }))) return
   const result = await moveDriveToolFiles(files, parentId, panfileStore.DriveID)
   if (result.failed) message.warning(result.report)
   else message.success(result.report)
@@ -140,18 +165,18 @@ const handleMoveOrganizeFlatten = async () => {
   const files = getSelectedOrganizeFiles()
   const currentDirId = panfileStore.DirID || ''
   if (!files.length) {
-    message.warning('请先选中文件夹')
+    message.warning(t('pan.selectFolderFirst'))
     return
   }
   if (!currentDirId) {
-    message.warning('无法识别当前目录')
+    message.warning(t('pan.unrecognizedCurrentDir'))
     return
   }
   if (!allSelectedInCurrentDrive(files)) {
-    message.warning('当前仅支持整理当前网盘内的项目')
+    message.warning(t('pan.currentDriveOnly'))
     return
   }
-  if (!window.confirm('把选中文件夹里的直接内容移动到当前目录，是否继续？')) return
+  if (!window.confirm(t('pan.confirmFlatten'))) return
   const result = await flattenDriveToolFolders(files, currentDirId, panfileStore.DriveID)
   if (result.failed) message.warning(result.report)
   else message.success(result.report)
@@ -161,15 +186,15 @@ const handleMoveOrganizeFlatten = async () => {
 const handleMoveOrganizeToSelectedDir = () => {
   const files = getSelectedOrganizeFiles()
   if (!files.length) {
-    message.warning('请先选中文件或文件夹')
+    message.warning(t('pan.selectFileOrFolderFirst'))
     return
   }
   modalSelectPanDir('cut', panfileStore.DirID || '', async (_userId: string, driveId: string, selectFile: any) => {
     if (files.some(file => file.driveId !== driveId)) {
-      message.warning('当前仅支持在同一个网盘内移动整理')
+      message.warning(t('pan.sameDriveMoveOnly'))
       return
     }
-    if (!window.confirm(`把选中的 ${files.length} 项移动到「${selectFile.name}」，是否继续？`)) return
+    if (!window.confirm(t('pan.confirmMoveTo', { count: files.length, name: selectFile.name }))) return
     const result = await moveDriveToolFiles(files, selectFile.file_id, driveId)
     if (result.failed) message.warning(result.report)
     else message.success(result.report)
@@ -182,24 +207,24 @@ const handleMediaOrganize = async () => {
   const rootId = panfileStore.DirID || ''
   const files = panfileStore.GetSelected()
   if (!files.length) {
-    message.warning('请先选中媒体文件或文件夹')
+    message.warning(t('pan.selectMediaFirst'))
     return
   }
   if (!rootId || !userId) {
-    message.warning('无法识别当前整理目录')
+    message.warning(t('pan.unrecognizedOrganizeDir'))
     return
   }
   const plans = buildMediaOrganizePlan(mapMediaOrganizeFiles(files, userId), rootId)
   if (!plans.every(plan => plan.driveId === panfileStore.DriveID)) {
-    message.warning('当前仅支持整理当前网盘内的媒体项目')
+    message.warning(t('pan.currentDriveMediaOnly'))
     return
   }
   if (!plans.length) {
-    message.warning('没有识别到可整理的媒体文件或文件夹')
+    message.warning(t('pan.noOrganizableMedia'))
     return
   }
   const preview = plans.slice(0, 8).map(item => `${item.name} → ${item.targetPath}`).join('\n')
-  if (!window.confirm(`准备整理 ${plans.length} 项到当前目录：\n${preview}${plans.length > 8 ? '\n...' : ''}\n是否继续？`)) return
+  if (!window.confirm(t('pan.confirmMediaOrganize', { count: plans.length, preview, suffix: plans.length > 8 ? '\n...' : '' }))) return
   const result = await executeMediaOrganizePlan(plans, rootId)
   if (result.failed) message.warning(result.report)
   else message.success(result.report)
@@ -242,10 +267,10 @@ keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
   if (appStore.appTab != 'pan') return
 
   if (TestCtrl('a', state.KeyDownEvent, () => panfileStore.mSelectAll())) return
-  if (TestCtrl('c', state.KeyDownEvent, () => menuCopySelectedFile(false, 'copy'))) return
-  if (TestCtrl('x', state.KeyDownEvent, () => menuCopySelectedFile(false, 'cut'))) return
-  if (TestCtrlShift('Delete', state.KeyDownEvent, () => menuTrashSelectFile(false, true))) return
-  if (TestCtrl('Delete', state.KeyDownEvent, () => menuTrashSelectFile(false, false))) return
+  if (TestCtrl('c', state.KeyDownEvent, () => canCopy.value && menuCopySelectedFile(false, 'copy'))) return
+  if (TestCtrl('x', state.KeyDownEvent, () => canMove.value && menuCopySelectedFile(false, 'cut'))) return
+  if (TestCtrlShift('Delete', state.KeyDownEvent, () => canDeletePermanently.value && menuTrashSelectFile(false, true))) return
+  if (TestCtrl('Delete', state.KeyDownEvent, () => canTrash.value && menuTrashSelectFile(false, false))) return
   if (
     TestCtrlShift('f', state.KeyDownEvent, () => {
       PanDAL.aReLoadOneDirToShow('', 'search', false)
@@ -258,28 +283,28 @@ keyboardStore.$subscribe((_m: any, state: KeyboardState) => {
   if (TestKey('f3', state.KeyDownEvent, () => inputsearch.value.focus())) return
   if (TestKey(' ', state.KeyDownEvent, () => inputsearch.value.focus())) return
   // 新建文件
-  if (TestCtrl('n', state.KeyDownEvent, modalCreatNewFile)) return
-  if (TestCtrlShift('n', state.KeyDownEvent, () => modalCreatNewDir('folder'))) return
+  if (TestCtrl('n', state.KeyDownEvent, () => canCreateTextFile.value && modalCreatNewFile())) return
+  if (TestCtrlShift('n', state.KeyDownEvent, () => canCreateFolder.value && modalCreatNewDir('folder'))) return
   // 上传文件
-  if (TestCtrlShift('u', state.KeyDownEvent, () => handleUpload('folder'))) return
-  if (TestCtrl('u', state.KeyDownEvent, () => handleUpload('file'))) return
-  if (TestCtrlShift('j', state.KeyDownEvent, () => handleUpload('folder', 'enc'))) return
-  if (TestCtrl('j', state.KeyDownEvent, () => handleUpload('file', 'enc'))) return
-  if (TestCtrlShift('m', state.KeyDownEvent, () => handleUpload('folder', 'myenc'))) return
-  if (TestCtrl('m', state.KeyDownEvent, () => handleUpload('file', 'myenc'))) return
+  if (TestCtrlShift('u', state.KeyDownEvent, () => canUpload.value && handleUpload('folder'))) return
+  if (TestCtrl('u', state.KeyDownEvent, () => canUpload.value && handleUpload('file'))) return
+  if (TestCtrlShift('j', state.KeyDownEvent, () => canUpload.value && handleUpload('folder', 'enc'))) return
+  if (TestCtrl('j', state.KeyDownEvent, () => canUpload.value && handleUpload('file', 'enc'))) return
+  if (TestCtrlShift('m', state.KeyDownEvent, () => canUpload.value && handleUpload('folder', 'myenc'))) return
+  if (TestCtrl('m', state.KeyDownEvent, () => canUpload.value && handleUpload('file', 'myenc'))) return
 
-  if (TestCtrl('l', state.KeyDownEvent, modalDaoRuShareLink)) return
+  if (TestCtrl('l', state.KeyDownEvent, () => canImportShare.value && modalDaoRuShareLink())) return
   if (TestCtrl('h', state.KeyDownEvent, handleHome)) return
   if (TestKey('f5', state.KeyDownEvent, handleRefresh)) return
   if (TestKey('f6', state.KeyDownEvent, handleDingWei)) return
   if (TestKey('Backspace', state.KeyDownEvent, handleBack)) return
-  if (TestKey('f2', state.KeyDownEvent, () => modalRename(false, panfileStore.IsListSelectedMulti, false))) return
-  if (TestCtrl('e', state.KeyDownEvent, () => modalRename(false, panfileStore.IsListSelectedMulti, false))) return
+  if (TestKey('f2', state.KeyDownEvent, () => canRename.value && modalRename(false, panfileStore.IsListSelectedMulti, false))) return
+  if (TestCtrl('e', state.KeyDownEvent, () => canRename.value && modalRename(false, panfileStore.IsListSelectedMulti, false))) return
   if (TestCtrl('s', state.KeyDownEvent, () => {
-    isresourcedrive && menuCreatShare(false, 'pan', 'resource_root')
+    isresourcedrive && canCreateShare.value && menuCreatShare(false, 'pan', 'resource_root')
   })) return
-  if (TestCtrl('t', state.KeyDownEvent, () => menuCreatShare(false, 'pan', 'backup_root'))) return
-  if (TestCtrl('g', state.KeyDownEvent, () => menuFavSelectFile(false, !panfileStore.IsListSelectedFavAll))) return
+  if (TestCtrl('t', state.KeyDownEvent, () => canCreateShare.value && menuCreatShare(false, 'pan', 'backup_root'))) return
+  if (TestCtrl('g', state.KeyDownEvent, () => isAliyunUser(currentUserId.value) && menuFavSelectFile(false, !panfileStore.IsListSelectedFavAll))) return
   if (TestCtrl('q', state.KeyDownEvent, onSelectRangStart)) return
   if (TestKeyboardSelect(state.KeyDownEvent, viewlist.value, panfileStore, handleOpenFile)) return
   if (TestKeyboardScroll(state.KeyDownEvent, viewlist.value, panfileStore)) return
@@ -596,14 +621,15 @@ const onRowItemDragStart = (ev: any, file_id: string) => {
   const dragImage = document.createElement('div')
   dragImage.className = 'dragrowitem'
   if (files.length == 1) {
-    dragImage.innerHTML = '<a>移动</a>' + files[0].name
+    dragImage.innerHTML = `<a>${t('pan.drag')}</a>${files[0].name}`
   } else {
-    dragImage.innerHTML = '<a>批量移动</a>' + files[0].name + ' 等(' + files.length.toString() + '个文件)'
+    dragImage.innerHTML = `<a>${t('pan.drag')}</a>${t('pan.dragMultiple', { name: files[0].name, count: files.length })}`
   }
 
   if (ev.dataTransfer) {
     document.body.appendChild(dragImage)
     ev.dataTransfer.setDragImage(dragImage, -16, 10)
+    ev.dataTransfer.effectAllowed = 'copyMove'
     ev.dataTransfer.dropEffect = 'move'
     setTimeout(() => document.body.removeChild(dragImage), 0)
   }
@@ -636,6 +662,7 @@ const onRowItemDrop = (ev: any, data: any) => {
   ev.preventDefault()
   ev.target.style.outline = 'none'
   ev.target.style.background = ''
+  if (!canMove.value) return
   dropMoveSelectedFile(data.drive_id, data.file_id, false)
 }
 const onRowItemDragEnd = (ev: any) => {
@@ -653,24 +680,28 @@ const onPanDrop = (e: any) => {
   e.stopPropagation()
   e.preventDefault()
   showDragUpload.value = false
+  if (!canUpload.value) {
+    message.warning(t('pan.readOnlyNoUpload'))
+    return
+  }
 
   if (panfileStore.DirID.startsWith('color')) {
-    message.error('不能把文件上传到颜色标记里！请先选择一个网盘里的文件夹')
+    message.error(t('pan.noUploadToColor'))
   }
   if (panfileStore.DirID.startsWith('search')) {
-    message.error('不能把文件上传到搜索结果里！请先选择一个网盘里的文件夹')
+    message.error(t('pan.noUploadToSearch'))
   }
   if (panfileStore.DirID == 'favorite') {
-    message.error('不能把文件上传到收藏里！请先选择一个网盘里的文件夹')
+    message.error(t('pan.noUploadToFavorite'))
   }
   if (panfileStore.DirID == 'recover') {
-    message.error('不能把文件上传到文件恢复里！请先选择一个网盘里的文件夹')
+    message.error(t('pan.noUploadToRecover'))
   }
   if (panfileStore.DirID == 'trash') {
-    message.error('不能把文件上传到回收站里！请先选择一个网盘里的文件夹')
+    message.error(t('pan.noUploadToTrash'))
   }
   if (panfileStore.DirID.length != 40 && !panfileStore.DirID.includes('root')) {
-    message.error('错误的上传位置！请先选择一个网盘里的文件夹')
+    message.error(t('pan.invalidUploadTarget'))
     return
   }
 
@@ -689,6 +720,7 @@ const onPanDrop = (e: any) => {
 }
 const onPanDragEnter = (ev: any) => {
   if (dragingRowItem.value) return
+  if (!canUpload.value) return
   ev.stopPropagation()
   ev.preventDefault()
   ev.dataTransfer.dropEffect = 'copy'
@@ -700,6 +732,7 @@ const onPanDragLeave = (ev: any) => {
   showDragUpload.value = false
 }
 const onPanDragOver = (ev: any) => {
+  if (!canUpload.value) return
   ev.stopPropagation()
   ev.preventDefault()
 }
@@ -718,69 +751,69 @@ const onPanDragEnd = (ev: any) => {
     <DirTopPath />
     <div style='flex-grow: 1'></div>
     <div v-if="panfileStore.SelectDirType == 'trash'" class='toppantip'>
-      <span v-if="isCloud123User(panTreeStore.user_id || '')" style='color: crimson'>回收站内容保存30天，到期后自动清理，会员可延长期限至100天</span>
-      <span v-else style='color: crimson'> 免费=10天 会员=30天 超级会员=60天</span>
+      <span v-if="isCloud123User(panTreeStore.user_id || '')" style='color: crimson'>{{ t('pan.trashTipCloud123') }}</span>
+      <span v-else style='color: crimson'>{{ t('pan.trashTipAliyun') }}</span>
     </div>
     <div v-if="panfileStore.SelectDirType == 'recover'" class='toppantip'>
-      <span style='color: crimson'>仅会员可用 恢复60天内彻底删除的文件(不保留文件夹路径)</span>
+      <span style='color: crimson'>{{ t('pan.recoverTip') }}</span>
     </div>
     <div v-if="panfileStore.SelectDirType == 'favorite'" class='toppantip'>
-      <span style='color: crimson'>列出已收藏的文件和文件夹 右键可定位到文件夹</span>
+      <span style='color: crimson'>{{ t('pan.favoriteTip') }}</span>
     </div>
     <div v-if="panfileStore.SelectDirType == 'color'" class='toppantip'>
-      <span style='color: crimson'>列出已标记的文件和文件夹 右键可定位到文件夹</span>
+      <span style='color: crimson'>{{ t('pan.colorTip') }}</span>
     </div>
     <div v-if="panfileStore.SelectDirType == 'video'" class='toppantip'>
-      <span style='color: crimson'>同步手机APP的放映室 设置为内置网页播放器时可继续播放</span>
+      <span style='color: crimson'>{{ t('pan.videoTip') }}</span>
     </div>
   </div>
   <div style='height: 14px'></div>
   <div class='toppanbtns' style='height: 26px' tabindex='-1'>
     <div class='toppanbtn'>
-      <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading' title='后退 Back Space'
+      <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading' :title="t('pan.back')"
                 @click='handleBack'>
         <template #icon>
           <IconFont name="iconarrow-left-2-icon" />
         </template>
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' :loading='panfileStore.ListLoading' title='刷新 F5'
+      <a-button type='text' size='small' tabindex='-1' :loading='panfileStore.ListLoading' :title="t('pan.refresh')"
                 @click='handleRefresh'>
         <template #icon>
           <IconFont name="iconreload-1-icon" />
         </template>
       </a-button>
-      <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading' title='定位 F6'
+      <a-button type='text' size='small' tabindex='-1' :disabled='panfileStore.ListLoading' :title="t('pan.locate')"
                 @click='handleDingWei'>
         <template #icon>
           <IconFont name="icondingwei" />
         </template>
       </a-button>
-      <a-button v-if='isOfflineDownloadSupported' type='text' size='small' tabindex='-1' title='云下载'
+      <a-button v-if='isOfflineDownloadSupported' type='text' size='small' tabindex='-1' :title="t('pan.cloudDownload')"
                 @click='handleOfflineDownload'>
         <template #icon>
           <IconFont name="iconcloud-download" />
         </template>
-        云下载
+        {{ t('pan.cloudDownload') }}
       </a-button>
-      <a-dropdown v-if="panfileStore.SelectDirType === 'pan' && panfileStore.IsListSelected" trigger="click">
-        <a-button type='text' size='small' tabindex='-1' title='整理选中项'>
+      <a-dropdown v-if="panfileStore.SelectDirType === 'pan' && panfileStore.IsListSelected && canMove" trigger="click">
+        <a-button type='text' size='small' tabindex='-1' :title="t('pan.organizeSelected')">
           <template #icon>
             <IconFont name="iconmoveto" />
           </template>
-          整理
+          {{ t('pan.organize') }}
         </a-button>
         <template #content>
           <a-doption @click="handleMoveOrganizeToParent">
-            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" /></span>整体上移一层
+            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" /></span>{{ t('pan.moveUpOneLevel') }}
           </a-doption>
           <a-doption @click="handleMoveOrganizeFlatten">
-            <span class="arco-dropdown-option-icon"><IconFont name="iconfile-folder" /></span>拆开到当前目录
+            <span class="arco-dropdown-option-icon"><IconFont name="iconfile-folder" /></span>{{ t('pan.flattenToCurrent') }}
           </a-doption>
           <a-doption @click="handleMoveOrganizeToSelectedDir">
-            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" /></span>选择目录并移动
+            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" /></span>{{ t('pan.chooseDirAndMove') }}
           </a-doption>
           <a-doption @click="handleMediaOrganize">
-            <span class="arco-dropdown-option-icon"><IconFont name="iconscan" /></span>媒体整理
+            <span class="arco-dropdown-option-icon"><IconFont name="iconscan" /></span>{{ t('pan.mediaOrganize') }}
           </a-doption>
         </template>
       </a-dropdown>
@@ -789,8 +822,8 @@ const onPanDragEnd = (ev: any) => {
       <a-select v-model:model-value='inputpicType' size='small' tabindex='-1'
                 @update:model-value='handleChangePic'
                 style='width: 120px; flex-shrink: 0; margin: 0 -8px' :disabled='panfileStore.ListLoading'>
-        <a-option value='pic_root'>全部相册</a-option>
-        <a-option value='mypic'>我的相册</a-option>
+        <a-option value='pic_root'>{{ t('pan.allAlbums') }}</a-option>
+        <a-option value='mypic'>{{ t('pan.myAlbums') }}</a-option>
       </a-select>
     </div>
     <div v-show="!panfileStore.IsListSelected && ['trash', 'recover', 'favorite'].includes(panfileStore.SelectDirType) && isAliyunUser(panTreeStore.user_id || '')"
@@ -800,19 +833,19 @@ const onPanDragEnd = (ev: any) => {
                 @update:model-value='handleChangeDrive'
                 style='width: 100px; flex-shrink: 0; margin: 0 -8px'
                 :disabled='panfileStore.ListLoading'>
-        <a-option value='backup' :disabled="useSettingStore().securityHideBackupDrive">备份盘</a-option>
-        <a-option value='resource' :disabled="useSettingStore().securityHideResourceDrive">资源盘</a-option>
-        <a-option value='pic' :disabled="useSettingStore().securityHidePicDrive">相册</a-option>
+        <a-option value='backup' :disabled="useSettingStore().securityHideBackupDrive">{{ t('drive.backup') }}</a-option>
+        <a-option value='resource' :disabled="useSettingStore().securityHideResourceDrive">{{ t('drive.resource') }}</a-option>
+        <a-option value='pic' :disabled="useSettingStore().securityHidePicDrive">{{ t('pan.album') }}</a-option>
       </a-select>
     </div>
     <div v-show="panfileStore.SelectDirType == 'search' && !panfileStore.IsListSelected && isAliyunUser(panTreeStore.user_id || '')" class='toppanbtn'>
       <a-dropdown style='width: 100px;' @popup-visible-change="handleSearchCheck">
-        <a-button :disabled='panfileStore.ListLoading'>范围</a-button>
+        <a-button :disabled='panfileStore.ListLoading'>{{ t('pan.scope') }}</a-button>
         <template #content>
           <a-checkbox-group v-model="inputsearchType" direction="vertical">
-            <a-checkbox value='backup' :disabled="useSettingStore().securityHideBackupDrive">备份盘</a-checkbox>
-            <a-checkbox value='resource' :disabled="useSettingStore().securityHideResourceDrive">资源盘</a-checkbox>
-            <a-checkbox value='pic' :disabled="useSettingStore().securityHidePicDrive">相册</a-checkbox>
+            <a-checkbox value='backup' :disabled="useSettingStore().securityHideBackupDrive">{{ t('drive.backup') }}</a-checkbox>
+            <a-checkbox value='resource' :disabled="useSettingStore().securityHideResourceDrive">{{ t('drive.resource') }}</a-checkbox>
+            <a-checkbox value='pic' :disabled="useSettingStore().securityHidePicDrive">{{ t('pan.album') }}</a-checkbox>
           </a-checkbox-group>
         </template>
       </a-dropdown>
@@ -822,8 +855,8 @@ const onPanDragEnd = (ev: any) => {
         class='searchpan'
         style='width: 240px'
         :loading='panfileStore.ListLoading'
-        placeholder='输入关键字进行搜索'
-        button-text='搜索'
+        :placeholder="t('pan.searchPlaceholder')"
+        :button-text="t('pan.search')"
         search-button
         allow-clear
         :input-attrs="{ id: 'searchpanInput' }"
@@ -831,7 +864,7 @@ const onPanDragEnd = (ev: any) => {
         @press-enter='($event:any)=>topSearchAll($event.srcElement.value as string, inputsearchType)'
         @keydown.esc=';($event.target as any).blur()' />
       <a-button v-show=" isAliyunUser(panTreeStore.user_id || '')" type='text' size='small' tabindex='-1' style='border: none'
-                @click="() => topSearchAll('topSearchAll高级搜索', inputsearchType)">高级
+                @click="() => topSearchAll('topSearchAll高级搜索', inputsearchType)">{{ t('pan.advanced') }}
       </a-button>
     </div>
 
@@ -857,7 +890,7 @@ const onPanDragEnd = (ev: any) => {
         :input-attrs="{ tabindex: '-1' }"
         size='small'
         title='Ctrl+F / F3 / Space'
-        placeholder='快速筛选'
+        :placeholder="t('pan.quickFilter')"
         draggable='false'
         allow-clear
         @dragenter.stop='() => false'
@@ -871,7 +904,7 @@ const onPanDragEnd = (ev: any) => {
   <div style='height: 9px'></div>
   <div class='toppanarea' tabindex='-1'>
     <div style='margin: 0 3px'>
-      <AntdTooltip title='点击全选' placement='left'>
+      <AntdTooltip :title="t('pan.selectAllTooltip')" placement='left'>
         <a-button shape='circle' type='text' tabindex='-1' class='select all' title='Ctrl+A' @click='handleSelectAll'>
           <IconFont :name="panfileStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -883,15 +916,15 @@ const onPanDragEnd = (ev: any) => {
                    v-if="panfileStore.SelectDirType !== 'video' && panfileStore.ListDataShow.length > 0">
         <a-button shape='square' type='text' tabindex='-1' class='qujian'
                   :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-          {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+          {{ rangIsSelecting ? t('pan.rangeCancel') : t('pan.rangeSelect') }}
         </a-button>
         <template #title>
           <div>
-            第1步: 点击 区间选择 这个按钮
+            {{ t('pan.rangeStep1') }}
             <br />
-            第2步: 鼠标点击一个文件
+            {{ t('pan.rangeStep2') }}
             <br />
-            第3步: 移动鼠标点击另外一个文件
+            {{ t('pan.rangeStep3') }}
           </div>
         </template>
       </AntdTooltip>
@@ -901,12 +934,12 @@ const onPanDragEnd = (ev: any) => {
                 tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectReverse'>
-        反向选择
+        {{ t('pan.invertSelection') }}
       </a-button>
       <a-button shape='square' v-if='!rangIsSelecting && panfileStore.ListSelected.size > 0' type='text' tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectCancel'>
-        取消已选
+        {{ t('pan.cancelSelected') }}
       </a-button>
     </div>
     <div style='flex-grow: 1'></div>
@@ -919,42 +952,42 @@ const onPanDragEnd = (ev: any) => {
         </a-button>
         <template #content>
           <a-doption value='name asc'>
-            <template #default>　名称 · 升序　</template>
+            <template #default>　{{ t('pan.sortNameAsc') }}　</template>
           </a-doption>
           <a-doption value='name desc'>
-            <template #default>　名称 · 降序　</template>
+            <template #default>　{{ t('pan.sortNameDesc') }}　</template>
           </a-doption>
           <a-doption value='updated_at asc'>
-            <template #default>　时间 · 升序　</template>
+            <template #default>　{{ t('pan.sortTimeAsc') }}　</template>
           </a-doption>
           <a-doption value='updated_at desc'>
-            <template #default>　时间 · 降序　</template>
+            <template #default>　{{ t('pan.sortTimeDesc') }}　</template>
           </a-doption>
           <a-doption value='size asc'>
-            <template #default>　大小 · 升序　</template>
+            <template #default>　{{ t('pan.sortSizeAsc') }}　</template>
           </a-doption>
           <a-doption value='size desc'>
-            <template #default>　大小 · 降序　</template>
+            <template #default>　{{ t('pan.sortSizeDesc') }}　</template>
           </a-doption>
         </template>
       </a-dropdown>
     </div>
     <div>
-      <AntdTooltip title='列表模式' placement='bottom'>
+      <AntdTooltip :title="t('pan.listMode')" placement='bottom'>
         <a-button shape='square' type='text' tabindex='-1'
                   :class="settingStore.uiFileListMode === 'list' ? 'select active' : 'select'"
                   @click="() => handleListGridMode('list')">
           <IconFont name="iconliebiaomoshi" />
         </a-button>
       </AntdTooltip>
-      <AntdTooltip title='缩略图模式' placement='bottom'>
+      <AntdTooltip :title="t('pan.thumbnailMode')" placement='bottom'>
         <a-button shape='square' type='text' tabindex='-1'
                   :class="settingStore.uiFileListMode === 'image' ? 'select active' : 'select'"
                   @click="() => handleListGridMode('image')">
           <IconFont name="iconxiaotumoshi" />
         </a-button>
       </AntdTooltip>
-      <AntdTooltip title='大图模式' placement='bottom'>
+      <AntdTooltip :title="t('pan.largeImageMode')" placement='bottom'>
         <a-button shape='square' type='text' tabindex='-1'
                   :class="settingStore.uiFileListMode === 'bigimage' ? 'select active' : 'select'"
                   @click="() => handleListGridMode('bigimage')">
@@ -993,7 +1026,7 @@ const onPanDragEnd = (ev: any) => {
       tabindex='-1'
       @scroll='handleListScroll'>
       <template #empty>
-        <a-empty description='空文件夹' />
+        <a-empty :description="t('pan.emptyFolder')" />
       </template>
       <template #item='{ item, index }'>
         <div :key="'l-' + item.file_id" class='listitemdiv'>
@@ -1028,18 +1061,18 @@ const onPanDragEnd = (ev: any) => {
             <div class='filebtn'>
               <template v-if='!item.album_id && item.description'>
                 <a-button v-if='!item.description.includes(",") && !item.description.includes("xbyEncrypt")'
-                          type='text' tabindex='-1' class='label' title='标记'>
+                          type='text' tabindex='-1' class='label' :title="t('pan.mark')">
                   <IconFont name="iconwbiaoqian" :class='item.description' />
                 </a-button>
                 <a-button v-else-if='item.description.includes(",")' type='text' tabindex='-1' class='label'
-                          title='标记'>
+                          :title="t('pan.mark')">
                   <IconFont name="iconwbiaoqian"
                      :class='item.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                 </a-button>
               </template>
               <a-popover v-if='item.thumbnail && !item.description.includes("xbyEncrypt")'
                          content-class='popimg' position='lt'>
-                <a-button type='text' tabindex='-1' class='gengduo' title='缩略图'>
+                <a-button type='text' tabindex='-1' class='gengduo' :title="t('pan.thumbnail')">
                   <IconFont name="icongengduo" />
                 </a-button>
                 <template #content>
@@ -1050,19 +1083,19 @@ const onPanDragEnd = (ev: any) => {
               </a-popover>
               <a-button v-if='item.description.includes("xbyEncrypt1")'
                         type='text' tabindex='-1' class='label'
-                        title='加密文件'>
+                        :title="t('pan.encryptedFile')">
                 <IconFont name="iconsafebox" style="color: grey" />
               </a-button>
               <a-button v-else-if='item.description.includes("xbyEncrypt2")'
                         type='text' tabindex='-1' class='label'
-                        title='私密文件'>
+                        :title="t('pan.privateFile')">
                 <IconFont name="iconsafebox" style="color: pink" />
               </a-button>
               <a-button v-else type='text' tabindex='-1' class='gengduo' disabled></a-button>
             </div>
 
             <div v-show='!item.album_id' class='filesize'>{{ item.sizeStr }}</div>
-            <div v-show='item.file_count' class='filesize'>{{ '文件数: ' + item.file_count }}</div>
+            <div v-show='item.file_count' class='filesize'>{{ t('pan.fileCount', { count: item.file_count }) }}</div>
             <div class='filetime'>{{ item.timeStr }}</div>
           </div>
           <div
@@ -1082,7 +1115,7 @@ const onPanDragEnd = (ev: any) => {
               </a-button>
             </div>
             <div class='fileicon'
-                 :title="item.icon == 'iconweifa' ? '违规': item.icon == 'iconweixiang' ? '禁止分享': ''">
+                 :title="item.icon == 'iconweifa' ? t('pan.violation') : item.icon == 'iconweixiang' ? t('pan.shareForbidden') : ''">
               <IconFont :name="item.icon" aria-hidden='true' />
             </div>
             <div class='filename' droppable='false'>
@@ -1093,11 +1126,11 @@ const onPanDragEnd = (ev: any) => {
             <div class='filebtn'>
               <template v-if='!item.album_id && item.description'>
                 <a-button v-if='!item.description.includes(",") && !item.description.includes("xbyEncrypt")'
-                          type='text' tabindex='-1' class='label' title='标记'>
+                          type='text' tabindex='-1' class='label' :title="t('pan.mark')">
                   <IconFont name="iconwbiaoqian" :class='item.description' />
                 </a-button>
                 <a-button v-else-if='item.description.includes(",")' type='text' tabindex='-1' class='label'
-                          title='标记'>
+                          :title="t('pan.mark')">
                   <IconFont name="iconwbiaoqian"
                      :class='item.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                 </a-button>
@@ -1115,12 +1148,12 @@ const onPanDragEnd = (ev: any) => {
               </a-popover>
               <a-button v-if='item.description.includes("xbyEncrypt1")'
                         type='text' tabindex='-1' class='label'
-                        title='加密文件'>
+                        :title="t('pan.encryptedFile')">
                 <IconFont name="iconsafebox" style="color: grey" />
               </a-button>
               <a-button v-else-if='item.description.includes("xbyEncrypt2")'
                         type='text' tabindex='-1' class='label'
-                        title='私密文件'>
+                        :title="t('pan.privateFile')">
                 <IconFont name="iconsafebox" style="color: pink" />
               </a-button>
               <a-button v-if="false" type='text' tabindex='-1' class='gengduo' disabled></a-button>
@@ -1130,8 +1163,8 @@ const onPanDragEnd = (ev: any) => {
             </div>
             <div class='filetime'>{{ item.timeStr }}</div>
             <div class='filesize' v-show="item.media_duration || item.media_play_cursor">
-              <span>{{ '总时:' + (item.media_duration || '未知时长') }}</span>
-              <span>{{ '观看:' + (item.media_play_cursor || '未知状态') }}</span>
+              <span>{{ t('pan.totalTime') + (item.media_duration || t('pan.unknownDuration')) }}</span>
+              <span>{{ t('pan.watchProgress') + (item.media_play_cursor || t('pan.unknownStatus')) }}</span>
               <span>{{ item.media_width > 0 ? item.media_width + 'x' + item.media_height : '' }}</span>
             </div>
           </div>
@@ -1158,7 +1191,7 @@ const onPanDragEnd = (ev: any) => {
       tabindex='-1'
       @scroll='handleListScroll'>
       <template #empty>
-        <a-empty description='空文件夹' />
+        <a-empty :description="t('pan.emptyFolder')" />
       </template>
       <template #item='{ item, index }'>
         <div :key="'g-' + item.file_id" class='listitemdiv'>
@@ -1208,23 +1241,23 @@ const onPanDragEnd = (ev: any) => {
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
-                              type='text' tabindex='-1' class='label' title='标记'>
+                              type='text' tabindex='-1' class='label' :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
-                              title='标记'>
+                              :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt1")'
                             type='text' tabindex='-1' class='label'
-                            title='加密文件'>
+                            :title="t('pan.encryptedFile')">
                     <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                   <a-button v-else-if='grid.description.includes("xbyEncrypt2")'
                             type='text' tabindex='-1' class='label'
-                            title='私密文件'>
+                            :title="t('pan.privateFile')">
                     <IconFont name="iconsafebox" style="color: pink" />
                   </a-button>
                 </div>
@@ -1269,23 +1302,23 @@ const onPanDragEnd = (ev: any) => {
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
-                              type='text' tabindex='-1' class='label' title='标记'>
+                              type='text' tabindex='-1' class='label' :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
-                              title='标记'>
+                              :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt1")'
                             type='text' tabindex='-1' class='label'
-                            title='加密文件'>
+                            :title="t('pan.encryptedFile')">
                     <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                   <a-button v-else-if='grid.description.includes("xbyEncrypt2")'
                             type='text' tabindex='-1' class='label'
-                            title='私密文件'>
+                            :title="t('pan.privateFile')">
                     <IconFont name="iconsafebox" style="color: pink" />
                   </a-button>
                 </div>
@@ -1315,7 +1348,7 @@ const onPanDragEnd = (ev: any) => {
       tabindex='-1'
       @scroll='handleListScroll'>
       <template #empty>
-        <a-empty description='空文件夹' />
+        <a-empty :description="t('pan.emptyFolder')" />
       </template>
       <template #item='{ item, index }'>
         <div :key="'g-' + item.file_id" class='listitemdiv'>
@@ -1365,23 +1398,23 @@ const onPanDragEnd = (ev: any) => {
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
-                              type='text' tabindex='-1' class='label' title='标记'>
+                              type='text' tabindex='-1' class='label' :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
-                              title='标记'>
+                              :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt1")'
                             type='text' tabindex='-1' class='label'
-                            title='加密文件'>
+                            :title="t('pan.encryptedFile')">
                     <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                   <a-button v-else-if='grid.description.includes("xbyEncrypt2")'
                             type='text' tabindex='-1' class='label'
-                            title='私密文件'>
+                            :title="t('pan.privateFile')">
                     <IconFont name="iconsafebox" style="color: pink" />
                   </a-button>
                 </div>
@@ -1429,17 +1462,17 @@ const onPanDragEnd = (ev: any) => {
                   </a-button>
                   <template v-if='!grid.album_id && grid.description'>
                     <a-button v-if='!grid.description.includes(",") && !grid.description.includes("xbyEncrypt")'
-                              type='text' tabindex='-1' class='label' title='标记'>
+                              type='text' tabindex='-1' class='label' :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian" :class='grid.description' />
                     </a-button>
                     <a-button v-else-if='grid.description.includes(",")' type='text' tabindex='-1' class='label'
-                              title='标记'>
+                              :title="t('pan.mark')">
                       <IconFont name="iconwbiaoqian"
                          :class='grid.description.split(",").filter((v: string)=> !v.includes("xbyEncrypt")).join("")' />
                     </a-button>
                   </template>
                   <a-button v-if='grid.description.includes("xbyEncrypt")' type='text' tabindex='-1' class='label'
-                            title='加密文件'>
+                            :title="t('pan.encryptedFile')">
                     <IconFont name="iconsafebox" style="color: grey" />
                   </a-button>
                 </div>
@@ -1465,7 +1498,7 @@ const onPanDragEnd = (ev: any) => {
     <div class='ShowUpload'>
       <IconFont name="iconyouxian" style='font-size: 64px' />
       <div class='ShowUploadTitle'>
-        <span class='link'>上传到：{{ panfileStore.DirName }}</span>
+        <span class='link'>{{ t('pan.uploadTo', { name: panfileStore.DirName }) }}</span>
       </div>
     </div>
   </div>

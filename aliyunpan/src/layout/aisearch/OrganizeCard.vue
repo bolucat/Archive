@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { FolderTree, Loader2, AlertCircle } from 'lucide-vue-next'
 import { humanSize } from '../../utils/format'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'planning' | 'done' | 'error'
@@ -15,14 +16,14 @@ const emit = defineEmits<{ (e: 'organize', categories: { name: string; pattern: 
   <div class="oc-card">
     <div v-if="state === 'planning'" class="oc-status">
       <Loader2 :size="14" :stroke-width="2" class="oc-spin" />
-      <span>正在分析文件分类...</span>
+      <span>{{ t('ai.card.analyzingCategories') }}</span>
     </div>
 
     <template v-else-if="state === 'done' && output">
-      <div class="oc-header"><FolderTree :size="14" :stroke-width="1.5" /> 文件分类建议</div>
+      <div class="oc-header"><FolderTree :size="14" :stroke-width="1.5" /> {{ t('ai.card.categorySuggestions') }}</div>
       <div class="oc-table">
         <div class="oc-row oc-row-head">
-          <span>类别</span><span>匹配</span><span>文件数</span><span>大小</span>
+          <span>{{ t('ai.card.category') }}</span><span>{{ t('ai.card.match') }}</span><span>{{ t('ai.card.fileCount') }}</span><span>{{ t('transfer.size') }}</span>
         </div>
         <div v-for="c in output.categories" :key="c.name" class="oc-row">
           <span class="oc-name">{{ c.name }}</span>
@@ -32,13 +33,13 @@ const emit = defineEmits<{ (e: 'organize', categories: { name: string; pattern: 
         </div>
       </div>
       <div class="oc-action">
-        <button class="oc-btn" @click="emit('organize', output.categories)">按此方案整理</button>
+        <button class="oc-btn" @click="emit('organize', output.categories)">{{ t('ai.card.organizeWithPlan') }}</button>
       </div>
     </template>
 
     <div v-else-if="state === 'error'" class="oc-status oc-error">
       <AlertCircle :size="14" :stroke-width="1.5" /><span>{{ error }}</span>
-      <button class="oc-retry" @click="emit('retry')">重试</button>
+      <button class="oc-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
   </div>
 </template>

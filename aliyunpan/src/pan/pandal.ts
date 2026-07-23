@@ -28,6 +28,8 @@ import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
 import { apiBoxSearch, mapBoxSearchItems, parseBoxSearchId } from '../box/search'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import { OrderDir } from '../utils/filenameorder'
+import UserDAL from '../user/userdal'
+import { buildQuickFilePath, mergeQuickFiles, migrateLegacyQuickFiles, QUICK_FILE_STORAGE_KEY, type LegacyQuickFileEntry, type QuickFileEntry } from './quickFiles'
 
 export interface PanSelectedData {
   isError: boolean
@@ -45,6 +47,29 @@ export interface PanSelectedData {
 
 const RefreshLock = new Set<string>()
 const Drive115TrashPaging = new Map<string, { offset: number; total: number; limit: number; loading: boolean }>()
+const AllDirLoadingDrives = new Set<string>()
+const AllDirLoadingTimers = new Map<string, number>()
+const ALL_DIR_LOADING_TIMEOUT = 5 * 60 * 1000
+
+const beginAllDirLoading = (drive_id: string) => {
+  AllDirLoadingDrives.add(drive_id)
+  useFootStore().mSaveLoading('加载全部文件夹...')
+  if (AllDirLoadingTimers.has(drive_id)) return
+  const timer = window.setTimeout(() => {
+    AllDirLoadingTimers.delete(drive_id)
+    AllDirLoadingDrives.delete(drive_id)
+    if (AllDirLoadingDrives.size === 0) useFootStore().mSaveLoading('')
+  }, ALL_DIR_LOADING_TIMEOUT)
+  AllDirLoadingTimers.set(drive_id, timer)
+}
+
+const finishAllDirLoading = (drive_id: string) => {
+  const timer = AllDirLoadingTimers.get(drive_id)
+  if (timer !== undefined) window.clearTimeout(timer)
+  AllDirLoadingTimers.delete(drive_id)
+  AllDirLoadingDrives.delete(drive_id)
+  useFootStore().mSaveLoading(AllDirLoadingDrives.size > 0 ? '加载全部文件夹...' : '')
+}
 
 const hydrateDropboxThumbnails = async (user_id: string, items: any[]): Promise<any[]> => {
   const candidates = items
@@ -71,6 +96,15 @@ const resolveBaiduDirPath = (drive_id: string, dirID: string): string => {
 }
 
 export default class PanDAL {
+  static async aReLoadWebDavDrive(token: ITokenInfo): Promise<void> {
+    const drive_id = token.default_drive_id
+    const pantreeStore = usePanTreeStore()
+    pantreeStore.mSaveUser(token.user_id, drive_id, '', '', '')
+    pantreeStore.drive_id = drive_id
+    await TreeStore.ConvertToOneDriver(token.user_id, drive_id, [], false, true)
+    PanDAL.RefreshPanTreeAllNode(drive_id)
+  }
+
   static async aReLoadCloudDrive(token: ITokenInfo): Promise<void> {
     const { user_id } = token
     const drive_id = token.default_drive_id || token.resource_drive_id || 'cloud123'
@@ -361,7 +395,7 @@ export default class PanDAL {
         return
       }
     }
-    useFootStore().mSaveLoading('加载全部文件夹...')
+    beginAllDirLoading(drive_id)
     window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id: drive_id, drive_root: 'backup_root' })
   }
 
@@ -382,19 +416,28 @@ export default class PanDAL {
         return
       }
     }
-    useFootStore().mSaveLoading('加载全部文件夹...')
+    beginAllDirLoading(resource_drive_id)
     window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id: resource_drive_id, drive_root: 'resource_root' })
   }
 
-  static async aReLoadDriveSave(OneDriver: IDriverModel, error: string): Promise<void> {
-    if (error == 'time') return
-    if (!error) {
-      await TreeStore.SaveOneDriver(OneDriver)
-      PanDAL.RefreshPanTreeAllNode(OneDriver.drive_id)
-    } else {
-      message.error('列出全盘文件夹失败' + error)
+  static async aReLoadDriveSave(OneDriver: IDriverModel, error: string, drive_id: string): Promise<void> {
+    try {
+      if (error == 'time') {
+        return
+      } else if (!error) {
+        await TreeStore.SaveOneDriver(OneDriver)
+        PanDAL.RefreshPanTreeAllNode(OneDriver.drive_id)
+      } else {
+        message.error('列出全盘文件夹失败' + error)
+      }
+    } finally {
+      finishAllDirLoading(drive_id || OneDriver?.drive_id || '')
     }
-    useFootStore().mSaveLoading('')
+  }
+
+  static aReLoadDriveProgress(drive_id: string, index: number, total: number): void {
+    if (!AllDirLoadingDrives.has(drive_id)) return
+    useFootStore().mSaveLoading('加载全部文件夹(' + Math.floor((index * 100) / (total + 1)) + '%)')
   }
 
 
@@ -446,7 +489,7 @@ export default class PanDAL {
   }
 
 
-  static async aReLoadOneDirToShow(drive_id: string, file_id: string, selfExpand: boolean, album_id: string = ''): Promise<boolean> {
+  static async aReLoadOneDirToShow(drive_id: string, file_id: string, selfExpand: boolean, album_id: string = '', quickDirPath: IAliGetDirModel[] = []): Promise<boolean> {
     const panTreeStore = usePanTreeStore()
     const user_id = panTreeStore.user_id
     const driveType = GetDriveType(user_id, drive_id)
@@ -479,6 +522,10 @@ export default class PanDAL {
     }
     let dir = TreeStore.GetDir(drive_id, file_id)
     let dirPath = TreeStore.GetDirPath(drive_id, file_id)
+    if ((!dir || dirPath.length === 0) && quickDirPath.length > 0) {
+      dirPath = quickDirPath
+      dir = { ...quickDirPath[quickDirPath.length - 1] }
+    }
     const isCloudUser = isCloud123User(user_id)
     if (!dir || (dirPath.length == 0 && !file_id.includes('root'))) {
       if (isCloudUser) {
@@ -1204,54 +1251,71 @@ export default class PanDAL {
     return data
   }
 
-  static updateQuickFile(list: { key: string; drive_id: string; drive_name: string; title: string }[]) {
+  static updateQuickFile(list: QuickFileEntry[]) {
     if (list.length == 0) return
     const pantreeStore = usePanTreeStore()
-    const jsonstr = localStorage.getItem('FileQuick-' + pantreeStore.user_id)
-    const arr = jsonstr ? JSON.parse(jsonstr) : []
-    list.map((t) => {
-      let find = false
-      for (let i = 0; i < arr.length; i++) {
-        if (arr[i].key == t.key) {
-          arr[i].title = t.title
-          arr[i].drive_id = t.drive_id
-          arr[i].drive_name = t.drive_name
-          find = true
-        }
-      }
-      if (!find) arr.push({ key: t.key, drive_id: t.drive_id, drive_name: t.drive_name, title: t.title })
-      return true
-    })
-    localStorage.setItem('FileQuick-' + pantreeStore.user_id, JSON.stringify(arr))
+    const arr = mergeQuickFiles(PanDAL.getQuickFileList(), list)
+    localStorage.setItem(QUICK_FILE_STORAGE_KEY, JSON.stringify(arr))
     pantreeStore.mSaveQuick(arr)
   }
 
 
-  static deleteQuickFile(key: string) {
-    if (!key) return
+  static deleteQuickFile(id: string) {
+    if (!id) return
     const pantreeStore = usePanTreeStore()
-    const jsonstr = localStorage.getItem('FileQuick-' + pantreeStore.user_id)
-    const arr = jsonstr ? JSON.parse(jsonstr) : []
-    const newArray: { key: string; drive_id: string; drive_name: string; title: string }[] = []
-    for (let i = 0; i < arr.length; i++) {
-      if (arr[i].key != key) newArray.push(arr[i])
-    }
-    localStorage.setItem('FileQuick-' + pantreeStore.user_id, JSON.stringify(newArray))
+    const newArray = PanDAL.getQuickFileList().filter(item => item.id !== id)
+    localStorage.setItem(QUICK_FILE_STORAGE_KEY, JSON.stringify(newArray))
     pantreeStore.mSaveQuick(newArray)
   }
 
 
-  static getQuickFileList() {
-    const pantreeStore = usePanTreeStore()
-    const jsonstr = localStorage.getItem('FileQuick-' + pantreeStore.user_id)
-    return jsonstr ? JSON.parse(jsonstr) : []
+  static getQuickFileList(): QuickFileEntry[] {
+    try {
+      const jsonstr = localStorage.getItem(QUICK_FILE_STORAGE_KEY)
+      const list = jsonstr ? JSON.parse(jsonstr) : []
+      return Array.isArray(list) ? list : []
+    } catch {
+      return []
+    }
   }
 
 
   static aReLoadQuickFile(user_id: string) {
-    const jsonstr = localStorage.getItem('FileQuick-' + user_id)
-    const arr = jsonstr ? JSON.parse(jsonstr) : []
+    let arr = PanDAL.getQuickFileList()
+    const legacyKey = 'FileQuick-' + user_id
+    const token = UserDAL.GetUserToken(user_id)
+    const userName = token.nick_name || token.user_name || token.name || user_id
+    try {
+      const jsonstr = localStorage.getItem(legacyKey)
+      const legacy = jsonstr ? JSON.parse(jsonstr) as LegacyQuickFileEntry[] : []
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        for (const item of legacy) {
+          const provider = GetDriveType(user_id, item.drive_id).name || ''
+          arr = migrateLegacyQuickFiles(arr, user_id, [item], provider, userName)
+        }
+        localStorage.setItem(QUICK_FILE_STORAGE_KEY, JSON.stringify(arr))
+        localStorage.removeItem(legacyKey)
+      }
+    } catch {
+      // 保留损坏的旧数据，避免迁移时进一步丢失
+    }
     usePanTreeStore().mSaveQuick(arr)
+  }
+
+  static async aOpenQuickFile(item: QuickFileEntry): Promise<boolean> {
+    const dirPath = buildQuickFilePath(item).map(node => ({
+      __v_skip: true,
+      drive_id: node.drive_id || item.drive_id,
+      file_id: node.file_id,
+      parent_file_id: node.parent_file_id || '',
+      name: node.name,
+      namesearch: '',
+      path: node.path,
+      description: node.description || '',
+      size: 0,
+      time: 0
+    } as IAliGetDirModel))
+    return PanDAL.aReLoadOneDirToShow(item.drive_id, item.file_id, true, '', dirPath)
   }
 
 

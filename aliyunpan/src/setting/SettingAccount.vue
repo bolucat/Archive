@@ -8,6 +8,7 @@ import fs from 'node:fs'
 import path from 'path'
 import { decodeName, encodeName } from '../module/flow-enc/utils'
 import { localPwd } from '../utils/aria2c'
+import { t } from '../i18n'
 
 const settingStore = useSettingStore()
 
@@ -38,16 +39,16 @@ const copyCookies = async () => {
       cookiesText += cookie['name'] + '=' + cookie['value'] + ';'
     })
     copyToClipboard(cookiesText)
-    message.success('当前账号的Cookies已复制到剪切板')
+    message.success(t('settings.account.cookiesCopied'))
   } else {
-    message.error('当前账号的Cookies不存在')
+    message.error(t('settings.account.cookiesMissing'))
   }
 }
 
 const handlerAccountImport = () => {
   window.WebShowOpenDialogSync({
-    title: '选择需要导入的账户文件',
-    buttonLabel: '导入选中的账户文件',
+    title: t('settings.account.selectImportFile'),
+    buttonLabel: t('settings.account.importSelectedFile'),
     filters: [{ name: 'user.db', extensions: ['db'] }],
     properties: ['openFile', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
   }, async (files: string[] | undefined) => {
@@ -83,12 +84,12 @@ const handlerAccountImport = () => {
             window.WinMsgToDownload({ cmd: 'ClearUserToken' })
           }).catch()
           await UserDAL.UserLogin(userList[0])
-          message.success('导入用户账户数据成功')
+          message.success(t('settings.account.importSuccess'))
         } else {
-          message.error('数据错误，导入用户账户数据失败')
+          message.error(t('settings.account.importFailed'))
         }
       } catch (err) {
-        message.error('数据错误，导入用户账户数据失败')
+        message.error(t('settings.account.importFailed'))
       }
     }
   })
@@ -98,8 +99,8 @@ const handlerAccountExport = () => {
   if (window.WebShowOpenDialogSync) {
     window.WebShowOpenDialogSync(
       {
-        title: '选择一个文件夹，保存导出的数据',
-        buttonLabel: '选择',
+        title: t('settings.account.selectExportFolder'),
+        buttonLabel: t('media.selectFolder'),
         properties: ['openDirectory', 'createDirectory']
       },
       (result: string[] | undefined) => {
@@ -108,7 +109,7 @@ const handlerAccountExport = () => {
           let userList = JSON.stringify(UserDAL.GetUserList())
           let data = encodeName(localPwd, 'aesctr', userList)
           fs.writeFileSync(exportFile, data)
-          message.success('导出所有用户账户数据成功')
+          message.success(t('settings.account.exportSuccess'))
         }
       }
     )
@@ -118,31 +119,31 @@ const handlerAccountExport = () => {
 const handlerExportCliTokens = async () => {
   const result = await UserDAL.SyncCliAccountsToCli()
   if (result?.ok) {
-    message.success(`已导出 ${result.exported} 个账号到 ${result.path}`)
+    message.success(`${t('settings.account.exportCliSuccessPrefix')} ${result.exported} ${t('settings.account.exportCliSuccessSuffix')} ${result.path}`)
   } else {
-    message.error(`导出失败：${result?.error || '未知错误'}`)
+    message.error(`${t('settings.account.exportFailed')}: ${result?.error || t('media.unknownError')}`)
   }
 }
 </script>
 
 <template>
   <div class='settingcard'>
-    <div class='settinghead'>阿里云盘账号</div>
+    <div class='settinghead'>{{ t('settings.account.aliyun') }}</div>
     <div class='settingrow'>
       <a-button type='outline' size='small' tabindex='-1' @click='copyCookies()'>
-        复制当前账号Cookies
+        {{ t('settings.account.copyCookies') }}
       </a-button>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>账号导入导出
+    <div class='settinghead'>{{ t('settings.account.importExport') }}
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            可以一键恢复所有账户的数据（加密）<br />
+            {{ t('settings.account.importExportTip') }}<br />
             <hr />
             <div class="hrspace"></div>
-            <span class="opred">批量导入导出所有账户的数据</span><br />
+            <span class="opred">{{ t('settings.account.importExportAll') }}</span><br />
           </div>
         </template>
       </a-popover>
@@ -150,14 +151,14 @@ const handlerExportCliTokens = async () => {
     <div class="settingrow">
       <a-button type='outline' status="danger" size='small' tabindex='-1'
                 @click='handlerAccountExport'>
-        导出账号
+        {{ t('settings.account.export') }}
       </a-button>
       <a-button type='outline' size='small' status="success" tabindex='-1' @click='handlerAccountImport'>
-        导入账号
+        {{ t('settings.account.import') }}
       </a-button>
       <a-button type='outline' size='small' tabindex='-1'
                 @click='handlerExportCliTokens'>
-        导出到 CLI
+        {{ t('settings.account.exportCli') }}
       </a-button>
     </div>
   </div>

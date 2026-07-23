@@ -4,6 +4,7 @@ import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import UserDAL from '../user/userdal'
 import type { ITokenInfo } from '../user/userstore'
+import { t } from '../i18n'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -20,18 +21,18 @@ onMounted(() => {
   refreshUserList().catch(() => {})
 })
 
-const tokenLabel = (t: ITokenInfo) => {
+const tokenLabel = (token: ITokenInfo) => {
   const provider =
-    t.tokenfrom === 'aliyun' ? '阿里云盘' :
-    t.tokenfrom === 'cloud123' ? '123 网盘' :
-    t.tokenfrom === '115' ? '115 网盘' :
-    t.tokenfrom === 'baidu' ? '百度网盘' :
-    t.tokenfrom === 'pikpak' ? 'PikPak' :
-    t.tokenfrom === 'dropbox' ? 'Dropbox' :
-    t.tokenfrom === 'onedrive' ? 'OneDrive' :
-    t.tokenfrom === 'box' ? 'Box' :
-    '云盘'
-  const name = t.nick_name || t.user_name || t.user_id
+    token.tokenfrom === 'aliyun' ? t('settings.pan.provider.aliyun') :
+    token.tokenfrom === 'cloud123' ? t('settings.pan.provider.cloud123') :
+    token.tokenfrom === '115' ? t('settings.pan.provider.115') :
+    token.tokenfrom === 'baidu' ? t('settings.pan.provider.baidu') :
+    token.tokenfrom === 'pikpak' ? 'PikPak' :
+    token.tokenfrom === 'dropbox' ? 'Dropbox' :
+    token.tokenfrom === 'onedrive' ? 'OneDrive' :
+    token.tokenfrom === 'box' ? 'Box' :
+    t('settings.pan.provider.cloudDrive')
+  const name = token.nick_name || token.user_name || token.user_id
   return `${provider} · ${name}`
 }
 
@@ -99,176 +100,176 @@ const showAccountList = computed(() =>
   <div class="settingcard">
     <div class="settings-panel-intro">
       <div class="settings-panel-kicker">Cloud Drive</div>
-      <div class="settings-panel-copy">调整文件排序、路径展示、分享模板和标签体系，让网盘主页更贴合你的使用习惯。</div>
+      <div class="settings-panel-copy">{{ t('settings.pan.intro') }}</div>
     </div>
-    <div class="settinghead">优先显示文件夹</div>
+    <div class="settinghead">{{ t('settings.pan.preferFolder') }}</div>
     <div class="settingrow">
       <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.uiShowPanRootFirst"
                 :popup-container="'#SettingDiv'" @update:model-value="cb({ uiShowPanRootFirst: $event })">
-        <a-option value="all">所有</a-option>
-        <a-option value="backup">备份盘</a-option>
-        <a-option value="resource">资源盘</a-option>
+        <a-option value="all">{{ t('settings.pan.all') }}</a-option>
+        <a-option value="backup">{{ t('settings.pan.backupDrive') }}</a-option>
+        <a-option value="resource">{{ t('settings.pan.resourceDrive') }}</a-option>
       </a-select>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">顶部显示网盘路径</div>
+    <div class="settinghead">{{ t('settings.pan.showPathTitle') }}</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiShowPanPath" @update:value="cb({ uiShowPanPath: $event })">在顶部显示完整的文件夹路径</MySwitch>
+      <MySwitch :value="settingStore.uiShowPanPath" @update:value="cb({ uiShowPanPath: $event })">{{ t('settings.pan.showPathSwitch') }}</MySwitch>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">文件列表显示附属信息</div>
+    <div class="settinghead">{{ t('settings.pan.showMediaTitle') }}</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiShowPanMedia" @update:value="cb({ uiShowPanMedia: $event })">在右侧文件列表中显示每个文件的（播放时长、分辨率）</MySwitch>
+      <MySwitch :value="settingStore.uiShowPanMedia" @update:value="cb({ uiShowPanMedia: $event })">{{ t('settings.pan.showMediaSwitch') }}</MySwitch>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">文件夹悬浮预览</div>
+    <div class="settinghead">{{ t('settings.pan.folderPreviewTitle') }}</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiFolderPreviewEnabled" @update:value="cb({ uiFolderPreviewEnabled: $event })">鼠标悬停文件夹时，弹出窗口预览文件夹内的文件</MySwitch>
+      <MySwitch :value="settingStore.uiFolderPreviewEnabled" @update:value="cb({ uiFolderPreviewEnabled: $event })">{{ t('settings.pan.folderPreviewSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">开启</span>
+            {{ t('settings.defaultOn') }}
             <hr />
-            开启后，鼠标停留在文件夹上 0.45 秒会弹出缩略图预览面板<br />
-            关闭后将完全禁用该悬浮预览效果（左侧目录树和右侧文件列表均生效）
+            {{ t('settings.pan.folderPreviewTip1') }}<br />
+            {{ t('settings.pan.folderPreviewTip2') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div v-if="settingStore.uiFolderPreviewEnabled" class="settingrow">
-      <span style="margin-right: 12px; color: var(--color-text-2)">自动消失时间</span>
+      <span style="margin-right: 12px; color: var(--color-text-2)">{{ t('settings.pan.autoHideTime') }}</span>
       <a-select tabindex="-1" :style="{ width: '160px' }"
                 :model-value="settingStore.uiFolderPreviewAutoHide"
                 :popup-container="'#SettingDiv'"
                 @update:model-value="cb({ uiFolderPreviewAutoHide: $event })">
-        <a-option :value="0">不自动消失</a-option>
-        <a-option :value="3">3 秒</a-option>
-        <a-option :value="6">6 秒（推荐）</a-option>
-        <a-option :value="10">10 秒</a-option>
-        <a-option :value="20">20 秒</a-option>
+        <a-option :value="0">{{ t('settings.pan.noAutoHide') }}</a-option>
+        <a-option :value="3">{{ t('settings.pan.seconds3') }}</a-option>
+        <a-option :value="6">{{ t('settings.pan.seconds6Recommended') }}</a-option>
+        <a-option :value="10">{{ t('settings.pan.seconds10') }}</a-option>
+        <a-option :value="20">{{ t('settings.pan.seconds20') }}</a-option>
       </a-select>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            预览面板出现后，过这段时间会自动消失<br />
-            将鼠标移入面板时计时暂停，移出后重新计时
+            {{ t('settings.pan.autoHideTip1') }}<br />
+            {{ t('settings.pan.autoHideTip2') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">自动统计文件夹体积</div>
+    <div class="settinghead">{{ t('settings.pan.folderSizeTitle') }}</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiFolderSize" @update:value="cb({ uiFolderSize: $event })">自动统计并显示文件夹的总体积</MySwitch>
+      <MySwitch :value="settingStore.uiFolderSize" @update:value="cb({ uiFolderSize: $event })">{{ t('settings.pan.folderSizeSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">开启</span>
+            {{ t('settings.defaultOn') }}
             <hr />
-            开启后，小白羊会在后台计算文件夹的体积<br />
-            在文件列表里会显示文件夹的总体积 (子文件 + 子文件夹)
+            {{ t('settings.pan.folderSizeTip1') }}<br />
+            {{ t('settings.pan.folderSizeTip2') }}
             <div class="hrspace"></div>
-            <span class="oporg">注：</span>文件夹体积不是时时更新的，会有误差，定时自动更新
+            <span class="oporg">{{ t('settings.security.note') }}</span>{{ t('settings.pan.folderSizeNote') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">媒体库后台自动扫描</div>
+    <div class="settinghead">{{ t('settings.pan.libraryAutoScanTitle') }}</div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiLibraryAutoScanMusic" @update:value="cb({ uiLibraryAutoScanMusic: $event })">音乐库：启动后后台刮削网盘内的音频文件</MySwitch>
+      <MySwitch :value="settingStore.uiLibraryAutoScanMusic" @update:value="cb({ uiLibraryAutoScanMusic: $event })">{{ t('settings.pan.musicAutoScanSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">关闭</span>
+            {{ t('settings.defaultOff') }}
             <hr />
-            开启后，每次打开 App 会按设定间隔在后台静默扫描音频文件并入库<br />
-            扫描进行时底部状态栏会显示静默进度条，可点击进入音乐库<br />
-            首次登录新网盘账号时会单独弹窗征求同意
+            {{ t('settings.pan.musicAutoScanTip1') }}<br />
+            {{ t('settings.pan.musicAutoScanTip2') }}<br />
+            {{ t('settings.pan.firstLoginConsent') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiLibraryAutoScanVideo" @update:value="cb({ uiLibraryAutoScanVideo: $event })">视频媒体库：启动后后台刮削网盘内的视频文件</MySwitch>
+      <MySwitch :value="settingStore.uiLibraryAutoScanVideo" @update:value="cb({ uiLibraryAutoScanVideo: $event })">{{ t('settings.pan.videoAutoScanSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">关闭</span>
+            {{ t('settings.defaultOff') }}
             <hr />
-            开启后，每次打开 App 会按设定间隔在后台对"媒体库 → 文件源"中已添加的所有文件夹进行重扫<br />
-            适合定期把新增视频自动收录进媒体库，避免遗漏
+            {{ t('settings.pan.videoAutoScanTip1') }}<br />
+            {{ t('settings.pan.videoAutoScanTip2') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiLibraryAutoScanBook" @update:value="cb({ uiLibraryAutoScanBook: $event })">书籍库：启动后后台扫描网盘内的电子书文件</MySwitch>
+      <MySwitch :value="settingStore.uiLibraryAutoScanBook" @update:value="cb({ uiLibraryAutoScanBook: $event })">{{ t('settings.pan.bookAutoScanSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">关闭</span>
+            {{ t('settings.defaultOff') }}
             <hr />
-            开启后，每次打开 App 会按设定间隔在后台静默扫描电子书并入库<br />
-            首次登录新网盘账号时会单独弹窗征求同意
+            {{ t('settings.pan.bookAutoScanTip1') }}<br />
+            {{ t('settings.pan.firstLoginConsent') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div v-if="settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo || settingStore.uiLibraryAutoScanBook" class="settingrow">
-      <MySwitch :value="settingStore.uiLibraryIncrementalScan" @update:value="cb({ uiLibraryIncrementalScan: $event })">仅扫描增量（建议开启，按时间间隔节流，避免每次启动重跑）</MySwitch>
+      <MySwitch :value="settingStore.uiLibraryIncrementalScan" @update:value="cb({ uiLibraryIncrementalScan: $event })">{{ t('settings.pan.incrementalScanSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">开启</span>
+            {{ t('settings.defaultOn') }}
             <hr />
-            开启：当距离上次扫描的时间小于"扫描间隔"，本次自动跳过<br />
-            关闭：每次打开 App 都立刻发起一次完整扫描（不推荐，开销较大）
+            {{ t('settings.pan.incrementalScanTipOn') }}<br />
+            {{ t('settings.pan.incrementalScanTipOff') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div v-if="(settingStore.uiLibraryAutoScanMusic || settingStore.uiLibraryAutoScanVideo || settingStore.uiLibraryAutoScanBook) && settingStore.uiLibraryIncrementalScan" class="settingrow">
-      <span style="margin-right: 12px; color: var(--color-text-2)">扫描间隔</span>
+      <span style="margin-right: 12px; color: var(--color-text-2)">{{ t('settings.pan.scanInterval') }}</span>
       <a-select tabindex="-1" :style="{ width: '180px' }"
                 :model-value="settingStore.uiLibraryScanIntervalHours"
                 :popup-container="'#SettingDiv'"
                 @update:model-value="cb({ uiLibraryScanIntervalHours: $event })">
-        <a-option :value="1">1 小时</a-option>
-        <a-option :value="6">6 小时</a-option>
-        <a-option :value="12">12 小时</a-option>
-        <a-option :value="24">24 小时（推荐）</a-option>
-        <a-option :value="72">3 天</a-option>
-        <a-option :value="168">7 天</a-option>
+        <a-option :value="1">{{ t('settings.pan.hour1') }}</a-option>
+        <a-option :value="6">{{ t('settings.pan.hour6') }}</a-option>
+        <a-option :value="12">{{ t('settings.pan.hour12') }}</a-option>
+        <a-option :value="24">{{ t('settings.pan.hour24Recommended') }}</a-option>
+        <a-option :value="72">{{ t('settings.pan.day3') }}</a-option>
+        <a-option :value="168">{{ t('settings.pan.day7') }}</a-option>
       </a-select>
     </div>
     <div class="settingrow">
-      <MySwitch :value="settingStore.uiLibraryFollowManualScans" @update:value="cb({ uiLibraryFollowManualScans: $event })">媒体源文件夹自动更新（推荐）</MySwitch>
+      <MySwitch :value="settingStore.uiLibraryFollowManualScans" @update:value="cb({ uiLibraryFollowManualScans: $event })">{{ t('settings.pan.followManualScansSwitch') }}</MySwitch>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">开启</span>
+            {{ t('settings.defaultOn') }}
             <hr />
-            开启后，你右键"扫描视频/扫描音频"过的文件夹会被记住<br />
-            下次打开 App 时即使总开关未开，也会对这些文件夹做增量扫描<br />
-            关闭后这些文件夹不会自动重扫
+            {{ t('settings.pan.followManualScansTip1') }}<br />
+            {{ t('settings.pan.followManualScansTip2') }}<br />
+            {{ t('settings.pan.followManualScansTip3') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div v-if="settingStore.uiLibraryFollowManualScans && (settingStore.uiMusicAutoScanFolders || []).length" class="settingrow library-scan-account-row">
       <div class="library-scan-account-head">
-        <span style="color: var(--color-text-2); font-weight: 600">音频手动扫描文件夹（共 {{ settingStore.uiMusicAutoScanFolders.length }}）</span>
-        <a-popconfirm content="清空所有音频自动扫描文件夹？" @ok="cb({ uiMusicAutoScanFolders: [] })">
-          <a-button type="text" size="mini" status="warning">全部清空</a-button>
+        <span style="color: var(--color-text-2); font-weight: 600">{{ t('settings.pan.musicManualScanFolders', { count: settingStore.uiMusicAutoScanFolders.length }) }}</span>
+        <a-popconfirm :content="t('settings.pan.clearAudioAutoScanFoldersConfirm')" @ok="cb({ uiMusicAutoScanFolders: [] })">
+          <a-button type="text" size="mini" status="warning">{{ t('settings.pan.clearAll') }}</a-button>
         </a-popconfirm>
       </div>
       <div class="library-scan-account-list">
@@ -277,61 +278,61 @@ const showAccountList = computed(() =>
             <span style="color: var(--color-text-3); margin-right: 6px">{{ f.path || '/' }}</span>
             {{ f.name || f.file_id }}
           </div>
-          <a-button type="text" size="mini" status="danger" @click="removeMusicFolder(f)">移除</a-button>
+          <a-button type="text" size="mini" status="danger" @click="removeMusicFolder(f)">{{ t('settings.pan.remove') }}</a-button>
         </div>
       </div>
     </div>
     <div v-if="showAccountList" class="settingrow library-scan-account-row">
       <div class="library-scan-account-head">
-        <span style="color: var(--color-text-2); font-weight: 600">参与扫描的账号</span>
+        <span style="color: var(--color-text-2); font-weight: 600">{{ t('settings.pan.scanAccounts') }}</span>
         <div class="library-scan-account-actions">
-          <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" @click="allMusicOn">全开音乐</a-button>
-          <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" status="warning" @click="allMusicOff">全关音乐</a-button>
-          <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" @click="allVideoOn">全开视频</a-button>
-          <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" status="warning" @click="allVideoOff">全关视频</a-button>
-          <a-button v-if="settingStore.uiLibraryAutoScanBook" type="text" size="mini" @click="allBookOn">全开书籍</a-button>
-          <a-button v-if="settingStore.uiLibraryAutoScanBook" type="text" size="mini" status="warning" @click="allBookOff">全关书籍</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" @click="allMusicOn">{{ t('settings.pan.enableAllMusic') }}</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanMusic" type="text" size="mini" status="warning" @click="allMusicOff">{{ t('settings.pan.disableAllMusic') }}</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" @click="allVideoOn">{{ t('settings.pan.enableAllVideo') }}</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanVideo" type="text" size="mini" status="warning" @click="allVideoOff">{{ t('settings.pan.disableAllVideo') }}</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanBook" type="text" size="mini" @click="allBookOn">{{ t('settings.pan.enableAllBooks') }}</a-button>
+          <a-button v-if="settingStore.uiLibraryAutoScanBook" type="text" size="mini" status="warning" @click="allBookOff">{{ t('settings.pan.disableAllBooks') }}</a-button>
         </div>
       </div>
       <div class="library-scan-account-list">
-        <div v-for="t in userList" :key="t.user_id" class="library-scan-account-item">
-          <div class="library-scan-account-name" :title="tokenLabel(t)">{{ tokenLabel(t) }}</div>
+        <div v-for="token in userList" :key="token.user_id" class="library-scan-account-item">
+          <div class="library-scan-account-name" :title="tokenLabel(token)">{{ tokenLabel(token) }}</div>
           <div class="library-scan-account-toggles">
             <span v-if="settingStore.uiLibraryAutoScanMusic" class="library-scan-toggle">
-              <span class="library-scan-toggle-label">音乐</span>
-              <MySwitch :value="isMusicOn(t.user_id)" @update:value="toggleMusicForUser(t.user_id, $event)">&nbsp;</MySwitch>
+              <span class="library-scan-toggle-label">{{ t('settings.pan.music') }}</span>
+              <MySwitch :value="isMusicOn(token.user_id)" @update:value="toggleMusicForUser(token.user_id, $event)">&nbsp;</MySwitch>
             </span>
             <span v-if="settingStore.uiLibraryAutoScanVideo" class="library-scan-toggle">
-              <span class="library-scan-toggle-label">视频</span>
-              <MySwitch :value="isVideoOn(t.user_id)" @update:value="toggleVideoForUser(t.user_id, $event)">&nbsp;</MySwitch>
+              <span class="library-scan-toggle-label">{{ t('settings.pan.video') }}</span>
+              <MySwitch :value="isVideoOn(token.user_id)" @update:value="toggleVideoForUser(token.user_id, $event)">&nbsp;</MySwitch>
             </span>
             <span v-if="settingStore.uiLibraryAutoScanBook" class="library-scan-toggle">
-              <span class="library-scan-toggle-label">书籍</span>
-              <MySwitch :value="isBookOn(t.user_id)" @update:value="toggleBookForUser(t.user_id, $event)">&nbsp;</MySwitch>
+              <span class="library-scan-toggle-label">{{ t('settings.pan.books') }}</span>
+              <MySwitch :value="isBookOn(token.user_id)" @update:value="toggleBookForUser(token.user_id, $event)">&nbsp;</MySwitch>
             </span>
           </div>
         </div>
       </div>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">每个文件夹独立排序</div>
+    <div class="settinghead">{{ t('settings.pan.independentFolderSort') }}</div>
     <div class="settingrow">
       <a-select tabindex="-1" :style="{ width: '252px' }" :model-value="settingStore.uiFileOrderDuli" :popup-container="'#SettingDiv'" @update:model-value="cb({ uiFileOrderDuli: $event })">
         <a-option value="null">
-          不开启文件夹的独立排序
-          <template #suffix>推荐</template>
+          {{ t('settings.pan.noIndependentSort') }}
+          <template #suffix>{{ t('settings.pan.recommended') }}</template>
         </a-option>
-        <a-option value="name asc">开启&默认文件名 升序</a-option>
-        <a-option value="name desc">开启&默认文件名 降序</a-option>
-        <a-option value="updated_at asc">开启&默认时间 升序</a-option>
-        <a-option value="updated_at desc">开启&默认时间 降序</a-option>
-        <a-option value="size asc">开启&默认大小 升序</a-option>
-        <a-option value="size desc">开启&默认大小 降序</a-option>
+        <a-option value="name asc">{{ t('settings.pan.sortNameAsc') }}</a-option>
+        <a-option value="name desc">{{ t('settings.pan.sortNameDesc') }}</a-option>
+        <a-option value="updated_at asc">{{ t('settings.pan.sortTimeAsc') }}</a-option>
+        <a-option value="updated_at desc">{{ t('settings.pan.sortTimeDesc') }}</a-option>
+        <a-option value="size asc">{{ t('settings.pan.sortSizeAsc') }}</a-option>
+        <a-option value="size desc">{{ t('settings.pan.sortSizeDesc') }}</a-option>
       </a-select>
     </div>
   </div>
   <div class="settingcard">
-    <div class="settinghead">新建日期文件夹模板</div>
+    <div class="settinghead">{{ t('settings.pan.dateFolderTemplate') }}</div>
     <div class="settingrow">
       <a-input tabindex="-1" :style="{ width: '257px' }" placeholder="yyyy-MM-dd HH-mm-ss" allow-clear :model-value="settingStore.uiTimeFolderFormate" @update:model-value="cb({ uiTimeFolderFormate: $event })" />
       <a-input-number tabindex="-1" :style="{ width: '100px', marginLeft: '16px', marginTop: '-1px' }" :min="1" :model-value="settingStore.uiTimeFolderIndex" @update:model-value="cb({ uiTimeFolderIndex: $event })" />
@@ -340,87 +341,87 @@ const showAccountList = computed(() =>
         <IconFont name="iconbulb" />
         <template #content>
           <div style="min-width: 400px">
-            默认：<span class="opred">默认yyyy-MM-dd HH-mm-ss</span>(2021-08-08 12-30-00)
+            {{ t('settings.pan.defaultDateTemplate') }} <span class="opred">(2021-08-08 12-30-00)</span>
             <hr />
-            这里是编写命名模板，创建文件夹时会自动替换成当前时间对应的内容
+            {{ t('settings.pan.dateTemplateIntro') }}
             <br />
-            年=<span class="oporg">yyyy</span> 月=<span class="oporg">MM</span> 日=<span class="oporg">dd</span> 时=<span class="oporg">HH</span> 分= <span class="oporg">mm</span> 秒= <span class="oporg">ss</span> 编号=<span class="oporg">#</span>
+            {{ t('settings.pan.dateTemplateTokens') }}
             <div class="hrspace"></div>
-            在这里可以修改编号起始数字，每次成功创建文件夹编号会自动+1
+            {{ t('settings.pan.dateTemplateIndexTip') }}
             <br />
-            编号可以通过多个#来设置最短的长度
+            {{ t('settings.pan.dateTemplateHashTip') }}
             <div class="hrspace"></div>
-            例如:<span class="oporg">#### 创建于yyyy年MM月dd日</span> --&gt;
-            <span class="opblue">0001 创建于2021年08月08日</span>
+            {{ t('settings.pan.example') }}<span class="oporg">{{ t('settings.pan.createdAtExampleTemplate') }}</span> --&gt;
+            <span class="opblue">{{ t('settings.pan.createdAtExampleOutput') }}</span>
             <br />
-            例如:<span class="oporg">yyyy年MM月相册 ##</span> --&gt;
-            <span class="opblue">2021年08月相册 01</span>
+            {{ t('settings.pan.example') }}<span class="oporg">{{ t('settings.pan.albumExampleTemplate') }}</span> --&gt;
+            <span class="opblue">{{ t('settings.pan.albumExampleOutput') }}</span>
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">新建分享链接 有效期/提取码</div>
+    <div class="settinghead">{{ t('settings.pan.shareDefaultsTitle') }}</div>
     <div class="settingrow flex">
       <a-radio-group type="button" tabindex="-1" :model-value="settingStore.uiShareDays" @update:model-value="cb({ uiShareDays: $event })">
-        <a-radio tabindex="-1" value="always">永久</a-radio>
-        <a-radio tabindex="-1" value="week">一周</a-radio>
-        <a-radio tabindex="-1" value="month">一月</a-radio>
+        <a-radio tabindex="-1" value="always">{{ t('settings.pan.forever') }}</a-radio>
+        <a-radio tabindex="-1" value="week">{{ t('settings.pan.oneWeek') }}</a-radio>
+        <a-radio tabindex="-1" value="month">{{ t('settings.pan.oneMonth') }}</a-radio>
       </a-radio-group>
 
       <div style="margin-right: 8px"></div>
 
       <a-radio-group type="button" tabindex="-1" :model-value="settingStore.uiSharePassword" @update:model-value="cb({ uiSharePassword: $event })">
-        <a-radio tabindex="-1" value="random">随机</a-radio>
-        <a-radio tabindex="-1" value="last">上次</a-radio>
-        <a-radio tabindex="-1" value="nopassword">无提取码</a-radio>
+        <a-radio tabindex="-1" value="random">{{ t('settings.pan.random') }}</a-radio>
+        <a-radio tabindex="-1" value="last">{{ t('settings.pan.last') }}</a-radio>
+        <a-radio tabindex="-1" value="nopassword">{{ t('settings.pan.noPassword') }}</a-radio>
       </a-radio-group>
 
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">永久</span>，<span class="opred">随机</span>
+            {{ t('settings.pan.defaultForeverRandom') }}
             <hr />
-            <span class="opred">永久</span>：新建分享链接永久有效
+            {{ t('settings.pan.foreverTip') }}
             <br />
-            <span class="opred">一周</span>：新建分享链接7天内有效
+            {{ t('settings.pan.weekTip') }}
             <br />
-            <span class="opred">一月</span>：新建分享链接30天内有效
+            {{ t('settings.pan.monthTip') }}
             <br />
             <div class="hrspace"></div>
-            <span class="opred">随机</span>：随机生成4位数字字母组合
+            {{ t('settings.pan.randomTip') }}
             <br />
-            <span class="opred">上次</span>：上一次创建分享链接时填写的密码
+            {{ t('settings.pan.lastTip') }}
             <br />
-            <span class="opred">无提取码</span>：没有提取码
+            {{ t('settings.pan.noPasswordTip') }}
             <br />
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">复制分享链接模板</div>
+    <div class="settinghead">{{ t('settings.pan.copyShareTemplate') }}</div>
     <div class="settingrow">
-      <a-input tabindex="-1" :style="{ width: '257px' }" placeholder="「NAME」URL 提取码：PWD" allow-clear :model-value="settingStore.uiShareFormate" @update:model-value="cb({ uiShareFormate: $event })" />
+      <a-input tabindex="-1" :style="{ width: '257px' }" :placeholder="t('settings.pan.shareTemplatePlaceholder')" allow-clear :model-value="settingStore.uiShareFormate" @update:model-value="cb({ uiShareFormate: $event })" />
 
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div style="min-width: 400px">
-            默认：<span class="opred">「NAME」URL 提取码：PWD</span> <br />
-            测试分享 链接：https://www.aliyundrive.com/s/jEmmmDkF 提取码：DNJI
+            {{ t('settings.pan.shareTemplateDefault') }} <br />
+            {{ t('settings.pan.testShare') }}
             <hr />
-            这里是编写链接模板，网盘内点击复制分享链接时会自动替换成对应的内容
+            {{ t('settings.pan.shareTemplateIntro') }}
             <br />
-            <span class="oporg">NAME</span>=分享链接标题 <span class="oporg">URL</span>=链接Url <span class="oporg">PWD</span>提取码 <span class="oporg">\n</span>=换行
+            {{ t('settings.pan.shareTemplateTokens') }}
 
             <div class="hrspace"></div>
-            例如:<span class="oporg">URL#PWD#NAME</span> --&gt; <br />
-            <span class="opblue">https://www.aliyundrive.com/s/jEmmmDkF#DNJI#测试分享</span>
+            {{ t('settings.pan.example') }}<span class="oporg">URL#PWD#NAME</span> --&gt; <br />
+            <span class="opblue">https://www.aliyundrive.com/s/jEmmmDkF#DNJI#{{ t('settings.pan.testShareTitle') }}</span>
             <br />
-            例如:<span class="oporg">URL 提取码：PWD NAME</span> --&gt; <br />
-            <span class="opblue">https://www.aliyundrive.com/s/jEmmmDkF 提取码：DNJI 测试分享</span>
+            {{ t('settings.pan.example') }}<span class="oporg">URL Code: PWD NAME</span> --&gt; <br />
+            <span class="opblue">https://www.aliyundrive.com/s/jEmmmDkF Code: DNJI {{ t('settings.pan.testShareTitle') }}</span>
           </div>
         </template>
       </a-popover>
@@ -428,16 +429,16 @@ const showAccountList = computed(() =>
   </div>
   <div class="settingcard">
     <div class="settinghead">
-      文件标记 自定义标签名
+      {{ t('settings.pan.fileTagCustomNames') }}
       <a-popover position="right">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            给文件打上标签，便于分类和快速访问<br />
-            支持多地点自动同步(在家里打标、在公司查看)<br />
-            支持在这里修改标签的名称<br />
+            {{ t('settings.pan.fileTagTip1') }}<br />
+            {{ t('settings.pan.fileTagTip2') }}<br />
+            {{ t('settings.pan.fileTagTip3') }}<br />
             <div class="hrspace"></div>
-            <span class="oporg">轻量使用：</span>不要花大量时间给大量文件打标签，<br />因为不使用小白羊就看不到这些标签了
+            <span class="oporg">{{ t('settings.pan.lightUse') }}</span>{{ t('settings.pan.fileTagTip4') }}
             <br />
           </div>
         </template>

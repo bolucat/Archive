@@ -141,21 +141,7 @@ export const deleteDriveLargeFiles = async (files: LargeFileItem[]): Promise<Lar
   const deletedFileKeys: string[] = []
   for (const [key, group] of groups) {
     const [userId, driveId] = key.split('\n')
-    const deleted = driveId.startsWith('webdav:')
-      ? await (async () => {
-        const { deleteWebDavPath, getWebDavConnection, getWebDavConnectionId } = await import('../webdavClient')
-        const connection = getWebDavConnection(getWebDavConnectionId(driveId))
-        if (!connection) return []
-        const ids: string[] = []
-        for (const item of group) {
-          try {
-            await deleteWebDavPath(connection, item.fileId)
-            ids.push(item.fileId)
-          } catch {}
-        }
-        return ids
-      })()
-      : await AliFileCmd.ApiTrashBatch(userId, driveId, group.map(item => item.fileId))
+    const deleted = driveId.startsWith('webdav:') ? [] : await AliFileCmd.ApiTrashBatch(userId, driveId, group.map(item => item.fileId))
     success += deleted.length
     deletedFileKeys.push(...deleted.map(fileId => `${userId}\n${driveId}\n${fileId}`))
   }

@@ -15,13 +15,14 @@ import fs from 'node:fs'
 import message from '../utils/message'
 import { Sleep } from '../utils/format'
 import { BOXPLAYER_SITE_URL, fetchBoxPlayerSubscription, getBoxPlayerSupabase } from '../utils/boxplayerAuth'
+import { t } from '../i18n'
 
 const platform = window.platform
 const settingStore = useSettingStore()
 const topTabOptions = [
-  { key: 'media-server', label: '媒体服务器' }, { key: 'search', label: '搜索' }, { key: 'ai-workspace', label: 'AI 工作台' },
-  { key: 'media', label: '视频' }, { key: 'music', label: '音乐' }, { key: 'book', label: '书籍' },
-  { key: 'share', label: '分享' }, { key: 'rss', label: '插件' }
+  { key: 'media-server', labelKey: 'nav.mediaServer' }, { key: 'search', labelKey: 'nav.search' }, { key: 'ai-workspace', labelKey: 'nav.aiWorkspace' },
+  { key: 'media', labelKey: 'nav.video' }, { key: 'music', labelKey: 'nav.music' }, { key: 'book', labelKey: 'nav.books' },
+  { key: 'share', labelKey: 'nav.share' }, { key: 'rss', labelKey: 'nav.plugins' }
 ]
 
 function toggleTopTab(key: string, hidden: boolean) {
@@ -66,7 +67,7 @@ function handleLogout() {
   isPro.value = false
   accountEmail.value = ''
   supabase?.auth.signOut().catch(() => {})
-  message.success('已退出登录')
+  message.success(t('user.logout'))
 }
 
 const loading = ref(false)
@@ -104,14 +105,14 @@ async function syncProStatus() {
     }
     return isPro.value
   } catch (e: any) {
-    message.error(e?.message || '同步专业版状态失败')
+    message.error(e?.message || t('settings.syncStatus'))
   }
   return false
 }
 
 async function pollProStatusAfterPayment() {
   if (!isLoggedIn.value) {
-    message.warning('支付完成，请先登录后同步专业版状态')
+    message.warning(t('settings.signInBeforePurchase'))
     return
   }
 
@@ -120,12 +121,12 @@ async function pollProStatusAfterPayment() {
     if (delay > 0) await Sleep(delay)
     const active = await syncProStatus()
     if (active) {
-      message.success('Pro 已激活！')
+      message.success(t('settings.proActive'))
       return
     }
   }
 
-  message.warning('支付已完成，专业版授权仍在同步中，请稍后点击同步状态')
+  message.warning(t('settings.syncStatus'))
 }
 
 async function handleOAuth(provider: 'github' | 'google') {
@@ -142,26 +143,26 @@ async function handleOAuth(provider: 'github' | 'google') {
 
 async function handleEmailSend() {
   const email = authEmail.value.trim()
-  if (!email?.includes('@')) { message.warning('请输入有效邮箱'); return }
+  if (!email?.includes('@')) { message.warning(t('settings.emailPlaceholder')); return }
   if (!supabase) { message.error('未配置 Supabase'); return }
   loading.value = true
   try {
     const { error } = await supabase.auth.signInWithOtp({ email, options: { shouldCreateUser: true } })
     if (error) message.error(error.message)
-    else { codeSent.value = true; message.success('验证码已发送') }
+    else { codeSent.value = true; message.success(t('settings.sendCode')) }
   } finally { loading.value = false }
 }
 
 async function handleEmailVerify() {
   const email = authEmail.value.trim()
   const token = emailCode.value.trim()
-  if (!token) { message.warning('请输入验证码'); return }
+  if (!token) { message.warning(t('settings.verifyCode')); return }
   if (!supabase) return
   loading.value = true
   try {
     const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' })
     if (error) message.error(error.message)
-    else if (data.user) { saveLogin(data.user.email || email); message.success('登录成功') }
+    else if (data.user) { saveLogin(data.user.email || email); message.success(t('user.login')) }
   } finally { loading.value = false }
 }
 
@@ -169,32 +170,32 @@ async function handleUpgrade() {
   upgrading.value = true
   try {
     openExternal(PRICING_URL)
-  } catch (e: any) { message.error(e?.message || '打开官网购买页面失败') }
+  } catch (e: any) { message.error(e?.message || t('settings.upgradeOpening')) }
   finally { upgrading.value = false }
 }
 
 function getRedeemErrorMessage(code: string): string {
   const map: Record<string, string> = {
-    invalid_redeem_code: '请输入有效的兑换码',
-    redeem_code_not_found: '兑换码无效',
-    redeem_code_inactive: '兑换码已取消',
-    redeem_code_not_started: '兑换码尚未开始',
-    redeem_code_expired: '兑换码已过期',
-    redeem_code_used: '兑换码已被使用',
-    redeem_code_already_used_by_user: '当前账号已兑换过这个兑换码',
+    invalid_redeem_code: t('settings.redeemPlaceholder'),
+    redeem_code_not_found: t('settings.redeemPlaceholder'),
+    redeem_code_inactive: t('settings.redeemPlaceholder'),
+    redeem_code_not_started: t('settings.redeemPlaceholder'),
+    redeem_code_expired: t('settings.redeemPlaceholder'),
+    redeem_code_used: t('settings.redeemPlaceholder'),
+    redeem_code_already_used_by_user: t('settings.redeemPlaceholder'),
   }
-  return map[code] || code || '兑换失败'
+  return map[code] || code || t('settings.redeem')
 }
 
 async function handleRedeemCode() {
   const code = redeemCode.value.trim()
-  if (!code) { message.warning('请输入兑换码'); return }
+  if (!code) { message.warning(t('settings.redeemPlaceholder')); return }
   if (!supabase) { message.error('未配置 Supabase'); return }
   redeeming.value = true
   try {
     const { data } = await supabase.auth.getSession()
     const token = data.session?.access_token
-    if (!token) { message.warning('请先登录后再兑换'); return }
+    if (!token) { message.warning(t('settings.signInBeforePurchase')); return }
     const response = await fetch(`${BOXPLAYER_SITE_URL}/api/redeem/code`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
@@ -206,8 +207,8 @@ async function handleRedeemCode() {
     await syncProStatus()
     isPro.value = true
     localStorage.setItem('app_user_pro', '1')
-    const planLabel = result.plan === 'monthly' ? '包月专业版' : result.plan === 'yearly' ? '包年专业版' : '终身专业版'
-    message.success(`兑换成功：${planLabel}`)
+    const planLabel = result.plan === 'monthly' ? t('settings.redeemCode') : result.plan === 'yearly' ? t('settings.redeemCode') : t('settings.buyLifetimePro')
+    message.success(`${t('settings.redeem')}：${planLabel}`)
   } catch (e: any) {
     message.error(getRedeemErrorMessage(e?.message || 'redeem_failed'))
   } finally {
@@ -223,7 +224,7 @@ function setupAuthCallback() {
   authCallbackHandler = async (_e: any, params: { access_token?: string; refresh_token?: string }) => {
     if (!params.access_token || !supabase) return
     const { data, error } = await supabase.auth.setSession({ access_token: params.access_token, refresh_token: params.refresh_token || '' })
-    if (!error && data.user) { saveLogin(data.user.email || ''); message.success('登录成功') }
+    if (!error && data.user) { saveLogin(data.user.email || ''); message.success(t('user.login')) }
   }
   window.Electron.ipcRenderer.on('auth-callback', authCallbackHandler)
 }
@@ -233,15 +234,15 @@ function setupPaymentCallback() {
   paymentCallbackHandler = async (_e: any, params?: { status?: string; checkout_id?: string; reason?: string }) => {
     const status = params?.status || 'success'
     if (status === 'cancelled' || status === 'canceled') {
-      message.info('已取消购买，未产生专业版授权')
+      message.info(t('settings.openSource'))
       return
     }
     if (status === 'failed' || status === 'failure') {
-      message.error('支付未完成，请重试或稍后再试')
+      message.error(t('settings.syncStatus'))
       return
     }
 
-    message.info('支付完成，正在同步专业版状态…')
+    message.info(t('settings.syncStatus'))
     await pollProStatusAfterPayment()
   }
   window.Electron.ipcRenderer.on('payment-callback', paymentCallbackHandler)
@@ -279,17 +280,21 @@ const handleUpdateLog = () => {
   modalUpdateLog()
 }
 
+function openSupport() {
+  openExternal('https://xbyvideohub.com/support/')
+}
+
 const handleImportAsar = () => {
   window.WebShowOpenDialogSync({
-    title: '选择需要导入的Asar文件',
-    buttonLabel: '导入更新文件',
+    title: t('settings.selectAsar'),
+    buttonLabel: t('settings.importUpdateFile'),
     filters: [{ name: 'app.asar', extensions: ['asar'] }],
     properties: ['openFile', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
   }, async (files: string[] | undefined) => {
     if (files && files.length > 0) {
       // 导入到app.new
       await fs.promises.cp(files[0], getAppNewPath())
-      message.info('导入更新文件成功，重新打开应用...', 0)
+      message.info(t('settings.importUpdateSuccess'), 0)
       await Sleep(1000)
       window.WebToElectron({ cmd: 'relaunch' })
     }
@@ -300,27 +305,30 @@ const handleImportAsar = () => {
 <template>
   <div class='settingcard'>
     <div class='settings-app-hero'>
-      <div class='settings-app-badge'>Application</div>
-      <div class='appver'>BoxPlayer {{ getAppVersion }} <span class="appver-badge" :class="{ pro: isPro }">{{ isPro ? 'PRO' : '开源版' }}</span></div>
-      <div class='settings-app-subtitle'>统一配置桌面外观、启动行为、更新策略与系统集成体验</div>
+      <div class='settings-app-badge'>{{ t('settings.application') }}</div>
+      <div class='appver'>BoxPlayer {{ getAppVersion }} <span class="appver-badge" :class="{ pro: isPro }">{{ isPro ? 'PRO' : t('settings.openSource') }}</span></div>
+      <div class='settings-app-subtitle'>{{ t('settings.subtitle') }}</div>
     </div>
     <div class='settings-app-actions'>
       <a-button type='outline' status='success' size='small' @click='handleUpdateLog'>
-        更新日志
+        {{ t('settings.changelog') }}
+      </a-button>
+      <a-button type='outline' status='warning' size='small' @click='openSupport'>
+        {{ t('settings.submitFeedback') }}
       </a-button>
       <a-button type='outline' size='small' :loading='verLoading' @click='handleCheckVer'>
-        检查更新
+        {{ t('settings.checkUpdates') }}
       </a-button>
       <a-button v-if='platform !== "linux"' status='warning' type='outline' size='small' @click='handleImportAsar'>
-        手动导入
+        {{ t('settings.import') }}
       </a-button>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>账号与专业版</div>
+    <div class='settinghead'>{{ t('settings.accountPro') }}</div>
     <div class='settingrow setting-account-row'>
       <div class='setting-account-copy'>
-        <div class='setting-account-title'>BoxPlayer 账号</div>
-        <div class='setting-account-desc'>登录后同步专业版状态，终身授权暂时覆盖 Windows、Linux、MacOS。</div>
+        <div class='setting-account-title'>{{ t('settings.boxAccount') }}</div>
+        <div class='setting-account-desc'>{{ t('settings.accountDesc') }}</div>
       </div>
 
       <div class='setting-account-panel'>
@@ -333,14 +341,14 @@ const handleImportAsar = () => {
                 <span class='setting-pro-badge' :class="{ active: isPro }">
                   <CheckCircle2 v-if="isPro" :size='13' />
                   <Crown v-else :size='13' />
-                  {{ isPro ? '专业版已激活' : '开源版' }}
+                  {{ isPro ? t('settings.proActive') : t('settings.openSource') }}
                 </span>
               </div>
             </div>
-            <button class='setting-icon-btn' title='同步状态' :disabled='loading' @click='syncProStatus'>
+            <button class='setting-icon-btn' :title="t('settings.syncStatus')" :disabled='loading' @click='syncProStatus'>
               <RefreshCw :size='15' />
             </button>
-            <button class='setting-icon-btn danger' title='退出登录' @click='handleLogout'>
+            <button class='setting-icon-btn danger' :title="t('user.logout')" @click='handleLogout'>
               <LogOut :size='15' />
             </button>
           </div>
@@ -348,19 +356,19 @@ const handleImportAsar = () => {
           <button v-if="!isPro" class='setting-upgrade-btn' :disabled='upgrading' @click='handleUpgrade'>
             <Loader2 v-if="upgrading" :size='15' class='spin' />
             <Crown v-else :size='15' />
-            <span>{{ upgrading ? '正在打开官网' : '去官网购买终身专业版' }}</span>
+            <span>{{ upgrading ? t('settings.upgradeOpening') : t('settings.buyLifetimePro') }}</span>
           </button>
 
           <div class='setting-redeem-box'>
             <div class='setting-redeem-title'>
               <Gift :size='14' />
-              <span>兑换码</span>
+              <span>{{ t('settings.redeemCode') }}</span>
             </div>
             <div class='setting-redeem-form'>
-              <input v-model='redeemCode' type='text' placeholder='输入包月 / 包年 / 终身兑换码' class='sa-input setting-redeem-input' @keydown.enter='handleRedeemCode' />
+              <input v-model='redeemCode' type='text' :placeholder="t('settings.redeemPlaceholder')" class='sa-input setting-redeem-input' @keydown.enter='handleRedeemCode' />
               <button class='sa-send-btn setting-redeem-btn' :disabled='redeeming || !redeemCode.trim()' @click='handleRedeemCode'>
                 <Loader2 v-if='redeeming' :size='13' class='spin' />
-                <span v-else>兑换</span>
+                <span v-else>{{ t('settings.redeem') }}</span>
               </button>
             </div>
           </div>
@@ -370,8 +378,8 @@ const handleImportAsar = () => {
           <div class='setting-account-main'>
             <div class='setting-account-avatar muted' aria-hidden='true'>B</div>
             <div class='setting-account-identity'>
-              <div class='setting-account-email'>未登录</div>
-              <div class='setting-account-meta'>选择一种方式登录后再购买专业版</div>
+              <div class='setting-account-email'>{{ t('settings.notSignedIn') }}</div>
+              <div class='setting-account-meta'>{{ t('settings.signInBeforePurchase') }}</div>
             </div>
           </div>
 
@@ -384,25 +392,25 @@ const handleImportAsar = () => {
               <Chrome :size="18" />
               <span>Google</span>
             </button>
-            <button class="sa-provider sa-em" :class="{ active: showEmail }" :disabled="loading" title="邮箱" @click="showEmail = !showEmail">
+            <button class="sa-provider sa-em" :class="{ active: showEmail }" :disabled="loading" :title="t('settings.email')" @click="showEmail = !showEmail">
               <Mail :size="18" />
-              <span>邮箱</span>
+              <span>{{ t('settings.email') }}</span>
             </button>
           </div>
 
           <div v-if="showEmail" class='setting-email-form'>
             <template v-if="!codeSent">
-              <input v-model="authEmail" type="email" placeholder="邮箱地址" class="sa-input" @keydown.enter="handleEmailSend" />
+              <input v-model="authEmail" type="email" :placeholder="t('settings.emailPlaceholder')" class="sa-input" @keydown.enter="handleEmailSend" />
               <button class="sa-send-btn" :disabled="loading || !authEmail.trim()" @click="handleEmailSend">
                 <Loader2 v-if="loading" :size="13" class="spin" />
-                <span v-else>发送验证码</span>
+                <span v-else>{{ t('settings.sendCode') }}</span>
               </button>
             </template>
             <template v-else>
-              <input v-model="emailCode" type="text" placeholder="验证码" maxlength="6" class="sa-input" @keydown.enter="handleEmailVerify" />
+              <input v-model="emailCode" type="text" :placeholder="t('settings.verifyCode')" maxlength="6" class="sa-input" @keydown.enter="handleEmailVerify" />
               <button class="sa-send-btn" :disabled="loading || emailCode.length < 4" @click="handleEmailVerify">
                 <Loader2 v-if="loading" :size="13" class="spin" />
-                <span v-else>验证并登录</span>
+                <span v-else>{{ t('settings.verifyAndLogin') }}</span>
               </button>
             </template>
           </div>
@@ -411,21 +419,29 @@ const handleImportAsar = () => {
     </div>
 
     <div class='settingspace'></div>
-    <div class='settinghead'>界面颜色</div>
+    <div class='settinghead'>{{ t('settings.language') }}</div>
+    <div class='settingrow'>
+      <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiLanguage' @update:model-value='cb({ uiLanguage: $event })'>
+        <a-radio tabindex='-1' value='zh-CN'>{{ t('settings.chinese') }}</a-radio>
+        <a-radio tabindex='-1' value='en-US'>{{ t('settings.english') }}</a-radio>
+      </a-radio-group>
+    </div>
+    <div class='settingspace'></div>
+    <div class='settinghead'>{{ t('settings.appearance') }}</div>
     <div class='settingrow'>
       <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiTheme'
                      @update:model-value='cb({ uiTheme: $event })'>
-        <a-radio tabindex='-1' value='system'>跟随系统</a-radio>
-        <a-radio tabindex='-1' value='light'>浅色模式</a-radio>
-        <a-radio tabindex='-1' value='dark'>深色模式</a-radio>
+        <a-radio tabindex='-1' value='system'>{{ t('common.system') }}</a-radio>
+        <a-radio tabindex='-1' value='light'>{{ t('common.light') }}</a-radio>
+        <a-radio tabindex='-1' value='dark'>{{ t('common.dark') }}</a-radio>
       </a-radio-group>
     </div>
     <div class='settingrow'>
-      <span style='margin-right: 12px'>隐藏顶部标签</span>
-      <a-checkbox v-for='tab in topTabOptions' :key='tab.key' :checked='settingStore.uiHiddenTopTabs.includes(tab.key)' @update:model-value='(hidden: boolean) => toggleTopTab(tab.key, hidden)'>{{ tab.label }}</a-checkbox>
+      <span style='margin-right: 12px'>{{ t('settings.hideTabs') }}</span>
+      <a-checkbox v-for='tab in topTabOptions' :key='tab.key' :checked='settingStore.uiHiddenTopTabs.includes(tab.key)' @update:model-value='(hidden: boolean) => toggleTopTab(tab.key, hidden)'>{{ t(tab.labelKey as Parameters<typeof t>[0]) }}</a-checkbox>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>默认启动 Tab</div>
+    <div class='settinghead'>{{ t('settings.defaultTab') }}</div>
     <div class='settingrow'>
       <a-radio-group
         type='button'
@@ -433,69 +449,69 @@ const handleImportAsar = () => {
         :model-value='settingStore.uiDefaultTab'
         @update:model-value='cb({ uiDefaultTab: $event })'
       >
-        <a-radio tabindex='-1' value='pan'>网盘</a-radio>
-        <a-radio tabindex='-1' value='media-server'>媒体服务器</a-radio>
-        <a-radio tabindex='-1' value='media'>媒体库</a-radio>
+        <a-radio tabindex='-1' value='pan'>{{ t('nav.pan') }}</a-radio>
+        <a-radio tabindex='-1' value='media-server'>{{ t('nav.mediaServer') }}</a-radio>
+        <a-radio tabindex='-1' value='media'>{{ t('nav.video') }}</a-radio>
       </a-radio-group>
     </div>
     <template v-if="['win32', 'darwin'].includes(platform)">
       <div class='settingspace'></div>
-      <div class='settinghead'>开机自启设置</div>
+      <div class='settinghead'>{{ t('settings.startup') }}</div>
       <div class='settingrow'>
         <MySwitch :value='settingStore.uiLaunchStart' @update:value='cb({ uiLaunchStart: $event })'>
-          开机时自动启动
+          {{ t('settings.startAtLogin') }}
         </MySwitch>
       </div>
       <div class='settingrow' v-if="settingStore.uiLaunchStart">
         <MySwitch :value='settingStore.uiLaunchStartShow'
                   @update:value='cb({ uiLaunchStartShow: $event })'>
-          自动启动后显示主窗口
+          {{ t('settings.showOnStart') }}
         </MySwitch>
       </div>
     </template>
     <div class='settingspace'></div>
-    <div class='settinghead'>检查更新设置</div>
+    <div class='settinghead'>{{ t('settings.update') }}</div>
     <div class='settingrow'>
       <MySwitch :value='settingStore.uiLaunchAutoCheckUpdate'
                 @update:value='cb({ uiLaunchAutoCheckUpdate: $event })'>
-        启动时检查更新
+        {{ t('settings.checkOnStart') }}
       </MySwitch>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>自动签到设置</div>
+    <div class='settinghead'>{{ t('settings.autoSign') }}</div>
     <div class='settingrow'>
       <MySwitch :value='settingStore.uiLaunchAutoSign' @update:value='cb({ uiLaunchAutoSign: $event })'>
-        启动时自动签到
+        {{ t('settings.signOnStart') }}
       </MySwitch>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>关闭时彻底退出</div>
+    <div class='settinghead'>{{ t('settings.exit') }}</div>
     <div class='settingrow'>
       <MySwitch :value='settingStore.uiExitOnClose' @update:value='cb({ uiExitOnClose: $event })'>
-        关闭窗口时彻底退出小白羊
+        {{ t('settings.exitOnClose') }}
       </MySwitch>
       <a-popover position='right'>
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class='opred'>关闭</span>
+            {{ t('settings.defaultOff') }}
             <hr />
-            默认是点击窗口上的关闭按钮时<br />最小化到托盘，继续上传/下载<br /><br />开启此设置后直接彻底退出小白羊程序
+            {{ t('settings.exitHelp') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class='settingspace'></div>
-    <div class='settinghead'>软件更新代理</div>
+    <div class='settinghead'>{{ t('settings.updateProxy') }}</div>
     <div class='settingrow'>
       <MySwitch :value='settingStore.uiUpdateProxyEnable' @update:value='cb({ uiUpdateProxyEnable: $event })'>
-        开启软件更新代理
+        {{ t('settings.enableUpdateProxy') }}
       </MySwitch>
       <div class='settingrow' v-if="settingStore.uiUpdateProxyEnable">
         <a-input v-model.trim='settingStore.uiUpdateProxyUrl'
                  allow-clear
                  :style="{ width: '280px' }"
-                 placeholder='软件更新代理'
+                 :placeholder="t('settings.updateProxy')"
                  @update:model-value='cb({ uiUpdateProxyUrl: $event })' />
       </div>
     </div>

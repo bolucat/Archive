@@ -1,6 +1,6 @@
 <script setup lang='ts'>
 import { computed, h, ref, watch, onMounted, onBeforeUnmount } from 'vue'
-import { ITokenInfo, useSettingStore, useUserStore } from '../store'
+import { ITokenInfo, useAppStore, useSettingStore, useUserStore } from '../store'
 import UserDAL from '../user/userdal'
 import Config from '../config'
 import message from '../utils/message'
@@ -24,6 +24,10 @@ import { ONEDRIVE_CLIENT_ID, buildOneDriveAuthUrl, createOneDrivePkceVerifier, e
 import { BOX_CLIENT_ID, buildBoxAuthUrl, createBoxPkceVerifier, exchangeBoxCodeForToken } from '../box/auth'
 import { getDriveProviderMeta } from '../utils/driveProvider'
 import { ALIYUN_APP_ID, ALIYUN_APP_SECRET } from '../secrets.generated'
+import { t } from '../i18n'
+import { createAListConnection, createWebDavConnection, saveWebDavConnection, testWebDavConnection } from '../utils/webdavClient'
+import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
+import { useMediaLibraryStore } from '../store/medialibrary'
 
 const useUser = useUserStore()
 const settingStore = useSettingStore()
@@ -39,10 +43,10 @@ const qrCodeUrl = ref('')
 const qrCodeStatusType = ref()
 const qrCodeStatusTips = ref()
 
-type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'guangya' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box'
+type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'guangya' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box' | 'webdav' | 'alist'
 
 const loginProvider = ref<LoginProvider>('aliyun')
-const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'guangya', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box']
+const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'guangya', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box', 'webdav', 'alist']
 const getLoginProviderMeta = (provider: LoginProvider) => getDriveProviderMeta(provider)
 const activeLoginProviderMeta = computed(() => getLoginProviderMeta(loginProvider.value))
 const cloud123Code = ref('')
@@ -54,14 +58,14 @@ const pikpakUsername = ref('')
 const pikpakPassword = ref('')
 const pikpakLoading = ref(false)
 const quarkLoading = ref(false)
-const quarkTips = ref('请使用夸克 App 扫码')
+const quarkTips = ref(t('login.scanWithQuark'))
 const quarkQrToken = ref('')
 const quarkQrImageUrl = ref('')
 const quarkQrStatusType = ref<'info' | 'success' | 'warning' | 'error'>('info')
 const cloud139Authorization = ref('')
 const cloud139Loading = ref(false)
 const cloud189Loading = ref(false)
-const cloud189Tips = ref('请使用天翼云盘 App 扫码')
+const cloud189Tips = ref(t('login.scanWithCloud189'))
 const cloud189QrState = ref<Cloud189QrState | null>(null)
 const cloud189QrStatusType = ref<'info' | 'success' | 'warning' | 'error'>('info')
 const cloud189QrUrl = ref('')
@@ -82,12 +86,14 @@ const boxClientId = ref('')
 const boxVerifier = ref('')
 const boxLoading = ref(false)
 const boxAuthUrl = ref('')
+const remoteDriveLoading = ref(false)
+const remoteDriveForm = ref({ name: '', url: '', username: '', password: '', rootPath: '/' })
 const drive115ClientId = ref(DRIVE115_APP_ID || '')
 const drive115Verifier = ref('')
 const drive115Uid = ref('')
 const drive115Time = ref('')
 const drive115Sign = ref('')
-const drive115Tips = ref('请使用 115 App 扫码')
+const drive115Tips = ref(t('login.scanWith115'))
 const drive115Loading = ref(false)
 const drive115Polling = ref(false)
 let drive115Timer: any = null
@@ -120,7 +126,7 @@ const clearOpenTimers = () => {
 
 const handleModalOpen = () => {
   const stored = localStorage.getItem('login_provider')
-  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'guangya' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box') {
+  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'guangya' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box' || stored === 'webdav' || stored === 'alist') {
     loginProvider.value = stored
   }
   dropboxAppKey.value = localStorage.getItem('dropbox_app_key') || DROPBOX_APP_KEY
@@ -148,6 +154,8 @@ const handleModalOpen = () => {
     handleOpenOneDrive()
   } else if (loginProvider.value === 'box') {
     handleOpenBox()
+  } else if (loginProvider.value === 'webdav' || loginProvider.value === 'alist') {
+    loginLoading.value = false
   } else {
     handleOpen()
   }
@@ -213,6 +221,8 @@ watch(loginProvider, () => {
     handleOpenOneDrive()
   } else if (loginProvider.value === 'box') {
     handleOpenBox()
+  } else if (loginProvider.value === 'webdav' || loginProvider.value === 'alist') {
+    loginLoading.value = false
   } else {
     handleOpen()
   }
@@ -251,7 +261,7 @@ const refreshStepTips = (status: 'error' | 'finish' | 'process', index: number) 
   loginCur.value = index
 }
 
-const refreshQrCodeStatus = (codeUrl: string = '', type: string = 'info', tips: string = '请用阿里云盘 App 扫码') => {
+const refreshQrCodeStatus = (codeUrl: string = '', type: string = 'info', tips: string = t('login.scanWithAliyun')) => {
   qrCodeUrl.value = codeUrl
   qrCodeStatusType.value = type
   qrCodeStatusTips.value = tips
@@ -263,7 +273,7 @@ const handleOpen = () => {
     if (loginProvider.value !== 'aliyun' || !useUser.userShowLogin) return
     const webview = getAliyunLoginWebview()
     if (!webview) {
-      message.error('严重错误：无法打开登录弹窗，请退出小白羊后重新运行')
+      message.error(t('login.loginFailed'))
       return
     }
     if (aliyunWebviewInitialized) {
@@ -382,20 +392,20 @@ const handleClose = () => {
   drive115Uid.value = ''
   drive115Time.value = ''
   drive115Sign.value = ''
-  drive115Tips.value = '请使用 115 App 扫码'
+  drive115Tips.value = t('login.scanWith115')
   drive115Loading.value = false
   drive115Polling.value = false
   pikpakPassword.value = ''
   pikpakLoading.value = false
   quarkLoading.value = false
-  quarkTips.value = '请使用夸克 App 扫码'
+  quarkTips.value = t('login.scanWithQuark')
   quarkQrToken.value = ''
   quarkQrImageUrl.value = ''
   quarkQrStatusType.value = 'info'
   cloud139Authorization.value = ''
   cloud139Loading.value = false
   cloud189Loading.value = false
-  cloud189Tips.value = '请使用天翼云盘 App 扫码'
+  cloud189Tips.value = t('login.scanWithCloud189')
   cloud189QrState.value = null
   cloud189QrStatusType.value = 'info'
   cloud189QrUrl.value = ''
@@ -411,6 +421,35 @@ const handleClose = () => {
   boxVerifier.value = ''
   boxLoading.value = false
   boxAuthUrl.value = ''
+  remoteDriveLoading.value = false
+  remoteDriveForm.value = { name: '', url: '', username: '', password: '', rootPath: '/' }
+}
+
+const submitRemoteDrive = async () => {
+  const form = remoteDriveForm.value
+  const provider = loginProvider.value
+  if ((provider !== 'webdav' && provider !== 'alist') || !form.url.trim() || !form.username.trim() || !form.password.trim()) {
+    message.error(provider === 'alist' ? '请填写 AList 地址、用户名和密码' : '请填写 WebDAV 地址、用户名和密码')
+    return
+  }
+
+  remoteDriveLoading.value = true
+  try {
+    const connection = provider === 'alist' ? createAListConnection(form) : createWebDavConnection(form)
+    await testWebDavConnection(connection)
+    saveWebDavConnection(connection)
+    const account = createRemoteDriveAccount(connection)
+    const mediaStore = useMediaLibraryStore()
+    if (!mediaStore.folders.some((folder) => folder.id === account.folder.id)) mediaStore.addFolder(account.folder)
+    await UserDAL.UserLogin(account.token)
+    useAppStore().resetTab('pan')
+    useUser.userShowLogin = false
+    message.success(`${provider === 'alist' ? 'AList' : 'WebDAV'} 已连接，可在网盘中浏览并对文件夹执行刮削`)
+  } catch (error: any) {
+    message.error(`连接失败：${error?.message || '请检查地址和登录信息'}`)
+  } finally {
+    remoteDriveLoading.value = false
+  }
 }
 
 const handleOpenCloud123 = () => {
@@ -503,7 +542,7 @@ const handleReopenBox = () => {
 const submitCloud123Code = async () => {
   if (cloud123Loading.value) return
   if (!cloud123Code.value.trim()) {
-    message.error('未获取到授权 code')
+    message.error(t('login.authCodeMissing'))
     return
   }
   cloud123Loading.value = true
@@ -515,7 +554,7 @@ const submitCloud123Code = async () => {
     }
   } catch (error) {
     console.error('123网盘登录失败:', error)
-    message.error('123网盘登录失败')
+    message.error(`123 ${t('login.loginFailed')}`)
   } finally {
     cloud123Loading.value = false
   }
@@ -524,7 +563,7 @@ const submitCloud123Code = async () => {
 const submitBaiduCode = async () => {
   if (baiduLoading.value) return
   if (!baiduCode.value.trim()) {
-    message.error('未获取到授权 code')
+    message.error(t('login.authCodeMissing'))
     return
   }
   baiduLoading.value = true
@@ -536,7 +575,7 @@ const submitBaiduCode = async () => {
     }
   } catch (error) {
     console.error('百度网盘登录失败:', error)
-    message.error('百度网盘登录失败')
+    message.error(`百度网盘 ${t('login.loginFailed')}`)
   } finally {
     baiduLoading.value = false
   }
@@ -546,7 +585,7 @@ const submitDropboxCode = async (code: string) => {
   if (dropboxLoading.value) return
   const appKey = dropboxAppKey.value.trim()
   if (!appKey || !dropboxVerifier.value) {
-    message.error('Dropbox 授权信息已失效，请重新打开授权页面')
+    message.error(`Dropbox ${t('login.authExpired')}`)
     return
   }
   dropboxLoading.value = true
@@ -558,7 +597,7 @@ const submitDropboxCode = async (code: string) => {
     }
   } catch (error) {
     console.error('Dropbox 登录失败:', error)
-    message.error('Dropbox 登录失败')
+    message.error(`Dropbox ${t('login.loginFailed')}`)
   } finally {
     dropboxLoading.value = false
   }
@@ -568,7 +607,7 @@ const submitOneDriveCode = async (code: string) => {
   if (onedriveLoading.value) return
   const clientId = onedriveClientId.value.trim()
   if (!clientId || !onedriveVerifier.value) {
-    message.error('OneDrive 授权信息已失效，请重新打开授权页面')
+    message.error(`OneDrive ${t('login.authExpired')}`)
     return
   }
   onedriveLoading.value = true
@@ -580,7 +619,7 @@ const submitOneDriveCode = async (code: string) => {
     }
   } catch (error) {
     console.error('OneDrive 登录失败:', error)
-    message.error('OneDrive 登录失败')
+    message.error(`OneDrive ${t('login.loginFailed')}`)
   } finally {
     onedriveLoading.value = false
   }
@@ -590,7 +629,7 @@ const submitBoxCode = async (code: string) => {
   if (boxLoading.value) return
   const clientId = boxClientId.value.trim()
   if (!clientId || !boxVerifier.value) {
-    message.error('Box 授权信息已失效，请重新打开授权页面')
+    message.error(`Box ${t('login.authExpired')}`)
     return
   }
   boxLoading.value = true
@@ -602,7 +641,7 @@ const submitBoxCode = async (code: string) => {
     }
   } catch (error) {
     console.error('Box 登录失败:', error)
-    message.error('Box 登录失败')
+    message.error(`Box ${t('login.loginFailed')}`)
   } finally {
     boxLoading.value = false
   }
@@ -612,7 +651,7 @@ const submitPikPakLogin = async () => {
   if (pikpakLoading.value) return
   const username = pikpakUsername.value.trim()
   if (!username || !pikpakPassword.value) {
-    message.error('请输入 PikPak 账号和密码')
+    message.error(`PikPak ${t('login.enterAccountPassword')}`)
     return
   }
   pikpakLoading.value = true
@@ -621,7 +660,7 @@ const submitPikPakLogin = async () => {
     await UserDAL.UserLogin(token, true)
     useUserStore().userShowLogin = false
   } catch (err: any) {
-    message.error(err?.message || 'PikPak 登录失败')
+    message.error(err?.message || `PikPak ${t('login.loginFailed')}`)
   } finally {
     pikpakLoading.value = false
   }
@@ -639,7 +678,7 @@ const submitCloud139Login = async () => {
     await UserDAL.UserLogin(token, true)
     useUserStore().userShowLogin = false
   } catch (err: any) {
-    message.error(err?.message || '139 云盘登录失败')
+    message.error(err?.message || `139 云盘 ${t('login.loginFailed')}`)
   } finally {
     cloud139Loading.value = false
   }
@@ -656,9 +695,9 @@ const sendGuangyaSmsCode = async () => {
   try {
     guangyaDeviceId.value = guangyaDeviceId.value || generateGuangyaDid()
     guangyaSmsState.value = await requestGuangyaSmsCode(phone, guangyaDeviceId.value)
-    message.success('验证码已发送')
+    message.success(t('login.smsSent'))
   } catch (err: any) {
-    message.error(err?.message || '发送光鸭云盘验证码失败')
+    message.error(err?.message || t('login.loginFailed'))
   } finally {
     guangyaLoading.value = false
   }
@@ -667,12 +706,12 @@ const sendGuangyaSmsCode = async () => {
 const submitGuangyaLogin = async () => {
   if (guangyaLoading.value) return
   if (!guangyaSmsState.value) {
-    message.error('请先发送短信验证码')
+    message.error(t('login.sendSmsFirst'))
     return
   }
   const code = guangyaCode.value.trim()
   if (!code) {
-    message.error('请输入短信验证码')
+    message.error(t('login.enterSmsCode'))
     return
   }
   guangyaLoading.value = true
@@ -681,7 +720,7 @@ const submitGuangyaLogin = async () => {
     await UserDAL.UserLogin(token, true)
     useUserStore().userShowLogin = false
   } catch (err: any) {
-    message.error(err?.message || '光鸭云盘登录失败')
+    message.error(err?.message || `光鸭云盘 ${t('login.loginFailed')}`)
   } finally {
     guangyaLoading.value = false
   }
@@ -701,19 +740,19 @@ const handleOpen189 = async () => {
   loginLoading.value = true
   cloud189Loading.value = true
   cloud189QrStatusType.value = 'info'
-  cloud189Tips.value = '正在获取天翼云盘登录二维码...'
+  cloud189Tips.value = t('login.gettingQr')
   cloud189QrUrl.value = ''
   cloud189QrState.value = null
   try {
     const state = await requestCloud189QrCode()
     cloud189QrState.value = state
     cloud189QrUrl.value = state.qrUrl
-    cloud189Tips.value = '请使用天翼云盘 App 扫码'
+    cloud189Tips.value = t('login.scanWithCloud189')
     loginLoading.value = false
     pollCloud189Status()
   } catch (err: any) {
     cloud189QrStatusType.value = 'error'
-    cloud189Tips.value = err?.message || '获取天翼云盘二维码失败'
+    cloud189Tips.value = err?.message || t('login.loginFailed')
     message.error(cloud189Tips.value)
     loginLoading.value = false
   } finally {
@@ -732,7 +771,7 @@ const pollCloud189Status = async () => {
     if (result.status === 'success' && result.token) {
       clearCloud189Timer()
       cloud189QrStatusType.value = 'success'
-      cloud189Tips.value = '扫码成功，正在登录...'
+      cloud189Tips.value = t('login.scanSuccessSigningIn')
       await UserDAL.UserLogin(result.token, true)
       useUserStore().userShowLogin = false
       return
@@ -744,11 +783,11 @@ const pollCloud189Status = async () => {
       return
     }
     cloud189QrStatusType.value = 'info'
-    cloud189Tips.value = result.message || '请使用天翼云盘 App 扫码'
+    cloud189Tips.value = result.message || t('login.scanWithCloud189')
     cloud189Timer = setTimeout(pollCloud189Status, 1500)
   } catch (err: any) {
     cloud189QrStatusType.value = 'error'
-    cloud189Tips.value = err?.message || '获取天翼云盘扫码状态失败'
+    cloud189Tips.value = err?.message || t('login.loginFailed')
     cloud189Timer = setTimeout(pollCloud189Status, 2000)
   } finally {
     cloud189Polling = false
@@ -771,18 +810,18 @@ const handleOpenQuark = async () => {
   quarkQrImageUrl.value = ''
   quarkQrToken.value = ''
   quarkQrStatusType.value = 'info'
-  quarkTips.value = '正在获取夸克登录二维码...'
+  quarkTips.value = t('login.gettingQr')
   try {
     const qr = await requestQuarkQrCode()
     quarkQrToken.value = qr.token
     quarkQrImageUrl.value = qr.qrImageUrl
-    quarkTips.value = '请使用夸克 App 扫码'
+    quarkTips.value = t('login.scanWithQuark')
     loginLoading.value = false
     quarkLoading.value = false
     pollQuarkStatus()
   } catch (err: any) {
     quarkQrStatusType.value = 'error'
-    quarkTips.value = err?.message || '获取夸克登录二维码失败'
+    quarkTips.value = err?.message || t('login.loginFailed')
     message.error(quarkTips.value)
     loginLoading.value = false
     quarkLoading.value = false
@@ -802,14 +841,14 @@ const pollQuarkStatus = async () => {
       quarkQrToken.value = ''
       quarkLoading.value = true
       quarkQrStatusType.value = 'success'
-      quarkTips.value = '扫码成功，正在登录...'
+      quarkTips.value = t('login.scanSuccessSigningIn')
       try {
         const token = await completeQuarkQrLogin(status.serviceTicket)
         await UserDAL.UserLogin(token, true)
         useUserStore().userShowLogin = false
       } catch (err: any) {
         quarkQrStatusType.value = 'error'
-        quarkTips.value = err?.message || '获取夸克账号信息失败'
+        quarkTips.value = err?.message || t('login.loginFailed')
         message.error(quarkTips.value)
       }
       return
@@ -817,22 +856,22 @@ const pollQuarkStatus = async () => {
     if (status.status === 'expired') {
       clearQuarkTimer()
       quarkQrStatusType.value = 'warning'
-      quarkTips.value = status.message || '二维码已失效，请刷新'
+      quarkTips.value = status.message || t('login.qrExpired')
       return
     }
     if (status.status === 'failed') {
       clearQuarkTimer()
       quarkQrStatusType.value = 'error'
-      quarkTips.value = status.message || '夸克登录失败'
+      quarkTips.value = status.message || `夸克 ${t('login.loginFailed')}`
       return
     }
     quarkQrStatusType.value = 'info'
-    quarkTips.value = status.message || '请使用夸克 App 扫码'
+    quarkTips.value = status.message || t('login.scanWithQuark')
     quarkTimer = setTimeout(pollQuarkStatus, 1500)
   } catch (err: any) {
     if (quarkQrToken.value !== pollingToken) return
     quarkQrStatusType.value = 'error'
-    quarkTips.value = err?.message || '获取夸克扫码状态失败'
+    quarkTips.value = err?.message || t('login.loginFailed')
     if (loginProvider.value === 'quark' && useUser.userShowLogin && quarkQrToken.value) {
       quarkTimer = setTimeout(pollQuarkStatus, 2000)
     }
@@ -845,7 +884,7 @@ const pollQuarkStatus = async () => {
 const handleOpen115 = async () => {
   if (!drive115ClientId.value.trim() && !DRIVE115_APP_ID) {
     loginLoading.value = false
-    drive115Tips.value = '请先填写 App ID'
+    drive115Tips.value = t('login.clientId')
     return
   }
   loginLoading.value = true
@@ -865,13 +904,13 @@ const handleOpen115 = async () => {
     drive115Sign.value = resp.sign || ''
     qrCodeUrl.value = buildQrImageUrl(resp.qrcode || '')
     qrCodeStatusType.value = 'info'
-    drive115Tips.value = '请使用 115 App 扫码'
+    drive115Tips.value = t('login.scanWith115')
     loginLoading.value = false
     drive115Loading.value = false
     drive115Polling.value = true
     poll115Status()
   } catch (err: any) {
-    drive115Tips.value = err?.message || '获取二维码失败'
+    drive115Tips.value = err?.message || t('login.loginFailed')
     loginLoading.value = false
     drive115Loading.value = false
   }
@@ -885,13 +924,13 @@ const poll115Status = async () => {
     if (status.error) {
       drive115Tips.value = status.error
     } else if (status.state === 0) {
-      drive115Tips.value = '二维码已失效，请刷新'
+      drive115Tips.value = t('login.qrExpired')
       drive115Polling.value = false
       return
     } else if (status.status === 1) {
-      drive115Tips.value = status.msg || '扫码成功，等待确认'
+      drive115Tips.value = status.msg || t('login.scanSuccessSigningIn')
     } else if (status.status === 2) {
-      drive115Tips.value = status.msg || '授权成功，正在登录'
+      drive115Tips.value = status.msg || t('login.scanSuccessSigningIn')
       drive115Polling.value = false
       const tokenResp = await exchangeDeviceCode(drive115Uid.value, drive115Verifier.value)
       if (tokenResp.error) {
@@ -900,7 +939,7 @@ const poll115Status = async () => {
       }
       const token = normalize115Token(tokenResp.data)
       if (!token) {
-        drive115Tips.value = '登录失败'
+        drive115Tips.value = t('login.loginFailed')
         return
       }
       await AliUser.Drive115UserInfo(token)
@@ -909,7 +948,7 @@ const poll115Status = async () => {
       return
     }
   } catch (err: any) {
-    drive115Tips.value = err?.message || '获取扫码状态失败'
+    drive115Tips.value = err?.message || t('login.loginFailed')
   }
   drive115Timer = setTimeout(poll115Status, 1500)
 }
@@ -1022,12 +1061,12 @@ const loginStepFirst = async (msg: string) => {
       loginStepSecond(token)
     } catch (err: any) {
       refreshStepTips('error', 1)
-      message.error('登录失败：' + (err.message || '解析失败'))
+      message.error(t('login.loginFailed') + '：' + (err.message || t('login.parseFailed')))
       DebugLog.mSaveDanger('登录失败：' + (err.message || '解析失败'), JSON.stringify(err))
     }
   }).catch((err: any) => {
     refreshStepTips('error', 1)
-    message.error('登录结果读取失败：' + (err?.message || '请重试'))
+    message.error(t('login.loginFailed') + '：' + (err?.message || t('login.retry')))
     DebugLog.mSaveDanger('Aliyun login result read failed', err)
   })
 }
@@ -1035,7 +1074,7 @@ const loginStepFirst = async (msg: string) => {
 const loginStepSecond = async (token: ITokenInfo) => {
   if (!token) {
     refreshStepTips('process', 1)
-    message.error('请重新登录')
+    message.error(t('login.retryLogin'))
     return
   }
   loginLoading.value = false
@@ -1044,18 +1083,18 @@ const loginStepSecond = async (token: ITokenInfo) => {
   try {
     codeUrl = await AliUser.OpenApiQrCodeUrl(client_id.value, client_secret.value, 250, 250)
   } catch (err: any) {
-    refreshQrCodeStatus('', 'error', '获取第二个二维码失败，请检查网络或开发者配置')
+    refreshQrCodeStatus('', 'error', t('login.loginFailed'))
     refreshStepTips('error', 2)
     DebugLog.mSaveDanger('Aliyun second QR code request failed', err)
     return
   }
   if (!codeUrl) {
-    refreshQrCodeStatus('', 'error', '获取二维码失败')
+    refreshQrCodeStatus('', 'error', t('login.loginFailed'))
     refreshStepTips('error', 2)
     handlerChangeType()
     return
   }
-  refreshQrCodeStatus(codeUrl, 'info', '状态：等待扫码登录')
+  refreshQrCodeStatus(codeUrl, 'info', t('login.waitingScan'))
   refreshStepTips('process', 2)
   // 监听状态
   intervalId.value = setInterval(async () => {
@@ -1082,7 +1121,7 @@ const loginStepSecond = async (token: ITokenInfo) => {
       }
     } catch (err: any) {
       clearInterval(intervalId.value)
-      refreshQrCodeStatus('', 'error', '第二个二维码状态获取失败，请点击二维码刷新')
+      refreshQrCodeStatus('', 'error', t('login.loginFailed'))
       DebugLog.mSaveWarning('Aliyun second QR code status failed', err)
     }
   }, 1500)
@@ -1093,7 +1132,7 @@ const handlerChangeType = () => {
   refreshQrCodeStatus()
   if (settingStore.uiEnableOpenApiType === 'custom') {
     Modal.open({
-      title: '输入开发者账号',
+      title: t('login.enterDeveloperAccount'),
       bodyStyle: { minWidth: '340px' },
       content: () => h(Space, { direction: 'vertical' }, () => [
         h(Input, {
@@ -1102,7 +1141,7 @@ const handlerChangeType = () => {
           allowClear: true,
           modelValue: settingStore.uiOpenApiClientId.trim(),
           style: { width: '340px' },
-          placeholder: '客户端ID',
+          placeholder: t('login.clientId'),
           'onUpdate:modelValue': (e) => cb({ uiOpenApiClientId: e.trim() })
         }),
         h(Input, {
@@ -1111,12 +1150,12 @@ const handlerChangeType = () => {
           allowClear: true,
           modelValue: settingStore.uiOpenApiClientSecret.trim(),
           style: { width: '340px' },
-          placeholder: '客户端密钥',
+          placeholder: t('login.clientSecret'),
           'onUpdate:modelValue': (e) => cb({ uiOpenApiClientSecret: e.trim() })
         })
       ]),
-      okText: '确认',
-      cancelText: '取消',
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       onBeforeOk: async (e: any) => {
         if (settingStore.uiOpenApiClientId && settingStore.uiOpenApiClientSecret) {
           client_id.value = settingStore.uiOpenApiClientId
@@ -1124,7 +1163,7 @@ const handlerChangeType = () => {
           handleRefreshQrCodeUrl()
           return true
         } else {
-          message.error('请输入开发者账号')
+          message.error(t('login.enterDeveloperAccountWarn'))
           return false
         }
       }
@@ -1170,7 +1209,7 @@ const loginSuccess = (token: ITokenInfo) => {
 </script>
 
 <template>
-  <a-modal title="网盘账号登录" v-model:visible='useUser.userShowLogin'
+  <a-modal :title="t('login.driveAccount')" v-model:visible='useUser.userShowLogin'
            :mask-closable='false' unmount-on-close :footer='false'
            class='userloginmodal' @before-open='handleModalOpen' @close='handleClose'>
     <div class="modalbody login-modal-body">
@@ -1186,6 +1225,7 @@ const loginSuccess = (token: ITokenInfo) => {
           <span v-if="getLoginProviderMeta(provider).icon" class="login-provider-icon">
             <img :src="getLoginProviderMeta(provider).icon" :alt="getLoginProviderMeta(provider).label" />
           </span>
+          <span v-else class="login-provider-fallback">{{ getLoginProviderMeta(provider).label.slice(0, 1) }}</span>
           <span class="login-provider-side-label">{{ getLoginProviderMeta(provider).label }}</span>
         </button>
       </aside>
@@ -1200,13 +1240,13 @@ const loginSuccess = (token: ITokenInfo) => {
 
         <div v-show="loginProvider === 'aliyun'">
           <a-steps v-model:current="loginCur" :status="loginStatus">
-            <a-step description="扫码或账号登录">第一次扫码</a-step>
-            <a-step description="手机授权">第二次扫码</a-step>
+            <a-step :description="t('login.scanOrAccount')">{{ t('login.firstScan') }}</a-step>
+            <a-step :description="t('login.mobileAuth')">{{ t('login.secondScan') }}</a-step>
           </a-steps>
           <div id='logindiv'>
             <div class='logincontent'>
             <div id="loginframediv" class="loginframe">
-              <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
+              <a-spin class="loading" :size="32" v-if='loginLoading' :tip="t('common.loading')" />
               <Webview id="loginiframe" v-show='!loginLoading && loginCur === 1'
                        plugins nodeintegration disablewebsecurity
                        webpreferences="allowRunningInsecureContent"
@@ -1236,9 +1276,9 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div class="browser-login-hint">
-              <p style="margin: 32px 0 8px; font-size: 15px;">已在系统浏览器中打开 123 网盘授权页面</p>
-              <p style="color: var(--color-text-3); font-size: 13px;">请在浏览器中完成登录，授权后将自动跳转回应用</p>
-              <a-button style="margin-top: 16px;" @click="handleReopenCloud123">重新打开浏览器</a-button>
+              <p style="margin: 32px 0 8px; font-size: 15px;">{{ t('login.browserOpenedPrefix') }} 123 网盘{{ t('login.authPageSuffix') }}</p>
+              <p style="color: var(--color-text-3); font-size: 13px;">{{ t('login.browserContinue') }}</p>
+              <a-button style="margin-top: 16px;" @click="handleReopenCloud123">{{ t('login.reopenBrowser') }}</a-button>
             </div>
           </div>
         </div>
@@ -1248,7 +1288,7 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div id="loginframediv" class="loginframe">
-              <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
+              <a-spin class="loading" :size="32" v-if='loginLoading' :tip="t('common.loading')" />
               <div class="qrcodeframe" v-if="!loginLoading">
                 <a-image
                   width='250'
@@ -1268,7 +1308,7 @@ const loginSuccess = (token: ITokenInfo) => {
             <div class="cloud123-code">
               <a-input v-model="drive115ClientId" placeholder="App ID（client_id）" allow-clear
                        @change="handleStorageChange" />
-              <a-button type="primary" :loading="drive115Loading" @click="handleRefresh115Qr">刷新二维码</a-button>
+              <a-button type="primary" :loading="drive115Loading" @click="handleRefresh115Qr">{{ t('login.refreshQrCode') }}</a-button>
             </div>
           </div>
         </div>
@@ -1289,7 +1329,7 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div id="loginframediv" class="loginframe">
-              <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
+              <a-spin class="loading" :size="32" v-if='loginLoading' :tip="t('common.loading')" />
               <div class="qrcodeframe" v-if="!loginLoading">
                 <div class="cloud189-qrcode-wrap">
                   <AntQRCode :value="cloud189QrUrl || 'cloud189'" :size="250" color="#000" bg-color="#fff" />
@@ -1300,7 +1340,7 @@ const loginSuccess = (token: ITokenInfo) => {
               </div>
             </div>
             <div class="quark-login-toolbar" v-if="!loginLoading">
-              <a-button type="primary" :loading="cloud189Loading" @click="handleOpen189">刷新二维码</a-button>
+              <a-button type="primary" :loading="cloud189Loading" @click="handleOpen189">{{ t('login.refreshQrCode') }}</a-button>
             </div>
           </div>
         </div>
@@ -1311,9 +1351,9 @@ const loginSuccess = (token: ITokenInfo) => {
           <div class='logincontent'>
             <div class="pikpak-login-form">
               <a-input v-model="guangyaPhone" placeholder="手机号，例如 +86 13800138000" allow-clear />
-              <a-input v-model="guangyaCode" placeholder="短信验证码" allow-clear @press-enter="submitGuangyaLogin" />
+              <a-input v-model="guangyaCode" :placeholder="t('login.smsCode')" allow-clear @press-enter="submitGuangyaLogin" />
               <a-space direction="vertical" fill>
-                <a-button type="outline" long :loading="guangyaLoading" @click="sendGuangyaSmsCode">{{ guangyaSmsState ? '重新发送验证码' : '发送验证码' }}</a-button>
+                <a-button type="outline" long :loading="guangyaLoading" @click="sendGuangyaSmsCode">{{ guangyaSmsState ? t('login.resendSmsCode') : t('login.sendSmsCode') }}</a-button>
                 <a-button type="primary" long :loading="guangyaLoading" @click="submitGuangyaLogin">登录光鸭云盘</a-button>
               </a-space>
             </div>
@@ -1325,9 +1365,9 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div class="browser-login-hint">
-              <p style="margin: 32px 0 8px; font-size: 15px;">已在系统浏览器中打开百度网盘授权页面</p>
-              <p style="color: var(--color-text-3); font-size: 13px;">请在浏览器中完成登录，授权后将自动跳转回应用</p>
-              <a-button style="margin-top: 16px;" @click="handleReopenBaidu">重新打开浏览器</a-button>
+              <p style="margin: 32px 0 8px; font-size: 15px;">{{ t('login.browserOpenedPrefix') }}百度网盘{{ t('login.authPageSuffix') }}</p>
+              <p style="color: var(--color-text-3); font-size: 13px;">{{ t('login.browserContinue') }}</p>
+              <a-button style="margin-top: 16px;" @click="handleReopenBaidu">{{ t('login.reopenBrowser') }}</a-button>
             </div>
           </div>
         </div>
@@ -1348,7 +1388,7 @@ const loginSuccess = (token: ITokenInfo) => {
       <div v-else-if="loginProvider === 'quark'">
         <div id='logindiv'>
           <div class='logincontent quark-logincontent'>
-            <a-spin class="loading" :size="32" v-if='loginLoading' tip="加载中，请稍后..." />
+            <a-spin class="loading" :size="32" v-if='loginLoading' :tip="t('common.loading')" />
             <div class="qrcodeframe" v-if="!loginLoading">
               <a-image
                 width='250'
@@ -1365,7 +1405,7 @@ const loginSuccess = (token: ITokenInfo) => {
               </a-alert>
             </div>
             <div class="quark-login-toolbar" v-if="!loginLoading">
-              <a-button type="primary" :loading="quarkLoading" @click="handleOpenQuark">刷新二维码</a-button>
+              <a-button type="primary" :loading="quarkLoading" @click="handleOpenQuark">{{ t('login.refreshQrCode') }}</a-button>
             </div>
           </div>
         </div>
@@ -1375,9 +1415,9 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div class="browser-login-hint">
-              <p style="margin: 32px 0 8px; font-size: 15px;">已在系统浏览器中打开 Dropbox 授权页面</p>
-              <p style="color: var(--color-text-3); font-size: 13px;">请在浏览器中完成登录，授权后将自动跳转回应用</p>
-              <a-button style="margin-top: 16px;" :loading="dropboxLoading" @click="handleReopenDropbox">重新打开浏览器</a-button>
+              <p style="margin: 32px 0 8px; font-size: 15px;">{{ t('login.browserOpenedPrefix') }} Dropbox {{ t('login.authPageSuffix') }}</p>
+              <p style="color: var(--color-text-3); font-size: 13px;">{{ t('login.browserContinue') }}</p>
+              <a-button style="margin-top: 16px;" :loading="dropboxLoading" @click="handleReopenDropbox">{{ t('login.reopenBrowser') }}</a-button>
             </div>
           </div>
         </div>
@@ -1387,9 +1427,9 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div class="browser-login-hint">
-              <p style="margin: 32px 0 8px; font-size: 15px;">已在系统浏览器中打开 OneDrive 授权页面</p>
-              <p style="color: var(--color-text-3); font-size: 13px;">请在浏览器中完成登录，授权后将自动跳转回应用</p>
-              <a-button style="margin-top: 16px;" :loading="onedriveLoading" @click="handleReopenOneDrive">重新打开浏览器</a-button>
+              <p style="margin: 32px 0 8px; font-size: 15px;">{{ t('login.browserOpenedPrefix') }} OneDrive {{ t('login.authPageSuffix') }}</p>
+              <p style="color: var(--color-text-3); font-size: 13px;">{{ t('login.browserContinue') }}</p>
+              <a-button style="margin-top: 16px;" :loading="onedriveLoading" @click="handleReopenOneDrive">{{ t('login.reopenBrowser') }}</a-button>
             </div>
           </div>
         </div>
@@ -1399,9 +1439,25 @@ const loginSuccess = (token: ITokenInfo) => {
         <div id='logindiv'>
           <div class='logincontent'>
             <div class="browser-login-hint">
-              <p style="margin: 32px 0 8px; font-size: 15px;">已在系统浏览器中打开 Box 授权页面</p>
-              <p style="color: var(--color-text-3); font-size: 13px;">请在浏览器中完成登录，授权后将自动跳转回应用</p>
-              <a-button style="margin-top: 16px;" :loading="boxLoading" @click="handleReopenBox">重新打开浏览器</a-button>
+              <p style="margin: 32px 0 8px; font-size: 15px;">{{ t('login.browserOpenedPrefix') }} Box {{ t('login.authPageSuffix') }}</p>
+              <p style="color: var(--color-text-3); font-size: 13px;">{{ t('login.browserContinue') }}</p>
+              <a-button style="margin-top: 16px;" :loading="boxLoading" @click="handleReopenBox">{{ t('login.reopenBrowser') }}</a-button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="loginProvider === 'webdav' || loginProvider === 'alist'">
+        <div id='logindiv'>
+          <div class='logincontent'>
+            <div class="remote-drive-login-form">
+              <a-input v-model="remoteDriveForm.name" :placeholder="loginProvider === 'alist' ? '名称，例如：家庭 AList' : '名称，例如：NAS 影视库'" allow-clear />
+              <a-input v-model="remoteDriveForm.url" :placeholder="loginProvider === 'alist' ? 'AList 地址，例如：http://127.0.0.1:5244' : 'WebDAV 地址，例如：https://example.com/dav'" allow-clear />
+              <a-input v-model="remoteDriveForm.username" placeholder="用户名" allow-clear />
+              <a-input-password v-model="remoteDriveForm.password" placeholder="密码" allow-clear @press-enter="submitRemoteDrive" />
+              <a-input v-model="remoteDriveForm.rootPath" placeholder="挂载路径，默认 /" allow-clear />
+              <p class="remote-drive-hint">连接后会切换到当前网盘，可直接浏览文件夹，并通过文件夹菜单扫描或重新刮削。</p>
+              <a-button type="primary" long :loading="remoteDriveLoading" @click="submitRemoteDrive">连接并打开网盘</a-button>
             </div>
           </div>
         </div>
@@ -1553,6 +1609,20 @@ const loginSuccess = (token: ITokenInfo) => {
   overflow: hidden;
 }
 
+.login-provider-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  color: rgb(var(--primary-6));
+  background: rgba(var(--primary-6), 0.12);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .login-provider-heading-icon {
   width: 22px;
   height: 22px;
@@ -1604,6 +1674,22 @@ const loginSuccess = (token: ITokenInfo) => {
   gap: 12px;
   width: 300px;
   margin: 64px auto 0;
+}
+
+.remote-drive-login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  margin: 28px auto 0;
+  text-align: left;
+}
+
+.remote-drive-hint {
+  margin: 2px 0 4px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .quark-logincontent {

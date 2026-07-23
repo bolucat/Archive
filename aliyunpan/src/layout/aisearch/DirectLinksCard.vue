@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertCircle, CheckCircle, Link2, Loader2 } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'running' | 'done' | 'error'
@@ -13,25 +14,25 @@ defineProps<{
   <div class="dl-card">
     <div v-if="state === 'running'" class="dl-status">
       <Loader2 :size="14" :stroke-width="2" class="dl-spin" />
-      <span>正在导出 {{ input?.files?.length || 0 }} 个选中项的直链...</span>
+      <span>{{ t('ai.card.exportingDirectLinks') }} {{ input?.files?.length || 0 }} {{ t('ai.card.selectedItems') }}...</span>
     </div>
 
     <div v-else-if="state === 'done'" class="dl-result">
       <CheckCircle :size="16" :stroke-width="1.5" />
       <div class="dl-body">
-        <div>直链导出完成：{{ output?.success || 0 }}/{{ output?.total || 0 }}{{ output?.failed ? `，${output.failed} 失败` : '' }}</div>
+        <div>{{ t('ai.card.directLinksExported') }}: {{ output?.success || 0 }}/{{ output?.total || 0 }}{{ output?.failed ? `，${output.failed} ${t('footer.failed')}` : '' }}</div>
         <textarea class="dl-textarea" :value="output?.text || ''" readonly />
       </div>
     </div>
 
     <div v-else class="dl-status dl-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>{{ error || '直链导出失败' }}</span>
+      <span>{{ error || t('ai.card.directLinksExportFailed') }}</span>
     </div>
 
     <div v-if="state === 'done'" class="dl-footer">
       <Link2 :size="13" :stroke-width="1.5" />
-      <span>{{ input?.format === 'aria2' ? 'aria2 格式' : 'URL 列表' }}</span>
+      <span>{{ input?.format === 'aria2' ? t('ai.card.aria2Format') : t('ai.card.urlList') }}</span>
     </div>
   </div>
 </template>

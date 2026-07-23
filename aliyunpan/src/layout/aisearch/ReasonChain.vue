@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ChevronRight, ListChecks } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{ text: string }>()
 const open = ref(true)
@@ -11,7 +12,7 @@ const open = ref(true)
     <button class="reason-header" @click="open = !open">
       <ChevronRight :size="12" :stroke-width="2" class="reason-chevron" :class="{ open }" />
       <ListChecks :size="14" :stroke-width="1.5" />
-      <span>历史执行说明</span>
+      <span>{{ t('ai.card.executionNotes') }}</span>
     </button>
     <div v-show="open" class="reason-body">{{ text }}</div>
   </div>

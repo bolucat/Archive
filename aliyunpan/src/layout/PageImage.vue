@@ -8,6 +8,7 @@ import axios from 'axios'
 import message from '../utils/message'
 import { getEncType, getProxyUrl } from '../utils/proxyhelper'
 import { TestAlt, TestKey } from '../utils/keyboardhelper'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 const pageImage = appStore.pageImage!
@@ -103,7 +104,7 @@ const onKeyDown = (event: any) => {
 const goLastImage = () => {
   const fileIndex = showIndex.value - 1
   if (fileIndex < 0) {
-    message.info('已经是第一张图片了')
+    message.info(t('image.first'))
   } else {
     showIndex.value = fileIndex
     showImage()
@@ -113,7 +114,7 @@ const goNextImage = () => {
   const imageList = rawImageList.value
   const fileIndex = showIndex.value + 1
   if (fileIndex >= imageList.length) {
-    message.info('已经是最后一张图片了')
+    message.info(t('image.last'))
   } else {
     showIndex.value = fileIndex
     showImage()
@@ -134,7 +135,7 @@ const modeChange = (mode: string) => {
 }
 
 onMounted(() => {
-  const name = pageImage.file_name || '图片在线预览'
+  const name = pageImage.file_name || t('image.preview')
   document.title = name
   window.addEventListener('keydown', onKeyDown, true)
 
@@ -335,13 +336,13 @@ function getImageUrl(item: OneImageModel) {
         </a-button>
         <div class="title">{{ showName }}</div>
         <div class="flexauto"></div>
-        <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
+        <a-button type='text' tabindex='-1' :title="t('common.minimize') + ' Alt+M'" @click='handleMinClick'>
           <IconFont name="iconzuixiaohua" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
+        <a-button type='text' tabindex='-1' :title="t('common.maximize') + ' Alt+Enter'" @click='handleMaxClick'>
           <IconFont name="iconfullscreen" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
+        <a-button type='text' tabindex='-1' :title="t('common.close') + ' Alt+F4'" @click='handleHideClick'>
           <IconFont name="iconclose" />
         </a-button>
       </div>
@@ -350,16 +351,16 @@ function getImageUrl(item: OneImageModel) {
       <div class="toppanbtns" style="margin-bottom: 8px">
         <div class="flexauto"></div>
         <div class="toppanbtn">
-          <a-button type="text" tabindex="-1" @click="modeChange('fill')"> 相册模式</a-button>
+          <a-button type="text" tabindex="-1" @click="modeChange('fill')"> {{ t('image.albumMode') }}</a-button>
         </div>
         <div class="toppanbtn">
-          <a-button type="text" tabindex="-1" @click="goRefreshImage"><IconFont name="iconreload-1-icon" />刷新
+          <a-button type="text" tabindex="-1" @click="goRefreshImage"><IconFont name="iconreload-1-icon" />{{ t('user.refresh') }}
           </a-button>
         </div>
         <div class="toppanbtn">
-          <a-button type="text" tabindex="-1" @click="goLastImage"><IconFont name="iconarrow-left-2-icon" />上一张
+          <a-button type="text" tabindex="-1" @click="goLastImage"><IconFont name="iconarrow-left-2-icon" />{{ t('image.previous') }}
           </a-button>
-          <a-button type="text" tabindex="-1" @click="goNextImage"><IconFont name="iconarrow-right-2-icon" />下一张
+          <a-button type="text" tabindex="-1" @click="goNextImage"><IconFont name="iconarrow-right-2-icon" />{{ t('image.next') }}
           </a-button>
         </div>
       </div>

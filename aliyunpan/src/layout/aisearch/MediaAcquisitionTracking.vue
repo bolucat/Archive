@@ -2,6 +2,7 @@
 import { BellRing, CheckCircle2, CircleDotDashed, RefreshCw, SearchCheck, X } from 'lucide-vue-next'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import message from '../../utils/message'
+import { t } from '../../i18n'
 import { endMediaAcquisitionTracking, listMediaAcquisitionTracking } from '../../services/mediaAcquisition/client'
 import { runMediaAcquisitionTrackingPatrol } from '../../services/mediaAcquisition/workflowRunner'
 import type { MediaAcquisitionTrackingItem } from '@shared/types/mediaAcquisition'
@@ -17,7 +18,7 @@ async function refresh() {
   try {
     items.value = (await listMediaAcquisitionTracking(100)).filter(item => item.status !== 'ended')
   } catch (error: any) {
-    message.error(error?.message || '读取追更状态失败')
+    message.error(error?.message || t('ai.media.tracking.readFailed'))
   } finally {
     loading.value = false
   }
@@ -28,9 +29,9 @@ async function patrol(trackingId?: string) {
   try {
     await runMediaAcquisitionTrackingPatrol({ force: true, trackingId })
     await refresh()
-    message.success(trackingId ? '本季巡检完成' : '全部追更巡检完成')
+    message.success(trackingId ? t('ai.media.tracking.seasonDone') : t('ai.media.tracking.allDone'))
   } catch (error: any) {
-    message.error(error?.message || '追更巡检失败')
+    message.error(error?.message || t('ai.media.tracking.patrolFailed'))
   } finally {
     patrolling.value = false
   }
@@ -41,16 +42,20 @@ async function endTracking(id: string) {
   try {
     await endMediaAcquisitionTracking(id)
     await refresh()
-    message.success('已取消追更，网盘文件不会删除')
+    message.success(t('ai.media.tracking.cancelSuccess'))
   } catch (error: any) {
-    message.error(error?.message || '取消追更失败')
+    message.error(error?.message || t('ai.media.tracking.cancelFailed'))
   } finally {
     endingId.value = ''
   }
 }
 
 function checkTime(value?: number) {
-  return value ? new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '等待首次巡检'
+  return value ? new Date(value).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : t('ai.media.tracking.waitFirstCheck')
+}
+
+function trackingStatusLabel(item: MediaAcquisitionTrackingItem) {
+  return item.status === 'complete' ? t('ai.media.tracking.complete') : item.missingEpisodes.length ? t('ai.media.tracking.waiting') : t('ai.media.tracking.tracking')
 }
 
 onMounted(() => {
@@ -63,16 +68,16 @@ onBeforeUnmount(() => timer && clearInterval(timer))
 <template>
   <section class="tracking-page">
     <header class="tracking-head">
-      <div><span>MEDIA ACQUISITION</span><h2>追更</h2><p>只补全已经播出但尚未入库的剧集，未来集不会计入缺集。</p></div>
-      <div class="tracking-tools"><button type="button" :disabled="patrolling" title="立即巡检全部追更" @click="patrol()"><SearchCheck :size="16" :class="{ spin: patrolling }" /></button><button type="button" :disabled="loading" title="刷新追更状态" @click="refresh"><RefreshCw :size="16" :class="{ spin: loading }" /></button></div>
+      <div><span>MEDIA ACQUISITION</span><h2>{{ t('ai.media.tracking.title') }}</h2><p>{{ t('ai.media.tracking.subtitle') }}</p></div>
+      <div class="tracking-tools"><button type="button" :disabled="patrolling" :title="t('ai.media.tracking.patrolAllTitle')" @click="patrol()"><SearchCheck :size="16" :class="{ spin: patrolling }" /></button><button type="button" :disabled="loading" :title="t('ai.media.tracking.refreshTitle')" @click="refresh"><RefreshCw :size="16" :class="{ spin: loading }" /></button></div>
     </header>
-    <div v-if="!items.length && !loading" class="tracking-empty"><BellRing :size="26" /><strong>还没有追更任务</strong><span>为电视剧创建获取任务后，会自动显示在这里。</span></div>
+    <div v-if="!items.length && !loading" class="tracking-empty"><BellRing :size="26" /><strong>{{ t('ai.media.tracking.emptyTitle') }}</strong><span>{{ t('ai.media.tracking.emptyDesc') }}</span></div>
     <div v-else class="tracking-list">
       <article v-for="item in items" :key="item.id" class="tracking-card">
         <CheckCircle2 v-if="item.status === 'complete'" :size="22" class="complete" />
         <CircleDotDashed v-else :size="22" class="active" />
-        <div class="tracking-main"><strong>{{ item.title }} · 第 {{ item.seasonNumber }} 季</strong><p>获取 / 已播 / 总集：{{ item.obtainedEpisodes }}/{{ item.latestAiredEpisode || '?' }}/{{ item.totalEpisodes || '?' }} <template v-if="item.missingEpisodes.length">· 缺 E{{ item.missingEpisodes.join('、E') }}</template><template v-else-if="item.status === 'tracking'">· 已追至最新</template></p><small>下次巡检：{{ checkTime(item.nextCheckAt) }}</small></div>
-        <div class="tracking-actions"><span :class="['tracking-status', item.status]">{{ item.status === 'complete' ? '本季完整' : item.missingEpisodes.length ? '等待补全' : '追更中' }}</span><button type="button" title="立即巡检本季" :disabled="patrolling" @click="patrol(item.id)"><SearchCheck :size="14" /></button><a-popconfirm content="取消追更不会删除网盘文件，确定继续？" @ok="endTracking(item.id)"><button type="button" title="取消追更" :disabled="endingId === item.id"><X :size="14" /></button></a-popconfirm></div>
+        <div class="tracking-main"><strong>{{ item.title }} · {{ t('ai.media.tracking.season', { number: item.seasonNumber }) }}</strong><p>{{ t('ai.media.tracking.stats', { obtained: item.obtainedEpisodes, aired: item.latestAiredEpisode || '?', total: item.totalEpisodes || '?' }) }} <template v-if="item.missingEpisodes.length">· {{ t('ai.media.tracking.missing', { episodes: item.missingEpisodes.join('、E') }) }}</template><template v-else-if="item.status === 'tracking'">· {{ t('ai.media.tracking.upToDate') }}</template></p><small>{{ t('ai.media.tracking.nextCheck') }}{{ checkTime(item.nextCheckAt) }}</small></div>
+        <div class="tracking-actions"><span :class="['tracking-status', item.status]">{{ trackingStatusLabel(item) }}</span><button type="button" :title="t('ai.media.tracking.patrolSeasonTitle')" :disabled="patrolling" @click="patrol(item.id)"><SearchCheck :size="14" /></button><a-popconfirm :content="t('ai.media.tracking.cancelConfirm')" @ok="endTracking(item.id)"><button type="button" :title="t('ai.media.tracking.cancelTitle')" :disabled="endingId === item.id"><X :size="14" /></button></a-popconfirm></div>
       </article>
     </div>
   </section>

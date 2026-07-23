@@ -5,6 +5,7 @@ import { getUserDataPath } from '../utils/electronhelper'
 import { useAppStore } from '../store'
 import PanDAL from '../pan/pandal'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { detectSystemLocale } from '../i18n'
 import {
   DEFAULT_MEDIA_SERVER_CUSTOM_DEVICE_PROFILE,
   isMediaServerBitrateTestSize,
@@ -28,6 +29,7 @@ export interface DanmakuApiSetting {
 
 export interface SettingState {
   // 应用设置
+  uiLanguage: 'zh-CN' | 'en-US'
   uiTheme: string
   uiDefaultTab: string
   uiHiddenTopTabs: string[]
@@ -242,6 +244,7 @@ export interface SettingState {
 
 const setting: SettingState = {
   // 应用设置
+  uiLanguage: detectSystemLocale(),
   uiTheme: 'system',
   uiDefaultTab: 'pan',
   uiHiddenTopTabs: [],
@@ -252,7 +255,7 @@ const setting: SettingState = {
   uiLaunchStart: false,
   uiLaunchStartShow: false,
   uiUpdateProxyEnable: false,
-  uiUpdateProxyUrl: 'https://mirror.ghproxy.com',
+  uiUpdateProxyUrl: 'https://gh-proxy.com',
 
   // 账户设置
   uiEnableOpenApiType: 'inline',
@@ -464,6 +467,7 @@ const setting: SettingState = {
 function _loadSetting(val: any) {
   console.log('_loadSetting', val)
   // 应用设置
+  setting.uiLanguage = defaultValue(val.uiLanguage, ['zh-CN', 'en-US'], detectSystemLocale()) as SettingState['uiLanguage']
   setting.uiTheme = defaultValue(val.uiTheme, ['system', 'light', 'dark'])
   setting.uiDefaultTab = defaultValue(val.uiDefaultTab, ['pan', 'media', 'media-server', 'music'])
   setting.uiHiddenTopTabs = Array.isArray(val.uiHiddenTopTabs) ? val.uiHiddenTopTabs.filter((tab: unknown) => typeof tab === 'string' && ['media-server', 'search', 'ai-workspace', 'media', 'music', 'book', 'share', 'rss'].includes(tab)) : []
@@ -474,7 +478,7 @@ function _loadSetting(val: any) {
   setting.uiLaunchStart = defaultBool(val.uiLaunchStart, false)
   setting.uiLaunchStartShow = defaultBool(val.uiLaunchStartShow, false)
   setting.uiUpdateProxyEnable = defaultBool(val.uiUpdateProxyEnable, false)
-  setting.uiUpdateProxyUrl = defaultString(val.uiUpdateProxyUrl, 'https://mirror.ghproxy.com')
+  setting.uiUpdateProxyUrl = defaultString(val.uiUpdateProxyUrl, 'https://gh-proxy.com')
 
   // 账户设置
   setting.uiEnableOpenApiType = defaultValue(val.uiEnableOpenApiType, ['inline', 'custom'])
@@ -717,9 +721,9 @@ export function LoadSetting() {
   return setting
 }
 
-function defaultValue(val: any, check: any[]) {
+function defaultValue(val: any, check: any[], fallback = check[0]) {
   if (val && check.includes(val)) return val
-  return check[0]
+  return fallback
 }
 
 function defaultString(val: any, check: string) {

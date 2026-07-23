@@ -13,6 +13,7 @@ import { applySkullPointBuffer, createSkullPreset, SKULL_PRESET_ASSET } from '..
 import { getParticleDensityScale, getRenderPixelRatio } from '../../utils/radio/RenderPerformanceManager'
 import type { LyricLine } from '../../utils/musicMetadata'
 import { getAudioAnalyser } from '../../module/audioplayer'
+import { t as tt } from '../../i18n'
 
 type OfflineBeatMap = {
   mode: 'mr' | 'dj'
@@ -1267,20 +1268,20 @@ onBeforeUnmount(() => {
       <span>{{ shelfCenterIndex + 1 }} / {{ shelfCards?.length || 0 }}</span>
       <strong>{{ shelfCenterCard.title }}</strong>
       <small>{{ shelfCenterCard.subtitle }}</small>
-      <button type="button" @click.stop="playShelfCenterCard">播放</button>
+      <button type="button" @click.stop="playShelfCenterCard">{{ tt('music.play') }}</button>
     </div>
 
     <div v-show="!showLyrics" class="music-cover-wrap">
       <div class="music-stage-copy">
-        <div class="music-stage-title">{{ title || '未在播放' }}</div>
-        <div class="music-stage-artist">{{ artist || '未知艺人' }}</div>
+        <div class="music-stage-title">{{ title || tt('music.notPlaying') }}</div>
+        <div class="music-stage-artist">{{ artist || tt('music.unknownArtist') }}</div>
       </div>
     </div>
 
     <div v-show="showLyrics" :class="['music-lyric-stage', fx.lyricGlowEnabled ? 'lyric-glow-on' : 'lyric-glow-off']" :style="lyricStageStyle">
       <div v-if="!hasLyrics && !metaLoad" class="music-lyric-empty">
         <FileText :size="34" :stroke-width="1.2" />
-        <span>暂未找到歌词</span>
+        <span>{{ tt('music.noLyricsFound') }}</span>
         <small v-if="lyricDebugText" :title="lyricDebugTitle">{{ lyricDebugText }}</small>
       </div>
       <div v-else ref="lyricRef" class="music-lyric-scroll">

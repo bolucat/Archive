@@ -10,6 +10,7 @@ import MediaAcquisitionTasks from './aisearch/MediaAcquisitionTasks.vue'
 import MediaAcquisitionTracking from './aisearch/MediaAcquisitionTracking.vue'
 import { listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionTracking } from '../services/mediaAcquisition/client'
 import type { WorkspaceDocumentContext } from './aisearch/useAISearchChat'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 migrateSoleSavedBYOKAsDefault()
@@ -86,10 +87,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="ai-workspace-page">
     <div class="ai-workspace-view-switcher">
-      <button type="button" :class="{ active: activeView === 'chat' }" @click="activeView = 'chat'">智能工作台</button>
-      <button type="button" :class="{ active: activeView === 'mediaTasks' }" @click="activeView = 'mediaTasks'">活动<span v-if="activeTaskCount" class="workspace-badge">{{ activeTaskCount }}</span></button>
-      <button type="button" :class="{ active: activeView === 'tracking' }" @click="activeView = 'tracking'">追更<span v-if="trackingCount" class="workspace-badge">{{ trackingCount }}</span></button>
-      <button type="button" :class="{ active: activeView === 'notifications' }" @click="activeView = 'notifications'">通知<span v-if="unreadNotificationCount" class="workspace-badge unread">{{ unreadNotificationCount }}</span></button>
+      <button type="button" :title="t('ai.workspace')" :class="{ active: activeView === 'chat' }" @click="activeView = 'chat'">{{ t('ai.workspace') }}</button>
+      <button type="button" :title="t('ai.activities')" :class="{ active: activeView === 'mediaTasks' }" @click="activeView = 'mediaTasks'">{{ t('ai.activities') }}<span v-if="activeTaskCount" class="workspace-badge">{{ activeTaskCount }}</span></button>
+      <button type="button" :title="t('ai.tracking')" :class="{ active: activeView === 'tracking' }" @click="activeView = 'tracking'">{{ t('ai.tracking') }}<span v-if="trackingCount" class="workspace-badge">{{ trackingCount }}</span></button>
+      <button type="button" :title="t('ai.notifications')" :class="{ active: activeView === 'notifications' }" @click="activeView = 'notifications'">{{ t('ai.notifications') }}<span v-if="unreadNotificationCount" class="workspace-badge unread">{{ unreadNotificationCount }}</span></button>
     </div>
     <div class="ai-workspace-content with-view-switcher">
       <AISearchAgent v-if="activeView === 'chat'" :ai-enabled="aiEnabled" :document-context="documentContext" @search-resource="openPanHubSearch" />
@@ -106,8 +107,14 @@ onBeforeUnmount(() => {
 .ai-workspace-content.with-view-switcher { box-sizing: border-box; padding-top: 50px; }
 .ai-workspace-view-switcher { position: absolute; z-index: 3; top: 14px; right: 22px; display: flex; max-width: calc(100% - 44px); height: 30px; min-height: 30px; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; padding: 3px; border: 1px solid var(--color-border-2); border-radius: 7px; background: var(--color-bg-2); scrollbar-width: none; }
 .ai-workspace-view-switcher::-webkit-scrollbar { display: none; }
-.ai-workspace-view-switcher button { display: inline-flex; flex: 0 0 auto; height: 22px; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; border: 0; border-radius: 4px; color: var(--color-text-3); background: transparent; cursor: pointer; font-size: 12px; line-height: 1; white-space: nowrap; }
+.ai-workspace-view-switcher button { display: inline-flex; flex: 0 0 auto; max-width: 86px; height: 22px; align-items: center; justify-content: center; gap: 5px; overflow: hidden; padding: 0 9px; border: 0; border-radius: 4px; color: #fff; background: transparent; cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .ai-workspace-view-switcher button.active { color: var(--color-text-1); background: var(--color-fill-2); }
 .workspace-badge { display: inline-flex; min-width: 16px; height: 16px; align-items: center; justify-content: center; padding: 0 5px; border-radius: 999px; color: var(--color-text-1); background: var(--color-fill-3); font-size: 10px; line-height: 1; }
 .workspace-badge.unread { color: #fff; background: rgb(var(--danger-6)); }
+</style>
+
+<style>
+body:not([arco-theme='dark']) .ai-workspace-view-switcher button {
+  color: #111827;
+}
 </style>

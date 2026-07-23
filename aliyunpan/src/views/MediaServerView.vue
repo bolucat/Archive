@@ -5,7 +5,7 @@
         <div class="media-server-sidebar">
           <div class="media-server-nav">
             <button type="button" class="media-server-title" @click="navigation.openRegistry()">
-              <h2>媒体服务器</h2>
+              <h2>{{ t('mediaServer.title') }}</h2>
             </button>
             <MediaServerNavSection @navigate="handleNavigate" />
           </div>
@@ -28,6 +28,7 @@ import MediaServerNavSection from '../components/media-server/MediaServerNavSect
 import useMediaServerNavigationStore from '../store/mediaServerNavigation'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import type { MediaServerRoute } from '../types/mediaServer'
+import { t } from '../i18n'
 
 const props = defineProps<{
   navVisible?: boolean

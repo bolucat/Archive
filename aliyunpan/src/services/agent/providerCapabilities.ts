@@ -17,7 +17,7 @@ export type { DriveCapability, CapabilityVerification, ProviderCapabilityEvidenc
 const webdav = defineProviderCapabilities({
   platform: 'webdav', name: 'WebDAV',
   capabilities: { ...commonDriveCapabilities, search: false, upload: false, createFolder: false, rename: false, move: false, copy: false, share: false },
-  notes: ['工作台仅将 WebDAV 用于扫描和读取；写操作需在网盘界面完成。'],
+  notes: ['WebDAV 与 AList 在 BoxPlayer 中仅用于浏览、下载、播放、扫描和刮削，不支持任何写操作。'],
   evidence: { list: { status: 'implemented', implementation: 'src/utils/webdavClient.ts' } }
 })
 
@@ -29,6 +29,7 @@ export const PROVIDER_CAPABILITIES: Record<string, ProviderCapabilityManifest> =
 
 export function normalizeProviderPlatform(platform?: string): string {
   const value = String(platform || '').toLowerCase()
+  if (value === 'alist') return 'webdav'
   if (value === '123') return 'cloud123'
   if (value === '139') return 'cloud139'
   if (value === '189') return 'cloud189'

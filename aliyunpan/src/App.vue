@@ -1,5 +1,9 @@
 <script lang="ts">
-import { h, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
+import { ConfigProvider } from '@arco-design/web-vue'
+import enUS from '@arco-design/web-vue/es/locale/lang/en-us'
+import zhCN from '@arco-design/web-vue/es/locale/lang/zh-cn'
+import { useLocale } from './i18n'
 import { useAppStore } from './store'
 import PageLoading from './layout/PageLoading.vue'
 import PageMain from './layout/PageMain.vue'
@@ -31,6 +35,8 @@ const PAGE_LOADING_SPLASH_MIN_MS = 1200
 export default {
   setup() {
     const appStore = useAppStore()
+    const locale = useLocale()
+    const arcoLocale = computed(() => locale.value === 'en-US' ? enUS : zhCN)
     const showStartupSplash = shouldShowPageLoadingSplash()
     const splashReady = ref(!showStartupSplash)
 
@@ -42,23 +48,25 @@ export default {
     })
 
     return () => {
-      if (!splashReady.value) return h(PageLoading)
-      if (appStore.appPage == 'PageMain') return h(PageMain)
-      if (appStore.appPage == 'PageOffice') return h(PageOffice)
-      if (appStore.appPage == 'PagePdf') return h(PagePdf)
-      if (appStore.appPage == 'PageEpub') return h(PageEpub)
-      if (appStore.appPage == 'PageBookReader') return h(PageBookReader)
-      if (appStore.appPage == 'PageDocx') return h(PageDocx)
-      if (appStore.appPage == 'PageSheet') return h(PageSheet)
-      if (appStore.appPage == 'PageVideoXBT') return h(PageVideoXBTVue)
-      if (appStore.appPage == 'PageCode') return h(PageCode)
-      if (appStore.appPage == 'PageImage') return h(PageImage)
-      if (appStore.appPage == 'PageVideo') return h(PageVideo)
-      if (appStore.appPage == 'PageMusic') return h(PageMusic)
-      if (appStore.appPage == 'PageLyric') return h(PageLyric)
-      if (appStore.appPage == 'PageWorker') return h(PageWorker)
-      if (shouldShowPageLoadingSplash()) return h(PageLoading)
-      return h('div', { class: 'desktop-loading-empty' })
+      let page
+      if (!splashReady.value) page = h(PageLoading)
+      else if (appStore.appPage == 'PageMain') page = h(PageMain)
+      else if (appStore.appPage == 'PageOffice') page = h(PageOffice)
+      else if (appStore.appPage == 'PagePdf') page = h(PagePdf)
+      else if (appStore.appPage == 'PageEpub') page = h(PageEpub)
+      else if (appStore.appPage == 'PageBookReader') page = h(PageBookReader)
+      else if (appStore.appPage == 'PageDocx') page = h(PageDocx)
+      else if (appStore.appPage == 'PageSheet') page = h(PageSheet)
+      else if (appStore.appPage == 'PageVideoXBT') page = h(PageVideoXBTVue)
+      else if (appStore.appPage == 'PageCode') page = h(PageCode)
+      else if (appStore.appPage == 'PageImage') page = h(PageImage)
+      else if (appStore.appPage == 'PageVideo') page = h(PageVideo)
+      else if (appStore.appPage == 'PageMusic') page = h(PageMusic)
+      else if (appStore.appPage == 'PageLyric') page = h(PageLyric)
+      else if (appStore.appPage == 'PageWorker') page = h(PageWorker)
+      else if (shouldShowPageLoadingSplash()) page = h(PageLoading)
+      else page = h('div', { class: 'desktop-loading-empty' })
+      return h(ConfigProvider, { locale: arcoLocale.value }, () => page)
     }
   }
 }

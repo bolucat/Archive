@@ -1,8 +1,8 @@
 <template>
   <a-modal
     :visible="visible"
-    :title="editingServer ? `编辑 ${serverTypeTitle}` : `添加 ${serverTypeTitle}`"
-    :ok-text="editingServer ? '保存' : '连接'"
+    :title="editingServer ? t('mediaServer.editServer', { type: serverTypeTitle }) : t('mediaServer.addServer', { type: serverTypeTitle })"
+    :ok-text="editingServer ? t('common.save') : t('mediaServer.connect')"
     width="980px"
     modal-class="media-server-modal"
     :ok-loading="loading"
@@ -15,7 +15,7 @@
           <div class="section-title">{{ serverTypeTitle }}</div>
 
           <div class="field-row">
-            <div class="field-label">类型</div>
+            <div class="field-label">{{ t('mediaServer.formType') }}</div>
             <a-select v-model="form.type" class="field-input">
               <a-option value="jellyfin">Jellyfin</a-option>
               <a-option value="emby">Emby</a-option>
@@ -24,30 +24,30 @@
           </div>
 
           <div class="field-row">
-            <div class="field-label">名称</div>
-            <a-input v-model="form.name" class="field-input" placeholder="可选" allow-clear />
+            <div class="field-label">{{ t('mediaServer.name') }}</div>
+            <a-input v-model="form.name" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
           </div>
 
           <div class="field-row">
-            <div class="field-label">备注</div>
-            <a-input v-model="form.notes" class="field-input" placeholder="可选" allow-clear />
+            <div class="field-label">{{ t('mediaServer.notes') }}</div>
+            <a-input v-model="form.notes" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
           </div>
         </div>
 
         <div class="form-section panel-card">
-          <div class="section-title">登录信息</div>
+          <div class="section-title">{{ t('mediaServer.loginInfo') }}</div>
 
           <div class="field-row">
-            <div class="field-label">用户名</div>
-            <a-input v-model="form.username" class="field-input" placeholder="可选" allow-clear />
+            <div class="field-label">{{ t('mediaServer.username') }}</div>
+            <a-input v-model="form.username" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
           </div>
 
           <div class="field-row">
-            <div class="field-label">密码</div>
+            <div class="field-label">{{ t('mediaServer.password') }}</div>
             <a-input-password
               v-model="form.password"
               class="field-input"
-              placeholder="可选"
+              :placeholder="t('mediaServer.optional')"
               allow-clear
               :visibility="showPassword"
               @visibility-change="showPassword = $event"
@@ -61,22 +61,22 @@
         </div>
 
         <div class="form-section panel-card panel-wide">
-          <div class="section-title">服务器地址</div>
+          <div class="section-title">{{ t('mediaServer.serverAddress') }}</div>
 
           <div class="address-grid">
             <div class="field-row">
-              <div class="field-label">主机</div>
-              <a-input v-model="form.host" class="field-input" placeholder="必填，例如 demo.example.com" allow-clear />
+              <div class="field-label">{{ t('mediaServer.host') }}</div>
+              <a-input v-model="form.host" class="field-input" :placeholder="t('mediaServer.hostPlaceholder')" allow-clear />
             </div>
 
             <div class="field-row">
-              <div class="field-label">路径</div>
-              <a-input v-model="form.path" class="field-input" placeholder="可选，例如 /jellyfin" allow-clear />
+              <div class="field-label">{{ t('mediaServer.path') }}</div>
+              <a-input v-model="form.path" class="field-input" :placeholder="t('mediaServer.pathPlaceholder')" allow-clear />
             </div>
 
             <div class="field-row">
-              <div class="field-label">端口</div>
-              <a-input v-model="form.port" class="field-input" placeholder="可选" allow-clear />
+              <div class="field-label">{{ t('mediaServer.port') }}</div>
+              <a-input v-model="form.port" class="field-input" :placeholder="t('mediaServer.optional')" allow-clear />
             </div>
 
             <div class="field-row switch-row">
@@ -87,17 +87,17 @@
 
           <div class="backup-block">
             <div class="backup-header">
-              <div class="section-subtitle">备份服务器</div>
+              <div class="section-subtitle">{{ t('mediaServer.backupServers') }}</div>
               <a-button type="outline" size="small" class="backup-add-btn" @click="addBackupAddress">
                 <template #icon><IconFont name="iconadd" /></template>
-                新增地址
+                {{ t('mediaServer.addAddress') }}
               </a-button>
             </div>
 
-            <div v-if="form.backupAddresses.length === 0" class="backup-empty">暂未添加备份服务器</div>
+            <div v-if="form.backupAddresses.length === 0" class="backup-empty">{{ t('mediaServer.noBackupServers') }}</div>
 
             <div v-for="(item, index) in form.backupAddresses" :key="index" class="backup-row">
-              <a-input v-model="item.name" class="backup-name" placeholder="名称" allow-clear />
+              <a-input v-model="item.name" class="backup-name" :placeholder="t('mediaServer.name')" allow-clear />
               <a-input v-model="item.url" class="backup-url" placeholder="http://127.0.0.1:8096" allow-clear />
               <a-button type="text" status="danger" size="mini" @click="removeBackupAddress(index)">
                 <template #icon><IconFont name="icondelete" /></template>
@@ -114,6 +114,7 @@
 import { computed, reactive, ref, watch } from 'vue'
 import message from '../../utils/message'
 import type { MediaServerConfig, MediaServerType } from '../../types/mediaServer'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   visible: boolean
@@ -266,7 +267,7 @@ const buildBaseUrl = () => {
 
 const handleSubmit = () => {
   if (!form.host.trim()) {
-    message.error('请填写服务器主机地址')
+    message.error(t('mediaServer.fillServerHost'))
     return
   }
   const baseUrl = buildBaseUrl()

@@ -144,7 +144,8 @@ jobs:
       - name: Install Lib For Pacman Build
         if: matrix.os == 'ubuntu-latest'
         run: |
-          sudo apt-get install libarchive-tools
+          sudo apt-get update
+          sudo apt-get install -y --fix-missing libarchive-tools
 
       - name: Make Aria2c Executable
         if: matrix.os != 'windows-latest'

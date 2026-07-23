@@ -27,6 +27,7 @@ import type { FileResult } from './aisearch/types'
 import type { WorkspaceDocumentContext } from './aisearch/useAISearchChat'
 import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
 import MediaAcquisitionTargetModal from '../components/MediaAcquisitionTargetModal.vue'
+import { t } from '../i18n'
 
 const props = defineProps<{ aiEnabled: boolean; documentContext?: WorkspaceDocumentContext | null }>()
 const emit = defineEmits<{ 'search-resource': [title: string] }>()
@@ -52,7 +53,7 @@ const recentToolActivities = computed(() => messages.value
   .slice(-4)
   .reverse()
   .map((part: any) => ({
-    title: TOOL_ACTIVITY_LABELS[part.type] || '已调用工具',
+    title: TOOL_ACTIVITY_LABELS[part.type] || t('ai.toolCalled'),
     state: part.state === 'error' ? 'error' : part.state === 'confirm' ? 'approval' : part.state === 'running' ? 'running' : 'complete',
   })))
 
@@ -60,7 +61,7 @@ function handleSend(q?: string) {
   const kw = (q || '').trim()
   if (!kw) return false
   if (!props.aiEnabled) {
-    message.warning('AI Agent 对话需登录后配置 BYOK 模型或升级 Pro 后使用')
+    message.warning(t('ai.agentRequiresConfig'))
     return false
   }
   sendMessage(kw)
@@ -128,8 +129,8 @@ function handleRetryTool(_messageId: string, _toolType: string, input: any) {
 
 function handleDriveConfirm(selected: { userId: string; name: string; platform: string; driveId: string }[]) {
   const PLATFORM_LABELS: Record<string, string> = {
-    aliyun: '阿里云盘', quark: '夸克网盘', baidu: '百度网盘', '115': '115网盘',
-    '123': '123云盘', tianyi: '天翼云盘', xunlei: '迅雷云盘', pikpak: 'PikPak',
+    aliyun: t('drive.aliyun'), quark: t('drive.quarkFull'), baidu: t('drive.baiduFull'), '115': t('drive.drive115'),
+    '123': t('drive.cloud123'), tianyi: t('drive.cloud189'), xunlei: 'Xunlei Drive', pikpak: 'PikPak',
     dropbox: 'Dropbox', onedrive: 'OneDrive', box: 'Box',
   }
   const desc = selected.map(d => `${PLATFORM_LABELS[d.platform] || d.platform}(${d.name})`).join('、')
@@ -144,7 +145,7 @@ function handleDeleteConversation(event: MouseEvent, id: string) { event.stopPro
 watch(() => props.documentContext, context => {
   setDocumentContext(context || null)
   if (context?.file && props.aiEnabled) {
-    const name = context.file.name || context.file.file_name || '当前文档'
+    const name = context.file.name || context.file.file_name || t('ai.currentDocument')
     void nextTick(() => handleSend(`请分析当前文档《${name}》，先概括核心内容、关键要点与需要注意的风险。`))
   }
 }, { immediate: true })
@@ -161,18 +162,18 @@ const DEFAULT_FOLLOWUPS = [
 ]
 
 const TOOL_ACTIVITY_LABELS: Record<string, string> = {
-  'tool-listDrives': '读取可用网盘',
-  'tool-searchMyFiles': '搜索网盘文件',
-  'tool-searchPanHub': '检索分享资源',
-  'tool-getMovies': '获取影视信息',
-  'tool-findDuplicates': '查找重复文件',
-  'tool-analyzeStorage': '分析存储空间',
-  'tool-categorizeFiles': '生成整理计划',
-  'tool-moveFiles': '移动文件',
-  'tool-organizeFiles': '整理文件',
-  'tool-deleteFiles': '删除文件',
-  'tool-importShare': '转存分享文件',
-  'tool-downloadFiles': '创建下载任务',
+  'tool-listDrives': t('ai.toolListDrives'),
+  'tool-searchMyFiles': t('ai.toolSearchMyFiles'),
+  'tool-searchPanHub': t('ai.toolSearchPanHub'),
+  'tool-getMovies': t('ai.toolGetMovies'),
+  'tool-findDuplicates': t('ai.toolFindDuplicates'),
+  'tool-analyzeStorage': t('ai.toolAnalyzeStorage'),
+  'tool-categorizeFiles': t('ai.toolCategorizeFiles'),
+  'tool-moveFiles': t('ai.toolMoveFiles'),
+  'tool-organizeFiles': t('ai.toolOrganizeFiles'),
+  'tool-deleteFiles': t('ai.toolDeleteFiles'),
+  'tool-importShare': t('ai.toolImportShare'),
+  'tool-downloadFiles': t('ai.toolDownloadFiles'),
 }
 </script>
 
@@ -184,31 +185,31 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
           <span class="ai-rail-brand-mark"><Sparkles :size="17" /></span>
           <span>BOXPLAYER<br><b>INTELLIGENCE</b></span>
         </div>
-        <button class="ai-new-task" type="button" :disabled="loading" @click="newConversation"><Plus :size="16" /> 新对话</button>
+        <button class="ai-new-task" type="button" :disabled="loading" @click="newConversation"><Plus :size="16" /> {{ t('ai.newConversation') }}</button>
         <div class="ai-rail-section">
-          <span class="ai-rail-label">常用能力</span>
-          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('帮我搜索网盘里的文件')"><Search :size="15" /><span>查找文件</span></button>
-          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('推荐最近值得看的电影')"><Film :size="15" /><span>影视发现</span></button>
-          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('分析我的存储空间')"><HardDrive :size="15" /><span>存储洞察</span></button>
-          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('帮我整理文件')"><FolderCog :size="15" /><span>整理计划</span></button>
+          <span class="ai-rail-label">{{ t('ai.commonCapabilities') }}</span>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('帮我搜索网盘里的文件')"><Search :size="15" /><span>{{ t('ai.findFiles') }}</span></button>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('推荐最近值得看的电影')"><Film :size="15" /><span>{{ t('ai.movieDiscovery') }}</span></button>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('分析我的存储空间')"><HardDrive :size="15" /><span>{{ t('ai.storageInsights') }}</span></button>
+          <button type="button" class="ai-rail-action" :disabled="!aiEnabled || loading" @click="handleSend('帮我整理文件')"><FolderCog :size="15" /><span>{{ t('ai.organizePlan') }}</span></button>
         </div>
         <div v-if="threads.length" class="ai-rail-section ai-rail-history">
-          <span class="ai-rail-label">历史对话</span>
+          <span class="ai-rail-label">{{ t('ai.conversationHistory') }}</span>
           <button v-for="thread in threads" :key="thread.id" type="button" class="ai-history-item" :class="{ active: thread.id === activeThreadId }" :disabled="loading" :title="thread.title" @click="openConversation(thread.id)">
             <span>{{ thread.title }}</span>
-            <i title="删除历史对话" @click="handleDeleteConversation($event, thread.id)"><Trash2 :size="12" /></i>
+            <i :title="t('ai.deleteHistory')" @click="handleDeleteConversation($event, thread.id)"><Trash2 :size="12" /></i>
           </button>
         </div>
         <div v-if="memories.length" class="ai-rail-section ai-rail-memories">
-          <span class="ai-rail-label"><Brain :size="13" /> 长期记忆</span>
+          <span class="ai-rail-label"><Brain :size="13" /> {{ t('ai.longTermMemory') }}</span>
           <div v-for="memory in memories" :key="memory.id" class="ai-memory-item" :title="memory.summary">
             <span><b>{{ memory.key }}</b>{{ memory.summary }}</span>
-            <button type="button" title="删除这条记忆" @click="removeMemory(memory.id)"><Trash2 :size="12" /></button>
+            <button type="button" :title="t('ai.deleteMemory')" @click="removeMemory(memory.id)"><Trash2 :size="12" /></button>
           </div>
         </div>
         <div class="ai-rail-foot">
           <span class="ai-rail-foot-dot" :class="{ active: aiEnabled }" />
-          {{ aiEnabled ? 'AI 服务可用' : '需要配置 AI' }}
+          {{ aiEnabled ? t('ai.serviceAvailable') : t('ai.needsConfig') }}
         </div>
       </aside>
 
@@ -217,19 +218,19 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
       <div class="ai-workspace-title">
         <span class="ai-workspace-mark"><WandSparkles :size="16" /></span>
         <div>
-          <strong>智能工作台</strong>
-          <span>搜索、阅读与文件操作</span>
+          <strong>{{ t('ai.workspaceTitle') }}</strong>
+          <span>{{ t('ai.workspaceSubtitle') }}</span>
         </div>
       </div>
       <div class="ai-workspace-status" :class="{ active: loading }">
         <span class="ai-status-pulse" />
-        {{ loading ? '正在处理' : aiEnabled ? '已就绪' : '仅预览' }}
+        {{ loading ? t('ai.processing') : aiEnabled ? t('ai.ready') : t('ai.previewOnly') }}
       </div>
     </header>
     <div v-if="activeDocument" class="ai-document-context">
-      <span>当前文档</span>
+      <span>{{ t('ai.currentDocument') }}</span>
       <strong>{{ activeDocument.file?.name || activeDocument.file?.file_name }}</strong>
-      <small>回答将基于本机索引的文档片段</small>
+      <small>{{ t('ai.documentContextHint') }}</small>
     </div>
 
     <!-- messages -->
@@ -238,20 +239,20 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
       <div v-if="visibleMessages.length === 0 && !loading" class="ai-empty">
         <span class="ai-empty-icon"><Sparkles :size="26" :stroke-width="1.6" /></span>
         <div class="ai-empty-kicker">BOXPLAYER AGENT</div>
-        <div class="ai-empty-title">从一个目标开始</div>
-        <div class="ai-empty-desc">{{ aiEnabled ? '描述你要找的内容或想完成的文件操作。Agent 会把检索结果和可执行操作整理成卡片。' : '登录后配置 BYOK 或升级 Pro，即可使用搜索、阅读和文件操作能力。' }}</div>
+        <div class="ai-empty-title">{{ t('ai.startWithGoal') }}</div>
+        <div class="ai-empty-desc">{{ aiEnabled ? t('ai.emptyEnabledDesc') : t('ai.emptyDisabledDesc') }}</div>
         <div class="ai-starter-grid">
           <button type="button" class="ai-starter-card ai-starter-card--search" :disabled="!aiEnabled" @click="handleSend('帮我搜索网盘里的文件')">
-            <span><Search :size="17" /></span><strong>查找文件</strong><small>跨网盘定位内容</small>
+            <span><Search :size="17" /></span><strong>{{ t('ai.findFiles') }}</strong><small>{{ t('ai.findFilesDesc') }}</small>
           </button>
           <button type="button" class="ai-starter-card ai-starter-card--film" :disabled="!aiEnabled" @click="handleSend('推荐最近值得看的电影')">
-            <span><Film :size="17" /></span><strong>影视发现</strong><small>推荐、检索与片单</small>
+            <span><Film :size="17" /></span><strong>{{ t('ai.movieDiscovery') }}</strong><small>{{ t('ai.movieDiscoveryDesc') }}</small>
           </button>
           <button type="button" class="ai-starter-card ai-starter-card--storage" :disabled="!aiEnabled" @click="handleSend('分析我的存储空间')">
-            <span><HardDrive :size="17" /></span><strong>存储洞察</strong><small>大文件、空间与重复项</small>
+            <span><HardDrive :size="17" /></span><strong>{{ t('ai.storageInsights') }}</strong><small>{{ t('ai.storageInsightsDesc') }}</small>
           </button>
           <button type="button" class="ai-starter-card ai-starter-card--organize" :disabled="!aiEnabled" @click="handleSend('帮我整理文件')">
-            <span><FolderCog :size="17" /></span><strong>整理计划</strong><small>先预览，确认后执行</small>
+            <span><FolderCog :size="17" /></span><strong>{{ t('ai.organizePlan') }}</strong><small>{{ t('ai.organizePlanDesc') }}</small>
           </button>
         </div>
       </div>
@@ -265,13 +266,13 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
         :class="'ai-msg--' + msg.role"
       >
         <!-- Keep the user marker compact. Agent answers follow the Codex-style plain reading flow. -->
-        <div v-if="msg.role === 'user'" class="ai-msg-avatar" title="你">
+        <div v-if="msg.role === 'user'" class="ai-msg-avatar" :title="t('ai.you')">
           <User v-if="msg.role === 'user'" :size="16" :stroke-width="2" />
         </div>
 
         <!-- parts -->
         <div class="ai-msg-body">
-          <div v-if="msg.role === 'user'" class="ai-msg-label">你</div>
+          <div v-if="msg.role === 'user'" class="ai-msg-label">{{ t('ai.you') }}</div>
           <template v-for="(part, pi) in msg.parts" :key="pi">
             <!-- tool: listDrives -->
             <DriveSelectorCard
@@ -480,7 +481,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
       <!-- streaming indicator -->
       <div v-if="loading" class="ai-running-card">
         <LoadingIndicator />
-        <span>Agent 正在组织下一步</span>
+        <span>{{ t('ai.agentThinking') }}</span>
       </div>
     </div>
 
@@ -488,7 +489,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
     <div class="ai-bottom">
       <div class="ai-suggestions">
         <Command :size="13" :stroke-width="1.8" />
-        <span class="ai-suggestions-label">快捷开始</span>
+        <span class="ai-suggestions-label">{{ t('ai.quickStart') }}</span>
         <button
           v-for="hint in DEFAULT_FOLLOWUPS"
           :key="hint"
@@ -504,7 +505,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
         <textarea
           v-model="inputText"
           class="ai-input"
-          :placeholder="aiEnabled ? '描述你想做什么...' : '登录后配置 BYOK 或升级 Pro 后可发送对话'"
+          :placeholder="aiEnabled ? t('ai.inputPlaceholder') : t('ai.inputDisabledPlaceholder')"
           rows="1"
           :disabled="!aiEnabled || loading"
           @keydown="handleComposerKeydown"
@@ -513,7 +514,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
           v-if="loading"
           class="ai-stop-btn"
           type="button"
-          title="停止生成"
+          :title="t('ai.stopGenerating')"
           @click="stop"
         ><Square :size="15" :fill="'currentColor'" /></button>
         <button
@@ -522,49 +523,49 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
           :disabled="!aiEnabled || !inputText.trim() || loading"
           type="button"
           @click="handleInputSend"
-        ><Send :size="16" :stroke-width="2" /><span>发送</span></button>
+        ><Send :size="16" :stroke-width="2" /><span>{{ t('ai.send') }}</span></button>
       </div>
     </div>
 
     <!-- footer -->
     <div v-if="messages.length > 0" class="ai-footer">
-      <button class="ai-clear-btn" type="button" :disabled="loading || !messages.length" @click="clear"><RotateCcw :size="13" /> 清空当前对话</button>
-      <span class="ai-msg-count">{{ requestCount }} 个请求 · {{ toolActivityCount }} 次工具活动</span>
+      <button class="ai-clear-btn" type="button" :disabled="loading || !messages.length" @click="clear"><RotateCcw :size="13" /> {{ t('ai.clearCurrentConversation') }}</button>
+      <span class="ai-msg-count">{{ requestCount }} {{ t('ai.requests') }} · {{ toolActivityCount }} {{ t('ai.toolActivities') }}</span>
     </div>
       </main>
 
       <aside class="ai-activity-panel">
         <div class="ai-activity-heading">
-          <span>执行上下文</span>
+          <span>{{ t('ai.executionContext') }}</span>
           <Activity :size="16" />
         </div>
         <section class="ai-activity-status" :class="{ running: loading }">
           <span class="ai-activity-status-icon"><Activity v-if="loading" :size="16" /><ShieldCheck v-else :size="16" /></span>
           <div>
-            <strong>{{ loading ? 'Agent 正在执行' : aiEnabled ? '工作区已就绪' : '等待 AI 配置' }}</strong>
-            <p>{{ loading ? '正在组合工具结果与下一步操作' : aiEnabled ? '检索和文件操作会在此显示进度' : '配置 BYOK 或开通 Pro 后开始任务' }}</p>
+            <strong>{{ loading ? t('ai.agentRunning') : aiEnabled ? t('ai.workspaceReady') : t('ai.waitingConfig') }}</strong>
+            <p>{{ loading ? t('ai.combiningResults') : aiEnabled ? t('ai.progressShownHere') : t('ai.configureToStart') }}</p>
           </div>
         </section>
         <section class="ai-activity-section">
-          <span class="ai-rail-label">本次会话</span>
-          <div class="ai-session-metric"><span>用户请求</span><b>{{ requestCount }}</b></div>
-          <div class="ai-session-metric"><span>工具活动</span><b>{{ toolActivityCount }}</b></div>
-          <div class="ai-session-metric"><span>待确认操作</span><b :class="{ warning: pendingApprovalCount }">{{ pendingApprovalCount }}</b></div>
+          <span class="ai-rail-label">{{ t('ai.currentSession') }}</span>
+          <div class="ai-session-metric"><span>{{ t('ai.userRequests') }}</span><b>{{ requestCount }}</b></div>
+          <div class="ai-session-metric"><span>{{ t('ai.toolActivitiesLabel') }}</span><b>{{ toolActivityCount }}</b></div>
+          <div class="ai-session-metric"><span>{{ t('ai.pendingActions') }}</span><b :class="{ warning: pendingApprovalCount }">{{ pendingApprovalCount }}</b></div>
         </section>
         <section v-if="recentToolActivities.length" class="ai-activity-section ai-activity-trail">
-          <span class="ai-rail-label">最近执行</span>
+          <span class="ai-rail-label">{{ t('ai.recentActivity') }}</span>
           <div v-for="(activity, index) in recentToolActivities" :key="index" class="ai-activity-item">
             <span class="ai-activity-dot" :class="activity.state" />
             <span>{{ activity.title }}</span>
-            <small>{{ activity.state === 'running' ? '进行中' : activity.state === 'approval' ? '待确认' : activity.state === 'error' ? '未完成' : '完成' }}</small>
+            <small>{{ activity.state === 'running' ? t('ai.running') : activity.state === 'approval' ? t('ai.pendingApproval') : activity.state === 'error' ? t('ai.incomplete') : t('ai.complete') }}</small>
           </div>
         </section>
         <section class="ai-activity-section ai-safety-note">
-          <span class="ai-rail-label">安全边界</span>
-          <p>涉及移动、删除、导入等操作，Agent 必须先生成计划并等待你的确认。</p>
-          <span><ShieldCheck :size="13" /> 你的网盘不会被自动修改</span>
+          <span class="ai-rail-label">{{ t('ai.safetyBoundary') }}</span>
+          <p>{{ t('ai.safetyBoundaryDesc') }}</p>
+          <span><ShieldCheck :size="13" /> {{ t('ai.noAutoModify') }}</span>
         </section>
-        <button class="ai-activity-link" type="button" @click="handleSend('列出我已登录的所有网盘')">查看可用网盘 <ArrowUpRight :size="14" /></button>
+        <button class="ai-activity-link" type="button" @click="handleSend('列出我已登录的所有网盘')">{{ t('ai.viewAvailableDrives') }} <ArrowUpRight :size="14" /></button>
       </aside>
     </div>
     <MediaAcquisitionTargetModal v-if="acquisitionRequest" :visible="acquisitionVisible" :request="acquisitionRequest" @update:visible="handleAcquisitionVisible" />
@@ -572,7 +573,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 </template>
 
 <style scoped>
-.ai-chat { --agent-accent: rgb(var(--primary-6)); display: flex; flex-direction: column; height: 100%; min-height: 0; background: radial-gradient(circle at 50% -180px, rgba(var(--primary-6), .10), transparent 420px); color: var(--color-text-1); }
+.ai-chat { --agent-accent: rgb(var(--primary-6)); --agent-ui-text: #fff; --agent-ui-muted: rgba(255,255,255,.78); display: flex; flex-direction: column; height: 100%; min-height: 0; background: radial-gradient(circle at 50% -180px, rgba(var(--primary-6), .10), transparent 420px); color: var(--color-text-1); }
 .ai-workspace-header { display: flex; align-items: center; justify-content: space-between; min-height: 64px; padding: 0 48px; border-bottom: 1px solid var(--color-border-2); background: color-mix(in srgb, var(--color-bg-1) 92%, transparent); }
 .ai-workspace-title { display: flex; gap: 10px; align-items: center; }
 .ai-workspace-mark { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: #fff; background: var(--agent-accent); border-radius: 10px; box-shadow: 0 5px 18px rgba(var(--primary-6), .23); }
@@ -775,10 +776,42 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 .ai-safety-note > span { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: #34d399; font-size: 11px; }
 .ai-activity-link { display: inline-flex; align-items: center; justify-content: space-between; width: 100%; padding: 8px; color: rgb(var(--primary-5)); font: inherit; font-size: 12px; background: transparent; border: 0; cursor: pointer; }
 .ai-activity-link:hover { text-decoration: underline; }
+
+/* Keep navigation labels and controls readable on both workspace themes. */
+.ai-rail-label { font-size: 13px; color: var(--agent-ui-text); }
+.ai-rail-action, .ai-history-item { font-size: 13px; color: var(--agent-ui-text); }
+.ai-rail-action:disabled { color: var(--agent-ui-text); opacity: 1; }
+.ai-rail-brand, .ai-rail-foot, .ai-activity-heading, .ai-session-metric, .ai-activity-link, .ai-suggestions-label, .ai-clear-btn { color: var(--agent-ui-text); }
+.ai-rail-brand, .ai-rail-foot, .ai-activity-heading, .ai-session-metric, .ai-activity-link, .ai-empty-prompts button, .ai-hint, .ai-new-task, .ai-send-btn, .ai-stop-btn { font-size: 13px; }
+.ai-memory-item, .ai-memory-item b, .ai-activity-item, .ai-activity-item small, .ai-activity-status p, .ai-safety-note p { color: var(--agent-ui-muted); font-size: 12px; }
+.ai-workspace-title span, .ai-workspace-status, .ai-empty-desc, .ai-starter-card small { color: var(--agent-ui-muted); font-size: 13px; }
 @keyframes ai-status-spin { to { transform: rotate(360deg); } }
 @keyframes ai-activity-pulse { 50% { opacity: .45; transform: scale(.8); } }
 
 @media (max-width: 1180px) { .ai-workspace-grid { grid-template-columns: 190px minmax(0, 1fr); } .ai-activity-panel { display: none; } }
 @media (max-width: 820px) { .ai-workspace-grid { grid-template-columns: 1fr; } .ai-task-rail { display: none; } .ai-workspace-header { padding: 0 20px; } .ai-messages { padding: 22px 20px; } .ai-bottom, .ai-footer { padding-left: 20px; padding-right: 20px; } }
 @media (max-width: 520px) { .ai-starter-grid { grid-template-columns: 1fr; } }
+</style>
+
+<style>
+body:not([arco-theme='dark']) #xbybody .ai-chat {
+  --agent-ui-text: #111827;
+  --agent-ui-muted: #374151;
+}
+
+body:not([arco-theme='dark']) #xbybody .ai-task-rail {
+  background: var(--color-bg-1);
+}
+
+body:not([arco-theme='dark']) #xbybody .ai-workspace-main {
+  background: var(--color-bg-1);
+}
+
+body:not([arco-theme='dark']) #xbybody .ai-activity-panel {
+  background: var(--color-bg-1);
+}
+
+body:not([arco-theme='dark']) #xbybody .ai-bottom {
+  background: linear-gradient(to bottom, transparent, var(--color-bg-1) 32%) !important;
+}
 </style>

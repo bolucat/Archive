@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertCircle, CheckCircle, Loader2, UploadCloud } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'parsing' | 'confirm' | 'running' | 'done' | 'error'
@@ -15,35 +16,35 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
   <div class="mc-card">
     <div v-if="state === 'parsing' || state === 'running'" class="mc-status">
       <Loader2 :size="14" :stroke-width="2" class="mc-spin" />
-      <span>{{ state === 'parsing' ? '正在解析秒传清单...' : '正在导入光鸭云盘...' }}</span>
+      <span>{{ state === 'parsing' ? t('ai.card.parsingMiaochuan') : t('ai.card.importingGuangya') }}</span>
     </div>
 
     <template v-else-if="state === 'confirm'">
       <div class="mc-header">
         <UploadCloud :size="16" :stroke-width="1.5" />
-        <span>确认导入 {{ input?.files?.length || 0 }} 个秒传文件到光鸭云盘？</span>
+        <span>{{ t('ai.card.confirmImport') }} {{ input?.files?.length || 0 }} {{ t('ai.card.miaochuanFiles') }}?</span>
       </div>
       <div class="mc-list">
         <div v-for="(file, index) in (input?.files || []).slice(0, 10)" :key="index" class="mc-file">{{ file.path }}</div>
-        <div v-if="(input?.files?.length || 0) > 10" class="mc-more">…还有 {{ (input?.files?.length || 0) - 10 }} 个文件</div>
+        <div v-if="(input?.files?.length || 0) > 10" class="mc-more">…{{ t('ai.card.more') }} {{ (input?.files?.length || 0) - 10 }} {{ t('transfer.file') }}</div>
       </div>
       <div class="mc-actions">
-        <button class="mc-btn mc-btn-primary" @click="emit('confirm')">确认导入</button>
-        <button class="mc-btn" @click="emit('cancel')">取消</button>
+        <button class="mc-btn mc-btn-primary" @click="emit('confirm')">{{ t('ai.card.confirmImportButton') }}</button>
+        <button class="mc-btn" @click="emit('cancel')">{{ t('common.cancel') }}</button>
       </div>
     </template>
 
     <div v-else-if="state === 'done'" class="mc-result">
       <CheckCircle :size="16" :stroke-width="1.5" />
       <div>
-        <div>秒传清单处理完成：{{ output?.success ?? output?.total ?? 0 }}/{{ output?.total ?? 0 }}</div>
+        <div>{{ t('ai.card.miaochuanCompleted') }}: {{ output?.success ?? output?.total ?? 0 }}/{{ output?.total ?? 0 }}</div>
         <pre v-if="output?.report" class="mc-report">{{ output.report }}</pre>
       </div>
     </div>
 
     <div v-else class="mc-status mc-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>{{ error || '秒传工具执行失败' }}</span>
+      <span>{{ error || t('ai.card.miaochuanFailed') }}</span>
     </div>
   </div>
 </template>

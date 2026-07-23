@@ -52,6 +52,9 @@ export function GetDriveID(user_id: string, drive: string): string {
     if (isBoxUser(user_id)) {
       return token.default_drive_id || 'box'
     }
+    if (isRemoteDriveUser(user_id)) {
+      return token.default_drive_id || ''
+    }
     if (drive.includes('backup')) {
       return token.backup_drive_id
     } else if (drive.includes('resource')) {
@@ -67,7 +70,8 @@ export function GetDriveID(user_id: string, drive: string): string {
 
 export function GetDriveType(user_id: string, drive_id: string): any {
   if ((drive_id || '').startsWith('webdav:')) {
-    return { title: 'WebDAV', name: 'webdav', key: '/' }
+    const token = UserDAL.GetUserToken(user_id)
+    return { title: token?.nick_name || token?.user_name || (token?.tokenfrom === 'alist' ? 'AList' : 'WebDAV'), name: token?.tokenfrom === 'alist' ? 'alist' : 'webdav', key: '/' }
   }
   const token = UserDAL.GetUserToken(user_id)
   if (token) {
@@ -205,6 +209,11 @@ export function isBoxUser(user: string | { user_id?: string; tokenfrom?: string 
   return user_id.startsWith('box_')
 }
 
+export function isRemoteDriveUser(user: string | { user_id?: string; tokenfrom?: string }): boolean {
+  const { user_id, tokenfrom } = resolveUserTokenInfo(user)
+  return tokenfrom === 'webdav' || tokenfrom === 'alist' || user_id.startsWith('webdav_') || user_id.startsWith('alist_')
+}
+
 export function isNonAliyunProvider(user: string | { user_id?: string; tokenfrom?: string }): boolean {
   return (
     isCloud123User(user)
@@ -218,6 +227,7 @@ export function isNonAliyunProvider(user: string | { user_id?: string; tokenfrom
     || isDropboxUser(user)
     || isOneDriveUser(user)
     || isBoxUser(user)
+    || isRemoteDriveUser(user)
   )
 }
 

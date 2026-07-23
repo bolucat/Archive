@@ -10,7 +10,8 @@ import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
 import { computed, ref } from 'vue'
 import { isAliyunUser as isAliyunAccountUser } from '../../aliapi/utils'
-import { supportsCopy, supportsCreateShare } from '../../aliapi/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove } from '../../aliapi/providerFeatures'
+import { t } from '../../i18n'
 
 const istree = true
 const pantreeStore = usePanTreeStore()
@@ -21,6 +22,10 @@ const bookScanner = BookScanner.getInstance()
 const isAliyunAccount = computed(() => isAliyunAccountUser(pantreeStore.user_id || ''))
 const isShareSupported = computed(() => supportsCreateShare(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
 const isCopySupported = computed(() => supportsCopy(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
+const isMoveSupported = computed(() => supportsMove(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
+const isRenameSupported = computed(() => supportsRename(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
+const isTrashSupported = computed(() => supportsTrashMove(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
+const hasFolderOperations = computed(() => isMoveSupported.value || isCopySupported.value || isTrashSupported.value)
 
 const props = defineProps({
   inputselectType: {
@@ -145,27 +150,27 @@ const isSelectedFolder = computed(() => {
       <a-dsubmenu id="leftpansubzhankai" class="rightmenu" trigger="hover">
         <template #default>
           <div @click.stop="() => {}">
-            <span class="arco-dropdown-option-icon"><IconFont name="iconfenzhi1" /></span>目录
+            <span class="arco-dropdown-option-icon"><IconFont name="iconfenzhi1" /></span>{{ t('file.directory') }}
           </div>
         </template>
         <template #content>
           <a-doption @click="handleRefresh">
             <template #icon> <IconFont name="iconreload-1-icon" /> </template>
-            <template #default>刷新</template>
+            <template #default>{{ t('file.refresh') }}</template>
           </a-doption>
           <a-doption @click="() => handleExpandAll(true)">
             <template #icon> <IconFont name="iconArrow-Down2" /> </template>
-            <template #default>展开全部</template>
+            <template #default>{{ t('file.expandAll') }}</template>
           </a-doption>
           <a-doption @click="() => handleExpandAll(false)">
             <template #icon> <IconFont name="iconArrow-Right2" /> </template>
-            <template #default>折叠全部</template>
+            <template #default>{{ t('file.collapseAll') }}</template>
           </a-doption>
         </template>
       </a-dsubmenu>
       <a-doption @click="() => menuDownload(istree)">
         <template #icon> <IconFont name="icondownload" /> </template>
-        <template #default>下载</template>
+        <template #default>{{ t('file.download') }}</template>
       </a-doption>
       <a-doption v-show="isShareSupported"
                  @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
@@ -174,7 +179,7 @@ const isSelectedFolder = computed(() => {
       </a-doption>
       <a-doption v-if="isAliyunAccount" @click="() => menuCreatShare(istree, 'pan', 'backup_root')">
         <template #icon><IconFont name="iconrss" /></template>
-        <template #default>快传</template>
+        <template #default>{{ t('file.quickTransfer') }}</template>
       </a-doption>
 
       <!-- 扫描数据 -->
@@ -184,7 +189,7 @@ const isSelectedFolder = computed(() => {
             <span class="arco-dropdown-option-icon">
               <IconFont name="iconscan" style="opacity: 0.8" />
             </span>
-            扫描数据
+            {{ t('file.scan') }}
           </div>
         </template>
         <template #content>
@@ -192,23 +197,23 @@ const isSelectedFolder = computed(() => {
             <template #icon>
               <IconFont :name="scanVideo ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanVideo ? 'color: rgb(var(--primary-6))' : ''" />
             </template>
-            <template #default>视频</template>
+            <template #default>{{ t('file.video') }}</template>
           </a-doption>
           <a-doption @click.stop="scanAudio = !scanAudio">
             <template #icon>
               <IconFont :name="scanAudio ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanAudio ? 'color: rgb(var(--primary-6))' : ''" />
             </template>
-            <template #default>音频</template>
+            <template #default>{{ t('file.audio') }}</template>
           </a-doption>
           <a-doption @click.stop="scanBook = !scanBook">
             <template #icon>
               <IconFont :name="scanBook ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanBook ? 'color: rgb(var(--primary-6))' : ''" />
             </template>
-            <template #default>书籍</template>
+            <template #default>{{ t('file.book') }}</template>
           </a-doption>
           <a-doption @click="handleStartScan">
             <template #icon><IconFont name="iconstart" /></template>
-            <template #default>开始扫描</template>
+            <template #default>{{ t('file.startScan') }}</template>
           </a-doption>
           <a-doption @click="handleAIBatchScrape">
             <template #icon><IconFont name="iconscan" /></template>
@@ -217,36 +222,36 @@ const isSelectedFolder = computed(() => {
         </template>
       </a-dsubmenu>
 
-      <a-dsubmenu id="leftpansubmove" class="rightmenu" trigger="hover">
+      <a-dsubmenu v-if="hasFolderOperations" id="leftpansubmove" class="rightmenu" trigger="hover">
         <template #default>
           <div @click.stop="() => {}">
-            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" style="opacity: 0.8" /></span>移动
+            <span class="arco-dropdown-option-icon"><IconFont name="iconmoveto" style="opacity: 0.8" /></span>{{ t('file.operations') }}
           </div>
         </template>
         <template #content>
-          <a-doption @click="() => menuCopySelectedFile(istree, 'cut')">
+          <a-doption v-if="isMoveSupported" @click="() => menuCopySelectedFile(istree, 'cut')">
             <template #icon> <IconFont name="iconscissor" /> </template>
-            <template #default>移动到...</template>
+            <template #default>{{ t('file.moveTo') }}</template>
           </a-doption>
           <a-doption v-if="isCopySupported" @click="() => menuCopySelectedFile(istree, 'copy')">
             <template #icon> <IconFont name="iconcopy" /> </template>
-            <template #default>复制到...</template>
+            <template #default>{{ t('file.copyTo') }}</template>
           </a-doption>
-          <a-doption class="danger" @click="() => menuTrashSelectFile(istree, false)">
+          <a-doption v-if="isTrashSupported" class="danger" @click="() => menuTrashSelectFile(istree, false)">
             <template #icon> <IconFont name="icondelete" /> </template>
-            <template #default>回收站</template>
+            <template #default>{{ t('file.trash') }}</template>
           </a-doption>
         </template>
       </a-dsubmenu>
 
-      <a-doption @click='() => modalRename(istree, false, false)'>
+      <a-doption v-if="isRenameSupported" @click='() => modalRename(istree, false, false)'>
         <template #icon><IconFont name="iconedit-square" /></template>
-        <template #default>重命名</template>
+        <template #default>{{ t('file.rename') }}</template>
       </a-doption>
 
       <a-doption @click='() => modalShuXing(istree)'>
         <template #icon><IconFont name="iconshuxing" /></template>
-        <template #default>属性</template>
+        <template #default>{{ t('file.properties') }}</template>
       </a-doption>
     </template>
   </a-dropdown>

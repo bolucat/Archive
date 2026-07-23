@@ -20,6 +20,7 @@ import type { DownloadTaskFile } from '../down/integration/taskTypes'
 import MediaAcquisitionTargetModal from '../components/MediaAcquisitionTargetModal.vue'
 import type { MediaAcquisitionRequest, MediaAcquisitionState } from '@shared/types/mediaAcquisition'
 import { listMediaAcquisitionStates } from '../services/mediaAcquisition/client'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 const HISTORY_KEY = 'global_search_history'
@@ -175,12 +176,12 @@ async function phSearchTmdb(keyword: string, signal: AbortSignal) {
     const query = new URLSearchParams({ query: keyword, language: 'zh-CN', include_adult: 'false', page: '1' })
     const response = await fetch(`${PANHUB_API_BASE}/tmdb/proxy/search/multi?${query}`, { signal })
     const payload = await response.json()
-    if (!response.ok || (payload?.code !== undefined && payload.code !== 0)) throw new Error(payload?.message || 'TMDB 搜索失败')
+    if (!response.ok || (payload?.code !== undefined && payload.code !== 0)) throw new Error(payload?.message || t('search.tmdbFailed'))
     phTmdbItems.value = Array.isArray(payload?.results)
       ? payload.results.filter((item: TmdbMediaResult) => item?.media_type === 'movie' || item?.media_type === 'tv').slice(0, 10)
       : []
   } catch (error: any) {
-    if (error?.name !== 'AbortError') phTmdbError.value = error?.message || 'TMDB 搜索失败'
+    if (error?.name !== 'AbortError') phTmdbError.value = error?.message || t('search.tmdbFailed')
   } finally {
     if (!signal.aborted) phTmdbLoading.value = false
   }
@@ -212,7 +213,7 @@ async function phDoSearch(){
   const kw=keyword.value.trim()
   if(kw.length<2){phMerged.value={};phSearched.value=false;return}
   const usage = checkAndIncrement('panHubSearch')
-  if(!usage.allowed){message.warning(usage.message || '今日全网资源搜索次数已用完');return}
+  if(!usage.allowed){message.warning(usage.message || t('search.limitUsed'));return}
   addToHistory(kw)
   if(phController)phController.abort()
   const controller=new AbortController()
@@ -236,8 +237,8 @@ async function phDoSearch(){
     })
     if(phController!==controller)return
     phMerged.value=result.merged;phTotal.value=result.total
-    if(result.successfulSources===0&&result.failedSources>0)phError.value='搜索源暂时不可用，请稍后重试'
-  }catch(e:any){if(e?.name==='AbortError')return;phError.value=e?.message||'网络请求失败'}
+    if(result.successfulSources===0&&result.failedSources>0)phError.value=t('search.sourcesUnavailable')
+  }catch(e:any){if(e?.name==='AbortError')return;phError.value=e?.message||t('search.networkFailed')}
   finally{if(phController===controller){phLoading.value=false;phElapsedMs.value=Date.now()-start;phController=null}}
 }
 function phReset(){if(phController)phController.abort();phController=null;phLoading.value=false;phSearched.value=false;phError.value='';phTotal.value=0;phMerged.value={};phTmdbItems.value=[];phTmdbError.value='';phTmdbLoading.value=false;keyword.value=''}
@@ -248,7 +249,7 @@ async function phConfirmMagnetDownload(url:string,title:string){
   if(!/^magnet:\?/i.test(magnet))return
   const settingStore=useSettingStore()
   const savePath=settingStore.ariaState==='remote'?settingStore.ariaSavePath:settingStore.downSavePath
-  if(!savePath){message.error('请先在下载设置中选择保存目录');return}
+  if(!savePath){message.error(t('search.selectSavePathFirst'));return}
 
   magnetPreviewController?.abort()
   await discardMagnetPreview(magnetPreview.value)
@@ -267,7 +268,7 @@ async function phConfirmMagnetDownload(url:string,title:string){
     if(pendingMagnet.value&&!pendingMagnet.value.title)pendingMagnet.value.title=preview.name
   }catch(e:any){
     if(e?.name!=='AbortError'){
-      message.error(e?.message||'获取磁力文件列表失败')
+      message.error(e?.message||t('search.fetchMagnetFilesFailed'))
       magnetSelectorVisible.value=false
       pendingMagnet.value=null
     }
@@ -299,8 +300,8 @@ async function phCreateSelectedMagnet(indexes:number[]){
   const settingStore=useSettingStore()
   const selectFile=indexes.length===preview.files.length?undefined:indexes.join(',')
   const result=DownDAL.aAddExternalDownload({source:pending.url,sourceType:'magnet',savePath:pending.savePath,fileName:(pending.title||preview.name).slice(0,200),selectFile,split:settingStore.downThreadMax})
-  if(!result.success){message.error(result.message||'添加磁力下载失败');return}
-  message.success(`已添加下载任务，共选择 ${indexes.length} 个文件`)
+  if(!result.success){message.error(result.message||t('search.addMagnetFailed'));return}
+  message.success(t('search.downloadTasksAdded', { count: indexes.length }))
 }
 
 function phCreateMagnetDirect(){
@@ -317,8 +318,8 @@ function phCreateMagnetDirect(){
   discardMagnetPreview(preview).catch(()=>undefined)
   const settingStore=useSettingStore()
   const result=DownDAL.aAddExternalDownload({source:pending.url,sourceType:'magnet',savePath:pending.savePath,fileName:pending.title.slice(0,200),split:settingStore.downThreadMax})
-  if(!result.success){message.error(result.message||'添加磁力下载失败');return}
-  message.success('已添加磁力任务，将下载全部文件')
+  if(!result.success){message.error(result.message||t('search.addMagnetFailed'));return}
+  message.success(t('search.magnetTaskAdded'))
 }
 function phFmt(ms:number):string{return ms<1000?`${ms}ms`:`${(ms/1000).toFixed(1)}s`}
 
@@ -485,12 +486,12 @@ function mediaKindIcon(kind: string | undefined) {
 }
 
 function mediaKindLabel(kind: string | undefined) {
-  if (kind === 'movie' || kind === 'Movie') return '电影'
-  if (kind === 'series' || kind === 'Series') return '剧集'
-  if (kind === 'season' || kind === 'Season') return '季'
-  if (kind === 'episode' || kind === 'Episode') return '集'
-  if (kind === 'person' || kind === 'Person') return '人物'
-  if (kind === 'folder' || kind === 'Folder') return '目录'
+  if (kind === 'movie' || kind === 'Movie') return t('search.kindMovie')
+  if (kind === 'series' || kind === 'Series') return t('search.kindSeries')
+  if (kind === 'season' || kind === 'Season') return t('search.kindSeason')
+  if (kind === 'episode' || kind === 'Episode') return t('search.kindEpisode')
+  if (kind === 'person' || kind === 'Person') return t('search.kindPerson')
+  if (kind === 'folder' || kind === 'Folder') return t('search.kindFolder')
   return kind
 }
 
@@ -532,15 +533,15 @@ onUnmounted(() => {
   <div class="gs-page" @keydown="handleKeyDown">
     <div class="gs-page-header">
       <div class="gs-page-tabs">
-        <button :class="['gs-page-tab', searchMode === 'local' ? 'active' : '']" @click="searchMode = 'local'">搜索我的</button>
-        <button :class="['gs-page-tab', searchMode === 'panhub' ? 'active' : '']" @click="searchMode = 'panhub'">AI 搜索 <span class="gs-pro-badge">Pro</span></button>
+        <button :class="['gs-page-tab', searchMode === 'local' ? 'active' : '']" @click="searchMode = 'local'">{{ t('search.mine') }}</button>
+        <button :class="['gs-page-tab', searchMode === 'panhub' ? 'active' : '']" @click="searchMode = 'panhub'">{{ t('search.aiSearch') }} <span class="gs-pro-badge">Pro</span></button>
       </div>
 
       <PanHubSearchBox
         v-model="keyword"
         :loading="searchMode === 'local' ? searching : phLoading"
         :searched="searchMode === 'local' ? (searching === false && hasInput) : phSearched"
-        :placeholder="searchMode === 'panhub' ? '搜索全网公开网盘资源...' : '搜索所有网盘和媒体服务器...'"
+        :placeholder="searchMode === 'panhub' ? t('search.placeholderPanHub') : t('search.placeholderLocal')"
         @search="onSearchBoxSubmit()"
         @pause="phController?.abort(); phLoading = false"
         @reset="searchMode === 'local' ? (keyword = '') : phReset()"
@@ -550,8 +551,8 @@ onUnmounted(() => {
         <div class="gs-history-drop-header" @click="historyCollapsed = !historyCollapsed">
           <ChevronRight :size="12" :stroke-width="2.5" class="gs-chevron" :class="{ open: !historyCollapsed }" />
           <Clock :size="14" :stroke-width="1.5" />
-          <span>历史搜索</span>
-          <button class="gs-history-clear" type="button" @click.stop="clearHistory">清除</button>
+          <span>{{ t('search.history') }}</span>
+          <button class="gs-history-clear" type="button" @click.stop="clearHistory">{{ t('common.clear') }}</button>
         </div>
         <div v-show="!historyCollapsed" class="gs-history-list">
           <button
@@ -566,7 +567,7 @@ onUnmounted(() => {
             <button
               class="gs-history-item-del"
               type="button"
-              title="删除"
+              :title="t('common.delete')"
               @click.stop="removeHistoryItem(idx)"
             >
               <X :size="12" :stroke-width="1.5" />
@@ -579,18 +580,18 @@ onUnmounted(() => {
     <div class="gs-page-body">
       <template v-if="isLocalMode()">
       <div v-if="searching && hasInput" class="gs-page-status">
-        <span class="gs-spinner" /> 搜索中...
+        <span class="gs-spinner" /> {{ t('search.searching') }}
       </div>
       <div v-else-if="!hasInput && !showHistoryDrop" class="gs-page-empty">
         <Search :size="64" :stroke-width="1" class="gs-page-empty-icon" />
-        <div class="gs-page-empty-text">输入关键词开始搜索</div>
-        <div class="gs-page-empty-sub">支持搜索文件名、文件夹名、媒体服务器内容</div>
+        <div class="gs-page-empty-text">{{ t('search.startHint') }}</div>
+        <div class="gs-page-empty-sub">{{ t('search.startSub') }}</div>
       </div>
       <div
         v-else-if="!searching && totalCloud === 0 && totalMs === 0"
         class="gs-page-status"
       >
-        未找到与 "{{ keyword }}" 相关的结果
+        {{ t('search.noResults', { keyword }) }}
       </div>
 
       <div v-if="!searching" class="gs-page-results" :class="{ 'gs-split-mode': hasBoth }">
@@ -601,7 +602,7 @@ onUnmounted(() => {
             <div class="gs-section">
               <div class="gs-section-header">
                 <Folder :size="16" :stroke-width="1.5" />
-                <span>网盘文件</span>
+                <span>{{ t('search.cloudFiles') }}</span>
                 <span class="gs-section-count">{{ totalCloud }}</span>
               </div>
               <div v-for="(group, gi) in cloudGroups" :key="group.key" class="gs-page-group">
@@ -634,7 +635,7 @@ onUnmounted(() => {
             <div class="gs-section">
               <div class="gs-section-header">
                 <Tv :size="16" :stroke-width="1.5" />
-                <span>媒体服务器</span>
+                <span>{{ t('search.mediaServers') }}</span>
                 <span class="gs-section-count">{{ totalMs }}</span>
               </div>
               <div v-for="(group, gi) in msGroups" :key="group.key" class="gs-ms-group">
@@ -665,7 +666,7 @@ onUnmounted(() => {
           <div v-if="totalCloud > 0" class="gs-section">
             <div class="gs-section-header">
               <Folder :size="18" :stroke-width="1.5" />
-              <span>网盘文件</span>
+              <span>{{ t('search.cloudFiles') }}</span>
               <span class="gs-section-count">{{ totalCloud }}</span>
             </div>
             <div v-for="(group, gi) in cloudGroups" :key="group.key" class="gs-page-group">
@@ -697,7 +698,7 @@ onUnmounted(() => {
           <div v-if="totalMs > 0" class="gs-section">
             <div class="gs-section-header">
               <Tv :size="18" :stroke-width="1.5" />
-              <span>媒体服务器</span>
+              <span>{{ t('search.mediaServers') }}</span>
               <span class="gs-section-count">{{ totalMs }}</span>
             </div>
             <div v-for="(group, gi) in msGroups" :key="group.key" class="gs-ms-group">
@@ -725,20 +726,20 @@ onUnmounted(() => {
       </template>
       <template v-else-if="isPanHubMode()">
     <div v-if="!phSearched" class="ph-hero-row">
-          <header class="ph-hero"><div class="ph-hero-badge">PanHub 搜索聚合引擎 · Agent 媒体获取</div><h1 class="ph-hero-title"><span class="ph-hero-title-line">一键检索</span><span class="ph-hero-title-line ph-hero-title-accent">全网网盘资源</span></h1><p class="ph-hero-desc">聚合阿里云盘、夸克、百度网盘、115、迅雷等平台；选择影视结果后可交给 Pro Agent 导入目标网盘，剧集支持追更与缺集巡检。</p><ul class="ph-hero-features"><li class="ph-hero-feature">实时聚合</li><li class="ph-hero-feature">Agent 入库 · Pro</li><li class="ph-hero-feature">剧集追更</li><li class="ph-hero-feature">缺集巡检</li></ul></header>
+          <header class="ph-hero"><div class="ph-hero-badge">{{ t('search.panHubBadge') }}</div><h1 class="ph-hero-title"><span class="ph-hero-title-line">{{ t('search.panHubTitle1') }}</span><span class="ph-hero-title-line ph-hero-title-accent">{{ t('search.panHubTitle2') }}</span></h1><p class="ph-hero-desc">{{ t('search.panHubDesc') }}</p><ul class="ph-hero-features"><li class="ph-hero-feature">{{ t('search.featureAggregate') }}</li><li class="ph-hero-feature">{{ t('search.featureAgent') }}</li><li class="ph-hero-feature">{{ t('search.featureFollow') }}</li><li class="ph-hero-feature">{{ t('search.featureMissing') }}</li></ul></header>
 <aside class="ph-hero-aside"><PanHubHotSearches :api-base="PANHUB_API_BASE" @select="phHotSelect" /></aside>
         </div>
         <div v-if="phError" class="ph-error"><span class="ph-error-icon">⚠️</span>{{ phError }}</div>
         <div v-if="phSearched && !phLoading" class="ph-stats-bar">
-          <div class="ph-stats-main"><span class="ph-stat-item"><span class="ph-stat-label">结果</span><span class="ph-stat-value">{{ phTotal }}</span></span><span class="ph-stat-item"><span class="ph-stat-label">用时</span><span class="ph-stat-value">{{ phFmt(phElapsedMs) }}</span></span></div>
-          <div v-if="phTotal>0" class="ph-stats-filters"><button :class="['ph-filter-pill',{active:phFilterPlatform==='all'}]" type="button" @click="phFilterPlatform='all'">全部 ({{phTotal}})</button><button v-for="p in phPlatforms" :key="p.key" :class="['ph-filter-pill',{active:phFilterPlatform===p.key}]" type="button" @click="phFilterPlatform=phFilterPlatform===p.key?'all':p.key">{{p.name}}({{p.count}})</button></div>
-          <div v-if="phTotal>0" class="ph-stats-sort"><select v-model="phSortType" class="ph-sort-select"><option value="default">默认排序</option><option value="date-desc">最新发布</option><option value="date-asc">最早发布</option><option value="name-asc">名称A→Z</option><option value="name-desc">名称Z→A</option></select></div>
+          <div class="ph-stats-main"><span class="ph-stat-item"><span class="ph-stat-label">{{ t('search.results') }}</span><span class="ph-stat-value">{{ phTotal }}</span></span><span class="ph-stat-item"><span class="ph-stat-label">{{ t('search.elapsed') }}</span><span class="ph-stat-value">{{ phFmt(phElapsedMs) }}</span></span></div>
+          <div v-if="phTotal>0" class="ph-stats-filters"><button :class="['ph-filter-pill',{active:phFilterPlatform==='all'}]" type="button" @click="phFilterPlatform='all'">{{ t('search.all') }} ({{phTotal}})</button><button v-for="p in phPlatforms" :key="p.key" :class="['ph-filter-pill',{active:phFilterPlatform===p.key}]" type="button" @click="phFilterPlatform=phFilterPlatform===p.key?'all':p.key">{{p.name}}({{p.count}})</button></div>
+          <div v-if="phTotal>0" class="ph-stats-sort"><select v-model="phSortType" class="ph-sort-select"><option value="default">{{ t('search.defaultSort') }}</option><option value="date-desc">{{ t('search.latest') }}</option><option value="date-asc">{{ t('search.oldest') }}</option><option value="name-asc">{{ t('search.nameAsc') }}</option><option value="name-desc">{{ t('search.nameDesc') }}</option></select></div>
 
         </div>
-        <div v-if="phLoading" class="ph-status-msg"><span class="gs-spinner" /> 正在搜索全网资源...</div>
+        <div v-if="phLoading" class="ph-status-msg"><span class="gs-spinner" /> {{ t('search.searchingPanHub') }}</div>
         <PanHubMediaResults v-if="phSearched" :keyword="keyword" :items="phTmdbItems" :loading="phTmdbLoading" :error="phTmdbError" :states="acquisitionStates" @acquire="phAcquire" />
         <section v-if="phHasResults" class="ph-results-section"><div class="ph-results-grid"><PanHubResultGroup :merged="phMerged" :platform-info="PH_PLATFORM_INFO" :filter-platform="phFilterPlatform" :sort-type="phSortType" @copy="phCopy" @magnet="phConfirmMagnetDownload" /></div></section>
-        <section v-else-if="phSearched&&!phLoading&&!phHasResults" class="ph-empty-section"><div class="ph-empty-card"><div class="ph-empty-icon">🔍</div><h3>未找到相关资源</h3><p>试试其他关键词，或检查搜索源是否可用</p></div></section>
+        <section v-else-if="phSearched&&!phLoading&&!phHasResults" class="ph-empty-section"><div class="ph-empty-card"><div class="ph-empty-icon">🔍</div><h3>{{ t('search.noPanHubTitle') }}</h3><p>{{ t('search.noPanHubDesc') }}</p></div></section>
       <section v-if="!phSearched" class="ph-douban-section">
         <PanHubTrending :api-base="PANHUB_API_BASE" :states="acquisitionStates" @select="phHotSelect" @acquire="phAcquire" />
       </section>

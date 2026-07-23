@@ -33,6 +33,7 @@ import type { ITokenInfo } from '../user/userstore'
 import BookReaderModal from './BookReaderModal.vue'
 import StatsPage from './StatsPage.vue'
 import { useReaderI18n } from '../utils/readerI18n'
+import { t } from '../i18n'
 
 const bookStore = useBookLibraryStore()
 const query = ref('')
@@ -97,6 +98,22 @@ function isCoverBroken(bookId: string): boolean {
 }
 
 const readerTabs = getBookManagerTabs()
+const bookTabLabel = (key: BookManagerView) => {
+  const map: Partial<Record<BookManagerView, string>> = {
+    home: t('book.allBooks'),
+    recent: t('book.recent'),
+    favorites: t('book.favorites'),
+    shelves: t('book.shelves'),
+    notes: t('book.notes'),
+    highlights: t('book.highlights'),
+    bookmarks: t('book.bookmarks'),
+    trash: t('book.deleted'),
+    folders: t('book.folders'),
+    formats: t('book.formats'),
+    stats: t('book.stats')
+  }
+  return map[key] || key
+}
 const readerTabIcons: Partial<Record<BookManagerView, any>> = {
   home: BookMarked,
   recent: RefreshCw,
@@ -128,46 +145,46 @@ const settingTabIcons: Record<BookManagerSettingTabKey, any> = {
 const settingSwitchGroups: Record<BookManagerSettingTabKey, Array<{ key: keyof BookManagerPreferences; label: string; desc?: string; enabled?: boolean }>> = {
   background: [],
   general: [
-    { key: 'isImportPath', label: '导入书籍为链接', desc: '只保存原始路径，不复制书籍文件。当前网盘书库会保存该偏好，后续本地导入使用。' },
-    { key: 'isDisableTrashBin', label: '禁用回收站', desc: '删除书籍库记录时直接永久删除本地记录。' },
-    { key: 'isHideShelfBook', label: '隐藏已加入书架的书籍', desc: '首页不再显示已经分配到书架的书籍。' },
-    { key: 'isDeleteShelfBook', label: '从书架删除时也删除书籍', desc: '保存 Koodo 行为偏好，后续书架删除流程复用。' },
-    { key: 'isPreventSleep', label: '禁用屏幕休眠' },
-    { key: 'isAlwaysOnTop', label: '窗口置顶' },
-    { key: 'isAutoMaximizeWin', label: '启动时自动最大化主窗口' },
-    { key: 'isAutoLaunch', label: '开机自动启动' },
-    { key: 'isMinimizeToTray', label: '关闭时最小化到托盘' },
-    { key: 'isPreventAdd', label: '打开书籍时不加入资料库' },
-    { key: 'isPrecacheBook', label: '导入后自动预缓存书籍' },
-    { key: 'isExportOriginalName', label: '导出书籍时使用原始文件名' },
-    { key: 'isDisableAI', label: '禁用 AI 功能', desc: '仅影响书籍页入口偏好，已有全局 AI 配置仍保留。' },
-    { key: 'isUseOriginalName', label: '使用文件名作为书名' },
-    { key: 'isDisableUpdate', label: '禁用更新通知' },
-    { key: 'isDeleteOriginal', label: '永久删除时删除原始文件', desc: '当前网盘文件不会被删除，只保存该 Koodo 设置偏好。' },
-    { key: 'isUseBuiltIn', label: '使用内置浏览器打开链接' },
+    { key: 'isImportPath', label: t('book.importAsLink'), desc: t('book.importAsLinkDesc') },
+    { key: 'isDisableTrashBin', label: t('book.disableTrashBin'), desc: t('book.disableTrashBinDesc') },
+    { key: 'isHideShelfBook', label: t('book.hideShelvedBooks'), desc: t('book.hideShelvedBooksDesc') },
+    { key: 'isDeleteShelfBook', label: t('book.deleteWhenRemoveFromShelf'), desc: t('book.deleteWhenRemoveFromShelfDesc') },
+    { key: 'isPreventSleep', label: t('book.preventSleep') },
+    { key: 'isAlwaysOnTop', label: t('book.alwaysOnTop') },
+    { key: 'isAutoMaximizeWin', label: t('book.autoMaximizeMainWindow') },
+    { key: 'isAutoLaunch', label: t('book.autoLaunch') },
+    { key: 'isMinimizeToTray', label: t('book.minimizeToTray') },
+    { key: 'isPreventAdd', label: t('book.preventAddToLibrary') },
+    { key: 'isPrecacheBook', label: t('book.autoPrecacheBook') },
+    { key: 'isExportOriginalName', label: t('book.exportOriginalName') },
+    { key: 'isDisableAI', label: t('book.disableAI'), desc: t('book.disableAIDesc') },
+    { key: 'isUseOriginalName', label: t('book.useFileNameAsTitle') },
+    { key: 'isDisableUpdate', label: t('book.disableUpdate') },
+    { key: 'isDeleteOriginal', label: t('book.deleteOriginalOnPermanentDelete'), desc: t('book.deleteOriginalOnPermanentDeleteDesc') },
+    { key: 'isUseBuiltIn', label: t('book.useBuiltInBrowser') },
   ],
   data: [
-    { key: 'isEnableDiscordRPC', label: '启用 Discord Rich Presence', desc: '显示阅读状态偏好；当前不接 Discord 运行时。' },
+    { key: 'isEnableDiscordRPC', label: t('book.enableDiscordRPC'), desc: t('book.enableDiscordRPCDesc') },
   ],
   reading: [
-    { key: 'isTouch', label: '开启触屏模式' },
-    { key: 'isPreventTrigger', label: '防误触', desc: '保存 Koodo 阅读菜单触发偏好。' },
-    { key: 'isMergeWord', label: '合并阅读器到 Word' },
-    { key: 'isOpenInMain', label: '在主窗口打开书籍' },
-    { key: 'isManualScroll', label: '禁用 AI 聊天自动滚到底部' },
-    { key: 'isOpenBook', label: '启动时自动打开上次阅读的书' },
-    { key: 'isAutoMaximize', label: '打开书籍时自动最大化' },
-    { key: 'isAutoFullscreen', label: '打开书籍时自动全屏' },
-    { key: 'isDisablePopup', label: '选中文字时不弹出菜单' },
-    { key: 'isDisableAutoScroll', label: '禁用章节末尾自动翻章' },
-    { key: 'isOverwriteLink', label: '覆盖书籍默认链接样式' },
-    { key: 'isOverwriteText', label: '覆盖书籍默认文本样式' },
+    { key: 'isTouch', label: t('book.touchMode') },
+    { key: 'isPreventTrigger', label: t('book.preventMistouch'), desc: t('book.preventMistouchDesc') },
+    { key: 'isMergeWord', label: t('book.mergeReaderToWord') },
+    { key: 'isOpenInMain', label: t('book.openInMainWindow') },
+    { key: 'isManualScroll', label: t('book.disableAIChatAutoScroll') },
+    { key: 'isOpenBook', label: t('book.autoOpenLastBook') },
+    { key: 'isAutoMaximize', label: t('book.autoMaximizeReader') },
+    { key: 'isAutoFullscreen', label: t('book.autoFullscreenReader') },
+    { key: 'isDisablePopup', label: t('book.disableSelectionPopup') },
+    { key: 'isDisableAutoScroll', label: t('book.disableAutoNextChapter') },
+    { key: 'isOverwriteLink', label: t('book.overwriteLinkStyle') },
+    { key: 'isOverwriteText', label: t('book.overwriteTextStyle') },
   ],
   appearance: [
-    { key: 'isDisablePDFCover', label: '不使用 PDF 首页作为封面' },
-    { key: 'isDisableCrop', label: '不裁剪图书封面' },
-    { key: 'isShowShelfBookCount', label: '显示每个书架中的图书数量' },
-    { key: 'isCustomSystemCSS', label: '自定义应用样式', desc: '使用 CSS 自定义整个书籍页外观。' },
+    { key: 'isDisablePDFCover', label: t('book.disablePDFCover') },
+    { key: 'isDisableCrop', label: t('book.disableCoverCrop') },
+    { key: 'isShowShelfBookCount', label: t('book.showShelfBookCount') },
+    { key: 'isCustomSystemCSS', label: t('book.customAppStyle'), desc: t('book.customAppStyleDesc') },
   ],
   more: [],
   plugins: [],
@@ -178,8 +195,8 @@ const settingSwitchGroups: Record<BookManagerSettingTabKey, Array<{ key: keyof B
 }
 
 const systemFontOptions = [
-  { value: 'Built-in font', label: '内置字体' },
-  { value: 'system-ui', label: '系统默认' },
+  { value: 'Built-in font', label: t('book.builtInFont') },
+  { value: 'system-ui', label: t('book.systemDefault') },
   { value: 'PingFang SC', label: '苹方' },
   { value: 'Microsoft YaHei', label: '微软雅黑' },
   { value: 'Songti SC', label: '宋体' },
@@ -191,20 +208,20 @@ const systemFontOptions = [
 
 const searchEngineOptions = [
   { value: 'google', label: 'Google' },
-  { value: 'baidu', label: '百度' },
+  { value: 'baidu', label: 'Baidu' },
   { value: 'bing', label: 'Bing' },
   { value: 'duckduckgo', label: 'DuckDuckGo' },
   { value: 'yandex', label: 'Yandex' },
   { value: 'yahoo', label: 'Yahoo' },
   { value: 'naver', label: 'Naver' },
-  { value: 'baiduBaike', label: '百度百科' },
+  { value: 'baiduBaike', label: 'Baidu Baike' },
   { value: 'wiki', label: 'Wikipedia' },
 ] as const
 
 const skinOptions = [
-  { value: 'system', label: '追随系统' },
-  { value: 'light', label: '白天模式' },
-  { value: 'night', label: '黑夜模式' },
+  { value: 'system', label: t('book.systemFollow') },
+  { value: 'light', label: t('book.dayMode') },
+  { value: 'night', label: t('book.nightMode') },
 ] as const
 
 const managerAppearanceClass = computed(() => {
@@ -227,7 +244,7 @@ const managerAppearanceStyle = computed<CSSProperties>(() => {
 })
 
 const activeSettingTitle = computed(() => {
-  return BOOK_MANAGER_SETTING_TABS.find((tab) => tab.key === activeSettingTab.value)?.label || '设置'
+  return BOOK_MANAGER_SETTING_TABS.find((tab) => tab.key === activeSettingTab.value)?.label || t('book.settings')
 })
 
 const hasAnyBookRecords = computed(() => bookStore.totalCount + bookStore.deletedCount > 0)
@@ -354,33 +371,33 @@ const filteredHighlights = computed(() => sortAnnotations(filterAnnotations(book
 const filteredBookmarks = computed(() => filterBookmarks(bookStore.allBookmarks, query.value))
 
 const bookSearchPlaceholder = computed(() => {
-  if (activeManagerView.value === 'notes') return '搜索我的笔记'
-  if (activeManagerView.value === 'highlights') return '搜索我的书摘'
-  if (activeManagerView.value === 'bookmarks') return '搜索我的书签'
-  return '搜索书名、作者、格式'
+  if (activeManagerView.value === 'notes') return t('book.searchNotes')
+  if (activeManagerView.value === 'highlights') return t('book.searchHighlights')
+  if (activeManagerView.value === 'bookmarks') return t('book.searchBookmarks')
+  return t('book.searchBooks')
 })
 
 const activeManagerTitle = computed(() => {
   if (groupDetail.value) return groupDetail.value.title
-  return readerTabs.find((tab) => tab.key === activeManagerView.value)?.label || '全部图书'
+  return bookTabLabel(activeManagerView.value) || t('book.allBooks')
 })
 
 const activeManagerSubtitle = computed(() => {
-  if (bookStore.isScanning) return `${bookStore.scanLabel} · 已扫 ${bookStore.scanScanned} 项 · 命中 ${bookStore.scanFound} 本`
-  if (activeManagerView.value === 'favorites') return '收藏的书会在这里集中展示'
-  if (activeManagerView.value === 'recent') return '按最近阅读时间排列'
-  if (activeManagerView.value === 'shelves') return '按书架整理和浏览藏书'
-  if (activeManagerView.value === 'folders') return '按网盘来源文件夹浏览'
-  if (activeManagerView.value === 'formats') return '按书籍格式浏览'
-  if (activeManagerView.value === 'notes') return '按最近更新汇总带备注的读书笔记'
-  if (activeManagerView.value === 'highlights') return '按最近更新汇总所有高亮书摘'
-  if (activeManagerView.value === 'bookmarks') return '按最近更新汇总所有书签'
-  if (activeManagerView.value === 'trash') return `${bookStore.deletedCount} 本已移入回收站的书籍库记录`
-  return '从网盘里扫描 epub、mobi、pdf、txt、azw3 等常见书籍格式'
+  if (bookStore.isScanning) return t('book.scanStatus', { label: bookStore.scanLabel, scanned: bookStore.scanScanned, found: bookStore.scanFound })
+  if (activeManagerView.value === 'favorites') return t('book.subtitleFavorites')
+  if (activeManagerView.value === 'recent') return t('book.subtitleRecent')
+  if (activeManagerView.value === 'shelves') return t('book.subtitleShelves')
+  if (activeManagerView.value === 'folders') return t('book.subtitleFolders')
+  if (activeManagerView.value === 'formats') return t('book.subtitleFormats')
+  if (activeManagerView.value === 'notes') return t('book.subtitleNotes')
+  if (activeManagerView.value === 'highlights') return t('book.subtitleHighlights')
+  if (activeManagerView.value === 'bookmarks') return t('book.subtitleBookmarks')
+  if (activeManagerView.value === 'trash') return t('book.subtitleTrash', { count: bookStore.deletedCount })
+  return t('book.subtitleHome')
 })
 
 function formatTime(ts: number): string {
-  if (!ts) return '从未扫描'
+  if (!ts) return t('book.neverScanned')
   const d = new Date(ts)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
@@ -533,7 +550,7 @@ function handleExportAllAnnotations() {
   }), annotationSortMode.value, annotationSortOrder.value)
   const bookmarks = filterBookmarks(bookStore.allBookmarks, query.value)
   if (!notes.length && !bookmarks.length) {
-    message.warning('暂无可导出的书摘或书签')
+    message.warning(t('book.noExportableAnnotations'))
     return
   }
   exportAllAnnotations({
@@ -541,7 +558,7 @@ function handleExportAllAnnotations() {
     notes,
     bookmarks
   }, exportAllFormat.value)
-  message.success('已导出全部书摘')
+  message.success(t('book.exportedAllAnnotations'))
 }
 
 function handleSortModeChange(value: unknown) {
@@ -553,22 +570,23 @@ function toggleSortOrder() {
 }
 
 const sortModeOptions = [
-  { value: 'added', label: '最近添加' },
-  { value: 'recent', label: '最近阅读' },
-  { value: 'title', label: '书名' },
-  { value: 'author', label: '作者' },
-  { value: 'readingTime', label: '阅读时长' },
-  { value: 'progress', label: '阅读进度' },
-  { value: 'size', label: '文件大小' },
+  { value: 'added', labelKey: 'book.sortAdded' },
+  { value: 'recent', labelKey: 'book.sortRecent' },
+  { value: 'title', labelKey: 'book.sortTitle' },
+  { value: 'author', labelKey: 'book.sortAuthor' },
+  { value: 'readingTime', labelKey: 'book.sortReadingTime' },
+  { value: 'progress', labelKey: 'book.sortProgress' },
+  { value: 'size', labelKey: 'book.sortSize' },
 ] as const
 
 function sortModeLabel(mode: string) {
-  return sortModeOptions.find((o) => o.value === mode)?.label ?? mode
+  const item = sortModeOptions.find((o) => o.value === mode)
+  return item ? t(item.labelKey) : mode
 }
 
 const annotationSortModeOptions = [
-  { value: 'date', label: '笔记时间' },
-  { value: 'progress', label: '阅读进度' }
+  { value: 'date', label: t('book.noteTime') },
+  { value: 'progress', label: t('book.sortProgress') }
 ] as const
 
 function handleAnnotationSortModeChange(value: Event) {
@@ -609,7 +627,7 @@ function setThemeColor(value: string) {
 function setCustomThemeColor() {
   const value = customColorDraft.value.trim()
   if (!/^#[0-9a-fA-F]{6}$/.test(value)) {
-    message.error('请输入 6 位十六进制颜色，例如 #399393')
+    message.error(t('book.invalidHexColor'))
     return
   }
   updateManagerPreferences({ themeColor: value })
@@ -619,13 +637,13 @@ function addTxtParser() {
   const label = txtParserDraft.value.label.trim()
   const regex = txtParserDraft.value.regex.trim()
   if (!label || !regex) {
-    message.warning('请输入解析器名称和正则')
+    message.warning(t('book.enterParserNameRegex'))
     return
   }
   try {
     new RegExp(regex)
   } catch {
-    message.error('正则表达式无效')
+    message.error(t('book.invalidRegex'))
     return
   }
   const next = managerPreferences.value.txtParsers.filter((item) => item.label !== label)
@@ -656,13 +674,13 @@ function deleteLocalDictionary(id: string) {
 async function scanBooks() {
   if (bookStore.isScanning) return
   if (!selectedScanUserIds.value.length) {
-    message.warning('请选择要扫描的网盘')
+    message.warning(t('book.selectDriveToScan'))
     return
   }
   await BookScanner.getInstance().scanAllUsers({
     userIdAllowList: new Set(selectedScanUserIds.value)
   })
-  message.success(`书籍扫描完成，已收录 ${bookStore.totalCount} 本`)
+  message.success(t('book.scanCompletedWithCount', { count: bookStore.totalCount }))
 }
 
 function stopScan() {
@@ -680,9 +698,9 @@ function openExternalLink(url: string) {
 async function copyContactEmail() {
   try {
     await navigator.clipboard.writeText('gaozhangmin@gmail.com')
-    message.success('已复制邮箱')
+    message.success(t('book.emailCopied'))
   } catch {
-    message.error('复制失败')
+    message.error(t('book.copyFailed'))
   }
 }
 
@@ -700,7 +718,7 @@ async function handleLocalFileImport(event: Event) {
   }
 
   if (!validFiles.length) {
-    message.warning('没有可导入的图书文件（支持 epub, pdf, mobi, azw3, txt 等）')
+    message.warning(t('book.noImportableBooks'))
     input.value = ''
     return
   }
@@ -711,7 +729,7 @@ async function handleLocalFileImport(event: Event) {
 
   for (const file of validFiles) {
     if (file.size > maxSize) {
-      message.warning(`《${file.name}》超过 50MB，已跳过`)
+      message.warning(t('book.fileTooLargeSkipped', { name: file.name }))
       continue
     }
     try {
@@ -747,7 +765,7 @@ async function handleLocalFileImport(event: Event) {
         size: file.size,
         category: extractCategoryFromExt(ext),
         title: fileMeta.title || nameMeta.title || file.name.replace(/\.[^.]+$/, ''),
-        author: fileMeta.author || nameMeta.author || '未知作者',
+        author: fileMeta.author || nameMeta.author || t('book.unknownAuthor'),
         summary: fileMeta.summary || '',
         cover_url: fileMeta.cover_url || '',
         description: JSON.stringify({ imported: true, dataUrl }),
@@ -763,9 +781,9 @@ async function handleLocalFileImport(event: Event) {
 
   if (imported.length) {
     await bookStore.appendBooks(imported)
-    message.success(`成功导入 ${imported.length} 本图书`)
+    message.success(t('book.importedCount', { count: imported.length }))
   } else {
-    message.warning('导入失败，请检查文件是否可读')
+    message.warning(t('book.importFailed'))
   }
 
   input.value = ''
@@ -821,7 +839,7 @@ async function clearLibrary() {
   await bookStore.clearAll()
   selectedBook.value = null
   groupDetail.value = null
-  message.success('书籍库已清空')
+  message.success(t('book.libraryCleared'))
 }
 
 function openBook(book: IBookItem, options: { keepAnnotationTarget?: boolean } = {}) {
@@ -838,15 +856,15 @@ function openBook(book: IBookItem, options: { keepAnnotationTarget?: boolean } =
 
 function readerBadgeFor(book: IBookItem): { label: string; tone: 'native' | 'reader' | 'legacy' } | null {
   const ext = book.ext || ''
-  if (isReaderFormat(ext)) return { label: '内置阅读', tone: 'reader' }
-  if (isLegacyScanOnlyBookFormat(ext)) return { label: '暂不支持阅读', tone: 'legacy' }
+  if (isReaderFormat(ext)) return { label: t('book.readerSupported'), tone: 'reader' }
+  if (isLegacyScanOnlyBookFormat(ext)) return { label: t('book.readerUnsupported'), tone: 'legacy' }
   return null
 }
 
 function readingProgressLabel(book: IBookItem): string {
   if (typeof book.reading_progress === 'number') {
-    if (book.reading_progress === 0) return '新书'
-    if (book.reading_progress >= 100) return '已读完'
+    if (book.reading_progress === 0) return t('book.newBook')
+    if (book.reading_progress >= 100) return t('book.finished')
     return `${book.reading_progress.toFixed(1)}%`
   }
   if (book.reading_progress_text) return book.reading_progress_text
@@ -859,7 +877,7 @@ function bookForAnnotation(annotation: Pick<IBookNote | IBookBookmark, 'book_id'
 
 function annotationBookTitle(annotation: Pick<IBookNote | IBookBookmark, 'book_id'>): string {
   const book = bookForAnnotation(annotation)
-  return book?.title || book?.file_name || '未知书籍'
+  return book?.title || book?.file_name || t('book.unknownBook')
 }
 
 function openAnnotationBook(annotation: Pick<IBookNote | IBookBookmark, 'book_id' | 'id'>, type: 'note' | 'highlight' | 'bookmark', action: 'show' | 'edit' = 'show') {
@@ -871,7 +889,7 @@ function openAnnotationBook(annotation: Pick<IBookNote | IBookBookmark, 'book_id
 function copyAnnotationLink(annotation: Pick<IBookNote, 'id'>, event?: Event) {
   event?.stopPropagation()
   copyToClipboard(buildNoteLink(annotation.id))
-  message.success('笔记链接已复制')
+  message.success(t('book.noteLinkCopied'))
 }
 
 async function deleteAnnotation(annotation: Pick<IBookNote, 'book_id' | 'id'>, event?: Event) {
@@ -879,7 +897,7 @@ async function deleteAnnotation(annotation: Pick<IBookNote, 'book_id' | 'id'>, e
   const { book_id, id } = annotation
   if (!book_id || !id) return
   await bookStore.deleteBookNotesByIds(book_id, [id])
-  message.success('已删除')
+  message.success(t('book.deletedSuccess'))
 }
 
 function editAnnotationInBook(annotation: Pick<IBookNote, 'book_id' | 'id'>, type: 'note' | 'highlight', event?: Event) {
@@ -936,20 +954,20 @@ function toggleSelectAllVisibleBooks() {
 
 async function assignSelectedBooksToShelf() {
   if (!selectedBookIds.value.length) return
-  const raw = window.prompt('输入书架名称', '')
+  const raw = window.prompt(t('book.inputShelfName'), '')
   if (raw === null) return
   const shelfName = buildDefaultShelfName(raw)
-  const shelfId = shelfName === '默认书架' ? '' : shelfName
+  const shelfId = shelfName === t('book.defaultShelf') ? '' : shelfName
   await bookStore.moveBooksToShelf(selectedBookIds.value, shelfId)
   if (selectedBook.value) selectedBook.value = bookStore.books.find((book) => book.id === selectedBook.value?.id) || selectedBook.value
-  message.success(`已将 ${selectedBookIds.value.length} 本书加入 ${shelfName}`)
+  message.success(t('book.addedBooksToShelf', { count: selectedBookIds.value.length, shelf: shelfName }))
   clearSelectedBooks()
 }
 
 async function setSelectedBooksFavorite(isFavorite: boolean) {
   if (!selectedBookIds.value.length) return
   await Promise.all(selectedBooks.value.map((book) => bookStore.updateBookMetadata(book.id, { is_favorite: isFavorite })))
-  message.success(isFavorite ? '已收藏所选书籍' : '已取消收藏所选书籍')
+  message.success(isFavorite ? t('book.favoritedSelected') : t('book.unfavoritedSelected'))
   clearSelectedBooks()
 }
 
@@ -959,8 +977,8 @@ async function deleteSelectedBooks() {
   const permanently = managerPreferences.value.isDisableTrashBin
   const deleteOriginal = managerPreferences.value.isDeleteOriginal
   const ok = window.confirm(permanently
-    ? `确定永久删除 ${ids.length} 本书籍库记录？${deleteOriginal ? '将同时尝试删除网盘原始文件。' : '不会删除网盘文件，但记录无法从回收站恢复。'}`
-    : `确定将 ${ids.length} 本书籍库记录移入已删除？不会删除网盘文件。`)
+    ? t('book.confirmDeleteBooksPermanent', { count: ids.length, suffix: deleteOriginal ? t('book.deleteOriginalSuffix') : t('book.localOnlyPermanentSuffix') })
+    : t('book.confirmMoveBooksToDeleted', { count: ids.length }))
   if (!ok) return
   if (permanently && deleteOriginal) {
     await deleteOriginalFiles(ids)
@@ -968,7 +986,7 @@ async function deleteSelectedBooks() {
   if (permanently) await bookStore.deleteBooksByIds(ids)
   else await bookStore.moveBooksToTrash(ids)
   if (selectedBook.value && ids.includes(selectedBook.value.id)) selectedBook.value = null
-  message.success(permanently ? `已永久删除 ${ids.length} 本` : `已移入已删除 ${ids.length} 本`)
+  message.success(permanently ? t('book.permanentlyDeletedCount', { count: ids.length }) : t('book.movedToDeletedCount', { count: ids.length }))
   clearSelectedBooks()
 }
 
@@ -978,7 +996,7 @@ async function deleteOriginalFiles(ids: string[]) {
     try {
       const { default: AliFileCmd } = await import('../aliapi/filecmd')
       await AliFileCmd.ApiDeleteBatch(book.user_id, book.drive_id, [book.file_id]).catch(() => {})
-    } catch { /* 删除网盘文件失败不影响本地删除 */ }
+    } catch { /* book.originalDeleteFailureIgnored */ }
   }
 }
 
@@ -986,7 +1004,7 @@ async function restoreSelectedBooks() {
   if (!selectedBookIds.value.length) return
   const ids = [...selectedBookIds.value]
   await bookStore.restoreBooksFromTrash(ids)
-  message.success(`已恢复 ${ids.length} 本书籍库记录`)
+  message.success(t('book.restoredRecordsCount', { count: ids.length }))
   clearSelectedBooks()
 }
 
@@ -994,11 +1012,11 @@ async function permanentlyDeleteSelectedBooks() {
   if (!selectedBookIds.value.length) return
   const ids = [...selectedBookIds.value]
   const deleteOriginal = managerPreferences.value.isDeleteOriginal
-  const ok = window.confirm(`确定永久删除 ${ids.length} 本书籍库记录？${deleteOriginal ? '将同时尝试删除网盘原始文件。' : '不会删除网盘文件，但记录无法从回收站恢复。'}`)
+  const ok = window.confirm(t('book.confirmDeleteBooksPermanent', { count: ids.length, suffix: deleteOriginal ? t('book.deleteOriginalSuffix') : t('book.localOnlyPermanentSuffix') }))
   if (!ok) return
   if (deleteOriginal) await deleteOriginalFiles(ids)
   await bookStore.deleteBooksByIds(ids)
-  message.success(`已永久删除 ${ids.length} 本书籍库记录`)
+  message.success(t('book.permanentlyDeletedRecordsCount', { count: ids.length }))
   clearSelectedBooks()
 }
 
@@ -1006,28 +1024,28 @@ async function restoreBook(book: IBookItem, event?: Event) {
   event?.stopPropagation()
   await bookStore.restoreBooksFromTrash([book.id])
   selectedBookIds.value = selectedBookIds.value.filter((id) => id !== book.id)
-  message.success('已恢复书籍记录')
+  message.success(t('book.restoredBookRecord'))
 }
 
 async function permanentlyDeleteBook(book: IBookItem, event?: Event) {
   event?.stopPropagation()
   const deleteOriginal = managerPreferences.value.isDeleteOriginal
-  const ok = window.confirm(`确定永久删除《${book.title || book.file_name}》的书籍库记录？${deleteOriginal ? '将同时尝试删除网盘原始文件。' : '不会删除网盘文件。'}`)
+  const ok = window.confirm(t('book.confirmDeleteBookPermanent', { title: book.title || book.file_name, suffix: deleteOriginal ? t('book.deleteOriginalSuffix') : t('book.localOnlySuffix') }))
   if (!ok) return
   if (deleteOriginal) await deleteOriginalFiles([book.id])
   await bookStore.deleteBooksByIds([book.id])
   selectedBookIds.value = selectedBookIds.value.filter((id) => id !== book.id)
-  message.success('已永久删除书籍记录')
+  message.success(t('book.permanentlyDeletedBookRecord'))
 }
 
 async function clearDeletedBooks() {
   const ids = bookStore.deletedBooks.map((book) => book.id)
   if (!ids.length) return
-  const ok = window.confirm(`确定清空已删除中的 ${ids.length} 本书籍库记录？不会删除网盘文件，但会清除这些书的本地笔记、书签和书摘。`)
+  const ok = window.confirm(t('book.confirmClearDeletedBooks', { count: ids.length }))
   if (!ok) return
   await bookStore.deleteBooksByIds(ids)
   clearSelectedBooks()
-  message.success(`已清空已删除 ${ids.length} 本`)
+  message.success(t('book.clearedDeletedCount', { count: ids.length }))
 }
 
 function booksForShelf(shelf: BookShelfGroup): IBookItem[] {
@@ -1040,19 +1058,19 @@ function openShelf(shelf: BookShelfGroup) {
 }
 
 function shelfNameForBook(book: IBookItem): string {
-  return book.shelf_id || '默认书架'
+  return book.shelf_id || t('book.defaultShelf')
 }
 
 async function assignSelectedBookToShelf() {
   const book = selectedBook.value
   if (!book) return
-  const raw = window.prompt('输入书架名称', book.shelf_id || '')
+  const raw = window.prompt(t('book.inputShelfName'), book.shelf_id || '')
   if (raw === null) return
   const shelfName = buildDefaultShelfName(raw)
-  const shelfId = shelfName === '默认书架' ? '' : shelfName
+  const shelfId = shelfName === t('book.defaultShelf') ? '' : shelfName
   await bookStore.moveBooksToShelf([book.id], shelfId)
   selectedBook.value = bookStore.books.find((item) => item.id === book.id) || selectedBook.value
-  message.success(`已加入 ${shelfName}`)
+  message.success(t('book.addedToShelf', { shelf: shelfName }))
 }
 
 async function removeSelectedBookFromShelf() {
@@ -1061,11 +1079,11 @@ async function removeSelectedBookFromShelf() {
   if (managerPreferences.value.isDeleteShelfBook) {
     await bookStore.deleteBooksByIds([book.id])
     selectedBook.value = null
-    message.success('已从书架移除并删除书籍')
+    message.success(t('book.removedFromShelfAndDeleted'))
   } else {
     await bookStore.moveBooksToShelf([book.id], '')
     selectedBook.value = bookStore.books.find((item) => item.id === book.id) || selectedBook.value
-    message.success('已移回默认书架')
+    message.success(t('book.movedBackToDefaultShelf'))
   }
 }
 
@@ -1075,34 +1093,34 @@ function toggleBookFavorite(book: IBookItem, event: Event) {
 }
 
 function driveLabel(driveId: string, userId = ''): string {
-  if (driveId === 'cloud123') return '123 网盘'
-  if (driveId === 'drive115') return '115 网盘'
-  if (driveId === 'cloud139') return '139 云盘'
-  if (driveId === 'cloud189') return '天翼云盘'
-  if (driveId === 'baidu') return '百度网盘'
+  if (driveId === 'cloud123') return t('drive.cloud123')
+  if (driveId === 'drive115') return t('drive.drive115')
+  if (driveId === 'cloud139') return t('drive.cloud139')
+  if (driveId === 'cloud189') return t('drive.cloud189')
+  if (driveId === 'baidu') return t('drive.baiduFull')
   if (driveId === 'pikpak') return 'PikPak'
-  if (driveId === 'quark') return '夸克网盘'
+  if (driveId === 'quark') return t('drive.quarkFull')
   if (driveId === 'dropbox') return 'Dropbox'
   if (driveId === 'onedrive') return 'OneDrive'
   if (driveId === 'box') return 'Box'
-  if (driveId.includes('resource')) return '阿里云盘资源盘'
-  if (driveId.includes('backup')) return '阿里云盘备份盘'
-  if (userId.startsWith('aliyun_') || driveId) return '阿里云盘'
-  return '未知网盘'
+  if (driveId.includes('resource')) return t('drive.aliyunResource')
+  if (driveId.includes('backup')) return t('drive.aliyunBackup')
+  if (userId.startsWith('aliyun_') || driveId) return t('drive.aliyun')
+  return t('drive.default')
 }
 
 function driveLabelFromToken(token: ITokenInfo): string {
-  if (token.tokenfrom === 'cloud123') return '123 网盘'
-  if (token.tokenfrom === '115') return '115 网盘'
-  if (token.tokenfrom === '139') return '139 云盘'
-  if (token.tokenfrom === '189') return '天翼云盘'
-  if (token.tokenfrom === 'baidu') return '百度网盘'
+  if (token.tokenfrom === 'cloud123') return t('drive.cloud123')
+  if (token.tokenfrom === '115') return t('drive.drive115')
+  if (token.tokenfrom === '139') return t('drive.cloud139')
+  if (token.tokenfrom === '189') return t('drive.cloud189')
+  if (token.tokenfrom === 'baidu') return t('drive.baiduFull')
   if (token.tokenfrom === 'pikpak') return 'PikPak'
-  if (token.tokenfrom === 'quark') return '夸克网盘'
+  if (token.tokenfrom === 'quark') return t('drive.quarkFull')
   if (token.tokenfrom === 'dropbox') return 'Dropbox'
   if (token.tokenfrom === 'onedrive') return 'OneDrive'
   if (token.tokenfrom === 'box') return 'Box'
-  return '阿里云盘'
+  return t('drive.aliyun')
 }
 
 function scanAccountLabel(token: ITokenInfo): string {
@@ -1110,7 +1128,7 @@ function scanAccountLabel(token: ITokenInfo): string {
 }
 
 function userLabel(userId: string): string {
-  return userLabelMap.value[userId] || userId || '未知账号'
+  return userLabelMap.value[userId] || userId || t('music.unknownAccount')
 }
 
 function sourceLabel(book?: IBookItem): string {
@@ -1182,7 +1200,7 @@ function bookContextMoveToShelf() {
   const b = bookContextBook.value
   closeBookContextMenu()
   if (!b) return
-  const name = window.prompt('输入书架名称', b.shelf_id || '')
+  const name = window.prompt(t('book.inputShelfName'), b.shelf_id || '')
   if (!name) return
   bookStore.moveBooksToShelf([b.id], name)
 }
@@ -1193,10 +1211,10 @@ async function bookContextRemoveFromShelf() {
   if (!b || !b.shelf_id) return
   if (managerPreferences.value.isDeleteShelfBook) {
     await bookStore.deleteBooksByIds([b.id])
-    message.success('已从书架移除并删除书籍')
+    message.success(t('book.removedFromShelfAndDeleted'))
   } else {
     await bookStore.moveBooksToShelf([b.id], '')
-    message.success('已移回默认书架')
+    message.success(t('book.movedBackToDefaultShelf'))
   }
 }
 
@@ -1207,8 +1225,8 @@ async function bookContextDelete() {
   const permanently = managerPreferences.value.isDisableTrashBin
   const deleteOriginal = managerPreferences.value.isDeleteOriginal
   const ok = window.confirm(permanently
-    ? `确定永久删除《${b.title || b.file_name}》的书籍库记录？${deleteOriginal ? '将同时尝试删除网盘原始文件。' : '不会删除网盘文件。'}`
-    : `确定将《${b.title || b.file_name}》移入已删除？不会删除网盘文件。`)
+    ? t('book.confirmDeleteBookPermanent', { title: b.title || b.file_name, suffix: deleteOriginal ? t('book.deleteOriginalSuffix') : t('book.localOnlySuffix') })
+    : t('book.confirmMoveBookToDeleted', { title: b.title || b.file_name }))
   if (!ok) return
   if (permanently) {
     if (deleteOriginal) await deleteOriginalFiles([b.id])
@@ -1216,13 +1234,13 @@ async function bookContextDelete() {
   }
   else await bookStore.moveBooksToTrash([b.id])
   if (selectedBook.value?.id === b.id) selectedBook.value = null
-  message.success(permanently ? '已永久删除书籍记录' : '已移入已删除')
+  message.success(permanently ? t('book.permanentlyDeletedBookRecord') : t('book.movedToDeleted'))
 }
 
 function copyBookLink(book: IBookItem) {
   closeBookContextMenu()
   copyToClipboard(buildNoteLink(book.id))
-  message.success('书籍链接已复制')
+  message.success(t('book.bookLinkCopied'))
 }
 
 async function deleteFolderGroups(groups: BookFolderGroup[]) {
@@ -1235,8 +1253,8 @@ async function deleteFolderGroups(groups: BookFolderGroup[]) {
   if (!uniq.size) return
   const permanently = managerPreferences.value.isDisableTrashBin
   const ok = window.confirm(permanently
-    ? `确定永久删除 ${groups.length} 个文件夹的书籍库记录？将移除 ${bookCount} 本已刮削书籍，不会删除网盘文件。`
-    : `确定将 ${groups.length} 个文件夹的书籍库记录移入已删除？将移除 ${bookCount} 本已刮削书籍，不会删除网盘文件。`)
+    ? t('book.confirmDeleteFolderGroupsPermanent', { folderCount: groups.length, bookCount })
+    : t('book.confirmMoveFolderGroupsToDeleted', { folderCount: groups.length, bookCount }))
   if (!ok) return
   if (permanently) await bookStore.deleteBooksByIds(Array.from(uniq))
   else await bookStore.moveBooksToTrash(Array.from(uniq))
@@ -1245,7 +1263,7 @@ async function deleteFolderGroups(groups: BookFolderGroup[]) {
   if (groupDetail.value?.type === 'folder' && groups.some((g) => g.items.some((b) => groupDetail.value?.items.some((gb) => gb.id === b.id)))) {
     groupDetail.value = null
   }
-  message.success(permanently ? `已永久删除 ${bookCount} 本书籍库记录` : `已移入已删除 ${bookCount} 本书籍库记录`)
+  message.success(permanently ? t('book.permanentlyDeletedBookRecords', { count: bookCount }) : t('book.movedBookRecordsToDeleted', { count: bookCount }))
 }
 
 function deleteCurrentFolderFromMenu() {
@@ -1297,8 +1315,8 @@ function emptyCoverTitle(book: IBookItem): string {
 }
 
 function bookDisplayTitle(book: IBookItem): string {
-  if (managerPreferences.value.isUseOriginalName) return book.file_name || book.title || '未命名书籍'
-  return book.title || book.file_name || '未命名书籍'
+  if (managerPreferences.value.isUseOriginalName) return book.file_name || book.title || t('book.untitledBook')
+  return book.title || book.file_name || t('book.untitledBook')
 }
 
 function shouldUseCoverImage(book: IBookItem): boolean {
@@ -1374,14 +1392,14 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
   <a-layout :class="['book-library', ...managerAppearanceClass]" :style='managerAppearanceStyle'>
     <aside :class="['book-sidebar', sidebarCollapsed ? 'collapsed' : '']">
       <div class='book-brand'>
-        <button class='book-sidebar-toggle' :title="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'" @click='sidebarCollapsed = !sidebarCollapsed'>
+        <button class='book-sidebar-toggle' :title="sidebarCollapsed ? t('book.expandSidebar') : t('book.collapseSidebar')" @click='sidebarCollapsed = !sidebarCollapsed'>
           <PanelLeftClose v-if='!sidebarCollapsed' :size='18' :stroke-width='2' />
           <PanelLeft v-else :size='18' :stroke-width='2' />
         </button>
         <LibraryBig :size='24' :stroke-width='1.7' />
         <div class='book-brand-text'>
-          <div class='book-brand-title'>书籍</div>
-          <div class='book-brand-sub'>{{ bookStore.totalCount }} 本藏书</div>
+          <div class='book-brand-title'>{{ t('book.title') }}</div>
+          <div class='book-brand-sub'>{{ t('book.collectionCount', { count: bookStore.totalCount }) }}</div>
         </div>
       </div>
       <div class='book-nav-list'>
@@ -1389,11 +1407,11 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           v-for='tab in readerTabs'
           :key='tab.key'
           :class="['book-nav-item', activeManagerView === tab.key ? 'active' : '']"
-          :title='sidebarCollapsed ? tab.label : undefined'
+          :title='sidebarCollapsed ? bookTabLabel(tab.key) : undefined'
           @click='openManagerView(tab.key)'
         >
           <component :is='readerTabIcons[tab.key]' :size='17' :stroke-width='1.8' />
-          <span>{{ tab.label }}</span>
+          <span>{{ bookTabLabel(tab.key) }}</span>
         </button>
       </div>
 
@@ -1403,10 +1421,10 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           v-model:selected-ids='selectedScanUserIds'
           :drive-options='scanAccountOptions'
           :is-scanning='bookStore.isScanning'
-          :scanning-status-text="bookStore.scanLabel || '扫描中...'"
-          :idle-status-text="bookStore.lastScanAt ? formatTime(bookStore.lastScanAt) : '尚未扫描'"
-          import-label='导入本地图书'
-          clear-confirm-text='确定清空整个书籍库？此操作不可恢复'
+          :scanning-status-text="bookStore.scanLabel || t('book.scanning')"
+          :idle-status-text="bookStore.lastScanAt ? formatTime(bookStore.lastScanAt) : t('book.notScannedYet')"
+          :import-label="t('book.importLocal')"
+          :clear-confirm-text="t('book.clearLibraryConfirm')"
           :clear-disabled='!hasAnyBookRecords'
           @start-scan='scanBooks'
           @stop-scan='stopScan'
@@ -1425,42 +1443,42 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           </div>
         </div>
         <div class='book-header-ctrl-row'>
-          <span v-if='isCollectionManagerView' class='book-total-count'>合计 {{ readerVisibleBooks.length }} 本</span>
+          <span v-if='isCollectionManagerView' class='book-total-count'>{{ t('book.totalBooks', { count: readerVisibleBooks.length }) }}</span>
           <a-input v-model='query' allow-clear size='small' class='book-search' :placeholder='bookSearchPlaceholder'>
             <template #prefix><Search :size='15' :stroke-width='1.8' /></template>
           </a-input>
-          <select v-if='isCollectionManagerView && !groupDetail' v-model='readingStatusFilter' class='book-status-filter' title='阅读状态'>
-            <option value=''>全部状态</option>
-            <option value='unread'>未读</option>
-            <option value='reading'>阅读中</option>
-            <option value='finished'>已读完</option>
+          <select v-if='isCollectionManagerView && !groupDetail' v-model='readingStatusFilter' class='book-status-filter' :title="t('book.readingStatus')">
+            <option value=''>{{ t('book.allStatuses') }}</option>
+            <option value='unread'>{{ t('book.unread') }}</option>
+            <option value='reading'>{{ t('book.reading') }}</option>
+            <option value='finished'>{{ t('book.finished') }}</option>
           </select>
           <div class='book-header-divider' />
           <a-dropdown trigger='click'>
             <a-button size='small' class='book-sort-btn'>
-              {{ sortModeLabel(bookStore.sortMode) }} · {{ bookStore.sortOrder === 'asc' ? '升序' : '降序' }}
+              {{ sortModeLabel(bookStore.sortMode) }} · {{ bookStore.sortOrder === 'asc' ? t('book.asc') : t('book.desc') }}
             </a-button>
             <template #content>
               <div class='book-sort-dropdown'>
-                <div class='book-sort-section-title'>排序方式</div>
+                <div class='book-sort-section-title'>{{ t('book.sortMode') }}</div>
                 <div
                   v-for='opt in sortModeOptions'
                   :key='opt.value'
                   :class="['book-sort-item', bookStore.sortMode === opt.value ? 'active' : '']"
                   @click='handleSortModeChange(opt.value)'
                 >
-                  {{ opt.label }}
+                  {{ t(opt.labelKey) }}
                 </div>
                 <div class='book-sort-divider' />
-                <div class='book-sort-section-title'>排列顺序</div>
+                <div class='book-sort-section-title'>{{ t('book.sortOrder') }}</div>
                 <div
                   :class="['book-sort-item', bookStore.sortOrder === 'asc' ? 'active' : '']"
                   @click="bookStore.setSortOrder('asc')"
-                >升序</div>
+                >{{ t('book.asc') }}</div>
                 <div
                   :class="['book-sort-item', bookStore.sortOrder === 'desc' ? 'active' : '']"
                   @click="bookStore.setSortOrder('desc')"
-                >降序</div>
+                >{{ t('book.desc') }}</div>
               </div>
             </template>
           </a-dropdown>
@@ -1471,18 +1489,18 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             class='book-view-toggle'
             @change='handleViewModeChange'
           >
-            <a-radio value='grid' title='网格'>
+            <a-radio value='grid' :title="t('book.grid')">
               <Grid3X3 :size='14' :stroke-width='1.9' />
             </a-radio>
-            <a-radio value='list' title='列表'>
+            <a-radio value='list' :title="t('book.list')">
               <List :size='14' :stroke-width='1.9' />
             </a-radio>
-            <a-radio value='cover' title='封面'>
+            <a-radio value='cover' :title="t('book.cover')">
               <BookOpen :size='14' :stroke-width='1.9' />
             </a-radio>
           </a-radio-group>
           <div v-if='isCollectionManagerView && bookStore.viewMode === "grid"' class='book-card-scale'>
-            <a-slider v-model='cardScale' :min='0.6' :max='2' :step='0.1' class='book-card-scale-slider' title='卡片缩放' />
+            <a-slider v-model='cardScale' :min='0.6' :max='2' :step='0.1' class='book-card-scale-slider' :title="t('book.cardScale')" />
           </div>
           <input
             ref='localFileInput'
@@ -1492,46 +1510,46 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             style='display:none'
             @change='handleLocalFileImport'
           />
-          <a-button size='small' class='book-settings-btn' title='设置' @click='showManagerSettings = true'>
+          <a-button size='small' class='book-settings-btn' :title="t('common.settings')" @click='showManagerSettings = true'>
             <template #icon><Settings :size='15' :stroke-width='1.9' /></template>
           </a-button>
         </div>
       </header>
 
       <section class='book-content'>
-        <a-empty v-if='!hasAnyBookRecords' description='暂无书籍，点击右上角“扫描”开始收录'>
+        <a-empty v-if='!hasAnyBookRecords' :description="t('book.emptyLibrary')">
           <template #image>
             <BookOpen :size='58' :stroke-width='1.5' style='color: var(--color-text-3)' />
           </template>
         </a-empty>
 
         <div v-if='selectedBookIds.length' class='book-batch-bar'>
-          <span>已选 {{ selectedBookIds.length }} 本</span>
+          <span>{{ t('book.selectedCount', { count: selectedBookIds.length }) }}</span>
           <a-button size='mini' @click='toggleSelectAllVisibleBooks'>
-            {{ isAllSelectableBooksSelected ? '取消全选' : '全选当前' }}
+            {{ isAllSelectableBooksSelected ? t('book.unselectAll') : t('book.selectCurrent') }}
           </a-button>
           <template v-if='isTrashManagerView'>
-            <a-button size='mini' @click='restoreSelectedBooks'>恢复</a-button>
-            <a-button size='mini' status='danger' @click='permanentlyDeleteSelectedBooks'>永久删除</a-button>
+            <a-button size='mini' @click='restoreSelectedBooks'>{{ t('book.restore') }}</a-button>
+            <a-button size='mini' status='danger' @click='permanentlyDeleteSelectedBooks'>{{ t('book.deleteForever') }}</a-button>
           </template>
           <template v-else>
-            <a-button size='mini' @click='assignSelectedBooksToShelf'>加入书架</a-button>
-            <a-button size='mini' @click='setSelectedBooksFavorite(true)'>收藏</a-button>
-            <a-button size='mini' @click='setSelectedBooksFavorite(false)'>取消收藏</a-button>
-            <a-button size='mini' status='danger' @click='deleteSelectedBooks'>移入已删除</a-button>
+            <a-button size='mini' @click='assignSelectedBooksToShelf'>{{ t('book.addToShelf') }}</a-button>
+            <a-button size='mini' @click='setSelectedBooksFavorite(true)'>{{ t('book.favorites') }}</a-button>
+            <a-button size='mini' @click='setSelectedBooksFavorite(false)'>{{ t('book.unfavorite') }}</a-button>
+            <a-button size='mini' status='danger' @click='deleteSelectedBooks'>{{ t('book.moveToDeleted') }}</a-button>
           </template>
-          <button class='book-batch-close' title='取消选择' @click='clearSelectedBooks'>
+          <button class='book-batch-close' :title="t('book.cancelSelection')" @click='clearSelectedBooks'>
             <X :size='14' :stroke-width='2' />
           </button>
         </div>
 
         <template v-if='bookStore.totalCount && groupDetail'>
           <div class='book-group-header'>
-            <a-button size='mini' @click='groupDetail = null'>返回</a-button>
-            <span>{{ detailBooks.length }} 本</span>
+            <a-button size='mini' @click='groupDetail = null'>{{ t('book.back') }}</a-button>
+            <span>{{ t('book.bookCount', { count: detailBooks.length }) }}</span>
             <span v-if="groupDetail.type === 'folder' && detailBooks[0]" class='book-source-pill'>{{ sourceLabel(detailBooks[0]) }}</span>
           </div>
-          <a-empty v-if='!detailBooks.length' description='没有匹配的书籍' />
+          <a-empty v-if='!detailBooks.length' :description="t('book.noMatchedBooks')" />
           <div v-else class='book-list book-list-linear'>
             <div
               v-for='book in detailBooks'
@@ -1545,7 +1563,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             >
               <button
                 :class="['book-select-button', isBookSelected(book) ? 'checked' : '']"
-                title='选择'
+                :title="t('book.selectBook')"
                 @click='toggleBookSelected(book, $event)'
                 @keydown.stop
               >
@@ -1558,7 +1576,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <div class='book-list-meta'>
                 <div class='book-list-title'>{{ bookDisplayTitle(book) }}</div>
                 <div class='book-list-sub'>
-                  {{ book.author || '未知作者' }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
+                  {{ book.author || t('book.unknownAuthor') }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
                   <span v-if='readerBadgeFor(book)' :class="['book-engine-chip', 'book-engine-' + readerBadgeFor(book)!.tone]">
                     {{ readerBadgeFor(book)!.label }}
                   </span>
@@ -1567,7 +1585,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               </div>
               <button
                 :class="['book-favorite-button', book.is_favorite ? 'active' : '']"
-                title='收藏'
+                :title="t('book.favorite')"
                 @click='toggleBookFavorite(book, $event)'
                 @keydown.stop
               >
@@ -1593,7 +1611,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <LibraryBig :size='20' :stroke-width='1.6' />
               <span>
                 <em>{{ shelf.name }}</em>
-                <small>{{ shelf.id === DEFAULT_SHELF_ID ? '未加入自定义书架' : '自定义书架' }}</small>
+                <small>{{ shelf.id === DEFAULT_SHELF_ID ? t('book.defaultShelfHint') : t('book.customShelf') }}</small>
               </span>
               <b v-if='managerPreferences.isShowShelfBookCount'>{{ shelf.book_ids.length }}</b>
             </button>
@@ -1614,7 +1632,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               @keydown.space.prevent='openFolderCard(g)'
               @contextmenu.prevent='openFolderContextMenu($event, g)'
             >
-              <button class='book-folder-check' :class="{ checked: selectedFolderKeys.includes(g.key) }" title='选择文件夹' @click.stop='toggleFolderSelected(g)' @keydown.stop>
+              <button class='book-folder-check' :class="{ checked: selectedFolderKeys.includes(g.key) }" :title="t('book.selectFolder')" @click.stop='toggleFolderSelected(g)' @keydown.stop>
                 <span v-if='selectedFolderKeys.includes(g.key)'>✓</span>
               </button>
               <Folder :size='20' :stroke-width='1.6' />
@@ -1629,10 +1647,10 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
 
         <template v-else-if="activeManagerView === 'trash'">
           <div v-if='bookStore.deletedCount && !selectedBookIds.length' class='book-trash-toolbar'>
-            <span>{{ bookStore.deletedCount }} 本已删除</span>
-            <a-button size='mini' status='danger' @click='clearDeletedBooks'>清空已删除</a-button>
+            <span>{{ t('book.deletedCount', { count: bookStore.deletedCount }) }}</span>
+            <a-button size='mini' status='danger' @click='clearDeletedBooks'>{{ t('book.clearDeleted') }}</a-button>
           </div>
-          <a-empty v-if='!trashVisibleBooks.length' description='暂无已删除书籍'>
+          <a-empty v-if='!trashVisibleBooks.length' :description="t('book.noDeletedBooks')">
             <template #image>
               <Trash2 :size='54' :stroke-width='1.5' style='color: var(--color-text-3)' />
             </template>
@@ -1650,7 +1668,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             >
               <button
                 :class="['book-select-button', isBookSelected(book) ? 'checked' : '']"
-                title='选择'
+                :title="t('book.selectBook')"
                 @click='toggleBookSelected(book, $event)'
                 @keydown.stop
               >
@@ -1663,26 +1681,26 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <div class='book-list-meta'>
                 <div class='book-list-title'>{{ bookDisplayTitle(book) }}</div>
                 <div class='book-list-sub'>
-                  {{ book.author || '未知作者' }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
+                  {{ book.author || t('book.unknownAuthor') }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
                 </div>
               </div>
               <div class='book-trash-actions'>
-                <a-button size='mini' @click='restoreBook(book, $event)'>恢复</a-button>
-                <a-button size='mini' status='danger' @click='permanentlyDeleteBook(book, $event)'>永久删除</a-button>
+                <a-button size='mini' @click='restoreBook(book, $event)'>{{ t('book.restore') }}</a-button>
+                <a-button size='mini' status='danger' @click='permanentlyDeleteBook(book, $event)'>{{ t('book.deleteForever') }}</a-button>
               </div>
             </div>
           </div>
         </template>
 
         <template v-else-if="activeManagerView === 'notes'">
-          <a-empty v-if='!bookStore.allNotes.length' description='暂无笔记'>
+          <a-empty v-if='!bookStore.allNotes.length' :description="t('book.noNotes')">
             <template #image>
               <StickyNote :size='54' :stroke-width='1.5' style='color: var(--color-text-3)' />
             </template>
           </a-empty>
           <div v-else class='book-annotation-toolbar'>
             <div class='book-annotation-tags'>
-              <span>标签</span>
+              <span>{{ t('book.tags') }}</span>
               <button
                 v-for='tag in annotationTagOptions'
                 :key='tag'
@@ -1691,27 +1709,27 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               >
                 {{ tag }}
               </button>
-              <em v-if='!annotationTagOptions.length'>无标签</em>
+              <em v-if='!annotationTagOptions.length'>{{ t('book.noTags') }}</em>
             </div>
             <select v-model='selectedAnnotationBookId' class='book-annotation-select'>
-              <option value=''>全部书籍</option>
+              <option value=''>{{ t('book.allBooksOption') }}</option>
               <option v-for='book in annotationBookOptions' :key='book.value' :value='book.value'>{{ book.label }}</option>
             </select>
             <select :value='annotationSortMode' class='book-annotation-select' @change='handleAnnotationSortModeChange'>
               <option v-for='opt in annotationSortModeOptions' :key='opt.value' :value='opt.value'>{{ opt.label }}</option>
             </select>
-            <a-button size='mini' @click='toggleAnnotationSortOrder'>{{ annotationSortOrder === 'asc' ? '升序' : '降序' }}</a-button>
-            <a-button v-if='selectedAnnotationTags.length || selectedAnnotationBookId' size='mini' @click='clearAnnotationFilters'>清除</a-button>
+            <a-button size='mini' @click='toggleAnnotationSortOrder'>{{ annotationSortOrder === 'asc' ? t('book.asc') : t('book.desc') }}</a-button>
+            <a-button v-if='selectedAnnotationTags.length || selectedAnnotationBookId' size='mini' @click='clearAnnotationFilters'>{{ t('book.clear') }}</a-button>
             <a-button size='mini' class='btn-tag-manage' :type="tagEditMode ? 'primary' : 'outline'" @click='toggleTagEditor'>
-              <Tag :size='14' :stroke-width='1.8' /> {{ tagEditMode ? '收起标签管理' : '管理标签' }}
+              <Tag :size='14' :stroke-width='1.8' /> {{ tagEditMode ? t('book.collapseTagManager') : t('book.manageTags') }}
             </a-button>
-            <select v-model='exportAllFormat' class='book-annotation-select' title='导出格式'>
+            <select v-model='exportAllFormat' class='book-annotation-select' :title="t('book.exportFormat')">
               <option value='md'>Markdown</option>
-              <option value='txt'>纯文本</option>
+              <option value='txt'>{{ t('book.plainText') }}</option>
               <option value='html'>HTML</option>
               <option value='csv'>CSV</option>
             </select>
-            <a-button size='mini' @click='handleExportAllAnnotations'>导出全部书摘</a-button>
+            <a-button size='mini' @click='handleExportAllAnnotations'>{{ t('book.exportAllHighlights') }}</a-button>
           </div>
           <div v-if='tagEditMode' class='book-tag-editor'>
             <div class='book-tag-editor-list'>
@@ -1726,28 +1744,28 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   />
                 </template>
                 <span v-else class='book-tag-editor-name'>{{ tag }}</span>
-                <button v-if='editingTag !== tag' class='btn-tag-rename' title='重命名' @click='startRenameTag(tag)'>
+                <button v-if='editingTag !== tag' class='btn-tag-rename' :title="t('book.renameTag')" @click='startRenameTag(tag)'>
                   <PencilLine :size='13' :stroke-width='1.8' />
                 </button>
-                <button v-if='editingTag !== tag' class='btn-tag-delete' title='删除' @click='handleDeleteTag(tag)'>
+                <button v-if='editingTag !== tag' class='btn-tag-delete' :title="t('book.deleteTag')" @click='handleDeleteTag(tag)'>
                   <X :size='14' :stroke-width='2' />
                 </button>
               </div>
-              <em v-if='!bookStore.noteTags.length'>暂无全局标签</em>
+              <em v-if='!bookStore.noteTags.length'>{{ t('book.noGlobalTags') }}</em>
             </div>
             <div class='book-tag-editor-add'>
               <input
                 v-model='newTagName'
-                placeholder='新建标签...'
+                 :placeholder="t('book.newTagPlaceholder')"
                 class='book-tag-editor-input'
                 @keydown.enter='handleAddTag()'
               />
               <a-button size='mini' @click='handleAddTag' :disabled='!newTagName.trim()'>
-                <Plus :size='14' :stroke-width='2' /> 添加
+                <Plus :size='14' :stroke-width='2' /> {{ t('common.add') }}
               </a-button>
             </div>
           </div>
-          <a-empty v-if='bookStore.allNotes.length && !filteredNotes.length' description='没有匹配的笔记' />
+          <a-empty v-if='bookStore.allNotes.length && !filteredNotes.length' :description="t('book.noMatchedNotes')" />
           <div v-if='bookStore.allNotes.length && filteredNotes.length' class='book-annotation-list'>
             <button
               v-for='note in filteredNotes'
@@ -1758,24 +1776,24 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             >
               <StickyNote :size='18' :stroke-width='1.7' />
               <span>
-                <b>来自《{{ annotationBookTitle(note) }}》{{ note.chapter || '未知章节' }}</b>
-                <em>{{ note.text || '无摘录内容' }}</em>
+                <b>{{ t('book.fromBook', { title: annotationBookTitle(note), chapter: note.chapter || t('book.unknownChapter') }) }}</b>
+                <em>{{ note.text || t('book.noExcerpt') }}</em>
                 <small v-if='note.note'>{{ note.note }}</small>
                 <small v-if='note.tags?.length' class='book-annotation-item-tags'>
                   <i v-for='tag in note.tags' :key='tag'>{{ tag }}</i>
                 </small>
               </span>
               <span class='book-annotation-actions'>
-                <span role='button' tabindex='0' title='定位到书内' @click='showAnnotationInBook(note, "note", $event)' @keydown.enter='showAnnotationInBook(note, "note", $event)' @keydown.space.prevent='showAnnotationInBook(note, "note", $event)'>
+                <span role='button' tabindex='0' :title="t('book.locateInBook')" @click='showAnnotationInBook(note, "note", $event)' @keydown.enter='showAnnotationInBook(note, "note", $event)' @keydown.space.prevent='showAnnotationInBook(note, "note", $event)'>
                   <BookOpen :size='15' :stroke-width='1.8' />
                 </span>
-                <span role='button' tabindex='0' title='编辑笔记' @click='editAnnotationInBook(note, "note", $event)' @keydown.enter='editAnnotationInBook(note, "note", $event)' @keydown.space.prevent='editAnnotationInBook(note, "note", $event)'>
+                <span role='button' tabindex='0' :title="t('book.editNote')" @click='editAnnotationInBook(note, "note", $event)' @keydown.enter='editAnnotationInBook(note, "note", $event)' @keydown.space.prevent='editAnnotationInBook(note, "note", $event)'>
                   <Edit3 :size='15' :stroke-width='1.8' />
                 </span>
-                <span role='button' tabindex='0' title='复制笔记链接' @click='copyAnnotationLink(note, $event)' @keydown.enter='copyAnnotationLink(note, $event)' @keydown.space.prevent='copyAnnotationLink(note, $event)'>
+                <span role='button' tabindex='0' :title="t('book.copyNoteLink')" @click='copyAnnotationLink(note, $event)' @keydown.enter='copyAnnotationLink(note, $event)' @keydown.space.prevent='copyAnnotationLink(note, $event)'>
                   <Copy :size='15' :stroke-width='1.8' />
                 </span>
-                <span role='button' tabindex='0' title='删除笔记' @click='deleteAnnotation(note, $event)' @keydown.enter='deleteAnnotation(note, $event)' @keydown.space.prevent='deleteAnnotation(note, $event)'>
+                <span role='button' tabindex='0' :title="t('book.deleteNote')" @click='deleteAnnotation(note, $event)' @keydown.enter='deleteAnnotation(note, $event)' @keydown.space.prevent='deleteAnnotation(note, $event)'>
                   <Trash2 :size='15' :stroke-width='1.8' />
                 </span>
               </span>
@@ -1784,14 +1802,14 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
         </template>
 
         <template v-else-if="activeManagerView === 'highlights'">
-          <a-empty v-if='!bookStore.allHighlights.length' description='暂无书摘'>
+          <a-empty v-if='!bookStore.allHighlights.length' :description="t('book.noHighlights')">
             <template #image>
               <Highlighter :size='54' :stroke-width='1.5' style='color: var(--color-text-3)' />
             </template>
           </a-empty>
           <div v-else class='book-annotation-toolbar'>
             <div class='book-annotation-tags'>
-              <span>标签</span>
+              <span>{{ t('book.tags') }}</span>
               <button
                 v-for='tag in annotationTagOptions'
                 :key='tag'
@@ -1800,27 +1818,27 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               >
                 {{ tag }}
               </button>
-              <em v-if='!annotationTagOptions.length'>无标签</em>
+              <em v-if='!annotationTagOptions.length'>{{ t('book.noTags') }}</em>
             </div>
             <select v-model='selectedAnnotationBookId' class='book-annotation-select'>
-              <option value=''>全部书籍</option>
+              <option value=''>{{ t('book.allBooksOption') }}</option>
               <option v-for='book in annotationBookOptions' :key='book.value' :value='book.value'>{{ book.label }}</option>
             </select>
             <select :value='annotationSortMode' class='book-annotation-select' @change='handleAnnotationSortModeChange'>
               <option v-for='opt in annotationSortModeOptions' :key='opt.value' :value='opt.value'>{{ opt.label }}</option>
             </select>
-            <a-button size='mini' @click='toggleAnnotationSortOrder'>{{ annotationSortOrder === 'asc' ? '升序' : '降序' }}</a-button>
-            <a-button v-if='selectedAnnotationTags.length || selectedAnnotationBookId' size='mini' @click='clearAnnotationFilters'>清除</a-button>
+            <a-button size='mini' @click='toggleAnnotationSortOrder'>{{ annotationSortOrder === 'asc' ? t('book.asc') : t('book.desc') }}</a-button>
+            <a-button v-if='selectedAnnotationTags.length || selectedAnnotationBookId' size='mini' @click='clearAnnotationFilters'>{{ t('book.clear') }}</a-button>
             <a-button size='mini' class='btn-tag-manage' :type="tagEditMode ? 'primary' : 'outline'" @click='toggleTagEditor'>
-              <Tag :size='14' :stroke-width='1.8' /> {{ tagEditMode ? '收起标签管理' : '管理标签' }}
+              <Tag :size='14' :stroke-width='1.8' /> {{ tagEditMode ? t('book.collapseTagManager') : t('book.manageTags') }}
             </a-button>
-            <select v-model='exportAllFormat' class='book-annotation-select' title='导出格式'>
+            <select v-model='exportAllFormat' class='book-annotation-select' :title="t('book.exportFormat')">
               <option value='md'>Markdown</option>
-              <option value='txt'>纯文本</option>
+              <option value='txt'>{{ t('book.plainText') }}</option>
               <option value='html'>HTML</option>
               <option value='csv'>CSV</option>
             </select>
-            <a-button size='mini' @click='handleExportAllAnnotations'>导出全部书摘</a-button>
+            <a-button size='mini' @click='handleExportAllAnnotations'>{{ t('book.exportAllHighlights') }}</a-button>
           </div>
           <div v-if='tagEditMode' class='book-tag-editor'>
             <div class='book-tag-editor-list'>
@@ -1835,28 +1853,28 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   />
                 </template>
                 <span v-else class='book-tag-editor-name'>{{ tag }}</span>
-                <button v-if='editingTag !== tag' class='btn-tag-rename' title='重命名' @click='startRenameTag(tag)'>
+                <button v-if='editingTag !== tag' class='btn-tag-rename' :title="t('book.renameTag')" @click='startRenameTag(tag)'>
                   <PencilLine :size='13' :stroke-width='1.8' />
                 </button>
-                <button v-if='editingTag !== tag' class='btn-tag-delete' title='删除' @click='handleDeleteTag(tag)'>
+                <button v-if='editingTag !== tag' class='btn-tag-delete' :title="t('book.deleteTag')" @click='handleDeleteTag(tag)'>
                   <X :size='14' :stroke-width='2' />
                 </button>
               </div>
-              <em v-if='!bookStore.noteTags.length'>暂无全局标签</em>
+              <em v-if='!bookStore.noteTags.length'>{{ t('book.noGlobalTags') }}</em>
             </div>
             <div class='book-tag-editor-add'>
               <input
                 v-model='newTagName'
-                placeholder='新建标签...'
+                 :placeholder="t('book.newTagPlaceholder')"
                 class='book-tag-editor-input'
                 @keydown.enter='handleAddTag()'
               />
               <a-button size='mini' @click='handleAddTag' :disabled='!newTagName.trim()'>
-                <Plus :size='14' :stroke-width='2' /> 添加
+                <Plus :size='14' :stroke-width='2' /> {{ t('common.add') }}
               </a-button>
             </div>
           </div>
-          <a-empty v-if='bookStore.allHighlights.length && !filteredHighlights.length' description='没有匹配的书摘' />
+          <a-empty v-if='bookStore.allHighlights.length && !filteredHighlights.length' :description="t('book.noMatchedHighlights')" />
           <div v-if='bookStore.allHighlights.length && filteredHighlights.length' class='book-annotation-list'>
             <button
               v-for='highlight in filteredHighlights'
@@ -1867,23 +1885,23 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             >
               <Highlighter :size='18' :stroke-width='1.7' />
               <span>
-                <b>来自《{{ annotationBookTitle(highlight) }}》{{ highlight.chapter || '未知章节' }}</b>
-                <em>{{ highlight.text || '无摘录内容' }}</em>
+                <b>{{ t('book.fromBook', { title: annotationBookTitle(highlight), chapter: highlight.chapter || t('book.unknownChapter') }) }}</b>
+                <em>{{ highlight.text || t('book.noExcerpt') }}</em>
                 <small v-if='highlight.tags?.length' class='book-annotation-item-tags'>
                   <i v-for='tag in highlight.tags' :key='tag'>{{ tag }}</i>
                 </small>
               </span>
               <span class='book-annotation-actions'>
-                <span role='button' tabindex='0' title='定位到书内' @click='showAnnotationInBook(highlight, "highlight", $event)' @keydown.enter='showAnnotationInBook(highlight, "highlight", $event)' @keydown.space.prevent='showAnnotationInBook(highlight, "highlight", $event)'>
+                <span role='button' tabindex='0' :title="t('book.locateInBook')" @click='showAnnotationInBook(highlight, "highlight", $event)' @keydown.enter='showAnnotationInBook(highlight, "highlight", $event)' @keydown.space.prevent='showAnnotationInBook(highlight, "highlight", $event)'>
                   <BookOpen :size='15' :stroke-width='1.8' />
                 </span>
-                <span role='button' tabindex='0' title='编辑书摘' @click='editAnnotationInBook(highlight, "highlight", $event)' @keydown.enter='editAnnotationInBook(highlight, "highlight", $event)' @keydown.space.prevent='editAnnotationInBook(highlight, "highlight", $event)'>
+                <span role='button' tabindex='0' :title="t('book.editHighlight')" @click='editAnnotationInBook(highlight, "highlight", $event)' @keydown.enter='editAnnotationInBook(highlight, "highlight", $event)' @keydown.space.prevent='editAnnotationInBook(highlight, "highlight", $event)'>
                   <Edit3 :size='15' :stroke-width='1.8' />
                 </span>
-                <span role='button' tabindex='0' title='复制笔记链接' @click='copyAnnotationLink(highlight, $event)' @keydown.enter='copyAnnotationLink(highlight, $event)' @keydown.space.prevent='copyAnnotationLink(highlight, $event)'>
+                <span role='button' tabindex='0' :title="t('book.copyNoteLink')" @click='copyAnnotationLink(highlight, $event)' @keydown.enter='copyAnnotationLink(highlight, $event)' @keydown.space.prevent='copyAnnotationLink(highlight, $event)'>
                   <Copy :size='15' :stroke-width='1.8' />
                 </span>
-                <span role='button' tabindex='0' title='删除书摘' @click='deleteAnnotation(highlight, $event)' @keydown.enter='deleteAnnotation(highlight, $event)' @keydown.space.prevent='deleteAnnotation(highlight, $event)'>
+                <span role='button' tabindex='0' :title="t('book.deleteHighlight')" @click='deleteAnnotation(highlight, $event)' @keydown.enter='deleteAnnotation(highlight, $event)' @keydown.space.prevent='deleteAnnotation(highlight, $event)'>
                   <Trash2 :size='15' :stroke-width='1.8' />
                 </span>
               </span>
@@ -1892,12 +1910,12 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
         </template>
 
         <template v-else-if="activeManagerView === 'bookmarks'">
-          <a-empty v-if='!bookStore.allBookmarks.length' description='暂无书签'>
+          <a-empty v-if='!bookStore.allBookmarks.length' :description="t('book.noBookmarks')">
             <template #image>
               <Bookmark :size='54' :stroke-width='1.5' style='color: var(--color-text-3)' />
             </template>
           </a-empty>
-          <a-empty v-else-if='!filteredBookmarks.length' description='没有匹配的书签' />
+          <a-empty v-else-if='!filteredBookmarks.length' :description="t('book.noMatchedBookmarks')" />
           <div v-else class='book-annotation-list'>
             <button
               v-for='bookmark in filteredBookmarks'
@@ -1908,12 +1926,12 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             >
               <Bookmark :size='18' :stroke-width='1.7' />
               <span>
-                <b>来自《{{ annotationBookTitle(bookmark) }}》{{ bookmark.chapter || '未知章节' }}</b>
-                <em>{{ bookmark.label || '书签' }}</em>
+                <b>{{ t('book.fromBook', { title: annotationBookTitle(bookmark), chapter: bookmark.chapter || t('book.unknownChapter') }) }}</b>
+                <em>{{ bookmark.label || t('book.bookmarks') }}</em>
                 <small>{{ bookmarkPercentLabel(bookmark) }}</small>
               </span>
               <span class='book-annotation-actions'>
-                <span role='button' tabindex='0' title='定位到书内' @click='showAnnotationInBook(bookmark, "bookmark", $event)' @keydown.enter='showAnnotationInBook(bookmark, "bookmark", $event)' @keydown.space.prevent='showAnnotationInBook(bookmark, "bookmark", $event)'>
+                <span role='button' tabindex='0' :title="t('book.locateInBook')" @click='showAnnotationInBook(bookmark, "bookmark", $event)' @keydown.enter='showAnnotationInBook(bookmark, "bookmark", $event)' @keydown.space.prevent='showAnnotationInBook(bookmark, "bookmark", $event)'>
                   <BookOpen :size='15' :stroke-width='1.8' />
                 </span>
               </span>
@@ -1926,7 +1944,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
         </template>
 
         <template v-else-if='isCollectionManagerView'>
-          <a-empty v-if='!readerVisibleBooks.length' description='没有匹配的书籍' />
+          <a-empty v-if='!readerVisibleBooks.length' :description="t('book.noMatchedBooks')" />
           <template v-else-if="bookStore.viewMode === 'list'">
             <div class='book-list book-list-linear'>
               <div
@@ -1942,7 +1960,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               >
                 <button
                   :class="['book-select-button', isBookSelected(book) ? 'checked' : '']"
-                  title='选择'
+                  :title="t('book.selectBook')"
                   @click='toggleBookSelected(book, $event)'
                   @keydown.stop
                 >
@@ -1955,7 +1973,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                 <div class='book-list-meta'>
                   <div class='book-list-title'>{{ bookDisplayTitle(book) }}</div>
                   <div class='book-list-sub'>
-                    {{ book.author || '未知作者' }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
+                    {{ book.author || t('book.unknownAuthor') }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
                     <span v-if='readerBadgeFor(book)' :class="['book-engine-chip', 'book-engine-' + readerBadgeFor(book)!.tone]">
                       {{ readerBadgeFor(book)!.label }}
                     </span>
@@ -1964,7 +1982,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                 </div>
                 <button
                   :class="['book-favorite-button', book.is_favorite ? 'active' : '']"
-                  title='收藏'
+                  :title="t('book.favorite')"
                   @click='toggleBookFavorite(book, $event)'
                   @keydown.stop
                 >
@@ -1990,7 +2008,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                 </div>
                 <button
                   :class="['book-select-button book-cover-select', isBookSelected(book) ? 'checked' : '']"
-                  title='选择'
+                  :title="t('book.selectBook')"
                   @click.stop='toggleBookSelected(book, $event)'
                 >
                   <span v-if='isBookSelected(book)'>✓</span>
@@ -2001,10 +2019,10 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                 </div>
                 <div class='book-cover-item-body'>
                   <div class='book-cover-item-title'>{{ bookDisplayTitle(book) }}</div>
-                  <div class='book-cover-item-author'>作者：{{ book.author || '未知作者' }}</div>
-                  <div v-if='book.publisher' class='book-cover-item-publisher'>出版社：{{ book.publisher }}</div>
+                  <div class='book-cover-item-author'>{{ t('book.authorPrefix', { author: book.author || t('book.unknownAuthor') }) }}</div>
+                  <div v-if='book.publisher' class='book-cover-item-publisher'>{{ t('book.publisherPrefix', { publisher: book.publisher }) }}</div>
                   <div class='book-cover-item-desc'>
-                    <div class='book-cover-item-desc-text'>{{ book.summary || book.description || '暂无简介' }}</div>
+                    <div class='book-cover-item-desc-text'>{{ book.summary || book.description || t('book.noDescription') }}</div>
                   </div>
                   <div class='book-cover-item-meta'>
                     <span>{{ (book.ext || '').toUpperCase() }}</span>
@@ -2029,7 +2047,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   <span v-if='shouldShowCoverFallback(book)' class='book-card-item-format'>{{ (book.ext || 'BOOK').toUpperCase() }}</span>
                   <button
                     :class="['book-select-button book-card-select', isBookSelected(book) ? 'checked' : '']"
-                    title='选择'
+                    :title="t('book.selectBook')"
                     @click.stop='toggleBookSelected(book, $event)'
                   >
                     <span v-if='isBookSelected(book)'>✓</span>
@@ -2044,7 +2062,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             </div>
           </template>
           <div v-if='bookStore.hasMoreBooks || renderedBooks.length < readerVisibleBooks.length' class='book-load-more'>
-            <a-button @click='showMoreBooks'>显示更多（已显示 {{ renderedBooks.length }} / {{ readerVisibleBooks.length }}）</a-button>
+            <a-button @click='showMoreBooks'>{{ t('book.showMoreBooks', { shown: renderedBooks.length, total: readerVisibleBooks.length }) }}</a-button>
           </div>
         </template>
       </section>
@@ -2052,7 +2070,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
 
     <aside :class="['book-detail', selectedBook ? 'visible' : '']">
       <template v-if='selectedBook'>
-        <button class='book-detail-close' title='放回书架' @click='putBackBook'>
+        <button class='book-detail-close' :title="t('book.putBack')" @click='putBackBook'>
           <X :size='17' :stroke-width='2' />
         </button>
         <div class='book-detail-cover' :style="{ background: formatCoverColor(selectedBook) }">
@@ -2063,21 +2081,21 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           </div>
         </div>
         <h3>{{ bookDisplayTitle(selectedBook) }}</h3>
-        <div class='book-detail-author'>{{ selectedBook.author || '未知作者' }}</div>
-        <p>{{ selectedBook.summary || selectedBook.description || '暂无简介' }}</p>
+        <div class='book-detail-author'>{{ selectedBook.author || t('book.unknownAuthor') }}</div>
+        <p>{{ selectedBook.summary || selectedBook.description || t('book.noDescription') }}</p>
         <div class='book-detail-grid'>
-          <span>ISBN</span><b>{{ selectedBook.isbn || '未识别' }}</b>
-          <span>出版社</span><b>{{ selectedBook.publisher || '未知' }}</b>
-          <span>出版</span><b>{{ selectedBook.published_date || '未知' }}</b>
-          <span>格式</span><b>{{ (selectedBook.ext || '').toUpperCase() }}</b>
-          <span>大小</span><b>{{ humanSize(selectedBook.size || 0) }}</b>
-          <span>账号</span><b>{{ sourceLabel(selectedBook) }}</b>
-          <span>来源</span><b>{{ selectedBook.parent_path || '根目录' }}</b>
-          <span>书架</span><b>{{ shelfNameForBook(selectedBook) }}</b>
+          <span>ISBN</span><b>{{ selectedBook.isbn || t('book.notRecognized') }}</b>
+          <span>{{ t('book.publisher') }}</span><b>{{ selectedBook.publisher || t('book.unknown') }}</b>
+          <span>{{ t('book.published') }}</span><b>{{ selectedBook.published_date || t('book.unknown') }}</b>
+          <span>{{ t('book.format') }}</span><b>{{ (selectedBook.ext || '').toUpperCase() }}</b>
+          <span>{{ t('book.size') }}</span><b>{{ humanSize(selectedBook.size || 0) }}</b>
+          <span>{{ t('book.account') }}</span><b>{{ sourceLabel(selectedBook) }}</b>
+          <span>{{ t('book.source') }}</span><b>{{ selectedBook.parent_path || t('pan.rootFolder') }}</b>
+          <span>{{ t('book.shelf') }}</span><b>{{ shelfNameForBook(selectedBook) }}</b>
         </div>
         <div class='book-detail-actions'>
-          <a-button size='small' long @click='assignSelectedBookToShelf'>加入书架</a-button>
-          <a-button v-if='selectedBook.shelf_id' size='small' long type='text' @click='removeSelectedBookFromShelf'>移回默认书架</a-button>
+          <a-button size='small' long @click='assignSelectedBookToShelf'>{{ t('book.addToShelf') }}</a-button>
+          <a-button v-if='selectedBook.shelf_id' size='small' long type='text' @click='removeSelectedBookFromShelf'>{{ t('book.moveBackToDefaultShelf') }}</a-button>
         </div>
         <div v-if='selectedBook.subjects && selectedBook.subjects.length' class='book-subjects'>
           <span v-for='s in selectedBook.subjects' :key='s'>{{ s }}</span>
@@ -2094,7 +2112,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
     >
       <div class='manager-settings-shell'>
         <aside class='manager-settings-sidebar'>
-          <h2>设置</h2>
+          <h2>{{ t('book.settings') }}</h2>
           <button
             v-for='tab in BOOK_MANAGER_SETTING_TABS'
             :key='tab.key'
@@ -2116,7 +2134,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
           </button>
         </aside>
         <section class='manager-settings-main'>
-          <button class='manager-settings-close' title='关闭' @click='showManagerSettings = false'>
+          <button class='manager-settings-close' :title="t('common.close')" @click='showManagerSettings = false'>
             <X :size='30' :stroke-width='1.7' />
           </button>
           <h2>{{ activeSettingTitle }}</h2>
@@ -2138,7 +2156,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             <template v-if="activeSettingTab === 'general'">
               <div class='manager-setting-subsection'>
                 <label class='manager-setting-field'>
-                  <span>界面语言</span>
+                  <span>{{ t('book.interfaceLanguage') }}</span>
                   <select :value='readerLocale' @change='setReaderLocale(($event.target as HTMLSelectElement).value)'>
                     <option value='zh'>中文 (简体)</option>
                     <option value='zh-TW'>中文 (繁體)</option>
@@ -2146,24 +2164,24 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   </select>
                 </label>
                 <label class='manager-setting-field'>
-                  <span>默认搜索引擎</span>
+                  <span>{{ t('book.defaultSearchEngine') }}</span>
                   <select :value='managerPreferences.defaultSearchEngine' @change='handleManagerSelectChange("defaultSearchEngine", $event)'>
                     <option v-for='engine in searchEngineOptions' :key='engine.value' :value='engine.value'>{{ engine.label }}</option>
                   </select>
                 </label>
                 <label class='manager-setting-field'>
-                  <span>启动时打开书架</span>
-                  <input :value='managerPreferences.startupShelf' placeholder='留空则打开全部图书' @input='setManagerPreferenceText("startupShelf", ($event.target as HTMLInputElement).value)' />
+                  <span>{{ t('book.openShelfOnStartup') }}</span>
+                  <input :value='managerPreferences.startupShelf' :placeholder="t('book.openAllBooksIfEmpty')" @input='setManagerPreferenceText("startupShelf", ($event.target as HTMLInputElement).value)' />
                 </label>
               </div>
             </template>
 
             <template v-if="activeSettingTab === 'data'">
               <div class='manager-setting-subsection'>
-                <div class='manager-setting-note'>账号登录和数据同步已按当前产品边界排除；书籍库数据继续使用现有本地数据库和网盘扫描结果。</div>
+                <div class='manager-setting-note'>{{ t('book.accountSyncExcluded') }}</div>
                 <div class='manager-setting-actions'>
-                  <a-button size='mini' @click='handleExportAllAnnotations'>导出全部书摘</a-button>
-                  <a-button size='mini' status='danger' :disabled='!hasAnyBookRecords' @click='clearLibrary'>清空资料库</a-button>
+                  <a-button size='mini' @click='handleExportAllAnnotations'>{{ t('book.exportAllHighlights') }}</a-button>
+                  <a-button size='mini' status='danger' :disabled='!hasAnyBookRecords' @click='clearLibrary'>{{ t('book.clearLibrary') }}</a-button>
                 </div>
               </div>
             </template>
@@ -2171,7 +2189,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             <template v-if="activeSettingTab === 'reading'">
               <div class='manager-setting-subsection'>
                 <div class='manager-setting-actions'>
-                  <a-button size='mini' @click='message.info("阅读器窗口位置将随全屏阅读页接入时复用该设置")'>重置阅读窗口位置</a-button>
+                  <a-button size='mini' @click="message.info(t('book.readerWindowPositionReuse'))">{{ t('book.resetReaderWindowPosition') }}</a-button>
                 </div>
               </div>
             </template>
@@ -2179,12 +2197,12 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             <template v-if="activeSettingTab === 'appearance'">
               <div class='manager-setting-subsection'>
                 <label class='manager-setting-field inline'>
-                  <span>系统字体</span>
+                  <span>{{ t('book.systemFont') }}</span>
                   <select :value='managerPreferences.systemFont' @change='handleManagerSelectChange("systemFont", $event)'>
                     <option v-for='font in systemFontOptions' :key='font.value' :value='font.value'>{{ font.label }}</option>
                   </select>
                 </label>
-                <div class='manager-setting-title'>选择主题色</div>
+                <div class='manager-setting-title'>{{ t('book.chooseThemeColor') }}</div>
                 <div class='manager-theme-list'>
                   <button
                     v-for='theme in BOOK_MANAGER_THEME_COLORS'
@@ -2199,11 +2217,11 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   <label :class="['manager-theme-item', /^#[0-9a-fA-F]{6}$/.test(managerPreferences.themeColor) && !BOOK_MANAGER_THEME_COLORS.some(theme => theme.value === managerPreferences.themeColor) ? 'active' : '']">
                     <i class='custom'></i>
                     <input v-model='customColorDraft' type='color' @change='setCustomThemeColor' />
-                    <span>自定义</span>
+                    <span>{{ t('book.custom') }}</span>
                   </label>
                 </div>
                 <label v-if='managerPreferences.isCustomSystemCSS' class='manager-setting-field block'>
-                  <span>自定义 CSS</span>
+                  <span>{{ t('book.customCss') }}</span>
                   <textarea :value='managerPreferences.customSystemCSS' spellcheck='false' @input='setManagerPreferenceText("customSystemCSS", ($event.target as HTMLTextAreaElement).value)'></textarea>
                 </label>
               </div>
@@ -2213,16 +2231,16 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <div class='manager-setting-subsection'>
                 <div class='manager-setting-row'>
                   <span>
-                    <b>启用软件保护</b>
-                    <em>启动应用时需要验证身份</em>
+                    <b>{{ t('book.enableSoftwareProtection') }}</b>
+                    <em>{{ t('book.softwareProtectionDesc') }}</em>
                   </span>
                   <a-switch v-model='softwareProtectionEnabled' size='small' />
                 </div>
                 <label v-if='softwareProtectionEnabled' class='manager-setting-field'>
-                  <span>保护方式</span>
+                  <span>{{ t('book.protectionMethod') }}</span>
                   <select v-model='softwareProtectionMethod'>
-                    <option value='password'>密码</option>
-                    <option value='pin'>PIN 码</option>
+                    <option value='password'>{{ t('book.password') }}</option>
+                    <option value='pin'>{{ t('book.pinCode') }}</option>
                   </select>
                 </label>
               </div>
@@ -2230,7 +2248,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
 
             <template v-if="activeSettingTab === 'plugins'">
               <div class='manager-setting-subsection'>
-                <div class='manager-setting-note'>插件入口已保留。后续接入 Koodo 插件运行时后，会在这里显示已安装插件和启用状态。</div>
+                <div class='manager-setting-note'>{{ t('book.pluginsReserved') }}</div>
               </div>
             </template>
 
@@ -2238,12 +2256,12 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <div class='manager-setting-subsection'>
                 <div class='manager-setting-row'>
                   <span>
-                    <b>禁用 AI 功能</b>
-                    <em>仅影响书籍页入口偏好，已有全局 AI 配置仍保留</em>
+                    <b>{{ t('book.disableAI') }}</b>
+                    <em>{{ t('book.disableAIDesc') }}</em>
                   </span>
                   <a-switch :model-value='managerPreferences.isDisableAI' @change='toggleManagerPreference("isDisableAI")' />
                 </div>
-                <div class='manager-setting-note'>AI 模型配置请在 主界面 → 设置 → API 密钥 中管理</div>
+                <div class='manager-setting-note'>{{ t('book.aiConfigInSettings') }}</div>
               </div>
             </template>
 
@@ -2255,13 +2273,13 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                       <b>{{ parser.label }}</b>
                       <em>{{ parser.regex }}</em>
                     </span>
-                    <button class='danger' @click='deleteTxtParser(parser.label)'>删除</button>
+                    <button class='danger' @click='deleteTxtParser(parser.label)'>{{ t('common.delete') }}</button>
                   </div>
                 </div>
                 <div class='manager-parser-add'>
-                  <input v-model='txtParserDraft.label' placeholder='解析器名称' />
-                  <input v-model='txtParserDraft.regex' placeholder='章节正则表达式' />
-                  <a-button size='mini' @click='addTxtParser'>添加解析器</a-button>
+                  <input v-model='txtParserDraft.label' :placeholder="t('book.parserName')" />
+                  <input v-model='txtParserDraft.regex' :placeholder="t('book.chapterRegex')" />
+                  <a-button size='mini' @click='addTxtParser'>{{ t('book.addParser') }}</a-button>
                 </div>
               </div>
             </template>
@@ -2274,13 +2292,13 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                       <b>{{ dict.name }}</b>
                       <em>{{ dict.extension.toUpperCase() }}</em>
                     </span>
-                    <button class='danger' @click='deleteLocalDictionary(dict.id)'>删除</button>
+                    <button class='danger' @click='deleteLocalDictionary(dict.id)'>{{ t('common.delete') }}</button>
                   </div>
-                  <div v-if='!managerPreferences.localDictionaries.length' class='manager-setting-note'>暂无本地词典。</div>
+                  <div v-if='!managerPreferences.localDictionaries.length' class='manager-setting-note'>{{ t('book.noLocalDictionaries') }}</div>
                 </div>
                 <div class='manager-parser-add'>
-                  <input v-model='dictionaryDraftName' placeholder='MDX 词典名称' />
-                  <a-button size='mini' @click='addLocalDictionary'>添加词典</a-button>
+                  <input v-model='dictionaryDraftName' :placeholder="t('book.dictionaryName')" />
+                  <a-button size='mini' @click='addLocalDictionary'>{{ t('book.addDictionary') }}</a-button>
                 </div>
               </div>
             </template>
@@ -2291,14 +2309,14 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   <BookOpen :size='34' :stroke-width='1.6' />
                   <span>
                     <b>Koodo Reader for BoxPlayer</b>
-                    <em>首页设置和阅读器迁移使用现有书籍页、网盘扫描与 AI 能力；账号和同步服务不接入。</em>
+                    <em>{{ t('book.koodoBoxPlayerDesc') }}</em>
                   </span>
                 </div>
                 <div class='manager-setting-actions' style='margin-top:16px'>
-                  <a-button size='mini' @click="message.info('已是最新版本')">检查更新</a-button>
+                  <a-button size='mini' @click="message.info(t('book.latestVersion'))">{{ t('book.checkUpdates') }}</a-button>
                   <a-button size='mini' @click="openExternalLink('https://github.com/gaozhangmin/boxplayer')">GitHub</a-button>
-                  <a-button size='mini' @click="openExternalLink('https://xbyvideohub.com/')">官方网站</a-button>
-                  <a-button size='mini' @click="copyContactEmail">联系邮箱</a-button>
+                  <a-button size='mini' @click="openExternalLink('https://xbyvideohub.com/')">{{ t('book.website') }}</a-button>
+                  <a-button size='mini' @click="copyContactEmail">{{ t('book.contactEmail') }}</a-button>
                 </div>
               </div>
             </template>
@@ -2316,13 +2334,13 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
       <template #content>
         <div class='book-folder-menu'>
           <button class='book-folder-menu-item' @click='toggleContextFolderSelected'>
-            {{ folderContextSelected ? '取消选择' : '选择文件夹' }}
+            {{ folderContextSelected ? t('book.cancelSelection') : t('book.selectFolders') }}
           </button>
           <button class='book-folder-menu-item danger' @click='deleteCurrentFolderFromMenu'>
-            移入已删除
+            {{ t('book.moveToDeleted') }}
           </button>
           <button class='book-folder-menu-item danger' :disabled='!selectedFolderGroups.length' @click='deleteSelectedFoldersFromMenu'>
-            移入已删除（{{ selectedFolderGroups.length }}）
+            {{ t('book.moveSelectedFoldersToDeleted', { count: selectedFolderGroups.length }) }}
           </button>
         </div>
       </template>
@@ -2337,22 +2355,22 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
       <template #content>
         <div class='book-folder-menu'>
           <button class='book-folder-menu-item' @click='bookContextToggleFavorite'>
-            {{ bookContextBook?.is_favorite ? '取消收藏' : '加入收藏' }}
+            {{ bookContextBook?.is_favorite ? t('book.unfavorite') : t('book.addFavorite') }}
           </button>
           <button class='book-folder-menu-item' @click='bookContextMoveToShelf'>
-            {{ bookContextBook?.shelf_id ? '更换书架' : '加入书架' }}
+            {{ bookContextBook?.shelf_id ? t('book.changeShelf') : t('book.addToShelf') }}
           </button>
           <button v-if='bookContextBook?.shelf_id' class='book-folder-menu-item' @click='bookContextRemoveFromShelf'>
-            移回默认书架
+            {{ t('book.moveBackToDefaultShelf') }}
           </button>
           <button class='book-folder-menu-item' @click='copyBookLink(bookContextBook!)'>
-            复制书籍链接
+            {{ t('book.copyBookLink') }}
           </button>
           <button class='book-folder-menu-item danger' @click='bookContextDelete'>
-            移入已删除
+            {{ t('book.moveToDeleted') }}
           </button>
           <button class='book-folder-menu-item danger' @click='permanentlyDeleteBook(bookContextBook!)'>
-            永久删除
+            {{ t('book.deleteForever') }}
           </button>
         </div>
       </template>

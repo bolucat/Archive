@@ -13,6 +13,7 @@ import { computed, ref } from 'vue'
 import ShareHistoryRight from './share/ShareHistoryRight.vue'
 import ShareBottleFishRight from './share/ShareBottleFishRight.vue'
 import { isAliyunUser, isQuarkUser } from '../aliapi/utils'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 const hideLeft = ref(false)
@@ -44,52 +45,52 @@ const handleHideLeft = (val: boolean) => {
 
 <template>
   <a-layout style='height: 100%'>
-    <a-layout-sider hide-trigger :width='218' class='xbyleft' :hidden='hideLeft'>
-      <div class='headdesc'>云盘分享</div>
-      <a-menu v-if="isAliyunAccount" :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu'
+    <a-layout-sider hide-trigger :width='218' class='xbyleft single-boundary-sidebar' :hidden='hideLeft'>
+      <div class='headdesc'>{{ t('share.title') }}</div>
+      <a-menu v-if="isAliyunAccount" :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu single-boundary-sidebar-menu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">
         <a-menu-item key='ShareSiteRight'>
           <template #icon><IconFont name="iconrvip" /></template>
-          资源网站
+          {{ t('share.resources') }}
         </a-menu-item>
         <a-menu-item key='OtherShareRight'>
           <template #icon><IconFont name="iconfenxiang1" /></template>
-          我的导入
+          {{ t('share.imported') }}
         </a-menu-item>
         <a-menu-item key='ShareHistoryRight'>
           <template #icon><IconFont name="iconfenxiang1" /></template>
-          历史导入
+          {{ t('share.history') }}
         </a-menu-item>
         <a-menu-item key='MyShareRight'>
           <template #icon><IconFont name="iconfenxiang" /></template>
-          我的分享
+          {{ t('share.mine') }}
         </a-menu-item>
         <a-menu-item key='MyTransferShareRight'>
           <template #icon><IconFont name="iconfenxiang" /></template>
-          我的快传
+          {{ t('share.transfer') }}
         </a-menu-item>
         <a-menu-item key='ShareBottleFishRight'>
           <template #icon><IconFont name="icontuijian" /></template>
-          好运分享
+          {{ t('share.lucky') }}
         </a-menu-item>
         <a-menu-item key='MyFollowingRight'>
           <template #icon><IconFont name="icondingyue" /></template>
-          我的订阅
+          {{ t('share.following') }}
         </a-menu-item>
         <a-menu-item key='OtherFollowingRight'>
           <template #icon><IconFont name="icontuijian" /></template>
-          订阅推荐
+          {{ t('share.recommendations') }}
         </a-menu-item>
       </a-menu>
-      <a-menu v-else :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu'
+      <a-menu v-else :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu single-boundary-sidebar-menu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">
         <a-menu-item v-if="isQuarkAccount" key='OtherShareRight'>
           <template #icon><IconFont name="iconfenxiang1" /></template>
-          我的导入
+          {{ t('share.imported') }}
         </a-menu-item>
         <a-menu-item key='MyShareRight'>
           <template #icon><IconFont name="iconfenxiang" /></template>
-          我的分享
+          {{ t('share.mine') }}
         </a-menu-item>
       </a-menu>
     </a-layout-sider>

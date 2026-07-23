@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '../i18n'
+
 const handleClick = () => {}
 </script>
 
@@ -8,22 +10,22 @@ const handleClick = () => {}
   <div style="height: 14px"></div>
   <div class="toppanbtns" style="height: 26px">
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconstart" />新建任务</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconpause" />暂停任务</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="icondelete" />删除任务</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconstart" />{{ t('transfer.newTask') }}</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconpause" />{{ t('transfer.pauseTask') }}</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="icondelete" />{{ t('transfer.deleteTask') }}</a-button>
     </div>
 
     <div v-if="false" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconpause" />修改设置</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="icondelete" />同步日志</a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconstart" />立即同步</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconpause" />{{ t('transfer.modifySettings') }}</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="icondelete" />{{ t('transfer.syncLog') }}</a-button>
+      <a-button type="text" size="small" tabindex="-1" @click="handleClick"><IconFont name="iconstart" />{{ t('transfer.syncNow') }}</a-button>
     </div>
   </div>
   <div style="height: 9px"></div>
   <div class="toppanarea">
     <div class="cell pr"></div>
   </div>
-  <div class="toppanlist" @keydown.space.prevent="() => true">文件同步功能--还没做</div>
+  <div class="toppanlist" @keydown.space.prevent="() => true">{{ t('transfer.fileSyncTodo') }}</div>
 </template>
 
 <style></style>

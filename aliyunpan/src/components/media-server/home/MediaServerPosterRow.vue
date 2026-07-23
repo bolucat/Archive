@@ -3,9 +3,9 @@
     <div class="home-section-header">
       <h4>{{ title }}</h4>
       <button v-if="showSeeAll && items.length > 0" type="button" class="see-all-button" @click="$emit('see-all')">{{ seeAllLabel }}</button>
-      <span v-else-if="loading">加载中...</span>
+      <span v-else-if="loading">{{ t('mediaServer.loading') }}</span>
       <span v-else-if="errorText">{{ errorText }}</span>
-      <span v-else>{{ items.length }} 项</span>
+      <span v-else>{{ t('mediaServer.itemsCount', { count: items.length }) }}</span>
     </div>
 
     <div class="poster-row">
@@ -63,20 +63,20 @@
           <div class="home-card-context-menu">
             <button type="button" class="home-card-context-item" @click="$emit('play', item)">
               <span class="home-card-context-icon">▷</span>
-              <span>播放</span>
+              <span>{{ t('mediaServer.play') }}</span>
             </button>
             <button type="button" class="home-card-context-item" @click="$emit('action', item, 'download')">
               <span class="home-card-context-icon">↓</span>
-              <span>下载</span>
+              <span>{{ t('mediaServer.download') }}</span>
             </button>
             <button type="button" class="home-card-context-item" @click="$emit('action', item, 'favorite')">
               <span class="home-card-context-icon">{{ item.isFavorite ? '♥' : '♡' }}</span>
-              <span>{{ item.isFavorite ? '从收藏夹移除' : '添加到收藏夹' }}</span>
+              <span>{{ item.isFavorite ? t('mediaServer.removeFavorite') : t('mediaServer.addFavorite') }}</span>
             </button>
             <div class="home-card-context-divider" />
             <button type="button" class="home-card-context-item" @click="$emit('action', item, 'watched')">
               <span class="home-card-context-icon context-icon-filled">✓</span>
-              <span>{{ item.isPlayed ? '标记为未观看' : '标记为已观看' }}</span>
+              <span>{{ item.isPlayed ? t('mediaServer.markUnwatched') : t('mediaServer.markWatched') }}</span>
             </button>
           </div>
         </template>
@@ -110,9 +110,9 @@
         </div>
       </button>
       <div v-if="errorText && items.length === 0 && !loading" class="section-error-card">
-        <div class="section-error-title">这一栏加载失败了</div>
+        <div class="section-error-title">{{ t('mediaServer.sectionLoadFailed') }}</div>
         <div class="section-error-text">{{ errorText }}</div>
-        <a-button type="outline" size="small" @click="$emit('retry')">重试</a-button>
+        <a-button type="outline" size="small" @click="$emit('retry')">{{ t('mediaServer.retry') }}</a-button>
       </div>
     </div>
   </div>
@@ -125,6 +125,7 @@ import type { MediaServerPosterType } from '../../../store/mediaServerHomePrefer
 import { resolveMediaServerImage } from '../../../media-server/imageSources'
 import { toMsCacheUrl } from '../../../media-server/imageCache'
 import useMediaServerRegistryStore from '../../../store/mediaServerRegistry'
+import { t } from '../../../i18n'
 
 const props = withDefaults(defineProps<{
   title: string
@@ -144,7 +145,7 @@ const props = withDefaults(defineProps<{
   showPosterLabels: true,
   showTopOverlay: false,
   showSeeAll: true,
-  seeAllLabel: '查看全部',
+  seeAllLabel: t('mediaServer.seeAllPlain'),
   enableContextMenu: false,
   headingMode: 'title',
   subtitleMode: 'overview'
@@ -178,19 +179,19 @@ const resolveSubtitle = (item: MediaServerLibraryNode) => {
     case 'year-only':
       return item.year ? `${item.year}` : ''
     case 'year-or-overview':
-      return item.year ? `${item.year}` : item.overview || '媒体内容'
+      return item.year ? `${item.year}` : item.overview || t('mediaServer.mediaContent')
     case 'year-or-parent-or-overview':
-      return item.year ? `${item.year}` : item.parentTitle || item.overview || '媒体内容'
+      return item.year ? `${item.year}` : item.parentTitle || item.overview || t('mediaServer.mediaContent')
     default:
-      return item.parentTitle || item.overview || '媒体内容'
+      return item.parentTitle || item.overview || t('mediaServer.mediaContent')
   }
 }
 
 const resolveOverlay = (item: MediaServerLibraryNode) => {
   if (typeof item.rating === 'number') return `★ ${item.rating.toFixed(1)}`
   if (item.year) return `${item.year}`
-  if (item.kind === 'series') return '剧集'
-  if (item.kind === 'movie') return '电影'
+  if (item.kind === 'series') return t('mediaServer.episodes')
+  if (item.kind === 'movie') return t('mediaServer.movies')
   return ''
 }
 

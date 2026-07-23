@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { Files, Loader2, AlertCircle, ChevronRight } from 'lucide-vue-next'
 import type { FileResult } from './types'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'scanning' | 'done' | 'error'
@@ -51,13 +52,13 @@ function formatSize(bytes: number): string {
   <div class="dc-card">
     <div v-if="state === 'scanning'" class="dc-status">
       <Loader2 :size="14" :stroke-width="2" class="dc-spin" />
-      <span>正在扫描重复文件...</span>
+      <span>{{ t('ai.card.scanningDuplicates') }}</span>
     </div>
 
     <template v-else-if="state === 'done' && output">
       <div class="dc-header">
         <Files :size="14" :stroke-width="1.5" />
-        <span>扫描 {{ output.totalFiles }} 个文件，发现 {{ output.groups?.length || 0 }} 组重复</span>
+        <span>{{ t('ai.card.scanned') }} {{ output.totalFiles }} {{ t('transfer.file') }}，{{ t('ai.card.foundDuplicateGroups') }} {{ output.groups?.length || 0 }}</span>
       </div>
       <div v-if="output.groups?.length" class="dc-groups">
         <div v-for="(g, gi) in output.groups" :key="gi" class="dc-group">
@@ -65,32 +66,32 @@ function formatSize(bytes: number): string {
             <ChevronRight :size="12" :stroke-width="2" class="dc-chevron" :class="{ open: expanded.has(gi) }" />
             <span class="dc-group-name">{{ g.name }}</span>
             <span class="dc-group-size">{{ formatSize(g.size) }}</span>
-            <span class="dc-group-count">{{ g.files.length }} 份</span>
+            <span class="dc-group-count">{{ g.files.length }} {{ t('ai.card.copies') }}</span>
           </button>
           <div v-show="expanded.has(gi)" class="dc-group-files">
             <div class="dc-group-actions">
-              <button class="dc-select-all" @click="toggleAllInGroup(g)">全选/取消</button>
+              <button class="dc-select-all" @click="toggleAllInGroup(g)">{{ t('ai.card.toggleAll') }}</button>
               <button
                 class="dc-delete-selected"
                 :disabled="!g.files.some(f => selected.has(f.fileId))"
                 @click="handleDeleteSelected(g)"
-              >删除选中</button>
+              >{{ t('ai.card.deleteSelected') }}</button>
             </div>
             <div v-for="f in g.files" :key="f.fileId" class="dc-file" :class="{ selected: selected.has(f.fileId) }">
               <input type="checkbox" :checked="selected.has(f.fileId)" @change="toggleFile(f.fileId)" />
               <span class="dc-file-name" @click="emit('navigate', f)">{{ f.name }}</span>
-              <span class="dc-file-loc">{{ f.providerName }}{{ f.isDir ? ' · 目录' : '' }}</span>
+              <span class="dc-file-loc">{{ f.providerName }}{{ f.isDir ? ' · ' + t('common.folder') : '' }}</span>
             </div>
           </div>
         </div>
       </div>
-      <div v-else class="dc-empty">未发现重复文件</div>
+      <div v-else class="dc-empty">{{ t('ai.card.noDuplicates') }}</div>
     </template>
 
     <div v-else-if="state === 'error'" class="dc-status dc-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
       <span>{{ error }}</span>
-      <button class="dc-retry" @click="emit('retry')">重试</button>
+      <button class="dc-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
   </div>
 </template>

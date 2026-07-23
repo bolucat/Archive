@@ -32,9 +32,9 @@ import { isEmpty } from 'lodash'
 import { GetDriveID, isAliyunUser, isCloud123User, isDrive115User, isPikPakUser } from '../../aliapi/utils'
 import AliAlbum from '../../aliapi/album'
 import { getEncType } from '../../utils/proxyhelper'
+import { supportsCopy, supportsCreateShare, supportsLocalUpload, supportsMove, supportsTrashMove, supportsTrashPermanentDelete } from '../../aliapi/providerFeatures'
 import { Modal, Option, Select } from '@arco-design/web-vue'
 import { h } from 'vue'
-import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, uploadWebDavLocalPaths } from '../../utils/webdavClient'
 import { apiCloud123TrashDeleteAll } from '../../cloud123/filecmd'
 import { apiDrive115TrashClear } from '../../cloud115/trash'
 import { apiDrive115VideoPush, getDrive115PickCode } from '../../cloud115/video'
@@ -52,28 +52,16 @@ export function handleUpload(uploadType: string, encType: string = '') {
     message.error('上传操作失败 父文件夹错误')
     return
   }
+  if (!supportsLocalUpload(pantreeStore.user_id, pantreeStore.drive_id)) {
+    message.warning('当前网盘为只读，不能上传文件')
+    return
+  }
   if (encType == 'xbyEncrypt1') {
     if (!useSettingStore().securityPassword) {
       modalPassword('new', (success) => {
         success && handleUpload(uploadType, encType)
       })
       return
-    }
-  }
-  const handleWebDavUpload = async (files: string[] | undefined) => {
-    if (!files || files.length === 0) return
-    const connectionId = getWebDavConnectionId(pantreeStore.drive_id)
-    const connection = getWebDavConnection(connectionId)
-    if (!connection) {
-      message.error('WebDAV 连接不存在')
-      return
-    }
-    try {
-      await uploadWebDavLocalPaths(connection, currentDirId, files)
-      message.success('上传完成')
-      await PanDAL.aReLoadOneDirToRefreshTree(pantreeStore.user_id, pantreeStore.drive_id, currentDirId)
-    } catch (error: any) {
-      message.error(error?.message || '上传失败')
     }
   }
   if (uploadType == 'file') {
@@ -83,8 +71,7 @@ export function handleUpload(uploadType: string, encType: string = '') {
       properties: ['openFile', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
     }, (files: string[] | undefined) => {
       if (files && files.length > 0) {
-        if (isWebDavDrive(pantreeStore.drive_id)) void handleWebDavUpload(files)
-        else modalUpload(currentDirId, files, false, encType)
+        modalUpload(currentDirId, files, false, encType)
       }
     })
   } else if (uploadType == 'folder') {
@@ -94,8 +81,7 @@ export function handleUpload(uploadType: string, encType: string = '') {
       properties: ['openDirectory', 'multiSelections', 'showHiddenFiles', 'noResolveAliases', 'treatPackageAsDirectory', 'dontAddToRecent']
     }, (files: string[] | undefined) => {
       if (files && files.length > 0) {
-        if (isWebDavDrive(pantreeStore.drive_id)) void handleWebDavUpload(files)
-        else modalUpload(currentDirId, files, false, encType)
+        modalUpload(currentDirId, files, false, encType)
       }
     })
   } else if (uploadType == 'pic_file') {
@@ -218,6 +204,10 @@ export async function menuTrashSelectFile(istree: boolean, isDelete: boolean, is
   }
   if (selectedData.isErrorSelected) {
     message.error('没有可以删除的文件')
+    return
+  }
+  if (!ispic && !(isDelete ? supportsTrashPermanentDelete(selectedData.user_id, selectedData.drive_id) : supportsTrashMove(selectedData.user_id, selectedData.drive_id))) {
+    message.warning('当前网盘为只读，不能删除文件')
     return
   }
   if (selectedData.dirID.startsWith('video')) {
@@ -354,6 +344,13 @@ export function menuCopySelectedFile(istree: boolean, copyby: string) {
     message.error('复制移动操作失败 父文件夹错误')
     return
   }
+  const isSupported = copyby === 'copy'
+    ? supportsCopy(selectedData.user_id, selectedData.drive_id)
+    : supportsMove(selectedData.user_id, selectedData.drive_id)
+  if (!isSupported) {
+    message.warning(`当前网盘为只读，不能${copyby === 'copy' ? '复制' : '移动'}文件`)
+    return
+  }
   if (selectedData.dirID.startsWith('video')) {
     message.error('请不要在放映室里移动文件文件')
     return
@@ -436,6 +433,10 @@ export function dropMoveSelectedFile(drive_id: string, movetodirid: string, istr
   if (selectedData.isErrorSelected) return
   if (selectedData.isError) {
     message.error('复制移动操作失败 父文件夹错误！')
+    return
+  }
+  if (!supportsMove(selectedData.user_id, selectedData.drive_id)) {
+    message.warning('当前网盘为只读，不能移动文件')
     return
   }
 
@@ -580,6 +581,10 @@ export function menuCreatShare(istree: boolean, shareby: string, driveType: stri
   const selectedData = PanDAL.GetPanSelectedData(istree)
   if (selectedData.isError) {
     message.error('创建分享操作失败 父文件夹错误')
+    return
+  }
+  if (!supportsCreateShare(selectedData.user_id, selectedData.drive_id)) {
+    message.warning('当前网盘为只读，不能创建分享')
     return
   }
 

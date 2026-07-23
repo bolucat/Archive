@@ -33,7 +33,7 @@ describe('drive-tools media organize', () => {
     expect(result[0].targetPath).toContain('Season 02')
   })
 
-  it('executes media organize for WebDAV items', async () => {
+  it('keeps WebDAV media items read-only', async () => {
     await expect(executeMediaOrganizePlan([
       {
         userId: 'dav',
@@ -50,8 +50,8 @@ describe('drive-tools media organize', () => {
       }
     ], '/downloads')).resolves.toMatchObject({
       total: 1,
-      success: 1,
-      failed: 0
+      success: 0,
+      failed: 1
     })
   })
 })

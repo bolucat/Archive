@@ -12,6 +12,7 @@ import RssScanEnmpty from './rssscanenmpty/RssScanEnmpty.vue'
 import RssJiaMi from './rssjiami/RssJiaMi.vue'
 import RssDriveCopy from './rssdrivecopy/RssDriveCopy.vue'
 import RssEmptyDirs from './drivetools/RssEmptyDirs.vue'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 const panTreeStore = usePanTreeStore()
@@ -36,46 +37,46 @@ watch(
 
 <template>
   <a-layout style="height: 100%">
-    <a-layout-sider hide-trigger :width="218" class="xbyleft rss-sider">
-      <div class="headdesc">好玩的插件</div>
-      <a-menu :style="{ width: '100%' }" class="xbyleftmenu rss-leftmenu"
+    <a-layout-sider hide-trigger :width="218" class="xbyleft rss-sider single-boundary-sidebar">
+      <div class="headdesc">{{ t('plugins.title') }}</div>
+      <a-menu :style="{ width: '100%' }" class="xbyleftmenu rss-leftmenu single-boundary-sidebar-menu"
               :selected-keys="[appStore.GetAppTabMenu]"
               @update:selected-keys="appStore.toggleTabMenu('rss', $event[0])">
         <a-menu-item key="RssXiMa">
           <template #icon><IconFont name="iconcameraadd" /></template>
-          视频文件洗码
+          {{ t('plugins.washCode') }}
         </a-menu-item>
         <a-menu-item key="RssJiaMi">
           <template #icon><IconFont name="iconsafebox" /></template>
-          文件加密解密
+          {{ t('plugins.encrypt') }}
         </a-menu-item>
         <a-menu-item key="RssEmptyDirs">
           <template #icon><IconFont name="iconempty" /></template>
-          空目录扫描
+          {{ t('plugins.emptyDirs') }}
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="AppSame">
           <template #icon><IconFont name="iconcopy" /></template>
-          重复文件清理
+          {{ t('plugins.duplicates') }}
         </a-menu-item>
         <a-menu-item key="RssScanClean">
           <template #icon><IconFont name="iconclear" /></template>
-          扫描大文件
+          {{ t('plugins.largeFiles') }}
         </a-menu-item>
         <a-menu-item key="RssScanSame">
           <template #icon><IconFont name="iconcopy" /></template>
-          扫描重复文件
+          {{ t('plugins.scanDuplicates') }}
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssScanPunish">
           <template #icon><IconFont name="iconweixiang" /></template>
-          扫描违规文件
+          {{ t('plugins.violations') }}
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssScanEnmpty">
           <template #icon><IconFont name="iconempty" /></template>
-          扫描空文件夹
+          {{ t('plugins.emptyFiles') }}
         </a-menu-item>
         <a-menu-item v-if="isAliyunAccount" key="RssDriveCopy">
           <template #icon><IconFont name="iconchuanshu2" /></template>
-          网盘相册间复制
+          {{ t('plugins.albumCopy') }}
         </a-menu-item>
       </a-menu>
     </a-layout-sider>
@@ -126,5 +127,19 @@ watch(
   margin: 0;
   overflow-y: auto !important;
   overflow-x: hidden !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .rss-content-panel > .hidetabs {
+  background: var(--color-bg-1) !important;
+  border-color: var(--color-border-2) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .rss-content-panel .rightbg {
+  background: var(--color-bg-1) !important;
+  border-color: var(--color-border-2) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 </style>

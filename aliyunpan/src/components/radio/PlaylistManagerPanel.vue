@@ -115,31 +115,37 @@ function onRemoveTrack(pl: LocalPlaylist, fileId: string) {
 </template>
 
 <style scoped lang="less">
-.plm-panel { padding: 10px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.022); color: #fff; }
+.plm-panel { --music-panel-text: #fff; --music-panel-muted: rgba(255,255,255,.72); --music-panel-subtle: rgba(255,255,255,.50); padding: 10px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.022); color: var(--music-panel-text); }
 .plm-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.plm-title { font-size: 12.5px; font-weight: 700; color: rgba(255,255,255,.85); flex: 1; }
-.plm-btn { width: 24px; height: 24px; border-radius: 7px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: rgba(255,255,255,.55); cursor: pointer; display: flex; align-items: center; justify-content: center; }
-.plm-btn:hover { background: rgba(0,245,212,.1); border-color: rgba(0,245,212,.3); color: #fff; }
+.plm-title { font-size: 13px; font-weight: 700; color: var(--music-panel-text); flex: 1; }
+.plm-btn { width: 24px; height: 24px; border-radius: 7px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); color: var(--music-panel-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.plm-btn:hover { background: rgba(0,245,212,.1); border-color: rgba(0,245,212,.3); color: var(--music-panel-text); }
 .plm-new-row { display: flex; gap: 6px; margin-bottom: 8px; }
-.plm-input { flex: 1; height: 26px; padding: 0 8px; border-radius: 7px; border: 1px solid rgba(255,255,255,.08); background: rgba(10,11,15,.8); color: rgba(255,255,255,.8); font-size: 11px; outline: none; }
+.plm-input { flex: 1; height: 26px; padding: 0 8px; border-radius: 7px; border: 1px solid rgba(255,255,255,.08); background: rgba(10,11,15,.8); color: var(--music-panel-text); font-size: 12px; outline: none; }
 .plm-input:focus { border-color: rgba(0,245,212,.3); }
 .plm-list { max-height: 200px; overflow-y: auto; }
 .plm-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.03); background: rgba(255,255,255,.015); cursor: pointer; margin-bottom: 4px; transition: all .12s; }
 .plm-row:hover, .plm-row.selected { background: rgba(0,245,212,.06); border-color: rgba(0,245,212,.14); }
 .plm-meta { min-width: 0; }
-.plm-name { font-size: 11.5px; font-weight: 650; color: rgba(255,255,255,.88); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.plm-count { font-size: 10px; color: rgba(255,255,255,.35); }
+.plm-name { font-size: 13px; font-weight: 650; color: var(--music-panel-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plm-count { font-size: 11px; color: var(--music-panel-subtle); }
 .plm-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.plm-act { width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); color: rgba(255,255,255,.5); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; }
-.plm-act:hover { background: rgba(0,245,212,.1); border-color: rgba(0,245,212,.25); color: #fff; }
+.plm-act { width: 22px; height: 22px; border-radius: 5px; border: 1px solid rgba(255,255,255,.08); background: rgba(255,255,255,.03); color: var(--music-panel-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.plm-act:hover { background: rgba(0,245,212,.1); border-color: rgba(0,245,212,.25); color: var(--music-panel-text); }
 .plm-act.danger:hover { background: rgba(255,86,100,.14); border-color: rgba(255,86,100,.3); color: #ff7a90; }
 .plm-edit-row { display: flex; gap: 4px; flex: 1; }
-.plm-empty { padding: 16px; text-align: center; color: rgba(255,255,255,.28); font-size: 11px; }
+.plm-empty { padding: 16px; text-align: center; color: var(--music-panel-muted); font-size: 12px; }
 .plm-detail { margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.06); }
 .plm-detail-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 11.5px; font-weight: 700; }
 .plm-detail-head button { width: auto; padding: 0 8px; font-size: 10px; }
 .plm-track-list { max-height: 160px; overflow-y: auto; }
 .plm-track { display: flex; align-items: center; justify-content: space-between; padding: 3px 6px; border-radius: 5px; margin-bottom: 2px; }
 .plm-track:hover { background: rgba(255,255,255,.03); }
-.plm-track-name { font-size: 10.5px; color: rgba(255,255,255,.6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.plm-track-name { font-size: 12px; color: var(--music-panel-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+
+:global(body:not([arco-theme='dark'])) .plm-panel {
+  --music-panel-text: #111827;
+  --music-panel-muted: #374151;
+  --music-panel-subtle: #4b5563;
+}
 </style>

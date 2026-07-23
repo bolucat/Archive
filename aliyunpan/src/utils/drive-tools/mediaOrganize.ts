@@ -25,12 +25,6 @@ export interface MediaOrganizeResult {
   report: string
 }
 
-const normalizeToolPath = (value: string) => {
-  const trimmed = String(value || '/').trim()
-  if (!trimmed || trimmed === '/') return '/'
-  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`.replace(/\/+/g, '/')
-}
-
 const normalizeName = (name: string) => String(name || '').replace(/\.[^/.]+$/, '').replace(/[._]+/g, ' ').replace(/[\[\]【】()[\]{}]/g, ' ').replace(/\s+/g, ' ').trim()
 
 const inferMedia = (name: string) => {
@@ -59,49 +53,19 @@ export const executeMediaOrganizePlan = async (plans: MediaOrganizePlanItem[], r
   for (const item of valid) {
     let parentId = rootParentId
     let failed = false
-    const webDav = item.driveId.startsWith('webdav:')
-    let webDavConnection: any = null
-    let webDavParentPath = normalizeToolPath(rootParentId)
-    if (webDav) {
-      const { getWebDavConnection, getWebDavConnectionId } = await import('../webdavClient')
-      webDavConnection = getWebDavConnection(getWebDavConnectionId(item.driveId))
-      if (!webDavConnection) continue
-    }
+    if (item.driveId.startsWith('webdav:')) continue
     for (const segment of item.targetSegments) {
       const existing = await listDriveToolChildren(item.userId, item.driveId, parentId).catch(() => []).then(items => items.find(child => child.isDir && child.name === segment))
       if (existing) {
         parentId = existing.file_id
-        if (webDav) webDavParentPath = normalizeToolPath(existing.file_id)
         continue
       }
-      if (webDav) {
-        const { createWebDavDirectory, normalizeWebDavPath } = await import('../webdavClient')
-        webDavParentPath = normalizeWebDavPath(`${webDavParentPath}/${segment}`)
-        try {
-          await createWebDavDirectory(webDavConnection, webDavParentPath)
-          parentId = webDavParentPath
-        } catch {
-          failed = true
-          break
-        }
-      } else {
-        const created = await AliFileCmd.ApiCreatNewForder(item.userId, item.driveId, parentId, segment, '', 'refuse')
-        if (!created.file_id) { failed = true; break }
-        parentId = created.file_id
-      }
+      const created = await AliFileCmd.ApiCreatNewForder(item.userId, item.driveId, parentId, segment, '', 'refuse')
+      if (!created.file_id) { failed = true; break }
+      parentId = created.file_id
     }
     if (failed) continue
-    const successIds = webDav
-      ? await (async () => {
-        const { moveWebDavPath, normalizeWebDavPath } = await import('../webdavClient')
-        try {
-          await moveWebDavPath(webDavConnection, item.fileId, normalizeWebDavPath(`${parentId}/${item.name}`))
-          return [item.fileId]
-        } catch {
-          return []
-        }
-      })()
-      : await AliFileCmd.ApiMoveBatch(item.userId, item.driveId, [item.fileId], item.driveId, parentId)
+    const successIds = await AliFileCmd.ApiMoveBatch(item.userId, item.driveId, [item.fileId], item.driveId, parentId)
     if (successIds.includes(item.fileId)) success += 1
   }
   return { total: valid.length, success, failed: valid.length - success, report: `媒体整理完成：成功 ${success}/${valid.length}${success < valid.length ? `，失败 ${valid.length - success}` : ''}` }

@@ -46,6 +46,7 @@ import type { SubtitleSearchResult } from '../utils/subtitleApi'
 import message from '../utils/message'
 import { captureVideoQualitySwitchPlaybackState } from '../utils/videoQualitySwitch'
 import { getLocalVideoProgress, saveLocalVideoProgress } from '../utils/videoProgress'
+import { isVideoFile } from '../utils/videoFile'
 import { simpleToTradition, traditionToSimple } from 'chinese-simple2traditional'
 import path from 'path'
 import UserDAL from '../user/userdal'
@@ -65,6 +66,7 @@ import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirf
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import MpvEmbeddedSurface from '../components/MpvEmbeddedSurface.vue'
+import { t } from '../i18n'
 import {
   getMediaServerItemDetail,
   getMediaServerPlaybackInfo,
@@ -106,7 +108,7 @@ const mpvPlaylistReady = ref(false)
 const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
 
 const updateWindowTitle = (name?: string) => {
-  document.title = name || pageVideo.file_name || '视频在线预览'
+  document.title = name || pageVideo.file_name || t('video.onlinePreview')
 }
 
 const applyPendingMediaServerSeek = async (art: Artplayer) => {
@@ -189,12 +191,12 @@ const refreshMediaServerPlayback = async (
   const serverId = pageVideo.media_server_id || ''
   const itemId = pageVideo.media_server_item_id || pageVideo.file_id || ''
   if (!serverId || !itemId) {
-    art.notice.show = '媒体服务器播放信息不完整'
+    art.notice.show = t('video.mediaServerPlaybackIncomplete')
     return
   }
   const server = mediaServerRegistry.servers.find((item) => item.id === serverId)
   if (!server) {
-    art.notice.show = '媒体服务器不存在或已被删除'
+    art.notice.show = t('video.mediaServerMissing')
     return
   }
   const playback = await getMediaServerPlaybackInfo(
@@ -344,13 +346,13 @@ const playByHls = (video: HTMLMediaElement, url: string, art: Artplayer) => {
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = url
   } else {
-    art.notice.show = '不支持的视频格式'
+    art.notice.show = t('video.unsupportedFormat')
   }
 }
 
 const playByDash = (video: HTMLMediaElement, url: string, art: Artplayer) => {
   if (!dashjs.supportsMediaSource()) {
-    art.notice.show = '不支持的视频格式：mpd'
+    art.notice.show = t('video.unsupportedFormatMpd')
     return
   }
   destroyArtHls(art)
@@ -494,16 +496,16 @@ const ensureHlsControlPlugin = (art: Artplayer) => {
     quality: {
       control: false,
       setting: true,
-      getName: (level: any) => level.name || (level.height ? `${level.height}P` : '未知'),
-      title: '清晰度',
-      auto: '自动'
+      getName: (level: any) => level.name || (level.height ? `${level.height}P` : t('video.unknown')),
+      title: t('video.quality'),
+      auto: t('video.auto')
     },
     audio: {
       control: true,
       setting: true,
-      getName: (track: any) => track.name || track.lang || track.language || '默认音轨',
-      title: '音轨',
-      auto: '自动'
+      getName: (track: any) => track.name || track.lang || track.language || t('video.defaultAudio'),
+      title: t('video.audioTrack'),
+      auto: t('video.auto')
     }
   }))
 }
@@ -518,16 +520,16 @@ const ensureDashControlPlugin = (art: Artplayer) => {
     quality: {
       control: false,
       setting: true,
-      getName: (level: any) => level.height ? `${level.height}P` : '未知',
-      title: '清晰度',
-      auto: '自动'
+      getName: (level: any) => level.height ? `${level.height}P` : t('video.unknown'),
+      title: t('video.quality'),
+      auto: t('video.auto')
     },
     audio: {
       control: true,
       setting: true,
-      getName: (track: any) => String(track.lang || track.id || '默认音轨').toUpperCase(),
-      title: '音轨',
-      auto: '自动'
+      getName: (track: any) => String(track.lang || track.id || t('video.defaultAudio')).toUpperCase(),
+      title: t('video.audioTrack'),
+      auto: t('video.auto')
     }
   }))
 }
@@ -672,14 +674,14 @@ const renderMediaSearchControl = (art: Artplayer) => {
     index: 21,
     position: 'right',
     style: { padding: '0 10px', marginRight: '8px', opacity: '0.92' },
-    html: '搜索',
+    html: t('video.search'),
     selector: [
       {
-        html: '字幕搜索',
+        html: t('video.subtitleSearch'),
         type: 'subtitle'
       },
       {
-        html: '弹幕搜索',
+        html: t('video.danmakuSearch'),
         type: 'danmaku'
       }
     ],
@@ -690,7 +692,7 @@ const renderMediaSearchControl = (art: Artplayer) => {
       } else {
         openDanmakuSearchModal(art)
       }
-      return '搜索'
+      return t('video.search')
     }
   })
 }
@@ -784,7 +786,7 @@ const renderMediaServerControls = (art: Artplayer) => {
       index: 17,
       position: 'right',
       style: { padding: '0 10px', marginRight: '8px', opacity: '0.92' },
-      html: sourceLabel || sourceOptions[0]?.label || '版本',
+      html: sourceLabel || sourceOptions[0]?.label || t('video.version'),
       selector: sourceOptions.map((item) => ({
         html: item.subLabel ? `${item.label} · ${item.subLabel}` : item.label,
         sourceId: item.id,
@@ -814,7 +816,7 @@ const renderMediaServerControls = (art: Artplayer) => {
       index: 18,
       position: 'right',
       style: { padding: '0 10px', marginRight: '8px', opacity: '0.92' },
-      html: '视频流',
+      html: t('video.videoStream'),
       selector: videoOptions.map((item) => ({
         html: item.label,
         streamIndex: item.streamIndex,
@@ -830,7 +832,7 @@ const renderMediaServerControls = (art: Artplayer) => {
           findMediaServerStreamIndex(pageVideo.media_server_audio_options, pageVideo.media_server_audio_label),
           findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label)
         )
-        return '视频流'
+        return t('video.videoStream')
       }
     })
   } else {
@@ -860,7 +862,7 @@ const renderMediaServerControls = (art: Artplayer) => {
           item.streamIndex,
           findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label)
         )
-        return '音轨'
+        return t('video.audioTrack')
       }
     })
   } else {
@@ -873,7 +875,7 @@ const renderMediaServerControls = (art: Artplayer) => {
       index: 20,
       position: 'right',
       style: { padding: '0 10px', marginRight: '8px', opacity: '0.92' },
-      html: '字幕',
+      html: t('video.subtitle'),
       selector: (pageVideo.media_server_subtitle_options || []).map((item) => ({
         html: item.label,
         streamIndex: item.streamIndex,
@@ -889,7 +891,7 @@ const renderMediaServerControls = (art: Artplayer) => {
           findMediaServerStreamIndex(pageVideo.media_server_audio_options, pageVideo.media_server_audio_label),
           item.streamIndex
         )
-        return '字幕'
+        return t('video.subtitle')
       }
     })
   } else {
@@ -916,12 +918,12 @@ const refreshMediaServerPlayList = async (art: Artplayer, itemId?: string) => {
 
   autoPlayNumber = Math.max(0, playList.findIndex((item) => item.file_id === currentItemId))
   lastPlayNumber = autoPlayNumber - 1
-  const currentTitle = playList[autoPlayNumber]?.html || pageVideo.html || pageVideo.file_name || '当前剧集'
+  const currentTitle = playList[autoPlayNumber]?.html || pageVideo.html || pageVideo.file_name || t('video.currentEpisode')
 
   art.setting.update({
     name: 'mediaServerPlayList',
     width: 300,
-    html: pageVideo.media_server_playlist_label || '播放列表',
+    html: pageVideo.media_server_playlist_label || t('video.playlist'),
     icon: art.icons.play,
     tooltip: handlerPlayTitle(currentTitle),
     selector: playList,
@@ -962,7 +964,7 @@ const switchMediaServerPlaylistItem = async (art: Artplayer, item: selectorItem)
 
   const server = getCurrentMediaServer()
   if (!server) {
-    art.notice.show = '媒体服务器不存在或已被删除'
+    art.notice.show = t('video.mediaServerMissing')
     return handlerPlayTitle(pageVideo.html || pageVideo.file_name || item.html)
   }
 
@@ -1057,7 +1059,7 @@ const switchMediaServerPlaylistItem = async (art: Artplayer, item: selectorItem)
     return handlerPlayTitle(detail.title)
   } catch (error: any) {
     console.error('播放器内切换剧集失败:', error)
-    art.notice.show = error?.message || '切换剧集失败'
+    art.notice.show = error?.message || t('video.switchEpisodeFailed')
     return handlerPlayTitle(pageVideo.html || pageVideo.file_name || item.html)
   }
 }
@@ -1068,7 +1070,7 @@ onMounted(async () => {
     Number(pageVideo.play_cursor || 0),
     getLocalVideoProgress(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id)
   )
-  const name = pageVideo.file_name || '视频在线预览'
+  const name = pageVideo.file_name || t('video.onlinePreview')
   document.body.setAttribute('arco-theme', 'dark')
   setTimeout(() => {
     updateWindowTitle(name)
@@ -1140,7 +1142,7 @@ const initHotKey = (art: Artplayer) => {
   // m
   art.hotkey.add("77", () => {
     art.muted = !art.muted
-    art.notice.show = art.muted ? '开启静音' : '关闭静音'
+    art.notice.show = art.muted ? t('video.muteOn') : t('video.muteOff')
   })
   // c
   art.hotkey.add("67", () => {
@@ -1156,7 +1158,7 @@ const initHotKey = (art: Artplayer) => {
           event.preventDefault()
           // 设置播放速度
           art.playbackRate = Number(art.storage.get('longPressSpeed')) || 2
-          art.notice.show = `x${art.playbackRate.toFixed(1)} 倍速播放中`
+          art.notice.show = t('video.speedPlaying', { rate: art.playbackRate.toFixed(1) })
         } else {
           longPressSpeed = art.playbackRate
         }
@@ -1177,7 +1179,7 @@ const initHotKey = (art: Artplayer) => {
 const initEvent = (art: Artplayer) => {
   // 监听事件
   art.on('video:error', () => {
-    art.notice.show = '不支持当前媒体类型'
+    art.notice.show = t('video.unsupportedMediaType')
   })
   art.on('ready', async () => {
     await art.play().catch()
@@ -1208,7 +1210,7 @@ const initEvent = (art: Artplayer) => {
     }
     if (playList.length > 1 && art.video.readyState > art.video.HAVE_CURRENT_DATA) {
       if (autoPlayNumber + 1 >= playList.length) {
-        art.notice.show = '视频播放完毕'
+        art.notice.show = t('video.ended')
         return
       }
       if (art.storage.get('autoPlayNext')) {
@@ -1284,13 +1286,13 @@ const jumpToNextVideo = async (art: Artplayer) => {
   if (lastPlayNumber + 1 !== autoPlayNumber) return
   if (autoPlayNumber + 1 >= playList.length) {
     autoPlayNumber = playList.length
-    art.notice.show = '已经是最后一集了'
+    art.notice.show = t('video.lastEpisode')
     return
   }
   const item = playList[++autoPlayNumber]
   if (pageVideo.drive_id === 'media_server') {
     const nextTitle = await switchMediaServerPlaylistItem(art, item)
-    art.notice.show = `切换到 ${nextTitle || item.html}`
+    art.notice.show = t('video.switchTo', { title: nextTitle || item.html })
     return
   }
   // 刷新视频
@@ -1442,12 +1444,12 @@ const defaultSettings = async (art: Artplayer) => {
   art.setting.update({
     name: 'autoJumpCursor',
     width: 300,
-    html: '自动跳转',
+    html: t('video.autoJump'),
     icon: art.icons.play,
-    tooltip: autoJumpCursor ? '跳转到历史进度' : '关闭',
+    tooltip: autoJumpCursor ? t('video.jumpToHistory') : t('video.off'),
     switch: autoJumpCursor,
     onSwitch: async (item: SettingOption) => {
-      item.tooltip = item.switch ? '关闭' : '跳转到历史进度'
+      item.tooltip = item.switch ? t('video.off') : t('video.jumpToHistory')
       art.storage.set('autoJumpCursor', !item.switch)
       return !item.switch
     }
@@ -1456,12 +1458,12 @@ const defaultSettings = async (art: Artplayer) => {
     art.setting.update({
       name: 'autoPlayNext',
       width: 300,
-      html: '自动连播',
+      html: t('video.autoPlayNext'),
       icon: art.icons.airplay,
-      tooltip: autoPlayNext ? '开启' : '关闭',
+      tooltip: autoPlayNext ? t('video.on') : t('video.off'),
       switch: autoPlayNext,
       onSwitch: (item: SettingOption) => {
-        item.tooltip = item.switch ? '关闭' : '开启'
+        item.tooltip = item.switch ? t('video.off') : t('video.on')
         art.notice.show = '自动连播' + item.tooltip
         art.storage.set('autoPlayNext', !item.switch)
         return !item.switch
@@ -1471,11 +1473,11 @@ const defaultSettings = async (art: Artplayer) => {
   art.setting.update({
     name: 'autoSkip',
     width: 300,
-    html: '更多设置',
+    html: t('video.moreSettings'),
     selector: [{
       name: 'longPressSpeed',
       width: 300,
-      html: '长按倍速',
+      html: t('video.longPressSpeed'),
       icon: art.icons.playbackRate,
       tooltip: 'x' + longPressSpeed,
       range: [longPressSpeed, 1.5, 4, 0.5],
@@ -1486,7 +1488,7 @@ const defaultSettings = async (art: Artplayer) => {
     }, {
       name: 'autoSkipBegin',
       width: 300,
-      html: '设置片头',
+      html: t('video.setIntro'),
       tooltip: autoSkipBegin + 's',
       range: [autoSkipBegin, 0, 3000, 1],
       onChange(item: SettingOption) {
@@ -1496,7 +1498,7 @@ const defaultSettings = async (art: Artplayer) => {
     }, {
       name: 'autoSkipEnd',
       width: 300,
-      html: '设置片尾',
+      html: t('video.setOutro'),
       tooltip: autoSkipEnd + 's',
       range: [autoSkipEnd, 0, 3000, 1],
       onChange(item: SettingOption) {
@@ -1545,7 +1547,7 @@ const applyDanmakuPluginConfig = (art: Artplayer) => {
   plugin?.config?.(buildDanmakuPluginOption(useSettingStore()) as any)
 }
 
-const loadDanmakuToPlayer = async (art: Artplayer, danmus: Danmu[], tip = '已加载弹幕') => {
+const loadDanmakuToPlayer = async (art: Artplayer, danmus: Danmu[], tip = t('video.loadedDanmaku')) => {
   const plugin = getDanmakuPlugin(art)
   if (!plugin) return
   applyDanmakuPluginConfig(art)
@@ -1585,14 +1587,14 @@ const getSubtitleItemExt = (item: selectorItem) => {
 const switchSubtitleText = async (art: Artplayer, name: string, ext: string, data: string) => {
   if (isAssSubtitleType(ext)) {
     const instance = getJassubInstance(art)
-    if (!instance) throw new Error('JASSUB 未初始化')
+    if (!instance) throw new Error(t('video.jassubNotReady'))
     const subtitleElement = (art as any).template?.$subtitle as HTMLElement | undefined
     if (subtitleElement) subtitleElement.style.visibility = 'hidden'
     instance.freeTrack?.()
     instance.setTrack(data)
     setJassubVisible(art, true)
     art.subtitle.show = true
-    art.notice.show = `切换字幕：${name}`
+    art.notice.show = t('video.switchSubtitle', { name })
     return
   }
 
@@ -1603,7 +1605,7 @@ const switchSubtitleText = async (art: Artplayer, name: string, ext: string, dat
     escape: false
   })
   art.subtitle.show = true
-  art.notice.show = `切换字幕：${name}`
+  art.notice.show = t('video.switchSubtitle', { name })
 }
 
 const autoLoadDanmaku = async (art: Artplayer) => {
@@ -1620,12 +1622,12 @@ const autoLoadDanmaku = async (art: Artplayer) => {
     if (!danmus.length) throw new Error('empty danmaku')
     if (getDanmakuVideoKey() !== videoKey) return
     const title = firstMatch.episodeTitle || firstMatch.animeTitle || match.api.name
-    await loadDanmakuToPlayer(art, danmus, `已自动加载弹幕：${title}`)
+    await loadDanmakuToPlayer(art, danmus, t('video.autoLoadedDanmaku', { title }))
     danmakuAutoLoadedKey = videoKey
   } catch (error) {
     console.warn('自动加载弹幕失败:', error)
     if (getDanmakuVideoKey() === videoKey) {
-      message.warning('自动加载弹幕失败，可以自己搜索。')
+      message.warning(t('video.autoLoadDanmakuFailed'))
       danmakuAutoLoadedKey = videoKey
     }
   } finally {
@@ -1634,9 +1636,9 @@ const autoLoadDanmaku = async (art: Artplayer) => {
 }
 
 const subtitleLanguages = [
-  { code: 'zh-cn', name: '简体中文' },
+  { code: 'zh-cn', name: 'Simplified Chinese' },
   { code: 'en', name: 'English' },
-  { code: 'zh-tw', name: '繁體中文' }
+  { code: 'zh-tw', name: 'Traditional Chinese' }
 ]
 
 const getSelectedDanmakuApi = (apis: DanmakuApiConfig[], apiId: string) => {
@@ -1650,7 +1652,7 @@ const toStringValue = (value: unknown) => {
 const openDanmakuSearchModal = (art: Artplayer) => {
   const apis = getDanmakuApis()
   if (!apis.length) {
-    message.warning('请先在设置中配置弹幕库 API')
+    message.warning(t('video.configureDanmakuApi'))
     return
   }
 
@@ -1683,8 +1685,8 @@ const openDanmakuSearchModal = (art: Artplayer) => {
       h('span', { class: 'danmaku-result-copy' }, [
         h('span', { class: 'danmaku-result-title' }, anime.animeTitle),
         h('span', { class: 'danmaku-result-meta' }, [
-          anime.typeDescription || anime.type || '番剧',
-          typeof anime.episodeCount === 'number' ? `  ${anime.episodeCount} 集` : ''
+          anime.typeDescription || anime.type || t('video.anime'),
+          typeof anime.episodeCount === 'number' ? `  ${anime.episodeCount} ${t('video.episodesUnit')}` : ''
         ].join(''))
       ]),
       h('span', { class: 'danmaku-result-arrow' }, '›')
@@ -1692,13 +1694,13 @@ const openDanmakuSearchModal = (art: Artplayer) => {
   }
 
   const renderEpisodeRow = (episode: DanmakuEpisode) => {
-    const title = episode.episodeTitle || `第 ${episode.episodeNumber || episode.episodeId} 集`
+    const title = episode.episodeTitle || t('video.episodeTitle', { number: episode.episodeNumber || episode.episodeId })
     return h('button', {
       class: 'danmaku-episode-card',
       type: 'button',
       onClick: () => loadEpisode(episode)
     }, [
-      h('span', { class: 'danmaku-episode-number' }, typeof episode.episodeNumber !== 'undefined' ? `第 ${episode.episodeNumber} 话` : title),
+      h('span', { class: 'danmaku-episode-number' }, typeof episode.episodeNumber !== 'undefined' ? t('video.episodeNumber', { number: episode.episodeNumber }) : title),
       h('span', { class: 'danmaku-episode-title' }, title)
     ])
   }
@@ -1713,9 +1715,9 @@ const openDanmakuSearchModal = (art: Artplayer) => {
     viewMode.value = 'search'
     try {
       animes.value = await searchAnime(keyword.value, api)
-      if (!animes.value.length) message.warning('没有搜索到弹幕')
+      if (!animes.value.length) message.warning(t('video.noDanmakuFound'))
     } catch (error: any) {
-      message.error(error?.message || '搜索弹幕失败')
+      message.error(error?.message || t('video.searchDanmakuFailed'))
     } finally {
       loading.value = false
     }
@@ -1730,10 +1732,10 @@ const openDanmakuSearchModal = (art: Artplayer) => {
       selectedAnimeTitle.value = detail.animeTitle || anime.animeTitle
       selectedAnimeMeta.value = anime.typeDescription || anime.type || detail.typeDescription || detail.type || ''
       episodes.value = detail.episodes || []
-      if (!episodes.value.length) message.warning('没有可加载的剧集弹幕')
+      if (!episodes.value.length) message.warning(t('video.noEpisodeDanmaku'))
       else viewMode.value = 'episodes'
     } catch (error: any) {
-      message.error(error?.message || '获取剧集弹幕失败')
+      message.error(error?.message || t('video.fetchEpisodeDanmakuFailed'))
     } finally {
       loading.value = false
     }
@@ -1745,12 +1747,12 @@ const openDanmakuSearchModal = (art: Artplayer) => {
     loading.value = true
     try {
       const danmus = await loadDanmakuComments(episode.episodeId, api)
-      if (!danmus.length) throw new Error('该剧集没有可加载的弹幕')
+      if (!danmus.length) throw new Error(t('video.noLoadableDanmaku'))
       await loadDanmakuToPlayer(art, danmus, `已加载弹幕：${episode.episodeTitle}`)
       danmakuAutoLoadedKey = getDanmakuVideoKey()
       modal?.close?.()
     } catch (error: any) {
-      message.error(error?.message || '加载弹幕失败')
+      message.error(error?.message || t('video.loadDanmakuFailed'))
     } finally {
       loading.value = false
     }
@@ -1764,8 +1766,8 @@ const openDanmakuSearchModal = (art: Artplayer) => {
         onClick: () => modal?.close?.()
       }, '×'),
       h('div', { class: 'danmaku-header-copy' }, [
-        h('div', { class: 'danmaku-full-title' }, '在线弹幕搜索'),
-        h('div', { class: 'danmaku-full-subtitle' }, '选择作品和剧集后立即加载到播放器')
+        h('div', { class: 'danmaku-full-title' }, t('video.onlineDanmakuSearch')),
+        h('div', { class: 'danmaku-full-subtitle' }, t('video.danmakuSearchSubtitle'))
       ])
     ])
   }
@@ -1790,7 +1792,7 @@ const openDanmakuSearchModal = (art: Artplayer) => {
           h(Input, {
             class: 'danmaku-search-input',
             modelValue: keyword.value,
-            placeholder: '输入剧集名称或电影标题',
+            placeholder: t('video.searchInputPlaceholder'),
             onInput: (value: string) => { keyword.value = value },
             'onUpdate:modelValue': (value: string) => { keyword.value = value },
             onPressEnter: runSearch
@@ -1802,13 +1804,13 @@ const openDanmakuSearchModal = (art: Artplayer) => {
           onClick: runSearch
         }, () => '搜索')
       ]),
-      h('p', { class: 'danmaku-search-tip' }, '搜索时只保留剧集名称或电影标题，切换弹幕源将自动重新搜索'),
+      h('p', { class: 'danmaku-search-tip' }, t('video.danmakuSearchTip')),
       h('section', { class: 'danmaku-result-shell' }, [
         h('div', { class: 'danmaku-result-toolbar' }, [
-          h('span', {}, loading.value ? '正在搜索' : animes.value.length ? `找到 ${animes.value.length} 个作品` : '搜索结果'),
+          h('span', {}, loading.value ? t('video.searching') : animes.value.length ? t('video.foundWorks', { count: animes.value.length }) : t('video.searchResults')),
           h('span', {}, getSelectedDanmakuApi(apis, apiId.value)?.name || '')
         ]),
-        h('div', { class: 'danmaku-modal-list' }, animes.value.length ? animes.value.map(renderAnimeRow) : renderEmpty('暂无搜索结果'))
+        h('div', { class: 'danmaku-modal-list' }, animes.value.length ? animes.value.map(renderAnimeRow) : renderEmpty(t('video.noSearchResults')))
       ])
     ])
   }
@@ -1819,13 +1821,13 @@ const openDanmakuSearchModal = (art: Artplayer) => {
         class: 'danmaku-back-button',
         type: 'button',
         onClick: () => { viewMode.value = 'search' }
-      }, '‹  返回剧集搜索'),
+      }, t('video.backToEpisodeSearch')),
       h('div', { class: 'danmaku-episode-heading' }, [
         h('strong', {}, selectedAnimeTitle.value),
-        h('span', {}, [selectedAnimeMeta.value, `${episodes.value.length} 集`].filter(Boolean).join('  ·  '))
+        h('span', {}, [selectedAnimeMeta.value, `${episodes.value.length} ${t('video.episodesUnit')}`].filter(Boolean).join('  ·  '))
       ]),
       h('section', { class: 'danmaku-episode-shell' }, [
-        h('div', { class: 'danmaku-episode-grid' }, episodes.value.length ? episodes.value.map(renderEpisodeRow) : renderEmpty('没有可加载的剧集弹幕'))
+        h('div', { class: 'danmaku-episode-grid' }, episodes.value.length ? episodes.value.map(renderEpisodeRow) : renderEmpty(t('video.noEpisodeDanmaku')))
       ])
     ])
   }
@@ -1866,7 +1868,7 @@ const loadSubtitleTextToPlayer = async (art: Artplayer, name: string, ext: strin
 
 const addDownloadedSubtitleToSelector = (name: string, ext: string, data: string) => {
   downloadedSubSelector.forEach((item) => { item.default = false })
-  const html = `搜索: ${name}`
+  const html = `${t('video.search')}: ${name}`
   const index = downloadedSubSelector.findIndex((item) => item.name === name)
   const item = {
     url: '',
@@ -1918,9 +1920,9 @@ const openSubtitleSearchModal = (art: Artplayer) => {
     errorText.value = ''
     try {
       results.value = await searchSubtitles(keyword.value, language.value)
-      if (!results.value.length) message.warning('未找到相关字幕')
+      if (!results.value.length) message.warning(t('video.noSubtitleFound'))
     } catch (error: any) {
-      errorText.value = error?.message || '搜索失败，请重试'
+      errorText.value = error?.message || t('video.searchFailedRetry')
     } finally {
       loading.value = false
     }
@@ -1940,7 +1942,7 @@ const openSubtitleSearchModal = (art: Artplayer) => {
       await getSubTitleList(art)
       modal?.close?.()
     } catch (error: any) {
-      errorText.value = error?.message || '下载失败，请重试'
+      errorText.value = error?.message || t('video.downloadFailedRetry')
     } finally {
       loading.value = false
       downloadingFileId.value = undefined
@@ -1961,14 +1963,14 @@ const openSubtitleSearchModal = (art: Artplayer) => {
         h('span', { class: 'danmaku-result-title' }, subtitle.name),
         h('span', { class: 'danmaku-result-meta' }, `${subtitle.language}  下载: ${formatSubtitleDownloadCount(subtitle.downloadCount)}`)
       ]),
-      h('span', { class: ['subtitle-download-arrow', downloadingFileId.value === subtitle.fileId ? 'is-loading' : ''] }, downloadingFileId.value === subtitle.fileId ? '加载中' : '加载')
+      h('span', { class: ['subtitle-download-arrow', downloadingFileId.value === subtitle.fileId ? 'is-loading' : ''] }, downloadingFileId.value === subtitle.fileId ? t('video.loading') : t('video.load'))
     ])
   }
 
   const renderContentState = () => {
-    if (loading.value && !results.value.length) return h('div', { class: 'danmaku-empty' }, '搜索中...')
+    if (loading.value && !results.value.length) return h('div', { class: 'danmaku-empty' }, `${t('video.searching')}...`)
     if (errorText.value) return h('div', { class: 'danmaku-empty' }, errorText.value)
-    if (!results.value.length) return h('div', { class: 'danmaku-empty' }, keyword.value.trim() ? '未找到相关字幕' : '请输入搜索关键词')
+    if (!results.value.length) return h('div', { class: 'danmaku-empty' }, keyword.value.trim() ? t('video.noSubtitleFound') : t('video.enterSearchKeyword'))
     return results.value.map(renderSubtitleRow)
   }
 
@@ -1990,8 +1992,8 @@ const openSubtitleSearchModal = (art: Artplayer) => {
           onClick: () => modal?.close?.()
         }, '×'),
         h('div', { class: 'danmaku-header-copy' }, [
-          h('div', { class: 'danmaku-full-title' }, '在线字幕搜索'),
-          h('div', { class: 'danmaku-full-subtitle' }, '按片名或 TMDB ID 查找并加载字幕')
+          h('div', { class: 'danmaku-full-title' }, t('video.onlineSubtitleSearch')),
+          h('div', { class: 'danmaku-full-subtitle' }, t('video.subtitleSearchSubtitle'))
         ])
       ]),
       h('div', { class: 'danmaku-full-content' }, [
@@ -2009,7 +2011,7 @@ const openSubtitleSearchModal = (art: Artplayer) => {
             h(Input, {
               class: 'danmaku-search-input',
               modelValue: keyword.value,
-              placeholder: '搜索字幕或输入 TMDB ID',
+              placeholder: t('video.subtitleSearchPlaceholder'),
               onInput: (value: string) => { keyword.value = value },
               'onUpdate:modelValue': (value: string) => { keyword.value = value },
               onPressEnter: runSearch
@@ -2024,7 +2026,7 @@ const openSubtitleSearchModal = (art: Artplayer) => {
         ]),
         h('section', { class: 'danmaku-result-shell' }, [
           h('div', { class: 'danmaku-result-toolbar' }, [
-            h('span', {}, loading.value ? '正在搜索' : results.value.length ? `找到 ${results.value.length} 个字幕` : '搜索结果'),
+            h('span', {}, loading.value ? t('video.searching') : results.value.length ? t('video.foundSubtitles', { count: results.value.length }) : t('video.searchResults')),
             h('span', {}, subtitleLanguages.find(item => item.code === language.value)?.name || '')
           ]),
           h('div', { class: 'danmaku-modal-list' }, renderContentState())
@@ -2040,7 +2042,7 @@ const defaultControls = async (art: Artplayer) => {
       index: 20,
       position: 'left',
       html: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-skip-forward"><polygon points="5 4 15 12 5 20 5 4"></polygon><line x1="19" x2="19" y1="5" y2="19"></line></svg>',
-      tooltip: '下一集',
+      tooltip: t('video.nextEpisode'),
       click: async () => {
         await jumpToNextVideo(art)
       }
@@ -2051,15 +2053,15 @@ const defaultControls = async (art: Artplayer) => {
     index: 40,
     position: 'left',
     style: { marginLeft: '10px' },
-    html: '片头',
-    tooltip: '点击设置片头',
+    html: t('video.intro'),
+    tooltip: t('video.clickSetIntro'),
     click: async (component, event) => {
       if (Number(art.storage.get('autoSkipBegin')) > 0) {
         art.storage.set('autoSkipBegin', 0)
-        art.notice.show = `取消设置片头`
+        art.notice.show = t('video.cancelSetIntro')
       } else {
         art.storage.set('autoSkipBegin', art.currentTime)
-        art.notice.show = `设置片头：${art.currentTime}s`
+        art.notice.show = t('video.setIntroAt', { time: art.currentTime })
       }
     }
   })
@@ -2067,15 +2069,15 @@ const defaultControls = async (art: Artplayer) => {
     name: 'skipEnd',
     index: 50,
     position: 'left',
-    html: '片尾',
-    tooltip: '点击设置片尾',
+    html: t('video.outro'),
+    tooltip: t('video.clickSetOutro'),
     click: async (component, event) => {
       if (Number(art.storage.get('autoSkipEnd')) > 0) {
         art.storage.set('autoSkipEnd', 0)
-        art.notice.show = `取消设置片尾`
+        art.notice.show = t('video.cancelSetOutro')
       } else {
         art.storage.set('autoSkipEnd', art.currentTime)
-        art.notice.show = `设置片尾：${art.currentTime}s`
+        art.notice.show = t('video.setOutroAt', { time: art.currentTime })
       }
     }
   })
@@ -2145,8 +2147,8 @@ const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Rec
   if (pageVideo.drive_id === 'local') {
     const urlModule = window.require?.('url')
     const filePath = pageVideo.file_id || (pageVideo as any).file_path || ''
-    if (!filePath) return { url: '', error: '本地视频路径为空' }
-    return { url: urlModule?.pathToFileURL ? urlModule.pathToFileURL(filePath).href : `file://${encodeURI(filePath)}`, qualityLabel: '本地' }
+    if (!filePath) return { url: '', error: t('video.localVideoPathEmpty') }
+    return { url: urlModule?.pathToFileURL ? urlModule.pathToFileURL(filePath).href : `file://${encodeURI(filePath)}`, qualityLabel: t('video.local') }
   }
 
   if (pageVideo.drive_id === 'media_server') {
@@ -2158,13 +2160,13 @@ const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Rec
       }
     }
     const mediaUrl = pageVideo.media_url || ''
-    if (!mediaUrl) return { url: '', error: '获取媒体服务器播放地址失败' }
-    return { url: mediaUrl, headers: pageVideo.media_headers, type: getArtVideoType(mediaUrl), qualityLabel: pageVideo.media_server_source_label || '媒体服务器' }
+    if (!mediaUrl) return { url: '', error: t('video.getMediaServerUrlFailed') }
+    return { url: mediaUrl, headers: pageVideo.media_headers, type: getArtVideoType(mediaUrl), qualityLabel: pageVideo.media_server_source_label || t('video.mediaServer') }
   }
 
   const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty')
   if (typeof data === 'string') return { url: '', error: data }
-  if (!data.qualities.length) return { url: '', error: '获取视频链接失败' }
+  if (!data.qualities.length) return { url: '', error: t('video.getVideoUrlFailed') }
 
   const source = resolveRawMpvQualitySource(data, mpvEmbeddedQuality.value)
   const defaultQuality = source.quality
@@ -2192,7 +2194,7 @@ const resolveMpvEmbeddedExternalSubtitle = async (): Promise<{ url: string; titl
 
   return {
     url: subtitleUrl,
-    title: subtitleFile.name || subtitleFile.html || '自动字幕'
+    title: subtitleFile.name || subtitleFile.html || t('video.autoSubtitle')
   }
 }
 
@@ -2202,7 +2204,7 @@ const loadMpvEmbeddedCurrentVideo = async (resumePosition = pageVideo.play_curso
   pageVideo.play_cursor = Math.max(Number(pageVideo.play_cursor) || 0, storedProgress)
   const source = await resolvePageVideoMpvSource()
   if (source.error || !source.url) {
-    mpvEmbeddedError.value = source.error || '获取 MPV 播放地址失败'
+    mpvEmbeddedError.value = source.error || t('video.getMpvUrlFailed')
     message.error(mpvEmbeddedError.value)
     return false
   }
@@ -2291,7 +2293,7 @@ const switchMpvMediaServerPlaylistItem = async (item: selectorItem) => {
   const server = getCurrentMediaServer()
   const nextItemId = item.file_id || ''
   if (!server || !nextItemId) {
-    mpvEmbeddedError.value = '媒体服务器不存在或剧集信息不完整'
+    mpvEmbeddedError.value = t('video.mediaServerEpisodeIncomplete')
     message.error(mpvEmbeddedError.value)
     return
   }
@@ -2331,7 +2333,7 @@ const switchMpvMediaServerPlaylistItem = async (item: selectorItem) => {
     if (await loadMpvEmbeddedCurrentVideo()) await sendMediaServerStartReport(pageVideo.play_cursor || 0)
   } catch (error: any) {
     console.error('MPV 切换媒体服务器剧集失败:', error)
-    mpvEmbeddedError.value = error?.message || '切换剧集失败'
+    mpvEmbeddedError.value = error?.message || t('video.switchEpisodeFailed')
     message.error(mpvEmbeddedError.value)
   }
 }
@@ -2370,8 +2372,8 @@ const getVideoInfo = async (art: Artplayer) => {
     const mediaUrl = pageVideo.media_url || ''
     if (!mediaUrl) {
       art.url = ''
-      art.notice.show = '获取媒体服务器播放地址失败'
-      art.emit('video:error', '获取媒体服务器播放地址失败')
+      art.notice.show = t('video.getMediaServerUrlFailed')
+      art.emit('video:error', t('video.getMediaServerUrlFailed'))
       return
     }
     setArtVideoUrl(art, resolveHeaderAwareVideoUrl(mediaUrl, pageVideo.media_headers, 0, 'media_server'), getArtVideoType(mediaUrl))
@@ -2475,7 +2477,7 @@ const getVideoInfo = async (art: Artplayer) => {
           })
           : subtitle.url
         embedSubSelector.push({
-          html: '内嵌:  ' + subtitle.language,
+          html: t('video.embeddedSubtitle', { language: subtitle.language }),
           name: subtitle.language,
           ext: getSubtitleExtension(subtitle.url),
           url: subtitleUrl,
@@ -2486,7 +2488,7 @@ const getVideoInfo = async (art: Artplayer) => {
     // 字幕列表
     await getSubTitleList(art)
   } else {
-    const errorMessage = typeof data === 'string' ? data : '获取视频链接失败'
+    const errorMessage = typeof data === 'string' ? data : t('video.getVideoUrlFailed')
     if (typeof data === 'string') message.error(errorMessage)
     art.url = ''
     art.notice.show = errorMessage
@@ -2495,15 +2497,7 @@ const getVideoInfo = async (art: Artplayer) => {
 }
 
 const playList = reactive<selectorItem[]>([])
-const videoPlaylistExtensions = new Set(['3gp', 'avi', 'flv', 'm2ts', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'webm', 'wmv'])
-const isVideoPlaylistItem = (item: any) => {
-  if (!item || item.isDir) return false
-  const name = String(item.name || item.file_name || item.html || '')
-  const extension = name.includes('.')
-    ? name.slice(name.lastIndexOf('.') + 1).toLowerCase()
-    : String(item.ext || '').replace(/^\./, '').toLowerCase()
-  return videoPlaylistExtensions.has(extension)
-}
+const isVideoPlaylistItem = isVideoFile
 const buildPageVideoPlayList = async (file_id?: string) => {
   if (pageVideo.drive_id === 'media_server') {
     const entries = pageVideo.media_server_episode_playlist || []
@@ -2791,7 +2785,7 @@ const resolveCloudSubtitleUrl = async (item: selectorItem): Promise<string> => {
 const buildMultipleSubtitleTrack = async (art: Artplayer, item: selectorItem, index: number): Promise<MultipleSubtitleTrack | undefined> => {
   const ext = getSubtitleItemExt(item)
   if (ext !== 'srt' && ext !== 'vtt') return undefined
-  const label = item.name || item.html || `字幕 ${index + 1}`
+  const label = item.name || item.html || t('video.subtitleIndex', { index: index + 1 })
   if (item.url) {
     return {
       name: index === 0 ? 'primary' : 'secondary',
@@ -2831,7 +2825,7 @@ const applyMultipleSubtitles = async (art: Artplayer, items: selectorItem[], rev
     subtitleItems.slice(0, 2).map((item, index) => buildMultipleSubtitleTrack(art, item, index))
   )).filter(Boolean) as MultipleSubtitleTrack[]
   if (tracks.length < 2) {
-    art.notice.show = '至少需要两个 SRT/VTT 字幕'
+    art.notice.show = t('video.needTwoSubtitles')
     return false
   }
   applyMultipleSubtitleStyle()
@@ -2846,7 +2840,7 @@ const applyMultipleSubtitles = async (art: Artplayer, items: selectorItem[], rev
   ;(art.plugins as any).multipleSubtitles.tracks(tracks.map((track) => track.name))
   art.subtitle.show = true
   multipleSubtitleMode = reverse ? 'reverse' : 'double'
-  art.notice.show = `已加载双字幕：${tracks.map((track) => track.label).join(' / ')}`
+  art.notice.show = t('video.loadedDualSubtitles', { tracks: tracks.map((track) => track.label).join(' / ') })
   return true
 }
 
@@ -2857,7 +2851,7 @@ const loadOnlineSub = async (art: Artplayer, item: any) => {
     await loadSubtitleTextToPlayer(art, item.name, item.ext, data)
     return item.html
   } else {
-    art.notice.show = `加载${item.name}字幕失败`
+    art.notice.show = t('video.loadNamedSubtitleFailed', { name: item.name })
   }
 }
 
@@ -2887,7 +2881,7 @@ const getSubTitleList = async (art: Artplayer) => {
   // console.log('onlineSubSelector', onlineSubSelector)
   subSelector = [...embedSubSelector, ...onlineSubSelector, ...downloadedSubSelector]
   if (subSelector.length === 0) {
-    subSelector.push({ html: '无可用字幕', name: '', url: '', default: true })
+    subSelector.push({ html: t('video.noAvailableSubtitle'), name: '', url: '', default: true })
   } else {
     let subtitleSize = art.storage.get('subtitleSize') + 'px'
     const hasDownloadedDefault = downloadedSubSelector.some((item) => item.default)
@@ -2920,19 +2914,19 @@ const getSubTitleList = async (art: Artplayer) => {
   // 字幕设置面板
   art.setting.update({
     name: 'Subtitle',
-    html: '字幕设置',
-    tooltip: art.subtitle.show ? (hasSubtitleSource(subDefault) ? '字幕开启' : subDefault.html) : '字幕关闭',
+    html: t('video.subtitleSettings'),
+    tooltip: art.subtitle.show ? (hasSubtitleSource(subDefault) ? t('video.subtitleOn') : subDefault.html) : t('video.subtitleOff'),
     selector: [{
-      html: '字幕开关',
+      html: t('video.subtitleSwitch'),
       icon: art.icons.pip,
-      tooltip: hasSubtitleSource(subDefault) ? '开启' : '关闭',
+      tooltip: hasSubtitleSource(subDefault) ? t('video.on') : t('video.off'),
       switch: hasSubtitleSource(subDefault),
       onSwitch: (item: SettingOption) => {
         if (hasSubtitleSource(subDefault)) {
-          item.tooltip = item.switch ? '关闭' : '开启'
+          item.tooltip = item.switch ? t('video.off') : t('video.on')
           art.subtitle.show = !item.switch
           if (isAssSubtitleType(onlineSubData.ext)) setJassubVisible(art, !item.switch)
-          art.notice.show = '字幕' + item.tooltip
+          art.notice.show = t('video.subtitle') + item.tooltip
           let subtitleSize = art.storage.get('subtitleSize') + 'px'
           art.subtitle.style('fontSize', subtitleSize)
           let currentItem = Artplayer.utils.queryAll('.art-setting-panel.art-current .art-setting-item:nth-of-type(n+3)')
@@ -2942,9 +2936,9 @@ const getSubTitleList = async (art: Artplayer) => {
               if (item.switch) {
                 !art.subtitle.url && Artplayer.utils.removeClass(currentElement, 'art-current')
                 Artplayer.utils.addClass(currentElement, 'disable')
-                if (item.$parent) item.$parent.tooltip = hasSubtitleSource(subDefault) ? '字幕开启' : subDefault.html
+                if (item.$parent) item.$parent.tooltip = hasSubtitleSource(subDefault) ? t('video.subtitleOn') : subDefault.html
               } else {
-                if (item.$parent) item.$parent.tooltip = '字幕开启'
+                if (item.$parent) item.$parent.tooltip = t('video.subtitleOn')
                 Artplayer.utils.removeClass(currentElement, 'disable')
               }
             })
@@ -2955,19 +2949,19 @@ const getSubTitleList = async (art: Artplayer) => {
         }
       }
     }, {
-      html: '繁中转换',
-      tooltip: subtitleTranslate === 0 ? '关闭' : (subtitleTranslate === 1 ? '繁转中' : '中转繁'),
+      html: t('video.subtitleTraditionalConvert'),
+      tooltip: subtitleTranslate === 0 ? t('video.off') : (subtitleTranslate === 1 ? t('video.traditionalToSimplified') : t('video.simplifiedToTraditional')),
       selector: [{
         default: subtitleTranslate == 1,
-        html: '繁转中',
+        html: t('video.traditionalToSimplified'),
         subtitleTranslate: 1
       }, {
         default: subtitleTranslate == 2,
-        html: '中转繁',
+        html: t('video.simplifiedToTraditional'),
         subtitleTranslate: 2
       }, {
         default: subtitleTranslate == 0,
-        html: '关闭',
+        html: t('video.off'),
         subtitleTranslate: 0
       }],
       onSelect: async (item: SettingOption) => {
@@ -2975,13 +2969,13 @@ const getSubTitleList = async (art: Artplayer) => {
         // 字幕繁中转换
         if (onlineSubData.data) {
           let data = onlineSubData.data
-          let tips = '关闭'
+          let tips = t('video.off')
           if (item.subtitleTranslate === 1) {
             data = traditionToSimple(onlineSubData.data)
-            tips = '字幕：繁体转简体'
+            tips = t('video.subtitleTraditionalToSimplified')
           } else if (item.subtitleTranslate === 2) {
             data = simpleToTradition(onlineSubData.data)
-            tips = '字幕：简体转繁体'
+            tips = t('video.subtitleSimplifiedToTraditional')
           }
           if (onlineSubData.dataUrl) URL.revokeObjectURL(onlineSubData.dataUrl)
           onlineSubData.dataUrl = URL.createObjectURL(
@@ -2993,29 +2987,29 @@ const getSubTitleList = async (art: Artplayer) => {
         return item.html
       }
     }, {
-      html: '字幕列表',
-      tooltip: art.storage.get('subTitleListMode') ? '含子文件夹' : '同文件夹',
+      html: t('video.subtitleList'),
+      tooltip: art.storage.get('subTitleListMode') ? t('video.includeSubfolders') : t('video.sameFolder'),
       switch: art.storage.get('subTitleListMode'),
       onSwitch: async (item: SettingOption) => {
-        item.tooltip = item.switch ? '同文件夹' : '含子文件夹'
+        item.tooltip = item.switch ? t('video.sameFolder') : t('video.includeSubfolders')
         art.storage.set('subTitleListMode', !item.switch)
         await getSubTitleList(art)
         return !item.switch
       }
     }, ...(multipleSubtitleCandidates.length >= 2 ? [{
-      html: '双字幕',
-      tooltip: multipleSubtitleMode === 'double' ? '开启' : (multipleSubtitleMode === 'reverse' ? '反向' : '关闭'),
+      html: t('video.dualSubtitle'),
+      tooltip: multipleSubtitleMode === 'double' ? t('video.on') : (multipleSubtitleMode === 'reverse' ? t('video.reverse') : t('video.off')),
       selector: [{
         default: multipleSubtitleMode === 'single',
-        html: '关闭',
+        html: t('video.off'),
         mode: 'single'
       }, {
         default: multipleSubtitleMode === 'double',
-        html: '双字幕',
+        html: t('video.dualSubtitle'),
         mode: 'double'
       }, {
         default: multipleSubtitleMode === 'reverse',
-        html: '双字幕反向',
+        html: t('video.dualSubtitleReverse'),
         mode: 'reverse'
       }],
       onSelect: async (item: SettingOption) => {
@@ -3023,18 +3017,18 @@ const getSubTitleList = async (art: Artplayer) => {
           clearMultipleSubtitleState(art)
           if (subDefault.file_id) await loadOnlineSub(art, subDefault)
           else if (subDefault.url) await loadSubtitleUrlToPlayer(art, subDefault)
-          art.notice.show = '已关闭双字幕'
+          art.notice.show = t('video.dualSubtitle') + t('video.off')
           return item.html
         }
         const ok = await applyMultipleSubtitles(art, multipleSubtitleCandidates.slice(0, 2), item.mode === 'reverse')
-        if (ok && item.$parent) item.$parent.tooltip = item.mode === 'reverse' ? '反向' : '开启'
+        if (ok && item.$parent) item.$parent.tooltip = item.mode === 'reverse' ? t('video.reverse') : t('video.on')
         return item.html
       }
     }, {
-      html: '单字幕',
-      tooltip: '选择显示',
+      html: t('video.singleSubtitle'),
+      tooltip: t('video.selectDisplay'),
       selector: multipleSubtitleCandidates.slice(0, 2).map((candidate, index) => ({
-        html: candidate.name || candidate.html || `字幕 ${index + 1}`,
+        html: candidate.name || candidate.html || t('video.subtitleIndex', { index: index + 1 }),
         subtitleIndex: index
       })),
       onSelect: async (item: SettingOption) => {
@@ -3046,7 +3040,7 @@ const getSubTitleList = async (art: Artplayer) => {
         return item.html
       }
     }] : []), {
-      html: '字幕偏移',
+      html: t('video.subtitleOffset'),
       tooltip: '0s',
       range: [0, -5, 10, 0.1],
       onChange(item: SettingOption) {
@@ -3056,7 +3050,7 @@ const getSubTitleList = async (art: Artplayer) => {
         return item.range + 's'
       }
     }, {
-      html: '字幕大小',
+      html: t('video.subtitleSize'),
       tooltip: art.storage.get('subtitleSize') + 'px',
       range: [art.storage.get('subtitleSize'), 20, 50, 5],
       onChange: (item: SettingOption) => {
@@ -3081,7 +3075,7 @@ const getSubTitleList = async (art: Artplayer) => {
           })
         }
       } else {
-        art.notice.show = '未开启字幕'
+        art.notice.show = t('video.subtitleNotEnabled')
         Artplayer.utils.removeClass(element, 'art-current')
         return false
       }
@@ -3206,7 +3200,7 @@ const handleMaxClick = (_e: any) => {
 }
 const handleTop = (_e: any) => {
   if (window.WebToWindow) window.WebToWindow({ cmd: 'top' }, (res: string) => {
-    ArtPlayerRef.notice.show = res === 'top' ? '窗口置顶' : '窗口取消置顶'
+    ArtPlayerRef.notice.show = res === 'top' ? t('video.windowTop') : t('video.windowUntop')
     isTop.value = res === 'top'
   })
 }
@@ -3246,28 +3240,28 @@ onBeforeUnmount(() => {
     <a-layout-header id='xbyhead' draggable='false'>
       <div v-if="useMacEmbeddedMpv" class="mpv-video-titlebar q-electron-drag">
         <div class="mpv-window-controls">
-          <button class="mpv-window-dot close" type="button" aria-label="关闭窗口" @click.stop="handleHideClick"></button>
-          <button class="mpv-window-dot min" type="button" aria-label="最小化窗口" @click.stop="handleMinClick"></button>
-          <button class="mpv-window-dot max" type="button" aria-label="最大化窗口" @click.stop="handleMaxClick"></button>
+          <button class="mpv-window-dot close" type="button" :aria-label="t('video.closeWindow')" @click.stop="handleHideClick"></button>
+          <button class="mpv-window-dot min" type="button" :aria-label="t('video.minimizeWindow')" @click.stop="handleMinClick"></button>
+          <button class="mpv-window-dot max" type="button" :aria-label="t('video.maximizeWindow')" @click.stop="handleMaxClick"></button>
         </div>
-        <div class="mpv-window-title">{{ pageVideo?.file_name || '视频在线预览' }}</div>
+        <div class="mpv-window-title">{{ pageVideo?.file_name || t('video.onlinePreview') }}</div>
       </div>
       <div v-else id='xbyhead2' class='q-electron-drag'>
         <a-button type='text' tabindex='-1'>
           <IconFont name="iconfile_video" />
         </a-button>
-        <div class='title'>{{ pageVideo?.file_name || '视频在线预览' }}</div>
+        <div class='title'>{{ pageVideo?.file_name || t('video.onlinePreview') }}</div>
         <div class='flexauto'></div>
-        <a-button type='text' tabindex='-1' :title="(isTop ? '取消置顶' : '置顶') + 'Alt+T'" @click='handleTop'>
+        <a-button type='text' tabindex='-1' :title="(isTop ? t('video.cancelTop') : t('video.top')) + ' Alt+T'" @click='handleTop'>
           <IconFont :name="(isTop ? 'iconquxiaozhiding' : 'iconzhiding')" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
+        <a-button type='text' tabindex='-1' :title="t('video.minimize') + ' Alt+M'" @click='handleMinClick'>
           <IconFont name="iconzuixiaohua" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='最大化 Alt+Enter' @click='handleMaxClick'>
+        <a-button type='text' tabindex='-1' :title="t('video.maximize') + ' Alt+Enter'" @click='handleMaxClick'>
           <IconFont name="iconfullscreen" />
         </a-button>
-        <a-button type='text' tabindex='-1' title='关闭 Alt+F4' @click='handleHideClick'>
+        <a-button type='text' tabindex='-1' :title="t('video.close') + ' Alt+F4'" @click='handleHideClick'>
           <IconFont name="iconclose" />
         </a-button>
       </div>
@@ -3294,7 +3288,7 @@ onBeforeUnmount(() => {
         @playlist-select="handleMpvPlaylistSelect"
         @status="handleMpvEmbeddedStatus"
       />
-      <div v-else-if="useMacEmbeddedMpv" id="mpvEmbeddedPlayer" class="mpv-embedded-page-error">{{ mpvEmbeddedError || '正在准备 MPV 播放...' }}</div>
+      <div v-else-if="useMacEmbeddedMpv" id="mpvEmbeddedPlayer" class="mpv-embedded-page-error">{{ mpvEmbeddedError || t('video.preparingMpv') }}</div>
       <div v-else id='artPlayer' style='width: 100%; height: 100%;text-overflow: ellipsis;white-space: nowrap;' />
     </a-layout-content>
   </a-layout>

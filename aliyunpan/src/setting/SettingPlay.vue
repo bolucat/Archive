@@ -4,6 +4,7 @@ import MySwitch from '../layout/MySwitch.vue'
 import { computed, onMounted, ref } from 'vue'
 import cache from '../utils/cache'
 import message from '../utils/message'
+import { t } from '../i18n'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -17,11 +18,11 @@ function handleSelectPlayer() {
   if (window.WebShowOpenDialogSync) {
     window.WebShowOpenDialogSync(
       {
-        title: '选择播放器的执行文件',
-        buttonLabel: '选择',
+        title: t('settings.play.selectExecutable'),
+        buttonLabel: t('common.select'),
         properties: ['openFile'],
         defaultPath: settingStore.uiVideoPlayerPath,
-        filters: [{ name: '应用程序', extensions: ['exe', 'app'] }]
+        filters: [{ name: t('settings.play.application'), extensions: ['exe', 'app'] }]
       },
       (result: string[] | undefined) => {
         if (result && result[0]) {
@@ -42,8 +43,8 @@ const sharedTextureCapability = ref<{ available: boolean; platform: string; reas
 const isMpvPlayer = computed(() => settingStore.uiVideoPlayer === 'mpv')
 const mpvStatusText = computed(() => {
   if (!isMpvPlayer.value) return ''
-  if (embeddedMpvCapability.value?.enabled) return 'macOS 内嵌 MPV 已启用。'
-  const reason = embeddedMpvCapability.value?.reason || 'macOS 内嵌 MPV 尚未启用。'
+  if (embeddedMpvCapability.value?.enabled) return t('settings.play.mpvEnabled')
+  const reason = embeddedMpvCapability.value?.reason || t('settings.play.mpvNotEnabled')
   const textureReason = sharedTextureCapability.value && !sharedTextureCapability.value.available ? sharedTextureCapability.value.reason : ''
   return [reason, textureReason].filter(Boolean).join('；')
 })
@@ -58,25 +59,25 @@ async function refreshMpvEmbeddedStatus() {
 async function handleUseMpv() {
   if (!supportsEmbeddedMpv) {
     settingStore.updateStore({ uiVideoPlayer: 'other' })
-    message.warning('内置 MPV 仅支持 macOS，请使用自定义播放软件。')
+    message.warning(t('settings.play.mpvMacOnly'))
     return
   }
   settingStore.updateStore({ uiVideoPlayer: 'mpv' })
   await refreshMpvEmbeddedStatus()
   if (embeddedMpvCapability.value?.enabled) {
-    message.success('已设置为 macOS 内嵌 MPV 播放')
+    message.success(t('settings.play.mpvSet'))
   } else {
-    message.warning(mpvStatusText.value || 'macOS 内嵌 MPV 尚未启用')
+    message.warning(mpvStatusText.value || t('settings.play.mpvNotEnabled'))
   }
 }
 
 const handleClearOutDateDanmuCache = () => {
   cache.clearOutDate()
-  message.success('清理弹幕搜索缓存成功')
+  message.success(t('settings.play.danmakuCacheCleared'))
 }
 const handleClearDanmuCache = () => {
   cache.clearSelf()
-  message.success('清理弹幕搜索缓存成功')
+  message.success(t('settings.play.danmakuCacheCleared'))
 }
 
 onMounted(() => {
@@ -92,19 +93,19 @@ onMounted(() => {
   <div class='settingcard play-settings-card'>
     <div class='play-settings-intro'>
       <div class='play-settings-kicker'>Playback</div>
-      <div class='play-settings-copy'>统一管理播放器类型、默认清晰度、字幕和播放历史等行为，让视频播放体验更符合你的习惯。</div>
+      <div class='play-settings-copy'>{{ t('settings.play.intro') }}</div>
     </div>
 
     <div class='play-setting-group'>
       <div class='play-setting-header'>
-        <div class='settinghead'>选择视频播放器</div>
+        <div class='settinghead'>{{ t('settings.play.choosePlayer') }}</div>
       </div>
       <div class='settingrow play-setting-row play-setting-row--stack'>
       <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiVideoPlayer'
                      @update:model-value='cb({ uiVideoPlayer: $event })'>
-        <a-radio tabindex='-1' value='web'>内置网页播放器</a-radio>
-        <a-radio v-if='supportsEmbeddedMpv' tabindex='-1' value='mpv'>内置 MPV 播放器</a-radio>
-        <a-radio tabindex='-1' value='other'>自定义播放软件</a-radio>
+        <a-radio tabindex='-1' value='web'>{{ t('settings.play.webPlayer') }}</a-radio>
+        <a-radio v-if='supportsEmbeddedMpv' tabindex='-1' value='mpv'>{{ t('settings.play.mpvPlayer') }}</a-radio>
+        <a-radio tabindex='-1' value='other'>{{ t('settings.play.customPlayer') }}</a-radio>
       </a-radio-group>
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
@@ -126,18 +127,18 @@ onMounted(() => {
         </template>
       </a-popover>
       <div v-show="settingStore.uiVideoPlayer === 'web'" class='hitText'>
-        【内置网页播放器】 支持倍速！支持选择清晰度！支持播放历史！支持播放列表！支持字幕选择！
+        {{ t('settings.play.webPlayerHint') }}
       </div>
       <div v-show="supportsEmbeddedMpv && settingStore.uiVideoPlayer === 'mpv'" class='hitText mpv-status'>
         <div>{{ mpvStatusText }}</div>
-        <a-button size='mini' tabindex='-1' type='outline' @click='handleUseMpv'>重新检测 MPV</a-button>
+        <a-button size='mini' tabindex='-1' type='outline' @click='handleUseMpv'>{{ t('settings.play.recheckMpv') }}</a-button>
       </div>
       </div>
     </div>
 
     <div class='play-setting-group'>
       <div class='play-setting-header'>
-        <div class='settinghead'>视频默认清晰度</div>
+        <div class='settinghead'>{{ t('settings.play.defaultQuality') }}</div>
         <a-popover position='bottom'>
           <IconFont name="iconbulb" />
           <template #content>
@@ -161,14 +162,14 @@ onMounted(() => {
       <div class='settingrow play-setting-row'>
       <a-select :model-value='settingStore.uiVideoQuality' tabindex='-1'
                 @update:model-value='cb({ uiVideoQuality: $event })'
-                :style="{width:'252px'}" placeholder="清晰度选择"
+                :style="{width:'252px'}" :placeholder="t('settings.play.qualitySelect')"
                 :trigger-props="{ autoFitPopupMinWidth: true }">
-        <a-option value="Origin">原画（原始文件）</a-option>
-        <a-option value="QHD">超高清（2560p）</a-option>
-        <a-option value="FHD">全高清（1080P）</a-option>
-        <a-option value="HD">高清（720P）</a-option>
-        <a-option value="SD">标清（540P）</a-option>
-        <a-option value="LD">流畅（480P）</a-option>
+        <a-option value="Origin">{{ t('settings.play.qualityOrigin') }}</a-option>
+        <a-option value="QHD">{{ t('settings.play.qualityQhd') }}</a-option>
+        <a-option value="FHD">{{ t('settings.play.qualityFhd') }}</a-option>
+        <a-option value="HD">{{ t('settings.play.qualityHd') }}</a-option>
+        <a-option value="SD">{{ t('settings.play.qualitySd') }}</a-option>
+        <a-option value="LD">{{ t('settings.play.qualityLd') }}</a-option>
       </a-select>
       </div>
     </div>
@@ -176,16 +177,16 @@ onMounted(() => {
     <template v-if="settingStore.uiVideoPlayer === 'web'">
       <div class='play-setting-group'>
         <div class='play-setting-header'>
-          <div class='settinghead'>弹幕缓存</div>
+          <div class='settinghead'>{{ t('settings.play.danmakuCache') }}</div>
         </div>
         <div class="settingrow play-setting-row">
         <a-button type="outline" size="small" tabindex="-1" status="success" style="margin-right: 16px"
                   @click='handleClearOutDateDanmuCache'>
-          清理过期
+          {{ t('settings.play.clearExpired') }}
         </a-button>
-        <a-popconfirm content="确认要清理缓存？" @ok="handleClearDanmuCache">
+        <a-popconfirm :content="t('settings.debug.confirmClearCache')" @ok="handleClearDanmuCache">
           <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">
-            清理全部
+            {{ t('settings.play.clearAll') }}
           </a-button>
         </a-popconfirm>
         </div>
@@ -194,24 +195,24 @@ onMounted(() => {
     <template v-if="settingStore.uiVideoPlayer !== 'web'">
       <div class='play-setting-group'>
         <div class='play-setting-header'>
-          <div class='settinghead'>每次播放前提示选择清晰度</div>
+          <div class='settinghead'>{{ t('settings.play.promptQuality') }}</div>
         </div>
         <div class='settingrow play-setting-row'>
         <MySwitch :value='settingStore.uiVideoQualityTips'
                   @update:value='cb({ uiVideoQualityTips: $event })'>
-          观看视频前 将提示选择清晰度
+          {{ t('settings.play.promptQualitySwitch') }}
         </MySwitch>
         </div>
       </div>
 
       <div class='play-setting-group'>
         <div class='play-setting-header'>
-          <div class='settinghead'>记忆选择的清晰度</div>
+          <div class='settinghead'>{{ t('settings.play.rememberQuality') }}</div>
         </div>
         <div class='settingrow play-setting-row'>
         <MySwitch :value='settingStore.uiVideoQualityLastSelect'
                   @update:value='cb({ uiVideoQualityLastSelect: $event })'>
-          记忆上次选择的清晰度
+          {{ t('settings.play.rememberQualitySwitch') }}
         </MySwitch>
         </div>
       </div>
@@ -219,7 +220,7 @@ onMounted(() => {
       <template v-if="!settingStore.uiVideoEnablePlayerList || (settingStore.uiVideoEnablePlayerList && !playerType.includes('potplayer'))">
         <div class='play-setting-group'>
           <div class='play-setting-header'>
-            <div class='settinghead'>字幕加载设置</div>
+            <div class='settinghead'>{{ t('settings.play.subtitleLoading') }}</div>
             <a-popover position='bottom'>
               <IconFont name="iconbulb" />
               <template #content>
@@ -239,9 +240,9 @@ onMounted(() => {
           <div class='settingrow play-setting-row'>
           <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiVideoSubtitleMode'
                          @update:model-value='cb({ uiVideoSubtitleMode: $event })'>
-            <a-radio tabindex='-1' value='close'>关闭字幕</a-radio>
-            <a-radio tabindex='-1' value='auto'>自动加载</a-radio>
-            <a-radio tabindex='-1' value='select'>手动选择</a-radio>
+            <a-radio tabindex='-1' value='close'>{{ t('settings.play.subtitleClose') }}</a-radio>
+            <a-radio tabindex='-1' value='auto'>{{ t('settings.play.subtitleAuto') }}</a-radio>
+            <a-radio tabindex='-1' value='select'>{{ t('settings.play.subtitleManual') }}</a-radio>
           </a-radio-group>
           </div>
         </div>
@@ -250,7 +251,7 @@ onMounted(() => {
       <template v-if='playerType.includes("mpv") || playerType.includes("potplayer")'>
         <div class='play-setting-group'>
           <div class='play-setting-header'>
-            <div class='settinghead'>播放列表设置</div>
+            <div class='settinghead'>{{ t('settings.play.playlistSettings') }}</div>
             <a-popover position='bottom'>
               <IconFont name="iconbulb" />
               <template #content>
@@ -265,7 +266,7 @@ onMounted(() => {
           <div class='settingrow play-setting-row'>
           <MySwitch :value='settingStore.uiVideoEnablePlayerList'
                     @update:value='cb({ uiVideoEnablePlayerList: $event })'>
-            开启播放列表加载
+            {{ t('settings.play.enablePlaylist') }}
           </MySwitch>
           </div>
         </div>
@@ -274,11 +275,11 @@ onMounted(() => {
       <template v-if='settingStore.uiVideoEnablePlayerList && !playerType.includes("mpv")'>
         <div class='play-setting-group'>
           <div class='play-setting-header'>
-            <div class='settinghead'>播放器退出设置</div>
+            <div class='settinghead'>{{ t('settings.play.playerExitSettings') }}</div>
           </div>
           <div class='settingrow play-setting-row'>
           <MySwitch :value='settingStore.uiVideoPlayerExit' @update:value='cb({ uiVideoPlayerExit: $event })'>
-            跟随软件一同退出
+            {{ t('settings.play.exitWithApp') }}
           </MySwitch>
           </div>
         </div>
@@ -288,11 +289,11 @@ onMounted(() => {
                       && playerType.includes("mpv")'>
         <div class='play-setting-group'>
           <div class='play-setting-header'>
-            <div class='settinghead'>播放器退出设置</div>
+            <div class='settinghead'>{{ t('settings.play.playerExitSettings') }}</div>
           </div>
           <div class='settingrow play-setting-row'>
           <MySwitch :value='settingStore.uiVideoPlayerExit' @update:value='cb({ uiVideoPlayerExit: $event })'>
-            播放完自动退出
+            {{ t('settings.play.autoExitAfterPlayback') }}
           </MySwitch>
           </div>
         </div>
@@ -300,7 +301,7 @@ onMounted(() => {
 
       <div class='play-setting-group'>
         <div class='play-setting-header'>
-          <div class='settinghead'>播放历史设置</div>
+            <div class='settinghead'>{{ t('settings.play.historySettings') }}</div>
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
@@ -315,14 +316,14 @@ onMounted(() => {
         </div>
         <div class='settingrow play-setting-row'>
         <MySwitch :value='settingStore.uiVideoPlayerHistory' @update:value='cb({ uiVideoPlayerHistory: $event })'>
-          跳转并记忆播放历史
+          {{ t('settings.play.rememberHistory') }}
         </MySwitch>
         </div>
       </div>
 
       <div class='play-setting-group'>
         <div class='play-setting-header'>
-          <div class='settinghead'>播放器启动参数</div>
+            <div class='settinghead'>{{ t('settings.play.launchParams') }}</div>
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
@@ -342,14 +343,14 @@ onMounted(() => {
           :autoSize='{minRows: 1, maxRows: 2}'
           allow-clear
           @keydown='(e:any) => e.stopPropagation()'
-          placeholder='没有不填，用于自定义播放器启动参数'
+          :placeholder="t('settings.play.launchParamsPlaceholder')"
           @update:model-value='cb({ uiVideoPlayerParams: $event })' />
         </div>
       </div>
 
       <div v-if='settingStore.uiVideoPlayer === "other"' class='play-setting-group'>
         <div class='play-setting-header'>
-          <div class='settinghead'>自定义播放器路径</div>
+          <div class='settinghead'>{{ t('settings.play.customPlayerPath') }}</div>
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
             <template #content>
@@ -369,19 +370,19 @@ onMounted(() => {
         </div>
         <template v-if='settingStore.uiVideoPlayer=== "other"'>
           <div v-show="playerType.includes('mpv')" class='hitText'>
-            【mpv】 支持倍速！支持外挂字幕！支持切换音轨！支持播放历史!
+            {{ t('settings.play.mpvSupportHint') }}
           </div>
           <div v-show="playerType.includes('potplayer')" class='hitText'>
-            【potplayer】 支持倍速！支持外挂字幕！支持切换音轨！支持播放历史!
+            {{ t('settings.play.potplayerSupportHint') }}
           </div>
         </template>
         <div class='settingrow play-setting-row'
              :style="{ display: settingStore.uiVideoPlayer === 'other' && platform === 'win32' ? '' : 'none' }">
-          <a-input-search tabindex='-1' class='play-player-path' :readonly='true' button-text='选择播放软件' search-button
+          <a-input-search tabindex='-1' class='play-player-path' :readonly='true' :button-text="t('settings.play.selectPlayerApp')" search-button
                           :model-value='settingStore.uiVideoPlayerPath' @search='handleSelectPlayer' />
         </div>
         <div class='settingrow play-setting-row' :style="{ display: settingStore.uiVideoPlayer === 'other' && platform === 'darwin' ? '' : 'none' }">
-          <a-input-search tabindex='-1' class='play-player-path' :readonly='true' button-text='选择播放软件' search-button
+          <a-input-search tabindex='-1' class='play-player-path' :readonly='true' :button-text="t('settings.play.selectPlayerApp')" search-button
                           :model-value='settingStore.uiVideoPlayerPath' @search='handleSelectPlayer' />
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
@@ -403,7 +404,7 @@ onMounted(() => {
         <div class='settingrow play-setting-row'
              :style="{ display: settingStore.uiVideoPlayer === 'other' && platform == 'linux' ? '' : 'none' }">
           <a-auto-complete :data="['mpv', 'vlc', 'totem', 'mplayer', 'smplayer', 'xine', 'parole', 'kodi']"
-                           :style="{ width: '420px', maxWidth: '100%' }" placeholder='请填写一个播放软件' strict
+                           :style="{ width: '420px', maxWidth: '100%' }" :placeholder="t('settings.play.enterPlayerCommand')" strict
                            :model-value='settingStore.uiVideoPlayerPath' @change='cb({ uiVideoPlayerPath: $event })' />
           <a-popover position='bottom'>
             <IconFont name="iconbulb" />
@@ -429,27 +430,27 @@ onMounted(() => {
   <div class='settingcard play-settings-card'>
     <div class='play-settings-intro play-settings-intro--secondary'>
       <div class='play-settings-kicker'>Behavior</div>
-      <div class='play-settings-copy'>补充配置观看记录、图片预览和雪碧图生成等行为，让播放相关体验保持一致。</div>
+      <div class='play-settings-copy'>{{ t('settings.play.behaviorIntro') }}</div>
     </div>
 
     <div class='play-setting-group'>
       <div class='play-setting-header'>
-        <div class='settinghead'>自动标记已看视频</div>
+        <div class='settinghead'>{{ t('settings.play.autoMarkWatched') }}</div>
       </div>
       <div class='settingrow play-setting-row'>
       <MySwitch :value='settingStore.uiAutoColorVideo' @update:value='cb({ uiAutoColorVideo: $event })'>
-        观看视频时 将视频自动标记为浅红色
+        {{ t('settings.play.autoMarkWatchedSwitch') }}
       </MySwitch>
       </div>
     </div>
 
     <div class='play-setting-group'>
       <div class='play-setting-header'>
-        <div class='settinghead'>自动同步视频观看进度</div>
+        <div class='settinghead'>{{ t('settings.play.autoSyncProgress') }}</div>
       </div>
       <div class='settingrow play-setting-row'>
       <MySwitch :value='settingStore.uiAutoPlaycursorVideo' @update:value='cb({ uiAutoPlaycursorVideo: $event })'>
-        观看视频时 将播放进度同步到网盘放映室
+        {{ t('settings.play.autoSyncProgressSwitch') }}
       </MySwitch>
       <a-popover position='bottom'>
         <IconFont name="iconbulb" />
@@ -464,29 +465,29 @@ onMounted(() => {
 
     <div class='play-setting-group'>
       <div class='play-setting-header'>
-        <div class='settinghead'>在线预览图片方式</div>
+        <div class='settinghead'>{{ t('settings.play.imagePreviewMode') }}</div>
       </div>
       <div class='settingrow play-setting-row'>
       <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiImageMode'
                      @update:model-value='cb({ uiImageMode: $event })'>
-        <a-radio tabindex='-1' value='fill'>缩放显示图集</a-radio>
-        <a-radio tabindex='-1' value='width'>单页显示长图</a-radio>
+        <a-radio tabindex='-1' value='fill'>{{ t('settings.play.imageModeFill') }}</a-radio>
+        <a-radio tabindex='-1' value='width'>{{ t('settings.play.imageModeWidth') }}</a-radio>
       </a-radio-group>
       </div>
     </div>
 
     <div class='play-setting-group'>
       <div class='play-setting-header'>
-        <div class='settinghead'>视频雪碧图 截图数量</div>
+        <div class='settinghead'>{{ t('settings.play.spriteCount') }}</div>
       </div>
       <div class='settingrow play-setting-row'>
       <a-radio-group type='button' tabindex='-1' :model-value='settingStore.uiXBTNumber'
                      @update:model-value='cb({ uiXBTNumber: $event })'>
-        <a-radio tabindex='-1' :value='24'>24张</a-radio>
-        <a-radio tabindex='-1' :value='36'>36张</a-radio>
-        <a-radio tabindex='-1' :value='48'>48张</a-radio>
-        <a-radio tabindex='-1' :value='60'>60张</a-radio>
-        <a-radio tabindex='-1' :value='72'>72张</a-radio>
+        <a-radio tabindex='-1' :value='24'>{{ t('settings.play.screenshots24') }}</a-radio>
+        <a-radio tabindex='-1' :value='36'>{{ t('settings.play.screenshots36') }}</a-radio>
+        <a-radio tabindex='-1' :value='48'>{{ t('settings.play.screenshots48') }}</a-radio>
+        <a-radio tabindex='-1' :value='60'>{{ t('settings.play.screenshots60') }}</a-radio>
+        <a-radio tabindex='-1' :value='72'>{{ t('settings.play.screenshots72') }}</a-radio>
       </a-radio-group>
       </div>
     </div>

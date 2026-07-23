@@ -105,9 +105,9 @@ export const WinMsg = async (arg: any) => {
   } else if (arg.cmd == 'MainUploadAppendFiles') {
     UploadingDAL.aUploadingAppendFiles(arg.TaskID, arg.UploadID, arg.CreatedDirID, arg.AppendList)
   } else if (arg.cmd == 'MainSaveAllDir') {
-    PanDAL.aReLoadDriveSave(arg.OneDriver, arg.ErrorMessage)
+    PanDAL.aReLoadDriveSave(arg.OneDriver, arg.ErrorMessage, arg.drive_id)
   } else if (arg.cmd == 'MainShowAllDirProgress') {
-    useFootStore().mSaveLoading('加载全部文件夹(' + Math.floor((arg.index * 100) / (arg.total + 1)) + '%)')
+    PanDAL.aReLoadDriveProgress(arg.drive_id, arg.index, arg.total)
   }
 }
 

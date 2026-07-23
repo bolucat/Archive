@@ -7,6 +7,7 @@ import message from '../utils/message'
 import fs from 'fs'
 import { resolveDownloadOpenPath, resolveLegacyMagnetPath } from './integration/btDownloadTarget'
 import { buildLocalVideoPage, isLocalVideoPath } from './integration/localVideoPlayback'
+import { t } from '../i18n'
 
 type Item = IStateDownFile
 type State = DownState
@@ -57,7 +58,7 @@ const useDownStore = defineStore('down', {
     },
 
     ListDataSelectCountInfo(state: State): string {
-      return '已选中 ' + state.ListSelected.size + ' / ' + state.ListDataShow.length + ' 个'
+      return t('transfer.selectedCount', { selected: state.ListSelected.size, total: state.ListDataShow.length })
     },
 
     IsListSelectedAll(state: State): boolean {
@@ -269,7 +270,7 @@ const useDownStore = defineStore('down', {
           } else if (fs.existsSync(savePath)) {
             window.Electron.shell.openPath(savePath)
           } else {
-            message.error('文件夹可能已经被删除')
+            message.error(t('transfer.folderMayDeleted'))
           }
         } catch {
         }
@@ -284,7 +285,7 @@ const useDownStore = defineStore('down', {
               window.Electron.shell.openPath(localFilePath)
             }
           } else {
-            message.error('文件可能已经被删除')
+            message.error(t('transfer.fileMayDeleted'))
           }
         } catch {
         }
@@ -293,7 +294,7 @@ const useDownStore = defineStore('down', {
       if (file) {
         if (file.Info.offlineProvider) return
         if (file.Info.ariaRemote) {
-          message.error('远程下载不支持该操作')
+          message.error(t('transfer.remoteDownloadUnsupported'))
           return
         }
         const localFilePath = resolveExistingPath(file)
@@ -307,7 +308,7 @@ const useDownStore = defineStore('down', {
 
       let opDownIDList = downIDList
       if (downIDList.length > 10) {
-        message.info('选择的数量大于10个，已经为你优化打开前10个', 10)
+        message.info(t('transfer.openFirstTenOnly'), 10)
         opDownIDList = downIDList.slice(0, 10)
       }
       for (let j = 0; j < DownedList.length; j++) {
@@ -315,7 +316,7 @@ const useDownStore = defineStore('down', {
         if (opDownIDList.includes(downID)) {
           if (DownedList[j].Info.offlineProvider) continue
           if (DownedList[j].Info.ariaRemote) {
-            message.error('远程下载不支持该操作')
+            message.error(t('transfer.remoteDownloadUnsupported'))
             continue
           }
           const localFilePath = resolveExistingPath(DownedList[j])

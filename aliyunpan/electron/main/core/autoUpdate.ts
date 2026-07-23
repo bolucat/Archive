@@ -4,6 +4,7 @@ import type { UpdateInfo } from 'electron-updater'
 import is from 'electron-is'
 
 const UPDATE_CHECK_DELAY_MS = 8000
+const GITHUB_PROXY_UPDATE_FEED_URL = 'https://gh-proxy.com/https://github.com/gaozhangmin/boxplayer/releases/latest/download/'
 
 type AutoUpdateLogger = Pick<typeof console, 'info' | 'warn'>
 type AutoUpdateDialog = Pick<typeof dialog, 'showMessageBox'>
@@ -26,6 +27,7 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
   updater.autoDownload = false
   updater.autoInstallOnAppQuit = true
   updater.allowPrerelease = currentVersion.includes('-')
+  updater.setFeedURL(GITHUB_PROXY_UPDATE_FEED_URL)
 
   let hasStartedDownload = false
   let hasPromptedRestart = false

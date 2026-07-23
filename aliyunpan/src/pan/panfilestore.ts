@@ -16,6 +16,7 @@ import TreeStore from '../store/treestore'
 import { useFootStore } from '../store'
 import { OrderDir } from '../utils/filenameorder'
 import { onHideRightMenuScroll } from '../utils/keyboardhelper'
+import { t } from '../i18n'
 
 type Item = IAliGetFileModel
 
@@ -99,7 +100,7 @@ const usePanFileStore = defineStore('panfile', {
       return state.ListSelected.size
     },
     ListDataSelectCountInfo(state: State): string {
-      return '已选中 ' + state.ListSelected.size + ' / ' + state.ListDataShow.length + ' 个'
+      return t('transfer.selectedCount', { selected: state.ListSelected.size, total: state.ListDataShow.length })
     },
 
     IsListSelectedAll(state: State): boolean {
@@ -153,23 +154,23 @@ const usePanFileStore = defineStore('panfile', {
     FileOrderDesc(state: State): string {
       switch (state.ListOrderKey) {
         case 'name desc':
-          return '名称 · 降'
+          return t('pan.sortNameDescShort')
         case 'name asc':
-          return '名称 · 升'
+          return t('pan.sortNameAscShort')
         case 'updated_at desc':
-          return '时间 · 降'
+          return t('pan.sortTimeDescShort')
         case 'updated_at asc':
-          return '时间 · 升'
+          return t('pan.sortTimeAscShort')
         case 'size desc':
-          return '大小 · 降'
+          return t('pan.sortSizeDescShort')
         case 'size asc':
-          return '大小 · 升'
+          return t('pan.sortSizeAscShort')
         case 'file_count desc':
-          return '数量 · 降'
+          return t('pan.sortCountDescShort')
         case 'file_count asc':
-          return '数量 · 升'
+          return t('pan.sortCountAscShort')
       }
-      return '选择文件排序'
+      return t('pan.chooseFileSort')
     }
   },
 
@@ -208,7 +209,7 @@ const usePanFileStore = defineStore('panfile', {
           ListDataGrid: []
         })
       }
-      useFootStore().mSaveDirInfo('文件列表加载中...')
+      useFootStore().mSaveDirInfo(t('pan.fileListLoading'))
     },
 
     mSaveDirFileLoadingPart(pageIndex: number, partDir: IAliFileResp, itemsTotal: number = 0) {
@@ -218,7 +219,7 @@ const usePanFileStore = defineStore('panfile', {
         this.ListLoadingIndex++
         this.ListDataRaw = this.ListDataRaw.concat(partDir.items)
         this.mRefreshListDataShow(true)
-        if (itemsTotal > 0) useFootStore().mSaveDirInfo('文件列表加载中...　总:' + itemsTotal)
+        if (itemsTotal > 0) useFootStore().mSaveDirInfo(t('pan.fileListLoadingTotal', { total: itemsTotal }))
       }
     },
 
@@ -233,7 +234,7 @@ const usePanFileStore = defineStore('panfile', {
       this.mRefreshListDataShow(true)
       let panInfo = ''
       if (itemsTotal == -1) panInfo = ''
-      else if (list.length == 0 && itemsTotal == 0) panInfo = '空文件夹'
+      else if (list.length == 0 && itemsTotal == 0) panInfo = t('pan.emptyFolder')
       else {
         let dirCount = 0
         let fileCount = 0
@@ -242,7 +243,7 @@ const usePanFileStore = defineStore('panfile', {
           else fileCount++
           return true
         })
-        panInfo = '文件夹:' + dirCount + '　文件:' + fileCount + '　总:' + (itemsTotal ? itemsTotal : dirCount + fileCount)
+        panInfo = t('pan.dirInfo', { dirs: dirCount, files: fileCount, total: itemsTotal ? itemsTotal : dirCount + fileCount })
       }
       useFootStore().mSaveDirInfo(panInfo)
     },

@@ -15,34 +15,6 @@ export interface OrganizeResult {
   report: string
 }
 
-const normalizeToolPath = (value: string) => {
-  const trimmed = String(value || '/').trim()
-  if (!trimmed || trimmed === '/') return '/'
-  return `/${trimmed.replace(/^\/+|\/+$/g, '')}`.replace(/\/+/g, '/')
-}
-
-const pathBaseName = (value: string) => {
-  const normalized = normalizeToolPath(value)
-  return normalized.split('/').filter(Boolean).pop() || ''
-}
-
-const moveWebDavFiles = async (driveId: string, group: OrganizeFileItem[], targetDriveId: string, targetParentId: string) => {
-  if (targetDriveId && targetDriveId !== driveId) return []
-  const { getWebDavConnection, getWebDavConnectionId, moveWebDavPath, normalizeWebDavPath } = await import('../webdavClient')
-  const connection = getWebDavConnection(getWebDavConnectionId(driveId))
-  if (!connection) return []
-  const ids: string[] = []
-  for (const item of group) {
-    try {
-      const name = item.name || pathBaseName(item.fileId)
-      if (!name) continue
-      await moveWebDavPath(connection, item.fileId, normalizeWebDavPath(`${targetParentId}/${name}`))
-      ids.push(item.fileId)
-    } catch {}
-  }
-  return ids
-}
-
 export const moveDriveToolFiles = async (files: OrganizeFileItem[], targetParentId: string, targetDriveId = ''): Promise<OrganizeResult> => {
   const validFiles = files.filter(file => file.userId && file.driveId && file.fileId)
   if (!validFiles.length || !targetParentId) return { total: 0, success: 0, failed: 0, report: '没有可移动的文件或目标目录' }
@@ -55,9 +27,7 @@ export const moveDriveToolFiles = async (files: OrganizeFileItem[], targetParent
   let success = 0
   for (const [key, group] of groups) {
     const [userId, driveId] = key.split('\n')
-    const successIds = driveId.startsWith('webdav:')
-      ? await moveWebDavFiles(driveId, group, targetDriveId || driveId, targetParentId)
-      : await AliFileCmd.ApiMoveBatch(userId, driveId, group.map(file => file.fileId), targetDriveId || driveId, targetParentId)
+    const successIds = driveId.startsWith('webdav:') ? [] : await AliFileCmd.ApiMoveBatch(userId, driveId, group.map(file => file.fileId), targetDriveId || driveId, targetParentId)
     success += successIds.length
   }
   return { total: validFiles.length, success, failed: validFiles.length - success, report: `移动整理完成：成功 ${success}/${validFiles.length}${success < validFiles.length ? `，失败 ${validFiles.length - success}` : ''}` }

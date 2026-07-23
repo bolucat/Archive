@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'parsing' | 'listing' | 'saving' | 'done' | 'error'
@@ -13,21 +14,21 @@ const emit = defineEmits<{ (e: 'retry'): void }>()
 
 <template>
   <div class="is-card">
-    <div v-if="state === 'parsing'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> 解析分享链接...</div>
-    <div v-else-if="state === 'listing'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> 列出分享文件...</div>
-    <div v-else-if="state === 'saving'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> 正在转存到你的网盘...</div>
+    <div v-if="state === 'parsing'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> {{ t('ai.card.parsingShare') }}</div>
+    <div v-else-if="state === 'listing'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> {{ t('ai.card.listingShareFiles') }}</div>
+    <div v-else-if="state === 'saving'" class="is-status"><Loader2 :size="14" :stroke-width="2" class="is-spin" /> {{ t('ai.card.savingToDrive') }}</div>
     <div v-else-if="state === 'done' && output && output.asyncStatus" class="is-status is-done">
       <CheckCircle :size="16" :stroke-width="1.5" />
-      <span>已从 {{ output.platform }} 分享「{{ output.shareName }}」提交转存 {{ output.fileCount }} 个文件，后台处理中</span>
+      <span>{{ t('ai.card.shareImportSubmittedPrefix') }} {{ output.platform }} {{ t('ai.card.share') }}「{{ output.shareName }}」{{ t('ai.card.submittedSave') }} {{ output.fileCount }} {{ t('transfer.file') }}，{{ t('ai.card.processingInBackground') }}</span>
     </div>
     <div v-else-if="state === 'done' && output" class="is-status is-done">
       <CheckCircle :size="16" :stroke-width="1.5" />
-      <span>已从 {{ output.platform }} 分享「{{ output.shareName }}」转存 {{ output.savedCount }}/{{ output.fileCount }} 个文件</span>
+      <span>{{ t('ai.card.shareImportSubmittedPrefix') }} {{ output.platform }} {{ t('ai.card.share') }}「{{ output.shareName }}」{{ t('ai.card.saved') }} {{ output.savedCount }}/{{ output.fileCount }} {{ t('transfer.file') }}</span>
     </div>
     <div v-else-if="state === 'error'" class="is-status is-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>{{ error || '导入失败' }}</span>
-      <button class="is-retry" @click="emit('retry')">重试</button>
+      <span>{{ error || t('ai.card.importFailed') }}</span>
+      <button class="is-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
   </div>
 </template>

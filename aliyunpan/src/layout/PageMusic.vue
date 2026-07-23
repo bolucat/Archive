@@ -29,6 +29,7 @@ import { analyzeAudioElementBeat } from '../utils/radio/BeatAnalyzer'
 import { getCachedBeatMap, type CachedBeatMap } from '../utils/radio/BeatMapCache'
 import { DEFAULT_MINERADIO_HOTKEYS, hasHotkeyConflict, hotkeyFromEvent, loadHotkeys, saveHotkeys, type MineradioHotkey } from '../utils/radio/HotkeyConfig'
 import { addTracksToList, createPlaylist, loadPlaylists, savePlaylists, type LocalPlaylist } from '../utils/radio/LocalPlaylistManager'
+import { t } from '../i18n'
 
 const props = defineProps<{ embedded?: boolean; sidePanel?: boolean }>()
 const emit = defineEmits<{ (e: 'state-change', state: MusicPlayerState): void }>()
@@ -83,14 +84,14 @@ interface MusicFxUserSlot {
 }
 
 const COLOR_LAB_PRESETS = [
-  { label: '青色', color: '#00f5d4' },
-  { label: '香槟', color: '#f4d28a' },
-  { label: '霓虹', color: '#ff7aa2' },
-  { label: '冰蓝', color: '#7fd8ff' },
-  { label: '紫电', color: '#b78cff' },
-  { label: '薄荷', color: '#9cffdf' },
-  { label: '日冕', color: '#fff0b8' },
-  { label: '暗红', color: '#ff5c6c' }
+  { label: () => t('music.colorCyan'), color: '#00f5d4' },
+  { label: () => t('music.colorChampagne'), color: '#f4d28a' },
+  { label: () => t('music.colorNeon'), color: '#ff7aa2' },
+  { label: () => t('music.colorIceBlue'), color: '#7fd8ff' },
+  { label: () => t('music.colorViolet'), color: '#b78cff' },
+  { label: () => t('music.colorMint'), color: '#9cffdf' },
+  { label: () => t('music.colorCorona'), color: '#fff0b8' },
+  { label: () => t('music.colorDarkRed'), color: '#ff5c6c' }
 ]
 
 const audioRef = ref<HTMLAudioElement | null>(null)
@@ -157,13 +158,13 @@ const localPlaylists = ref<LocalPlaylist[]>([])
 const collectNewPlaylistName = ref('')
 const collectTargetTrack = ref<IPageMusicTrack | null>(null)
 const gestureHudVisible = ref(false)
-const gestureHudText = ref('手势控制已开启：移动鼠标模拟镜头推拉，滚轮切换歌单架。')
+const gestureHudText = ref(t('music.gestureHudEnabled'))
 const visualGuideIndex = ref(0)
 const visualGuideItems = [
-  { title: '粒子舞台', text: '封面粒子会跟随实时频谱、BPM 和电影镜头律动。', spot: 'stage' },
-  { title: '歌词舞台', text: '点击底部歌词按钮切换，当前歌词会自动居中并同步 3D 字幕。', spot: 'bottom' },
-  { title: '3D 歌单架', text: '滚轮切换集合卡，点击中心卡或曲目行即可播放网盘音乐。', spot: 'shelf' },
-  { title: '视觉控制台', text: '调节辉光、镜头、歌词、歌单架和封面取色，并可保存到存档槽。', spot: 'fx' }
+  { title: () => t('music.guideStageTitle'), text: () => t('music.guideStageText'), spot: 'stage' },
+  { title: () => t('music.guideLyricsTitle'), text: () => t('music.guideLyricsText'), spot: 'bottom' },
+  { title: () => t('music.guideShelfTitle'), text: () => t('music.guideShelfText'), spot: 'shelf' },
+  { title: () => t('music.guideConsoleTitle'), text: () => t('music.guideConsoleText'), spot: 'fx' }
 ]
 const visualGuideCurrent = computed(() => visualGuideItems[visualGuideIndex.value] || visualGuideItems[0])
 const hotkeyItems = ref<MineradioHotkey[]>(DEFAULT_MINERADIO_HOTKEYS.map((item) => ({ ...item })))
@@ -198,13 +199,13 @@ const lyricDebugTitle = computed(() => formatLyricDebugTitle(meta.value))
 const displayTimeSec = computed(() => seekPreview.value ?? curTime.value)
 const lyricClockSec = computed(() => Math.max(0, displayTimeSec.value + lyricTimeOffsetSec.value))
 const activeLine = computed(() => findActiveLineIndex(lyricLines.value, lyricClockSec.value))
-const desktopLyricText = computed(() => lyricLines.value[activeLine.value]?.text || title.value || curTrack.value?.file_name || '未在播放')
+const desktopLyricText = computed(() => lyricLines.value[activeLine.value]?.text || title.value || curTrack.value?.file_name || t('music.notPlaying'))
 const desktopLyricNext = computed(() => {
   const next = lyricLines.value[activeLine.value + 1]?.text
   if (next) return next
-  return artist.value || album.value || '网盘音乐'
+  return artist.value || album.value || t('music.cloudMusic')
 })
-const collectTargetTitle = computed(() => stripExt((collectTargetTrack.value || curTrack.value)?.file_name || title.value || '当前歌曲'))
+const collectTargetTitle = computed(() => stripExt((collectTargetTrack.value || curTrack.value)?.file_name || title.value || t('music.currentSong')))
 const trackDurationSec = computed(() => normalizeTrackDurationSec(curTrack.value))
 const effectiveDur = computed(() => dur.value > 0 ? dur.value : trackDurationSec.value)
 const progPct = computed(() => effectiveDur.value ? Math.max(0, Math.min(100, (displayTimeSec.value / effectiveDur.value) * 100)) : 0)
@@ -212,7 +213,7 @@ const dispTime = computed(() => fmtTime(displayTimeSec.value))
 const isFav = computed(() => curTrack.value ? favSet.value.has(musicTrackKey(curTrack.value)) : false)
 const favSet = computed(() => new Set(favs.value.map(musicTrackKey)))
 const favKeys = computed(() => favs.value.map(musicTrackKey))
-const modeLbl = computed(() => ({ list: '顺序', 'loop-list': '循环', 'loop-one': '单曲', shuffle: '随机' }[mode.value] || ''))
+const modeLbl = computed(() => ({ list: t('music.modeOrder'), 'loop-list': t('music.modeLoopList'), 'loop-one': t('music.modeLoopOne'), shuffle: t('music.modeShuffle') }[mode.value] || ''))
 const modeOn = computed(() => mode.value !== 'list')
 const currentKey = computed(() => musicTrackKey(curTrack.value))
 const shelfCollectionPane = ref<'primary' | 'secondary'>('primary')
@@ -259,18 +260,18 @@ const shelfCards = computed<ShelfCard[]>(() => {
       data: { source: id, tracks, activeKey: currentKey.value }
     }
   }
-  const queueCard = makeCollection('queue', '当前队列', curTrack.value ? `${stripExt(curTrack.value.file_name || '')} · ${playlist.value.length} 首` : `${playlist.value.length} 首`, playlist.value)
-  const favoriteCard = visualFx.value.shelfShowFavorites ? makeCollection('favorite', '我的收藏', `${favs.value.length} 首网盘音乐`, favs.value) : null
-  const recentCard = visualFx.value.shelfShowRecents ? makeCollection('recent', '最近播放', `${recents.value.length} 首网盘音乐`, recents.value) : null
-  const podcastCard = visualFx.value.shelfShowPodcasts ? makeCollection('podcast', '播客队列', `${shelfPodcastTracks.value.length} 集`, shelfPodcastTracks.value) : null
-  const localPlaylistCards = localPlaylists.value.map((list) => makeCollection(`local:${list.id}`, list.name, `${list.tracks.length} 首本地歌单`, list.tracks)).filter(Boolean) as ShelfCard[]
-  const albumCards = shelfAlbumCollections.value.map(([name, tracks]) => makeCollection(`album:${name}`, name, `${tracks.length} 首专辑集合`, tracks)).filter(Boolean) as ShelfCard[]
-  const artistCards = shelfArtistCollections.value.map(([name, tracks]) => makeCollection(`artist:${name}`, name, `${tracks.length} 首艺人集合`, tracks)).filter(Boolean) as ShelfCard[]
+  const queueCard = makeCollection('queue', t('music.currentQueue'), curTrack.value ? `${stripExt(curTrack.value.file_name || '')} · ${t('music.tracksCount', { count: playlist.value.length })}` : t('music.tracksCount', { count: playlist.value.length }), playlist.value)
+  const favoriteCard = visualFx.value.shelfShowFavorites ? makeCollection('favorite', t('music.myFavorites'), t('music.cloudTracksCount', { count: favs.value.length }), favs.value) : null
+  const recentCard = visualFx.value.shelfShowRecents ? makeCollection('recent', t('music.recentlyPlayed'), t('music.cloudTracksCount', { count: recents.value.length }), recents.value) : null
+  const podcastCard = visualFx.value.shelfShowPodcasts ? makeCollection('podcast', t('music.podcastQueue'), t('music.episodesCount', { count: shelfPodcastTracks.value.length }), shelfPodcastTracks.value) : null
+  const localPlaylistCards = localPlaylists.value.map((list) => makeCollection(`local:${list.id}`, list.name, t('music.localPlaylistTracksCount', { count: list.tracks.length }), list.tracks)).filter(Boolean) as ShelfCard[]
+  const albumCards = shelfAlbumCollections.value.map(([name, tracks]) => makeCollection(`album:${name}`, name, t('music.albumCollectionTracksCount', { count: tracks.length }), tracks)).filter(Boolean) as ShelfCard[]
+  const artistCards = shelfArtistCollections.value.map(([name, tracks]) => makeCollection(`artist:${name}`, name, t('music.artistCollectionTracksCount', { count: tracks.length }), tracks)).filter(Boolean) as ShelfCard[]
   const primaryCollections = [queueCard, ...localPlaylistCards, ...albumCards, ...artistCards].filter(Boolean) as ShelfCard[]
   const secondaryCollections = [favoriteCard, recentCard, podcastCard].filter(Boolean) as ShelfCard[]
   if (visualFx.value.shelfMergeCollections) return [...primaryCollections, ...secondaryCollections]
-  if (shelfCollectionPane.value === 'secondary' && secondaryCollections.length) return secondaryCollections.map((card) => ({ ...card, subtitle: `${card.subtitle} · 扩展集合` }))
-  return primaryCollections.length ? primaryCollections.map((card) => ({ ...card, subtitle: `${card.subtitle} · 主集合` })) : secondaryCollections
+  if (shelfCollectionPane.value === 'secondary' && secondaryCollections.length) return secondaryCollections.map((card) => ({ ...card, subtitle: t('music.secondaryCollection', { subtitle: card.subtitle }) }))
+  return primaryCollections.length ? primaryCollections.map((card) => ({ ...card, subtitle: t('music.primaryCollection', { subtitle: card.subtitle }) })) : secondaryCollections
 })
 
 function stripExt(n: string) {
@@ -312,7 +313,7 @@ function applyFxPreset(config: MusicFxConfig) {
   visualFx.value = { ...config }
 }
 function defaultVisualFxSlots(): MusicFxUserSlot[] {
-  return Array.from({ length: 4 }, (_, index) => ({ id: `slot-${index + 1}`, name: `存档 ${index + 1}`, config: null, updatedAt: 0 }))
+  return Array.from({ length: 4 }, (_, index) => ({ id: `slot-${index + 1}`, name: t('music.slotName', { index: index + 1 }), config: null, updatedAt: 0 }))
 }
 function saveVisualFxSlots() {
   saveJson('pm.visualFxSlots', visualFxSlots.value)
@@ -331,11 +332,11 @@ function saveVisualFxSlot(slot: MusicFxUserSlot) {
   target.config = normalizeMusicFxConfig(visualFx.value)
   target.updatedAt = Date.now()
   saveVisualFxSlots()
-  message.success(`已保存 ${target.name}`)
+  message.success(`${t('music.saved')} ${target.name}`)
 }
 function loadVisualFxSlot(slot: MusicFxUserSlot) {
   if (!slot.config) {
-    message.warning(`${slot.name} 还没有保存视觉配置`)
+    message.warning(`${slot.name} ${t('music.noSavedFx')}`)
     return
   }
   visualFx.value = normalizeMusicFxConfig(slot.config)
@@ -357,11 +358,11 @@ function importVisualFx() {
     if (!file) return
     const next = parseMusicFxConfigJson(await file.text())
     if (!next) {
-      message.error('FX 配置文件无效')
+      message.error(t('music.invalidFx'))
       return
     }
     visualFx.value = next
-    message.success('已导入视觉配置')
+    message.success(t('music.importedFx'))
   }
   input.click()
 }
@@ -369,7 +370,7 @@ function importVisualFx() {
 async function sampleCoverPalette() {
   const url = coverUrl.value
   if (!url) {
-    message.warning('当前歌曲没有可取色的封面')
+    message.warning(t('music.noCoverForColor'))
     return
   }
   const img = new Image()
@@ -377,15 +378,15 @@ async function sampleCoverPalette() {
   img.decoding = 'async'
   await new Promise<void>((resolve, reject) => {
     img.onload = () => resolve()
-    img.onerror = () => reject(new Error('封面加载失败'))
+    img.onerror = () => reject(new Error(t('music.coverLoadFailed')))
     img.src = url
   }).catch((err) => {
-    message.error(err?.message || '封面加载失败')
+    message.error(err?.message || t('music.coverLoadFailed'))
   })
   if (!img.complete || !img.naturalWidth) return
   const palette = extractCoverPalette(img)
   if (!palette) {
-    message.warning('封面取色失败，可能受跨域限制')
+    message.warning(t('music.coverColorFailed'))
     return
   }
   coverPalette.value = palette
@@ -446,10 +447,10 @@ async function analyzeCurrentBeat(mode: 'mr' | 'dj') {
     const result = await analyzeAudioElementBeat(a, curTrack.value, mode, dur.value, controller.signal)
     beatInfo.value = { mode, bpm: result.bpm, peaks: result.peaks, updatedAt: result.updatedAt }
     beatMap.value = { mode: result.mode, bpm: result.bpm, peaks: result.peaks, peakTimes: result.peakTimes, duration: result.duration, updatedAt: result.updatedAt }
-    message.success(result.bpm ? `节奏分析${result.cacheHit ? '缓存' : ''}完成 ${result.bpm} BPM` : `节奏分析${result.cacheHit ? '缓存' : ''}完成`)
+    message.success(t('music.beatAnalysisDone', { cached: result.cacheHit ? t('music.cached') : '', bpm: result.bpm ? ` ${result.bpm} BPM` : '' }))
   } catch (err: any) {
-    if (err?.name === 'AbortError') message.error(`节奏分析超过 ${Math.round(timeoutMs / 1000)} 秒，已停止`)
-    else message.error(err?.message || '节奏分析失败')
+    if (err?.name === 'AbortError') message.error(t('music.beatAnalysisTimeout', { seconds: Math.round(timeoutMs / 1000) }))
+    else message.error(err?.message || t('music.beatAnalysisFailed'))
   } finally {
     window.clearTimeout(timeout)
     beatAnalyzing.value = false
@@ -556,14 +557,14 @@ async function configureGlobalHotkeys() {
   saveJson('pm.globalHotkeysEnabled', globalHotkeysEnabled.value)
   if (!globalHotkeysEnabled.value) {
     await window.WebConfigureGlobalHotkeys?.([])
-    globalHotkeyStatus.value = '全局热键已关闭'
+    globalHotkeyStatus.value = t('music.globalHotkeysOff')
     return
   }
   const bindings = hotkeyItems.value.map((item) => ({ action: hotkeyActionForId(item.id), accelerator: item.value, enabled: !!item.value })).filter((item) => item.action && item.accelerator)
   const result = await window.WebConfigureGlobalHotkeys?.(bindings)
   const registered = result?.registered?.length || 0
   const failed = result?.failed?.length || 0
-  globalHotkeyStatus.value = failed ? `已注册 ${registered} 个，失败 ${failed} 个` : `已注册 ${registered} 个全局热键`
+  globalHotkeyStatus.value = failed ? `${t('music.registered')} ${registered}，${t('music.failed')} ${failed}` : `${t('music.registered')} ${registered} ${t('music.globalHotkeys')}`
 }
 
 function handleCustomHotkey(e: KeyboardEvent) {
@@ -604,24 +605,24 @@ function collectCurrentToPlaylist(list: LocalPlaylist) {
   const next = localPlaylists.value.map((item) => item.id === list.id ? addTracksToList(item, [track]) : item)
   localPlaylists.value = next
   savePlaylists(next)
-  message.success('已收藏到歌单')
+  message.success(t('music.collected'))
 }
 
 function collectCurrentToNewPlaylist() {
   const track = collectTargetTrack.value || curTrack.value
   if (!track) return
-  const name = collectNewPlaylistName.value.trim() || `歌单 ${localPlaylists.value.length + 1}`
+  const name = collectNewPlaylistName.value.trim() || `${t('music.playlist')} ${localPlaylists.value.length + 1}`
   const next = [createPlaylist(name, [track]), ...localPlaylists.value]
   localPlaylists.value = next
   collectNewPlaylistName.value = ''
   savePlaylists(next)
-  message.success('已新建歌单并收藏')
+  message.success(t('music.newPlaylistCollected'))
 }
 
 function toggleGestureControl() {
   visualFx.value.gestureControlEnabled = !visualFx.value.gestureControlEnabled
   gestureHudVisible.value = visualFx.value.gestureControlEnabled
-  gestureHudText.value = visualFx.value.gestureControlEnabled ? '手势控制已开启：当前以鼠标/滚轮模拟 BoxPlayer Radio 手势反馈。' : '手势控制已关闭'
+  gestureHudText.value = visualFx.value.gestureControlEnabled ? t('music.gestureEnabled') : t('music.gestureDisabled')
   if (!visualFx.value.gestureControlEnabled) window.setTimeout(() => gestureHudVisible.value = false, 1100)
 }
 
@@ -690,7 +691,7 @@ async function applyCustomLyric(text: string, persist = true) {
       lrcLength: text.length,
       parsedLineCount: lines.length,
       lyricLineSource,
-      reason: lines.length ? `已使用自定义歌词 ${lines.length} 行` : '自定义歌词未解析出可展示行'
+      reason: lines.length ? t('music.customLyricApplied', { count: lines.length }) : t('music.customLyricEmpty')
     }
   }
   if (persist && key) await setMineradioValue(key, { text, updatedAt: Date.now(), source: 'custom' })
@@ -763,7 +764,7 @@ function pickCustomBackground() {
     const file = input.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-      message.error('请选择图片或视频背景')
+      message.error(t('music.selectBackground'))
       return
     }
     if (customBackgroundUrl.value) URL.revokeObjectURL(customBackgroundUrl.value)
@@ -771,7 +772,7 @@ function pickCustomBackground() {
     customBackgroundType.value = type
     customBackgroundUrl.value = URL.createObjectURL(file)
     await setMineradioValue(customBackgroundStorageKey(), { blob: file, type, updatedAt: Date.now(), source: 'background-media' })
-    message.success('已应用自定义背景')
+    message.success(t('music.backgroundApplied'))
   }
   input.click()
 }
@@ -786,15 +787,15 @@ function formatLyricDebugTitle(data: MusicMetadata | null) {
   const debug = data?.debug
   if (!debug) return ''
   const lines = [
-    `歌词接口: musicsdk (网易云 wy -> 酷狗 kg)`,
-    `元数据来源: ${(data?.metadataSources || []).join(', ') || 'filename'}`,
-    `查询: ${debug.query.artist ? `${debug.query.artist} - ` : ''}${debug.query.title}`,
-    `文件: ${debug.query.filename}`,
-    `结果: ${debug.reason}`,
-    `LRC字符: ${debug.lrcLength}`,
-    `解析行数: ${debug.parsedLineCount}`
+    `Lyric API: musicsdk (NetEase wy -> Kugou kg)`,
+    `Metadata sources: ${(data?.metadataSources || []).join(', ') || 'filename'}`,
+    `Query: ${debug.query.artist ? `${debug.query.artist} - ` : ''}${debug.query.title}`,
+    `File: ${debug.query.filename}`,
+    `Result: ${debug.reason}`,
+    `LRC chars: ${debug.lrcLength}`,
+    `Parsed lines: ${debug.parsedLineCount}`
   ]
-  if (debug.lyric?.matched) lines.push(`匹配歌曲: ${debug.lyric.matched.source} ${debug.lyric.matched.name} / ${debug.lyric.matched.singer}`)
+  if (debug.lyric?.matched) lines.push(`Matched track: ${debug.lyric.matched.source} ${debug.lyric.matched.name} / ${debug.lyric.matched.singer}`)
   for (const step of debug.lyric?.steps || []) lines.push(`${step.source}: ${step.status} ${step.message}${step.lyricLength !== undefined ? ` lyric=${step.lyricLength}` : ''}`)
   return lines.join('\n')
 }
@@ -822,18 +823,18 @@ function pushRec(t: IPageMusicTrack | undefined | null) {
 }
 
 async function resolveUrl(idx: number) {
-  const t = playlist.value[idx]
-  if (!t) return ''
-  if (t.local_url) return t.local_url
-  if (t.media_server_id && t.media_server_item_id) {
+  const track = playlist.value[idx]
+  if (!track) return ''
+  if (track.local_url) return track.local_url
+  if (track.media_server_id && track.media_server_item_id) {
     mediaServerRegistry.ensureLoaded()
-    const config = mediaServerRegistry.servers.find((server) => server.id === t.media_server_id)
-    if (!config) throw new Error('媒体服务器配置不存在，请重新连接服务器')
-    const playback = await getMediaServerPlaybackInfo(config, t.media_server_item_id, t.media_server_source_id)
+    const config = mediaServerRegistry.servers.find((server) => server.id === track.media_server_id)
+    if (!config) throw new Error(t('music.serverConfigMissing'))
+    const playback = await getMediaServerPlaybackInfo(config, track.media_server_item_id, track.media_server_source_id)
     return playback.url
   }
-  const d = await getRawUrl(t.user_id, t.drive_id, t.file_id, t.encType || '', t.password || '', false, 'audio')
-  if (typeof d === 'string') throw new Error(d || '获取地址失败')
+  const d = await getRawUrl(track.user_id, track.drive_id, track.file_id, track.encType || '', track.password || '', false, 'audio')
+  if (typeof d === 'string') throw new Error(d || t('music.getUrlFailed'))
   return d.url || ''
 }
 
@@ -857,7 +858,7 @@ async function loadIdx(idx: number, auto = true) {
   try {
     loading.value = true
     const url = await resolveUrl(idx)
-    if (!url) throw new Error('未获取到播放地址')
+    if (!url) throw new Error(t('music.noPlaybackUrl'))
     a.src = url
     a.load()
     if (auto) {
@@ -870,7 +871,7 @@ async function loadIdx(idx: number, auto = true) {
     }
   } catch (e: any) {
     errMsg.value = e?.message || String(e)
-    message.error('加载失败: ' + errMsg.value)
+    message.error(t('music.loadFailed', { message: errMsg.value }))
     playing.value = false
   } finally {
     loading.value = false
@@ -1150,7 +1151,7 @@ function onEnded() {
 }
 function onErr() {
   if (!audioRef.value?.src) return
-  errMsg.value = '播放出错'
+  errMsg.value = t('music.playbackError')
   playing.value = false
 }
 function onPlay() { playing.value = true; syncAudioClock(); startClockLoop() }
@@ -1227,10 +1228,10 @@ onMounted(() => {
   }
   const d = appStore.pageMusic
   if (!d) {
-    message.error('未提供音乐播放参数')
+    message.error(t('music.noPlaybackParams'))
     return
   }
-  document.title = d.file_name || '音乐播放器'
+  document.title = d.file_name || t('music.playerTitle')
   loadPageMusic(d)
 })
 
@@ -1278,7 +1279,7 @@ watch(desktopLyricHighlightFollow, (v) => saveJson('pm.desktopLyricHighlightFoll
 watch(diySimpleMode, (v) => saveJson('pm.diySimpleMode', v))
 watch(() => visualFx.value.gestureControlEnabled, (v) => {
   gestureHudVisible.value = !!v
-  if (v) gestureHudText.value = '手势 HUD：掌心推开/捏合旋转以鼠标和滚轮模拟，摄像头源未接入外部服务。'
+  if (v) gestureHudText.value = t('music.gestureHudFallback')
 })
 watch(() => visualFx.value.liveBackgroundKeep, () => {
   if (visualFx.value.liveBackgroundKeep && visualFx.value.renderQuality === 'release') visualFx.value.renderQuality = 'keep'
@@ -1369,10 +1370,10 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       <div class="desktop-lyric-line active" :title="desktopLyricText">{{ desktopLyricText }}</div>
       <div class="desktop-lyric-line next" :title="desktopLyricNext">{{ desktopLyricNext }}</div>
       <div class="desktop-lyric-tools">
-        <button type="button" :title="desktopLyricsClickThrough ? '取消点击穿透' : '启用点击穿透'" @click.stop="toggleDesktopLyricsClickThrough">{{ desktopLyricsClickThrough ? '解锁' : '穿透' }}</button>
-        <button type="button" :title="desktopLyricsLocked ? '解除桌面歌词锁定' : '锁定桌面歌词窗口'" @click.stop="toggleDesktopLyricsLock">{{ desktopLyricsLocked ? '锁定' : '可拖' }}</button>
-        <button type="button" title="歌曲详情" @click.stop="showTrackDetail = true">详情</button>
-        <button type="button" title="关闭桌面歌词" @click.stop="desktopLyricsOn = false">关闭</button>
+        <button type="button" :title="desktopLyricsClickThrough ? t('music.disableClickThrough') : t('music.enableClickThrough')" @click.stop="toggleDesktopLyricsClickThrough">{{ desktopLyricsClickThrough ? t('music.unlock') : t('music.clickThrough') }}</button>
+        <button type="button" :title="desktopLyricsLocked ? t('music.unlockDesktopLyrics') : t('music.lockDesktopLyrics')" @click.stop="toggleDesktopLyricsLock">{{ desktopLyricsLocked ? t('music.locked') : t('music.draggable') }}</button>
+        <button type="button" :title="t('music.trackDetails')" @click.stop="showTrackDetail = true">{{ t('music.details') }}</button>
+        <button type="button" :title="t('music.closeDesktopLyrics')" @click.stop="desktopLyricsOn = false">{{ t('common.close') }}</button>
       </div>
     </div>
 
@@ -1386,7 +1387,7 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       <div class="mineradio-splash-enter">CLICK / ENTER</div>
     </div>
     <div v-if="beatChipVisible && (beatAnalyzing || beatInfo)" class="music-beat-chip">
-      <span>{{ beatAnalyzing ? '分析中' : `${beatInfo?.bpm || '--'} BPM` }}</span>
+      <span>{{ beatAnalyzing ? t('music.analyzing') : `${beatInfo?.bpm || '--'} BPM` }}</span>
       <small>{{ (beatAnalyzing ? beatAnalyzingMode : beatInfo?.mode) === 'dj' ? 'DJ Beat' : 'BP Beat' }}</small>
     </div>
     <div v-if="gestureHudVisible" class="gesture-hud show">
@@ -1397,10 +1398,10 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
     <div :class="['music-fx-panel', showFxPanel ? 'show' : '']" @dblclick.stop>
       <div class="music-fx-head">
         <div>
-          <div class="music-fx-title">视觉控制台</div>
+          <div class="music-fx-title">{{ t('music.visualConsole') }}</div>
           <div class="music-fx-sub">BOXPLAYER RADIO VISUALS</div>
         </div>
-        <button class="music-fx-reset" title="恢复默认" @click="resetVisualFx">
+        <button class="music-fx-reset" :title="t('music.resetDefault')" @click="resetVisualFx">
           <RotateCcw :size="16" :stroke-width="1.9" />
         </button>
       </div>
@@ -1411,91 +1412,91 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
         <div v-for="slot in visualFxSlots" :key="slot.id" class="music-fx-slot">
           <button type="button" @click="loadVisualFxSlot(slot)">
             <span>{{ slot.name }}</span>
-            <small>{{ slot.config ? '已保存' : '空' }}</small>
+            <small>{{ slot.config ? t('music.saved') : t('music.empty') }}</small>
           </button>
-          <button type="button" title="保存当前视觉到此槽位" @click="saveVisualFxSlot(slot)">保存</button>
+          <button type="button" :title="t('music.saveToSlot')" @click="saveVisualFxSlot(slot)">{{ t('music.save') }}</button>
         </div>
       </div>
-      <div class="music-fx-section">自定义颜色</div>
+      <div class="music-fx-section">{{ t('music.customColors') }}</div>
       <div class="music-fx-color-row">
         <label>
-          <span>界面高亮</span>
+          <span>{{ t('music.uiAccent') }}</span>
           <input v-model="visualFx.uiAccentColor" type="color" />
         </label>
         <label>
-          <span>视觉主色</span>
+          <span>{{ t('music.visualTint') }}</span>
           <input v-model="visualFx.visualTintColor" type="color" />
         </label>
-        <button class="music-fx-color-pick" type="button" @click="sampleCoverPalette">封面取色</button>
+        <button class="music-fx-color-pick" type="button" @click="sampleCoverPalette">{{ t('music.pickCoverColor') }}</button>
       </div>
       <div class="music-fx-color-row">
         <label>
-          <span>Home 填充</span>
+          <span>{{ t('music.homeFill') }}</span>
           <input v-model="visualFx.homeAccentColor" type="color" />
         </label>
         <label>
-          <span>主页图标</span>
+          <span>{{ t('music.homeIcon') }}</span>
           <input v-model="visualFx.homeIconColor" type="color" />
         </label>
         <label>
-          <span>视觉图标</span>
+          <span>{{ t('music.visualIcon') }}</span>
           <input v-model="visualFx.visualIconColor" type="color" />
         </label>
       </div>
       <div class="music-fx-color-row">
         <label>
-          <span>背景颜色</span>
+          <span>{{ t('music.backgroundColor') }}</span>
           <input v-model="visualFx.backgroundColor" type="color" />
         </label>
-        <button class="music-fx-color-pick" type="button" @click="visualFx.backgroundColor = '#000000'">默认</button>
+        <button class="music-fx-color-pick" type="button" @click="visualFx.backgroundColor = '#000000'">{{ t('music.default') }}</button>
       </div>
-      <div class="music-fx-section">主控</div>
+      <div class="music-fx-section">{{ t('music.controls') }}</div>
       <div class="music-fx-actions">
-        <button class="music-fx-action" :disabled="!curTrack" @click="showCustomLyric = true">自定义歌词</button>
-        <button class="music-fx-action" :disabled="!coverUrl" @click="showCoverCrop = true">裁剪封面</button>
-        <button class="music-fx-action" :disabled="!customCoverUrl" @click="clearCustomCover">清除封面</button>
-        <button class="music-fx-action" @click="pickCustomBackground">背景媒体</button>
-        <button class="music-fx-action" :disabled="!customBackgroundUrl" @click="clearCustomBackground">清除背景</button>
-        <button class="music-fx-action" :disabled="!curTrack" @click="showTrackDetail = true">歌曲详情</button>
-        <button class="music-fx-action" @click="toggleImmersiveMode">{{ immersiveMode ? '退出沉浸' : '沉浸模式' }}</button>
-        <button :class="['music-fx-action', desktopLyricsOn ? 'on' : '']" @click="toggleDesktopLyrics">{{ desktopLyricsOn ? '关闭桌面歌词' : '桌面歌词' }}</button>
-        <button class="music-fx-action" :disabled="!curTrack" @click="openCollectModal(curTrack)">收藏到歌单</button>
-        <button :class="['music-fx-action', diySimpleMode ? 'on' : '']" @click="diySimpleMode = !diySimpleMode">{{ diySimpleMode ? '完整版' : '简约模式' }}</button>
-        <button class="music-fx-action" @click="exportVisualFx">导出 FX</button>
-        <button class="music-fx-action" @click="importVisualFx">导入 FX</button>
-        <button class="music-fx-action" :disabled="beatAnalyzing || !curTrack" @click="showBeatModal = true">节拍分析</button>
-        <button class="music-fx-action" @click="visualGuideIndex = 0; showVisualGuide = true">视觉引导</button>
-        <button class="music-fx-action" @click="showHotkeyModal = true">热键设置</button>
+        <button class="music-fx-action" :disabled="!curTrack" @click="showCustomLyric = true">{{ t('music.customLyric') }}</button>
+        <button class="music-fx-action" :disabled="!coverUrl" @click="showCoverCrop = true">{{ t('music.cropCover') }}</button>
+        <button class="music-fx-action" :disabled="!customCoverUrl" @click="clearCustomCover">{{ t('music.clearCover') }}</button>
+        <button class="music-fx-action" @click="pickCustomBackground">{{ t('music.backgroundMedia') }}</button>
+        <button class="music-fx-action" :disabled="!customBackgroundUrl" @click="clearCustomBackground">{{ t('music.clearBackground') }}</button>
+        <button class="music-fx-action" :disabled="!curTrack" @click="showTrackDetail = true">{{ t('music.trackDetail') }}</button>
+        <button class="music-fx-action" @click="toggleImmersiveMode">{{ immersiveMode ? t('music.exitImmersive') : t('music.immersiveMode') }}</button>
+        <button :class="['music-fx-action', desktopLyricsOn ? 'on' : '']" @click="toggleDesktopLyrics">{{ desktopLyricsOn ? t('music.closeDesktopLyric') : t('music.desktopLyric') }}</button>
+        <button class="music-fx-action" :disabled="!curTrack" @click="openCollectModal(curTrack)">{{ t('music.collectToPlaylist') }}</button>
+        <button :class="['music-fx-action', diySimpleMode ? 'on' : '']" @click="diySimpleMode = !diySimpleMode">{{ diySimpleMode ? t('music.fullVersion') : t('music.simpleMode') }}</button>
+        <button class="music-fx-action" @click="exportVisualFx">{{ t('music.exportFx') }}</button>
+        <button class="music-fx-action" @click="importVisualFx">{{ t('music.importFx') }}</button>
+        <button class="music-fx-action" :disabled="beatAnalyzing || !curTrack" @click="showBeatModal = true">{{ t('music.beatAnalyze') }}</button>
+        <button class="music-fx-action" @click="visualGuideIndex = 0; showVisualGuide = true">{{ t('music.visualGuide') }}</button>
+        <button class="music-fx-action" @click="showHotkeyModal = true">{{ t('music.hotkeys') }}</button>
       </div>
-      <div v-if="desktopLyricsOn" class="music-fx-section">桌面歌词</div>
+      <div v-if="desktopLyricsOn" class="music-fx-section">{{ t('music.desktopLyric') }}</div>
       <div v-if="desktopLyricsOn" class="music-fx-color-row">
         <label>
-          <span>主歌词</span>
+          <span>{{ t('music.primaryLyric') }}</span>
           <input v-model="desktopLyricPrimaryColor" type="color" />
         </label>
         <label>
-          <span>下一行</span>
+          <span>{{ t('music.nextLine') }}</span>
           <input v-model="desktopLyricSecondaryColor" type="color" />
         </label>
       </div>
       <label v-if="desktopLyricsOn" class="music-fx-slider">
-        <span>桌面字号 <b>{{ desktopLyricFontSize }}</b></span>
+        <span>{{ t('music.desktopFontSize') }} <b>{{ desktopLyricFontSize }}</b></span>
         <input v-model.number="desktopLyricFontSize" max="72" min="24" step="1" type="range" />
       </label>
       <label v-if="desktopLyricsOn" class="music-fx-slider">
-        <span>桌面歌词透明 <b>{{ desktopLyricOpacity.toFixed(2) }}</b></span>
+        <span>{{ t('music.desktopOpacity') }} <b>{{ desktopLyricOpacity.toFixed(2) }}</b></span>
         <input v-model.number="desktopLyricOpacity" max="1" min="0.28" step="0.01" type="range" />
       </label>
       <label v-if="desktopLyricsOn" class="music-fx-slider">
-        <span>桌面歌词高度 <b>{{ desktopLyricY.toFixed(2) }}</b></span>
+        <span>{{ t('music.desktopHeight') }} <b>{{ desktopLyricY.toFixed(2) }}</b></span>
         <input v-model.number="desktopLyricY" max="0.92" min="0.08" step="0.01" type="range" />
       </label>
       <label v-if="desktopLyricsOn" class="music-fx-slider">
-        <span>背景透明 <b>{{ desktopLyricBgOpacity.toFixed(2) }}</b></span>
+        <span>{{ t('music.backgroundOpacity') }} <b>{{ desktopLyricBgOpacity.toFixed(2) }}</b></span>
         <input v-model.number="desktopLyricBgOpacity" max="0.9" min="0" step="0.01" type="range" />
       </label>
       <label v-if="desktopLyricsOn" class="music-fx-slider">
-        <span>电影震动 <b>{{ desktopLyricShake.toFixed(2) }}</b></span>
+        <span>{{ t('music.cinemaShake') }} <b>{{ desktopLyricShake.toFixed(2) }}</b></span>
         <input v-model.number="desktopLyricShake" max="1" min="0" step="0.01" type="range" />
       </label>
       <div v-if="desktopLyricsOn" class="music-fx-seg">
@@ -1503,233 +1504,233 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
         <button :class="{ on: desktopLyricFps === 30 }" @click="desktopLyricFps = 30">30</button>
         <button :class="{ on: desktopLyricFps === 60 }" @click="desktopLyricFps = 60">60</button>
         <button :class="{ on: desktopLyricFps === 120 }" @click="desktopLyricFps = 120">120</button>
-        <button :class="{ on: desktopLyricFps === 0 }" @click="desktopLyricFps = 0">无上限</button>
+        <button :class="{ on: desktopLyricFps === 0 }" @click="desktopLyricFps = 0">{{ t('music.unlimited') }}</button>
       </div>
       <div v-if="desktopLyricsOn" class="music-fx-seg">
-        <button :class="{ on: desktopLyricFontFamily === 'system' }" @click="desktopLyricFontFamily = 'system'">系统</button>
-        <button :class="{ on: desktopLyricFontFamily === 'serif' }" @click="desktopLyricFontFamily = 'serif'">衬线</button>
-        <button :class="{ on: desktopLyricFontFamily === 'gothic' }" @click="desktopLyricFontFamily = 'gothic'">黑体</button>
+        <button :class="{ on: desktopLyricFontFamily === 'system' }" @click="desktopLyricFontFamily = 'system'">{{ t('music.system') }}</button>
+        <button :class="{ on: desktopLyricFontFamily === 'serif' }" @click="desktopLyricFontFamily = 'serif'">{{ t('music.serif') }}</button>
+        <button :class="{ on: desktopLyricFontFamily === 'gothic' }" @click="desktopLyricFontFamily = 'gothic'">{{ t('music.gothic') }}</button>
       </div>
       <div v-if="desktopLyricsOn" class="music-fx-toggle-grid">
-        <button :class="['music-fx-toggle', desktopLyricHighlightFollow ? 'on' : '']" @click="desktopLyricHighlightFollow = !desktopLyricHighlightFollow">高亮跟随</button>
-        <button :class="['music-fx-toggle', desktopLyricsLocked ? 'on' : '']" @click="toggleDesktopLyricsLock">{{ desktopLyricsLocked ? '窗口已锁定' : '窗口可拖拽' }}</button>
-        <button :class="['music-fx-toggle', desktopLyricsClickThrough ? 'on' : '']" @click="toggleDesktopLyricsClickThrough">{{ desktopLyricsClickThrough ? '穿透已开' : '点击穿透' }}</button>
+        <button :class="['music-fx-toggle', desktopLyricHighlightFollow ? 'on' : '']" @click="desktopLyricHighlightFollow = !desktopLyricHighlightFollow">{{ t('music.highlightFollow') }}</button>
+        <button :class="['music-fx-toggle', desktopLyricsLocked ? 'on' : '']" @click="toggleDesktopLyricsLock">{{ desktopLyricsLocked ? t('music.windowLocked') : t('music.windowDraggable') }}</button>
+        <button :class="['music-fx-toggle', desktopLyricsClickThrough ? 'on' : '']" @click="toggleDesktopLyricsClickThrough">{{ desktopLyricsClickThrough ? t('music.clickThroughOn') : t('music.clickThrough') }}</button>
       </div>
       <label class="music-fx-slider">
-        <span>律动强度 <b>{{ visualFx.intensity.toFixed(2) }}</b></span>
+        <span>{{ t('music.intensity') }} <b>{{ visualFx.intensity.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.intensity" max="1.6" min="0.2" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>立体感 <b>{{ visualFx.depth.toFixed(2) }}</b></span>
+        <span>{{ t('music.depth') }} <b>{{ visualFx.depth.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.depth" max="1.8" min="0.2" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>封面清晰度 <b>{{ visualFx.coverResolution.toFixed(2) }}</b></span>
+        <span>{{ t('music.coverResolution') }} <b>{{ visualFx.coverResolution.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.coverResolution" max="1.55" min="0.72" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>镜头晃动 <b>{{ visualFx.cinemaShake.toFixed(2) }}</b></span>
+        <span>{{ t('music.cinemaShake') }} <b>{{ visualFx.cinemaShake.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.cinemaShake" max="1.8" min="0" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>歌词溢光 <b>{{ visualFx.lyricGlowStrength.toFixed(2) }}</b></span>
+        <span>{{ t('music.lyricGlow') }} <b>{{ visualFx.lyricGlowStrength.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.lyricGlowStrength" max="0.85" min="0" step="0.01" type="range" />
       </label>
       <div v-show="!diySimpleMode" class="music-fx-advanced">
-        <div class="music-fx-section">粒子</div>
+        <div class="music-fx-section">{{ t('music.particles') }}</div>
         <label class="music-fx-slider">
-          <span>粒子大小 <b>{{ visualFx.point.toFixed(2) }}</b></span>
+          <span>{{ t('music.pointSize') }} <b>{{ visualFx.point.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.point" max="1.8" min="0.45" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>运动速度 <b>{{ visualFx.speed.toFixed(2) }}</b></span>
+          <span>{{ t('music.speed') }} <b>{{ visualFx.speed.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.speed" max="2.5" min="0.2" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>散射 <b>{{ visualFx.scatter.toFixed(2) }}</b></span>
+          <span>{{ t('music.scatter') }} <b>{{ visualFx.scatter.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.scatter" max="1.2" min="0" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>扭曲 <b>{{ visualFx.twist.toFixed(2) }}</b></span>
+          <span>{{ t('music.twist') }} <b>{{ visualFx.twist.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.twist" max="1.8" min="0" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>色彩张力 <b>{{ visualFx.colorTension.toFixed(2) }}</b></span>
+          <span>{{ t('music.colorTension') }} <b>{{ visualFx.colorTension.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.colorTension" max="2" min="0.5" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>辉光 <b>{{ visualFx.bloom.toFixed(2) }}</b></span>
+          <span>{{ t('music.bloom') }} <b>{{ visualFx.bloom.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.bloom" max="1.3" min="0" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>背景透明度 <b>{{ visualFx.backgroundOpacity.toFixed(2) }}</b></span>
+          <span>{{ t('music.backgroundOpacityFull') }} <b>{{ visualFx.backgroundOpacity.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.backgroundOpacity" max="1" min="0.12" step="0.01" type="range" />
         </label>
         <label class="music-fx-slider">
-          <span>背景压暗 <b>{{ visualFx.bgFade.toFixed(2) }}</b></span>
+          <span>{{ t('music.backgroundFade') }} <b>{{ visualFx.bgFade.toFixed(2) }}</b></span>
           <input v-model.number="visualFx.bgFade" max="1.2" min="0" step="0.01" type="range" />
         </label>
-        <div class="music-fx-section">叠加效果</div>
+        <div class="music-fx-section">{{ t('music.overlays') }}</div>
         <div class="music-fx-toggle-grid">
-          <button :class="['music-fx-toggle', visualFx.floatLayerEnabled ? 'on' : '']" @click="visualFx.floatLayerEnabled = !visualFx.floatLayerEnabled">浮空粒子</button>
-          <button :class="['music-fx-toggle', visualFx.cinemaEnabled ? 'on' : '']" @click="visualFx.cinemaEnabled = !visualFx.cinemaEnabled">电影镜头</button>
-          <button :class="['music-fx-toggle', visualFx.bloomEnabled ? 'on' : '']" @click="visualFx.bloomEnabled = !visualFx.bloomEnabled">粒子溢光</button>
-          <button :class="['music-fx-toggle', visualFx.lyricGlowEnabled ? 'on' : '']" @click="visualFx.lyricGlowEnabled = !visualFx.lyricGlowEnabled">歌词溢光</button>
-          <button :class="['music-fx-toggle', visualFx.beatGlowEnabled ? 'on' : '']" @click="visualFx.beatGlowEnabled = !visualFx.beatGlowEnabled">鼓点溢光</button>
-          <button :class="['music-fx-toggle', visualFx.lyricGlowParticlesEnabled ? 'on' : '']" @click="visualFx.lyricGlowParticlesEnabled = !visualFx.lyricGlowParticlesEnabled">歌词光粒</button>
-          <button :class="['music-fx-toggle', visualFx.lyricCameraLockEnabled ? 'on' : '']" @click="visualFx.lyricCameraLockEnabled = !visualFx.lyricCameraLockEnabled">歌词镜头绑定</button>
-          <button :class="['music-fx-toggle', visualFx.edgeHighlightEnabled ? 'on' : '']" @click="visualFx.edgeHighlightEnabled = !visualFx.edgeHighlightEnabled">轮廓高亮</button>
-          <button :class="['music-fx-toggle', visualFx.backCoverEnabled ? 'on' : '']" @click="visualFx.backCoverEnabled = !visualFx.backCoverEnabled">背面封面</button>
-          <button :class="['music-fx-toggle', visualFx.colorLabEnabled ? 'on' : '']" @click="visualFx.colorLabEnabled = !visualFx.colorLabEnabled">颜色实验室</button>
-          <button :class="['music-fx-toggle', visualFx.skullPresetEnabled ? 'on' : '']" @click="visualFx.skullPresetEnabled = !visualFx.skullPresetEnabled">Skull 预设</button>
-          <button :class="['music-fx-toggle', visualFx.performanceManagerEnabled ? 'on' : '']" @click="visualFx.performanceManagerEnabled = !visualFx.performanceManagerEnabled">性能管理</button>
-          <button :class="['music-fx-toggle', visualFx.liveBackgroundKeep ? 'on' : '']" @click="visualFx.liveBackgroundKeep = !visualFx.liveBackgroundKeep">直播后台保持</button>
-          <button :class="['music-fx-toggle', visualFx.gestureControlEnabled ? 'on' : '']" @click="toggleGestureControl">手势 HUD</button>
-          <button :class="['music-fx-toggle', visualFx.splashEnabled ? 'on' : '']" @click="visualFx.splashEnabled = !visualFx.splashEnabled">启动动画</button>
-          <button :class="['music-fx-toggle', visualFx.wallpaperModeEnabled ? 'on' : '']" @click="visualFx.wallpaperModeEnabled = !visualFx.wallpaperModeEnabled">壁纸模式</button>
+          <button :class="['music-fx-toggle', visualFx.floatLayerEnabled ? 'on' : '']" @click="visualFx.floatLayerEnabled = !visualFx.floatLayerEnabled">{{ t('music.floatParticles') }}</button>
+          <button :class="['music-fx-toggle', visualFx.cinemaEnabled ? 'on' : '']" @click="visualFx.cinemaEnabled = !visualFx.cinemaEnabled">{{ t('music.cinemaLens') }}</button>
+          <button :class="['music-fx-toggle', visualFx.bloomEnabled ? 'on' : '']" @click="visualFx.bloomEnabled = !visualFx.bloomEnabled">{{ t('music.particleBloom') }}</button>
+          <button :class="['music-fx-toggle', visualFx.lyricGlowEnabled ? 'on' : '']" @click="visualFx.lyricGlowEnabled = !visualFx.lyricGlowEnabled">{{ t('music.lyricGlow') }}</button>
+          <button :class="['music-fx-toggle', visualFx.beatGlowEnabled ? 'on' : '']" @click="visualFx.beatGlowEnabled = !visualFx.beatGlowEnabled">{{ t('music.beatGlow') }}</button>
+          <button :class="['music-fx-toggle', visualFx.lyricGlowParticlesEnabled ? 'on' : '']" @click="visualFx.lyricGlowParticlesEnabled = !visualFx.lyricGlowParticlesEnabled">{{ t('music.lyricGlowParticles') }}</button>
+          <button :class="['music-fx-toggle', visualFx.lyricCameraLockEnabled ? 'on' : '']" @click="visualFx.lyricCameraLockEnabled = !visualFx.lyricCameraLockEnabled">{{ t('music.lyricCameraLock') }}</button>
+          <button :class="['music-fx-toggle', visualFx.edgeHighlightEnabled ? 'on' : '']" @click="visualFx.edgeHighlightEnabled = !visualFx.edgeHighlightEnabled">{{ t('music.edgeHighlight') }}</button>
+          <button :class="['music-fx-toggle', visualFx.backCoverEnabled ? 'on' : '']" @click="visualFx.backCoverEnabled = !visualFx.backCoverEnabled">{{ t('music.backCover') }}</button>
+          <button :class="['music-fx-toggle', visualFx.colorLabEnabled ? 'on' : '']" @click="visualFx.colorLabEnabled = !visualFx.colorLabEnabled">{{ t('music.colorLab') }}</button>
+          <button :class="['music-fx-toggle', visualFx.skullPresetEnabled ? 'on' : '']" @click="visualFx.skullPresetEnabled = !visualFx.skullPresetEnabled">{{ t('music.skullPreset') }}</button>
+          <button :class="['music-fx-toggle', visualFx.performanceManagerEnabled ? 'on' : '']" @click="visualFx.performanceManagerEnabled = !visualFx.performanceManagerEnabled">{{ t('music.performanceManager') }}</button>
+          <button :class="['music-fx-toggle', visualFx.liveBackgroundKeep ? 'on' : '']" @click="visualFx.liveBackgroundKeep = !visualFx.liveBackgroundKeep">{{ t('music.liveBackgroundKeep') }}</button>
+          <button :class="['music-fx-toggle', visualFx.gestureControlEnabled ? 'on' : '']" @click="toggleGestureControl">{{ t('music.gestureHud') }}</button>
+          <button :class="['music-fx-toggle', visualFx.splashEnabled ? 'on' : '']" @click="visualFx.splashEnabled = !visualFx.splashEnabled">{{ t('music.splash') }}</button>
+          <button :class="['music-fx-toggle', visualFx.wallpaperModeEnabled ? 'on' : '']" @click="visualFx.wallpaperModeEnabled = !visualFx.wallpaperModeEnabled">{{ t('music.wallpaperMode') }}</button>
         </div>
       <label class="music-fx-slider">
-        <span>玻璃色差 <b>{{ visualFx.glassChromaticOffset.toFixed(2) }}</b></span>
+        <span>{{ t('music.glassChromatic') }} <b>{{ visualFx.glassChromaticOffset.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.glassChromaticOffset" max="2" min="0" step="0.01" type="range" />
       </label>
-      <div class="music-fx-section">性能档位</div>
+      <div class="music-fx-section">{{ t('music.performance') }}</div>
       <div class="music-fx-seg">
-        <button :class="{ on: visualFx.renderQuality === 'auto' }" @click="visualFx.renderQuality = 'auto'">自动</button>
-        <button :class="{ on: visualFx.renderQuality === 'keep' }" @click="visualFx.renderQuality = 'keep'">保持</button>
-        <button :class="{ on: visualFx.renderQuality === 'release' }" @click="visualFx.renderQuality = 'release'">释放</button>
+        <button :class="{ on: visualFx.renderQuality === 'auto' }" @click="visualFx.renderQuality = 'auto'">{{ t('music.auto') }}</button>
+        <button :class="{ on: visualFx.renderQuality === 'keep' }" @click="visualFx.renderQuality = 'keep'">{{ t('music.keep') }}</button>
+        <button :class="{ on: visualFx.renderQuality === 'release' }" @click="visualFx.renderQuality = 'release'">{{ t('music.release') }}</button>
       </div>
-      <div class="music-fx-subnote">{{ visualFx.liveBackgroundKeep ? '直播后台保持已开启，后台不会自动切到释放档。' : '后台时按性能档位自动降载。' }}</div>
-      <div class="music-fx-section">歌词外观</div>
-      <div class="music-fx-subsection">歌词来源</div>
+      <div class="music-fx-subnote">{{ visualFx.liveBackgroundKeep ? t('music.liveBackgroundKeepOn') : t('music.backgroundAutoRelease') }}</div>
+      <div class="music-fx-section">{{ t('music.lyricAppearance') }}</div>
+      <div class="music-fx-subsection">{{ t('music.lyricSource') }}</div>
       <div class="music-fx-seg">
-        <button :class="{ on: visualFx.lyricSourceMode === 'original' }" @click="visualFx.lyricSourceMode = 'original'">原词</button>
-        <button :class="{ on: visualFx.lyricSourceMode === 'custom' }" @click="visualFx.lyricSourceMode = 'custom'; showCustomLyric = true">自定义</button>
+        <button :class="{ on: visualFx.lyricSourceMode === 'original' }" @click="visualFx.lyricSourceMode = 'original'">{{ t('music.originalLyric') }}</button>
+        <button :class="{ on: visualFx.lyricSourceMode === 'custom' }" @click="visualFx.lyricSourceMode = 'custom'; showCustomLyric = true">{{ t('music.custom') }}</button>
       </div>
-      <div class="music-fx-subsection">歌词同步</div>
+      <div class="music-fx-subsection">{{ t('music.lyricSync') }}</div>
       <div class="music-fx-stepper">
-        <button type="button" title="歌词慢 0.1 秒" @click="adjustLyricTimeOffset(-0.1)">-</button>
-        <span>歌词校准 <b>{{ lyricTimeOffsetSec.toFixed(1) }}s</b></span>
-        <button type="button" title="歌词快 0.1 秒" @click="adjustLyricTimeOffset(0.1)">+</button>
-        <button type="button" title="重置歌词校准" @click="resetLyricTimeOffset">重置</button>
+        <button type="button" :title="t('music.lyricSlower')" @click="adjustLyricTimeOffset(-0.1)">-</button>
+        <span>{{ t('music.lyricCalibration') }} <b>{{ lyricTimeOffsetSec.toFixed(1) }}s</b></span>
+        <button type="button" :title="t('music.lyricFaster')" @click="adjustLyricTimeOffset(0.1)">+</button>
+        <button type="button" :title="t('music.resetLyricSync')" @click="resetLyricTimeOffset">{{ t('sound.reset') }}</button>
       </div>
       <div class="music-fx-color-row">
         <label>
-          <span>普通</span>
+          <span>{{ t('music.normal') }}</span>
           <input v-model="visualFx.lyricPrimaryColor" type="color" />
         </label>
         <label>
-          <span>高亮</span>
+          <span>{{ t('music.highlight') }}</span>
           <input v-model="visualFx.lyricActiveColor" type="color" />
         </label>
         <label>
-          <span>溢光</span>
+          <span>{{ t('music.glow') }}</span>
           <input v-model="visualFx.lyricGlowColor" type="color" />
         </label>
       </div>
       <label class="music-fx-slider">
-        <span>歌词大小 <b>{{ visualFx.lyricSize.toFixed(2) }}</b></span>
+        <span>{{ t('music.lyricSize') }} <b>{{ visualFx.lyricSize.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.lyricSize" max="1.65" min="0.35" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>行距 <b>{{ visualFx.lyricLineHeight.toFixed(2) }}</b></span>
+        <span>{{ t('music.lineHeight') }} <b>{{ visualFx.lyricLineHeight.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.lyricLineHeight" max="1.35" min="0.86" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>字间距 <b>{{ visualFx.lyricLetterSpacing.toFixed(3) }}</b></span>
+        <span>{{ t('music.letterSpacing') }} <b>{{ visualFx.lyricLetterSpacing.toFixed(3) }}</b></span>
         <input v-model.number="visualFx.lyricLetterSpacing" max="0.18" min="-0.04" step="0.005" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>字重 <b>{{ visualFx.lyricWeight.toFixed(0) }}</b></span>
+        <span>{{ t('music.fontWeight') }} <b>{{ visualFx.lyricWeight.toFixed(0) }}</b></span>
         <input v-model.number="visualFx.lyricWeight" max="900" min="500" step="50" type="range" />
       </label>
-      <div class="music-fx-subsection">歌词字体</div>
+      <div class="music-fx-subsection">{{ t('music.lyricFont') }}</div>
       <div class="music-fx-seg">
-        <button :class="{ on: visualFx.lyricFontFamily === 'system' }" @click="visualFx.lyricFontFamily = 'system'">系统</button>
-        <button :class="{ on: visualFx.lyricFontFamily === 'serif' }" @click="visualFx.lyricFontFamily = 'serif'">衬线</button>
-        <button :class="{ on: visualFx.lyricFontFamily === 'gothic' }" @click="visualFx.lyricFontFamily = 'gothic'">黑体</button>
-        <button :class="{ on: visualFx.lyricFontFamily === 'mono' }" @click="visualFx.lyricFontFamily = 'mono'">等宽</button>
+        <button :class="{ on: visualFx.lyricFontFamily === 'system' }" @click="visualFx.lyricFontFamily = 'system'">{{ t('music.system') }}</button>
+        <button :class="{ on: visualFx.lyricFontFamily === 'serif' }" @click="visualFx.lyricFontFamily = 'serif'">{{ t('music.serif') }}</button>
+        <button :class="{ on: visualFx.lyricFontFamily === 'gothic' }" @click="visualFx.lyricFontFamily = 'gothic'">{{ t('music.gothic') }}</button>
+        <button :class="{ on: visualFx.lyricFontFamily === 'mono' }" @click="visualFx.lyricFontFamily = 'mono'">{{ t('music.mono') }}</button>
       </div>
       <label class="music-fx-slider">
-        <span>歌词水平 <b>{{ visualFx.lyricOffsetX.toFixed(2) }}</b></span>
+        <span>{{ t('music.lyricHorizontal') }} <b>{{ visualFx.lyricOffsetX.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.lyricOffsetX" max="2" min="-2" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>歌词垂直 <b>{{ visualFx.lyricOffsetY.toFixed(2) }}</b></span>
+        <span>{{ t('music.lyricVertical') }} <b>{{ visualFx.lyricOffsetY.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.lyricOffsetY" max="1.35" min="-1.2" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>歌词前后 <b>{{ visualFx.lyricOffsetZ.toFixed(2) }}</b></span>
+        <span>{{ t('music.lyricDepth') }} <b>{{ visualFx.lyricOffsetZ.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.lyricOffsetZ" max="1.6" min="-1.6" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>上下角度 <b>{{ visualFx.lyricRotateX.toFixed(0) }}°</b></span>
+        <span>{{ t('music.angleVertical') }} <b>{{ visualFx.lyricRotateX.toFixed(0) }}°</b></span>
         <input v-model.number="visualFx.lyricRotateX" max="42" min="-42" step="1" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>左右角度 <b>{{ visualFx.lyricRotateY.toFixed(0) }}°</b></span>
+        <span>{{ t('music.angleHorizontal') }} <b>{{ visualFx.lyricRotateY.toFixed(0) }}°</b></span>
         <input v-model.number="visualFx.lyricRotateY" max="42" min="-42" step="1" type="range" />
       </label>
       <div v-if="visualFx.colorLabEnabled" class="music-fx-color-lab">
-        <button v-for="preset in COLOR_LAB_PRESETS" :key="preset.color" :style="{ '--lab-color': preset.color }" type="button" @click="applyCoverPalette(preset.color)">{{ preset.label }}</button>
-        <button type="button" @click="sampleCoverPalette">封面取色</button>
+        <button v-for="preset in COLOR_LAB_PRESETS" :key="preset.color" :style="{ '--lab-color': preset.color }" type="button" @click="applyCoverPalette(preset.color)">{{ preset.label() }}</button>
+        <button type="button" @click="sampleCoverPalette">{{ t('music.pickCoverColor') }}</button>
       </div>
-      <div class="music-fx-section">3D 歌单架</div>
+      <div class="music-fx-section">{{ t('music.shelf3d') }}</div>
       <div class="music-fx-seg">
-        <button :class="{ on: visualFx.shelfMode === 'off' }" @click="visualFx.shelfMode = 'off'">关闭</button>
-        <button :class="{ on: visualFx.shelfMode === 'side' }" @click="visualFx.shelfMode = 'side'">侧栏</button>
-        <button :class="{ on: visualFx.shelfMode === 'stage' }" @click="visualFx.shelfMode = 'stage'">舞台</button>
-      </div>
-      <div class="music-fx-seg">
-        <button :class="{ on: visualFx.shelfCameraMode === 'static' }" @click="setShelfCameraMode('static')">静态镜头</button>
-        <button :class="{ on: visualFx.shelfCameraMode === 'dynamic' }" @click="setShelfCameraMode('dynamic')">动态镜头</button>
+        <button :class="{ on: visualFx.shelfMode === 'off' }" @click="visualFx.shelfMode = 'off'">{{ t('music.off') }}</button>
+        <button :class="{ on: visualFx.shelfMode === 'side' }" @click="visualFx.shelfMode = 'side'">{{ t('music.sidebar') }}</button>
+        <button :class="{ on: visualFx.shelfMode === 'stage' }" @click="visualFx.shelfMode = 'stage'">{{ t('music.stage') }}</button>
       </div>
       <div class="music-fx-seg">
-        <button :class="{ on: visualFx.shelfPresence === 'auto' }" @click="visualFx.shelfPresence = 'auto'">自动隐藏</button>
-        <button :class="{ on: visualFx.shelfPresence === 'always' }" @click="visualFx.shelfPresence = 'always'">常驻</button>
+        <button :class="{ on: visualFx.shelfCameraMode === 'static' }" @click="setShelfCameraMode('static')">{{ t('music.staticCamera') }}</button>
+        <button :class="{ on: visualFx.shelfCameraMode === 'dynamic' }" @click="setShelfCameraMode('dynamic')">{{ t('music.dynamicCamera') }}</button>
+      </div>
+      <div class="music-fx-seg">
+        <button :class="{ on: visualFx.shelfPresence === 'auto' }" @click="visualFx.shelfPresence = 'auto'">{{ t('music.autoHide') }}</button>
+        <button :class="{ on: visualFx.shelfPresence === 'always' }" @click="visualFx.shelfPresence = 'always'">{{ t('music.alwaysOn') }}</button>
       </div>
       <div class="music-fx-toggle-grid">
-        <button :class="['music-fx-toggle', visualFx.shelfShowFavorites ? 'on' : '']" @click="visualFx.shelfShowFavorites = !visualFx.shelfShowFavorites">显示收藏</button>
-        <button :class="['music-fx-toggle', visualFx.shelfShowRecents ? 'on' : '']" @click="visualFx.shelfShowRecents = !visualFx.shelfShowRecents">显示最近</button>
-        <button :class="['music-fx-toggle', visualFx.shelfShowPodcasts ? 'on' : '']" @click="visualFx.shelfShowPodcasts = !visualFx.shelfShowPodcasts">显示播客</button>
-        <button :class="['music-fx-toggle', visualFx.shelfMergeCollections ? 'on' : '']" @click="visualFx.shelfMergeCollections = !visualFx.shelfMergeCollections">更多集合 / 合并滚动</button>
+        <button :class="['music-fx-toggle', visualFx.shelfShowFavorites ? 'on' : '']" @click="visualFx.shelfShowFavorites = !visualFx.shelfShowFavorites">{{ t('music.showFavorites') }}</button>
+        <button :class="['music-fx-toggle', visualFx.shelfShowRecents ? 'on' : '']" @click="visualFx.shelfShowRecents = !visualFx.shelfShowRecents">{{ t('music.showRecents') }}</button>
+        <button :class="['music-fx-toggle', visualFx.shelfShowPodcasts ? 'on' : '']" @click="visualFx.shelfShowPodcasts = !visualFx.shelfShowPodcasts">{{ t('music.showPodcasts') }}</button>
+        <button :class="['music-fx-toggle', visualFx.shelfMergeCollections ? 'on' : '']" @click="visualFx.shelfMergeCollections = !visualFx.shelfMergeCollections">{{ t('music.mergeCollections') }}</button>
       </div>
-      <div class="music-fx-subnote">滚轮切换歌单架卡片；开启更多集合后会加入专辑/艺人集合来源。</div>
+      <div class="music-fx-subnote">{{ t('music.shelfNote') }}</div>
       <div class="music-fx-color-row">
         <label>
-          <span>歌单架</span>
+          <span>{{ t('music.shelf') }}</span>
           <input v-model="visualFx.shelfAccentColor" type="color" />
         </label>
-        <button class="music-fx-color-pick" type="button" @click="sampleCoverPalette">封面取色</button>
+        <button class="music-fx-color-pick" type="button" @click="sampleCoverPalette">{{ t('music.pickCoverColor') }}</button>
       </div>
       <div v-if="coverPalette" class="music-fx-swatches">
         <button v-for="color in coverPalette.swatches" :key="color" :style="{ '--swatch': color }" type="button" :title="color" @click="applyCoverPalette(color)"></button>
       </div>
       <label class="music-fx-slider">
-        <span>歌单架大小 <b>{{ visualFx.shelfSize.toFixed(2) }}</b></span>
+        <span>{{ t('music.shelfSize') }} <b>{{ visualFx.shelfSize.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.shelfSize" max="1.45" min="0.65" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>左右位置 <b>{{ visualFx.shelfOffsetX.toFixed(2) }}</b></span>
+        <span>{{ t('music.positionX') }} <b>{{ visualFx.shelfOffsetX.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.shelfOffsetX" max="1.2" min="-1.2" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>上下位置 <b>{{ visualFx.shelfOffsetY.toFixed(2) }}</b></span>
+        <span>{{ t('music.positionY') }} <b>{{ visualFx.shelfOffsetY.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.shelfOffsetY" max="0.9" min="-0.9" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>前后景深 <b>{{ visualFx.shelfOffsetZ.toFixed(2) }}</b></span>
+        <span>{{ t('music.depthZ') }} <b>{{ visualFx.shelfOffsetZ.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.shelfOffsetZ" max="0.9" min="-0.9" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>侧向角度 <b>{{ visualFx.shelfAngleY.toFixed(0) }}°</b></span>
+        <span>{{ t('music.sideAngle') }} <b>{{ visualFx.shelfAngleY.toFixed(0) }}°</b></span>
         <input v-model.number="visualFx.shelfAngleY" max="30" min="-30" step="1" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>歌单架透明度 <b>{{ visualFx.shelfOpacity.toFixed(2) }}</b></span>
+        <span>{{ t('music.shelfOpacity') }} <b>{{ visualFx.shelfOpacity.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.shelfOpacity" max="1" min="0.25" step="0.01" type="range" />
       </label>
       <label class="music-fx-slider">
-        <span>背景透明度 <b>{{ visualFx.shelfBgOpacity.toFixed(2) }}</b></span>
+        <span>{{ t('music.backgroundOpacityFull') }} <b>{{ visualFx.shelfBgOpacity.toFixed(2) }}</b></span>
         <input v-model.number="visualFx.shelfBgOpacity" max="0.98" min="0.25" step="0.01" type="range" />
       </label>
       </div>
@@ -1827,15 +1828,15 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
           <div class="visual-guide-item active">
             <b>{{ String(visualGuideIndex + 1).padStart(2, '0') }}</b>
             <div>
-              <strong>{{ visualGuideCurrent.title }}</strong>
-              <small>{{ visualGuideCurrent.text }}</small>
+              <strong>{{ visualGuideCurrent.title() }}</strong>
+              <small>{{ visualGuideCurrent.text() }}</small>
             </div>
           </div>
         </div>
         <div class="visual-guide-actions">
-          <button type="button" :disabled="visualGuideIndex <= 0" @click="visualGuideIndex = Math.max(0, visualGuideIndex - 1)">上一项</button>
+          <button type="button" :disabled="visualGuideIndex <= 0" @click="visualGuideIndex = Math.max(0, visualGuideIndex - 1)">{{ t('music.previousItem') }}</button>
           <button type="button" @click="visualGuideIndex >= visualGuideItems.length - 1 ? showVisualGuide = false : visualGuideIndex += 1">
-            {{ visualGuideIndex >= visualGuideItems.length - 1 ? '完成' : '下一项' }}
+            {{ visualGuideIndex >= visualGuideItems.length - 1 ? t('music.done') : t('music.nextItem') }}
           </button>
         </div>
       </div>
@@ -1845,19 +1846,19 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       <div class="hotkey-modal">
         <div class="hotkey-modal-head">
           <span>HOTKEYS</span>
-          <button type="button" title="恢复默认" @click="resetHotkeys">↺</button>
+          <button type="button" :title="t('music.resetDefault')" @click="resetHotkeys">↺</button>
           <button type="button" @click="showHotkeyModal = false">×</button>
         </div>
         <div class="hotkey-toolbar">
           <button :class="['music-fx-toggle', globalHotkeysEnabled ? 'on' : '']" type="button" @click="globalHotkeysEnabled = !globalHotkeysEnabled; configureGlobalHotkeys()">
-            {{ globalHotkeysEnabled ? '全局热键已开' : '启用全局热键' }}
+            {{ globalHotkeysEnabled ? t('music.globalHotkeysOn') : t('music.enableGlobalHotkeys') }}
           </button>
-          <span>{{ globalHotkeyStatus || '窗口热键始终生效，全局热键使用 Electron 注册。' }}</span>
+          <span>{{ globalHotkeyStatus || t('music.hotkeyDefaultInfo') }}</span>
         </div>
         <div class="hotkey-list">
           <div v-for="item in hotkeyItems" :key="item.id" :class="['hotkey-row', hasHotkeyConflict(hotkeyItems, item) ? 'conflict' : '']">
             <button class="hotkey-capture" type="button" @keydown.stop="captureHotkey($event, item)" @click="hotkeyCaptureId = item.id">
-              {{ hotkeyCaptureId === item.id ? '按下快捷键' : item.value }}
+              {{ hotkeyCaptureId === item.id ? t('music.pressHotkey') : item.value }}
             </button>
             <span>{{ item.label }}</span>
           </div>
@@ -1875,15 +1876,15 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
           <button type="button" @click="showCollectModal = false">×</button>
         </div>
         <div class="collect-new-row">
-          <input v-model="collectNewPlaylistName" placeholder="新建歌单名称" @keydown.enter="collectCurrentToNewPlaylist" />
-          <button type="button" @click="collectCurrentToNewPlaylist">新建并收藏</button>
+          <input v-model="collectNewPlaylistName" :placeholder="t('music.playlistNamePlaceholder')" @keydown.enter="collectCurrentToNewPlaylist" />
+          <button type="button" @click="collectCurrentToNewPlaylist">{{ t('music.createAndCollect') }}</button>
         </div>
         <div class="collect-list">
           <button v-for="list in localPlaylists" :key="list.id" type="button" @click="collectCurrentToPlaylist(list); showCollectModal = false">
             <span>{{ list.name }}</span>
-            <small>{{ list.tracks.length }} 首</small>
+            <small>{{ list.tracks.length }} {{ t('music.songsUnit') }}</small>
           </button>
-          <div v-if="!localPlaylists.length" class="collect-empty">暂无本地歌单，可先新建一个。</div>
+          <div v-if="!localPlaylists.length" class="collect-empty">{{ t('music.noPlaylists') }}</div>
         </div>
       </div>
     </div>
@@ -1895,20 +1896,20 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
           <button type="button" @click="showBeatModal = false">×</button>
         </div>
         <div class="beat-modal-copy">
-          只分析当前正在播放的网盘或本地音频，用于驱动粒子脉冲、电影镜头和鼓点辉光，不会接入网易云或 QQ 音源。首次分析需要完整读取和解码音频，FLAC 可能需要 1-2 分钟，完成后会使用本地缓存。
+          {{ t('music.beatIntro') }}
         </div>
         <div class="beat-modal-grid">
           <button type="button" :disabled="beatAnalyzing || !curTrack" @click="showBeatModal = false; analyzeCurrentBeat('mr')">
             <b>BP Beat</b>
-            <span>适合常规歌曲，快速检测 BPM 和峰值节拍。</span>
+            <span>{{ t('music.bpBeatDesc') }}</span>
           </button>
           <button type="button" :disabled="beatAnalyzing || !curTrack" @click="showBeatModal = false; analyzeCurrentBeat('dj')">
             <b>DJ Beat</b>
-            <span>适合长混音和强节奏曲目，峰值更密集。</span>
+            <span>{{ t('music.djBeatDesc') }}</span>
           </button>
         </div>
         <div v-if="beatInfo" class="beat-modal-status">
-          最近结果：{{ beatInfo.mode === 'dj' ? 'DJ Beat' : 'BP Beat' }} · {{ beatInfo.bpm }} BPM · {{ beatInfo.peaks }} peaks
+          {{ t('music.recentResult') }}：{{ beatInfo.mode === 'dj' ? 'DJ Beat' : 'BP Beat' }} · {{ beatInfo.bpm }} BPM · {{ beatInfo.peaks }} peaks
         </div>
       </div>
     </div>
@@ -1917,8 +1918,8 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       <div class="music-detail-modal">
         <div class="music-detail-head">
           <div>
-            <div class="music-detail-title">{{ title || '未命名歌曲' }}</div>
-            <div class="music-detail-sub">{{ artist || '未知艺人' }}<span v-if="album"> · {{ album }}</span></div>
+            <div class="music-detail-title">{{ title || t('music.untitled') }}</div>
+            <div class="music-detail-sub">{{ artist || t('music.unknownArtist') }}<span v-if="album"> · {{ album }}</span></div>
           </div>
           <button class="music-detail-close" @click="showTrackDetail = false">×</button>
         </div>
@@ -1926,12 +1927,12 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
           <img v-if="coverUrl" :src="coverUrl" alt="" />
           <div v-else class="music-detail-cover-empty">♪</div>
           <div class="music-detail-grid">
-            <span>文件</span><b>{{ curTrack?.file_name || '' }}</b>
-            <span>格式</span><b>{{ ext || '未知' }}</b>
-            <span>时长</span><b>{{ fmtTime(dur) }}</b>
-            <span>来源</span><b>{{ curTrack ? `${curTrack.user_id} · ${curTrack.drive_id}` : '' }}</b>
-            <span>歌词</span><b>{{ lyricDebugText || (hasLyrics ? `已解析 ${lyricLines.length} 行` : '暂无歌词') }}</b>
-            <span>元数据</span><b>{{ (meta?.metadataSources || ['filename']).join(', ') }}</b>
+            <span>{{ t('music.file') }}</span><b>{{ curTrack?.file_name || '' }}</b>
+            <span>{{ t('music.format') }}</span><b>{{ ext || t('music.unknown') }}</b>
+            <span>{{ t('music.duration') }}</span><b>{{ fmtTime(dur) }}</b>
+            <span>{{ t('music.source') }}</span><b>{{ curTrack ? `${curTrack.user_id} · ${curTrack.drive_id}` : '' }}</b>
+            <span>{{ t('music.lyrics') }}</span><b>{{ lyricDebugText || (hasLyrics ? `${lyricLines.length}` : t('music.noLyrics')) }}</b>
+            <span>{{ t('music.metadata') }}</span><b>{{ (meta?.metadataSources || ['filename']).join(', ') }}</b>
           </div>
         </div>
       </div>

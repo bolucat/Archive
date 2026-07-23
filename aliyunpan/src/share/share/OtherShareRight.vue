@@ -31,6 +31,7 @@ import { xorWith } from 'lodash'
 import { Modal } from '@arco-design/web-vue'
 import AliShare from '../../aliapi/share'
 import PanDAL from '../../pan/pandal'
+import { t } from '../../i18n'
 
 const daoruModel = ref(false)
 const daoruModelLoading = ref(false)
@@ -200,7 +201,7 @@ const handleOpenLink = (share: any) => {
     share = othershareStore.GetSelectedFirst()
   }
   if (!share.share_id) {
-    message.error('没有选中分享链接！')
+    message.error(t('share.selectShareFirst'))
   } else {
     modalShowShareLink(share.share_id, share.share_pwd, '', true, [])
   }
@@ -213,10 +214,10 @@ const handleCopySelectedLink = () => {
     link += GetShareUrlFormate(item.share_name, shareUrl(item), item.share_pwd) + '\n'
   }
   if (list.length == 0) {
-    message.error('没有选中分享链接！')
+    message.error(t('share.selectShareFirst'))
   } else {
     copyToClipboard(link)
-    message.success('分享链接已复制到剪切板(' + list.length.toString() + ')')
+    message.success(`${t('share.linkCopied')}(${list.length.toString()})`)
   }
 }
 const handleBrowserLink = () => {
@@ -225,12 +226,12 @@ const handleBrowserLink = () => {
   if (first.share_id) openExternal(shareUrl(first))
   if (first.share_pwd) {
     copyToClipboard(first.share_pwd)
-    message.success('提取码已复制到剪切板')
+    message.success(t('share.codeCopied'))
   }
 }
 
 const handleDeleteSelectedLink = (delby: any) => {
-  const name = delby == 'selected' ? '删除选中的链接' : delby == 'expired' ? '清理全部过期已失效' : ''
+  const name = delby == 'selected' ? t('share.deleteSelectedLinks') : delby == 'expired' ? t('share.cleanupExpired') : ''
   let list: IOtherShareLinkModel[] = []
   if (delby == 'selected') {
     list = othershareStore.GetSelected()
@@ -246,29 +247,29 @@ const handleDeleteSelectedLink = (delby: any) => {
     }
   }
   if (list.length == 0) {
-    message.error('没有需要删除的分享链接！')
+    message.error(t('share.noDeleteNeeded'))
     return
   }
   if (delby == 'selected') {
     Modal.open({
       title: name,
-      okText: '继续',
+      okText: t('share.continue'),
       bodyStyle: { minWidth: '340px' },
       content: () => h('div', {
         style: 'color: red',
-        innerText: '该操作不可逆，是否继续？'
+        innerText: t('share.irreversible')
       }),
       onOk: async () => {
         const selectKeys = ArrayKeyList<string>('share_id', list)
         ShareDAL.DeleteOtherShare(selectKeys).then(() => {
-          message.success('成功删除' + selectKeys.length + '条')
+          message.success(`${t('share.deletedCount')}${selectKeys.length}${t('share.items')}`)
         })
       }
     })
   } else {
     const selectKeys = ArrayKeyList<string>('share_id', list)
     ShareDAL.DeleteOtherShare(selectKeys).then(() => {
-      message.success('成功删除' + selectKeys.length + '条')
+      message.success(`${t('share.deletedCount')}${selectKeys.length}${t('share.items')}`)
     })
   }
 }
@@ -286,7 +287,7 @@ const handleDaoRuLink = () => {
 const handleSaveDaoRuLink = () => {
   const text = daoruModelText.value
   if (!text) {
-    message.error('请先粘贴要导入的分享链接！')
+    message.error(t('share.pasteImportFirst'))
     return
   }
   daoruModelLoading.value = true
@@ -305,7 +306,7 @@ const handleRefreshStats = () => {
 const handleBatchSaveSelected = () => {
   const list = othershareStore.GetSelected()
   if (!list.length) {
-    message.error('没有选中分享链接！')
+    message.error(t('share.selectShareFirst'))
     return
   }
   modalSelectPanDir('share', '', async function(user_id: string, drive_id: string, selectFile: any) {
@@ -315,7 +316,7 @@ const handleBatchSaveSelected = () => {
     for (const share of list) {
       const shareToken = await AliShare.ApiGetShareToken(share.share_id, share.share_pwd)
       if (!shareToken || shareToken.startsWith('，')) {
-        errors.push(`${share.share_name}: ${shareToken || '获取 token 失败'}`)
+        errors.push(`${share.share_name}: ${shareToken || t('share.getTokenFailed')}`)
         continue
       }
       const files = await AliShare.ApiShareFileList(share.share_id, shareToken, 'root')
@@ -329,10 +330,10 @@ const handleBatchSaveSelected = () => {
       else errors.push(`${share.share_name}: ${save}`)
     }
     if (success) {
-      message.success(`批量转存完成 ${success}/${list.length}，请稍后手动刷新保存到的文件夹`)
+      message.success(`${t('share.batchSaveDone')} ${success}/${list.length}, ${t('share.refreshTargetFolderLater')}`)
       await PanDAL.aReLoadOneDirToRefreshTree(user_id, selectFile.drive_id, selectFile.file_id)
     }
-    if (errors.length) message.error(`批量转存失败 ${errors.length} 条：${errors.slice(0, 3).join('；')}`)
+    if (errors.length) message.error(`${t('share.batchSaveFailed')} ${errors.length}${t('share.items')}: ${errors.slice(0, 3).join('; ')}`)
   })
 }
 
@@ -356,8 +357,8 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div class='toppanbtns' style='height: 26px'>
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
       <div class="toppannav">
-        <div class="toppannavitem" title="我的导入">
-          <span> 我的导入 </span>
+        <div class="toppannavitem" :title="t('share.importedTitle')">
+          <span> {{ t('share.importedTitle') }} </span>
         </div>
       </div>
     </div>
@@ -371,45 +372,45 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
         <template #icon>
           <IconFont name="iconreload-1-icon" />
         </template>
-        刷新
+        {{ t('user.refresh') }}
       </a-button>
     </div>
     <div class="toppanbtn">
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+N" @click="handleDaoRuLink">
-        <IconFont name="iconlink2" />导入
+        <IconFont name="iconlink2" />{{ t('file.importShare') }}
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+U" @click="handleRefreshStats">
-        <IconFont name="iconyibu" />更新
+        <IconFont name="iconyibu" />{{ t('share.refreshStats') }}
       </a-button>
       <a-button v-if="!othershareStore.IsListSelected"
                 class="danger" type="text" size="small" tabindex="-1"
                 @click="handleDeleteSelectedLink">
-        <IconFont name="iconrest" />删除过期
+        <IconFont name="iconrest" />{{ t('share.deleteExpired') }}
       </a-button>
     </div>
     <div v-show="othershareStore.IsListSelected" class="toppanbtn">
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink">
-        <IconFont name="iconchakan" />查看
+        <IconFont name="iconchakan" />{{ t('share.view') }}
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink">
-        <IconFont name="iconcopy" />复制链接
+        <IconFont name="iconcopy" />{{ t('share.copyLink') }}
       </a-button>
       <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink">
-        <IconFont name="iconchrome" />浏览器
+        <IconFont name="iconchrome" />{{ t('share.browser') }}
       </a-button>
       <a-button type="text" size="small" tabindex="-1" @click="handleBatchSaveSelected">
-        <IconFont name="iconxuanzhuan" />批量转存
+        <IconFont name="iconxuanzhuan" />{{ t('share.batchSave') }}
       </a-button>
       <a-button type="text" size="small" tabindex="-1" class="danger" title="Ctrl+Delete"
                 @click="handleDeleteSelectedLink('selected')">
-        <IconFont name="icondelete" />删除
+        <IconFont name="icondelete" />{{ t('file.delete') }}
       </a-button>
     </div>
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
       <a-input-search ref="inputsearch" tabindex="-1" size="small"
                       title="Ctrl+F / F3 / Space"
-                      placeholder="快速筛选"
+                      :placeholder="t('share.quickFilter')"
                       allow-clear
                       v-model="othershareStore.ListSearchKey"
                       @clear='(e:any)=>handleSearchInput("")'
@@ -422,7 +423,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div style="height: 9px"></div>
   <div class="toppanarea">
     <div style="margin: 0 3px">
-      <AntdTooltip title="点击全选" placement="left">
+      <AntdTooltip :title="t('share.selectAll')" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
           <IconFont :name="othershareStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -433,15 +434,15 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <AntdTooltip placement='rightTop' v-if="othershareStore.ListDataShow.length > 0">
         <a-button shape='square' type='text' tabindex='-1' class='qujian'
                   :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-          {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+          {{ rangIsSelecting ? t('share.cancelSelect') : t('share.rangeSelect') }}
         </a-button>
         <template #title>
           <div>
-            第1步: 点击 区间选择 这个按钮
+            {{ t('share.rangeStep1') }}
             <br />
-            第2步: 鼠标点击一个文件
+            {{ t('share.rangeStep2') }}
             <br />
-            第3步: 移动鼠标点击另外一个文件
+            {{ t('share.rangeStep3') }}
           </div>
         </template>
       </AntdTooltip>
@@ -451,25 +452,25 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                 tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectReverse'>
-        反向选择
+        {{ t('share.reverseSelect') }}
       </a-button>
       <a-button shape='square' v-if='!rangIsSelecting && othershareStore.ListSelected.size > 0' type='text'
                 tabindex='-1' class='qujian'
                 status='normal' @click='onSelectCancel'>
-        取消已选
+        {{ t('share.cancelSelectedItems') }}
       </a-button>
     </div>
 
     <div style="flex-grow: 1"></div>
-    <div class="cell tiquma">提取码</div>
+    <div class="cell tiquma">{{ t('share.extractCode') }}</div>
     <div :class="'cell sharestate order ' + (othershareStore.ListOrderKey == 'state' ? 'active' : '')"
          @click="handleOrder('state')">
-      状态
+      {{ t('share.status') }}
       <IconFont name="iconxia" />
     </div>
     <div :class="'cell sharetime order ' + (othershareStore.ListOrderKey == 'time' ? 'active' : '')"
          @click="handleOrder('time')">
-      导入时间
+      {{ t('share.importedAt') }}
       <IconFont name="iconxia" />
     </div>
     <div class="cell pr"></div>
@@ -492,7 +493,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       tabindex="-1"
       @scroll="onHideRightMenuScroll">
       <template #empty>
-        <a-empty description="没导入过任何分享链接" />
+        <a-empty :description="t('share.neverImported')" />
       </template>
       <template #item="{ item, index }">
         <div :key="item.share_id" class="listitemdiv">
@@ -517,8 +518,8 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               </div>
             </div>
             <div class="cell tiquma">{{ item.share_pwd }}</div>
-            <div v-if="item.expired" class="cell sharestate expired">过期失效</div>
-            <div v-else-if="item.share_msg == '已失效'" class="cell sharestate expired">已失效</div>
+            <div v-if="item.expired" class="cell sharestate expired">{{ t('share.expiredInvalid') }}</div>
+            <div v-else-if="item.share_msg == '已失效'" class="cell sharestate expired">{{ t('share.invalid') }}</div>
             <div v-else class="cell sharestate active">{{ item.share_msg }}</div>
 
             <div class="cell sharetime">{{ item.saved_at.replace(' ', '\n') }}</div>
@@ -532,45 +533,45 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <template #content>
         <a-doption @click="handleOpenLink">
           <template #icon><IconFont name="iconchakan" /></template>
-          <template #default>查看</template>
+          <template #default>{{ t('share.view') }}</template>
         </a-doption>
 
         <a-doption @click="handleCopySelectedLink">
           <template #icon><IconFont name="iconcopy" /></template>
-          <template #default>复制链接</template>
+          <template #default>{{ t('share.copyLink') }}</template>
         </a-doption>
         <a-doption @click="handleBrowserLink">
           <template #icon><IconFont name="iconchrome" /></template>
-          <template #default>浏览器</template>
+          <template #default>{{ t('share.browser') }}</template>
         </a-doption>
         <a-doption @click="handleBatchSaveSelected">
           <template #icon><IconFont name="iconxuanzhuan" /></template>
-          <template #default>批量转存</template>
+          <template #default>{{ t('share.batchSave') }}</template>
         </a-doption>
 
         <a-doption class="danger" @click="handleDeleteSelectedLink('selected')">
           <template #icon><IconFont name="icondelete" /></template>
-          <template #default>删除记录</template>
+          <template #default>{{ t('share.deleteRecord') }}</template>
         </a-doption>
       </template>
     </a-dropdown>
   </div>
 
   <a-modal v-model:visible="daoruModel" :footer="false" :unmount-on-close="true" :mask-closable="false">
-    <template #title> 批量导入分享链接记录</template>
+    <template #title> {{ t('share.batchImportRecords') }}</template>
     <div style="width: 500px">
       <div style="margin-bottom: 32px">
         <div class="arco-textarea-wrapper arco-textarea-scroll">
           <textarea v-model="daoruModelText" class="arco-textarea daoruinput"
-                    placeholder="请粘贴，每行一条分享链接，例如：https://www.aliyundrive.com/s/9inQ0eeZ8w8 提取码: CNp7 或 https://pan.quark.cn/s/abcd?pwd=123456"></textarea>
+                    :placeholder="t('share.pasteLinksPlaceholder')"></textarea>
         </div>
         <div>
-          <span class="oporg">注：仅导入记录，不会导入分享的文件</span>
+          <span class="oporg">{{ t('share.recordOnlyNote') }}</span>
         </div>
       </div>
       <div class="flex" style="justify-content: center; align-items: center; margin-bottom: 0px">
         <a-button id="OSRDaoRuLink" type="primary" size="small" tabindex="-1" :loading="daoruModelLoading"
-                  @click="handleSaveDaoRuLink">批量导入
+                  @click="handleSaveDaoRuLink">{{ t('share.batchImport') }}
         </a-button>
       </div>
     </div>

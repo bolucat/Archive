@@ -13,6 +13,7 @@ import { modalArchive, modalArchivePassword, modalSelectPanDir, modalSelectVideo
 import PlayerUtils from './playerhelper'
 import { getEncType, getProxyUrl, getRawUrl } from './proxyhelper'
 import { getLocalVideoProgress } from './videoProgress'
+import { isVideoFile } from './videoFile'
 import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 
 async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo | undefined> {
@@ -59,20 +60,12 @@ async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo |
   return await UserDAL.GetUserTokenFromDB(matched.user_id) || undefined
 }
 
-const videoPlaylistExtensions = new Set(['3gp', 'avi', 'flv', 'm2ts', 'm4v', 'mkv', 'mov', 'mp4', 'mpeg', 'mpg', 'ts', 'webm', 'wmv'])
-
 function buildSiblingVideoPlaylist(file: IAliGetFileModel, provided?: IPageVideoPlaylistEntry[]): IPageVideoPlaylistEntry[] {
   if (provided && provided.length > 0) return provided
   const rawItems = usePanFileStore().ListDataRaw || []
   const visibleItems = rawItems.filter((item: any) => !item.isDir)
   const sameDirectory = visibleItems.filter((item: any) => item.parent_file_id === file.parent_file_id)
-  const candidates = (sameDirectory.length > 1 ? sameDirectory : visibleItems).filter((item: any) => {
-    const name = String(item.name || item.file_name || item.html || '')
-    const extension = name.includes('.')
-      ? name.slice(name.lastIndexOf('.') + 1).toLowerCase()
-      : String(item.ext || '').replace(/^\./, '').toLowerCase()
-    return videoPlaylistExtensions.has(extension)
-  })
+  const candidates = (sameDirectory.length > 1 ? sameDirectory : visibleItems).filter(isVideoFile)
   if (!candidates.some((item: any) => item.file_id === file.file_id)) candidates.push(file)
   if (candidates.length <= 1) return []
   return candidates
@@ -176,7 +169,7 @@ export async function menuOpenFile(
     message.info('此格式暂不支持预览')
     return
   }
-  if (file.category.startsWith('video')) {
+  if (isVideoFile(file)) {
     const token = await resolveTokenForFile(file)
     if (!token || !token.access_token) {
       message.error('在线预览失败 账号失效，操作取消')

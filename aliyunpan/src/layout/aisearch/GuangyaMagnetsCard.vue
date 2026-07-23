@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertCircle, CheckCircle, Loader2, Magnet } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{
   state: 'confirm' | 'running' | 'done' | 'error'
@@ -16,31 +17,31 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
     <template v-if="state === 'confirm'">
       <div class="gm-header">
         <Magnet :size="16" :stroke-width="1.5" />
-        <span>确认提交 {{ input?.magnets?.length || 0 }} 条磁力到光鸭云添加？</span>
+        <span>{{ t('ai.card.confirmSubmitMagnets') }} {{ input?.magnets?.length || 0 }} {{ t('ai.card.magnetLinks') }}?</span>
       </div>
       <div class="gm-list">
         <div v-for="(magnet, index) in (input?.magnets || []).slice(0, 8)" :key="index" class="gm-item">{{ magnet }}</div>
-        <div v-if="(input?.magnets?.length || 0) > 8" class="gm-more">…还有 {{ (input?.magnets?.length || 0) - 8 }} 条</div>
+        <div v-if="(input?.magnets?.length || 0) > 8" class="gm-more">…{{ t('ai.card.more') }} {{ (input?.magnets?.length || 0) - 8 }} {{ t('ai.card.items') }}</div>
       </div>
       <div class="gm-actions">
-        <button class="gm-btn gm-btn-primary" @click="emit('confirm')">确认提交</button>
-        <button class="gm-btn" @click="emit('cancel')">取消</button>
+        <button class="gm-btn gm-btn-primary" @click="emit('confirm')">{{ t('ai.card.confirmSubmit') }}</button>
+        <button class="gm-btn" @click="emit('cancel')">{{ t('common.cancel') }}</button>
       </div>
     </template>
 
     <div v-else-if="state === 'running'" class="gm-status">
       <Loader2 :size="14" :stroke-width="2" class="gm-spin" />
-      <span>正在提交光鸭云添加任务...</span>
+      <span>{{ t('ai.card.submittingGuangyaTask') }}</span>
     </div>
 
     <div v-else-if="state === 'done'" class="gm-result">
       <CheckCircle :size="16" :stroke-width="1.5" />
-      <pre>{{ output?.report || `提交完成：${output?.success || 0}/${output?.total || 0}` }}</pre>
+      <pre>{{ output?.report || `${t('ai.card.submitCompleted')}: ${output?.success || 0}/${output?.total || 0}` }}</pre>
     </div>
 
     <div v-else class="gm-status gm-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>{{ error || '磁力云添加失败' }}</span>
+      <span>{{ error || t('ai.card.magnetSubmitFailed') }}</span>
     </div>
   </div>
 </template>

@@ -31,6 +31,7 @@ import { humanSize } from '../utils/format'
 import { TestButton } from '../utils/mosehelper'
 import fs from 'node:fs'
 import { xorWith } from 'lodash'
+import { t } from '../i18n'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -210,7 +211,7 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
         message.loading('Loading...', 2)
         window.Electron.shell.openPath(full)
       } else {
-        message.error('文件可能已经被删除')
+        message.error(t('transfer.fileMayDeleted'))
       }
     } catch {
     }
@@ -222,7 +223,7 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
         message.loading('Loading...', 2)
         window.Electron.shell.showItemInFolder(full)
       } else {
-        message.error('文件夹可能已经被删除')
+        message.error(t('transfer.folderMayDeleted'))
       }
     } catch {
     }
@@ -239,11 +240,11 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
           usePanFileStore().mMouseSelect(file.file_id, false, false)
           useAppStore().toggleTab('pan')
         } else {
-          message.error('找不到文件，可能已被删除')
+          message.error(t('transfer.fileNotFoundMayDeleted'))
         }
       })
     } else {
-      message.error('找不到文件')
+      message.error(t('transfer.fileNotFound'))
     }
   }
 }
@@ -254,8 +255,8 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
   <div class='toppanbtns' style='height: 26px'>
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
       <div class="toppannav">
-        <div class="toppannavitem" title="已上传">
-          <span> 已上传 </span>
+        <div class="toppannavitem" :title="t('transfer.uploaded')">
+          <span> {{ t('transfer.uploaded') }} </span>
         </div>
       </div>
     </div>
@@ -274,12 +275,12 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
     </div>
 
     <div v-if="uploadedStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(false)"><IconFont name="icondelete" />清除选中
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(false)"><IconFont name="icondelete" />{{ t('transfer.clearSelected') }}
       </a-button>
     </div>
 
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(true)"><IconFont name="iconrest" />清空全部已上传
+      <a-button type="text" size="small" tabindex="-1" @click="() => UploadDAL.UploadedDelete(true)"><IconFont name="iconrest" />{{ t('transfer.clearAllUploaded') }}
       </a-button>
     </div>
 
@@ -290,7 +291,7 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
         ref="inputsearch"
         size="small"
         title="Ctrl+F / F3 / Space"
-        placeholder="快速筛选"
+        :placeholder="t('transfer.quickFilter')"
         allow-clear
         v-model="uploadedStore.ListSearchKey"
         @clear='(e:any)=>handleSearchInput("")'
@@ -303,7 +304,7 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
   <div style="height: 9px"></div>
   <div class="toppanarea">
     <div style="margin: 0 3px">
-      <AntdTooltip title="点击全选" placement="left">
+      <AntdTooltip :title="t('transfer.selectAllTooltip')" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
           <IconFont :name="uploadedStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -314,15 +315,15 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
       <AntdTooltip placement='rightTop' v-if="uploadedStore.ListDataShow.length > 0">
         <a-button shape='square' type='text' tabindex='-1' class='qujian'
                   :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-          {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+          {{ rangIsSelecting ? t('transfer.cancelSelection') : t('transfer.rangeSelect') }}
         </a-button>
         <template #title>
           <div>
-            第1步: 点击 区间选择 这个按钮
+            {{ t('transfer.rangeStep1') }}
             <br />
-            第2步: 鼠标点击一个文件
+            {{ t('transfer.rangeStep2') }}
             <br />
-            第3步: 移动鼠标点击另外一个文件
+            {{ t('transfer.rangeStep3') }}
           </div>
         </template>
       </AntdTooltip>
@@ -332,12 +333,12 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
                 tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectReverse'>
-        反向选择
+        {{ t('transfer.invertSelection') }}
       </a-button>
       <a-button shape='square' v-if='!rangIsSelecting && uploadedStore.ListSelected.size > 0' type='text' tabindex='-1'
                 class='qujian'
                 status='normal' @click='onSelectCancel'>
-        取消已选
+        {{ t('transfer.cancelSelected') }}
       </a-button>
     </div>
     <div style="flex-grow: 1"></div>
@@ -362,7 +363,7 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
       tabindex="-1"
       @scroll="onHideRightMenuScroll">
       <template #empty>
-        <a-empty description="没有 已上传 的任务" />
+        <a-empty :description="t('transfer.noUploadedTasks')" />
       </template>
       <template #item="{ item, index }">
         <div :key="item.TaskID" class="listitemdiv">
@@ -389,16 +390,16 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
             </div>
             <div class="downsize">{{ humanSize(item.ChildTotalSize) }}</div>
             <div className="downedbtn">
-              <a-button type="text" tabindex="-1" title="定位到网盘" @click.prevent.stop="onSelectFile(item, 'pan')">
+              <a-button type="text" tabindex="-1" :title="t('transfer.locateInCloud')" @click.prevent.stop="onSelectFile(item, 'pan')">
                 <IconFont name="iconcloud" />
               </a-button>
-              <a-button type="text" tabindex="-1" title="打开文件" @click.prevent.stop="onSelectFile(item, 'file')">
+              <a-button type="text" tabindex="-1" :title="t('down.openFile')" @click.prevent.stop="onSelectFile(item, 'file')">
                 <IconFont name="iconwenjian" />
               </a-button>
-              <a-button type="text" tabindex="-1" title="打开文件夹" @click.prevent.stop="onSelectFile(item, 'dir')">
+              <a-button type="text" tabindex="-1" :title="t('down.openFolder')" @click.prevent.stop="onSelectFile(item, 'dir')">
                 <IconFont name="iconfile-folder" />
               </a-button>
-              <a-button type="text" tabindex="-1" title="删除上传记录"
+              <a-button type="text" tabindex="-1" :title="t('transfer.deleteUploadRecord')"
                         @click.prevent.stop="onSelectFile(item, 'delete')">
                 <IconFont name="icondelete" />
               </a-button>
@@ -412,19 +413,19 @@ const onSelectFile = (item: IStateUploadTask | undefined, cmd: string) => {
       <template #content>
         <a-doption @click="() => onSelectFile(undefined, 'pan')">
           <template #icon><IconFont name="iconcloud" /></template>
-          <template #default>定位到网盘</template>
+          <template #default>{{ t('transfer.locateInCloud') }}</template>
         </a-doption>
         <a-doption @click="() => onSelectFile(undefined, 'file')">
           <template #icon><IconFont name="iconwenjian" /></template>
-          <template #default>打开文件</template>
+          <template #default>{{ t('down.openFile') }}</template>
         </a-doption>
         <a-doption @click="() => onSelectFile(undefined, 'dir')">
           <template #icon><IconFont name="iconfile-folder" /></template>
-          <template #default>打开文件夹</template>
+          <template #default>{{ t('down.openFolder') }}</template>
         </a-doption>
         <a-doption @click="() => onSelectFile(undefined, 'delete')">
           <template #icon><IconFont name="icondelete" /></template>
-          <template #default>删除上传记录</template>
+          <template #default>{{ t('transfer.deleteUploadRecord') }}</template>
         </a-doption>
       </template>
     </a-dropdown>

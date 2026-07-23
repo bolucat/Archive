@@ -23,6 +23,7 @@ import { Tooltip as AntdTooltip } from 'ant-design-vue'
 import UploadingDAL from '../transfer/uploadingdal'
 import { TestButton } from '../utils/mosehelper'
 import { xorWith } from 'lodash'
+import { t } from '../i18n'
 
 const viewlist = ref()
 const appStore = useAppStore()
@@ -199,8 +200,8 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div class="toppanbtns" style="height: 26px">
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
       <div class="toppannav">
-        <div class="toppannavitem" title="上传中">
-          <span @click="() => UploadingDAL.mUploadingShowTaskBack()"> 上传中 </span>
+        <div class="toppannavitem" :title="t('transfer.uploading')">
+          <span @click="() => UploadingDAL.mUploadingShowTaskBack()"> {{ t('transfer.uploading') }} </span>
         </div>
         <div v-if="uploadingStore.showTaskID" class="toppannavitem" :title="uploadingStore.ShowTaskName">
           <span> {{ uploadingStore.ShowTaskName }} </span>
@@ -211,7 +212,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div style="height: 14px"></div>
   <div class="toppanbtns" style="height: 26px">
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" :disabled="uploadingStore.ListLoading" title="后退 Back Space"
+      <a-button type="text" size="small" tabindex="-1" :disabled="uploadingStore.ListLoading" :title="`${t('upload.back')} Back Space`"
                 @click="handleBack">
         <template #icon>
           <IconFont name="iconarrow-left-2-icon" />
@@ -226,29 +227,29 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
     </div>
 
     <div v-if="uploadingStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(false, true)"><IconFont name="iconstart" />开始
+      <a-button type="text" size="small" tabindex="-1" :title="t('upload.start')" @click="() => UploadingDAL.aUploadingStart(false, true)"><IconFont name="iconstart" />{{ t('upload.start') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(false, false)"><IconFont name="iconpause" />暂停
+      <a-button type="text" size="small" tabindex="-1" :title="t('upload.pause')" @click="() => UploadingDAL.aUploadingStart(false, false)"><IconFont name="iconpause" />{{ t('upload.pause') }}
       </a-button>
       <a-button v-show="menuShowDir" type="text" size="small" tabindex="-1"
-                @click="() => UploadingDAL.mUploadingShowTask()"><IconFont name="icongengduo1" />查看
+                :title="t('upload.view')" @click="() => UploadingDAL.mUploadingShowTask()"><IconFont name="icongengduo1" />{{ t('upload.view') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingDelete(false)"><IconFont name="icondelete" />清除
+      <a-button type="text" size="small" tabindex="-1" :title="t('upload.clear')" @click="() => UploadingDAL.aUploadingDelete(false)"><IconFont name="icondelete" />{{ t('upload.clear') }}
       </a-button>
     </div>
     <div class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(true, true)"><IconFont name="iconstart" />开始全部
+      <a-button type="text" size="small" tabindex="-1" :title="t('upload.startAll')" @click="() => UploadingDAL.aUploadingStart(true, true)"><IconFont name="iconstart" />{{ t('upload.startAll') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingStart(true, false)"><IconFont name="iconpause" />暂停全部
+      <a-button type="text" size="small" tabindex="-1" :title="t('upload.pauseAll')" @click="() => UploadingDAL.aUploadingStart(true, false)"><IconFont name="iconpause" />{{ t('upload.pauseAll') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" @click="() => UploadingDAL.aUploadingDelete(true)"><IconFont name="iconrest" />清空全部
+      <a-button type="text" size="small" tabindex="-1" :title="t('upload.clearAll')" @click="() => UploadingDAL.aUploadingDelete(true)"><IconFont name="iconrest" />{{ t('upload.clearAll') }}
       </a-button>
     </div>
   </div>
   <div style="height: 9px"></div>
   <div class="toppanarea">
     <div style="margin: 0 3px">
-      <AntdTooltip title="点击全选" placement="left">
+      <AntdTooltip :title="t('share.selectAll')" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
           <IconFont :name="uploadingStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -258,15 +259,15 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
         <AntdTooltip placement='rightTop' v-if="uploadingStore.ListDataShow.length > 0">
           <a-button shape='square' type='text' tabindex='-1' class='qujian'
                     :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-            {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+            {{ rangIsSelecting ? t('share.cancelSelect') : t('share.rangeSelect') }}
           </a-button>
           <template #title>
             <div>
-              第1步: 点击 区间选择 这个按钮
+              {{ t('share.rangeStep1') }}
               <br />
-              第2步: 鼠标点击一个文件
+              {{ t('share.rangeStep2') }}
               <br />
-              第3步: 移动鼠标点击另外一个文件
+              {{ t('share.rangeStep3') }}
             </div>
           </template>
         </AntdTooltip>
@@ -276,17 +277,17 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                   tabindex='-1'
                   class='qujian'
                   status='normal' @click='onSelectReverse'>
-          反向选择
+          {{ t('share.reverseSelect') }}
         </a-button>
         <a-button shape='square' v-if='!rangIsSelecting && uploadingStore.ListSelected.size > 0' type='text'
                   tabindex='-1' class='qujian'
                   status='normal' @click='onSelectCancel'>
-          取消已选
+          {{ t('share.cancelSelectedItems') }}
         </a-button>
       </div>
     </div>
     <div style="flex-grow: 1"></div>
-    <div class="cell tiquma">瞬时速度</div>
+    <div class="cell tiquma">{{ t('upload.instantSpeed') }}</div>
     <div class="cell pr"></div>
   </div>
   <div class="toppanlist" style="position: relative" :style="{ height: winStore.GetListHeight }"
@@ -308,7 +309,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       tabindex="-1"
       @scroll="onHideRightMenuScroll">
       <template #empty>
-        <a-empty description="没有 需要上传 的任务" />
+        <a-empty :description="t('upload.empty')" />
       </template>
       <template #item="{ item, index }">
         <div :key="item.UploadID" class="listitemdiv">
@@ -361,22 +362,22 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <template #content>
         <a-doption @click="() => UploadingDAL.aUploadingStart(false, true)">
           <template #icon><IconFont name="iconstart" /></template>
-          <template #default>开始上传</template>
+          <template #default>{{ t('upload.startUpload') }}</template>
         </a-doption>
 
         <a-doption @click="() => UploadingDAL.aUploadingStart(false, false)">
           <template #icon><IconFont name="iconpause" /></template>
-          <template #default>暂停上传</template>
+          <template #default>{{ t('upload.pauseUpload') }}</template>
         </a-doption>
 
         <a-doption v-show="menuShowDir" @click="() => UploadingDAL.mUploadingShowTask()">
           <template #icon><IconFont name="icongengduo1" /></template>
-          <template #default>查看详情</template>
+          <template #default>{{ t('upload.viewDetails') }}</template>
         </a-doption>
 
         <a-doption @click="() => UploadingDAL.aUploadingDelete(false)">
           <template #icon><IconFont name="icondelete" /></template>
-          <template #default>清除上传</template>
+          <template #default>{{ t('upload.clearUpload') }}</template>
         </a-doption>
       </template>
     </a-dropdown>

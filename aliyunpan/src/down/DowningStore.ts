@@ -6,6 +6,7 @@ import { humanSize } from '../utils/format'
 import message from '../utils/message'
 import DBDown from '../utils/dbdown'
 import { batchPauseTasks, batchRemoveTasks, batchResumeTasks } from './integration/aria2TaskApi'
+import { t } from '../i18n'
 
 type Item = IStateDownFile
 type State = DowningState
@@ -60,7 +61,7 @@ const useDowningStore = defineStore('downing', {
     },
 
     ListDataSelectCountInfo(state: State): string {
-      return '已选中 ' + state.ListSelected.size + ' / ' + state.ListDataShow.length + ' 个'
+      return t('transfer.selectedCount', { selected: state.ListSelected.size, total: state.ListDataShow.length })
     },
 
     IsListSelectedAll(state: State): boolean {
@@ -237,7 +238,7 @@ const useDowningStore = defineStore('downing', {
         }
       }
       if (savelist.length === 0) {
-        message.info('下载任务已存在，请勿重复创建任务')
+        message.info(t('transfer.taskAlreadyExists'))
       } else {
         DBDown.saveDownings(JSON.parse(JSON.stringify(savelist)))
         DowningList.push(...savelist)

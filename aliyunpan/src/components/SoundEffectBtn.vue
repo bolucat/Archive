@@ -11,7 +11,7 @@
         type="text"
         shape="circle"
         :class="['se-trigger', hasActiveEffect ? 'active' : '']"
-        title="音效"
+        :title="t('sound.effect')"
       >
         <SlidersHorizontal :size="18" :stroke-width="1.8" />
         <span v-if="hasActiveEffect" class="se-trigger-dot"></span>
@@ -20,10 +20,10 @@
         <div class="se-quick">
           <div class="se-quick-head">
             <div>
-              <div class="se-quick-kicker">当前音效</div>
+              <div class="se-quick-kicker">{{ t('sound.current') }}</div>
               <div class="se-quick-title">{{ currentPresetLabel }}</div>
             </div>
-            <span :class="['se-state-pill', hasActiveEffect ? 'on' : '']">{{ hasActiveEffect ? '已启用' : '关闭' }}</span>
+            <span :class="['se-state-pill', hasActiveEffect ? 'on' : '']">{{ hasActiveEffect ? t('sound.enabled') : t('sound.off') }}</span>
           </div>
 
           <div class="se-quick-presets">
@@ -37,8 +37,8 @@
 
           <div class="se-quick-switch">
             <div>
-              <span>声像旋转</span>
-              <small>{{ settings.panner.enabled ? '正在模拟空间移动' : '关闭空间移动' }}</small>
+              <span>{{ t('sound.panner') }}</span>
+              <small>{{ settings.panner.enabled ? t('sound.pannerOn') : t('sound.pannerOff') }}</small>
             </div>
             <a-switch
               :model-value="settings.panner.enabled"
@@ -50,11 +50,11 @@
           <div class="se-quick-actions">
             <button class="se-quick-btn" @click="handleResetAll">
               <RotateCcw :size="14" :stroke-width="1.8" />
-              <span>重置</span>
+              <span>{{ t('sound.reset') }}</span>
             </button>
             <button class="se-quick-btn primary" @click="openAdvanced">
               <SlidersHorizontal :size="14" :stroke-width="1.8" />
-              <span>高级</span>
+              <span>{{ t('sound.advanced') }}</span>
             </button>
           </div>
         </div>
@@ -71,21 +71,21 @@
         <template #title>
           <div class="se-modal-title">
             <SlidersHorizontal :size="18" :stroke-width="1.8" />
-            <span>音效控制台</span>
-            <em v-if="hasActiveEffect">已启用</em>
+            <span>{{ t('sound.console') }}</span>
+            <em v-if="hasActiveEffect">{{ t('sound.enabled') }}</em>
           </div>
         </template>
         <a-tabs v-model:active-key="activeTab" size="small">
-          <a-tab-pane key="eq" title="均衡器">
+          <a-tab-pane key="eq" :title="t('sound.equalizer')">
             <div class="se-section">
               <div class="se-hero">
                 <div>
                   <div class="se-kicker">10-Band Equalizer</div>
-                  <div class="se-title">均衡器</div>
+                  <div class="se-title">{{ t('sound.equalizer') }}</div>
                 </div>
                 <div class="se-hero-actions">
-                  <span :class="['se-state-pill', eqActive ? 'on' : '']">{{ eqActive ? '已调音' : '平直' }}</span>
-                  <button class="se-icon-action" title="重置均衡器" @click="handleResetEq">
+                  <span :class="['se-state-pill', eqActive ? 'on' : '']">{{ eqActive ? t('sound.tuned') : t('sound.flat') }}</span>
+                  <button class="se-icon-action" :title="t('sound.resetEq')" @click="handleResetEq">
                     <RotateCcw :size="15" :stroke-width="1.8" />
                   </button>
                 </div>
@@ -130,12 +130,12 @@
             </div>
           </a-tab-pane>
 
-          <a-tab-pane key="panner" title="声像">
+          <a-tab-pane key="panner" :title="t('sound.spatial')">
             <div class="se-section">
               <div class="se-hero">
                 <div>
                   <div class="se-kicker">Spatial Motion</div>
-                  <div class="se-title">声像旋转</div>
+                  <div class="se-title">{{ t('sound.panner') }}</div>
                 </div>
                 <a-switch
                   :model-value="settings.panner.enabled"
@@ -147,7 +147,7 @@
                 <div class="se-control-card">
                   <div class="se-card-head">
                     <Waves :size="16" :stroke-width="1.8" />
-                    <span>旋转速度</span>
+                    <span>{{ t('sound.speed') }}</span>
                     <strong>{{ settings.panner.speed }}</strong>
                   </div>
                   <input
@@ -163,7 +163,7 @@
                 <div class="se-control-card">
                   <div class="se-card-head">
                     <Gauge :size="16" :stroke-width="1.8" />
-                    <span>空间范围</span>
+                    <span>{{ t('sound.range') }}</span>
                     <strong>{{ settings.panner.soundR }}</strong>
                   </div>
                   <input
@@ -180,21 +180,21 @@
             </div>
           </a-tab-pane>
 
-          <a-tab-pane key="pitch" title="变速变调">
+          <a-tab-pane key="pitch" :title="t('sound.pitch')">
             <div class="se-section">
               <div class="se-hero">
                 <div>
                   <div class="se-kicker">Pitch Shifter</div>
-                  <div class="se-title">变调不变速</div>
+                  <div class="se-title">{{ t('sound.pitchNoSpeed') }}</div>
                 </div>
-                <button class="se-icon-action" title="重置变调" @click="handleResetPitch">
+                <button class="se-icon-action" :title="t('sound.resetPitch')" @click="handleResetPitch">
                   <RotateCcw :size="15" :stroke-width="1.8" />
                 </button>
               </div>
               <div class="se-control-card wide">
                 <div class="se-card-head">
                   <Music2 :size="16" :stroke-width="1.8" />
-                  <span>音高倍率</span>
+                  <span>{{ t('sound.pitchRate') }}</span>
                   <strong>{{ settings.pitchShifter.playbackRate.toFixed(2) }}x</strong>
                 </div>
                 <div class="se-pitch-row">
@@ -233,6 +233,7 @@ import {
   freqsPreset,
   ensureInit,
 } from '../module/audioplayer/index'
+import { t } from '../i18n'
 
 ensureInit()
 
@@ -247,16 +248,16 @@ const freqLabels = freqs.map(hz => ({
   label: hz < 1000 ? `${hz}` : `${hz / 1000}k`,
 }))
 
-const presetNames: Record<string, string> = {
-  pop: '流行',
-  dance: '舞曲',
-  rock: '摇滚',
-  classical: '古典',
-  vocal: '人声',
-  slow: '柔和',
-  electronic: '电子',
-  subwoofer: '低音',
-  soft: '轻柔',
+const presetNameKeys: Record<string, Parameters<typeof t>[0]> = {
+  pop: 'sound.pop',
+  dance: 'sound.dance',
+  rock: 'sound.rock',
+  classical: 'sound.classical',
+  vocal: 'sound.vocal',
+  slow: 'sound.slow',
+  electronic: 'sound.electronic',
+  subwoofer: 'sound.subwoofer',
+  soft: 'sound.soft',
 }
 
 const hasActiveEffect = computed(() => {
@@ -274,7 +275,7 @@ const activePresetName = computed(() => {
 })
 const currentPresetLabel = computed(() => {
   if (activePresetName.value) return presetLabel(activePresetName.value)
-  return eqActive.value ? '自定义均衡' : '平直'
+  return eqActive.value ? t('sound.customEq') : t('sound.flat')
 })
 const eqSummaryBars = computed(() => freqLabels.map(freq => {
   const value = settings.eq[freq.key]
@@ -298,7 +299,8 @@ function eqSliderStyle(value: number) {
 }
 
 function presetLabel(name: string) {
-  return presetNames[name] || name
+  const key = presetNameKeys[name]
+  return key ? t(key) : name
 }
 
 // EQ

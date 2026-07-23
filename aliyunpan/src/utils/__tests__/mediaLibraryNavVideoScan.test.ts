@@ -58,20 +58,20 @@ describe('video library scan controls', () => {
     const library = readSource('src/components/MediaLibrary.vue')
 
     const providers = [
-      ['quark', '夸克', '夸克网盘'],
-      ['dropbox', 'Dropbox', 'Dropbox'],
-      ['onedrive', 'OneDrive', 'OneDrive'],
-      ['box', 'Box', 'Box'],
-      ['cloud139', '139', '139 云盘'],
-      ['cloud189', '天翼', '天翼云盘'],
-      ['guangya', '光鸭', '光鸭云盘']
+      ['quark', "t('drive.quark')", '夸克网盘'],
+      ['dropbox', "'Dropbox'", 'Dropbox'],
+      ['onedrive', "'OneDrive'", 'OneDrive'],
+      ['box', "'Box'", 'Box'],
+      ['cloud139', "'139'", '139 云盘'],
+      ['cloud189', "t('drive.cloud189Short')", '天翼云盘'],
+      ['guangya', "t('drive.guangyaShort')", '光鸭云盘']
     ]
-    for (const [driveId, shortLabel, fullLabel] of providers) {
-      expect(nav).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return '${shortLabel}'`)
+    for (const [driveId, shortLabelExpression, fullLabel] of providers) {
+      expect(nav).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return ${shortLabelExpression}`)
       expect(nav).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return 'source-${driveId}'`)
       expect(library).toContain(`if (folder.driveId === '${driveId}' || folder.driveServerId === '${driveId}') return '${fullLabel}'`)
     }
-    expect(nav).toContain("if (token.tokenfrom === 'guangya') return '光鸭云盘'")
+    expect(nav).toContain("if (token.tokenfrom === 'guangya') return t('drive.guangya')")
   })
 
   it('keeps local import and WebDAV actions visually aligned with the scan panel buttons', () => {

@@ -2,6 +2,49 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-beta.1
+
+* Correct undefined rule-set matching semantics **1**
+* Add search domain rule items **2**
+* Add parallel DNS response evaluation support **3**
+* Fixes and improvements
+
+**1**:
+
+Rule-set matching has always been described as merged matching: fields of
+rule-set rules are considered merged into the referencing rule. However, this
+description is only intuitive when a rule-set contains only a single `default`
+rule without `invert`. Merged matching is now limited to exactly this case;
+any other referenced rule-set is matched as an `other field`, which matches
+when any of its rules matches on its own.
+Since the previous behavior in the corrected cases was effectively undefined,
+counterintuitive, and hard to understand, we do not consider this a breaking
+change — except for configurations that worked without their author
+understanding why.
+
+**2**:
+
+The new DNS rule items
+[`domain_label_count`](/configuration/dns/rule/#domain_label_count) and
+[`search_domain_available`](/configuration/dns/rule/#search_domain_available)
+match the number of labels in the query name and whether a DNS server
+currently holds search domains; combined with `racing`, they allow unqualified
+name queries to race a server that can expand them against a public resolver.
+Additionally, [`preferred_by`](/configuration/dns/rule/#preferred_by) now
+matches search domain suffixes and supports `local` and `dhcp` servers.
+
+**3**:
+
+The [`evaluate`](/configuration/dns/rule_action/#evaluate) action can now assign
+a `tag` to each response, allowing multiple evaluated responses to coexist and
+be selected through tagged
+[`match_response`](/configuration/dns/rule/#match_response) rules. The new
+[`race`](/configuration/dns/rule_action/#race) field allows response-dependent
+rules to compete in parallel, with the first matching rule taking effect and
+the remaining queries canceled. The new `speculative` option can start
+`evaluate` and `route` queries while race rules are still pending, reducing
+latency at the cost of potentially unused queries.
+
 #### 1.14.0-alpha.50
 
 * Improve OpenVPN interoperability **1**

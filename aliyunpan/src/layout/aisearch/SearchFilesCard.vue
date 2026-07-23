@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Search, ExternalLink, Loader2, AlertCircle } from 'lucide-vue-next'
 import type { FileResult } from './types'
+import { t } from '../../i18n'
 
 const props = defineProps<{
   state: 'pending' | 'running' | 'done' | 'error'
@@ -25,14 +26,14 @@ function formatSize(bytes: number): string {
     <!-- running -->
     <div v-if="state === 'running'" class="sf-status">
       <Loader2 :size="14" :stroke-width="2" class="sf-spin" />
-      <span>正在搜索云盘 "{{ input?.keyword }}" ...</span>
+      <span>{{ t('ai.card.searchingDrive') }} "{{ input?.keyword }}" ...</span>
     </div>
 
     <!-- done -->
     <template v-else-if="state === 'done' && output">
       <div class="sf-header">
         <Search :size="14" :stroke-width="1.5" />
-        <span>搜索 "{{ input?.keyword }}" — 找到 {{ output.total }} 个文件</span>
+        <span>{{ t('common.search') }} "{{ input?.keyword }}" — {{ t('ai.card.found') }} {{ output.total }} {{ t('transfer.file') }}</span>
       </div>
       <div v-if="output.files.length" class="sf-list">
         <button
@@ -45,29 +46,29 @@ function formatSize(bytes: number): string {
           <div class="sf-item-body">
             <div class="sf-item-name">{{ f.name }}</div>
             <div class="sf-item-meta">
-              {{ formatSize(f.size) }} · {{ f.providerName }} {{ f.isDir ? '· 目录' : '' }}
+              {{ formatSize(f.size) }} · {{ f.providerName }} {{ f.isDir ? '· ' + t('common.folder') : '' }}
             </div>
           </div>
           <ExternalLink :size="12" :stroke-width="1.5" class="sf-item-go" />
         </button>
         <div v-if="output.files.length > 10" class="sf-more">
-          ...还有 {{ output.files.length - 10 }} 个文件
+          ...{{ t('ai.card.more') }} {{ output.files.length - 10 }} {{ t('transfer.file') }}
         </div>
       </div>
-      <div v-else class="sf-empty">未找到匹配文件</div>
+      <div v-else class="sf-empty">{{ t('ai.card.noMatchingFiles') }}</div>
     </template>
 
     <!-- error -->
     <div v-else-if="state === 'error'" class="sf-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>搜索失败: {{ error }}</span>
-      <button class="sf-retry" @click="emit('retry')">重试</button>
+      <span>{{ t('ai.card.searchFailed') }}: {{ error }}</span>
+      <button class="sf-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
 
     <!-- pending -->
     <div v-else class="sf-status sf-muted">
       <Search :size="14" :stroke-width="1.5" />
-      准备搜索云盘...
+      {{ t('ai.card.prepareSearchDrive') }}
     </div>
   </div>
 </template>

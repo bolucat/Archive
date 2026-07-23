@@ -7,6 +7,7 @@ import message from '../utils/message'
 import { createProxyServer, getIPAddress } from '../utils/proxyhelper'
 import { Sleep } from '../utils/format'
 import { onMounted, ref } from 'vue'
+import { t } from '../i18n'
 
 const settingStore = useSettingStore()
 const cb = (val: any) => {
@@ -40,10 +41,10 @@ const handleResetPort = async () => {
   if (window.MainProxyServer) {
     const debugProxyPort = getSafeProxyPort()
     const loadingKey = 'proxyServer' + Date.now().toString()
-    message.loading('重启软件服务中...', 60, loadingKey)
+    message.loading(t('settings.debug.restartLoading'), 60, loadingKey)
     await window.MainProxyServer.close()
     createProxyServer(debugProxyPort).catch(err => {
-      message.error('软件服务重启失败', 3, loadingKey)
+      message.error(t('settings.debug.restartFailed'), 3, loadingKey)
     }).then(async (debugProxyServer: any) => {
       window.MainProxyPort = debugProxyPort
       window.MainProxyServer = debugProxyServer
@@ -53,7 +54,7 @@ const handleResetPort = async () => {
       })
       cb({ debugProxyPort: debugProxyPort.toString() })
       await Sleep(2000)
-      message.success('软件服务重启完成', 3, loadingKey)
+      message.success(t('settings.debug.restartDone'), 3, loadingKey)
     })
   }
 }
@@ -79,9 +80,9 @@ const handleClearCache = async () => {
   try {
     await (window as any).MsImageCacheClear()
     await loadCacheStats()
-    message.success('已清理全部图片缓存')
+    message.success(t('settings.debug.imageCacheCleared'))
   } catch {
-    message.error('清理失败，请重试')
+    message.error(t('settings.debug.clearFailed'))
   } finally {
     cacheClearing.value = false
   }
@@ -98,69 +99,64 @@ onMounted(loadCacheStats)
 
 <template>
   <div class="settingcard">
-    <div class="settinghead">文件列表 显示限制</div>
+    <div class="settinghead">{{ t('settings.debug.fileListLimit') }}</div>
     <div class="settingrow">
       <a-input-number tabindex="-1" :style="{ width: '252px' }" mode="button" :min="3000" :max="10000" :step="100"
                       :model-value="settingStore.debugFileListMax"
                       @update:model-value="cb({ debugFileListMax: $event })">
-        <template #prefix> 只显示前</template>
-        <template #suffix> 个文件</template>
+        <template #prefix> {{ t('settings.debug.showFirst') }}</template>
+        <template #suffix> {{ t('settings.debug.fileCount') }}</template>
       </a-input-number>
       <a-popover position="bottom">
         <IconFont name="iconbulb" />
         <template #content>
           <div>
-            默认：<span class="opred">3000</span> (3000-10000)
+            <span class="opred">{{ t('settings.debug.default3000') }}</span>
             <hr />
-            进入文件夹后，右侧文件列表只显示前3000个文件，剩余文件不显示
-            <div class="hrspace"></div>
-            <span class="oporg">注：</span>只是不显示，下载整个文件夹时会正确下载全部文件
+            {{ t('settings.debug.fileListTip') }}
           </div>
         </template>
       </a-popover>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">收藏夹/回收站/全盘搜索/文件标记/文件恢复/历史导入 显示限制</div>
+    <div class="settinghead">{{ t('settings.debug.specialListLimit') }}</div>
     <div class="settingrow">
       <div class="settingrow">
         <a-input-number tabindex="-1" :style="{ width: '252px' }" mode="button" :min="100"
                         :max="3000" :step="100" :model-value="settingStore.debugFavorListMax"
                         @update:model-value="cb({ debugFavorListMax: $event })">
-          <template #prefix> 只显示前</template>
-          <template #suffix> 个文件</template>
+          <template #prefix> {{ t('settings.debug.showFirst') }}</template>
+          <template #suffix> {{ t('settings.debug.fileCount') }}</template>
         </a-input-number>
         <a-popover position="bottom">
           <IconFont name="iconbulb" />
           <template #content>
             <div>
-              默认：<span class="opred">500</span> (500-3000)
+              <span class="opred">{{ t('settings.debug.default500') }}</span>
               <hr />
-              收藏夹/回收站/全盘搜索/文件标记/放映室，只显示前500个文件
-              <div class="hrspace"></div>
-              <span class="oporg">注：</span>只是不显示，不影响文件。为了加快文件列表的加载速度
+              {{ t('settings.debug.specialListTip') }}
             </div>
           </template>
         </a-popover>
       </div>
     </div>
     <div class="settingspace"></div>
-    <div class="settinghead">下载完/上传完记录 存储限制</div>
+    <div class="settinghead">{{ t('settings.debug.transferRecordLimit') }}</div>
     <div class="settingrow">
       <div class="settingrow">
         <a-input-number tabindex="-1" :style="{ width: '252px' }" mode="button" :min="1000" :max="50000" :step="1000"
                         :model-value="settingStore.debugDownedListMax"
                         @update:model-value="cb({ debugDownedListMax: $event })">
-          <template #prefix> 保留最后</template>
-          <template #suffix> 条记录</template>
+          <template #prefix> {{ t('settings.debug.keepLast') }}</template>
+          <template #suffix> {{ t('settings.debug.records') }}</template>
         </a-input-number>
         <a-popover position="bottom">
           <IconFont name="iconbulb" />
           <template #content>
             <div>
-              默认：<span class="opred">5000</span> (1000-50000)
+              <span class="opred">{{ t('settings.debug.default5000') }}</span>
               <hr />
-              只保留最新的5000个 已下载/已上传 记录<br />
-              之前的传输记录会被自动清理，不影响下载上传操作，不影响本地文件
+              {{ t('settings.debug.recordTip') }}
             </div>
           </template>
         </a-popover>
@@ -213,69 +209,66 @@ onMounted(loadCacheStats)
     </div>
   </div>
   <div class="settingcard">
-    <div class='settinghead'>软件服务端口</div>
+    <div class='settinghead'>{{ t('settings.debug.servicePort') }}</div>
     <a-popover position='bottom'>
       <IconFont name="iconbulb" />
       <template #content>
         <div>
-          默认：<span class='opred'>10000</span>
+          <span class='opred'>10000</span>
           <hr />
-          用于文件相关的服务【如：加载播放列表、解密文件等】
-          <br />
-          修改后需要重新打开修改软件刷新链接
-          <span class='opred'>相关功能异常时需要修改该值</span>
+          {{ t('settings.debug.serviceTip') }}
         </div>
       </template>
     </a-popover>
     <div class='settingrow'>
       <a-input-search
         tabindex='-1'
-        placeholder='默认：127.0.0.1'
+        placeholder='127.0.0.1'
         hide-button
         style="width: fit-content"
         v-model.trim="settingStore.debugProxyHost"
         search-button
-        button-text='切换地址'
+        :button-text="t('settings.debug.switchHost')"
         @search="handleResetHost"
         @update:model-value='cb({ debugProxyHost: $event })' />
     </div>
     <div class='settingrow'>
       <a-input-search
         tabindex='-1'
-        placeholder='默认：5000' hide-button
+        placeholder='5000' hide-button
         style="width: fit-content"
         v-model.trim="settingStore.debugProxyPort"
         search-button
-        button-text='随机端口'
+        :button-text="t('settings.debug.randomPort')"
         @search="handleResetPort"
         @update:model-value='cb({ debugProxyPort: $event })' />
     </div>
     <div class='settingspace'></div>
     <div class="settinghead">
-      缓存路径
+      {{ t('settings.debug.cachePath') }}
       <span class="opblue" style="margin-left: 12px; padding: 0 12px">( {{ settingStore.debugDirSize }} )</span>
     </div>
     <div class="settingrow">
-      <a-input tabindex='-1' :model-value='userData' placeholder='C:\Users\用户名\AppData\Roaming\aliyunxby'
+      <a-input tabindex='-1' :model-value='userData' placeholder='C:\Users\Username\AppData\Roaming\aliyunxby'
                :readonly='true' />
     </div>
     <div class="settingspace"></div>
     <div class='settingrow'>
       <a-button type='outline' size='small' @click='handleJumpPath'>
-        打开位置
+        {{ t('settings.debug.openLocation') }}
       </a-button>
-      <a-popconfirm content="确认要清理数据库？" @ok="AppCache.aClearDir('db')">
-        <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">清理数据库
+      <a-popconfirm :content="t('settings.debug.confirmClearDb')" @ok="AppCache.aClearDir('db')">
+        <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">{{ t('settings.debug.clearDb') }}
         </a-button>
       </a-popconfirm>
 
-      <a-popconfirm content="确认要清理缓存？" @ok="AppCache.aClearDir('cache')">
-        <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">清理缓存
+      <a-popconfirm :content="t('settings.debug.confirmClearCache')" @ok="AppCache.aClearDir('cache')">
+        <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">{{ t('settings.debug.clearCache') }}
         </a-button>
       </a-popconfirm>
-      <a-popconfirm content="确认要重置？会重启小白羊" @ok="AppCache.aClearDir('all')">
+      <a-popconfirm :content="t('settings.debug.confirmReset')" @ok="AppCache.aClearDir('all')">
         <a-button type="outline" size="small" tabindex="-1" status="danger" style="margin-right: 16px">
-          删除全部数据(重置)
+          {{ t('settings.debug.resetAll') }}
         </a-button>
       </a-popconfirm>
     </div>
@@ -283,7 +276,7 @@ onMounted(loadCacheStats)
 
   <div class="settingcard">
     <div class="settinghead">
-      媒体图片缓存
+      {{ t('settings.debug.mediaImageCache') }}
       <span v-if="cacheTotalBytes > 0" class="opblue" style="margin-left: 12px; padding: 0 12px">
         {{ formatBytes(cacheTotalBytes) }}
       </span>
@@ -291,9 +284,9 @@ onMounted(loadCacheStats)
     </div>
     <div class="settingrow">
       <a-button type="outline" size="small" tabindex="-1" :loading="cacheLoading" @click="loadCacheStats">
-        刷新统计
+        {{ t('settings.debug.refreshStats') }}
       </a-button>
-      <a-popconfirm content="确认清理全部媒体图片缓存？" @ok="handleClearCache">
+      <a-popconfirm :content="t('settings.debug.confirmClearImageCache')" @ok="handleClearCache">
         <a-button
           type="outline"
           size="small"
@@ -302,7 +295,7 @@ onMounted(loadCacheStats)
           style="margin-left: 12px"
           :loading="cacheClearing"
         >
-          清理图片缓存
+          {{ t('settings.debug.clearImageCache') }}
         </a-button>
       </a-popconfirm>
     </div>

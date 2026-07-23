@@ -4,11 +4,11 @@
     <div v-if="!showingDetail && !isHomeView && !props.selectedFolder" class="library-header">
       <div class="library-tabs">
         <a-tabs v-model:activeKey="activeTab" type="text" class="hidetabs">
-          <a-tab-pane key="continue" tab="继续观看" />
-          <a-tab-pane key="recent" tab="最近添加" />
-          <a-tab-pane key="movies" tab="电影" />
-          <a-tab-pane key="tv" tab="电视剧" />
-          <a-tab-pane key="unmatched" tab="未匹配" />
+          <a-tab-pane key="continue" :tab="t('mediaLibrary.continue')" />
+          <a-tab-pane key="recent" :tab="t('mediaLibrary.recent')" />
+          <a-tab-pane key="movies" :tab="t('mediaLibrary.movies')" />
+          <a-tab-pane key="tv" :tab="t('mediaLibrary.tv')" />
+          <a-tab-pane key="unmatched" :tab="t('mediaLibrary.unmatched')" />
         </a-tabs>
       </div>
 
@@ -32,7 +32,7 @@
             <button
               v-if="!searchExpanded"
               class="view-toggle-seg"
-              title="搜索筛选"
+              :title="t('mediaLibrary.searchFilter')"
               @click="searchExpanded = true"
             >
               <IconFont name="iconsearch" />
@@ -42,7 +42,7 @@
               ref="quickSearchInputRef"
               v-model="localSearchQuery"
               allow-clear
-              placeholder="输入关键词筛选..."
+              :placeholder="t('mediaLibrary.filterPlaceholder')"
               size="small"
               class="library-quick-search"
               @blur="onQuickSearchBlur"
@@ -52,14 +52,14 @@
               </template>
             </a-input-search>
           </template>
-          <div v-if="showResultCount" class="library-result-count">共 {{ filteredItems.length }} 项结果</div>
+          <div v-if="showResultCount" class="library-result-count">{{ t('mediaLibrary.resultCount', { count: filteredItems.length }) }}</div>
 
           <!-- 视图切换 — 毛玻璃分段胶囊 -->
           <div v-if="showBrowseModeToggle" class="view-toggle-pill">
             <button
               class="view-toggle-seg"
               :class="{ active: viewMode === 'grid' }"
-              title="网格视图"
+              :title="t('mediaServer.gridView')"
               @click="viewMode = 'grid'"
             >
               <IconFont name="iconfangkuang" />
@@ -67,7 +67,7 @@
             <button
               class="view-toggle-seg"
               :class="{ active: viewMode === 'list' }"
-              title="列表视图"
+              :title="t('mediaServer.listView')"
               @click="viewMode = 'list'"
             >
               <IconFont name="iconlist" />
@@ -77,10 +77,10 @@
               v-if="showPosterTypeToggle"
               class="view-toggle-seg view-toggle-seg--label"
               :class="{ active: posterType === 'landscape' }"
-              :title="posterType === 'portrait' ? '切换为横版海报' : '切换为竖版海报'"
+              :title="posterType === 'portrait' ? t('mediaLibrary.switchLandscape') : t('mediaLibrary.switchPortrait')"
               @click="posterType = posterType === 'portrait' ? 'landscape' : 'portrait'"
             >
-              <span class="view-toggle-seg-label">{{ posterType === 'portrait' ? '竖版' : '横版' }}</span>
+              <span class="view-toggle-seg-label">{{ posterType === 'portrait' ? t('mediaLibrary.portrait') : t('mediaLibrary.landscape') }}</span>
             </button>
           </div>
         </div>
@@ -92,15 +92,15 @@
 
       <!-- 搜索界面 -->
       <div v-if="isSearchView && !showingDetail" class="search-panel">
-        <div class="search-panel-title">聚合搜索</div>
+        <div class="search-panel-title">{{ t('mediaLibrary.aggregateSearch') }}</div>
         <div class="search-panel-input">
-          <a-input-search v-model="localSearchQuery" allow-clear placeholder="搜索媒体库和所有媒体服务器">
+          <a-input-search v-model="localSearchQuery" allow-clear :placeholder="t('mediaLibrary.searchAllPlaceholder')">
             <template #prefix>
               <IconFont name="iconsearch" />
             </template>
           </a-input-search>
         </div>
-        <div class="search-panel-hint">上方同时搜索本地媒体库和所有媒体服务器</div>
+        <div class="search-panel-hint">{{ t('mediaLibrary.searchAllHint') }}</div>
       </div>
 
       <!-- 显示媒体详情 -->
@@ -125,13 +125,13 @@
           <div class="library-home-toolbar-right">
             <button type="button" class="toolbar-btn" @click="openLocalHomeManager">
               <IconFont name="iconlist" />
-              <span>媒体管理</span>
+              <span>{{ t('mediaServer.mediaManagement') }}</span>
             </button>
             <div class="view-toggle-pill">
               <button
                 class="view-toggle-seg"
                 :class="{ active: localHomePosterMode === 'landscape' }"
-                title="横版海报"
+                :title="t('mediaServer.landscapePoster')"
                 @click="setLocalHomePosterMode('landscape')"
               >
                 <IconFont name="iconfangkuang" />
@@ -140,7 +140,7 @@
               <button
                 class="view-toggle-seg"
                 :class="{ active: localHomePosterMode === 'portrait' }"
-                title="竖版海报"
+                :title="t('mediaServer.portraitPoster')"
                 @click="setLocalHomePosterMode('portrait')"
               >
                 <IconFont name="iconxiaotumoshi" />
@@ -165,7 +165,7 @@
             :show-poster-labels="localHomePreferences.showPosterLabels"
             :enable-context-menu="true"
             :show-top-overlay="true"
-            :see-all-label="`查看全部 (${getLocalHomeSectionTotalCount(section)})`"
+            :see-all-label="t('mediaServer.seeAll', { count: getLocalHomeSectionTotalCount(section) })"
             subtitle-mode="year-only"
             @select="handleLocalHomeNodeSelect"
             @play="handleLocalHomeNodePlay"
@@ -185,9 +185,9 @@
                 class="toolbar-btn"
                 @click="handleLocalShortcutSeeAll(section.key)"
               >
-                查看全部 ({{ getLocalHomeSectionTotalCount(section) }})
+                {{ t('mediaServer.seeAll', { count: getLocalHomeSectionTotalCount(section) }) }}
               </button>
-              <span v-else>{{ (section.entries || []).length }} 项</span>
+              <span v-else>{{ t('mediaServer.itemsCount', { count: (section.entries || []).length }) }}</span>
             </div>
             <div
               class="library-home-row"
@@ -227,13 +227,13 @@
 
         <a-modal
           v-model:visible="localHomeManagerVisible"
-          title="媒体管理"
+          :title="t('mediaServer.mediaManagement')"
           :footer="false"
           width="560px"
           class="detail-media-modal"
         >
           <div class="home-library-manager-panel">
-            <p class="home-library-manager-hint">拖动调整首页分区顺序，也可以隐藏你不想显示的栏目。</p>
+            <p class="home-library-manager-hint">{{ t('mediaLibrary.homeManagerHint') }}</p>
             <div v-if="localHomeManagerDraft.length > 0" class="home-library-manager-list">
               <div
                 v-for="item in localHomeManagerDraft"
@@ -258,10 +258,10 @@
                 </a-checkbox>
               </div>
             </div>
-            <div v-else class="home-library-manager-empty">还没有可管理的首页分区</div>
+            <div v-else class="home-library-manager-empty">{{ t('mediaLibrary.noHomeSections') }}</div>
             <div class="home-library-manager-footer">
-              <a-button type="outline" @click="cancelLocalHomeManager">取消</a-button>
-              <a-button type="primary" @click="saveLocalHomeManager">保存</a-button>
+              <a-button type="outline" @click="cancelLocalHomeManager">{{ t('common.cancel') }}</a-button>
+              <a-button type="primary" @click="saveLocalHomeManager">{{ t('common.save') }}</a-button>
             </div>
           </div>
         </a-modal>
@@ -273,7 +273,7 @@
       >
         <div class="search-media-server-panel integrated">
           <div v-if="localSearchQuery.trim()" class="search-result-section">
-            <div class="search-result-section-title">网盘搜索结果</div>
+            <div class="search-result-section-title">{{ t('mediaLibrary.cloudSearchResults') }}</div>
             <div v-if="hasLocalSearchResults" class="search-result-section-body">
               <div v-if="viewMode === 'grid'" class="media-grid search-media-grid">
                 <div
@@ -306,7 +306,7 @@
                     </div>
 
                     <div class="type-badge">
-                      {{ item.type === 'movie' ? '电影' : item.type === 'tv' ? '电视剧' : '未匹配' }}
+                      {{ item.type === 'movie' ? t('mediaLibrary.typeMovie') : item.type === 'tv' ? t('mediaLibrary.typeTv') : t('mediaLibrary.typeUnmatched') }}
                     </div>
                     <div v-if="getCoverageBadge(item)" class="media-coverage-badge" :title="getCoverageBadge(item)">
                       <span>!</span>{{ getCoverageBadge(item) }}
@@ -375,12 +375,12 @@
                         {{ item.continueEpisodeLabel }}
                       </p>
                       <p v-if="isContinueWatchingView && item.watchProgress !== undefined" class="list-progress">
-                        已观看 {{ Math.round((item.watchProgress || 0) * 100) }}%
+                        {{ t('mediaLibrary.watchedPercent', { percent: Math.round((item.watchProgress || 0) * 100) }) }}
                       </p>
                     </div>
 
                     <div class="list-meta">
-                      <span class="list-type">{{ item.type === 'movie' ? '电影' : item.type === 'tv' ? '电视剧' : '未匹配' }}</span>
+                      <span class="list-type">{{ item.type === 'movie' ? t('mediaLibrary.typeMovie') : item.type === 'tv' ? t('mediaLibrary.typeTv') : t('mediaLibrary.typeUnmatched') }}</span>
                       <span v-if="item.year" class="list-year">{{ item.year }}</span>
                       <span v-if="item.rating" class="list-rating">
                         ⭐ {{ item.rating.toFixed(1) }}
@@ -395,7 +395,7 @@
 
                     <div v-if="item.type === 'tv' && item.seasons?.length" class="tv-info">
                       <span v-if="item.seasons?.length" class="tv-seasons">
-                        {{ item.seasons.length }} 季
+                        {{ t('mediaLibrary.seasonsCount', { count: item.seasons.length }) }}
                       </span>
                     </div>
                   </div>
@@ -403,7 +403,7 @@
               </div>
             </div>
             <div v-else class="search-media-server-state">
-              {{ localSearchQuery.trim() ? '网盘媒体库没有匹配结果' : '输入关键词后可搜索网盘媒体库' }}
+              {{ localSearchQuery.trim() ? t('mediaLibrary.noCloudMatches') : t('mediaLibrary.searchCloudHint') }}
             </div>
           </div>
 
@@ -418,16 +418,16 @@
               aria-controls="media-server-search-section"
               @click="toggleMediaServerSection"
             >
-              <span>{{ localSearchQuery.trim() ? '媒体服务器结果' : '媒体服务器推荐' }}</span>
+              <span>{{ localSearchQuery.trim() ? t('mediaLibrary.serverResults') : t('mediaLibrary.serverRecommendations') }}</span>
               <IconFont class="search-result-section-toggle" name="icondown" />
             </button>
             <div id="media-server-search-section" v-show="!isMediaServerSectionCollapsed">
               <div v-if="mediaServerSearchLoading" class="search-media-server-state">
-                {{ localSearchQuery.trim() ? '正在搜索所有媒体服务器...' : '正在加载所有媒体服务器推荐...' }}
+                {{ localSearchQuery.trim() ? t('mediaLibrary.searchingServers') : t('mediaLibrary.loadingServerRecommendations') }}
               </div>
               <div v-else-if="mediaServerSearchError" class="search-media-server-state error">{{ mediaServerSearchError }}</div>
               <div v-else-if="mediaServerSearchGroups.length === 0" class="search-media-server-state">
-                {{ localSearchQuery.trim() ? '媒体服务器没有匹配结果' : '暂时没有可推荐的媒体内容' }}
+                {{ localSearchQuery.trim() ? t('mediaLibrary.noServerMatches') : t('mediaLibrary.noServerRecommendations') }}
               </div>
               <template v-else>
                 <div
@@ -479,7 +479,7 @@
       <!-- 加载状态 -->
       <div v-else-if="mediaStore.isScanning" class="loading-state">
         <a-spin />
-        <p>正在扫描媒体文件... {{ mediaStore.scanProgress }}/{{ mediaStore.scanTotal }}</p>
+        <p>{{ t('mediaLibrary.scanningFiles', { progress: mediaStore.scanProgress, total: mediaStore.scanTotal }) }}</p>
       </div>
 
       <!-- 文件列表 - 当选择文件夹时显示 PanRight 组件 -->
@@ -500,7 +500,7 @@
             </div>
             <div class="folder-info">
               <h3>{{ currentFolderInfo?.name || props.selectedFolder.name }}</h3>
-              <p>共 {{ folderFileList.length }} 个文件</p>
+              <p>{{ t('mediaLibrary.fileCount', { count: folderFileList.length }) }}</p>
             </div>
           </div>
         </div>
@@ -527,12 +527,12 @@
             </div>
             <div class="folder-info">
               <h3>{{ currentFolderInfo?.name || props.selectedFolder.name }}</h3>
-              <p>文件夹为空</p>
+              <p>{{ t('mediaLibrary.emptyFolder') }}</p>
             </div>
           </div>
         </div>
         <div class="empty-state">
-          <a-empty description="文件夹为空" />
+          <a-empty :description="t('mediaLibrary.emptyFolder')" />
         </div>
       </div>
 
@@ -564,7 +564,7 @@
             <div class="category-list-content">
               <h3 class="category-list-title">{{ item.name }}</h3>
             </div>
-            <div class="category-list-count">{{ item.count }} items</div>
+            <div class="category-list-count">{{ t('mediaLibrary.items', { count: item.count }) }}</div>
           </div>
         </div>
       </div>
@@ -591,7 +591,7 @@
               <div class="playlist-card-context-menu">
                 <button type="button" class="playlist-card-context-item" @click="playPlaylist(item.name)">
                   <span class="playlist-card-context-icon">▷</span>
-                  <span>播放全部</span>
+                  <span>{{ t('mediaLibrary.playAll') }}</span>
                 </button>
               </div>
             </template>
@@ -616,13 +616,13 @@
               <div class="category-list-content">
                 <h3 class="category-list-title">{{ item.name }}</h3>
               </div>
-              <div class="category-list-count">{{ item.count }} items</div>
+              <div class="category-list-count">{{ t('mediaLibrary.items', { count: item.count }) }}</div>
             </div>
             <template #content>
               <div class="playlist-card-context-menu">
                 <button type="button" class="playlist-card-context-item" @click="playPlaylist(item.name)">
                   <span class="playlist-card-context-icon">▷</span>
-                  <span>播放全部</span>
+                  <span>{{ t('mediaLibrary.playAll') }}</span>
                 </button>
               </div>
             </template>
@@ -632,7 +632,7 @@
 
       <!-- 空状态 - 当没有媒体内容时 -->
       <div v-else-if="filteredItems.length === 0" class="empty-state">
-        <a-empty description="暂无媒体内容" />
+        <a-empty :description="t('mediaLibrary.noMediaContent')" />
       </div>
 
       <!-- 媒体内容 -->
@@ -764,7 +764,7 @@
 
               <div class="list-main">
                 <p class="list-overview" :class="{ 'is-empty': !item.overview }">
-                  {{ getItemOverview(item) || '暂无简介' }}
+                  {{ getItemOverview(item) || t('mediaServer.noOverview') }}
                 </p>
                 <p v-if="item.type === 'unmatched' && getUnmatchedPath(item)" class="list-path" :title="getUnmatchedPath(item)">
                   {{ getUnmatchedPath(item) }}
@@ -773,7 +773,7 @@
                   {{ item.continueEpisodeLabel }}
                 </p>
                 <p v-if="isContinueWatchingView && item.watchProgress !== undefined" class="list-progress">
-                  已观看 {{ Math.round((item.watchProgress || 0) * 100) }}%
+                  {{ t('mediaLibrary.watchedPercent', { percent: Math.round((item.watchProgress || 0) * 100) }) }}
                 </p>
               </div>
 
@@ -792,13 +792,13 @@
     <!-- 添加文件夹对话框 -->
     <a-modal
       v-model:visible="showAddFolderModal"
-      title="添加到媒体库"
+      :title="t('mediaLibrary.addToLibrary')"
       @ok="handleAddFolder"
       @cancel="showAddFolderModal = false"
     >
       <a-form :model="folderForm" layout="vertical">
-        <a-form-item label="文件夹名称">
-          <a-input v-model:value="folderForm.name" placeholder="请输入媒体库名称" />
+        <a-form-item :label="t('mediaLibrary.folderName')">
+          <a-input v-model:value="folderForm.name" :placeholder="t('mediaLibrary.libraryNamePlaceholder')" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -814,70 +814,70 @@
         <div class="library-card-context-menu">
           <button type="button" class="library-card-context-item" @click="playFromMenu">
             <span class="library-card-context-icon">▷</span>
-            <span>播放</span>
+            <span>{{ t('mediaLibrary.play') }}</span>
           </button>
           <template v-if="isContinueWatchingView">
             <div class="library-card-context-divider" />
             <button type="button" class="library-card-context-item" @click="removeFromContinueWatchingFromMenu">
               <span class="library-card-context-icon">↺</span>
-              <span>从继续观看移除</span>
+              <span>{{ t('mediaLibrary.removeContinue') }}</span>
             </button>
           </template>
           <template v-else>
             <button type="button" class="library-card-context-item" @click="toggleFavoriteFromMenu">
               <span class="library-card-context-icon">{{ contextMenuIsFavorite ? '♥' : '♡' }}</span>
-              <span>{{ contextMenuIsFavorite ? '取消收藏' : '收藏' }}</span>
+              <span>{{ contextMenuIsFavorite ? t('mediaServer.removeFavorite') : t('mediaLibrary.favorite') }}</span>
             </button>
             <button type="button" class="library-card-context-item" @click="toggleWatchedFromMenu">
               <span class="library-card-context-icon context-icon-filled">✓</span>
-              <span>{{ contextMenuIsWatched ? '标记为未观看' : '标记为已观看' }}</span>
+              <span>{{ contextMenuIsWatched ? t('mediaServer.markUnwatched') : t('mediaServer.markWatched') }}</span>
             </button>
             <button v-if="hasPlaylists" type="button" class="library-card-context-item" @click="togglePlaylistFromMenu">
               <span class="library-card-context-icon">≡</span>
-              <span>{{ contextMenuInPlaylist ? '移除播放列表' : '添加到播放列表' }}</span>
+              <span>{{ contextMenuInPlaylist ? t('mediaLibrary.removePlaylist') : t('mediaLibrary.addPlaylist') }}</span>
             </button>
             <button type="button" class="library-card-context-item" @click="aiRescrapeFromMenu">
               <span class="library-card-context-icon">AI</span>
-              <span>AI 重刮削 <span class="ai-pro-badge">Pro</span></span>
+              <span>{{ t('mediaLibrary.aiRescrape') }} <span class="ai-pro-badge">Pro</span></span>
             </button>
             <button type="button" class="library-card-context-item" @click="openManualMetadataEditor">
               <span class="library-card-context-icon">✎</span>
-              <span>手动修改信息</span>
+              <span>{{ t('mediaLibrary.manualEdit') }}</span>
             </button>
             <div class="library-card-context-divider" />
             <button type="button" class="library-card-context-item danger" @click="deleteMediaFromMenu">
               <span class="library-card-context-icon">✕</span>
-              <span>删除</span>
+              <span>{{ t('common.delete') }}</span>
             </button>
           </template>
         </div>
       </template>
     </a-dropdown>
-    <a-modal v-model:visible="manualMetadataVisible" title="修改媒体信息" :ok-button-props="{ disabled: !manualMetadata.name.trim() }" @ok="saveManualMetadata">
+    <a-modal v-model:visible="manualMetadataVisible" :title="t('mediaLibrary.editMetadata')" :ok-button-props="{ disabled: !manualMetadata.name.trim() }" @ok="saveManualMetadata">
       <a-form :model="manualMetadata" layout="vertical">
-        <a-form-item field="name" label="标题">
-          <a-input v-model="manualMetadata.name" placeholder="媒体标题" />
+        <a-form-item field="name" :label="t('mediaLibrary.title')">
+          <a-input v-model="manualMetadata.name" :placeholder="t('mediaLibrary.mediaTitle')" />
         </a-form-item>
         <div class="manual-metadata-grid">
-          <a-form-item field="year" label="年份">
-            <a-input v-model="manualMetadata.year" placeholder="例如 2024" />
+          <a-form-item field="year" :label="t('mediaLibrary.year')">
+            <a-input v-model="manualMetadata.year" :placeholder="t('mediaLibrary.yearPlaceholder')" />
           </a-form-item>
-          <a-form-item field="type" label="类型">
+          <a-form-item field="type" :label="t('mediaLibrary.type')">
             <a-select v-model="manualMetadata.type">
-              <a-option value="movie">电影</a-option>
-              <a-option value="tv">电视剧</a-option>
-              <a-option value="unmatched">未匹配</a-option>
+              <a-option value="movie">{{ t('mediaLibrary.typeMovie') }}</a-option>
+              <a-option value="tv">{{ t('mediaLibrary.typeTv') }}</a-option>
+              <a-option value="unmatched">{{ t('mediaLibrary.typeUnmatched') }}</a-option>
             </a-select>
           </a-form-item>
         </div>
         <a-form-item field="tmdbId" label="TMDB ID">
-          <a-input v-model="manualMetadata.tmdbId" placeholder="可选，留空可清除" />
+          <a-input v-model="manualMetadata.tmdbId" :placeholder="t('mediaLibrary.optionalClear')" />
         </a-form-item>
-        <a-form-item field="genres" label="分类">
-          <a-input v-model="manualMetadata.genres" placeholder="用逗号分隔，例如 剧情, 科幻" />
+        <a-form-item field="genres" :label="t('mediaLibrary.genres')">
+          <a-input v-model="manualMetadata.genres" :placeholder="t('mediaLibrary.genresPlaceholder')" />
         </a-form-item>
-        <a-form-item field="overview" label="简介">
-          <a-textarea v-model="manualMetadata.overview" :auto-size="{ minRows: 3, maxRows: 6 }" placeholder="可选" />
+        <a-form-item field="overview" :label="t('mediaLibrary.overview')">
+          <a-textarea v-model="manualMetadata.overview" :auto-size="{ minRows: 3, maxRows: 6 }" :placeholder="t('mediaServer.optional')" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -916,6 +916,7 @@ import { manualAIScrapeItems } from '../utils/mediaAIScrape'
 import useLocalMediaHomePreferencesStore from '../store/localMediaHomePreferences'
 import { getMediaCoverage } from '../utils/mediaCoverage'
 import type { LocalMediaHomePosterType, LocalMediaHomeSectionKey } from '../store/localMediaHomePreferences'
+import { t } from '../i18n'
 
 type MediaListItem = MediaLibraryItem & {
   continueEpisodeLabel?: string
@@ -1223,10 +1224,10 @@ const showDrillDownBackBar = computed(() => {
   return !!(props.selectedGenre || props.selectedYear || props.selectedRating)
 })
 const drillDownResultTitle = computed(() => {
-  if (props.selectedGenre) return `类型 · ${props.selectedGenre}`
-  if (props.selectedYear) return `年份 · ${props.selectedYear}`
-  if (props.selectedRating) return `评分 · ${props.selectedRating}`
-  return '筛选结果'
+  if (props.selectedGenre) return t('mediaLibrary.filterGenre', { value: props.selectedGenre })
+  if (props.selectedYear) return t('mediaLibrary.filterYear', { value: props.selectedYear })
+  if (props.selectedRating) return t('mediaLibrary.filterRating', { value: props.selectedRating })
+  return t('mediaLibrary.filterResults')
 })
 const showPlaylistBackBar = computed(() => {
   if (isSearchView.value || props.selectedFolder) return false
@@ -1258,26 +1259,26 @@ const onQuickSearchBlur = () => {
   }
 }
 const homeNavigationTitleMap: Record<string, string> = {
-  'continue-watching': '继续观看',
-  'recently-added': '最近添加',
-  movies: '电影',
-  'tv-shows': '电视剧',
-  documentary: '纪录片',
-  animation: '动画',
-  unmatched: '未匹配',
-  unwatched: '未观看',
-  favorites: '收藏',
-  playlist: '播放列表',
-  genres: '类型',
-  ratings: '评分',
-  years: '年份'
+  'continue-watching': t('mediaLibrary.continue'),
+  'recently-added': t('mediaLibrary.recent'),
+  movies: t('mediaLibrary.movies'),
+  'tv-shows': t('mediaLibrary.tv'),
+  documentary: t('mediaLibrary.documentary'),
+  animation: t('mediaLibrary.animation'),
+  unmatched: t('mediaLibrary.unmatched'),
+  unwatched: t('mediaLibrary.unwatched'),
+  favorites: t('mediaLibrary.favorite'),
+  playlist: t('mediaLibrary.playlist'),
+  genres: t('mediaLibrary.genres'),
+  ratings: t('mediaLibrary.ratings'),
+  years: t('mediaLibrary.years')
 }
 const resultBarTitle = computed(() => {
   if (showHomeBackBar.value) {
     const category = props.activeCategory || activeTab.value
-    return homeNavigationTitleMap[category] || '媒体库'
+    return homeNavigationTitleMap[category] || t('mediaLibrary.library')
   }
-  if (showPlaylistBackBar.value) return `播放列表 · ${selectedPlaylist.value}`
+  if (showPlaylistBackBar.value) return t('mediaLibrary.playlistTitle', { name: selectedPlaylist.value })
   return drillDownResultTitle.value
 })
 const hasLocalSearchResults = computed(() => {
@@ -1395,6 +1396,8 @@ const localContinueCards = computed<MediaServerCardItem[]>(() => continueWatchin
 })))
 
 const getFolderSourceLabel = (folder: any) => {
+  const connectionId = folder.userId || getWebDavConnectionId(folder.driveId)
+  if (connectionId && getWebDavConnection(connectionId)?.kind === 'alist') return 'AList 文件源'
   if (folder.driveServerId === 'webdav' || (folder.driveId || '').startsWith('webdav:')) return 'WebDAV 文件源'
   if (folder.driveId === 'local' || folder.driveServerId === 'local') return '本地文件夹'
   if (folder.driveId === 'cloud123' || folder.driveServerId === 'cloud123') return '123 云盘'
@@ -1486,12 +1489,12 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'continue',
       kind: 'continue',
-      title: '继续观看'
+      title: t('mediaLibrary.continue')
     },
     {
       key: 'recent',
       kind: 'media',
-      title: '最近添加',
+      title: t('mediaLibrary.recent'),
       category: 'recently-added',
       posterType: localHomePreferences.recentlyAddedPosterType,
       items: mediaStore.recentlyAdded.slice(0, 18).map((item) => localItemToNode(item)),
@@ -1499,7 +1502,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'movies',
       kind: 'media',
-      title: '电影',
+      title: t('mediaLibrary.movies'),
       category: 'movies',
       posterType: localHomePreferences.libraryPosterType,
       items: mediaStore.movies.slice(0, 18).map((item) => localItemToNode(item)),
@@ -1507,7 +1510,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'tv',
       kind: 'media',
-      title: '电视剧',
+      title: t('mediaLibrary.tv'),
       category: 'tv-shows',
       posterType: localHomePreferences.libraryPosterType,
       items: mediaStore.tvShows.slice(0, 18).map((item) => localItemToNode(item, { kind: 'series' })),
@@ -1515,7 +1518,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'documentary',
       kind: 'media',
-      title: '纪录片',
+      title: t('mediaLibrary.documentary'),
       category: 'documentary',
       posterType: localHomePreferences.libraryPosterType,
       items: documentaryItems.value.slice(0, 18).map((item) => localItemToNode(item)),
@@ -1523,7 +1526,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'animation',
       kind: 'media',
-      title: '动画',
+      title: t('mediaLibrary.animation'),
       category: 'animation',
       posterType: localHomePreferences.libraryPosterType,
       items: animationItems.value.slice(0, 18).map((item) => localItemToNode(item)),
@@ -1531,7 +1534,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'unmatched',
       kind: 'media',
-      title: '未匹配',
+      title: t('mediaLibrary.unmatched'),
       category: 'unmatched',
       posterType: localHomePreferences.libraryPosterType,
       items: mediaStore.unmatchedItems.slice(0, 18).map((item) => localItemToNode(item, { kind: 'folder' })),
@@ -1539,7 +1542,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'unwatched',
       kind: 'media',
-      title: '未观看',
+      title: t('mediaLibrary.unwatched'),
       category: 'unwatched',
       posterType: localHomePreferences.libraryPosterType,
       items: unwatchedItems.value.slice(0, 18).map((item) => localItemToNode(item)),
@@ -1547,7 +1550,7 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'favorites',
       kind: 'media',
-      title: '收藏',
+      title: t('mediaLibrary.favorite'),
       category: 'favorites',
       posterType: localHomePreferences.libraryPosterType,
       items: favoriteItems.value.slice(0, 18).map((item) => localItemToNode(item)),
@@ -1555,35 +1558,35 @@ const localHomeSections = computed<LocalHomeMediaSection[]>(() => {
     {
       key: 'playlists',
       kind: 'shortcut',
-      title: '播放列表',
+      title: t('mediaLibrary.playlist'),
       variant: 'banner',
       entries: localShortcutSections.value.playlists
     },
     {
       key: 'genres',
       kind: 'shortcut',
-      title: '类型',
+      title: t('mediaLibrary.genres'),
       variant: 'banner',
       entries: localShortcutSections.value.genres
     },
     {
       key: 'ratings',
       kind: 'shortcut',
-      title: '评分',
+      title: t('mediaLibrary.ratings'),
       variant: 'banner',
       entries: localShortcutSections.value.ratings
     },
     {
       key: 'years',
       kind: 'shortcut',
-      title: '年份',
+      title: t('mediaLibrary.years'),
       variant: 'banner',
       entries: localShortcutSections.value.years
     },
     {
       key: 'folders',
       kind: 'shortcut',
-      title: '文件源',
+      title: t('mediaLibrary.folders'),
       variant: 'mini',
       entries: localShortcutSections.value.folders
     }
@@ -1806,9 +1809,9 @@ const getItemDisplayImage = (item: MediaLibraryItem) => {
 }
 
 const getItemTypeLabel = (item: MediaLibraryItem) => {
-  if (item.type === 'movie') return '电影'
-  if (item.type === 'tv') return '剧集'
-  return '未匹配'
+  if (item.type === 'movie') return t('mediaLibrary.typeMovie')
+  if (item.type === 'tv') return t('mediaLibrary.typeTv')
+  return t('mediaLibrary.typeUnmatched')
 }
 
 const getPosterContextBadge = (item: MediaLibraryItem) => {
@@ -1826,8 +1829,8 @@ const getCoverageBadge = (item: MediaLibraryItem) => getMediaCoverage(item)?.sum
 const getItemMetaItems = (item: MediaLibraryItem) => {
   const parts = [
     item.year ? `${item.year}` : '',
-    typeof item.rating === 'number' ? `评分 ${item.rating.toFixed(1)}` : '',
-    item.type === 'tv' && item.seasons?.length ? `${item.seasons.length} 季` : '',
+    typeof item.rating === 'number' ? t('mediaLibrary.ratingText', { rating: item.rating.toFixed(1) }) : '',
+    item.type === 'tv' && item.seasons?.length ? t('mediaLibrary.seasonsCount', { count: item.seasons.length }) : '',
     item.productionCountries?.[0] || ''
   ].filter(Boolean)
   return [...new Set(parts)]
@@ -1977,7 +1980,7 @@ const handleManualAIScrape = async (item: MediaLibraryItem) => {
     mediaStore.addToRecentlyAdded(scraped)
   }
   currentMediaItem.value = scrapedItems[0]
-  message.success('AI 重刮削完成')
+  message.success(t('mediaLibrary.aiRescrapeDone'))
 }
 
 const aiRescrapeFromMenu = async () => {
@@ -2022,7 +2025,7 @@ const saveManualMetadata = () => {
   if (currentMediaItem.value?.id === updated.id) currentMediaItem.value = updated
   manualMetadataVisible.value = false
   manualMetadataTarget.value = null
-  message.success('媒体信息已手动更新')
+  message.success(t('mediaLibrary.metadataUpdated'))
 }
 
 const getBaseMediaId = (item: MediaLibraryItem) => {
@@ -2337,7 +2340,7 @@ const playPlaylist = async (playlistName: string) => {
     .filter((item): item is NonNullable<ReturnType<typeof resolvePlayablePlaylistItem>> => !!item)
 
   if (!playable.length) {
-    message.warning('当前播放列表没有可播放的媒体')
+    message.warning(t('mediaLibrary.noPlayablePlaylist'))
     return
   }
 
@@ -2358,7 +2361,7 @@ const playFromMenu = async () => {
 
   const playable = resolvePlayableMediaItem(contextMenuItem.value)
   if (!playable) {
-    message.warning('当前媒体没有可播放的视频文件')
+    message.warning(t('mediaLibrary.noPlayableVideo'))
     return
   }
 
@@ -2662,17 +2665,17 @@ const handleLocalHomeCardAction = async (item: MediaServerCardItem | MediaServer
   const target = findLocalMediaItemById(item.id)
   if (!target) return
   if (action === 'download') {
-    message.info('本地媒体不需要下载')
+    message.info(t('mediaLibrary.localNoDownload'))
     return
   }
   if (action === 'favorite') {
     mediaStore.toggleFavorite(target.id)
-    message.success(mediaStore.isFavorite(target.id) ? '已加入收藏' : '已取消收藏')
+    message.success(mediaStore.isFavorite(target.id) ? t('mediaLibrary.addedFavorite') : t('mediaLibrary.removedFavorite'))
     return
   }
   const nextWatched = !mediaStore.isWatchedById(target.id)
   mediaStore.markWatched(target.id, nextWatched)
-  message.success(nextWatched ? '已标记为已观看' : '已标记为未观看')
+  message.success(nextWatched ? t('mediaLibrary.markedWatched') : t('mediaLibrary.markedUnwatched'))
 }
 
 const handleLocalHomeSeeAll = (section: LocalHomeMediaSection) => {
@@ -2703,17 +2706,17 @@ const handleLocalShortcutSeeAll = (sectionKey: LocalMediaHomeSectionKey) => {
 const localHomeSectionTitleMap: Record<LocalMediaHomeSectionKey, string> = {
   continue: '继续观看',
   recent: '最近添加',
-  movies: '电影',
+  movies: t('mediaLibrary.movies'),
   tv: '电视剧',
-  documentary: '纪录片',
-  animation: '动画',
-  unmatched: '未匹配',
-  unwatched: '未观看',
-  favorites: '收藏',
+  documentary: t('mediaLibrary.documentary'),
+  animation: t('mediaLibrary.animation'),
+  unmatched: t('mediaLibrary.unmatched'),
+  unwatched: t('mediaLibrary.unwatched'),
+  favorites: t('mediaLibrary.favorite'),
   playlists: '播放列表',
   genres: '分类',
-  ratings: '评分',
-  years: '年份',
+  ratings: t('mediaLibrary.ratings'),
+  years: t('mediaLibrary.years'),
   folders: '文件源'
 }
 
@@ -2840,7 +2843,7 @@ async function runMediaServerSearch(rawQuery: string) {
   const candidates = mediaServerRegistry.servers.filter((server) => !!server.baseUrl && !!server.userId)
   if (candidates.length === 0) {
     mediaServerSearchGroups.value = []
-    mediaServerSearchError.value = '还没有可搜索的媒体服务器'
+    mediaServerSearchError.value = t('mediaLibrary.noSearchableServers')
     return
   }
   mediaServerSearchLoading.value = true
@@ -2867,7 +2870,7 @@ async function runMediaServerSearch(rawQuery: string) {
     }>
   } catch (error: any) {
     mediaServerSearchGroups.value = []
-    mediaServerSearchError.value = error?.message || '搜索媒体服务器失败'
+    mediaServerSearchError.value = error?.message || t('mediaLibrary.searchServersFailed')
   } finally {
     mediaServerSearchLoading.value = false
   }
@@ -2877,7 +2880,7 @@ async function loadMediaServerSuggestions() {
   const candidates = mediaServerRegistry.servers.filter((server) => !!server.baseUrl && !!server.userId)
   if (candidates.length === 0) {
     mediaServerSearchGroups.value = []
-    mediaServerSearchError.value = '还没有可搜索的媒体服务器'
+    mediaServerSearchError.value = t('mediaLibrary.noSearchableServers')
     mediaServerSearchLoading.value = false
     return
   }
@@ -2905,7 +2908,7 @@ async function loadMediaServerSuggestions() {
     }>
   } catch (error: any) {
     mediaServerSearchGroups.value = []
-    mediaServerSearchError.value = error?.message || '加载媒体服务器推荐失败'
+    mediaServerSearchError.value = error?.message || t('mediaLibrary.loadServerRecommendationsFailed')
   } finally {
     mediaServerSearchLoading.value = false
   }
@@ -2936,13 +2939,13 @@ const handleMediaServerSearchImageLoad = (event: Event) => {
 }
 
 const mediaServerKindLabel = (kind: MediaServerLibraryNode['kind']) => {
-  if (kind === 'movie') return '电影'
-  if (kind === 'series') return '电视剧'
-  if (kind === 'season') return '季'
-  if (kind === 'episode') return '剧集'
-  if (kind === 'person') return '人物'
-  if (kind === 'folder') return '文件夹'
-  return '媒体'
+  if (kind === 'movie') return t('mediaLibrary.typeMovie')
+  if (kind === 'series') return t('mediaLibrary.typeTv')
+  if (kind === 'season') return t('mediaLibrary.kindSeason')
+  if (kind === 'episode') return t('mediaLibrary.typeTv')
+  if (kind === 'person') return t('mediaServer.people')
+  if (kind === 'folder') return t('mediaLibrary.kindFolder')
+  return t('mediaLibrary.kindMedia')
 }
 
 // 暴露给父组件的方法

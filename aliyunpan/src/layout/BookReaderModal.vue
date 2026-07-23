@@ -255,7 +255,7 @@ const aiMode = ref<'ask' | 'chat'>('ask')
 const aiProviderOverride = ref('')
 watch(aiProviderOverride, (v) => {
   if (v === 'boxplayer-cloud' && !isPro()) {
-    message.warning('内置 AI 需购买 Pro 后使用')
+    message.warning(t('pro.required'))
     aiProviderOverride.value = ''
   }
 })
@@ -408,7 +408,7 @@ const filteredSpeechVoices = computed(() => {
   return speechVoices.value.filter((voice) => voice.lang === readerVoiceLocale.value)
 })
 const selectedSpeechVoice = computed(() => speechVoices.value.find((voice) => getSpeechVoiceId(voice) === readerVoiceURI.value))
-const readerTitle = computed(() => props.book?.title || props.book?.file_name || '阅读器')
+const readerTitle = computed(() => props.book?.title || props.book?.file_name || t('reader.title'))
 const modeClass = computed(() => `reader-${readerMode.value}`)
 const isDoublePageMode = computed(() => isReader.value && readerLayoutMode.value === 'double')
 const shellThemeStyle = computed(() => {
@@ -466,8 +466,8 @@ const referPopupStyle = computed(() => ({
   top: `${referPopupPosition.value.y}px`
 }))
 const bookPopupActions = computed(() => buildPopupActions(readerPopupActionKeys.value))
-const lookupPopupTitle = computed(() => (lookupMode.value === 'translation' ? '翻译' : '词典'))
-const lookupPopupHint = computed(() => (lookupMode.value === 'translation' ? 'Reader 插件体系未接入时，先使用内置外部翻译入口。' : 'Reader 本地/AI 词典插件未接入时，先使用内置外部词典入口。'))
+const lookupPopupTitle = computed(() => (lookupMode.value === 'translation' ? t('translate') : t('dictionary')))
+const lookupPopupHint = computed(() => (lookupMode.value === 'translation' ? t('translation.fallback.hint') : t('dictionary.fallback.hint')))
 const imagePreviewStyle = computed(() => ({
   ...getBookImageScaleStyle(imagePreview.value.ratio, imagePreviewZoomIndex.value),
   transform: getBookImageTransform(imagePreviewRotateIndex.value)
@@ -551,13 +551,13 @@ function handleFullscreen() {
 }
 
 const bookLayoutOptions = [
-  { value: '', label: 'Default' },
-  { value: 'boxplayer', label: 'Recommended layout' },
-  { value: 'heti', label: '赫蹏' },
-  { value: 'han', label: '漢字標準格式' },
-  { value: 'typo', label: '中文网页重设(typo)' },
-  { value: 'tufte', label: 'Tufte CSS' },
-  { value: 'typebase', label: 'Typebase CSS' }
+  { value: '', label: t('layout.default') },
+  { value: 'boxplayer', label: t('layout.recommended') },
+  { value: 'heti', label: t('layout.heti') },
+  { value: 'han', label: t('layout.han') },
+  { value: 'typo', label: t('layout.typo') },
+  { value: 'tufte', label: t('layout.tufte') },
+  { value: 'typebase', label: t('layout.typebase') }
 ]
 
 const convertChineseOptions = [
@@ -815,9 +815,9 @@ async function saveBookImagePreview() {
   if (!imagePreview.value.src) return
   try {
     await downloadBookImage(imagePreview.value.src, imagePreview.value.name)
-    message.success('图片已保存')
+    message.success(t('image.saved'))
   } catch {
-    message.error('保存图片失败')
+    message.error(t('image.save.failed'))
   }
 }
 
@@ -825,9 +825,9 @@ async function copyBookImagePreview() {
   if (!imagePreview.value.src) return
   try {
     await copyBookImageToClipboard(imagePreview.value.src)
-    message.success('图片已复制到剪贴板')
+    message.success(t('image.copied'))
   } catch {
-    message.error('复制图片失败')
+    message.error(t('image.copy.failed'))
   }
 }
 
@@ -1074,7 +1074,7 @@ async function loadReaderBookBook(_url: string, book: any) {
   const currentBookId = props.book?.id || book?.id || ''
   const currentReader = bookReader
   await nextTick()
-  if (!readerContainer.value) throw new Error('无法创建 Reader 阅读区域')
+  if (!readerContainer.value) throw new Error(t('reader.create.failed'))
   const nextReader = await createBookReader(buildCurrentReaderOptions())
   if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== currentReader || (props.book?.id || '') !== currentBookId) {
     nextReader.destroy()
@@ -1448,12 +1448,12 @@ async function resolveSourceUrl(book: IBookItem): Promise<string> {
     } catch {}
     // fallback: file_id 可能直接是 data URL
     if (book.file_id?.startsWith('data:')) return book.file_id
-    throw new Error('本地书籍数据丢失，请重新导入')
+    throw new Error(t('local.book.missing'))
   }
 
   const rawData = await getRawUrl(book.user_id, book.drive_id, book.file_id, getEncType({ description: book.description || '' }), '', false, 'other', 'Origin')
   if (typeof rawData === 'string' || !rawData.url) {
-    throw new Error(typeof rawData === 'string' ? rawData : '获取书籍阅读地址失败')
+    throw new Error(typeof rawData === 'string' ? rawData : t('book.url.failed'))
   }
   return getProxyUrl({
     user_id: book.user_id,
@@ -1527,9 +1527,9 @@ async function searchBookText() {
   selectedSearchResultId.value = ''
   try {
     searchResults.value = await bookReader.search(q)
-    if (!searchResults.value.length) message.info('未找到匹配内容')
+    if (!searchResults.value.length) message.info(t('no.matches'))
   } catch (e: any) {
-    message.error(e?.message || '书内搜索失败')
+    message.error(e?.message || t('book.search.failed'))
   } finally {
     searchLoading.value = false
   }
@@ -1555,16 +1555,16 @@ async function createBookHighlight(noteText = '', color = 0) {
   try {
     const note = await bookReader.createHighlight(book, noteText, color)
     if (!note) {
-      message.warning('请先选中要高亮的文字')
+      message.warning(t('select.highlight.text'))
       return
     }
     await bookStore.appendBookNote(note)
     leftTab.value = 'notes'
     openPanels.value.left = true
     hideBookSelectionPopup()
-    message.success(noteText ? '已添加笔记' : '已添加高亮')
+    message.success(noteText ? t('note.added') : t('highlight.added'))
   } catch (e: any) {
-    message.error(e?.message || '添加高亮失败')
+    message.error(e?.message || t('highlight.add.failed'))
   } finally {
     highlightSaving.value = false
   }
@@ -1579,7 +1579,7 @@ async function createBookNoteFromSelection() {
 async function saveBookSelectionNote() {
   const noteText = normalizePopupNoteText(selectionNoteDraft.value)
   if (!noteText) {
-    message.warning('请输入笔记内容')
+    message.warning(t('enter.note'))
     return
   }
   await createBookHighlight(noteText)
@@ -1596,9 +1596,9 @@ async function copyBookSelectionText() {
   try {
     if (!navigator.clipboard) throw new Error('clipboard unavailable')
     await navigator.clipboard.writeText(text)
-    message.success('已复制选中文本')
+    message.success(t('selection.copied'))
   } catch {
-    message.error('复制失败')
+    message.error(t('copy.failed'))
   } finally {
     hideBookSelectionPopup()
   }
@@ -1617,7 +1617,7 @@ function stopReaderSpeech() {
 
 function pauseReaderSpeech() {
   if (!speechSession?.pause()) {
-    message.warning('当前没有正在朗读的内容')
+    message.warning(t('speech.none.active'))
     return
   }
   speechPaused.value = true
@@ -1625,7 +1625,7 @@ function pauseReaderSpeech() {
 
 function resumeReaderSpeech() {
   if (!speechSession?.resume()) {
-    message.warning('当前没有可继续的朗读')
+    message.warning(t('speech.none.resume'))
     return
   }
   speechPaused.value = false
@@ -1633,7 +1633,7 @@ function resumeReaderSpeech() {
 
 function previousReaderSpeechSentence() {
   if (!speechSession?.previous()) {
-    message.warning('当前没有可切换的朗读内容')
+    message.warning(t('speech.none.switch'))
     return
   }
   speechPaused.value = false
@@ -1641,7 +1641,7 @@ function previousReaderSpeechSentence() {
 
 function nextReaderSpeechSentence() {
   if (!speechSession?.next()) {
-    message.warning('当前没有可切换的朗读内容')
+    message.warning(t('speech.none.switch'))
     return
   }
   speechPaused.value = false
@@ -1662,14 +1662,14 @@ function loadSpeechVoices() {
 
 function previewReaderSpeechVoice() {
   if (!speechVoices.value.length) loadSpeechVoices()
-  const preview = readerVoiceLocale.value.startsWith('zh') ? '这是朗读语音预览。' : 'This is a voice preview.'
-  if (!startReaderSpeech(preview, false, undefined, false)) message.warning('当前没有可朗读文本')
+  const preview = readerVoiceLocale.value.startsWith('zh') ? t('speech.preview.zh') : 'This is a voice preview.'
+  if (!startReaderSpeech(preview, false, undefined, false)) message.warning(t('speech.no.text'))
 }
 
 function previewSelectedVoice() {
   const voice = selectedSpeechVoice.value
   if (!voice) return
-  const preview = voice.lang?.startsWith('zh') ? '语音预览测试。' : 'Voice preview test.'
+  const preview = voice.lang?.startsWith('zh') ? t('speech.preview.test.zh') : 'Voice preview test.'
   const savedURI = readerVoiceURI.value
   const savedName = readerVoiceName.value
   const savedLang = readerVoiceLocale.value
@@ -1680,7 +1680,7 @@ function previewSelectedVoice() {
   readerVoiceURI.value = savedURI
   readerVoiceName.value = savedName
   readerVoiceLocale.value = savedLang
-  if (!ok) message.warning('当前没有可朗读文本')
+  if (!ok) message.warning(t('speech.no.text'))
 }
 
 function reserveSpeechRun() {
@@ -1733,7 +1733,7 @@ function startReaderSpeech(text: string, autoNextReader = false, runId = ++speec
       speechPaused.value = false
       speechChunkIndex.value = 0
       speechChunkTotal.value = 0
-      message.error('朗读失败')
+      message.error(t('speech.failed'))
     },
     lang: selectedSpeechVoice.value?.lang || readerVoiceLocale.value,
     voiceURI: selectedSpeechVoice.value?.voiceURI || readerVoiceURI.value,
@@ -1784,7 +1784,7 @@ async function continueReaderSpeech(runId: number) {
 function speakBookSelectionText() {
   const text = selectedReaderText.value.trim()
   if (!text) return
-  if (!startReaderSpeech(text, false, undefined, isReader.value)) message.warning('当前没有可朗读文本')
+  if (!startReaderSpeech(text, false, undefined, isReader.value)) message.warning(t('speech.no.text'))
   hideBookSelectionPopup()
 }
 
@@ -1795,7 +1795,7 @@ async function speakBookSelectionFromHere() {
   if (runId !== speechRunId || !props.visible || !isReader.value || !bookReader) return
   const text = buildSpeechStartText(selectedReaderText.value, selectedReaderSentence.value, visibleText)
   if (!text) return
-  if (!startReaderSpeech(text, true, runId, true)) message.warning('当前没有可朗读文本')
+  if (!startReaderSpeech(text, true, runId, true)) message.warning(t('speech.no.text'))
   hideBookSelectionPopup()
 }
 
@@ -1813,11 +1813,11 @@ function toggleAIMode(mode: 'chat' | 'ask') {
 async function indexBookForAI() {
   const settings = createBookAISettings()
   if (!settingStore.apiAIReedyEnabled || !isAIConfigured() || !props.book || !bookReader?.getBookAIContextSource) {
-    message.warning('请先启用 Reedy 检索并配置 AI 模型')
+    message.warning(t('enable.reedy.first'))
     return
   }
   aiIndexingStatus.value = 'indexing'
-  aiIndexingText.value = '正在读取章节...'
+  aiIndexingText.value = t('index.reading.chapters')
   try {
     const source = await withRetryAndTimeout(() => bookReader!.getBookAIContextSource(props.book!), 8000, { maxRetries: 0 })
     const backend = selectRetrievalBackend(settings)
@@ -1825,18 +1825,18 @@ async function indexBookForAI() {
       const sourceHash = source.sourceHash || undefined
       if (await backend.isBookIndexed(source.bookId, sourceHash || 'default', settings)) {
         aiIndexingStatus.value = 'done'
-        aiIndexingText.value = '本书已索引 ✓'
+        aiIndexingText.value = t('index.book.done')
         return
       }
       await backend.indexBook(source, settings, (progress) => {
-        aiIndexingText.value = progress.phase === 'chunking' ? `正在分段: ${progress.current}/${progress.total} 章` : progress.phase === 'embedding' ? `正在生成索引: ${progress.current}/${progress.total}` : '正在保存...'
+        aiIndexingText.value = progress.phase === 'chunking' ? `${t('index.chunking')}: ${progress.current}/${progress.total}` : progress.phase === 'embedding' ? `${t('index.embedding')}: ${progress.current}/${progress.total}` : t('index.saving')
       })
       aiIndexingStatus.value = 'done'
-      aiIndexingText.value = '索引完成 ✓'
+      aiIndexingText.value = t('index.done')
     }
   } catch (e: any) {
     aiIndexingStatus.value = 'error'
-    aiIndexingText.value = '索引失败: ' + (e?.message || '未知错误')
+    aiIndexingText.value = t('index.failed') + (e?.message || t('unknown.error'))
   }
 }
 
@@ -1922,7 +1922,7 @@ async function saveAIHistory() {
     await replaceAIConversationMessages(convKey, aiMode.value, aiMessages.value)
     // Update conv list
     const existing = aiConvList.value.find((c) => c.id === aiConvId.value)
-    const title = aiMessages.value[0]?.content?.slice(0, 30) || '新对话'
+    const title = aiMessages.value[0]?.content?.slice(0, 30) || t('new.chat')
     if (existing) {
       existing.title = title
       existing.mode = aiMode.value
@@ -2018,18 +2018,18 @@ async function askAI(question: string) {
   const uc = checkAndIncrement('readerAIChat', 1, { metered: false, isBYOK })
   if (!uc.allowed) { message.warning(uc.message!); return }
   if (!isAIConfigured()) {
-    message.warning('请先在 设置 → API 密钥 中配置 AI 模型')
+    message.warning(t('configure.ai.first'))
     return
   }
   const cfg = resolveAIProviderConfig(aiProviderOverride.value)
   if (!cfg || !cfg.modelId || (cfg.providerName !== 'ai-gateway' && !isBoxPlayerCloudProvider(cfg.providerName) && !cfg.endpoint)) {
-    message.warning('AI 模型配置不完整，请检查模型和 Base URL')
+    message.warning(t('ai.config.incomplete'))
     return
   }
 
-  const bookName = props.book?.title || props.book?.file_name || '未知书籍'
+  const bookName = props.book?.title || props.book?.file_name || t('unknown.book')
   const position = bookReader?.getPosition?.()
-  const chapterTitle = selectedBookChapter.value != null ? bookChapters.value[selectedBookChapter.value]?.label || '未知章节' : position?.chapterTitle || '未知章节'
+  const chapterTitle = selectedBookChapter.value != null ? bookChapters.value[selectedBookChapter.value]?.label || t('unknown.chapter') : position?.chapterTitle || t('unknown.chapter')
   const currentCfi = position?.cfi || ''
 
   // Visible history: only user questions + AI responses
@@ -2039,7 +2039,7 @@ async function askAI(question: string) {
   aiInput.value = ''
   aiStreaming.value = true
   aiAnswer.value = ''
-  aiStatusText.value = '正在准备回答...'
+  aiStatusText.value = t('ai.preparing')
 
   const settings = createBookAISettings()
   console.log('[Reedy][BookReader] askAI settings:', { reedyEnabled: settings.reedy?.enabled, provider: settings.provider, aiMode: aiMode.value })
@@ -2047,7 +2047,7 @@ async function askAI(question: string) {
   let chapterText = ''
   if (aiMode.value === 'ask' && bookReader) {
     try {
-      aiStatusText.value = '正在读取章节内容...'
+      aiStatusText.value = t('ai.reading.chapter')
       chapterText = (await withRetryAndTimeout(() => bookReader!.getAudioText(), 2500, { maxRetries: 0 })) || ''
     } catch {
       chapterText = ''
@@ -2059,7 +2059,7 @@ async function askAI(question: string) {
 
   if (aiMode.value === 'ask' && props.book && bookReader?.getBookAIContextSource) {
     try {
-      aiStatusText.value = '正在准备阅读上下文...'
+      aiStatusText.value = t('ai.preparing.context')
       const source = await withRetryAndTimeout(() => bookReader!.getBookAIContextSource(props.book!), 5000, { maxRetries: 0 })
       console.log('[Reedy][BookReader] context source:', { bookId: source.bookId, sourceHash: source.sourceHash, chapters: source.chapters?.length })
       const backend = selectRetrievalBackend(settings)
@@ -2076,15 +2076,15 @@ async function askAI(question: string) {
         console.log('[Reedy][BookReader] isIndexed:', indexed)
 
         if (!indexed) {
-          aiStatusText.value = '正在建立 Reedy 索引...'
+          aiStatusText.value = t('ai.building.reedy')
           const sections = source.chapters.map((ch: any) => ({
             index: ch.index,
-            title: ch.title || `章节 ${(ch.index || 0) + 1}`,
+            title: ch.title || `${t('chapter.fallback')} ${(ch.index || 0) + 1}`,
             text: ch.text || ''
           }))
           await reedyBackend.indexBook(bookHashForReedy, sections, settings, {
             onProgress: (p) => {
-              aiStatusText.value = p.phase === 'chunking' ? `正在整理章节内容 ${p.current}/${p.total}` : `正在生成阅读索引 ${p.current}/${p.total}`
+              aiStatusText.value = p.phase === 'chunking' ? `${t('ai.organizing.chapters')} ${p.current}/${p.total}` : `${t('ai.generating.index')} ${p.current}/${p.total}`
             }
           })
         }
@@ -2092,10 +2092,10 @@ async function askAI(question: string) {
         const sourceHash = source.sourceHash || undefined
         if (!(await backend.isBookIndexed(source.bookId, sourceHash || 'default', settings))) {
           await backend.indexBook(source, settings, (progress) => {
-            aiStatusText.value = progress.phase === 'chunking' ? '正在整理章节内容...' : progress.phase === 'embedding' ? `正在生成阅读索引 ${progress.current}/${progress.total}` : '正在保存阅读索引...'
+            aiStatusText.value = progress.phase === 'chunking' ? `${t('ai.organizing.chapters')}...` : progress.phase === 'embedding' ? `${t('ai.generating.index')} ${progress.current}/${progress.total}` : t('ai.saving.index')
           })
         }
-        aiStatusText.value = '正在检索相关段落...'
+        aiStatusText.value = t('ai.searching.passages')
         ragContext = await backend.search(prompt, {
           bookId: source.bookId,
           sourceHash,
@@ -2146,15 +2146,15 @@ async function askAI(question: string) {
           console.log('[Reedy][BookReader] token:', text.slice(0, 50))
         },
         onToolCall: (name, args) => {
-          aiStatusText.value = `正在搜索: ${(args as any)?.query || name}...`
+          aiStatusText.value = `${t('ai.searching')}: ${(args as any)?.query || name}...`
           console.log('[Reedy][BookReader] tool call:', name, args)
         },
         onToolResult: (name, ok, result) => {
-          aiStatusText.value = ok ? '已检索相关段落' : `检索出错: ${result}`
+          aiStatusText.value = ok ? t('ai.passages.found') : `${t('ai.search.error')}: ${result}`
           console.log('[Reedy][BookReader] tool result:', name, ok, result.slice(0, 100))
         },
         onCitation: (cfi, chapter, text) => {
-          aiStatusText.value = `引用: ${chapter}`
+          aiStatusText.value = `${t('ai.citation')}: ${chapter}`
         },
         onDone: () => {
           if (aiAnswer.value) {
@@ -2227,19 +2227,19 @@ async function retryLastAI() {
 }
 
 function copyAIMessage(content: string) {
-  navigator.clipboard?.writeText(content).then(() => message.success('已复制'))
+  navigator.clipboard?.writeText(content).then(() => message.success(t('copied')))
 }
 
 const providerOptions = [
-  { value: '', label: '默认 (全局设置)' },
-  { value: 'boxplayer-cloud', label: '内置 AI' },
+  { value: '', label: t('default.global') },
+  { value: 'boxplayer-cloud', label: t('built.in.ai') },
   { value: 'openai', label: 'OpenAI' },
   { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'qwen', label: '通义千问' },
-  { value: 'zhipu', label: '智谱 AI' },
-  { value: 'moonshot', label: '月之暗面' },
-  { value: 'siliconflow', label: '硅基流动' },
-  { value: 'ollama', label: 'Ollama 本地' },
+  { value: 'qwen', label: 'Alibaba Qwen' },
+  { value: 'zhipu', label: 'Zhipu AI' },
+  { value: 'moonshot', label: 'Moonshot AI' },
+  { value: 'siliconflow', label: 'SiliconFlow' },
+  { value: 'ollama', label: 'Ollama Local' },
   { value: 'openrouter', label: 'OpenRouter' },
   { value: 'ai-gateway', label: 'Vercel AI Gateway' }
 ]
@@ -2268,7 +2268,7 @@ const currentAIModelLabel = computed(() => {
   const provider = aiProviderOverride.value || settingStore.apiAIModelProvider || ''
   const modelId = settingStore.apiAIModelId || ''
   if (!provider) return ''
-  if (isBoxPlayerCloudProvider(provider)) return '内置模型'
+  if (isBoxPlayerCloudProvider(provider)) return t('built.in.model')
   return modelId || provider
 })
 
@@ -2280,18 +2280,18 @@ function handleAIKeydown(e: KeyboardEvent) {
 }
 
 const aiSampleQuestions = [
-  { mode: 'ask', emoji: '📖', text: '总结本章内容' },
-  { mode: 'ask', emoji: '📃', text: '本章的关键点是什么' },
-  { mode: 'ask', emoji: '🔍', text: '解释本章的核心概念' },
-  { mode: 'ask', emoji: '👤', text: '分析本章主要人物' },
-  { mode: 'ask', emoji: '📝', text: '用一句话概括本章' },
-  { mode: 'ask', emoji: '💡', text: '本章的主题思想是什么' },
-  { mode: 'chat', emoji: '📰', text: '推荐几本类似的书' },
-  { mode: 'chat', emoji: '🗞️', text: '介绍一下这本书的作者' },
-  { mode: 'chat', emoji: '🏆', text: '这本书获得过哪些奖项' },
-  { mode: 'chat', emoji: '🎯', text: '这本书适合什么读者' },
-  { mode: 'chat', emoji: '📊', text: '评价一下这本书的写作风格' },
-  { mode: 'chat', emoji: '🔗', text: '这本书属于什么文学流派' }
+  { mode: 'ask', emoji: '📖', textKey: 'ai.sample.summarize' },
+  { mode: 'ask', emoji: '📃', textKey: 'ai.sample.keypoints' },
+  { mode: 'ask', emoji: '🔍', textKey: 'ai.sample.explain' },
+  { mode: 'ask', emoji: '👤', textKey: 'ai.sample.characters' },
+  { mode: 'ask', emoji: '📝', textKey: 'ai.sample.oneSentence' },
+  { mode: 'ask', emoji: '💡', textKey: 'ai.sample.theme' },
+  { mode: 'chat', emoji: '📰', textKey: 'ai.sample.similar' },
+  { mode: 'chat', emoji: '🗞️', textKey: 'ai.sample.author' },
+  { mode: 'chat', emoji: '🏆', textKey: 'ai.sample.awards' },
+  { mode: 'chat', emoji: '🎯', textKey: 'ai.sample.audience' },
+  { mode: 'chat', emoji: '📊', textKey: 'ai.sample.style' },
+  { mode: 'chat', emoji: '🔗', textKey: 'ai.sample.genre' }
 ]
 
 function openBookLookupPopup(mode: BookLookupMode) {
@@ -2302,7 +2302,7 @@ function openBookLookupPopup(mode: BookLookupMode) {
   }
   const text = normalizeLookupText(selectedReaderText.value)
   if (!text) {
-    message.warning('请先选中要查询的文字')
+    message.warning(t('select.lookup.text'))
     return
   }
   hideBookSelectionPopup()
@@ -2355,9 +2355,9 @@ async function askAIForTranslation(text: string, target: string) {
   translateResult.value = ''
   try {
     const result = await translateText(text, target, transProvider.value)
-    translateResult.value = result || '翻译失败'
+    translateResult.value = result || t('translation.failed')
   } catch (e: any) {
-    translateResult.value = '请求失败: ' + (e?.message || '')
+    translateResult.value = t('request.failed') + (e?.message || '')
   } finally {
     transLoading.value = false
   }
@@ -2372,15 +2372,15 @@ async function askAIForDict(word: string) {
       try {
         const langLabel = transLanguages.find((l) => l.value === transTarget.value)?.label || '中文'
         const prompt = `你是一个专业词典助手。请用${langLabel}解释以下词语/短语：1.发音（音标）2.词性 3.详细释义（含多个义项）4.例句（至少3个，原文+译文）5.常用搭配 6.词源（如有）。\n\n词语：${word}\n\n请用清晰的结构化格式输出。`
-        translateResult.value = (await generateAIText(cfg, prompt)) || '查询失败'
+        translateResult.value = (await generateAIText(cfg, prompt)) || t('query.failed')
         transLoading.value = false
         return
       } catch (e: any) {
-        translateResult.value = '请求失败: ' + (e?.message || '')
+        translateResult.value = t('request.failed') + (e?.message || '')
       }
     }
   }
-  translateResult.value = '未配置 AI 模型，请到 设置 → API 密钥 中配置'
+  translateResult.value = t('ai.not.configured.full')
   transLoading.value = false
 }
 
@@ -2397,14 +2397,14 @@ function toggleReaderPopupAction(key: BookPopupActionKey, enabled: boolean) {
   const current = readerPopupActionKeys.value.filter((item) => item !== key)
   if (enabled) {
     if (current.length >= 8) {
-      message.warning('选区菜单最多显示 8 个操作')
+      message.warning(t('selection.max.actions'))
       return
     }
     readerPopupActionKeys.value = [...current, key]
     return
   }
   if (!current.length) {
-    message.warning('至少保留一个选区操作')
+    message.warning(t('selection.keep.one'))
     return
   }
   readerPopupActionKeys.value = current
@@ -2417,25 +2417,25 @@ function handleBookPopupActionSwitch(key: BookPopupActionKey, checked: unknown) 
 function getBookPopupActionLabel(key: BookPopupActionKey) {
   switch (key) {
     case 'note':
-      return '笔记'
+      return t('action.note')
     case 'highlight':
-      return '高亮'
+      return t('action.highlight')
     case 'translation':
-      return '翻译'
+      return t('action.translate')
     case 'copy':
-      return '复制'
+      return t('copy')
     case 'search-book':
-      return '书内搜索'
+      return t('book.search')
     case 'dict':
-      return '词典'
+      return t('dictionary')
     case 'browser':
-      return '网页搜索'
+      return t('web.search')
     case 'speaker':
-      return '朗读选区'
+      return t('read.selection')
     case 'speech-start':
-      return '从这里朗读'
+      return t('speech.start')
     case 'assistant':
-      return 'AI 助手'
+      return t('ai.assistant')
     default:
       return key
   }
@@ -2463,9 +2463,9 @@ async function copyReaderReferText() {
   try {
     if (!navigator.clipboard) throw new Error('clipboard unavailable')
     await navigator.clipboard.writeText(text)
-    message.success('已复制脚注')
+    message.success(t('footnote.copied'))
   } catch {
-    message.error('复制失败')
+    message.error(t('copy.failed'))
   }
 }
 
@@ -2512,15 +2512,15 @@ async function createBookBookmark() {
     const bookmark = await bookReader.createBookmark(book)
     const exists = (bookStore.bookmarksByBookId[book.id] || []).some((item) => item.id === bookmark.id)
     if (exists) {
-      message.warning('当前位置已有书签')
+      message.warning(t('bookmark.exists'))
       return
     }
     await bookStore.appendBookBookmark(bookmark)
     leftTab.value = 'bookmarks'
     openPanels.value.left = true
-    message.success('已添加书签')
+    message.success(t('bookmark.added'))
   } catch (e: any) {
-    message.error(e?.message || '添加书签失败')
+    message.error(e?.message || t('bookmark.add.failed'))
   } finally {
     bookmarkSaving.value = false
   }
@@ -2553,14 +2553,14 @@ async function saveBookNote(note: IBookNote) {
   try {
     const updated = await bookStore.updateBookNote(note.id, { note: editingNoteText.value })
     if (!updated) {
-      message.error('书摘保存失败')
+      message.error(t('annotation.save.failed'))
       return
     }
     await bookReader.updateHighlight(updated)
     cancelEditBookNote()
-    message.success('书摘已保存')
+    message.success(t('annotation.saved'))
   } catch (e: any) {
-    message.error(e?.message || '书摘保存失败')
+    message.error(e?.message || t('annotation.save.failed'))
   }
 }
 
@@ -2571,9 +2571,9 @@ async function deleteBookNote(note: IBookNote) {
     await bookReader.removeHighlight(note)
     await bookStore.deleteBookNotesByIds(book.id, [note.id])
     if (editingNoteId.value === note.id) cancelEditBookNote()
-    message.success('书摘已删除')
+    message.success(t('annotation.deleted'))
   } catch (e: any) {
-    message.error(e?.message || '书摘删除失败')
+    message.error(e?.message || t('annotation.delete.failed'))
   }
 }
 
@@ -2581,18 +2581,18 @@ async function deleteBookBookmark(bookmark: IBookBookmark) {
   const book = props.book
   if (!book) return
   await bookStore.deleteBookBookmarksByIds(book.id, [bookmark.id])
-  message.success('书签已删除')
+  message.success(t('bookmark.deleted'))
 }
 
 function exportAnnotations() {
   const book = props.book
   if (!book) return
   if (!currentBookNotes.value.length && !currentBookBookmarks.value.length) {
-    message.warning('暂无可导出的书摘或书签')
+    message.warning(t('no.export.annotations'))
     return
   }
   exportAnnotationsFn(book, currentBookNotes.value, currentBookBookmarks.value, exportFormat.value)
-  message.success('已导出书摘')
+  message.success(t('annotations.exported'))
 }
 
 const exportFormat = ref<AnnotationExportFormat>('md')
@@ -2611,9 +2611,9 @@ async function deleteAllCurrentAnnotations() {
     if (isReader.value && bookReader) {
       bookReader.renderHighlights(currentBookNotes.value)
     }
-    message.success('已删除全部书摘和书签')
+    message.success(t('annotations.deleted.all'))
   } catch {
-    message.error('删除失败')
+    message.error(t('delete.failed'))
   }
 }
 
@@ -2640,7 +2640,7 @@ async function speakCurrentPage() {
   const runId = reserveSpeechRun()
   const text = buildSpeechText([bookReader ? await bookReader.getAudioText() : ''])
   if (runId !== speechRunId || !props.visible) return
-  if (!startReaderSpeech(text, true, runId, true)) message.warning('当前没有可朗读文本')
+  if (!startReaderSpeech(text, true, runId, true)) message.warning(t('speech.no.text'))
 }
 
 function saveReaderPreferences() {
@@ -2750,7 +2750,7 @@ async function loadReader() {
     startReadingSession(book)
     extractAndSaveCover(book)
   } catch (e: any) {
-    errorText.value = e?.message || '书籍加载失败'
+    errorText.value = e?.message || t('book.load.failed')
     message.error(errorText.value)
   } finally {
     loading.value = false
@@ -3080,51 +3080,51 @@ onBeforeUnmount(() => {
       <!-- 阅读舞台 -->
       <div :class="['reader-stage', { 'reader-stage-scroll': readerLayoutMode === 'scroll' }]">
         <div id="page-area" ref="readerContainer" :class="['stage-reader', { 'stage-reader-double': isDoublePageMode, 'stage-reader-scroll': readerLayoutMode === 'scroll' }]" :style="readerStageStyle"></div>
-        <a-spin v-if="loading" class="stage-loading" :size="32" tip="加载中..." />
+        <a-spin v-if="loading" class="stage-loading" :size="32" :tip="t('loading')" />
         <a-empty v-if="!loading && errorText" class="stage-error" :description="errorText" />
       </div>
 
       <div v-if="selectionPopupVisible" class="selection-popup" :style="selectionPopupStyle" @mousedown.prevent.stop>
         <div class="selection-popup-actions">
-          <button v-if="bookPopupActions.some((item) => item.key === 'highlight')" title="高亮" :disabled="highlightSaving" @click="createBookHighlight()">
+          <button v-if="bookPopupActions.some((item) => item.key === 'highlight')" :title="t('action.highlight')" :disabled="highlightSaving" @click="createBookHighlight()">
             <Edit3 :size="14" :stroke-width="1.8" />
-            <span>高亮</span>
+            <span>{{ t('action.highlight') }}</span>
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'note')" title="笔记" :disabled="highlightSaving" @click="createBookNoteFromSelection">
+          <button v-if="bookPopupActions.some((item) => item.key === 'note')" :title="t('action.note')" :disabled="highlightSaving" @click="createBookNoteFromSelection">
             <StickyNote :size="14" :stroke-width="1.8" />
-            <span>笔记</span>
+            <span>{{ t('action.note') }}</span>
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'translation')" title="翻译" @click="openBookLookupPopup('translation')">
+          <button v-if="bookPopupActions.some((item) => item.key === 'translation')" :title="t('action.translate')" @click="openBookLookupPopup('translation')">
             <Globe2 :size="14" :stroke-width="1.8" />
-            <span>翻译</span>
+            <span>{{ t('action.translate') }}</span>
             <span class="pro-pill">Pro</span>
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'copy')" title="复制" @click="copyBookSelectionText">
+          <button v-if="bookPopupActions.some((item) => item.key === 'copy')" :title="t('copy')" @click="copyBookSelectionText">
             <Copy :size="14" :stroke-width="1.8" />
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'search-book')" title="书内搜索" @click="searchBookSelectionInBook">
+          <button v-if="bookPopupActions.some((item) => item.key === 'search-book')" :title="t('book.search')" @click="searchBookSelectionInBook">
             <Search :size="14" :stroke-width="1.8" />
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'dict')" title="词典" @click="openBookLookupPopup('dict')">
+          <button v-if="bookPopupActions.some((item) => item.key === 'dict')" :title="t('dictionary')" @click="openBookLookupPopup('dict')">
             <Type :size="14" :stroke-width="1.8" />
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'browser')" title="网页搜索" @click="searchBookSelectionInBrowser">
+          <button v-if="bookPopupActions.some((item) => item.key === 'browser')" :title="t('web.search')" @click="searchBookSelectionInBrowser">
             <Globe2 :size="14" :stroke-width="1.8" />
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'speaker')" title="朗读" @click="speakBookSelectionText">
+          <button v-if="bookPopupActions.some((item) => item.key === 'speaker')" :title="t('tts')" @click="speakBookSelectionText">
             <Type :size="14" :stroke-width="1.8" />
             <span class="pro-dot">Pro</span>
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'speech-start')" title="从这里朗读" @click="speakBookSelectionFromHere">
+          <button v-if="bookPopupActions.some((item) => item.key === 'speech-start')" :title="t('speech.start')" @click="speakBookSelectionFromHere">
             <Type :size="14" :stroke-width="1.8" />
-            <span>从这里</span>
+            <span>{{ t('read.from.here') }}</span>
             <span class="pro-pill">Pro</span>
           </button>
-          <button v-if="bookPopupActions.some((item) => item.key === 'assistant')" title="AI 助手" @click="openBookAssistantFallback">
+          <button v-if="bookPopupActions.some((item) => item.key === 'assistant')" :title="t('ai.assistant')" @click="openBookAssistantFallback">
             <Sparkles :size="14" :stroke-width="1.8" />
             <span class="pro-dot">Pro</span>
           </button>
-          <button title="关闭" @click="hideBookSelectionPopup">
+          <button :title="t('close')" @click="hideBookSelectionPopup">
             <X :size="14" :stroke-width="1.8" />
           </button>
         </div>
@@ -3134,7 +3134,7 @@ onBeforeUnmount(() => {
             :key="color.index"
             :class="['selection-color-swatch', color.mode === 'line' ? 'line' : '']"
             :style="{ backgroundColor: color.mode === 'background' ? color.value : 'transparent', borderColor: color.value }"
-            :title="color.mode === 'line' ? '下划线高亮' : '背景高亮'"
+            :title="color.mode === 'line' ? t('underline.highlight') : t('background.highlight')"
             :disabled="highlightSaving"
             @click="createBookHighlight('', color.index)"
           >
@@ -3142,10 +3142,10 @@ onBeforeUnmount(() => {
           </button>
         </div>
         <div v-if="selectionNoteEditorVisible" class="selection-note-editor">
-          <textarea v-model="selectionNoteDraft" rows="3" placeholder="添加笔记" aria-label="添加笔记" @keydown.stop></textarea>
+          <textarea v-model="selectionNoteDraft" rows="3" :placeholder="t('add.memo')" :aria-label="t('add.memo')" @keydown.stop></textarea>
           <div class="selection-note-actions">
-            <button :disabled="highlightSaving" @click="saveBookSelectionNote">保存</button>
-            <button :disabled="highlightSaving" @click="cancelBookSelectionNote">取消</button>
+            <button :disabled="highlightSaving" @click="saveBookSelectionNote">{{ t('save') }}</button>
+            <button :disabled="highlightSaving" @click="cancelBookSelectionNote">{{ t('cancel') }}</button>
           </div>
         </div>
       </div>
@@ -3153,7 +3153,7 @@ onBeforeUnmount(() => {
       <div v-if="lookupPopupVisible && isReader" class="lookup-popup-layer" @mousedown.prevent.stop>
         <div class="lookup-popup-backdrop" @click="hideBookLookupPopup"></div>
         <div class="lookup-popup-box">
-          <button class="lookup-popup-close" title="关闭" @click="hideBookLookupPopup">
+          <button class="lookup-popup-close" :title="t('close')" @click="hideBookLookupPopup">
             <X :size="16" :stroke-width="1.8" />
           </button>
           <div class="lookup-popup-head">
@@ -3171,24 +3171,24 @@ onBeforeUnmount(() => {
 
       <div v-if="imagePreviewVisible && isReader" class="image-preview-layer" @mousedown.prevent.stop>
         <div class="image-preview-backdrop" @click="hideBookImagePreview"></div>
-        <img class="image-preview-media" :src="imagePreview.src" :alt="imagePreview.name || '图片预览'" :style="imagePreviewStyle" />
+        <img class="image-preview-media" :src="imagePreview.src" :alt="imagePreview.name || t('image.preview')" :style="imagePreviewStyle" />
         <div class="image-preview-actions">
-          <button title="放大" @click="zoomBookImagePreview(1)"><ZoomIn :size="16" :stroke-width="1.8" /></button>
-          <button title="缩小" @click="zoomBookImagePreview(-1)"><ZoomOut :size="16" :stroke-width="1.8" /></button>
-          <button title="保存图片" @click="saveBookImagePreview"><Download :size="16" :stroke-width="1.8" /></button>
-          <button title="复制图片" @click="copyBookImagePreview"><Copy :size="16" :stroke-width="1.8" /></button>
-          <button title="顺时针旋转" @click="rotateBookImagePreview(1)"><RotateCw :size="16" :stroke-width="1.8" /></button>
-          <button title="逆时针旋转" @click="rotateBookImagePreview(-1)"><RotateCcw :size="16" :stroke-width="1.8" /></button>
-          <button title="关闭" @click="hideBookImagePreview"><X :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('zoom.in')" @click="zoomBookImagePreview(1)"><ZoomIn :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('zoom.out')" @click="zoomBookImagePreview(-1)"><ZoomOut :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('save.image')" @click="saveBookImagePreview"><Download :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('copy.image')" @click="copyBookImagePreview"><Copy :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('rotate.clockwise')" @click="rotateBookImagePreview(1)"><RotateCw :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('rotate.counterclockwise')" @click="rotateBookImagePreview(-1)"><RotateCcw :size="16" :stroke-width="1.8" /></button>
+          <button :title="t('close')" @click="hideBookImagePreview"><X :size="16" :stroke-width="1.8" /></button>
         </div>
       </div>
 
       <div v-if="referPopupVisible && isReader" class="refer-popup" :style="referPopupStyle" @mousedown.prevent.stop @click.stop>
         <div class="refer-popup-body" @click="handleReaderReferBodyClick" v-html="referPopupHtml"></div>
         <div class="refer-popup-actions">
-          <button @click="copyReaderReferText">复制</button>
-          <button v-if="referPopupHref || referIsJump" @click="goToReaderReferTarget">{{ referIsJump ? '返回' : '跳转' }}</button>
-          <button @click="hideBookReferPopup">关闭</button>
+          <button @click="copyReaderReferText">{{ t('copy') }}</button>
+          <button v-if="referPopupHref || referIsJump" @click="goToReaderReferTarget">{{ referIsJump ? t('back') : t('go') }}</button>
+          <button @click="hideBookReferPopup">{{ t('close') }}</button>
         </div>
       </div>
 
@@ -3207,18 +3207,18 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- koodo-style page-turn: prev on left, next on right -->
-      <button v-if="isReader && !readerIsHidePageButton" class="page-turn-prev" :style="{ left: lockedPanels.left ? '315px' : '15px' }" type="button" @pointerdown.stop.prevent="handleReaderPrevButton" title="上一页">
+      <button v-if="isReader && !readerIsHidePageButton" class="page-turn-prev" :style="{ left: lockedPanels.left ? '315px' : '15px' }" type="button" @pointerdown.stop.prevent="handleReaderPrevButton" :title="t('previous.page')">
         <ChevronLeft :size="20" :stroke-width="2.5" />
       </button>
       <div class="page-turn-cluster" :style="rightPageTurnStyle">
-        <button v-if="isReader && !readerIsHidePageButton" class="page-turn-btn page-turn-next" type="button" @pointerdown.stop.prevent="handleReaderNextButton" title="下一页">
+        <button v-if="isReader && !readerIsHidePageButton" class="page-turn-btn page-turn-next" type="button" @pointerdown.stop.prevent="handleReaderNextButton" :title="t('next.page')">
           <ChevronRight :size="20" :stroke-width="2.5" />
         </button>
-        <button v-if="canUseTextToSpeech && !readerIsHideAudiobookButton" class="page-turn-btn" :class="{ active: speechActive }" type="button" @click.stop.prevent="speechActive ? stopReaderSpeech() : speakCurrentPage()" title="朗读">
+        <button v-if="canUseTextToSpeech && !readerIsHideAudiobookButton" class="page-turn-btn" :class="{ active: speechActive }" type="button" @click.stop.prevent="speechActive ? stopReaderSpeech() : speakCurrentPage()" :title="t('tts')">
           <Volume2 :size="20" :stroke-width="speechActive ? 2.5 : 1.8" />
           <span class="pro-corner">Pro</span>
         </button>
-        <button v-if="!readerIsHideAIButton" class="page-turn-btn" type="button" @click.stop.prevent="openAIAssistant" title="AI 助手">
+        <button v-if="!readerIsHideAIButton" class="page-turn-btn" type="button" @click.stop.prevent="openAIAssistant" :title="t('ai.assistant')">
           <Sparkles :size="18" :stroke-width="1.8" />
           <span class="pro-corner">Pro</span>
         </button>
@@ -3235,10 +3235,10 @@ onBeforeUnmount(() => {
             <span style="font-size: 12px; opacity: 0.6">%</span>
           </div>
         </div>
-        <div v-if="readerIsPDF && !readerIsHidePDFConvertButton" class="reader-scale-btn" title="PDF 转文本">
+        <div v-if="readerIsPDF && !readerIsHidePDFConvertButton" class="reader-scale-btn" :title="t('pdf.to.text')">
           <Type :size="18" :stroke-width="1.8" />
         </div>
-        <div v-if="!readerIsHideMenuButton" class="reader-scale-btn" @click="toggleAllPanels" title="显示/隐藏面板">
+        <div v-if="!readerIsHideMenuButton" class="reader-scale-btn" @click="toggleAllPanels" :title="t('show.hide.panel')">
           <Grid3X3 :size="18" :stroke-width="1.8" />
         </div>
       </div>
@@ -3266,7 +3266,7 @@ onBeforeUnmount(() => {
             <span>Full screen</span>
           </button>
         </div>
-        <ReaderPanelButton class="panel-pin" :active="lockedPanels.top" :title="lockedPanels.top ? '取消锁定' : '锁定面板'" @click="togglePanelLock('top')">
+        <ReaderPanelButton class="panel-pin" :active="lockedPanels.top" :title="lockedPanels.top ? t('unlock') : t('lock.panel')" @click="togglePanelLock('top')">
           <Pin v-if="lockedPanels.top" :size="14" :stroke-width="1.8" />
           <PinOff v-else :size="14" :stroke-width="1.8" />
         </ReaderPanelButton>
@@ -3275,7 +3275,7 @@ onBeforeUnmount(() => {
       <!-- koodo-style Left Panel (NavigationPanel) -->
       <div :class="['edge-panel', 'panel-left', 'nav-panel', isLeftPanelVisible ? 'open' : '']" @mouseleave="hidePanel('left')">
         <div class="nav-header">
-          <ReaderPanelButton class="nav-lock" :active="lockedPanels.left" :title="lockedPanels.left ? '取消锁定' : '锁定面板'" @click="togglePanelLock('left')">
+          <ReaderPanelButton class="nav-lock" :active="lockedPanels.left" :title="lockedPanels.left ? t('unlock') : t('lock.panel')" @click="togglePanelLock('left')">
             <Pin v-if="lockedPanels.left" :size="18" :stroke-width="1.8" />
             <PinOff v-else :size="18" :stroke-width="1.8" />
           </ReaderPanelButton>
@@ -3304,31 +3304,31 @@ onBeforeUnmount(() => {
 
         <div class="nav-body">
           <template v-if="leftTab === 'toc'">
-            <a-empty v-if="!bookChapters.length" class="nav-empty" description="暂无目录" />
+            <a-empty v-if="!bookChapters.length" class="nav-empty" :description="t('no.toc')" />
             <ul v-if="bookChapters.length" class="nav-toc">
               <li v-for="(chapter, index) in bookChapters" :key="index" :class="['nav-toc-item', selectedBookChapter === index ? 'active' : '']" @click="selectBookChapter(index)">
-                <span>{{ chapter.label || `章节 ${index + 1}` }}</span>
+                <span>{{ chapter.label || `${t('chapter.fallback')} ${index + 1}` }}</span>
               </li>
             </ul>
           </template>
           <template v-else-if="leftTab === 'notes'">
-            <a-empty v-if="!currentBookNotes.filter((n) => !!n.note.trim()).length" class="nav-empty" description="暂无笔记" />
+            <a-empty v-if="!currentBookNotes.filter((n) => !!n.note.trim()).length" class="nav-empty" :description="t('no.notes')" />
             <div v-else class="nav-list">
               <article v-for="note in currentBookNotes.filter((n) => !!n.note.trim())" :key="note.id" class="nav-list-item">
-                <button class="nav-list-text" @click="goToBookNote(note)">{{ note.text || '笔记内容' }}</button>
-                <small>{{ note.chapter || '未知章节' }} · {{ note.position?.percentage !== undefined ? Math.round(Number(note.position.percentage) * 100) + '%' : '-' }}</small>
-                <a-textarea v-if="editingNoteId === note.id" v-model="editingNoteText" size="small" auto-size class="nav-note-editor" placeholder="添加备注" />
+                <button class="nav-list-text" @click="goToBookNote(note)">{{ note.text || t('note.content') }}</button>
+                <small>{{ note.chapter || t('unknown.chapter') }} · {{ note.position?.percentage !== undefined ? Math.round(Number(note.position.percentage) * 100) + '%' : '-' }}</small>
+                <a-textarea v-if="editingNoteId === note.id" v-model="editingNoteText" size="small" auto-size class="nav-note-editor" :placeholder="t('add.memo')" />
                 <p v-else-if="note.note" class="nav-note-memo">{{ note.note }}</p>
                 <div class="nav-item-actions">
-                  <a-button size="mini" type="text" @click="goToBookNote(note)">跳转</a-button>
+                  <a-button size="mini" type="text" @click="goToBookNote(note)">{{ t('jump') }}</a-button>
                   <template v-if="editingNoteId === note.id">
-                    <a-button size="mini" type="primary" @click="saveBookNote(note)">保存</a-button>
-                    <a-button size="mini" type="text" @click="cancelEditBookNote">取消</a-button>
+                    <a-button size="mini" type="primary" @click="saveBookNote(note)">{{ t('save') }}</a-button>
+                    <a-button size="mini" type="text" @click="cancelEditBookNote">{{ t('cancel') }}</a-button>
                   </template>
                   <a-button v-else size="mini" type="text" @click="startEditBookNote(note)">
                     <template #icon><Edit3 :size="13" /></template>
                   </a-button>
-                  <a-popconfirm content="删除这条笔记？" @ok="deleteBookNote(note)">
+                  <a-popconfirm :content="t('delete.note.confirm')" @ok="deleteBookNote(note)">
                     <a-button size="mini" type="text" status="danger">
                       <template #icon><Trash2 :size="13" /></template>
                     </a-button>
@@ -3338,15 +3338,15 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <template v-else-if="leftTab === 'highlights'">
-            <a-empty v-if="!currentBookNotes.filter((n) => !n.note.trim()).length" class="nav-empty" description="暂无高亮" />
+            <a-empty v-if="!currentBookNotes.filter((n) => !n.note.trim()).length" class="nav-empty" :description="t('no.highlights')" />
             <div v-else class="nav-list">
               <article v-for="note in currentBookNotes.filter((n) => !n.note.trim())" :key="note.id" class="nav-list-item">
                 <span class="highlight-dot" :style="{ backgroundColor: highlightColorValue(note.color) }"></span>
-                <button class="nav-list-text" @click="goToBookNote(note)">{{ note.text || '高亮内容' }}</button>
-                <small>{{ note.chapter || '未知章节' }}</small>
+                <button class="nav-list-text" @click="goToBookNote(note)">{{ note.text || t('highlight.content') }}</button>
+                <small>{{ note.chapter || t('unknown.chapter') }}</small>
                 <div class="nav-item-actions">
-                  <a-button size="mini" type="text" @click="goToBookNote(note)">跳转</a-button>
-                  <a-popconfirm content="删除这条高亮？" @ok="deleteBookNote(note)">
+                  <a-button size="mini" type="text" @click="goToBookNote(note)">{{ t('jump') }}</a-button>
+                  <a-popconfirm :content="t('delete.highlight.confirm')" @ok="deleteBookNote(note)">
                     <a-button size="mini" type="text" status="danger">
                       <template #icon><Trash2 :size="13" /></template>
                     </a-button>
@@ -3356,14 +3356,14 @@ onBeforeUnmount(() => {
             </div>
           </template>
           <template v-else>
-            <a-empty v-if="!currentBookBookmarks.length" class="nav-empty" description="暂无书签" />
+            <a-empty v-if="!currentBookBookmarks.length" class="nav-empty" :description="t('no.bookmarks')" />
             <div v-else class="nav-list">
               <article v-for="bookmark in currentBookBookmarks" :key="bookmark.id" class="nav-list-item">
-                <button class="nav-list-text" @click="goToBookBookmark(bookmark)">{{ bookmark.label || '书签' }}</button>
-                <small>{{ bookmark.chapter || '未知章节' }} · {{ Math.round(bookmark.percentage * 100) }}%</small>
+                <button class="nav-list-text" @click="goToBookBookmark(bookmark)">{{ bookmark.label || t('bookmark') }}</button>
+                <small>{{ bookmark.chapter || t('unknown.chapter') }} · {{ Math.round(bookmark.percentage * 100) }}%</small>
                 <div class="nav-item-actions">
-                  <a-button size="mini" type="text" @click="goToBookBookmark(bookmark)">跳转</a-button>
-                  <a-popconfirm content="删除这枚书签？" @ok="deleteBookBookmark(bookmark)">
+                  <a-button size="mini" type="text" @click="goToBookBookmark(bookmark)">{{ t('jump') }}</a-button>
+                  <a-popconfirm :content="t('delete.bookmark.confirm')" @ok="deleteBookBookmark(bookmark)">
                     <a-button size="mini" type="text" status="danger">
                       <template #icon><Trash2 :size="13" /></template>
                     </a-button>
@@ -3376,33 +3376,33 @@ onBeforeUnmount(() => {
 
         <!-- 搜索结果 -->
         <div v-if="isReader && searchResults.length" class="nav-search-results">
-          <div class="nav-search-summary">{{ searchResults.length }} 个结果</div>
+          <div class="nav-search-summary">{{ searchResults.length }} {{ t('search.results') }}</div>
           <button v-for="result in searchResults" :key="result.id" :class="['nav-search-item', selectedSearchResultId === result.id ? 'active' : '']" @click="goToBookSearchResult(result)">
-            <span>{{ result.excerpt || '匹配内容' }}</span>
-            <small>{{ result.chapterTitle || '未知章节' }}</small>
+            <span>{{ result.excerpt || t('matched.content') }}</span>
+            <small>{{ result.chapterTitle || t('unknown.chapter') }}</small>
           </button>
         </div>
 
         <!-- 操作栏: 添加高亮/书签/导出/删除 -->
         <div v-if="isReader" class="nav-actions-bar">
-          <a-button size="mini" :loading="highlightSaving" title="添加高亮" @click="createBookHighlight()">
+          <a-button size="mini" :loading="highlightSaving" :title="t('add.highlight')" @click="createBookHighlight()">
             <template #icon><Edit3 :size="13" /></template>
             Highlight
           </a-button>
-          <a-button size="mini" :loading="bookmarkSaving" title="添加书签" @click="createBookBookmark">
+          <a-button size="mini" :loading="bookmarkSaving" :title="t('add.bookmark')" @click="createBookBookmark">
             <template #icon><BookmarkPlus :size="13" /></template>
             Bookmark
           </a-button>
-          <a-button size="mini" title="导出" @click="exportAnnotations">
+          <a-button size="mini" :title="t('export')" @click="exportAnnotations">
             <template #icon><Download :size="13" /></template>
           </a-button>
-          <select v-model="exportFormat" class="nav-export-format" title="导出格式">
+          <select v-model="exportFormat" class="nav-export-format" :title="t('export.format')">
             <option value="md">MD</option>
             <option value="txt">TXT</option>
             <option value="html">HTML</option>
             <option value="csv">CSV</option>
           </select>
-          <a-button v-if="currentBookNotes.length || currentBookBookmarks.length" size="mini" status="danger" title="删除全部" @click="deleteAllCurrentAnnotations">
+          <a-button v-if="currentBookNotes.length || currentBookBookmarks.length" size="mini" status="danger" :title="t('delete.all')" @click="deleteAllCurrentAnnotations">
             <template #icon><Trash2 :size="13" /></template>
           </a-button>
         </div>
@@ -3412,7 +3412,7 @@ onBeforeUnmount(() => {
       <div :class="['edge-panel', 'panel-right', 'setting-panel', isRightPanelVisible ? 'open' : '']" :style="{ width: rightPanelWidth + 'px' }" @mouseleave="hidePanel('right')">
         <div class="panel-resize-handle panel-resize-left" @mousedown="startPanelResize('right', $event)"></div>
         <div class="panel-head">
-          <ReaderPanelButton class="panel-pin" :active="lockedPanels.right" :title="lockedPanels.right ? '取消锁定' : '锁定面板'" @click="togglePanelLock('right')">
+          <ReaderPanelButton class="panel-pin" :active="lockedPanels.right" :title="lockedPanels.right ? t('unlock') : t('lock.panel')" @click="togglePanelLock('right')">
             <Pin v-if="lockedPanels.right" :size="14" :stroke-width="1.8" />
             <PinOff v-else :size="14" :stroke-width="1.8" />
           </ReaderPanelButton>
@@ -3427,7 +3427,7 @@ onBeforeUnmount(() => {
               <span class="pro-pill">Pro</span>
             </button>
           </div>
-          <button v-if="rightTab === 'settings'" class="lang-toggle-btn" :title="locale === 'zh' ? 'Switch to English' : '切换到中文'" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? 'EN' : '中' }}</button>
+          <button v-if="rightTab === 'settings'" class="lang-toggle-btn" :title="locale === 'zh' ? 'Switch to English' : t('switch.zh')" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? 'EN' : '中' }}</button>
         </div>
         <div v-if="rightTab === 'settings'" class="panel-body panel-settings" :class="{ 'settings-locked': settingsLocked }" style="overflow-y: auto; flex: 1">
           <!-- View Mode (match koodo ModeControl) -->
@@ -3453,7 +3453,7 @@ onBeforeUnmount(() => {
               <!-- prettier-ignore -->
               <button
                 class="theme-color-clear-btn"
-                title="清除自定义背景色"
+                :title="t('clear.background.color')"
                 @click="
                   readerBackgroundColor = 'rgba(255,255,255,1)';
                   saveReaderPreferences()
@@ -3464,7 +3464,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="color-swatch-list">
               <div v-for="color in READER_BACKGROUND_COLORS" :key="color" :class="['color-swatch', readerBackgroundColor === color ? 'active' : '']" :style="{ backgroundColor: color }" @click="readerBackgroundColor = color" />
-              <label class="color-swatch color-swatch-custom" title="自定义颜色">
+              <label class="color-swatch color-swatch-custom" :title="t('custom.color')">
                 <input
                   type="color"
                   :value="readerBackgroundColor.startsWith('rgba') ? rgbaToHex(readerBackgroundColor) : readerBackgroundColor.startsWith('#') ? readerBackgroundColor : '#ffffff'"
@@ -3482,7 +3482,7 @@ onBeforeUnmount(() => {
               <!-- prettier-ignore -->
               <button
                 class="theme-color-clear-btn"
-                title="清除自定义文字色"
+                :title="t('clear.text.color')"
                 @click="
                   readerTextColor = 'rgba(0,0,0,1)';
                   saveReaderPreferences()
@@ -3493,7 +3493,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="color-swatch-list">
               <div v-for="color in READER_TEXT_COLORS" :key="color" :class="['color-swatch', readerTextColor === color ? 'active' : '']" :style="{ backgroundColor: color }" @click="readerTextColor = color" />
-              <label class="color-swatch color-swatch-custom" title="自定义颜色">
+              <label class="color-swatch color-swatch-custom" :title="t('custom.color')">
                 <input type="color" :value="readerTextColor.startsWith('rgba') ? rgbaToHex(readerTextColor) : readerTextColor.startsWith('#') ? readerTextColor : '#000000'" @input="readerTextColor = hexToRgba(($event.target as HTMLInputElement).value)" />
                 <Palette :size="14" />
               </label>
@@ -3677,7 +3677,7 @@ onBeforeUnmount(() => {
               </a-select>
               <div v-if="fullTranslationLoading || fullTranslationError" class="full-translation-status" :class="{ 'is-error': !!fullTranslationError && !fullTranslationLoading }">
                 <LoaderCircle v-if="fullTranslationLoading" class="full-translation-spinner" :size="12" :stroke-width="2" />
-                <span v-if="fullTranslationLoading">翻译中...</span>
+                <span v-if="fullTranslationLoading">{{ t('translating') }}</span>
                 <span v-else>{{ fullTranslationError }}</span>
               </div>
             </div>
@@ -3840,7 +3840,7 @@ onBeforeUnmount(() => {
           <!-- Clear all style (koodo icon-more menu) -->
           <div class="setting-panel-menu">
             <div style="position: relative">
-              <button class="setting-more-btn" title="更多选项" @click="isShowClearStyleMenu = !isShowClearStyleMenu" @blur="handleClearStyleMenuBlur">
+              <button class="setting-more-btn" :title="t('more.options')" @click="isShowClearStyleMenu = !isShowClearStyleMenu" @blur="handleClearStyleMenuBlur">
                 <MoreHorizontal :size="16" :stroke-width="1.8" />
               </button>
               <div v-if="isShowClearStyleMenu" class="clear-style-dropdown" @mousedown.prevent>
@@ -3879,7 +3879,7 @@ onBeforeUnmount(() => {
             <span v-if="!isAIConfigured()" style="font-size: 12px; color: var(--color-text-3)">{{ t('ai.not.configured') }}</span>
             <span v-else style="font-size: 12px; color: rgb(var(--primary-6))">{{ t('ai.configured') }}</span>
             <div class="setting-row">
-              <span>Reedy 检索</span>
+              <span>{{ t('reedy.search') }}</span>
               <a-switch :model-value="settingStore.apiAIReedyEnabled" size="small" @change="(v: boolean) => settingStore.updateStore({ apiAIReedyEnabled: v })" />
             </div>
             <div class="setting-row">
@@ -3892,7 +3892,7 @@ onBeforeUnmount(() => {
             </div>
             <div v-if="isAIConfigured() && settingStore.apiAIReedyEnabled" class="setting-stack" style="margin-top: 8px">
               <a-button size="small" :loading="aiIndexingStatus === 'indexing'" :disabled="aiIndexingStatus === 'indexing'" @click="indexBookForAI">
-                {{ aiIndexingStatus === 'idle' ? '📇 索引本书' : aiIndexingStatus === 'indexing' ? '⏳ 索引中...' : aiIndexingStatus === 'done' ? '✓ 已索引' : '⚠ 重试' }}
+                {{ aiIndexingStatus === 'idle' ? t('ai.index.book') : aiIndexingStatus === 'indexing' ? t('ai.indexing') : aiIndexingStatus === 'done' ? t('ai.indexed') : t('ai.retry') }}
               </a-button>
               <div v-if="aiIndexingText" class="ai-index-status">{{ aiIndexingText }}</div>
               <div v-if="aiIndexingStatus === 'indexing'" class="ai-index-bar"><div class="ai-index-bar-fill"></div></div>
@@ -3908,13 +3908,13 @@ onBeforeUnmount(() => {
                   <a-option value="">{{ t('tts.all.languages') }}</a-option>
                   <a-option v-for="locale in speechLocales" :key="locale" :value="locale">{{ locale }}</a-option>
                 </a-select>
-                <a-select v-model="readerVoiceURI" size="small" placeholder="系统默认">
+                <a-select v-model="readerVoiceURI" size="small" :placeholder="t('system.default')">
                   <a-option value="">{{ t('tts.voice') }}</a-option>
                   <a-option v-for="voice in filteredSpeechVoices" :key="getSpeechVoiceId(voice)" :value="getSpeechVoiceId(voice)">{{ voice.name }}{{ voice.lang ? ` · ${voice.lang}` : '' }}</a-option>
                 </a-select>
                 <a-button size="small" @click="previewReaderSpeechVoice">{{ t('tts.test') }}</a-button>
                 <div class="setting-section-title">
-                  语速
+                  {{ t('tts.speed') }}
                   <span class="setting-value">{{ readerVoiceRate.toFixed(1) }}x</span>
                 </div>
                 <a-select v-model="readerVoiceRate" size="small">
@@ -3928,16 +3928,16 @@ onBeforeUnmount(() => {
         <div v-if="rightTab === 'chat'" class="panel-body panel-chat">
           <div class="chat-header">
             <div class="chat-header-left">
-              <button class="chat-header-btn" title="历史记录" @click="aiShowSidebar = !aiShowSidebar">
+              <button class="chat-header-btn" :title="t('history')" @click="aiShowSidebar = !aiShowSidebar">
                 <List :size="14" :stroke-width="1.8" />
               </button>
               <Sparkles :size="14" :stroke-width="1.8" />
-              <span class="chat-header-title">AI 阅读助手</span>
+              <span class="chat-header-title">{{ t('ai.reader.assistant') }}</span>
               <span class="pro-pill">Pro</span>
               <span v-if="currentAIModelLabel" class="chat-header-model">{{ currentAIModelLabel }}</span>
             </div>
             <div class="chat-header-right">
-              <button class="chat-header-btn" title="新建对话" @click="newAIChat">
+              <button class="chat-header-btn" :title="t('new.conversation')" @click="newAIChat">
                 <Plus :size="14" :stroke-width="1.8" />
               </button>
             </div>
@@ -3945,35 +3945,35 @@ onBeforeUnmount(() => {
           <div class="chat-body">
             <div v-show="aiShowSidebar" class="chat-sidebar">
               <div class="chat-sidebar-head">
-                <span class="chat-sidebar-title">对话历史</span>
-                <button class="chat-header-btn" title="新建" @click="newAIChat"><Plus :size="13" :stroke-width="1.8" /></button>
+                <span class="chat-sidebar-title">{{ t('conversation.history') }}</span>
+                <button class="chat-header-btn" :title="t('new')" @click="newAIChat"><Plus :size="13" :stroke-width="1.8" /></button>
               </div>
               <div class="chat-sidebar-list">
-                <div v-if="!aiConvList.length" class="chat-sidebar-empty">暂无对话</div>
+                <div v-if="!aiConvList.length" class="chat-sidebar-empty">{{ t('no.conversations') }}</div>
                 <div v-for="c in aiConvList" :key="c.id" :class="['chat-conv-item', aiConvId === c.id ? 'active' : '']" @click="switchAIChat(c.id, c.mode)">
                   <div class="chat-conv-info">
                     <span class="chat-conv-mode">{{ c.mode === 'ask' ? '📖' : '💡' }}</span>
                     <span class="chat-conv-title">{{ c.title }}</span>
                   </div>
-                  <button class="chat-conv-delete" title="删除" @click.stop="deleteAIConv(c.id)"><Trash2 :size="10" /></button>
+                  <button class="chat-conv-delete" :title="t('delete')" @click.stop="deleteAIConv(c.id)"><Trash2 :size="10" /></button>
                 </div>
               </div>
             </div>
             <div class="chat-main">
               <div v-if="!isAIConfigured()" class="thread-empty">
                 <div class="thread-empty-icon"><Sparkles :size="24" :stroke-width="1.5" /></div>
-                <h3>未配置 AI 模型</h3>
-                <p>请到 设置 → API 密钥 中配置</p>
+                <h3>{{ t('ai.not.configured') }}</h3>
+                <p>{{ t('ai.not.configured.full') }}</p>
               </div>
               <template v-else>
                 <div class="chat-viewport">
                   <div v-if="aiStatusText" class="chat-status">{{ aiStatusText }}</div>
                   <div v-if="!aiMessages.length && !aiAnswer" class="thread-empty">
                     <div class="thread-empty-icon"><BookOpen :size="24" :stroke-width="1.5" /></div>
-                    <h3>{{ aiMode === 'ask' ? '询问本书内容' : '和 AI 聊聊这本书' }}</h3>
-                    <p>{{ aiMode === 'ask' ? '根据已读内容获得问答' : '讨论书籍、作者或阅读建议' }}</p>
+                    <h3>{{ aiMode === 'ask' ? t('ask.book') : t('chat.book') }}</h3>
+                    <p>{{ aiMode === 'ask' ? t('ask.book.desc') : t('chat.book.desc') }}</p>
                     <div class="thread-samples">
-                      <button v-for="q in aiSampleQuestions.filter((s) => s.mode === aiMode)" :key="q.text" class="thread-sample-btn" @click="askAI(q.text)">{{ q.emoji }} {{ q.text }}</button>
+                      <button v-for="q in aiSampleQuestions.filter((s) => s.mode === aiMode)" :key="q.textKey" class="thread-sample-btn" @click="askAI(t(q.textKey))">{{ q.emoji }} {{ t(q.textKey) }}</button>
                     </div>
                   </div>
                   <div v-else class="chat-messages">
@@ -3982,8 +3982,8 @@ onBeforeUnmount(() => {
                         <div class="chat-bubble-content" v-html="renderAIMarkdown(msg.content)"></div>
                       </div>
                       <div v-if="msg.role === 'assistant'" class="chat-msg-actions">
-                        <button title="复制" @click="copyAIMessage(msg.content)"><Copy :size="12" :stroke-width="1.8" /></button>
-                        <button v-if="idx === aiMessages.length - 1" title="重试" @click="retryLastAI"><RotateCw :size="12" :stroke-width="1.8" /></button>
+                        <button :title="t('copy')" @click="copyAIMessage(msg.content)"><Copy :size="12" :stroke-width="1.8" /></button>
+                        <button v-if="idx === aiMessages.length - 1" :title="t('retry')" @click="retryLastAI"><RotateCw :size="12" :stroke-width="1.8" /></button>
                       </div>
                     </div>
                     <div v-if="aiStreaming && !aiAnswer" class="chat-msg assistant">
@@ -4002,7 +4002,7 @@ onBeforeUnmount(() => {
                       </div>
                     </div>
                   </div>
-                  <div class="chat-disclaimer">AI 可能出错。请以本书内容为准。</div>
+                  <div class="chat-disclaimer">{{ t('ai.disclaimer') }}</div>
                 </div>
                 <div class="chat-composer">
                   <div class="chat-composer-inner">
@@ -4010,17 +4010,17 @@ onBeforeUnmount(() => {
                       <a-select v-if="isAIConfigured()" v-model="aiProviderOverride" size="mini" class="composer-provider-select" :disabled="aiStreaming">
                         <a-option v-for="p in availableProviderOptions" :key="p.value" :value="p.value" :disabled="p.value === 'boxplayer-cloud' && !isPro()">
                           <span class="provider-option-label">
-                            <span>{{ p.label === '默认 (全局设置)' ? '默认' : p.label }}</span>
+                            <span>{{ p.label === t('default.global') ? t('default.short') : p.label }}</span>
                             <span v-if="p.value === 'boxplayer-cloud'" class="pro-badge">Pro</span>
                           </span>
                         </a-option>
                       </a-select>
-                      <button class="composer-mode-btn" :class="{ active: aiMode === 'ask' }" title="阅读问答" @click="toggleAIMode('ask')">📖</button>
-                      <button class="composer-mode-btn" :class="{ active: aiMode === 'chat' }" title="自由聊天" @click="toggleAIMode('chat')">💡</button>
-                      <button class="composer-clear-btn" title="清空记录" @click="clearAIHistory"><Trash2 :size="13" /></button>
+                      <button class="composer-mode-btn" :class="{ active: aiMode === 'ask' }" :title="t('reading.qa')" @click="toggleAIMode('ask')">📖</button>
+                      <button class="composer-mode-btn" :class="{ active: aiMode === 'chat' }" :title="t('free.chat')" @click="toggleAIMode('chat')">💡</button>
+                      <button class="composer-clear-btn" :title="t('clear.history')" @click="clearAIHistory"><Trash2 :size="13" /></button>
                     </div>
                     <div class="chat-composer-input-row">
-                      <textarea v-model="aiInput" :placeholder="aiMode === 'ask' ? '基于本章提问...' : '输入消息...'" rows="1" class="composer-input" @keydown="handleAIKeydown" :disabled="aiStreaming"></textarea>
+                      <textarea v-model="aiInput" :placeholder="aiMode === 'ask' ? t('ask.placeholder') : t('chat.placeholder')" rows="1" class="composer-input" @keydown="handleAIKeydown" :disabled="aiStreaming"></textarea>
                       <button class="composer-send-btn" :disabled="!aiInput.trim() || aiStreaming" @click="askAI(aiInput)">
                         <span v-if="aiStreaming" class="composer-send-stop">■</span>
                         <ChevronRight v-else :size="18" :stroke-width="2" />
@@ -4050,15 +4050,15 @@ onBeforeUnmount(() => {
             <span>/ {{ bookChapters.length || '-' }}</span>
           </p>
           <div style="display: flex; justify-content: space-between; align-items: center; width: 90%; margin-left: 5%">
-            <div class="chapter-btn prev-chapter-btn" @click="prevPage()" title="上一页">
+            <div class="chapter-btn prev-chapter-btn" @click="prevPage()" :title="t('previous.page')">
               <ChevronLeft :size="14" :stroke-width="2.5" />
             </div>
             <input :value="readingProgressValue" type="range" class="progress-range" min="0" max="100" step="1" @input="readingProgressValue = Number(($event.target as HTMLInputElement).value)" @change="seekReaderProgress(readingProgressValue)" />
-            <div class="chapter-btn next-chapter-btn" @click="nextPage()" title="下一页">
+            <div class="chapter-btn next-chapter-btn" @click="nextPage()" :title="t('next.page')">
               <ChevronRight :size="14" :stroke-width="2.5" />
             </div>
           </div>
-          <ReaderPanelButton class="panel-pin" :active="lockedPanels.bottom" :title="lockedPanels.bottom ? '取消锁定' : '锁定面板'" @click="togglePanelLock('bottom')">
+          <ReaderPanelButton class="panel-pin" :active="lockedPanels.bottom" :title="lockedPanels.bottom ? t('unlock') : t('lock.panel')" @click="togglePanelLock('bottom')">
             <Pin v-if="lockedPanels.bottom" :size="14" :stroke-width="1.8" />
             <PinOff v-else :size="14" :stroke-width="1.8" />
           </ReaderPanelButton>
@@ -4068,7 +4068,7 @@ onBeforeUnmount(() => {
       <div v-if="translateSource || translateResult" class="trans-popup-layer" @mousedown.stop>
         <div class="trans-popup" :style="{ height: transHeight + 'px' }">
           <div class="trans-popup-head">
-            <span class="trans-popup-title">{{ dictMode ? '词典' : '翻译' }}</span>
+            <span class="trans-popup-title">{{ dictMode ? t('dictionary') : t('translate') }}</span>
             <select v-if="!dictMode" v-model="transProvider" class="trans-provider-select" @change="translateSource && askAIForTranslation(translateSource, transTarget)">
               <option v-for="p in translators.providers" :key="p.name" :value="p.name">{{ p.label }}</option>
             </select>
@@ -4095,7 +4095,7 @@ onBeforeUnmount(() => {
               </div>
               <div class="trans-result" :class="{ 'trans-result-full': dictMode }">
                 <a-spin v-if="transLoading" :size="18" style="margin: 20px auto; display: block" />
-                <div v-else class="trans-result-text">{{ translateResult || '点击翻译开始' }}</div>
+                <div v-else class="trans-result-text">{{ translateResult || t('translation.start') }}</div>
               </div>
             </div>
           </div>

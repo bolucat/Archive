@@ -33,6 +33,7 @@ import { GetShareUrlFormate } from '../../utils/shareurl'
 import { TestButton } from '../../utils/mosehelper'
 import { xorWith } from 'lodash'
 import { Modal } from '@arco-design/web-vue'
+import { t } from '../../i18n'
 
 const viewlist = ref()
 const inputsearch = ref()
@@ -199,13 +200,13 @@ const handleEdit = (share: any) => {
   }
   if (list && list.length > 0) modalEditShareLink(list)
   else {
-    message.error('没有选中任何分享链接！')
+    message.error(t('share.noSelection'))
   }
 }
 const handleOpenLink = () => {
   const share = myshareStore.GetSelectedFirst()
   if (!share) {
-    message.error('没有选中分享链接！')
+    message.error(t('share.noSelection'))
   } else {
     modalShowShareLink(share.share_id, share.share_pwd, '', false, [])
   }
@@ -218,10 +219,10 @@ const handleCopySelectedLink = () => {
     link += GetShareUrlFormate(item.share_name, item.share_url, item.share_pwd) + '\n'
   }
   if (list.length == 0) {
-    message.error('没有选中分享链接！')
+    message.error(t('share.noSelection'))
   } else {
     copyToClipboard(link)
-    message.success('分享链接已复制到剪切板(' + list.length.toString() + ')')
+    message.success(`${t('share.linkCopied')}(${list.length.toString()})`)
   }
 }
 const handleBrowserLink = () => {
@@ -230,11 +231,11 @@ const handleBrowserLink = () => {
   if (first.share_url) openExternal(first.share_url)
   if (first.share_pwd) {
     copyToClipboard(first.share_pwd)
-    message.success('提取码已复制到剪切板')
+    message.success(t('share.codeCopied'))
   }
 }
 const handleDeleteSelectedLink = (delby: any) => {
-  const name = delby == 'selected' ? '取消选中的分享' : delby == 'expired' ? '清理全部过期已失效' : '清理全部文件已删除'
+  const name = delby == 'selected' ? t('share.cancelSelected') : delby == 'expired' ? t('share.cleanupExpired') : t('share.cleanupDeleted')
   let list: IAliShareItem[]
   if (delby == 'selected') {
     list = myshareStore.GetSelected()
@@ -252,23 +253,23 @@ const handleDeleteSelectedLink = (delby: any) => {
     }
   }
   if (list.length == 0) {
-    message.error('没有需要清理的分享链接！')
+    message.error(t('share.noCleanup'))
     return
   }
   if (delby == 'selected') {
     Modal.open({
       title: name,
-      okText: '继续',
+      okText: t('share.continue'),
       bodyStyle: { minWidth: '340px' },
       content: () => h('div', {
         style: 'color: red',
-        innerText: '该操作不可逆，是否继续？'
+        innerText: t('share.irreversible')
       }),
       onOk: async () => {
         const selectKeys = ArrayKeyList<string>('share_id', list)
         AliShare.ApiCancelShareBatch(useUserStore().user_id, selectKeys).then((success: string[]) => {
           useMyShareStore().mDeleteFiles(success)
-          message.success(name + '成功！')
+          message.success(name + t('share.success'))
         })
       }
     })
@@ -276,7 +277,7 @@ const handleDeleteSelectedLink = (delby: any) => {
     const selectKeys = ArrayKeyList<string>('share_id', list)
     AliShare.ApiCancelShareBatch(useUserStore().user_id, selectKeys).then((success: string[]) => {
       useMyShareStore().mDeleteFiles(success)
-      message.success(name + '成功！')
+      message.success(name + t('share.success'))
     })
   }
 }
@@ -302,34 +303,34 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div class='toppanbtns' style='height: 26px'>
     <div style="min-height: 26px; max-width: 100%; flex-shrink: 0; flex-grow: 0">
       <div class="toppannav">
-        <div class="toppannavitem" title="我的分享">
-          <span> 我的分享 </span>
+        <div class="toppannavitem" :title="t('share.mine')">
+          <span> {{ t('share.mine') }} </span>
         </div>
       </div>
     </div>
     <div class='flex flexauto'></div>
     <div class="toppanbtns" style="height: 26px;min-width: fit-content">
       <div class="flex flexauto"></div>
-      <div class="flex flexnoauto cellcount" title="2天内过期">
-        <a-badge color="#637dff" :text="'临期 ' + myshareStore.ListStats.expir2day" />
+      <div class="flex flexnoauto cellcount" :title="t('share.expiringSoon')">
+        <a-badge color="#637dff" :text="t('share.expiringSoon') + ' ' + myshareStore.ListStats.expir2day" />
       </div>
-      <div class="flex flexnoauto cellcount" title="总过期">
-        <a-badge color="#637dff" :text="'过期 ' + myshareStore.ListStats.expired" />
+      <div class="flex flexnoauto cellcount" :title="t('share.expired')">
+        <a-badge color="#637dff" :text="t('share.expired') + ' ' + myshareStore.ListStats.expired" />
       </div>
-      <div class="flex flexnoauto cellcount" title="总违规">
-        <a-badge color="#637dff" :text="'违规 ' + myshareStore.ListStats.forbidden" />
+      <div class="flex flexnoauto cellcount" :title="t('share.forbidden')">
+        <a-badge color="#637dff" :text="t('share.forbidden') + ' ' + myshareStore.ListStats.forbidden" />
       </div>
-      <div class="flex flexnoauto cellcount" title="总浏览">
-        <a-badge color="#637dff" :text="'浏览 ' + myshareStore.ListStats.preview" />
+      <div class="flex flexnoauto cellcount" :title="t('share.preview')">
+        <a-badge color="#637dff" :text="t('share.preview') + ' ' + myshareStore.ListStats.preview" />
       </div>
-      <div class="flex flexnoauto cellcount" title="总下载">
-        <a-badge color="#637dff" :text="'下载 ' + myshareStore.ListStats.download" />
+      <div class="flex flexnoauto cellcount" :title="t('share.download')">
+        <a-badge color="#637dff" :text="t('share.download') + ' ' + myshareStore.ListStats.download" />
       </div>
-      <div class="flex flexnoauto cellcount" title="总转存">
-        <a-badge color="#637dff" :text="'转存 ' + myshareStore.ListStats.save" />
+      <div class="flex flexnoauto cellcount" :title="t('share.save')">
+        <a-badge color="#637dff" :text="t('share.save') + ' ' + myshareStore.ListStats.save" />
       </div>
-      <div class="flex flexnoauto cellcount" title="最大浏览数">
-        <a-badge color="#637dff" :text="'浏览 ' + myshareStore.ListStats.previewMax" />
+      <div class="flex flexnoauto cellcount" :title="t('share.previewCount')">
+        <a-badge color="#637dff" :text="t('share.preview') + ' ' + myshareStore.ListStats.previewMax" />
       </div>
     </div>
   </div>
@@ -340,39 +341,39 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                 @click="handleRefresh">
         <template #icon><IconFont name="iconreload-1-icon" />
         </template>
-        刷新
+        {{ t('user.refresh') }}
       </a-button>
     </div>
     <div v-show="myshareStore.IsListSelected" class="toppanbtn">
-      <a-button type="text" size="small" tabindex="-1" title="F2 / Ctrl+E" @click="handleEdit"><IconFont name="iconedit-square" />修改
+      <a-button type="text" size="small" tabindex="-1" title="F2 / Ctrl+E" @click="handleEdit"><IconFont name="iconedit-square" />{{ t('share.edit') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink"><IconFont name="iconchakan" />查看
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+O" @click="handleOpenLink"><IconFont name="iconchakan" />{{ t('share.view') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><IconFont name="iconcopy" />复制链接
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+C" @click="handleCopySelectedLink"><IconFont name="iconcopy" />{{ t('share.copyLink') }}
       </a-button>
-      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><IconFont name="iconchrome" />浏览器
+      <a-button type="text" size="small" tabindex="-1" title="Ctrl+B" @click="handleBrowserLink"><IconFont name="iconchrome" />{{ t('share.browser') }}
       </a-button>
       <a-button type="text" size="small" tabindex="-1" class="danger" title="Ctrl+Delete"
-                @click="handleDeleteSelectedLink('selected')"><IconFont name="icondelete" />取消分享
+                @click="handleDeleteSelectedLink('selected')"><IconFont name="icondelete" />{{ t('share.cancelShare') }}
       </a-button>
     </div>
     <div v-show="!myshareStore.IsListSelected" class="toppanbtn">
       <a-dropdown trigger="hover" position="bl" @select="handleDeleteSelectedLink">
         <a-button type="text" size="small" tabindex="-1">
-          <IconFont name="iconrest" />清理全部
+          <IconFont name="iconrest" />{{ t('share.cleanupAll') }}
           <IconFont name="icondown" /></a-button>
         <template #content>
-          <a-doption :value="'expired'" class="danger">删除全部 过期已失效</a-doption>
-          <a-doption :value="'deleted'" class="danger">删除全部 文件已删除</a-doption>
+          <a-doption :value="'expired'" class="danger">{{ t('share.deleteAllExpired') }}</a-doption>
+          <a-doption :value="'deleted'" class="danger">{{ t('share.deleteAllDeleted') }}</a-doption>
         </template>
       </a-dropdown>
     </div>
     <div style="flex-grow: 1"></div>
     <div class="toppanbtn">
-      <a-button v-if="isCloud123User(useUserStore().user_id)" type="text" size="small" tabindex="-1" @click="handleCloud123PaidShare">付费分享管理</a-button>
+      <a-button v-if="isCloud123User(useUserStore().user_id)" type="text" size="small" tabindex="-1" @click="handleCloud123PaidShare">{{ t('share.paidShareManage') }}</a-button>
       <a-input-search ref="inputsearch" tabindex="-1"
                       size="small" title="Ctrl+F / F3 / Space"
-                      placeholder="快速筛选"
+                      :placeholder="t('share.quickFilter')"
                       allow-clear @clear='(e:any)=>handleSearchInput("")'
                       v-model="myshareStore.ListSearchKey"
                       @input="(val:any)=>handleSearchInput(val as string)"
@@ -384,7 +385,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
   <div style="height: 9px"></div>
   <div class="toppanarea">
     <div style="margin: 0 3px">
-      <AntdTooltip title="点击全选" placement="left">
+      <AntdTooltip :title="t('share.selectAll')" placement="left">
         <a-button shape="circle" type="text" tabindex="-1" class="select all" title="Ctrl+A" @click="handleSelectAll">
           <IconFont :name="myshareStore.IsListSelectedAll ? 'iconrsuccess' : 'iconpic2'" />
         </a-button>
@@ -394,7 +395,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
         <AntdTooltip placement='rightTop' v-if="myshareStore.ListDataShow.length > 0">
           <a-button shape='square' type='text' tabindex='-1' class='qujian'
                     :status="rangIsSelecting ? 'danger' : 'normal'" title='Ctrl+Q' @click='onSelectRangStart'>
-            {{ rangIsSelecting ? '取消选择' : '区间选择' }}
+            {{ rangIsSelecting ? t('share.cancelSelect') : t('share.rangeSelect') }}
           </a-button>
           <template #title>
             <div>
@@ -412,40 +413,40 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
                   tabindex='-1'
                   class='qujian'
                   status='normal' @click='onSelectReverse'>
-          反向选择
+          {{ t('share.reverseSelect') }}
         </a-button>
         <a-button shape='square' v-if='!rangIsSelecting && myshareStore.ListSelected.size > 0' type='text'
                   tabindex='-1' class='qujian'
                   status='normal' @click='onSelectCancel'>
-          取消已选
+          {{ t('share.cancelSelectedItems') }}
         </a-button>
       </div>
     </div>
     <div style="flex-grow: 1"></div>
-    <div class="cell tiquma">提取码</div>
+    <div class="cell tiquma">{{ t('share.code') }}</div>
     <div :class="'cell sharetime order ' + (myshareStore.ListOrderKey == 'state' ? 'active' : '')"
          @click="handleOrder('state')">
-      有效期
+      {{ t('share.validity') }}
       <IconFont name="iconxia" />
     </div>
     <div :class="'cell count order ' + (myshareStore.ListOrderKey == 'preview' ? 'active' : '')"
          @click="handleOrder('preview')">
-      浏览数
+      {{ t('share.previewCount') }}
       <IconFont name="iconxia" />
     </div>
     <div :class="'cell count order ' + (myshareStore.ListOrderKey == 'download' ? 'active' : '')"
          @click="handleOrder('download')">
-      下载数
+      {{ t('share.downloadCount') }}
       <IconFont name="iconxia" />
     </div>
     <div :class="'cell count order ' + (myshareStore.ListOrderKey == 'save' ? 'active' : '')"
          @click="handleOrder('save')">
-      转存数
+      {{ t('share.saveCount') }}
       <IconFont name="iconxia" />
     </div>
     <div :class="'cell sharetime order ' + (myshareStore.ListOrderKey == 'time' ? 'active' : '')"
          @click="handleOrder('time')">
-      创建时间
+      {{ t('share.createdAt') }}
       <IconFont name="iconxia" />
     </div>
     <div class="cell pr"></div>
@@ -469,7 +470,7 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       tabindex="-1"
       @scroll="onHideRightMenuScroll">
       <template #empty>
-        <a-empty description="没创建过任何分享链接" />
+        <a-empty :description="t('share.empty')" />
       </template>
 
       <template #item="{ item, index }">
@@ -495,9 +496,9 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
               </div>
             </div>
             <div class="cell tiquma">{{ item.share_pwd }}</div>
-            <div v-if="item.status == 'forbidden'" class="cell sharestate forbidden">分享违规</div>
-            <div v-else-if="item.expired" class="cell sharestate expired">过期失效</div>
-            <div v-else-if="!item.first_file" class="cell sharestate deleted">文件已删</div>
+            <div v-if="item.status == 'forbidden'" class="cell sharestate forbidden">{{ t('share.forbidden') }}</div>
+            <div v-else-if="item.expired" class="cell sharestate expired">{{ t('share.expired') }}</div>
+            <div v-else-if="!item.first_file" class="cell sharestate deleted">{{ t('share.deleted') }}</div>
             <div v-else class="cell sharestate active">{{ item.share_msg }}</div>
             <div class="cell count">{{ humanCount(item.preview_count) }}</div>
             <div class="cell count">{{ humanCount(item.download_count) }}</div>
@@ -513,25 +514,25 @@ const handleRightClick = (e: { event: MouseEvent; node: any }) => {
       <template #content>
         <a-doption @click="handleEdit">
           <template #icon><IconFont name="iconedit-square" /></template>
-          <template #default>修改</template>
+          <template #default>{{ t('share.edit') }}</template>
         </a-doption>
         <a-doption @click="handleOpenLink">
           <template #icon><IconFont name="iconchakan" /></template>
-          <template #default>查看</template>
+          <template #default>{{ t('share.view') }}</template>
         </a-doption>
 
         <a-doption @click="handleCopySelectedLink">
           <template #icon><IconFont name="iconcopy" /></template>
-          <template #default>复制链接</template>
+          <template #default>{{ t('share.copyLink') }}</template>
         </a-doption>
         <a-doption @click="handleBrowserLink">
           <template #icon><IconFont name="iconchrome" /></template>
-          <template #default>浏览器</template>
+          <template #default>{{ t('share.browser') }}</template>
         </a-doption>
 
         <a-doption class="danger" @click="handleDeleteSelectedLink('selected')">
           <template #icon><IconFont name="icondelete" /></template>
-          <template #default>取消分享</template>
+          <template #default>{{ t('share.cancelShare') }}</template>
         </a-doption>
       </template>
     </a-dropdown>

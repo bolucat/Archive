@@ -4,7 +4,6 @@ import { useAppStore } from '../store'
 import SettingPlay from './SettingPlay.vue'
 import SettingMediaServerPlayback from './SettingMediaServerPlayback.vue'
 import SettingDanmaku from './SettingDanmaku.vue'
-import SettingFeedback from './SettingFeedback.vue'
 import SettingPan from './SettingPan.vue'
 import SettingUI from './SettingUI.vue'
 import SettingAccount from './SettingAccount.vue'
@@ -18,12 +17,32 @@ import SettingWebDav from './SettingWebDav.vue'
 import SettingSecurity from './SettingSecurity.vue'
 import SettingDownloadAdvanced from './SettingDownloadAdvanced.vue'
 import SettingAPI from './SettingAPI.vue'
+import { t } from '../i18n'
 
 const appStore = useAppStore()
 
 let observer: any
 
 const hideSetting = computed(() => appStore.appTab !== 'setting')
+
+const sectionMeta: Record<string, { title: string }> = {
+  SettingUI: { title: 'settings.app' },
+  SettingAccount: { title: 'settings.account' },
+  SettingAPI: { title: 'settings.ai' },
+  SettingSecurity: { title: 'settings.security' },
+  SettingPlay: { title: 'settings.player' },
+  SettingMediaServerPlayback: { title: 'nav.mediaServer' },
+  SettingDanmaku: { title: 'settings.danmaku' },
+  SettingPan: { title: 'settings.pan' },
+  SettingDown: { title: 'settings.download' },
+  SettingDownloadAdvanced: { title: 'settings.downloadAdvanced' },
+  SettingUpload: { title: 'settings.upload' },
+  SettingWebDav: { title: 'settings.webDav' },
+  SettingDebug: { title: 'settings.advanced' },
+  SettingProxy: { title: 'settings.proxy' },
+  SettingAria: { title: 'settings.remoteAria' },
+  SettingLog: { title: 'settings.logs' }
+}
 
 onMounted(() => {
   const root = document.getElementById('SettingObserver')
@@ -48,7 +67,6 @@ onMounted(() => {
     'SettingPlay',
     'SettingMediaServerPlayback',
     'SettingDanmaku',
-    'SettingFeedback',
     'SettingPan',
     'SettingDown',
     'SettingDownloadAdvanced',
@@ -76,81 +94,80 @@ onUnmounted(() => {
 
 <template>
   <a-layout class="settings-shell">
-    <a-layout-sider hide-trigger :width="188" class="xbyleft settings-sider" tabindex="-1" @keydown.tab.prevent="() => true">
+    <a-layout-sider hide-trigger :width="188" class="xbyleft settings-sider single-boundary-sidebar" tabindex="-1" @keydown.tab.prevent="() => true">
       <div class='headdesc settings-side-title'>
-        <span class="settings-side-kicker">Preferences</span>
-        <strong>设置中心</strong>
-        <small>统一管理应用、播放、网盘、安全和网络能力</small>
+        <span class="settings-side-kicker">{{ t('settings.preferences') }}</span>
+        <strong>{{ t('settings.center') }}</strong>
       </div>
-      <a-menu :selected-keys="[appStore.GetAppTabMenu]" :style="{ width: '100%' }" class="xbyleftmenu"
+      <a-menu :selected-keys="[appStore.GetAppTabMenu]" :style="{ width: '100%' }" class="xbyleftmenu single-boundary-sidebar-menu"
               @update:selected-keys="appStore.toggleTabMenu('setting', $event[0])">
+        <div class="settings-menu-group">{{ t('settings.group.general') }}</div>
         <a-menu-item key="SettingUI">
           <template #icon><IconFont name="iconui" /></template>
-          应用设置
+          {{ t('settings.app') }}
         </a-menu-item>
         <a-menu-item key="SettingAccount">
           <template #icon><IconFont name="iconrobot" /></template>
-          账户设置
+          {{ t('settings.account') }}
         </a-menu-item>
         <a-menu-item key="SettingAPI">
           <template #icon><IconFont name="iconlock" /></template>
-          AI 设置
-        </a-menu-item>
-        <a-menu-item key="SettingFeedback">
-          <template #icon><IconFont name="iconbulb" /></template>
-          功能与反馈
+          {{ t('settings.ai') }}
         </a-menu-item>
         <a-menu-item key="SettingSecurity">
           <template #icon><IconFont name="iconchrome" /></template>
-          安全设置
+          {{ t('settings.security') }}
         </a-menu-item>
+        <div class="settings-menu-group">{{ t('settings.group.playback') }}</div>
         <a-menu-item key="SettingPlay">
           <template #icon><IconFont name="iconshipin" /></template>
-          播放器
+          {{ t('settings.player') }}
         </a-menu-item>
         <a-menu-item key="SettingMediaServerPlayback">
           <template #icon><IconFont name="iconshipin" /></template>
-          媒体服务器
+          {{ t('nav.mediaServer') }}
         </a-menu-item>
         <a-menu-item key="SettingDanmaku">
           <template #icon><IconFont name="iconshipin" /></template>
-          弹幕库
+          {{ t('settings.danmaku') }}
         </a-menu-item>
+        <div class="settings-menu-group">{{ t('settings.group.driveTransfer') }}</div>
         <a-menu-item key="SettingPan">
           <template #icon><IconFont name="iconfile-folder" /></template>
-          网盘设置
+          {{ t('settings.pan') }}
         </a-menu-item>
         <a-menu-item key="SettingDown">
           <template #icon><IconFont name="icondownload" /></template>
-          下载文件
+          {{ t('settings.download') }}
         </a-menu-item>
         <a-menu-item key="SettingDownloadAdvanced">
           <template #icon><IconFont name="iconcloud-download" /></template>
-          高级下载
+          {{ t('settings.downloadAdvanced') }}
         </a-menu-item>
         <a-menu-item key="SettingUpload">
           <template #icon><IconFont name="iconupload" /></template>
-          上传文件
+          {{ t('settings.upload') }}
         </a-menu-item>
         <a-menu-item key='SettingWebDav'>
           <template #icon><IconFont name="iconchuanshu2" /></template>
-          WebDav
+          {{ t('settings.webDav') }}
         </a-menu-item>
+        <div class="settings-menu-group">{{ t('settings.group.system') }}</div>
         <a-menu-item key="SettingDebug">
           <template #icon><IconFont name="iconlogoff" /></template>
-          高级选项
+          {{ t('settings.advanced') }}
         </a-menu-item>
         <a-menu-item key="SettingProxy">
           <template #icon><IconFont name="iconyuanduanfuzhi" /></template>
-          网络代理
+          {{ t('settings.proxy') }}
         </a-menu-item>
         <a-menu-item key="SettingAria">
           <template #icon><IconFont name="iconchuanshu" /></template>
-          远程Aria
+          {{ t('settings.remoteAria') }}
         </a-menu-item>
         <a-menu-item key="SettingLog">
           <template #icon><IconFont name="icondebug" /></template>
-          运行日志
+          {{ t('settings.logs') }}
         </a-menu-item>
       </a-menu>
     </a-layout-sider>
@@ -168,23 +185,23 @@ onUnmounted(() => {
 <!--          </div>-->
 <!--        </div>-->
 
-        <section id="SettingUI" class="settings-section"><SettingUI /></section>
-        <section id="SettingAccount" class="settings-section"><SettingAccount /></section>
-        <section id="SettingAPI" class="settings-section"><SettingAPI /></section>
-        <section id="SettingSecurity" class="settings-section"><SettingSecurity /></section>
-        <section id="SettingPlay" class="settings-section"><SettingPlay /></section>
-        <section id="SettingMediaServerPlayback" class="settings-section"><SettingMediaServerPlayback /></section>
-        <section id="SettingDanmaku" class="settings-section"><SettingDanmaku /></section>
-        <section id="SettingFeedback" class="settings-section"><SettingFeedback /></section>
-        <section id="SettingPan" class="settings-section"><SettingPan /></section>
-        <section id="SettingDown" class="settings-section"><SettingDown /></section>
-        <section id="SettingDownloadAdvanced" class="settings-section"><SettingDownloadAdvanced /></section>
-        <section id="SettingUpload" class="settings-section"><SettingUpload /></section>
-        <section id='SettingWebDav' class="settings-section"><SettingWebDav /></section>
-        <section id="SettingDebug" class="settings-section"><SettingDebug /></section>
-        <section id="SettingProxy" class="settings-section"><SettingProxy /></section>
-        <section id="SettingAria" class="settings-section"><SettingAria /></section>
+        <section id="SettingUI" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingUI.title as Parameters<typeof t>[0]) }}</h2></div><SettingUI /></section>
+<!--        <section id="SettingAccount" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingAccount.title as Parameters<typeof t>[0]) }}</h2></div><SettingAccount /></section>-->
+        <section id="SettingAPI" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingAPI.title as Parameters<typeof t>[0]) }}</h2></div><SettingAPI /></section>
+        <section id="SettingSecurity" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingSecurity.title as Parameters<typeof t>[0]) }}</h2></div><SettingSecurity /></section>
+        <section id="SettingPlay" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingPlay.title as Parameters<typeof t>[0]) }}</h2></div><SettingPlay /></section>
+        <section id="SettingMediaServerPlayback" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingMediaServerPlayback.title as Parameters<typeof t>[0]) }}</h2></div><SettingMediaServerPlayback /></section>
+        <section id="SettingDanmaku" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingDanmaku.title as Parameters<typeof t>[0]) }}</h2></div><SettingDanmaku /></section>
+        <section id="SettingPan" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingPan.title as Parameters<typeof t>[0]) }}</h2></div><SettingPan /></section>
+        <section id="SettingDown" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingDown.title as Parameters<typeof t>[0]) }}</h2></div><SettingDown /></section>
+        <section id="SettingDownloadAdvanced" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingDownloadAdvanced.title as Parameters<typeof t>[0]) }}</h2></div><SettingDownloadAdvanced /></section>
+        <section id="SettingUpload" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingUpload.title as Parameters<typeof t>[0]) }}</h2></div><SettingUpload /></section>
+        <section id='SettingWebDav' class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingWebDav.title as Parameters<typeof t>[0]) }}</h2></div><SettingWebDav /></section>
+        <section id="SettingDebug" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingDebug.title as Parameters<typeof t>[0]) }}</h2></div><SettingDebug /></section>
+        <section id="SettingProxy" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingProxy.title as Parameters<typeof t>[0]) }}</h2></div><SettingProxy /></section>
+        <section id="SettingAria" class="settings-section"><div class="settings-section-header"><h2>{{ t(sectionMeta.SettingAria.title as Parameters<typeof t>[0]) }}</h2></div><SettingAria /></section>
         <section id="SettingLog" class="settings-section">
+          <div class="settings-section-header"><h2>{{ t(sectionMeta.SettingLog.title as Parameters<typeof t>[0]) }}</h2></div>
           <div v-if="hideSetting" style="min-height: 602px"></div>
           <SettingLog v-else />
         </section>
@@ -221,11 +238,17 @@ onUnmounted(() => {
 }
 
 .settings-side-title {
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  height: auto;
+  min-height: 92px;
   margin: 2px 4px 18px;
   padding: 16px 16px 18px;
+  line-height: normal;
+  white-space: normal;
+  overflow: visible;
   border-radius: 24px;
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.74), transparent 46%),
@@ -248,12 +271,7 @@ onUnmounted(() => {
   font-size: 24px;
   line-height: 1.15;
   color: #162033;
-}
-
-.settings-side-title small {
-  font-size: 12px;
-  line-height: 1.6;
-  color: #64748b;
+  white-space: nowrap;
 }
 
 .settings-content {
@@ -328,7 +346,50 @@ onUnmounted(() => {
 
 .settings-section {
   position: relative;
-  margin-top: 32px;
+  margin: 30px 0;
+  padding: 28px 32px 30px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.88), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 250, 252, 0.72));
+  box-shadow:
+    0 22px 48px rgba(78, 97, 128, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(18px) saturate(128%);
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.settings-section-header {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  margin: 0 auto 22px;
+  padding: 0 18px 22px;
+  text-align: center;
+}
+
+.settings-section-header::after {
+  display: block;
+  width: 72px;
+  height: 3px;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(59, 130, 246, 0.18), rgba(59, 130, 246, 0.86), rgba(125, 211, 252, 0.18));
+  content: '';
+}
+
+.settings-section-header h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 23px;
+  line-height: 1.2;
+  font-weight: 850;
+  letter-spacing: -0.025em;
 }
 
 .settingcard {
@@ -340,6 +401,14 @@ onUnmounted(() => {
   user-select: none;
   -webkit-user-drag: none;
   box-shadow: 0 4px 16px rgba(78, 97, 128, 0.08);
+}
+
+#xbybody #SettingObserver .settingcard {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 .settingcard .iconbulb,
@@ -432,22 +501,38 @@ html.dark .settingrow .iconbulb {
   border-top: none;
 }
 
-.xbyleftmenu {
-  padding: 10px;
-  border-radius: 28px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(245, 248, 255, 0.42));
-  border: 1px solid rgba(255, 255, 255, 0.82);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.82),
-    0 18px 36px rgba(105, 124, 154, 0.08);
+.settings-sider .xbyleftmenu {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
-.xbyleftmenu .arco-menu-inner {
+.settings-sider .xbyleftmenu .arco-menu-inner {
   padding: 0 !important;
 }
 
-.xbyleftmenu .arco-menu-item {
+.settings-menu-group {
+  margin: 18px 10px 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  color: #8492aa;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.settings-menu-group:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.settings-sider .xbyleftmenu .arco-menu-item {
   position: relative;
   height: 48px;
   margin-bottom: 6px !important;
@@ -459,14 +544,14 @@ html.dark .settingrow .iconbulb {
   transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
 }
 
-.xbyleftmenu .arco-menu-item:hover {
+.settings-sider .xbyleftmenu .arco-menu-item:hover {
   background: rgba(255, 255, 255, 0.72) !important;
   color: #1f2f4c !important;
   box-shadow: 0 10px 24px rgba(148, 163, 184, 0.12);
   transform: translateX(2px);
 }
 
-.xbyleftmenu .arco-menu-selected {
+.settings-sider .xbyleftmenu .arco-menu-selected {
   background:
     linear-gradient(135deg, rgba(191, 219, 254, 0.9), rgba(255, 255, 255, 0.92)) !important;
   color: #1d4ed8 !important;
@@ -475,7 +560,7 @@ html.dark .settingrow .iconbulb {
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
 }
 
-.xbyleftmenu .arco-menu-selected::before {
+.settings-sider .xbyleftmenu .arco-menu-selected::before {
   position: absolute;
   left: 10px;
   top: 10px;
@@ -486,7 +571,7 @@ html.dark .settingrow .iconbulb {
   content: '';
 }
 
-.xbyleftmenu .arco-menu-icon {
+.settings-sider .xbyleftmenu .arco-menu-icon {
   font-size: 17px;
   margin-right: 12px !important;
   opacity: 0.92;
@@ -561,6 +646,89 @@ html.dark .settingrow .iconbulb {
   border-color: rgba(148, 163, 184, 0.18);
 }
 
+body:not([arco-theme='dark']) #xbybody .settings-shell {
+  background: var(--color-bg-1) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody .settings-sider {
+  color: #111827;
+  background: var(--color-bg-1) !important;
+  border-right-color: var(--color-border-2) !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver {
+  color: #111827;
+  background: var(--color-bg-1) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settingcard,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settinghead,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-section-header h2,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-divider-text,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-checkbox-label,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-radio-label,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-switch-text {
+  color: #111827 !important;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settingrow,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .helptxt,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-app-subtitle,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-panel-copy,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-proxy-copy,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-log-caption,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .feedback-text,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .acc-desc {
+  color: #374151 !important;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-input,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-textarea,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-select-view-value,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-input-number-input {
+  color: #111827 !important;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-input::placeholder,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-textarea::placeholder,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .arco-input-number-input::placeholder {
+  color: #6b7280 !important;
+  opacity: 1;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-app-badge,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .play-settings-kicker,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-panel-kicker,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-proxy-kicker,
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-log-kicker {
+  color: var(--color-primary-6) !important;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-section-header {
+  background: transparent;
+}
+
+body:not([arco-theme='dark']) #xbybody #SettingObserver .settings-section {
+  background: var(--color-bg-1);
+  border-color: var(--color-border-2);
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+body:not([arco-theme='dark']) #xbybody .settingcard {
+  background: var(--color-bg-1) !important;
+  border-color: var(--color-border-2);
+  box-shadow: none;
+}
+
+body:not([arco-theme='dark']) #xbybody .settings-side-title {
+  background: var(--color-bg-1) !important;
+  border-color: var(--color-border-2);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 body[arco-theme='dark'] .settings-shell {
   background:
     radial-gradient(circle at top left, rgba(74, 108, 179, 0.26), transparent 24%),
@@ -603,21 +771,18 @@ body[arco-theme='dark'] .settingcard {
   backdrop-filter: blur(20px) saturate(1.12);
 }
 
-body[arco-theme='dark'] .xbyleftmenu {
-  background:
-    linear-gradient(180deg, rgba(28, 32, 42, 0.92), rgba(20, 24, 33, 0.88)) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 18px 36px rgba(0, 0, 0, 0.24) !important;
-  backdrop-filter: blur(22px) saturate(130%);
+body[arco-theme='dark'] .settings-sider .xbyleftmenu {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
-body[arco-theme='dark'] .xbyleftmenu .arco-menu {
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu {
   background: transparent !important;
 }
 
-body[arco-theme='dark'] .xbyleftmenu .arco-menu-inner {
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu-inner {
   background: transparent !important;
 }
 
@@ -631,42 +796,65 @@ body[arco-theme='dark'] .settingrow {
 
 body[arco-theme='dark'] .settings-side-title strong,
 body[arco-theme='dark'] .settings-hero h2,
+body[arco-theme='dark'] .settings-section-header h2,
 body[arco-theme='dark'] .settinghead,
 body[arco-theme='dark'] .settingcard .arco-divider-text,
-body[arco-theme='dark'] .xbyleftmenu .arco-menu-item {
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu-item {
   color: rgba(244, 247, 252, 0.96) !important;
 }
 
-body[arco-theme='dark'] .xbyleftmenu .arco-menu-item {
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu-item {
   background: rgba(255, 255, 255, 0.04) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06) !important;
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+  border: 0 !important;
+  box-shadow: none;
 }
 
 body[arco-theme='dark'] .settinghead::after {
   background: linear-gradient(90deg, var(--app-mineradio-accent, #00f5d4), rgba(0,245,212,.18));
 }
 
-body[arco-theme='dark'] .xbyleftmenu .arco-menu-item:hover {
+body[arco-theme='dark'] .settings-section + .settings-section {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+body[arco-theme='dark'] .settings-section-header {
+  background: transparent;
+}
+
+body[arco-theme='dark'] .settings-section {
+  background:
+    radial-gradient(circle at top left, rgba(96, 165, 250, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(23, 28, 38, 0.9), rgba(17, 22, 31, 0.82));
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 24px 54px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body[arco-theme='dark'] .settings-section-header::after {
+  background: linear-gradient(90deg, rgba(0,245,212,.12), var(--app-mineradio-accent, #00f5d4), rgba(0,245,212,.12));
+}
+
+body[arco-theme='dark'] .settings-menu-group {
+  border-top-color: rgba(255, 255, 255, 0.08);
+  color: rgba(191, 201, 216, 0.5);
+}
+
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu-item:hover {
   background:
     linear-gradient(180deg, rgba(42, 48, 62, 0.8), rgba(29, 34, 46, 0.72)) !important;
-  border-color: rgba(255, 255, 255, 0.08) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 12px 28px rgba(0, 0, 0, 0.2);
+  border-color: transparent !important;
+  box-shadow: none;
 }
 
-body[arco-theme='dark'] .xbyleftmenu .arco-menu-selected {
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu-selected {
   background:
     linear-gradient(135deg, rgba(0,245,212,.10), rgba(8,9,11,.80)) !important;
-  border-color: rgba(0,245,212,.22) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    inset 0 0 0 1px rgba(0,245,212,.14),
-    0 14px 30px rgba(0,245,212,.10) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
-body[arco-theme='dark'] .xbyleftmenu .arco-menu-selected::before {
+body[arco-theme='dark'] .settings-sider .xbyleftmenu .arco-menu-selected::before {
   background: linear-gradient(180deg, var(--app-mineradio-accent, #00f5d4), #8ff5ea);
 }
 

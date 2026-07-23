@@ -25,8 +25,9 @@ import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
 import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
-import { supportsCopy, supportsCreateShare } from '../../aliapi/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete } from '../../aliapi/providerFeatures'
 import { apiDrive115FileDetailResult } from '../../cloud115/filecmd'
+import { t } from '../../i18n'
 
 let istree = false
 const settingStore = useSettingStore()
@@ -42,12 +43,12 @@ const bookScanner = BookScanner.getInstance()
 const pickFolderForScan = () => {
   const selectedFiles = panFileStore.GetSelected()
   if (selectedFiles.length === 0) {
-    message.warning('请先选择要扫描的文件夹')
+    message.warning(t('file.selectScanFolder'))
     return null
   }
   const folder = selectedFiles.find((file) => file.isDir)
   if (!folder) {
-    message.warning('请选择文件夹进行扫描')
+    message.warning(t('file.scanFolderOnly'))
     return null
   }
   return folder
@@ -62,8 +63,8 @@ const isScanning = computed(() => mediaScanner.isCurrentlyScanning || musicScann
 const handleStartScan = async () => {
   const folder = pickFolderForScan()
   if (!folder) return
-  if (isScanning.value) { message.warning('正在扫描中，请稍后...'); return }
-  if (!scanVideo.value && !scanAudio.value && !scanBook.value) { message.warning('请至少勾选一种扫描类型'); return }
+  if (isScanning.value) { message.warning(t('file.scanning')); return }
+  if (!scanVideo.value && !scanAudio.value && !scanBook.value) { message.warning(t('file.selectScanType')); return }
 
   const userId = (folder as any).user_id || panTreeStore.user_id || ''
   const tasks: Promise<any>[] = []
@@ -74,12 +75,12 @@ const handleStartScan = async () => {
     tasks.push(mediaScanner.scanFolder(folder, folder.drive_id).catch(e => console.error('视频扫描失败:', e)))
   }
   if (scanAudio.value && !musicScanner.isScanning) {
-    if (!userId) { message.error('无法识别当前账号'); return }
+    if (!userId) { message.error(t('file.accountMissing')); return }
     appStore.toggleTab('music')
     tasks.push(musicScanner.scanFolder(folder, userId).then(r => message.success(`音频扫描完成: ${r.found} 首`)).catch(e => console.error('音频扫描失败:', e)))
   }
   if (scanBook.value && !bookScanner.isScanning) {
-    if (!userId) { message.error('无法识别当前账号'); return }
+    if (!userId) { message.error(t('file.accountMissing')); return }
     appStore.toggleTab('book')
     tasks.push(bookScanner.scanFolder(folder, userId).then(r => message.success(`书籍扫描完成: ${r.found} 本`)).catch(e => console.error('书籍扫描失败:', e)))
   }
@@ -92,7 +93,7 @@ const handleAIBatchScrape = async () => {
   const folder = pickFolderForScan()
   if (!folder) return
   if (mediaScanner.isCurrentlyScanning) {
-    message.warning('正在扫描中，请稍后...')
+    message.warning(t('file.scanning'))
     return
   }
   try {
@@ -100,7 +101,7 @@ const handleAIBatchScrape = async () => {
     await mediaScanner.batchAIScrapeFolder(folder, (folder as any).drive_id)
   } catch (error) {
     console.error('AI 批量刮削失败:', error)
-    message.error('AI 批量刮削失败，请稍后重试')
+    message.error(t('file.aiRescrapeFailed'))
   }
 }
 
@@ -152,6 +153,11 @@ const isPikPak = computed(() => isPikPakUser(panTreeStore.user_id || '') || panT
 const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value || isPikPak.value)
 const isShareSupported = computed(() => supportsCreateShare(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isMoveSupported = computed(() => supportsMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isRenameSupported = computed(() => supportsRename(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isTrashSupported = computed(() => supportsTrashMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isPermanentDeleteSupported = computed(() => supportsTrashPermanentDelete(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const hasFileOperations = computed(() => isMoveSupported.value || isCopySupported.value || isTrashSupported.value || isPermanentDeleteSupported.value || props.dirtype === 'mypic')
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
 const isDrive115Video = computed(() => {
   const selected = panFileStore.GetSelected()
@@ -199,7 +205,7 @@ const isDocumentAIAvailable = computed(() => {
 function openDocumentAI() {
   const selected = panFileStore.GetSelected()
   if (selected.length !== 1 || !isDocumentAIAvailable.value) {
-    message.warning('请选择一个 PDF、DOCX、EPUB、TXT 或 Markdown 文档')
+    message.warning(t('file.documentAiUnsupported'))
     return
   }
   const file = selected[0]
@@ -214,24 +220,24 @@ function openDocumentAI() {
     <template #content>
       <a-doption @click='() => menuDownload(istree)'>
         <template #icon><IconFont name="icondownload" /></template>
-        <template #default>下载</template>
+        <template #default>{{ t('file.download') }}</template>
       </a-doption>
       <a-doption v-if='isDocumentAIAvailable' @click='openDocumentAI'>
         <template #icon><IconFont name="iconscan" /></template>
-        <template #default>用 AI 分析 <span class="ai-pro-badge">Pro</span></template>
+        <template #default>{{ t('file.analyzeWithAi') }} <span class="ai-pro-badge">Pro</span></template>
       </a-doption>
       <a-doption v-if='isDrive115Torrent' @click='openDrive115Torrent'>
         <template #icon><IconFont name="icondownload" /></template>
-        <template #default>115 云下载</template>
+        <template #default>{{ t('file.drive115CloudDownload') }}</template>
       </a-doption>
       <a-doption v-show='isShareSupported'
                  @click="() => menuCreatShare(istree, 'pan', 'resource_root')">
         <template #icon><IconFont name="iconfenxiang" /></template>
-        <template #default>分享</template>
+        <template #default>{{ t('file.share') }}</template>
       </a-doption>
       <a-doption v-if="isAliyunAccount" @click="() => menuCreatShare(istree, 'pan', 'backup_root')">
         <template #icon><IconFont name="iconrss" /></template>
-        <template #default>快传</template>
+        <template #default>{{ t('file.quickTransfer') }}</template>
       </a-doption>
 
       <!-- 扫描数据 -->
@@ -241,7 +247,7 @@ function openDocumentAI() {
             <span class='arco-dropdown-option-icon'>
               <IconFont name="iconscan" style='opacity: 0.8' />
             </span>
-            扫描数据
+            {{ t('file.scan') }}
           </div>
         </template>
         <template #content>
@@ -249,27 +255,27 @@ function openDocumentAI() {
             <template #icon>
               <IconFont :name="scanVideo ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanVideo ? 'color: rgb(var(--primary-6))' : ''" />
             </template>
-            <template #default>视频</template>
+            <template #default>{{ t('file.video') }}</template>
           </a-doption>
           <a-doption @click.stop="scanAudio = !scanAudio">
             <template #icon>
               <IconFont :name="scanAudio ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanAudio ? 'color: rgb(var(--primary-6))' : ''" />
             </template>
-            <template #default>音频</template>
+            <template #default>{{ t('file.audio') }}</template>
           </a-doption>
           <a-doption @click.stop="scanBook = !scanBook">
             <template #icon>
               <IconFont :name="scanBook ? 'iconcheckbox-full' : 'iconfangkuang'" :style="scanBook ? 'color: rgb(var(--primary-6))' : ''" />
             </template>
-            <template #default>书籍</template>
+            <template #default>{{ t('file.book') }}</template>
           </a-doption>
           <a-doption @click="handleStartScan">
             <template #icon><IconFont name="iconstart" /></template>
-            <template #default>开始扫描</template>
+            <template #default>{{ t('file.startScan') }}</template>
           </a-doption>
           <a-doption @click="handleAIBatchScrape">
             <template #icon><IconFont name="iconscan" /></template>
-            <template #default>AI 重刮削 <span class="ai-pro-badge">Pro</span></template>
+            <template #default>{{ t('file.aiRescrape') }} <span class="ai-pro-badge">Pro</span></template>
           </a-doption>
         </template>
       </a-dsubmenu>
@@ -279,7 +285,7 @@ function openDocumentAI() {
           <div @click.stop='() => {}'>
             <span class='arco-dropdown-option-icon'>
               <IconFont name="iconwbiaoqian" style='opacity: 0.8' />
-            </span>标记
+            </span>{{ t('file.mark') }}
           </div>
         </template>
         <template #content>
@@ -291,73 +297,73 @@ function openDocumentAI() {
 
           <a-doption @click="() => menuFileColorChange(istree, '#e74c3c')">
             <template #icon><IconFont name="iconcheckbox-full" style='color: #e74c3c' /></template>
-            <template #default>视频红</template>
+            <template #default>{{ t('file.videoRed') }}</template>
           </a-doption>
           <a-doption @click="() => menuFileColorChange(istree, '')">
             <template #icon><IconFont name="iconfangkuang" /></template>
-            <template #default>清除标记</template>
+            <template #default>{{ t('file.clearMark') }}</template>
           </a-doption>
         </template>
       </a-dsubmenu>
-      <a-dsubmenu v-if="dirtype != 'video'" id='rightpansubmove' class='rightmenu' trigger='hover'>
+      <a-dsubmenu v-if="dirtype != 'video' && hasFileOperations" id='rightpansubmove' class='rightmenu' trigger='hover'>
         <template #default>
           <div @click.stop='() => {}'>
             <span class='arco-dropdown-option-icon'>
               <IconFont name="iconmoveto" style='opacity: 0.8' />
             </span>
-            操作
+            {{ t('file.operations') }}
           </div>
         </template>
         <template #content>
           <a-doption v-show='isShowBtn && inputpicType !== "mypic" && dirtype !== "pan"'
                      @click='() => menuAddAlbumSelectFile()'>
             <template #icon><IconFont name="iconmoveto" /></template>
-            <template #default>移入相册</template>
+            <template #default>{{ t('file.moveToAlbum') }}</template>
           </a-doption>
           <a-doption v-show='dirtype === "mypic"'
                      @click='() => menuTrashSelectFile(istree, false, true)'>
             <template #icon><IconFont name="iconqingkong" /></template>
-            <template #default>移出相册</template>
+            <template #default>{{ t('file.removeFromAlbum') }}</template>
           </a-doption>
-          <a-doption v-show='isShowBtn' @click="() => menuCopySelectedFile(istree, 'cut')">
+          <a-doption v-show='isShowBtn && isMoveSupported' @click="() => menuCopySelectedFile(istree, 'cut')">
             <template #icon><IconFont name="iconscissor" /></template>
-            <template #default>移动到...</template>
+            <template #default>{{ t('file.moveTo') }}</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isCopySupported' @click="() => menuCopySelectedFile(istree, 'copy')">
             <template #icon><IconFont name="iconcopy" /></template>
-            <template #default>复制到...</template>
+            <template #default>{{ t('file.copyTo') }}</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isAliyunAccount && !isWebDav && !isThirdPartyDrive' type='text' size='small' tabindex='-1' title='Ctrl+M'
                      @click="() => menuFileEncTypeChange(istree)">
             <template #icon><IconFont name="iconsafebox" /></template>
-            <template #default>标记加密</template>
+            <template #default>{{ t('file.markEncrypted') }}</template>
           </a-doption>
-          <a-doption v-show='!isWebDav && (isShowBtn && dirtype !== "mypic"  || dirtype === "search")' class='danger' @click='() => menuTrashSelectFile(istree, false, isPic)'>
+          <a-doption v-show='isTrashSupported && (isShowBtn && dirtype !== "mypic"  || dirtype === "search")' class='danger' @click='() => menuTrashSelectFile(istree, false, isPic)'>
             <template #icon><IconFont name="icondelete" /></template>
-            <template #default>放回收站</template>
+            <template #default>{{ t('file.trash') }}</template>
           </a-doption>
-          <a-dsubmenu v-if='dirtype !== "mypic" && (isAliyunAccount || isWebDav)' class='rightmenu' trigger='hover'>
+          <a-dsubmenu v-if='dirtype !== "mypic" && isPermanentDeleteSupported' class='rightmenu' trigger='hover'>
             <template #default>
-              <span class='arco-dropdown-option-icon'><IconFont name="iconrest" /></span>彻底删除
+              <span class='arco-dropdown-option-icon'><IconFont name="iconrest" /></span>{{ t('file.deletePermanently') }}
             </template>
             <template #content>
               <a-doption title='Ctrl+Shift+Delete' class='danger' @click='() => menuTrashSelectFile(istree, true, isPic)'>
-                <template #default>删除后无法还原</template>
+                <template #default>{{ t('file.cannotRestore') }}</template>
               </a-doption>
             </template>
           </a-dsubmenu>
         </template>
       </a-dsubmenu>
 
-      <a-doption v-show="dirtype != 'video'"
+      <a-doption v-show="dirtype != 'video' && isRenameSupported"
                  @click='() => modalRename(istree, isselectedmulti, dirtype.includes("pic"))'>
         <template #icon><IconFont name="iconedit-square" /></template>
-        <template #default>重命名</template>
+        <template #default>{{ t('file.rename') }}</template>
       </a-doption>
 
       <a-doption v-show="!isPic" @click='() => modalShuXing(istree, dirtype.includes("pic"))'>
         <template #icon><IconFont name="iconshuxing" /></template>
-        <template #default>属性</template>
+        <template #default>{{ t('file.properties') }}</template>
       </a-doption>
       <a-dsubmenu v-if='!dirtype.includes("pic")'
                   id='rightpansubmore' class='rightmenu' trigger='hover'>
@@ -366,7 +372,7 @@ function openDocumentAI() {
             <span class='arco-dropdown-option-icon'>
               <IconFont name="icongengduo1" style='opacity: 0.8' />
             </span>
-            更多
+            {{ t('file.more') }}
           </div>
         </template>
         <template #content>
@@ -374,47 +380,47 @@ function openDocumentAI() {
             v-show="isselected && !isselectedmulti && (dirtype == 'favorite' || dirtype == 'search' || dirtype == 'color' || dirtype == 'video')"
             @click='() => menuJumpToDir()'>
             <template #icon><IconFont name="icondakaiwenjianjia1" /></template>
-            <template #default>打开位置</template>
+            <template #default>{{ t('file.openLocation') }}</template>
           </a-doption>
           <a-doption v-show='isvideo' @click='() => menuVideoXBT()'>
             <template #icon><IconFont name="iconjietu" /></template>
-            <template #default>雪碧图</template>
+            <template #default>{{ t('file.sprite') }}</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isAliyunAccount && !isWebDav && !isThirdPartyDrive' type='text' size='small' tabindex='-1' title='Ctrl+M'
                      @click="() => menuFileEncTypeChange(istree)">
             <template #icon><IconFont name="iconsafebox" /></template>
-            <template #default>标记加密</template>
+            <template #default>{{ t('file.markEncrypted') }}</template>
           </a-doption>
           <a-doption v-show='isShowBtn && isAliyunAccount && !isWebDav' type='text' size='small' tabindex='-1' title='Ctrl+M'
                      @click="() => menuFileClearHistory(istree)">
             <template #icon><IconFont name="iconshipin" /></template>
-            <template #default>清除历史</template>
+            <template #default>{{ t('file.clearHistory') }}</template>
           </a-doption>
           <a-doption v-show="isvideo" @click="() => menuDLNA()">
             <template #icon><IconFont name="icontouping2" /></template>
-            <template #default>DLNA投屏</template>
+            <template #default>{{ t('file.dlna') }}</template>
           </a-doption>
           <a-doption v-show='isvideo' @click='() => menuM3U8Download()'>
             <template #icon><IconFont name="iconluxiang" /></template>
-            <template #default>M3U8下载</template>
+            <template #default>{{ t('file.m3u8Download') }}</template>
           </a-doption>
           <a-dsubmenu v-if='isDrive115Video' class='rightmenu' trigger='hover'>
             <template #default>
-              <span class='arco-dropdown-option-icon'><IconFont name="iconshipin" /></span>115 转码
+              <span class='arco-dropdown-option-icon'><IconFont name="iconshipin" /></span>{{ t('file.drive115Transcode') }}
             </template>
             <template #content>
-              <a-doption @click='() => menuDrive115VideoPush("vip_push")'>VIP 加速转码</a-doption>
-              <a-doption @click='() => menuDrive115VideoPush("pay_push")'>枫叶加速转码</a-doption>
+              <a-doption @click='() => menuDrive115VideoPush("vip_push")'>{{ t('file.vipTranscode') }}</a-doption>
+              <a-doption @click='() => menuDrive115VideoPush("pay_push")'>{{ t('file.mapleTranscode') }}</a-doption>
             </template>
           </a-dsubmenu>
           <a-doption v-show='isselected' @click='() => menuCopyFileName()'>
             <template #icon><IconFont name="iconlist" /></template>
-            <template #default>复制文件名</template>
+            <template #default>{{ t('file.copyName') }}</template>
           </a-doption>
           <a-doption v-show='isselected && !isselectedmulti && !isCloudUser && !isThirdPartyDrive'
                      @click='() => menuCopyFileTree()'>
             <template #icon><IconFont name="iconnode-tree1" /></template>
-            <template #default>复制目录树</template>
+            <template #default>{{ t('file.copyTree') }}</template>
           </a-doption>
         </template>
       </a-dsubmenu>

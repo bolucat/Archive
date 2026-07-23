@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertCircle, Loader2, CheckCircle } from 'lucide-vue-next'
+import { t } from '../../i18n'
 
 defineProps<{
   action: 'delete' | 'move'
@@ -18,34 +19,34 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void; (e: 'retry
     <template v-if="state === 'confirm'">
       <div class="ba-header">
         <AlertCircle :size="16" :stroke-width="1.5" />
-        <span>{{ action === 'delete' ? '确认移入回收站' : '确认移动' }} {{ files.length }} 个文件{{ action === 'move' && targetDir ? `到 ${targetDir}` : '' }}？</span>
+        <span>{{ action === 'delete' ? t('ai.card.confirmTrash') : t('ai.card.confirmMove') }} {{ files.length }} {{ t('transfer.file') }}{{ action === 'move' && targetDir ? `${t('ai.card.to')} ${targetDir}` : '' }}?</span>
       </div>
       <div class="ba-file-list">
         <div v-for="(f, i) in files.slice(0, 10)" :key="i" class="ba-file-name">{{ f.name }}</div>
-        <div v-if="files.length > 10" class="ba-more">…还有 {{ files.length - 10 }} 个文件</div>
+        <div v-if="files.length > 10" class="ba-more">…{{ t('ai.card.more') }} {{ files.length - 10 }} {{ t('transfer.file') }}</div>
       </div>
       <div class="ba-actions">
         <button class="ba-btn ba-btn-danger" @click="emit('confirm')">
-          {{ action === 'delete' ? '确认移入回收站' : '确认移动' }}
+          {{ action === 'delete' ? t('ai.card.confirmTrash') : t('ai.card.confirmMove') }}
         </button>
-        <button class="ba-btn ba-btn-cancel" @click="emit('cancel')">取消</button>
+        <button class="ba-btn ba-btn-cancel" @click="emit('cancel')">{{ t('common.cancel') }}</button>
       </div>
     </template>
 
     <div v-else-if="state === 'running'" class="ba-status">
       <Loader2 :size="14" :stroke-width="2" class="ba-spin" />
-      <span>正在{{ action === 'delete' ? '移入回收站' : '移动' }}...</span>
+      <span>{{ action === 'delete' ? t('ai.card.trashing') : t('ai.card.moving') }}...</span>
     </div>
 
     <div v-else-if="state === 'done'" class="ba-status ba-done">
       <CheckCircle :size="16" :stroke-width="1.5" />
-      <span>{{ action === 'delete' ? '已移入回收站' : '已移动' }} {{ output?.success || 0 }}/{{ output?.total || 0 }}{{ output?.failed ? `，${output.failed} 失败` : '' }}{{ output?.report ? `。${output.report}` : '' }}</span>
+      <span>{{ action === 'delete' ? t('ai.card.trashed') : t('ai.card.moved') }} {{ output?.success || 0 }}/{{ output?.total || 0 }}{{ output?.failed ? `，${output.failed} ${t('footer.failed')}` : '' }}{{ output?.report ? `。${output.report}` : '' }}</span>
     </div>
 
     <div v-else-if="state === 'error'" class="ba-status ba-error">
       <AlertCircle :size="14" :stroke-width="1.5" />
-      <span>{{ error || '操作失败' }}</span>
-      <button class="ba-btn ba-btn-retry" @click="emit('retry')">重试</button>
+      <span>{{ error || t('ai.card.operationFailed') }}</span>
+      <button class="ba-btn ba-btn-retry" @click="emit('retry')">{{ t('common.retry') }}</button>
     </div>
   </div>
 </template>

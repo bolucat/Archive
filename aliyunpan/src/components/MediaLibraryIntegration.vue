@@ -3,7 +3,7 @@
     <!-- 媒体库主界面 -->
     <div v-if="showMediaLibrary" class="media-library-main">
       <div class="library-header">
-        <h2>媒体库</h2>
+        <h2>{{ t('media.library') }}</h2>
         <div class="header-actions">
           <a-button 
             type="primary" 
@@ -13,7 +13,7 @@
             <template #icon>
               <IconFont name="iconadd" />
             </template>
-            添加文件夹
+            {{ t('media.addFolder') }}
           </a-button>
           
           <a-button 
@@ -31,7 +31,7 @@
       <div class="library-content">
         <!-- 继续观看 -->
         <div class="content-section" v-if="mediaStore.continueWatching.length > 0">
-          <h3>继续观看</h3>
+          <h3>{{ t('media.continueWatching') }}</h3>
           <div class="media-row">
             <div 
               v-for="item in mediaStore.continueWatching.slice(0, 6)" 
@@ -58,7 +58,7 @@
         
         <!-- 最近添加 -->
         <div class="content-section" v-if="mediaStore.recentlyAdded.length > 0">
-          <h3>最近添加</h3>
+          <h3>{{ t('media.recentlyAdded') }}</h3>
           <div class="media-row">
             <div 
               v-for="item in mediaStore.recentlyAdded.slice(0, 12)" 
@@ -71,7 +71,7 @@
                 <div v-else class="poster-placeholder">
                   <IconFont name="iconfile-video" />
                 </div>
-                <div class="type-badge">{{ item.type === 'movie' ? '电影' : '电视剧' }}</div>
+                <div class="type-badge">{{ item.type === 'movie' ? t('media.movie') : t('media.tv') }}</div>
                 <div class="rating" v-if="item.rating">{{ item.rating.toFixed(1) }}</div>
               </div>
               <div class="info">
@@ -85,13 +85,13 @@
         <!-- 分类展示 -->
         <div class="content-section">
           <a-tabs v-model:activeKey="activeTab" type="card">
-            <a-tab-pane key="movies" tab="电影">
+            <a-tab-pane key="movies" :tab="t('media.movie')">
               <MediaGrid :items="mediaStore.movies" />
             </a-tab-pane>
-            <a-tab-pane key="tv" tab="电视剧">
+            <a-tab-pane key="tv" :tab="t('media.tv')">
               <MediaGrid :items="mediaStore.tvShows" />
             </a-tab-pane>
-            <a-tab-pane key="unmatched" tab="未匹配">
+            <a-tab-pane key="unmatched" :tab="t('media.unmatched')">
               <MediaGrid :items="mediaStore.unmatchedItems" />
             </a-tab-pane>
           </a-tabs>
@@ -102,21 +102,21 @@
     <!-- 添加文件夹对话框 -->
     <a-modal
       v-model:visible="showAddFolderModal"
-      title="添加到媒体库"
+      :title="t('media.addToLibrary')"
       @ok="handleAddFolder"
       @cancel="showAddFolderModal = false"
     >
       <a-form :model="addFolderForm" layout="vertical">
-        <a-form-item label="选择文件夹">
+        <a-form-item :label="t('media.selectFolder')">
           <a-tree-select
             v-model:value="addFolderForm.folderId"
             :tree-data="folderTreeData"
-            placeholder="请选择要添加的文件夹"
+            :placeholder="t('media.selectFolderPlaceholder')"
             tree-default-expand-all
           />
         </a-form-item>
-        <a-form-item label="媒体库名称">
-          <a-input v-model:value="addFolderForm.name" placeholder="请输入媒体库显示名称" />
+        <a-form-item :label="t('media.libraryName')">
+          <a-input v-model:value="addFolderForm.name" :placeholder="t('media.libraryNamePlaceholder')" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -129,6 +129,7 @@ import { useMediaLibraryStore } from '../store/medialibrary'
 import { MediaScanner } from '../utils/mediaScanner'
 import type { MediaLibraryItem } from '../types/media'
 import MediaGrid from './MediaGrid.vue'
+import { t } from '../i18n'
 
 const mediaStore = useMediaLibraryStore()
 const mediaScanner = MediaScanner.getInstance()
@@ -147,19 +148,19 @@ const folderTreeData = computed(() => {
   // 这里应该从实际的文件夹结构生成
   return [
     {
-      title: '备份盘',
+      title: t('media.backupDrive'),
       value: 'backup',
       children: [
-        { title: '电影', value: 'backup_movies' },
-        { title: '电视剧', value: 'backup_tv' }
+        { title: t('media.movie'), value: 'backup_movies' },
+        { title: t('media.tv'), value: 'backup_tv' }
       ]
     },
     {
-      title: '资源盘',
+      title: t('media.resourceDrive'),
       value: 'resource',
       children: [
-        { title: '电影', value: 'resource_movies' },
-        { title: '电视剧', value: 'resource_tv' }
+        { title: t('media.movie'), value: 'resource_movies' },
+        { title: t('media.tv'), value: 'resource_tv' }
       ]
     }
   ]

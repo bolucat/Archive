@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { getTaskFiles, changeTaskSelectedFiles } from './integration/aria2TaskApi'
 import type { DownloadTaskFile } from './integration/taskTypes'
+import { t } from '../i18n'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -101,31 +102,31 @@ const onDirectConfirm = () => emit('direct-confirm')
 <template>
   <a-modal
     :visible='visible'
-    title='选择下载文件'
+    :title="t('transfer.selectDownloadFiles')"
     :ok-loading='saving'
     :ok-button-props='{ disabled: loading || selected.size === 0 }'
-    ok-text='确认'
-    cancel-text='取消'
+    :ok-text="t('common.confirm')"
+    :cancel-text="t('common.cancel')"
     @ok='onConfirm'
     @cancel='onClose'
   >
     <template v-if='!applyToTask' #footer>
       <a-space>
-        <a-button @click='onClose'>取消</a-button>
-        <a-button :disabled='saving' @click='onDirectConfirm'>直接添加</a-button>
-        <a-button type='primary' :disabled='loading || selected.size === 0' :loading='saving' @click='onConfirm'>按选择添加</a-button>
+        <a-button @click='onClose'>{{ t('common.cancel') }}</a-button>
+        <a-button :disabled='saving' @click='onDirectConfirm'>{{ t('transfer.addDirectly') }}</a-button>
+        <a-button type='primary' :disabled='loading || selected.size === 0' :loading='saving' @click='onConfirm'>{{ t('transfer.addSelected') }}</a-button>
       </a-space>
     </template>
     <div v-if='loading' class='torrent-loading'>
       <a-spin />
-      <div class='torrent-loading-text'>正在获取磁力文件列表，可直接添加全部文件</div>
+      <div class='torrent-loading-text'>{{ t('transfer.loadingMagnetFiles') }}</div>
     </div>
     <div v-else-if='files.length' class='torrent-file-list'>
       <div class='torrent-file-toolbar'>
-        <span>已选 {{ selected.size }} / {{ files.length }} 个文件</span>
+        <span>{{ t('transfer.selectedFilesCount', { selected: selected.size, total: files.length }) }}</span>
         <a-space>
-          <a-button size='mini' type='text' @click='selectAll'>全选</a-button>
-          <a-button size='mini' type='text' @click='clearSelection'>清空</a-button>
+          <a-button size='mini' type='text' @click='selectAll'>{{ t('transfer.selectAll') }}</a-button>
+          <a-button size='mini' type='text' @click='clearSelection'>{{ t('common.clear') }}</a-button>
         </a-space>
       </div>
       <div
@@ -139,7 +140,7 @@ const onDirectConfirm = () => emit('direct-confirm')
         <span class='torrent-file-size'>{{ formatBytes(f.length) }}</span>
       </div>
     </div>
-    <div v-else class='torrent-empty'>暂无文件信息</div>
+    <div v-else class='torrent-empty'>{{ t('transfer.noFileInfo') }}</div>
   </a-modal>
 </template>
 
