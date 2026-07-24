@@ -560,6 +560,7 @@ public class Sockopt4Ray
 
     [JsonPropertyName("interface")]
     public string? Interface { get; set; }
+
     public HappyEyeballs4Ray? happyEyeballs { get; set; }
 }
 
