@@ -60,6 +60,7 @@ export interface IStateDownInfo {
   drive_id: string
 
   name: string
+  cloudPath?: string
 
   size: number
   sizestr: string
@@ -267,6 +268,7 @@ export default class DownDAL {
           file_id: file.file_id,
           drive_id: file.drive_id,
           name: name,
+          cloudPath: file.path || '',
           size: file.size,
           sizestr: file.sizeStr,
           isDir: file.isDir,

@@ -3,12 +3,9 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import LimitReachedModal from './LimitReachedModal.vue'
-import { openExternal } from '../utils/electronhelper'
+import { getAppNewPath, openExternal } from '../utils/electronhelper'
 import { CheckCircle2, Chrome, Crown, Github, Gift, Loader2, LogOut, Mail, RefreshCw } from 'lucide-vue-next'
 import ServerHttp from '../aliapi/server'
-import os from 'os'
-import { getAppNewPath, getResourcesPath } from '../utils/electronhelper'
-import { existsSync, readFileSync } from 'fs'
 import { getPkgVersion } from '../utils/utils'
 import { modalUpdateLog } from '../utils/modal'
 import fs from 'node:fs'
@@ -44,6 +41,9 @@ try {
 const showUpgradeModal = ref(false)
 
 onMounted(() => {
+  window.WebPlatformSync?.((data: { appVersion?: string }) => {
+    if (typeof data?.appVersion === 'string' && data.appVersion) installedAppVersion.value = data.appVersion
+  })
   setupAuthCallback()
   setupPaymentCallback()
   if (isLoggedIn.value) syncProStatus()
@@ -252,21 +252,8 @@ const cb = (val: any) => {
   settingStore.updateStore(val)
 }
 
-const getAppVersion = computed(() => {
-  const pkgVersion = getPkgVersion()
-  if (os.platform() === 'linux') {
-    return pkgVersion
-  }
-  return pkgVersion
-  // let appVersion = ''
-  // const localVersion = getResourcesPath('localVersion')
-  // if (localVersion && existsSync(localVersion)) {
-  //   appVersion = readFileSync(localVersion, 'utf-8')
-  // } else {
-  //   appVersion = pkgVersion
-  // }
-  // return appVersion
-})
+const installedAppVersion = ref(getPkgVersion())
+const getAppVersion = computed(() => installedAppVersion.value)
 
 const verLoading = ref(false)
 const handleCheckVer = () => {

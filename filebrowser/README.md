@@ -1,3 +1,7 @@
+> [!WARNING]
+> 
+> **File Browser is archived on 2026-09-01**. The last planned release, [v2.63.22](https://github.com/filebrowser/filebrowser/releases/tag/v2.63.22), has already shipped. There will be no further releases, bug fixes, or security fixes. Existing releases and Docker images stay online and are not withdrawn.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/filebrowser/filebrowser/master/branding/banner.png" width="550"/>
 </p>
@@ -7,24 +11,24 @@
 
 File Browser provides a file managing interface within a specified directory and it can be used to upload, delete, preview and edit your files. It is a **create-your-own-cloud**-kind of software where you can just install it on your server, direct it to a path and access your files through a nice web interface.
 
+## Security
+
+Published advisories are listed under [security advisories](https://github.com/filebrowser/filebrowser/security/advisories), and reporting instructions are in [SECURITY.md](SECURITY.md). This project has known security issue classes that remain unaddressed and will not be fixed:
+
+- **Command execution, runner, and hooks** (opt-in, disabled by default, [#5199](https://github.com/filebrowser/filebrowser/issues/5199))
+- **Session and JWT handling** ([#5216](https://github.com/filebrowser/filebrowser/issues/5216))
+
+If you keep running File Browser, treat it as unmaintained software:
+
+- **Do not expose it directly to the internet.** Put it behind a reverse proxy that terminates TLS and performs its own authentication.
+- **Keep the command runner disabled.** It is off by default, so leave it off. See [#5199](https://github.com/filebrowser/filebrowser/issues/5199) and [`www/docs/command-execution.md`](www/docs/command-execution.md).
+- **Run it unprivileged, inside a container**, with only the directory you intend to serve mounted into it.
+
 ## Documentation
 
-Documentation on how to install, configure, and contribute to this project is hosted at [filebrowser.org](https://filebrowser.org).
+Documentation on how to install, configure, and build this project lives in [`www/docs`](www/docs) in this repository.
 
-## Project Status
-
-This project is a finished product which fulfills its goal: be a single binary web File Browser which can be run by anyone anywhere. That means that File Browser is currently on **maintenance-only** mode. Therefore, please note the following:
-
-- It can take a while until someone gets back to you. Please be patient.
-- [Issues](https://github.com/filebrowser/filebrowser/issues) are meant to track bugs. Unrelated issues will be converted into [discussions](https://github.com/filebrowser/filebrowser/discussions).
-- The priority is triaging issues, addressing security issues and reviewing pull requests meant to solve bugs.
-- No new features are planned. Pull requests for new features will not be reviewed.
-
-Please read [@hacdias' personal reflection](https://hacdias.com/2026/03/11/filebrowser/) on the project status.
-
-## Contributing
-
-Contributions are always welcome. To start contributing to this project, read our [guidelines](CONTRIBUTING.md) first.
+[CONTRIBUTING.md](CONTRIBUTING.md) documents how to build and develop the project, which remains useful to anyone forking it.
 
 ## License
 

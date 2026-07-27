@@ -422,6 +422,7 @@ export async function AriaAddUrl(file: IStateDownFile): Promise<string> {
         dirID: info.file_id,
         dirName: info.name
       }
+      ;(dirInfo as any).dirPath = info.cloudPath || ''
       do {
         const isGet = await AliTrash.ApiFileListOnePageAria('name', 'ASC', dirInfo)
         if (!isGet) return '解析子文件列表失败，稍后重试'

@@ -1,6 +1,6 @@
 import path from 'path'
 import { OpenFileHandle } from '../utils/filehelper'
-import { IUploadingUI } from '../utils/dbupload'
+import DBUpload, { IUploadingUI } from '../utils/dbupload'
 import AliUploadDisk from '../aliapi/uploaddisk'
 import { Sleep } from '../utils/format'
 import {
@@ -14,9 +14,16 @@ import {
 } from './upload'
 import { apiDrive115FileList } from './dirfilelist'
 import { apiDrive115TrashBatch } from './trash'
-import { ossCompleteMultipart, ossInitiateMultipart, ossUploadPart } from './oss'
+import { ossCompleteMultipart, ossInitiateMultipart, ossUploadPart, parseOssCallbackResult } from './oss'
 
 const PART_SIZE = 8 * 1024 * 1024
+
+const clearOssResumeState = (fileui: IUploadingUI) => {
+  fileui.Info.drive115_oss_upload_id = ''
+  fileui.Info.drive115_oss_bucket = ''
+  fileui.Info.drive115_oss_object = ''
+  fileui.Info.drive115_oss_parts = []
+}
 
 const parseSignCheck = (signCheck: string) => {
   const seg = signCheck.split('-')
@@ -134,6 +141,7 @@ export default class Drive115UploadDisk {
     if (data.status === 2) {
       fileui.File.uploaded_file_id = data.file_id || ''
       fileui.File.uploaded_is_rapid = true
+      clearOssResumeState(fileui)
       return 'success'
     }
 
@@ -148,24 +156,28 @@ export default class Drive115UploadDisk {
     }
     if (!data.bucket || !data.object) return '上传初始化信息不完整'
 
-    const init = await ossInitiateMultipart(
-      {
-        endpoint: token.endpoint,
-        accessKeyId: token.AccessKeyId,
-        accessKeySecret: token.AccessKeySecrett,
-        securityToken: token.SecurityToken
-      },
-      data.bucket,
-      data.object,
-      { callback: data.callback, callback_var: data.callback_var }
-    )
-    if (init.status !== 200) return 'OSS 初始化失败'
+    const cred = {
+      endpoint: token.endpoint,
+      accessKeyId: token.AccessKeyId,
+      accessKeySecret: token.AccessKeySecrett,
+      securityToken: token.SecurityToken
+    }
+    const canResumeOss = fileui.Info.drive115_oss_upload_id && fileui.Info.drive115_oss_bucket === data.bucket && fileui.Info.drive115_oss_object === data.object
+    if (!canResumeOss) clearOssResumeState(fileui)
+    if (!fileui.Info.drive115_oss_upload_id) {
+      const init = await ossInitiateMultipart(cred, data.bucket, data.object, { callback: data.callback, callback_var: data.callback_var })
+      if (init.status !== 200) return 'OSS 初始化失败'
 
-    const uploadIdMatch = init.body.match(/<UploadId>(.+)<\/UploadId>/i)
-    if (!uploadIdMatch) return 'OSS 初始化失败'
-    const uploadId = uploadIdMatch[1]
-
-    const parts: { partNumber: number; etag: string }[] = []
+      const uploadIdMatch = init.body.match(/<UploadId>(.+)<\/UploadId>/i)
+      if (!uploadIdMatch) return 'OSS 初始化失败'
+      fileui.Info.drive115_oss_upload_id = uploadIdMatch[1]
+      fileui.Info.drive115_oss_bucket = data.bucket
+      fileui.Info.drive115_oss_object = data.object
+      fileui.Info.drive115_oss_parts = []
+      await DBUpload.saveUploadInfo(fileui.Info)
+    }
+    const uploadId = fileui.Info.drive115_oss_upload_id
+    const completedParts = new Map((fileui.Info.drive115_oss_parts || []).map((part) => [part.partNumber, part.etag]))
     const partHandle = await OpenFileHandle(filePath)
     if (partHandle.error || !partHandle.handle) return partHandle.error || '打开文件失败'
     let offset = 0
@@ -176,6 +188,12 @@ export default class Drive115UploadDisk {
         return '已暂停'
       }
       const size = Math.min(PART_SIZE, fileui.File.size - offset)
+      if (completedParts.has(partNumber)) {
+        offset += size
+        AliUploadDisk.RecordUploadProgress(fileui.UploadID, size, offset)
+        partNumber += 1
+        continue
+      }
       const buff = Buffer.alloc(size)
       const read = await partHandle.handle.read(buff, 0, size, offset)
       const body = buff.subarray(0, read.bytesRead)
@@ -183,12 +201,7 @@ export default class Drive115UploadDisk {
       let etag = ''
       for (let i = 0; i < 3; i++) {
         const resp = await ossUploadPart(
-          {
-            endpoint: token.endpoint,
-            accessKeyId: token.AccessKeyId,
-            accessKeySecret: token.AccessKeySecrett,
-            securityToken: token.SecurityToken
-          },
+          cred,
           data.bucket,
           data.object,
           uploadId,
@@ -206,7 +219,9 @@ export default class Drive115UploadDisk {
         await partHandle.handle.close()
         return '分片上传失败'
       }
-      parts.push({ partNumber, etag })
+      completedParts.set(partNumber, etag)
+      fileui.Info.drive115_oss_parts = Array.from(completedParts, ([partNumber, etag]) => ({ partNumber, etag }))
+      await DBUpload.saveUploadInfo(fileui.Info)
       offset += size
       AliUploadDisk.RecordUploadProgress(fileui.UploadID, size, offset)
       partNumber += 1
@@ -214,22 +229,20 @@ export default class Drive115UploadDisk {
     await partHandle.handle.close()
 
     const complete = await ossCompleteMultipart(
-      {
-        endpoint: token.endpoint,
-        accessKeyId: token.AccessKeyId,
-        accessKeySecret: token.AccessKeySecrett,
-        securityToken: token.SecurityToken
-      },
+      cred,
       data.bucket,
       data.object,
       uploadId,
-      parts,
+      Array.from(completedParts, ([partNumber, etag]) => ({ partNumber, etag })),
       { callback: data.callback, callback_var: data.callback_var }
     )
     if (complete.status !== 200) return 'OSS 合并失败'
+    const callback = parseOssCallbackResult(complete.body)
+    if (callback.error) return callback.error
 
-    fileui.File.uploaded_file_id = data.file_id || ''
+    fileui.File.uploaded_file_id = callback.fileId || data.file_id || ''
     fileui.File.uploaded_is_rapid = false
+    clearOssResumeState(fileui)
     return 'success'
   }
 }

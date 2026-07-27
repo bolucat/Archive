@@ -30,6 +30,9 @@ type ScanContext = {
 
 type MediaScanHint = { tmdbId?: number; title: string; year?: number; mediaType: 'movie' | 'tv' | 'anime' }
 
+const PERSISTENCE_CHECKPOINT_ITEMS = 100
+const PERSISTENCE_CHECKPOINT_MS = 3000
+
 export class MediaScanner {
   private static instance: MediaScanner
   private tmdbService = TmdbService.getInstance()
@@ -38,6 +41,8 @@ export class MediaScanner {
   private isScanning = false
   private shouldStop = false
   private scanWaiters: Array<() => void> = []
+  private itemsSincePersistenceCheckpoint = 0
+  private lastPersistenceCheckpointAt = 0
 
   // 支持的视频文件扩展名
   private readonly VIDEO_EXTENSIONS = new Set([
@@ -71,6 +76,8 @@ export class MediaScanner {
     this.shouldStop = false
     this.mediaStore.setScanning(true)
     this.mediaStore.setScanProgress(0, 0)
+    this.mediaStore.beginPersistenceBatch()
+    this.resetPersistenceCheckpoint()
 
     // 断点恢复只服务于用户主动发起的完整刮削。Agent 的静默扫描由任务
     // 自身负责重试，不能让视频页把正在运行的后台扫描识别成异常中断。
@@ -84,7 +91,7 @@ export class MediaScanner {
     ;(folder as any).user_id = scanContext.userId
 
     const folderKey = scanContext.driveServerId === 'webdav' ? `webdav_${folder.drive_id}_${folder.file_id}` : `${folder.file_id}`
-    const existingIds = options.incremental ? new Set(this.mediaStore.mediaItems.map((m: any) => m.id)) : new Set<string>()
+    const existingIds = options.incremental ? this.getIndexedDriveFileIds() : new Set<string>()
     let totalProcessed = 0
 
     // 立即添加文件夹到源列表，用户无需等待刮削完成即可看到
@@ -110,6 +117,7 @@ export class MediaScanner {
         ({ processed }) => {
           totalProcessed += processed
           this.mediaStore.setScanProgress(totalProcessed, Math.max(1, totalFound || totalProcessed))
+          this.checkpointScanPersistence(processed)
         }
       )
       totalFound = scannedTotalFound
@@ -118,6 +126,7 @@ export class MediaScanner {
       if (shouldRunAIScrape && unmatchedFiles.length > 0 && !this.shouldStop) {
         const aiSaved = await this.applyBatchAIScrapeResults(unmatchedFiles, folder.name, folderKey)
         totalProcessed += aiSaved
+        this.checkpointScanPersistence(aiSaved)
         if (aiSaved > 0) console.log(`🤖 AI 兜底成功: ${aiSaved}/${unmatchedFiles.length}`)
       }
 
@@ -151,6 +160,7 @@ export class MediaScanner {
     } finally {
       this.isScanning = false
       this.mediaStore.setScanning(false)
+      this.mediaStore.endPersistenceBatch()
       if (!this.shouldStop) {
         this.clearScanCheckpoint()
       }
@@ -250,6 +260,37 @@ export class MediaScanner {
     return { unmatched: unmatchedFiles, totalFound }
   }
 
+  private getIndexedDriveFileIds(): Set<string> {
+    const fileIds = new Set<string>()
+    const addFiles = (files: DriveFileItem[] | undefined) => {
+      for (const file of files || []) {
+        if (file.id) fileIds.add(String(file.id))
+      }
+    }
+
+    for (const item of this.mediaStore.mediaItems) {
+      addFiles(item.driveFiles)
+      for (const season of item.seasons || []) {
+        for (const episode of season.episodes || []) addFiles(episode.driveFiles)
+      }
+    }
+    return fileIds
+  }
+
+  private resetPersistenceCheckpoint() {
+    this.itemsSincePersistenceCheckpoint = 0
+    this.lastPersistenceCheckpointAt = Date.now()
+  }
+
+  private checkpointScanPersistence(processed: number) {
+    this.itemsSincePersistenceCheckpoint += processed
+    const now = Date.now()
+    if (this.itemsSincePersistenceCheckpoint < PERSISTENCE_CHECKPOINT_ITEMS && now - this.lastPersistenceCheckpointAt < PERSISTENCE_CHECKPOINT_MS) return
+    this.mediaStore.checkpointPersistenceBatch()
+    this.itemsSincePersistenceCheckpoint = 0
+    this.lastPersistenceCheckpointAt = now
+  }
+
   async scanAliyunFolder(folder: IAliGetFileModel, driveServerId: string): Promise<void> {
     return this.scanFolder(folder, driveServerId)
   }
@@ -297,6 +338,8 @@ export class MediaScanner {
     this.shouldStop = false
     this.mediaStore.setScanning(true)
     this.mediaStore.setScanProgress(0, 0)
+    this.mediaStore.beginPersistenceBatch()
+    this.resetPersistenceCheckpoint()
 
     try {
       const folderName = path.basename(folderPath)
@@ -326,7 +369,7 @@ export class MediaScanner {
       const batchSize = 5
       for (let i = 0; i < videoFiles.length && !this.shouldStop; i += batchSize) {
         const batch = videoFiles.slice(i, i + batchSize)
-        const promises = batch.map(file => this.processVideoFile(file, folderName, folderPath))
+        const promises = batch.map(file => this.processVideoFile(file, folderName, `local_${folderPath}`))
 
         try {
           await Promise.allSettled(promises)
@@ -335,6 +378,7 @@ export class MediaScanner {
         }
 
         this.mediaStore.setScanProgress(Math.min(i + batchSize, videoFiles.length), videoFiles.length)
+        this.checkpointScanPersistence(batch.length)
         await new Promise(resolve => setTimeout(resolve, 100))
       }
 
@@ -363,6 +407,7 @@ export class MediaScanner {
     } finally {
       this.isScanning = false
       this.mediaStore.setScanning(false)
+      this.mediaStore.endPersistenceBatch()
     }
   }
 

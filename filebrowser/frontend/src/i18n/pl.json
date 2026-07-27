@@ -264,6 +264,9 @@
     "shareManagement": "Zarządzanie udostępnianiem",
     "shareDeleted": "Udostępnienie usunięte!",
     "singleClick": "Używaj pojedynczych kliknięć, aby otwierać pliki i foldery",
+    "sunsetBody": "Ten projekt jest w trakcie zamykania. Zostanie zarchiwizowany 1 września 2026 r., po czym nie będzie żadnych kolejnych wydań, poprawek błędów ani poprawek zabezpieczeń. Istniejące wydania i obrazy Dockera pozostaną online. Nie udostępniaj tej instancji bezpośrednio w internecie bez uwierzytelnienia.",
+    "sunsetLink": "Przeczytaj stan projektu, znane nierozwiązane problemy bezpieczeństwa i wskazówki dotyczące wzmacniania zabezpieczeń",
+    "sunsetTitle": "File Browser jest archiwizowany",
     "themes": {
       "default": "Domyślny systemowy",
       "dark": "Ciemny",

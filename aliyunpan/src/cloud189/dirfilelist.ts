@@ -86,14 +86,14 @@ const signedForm = async (user_id: string, action: string, form: Record<string, 
   return data
 }
 
-export const apiCloud189FileList = async (user_id: string, parentId: string | number, size = 1000): Promise<Cloud189FileItem[]> => {
+export const apiCloud189FileList = async (user_id: string, parentId: string | number, size = 1000, pageNum = 1): Promise<Cloud189FileItem[]> => {
   try {
     const data = await signedGet(user_id, 'listFiles.action', {
       folderId: apiParentId(parentId),
       fileType: '0',
       mediaAttr: '0',
       iconOption: '5',
-      pageNum: '1',
+      pageNum: String(pageNum),
       pageSize: String(size),
       recursive: '0',
       orderBy: 'filename',

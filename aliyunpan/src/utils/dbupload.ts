@@ -74,6 +74,11 @@ export interface IStateUploadInfo {
   
   up_file_id: string
 
+  drive115_oss_upload_id?: string
+  drive115_oss_bucket?: string
+  drive115_oss_object?: string
+  drive115_oss_parts?: { partNumber: number; etag: string }[]
+
   
   uploadSize: number
   

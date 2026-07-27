@@ -4,6 +4,9 @@ const mediaStore = {
   mediaItems: [] as any[],
   addFolder: vi.fn(),
   pruneOrphanDuplicateFolders: vi.fn(),
+  beginPersistenceBatch: vi.fn(),
+  checkpointPersistenceBatch: vi.fn(),
+  endPersistenceBatch: vi.fn(),
   setScanning: vi.fn(),
   setScanProgress: vi.fn()
 }
@@ -48,6 +51,7 @@ describe('MediaScanner scan queue', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     storage.clear()
+    mediaStore.mediaItems = []
   })
 
   it('runs an Agent silent scan after an existing media-library scan finishes', async () => {
@@ -94,5 +98,28 @@ describe('MediaScanner scan queue', () => {
 
     await expect(scanner.scanFolder(folder('agent-import-folder'), 'quark', { silent: true })).rejects.toThrow('provider list failed')
     expect(mediaStore.setScanning).toHaveBeenLastCalledWith(false)
+    expect(mediaStore.beginPersistenceBatch).toHaveBeenCalledTimes(1)
+    expect(mediaStore.endPersistenceBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses drive file IDs when deciding which files an incremental scan can skip', () => {
+    mediaStore.mediaItems = [{
+      id: 'tmdb-movie-id',
+      driveFiles: [{ id: 'movie-file-id' }],
+      seasons: [{ episodes: [{ driveFiles: [{ id: 'episode-file-id' }] }] }]
+    }]
+    const scanner = new MediaScanner()
+
+    expect(Array.from((scanner as any).getIndexedDriveFileIds()).sort()).toEqual(['episode-file-id', 'movie-file-id'])
+  })
+
+  it('checkpoints a scan after 100 processed items', () => {
+    const scanner = new MediaScanner()
+    ;(scanner as any).resetPersistenceCheckpoint()
+    ;(scanner as any).checkpointScanPersistence(99)
+    expect(mediaStore.checkpointPersistenceBatch).not.toHaveBeenCalled()
+
+    ;(scanner as any).checkpointScanPersistence(1)
+    expect(mediaStore.checkpointPersistenceBatch).toHaveBeenCalledTimes(1)
   })
 })

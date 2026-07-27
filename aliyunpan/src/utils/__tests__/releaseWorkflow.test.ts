@@ -17,4 +17,11 @@ describe('release workflow notes', () => {
     expect(workflow).toContain('sudo apt-get update')
     expect(workflow).toContain('sudo apt-get install -y --fix-missing libarchive-tools')
   })
+
+  it('keeps tagged builds as prereleases until the promotion workflow is run', () => {
+    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/release.yml'), 'utf8')
+
+    expect(workflow).toContain('--prerelease')
+    expect(workflow).not.toContain('-F make_latest=true')
+  })
 })

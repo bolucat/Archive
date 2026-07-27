@@ -219,4 +219,21 @@ describe('cloud139Request', () => {
       'https://personal-kd-njs.yun.139.com/orchestration/file/list'
     ])
   })
+
+  it('returns the provider cursor for recursive folder downloads', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === 'https://user-njs.yun.139.com/user/route/qryRoutePolicy') {
+        return { ok: true, json: async () => ({ success: true, data: { routePolicyList: [{ modName: 'personal', httpsUrl: 'https://example.com/orchestration' }] } }) }
+      }
+      return { ok: true, json: async () => ({ success: true, data: { items: [], pageInfo: { nextPageCursor: 'next-page' } } }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { apiCloud139FileListPage } = await import('../dirfilelist')
+    const page = await apiCloud139FileListPage('cloud139_13800138000', 'cloud139_root', 100, 'current-page')
+
+    expect(page).toEqual({ items: [], nextCursor: 'next-page' })
+    const [, init] = fetchMock.mock.calls.at(-1) as unknown as [string, { body: string }]
+    expect(JSON.parse(init.body).pageInfo).toEqual({ pageCursor: 'current-page', pageSize: 100 })
+  })
 })

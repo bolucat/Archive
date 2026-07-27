@@ -4,8 +4,6 @@ import axios, { AxiosResponse } from 'axios'
 import { IShareSiteGroupModel, IShareSiteModel, useServerStore, useSettingStore } from '../store'
 import ShareDAL from '../share/share/ShareDAL'
 import { modalShowPost, modalUpdate } from '../utils/modal'
-import { getResourcesPath } from '../utils/electronhelper'
-import { existsSync, readFileSync } from 'fs'
 import message from '../utils/message'
 import path from 'path'
 import DebugLog from '../utils/debuglog'
@@ -54,6 +52,14 @@ export default class ServerHttp {
 
     // Version numbers are equal
     return 0
+  }
+
+  static getInstalledVersion(): string {
+    let version = getPkgVersion().replaceAll('v', '').trim()
+    window.WebPlatformSync?.((data: { appVersion?: string }) => {
+      if (typeof data?.appVersion === 'string' && data.appVersion) version = data.appVersion.replaceAll('v', '').trim()
+    })
+    return version
   }
 
   static async Post(postData: any, isfirst = true): Promise<IServerRespData> {
@@ -179,8 +185,12 @@ export default class ServerHttp {
   }
 
   static async CheckUpgrade(showMessage: boolean = true): Promise<void> {
+    const settingStore = useSettingStore()
+    const updateUrl = settingStore.uiUpdateProxyEnable
+      ? buildUpdateProxyUrl(settingStore.uiUpdateProxyUrl, ServerHttp.updateUrl)
+      : ServerHttp.updateUrl
     axios
-      .get(ServerHttp.updateUrl, {
+      .get(updateUrl, {
         withCredentials: false,
         responseType: 'json',
         timeout: 30000
@@ -226,15 +236,9 @@ export default class ServerHttp {
           }
         }
         if (remoteVer) {
-          let configVer = getPkgVersion().replaceAll('v', '').trim()
-          if (window.platform !== 'linux') {
-            let localVersion = getResourcesPath('localVersion')
-            if (localVersion && existsSync(localVersion)) {
-              configVer = readFileSync(localVersion, 'utf-8').replaceAll('v', '').trim()
-            }
-          }
-          if (useSettingStore().uiUpdateProxyEnable) {
-            verData.verUrl = buildUpdateProxyUrl(useSettingStore().uiUpdateProxyUrl, verData.verUrl)
+          const configVer = this.getInstalledVersion()
+          if (settingStore.uiUpdateProxyEnable) {
+            verData.verUrl = buildUpdateProxyUrl(settingStore.uiUpdateProxyUrl, verData.verUrl)
           }
           if (this.compareVer(remoteVer, configVer) > 0) {
             // 打开更新弹窗

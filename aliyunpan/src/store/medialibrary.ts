@@ -101,38 +101,60 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   const favorites = ref<FavoriteId[]>(loadFromStorage(STORAGE_KEYS.FAVORITES, []))
   const playlists = ref<PlaylistMap>(loadFromStorage(STORAGE_KEYS.PLAYLISTS, {}))
   const watchedItems = ref<string[]>(loadFromStorage(STORAGE_KEYS.WATCHED, []))
+  let persistenceBatchDepth = 0
+  const persistenceWatchStops: Array<() => void> = []
+
+  const stopPersistenceWatchers = () => {
+    while (persistenceWatchStops.length) persistenceWatchStops.pop()?.()
+  }
+
+  const startPersistenceWatchers = () => {
+    persistenceWatchStops.push(watch(mediaItems, (newValue) => saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(folders, (newValue) => saveToStorage(STORAGE_KEYS.FOLDERS, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(continueWatching, (newValue) => saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(recentlyAdded, (newValue) => saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(favorites, (newValue) => saveToStorage(STORAGE_KEYS.FAVORITES, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(playlists, (newValue) => saveToStorage(STORAGE_KEYS.PLAYLISTS, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(watchedItems, (newValue) => saveToStorage(STORAGE_KEYS.WATCHED, newValue), { deep: true }))
+  }
+
+  const beginPersistenceBatch = () => {
+    if (persistenceBatchDepth === 0) stopPersistenceWatchers()
+    persistenceBatchDepth += 1
+  }
+
+  const endPersistenceBatch = () => {
+    if (persistenceBatchDepth === 0) return
+    persistenceBatchDepth -= 1
+    if (persistenceBatchDepth > 0) return
+
+    saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, mediaItems.value)
+    saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
+    saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, continueWatching.value)
+    saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, recentlyAdded.value)
+    saveToStorage(STORAGE_KEYS.FAVORITES, favorites.value)
+    saveToStorage(STORAGE_KEYS.PLAYLISTS, playlists.value)
+    saveToStorage(STORAGE_KEYS.WATCHED, watchedItems.value)
+    startPersistenceWatchers()
+  }
+
+  const checkpointPersistenceBatch = () => {
+    if (persistenceBatchDepth === 0) return
+    saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, mediaItems.value)
+    saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
+    saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, continueWatching.value)
+    saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, recentlyAdded.value)
+    saveToStorage(STORAGE_KEYS.FAVORITES, favorites.value)
+    saveToStorage(STORAGE_KEYS.PLAYLISTS, playlists.value)
+    saveToStorage(STORAGE_KEYS.WATCHED, watchedItems.value)
+  }
+
   saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
   const genres = ref<string[]>([])
   const years = ref<number[]>([])
 
   // 监听数据变化并自动保存到localStorage
-  watch(mediaItems, (newValue) => {
-    saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, newValue)
-  }, { deep: true })
-
-  watch(folders, (newValue) => {
-    saveToStorage(STORAGE_KEYS.FOLDERS, newValue)
-  }, { deep: true })
-
-  watch(continueWatching, (newValue) => {
-    saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, newValue)
-  }, { deep: true })
-
-  watch(recentlyAdded, (newValue) => {
-    saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, newValue)
-  }, { deep: true })
-
-  watch(favorites, (newValue) => {
-    saveToStorage(STORAGE_KEYS.FAVORITES, newValue)
-  }, { deep: true })
-
-  watch(playlists, (newValue) => {
-    saveToStorage(STORAGE_KEYS.PLAYLISTS, newValue)
-  }, { deep: true })
-
-  watch(watchedItems, (newValue) => {
-    saveToStorage(STORAGE_KEYS.WATCHED, newValue)
-  }, { deep: true })
+  startPersistenceWatchers()
 
   // 计算属性
   const movies = computed(() => mediaItems.value.filter(item => item.type === 'movie'))
@@ -238,7 +260,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     if (existingIndex >= 0) {
       mediaItems.value[existingIndex] = item
     } else {
-      mediaItems.value.unshift(item)
+      mediaItems.value.push(item)
     }
     updateFilters()
   }
@@ -765,6 +787,9 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     isInPlaylist,
     togglePlaylistItem,
     updateFilters,
+    beginPersistenceBatch,
+    checkpointPersistenceBatch,
+    endPersistenceBatch,
     clearAllData
   }
 })

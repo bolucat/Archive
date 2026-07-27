@@ -99,6 +99,8 @@ task release
 
 ## Translations
 
+Translations are synced from Transifex until 2026-09-01; after that the integration stops and translations submitted there will no longer reach this repository.
+
 Translations are managed on Transifex, which is an online website where everyone can contribute and translate strings for our project. It automatically syncs with the main language file \(in English\) and,, for you to contribute, you just need to:
 
 1. Go to our Transifex web page: [app.transifex.com/file-browser/file-browser](https://app.transifex.com/file-browser/file-browser/)

@@ -9,6 +9,19 @@ export type OssCredentials = {
   securityToken: string
 }
 
+export const parseOssCallbackResult = (body: string): { fileId: string; error: string } => {
+  if (!body.trim()) return { fileId: '', error: '' }
+  try {
+    const data = JSON.parse(body)
+    if (data?.state === false || data?.success === false) {
+      return { fileId: '', error: String(data?.message || data?.msg || data?.error || 'OSS 回调失败') }
+    }
+    return { fileId: String(data?.data?.file_id || data?.data?.fileId || data?.file_id || data?.fileId || ''), error: '' }
+  } catch {
+    return { fileId: '', error: '' }
+  }
+}
+
 const normalizeEndpoint = (endpoint: string) => {
   if (!endpoint) return ''
   if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) return endpoint
@@ -188,4 +201,3 @@ export const ossCompleteMultipart = async (
   })
   return resp
 }
-

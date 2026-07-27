@@ -62,6 +62,9 @@
   "deb": {
     "fpm": ["--deb-no-default-config-files"]
   },
+  "pacman": {
+    "depends": ["c-ares", "ffmpeg", "gtk3", "libevent", "libvpx", "libxslt", "libxss", "minizip", "nss", "re2", "snappy", "libnotify", "libappindicator-gtk3"]
+  },
   "win": {
     "icon": "./static/images/icon_256x256.ico",
     "artifactName": "boxplayer-${version}-win-${arch}.${ext}",

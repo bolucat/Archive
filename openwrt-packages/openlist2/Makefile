@@ -73,8 +73,12 @@ ifeq ($(ARCH),arm)
   endif
 endif
 
-ifneq ($(CONFIG_USE_MUSL),)
-  TARGET_CFLAGS += -D_LARGEFILE64_SOURCE
+# drop unused fuse
+GO_PKG_EXCLUDES:=internal/fuse
+
+# fix build for 32-bit architecture
+ifneq ($(CONFIG_ARCH_64BIT),y)
+  GO_PKG_EXCLUDES+=drivers/lark
 endif
 
 define Build/Prepare

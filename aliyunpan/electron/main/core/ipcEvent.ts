@@ -455,6 +455,7 @@ export default class ipcEvent {
         platform: process.platform,
         arch: process.arch,
         version: process.version,
+        appVersion: app.getVersion(),
         execPath: process.execPath,
         appPath: appPath,
         asarPath: asarPath,

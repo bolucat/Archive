@@ -264,6 +264,9 @@
     "shareManagement": "Beheer van gedeelde mappen en bestanden",
     "shareDeleted": "Delen opheffen!",
     "singleClick": "Bestanden en mappen met een enkele klik openen",
+    "sunsetBody": "Dit project wordt afgebouwd. Het wordt gearchiveerd op 01-09-2026, waarna er geen releases, bugfixes of beveiligingsoplossingen meer zullen worden uitgegeven. Bestaande releases en Docker-afbeeldingen blijven online. Stel deze instantie niet rechtstreeks bloot aan internet zonder authenticatie ervoor.",
+    "sunsetLink": "Lees de projectstatus, bekende niet-gefixeerde beveiligingsproblemen en verhardingsrichtlijnen",
+    "sunsetTitle": "File Browser wordt gearchiveerd",
     "themes": {
       "default": "Systeem standaard",
       "dark": "Donker",

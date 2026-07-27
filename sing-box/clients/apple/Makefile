@@ -3,6 +3,7 @@ SHELL := /bin/bash
 .SILENT:
 
 INSTALLER_SIGN_IDENTITY := 16480CA444F481F8DEAF9421FAD2CCE590FC54E4
+XCODEBUILD_FLAGS ?=
 
 build_all: build_ios build_macos build_tvos
 
@@ -24,58 +25,58 @@ release_ios: archive_ios upload_ios
 
 archive_ios:
 	rm -rf build/SFI.xcarchive
-	xcodebuild archive -scheme SFI -configuration Release -destination 'generic/platform=iOS' -archivePath build/SFI.xcarchive -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
+	xcodebuild archive -scheme SFI -configuration Release -destination 'generic/platform=iOS' -archivePath build/SFI.xcarchive | xcbeautify
 
 upload_ios:
-	xcodebuild -exportArchive -archivePath build/SFI.xcarchive -exportOptionsPlist SFI/Upload.plist -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFI.xcarchive -exportOptionsPlist SFI/Upload.plist
 
 release_macos: archive_macos upload_macos
 
 archive_macos:
 	rm -rf build/SFM.xcarchive
-	xcodebuild archive -scheme SFM -configuration Release -archivePath build/SFM.xcarchive -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
+	xcodebuild archive -scheme SFM -configuration Release -archivePath build/SFM.xcarchive | xcbeautify
 
 upload_macos:
-	xcodebuild -exportArchive -archivePath build/SFM.xcarchive -exportOptionsPlist SFI/Upload.plist -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFM.xcarchive -exportOptionsPlist SFI/Upload.plist
 
 release_tvos: archive_tvos upload_tvos
 
 archive_tvos:
 	rm -rf build/SFT.xcarchive
-	xcodebuild archive -scheme SFT -configuration Release -archivePath build/SFT.xcarchive -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
+	xcodebuild archive -scheme SFT -configuration Release -archivePath build/SFT.xcarchive | xcbeautify
 
 upload_tvos:
-	xcodebuild -exportArchive -archivePath build/SFT.xcarchive -exportOptionsPlist SFI/Upload.plist -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFT.xcarchive -exportOptionsPlist SFI/Upload.plist
 
 release_macos_standalone: release_macos_dmg release_macos_pkg
 
 # Archive commands
 archive_macos_standalone_apple:
 	rm -rf build/SFM.System-arm64.xcarchive
-	xcodebuild archive -scheme SFM.System -configuration Release -archivePath build/SFM.System-arm64.xcarchive -derivedDataPath build/SFM.System-arm64.dd ARCHS=arm64 -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
+	xcodebuild archive $(XCODEBUILD_FLAGS) -scheme SFM.System -configuration Release -archivePath build/SFM.System-arm64.xcarchive -derivedDataPath build/SFM.System-arm64.dd ARCHS=arm64 | xcbeautify
 
 archive_macos_standalone_intel:
 	rm -rf build/SFM.System-x86_64.xcarchive
-	xcodebuild archive -scheme SFM.System -configuration Release -archivePath build/SFM.System-x86_64.xcarchive -derivedDataPath build/SFM.System-x86_64.dd ARCHS=x86_64 -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
+	xcodebuild archive $(XCODEBUILD_FLAGS) -scheme SFM.System -configuration Release -archivePath build/SFM.System-x86_64.xcarchive -derivedDataPath build/SFM.System-x86_64.dd ARCHS=x86_64 | xcbeautify
 
 archive_macos_standalone_universal:
 	rm -rf build/SFM.System-universal.xcarchive
-	xcodebuild archive -scheme SFM.System -configuration Release -archivePath build/SFM.System-universal.xcarchive -derivedDataPath build/SFM.System-universal.dd -allowProvisioningUpdates | xcbeautify | grep -A 10 -e "Archive Succeeded" -e "ARCHIVE FAILED" -e "❌"
+	xcodebuild archive $(XCODEBUILD_FLAGS) -scheme SFM.System -configuration Release -archivePath build/SFM.System-universal.xcarchive -derivedDataPath build/SFM.System-universal.dd | xcbeautify
 
 archive_macos_standalone: archive_macos_standalone_apple archive_macos_standalone_intel archive_macos_standalone_universal
 
 # Export commands
 export_macos_standalone_apple:
 	rm -rf build/SFM.System-arm64
-	xcodebuild -exportArchive -archivePath build/SFM.System-arm64.xcarchive -exportOptionsPlist SFM.System/Export.plist -exportPath build/SFM.System-arm64 -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFM.System-arm64.xcarchive -exportOptionsPlist SFM.System/Export.plist -exportPath build/SFM.System-arm64
 
 export_macos_standalone_intel:
 	rm -rf build/SFM.System-x86_64
-	xcodebuild -exportArchive -archivePath build/SFM.System-x86_64.xcarchive -exportOptionsPlist SFM.System/Export.plist -exportPath build/SFM.System-x86_64 -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFM.System-x86_64.xcarchive -exportOptionsPlist SFM.System/Export.plist -exportPath build/SFM.System-x86_64
 
 export_macos_standalone_universal:
 	rm -rf build/SFM.System-universal
-	xcodebuild -exportArchive -archivePath build/SFM.System-universal.xcarchive -exportOptionsPlist SFM.System/Export.plist -exportPath build/SFM.System-universal -allowProvisioningUpdates
+	xcodebuild -exportArchive -archivePath build/SFM.System-universal.xcarchive -exportOptionsPlist SFM.System/Export.plist -exportPath build/SFM.System-universal
 
 # DMG commands
 build_macos_dmg_apple: archive_macos_standalone_apple export_macos_standalone_apple
@@ -197,6 +198,9 @@ build_macos_pkg_universal: archive_macos_standalone_universal export_macos_stand
 
 build_macos_pkg: build_macos_pkg_apple build_macos_pkg_intel build_macos_pkg_universal
 
+build_macos_pkg_all: archive_macos_standalone_universal export_macos_standalone_universal
+	bash SFM.System/package_from_universal.sh
+
 # PKG notarize commands
 notarize_macos_pkg_apple:
 	xcrun notarytool submit build/SFM-Apple.pkg --wait --keychain-profile "notarytool-password"
@@ -211,6 +215,16 @@ notarize_macos_pkg_universal:
 	xcrun stapler staple build/SFM-Universal.pkg
 
 notarize_macos_pkg: notarize_macos_pkg_apple notarize_macos_pkg_intel notarize_macos_pkg_universal
+
+notarize_macos_pkg_all:
+	set -e; \
+	xcrun notarytool submit build/SFM-Apple.pkg --wait --keychain-profile "notarytool-password" & apple_pid=$$!; \
+	xcrun notarytool submit build/SFM-Intel.pkg --wait --keychain-profile "notarytool-password" & intel_pid=$$!; \
+	xcrun notarytool submit build/SFM-Universal.pkg --wait --keychain-profile "notarytool-password" & universal_pid=$$!; \
+	wait $$apple_pid; wait $$intel_pid; wait $$universal_pid
+	xcrun stapler staple build/SFM-Apple.pkg
+	xcrun stapler staple build/SFM-Intel.pkg
+	xcrun stapler staple build/SFM-Universal.pkg
 
 # PKG release commands
 release_macos_pkg_apple: build_macos_pkg_apple notarize_macos_pkg_apple
