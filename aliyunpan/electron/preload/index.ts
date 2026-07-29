@@ -1,8 +1,15 @@
-import Electron, { ipcRenderer } from 'electron'
+import Electron, { ipcRenderer, webUtils } from 'electron'
 
 window.Electron = Electron
 process.noAsar = true
 window.platform = process.platform
+window.WebGetPathForFile = function(file: File) {
+  try {
+    return webUtils.getPathForFile(file)
+  } catch {
+    return ''
+  }
+}
 
 window.WebToElectron = function(data: any) {
   try {
@@ -121,6 +128,25 @@ window.WebRelaunchAria = async function() {
   } catch {
     return 0
   }
+}
+window.AutoUpdateGetState = async function() {
+  try {
+    return await ipcRenderer.invoke('AutoUpdate:GetState')
+  } catch {
+    return { status: 'unsupported' }
+  }
+}
+window.AutoUpdateCheck = async function(force = false) {
+  try {
+    return await ipcRenderer.invoke('AutoUpdate:Check', force)
+  } catch {
+    return { status: 'error' }
+  }
+}
+window.AutoUpdateOnStateChanged = function(callback: (state: any) => void) {
+  const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state)
+  ipcRenderer.on('AutoUpdate:StateChanged', listener)
+  return () => ipcRenderer.removeListener('AutoUpdate:StateChanged', listener)
 }
 window.WebSetProgressBar = function(data: any) {
   try {

@@ -82,6 +82,19 @@ describe('getMediaServerMusicTracks', () => {
     expect(requestUrl.searchParams.get('IncludeItemTypes')).toBe('Audio')
     expect(requestUrl.searchParams.get('Recursive')).toBe('true')
   })
+
+  it('lists Emby audio tracks with its authenticated music endpoint', async () => {
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => ({ ok: true, json: async () => ({ Items: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(getMediaServerMusicTracks(baseConfig('emby'))).resolves.toEqual([])
+
+    const [request, options] = fetchMock.mock.calls[0]
+    const requestUrl = new URL(String(request))
+    expect(requestUrl.searchParams.get('IncludeItemTypes')).toBe('Audio')
+    expect(requestUrl.searchParams.get('Recursive')).toBe('true')
+    expect((options?.headers as Record<string, string>)['X-Emby-Token']).toBe('token-123')
+  })
 })
 
 describe('getMediaServerPlaybackInfo', () => {

@@ -9,6 +9,7 @@ const dbMock = vi.hoisted(() => ({
   deleteBookItemsByIds: vi.fn(),
   deleteBookNotesByBookIds: vi.fn(),
   getBookItemCounts: vi.fn(),
+  getBookItemsByIds: vi.fn(),
   getBookItemsPage: vi.fn(),
   getAllBookItems: vi.fn(),
   getAllBookBookmarks: vi.fn(),
@@ -111,6 +112,7 @@ describe('booklibrary trash behavior', () => {
     dbMock.getAllBookBookmarks.mockResolvedValue([])
     dbMock.getAllBookNotes.mockResolvedValue([])
     dbMock.getAllBookItems.mockResolvedValue([])
+    dbMock.getBookItemsByIds.mockImplementation(async (ids: string[]) => (await dbMock.getAllBookItems()).filter((item: IBookItem) => ids.includes(item.id)))
     dbMock.getBookItemsPage.mockImplementation(async (offset: number, limit: number) => (await dbMock.getAllBookItems()).slice(offset, offset + limit))
     dbMock.getBookItemCounts.mockImplementation(async () => {
       const items = await dbMock.getAllBookItems()

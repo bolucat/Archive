@@ -4,7 +4,7 @@ import { resolveAIProviderConfig } from './bookAI'
 import { isBoxPlayerCloudProvider, scrapeMediaWithBoxPlayerCloud, type BoxPlayerCloudMediaScrapeResult } from './boxplayerCloudAI'
 import { checkAndIncrement, isPro } from './usageLimit'
 import { TmdbService, tmdbImageUrl } from './tmdb'
-import type { DriveFileItem, MediaEpisode, MediaLibraryItem, MediaLibraryTvSeriesItem, MovieItem } from '../types/media'
+import type { DriveFileItem, MediaCollectionMovie, MediaEpisode, MediaLibraryItem, MediaLibraryTvSeriesItem, MovieItem } from '../types/media'
 
 export interface MediaAIScrapeInput {
   file?: DriveFileItem
@@ -173,8 +173,9 @@ export async function manualAIScrapeItems(item: MediaLibraryItem): Promise<Media
 }
 
 function movieToMediaItem(movie: MovieItem, files: DriveFileItem[], folderName: string, folderId: string | undefined, folderPath: string, addedAt: Date): MediaLibraryItem {
-  return {
-    id: `${files[0].id}`,
+  const collection = movie.belongs_to_collection
+  const movieItem: MediaCollectionMovie = {
+    id: `${movie.id}`,
     parentId: folderName,
     folderId,
     folderPath,
@@ -192,6 +193,20 @@ function movieToMediaItem(movie: MovieItem, files: DriveFileItem[], folderName: 
     imdbId: movie.imdb_id,
     driveFiles: files,
     addedAt
+  }
+  if (collection) {
+    return {
+      ...movieItem,
+      id: `collection_${collection.id}`,
+      name: collection.name || movieItem.name,
+      collectionId: collection.id,
+      collectionName: collection.name,
+      collectionMovies: [movieItem]
+    }
+  }
+  return {
+    ...movieItem,
+    id: `${files[0].id}`
   }
 }
 

@@ -31,6 +31,28 @@ export default class AliFileWalk {
     return dir
   }
 
+  /** Streams walk pages so library scanners never retain an entire drive in memory. */
+  static async *ApiWalkFilePages(user_id: string, drive_id: string, dirID: string, dirName: string, order: string = 'updated_at desc', type: string = ''): AsyncGenerator<IAliFileResp['items']> {
+    const dir: IAliFileResp = {
+      items: [], itemsKey: new Set(), punished_file_count: 0, next_marker: '',
+      m_user_id: user_id, m_drive_id: drive_id, dirID, dirName
+    }
+    if (!user_id || !drive_id || !dirID) return
+    const orders = order.split(' ')
+    const seenMarkers = new Set<string>()
+    do {
+      const marker = dir.next_marker
+      if (seenMarkers.has(marker)) return
+      seenMarkers.add(marker)
+      const isGet = await AliFileWalk._ApiWalkFileListOnePage(orders[0], orders[1], dir, type)
+      if (!isGet || dir.next_marker === 'cancel') return
+      const items = dir.items
+      dir.items = []
+      dir.itemsKey.clear()
+      if (items.length) yield items
+    } while (dir.next_marker)
+  }
+
   private static async _ApiWalkFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string = '') {
     const url = 'v2/file/walk?jsonmask=next_marker%2Citems(category%2Ccreated_at%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription)'
     let postData = {

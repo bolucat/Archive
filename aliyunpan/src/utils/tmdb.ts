@@ -315,6 +315,8 @@ export class TmdbService {
           genres: movieResult.genres?.map(g => g.name) || [],
           credits: movieResult.credits,
           productionCountries: movieResult.production_countries?.map(c => c.name) || [],
+          collectionId: movieResult.belongs_to_collection?.id,
+          collectionName: movieResult.belongs_to_collection?.name,
           tmdbId: movieResult.id,
           imdbId: movieResult.imdb_id,
           driveFiles: [] // 这个会在后续处理中填充实际的文件信息

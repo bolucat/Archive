@@ -105,12 +105,12 @@ async function triggerIfDue(force: boolean = false): Promise<boolean> {
     return true
   })
   if (!folders.length) {
-    writeLastScanAt(Date.now())
     return false
   }
 
   const scanner = MediaScanner.getInstance()
   let scanned = 0
+  let failed = false
   for (const f of folders) {
     try {
       await scanner.scanFolder(folderToAliModel(f), f.driveServerId, {
@@ -119,9 +119,10 @@ async function triggerIfDue(force: boolean = false): Promise<boolean> {
       })
       scanned += 1
     } catch (e) {
+      failed = true
       DebugLog.mSaveWarning('mediaLibrary auto scan folder failed: ' + (e as Error).message)
     }
   }
-  writeLastScanAt(Date.now())
-  return scanned > 0
+  if (scanned > 0 && !failed) writeLastScanAt(Date.now())
+  return scanned > 0 && !failed
 }

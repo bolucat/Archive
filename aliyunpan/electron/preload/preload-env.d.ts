@@ -9,6 +9,7 @@ declare namespace NodeJS {
 declare interface Window {
   Electron: any
   platform: any
+  WebGetPathForFile: (file: File) => string
   WinMsg: any
   WebToElectron: any
   WebToWindow: any
@@ -26,6 +27,9 @@ declare interface Window {
   WebReload: any
   WebRelaunch: any
   WebRelaunchAria: () => Promise<number>
+  AutoUpdateGetState: () => Promise<any>
+  AutoUpdateCheck: (force?: boolean) => Promise<any>
+  AutoUpdateOnStateChanged: (callback: (state: any) => void) => () => void
   WebSetProgressBar: any
   WebGetCookies: any
   WebQuarkAccountInfo: any

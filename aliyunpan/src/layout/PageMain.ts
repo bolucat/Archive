@@ -13,6 +13,7 @@ import { Sleep } from '../utils/format'
 import { createProxyServer } from '../utils/proxyhelper'
 import cache from '../utils/cache'
 import WebDavServer from '../module/webdav'
+import message from '../utils/message'
 
 export function PageMain() {
   if (window.WinMsg) return
@@ -43,9 +44,11 @@ export function PageMain() {
       await Sleep(500)
       // 启动时检查更新
       if (useSettingStore().uiLaunchAutoCheckUpdate) {
-        ServerHttp.CheckUpgrade(false).catch((err: any) => {
-          DebugLog.mSaveDanger('CheckUpgrade', err)
-        })
+        window.AutoUpdateCheck?.(false).then((state: { status?: string; version?: string }) => {
+          if (state?.status === 'downloading') {
+            message.info(state.version ? `发现新版本 ${state.version}，正在后台下载` : '发现新版本，正在后台下载')
+          }
+        }).catch((err: any) => DebugLog.mSaveDanger('CheckUpgrade', err))
       }
       // 重新启动未完成的下载和上传任务
       await DownDAL.aReloadDowning().catch((err: any) => {

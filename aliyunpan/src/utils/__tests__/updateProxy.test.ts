@@ -9,4 +9,9 @@ describe('buildUpdateProxyUrl', () => {
   it('does not proxy a non-GitHub URL', () => {
     expect(buildUpdateProxyUrl('https://gh-proxy.com', 'https://example.com/BoxPlayer.exe')).toBe('https://example.com/BoxPlayer.exe')
   })
+
+  it('does not proxy the GitHub releases API', () => {
+    const apiUrl = 'https://api.github.com/repos/gaozhangmin/boxplayer/releases/latest'
+    expect(buildUpdateProxyUrl('https://gh-proxy.com', apiUrl)).toBe(apiUrl)
+  })
 })

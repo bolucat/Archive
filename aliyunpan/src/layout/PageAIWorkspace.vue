@@ -13,6 +13,7 @@ import type { WorkspaceDocumentContext } from './aisearch/useAISearchChat'
 import { t } from '../i18n'
 
 const appStore = useAppStore()
+const props = withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 migrateSoleSavedBYOKAsDefault()
 const documentContext = ref<WorkspaceDocumentContext | null>(null)
 const activeView = ref<'chat' | 'mediaTasks' | 'tracking' | 'notifications'>('chat')
@@ -92,8 +93,8 @@ onBeforeUnmount(() => {
       <button type="button" :title="t('ai.tracking')" :class="{ active: activeView === 'tracking' }" @click="activeView = 'tracking'">{{ t('ai.tracking') }}<span v-if="trackingCount" class="workspace-badge">{{ trackingCount }}</span></button>
       <button type="button" :title="t('ai.notifications')" :class="{ active: activeView === 'notifications' }" @click="activeView = 'notifications'">{{ t('ai.notifications') }}<span v-if="unreadNotificationCount" class="workspace-badge unread">{{ unreadNotificationCount }}</span></button>
     </div>
-    <div class="ai-workspace-content with-view-switcher">
-      <AISearchAgent v-if="activeView === 'chat'" :ai-enabled="aiEnabled" :document-context="documentContext" @search-resource="openPanHubSearch" />
+    <div :class="['ai-workspace-content', { 'ai-workspace-content--chat': activeView === 'chat' }]">
+      <AISearchAgent v-if="activeView === 'chat'" :ai-enabled="aiEnabled" :document-context="documentContext" :sidebar-visible="props.sidebarVisible" @search-resource="openPanHubSearch" />
       <MediaAcquisitionTasks v-else-if="activeView === 'mediaTasks'" />
       <MediaAcquisitionTracking v-else-if="activeView === 'tracking'" />
       <MediaAcquisitionNotifications v-else @cleared="refreshBadges" />
@@ -102,14 +103,14 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.ai-workspace-page { position: relative; height: 100%; min-height: 0; overflow: hidden; background: var(--color-bg-1); }
-.ai-workspace-content { height: 100%; min-height: 0; }
-.ai-workspace-content.with-view-switcher { box-sizing: border-box; padding-top: 50px; }
-.ai-workspace-view-switcher { position: absolute; z-index: 3; top: 14px; right: 22px; display: flex; max-width: calc(100% - 44px); height: 30px; min-height: 30px; align-items: center; gap: 4px; overflow-x: auto; overflow-y: hidden; padding: 3px; border: 1px solid var(--color-border-2); border-radius: 7px; background: var(--color-bg-2); scrollbar-width: none; }
+.ai-workspace-page { position: relative; display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; gap: 14px; padding: 18px; overflow: hidden; background: transparent; }
+.ai-workspace-content { flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--app-glass-line); border-radius: 24px; background: var(--app-glass-panel); box-shadow: 0 20px 60px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.075); backdrop-filter: blur(24px) saturate(1.14); }
+.ai-workspace-content--chat { border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+.ai-workspace-view-switcher { display: flex; align-self: center; max-width: 100%; height: 38px; min-height: 38px; align-items: center; gap: 5px; overflow-x: auto; overflow-y: hidden; padding: 3px; border: 1px solid var(--color-border-2); border-radius: 10px; background: var(--color-bg-2); scrollbar-width: none; }
 .ai-workspace-view-switcher::-webkit-scrollbar { display: none; }
-.ai-workspace-view-switcher button { display: inline-flex; flex: 0 0 auto; max-width: 86px; height: 22px; align-items: center; justify-content: center; gap: 5px; overflow: hidden; padding: 0 9px; border: 0; border-radius: 4px; color: #fff; background: transparent; cursor: pointer; font-size: 13px; font-weight: 600; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
+.ai-workspace-view-switcher button { display: inline-flex; flex: 0 0 auto; max-width: 108px; height: 30px; align-items: center; justify-content: center; gap: 6px; overflow: hidden; padding: 0 14px; border: 0; border-radius: 7px; color: #fff; background: transparent; cursor: pointer; font-size: 14px; font-weight: 650; line-height: 1; text-overflow: ellipsis; white-space: nowrap; }
 .ai-workspace-view-switcher button.active { color: var(--color-text-1); background: var(--color-fill-2); }
-.workspace-badge { display: inline-flex; min-width: 16px; height: 16px; align-items: center; justify-content: center; padding: 0 5px; border-radius: 999px; color: var(--color-text-1); background: var(--color-fill-3); font-size: 10px; line-height: 1; }
+.workspace-badge { display: inline-flex; min-width: 18px; height: 18px; align-items: center; justify-content: center; padding: 0 5px; border-radius: 999px; color: var(--color-text-1); background: var(--color-fill-3); font-size: 11px; line-height: 1; }
 .workspace-badge.unread { color: #fff; background: rgb(var(--danger-6)); }
 </style>
 

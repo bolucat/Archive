@@ -9,6 +9,7 @@ declare global {
     openDatabase: any
     WebRelaunchAria: () => Promise<number>
     platform: string
+    WebGetPathForFile: (file: File) => string
     WinMsg: any
     postdataFunc: any
     Prism: any
@@ -35,6 +36,9 @@ declare global {
     WebExecSync: any
     WebSpawnSync: any
     WebPlatformSync: any
+    AutoUpdateGetState?: () => Promise<any>
+    AutoUpdateCheck?: (force?: boolean) => Promise<any>
+    AutoUpdateOnStateChanged?: (callback: (state: any) => void) => () => void
     UploadPort: any
     DownloadPort: any
     MainPort: any

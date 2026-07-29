@@ -91,14 +91,19 @@ export const getOneDriveDownloadUrl = (item?: OneDriveItem | null): string =>
   item?.['@microsoft.graph.downloadUrl'] || item?.['@content.downloadUrl'] || ''
 
 export const apiOneDriveFileList = async (user_id: string, parentId: string): Promise<OneDriveItem[]> => {
-  let data = await graphRequest<OneDriveChildrenResp>(user_id, buildOneDriveChildrenPath(parentId), '获取 OneDrive 文件列表失败')
-  const items = Array.isArray(data?.value) ? [...data.value] : []
-  while (data?.['@odata.nextLink']) {
-    data = await graphRequest<OneDriveChildrenResp>(user_id, data['@odata.nextLink'], '获取 OneDrive 文件列表失败')
-    if (!data) break
-    items.push(...(Array.isArray(data.value) ? data.value : []))
-  }
+  const items: OneDriveItem[] = []
+  let nextLink = ''
+  do {
+    const page = await apiOneDriveFileListPage(user_id, parentId, nextLink)
+    items.push(...page.items)
+    nextLink = page.nextLink
+  } while (nextLink)
   return items
+}
+
+export const apiOneDriveFileListPage = async (user_id: string, parentId: string, nextLink = ''): Promise<{ items: OneDriveItem[]; nextLink: string }> => {
+  const data = await graphRequest<OneDriveChildrenResp>(user_id, nextLink || buildOneDriveChildrenPath(parentId), '获取 OneDrive 文件列表失败')
+  return { items: Array.isArray(data?.value) ? data.value : [], nextLink: data?.['@odata.nextLink'] || '' }
 }
 
 export const apiOneDriveFileDetail = async (user_id: string, fileId: string): Promise<OneDriveItem | null> => {

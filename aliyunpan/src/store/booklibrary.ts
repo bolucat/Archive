@@ -308,10 +308,40 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
 
   async function appendBooks(newBooks: IBookItem[], opts: { addToLoaded?: boolean } = {}) {
     if (!newBooks.length) return
-    const existingById = new Map(books.value.map((book) => [book.id, book]))
-    const normalized = newBooks
-      .map(ensureBookMeta)
-      .filter((book) => !existingById.get(book.id)?.deleted_at)
+    const existingById = new Map(books.value.map(book => [book.id, book]))
+    ;(await DB.getBookItemsByIds(newBooks.map(book => book.id)).catch(() => [])).forEach(book => existingById.set(book.id, book))
+    const normalized = newBooks.map(ensureBookMeta).map((book) => {
+      const existing = existingById.get(book.id)
+      if (!existing) return book
+      const preserveMetadata = !!existing.metadata_updated_at || !['filename', 'thumbnail', 'unknown', undefined].includes(existing.metadata_source)
+      // A scan may refresh file fields, but must never erase reader state or
+      // metadata edited/enriched after the previous scan.
+      return {
+        ...book,
+        title: preserveMetadata ? existing.title || book.title : book.title,
+        author: preserveMetadata ? existing.author || book.author : book.author,
+        summary: preserveMetadata ? existing.summary || book.summary : book.summary,
+        cover_url: preserveMetadata ? existing.cover_url || book.cover_url : book.cover_url,
+        isbn: preserveMetadata ? existing.isbn || book.isbn : book.isbn,
+        publisher: preserveMetadata ? existing.publisher || book.publisher : book.publisher,
+        published_date: preserveMetadata ? existing.published_date || book.published_date : book.published_date,
+        language: preserveMetadata ? existing.language || book.language : book.language,
+        subjects: preserveMetadata ? existing.subjects || book.subjects : book.subjects,
+        metadata_source: preserveMetadata ? existing.metadata_source || book.metadata_source : book.metadata_source,
+        metadata_updated_at: preserveMetadata ? existing.metadata_updated_at : undefined,
+        reader_engine: existing.reader_engine,
+        is_favorite: existing.is_favorite,
+        shelf_id: existing.shelf_id,
+        view_mode: existing.view_mode,
+        reading_position: existing.reading_position,
+        reading_progress: existing.reading_progress,
+        reading_progress_text: existing.reading_progress_text,
+        reading_chapter: existing.reading_chapter,
+        reading_time: existing.reading_time,
+        last_read_at: existing.last_read_at,
+        deleted_at: existing.deleted_at
+      }
+    }).filter((book) => !book.deleted_at)
     if (!normalized.length) return
     await DB.saveBookItems(normalized).catch(() => {})
     const existingByLoadedId = new Map(books.value.map((book) => [book.id, book]))

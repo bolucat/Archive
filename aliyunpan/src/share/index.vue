@@ -20,6 +20,7 @@ const hideLeft = ref(false)
 const userStore = useUserStore()
 const isAliyunAccount = computed(() => isAliyunUser(userStore.user_id || userStore.GetUserToken))
 const isQuarkAccount = computed(() => isQuarkUser(userStore.user_id || userStore.GetUserToken))
+withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 appStore.$subscribe(() => {
   const appPage = appStore.GetAppTabMenu
@@ -45,7 +46,7 @@ const handleHideLeft = (val: boolean) => {
 
 <template>
   <a-layout style='height: 100%'>
-    <a-layout-sider hide-trigger :width='218' class='xbyleft single-boundary-sidebar' :hidden='hideLeft'>
+    <a-layout-sider v-show="sidebarVisible && !hideLeft" hide-trigger :width='218' class='xbyleft single-boundary-sidebar'>
       <div class='headdesc'>{{ t('share.title') }}</div>
       <a-menu v-if="isAliyunAccount" :selected-keys='[appStore.GetAppTabMenu]' :style="{ width: '100%' }" class='xbyleftmenu single-boundary-sidebar-menu'
               @update:selected-keys="appStore.toggleTabMenu('share', $event[0])">

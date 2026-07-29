@@ -21,6 +21,7 @@ import useMusicLibraryStore from '../store/musiclibrary'
 import useSettingStore from '../setting/settingstore'
 import { IMusicTrack } from '../types/music'
 import DebugLog from './debuglog'
+import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
 
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
@@ -107,6 +108,7 @@ class MusicScanner {
   private isRunning = false
   private shouldStop = false
   private silent = false
+  private hadError = false
 
   static getInstance(): MusicScanner {
     if (!MusicScanner.instance) MusicScanner.instance = new MusicScanner()
@@ -130,6 +132,7 @@ class MusicScanner {
     this.isRunning = true
     this.shouldStop = false
     this.silent = false
+    this.hadError = false
     const store = useMusicLibraryStore()
     store.setIsScanning(true)
     const drive_id = folder.drive_id || ''
@@ -138,7 +141,7 @@ class MusicScanner {
     const counters = { scanned: 0, found: 0 }
     try {
       await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0)
-      store.markScanFinished()
+      if (!this.shouldStop && !this.hadError) store.markScanFinished()
       // 注册到自动扫描列表，下次启动 app 时也做增量
       this.registerAutoScanFolder({
         user_id,
@@ -148,6 +151,7 @@ class MusicScanner {
         path: (folder as any).path || ''
       }).catch(() => { /* ignore */ })
     } catch (e) {
+      this.hadError = true
       DebugLog.mSaveWarning('musicScanner.scanFolder failed: ' + (e as Error).message)
     } finally {
       store.setIsScanning(false)
@@ -174,6 +178,7 @@ class MusicScanner {
     this.isRunning = true
     this.shouldStop = false
     this.silent = !!opts.silent
+    this.hadError = false
     const store = useMusicLibraryStore()
     store.setIsScanning(true)
     try {
@@ -197,10 +202,11 @@ class MusicScanner {
           summary.found += counters.found
           summary.folderCount += 1
         } catch (e) {
+          this.hadError = true
           DebugLog.mSaveWarning('musicScanner.scanRegisteredFolders item failed: ' + (e as Error).message)
         }
       }
-      store.markScanFinished()
+      if (!this.shouldStop && !this.hadError) store.markScanFinished()
     } finally {
       store.setIsScanning(false)
       this.isRunning = false
@@ -237,6 +243,7 @@ class MusicScanner {
     this.isRunning = true
     this.shouldStop = false
     this.silent = !!opts.silent
+    this.hadError = false
     const store = useMusicLibraryStore()
     store.setIsScanning(true)
     try {
@@ -249,10 +256,11 @@ class MusicScanner {
         try {
           await this.scanUser(u, force, sinceMs)
         } catch (e) {
+          this.hadError = true
           DebugLog.mSaveWarning('musicScanner.scanUser failed: ' + (e as Error).message)
         }
       }
-      store.markScanFinished()
+      if (!this.shouldStop && !this.hadError) store.markScanFinished()
     } finally {
       store.setIsScanning(false)
       this.isRunning = false
@@ -328,35 +336,24 @@ class MusicScanner {
       try {
         const driveLabel = drive_id.slice(-6)
         store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
-        const resp = await AliFileWalk.ApiWalkFileList(
-          token.user_id,
-          drive_id,
-          'root',
-          '',
-          'updated_at desc',
-          'file',
-          0
-        )
-        const items = resp?.items || []
-        scanned += items.length
-        // 增量：updated_at 已是 desc，遇到第一个旧于 sinceMs 的就停止整页处理
-        let filtered = items.filter(isAudioFile)
-        if (sinceMs > 0) {
-          const cut: typeof filtered = []
-          for (const it of filtered) {
-            const t = typeof it.time === 'number' ? it.time : 0
-            if (t && t < sinceMs) break
-            cut.push(it)
+        for await (const items of AliFileWalk.ApiWalkFilePages(token.user_id, drive_id, 'root', '', 'updated_at desc', 'file')) {
+          if (this.shouldStop) break
+          scanned += items.length
+          // walk API does not guarantee order, so filter every page instead of
+          // stopping at the first old item.
+          const filtered = items.filter(isAudioFile).filter((it) => {
+            const time = typeof it.time === 'number' ? it.time : 0
+            return !sinceMs || !time || time >= sinceMs
+          })
+          if (filtered.length) {
+            const tracks = filtered.map((it) => trackFromAliModel(it, token.user_id, drive_id, ''))
+            await store.appendTracks(tracks)
+            totalFound += tracks.length
           }
-          filtered = cut
+          store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
         }
-        if (filtered.length) {
-          const tracks = filtered.map((it) => trackFromAliModel(it, token.user_id, drive_id, ''))
-          await store.appendTracks(tracks)
-          totalFound += tracks.length
-        }
-        store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
       } catch (e) {
+        this.hadError = true
         DebugLog.mSaveWarning('aliyun walk failed: ' + (e as Error).message)
       }
     }
@@ -373,31 +370,49 @@ class MusicScanner {
     counters: { scanned: number; found: number },
     depth: number
   ): Promise<void> {
-    if (this.shouldStop || depth > BFS_MAX_DEPTH) return
-    const store = useMusicLibraryStore()
-    let items: IAliGetFileModel[] = []
-    try {
-      items = await this.listFolder(folder, user_id, drive_id)
-    } catch (e) {
-      DebugLog.mSaveWarning('listFolder failed: ' + (e as Error).message)
+    if (this.shouldStop) return
+    if (depth > BFS_MAX_DEPTH) {
+      this.hadError = true
+      DebugLog.mSaveWarning(`musicScanner depth limit reached: ${folder.name}`)
       return
     }
-    counters.scanned += items.length
-    const audios = items.filter(isAudioFile)
-    if (audios.length) {
-      const tracks = audios.map((it) => trackFromAliModel(it, user_id, drive_id, parent_path))
-      await store.appendTracks(tracks)
-      counters.found += tracks.length
-    }
-    store.setScanProgress(`正在扫描 ${label}`, counters.scanned, counters.found)
+    const store = useMusicLibraryStore()
+    try {
+      for await (const items of this.iterateFolderPages(folder, user_id, drive_id)) {
+        if (this.shouldStop) break
+        counters.scanned += items.length
+        const audios = items.filter(isAudioFile)
+        if (audios.length) {
+          const tracks = audios.map((it) => trackFromAliModel(it, user_id, drive_id, parent_path))
+          await store.appendTracks(tracks)
+          counters.found += tracks.length
+        }
+        store.setScanProgress(`正在扫描 ${label}`, counters.scanned, counters.found)
 
-    for (const child of items) {
-      if (this.shouldStop) break
-      if (!child.isDir) continue
-      const childPath = parent_path ? `${parent_path}/${child.name}` : child.name
-      await delay(FOLDER_THROTTLE_MS)
-      await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1)
+        for (const child of items) {
+          if (this.shouldStop) break
+          if (!child.isDir) continue
+          const childPath = parent_path ? `${parent_path}/${child.name}` : child.name
+          await delay(FOLDER_THROTTLE_MS)
+          await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1)
+        }
+      }
+    } catch (e) {
+      this.hadError = true
+      DebugLog.mSaveWarning('listFolder failed: ' + (e as Error).message)
     }
+  }
+
+  private async *iterateFolderPages(folder: IAliGetFileModel, user_id: string, drive_id: string): AsyncGenerator<IAliGetFileModel[]> {
+    if (isThirdPartyProviderFolder(user_id, drive_id)) {
+      yield* iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
+      return
+    }
+    if (isAliyunUser(user_id)) {
+      yield* AliDirFileList.ApiDirFileListPages(user_id, drive_id, folder.file_id, folder.name || '', 'name asc', '', false)
+      return
+    }
+    yield await this.listFolder(folder, user_id, drive_id)
   }
 
   private async listFolder(
@@ -406,6 +421,9 @@ class MusicScanner {
     drive_id: string
   ): Promise<IAliGetFileModel[]> {
     const fileId = folder.file_id
+
+    const providerItems = await listProviderFolderItems({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
+    if (providerItems) return providerItems
 
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       const list = await apiCloud123FileList(user_id, fileId || '0', 100)

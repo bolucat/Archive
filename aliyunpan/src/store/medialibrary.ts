@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import type { MediaLibraryItem, MediaLibraryFolder, MediaFilter, FavoriteId, PlaylistMap } from '../types/media'
 import { getWebDavConnections } from '../utils/webdavClient'
+import DB from '../utils/db'
 
 // 本地存储的键名
 const STORAGE_KEYS = {
@@ -12,6 +13,12 @@ const STORAGE_KEYS = {
   FAVORITES: 'MediaLibrary_Favorites',
   PLAYLISTS: 'MediaLibrary_Playlists',
   WATCHED: 'MediaLibrary_Watched'
+}
+const MEDIA_LIBRARY_DEXIE_MIGRATION_KEY = 'MediaLibrary_DexieMigrated_v1'
+const MEDIA_LIBRARY_CACHE_PAGE_SIZE = 100
+
+const shouldLoadLegacyMediaLibrary = () => {
+  try { return localStorage.getItem(MEDIA_LIBRARY_DEXIE_MIGRATION_KEY) !== '1' } catch { return true }
 }
 
 // 从localStorage加载数据
@@ -79,6 +86,25 @@ const normalizeFolders = (folderList: MediaLibraryFolder[]): MediaLibraryFolder[
   })
 }
 
+const mergeNewestById = <T extends { id: string }>(stored: T[], legacy: T[], timestamp: (item: T) => number): T[] => {
+  const merged = new Map(stored.map(item => [item.id, item]))
+  legacy.forEach((item) => {
+    const existing = merged.get(item.id)
+    if (!existing || timestamp(item) >= timestamp(existing)) merged.set(item.id, item)
+  })
+  return Array.from(merged.values())
+}
+
+const uniqueDriveFiles = <T extends { id: string; userId?: string; driveId?: string; driveServerId?: string }>(files: T[]): T[] => {
+  const seen = new Set<string>()
+  return files.filter((file) => {
+    const key = [file.driveServerId || '', file.userId || '', file.driveId || '', file.id].join('\n')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 export const syncMediaLibraryStoreFromStorage = (store: {
   mediaItems: MediaLibraryItem[]
   folders: MediaLibraryFolder[]
@@ -91,8 +117,8 @@ export const syncMediaLibraryStoreFromStorage = (store: {
 
 export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   // 状态 - 从localStorage加载初始数据
-  const mediaItems = ref<MediaLibraryItem[]>(loadFromStorage(STORAGE_KEYS.MEDIA_ITEMS, []))
-  const folders = ref<MediaLibraryFolder[]>(normalizeFolders(loadFromStorage(STORAGE_KEYS.FOLDERS, [])))
+  const mediaItems = ref<MediaLibraryItem[]>(shouldLoadLegacyMediaLibrary() ? loadFromStorage(STORAGE_KEYS.MEDIA_ITEMS, []) : [])
+  const folders = ref<MediaLibraryFolder[]>(shouldLoadLegacyMediaLibrary() ? normalizeFolders(loadFromStorage(STORAGE_KEYS.FOLDERS, [])) : [])
   const isScanning = ref(false)
   const scanProgress = ref(0)
   const scanTotal = ref(0)
@@ -101,16 +127,47 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   const favorites = ref<FavoriteId[]>(loadFromStorage(STORAGE_KEYS.FAVORITES, []))
   const playlists = ref<PlaylistMap>(loadFromStorage(STORAGE_KEYS.PLAYLISTS, {}))
   const watchedItems = ref<string[]>(loadFromStorage(STORAGE_KEYS.WATCHED, []))
+  const hydrated = ref(false)
+  const mediaItemCount = ref(0)
+  const mediaTypeCounts = ref<Record<MediaLibraryItem['type'], number>>({ movie: 0, tv: 0, unmatched: 0 })
+  const mediaChannel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('boxplayer-media-library')
+  let mediaSaveTimer: ReturnType<typeof setTimeout> | undefined
+  let mediaWriteChain: Promise<void> = Promise.resolve()
+  let isHydrating = false
   let persistenceBatchDepth = 0
   const persistenceWatchStops: Array<() => void> = []
+  const dirtyMediaItems = new Map<string, MediaLibraryItem>()
+  const deletedMediaItemIds = new Set<string>()
+  const dirtyFolders = new Map<string, MediaLibraryFolder>()
+  const deletedFolderIds = new Set<string>()
+
+  const markMediaItemDirty = (item: MediaLibraryItem) => {
+    deletedMediaItemIds.delete(item.id)
+    dirtyMediaItems.set(item.id, item)
+  }
+
+  const markMediaItemDeleted = (id: string) => {
+    dirtyMediaItems.delete(id)
+    deletedMediaItemIds.add(id)
+  }
+
+  const markFolderDirty = (folder: MediaLibraryFolder) => {
+    deletedFolderIds.delete(folder.id)
+    dirtyFolders.set(folder.id, folder)
+  }
+
+  const markFolderDeleted = (id: string) => {
+    dirtyFolders.delete(id)
+    deletedFolderIds.add(id)
+  }
 
   const stopPersistenceWatchers = () => {
     while (persistenceWatchStops.length) persistenceWatchStops.pop()?.()
   }
 
   const startPersistenceWatchers = () => {
-    persistenceWatchStops.push(watch(mediaItems, (newValue) => saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, newValue), { deep: true }))
-    persistenceWatchStops.push(watch(folders, (newValue) => saveToStorage(STORAGE_KEYS.FOLDERS, newValue), { deep: true }))
+    persistenceWatchStops.push(watch(mediaItems, () => scheduleMediaSave(), { deep: true }))
+    persistenceWatchStops.push(watch(folders, () => scheduleMediaSave(), { deep: true }))
     persistenceWatchStops.push(watch(continueWatching, (newValue) => saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, newValue), { deep: true }))
     persistenceWatchStops.push(watch(recentlyAdded, (newValue) => saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, newValue), { deep: true }))
     persistenceWatchStops.push(watch(favorites, (newValue) => saveToStorage(STORAGE_KEYS.FAVORITES, newValue), { deep: true }))
@@ -128,28 +185,118 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     persistenceBatchDepth -= 1
     if (persistenceBatchDepth > 0) return
 
-    saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, mediaItems.value)
-    saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
     saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, continueWatching.value)
     saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, recentlyAdded.value)
     saveToStorage(STORAGE_KEYS.FAVORITES, favorites.value)
     saveToStorage(STORAGE_KEYS.PLAYLISTS, playlists.value)
     saveToStorage(STORAGE_KEYS.WATCHED, watchedItems.value)
+    persistMediaLibrary()
     startPersistenceWatchers()
   }
 
   const checkpointPersistenceBatch = () => {
     if (persistenceBatchDepth === 0) return
-    saveToStorage(STORAGE_KEYS.MEDIA_ITEMS, mediaItems.value)
-    saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
     saveToStorage(STORAGE_KEYS.CONTINUE_WATCHING, continueWatching.value)
     saveToStorage(STORAGE_KEYS.RECENTLY_ADDED, recentlyAdded.value)
-    saveToStorage(STORAGE_KEYS.FAVORITES, favorites.value)
-    saveToStorage(STORAGE_KEYS.PLAYLISTS, playlists.value)
-    saveToStorage(STORAGE_KEYS.WATCHED, watchedItems.value)
+    persistMediaLibrary()
   }
 
-  saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
+  const persistMediaLibrary = () => {
+    if (isHydrating) return
+    const itemUpserts = Array.from(dirtyMediaItems.values())
+    const itemDeletes = Array.from(deletedMediaItemIds)
+    const folderUpserts = Array.from(dirtyFolders.values())
+    const folderDeletes = Array.from(deletedFolderIds)
+    if (!itemUpserts.length && !itemDeletes.length && !folderUpserts.length && !folderDeletes.length) return
+
+    dirtyMediaItems.clear()
+    deletedMediaItemIds.clear()
+    dirtyFolders.clear()
+    deletedFolderIds.clear()
+
+    mediaWriteChain = mediaWriteChain
+      .catch(() => {})
+      .then(async () => {
+        await DB.deleteMediaLibraryItems(itemDeletes)
+        await DB.deleteMediaLibraryFolders(folderDeletes)
+        await DB.upsertMediaLibraryFolders(folderUpserts)
+        await DB.upsertMediaLibraryItems(itemUpserts)
+        void refreshMediaCounts()
+        mediaChannel?.postMessage({ type: 'changed' })
+      })
+      .catch((error) => {
+        itemUpserts.forEach(markMediaItemDirty)
+        itemDeletes.forEach(markMediaItemDeleted)
+        folderUpserts.forEach(markFolderDirty)
+        folderDeletes.forEach(markFolderDeleted)
+        console.error('Error saving media library to DB:', error)
+      })
+  }
+
+  const scheduleMediaSave = () => {
+    if (isHydrating) return
+    if (mediaSaveTimer) clearTimeout(mediaSaveTimer)
+    mediaSaveTimer = setTimeout(persistMediaLibrary, 300)
+  }
+
+  const refreshMediaCounts = async () => {
+    const [total, movie, tv, unmatched] = await Promise.all([
+      DB.countMediaLibraryItems(),
+      DB.countMediaLibraryItems({ type: 'movie' }),
+      DB.countMediaLibraryItems({ type: 'tv' }),
+      DB.countMediaLibraryItems({ type: 'unmatched' })
+    ])
+    mediaItemCount.value = total
+    mediaTypeCounts.value = { movie, tv, unmatched }
+  }
+
+  const hydrate = async () => {
+    if (typeof indexedDB === 'undefined') {
+      hydrated.value = true
+      return
+    }
+    try {
+      isHydrating = true
+      const hasLegacyMigration = localStorage.getItem(MEDIA_LIBRARY_DEXIE_MIGRATION_KEY) === '1'
+      let items: MediaLibraryItem[] = []
+      let folderList = normalizeFolders(await DB.getMediaLibraryFolders())
+
+      if (!hasLegacyMigration) {
+        const stored = await DB.getMediaLibrary()
+        items = mergeNewestById(stored.items, mediaItems.value, item => new Date(item.addedAt).getTime() || 0)
+        folderList = mergeNewestById(folderList, normalizeFolders(folders.value), folder => new Date(folder.scanDate).getTime() || 0)
+        if (items.length || folderList.length) await DB.saveMediaLibrary(items, folderList)
+        localStorage.setItem(MEDIA_LIBRARY_DEXIE_MIGRATION_KEY, '1')
+        localStorage.removeItem(STORAGE_KEYS.MEDIA_ITEMS)
+        localStorage.removeItem(STORAGE_KEYS.FOLDERS)
+      }
+      if (dirtyMediaItems.size || deletedMediaItemIds.size || dirtyFolders.size || deletedFolderIds.size) {
+        const itemMap = new Map(mediaItems.value.map(item => [item.id, item]))
+        deletedMediaItemIds.forEach(id => itemMap.delete(id))
+        dirtyMediaItems.forEach((item, id) => itemMap.set(id, item))
+        const folderMap = new Map(folderList.map(folder => [folder.id, folder]))
+        deletedFolderIds.forEach(id => folderMap.delete(id))
+        dirtyFolders.forEach((folder, id) => folderMap.set(id, folder))
+        items = Array.from(itemMap.values())
+        folderList = Array.from(folderMap.values())
+      }
+      mediaItems.value = items.length ? items.slice(0, MEDIA_LIBRARY_CACHE_PAGE_SIZE) : await DB.getMediaLibraryPage({ limit: MEDIA_LIBRARY_CACHE_PAGE_SIZE })
+      folders.value = folderList
+      updateFilters()
+      await refreshMediaCounts()
+    } catch (error) {
+      console.error('Error hydrating media library from DB:', error)
+    } finally {
+      isHydrating = false
+      hydrated.value = true
+      if (dirtyMediaItems.size || deletedMediaItemIds.size || dirtyFolders.size || deletedFolderIds.size) scheduleMediaSave()
+    }
+  }
+
+  mediaChannel?.addEventListener('message', (event) => {
+    if (event.data?.type === 'changed') void hydrate()
+  })
+
   const genres = ref<string[]>([])
   const years = ref<number[]>([])
 
@@ -262,12 +409,28 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     } else {
       mediaItems.value.push(item)
     }
+    markMediaItemDirty(item)
     updateFilters()
   }
 
   // 添加电视剧合并方法
   const addOrMergeTvSeries = (newTvItem: MediaLibraryItem): boolean => {
     if (newTvItem.type !== 'tv') {
+      if (newTvItem.collectionId) {
+        const index = mediaItems.value.findIndex(item => item.collectionId === newTvItem.collectionId)
+        if (index >= 0) {
+          const existing = mediaItems.value[index]
+          const movies = new Map((existing.collectionMovies || []).map(movie => [movie.tmdbId, movie]))
+          for (const movie of newTvItem.collectionMovies || []) {
+            const previous = movies.get(movie.tmdbId)
+            movies.set(movie.tmdbId, previous ? { ...previous, ...movie, driveFiles: uniqueDriveFiles([...previous.driveFiles, ...movie.driveFiles]) } : movie)
+          }
+          const updated = { ...existing, driveFiles: uniqueDriveFiles([...existing.driveFiles, ...newTvItem.driveFiles]), collectionMovies: Array.from(movies.values()).sort((a, b) => Number(a.year || 0) - Number(b.year || 0)), addedAt: new Date() }
+          mediaItems.value[index] = updated
+          markMediaItemDirty(updated)
+          return true
+        }
+      }
       addMediaItem(newTvItem)
       return true
     }
@@ -341,7 +504,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
                 const existingEpisode = mergedEpisodes[existingEpisodeIndex]
                 mergedEpisodes[existingEpisodeIndex] = {
                   ...existingEpisode,
-                  driveFiles: [...existingEpisode.driveFiles, ...newEpisode.driveFiles]
+                  driveFiles: uniqueDriveFiles([...existingEpisode.driveFiles, ...newEpisode.driveFiles])
                 }
               } else {
                 // 新集，直接添加
@@ -360,10 +523,10 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
       }
 
       // 合并driveFiles到主条目
-      const mergedDriveFiles = [
+      const mergedDriveFiles = uniqueDriveFiles([
         ...(existingTv.driveFiles || []),
         ...newTvItem.driveFiles
-      ]
+      ])
 
       // 更新现有条目
       const updatedTv: MediaLibraryItem = {
@@ -376,6 +539,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
       }
 
       mediaItems.value[existingTvIndex] = updatedTv
+      markMediaItemDirty(updatedTv)
       updateFilters()
       return true
     } else {
@@ -387,8 +551,17 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   }
 
   const removeMediaItem = (id: string) => {
+    markMediaItemDeleted(id)
     mediaItems.value = mediaItems.value.filter(item => item.id !== id)
     updateFilters()
+  }
+
+  const updateMediaItem = (id: string, changes: Partial<MediaLibraryItem>) => {
+    const index = mediaItems.value.findIndex(item => item.id === id)
+    if (index < 0) return
+    const item = { ...mediaItems.value[index], ...changes }
+    mediaItems.value[index] = item
+    markMediaItemDirty(item)
   }
 
   const addFolder = (folder: MediaLibraryFolder) => {
@@ -398,30 +571,35 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     } else {
       folders.value.push(folder)
     }
+    markFolderDirty(folder)
   }
 
   const pruneOrphanDuplicateFolders = () => {
     const referencedFolderIds = new Set(mediaItems.value.map(item => item.folderId).filter((id): id is string => Boolean(id)))
     const referencedFolderPaths = new Set(mediaItems.value.map(item => item.folderPath).filter((path): path is string => Boolean(path)))
-    const sourceKey = (folder: MediaLibraryFolder) => [folder.userId || '', folder.driveServerId || '', folder.driveId || '', folder.name.trim().toLocaleLowerCase()].join('\n')
+    const sourceKey = (folder: MediaLibraryFolder) => [folder.userId || '', folder.driveServerId || '', folder.driveId || '', folder.fileId || '', folder.path || ''].join('\n')
     const referencedSourceKeys = new Set(folders.value.filter(folder => referencedFolderIds.has(folder.id) || (!!folder.path && referencedFolderPaths.has(folder.path))).map(sourceKey))
-    const originalCount = folders.value.length
+    const originalFolders = folders.value
 
     folders.value = folders.value.filter(folder => {
       if (referencedFolderIds.has(folder.id) || (!!folder.path && referencedFolderPaths.has(folder.path))) return true
       return !referencedSourceKeys.has(sourceKey(folder))
     })
 
-    const removedCount = originalCount - folders.value.length
-    if (removedCount > 0) saveToStorage(STORAGE_KEYS.FOLDERS, folders.value)
+    const removedCount = originalFolders.length - folders.value.length
+    if (removedCount > 0) {
+      const keptIds = new Set(folders.value.map(folder => folder.id))
+      originalFolders.filter(folder => !keptIds.has(folder.id)).forEach(folder => markFolderDeleted(folder.id))
+    }
     return removedCount
   }
 
   // 移除特定文件夹下的所有媒体项目
   const removeMediaItemsByFolder = (folderId: string) => {
-    const originalCount = mediaItems.value.length
+    const removedItems = mediaItems.value.filter(item => item.folderId === folderId)
     mediaItems.value = mediaItems.value.filter(item => item.folderId !== folderId)
-    const removedCount = originalCount - mediaItems.value.length
+    removedItems.forEach(item => markMediaItemDeleted(item.id))
+    const removedCount = removedItems.length
     console.log(`移除了文件夹 ${folderId} 下的 ${removedCount} 个媒体项目`)
     updateFilters()
   }
@@ -437,6 +615,8 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   }
 
   const removeFolder = (id: string) => {
+    const removedFolders = folders.value.filter(folder => folder.id === id)
+    const originalItems = mediaItems.value
     // 删除文件夹
     folders.value = folders.value.filter(folder => folder.id !== id)
 
@@ -448,6 +628,9 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     mediaItems.value = mediaItems.value.filter(item =>
       item.type !== 'unmatched' || !item.folderId || remainingFolderIds.has(item.folderId)
     )
+    removedFolders.forEach(folder => markFolderDeleted(folder.id))
+    const remainingItemIds = new Set(mediaItems.value.map(item => item.id))
+    originalItems.filter(item => !remainingItemIds.has(item.id)).forEach(item => markMediaItemDeleted(item.id))
 
     // 从继续观看列表中移除相关项目
     continueWatching.value = continueWatching.value.filter(item => item.folderId !== id)
@@ -473,8 +656,13 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
       return !(item.driveFiles || []).some(file => file.userId === userId)
     }
 
+    const removedFolders = folders.value.filter(folder => folder.userId === userId)
+    const originalItems = mediaItems.value
     folders.value = folders.value.filter(folder => folder.userId !== userId)
     mediaItems.value = mediaItems.value.filter(shouldKeep)
+    removedFolders.forEach(folder => markFolderDeleted(folder.id))
+    const remainingItemIds = new Set(mediaItems.value.map(item => item.id))
+    originalItems.filter(item => !remainingItemIds.has(item.id)).forEach(item => markMediaItemDeleted(item.id))
     continueWatching.value = continueWatching.value.filter(shouldKeep)
     recentlyAdded.value = recentlyAdded.value.filter(shouldKeep)
 
@@ -708,6 +896,8 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
 
   // 清除所有数据（用于调试或重置）
   const clearAllData = () => {
+    mediaItems.value.forEach(item => markMediaItemDeleted(item.id))
+    folders.value.forEach(folder => markFolderDeleted(folder.id))
     mediaItems.value = []
     folders.value = []
     continueWatching.value = []
@@ -726,16 +916,21 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     localStorage.removeItem(STORAGE_KEYS.FAVORITES)
     localStorage.removeItem(STORAGE_KEYS.PLAYLISTS)
     localStorage.removeItem(STORAGE_KEYS.WATCHED)
+    persistMediaLibrary()
   }
 
   // 初始化时更新筛选器
   pruneOrphanDuplicateFolders()
   updateFilters()
+  void hydrate()
 
   return {
     // 状态
     mediaItems,
     folders,
+    hydrated,
+    mediaItemCount,
+    mediaTypeCounts,
     isScanning,
     scanProgress,
     scanTotal,
@@ -759,6 +954,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     // 方法
     addMediaItem,
     addOrMergeTvSeries,
+    updateMediaItem,
     removeMediaItem,
     removeMediaItemsByFolder,
     addFolder,
@@ -789,6 +985,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     updateFilters,
     beginPersistenceBatch,
     checkpointPersistenceBatch,
+    hydrate,
     endPersistenceBatch,
     clearAllData
   }

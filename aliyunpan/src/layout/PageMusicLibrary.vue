@@ -1,5 +1,5 @@
 <script setup lang='ts'>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
 import { ArrowLeft, ListMusic, Mic2, Disc3, Folder, Heart, Music, Play, User, RefreshCw, Search, Sparkles, Radio } from 'lucide-vue-next'
 import { useAppStore } from '../store'
@@ -21,6 +21,8 @@ import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import { getMediaServerMusicTracks } from '../media-server/contentGateway'
 import type { MediaServerMusicTrack } from '../types/mediaServerContent'
 import { t as tt } from '../i18n'
+
+withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 const musicStore = useMusicLibraryStore()
 const appStore = useAppStore()
@@ -59,17 +61,18 @@ const homeSubtitle = computed(() => `${tt('music.cloudMusicCount', { count: musi
 const mediaServerSubtitle = computed(() => `${tt('music.serverMusicCount', { count: mediaServerTracks.value.length })} · ${tt('music.mediaServerCount', { count: mediaServerRegistry.servers.length })}`)
 
 const filteredAll = computed<IMusicTrack[]>(() => {
-  const q = searchQuery.value.trim().toLowerCase()
-  if (!q) return musicStore.tracks
-  return musicStore.tracks.filter((t) => {
-    return (
-      (t.file_name || '').toLowerCase().includes(q) ||
-      (t.title || '').toLowerCase().includes(q) ||
-      (t.artist || '').toLowerCase().includes(q) ||
-      (t.album || '').toLowerCase().includes(q)
-    )
-  })
+  return musicStore.tracks
 })
+
+let trackSearchTimer: number | undefined
+watch(searchQuery, (query) => {
+  if (trackSearchTimer) window.clearTimeout(trackSearchTimer)
+  trackSearchTimer = window.setTimeout(() => {
+    void musicStore.loadTrackPage({ reset: true, query })
+  }, 220)
+})
+
+const loadMoreTracks = () => void musicStore.loadTrackPage()
 const filteredMediaServerTracks = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return mediaServerTracks.value
@@ -695,6 +698,7 @@ onMounted(async () => {
   <div class="aml">
     <div class="aml-main-row">
       <MusicLibraryRail
+        v-show="sidebarVisible"
         v-model:selected-scan-user-ids="selectedScanUserIds"
         :last-scan-text="lastScanText"
         :scan-account-options="scanAccountOptions"
@@ -953,6 +957,9 @@ onMounted(async () => {
                 </div>
                 <div class="aml-track-album">{{ t.album || '' }}</div>
               </div>
+            </div>
+            <div v-if="musicStore.hasMoreTracks" class="aml-load-more">
+              <a-button :loading="musicStore.isLoadingPage" @click="loadMoreTracks">加载更多</a-button>
             </div>
           </div>
 

@@ -78,8 +78,8 @@
         >
           <IconFont name="iconfile_video" />
           <span>{{ t('media.movie') }}</span>
-          <span v-if="mediaStore.movies.length > 0" class="count">
-            {{ mediaStore.movies.length }}
+          <span v-if="mediaStore.mediaTypeCounts.movie > 0" class="count">
+            {{ mediaStore.mediaTypeCounts.movie }}
           </span>
         </div>
 
@@ -91,8 +91,8 @@
         >
           <IconFont name="iconshipin" />
           <span>{{ t('media.tv') }}</span>
-          <span v-if="mediaStore.tvShows.length > 0" class="count">
-            {{ mediaStore.tvShows.length }}
+          <span v-if="mediaStore.mediaTypeCounts.tv > 0" class="count">
+            {{ mediaStore.mediaTypeCounts.tv }}
           </span>
         </div>
 
@@ -130,8 +130,8 @@
         >
           <IconFont name="iconinfo_circle" />
           <span>{{ t('media.unmatched') }}</span>
-          <span v-if="mediaStore.unmatchedItems.length > 0" class="count">
-            {{ mediaStore.unmatchedItems.length }}
+          <span v-if="mediaStore.mediaTypeCounts.unmatched > 0" class="count">
+            {{ mediaStore.mediaTypeCounts.unmatched }}
           </span>
         </div>
 
@@ -381,8 +381,7 @@ const selectFolder = (folder: MediaLibraryFolder) => {
 // 计算属性
 const scanPercent = computed(() => {
   if (mediaStore.scanTotal === 0) return 0
-  const raw = Math.round((mediaStore.scanProgress / mediaStore.scanTotal) * 100)
-  return Math.min(100, Math.max(0, raw))
+  return Math.min(1, Math.max(0, mediaStore.scanProgress / mediaStore.scanTotal))
 })
 
 const documentaryCount = computed(() => mediaStore.mediaItems.filter((item) => {
@@ -514,7 +513,7 @@ const scanSourceTargets = computed<ScanSourceTarget[]>(() => {
 const scanSourceOptions = computed(() => scanSourceTargets.value.map(({ value, label }) => ({ value, label })))
 
 const hasLibraryData = computed(() => {
-  return mediaStore.mediaItems.length > 0
+  return mediaStore.mediaItemCount > 0
     || mediaStore.folders.length > 0
     || mediaStore.recentlyAdded.length > 0
     || mediaStore.continueWatching.length > 0

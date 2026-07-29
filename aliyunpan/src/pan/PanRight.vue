@@ -711,10 +711,14 @@ const onPanDrop = (e: any) => {
     const files: string[] = []
 
     for (let i = 0, maxi = filesList.length; i < maxi; i++) {
-      const path = filesList[i].path
-      files.push(path)
+      const file = filesList[i]
+      const filePath = window.WebGetPathForFile?.(file) || (file as any).path || ''
+      if (filePath) files.push(filePath)
     }
-
+    if (!files.length) {
+      message.error('无法读取拖拽文件的本地路径，请重新拖拽或使用上传按钮')
+      return
+    }
     modalUpload(panfileStore.DirID, files)
   }
 }

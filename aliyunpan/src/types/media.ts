@@ -26,6 +26,32 @@ export interface MediaLibraryItem {
   lastWatched?: Date
   watchProgress?: number
   lastPlayedFileId?: string
+  collectionId?: number
+  collectionName?: string
+  collectionMovies?: MediaCollectionMovie[]
+  addedAt: Date
+}
+
+export interface MediaCollectionMovie {
+  id: string
+  parentId: string
+  folderId?: string
+  folderPath?: string
+  type: 'movie'
+  name: string
+  posterUrl?: string
+  backdropUrl?: string
+  year?: string
+  rating?: number
+  genres: string[]
+  productionCountries?: string[]
+  overview?: string
+  driveFiles: DriveFileItem[]
+  tmdbId?: number
+  imdbId?: string
+  tvdbId?: string
+  metadataSource?: 'tmdb' | 'ai-tmdb' | 'filename' | 'manual'
+  credits?: Credits
   addedAt: Date
 }
 

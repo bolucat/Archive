@@ -29,7 +29,7 @@ import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
 import MediaAcquisitionTargetModal from '../components/MediaAcquisitionTargetModal.vue'
 import { t } from '../i18n'
 
-const props = defineProps<{ aiEnabled: boolean; documentContext?: WorkspaceDocumentContext | null }>()
+const props = withDefaults(defineProps<{ aiEnabled: boolean; documentContext?: WorkspaceDocumentContext | null; sidebarVisible?: boolean }>(), { sidebarVisible: true })
 const emit = defineEmits<{ 'search-resource': [title: string] }>()
 
 const appStore = useAppStore()
@@ -179,8 +179,8 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 
 <template>
   <div class="ai-chat">
-    <div class="ai-workspace-grid">
-      <aside class="ai-task-rail">
+    <div :class="['ai-workspace-grid', { 'without-task-rail': !props.sidebarVisible }]">
+      <aside v-show="props.sidebarVisible" class="ai-task-rail">
         <div class="ai-rail-brand">
           <span class="ai-rail-brand-mark"><Sparkles :size="17" /></span>
           <span>BOXPLAYER<br><b>INTELLIGENCE</b></span>
@@ -673,10 +673,11 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 
 /* Agent workspace: navigation, conversation canvas, and live execution context. */
 .ai-chat { background: linear-gradient(115deg, #070b17 0%, var(--color-bg-1) 42%, #071a1c 100%); }
-.ai-workspace-grid { display: grid; grid-template-columns: 224px minmax(0, 1fr) 272px; height: 100%; min-height: 0; overflow: hidden; }
+.ai-workspace-grid { display: grid; grid-template-columns: 224px minmax(0, 1fr) 272px; height: 100%; min-height: 0; gap: 14px; overflow: hidden; }
 .ai-task-rail, .ai-activity-panel { min-height: 0; padding: 20px 14px; background: color-mix(in srgb, var(--color-bg-1) 88%, #0a1020 12%); }
-.ai-task-rail { display: flex; flex-direction: column; gap: 20px; border-right: 1px solid color-mix(in srgb, var(--color-border-2) 80%, transparent); }
-.ai-activity-panel { display: flex; flex-direction: column; gap: 18px; border-left: 1px solid color-mix(in srgb, var(--color-border-2) 80%, transparent); }
+.ai-task-rail, .ai-workspace-main, .ai-activity-panel { border: 1px solid var(--app-glass-line); border-radius: 24px; background: var(--app-glass-panel); box-shadow: 0 20px 60px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.075); backdrop-filter: blur(24px) saturate(1.14); }
+.ai-task-rail { display: flex; flex-direction: column; gap: 20px; overflow-y: auto; }
+.ai-activity-panel { display: flex; flex-direction: column; gap: 18px; overflow-y: auto; }
 .ai-rail-brand { display: flex; align-items: center; gap: 9px; padding: 3px 8px; color: var(--color-text-3); font-size: 9px; font-weight: 700; line-height: 1.25; letter-spacing: .12em; }
 .ai-rail-brand b { color: var(--agent-accent); font-weight: 750; }
 .ai-rail-brand-mark { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; color: #fff; border-radius: 10px; background: linear-gradient(145deg, rgb(var(--primary-5)), #8b5cf6); box-shadow: 0 8px 20px rgba(var(--primary-6), .28); }
@@ -705,7 +706,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 .ai-rail-foot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-4); }
 .ai-rail-foot-dot.active { background: #34d399; box-shadow: 0 0 0 4px rgba(52, 211, 153, .10); }
 
-.ai-workspace-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: color-mix(in srgb, var(--color-bg-1) 96%, #090d17 4%); }
+.ai-workspace-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--app-glass-panel); }
 .ai-workspace-header { min-height: 70px; padding: 0 34px; border-bottom-color: color-mix(in srgb, var(--color-border-2) 80%, transparent); background: color-mix(in srgb, var(--color-bg-1) 68%, transparent); backdrop-filter: blur(18px); }
 .ai-workspace-mark { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(145deg, rgb(var(--primary-5)), #8b5cf6); }
 .ai-workspace-title strong { font-size: 15px; }
@@ -789,6 +790,8 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 @keyframes ai-activity-pulse { 50% { opacity: .45; transform: scale(.8); } }
 
 @media (max-width: 1180px) { .ai-workspace-grid { grid-template-columns: 190px minmax(0, 1fr); } .ai-activity-panel { display: none; } }
+@media (min-width: 1181px) { .ai-workspace-grid.without-task-rail { grid-template-columns: minmax(0, 1fr) 272px; } }
+@media (max-width: 1180px) { .ai-workspace-grid.without-task-rail { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 820px) { .ai-workspace-grid { grid-template-columns: 1fr; } .ai-task-rail { display: none; } .ai-workspace-header { padding: 0 20px; } .ai-messages { padding: 22px 20px; } .ai-bottom, .ai-footer { padding-left: 20px; padding-right: 20px; } }
 @media (max-width: 520px) { .ai-starter-grid { grid-template-columns: 1fr; } }
 </style>
@@ -800,15 +803,24 @@ body:not([arco-theme='dark']) #xbybody .ai-chat {
 }
 
 body:not([arco-theme='dark']) #xbybody .ai-task-rail {
+  border-color: var(--color-border-2);
   background: var(--color-bg-1);
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 body:not([arco-theme='dark']) #xbybody .ai-workspace-main {
+  border-color: var(--color-border-2);
   background: var(--color-bg-1);
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 body:not([arco-theme='dark']) #xbybody .ai-activity-panel {
+  border-color: var(--color-border-2);
   background: var(--color-bg-1);
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 body:not([arco-theme='dark']) #xbybody .ai-bottom {

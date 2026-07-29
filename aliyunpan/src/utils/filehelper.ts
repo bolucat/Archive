@@ -113,6 +113,7 @@ export function CleanStringForCmd(title: string) {
 
 
 export function CheckWindowsBreakPath(filePath: string) {
+  if (!filePath) return true
   if (filePath.endsWith('$RECYCLE.BIN')) return true
   if (filePath.endsWith('$Recycle.Bin')) return true
   if (filePath.endsWith('$LOGFILE')) return true

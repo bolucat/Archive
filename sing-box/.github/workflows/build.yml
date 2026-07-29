@@ -368,6 +368,7 @@ jobs:
         run: |-
           set -xeuo pipefail
           sudo gem install fpm
+          echo '%_rpmformat 4' > "$HOME/.rpmmacros"
           cp .fpm_systemd .fpm
           fpm -t rpm \
             -v "$PKG_VERSION" \
@@ -1137,6 +1138,7 @@ jobs:
           set -euo pipefail
           sudo apt-get update || true
           sudo apt-get install -y debsigs libarchive-tools rpm zstd
+          echo '%_rpmformat 4' > "$HOME/.rpmmacros"
       - name: Install dependencies
         run: |-
           pnpm -C clients/desktop install

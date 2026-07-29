@@ -454,6 +454,30 @@ export default class AliDirFileList {
     return dir
   }
 
+  /**
+   * Streams ordinary directory-list pages without retaining preceding pages.
+   * Scanner callers must use this instead of ApiDirFileList for large folders.
+   */
+  static async *ApiDirFileListPages(user_id: string, drive_id: string, dirID: string, dirName: string, order: string = 'name asc', type: string = '', refresh: boolean = false): AsyncGenerator<IAliGetFileModel[]> {
+    if (!user_id || !drive_id || !dirID) return
+    const dir = NewIAliFileResp(user_id, drive_id, dirID, dirName)
+    const normalizedOrder = order.replace(' desc', ' DESC').replace(' asc', ' ASC').split(' ')
+    let pageIndex = 0
+    const seenMarkers = new Set<string>()
+
+    do {
+      if (seenMarkers.has(dir.next_marker)) return
+      seenMarkers.add(dir.next_marker)
+      const isGet = await AliDirFileList._ApiDirFileListOnePage(normalizedOrder[0], normalizedOrder[1], dir, type, pageIndex, refresh)
+      if (!isGet || dir.next_marker === 'cancel') return
+      const items = dir.items
+      dir.items = []
+      dir.itemsKey.clear()
+      if (items.length) yield items
+      pageIndex += 1
+    } while (dir.next_marker)
+  }
+
   private static async _ApiDirFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string, pageIndex: number, refresh: boolean = true): Promise<boolean> {
     let url = 'adrive/v3/file/list'
     if (useSettingStore().uiShowPanMedia == false) {

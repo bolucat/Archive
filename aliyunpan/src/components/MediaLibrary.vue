@@ -52,7 +52,7 @@
               </template>
             </a-input-search>
           </template>
-          <div v-if="showResultCount" class="library-result-count">{{ t('mediaLibrary.resultCount', { count: filteredItems.length }) }}</div>
+          <div v-if="showResultCount" class="library-result-count">{{ t('mediaLibrary.resultCount', { count: pagedTotal }) }}</div>
 
           <!-- 视图切换 — 毛玻璃分段胶囊 -->
           <div v-if="showBrowseModeToggle" class="view-toggle-pill">
@@ -108,7 +108,7 @@
         v-if="showingDetail && currentMediaItem"
         :media-item="currentMediaItem"
         :active-playlist-name="selectedPlaylist"
-        :playlist-items="selectedPlaylist ? filteredItems : []"
+        :playlist-items="selectedPlaylist ? pagedItems : []"
         @ai-rescrape="handleManualAIScrape"
         @back="handleDetailBack"
         @tag-click="handleDetailTagClick"
@@ -277,7 +277,7 @@
             <div v-if="hasLocalSearchResults" class="search-result-section-body">
               <div v-if="viewMode === 'grid'" class="media-grid search-media-grid">
                 <div
-                  v-for="item in filteredItems"
+                  v-for="item in pagedItems"
                   :key="item.id"
                   class="media-item"
                   @click="openMedia(item)"
@@ -336,7 +336,7 @@
 
               <div v-else-if="viewMode === 'list'" class="media-list search-media-list">
                 <div
-                  v-for="item in filteredItems"
+                  v-for="item in pagedItems"
                   :key="item.id"
                   class="media-list-item"
                   @click="openMedia(item)"
@@ -631,7 +631,7 @@
       </div>
 
       <!-- 空状态 - 当没有媒体内容时 -->
-      <div v-else-if="filteredItems.length === 0" class="empty-state">
+      <div v-else-if="pagedItems.length === 0" class="empty-state">
         <a-empty :description="t('mediaLibrary.noMediaContent')" />
       </div>
 
@@ -640,7 +640,7 @@
         <!-- 网格视图 -->
         <div v-if="viewMode === 'grid'" class="media-grid" :class="`media-grid-${posterType}`">
           <div
-            v-for="item in filteredItems"
+            v-for="item in pagedItems"
             :key="item.id"
             class="media-item"
             :class="`media-item-${posterType}`"
@@ -704,7 +704,7 @@
         <!-- 列表视图 -->
         <div v-else-if="viewMode === 'list'" class="media-list">
           <div
-            v-for="item in filteredItems"
+            v-for="item in pagedItems"
             :key="item.id"
             class="media-list-item"
             :class="`media-list-item-${posterType}`"
@@ -784,6 +784,9 @@
               </div>
             </div>
           </div>
+        </div>
+        <div v-if="pagedItems.length < pagedTotal" class="media-library-load-more">
+          <a-button :loading="isLoadingPage" @click="loadNextPage">加载更多</a-button>
         </div>
       </div>
       </template>
@@ -888,6 +891,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useMediaLibraryStore } from '../store/medialibrary'
+import DB from '../utils/db'
 import { useAppStore } from '../store'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import useMediaServerNavigationStore from '../store/mediaServerNavigation'
@@ -897,7 +901,7 @@ import CategoryCard from './CategoryCard.vue'
 import MediaDetail from './MediaDetail.vue'
 import MediaServerPosterRow from './media-server/home/MediaServerPosterRow.vue'
 import MediaServerResumeRow from './media-server/home/MediaServerResumeRow.vue'
-import type { MediaLibraryItem, MediaFilter } from '../types/media'
+import type { MediaLibraryItem } from '../types/media'
 import type { DriveFileItem } from '../types/media'
 import type { MediaServerLibraryNode } from '../types/mediaServerContent'
 import type { MediaServerCardItem } from '../types/mediaServerContent'
@@ -1064,140 +1068,81 @@ watch(localSearchQuery, (value) => {
   }, 260)
 })
 
-// 计算属性
-const filteredItems = computed(() => {
-  let items: MediaListItem[] = []
+const MEDIA_PAGE_SIZE = 80
+const pagedItems = ref<MediaListItem[]>([])
+const pagedTotal = ref(0)
+const isLoadingPage = ref(false)
+let pageRequestId = 0
 
-  // 根据props或当前标签选择数据源
+const getMediaPageQuery = () => {
   const category = props.activeCategory || activeTab.value
-
-  console.log('Filtering items - Category:', category, 'Selected folder:', props.selectedFolder?.name, 'Folder ID:', props.selectedFolder?.id)
-
-  // 如果选择了文件夹，显示该文件夹的文件列表（直接显示，不转换为媒体项目）
-  if (props.selectedFolder && folderFileList.value.length > 0) {
-    // 这里我们将直接在模板中使用 folderFileList，而不是转换为 MediaLibraryItem
-    return []
-  }
-
-  switch (category) {
-    case 'continue-watching':
-      items = [...continueWatchingItems.value]
-      break
-    case 'recently-added':
-      items = [...mediaStore.recentlyAdded]
-      break
-    case 'movies':
-      items = [...mediaStore.movies]
-      break
-    case 'tv-shows':
-      items = [...mediaStore.tvShows]
-      break
-    case 'favorites':
-      items = mediaStore.favorites
-        .map(favoriteIdToMediaItem)
-        .filter((item): item is MediaLibraryItem => Boolean(item))
-      break
-    case 'playlist':
-      if (selectedPlaylist.value) {
-        const ids = mediaStore.playlists[selectedPlaylist.value] || []
-        items = ids
-          .map(favoriteIdToMediaItem)
-          .filter((item): item is MediaLibraryItem => Boolean(item))
-      } else {
-        items = []
-      }
-      break
-    case 'unmatched':
-      items = [...mediaStore.unmatchedItems]
-      break
-    case 'documentary':
-      items = [...documentaryItems.value]
-      break
-    case 'animation':
-      items = [...animationItems.value]
-      break
-    case 'unwatched':
-      items = mediaStore.mediaItems.filter(item => {
-        if (mediaStore.watchedItems.includes(item.id)) return false
-        return !mediaStore.watchedItems.some(watchedId => String(watchedId).startsWith(`${item.id}_`))
-      })
-      break
-    case 'search':
-      items = [...mediaStore.mediaItems]
-      break
-    case 'genres':
-      items = [...mediaStore.mediaItems]
-      break
-    case 'ratings':
-      items = [...mediaStore.topRated]
-      break
-    case 'years':
-      items = [...mediaStore.mediaItems]
-      break
-    default:
-      items = [...mediaStore.mediaItems]
-  }
-
-  console.log('Initial items count:', items.length)
-
-  // 应用筛选器
-  const filter: MediaFilter = {
-    genre: props.selectedGenre || selectedGenre.value || undefined,
-    sortBy: 'added',
-    sortOrder: 'desc'
-  }
-
-  const year = props.selectedYear || selectedYear.value
-  if (year) {
-    if (/^\d{4}s$/i.test(year)) {
-      const start = parseInt(year, 10)
-      filter.yearRange = [start, start + 9]
-    } else {
-      const yearNum = parseInt(year, 10)
-      filter.yearRange = [yearNum, yearNum]
-    }
-  }
-
-  const rating = props.selectedRating || selectedRating.value
-  if (rating) {
-    const [min, max] = rating.split('-').map(Number)
-    filter.ratingRange = [min, max]
-  }
-
-  // 根据分类过滤类型
-  if (category === 'movies') {
-    filter.type = 'movie'
-  } else if (category === 'tv-shows') {
-    filter.type = 'tv'
-  } else if (category === 'unmatched') {
-    filter.type = 'unmatched'
-  }
-
-  let result = items
-
-  if (!['favorites', 'playlist', 'continue-watching'].includes(category)) {
-    result = mediaStore.filterItems(filter).filter(item => items.some(i => i.id === item.id))
-  }
-  if (selectedCast.value) {
-    const keyword = selectedCast.value.toLowerCase()
-    result = result.filter(item =>
-      item.credits?.cast?.some(c => c.name?.toLowerCase().includes(keyword))
-    )
-  }
-  if (selectedCountry.value) {
-    const keyword = selectedCountry.value.toLowerCase()
-    result = result.filter(item =>
-      (item.productionCountries || []).some(c => c.toLowerCase().includes(keyword))
-    )
-  }
+  const selectedGenreValue = props.selectedGenre || selectedGenre.value
+  const selectedYearValue = props.selectedYear || selectedYear.value
+  const selectedRatingValue = props.selectedRating || selectedRating.value
   const query = (localSearchQuery.value || '').trim().toLowerCase()
-  if (query) {
-    result = result.filter(item =>
-      item.name?.toLowerCase().includes(query)
-    )
+  const watchedIds = mediaStore.watchedItems
+  const type: MediaLibraryItem['type'] | undefined = category === 'movies' ? 'movie' : ['tv', 'tv-shows'].includes(category) ? 'tv' : category === 'unmatched' ? 'unmatched' : undefined
+  const predicate = (item: MediaLibraryItem) => {
+    if (category === 'documentary' && !item.genres.some(genre => String(genre).toLowerCase() === '99' || String(genre).includes('纪录'))) return false
+    if (category === 'animation' && !item.genres.some(genre => String(genre).toLowerCase() === '16' || String(genre).includes('动画') || String(genre).includes('动漫'))) return false
+    if (category === 'unwatched' && (watchedIds.includes(item.id) || watchedIds.some(id => String(id).startsWith(`${item.id}_`)))) return false
+    if (selectedGenreValue && !item.genres.includes(selectedGenreValue)) return false
+    if (selectedYearValue) {
+      const year = Number(item.year || 0)
+      const decade = selectedYearValue.match(/^(\d{4})s$/i)
+      if (decade ? year < Number(decade[1]) || year > Number(decade[1]) + 9 : year !== Number(selectedYearValue)) return false
+    }
+    if (selectedRatingValue) {
+      const [min, max] = selectedRatingValue.split('-').map(Number)
+      if (!item.rating || item.rating < min || item.rating > max) return false
+    }
+    if (selectedCast.value && !item.credits?.cast?.some(c => c.name?.toLowerCase().includes(selectedCast.value.toLowerCase()))) return false
+    if (selectedCountry.value && !(item.productionCountries || []).some(country => country.toLowerCase().includes(selectedCountry.value.toLowerCase()))) return false
+    return !query || item.name?.toLowerCase().includes(query)
   }
-  return result
-})
+  return { category, type, predicate }
+}
+
+const loadMediaPage = async (reset = false) => {
+  if (props.selectedFolder && folderFileList.value.length > 0) {
+    pagedItems.value = []
+    pagedTotal.value = 0
+    return
+  }
+  const requestId = ++pageRequestId
+  const { category, type, predicate } = getMediaPageQuery()
+  const localItems = ['continue', 'continue-watching'].includes(category) ? continueWatchingItems.value
+    : ['recent', 'recently-added'].includes(category) ? mediaStore.recentlyAdded
+      : category === 'favorites' ? mediaStore.favorites.map(favoriteIdToMediaItem).filter((item): item is MediaLibraryItem => !!item)
+        : category === 'playlist' ? (selectedPlaylist.value ? (mediaStore.playlists[selectedPlaylist.value] || []).map(favoriteIdToMediaItem).filter((item): item is MediaLibraryItem => !!item) : [])
+          : undefined
+  if (localItems) {
+    const matched = localItems.filter(predicate)
+    pagedTotal.value = matched.length
+    pagedItems.value = reset ? matched.slice(0, MEDIA_PAGE_SIZE) : [...pagedItems.value, ...matched.slice(pagedItems.value.length, pagedItems.value.length + MEDIA_PAGE_SIZE)]
+    return
+  }
+  isLoadingPage.value = true
+  try {
+    const offset = reset ? 0 : pagedItems.value.length
+    const [items, total] = await Promise.all([
+      DB.getMediaLibraryPage({ offset, limit: MEDIA_PAGE_SIZE, type, predicate }),
+      DB.countMediaLibraryItems({ type, predicate })
+    ])
+    if (requestId !== pageRequestId) return
+    pagedTotal.value = total
+    pagedItems.value = reset ? items : [...pagedItems.value, ...items]
+  } finally {
+    if (requestId === pageRequestId) isLoadingPage.value = false
+  }
+}
+
+const loadNextPage = () => void loadMediaPage(false)
+
+watch(
+  () => [props.activeCategory, props.selectedFolder?.id, props.selectedGenre, props.selectedYear, props.selectedRating, activeTab.value, selectedPlaylist.value, selectedCast.value, selectedCountry.value, localSearchQuery.value, mediaStore.watchedItems.join('\n'), mediaStore.favorites.join('\n'), mediaStore.recentlyAdded.length, mediaStore.isScanning],
+  () => void loadMediaPage(true)
+)
 
 const isSearchView = computed(() => {
   const category = props.activeCategory || activeTab.value
@@ -1282,7 +1227,7 @@ const resultBarTitle = computed(() => {
   return drillDownResultTitle.value
 })
 const hasLocalSearchResults = computed(() => {
-  return isSearchView.value && !!localSearchQuery.value.trim() && filteredItems.value.length > 0
+  return isSearchView.value && !!localSearchQuery.value.trim() && pagedItems.value.length > 0
 })
 const hasIntegratedSearchResults = computed(() => {
   return hasLocalSearchResults.value
@@ -2604,6 +2549,7 @@ onMounted(() => {
   // 初始化媒体库
   mediaServerRegistry.ensureLoaded()
   localHomePreferences.ensureLoaded()
+  void loadMediaPage(true)
 })
 
 // 定义事件

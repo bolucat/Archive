@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, watchEffect, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useSettingStore } from '../store'
 import { useMediaLibraryStore } from '../store/medialibrary'
-import type { MediaLibraryItem, MediaSeason, MediaEpisode, CastMember, CrewMember, DriveFileItem } from '../types/media'
+import type { MediaLibraryItem, MediaCollectionMovie, MediaSeason, MediaEpisode, CastMember, CrewMember, DriveFileItem } from '../types/media'
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import type { IPageVideoPlaylistEntry } from '../store/appstore'
 import DownDAL from '../down/DownDAL'
@@ -34,21 +34,35 @@ const settingStore = useSettingStore()
 const mediaStore = useMediaLibraryStore()
 
 // 响应式状态
-const selectedSeason = ref(props.mediaItem.type === 'tv' && props.mediaItem.seasons?.length ? props.mediaItem.seasons[0].seasonNumber : 1)
+const selectedCollectionMovieId = ref<number>()
+const activeMediaItem = computed<MediaLibraryItem>(() => (props.mediaItem.collectionMovies?.find(movie => movie.tmdbId === selectedCollectionMovieId.value) || props.mediaItem.collectionMovies?.[0] || props.mediaItem) as MediaLibraryItem)
+const selectedSeason = ref(activeMediaItem.value.type === 'tv' && activeMediaItem.value.seasons?.length ? activeMediaItem.value.seasons[0].seasonNumber : 1)
 const selectedEpisode = ref<number>()
 const hasUserSelectedEpisode = ref(false)
+watch(() => props.mediaItem, () => {
+  selectedCollectionMovieId.value = undefined
+  selectedSeason.value = activeMediaItem.value.type === 'tv' && activeMediaItem.value.seasons?.length ? activeMediaItem.value.seasons[0].seasonNumber : 1
+  selectedEpisode.value = undefined
+  hasUserSelectedEpisode.value = false
+})
+const handleCollectionMovieSelect = (movie: MediaCollectionMovie) => {
+  selectedCollectionMovieId.value = movie.tmdbId
+  selectedEpisode.value = undefined
+  hasUserSelectedEpisode.value = false
+  void syncPlayButtonWidth()
+}
 const isFavorited = computed(() => {
   if (typeof mediaStore.isFavorite !== 'function') return false
-  if (props.mediaItem.type === 'tv') {
-    return mediaStore.isFavorite(props.mediaItem.id)
+  if (activeMediaItem.value.type === 'tv') {
+    return mediaStore.isFavorite(activeMediaItem.value.id)
   }
-  return mediaStore.isFavorite(props.mediaItem.id)
+  return mediaStore.isFavorite(activeMediaItem.value.id)
 })
 const inPlaylist = computed(() => {
   if (!currentPlaylistItemId.value) return false
   return Object.values(mediaStore.playlists).some(list => list.includes(currentPlaylistItemId.value))
 })
-const watchedId = computed(() => currentPlaylistItemId.value || props.mediaItem.id)
+const watchedId = computed(() => currentPlaylistItemId.value || activeMediaItem.value.id)
 const isWatched = computed(() => {
   if (typeof mediaStore.isWatched !== 'function') return false
   return mediaStore.isWatched(watchedId.value)
@@ -64,45 +78,45 @@ const acquisitionVisible = ref(false)
 const activeAcquisitionRequest = ref<MediaAcquisitionRequest | null>(null)
 const trackingItems = ref<MediaAcquisitionTrackingItem[]>([])
 
-const mediaCoverage = computed(() => getMediaCoverage(props.mediaItem))
+const mediaCoverage = computed(() => getMediaCoverage(activeMediaItem.value))
 const acquisitionRequest = computed<MediaAcquisitionRequest | null>(() => {
   const coverage = mediaCoverage.value
   if (!coverage) return null
   const seasonNumbers = coverage.seasonGaps.map(gap => gap.seasonNumber)
-  const isAnime = props.mediaItem.genres.some(genre => String(genre).includes('动画') || String(genre).includes('动漫'))
+  const isAnime = activeMediaItem.value.genres.some(genre => String(genre).includes('动画') || String(genre).includes('动漫'))
   return {
-    mediaLibraryItemId: props.mediaItem.id,
-    tmdbId: props.mediaItem.tmdbId,
+    mediaLibraryItemId: activeMediaItem.value.id,
+    tmdbId: activeMediaItem.value.tmdbId,
     mediaType: isAnime ? 'anime' : 'tv',
-    title: props.mediaItem.name,
-    year: props.mediaItem.year ? Number(props.mediaItem.year) : undefined,
+    title: activeMediaItem.value.name,
+    year: activeMediaItem.value.year ? Number(activeMediaItem.value.year) : undefined,
     seasonNumber: seasonNumbers[0],
     missingSeasonNumbers: seasonNumbers,
     missingEpisodes: coverage.seasonGaps
   }
 })
 const trackingRequest = computed<MediaAcquisitionRequest | null>(() => {
-  if (props.mediaItem.type !== 'tv' || !props.mediaItem.tmdbId) return null
-  const seasonNumbers = [...new Set([...(props.mediaItem.expectedSeasons || []).map(season => season.seasonNumber), ...(props.mediaItem.seasons || []).map(season => season.seasonNumber)])].filter(season => season > 0).sort((a, b) => a - b)
+  if (activeMediaItem.value.type !== 'tv' || !activeMediaItem.value.tmdbId) return null
+  const seasonNumbers = [...new Set([...(activeMediaItem.value.expectedSeasons || []).map(season => season.seasonNumber), ...(activeMediaItem.value.seasons || []).map(season => season.seasonNumber)])].filter(season => season > 0).sort((a, b) => a - b)
   if (!seasonNumbers.length) return null
-  const isAnime = props.mediaItem.genres.some(genre => String(genre).includes('动画') || String(genre).includes('动漫'))
+  const isAnime = activeMediaItem.value.genres.some(genre => String(genre).includes('动画') || String(genre).includes('动漫'))
   return {
-    mediaLibraryItemId: props.mediaItem.id, tmdbId: props.mediaItem.tmdbId, mediaType: isAnime ? 'anime' : 'tv', title: props.mediaItem.name,
-    year: props.mediaItem.year ? Number(props.mediaItem.year) : undefined, seasonNumber: selectedSeason.value || seasonNumbers[0], trackingOnly: true, trackingSeasonNumbers: seasonNumbers
+    mediaLibraryItemId: activeMediaItem.value.id, tmdbId: activeMediaItem.value.tmdbId, mediaType: isAnime ? 'anime' : 'tv', title: activeMediaItem.value.name,
+    year: activeMediaItem.value.year ? Number(activeMediaItem.value.year) : undefined, seasonNumber: selectedSeason.value || seasonNumbers[0], trackingOnly: true, trackingSeasonNumbers: seasonNumbers
   }
 })
-const currentSeasonTracked = computed(() => trackingItems.value.some(item => item.tmdbId === props.mediaItem.tmdbId && item.seasonNumber === selectedSeason.value && item.status !== 'ended'))
+const currentSeasonTracked = computed(() => trackingItems.value.some(item => item.tmdbId === activeMediaItem.value.tmdbId && item.seasonNumber === selectedSeason.value && item.status !== 'ended'))
 
 // 计算属性
 const currentSeason = computed(() => {
-  if (props.mediaItem.type !== 'tv' || !props.mediaItem.seasons) return null
-  return props.mediaItem.seasons.find(s => s.seasonNumber === selectedSeason.value) || props.mediaItem.seasons[0]
+  if (activeMediaItem.value.type !== 'tv' || !activeMediaItem.value.seasons) return null
+  return activeMediaItem.value.seasons.find(s => s.seasonNumber === selectedSeason.value) || activeMediaItem.value.seasons[0]
 })
 
 const currentSeasonEpisodes = computed(() => {
-  if (props.mediaItem.type !== 'tv' || !props.mediaItem.seasons) return []
+  if (activeMediaItem.value.type !== 'tv' || !activeMediaItem.value.seasons) return []
 
-  const currentSeason = props.mediaItem.seasons.find(s => s.seasonNumber === selectedSeason.value)
+  const currentSeason = activeMediaItem.value.seasons.find(s => s.seasonNumber === selectedSeason.value)
 
   // 临时测试：如果只有一集，创建更多集用于测试
   if (currentSeason?.episodes && currentSeason.episodes.length === 1) {
@@ -125,10 +139,10 @@ const currentSeasonEpisodes = computed(() => {
 })
 
 const continueRecord = computed(() => {
-  if (props.mediaItem.type !== 'tv') {
-    return mediaStore.continueWatching.find(item => item.id === props.mediaItem.id)
+  if (activeMediaItem.value.type !== 'tv') {
+    return mediaStore.continueWatching.find(item => item.id === activeMediaItem.value.id)
   }
-  const idValue = String(props.mediaItem.id)
+  const idValue = String(activeMediaItem.value.id)
   const parts = idValue.split('_')
   if (parts.length >= 3) {
     return mediaStore.continueWatching.find(item => item.id === idValue)
@@ -138,8 +152,8 @@ const continueRecord = computed(() => {
 })
 
 const findEpisodeByFileId = (fileId: string | undefined | null) => {
-  if (!fileId || props.mediaItem.type !== 'tv') return undefined
-  const seasons = props.mediaItem.seasons || []
+  if (!fileId || activeMediaItem.value.type !== 'tv') return undefined
+  const seasons = activeMediaItem.value.seasons || []
   for (const season of seasons) {
     const episode = season.episodes?.find(ep => ep.driveFiles?.some(file => file.id === fileId))
     if (episode) return episode
@@ -159,10 +173,10 @@ const parseContinueEpisodeId = (value: string | undefined) => {
 }
 
 const continueEpisode = computed(() => {
-  if (props.mediaItem.type !== 'tv') return undefined
+  if (activeMediaItem.value.type !== 'tv') return undefined
   const info = parseContinueEpisodeId(continueRecord.value?.id)
   if (info) {
-    const season = props.mediaItem.seasons?.find(s => s.seasonNumber === info.seasonNumber)
+    const season = activeMediaItem.value.seasons?.find(s => s.seasonNumber === info.seasonNumber)
     const episode = season?.episodes?.find(ep => ep.episodeNumber === info.episodeNumber)
     if (episode) return episode
   }
@@ -170,7 +184,7 @@ const continueEpisode = computed(() => {
 })
 
 watchEffect(() => {
-  if (props.mediaItem.type !== 'tv') return
+  if (activeMediaItem.value.type !== 'tv') return
   if (hasUserSelectedEpisode.value) return
   const episode = continueEpisode.value
   if (episode) {
@@ -180,43 +194,43 @@ watchEffect(() => {
 })
 
 const availableSeasons = computed(() => {
-  if (props.mediaItem.type !== 'tv' || !props.mediaItem.seasons) return []
-  return props.mediaItem.seasons.sort((a, b) => a.seasonNumber - b.seasonNumber)
+  if (activeMediaItem.value.type !== 'tv' || !activeMediaItem.value.seasons) return []
+  return activeMediaItem.value.seasons.sort((a, b) => a.seasonNumber - b.seasonNumber)
 })
 
 const totalEpisodeCount = computed(() => {
-  if (props.mediaItem.type !== 'tv' || !props.mediaItem.seasons) return 0
-  return props.mediaItem.seasons.reduce((total, season) => {
+  if (activeMediaItem.value.type !== 'tv' || !activeMediaItem.value.seasons) return 0
+  return activeMediaItem.value.seasons.reduce((total, season) => {
     return total + (season.episodes?.length || 0)
   }, 0)
 })
 
 const currentFilePath = computed(() => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     return currentEpisode.value?.driveFiles?.[0]?.path || ''
   }
 
-  return props.mediaItem.driveFiles?.[0]?.path || ''
+  return activeMediaItem.value.driveFiles?.[0]?.path || ''
 })
 
 const currentFileName = computed(() => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     return currentEpisode.value?.driveFiles?.[0]?.name || ''
   }
-  return props.mediaItem.driveFiles?.[0]?.name || ''
+  return activeMediaItem.value.driveFiles?.[0]?.name || ''
 })
 
 const currentDownloadFile = computed(() => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     return currentEpisode.value?.driveFiles?.[0] || null
   }
-  return props.mediaItem.driveFiles?.[0] || null
+  return activeMediaItem.value.driveFiles?.[0] || null
 })
 
 const backgroundStyle = computed(() => {
-  if (props.mediaItem.backdropUrl) {
+  if (activeMediaItem.value.backdropUrl) {
     return {
-      backgroundImage: `url(${props.mediaItem.backdropUrl})`,
+      backgroundImage: `url(${activeMediaItem.value.backdropUrl})`,
       backgroundSize: 'cover',
       backgroundPosition: 'center top',
       backgroundRepeat: 'no-repeat'
@@ -233,14 +247,14 @@ const productionCompanies = computed(() => {
 })
 
 const productionCountries = computed(() => {
-  return (props.mediaItem.productionCountries || []).map((name) => ({
+  return (activeMediaItem.value.productionCountries || []).map((name) => ({
     iso31661: name,
     name
   }))
 })
 
 const currentEpisode = computed(() => {
-  if (props.mediaItem.type !== 'tv') return null
+  if (activeMediaItem.value.type !== 'tv') return null
   const selected = currentSeasonEpisodes.value.find(
     item => item.episodeNumber === selectedEpisode.value
   )
@@ -248,7 +262,7 @@ const currentEpisode = computed(() => {
 })
 
 const castList = computed(() => {
-  const item = props.mediaItem as MediaLibraryItem & {
+  const item = activeMediaItem.value as MediaLibraryItem & {
     credits?: { cast?: CastMember[] }
     cast?: CastMember[]
   }
@@ -272,24 +286,24 @@ const castList = computed(() => {
 })
 
 const displayOverview = computed(() => {
-  if (props.mediaItem.type === 'tv' && currentEpisode.value?.overview) {
+  if (activeMediaItem.value.type === 'tv' && currentEpisode.value?.overview) {
     return currentEpisode.value.overview
   }
-  return props.mediaItem.overview || ''
+  return activeMediaItem.value.overview || ''
 })
 
 const currentEpisodeRecord = computed(() => {
-  if (props.mediaItem.type !== 'tv') return null
+  if (activeMediaItem.value.type !== 'tv') return null
   const episode = currentEpisode.value
   if (!episode) return null
-  const parts = String(props.mediaItem.id).split('_')
+  const parts = String(activeMediaItem.value.id).split('_')
   const seriesId = parts.length >= 3 ? parts.slice(0, -2).join('_') : parts[0]
   const episodeId = `${seriesId}_${episode.seasonNumber}_${episode.episodeNumber}`
   return mediaStore.continueWatching.find(item => item.id === episodeId) || null
 })
 
 const playProgressPercent = computed(() => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     const episode = currentEpisode.value
     const progress = currentEpisodeRecord.value?.watchProgress ?? 0
     if (progress === undefined || progress === null) return null
@@ -301,7 +315,7 @@ const playProgressPercent = computed(() => {
 })
 
 const playButtonLabel = computed(() => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     if (playProgressPercent.value !== null) {
       return `已观看 ${playProgressPercent.value}%`
     }
@@ -318,7 +332,7 @@ const playButtonLabel = computed(() => {
 })
 
 const playEpisodeInfo = computed(() => {
-  if (props.mediaItem.type !== 'tv') return ''
+  if (activeMediaItem.value.type !== 'tv') return ''
   const episode = currentEpisode.value
   if (!episode) return ''
   const fileName = currentFileName.value || ''
@@ -327,13 +341,13 @@ const playEpisodeInfo = computed(() => {
 })
 
 const currentPlaylistItemId = computed(() => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     const episode = currentEpisode.value
     if (!episode) return ''
-    const baseId = String(props.mediaItem.id).split('_').slice(0, -2).join('_') || props.mediaItem.id
+    const baseId = String(activeMediaItem.value.id).split('_').slice(0, -2).join('_') || activeMediaItem.value.id
     return `${baseId}_${episode.seasonNumber}_${episode.episodeNumber}`
   }
-  return props.mediaItem.id
+  return activeMediaItem.value.id
 })
 
 // 方法
@@ -389,7 +403,7 @@ const handleEpisodePlay = (episode: MediaEpisode) => {
 }
 
 const playMainContent = () => {
-  if (props.mediaItem.type === 'tv') {
+  if (activeMediaItem.value.type === 'tv') {
     // 电视剧播放第一集
     const episode = currentEpisode.value
     if (episode) {
@@ -450,7 +464,7 @@ const buildPlaylistEntry = (aliFile: IAliGetFileModel, title: string): IPageVide
 })
 
 const resolvePlaylistEpisodeForItem = (item: MediaLibraryItem) => {
-  if (item.id === props.mediaItem.id && currentEpisode.value) return currentEpisode.value
+  if (item.id === activeMediaItem.value.id && currentEpisode.value) return currentEpisode.value
   const seasons = item.seasons || []
   for (const season of seasons) {
     const episode = season.episodes?.find((candidate) => candidate.driveFiles?.length)
@@ -493,8 +507,8 @@ const playEpisode = (episode: MediaEpisode) => {
 }
 
 const playMovie = () => {
-  if (props.mediaItem.driveFiles && props.mediaItem.driveFiles.length > 0) {
-    const driveFile = props.mediaItem.driveFiles[0]
+  if (activeMediaItem.value.driveFiles && activeMediaItem.value.driveFiles.length > 0) {
+    const driveFile = activeMediaItem.value.driveFiles[0]
     const aliFile = buildAliFileModel(driveFile)
     menuOpenFile(aliFile, '', {
       customPlaylistLabel: props.activePlaylistName || '',
@@ -525,12 +539,12 @@ const handleDownloadCurrent = () => {
 }
 
 const getFavoriteMode = () => {
-  if (props.mediaItem.type !== 'tv') return null
+  if (activeMediaItem.value.type !== 'tv') return null
   const episode = currentEpisode.value
   if (!episode) return null
-  const seriesId = props.mediaItem.id
-  const seasonId = `${props.mediaItem.id}_${episode.seasonNumber}`
-  const episodeId = `${props.mediaItem.id}_${episode.seasonNumber}_${episode.episodeNumber}`
+  const seriesId = activeMediaItem.value.id
+  const seasonId = `${activeMediaItem.value.id}_${episode.seasonNumber}`
+  const episodeId = `${activeMediaItem.value.id}_${episode.seasonNumber}_${episode.episodeNumber}`
   if (mediaStore.isFavorite(seriesId)) return 'series'
   if (mediaStore.isFavorite(seasonId)) return 'season'
   if (mediaStore.isFavorite(episodeId)) return 'episode'
@@ -539,7 +553,7 @@ const getFavoriteMode = () => {
 
 const toggleFavorite = () => {
   if (typeof mediaStore.toggleFavorite !== 'function') return
-  mediaStore.toggleFavorite(props.mediaItem.id)
+  mediaStore.toggleFavorite(activeMediaItem.value.id)
 }
 
 const togglePlaylist = () => {
@@ -622,9 +636,9 @@ const getCastInitial = (name?: string): string => {
   <div class="media-detail">
     <!-- 返回按钮 -->
     <div class="detail-header">
-      <button class="detail-back" @click="handleBackClick" :title="mediaItem.name">
+      <button class="detail-back" @click="handleBackClick" :title="activeMediaItem.name">
         <IconFont name="iconarrow-left-2-icon" />
-        <span class="detail-back-title">{{ mediaItem.name }}</span>
+        <span class="detail-back-title">{{ activeMediaItem.name }}</span>
       </button>
     </div>
 
@@ -634,29 +648,29 @@ const getCastInitial = (name?: string): string => {
       <div class="hero-section" :style="backgroundStyle">
         <div class="hero-content">
           <div class="hero-poster">
-            <img v-if="mediaItem.posterUrl" :src="mediaItem.posterUrl" :alt="mediaItem.name" />
+            <img v-if="activeMediaItem.posterUrl" :src="activeMediaItem.posterUrl" :alt="activeMediaItem.name" />
             <div v-else class="poster-placeholder">
               <IconFont name="iconfile-video" />
             </div>
           </div>
 
           <div class="hero-info">
-            <h1 class="hero-title">{{ mediaItem.name }}</h1>
+            <h1 class="hero-title">{{ activeMediaItem.name }}</h1>
 
             <div class="hero-meta">
-              <span v-if="mediaItem.rating" class="meta-rating">
-                ★ {{ mediaItem.rating.toFixed(1) }}
+              <span v-if="activeMediaItem.rating" class="meta-rating">
+                ★ {{ activeMediaItem.rating.toFixed(1) }}
               </span>
-              <span v-if="mediaItem.genres.length" class="meta-genres">
-                {{ mediaItem.genres.slice(0, 3).join(' · ') }}
+              <span v-if="activeMediaItem.genres.length" class="meta-genres">
+                {{ activeMediaItem.genres.slice(0, 3).join(' · ') }}
               </span>
-              <span v-if="mediaItem.type === 'tv' && totalEpisodeCount" class="meta-episodes">
+              <span v-if="activeMediaItem.type === 'tv' && totalEpisodeCount" class="meta-episodes">
                 共 {{ totalEpisodeCount }} 集
               </span>
             </div>
 
             <div class="hero-meta-secondary">
-              <span v-if="mediaItem.year">{{ mediaItem.year }}</span>
+              <span v-if="activeMediaItem.year">{{ activeMediaItem.year }}</span>
               <span>24分钟</span>
               <span>1080P</span>
               <span>SDR</span>
@@ -753,8 +767,33 @@ const getCastInitial = (name?: string): string => {
         </div>
       </div>
 
+      <div v-if="props.mediaItem.collectionMovies && props.mediaItem.collectionMovies.length > 1" class="episodes-section">
+        <div class="section-header">
+          <h3>{{ props.mediaItem.collectionName || props.mediaItem.name }}</h3>
+          <span class="episode-count">{{ props.mediaItem.collectionMovies.length }} 部电影</span>
+        </div>
+        <div class="episodes-grid">
+          <div
+            v-for="movie in props.mediaItem.collectionMovies"
+            :key="movie.tmdbId || movie.id"
+            class="episode-card"
+            :class="{ active: movie.tmdbId === activeMediaItem.tmdbId }"
+            @click="handleCollectionMovieSelect(movie)"
+          >
+            <div class="episode-thumbnail">
+              <img v-if="movie.posterUrl" :src="movie.posterUrl" :alt="movie.name" class="episode-image" @error="handleImageError" />
+              <div v-else class="thumbnail-placeholder"><IconFont name="iconfile-video" /></div>
+            </div>
+            <div class="episode-info">
+              <div class="episode-title">{{ movie.name }}</div>
+              <p class="episode-name">{{ movie.year || '未知年份' }} · {{ movie.driveFiles.length }} 个文件</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 季选择器（仅电视剧显示） -->
-      <div v-if="mediaItem.type === 'tv' && availableSeasons.length > 1" class="season-selector">
+      <div v-if="activeMediaItem.type === 'tv' && availableSeasons.length > 1" class="season-selector">
         <div class="section-header">
           <h3>第 {{ selectedSeason }} 季</h3>
           <span class="more-link">更多</span>
@@ -772,7 +811,7 @@ const getCastInitial = (name?: string): string => {
       </div>
 
       <!-- 集列表（仅电视剧显示） -->
-      <div v-if="mediaItem.type === 'tv' && currentSeasonEpisodes.length > 0" class="episodes-section">
+      <div v-if="activeMediaItem.type === 'tv' && currentSeasonEpisodes.length > 0" class="episodes-section">
         <div class="section-header">
           <h3>{{ currentSeason?.name || `第 ${selectedSeason} 季` }}</h3>
           <span class="episode-count">{{ currentSeasonEpisodes.length }} 集</span>
@@ -787,8 +826,8 @@ const getCastInitial = (name?: string): string => {
           >
             <div class="episode-thumbnail">
               <img
-                v-if="episode.stillPath || props.mediaItem.posterUrl"
-                :src="episode.stillPath ||  props.mediaItem.posterUrl"
+                v-if="episode.stillPath || activeMediaItem.posterUrl"
+                :src="episode.stillPath || activeMediaItem.posterUrl"
                 :alt="`第 ${episode.episodeNumber} 集 ${episode.name}`"
                 class="episode-image"
                 @error="handleImageError"
@@ -797,7 +836,7 @@ const getCastInitial = (name?: string): string => {
               <div v-else class="thumbnail-placeholder">
                 <span class="episode-number">{{ episode.episodeNumber }}</span>
               </div>
-              <div v-if="episode.stillPath || props.mediaItem.posterUrl" class="thumbnail-placeholder" style="display: none;">
+              <div v-if="episode.stillPath || activeMediaItem.posterUrl" class="thumbnail-placeholder" style="display: none;">
                 <span class="episode-number">{{ episode.episodeNumber }}</span>
               </div>
               <div class="episode-play-overlay">
@@ -846,11 +885,11 @@ const getCastInitial = (name?: string): string => {
       <!-- 标签区域 -->
       <div class="tags-section">
         <!-- 类型标签 -->
-        <div v-if="mediaItem.genres && mediaItem.genres.length" class="tag-group">
+        <div v-if="activeMediaItem.genres && activeMediaItem.genres.length" class="tag-group">
           <h4 class="tag-group-title">类型</h4>
           <div class="tag-list">
             <span
-              v-for="genre in mediaItem.genres"
+              v-for="genre in activeMediaItem.genres"
               :key="genre"
               class="tag-item clickable"
               @click="handleTagClick('genre', genre)"
@@ -876,14 +915,14 @@ const getCastInitial = (name?: string): string => {
         </div>
 
         <!-- 制作年份标签 -->
-        <div v-if="mediaItem.year" class="tag-group">
+        <div v-if="activeMediaItem.year" class="tag-group">
           <h4 class="tag-group-title">制作年份</h4>
           <div class="tag-list">
             <span
               class="tag-item clickable"
-              @click="handleTagClick('year', mediaItem.year)"
+              @click="handleTagClick('year', activeMediaItem.year)"
             >
-              {{ mediaItem.year }}s
+              {{ activeMediaItem.year }}s
             </span>
           </div>
         </div>
@@ -907,24 +946,24 @@ const getCastInitial = (name?: string): string => {
         <div class="tag-group">
           <h4 class="tag-group-title">详细信息</h4>
           <div class="details-card">
-            <div v-if="mediaItem.year" class="detail-row">
+            <div v-if="activeMediaItem.year" class="detail-row">
               <span class="detail-label">年份</span>
-              <span class="detail-value">{{ mediaItem.year }}</span>
+              <span class="detail-value">{{ activeMediaItem.year }}</span>
             </div>
 
-            <div v-if="mediaItem.rating" class="detail-row">
+            <div v-if="activeMediaItem.rating" class="detail-row">
               <span class="detail-label">评分</span>
-              <span class="detail-value">{{ mediaItem.rating.toFixed(1) }}/10</span>
+              <span class="detail-value">{{ activeMediaItem.rating.toFixed(1) }}/10</span>
             </div>
 
-            <div v-if="mediaItem.driveFiles?.length" class="detail-row">
+            <div v-if="activeMediaItem.driveFiles?.length" class="detail-row">
               <span class="detail-label">文件</span>
-              <span class="detail-value">{{ mediaItem.driveFiles.length }} 个文件</span>
+              <span class="detail-value">{{ activeMediaItem.driveFiles.length }} 个文件</span>
             </div>
 
-            <div v-if="mediaItem.addedAt" class="detail-row">
+            <div v-if="activeMediaItem.addedAt" class="detail-row">
               <span class="detail-label">添加时间</span>
-              <span class="detail-value">{{ new Date(mediaItem.addedAt).toLocaleDateString() }}</span>
+              <span class="detail-value">{{ new Date(activeMediaItem.addedAt).toLocaleDateString() }}</span>
             </div>
 
             <div v-if="currentFilePath" class="detail-row" :title="currentFilePath">

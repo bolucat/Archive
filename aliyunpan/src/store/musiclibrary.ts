@@ -7,6 +7,7 @@ import { loadMusicTrackList } from '../utils/musicPlayerStorage'
 const LS_AUTOSCAN = 'musicLibrary.autoScan'
 const LS_LASTSCAN = 'musicLibrary.lastScanAt'
 const LS_SUBTAB = 'musicLibrary.subTab'
+const MUSIC_CACHE_PAGE_SIZE = 100
 
 export type MusicSubTab = 'home' | 'all' | 'artists' | 'albums' | 'folders' | 'fav' | 'server'
 
@@ -74,6 +75,7 @@ function mulberry32(seed: number) {
 
 const useMusicLibraryStore = defineStore('musiclibrary', () => {
   const tracks = ref<IMusicTrack[]>([])
+  const trackPositions = new Map<string, number>()
   const loaded = ref(false)
   const isScanning = ref(false)
   const scanLabel = ref('')
@@ -84,8 +86,18 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   const autoScanEnabled = ref<boolean>(loadJson<boolean>(LS_AUTOSCAN, true))
   const randomSeed = ref<number>(Date.now())
   const subTab = ref<MusicSubTab>(loadJson<MusicSubTab>(LS_SUBTAB, 'home'))
+  const totalTrackCount = ref(0)
+  const loadedTrackCount = ref(0)
+  const isLoadingPage = ref(false)
+  const activeQuery = ref('')
 
-  const totalCount = computed(() => tracks.value.length)
+  const totalCount = computed(() => totalTrackCount.value)
+  const hasMoreTracks = computed(() => loadedTrackCount.value < totalTrackCount.value)
+
+  const rebuildTrackPositions = () => {
+    trackPositions.clear()
+    tracks.value.forEach((track, index) => trackPositions.set(track.id, index))
+  }
 
   const recentlyAdded = computed<IMusicTrack[]>(() => {
     return [...tracks.value]
@@ -196,7 +208,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   async function loadFromDB() {
     if (loaded.value) return
     try {
-      const list = await DB.getAllMusicTracks()
+      const [list, count] = await Promise.all([DB.getMusicTrackPage({ limit: MUSIC_CACHE_PAGE_SIZE }), DB.countMusicTracks()])
       const dirtyToFix: IMusicTrack[] = []
       const fixed = list.map((raw) => {
         const before = { artist: raw.artist, title: raw.title }
@@ -212,12 +224,37 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
         return t
       })
       tracks.value = fixed
+      rebuildTrackPositions()
+      totalTrackCount.value = count
+      loadedTrackCount.value = fixed.length
       loaded.value = true
       if (dirtyToFix.length) {
         DB.saveMusicTracks(dirtyToFix).catch(() => {})
       }
     } catch (e) {
       console.warn('musicLibrary loadFromDB failed', e)
+    }
+  }
+
+  async function loadTrackPage(options: { reset?: boolean; query?: string } = {}) {
+    const reset = options.reset === true
+    const query = options.query ?? activeQuery.value
+    if (isLoadingPage.value) return
+    isLoadingPage.value = true
+    try {
+      const offset = reset ? 0 : loadedTrackCount.value
+      const [page, count] = await Promise.all([
+        DB.getMusicTrackPage({ offset, limit: MUSIC_CACHE_PAGE_SIZE, query }),
+        DB.countMusicTracks(query)
+      ])
+      const fixed = page.map(ensureArtistTitle)
+      activeQuery.value = query
+      totalTrackCount.value = count
+      tracks.value = reset ? fixed : [...tracks.value, ...fixed]
+      loadedTrackCount.value = tracks.value.length
+      rebuildTrackPositions()
+    } finally {
+      isLoadingPage.value = false
     }
   }
 
@@ -229,19 +266,45 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
 
   async function appendTracks(newTracks: IMusicTrack[]) {
     if (!newTracks.length) return
-    const enriched = newTracks.map(ensureArtistTitle)
+    const existingById = new Map((await DB.getMusicTracksByIds(newTracks.map(track => track.id)).catch(() => [])).map(track => [track.id, track]))
+    const enriched = newTracks.map(ensureArtistTitle).map((track) => {
+      const existing = existingById.get(track.id)
+      if (!existing) return track
+      return {
+        ...track,
+        artist: existing.artist || track.artist,
+        title: existing.title || track.title,
+        album: existing.album || track.album,
+        cover_url: existing.cover_url || track.cover_url,
+        duration_ms: existing.duration_ms || track.duration_ms,
+        lyric_source: existing.lyric_source || track.lyric_source,
+        metadata_source: existing.metadata_source || track.metadata_source,
+        enriched_at: existing.enriched_at
+      }
+    })
     await DB.saveMusicTracks(enriched).catch(() => {})
-    // 内存合并：按 id 去重
-    const map = new Map<string, IMusicTrack>()
-    for (const t of tracks.value) map.set(t.id, t)
-    for (const t of enriched) map.set(t.id, t)
-    tracks.value = Array.from(map.values())
+    for (const track of enriched) {
+      const index = trackPositions.get(track.id)
+      if (index === undefined) {
+        if (tracks.value.length < MUSIC_CACHE_PAGE_SIZE) {
+          trackPositions.set(track.id, tracks.value.length)
+          tracks.value.push(track)
+          loadedTrackCount.value = tracks.value.length
+        }
+        if (!existingById.has(track.id)) totalTrackCount.value += 1
+      } else {
+        tracks.value[index] = track
+      }
+    }
   }
 
   function removeTracksByIds(ids: string[]) {
     if (!ids || ids.length === 0) return
     const removeSet = new Set(ids)
     tracks.value = tracks.value.filter((t) => !removeSet.has(t.id))
+    totalTrackCount.value = Math.max(0, totalTrackCount.value - ids.length)
+    loadedTrackCount.value = tracks.value.length
+    rebuildTrackPositions()
   }
 
   async function deleteTracksByIds(ids: string[]) {
@@ -301,6 +364,9 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   async function clearAll() {
     await DB.clearMusicTracks().catch(() => {})
     tracks.value = []
+    trackPositions.clear()
+    totalTrackCount.value = 0
+    loadedTrackCount.value = 0
     lastScanAt.value = 0
     saveJson(LS_LASTSCAN, 0)
   }
@@ -318,6 +384,9 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     randomSeed,
     subTab,
     totalCount,
+    loadedTrackCount,
+    hasMoreTracks,
+    isLoadingPage,
     recentlyAdded,
     randomPicks,
     byArtist,
@@ -325,6 +394,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     byFolder,
     favoritesTracks,
     loadFromDB,
+    loadTrackPage,
     setScanProgress,
     appendTracks,
     removeTracksByIds,

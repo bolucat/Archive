@@ -186,11 +186,8 @@ export default class ServerHttp {
 
   static async CheckUpgrade(showMessage: boolean = true): Promise<void> {
     const settingStore = useSettingStore()
-    const updateUrl = settingStore.uiUpdateProxyEnable
-      ? buildUpdateProxyUrl(settingStore.uiUpdateProxyUrl, ServerHttp.updateUrl)
-      : ServerHttp.updateUrl
     axios
-      .get(updateUrl, {
+      .get(ServerHttp.updateUrl, {
         withCredentials: false,
         responseType: 'json',
         timeout: 30000

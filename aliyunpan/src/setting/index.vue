@@ -20,6 +20,7 @@ import SettingAPI from './SettingAPI.vue'
 import { t } from '../i18n'
 
 const appStore = useAppStore()
+withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 let observer: any
 
@@ -94,7 +95,7 @@ onUnmounted(() => {
 
 <template>
   <a-layout class="settings-shell">
-    <a-layout-sider hide-trigger :width="188" class="xbyleft settings-sider single-boundary-sidebar" tabindex="-1" @keydown.tab.prevent="() => true">
+    <a-layout-sider v-show="sidebarVisible" hide-trigger :width="188" class="xbyleft settings-sider single-boundary-sidebar" tabindex="-1" @keydown.tab.prevent="() => true">
       <div class='headdesc settings-side-title'>
         <span class="settings-side-kicker">{{ t('settings.preferences') }}</span>
         <strong>{{ t('settings.center') }}</strong>
@@ -660,7 +661,6 @@ body:not([arco-theme='dark']) #xbybody .settings-sider {
 
 body:not([arco-theme='dark']) #xbybody #SettingObserver {
   color: #111827;
-  background: var(--color-bg-1) !important;
 }
 
 body:not([arco-theme='dark']) #xbybody #SettingObserver .settingcard,

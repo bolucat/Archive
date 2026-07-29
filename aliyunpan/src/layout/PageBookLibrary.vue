@@ -30,10 +30,14 @@ import {
 } from '../utils/bookManagerPreferences'
 import UserDAL from '../user/userdal'
 import type { ITokenInfo } from '../user/userstore'
+import { getWebDavConnections } from '../utils/webdavClient'
+import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
 import BookReaderModal from './BookReaderModal.vue'
 import StatsPage from './StatsPage.vue'
 import { useReaderI18n } from '../utils/readerI18n'
 import { t } from '../i18n'
+
+withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 const bookStore = useBookLibraryStore()
 const query = ref('')
@@ -1336,10 +1340,15 @@ function shouldShowCoverFallback(book: IBookItem): boolean {
 onMounted(async () => {
   await bookStore.loadFromDB()
   const users = await UserDAL.GetUserListFromDB().catch(() => [])
-  scanAccounts.value = users.filter((u) => !!u?.user_id && !!u?.access_token)
+  const scanUsers = [...users]
+  for (const connection of getWebDavConnections()) {
+    const remoteToken = createRemoteDriveAccount(connection).token
+    if (!scanUsers.some((user) => user.user_id === remoteToken.user_id)) scanUsers.push(remoteToken)
+  }
+  scanAccounts.value = scanUsers.filter((u) => !!u?.user_id && !!u?.access_token)
   selectedScanUserIds.value = scanAccounts.value.map((u) => u.user_id)
   const map: Record<string, string> = {}
-  for (const u of users) {
+  for (const u of scanUsers) {
     if (!u?.user_id) continue
     map[u.user_id] = u.nick_name || u.user_name || u.name || u.user_id
   }
@@ -1390,7 +1399,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
 
 <template>
   <a-layout :class="['book-library', ...managerAppearanceClass]" :style='managerAppearanceStyle'>
-    <aside :class="['book-sidebar', sidebarCollapsed ? 'collapsed' : '']">
+    <aside v-show="sidebarVisible" :class="['book-sidebar', sidebarCollapsed ? 'collapsed' : '']">
       <div class='book-brand'>
         <button class='book-sidebar-toggle' :title="sidebarCollapsed ? t('book.expandSidebar') : t('book.collapseSidebar')" @click='sidebarCollapsed = !sidebarCollapsed'>
           <PanelLeftClose v-if='!sidebarCollapsed' :size='18' :stroke-width='2' />

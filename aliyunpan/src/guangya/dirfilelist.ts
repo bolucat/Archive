@@ -91,6 +91,18 @@ export const apiGuangyaFileList = async (user_id: string, parentId: string | num
   }
 }
 
+export const apiGuangyaFileListPage = async (user_id: string, parentId: string | number, page = 0, pageSize = 100): Promise<{ items: GuangyaFileItem[]; hasMore: boolean }> => {
+  const data = await guangyaRequest(user_id, '/userres/v1/file/get_file_list', {
+    parentId: guangyaApiParentId(parentId),
+    page,
+    pageSize,
+    orderBy: 0,
+    sortType: 0
+  })
+  const items = listFromResponse(data)
+  return { items, hasMore: items.length >= pageSize }
+}
+
 export const apiGuangyaVideoList = async (user_id: string, size = 200): Promise<GuangyaFileItem[]> => {
   try {
     const all: GuangyaFileItem[] = []

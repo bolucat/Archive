@@ -110,7 +110,18 @@ describe('MediaScanner scan queue', () => {
     }]
     const scanner = new MediaScanner()
 
-    expect(Array.from((scanner as any).getIndexedDriveFileIds()).sort()).toEqual(['episode-file-id', 'movie-file-id'])
+    expect(Array.from((scanner as any).getIndexedDriveFileIds()).sort()).toEqual([':::episode-file-id', ':::movie-file-id'])
+  })
+
+  it('scopes media-source and file keys by provider, account, and drive', () => {
+    const scanner = new MediaScanner()
+    const first = (scanner as any).getScopedFolderKey({ driveServerId: 'quark', userId: 'quark_a', driveId: 'quark' }, '0')
+    const second = (scanner as any).getScopedFolderKey({ driveServerId: 'drive115', userId: 'drive115_b', driveId: 'drive115' }, '0')
+    const firstFile = (scanner as any).getScopedDriveFileKey({ driveServerId: 'quark', userId: 'quark_a', driveId: 'quark', id: '1' })
+    const secondFile = (scanner as any).getScopedDriveFileKey({ driveServerId: 'quark', userId: 'quark_b', driveId: 'quark', id: '1' })
+
+    expect(first).not.toBe(second)
+    expect(firstFile).not.toBe(secondFile)
   })
 
   it('checkpoints a scan after 100 processed items', () => {

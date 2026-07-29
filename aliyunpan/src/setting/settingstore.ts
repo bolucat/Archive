@@ -470,7 +470,7 @@ function _loadSetting(val: any) {
   setting.uiLanguage = defaultValue(val.uiLanguage, ['zh-CN', 'en-US'], detectSystemLocale()) as SettingState['uiLanguage']
   setting.uiTheme = defaultValue(val.uiTheme, ['system', 'light', 'dark'])
   setting.uiDefaultTab = defaultValue(val.uiDefaultTab, ['pan', 'media', 'media-server', 'music'])
-  setting.uiHiddenTopTabs = Array.isArray(val.uiHiddenTopTabs) ? val.uiHiddenTopTabs.filter((tab: unknown) => typeof tab === 'string' && ['media-server', 'search', 'ai-workspace', 'media', 'music', 'book', 'share', 'rss'].includes(tab)) : []
+  setting.uiHiddenTopTabs = Array.isArray(val.uiHiddenTopTabs) ? val.uiHiddenTopTabs.filter((tab: unknown) => typeof tab === 'string' && ['pan', 'media-server', 'search', 'ai-workspace', 'media', 'music', 'book', 'share', 'rss'].includes(tab)) : []
   setting.uiImageMode = defaultValue(val.uiImageMode, ['fill', 'width', 'web'])
   setting.uiExitOnClose = defaultBool(val.uiExitOnClose, false)
   setting.uiLaunchAutoCheckUpdate = defaultBool(val.uiLaunchAutoCheckUpdate, false)
@@ -711,6 +711,10 @@ export function LoadSetting() {
       settingstr = readFileSync(settingConfig, 'utf-8')
       const val = JSON.parse(settingstr)
       _loadSetting(val)
+      if (setting.uiUpdateProxyUrl === 'https://mirror.ghproxy.com') {
+        setting.uiUpdateProxyUrl = 'https://gh-proxy.com'
+        SaveSetting()
+      }
       useAppStore().toggleTheme(setting.uiTheme)
     } else {
       SaveSetting()

@@ -15,7 +15,7 @@ import useMusicLibraryStore from '../store/musiclibrary'
 import useMusicPlayerStore from '../store/musicplayerstore'
 import useBookLibraryStore from '../store/booklibrary'
 import { useMediaLibraryStore } from '../store/medialibrary'
-import { BookOpen, Music, Pause, Play, SkipBack, SkipForward, Video } from 'lucide-vue-next'
+import { BookOpen, Music, PanelLeftClose, PanelLeftOpen, Pause, Play, SkipBack, SkipForward, Video } from 'lucide-vue-next'
 import { onHideRightMenu, TestAlt, TestCtrl, TestKey, TestShift } from '../utils/keyboardhelper'
 import { copyToClipboard, openExternal } from '../utils/electronhelper'
 import { bootstrapMusicLibrary, shutdownMusicLibrary } from '../utils/musicLibraryBootstrap'
@@ -53,6 +53,16 @@ const alipayImage = 'images/alipay.jpg'
 const cryptoDonationAddress = '0xb0a3f7254e97a8bd398b1ab7f70eb48b0dc68eaf'
 const panVisible = ref(true)
 const mediaNavVisible = ref(true)
+const mediaServerNavVisible = ref(true)
+const sidebarVisibility = ref<Record<'down' | 'share' | 'rss' | 'setting' | 'music' | 'book' | 'ai-workspace', boolean>>({
+  down: true,
+  share: true,
+  rss: true,
+  setting: true,
+  music: true,
+  book: true,
+  'ai-workspace': true
+})
 const showLimitModal = ref(false)
 setInterval(() => {
   if (localStorage.getItem('boxplayer_show_pricing') === '1') {
@@ -66,6 +76,7 @@ const winStore = useWinStore()
 const keyboardStore = useKeyboardStore()
 const mouseStore = useMouseStore()
 const footStore = useFootStore()
+let removeAutoUpdateStateListener: (() => void) | undefined
 const musicStore = useMusicLibraryStore()
 const musicPlayerStore = useMusicPlayerStore()
 const bookStore = useBookLibraryStore()
@@ -83,12 +94,22 @@ const handleMediaLibraryClick = () => {
   appStore.toggleTab('media')
 }
 
-const handlePanVisible = () => {
-  panVisible.value = !panVisible.value
-}
-
-const handleMediaNavVisible = () => {
-  mediaNavVisible.value = !mediaNavVisible.value
+const sidebarTabs = new Set(['pan', 'down', 'share', 'rss', 'media', 'media-server', 'music', 'book', 'ai-workspace', 'setting'])
+const hasActiveSidebar = computed(() => sidebarTabs.has(appStore.appTab))
+const activeSidebarVisible = computed(() => {
+  if (appStore.appTab === 'pan') return panVisible.value
+  if (appStore.appTab === 'media') return mediaNavVisible.value
+  if (appStore.appTab === 'media-server') return mediaServerNavVisible.value
+  return sidebarVisibility.value[appStore.appTab as keyof typeof sidebarVisibility.value] ?? true
+})
+const handleToggleSidebar = () => {
+  if (appStore.appTab === 'pan') panVisible.value = !panVisible.value
+  else if (appStore.appTab === 'media') mediaNavVisible.value = !mediaNavVisible.value
+  else if (appStore.appTab === 'media-server') mediaServerNavVisible.value = !mediaServerNavVisible.value
+  else if (appStore.appTab in sidebarVisibility.value) {
+    const tab = appStore.appTab as keyof typeof sidebarVisibility.value
+    sidebarVisibility.value = { ...sidebarVisibility.value, [tab]: !sidebarVisibility.value[tab] }
+  }
 }
 
 const handleCopyCryptoDonationAddress = () => {
@@ -306,6 +327,12 @@ onMounted(() => {
   bootstrapMusicLibrary()
   bootstrapBookLibrary()
   bootstrapMediaLibrary()
+  window.AutoUpdateGetState?.().then((state) => {
+    if (state.status === 'downloading') footStore.mSaveUpdateDownloadProgress(Math.max(0.01, state.percent ?? 0))
+  })
+  removeAutoUpdateStateListener = window.AutoUpdateOnStateChanged?.((state) => {
+    footStore.mSaveUpdateDownloadProgress(state.status === 'downloading' ? Math.max(0.01, state.percent ?? 0) : 0)
+  })
 })
 
 onUnmounted(() => {
@@ -316,22 +343,17 @@ onUnmounted(() => {
   shutdownMusicLibrary()
   shutdownMediaLibrary()
   shutdownBookLibrary()
+  removeAutoUpdateStateListener?.()
 })
 </script>
 <template>
   <a-layout style='height: 100vh' draggable='false'>
     <a-layout-header id='xbyhead' draggable='false'>
       <div id='xbyhead2' class='q-electron-drag'>
-        <a-button v-show="appStore.appTab === 'pan'" type='text' size='small' @click='handlePanVisible'>
-          <IconFont name="iconmenuon" v-if='panVisible' />
-          <IconFont name="iconmenuoff" v-else />
+        <a-button v-show="hasActiveSidebar" type='text' size='small' :title="activeSidebarVisible ? '收起侧边栏' : '展开侧边栏'" @click='handleToggleSidebar'>
+          <PanelLeftClose v-if='activeSidebarVisible' :size='18' :stroke-width='1.8' />
+          <PanelLeftOpen v-else :size='18' :stroke-width='1.8' />
         </a-button>
-        <a-button v-show="appStore.appTab === 'media' || appStore.appTab === 'media-server'" type='text' size='small' @click='handleMediaNavVisible'>
-          <IconFont name="iconmenuon" v-if='mediaNavVisible' />
-          <IconFont name="iconmenuoff" v-else />
-        </a-button>
-        <div class='title'>BoxPlayer</div>
-
         <a-menu mode='horizontal' :selected-keys='[appStore.appTab]'
                 @update:selected-keys='appStore.toggleTab($event[0])'>
           <a-menu-item
@@ -371,34 +393,34 @@ onUnmounted(() => {
           <Pan :visible='panVisible' />
         </a-tab-pane>
         <a-tab-pane key='down' title='2'>
-          <Down />
+          <Down :sidebar-visible="sidebarVisibility.down" />
         </a-tab-pane>
         <a-tab-pane key='share' title='3'>
-          <Share />
+          <Share :sidebar-visible="sidebarVisibility.share" />
         </a-tab-pane>
         <a-tab-pane key='rss' title='4'>
-          <Rss />
+          <Rss :sidebar-visible="sidebarVisibility.rss" />
         </a-tab-pane>
         <a-tab-pane key='media' title='5'>
           <MediaLibraryView :navVisible="mediaNavVisible" />
         </a-tab-pane>
         <a-tab-pane key='media-server' title='6'>
-          <MediaServerView :navVisible="mediaNavVisible" />
+          <MediaServerView :navVisible="mediaServerNavVisible" />
         </a-tab-pane>
         <a-tab-pane key='music' title='8'>
-          <PageMusicLibrary />
+          <PageMusicLibrary :sidebar-visible="sidebarVisibility.music" />
         </a-tab-pane>
         <a-tab-pane key='book' title='9'>
-          <PageBookLibrary />
+          <PageBookLibrary :sidebar-visible="sidebarVisibility.book" />
         </a-tab-pane>
         <a-tab-pane key='search' title='0'>
           <PageGlobalSearch />
         </a-tab-pane>
         <a-tab-pane key='ai-workspace' :title="t('ai.workspace')">
-          <PageAIWorkspace />
+          <PageAIWorkspace :sidebar-visible="sidebarVisibility['ai-workspace']" />
         </a-tab-pane>
         <a-tab-pane key='setting' title='7'>
-          <Setting />
+          <Setting :sidebar-visible="sidebarVisibility.setting" />
         </a-tab-pane>
       </a-tabs>
     </a-layout-content>
@@ -517,9 +539,12 @@ onUnmounted(() => {
             </span>
           </div>
 
-          <div class='footerBar fix' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100' :title="`${t('footer.newVersion')} ${footStore.updateDownloadProgress}%`">
-            <IconFont name="iconxiazaisudu" />
-            <span class='footspeedstr'>{{ t('footer.newVersion') }} {{ footStore.updateDownloadProgress }}%</span>
+          <div class='footerBar fix update-progress-foot' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100' :title="`${t('footer.newVersion')} ${Math.round(footStore.updateDownloadProgress)}%`">
+            <svg aria-hidden='true' class='update-progress-ring' viewBox='0 0 20 20'>
+              <circle class='update-progress-track' cx='10' cy='10' fill='none' r='8' stroke-width='2' />
+              <circle class='update-progress-value' cx='10' cy='10' fill='none' r='8' stroke-width='2' :style='{ strokeDashoffset: 50.27 * (1 - footStore.updateDownloadProgress / 100) }' />
+            </svg>
+            <span class='update-progress-label'>{{ Math.round(footStore.updateDownloadProgress) }}%</span>
           </div>
 
           <div class='footerBar fix'>
@@ -647,19 +672,6 @@ onUnmounted(() => {
   line-height: 37px;
 }
 
-#xbyhead2 .title {
-  flex: 0 0 auto;
-  min-width: max-content;
-  max-width: none;
-  padding: 0 12px 0 4px;
-  font-weight: 600;
-  font-size: 17px;
-  line-height: 37px;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  color: rgba(255,255,255,.9);
-}
-
 #xbyhead2 button {
   min-width: 32px !important;
   height: 32px !important;
@@ -785,6 +797,18 @@ onUnmounted(() => {
   padding: 0;
   overflow: visible;
   background: transparent !important;
+}
+
+/* 菜单项仍可点击，隐藏标签留下的菜单空白则可用于拖动窗口。 */
+#xbyhead2 .arco-menu,
+#xbyhead2 .arco-menu-horizontal .arco-menu-inner,
+#xbyhead2 .arco-menu-overflow-wrap {
+  -webkit-app-region: drag;
+}
+
+#xbyhead2 .arco-menu-horizontal .arco-menu-item,
+#xbyhead2 .arco-menu-horizontal .arco-menu-item * {
+  -webkit-app-region: no-drag;
 }
 
 #xbyhead2 .arco-menu-horizontal .arco-menu-pop,
@@ -1334,6 +1358,12 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+#xbybody .settings-content {
+  box-sizing: border-box;
+  height: calc(100% - 36px);
+  margin: 18px 18px 18px 14px !important;
+}
+
 #xbybody .book-main {
   display: flex;
   flex-direction: column;
@@ -1568,10 +1598,6 @@ body:not([arco-theme='dark']) #xbyhead {
   backdrop-filter: none;
 }
 
-body:not([arco-theme='dark']) #xbyhead2 .title {
-  color: var(--color-text-1);
-}
-
 body:not([arco-theme='dark']) #xbyhead2 .arco-btn-text,
 body:not([arco-theme='dark']) #xbyhead2 .arco-menu-horizontal .arco-menu-item,
 body:not([arco-theme='dark']) #xbyhead2 .arco-menu,
@@ -1606,12 +1632,23 @@ body:not([arco-theme='dark']) #xbybody {
   background: var(--color-bg-1);
 }
 
+body:not([arco-theme='dark']) #xbybody .cellcount .arco-badge-status-text {
+  color: var(--color-text-2);
+}
+
 body:not([arco-theme='dark']) #xbybody::before,
 body:not([arco-theme='dark']) #xbybody::after {
   display: none;
 }
 
 body:not([arco-theme='dark']) #xbybody .xbyright > .hidetabs {
+  border-color: var(--color-border-2) !important;
+  background: var(--color-bg-1) !important;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+body:not([arco-theme='dark']) #xbybody .settings-content {
   border-color: var(--color-border-2) !important;
   background: var(--color-bg-1) !important;
   box-shadow: none;
@@ -1884,6 +1921,33 @@ a {
   line-height: 24px;
 }
 
+.update-progress-foot {
+  gap: 5px;
+}
+
+.update-progress-ring {
+  width: 16px;
+  height: 16px;
+  transform: rotate(-90deg);
+}
+
+.update-progress-track {
+  stroke: rgba(255, 255, 255, 0.2);
+}
+
+.update-progress-value {
+  stroke: #00d9bd;
+  stroke-linecap: round;
+  stroke-dasharray: 50.27;
+  transition: stroke-dashoffset 0.2s ease;
+}
+
+.update-progress-label {
+  min-width: 28px;
+  color: rgba(255, 255, 255, 0.88);
+  font-variant-numeric: tabular-nums;
+}
+
 #footLoading .arco-icon-loading {
   color: hsla(0, 0%, 100%, 0.85);
   width: 14px;
@@ -2042,10 +2106,6 @@ body[arco-theme='dark'] #xbyhead2 .arco-menu-horizontal .arco-menu-item.arco-men
 body[arco-theme='dark'] #xbyhead2 .arco-menu-selected-label {
   background: rgb(var(--primary-6));
 }
-body[arco-theme='dark'] #xbyhead2 .title {
-  color: rgba(255, 255, 255, 0.9);
-}
-
 .footuploadlist .arco-popover-popup-content,
 .footdownlist .arco-popover-popup-content,
 .asynclist .arco-popover-popup-content {

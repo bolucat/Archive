@@ -20,6 +20,17 @@ describe('light theme page surfaces', () => {
     expectLightBackground(readSource('src/layout/PageMain.vue'), "body:not([arco-theme='dark']) #xbybody .xbyright > .hidetabs")
   })
 
+  it('keeps settings content in the same inset outer panel as other tabs', () => {
+    const source = readSource('src/layout/PageMain.vue')
+    expect(source).toMatch(/#xbybody \.settings-content\s*\{[^}]*height:\s*calc\(100% - 36px\)[^}]*margin:\s*18px 18px 18px 14px\s*!important/s)
+    expect(readSource('src/setting/index.vue')).not.toMatch(/body:not\(\[arco-theme='dark'\]\) #xbybody #SettingObserver\s*\{[^}]*background:/s)
+  })
+
+  it('keeps transfer statistics readable in the light theme', () => {
+    const source = readSource('src/layout/PageMain.vue')
+    expect(source).toMatch(/body:not\(\[arco-theme='dark'\]\) #xbybody \.cellcount \.arco-badge-status-text\s*\{[^}]*color:\s*var\(--color-text-2\)/s)
+  })
+
   it('keeps the plugin canvas on the light page background', () => {
     const source = readSource('src/rss/index.vue')
     expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody .rss-content-panel > .hidetabs")
@@ -60,9 +71,14 @@ describe('light theme page surfaces', () => {
 
   it('keeps AI workspace columns on light semantic backgrounds', () => {
     const source = readSource('src/layout/AISearchAgent.vue')
+    const workspace = readSource('src/layout/PageAIWorkspace.vue')
     expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody .ai-task-rail")
     expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody .ai-workspace-main")
     expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody .ai-activity-panel")
+    expect(workspace).toMatch(/\.ai-workspace-page\s*\{[^}]*padding:\s*18px/s)
+    expect(workspace).toMatch(/\.ai-workspace-content\s*\{[^}]*border:\s*1px solid var\(--app-glass-line\)[^}]*border-radius:\s*24px/s)
+    expect(source).toMatch(/\.ai-workspace-grid\s*\{[^}]*gap:\s*14px/s)
+    expect(source).toMatch(/\.ai-task-rail, \.ai-workspace-main, \.ai-activity-panel\s*\{[^}]*border-radius:\s*24px/s)
   })
 
   it('keeps settings navigation and content on light semantic surfaces', () => {
@@ -72,7 +88,7 @@ describe('light theme page surfaces', () => {
     expect(source).toMatch(/\.settings-side-title\s*\{[^}]*height:\s*auto[^}]*min-height:\s*92px[^}]*overflow:\s*visible/s)
     expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody .settings-shell")
     expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody .settings-sider")
-    expectLightBackground(source, "body:not([arco-theme='dark']) #xbybody #SettingObserver")
+    expectLightBackground(main, "body:not([arco-theme='dark']) #xbybody .settings-content")
     expect(main).toMatch(/#xbybody \.rightbg,[^{]*#xbybody \.settings-content,[^{]*\{[^}]*border:\s*1px solid/s)
     expect(source).toMatch(/#xbybody #SettingObserver \.settingcard\s*\{[^}]*border:\s*0\s*!important[^}]*border-radius:\s*0\s*!important[^}]*background:\s*transparent\s*!important[^}]*box-shadow:\s*none\s*!important[^}]*backdrop-filter:\s*none\s*!important/s)
     expect(source).toMatch(/body:not\(\[arco-theme='dark'\]\) #xbybody #SettingObserver \.settingcard,[^{]*\.arco-divider-text,[^{]*\.arco-checkbox-label,[^{]*\.arco-switch-text\s*\{[^}]*color:\s*#111827\s*!important/s)
@@ -115,7 +131,8 @@ describe('light theme page surfaces', () => {
     expect(agent).toMatch(/\.ai-rail-label[^}]*font-size:\s*13px[^}]*color:\s*var\(--agent-ui-text\)/s)
     expect(agent).toMatch(/\.ai-rail-action,[^{]*\.ai-history-item[^}]*font-size:\s*13px[^}]*color:\s*var\(--agent-ui-text\)/s)
     expect(agent).toMatch(/\.ai-rail-action:disabled\s*\{[^}]*color:\s*var\(--agent-ui-text\)[^}]*opacity:\s*1/s)
-    expect(workspace).toMatch(/\.ai-workspace-view-switcher button[^}]*color:\s*#fff[^}]*font-size:\s*13px/s)
+    expect(workspace).toMatch(/\.ai-workspace-view-switcher\s*\{[^}]*align-self:\s*center[^}]*height:\s*38px/s)
+    expect(workspace).toMatch(/\.ai-workspace-view-switcher button[^}]*color:\s*#fff[^}]*font-size:\s*14px/s)
     expect(workspace).toMatch(/body:not\(\[arco-theme='dark'\]\) \.ai-workspace-view-switcher button\s*\{[^}]*color:\s*#111827/s)
   })
 })

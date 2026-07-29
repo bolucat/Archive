@@ -75,7 +75,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import MediaLibraryNav from '../components/MediaLibraryNav.vue'
 import MediaLibrary from '../components/MediaLibrary.vue'
-import { syncMediaLibraryStoreFromStorage, useMediaLibraryStore } from '../store/medialibrary'
+import { useMediaLibraryStore } from '../store/medialibrary'
 import { usePanTreeStore } from '../store'
 import { MediaScanner } from '../utils/mediaScanner'
 import UserDAL from '../user/userdal'
@@ -109,7 +109,7 @@ const homeNavigationActive = ref(false)
 const workspaceMode = ref<'library' | 'tvbox'>('library')
 const scanPercent = computed(() => {
   if (mediaStore.scanTotal === 0) return 0
-  return Math.round((mediaStore.scanProgress / mediaStore.scanTotal) * 100)
+  return Math.min(1, Math.max(0, mediaStore.scanProgress / mediaStore.scanTotal))
 })
 const scanCurrent = computed(() => mediaStore.scanProgress)
 const scanTotal = computed(() => mediaStore.scanTotal)
@@ -591,11 +591,10 @@ const syncContinueWatchingFromStorage = () => {
       normalized.forEach((cw: any) => {
         const index = mediaStore.mediaItems.findIndex(item => item.id === cw.id)
         if (index >= 0) {
-          mediaStore.mediaItems[index] = {
-            ...mediaStore.mediaItems[index],
+          mediaStore.updateMediaItem(cw.id, {
             watchProgress: cw.watchProgress,
             lastWatched: cw.lastWatched
-          }
+          })
         }
       })
     }
@@ -610,7 +609,7 @@ const handleStorageSync = (event: StorageEvent) => {
     return
   }
   if (event.key === 'MediaLibrary_MediaItems' || event.key === 'MediaLibrary_Folders') {
-    syncMediaLibraryStoreFromStorage(mediaStore)
+    void mediaStore.hydrate()
   }
 }
 

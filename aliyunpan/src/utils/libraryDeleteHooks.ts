@@ -1,6 +1,8 @@
 import useSettingStore from '../setting/settingstore'
 import useMusicLibraryStore from '../store/musiclibrary'
+import useBookLibraryStore from '../store/booklibrary'
 import { useMediaLibraryStore } from '../store/medialibrary'
+import BookScanner from './bookScanner'
 import MusicScanner from './musicScanner'
 import { MediaScanner } from './mediaScanner'
 import DB from './db'
@@ -47,6 +49,11 @@ export async function handleFilesDeleted(
   } catch (e) {
     DebugLog.mSaveWarning('handleFilesDeleted purgeMusicLibrary: ' + (e as Error).message)
   }
+  try {
+    await purgeBookLibrary(user_id, drive_id, deletedSet)
+  } catch (e) {
+    DebugLog.mSaveWarning('handleFilesDeleted purgeBookLibrary: ' + (e as Error).message)
+  }
 }
 
 async function stopScansIfHit(_user_id: string, _drive_id: string, _deletedSet: Set<string>) {
@@ -54,6 +61,7 @@ async function stopScansIfHit(_user_id: string, _drive_id: string, _deletedSet: 
   // 因为继续扫描可能基于已失效的 parent_file_id，且阿里云盘 walk 是全盘 server-side，
   // 部分进度损失影响很小（下次 incremental 还会重新跑）。
   if (MusicScanner.getInstance().isScanning) MusicScanner.getInstance().stopScan()
+  if (BookScanner.getInstance().isScanning) BookScanner.getInstance().stopScan()
   if (MediaScanner.getInstance().isCurrentlyScanning) MediaScanner.getInstance().stopScan()
 }
 
@@ -139,4 +147,14 @@ async function purgeMusicLibrary(
   } catch (e) {
     DebugLog.mSaveWarning('DB.deleteMusicTracksByIds: ' + (e as Error).message)
   }
+}
+
+async function purgeBookLibrary(user_id: string, drive_id: string, deletedSet: Set<string>) {
+  const books = await DB.getBookItemsByDrive(user_id, drive_id)
+  const ids = books
+    .filter(book => deletedSet.has(book.file_id) || (book.parent_file_id && deletedSet.has(book.parent_file_id)))
+    .map(book => book.id)
+  if (!ids.length) return
+  const bookStore = useBookLibraryStore()
+  await bookStore.deleteBooksByIds(ids)
 }

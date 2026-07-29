@@ -4,8 +4,7 @@ import useSettingStore from './settingstore'
 import MySwitch from '../layout/MySwitch.vue'
 import LimitReachedModal from './LimitReachedModal.vue'
 import { getAppNewPath, openExternal } from '../utils/electronhelper'
-import { CheckCircle2, Chrome, Crown, Github, Gift, Loader2, LogOut, Mail, RefreshCw } from 'lucide-vue-next'
-import ServerHttp from '../aliapi/server'
+import { CheckCircle2, Chrome, Code2, Crown, Github, Gift, Loader2, LogOut, Mail, RefreshCw } from 'lucide-vue-next'
 import { getPkgVersion } from '../utils/utils'
 import { modalUpdateLog } from '../utils/modal'
 import fs from 'node:fs'
@@ -17,7 +16,7 @@ import { t } from '../i18n'
 const platform = window.platform
 const settingStore = useSettingStore()
 const topTabOptions = [
-  { key: 'media-server', labelKey: 'nav.mediaServer' }, { key: 'search', labelKey: 'nav.search' }, { key: 'ai-workspace', labelKey: 'nav.aiWorkspace' },
+  { key: 'pan', labelKey: 'nav.pan' }, { key: 'media-server', labelKey: 'nav.mediaServer' }, { key: 'search', labelKey: 'nav.search' }, { key: 'ai-workspace', labelKey: 'nav.aiWorkspace' },
   { key: 'media', labelKey: 'nav.video' }, { key: 'music', labelKey: 'nav.music' }, { key: 'book', labelKey: 'nav.books' },
   { key: 'share', labelKey: 'nav.share' }, { key: 'rss', labelKey: 'nav.plugins' }
 ]
@@ -256,12 +255,26 @@ const installedAppVersion = ref(getPkgVersion())
 const getAppVersion = computed(() => installedAppVersion.value)
 
 const verLoading = ref(false)
-const handleCheckVer = () => {
+const handleCheckVer = async () => {
   verLoading.value = true
-  setTimeout(() => {
-    ServerHttp.CheckUpgrade()
+  try {
+    const state = await window.AutoUpdateCheck?.(true)
+    if (!state || state.status === 'unsupported') {
+      message.info('后台更新仅支持已打包的桌面版本')
+    } else if (state.status === 'downloading') {
+      message.info(state.version ? `新版本 ${state.version} 正在后台下载` : '新版本正在后台下载')
+    } else if (state.status === 'downloaded') {
+      message.success(state.version ? `新版本 ${state.version} 已下载，退出 App 后即可更新` : '新版本已下载，退出 App 后即可更新')
+    } else if (state.status === 'up-to-date') {
+      message.info(`已经是最新版 ${getAppVersion.value}`, 6)
+    } else if (state.status === 'error') {
+      message.error('检查更新失败，请检查网络是否正常')
+    } else {
+      message.info('正在检查更新')
+    }
+  } finally {
     verLoading.value = false
-  }, 200)
+  }
 }
 const handleUpdateLog = () => {
   modalUpdateLog()
@@ -293,8 +306,14 @@ const handleImportAsar = () => {
   <div class='settingcard'>
     <div class='settings-app-hero'>
       <div class='settings-app-badge'>{{ t('settings.application') }}</div>
-      <div class='appver'>BoxPlayer {{ getAppVersion }} <span class="appver-badge" :class="{ pro: isPro }">{{ isPro ? 'PRO' : t('settings.openSource') }}</span></div>
-      <div class='settings-app-subtitle'>{{ t('settings.subtitle') }}</div>
+      <div class='appver'>
+        BoxPlayer {{ getAppVersion }}
+        <span class="appver-badge" :class="{ pro: isPro }">
+          <Crown v-if="isPro" :size="15" :stroke-width="2.2" />
+          <Code2 v-else :size="15" :stroke-width="2.2" />
+          {{ isPro ? 'PRO' : t('settings.openSource') }}
+        </span>
+      </div>
     </div>
     <div class='settings-app-actions'>
       <a-button type='outline' status='success' size='small' @click='handleUpdateLog'>
@@ -423,8 +442,9 @@ const handleImportAsar = () => {
         <a-radio tabindex='-1' value='dark'>{{ t('common.dark') }}</a-radio>
       </a-radio-group>
     </div>
+    <div class='settingspace'></div>
+    <div class='settinghead'>{{ t('settings.hideTabs') }}</div>
     <div class='settingrow'>
-      <span style='margin-right: 12px'>{{ t('settings.hideTabs') }}</span>
       <a-checkbox v-for='tab in topTabOptions' :key='tab.key' :checked='settingStore.uiHiddenTopTabs.includes(tab.key)' @update:model-value='(hidden: boolean) => toggleTopTab(tab.key, hidden)'>{{ t(tab.labelKey as Parameters<typeof t>[0]) }}</a-checkbox>
     </div>
     <div class='settingspace'></div>
@@ -533,13 +553,6 @@ const handleImportAsar = () => {
   line-height: 1.4;
 }
 
-.settings-app-subtitle {
-  max-width: 520px;
-  color: var(--color-text-2);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
 .settings-app-actions {
   display: flex;
   flex-wrap: wrap;
@@ -561,9 +574,10 @@ const handleImportAsar = () => {
   }
 }
 
-.appver-badge{display:inline-block;margin-left:10px;padding:3px 12px;font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--color-text-3);background:var(--color-fill-2);border:1px solid var(--color-border);border-radius:6px;vertical-align:middle}
-.appver-badge.pro{color:#b45309;background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.4);box-shadow:0 1px 3px rgba(245,158,11,.15)}
-:global(html.dark) .appver-badge.pro{color:#fbbf24;background:rgba(251,191,36,.12);border-color:rgba(251,191,36,.35)}
+.appver-badge{display:inline-flex;align-items:center;gap:6px;margin-left:10px;padding:5px 11px;font-size:12px;font-weight:800;line-height:1;letter-spacing:.05em;color:var(--color-text-1);background:var(--color-fill-3);border:1px solid var(--color-border-2);border-radius:6px;vertical-align:middle;box-shadow:0 1px 3px rgba(15,23,42,.12)}
+.appver-badge.pro{color:#92400e;background:#fef3c7;border-color:#f59e0b;box-shadow:0 2px 8px rgba(245,158,11,.22)}
+:global(html.dark) .appver-badge{color:#e5e7eb;background:rgba(148,163,184,.16);border-color:rgba(148,163,184,.38)}
+:global(html.dark) .appver-badge.pro{color:#fde68a;background:rgba(180,83,9,.3);border-color:#f59e0b;box-shadow:0 2px 10px rgba(245,158,11,.18)}
 
 .setting-account-row {
   align-items: flex-start;

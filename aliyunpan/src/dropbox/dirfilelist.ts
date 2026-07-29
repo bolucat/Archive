@@ -76,7 +76,18 @@ export const resolveDropboxParentIdFromPath = (pathValue: string | undefined): s
 }
 
 export const apiDropboxFileList = async (user_id: string, parentId: string, limit = 500): Promise<DropboxMetadata[]> => {
-  const first = await dropboxRpc<DropboxListFolderResp>(user_id, '/files/list_folder', {
+  const items: DropboxMetadata[] = []
+  let cursor = ''
+  do {
+    const page = await apiDropboxFileListPage(user_id, parentId, limit, cursor)
+    items.push(...page.items)
+    cursor = page.hasMore ? page.cursor : ''
+  } while (cursor)
+  return items
+}
+
+export const apiDropboxFileListPage = async (user_id: string, parentId: string, limit = 500, cursor = ''): Promise<{ items: DropboxMetadata[]; cursor: string; hasMore: boolean }> => {
+  const first = await dropboxRpc<DropboxListFolderResp>(user_id, cursor ? '/files/list_folder/continue' : '/files/list_folder', cursor ? { cursor } : {
     path: resolveDropboxListPath(parentId),
     recursive: false,
     include_media_info: false,
@@ -85,19 +96,8 @@ export const apiDropboxFileList = async (user_id: string, parentId: string, limi
     include_mounted_folders: true,
     limit
   }, '获取 Dropbox 文件列表失败')
-  if (!first) return []
-
-  const entries = Array.isArray(first.entries) ? [...first.entries] : []
-  let cursor = first.cursor || ''
-  let hasMore = !!first.has_more
-  while (hasMore && cursor) {
-    const next = await dropboxRpc<DropboxListFolderResp>(user_id, '/files/list_folder/continue', { cursor }, '获取 Dropbox 文件列表失败')
-    if (!next) break
-    entries.push(...(Array.isArray(next.entries) ? next.entries : []))
-    cursor = next.cursor || ''
-    hasMore = !!next.has_more
-  }
-  return entries.filter((item) => item['.tag'] !== 'deleted')
+  if (!first) return { items: [], cursor: '', hasMore: false }
+  return { items: (Array.isArray(first.entries) ? first.entries : []).filter((item) => item['.tag'] !== 'deleted'), cursor: first.cursor || '', hasMore: !!first.has_more }
 }
 
 export const apiDropboxTemporaryLink = async (user_id: string, fileId: string): Promise<{ url: string; metadata?: DropboxMetadata; error: string }> => {

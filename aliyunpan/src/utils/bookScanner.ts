@@ -20,6 +20,7 @@ import useBookLibraryStore, { parseBookMeta } from '../store/booklibrary'
 import { IBookItem } from '../types/book'
 import { isScannableBookFormat } from './bookReaderCapabilities'
 import DebugLog from './debuglog'
+import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
 
 const ISBN_RE = /(?:ISBN(?:-1[03])?:?\s*)?((?:97[89][-\s]?)?\d[-\s]?\d{2,5}[-\s]?\d{2,7}[-\s]?\d{1,7}[-\s]?[\dXx])/g
 
@@ -46,6 +47,7 @@ import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
 import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
+import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
 
 const FOLDER_THROTTLE_MS = 50
 const BFS_MAX_DEPTH = 8
@@ -108,6 +110,8 @@ function readableTokenLabel(token: ITokenInfo): string {
     case 'quark': return `夸克网盘 · ${token.nick_name || token.user_name || ''}`.trim()
     case '139': return `139 云盘 · ${token.nick_name || token.user_name || ''}`.trim()
     case '189': return `天翼云盘 · ${token.nick_name || token.user_name || ''}`.trim()
+    case 'webdav': return `WebDAV · ${token.nick_name || token.user_name || ''}`.trim()
+    case 'alist': return `AList · ${token.nick_name || token.user_name || ''}`.trim()
     default: return token.nick_name || token.user_name || token.user_id
   }
 }
@@ -117,6 +121,7 @@ class BookScanner {
   private isRunning = false
   private shouldStop = false
   private silent = false
+  private hadError = false
 
   static getInstance(): BookScanner {
     if (!BookScanner.instance) BookScanner.instance = new BookScanner()
@@ -134,6 +139,7 @@ class BookScanner {
     this.isRunning = true
     this.shouldStop = false
     this.silent = false
+    this.hadError = false
     const store = useBookLibraryStore()
     const drive_id = folder.drive_id || ''
     const label = folder.name || '指定文件夹'
@@ -142,8 +148,9 @@ class BookScanner {
     store.setScanProgress(`正在扫描 ${label}`, 0, 0)
     try {
       await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0)
-      await store.markScanFinished()
+      if (!this.shouldStop && !this.hadError) await store.markScanFinished()
     } catch (e) {
+      this.hadError = true
       DebugLog.mSaveWarning('bookScanner.scanFolder failed: ' + (e as Error).message)
     } finally {
       store.setIsScanning(false)
@@ -159,6 +166,7 @@ class BookScanner {
     this.isRunning = true
     this.shouldStop = false
     this.silent = !!opts.silent
+    this.hadError = false
     const store = useBookLibraryStore()
     store.setIsScanning(true)
     try {
@@ -170,10 +178,11 @@ class BookScanner {
         try {
           await this.scanUser(u)
         } catch (e) {
+          this.hadError = true
           DebugLog.mSaveWarning('bookScanner.scanUser failed: ' + (e as Error).message)
         }
       }
-      await store.markScanFinished()
+      if (!this.shouldStop && !this.hadError) await store.markScanFinished()
     } finally {
       store.setIsScanning(false)
       this.isRunning = false
@@ -190,6 +199,24 @@ class BookScanner {
 
     if (token.tokenfrom === 'aliyun' || isAliyunUser(token.user_id)) {
       await this.scanAliyun(token, label)
+      return
+    }
+
+    if (token.tokenfrom === 'webdav' || token.tokenfrom === 'alist' || isWebDavDrive(token.default_drive_id)) {
+      const driveId = token.default_drive_id || `webdav:${token.access_token}`
+      const connection = getWebDavConnection(getWebDavConnectionId(driveId))
+      if (!connection) throw new Error('WebDAV 连接不存在或已被移除')
+      const rootFolder: IAliGetFileModel = {
+        ...({} as any),
+        file_id: '/',
+        parent_file_id: '',
+        drive_id: driveId,
+        name: '/',
+        isDir: true
+      } as IAliGetFileModel
+      ;(rootFolder as any).path = '/'
+      const counters = { scanned: 0, found: 0 }
+      await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0)
       return
     }
 
@@ -269,34 +296,61 @@ class BookScanner {
     counters: { scanned: number; found: number },
     depth: number
   ): Promise<void> {
-    if (this.shouldStop || depth > BFS_MAX_DEPTH) return
-    const store = useBookLibraryStore()
-    let items: IAliGetFileModel[] = []
-    try {
-      items = await this.listFolder(folder, user_id, drive_id)
-    } catch (e) {
-      DebugLog.mSaveWarning('bookScanner.listFolder failed: ' + (e as Error).message)
+    if (this.shouldStop) return
+    if (depth > BFS_MAX_DEPTH) {
+      this.hadError = true
+      DebugLog.mSaveWarning(`bookScanner depth limit reached: ${folder.name}`)
       return
     }
-    counters.scanned += items.length
-    const books = items.filter(isBookFile)
-    if (books.length) {
-      await store.appendBooks(books.map((it) => bookFromAliModel(it, user_id, drive_id, parent_path)), { addToLoaded: false })
-      counters.found += books.length
-    }
-    store.setScanProgress(`正在扫描 ${label}`, counters.scanned, counters.found)
+    const store = useBookLibraryStore()
+    try {
+      for await (const items of this.iterateFolderPages(folder, user_id, drive_id)) {
+        if (this.shouldStop) break
+        counters.scanned += items.length
+        const books = items.filter(isBookFile)
+        if (books.length) {
+          await store.appendBooks(books.map((it) => bookFromAliModel(it, user_id, drive_id, parent_path)), { addToLoaded: false })
+          counters.found += books.length
+        }
+        store.setScanProgress(`正在扫描 ${label}`, counters.scanned, counters.found)
 
-    for (const child of items) {
-      if (this.shouldStop) break
-      if (!child.isDir) continue
-      const childPath = parent_path ? `${parent_path}/${child.name}` : child.name
-      await delay(FOLDER_THROTTLE_MS)
-      await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1)
+        for (const child of items) {
+          if (this.shouldStop) break
+          if (!child.isDir) continue
+          const childPath = parent_path ? `${parent_path}/${child.name}` : child.name
+          await delay(FOLDER_THROTTLE_MS)
+          await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1)
+        }
+      }
+    } catch (e) {
+      this.hadError = true
+      DebugLog.mSaveWarning('bookScanner.listFolder failed: ' + (e as Error).message)
     }
+  }
+
+  private async *iterateFolderPages(folder: IAliGetFileModel, user_id: string, drive_id: string): AsyncGenerator<IAliGetFileModel[]> {
+    if (isWebDavDrive(drive_id)) {
+      const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
+      if (!connection) throw new Error('WebDAV 连接不存在或已被移除')
+      yield await listWebDavDirectory(connection, (folder as any).path || folder.file_id || '/')
+      return
+    }
+    if (isThirdPartyProviderFolder(user_id, drive_id)) {
+      yield* iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
+      return
+    }
+    if (isAliyunUser(user_id)) {
+      yield* AliDirFileList.ApiDirFileListPages(user_id, drive_id, folder.file_id, folder.name || '', 'name asc', '', false)
+      return
+    }
+    yield await this.listFolder(folder, user_id, drive_id)
   }
 
   private async listFolder(folder: IAliGetFileModel, user_id: string, drive_id: string): Promise<IAliGetFileModel[]> {
     const fileId = folder.file_id
+
+    const providerItems = await listProviderFolderItems({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
+    if (providerItems) return providerItems
 
     if (isCloud123User(user_id) || drive_id === 'cloud123') {
       const list = await apiCloud123FileList(user_id, fileId || '0', 100)

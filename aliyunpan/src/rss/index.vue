@@ -19,6 +19,7 @@ const panTreeStore = usePanTreeStore()
 const isAliyunAccount = computed(() => isAliyunUser(panTreeStore.user_id || ''))
 const aliyunOnlyMenus = new Set(['AppSame', 'RssScanPunish', 'RssScanEnmpty', 'RssDriveCopy'])
 const removedMenus = new Set(['RssDriveTools', 'RssMoveOrganize', 'RssMediaOrganize', 'RssRename', 'RssUserCopy'])
+withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 watch(
   () => [isAliyunAccount.value, appStore.GetAppTabMenu],
@@ -37,7 +38,7 @@ watch(
 
 <template>
   <a-layout style="height: 100%">
-    <a-layout-sider hide-trigger :width="218" class="xbyleft rss-sider single-boundary-sidebar">
+    <a-layout-sider v-show="sidebarVisible" hide-trigger :width="218" class="xbyleft rss-sider single-boundary-sidebar">
       <div class="headdesc">{{ t('plugins.title') }}</div>
       <a-menu :style="{ width: '100%' }" class="xbyleftmenu rss-leftmenu single-boundary-sidebar-menu"
               :selected-keys="[appStore.GetAppTabMenu]"
