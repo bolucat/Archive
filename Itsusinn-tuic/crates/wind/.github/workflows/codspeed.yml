@@ -1,0 +1,114 @@
+name: CodSpeed
+
+on:
+  push:
+    branches:
+      - "main"
+    tags:
+      - "v*"
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+      - unlabeled
+  # `workflow_dispatch` allows CodSpeed to trigger backtest
+  # performance analysis in order to generate initial data.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # for OpenID Connect authentication with CodSpeed
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codspeed:
+    name: Run benchmarks (${{ matrix.instrument }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      # Report both instruments even if one runner has an issue.
+      fail-fast: false
+      matrix:
+        instrument: [simulation, memory]
+        runner: [ubuntu-latest]
+    steps: &codspeed-steps
+      - uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Setup Rust cache
+        uses: Itsusinn/rust-cache@master
+
+      - name: Install cargo-codspeed
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-codspeed
+
+      # Pre-fetch wind-geodata's benchmark fixtures with curl so the bench's own
+      # TLS download doesn't run under CodSpeed's Valgrind instrumentation (rustls
+      # crypto can misbehave under Valgrind). The bench skips downloading when the
+      # files already exist.
+      - name: Fetch wind-geodata benchmark fixtures
+        run: |
+          mkdir -p crates/wind-geodata/testdata
+          base="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
+          curl -fsSL -o crates/wind-geodata/testdata/geoip.dat "$base/geoip.dat"
+          curl -fsSL -o crates/wind-geodata/testdata/geosite.dat "$base/geosite.dat"
+
+      - name: Build benchmarks — ${{ matrix.instrument }} mode
+        run: cargo codspeed build --workspace -m ${{ matrix.instrument }}
+
+      - name: Run the benchmarks (${{ matrix.instrument }})
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: ${{ matrix.instrument }}
+          run: cargo codspeed run --workspace
+
+  codspeed-walltime:
+    name: Run benchmarks (walltime)
+    runs-on: codspeed-macro
+    if: |
+      (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'walltime')) ||
+      (github.event_name == 'push' && startsWith(github.ref_name, 'v'))
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Setup Rust cache
+        uses: Itsusinn/rust-cache@master
+
+      - name: Install cargo-codspeed
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-codspeed
+
+      # Pre-fetch wind-geodata's benchmark fixtures with curl so the bench's own
+      # TLS download doesn't run under CodSpeed's Valgrind instrumentation (rustls
+      # crypto can misbehave under Valgrind). The bench skips downloading when the
+      # files already exist.
+      - name: Fetch wind-geodata benchmark fixtures
+        run: |
+          mkdir -p crates/wind-geodata/testdata
+          base="https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest"
+          curl -fsSL -o crates/wind-geodata/testdata/geoip.dat "$base/geoip.dat"
+          curl -fsSL -o crates/wind-geodata/testdata/geosite.dat "$base/geosite.dat"
+
+      - name: Build benchmarks — walltime mode
+        run: cargo codspeed build --workspace -m walltime
+
+      - name: Run the benchmarks (walltime)
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: walltime
+          run: cargo codspeed run --workspace

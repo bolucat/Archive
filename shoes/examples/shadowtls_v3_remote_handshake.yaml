@@ -1,0 +1,65 @@
+# server example of a single server that serves both normal TLS and ShadowTLS
+- address: 127.0.0.1:44300
+  transport: tcp
+  protocol:
+    type: tls
+
+    # specify different passwords and proxy protocols based on ShadowTLS SNI
+    shadowtls_targets:
+      example.com:
+        password: shadowtls-password
+        handshake:
+          # connect to example.com:443 as the handshake server
+          address: example.com:443
+          # optionally, use a client proxy for the handshake server connection.
+          # specify multiple proxies to load balance.
+          client_proxies:
+            # direct connection
+            - protocol:
+                type: direct
+            # connect through socks
+            - address: 127.0.0.1:5555
+              protocol:
+                type: socks
+                username: internal-socks-user
+                password: internal-socks-pass
+        protocol:
+          type: socks
+          username: socks-user
+          password: socks-pass
+
+      google.com:
+        password: shadowtls-password2
+        handshake:
+          # connect directly to google.com as the handshake server
+          address: google.com:443
+        protocol:
+          type: socks
+          username: google-socks-user
+          password: google-socks-pass
+
+    # regular TLS targets
+    tls_targets:
+      # provide a regular HTTPS proxy
+      example2.com:
+        key: private_key.pem
+        cert: cert.pem
+        protocol:
+          type: http
+          username: https-user
+          password: https-password
+
+    # default TLS target, when no SNI is provided or no SNI from `targets` matches.
+    default_tls_target:
+      key: default_key.pem
+      cert: default_cert.pem
+      protocol:
+        type: socks
+        username: default-socks-user
+        password: default-socks-pass
+
+  rules:
+    - mask: 0.0.0.0/0
+      action: allow
+      # client_chain: direct is optional - direct is the default when omitted
+      client_chain: direct

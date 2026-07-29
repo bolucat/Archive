@@ -1,0 +1,43 @@
+[workspace]
+members = ["crates/*"]
+exclude = ["crates/wind"]
+resolver = "2"
+
+[workspace.package]
+authors = ["Itsusinn <sun@ihsin.dev>"]
+version = "2.0.0-dev1"
+rust-version = "1.85.0"
+edition = "2024"
+readme = "README.md"
+description = "TUIC proxy protocol implementation"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/Itsusinn/tuic"
+
+[workspace.dependencies]
+quinn = { branch = "bbrv3", git = "https://github.com/Tipuch/quinn.git", default-features = false }
+quinn-proto = { branch = "bbrv3", git = "https://github.com/Tipuch/quinn.git", default-features = false }
+quinn-congestions = { git = "https://github.com/proxy-rs/quinn-congestions.git", default-features = false}
+
+[patch.crates-io]
+datagram-socket = { path = "crates/wind/forks/quiche/datagram-socket" }
+tokio-quiche = { path = "crates/wind/forks/quiche/tokio-quiche" }
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+unimplemented = "deny"
+todo = "deny"
+unreachable = "warn"
+cast_lossless = "warn"
+ptr_as_ptr = "warn"
+missing_safety_doc = "warn"
+cloned_instead_of_copied = "warn"
+
+[profile.release]
+opt-level = "z"
+debug = 1
+lto = "fat"
+strip = true
+incremental = false
+codegen-units = 1

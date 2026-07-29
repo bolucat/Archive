@@ -1,0 +1,8 @@
+[build.env]
+passthrough = ["RUSTFLAGS", "RUSTC_BOOTSTRAP"]
+
+# Use clang as the C/C++ compiler to avoid the aws-lc-sys GCC memcmp bug
+# https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95189
+# The custom Dockerfile installs clang/llvm and sets CC=clang, CXX=clang++, AR=llvm-ar
+[build.dockerfile]
+file = ".cross/Dockerfile"

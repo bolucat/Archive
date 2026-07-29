@@ -1,0 +1,25 @@
+- address: 127.0.0.1:44300
+  transport: tcp
+  protocol:
+    type: tls
+    # specify different configs based on ShadowTLS SNI
+    shadowtls_targets:
+      example.com:
+        password: asdf123
+        handshake:
+          # provide a cert and key to handle the server handshake in-process,
+          # without requiring a separate handshake server.
+          # NOTE: most ShadowTLS clients require the cert to still be signed
+          # by a known CA, so a self-signed cert will most likely fail.
+          cert: example.com.pem
+          key: example.com.pem
+        protocol:
+          type: socks
+          username: socks-user
+          password: socks-pass
+
+  rules:
+    - mask: 0.0.0.0/0
+      action: allow
+      # client_chain: direct is optional - direct is the default when omitted
+      client_chain: direct

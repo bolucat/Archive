@@ -1,0 +1,23 @@
+[package]
+name = "wind-geodata"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "GeoSite/GeoIP data loader with rkyv zero-copy mmap support"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+geosite-rs = "0.1.6"
+rkyv = { version = "0.8", features = ["bytecheck"] }
+memmap2 = "0.9"
+
+thiserror = "2"
+
+[dev-dependencies]
+criterion = { version = "4.7.0", package = "codspeed-criterion-compat" }
+ureq = "3"
+tempfile = "3"
+
+[[bench]]
+name = "query_bench"
+harness = false

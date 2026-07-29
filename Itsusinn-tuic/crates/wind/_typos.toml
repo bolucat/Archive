@@ -1,0 +1,7 @@
+[files]
+# Vendored upstream crates under patches/ (e.g. tokio-quiche) carry their own
+# upstream typos; don't spell-check third-party code we only patch minimally.
+extend-exclude = ["patches/"]
+
+[default.extend-words]
+dbe = "dbe"

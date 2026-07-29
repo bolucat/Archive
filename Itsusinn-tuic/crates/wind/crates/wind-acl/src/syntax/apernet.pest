@@ -1,0 +1,35 @@
+// wind-acl apernet ACL grammar — the real Hysteria 2 (apernet/hysteria)
+// function-call ACL form.
+//
+//   Format:   outbound(address[, proto/port[, hijack]])
+//   Examples: reject(all, udp/443)   default(8.8.8.8, *, 1.1.1.1)
+//             v6_only(suffix:google.com)   reject(geoip:cn)
+//
+// This is NOT the tuic-server space-separated `legacy` dialect. The grammar
+// here only splits a line into the outbound name and up to three
+// comma-separated argument strings — mirroring the upstream Go line regex
+// `^(\w+)\s*\(([^,]+)(?:,([^,]+))?(?:,([^,]+))?\)$`. Each argument is then
+// trimmed and parsed semantically in Rust, exactly as apernet's
+// `extras/outbounds/acl/compile.go` does (ordered prefix dispatch, ParseIP,
+// ParseCIDR, ParseProtoPort). `#` comments are stripped before parsing.
+
+WHITESPACE = _{ " " | "\t" }
+
+acl_rule = { SOI ~ outbound ~ "(" ~ arg ~ ("," ~ arg)? ~ ("," ~ arg)? ~ ")" ~ EOI }
+
+// Outbound name: Go regex `\w+` == ASCII [A-Za-z0-9_]+ (>=1 char). NOTE: no
+// hyphen or dot, unlike the `legacy` dialect's outbound rule.
+outbound = @{ (ASCII_ALPHANUMERIC | "_")+ }
+
+// One raw argument: any run of non-comma, non-paren characters (UTF-8 ok). The
+// `arg` is atomic so internal structure (`/`, `:`, `*`, `@`, `.`) is preserved
+// verbatim; edges are trimmed and the value is dispatched in Rust. An empty
+// argument cannot match (`+`), so `boom()` (0 args) and a trailing `,,` are
+// rejected, and a 4th argument has no group to land in — matching upstream.
+//
+// Two deliberate narrowings vs upstream's end-anchored `[^,]+` line regex (both
+// harmless — they only reject degenerate inputs that never occur in real ACLs):
+// an argument terminates at the FIRST `)` (so an address containing a literal
+// `)` is rejected), and a whitespace-only argument is rejected (upstream would
+// trim it to an empty proto/port meaning "both protocols, any port").
+arg = @{ (!("," | ")") ~ ANY)+ }

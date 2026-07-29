@@ -1,0 +1,45 @@
+[package]
+name = "wind-acme"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "ACME certificate management for wind"
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["aws-lc-rs", "resolver"]
+ring = ["rustls/ring", "rustls-acme?/ring"]
+aws-lc-rs = ["rustls/aws-lc-rs", "rustls-acme?/aws-lc-rs"]
+# `rustls-acme`-backed resolver flow with background renewal (returns a rustls
+# cert resolver). Used by the quinn backend.
+resolver = ["dep:rustls-acme", "dep:tokio-stream", "dep:arc-swap"]
+# One-shot HTTP-01 certificate provisioning + self-signed generation that writes
+# the PEM chain/key to disk (for backends that load TLS material from files, e.g.
+# quiche/tokio-quiche). Uses `instant-acme` rather than the `rustls-acme` state
+# machine that backs the resolver-based flow.
+http01 = ["dep:instant-acme", "dep:x509-parser", "dep:rcgen", "dep:time"]
+
+[dependencies]
+# TLS / ACME
+rustls = { version = "0.23", default-features = false }
+rustls-acme = { git = "https://github.com/rust-proxy/rustls-acme", branch = "main-fork", default-features = false, features = ["tower", "webpki-roots"], optional = true }
+
+# HTTP challenge server (used by both the resolver and http01 flows)
+axum = { version = "0.8", features = ["tokio"] }
+
+# Async
+tokio = { version = "1", default-features = false, features = ["macros", "net", "time", "rt", "fs", "sync"] }
+tokio-stream = { version = "0.1", optional = true }
+tokio-util = { version = "0.7", features = ["rt"] }
+async-trait = "0.1"
+
+# Utilities
+arc-swap = { version = "1", optional = true }
+eyre = "0.6"
+tracing = "0.1"
+
+# One-shot HTTP-01 provisioning + self-signed generation (feature = "http01")
+instant-acme = { version = "0.8", features = ["rcgen"], optional = true }
+x509-parser = { version = "0.18.1", optional = true }
+rcgen = { version = "0.14", features = ["aws_lc_rs", "pem"], optional = true }
+time = { version = "0.3", optional = true }

@@ -1,0 +1,10 @@
+debug/
+target/
+**/*.rs.bk
+/target
+config.toml
+# ...but the workspace's `.cargo/config.toml` IS tracked: it carries
+# `RUSTC_BOOTSTRAP=1` (needed for the repo's nightly rustfmt.toml options) and the
+# `--cfg reqwest_unstable` flag that the `h3-masquerade-test` feature relies on.
+!.cargo/config.toml
+.claude

@@ -1,0 +1,40 @@
+[package]
+name = "wind"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "A proxy tool written in Rust"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+wind-core = { path = "../wind-core"}
+wind-socks = { path = "../wind-socks"}
+wind-tuic = { path = "../wind-tuic", features = ["quinn"] }
+wind-naive = { path = "../wind-naive" }
+
+# Async
+tokio = { version = "1", features = ["rt-multi-thread", "signal", "net"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+
+tracing = "0.1"
+
+clap = { version = "4", features = ["derive"] }
+clap_derive = { version = "4" }
+
+time = { version = "0.3", features = ["macros", "local-offset"] }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["tracing-log", "std", "local-time","fmt", "ansi"] }
+const-str = "1.1.0"
+
+eyre = "0.6"
+uuid = { version = "1", features = ["serde"] }
+
+# Configuration
+figment = { version = "0.10", features = ["yaml", "env", "toml"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9.34-deprecated"
+toml = "1.1.2+spec-1.1.0"
+educe = { version = "0.6", features = ["Default"] }
+humantime-serde = "1"
+
+[features]
+default = []

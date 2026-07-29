@@ -1,0 +1,76 @@
+[package]
+name = "tokio-quiche"
+version = "0.19.0"
+description = "Asynchronous wrapper around quiche"
+edition = "2021"
+license = "BSD-2-Clause"
+keywords = ["quic", "http3", "tokio"]
+categories = ["network-programming"]
+readme = "README.md"
+rust-version = "1.88"
+
+[features]
+default = ["qlog-gzip", "qlog-zstd"]
+
+fuzzing = ["quiche/fuzzing"]
+quiche_internal = ["quiche/internal"]
+
+perf-quic-listener-metrics = []
+rpk = ["boring/rpk"]
+gcongestion = ["quiche/gcongestion"]
+zero-copy = ["gcongestion"]
+custom-client-dcid = ["quiche/custom-client-dcid"]
+capture_keylogs = []
+tokio-task-metrics = []
+
+qlog-gzip = ["qlog/gzip"]
+qlog-zstd = ["qlog/zstd"]
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(capture_keylogs)"]
+
+[dependencies]
+anyhow = "1"
+boring = "4.3"
+bytes = "1.11.1"
+crossbeam = { version = "0.8.1", default-features = false }
+datagram-socket = "0.8.0"
+foundations = { version = ">=4,<6", default-features = false, features = ["server-client-common-default"] }
+futures = "0.3"
+futures-util = { version = "0.3", default-features = false }
+ipnetwork = "0.20"
+log = "0.4.20"
+octets = "0.3.5"
+pin-project = "1.0.12"
+qlog = { version = "0.18.0", features = ["foundations"] }
+quiche = { version = "0.29.0", features = ["boringssl-boring-crate", "qlog"] }
+serde = { version = "1", features = ["derive", "rc"] }
+serde_with = { version = "3.20.0", default-features = false }
+slog-scope = "4.0"
+slog-stdlog = "4.1.1"
+smallvec = { version = "1.10", default-features = false }
+task-killswitch = "0.2.1"
+thiserror = "2"
+tokio = { version = "1.44", default-features = false, features = ["macros", "rt"] }
+tokio-stream = { version = "0.1", features = ["net", "io-util"] }
+tokio-util = { version = "0.7.13", features = ["compat", "time", "codec", "io", "rt"] }
+url = "2"
+
+[dev-dependencies]
+assert_matches = "1"
+clap = { version = "4.5.40", features = ["derive"] }
+env_logger = "0.11"
+h3i = "0.6"
+http = "1"
+http-body = "1"
+http-body-util = "0.1"
+regex = "1.4.2"
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1.44", features = ["time", "test-util", "rt-multi-thread"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = { version = "0.2.76", default-features = false }
+nix = { version = "0.30.1", features = ["net", "uio", "socket", "signal"] }

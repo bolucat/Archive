@@ -1,0 +1,104 @@
+[package]
+name = "shoes"
+version = "0.2.8"
+edition = "2024"
+license = "MIT"
+description = "A multi-protocol proxy server."
+homepage = "https://github.com/cfal/shoes/"
+repository = "https://github.com/cfal/shoes/"
+readme = "README.md"
+keywords = ["proxy", "proxy-server", "shadowsocks", "v2ray", "vmess"]
+categories = ["command-line-utilities", "network-programming"]
+
+[lib]
+name = "shoes"
+# rlib = Rust library (for Rust dependencies)
+# cdylib = C dynamic library (.so on Linux/Android, .dylib on macOS)
+# staticlib = C static library (.a) - required for iOS
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "shoes"
+path = "src/main.rs"
+
+[features]
+default = []
+ffi = []  # Enable FFI module for non-Android builds
+
+[dependencies]
+async-trait = "*"
+aws-lc-rs = { version = "*", default-features = false }
+base64 = "*"
+blake3 = "*"
+bytes = "*"
+chrono = "*"
+dashmap = "*"
+digest = "*"
+etherparse = "*"
+futures = "*"
+h2 = "*"
+h3 = "*"
+h3-quinn = "*"
+hickory-resolver = { version = "*", default-features = false, features = ["tokio", "tls-aws-lc-rs", "https-aws-lc-rs", "h3-aws-lc-rs"] }
+http = "*"
+http-body-util = "*"
+hyper = { version = "*", features = ["server", "http1", "http2"] }
+hyper-util = { version = "*", features = ["tokio", "server"] }
+indexmap = "*"
+libc = "*"
+log = { version = "*", features = ["std", "release_max_level_info"] }
+lru = "*"
+md-5 = "*"
+memchr = "*"
+mime_guess = "*"
+notify = "*"
+parking_lot = "*"
+percent-encoding = "*"
+quinn = { version = "*", default-features = false, features = ["log", "platform-verifier", "runtime-tokio", "rustls-aws-lc-rs"] }
+rand = "*"
+rand_core = "*"
+rcgen = { version = "*", default-features = false, features = ["aws_lc_rs", "pem"] }
+rust-argon2 = "*"
+rustc-hash = "*"
+rustls = "*"
+serde = { version = "*", features = ["derive", "std"] }
+serde_yaml = "*"
+shake = "*"
+smoltcp = { version = "*", default-features = false, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-icmp", "socket-udp", "socket-tcp", "socket-tcp-cubic", "phy-tuntap_interface", "assembler-max-segment-count-32"] }
+socket2 = "*"
+subtle = "*"
+tokio = { version = "*", features = [
+    "fs",
+    "io-util",
+    "macros",
+    "net",
+    "rt-multi-thread",
+    "sync",
+    "time",
+] }
+tokio-util = { version = "*", features = ["time"] }
+tun = { version = "*", features = ["async"] }
+url = "*"
+webpki-roots = { version = "*" }
+x509-parser = { version = "*", default-features = false, features = ["verify-aws"] }
+
+[dev-dependencies]
+rcgen = { version = "*", default-features = false, features = ["aws_lc_rs", "pem"] }
+rustls-pemfile = "*"
+serde_json = "*"
+tempfile = "*"
+tokio-rustls = "*"
+
+# jemalloc for better memory performance (not supported on Windows MSVC, iOS, or Android)
+[target.'cfg(not(any(target_env = "msvc", target_os = "ios", target_os = "android")))'.dependencies]
+tikv-jemallocator = "*"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "*"
+jni = "0.22"
+ndk-sys = "*"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+strip = true

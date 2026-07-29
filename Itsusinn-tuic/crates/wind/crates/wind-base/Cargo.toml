@@ -1,0 +1,25 @@
+[package]
+name = "wind-base"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description.workspace = true
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+wind-core = { path = "../wind-core" }
+
+tokio = { version = "1", default-features = false, features = ["net", "sync", "time"] }
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }
+socket2 = "0.6"
+
+eyre = "0.6"
+tracing = "0.1"
+bytes = "1"
+async-trait = "0.1"
+
+[dev-dependencies]
+wind-core = { path = "../wind-core" }
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread", "rt", "net", "time", "sync"] }
+bytes = "1"
+tokio-util = { version = "0.7", default-features = false, features = ["rt"] }

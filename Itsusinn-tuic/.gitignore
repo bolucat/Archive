@@ -1,0 +1,11 @@
+.vscode/
+target/
+.DS_Store
+.idea/
+
+tuic-server/dbg.toml
+
+client.json
+client.json5
+lcov.info
+config.toml

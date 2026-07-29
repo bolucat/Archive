@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    tags: ["v*"]
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUST_LOG: "wind=TRACE"
+  RUST_TOOLCHAIN: "stable"
+  RUSTC_BOOTSTRAP: "1"
+
+jobs:
+  build:
+    name: Build
+    uses: rust-proxy/workflows/.github/workflows/rust-build.yml@main
+    with:
+      rust-toolchain: "stable"
+      packages: "wind"
+      target-config-file: ".github/target.toml"
+      # The reusable workflow exports this as the `RUSTFLAGS` env var, which
+      # overrides `.cargo/config.toml [build] rustflags`; mirror the committed
+      # `--cfg reqwest_unstable` here so it stays enabled in CI (inert unless a
+      # crate also turns on reqwest's `http3` feature).
+      rustflags: "--cfg reqwest_unstable"
+      enable-tmate: false
+      only-clippy-tests-on-pr: false
+      # Two constraints:
+      #  1. GitHub caps the per-repo Actions cache at 10 GB, shared across all
+      #     matrix targets (currently 12) → 10 GB / 12 ≈ 850M each.
+      #  2. The sccache directory also consumes runner-local disk *during* the
+      #     build, on top of the (large) `target/` tree. The release build with
+      #     the `quiche`/boringssl stack was exhausting the ~14 GB runner disk
+      #     ("No space left on device") at 850M, so keep it well below the cache
+      #     cap to leave build headroom.
+      # Re-derive if targets are added/removed or the dependency footprint grows.
+      sccache-max-size: "400M"
+
+  release:
+    name: Release
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+    needs: [build]
+    uses: rust-proxy/workflows/.github/workflows/release-publish.yml@main
+    with:
+      cliff-config: '.github/cliff.toml'
+      create-latest-on-push: true
+
+  docker:
+    name: Docker
+    needs: [build]
+    uses: rust-proxy/workflows/.github/workflows/docker-publish.yml@main
+    with:
+      docker-file: '.github/Dockerfile'
+      image-name: 'wind'
+      platforms: 'linux/amd64,linux/arm64'
+      binary-dir: './docker-bins'
+      server-binary-amd64: 'wind-x86_64-linux-musl'
+      server-binary-arm64: 'wind-aarch64-linux-musl'

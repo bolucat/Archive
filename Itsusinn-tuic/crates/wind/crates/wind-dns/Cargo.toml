@@ -1,0 +1,27 @@
+[package]
+name = "wind-dns"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description = "DNS resolver for the wind proxy framework"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+wind-core = { path = "../wind-core", default-features = false }
+
+hickory-resolver = { version = "0.26", default-features = false, features = [
+	"system-config",
+	"tokio",
+	"tls-aws-lc-rs",
+	"https-aws-lc-rs",
+	"webpki-roots",
+] }
+
+tokio = { version = "1", default-features = false, features = ["net"] }
+serde = { version = "1", features = ["derive"] }
+educe = "0.6"
+eyre = "0.6"
+humantime-serde = "1"
+
+[dev-dependencies]
+toml = "1.0"

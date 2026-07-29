@@ -1,0 +1,111 @@
+[package]
+name = "wind-tuic"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description.workspace = true
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["server", "client", "quinn", "aws-lc-rs", "masquerade"]
+decode = ["tuic-core/decode"]
+encode = ["tuic-core/encode"]
+# The server decodes client requests AND encodes UDP response datagrams, so it
+# needs both codec directions (matching the former wind-tuiche `server` feature).
+# `dashmap` backs the server-only `ActiveConnections` registry (per-user limits +
+# active kick).
+server = ["decode", "encode", "dep:dashmap"]
+client = ["encode"]
+
+# HTTP/3 masquerade: when a connecting client speaks real HTTP/3 instead of TUIC,
+# pose as a genuine HTTP/3 web server by reverse-proxying to a configured upstream
+# site. Backend-agnostic via the `wind-quic` h3 adapter, so it covers both the
+# quinn and quiche backends. The runtime `[masquerade].enabled` flag gates it; the
+# feature only compiles the code + deps in.
+masquerade = [
+    "server",
+    "wind-quic/h3",
+    "dep:h3",
+    "dep:http",
+    "dep:reqwest",
+]
+
+# Quinn Backend
+quinn = [
+    "wind-quic/quinn",
+    "dep:quinn",
+    "dep:quinn-congestions",
+    "dep:tokio-rustls",
+    "dep:rustls",
+    "dep:rustls-platform-verifier",
+]
+aws-lc-rs = [
+    "rustls/aws-lc-rs",
+    "quinn/rustls-aws-lc-rs",
+    "dep:aws-lc-rs",
+    "aws-lc-rs?/prebuilt-nasm"
+]
+ring = [
+    "rustls/ring",
+    "quinn/rustls-ring"
+]
+
+# Quiche (tokio-quiche) backend — the TUIC protocol runs through the same
+# backend-agnostic core over `wind_quic::quiche::QuicheConnection`.
+quiche = ["wind-quic/quiche"]
+
+[dependencies]
+wind-core = { path = "../wind-core", features = ["quic"] }
+tuic-core = { path = "../tuic-core", default-features = false }
+# Backend-agnostic QUIC abstraction. The TUIC protocol core is generic over
+# `wind_quic::QuicConnection`; the `quinn`/`quiche` features enable the matching
+# wind-quic backend.
+wind-quic = { path = "../wind-quic", default-features = false }
+
+# Async
+tokio = { version = "1", default-features = false, features = ["net", "time", "rt", "sync", "io-util", "macros"] }
+tokio-util = { version = "0.7", features = ["codec", "rt"] }
+tokio-stream = "0.1"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+# Utilities
+bytes = "1"
+eyre = "0.6"
+uuid = { version = "1", features = ["v4"] }
+crossfire = { version = "3", features = ["tokio"] }
+moka = { version = "0.12", features = ["future"] }
+# Server-only live-connection registry (per-user limits + active kick); enabled
+# by the `server` feature.
+dashmap = { version = "6", optional = true }
+arc-swap = "1.9.1"
+serde = { version = "1", features = ["derive"] }
+enum_dispatch = "0.3"
+secrecy = "0.10"
+pin-project = "1"
+portable-atomic = { version = "1" }
+thiserror = "2"
+tracing = "0.1"
+
+# QUIC with quinn
+quinn = { workspace = true, default-features = false, features = ["runtime-tokio"], optional = true }
+quinn-congestions = { workspace = true, optional = true }
+
+# TLS for quinn
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging"], optional = true }
+rustls = { version  = "0.23", default-features = false, optional = true }
+rustls-platform-verifier = { version = "0.7", default-features = false, optional = true }
+aws-lc-rs = { version = "*", optional = true, default-features = false }
+
+# HTTP/3 masquerade: the transport-agnostic h3 server engine plus a `reqwest`
+# reverse-proxy client to the upstream site (reqwest owns TLS/roots/pooling, so
+# no hyper/rustls plumbing here). Gated behind the `masquerade` feature.
+h3 = { version = "0.0.8", optional = true }
+http = { version = "1", optional = true }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "http2"], optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util", "macros", "rt-multi-thread", "io-util"] }
+eyre = "0.6"
+color-eyre = { version = "0.6", default-features = false }
+rcgen = "0.14.7"
+test-log = { version = "0.2", features = ["trace"] }

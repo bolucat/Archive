@@ -1,0 +1,55 @@
+[package]
+name = "wind-test"
+version.workspace = true
+repository.workspace = true
+edition.workspace = true
+description.workspace = true
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["aws-lc-rs"]
+aws-lc-rs = [
+    "rustls/aws-lc-rs",
+    "aws-lc-rs/prebuilt-nasm"
+]
+ring = [
+    "rustls/ring",
+]
+
+[dependencies]
+wind-core = { path = "../wind-core"}
+wind-socks = { path = "../wind-socks"}
+wind-tuic = { path = "../wind-tuic", features = ["quinn"] }
+
+bytes = "1"
+ctor = "1.0"
+
+# Async
+tokio = { version = "1", default-features = false, features = ["net"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-stream = "0.1"
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+
+
+# TLS
+rustls = "0.23"
+rcgen = "0.14"
+aws-lc-rs = { version = "*", optional = true, default-features = false }
+fast-socks5 = "1.0.0-rc.0"
+eyre = "0.6"
+tracing = { version = "0.1", default-features = false, features = ["attributes"] }
+criterion = { version = "4.7.0", package = "codspeed-criterion-compat" }
+
+[dev-dependencies]
+tokio = { version = "1", default-features = false, features = ["macros", "rt-multi-thread", "io-util", "net", "time"] }
+uuid = { version = "1", features = ["v4"] }
+async-trait = "0.1"
+# `no-env-filter` is required: the macro silently ignores its `default_filter`
+# argument and otherwise locks the filter to `<test_crate>=trace`, which would
+# reject every `target: "udp"` / `"tuic_out"` event the test wants to inspect.
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
+
+
+[[bench]]
+name = "arc_bench"
+harness = false
