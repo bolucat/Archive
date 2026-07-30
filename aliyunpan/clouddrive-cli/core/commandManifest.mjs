@@ -1,4 +1,4 @@
-export const COMMAND_MANIFEST_VERSION = 7
+export const COMMAND_MANIFEST_VERSION = 9
 
 const LARGE_OUTPUT_COMMANDS = new Set([
   'files list',
@@ -6,7 +6,6 @@ const LARGE_OUTPUT_COMMANDS = new Set([
   'files tree',
   'files stats',
   'files search',
-  'organize analyze',
 ])
 
 const PROVIDER_REQUIREMENTS = {
@@ -16,7 +15,6 @@ const PROVIDER_REQUIREMENTS = {
   'files trash-apply': { capability: 'trash' },
   'upload apply': { capability: 'uploadFile' },
   'files download': { capability: 'downloadFile' },
-  'organize apply': { capability: 'mkdir/move/batchRename' },
 }
 
 function arg(name, fields = {}) {
@@ -26,39 +24,6 @@ function arg(name, fields = {}) {
 function opt(name, fields = {}) {
   return { name, ...fields }
 }
-
-const OPEN_DATALOADER_PDF_OPTIONS = [
-  opt('pdf-format', { type: 'string' }),
-  opt('pdf-password', { type: 'string' }),
-  opt('pdf-content-safety-off', { type: 'string' }),
-  opt('pdf-sanitize', { type: 'boolean' }),
-  opt('pdf-keep-line-breaks', { type: 'boolean' }),
-  opt('pdf-replace-invalid-chars', { type: 'string' }),
-  opt('pdf-use-struct-tree', { type: 'boolean' }),
-  opt('pdf-table-method', { type: 'string' }),
-  opt('pdf-reading-order', { type: 'string' }),
-  opt('pdf-markdown-page-separator', { type: 'string' }),
-  opt('pdf-markdown-with-html', { type: 'boolean' }),
-  opt('pdf-text-page-separator', { type: 'string' }),
-  opt('pdf-html-page-separator', { type: 'string' }),
-  opt('pdf-image-output', { type: 'string' }),
-  opt('pdf-image-format', { type: 'string' }),
-  opt('pdf-image-dir', { type: 'path' }),
-  opt('pdf-pages', { type: 'string' }),
-  opt('pdf-include-header-footer', { type: 'boolean' }),
-  opt('pdf-detect-strikethrough', { type: 'boolean' }),
-  opt('pdf-hybrid', { type: 'string' }),
-  opt('pdf-hybrid-mode', { type: 'string' }),
-  opt('pdf-hybrid-url', { type: 'string' }),
-  opt('pdf-hybrid-timeout', { type: 'string' }),
-  opt('pdf-hybrid-fallback', { type: 'boolean' }),
-  opt('pdf-hybrid-hancom-ai-regionlist-strategy', { type: 'string' }),
-  opt('pdf-hybrid-hancom-ai-ocr-strategy', { type: 'string' }),
-  opt('pdf-hybrid-hancom-ai-image-cache', { type: 'string' }),
-  opt('pdf-to-stdout', { type: 'boolean' }),
-  opt('pdf-threads', { type: 'string' }),
-  opt('pdf-verbose', { type: 'boolean' }),
-]
 
 export const COMMAND_MANIFEST = [
   {
@@ -123,6 +88,26 @@ export const COMMAND_MANIFEST = [
     args: [],
     options: [opt('json', { type: 'boolean' })],
     output: 'SettingsSummary',
+  },
+  {
+    group: 'schema',
+    name: 'commands',
+    command: 'schema commands',
+    description: 'Return the machine-readable command manifest.',
+    access: 'read',
+    args: [],
+    options: [opt('group', { type: 'string' }), opt('json', { type: 'boolean' })],
+    output: 'CommandManifest',
+  },
+  {
+    group: 'schema',
+    name: 'plans',
+    command: 'schema plans',
+    description: 'Return machine-readable schemas and examples for plan JSON files.',
+    access: 'read',
+    args: [],
+    options: [opt('name', { type: 'string' }), opt('json', { type: 'boolean' })],
+    output: 'PlanSchema[]',
   },
   {
     group: 'providers',
@@ -254,54 +239,6 @@ export const COMMAND_MANIFEST = [
     undoable: false,
   },
   {
-    group: 'media',
-    name: 'scan',
-    command: 'media scan',
-    description: 'Analyze FileItems and classify media files.',
-    access: 'read',
-    args: [],
-    options: [opt('input', { type: 'path', required: true }), opt('json', { type: 'boolean' })],
-    output: 'MediaScanReport',
-  },
-  {
-    group: 'media',
-    name: 'match',
-    command: 'media match',
-    description: 'Extract media naming metadata from FileItems.',
-    access: 'read',
-    args: [],
-    options: [opt('input', { type: 'path', required: true }), opt('json', { type: 'boolean' })],
-    output: 'MediaMatch[]',
-  },
-  {
-    group: 'docs',
-    name: 'read',
-    command: 'docs read',
-    description: 'Read a local document for AI context. PDF files are converted through OpenDataLoader when available.',
-    access: 'read',
-    args: [arg('path', { type: 'path', required: true, positional: true })],
-    options: [
-      opt('max-chars', { type: 'number' }),
-      ...OPEN_DATALOADER_PDF_OPTIONS,
-      opt('json', { type: 'boolean' }),
-    ],
-    output: 'DocumentContext',
-  },
-  {
-    group: 'docs',
-    name: 'convert',
-    command: 'docs convert',
-    description: 'Convert PDF files or folders through the full OpenDataLoader PDF option surface.',
-    access: 'read',
-    args: [arg('path', { type: 'path', required: true, positional: true })],
-    options: [
-      opt('output', { type: 'path', required: true }),
-      ...OPEN_DATALOADER_PDF_OPTIONS,
-      opt('json', { type: 'boolean' }),
-    ],
-    output: 'OpenDataLoaderConvertResult',
-  },
-  {
     group: 'upload',
     name: 'plan',
     command: 'upload plan',
@@ -322,38 +259,6 @@ export const COMMAND_MANIFEST = [
     output: 'UploadApplyResult',
     requiresDryRun: true,
     undoable: false,
-  },
-  {
-    group: 'organize',
-    name: 'analyze',
-    command: 'organize analyze',
-    description: 'Analyze a cloud-drive directory or FileItem JSON input for organization.',
-    access: 'read',
-    args: [],
-    options: [opt('input', { type: 'path' }), opt('provider', { type: 'string' }), opt('account', { type: 'string' }), opt('file-id', { type: 'string' }), opt('depth', { type: 'number' }), opt('output', { type: 'path' }), opt('summary', { type: 'boolean' }), opt('json', { type: 'boolean' })],
-    output: 'OrganizeAnalysis',
-  },
-  {
-    group: 'organize',
-    name: 'plan',
-    command: 'organize plan',
-    description: 'Generate a cloud-drive organization plan.',
-    access: 'read',
-    args: [],
-    options: [opt('analysis', { type: 'path', required: true }), opt('rules', { type: 'path' }), opt('output', { type: 'path' }), opt('summary', { type: 'boolean' }), opt('json', { type: 'boolean' })],
-    output: 'OrganizePlan',
-  },
-  {
-    group: 'organize',
-    name: 'apply',
-    command: 'organize apply',
-    description: 'Validate or execute a cloud-drive organization plan.',
-    access: 'write',
-    args: [arg('plan', { type: 'path', required: true, positional: true })],
-    options: [opt('dry-run', { type: 'boolean' }), opt('summary', { type: 'boolean' }), opt('json', { type: 'boolean' })],
-    output: 'OrganizeApplyResult',
-    requiresDryRun: true,
-    undoable: true,
   },
   {
     group: 'ops',
@@ -396,13 +301,13 @@ function hasOption(command, name) {
 function examplesFor(command) {
   const c = command.command
   if (c === 'auth list') return ['clouddrive-cli auth list --format json']
+  if (c === 'schema commands') return ['clouddrive-cli schema commands --format json']
+  if (c === 'schema plans') return ['clouddrive-cli schema plans --format json']
   if (c === 'providers capabilities') return ['clouddrive-cli providers capabilities --format json']
   if (c === 'files list') return ['clouddrive-cli files list --provider aliyun --account default --file-id root --limit 100 --format json']
   if (c === 'files download') return ['clouddrive-cli files download --provider aliyun --account default --file-id <file-id> --output ./download.bin --format json']
   if (c === 'files walk') return ['clouddrive-cli files walk --provider aliyun --account default --file-id <folder-id> --output files.json --format json']
   if (c === 'files stats') return ['clouddrive-cli files stats --provider aliyun --account default --file-id root --depth 2 --output stats.json --format json']
-  if (c === 'docs read') return ['clouddrive-cli docs read ./rules.pdf --pdf-format markdown --pdf-pages 1-3 --format json']
-  if (c === 'docs convert') return ['clouddrive-cli docs convert ./pdf-folder --output ./out --pdf-format json,html,pdf,markdown,tagged-pdf --format json']
   if (c === 'upload apply') return ['clouddrive-cli upload apply upload-plan.json --dry-run --rationale "User requested backup" --format json']
   return [`clouddrive-cli ${c} --format json`]
 }
@@ -411,6 +316,7 @@ function decorateCommand(command) {
   const largeOutput = LARGE_OUTPUT_COMMANDS.has(command.command)
   const options = [...(command.options || [])]
   if (largeOutput && !hasOption(command, 'output')) options.splice(Math.max(0, options.length - 1), 0, opt('output', { type: 'path' }))
+  if (command.requiresDryRun && !hasOption({ options }, 'confirm-apply')) options.splice(Math.max(0, options.length - 1), 0, opt('confirm-apply', { type: 'boolean' }))
   if (command.access === 'write' && !hasOption({ options }, 'rationale')) options.splice(Math.max(0, options.length - 1), 0, opt('rationale', { type: 'string' }))
   return {
     ...command,

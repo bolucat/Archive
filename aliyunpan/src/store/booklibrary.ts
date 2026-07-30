@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref, shallowRef } from 'vue'
 import type { IBookItem } from '../types/book'
+import type { ILibrarySource } from '../types/librarySource'
 import type { IBookNote } from '../types/bookNote'
 import type { IBookBookmark } from '../types/bookBookmark'
 import type { BookViewMode, BookManagerSortMode, BookManagerSortOrder } from '../types/bookShelf'
@@ -128,6 +129,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   const notesByBookId = ref<Record<string, IBookNote[]>>({})
   const bookmarksByBookId = ref<Record<string, IBookBookmark[]>>({})
   const loaded = ref(false)
+  const sources = ref<ILibrarySource[]>([])
   const isScanning = ref(false)
   const scanLabel = ref('')
   const scanScanned = ref(0)
@@ -234,30 +236,48 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   })
 
   const byFolder = computed(() => {
+    const sourceItems = sources.value.map((source) => {
+      const items = activeBooks.value.filter(book => (book.source_ids || (book.source_id ? [book.source_id] : [])).includes(source.id))
+      return {
+        key: source.id,
+        source_id: source.id,
+        path: source.path || source.name,
+        name: source.name,
+        user_id: source.user_id,
+        drive_id: source.drive_id,
+        folder_id: source.folder_id,
+        items,
+        count: source.item_count ?? items.length,
+        scanned_at: source.scanned_at
+      }
+    })
     const map = new Map<string, IBookItem[]>()
-    for (const b of activeBooks.value) {
+    for (const b of activeBooks.value.filter(book => !(book.source_ids?.length || book.source_id))) {
       const path = (b.parent_path || b.parent_file_id || '').trim() || '未分组'
       const key = `${b.user_id || ''}|${b.drive_id || ''}|${path}`
       const arr = map.get(key)
       if (arr) arr.push(b)
       else map.set(key, [b])
     }
-    return Array.from(map.values())
+    const legacyItems = Array.from(map.values())
       .map((items) => {
         const first = items[0]
         const path = (first.parent_path || first.parent_file_id || '').trim() || '未分组'
         return {
           key: `${first.user_id || ''}|${first.drive_id || ''}|${path}`,
+          source_id: undefined,
           path,
           name: path.split('/').pop() || path,
           user_id: first.user_id || '',
           drive_id: first.drive_id || '',
+          folder_id: first.parent_file_id || '',
           items,
           count: items.length,
           scanned_at: items.reduce((m, b) => Math.max(m, b.scanned_at || 0), 0)
         }
       })
       .sort((a, b) => b.scanned_at - a.scanned_at)
+    return [...sourceItems, ...legacyItems].sort((a, b) => b.scanned_at - a.scanned_at)
   })
 
   async function refreshBookCounts() {
@@ -292,7 +312,8 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   async function loadFromDB() {
     if (loaded.value) return
     try {
-      await refreshBookCounts()
+      const [, sourceList] = await Promise.all([refreshBookCounts(), DB.getLibrarySources('book')])
+      sources.value = sourceList
       await loadNextPage()
       loaded.value = true
     } catch (e) {
@@ -313,11 +334,14 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     const normalized = newBooks.map(ensureBookMeta).map((book) => {
       const existing = existingById.get(book.id)
       if (!existing) return book
+      const sourceIds = Array.from(new Set([...(existing.source_ids || (existing.source_id ? [existing.source_id] : [])), ...(book.source_ids || (book.source_id ? [book.source_id] : []))]))
       const preserveMetadata = !!existing.metadata_updated_at || !['filename', 'thumbnail', 'unknown', undefined].includes(existing.metadata_source)
       // A scan may refresh file fields, but must never erase reader state or
       // metadata edited/enriched after the previous scan.
       return {
         ...book,
+        source_ids: sourceIds,
+        source_id: sourceIds[0],
         title: preserveMetadata ? existing.title || book.title : book.title,
         author: preserveMetadata ? existing.author || book.author : book.author,
         summary: preserveMetadata ? existing.summary || book.summary : book.summary,
@@ -425,6 +449,40 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     const removed = deleted || ids.length
     bookRecordCount.value = Math.max(0, bookRecordCount.value - removed)
     deletedBookRecordCount.value = Math.max(0, deletedBookRecordCount.value - deletedRecordIds.size)
+    return removed
+  }
+
+  async function saveSource(source: ILibrarySource) {
+    const index = sources.value.findIndex(item => item.id === source.id)
+    const nextSource = index >= 0 ? { ...source, created_at: sources.value[index].created_at } : source
+    await DB.saveLibrarySource(nextSource)
+    if (index >= 0) sources.value[index] = nextSource
+    else sources.value.push(nextSource)
+  }
+
+  async function deleteSource(sourceId: string) {
+    const deleted = await DB.deleteBookLibrarySource(sourceId)
+    sources.value = sources.value.filter(source => source.id !== sourceId)
+    books.value = books.value.flatMap((book) => {
+      const sourceIds = (book.source_ids || (book.source_id ? [book.source_id] : [])).filter(id => id !== sourceId)
+      return sourceIds.length ? [{ ...book, source_ids: sourceIds, source_id: sourceIds[0] }] : []
+    })
+    await refreshBookCounts()
+    loadedBookRecordCount.value = books.value.length
+    return deleted
+  }
+
+  async function reconcileSource(sourceId: string, seenIds: string[]) {
+    const removed = await DB.reconcileBookLibrarySource(sourceId, seenIds)
+    const seen = new Set(seenIds)
+    books.value = books.value.flatMap((book) => {
+      const sourceIds = book.source_ids || (book.source_id ? [book.source_id] : [])
+      if (!sourceIds.includes(sourceId) || seen.has(book.id)) return [book]
+      const next = sourceIds.filter(id => id !== sourceId)
+      return next.length ? [{ ...book, source_ids: next, source_id: next[0] }] : []
+    })
+    await refreshBookCounts()
+    loadedBookRecordCount.value = books.value.length
     return removed
   }
 
@@ -706,6 +764,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
 
   return {
     books,
+    sources,
     hasMoreBooks,
     isLoadingNextPage,
     activeBooks,
@@ -752,6 +811,9 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     deleteAllBookBookmarksByBookId,
     removeBooksByIds,
     deleteBooksByIds,
+    saveSource,
+    deleteSource,
+    reconcileSource,
     moveBooksToTrash,
     restoreBooksFromTrash,
     toggleFavoriteBook,

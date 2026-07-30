@@ -78,6 +78,10 @@
               <span class="home-card-context-icon context-icon-filled">✓</span>
               <span>{{ item.isPlayed ? t('mediaServer.markUnwatched') : t('mediaServer.markWatched') }}</span>
             </button>
+            <button v-if="showEditMetadata" type="button" class="home-card-context-item" @click="$emit('metadata', item)">
+              <span class="home-card-context-icon">✎</span>
+              <span>{{ t('mediaLibrary.manualEdit') }}</span>
+            </button>
           </div>
         </template>
       </a-trigger>
@@ -138,6 +142,7 @@ const props = withDefaults(defineProps<{
   showSeeAll?: boolean
   seeAllLabel?: string
   enableContextMenu?: boolean
+  showEditMetadata?: boolean
   headingMode?: 'title' | 'parent-or-title'
   subtitleMode?: 'overview' | 'title' | 'year-only' | 'year-or-overview' | 'year-or-parent-or-overview'
 }>(), {
@@ -147,6 +152,7 @@ const props = withDefaults(defineProps<{
   showSeeAll: true,
   seeAllLabel: t('mediaServer.seeAllPlain'),
   enableContextMenu: false,
+  showEditMetadata: false,
   headingMode: 'title',
   subtitleMode: 'overview'
 })
@@ -155,6 +161,7 @@ defineEmits<{
   (e: 'select', item: MediaServerLibraryNode): void
   (e: 'play', item: MediaServerLibraryNode): void
   (e: 'action', item: MediaServerLibraryNode, action: 'watched' | 'favorite' | 'download'): void
+  (e: 'metadata', item: MediaServerLibraryNode): void
   (e: 'see-all'): void
   (e: 'retry'): void
 }>()

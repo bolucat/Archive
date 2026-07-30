@@ -8,10 +8,39 @@ describe('media library ticket regressions', () => {
   it('offers local metadata correction alongside AI rescraping', () => {
     const source = read('src/components/MediaLibrary.vue')
 
-    expect(source).toContain('手动修改信息')
-    expect(source).toContain('const saveManualMetadata = () =>')
-    expect(source).toContain("metadataSource: 'manual'")
-    expect(source).toContain('mediaStore.addMediaItem(updated)')
+    expect(source).toContain('const saveManualMetadata = (updated: MediaLibraryItem) =>')
+    expect(source).toContain('mediaStore.replaceMediaItemMetadata(updated)')
+    expect(source).toContain('<MediaMetadataEditorModal')
+  })
+
+  it('shows quick filtering on every media-list navigation page', () => {
+    const source = read('src/components/MediaLibrary.vue')
+
+    expect(source).toContain("'continue', 'continue-watching', 'recent', 'recently-added', 'movies', 'tv', 'tv-shows'")
+    expect(source).toContain("'documentary', 'animation', 'unmatched', 'unwatched', 'favorites'")
+    expect(source).toContain('return quickSearchCategories.has(category) || showDrillDownBackBar.value || showPlaylistBackBar.value')
+    expect(source).toContain('const showResultCount = computed(() => showQuickSearch.value)')
+  })
+
+  it('keeps media results visible while a folder scan is running', () => {
+    const source = read('src/components/MediaLibrary.vue')
+
+    expect(source).toContain('class="library-scan-status"')
+    expect(source).not.toContain('v-else-if="mediaStore.isScanning" class="loading-state"')
+    expect(source).toContain('const liveItems = mediaStore.isScanning')
+    expect(source).toContain('liveItems.forEach(item => merged.set(String(item.id), item))')
+  })
+
+  it('keeps video and book content shells fully inset and gives books one clean header shell', () => {
+    const main = read('src/layout/PageMain.vue')
+    const books = read('src/layout/PageBookLibrary.vue')
+
+    expect(main).toContain('#xbybody .media-library-pane,\n#xbybody .book-main {')
+    expect(main).toContain('height: calc(100% - 36px);')
+    expect(main).toContain('#xbybody .book-content {')
+    expect(main).toContain('border: 0 !important;')
+    expect(books).toContain("class='book-header-title-mark'")
+    expect(books).toContain("class='book-total-count'")
   })
 
   it('mounts the music sound-effect control in the player', () => {

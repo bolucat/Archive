@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createAuthStore } from '../core/authStore.mjs'
 import { buildOAuthAuthorization, loginWithAliyunQrCode, loginWithBrowserOAuth, loginWithDrive115QrCode, supportedBrowserLoginProviders } from '../core/browserAuth.mjs'
 import { createOperationLogStore, createUndoRenamePlan } from '../core/operationLog.mjs'
-import { analyzeDriveItems, createOrganizePlan, dryRunOrganizePlan } from '../core/organizePlan.mjs'
 import { createProviderRegistry } from '../core/providerRegistry.mjs'
 import { dryRunRenamePlan, validateRenamePlan } from '../core/renamePlan.mjs'
 import { createUploadPlanFromLocalPath, dryRunUploadPlan, executeUploadPlan } from '../core/uploadPlan.mjs'
@@ -503,69 +502,5 @@ describe('upload plans', () => {
       'mkdir:root/Season 01',
       `upload:remote-Season 01/Episode 01.mkv:${filePath}:5`,
     ])
-  })
-})
-
-describe('organize plans', () => {
-  const items = [
-    { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'movies', parentFileId: 'root', name: 'Movies', type: 'folder' },
-    { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'f1', parentFileId: 'root', name: 'Example.Movie.2024.mkv', type: 'file', size: 10 },
-    { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'f2', parentFileId: 'root', name: 'Show.S01E01.mkv', type: 'file', size: 20 },
-  ]
-
-  it('summarizes cloud drive items for AI analysis', () => {
-    expect(analyzeDriveItems({ provider: 'aliyun', accountId: 'acc', rootFileId: 'root', items })).toMatchObject({
-      provider: 'aliyun',
-      account_id: 'acc',
-      root_file_id: 'root',
-      stats: {
-        totalItems: 3,
-        fileCount: 2,
-        folderCount: 1,
-        videoCount: 2,
-        totalBytes: 30,
-      },
-    })
-  })
-
-  it('uses media matching when classifying episodes for organization', () => {
-    const analysis = analyzeDriveItems({
-      provider: 'aliyun',
-      accountId: 'acc',
-      rootFileId: 'root',
-      items: [
-        { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'f1', parentFileId: 'root', name: '知否知否应是绿肥红瘦第03集.mp4', type: 'file', size: 20 },
-      ],
-    })
-
-    expect(analysis.files[0]).toMatchObject({
-      media_kind: 'episode',
-      media_match: expect.objectContaining({ type: 'episode', episode: 3 }),
-    })
-  })
-
-  it('creates a conservative organize plan and dry-runs action counts', () => {
-    const analysis = analyzeDriveItems({ provider: 'aliyun', accountId: 'acc', rootFileId: 'root', items })
-    const plan = createOrganizePlan({ analysis, rulesText: 'Move episodes to TV Shows and movies to Movies.' })
-
-    expect(plan).toMatchObject({
-      version: 1,
-      operation: 'organize',
-      provider: 'aliyun',
-      account_id: 'acc',
-      root_file_id: 'root',
-      rules: { applied: false },
-    })
-    expect(plan.actions).toEqual([
-      { type: 'mkdir', parent_file_id: 'root', name: 'TV Shows', ref: 'folder:TV Shows', reason: 'Required media category folder is missing' },
-      { type: 'move', file_id: 'f1', from_parent_file_id: 'root', to_parent_file_id: 'movies', to_parent_ref: 'folder:Movies', name: 'Example.Movie.2024.mkv', reason: 'Movie-like video belongs in Movies' },
-      { type: 'move', file_id: 'f2', from_parent_file_id: 'root', to_parent_file_id: '', to_parent_ref: 'folder:TV Shows', name: 'Show.S01E01.mkv', reason: 'Episode-like video belongs in TV Shows' },
-    ])
-    expect(dryRunOrganizePlan(plan)).toMatchObject({
-      ok: true,
-      actionCount: 3,
-      counts: { mkdir: 1, move: 2, rename: 0, copy: 0, trash: 0 },
-      errors: [],
-    })
   })
 })

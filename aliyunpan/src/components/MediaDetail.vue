@@ -15,6 +15,7 @@ import type { MediaAcquisitionRequest } from '@shared/types/mediaAcquisition'
 import { getMediaCoverage } from '../utils/mediaCoverage'
 import { listMediaAcquisitionTracking } from '../services/mediaAcquisition/client'
 import type { MediaAcquisitionTrackingItem } from '@shared/types/mediaAcquisition'
+import MediaMetadataEditorModal from './MediaMetadataEditorModal.vue'
 
 // Props
 const props = defineProps<{
@@ -28,6 +29,7 @@ const emit = defineEmits<{
   back: []
   tagClick: [tagType: string, tagValue: string]
   aiRescrape: [item: MediaLibraryItem]
+  metadataUpdated: [item: MediaLibraryItem]
 }>()
 
 const settingStore = useSettingStore()
@@ -77,6 +79,7 @@ const playButtonWidth = ref<number | null>(null)
 const acquisitionVisible = ref(false)
 const activeAcquisitionRequest = ref<MediaAcquisitionRequest | null>(null)
 const trackingItems = ref<MediaAcquisitionTrackingItem[]>([])
+const metadataEditorVisible = ref(false)
 
 const mediaCoverage = computed(() => getMediaCoverage(activeMediaItem.value))
 const acquisitionRequest = computed<MediaAcquisitionRequest | null>(() => {
@@ -560,6 +563,20 @@ const togglePlaylist = () => {
   showPlaylistModal.value = true
 }
 
+const handleMetadataSave = (edited: MediaLibraryItem) => {
+  const active = activeMediaItem.value
+  const updated = active.id === props.mediaItem.id
+    ? edited
+    : {
+        ...props.mediaItem,
+        collectionMovies: (props.mediaItem.collectionMovies || []).map((movie) => movie.id === active.id ? edited as MediaCollectionMovie : movie)
+      }
+  mediaStore.updateMediaItem(props.mediaItem.id, updated)
+  metadataEditorVisible.value = false
+  emit('metadataUpdated', updated)
+  message.success('元数据已更新')
+}
+
 const handleCreatePlaylist = () => {
   if (!newPlaylistName.value.trim()) return
   mediaStore.addPlaylist(newPlaylistName.value)
@@ -710,14 +727,43 @@ const getCastInitial = (name?: string): string => {
                   >
                     <span class="action-glyph">{{ isFavorited ? '♥' : '♡' }}</span>
                   </button>
+                  <a-dropdown trigger="click" position="bl" popup-class="detail-more-action-popup">
+                    <button
+                      type="button"
+                      class="action-button"
+                      :class="{ active: inPlaylist }"
+                      title="更多操作"
+                      @click.stop.prevent
+                    >
+                      <span class="action-glyph">⋯</span>
+                    </button>
+                    <template #content>
+                      <div class="detail-more-action-menu">
+                        <button type="button" class="detail-more-action-item" @click.stop="togglePlaylist">
+                          <span>≡</span>
+                          <span>添加到播放列表</span>
+                        </button>
+                        <template v-if="mediaCoverage || trackingRequest">
+                          <div class="detail-more-action-divider" />
+                          <button v-if="mediaCoverage" type="button" class="detail-more-action-item accent" @click.stop="handleCompleteMissing">
+                            <span>+</span>
+                            <span>一键补全</span>
+                          </button>
+                          <button v-if="trackingRequest" type="button" class="detail-more-action-item accent" @click.stop="handleStartTracking">
+                            <span>↻</span>
+                            <span>{{ currentSeasonTracked ? '管理追更' : '追更本季' }}</span>
+                          </button>
+                        </template>
+                      </div>
+                    </template>
+                  </a-dropdown>
                   <button
                     type="button"
                     class="action-button"
-                    :class="{ active: inPlaylist }"
-                    title="添加到播放列表"
-                    @click.stop.prevent="togglePlaylist"
+                    title="编辑元数据"
+                    @click.stop.prevent="metadataEditorVisible = true"
                   >
-                    <span class="action-glyph">⋯</span>
+                    <span class="action-glyph">✎</span>
                   </button>
                 </div>
                 <button
@@ -742,24 +788,6 @@ const getCastInitial = (name?: string): string => {
                 >
                   <span class="play-glyph">↓</span>
                   <span>下载</span>
-                </button>
-                <button
-                  v-if="mediaCoverage"
-                  type="button"
-                  class="complete-missing-button"
-                  @click="handleCompleteMissing"
-                >
-                  <span class="complete-missing-icon">+</span>
-                  <span>一键补全</span>
-                </button>
-                <button
-                  v-if="trackingRequest"
-                  type="button"
-                  class="complete-missing-button"
-                  @click="handleStartTracking"
-                >
-                  <span class="complete-missing-icon">↻</span>
-                  <span>{{ currentSeasonTracked ? '管理追更' : '追更本季' }}</span>
                 </button>
               </div>
             </div>
@@ -976,6 +1004,16 @@ const getCastInitial = (name?: string): string => {
         <!-- 国家标签 -->
       </div>
     </div>
+
+    <MediaMetadataEditorModal
+      :defaults-to-whole-tv-series="false"
+      :initial-episode-number="selectedEpisode"
+      :initial-season-number="selectedSeason"
+      :item="activeMediaItem"
+      :visible="metadataEditorVisible"
+      @close="metadataEditorVisible = false"
+      @save="handleMetadataSave"
+    />
 
     <!-- 播放列表 -->
     <a-modal v-model:visible="showPlaylistModal" title="添加到播放列表" :footer="false" :z-index="3000" class="playlist-modal detail-media-modal">
@@ -1337,7 +1375,7 @@ const getCastInitial = (name?: string): string => {
 
 .action-buttons {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   width: 100%;
 }
@@ -1416,26 +1454,59 @@ const getCastInitial = (name?: string): string => {
   box-shadow: 0 16px 34px rgba(63, 46, 37, 0.14);
 }
 
-.complete-missing-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 42px;
-  padding: 0 18px;
-  border: 1px solid rgba(245, 165, 36, 0.52);
-  border-radius: 12px;
-  background: rgba(48, 31, 8, 0.88);
-  color: #ffd18a;
-  font-size: 14px;
-  font-weight: 750;
-  cursor: pointer;
-  backdrop-filter: blur(12px);
-  transition: transform 0.18s ease, background 0.18s ease;
+
+:global(.detail-more-action-popup) {
+  min-width: 210px;
+  padding: 6px !important;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px !important;
+  background: var(--color-bg-popup) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28) !important;
 }
 
-.complete-missing-button:hover { transform: translateY(-1px); background: rgba(64, 40, 8, 0.94); }
-.complete-missing-icon { font-size: 18px; line-height: 1; }
+.detail-more-action-menu {
+  display: grid;
+  gap: 2px;
+}
+
+.detail-more-action-item {
+  display: grid;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 10px;
+  gap: 9px;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-1);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+
+.detail-more-action-item:hover {
+  background: var(--color-fill-2);
+}
+
+.detail-more-action-item > span:first-child {
+  color: var(--color-text-2);
+  font-size: 17px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.detail-more-action-item.accent,
+.detail-more-action-item.accent > span:first-child {
+  color: #d89222;
+}
+
+.detail-more-action-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--color-border-2);
+}
 
 .play-button-progress {
   position: absolute;

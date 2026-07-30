@@ -18,6 +18,7 @@ import UserDAL from '../user/userdal'
 import { ITokenInfo } from '../user/userstore'
 import useBookLibraryStore, { parseBookMeta } from '../store/booklibrary'
 import { IBookItem } from '../types/book'
+import { buildLibrarySourceId } from '../types/librarySource'
 import { isScannableBookFormat } from './bookReaderCapabilities'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
@@ -64,7 +65,7 @@ function isBookFile(item: IAliGetFileModel): boolean {
   return isScannableBookFormat(name.slice(dot + 1))
 }
 
-function bookFromAliModel(item: IAliGetFileModel, user_id: string, drive_id: string, parent_path: string): IBookItem {
+function bookFromAliModel(item: IAliGetFileModel, user_id: string, drive_id: string, parent_path: string, source_id: string): IBookItem {
   const ext = item.ext || (() => {
     const i = (item.name || '').lastIndexOf('.')
     return i >= 0 ? (item.name || '').slice(i + 1) : ''
@@ -74,6 +75,8 @@ function bookFromAliModel(item: IAliGetFileModel, user_id: string, drive_id: str
   const isbn = extractISBN(item.name, item.description)
   return {
     id: `${user_id}|${drive_id}|${item.file_id}`,
+    source_id,
+    source_ids: [source_id],
     user_id,
     drive_id,
     file_id: item.file_id,
@@ -143,12 +146,17 @@ class BookScanner {
     const store = useBookLibraryStore()
     const drive_id = folder.drive_id || ''
     const label = folder.name || '指定文件夹'
-    const counters = { scanned: 0, found: 0 }
+    const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+    const sourceId = buildLibrarySourceId('book', user_id, drive_id, folder.file_id)
     store.setIsScanning(true)
     store.setScanProgress(`正在扫描 ${label}`, 0, 0)
     try {
-      await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0)
-      if (!this.shouldStop && !this.hadError) await store.markScanFinished()
+      await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0, sourceId)
+      if (!this.shouldStop && !this.hadError) {
+        await store.reconcileSource(sourceId, [...counters.seen])
+        await store.saveSource({ id: sourceId, kind: 'book', user_id, drive_id, folder_id: folder.file_id, name: folder.name || label, path: (folder as any).path || '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+        await store.markScanFinished()
+      }
     } catch (e) {
       this.hadError = true
       DebugLog.mSaveWarning('bookScanner.scanFolder failed: ' + (e as Error).message)
@@ -215,8 +223,13 @@ class BookScanner {
         isDir: true
       } as IAliGetFileModel
       ;(rootFolder as any).path = '/'
-      const counters = { scanned: 0, found: 0 }
-      await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0)
+      const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+      const sourceId = buildLibrarySourceId('book', token.user_id, driveId, rootFolder.file_id || 'root')
+      await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0, sourceId)
+      if (!this.shouldStop) {
+        await store.reconcileSource(sourceId, [...counters.seen])
+        await store.saveSource({ id: sourceId, kind: 'book', user_id: token.user_id, drive_id: driveId, folder_id: rootFolder.file_id || 'root', name: label, path: (rootFolder as any).path || '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+      }
       return
     }
 
@@ -257,8 +270,13 @@ class BookScanner {
       isDir: true
     } as IAliGetFileModel
     ;(rootFolder as any).path = token.tokenfrom === 'baidu' ? '/' : ''
-    const counters = { scanned: 0, found: 0 }
-    await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0)
+    const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+    const sourceId = buildLibrarySourceId('book', token.user_id, driveId, rootFolder.file_id || 'root')
+    await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0, sourceId)
+    if (!this.shouldStop) {
+      await store.reconcileSource(sourceId, [...counters.seen])
+      await store.saveSource({ id: sourceId, kind: 'book', user_id: token.user_id, drive_id: driveId, folder_id: rootFolder.file_id || 'root', name: label, path: (rootFolder as any).path || '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+    }
   }
 
   private async scanAliyun(token: ITokenInfo, label: string): Promise<void> {
@@ -279,8 +297,13 @@ class BookScanner {
         name: '/',
         isDir: true
       } as IAliGetFileModel
-      const counters = { scanned: 0, found: 0 }
-      await this.bfsCollect(rootFolder, token.user_id, drive_id, '', `${label} · ${drive_id.slice(-6)}`, counters, 0)
+      const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+      const sourceId = buildLibrarySourceId('book', token.user_id, drive_id, 'root')
+      await this.bfsCollect(rootFolder, token.user_id, drive_id, '', `${label} · ${drive_id.slice(-6)}`, counters, 0, sourceId)
+      if (!this.shouldStop) {
+        await store.reconcileSource(sourceId, [...counters.seen])
+        await store.saveSource({ id: sourceId, kind: 'book', user_id: token.user_id, drive_id, folder_id: 'root', name: `${label} · ${drive_id.slice(-6)}`, path: '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+      }
       scanned += counters.scanned
       found += counters.found
       store.setScanProgress(`正在扫描 ${label}`, scanned, found)
@@ -293,8 +316,9 @@ class BookScanner {
     drive_id: string,
     parent_path: string,
     label: string,
-    counters: { scanned: number; found: number },
-    depth: number
+    counters: { scanned: number; found: number; seen: Set<string> },
+    depth: number,
+    sourceId: string
   ): Promise<void> {
     if (this.shouldStop) return
     if (depth > BFS_MAX_DEPTH) {
@@ -309,7 +333,9 @@ class BookScanner {
         counters.scanned += items.length
         const books = items.filter(isBookFile)
         if (books.length) {
-          await store.appendBooks(books.map((it) => bookFromAliModel(it, user_id, drive_id, parent_path)), { addToLoaded: false })
+          const mapped = books.map((it) => bookFromAliModel(it, user_id, drive_id, parent_path, sourceId))
+          mapped.forEach(book => counters.seen.add(book.id))
+          await store.appendBooks(mapped, { addToLoaded: false })
           counters.found += books.length
         }
         store.setScanProgress(`正在扫描 ${label}`, counters.scanned, counters.found)
@@ -319,7 +345,7 @@ class BookScanner {
           if (!child.isDir) continue
           const childPath = parent_path ? `${parent_path}/${child.name}` : child.name
           await delay(FOLDER_THROTTLE_MS)
-          await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1)
+          await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1, sourceId)
         }
       }
     } catch (e) {

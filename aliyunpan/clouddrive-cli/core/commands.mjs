@@ -1,18 +1,17 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
-import { basename, extname, join, resolve } from 'node:path'
-import { homedir, tmpdir } from 'node:os'
+import { readFile, writeFile } from 'node:fs/promises'
+import { extname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
 
 import { createAuthStore } from './authStore.mjs'
 import { loginWithBrowserOAuth, supportedBrowserLoginProviders } from './browserAuth.mjs'
 import { createOperationLogStore, createUndoRenamePlan, createUndoMovePlan } from './operationLog.mjs'
-import { analyzeDriveItems, createOrganizePlan, dryRunOrganizePlan } from './organizePlan.mjs'
 import { dryRunRenamePlan } from './renamePlan.mjs'
 import { validateMovePlan, dryRunMovePlan } from './movePlan.mjs'
 import { validateTrashPlan, dryRunTrashPlan } from './trashPlan.mjs'
 import { createUploadPlanFromLocalPath, dryRunUploadPlan, executeUploadPlan } from './uploadPlan.mjs'
-import { scanMediaItems, matchMediaItems } from '../media/mediaScanner.mjs'
 import { EXIT_CODES, classifyError } from './models.mjs'
 import { COMMAND_MANIFEST_VERSION, listCommands } from './commandManifest.mjs'
+import { PLAN_SCHEMA_VERSION, listPlanSchemas } from './planSchemas.mjs'
 import { createAliyunProvider } from '../providers/aliyun.mjs'
 import { createPikpakProvider } from '../providers/pikpakProvider.mjs'
 import { createDropboxProvider } from '../providers/dropboxProvider.mjs'
@@ -144,97 +143,6 @@ function summarizeAgentOutput(value) {
   return { valueType: Array.isArray(value) ? 'array' : typeof value }
 }
 
-async function executeOrganizePlan(plan, dryRun, { provider, token, driveId, configDir }) {
-  const refToFolderId = new Map()
-  const mkdirResults = []
-  const renameResults = []
-  const moveActions = []
-  const renameActions = []
-
-  for (const action of dryRun.actions) {
-    if (action.type === 'mkdir') {
-      try {
-        const folder = await provider.files.mkdir({ token, driveId, parentId: action.parent_file_id, name: action.name })
-        const fileId = folder.fileId || folder.file_id || folder.id || ''
-        if (action.ref && fileId) refToFolderId.set(action.ref, fileId)
-        mkdirResults.push({ status: 'success', ref: action.ref, fileId, name: action.name, parentFileId: action.parent_file_id })
-      } catch (error) {
-        mkdirResults.push({ status: 'failed', ref: action.ref, name: action.name, parentFileId: action.parent_file_id, code: error?.code || 'PROVIDER_API_ERROR', message: error?.message || String(error) })
-      }
-    }
-  }
-
-  for (const action of dryRun.actions) {
-    if (action.type === 'move') {
-      const toParentId = action.to_parent_file_id || refToFolderId.get(action.to_parent_ref) || ''
-      if (!toParentId) {
-        moveActions.push({ ...action, skipped_error: `Missing target parent for ${action.to_parent_ref || action.file_id}` })
-      } else {
-        moveActions.push({ ...action, to_parent_file_id: toParentId })
-      }
-    } else if (action.type === 'rename') {
-      renameActions.push(action)
-    }
-  }
-
-  const invalidMoves = moveActions.filter((action) => action.skipped_error)
-  const validMoves = moveActions.filter((action) => !action.skipped_error)
-  const moveResults = invalidMoves.map((action) => ({ status: 'failed', fileId: action.file_id, code: 'VALIDATION_ERROR', message: action.skipped_error }))
-  if (validMoves.length > 0) {
-    moveResults.push(...await provider.files.moveBatch({
-      token,
-      driveId,
-      moves: validMoves.map((action) => ({
-        fileId: action.file_id,
-        name: action.name,
-        type: action.type || 'file',
-        toParentId: action.to_parent_file_id,
-        itemType: action.item_type || 'file',
-      })),
-    }))
-  }
-
-  if (renameActions.length > 0) {
-    renameResults.push(...await provider.files.renameBatch({
-      token,
-      driveId,
-      renames: renameActions.map((action) => ({ fileId: action.file_id, newName: action.new_name })),
-    }))
-  }
-
-  const allResults = [...mkdirResults, ...moveResults, ...renameResults]
-  const succeeded = allResults.filter((result) => result.status === 'success').length
-  const failed = allResults.filter((result) => result.status !== 'success').length
-  let operationId = ''
-
-  const successfulMoveActions = validMoves.filter((_, index) => moveResults[invalidMoves.length + index]?.status === 'success')
-  if (successfulMoveActions.length > 0) {
-    const operationLog = {
-      id: `op_${Date.now()}`,
-      type: 'move',
-      provider: plan.provider,
-      account_id: plan.account_id,
-      started_at: new Date().toISOString(),
-      finished_at: new Date().toISOString(),
-      source_operation: 'organize',
-      items: successfulMoveActions.map((action) => ({
-        drive_id: action.drive_id || driveId,
-        file_id: action.file_id,
-        name: action.name,
-        type: action.item_type || 'file',
-        from_parent_file_id: action.from_parent_file_id,
-        to_parent_file_id: action.to_parent_file_id,
-        status: 'success',
-      })),
-    }
-    const logStore = createOperationLogStore({ configDir })
-    await logStore.save(operationLog)
-    operationId = operationLog.id
-  }
-
-  return { ok: failed === 0, operationId: operationId || undefined, succeeded, failed, mkdirResults, moveResults, renameResults }
-}
-
 async function outputOrOk(value, argv, json = true) {
   const outputPath = readOption(argv, '--output')
   if (!outputPath) return ok(value, json)
@@ -244,6 +152,14 @@ async function outputOrOk(value, argv, json = true) {
 
 function usage(message) {
   return { exitCode: EXIT_CODES.SUCCESS, stdout: `${message}\n`, stderr: '' }
+}
+
+function requireApplyRationale(argv) {
+  const rationale = readOption(argv, '--rationale')
+  if (!rationale || !rationale.trim()) {
+    return { error: '执行 apply 写操作必须提供 --rationale <reason>' }
+  }
+  return { rationale }
 }
 
 function fail(message, exitCode = EXIT_CODES.VALIDATION_ERROR) {
@@ -279,200 +195,9 @@ function maybeJsonError(result, argv) {
   }
 }
 
-function countBy(values) {
-  const counts = {}
-  for (const value of values) counts[value || 'unknown'] = (counts[value || 'unknown'] || 0) + 1
-  return Object.fromEntries(Object.entries(counts).sort(([, a], [, b]) => b - a))
-}
-
-function summarizeOrganizeAnalysis(analysis) {
-  return {
-    version: analysis?.version,
-    provider: analysis?.provider,
-    account_id: analysis?.account_id,
-    root_file_id: analysis?.root_file_id,
-    stats: analysis?.stats || {},
-    folderCount: Array.isArray(analysis?.folders) ? analysis.folders.length : 0,
-    fileCount: Array.isArray(analysis?.files) ? analysis.files.length : 0,
-    mediaKinds: countBy((analysis?.files || []).map((file) => file.media_kind).filter(Boolean)),
-  }
-}
-
-function summarizeOrganizePlan(planOrDryRun) {
-  const actions = Array.isArray(planOrDryRun?.actions) ? planOrDryRun.actions : []
-  return {
-    version: planOrDryRun?.version,
-    operation: planOrDryRun?.operation,
-    ok: planOrDryRun?.ok,
-    provider: planOrDryRun?.provider,
-    account_id: planOrDryRun?.account_id,
-    root_file_id: planOrDryRun?.root_file_id,
-    actionCount: planOrDryRun?.actionCount ?? actions.length,
-    counts: planOrDryRun?.counts || countBy(actions.map((action) => action.type)),
-    moveTargets: countBy(actions.filter((action) => action.type === 'move').map((action) => action.to_parent_ref || action.to_parent_file_id)),
-    errors: planOrDryRun?.errors || [],
-  }
-}
-
-function summarizeOrganizeApplyResult(result) {
-  return {
-    ok: result.ok,
-    operationId: result.operationId,
-    succeeded: result.succeeded,
-    failed: result.failed,
-    mkdirCount: result.mkdirResults.length,
-    moveCount: result.moveResults.length,
-    renameCount: result.renameResults.length,
-  }
-}
-
 async function readJsonFile(path) {
   if (!path) throw new Error('Missing JSON file path')
   return JSON.parse(await readFile(path, 'utf8'))
-}
-
-function detectDocumentFormat(path) {
-  const ext = extname(path).toLowerCase()
-  if (ext === '.pdf') return 'pdf'
-  if (ext === '.md' || ext === '.markdown') return 'markdown'
-  if (ext === '.txt' || ext === '.text') return 'text'
-  if (ext === '.json') return 'json'
-  if (ext === '.csv') return 'csv'
-  if (ext === '.log') return 'log'
-  return ext ? ext.slice(1) : 'text'
-}
-
-const PDF_OUTPUT_EXTENSIONS = {
-  markdown: ['.md', '.markdown'],
-  text: ['.txt'],
-  json: ['.json'],
-  html: ['.html', '.htm'],
-  pdf: ['.pdf'],
-  'tagged-pdf': ['.pdf'],
-}
-
-function readPdfFormatOption(argv, fallback = 'markdown') {
-  const raw = (readOption(argv, '--pdf-format') || fallback).toLowerCase()
-  const formats = raw.split(',').map((item) => item.trim()).filter(Boolean)
-  if (formats.length > 1) return formats.join(',')
-  if (PDF_OUTPUT_EXTENSIONS[formats[0]]) return formats[0]
-  return fallback
-}
-
-async function walkFiles(dir) {
-  const entries = await readdir(dir, { withFileTypes: true })
-  const files = []
-  for (const entry of entries) {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) files.push(...await walkFiles(path))
-    else if (entry.isFile()) files.push(path)
-  }
-  return files
-}
-
-async function findConvertedPdfOutput(outputDir, inputPath, format) {
-  const files = await walkFiles(outputDir)
-  const primaryFormat = String(format).split(',')[0]?.trim() || 'markdown'
-  const exts = PDF_OUTPUT_EXTENSIONS[primaryFormat] || PDF_OUTPUT_EXTENSIONS.markdown
-  const inputBase = basename(inputPath, extname(inputPath)).toLowerCase()
-  const matchingExt = files.filter((file) => exts.includes(extname(file).toLowerCase()))
-  return matchingExt.find((file) => basename(file, extname(file)).toLowerCase() === inputBase) || matchingExt[0] || ''
-}
-
-function addStringPdfOption(options, argv, flag, key) {
-  const value = readOption(argv, flag)
-  if (value) options[key] = value
-}
-
-function addBooleanPdfOption(options, argv, flag, key) {
-  if (hasFlag(argv, flag)) options[key] = true
-}
-
-function buildOpenDataLoaderOptions(argv, outputDir, fallbackFormat = 'markdown') {
-  const options = {
-    outputDir,
-    format: readPdfFormatOption(argv, fallbackFormat),
-    quiet: !hasFlag(argv, '--pdf-verbose'),
-  }
-  addStringPdfOption(options, argv, '--pdf-password', 'password')
-  addStringPdfOption(options, argv, '--pdf-content-safety-off', 'contentSafetyOff')
-  addBooleanPdfOption(options, argv, '--pdf-sanitize', 'sanitize')
-  addBooleanPdfOption(options, argv, '--pdf-keep-line-breaks', 'keepLineBreaks')
-  addStringPdfOption(options, argv, '--pdf-replace-invalid-chars', 'replaceInvalidChars')
-  addBooleanPdfOption(options, argv, '--pdf-use-struct-tree', 'useStructTree')
-  addStringPdfOption(options, argv, '--pdf-table-method', 'tableMethod')
-  addStringPdfOption(options, argv, '--pdf-reading-order', 'readingOrder')
-  addStringPdfOption(options, argv, '--pdf-markdown-page-separator', 'markdownPageSeparator')
-  addBooleanPdfOption(options, argv, '--pdf-markdown-with-html', 'markdownWithHtml')
-  addStringPdfOption(options, argv, '--pdf-text-page-separator', 'textPageSeparator')
-  addStringPdfOption(options, argv, '--pdf-html-page-separator', 'htmlPageSeparator')
-  addStringPdfOption(options, argv, '--pdf-image-output', 'imageOutput')
-  addStringPdfOption(options, argv, '--pdf-image-format', 'imageFormat')
-  addStringPdfOption(options, argv, '--pdf-image-dir', 'imageDir')
-  addStringPdfOption(options, argv, '--pdf-pages', 'pages')
-  addBooleanPdfOption(options, argv, '--pdf-include-header-footer', 'includeHeaderFooter')
-  addBooleanPdfOption(options, argv, '--pdf-detect-strikethrough', 'detectStrikethrough')
-  addStringPdfOption(options, argv, '--pdf-hybrid', 'hybrid')
-  addStringPdfOption(options, argv, '--pdf-hybrid-mode', 'hybridMode')
-  addStringPdfOption(options, argv, '--pdf-hybrid-url', 'hybridUrl')
-  addStringPdfOption(options, argv, '--pdf-hybrid-timeout', 'hybridTimeout')
-  addBooleanPdfOption(options, argv, '--pdf-hybrid-fallback', 'hybridFallback')
-  addStringPdfOption(options, argv, '--pdf-hybrid-hancom-ai-regionlist-strategy', 'hybridHancomAiRegionlistStrategy')
-  addStringPdfOption(options, argv, '--pdf-hybrid-hancom-ai-ocr-strategy', 'hybridHancomAiOcrStrategy')
-  addStringPdfOption(options, argv, '--pdf-hybrid-hancom-ai-image-cache', 'hybridHancomAiImageCache')
-  addBooleanPdfOption(options, argv, '--pdf-to-stdout', 'toStdout')
-  addStringPdfOption(options, argv, '--pdf-threads', 'threads')
-  return options
-}
-
-async function loadOpenDataLoaderPdf(env) {
-  if (env.openDataLoaderPdf?.convert) return env.openDataLoaderPdf
-  try {
-    return await import('@opendataloader/pdf')
-  } catch {
-    throw new Error('PDF support requires @opendataloader/pdf plus Node.js 20+ and Java 11+ on PATH.')
-  }
-}
-
-async function convertPdfDocument(resolvedPath, argv, env) {
-  const outputDir = await mkdtemp(join(tmpdir(), 'clouddrive-docs-pdf-'))
-  const pdf = await loadOpenDataLoaderPdf(env)
-  const options = buildOpenDataLoaderOptions(argv, outputDir, 'markdown')
-
-  try {
-    await pdf.convert([resolvedPath], options)
-    const outputPath = await findConvertedPdfOutput(outputDir, resolvedPath, options.format)
-    if (!outputPath) throw new Error(`OpenDataLoader did not produce ${options.format} output for PDF: ${resolvedPath}`)
-    return {
-      sourceFormat: options.format,
-      content: await readFile(outputPath, 'utf8'),
-    }
-  } finally {
-    await rm(outputDir, { recursive: true, force: true }).catch(() => {})
-  }
-}
-
-function pdfFormats(format) {
-  return String(format || '').split(',').map((item) => item.trim()).filter(Boolean)
-}
-
-async function convertPdfWithOpenDataLoader(resolvedPath, argv, env) {
-  const outputDir = resolve(readOption(argv, '--output') || readOption(argv, '--output-dir') || join(process.cwd(), 'opendataloader-output'))
-  const pdf = await loadOpenDataLoaderPdf(env)
-  const options = buildOpenDataLoaderOptions(argv, outputDir, 'json')
-  await mkdir(outputDir, { recursive: true })
-  await pdf.convert([resolvedPath], options)
-  const files = (await walkFiles(outputDir)).map((file) => ({
-    path: file,
-    name: basename(file),
-    format: detectDocumentFormat(file),
-  }))
-  return {
-    path: resolvedPath,
-    outputDir,
-    formats: pdfFormats(options.format),
-    files,
-  }
 }
 
 function readPositiveIntegerOption(argv, flag, fallback) {
@@ -743,14 +468,6 @@ function filesCommandUsage(subcommand) {
   return usages[subcommand] || 'Usage: clouddrive-cli files <list|walk|tree|stats|info|download|search|mkdir|rename-apply|move-apply|trash-apply> [options]'
 }
 
-function mediaCommandUsage(subcommand) {
-  const usages = {
-    scan: 'Usage: clouddrive-cli media scan --input files.json [--json]',
-    match: 'Usage: clouddrive-cli media match --input files.json [--json]',
-  }
-  return usages[subcommand] || 'Usage: clouddrive-cli media <scan|match> [options]'
-}
-
 function opsCommandUsage(subcommand) {
   const usages = {
     list: 'Usage: clouddrive-cli ops list [--json]',
@@ -766,15 +483,6 @@ function uploadCommandUsage(subcommand) {
     apply: 'Usage: clouddrive-cli upload apply <plan.json> [--dry-run] [--json]',
   }
   return usages[subcommand] || 'Usage: clouddrive-cli upload <plan|apply> [options]'
-}
-
-function organizeCommandUsage(subcommand) {
-  const usages = {
-    analyze: 'Usage: clouddrive-cli organize analyze [--input <files.json>] [--provider <p>] [--account <id>] [--file-id <folder-id>] [--depth <n>] [--output <analysis.json>] [--summary] [--json]',
-    plan: 'Usage: clouddrive-cli organize plan --analysis <analysis.json> [--rules <doc>] [--output <plan.json>] [--summary] [--json]',
-    apply: 'Usage: clouddrive-cli organize apply <plan.json> [--dry-run] [--summary] [--json]',
-  }
-  return usages[subcommand] || 'Usage: clouddrive-cli organize <analyze|plan|apply> [--summary] [--json]'
 }
 
 function fallbackListPage(items, { limit, cursor }) {
@@ -998,6 +706,8 @@ async function handleFiles(argv, env) {
       const result = dryRunMovePlan(plan)
       return ok(result, hasFlag(argv, '--json'))
     }
+    const applyRationale = requireApplyRationale(argv)
+    if (applyRationale.error) return fail(applyRationale.error)
 
     const validation = validateMovePlan(plan)
     if (!validation.ok) return ok({ ok: false, errors: validation.errors, applied: [] }, hasFlag(argv, '--json'))
@@ -1029,6 +739,7 @@ async function handleFiles(argv, env) {
       type: 'move',
       provider: providerName,
       account_id: plan.account_id,
+      rationale: applyRationale.rationale,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
       items: batchResults.map((r, i) => ({
@@ -1049,7 +760,7 @@ async function handleFiles(argv, env) {
     await logStore.save(operationLog)
 
     const exitCode = failed === 0 ? EXIT_CODES.SUCCESS : succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
-    const payload = { ok: failed === 0, operationId: operationLog.id, succeeded, failed, results: batchResults }
+    const payload = { ok: failed === 0, operationId: operationLog.id, rationale: applyRationale.rationale, succeeded, failed, results: batchResults }
     return { exitCode, stdout: jsonOut(payload), stderr: '' }
   }
 
@@ -1071,6 +782,8 @@ async function handleFiles(argv, env) {
       }
       return ok({ ok: false, errors: result.errors, applied: [] }, hasFlag(argv, '--json'))
     }
+    const applyRationale = requireApplyRationale(argv)
+    if (applyRationale.error) return fail(applyRationale.error)
 
     const providerName = plan.provider
     const provider = PROVIDERS[providerName]
@@ -1098,6 +811,7 @@ async function handleFiles(argv, env) {
       type: 'trash',
       provider: providerName,
       account_id: plan.account_id,
+      rationale: applyRationale.rationale,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
       items: batchResults.map((r, i) => ({
@@ -1115,7 +829,7 @@ async function handleFiles(argv, env) {
     await logStore.save(operationLog)
 
     const exitCode = failed === 0 ? EXIT_CODES.SUCCESS : succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
-    const payload = { ok: failed === 0, operationId: operationLog.id, succeeded, failed, results: batchResults }
+    const payload = { ok: failed === 0, operationId: operationLog.id, rationale: applyRationale.rationale, succeeded, failed, results: batchResults }
     return { exitCode, stdout: jsonOut(payload), stderr: '' }
   }
 
@@ -1130,6 +844,8 @@ async function handleFiles(argv, env) {
       const result = dryRunRenamePlan(plan, currentItems)
       return ok(result, hasFlag(argv, '--json'))
     }
+    const applyRationale = requireApplyRationale(argv)
+    if (applyRationale.error) return fail(applyRationale.error)
 
     const providerName = plan.provider
     const provider = PROVIDERS[providerName]
@@ -1155,6 +871,7 @@ async function handleFiles(argv, env) {
       type: 'rename',
       provider: providerName,
       account_id: plan.account_id,
+      rationale: applyRationale.rationale,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
       items: batchResults.map((r, i) => ({
@@ -1172,39 +889,11 @@ async function handleFiles(argv, env) {
     await logStore.save(operationLog)
 
     const exitCode = failed === 0 ? EXIT_CODES.SUCCESS : succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
-    const payload = { ok: failed === 0, operationId: operationLog.id, succeeded, failed, results: batchResults }
+    const payload = { ok: failed === 0, operationId: operationLog.id, rationale: applyRationale.rationale, succeeded, failed, results: batchResults }
     return { exitCode, stdout: jsonOut(payload), stderr: '' }
   }
 
   return fail(`Unknown files command: ${subcommand || ''}`.trim())
-}
-
-async function handleMedia(argv, env) {
-  const subcommand = argv[1]
-  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    return usage(mediaCommandUsage())
-  }
-  if (hasHelpFlag(argv.slice(2))) return usage(mediaCommandUsage(subcommand))
-
-  if (subcommand === 'scan') {
-    const inputPath = readOption(argv, '--input')
-    if (!inputPath) return fail('Usage: clouddrive-cli media scan --input files.json [--json]')
-    const items = await readJsonFile(inputPath)
-    if (!Array.isArray(items)) return fail('--input file must contain a JSON array of file items')
-    const report = scanMediaItems(items)
-    return ok(report, hasFlag(argv, '--json'))
-  }
-
-  if (subcommand === 'match') {
-    const inputPath = readOption(argv, '--input')
-    if (!inputPath) return fail('Usage: clouddrive-cli media match --input files.json [--json]')
-    const items = await readJsonFile(inputPath)
-    if (!Array.isArray(items)) return fail('--input file must contain a JSON array of file items')
-    const matches = matchMediaItems(items)
-    return ok(matches, hasFlag(argv, '--json'))
-  }
-
-  return fail(`Unknown media command: ${subcommand || ''}`.trim())
 }
 
 async function handleOps(argv, env) {
@@ -1238,6 +927,8 @@ async function handleOps(argv, env) {
         const dryResult = dryRunMovePlan(undoPlan)
         return ok({ undoPlan, dryRun: dryResult }, hasFlag(argv, '--json'))
       }
+      const applyRationale = requireApplyRationale(argv)
+      if (applyRationale.error) return fail(applyRationale.error)
       const providerName = operation.provider
       const provider = activeProviders(env)[providerName]
       if (!provider) return fail(`Unknown provider: ${providerName}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
@@ -1251,10 +942,10 @@ async function handleOps(argv, env) {
       const batchResults = await provider.files.moveBatch({ token, driveId, moves })
       const succeeded = batchResults.filter((r) => r.status === 'success').length
       const failed = batchResults.filter((r) => r.status !== 'success').length
-      const undoLog = { id: `op_${Date.now()}`, type: 'move', provider: providerName, account_id: operation.account_id, started_at: new Date().toISOString(), finished_at: new Date().toISOString(), source_undo_of: opId, items: batchResults.map((r, i) => ({ drive_id: driveId, file_id: r.fileId, name: undoPlan.items[i]?.name || '', type: undoPlan.items[i]?.type || 'file', from_parent_file_id: undoPlan.items[i]?.from_parent_file_id || '', to_parent_file_id: undoPlan.items[i]?.to_parent_file_id || '', status: r.status, error: r.status !== 'success' ? { code: r.code, message: r.message } : undefined })) }
+      const undoLog = { id: `op_${Date.now()}`, type: 'move', provider: providerName, account_id: operation.account_id, rationale: applyRationale.rationale, started_at: new Date().toISOString(), finished_at: new Date().toISOString(), source_undo_of: opId, items: batchResults.map((r, i) => ({ drive_id: driveId, file_id: r.fileId, name: undoPlan.items[i]?.name || '', type: undoPlan.items[i]?.type || 'file', from_parent_file_id: undoPlan.items[i]?.from_parent_file_id || '', to_parent_file_id: undoPlan.items[i]?.to_parent_file_id || '', status: r.status, error: r.status !== 'success' ? { code: r.code, message: r.message } : undefined })) }
       await store.save(undoLog)
       const exitCode = failed === 0 ? EXIT_CODES.SUCCESS : succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
-      return { exitCode, stdout: jsonOut({ ok: failed === 0, undoOperationId: undoLog.id, sourceOperationId: opId, succeeded, failed, results: batchResults }), stderr: '' }
+      return { exitCode, stdout: jsonOut({ ok: failed === 0, undoOperationId: undoLog.id, sourceOperationId: opId, rationale: applyRationale.rationale, succeeded, failed, results: batchResults }), stderr: '' }
     }
 
     if (operation.type !== 'rename') return unsupportedUndo(operation)
@@ -1265,6 +956,8 @@ async function handleOps(argv, env) {
       const dryResult = dryRunRenamePlan(undoPlan, [])
       return ok({ undoPlan, dryRun: dryResult }, hasFlag(argv, '--json'))
     }
+    const applyRationale = requireApplyRationale(argv)
+    if (applyRationale.error) return fail(applyRationale.error)
 
     const providerName = operation.provider
     const provider = PROVIDERS[providerName]
@@ -1285,6 +978,7 @@ async function handleOps(argv, env) {
       type: 'rename',
       provider: providerName,
       account_id: operation.account_id,
+      rationale: applyRationale.rationale,
       started_at: new Date().toISOString(),
       finished_at: new Date().toISOString(),
       source_undo_of: opId,
@@ -1301,7 +995,7 @@ async function handleOps(argv, env) {
     await store.save(undoLog)
 
     const exitCode = failed === 0 ? EXIT_CODES.SUCCESS : succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
-    const payload = { ok: failed === 0, undoOperationId: undoLog.id, sourceOperationId: opId, succeeded, failed, results: batchResults }
+    const payload = { ok: failed === 0, undoOperationId: undoLog.id, sourceOperationId: opId, rationale: applyRationale.rationale, succeeded, failed, results: batchResults }
     return { exitCode, stdout: jsonOut(payload), stderr: '' }
   }
 
@@ -1375,10 +1069,13 @@ async function handleList(argv) {
 async function handleSchema(argv) {
   const subcommand = argv[1]
   if (subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    return usage('Usage: clouddrive-cli schema commands [--group <name>]')
+    return usage('Usage: clouddrive-cli schema <commands|plans> [--group <name>] [--name <plan>]')
   }
   if (subcommand === 'commands' && hasHelpFlag(argv.slice(2))) {
     return usage('Usage: clouddrive-cli schema commands [--group <name>]')
+  }
+  if (subcommand === 'plans' && hasHelpFlag(argv.slice(2))) {
+    return usage('Usage: clouddrive-cli schema plans [--name <rename|move|trash|upload>]')
   }
   if (!subcommand || subcommand === 'commands') {
     return ok({
@@ -1386,52 +1083,13 @@ async function handleSchema(argv) {
       commands: listCommands({ group: readOption(argv, '--group') }),
     }, true)
   }
+  if (subcommand === 'plans') {
+    return ok({
+      version: PLAN_SCHEMA_VERSION,
+      plans: listPlanSchemas({ name: readOption(argv, '--name') }),
+    }, true)
+  }
   return fail(`Unknown schema command: ${subcommand || ''}`.trim())
-}
-
-async function handleDocs(argv, env) {
-  const subcommand = argv[1]
-  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    return usage('Usage: clouddrive-cli docs <read|convert> <path> [options]')
-  }
-  if (subcommand === 'read' && hasHelpFlag(argv.slice(2))) {
-    return usage('Usage: clouddrive-cli docs read <path> [--max-chars <n>] [--pdf-format <markdown|text|json|html>] [--pdf-pages <pages>] [--json]')
-  }
-  if (subcommand === 'convert' && hasHelpFlag(argv.slice(2))) {
-    return usage('Usage: clouddrive-cli docs convert <path> --output <dir> [--pdf-format <formats>] [--json]')
-  }
-  if (subcommand !== 'read' && subcommand !== 'convert') return fail(`Unknown docs command: ${subcommand || ''}`.trim())
-
-  const inputPath = argv[2]
-  if (!inputPath) {
-    return fail(subcommand === 'convert'
-      ? 'Usage: clouddrive-cli docs convert <path> --output <dir> [--pdf-format <formats>] [--json]'
-      : 'Usage: clouddrive-cli docs read <path> [--max-chars <n>] [--pdf-format <markdown|text|json|html>] [--pdf-pages <pages>] [--json]')
-  }
-
-  const resolvedPath = resolve(inputPath)
-  const info = await stat(resolvedPath)
-  if (subcommand === 'read' && !info.isFile()) return fail(`Document path is not a file: ${resolvedPath}`)
-  if (subcommand === 'convert') {
-    if (!info.isFile() && !info.isDirectory()) return fail(`Document path is not a file or directory: ${resolvedPath}`)
-    return ok(await convertPdfWithOpenDataLoader(resolvedPath, argv, env), true)
-  }
-
-  const maxChars = readPositiveIntegerOption(argv, '--max-chars', 20000)
-  const format = detectDocumentFormat(resolvedPath)
-  const converted = format === 'pdf' ? await convertPdfDocument(resolvedPath, argv, env) : null
-  const raw = converted ? converted.content : await readFile(resolvedPath, 'utf8')
-  const content = raw.length > maxChars ? raw.slice(0, maxChars) : raw
-  const payload = {
-    path: resolvedPath,
-    format,
-    ...(converted ? { sourceFormat: converted.sourceFormat } : {}),
-    chars: raw.length,
-    truncated: raw.length > maxChars,
-    content,
-  }
-
-  return hasFlag(argv, '--json') ? ok(payload, true) : ok(content, false)
 }
 
 async function handleUpload(argv, env) {
@@ -1466,6 +1124,8 @@ async function handleUpload(argv, env) {
     if (rationale) dryRun.rationale = rationale
     if (hasFlag(argv, '--dry-run')) return ok(dryRun, hasFlag(argv, '--json'))
     if (!dryRun.ok) return ok(dryRun, hasFlag(argv, '--json'))
+    const applyRationale = requireApplyRationale(argv)
+    if (applyRationale.error) return fail(applyRationale.error)
 
     const provider = activeProviders(env)[plan.provider]
     if (!provider) return fail(`Unknown provider: ${plan.provider}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
@@ -1475,93 +1135,12 @@ async function handleUpload(argv, env) {
     const token = await resolveToken(env, plan.provider, plan.account_id)
     const driveId = plan.drive_id || token.default_drive_id || token.backup_drive_id || plan.provider
     const result = await executeUploadPlan(plan, { provider, token, driveId })
-    if (rationale) result.rationale = rationale
+    result.rationale = applyRationale.rationale
     const exitCode = result.ok ? EXIT_CODES.SUCCESS : result.succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
     return { exitCode, stdout: jsonOut(result), stderr: '' }
   }
 
   return fail(`Unknown upload command: ${subcommand || ''}`.trim())
-}
-
-async function handleOrganize(argv, env) {
-  const subcommand = argv[1]
-  if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
-    return usage(organizeCommandUsage())
-  }
-  if (hasHelpFlag(argv.slice(2))) return usage(organizeCommandUsage(subcommand))
-
-  if (subcommand === 'analyze') {
-    const removedPath = rejectRemovedPath(argv)
-    if (removedPath) return removedPath
-    const inputPath = readOption(argv, '--input')
-    const providerName = readOption(argv, '--provider') || 'aliyun'
-    const accountId = readOption(argv, '--account') || 'default'
-    const rootFileId = readCloudFileId(argv, providerName)
-    const outputPath = readOption(argv, '--output')
-    const maxDepth = readPositiveIntegerOption(argv, '--depth', 5)
-    const summaryOnly = hasFlag(argv, '--summary')
-
-    let items
-    if (inputPath) {
-      items = await readJsonFile(inputPath)
-    } else {
-      const provider = activeProviders(env)[providerName]
-      if (!provider) return fail(`Unknown provider: ${providerName}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
-      const token = await resolveToken(env, providerName, accountId)
-      const driveId = readOption(argv, '--drive-id') || token.default_drive_id || token.backup_drive_id
-      items = []
-      for await (const item of provider.files.walk({ token, driveId, parentFileId: rootFileId, maxDepth })) {
-        items.push(item)
-      }
-    }
-
-    if (!Array.isArray(items)) return fail('--input file must contain a JSON array of file items')
-    const analysis = analyzeDriveItems({ provider: providerName, accountId, rootFileId, items })
-    if (outputPath) await writeFile(outputPath, `${JSON.stringify(analysis, null, 2)}\n`, 'utf8')
-    return ok(summaryOnly ? summarizeOrganizeAnalysis(analysis) : analysis, hasFlag(argv, '--json') || !outputPath)
-  }
-
-  if (subcommand === 'plan') {
-    const analysisPath = readOption(argv, '--analysis')
-    const outputPath = readOption(argv, '--output')
-    const rulesPath = readOption(argv, '--rules')
-    const summaryOnly = hasFlag(argv, '--summary')
-    if (!analysisPath) return fail('Usage: clouddrive-cli organize plan --analysis <analysis.json> [--rules <doc>] [--output <plan.json>] [--json]')
-
-    const analysis = await readJsonFile(analysisPath)
-    const rulesText = rulesPath ? await readFile(resolve(rulesPath), 'utf8') : ''
-    const plan = createOrganizePlan({ analysis, rulesText })
-    if (outputPath) await writeFile(outputPath, `${JSON.stringify(plan, null, 2)}\n`, 'utf8')
-    return ok(summaryOnly ? summarizeOrganizePlan(plan) : plan, hasFlag(argv, '--json') || !outputPath)
-  }
-
-  if (subcommand === 'apply') {
-    const planPath = argv[2]
-    if (planPath === '--help' || planPath === '-h') return usage('Usage: clouddrive-cli organize apply <plan.json> [--dry-run] [--summary] [--json]')
-    if (!planPath) return fail('Usage: clouddrive-cli organize apply <plan.json> [--dry-run] [--json]')
-    const plan = await readJsonFile(planPath)
-    const dryRun = dryRunOrganizePlan(plan)
-    const summaryOnly = hasFlag(argv, '--summary')
-    if (hasFlag(argv, '--dry-run')) return ok(summaryOnly ? summarizeOrganizePlan(dryRun) : dryRun, hasFlag(argv, '--json'))
-    if (!dryRun.ok) return ok(summaryOnly ? summarizeOrganizePlan(dryRun) : dryRun, hasFlag(argv, '--json'))
-
-    const provider = activeProviders(env)[plan.provider]
-    if (!provider) return fail(`Unknown provider: ${plan.provider}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
-    const unsupported = Object.entries(dryRun.counts)
-      .filter(([, count]) => count > 0)
-      .map(([action]) => action)
-      .filter((action) => action === 'mkdir' ? !provider.capabilities.mkdir : action === 'move' ? !provider.capabilities.move : action === 'rename' ? !provider.capabilities.batchRename : true)
-    if (unsupported.length > 0) {
-      return fail(`Provider "${plan.provider}" does not support organize actions: ${unsupported.join(', ')}`, EXIT_CODES.UNSUPPORTED_CAPABILITY)
-    }
-    const token = await resolveToken(env, plan.provider, plan.account_id)
-    const driveId = plan.drive_id || token.default_drive_id || token.backup_drive_id || plan.provider
-    const result = await executeOrganizePlan(plan, dryRun, { provider, token, driveId, configDir: env.configDir })
-    const exitCode = result.ok ? EXIT_CODES.SUCCESS : result.succeeded > 0 ? EXIT_CODES.PARTIAL_SUCCESS : EXIT_CODES.PROVIDER_API_ERROR
-    return { exitCode, stdout: jsonOut(summaryOnly ? summarizeOrganizeApplyResult(result) : result), stderr: '' }
-  }
-
-  return fail(`Unknown organize command: ${subcommand || ''}`.trim())
 }
 
 function printHelp() {
@@ -1577,6 +1156,8 @@ function printHelp() {
                                 机器可发现的命令清单
   schema commands [--group <name>]
                                 输出命令 schema/manifest
+  schema plans [--name <plan>]
+                                输出 move/rename/trash/upload plan JSON schema
 
   auth
     list                        列出所有已保存账号
@@ -1612,18 +1193,6 @@ function printHelp() {
     rename-apply <plan.json> [--current <f>] [--dry-run] [--json]
                                 执行重命名计划
 
-  media
-    scan    --input <files.json> [--json]
-                                扫描媒体文件类型
-    match   --input <files.json> [--json]
-                                提取媒体命名信息
-
-  docs
-    read <path> [--max-chars <n>] [--json]
-                                读取本地文档作为 AI 上下文
-    convert <path> --output <dir> [--pdf-format <formats>] [--json]
-                                使用 OpenDataLoader 转换 PDF 文件/目录
-
   upload
     plan --local <path> [--provider <p>] [--account <id>]
          [--remote-parent <id>] [--output <plan.json>] [--json]
@@ -1631,19 +1200,10 @@ function printHelp() {
     apply <plan.json> [--dry-run] [--json]
                                 校验或执行上传计划
 
-  organize
-    analyze [--input <files.json>] [--provider <p>] [--account <id>]
-            [--file-id <folder-id>] [--depth <n>] [--output <analysis.json>] [--json]
-                                分析网盘目录结构
-    plan --analysis <analysis.json> [--rules <doc>] [--output <plan.json>] [--json]
-                                生成目录整理计划
-    apply <plan.json> [--dry-run] [--json]
-                                校验或执行目录整理计划
-
   ops
     list                        列出操作历史
     show <op-id>                查看操作详情
-    undo <op-id> [--dry-run]    撤销重命名操作
+    undo <op-id> [--dry-run]    撤销支持的移动/重命名操作
 
   help, --help, -h              显示此帮助信息
 
@@ -1652,11 +1212,8 @@ function printHelp() {
 示例：
   clouddrive-cli auth list
   clouddrive-cli list --format json
-  clouddrive-cli docs read ./README.md --json
   clouddrive-cli providers capabilities --json
   clouddrive-cli files list --provider aliyun --json
-  clouddrive-cli media scan --input files.json --json
-  clouddrive-cli media match --input files.json --json
 `,
     stderr: '',
   }
@@ -1677,10 +1234,7 @@ export async function runBoxPlayerCli(argv, env = {}) {
     else if (command === 'auth') result = await handleAuth(argv, runtime)
     else if (command === 'providers') result = await handleProviders(argv)
     else if (command === 'files') result = await handleFiles(argv, runtime)
-    else if (command === 'media') result = await handleMedia(argv, runtime)
-    else if (command === 'docs') result = await handleDocs(argv, runtime)
     else if (command === 'upload') result = await handleUpload(argv, runtime)
-    else if (command === 'organize') result = await handleOrganize(argv, runtime)
     else if (command === 'ops') result = await handleOps(argv, runtime)
     else if (command === 'settings') result = await handleSettings(argv, runtime)
     else result = fail(`未知命令: ${command}\n运行 clouddrive-cli --help 查看可用命令`)

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { IMusicTrack } from '../types/music'
+import type { ILibrarySource } from '../types/librarySource'
 import DB from '../utils/db'
 import { loadMusicTrackList } from '../utils/musicPlayerStorage'
 
@@ -77,6 +78,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   const tracks = ref<IMusicTrack[]>([])
   const trackPositions = new Map<string, number>()
   const loaded = ref(false)
+  const sources = ref<ILibrarySource[]>([])
   const isScanning = ref(false)
   const scanLabel = ref('')
   const scanScanned = ref(0)
@@ -144,31 +146,49 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   })
 
   const byFolder = computed(() => {
+    const sourceItems = sources.value.map((source) => {
+      const items = tracks.value.filter(track => (track.source_ids || (track.source_id ? [track.source_id] : [])).includes(source.id))
+      return {
+        key: source.id,
+        source_id: source.id,
+        path: source.path || source.name,
+        name: source.name,
+        user_id: source.user_id,
+        drive_id: source.drive_id,
+        folder_id: source.folder_id,
+        items,
+        count: source.item_count ?? items.length,
+        scanned_at: source.scanned_at
+      }
+    })
     const map = new Map<string, IMusicTrack[]>()
-    for (const t of tracks.value) {
+    for (const t of tracks.value.filter(track => !(track.source_ids?.length || track.source_id))) {
       const path = (t.parent_path || t.parent_file_id || '').trim() || '未分组'
       const key = `${t.user_id || ''}|${t.drive_id || ''}|${path}`
       const arr = map.get(key)
       if (arr) arr.push(t)
       else map.set(key, [t])
     }
-    return Array.from(map.values())
+    const legacyItems = Array.from(map.values())
       .map((items) => {
         const first = items[0]
         const path = (first.parent_path || first.parent_file_id || '').trim() || '未分组'
         const key = `${first.user_id || ''}|${first.drive_id || ''}|${path}`
         return {
           key,
+          source_id: undefined,
           path,
           name: path.split('/').pop() || path,
           user_id: first.user_id || '',
           drive_id: first.drive_id || '',
+          folder_id: first.parent_file_id || '',
           items,
           count: items.length,
           scanned_at: items.reduce((m, t) => Math.max(m, t.scanned_at || 0), 0)
         }
       })
       .sort((a, b) => b.scanned_at - a.scanned_at)
+    return [...sourceItems, ...legacyItems].sort((a, b) => b.scanned_at - a.scanned_at)
   })
 
   const favoritesTracks = computed<IMusicTrack[]>(() => {
@@ -208,7 +228,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   async function loadFromDB() {
     if (loaded.value) return
     try {
-      const [list, count] = await Promise.all([DB.getMusicTrackPage({ limit: MUSIC_CACHE_PAGE_SIZE }), DB.countMusicTracks()])
+      const [list, count, sourceList] = await Promise.all([DB.getMusicTrackPage({ limit: MUSIC_CACHE_PAGE_SIZE }), DB.countMusicTracks(), DB.getLibrarySources('music')])
       const dirtyToFix: IMusicTrack[] = []
       const fixed = list.map((raw) => {
         const before = { artist: raw.artist, title: raw.title }
@@ -228,6 +248,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
       totalTrackCount.value = count
       loadedTrackCount.value = fixed.length
       loaded.value = true
+      sources.value = sourceList
       if (dirtyToFix.length) {
         DB.saveMusicTracks(dirtyToFix).catch(() => {})
       }
@@ -270,8 +291,11 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     const enriched = newTracks.map(ensureArtistTitle).map((track) => {
       const existing = existingById.get(track.id)
       if (!existing) return track
+      const sourceIds = Array.from(new Set([...(existing.source_ids || (existing.source_id ? [existing.source_id] : [])), ...(track.source_ids || (track.source_id ? [track.source_id] : []))]))
       return {
         ...track,
+        source_ids: sourceIds,
+        source_id: sourceIds[0],
         artist: existing.artist || track.artist,
         title: existing.title || track.title,
         album: existing.album || track.album,
@@ -312,6 +336,42 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     const deleted = await DB.deleteMusicTracksByIds(ids).catch(() => 0)
     removeTracksByIds(ids)
     return deleted || ids.length
+  }
+
+  async function saveSource(source: ILibrarySource) {
+    const index = sources.value.findIndex(item => item.id === source.id)
+    const nextSource = index >= 0 ? { ...source, created_at: sources.value[index].created_at } : source
+    await DB.saveLibrarySource(nextSource)
+    if (index >= 0) sources.value[index] = nextSource
+    else sources.value.push(nextSource)
+  }
+
+  async function deleteSource(sourceId: string) {
+    const deleted = await DB.deleteMusicLibrarySource(sourceId)
+    sources.value = sources.value.filter(source => source.id !== sourceId)
+    tracks.value = tracks.value.flatMap((track) => {
+      const sourceIds = (track.source_ids || (track.source_id ? [track.source_id] : [])).filter(id => id !== sourceId)
+      return sourceIds.length ? [{ ...track, source_ids: sourceIds, source_id: sourceIds[0] }] : []
+    })
+    totalTrackCount.value = Math.max(0, totalTrackCount.value - deleted)
+    loadedTrackCount.value = tracks.value.length
+    rebuildTrackPositions()
+    return deleted
+  }
+
+  async function reconcileSource(sourceId: string, seenIds: string[]) {
+    const removed = await DB.reconcileMusicLibrarySource(sourceId, seenIds)
+    const seen = new Set(seenIds)
+    tracks.value = tracks.value.flatMap((track) => {
+      const sourceIds = track.source_ids || (track.source_id ? [track.source_id] : [])
+      if (!sourceIds.includes(sourceId) || seen.has(track.id)) return [track]
+      const next = sourceIds.filter(id => id !== sourceId)
+      return next.length ? [{ ...track, source_ids: next, source_id: next[0] }] : []
+    })
+    totalTrackCount.value = Math.max(0, totalTrackCount.value - removed)
+    loadedTrackCount.value = tracks.value.length
+    rebuildTrackPositions()
+    return removed
   }
 
   async function updateTrackEnrichment(id: string, patch: Partial<IMusicTrack>) {
@@ -373,6 +433,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
 
   return {
     tracks,
+    sources,
     loaded,
     isScanning,
     scanLabel,
@@ -399,6 +460,9 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     appendTracks,
     removeTracksByIds,
     deleteTracksByIds,
+    saveSource,
+    deleteSource,
+    reconcileSource,
     updateTrackEnrichment,
     setIsScanning,
     markScanFinished,

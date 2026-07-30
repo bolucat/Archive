@@ -2,11 +2,14 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mediaStore = {
   mediaItems: [] as any[],
+  folders: [] as any[],
   addFolder: vi.fn(),
   pruneOrphanDuplicateFolders: vi.fn(),
   beginPersistenceBatch: vi.fn(),
   checkpointPersistenceBatch: vi.fn(),
   endPersistenceBatch: vi.fn(),
+  reconcileFolderSource: vi.fn(),
+  removeFolder: vi.fn(),
   setScanning: vi.fn(),
   setScanProgress: vi.fn()
 }
@@ -24,6 +27,13 @@ vi.mock('../../user/userdal', () => ({
 vi.mock('../tmdb', () => ({
   TmdbService: { getInstance: () => ({}) },
   tmdbImageUrl: vi.fn()
+}))
+vi.mock('../db', () => ({
+  default: {
+    getIndexedMediaFileIds: vi.fn().mockResolvedValue(new Set()),
+    getMediaLibraryFolderFileIds: vi.fn().mockResolvedValue([]),
+    reconcileMediaLibraryFolder: vi.fn().mockResolvedValue(undefined)
+  }
 }))
 
 let MediaScanner: typeof import('../mediaScanner').MediaScanner

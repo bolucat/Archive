@@ -1254,14 +1254,20 @@ async function deleteFolderGroups(groups: BookFolderGroup[]) {
     bookCount += g.items.length
     for (const b of g.items) uniq.add(b.id)
   }
-  if (!uniq.size) return
+  if (!groups.length) return
   const permanently = managerPreferences.value.isDisableTrashBin
   const ok = window.confirm(permanently
     ? t('book.confirmDeleteFolderGroupsPermanent', { folderCount: groups.length, bookCount })
     : t('book.confirmMoveFolderGroupsToDeleted', { folderCount: groups.length, bookCount }))
   if (!ok) return
-  if (permanently) await bookStore.deleteBooksByIds(Array.from(uniq))
-  else await bookStore.moveBooksToTrash(Array.from(uniq))
+  for (const group of groups) {
+    if (group.source_id) await bookStore.deleteSource(group.source_id)
+  }
+  const legacyIds = groups.filter(group => !group.source_id).flatMap(group => group.items.map(book => book.id))
+  if (legacyIds.length) {
+    if (permanently) await bookStore.deleteBooksByIds(legacyIds)
+    else await bookStore.moveBooksToTrash(legacyIds)
+  }
   if (selectedBook.value && uniq.has(selectedBook.value.id)) selectedBook.value = null
   selectedFolderKeys.value = selectedFolderKeys.value.filter((key) => bookStore.byFolder.some((g) => g.key === key))
   if (groupDetail.value?.type === 'folder' && groups.some((g) => g.items.some((b) => groupDetail.value?.items.some((gb) => gb.id === b.id)))) {
@@ -1446,13 +1452,16 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
     <main class='book-main'>
       <header class='book-header'>
         <div class='book-header-title-row'>
+          <div class='book-header-title-mark'>
+            <BookOpen :size='20' :stroke-width='1.8' />
+          </div>
           <div class='book-header-title'>
             <h2>{{ activeManagerTitle }}</h2>
             <p>{{ activeManagerSubtitle }}</p>
           </div>
+          <span v-if='isCollectionManagerView' class='book-total-count'>{{ t('book.totalBooks', { count: readerVisibleBooks.length }) }}</span>
         </div>
         <div class='book-header-ctrl-row'>
-          <span v-if='isCollectionManagerView' class='book-total-count'>{{ t('book.totalBooks', { count: readerVisibleBooks.length }) }}</span>
           <a-input v-model='query' allow-clear size='small' class='book-search' :placeholder='bookSearchPlaceholder'>
             <template #prefix><Search :size='15' :stroke-width='1.8' /></template>
           </a-input>
@@ -2931,22 +2940,36 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  height: calc(100% - 36px);
   margin: 18px 18px 18px 14px;
 }
 
 .book-header {
-  padding: 12px 18px 10px;
+  padding: 18px 20px 14px;
   border-bottom: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 16px;
   flex-shrink: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .035), transparent);
 }
 
 .book-header-title-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+}
+
+.book-header-title-mark {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--book-manager-primary) 30%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--book-manager-primary) 12%, transparent);
+  color: var(--book-manager-primary);
 }
 
 .book-header-title {
@@ -2957,7 +2980,7 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 
 .book-header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: 21px;
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
@@ -2965,7 +2988,7 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 }
 
 .book-header p {
-  margin: 2px 0 0;
+  margin: 4px 0 0;
   color: var(--color-text-3);
   font-size: 12px;
   white-space: nowrap;
@@ -2976,8 +2999,9 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 .book-header-ctrl-row {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .book-total-count {
@@ -2985,6 +3009,10 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
   font-size: 12px;
   white-space: nowrap;
   flex-shrink: 0;
+  padding: 5px 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .035);
 }
 
 .book-card-scale {
@@ -3016,8 +3044,9 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
 }
 
 .book-search {
-  width: 200px;
-  flex-shrink: 0;
+  width: min(360px, 34vw);
+  flex: 1 1 260px;
+  max-width: 420px;
 }
 
 .book-sort-btn {

@@ -20,6 +20,7 @@ import { ITokenInfo } from '../user/userstore'
 import useMusicLibraryStore from '../store/musiclibrary'
 import useSettingStore from '../setting/settingstore'
 import { IMusicTrack } from '../types/music'
+import { buildLibrarySourceId } from '../types/librarySource'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
 
@@ -57,7 +58,7 @@ function isAudioFile(item: IAliGetFileModel): boolean {
   return AUDIO_EXTS.has(name.slice(dot).toLowerCase())
 }
 
-function trackFromAliModel(item: IAliGetFileModel, user_id: string, drive_id: string, parent_path: string): IMusicTrack {
+function trackFromAliModel(item: IAliGetFileModel, user_id: string, drive_id: string, parent_path: string, source_id: string): IMusicTrack {
   const id = `${user_id}|${drive_id}|${item.file_id}`
   const ext = item.ext || (() => {
     const i = (item.name || '').lastIndexOf('.')
@@ -65,6 +66,8 @@ function trackFromAliModel(item: IAliGetFileModel, user_id: string, drive_id: st
   })()
   return {
     id,
+    source_id,
+    source_ids: [source_id],
     user_id,
     drive_id,
     file_id: item.file_id,
@@ -138,10 +141,15 @@ class MusicScanner {
     const drive_id = folder.drive_id || ''
     const label = folder.name || '指定文件夹'
     store.setScanProgress(`正在扫描 ${label}`, 0, 0)
-    const counters = { scanned: 0, found: 0 }
+    const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+    const sourceId = buildLibrarySourceId('music', user_id, drive_id, folder.file_id)
     try {
-      await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0)
-      if (!this.shouldStop && !this.hadError) store.markScanFinished()
+      await this.bfsCollect(folder, user_id, drive_id, folder.name || '', label, counters, 0, sourceId)
+      if (!this.shouldStop && !this.hadError) {
+        await store.reconcileSource(sourceId, [...counters.seen])
+        await store.saveSource({ id: sourceId, kind: 'music', user_id, drive_id, folder_id: folder.file_id, name: folder.name || label, path: (folder as any).path || '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+        store.markScanFinished()
+      }
       // 注册到自动扫描列表，下次启动 app 时也做增量
       this.registerAutoScanFolder({
         user_id,
@@ -195,9 +203,14 @@ class MusicScanner {
         } as IAliGetFileModel
         ;(folderModel as any).path = f.path || ''
         store.setScanProgress(`正在扫描 ${f.name || '指定文件夹'}`, summary.scanned, summary.found)
-        const counters = { scanned: 0, found: 0 }
+        const counters = { scanned: 0, found: 0, seen: new Set<string>() }
         try {
-          await this.bfsCollect(folderModel, f.user_id, f.drive_id, f.name || '', f.name || '指定文件夹', counters, 0)
+          const sourceId = buildLibrarySourceId('music', f.user_id, f.drive_id, f.file_id)
+          await this.bfsCollect(folderModel, f.user_id, f.drive_id, f.name || '', f.name || '指定文件夹', counters, 0, sourceId)
+          if (!this.shouldStop) {
+            await store.reconcileSource(sourceId, [...counters.seen])
+            await store.saveSource({ id: sourceId, kind: 'music', user_id: f.user_id, drive_id: f.drive_id, folder_id: f.file_id, name: f.name || '指定文件夹', path: f.path || '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+          }
           summary.scanned += counters.scanned
           summary.found += counters.found
           summary.folderCount += 1
@@ -317,8 +330,13 @@ class MusicScanner {
       isDir: true
     } as IAliGetFileModel
     ;(rootFolder as any).path = token.tokenfrom === 'baidu' ? '/' : ''
-    const counters = { scanned: 0, found: 0 }
-    await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0)
+    const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+    const sourceId = buildLibrarySourceId('music', token.user_id, driveId, rootId || 'root')
+    await this.bfsCollect(rootFolder, token.user_id, driveId, '', label, counters, 0, sourceId)
+    if (!this.shouldStop) {
+      await store.reconcileSource(sourceId, [...counters.seen])
+      await store.saveSource({ id: sourceId, kind: 'music', user_id: token.user_id, drive_id: driveId, folder_id: rootId || 'root', name: label, path: '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+    }
   }
 
   // ============== Aliyun Server-side Walk ==============
@@ -334,6 +352,8 @@ class MusicScanner {
     for (const drive_id of drives) {
       if (this.shouldStop) break
       try {
+        const sourceId = buildLibrarySourceId('music', token.user_id, drive_id, 'root')
+        const seen = new Set<string>()
         const driveLabel = drive_id.slice(-6)
         store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
         for await (const items of AliFileWalk.ApiWalkFilePages(token.user_id, drive_id, 'root', '', 'updated_at desc', 'file')) {
@@ -346,11 +366,16 @@ class MusicScanner {
             return !sinceMs || !time || time >= sinceMs
           })
           if (filtered.length) {
-            const tracks = filtered.map((it) => trackFromAliModel(it, token.user_id, drive_id, ''))
+            const tracks = filtered.map((it) => trackFromAliModel(it, token.user_id, drive_id, '', sourceId))
+            tracks.forEach(track => seen.add(track.id))
             await store.appendTracks(tracks)
             totalFound += tracks.length
           }
           store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
+        }
+        if (!this.shouldStop && !sinceMs) {
+          await store.reconcileSource(sourceId, [...seen])
+          await store.saveSource({ id: sourceId, kind: 'music', user_id: token.user_id, drive_id, folder_id: 'root', name: `${label} · ${drive_id.slice(-6)}`, path: '', created_at: Date.now(), scanned_at: Date.now(), item_count: seen.size })
         }
       } catch (e) {
         this.hadError = true
@@ -367,8 +392,9 @@ class MusicScanner {
     drive_id: string,
     parent_path: string,
     label: string,
-    counters: { scanned: number; found: number },
-    depth: number
+    counters: { scanned: number; found: number; seen: Set<string> },
+    depth: number,
+    sourceId: string
   ): Promise<void> {
     if (this.shouldStop) return
     if (depth > BFS_MAX_DEPTH) {
@@ -383,7 +409,8 @@ class MusicScanner {
         counters.scanned += items.length
         const audios = items.filter(isAudioFile)
         if (audios.length) {
-          const tracks = audios.map((it) => trackFromAliModel(it, user_id, drive_id, parent_path))
+          const tracks = audios.map((it) => trackFromAliModel(it, user_id, drive_id, parent_path, sourceId))
+          tracks.forEach(track => counters.seen.add(track.id))
           await store.appendTracks(tracks)
           counters.found += tracks.length
         }
@@ -394,7 +421,7 @@ class MusicScanner {
           if (!child.isDir) continue
           const childPath = parent_path ? `${parent_path}/${child.name}` : child.name
           await delay(FOLDER_THROTTLE_MS)
-          await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1)
+          await this.bfsCollect(child, user_id, drive_id, childPath, label, counters, depth + 1, sourceId)
         }
       }
     } catch (e) {

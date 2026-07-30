@@ -84,4 +84,54 @@ describe('media-library Dexie migration', () => {
     expect(store.pruneOrphanDuplicateFolders()).toBe(0)
     expect(store.folders.map(entry => entry.id).sort()).toEqual(['first', 'second'])
   })
+
+  it('replaces manually edited metadata in the library and recent snapshot without creating a duplicate', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    const original = item('movie-a', '2026-07-01')
+    store.addMediaItem(original)
+    store.addToRecentlyAdded(original)
+
+    store.replaceMediaItemMetadata({ ...original, name: 'Correct title', tmdbId: 123, metadataSource: 'manual' })
+
+    expect(store.mediaItems).toHaveLength(1)
+    expect(store.mediaItems[0].name).toBe('Correct title')
+    expect(store.recentlyAdded).toHaveLength(1)
+    expect(store.recentlyAdded[0].name).toBe('Correct title')
+  })
+
+  it('replaces metadata for a movie nested in a collection', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    const child = item('collection-movie', '2026-07-01')
+    const collection = { ...item('collection', '2026-07-01'), collectionId: 10, collectionMovies: [child] }
+    store.addMediaItem(collection)
+
+    store.replaceMediaItemMetadata({ ...child, name: 'Correct collection movie', tmdbId: 456, metadataSource: 'manual' })
+
+    expect(store.mediaItems).toHaveLength(1)
+    expect(store.mediaItems[0].collectionMovies?.[0].name).toBe('Correct collection movie')
+    expect(store.mediaItems[0].collectionMovies?.[0].tmdbId).toBe(456)
+  })
+
+  it('removes historical aliases of the same media source together', async () => {
+    localStorage.setItem('MediaLibrary_DexieMigrated_v1', '1')
+    const { useMediaLibraryStore } = await import('../../store/medialibrary')
+    const store = useMediaLibraryStore()
+    await store.hydrate()
+    const source = { fileId: 'folder-1', name: 'Movies', path: '/Movies', userId: 'user', driveId: 'drive', driveServerId: 'aliyun', itemCount: 1, scanDate: new Date('2026-07-01') }
+    store.addFolder({ ...source, id: 'legacy-source-id' })
+    store.addFolder({ ...source, id: 'scoped-source-id' })
+    store.addMediaItem({ ...item('movie-a', '2026-07-01'), folderId: 'legacy-source-id' })
+    store.addMediaItem({ ...item('movie-b', '2026-07-01'), folderId: 'scoped-source-id' })
+
+    store.removeFolder('scoped-source-id')
+
+    expect(store.folders).toHaveLength(0)
+    expect(store.mediaItems).toHaveLength(0)
+  })
 })

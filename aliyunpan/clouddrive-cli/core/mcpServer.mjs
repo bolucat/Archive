@@ -31,11 +31,6 @@ async function createTempJson(value, temp) {
 async function normalizeInputFiles(command, input, temp) {
   const normalized = { ...(input || {}) }
 
-  if (!getToolInput(normalized, 'input') && Array.isArray(normalized.items)) {
-    const itemInputCommands = new Set(['media scan', 'media match'])
-    if (itemInputCommands.has(command.command)) normalized.input = await createTempJson(normalized.items, temp)
-  }
-
   return normalized
 }
 
@@ -47,6 +42,7 @@ async function materializeValue(value, field, temp) {
 
 async function buildArgv(command, input, temp) {
   const argv = command.command.split(/\s+/)
+  const confirmApply = getToolInput(input, 'confirm-apply')
 
   for (const arg of command.args || []) {
     const value = await materializeValue(getToolInput(input, arg.name), arg, temp)
@@ -70,6 +66,10 @@ async function buildArgv(command, input, temp) {
       continue
     }
     argv.push(`--${option.name}`, String(value))
+  }
+
+  if (command.requiresDryRun && getToolInput(input, 'dry-run') === false && confirmApply !== true) {
+    return { error: 'confirm_apply=true is required when dry_run=false' }
   }
 
   argv.push('--json')

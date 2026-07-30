@@ -22,6 +22,7 @@ import UserDAL from '../user/userdal'
 import { buildExpectedSeasons } from './mediaCoverage'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
 import DB from './db'
+import { mergeDriveFileSources } from './mediaSourceMembership'
 
 type ScanContext = {
   userId: string
@@ -81,6 +82,9 @@ export class MediaScanner {
     this.mediaStore.beginPersistenceBatch()
     this.resetPersistenceCheckpoint()
     let completed = false
+    let folderKey = ''
+    let sourceWasExisting = false
+    let previousFileIds: string[] = []
 
     // 断点恢复只服务于用户主动发起的完整刮削。Agent 的静默扫描由任务
     // 自身负责重试，不能让视频页把正在运行的后台扫描识别成异常中断。
@@ -94,7 +98,9 @@ export class MediaScanner {
         this.saveScanCheckpoint({ folder, driveServerId, userId: scanContext.userId })
       }
 
-      const folderKey = this.getScopedFolderKey(scanContext, folder.file_id)
+      folderKey = this.getScopedFolderKey(scanContext, folder.file_id)
+      sourceWasExisting = this.mediaStore.folders.some(source => source.id === folderKey)
+      previousFileIds = await DB.getMediaLibraryFolderFileIds(folderKey)
       const existingIds = new Set<string>()
       let totalProcessed = 0
 
@@ -139,6 +145,10 @@ export class MediaScanner {
       await flushAIUnmatched()
 
       if (!this.shouldStop) {
+        if (!options.incremental) {
+          await DB.reconcileMediaLibraryFolder(folderKey, [...existingIds])
+          this.mediaStore.reconcileFolderSource(folderKey, existingIds)
+        }
         const mediaFolder: MediaLibraryFolder = {
           id: folderKey,
           fileId: folder.file_id,
@@ -161,6 +171,11 @@ export class MediaScanner {
       }
     } catch (error) {
       console.error('扫描文件夹时出错:', error)
+      if (folderKey) {
+        await DB.reconcileMediaLibraryFolder(folderKey, previousFileIds).catch(() => {})
+        this.mediaStore.reconcileFolderSource(folderKey, previousFileIds)
+        if (!sourceWasExisting) this.mediaStore.removeFolder(folderKey)
+      }
       if (!options.silent) message.error('扫描失败: ' + (error as Error).message)
       // 后台调用方（例如媒体获取 Agent）必须知道扫描是否真正成功。
       // 否则 workflow 会继续写入“媒体库扫描已完成”并把任务标记完成，
@@ -206,7 +221,7 @@ export class MediaScanner {
           if (item.isDir) subFolders.push(item)
           else if (this.isVideoFile(item.name)) {
             const itemPath = relativePath ? `${relativePath.replace(/\/$/, '')}/${item.name}` : item.name
-            videoFiles.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.description || '', thumbnailLink: item.thumbnail || undefined, videoDuration: item.media_duration, height: item.media_height })
+            videoFiles.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.description || '', thumbnailLink: item.thumbnail || undefined, videoDuration: item.media_duration, height: item.media_height, sourceFolderIds: [folderKey] })
           }
         }
         if (incremental && videoFiles.length) {
@@ -342,6 +357,8 @@ export class MediaScanner {
 
     try {
       const folderName = path.basename(folderPath)
+      const sourceId = `local_${folderPath}`
+      const seenFileIds = new Set<string>()
       this.saveLocalScanCheckpoint(folderPath, folderName)
       let videoCount = 0
       let processed = 0
@@ -363,7 +380,7 @@ export class MediaScanner {
           })
           sourceAdded = true
         }
-        await Promise.allSettled(batch.map(file => this.processVideoFile(file, folderName, `local_${folderPath}`)))
+        await Promise.allSettled(batch.map(file => this.processVideoFile(file, folderName, sourceId)))
         processed += batch.length
         this.mediaStore.setScanProgress(processed, Math.max(processed, videoCount))
         this.checkpointScanPersistence(batch.length)
@@ -374,6 +391,8 @@ export class MediaScanner {
       for await (const file of this.iterateLocalVideoFiles(folderPath, fs, path)) {
         if (this.shouldStop) break
         videoCount += 1
+        file.sourceFolderIds = [sourceId]
+        seenFileIds.add(this.getScopedDriveFileKey(file))
         batch.push(file)
         if (batch.length >= 5) await processBatch()
       }
@@ -385,6 +404,8 @@ export class MediaScanner {
       }
 
       if (!this.shouldStop) {
+        await DB.reconcileMediaLibraryFolder(sourceId, [...seenFileIds])
+        this.mediaStore.reconcileFolderSource(sourceId, seenFileIds)
         const mediaFolder: MediaLibraryFolder = {
           id: `local_${folderPath}`,
           fileId: folderPath,
@@ -880,10 +901,7 @@ export class MediaScanner {
             existingCloudItems.push(newFileItem)
 
             // 去重处理（使用Set去重）
-            const uniqueItems = Array.from(
-              new Map(existingCloudItems.map(item => [item.id, item])).values()
-            )
-            existingEpisode.driveFiles = uniqueItems
+            existingEpisode.driveFiles = mergeDriveFileSources(existingCloudItems)
           } else {
             existingEpisode.driveFiles = [newFileItem]
           }
@@ -925,10 +943,11 @@ export class MediaScanner {
   private async processVideoFileWithoutAI(file: DriveFileItem, folderName: string, folderId?: string, mediaHint?: MediaScanHint): Promise<DriveFileItem | null> {
     try {
       const fileName = file.name.replace(/\.[^/.]+$/, '')
-      const seasonEpisode = this.tmdbService.parseSeasonEpisode(fileName)
-      const cleanedFileName = this.tmdbService.cleanFileName(fileName)
-      const cleanedFolderName = this.tmdbService.cleanFileName(folderName)
-      const lookupName = cleanedFileName.replace(/\s/g, '').length > 0 ? cleanedFileName : cleanedFolderName
+      const normalized = this.tmdbService.normalizeFileName(file.name, file.path || `${folderName}/${file.name}`)
+      const seasonEpisode = normalized.seasonNumber === undefined || normalized.episodeNumber === undefined
+        ? null
+        : { season: normalized.seasonNumber, episode: normalized.episodeNumber }
+      const lookupName = normalized.searchTitle || ''
 
       if (lookupName.replace(/\s/g, '').length === 0) return file
 
@@ -942,7 +961,7 @@ export class MediaScanner {
         const tmdbId = (mediaHint?.mediaType === 'tv' || mediaHint?.mediaType === 'anime') && mediaHint.tmdbId
           ? String(mediaHint.tmdbId)
           : this.parseTmdbId(fileName)
-        const year = this.tmdbService.parseYear(fileName)
+        const year = normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear)
         const shouldUseYear = Boolean(year && !lookupName.includes(year))
         const fileHash = file.fileHash || file.contentHash
 
@@ -964,7 +983,7 @@ export class MediaScanner {
       // 电影处理：Agent 已确认 TMDB ID 时，直接按 ID 获取元数据；只有旧任务没有 ID 时才按标题搜索。
       const movie = mediaHint?.mediaType === 'movie' && mediaHint.tmdbId
         ? await this.tmdbService.getMovieByTmdbId(mediaHint.tmdbId)
-        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : this.tmdbService.parseYear(fileName), undefined, file.fileHash || file.contentHash, file.name)
+        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear), undefined, file.fileHash || file.contentHash, file.name)
       if (movie) {
         const collection = movie.belongs_to_collection
         const mediaItem: MediaLibraryItem = {
@@ -1100,13 +1119,12 @@ export class MediaScanner {
   // 处理单个视频文件 - 参考Swift版本的元数据匹配逻辑
   private async processVideoFile(file: DriveFileItem, folderName: string, folderId?: string): Promise<void> {
     try {
-      const fileName = file.name.replace(/\.[^/.]+$/, "") // 去除文件扩展名
-      const seasonEpisode = this.tmdbService.parseSeasonEpisode(fileName)
-      const cleanedFileName = this.tmdbService.cleanFileName(fileName)
-      const cleanedFolderName = this.tmdbService.cleanFileName(folderName)
-      const lookupName = cleanedFileName.replace(/\s/g, "").length > 0
-        ? cleanedFileName
-        : cleanedFolderName
+      const fileName = file.name.replace(/\.[^/.]+$/, '') // 去除文件扩展名
+      const normalized = this.tmdbService.normalizeFileName(file.name, file.path || `${folderName}/${file.name}`)
+      const seasonEpisode = normalized.seasonNumber === undefined || normalized.episodeNumber === undefined
+        ? null
+        : { season: normalized.seasonNumber, episode: normalized.episodeNumber }
+      const lookupName = normalized.searchTitle || ''
 
       if (lookupName.replace(/\s/g, "").length === 0) {
         const unmatchedItem: MediaLibraryItem = {
@@ -1140,7 +1158,7 @@ export class MediaScanner {
 
         // 2. 尝试通过TMDB API获取电视剧信息（对齐 Swift 的 parseAndFetchTVMetadata）
         const tmdbId = this.parseTmdbId(fileName)
-        const year = this.tmdbService.parseYear(fileName)
+        const year = normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear)
         const shouldUseYear = Boolean(year && !lookupName.includes(year))
         const fileHash = file.fileHash || file.contentHash
 
@@ -1241,7 +1259,7 @@ export class MediaScanner {
         }
       } else {
         // 电影处理逻辑（无季集信息的视频文件）
-        const mediaInfo = await this.tmdbService.matchMedia(lookupName, file.path)
+        const mediaInfo = await this.tmdbService.matchMedia(file.name, file.path, normalized)
 
         if (mediaInfo && (mediaInfo.type === 'movie' || !mediaInfo.type)) {
           const collectionId = mediaInfo.collectionId

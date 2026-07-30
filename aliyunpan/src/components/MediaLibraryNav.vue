@@ -30,7 +30,7 @@
           :class="{ active: activeCategory === 'home' }"
           @click="handleCategoryClick('home')"
         >
-          <IconFont name="iconhome" />
+          <House class="nav-icon" />
           <span>{{ t('nav.home') }}</span>
         </div>
 
@@ -40,7 +40,7 @@
           :class="{ active: activeCategory === 'search' }"
           @click="handleCategoryClick('search')"
         >
-          <IconFont name="iconsearch" />
+          <Search class="nav-icon" />
           <span>{{ t('nav.search') }}</span>
         </div>
 
@@ -50,7 +50,7 @@
           :class="{ active: activeCategory === 'continue-watching' }"
           @click="handleCategoryClick('continue-watching')"
         >
-          <IconFont name="iconstart" />
+          <CirclePlay class="nav-icon" />
           <span>{{ t('media.continueWatching') }}</span>
           <span v-if="mediaStore.continueWatching.length > 0" class="count">
             {{ mediaStore.continueWatching.length }}
@@ -63,7 +63,7 @@
           :class="{ active: activeCategory === 'recently-added' }"
           @click="handleCategoryClick('recently-added')"
         >
-          <IconFont name="iconplus" />
+          <Clock3 class="nav-icon" />
           <span>{{ t('media.recentlyAdded') }}</span>
           <span v-if="mediaStore.recentlyAdded.length > 0" class="count">
             {{ mediaStore.recentlyAdded.length }}
@@ -76,7 +76,7 @@
           :class="{ active: activeCategory === 'movies' }"
           @click="handleCategoryClick('movies')"
         >
-          <IconFont name="iconfile_video" />
+          <Film class="nav-icon" />
           <span>{{ t('media.movie') }}</span>
           <span v-if="mediaStore.mediaTypeCounts.movie > 0" class="count">
             {{ mediaStore.mediaTypeCounts.movie }}
@@ -89,7 +89,7 @@
           :class="{ active: activeCategory === 'tv-shows' }"
           @click="handleCategoryClick('tv-shows')"
         >
-          <IconFont name="iconshipin" />
+          <Tv class="nav-icon" />
           <span>{{ t('media.tv') }}</span>
           <span v-if="mediaStore.mediaTypeCounts.tv > 0" class="count">
             {{ mediaStore.mediaTypeCounts.tv }}
@@ -102,7 +102,7 @@
           :class="{ active: activeCategory === 'documentary' }"
           @click="handleCategoryClick('documentary')"
         >
-          <IconFont name="iconluxiang" />
+          <Video class="nav-icon" />
           <span>{{ t('media.documentary') }}</span>
           <span v-if="documentaryCount > 0" class="count">
             {{ documentaryCount }}
@@ -115,7 +115,7 @@
           :class="{ active: activeCategory === 'animation' }"
           @click="handleCategoryClick('animation')"
         >
-          <IconFont name="iconbiaozhang" />
+          <Shapes class="nav-icon" />
           <span>{{ t('media.animation') }}</span>
           <span v-if="animationCount > 0" class="count">
             {{ animationCount }}
@@ -128,7 +128,7 @@
           :class="{ active: activeCategory === 'unmatched' }"
           @click="handleCategoryClick('unmatched')"
         >
-          <IconFont name="iconinfo_circle" />
+          <CircleHelp class="nav-icon" />
           <span>{{ t('media.unmatched') }}</span>
           <span v-if="mediaStore.mediaTypeCounts.unmatched > 0" class="count">
             {{ mediaStore.mediaTypeCounts.unmatched }}
@@ -141,7 +141,7 @@
           :class="{ active: activeCategory === 'unwatched' }"
           @click="handleCategoryClick('unwatched')"
         >
-          <IconFont name="iconclose" />
+          <EyeOff class="nav-icon" />
           <span>{{ t('media.unwatched') }}</span>
         </div>
 
@@ -151,7 +151,7 @@
           :class="{ active: activeCategory === 'favorites' }"
           @click="handleCategoryClick('favorites')"
         >
-          <IconFont name="iconcrown3" />
+          <Heart class="nav-icon" />
           <span>{{ t('tree.favorites') }}</span>
         </div>
 
@@ -161,7 +161,7 @@
           :class="{ active: activeCategory === 'playlist' }"
           @click="handleCategoryClick('playlist')"
         >
-          <IconFont name="iconlist" />
+          <ListVideo class="nav-icon" />
           <span>{{ t('media.playlist') }}</span>
         </div>
       </div>
@@ -180,7 +180,7 @@
           :class="{ active: activeCategory === 'genres' }"
           @click="handleCategoryClick('genres')"
         >
-          <IconFont name="iconwbiaoqian" />
+          <Tags class="nav-icon" />
           <span>{{ t('media.genre') }}</span>
           <span v-if="mediaStore.genres.length > 0" class="count">
             {{ mediaStore.genres.length }}
@@ -193,7 +193,7 @@
           :class="{ active: activeCategory === 'ratings' }"
           @click="handleCategoryClick('ratings')"
         >
-          <IconFont name="iconcrown2" />
+          <Star class="nav-icon" />
           <span>{{ t('media.rating') }}</span>
           <span v-if="mediaStore.ratingCategories.length > 0" class="count">
             {{ mediaStore.ratingCategories.length }}
@@ -206,7 +206,7 @@
           :class="{ active: activeCategory === 'years' }"
           @click="handleCategoryClick('years')"
         >
-          <IconFont name="iconcalendar" />
+          <CalendarDays class="nav-icon" />
           <span>{{ t('media.year') }}</span>
           <span v-if="mediaStore.years.length > 0" class="count">
             {{ mediaStore.years.length }}
@@ -218,7 +218,7 @@
     <!-- 媒体库文件夹列表 -->
     <div class="nav-section" v-if="mediaStore.folders.length > 0">
       <div class="nav-header">
-        <IconFont name="iconfolder" />
+        <Folder class="nav-header-icon" />
         <span>{{ t('media.fileSources') }}</span>
       </div>
 
@@ -231,7 +231,7 @@
           @click="handleFolderClick(folder)"
           @contextmenu="handleFolderRightClick($event, folder)"
         >
-          <IconFont name="iconfolder" />
+          <Folder class="nav-icon" />
           <div class="folder-main">
             <span class="folder-name">{{ folder.name }}</span>
             <span class="folder-source" :class="getFolderSourceClass(folder)">
@@ -310,6 +310,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { CalendarDays, CircleHelp, CirclePlay, Clock3, EyeOff, Film, Folder, Heart, House, ListVideo, Search, Shapes, Star, Tags, Tv, Video } from 'lucide-vue-next'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import type { MediaLibraryFolder } from '../types/media'
 import type { IAliGetFileModel } from '../aliapi/alimodels'
@@ -831,24 +832,6 @@ const handleGlobalClick = (event: MouseEvent) => {
 onMounted(async () => {
   const users = await UserDAL.GetUserListFromDB().catch(() => [])
   scanAccounts.value = users.filter((u) => !!u?.user_id && !!u?.access_token)
-  const savedConnections = getWebDavConnections()
-  for (const connection of savedConnections) {
-    const folderId = `webdav_webdav:${connection.id}_/`
-    const exists = mediaStore.folders.some(folder => folder.id === folderId)
-    if (!exists) {
-      mediaStore.addFolder({
-        id: folderId,
-        fileId: '/',
-        name: connection.name,
-        path: '/',
-        userId: connection.id,
-        driveId: `webdav:${connection.id}`,
-        driveServerId: 'webdav',
-        scanDate: new Date(connection.createdAt),
-        itemCount: 0
-      })
-    }
-  }
   document.addEventListener('click', handleGlobalClick)
 })
 
@@ -931,7 +914,7 @@ onUnmounted(() => {
 }
 
 .nav-section {
-  margin-bottom: 28px;
+  margin-bottom: 22px;
 }
 
 .nav-section:first-child {
@@ -959,21 +942,22 @@ onUnmounted(() => {
 }
 
 .nav-items {
-  padding: 0 16px;
+  padding: 0 12px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 20px;
-  margin-bottom: 6px;
-  border-radius: 12px;
+  gap: 12px;
+  min-height: 46px;
+  padding: 6px 10px;
+  margin-bottom: 3px;
+  border-radius: 8px;
   font-size: 15px;
   font-weight: 500;
   color: var(--color-text-2);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.18s ease, color 0.18s ease;
   user-select: none;
   position: relative;
   background: transparent;
@@ -982,50 +966,53 @@ onUnmounted(() => {
 }
 
 .nav-item:hover {
-  background: linear-gradient(135deg, var(--color-neutral-2), var(--color-fill-2));
+  background: rgba(255, 255, 255, 0.055);
   color: var(--color-text-1);
-  transform: translateX(4px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, var(--color-primary-light-2), var(--color-primary-light-3));
-  color: var(--color-primary-6);
+  background: rgba(82, 122, 255, 0.14);
+  color: rgba(255, 255, 255, 0.96);
   font-weight: 600;
-  box-shadow: 0 4px 16px rgba(var(--primary-6), 0.2);
-  transform: translateX(4px);
+  box-shadow: inset 0 0 0 1px rgba(102, 142, 255, 0.08);
 }
 
 .nav-item.active::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 4px;
-  height: 28px;
-  background: linear-gradient(to bottom, var(--color-primary-6), var(--color-primary-5));
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  background: #5b8cff;
   border-radius: 0 2px 2px 0;
-  box-shadow: 0 2px 4px rgba(var(--primary-6), 0.3);
 }
 
-.nav-item i {
-  width: 22px;
-  height: 22px;
-  font-size: 20px;
-  text-align: center;
-  line-height: 22px;
+.nav-item > .nav-icon {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 8px;
   flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: inherit;
-  transition: transform 0.2s ease;
+  stroke-width: 1.8;
+  transition: background-color 0.18s ease, color 0.18s ease;
 }
 
-.nav-item:hover i,
-.nav-item.active i {
-  transform: scale(1.1);
+.nav-item:hover > .nav-icon {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nav-item.active > .nav-icon {
+  background: rgba(82, 122, 255, 0.18);
+  color: #6f9cff;
+}
+
+.nav-header-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-primary-6);
+  stroke-width: 1.8;
 }
 
 .nav-item > span:first-of-type {
@@ -1294,11 +1281,11 @@ onUnmounted(() => {
 }
 
 [arco-theme='dark'] .nav-item:hover {
-  background: linear-gradient(135deg, var(--color-neutral-3), var(--color-fill-3));
+  background: rgba(255, 255, 255, 0.055);
 }
 
 [arco-theme='dark'] .nav-item.active {
-  background: linear-gradient(135deg, rgba(var(--primary-6), 0.2), rgba(var(--primary-6), 0.15));
+  background: rgba(82, 122, 255, 0.14);
 }
 
 [arco-theme='dark'] .nav-actions {
@@ -1351,8 +1338,8 @@ onUnmounted(() => {
   }
 
   .nav-item {
-    padding: 12px 16px;
-    gap: 14px;
+    padding: 6px 10px;
+    gap: 12px;
     font-size: 14px;
   }
 
@@ -1386,22 +1373,6 @@ onUnmounted(() => {
 
 .media-library-nav::-webkit-scrollbar-thumb:hover {
   background: var(--color-neutral-5);
-}
-
-/* 动画增强 */
-.nav-item {
-  animation: slideInLeft 0.3s ease-out;
-}
-
-@keyframes slideInLeft {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
 }
 
 /* 焦点状态优化 */

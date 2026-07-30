@@ -49,8 +49,28 @@ describe('video library scan controls', () => {
 
     expect(view).toMatch(/const checkScanResume = \(\) => \{\s+if \(mediaScanner\.isCurrentlyScanning\) return/)
     expect(view).toContain("event.key === 'MediaLibrary_MediaItems' || event.key === 'MediaLibrary_Folders'")
-    expect(view).toContain('syncMediaLibraryStoreFromStorage(mediaStore)')
+    expect(view).toContain('void mediaStore.hydrate()')
     expect(view).not.toContain('mediaStore.reloadLibraryFromStorage()')
+  })
+
+  it('does not recreate configured WebDAV connections as scraped media sources on mount', () => {
+    const source = readSource('src/components/MediaLibraryNav.vue')
+
+    expect(source).not.toContain('const savedConnections = getWebDavConnections()')
+    expect(source).not.toContain('id: `webdav_webdav:${connection.id}_/`')
+  })
+
+  it('uses distinct Lucide icons for each video-library navigation concept', () => {
+    const source = readSource('src/components/MediaLibraryNav.vue')
+
+    expect(source).toContain('<Film class="nav-icon" />')
+    expect(source).toContain('<Tv class="nav-icon" />')
+    expect(source).toContain('<Video class="nav-icon" />')
+    expect(source).toContain('<Shapes class="nav-icon" />')
+    expect(source).toContain('<EyeOff class="nav-icon" />')
+    expect(source).toContain('<Heart class="nav-icon" />')
+    expect(source).toContain('<ListVideo class="nav-icon" />')
+    expect(source).toContain('.nav-item.active > .nav-icon')
   })
 
   it('labels non-Aliyun media folders by their actual provider instead of falling back to Aliyun', () => {

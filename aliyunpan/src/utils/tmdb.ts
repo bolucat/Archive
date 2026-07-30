@@ -7,6 +7,7 @@ import type {
   TvSeriesItemResponse
 } from '../types/media'
 import Config from '../config'
+import { mediaFileNormalizer, type NormalizedMediaFileDescriptor } from './mediaFileNormalizer'
 
 const TMDB_BASE_URL = `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api/tmdb`
 
@@ -85,6 +86,28 @@ export class TmdbService {
     return this.searchMovie('', undefined, String(tmdbId))
   }
 
+  async searchMedia(query: string, isTVFirst = false): Promise<{ movies: TmdbSearchResult[]; tv: TmdbSearchResult[] }> {
+    const params = new URLSearchParams({ query, isTVFirst: String(isTVFirst), language: 'zh-CN' })
+    const response = await fetchWithRetry(`${TMDB_BASE_URL}/search?${params}`)
+    const data = await response.json()
+    return {
+      movies: Array.isArray(data?.movies) ? data.movies.map((item: TmdbSearchResult) => ({ ...item, media_type: 'movie' as const })) : [],
+      tv: Array.isArray(data?.tv) ? data.tv.map((item: TmdbSearchResult) => ({ ...item, media_type: 'tv' as const })) : []
+    }
+  }
+
+  async getTvByTmdbId(tmdbId: number | string, season = 1): Promise<MediaLibraryTvSeriesItem | null> {
+    try {
+      const params = new URLSearchParams({ id: String(tmdbId), season: String(season), language: 'zh-CN' })
+      const response = await fetchWithRetry(`${TMDB_BASE_URL}/tv/id?${params}`)
+      const data: TvSeriesItemResponse = await response.json()
+      return data.data || null
+    } catch (error) {
+      console.error('Error loading TV metadata:', error)
+      return null
+    }
+  }
+
   async searchTV(
     queryName: string,
     season: number,
@@ -126,139 +149,34 @@ export class TmdbService {
   }
 
 
-  cleanFileName(fileName: string): string {
-    // 移除文件扩展名
-    let cleaned = fileName.replace(/\.[^/.]+$/, '')
-
-    // 替换括号为空格
-    cleaned = cleaned.replace(/[\[\]]/g, ' ')
-
-    // 移除不需要的模式1 (先处理这些模式)
-    const unwantedPatterns1 = [
-      /【\w+】/g,
-      /\b[Nn]o\.?\s*\d+\b/g,
-      /\b[Nn]o\s+\d+\b/g,
-      /\b[Nn]o\.?\s*\d+\s*/g,
-      /\s*\[\d+\]\s*/g
-    ]
-
-    for (const pattern of unwantedPatterns1) {
-      cleaned = cleaned.replace(pattern, '')
-    }
-
-    // 主要的不需要的模式 - 找到第一个匹配并截取其之前的内容
-    const unwantedPatterns = [
-      /第(\w+)季[^\w]*第(\w+)集/,
-      /第(\w+)季[^\w]*(\w+)集/,
-      /第(\w+)季/,
-      /(\d{1,3})[\s_-]*第(\w+)集/,
-      /第(\w+)集/,
-      /[Ss](\d+)[Ee](\d+)/,
-      /[Ss](\d+)[^\w_](\d+)/,
-      /[Ss](\d+)[^\w_]+[Ee](\d+)/,
-      /[Ee]p(?:isode)?(\d+)/,
-      /Season(\d+)[Ee](\d+)/,
-      /Season(\d+)[^\w_](\d+)/,
-      /E(\d+)/,
-      /Season(\d+)[^\w_]*Episode(\d+)\b/,
-      /(?<!\p{Script=Han})(19[0-9]{2}|20[0-9]{2})(?!\p{Script=Han})/u,
-      /1080p|720p|4K|4k|WEB-DL|BD/i,
-      /Mandarin|AAC|\bAVC/i,
-      /\b(Narx)\b/i,
-      /\s+\d{2,}/
-    ]
-
-    // 遍历所有不需要的部分，匹配并在第一个匹配处截断
-    for (const pattern of unwantedPatterns) {
-      const match = cleaned.match(pattern)
-      if (match && match.index !== undefined) {
-        cleaned = cleaned.substring(0, match.index)
-        break // 找到第一个匹配就停止
-      }
-    }
-
-    // 移除不必要的字符，例如点、下划线和连字符
-    cleaned = cleaned.replace(/[.\\_\-=|/\\;:,'!?~"%#$&*<>｜]/g, ' ')
-
-    // 去除多余的空格
-    const finalResult = cleaned.replace(/\s+/g, ' ').trim()
-
-    // 按空格分割
-    const parts = finalResult.split(' ')
-
-    // 如果第一个部分只包含中文，直接返回
-    if (parts.length > 0 && this.isAllChinese(parts[0])) {
-      return parts[0]
-    }
-
-    // 如果第一个部分只包含中文和数字，则只返回第一部分
-    if (parts.length > 0 && this.isChineseAndNumbers(parts[0])) {
-      if (parts.length > 1 && this.isNumbers(parts[1])) {
-        return parts[0] + parts[1]
-      }
-      if (this.isAllNumbers(parts[0])) {
-        return finalResult
-      } else {
-        return parts[0]
-      }
-    }
-
-    return finalResult.toLowerCase()
+  normalizeFileName(fileName: string, folderHint?: string): NormalizedMediaFileDescriptor {
+    return mediaFileNormalizer.normalize(fileName, folderHint)
   }
 
-  private isAllChinese(str: string): boolean {
-    return /^[\u4e00-\u9fff]+$/.test(str)
-  }
-
-  private isChineseAndNumbers(str: string): boolean {
-    return /^[\u4e00-\u9fff0-9]+$/.test(str)
-  }
-
-  private isNumbers(str: string): boolean {
-    return /^\d+$/.test(str)
-  }
-
-  private isAllNumbers(str: string): boolean {
-    return /^\d+$/.test(str)
+  cleanFileName(fileName: string, folderHint?: string): string {
+    const descriptor = this.normalizeFileName(fileName, folderHint)
+    return descriptor.searchTitle || descriptor.cleanedTitle
   }
 
   parseYear(fileName: string): string | undefined {
-    const yearMatch = fileName.match(/\b(19|20)\d{2}\b/)
-    return yearMatch ? yearMatch[0] : undefined
+    const year = this.normalizeFileName(fileName).releaseYear
+    return year === undefined ? undefined : String(year)
   }
 
   parseSeasonEpisode(fileName: string): { season: number; episode: number } | null {
-    // 匹配 S01E01 格式
-    const match1 = fileName.match(/[Ss](\d+)[Ee](\d+)/)
-    if (match1) {
-      return { season: parseInt(match1[1]), episode: parseInt(match1[2]) }
-    }
-    
-    // 匹配 第1季第1集 格式
-    const match2 = fileName.match(/第(\d+)季第(\d+)集/)
-    if (match2) {
-      return { season: parseInt(match2[1]), episode: parseInt(match2[2]) }
-    }
-    
-    // 匹配 E01 格式 (默认第1季)
-    const match3 = fileName.match(/[Ee](\d+)/)
-    if (match3) {
-      return { season: 1, episode: parseInt(match3[1]) }
-    }
-
-    // 匹配 第1集 格式 (默认第1季)
-    const match4 = fileName.match(/第(\d+)集/)
-    if (match4) {
-      return { season: 1, episode: parseInt(match4[1]) }
-    }
-    
-    return null
+    const descriptor = this.normalizeFileName(fileName)
+    return descriptor.seasonNumber === undefined || descriptor.episodeNumber === undefined
+      ? null
+      : { season: descriptor.seasonNumber, episode: descriptor.episodeNumber }
   }
 
-  async matchMedia(fileName: string, filePath: string): Promise<Partial<MediaLibraryItem> | null> {
-    const cleanedName = this.cleanFileName(fileName)
-    const year = this.parseYear(fileName)
-    const seasonEpisode = this.parseSeasonEpisode(fileName)
+  async matchMedia(fileName: string, filePath: string, normalized?: NormalizedMediaFileDescriptor): Promise<Partial<MediaLibraryItem> | null> {
+    const descriptor = normalized || this.normalizeFileName(fileName, filePath)
+    const cleanedName = descriptor.searchTitle || descriptor.cleanedTitle
+    const year = descriptor.releaseYear === undefined ? undefined : String(descriptor.releaseYear)
+    const seasonEpisode = descriptor.seasonNumber === undefined || descriptor.episodeNumber === undefined
+      ? null
+      : { season: descriptor.seasonNumber, episode: descriptor.episodeNumber }
 
     if (seasonEpisode) {
       // 可能是电视剧

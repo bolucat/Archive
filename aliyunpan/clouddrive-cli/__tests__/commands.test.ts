@@ -58,6 +58,12 @@ describe('BoxPlayer CLI commands', () => {
         examples: expect.arrayContaining([expect.stringContaining('clouddrive-cli files walk')]),
       }),
       expect.objectContaining({
+        group: 'schema',
+        command: 'schema plans',
+        access: 'read',
+        output: 'PlanSchema[]',
+      }),
+      expect.objectContaining({
         command: 'upload apply',
         safety: expect.objectContaining({ dryRunRequired: true, destructive: false }),
         providerRequirements: expect.objectContaining({ capability: 'uploadFile' }),
@@ -82,6 +88,29 @@ describe('BoxPlayer CLI commands', () => {
     expect(commands.map((command: { command: string }) => command.command)).not.toEqual(expect.arrayContaining([
       'media rename-plan',
       'media organize-plan',
+    ]))
+  })
+
+  it('prints plan schemas as machine-readable JSON', async () => {
+    const configDir = await makeTempDir()
+    const result = await runBoxPlayerCli(['schema', 'plans', '--json'], { configDir })
+
+    expect(result.exitCode).toBe(0)
+    const body = JSON.parse(result.stdout)
+    expect(body.version).toBe(1)
+    expect(body.plans).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: 'rename',
+        command: 'files rename-apply',
+        requiresDryRun: true,
+        applyRequiresRationale: true,
+        itemFields: expect.arrayContaining([expect.objectContaining({ name: 'file_id', required: true })]),
+      }),
+      expect.objectContaining({
+        name: 'upload',
+        command: 'upload apply',
+        example: expect.objectContaining({ operation: 'upload' }),
+      }),
     ]))
   })
 
@@ -339,180 +368,30 @@ describe('BoxPlayer CLI commands', () => {
     expect(result.exitCode).toBe(5)
   })
 
-  it('docs read returns a local document as AI context JSON', async () => {
+  it('does not expose non cloud-drive commands', async () => {
     const configDir = await makeTempDir()
-    const docPath = join(configDir, 'context.md')
-    await writeFile(docPath, '# Context\n\nUse this as background for the rename task.\n', 'utf8')
+    const listed = await runBoxPlayerCli(['list', '--json'], { configDir })
+    const commands = JSON.parse(listed.stdout).map((command: { command: string }) => command.command)
+    expect(commands).not.toEqual(expect.arrayContaining([
+      'media scan',
+      'media match',
+      'docs read',
+      'docs convert',
+      'organize analyze',
+      'organize plan',
+      'organize apply',
+    ]))
 
-    const result = await runBoxPlayerCli(['docs', 'read', docPath, '--json'], { configDir })
-
-    expect(result.exitCode).toBe(0)
-    expect(JSON.parse(result.stdout)).toEqual({
-      path: docPath,
-      format: 'markdown',
-      chars: 55,
-      truncated: false,
-      content: '# Context\n\nUse this as background for the rename task.\n',
-    })
-  })
-
-  it('docs read supports max character truncation and text output', async () => {
-    const configDir = await makeTempDir()
-    const docPath = join(configDir, 'notes.txt')
-    await writeFile(docPath, 'abcdefg', 'utf8')
-
-    const result = await runBoxPlayerCli(['docs', 'read', docPath, '--max-chars', '4'], { configDir })
-
-    expect(result).toEqual({
-      exitCode: 0,
-      stdout: 'abcd\n',
-      stderr: '',
-    })
-  })
-
-  it('docs read converts PDFs through OpenDataLoader before returning AI context', async () => {
-    const configDir = await makeTempDir()
-    const docPath = join(configDir, 'report.pdf')
-    await writeFile(docPath, '%PDF-1.7 fake fixture', 'utf8')
-    const convertCalls: unknown[] = []
-
-    const result = await runBoxPlayerCli(['docs', 'read', docPath, '--max-chars', '12', '--json'], {
-      configDir,
-      openDataLoaderPdf: {
-        async convert(paths: string[], options: { outputDir: string; format: string; quiet: boolean }) {
-          convertCalls.push({ paths, options })
-          await writeFile(join(options.outputDir, 'report.md'), 'Converted PDF Markdown content', 'utf8')
-        },
-      },
-    } as any)
-
-    expect(result.exitCode).toBe(0)
-    expect(convertCalls).toHaveLength(1)
-    expect(convertCalls[0]).toMatchObject({
-      paths: [docPath],
-      options: {
-        format: 'markdown',
-        quiet: true,
-      },
-    })
-    expect(JSON.parse(result.stdout)).toEqual({
-      path: docPath,
-      format: 'pdf',
-      sourceFormat: 'markdown',
-      chars: 30,
-      truncated: true,
-      content: 'Converted PD',
-    })
-  })
-
-  it('docs convert exposes the full OpenDataLoader option surface', async () => {
-    const configDir = await makeTempDir()
-    const docPath = join(configDir, 'report.pdf')
-    const outputDir = join(configDir, 'out')
-    await mkdir(outputDir, { recursive: true })
-    await writeFile(docPath, '%PDF-1.7 fake fixture', 'utf8')
-    const convertCalls: unknown[] = []
-
-    const result = await runBoxPlayerCli([
-      'docs', 'convert', docPath,
-      '--output', outputDir,
-      '--pdf-format', 'json,html,pdf,markdown,tagged-pdf,text',
-      '--pdf-password', 'secret',
-      '--pdf-content-safety-off', 'hidden-text,off-page',
-      '--pdf-sanitize',
-      '--pdf-keep-line-breaks',
-      '--pdf-replace-invalid-chars', '?',
-      '--pdf-use-struct-tree',
-      '--pdf-table-method', 'cluster',
-      '--pdf-reading-order', 'off',
-      '--pdf-markdown-page-separator', '--- Page %page-number% ---',
-      '--pdf-markdown-with-html',
-      '--pdf-text-page-separator', '=== %page-number% ===',
-      '--pdf-html-page-separator', '<hr data-page="%page-number%">',
-      '--pdf-image-output', 'embedded',
-      '--pdf-image-format', 'jpeg',
-      '--pdf-image-dir', join(outputDir, 'images'),
-      '--pdf-pages', '1,3,5-7',
-      '--pdf-include-header-footer',
-      '--pdf-detect-strikethrough',
-      '--pdf-hybrid', 'hancom-ai',
-      '--pdf-hybrid-mode', 'full',
-      '--pdf-hybrid-url', 'http://127.0.0.1:5002',
-      '--pdf-hybrid-timeout', '2500',
-      '--pdf-hybrid-fallback',
-      '--pdf-hybrid-hancom-ai-regionlist-strategy', 'list-only',
-      '--pdf-hybrid-hancom-ai-ocr-strategy', 'force',
-      '--pdf-hybrid-hancom-ai-image-cache', 'disk',
-      '--pdf-threads', '4',
-      '--json',
-    ], {
-      configDir,
-      openDataLoaderPdf: {
-        async convert(paths: string[], options: any) {
-          convertCalls.push({ paths, options })
-          await writeFile(join(outputDir, 'report.md'), 'Converted', 'utf8')
-          await writeFile(join(outputDir, 'report.json'), '{"ok":true}', 'utf8')
-        },
-      },
-    } as any)
-
-    expect(result.exitCode).toBe(0)
-    expect(convertCalls).toEqual([{
-      paths: [docPath],
-      options: {
-        outputDir,
-        format: 'json,html,pdf,markdown,tagged-pdf,text',
-        quiet: true,
-        password: 'secret',
-        contentSafetyOff: 'hidden-text,off-page',
-        sanitize: true,
-        keepLineBreaks: true,
-        replaceInvalidChars: '?',
-        useStructTree: true,
-        tableMethod: 'cluster',
-        readingOrder: 'off',
-        markdownPageSeparator: '--- Page %page-number% ---',
-        markdownWithHtml: true,
-        textPageSeparator: '=== %page-number% ===',
-        htmlPageSeparator: '<hr data-page="%page-number%">',
-        imageOutput: 'embedded',
-        imageFormat: 'jpeg',
-        imageDir: join(outputDir, 'images'),
-        pages: '1,3,5-7',
-        includeHeaderFooter: true,
-        detectStrikethrough: true,
-        hybrid: 'hancom-ai',
-        hybridMode: 'full',
-        hybridUrl: 'http://127.0.0.1:5002',
-        hybridTimeout: '2500',
-        hybridFallback: true,
-        hybridHancomAiRegionlistStrategy: 'list-only',
-        hybridHancomAiOcrStrategy: 'force',
-        hybridHancomAiImageCache: 'disk',
-        threads: '4',
-      },
-    }])
-    expect(JSON.parse(result.stdout)).toMatchObject({
-      path: docPath,
-      outputDir,
-      formats: ['json', 'html', 'pdf', 'markdown', 'tagged-pdf', 'text'],
-      files: expect.arrayContaining([
-        expect.objectContaining({ name: 'report.md' }),
-        expect.objectContaining({ name: 'report.json' }),
-      ]),
-    })
-  })
-
-  it('docs read rejects missing paths', async () => {
-    const configDir = await makeTempDir()
-
-    const result = await runBoxPlayerCli(['docs', 'read'], { configDir })
-
-    expect(result).toEqual({
-      exitCode: 1,
-      stdout: '',
-      stderr: 'Usage: clouddrive-cli docs read <path> [--max-chars <n>] [--pdf-format <markdown|text|json|html>] [--pdf-pages <pages>] [--json]\n',
-    })
+    for (const argv of [
+      ['media', 'scan', '--json'],
+      ['docs', 'read', 'README.md', '--json'],
+      ['organize', 'analyze', '--json'],
+    ]) {
+      const result = await runBoxPlayerCli(argv, { configDir })
+      expect(result.exitCode, argv.join(' ')).toBe(1)
+      expect(result.stderr, argv.join(' ')).toBe('')
+      expect(JSON.parse(result.stdout).error.message).toMatch(/未知命令/)
+    }
   })
 
   it('prints provider capabilities as JSON', async () => {
@@ -878,7 +757,7 @@ describe('BoxPlayer CLI commands', () => {
       { argv: ['providers', 'capabilities', '--help'], contains: 'clouddrive-cli providers capabilities' },
       { argv: ['list', '--help'], contains: 'clouddrive-cli list' },
       { argv: ['schema', 'commands', '--help'], contains: 'clouddrive-cli schema commands' },
-      { argv: ['docs', 'read', '--help'], contains: 'clouddrive-cli docs read' },
+      { argv: ['schema', 'plans', '--help'], contains: 'clouddrive-cli schema plans' },
       { argv: ['files', 'list', '--help'], contains: 'clouddrive-cli files list' },
       { argv: ['files', 'walk', '--help'], contains: 'clouddrive-cli files walk' },
       { argv: ['files', 'tree', '--help'], contains: 'clouddrive-cli files tree' },
@@ -890,13 +769,8 @@ describe('BoxPlayer CLI commands', () => {
       { argv: ['files', 'rename-apply', '--help'], contains: 'clouddrive-cli files rename-apply' },
       { argv: ['files', 'move-apply', '--help'], contains: 'clouddrive-cli files move-apply' },
       { argv: ['files', 'trash-apply', '--help'], contains: 'clouddrive-cli files trash-apply' },
-      { argv: ['media', 'scan', '--help'], contains: 'clouddrive-cli media scan' },
-      { argv: ['media', 'match', '--help'], contains: 'clouddrive-cli media match' },
       { argv: ['upload', 'plan', '--help'], contains: 'clouddrive-cli upload plan' },
       { argv: ['upload', 'apply', '--help'], contains: 'clouddrive-cli upload apply' },
-      { argv: ['organize', 'analyze', '--help'], contains: 'clouddrive-cli organize analyze' },
-      { argv: ['organize', 'plan', '--help'], contains: 'clouddrive-cli organize plan' },
-      { argv: ['organize', 'apply', '--help'], contains: 'clouddrive-cli organize apply' },
       { argv: ['ops', 'list', '--help'], contains: 'clouddrive-cli ops list' },
       { argv: ['ops', 'show', '--help'], contains: 'clouddrive-cli ops show' },
       { argv: ['ops', 'undo', '--help'], contains: 'clouddrive-cli ops undo' },
@@ -917,7 +791,7 @@ describe('BoxPlayer CLI commands', () => {
       const result = await runBoxPlayerCli(['media', subcommand, '--json'], { configDir })
       expect(result.exitCode).toBe(1)
       expect(JSON.parse(result.stdout)).toMatchObject({
-        error: { message: `Unknown media command: ${subcommand}` },
+        error: { message: expect.stringContaining('未知命令: media') },
       })
     }
   })
@@ -1054,117 +928,6 @@ describe('BoxPlayer CLI commands', () => {
     })
   })
 
-  it('analyzes file exports and dry-runs an organize plan', async () => {
-    const configDir = await makeTempDir()
-    const filesPath = join(configDir, 'files.json')
-    const analysisPath = join(configDir, 'analysis.json')
-    const planPath = join(configDir, 'organize-plan.json')
-    await writeJson(filesPath, [
-      { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'movies', parentFileId: 'root', name: 'Movies', type: 'folder' },
-      { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'f1', parentFileId: 'root', name: 'Film.2024.mkv', type: 'file', size: 10 },
-      { provider: 'aliyun', accountId: 'acc', driveId: 'drive', fileId: 'f2', parentFileId: 'root', name: 'Show.S01E01.mkv', type: 'file', size: 20 },
-    ])
-
-    const analyzed = await runBoxPlayerCli([
-      'organize', 'analyze',
-      '--input', filesPath,
-      '--provider', 'aliyun',
-      '--account', 'acc',
-      '--file-id', 'root',
-      '--output', analysisPath,
-      '--json',
-    ], { configDir })
-
-    expect(analyzed.exitCode).toBe(0)
-    expect(JSON.parse(analyzed.stdout).stats).toMatchObject({ totalItems: 3, videoCount: 2 })
-
-    const planned = await runBoxPlayerCli([
-      'organize', 'plan',
-      '--analysis', analysisPath,
-      '--output', planPath,
-      '--json',
-    ], { configDir })
-
-    expect(planned.exitCode).toBe(0)
-    expect(JSON.parse(planned.stdout).actions.map((a: { type: string }) => a.type)).toEqual(['mkdir', 'move', 'move'])
-
-    const dryRun = await runBoxPlayerCli(['organize', 'apply', planPath, '--dry-run', '--json'], { configDir })
-
-    expect(dryRun.exitCode).toBe(0)
-    expect(JSON.parse(dryRun.stdout)).toMatchObject({
-      ok: true,
-      actionCount: 3,
-      counts: { mkdir: 1, move: 2, rename: 0, copy: 0, trash: 0 },
-    })
-
-    const summarized = await runBoxPlayerCli(['organize', 'apply', planPath, '--dry-run', '--summary', '--json'], { configDir })
-
-    expect(summarized.exitCode).toBe(0)
-    expect(JSON.parse(summarized.stdout)).toMatchObject({
-      ok: true,
-      actionCount: 3,
-      counts: { mkdir: 1, move: 2, rename: 0, copy: 0, trash: 0 },
-      moveTargets: { 'folder:Movies': 1, 'folder:TV Shows': 1 },
-    })
-    expect(JSON.parse(summarized.stdout).actions).toBeUndefined()
-  })
-
-  it('applies an organize plan with mkdir and move, then exposes an undo dry-run', async () => {
-    const configDir = await makeTempDir()
-    const planPath = join(configDir, 'organize-plan.json')
-    const store = createAuthStore({ configDir })
-    await store.saveAccount({
-      provider: 'aliyun',
-      accountId: 'acc',
-      displayName: 'Aliyun',
-      token: { user_id: 'acc', access_token: 'token', default_drive_id: 'drive' },
-    })
-    await store.setDefaultAccount('aliyun', 'acc')
-
-    const calls: string[] = []
-    const provider = {
-      capabilities: { mkdir: true, move: true, batchRename: true },
-      files: {
-        async mkdir({ parentId, name }: { parentId: string; name: string }) {
-          calls.push(`mkdir:${parentId}/${name}`)
-          return { fileId: `folder-${name}` }
-        },
-        async moveBatch({ moves }: { moves: Array<{ fileId: string; toParentId: string }> }) {
-          calls.push(...moves.map((move) => `move:${move.fileId}->${move.toParentId}`))
-          return moves.map((move) => ({ status: 'success', fileId: move.fileId }))
-        },
-        async renameBatch() {
-          return []
-        },
-      },
-    }
-
-    await writeJson(planPath, {
-      version: 1,
-      operation: 'organize',
-      provider: 'aliyun',
-      account_id: 'acc',
-      root_file_id: 'root',
-      actions: [
-        { type: 'mkdir', parent_file_id: 'root', name: 'TV Shows', ref: 'folder:TV Shows' },
-        { type: 'move', file_id: 'f1', from_parent_file_id: 'root', to_parent_file_id: '', to_parent_ref: 'folder:TV Shows', name: 'Show.S01E01.mkv' },
-      ],
-    })
-
-    const applied = await runBoxPlayerCli(['organize', 'apply', planPath, '--summary', '--json'], { configDir, providers: { aliyun: provider } })
-
-    expect(applied.exitCode).toBe(0)
-    const result = JSON.parse(applied.stdout)
-    expect(result).toMatchObject({ ok: true, succeeded: 2, failed: 0, mkdirCount: 1, moveCount: 1 })
-    expect(calls).toEqual(['mkdir:root/TV Shows', 'move:f1->folder-TV Shows'])
-
-    const undo = await runBoxPlayerCli(['ops', 'undo', result.operationId, '--dry-run', '--json'], { configDir, providers: { aliyun: provider } })
-    expect(undo.exitCode).toBe(0)
-    expect(JSON.parse(undo.stdout).undoPlan.items).toEqual([
-      expect.objectContaining({ file_id: 'f1', from_parent_file_id: 'folder-TV Shows', to_parent_file_id: 'root' }),
-    ])
-  })
-
   it('returns a clear error when undoing a non-undoable operation', async () => {
     const configDir = await makeTempDir()
     const store = createOperationLogStore({ configDir })
@@ -1184,6 +947,29 @@ describe('BoxPlayer CLI commands', () => {
     expect(JSON.parse(result.stdout)).toMatchObject({
       ok: false,
       error: { code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('Only rename and move operations are undoable') },
+    })
+  })
+
+  it('requires rationale for real apply operations', async () => {
+    const configDir = await makeTempDir()
+    const planPath = join(configDir, 'upload-plan.json')
+    await writeJson(planPath, {
+      version: 1,
+      operation: 'upload',
+      provider: 'onedrive',
+      account_id: 'default',
+      local_root: configDir,
+      remote_parent_file_id: 'onedrive_root',
+      conflict: 'skip',
+      items: [],
+    })
+
+    const result = await runBoxPlayerCli(['upload', 'apply', planPath, '--json'], { configDir })
+
+    expect(result.exitCode).toBe(1)
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining('--rationale') },
     })
   })
 
@@ -1234,11 +1020,12 @@ describe('BoxPlayer CLI commands', () => {
       parentReference: { id: 'onedrive_root' },
     }), { status: 201, headers: { 'Content-Type': 'application/json' } })))
 
-    const applied = await runBoxPlayerCli(['upload', 'apply', planPath, '--json'], { configDir })
+    const applied = await runBoxPlayerCli(['upload', 'apply', planPath, '--rationale', 'User asked to upload this file.', '--json'], { configDir })
 
     expect(applied.exitCode).toBe(0)
     expect(JSON.parse(applied.stdout)).toMatchObject({
       ok: true,
+      rationale: 'User asked to upload this file.',
       succeeded: 1,
       failed: 0,
       results: [{ type: 'file', fileId: 'remote-file', status: 'success' }],

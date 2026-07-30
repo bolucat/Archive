@@ -21,10 +21,12 @@ import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import { getMediaServerMusicTracks } from '../media-server/contentGateway'
 import type { MediaServerMusicTrack } from '../types/mediaServerContent'
 import { t as tt } from '../i18n'
+import useSettingStore from '../setting/settingstore'
 
 withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
 const musicStore = useMusicLibraryStore()
+const settingStore = useSettingStore()
 const appStore = useAppStore()
 const mediaServerRegistry = useMediaServerRegistryStore()
 
@@ -515,11 +517,23 @@ async function deleteFolderGroups(groups: MusicFolderGroup[]) {
     trackCount += g.items.length
     for (const t of g.items) uniq.add(t.id)
   }
-  if (!uniq.size) return
+  if (!groups.length) return
   const groupCount = groups.length
   const ok = window.confirm(tt('music.confirmDeleteFolderRecords', { groupCount, trackCount }))
   if (!ok) return
-  await musicStore.deleteTracksByIds(Array.from(uniq))
+  for (const group of groups) {
+    if (group.source_id) {
+      await musicStore.deleteSource(group.source_id)
+      const next = (settingStore.uiMusicAutoScanFolders || []).filter(folder =>
+        `${folder.user_id}|${folder.drive_id}|${folder.file_id}` !== `${group.user_id}|${group.drive_id}|${group.folder_id || ''}`
+      )
+      if (next.length !== (settingStore.uiMusicAutoScanFolders || []).length) {
+        await settingStore.updateStore({ uiMusicAutoScanFolders: next })
+      }
+    }
+  }
+  const legacyIds = groups.filter(group => !group.source_id).flatMap(group => group.items.map(track => track.id))
+  if (legacyIds.length) await musicStore.deleteTracksByIds(legacyIds)
   selectedFolderKeys.value = selectedFolderKeys.value.filter((key) => musicStore.byFolder.some((g) => g.key === key))
   if (groupDetail.value?.type === 'folder' && groups.some((g) => g.items.some((t) => groupDetail.value?.items.some((gt) => gt.id === t.id)))) {
     groupDetail.value = null

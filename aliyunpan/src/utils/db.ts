@@ -6,8 +6,10 @@ import { IBookItem } from '../types/book'
 import { IBookNote } from '../types/bookNote'
 import { IBookBookmark } from '../types/bookBookmark'
 import type { MediaLibraryFolder, MediaLibraryItem } from '../types/media'
+import { buildLibrarySourceId, type ILibrarySource, type LibrarySourceKind } from '../types/librarySource'
 import type { AIConversation, AIMessage, BookIndexMeta } from '../services/ai/types'
 import type { TextChunk } from './bookAI'
+import { mediaDriveFileKey, reconcileMediaItemSource } from './mediaSourceMembership'
 
 type AIConversationRecord = AIConversation
 type AIMessageRecord = AIMessage
@@ -32,7 +34,8 @@ class XBYDB3 extends Dexie {
   ibook_ai_message: Dexie.Table<AIMessageRecord, string>
   imedia_item: Dexie.Table<MediaLibraryItem, string>
   imedia_folder: Dexie.Table<MediaLibraryFolder, string>
-  imedia_file: Dexie.Table<{ id: string; mediaId: string; folderId?: string }, string>
+  imedia_file: Dexie.Table<{ id: string; fileId: string; mediaId: string; folderId?: string }, string>
+  ilibrary_source: Dexie.Table<ILibrarySource, string>
 
   constructor() {
     super('XBY3Database')
@@ -170,6 +173,103 @@ class XBYDB3 extends Dexie {
         console.log('upgrade to v15 (book_ai)', tx)
       })
 
+    this.version(18).stores({
+      iobject: '', istring: '', inumber: '', ibool: '', icache: '', itoken: 'user_id', iothershare: 'share_id',
+      imusic_track: '&id, source_id, [user_id+drive_id], user_id, drive_id, parent_file_id, scanned_at, updated_at, artist, album',
+      ibook_item: '&id, source_id, [user_id+drive_id], user_id, drive_id, parent_file_id, scanned_at, updated_at, author, ext',
+      ibook_note: '&id, book_id, [user_id+drive_id], user_id, drive_id, file_id, kind, created_at, updated_at',
+      ibook_bookmark: '&id, book_id, [user_id+drive_id], user_id, drive_id, file_id, percentage, created_at, updated_at',
+      ibook_ai_chunk: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, sectionIndex, pageNumber',
+      ibook_ai_meta: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, lastUpdated',
+      ibook_ai_bm25: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, updatedAt',
+      ibook_ai_conversation: '&id, bookId, [bookId+mode], updatedAt',
+      ibook_ai_message: '&id, conversationId, createdAt',
+      imedia_item: '&id, folderId, type, addedAt, tmdbId',
+      imedia_folder: '&id, [userId+driveId], fileId, scanDate',
+      imedia_file: '&id, mediaId, folderId',
+      ilibrary_source: '&id, kind, [kind+user_id], [kind+drive_id], user_id, drive_id, folder_id, scanned_at'
+    }).upgrade(async (tx) => {
+      const sourceTable = tx.table<ILibrarySource, string>('ilibrary_source')
+      const migrate = async <T extends { source_id?: string; user_id: string; drive_id: string; parent_file_id: string; parent_path?: string; scanned_at?: number }>(kind: LibrarySourceKind, tableName: string) => {
+        const table = tx.table<T, string>(tableName)
+        const records = await table.toArray()
+        const sources = new Map<string, ILibrarySource>()
+        for (const record of records) {
+          if (record.source_id) continue
+          const folderId = record.parent_file_id || 'root'
+          const sourceId = buildLibrarySourceId(kind, record.user_id, record.drive_id, folderId)
+          const path = (record.parent_path || '').trim()
+          const scannedAt = record.scanned_at || Date.now()
+          record.source_id = sourceId
+          const current = sources.get(sourceId)
+          if (!current || scannedAt > current.scanned_at) {
+            sources.set(sourceId, {
+              id: sourceId,
+              kind,
+              user_id: record.user_id,
+              drive_id: record.drive_id,
+              folder_id: folderId,
+              name: path.split('/').filter(Boolean).pop() || path || folderId,
+              path,
+              created_at: current?.created_at || scannedAt,
+              scanned_at: scannedAt
+            })
+          }
+        }
+        const migrated = records.filter(record => record.source_id)
+        if (migrated.length) await table.bulkPut(migrated)
+        if (sources.size) await sourceTable.bulkPut([...sources.values()])
+      }
+      await migrate<IMusicTrack>('music', 'imusic_track')
+      await migrate<IBookItem>('book', 'ibook_item')
+    })
+
+    this.version(19).stores({
+      iobject: '', istring: '', inumber: '', ibool: '', icache: '', itoken: 'user_id', iothershare: 'share_id',
+      imusic_track: '&id, source_id, *source_ids, [user_id+drive_id], user_id, drive_id, parent_file_id, scanned_at, updated_at, artist, album',
+      ibook_item: '&id, source_id, *source_ids, [user_id+drive_id], user_id, drive_id, parent_file_id, scanned_at, updated_at, author, ext',
+      ibook_note: '&id, book_id, [user_id+drive_id], user_id, drive_id, file_id, kind, created_at, updated_at',
+      ibook_bookmark: '&id, book_id, [user_id+drive_id], user_id, drive_id, file_id, percentage, created_at, updated_at',
+      ibook_ai_chunk: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, sectionIndex, pageNumber',
+      ibook_ai_meta: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, lastUpdated',
+      ibook_ai_bm25: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, updatedAt',
+      ibook_ai_conversation: '&id, bookId, [bookId+mode], updatedAt',
+      ibook_ai_message: '&id, conversationId, createdAt',
+      imedia_item: '&id, folderId, type, addedAt, tmdbId',
+      imedia_folder: '&id, [userId+driveId], fileId, scanDate',
+      imedia_file: '&id, mediaId, folderId',
+      ilibrary_source: '&id, kind, [kind+user_id], [kind+drive_id], user_id, drive_id, folder_id, scanned_at'
+    }).upgrade(async (tx) => {
+      const sourceCounts = new Map<string, number>()
+      for (const tableName of ['imusic_track', 'ibook_item']) {
+        const table = tx.table<IMusicTrack | IBookItem, string>(tableName)
+        await table.toCollection().modify((item) => {
+          item.source_ids = Array.from(new Set([...(item.source_ids || []), ...(item.source_id ? [item.source_id] : [])]))
+          item.source_ids.forEach(sourceId => sourceCounts.set(sourceId, (sourceCounts.get(sourceId) || 0) + 1))
+        })
+      }
+      await tx.table<ILibrarySource, string>('ilibrary_source').toCollection().modify((source) => {
+        source.item_count = sourceCounts.get(source.id) || 0
+      })
+    })
+
+    this.version(20).stores({
+      iobject: '', istring: '', inumber: '', ibool: '', icache: '', itoken: 'user_id', iothershare: 'share_id',
+      imusic_track: '&id, source_id, *source_ids, [user_id+drive_id], user_id, drive_id, parent_file_id, scanned_at, updated_at, artist, album',
+      ibook_item: '&id, source_id, *source_ids, [user_id+drive_id], user_id, drive_id, parent_file_id, scanned_at, updated_at, author, ext',
+      ibook_note: '&id, book_id, [user_id+drive_id], user_id, drive_id, file_id, kind, created_at, updated_at',
+      ibook_bookmark: '&id, book_id, [user_id+drive_id], user_id, drive_id, file_id, percentage, created_at, updated_at',
+      ibook_ai_chunk: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, sectionIndex, pageNumber',
+      ibook_ai_meta: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, lastUpdated',
+      ibook_ai_bm25: '&id, bookId, [bookId+sourceHash], [bookId+settingsHash], sourceHash, settingsHash, updatedAt',
+      ibook_ai_conversation: '&id, bookId, [bookId+mode], updatedAt',
+      ibook_ai_message: '&id, conversationId, createdAt',
+      imedia_item: '&id, folderId, type, addedAt, tmdbId',
+      imedia_folder: '&id, [userId+driveId], fileId, scanDate',
+      imedia_file: '&id, fileId, mediaId, folderId, [folderId+fileId]',
+      ilibrary_source: '&id, kind, [kind+user_id], [kind+drive_id], user_id, drive_id, folder_id, scanned_at'
+    })
+
     this.iobject = this.table('iobject')
     this.istring = this.table('istring')
     this.inumber = this.table('inumber')
@@ -190,6 +290,7 @@ class XBYDB3 extends Dexie {
     this.imedia_item = this.table('imedia_item')
     this.imedia_folder = this.table('imedia_folder')
     this.imedia_file = this.table('imedia_file')
+    this.ilibrary_source = this.table('ilibrary_source')
   }
 
   async getValueString(key: string): Promise<string> {
@@ -259,7 +360,11 @@ class XBYDB3 extends Dexie {
     if (!this.isOpen()) await this.open()
     const files = items.flatMap((item) => {
       const all = [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))]
-      return all.filter(file => !!file.id).map(file => ({ id: [file.driveServerId, file.userId, file.driveId, file.id].map(value => encodeURIComponent(String(value || ''))).join(':'), mediaId: item.id, folderId: item.folderId }))
+      return all.filter(file => !!file.id).flatMap((file) => {
+        const fileId = mediaDriveFileKey(file)
+        const sourceIds = file.sourceFolderIds?.length ? file.sourceFolderIds : (item.folderId ? [item.folderId] : [])
+        return sourceIds.map(folderId => ({ id: `${encodeURIComponent(folderId)}|${fileId}`, fileId, mediaId: item.id, folderId }))
+      })
     })
     await this.transaction('rw', this.imedia_item, this.imedia_folder, this.imedia_file, async () => {
       await this.imedia_item.clear()
@@ -313,8 +418,13 @@ class XBYDB3 extends Dexie {
   async getIndexedMediaFileIds(ids: string[]): Promise<Set<string>> {
     if (!ids.length) return new Set()
     if (!this.isOpen()) await this.open()
-    const records = await this.imedia_file.bulkGet(ids)
-    return new Set(records.filter((record): record is { id: string; mediaId: string; folderId?: string } => !!record).map(record => record.id))
+    const records = await this.imedia_file.where('fileId').anyOf(ids).toArray()
+    return new Set(records.map(record => record.fileId))
+  }
+
+  async getMediaLibraryFolderFileIds(folderId: string): Promise<string[]> {
+    if (!this.isOpen()) await this.open()
+    return (await this.imedia_file.where('folderId').equals(folderId).toArray()).map(record => record.fileId)
   }
 
   async upsertMediaLibraryItems(items: MediaLibraryItem[]): Promise<void> {
@@ -345,7 +455,11 @@ class XBYDB3 extends Dexie {
       }
     })
     const files = mergedItems.flatMap((item) => [...(item.driveFiles || []), ...(item.seasons || []).flatMap(season => (season.episodes || []).flatMap(episode => episode.driveFiles || []))]
-      .filter(file => !!file.id).map(file => ({ id: [file.driveServerId, file.userId, file.driveId, file.id].map(value => encodeURIComponent(String(value || ''))).join(':'), mediaId: item.id, folderId: item.folderId })))
+      .filter(file => !!file.id).flatMap((file) => {
+        const fileId = mediaDriveFileKey(file)
+        const sourceIds = file.sourceFolderIds?.length ? file.sourceFolderIds : (item.folderId ? [item.folderId] : [])
+        return sourceIds.map(folderId => ({ id: `${encodeURIComponent(folderId)}|${fileId}`, fileId, mediaId: item.id, folderId }))
+      }))
     await this.transaction('rw', this.imedia_item, this.imedia_file, async () => {
       await this.imedia_item.bulkPut(mergedItems)
       await this.imedia_file.where('mediaId').anyOf(mergedItems.map(item => item.id)).delete()
@@ -371,7 +485,52 @@ class XBYDB3 extends Dexie {
   async deleteMediaLibraryFolders(ids: string[]): Promise<void> {
     if (!ids.length) return
     if (!this.isOpen()) await this.open()
-    await this.imedia_folder.bulkDelete(ids)
+    await this.transaction('rw', this.imedia_item, this.imedia_folder, this.imedia_file, async () => {
+      const affectedMediaIds = new Set<string>()
+      for (const folderId of ids) {
+        const mappings = await this.imedia_file.where('folderId').equals(folderId).toArray()
+        mappings.forEach(mapping => affectedMediaIds.add(mapping.mediaId))
+      }
+      const retained: MediaLibraryItem[] = []
+      const deleted: string[] = []
+      for (const item of await this.imedia_item.bulkGet([...affectedMediaIds])) {
+        if (!item) continue
+        let current: MediaLibraryItem | undefined = item
+        for (const folderId of ids) {
+          if (!current) break
+          current = reconcileMediaItemSource(current, folderId, new Set()).item
+        }
+        if (current) retained.push(current)
+        else deleted.push(item.id)
+      }
+      if (retained.length) await this.imedia_item.bulkPut(retained)
+      if (deleted.length) await this.imedia_item.bulkDelete(deleted)
+      await this.imedia_file.where('folderId').anyOf(ids).delete()
+      if (deleted.length) await this.imedia_file.where('mediaId').anyOf(deleted).delete()
+      await this.imedia_folder.bulkDelete(ids)
+    })
+  }
+
+  async reconcileMediaLibraryFolder(folderId: string, seenFileIds: string[]): Promise<void> {
+    if (!this.isOpen()) await this.open()
+    const seen = new Set(seenFileIds)
+    await this.transaction('rw', this.imedia_item, this.imedia_file, async () => {
+      const mappings = await this.imedia_file.where('folderId').equals(folderId).toArray()
+      const affectedMediaIds = [...new Set(mappings.filter(mapping => !seen.has(mapping.fileId)).map(mapping => mapping.mediaId))]
+      const retained: MediaLibraryItem[] = []
+      const deleted: string[] = []
+      for (const item of await this.imedia_item.bulkGet(affectedMediaIds)) {
+        if (!item) continue
+        const result = reconcileMediaItemSource(item, folderId, seen)
+        if (result.item) retained.push(result.item)
+        else deleted.push(item.id)
+      }
+      if (retained.length) await this.imedia_item.bulkPut(retained)
+      if (deleted.length) await this.imedia_item.bulkDelete(deleted)
+      const staleMappingIds = mappings.filter(mapping => !seen.has(mapping.fileId)).map(mapping => mapping.id)
+      if (staleMappingIds.length) await this.imedia_file.bulkDelete(staleMappingIds)
+      if (deleted.length) await this.imedia_file.where('mediaId').anyOf(deleted).delete()
+    })
   }
 
   async clearMediaLibrary(): Promise<void> {
@@ -506,6 +665,59 @@ class XBYDB3 extends Dexie {
     return this.imusic_track.where({ user_id, drive_id }).delete()
   }
 
+  async saveLibrarySource(source: ILibrarySource): Promise<string> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.ilibrary_source.put(source)
+  }
+
+  async getLibrarySources(kind: LibrarySourceKind): Promise<ILibrarySource[]> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    const sources = await this.ilibrary_source.where('kind').equals(kind).toArray()
+    return sources.sort((a, b) => b.scanned_at - a.scanned_at)
+  }
+
+  async deleteMusicLibrarySource(sourceId: string): Promise<number> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.transaction('rw', this.ilibrary_source, this.imusic_track, async () => {
+      const tracks = await this.imusic_track.where('source_ids').equals(sourceId).toArray()
+      const orphanIds: string[] = []
+      const retained: IMusicTrack[] = []
+      for (const track of tracks) {
+        const sourceIds = (track.source_ids || []).filter(id => id !== sourceId)
+        if (!sourceIds.length) orphanIds.push(track.id)
+        else retained.push({ ...track, source_ids: sourceIds, source_id: sourceIds[0] })
+      }
+      if (retained.length) await this.imusic_track.bulkPut(retained)
+      if (orphanIds.length) await this.imusic_track.bulkDelete(orphanIds)
+      await this.ilibrary_source.delete(sourceId)
+      return orphanIds.length
+    })
+  }
+
+  async getMusicSourceItemIds(sourceId: string): Promise<string[]> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return (await this.imusic_track.where('source_ids').equals(sourceId).primaryKeys()).map(String)
+  }
+
+  async reconcileMusicLibrarySource(sourceId: string, seenIds: string[]): Promise<number> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    const seen = new Set(seenIds)
+    return this.transaction('rw', this.imusic_track, async () => {
+      const current = await this.imusic_track.where('source_ids').equals(sourceId).toArray()
+      const stale = current.filter(track => !seen.has(track.id))
+      const orphanIds: string[] = []
+      const retained: IMusicTrack[] = []
+      for (const track of stale) {
+        const sourceIds = (track.source_ids || []).filter(id => id !== sourceId)
+        if (!sourceIds.length) orphanIds.push(track.id)
+        else retained.push({ ...track, source_ids: sourceIds, source_id: sourceIds[0] })
+      }
+      if (retained.length) await this.imusic_track.bulkPut(retained)
+      if (orphanIds.length) await this.imusic_track.bulkDelete(orphanIds)
+      return orphanIds.length
+    })
+  }
+
   async clearMusicTracks(): Promise<void> {
     if (!this.isOpen()) await this.open().catch(() => {})
     return this.imusic_track.clear()
@@ -553,6 +765,56 @@ class XBYDB3 extends Dexie {
     if (!ids || ids.length === 0) return 0
     if (!this.isOpen()) await this.open().catch(() => {})
     return this.ibook_item.bulkDelete(ids).then(() => ids.length).catch(() => 0)
+  }
+
+  async deleteBookLibrarySource(sourceId: string): Promise<number> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.transaction('rw', this.ilibrary_source, this.ibook_item, this.ibook_note, this.ibook_bookmark, async () => {
+      const books = await this.ibook_item.where('source_ids').equals(sourceId).toArray()
+      const ids: string[] = []
+      const retained: IBookItem[] = []
+      for (const book of books) {
+        const sourceIds = (book.source_ids || []).filter(id => id !== sourceId)
+        if (!sourceIds.length) ids.push(book.id)
+        else retained.push({ ...book, source_ids: sourceIds, source_id: sourceIds[0] })
+      }
+      if (retained.length) await this.ibook_item.bulkPut(retained)
+      if (ids.length) {
+        await this.ibook_note.where('book_id').anyOf(ids).delete()
+        await this.ibook_bookmark.where('book_id').anyOf(ids).delete()
+        await this.ibook_item.bulkDelete(ids)
+      }
+      await this.ilibrary_source.delete(sourceId)
+      return ids.length
+    })
+  }
+
+  async getBookSourceItemIds(sourceId: string): Promise<string[]> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return (await this.ibook_item.where('source_ids').equals(sourceId).primaryKeys()).map(String)
+  }
+
+  async reconcileBookLibrarySource(sourceId: string, seenIds: string[]): Promise<number> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    const seen = new Set(seenIds)
+    return this.transaction('rw', this.ibook_item, this.ibook_note, this.ibook_bookmark, async () => {
+      const current = await this.ibook_item.where('source_ids').equals(sourceId).toArray()
+      const stale = current.filter(book => !seen.has(book.id))
+      const orphanIds: string[] = []
+      const retained: IBookItem[] = []
+      for (const book of stale) {
+        const sourceIds = (book.source_ids || []).filter(id => id !== sourceId)
+        if (!sourceIds.length) orphanIds.push(book.id)
+        else retained.push({ ...book, source_ids: sourceIds, source_id: sourceIds[0] })
+      }
+      if (retained.length) await this.ibook_item.bulkPut(retained)
+      if (orphanIds.length) {
+        await this.ibook_note.where('book_id').anyOf(orphanIds).delete()
+        await this.ibook_bookmark.where('book_id').anyOf(orphanIds).delete()
+        await this.ibook_item.bulkDelete(orphanIds)
+      }
+      return orphanIds.length
+    })
   }
 
   async clearBookItems(): Promise<void> {

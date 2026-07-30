@@ -1,5 +1,7 @@
 export interface IMusicTrack {
   id: string
+  source_id?: string
+  source_ids?: string[]
   user_id: string
   drive_id: string
   file_id: string

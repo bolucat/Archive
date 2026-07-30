@@ -14,7 +14,10 @@ const dbMock = vi.hoisted(() => ({
   getAllBookItems: vi.fn(),
   getAllBookBookmarks: vi.fn(),
   getAllBookNotes: vi.fn(),
-  saveBookItems: vi.fn()
+  saveBookItems: vi.fn(),
+  getLibrarySources: vi.fn(),
+  saveLibrarySource: vi.fn(),
+  deleteBookLibrarySource: vi.fn()
 }))
 
 const userDalMock = vi.hoisted(() => ({
@@ -112,6 +115,7 @@ describe('booklibrary trash behavior', () => {
     dbMock.getAllBookBookmarks.mockResolvedValue([])
     dbMock.getAllBookNotes.mockResolvedValue([])
     dbMock.getAllBookItems.mockResolvedValue([])
+    dbMock.getLibrarySources.mockResolvedValue([])
     dbMock.getBookItemsByIds.mockImplementation(async (ids: string[]) => (await dbMock.getAllBookItems()).filter((item: IBookItem) => ids.includes(item.id)))
     dbMock.getBookItemsPage.mockImplementation(async (offset: number, limit: number) => (await dbMock.getAllBookItems()).slice(offset, offset + limit))
     dbMock.getBookItemCounts.mockImplementation(async () => {
@@ -119,8 +123,45 @@ describe('booklibrary trash behavior', () => {
       return { total: items.length, deleted: items.filter((item: IBookItem) => item.deleted_at).length }
     })
     dbMock.saveBookItems.mockResolvedValue(undefined)
+    dbMock.saveLibrarySource.mockResolvedValue('book|user|drive|folder')
+    dbMock.deleteBookLibrarySource.mockResolvedValue(0)
     userDalMock.GetUserTokenFromDB.mockResolvedValue(undefined)
     aliHttpMock.GetBlob.mockResolvedValue({ code: 200, body: new Blob() })
+  })
+
+  it('keeps an empty persisted source visible and deletes it independently of the loaded page', async () => {
+    dbMock.getLibrarySources.mockResolvedValue([{
+      id: 'book|user|drive|folder',
+      kind: 'book',
+      user_id: 'user',
+      drive_id: 'drive',
+      folder_id: 'folder',
+      name: 'Books',
+      created_at: 1,
+      scanned_at: 2
+    }])
+    const store = await createStore()
+    await store.loadFromDB()
+
+    expect(store.byFolder).toEqual([
+      expect.objectContaining({ source_id: 'book|user|drive|folder', name: 'Books', count: 0 })
+    ])
+
+    await store.deleteSource('book|user|drive|folder')
+
+    expect(dbMock.deleteBookLibrarySource).toHaveBeenCalledWith('book|user|drive|folder')
+    expect(store.byFolder).toEqual([])
+  })
+
+  it('keeps a book that still belongs to another scanned source', async () => {
+    const store = await createStore()
+    store.books = [book({ id: 'shared', source_id: 'source-a', source_ids: ['source-a', 'source-b'] })]
+
+    await store.deleteSource('source-a')
+
+    expect(store.books).toEqual([
+      expect.objectContaining({ id: 'shared', source_id: 'source-b', source_ids: ['source-b'] })
+    ])
   })
 
   it('moves books to trash and removes favorite state like Reader', async () => {

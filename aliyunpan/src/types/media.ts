@@ -19,6 +19,7 @@ export interface MediaLibraryItem {
   tvdbId?: string
   aiScrape?: { provider: string; confidence: number; reason: string; updatedAt: number }
   metadataSource?: 'tmdb' | 'ai-tmdb' | 'filename' | 'manual'
+  metadataUpdatedAt?: number
   seasons?: MediaSeason[]
   expectedSeasons?: MediaExpectedSeason[]
   credits?: Credits
@@ -51,6 +52,7 @@ export interface MediaCollectionMovie {
   imdbId?: string
   tvdbId?: string
   metadataSource?: 'tmdb' | 'ai-tmdb' | 'filename' | 'manual'
+  metadataUpdatedAt?: number
   credits?: Credits
   addedAt: Date
 }
@@ -81,6 +83,8 @@ export interface MediaSeason {
   episodeCount: number
   airDate?: string
   credits?: Credits
+  metadataSource?: 'tmdb' | 'manual'
+  metadataUpdatedAt?: number
   episodes?: MediaEpisode[] // 添加缺少的episodes属性
 }
 
@@ -94,6 +98,8 @@ export interface MediaEpisode {
   runtime?: number
   seasonNumber: number
   crew?: CrewMember[]
+  metadataSource?: 'tmdb' | 'manual'
+  metadataUpdatedAt?: number
   driveFiles: DriveFileItem[]
 }
 
@@ -112,6 +118,7 @@ export interface DriveFileItem {
   height?: number
   cloudType?: string
   fileHash?: string
+  sourceFolderIds?: string[]
 }
 
 // API响应结构

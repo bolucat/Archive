@@ -3,6 +3,8 @@ import { ref, computed, watch } from 'vue'
 import type { MediaLibraryItem, MediaLibraryFolder, MediaFilter, FavoriteId, PlaylistMap } from '../types/media'
 import { getWebDavConnections } from '../utils/webdavClient'
 import DB from '../utils/db'
+import { preserveManualMediaMetadata } from '../utils/mediaMetadataEditor'
+import { mergeDriveFileSources, reconcileMediaItemSource } from '../utils/mediaSourceMembership'
 
 // 本地存储的键名
 const STORAGE_KEYS = {
@@ -95,15 +97,7 @@ const mergeNewestById = <T extends { id: string }>(stored: T[], legacy: T[], tim
   return Array.from(merged.values())
 }
 
-const uniqueDriveFiles = <T extends { id: string; userId?: string; driveId?: string; driveServerId?: string }>(files: T[]): T[] => {
-  const seen = new Set<string>()
-  return files.filter((file) => {
-    const key = [file.driveServerId || '', file.userId || '', file.driveId || '', file.id].join('\n')
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
+const uniqueDriveFiles = mergeDriveFileSources
 
 export const syncMediaLibraryStoreFromStorage = (store: {
   mediaItems: MediaLibraryItem[]
@@ -203,10 +197,11 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
 
   const persistMediaLibrary = () => {
     if (isHydrating) return
-    const itemUpserts = Array.from(dirtyMediaItems.values())
+    const folderDeletes = Array.from(deletedFolderIds)
+    const deletedFolderSet = new Set(folderDeletes)
+    const itemUpserts = Array.from(dirtyMediaItems.values()).filter(item => !item.folderId || !deletedFolderSet.has(item.folderId))
     const itemDeletes = Array.from(deletedMediaItemIds)
     const folderUpserts = Array.from(dirtyFolders.values())
-    const folderDeletes = Array.from(deletedFolderIds)
     if (!itemUpserts.length && !itemDeletes.length && !folderUpserts.length && !folderDeletes.length) return
 
     dirtyMediaItems.clear()
@@ -405,12 +400,54 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
   const addMediaItem = (item: MediaLibraryItem) => {
     const existingIndex = mediaItems.value.findIndex(i => i.id === item.id)
     if (existingIndex >= 0) {
+      const existing = mediaItems.value[existingIndex]
+      item = preserveManualMediaMetadata(existing, {
+        ...existing,
+        ...item,
+        folderId: existing.folderId || item.folderId,
+        driveFiles: uniqueDriveFiles([...(existing.driveFiles || []), ...(item.driveFiles || [])])
+      })
       mediaItems.value[existingIndex] = item
     } else {
       mediaItems.value.push(item)
     }
     markMediaItemDirty(item)
     updateFilters()
+  }
+
+  const replaceMediaItemMetadata = (updatedItem: MediaLibraryItem) => {
+    const updatedId = String(updatedItem.id)
+    const existingIndex = mediaItems.value.findIndex(item => String(item.id) === updatedId)
+    let persistedItem = updatedItem
+
+    if (existingIndex >= 0) {
+      mediaItems.value[existingIndex] = updatedItem
+      markMediaItemDirty(updatedItem)
+    } else {
+      const collectionIndex = mediaItems.value.findIndex(item => item.collectionMovies?.some(movie => String(movie.id) === updatedId))
+      if (collectionIndex >= 0) {
+        const collection = mediaItems.value[collectionIndex]
+        persistedItem = {
+          ...collection,
+          collectionMovies: collection.collectionMovies?.map(movie => String(movie.id) === updatedId ? { ...movie, ...updatedItem, type: 'movie' } : movie)
+        }
+        mediaItems.value[collectionIndex] = persistedItem
+        markMediaItemDirty(persistedItem)
+      } else {
+        mediaItems.value.push(updatedItem)
+        markMediaItemDirty(updatedItem)
+      }
+    }
+
+    recentlyAdded.value = recentlyAdded.value.map(item => String(item.id) === updatedId ? updatedItem : item)
+    continueWatching.value = continueWatching.value.map(item => {
+      const itemId = String(item.id)
+      if (itemId === updatedId) return { ...item, ...updatedItem }
+      if (itemId.startsWith(`${updatedId}_`)) return { ...item, ...updatedItem, id: item.id }
+      return item
+    })
+    updateFilters()
+    return persistedItem
   }
 
   // 添加电视剧合并方法
@@ -438,8 +475,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     // 查找是否已存在同名的电视剧
     const existingTvIndex = mediaItems.value.findIndex(item =>
       item.type === 'tv' &&
-      item.tmdbId === newTvItem.tmdbId &&
-      item.name === newTvItem.name
+      (item.id === newTvItem.id || (item.tmdbId === newTvItem.tmdbId && item.name === newTvItem.name))
     )
 
     if (existingTvIndex >= 0) {
@@ -562,6 +598,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     const item = { ...mediaItems.value[index], ...changes }
     mediaItems.value[index] = item
     markMediaItemDirty(item)
+    updateFilters()
   }
 
   const addFolder = (folder: MediaLibraryFolder) => {
@@ -614,14 +651,42 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     return mediaItems.value.filter(item => item.folderPath === folderPath)
   }
 
+  const reconcileFolderSource = (folderId: string, seenFileKeys: Iterable<string>) => {
+    const seen = new Set(seenFileKeys)
+    const nextItems: MediaLibraryItem[] = []
+    for (const item of mediaItems.value) {
+      const result = reconcileMediaItemSource(item, folderId, seen)
+      if (!result.changed) {
+        nextItems.push(item)
+      } else if (result.item) {
+        nextItems.push(result.item)
+        markMediaItemDirty(result.item)
+      } else {
+        markMediaItemDeleted(item.id)
+      }
+    }
+    mediaItems.value = nextItems
+    const remainingIds = new Set(nextItems.map(item => item.id))
+    continueWatching.value = continueWatching.value.filter(item => remainingIds.has(item.id))
+    recentlyAdded.value = recentlyAdded.value.filter(item => remainingIds.has(item.id))
+    updateFilters()
+  }
+
   const removeFolder = (id: string) => {
-    const removedFolders = folders.value.filter(folder => folder.id === id)
+    const target = folders.value.find(folder => folder.id === id)
+    if (!target) return
+    const sourceKey = (folder: MediaLibraryFolder) => [folder.userId || '', folder.driveServerId || '', folder.driveId || '', folder.fileId || '', folder.path || ''].join('\n')
+    const targetSourceKey = sourceKey(target)
+    const removedFolders = folders.value.filter(folder => folder.id === id || sourceKey(folder) === targetSourceKey)
+    const removedFolderIds = new Set(removedFolders.map(folder => folder.id))
+    reconcileFolderSource(id, [])
     const originalItems = mediaItems.value
     // 删除文件夹
-    folders.value = folders.value.filter(folder => folder.id !== id)
+    folders.value = folders.value.filter(folder => !removedFolderIds.has(folder.id))
 
-    // 删除该文件夹相关的所有媒体项目
-    mediaItems.value = mediaItems.value.filter(item => item.folderId !== id)
+    for (const folderId of removedFolderIds) {
+      if (folderId !== id) reconcileFolderSource(folderId, [])
+    }
 
     // 清理孤儿项：folderId 不属于任何现有文件夹的未匹配项
     const remainingFolderIds = new Set(folders.value.map(f => f.id))
@@ -633,10 +698,10 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     originalItems.filter(item => !remainingItemIds.has(item.id)).forEach(item => markMediaItemDeleted(item.id))
 
     // 从继续观看列表中移除相关项目
-    continueWatching.value = continueWatching.value.filter(item => item.folderId !== id)
+    continueWatching.value = continueWatching.value.filter(item => !item.folderId || !removedFolderIds.has(item.folderId))
 
     // 从最近添加列表中移除相关项目
-    recentlyAdded.value = recentlyAdded.value.filter(item => item.folderId !== id)
+    recentlyAdded.value = recentlyAdded.value.filter(item => !item.folderId || !removedFolderIds.has(item.folderId))
 
     // 更新筛选器
     updateFilters()
@@ -953,6 +1018,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
 
     // 方法
     addMediaItem,
+    replaceMediaItemMetadata,
     addOrMergeTvSeries,
     updateMediaItem,
     removeMediaItem,
@@ -963,6 +1029,7 @@ export const useMediaLibraryStore = defineStore('mediaLibrary', () => {
     removeMediaSourceByUserId,
     getMediaItemsByFolder,
     getMediaItemsByFolderPath,
+    reconcileFolderSource,
     filterItems,
     setScanning,
     setScanProgress,

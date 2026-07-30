@@ -645,6 +645,15 @@ onUnmounted(() => {
   </template>
 
 <style>
+body {
+  --app-type-caption: 12px;
+  --app-type-control: 13px;
+  --app-type-body: 14px;
+  --app-type-nav: 14px;
+  --app-type-section: 17px;
+  --app-type-title: 22px;
+}
+
 #xbyhead {
   z-index: 2;
   height: 42px !important;
@@ -1349,13 +1358,17 @@ onUnmounted(() => {
 
 #xbybody .rightbg,
 #xbybody .settings-content,
-#xbybody .media-library-pane,
 #xbybody .media-server-content,
 #xbybody .media-server-workspace,
-#xbybody .book-main,
 #xbybody .book-content {
   height: 100%;
   overflow: hidden;
+}
+
+#xbybody .media-library-pane,
+#xbybody .book-main {
+  box-sizing: border-box;
+  height: calc(100% - 36px);
 }
 
 #xbybody .settings-content {
@@ -1375,6 +1388,17 @@ onUnmounted(() => {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#xbybody .book-header {
+  background: linear-gradient(180deg, rgba(255,255,255,.04), transparent) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
 }
 
 #xbybody #SettingObserver.settings-content {
@@ -1539,6 +1563,89 @@ body[arco-theme='dark'] #xbybody .settings-sider .xbyleftmenu .arco-menu-item:ho
 #xbybody .arco-radio-button,
 #xbybody .arco-checkbox-label {
   color: rgba(255,255,255,.72);
+}
+
+#xbybody {
+  font-size: var(--app-type-body);
+}
+
+#xbybody .treeleft .arco-tree-node-title,
+#xbybody .treeleft .arco-tree-node-title-text,
+#xbybody .xbyleftmenu .arco-menu-item,
+#xbybody .xbyleftmenu .arco-menu-title,
+#xbybody .rss-leftmenu .arco-menu-item,
+#xbybody .rss-leftmenu .arco-menu-title,
+#xbybody .book-sidebar .book-nav-item,
+#xbybody .book-sidebar .book-nav-item > span,
+#xbybody .media-library-nav .nav-item,
+#xbybody .media-library-nav .nav-item > span:first-of-type,
+#xbybody .media-server-nav .nav-item,
+#xbybody .media-server-nav .nav-item .server-name,
+#xbybody .media-server-nav .nav-item > span:first-of-type,
+#xbybody .workspace-tab {
+  font-size: var(--app-type-nav) !important;
+}
+
+#xbybody .ai-task-rail .ai-new-task,
+#xbybody .ai-task-rail .ai-rail-action,
+#xbybody .ai-task-rail .ai-history-item {
+  font-size: var(--app-type-nav) !important;
+}
+
+#xbybody .media-library-nav .nav-header,
+#xbybody .media-library-nav .nav-item .count,
+#xbybody .media-library-nav .folder-source,
+#xbybody .media-server-nav .nav-header,
+#xbybody .media-server-nav .server-meta,
+#xbybody .book-sidebar .book-brand-sub,
+#xbybody .settings-sider .settings-side-kicker,
+#xbybody .settings-sider .settings-side-title small,
+#xbybody .ai-task-rail .ai-rail-label,
+#xbybody .ai-task-rail .ai-rail-foot,
+#xbybody .ai-task-rail .ai-memory-item {
+  font-size: var(--app-type-caption) !important;
+}
+
+#xbybody .arco-input,
+#xbybody .arco-textarea,
+#xbybody .arco-select-view-value,
+#xbybody .arco-select-view-placeholder,
+#xbybody .arco-input-number-input,
+#xbybody .arco-picker input,
+#xbybody .arco-btn,
+#xbybody .arco-radio-label,
+#xbybody .arco-checkbox-label,
+#xbybody .arco-tabs-tab-title,
+#xbybody .arco-dropdown-option {
+  font-size: var(--app-type-control) !important;
+}
+
+#xbybody .arco-table-th,
+#xbybody .arco-table-td,
+#xbybody .arco-list-item,
+#xbybody .arco-collapse-item,
+#xbybody .arco-card-header,
+#xbybody .arco-card-body {
+  font-size: var(--app-type-body);
+}
+
+#xbybody .arco-tag,
+#xbybody .arco-badge-status-text,
+#xbybody .arco-form-item-message,
+#xbybody .arco-form-item-extra {
+  font-size: var(--app-type-caption) !important;
+}
+
+body > .arco-modal-container,
+body > .arco-drawer-container,
+body > .arco-trigger-popup {
+  font-size: var(--app-type-body);
+}
+
+body > .arco-modal-container :where(.arco-btn, .arco-input, .arco-textarea, .arco-select-view-value, .arco-select-view-placeholder, .arco-radio-label, .arco-checkbox-label, .arco-tabs-tab-title),
+body > .arco-drawer-container :where(.arco-btn, .arco-input, .arco-textarea, .arco-select-view-value, .arco-select-view-placeholder, .arco-radio-label, .arco-checkbox-label, .arco-tabs-tab-title),
+body > .arco-trigger-popup :where(.arco-dropdown-option, .arco-select-option, .arco-cascader-option) {
+  font-size: var(--app-type-control) !important;
 }
 
 #xbybody .arco-scrollbar-thumb {

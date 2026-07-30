@@ -60,9 +60,7 @@ describe('MCP server - protocol', () => {
     const names = tools.map((t: any) => t.name)
     expect(names).toEqual(expectedNames)
     expect(names).toContain('settings_show')
-    expect(names).toContain('docs_read')
     expect(names).toContain('upload_plan')
-    expect(names).toContain('organize_apply')
   })
 
   it('unknown method returns -32601', async () => {
@@ -100,6 +98,30 @@ describe('MCP server - tools/call auth_list', () => {
     const res = await sendMcpRequest('tools/call', { name: 'auth_list', arguments: {} })
     const text = res?.result?.content?.[0]?.text
     expect(JSON.parse(text)).toEqual([])
+  })
+
+  it('requires confirm_apply when MCP disables dry-run', async () => {
+    const res = await sendMcpRequest('tools/call', {
+      name: 'upload_apply',
+      arguments: {
+        plan: {
+          version: 1,
+          operation: 'upload',
+          provider: 'aliyun',
+          account_id: 'default',
+          local_root: '/tmp',
+          remote_parent_file_id: 'root',
+          items: [],
+        },
+        dry_run: false,
+        rationale: 'User asked to upload selected files.',
+      },
+    })
+    const text = res?.result?.content?.[0]?.text
+    expect(JSON.parse(text)).toMatchObject({
+      error: 'confirm_apply=true is required when dry_run=false',
+      exitCode: 1,
+    })
   })
 })
 
@@ -141,12 +163,19 @@ describe('MCP server - tools/call ops_list and ops_undo plan', () => {
   })
 })
 
-describe('MCP server - removed media plan tools', () => {
-  it('does not expose media_rename_plan or media_organize_plan', async () => {
+describe('MCP server - removed non cloud-drive tools', () => {
+  it('does not expose media, docs, or organize tools', async () => {
     const mod = await import('../core/mcpServer.mjs') as any
     const toolNames = (mod.TOOLS || []).map((tool: { name: string }) => tool.name)
-    expect(toolNames).not.toContain('media_rename_plan')
-    expect(toolNames).not.toContain('media_organize_plan')
+    expect(toolNames).not.toEqual(expect.arrayContaining([
+      'media_scan',
+      'media_match',
+      'docs_read',
+      'docs_convert',
+      'organize_analyze',
+      'organize_plan',
+      'organize_apply',
+    ]))
   })
 })
 
@@ -170,21 +199,11 @@ describe('MCP server - JSON schema validation', () => {
     expect(filesList.inputSchema.properties.path).toBeUndefined()
     expect(filesList.inputSchema.properties.limit).toBeDefined()
     expect(filesList.inputSchema.properties.cursor).toBeDefined()
-    const mediaScan = TOOLS.find((t: any) => t.name === 'media_scan')
-    expect(mediaScan).toBeDefined()
-    const docsRead = TOOLS.find((t: any) => t.name === 'docs_read')
-    expect(docsRead.inputSchema.required).toContain('path')
-    expect(docsRead.inputSchema.properties.pdf_format).toBeDefined()
-    expect(docsRead.inputSchema.properties.pdf_pages).toBeDefined()
-    const docsConvert = TOOLS.find((t: any) => t.name === 'docs_convert')
-    expect(docsConvert.inputSchema.required).toContain('path')
-    expect(docsConvert.inputSchema.properties.output).toBeDefined()
-    expect(docsConvert.inputSchema.properties.pdf_content_safety_off).toBeDefined()
-    expect(docsConvert.inputSchema.properties.pdf_hybrid_hancom_ai_ocr_strategy).toBeDefined()
-    expect(docsConvert.inputSchema.properties.pdf_threads).toBeDefined()
-    expect(mediaScan.inputSchema.required).toContain('input')
     const filesInfo = TOOLS.find((t: any) => t.name === 'files_info')
     expect(filesInfo.inputSchema.required).toContain('file_id')
+    const schemaPlans = TOOLS.find((t: any) => t.name === 'schema_plans')
+    expect(schemaPlans).toBeDefined()
+    expect(schemaPlans.inputSchema.properties.name).toBeDefined()
   })
 
   it('exposes agent contract metadata from the manifest', async () => {
@@ -198,6 +217,7 @@ describe('MCP server - JSON schema validation', () => {
     })
     expect(uploadApply._meta.examples[0]).toContain('clouddrive-cli upload apply')
     expect(uploadApply.inputSchema.properties.rationale).toBeDefined()
+    expect(uploadApply.inputSchema.properties.confirm_apply).toBeDefined()
     const filesWalk = TOOLS.find((t: any) => t.name === 'files_walk')
     expect(filesWalk._meta.largeOutput).toBe(true)
     expect(filesWalk.inputSchema.properties.output).toBeDefined()

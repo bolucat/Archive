@@ -89,6 +89,10 @@
 
     <!-- 内容区域 -->
     <div class="library-content">
+      <div v-if="mediaStore.isScanning && !showingDetail" class="library-scan-status">
+        <a-spin :size="16" />
+        <span>{{ t('mediaLibrary.scanningFiles', { progress: mediaStore.scanProgress, total: mediaStore.scanTotal }) }}</span>
+      </div>
 
       <!-- 搜索界面 -->
       <div v-if="isSearchView && !showingDetail" class="search-panel">
@@ -111,6 +115,7 @@
         :playlist-items="selectedPlaylist ? pagedItems : []"
         @ai-rescrape="handleManualAIScrape"
         @back="handleDetailBack"
+        @metadata-updated="handleMetadataUpdated"
         @tag-click="handleDetailTagClick"
       />
 
@@ -123,6 +128,14 @@
         <div class="library-home-toolbar">
           <div class="library-home-toolbar-spacer" />
           <div class="library-home-toolbar-right">
+            <a-input
+              v-model="homeSearchQuery"
+              allow-clear
+              class="library-home-search"
+              :placeholder="t('mediaLibrary.filterPlaceholder')"
+            >
+              <template #prefix><IconFont name="iconsearch" /></template>
+            </a-input>
             <button type="button" class="toolbar-btn" @click="openLocalHomeManager">
               <IconFont name="iconlist" />
               <span>{{ t('mediaServer.mediaManagement') }}</span>
@@ -149,10 +162,15 @@
           </div>
         </div>
 
+        <div v-if="homeSearchQuery.trim() && visibleLocalHomeSections.length === 0" class="library-home-search-empty">
+          <IconFont name="iconsearch" />
+          <span>{{ t('mediaLibrary.noCloudMatches') }}</span>
+        </div>
+
         <template v-for="section in visibleLocalHomeSections" :key="section.key">
           <MediaServerResumeRow
-            v-if="section.kind === 'continue' && (localContinueCards.length > 0)"
-            :items="localContinueCards"
+            v-if="section.kind === 'continue' && (filteredLocalContinueCards.length > 0)"
+            :items="filteredLocalContinueCards"
             @play="handleLocalHomeResumePlay"
             @action="handleLocalHomeCardAction"
           />
@@ -164,12 +182,14 @@
             :poster-type="section.posterType"
             :show-poster-labels="localHomePreferences.showPosterLabels"
             :enable-context-menu="true"
+            :show-edit-metadata="true"
             :show-top-overlay="true"
             :see-all-label="t('mediaServer.seeAll', { count: getLocalHomeSectionTotalCount(section) })"
             subtitle-mode="year-only"
             @select="handleLocalHomeNodeSelect"
             @play="handleLocalHomeNodePlay"
             @action="handleLocalHomeCardAction"
+            @metadata="openLocalHomeMetadataEditor"
             @see-all="handleLocalHomeSeeAll(section)"
           />
 
@@ -474,12 +494,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- 加载状态 -->
-      <div v-else-if="mediaStore.isScanning" class="loading-state">
-        <a-spin />
-        <p>{{ t('mediaLibrary.scanningFiles', { progress: mediaStore.scanProgress, total: mediaStore.scanTotal }) }}</p>
       </div>
 
       <!-- 文件列表 - 当选择文件夹时显示 PanRight 组件 -->
@@ -856,34 +870,14 @@
         </div>
       </template>
     </a-dropdown>
-    <a-modal v-model:visible="manualMetadataVisible" :title="t('mediaLibrary.editMetadata')" :ok-button-props="{ disabled: !manualMetadata.name.trim() }" @ok="saveManualMetadata">
-      <a-form :model="manualMetadata" layout="vertical">
-        <a-form-item field="name" :label="t('mediaLibrary.title')">
-          <a-input v-model="manualMetadata.name" :placeholder="t('mediaLibrary.mediaTitle')" />
-        </a-form-item>
-        <div class="manual-metadata-grid">
-          <a-form-item field="year" :label="t('mediaLibrary.year')">
-            <a-input v-model="manualMetadata.year" :placeholder="t('mediaLibrary.yearPlaceholder')" />
-          </a-form-item>
-          <a-form-item field="type" :label="t('mediaLibrary.type')">
-            <a-select v-model="manualMetadata.type">
-              <a-option value="movie">{{ t('mediaLibrary.typeMovie') }}</a-option>
-              <a-option value="tv">{{ t('mediaLibrary.typeTv') }}</a-option>
-              <a-option value="unmatched">{{ t('mediaLibrary.typeUnmatched') }}</a-option>
-            </a-select>
-          </a-form-item>
-        </div>
-        <a-form-item field="tmdbId" label="TMDB ID">
-          <a-input v-model="manualMetadata.tmdbId" :placeholder="t('mediaLibrary.optionalClear')" />
-        </a-form-item>
-        <a-form-item field="genres" :label="t('mediaLibrary.genres')">
-          <a-input v-model="manualMetadata.genres" :placeholder="t('mediaLibrary.genresPlaceholder')" />
-        </a-form-item>
-        <a-form-item field="overview" :label="t('mediaLibrary.overview')">
-          <a-textarea v-model="manualMetadata.overview" :auto-size="{ minRows: 3, maxRows: 6 }" :placeholder="t('mediaServer.optional')" />
-        </a-form-item>
-      </a-form>
-    </a-modal>
+    <MediaMetadataEditorModal
+      v-if="manualMetadataTarget"
+      :defaults-to-whole-tv-series="manualMetadataDefaultsToWholeTvSeries"
+      :item="manualMetadataTarget"
+      :visible="manualMetadataVisible"
+      @close="closeManualMetadataEditor"
+      @save="saveManualMetadata"
+    />
   </div>
 </template>
 
@@ -899,6 +893,7 @@ import MediaPanRight from './MediaPanRight.vue'
 import { useMediaPanFileStore, useMediaPanTreeStore } from './stores'
 import CategoryCard from './CategoryCard.vue'
 import MediaDetail from './MediaDetail.vue'
+import MediaMetadataEditorModal from './MediaMetadataEditorModal.vue'
 import MediaServerPosterRow from './media-server/home/MediaServerPosterRow.vue'
 import MediaServerResumeRow from './media-server/home/MediaServerResumeRow.vue'
 import type { MediaLibraryItem } from '../types/media'
@@ -975,7 +970,7 @@ const contextMenuPosition = ref({ x: 0, y: 0 })
 const contextMenuItem = ref<MediaLibraryItem | null>(null)
 const manualMetadataVisible = ref(false)
 const manualMetadataTarget = ref<MediaLibraryItem | null>(null)
-const manualMetadata = ref({ name: '', year: '', type: 'movie' as MediaLibraryItem['type'], tmdbId: '', genres: '', overview: '' })
+const manualMetadataDefaultsToWholeTvSeries = ref(false)
 const selectedGenre = ref('')
 const selectedYear = ref('')
 const selectedRating = ref('')
@@ -1012,6 +1007,7 @@ const toggleMediaServerSection = () => {
 }
 
 const localHomeManagerVisible = ref(false)
+const homeSearchQuery = ref('')
 const draggingLocalHomeSectionId = ref<LocalMediaHomeSectionKey | ''>('')
 const localHomeManagerDraft = ref<Array<{ key: LocalMediaHomeSectionKey; title: string; visible: boolean }>>([])
 
@@ -1130,8 +1126,15 @@ const loadMediaPage = async (reset = false) => {
       DB.countMediaLibraryItems({ type, predicate })
     ])
     if (requestId !== pageRequestId) return
-    pagedTotal.value = total
-    pagedItems.value = reset ? items : [...pagedItems.value, ...items]
+    const liveItems = mediaStore.isScanning
+      ? mediaStore.mediaItems.filter(item => (!type || item.type === type) && predicate(item))
+      : []
+    const merged = new Map<string, MediaLibraryItem>()
+    const pageItems = reset ? items : [...pagedItems.value, ...items]
+    pageItems.forEach(item => merged.set(String(item.id), item))
+    liveItems.forEach(item => merged.set(String(item.id), item))
+    pagedItems.value = Array.from(merged.values())
+    pagedTotal.value = Math.max(total, pagedItems.value.length)
   } finally {
     if (requestId === pageRequestId) isLoadingPage.value = false
   }
@@ -1193,8 +1196,16 @@ const showTopBar = computed(() => {
   if (showHomeBackBar.value) return true
   return false
 })
-const showQuickSearch = computed(() => showDrillDownBackBar.value || showPlaylistBackBar.value)
-const showResultCount = computed(() => showDrillDownBackBar.value || showPlaylistBackBar.value)
+const quickSearchCategories = new Set([
+  'continue', 'continue-watching', 'recent', 'recently-added', 'movies', 'tv', 'tv-shows',
+  'documentary', 'animation', 'unmatched', 'unwatched', 'favorites'
+])
+const showQuickSearch = computed(() => {
+  if (isSearchView.value || isHomeView.value || props.selectedFolder) return false
+  const category = props.activeCategory || activeTab.value
+  return quickSearchCategories.has(category) || showDrillDownBackBar.value || showPlaylistBackBar.value
+})
+const showResultCount = computed(() => showQuickSearch.value)
 const searchExpanded = ref(false)
 const quickSearchInputRef = ref<InstanceType<typeof HTMLInputElement>>()
 
@@ -1555,13 +1566,31 @@ const orderedLocalHomeSections = computed(() => {
   return [...ordered, ...rest]
 })
 
+const matchesLocalHomeSearch = (item: MediaServerLibraryNode | MediaServerCardItem, query: string) => {
+  const searchable = [item.title, item.parentTitle, item.overview, item.year].filter((value) => value !== undefined && value !== null).join(' ').toLowerCase()
+  return searchable.includes(query)
+}
+
+const filteredLocalContinueCards = computed(() => {
+  const query = homeSearchQuery.value.trim().toLowerCase()
+  return query ? localContinueCards.value.filter((item) => matchesLocalHomeSearch(item, query)) : localContinueCards.value
+})
+
 const visibleLocalHomeSections = computed(() => {
   const hidden = new Set(localHomePreferences.hiddenHomeSectionIds || [])
-  return orderedLocalHomeSections.value.filter((section) => !hidden.has(section.key))
+  const query = homeSearchQuery.value.trim().toLowerCase()
+  return orderedLocalHomeSections.value.flatMap((section) => {
+    if (hidden.has(section.key)) return []
+    if (!query) return [section]
+    if (section.kind === 'continue') return filteredLocalContinueCards.value.length > 0 ? [section] : []
+    if (section.kind !== 'media') return []
+    const items = (section.items || []).filter((item) => matchesLocalHomeSearch(item, query))
+    return items.length > 0 ? [{ ...section, items }] : []
+  })
 })
 
 const getLocalHomeSectionTotalCount = (section: LocalHomeMediaSection) => {
-  if (section.kind === 'continue') return localContinueCards.value.length
+  if (section.kind === 'continue') return filteredLocalContinueCards.value.length
   if (section.kind === 'media') return section.items?.length || 0
   return (section.entries || []).reduce((total, entry) => total + (entry.count || 0), 0)
 }
@@ -1940,36 +1969,22 @@ const openManualMetadataEditor = () => {
   handleContextMenuClose()
   if (!target) return
   manualMetadataTarget.value = target
-  manualMetadata.value = {
-    name: target.name,
-    year: target.year || '',
-    type: target.type,
-    tmdbId: target.tmdbId ? String(target.tmdbId) : '',
-    genres: target.genres.join(', '),
-    overview: target.overview || ''
-  }
+  manualMetadataDefaultsToWholeTvSeries.value = target.type === 'tv'
   manualMetadataVisible.value = true
 }
 
-const saveManualMetadata = () => {
-  const target = manualMetadataTarget.value
-  const name = manualMetadata.value.name.trim()
-  if (!target || !name) return
-  const tmdbId = Number(manualMetadata.value.tmdbId.trim())
-  const updated: MediaLibraryItem = {
-    ...target,
-    name,
-    year: manualMetadata.value.year.trim() || undefined,
-    type: manualMetadata.value.type,
-    tmdbId: Number.isInteger(tmdbId) && tmdbId > 0 ? tmdbId : undefined,
-    genres: manualMetadata.value.genres.split(',').map((genre) => genre.trim()).filter(Boolean),
-    overview: manualMetadata.value.overview.trim() || undefined,
-    metadataSource: 'manual'
-  }
-  mediaStore.addMediaItem(updated)
-  if (currentMediaItem.value?.id === updated.id) currentMediaItem.value = updated
+const closeManualMetadataEditor = () => {
   manualMetadataVisible.value = false
   manualMetadataTarget.value = null
+  manualMetadataDefaultsToWholeTvSeries.value = false
+}
+
+const saveManualMetadata = (updated: MediaLibraryItem) => {
+  const target = manualMetadataTarget.value
+  if (!target) return
+  mediaStore.replaceMediaItemMetadata(updated)
+  if (currentMediaItem.value?.id === updated.id) currentMediaItem.value = updated
+  closeManualMetadataEditor()
   message.success(t('mediaLibrary.metadataUpdated'))
 }
 
@@ -2002,6 +2017,10 @@ const deleteMediaFromMenu = () => {
 const handleDetailBack = () => {
   showingDetail.value = false
   currentMediaItem.value = undefined
+}
+
+const handleMetadataUpdated = (item: MediaLibraryItem) => {
+  currentMediaItem.value = item
 }
 
 // 处理详情页标签点击
@@ -2585,7 +2604,12 @@ const setLocalHomePosterMode = (value: LocalMediaHomePosterType) => {
 }
 
 const findLocalMediaItemById = (id: string) => {
-  return favoriteIdToMediaItem(id) || continueWatchingItems.value.find((item) => item.id === id) || null
+  const itemId = String(id)
+  return favoriteIdToMediaItem(itemId)
+    || mediaStore.mediaItems.find((item) => String(item.id) === itemId)
+    || mediaStore.recentlyAdded.find((item) => String(item.id) === itemId)
+    || continueWatchingItems.value.find((item) => String(item.id) === itemId)
+    || null
 }
 
 const handleLocalHomeResumePlay = (item: MediaServerCardItem) => {
@@ -2604,6 +2628,15 @@ const handleLocalHomeNodeSelect = (item: MediaServerLibraryNode) => {
 
 const handleLocalHomeNodePlay = (item: MediaServerLibraryNode) => {
   handleLocalHomeNodeSelect(item)
+}
+
+const openLocalHomeMetadataEditor = (item: MediaServerLibraryNode) => {
+  if (item.id.startsWith('playlist:')) return
+  const target = findLocalMediaItemById(item.id)
+  if (!target) return
+  manualMetadataTarget.value = target
+  manualMetadataDefaultsToWholeTvSeries.value = target.type === 'tv'
+  manualMetadataVisible.value = true
 }
 
 const handleLocalHomeCardAction = async (item: MediaServerCardItem | MediaServerLibraryNode, action: 'watched' | 'favorite' | 'download') => {
@@ -3088,6 +3121,25 @@ defineExpose({
 
 .library-quick-search {
   width: 240px;
+}
+
+.library-scan-status {
+  position: sticky;
+  z-index: 8;
+  top: 0;
+  display: flex;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 12px auto;
+  padding: 8px 12px;
+  border: 1px solid rgba(96, 165, 250, 0.24);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.82);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  backdrop-filter: blur(16px);
 }
 
 .library-result-count {
@@ -4205,6 +4257,32 @@ defineExpose({
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.library-home-search {
+  width: min(280px, 32vw);
+}
+
+.library-home-search :deep(.arco-input-wrapper) {
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.library-home-search-empty {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-3);
+  font-size: 13px;
+}
+
+.library-home-search-empty .iconfont {
+  font-size: 28px;
 }
 
 .toolbar-btn {
