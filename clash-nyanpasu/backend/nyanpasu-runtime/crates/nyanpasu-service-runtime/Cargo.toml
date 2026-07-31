@@ -1,0 +1,111 @@
+[package]
+name = "nyanpasu-service-runtime"
+# Must stay equal to the `nyanpasu-service` bin version: `consts::APP_VERSION` is
+# this crate's CARGO_PKG_VERSION and is what `status` reports over IPC.
+# publish.yml bumps every workspace member together, so they stay in lockstep.
+version = "1.4.5"
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+# The package is nyanpasu-service-runtime, but the crate keeps the original
+# `nyanpasu_service` crate name so module-path-derived tracing targets (log
+# lines, ws TraceLog.target, RUST_LOG=nyanpasu_service=... filters) stay
+# wire-identical after the bin/lib split.
+name = "nyanpasu_service"
+
+[dependencies]
+nyanpasu-core-manager = { path = "../nyanpasu-core-manager" }
+nyanpasu-ipc = {
+  path = "../../nyanpasu_ipc",
+  default-features = false,
+  features = [
+    "client",
+    "server",
+  ]
+}
+nyanpasu-utils = {
+  path = "../nyanpasu-utils",
+  default-features = false,
+  features = [
+    "dirs",
+    "network",
+    "os",
+  ]
+}
+
+ansi-str = "0.9"
+anyhow = { workspace = true }
+axum = { workspace = true, features = ["macros"] }
+bounded-vec-deque = "0.1.1"
+camino = { version = "1.1", features = ["serde1"] }
+chrono = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
+clap_complete = "4"
+colored = "3.0.0"
+console-subscriber = {
+  version = "0.5",
+  features = [
+    "parking_lot",
+  ],
+  optional = true
+}
+constcat = "0.6.0"
+ctrlc = { version = "3", features = ["termination"] }
+dunce = "1.0.5"
+futures-util = { workspace = true }
+indexmap = { version = "2", features = ["serde"] }
+oneshot = "0.2"
+parking_lot = "0.12"
+semver = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1"
+service-manager = "0.11"
+simd-json = { workspace = true }
+supports-color = "3.0.2"
+sysinfo = "0.39.0"
+thiserror.workspace = true
+timeago = "0.6"
+tokio = { workspace = true, features = ["full", "test-util"] }
+tokio-util = { workspace = true }
+tower-http = { version = "0.7", features = ["catch-panic", "request-id", "trace"] }
+tracing.workspace = true
+tracing-appender.workspace = true
+tracing-attributes.workspace = true
+tracing-log.workspace = true
+tracing-panic = "0.1"
+tracing-serde = "0.2"
+tracing-subscriber = {
+  workspace = true,
+  features = [
+    "env-filter",
+    "json",
+    "parking_lot",
+  ]
+}
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }
+
+[build-dependencies]
+chrono = { workspace = true }
+rustc_version = "0.4"
+
+[target."cfg(unix)".dependencies]
+whoami = "2"
+
+[target."cfg(windows)".dependencies]
+check_elevation = "0.2.4"
+windows = { workspace = true }
+
+[features]
+deadlock_detection = [
+  "nyanpasu-utils/deadlock_detection",
+  "parking_lot/deadlock_detection",
+]
+debug = ["deadlock_detection", "tracing"]
+hardware-lock-elision = ["parking_lot/hardware-lock-elision"]
+tracing = ["dep:console-subscriber", "tokio/tracing"]

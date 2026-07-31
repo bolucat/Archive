@@ -1,0 +1,3 @@
+[submodule "crates/nyanpasu-utils"]
+	path = crates/nyanpasu-utils
+	url = https://github.com/LibNyanpasu/nyanpasu-utils.git

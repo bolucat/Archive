@@ -1,0 +1,95 @@
+name: Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_unix:
+    name: Build ${{ matrix.profile.target }}
+    strategy:
+      matrix:
+        profile:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.profile.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Rust toolchain and target toolchain
+        run: |
+          rustup toolchain install nightly --profile minimal
+          rustup target add ${{ matrix.profile.target }} --toolchain nightly
+      - name: Install coreutils for macOS
+        if: contains(matrix.profile.os, 'macos')
+        run: brew install coreutils
+      - uses: goto-bus-stop/setup-zig@v2
+        name: Setup Zig
+      - name: Setup Cargo zigbuild
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall cargo-zigbuild -y
+      - name: Build
+        run: cargo +nightly zigbuild --release --target ${{ matrix.profile.target }}
+      - name: Archive
+        run: |
+          mkdir -p target/release
+          cp target/${{ matrix.profile.target }}/release/nyanpasu-service target/release/nyanpasu-service
+          tar -czf nyanpasu-service-${{ matrix.profile.target }}.tar.gz target/release/nyanpasu-service
+      - name: Calc the archive signature
+        run: sha256sum nyanpasu-service-${{ matrix.profile.target }}.tar.gz > nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: nyanpasu-service-${{ matrix.profile.target }}
+          path: |
+            nyanpasu-service-${{ matrix.profile.target }}.tar.gz
+            nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
+
+  release_windows:
+    name: Build ${{ matrix.profile.target }}
+    strategy:
+      matrix:
+        profile:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.profile.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install Rust toolchain and target toolchain
+        run: rustup toolchain install nightly --profile minimal && rustup target add ${{ matrix.profile.target }} --toolchain nightly
+      - name: Build
+        run: cargo +nightly build --release --target ${{ matrix.profile.target }}
+      - name: Archive
+        run: |
+          New-Item -ItemType Directory -Force -Path target\release
+          Copy-Item target\${{ matrix.profile.target }}\release\nyanpasu-service.exe target\release\nyanpasu-service.exe
+          Set-Location target\release
+          Compress-Archive -Path nyanpasu-service.exe -DestinationPath ..\..\nyanpasu-service-${{ matrix.profile.target }}.zip
+          Set-Location ..\..
+      - name: Calc the archive signature
+        shell: pwsh
+        run: Get-FileHash nyanpasu-service-${{ matrix.profile.target }}.zip -Algorithm SHA256 | Format-List > nyanpasu-service-${{ matrix.profile.target }}.zip.sha256
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: nyanpasu-service-${{ matrix.profile.target }}
+          path: |
+            nyanpasu-service-${{ matrix.profile.target }}.zip
+            nyanpasu-service-${{ matrix.profile.target }}.zip.sha256

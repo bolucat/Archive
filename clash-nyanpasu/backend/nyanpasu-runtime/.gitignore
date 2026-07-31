@@ -1,0 +1,10 @@
+target/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.claude/*
+!.claude/settings.json
+
+# downloaded cores for integration tests (scripts/prepare-mihomo.ts)
+tests/bin/*
+!tests/bin/.gitkeep

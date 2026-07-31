@@ -1,0 +1,225 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      versionType:
+        type: choice
+        description: "<major|minor|patch>"
+        required: true
+        default: "patch"
+        options:
+          - major
+          - minor
+          - patch
+
+permissions:
+  contents: write
+  discussions: write
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.versionType }} release
+    outputs:
+      version: ${{ steps.update-version.outputs.version }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+          submodules: true
+      - name: Install Rust nightly toolchain
+        run: |
+          rustup toolchain install -c clippy -c rustfmt --profile minimal nightly
+          rustup default nightly
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.21.1
+      - name: Install cargo-edit
+        run: |
+          cargo binstall cargo-edit -y
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+      - uses: Swatinem/rust-cache@v2
+        name: Setup Rust cache
+        with:
+          shared-key: ${{ runner.os }}-ci
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - id: update-version
+        shell: bash
+        name: Bump version
+        run: |
+          cargo set-version --workspace --exclude nyanpasu-utils --bump ${{ inputs.versionType }}
+          PACKAGE_ID=$(cargo pkgid --package nyanpasu-service)
+          VERSION=${PACKAGE_ID##*[@#]}
+          echo "$VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      - name: Generate a changelog for the new version
+        shell: bash
+        id: build-changelog
+        run: |
+          touch /tmp/changelog.md
+          git-cliff --config  cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
+          if [ $? -eq 0 ]; then
+            CONTENT=$(cat /tmp/changelog.md)
+            cat /tmp/changelog.md | cat - ./CHANGELOGS.md > temp && mv temp ./CHANGELOGS.md
+            {
+              echo 'content<<EOF'
+              echo "$CONTENT"
+              echo EOF
+            } >> $GITHUB_OUTPUT
+            echo "version=${{ steps.update-version.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to generate changelog"
+            exit 1
+          fi
+        env:
+          GITHUB_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit changes
+        uses: stefanzweifel/git-auto-commit-action@v7
+        with:
+          commit_message: "chore: bump version to v${{ steps.update-version.outputs.version }}"
+          commit_user_name: "github-actions[bot]"
+          commit_user_email: "41898282+github-actions[bot]@users.noreply.github.com"
+          tagging_message: "v${{ steps.update-version.outputs.version }}"
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        with:
+          # draft: true
+          body: ${{steps.build-changelog.outputs.content}}
+          name: Nyanpasu Service v${{steps.update-version.outputs.version}}
+          tag_name: "v${{ steps.update-version.outputs.version }}"
+          # target_commitish: ${{ steps.tag.outputs.sha }}
+  release_macos:
+    needs: [publish]
+    name: Release v${{ needs.publish.outputs.version }} for macOS
+    strategy:
+      matrix:
+        profile:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: macos-latest
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.profile.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: v${{ needs.publish.outputs.version }}
+          submodules: true
+      - name: Install coreutils for macOS
+        run: brew install coreutils
+      - name: Install Rust toolchain and target toolchain
+        run: rustup toolchain install nightly --profile minimal && rustup target add ${{ matrix.profile.target }} --toolchain nightly
+      - name: Build
+        run: cargo +nightly build --release --target ${{ matrix.profile.target }}
+      - name: Archive
+        run: |
+          mkdir -p target/release
+          cp target/${{ matrix.profile.target }}/release/nyanpasu-service target/release/nyanpasu-service
+          cd target/release
+          tar -czf nyanpasu-service-${{ matrix.profile.target }}.tar.gz ./nyanpasu-service
+          cd ../..
+          mv target/release/nyanpasu-service-${{ matrix.profile.target }}.tar.gz .
+      - name: Calc the archive signature
+        run: sha256sum nyanpasu-service-${{ matrix.profile.target }}.tar.gz > nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: "v${{ needs.publish.outputs.version }}"
+          files: |
+            nyanpasu-service-${{ matrix.profile.target }}.tar.gz
+            nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
+  release_linux:
+    needs: [publish]
+    name: Release v${{ needs.publish.outputs.version }} for ${{ matrix.profile.target }}
+    strategy:
+      matrix:
+        profile:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+    runs-on: ${{ matrix.profile.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: v${{ needs.publish.outputs.version }}
+          submodules: true
+      - name: Install Rust toolchain and target toolchain
+        run: rustup toolchain install nightly --profile minimal && rustup target add ${{ matrix.profile.target }} --toolchain nightly
+      - uses: goto-bus-stop/setup-zig@v2
+        name: Setup Zig
+      - name: Setup Cargo zigbuild
+        run: |
+          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+          cargo binstall cargo-zigbuild -y
+      - name: Build
+        run: cargo +nightly zigbuild --release --target ${{ matrix.profile.target }}
+      - name: Archive
+        run: |
+          mkdir -p target/release
+          cp target/${{ matrix.profile.target }}/release/nyanpasu-service target/release/nyanpasu-service
+          cd target/release
+          tar -czf nyanpasu-service-${{ matrix.profile.target }}.tar.gz ./nyanpasu-service
+          cd ../..
+          mv target/release/nyanpasu-service-${{ matrix.profile.target }}.tar.gz .
+      - name: Calc the archive signature
+        run: sha256sum nyanpasu-service-${{ matrix.profile.target }}.tar.gz > nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: "v${{ needs.publish.outputs.version }}"
+          files: |
+            nyanpasu-service-${{ matrix.profile.target }}.tar.gz
+            nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
+  release_windows:
+    needs: [publish]
+    name: Release v${{ needs.publish.outputs.version }} for ${{ matrix.profile.target }}
+    strategy:
+      matrix:
+        profile:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.profile.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: v${{ needs.publish.outputs.version }}
+          submodules: true
+      - name: Install Rust toolchain and target toolchain
+        run: rustup toolchain install nightly --profile minimal && rustup target add ${{ matrix.profile.target }} --toolchain nightly
+      - name: Build
+        run: cargo +nightly build --release --target ${{ matrix.profile.target }}
+      - name: Archive
+        run: |
+          New-Item -ItemType Directory -Force -Path target\release
+          Copy-Item target\${{ matrix.profile.target }}\release\nyanpasu-service.exe target\release\nyanpasu-service.exe
+          Set-Location target\release
+          Compress-Archive -Path nyanpasu-service.exe -DestinationPath ..\..\nyanpasu-service-${{ matrix.profile.target }}.zip
+          Set-Location ..\..
+      - name: Calc the archive signature
+        shell: pwsh
+        run: Get-FileHash nyanpasu-service-${{ matrix.profile.target }}.zip -Algorithm SHA256 | Format-List > nyanpasu-service-${{ matrix.profile.target }}.zip.sha256
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: "v${{ needs.publish.outputs.version }}"
+          files: |
+            nyanpasu-service-${{ matrix.profile.target }}.zip
+            nyanpasu-service-${{ matrix.profile.target }}.zip.sha256

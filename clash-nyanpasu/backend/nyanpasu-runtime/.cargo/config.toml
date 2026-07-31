@@ -1,0 +1,17 @@
+[alias]
+debug-run = "run --features debug"
+debug-build = "build --features debug"
+
+[build]
+rustflags = ["--cfg", "tokio_unstable", "--cfg", "tracing_unstable"]
+
+
+[target.'cfg(any(target_os = "windows", target_os = "linux"))']
+rustflags = [
+    "--cfg",
+    "tokio_unstable",
+    "--cfg",
+    "tracing_unstable",
+    "-C",
+    "target-feature=-crt-static",
+]

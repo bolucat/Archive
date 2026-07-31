@@ -1,0 +1,42 @@
+[package]
+name = "clash-api"
+version = "0.1.1"
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+backon = "1"
+chrono.workspace = true
+futures-core = "0.3"
+futures-util.workspace = true
+indexmap = { version = "2", features = ["serde"] }
+ipnet = { version = "2", features = ["serde"] }
+reqwest = { version = "0.13", features = ["json", "query", "stream"] }
+reqwest-websocket = "0.6.0"
+serde.workspace = true
+serde_json = "1"
+specta = {
+  version = "^2.0.0-rc.25",
+  features = ["chrono", "derive", "indexmap", "url", "uuid"]
+}
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["codec", "io"] }
+url = "2"
+uuid = { version = "1", features = ["serde"] }
+
+[dev-dependencies]
+axum = { workspace = true, features = ["ws"] }
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["service", "tokio"] }
+
+[target."cfg(windows)".dev-dependencies]
+windows = {
+  workspace = true,
+  features = [
+    "Win32_Foundation",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading"
+  ]
+}

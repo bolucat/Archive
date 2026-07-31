@@ -1,0 +1,66 @@
+allow-lan: false
+mode: rule
+log-level: debug
+ipv6: false
+find-process-mode: off
+external-ui: ./ui
+external-ui-url: http://127.0.0.1:1/ui.zip
+
+profile:
+  store-selected: false
+  store-fake-ip: false
+
+hosts:
+  fixture.test: 198.18.0.1
+
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: redir-host
+  use-hosts: true
+  use-system-hosts: false
+  nameserver:
+    - rcode://success
+
+proxies:
+  - name: fixture direct 日本
+    type: direct
+    udp: true
+  - name: fixture reject 日本
+    type: reject
+
+proxy-groups:
+  - name: fixture group 日本
+    type: select
+    proxies:
+      - fixture direct 日本
+      - fixture reject 日本
+      - DIRECT
+  - name: fixture automatic 日本
+    type: url-test
+    use:
+      - fixture provider 日本
+    url: http://127.0.0.1:1/generate_204
+    interval: 3600
+    lazy: true
+
+proxy-providers:
+  fixture provider 日本:
+    type: file
+    path: ./proxy-provider.yaml
+    health-check:
+      enable: false
+      url: http://127.0.0.1:1/generate_204
+      interval: 3600
+
+rule-providers:
+  fixture rules 日本:
+    type: file
+    path: ./rule-provider.yaml
+    behavior: classical
+    format: yaml
+
+rules:
+  - RULE-SET,fixture rules 日本,fixture group 日本
+  - DOMAIN,fixture.test,fixture group 日本
+  - MATCH,DIRECT

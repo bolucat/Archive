@@ -1,0 +1,50 @@
+[package]
+name = "nyanpasu-ipc"
+version = "1.4.5"
+edition = "2024"
+
+[[test]]
+name = "roundtrip"
+path = "tests/roundtrip.rs"
+required-features = ["client", "server"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nyanpasu-utils = {
+  path = "../crates/nyanpasu-utils",
+  default-features = false,
+  features = [
+    "core_manager",
+    "serde",
+  ]
+}
+
+anyhow = { workspace = true }
+axum = { version = "0.8", features = ["ws"], optional = true }
+axum-extra = { version = "0.12", features = ["typed-header"], optional = true }
+derive_builder = "0.20"
+futures-util = { workspace = true, optional = true }
+http = "1"
+interprocess = { version = "2.4.2", features = ["tokio"] }
+reqwest = { version = "0.13", features = ["json"], optional = true }
+reqwest-websocket = { version = "0.6.0", optional = true }
+serde = { workspace = true }
+specta = { version = "^2.0.0-rc.25", features = ["derive", "indexmap", "serde_json"], optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tower = { version = "0.5", features = ["util"], optional = true }
+tracing = { workspace = true }
+tracing-attributes = { workspace = true }
+widestring = { version = "1", optional = true }
+
+indexmap = { version = "2", features = ["serde"] }
+serde_json = "1"
+
+[target."cfg(windows)".dependencies]
+windows = { workspace = true }
+
+[features]
+client = ["dep:futures-util", "dep:reqwest", "dep:reqwest-websocket"]
+server = ["dep:axum", "dep:axum-extra", "dep:tower", "dep:widestring"]
+specta = ["dep:specta", "nyanpasu-utils/specta"]

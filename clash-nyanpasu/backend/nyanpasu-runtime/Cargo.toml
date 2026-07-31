@@ -1,0 +1,51 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/clash-api",
+  "crates/nyanpasu-core-manager",
+  "crates/nyanpasu-core-metadata",
+  "crates/nyanpasu-service-runtime",
+  "crates/nyanpasu-utils",
+  "nyanpasu_ipc",
+  "nyanpasu_service"
+]
+
+[workspace.package]
+edition = "2024"
+repository = "https://github.com/LibNyanpasu/clash-nyanpasu-service.git"
+license = "GPL-3.0"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+futures = "0.3.30"
+futures-util = "0.3"
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+simd-json = "0.17"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tracing = "0.1"
+tracing-appender = { version = "0.2", features = ["parking_lot"] }
+tracing-attributes = "0.1"
+tracing-error = "0.2"
+tracing-futures = "0.2"
+tracing-log = { version = "0.2" }
+tracing-subscriber = {
+  version = "0.3",
+  features = [
+    "env-filter",
+    "json",
+    "parking_lot",
+  ]
+}
+windows = { version = "0.62", features = ["Win32_Security"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+panic = "unwind"
+codegen-units = 1

@@ -1,0 +1,4 @@
+proxies:
+  - name: provider direct 日本
+    type: direct
+    udp: true

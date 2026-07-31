@@ -1,0 +1,134 @@
+name: Integration Test
+
+on:
+  # Trigger the workflow on push or pull request,
+  # but only for the main branch
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+
+jobs:
+  real-cores:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
+    name: Real core tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - name: Check out Git repository
+        uses: actions/checkout@v7
+        with:
+          # crates/nyanpasu-utils is a git submodule required by the workspace
+          submodules: true
+      - name: Install Rust nightly toolchain
+        run: |
+          rustup toolchain install --profile minimal nightly
+          rustup default nightly
+      - uses: Swatinem/rust-cache@v2
+        name: Setup Rust cache
+        with:
+          shared-key: ${{ matrix.os }}-integration
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Download cores
+        run: deno run -A scripts/prepare-cores.ts
+      - name: Run integration tests
+        run: cargo test -p clash-api --test mihomo -- --ignored --nocapture
+      - name: Run core-manager smoke tests
+        run: cargo test -p nyanpasu-core-manager --test real_mihomo_smoke -- --ignored --nocapture
+      - name: Run core-manager real-core tests
+        run: cargo test -p nyanpasu-core-manager --test real_cores -- --ignored --nocapture
+
+  nyanpasu-ipc:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+      fail-fast: false
+    name: nyanpasu-ipc tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - name: Check out Git repository
+        uses: actions/checkout@v7
+        with:
+          # crates/nyanpasu-utils is a git submodule required by the workspace
+          submodules: true
+      - name: Install Rust nightly toolchain
+        run: |
+          rustup toolchain install --profile minimal nightly
+          rustup default nightly
+      - uses: Swatinem/rust-cache@v2
+        name: Setup Rust cache
+        with:
+          shared-key: ${{ matrix.os }}-nyanpasu-ipc
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # The unix socket tests bind /var/run/{name}.sock, a root-owned directory;
+      # make it writable so the tests run instead of being skipped.
+      - name: Allow unix socket tests to bind /var/run
+        if: runner.os != 'Windows'
+        run: sudo chmod o+w /var/run
+      - name: Run nyanpasu-ipc roundtrip tests
+        run: cargo test -p nyanpasu-ipc --all-features
+
+  coverage:
+    name: Coverage (service-runtime + ipc)
+    runs-on: ubuntu-latest
+    env:
+      # cargo-llvm-cov sets RUSTFLAGS, which overrides .cargo/config.toml's
+      # [build] rustflags; restate the cfgs the tree is compiled with.
+      RUSTFLAGS: "--cfg tokio_unstable --cfg tracing_unstable"
+
+    steps:
+      - name: Set git to use LF
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+      - name: Check out Git repository
+        uses: actions/checkout@v7
+        with:
+          # crates/nyanpasu-utils is a git submodule required by the workspace
+          submodules: true
+      - name: Install Rust nightly toolchain
+        run: |
+          rustup toolchain install -c llvm-tools-preview --profile minimal nightly
+          rustup default nightly
+      - uses: Swatinem/rust-cache@v2
+        name: Setup Rust cache
+        with:
+          shared-key: ubuntu-latest-coverage
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      # The unix socket tests bind /var/run/{name}.sock, a root-owned directory;
+      # make it writable so the tests run instead of being skipped.
+      - name: Allow unix socket tests to bind /var/run
+        run: sudo chmod o+w /var/run
+      # Baseline measured 2026-07-29: 55.42% lines. The floor keeps a
+      # 2-point tolerance for cross-platform measurement noise; ratchet it
+      # up as coverage grows, never down.
+      - name: Run coverage
+        run: |
+          cargo llvm-cov --summary-only \
+            -p nyanpasu-service-runtime -p nyanpasu-ipc \
+            --features nyanpasu-ipc/client,nyanpasu-ipc/server \
+            --ignore-filename-regex 'crates/(clash-api|nyanpasu-core-manager|nyanpasu-core-metadata|nyanpasu-utils)/' \
+            --fail-under-lines 53

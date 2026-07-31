@@ -1,0 +1,45 @@
+[package]
+name = "nyanpasu-core-manager"
+version = "0.1.1"
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[features]
+default = []
+test-hooks = []
+
+[[bin]]
+doc = false
+name = "nyanpasu-fake-core"
+path = "tests/helpers/fake_core.rs"
+
+[[bin]]
+doc = false
+name = "nyanpasu-manager-host"
+path = "tests/helpers/manager_host.rs"
+
+[dependencies]
+camino = { version = "1.1", features = ["serde1"] }
+chrono.workspace = true
+clash-api = { path = "../clash-api" }
+enumset = "1"
+nyanpasu-core-metadata = { path = "../nyanpasu-core-metadata" }
+nyanpasu-utils = {
+  path = "../nyanpasu-utils",
+  default-features = false,
+  features = ["process"]
+}
+parking_lot.workspace = true
+schemars = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml_ng = "0.10"
+specta = { version = "^2.0.0-rc.25", features = ["derive"] }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+nyanpasu-core-manager = { path = ".", features = ["test-hooks"] }
+tempfile = "3"

@@ -1,0 +1,93 @@
+[package]
+name = "nyanpasu-utils"
+version = "0.1.0"
+edition = "2024"
+description = "Shared utilities for Nyanpasu applications and services."
+repository = "https://github.com/LibNyanpasu/nyanpasu-utils"
+license = "GPL-3.0"
+
+[[bin]]
+doc = false
+name = "nyanpasu-test-child"
+path = "tests/helpers/test_child.rs"
+
+[[example]]
+name = "containment_probe"
+required-features = ["process"]
+
+[dependencies]
+camino = { version = "1.1", features = ["serde1"], optional = true }
+constcat = "0.6.0"
+derive_builder = { version = "0.20", optional = true }
+dirs = { version = "6", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+kill_tree = { version = "0.2.4", features = ["tokio"], optional = true }
+log = { version = "0.4", optional = true }
+memchr = "2.7"
+os_pipe = { version = "1.2.0", optional = true }
+parking_lot = "0.12.3"
+processkit = {
+  git = "https://github.com/ZelAnton/ProcessKit-rs",
+  rev = "2adad322f1e3d7c471f3b9c8c625e44f356e416b",
+  features = ["tracing"],
+  optional = true
+}
+serde = { version = "1", features = ["derive"], optional = true }
+shared_child = { version = "1", optional = true }
+specta = { version = "^2.0.0-rc.25", features = ["derive"], optional = true }
+sysinfo = { version = "0.39", optional = true }
+tempfile = { version = "3", optional = true }
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", optional = true }
+tracing = "0.1"
+tracing-attributes = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+test-log = "0.2"
+
+[target."cfg(unix)".dependencies]
+libc = { version = "0.2", optional = true }
+nix = {
+  version = "0.31.0",
+  features = ["process", "signal", "user", "fs"],
+  optional = true
+}
+
+[target."cfg(windows)".dependencies]
+windows = {
+  version = "0.62",
+  features = [
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+  ],
+  optional = true
+}
+
+[features]
+default = ["core_manager", "dirs", "network", "serde"]
+atomic_fs = ["os"]
+core_manager = [
+  "dep:camino",
+  "dep:derive_builder",
+  "dep:encoding_rs",
+  "dep:os_pipe",
+  "os",
+]
+deadlock_detection = ["parking_lot/deadlock_detection"]
+dirs = ["dep:dirs", "dep:windows"]
+network = ["dep:log", "dep:tempfile"]
+os = [
+  "dep:kill_tree",
+  "dep:nix",
+  "dep:shared_child",
+  "dep:sysinfo",
+  "dep:windows",
+]
+process = ["dep:encoding_rs", "dep:libc", "dep:processkit", "dep:tokio-util", "os", "atomic_fs"]
+serde = ["dep:serde"]
+specta = ["dep:specta"]

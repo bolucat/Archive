@@ -1,0 +1,21 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    "default:automergeMinor",
+    "default:prConcurrentLimit10",
+    "default:prHourlyLimitNone",
+    "default:preserveSemverRanges",
+    "default:rebaseStalePrs",
+    "group:monorepos"
+  ],
+  "packageRules": [
+    {
+      "matchManagers": [
+        "cargo"
+      ],
+      "rangeStrategy": "update-lockfile",
+      "platformAutomerge": false
+    }
+  ]
+}

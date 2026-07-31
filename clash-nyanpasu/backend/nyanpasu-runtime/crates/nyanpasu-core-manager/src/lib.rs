@@ -1,0 +1,40 @@
+//! Clash core lifecycle management: epoch-based instances, health-probed
+//! startup, crash recovery, and core switching.
+//!
+//! Design: docs/superpowers/specs/2026-07-18-nyanpasu-core-manager-design.md
+
+mod capability;
+mod config;
+mod error;
+mod health;
+pub mod instance;
+pub mod kind;
+mod log;
+pub mod manager;
+pub mod spec;
+pub mod state;
+
+pub use capability::{Feature, RuntimeFeature};
+pub use clash_api::Host;
+pub use config::runtime_store;
+pub use error::Error;
+pub use health::{HealthPolicy, probe};
+pub use instance::{Instance, InstanceBuilder};
+pub use kind::CoreKind;
+pub use log::{LogFrame, LogLevel, LogStream, LogTimestamp};
+pub use manager::{ApplyOutcome, CoreManager, CoreManagerBuilder, DegradeReason, SwitchOutcome};
+pub use probe::{
+    ControllerVersionProbe, HealthProbe, ProbeContext, ProbeFuture, ProbeHandle, ProbePhase,
+    ProbeResult,
+};
+pub use runtime_store::{
+    RuntimeCommitDurability, RuntimeConfigBackup, RuntimeConfigCommit, RuntimeConfigStore,
+    StagedRuntimeConfig,
+};
+pub use spec::{
+    CoreSpec, InstanceOptions, InstanceSpec, LocalIpcPolicy, ManagerOptions, ResolvedController,
+};
+pub use state::{
+    ConfigRevision, CoreState, CoreStatus, HealthState, HealthStatus, InstanceState,
+    InstanceStatus, RevisionId, SpecSummary, StopReason,
+};
