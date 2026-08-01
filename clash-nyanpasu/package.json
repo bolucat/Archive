@@ -68,18 +68,18 @@
     "@ianvs/prettier-plugin-sort-imports": "4.7.1",
     "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.13.3",
-    "knip": "6.29.0",
+    "knip": "6.31.0",
     "lint-staged": "17.0.8",
     "npm-run-all2": "9.0.3",
     "oxlint": "1.76.0",
     "postcss": "8.5.25",
-    "postcss-html": "1.8.1",
+    "postcss-html": "2.0.0",
     "postcss-scss": "4.0.9",
     "prettier": "3.8.5",
     "prettier-plugin-tailwindcss": "0.8.0",
     "prettier-plugin-toml": "2.0.6",
     "stylelint": "17.14.0",
-    "stylelint-config-html": "1.1.0",
+    "stylelint-config-html": "2.0.0",
     "stylelint-config-recess-order": "7.7.0",
     "stylelint-config-standard": "40.0.0",
     "stylelint-declaration-block-no-ignored-properties": "3.0.0",
@@ -88,8 +88,8 @@
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2"
   },
-  "packageManager": "pnpm@11.17.0",
+  "packageManager": "pnpm@11.18.0",
   "engines": {
-    "node": "24.18.0"
+    "node": "24.18.1"
   }
 }

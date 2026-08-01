@@ -173,12 +173,15 @@ hev_socks5_server_read_auth_user (HevSocks5Server *self)
 
     user = hev_socks5_authenticator_get (self->auth, (char *)name, nlen);
     if (!user) {
-        LOG_I ("%p socks5 server auth user: %s pass: %s", self, name, pass);
+        name[nlen] = '\0';
+        LOG_I ("%p socks5 server auth user: %s", self, name);
         return -1;
     }
 
     res = hev_socks5_user_check (user, (char *)pass, plen);
     if (res < 0) {
+        name[nlen] = '\0';
+        pass[plen] = '\0';
         LOG_I ("%p socks5 server auth user: %s pass: %s", self, name, pass);
         return -1;
     }

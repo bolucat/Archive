@@ -43,9 +43,23 @@ pub struct OutboundRuntime {
 	pub opts: OutboundOpts,
 }
 
+/// Runtime options for a load-balance outbound.
+///
+/// Child proxy resolution (tag → `Arc<dyn OutboundAction>`) is deferred
+/// to `build_dispatcher` so that it can construct normal outbounds first
+/// and then resolve the tags for load-balance groups.
+pub struct LoadBalanceRuntimeOpts {
+	pub proxy_tags: Vec<String>,
+	pub strategy_str: String,
+	pub url: String,
+	pub interval_secs: u64,
+	pub lazy: bool,
+}
+
 pub enum OutboundOpts {
 	Tuic(TuicOutboundOpts),
 	Naive(wind_naive::NaiveOutboundOpts),
+	LoadBalance(LoadBalanceRuntimeOpts),
 }
 
 impl OutboundRuntime {
@@ -87,6 +101,16 @@ impl OutboundRuntime {
 					ech_enabled: n.ech_enabled,
 					extra_headers: n.extra_headers.clone(),
 					cronet_lib_path: n.cronet_lib_path.clone(),
+				}),
+			},
+			OutboundConfig::LoadBalance(lb) => OutboundRuntime {
+				tag: lb.tag.clone(),
+				opts: OutboundOpts::LoadBalance(LoadBalanceRuntimeOpts {
+					proxy_tags: lb.proxies.clone(),
+					strategy_str: lb.strategy.clone(),
+					url: lb.url.clone(),
+					interval_secs: lb.interval,
+					lazy: lb.lazy,
 				}),
 			},
 		}

@@ -8,6 +8,7 @@ license = "AGPL-3.0-or-later"
 
 [dependencies]
 wind-core = { path = "../wind-core"}
+wind-base = { path = "../wind-base"}
 wind-socks = { path = "../wind-socks"}
 wind-tuic = { path = "../wind-tuic", features = ["quinn"] }
 wind-naive = { path = "../wind-naive" }

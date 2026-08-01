@@ -75,13 +75,21 @@ hev_socks5_user_construct (HevSocks5User *self, const char *name,
 
     HEV_OBJECT (self)->klass = HEV_SOCKS5_USER_TYPE;
 
-    self->name = malloc (name_len);
+    self->name = malloc (name_len + 1);
+    if (!self->name)
+        return -1;
     self->name_len = name_len;
     memcpy (self->name, name, name_len);
+    self->name[name_len] = '\0';
 
-    self->pass = malloc (pass_len);
+    self->pass = malloc (pass_len + 1);
+    if (!self->pass) {
+        free (self->name);
+        return -1;
+    }
     self->pass_len = pass_len;
     memcpy (self->pass, pass, pass_len);
+    self->pass[pass_len] = '\0';
 
     return 0;
 }

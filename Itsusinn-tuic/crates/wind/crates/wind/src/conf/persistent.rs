@@ -128,6 +128,60 @@ pub enum OutboundConfig {
 
 	#[serde(rename = "naive")]
 	Naive(NaiveOutboundConfig),
+
+	#[serde(rename = "load-balance")]
+	LoadBalance(LoadBalanceConfig),
+}
+
+/// Load-balance proxy group: distributes connections across multiple child
+/// outbounds with optional health checks.
+///
+/// # Example (YAML)
+///
+/// ```yaml
+/// outbounds:
+///   - type: load-balance
+///     tag: lb
+///     proxies: [ss1, ss2, vmess1]
+///     url: "https://www.gstatic.com/generate_204"
+///     interval: 300
+///     strategy: consistent-hashing
+/// ```
+#[derive(Debug, Deserialize, Serialize)]
+pub struct LoadBalanceConfig {
+	/// Tag (name) used by the router.
+	pub tag: String,
+
+	/// Tags of child proxies to balance across.
+	#[serde(default)]
+	pub proxies: Vec<String>,
+
+	/// Health-check URL.
+	#[serde(default = "default_health_url")]
+	pub url: String,
+
+	/// Health-check interval in seconds.
+	#[serde(default = "default_300")]
+	pub interval: u64,
+
+	/// When `true`, health checks are deferred until first use.
+	#[serde(default)]
+	pub lazy: bool,
+
+	/// Load-balancing strategy: `round-robin`, `consistent-hashing`, or
+	/// `sticky-sessions`.
+	#[serde(default = "default_strategy")]
+	pub strategy: String,
+}
+
+fn default_health_url() -> String {
+	"https://www.gstatic.com/generate_204".into()
+}
+fn default_300() -> u64 {
+	300
+}
+fn default_strategy() -> String {
+	"consistent-hashing".into()
 }
 
 #[derive(Debug, Deserialize, Serialize)]

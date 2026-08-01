@@ -17,9 +17,10 @@ use wind_core::{
 	tcp::{AbstractTcpStream, TcpKeepalive},
 	types::TargetAddr,
 	udp::{UdpPacket, UdpStream},
+	utils::StackPrefer,
 };
 
-use crate::resolve::resolve_target;
+use crate::resolve::resolve_target_with_preference;
 
 /// Options for a direct outbound connection.
 #[derive(Clone, Debug)]
@@ -35,6 +36,26 @@ pub struct DirectOutboundOpts {
 	/// TCP keepalive configuration for the outbound socket.  When `None`,
 	/// `SO_KEEPALIVE` is not set (OS default, typically off).
 	pub tcp_keepalive: Option<TcpKeepalive>,
+	/// IP stack preference for this outbound.  When `Some`, overrides the
+	/// resolver's global preference by calling `resolve_all` + picking the
+	/// best address.  When `None`, the resolver's built-in preference is
+	/// used (backward-compatible).
+	pub ip_mode: Option<StackPrefer>,
+	/// Linux `SO_MARK` value for policy routing (fwmark).  When `Some`,
+	/// every socket created by this outbound is marked so that the kernel's
+	/// routing policy (e.g. `ip rule fwmark`) can steer the traffic.
+	/// Ignored on non-Linux platforms.
+	pub routing_mark: Option<u32>,
+	/// Enable TCP Fast Open (TFO).  When `true`, the outbound TCP socket
+	/// may send data in the initial SYN packet, reducing one RTT for
+	/// repeated connections (requires kernel support:
+	/// `sysctl net.ipv4.tcp_fastopen`).
+	pub tfo: bool,
+	/// Enable MultiPath TCP (MPTCP).  When `true`, the outbound TCP socket
+	/// uses `IPPROTO_MPTCP` so the connection can use multiple network paths
+	/// simultaneously (requires Linux kernel ≥ 5.6 with MPTCP enabled).
+	/// Ignored on non-Linux platforms.
+	pub mptcp: bool,
 }
 
 /// Direct outbound handler – connects to the target without any proxy.
@@ -51,10 +72,10 @@ impl DirectOutbound {
 
 #[async_trait]
 impl OutboundAction for DirectOutbound {
-	async fn handle_tcp(&self, target: TargetAddr, mut stream: Box<dyn AbstractTcpStream>) -> eyre::Result<()> {
+	async fn handle_tcp(&self, target: TargetAddr, mut stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
 		let span = tracing::debug_span!("direct_tcp", target = %target);
 		async move {
-			let target_sa = resolve_target(&target, self.resolver.as_ref()).await?;
+			let target_sa = resolve_target_with_preference(&target, self.resolver.as_ref(), self.opts.ip_mode).await?;
 			let mut target_stream = connect_direct_tcp(target_sa, &self.opts).await?;
 			let (_, _, err) =
 				wind_core::io::copy_bidirectional(&mut stream, &mut target_stream, self.opts.stream_timeout).await;
@@ -77,8 +98,23 @@ impl OutboundAction for DirectOutbound {
 }
 
 /// Open a direct TCP connection to `addr`, optionally binding a local
-/// address/device as specified in `opts`.
+/// address/device and setting `SO_MARK` as specified in `opts`.
+///
+/// When `routing_mark` is `Some`, the socket is created via `socket2`
+/// (which supports `SO_MARK`); otherwise the fast-path `tokio::TcpSocket`
+/// is used.
 pub async fn connect_direct_tcp(addr: SocketAddr, opts: &DirectOutboundOpts) -> eyre::Result<TcpStream> {
+	// routing_mark and mptcp need the full socket2 path.
+	#[cfg(any(target_os = "linux", target_os = "android"))]
+	if opts.routing_mark.is_some() || opts.mptcp {
+		return connect_direct_tcp_with_mark(addr, opts).await;
+	}
+
+	// TFO also requires socket2 — tokio::TcpSocket doesn't expose TCP_FASTOPEN.
+	if opts.tfo {
+		return connect_direct_tcp_with_tfo(addr, opts).await;
+	}
+
 	let socket = match addr {
 		SocketAddr::V4(_) => TcpSocket::new_v4()?,
 		SocketAddr::V6(_) => TcpSocket::new_v6()?,
@@ -99,6 +135,160 @@ pub async fn connect_direct_tcp(addr: SocketAddr, opts: &DirectOutboundOpts) -> 
 	}
 
 	let stream = socket.connect(addr).await?;
+	finish_tcp_stream(stream, opts)
+}
+
+/// Create a TCP connection through `socket2` so advanced socket options
+/// (SO_MARK, TCP_FASTOPEN, MPTCP) can be set before `connect`.
+///
+/// * `mark`   — SO_MARK value (Linux only, ignored when `None`).
+/// * `tfo`    — enable TCP_FASTOPEN when `true`.
+/// * `mptcp`  — create with IPPROTO_MPTCP when `true` (Linux ≥ 5.6 only).
+#[cfg(any(target_os = "linux", target_os = "android"))]
+async fn connect_direct_tcp_socket2(
+	addr: SocketAddr,
+	opts: &DirectOutboundOpts,
+	mark: Option<u32>,
+	mptcp: bool,
+) -> eyre::Result<TcpStream> {
+	use socket2::Protocol;
+
+	let domain = match addr {
+		SocketAddr::V4(_) => Domain::IPV4,
+		SocketAddr::V6(_) => Domain::IPV6,
+	};
+	// Protocol::MPTCP is `#[cfg(target_os = "linux")]` in socket2 0.6,
+	// but this function is compiled for android as well.  Use the raw
+	// libc constant (IPPROTO_MPTCP = 262) which is available on both.
+	let protocol = if mptcp {
+		Some(Protocol::from(libc::IPPROTO_MPTCP))
+	} else {
+		None
+	};
+	let sock = Socket::new(domain, Type::STREAM, protocol)?;
+
+	// SO_MARK
+	if let Some(m) = mark.or(opts.routing_mark) {
+		sock.set_mark(m)?;
+	}
+
+	// Bind
+	let bind_addr: Option<SocketAddr> = match addr {
+		SocketAddr::V4(_) => opts.bind_ipv4.map(|ip| SocketAddr::V4(SocketAddrV4::new(ip, 0))),
+		SocketAddr::V6(_) => opts.bind_ipv6.map(|ip| SocketAddr::V6(SocketAddrV6::new(ip, 0, 0, 0))),
+	};
+	if let Some(local) = bind_addr {
+		sock.bind(&local.into())?;
+	}
+
+	if let Some(ref dev) = opts.bind_device {
+		sock.bind_device(Some(dev.as_bytes()))?;
+	}
+
+	// TCP_FASTOPEN
+	if opts.tfo {
+		unsafe {
+			use std::os::unix::io::AsRawFd;
+			let val: libc::c_int = 1;
+			if libc::setsockopt(
+				sock.as_raw_fd(),
+				libc::IPPROTO_TCP,
+				libc::TCP_FASTOPEN,
+				&val as *const _ as *const libc::c_void,
+				std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+			) != 0
+			{
+				tracing::debug!("TCP_FASTOPEN not available on this socket");
+			}
+		}
+	}
+
+	sock.set_nonblocking(true)?;
+	// socket2::Socket::connect is blocking; run on the blocking pool.
+	let addr = addr;
+	let sock = tokio::task::spawn_blocking(move || -> std::io::Result<socket2::Socket> {
+		sock.connect(&addr.into())?;
+		Ok(sock)
+	})
+	.await??;
+	let std_stream: std::net::TcpStream = sock.into();
+	let tokio_stream = TcpStream::from_std(std_stream)?;
+	finish_tcp_stream(tokio_stream, opts)
+}
+
+/// Create a TCP connection through `socket2` so `SO_MARK` (and other
+/// ancillary options) can be set before `connect`.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+async fn connect_direct_tcp_with_mark(addr: SocketAddr, opts: &DirectOutboundOpts) -> eyre::Result<TcpStream> {
+	connect_direct_tcp_socket2(addr, opts, opts.routing_mark, opts.mptcp).await
+}
+
+/// Create a TCP connection with `TCP_FASTOPEN` enabled.
+///
+/// TFO is set before `connect` so the kernel may include data in the SYN
+/// packet on the next connection to the same peer (Linux ≥ 3.7, macOS ≥ 10.14).
+async fn connect_direct_tcp_with_tfo(addr: SocketAddr, opts: &DirectOutboundOpts) -> eyre::Result<TcpStream> {
+	let domain = match addr {
+		SocketAddr::V4(_) => Domain::IPV4,
+		SocketAddr::V6(_) => Domain::IPV6,
+	};
+	let sock = Socket::new(domain, Type::STREAM, None)?;
+
+	// Bind
+	let bind_addr: Option<SocketAddr> = match addr {
+		SocketAddr::V4(_) => opts.bind_ipv4.map(|ip| SocketAddr::V4(SocketAddrV4::new(ip, 0))),
+		SocketAddr::V6(_) => opts.bind_ipv6.map(|ip| SocketAddr::V6(SocketAddrV6::new(ip, 0, 0, 0))),
+	};
+	if let Some(local) = bind_addr {
+		sock.bind(&local.into())?;
+	}
+
+	#[cfg(any(target_os = "linux", target_os = "android"))]
+	if let Some(ref dev) = opts.bind_device {
+		sock.bind_device(Some(dev.as_bytes()))?;
+	}
+
+	// TCP_FASTOPEN: enable client-side TFO so that the kernel can send data
+	// in the SYN on subsequent connections to this peer.  The value 1
+	// enables client TFO (see tcp(7)).
+	#[cfg(any(target_os = "linux", target_os = "android", target_os = "freebsd"))]
+	unsafe {
+		use std::os::unix::io::AsRawFd;
+		let val: libc::c_int = 1;
+		if libc::setsockopt(
+			sock.as_raw_fd(),
+			libc::IPPROTO_TCP,
+			libc::TCP_FASTOPEN,
+			&val as *const _ as *const libc::c_void,
+			std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+		) != 0
+		{
+			tracing::debug!("TCP_FASTOPEN not available on this socket");
+		}
+	}
+
+	#[cfg(not(any(target_os = "linux", target_os = "android", target_os = "freebsd")))]
+	{
+		// On platforms without libc TCP_FASTOPEN (macOS handles it
+		// differently via connectx), silently skip TFO.
+		let _ = opts.tfo;
+	}
+
+	sock.set_nonblocking(true)?;
+	// socket2::Socket::connect is blocking; run on the blocking pool.
+	let addr = addr;
+	let sock = tokio::task::spawn_blocking(move || -> std::io::Result<socket2::Socket> {
+		sock.connect(&addr.into())?;
+		Ok(sock)
+	})
+	.await??;
+	let std_stream: std::net::TcpStream = sock.into();
+	let tokio_stream = TcpStream::from_std(std_stream)?;
+	finish_tcp_stream(tokio_stream, opts)
+}
+
+/// Apply post-connect socket options common to both connection paths.
+fn finish_tcp_stream(stream: TcpStream, opts: &DirectOutboundOpts) -> eyre::Result<TcpStream> {
 	// Disable Nagle's algorithm. Proxied browser traffic is dominated by small
 	// writes (TLS records, HTTP request headers); with Nagle on, each small
 	// segment waits for the previous one to be ACKed, and interacts with the
@@ -148,10 +338,10 @@ fn apply_tcp_keepalive(s: &tokio::net::TcpStream, ka: &TcpKeepalive) -> std::io:
 	Ok(())
 }
 
-async fn relay_udp_direct(_opts: DirectOutboundOpts, resolver: Arc<dyn Resolver>, udp_stream: UdpStream) -> eyre::Result<()> {
+async fn relay_udp_direct(opts: DirectOutboundOpts, resolver: Arc<dyn Resolver>, udp_stream: UdpStream) -> eyre::Result<()> {
 	let UdpStream { tx, mut rx } = udp_stream;
 
-	let relay_socket = Arc::new(bind_relay_socket()?);
+	let relay_socket = Arc::new(bind_relay_socket(opts.routing_mark)?);
 	// When the relay socket is dual-stack IPv6, IPv4 targets must be sent to
 	// their IPv4-mapped form; capture the family once rather than per packet.
 	let socket_is_v6 = relay_socket.local_addr()?.is_ipv6();
@@ -167,7 +357,7 @@ async fn relay_udp_direct(_opts: DirectOutboundOpts, resolver: Arc<dyn Resolver>
 	let socket_send = relay_socket.clone();
 	let send_fut = async move {
 		while let Some(pkt) = rx.recv().await {
-			let target_sa = match resolve_target(&pkt.target, resolver.as_ref()).await {
+			let target_sa = match resolve_target_with_preference(&pkt.target, resolver.as_ref(), opts.ip_mode).await {
 				Ok(sa) => sa,
 				Err(err) => {
 					tracing::warn!(target = %pkt.target, error = %err, "UDP resolve failed");
@@ -227,10 +417,12 @@ async fn relay_udp_direct(_opts: DirectOutboundOpts, resolver: Arc<dyn Resolver>
 /// targets via their IPv4-mapped form (`::ffff:a.b.c.d`). A host without IPv6
 /// support falls back to an IPv4-only socket, which still reaches IPv4 targets.
 ///
+/// When `routing_mark` is `Some`, `SO_MARK` is set on Linux for policy routing.
+///
 /// This mirrors `wind-socks`'s `udp_bind_random_port`. Previously this socket
 /// was hard-bound to `0.0.0.0:0` (IPv4 only), so every IPv6 target failed
 /// `send_to` with `EAFNOSUPPORT` ("Address family not supported by protocol").
-fn bind_relay_socket() -> std::io::Result<UdpSocket> {
+fn bind_relay_socket(routing_mark: Option<u32>) -> std::io::Result<UdpSocket> {
 	const V6_UNSPEC: SocketAddr = SocketAddr::V6(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0));
 	const V4_UNSPEC: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0));
 
@@ -238,6 +430,14 @@ fn bind_relay_socket() -> std::io::Result<UdpSocket> {
 		.and_then(|s| s.set_only_v6(false).map(|_| s))
 		.and_then(|s| s.bind(&V6_UNSPEC.into()).map(|_| s))
 		.or_else(|_| Socket::new(Domain::IPV4, Type::DGRAM, None).and_then(|s| s.bind(&V4_UNSPEC.into()).map(|_| s)))?;
+
+	#[cfg(any(target_os = "linux", target_os = "android"))]
+	if let Some(mark) = routing_mark {
+		socket.set_mark(mark)?;
+	}
+	#[cfg(not(any(target_os = "linux", target_os = "android")))]
+	let _ = routing_mark;
+
 	socket.set_nonblocking(true)?;
 	UdpSocket::from_std(socket.into())
 }

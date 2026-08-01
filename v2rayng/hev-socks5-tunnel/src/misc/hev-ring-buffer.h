@@ -30,17 +30,12 @@ struct _HevRingBuffer
 #define hev_ring_buffer_alloca(s)                     \
     ({                                                \
         HevRingBuffer *__self;                        \
-                                                      \
         __self = alloca (sizeof (HevRingBuffer) + s); \
-        if (!__self)                                  \
-            NULL;                                     \
-                                                      \
         __self->rp = 0;                               \
         __self->wp = 0;                               \
         __self->rda_size = 0;                         \
         __self->use_size = 0;                         \
         __self->max_size = s;                         \
-                                                      \
         __self;                                       \
     })
 

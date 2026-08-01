@@ -1,7 +1,8 @@
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{collections::HashMap, ops::Deref, sync::Arc, time::Duration};
 
 use clap::Parser as _;
 use tracing::{Level, info, warn};
+use wind_base::load_balance::{LoadBalanceOpts, LoadBalanceOutbound, LoadBalanceStrategy};
 use wind_core::{
 	AppContext,
 	dispatcher::{Dispatcher, OutboundAsAction, Router},
@@ -143,25 +144,81 @@ async fn main() -> eyre::Result<()> {
 async fn build_dispatcher(outbounds: Vec<OutboundRuntime>, ctx: Arc<AppContext>) -> eyre::Result<Dispatcher<DefaultRouter>> {
 	let default_tag = outbounds.first().map(|o| o.tag.clone()).unwrap_or_else(|| "default".into());
 
-	let mut disp = Dispatcher::new(DefaultRouter { default: default_tag });
+	// Two-phase construction:
+	//  1. Build regular outbounds (tuic, naive) and stash them by tag.
+	//  2. Build load-balance outbounds, resolving child proxy tags from the map
+	//     built in phase 1.
+	let mut handlers: HashMap<String, Arc<dyn wind_core::dispatcher::OutboundAction>> = HashMap::new();
+	let mut lb_configs: Vec<(String, crate::conf::runtime::LoadBalanceRuntimeOpts)> = Vec::new();
 
 	for ob in outbounds {
 		let tag = ob.tag;
 		match ob.opts {
 			OutboundOpts::Tuic(opts) => {
 				let out = TuicOutbound::new(ctx.clone(), opts).await?;
-				disp.add_handler(&tag, Arc::new(OutboundAsAction { inner: out }));
+				handlers.insert(tag.clone(), Arc::new(OutboundAsAction { inner: out }));
 				info!(target: "wind_boot", "outbound '{tag}' [tuic]");
 			}
 			OutboundOpts::Naive(opts) => {
 				let out = NaiveOutbound::new(opts).await?;
-				disp.add_handler(&tag, Arc::new(OutboundAsAction { inner: out }));
+				handlers.insert(tag.clone(), Arc::new(OutboundAsAction { inner: out }));
 				info!(target: "wind_boot", "outbound '{tag}' [naive]");
+			}
+			OutboundOpts::LoadBalance(lb) => {
+				lb_configs.push((tag, lb));
 			}
 		}
 	}
 
+	for (tag, lb) in lb_configs {
+		let children: Vec<Arc<dyn wind_core::dispatcher::OutboundAction>> = {
+			lb.proxy_tags
+				.iter()
+				.map(|t| {
+					handlers.get(t).cloned().ok_or_else(|| {
+						eyre::eyre!(
+							"load-balance '{tag}' references unknown proxy '{t}'; proxies must be declared before the \
+							 load-balance group"
+						)
+					})
+				})
+				.collect::<eyre::Result<Vec<_>>>()?
+		};
+
+		let strategy = parse_strategy(&lb.strategy_str)?;
+		let opts = LoadBalanceOpts {
+			strategy,
+			url: lb.url,
+			interval: Duration::from_secs(lb.interval_secs),
+			lazy: lb.lazy,
+		};
+
+		let lb_out = LoadBalanceOutbound::new(opts, children);
+		let lb_arc = Arc::new(lb_out);
+		if !lb.lazy {
+			lb_arc.start_health_check(Duration::from_secs(lb.interval_secs));
+		}
+		handlers.insert(tag.clone(), lb_arc);
+		info!(target: "wind_boot", "outbound '{tag}' [load-balance]");
+	}
+
+	let mut disp = Dispatcher::new(DefaultRouter { default: default_tag });
+	for (name, handler) in handlers {
+		disp.add_handler(&name, handler);
+	}
+
 	Ok(disp)
+}
+
+fn parse_strategy(s: &str) -> eyre::Result<LoadBalanceStrategy> {
+	match s.to_ascii_lowercase().as_str() {
+		"round-robin" | "round_robin" | "rr" => Ok(LoadBalanceStrategy::RoundRobin),
+		"consistent-hashing" | "consistent_hashing" | "ch" => Ok(LoadBalanceStrategy::ConsistentHashing),
+		"sticky-sessions" | "sticky_sessions" | "ss" => Ok(LoadBalanceStrategy::StickySessions),
+		other => Err(eyre::eyre!(
+			"unknown load-balance strategy '{other}'; expected one of: round-robin, consistent-hashing, sticky-sessions"
+		)),
+	}
 }
 
 async fn start_inbound(

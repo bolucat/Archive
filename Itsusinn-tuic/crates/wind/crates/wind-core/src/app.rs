@@ -67,8 +67,12 @@ type InboundFactory = Box<dyn FnOnce(InboundHooks, Arc<AppContext>) -> Box<dyn D
 
 /// A composable unit of configuration, applied to the [`App`] via
 /// [`App::add_plugin`].
+///
+/// The `build` method is async so plugins can perform I/O (DNS, QUIC
+/// handshakes, etc.) during construction.  It is called once, immediately
+/// inside [`App::add_plugin`].
 pub trait Plugin {
-	fn build(self, app: App) -> App;
+	fn build(self, app: App) -> impl Future<Output = eyre::Result<App>> + Send;
 }
 
 /// The runtime builder. Construct with [`App::new`], register everything, then
@@ -113,8 +117,8 @@ impl App {
 		&self.ctx
 	}
 
-	pub fn add_plugin(self, plugin: impl Plugin) -> Self {
-		plugin.build(self)
+	pub async fn add_plugin(self, plugin: impl Plugin) -> eyre::Result<Self> {
+		plugin.build(self).await
 	}
 
 	pub fn add_outbound(mut self, name: impl Into<String>, handler: Arc<dyn OutboundAction>) -> Self {

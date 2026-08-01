@@ -21,6 +21,7 @@ use crate::{
 	proto::{ClientProtoExt, UdpStream as TuicUdpStream},
 };
 
+#[derive(Clone)]
 pub struct TuicOutboundOpts {
 	pub peer_addr: SocketAddr,
 	pub sni: String,

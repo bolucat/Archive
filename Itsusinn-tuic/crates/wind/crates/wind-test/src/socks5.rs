@@ -441,8 +441,10 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 
 	let tuic_opts = wind_tuic::quinn::inbound::TuicInboundOpts {
 		listen_addr: format!("127.0.0.1:{}", config.tuic_port).parse()?,
-		certificate: vec![rustls::pki_types::CertificateDer::from(cert_der)],
-		private_key: rustls::pki_types::PrivateKeyDer::Pkcs8(key_der.into()),
+		tls: wind_tuic::quinn::inbound::TlsProvider::Files {
+			certificate: vec![rustls::pki_types::CertificateDer::from(cert_der)],
+			private_key: rustls::pki_types::PrivateKeyDer::Pkcs8(key_der.into()),
+		},
 		alpn: vec!["h3".to_string()],
 		users: {
 			let mut users = HashMap::new();

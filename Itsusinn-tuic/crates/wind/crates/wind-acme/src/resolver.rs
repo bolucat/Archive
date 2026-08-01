@@ -67,34 +67,19 @@ impl AccountCache for CapturingCache {
 	}
 }
 
-/// Start automatic ACME certificate management.
+/// Start automatic ACME certificate management and return both a certificate
+/// resolver and a watch channel for the raw PEM blob.
 ///
 /// Uses `rustls-acme` to automatically provision and renew certificates from
 /// Let's Encrypt via HTTP-01 challenges. An HTTP challenge server on port 80 is
 /// started **only** when the ACME state machine actually needs to answer a
 /// challenge, and is shut down once the new certificate has been deployed.
 ///
-/// Returns a certificate resolver that can be used with a
-/// `rustls::ServerConfig`.
-///
-/// This is the resolver-only entry point used by the rustls-based (quinn)
-/// backend. Backends that need the certificate as on-disk files (e.g. the
-/// tokio-quiche backend) should use [`start_acme_with_cert`] instead.
-pub async fn start_acme(
-	cancel: CancellationToken,
-	hostname: &str,
-	acme_email: &str,
-	cache_dir: &Path,
-	production: bool,
-) -> Result<Arc<dyn ResolvesServerCert>> {
-	let (resolver, _cert_rx) = start_acme_with_cert(cancel, hostname, acme_email, cache_dir, production).await?;
-	Ok(resolver)
-}
-
-/// Like [`start_acme`], but additionally returns a [`watch::Receiver`] that is
-/// updated with the certificate PEM blob (PKCS#8 private key + certificate
-/// chain) whenever a certificate is loaded from cache or freshly
-/// issued/renewed.
+/// Returns:
+/// - A certificate resolver that can be used with a `rustls::ServerConfig`.
+/// - A [`watch::Receiver`] that is updated with the certificate PEM blob
+///   (PKCS#8 private key + certificate chain) whenever a certificate is loaded
+///   from cache or freshly issued/renewed.
 ///
 /// The initial value is `None`; it becomes `Some` once a cached certificate is
 /// found or the first issuance completes. Consumers that need cert/key files

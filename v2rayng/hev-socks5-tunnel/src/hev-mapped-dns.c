@@ -84,6 +84,10 @@ hev_mapped_dns_node_alloc (const char *name)
         return NULL;
 
     node->name = strdup (name);
+    if (!node->name) {
+        free (node);
+        return NULL;
+    }
 
     return node;
 }
@@ -187,6 +191,8 @@ hev_mapped_dns_handle (HevMappedDNS *self, void *req, int qlen, void *res,
 
     if (slen < qlen)
         return -1;
+    if (qlen < sizeof (DNSHdr))
+        return -1;
 
     memcpy (res, req, qlen);
     qhdr->qd = ntohs (qhdr->qd);
@@ -201,6 +207,9 @@ hev_mapped_dns_handle (HevMappedDNS *self, void *req, int qlen, void *res,
     off = sizeof (DNSHdr);
     for (i = 0; i < qhdr->qd; i++) {
         ipo[ipn] = off;
+
+        if (off >= qlen)
+            return -1;
 
         while (rb[off]) {
             int poff = off;
@@ -233,8 +242,7 @@ hev_mapped_dns_handle (HevMappedDNS *self, void *req, int qlen, void *res,
         if ((off + 15) >= slen)
             return -1;
 
-        sb[off + 0] = 0xc0;
-        sb[off + 1] = ipo[i];
+        write_u16 (&sb[off + 0], 0xc000 | ipo[i]);
         write_u16 (&sb[off + 2], 1);
         write_u16 (&sb[off + 4], 1);
         write_u32 (&sb[off + 6], 1);

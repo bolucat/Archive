@@ -188,8 +188,10 @@ mod tests {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicInboundOpts {
 			listen_addr: server_addr,
-			certificate: cert,
-			private_key: key,
+			tls: wind_tuic::quinn::inbound::TlsProvider::Files {
+				certificate: cert,
+				private_key: key,
+			},
 			alpn: vec!["h3".to_string()],
 			users,
 			auth_timeout: Duration::from_secs(5),
@@ -663,8 +665,10 @@ mod tests {
 		let ctx = Arc::new(AppContext::default());
 		let opts = TuicInboundOpts {
 			listen_addr: addr,
-			certificate: cert,
-			private_key: key,
+			tls: wind_tuic::quinn::inbound::TlsProvider::Files {
+				certificate: cert,
+				private_key: key,
+			},
 			alpn: vec!["h3".to_string()],
 			users,
 			auth_timeout: Duration::from_secs(5),
@@ -919,8 +923,10 @@ mod tests {
 		};
 		let opts = TuicInboundOpts {
 			listen_addr: server_addr,
-			certificate: cert,
-			private_key: key,
+			tls: wind_tuic::quinn::inbound::TlsProvider::Files {
+				certificate: cert,
+				private_key: key,
+			},
 			alpn: vec!["h3".to_string()],
 			users,
 			auth_timeout: Duration::from_secs(5),

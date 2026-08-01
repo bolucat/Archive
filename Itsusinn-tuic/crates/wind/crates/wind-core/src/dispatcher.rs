@@ -175,9 +175,8 @@ impl<R: Router> Dispatcher<R> {
 		// for the first packet — this matches Clash behaviour and is a
 		// strict improvement over the sentinel.
 		let UdpStream { tx, mut rx } = udp_stream;
-		let first = match rx.recv().await {
-			Some(p) => p,
-			None => return Ok(()), // remote closed before sending anything
+		let Some(first) = rx.recv().await else {
+			return Ok(()); // remote closed before sending anything
 		};
 
 		let action = self.router.route(&first.target, false).await?;
@@ -370,12 +369,10 @@ impl<O: AbstractOutbound + Send + Sync + 'static> OutboundAction for OutboundAsA
 	}
 }
 
+// ---------------------------------------------------------------------------
 #[cfg(test)]
 mod tests {
-	use std::sync::{
-		Arc,
-		atomic::{AtomicBool, Ordering},
-	};
+	use std::sync::atomic::{AtomicBool, Ordering};
 
 	use super::*;
 

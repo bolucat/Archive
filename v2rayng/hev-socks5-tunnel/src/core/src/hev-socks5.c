@@ -31,7 +31,8 @@ hev_socks5_get_timeout (HevSocks5 *self)
 void
 hev_socks5_set_timeout (HevSocks5 *self, int timeout)
 {
-    self->timeout = timeout;
+    if (self->timeout)
+        self->timeout = timeout;
 }
 
 HevSocks5AddrFamily

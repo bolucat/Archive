@@ -52,6 +52,10 @@ fn spawn_relay() -> RelayHarness {
 			bind_device: None,
 			stream_timeout: Duration::ZERO,
 			tcp_keepalive: Some(wind_core::tcp::TcpKeepalive::default()),
+			ip_mode: None,
+			routing_mark: None,
+			tfo: false,
+			mptcp: false,
 		},
 		resolver,
 	);

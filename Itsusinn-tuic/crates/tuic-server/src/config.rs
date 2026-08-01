@@ -272,6 +272,16 @@ pub struct Config {
 	#[serde(default, rename = "quic")]
 	#[deprecated]
 	pub __quic: Option<QuinnConfig>,
+	/// Deprecated top-level `[camouflage]` section (v1.8.11) — migrated into
+	/// `masquerade` on parse.
+	#[serde(default, rename = "camouflage")]
+	#[deprecated]
+	pub __camouflage: Option<LegacyCamouflageConfig>,
+	/// Deprecated top-level `restful_server` scalar (pre-1.8.11) — migrated
+	/// into `restful.addr` (and enables the RESTful API) on parse.
+	#[serde(default, rename = "restful_server")]
+	#[deprecated]
+	pub __restful_server: Option<SocketAddr>,
 }
 
 /// QUIC backend selection plus per-backend transport tuning.
@@ -335,6 +345,28 @@ pub struct MasqueradeConfig {
 	/// Upstream site to reverse-proxy to, e.g. `https://example.com`.
 	#[educe(Default(expression = "https://example.com"))]
 	pub upstream: String,
+}
+
+/// The `[camouflage]` section shape as shipped in v1.8.11, kept only for
+/// backward-compatible parsing. It is consumed by [`Config::migrate`] and
+/// folded into [`MasqueradeConfig`]; fields without a modern counterpart
+/// (`reverse_proxy_hostname` / `request_timeout` / `skip_backend_tls_verify`)
+/// are accepted and then discarded.
+#[derive(Deserialize, Serialize, Educe, Clone, Debug)]
+#[educe(Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct LegacyCamouflageConfig {
+	#[educe(Default = false)]
+	pub enabled: bool,
+	#[educe(Default(expression = "".to_string()))]
+	pub reverse_proxy_url: String,
+	#[educe(Default = None)]
+	pub reverse_proxy_hostname: Option<String>,
+	#[serde(with = "humantime_serde")]
+	#[educe(Default(expression = Duration::from_secs(10)))]
+	pub request_timeout: Duration,
+	#[educe(Default = false)]
+	pub skip_backend_tls_verify: bool,
 }
 
 /// Transport tuning for the quinn backend (`wind-tuic`).
@@ -424,20 +456,38 @@ pub struct OutboundRule {
 	#[educe(Default(expression = Some(StackPrefer::V4first)))]
 	pub ip_mode: Option<StackPrefer>,
 
-	/// Optional IPv4 address to bind to for direct connections (only used when
-	/// kind == "direct").
-	#[serde(default)]
-	pub bind_ipv4: Option<Ipv4Addr>,
+	/// Optional IPv4 address(es) to bind to for direct connections (only used
+	/// when kind == "direct"). Accepts a single address or an array of
+	/// addresses (v1.8.11 compatibility). When multiple addresses are
+	/// specified, a round-robin load-balance outbound is created to distribute
+	/// connections across them.
+	#[serde(default, deserialize_with = "deserialize_single_or_vec")]
+	pub bind_ipv4: Vec<Ipv4Addr>,
 
-	/// Optional IPv6 address to bind to for direct connections (only used when
-	/// kind == "direct").
-	#[serde(default)]
-	pub bind_ipv6: Option<Ipv6Addr>,
+	/// Optional IPv6 address(es) to bind to for direct connections (only used
+	/// when kind == "direct"). Accepts a single address or an array of
+	/// addresses (v1.8.11 compatibility). When multiple addresses are
+	/// specified, a round-robin load-balance outbound is created to distribute
+	/// connections across them.
+	#[serde(default, deserialize_with = "deserialize_single_or_vec")]
+	pub bind_ipv6: Vec<Ipv6Addr>,
 
 	/// Optional device/interface name to bind to (only used when kind ==
 	/// "direct").
 	#[serde(default)]
 	pub bind_device: Option<String>,
+
+	/// Enable TCP Fast Open (only used when kind == "direct").
+	/// TFO reduces one RTT for repeated connections by allowing data in
+	/// the SYN packet (requires kernel support).
+	#[serde(default)]
+	pub tfo: Option<bool>,
+
+	/// Linux `SO_MARK` for policy routing (only used when kind == "direct").
+	/// Sets the fwmark on every socket so the kernel can steer traffic
+	/// through a specific routing table.
+	#[serde(default)]
+	pub routing_mark: Option<u32>,
 
 	/// SOCKS5 address (only used when kind == "socks5").
 	#[serde(default)]
@@ -554,6 +604,26 @@ where
 	deserializer.deserialize_any(RulesVisitor)
 }
 
+/// Accepts either a single value or an array of values, returning a `Vec`
+/// (v1.8.11 compatibility for `bind_ipv4` / `bind_ipv6`).
+fn deserialize_single_or_vec<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+	D: Deserializer<'de>,
+	T: Deserialize<'de>,
+{
+	#[derive(Deserialize)]
+	#[serde(untagged)]
+	enum SingleOrVec<T> {
+		Single(T),
+		Vec(Vec<T>),
+	}
+
+	match SingleOrVec::deserialize(deserializer)? {
+		SingleOrVec::Single(value) => Ok(vec![value]),
+		SingleOrVec::Vec(values) => Ok(values),
+	}
+}
+
 fn generate_random_alphanumeric_string(min: usize, max: usize) -> String {
 	let mut rng = rng();
 	let len = rng.random_range(min..=max);
@@ -624,6 +694,29 @@ impl Config {
 			}
 			if let Some(pmtu) = self.__pmtu {
 				self.backend.quinn.pmtu = pmtu;
+			}
+		}
+
+		// Migrate the v1.8.11 `[camouflage]` section into `[masquerade]`.
+		// `reverse_proxy_hostname` / `request_timeout` / `skip_backend_tls_verify`
+		// have no modern counterpart and are discarded.
+		#[allow(deprecated)]
+		{
+			if let Some(cam) = self.__camouflage.take() {
+				self.masquerade.enabled = cam.enabled;
+				if !cam.reverse_proxy_url.is_empty() {
+					self.masquerade.upstream = cam.reverse_proxy_url;
+				}
+			}
+		}
+
+		// Migrate the pre-1.8.11 `restful_server` scalar into `[restful]`,
+		// restoring the historical "restful configured => API enabled" semantics.
+		#[allow(deprecated)]
+		{
+			if let Some(addr) = self.__restful_server.take() {
+				self.restful.enabled = true;
+				self.restful.addr = addr;
 			}
 		}
 	}
@@ -960,6 +1053,17 @@ pub async fn parse_config(cli: Cli, env_state: EnvState) -> eyre::Result<Config>
 		config.tls.private_key.clone()
 	};
 
+	// Validate TLS cert/key files exist when they are required (not self-sign,
+	// not ACME — ACME provisions them at runtime).
+	if !config.tls.self_sign && !config.tls.auto_ssl {
+		if !config.tls.certificate.as_os_str().is_empty() && !tokio::fs::try_exists(&config.tls.certificate).await? {
+			eyre::bail!("TLS certificate file not found: {}", config.tls.certificate.display());
+		}
+		if !config.tls.private_key.as_os_str().is_empty() && !tokio::fs::try_exists(&config.tls.private_key).await? {
+			eyre::bail!("TLS private key file not found: {}", config.tls.private_key.display());
+		}
+	}
+
 	Ok(config)
 }
 
@@ -1032,6 +1136,12 @@ mod tests {
 	async fn test_json_config() {
 		let config = include_str!("../tests/config/json_config.json");
 
+		// Create dummy cert/key files referenced by the test config.
+		let data_dir = std::path::Path::new("__test__legacy_data");
+		let _ = std::fs::create_dir_all(data_dir);
+		let _ = std::fs::write(data_dir.join("old_cert.pem"), b"dummy");
+		let _ = std::fs::write(data_dir.join("old_key.pem"), b"dummy");
+
 		let result = test_parse_config(config, ".json").await.unwrap();
 
 		assert_eq!(result.log_level, LogLevel::Error);
@@ -1051,6 +1161,12 @@ mod tests {
 	#[tokio::test]
 	async fn test_path_handling() {
 		let config = include_str!("../tests/config/path_handling.toml");
+
+		// Create dummy cert/key files referenced by the test config.
+		let certs_dir = std::path::Path::new("__test__relative_path").join("certs");
+		let _ = std::fs::create_dir_all(&certs_dir);
+		let _ = std::fs::write(certs_dir.join("server.crt"), b"dummy");
+		let _ = std::fs::write(certs_dir.join("server.key"), b"dummy");
 
 		let result = test_parse_config(config, ".toml").await.unwrap();
 
@@ -1146,7 +1262,7 @@ mod tests {
 		let prefer_v4 = result.outbound.named.get("prefer_v4").unwrap();
 		assert_eq!(prefer_v4.kind, "direct");
 		assert_eq!(prefer_v4.ip_mode, Some(StackPrefer::V4first));
-		assert_eq!(prefer_v4.bind_ipv4, Some("2.4.6.8".parse().unwrap()));
+		assert_eq!(prefer_v4.bind_ipv4, vec!["2.4.6.8".parse::<std::net::Ipv4Addr>().unwrap()]);
 		assert_eq!(prefer_v4.bind_device, Some("eth233".to_string()));
 
 		let socks5 = result.outbound.named.get("through_socks5").unwrap();
@@ -1542,10 +1658,18 @@ send_window = 12345678
 		// Test that JSON5 parser can handle standard JSON
 		let config = include_str!("../tests/config/json5_backward_compatibility.json5");
 
+		// Create dummy cert/key files referenced by the test config (no data_dir,
+		// so paths resolve relative to CWD).
+		let _ = std::fs::write("cert.pem", b"dummy");
+		let _ = std::fs::write("key.pem", b"dummy");
+
 		let result = test_parse_config(config, ".json5").await.unwrap();
 		assert_eq!(result.log_level, LogLevel::Error);
 		assert_eq!(result.server, "192.168.1.1:8443".parse::<SocketAddr>().unwrap());
 		assert!(!result.tls.self_sign);
+
+		let _ = std::fs::remove_file("cert.pem");
+		let _ = std::fs::remove_file("key.pem");
 	}
 	#[tokio::test]
 	async fn test_dir_parameter_finds_config() {
@@ -1983,6 +2107,120 @@ rules = ["INVALID_TYPE,value,target"]
 
 		let result = parse_config(cli, EnvState::default()).await;
 		assert!(result.is_err());
+	}
+
+	#[tokio::test]
+	async fn test_v1811_camouflage_migrates_to_masquerade() {
+		// v1.8.11 `[camouflage]` section must parse and fold into `masquerade`.
+		let cfg = r#"
+log_level = "info"
+server = "127.0.0.1:8443"
+
+[tls]
+self_sign = true
+
+[camouflage]
+enabled = true
+reverse_proxy_url = "https://upstream.example.com"
+reverse_proxy_hostname = "example.com"
+request_timeout = "15s"
+skip_backend_tls_verify = true
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+"#;
+		let parsed = test_parse_config(cfg, ".toml").await.unwrap();
+		assert!(
+			parsed.masquerade.enabled,
+			"camouflage.enabled should migrate to masquerade.enabled"
+		);
+		assert_eq!(
+			parsed.masquerade.upstream, "https://upstream.example.com",
+			"camouflage.reverse_proxy_url should migrate to masquerade.upstream"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_v1811_camouflage_default_upstream_keeps_modern_default() {
+		// camouflage without reverse_proxy_url must not clobber the modern default.
+		let cfg = r#"
+server = "127.0.0.1:8443"
+
+[tls]
+self_sign = true
+
+[camouflage]
+enabled = true
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+"#;
+		let parsed = test_parse_config(cfg, ".toml").await.unwrap();
+		assert!(parsed.masquerade.enabled);
+		assert_eq!(parsed.masquerade.upstream, "https://example.com");
+	}
+
+	#[tokio::test]
+	async fn test_legacy_restful_server_migrates_and_enables_api() {
+		let cfg = r#"
+server = "127.0.0.1:8443"
+restful_server = "127.0.0.1:9000"
+
+[tls]
+self_sign = true
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+"#;
+		let parsed = test_parse_config(cfg, ".toml").await.unwrap();
+		assert!(parsed.restful.enabled, "legacy restful_server must enable the RESTful API");
+		assert_eq!(parsed.restful.addr.to_string(), "127.0.0.1:9000");
+	}
+
+	#[tokio::test]
+	async fn test_bind_ipv4_accepts_single_and_array() {
+		// v1.8.11 accepted both a scalar and an array for bind_ipv4/bind_ipv6.
+		let cfg = r#"
+server = "127.0.0.1:8443"
+
+[tls]
+self_sign = true
+
+[outbound]
+[outbound.default]
+type = "direct"
+bind_ipv4 = "1.2.3.4"
+bind_ipv6 = ["2001:db8::1", "2001:db8::2"]
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+"#;
+		let parsed = test_parse_config(cfg, ".toml").await.unwrap();
+		assert_eq!(
+			parsed.outbound.default.bind_ipv4,
+			vec!["1.2.3.4".parse::<std::net::Ipv4Addr>().unwrap()]
+		);
+		assert_eq!(
+			parsed.outbound.default.bind_ipv6,
+			vec![
+				"2001:db8::1".parse::<std::net::Ipv6Addr>().unwrap(),
+				"2001:db8::2".parse::<std::net::Ipv6Addr>().unwrap(),
+			]
+		);
+
+		// Absent field defaults to an empty vec (no bind address).
+		let cfg_empty = r#"
+server = "127.0.0.1:8443"
+
+[tls]
+self_sign = true
+
+[users]
+"123e4567-e89b-12d3-a456-426614174000" = "password1"
+"#;
+		let parsed_empty = test_parse_config(cfg_empty, ".toml").await.unwrap();
+		assert!(parsed_empty.outbound.default.bind_ipv4.is_empty());
+		assert!(parsed_empty.outbound.default.bind_ipv6.is_empty());
 	}
 
 	// infer_config_format regression tests

@@ -8,9 +8,9 @@
  */
 
 #include <errno.h>
-#include <assert.h>
 #include <signal.h>
 #include <string.h>
+#include <stdatomic.h>
 #include <sys/ioctl.h>
 
 #include <lwip/tcp.h>
@@ -39,7 +39,17 @@
 
 #include "hev-socks5-tunnel.h"
 
+enum
+{
+    SYNC_SEND = 1 << 0,
+    SYNC_SENT = 1 << 1,
+    SYNC_WAIT = 1 << 2,
+    SYNC_STOP = 1 << 3,
+};
+
 static int run;
+static atomic_int tsync;
+
 static int tun_fd = -1;
 static int tun_fd_local;
 static int session_count;
@@ -50,7 +60,7 @@ static size_t stat_rx_packets;
 static size_t stat_tx_bytes;
 static size_t stat_rx_bytes;
 
-static struct netif netif;
+static struct netif *netif;
 static struct tcp_pcb *tcp;
 static struct udp_pcb *udp;
 
@@ -65,7 +75,7 @@ task_io_yielder (HevTaskYieldType type, void *data)
 {
     hev_task_yield (type);
 
-    return run ? 0 : -1;
+    return READ_ONCE (run) ? 0 : -1;
 }
 
 static err_t
@@ -170,7 +180,7 @@ tcp_accept_handler (void *arg, struct tcp_pcb *pcb, err_t err)
     if (err != ERR_OK)
         return err;
 
-    if (!run)
+    if (!READ_ONCE (run))
         return ERR_RST;
 
     tcp = hev_socks5_session_tcp_new (pcb, &mutex);
@@ -233,7 +243,7 @@ udp_recv_handler (void *arg, struct udp_pcb *pcb, struct pbuf *p,
     int stack_size;
     HevTask *task;
 
-    if (!run) {
+    if (!READ_ONCE (run)) {
         udp_remove (pcb);
         return;
     }
@@ -280,7 +290,9 @@ event_task_entry (void *data)
 
     hev_task_io_read (event_fds[0], &val, sizeof (val), NULL, NULL);
 
-    run = 0;
+    WRITE_ONCE (run, 0);
+    atomic_fetch_and (&tsync, ~SYNC_SENT);
+
     node = hev_list_first (&session_set);
     for (; node; node = hev_list_node_next (node)) {
         HevSocks5SessionData *sd;
@@ -303,7 +315,7 @@ lwip_io_task_entry (void *data)
 
     hev_tunnel_add_task (tun_fd, task_lwip_io);
 
-    for (; run;) {
+    for (; READ_ONCE (run);) {
         struct pbuf *buf;
 
         buf = hev_tunnel_read (tun_fd, mtu, task_io_yielder, NULL);
@@ -314,7 +326,7 @@ lwip_io_task_entry (void *data)
         stat_tx_bytes += buf->tot_len;
 
         hev_task_mutex_lock (&mutex);
-        if (netif.input (buf, &netif) != ERR_OK)
+        if (netif->input (buf, netif) != ERR_OK)
             pbuf_free (buf);
         hev_task_mutex_unlock (&mutex);
     }
@@ -329,7 +341,7 @@ lwip_timer_task_entry (void *data)
 
     LOG_D ("socks5 tunnel timer task run");
 
-    for (i = 1; run; i++) {
+    for (i = 1; READ_ONCE (run); i++) {
         hev_task_mutex_lock (&mutex);
         tcp_tmr ();
 
@@ -373,6 +385,7 @@ tunnel_init (int extern_tun_fd)
         return 0;
     }
 
+    tun_fd_local = 1;
     name = hev_config_get_tunnel_name ();
     multi_queue = hev_config_get_tunnel_multi_queue ();
     tun_fd = hev_tunnel_open (name, multi_queue);
@@ -417,7 +430,6 @@ tunnel_init (int extern_tun_fd)
         hev_exec_run (script_path, hev_tunnel_get_name (),
                       hev_tunnel_get_index (), 0);
 
-    tun_fd_local = 1;
     return 0;
 }
 
@@ -434,44 +446,61 @@ tunnel_fini (void)
         hev_exec_run (script_path, hev_tunnel_get_name (),
                       hev_tunnel_get_index (), 1);
 
-    hev_tunnel_close (tun_fd);
-    tun_fd_local = 0;
-    tun_fd = -1;
+    if (tun_fd >= 0) {
+        hev_tunnel_close (tun_fd);
+        tun_fd_local = 0;
+        tun_fd = -1;
+    }
 }
 
 static int
 gateway_init (void)
 {
+    static struct netif _netif;
     ip4_addr_t addr4, mask, gw;
     ip6_addr_t addr6;
 
-    netif_add_noaddr (&netif, NULL, netif_init_handler, ip_input);
+    netif = netif_add_noaddr (&_netif, NULL, netif_init_handler, ip_input);
+    if (!netif) {
+        LOG_E ("socks5 tunnel netif");
+        return -1;
+    }
 
     ip4_addr_set_loopback (&addr4);
     ip4_addr_set_any (&mask);
     ip4_addr_set_any (&gw);
-    netif_set_addr (&netif, &addr4, &mask, &gw);
+    netif_set_addr (netif, &addr4, &mask, &gw);
 
     ip6_addr_set_loopback (&addr6);
-    netif_add_ip6_address (&netif, &addr6, NULL);
+    netif_add_ip6_address (netif, &addr6, NULL);
 
-    netif_set_up (&netif);
-    netif_set_link_up (&netif);
-    netif_set_default (&netif);
-    netif_set_flags (&netif, NETIF_FLAG_PRETEND_TCP);
-    netif_set_flags (&netif, NETIF_FLAG_PRETEND_UDP);
+    netif_set_up (netif);
+    netif_set_link_up (netif);
+    netif_set_default (netif);
+    netif_set_flags (netif, NETIF_FLAG_PRETEND_TCP);
+    netif_set_flags (netif, NETIF_FLAG_PRETEND_UDP);
 
     if (hev_config_get_tunnel_icmp ())
-        netif_set_flags (&netif, NETIF_FLAG_PRETEND_ICMP);
+        netif_set_flags (netif, NETIF_FLAG_PRETEND_ICMP);
 
     tcp = tcp_new_ip_type (IPADDR_TYPE_ANY);
-    tcp_bind_netif (tcp, &netif);
+    if (!tcp) {
+        LOG_E ("socks5 tunnel tcp");
+        return -1;
+    }
+
+    tcp_bind_netif (tcp, netif);
     tcp_bind (tcp, NULL, 0);
     tcp = tcp_listen (tcp);
     tcp_accept (tcp, tcp_accept_handler);
 
     udp = udp_new_ip_type (IPADDR_TYPE_ANY);
-    udp_bind_netif (udp, &netif);
+    if (!udp) {
+        LOG_E ("socks5 tunnel udp");
+        return -1;
+    }
+
+    udp_bind_netif (udp, netif);
     udp_bind (udp, NULL, 0);
     udp_recv (udp, udp_recv_handler, NULL);
 
@@ -481,9 +510,18 @@ gateway_init (void)
 static void
 gateway_fini (void)
 {
-    udp_remove (udp);
-    tcp_close (tcp);
-    netif_remove (&netif);
+    if (udp) {
+        udp_remove (udp);
+        udp = NULL;
+    }
+    if (tcp) {
+        tcp_close (tcp);
+        tcp = NULL;
+    }
+    if (netif) {
+        netif_remove (netif);
+        netif = NULL;
+    }
 }
 
 static int
@@ -646,6 +684,8 @@ hev_socks5_tunnel_init (int tun_fd)
 
     hev_task_mutex_init (&mutex);
 
+    atomic_fetch_or (&tsync, SYNC_SEND);
+
     return 0;
 
 exit:
@@ -657,6 +697,12 @@ void
 hev_socks5_tunnel_fini (void)
 {
     LOG_D ("socks5 tunnel fini");
+
+retry:
+    if (atomic_fetch_and (&tsync, ~(SYNC_SEND | SYNC_SENT)) & SYNC_WAIT) {
+        usleep (500);
+        goto retry;
+    }
 
     mapped_dns_fini ();
     lwip_timer_task_fini ();
@@ -676,6 +722,9 @@ hev_socks5_tunnel_run (void)
 {
     LOG_D ("socks5 tunnel run");
 
+    if (atomic_fetch_and (&tsync, ~SYNC_STOP) & SYNC_STOP)
+        return 0;
+
     task_event = hev_task_ref (task_event);
     hev_task_run (task_event, event_task_entry, NULL);
 
@@ -685,7 +734,7 @@ hev_socks5_tunnel_run (void)
     task_lwip_timer = hev_task_ref (task_lwip_timer);
     hev_task_run (task_lwip_timer, lwip_timer_task_entry, NULL);
 
-    run = 1;
+    WRITE_ONCE (run, 1);
     hev_task_system_run ();
 
     return 0;
@@ -694,21 +743,26 @@ hev_socks5_tunnel_run (void)
 void
 hev_socks5_tunnel_stop (void)
 {
-    int res = 0;
-    int fd;
+    int res;
 
     LOG_D ("socks5 tunnel stop");
 
-    for (;;) {
-        fd = READ_ONCE (event_fds[1]);
-        if (fd >= 0)
-            break;
-        /* Wait for async initialization */
-        usleep (100 * 1000);
+retry:
+    res = atomic_fetch_or (&tsync, SYNC_WAIT);
+    if (res & SYNC_WAIT) {
+        usleep (500);
+        goto retry;
     }
 
-    res = write (fd, &res, 1);
-    assert (res > 0 && "socks5 tunnel write event");
+    if (res & SYNC_SEND) {
+        res = atomic_fetch_or (&tsync, SYNC_SENT);
+        if (!(res & SYNC_SENT))
+            write (event_fds[1], &res, 1);
+    } else {
+        atomic_fetch_or (&tsync, SYNC_STOP);
+    }
+
+    atomic_fetch_and (&tsync, ~SYNC_WAIT);
 }
 
 void

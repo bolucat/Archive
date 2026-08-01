@@ -234,9 +234,8 @@ impl AbstractOutbound for NaiveOutbound {
 		// Defer opening the tunnel until the first datagram so idle UDP
 		// associations cost nothing, and so the UoT request header can name a
 		// concrete destination.
-		let first = match rx.recv().await {
-			Some(p) => p,
-			None => return Ok(()),
+		let Some(first) = rx.recv().await else {
+			return Ok(());
 		};
 
 		let client = self.client.clone();

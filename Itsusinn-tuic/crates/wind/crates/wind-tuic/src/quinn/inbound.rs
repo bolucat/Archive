@@ -29,14 +29,54 @@ async fn spawn_logged(label: &str, fut: impl std::future::Future<Output = eyre::
 	}
 }
 
+/// TLS material for the Quinn inbound — an enum that enforces the mutually
+/// exclusive choice between file-based certificates and a live cert resolver
+/// (e.g. from ACME).
+///
+/// When using `Resolver`, the background resolver manages certificate
+/// provisioning and renewal; the `Files` variant is used when cert/key are
+/// loaded directly from disk/memory.
+pub enum TlsProvider {
+	/// Certificate chain and private key loaded from files (or generated
+	/// in-memory, e.g. self-signed).
+	Files {
+		certificate: Vec<CertificateDer<'static>>,
+		private_key: PrivateKeyDer<'static>,
+	},
+	/// A live cert resolver (e.g. `rustls-acme` background renewal state
+	/// machine).
+	Resolver(Arc<dyn rustls::server::ResolvesServerCert>),
+}
+
+// PrivateKeyDer is not Clone, so we implement Clone manually via clone_key().
+impl Clone for TlsProvider {
+	fn clone(&self) -> Self {
+		match self {
+			Self::Files {
+				certificate,
+				private_key,
+			} => Self::Files {
+				certificate: certificate.clone(),
+				private_key: private_key.clone_key(),
+			},
+			Self::Resolver(r) => Self::Resolver(Arc::clone(r)),
+		}
+	}
+}
+
+impl Default for TlsProvider {
+	fn default() -> Self {
+		TlsProvider::Files {
+			certificate: Vec::new(),
+			private_key: PrivateKeyDer::Pkcs8(vec![].into()),
+		}
+	}
+}
+
 pub struct TuicInboundOpts {
 	pub listen_addr: SocketAddr,
 
-	pub certificate: Vec<CertificateDer<'static>>,
-
-	pub private_key: PrivateKeyDer<'static>,
-
-	pub cert_resolver: Option<Arc<dyn rustls::server::ResolvesServerCert>>,
+	pub tls: TlsProvider,
 
 	pub alpn: Vec<String>,
 
@@ -105,9 +145,7 @@ impl Default for TuicInboundOpts {
 	fn default() -> Self {
 		Self {
 			listen_addr: "0.0.0.0:443".parse().unwrap(),
-			certificate: Vec::new(),
-			private_key: PrivateKeyDer::Pkcs8(vec![].into()),
-			cert_resolver: None,
+			tls: TlsProvider::default(),
 			alpn: vec!["h3".to_string()],
 			users: HashMap::new(),
 			auth_timeout: Duration::from_secs(3),
@@ -150,12 +188,14 @@ impl TuicInbound {
 	fn create_server_config(&self) -> eyre::Result<ServerConfig> {
 		let builder = RustlsServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13]).with_no_client_auth();
 
-		let mut crypto = if let Some(resolver) = &self.opts.cert_resolver {
-			builder.with_cert_resolver(resolver.clone())
-		} else {
-			builder
-				.with_single_cert(self.opts.certificate.clone(), self.opts.private_key.clone_key())
-				.wrap_err("Failed to configure TLS certificate")?
+		let mut crypto = match &self.opts.tls {
+			TlsProvider::Resolver(resolver) => builder.with_cert_resolver(resolver.clone()),
+			TlsProvider::Files {
+				certificate,
+				private_key,
+			} => builder
+				.with_single_cert(certificate.clone(), private_key.clone_key())
+				.wrap_err("Failed to configure TLS certificate")?,
 		};
 
 		crypto.alpn_protocols = self.opts.alpn.iter().map(|alpn| alpn.as_bytes().to_vec()).collect();

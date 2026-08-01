@@ -1,6 +1,7 @@
 //! One-shot HTTP-01 certificate provisioning via `instant-acme`.
 //!
-//! Unlike the resolver-based [`start_acme`](crate::start_acme) flow (which
+//! Unlike the resolver-based
+//! [`start_acme_with_cert`](crate::start_acme_with_cert) flow (which
 //! keeps a `rustls-acme` state machine running for background renewal), this
 //! provisions or renews a certificate a single time and writes the PEM
 //! certificate chain and private key to disk. Backends that load TLS material

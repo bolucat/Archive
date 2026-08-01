@@ -22,7 +22,7 @@ pub mod resolver;
 pub mod selfsigned;
 
 #[cfg(feature = "resolver")]
-pub use resolver::{CertPem, start_acme, start_acme_with_cert};
+pub use resolver::{CertPem, start_acme_with_cert};
 
 /// Write a TLS private key to disk with owner-only permissions.
 ///

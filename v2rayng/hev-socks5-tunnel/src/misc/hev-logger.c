@@ -24,6 +24,9 @@ static HevLoggerLevel req_level;
 int
 hev_logger_init (HevLoggerLevel level, const char *path)
 {
+    if (!path)
+        return 0;
+
     req_level = level;
 
     if (0 == strcmp (path, "stdout"))
@@ -42,7 +45,8 @@ hev_logger_init (HevLoggerLevel level, const char *path)
 void
 hev_logger_fini (void)
 {
-    close (fd);
+    if (fd >= 0)
+        close (fd);
 }
 
 int
@@ -100,7 +104,9 @@ hev_logger_log (HevLoggerLevel level, const char *fmt, ...)
 
     va_start (ap, fmt);
     iov[2].iov_base = msg;
-    iov[2].iov_len = vsnprintf (msg, 1024, fmt, ap);
+    iov[2].iov_len = vsnprintf (msg, sizeof (msg), fmt, ap);
+    if (iov[2].iov_len >= sizeof (msg))
+        iov[2].iov_len = sizeof (msg) - 1;
     va_end (ap);
 
     iov[3].iov_base = "\n";
