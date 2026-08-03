@@ -322,7 +322,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Log in to ghcr.io
-        uses: redhat-actions/podman-login@v1
+        uses: redhat-actions/podman-login@v2
         with:
           username: ${{ env.REGISTRY_USER }}
           password: ${{ env.REGISTRY_PASSWORD }}
@@ -373,7 +373,7 @@ jobs:
           echo tags=$tags >> $GITHUB_OUTPUT
 
       - name: Push To ghcr.io
-        uses: redhat-actions/push-to-registry@v2
+        uses: redhat-actions/push-to-registry@v3
         with:
           image: ${{ steps.build-image.outputs.image }}
           tags: ${{ steps.build-image.outputs.tags }}

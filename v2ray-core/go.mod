@@ -7,9 +7,9 @@ toolchain go1.26.1
 require (
 	github.com/adrg/xdg v0.5.3
 	github.com/apernet/quic-go v0.59.1-0.20260217092621-db4786c77a22
-	github.com/go-chi/chi/v5 v5.3.0
+	github.com/go-chi/chi/v5 v5.3.1
 	github.com/go-chi/render v1.0.3
-	github.com/go-playground/validator/v10 v10.30.2
+	github.com/go-playground/validator/v10 v10.30.3
 	github.com/golang-collections/go-datastructures v0.0.0-20150211160725-59788d5eb259
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.4
@@ -29,8 +29,8 @@ require (
 	github.com/pion/transport/v2 v2.2.10
 	github.com/pion/transport/v4 v4.0.2
 	github.com/pion/webrtc/v4 v4.2.16
-	github.com/pires/go-proxyproto v0.12.0
-	github.com/quic-go/quic-go v0.59.1
+	github.com/pires/go-proxyproto v0.15.0
+	github.com/quic-go/quic-go v0.61.0
 	github.com/refraction-networking/utls v1.8.2
 	github.com/seiflotfy/cuckoofilter v0.0.0-20220411075957-e3b120b3f5fb
 	github.com/stretchr/testify v1.11.1
@@ -41,16 +41,16 @@ require (
 	github.com/v2fly/struc v0.0.0-20241227015403-8e8fa1badfd6
 	github.com/vincent-petithory/dataurl v1.0.0
 	github.com/xiaokangwang/VLite v0.0.0-20220418190619-cff95160a432
-	github.com/xssnick/raptorq v1.4.0
+	github.com/xssnick/raptorq v1.5.1
 	github.com/xtaci/smux v1.5.24
 	go.starlark.net v0.0.0-20230612165344-9532f5667272
 	go4.org/netipx v0.0.0-20230303233057-f1b76eb4bb35
-	golang.org/x/crypto v0.53.0
+	golang.org/x/crypto v0.54.0
 	golang.org/x/net v0.56.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20260218152508-eed1cebf761e
@@ -100,11 +100,11 @@ require (
 	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	nhooyr.io/websocket v1.8.6 // indirect
 )

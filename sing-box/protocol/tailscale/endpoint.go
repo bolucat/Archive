@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -101,6 +100,7 @@ type Endpoint struct {
 	sshReconfigHook   wgengine.ReconfigListener
 
 	cfg           *wgcfg.Config
+	routerCfg     *router.Config
 	dnsCfg        *tsDNS.Config
 	routeDomains  common.TypedValue[map[string]bool]
 	routePrefixes atomic.Pointer[netipx.IPSet]
@@ -171,21 +171,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	} else {
 		udpTimeout = C.UDPTimeout
 	}
-	var remoteIsDomain bool
-	if options.ControlURL != "" {
-		controlURL, err := url.Parse(options.ControlURL)
-		if err != nil {
-			return nil, E.Cause(err, "parse control URL")
-		}
-		remoteIsDomain = M.ParseSocksaddr(controlURL.Hostname()).IsDomain()
-	} else {
-		// controlplane.tailscale.com
-		remoteIsDomain = true
-	}
 	outboundDialer, err := dialer.NewWithOptions(dialer.Options{
 		Context:          ctx,
 		Options:          options.DialerOptions,
-		RemoteIsDomain:   remoteIsDomain,
+		RemoteIsDomain:   true,
 		ResolverOnDetour: true,
 		NewDialer:        true,
 	})
@@ -919,10 +908,13 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 	if cfg == nil || dnsCfg == nil {
 		return
 	}
-	if (t.cfg != nil && reflect.DeepEqual(t.cfg, cfg)) && (t.dnsCfg != nil && reflect.DeepEqual(t.dnsCfg, dnsCfg)) {
+	if t.cfg != nil && reflect.DeepEqual(t.cfg, cfg) &&
+		t.routerCfg != nil && reflect.DeepEqual(t.routerCfg, routerCfg) &&
+		t.dnsCfg != nil && reflect.DeepEqual(t.dnsCfg, dnsCfg) {
 		return
 	}
 	t.cfg = cfg
+	t.routerCfg = routerCfg
 	t.dnsCfg = dnsCfg
 
 	routeDomains := make(map[string]bool)
