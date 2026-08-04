@@ -12,7 +12,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -20,11 +19,8 @@ import (
 	"github.com/metacubex/mihomo/component/iface"
 	"github.com/metacubex/mihomo/component/resolver"
 	C "github.com/metacubex/mihomo/constant"
-	"github.com/metacubex/mihomo/constant/features"
 	"github.com/metacubex/mihomo/dns"
 	"github.com/metacubex/mihomo/log"
-	"github.com/metacubex/mipstack"
-	wireguard "github.com/metacubex/sing-wireguard"
 	M "github.com/metacubex/sing/common/metadata"
 	ZT "github.com/metacubex/zerotier-go"
 	ZTIP "github.com/metacubex/zerotier-go/iplink"
@@ -32,15 +28,12 @@ import (
 )
 
 const (
-	zeroTierDefaultStateDir      = "zerotier"
-	zeroTierFrameQueueSize       = 256
+	zeroTierDefaultStateDir = "zerotier"
+	// zeroTierFrameQueueSize absorbs short multi-flow bursts so data frames do
+	// not crowd handshake and window-update traffic out of the single ordered
+	// bridge consumer.
+	zeroTierFrameQueueSize       = 2048
 	zeroTierFrameDropLogInterval = 10 * time.Second
-)
-
-const (
-	ipStackAuto   = "auto"
-	ipStackGVisor = "gvisor"
-	ipStackMips   = "mips"
 )
 
 var errZeroTierClosed = errors.New("ZeroTier outbound closed")
@@ -126,56 +119,9 @@ type ZeroTierOption struct {
 	RemoteTraceLevel  uint64                `proxy:"remote-trace-level,omitempty"`
 }
 
-type IPStackOption struct {
-	Mode                 string `proxy:"mode,omitempty"`
-	CongestionController string `proxy:"congestion-controller,omitempty"`
-}
-
 type ZeroTierOrbitOption struct {
 	World string `proxy:"world"`
 	Seed  string `proxy:"seed"`
-}
-
-func (o *IPStackOption) normalize() {
-	o.Mode = strings.ToLower(strings.TrimSpace(o.Mode))
-	if o.Mode == "" {
-		o.Mode = ipStackAuto
-	}
-	o.CongestionController = strings.ToLower(strings.TrimSpace(o.CongestionController))
-}
-
-func (o IPStackOption) validate() error {
-	switch o.Mode {
-	case ipStackAuto, ipStackMips:
-	case ipStackGVisor:
-		if !features.WithGVisor {
-			return errors.New("gVisor IP stack requires the with_gvisor build tag")
-		}
-	default:
-		return fmt.Errorf("invalid IP stack mode %q; expected auto, gvisor, or mips", o.Mode)
-	}
-	switch mipstack.CongestionControl(o.CongestionController) {
-	case "", mipstack.CongestionControlCUBIC, mipstack.CongestionControlReno, mipstack.CongestionControlBBR:
-		return nil
-	default:
-		return fmt.Errorf("invalid IP stack congestion controller %q; expected cubic, reno, or bbr", o.CongestionController)
-	}
-}
-
-// ipStack is the mihomo IP stack's packet and socket surface, adapted from
-// sing-wireguard only for gVisor.
-type ipStack interface {
-	Start() error
-	DialTCP(ctx context.Context, network string, source, destination netip.AddrPort) (net.Conn, error)
-	ListenUDP(ctx context.Context, network string, local netip.AddrPort) (net.PacketConn, error)
-	Read(buffers [][]byte, sizes []int, offset int) (int, error)
-	Write(buffers [][]byte, offset int) (int, error)
-	Close() error
-}
-
-// gVisorIPStack adapts sing-wireguard's stack device socket signatures.
-type gVisorIPStack struct {
-	wireguard.Device
 }
 
 type zeroTierOrbit struct {
@@ -210,47 +156,6 @@ type zeroTierPacketConn struct {
 	net.PacketConn
 	validateDestination func(netip.Addr) error
 }
-
-// newIPStack constructs the selected userspace IP stack.
-func newIPStack(option IPStackOption, localAddresses []netip.Prefix, mtu uint32) (ipStack, error) {
-	mode := option.Mode
-	if mode == ipStackAuto {
-		if features.WithGVisor {
-			mode = ipStackGVisor
-		} else {
-			mode = ipStackMips
-		}
-	}
-	switch mode {
-	case ipStackGVisor:
-		device, err := wireguard.NewStackDevice(localAddresses, mtu)
-		if err != nil {
-			return nil, err
-		}
-		return &gVisorIPStack{Device: device}, nil
-	case ipStackMips:
-		return mipstack.New(mipstack.Config{
-			LocalAddresses:    localAddresses,
-			MTU:               mtu,
-			CongestionControl: mipstack.CongestionControl(option.CongestionController),
-		})
-	default:
-		return nil, errors.New("invalid IP stack mode")
-	}
-}
-
-// DialTCP opens one active TCP connection through gVisor.
-func (s *gVisorIPStack) DialTCP(ctx context.Context, network string, _ netip.AddrPort, destination netip.AddrPort) (net.Conn, error) {
-	return s.DialContext(ctx, network, M.SocksaddrFromNetIP(destination))
-}
-
-// ListenUDP opens one unconnected UDP socket through gVisor.
-func (s *gVisorIPStack) ListenUDP(ctx context.Context, _ string, local netip.AddrPort) (net.PacketConn, error) {
-	return s.ListenPacket(ctx, M.SocksaddrFromNetIP(local))
-}
-
-var _ ipStack = (*mipstack.Stack)(nil)
-var _ ipStack = (*gVisorIPStack)(nil)
 
 func (c *zeroTierPacketConn) WriteTo(packet []byte, destination net.Addr) (int, error) {
 	address := M.SocksaddrFromNet(destination).Unwrap()
@@ -1316,11 +1221,8 @@ func (z *ZeroTier) ListenPacketContext(ctx context.Context, metadata *C.Metadata
 	if err != nil {
 		return nil, err
 	}
-	localAddress := netip.IPv4Unspecified()
-	if metadata.DstIP.Is6() {
-		localAddress = netip.IPv6Unspecified()
-	}
-	packetConn, err := device.ListenUDP(ctx, "udp", netip.AddrPortFrom(localAddress, 0))
+	// The ipStack contract guarantees that a generic UDP wildcard supports both address families.
+	packetConn, err := device.ListenUDP(ctx, "udp", netip.AddrPort{})
 	if err != nil {
 		return nil, err
 	}

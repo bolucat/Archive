@@ -21,7 +21,7 @@ pub fn init(config: &Config) -> Result<LogGuards> {
 
 	let filter = tracing_subscriber::filter::Targets::new()
 		.with_targets(vec![
-			("tuic_core", LevelFilter::from(config.log_level)),
+			("wind_tuic", LevelFilter::from(config.log_level)),
 			("tuic_server", LevelFilter::from(config.log_level)),
 			("wind_core", LevelFilter::from(config.log_level)),
 			("wind_tuic", LevelFilter::from(config.log_level)),
@@ -165,7 +165,7 @@ mod tests {
 		let mut b = Vec::<u8>::new();
 		let mut tee = TeeWriter { a: &mut a, b: &mut b };
 
-		tee.write(b"data").unwrap();
+		tee.write_all(b"data").unwrap();
 		tee.flush().unwrap();
 		assert!(!a.is_empty());
 		assert!(!b.is_empty());

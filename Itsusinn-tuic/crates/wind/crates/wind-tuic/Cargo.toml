@@ -8,8 +8,8 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["server", "client", "quinn", "aws-lc-rs", "masquerade"]
-decode = ["tuic-core/decode"]
-encode = ["tuic-core/encode"]
+decode = []
+encode = []
 # The server decodes client requests AND encodes UDP response datagrams, so it
 # needs both codec directions (matching the former wind-tuiche `server` feature).
 # `dashmap` backs the server-only `ActiveConnections` registry (per-user limits +
@@ -56,11 +56,15 @@ quiche = ["wind-quic/quiche"]
 
 [dependencies]
 wind-core = { path = "../wind-core", features = ["quic"] }
-tuic-core = { path = "../tuic-core", default-features = false }
 # Backend-agnostic QUIC abstraction. The TUIC protocol core is generic over
 # `wind_quic::QuicConnection`; the `quinn`/`quiche` features enable the matching
 # wind-quic backend.
 wind-quic = { path = "../wind-quic", default-features = false }
+
+# Wire codecs (formerly in tuic-core)
+nom = "8"
+num_enum = "0.7"
+snafu = "0.9"
 
 # Async
 tokio = { version = "1", default-features = false, features = ["net", "time", "rt", "sync", "io-util", "macros"] }
@@ -105,7 +109,10 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util", "macros", "rt-multi-thread", "io-util"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+tokio-stream = "0.1"
 eyre = "0.6"
 color-eyre = { version = "0.6", default-features = false }
+hex = { package = "const-hex", version = "1" }
 rcgen = "0.14.7"
 test-log = { version = "0.2", features = ["trace"] }

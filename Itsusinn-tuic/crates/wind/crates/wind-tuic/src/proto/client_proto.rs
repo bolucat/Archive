@@ -1,6 +1,6 @@
 //! Connection-coupled TUIC senders, generic over [`wind_quic::QuicConnection`].
 //!
-//! Gated on the `encode` feature (it builds wire frames via the `tuic_core`
+//! Gated on the `encode` feature (it builds wire frames via the codec
 //! encoders). Both the client outbound and the server's UDP response path use
 //! [`ClientProtoExt`].
 

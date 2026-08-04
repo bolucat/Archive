@@ -7,15 +7,17 @@ use wind_core::{types::TargetAddr, udp::UdpPacket};
 
 type UdpPacketTx = MAsyncTx<mpmc::Array<UdpPacket>>;
 
-use tuic_core::udp::{FragmentInfo, FragmentReassemblyBuffer, MAX_FRAGMENTS};
 use wind_quic::QuicConnection;
 
-use crate::proto::{Address, AddressCodec, ClientProtoExt as _, CmdCodec, CmdType, Command, Header, HeaderCodec};
+use crate::{
+	proto::{Address, AddressCodec, ClientProtoExt as _, CmdCodec, CmdType, Command, Header, HeaderCodec},
+	udp::{FragmentInfo, FragmentReassemblyBuffer, MAX_FRAGMENTS},
+};
 
 /// A TUIC UDP association over any [`QuicConnection`].
 ///
 /// The fragment **reassembly** state machine lives in
-/// [`tuic_core::udp::FragmentReassemblyBuffer`]; this type owns the
+/// [`crate::udp::FragmentReassemblyBuffer`]; this type owns the
 /// connection-coupled send path (datagram sizing, fragmentation, dispatch) and
 /// bridges reassembled packets to a receive channel.
 pub struct UdpStream<C: QuicConnection> {
@@ -23,7 +25,7 @@ pub struct UdpStream<C: QuicConnection> {
 	assoc_id: u16,
 	receive_tx: UdpPacketTx,
 	next_pkt_id: AtomicU16,
-	// Fragment reassembly state machine (backend-agnostic, from tuic-core).
+	// Fragment reassembly state machine (backend-agnostic).
 	fragment_buffer: FragmentReassemblyBuffer,
 }
 

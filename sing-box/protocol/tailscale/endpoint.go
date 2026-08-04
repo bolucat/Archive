@@ -103,6 +103,7 @@ type Endpoint struct {
 	routerCfg     *router.Config
 	dnsCfg        *tsDNS.Config
 	routeDomains  common.TypedValue[map[string]bool]
+	searchDomains atomic.Bool
 	routePrefixes atomic.Pointer[netipx.IPSet]
 
 	acceptRoutes               bool
@@ -328,7 +329,7 @@ func (t *Endpoint) start() error {
 		}
 		t.systemTun = systemTun
 		t.systemDialer = systemDialer
-		t.server.TunDevice = wgTunDevice
+		t.server.Tun = wgTunDevice
 	}
 	if t.network.AutoRedirectOutputMark() != 0 {
 		netns.SetControlFunc(t.network.AutoRedirectOutputMarkFunc())
@@ -492,7 +493,19 @@ func (t *Endpoint) watchState() {
 	localBackend := t.server.ExportLocalBackend()
 	var reportedAuthURL string
 	exitNodePending := t.exitNode != ""
-	localBackend.WatchNotifications(t.ctx, ipn.NotifyInitialState, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
+	localBackend.WatchNotifications(t.ctx, ipn.NotifyInitialState|ipn.NotifyInitialNetMap, nil, func(roNotify *ipn.Notify) (keepGoing bool) {
+		if roNotify.NetMap != nil {
+			var builder netipx.IPSetBuilder
+			for _, peer := range roNotify.NetMap.Peers {
+				for _, allowedIP := range peer.AllowedIPs().All() {
+					if allowedIP.Bits() == 0 {
+						continue
+					}
+					builder.AddPrefix(allowedIP)
+				}
+			}
+			t.routePrefixes.Store(common.Must1(builder.IPSet()))
+		}
 		if roNotify.State == nil && roNotify.BrowseToURL == nil {
 			return true
 		}
@@ -889,7 +902,11 @@ func (t *Endpoint) PreferredDomain(metadata *adapter.InboundContext, domain stri
 	if routeDomains == nil {
 		return false
 	}
-	return routeDomains[strings.ToLower(domain)]
+	domain = strings.ToLower(domain)
+	if routeDomains[domain] {
+		return true
+	}
+	return !strings.Contains(domain, ".") && t.searchDomains.Load()
 }
 
 func (t *Endpoint) PreferredAddress(metadata *adapter.InboundContext, address netip.Addr) bool {
@@ -925,14 +942,7 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 		routeDomains[fqdn.WithoutTrailingDot()] = true
 	}
 	t.routeDomains.Store(routeDomains)
-
-	var builder netipx.IPSetBuilder
-	for _, peer := range cfg.Peers {
-		for _, allowedIP := range peer.AllowedIPs {
-			builder.AddPrefix(allowedIP)
-		}
-	}
-	t.routePrefixes.Store(common.Must1(builder.IPSet()))
+	t.searchDomains.Store(len(dnsCfg.SearchDomains) > 0)
 
 	if t.onReconfigHook != nil {
 		t.onReconfigHook(cfg, routerCfg, dnsCfg)

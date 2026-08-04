@@ -71,7 +71,7 @@
     "knip": "6.31.0",
     "lint-staged": "17.0.8",
     "npm-run-all2": "9.0.3",
-    "oxlint": "1.76.0",
+    "oxlint": "1.77.0",
     "postcss": "8.5.25",
     "postcss-html": "2.0.0",
     "postcss-scss": "4.0.9",
@@ -88,8 +88,8 @@
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2"
   },
-  "packageManager": "pnpm@11.18.0",
+  "packageManager": "pnpm@11.20.0",
   "engines": {
-    "node": "24.18.1"
+    "node": "24.19.0"
   }
 }

@@ -1,14 +1,14 @@
-//! Protocol- and config-level tests for the shared `tuic-core` crate and the
+//! Protocol- and config-level tests for the TUIC wire codecs (now part of
 //! `tuic-server` `[backend]` configuration.
 //!
 //! These complement the end-to-end tests in `integration_tests.rs`:
 //!
-//! * The TUIC wire codecs and the free decode helpers now live in `tuic-core`
-//!   and are shared verbatim by both the quinn (`wind-tuic`) and tokio-quiche
-//!   (`wind-tuiche`) backends. The tests below pin the on-wire byte layout,
-//!   verify the codec/decoder paths agree, and exercise the error handling that
-//!   the production read paths rely on.
-//! * The UDP fragment-reassembly state machine (also shared via `tuic-core`) is
+//! * The TUIC wire codecs and the free decode helpers now live in `wind-tuic`
+//!   and are shared verbatim by both the quinn and tokio-quiche backends. The
+//!   tests below pin the on-wire byte layout, verify the codec/decoder paths
+//!   agree, and exercise the error handling that the production read paths rely
+//!   on.
+//! * The UDP fragment-reassembly state machine (also shared via `wind-tuic`) is
 //!   driven through a few representative scenarios from a consumer crate.
 //! * The new `[backend]` config section (mode + per-backend tuning) is checked
 //!   for sane defaults and deserialization.
@@ -17,12 +17,12 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 
 use bytes::{Buf, Bytes, BytesMut};
 use tokio_util::codec::Encoder;
-use tuic_core::proto::{
+use uuid::Uuid;
+use wind_core::types::TargetAddr;
+use wind_tuic::proto::{
 	Address, AddressCodec, CmdCodec, CmdType, Command, Header, HeaderCodec, VER, address_to_target, decode_address,
 	decode_command, decode_header,
 };
-use uuid::Uuid;
-use wind_core::types::TargetAddr;
 
 // ---------------------------------------------------------------------------
 // Wire-format stability — lock the exact on-wire byte layout so the
@@ -213,7 +213,7 @@ fn address_none_cannot_become_target() {
 }
 
 // ---------------------------------------------------------------------------
-// UDP fragment reassembly state machine (shared via tuic-core), driven from a
+// UDP fragment reassembly state machine (shared via wind-tuic), driven from a
 // consumer crate to confirm the public API is usable end-to-end.
 // ---------------------------------------------------------------------------
 
@@ -221,8 +221,8 @@ mod udp {
 	use std::net::Ipv4Addr;
 
 	use bytes::Bytes;
-	use tuic_core::udp::{FragmentInfo, FragmentReassemblyBuffer};
 	use wind_core::types::TargetAddr;
+	use wind_tuic::udp::{FragmentInfo, FragmentReassemblyBuffer};
 
 	fn info(frag_total: u8, frag_id: u8, target: TargetAddr) -> FragmentInfo {
 		FragmentInfo {

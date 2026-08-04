@@ -13,7 +13,7 @@ static-link = ["cronet-rs/static-link"]
 
 [dependencies]
 # Cronet-based networking
-cronet-rs = { git = "https://github.com/rust-proxy/cronet-rs", branch = "next", default-features = false }
+cronet-rs = { git = "https://github.com/rust-proxy/cronet-rs", branch = "main", default-features = false }
 
 # Wind core abstractions
 wind-core = { path = "../wind-core" }

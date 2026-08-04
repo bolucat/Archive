@@ -7,6 +7,7 @@
 //! the `quinn` / `quiche` features.
 
 pub mod proto;
+pub mod udp;
 
 // Backend-neutral congestion-control config types (defined in `wind-quic`),
 // re-exported so config front-ends (e.g. the TUIC server) can build a
