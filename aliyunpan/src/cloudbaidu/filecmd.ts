@@ -1,6 +1,26 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getBaiduToken } from './auth'
 import type { IAliFileItem } from '../aliapi/alimodels'
+
+type BaiduPathItem = { file_id?: string; path?: string; description?: string }
+
+const descriptionPath = (description = '') => /baidu_path:([^;]+)/.exec(description)?.[1] || ''
+
+export const resolveBaiduPaths = (fileIds: string[], items: BaiduPathItem[]): string[] => fileIds.map((fileId) => {
+  if (fileId.startsWith('/')) return fileId
+  const item = items.find(value => value.file_id === fileId)
+  return item?.path || descriptionPath(item?.description) || fileId
+})
+
+export const resolveBaiduTargetPath = (fileId: string, path: string, description: string, items: BaiduPathItem[], selectedDir?: BaiduPathItem): string => {
+  if (path) return path
+  if (!fileId) return '/'
+  if (fileId.startsWith('/')) return fileId
+  const item = items.find(value => value.file_id === fileId)
+  if (item?.path) return item.path
+  if (selectedDir?.file_id === fileId && selectedDir.path) return selectedDir.path
+  return descriptionPath(description) || descriptionPath(item?.description) || descriptionPath(selectedDir?.description) || fileId
+}
 
 export type BaiduFileMetaItem = {
   category?: number
@@ -74,16 +94,7 @@ export const apiBaiduFileMetas = async (
   needMedia = 1,
   needDetail = 1
 ): Promise<BaiduFileMetaItem[] | null> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) {
     message.error('未登录百度网盘')
     return null

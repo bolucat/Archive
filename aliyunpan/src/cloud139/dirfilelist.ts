@@ -1,6 +1,6 @@
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
-import UserDAL from '../user/userdal'
+import { getProviderTokenForUser } from '../drive/account'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import message from '../utils/message'
 import { HanToPin } from '../utils/utils'
@@ -30,11 +30,7 @@ export type Cloud139FileItem = {
 
 const hostCache = new Map<string, string>()
 
-const getToken = async (user_id: string) => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) token = await UserDAL.GetUserTokenFromDB(user_id) as any
-  return token
-}
+const getToken = (user_id: string) => getProviderTokenForUser(user_id, '139')
 
 const apiParentId = (parentId: string | number) => {
   const id = String(parentId || '/')

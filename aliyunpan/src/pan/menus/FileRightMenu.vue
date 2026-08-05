@@ -23,10 +23,11 @@ import { MediaScanner } from '../../utils/mediaScanner'
 import MusicScanner from '../../utils/musicScanner'
 import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
-import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
+import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
-import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete } from '../../aliapi/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete, supportsZipDownload } from '../../drive/providerFeatures'
 import { apiDrive115FileDetailResult } from '../../cloud115/filecmd'
+import { resolveDriveFileToken } from '../../drive/account'
 import { t } from '../../i18n'
 
 let istree = false
@@ -38,6 +39,12 @@ const modalStore = useModalStore()
 const mediaScanner = MediaScanner.getInstance()
 const musicScanner = MusicScanner.getInstance()
 const bookScanner = BookScanner.getInstance()
+const isBoxZipDownload = computed(() => {
+  if (!supportsZipDownload(panTreeStore.user_id || '', panTreeStore.drive_id || '')) return false
+  const files = panFileStore.GetSelected()
+  if (isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox') return files.length === 1 && files[0].isDir
+  return files.length > 1 || files.some(file => file.isDir)
+})
 
 
 const pickFolderForScan = () => {
@@ -148,9 +155,10 @@ const isAliyunAccount = computed(() => isAliyunAccountUser(panTreeStore.user_id 
 const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
 const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
+const isGoogle = computed(() => isGoogleUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'google')
 const isGuangya = computed(() => isGuangyaUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'guangya')
 const isPikPak = computed(() => isPikPakUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'pikpak')
-const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value || isPikPak.value)
+const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGoogle.value || isGuangya.value || isPikPak.value)
 const isShareSupported = computed(() => supportsCreateShare(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isMoveSupported = computed(() => supportsMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
@@ -174,8 +182,12 @@ const isDrive115Torrent = computed(() => {
 const openDrive115Torrent = async () => {
   const file = panFileStore.GetSelected()[0]
   if (!file || !isDrive115Torrent.value) return
-  const userId = (file as any).user_id || panTreeStore.user_id || ''
-  const result = await apiDrive115FileDetailResult(userId, file.file_id)
+  const token = await resolveDriveFileToken(file as any, panTreeStore.user_id)
+  if (!token?.user_id) {
+    message.error('未找到 115 网盘对应的已登录账号')
+    return
+  }
+  const result = await apiDrive115FileDetailResult(token.user_id, file.file_id)
   if (!result.detail?.sha1 || !result.detail?.pick_code) {
     message.error(result.error || '无法读取 115 种子文件信息')
     return
@@ -218,9 +230,13 @@ function openDocumentAI() {
 <template>
   <a-dropdown id='rightpanmenu' class='rightmenu' :popup-visible='true' style='z-index: -1; left: -200px; opacity: 0'>
     <template #content>
-      <a-doption @click='() => menuDownload(istree)'>
+      <a-doption v-if='!isBoxZipDownload' @click='() => menuDownload(istree)'>
         <template #icon><IconFont name="icondownload" /></template>
         <template #default>{{ t('file.download') }}</template>
+      </a-doption>
+      <a-doption v-else @click='() => menuDownload(istree)'>
+        <template #icon><IconFont name="iconfile-zip" /></template>
+        <template #default>ZIP {{ t('file.download') }}</template>
       </a-doption>
       <a-doption v-if='isDocumentAIAvailable' @click='openDocumentAI'>
         <template #icon><IconFont name="iconscan" /></template>

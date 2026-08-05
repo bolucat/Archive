@@ -1,6 +1,7 @@
 <script setup lang='ts'>
 import { computed, ref, watch } from 'vue'
 import AliFile from '../aliapi/file'
+import DriveFile from '../drive/file'
 import { createBookAISettings, getAIConfig } from '../utils/bookAI'
 import { getAIProvider } from '../services/ai/providers'
 import { askIndexedDocument, indexDocumentLocally } from '../services/documents'
@@ -55,7 +56,7 @@ async function buildIndex() {
   citations.value = []
   try {
     status.value = '正在获取文档...'
-    const download = await AliFile.ApiFileDownloadUrl(props.userId, driveId.value, props.file.file_id, 14_400)
+    const download = await DriveFile.ApiFileDownloadUrl(props.userId, driveId.value, props.file.file_id, 14_400)
     if (typeof download === 'string') throw new Error(download)
     const response = await fetch(download.url, { headers: download.headers || {} })
     if (!response.ok) throw new Error(`下载文档失败: HTTP ${response.status}`)

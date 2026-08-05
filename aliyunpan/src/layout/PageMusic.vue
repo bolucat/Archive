@@ -20,7 +20,6 @@ import { fadeTo } from '../module/audioplayer/index'
 import MusicQueuePanel from './music/MusicQueuePanel.vue'
 import CustomLyricModal from '../components/radio/CustomLyricModal.vue'
 import CoverCropModal from '../components/radio/CoverCropModal.vue'
-import SoundEffectBtn from '../components/SoundEffectBtn.vue'
 import { DEFAULT_MUSIC_FX, MUSIC_FX_PRESETS, normalizeMusicFxConfig, parseMusicFxConfigJson, type MusicFxConfig } from '../utils/radio/FxConfig'
 import type { ShelfCard } from '../utils/radio/ShelfManager'
 import { deleteMineradioValue, getMineradioValue, setMineradioValue } from '../utils/radio/MineradioStorage'
@@ -1335,10 +1334,6 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
       <button class="win-dot min" @click.stop="handleMin"></button>
       <button class="win-dot max" @click.stop="handleMax"></button>
     </div>
-    <div class="mineradio-sound-effect">
-      <SoundEffectBtn />
-    </div>
-
     <MusicImmersiveStage
       :active-line="activeLine"
       :artist="artist"
@@ -1996,17 +1991,6 @@ defineExpose({ togglePlay, playPrev, playNext, seekRel })
   -webkit-font-smoothing: antialiased;
 }
 
-.mineradio-sound-effect {
-  position: absolute;
-  top: 18px;
-  right: 20px;
-  z-index: 12;
-}
-
-.mineradio-player.embedded .mineradio-sound-effect {
-  top: 10px;
-  right: 12px;
-}
 .control-glass-filter-svg {
   position: absolute;
   width: 0;

@@ -1,7 +1,7 @@
 //! Naive outbound using `cronet-rs` (Cronet-based CONNECT proxy).
 //!
 //! This crate provides [`NaiveOutbound`], an implementation of
-//! [`wind_core::AbstractOutbound`] that tunnels TCP (and UDP-over-TCP) through
+//! [`wind_core::Outbound`] that tunnels TCP (and UDP-over-TCP) through
 //! a NaiveProxy server via the Cronet HTTP/2 or QUIC CONNECT protocol with
 //! padding.
 
@@ -10,6 +10,7 @@ use std::{
 	sync::Arc,
 };
 
+use async_trait::async_trait;
 use cronet_rs::naive_client::{NaiveClient, NaiveClientConfig, QuicCongestionControl as CronetCongestionControl};
 use eyre::Context as _;
 use tokio::{
@@ -18,9 +19,8 @@ use tokio::{
 };
 use tracing::{Instrument, info};
 use wind_core::{
-	AbstractOutbound, QuicCongestionControl,
+	FlowContext, Outbound, QuicCongestionControl,
 	tcp::AbstractTcpStream,
-	types::TargetAddr,
 	udp::{UdpPacket, UdpStream},
 };
 
@@ -184,14 +184,10 @@ impl NaiveOutbound {
 	}
 }
 
-impl AbstractOutbound for NaiveOutbound {
-	async fn handle_tcp(
-		&self,
-		target_addr: TargetAddr,
-		stream: impl AbstractTcpStream,
-		_via: Option<impl AbstractOutbound + Sized + Send>,
-	) -> eyre::Result<()> {
-		let target_str = target_addr.to_string();
+#[async_trait]
+impl Outbound for NaiveOutbound {
+	async fn handle_tcp(&self, ctx: FlowContext, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+		let target_str = ctx.target.to_string();
 		let client = self.client.clone();
 
 		info!(target: "naive_tcp", "connecting to {target_str}");
@@ -228,7 +224,7 @@ impl AbstractOutbound for NaiveOutbound {
 	/// This replaces the previous per-datagram fire-and-forget design, which
 	/// paid a full TLS+CONNECT handshake per packet, could fan out unbounded
 	/// tasks, and silently black-holed every reply.
-	async fn handle_udp(&self, udp_stream: UdpStream, _via: Option<impl AbstractOutbound + Sized + Send>) -> eyre::Result<()> {
+	async fn handle_udp(&self, _ctx: FlowContext, udp_stream: UdpStream) -> eyre::Result<()> {
 		let UdpStream { tx, mut rx } = udp_stream;
 
 		// Defer opening the tunnel until the first datagram so idle UDP

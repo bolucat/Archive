@@ -1,5 +1,5 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getBaiduToken } from './auth'
 
 type BaiduFileManagerResp = {
   errno: number
@@ -16,7 +16,7 @@ const requestFileManager = async (
   ondup = 'fail',
   asyncMode = 1
 ): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) {
     message.error('未登录百度网盘')
     return []
@@ -63,4 +63,3 @@ export const apiBaiduRename = async (user_id: string, path: string, newname: str
 export const apiBaiduDelete = async (user_id: string, paths: string[]): Promise<string[]> => {
   return requestFileManager(user_id, 'delete', paths, 'fail', 1)
 }
-

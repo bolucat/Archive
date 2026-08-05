@@ -29,10 +29,10 @@ import TreeStore from '../../store/treestore'
 import { copyToClipboard } from '../../utils/electronhelper'
 import DownDAL from '../../down/DownDAL'
 import { isEmpty } from 'lodash'
-import { GetDriveID, isAliyunUser, isCloud123User, isDrive115User, isPikPakUser } from '../../aliapi/utils'
+import { GetDriveID, isAliyunUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isPikPakUser } from '../../aliapi/utils'
 import AliAlbum from '../../aliapi/album'
 import { getEncType } from '../../utils/proxyhelper'
-import { supportsCopy, supportsCreateShare, supportsLocalUpload, supportsMove, supportsTrashMove, supportsTrashPermanentDelete } from '../../aliapi/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsLocalUpload, supportsMove, supportsTrashMove, supportsTrashPermanentDelete } from '../../drive/providerFeatures'
 import { Modal, Option, Select } from '@arco-design/web-vue'
 import { h } from 'vue'
 import { apiCloud123TrashDeleteAll } from '../../cloud123/filecmd'
@@ -40,6 +40,9 @@ import { apiDrive115TrashClear } from '../../cloud115/trash'
 import { apiDrive115VideoPush, getDrive115PickCode } from '../../cloud115/video'
 import { apiPikPakFileList } from '../../pikpak/dirfilelist'
 import { apiPikPakTrashDelete } from '../../pikpak/filecmd'
+import { apiBoxTrashListPage, apiBoxTrashPurge } from '../../box/filecmd'
+import { apiBoxCreateZip, apiBoxWaitZip } from '../../box/zip'
+import { apiDropboxZipDownload } from '../../dropbox/zip'
 
 const topbtnLock = new Set()
 
@@ -102,7 +105,7 @@ export function handleUpload(uploadType: string, encType: string = '') {
 }
 
 
-export function menuDownload(istree: boolean, tips: boolean = true) {
+export async function menuDownload(istree: boolean, tips: boolean = true) {
   const selectedData = PanDAL.GetPanSelectedData(istree)
   if (selectedData.isError) {
     message.error('下载操作失败 父文件夹错误')
@@ -144,7 +147,21 @@ export function menuDownload(istree: boolean, tips: boolean = true) {
   }
   try {
     if (downSavePathDefault || !tips) {
+      if ((isBoxUser(selectedData.user_id) || selectedData.drive_id === 'box') && (files.length > 1 || files.some(file => file.isDir))) {
+        const zipItems = files.map(file => ({ id: file.file_id, type: file.isDir ? 'folder' as const : 'file' as const }))
+        const zipName = (files.length === 1 ? files[0].name : 'Box 下载') || 'Box 下载'
+        const created = await apiBoxCreateZip(selectedData.user_id, zipItems, zipName)
+        if (created.error || !created.data) throw new Error(created.error || '创建 Box ZIP 下载失败')
+        const ready = await apiBoxWaitZip(selectedData.user_id, created.data)
+        if (ready.error || !ready.url) throw new Error(ready.error || 'Box ZIP 下载失败')
+        DownDAL.aAddUrlDownload({ user_id: selectedData.user_id, drive_id: 'box', file_id: `zip:${Date.now()}`, url: ready.url, headers: ready.headers, savePath, fileName: `${zipName}.zip`, icon: 'iconfile-zip' })
+      } else if ((isDropboxUser(selectedData.user_id) || selectedData.drive_id === 'dropbox') && files.length === 1 && files[0].isDir) {
+        const zip = await apiDropboxZipDownload(selectedData.user_id, files[0].file_id)
+        if (zip.error) throw new Error(zip.error)
+        DownDAL.aAddUrlDownload({ user_id: selectedData.user_id, drive_id: 'dropbox', file_id: `zip:${files[0].file_id}`, url: zip.url, headers: zip.headers, savePath, fileName: `${files[0].name || 'Dropbox'}.zip`, icon: 'iconfile-zip' })
+      } else {
       DownDAL.aAddDownload(files, savePath, savePathFull)
+      }
       if (useDowningStore().ListDataRaw.length > 0) {
         message.success(`成功创建下载任务`)
       }
@@ -727,6 +744,22 @@ export async function topTrashDeleteAll() {
           message.loading('清空回收站执行中...(' + count.toString() + ')', 0, loadingKey)
         }
       }
+      message.success('清空回收站 成功!', 3, loadingKey)
+      if (usePanTreeStore().selectDir.file_id == 'trash') PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+      return
+    }
+    if (isBoxUser(selectedData.user_id) || selectedData.drive_id === 'box') {
+      let marker = ''
+      do {
+        const page = await apiBoxTrashListPage(selectedData.user_id, marker)
+        for (const item of page.items) {
+          if (!item.id || (item.type !== 'file' && item.type !== 'folder')) continue
+          if (!await apiBoxTrashPurge(selectedData.user_id, item.id, item.type)) throw new Error(`彻底删除 Box 回收站项目失败：${item.name || item.id}`)
+          count++
+        }
+        marker = page.nextMarker
+        message.loading('清空回收站执行中...(' + count.toString() + ')', 0, loadingKey)
+      } while (marker)
       message.success('清空回收站 成功!', 3, loadingKey)
       if (usePanTreeStore().selectDir.file_id == 'trash') PanDAL.aReLoadOneDirToShow('', 'refresh', false)
       return

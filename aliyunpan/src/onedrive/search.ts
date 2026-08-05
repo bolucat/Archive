@@ -1,5 +1,5 @@
 import type { IAliGetFileModel } from '../aliapi/alimodels'
-import { OneDriveItem, mapOneDriveItemToAliModel } from './dirfilelist'
+import { getOneDriveToken, type OneDriveItem, mapOneDriveItemToAliModel } from './dirfilelist'
 import message from '../utils/message'
 
 const GRAPH_API_HOST = 'https://graph.microsoft.com/v1.0'
@@ -15,16 +15,6 @@ export type OneDriveSearchFilters = {
   categories: string[]
   minSize: number
   maxSize: number
-}
-
-const getOneDriveToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
 }
 
 const graphGet = async <T>(user_id: string, pathOrUrl: string, fallback: string): Promise<T | null> => {

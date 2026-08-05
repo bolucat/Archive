@@ -1,5 +1,5 @@
 <script lang="ts">
-import AliUploadMem from '../../aliapi/uploadmem'
+import DriveUploadMem from '../../drive/uploadmem'
 import { usePanTreeStore } from '../../store'
 import message from '../../utils/message'
 import { modalCloseAll } from '../../utils/modal'
@@ -75,7 +75,7 @@ export default defineComponent({
         }
 
         this.okLoading = true
-        AliUploadMem.UploadMem(pantreeStore.user_id, pantreeStore.drive_id, pantreeStore.selectDir.file_id, newName, this.form.fileContext, this.encType)
+        DriveUploadMem.UploadMem(pantreeStore.user_id, pantreeStore.drive_id, pantreeStore.selectDir.file_id, newName, this.form.fileContext, this.encType)
           .then((data) => {
             this.okLoading = false
             if (data && data == 'success') {

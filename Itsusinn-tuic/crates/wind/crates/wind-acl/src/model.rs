@@ -5,7 +5,7 @@
 //! leaf for every Mihomo rule kind, this first implementation gives bespoke
 //! typed variants to the *optimizer-relevant* subset (domain / ip / port /
 //! proto) and routes everything else through [`Match::Predicate`], which wraps
-//! a `wind_core::rule::Rule` and delegates evaluation to it. That keeps the
+//! a `wind_rule::Rule` and delegates evaluation to it. That keeps the
 //! degenerate embedding (see [`crate::embed`]) byte-for-byte equivalent to the
 //! legacy engine while still exposing the structure the optimizer needs on the
 //! hot path.
@@ -13,7 +13,7 @@
 use std::{ops::RangeInclusive, sync::Arc};
 
 use ipnet::IpNet;
-use wind_core::rule::{NetworkType, Rule};
+use wind_rule::{NetworkType, Rule};
 
 /// Which side of the connection a leaf reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

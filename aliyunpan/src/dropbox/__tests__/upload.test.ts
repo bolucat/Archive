@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../dirfilelist', () => ({ getDropboxToken: vi.fn() }))
+vi.mock('../filecmd', () => ({
+  resolveDropboxCommandPath: (parentId: string) => parentId === 'dropbox_root' ? '' : parentId
+}))
+
 import {
   buildDropboxCommitInfo,
   buildDropboxUploadPath,

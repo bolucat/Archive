@@ -1,6 +1,6 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
 import Config from '../config'
+import { getCloud123Token } from './auth'
 
 export type Cloud123MkdirResult = {
   file_id: string
@@ -9,7 +9,7 @@ export type Cloud123MkdirResult = {
 
 export const apiCloud123Mkdir = async (user_id: string, parent_id: string, name: string): Promise<Cloud123MkdirResult> => {
   const result: Cloud123MkdirResult = { file_id: '', error: '新建文件夹失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return result
   const url = 'https://open-api.123pan.com/upload/v1/file/mkdir'
   const body = JSON.stringify({ parentID: parent_id, name })
@@ -44,7 +44,7 @@ export type Cloud123RenameResult = {
 }
 
 export const apiCloud123TrashBatch = async (user_id: string, file_id_list: string[]): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/trash'
   const fileIDs = file_id_list.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
@@ -70,7 +70,7 @@ export const apiCloud123TrashBatch = async (user_id: string, file_id_list: strin
 }
 
 export const apiCloud123RecoverBatch = async (user_id: string, file_id_list: string[]): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/recover'
   const fileIDs = file_id_list.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
@@ -101,7 +101,7 @@ export const apiCloud123RecoverBatch = async (user_id: string, file_id_list: str
 }
 
 export const apiCloud123DeleteBatch = async (user_id: string, file_id_list: string[]): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/delete'
   const fileIDs = file_id_list.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
@@ -127,7 +127,7 @@ export const apiCloud123DeleteBatch = async (user_id: string, file_id_list: stri
 }
 
 export const apiCloud123TrashDeleteAll = async (user_id: string): Promise<boolean> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return false
   const url = `https://www.123pan.com/api/v1/file/trash_delete_all?t=${Date.now()}`
   try {
@@ -150,7 +150,7 @@ export const apiCloud123TrashDeleteAll = async (user_id: string): Promise<boolea
 }
 
 export const apiCloud123CopySingle = async (user_id: string, file_id: string, targetDirId: string): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/copy'
   const body = {
@@ -179,7 +179,7 @@ export const apiCloud123CopySingle = async (user_id: string, file_id: string, ta
 }
 
 export const apiCloud123CopyBatch = async (user_id: string, file_id_list: string[], targetDirId: string): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/async/copy'
   const fileIds = file_id_list.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
@@ -209,7 +209,7 @@ export const apiCloud123CopyBatch = async (user_id: string, file_id_list: string
 }
 
 export const apiCloud123MoveBatch = async (user_id: string, file_id_list: string[], toParentFileId: string): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/move'
   const fileIDs = file_id_list.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
@@ -239,7 +239,7 @@ export const apiCloud123MoveBatch = async (user_id: string, file_id_list: string
 }
 
 export const apiCloud123FileDetail = async (user_id: string, file_id: string): Promise<any | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return null
   const url = `https://open-api.123pan.com/api/v1/file/detail?fileID=${encodeURIComponent(file_id)}`
   try {
@@ -263,16 +263,7 @@ export const apiCloud123FileDetail = async (user_id: string, file_id: string): P
 }
 
 export const apiCloud123FileInfos = async (user_id: string, file_ids: string[]): Promise<any[]> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return []
   const url = 'https://open-api.123pan.com/api/v1/file/infos'
   const fileIds = file_ids.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
@@ -299,16 +290,7 @@ export const apiCloud123FileInfos = async (user_id: string, file_ids: string[]):
 }
 
 export const apiCloud123DownloadInfo = async (user_id: string, file_id: string): Promise<{ url: string } | string> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return '未登录 123 网盘'
   const url = `https://open-api.123pan.com/api/v1/file/download_info?fileId=${encodeURIComponent(file_id)}`
   try {
@@ -344,7 +326,7 @@ export const apiCloud123DownloadInfo = async (user_id: string, file_id: string):
 }
 
 export const apiCloud123Rename = async (user_id: string, file_id: string, newName: string): Promise<{ success: boolean; error: string }> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return { success: false, error: '未登录 123 网盘' }
   const url = 'https://open-api.123pan.com/api/v1/file/name'
   const body = JSON.stringify({ fileId: Number(file_id), fileName: newName })
@@ -374,7 +356,7 @@ export const apiCloud123RenameBatch = async (
   name_list: string[]
 ): Promise<Cloud123RenameResult[]> => {
   const result: Cloud123RenameResult[] = []
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return result
   const url = 'https://open-api.123pan.com/api/v1/file/rename'
   const renameList: string[] = []

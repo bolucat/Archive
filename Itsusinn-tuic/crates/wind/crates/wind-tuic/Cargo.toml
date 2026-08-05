@@ -67,6 +67,7 @@ num_enum = "0.7"
 snafu = "0.9"
 
 # Async
+async-trait = "0.1"
 tokio = { version = "1", default-features = false, features = ["net", "time", "rt", "sync", "io-util", "macros"] }
 tokio-util = { version = "0.7", features = ["codec", "rt"] }
 tokio-stream = "0.1"

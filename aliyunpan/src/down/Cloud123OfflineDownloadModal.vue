@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue'
 import { modalCloseAll, modalSelectPanDir } from '../utils/modal'
 import { useModalStore, useUserStore } from '../store'
-import { isCloud123User, isDrive115User, isGuangyaUser, isPikPakUser } from '../aliapi/utils'
+import { isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isPikPakUser } from '../aliapi/utils'
 import message from '../utils/message'
 import DownDAL from './DownDAL'
 import { t } from '../i18n'
@@ -24,10 +24,11 @@ const provider = computed(() => {
   if (isPikPakUser(user)) return 'pikpak'
   if (isGuangyaUser(user)) return 'guangya'
   if (isDrive115User(user)) return 'drive115'
+  if (isDropboxUser(user)) return 'dropbox'
   return ''
 })
-const urlPlaceholder = computed(() => provider.value === 'cloud123' ? t('transfer.httpLinkPlaceholder') : t('transfer.offlineLinkPlaceholder'))
-const providerLabel = computed(() => provider.value === 'cloud123' ? t('drive.cloud123') : provider.value === 'pikpak' ? 'PikPak' : provider.value === 'guangya' ? t('drive.guangya') : provider.value === 'drive115' ? t('drive.drive115') : t('transfer.currentDrive'))
+const urlPlaceholder = computed(() => provider.value === 'cloud123' || provider.value === 'dropbox' ? t('transfer.httpLinkPlaceholder') : t('transfer.offlineLinkPlaceholder'))
+const providerLabel = computed(() => provider.value === 'cloud123' ? t('drive.cloud123') : provider.value === 'dropbox' ? 'Dropbox' : provider.value === 'pikpak' ? 'PikPak' : provider.value === 'guangya' ? t('drive.guangya') : provider.value === 'drive115' ? t('drive.drive115') : t('transfer.currentDrive'))
 const form = reactive({
   url: '',
   fileName: '',
@@ -88,16 +89,18 @@ const handleCreate = async () => {
     message.error(t('transfer.enterOfflineUrl'))
     return
   }
-  const unsupported = urls.find(url => provider.value === 'cloud123' ? !/^https?:\/\//i.test(url) : provider.value === 'drive115' ? !/^(https?:\/\/|ftp:\/\/|magnet:\?|ed2k:\/\/)/i.test(url) : !/^(https?:\/\/|magnet:\?|ed2k:\/\/)/i.test(url))
+  const unsupported = urls.find(url => provider.value === 'cloud123' || provider.value === 'dropbox' ? !/^https?:\/\//i.test(url) : provider.value === 'drive115' ? !/^(https?:\/\/|ftp:\/\/|magnet:\?|ed2k:\/\/)/i.test(url) : !/^(https?:\/\/|magnet:\?|ed2k:\/\/)/i.test(url))
   if (unsupported) {
-    message.error(provider.value === 'cloud123' ? t('transfer.cloud123HttpOnly') : t('transfer.offlineSupportedLinks'))
+    message.error(provider.value === 'dropbox' ? 'Dropbox 仅支持 HTTP/HTTPS 链接' : provider.value === 'cloud123' ? t('transfer.cloud123HttpOnly') : t('transfer.offlineSupportedLinks'))
     return
   }
   okLoading.value = true
   let success = 0
   const failures: string[] = []
   for (const url of urls) {
-    const result = provider.value === 'drive115'
+    const result = provider.value === 'dropbox'
+      ? await DownDAL.aAddDropboxOfflineDownload(url, urls.length === 1 ? form.fileName.trim() : '', form.dirId)
+      : provider.value === 'drive115'
       ? await DownDAL.aAddDrive115OfflineDownload(url, form.dirId)
       : provider.value === 'pikpak'
       ? await DownDAL.aAddPikPakOfflineDownload(url, urls.length === 1 ? form.fileName.trim() : '', form.dirId)

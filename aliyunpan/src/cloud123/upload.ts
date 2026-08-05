@@ -1,4 +1,4 @@
-import UserDAL from '../user/userdal'
+import { getCloud123Token } from './auth'
 
 const CLOUD123_OPEN_API = 'https://open-api.123pan.com'
 
@@ -19,7 +19,7 @@ export const cloud123CreateFile = async (
   duplicate: number = 1,
   containDir: boolean = false
 ): Promise<Cloud123CreateFileResp | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return null
   const url = `${CLOUD123_OPEN_API}/upload/v2/file/create`
   const body = {

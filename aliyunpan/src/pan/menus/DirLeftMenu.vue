@@ -10,7 +10,7 @@ import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
 import { computed, ref } from 'vue'
 import { isAliyunUser as isAliyunAccountUser } from '../../aliapi/utils'
-import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove } from '../../aliapi/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsZipDownload } from '../../drive/providerFeatures'
 import { t } from '../../i18n'
 
 const istree = true
@@ -20,6 +20,7 @@ const mediaScanner = MediaScanner.getInstance()
 const musicScanner = MusicScanner.getInstance()
 const bookScanner = BookScanner.getInstance()
 const isAliyunAccount = computed(() => isAliyunAccountUser(pantreeStore.user_id || ''))
+const isZipDownloadSupported = computed(() => supportsZipDownload(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
 const isShareSupported = computed(() => supportsCreateShare(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
 const isCopySupported = computed(() => supportsCopy(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
 const isMoveSupported = computed(() => supportsMove(pantreeStore.user_id || '', pantreeStore.drive_id || ''))
@@ -169,8 +170,8 @@ const isSelectedFolder = computed(() => {
         </template>
       </a-dsubmenu>
       <a-doption @click="() => menuDownload(istree)">
-        <template #icon> <IconFont name="icondownload" /> </template>
-        <template #default>{{ t('file.download') }}</template>
+        <template #icon> <IconFont :name="isZipDownloadSupported ? 'iconfile-zip' : 'icondownload'" /> </template>
+        <template #default>{{ isZipDownloadSupported ? `ZIP ${t('file.download')}` : t('file.download') }}</template>
       </a-doption>
       <a-doption v-show="isShareSupported"
                  @click="() => menuCreatShare(istree, 'pan', 'resource_root')">

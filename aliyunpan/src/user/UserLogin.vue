@@ -11,8 +11,9 @@ import AliUser from '../aliapi/user'
 import AliHttp from '../aliapi/alihttp'
 import { Input, Modal, Space } from '@arco-design/web-vue'
 import { QRCode as AntQRCode } from 'ant-design-vue'
-import { buildCloud123AuthUrl, exchangeCloud123CodeForToken } from '../utils/cloud123'
-import { buildBaiduAuthUrl, exchangeBaiduCodeForToken } from '../utils/baidu'
+import { buildCloud123AuthUrl, exchangeCloud123CodeForToken } from '../cloud123/auth'
+import { buildBaiduAuthUrl, exchangeBaiduCodeForToken } from '../cloudbaidu/auth'
+import { refreshDrive115UserInfo } from '../cloud115/auth'
 import { buildQrImageUrl, DRIVE115_APP_ID, exchangeDeviceCode, generatePkce, normalize115Token, pollDeviceStatus, requestDeviceCode } from '../utils/drive115'
 import { loginPikPak } from '../pikpak/auth'
 import { completeQuarkQrLogin, pollQuarkQrStatus, requestQuarkQrCode } from '../quark/auth'
@@ -22,8 +23,9 @@ import { GuangyaSmsState, generateGuangyaDid, requestGuangyaSmsCode, submitGuang
 import { DROPBOX_APP_KEY, buildDropboxAuthUrl, createDropboxPkceVerifier, exchangeDropboxCodeForToken } from '../dropbox/auth'
 import { ONEDRIVE_CLIENT_ID, buildOneDriveAuthUrl, createOneDrivePkceVerifier, exchangeOneDriveCodeForToken } from '../onedrive/auth'
 import { BOX_CLIENT_ID, buildBoxAuthUrl, createBoxPkceVerifier, exchangeBoxCodeForToken } from '../box/auth'
+import { GOOGLE_CLIENT_ID, buildGoogleAuthUrl, createGooglePkceVerifier, exchangeGoogleCodeForToken } from '../google/auth'
 import { getDriveProviderMeta } from '../utils/driveProvider'
-import { ALIYUN_APP_ID, ALIYUN_APP_SECRET } from '../secrets.generated'
+import { ALIYUN_APP_ID, ALIYUN_APP_SECRET, GOOGLE_CLIENT_SECRET } from '../secrets.generated'
 import { t } from '../i18n'
 import { createAListConnection, createWebDavConnection, saveWebDavConnection, testWebDavConnection } from '../utils/webdavClient'
 import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
@@ -43,10 +45,10 @@ const qrCodeUrl = ref('')
 const qrCodeStatusType = ref()
 const qrCodeStatusTips = ref()
 
-type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'guangya' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box' | 'webdav' | 'alist'
+type LoginProvider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'guangya' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box' | 'google' | 'webdav' | 'alist'
 
 const loginProvider = ref<LoginProvider>('aliyun')
-const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'guangya', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box', 'webdav', 'alist']
+const loginProviders: LoginProvider[] = ['aliyun', 'cloud123', '115', '139', '189', 'guangya', 'baidu', 'pikpak', 'quark', 'dropbox', 'onedrive', 'box', 'google', 'webdav', 'alist']
 const getLoginProviderMeta = (provider: LoginProvider) => getDriveProviderMeta(provider)
 const activeLoginProviderMeta = computed(() => getLoginProviderMeta(loginProvider.value))
 const cloud123Code = ref('')
@@ -86,6 +88,11 @@ const boxClientId = ref('')
 const boxVerifier = ref('')
 const boxLoading = ref(false)
 const boxAuthUrl = ref('')
+const googleClientId = ref('')
+const googleVerifier = ref('')
+const googleState = ref('')
+const googleRedirectUri = ref('')
+const googleLoading = ref(false)
 const remoteDriveLoading = ref(false)
 const remoteDriveForm = ref({ name: '', url: '', username: '', password: '', rootPath: '/' })
 const drive115ClientId = ref(DRIVE115_APP_ID || '')
@@ -126,12 +133,13 @@ const clearOpenTimers = () => {
 
 const handleModalOpen = () => {
   const stored = localStorage.getItem('login_provider')
-  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'guangya' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box' || stored === 'webdav' || stored === 'alist') {
+  if (stored === 'cloud123' || stored === 'aliyun' || stored === '115' || stored === '139' || stored === '189' || stored === 'guangya' || stored === 'baidu' || stored === 'pikpak' || stored === 'quark' || stored === 'dropbox' || stored === 'onedrive' || stored === 'box' || stored === 'google' || stored === 'webdav' || stored === 'alist') {
     loginProvider.value = stored
   }
   dropboxAppKey.value = localStorage.getItem('dropbox_app_key') || DROPBOX_APP_KEY
   onedriveClientId.value = localStorage.getItem('onedrive_client_id') || ONEDRIVE_CLIENT_ID
   boxClientId.value = localStorage.getItem('box_client_id') || BOX_CLIENT_ID
+  googleClientId.value = GOOGLE_CLIENT_ID
   if (loginProvider.value === 'cloud123') {
     handleOpenCloud123()
   } else if (loginProvider.value === 'baidu') {
@@ -154,6 +162,8 @@ const handleModalOpen = () => {
     handleOpenOneDrive()
   } else if (loginProvider.value === 'box') {
     handleOpenBox()
+  } else if (loginProvider.value === 'google') {
+    handleOpenGoogle()
   } else if (loginProvider.value === 'webdav' || loginProvider.value === 'alist') {
     loginLoading.value = false
   } else {
@@ -162,7 +172,7 @@ const handleModalOpen = () => {
 }
 
 const handleOauthCallback = (event: any) => {
-  if (loginProvider.value !== 'cloud123' && loginProvider.value !== 'baidu' && loginProvider.value !== 'dropbox' && loginProvider.value !== 'onedrive' && loginProvider.value !== 'box') return
+  if (loginProvider.value !== 'cloud123' && loginProvider.value !== 'baidu' && loginProvider.value !== 'dropbox' && loginProvider.value !== 'onedrive' && loginProvider.value !== 'box' && loginProvider.value !== 'google') return
   const url = event?.detail || ''
   if (!url) return
   try {
@@ -181,6 +191,13 @@ const handleOauthCallback = (event: any) => {
         submitOneDriveCode(code)
       } else if (loginProvider.value === 'box') {
         submitBoxCode(code)
+      } else if (loginProvider.value === 'google') {
+        const state = parsed.searchParams.get('state') || ''
+        if (!googleState.value || state !== googleState.value) {
+          message.error('Google Drive 授权回调校验失败，请重新登录')
+          return
+        }
+        submitGoogleCode(code)
       }
     }
   } catch {
@@ -221,6 +238,8 @@ watch(loginProvider, () => {
     handleOpenOneDrive()
   } else if (loginProvider.value === 'box') {
     handleOpenBox()
+  } else if (loginProvider.value === 'google') {
+    handleOpenGoogle()
   } else if (loginProvider.value === 'webdav' || loginProvider.value === 'alist') {
     loginLoading.value = false
   } else {
@@ -539,6 +558,33 @@ const handleReopenBox = () => {
   handleOpenBox().catch((err: any) => message.error(err?.message || '打开 Box 授权页失败'))
 }
 
+const handleOpenGoogle = async () => {
+  loginLoading.value = false
+  const clientId = GOOGLE_CLIENT_ID.trim()
+  if (!clientId) {
+    message.warning('请先配置 GOOGLE_CLIENT_ID')
+    return
+  }
+  if (!GOOGLE_CLIENT_SECRET.trim()) {
+    message.warning('请先配置 GOOGLE_CLIENT_SECRET')
+    return
+  }
+  const redirectUri = await window.Electron?.ipcRenderer?.invoke?.('GoogleOAuth:StartLoopback')
+  if (typeof redirectUri !== 'string' || !redirectUri.startsWith('http://127.0.0.1:')) {
+    message.error('Google Drive 本机授权回调启动失败')
+    return
+  }
+  googleClientId.value = clientId
+  googleRedirectUri.value = redirectUri
+  googleVerifier.value = createGooglePkceVerifier()
+  googleState.value = crypto.randomUUID()
+  window.Electron.shell.openExternal(await buildGoogleAuthUrl(clientId, googleVerifier.value, redirectUri, googleState.value))
+}
+
+const handleReopenGoogle = () => {
+  handleOpenGoogle().catch((err: any) => message.error(err?.message || '打开 Google 授权页失败'))
+}
+
 const submitCloud123Code = async () => {
   if (cloud123Loading.value) return
   if (!cloud123Code.value.trim()) {
@@ -644,6 +690,26 @@ const submitBoxCode = async (code: string) => {
     message.error(`Box ${t('login.loginFailed')}`)
   } finally {
     boxLoading.value = false
+  }
+}
+
+const submitGoogleCode = async (code: string) => {
+  if (googleLoading.value || !googleClientId.value || !googleVerifier.value || !googleRedirectUri.value) return
+  googleLoading.value = true
+  try {
+    const token = await exchangeGoogleCodeForToken(code, googleClientId.value, googleVerifier.value, googleRedirectUri.value)
+    if (token) {
+      await UserDAL.UserLogin(token, true)
+      useUserStore().userShowLogin = false
+    }
+  } catch (error) {
+    console.error('Google Drive 登录失败:', error)
+    message.error(`Google Drive ${t('login.loginFailed')}`)
+  } finally {
+    googleState.value = ''
+    googleVerifier.value = ''
+    googleRedirectUri.value = ''
+    googleLoading.value = false
   }
 }
 
@@ -942,7 +1008,7 @@ const poll115Status = async () => {
         drive115Tips.value = t('login.loginFailed')
         return
       }
-      await AliUser.Drive115UserInfo(token)
+      await refreshDrive115UserInfo(token)
       await UserDAL.UserLogin(token, true)
       useUserStore().userShowLogin = false
       return
@@ -1445,6 +1511,14 @@ const loginSuccess = (token: ITokenInfo) => {
             </div>
           </div>
         </div>
+      </div>
+
+      <div v-else-if="loginProvider === 'google'">
+        <div id='logindiv'><div class='logincontent'><div class="browser-login-hint">
+          <p style="margin: 32px 0 8px; font-size: 15px;">{{ t('login.browserOpenedPrefix') }} Google Drive {{ t('login.authPageSuffix') }}</p>
+          <p style="color: var(--color-text-3); font-size: 13px;">{{ t('login.browserContinue') }}</p>
+          <a-button style="margin-top: 16px;" :loading="googleLoading" @click="handleReopenGoogle">{{ t('login.reopenBrowser') }}</a-button>
+        </div></div></div>
       </div>
 
       <div v-else-if="loginProvider === 'webdav' || loginProvider === 'alist'">

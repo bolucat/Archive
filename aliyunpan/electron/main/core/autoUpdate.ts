@@ -24,6 +24,7 @@ type AutoUpdaterPort = {
 type UpdateProxyPreferences = {
   enabled: boolean
   url: string
+  autoCheckOnLaunch?: boolean
 }
 export type AutoUpdateState = {
   status: 'idle' | 'checking' | 'downloading' | 'downloaded' | 'up-to-date' | 'error' | 'unsupported'
@@ -46,7 +47,7 @@ type AutoUpdateControllerOptions = {
 }
 
 export function createAutoUpdateController(options: AutoUpdateControllerOptions) {
-  const { updater, dialog, logger, currentVersion, isPackaged, isMas = false, updateProxy = { enabled: false, url: '' }, onStateChange } = options
+  const { updater, dialog, logger, currentVersion, isPackaged, isMas = false, updateProxy = { enabled: false, url: '', autoCheckOnLaunch: true }, onStateChange } = options
 
   let state: AutoUpdateState = { status: isMas || !isPackaged ? 'unsupported' : 'idle' }
   const getState = () => ({ ...state })
@@ -164,9 +165,11 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     fallbackToNextFeed(err)
   })
 
-  setTimeout(() => {
-    void checkNow()
-  }, UPDATE_CHECK_DELAY_MS)
+  if (updateProxy.autoCheckOnLaunch !== false) {
+    setTimeout(() => {
+      void checkNow()
+    }, UPDATE_CHECK_DELAY_MS)
+  }
 
   return { getState, checkNow }
 }
@@ -176,10 +179,11 @@ export function readUpdateProxyPreferences(userDataPath: string): UpdateProxyPre
     const value = JSON.parse(readFileSync(join(userDataPath, 'setting.config'), 'utf8'))
     return {
       enabled: value?.uiUpdateProxyEnable === true,
-      url: typeof value?.uiUpdateProxyUrl === 'string' ? value.uiUpdateProxyUrl.trim() : ''
+      url: typeof value?.uiUpdateProxyUrl === 'string' ? value.uiUpdateProxyUrl.trim() : '',
+      autoCheckOnLaunch: value?.uiLaunchAutoCheckUpdate === true
     }
   } catch {
-    return { enabled: false, url: '' }
+    return { enabled: false, url: '', autoCheckOnLaunch: false }
   }
 }
 

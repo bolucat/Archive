@@ -1,4 +1,4 @@
-//! The degenerate embedding: `Vec<wind_core::rule::Rule>` → [`Ruleset`].
+//! The degenerate embedding: `Vec<wind_rule::Rule>` → [`Ruleset`].
 //!
 //! Per `specs/acl-ir.md` §5 this is normative: the produced ruleset MUST route
 //! identically to the legacy first-match-wins engine. It builds a single base
@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use ipnet::IpNet;
-use wind_core::rule::{Rule, RuleType};
+use wind_rule::{Rule, RuleType};
 
 use crate::model::{Chain, DomainTest, IrRule, Match, Ruleset, Side, Verdict};
 

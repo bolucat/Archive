@@ -8,3 +8,4 @@ config.toml
 # `--cfg reqwest_unstable` flag that the `h3-masquerade-test` feature relies on.
 !.cargo/config.toml
 .claude
+.reasonix

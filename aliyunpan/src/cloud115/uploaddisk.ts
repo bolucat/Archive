@@ -10,11 +10,12 @@ import {
   build115Target,
   computePreSha1,
   computeRangeSha1,
-  computeSha1
+  computeSha1,
+  normalizeDrive115OssCallback
 } from './upload'
 import { apiDrive115FileList } from './dirfilelist'
 import { apiDrive115TrashBatch } from './trash'
-import { ossCompleteMultipart, ossInitiateMultipart, ossUploadPart, parseOssCallbackResult } from './oss'
+import { ossCompleteMultipart, ossInitiateMultipart, ossUploadPart, parseOssCallbackResult, parseOssError } from './oss'
 
 const PART_SIZE = 8 * 1024 * 1024
 
@@ -98,8 +99,9 @@ export default class Drive115UploadDisk {
     const rename = await ensureUploadName(fileui.user_id, fileui.parent_file_id || 0, fileui.File.name, fileui.check_name_mode)
     if (rename.error) return rename.error
     const target = build115Target(fileui.parent_file_id || 0)
+    const shouldResumeUpload = !!fileui.Info.up_upload_id
     let initResp = null
-    if (fileui.Info.up_upload_id) {
+    if (shouldResumeUpload) {
       initResp = await apiDrive115UploadResume(fileui.user_id, fileui.File.size, target, fileSha1, fileui.Info.up_upload_id)
     }
     if (!initResp) {
@@ -138,12 +140,15 @@ export default class Drive115UploadDisk {
     }
 
     const data = initResp.data
+    const callback = normalizeDrive115OssCallback(data.callback, data.callback_var)
     if (data.status === 2) {
-      fileui.File.uploaded_file_id = data.file_id || ''
+      if (!data.file_id) return '115 网盘秒传成功但未返回文件 ID'
+      fileui.File.uploaded_file_id = data.file_id
       fileui.File.uploaded_is_rapid = true
       clearOssResumeState(fileui)
       return 'success'
     }
+    if (data.status !== 1) return `上传初始化失败(${data.status || 0})`
 
     if (!data.pick_code) return '上传初始化失败'
     fileui.Info.up_upload_id = data.pick_code
@@ -151,7 +156,7 @@ export default class Drive115UploadDisk {
     const tokenList = await apiDrive115GetUploadToken(fileui.user_id)
     if (!tokenList || tokenList.length === 0) return '获取上传凭证失败'
     const token = tokenList[0]
-    if (!token.endpoint || !token.AccessKeyId || !token.AccessKeySecrett || !token.SecurityToken) {
+    if (!token.endpoint || !token.AccessKeyId || !token.AccessKeySecret || !token.SecurityToken) {
       return '上传凭证信息不完整'
     }
     if (!data.bucket || !data.object) return '上传初始化信息不完整'
@@ -159,14 +164,17 @@ export default class Drive115UploadDisk {
     const cred = {
       endpoint: token.endpoint,
       accessKeyId: token.AccessKeyId,
-      accessKeySecret: token.AccessKeySecrett,
+      accessKeySecret: token.AccessKeySecret,
       securityToken: token.SecurityToken
     }
-    const canResumeOss = fileui.Info.drive115_oss_upload_id && fileui.Info.drive115_oss_bucket === data.bucket && fileui.Info.drive115_oss_object === data.object
+    const canResumeOss = shouldResumeUpload && fileui.Info.drive115_oss_upload_id && fileui.Info.drive115_oss_bucket === data.bucket && fileui.Info.drive115_oss_object === data.object
     if (!canResumeOss) clearOssResumeState(fileui)
     if (!fileui.Info.drive115_oss_upload_id) {
-      const init = await ossInitiateMultipart(cred, data.bucket, data.object, { callback: data.callback, callback_var: data.callback_var })
-      if (init.status !== 200) return 'OSS 初始化失败'
+      const init = await ossInitiateMultipart(cred, data.bucket, data.object)
+      if (init.status !== 200) {
+        const detail = parseOssError(init.body)
+        return detail ? `OSS 初始化失败(${init.status}): ${detail}` : `OSS 初始化失败(${init.status})`
+      }
 
       const uploadIdMatch = init.body.match(/<UploadId>(.+)<\/UploadId>/i)
       if (!uploadIdMatch) return 'OSS 初始化失败'
@@ -234,13 +242,18 @@ export default class Drive115UploadDisk {
       data.object,
       uploadId,
       Array.from(completedParts, ([partNumber, etag]) => ({ partNumber, etag })),
-      { callback: data.callback, callback_var: data.callback_var }
+      callback
     )
-    if (complete.status !== 200) return 'OSS 合并失败'
-    const callback = parseOssCallbackResult(complete.body)
-    if (callback.error) return callback.error
+    if (complete.status !== 200) {
+      const detail = parseOssError(complete.body)
+      return detail ? `OSS 合并失败(${complete.status}): ${detail}` : `OSS 合并失败(${complete.status})`
+    }
+    const callbackResult = parseOssCallbackResult(complete.body)
+    if (callbackResult.error) return callbackResult.error
 
-    fileui.File.uploaded_file_id = callback.fileId || data.file_id || ''
+    const fileId = callbackResult.fileId || data.file_id || ''
+    if (!fileId) return '115 网盘上传完成但未返回文件 ID'
+    fileui.File.uploaded_file_id = fileId
     fileui.File.uploaded_is_rapid = false
     clearOssResumeState(fileui)
     return 'success'

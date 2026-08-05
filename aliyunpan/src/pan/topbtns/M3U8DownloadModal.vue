@@ -6,6 +6,8 @@ import { copyToClipboard } from '../../utils/electronhelper'
 import { humanTime } from '../../utils/format'
 import message from '../../utils/message'
 import { modalCloseAll } from '../../utils/modal'
+import { resolveDriveFileToken } from '../../drive/account'
+import { resolveDriveProvider } from '../../utils/driveProvider'
 import { ref } from 'vue'
 
 const props = defineProps({
@@ -28,7 +30,14 @@ const videoPreview = ref<IVideoPreviewUrl>()
 const handleOpen = async () => {
   okLoading.value = true
   const first = usePanFileStore().GetSelectedFirst()!
-  user_id.value = usePanTreeStore().user_id
+  const token = await resolveDriveFileToken(first, usePanTreeStore().user_id)
+  const route = token ? resolveDriveProvider(token.user_id, first.drive_id, token.tokenfrom) : undefined
+  if (!token || !route?.isValid || route.provider !== 'aliyun') {
+    okLoading.value = false
+    message.error('M3U8 转码仅支持阿里云盘文件')
+    return
+  }
+  user_id.value = token.user_id
   drive_id.value = first.drive_id
   file_id.value = first.file_id
   file_name.value = first.name

@@ -1,5 +1,7 @@
 import type { IAliGetFileModel } from '../../aliapi/alimodels'
+import { resolveDriveProvider } from '../driveProvider'
 import type { IDownloadUrl } from '../../aliapi/models'
+import { resolveDriveFileToken } from '../../drive/account'
 
 export type DirectLinkFormat = 'url' | 'aria2'
 
@@ -165,6 +167,12 @@ export const listDriveToolChildren = async (userId: string, driveId: string, fil
     const { apiBoxFileList, mapBoxItemToAliModel } = await import('../../box/dirfilelist')
     return (await apiBoxFileList(userId, parentId)).map(item => mapBoxItemToAliModel(item, providerDriveId, parentId))
   }
+  if (providerDriveId === 'google') {
+    const { listGoogleItems } = await import('../../google/adapter')
+    return (await listGoogleItems(userId, driveId, fileId, true)).items
+  }
+  const route = resolveDriveProvider(userId, driveId)
+  if (!route.isValid || route.provider !== 'aliyun') return []
   const { default: AliDirFileList } = await import('../../aliapi/dirfilelist')
   const dir = await AliDirFileList.ApiDirFileList(userId, driveId, fileId, '', 'name asc')
   return dir.items
@@ -197,24 +205,36 @@ export const formatDirectLinks = (links: DirectLinkItem[], format: DirectLinkFor
 
 export const exportDirectLinks = async (files: IAliGetFileModel[], userId: string, format: DirectLinkFormat = 'url', maxFiles = 300): Promise<DirectLinkExportResult> => {
   const result: DirectLinkExportResult = { total: 0, success: 0, failed: 0, links: [], failures: [], text: '' }
-  const { default: AliFile } = await import('../../aliapi/file')
+  const { default: DriveFile } = await import('../../drive/file')
   const groups = new Map<string, IAliGetFileModel[]>()
   for (const file of files) {
-    const key = (file as any).user_id || (file as any).userId || userId
-    groups.set(key, [...(groups.get(key) || []), file])
+    const token = await resolveDriveFileToken(file as IAliGetFileModel & { user_id?: string }, (file as any).user_id || (file as any).userId || userId)
+    if (!token?.user_id) {
+      result.total += 1
+      result.failed += 1
+      result.failures.push({ name: file.name, reason: `找不到 ${file.drive_id} 对应的已登录账号` })
+      continue
+    }
+    groups.set(token.user_id, [...(groups.get(token.user_id) || []), file])
   }
   for (const [currentUserId, group] of groups) {
     const flatFiles = await flattenDriveToolFiles(group, currentUserId, maxFiles)
     result.total += flatFiles.length
     for (const file of flatFiles) {
-      const data = await AliFile.ApiFileDownloadUrl(currentUserId, file.drive_id, file.file_id, 14400).catch((error: any) => error?.message || '获取下载地址失败')
+      const token = await resolveDriveFileToken(file as IAliGetFileModel & { user_id?: string }, currentUserId)
+      if (!token?.user_id) {
+        result.failed += 1
+        result.failures.push({ name: file.name, reason: `找不到 ${file.drive_id} 对应的已登录账号` })
+        continue
+      }
+      const data = await DriveFile.ApiFileDownloadUrl(token.user_id, file.drive_id, file.file_id, 14400).catch((error: any) => error?.message || '获取下载地址失败')
       if (typeof data === 'string') {
         result.failed += 1
         result.failures.push({ name: file.name, reason: data })
         continue
       }
       const down = data as IDownloadUrl
-      result.links.push({ name: file.name, fileId: file.file_id, driveId: file.drive_id, userId: currentUserId, url: down.url, size: down.size || file.size || 0, headers: down.headers })
+      result.links.push({ name: file.name, fileId: file.file_id, driveId: file.drive_id, userId: token.user_id, url: down.url, size: down.size || file.size || 0, headers: down.headers })
       result.success += 1
     }
   }

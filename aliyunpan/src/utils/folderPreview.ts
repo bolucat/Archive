@@ -9,6 +9,7 @@ import {
   isCloud189User,
   isDrive115User,
   isDropboxUser,
+  isGoogleUser,
   isGuangyaUser,
   isOneDriveUser,
   isPikPakUser,
@@ -125,6 +126,23 @@ async function fetchFolderItemsRaw(p: FolderPreviewParams): Promise<IAliGetFileM
       const list = await mod.apiDropboxFileList(user_id, parentId, MAX_PREVIEW_FILES)
       return (list || []).map((item: any) => {
         const mapped = mod.mapDropboxFileToAliModel(item, drive_id, parentId)
+        ;(mapped as any).user_id = user_id
+        return mapped
+      })
+    }
+    if (isGoogleUser(user_id) || drive_id === 'google') {
+      if (file_id === 'google_shared' || file_id === 'google_shared_drives') return []
+      const mod = await tryDynamicImport(() => import('../google/dirfilelist'))
+      if (!mod) return []
+      const sharedDriveId = file_id.startsWith('google_shared_drive:')
+        ? file_id.slice('google_shared_drive:'.length)
+        : mod.getGoogleSharedDriveIdForFile(file_id)
+      const parentId = file_id === 'google_root' ? 'google_root' : file_id
+      const list = sharedDriveId
+        ? await mod.apiGoogleSharedDriveFileList(user_id, sharedDriveId, file_id.startsWith('google_shared_drive:') ? 'root' : file_id)
+        : await mod.apiGoogleFileList(user_id, parentId, MAX_PREVIEW_FILES)
+      return list.slice(0, MAX_PREVIEW_FILES).map((item: any) => {
+        const mapped = mod.mapGoogleFileToAliModel(item, drive_id, parentId)
         ;(mapped as any).user_id = user_id
         return mapped
       })

@@ -14,7 +14,9 @@ use tokio::{
 	sync::Mutex,
 };
 use tracing::Instrument;
-use wind_core::{OutboundAction, tcp::AbstractTcpStream, types::TargetAddr, udp::UdpStream};
+use wind_core::{
+	FlowContext, Outbound, hooks::Protocol, rule::NetworkType, tcp::AbstractTcpStream, types::TargetAddr, udp::UdpStream,
+};
 
 // ---------------------------------------------------------------------------
 // Configuration types
@@ -50,7 +52,7 @@ pub struct LoadBalanceOpts {
 // ---------------------------------------------------------------------------
 
 struct ProxyState {
-	outbound: Arc<dyn OutboundAction>,
+	outbound: Arc<dyn Outbound>,
 	alive: AtomicBool,
 }
 
@@ -93,7 +95,7 @@ impl LoadBalanceOutbound {
 	/// # Panics
 	///
 	/// Panics if `proxies` is empty.
-	pub fn new(opts: LoadBalanceOpts, proxies: Vec<Arc<dyn OutboundAction>>) -> Self {
+	pub fn new(opts: LoadBalanceOpts, proxies: Vec<Arc<dyn Outbound>>) -> Self {
 		assert!(!proxies.is_empty(), "LoadBalanceOutbound requires at least one child proxy");
 
 		Self {
@@ -187,19 +189,19 @@ impl LoadBalanceOutbound {
 }
 
 #[async_trait]
-impl OutboundAction for LoadBalanceOutbound {
-	async fn handle_tcp(&self, target: TargetAddr, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
-		let idx = self.select_index(&target).await;
-		let span = tracing::debug_span!("lb_tcp", target = %target, proxy_index = idx);
+impl Outbound for LoadBalanceOutbound {
+	async fn handle_tcp(&self, ctx: FlowContext, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+		let idx = self.select_index(&ctx.target).await;
+		let span = tracing::debug_span!("lb_tcp", target = %ctx.target, proxy_index = idx);
 		async move {
 			tracing::debug!("delegating to proxy {idx}");
-			self.proxies[idx].outbound.handle_tcp(target, stream).await
+			self.proxies[idx].outbound.handle_tcp(ctx, stream).await
 		}
 		.instrument(span)
 		.await
 	}
 
-	async fn handle_udp(&self, stream: UdpStream) -> eyre::Result<()> {
+	async fn handle_udp(&self, ctx: FlowContext, stream: UdpStream) -> eyre::Result<()> {
 		// UDP sessions are routed once (by the dispatcher) and stick to one
 		// handler.  We sample the first packet's target for the selection so
 		// the session is pinned to a single child outbound — matching clash
@@ -226,7 +228,7 @@ impl OutboundAction for LoadBalanceOutbound {
 		let span = tracing::debug_span!("lb_udp", proxy_index = idx);
 		async move {
 			tracing::debug!("delegating UDP to proxy {idx}");
-			self.proxies[idx].outbound.handle_udp(stream).await
+			self.proxies[idx].outbound.handle_udp(ctx, stream).await
 		}
 		.instrument(span)
 		.await
@@ -263,7 +265,7 @@ async fn health_check_loop(lb: Arc<LoadBalanceOutbound>, interval: Duration) {
 /// Check whether `proxy` can reach the URL host by tunnelling an HTTP GET
 /// through it.  Returns `true` if we receive any HTTP response bytes within
 /// the timeout.
-async fn check_proxy_health(proxy: Arc<dyn OutboundAction>, url: &str) -> bool {
+async fn check_proxy_health(proxy: Arc<dyn Outbound>, url: &str) -> bool {
 	let (host, port, path) = match parse_http_url(url) {
 		Some(v) => v,
 		None => {
@@ -273,6 +275,16 @@ async fn check_proxy_health(proxy: Arc<dyn OutboundAction>, url: &str) -> bool {
 	};
 
 	let target = TargetAddr::Domain(host.to_string(), port);
+	let health_ctx = FlowContext {
+		target,
+		network: NetworkType::Tcp,
+		source: None,
+		inbound_tag: "health-check".into(),
+		protocol: Protocol::Tunnel,
+		user: None,
+		inbound_port: None,
+		inbound_type: None,
+	};
 
 	// Create a duplex pair: we write the HTTP request on one side and hand
 	// the other side to the outbound.  The outbound connects through the
@@ -282,7 +294,7 @@ async fn check_proxy_health(proxy: Arc<dyn OutboundAction>, url: &str) -> bool {
 
 	// Spawn the outbound handler — it will consume `server`.
 	tokio::spawn(async move {
-		let _ = proxy.handle_tcp(target, Box::new(server)).await;
+		let _ = proxy.handle_tcp(health_ctx, Box::new(server)).await;
 	});
 
 	// Send a minimal HTTP/1.1 GET.
@@ -358,12 +370,12 @@ mod tests {
 	}
 
 	#[async_trait]
-	impl OutboundAction for DummyOutbound {
-		async fn handle_tcp(&self, _target: TargetAddr, _stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+	impl Outbound for DummyOutbound {
+		async fn handle_tcp(&self, _ctx: FlowContext, _stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
 			Ok(())
 		}
 
-		async fn handle_udp(&self, _stream: UdpStream) -> eyre::Result<()> {
+		async fn handle_udp(&self, _ctx: FlowContext, _stream: UdpStream) -> eyre::Result<()> {
 			Ok(())
 		}
 	}
@@ -378,9 +390,7 @@ mod tests {
 	}
 
 	fn make_lb(strategy: LoadBalanceStrategy, n: usize) -> LoadBalanceOutbound {
-		let proxies: Vec<Arc<dyn OutboundAction>> = (0..n)
-			.map(|_| Arc::new(DummyOutbound::new()) as Arc<dyn OutboundAction>)
-			.collect();
+		let proxies: Vec<Arc<dyn Outbound>> = (0..n).map(|_| Arc::new(DummyOutbound::new()) as Arc<dyn Outbound>).collect();
 		LoadBalanceOutbound::new(make_opts(strategy), proxies)
 	}
 

@@ -1,12 +1,12 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getDrive115Token } from './auth'
 
 export const apiDrive115CopyBatch = async (
   user_id: string,
   file_id_list: string[],
   target_parent_id: string
 ): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return []
   const fileIds = file_id_list.filter(Boolean)
   if (fileIds.length === 0) return []

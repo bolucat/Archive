@@ -1,4 +1,4 @@
-import UserDAL from '../user/userdal'
+import { getCloud123Token } from './auth'
 
 export type Cloud123OfflineCreateResult = {
   taskId: number | null
@@ -13,7 +13,7 @@ export type Cloud123OfflineProcessResult = {
 
 export const apiCloud123OfflineCreate = async (user_id: string, url: string, fileName: string, dirID?: string, callBackUrl?: string) => {
   const result: Cloud123OfflineCreateResult = { taskId: null, error: '创建离线下载失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -58,7 +58,7 @@ export const apiCloud123OfflineCreate = async (user_id: string, url: string, fil
 
 export const apiCloud123OfflineProcess = async (user_id: string, taskID: string) => {
   const result: Cloud123OfflineProcessResult = { process: 0, status: 0, error: '' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result

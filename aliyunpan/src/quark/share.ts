@@ -1,11 +1,10 @@
 import type { IAliShareAnonymous, IAliShareFileItem, IAliShareItem } from '../aliapi/alimodels'
 import type { UpdateShareModel } from '../aliapi/share'
-import UserDAL from '../user/userdal'
 import { humanDateTime, humanDateTimeDateStr, humanExpiration, humanSize } from '../utils/format'
 import getFileIcon from '../aliapi/fileicon'
 import message from '../utils/message'
 import { quarkAuthHeaders } from './auth'
-import { QuarkFileItem } from './dirfilelist'
+import { getQuarkToken, type QuarkFileItem } from './dirfilelist'
 
 const DRIVE_PC = 'https://drive-pc.quark.cn/1/clouddrive'
 const DRIVE = 'https://drive.quark.cn/1/clouddrive'
@@ -13,20 +12,6 @@ const QUARK_SHARE_PREFIX = 'quark:'
 const shareTokenMap = new Map<string, string>()
 
 type QuarkShareResp<T = any> = T | { __error: true; code: number; message: string }
-
-const getToken = async (user_id: string) => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  if (!token?.access_token || token.tokenfrom !== 'quark') {
-    const quarkTokens = (await UserDAL.GetUserListFromDB())
-      .filter(item => item.tokenfrom === 'quark' && item.access_token)
-    if (quarkTokens.length === 1) token = quarkTokens[0]
-  }
-  return token
-}
 
 const quarkParams = (params: Record<string, string | number | undefined> = {}) => {
   const qs = new URLSearchParams({
@@ -49,7 +34,7 @@ const request = async <T = any>(
   params: Record<string, string | number | undefined> = {},
   base = DRIVE_PC
 ): Promise<QuarkShareResp<T>> => {
-  const token = await getToken(user_id)
+  const token = await getQuarkToken(user_id)
   if (!token?.access_token) return { __error: true, code: 401, message: '未登录夸克网盘' }
   const resp = await fetch(`${base}/${path.replace(/^\//, '')}?${quarkParams(params).toString()}`, {
     ...init,

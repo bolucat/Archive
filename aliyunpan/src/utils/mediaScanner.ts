@@ -5,18 +5,7 @@ import { IAliGetFileModel } from '../aliapi/alimodels'
 import AliDirFileList from '../aliapi/dirfilelist'
 import { usePanTreeStore } from '../store'
 import message from './message'
-import { apiCloud123FileListPage, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
-import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
-import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
-import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
-import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
-import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
-import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
-import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
-import { apiCloud139FileListPage, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
-import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
-import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory, type WebDavConnectionConfig } from './webdavClient'
 import UserDAL from '../user/userdal'
 import { buildExpectedSeasons } from './mediaCoverage'
@@ -532,68 +521,6 @@ export class MediaScanner {
     const providerItems = await listProviderFolderItems({ folder, userId, driveId, silent: scanContext.silent, shouldStop: () => this.shouldStop })
     if (providerItems) return providerItems
 
-    if (isCloud123User(userId) || driveId === 'cloud123') {
-      const list = await this.listCloud123Folder(userId, folder.file_id)
-      return list.map((item) => {
-        const mapped = mapCloud123FileToAliModel(item)
-        mapped.drive_id = driveId
-        ;(mapped as any).user_id = userId
-        return mapped
-      })
-    }
-
-    if (isDrive115User(userId) || driveId === 'drive115') {
-      const list = await this.listDrive115Folder(userId, folder.file_id, scanContext.silent)
-      return list.map((item) => this.withScanUser(mapDrive115FileToAliModel(item, driveId), userId, driveId))
-    }
-
-    if (isBaiduUser(userId) || driveId === 'baidu') {
-      const parentPath = folder.path || '/'
-      const list = await this.listBaiduFolder(userId, parentPath)
-      return list.map((item) => this.withScanUser(mapBaiduFileToAliModel(item, driveId, folder.file_id || ''), userId, driveId))
-    }
-
-    if (isPikPakUser(userId) || driveId === 'pikpak') {
-      const parentId = folder.file_id && !folder.file_id.includes('root') ? folder.file_id : 'pikpak_root'
-      const list = await this.listPikPakFolder(userId, parentId)
-      return list.map((item) => this.withScanUser(mapPikPakFileToAliModel(item, driveId, parentId), userId, driveId))
-    }
-
-    if (isDropboxUser(userId) || driveId === 'dropbox') {
-      const parentId = folder.file_id && !folder.file_id.includes('root') ? folder.file_id : 'dropbox_root'
-      const list = await apiDropboxFileList(userId, parentId, 500)
-      return list.map((item) => this.withScanUser(mapDropboxFileToAliModel(item, driveId, parentId), userId, driveId))
-    }
-    if (isOneDriveUser(userId) || driveId === 'onedrive') {
-      const parentId = folder.file_id && !folder.file_id.includes('root') ? folder.file_id : 'onedrive_root'
-      const list = await apiOneDriveFileList(userId, parentId)
-      return list.map((item) => this.withScanUser(mapOneDriveItemToAliModel(item, driveId, parentId), userId, driveId))
-    }
-    if (isBoxUser(userId) || driveId === 'box') {
-      const parentId = folder.file_id && !folder.file_id.includes('root') ? folder.file_id : 'box_root'
-      const list = await apiBoxFileList(userId, parentId, 500)
-      return list.map((item) => this.withScanUser(mapBoxItemToAliModel(item, driveId, parentId), userId, driveId))
-    }
-    if (isQuarkUser(userId) || driveId === 'quark') {
-      const parentId = folder.file_id || '0'
-      const list = await this.listQuarkFolder(userId, parentId)
-      return list.map((item) => this.withScanUser(mapQuarkFileToAliModel(item, driveId, parentId), userId, driveId))
-    }
-    if (isCloud139User(userId) || driveId === 'cloud139') {
-      const parentId = folder.file_id || 'cloud139_root'
-      const list = await this.listCloud139Folder(userId, parentId)
-      return list.map((item) => this.withScanUser(mapCloud139FileToAliModel(item, driveId, parentId), userId, driveId))
-    }
-    if (isCloud189User(userId) || driveId === 'cloud189') {
-      const parentId = folder.file_id || 'cloud189_root'
-      const list = await this.listCloud189Folder(userId, parentId)
-      return list.map((item) => this.withScanUser(mapCloud189FileToAliModel(item, driveId, parentId), userId, driveId))
-    }
-    if (isGuangyaUser(userId) || driveId === 'guangya') {
-      const parentId = folder.file_id || 'guangya_root'
-      const list = await apiGuangyaFileList(userId, parentId, Number.MAX_SAFE_INTEGER)
-      return list.map((item) => this.withScanUser(mapGuangyaFileToAliModel(item, driveId, parentId), userId, driveId))
-    }
     if (!isAliyunUser(userId)) {
       console.warn('[MediaScanner] skip Aliyun file list for non-Aliyun source', {
         userId,
@@ -614,85 +541,6 @@ export class MediaScanner {
     )
 
     return resp?.items || []
-  }
-
-  private async listCloud123Folder(userId: string, parentId: string): Promise<any[]> {
-    const items: any[] = []
-    let lastFileId: string | number = ''
-    while (!this.shouldStop) {
-      const page = await apiCloud123FileListPage(userId, parentId, 100, false, '', 0, lastFileId)
-      items.push(...page.items)
-      if (page.lastFileId < 0 || !page.items.length || String(page.lastFileId) === String(lastFileId)) break
-      lastFileId = page.lastFileId
-    }
-    return items
-  }
-
-  private async listDrive115Folder(userId: string, parentId: string, silent = false): Promise<any[]> {
-    const limit = 200
-    const items: any[] = []
-    for (let offset = 0; !this.shouldStop; offset += limit) {
-      const page = await apiDrive115FileList(userId, parentId, limit, offset, true, { silent })
-      items.push(...page)
-      if (page.length < limit) break
-    }
-    return items
-  }
-
-  private async listBaiduFolder(userId: string, parentPath: string): Promise<any[]> {
-    const limit = 1000
-    const items: any[] = []
-    for (let start = 0; !this.shouldStop; start += limit) {
-      const page = await apiBaiduFileList(userId, parentPath, 'name', start, limit)
-      items.push(...page)
-      if (page.length < limit) break
-    }
-    return items
-  }
-
-  private async listPikPakFolder(userId: string, parentId: string): Promise<any[]> {
-    const items: any[] = []
-    let pageToken = ''
-    do {
-      const page = await apiPikPakFileList(userId, parentId, 500, pageToken)
-      items.push(...page.items)
-      pageToken = page.nextPageToken
-    } while (pageToken && !this.shouldStop)
-    return items
-  }
-
-  private async listQuarkFolder(userId: string, parentId: string): Promise<any[]> {
-    const size = 100
-    const first = await apiQuarkFileList(userId, parentId, size, 1)
-    const items = [...first.items]
-    for (let page = 2; items.length < first.total && !this.shouldStop; page++) {
-      const next = await apiQuarkFileList(userId, parentId, size, page)
-      if (!next.items.length) break
-      items.push(...next.items)
-    }
-    return items
-  }
-
-  private async listCloud139Folder(userId: string, parentId: string): Promise<any[]> {
-    const items: any[] = []
-    let cursor = ''
-    do {
-      const page = await apiCloud139FileListPage(userId, parentId, 100, cursor)
-      items.push(...page.items)
-      cursor = page.nextCursor
-    } while (cursor && !this.shouldStop)
-    return items
-  }
-
-  private async listCloud189Folder(userId: string, parentId: string): Promise<any[]> {
-    const size = 1000
-    const items: any[] = []
-    for (let pageNum = 1; !this.shouldStop; pageNum++) {
-      const page = await apiCloud189FileList(userId, parentId, size, pageNum)
-      items.push(...page)
-      if (page.length < size) break
-    }
-    return items
   }
 
   private async resolveScanContext(folder: IAliGetFileModel, driveServerId: string): Promise<ScanContext> {
@@ -725,11 +573,12 @@ export class MediaScanner {
     if (driveId === 'dropbox' && isDropboxUser(userId)) return userId
     if (driveId === 'onedrive' && isOneDriveUser(userId)) return userId
     if (driveId === 'box' && isBoxUser(userId)) return userId
+    if (driveId === 'google' && isGoogleUser(userId)) return userId
     if (driveId === 'quark' && isQuarkUser(userId)) return userId
     if (driveId === 'cloud139' && isCloud139User(userId)) return userId
     if (driveId === 'cloud189' && isCloud189User(userId)) return userId
     if (driveId === 'guangya' && isGuangyaUser(userId)) return userId
-    if (driveId !== 'cloud123' && driveId !== 'drive115' && driveId !== 'baidu' && driveId !== 'pikpak' && driveId !== 'dropbox' && driveId !== 'onedrive' && driveId !== 'box' && driveId !== 'quark' && driveId !== 'cloud139' && driveId !== 'cloud189' && driveId !== 'guangya') return userId
+    if (driveId !== 'cloud123' && driveId !== 'drive115' && driveId !== 'baidu' && driveId !== 'pikpak' && driveId !== 'dropbox' && driveId !== 'onedrive' && driveId !== 'box' && driveId !== 'google' && driveId !== 'quark' && driveId !== 'cloud139' && driveId !== 'cloud189' && driveId !== 'guangya') return userId
     return ''
   }
 
@@ -743,6 +592,7 @@ export class MediaScanner {
       if (driveId === 'dropbox') return isDropboxUser(token)
       if (driveId === 'onedrive') return isOneDriveUser(token)
       if (driveId === 'box') return isBoxUser(token)
+      if (driveId === 'google') return isGoogleUser(token)
       if (driveId === 'quark') return isQuarkUser(token)
       if (driveId === 'cloud139') return isCloud139User(token)
       if (driveId === 'cloud189') return isCloud189User(token)
@@ -764,17 +614,12 @@ export class MediaScanner {
     if (isDropboxUser(userId) || driveId === 'dropbox') return 'dropbox'
     if (isOneDriveUser(userId) || driveId === 'onedrive') return 'onedrive'
     if (isBoxUser(userId) || driveId === 'box') return 'box'
+    if (isGoogleUser(userId) || driveId === 'google') return 'google'
     if (isQuarkUser(userId) || driveId === 'quark') return 'quark'
     if (isCloud139User(userId) || driveId === 'cloud139') return 'cloud139'
     if (isCloud189User(userId) || driveId === 'cloud189') return 'cloud189'
     if (isGuangyaUser(userId) || driveId === 'guangya') return 'guangya'
     return fallback
-  }
-
-  private withScanUser(item: IAliGetFileModel, userId: string, driveId: string): IAliGetFileModel {
-    item.drive_id = item.drive_id || driveId
-    ;(item as any).user_id = userId
-    return item
   }
 
   private async *iterateLocalVideoFiles(

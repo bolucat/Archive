@@ -9,6 +9,7 @@ import { release } from 'os'
 import { getResourcesPath, getStaticPath } from './utils/mainfile'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { EventEmitter } from 'node:events'
+import { createServer, type Server } from 'node:http'
 import exception from './core/exception'
 import ipcEvent from './core/ipcEvent'
 import MotrixApplication from './aria/MotrixApplication'
@@ -57,6 +58,7 @@ export default class launch extends EventEmitter {
   private quarkCookie = ''
   private drive115PlaybackAuth = new Drive115PlaybackAuthRegistry()
   private pendingOAuthUrl: string | null = null
+  private googleOAuthServer: Server | null = null
   public motrixApp!: MotrixApplication
 
   constructor() {
@@ -164,6 +166,7 @@ export default class launch extends EventEmitter {
     this.handleAppWillQuit()
     this.handleAppWindowAllClosed()
     this.handleProtocolCallback()
+    this.handleGoogleOAuthLoopback()
   }
 
   handleAppReady() {
@@ -340,6 +343,7 @@ export default class launch extends EventEmitter {
 
   handleAppWillQuit() {
     app.on('will-quit', async () => {
+      this.stopGoogleOAuthLoopback()
       try { await this.motrixApp?.quit() } catch {}
       try { destroyDb() } catch {}
       try {
@@ -371,6 +375,50 @@ export default class launch extends EventEmitter {
     }
   }
 
+  private handleGoogleOAuthLoopback() {
+    ipcMain.handle('GoogleOAuth:StartLoopback', async () => this.startGoogleOAuthLoopback())
+  }
+
+  private stopGoogleOAuthLoopback() {
+    const server = this.googleOAuthServer
+    this.googleOAuthServer = null
+    if (server) server.close()
+  }
+
+  private async startGoogleOAuthLoopback() {
+    this.stopGoogleOAuthLoopback()
+    return await new Promise<string>((resolve, reject) => {
+      const server = createServer((request, response) => {
+        const callback = new URL(request.url || '/', 'http://127.0.0.1')
+        if (request.method !== 'GET' || callback.pathname !== '/oauth2callback') {
+          response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
+          response.end('Not found')
+          return
+        }
+        response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'" })
+        response.end('<!doctype html><title>BoxPlayer</title><p>Google Drive 授权完成，请返回 BoxPlayer。</p>')
+        this.dispatchOAuthUrl(callback.toString())
+        this.stopGoogleOAuthLoopback()
+      })
+      const fail = (error: Error) => {
+        server.close()
+        reject(error)
+      }
+      server.once('error', fail)
+      server.listen(0, '127.0.0.1', () => {
+        server.off('error', fail)
+        const address = server.address()
+        if (!address || typeof address === 'string') {
+          server.close()
+          reject(new Error('Google OAuth loopback server did not expose a TCP port'))
+          return
+        }
+        this.googleOAuthServer = server
+        resolve(`http://127.0.0.1:${address.port}/oauth2callback`)
+      })
+    })
+  }
+
   private handleProtocolCallback() {
     app.on('open-url', (event, url) => {
       event.preventDefault()
@@ -380,7 +428,7 @@ export default class launch extends EventEmitter {
 
   private extractOAuthUrl(commandLine?: string[]) {
     if (!commandLine) return ''
-    return commandLine.find(arg => OAUTH_PROTOCOLS.some(protocol => arg.startsWith(`${protocol}://`))) || ''
+    return commandLine.find(arg => OAUTH_PROTOCOLS.some(protocol => arg.startsWith(`${protocol}:`))) || ''
   }
 
   private dispatchOAuthUrl(url: string) {

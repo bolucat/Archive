@@ -5,13 +5,8 @@ import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliShareBottleFishItem, IAliShareItem, IAliShareRecentItem } from './alimodels'
 import AliDirFileList from './dirfilelist'
 import { useSettingStore } from '../store'
-import { isAliyunUser, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isPikPakUser, isQuarkUser } from './utils'
-import { apiCloud123ShareList, getCloud123ShareUrl } from '../cloud123/share'
-import { apiBoxShareList } from '../box/share'
-import { apiDropboxListSharedLinks, mapDropboxSharedLinkToAliShareItem } from '../dropbox/share'
-import { apiQuarkShareList } from '../quark/share'
-import { apiGuangyaShareList } from '../guangya/share'
-import { apiPikPakShareList, encodePikPakShareId } from '../pikpak/share'
+import { isAliyunUser } from '../utils/driveIdentity'
+import { listProviderAccountShares } from '../drive/providerShare'
 
 export interface IAliShareResp {
   items: IAliShareItem[]
@@ -44,42 +39,12 @@ export interface IAliShareBottleFishResp {
 export default class AliShareList {
 
   static async ApiShareListAll(user_id: string): Promise<IAliShareResp> {
-    if (isBoxUser(user_id)) {
+    const providerShares = await listProviderAccountShares(user_id)
+    if (providerShares) {
       const dir = AliShareList.EmptyShareResp(user_id)
-      dir.items = await apiBoxShareList(user_id)
+      if (providerShares.error) message.warning(providerShares.error, 2)
+      dir.items = providerShares.items
       for (const item of dir.items) dir.itemsKey.add(item.share_id)
-      return dir
-    }
-    if (isCloud123User(user_id)) {
-      return await AliShareList.ApiCloud123ShareListAll(user_id)
-    }
-    if (isDropboxUser(user_id)) {
-      return await AliShareList.ApiDropboxShareListAll(user_id)
-    }
-    if (isGuangyaUser(user_id)) {
-      return await AliShareList.ApiGuangyaShareListAll(user_id)
-    }
-    if (isQuarkUser(user_id)) {
-      const dir = AliShareList.EmptyShareResp(user_id)
-      dir.items = await apiQuarkShareList(user_id)
-      for (const item of dir.items) dir.itemsKey.add(item.share_id)
-      return dir
-    }
-    if (isPikPakUser(user_id)) {
-      const dir = AliShareList.EmptyShareResp(user_id)
-      const response = await apiPikPakShareList(user_id)
-      if (response.error) message.warning(response.error, 2)
-      for (const item of response.list) {
-        const shareId = encodePikPakShareId(item.shareId)
-        const add: IAliShareItem = {
-          created_at: item.createdAt || '', creator: '', description: '', display_name: '', display_label: '', download_count: item.downloadCount,
-          drive_id: 'pikpak', expiration: item.expiration, expired: item.expired, file_id: '', file_id_list: [], icon: 'iconwenjian', preview_count: item.previewCount,
-          save_count: item.saveCount, share_id: shareId, share_msg: item.expired ? '过期失效' : humanExpiration(item.expiration), full_share_msg: '', share_name: item.title,
-          share_policy: '', share_pwd: item.passCode, share_url: item.shareUrl, status: item.expired ? 'expired' : '', updated_at: '', is_share_saved: false, share_saved: ''
-        }
-        dir.items.push(add)
-        dir.itemsKey.add(shareId)
-      }
       return dir
     }
     if (!isAliyunUser(user_id)) {
@@ -103,23 +68,6 @@ export default class AliShareList {
   }
 
   static async ApiShareListOnePage(dir: IAliShareResp): Promise<boolean> {
-    if (isCloud123User(dir.m_user_id)) {
-      return await AliShareList.ApiCloud123ShareListOnePage(dir)
-    }
-    if (isGuangyaUser(dir.m_user_id)) {
-      return await AliShareList.ApiGuangyaShareListOnePage(dir)
-    }
-    if (isQuarkUser(dir.m_user_id)) {
-      const list = await apiQuarkShareList(dir.m_user_id)
-      for (const item of list) {
-        if (!dir.itemsKey.has(item.share_id)) {
-          dir.items.push(item)
-          dir.itemsKey.add(item.share_id)
-        }
-      }
-      dir.next_marker = ''
-      return true
-    }
     if (!isAliyunUser(dir.m_user_id)) {
       dir.next_marker = ''
       return false
@@ -332,42 +280,8 @@ export default class AliShareList {
   }
 
   static async ApiShareListUntilShareID(user_id: string, share_id: string): Promise<boolean> {
-    if (isBoxUser(user_id)) {
-      const links = await apiBoxShareList(user_id)
-      return links.some((link) => link.share_id === share_id)
-    }
-    if (isCloud123User(user_id)) {
-      let lastShareId = 0
-      do {
-        const resp = await apiCloud123ShareList(user_id, lastShareId, 100)
-        if (resp.error) return false
-        for (let i = 0, maxi = resp.list.length; i < maxi; i++) {
-          if (String(resp.list[i].shareId) === share_id) return true
-        }
-        if (resp.lastShareId === -1) break
-        lastShareId = resp.lastShareId
-      } while (true)
-      return false
-    }
-    if (isDropboxUser(user_id)) {
-      const links = await apiDropboxListSharedLinks(user_id, '')
-      return links.some((link) => (link.id || link.url) === share_id)
-    }
-    if (isGuangyaUser(user_id)) {
-      let page = 0
-      do {
-        const resp = await apiGuangyaShareList(user_id, page, 100)
-        if (resp.error) return false
-        if (resp.list.some((item) => item.share_id === share_id)) return true
-        if (!resp.nextMarker) break
-        page = Number(resp.nextMarker)
-      } while (!Number.isNaN(page))
-      return false
-    }
-    if (isQuarkUser(user_id)) {
-      const links = await apiQuarkShareList(user_id)
-      return links.some((link) => link.share_id === share_id)
-    }
+    const providerShares = await listProviderAccountShares(user_id)
+    if (providerShares) return providerShares.items.some(link => link.share_id === share_id)
     if (!isAliyunUser(user_id)) return false
     const url = 'adrive/v3/share_link/list'
     const postData = {
@@ -385,21 +299,6 @@ export default class AliShareList {
     return false
   }
 
-  private static async ApiCloud123ShareListAll(user_id: string): Promise<IAliShareResp> {
-    const dir: IAliShareResp = {
-      items: [],
-      itemsKey: new Set(),
-      next_marker: '',
-      m_time: 0,
-      m_user_id: user_id
-    }
-    do {
-      const isGet = await AliShareList.ApiCloud123ShareListOnePage(dir)
-      if (!isGet) break
-    } while (dir.next_marker)
-    return dir
-  }
-
   private static EmptyShareResp(user_id: string): IAliShareResp {
     return {
       items: [],
@@ -410,95 +309,4 @@ export default class AliShareList {
     }
   }
 
-  private static async ApiDropboxShareListAll(user_id: string): Promise<IAliShareResp> {
-    const dir = AliShareList.EmptyShareResp(user_id)
-    const links = await apiDropboxListSharedLinks(user_id, '')
-    const timeNow = new Date().getTime()
-    for (let i = 0, maxi = links.length; i < maxi; i++) {
-      const link = links[i]
-      const add = mapDropboxSharedLinkToAliShareItem(link, 'dropbox', link.path_lower ? [link.path_lower] : [], link.name || '', '')
-      add.created_at = ''
-      add.share_msg = humanExpiration(add.expiration, timeNow)
-      if (dir.itemsKey.has(add.share_id)) continue
-      dir.items.push(add)
-      dir.itemsKey.add(add.share_id)
-    }
-    return dir
-  }
-
-  private static async ApiGuangyaShareListAll(user_id: string): Promise<IAliShareResp> {
-    const dir = AliShareList.EmptyShareResp(user_id)
-    do {
-      const isGet = await AliShareList.ApiGuangyaShareListOnePage(dir)
-      if (!isGet) break
-    } while (dir.next_marker)
-    return dir
-  }
-
-  private static async ApiGuangyaShareListOnePage(dir: IAliShareResp): Promise<boolean> {
-    const page = dir.next_marker ? Number(dir.next_marker) : 0
-    const resp = await apiGuangyaShareList(dir.m_user_id, Number.isNaN(page) ? 0 : page, 100)
-    if (resp.error) {
-      message.error(resp.error)
-      dir.next_marker = ''
-      return false
-    }
-    for (const item of resp.list) {
-      if (dir.itemsKey.has(item.share_id)) continue
-      dir.items.push(item)
-      dir.itemsKey.add(item.share_id)
-    }
-    dir.next_marker = resp.nextMarker
-    return true
-  }
-
-  private static async ApiCloud123ShareListOnePage(dir: IAliShareResp): Promise<boolean> {
-    const lastShareId = dir.next_marker ? Number(dir.next_marker) : 0
-    const resp = await apiCloud123ShareList(dir.m_user_id, Number.isNaN(lastShareId) ? 0 : lastShareId, 100)
-    if (resp.error) {
-      message.warning('列出分享列表出错' + resp.error, 2)
-      return false
-    }
-    const timeNow = new Date().getTime()
-    for (let i = 0, maxi = resp.list.length; i < maxi; i++) {
-      const item = resp.list[i]
-      const share_id = String(item.shareId)
-      if (dir.itemsKey.has(share_id)) continue
-      const share_url = getCloud123ShareUrl(dir.m_user_id, item.shareKey)
-      const add: IAliShareItem = {
-        created_at: '',
-        creator: '',
-        description: '',
-        display_name: '',
-        display_label: '',
-        download_count: item.downloadCount || 0,
-        drive_id: 'cloud123',
-        expiration: item.expiration || '',
-        expired: item.expired === 1,
-        file_id: '',
-        file_id_list: [],
-        icon: 'iconwenjian',
-        preview_count: item.previewCount || 0,
-        save_count: item.saveCount || 0,
-        share_id: share_id,
-        share_msg: '',
-        full_share_msg: '',
-        share_name: item.shareName || '分享链接',
-        share_policy: '',
-        share_pwd: item.sharePwd || '',
-        share_url: share_url,
-        status: item.expired === 1 ? 'expired' : '',
-        updated_at: '',
-        is_share_saved: false,
-        share_saved: ''
-      }
-      add.share_msg = humanExpiration(add.expiration, timeNow)
-      if (add.expired) add.share_msg = '过期失效'
-      if (!add.share_name) add.share_name = 'share_name'
-      dir.items.push(add)
-      dir.itemsKey.add(add.share_id)
-    }
-    dir.next_marker = resp.lastShareId === -1 ? '' : String(resp.lastShareId)
-    return true
-  }
 }

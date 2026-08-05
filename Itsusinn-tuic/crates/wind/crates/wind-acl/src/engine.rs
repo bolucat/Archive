@@ -9,17 +9,15 @@
 //! [`Ruleset::route`] — so its decisions are identical to evaluating the rules
 //! first-match-wins, with apernet-derived rules taking precedence over Clash.
 
-use std::{net::IpAddr, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 use tracing::Instrument as _;
-use wind_base::resolve::resolve_target;
 use wind_core::{
-	RouteAction, Router, is_private_ip,
-	resolve::Resolver,
-	rule::{InboundType, MatchContext, NetworkType, Rule, RuleType},
-	types::TargetAddr,
+	FlowContext, RouteAction, Router, is_private_ip,
+	resolve::{Resolver, resolve_target},
 };
 use wind_geodata::GeoData;
+use wind_rule::{MatchContext, Rule, RuleType};
 
 use crate::{
 	Ruleset, compile,
@@ -63,8 +61,6 @@ pub struct AclEngine {
 	guards: GuardConfig,
 	/// Required whenever `guards.enabled()`. Validated at build time.
 	resolver: Option<Arc<dyn Resolver>>,
-	inbound_name: Option<String>,
-	inbound_type: Option<InboundType>,
 	/// GeoIP / GeoSite database. When present, `GEOIP` / `GEOSITE` rules match
 	/// against it; when absent those rules can never match (and a warning is
 	/// emitted at build time if any are present).
@@ -82,21 +78,19 @@ impl AclEngine {
 			raw: Vec::new(),
 			guards: GuardConfig::default(),
 			resolver: None,
-			inbound_name: None,
-			inbound_type: None,
 			geodata: None,
 			hijack_seen: false,
 		}
 	}
 
-	async fn do_route(&self, target: &TargetAddr, is_tcp: bool) -> eyre::Result<RouteAction> {
+	async fn do_route(&self, ctx: &FlowContext) -> eyre::Result<RouteAction> {
 		// 1. Guards — resolve the destination and drop loopback / private space.
 		if self.guards.enabled() {
 			let resolver = self
 				.resolver
 				.as_ref()
 				.expect("guards enabled without a resolver (should be rejected at build time)");
-			let resolved = resolve_target(target, resolver.as_ref()).await?;
+			let resolved = resolve_target(&ctx.target, resolver.as_ref()).await?;
 			if self.guards.drop_loopback && resolved.ip().is_loopback() {
 				tracing::debug!(resolved = %resolved, "dropping loopback connection");
 				return Ok(RouteAction::Reject(format!("loopback address rejected: {resolved}")));
@@ -107,43 +101,31 @@ impl AclEngine {
 			}
 		}
 
-		// 2. Build the match context from what `route` can see. `src_ip` and
-		// `inbound_user` are intentionally left `None` — the route signature
-		// carries neither.
-		let (domain, dst_ip, port) = match target {
-			TargetAddr::Domain(d, p) => (Some(d.as_str()), None, *p),
-			TargetAddr::IPv4(ip, p) => (None, Some(IpAddr::V4(*ip)), *p),
-			TargetAddr::IPv6(ip, p) => (None, Some(IpAddr::V6(*ip)), *p),
-		};
+		// 2. Lower the per-connection context once; every rule shares it. The
+		// `FlowContext` carries the source address, inbound tag/port/type and
+		// authenticated user, so `SRC-*`, `IN-NAME`, `IN-PORT`, `IN-TYPE` and
+		// `IN-USER` rules now see real values instead of `None`.
+		let mut match_ctx = MatchContext::default();
+		ctx.apply_to_match_context(&mut match_ctx);
 
 		// Bind the geodata lookup closures to locals so their borrows of
 		// `self.geodata` outlive the `MatchContext` that references them. Without
 		// this wiring `GEOIP` / `GEOSITE` rules would silently never match.
 		let geoip_fn = self.geodata.as_ref().map(|gd| gd.geoip_lookup());
 		let geosite_fn = self.geodata.as_ref().map(|gd| gd.geosite_lookup());
-
-		let ctx = MatchContext {
-			domain,
-			dst_ip,
-			dst_port: Some(port),
-			network: Some(if is_tcp { NetworkType::Tcp } else { NetworkType::Udp }),
-			inbound_name: self.inbound_name.as_deref(),
-			inbound_type: self.inbound_type,
-			geoip_lookup: geoip_fn.as_ref().map(|f| f as &dyn Fn(&str, IpAddr) -> bool),
-			geosite_lookup: geosite_fn.as_ref().map(|f| f as &dyn Fn(&str, &str) -> bool),
-			..Default::default()
-		};
+		match_ctx.geoip_lookup = geoip_fn.as_ref().map(|f| f as &dyn Fn(&str, std::net::IpAddr) -> bool);
+		match_ctx.geosite_lookup = geosite_fn.as_ref().map(|f| f as &dyn Fn(&str, &str) -> bool);
 
 		// 3. The IR evaluates first-match-wins and falls back to the default
 		// outbound policy. It is infallible.
-		Ok(self.ruleset.route(&ctx))
+		Ok(self.ruleset.route(&match_ctx))
 	}
 }
 
 impl Router for AclEngine {
-	async fn route(&self, target: &TargetAddr, is_tcp: bool) -> eyre::Result<RouteAction> {
-		let span = tracing::debug_span!("acl_route", target = %target, proto = if is_tcp { "tcp" } else { "udp" });
-		self.do_route(target, is_tcp).instrument(span).await
+	fn route(&self, ctx: &FlowContext) -> impl Future<Output = eyre::Result<RouteAction>> + Send {
+		let span = tracing::debug_span!("acl_route", target = %ctx.target, proto = if ctx.is_tcp() { "tcp" } else { "udp" });
+		async move { self.do_route(ctx).instrument(span).await }
 	}
 }
 
@@ -157,8 +139,6 @@ pub struct AclEngineBuilder {
 	raw: Vec<Rule>,
 	guards: GuardConfig,
 	resolver: Option<Arc<dyn Resolver>>,
-	inbound_name: Option<String>,
-	inbound_type: Option<InboundType>,
 	geodata: Option<Arc<GeoData>>,
 	hijack_seen: bool,
 }
@@ -194,7 +174,7 @@ impl AclEngineBuilder {
 		Ok(self.apernet_acl(&rules))
 	}
 
-	/// Add already-lowered [`wind_core::rule::Rule`]s directly, in the given
+	/// Add already-lowered [`wind_rule::Rule`]s directly, in the given
 	/// order. Useful for hosts that convert their own config (e.g. a legacy ACL
 	/// table plus explicit rules) to wind rules before handing them off. These
 	/// are evaluated after apernet rules and before Clash rules.
@@ -213,19 +193,6 @@ impl AclEngineBuilder {
 	/// domain targets).
 	pub fn resolver(mut self, resolver: Arc<dyn Resolver>) -> Self {
 		self.resolver = Some(resolver);
-		self
-	}
-
-	/// Provide a static inbound name so `IN-NAME` rules can match.
-	pub fn inbound_name(mut self, name: impl Into<String>) -> Self {
-		self.inbound_name = Some(name.into());
-		self
-	}
-
-	/// Provide the static inbound type so `IN-TYPE` rules can match. Only set
-	/// this for inbounds that are genuinely SOCKS or HTTP.
-	pub fn inbound_type(mut self, ty: InboundType) -> Self {
-		self.inbound_type = Some(ty);
 		self
 	}
 
@@ -285,8 +252,6 @@ impl AclEngineBuilder {
 			ruleset,
 			guards: self.guards,
 			resolver: self.resolver,
-			inbound_name: self.inbound_name,
-			inbound_type: self.inbound_type,
 			geodata: self.geodata,
 		})
 	}

@@ -8,7 +8,7 @@ import {
 } from '../topbtns/topbtn'
 import { computed } from 'vue'
 import usePanTreeStore from '../pantreestore'
-import { supportsTrashPermanentDelete, supportsTrashRestore } from '../../aliapi/providerFeatures'
+import { supportsTrashPermanentDelete, supportsTrashRestore } from '../../drive/providerFeatures'
 import { t } from '../../i18n'
 
 const props = defineProps({

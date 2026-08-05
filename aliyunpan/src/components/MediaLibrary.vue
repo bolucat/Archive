@@ -905,7 +905,7 @@ import type { IPageVideoPlaylistEntry } from '../store/appstore'
 import { getMediaServerSearch, getMediaServerSuggestions } from '../media-server/contentGateway'
 import { resolveMediaServerImage } from '../media-server/imageSources'
 import { toMsCacheUrl } from '../media-server/imageCache'
-import { isAliyunUser, isCloud123User, isDrive115User, isBaiduUser, isBoxUser, isPikPakUser, isOneDriveUser } from '../aliapi/utils'
+import { isAliyunUser, isCloud123User, isDrive115User, isBaiduUser, isBoxUser, isGoogleUser, isPikPakUser, isOneDriveUser } from '../aliapi/utils'
 import AliDirFileList from '../aliapi/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
@@ -2494,6 +2494,16 @@ const handleEnterFolder = async (file: any) => {
         return mapped
       })
       console.log('使用Box API获取子文件夹文件列表')
+    } else if (isGoogleUser(userId) || driveId === 'google') {
+      const { apiGoogleFileList, mapGoogleFileToAliModel } = await import('../google/dirfilelist')
+      const parentId = fileId === 'google_root' ? 'google_root' : fileId
+      const list = await apiGoogleFileList(userId, parentId)
+      items = list.map((item) => {
+        const mapped = mapGoogleFileToAliModel(item, driveId, parentId)
+        ;(mapped as any).user_id = userId
+        return mapped
+      })
+      console.log('使用Google Drive API获取子文件夹文件列表')
     } else if (isAliyunUser(userId)) {
       // 阿里云盘（默认）
       const result = await AliDirFileList.ApiDirFileList(

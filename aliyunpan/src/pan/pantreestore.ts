@@ -4,7 +4,8 @@ import { h } from 'vue'
 import IconFont from '../components/IconFont.vue'
 import PanDAL from './pandal'
 import TreeStore, { TreeNodeData } from '../store/treestore'
-import { GetDriveID, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { getDriveId as GetDriveID } from '../drive/context'
+import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../utils/driveIdentity'
 import message from '../utils/message'
 import type { QuickFileEntry } from './quickFiles'
 import { t } from '../i18n'
@@ -68,6 +69,15 @@ const usePanTreeStore = defineStore('pantree', {
         namesearch: '',
         key: 'favorite',
         icon: () => fileiconfn('iconcrown'),
+        isLeaf: true,
+        children: []
+      },
+      {
+        __v_skip: true,
+        title: '最近文件',
+        namesearch: '',
+        key: 'recent',
+        icon: () => fileiconfn('iconhistory'),
         isLeaf: true,
         children: []
       },
@@ -238,17 +248,14 @@ const usePanTreeStore = defineStore('pantree', {
       })
     },
 
-    mSaveTreeAllNode(drive_id: string, root: TreeNodeData, rootMap: Map<string, TreeNodeData>) {
+    mSaveTreeAllNode(drive_id: string, roots: TreeNodeData[], rootMap: Map<string, TreeNodeData>) {
       if (this.drive_id !== drive_id) return
+      const rootKeys = new Set(roots.map((root) => root.key))
       const list: TreeNodeData[] = []
-      let hasRoot = false
       for (let i = 0, maxi = this.treeData.length; i < maxi; i++) {
-        if (this.treeData[i].key == root.key) {
-          list.push(root)
-          hasRoot = true
-        } else list.push(this.treeData[i])
+        if (!rootKeys.has(this.treeData[i].key)) list.push(this.treeData[i])
       }
-      if (!hasRoot) list.push(root)
+      list.push(...roots)
       this.treeData = list
       treeDataMap = rootMap
     },

@@ -12,15 +12,15 @@ Date: 2026 年 6 月
 ## 摘要
 
 `acl-ir` 是 `wind-acl` 使用的内部路由程序格式。它把 Clash/Mihomo 规则行（以及任何
-外部转换得到的 `wind_core::rule::Rule`，例如 tuic-server 的 legacy ACL 方言）降低为
+外部转换得到的 `wind_rule::Rule`，例如 tuic-server 的 legacy ACL 方言）降低为
 同一个 `Ruleset`，同时保留 first-match-wins 路由语义、默认出站兜底，以及旧有
-`wind_core::rule::Rule` 的匹配行为。
+`wind_rule::Rule` 的匹配行为。
 
 IR 的形状类似一个小型 nftables 风格引擎：布尔匹配表达式、集合成员检查、verdict
 map、有序链、语句和终结 verdict。v1 实现有意保持兼容边界较窄：对优化有价值的叶子
 节点使用强类型 IR 节点表示，包括域名 exact/suffix/keyword、IP CIDR、源/目标端口和
 网络协议；其它 Mihomo 规则类型通过 `Match::Predicate` 携带，并委托给
-`wind_core::rule::Rule` 求值。
+`wind_rule::Rule` 求值。
 
 ## 目录
 
@@ -39,7 +39,7 @@ map、有序链、语句和终结 verdict。v1 实现有意保持兼容边界较
 ## 1. 引言
 
 ACL 路由器回答一个问题：给定连接上下文，应该由哪个出站处理它，或者是否应该拒绝？
-wind 过去使用扁平的 `Vec<wind_core::rule::Rule>`，并按声明顺序求值。这个模型简单
+wind 过去使用扁平的 `Vec<wind_rule::Rule>`，并按声明顺序求值。这个模型简单
 且兼容 Clash/Mihomo 语法，但难以优化，也没有给转换后的规则（例如 tuic-server 的
 legacy ACL）提供结构化目标。
 
@@ -50,7 +50,7 @@ legacy ACL）提供结构化目标。
 - 为更丰富的路由结构留下明确扩展点，而不强迫 v1 一次实现全部能力。
 
 IR 借鉴 nftables 的引擎形状，但它不是 nftables 前端。它运行在 wind 内部，读取
-`wind_core::rule::MatchContext`，并保留代理路由特有的七层概念，例如域名、进程身
+`wind_rule::MatchContext`，并保留代理路由特有的七层概念，例如域名、进程身
 份、入站元数据、GeoIP/GeoSite 查找以及 rule-set 占位符。
 
 ## 2. 约定与术语
@@ -59,7 +59,7 @@ IR 借鉴 nftables 的引擎形状，但它不是 nftables 前端。它运行在
 “不应该”、“建议”、“可以”和“可选”。这些词按 BCP 14 [RFC2119] [RFC8174] 解释。
 
 - **Match（匹配）**：针对 `MatchContext` 求值的布尔表达式。
-- **Predicate（谓词）**：作为不透明匹配器嵌入 IR 的 `wind_core::rule::Rule`。
+- **Predicate（谓词）**：作为不透明匹配器嵌入 IR 的 `wind_rule::Rule`。
 - **Statement（语句）**：与命中规则关联的非终结动作。
 - **Verdict（裁决）**：路由或控制流决策：forward、reject、drop、return、jump、
   goto 或 verdict-map 查找。
@@ -78,7 +78,7 @@ IR 借鉴 nftables 的引擎形状，但它不是 nftables 前端。它运行在
 `AclEngineBuilder` 按以下顺序构建引擎：
 
 1. 通过 `syntax::apernet` 解析真正的 Hysteria 2（apernet）ACL 条目，并用
-   `apernet::acl_to_rules` 转换为 `wind_core::rule::Rule`。
+   `apernet::acl_to_rules` 转换为 `wind_rule::Rule`。
 2. 通过 `syntax::metacubex` 解析 Clash/Mihomo 规则行。
 3. 把 apernet 派生规则放在 Clash/Mihomo 规则之前并连接起来。
 4. 使用 `Ruleset::from_rules` 构建退化 `Ruleset`。
@@ -89,8 +89,8 @@ IR 借鉴 nftables 的引擎形状，但它不是 nftables 前端。它运行在
 apernet 先于 Clash 的顺序对 `AclEngine` 是规范性的：如果两种表层规则都能匹配同一
 连接，apernet 派生规则获胜。
 
-拥有*其它*规则来源的调用者自行把它们转换为 `wind_core::rule::Rule`，并直接对这些
-值路由（通过 `wind_core::AclRouter` 或退化嵌入）。tuic-server 对它的空格分隔 legacy
+拥有*其它*规则来源的调用者自行把它们转换为 `wind_rule::Rule`，并直接对这些
+值路由（通过 `wind_acl::AclEngine` 或退化嵌入）。tuic-server 对它的空格分隔 legacy
 方言正是这么做：用 `tuic_server::legacy::acl_to_rules` 降低条目，并把转换后的规则连
 接在它的 Clash/Mihomo 规则之前。
 
@@ -121,7 +121,7 @@ enum Match {
     Domain (DomainTest),
 
     InSet { side: Side, set: usize },
-    Predicate(Arc<wind_core::rule::Rule>),
+    Predicate(Arc<wind_rule::Rule>),
 }
 
 enum DomainTest {
@@ -138,7 +138,7 @@ enum DomainTest {
 大小写不敏感的。Keyword 匹配同样是 ASCII 大小写不敏感的。
 
 `Predicate` 是兼容性逃逸口。它必须通过调用 `Rule::matches(ctx)` 求值，因此不透明
-规则精确保留 `wind_core::rule` 行为，包括 `RULE-SET` 当前恒为 false，以及 `SUB-RULE`
+规则精确保留 `wind_rule` 行为，包括 `RULE-SET` 当前恒为 false，以及 `SUB-RULE`
 当前沿用旧有包含规则语义。
 
 ### 4.2. 集合
@@ -293,7 +293,7 @@ Ruleset {
 
 以下规则类型会变为强类型 IR 叶子：
 
-| `wind_core::rule::RuleType` | IR 匹配 |
+| `wind_rule::RuleType` | IR 匹配 |
 | --- | --- |
 | `Domain` | `Domain(Exact)` |
 | `DomainSuffix` | `Domain(Suffix)` |
@@ -320,7 +320,7 @@ Ruleset {
 
 ### 7.1. Clash/Mihomo
 
-Clash/Mihomo 规则行由 `wind_core::rule::Rule::parse` 解析。多行 helper 会跳过空行和
+Clash/Mihomo 规则行由 `wind_rule::Rule::parse` 解析。多行 helper 会跳过空行和
 `#` 注释。
 
 共享规则模型支持以下大类：
@@ -350,7 +350,7 @@ ACL——后者使用 `outbound(address, proto/port, hijack)` 函数调用形式
 <outbound> [address] [ports] [hijack]
 ```
 
-降低过程先把每个 `AclRule` 转换为一个或多个 `wind_core::rule::Rule`
+降低过程先把每个 `AclRule` 转换为一个或多个 `wind_rule::Rule`
 （`tuic_server::legacy::acl_to_rules`），再按第 6 节嵌入这些规则。
 
 地址降低：
@@ -390,7 +390,7 @@ redirect 支持预期使用的 IR 位置。
 apernet 方言是真正的 Hysteria 2 ACL——一种**函数调用**形式
 `outbound(address[, proto/port[, hijack]])`——由 `wind-acl` 的 `syntax::apernet`
 解析，对齐 apernet/hysteria 的 `extras/outbounds/acl` 解析器。降低过程把每个
-`AclRule` 转换为一个或多个 `wind_core::rule::Rule`（`apernet::acl_to_rules`），再按
+`AclRule` 转换为一个或多个 `wind_rule::Rule`（`apernet::acl_to_rules`），再按
 第 6 节嵌入。
 
 地址分派是有序且结构化的（小写化并去除尾随 `.` 后，先匹配者胜）：
@@ -490,7 +490,7 @@ v1 优化器不做非相邻上提、IP verdict map、域名 verdict map 或跨�
 
 v1 实现有意区分 IR 容量与引擎行为：
 
-- `RULE-SET` 仍是 `wind_core::rule::RuleType::RuleSet` 谓词，因此当前恒为 false。
+- `RULE-SET` 仍是 `wind_rule::RuleType::RuleSet` 谓词，因此当前恒为 false。
 - `SUB-RULE` 由 `Predicate` 携带时，仍按旧有 `RuleType::SubRule` 语义求值。
 - GeoIP、ASN 和 GeoSite 规则需要 `MatchContext` 中的查找函数。
   `AclEngine::route` 当前不会提供这些函数。

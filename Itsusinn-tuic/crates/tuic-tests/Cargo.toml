@@ -30,6 +30,7 @@ bytes = "1"
 json5 = { version = "1.3" }
 lexopt = { version = "0.3" }
 eyre = { version = "0.6" }
+async-trait = "0.1"
 fast-socks5 = { version = "1" }
 rustls = { version = "0.23", default-features = false }
 tracing-test = { version = "0.2" }
@@ -38,6 +39,7 @@ serial_test = "3"
 tokio = { version = "1", features = ["full"] }
 aws-lc-rs = { version = "1", default-features = false, optional = true, features = ["prebuilt-nasm"] }
 uuid = "1"
+serde_json = { version = "1", default-features = false, features = ["std"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 
 # HTTP/3 client for the masquerade e2e test (gated behind `h3-masquerade-test`).

@@ -14,9 +14,10 @@ import TreeStore, { TreeNodeData } from '../store/treestore'
 import { dropMoveSelectedFile } from './topbtns/topbtn'
 import message from '../utils/message'
 import { modalUpload } from '../utils/modal'
-import { GetDriveType, isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser, isRemoteDriveUser } from '../aliapi/utils'
+import { getDriveType as GetDriveType } from '../drive/context'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser, isRemoteDriveUser } from '../utils/driveIdentity'
 import { t } from '../i18n'
-import { supportsLocalUpload, supportsMove } from '../aliapi/providerFeatures'
+import { supportsLocalUpload, supportsMove } from '../drive/providerFeatures'
 import { quickFileId, type QuickFileEntry } from './quickFiles'
 
 const treeref = ref()
@@ -85,7 +86,7 @@ watchEffect(() => {
 const handleTreeRightClick = (e: { event: MouseEvent; node: any }) => {
   const { parent = undefined, key } = e.node
   if (key.startsWith('search')) return
-  const isSingleRootDrive = isCloud123User(pantreeStore.user_id || '') || isDrive115User(pantreeStore.user_id || '') || isBaiduUser(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDriveUser(pantreeStore.user_id || '')
+  const isSingleRootDrive = isCloud123User(pantreeStore.user_id || '') || isDrive115User(pantreeStore.user_id || '') || isBaiduUser(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isGoogleUser(pantreeStore.user_id || '') || isRemoteDriveUser(pantreeStore.user_id || '')
   if (!isSingleRootDrive && key.length < 40) return
   pantreeStore.mTreeSelected(e)
   onShowRightMenu('leftpanmenu', e.event.clientX, e.event.clientY)
@@ -226,10 +227,11 @@ const filterTreeData = computed(() => {
   const isCloudUser = isCloud123User(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDrive
   const baseList = isCloudUser
     ? pantreeStore.treeData.filter((item) => {
+      if (item.key === 'recent') return isBoxUser(pantreeStore.user_id || '')
       if (item.key === 'backup_root') return false
       if (item.key === 'resource_root') return false
       if (item.key === 'pic_root') return false
-      if ((isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDrive) && (item.key === 'video' || item.key === 'recover' || item.key === 'favorite')) return false
+      if ((isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isRemoteDrive) && (item.key === 'video' || item.key === 'recover' || item.key === 'favorite')) return false
       if (isRemoteDrive && (item.key === 'trash' || item.key === 'search')) return false
       return true
     })
@@ -279,7 +281,7 @@ const isPreviewableNode = (data: TreeNodeData | undefined): boolean => {
     // leaf placeholder, but still might be a real folder; only block if no drive_id
   }
   const userId = (data as any).user_id || pantreeStore.user_id || ''
-  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isQuarkUser(userId) || isCloud139User(userId) || isCloud189User(userId) || isGuangyaUser(userId) || isRemoteDriveUser(userId)
+  const isSingleRootDrive = isCloud123User(userId) || isDrive115User(userId) || isBaiduUser(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isGoogleUser(userId) || isQuarkUser(userId) || isCloud139User(userId) || isCloud189User(userId) || isGuangyaUser(userId) || isRemoteDriveUser(userId)
   if (!isSingleRootDrive && key.length < 40) return false
   return true
 }

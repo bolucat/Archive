@@ -13,6 +13,7 @@ use std::{
 	time::Duration,
 };
 
+use async_trait::async_trait;
 use tracing::Instrument;
 use wind_acl::AclEngine;
 use wind_base::{
@@ -20,9 +21,9 @@ use wind_base::{
 	load_balance::{LoadBalanceOpts, LoadBalanceOutbound, LoadBalanceStrategy},
 	resolve::resolve_target,
 };
-use wind_core::{OutboundAction, RouteAction, Router, rule::Rule, types::TargetAddr, utils::is_private_ip};
+use wind_core::{AbstractInbound, Dispatcher, FlowContext, Outbound, RouteAction, Router, rule::Rule, utils::is_private_ip};
 use wind_geodata::GeoData;
-use wind_socks::action::{Socks5Action, Socks5ActionOpts};
+use wind_socks::action::{SocksOutbound, SocksOutboundOpts};
 
 use crate::{
 	config::{ExperimentalConfig, OutboundRule},
@@ -36,8 +37,9 @@ pub enum ServerInbound {
 	Tuiche(wind_tuic::quiche::TuicheInbound),
 }
 
-impl wind_core::AbstractInbound for ServerInbound {
-	async fn listen(&self, cb: &impl wind_core::InboundCallback) -> eyre::Result<()> {
+#[async_trait]
+impl<R: Router> AbstractInbound<R> for ServerInbound {
+	async fn listen(&self, cb: &Dispatcher<R>) -> eyre::Result<()> {
 		match self {
 			ServerInbound::Tuic(inbound) => inbound.listen(cb).await,
 			#[cfg(feature = "quiche")]
@@ -46,7 +48,7 @@ impl wind_core::AbstractInbound for ServerInbound {
 	}
 }
 
-/// Build an [`OutboundAction`] for a single configured outbound rule.
+/// Build an [`Outbound`] for a single configured outbound rule.
 ///
 /// When `bind_ipv4` + `bind_ipv6` together contain **more than one** address
 /// (and `kind == "direct"`), the addresses are wrapped in a
@@ -56,9 +58,9 @@ pub fn make_outbound_action(
 	rule: &OutboundRule,
 	resolver: Arc<dyn wind_core::Resolver>,
 	stream_timeout: Duration,
-) -> Arc<dyn OutboundAction> {
+) -> Arc<dyn Outbound> {
 	match rule.kind.as_str() {
-		"socks5" => Arc::new(Socks5Action::new(Socks5ActionOpts {
+		"socks5" => Arc::new(SocksOutbound::new(SocksOutboundOpts {
 			addr: rule.addr.clone().unwrap_or_default(),
 			username: rule.username.clone(),
 			password: rule.password.clone(),
@@ -88,7 +90,7 @@ fn build_direct_or_lb(
 	rule: &OutboundRule,
 	resolver: Arc<dyn wind_core::Resolver>,
 	stream_timeout: Duration,
-) -> Arc<dyn OutboundAction> {
+) -> Arc<dyn Outbound> {
 	// Build the domain for each address family.  An empty family
 	// contributes a single [None] so the cartesian product still includes
 	// the other family's addresses.
@@ -119,14 +121,14 @@ fn build_direct_or_lb(
 	}
 
 	// Cartesian product: each (v4, v6) pair → one DirectOutbound.
-	let proxies: Vec<Arc<dyn OutboundAction>> = v4_opts
+	let proxies: Vec<Arc<dyn Outbound>> = v4_opts
 		.iter()
 		.flat_map(|v4| v6_opts.iter().map(move |v6| (*v4, *v6)))
 		.map(|(v4, v6)| {
 			Arc::new(DirectOutbound::new(
 				make_direct_opts(rule, stream_timeout, v4, v6),
 				resolver.clone(),
-			)) as Arc<dyn OutboundAction>
+			)) as Arc<dyn Outbound>
 		})
 		.collect();
 
@@ -208,18 +210,18 @@ impl TuicRouter {
 }
 
 impl Router for TuicRouter {
-	async fn route(&self, target: &TargetAddr, is_tcp: bool) -> eyre::Result<RouteAction> {
-		let span = tracing::debug_span!("route", target = %target, proto = if is_tcp { "tcp" } else { "udp" });
-		self.do_route(target, is_tcp).instrument(span).await
+	fn route(&self, ctx: &FlowContext) -> impl std::future::Future<Output = eyre::Result<RouteAction>> + Send {
+		let span = tracing::debug_span!("route", target = %ctx.target, proto = if ctx.is_tcp() { "tcp" } else { "udp" });
+		async move { self.do_route(ctx).instrument(span).await }
 	}
 }
 
 impl TuicRouter {
-	async fn do_route(&self, target: &TargetAddr, is_tcp: bool) -> eyre::Result<RouteAction> {
+	async fn do_route(&self, ctx: &FlowContext) -> eyre::Result<RouteAction> {
 		let need_resolve = self.experimental.drop_loopback || self.experimental.drop_private;
 
 		if need_resolve {
-			let resolved = resolve_target(target, self.resolver.as_ref()).await?;
+			let resolved = resolve_target(&ctx.target, self.resolver.as_ref()).await?;
 			if self.experimental.drop_loopback && resolved.ip().is_loopback() {
 				tracing::debug!(resolved = %resolved, "dropping loopback connection");
 				return Ok(RouteAction::Reject(format!("loopback address rejected: {}", resolved)));
@@ -231,7 +233,7 @@ impl TuicRouter {
 		}
 
 		if let Some(acl_engine) = &self.acl_engine {
-			return acl_engine.route(target, is_tcp).await;
+			return acl_engine.route(ctx).await;
 		}
 
 		Ok(RouteAction::Forward("default".to_string()))

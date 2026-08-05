@@ -2,14 +2,14 @@
 //!
 //! Mihomo rule lines (`DOMAIN-SUFFIX,google.com,proxy`) are the canonical
 //! surface form of this crate's shared rule representation:
-//! [`wind_core::rule::Rule`] mirrors Mihomo's rule types one-to-one. This
+//! [`wind_rule::Rule`] mirrors Mihomo's rule types one-to-one. This
 //! module is the `syntax`-level entry point for turning Mihomo rule text into
 //! that representation.
 //!
 //! Because the shared representation *is* the Mihomo model, "conversion" here
 //! is parsing — no lossy mapping step is involved.
 
-pub use wind_core::rule::{Rule, RuleParseError};
+pub use wind_rule::{Rule, RuleParseError};
 
 /// Parse a single Mihomo rule line, e.g. `DOMAIN-SUFFIX,google.com,proxy`.
 ///
@@ -60,7 +60,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use wind_core::rule::{MatchContext, RuleType};
+	use wind_rule::{MatchContext, RuleType};
 
 	use super::*;
 

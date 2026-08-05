@@ -1,20 +1,7 @@
 import { IAliGetFileModel } from '../aliapi/alimodels'
 import AliDirFileList from '../aliapi/dirfilelist'
 import AliFileWalk from '../aliapi/filewalk'
-import {
-  isAliyunUser,
-  isBaiduUser,
-  isBoxUser,
-  isCloud139User,
-  isCloud189User,
-  isCloud123User,
-  isDrive115User,
-  isDropboxUser,
-  isGuangyaUser,
-  isOneDriveUser,
-  isPikPakUser,
-  isQuarkUser
-} from '../aliapi/utils'
+import { isAliyunUser } from '../aliapi/utils'
 import UserDAL from '../user/userdal'
 import { ITokenInfo } from '../user/userstore'
 import useMusicLibraryStore from '../store/musiclibrary'
@@ -24,17 +11,6 @@ import { buildLibrarySourceId } from '../types/librarySource'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
 
-import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
-import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
-import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
-import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
-import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
-import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
-import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
-import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
-import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
-import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
-import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
 
 const AUDIO_EXTS = new Set([
   '.mp3', '.flac', '.wav', '.ape', '.ogg', '.aac',
@@ -301,6 +277,7 @@ class MusicScanner {
       'dropbox': 'dropbox_root',
       'onedrive': 'onedrive_root',
       'box': '0',
+      'google': 'google_root',
       'quark': '0',
       '139': 'cloud139_root',
       '189': 'cloud189_root',
@@ -314,6 +291,7 @@ class MusicScanner {
       token.tokenfrom === 'dropbox' ? 'dropbox' :
       token.tokenfrom === 'onedrive' ? 'onedrive' :
       token.tokenfrom === 'box' ? 'box' :
+      token.tokenfrom === 'google' ? 'google' :
       token.tokenfrom === 'quark' ? 'quark' :
       token.tokenfrom === '139' ? 'cloud139' :
       token.tokenfrom === '189' ? 'cloud189' :
@@ -451,111 +429,6 @@ class MusicScanner {
 
     const providerItems = await listProviderFolderItems({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
     if (providerItems) return providerItems
-
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      const list = await apiCloud123FileList(user_id, fileId || '0', 100)
-      return list.map((item: any) => {
-        const mapped = mapCloud123FileToAliModel(item)
-        mapped.drive_id = drive_id
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      const list = await apiDrive115FileList(user_id, fileId || '0', 500, 0, true, { silent: this.silent })
-      return list.map((item: any) => {
-        const mapped = mapDrive115FileToAliModel(item, drive_id)
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      const parentPath = (folder as any).path || folder.file_id || '/'
-      const list = await apiBaiduFileList(user_id, parentPath, 'name', 0, 1000)
-      return list.map((item: any) => {
-        const mapped = mapBaiduFileToAliModel(item, drive_id, folder.file_id || '')
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      const parentId = fileId && !fileId.includes('root') ? fileId : 'pikpak_root'
-      const list = await apiPikPakFileList(user_id, parentId, 500)
-      return (list?.items || []).map((item: any) => {
-        const mapped = mapPikPakFileToAliModel(item, drive_id, parentId)
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      const parentId = fileId && !fileId.includes('root') ? fileId : 'dropbox_root'
-      const list = await apiDropboxFileList(user_id, parentId, 500)
-      return list.map((item: any) => {
-        const mapped = mapDropboxFileToAliModel(item, drive_id, parentId)
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      const parentId = fileId && !fileId.includes('root') ? fileId : 'onedrive_root'
-      const list = await apiOneDriveFileList(user_id, parentId)
-      return list.map((item: any) => {
-        const mapped = mapOneDriveItemToAliModel(item, drive_id, parentId)
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      const parentId = fileId && !fileId.includes('root') ? fileId : 'box_root'
-      const list = await apiBoxFileList(user_id, parentId, 500)
-      return list.map((item: any) => {
-        const mapped = mapBoxItemToAliModel(item, drive_id, parentId)
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      const resp = await apiQuarkFileList(user_id, fileId || '0', 100, 1)
-      return resp.items.map((item: any) => {
-        const mapped = mapQuarkFileToAliModel(item, drive_id, fileId || '0')
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isCloud139User(user_id) || drive_id === 'cloud139') {
-      const list = await apiCloud139FileList(user_id, fileId || 'cloud139_root', 100)
-      return list.map((item: any) => {
-        const mapped = mapCloud139FileToAliModel(item, drive_id, fileId || 'cloud139_root')
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isCloud189User(user_id) || drive_id === 'cloud189') {
-      const list = await apiCloud189FileList(user_id, fileId || 'cloud189_root', 1000)
-      return list.map((item: any) => {
-        const mapped = mapCloud189FileToAliModel(item, drive_id, fileId || 'cloud189_root')
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
-
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      const list = await apiGuangyaFileList(user_id, fileId || 'guangya_root', 200)
-      return list.map((item: any) => {
-        const mapped = mapGuangyaFileToAliModel(item, drive_id, fileId || 'guangya_root')
-        ;(mapped as any).user_id = user_id
-        return mapped
-      })
-    }
 
     if (isAliyunUser(user_id)) {
       const result = await AliDirFileList.ApiDirFileList(

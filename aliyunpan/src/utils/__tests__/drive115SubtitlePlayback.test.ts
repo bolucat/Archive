@@ -13,6 +13,13 @@ describe('115 subtitle playback', () => {
     expect(source).toContain('proxy_headers: defaultHeaders ? JSON.stringify(defaultHeaders) : undefined')
   })
 
+  it('proxies web playback whenever a provider requires download headers', () => {
+    const source = readSource('src/layout/PageVideo.vue')
+
+    expect(source).toContain('if (!pageVideo.encType && !hasPlaybackHeaders(headers)) return url')
+    expect(source).toContain('proxy_headers: hasPlaybackHeaders(headers) ? JSON.stringify(headers) : undefined')
+  })
+
   it('loads the default embedded subtitle and passes its format to Artplayer', () => {
     const source = readSource('src/layout/PageVideo.vue')
 
@@ -27,7 +34,7 @@ describe('115 subtitle playback', () => {
     const playerSource = readSource('src/layout/PageVideo.vue')
     const source = readSource('src/utils/proxyhelper.ts')
 
-    expect(playerSource).toContain('await AliFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400)')
+    expect(playerSource).toContain('await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400)')
     expect(playerSource).toContain("proxy_kind: 'subtitle'")
     expect(playerSource).toContain('proxy_headers: hasPlaybackHeaders(data.headers) ? JSON.stringify(data.headers) : undefined')
     expect(playerSource).not.toContain('const data = await AliFile.ApiFileDownText(pageVideo.user_id, pageVideo.drive_id, item.file_id')
@@ -36,11 +43,12 @@ describe('115 subtitle playback', () => {
   })
 
   it('preserves provider download headers for web and external-player subtitles', () => {
-    const apiSource = readSource('src/aliapi/file.ts')
+    const cloud139Source = readSource('src/cloud139/adapter.ts')
+    const cloud189Source = readSource('src/cloud189/adapter.ts')
     const playerSource = readSource('src/utils/playerhelper.ts')
 
-    expect(apiSource).toContain('headers: cloud139DownloadHeaders()')
-    expect(apiSource).toContain('headers: cloud189DownloadHeaders()')
+    expect(cloud139Source).toContain('headers: cloud139DownloadHeaders()')
+    expect(cloud189Source).toContain('headers: cloud189DownloadHeaders()')
     expect(playerSource).toContain("proxy_kind: 'subtitle'")
     expect(playerSource).toContain('proxy_headers: headers && Object.values(headers).some(Boolean) ? JSON.stringify(headers) : undefined')
     expect(playerSource).toContain('subTitleUrl = await resolveExternalSubtitleUrl(token.user_id, subTitleFile)')

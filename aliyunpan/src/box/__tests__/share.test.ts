@@ -18,6 +18,12 @@ describe('Box share helpers', () => {
     })
   })
 
+  it('includes optional password and expiration while creating a shared link', () => {
+    expect(buildBoxSharedLinkBody('2026-06-01T08:00:00.000Z', '1234')).toEqual({
+      shared_link: { access: 'open', permissions: { can_download: true }, password: '1234', unshared_at: '2026-06-01T08:00:00.000Z' }
+    })
+  })
+
   it('maps Box shared link into app share item', () => {
     const item = mapBoxSharedLinkToAliShareItem({
       id: 'file-id',

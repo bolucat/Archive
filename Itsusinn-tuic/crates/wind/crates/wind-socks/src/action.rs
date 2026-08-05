@@ -5,7 +5,7 @@ use fast_socks5::client::{Config as Socks5Config, Socks5Stream};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tracing::Instrument;
 use wind_core::{
-	OutboundAction,
+	FlowContext, Outbound,
 	tcp::{AbstractTcpStream, TcpKeepalive},
 	types::TargetAddr,
 	udp::UdpStream,
@@ -13,7 +13,7 @@ use wind_core::{
 
 /// Options for a SOCKS5 outbound action handler.
 #[derive(Clone, Debug)]
-pub struct Socks5ActionOpts {
+pub struct SocksOutboundOpts {
 	/// SOCKS5 proxy address (e.g. "127.0.0.1:1080").
 	pub addr: String,
 	/// Optional authentication credentials.
@@ -30,20 +30,21 @@ pub struct Socks5ActionOpts {
 	pub tcp_keepalive: Option<TcpKeepalive>,
 }
 
-/// SOCKS5 outbound handler implementing the object-safe `OutboundAction` trait.
-pub struct Socks5Action {
-	opts: Socks5ActionOpts,
+/// SOCKS5 outbound handler implementing the object-safe [`Outbound`] trait.
+pub struct SocksOutbound {
+	opts: SocksOutboundOpts,
 }
 
-impl Socks5Action {
-	pub fn new(opts: Socks5ActionOpts) -> Self {
+impl SocksOutbound {
+	pub fn new(opts: SocksOutboundOpts) -> Self {
 		Self { opts }
 	}
 }
 
 #[async_trait]
-impl OutboundAction for Socks5Action {
-	async fn handle_tcp(&self, target: TargetAddr, mut stream: Box<dyn AbstractTcpStream>) -> eyre::Result<()> {
+impl Outbound for SocksOutbound {
+	async fn handle_tcp(&self, ctx: FlowContext, mut stream: Box<dyn AbstractTcpStream>) -> eyre::Result<()> {
+		let target = ctx.target;
 		let span = tracing::debug_span!("socks5_tcp", target = %target, addr = %self.opts.addr);
 		async move {
 			let mut socks_stream = connect_socks5_tcp(&self.opts.addr, &target, &self.opts).await?;
@@ -58,7 +59,7 @@ impl OutboundAction for Socks5Action {
 		.await
 	}
 
-	async fn handle_udp(&self, _udp_stream: UdpStream) -> eyre::Result<()> {
+	async fn handle_udp(&self, _ctx: FlowContext, _udp_stream: UdpStream) -> eyre::Result<()> {
 		if !self.opts.allow_udp.unwrap_or(false) {
 			tracing::debug!("socks5 outbound disallows UDP, dropping");
 			return Ok(());
@@ -72,7 +73,7 @@ impl OutboundAction for Socks5Action {
 async fn connect_socks5_tcp(
 	socks_addr: &str,
 	target_addr: &TargetAddr,
-	opts: &Socks5ActionOpts,
+	opts: &SocksOutboundOpts,
 ) -> eyre::Result<Socks5Stream<TcpStream>> {
 	let config = Socks5Config::default();
 

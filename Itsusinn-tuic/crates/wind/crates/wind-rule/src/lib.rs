@@ -58,7 +58,7 @@
 //! # Usage
 //!
 //! ```ignore
-//! use wind_core::rule::{Rule, MatchContext, NetworkType};
+//! use wind_rule::{Rule, MatchContext, NetworkType};
 //!
 //! let rules: Vec<Rule> = Rule::parse_rules(r#"
 //!     DOMAIN-SUFFIX,google.com,proxy

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDropboxSearchBody, filterDropboxSearchResults, parseDropboxSearchId } from '../search'
+import { buildDropboxSearchBody, buildDropboxSearchContinueBody, filterDropboxSearchResults, parseDropboxSearchId } from '../search'
 import { mapDropboxFileToAliModel } from '../dirfilelist'
 
 (globalThis as any).pinyinlite = (input: string) => input.split('').map((char) => [char])
@@ -24,6 +24,10 @@ describe('Dropbox search helpers', () => {
         max_results: 100
       }
     })
+  })
+
+  it('builds the search_v2 continuation cursor body', () => {
+    expect(buildDropboxSearchContinueBody('cursor-1')).toEqual({ cursor: 'cursor-1' })
   })
 
   it('filters advanced search results locally', () => {

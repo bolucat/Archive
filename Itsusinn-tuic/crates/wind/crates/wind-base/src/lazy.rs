@@ -5,9 +5,12 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use async_trait::async_trait;
 use eyre;
 use tokio::sync::{Mutex, Notify};
-use wind_core::{OutboundAction, tcp::AbstractTcpStream, types::TargetAddr, udp::UdpStream};
+use wind_core::{FlowContext, Outbound, tcp::AbstractTcpStream, udp::UdpStream};
 
-/// Wraps a future that produces an [`OutboundAction`] and only executes it
+/// Boxed future that produces the initialised [`Outbound`] handler.
+type OutboundFactory = Pin<Box<dyn Future<Output = eyre::Result<Arc<dyn Outbound>>> + Send>>;
+
+/// Wraps a future that produces an [`Outbound`] and only executes it
 /// once, on the first call to [`handle_tcp`] or [`handle_udp`].  Subsequent
 /// calls delegate to the already-initialised handler.
 ///
@@ -24,11 +27,11 @@ pub struct LazyOutbound {
 
 enum LazyState {
 	/// Factory has not yet been called.
-	Uninit(Pin<Box<dyn Future<Output = eyre::Result<Arc<dyn OutboundAction>>> + Send>>),
+	Uninit(OutboundFactory),
 	/// One caller is currently running the factory; others must wait.
 	Initializing,
 	/// The handler is ready.
-	Initialized(Arc<dyn OutboundAction>),
+	Initialized(Arc<dyn Outbound>),
 	/// Permanent failure — all future calls will return this error.
 	Failed(String),
 }
@@ -36,7 +39,7 @@ enum LazyState {
 impl LazyOutbound {
 	/// Wrap `factory` — an async closure that builds the real outbound —
 	/// so that it runs at most once, on first use.
-	pub fn new(factory: Pin<Box<dyn Future<Output = eyre::Result<Arc<dyn OutboundAction>>> + Send>>) -> Self {
+	pub fn new(factory: OutboundFactory) -> Self {
 		Self {
 			state: Mutex::new(LazyState::Uninit(factory)),
 			ready: Notify::new(),
@@ -46,7 +49,7 @@ impl LazyOutbound {
 	/// Ensure the inner handler is initialised and return a clone of the
 	/// `Arc`.  This is the core synchronisation point — every public method
 	/// calls it first.
-	async fn get_or_init(&self) -> eyre::Result<Arc<dyn OutboundAction>> {
+	async fn get_or_init(&self) -> eyre::Result<Arc<dyn Outbound>> {
 		loop {
 			{
 				let guard = self.state.lock().await;
@@ -103,14 +106,14 @@ impl LazyOutbound {
 }
 
 #[async_trait]
-impl OutboundAction for LazyOutbound {
-	async fn handle_tcp(&self, target: TargetAddr, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+impl Outbound for LazyOutbound {
+	async fn handle_tcp(&self, ctx: FlowContext, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
 		let handler = self.get_or_init().await?;
-		handler.handle_tcp(target, stream).await
+		handler.handle_tcp(ctx, stream).await
 	}
 
-	async fn handle_udp(&self, stream: UdpStream) -> eyre::Result<()> {
+	async fn handle_udp(&self, ctx: FlowContext, stream: UdpStream) -> eyre::Result<()> {
 		let handler = self.get_or_init().await?;
-		handler.handle_udp(stream).await
+		handler.handle_udp(ctx, stream).await
 	}
 }

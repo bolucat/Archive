@@ -1,5 +1,5 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getDrive115Token } from './auth'
 import { DRIVE115_DOWN_AGENT } from './constants'
 import { registerDrive115PlaybackAuth } from './playbackAuth'
 
@@ -7,16 +7,7 @@ export const apiDrive115DownUrl = async (
   user_id: string,
   pick_code: string
 ): Promise<{ url: string; size: number; headers: Record<string, string> } | string> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return '未登录 115 网盘'
   if (!pick_code) return '文件提取码缺失'
   const body = new URLSearchParams()

@@ -3,6 +3,7 @@ import path from 'path'
 import TreeStore from '../store/treestore'
 import { useDownedStore, useDowningStore, useFootStore, useSettingStore, useUserStore } from '../store'
 import { ClearFileName } from '../utils/filehelper'
+import message from '../utils/message'
 import {
   AriaAddUrl,
   AriaConnect,
@@ -23,6 +24,7 @@ import { SHA256 } from 'crypto-js'
 import { shouldRemoveAriaStoppedResult } from '../utils/aria2Rpc'
 import { resolveAriaProgressErrorState } from './integration/downloadProgressState'
 import { buildBtControlFileCandidates, isBtContentComplete, resolveBtDownloadTarget, resolveFollowedBtGid } from './integration/btDownloadTarget'
+import { resolveDriveFileToken } from '../drive/account'
 
 export interface IStateDownFile {
   DownID: string
@@ -83,7 +85,7 @@ export interface IStateDownInfo {
   torrentUrl?: string
   selectFile?: string
   split?: number
-  offlineProvider?: 'cloud123' | 'pikpak' | 'guangya' | 'drive115'
+  offlineProvider?: 'cloud123' | 'pikpak' | 'guangya' | 'drive115' | 'dropbox'
   offlineTaskId?: string
   offlineDirId?: string
 }
@@ -213,7 +215,7 @@ export default class DownDAL {
    * @param savePath
    * @param needPanPath
    */
-  static aAddDownload(fileList: IAliGetFileModel[], savePath: string, needPanPath: boolean) {
+  static async aAddDownload(fileList: IAliGetFileModel[], savePath: string, needPanPath: boolean) {
     const userID = useUserStore().user_id
     const settingStore = useSettingStore()
 
@@ -230,7 +232,13 @@ export default class DownDAL {
     const sep = settingStore.ariaSavePath.indexOf('/') >= 0 ? '/' : '\\'
     for (let f = 0; f < fileList.length; f++) {
       const file = fileList[f]
-      const name = ClearFileName(DecodeEncName(userID, file).name)
+      const token = await resolveDriveFileToken(file as IAliGetFileModel & { user_id?: string }, userID)
+      if (!token?.user_id) {
+        message.error(`添加下载失败：找不到 ${file.drive_id} 对应的已登录账号`)
+        continue
+      }
+      const fileUserId = token.user_id
+      const name = ClearFileName(DecodeEncName(fileUserId, file).name)
       let fullPath = savePath
       if (needPanPath) {
         if (cPath != '' && cPid == file.parent_file_id) fullPath = cPath
@@ -259,10 +267,10 @@ export default class DownDAL {
       let downloadurl = ''
       let crc64 = ''
       const downitem: IStateDownFile = {
-        DownID: userID + '|' + file.file_id,
+        DownID: fileUserId + '|' + file.file_id,
         Info: {
           GID: gid,
-          user_id: userID,
+          user_id: fileUserId,
           DownSavePath: fullPath,
           ariaRemote: ariaRemote,
           file_id: file.file_id,
@@ -512,6 +520,7 @@ export default class DownDAL {
     await DownDAL.aPikPakOfflineProgress()
     await DownDAL.aGuangyaOfflineProgress()
     await DownDAL.aDrive115OfflineProgress()
+    await DownDAL.aDropboxOfflineProgress()
 
     downingStore.mRefreshListDataShow(true)
     downedStore.mRefreshListDataShow(true)
@@ -727,6 +736,30 @@ export default class DownDAL {
     return useDowningStore().ListDataDowningCount > 0
   }
 
+  static async aAddDropboxOfflineDownload(url: string, fileName: string, dirID: string | undefined) {
+    const userID = useUserStore().user_id
+    if (!userID) return { success: false, message: '请先登录' }
+    const { buildDropboxUploadPath } = await import('../dropbox/upload')
+    const { apiDropboxOfflineCreate } = await import('../dropbox/offline')
+    const fallbackName = (() => {
+      try { return decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() || 'download') } catch { return 'download' }
+    })()
+    const name = fileName || fallbackName
+    const targetPath = buildDropboxUploadPath(dirID || 'dropbox_root', name)
+    const resp = await apiDropboxOfflineCreate(userID, url, targetPath)
+    if (!resp.taskId) return { success: false, message: resp.error || '创建 Dropbox 离线下载失败' }
+    DownDAL.aTrackDropboxOfflineDownload(userID, url, name, dirID, resp.taskId)
+    return { success: true, message: '' }
+  }
+
+  static aTrackDropboxOfflineDownload(userID: string, url: string, fileName: string, dirID: string | undefined, taskId: string) {
+    useDowningStore().mAddDownload({ downlist: [{
+      DownID: `${userID}|dropbox_offline_${taskId}`,
+      Info: { GID: `dropbox_offline_${taskId}`, user_id: userID, DownSavePath: '', ariaRemote: false, file_id: '', drive_id: 'dropbox', name: fileName || url, size: 0, sizestr: '', icon: 'iconcloud-download', isDir: false, encType: '', sha1: '', crc64: '', offlineProvider: 'dropbox', offlineTaskId: taskId, offlineDirId: dirID || '' },
+      Down: { DownState: '离线下载中', DownTime: Date.now(), DownSize: 0, DownSpeed: 0, DownSpeedStr: '', DownProcess: 0, IsStop: false, IsDowning: true, IsCompleted: false, IsFailed: false, FailedCode: 0, FailedMessage: '', AutoTry: 0, DownUrl: url }
+    }] })
+  }
+
   static async aAddCloud123OfflineDownload(url: string, fileName: string, dirID: string | undefined) {
     const userID = useUserStore().user_id
     if (!userID) return { success: false, message: '请先登录' }
@@ -938,6 +971,36 @@ export default class DownDAL {
   }
 
   private static cloud123OfflineTick = 0
+
+  private static dropboxOfflineTick = 0
+
+  static async aDropboxOfflineProgress() {
+    const list = useDowningStore().ListDataRaw
+    if (!list.length) return
+    DownDAL.dropboxOfflineTick = (DownDAL.dropboxOfflineTick + 1) % 5
+    if (DownDAL.dropboxOfflineTick !== 0) return
+    const { apiDropboxOfflineProcess } = await import('../dropbox/offline')
+    const saveList: IStateDownFile[] = []
+    for (const item of list) {
+      if (item.Info.offlineProvider !== 'dropbox' || !item.Info.offlineTaskId || item.Down.IsCompleted || item.Down.IsFailed) continue
+      const info = await apiDropboxOfflineProcess(item.Info.user_id, item.Info.offlineTaskId)
+      if (info.complete) {
+        item.Down.IsCompleted = true
+        item.Down.IsDowning = false
+        item.Down.DownState = '离线下载完成'
+        item.Down.DownProcess = 100
+      } else if (info.failed) {
+        item.Down.IsFailed = true
+        item.Down.IsDowning = false
+        item.Down.DownState = '离线下载失败'
+        item.Down.FailedMessage = info.error || 'Dropbox 离线下载失败'
+      } else {
+        item.Down.DownState = '离线下载中'
+      }
+      saveList.push(item)
+    }
+    if (saveList.length) await DBDown.saveDownings(JSON.parse(JSON.stringify(saveList)))
+  }
 
   static async aCloud123OfflineProgress() {
     const downingStore = useDowningStore()

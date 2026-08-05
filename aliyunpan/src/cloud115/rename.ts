@@ -1,5 +1,5 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getDrive115Token } from './auth'
 
 export type Drive115RenameResult = {
   file_id: string
@@ -12,7 +12,7 @@ export const apiDrive115Rename = async (
   file_id: string,
   new_name: string
 ): Promise<Drive115RenameResult> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return { file_id, name: new_name, success: false }
   const body = new URLSearchParams()
   body.set('file_id', file_id)

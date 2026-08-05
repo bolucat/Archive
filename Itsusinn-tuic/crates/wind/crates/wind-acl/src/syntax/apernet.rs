@@ -3,7 +3,7 @@
 //! Parses the genuine apernet/hysteria ACL — a **function-call** form,
 //! `outbound(address[, proto/port[, hijack]])` (e.g. `reject(geoip:cn)`,
 //! `default(8.8.8.8, udp/53, 1.1.1.1)`) — into [`AclRule`]s and lowers them to
-//! `wind_core::rule::Rule`s via [`acl_to_rules`].
+//! `wind_rule::Rule`s via [`acl_to_rules`].
 //!
 //! This is distinct from the tuic-server `legacy` dialect, which is
 //! space-separated (`proxy 10.0.0.0/8 tcp/443`). The grammar and lowering here
@@ -43,7 +43,7 @@ use std::{fmt, net::IpAddr};
 use pest::Parser;
 use pest_derive::Parser;
 use serde::{Deserialize, Deserializer, Serialize, de};
-use wind_core::rule::{self as wrule, NetworkType};
+use wind_rule::{self as wrule, NetworkType};
 
 #[derive(Parser)]
 #[grammar = "syntax/apernet.pest"]
@@ -622,7 +622,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use wind_core::rule::MatchContext;
+	use wind_rule::MatchContext;
 
 	use super::*;
 

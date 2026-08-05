@@ -91,7 +91,7 @@ const handleLogin = () => {
   useUserStore().userShowLogin = true
 }
 
-const activeProvider = ref<'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'guangya' | 'dropbox' | 'onedrive' | 'box' | 'webdav' | 'alist'>('aliyun')
+const activeProvider = ref<'aliyun' | 'cloud123' | '115' | 'baidu' | 'pikpak' | 'guangya' | 'dropbox' | 'onedrive' | 'box' | 'google' | 'webdav' | 'alist'>('aliyun')
 const userListState = ref<ITokenInfo[]>([])
 
 const refreshUserList = async () => {
@@ -135,6 +135,11 @@ const handleOneDriveLogin = () => {
 
 const handleBoxLogin = () => {
   localStorage.setItem('login_provider', 'box')
+  useUserStore().userShowLogin = true
+}
+
+const handleGoogleLogin = () => {
+  localStorage.setItem('login_provider', 'google')
   useUserStore().userShowLogin = true
 }
 
@@ -358,6 +363,7 @@ watch(
           <a-tab-pane key='dropbox' title='Dropbox' />
           <a-tab-pane key='onedrive' title='OneDrive' />
           <a-tab-pane key='box' title='Box' />
+          <a-tab-pane key='google' title='Google Drive' />
           <a-tab-pane key='webdav' title='WebDAV' />
           <a-tab-pane key='alist' title='AList' />
         </a-tabs>
@@ -466,6 +472,16 @@ watch(
             @click='handleBoxLogin()'
           >
             登录 Box
+          </a-button>
+          <a-button
+            v-else-if="activeProvider === 'google'"
+            type='outline'
+            size='small'
+            tabindex='-1'
+            style='margin: 0 0 8px 0'
+            @click='handleGoogleLogin()'
+          >
+            登录 Google Drive
           </a-button>
           <a-button
             v-else-if="activeProvider === 'webdav' || activeProvider === 'alist'"

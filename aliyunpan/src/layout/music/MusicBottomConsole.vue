@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { FileText, Heart, List, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward, SlidersHorizontal, Volume2, VolumeX } from 'lucide-vue-next'
+import SoundEffectBtn from '../../components/SoundEffectBtn.vue'
 import { t as tt } from '../../i18n'
 
 type PlayMode = 'list' | 'loop-list' | 'loop-one' | 'shuffle'
@@ -124,6 +125,7 @@ const qualityOptions = [
       </div>
 
       <div class="control-cluster modes">
+        <SoundEffectBtn class="sound-effect-btn" />
         <button id="visual-console-btn" :class="['ctrl-btn', showFxPanel ? 'active' : '']" :title="tt('music.visualConsole')" @click="emit('toggle-fx')">
           <SlidersHorizontal :size="21" :stroke-width="1.85" />
         </button>
@@ -386,6 +388,28 @@ const qualityOptions = [
 .ctrl-btn:disabled {
   opacity: .38;
   pointer-events: none;
+}
+.sound-effect-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+}
+.sound-effect-btn :deep(.se-trigger) {
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 11px;
+  color: rgba(255,255,255,.70);
+  background: transparent;
+  transition: color .18s, transform .18s, text-shadow .18s, background .18s, box-shadow .18s;
+}
+.sound-effect-btn :deep(.se-trigger:hover) {
+  color: #fff;
+  background: rgba(255,255,255,.045);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.045);
+  text-shadow: 0 0 10px rgba(0,245,212,.12);
+  transform: translateY(-1px);
 }
 .heart-svg {
   width: 21px;

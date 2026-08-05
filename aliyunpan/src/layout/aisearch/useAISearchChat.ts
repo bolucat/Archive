@@ -27,6 +27,7 @@ import { buildMediaOrganizePlan, executeMediaOrganizePlan } from '../../utils/dr
 import { getWebDavConnections } from '../../utils/webdavClient'
 import { searchPanHubStream, type PanHubMergedLinks } from '../../utils/panHubSearch'
 import AliFile from '../../aliapi/file'
+import DriveFile from '../../drive/file'
 import { createBookAISettings } from '../../utils/bookAI'
 import { getAIProvider } from '../../services/ai/providers'
 import { canUseSemanticEmbeddings } from '../../services/ai/embeddingPolicy'
@@ -657,7 +658,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               const document = getActiveDocumentDetails()
               if (!document) return { error: '当前没有可分析的文档。请从网盘文件右键选择“用 AI 分析”。' }
               try {
-                const download = await AliFile.ApiFileDownloadUrl(document.userId, document.driveId, document.file.file_id, 14_400)
+                const download = await DriveFile.ApiFileDownloadUrl(document.userId, document.driveId, document.file.file_id, 14_400)
                 if (typeof download === 'string') return { error: download }
                 const response = await fetch(download.url, { headers: download.headers || {} })
                 if (!response.ok) return { error: `下载文档失败: HTTP ${response.status}` }

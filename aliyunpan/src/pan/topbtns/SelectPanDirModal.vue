@@ -13,7 +13,7 @@ import { Sleep } from '../../utils/format'
 import { treeSelectToExpand } from '../../utils/antdtree'
 import AliTrash from '../../aliapi/trash'
 import { fileiconfn } from '../pantreestore'
-import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
+import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
 import { IAliGetDirModel } from '../../aliapi/alimodels'
 import { apiCloud123FileList, mapCloud123FileToAliModel } from '../../cloud123/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../../cloud115/dirfilelist'
@@ -22,6 +22,7 @@ import { apiPikPakFileList, mapPikPakFileToAliModel } from '../../pikpak/dirfile
 import { apiDropboxFileList, mapDropboxFileToAliModel } from '../../dropbox/dirfilelist'
 import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../../onedrive/dirfilelist'
 import { apiBoxFileList, mapBoxItemToAliModel } from '../../box/dirfilelist'
+import { apiGoogleFileList, apiGoogleSharedDriveFileList, apiGoogleSharedDrives, getGoogleSharedDriveIdForFile, mapGoogleFileToAliModel } from '../../google/dirfilelist'
 import { apiQuarkFileList, mapQuarkFileToAliModel } from '../../quark/dirfilelist'
 import { apiCloud139FileList, mapCloud139FileToAliModel } from '../../cloud139/dirfilelist'
 import { apiCloud189FileList, mapCloud189FileToAliModel } from '../../cloud189/dirfilelist'
@@ -38,6 +39,7 @@ const isSingleRootDriveUser = (userId: string) => {
     isDropboxUser(userId) ||
     isOneDriveUser(userId) ||
     isBoxUser(userId) ||
+    isGoogleUser(userId) ||
     isQuarkUser(userId) ||
     isCloud139User(userId) ||
     isCloud189User(userId) ||
@@ -523,6 +525,18 @@ const apiLoad = (key: any) => {
       .catch(() => {
         return [] as TreeNodeData[]
       })
+  }
+  if (isGoogleUser(user_id.value)) {
+    if (key === 'google_shared') return Promise.resolve([] as TreeNodeData[])
+    if (key === 'google_shared_drives') return apiGoogleSharedDrives(user_id.value).then((drives) => drives.map((drive) => ({ __v_skip: true, key: `google_shared_drive:${drive.id}`, parent_file_id: key, title: drive.name, children: [], isDir: true, isLeaf: false, description: `google_shared_drive:${drive.id}`, icon: foldericonfn } as TreeNodeData)))
+    const sharedDriveId = key.startsWith('google_shared_drive:') ? key.slice('google_shared_drive:'.length) : getGoogleSharedDriveIdForFile(key)
+    const parentId = key.includes('root') ? 'google_root' : key
+    const request = sharedDriveId ? apiGoogleSharedDriveFileList(user_id.value, sharedDriveId, key.startsWith('google_shared_drive:') ? 'root' : key) : apiGoogleFileList(user_id.value, parentId)
+    return request.then((list) => {
+      const addList = list.map((item) => mapGoogleFileToAliModel(item, drive_id.value, parentId)).filter((item) => item.isDir).map((item) => ({ __v_skip: true, key: item.file_id, parent_file_id: item.parent_file_id, path: item.path || '', title: item.name, children: [], isDir: true, isLeaf: false, description: item.description, icon: foldericonfn } as TreeNodeData))
+      autoExpand(addList)
+      return addList
+    }).catch(() => [] as TreeNodeData[])
   }
   if (isQuarkUser(user_id.value)) {
     const parentId = key.includes('root') ? '0' : key

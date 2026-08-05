@@ -4,7 +4,7 @@ import { BOX_FIELDS, buildBoxChildrenPath, buildBoxDetailPath, mapBoxItemToAliMo
 (globalThis as any).pinyinlite = (input: string) => input.split('').map((char) => [char])
 
 describe('Box dirfilelist helpers', () => {
-  it('refuses non-Box bearer tokens and falls back to a saved Box account', async () => {
+  it('refuses non-Box bearer tokens instead of borrowing another Box account', async () => {
     const boxToken = {
       tokenfrom: 'box',
       user_id: 'box_user',
@@ -14,11 +14,11 @@ describe('Box dirfilelist helpers', () => {
       getUserToken: (userId: string) => userId === 'aliyun_user'
         ? { tokenfrom: 'aliyun', user_id: 'aliyun_user', access_token: 'aliyun-access' }
         : {},
-      getUserTokenFromDB: async () => undefined,
+      getUserTokenFromDB: async () => boxToken,
       getUserListFromDB: async () => [boxToken]
     } as any)
 
-    expect(token?.access_token).toBe('box-access')
+    expect(token).toBeUndefined()
   })
 
   it('builds folder items path for root and child folders', () => {

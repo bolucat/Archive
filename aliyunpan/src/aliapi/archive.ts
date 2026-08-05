@@ -1,4 +1,5 @@
 import AliHttp from './alihttp'
+import { resolveDriveProvider } from '../utils/driveProvider'
 
 export interface ILinkTxtFile {
   key: string
@@ -21,6 +22,11 @@ export interface IArchiveData {
 }
 
 export default class AliArchive {
+
+  private static isAliyunRoute(user_id: string, drive_id: string): boolean {
+    const route = resolveDriveProvider(user_id, drive_id)
+    return route.isValid && route.provider === 'aliyun'
+  }
   
   static ApiGetFileList(result: IArchiveData, file_list: any): void {
     const func = function (file_list: any, link: ILinkTxt) {
@@ -56,6 +62,7 @@ export default class AliArchive {
   
   static async ApiArchiveList(user_id: string, drive_id: string, file_id: string, domain_id: string, archive_type: string, password: string): Promise<IArchiveData | undefined> {
     if (!user_id || !drive_id || !file_id) return undefined
+    if (!AliArchive.isAliyunRoute(user_id, drive_id)) return undefined
     const url = 'v2/archive/list'
     const postData: {
       drive_id: string
@@ -102,6 +109,7 @@ export default class AliArchive {
   
   static async ApiArchiveStatus(user_id: string, drive_id: string, file_id: string, domain_id: string, task_id: string): Promise<IArchiveData | undefined> {
     if (!user_id || !drive_id || !file_id) return undefined
+    if (!AliArchive.isAliyunRoute(user_id, drive_id)) return undefined
     const url = 'v2/archive/status'
     const postData = {
       drive_id,
@@ -139,6 +147,7 @@ export default class AliArchive {
   
   static async ApiArchiveUncompress(user_id: string, drive_id: string, file_id: string, domain_id: string, archive_type: string, target_drive_id: string, target_file_id: string, password: string, file_list: string[]): Promise<IArchiveData | undefined> {
     if (!user_id || !drive_id || !file_id || !target_drive_id || !target_file_id) return undefined
+    if (!AliArchive.isAliyunRoute(user_id, drive_id) || !AliArchive.isAliyunRoute(user_id, target_drive_id)) return undefined
     if (target_file_id.includes('root')) target_file_id = 'root'
     const url = 'v2/archive/uncompress'
     const postData: {

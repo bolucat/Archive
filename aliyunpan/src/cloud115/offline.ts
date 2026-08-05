@@ -1,4 +1,5 @@
 import UserDAL from '../user/userdal'
+import { isProviderTokenForUser } from '../drive/account'
 
 const API_BASE = 'https://proapi.115.com/open/offline'
 
@@ -41,8 +42,9 @@ export type Drive115OfflineTask = {
 }
 
 const getToken = async (user_id: string) => {
-  const token = await UserDAL.EnsureUserTokenReady(user_id)
-  return token?.access_token || ''
+  const token = (await UserDAL.EnsureUserTokenReady(user_id)) || undefined
+  if (!isProviderTokenForUser(token, user_id, '115')) return ''
+  return token.access_token
 }
 
 const formRequest = async (user_id: string, path: string, fields: Record<string, string>) => {

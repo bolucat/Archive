@@ -1,8 +1,8 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getDrive115Token } from './auth'
 
 export const apiDrive115TrashBatch = async (user_id: string, file_id_list: string[], parent_id?: string): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return []
   const ids = file_id_list.filter(Boolean)
   if (ids.length === 0) return []
@@ -43,7 +43,7 @@ export type Drive115TrashItem = {
 }
 
 export const apiDrive115TrashList = async (user_id: string, limit = 200, offset = 0): Promise<{ items: Drive115TrashItem[]; total: number }> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return { items: [], total: 0 }
   const params = new URLSearchParams()
   params.set('limit', String(limit))
@@ -66,7 +66,7 @@ export const apiDrive115TrashList = async (user_id: string, limit = 200, offset 
 }
 
 export const apiDrive115TrashRestore = async (user_id: string, trash_ids: string[]): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return []
   const ids = trash_ids.filter(Boolean)
   if (ids.length === 0) return []
@@ -95,7 +95,7 @@ export const apiDrive115TrashRestore = async (user_id: string, trash_ids: string
 }
 
 export const apiDrive115TrashDelete = async (user_id: string, trash_ids?: string[]): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return []
   const body = new URLSearchParams()
   if (trash_ids && trash_ids.length > 0) {
@@ -124,7 +124,7 @@ export const apiDrive115TrashDelete = async (user_id: string, trash_ids?: string
 }
 
 export const apiDrive115TrashClear = async (user_id: string): Promise<boolean> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return false
   try {
     const resp = await fetch('https://proapi.115.com/open/rb/del', {

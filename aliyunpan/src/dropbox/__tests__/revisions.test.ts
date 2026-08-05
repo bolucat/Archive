@@ -6,15 +6,15 @@ describe('Dropbox revision helpers', () => {
     expect(buildDropboxListRevisionsBody('id:file', 20)).toEqual({
       path: 'id:file',
       mode: {
-        '.tag': 'path'
+        '.tag': 'id'
       },
       limit: 20
     })
   })
 
   it('builds restore request body', () => {
-    expect(buildDropboxRestoreBody('id:file', '015abc')).toEqual({
-      path: 'id:file',
+    expect(buildDropboxRestoreBody('/Movies/file.mp4', '015abc')).toEqual({
+      path: '/Movies/file.mp4',
       rev: '015abc'
     })
   })

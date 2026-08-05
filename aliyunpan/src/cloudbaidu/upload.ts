@@ -3,8 +3,8 @@ import nodehttps from 'https'
 import type { ClientRequest } from 'http'
 import path from 'path'
 import { FileHandle } from 'fs/promises'
-import UserDAL from '../user/userdal'
 import { BAIDU_PCS_APP_ID } from '../secrets.generated'
+import { getBaiduToken } from './auth'
 
 const BAIDU_API_HOST = 'https://pan.baidu.com'
 const BAIDU_PCS_HOST = 'https://d.pcs.baidu.com'
@@ -88,7 +88,7 @@ export const apiBaiduPrecreate = async (
   sliceMd5: string,
   rtype: number = 2
 ): Promise<BaiduPrecreateResp | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) return null
   const url = new URL('/rest/2.0/xpan/file', BAIDU_API_HOST)
   url.searchParams.set('method', 'precreate')
@@ -120,7 +120,7 @@ export const apiBaiduLocateUpload = async (
   filePath: string,
   uploadid: string
 ): Promise<BaiduLocateUploadResp | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) return null
   const url = new URL('/rest/2.0/pcs/file', BAIDU_PCS_HOST)
   url.searchParams.set('method', 'locateupload')
@@ -191,7 +191,8 @@ export const apiBaiduUploadPart = async (
         }
         try {
           const data = JSON.parse(raw)
-          resolve(data?.errno === 0)
+          // PCS upload nodes may acknowledge a successful part with its md5 only.
+          resolve(data?.errno === 0 || typeof data?.md5 === 'string')
         } catch {
           resolve(false)
         }
@@ -211,7 +212,7 @@ export const apiBaiduCreateFile = async (
   blockList: string[],
   rtype: number = 2
 ): Promise<BaiduCreateResp | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) return null
   const url = new URL('/rest/2.0/xpan/file', BAIDU_API_HOST)
   url.searchParams.set('method', 'create')
@@ -241,7 +242,7 @@ export const apiBaiduCreateDir = async (
   dirPath: string,
   rtype: number = 0
 ): Promise<{ error: string; path: string }> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) return { error: '未登录百度网盘', path: '' }
   const url = new URL('/rest/2.0/xpan/file', BAIDU_API_HOST)
   url.searchParams.set('method', 'create')

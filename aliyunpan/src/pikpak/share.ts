@@ -1,5 +1,5 @@
-import UserDAL from '../user/userdal'
 import { pikpakAuthHeaders } from './auth'
+import { getPikPakToken } from './dirfilelist'
 import type { IAliShareAnonymous, IAliShareFileItem } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
@@ -137,7 +137,7 @@ export const apiPikPakShareFileList = async (shareId: string, passCodeToken: str
 
 export const apiPikPakSaveShareFilesBatch = async (shareId: string, passCodeToken: string, userId: string, _parentFileId: string, fileIds: string[]): Promise<string> => {
   if (!fileIds.length) return 'success'
-  const token = UserDAL.GetUserToken(userId)
+  const token = await getPikPakToken(userId)
   if (!token?.access_token) return '请先登录 PikPak'
   try {
     const resp = await fetch(`${PIKPAK_API_HOST}/drive/v1/share/restore`, {
@@ -168,7 +168,7 @@ export const apiPikPakShareCreate = async (
   expiration: string
 ): Promise<PikPakShareCreateResult> => {
   const result: PikPakShareCreateResult = { shareId: '', shareUrl: '', passCode: '', error: '创建 PikPak 分享链接失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token) {
     result.error = '请先登录 PikPak'
     return result
@@ -201,7 +201,7 @@ export const apiPikPakShareCreate = async (
 
 export const apiPikPakShareList = async (user_id: string): Promise<PikPakShareListResult> => {
   const result: PikPakShareListResult = { list: [], error: '' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token) { result.error = '请先登录 PikPak'; return result }
   try {
     let pageToken = ''
@@ -227,7 +227,7 @@ export const apiPikPakShareList = async (user_id: string): Promise<PikPakShareLi
 
 export const apiPikPakShareUpdate = async (user_id: string, shareId: string, title: string, expiration: string, sharePwd: string): Promise<PikPakShareUpdateResult> => {
   const result: PikPakShareUpdateResult = { success: false, error: '修改 PikPak 分享失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token) { result.error = '请先登录 PikPak'; return result }
   const body: any = { share_id: decodePikPakShareId(shareId), expiration_days: toPikPakExpirationDays(expiration), pass_code_option: sharePwd ? 'REQUIRED' : 'NOT_REQUIRED' }
   if (title) body.title = title
@@ -242,7 +242,7 @@ export const apiPikPakShareUpdate = async (user_id: string, shareId: string, tit
 }
 
 export const apiPikPakShareDelete = async (user_id: string, shareIds: string[]): Promise<string[]> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token || !shareIds.length) return []
   try {
     const resp = await fetch(`${PIKPAK_API_HOST}/drive/v1/share:batchDelete`, { method: 'POST', headers: pikpakAuthHeaders(token), body: JSON.stringify({ ids: shareIds.map(decodePikPakShareId) }) })

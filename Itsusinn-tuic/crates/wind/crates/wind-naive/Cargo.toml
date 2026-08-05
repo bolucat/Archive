@@ -19,6 +19,7 @@ cronet-rs = { git = "https://github.com/rust-proxy/cronet-rs", branch = "main", 
 wind-core = { path = "../wind-core" }
 
 # Async runtime
+async-trait = "0.1"
 tokio = { version = "1", default-features = false, features = ["net", "sync", "io-util", "rt", "macros"] }
 tokio-util = { version = "0.7", features = ["io"] }
 

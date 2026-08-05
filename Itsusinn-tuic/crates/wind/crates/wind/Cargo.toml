@@ -28,6 +28,7 @@ const-str = "1.1.0"
 
 eyre = "0.6"
 uuid = { version = "1", features = ["serde"] }
+async-trait = "0.1"
 
 # Configuration
 figment = { version = "0.10", features = ["yaml", "env", "toml"] }

@@ -3,6 +3,7 @@ use std::{
 	sync::Arc,
 };
 
+use async_trait::async_trait;
 use fast_socks5::{ReplyError, Socks5Command, server::Socks5ServerProtocol, util::target_addr::TargetAddr as SocksTargetAddr};
 use snafu::ResultExt;
 use tokio::{
@@ -12,8 +13,10 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, error, info, warn};
 use wind_core::{
-	AbstractInbound, ConnInfo, ConnectDecision, InboundCallback, InboundHooks, Protocol, StatsCollector, UserId,
+	AbstractInbound, ConnInfo, ConnectDecision, Dispatcher, FlowContext, InboundCallback, InboundHooks, Protocol, Router,
+	StatsCollector, UserId,
 	hooks::{CountingStream, next_conn_id},
+	rule::{InboundType, NetworkType},
 	types::TargetAddr,
 	udp::{UdpPacket, UdpStream},
 };
@@ -36,6 +39,9 @@ pub struct SocksInboundOpt {
 	/// Allow UDP proxying, requires public-addr to be set
 	pub allow_udp: bool,
 
+	/// Stable per-inbound identifier used by `IN-NAME` routing rules.
+	pub inbound_tag: Arc<str>,
+
 	/// Downstream extensibility hooks (auth / traffic stats / connection
 	/// management). Defaults to all-`None` (no behavior change).
 	pub hooks: InboundHooks,
@@ -51,8 +57,9 @@ pub struct SocksInbound {
 	cancel: CancellationToken,
 }
 
-impl AbstractInbound for SocksInbound {
-	async fn listen(&self, cb: &impl InboundCallback) -> eyre::Result<()> {
+#[async_trait]
+impl<R: Router> AbstractInbound<R> for SocksInbound {
+	async fn listen(&self, cb: &Dispatcher<R>) -> eyre::Result<()> {
 		let listener = TcpListener::bind(self.opts.listen_addr).await?;
 		// Track per-connection tasks so shutdown can wait for them instead of
 		// leaving in-flight sessions to be killed by runtime teardown. Each task
@@ -112,11 +119,11 @@ impl SocksInbound {
 	}
 }
 
-async fn handle_income(
+async fn handle_income<C: InboundCallback>(
 	opts: Arc<SocksInboundOpt>,
 	stream: TcpStream,
 	client_addr: SocketAddr,
-	cb: impl InboundCallback,
+	cb: C,
 	cancel: CancellationToken,
 ) -> Result<(), Error> {
 	let conn_info = ConnInfo {
@@ -143,11 +150,11 @@ async fn handle_income(
 	result
 }
 
-async fn serve_socks(
+async fn serve_socks<C: InboundCallback>(
 	opts: &Arc<SocksInboundOpt>,
 	stream: TcpStream,
 	client_addr: SocketAddr,
-	cb: &impl InboundCallback,
+	cb: &C,
 	cancel: &CancellationToken,
 	user: &mut Option<UserId>,
 ) -> Result<(), Error> {
@@ -208,16 +215,27 @@ async fn serve_socks(
 				SocksTargetAddr::Domain(domain, port) => TargetAddr::Domain(domain, port),
 			};
 
+			let ctx = FlowContext {
+				target: target_addr,
+				network: NetworkType::Tcp,
+				source: Some(client_addr),
+				inbound_tag: opts.inbound_tag.clone(),
+				protocol: Protocol::Socks5,
+				user: user.clone(),
+				inbound_port: Some(opts.listen_addr.port()),
+				inbound_type: Some(InboundType::Socks),
+			};
+
 			// Count per-user TCP traffic when stats are enabled and the client is
 			// identified (anonymous NoAuth sessions are not metered).
 			match (&opts.hooks.stats, user.as_ref()) {
 				(Some(stats), Some(uid)) => {
 					stats.record_request(uid);
 					let counted = CountingStream::new(inner, stats.clone(), uid.clone());
-					cb.handle_tcpstream(target_addr, counted).await.context(CallbackSnafu)?;
+					cb.handle_tcpstream(ctx, counted).await.context(CallbackSnafu)?;
 				}
 				_ => {
-					cb.handle_tcpstream(target_addr, inner).await.context(CallbackSnafu)?;
+					cb.handle_tcpstream(ctx, inner).await.context(CallbackSnafu)?;
 				}
 			}
 		}
@@ -251,6 +269,20 @@ async fn serve_socks(
 				s.record_request(u);
 			}
 
+			// Session-level context: the destination is a placeholder — the
+			// dispatcher stamps the first packet's real target onto it before
+			// routing (mirrors the per-session routing decision).
+			let udp_ctx = FlowContext {
+				target: TargetAddr::IPv4(Ipv4Addr::UNSPECIFIED, 0),
+				network: NetworkType::Udp,
+				source: Some(client_addr),
+				inbound_tag: opts.inbound_tag.clone(),
+				protocol: Protocol::Socks5,
+				user: stats_user.clone(),
+				inbound_port: Some(opts.listen_addr.port()),
+				inbound_type: Some(InboundType::Socks),
+			};
+
 			crate::ext::run_udp_proxy(proto, &target_addr, None, reply_ip, move |inbound| async move {
 				let (tx_to_out, rx_from_in) = mpsc::channel(100);
 				let (tx_to_in, rx_from_out) = mpsc::channel(100);
@@ -279,7 +311,7 @@ async fn serve_socks(
 					async move {
 						tokio::select! {
 							_ = udp_cancel.cancelled() => {}
-							res = cb.handle_udpstream(udp_stream) => {
+							res = cb.handle_udpstream(udp_ctx, udp_stream) => {
 								if let Err(e) = res {
 									error!(target: "socks_in_handler", "UDP association error: {}", e);
 								}

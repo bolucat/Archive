@@ -1,6 +1,6 @@
 //! End-to-end tests for the direct UDP relay's dual-stack behaviour.
 //!
-//! These drive the public `OutboundAction::handle_udp` entrypoint exactly as
+//! These drive the public `Outbound::handle_udp` entrypoint exactly as
 //! the TUIC/SOCKS inbounds do — feeding `UdpPacket`s in through the association
 //! channel and reading the replies back out — against real loopback UDP echo
 //! servers.
@@ -17,10 +17,27 @@ use bytes::Bytes;
 use tokio::{net::UdpSocket, sync::mpsc, time::timeout};
 use wind_base::direct::{DirectOutbound, DirectOutboundOpts};
 use wind_core::{
-	OutboundAction, StackPrefer, SystemResolver,
+	FlowContext, Outbound, StackPrefer, SystemResolver,
+	hooks::Protocol,
+	rule::NetworkType,
 	types::TargetAddr,
 	udp::{UdpPacket, UdpStream},
 };
+
+/// Minimal context for the relay harness — UDP target is stamped by the
+/// dispatcher in production; here the packets carry their own targets.
+fn relay_ctx() -> FlowContext {
+	FlowContext {
+		target: TargetAddr::IPv4(std::net::Ipv4Addr::UNSPECIFIED, 0),
+		network: NetworkType::Udp,
+		source: None,
+		inbound_tag: "udp-relay-test".into(),
+		protocol: Protocol::Tunnel,
+		user: None,
+		inbound_port: None,
+		inbound_type: None,
+	}
+}
 
 /// Generous upper bound — a loopback round trip is sub-millisecond; this only
 /// exists so a dropped packet fails loudly instead of hanging the suite.
@@ -68,7 +85,7 @@ fn spawn_relay() -> RelayHarness {
 	};
 
 	let task = tokio::spawn(async move {
-		let _ = outbound.handle_udp(stream).await;
+		let _ = outbound.handle_udp(relay_ctx(), stream).await;
 	});
 
 	RelayHarness {

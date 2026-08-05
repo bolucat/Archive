@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { IAliFileAudioMeta, IAliFileItem, IAliFileVideoMeta } from '../aliapi/alimodels'
 import AliFile from '../aliapi/file'
+import DriveFile from '../drive/file'
 import { IVideoXBTUrl } from '../aliapi/models'
 import { KeyboardState, useAppStore, useKeyboardStore, useSettingStore } from '../store'
 import { copyToClipboard } from '../utils/electronhelper'
@@ -90,7 +91,7 @@ const handleCopyM3U8Click = () => {
 }
 const handleCopyDownClick = () => {
   const pageVideoXBT = appStore.pageVideoXBT!
-  AliFile.ApiFileDownloadUrl(pageVideoXBT.user_id, pageVideoXBT.drive_id, pageVideoXBT.file_id, 14400).then((data) => {
+  DriveFile.ApiFileDownloadUrl(pageVideoXBT.user_id, pageVideoXBT.drive_id, pageVideoXBT.file_id, 14400).then((data) => {
     if (data && typeof data !== 'string' && data.url) {
       copyToClipboard(data.url)
       message.success('视频的下载链接已复制，4小时内有效')

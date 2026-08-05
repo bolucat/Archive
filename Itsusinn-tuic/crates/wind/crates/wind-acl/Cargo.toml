@@ -11,7 +11,7 @@ description = "nftables-shaped intermediate representation and ACL routing engin
 [dependencies]
 # Wind framework
 wind-core = { path = "../wind-core" }
-wind-base = { path = "../wind-base" }
+wind-rule = { path = "../wind-rule" }
 wind-geodata = { path = "../wind-geodata" }
 
 # Rule parsing / matching
@@ -27,6 +27,7 @@ derive_more = { version = "2", default-features = false, features = ["display"] 
 # Logging / errors
 tracing = "0.1"
 eyre = { version = "0.6" }
+async-trait = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }

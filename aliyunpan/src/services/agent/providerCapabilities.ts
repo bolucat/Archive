@@ -10,6 +10,7 @@ import quark from '../../quark/capabilities'
 import dropbox from '../../dropbox/capabilities'
 import onedrive from '../../onedrive/capabilities'
 import box from '../../box/capabilities'
+import google from '../../google/capabilities'
 import { commonDriveCapabilities, defineProviderCapabilities, type ProviderCapabilityManifest } from './providerCapabilityTypes'
 
 export type { DriveCapability, CapabilityVerification, ProviderCapabilityEvidence, ProviderCapabilityManifest } from './providerCapabilityTypes'
@@ -24,7 +25,7 @@ const webdav = defineProviderCapabilities({
 // The registry imports declarations owned by each provider adapter. The Agent only
 // queries this aggregate; provider implementation details remain local to adapters.
 export const PROVIDER_CAPABILITIES: Record<string, ProviderCapabilityManifest> = {
-  aliyun, cloud123, '115': cloud115, cloud139, cloud189, baidu, guangya, pikpak, quark, dropbox, onedrive, box, webdav
+  aliyun, cloud123, '115': cloud115, cloud139, cloud189, baidu, guangya, pikpak, quark, dropbox, onedrive, box, google, webdav
 }
 
 export function normalizeProviderPlatform(platform?: string): string {

@@ -46,6 +46,7 @@ export default class AliUploadDisk {
       }
     }
     if (fileHandle.handle) await fileHandle.handle.close()
+    if (isok !== 'success') return isok || '分片上传失败，请重试'
     return AliUpload.UploadFileComplete(
       fileui.user_id, fileui.drive_id,
       fileui.Info.up_file_id, fileui.Info.up_upload_id,

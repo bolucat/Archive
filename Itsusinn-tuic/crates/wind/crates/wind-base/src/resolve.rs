@@ -1,53 +1,16 @@
-use std::net::SocketAddr;
+//! DNS resolution helpers.
+//!
+//! Canonical implementations live in [`wind_core::resolve`]; this module
+//! re-exports them so `wind_base::resolve::*` keeps working for existing
+//! callers.
 
-use wind_core::{resolve::Resolver, types::TargetAddr, utils::StackPrefer};
-
-/// Resolve a `TargetAddr` to a single `SocketAddr` using the given resolver.
-///
-/// The resolver's built-in preference is used — call
-/// [`resolve_target_with_preference`] if a per-outbound override is needed.
-pub async fn resolve_target(target: &TargetAddr, resolver: &dyn Resolver) -> eyre::Result<SocketAddr> {
-	match target {
-		TargetAddr::IPv4(ip, port) => Ok(SocketAddr::from((*ip, *port))),
-		TargetAddr::IPv6(ip, port) => Ok(SocketAddr::from((*ip, *port))),
-		TargetAddr::Domain(domain, port) => Ok(SocketAddr::new(resolver.resolve(domain).await?, *port)),
-	}
-}
-
-/// Resolve a `TargetAddr` to a single `SocketAddr`, optionally overriding
-/// the resolver's built-in IP stack preference.
-///
-/// When `prefer` is `Some`, domain names are resolved via
-/// [`Resolver::resolve_all`] and the best address is picked with
-/// [`wind_core::resolve::pick_addr_by_preference`].  This lets individual
-/// outbounds select a different IP family than the global resolver default
-/// (mirroring mihomo's per-outbound `ip-version`).
-///
-/// When `prefer` is `None`, the behaviour is identical to
-/// [`resolve_target`].
-pub async fn resolve_target_with_preference(
-	target: &TargetAddr,
-	resolver: &dyn Resolver,
-	prefer: Option<StackPrefer>,
-) -> eyre::Result<SocketAddr> {
-	let Some(prefer) = prefer else {
-		return resolve_target(target, resolver).await;
-	};
-	match target {
-		TargetAddr::IPv4(ip, port) => Ok(SocketAddr::from((*ip, *port))),
-		TargetAddr::IPv6(ip, port) => Ok(SocketAddr::from((*ip, *port))),
-		TargetAddr::Domain(domain, port) => {
-			let addrs = resolver.resolve_all(domain).await?;
-			let picked = wind_core::resolve::pick_addr_by_preference(addrs, prefer)
-				.ok_or_else(|| eyre::eyre!("no address matching {:?} for {domain}", prefer))?;
-			Ok(SocketAddr::new(picked, *port))
-		}
-	}
-}
+pub use wind_core::resolve::{resolve_target, resolve_target_with_preference};
 
 #[cfg(test)]
 mod tests {
 	use std::{future::Future, net::IpAddr, pin::Pin};
+
+	use wind_core::{resolve::Resolver, types::TargetAddr};
 
 	use super::*;
 

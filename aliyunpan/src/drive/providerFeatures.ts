@@ -1,23 +1,12 @@
 import { getProviderCapabilities } from '../services/agent/providerCapabilities'
 import type { DriveOperation } from '../services/agent/providerCapabilityTypes'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser, isRemoteDriveUser } from './utils'
+import UserDAL from '../user/userdal'
+import { resolveDriveProvider } from '../utils/driveProvider'
 
 function providerPlatform(userId: string, driveId: string): string {
-  const drive = String(driveId || '').toLowerCase()
-  if (isRemoteDriveUser(userId) || drive.startsWith('webdav:') || drive === 'webdav' || drive === 'alist') return 'webdav'
-  if (isCloud123User(userId) || drive === 'cloud123' || drive === 'cloud_root') return 'cloud123'
-  if (isDrive115User(userId) || drive === 'drive115' || drive === 'drive115_root') return '115'
-  if (isCloud139User(userId) || drive === 'cloud139') return 'cloud139'
-  if (isCloud189User(userId) || drive === 'cloud189') return 'cloud189'
-  if (isBaiduUser(userId) || drive === 'baidu') return 'baidu'
-  if (isGuangyaUser(userId) || drive === 'guangya' || drive === 'guangya_root') return 'guangya'
-  if (isPikPakUser(userId) || drive === 'pikpak' || drive === 'pikpak_root') return 'pikpak'
-  if (isQuarkUser(userId) || drive === 'quark' || drive === 'quark_root') return 'quark'
-  if (isDropboxUser(userId) || drive === 'dropbox') return 'dropbox'
-  if (isOneDriveUser(userId) || drive === 'onedrive') return 'onedrive'
-  if (isBoxUser(userId) || drive === 'box') return 'box'
-  if (isAliyunUser(userId)) return 'aliyun'
-  return drive
+  const route = resolveDriveProvider(userId, driveId, UserDAL.GetUserToken(userId)?.tokenfrom)
+  if (!route.isValid) return 'unknown'
+  return route.provider === 'webdav' || route.provider === 'alist' ? 'webdav' : route.provider
 }
 
 export function supportsProviderOperation(userId: string, driveId: string, operation: DriveOperation): boolean {
@@ -27,6 +16,7 @@ export function supportsProviderOperation(userId: string, driveId: string, opera
 export const supportsCreateTextFile = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'upload.memory')
 export const supportsCreateFolder = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'files.createFolder')
 export const supportsLocalUpload = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'upload.local')
+export const supportsZipDownload = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'files.downloadZip')
 export const supportsEncryptedFileOperations = (userId: string) => supportsProviderOperation(userId, '', 'upload.encrypted')
 export const supportsCreateShare = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'share.create')
 export const supportsShareImport = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'share.import')

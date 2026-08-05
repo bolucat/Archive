@@ -39,6 +39,9 @@ importers:
       '@electron/notarize':
         specifier: ^3.1.1
         version: 3.1.1
+      '@electron/rebuild':
+        specifier: ^4.2.0
+        version: 4.2.0
       '@motrix/nat-api':
         specifier: 0.3.4
         version: 0.3.4(encoding@0.1.13)
@@ -189,9 +192,6 @@ importers:
       electron-is:
         specifier: ^3.0.0
         version: 3.0.0
-      electron-rebuild:
-        specifier: ^3.2.9
-        version: 3.2.9
       electron-store:
         specifier: 8.2.0
         version: 8.2.0

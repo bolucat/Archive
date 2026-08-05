@@ -1,6 +1,5 @@
-import UserDAL from '../user/userdal'
 import { pikpakAuthHeaders } from './auth'
-import { apiPikPakFileDetail } from './dirfilelist'
+import { apiPikPakFileDetail, getPikPakToken } from './dirfilelist'
 
 export type PikPakOfflineCreateResult = {
   taskId: string | null
@@ -38,7 +37,7 @@ const normalizeProgress = (task: any) => {
 
 export const apiPikPakOfflineCreate = async (user_id: string, url: string, fileName: string, parentId?: string) => {
   const result: PikPakOfflineCreateResult = { taskId: null, fileId: '', error: '创建 PikPak 离线下载失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token) {
     result.error = '请先登录 PikPak'
     return result
@@ -79,7 +78,7 @@ export const apiPikPakOfflineCreate = async (user_id: string, url: string, fileN
 
 export const apiPikPakOfflineProcess = async (user_id: string, taskId: string, fileId?: string) => {
   const result: PikPakOfflineProcessResult = { process: 0, status: 0, error: '' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token) {
     result.error = '请先登录 PikPak'
     return result
@@ -142,7 +141,7 @@ export const apiPikPakOfflineProcess = async (user_id: string, taskId: string, f
 }
 
 export const apiPikPakOfflineDelete = async (user_id: string, taskIds: string[], deleteFiles = false) => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token || taskIds.length === 0) return false
   try {
     const params = new URLSearchParams()

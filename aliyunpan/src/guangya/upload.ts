@@ -30,12 +30,12 @@ const getOssCredentials = (tokenData: GuangyaUploadTokenData) => {
 
 const normalizeEndpoint = (endpoint: string) => endpoint.startsWith('http') ? endpoint.replace(/\/$/, '') : `https://${endpoint.replace(/\/$/, '')}`
 
-const signOss = (method: string, objectPath: string, query: string, date: string, contentType: string, tokenData: GuangyaUploadTokenData) => {
+const signOss = (method: string, objectPath: string, query: string, date: string, contentType: string, contentMd5: string, tokenData: GuangyaUploadTokenData) => {
   const { accessKeyID, secretAccessKey, sessionToken } = getOssCredentials(tokenData)
   const bucketName = tokenData.bucketName || ''
-  const ossHeaders = sessionToken ? `x-oss-security-token:${sessionToken}\n` : ''
+  const ossHeaders = `x-oss-date:${date}\nx-oss-security-token:${sessionToken.trim()}\n`
   const resource = `/${bucketName}/${objectPath}${query ? `?${query}` : ''}`
-  const canonical = `${method}\n\n${contentType}\n${date}\n${ossHeaders}${resource}`
+  const canonical = `${method}\n${contentMd5}\n${contentType}\n${date}\n${ossHeaders}${resource}`
   const signature = HmacSHA1(canonical, secretAccessKey).toString(enc.Base64)
   return `OSS ${accessKeyID}:${signature}`
 }
@@ -47,10 +47,12 @@ const apiGuangyaPutObject = async (tokenData: GuangyaUploadTokenData, buff: Buff
   const date = new Date().toUTCString()
   const contentType = 'application/octet-stream'
   const { sessionToken } = getOssCredentials(tokenData)
+  const contentMd5 = MD5(lib.WordArray.create(buff as any)).toString(enc.Base64)
   const headers: Record<string, string> = {
-    Date: date,
+    'Content-MD5': contentMd5,
     'Content-Type': contentType,
-    Authorization: signOss('PUT', objectPath, '', date, contentType, tokenData)
+    'x-oss-date': date,
+    Authorization: signOss('PUT', objectPath, '', date, contentType, contentMd5, tokenData)
   }
   if (sessionToken) headers['x-oss-security-token'] = sessionToken
   const resp = await fetch(`${endpoint}/${objectPath}`, { method: 'PUT', headers, body: buff as any })
@@ -91,7 +93,9 @@ export const apiGuangyaUploadInfo = async (user_id: string, taskId: string): Pro
     const body = getBody(data)
     const fileId = String(body?.fileId || body?.id || body?.file_id || body?.resId || '')
     const msg = String(data?.msg || data?.message || body?.msg || body?.message || '')
-    return { fileId, uploading: msg.includes('文件上传中'), error: fileId || msg.includes('文件上传中') ? '' : (msg || '光鸭云盘未返回上传文件 ID'), raw: body }
+    const status = String(body?.status ?? body?.uploadStatus ?? body?.state ?? '').toLowerCase()
+    const uploading = /文件上传中|上传中|处理中|uploading|processing|pending/i.test(msg) || ['0', '1', 'uploading', 'processing', 'pending'].includes(status)
+    return { fileId, uploading, error: fileId || uploading ? '' : (msg || '光鸭云盘未返回上传文件 ID'), raw: body }
   } catch (error: any) {
     const message = error?.message || '获取光鸭云盘上传结果失败'
     return { fileId: '', uploading: message.includes('文件上传中'), error: message }
@@ -106,11 +110,11 @@ export const apiGuangyaUploadBuffer = async (user_id: string, parentId: string, 
   if (info.fileId) return { file_id: info.fileId, error: '' }
   const ossError = await apiGuangyaPutObject(tokenResp.data, buff)
   if (ossError) return { file_id: '', error: ossError }
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 10; i++) {
     info = await apiGuangyaUploadInfo(user_id, tokenResp.data.taskId)
     if (info.fileId) return { file_id: info.fileId, error: '' }
     if (!info.uploading && info.error) return { file_id: '', error: info.error }
-    await Sleep(1500)
+    await Sleep(1000)
   }
   return { file_id: '', error: '光鸭云盘上传完成确认超时' }
 }

@@ -4,6 +4,7 @@ import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import message from '../utils/message'
 import { captchaSign, pikpakAuthHeaders } from './auth'
+import { getProviderTokenForUser } from '../drive/account'
 
 export type PikPakFileItem = {
   id: string
@@ -49,15 +50,7 @@ const parsePikPakError = (data: any, fallback: string) => {
   return data?.error_description || data?.message || data?.error || fallback
 }
 
-const getPikPakToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
-}
+export const getPikPakToken = (user_id: string) => getProviderTokenForUser(user_id, 'pikpak')
 
 export const apiPikPakFileList = async (
   user_id: string,

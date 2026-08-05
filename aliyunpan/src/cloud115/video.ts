@@ -1,4 +1,4 @@
-import UserDAL from '../user/userdal'
+import { getDrive115Token } from './auth'
 import message from '../utils/message'
 import { DRIVE115_DOWN_AGENT } from './constants'
 import { apiDrive115FileDetailResult } from './filecmd'
@@ -60,16 +60,7 @@ const buildDrive115Headers = (accessToken: string) => ({
 })
 
 export const apiDrive115VideoPlay = async (user_id: string, pick_code: string): Promise<Drive115VideoPlayData | string> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token || !pick_code) return '参数错误'
   const params = new URLSearchParams({ pick_code })
   const url = `${PLAY_URL}?${params.toString()}`
@@ -93,11 +84,7 @@ export const apiDrive115VideoPlay = async (user_id: string, pick_code: string): 
 }
 
 export const apiDrive115VideoSubtitle = async (user_id: string, pick_code: string, timeoutMs = 1500): Promise<Drive115SubtitleSource[]> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token || !pick_code) return []
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
@@ -121,16 +108,7 @@ export const apiDrive115VideoSubtitle = async (user_id: string, pick_code: strin
 }
 
 export const apiDrive115VideoHistory = async (user_id: string, pick_code: string): Promise<number> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token || !pick_code) return 0
   const params = new URLSearchParams({ pick_code })
   const url = `${HISTORY_URL}?${params.toString()}`
@@ -154,16 +132,7 @@ export const apiDrive115VideoHistoryUpdate = async (
   time: number,
   watch_end: number = 0
 ): Promise<boolean> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token || !pick_code) return false
   const body = new URLSearchParams()
   body.set('pick_code', pick_code)
@@ -187,8 +156,7 @@ export const apiDrive115VideoHistoryUpdate = async (
 }
 
 export const apiDrive115VideoPush = async (user_id: string, pick_code: string, op: 'vip_push' | 'pay_push') => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) token = await UserDAL.GetUserTokenFromDB(user_id) as typeof token
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token || !pick_code) return { success: false, message: '参数错误' }
   const body = new URLSearchParams({ pick_code, op })
   try {

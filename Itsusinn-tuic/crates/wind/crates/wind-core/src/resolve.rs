@@ -1,6 +1,10 @@
-use std::{future::Future, net::IpAddr, pin::Pin};
+use std::{
+	future::Future,
+	net::{IpAddr, SocketAddr},
+	pin::Pin,
+};
 
-use crate::utils::StackPrefer;
+use crate::{types::TargetAddr, utils::StackPrefer};
 
 /// Trait for asynchronous DNS resolution.
 ///
@@ -90,6 +94,49 @@ pub fn filter_addrs_by_preference(addrs: Vec<IpAddr>, prefer: StackPrefer) -> Ve
 			let (v4, mut v6): (Vec<_>, Vec<_>) = addrs.into_iter().partition(|a| a.is_ipv4());
 			v6.extend(v4);
 			v6
+		}
+	}
+}
+
+/// Resolve a `TargetAddr` to a single `SocketAddr` using the given resolver.
+///
+/// The resolver's built-in preference is used — call
+/// [`resolve_target_with_preference`] if a per-outbound override is needed.
+pub async fn resolve_target(target: &TargetAddr, resolver: &dyn Resolver) -> eyre::Result<SocketAddr> {
+	match target {
+		TargetAddr::IPv4(ip, port) => Ok(SocketAddr::from((*ip, *port))),
+		TargetAddr::IPv6(ip, port) => Ok(SocketAddr::from((*ip, *port))),
+		TargetAddr::Domain(domain, port) => Ok(SocketAddr::new(resolver.resolve(domain).await?, *port)),
+	}
+}
+
+/// Resolve a `TargetAddr` to a single `SocketAddr`, optionally overriding
+/// the resolver's built-in IP stack preference.
+///
+/// When `prefer` is `Some`, domain names are resolved via
+/// [`Resolver::resolve_all`] and the best address is picked with
+/// [`pick_addr_by_preference`].  This lets individual outbounds select a
+/// different IP family than the global resolver default (mirroring mihomo's
+/// per-outbound `ip-version`).
+///
+/// When `prefer` is `None`, the behaviour is identical to
+/// [`resolve_target`].
+pub async fn resolve_target_with_preference(
+	target: &TargetAddr,
+	resolver: &dyn Resolver,
+	prefer: Option<StackPrefer>,
+) -> eyre::Result<SocketAddr> {
+	let Some(prefer) = prefer else {
+		return resolve_target(target, resolver).await;
+	};
+	match target {
+		TargetAddr::IPv4(ip, port) => Ok(SocketAddr::from((*ip, *port))),
+		TargetAddr::IPv6(ip, port) => Ok(SocketAddr::from((*ip, *port))),
+		TargetAddr::Domain(domain, port) => {
+			let addrs = resolver.resolve_all(domain).await?;
+			let picked = pick_addr_by_preference(addrs, prefer)
+				.ok_or_else(|| eyre::eyre!("no address matching {:?} for {domain}", prefer))?;
+			Ok(SocketAddr::new(picked, *port))
 		}
 	}
 }

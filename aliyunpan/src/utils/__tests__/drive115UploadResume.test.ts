@@ -1,9 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { parseOssCallbackResult } from '../../cloud115/oss'
+import { normalizeDrive115OssEndpoint, parseOssCallbackResult, parseOssError } from '../../cloud115/oss'
 
 describe('115 upload resume', () => {
+  it('uses HTTPS when the upload credential returns an HTTP OSS endpoint', () => {
+    expect(normalizeDrive115OssEndpoint('http://oss.example.com')).toBe('https://oss.example.com')
+    expect(normalizeDrive115OssEndpoint('oss.example.com')).toBe('https://oss.example.com')
+  })
+
+  it('extracts a service error from an OSS XML response', () => {
+    expect(parseOssError('<Error><Code>InvalidPart</Code><Message>Part ETag does not match</Message></Error>')).toBe('InvalidPart: Part ETag does not match')
+  })
+
   it('retains valid OSS callback file IDs and rejects callback failures', () => {
     expect(parseOssCallbackResult('{"code":0,"data":{"file_id":"115-file"}}')).toEqual({ fileId: '115-file', error: '' })
     expect(parseOssCallbackResult('{"code":200,"data":{"file_id":"115-file"}}')).toEqual({ fileId: '115-file', error: '' })

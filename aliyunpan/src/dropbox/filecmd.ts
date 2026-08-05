@@ -1,5 +1,7 @@
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import message from '../utils/message'
+import { Sleep } from '../utils/format'
+import { getDropboxToken } from './dirfilelist'
 
 const DROPBOX_API_HOST = 'https://api.dropboxapi.com/2'
 
@@ -14,14 +16,10 @@ type DropboxFileMetadataResp = {
   error_summary?: string
 }
 
-const getDropboxToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
+type DropboxBatchResult = {
+  '.tag'?: 'async_job_id' | 'complete' | 'in_progress' | 'failed'
+  async_job_id?: string
+  entries?: Array<{ '.tag'?: 'success' | 'failure' }>
 }
 
 const parseDropboxError = (data: any, fallback: string) => data?.error_summary || data?.error_description || data?.message || fallback
@@ -84,6 +82,35 @@ export const buildDropboxRelocationBody = (fromPath: string, toPath: string) => 
   allow_ownership_transfer: false
 })
 
+export const buildDropboxRelocationBatchBody = (entries: Array<{ from_path: string; to_path: string }>, isMove: boolean) => ({
+  entries,
+  autorename: true,
+  ...(isMove ? { allow_ownership_transfer: false } : {})
+})
+
+const batchSuccessIndexes = (result: DropboxBatchResult | undefined, count: number): number[] => {
+  if (!result || result['.tag'] !== 'complete') return []
+  return (result.entries || []).flatMap((entry, index) => entry['.tag'] === 'success' && index < count ? [index] : [])
+}
+
+const waitDropboxBatch = async (user_id: string, checkEndpoint: string, jobId: string): Promise<DropboxBatchResult | undefined> => {
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const response = await dropboxRpc<DropboxBatchResult>(user_id, checkEndpoint, { async_job_id: jobId }, '查询 Dropbox 批量任务失败')
+    const result = response.data
+    if (!result || result['.tag'] !== 'in_progress') return result
+    await Sleep(1000)
+  }
+  return undefined
+}
+
+const completeDropboxBatch = async (user_id: string, launchEndpoint: string, checkEndpoint: string, body: any): Promise<DropboxBatchResult | undefined> => {
+  const response = await dropboxRpc<DropboxBatchResult>(user_id, launchEndpoint, body, '创建 Dropbox 批量任务失败')
+  const launched = response.data
+  if (!launched) return undefined
+  if (launched['.tag'] === 'async_job_id' && launched.async_job_id) return waitDropboxBatch(user_id, checkEndpoint, launched.async_job_id)
+  return launched
+}
+
 const currentFileById = async (fileId: string): Promise<IAliGetFileModel | undefined> => {
   const { default: usePanFileStore } = await import('../pan/panfilestore')
   const list = usePanFileStore().ListDataRaw || []
@@ -110,15 +137,10 @@ export const apiDropboxMkdir = async (user_id: string, parentId: string, name: s
 }
 
 export const apiDropboxDeleteBatch = async (user_id: string, fileIds: string[]): Promise<string[]> => {
-  const successList: string[] = []
-  for (const fileId of fileIds) {
-    const path = await resolveCurrentPath(fileId)
-    if (!path) continue
-    const resp = await dropboxRpc<DropboxFileMetadataResp>(user_id, '/files/delete_v2', { path }, '删除')
-    if (resp.error) message.error(resp.error)
-    else successList.push(fileId)
-  }
-  return successList
+  const entries = (await Promise.all(fileIds.map(async fileId => ({ fileId, path: await resolveCurrentPath(fileId) })))).filter(item => !!item.path)
+  if (!entries.length) return []
+  const result = await completeDropboxBatch(user_id, '/files/delete_batch', '/files/delete_batch/check', { entries: entries.map(item => ({ path: item.path })) })
+  return batchSuccessIndexes(result, entries.length).map(index => entries[index].fileId)
 }
 
 export const apiDropboxRename = async (user_id: string, fileId: string, name: string): Promise<{ success: boolean; file_id: string; name: string; parent_file_id: string; isDir: boolean }> => {
@@ -143,17 +165,19 @@ export const apiDropboxRename = async (user_id: string, fileId: string, name: st
 
 const apiDropboxRelocateBatch = async (user_id: string, fileIds: string[], toParentId: string, toParentDescription: string, endpoint: '/files/move_v2' | '/files/copy_v2', title: string): Promise<string[]> => {
   const targetParentPath = resolveDropboxCommandPath(toParentId, toParentDescription)
-  const successList: string[] = []
+  const entries: Array<{ fileId: string; fromPath: string; toPath: string }> = []
   for (const fileId of fileIds) {
     const fromPath = await resolveCurrentPath(fileId)
     const name = await resolveCurrentName(fileId)
     if (!fromPath || !name) continue
     const toPath = buildDropboxChildPath(targetParentPath || 'dropbox_root', name)
-    const resp = await dropboxRpc<DropboxFileMetadataResp>(user_id, endpoint, buildDropboxRelocationBody(fromPath, toPath), title)
-    if (resp.error) message.error(resp.error)
-    else successList.push(fileId)
+    entries.push({ fileId, fromPath, toPath })
   }
-  return successList
+  if (!entries.length) return []
+  const isMove = endpoint === '/files/move_v2'
+  const result = await completeDropboxBatch(user_id, isMove ? '/files/move_batch_v2' : '/files/copy_batch_v2', isMove ? '/files/move_batch/check_v2' : '/files/copy_batch/check_v2', buildDropboxRelocationBatchBody(entries.map(item => ({ from_path: item.fromPath, to_path: item.toPath })), isMove))
+  if (!result) message.error(`${title} Dropbox 文件失败`)
+  return batchSuccessIndexes(result, entries.length).map(index => entries[index].fileId)
 }
 
 export const apiDropboxMoveBatch = async (user_id: string, fileIds: string[], toParentId: string, toParentDescription = ''): Promise<string[]> => {

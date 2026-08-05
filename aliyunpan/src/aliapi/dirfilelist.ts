@@ -10,6 +10,7 @@ import { IAliFileItem, IAliGetFileModel } from './alimodels'
 import getFileIcon from './fileicon'
 import { DecodeEncName, GetDriveID } from './utils'
 import { buildAliColorSearchDriveIds } from './colorSearch'
+import { listProviderSpecialItems } from '../drive/providerSpecialList'
 
 
 export interface IAliFileResp {
@@ -377,10 +378,18 @@ export default class AliDirFileList {
     let pageIndex = 0
 
     let max: number = useSettingStore().debugFileListMax
-    if (dirID == 'favorite' || dirID.startsWith('color')
+    if (dirID == 'favorite' || dirID == 'recent' || dirID.startsWith('color')
       || dirID.startsWith('search') || dirID == 'trash'
       || dirID.startsWith('video') || dirID == 'recover') {
       max = useSettingStore().debugFavorListMax
+    }
+
+    const specialItems = await listProviderSpecialItems(user_id, drive_id, dirID, max)
+    if (specialItems) {
+      dir.items = specialItems.items
+      dir.itemsKey = new Set(specialItems.items.map(item => item.file_id))
+      dir.itemsTotal = specialItems.total
+      return dir
     }
 
     let needTotal

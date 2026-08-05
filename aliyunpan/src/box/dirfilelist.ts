@@ -45,38 +45,34 @@ type BoxCollectionResp = {
 type BoxTokenReader = {
   getUserToken: (user_id: string) => any
   getUserTokenFromDB: (user_id: string) => Promise<any>
-  getUserListFromDB: () => Promise<any[]>
 }
 
 const isUsableBoxToken = (token: any) => {
   return token?.tokenfrom === 'box' && !!token.access_token
 }
+const isUsableBoxTokenForUser = (token: any, userId: string) => isUsableBoxToken(token) && token.user_id === userId
 
 export const resolveBoxTokenForRequest = async (user_id: string, reader: BoxTokenReader) => {
   let token = reader.getUserToken(user_id)
-  if (!isUsableBoxToken(token)) {
+  if (!isUsableBoxTokenForUser(token, user_id)) {
     const dbToken = await reader.getUserTokenFromDB(user_id)
-    if (isUsableBoxToken(dbToken)) token = dbToken
+    if (isUsableBoxTokenForUser(dbToken, user_id)) token = dbToken
   }
-  if (isUsableBoxToken(token)) return token
-
-  const list = await reader.getUserListFromDB()
-  return list.find(isUsableBoxToken)
+  return isUsableBoxTokenForUser(token, user_id) ? token : undefined
 }
 
 export const getBoxToken = async (user_id: string) => {
   const { default: UserDAL } = await import('../user/userdal')
   return resolveBoxTokenForRequest(user_id, {
     getUserToken: UserDAL.GetUserToken.bind(UserDAL),
-    getUserTokenFromDB: UserDAL.GetUserTokenFromDB.bind(UserDAL),
-    getUserListFromDB: UserDAL.GetUserListFromDB.bind(UserDAL)
+    getUserTokenFromDB: UserDAL.GetUserTokenFromDB.bind(UserDAL)
   })
 }
 
-export const boxApiRequest = async <T>(user_id: string, pathOrUrl: string, init: RequestInit, fallback: string): Promise<T | null> => {
+export const boxApiRequest = async <T>(user_id: string, pathOrUrl: string, init: RequestInit, fallback: string, silent = false): Promise<T | null> => {
   const token = await getBoxToken(user_id)
   if (!token?.access_token) {
-    message.error('未登录 Box')
+    if (!silent) message.error('未登录 Box')
     return null
   }
   const url = pathOrUrl.startsWith('https://') ? pathOrUrl : `${BOX_API_HOST}${pathOrUrl}`
@@ -93,7 +89,7 @@ export const boxApiRequest = async <T>(user_id: string, pathOrUrl: string, init:
     data = undefined
   }
   if (!resp.ok || data?.error) {
-    message.error(data?.message || fallback)
+    if (!silent) message.error(data?.message || fallback)
     return null
   }
   return (data || {}) as T

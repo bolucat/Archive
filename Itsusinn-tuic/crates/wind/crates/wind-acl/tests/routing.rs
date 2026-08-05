@@ -2,10 +2,14 @@
 //!
 //! These exercise the rule pipeline without guards, so no resolver is needed.
 
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+	net::{Ipv4Addr, Ipv6Addr},
+	sync::Arc,
+};
 
 use wind_acl::AclEngine;
-use wind_core::{RouteAction, Router, types::TargetAddr};
+use wind_core::{FlowContext, RouteAction, Router, hooks::Protocol, types::TargetAddr};
+use wind_rule::NetworkType;
 
 fn ipv4(addr: &str, port: u16) -> TargetAddr {
 	TargetAddr::IPv4(addr.parse::<Ipv4Addr>().unwrap(), port)
@@ -13,6 +17,20 @@ fn ipv4(addr: &str, port: u16) -> TargetAddr {
 
 fn domain(host: &str, port: u16) -> TargetAddr {
 	TargetAddr::Domain(host.to_string(), port)
+}
+
+/// Minimal [`FlowContext`] for a plain TCP connection with no client metadata.
+fn fc(target: &TargetAddr, tcp: bool) -> FlowContext {
+	FlowContext {
+		target: target.clone(),
+		network: if tcp { NetworkType::Tcp } else { NetworkType::Udp },
+		source: None,
+		inbound_tag: Arc::from("test"),
+		protocol: Protocol::Tuic,
+		user: None,
+		inbound_port: None,
+		inbound_type: None,
+	}
 }
 
 fn forwarded(action: &RouteAction) -> Option<&str> {
@@ -25,7 +43,7 @@ fn forwarded(action: &RouteAction) -> Option<&str> {
 #[tokio::test]
 async fn default_fallback_when_no_rule_matches() {
 	let engine = AclEngine::builder("direct").build().unwrap();
-	let action = engine.route(&ipv4("8.8.8.8", 443), true).await.unwrap();
+	let action = engine.route(&fc(&ipv4("8.8.8.8", 443), true)).await.unwrap();
 	assert_eq!(forwarded(&action), Some("direct"));
 }
 
@@ -37,10 +55,10 @@ async fn clash_domain_suffix_forwards() {
 		.build()
 		.unwrap();
 
-	let hit = engine.route(&domain("www.google.com", 443), true).await.unwrap();
+	let hit = engine.route(&fc(&domain("www.google.com", 443), true)).await.unwrap();
 	assert_eq!(forwarded(&hit), Some("proxy"));
 
-	let miss = engine.route(&domain("example.org", 443), true).await.unwrap();
+	let miss = engine.route(&fc(&domain("example.org", 443), true)).await.unwrap();
 	assert_eq!(forwarded(&miss), Some("direct"));
 }
 
@@ -52,7 +70,7 @@ async fn reject_keyword_rejects() {
 		.build()
 		.unwrap();
 
-	let action = engine.route(&ipv4("10.1.2.3", 80), true).await.unwrap();
+	let action = engine.route(&fc(&ipv4("10.1.2.3", 80), true)).await.unwrap();
 	assert!(matches!(action, RouteAction::Reject(_)), "private IP should be rejected");
 }
 
@@ -76,7 +94,7 @@ async fn ipv6_target_routes() {
 		.unwrap();
 
 	let target = TargetAddr::IPv6("2001:db8::1".parse::<Ipv6Addr>().unwrap(), 443);
-	let action = engine.route(&target, true).await.unwrap();
+	let action = engine.route(&fc(&target, true)).await.unwrap();
 	assert_eq!(forwarded(&action), Some("proxy"));
 }
 
@@ -91,15 +109,15 @@ async fn apernet_acl_compiles_and_matches() {
 		.unwrap();
 
 	// Private destination → rejected by the first ACL rule.
-	let priv_action = engine.route(&ipv4("10.1.2.3", 1234), true).await.unwrap();
+	let priv_action = engine.route(&fc(&ipv4("10.1.2.3", 1234), true)).await.unwrap();
 	assert!(matches!(priv_action, RouteAction::Reject(_)));
 
 	// 1.1.1.1:443/tcp → proxy.
-	let proxy_action = engine.route(&ipv4("1.1.1.1", 443), true).await.unwrap();
+	let proxy_action = engine.route(&fc(&ipv4("1.1.1.1", 443), true)).await.unwrap();
 	assert_eq!(forwarded(&proxy_action), Some("proxy"));
 
 	// 1.1.1.1:443/udp → no ACL match (tcp-only), falls through to default.
-	let udp_action = engine.route(&ipv4("1.1.1.1", 443), false).await.unwrap();
+	let udp_action = engine.route(&fc(&ipv4("1.1.1.1", 443), false)).await.unwrap();
 	assert_eq!(forwarded(&udp_action), Some("direct"));
 }
 
@@ -115,6 +133,6 @@ async fn apernet_rules_precede_clash_rules() {
 		.build()
 		.unwrap();
 
-	let action = engine.route(&ipv4("1.1.1.1", 443), true).await.unwrap();
+	let action = engine.route(&fc(&ipv4("1.1.1.1", 443), true)).await.unwrap();
 	assert_eq!(forwarded(&action), Some("aclwin"));
 }

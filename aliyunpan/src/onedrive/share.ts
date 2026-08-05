@@ -1,6 +1,7 @@
 import type { IAliShareItem } from '../aliapi/alimodels'
 import { humanExpiration } from '../utils/format'
 import message from '../utils/message'
+import { getOneDriveToken } from './dirfilelist'
 
 const GRAPH_API_HOST = 'https://graph.microsoft.com/v1.0'
 
@@ -11,16 +12,6 @@ export type OneDrivePermission = {
     scope?: string
     webUrl?: string
   }
-}
-
-const getOneDriveToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
 }
 
 const graphPost = async <T>(user_id: string, path: string, body: any, fallback: string): Promise<{ data?: T; error: string }> => {

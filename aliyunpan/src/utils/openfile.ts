@@ -14,53 +14,14 @@ import PlayerUtils from './playerhelper'
 import { getEncType, getProxyUrl, getRawUrl } from './proxyhelper'
 import { getLocalVideoProgress } from './videoProgress'
 import { isVideoFile } from './videoFile'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { resolveDriveFileToken } from '../drive/account'
 
 async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo | undefined> {
-  const explicitUserId = (file as any).user_id as string | undefined
-  if (explicitUserId) {
-    const token = await UserDAL.GetUserTokenFromDB(explicitUserId)
-    if (token?.access_token) return token
-  }
-  const currentUserId = useUserStore().user_id
-  const currentToken = await UserDAL.GetUserTokenFromDB(currentUserId)
-  const driveId = file.drive_id || ''
-  const matchesCurrent = currentToken && (
-    (driveId === 'cloud123' && isCloud123User(currentToken))
-    || (driveId === 'drive115' && isDrive115User(currentToken))
-    || (driveId === 'baidu' && isBaiduUser(currentToken))
-    || (driveId === 'pikpak' && isPikPakUser(currentToken))
-    || (driveId === 'dropbox' && isDropboxUser(currentToken))
-    || (driveId === 'onedrive' && isOneDriveUser(currentToken))
-    || (driveId === 'box' && isBoxUser(currentToken))
-    || (driveId === 'quark' && isQuarkUser(currentToken))
-    || (driveId === 'guangya' && isGuangyaUser(currentToken))
-    || (driveId === 'cloud139' && isCloud139User(currentToken))
-    || (driveId === 'cloud189' && isCloud189User(currentToken))
-    || (!['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'quark', 'guangya', 'cloud139', 'cloud189'].includes(driveId) && isAliyunUser(currentToken))
-  )
-  if (matchesCurrent && currentToken?.access_token) return currentToken
-
-  const userList = await UserDAL.GetUserListFromDB()
-  const matched = userList.find((token) => (
-    (driveId === 'cloud123' && isCloud123User(token))
-    || (driveId === 'drive115' && isDrive115User(token))
-    || (driveId === 'baidu' && isBaiduUser(token))
-    || (driveId === 'pikpak' && isPikPakUser(token))
-    || (driveId === 'dropbox' && isDropboxUser(token))
-    || (driveId === 'onedrive' && isOneDriveUser(token))
-    || (driveId === 'box' && isBoxUser(token))
-    || (driveId === 'quark' && isQuarkUser(token))
-    || (driveId === 'guangya' && isGuangyaUser(token))
-    || (driveId === 'cloud139' && isCloud139User(token))
-    || (driveId === 'cloud189' && isCloud189User(token))
-    || (!['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'quark', 'guangya', 'cloud139', 'cloud189'].includes(driveId) && isAliyunUser(token))
-  ))
-  if (!matched?.user_id) return currentToken || undefined
-  return await UserDAL.GetUserTokenFromDB(matched.user_id) || undefined
+  return resolveDriveFileToken(file as IAliGetFileModel & { user_id?: string }, useUserStore().user_id)
 }
 
-function buildSiblingVideoPlaylist(file: IAliGetFileModel, provided?: IPageVideoPlaylistEntry[]): IPageVideoPlaylistEntry[] {
+function buildSiblingVideoPlaylist(file: IAliGetFileModel, userId: string, provided?: IPageVideoPlaylistEntry[]): IPageVideoPlaylistEntry[] {
   if (provided && provided.length > 0) return provided
   const rawItems = usePanFileStore().ListDataRaw || []
   const visibleItems = rawItems.filter((item: any) => !item.isDir)
@@ -71,7 +32,7 @@ function buildSiblingVideoPlaylist(file: IAliGetFileModel, provided?: IPageVideo
   return candidates
     .sort((left: any, right: any) => String(left.name || left.file_name || '').localeCompare(String(right.name || right.file_name || ''), undefined, { numeric: true, sensitivity: 'base' }))
     .map((item: any): IPageVideoPlaylistEntry => ({
-      user_id: item.user_id || (file as any).user_id || '',
+      user_id: userId,
       drive_id: item.drive_id || file.drive_id,
       file_id: item.file_id,
       parent_file_id: item.parent_file_id || file.parent_file_id,
@@ -85,8 +46,7 @@ function buildSiblingVideoPlaylist(file: IAliGetFileModel, provided?: IPageVideo
 }
 
 const TEXT_PREVIEW_EXTS = new Set(['txt', 'text', 'log', 'csv', 'tsv', 'nfo', 'srt', 'vtt', 'ass', 'ssa'])
-const PDF_PREVIEW_DRIVES = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'quark', 'guangya', 'cloud139', 'cloud189'])
-const EPUB_PREVIEW_DRIVES = PDF_PREVIEW_DRIVES
+const PDF_PREVIEW_DRIVES = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'google', 'quark', 'guangya', 'cloud139', 'cloud189'])
 const DOCX_PREVIEW_DRIVES = PDF_PREVIEW_DRIVES
 const OFFICE_TO_PDF_DRIVES = PDF_PREVIEW_DRIVES
 const SHEET_PREVIEW_DRIVES = PDF_PREVIEW_DRIVES
@@ -118,7 +78,8 @@ export async function menuOpenFile(
     Archive(file.drive_id, file.file_id, file.name, file.parent_file_id, file.icon == 'iconweifa')
     return
   }
-  if ((file.ext || '').toLowerCase() === 'epub' && EPUB_PREVIEW_DRIVES.has(file.drive_id || '')) {
+  // EPUB uses the provider-neutral download gateway, so it is safe for Aliyun and every supported cloud drive.
+  if ((file.ext || '').toLowerCase() === 'epub') {
     await Epub(file, password)
     return
   }
@@ -323,7 +284,7 @@ async function Video(
       encType: getEncType(playCursorInfo?.info || ''),
       play_cursor: play_cursor,
       custom_playlist_label: options?.customPlaylistLabel || '',
-      custom_playlist: buildSiblingVideoPlaylist(file, options?.customPlaylist)
+      custom_playlist: buildSiblingVideoPlaylist(file, token.user_id, options?.customPlaylist)
     }
     window.WebOpenWindow({ page: 'PageVideo', data: pageVideo, theme: 'dark' })
     return

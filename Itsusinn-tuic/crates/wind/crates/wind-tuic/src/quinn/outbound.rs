@@ -5,6 +5,7 @@ use std::{
 };
 
 use arc_swap::ArcSwap;
+use async_trait::async_trait;
 use moka::future::Cache;
 use quinn::TokioRuntime;
 use quinn_congestions::bbr::BbrConfig;
@@ -12,7 +13,7 @@ use tokio::net::UdpSocket;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, info, warn};
 use uuid::Uuid;
-use wind_core::{AbstractOutbound, AppContext, tcp::AbstractTcpStream, types::TargetAddr};
+use wind_core::{AppContext, FlowContext, Outbound, tcp::AbstractTcpStream, types::TargetAddr};
 use wind_quic::{QuicConnection as _, quinn::QuinnConnection};
 
 use crate::{
@@ -424,23 +425,15 @@ async fn run_session(
 
 pub struct TuicTcpStream;
 
-impl AbstractOutbound for TuicOutbound {
-	async fn handle_tcp(
-		&self,
-		target_addr: TargetAddr,
-		stream: impl AbstractTcpStream,
-		_dialer: Option<impl AbstractOutbound>,
-	) -> eyre::Result<()> {
+#[async_trait]
+impl Outbound for TuicOutbound {
+	async fn handle_tcp(&self, ctx: FlowContext, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
 		let connection = self.connection.load_full();
-		connection.open_tcp(&target_addr, stream).await?;
+		connection.open_tcp(&ctx.target, stream).await?;
 		Ok(())
 	}
 
-	async fn handle_udp(
-		&self,
-		client_stream: wind_core::udp::UdpStream,
-		_dialer: Option<impl AbstractOutbound>,
-	) -> eyre::Result<()> {
+	async fn handle_udp(&self, _ctx: FlowContext, client_stream: wind_core::udp::UdpStream) -> eyre::Result<()> {
 		use std::sync::atomic::Ordering;
 		let cancel = self.token.child_token();
 

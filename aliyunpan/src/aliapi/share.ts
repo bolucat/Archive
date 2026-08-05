@@ -3,28 +3,14 @@ import { humanDateTime, humanDateTimeDateStr, humanExpiration, humanSize } from 
 import message from '../utils/message'
 import AliHttp, { IUrlRespData } from './alihttp'
 import ServerHttp from './server'
-import { ApiBatch, ApiBatchMaker, ApiBatchSuccess, isBoxUser, isCloud123User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
-import { useSettingStore, useMyShareStore } from '../store'
+import { ApiBatch, ApiBatchMaker, ApiBatchSuccess } from './utils'
+import { useSettingStore } from '../store'
 import { IAliFileItem, IAliShareAnonymous, IAliShareBottleFish, IAliShareFileItem, IAliShareItem } from './alimodels'
 import getFileIcon from './fileicon'
 import { IAliBatchResult } from './models'
-import { apiCloud123PaidShareCreate, apiCloud123ShareCreate, getCloud123ShareUrl } from '../cloud123/share'
-import { apiPikPakSaveShareFilesBatch, apiPikPakShareAnonymous, apiPikPakShareCreate, apiPikPakShareDelete, apiPikPakShareFileList, apiPikPakShareToken, apiPikPakShareUpdate, isPikPakShareId } from '../pikpak/share'
-import { apiDropboxShareCreate } from '../dropbox/share'
-import { apiOneDriveShareCreate } from '../onedrive/share'
-import { apiBoxShareCreate, apiBoxShareRemove, apiBoxShareUpdate } from '../box/share'
-import { apiGuangyaSaveShareFilesBatch, apiGuangyaShareAnonymous, apiGuangyaShareCreate, apiGuangyaShareDelete, apiGuangyaShareFileList, apiGuangyaShareToken, apiGuangyaShareUpdate, isGuangyaShareId } from '../guangya/share'
-import {
-  apiQuarkSaveShareFilesBatch,
-  apiQuarkShareAnonymous,
-  apiQuarkShareCancelBatch,
-  apiQuarkShareCreate,
-  apiQuarkShareFileList,
-  apiQuarkShareToken,
-  apiQuarkShareUpdateBatch,
-  decodeQuarkShareId,
-  isQuarkShareId
-} from '../quark/share'
+import UserDAL from '../user/userdal'
+import { resolveDriveProvider } from '../utils/driveProvider'
+import { cancelProviderShares, getProviderShareAnonymous, getProviderShareFiles, getProviderShareToken, getProviderShareUpdateNotice, getSharedProvider, saveProviderShareFiles, updateProviderShares } from '../drive/providerShare'
 
 export interface IAliShareFileResp {
   items: IAliShareFileItem[]
@@ -48,20 +34,10 @@ export interface UpdateShareModel {
 
 export default class AliShare {
 
-  static async ApiCreatCloud123PaidShare(user_id: string, drive_id: string, share_name: string, file_id_list: string[], pay_amount: number, resource_desc = '', is_reward = 0): Promise<string | IAliShareItem> {
-    const result = await apiCloud123PaidShareCreate(user_id, share_name, file_id_list, pay_amount, resource_desc, is_reward)
-    if (result.error) return result.error
-    return {
-      created_at: '', creator: '', description: resource_desc, display_name: '', display_label: '', download_count: 0,
-      drive_id: drive_id || 'cloud123', expiration: '', expired: false, file_id: '', file_id_list, icon: 'iconwenjian',
-      preview_count: 0, save_count: 0, share_id: result.shareId, share_msg: `付费 ${pay_amount} 元`, full_share_msg: '',
-      share_name: share_name || '付费分享', share_policy: 'cloud123_paid', share_pwd: '',
-      share_url: getCloud123ShareUrl(user_id, result.shareKey), status: '', updated_at: '', is_share_saved: false, share_saved: ''
-    }
-  }
-
   static async ApiShareFileCheckAvailable(user_id: string, drive_id: string, file_id_list: string[]) {
     if (!user_id || !drive_id || !file_id_list) return []
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || route.provider !== 'aliyun') return []
     const url = 'adrive/v2/share_link/check_available'
     const postData = { drive_id, file_id_list }
     const resp = await AliHttp.Post(url, postData, user_id, '')
@@ -74,9 +50,8 @@ export default class AliShare {
   }
 
   static async ApiGetShareAnonymous(share_id: string, share_pwd = ''): Promise<IAliShareAnonymous> {
-    if (isQuarkShareId(share_id)) return apiQuarkShareAnonymous(share_id, share_pwd)
-    if (isGuangyaShareId(share_id)) return apiGuangyaShareAnonymous(share_id, share_pwd)
-    if (isPikPakShareId(share_id)) return apiPikPakShareAnonymous(share_id, share_pwd)
+    const providerShare = getProviderShareAnonymous(share_id, share_pwd)
+    if (providerShare) return providerShare
     const share: IAliShareAnonymous = {
       shareinfo: {
         share_id: share_id,
@@ -148,9 +123,8 @@ export default class AliShare {
 
 
   static async ApiGetShareToken(share_id: string, pwd: string): Promise<string> {
-    if (isQuarkShareId(share_id)) return apiQuarkShareToken(decodeQuarkShareId(share_id), pwd)
-    if (isGuangyaShareId(share_id)) return apiGuangyaShareToken(share_id, pwd)
-    if (isPikPakShareId(share_id)) return apiPikPakShareToken(share_id, pwd)
+    const providerToken = getProviderShareToken(share_id, pwd)
+    if (providerToken) return providerToken
     if (!share_id) return '，分享链接错误'
     const url = 'v2/share_link/get_share_token'
     const postData = { share_id: share_id, share_pwd: pwd }
@@ -189,36 +163,9 @@ export default class AliShare {
 
 
   static async ApiShareFileList(share_id: string, share_token: string, dirID: string): Promise<IAliShareFileResp> {
-    if (isQuarkShareId(share_id)) {
-      const resp = await apiQuarkShareFileList(share_id, share_token, dirID)
-      if (resp.error) message.warning(resp.error, 2)
-      return {
-        items: resp.items,
-        itemsKey: new Set(resp.items.map(item => item.file_id)),
-        punished_file_count: 0,
-        next_marker: resp.next_marker,
-        m_user_id: '',
-        m_share_id: share_id,
-        dirID,
-        dirName: ''
-      }
-    }
-    if (isGuangyaShareId(share_id)) {
-      const resp = await apiGuangyaShareFileList(share_id, share_token, dirID)
-      if (resp.error) message.warning(resp.error, 2)
-      return {
-        items: resp.items,
-        itemsKey: new Set(resp.items.map(item => item.file_id)),
-        punished_file_count: 0,
-        next_marker: resp.next_marker,
-        m_user_id: '',
-        m_share_id: share_id,
-        dirID,
-        dirName: ''
-      }
-    }
-    if (isPikPakShareId(share_id)) {
-      const resp = await apiPikPakShareFileList(share_id, share_token, dirID)
+    const providerFiles = getProviderShareFiles(share_id, share_token, dirID)
+    if (providerFiles) {
+      const resp = await providerFiles
       if (resp.error) message.warning(resp.error, 2)
       return {
         items: resp.items,
@@ -323,98 +270,9 @@ export default class AliShare {
 
   static async ApiCreatShare(user_id: string, drive_id: string, expiration: string, share_pwd: string, share_name: string, file_id_list: string[], isFolder = false): Promise<string | IAliShareItem> {
     if (!user_id || !drive_id || file_id_list.length == 0) return '创建分享链接失败数据错误'
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      const shareExpire = AliShare.toCloud123ShareExpire(expiration)
-      const result = await apiCloud123ShareCreate(user_id, share_name, shareExpire, file_id_list, share_pwd)
-      if (result.error) return result.error
-      const shareUrl = getCloud123ShareUrl(user_id, result.shareKey)
-      const fallbackExpiration = shareExpire > 0 ? new Date(Date.now() + shareExpire * 24 * 60 * 60 * 1000).toISOString() : ''
-      const item: IAliShareItem = {
-        created_at: '',
-        creator: '',
-        description: '',
-        display_name: '',
-        display_label: '',
-        download_count: 0,
-        drive_id: drive_id || 'cloud123',
-        expiration: expiration || fallbackExpiration,
-        expired: false,
-        file_id: '',
-        file_id_list: file_id_list,
-        icon: 'iconwenjian',
-        preview_count: 0,
-        save_count: 0,
-        share_id: result.shareId,
-        share_msg: '',
-        full_share_msg: '',
-        share_name: share_name || '分享链接',
-        share_policy: '',
-        share_pwd: share_pwd || '',
-        share_url: shareUrl,
-        status: '',
-        updated_at: '',
-        is_share_saved: false,
-        share_saved: ''
-      }
-      return item
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      const result = await apiPikPakShareCreate(user_id, file_id_list, !!share_pwd, expiration)
-      if (result.error) return result.error
-      const item: IAliShareItem = {
-        created_at: '',
-        creator: '',
-        description: '',
-        display_name: '',
-        display_label: '',
-        download_count: 0,
-        drive_id: drive_id || 'pikpak',
-        expiration,
-        expired: false,
-        file_id: '',
-        file_id_list,
-        icon: 'iconwenjian',
-        preview_count: 0,
-        save_count: 0,
-        share_id: result.shareId,
-        share_msg: humanExpiration(expiration),
-        full_share_msg: '',
-        share_name: share_name || '分享链接',
-        share_policy: '',
-        share_pwd: result.passCode || share_pwd || '',
-        share_url: result.shareUrl,
-        status: '',
-        updated_at: '',
-        is_share_saved: false,
-        share_saved: ''
-      }
-      return item
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      const result = await apiGuangyaShareCreate(user_id, expiration, share_pwd, share_name, file_id_list)
-      if (result.error || !result.item) return result.error || '创建光鸭云盘分享链接失败'
-      return result.item
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      const result = await apiDropboxShareCreate(user_id, drive_id || 'dropbox', file_id_list, expiration, share_pwd, share_name)
-      if (result.error || !result.item) return result.error || '创建 Dropbox 分享链接失败'
-      return result.item
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      if (share_pwd || expiration) return 'OneDrive 分享暂不支持提取码或有效期，请清空后重试'
-      const result = await apiOneDriveShareCreate(user_id, drive_id || 'onedrive', file_id_list, share_name)
-      if (result.error || !result.item) return result.error || '创建 OneDrive 分享链接失败'
-      return result.item
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      if (share_pwd || expiration) return 'Box 分享暂不支持提取码或有效期，请清空后重试'
-      const result = await apiBoxShareCreate(user_id, drive_id || 'box', file_id_list, share_name, isFolder)
-      if (result.error || !result.item) return result.error || '创建 Box 分享链接失败'
-      return result.item
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return await apiQuarkShareCreate(user_id, expiration, share_pwd, share_name, file_id_list)
-    }
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return route.error
+    if (route.provider !== 'aliyun') return '请通过网盘分享入口创建链接'
     const url = 'adrive/v2/share_link/create'
     const postData = { drive_id, expiration, share_pwd, share_name, file_id_list }
     const resp = await AliHttp.Post(url, postData, user_id, '')
@@ -440,6 +298,8 @@ export default class AliShare {
   }
 
   static async ApiCreatShareBatch(user_id: string, drive_id: string, expiration: string, share_pwd: string, file_id_list: string[]): Promise<IAliBatchResult> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || route.provider !== 'aliyun') return { count: 0, error: [], reslut: [], async_task: [] }
     const batchList: string[] = []
     for (let i = 0, maxi = file_id_list.length; i < maxi; i++) {
       const postData: any = {
@@ -463,20 +323,14 @@ export default class AliShare {
 
 
   static async ApiCancelShareBatch(user_id: string, share_idList: string[]): Promise<string[]> {
-    if (isQuarkUser(user_id)) return apiQuarkShareCancelBatch(user_id, share_idList)
-    if (isGuangyaUser(user_id)) return apiGuangyaShareDelete(user_id, share_idList)
-    if (isBoxUser(user_id)) {
-      const successList: string[] = []
-      for (const shareId of share_idList) {
-        if (await apiBoxShareRemove(user_id, shareId)) successList.push(shareId)
-      }
-      return successList
-    }
-    if (isCloud123User(user_id) || isDropboxUser(user_id) || isOneDriveUser(user_id)) {
+    const route = resolveDriveProvider(user_id, '', UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
+    const result = await cancelProviderShares(route.provider, user_id, share_idList)
+    if (result) return result
+    if (route.provider !== 'aliyun') {
       message.info('当前网盘类型不支持')
       return []
     }
-    if (isPikPakUser(user_id)) return apiPikPakShareDelete(user_id, share_idList)
     const batchList = ApiBatchMaker('/share_link/cancel', share_idList, (share_id: string) => {
       return { share_id: share_id }
     })
@@ -486,80 +340,18 @@ export default class AliShare {
 
   static async ApiUpdateShareBatch(user_id: string, share_idList: string[], expirationList: string[], share_pwdList: string[], share_nameList: string[] | undefined): Promise<UpdateShareModel[]> {
     if (!share_idList || share_idList.length == 0) return []
-    if (isBoxUser(user_id)) {
-      const successList: UpdateShareModel[] = []
-      for (let i = 0; i < share_idList.length; i++) {
-        const item = await apiBoxShareUpdate(user_id, share_idList[i], expirationList[i] || '', share_pwdList[i] || '')
-        if (item?.shared_link) {
-          successList.push({
-            share_id: share_idList[i],
-            share_pwd: item.shared_link.password || '',
-            expiration: item.shared_link.unshared_at || '',
-            share_name: item.name || share_nameList?.[i] || ''
-          })
-        }
-      }
-      if (!successList.length) message.error('修改 Box 分享链接失败')
-      return successList
+    const route = resolveDriveProvider(user_id, '', UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
+    const notice = getProviderShareUpdateNotice(route.provider)
+    if (notice) {
+      message.info(notice)
+      return []
     }
-    if (isPikPakUser(user_id)) {
-      const successList: UpdateShareModel[] = []
-      for (let i = 0; i < share_idList.length; i++) {
-        const updated = await apiPikPakShareUpdate(user_id, share_idList[i], share_nameList?.[i] || '', expirationList[i] || '', share_pwdList[i] || '')
-        if (updated.success) successList.push({ share_id: share_idList[i], share_pwd: share_pwdList[i] || '', expiration: expirationList[i] || '', share_name: share_nameList?.[i] || '' })
-      }
-      if (!successList.length) message.error('修改 PikPak 分享失败')
-      return successList
-    }
-    if (isDropboxUser(user_id)) {
+    const providerResult = await updateProviderShares(route.provider, user_id, share_idList, expirationList, share_pwdList, share_nameList)
+    if (providerResult) return providerResult as UpdateShareModel[]
+    if (route.provider !== 'aliyun') {
       message.info('当前网盘类型不支持')
       return []
-    }
-    if (isGuangyaUser(user_id)) {
-      const successList: UpdateShareModel[] = []
-      for (let i = 0, maxi = share_idList.length; i < maxi; i++) {
-        const updated = await apiGuangyaShareUpdate(user_id, share_idList[i], expirationList[i] || '', share_pwdList[i] || '', share_nameList ? share_nameList[i] : '')
-        if (updated.success) {
-          successList.push({
-            share_id: share_idList[i],
-            share_pwd: share_pwdList[i] || '',
-            expiration: expirationList[i] || '',
-            share_name: share_nameList ? share_nameList[i] : ''
-          })
-        }
-      }
-      if (!successList.length) message.error('修改光鸭云盘分享链接失败')
-      return successList
-    }
-    if (isQuarkUser(user_id)) {
-      const updated = await apiQuarkShareUpdateBatch(user_id, share_idList, expirationList, share_pwdList, share_nameList)
-      if (!updated.length) message.info('当前夸克分享可能不支持编辑该字段')
-      return updated
-    }
-    if (isCloud123User(user_id)) {
-      message.info('123云盘开放 API 仅支持修改分享流量设置，名称、有效期和提取码无法修改')
-      return []
-      /* 123 云盘不支持普通分享的名称、有效期和提取码修改。 */
-      const update = { success: true, error: '' }
-      if (!update.success) {
-        message.error('修改分享链接失败 ' + (update.error || ''))
-        return []
-      }
-      const shareNameMap = new Map<string, string>()
-      const existing = useMyShareStore().ListDataRaw
-      for (let i = 0, maxi = existing.length; i < maxi; i++) {
-        shareNameMap.set(existing[i].share_id, existing[i].share_name)
-      }
-      const successList: UpdateShareModel[] = []
-      for (let i = 0, maxi = share_idList.length; i < maxi; i++) {
-        successList.push({
-          share_id: share_idList[i],
-          share_pwd: share_pwdList[i] || '',
-          expiration: expirationList[i] || '',
-          share_name: share_nameList?.[i] || (shareNameMap.get(share_idList[i]) || '')
-        })
-      }
-      return successList
     }
     const batchList: string[] = []
     if (share_nameList) {
@@ -596,8 +388,8 @@ export default class AliShare {
     }
 
     const successList: UpdateShareModel[] = []
-    const result = await ApiBatch(share_idList.length > 1 ? '批量更新分享链接' : '更新分享链接', batchList, user_id, '')
-    result.reslut.map((t) => successList.push({
+    const batchResult = await ApiBatch(share_idList.length > 1 ? '批量更新分享链接' : '更新分享链接', batchList, user_id, '')
+    batchResult.reslut.map((t) => successList.push({
       share_id: t.share_id!,
       share_pwd: t.share_pwd!,
       expiration: t.expiration!,
@@ -606,31 +398,14 @@ export default class AliShare {
     return successList
   }
 
-  private static toCloud123ShareExpire(expiration: string): number {
-    if (!expiration) return 0
-    const target = new Date(expiration).getTime()
-    if (Number.isNaN(target)) return 0
-    const diff = Math.max(0, target - Date.now())
-    const days = Math.ceil(diff / (24 * 60 * 60 * 1000))
-    if (days <= 1) return 1
-    if (days <= 7) return 7
-    if (days <= 30) return 30
-    return 30
-  }
-
-
   static async ApiSaveShareFilesBatch(share_id: string, share_token: string, user_id: string, drive_id: string, parent_file_id: string, file_idList: string[]): Promise<string> {
     if (!share_id || !share_token || !user_id || !drive_id || !parent_file_id) return 'error'
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return 'error'
     if (!file_idList || file_idList.length == 0) return 'success'
-    if (isQuarkShareId(share_id) || isQuarkUser(user_id) || drive_id === 'quark') {
-      return apiQuarkSaveShareFilesBatch(share_id, share_token, user_id, parent_file_id, file_idList)
-    }
-    if (isGuangyaShareId(share_id) || isGuangyaUser(user_id) || drive_id === 'guangya') {
-      return apiGuangyaSaveShareFilesBatch(share_id, share_token, user_id, parent_file_id, file_idList)
-    }
-    if (isPikPakShareId(share_id) || isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakSaveShareFilesBatch(share_id, share_token, user_id, parent_file_id, file_idList)
-    }
+    const sharedProvider = getSharedProvider(share_id)
+    if (sharedProvider !== 'unknown' && sharedProvider !== route.provider) return 'error'
+    if (route.provider !== 'aliyun') return saveProviderShareFiles(route.provider, share_id, share_token, user_id, parent_file_id, file_idList) || 'error'
     if (parent_file_id.includes('root')) parent_file_id = 'root'
     const batchList: string[] = []
     for (let i = 0, maxi = file_idList.length; i < maxi; i++) {

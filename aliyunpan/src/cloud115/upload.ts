@@ -1,8 +1,11 @@
 import crypto from 'crypto'
 import path from 'path'
 import { FileHandle } from 'fs/promises'
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getDrive115Token } from './auth'
+import { normalizeDrive115OssCallback, normalizeDrive115UploadTokens, type Drive115OssCallback, type Drive115UploadTokenItem, type Drive115UploadTokenResp } from './uploadtoken'
+
+export { normalizeDrive115OssCallback, normalizeDrive115UploadTokens, type Drive115OssCallback, type Drive115UploadTokenItem, type Drive115UploadTokenResp } from './uploadtoken'
 
 const API_BASE = 'https://proapi.115.com'
 
@@ -15,7 +18,7 @@ export type Drive115UploadInitData = {
   target?: string
   bucket?: string
   object?: string
-  callback?: string
+  callback?: string | Drive115OssCallback | Drive115OssCallback[]
   callback_var?: string
 }
 
@@ -24,21 +27,6 @@ export type Drive115UploadInitResp = {
   code: number
   message: string
   data?: Drive115UploadInitData
-}
-
-export type Drive115UploadTokenItem = {
-  endpoint?: string
-  AccessKeySecrett?: string
-  AccessKeyId?: string
-  SecurityToken?: string
-  Expiration?: string
-}
-
-export type Drive115UploadTokenResp = {
-  state: boolean
-  code: number
-  message: string
-  data?: Drive115UploadTokenItem[]
 }
 
 const buildFormData = (fields: Record<string, string>) => {
@@ -93,7 +81,7 @@ export const build115Target = (parentId: string | number) => {
 }
 
 export const apiDrive115GetUploadToken = async (user_id: string): Promise<Drive115UploadTokenItem[] | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) {
     message.error('未登录 115 网盘')
     return null
@@ -106,8 +94,9 @@ export const apiDrive115GetUploadToken = async (user_id: string): Promise<Drive1
   })
   if (!resp.ok) return null
   const data = (await resp.json()) as Drive115UploadTokenResp
-  if (!data?.state || data?.code !== 0 || !Array.isArray(data.data)) return null
-  return data.data
+  if (!data?.state || data?.code !== 0) return null
+  const tokens = normalizeDrive115UploadTokens(data.data)
+  return tokens.length > 0 ? tokens : null
 }
 
 export const apiDrive115UploadInit = async (
@@ -122,7 +111,7 @@ export const apiDrive115UploadInit = async (
   signKey: string = '',
   signVal: string = ''
 ): Promise<Drive115UploadInitResp | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) {
     message.error('未登录 115 网盘')
     return null
@@ -160,7 +149,7 @@ export const apiDrive115UploadResume = async (
   fileSha1: string,
   pickCode: string
 ): Promise<Drive115UploadInitResp | null> => {
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) {
     message.error('未登录 115 网盘')
     return null
@@ -185,4 +174,3 @@ export const apiDrive115UploadResume = async (
   const data = (await resp.json()) as Drive115UploadInitResp
   return data
 }
-

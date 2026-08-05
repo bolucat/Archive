@@ -5,14 +5,14 @@
 //! typed [`Match`] expressions, [`NamedSet`]s, [`VerdictMap`]s, and [`Chain`]s
 //! evaluated with statement-then-verdict, chain-jump semantics. It keeps the L7
 //! match vocabulary (domain / process / inbound identity / …) that nftables
-//! lacks by delegating those leaves to `wind_core::rule::Rule` via
+//! lacks by delegating those leaves to `wind_rule::Rule` via
 //! [`Match::Predicate`].
 //!
 //! # Pipeline
 //!
 //! ```ignore
 //! use wind_acl::{Ruleset, compile};
-//! use wind_core::rule::Rule;
+//! use wind_rule::Rule;
 //!
 //! let rules: Vec<Rule> = Rule::parse_rules(config)
 //!     .into_iter()

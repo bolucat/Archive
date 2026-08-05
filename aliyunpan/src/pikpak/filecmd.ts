@@ -1,5 +1,6 @@
 import message from '../utils/message'
 import { pikpakAuthHeaders } from './auth'
+import { getPikPakToken } from './dirfilelist'
 
 const API_URL = 'https://api-drive.mypikpak.com/drive/v1'
 
@@ -13,23 +14,13 @@ type PikPakCommandResp = {
   message?: string
 }
 
-const getToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
-}
-
 const requestPikPak = async <T = PikPakCommandResp>(
   user_id: string,
   url: string,
   init: RequestInit,
   errorTitle: string
 ): Promise<T | null> => {
-  const token = await getToken(user_id)
+  const token = await getPikPakToken(user_id)
   if (!token?.access_token) {
     message.error('未登录 PikPak')
     return null

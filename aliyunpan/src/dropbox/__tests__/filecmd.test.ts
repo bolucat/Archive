@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildDropboxChildPath,
+  buildDropboxRelocationBatchBody,
   buildDropboxRelocationBody,
   extractDropboxPathFromDescription,
   parentPathFromDropboxPath,
@@ -37,6 +38,14 @@ describe('Dropbox file command helpers', () => {
       from_path: '/Movies/demo.mkv',
       to_path: '/Archive/demo.mkv',
       allow_shared_folder: true,
+      autorename: true,
+      allow_ownership_transfer: false
+    })
+  })
+
+  it('builds official v2 batch relocation bodies', () => {
+    expect(buildDropboxRelocationBatchBody([{ from_path: '/Movies/a.mp4', to_path: '/Archive/a.mp4' }], true)).toEqual({
+      entries: [{ from_path: '/Movies/a.mp4', to_path: '/Archive/a.mp4' }],
       autorename: true,
       allow_ownership_transfer: false
     })

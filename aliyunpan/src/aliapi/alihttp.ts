@@ -7,12 +7,17 @@ import AliUser from './user'
 import message from '../utils/message'
 import DebugLog from '../utils/debuglog'
 import { v4 } from 'uuid'
-import { isNonAliyunProvider } from './utils'
+import { isNonAliyunProvider } from '../utils/driveIdentity'
 
 export interface IUrlRespData {
   code: number
   header: string
   body: any
+}
+
+const nonAliyunRequest = (userId: string): IUrlRespData | undefined => {
+  if (!userId || !isNonAliyunProvider(userId)) return undefined
+  return { code: 403, header: '', body: '当前网盘账号不能调用阿里云盘 API' }
 }
 
 function BlobToString(body: Blob, encoding: string): Promise<string> {
@@ -188,6 +193,8 @@ export default class AliHttp {
   }
 
   static async Get(url: string, user_id: string, params?: any): Promise<IUrlRespData> {
+    const blocked = nonAliyunRequest(user_id)
+    if (blocked) return blocked
     if (!url.startsWith('http') && !url.startsWith('https')) {
       if (url.includes('adrive/v1.0') || url.includes('adrive/v1.1')) {
         url = AliHttp.baseOpenApi + url
@@ -244,6 +251,8 @@ export default class AliHttp {
 
 
   static async GetString(url: string, user_id: string, fileSize: number, maxSize: number): Promise<IUrlRespData> {
+    const blocked = nonAliyunRequest(user_id)
+    if (blocked) return blocked
     if (!url.startsWith('http') && !url.startsWith('https')) {
       if (url.includes('adrive/v1.0') || url.includes('adrive/v1.1')) {
         url = AliHttp.baseOpenApi + url
@@ -346,6 +355,8 @@ export default class AliHttp {
 
 
   static async GetBlob(url: string, user_id: string): Promise<IUrlRespData> {
+    const blocked = nonAliyunRequest(user_id)
+    if (blocked) return blocked
     if (!url.startsWith('http') && !url.startsWith('https')) {
       if (url.includes('adrive/v1.0') || url.includes('adrive/v1.1')) {
         url = AliHttp.baseOpenApi + url
@@ -400,6 +411,8 @@ export default class AliHttp {
   }
 
   static async Post(url: string, postData: any, user_id: string, share_token: string): Promise<IUrlRespData> {
+    const blocked = nonAliyunRequest(user_id)
+    if (blocked) return blocked
     if (!url.startsWith('http') && !url.startsWith('https')) {
       if (url.includes('adrive/v1.0') || url.includes('adrive/v1.1')) {
         url = AliHttp.baseOpenApi + url
@@ -474,6 +487,8 @@ export default class AliHttp {
   }
 
   static async PostString(url: string, postData: any, user_id: string, share_token: string): Promise<IUrlRespData> {
+    const blocked = nonAliyunRequest(user_id)
+    if (blocked) return blocked
     if (!url.startsWith('http') && !url.startsWith('https')) {
       if (url.includes('adrive/v1.0') || url.includes('adrive/v1.1')) {
         url = AliHttp.baseOpenApi + url

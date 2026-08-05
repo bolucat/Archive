@@ -5,6 +5,7 @@ import is from 'electron-is'
 import { spawn, SpawnOptions } from 'child_process'
 import mpvAPI from '../module/node-mpv'
 import AliFile from '../aliapi/file'
+import DriveFile from '../drive/file'
 import AliFileCmd from '../aliapi/filecmd'
 import levenshtein from 'fast-levenshtein'
 import AliDirFileList from '../aliapi/dirfilelist'
@@ -19,22 +20,15 @@ import { IPageVideo } from '../store/appstore'
 import { Input, InputNumber, Modal } from '@arco-design/web-vue'
 import { h } from 'vue'
 import path from 'path'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { apiDrive115FileDetailResult } from '../cloud115/filecmd'
 import { apiDrive115VideoHistory } from '../cloud115/video'
-import { apiDrive115FileList, mapDrive115DetailToAliModel, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
-import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
-import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
-import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
-import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
-import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
-import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
-import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
-import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
+import { mapDrive115DetailToAliModel } from '../cloud115/dirfilelist'
+import { listProviderItems } from '../drive/providerList'
+import { resolveDriveProvider } from './driveProvider'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
 import { buildDirectPlayerInvocation, buildPlayerCommand, formatPlayerArg, isMpvCommand, parsePlayerParams, redactMpvArgs } from './mpvPlayerPolicy'
 
-const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
 const currentPlayerPlatform = () => (is.windows() ? 'win32' : is.macOS() ? 'darwin' : is.linux() ? 'linux' : process.platform)
 const createMpvSocketPath = () => {
   const id = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -55,7 +49,7 @@ const buildExternalSubtitleProxyUrl = (userId: string, driveId: string, fileId: 
 }
 
 const resolveExternalSubtitleUrl = async (userId: string, subtitleFile: IAliGetFileModel) => {
-  const data = await AliFile.ApiFileDownloadUrl(userId, subtitleFile.drive_id, subtitleFile.file_id, 14400)
+  const data = await DriveFile.ApiFileDownloadUrl(userId, subtitleFile.drive_id, subtitleFile.file_id, 14400)
   if (typeof data === 'string' || !data.url) return ''
   return buildExternalSubtitleProxyUrl(userId, subtitleFile.drive_id, subtitleFile.file_id, data.url, data.size, data.headers)
 }
@@ -213,6 +207,7 @@ const PlayerUtils = {
     if (isDropboxUser(user_id) || drive_id === 'dropbox') return undefined
     if (isOneDriveUser(user_id) || drive_id === 'onedrive') return undefined
     if (isBoxUser(user_id) || drive_id === 'box') return undefined
+    if (isGoogleUser(user_id) || drive_id === 'google') return undefined
     if (isGuangyaUser(user_id) || drive_id === 'guangya') return undefined
     if (isDrive115User(user_id) || drive_id === 'drive115') {
       const { detail, error } = await apiDrive115FileDetailResult(user_id, file_id)
@@ -262,48 +257,19 @@ const PlayerUtils = {
       if (connection) {
         items = await listWebDavDirectory(connection, parent_file_id || '/')
       }
-    } else if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      const list = await apiCloud123FileList(user_id, parent_file_id, 500, false)
-      items = list.map(item => mapCloud123FileToAliModel(item))
-    } else if (isDrive115User(user_id) || drive_id === 'drive115') {
-      const list = await apiDrive115FileList(user_id, parent_file_id, 200, 0, true)
-      items = list.map(item => mapDrive115FileToAliModel(item, drive_id))
-    } else if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      const list = await apiBaiduFileList(user_id, parent_file_id || '/', 'name', 0, 1000)
-      items = list.map(item => mapBaiduFileToAliModel(item, drive_id, parent_file_id || '/'))
-    } else if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'pikpak_root'
-      const list = await apiPikPakFileList(user_id, parentId, 500)
-      items = list.items.map(item => mapPikPakFileToAliModel(item, drive_id, parentId))
-    } else if (isQuarkUser(user_id) || drive_id === 'quark') {
-      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : '0'
-      const list = await apiQuarkFileList(user_id, parentId, 500)
-      items = list.items.map(item => mapQuarkFileToAliModel(item, drive_id, parentId))
-    } else if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'dropbox_root'
-      const list = await apiDropboxFileList(user_id, parentId, 500)
-      items = list.map(item => mapDropboxFileToAliModel(item, drive_id, parentId))
-    } else if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'onedrive_root'
-      const list = await apiOneDriveFileList(user_id, parentId)
-      items = list.map(item => mapOneDriveItemToAliModel(item, drive_id, parentId))
-    } else if (isBoxUser(user_id) || drive_id === 'box') {
-      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'box_root'
-      const list = await apiBoxFileList(user_id, parentId, 500)
-      items = list.map(item => mapBoxItemToAliModel(item, drive_id, parentId))
-    } else if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      const parentId = parent_file_id && !parent_file_id.includes('root') ? parent_file_id : 'guangya_root'
-      const list = await apiGuangyaFileList(user_id, parentId, 500)
-      items = list.map(item => mapGuangyaFileToAliModel(item, drive_id, parentId))
-    } else if (canUseAliyunFileList(user_id)) {
-      const dir = await AliDirFileList.ApiDirFileList(user_id, drive_id, parent_file_id, '', 'name asc', '')
-      items = dir.items
     } else {
-      console.warn('[PlayerUtils] skip Aliyun file list for non-Aliyun source', {
-        user_id,
-        drive_id,
-        parent_file_id
-      })
+      const route = resolveDriveProvider(user_id, drive_id)
+      const providerResult = route.isValid && route.provider !== 'aliyun'
+        ? await listProviderItems(route.provider, user_id, drive_id, parent_file_id, true)
+        : undefined
+      if (providerResult) {
+        items = providerResult.items
+      } else if (route.isValid && route.provider === 'aliyun') {
+        const dir = await AliDirFileList.ApiDirFileList(user_id, drive_id, parent_file_id, '', 'name asc', '')
+        items = dir.items
+      } else {
+        console.warn('[PlayerUtils] skip unknown or mismatched drive source', { user_id, drive_id, parent_file_id, error: route.error })
+      }
     }
     const curDirFileList: IAliGetFileModel[] = []
     for (let item of items) {

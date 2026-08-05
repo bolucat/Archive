@@ -1,0 +1,14 @@
+[package]
+name = "wind-rule"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+readme.workspace = true
+description = "Metacubex-style routing rule types, parsing and matching for wind (leaf crate; no wind dependencies)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+ipnet = { version = "2", features = ["serde"] }
+regex = "1"

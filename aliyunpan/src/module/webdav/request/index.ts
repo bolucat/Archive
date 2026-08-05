@@ -19,6 +19,7 @@ import AliUploadHashPool from '../../../aliapi/uploadhashpool'
 import UserDAL from '../../../user/userdal'
 import { Readable } from 'node:stream'
 import { getEncType, getRawUrl } from '../../../utils/proxyhelper'
+import { isAliyunUser } from '../../../aliapi/utils'
 
 class Request {
   private static fileInfo: any
@@ -27,7 +28,12 @@ class Request {
 
   }
 
+  private static requireAliyunAccount() {
+    if (!isAliyunUser(usePanTreeStore().user_id)) throw new Error('本地 WebDAV 当前仅支持阿里云盘账号')
+  }
+
   static async getRootDirectory(ctx: IContextInfo): Promise<StructDirectory[]> {
+    this.requireAliyunAccount()
     let { backup_drive_id, resource_drive_id, pic_drive_id } = usePanTreeStore()
     let { securityHideBackupDrive, securityHideResourceDrive, securityHidePicDrive } = useSettingStore()
     let resPan = {
@@ -83,6 +89,7 @@ class Request {
   }
 
   static async getStructDirectory(ctx: IContextInfo, drive_id: string, file_id: string): Promise<StructDirectory[] | StructDirectory | Error> {
+    this.requireAliyunAccount()
     console.log('api.getStructDirectory, file_id', file_id)
     try {
       // 如果为根路径，加入备份盘和资源盘
@@ -119,6 +126,7 @@ class Request {
   }
 
   static async getReadStream(ctx: OpenReadStreamInfo, file: any) {
+    this.requireAliyunAccount()
     try {
       // 获取下载地址
       if (!this.fileInfo || this.fileInfo.file_id != file.file_id) {
@@ -173,6 +181,7 @@ class Request {
 
   // `https://api.aliyundrive.com/v2/file/create_with_proof`
   static async createFolder(ctx: CreateInfo, drive_id: string, parent_file_id: string, element: string) {
+    this.requireAliyunAccount()
     try {
       let resp = await AliFileCmd.ApiCreatNewForder(usePanTreeStore().user_id, drive_id, parent_file_id, element)
       return {
@@ -190,6 +199,7 @@ class Request {
   // `https://api.aliyundrive.com/v2/file/create_with_proof`
   // todo: 创建文件
   static async createFile(ctx: CreateInfo, drive_id: string, parent_file_id: string, filename: string, content: string) {
+    this.requireAliyunAccount()
     try {
       const token = await UserDAL.GetUserTokenFromDB(usePanTreeStore().user_id)
       let buff = Buffer.from([])
@@ -227,6 +237,7 @@ class Request {
   // `https://api.aliyundrive.com/v3/file/delete`
   // `https://api.aliyundrive.com/v2/recyclebin/trash`
   static async deleteFolder(ctx: DeleteInfo, drive_id: string, file_id: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/delete'
       const postData = { drive_id: drive_id, file_id: file_id }
@@ -242,6 +253,7 @@ class Request {
   // `https://api.aliyundrive.com/v3/file/delete`
   // `https://api.aliyundrive.com/v2/recyclebin/trash`
   static async deleteFile(ctx: DeleteInfo, drive_id: string, file_id: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/delete'
       const postData = { drive_id: drive_id, file_id: file_id }
@@ -256,6 +268,7 @@ class Request {
 
   // `https://api.aliyundrive.com/v3/file/copy`
   static async copyFile(ctx: CopyInfo, drive_id: string, file_id: string, to_file_id: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/copy'
       const postData = {
@@ -279,6 +292,7 @@ class Request {
 
   // `https://api.aliyundrive.com/v3/file/copy`
   static async copyFolder(ctx: CopyInfo, drive_id: string, file_id: string, to_file_id: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/copy'
       const postData = {
@@ -302,6 +316,7 @@ class Request {
 
   // `https://api.aliyundrive.com/v3/file/update`
   static async renameFile(ctx: MoveInfo, drive_id: string, file_id: string, newName: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/update'
       const postData = {
@@ -326,6 +341,7 @@ class Request {
 
   // `https://api.aliyundrive.com/v3/file/update`
   static async renameFolder(ctx: MoveInfo, drive_id: string, file_id: string, newName: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/update'
       const postData = {
@@ -350,6 +366,7 @@ class Request {
 
   //`https://api.aliyundrive.com/v3/file/move`
   static async moveFile(ctx: MoveInfo, drive_id: string, file_id: string, to_file_id: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/move'
       const postData = {
@@ -373,6 +390,7 @@ class Request {
 
   //`https://api.aliyundrive.com/v3/file/move`
   static async moveFolder(ctx: MoveInfo, drive_id: string, file_id: string, to_file_id: string) {
+    this.requireAliyunAccount()
     try {
       const url = 'v3/file/move'
       const postData = {

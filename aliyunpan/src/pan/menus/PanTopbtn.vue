@@ -13,7 +13,7 @@ import { usePanTreeStore, usePanFileStore } from '../../store'
 import message from '../../utils/message'
 import PanDAL from '../pandal'
 import { isAliyunUser } from '../../aliapi/utils'
-import { supportsCreateFolder, supportsCreateTextFile, supportsEncryptedFileOperations, supportsLocalUpload, supportsShareImport } from '../../aliapi/providerFeatures'
+import { supportsCreateFolder, supportsCreateTextFile, supportsEncryptedFileOperations, supportsLocalUpload, supportsShareImport } from '../../drive/providerFeatures'
 import { t } from '../../i18n'
 
 const props = defineProps({

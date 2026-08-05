@@ -2,7 +2,7 @@ import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
-import UserDAL from '../user/userdal'
+import { getDrive115Token } from './auth'
 import message from '../utils/message'
 import DebugLog from '../utils/debuglog'
 
@@ -88,13 +88,7 @@ export const apiDrive115FileList = async (
   showDir = true,
   options: Drive115RequestOptions = {}
 ): Promise<Drive115FileItem[]> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) {
-      token = dbToken
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) {
     reportDrive115ListError('未登录 115 网盘', options)
     return []
@@ -202,8 +196,8 @@ export const apiDrive115Search = async (
   limit = 200,
   offset = 0
 ): Promise<{ items: Drive115SearchItem[]; total: number }> => {
-  const token = UserDAL.GetUserToken(user_id)
-  if (!token.access_token) {
+  const token = await getDrive115Token(user_id)
+  if (!token?.access_token) {
     message.error('未登录 115 网盘')
     return { items: [], total: 0 }
   }

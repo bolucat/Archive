@@ -5,3 +5,4 @@
 pub mod cli;
 pub mod conf;
 pub mod log;
+pub mod plugin;

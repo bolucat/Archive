@@ -14,10 +14,10 @@ protocol. The normative implementation references are the `wind-acl` and
 ## Abstract
 
 `acl-ir` is the internal routing program format used by `wind-acl`. It lowers
-Clash/Mihomo rule lines (and any externally converted `wind_core::rule::Rule`
+Clash/Mihomo rule lines (and any externally converted `wind_rule::Rule`
 values, such as tuic-server's legacy ACL dialect) into a single `Ruleset` that
 preserves first-match-wins routing, default outbound fallback, and the legacy
-`wind_core::rule::Rule` matching semantics.
+`wind_rule::Rule` matching semantics.
 
 The IR is shaped like a small nftables-inspired engine: boolean match
 expressions, set membership, verdict maps, ordered chains, statements, and
@@ -25,7 +25,7 @@ terminal verdicts. The v1 implementation deliberately keeps the compatibility
 surface narrow. Optimizer-relevant leaves are represented as typed IR nodes
 (domain exact/suffix/keyword, IP CIDR, source/destination port, and network
 protocol); every other Mihomo rule type is carried as `Match::Predicate` and
-delegates evaluation to `wind_core::rule::Rule`.
+delegates evaluation to `wind_rule::Rule`.
 
 ## Table of Contents
 
@@ -45,7 +45,7 @@ delegates evaluation to `wind_core::rule::Rule`.
 
 An ACL router answers one question: given a connection context, which outbound
 should serve it, or should it be rejected? Historically, wind used a flat
-`Vec<wind_core::rule::Rule>` evaluated in declaration order. That model is
+`Vec<wind_rule::Rule>` evaluated in declaration order. That model is
 simple and compatible with Clash/Mihomo syntax, but it is hard to optimize and
 does not give converted rules (e.g. tuic-server's legacy ACL) a structured
 target.
@@ -59,7 +59,7 @@ target.
   forcing all of them into the initial implementation.
 
 The IR borrows its engine shape from nftables, but it is not an nftables
-frontend. It runs inside wind, reads `wind_core::rule::MatchContext`, and keeps
+frontend. It runs inside wind, reads `wind_rule::MatchContext`, and keeps
 proxy-specific layer-7 concepts such as domains, process identity, inbound
 metadata, GeoIP/GeoSite lookups, and rule-set placeholders.
 
@@ -71,7 +71,7 @@ document are to be interpreted as described in BCP 14 [RFC2119] [RFC8174] when,
 and only when, they appear in all capitals.
 
 - **Match**: a boolean expression evaluated against a `MatchContext`.
-- **Predicate**: a `wind_core::rule::Rule` embedded in the IR as an opaque
+- **Predicate**: a `wind_rule::Rule` embedded in the IR as an opaque
   matcher.
 - **Statement**: a non-terminal action associated with a matching rule.
 - **Verdict**: a routing or control-flow decision: forward, reject, drop,
@@ -94,7 +94,7 @@ types in `crates/wind-acl/src/model.rs`.
 `AclEngineBuilder` builds an engine in this order:
 
 1. Parse real Hysteria 2 (apernet) ACL entries through `syntax::apernet` and
-   convert them to `wind_core::rule::Rule` values with `apernet::acl_to_rules`.
+   convert them to `wind_rule::Rule` values with `apernet::acl_to_rules`.
 2. Parse Clash/Mihomo rule lines through `syntax::metacubex`.
 3. Concatenate apernet-derived rules before Clash/Mihomo rules.
 4. Build the degenerate `Ruleset` with `Ruleset::from_rules`.
@@ -106,8 +106,8 @@ The apernet-before-Clash ordering is normative for `AclEngine`: if both
 surfaces produce a rule matching the same connection, the apernet-derived rule
 wins.
 
-Callers with *other* rule sources convert them to `wind_core::rule::Rule`
-themselves and route those values directly (via `wind_core::AclRouter` or the
+Callers with *other* rule sources convert them to `wind_rule::Rule`
+themselves and route those values directly (via `wind_acl::AclEngine` or the
 degenerate embedding). tuic-server does this for its space-separated `legacy`
 dialect: it lowers entries with `tuic_server::legacy::acl_to_rules` and
 concatenates the converted rules before its Clash/Mihomo rules.
@@ -140,7 +140,7 @@ enum Match {
     Domain (DomainTest),
 
     InSet { side: Side, set: usize },
-    Predicate(Arc<wind_core::rule::Rule>),
+    Predicate(Arc<wind_rule::Rule>),
 }
 
 enum DomainTest {
@@ -160,7 +160,7 @@ matching is also ASCII case-insensitive.
 
 `Predicate` is the compatibility escape hatch. It MUST evaluate by calling
 `Rule::matches(ctx)`, so opaque rules keep the exact behavior of
-`wind_core::rule`, including `RULE-SET` currently matching false and
+`wind_rule`, including `RULE-SET` currently matching false and
 `SUB-RULE` currently using the legacy contained-rule semantics.
 
 ### 4.2. Sets
@@ -328,7 +328,7 @@ routing MUST still match it.
 
 The following rule types become typed IR leaves:
 
-| `wind_core::rule::RuleType` | IR match |
+| `wind_rule::RuleType` | IR match |
 | --- | --- |
 | `Domain` | `Domain(Exact)` |
 | `DomainSuffix` | `Domain(Suffix)` |
@@ -357,7 +357,7 @@ as a decision, not as a string payload.
 
 ### 7.1. Clash/Mihomo
 
-Clash/Mihomo lines are parsed by `wind_core::rule::Rule::parse`. Blank lines
+Clash/Mihomo lines are parsed by `wind_rule::Rule::parse`. Blank lines
 and `#` comments are skipped by multiline helpers.
 
 The shared rule model supports the following broad classes:
@@ -388,7 +388,7 @@ because its output is embedded through Section 6. Lines have the shape:
 <outbound> [address] [ports] [hijack]
 ```
 
-Lowering first converts each `AclRule` to one or more `wind_core::rule::Rule`
+Lowering first converts each `AclRule` to one or more `wind_rule::Rule`
 values (`tuic_server::legacy::acl_to_rules`), then embeds those rules through
 Section 6.
 
@@ -429,7 +429,7 @@ Outbound lowering:
 The apernet dialect is the genuine Hysteria 2 ACL — a **function-call** form,
 `outbound(address[, proto/port[, hijack]])` — parsed by `syntax::apernet` in
 `wind-acl`, mirroring apernet/hysteria's `extras/outbounds/acl` parser. Lowering
-converts each `AclRule` to one or more `wind_core::rule::Rule` values
+converts each `AclRule` to one or more `wind_rule::Rule` values
 (`apernet::acl_to_rules`), then embeds them through Section 6.
 
 Address dispatch is ordered and structural (first match wins, after lower-casing
@@ -546,7 +546,7 @@ and MUST preserve the same order-invariance rule if added.
 The v1 implementation intentionally distinguishes between IR capacity and
 engine behavior:
 
-- `RULE-SET` is still a `wind_core::rule::RuleType::RuleSet` predicate and
+- `RULE-SET` is still a `wind_rule::RuleType::RuleSet` predicate and
   therefore currently matches false.
 - `SUB-RULE` is still evaluated through the legacy `RuleType::SubRule`
   semantics when carried by `Predicate`.

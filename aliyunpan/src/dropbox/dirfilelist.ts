@@ -3,6 +3,7 @@ import getFileIcon from '../aliapi/fileicon'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import message from '../utils/message'
+import { getProviderTokenForUser } from '../drive/account'
 
 export type DropboxMetadata = {
   '.tag': 'file' | 'folder' | 'deleted'
@@ -33,13 +34,7 @@ type DropboxTemporaryLinkResp = {
 const DROPBOX_API_HOST = 'https://api.dropboxapi.com/2'
 
 export const getDropboxToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
+  return getProviderTokenForUser(user_id, 'dropbox')
 }
 
 export const dropboxRpc = async <T>(user_id: string, endpoint: string, body: any, fallback: string): Promise<T | null> => {

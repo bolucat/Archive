@@ -1,5 +1,5 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getDrive115Token } from './auth'
 
 export type Drive115MkdirResult = {
   file_id: string
@@ -39,16 +39,7 @@ const toIsoTime = (value?: string | number) => {
 
 export const apiDrive115Mkdir = async (user_id: string, parent_id: string, name: string): Promise<Drive115MkdirResult> => {
   const result: Drive115MkdirResult = { file_id: '', error: '新建文件夹失败' }
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return result
   const body = new URLSearchParams()
   body.set('pid', parent_id)
@@ -75,16 +66,7 @@ export const apiDrive115Mkdir = async (user_id: string, parent_id: string, name:
 }
 
 export const apiDrive115FileDetailResult = async (user_id: string, file_id: string): Promise<Drive115DetailApiResult> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getDrive115Token(user_id)
   if (!token?.access_token) return { detail: null, error: '未登录 115 网盘' }
   const params = new URLSearchParams({ file_id })
   const url = `${DETAIL_URL}?${params.toString()}`

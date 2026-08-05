@@ -1,4 +1,4 @@
-import UserDAL from '../user/userdal'
+import { getCloud123Token } from './auth'
 
 export type Cloud123ShareCreateResult = {
   shareId: string
@@ -77,7 +77,7 @@ export const apiCloud123ShareCreate = async (
   trafficLimit?: number
 ): Promise<Cloud123ShareCreateResult> => {
   const result: Cloud123ShareCreateResult = { shareId: '', shareKey: '', error: '创建分享链接失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -138,7 +138,7 @@ export const apiCloud123PaidShareCreate = async (
   trafficLimit?: number
 ): Promise<Cloud123PaidShareCreateResult> => {
   const result: Cloud123PaidShareCreateResult = { shareId: '', shareKey: '', error: '创建123云盘付费分享失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -180,7 +180,7 @@ export const apiCloud123PaidShareCreate = async (
 
 export const apiCloud123PaidShareList = async (user_id: string, lastShareId: number, limit: number): Promise<Cloud123PaidShareListResult> => {
   const result: Cloud123PaidShareListResult = { list: [], lastShareId: -1, error: '' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -209,7 +209,7 @@ export const apiCloud123PaidShareList = async (user_id: string, lastShareId: num
 
 export const apiCloud123PaidShareUpdate = async (user_id: string, shareIdList: string[], trafficSwitch?: number, trafficLimitSwitch?: number, trafficLimit?: number): Promise<Cloud123ShareUpdateResult> => {
   const result: Cloud123ShareUpdateResult = { success: false, error: '修改123云盘付费分享失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -248,7 +248,7 @@ export const apiCloud123ShareList = async (
   limit: number
 ): Promise<Cloud123ShareListResult> => {
   const result: Cloud123ShareListResult = { list: [], lastShareId: -1, error: '' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -289,7 +289,7 @@ export const apiCloud123ShareUpdate = async (
   trafficLimit?: number
 ): Promise<Cloud123ShareUpdateResult> => {
   const result: Cloud123ShareUpdateResult = { success: false, error: '修改分享链接失败' }
-  const token = UserDAL.GetUserToken(user_id)
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     result.error = '请先登录123云盘'
     return result
@@ -325,3 +325,4 @@ export const apiCloud123ShareUpdate = async (
   }
   return result
 }
+export const cloud123ShareUpdateNotice = '123云盘开放 API 仅支持修改分享流量设置，名称、有效期和提取码无法修改'

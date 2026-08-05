@@ -13,16 +13,26 @@ import { humanSize, Sleep } from '../utils/format'
 import { RuningList } from './uiupload'
 import path from 'path'
 import fspromises from 'fs/promises'
-import Cloud123UploadDisk from '../cloud123/uploaddisk'
-import BaiduUploadDisk from '../cloudbaidu/uploaddisk'
-import Drive115UploadDisk from '../cloud115/uploaddisk'
-import DropboxUploadDisk from '../dropbox/upload'
-import OneDriveUploadDisk from '../onedrive/upload'
-import GuangyaUploadDisk from '../guangya/uploaddisk'
-import { isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../aliapi/utils'
-import { apiCloud123Mkdir } from '../cloud123/filecmd'
+import { resolveDriveProvider } from '../utils/driveProvider'
+import { uploadProviderFile } from '../drive/providerUpload'
 
 export async function StartUpload(fileui: IUploadingUI): Promise<void> {
+  try {
+    await startUpload(fileui)
+  } catch (error) {
+    if (!fileui.IsRunning) {
+      fileui.Info.uploadState = '已暂停'
+      return
+    }
+    const message = error instanceof Error ? error.message : String(error || '')
+    DebugLog.mSaveDanger('上传任务异常 ' + fileui.File.name + ' ' + message)
+    fileui.Info.uploadState = 'error'
+    fileui.Info.failedCode = 505
+    fileui.Info.failedMessage = message || '上传失败，请重试'
+  }
+}
+
+async function startUpload(fileui: IUploadingUI): Promise<void> {
   const token = await UserDAL.GetUserTokenFromDB(fileui.user_id)
   if (!token || token.user_id !== fileui.user_id) {
     fileui.Info.uploadState = 'error'
@@ -30,102 +40,36 @@ export async function StartUpload(fileui: IUploadingUI): Promise<void> {
     fileui.Info.failedMessage = '找不到账号,无法继续'
     return
   }
-  if (isPikPakUser(fileui.user_id || '')) {
+  const route = resolveDriveProvider(fileui.user_id, fileui.drive_id, token.tokenfrom)
+  if (!route.isValid) {
     fileui.Info.uploadState = 'error'
     fileui.Info.failedCode = 505
-    fileui.Info.failedMessage = 'PikPak 本地上传暂不支持，请使用离线下载导入 http/https 或 magnet 链接'
+    fileui.Info.failedMessage = route.error
     return
   }
   // 创建文件夹
   if (fileui.File.isDir) {
     return creatDirAndReadChildren(fileui)
   }
-
-  if (isCloud123User(fileui.user_id || '')) {
-    await checkFileSize(fileui)
-    const uploadResult = await Cloud123UploadDisk.UploadOneFile(fileui)
-    if (uploadResult == 'success') {
-      fileui.Info.uploadState = 'success'
-    } else if (!fileui.IsRunning) {
-      fileui.Info.uploadState = '已暂停'
-    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
+  if (route.provider !== 'aliyun') {
+    if (!(await checkFileSize(fileui))) return
+    const uploadResult = await uploadProviderFile(route.provider, fileui)
+    if (!uploadResult) {
+      fileui.Info.uploadState = 'error'
+      fileui.Info.failedCode = 505
+      fileui.Info.failedMessage = route.provider === 'pikpak' ? 'PikPak 本地上传暂不支持，请使用离线下载导入 http/https 或 magnet 链接' : '当前网盘暂不支持本地文件上传'
+      return
+    }
+    if (uploadResult === 'success') fileui.Info.uploadState = 'success'
+    else if (!fileui.IsRunning) fileui.Info.uploadState = '已暂停'
+    else if (fileui.Info.uploadState === 'running' || fileui.Info.uploadState === 'hashing') {
       fileui.Info.uploadState = 'error'
       fileui.Info.failedCode = 505
       fileui.Info.failedMessage = uploadResult
     }
     return
   }
-  if (isGuangyaUser(fileui.user_id || '')) {
-    await checkFileSize(fileui)
-    const uploadResult = await GuangyaUploadDisk.UploadOneFile(fileui)
-    if (uploadResult == 'success') {
-      fileui.Info.uploadState = 'success'
-    } else if (!fileui.IsRunning) {
-      fileui.Info.uploadState = '已暂停'
-    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
-      fileui.Info.uploadState = 'error'
-      fileui.Info.failedCode = 505
-      fileui.Info.failedMessage = uploadResult
-    }
-    return
-  }
-  if (isBaiduUser(fileui.user_id || '')) {
-    await checkFileSize(fileui)
-    const uploadResult = await BaiduUploadDisk.UploadOneFile(fileui)
-    if (uploadResult == 'success') {
-      fileui.Info.uploadState = 'success'
-    } else if (!fileui.IsRunning) {
-      fileui.Info.uploadState = '已暂停'
-    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
-      fileui.Info.uploadState = 'error'
-      fileui.Info.failedCode = 505
-      fileui.Info.failedMessage = uploadResult
-    }
-    return
-  }
-  if (isDrive115User(fileui.user_id || '')) {
-    await checkFileSize(fileui)
-    const uploadResult = await Drive115UploadDisk.UploadOneFile(fileui)
-    if (uploadResult == 'success') {
-      fileui.Info.uploadState = 'success'
-    } else if (!fileui.IsRunning) {
-      fileui.Info.uploadState = '已暂停'
-    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
-      fileui.Info.uploadState = 'error'
-      fileui.Info.failedCode = 505
-      fileui.Info.failedMessage = uploadResult
-    }
-    return
-  }
-  if (isDropboxUser(fileui.user_id || '')) {
-    await checkFileSize(fileui)
-    const uploadResult = await DropboxUploadDisk.UploadOneFile(fileui)
-    if (uploadResult == 'success') {
-      fileui.Info.uploadState = 'success'
-    } else if (!fileui.IsRunning) {
-      fileui.Info.uploadState = '已暂停'
-    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
-      fileui.Info.uploadState = 'error'
-      fileui.Info.failedCode = 505
-      fileui.Info.failedMessage = uploadResult
-    }
-    return
-  }
-  if (isOneDriveUser(fileui.user_id || '')) {
-    await checkFileSize(fileui)
-    const uploadResult = await OneDriveUploadDisk.UploadOneFile(fileui)
-    if (uploadResult == 'success') {
-      fileui.Info.uploadState = 'success'
-    } else if (!fileui.IsRunning) {
-      fileui.Info.uploadState = '已暂停'
-    } else if (fileui.Info.uploadState == 'running' || fileui.Info.uploadState == 'hashing') {
-      fileui.Info.uploadState = 'error'
-      fileui.Info.failedCode = 505
-      fileui.Info.failedMessage = uploadResult
-    }
-    return
-  }
-  await checkFileSize(fileui)
+  if (!(await checkFileSize(fileui))) return
   const uploadInfo: IUploadInfo = {
     token_type: token.token_type,
     access_token: token.access_token,
@@ -221,25 +165,14 @@ async function creatDirAndReadChildren(fileui: IUploadingUI): Promise<void> {
 
   let uploaded_file_id = ''
   if (fileui.File.IsRoot) {
-    if (isCloud123User(fileui.user_id || '')) {
-      const data = await apiCloud123Mkdir(fileui.user_id, fileui.parent_file_id || '0', fileui.File.name)
-      if (data.error) {
-        fileui.Info.uploadState = 'error'
-        fileui.Info.failedCode = 503
-        fileui.Info.failedMessage = data.error
-        return
-      }
-      uploaded_file_id = data.file_id
-    } else {
-      const data = await AliFileCmd.ApiCreatNewForder(fileui.user_id, fileui.drive_id, fileui.parent_file_id, fileui.File.name, fileui.encType)
-      if (data.error) {
-        fileui.Info.uploadState = 'error'
-        fileui.Info.failedCode = 503
-        fileui.Info.failedMessage = data.error
-        return
-      }
-      uploaded_file_id = data.file_id
+    const data = await AliFileCmd.ApiCreatNewForder(fileui.user_id, fileui.drive_id, fileui.parent_file_id, fileui.File.name, fileui.encType)
+    if (data.error) {
+      fileui.Info.uploadState = 'error'
+      fileui.Info.failedCode = 503
+      fileui.Info.failedMessage = data.error
+      return
     }
+    uploaded_file_id = data.file_id
   }
 
   let childList: IStateUploadTaskFile[] = []
@@ -482,7 +415,7 @@ async function readDir(fullDirPath: string, ingoredList: string[]): Promise<{
   return { error: errorMessage, fileList, dirList }
 }
 
-async function checkFileSize(fileui: IUploadingUI): Promise<void> {
+async function checkFileSize(fileui: IUploadingUI): Promise<boolean> {
   let errorMessage = ''
   const stat = await fspromises.lstat(path.join(fileui.localFilePath, fileui.File.partPath)).catch((err: any) => {
     err = FileSystemErrorMessage(err.code, err.message)
@@ -494,7 +427,7 @@ async function checkFileSize(fileui: IUploadingUI): Promise<void> {
     fileui.Info.uploadState = 'error'
     fileui.Info.failedCode = 102
     fileui.Info.failedMessage = errorMessage
-    return
+    return false
   }
 
   if (fileui.File.size != stat.size) {
@@ -509,6 +442,7 @@ async function checkFileSize(fileui: IUploadingUI): Promise<void> {
     fileui.Info.up_upload_id = ''
     fileui.Info.up_file_id = ''
   }
+  return true
 }
 
 

@@ -4,37 +4,14 @@ import axios from 'axios'
 import AliUpload from './upload'
 import AliUploadHashPool from './uploadhashpool'
 import { getFlowEnc } from '../utils/proxyhelper'
-import { isBoxUser, isDropboxUser, isGuangyaUser, isOneDriveUser } from './utils'
-import { apiDropboxUploadBuffer } from '../dropbox/upload'
-import { apiOneDriveUploadBuffer } from '../onedrive/upload'
-import { apiBoxUploadBuffer } from '../box/upload'
-import { apiGuangyaUploadBuffer } from '../guangya/upload'
+import { isAliyunUser } from '../utils/driveIdentity'
 
 export default class AliUploadMem {
   
   static async UploadMem(user_id: string, drive_id: string, parent_file_id: string, CreatFileName: string, context: string, encType: string = '') {
     const token = await UserDAL.GetUserTokenFromDB(user_id)
     if (!token || !token.access_token) return '账号失效，操作取消'
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      if (encType) return 'Dropbox 暂不支持加密新建文件'
-      const resp = await apiDropboxUploadBuffer(token.access_token, parent_file_id, CreatFileName, Buffer.from(context || '', 'utf-8'), 'refuse')
-      return resp.error || 'success'
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      if (encType) return 'OneDrive 暂不支持加密新建文件'
-      const resp = await apiOneDriveUploadBuffer(user_id, parent_file_id, CreatFileName, Buffer.from(context || '', 'utf-8'))
-      return resp.error || 'success'
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      if (encType) return 'Box 暂不支持加密新建文件'
-      const resp = await apiBoxUploadBuffer(user_id, parent_file_id, CreatFileName, Buffer.from(context || '', 'utf-8'), 'refuse')
-      return resp.error || 'success'
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      if (encType) return '光鸭云盘暂不支持加密新建文件'
-      const resp = await apiGuangyaUploadBuffer(user_id, parent_file_id, CreatFileName, Buffer.from(context || '', 'utf-8'))
-      return resp.error || 'success'
-    }
+    if (!isAliyunUser(user_id)) return '当前网盘暂不支持新建文本文件'
     let hash = 'DA39A3EE5E6B4B0D3255BFEF95601890AFD80709' 
     let proof = ''
     let buff = Buffer.from([])

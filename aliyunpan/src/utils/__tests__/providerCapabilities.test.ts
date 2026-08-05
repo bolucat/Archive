@@ -21,7 +21,7 @@ describe('provider capability manifest', () => {
     const text = formatProviderCapabilities([getProviderCapabilities('guangya'), getProviderCapabilities('webdav')])
     expect(text).toContain('光鸭云')
     expect(text).toContain('WebDAV')
-    expect(text).toContain('写操作需在网盘界面完成')
+    expect(text).toContain('将文件或文件夹移入回收站')
   })
 
   it('derives UI and media acquisition operations from the provider manifest', () => {
@@ -31,8 +31,16 @@ describe('provider capability manifest', () => {
     expect(getMediaAcquisitionCapability('pikpak')).toMatchObject({ shareImport: true, magnetOfflineDownload: true, externalUrlOfflineDownload: true })
 
     const box = getProviderCapabilities('box')
-    expect(box.operations['upload.local']).toBe(false)
+    expect(box.operations['upload.local']).toBe(true)
     expect(box.operations['upload.memory']).toBe(true)
+    expect(box.operations['files.downloadZip']).toBe(true)
+    expect(getProviderCapabilities('dropbox').operations['files.downloadZip']).toBe(true)
+    expect(getProviderCapabilities('onedrive').operations['files.downloadZip']).toBe(false)
+
+    const quark = getProviderCapabilities('quark')
+    expect(quark.operations['upload.local']).toBe(true)
+    expect(quark.operations['trash.move']).toBe(true)
+    expect(quark.operations['trash.restore']).toBe(false)
   })
 
   it('advertises agent tools from operation-level capabilities', () => {

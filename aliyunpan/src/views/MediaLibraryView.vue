@@ -81,10 +81,11 @@ import { MediaScanner } from '../utils/mediaScanner'
 import UserDAL from '../user/userdal'
 import message from '../utils/message'
 import type { MediaLibraryFolder } from '../types/media'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
+import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import AliDirFileList from '../aliapi/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
+import { resolveDriveFileToken } from '../drive/account'
 
 const mediaStore = useMediaLibraryStore()
 const panTreeStore = usePanTreeStore()
@@ -153,34 +154,13 @@ const inferFolderContextFromMedia = (folder: MediaLibraryFolder) => {
 }
 
 const resolveFolderRuntimeContext = async (folder: MediaLibraryFolder): Promise<{ userId: string; driveId: string }> => {
-  if (folder.userId && folder.driveId) {
-    return {
-      userId: folder.userId,
-      driveId: folder.driveId
-    }
-  }
-
   const inferred = inferFolderContextFromMedia(folder)
-  if (inferred.userId && inferred.driveId) {
-    return inferred
-  }
-
-  const userList = await UserDAL.GetUserListFromDB()
-  const matched = userList.find((token) => {
-    if (folder.driveId === 'cloud123' || folder.driveServerId === 'cloud123') return isCloud123User(token)
-    if (folder.driveId === 'drive115' || folder.driveServerId === 'drive115') return isDrive115User(token)
-    if (folder.driveId === 'baidu' || folder.driveServerId === 'baidu') return isBaiduUser(token)
-    if (folder.driveId === 'pikpak' || folder.driveServerId === 'pikpak') return isPikPakUser(token)
-    if (folder.driveId === 'quark' || folder.driveServerId === 'quark') return isQuarkUser(token)
-    if (folder.driveId === 'dropbox' || folder.driveServerId === 'dropbox') return isDropboxUser(token)
-    if (folder.driveId === 'onedrive' || folder.driveServerId === 'onedrive') return isOneDriveUser(token)
-    if (folder.driveId === 'box' || folder.driveServerId === 'box') return isBoxUser(token)
-    return isAliyunUser(token)
-  })
+  const driveId = folder.driveId || inferred.driveId || folder.driveServerId || panTreeStore.drive_id
+  const token = await resolveDriveFileToken({ drive_id: driveId, user_id: folder.userId || inferred.userId }, panTreeStore.user_id)
 
   return {
-    userId: folder.userId || inferred.userId || matched?.user_id || panTreeStore.user_id,
-    driveId: folder.driveId || inferred.driveId || panTreeStore.drive_id
+    userId: token?.user_id || '',
+    driveId
   }
 }
 
@@ -228,6 +208,10 @@ const loadFolderContent = async (folder: MediaLibraryFolder) => {
     const runtimeContext = await resolveFolderRuntimeContext(folder)
     const userId = runtimeContext.userId
     const driveId = runtimeContext.driveId
+    if (!userId || !driveId) {
+      message.error('未找到该媒体库文件夹对应的已登录账号')
+      return
+    }
 
     if (!isSameFolderSource(selectedFolder.value, folder)) {
       selectedFolder.value = {
@@ -317,6 +301,12 @@ const loadFolderContent = async (folder: MediaLibraryFolder) => {
       const list = await apiBoxFileList(userId, parentId, 500)
       items = list.map((item) => { const mapped = mapBoxItemToAliModel(item, driveId, parentId); (mapped as any).user_id = userId; return mapped })
       console.log('使用Box API获取文件列表')
+    } else if (isGoogleUser(userId) || driveId === 'google') {
+      const { apiGoogleFileList, mapGoogleFileToAliModel } = await import('../google/dirfilelist')
+      const parentId = fileId === 'google_root' ? 'google_root' : fileId
+      const list = await apiGoogleFileList(userId, parentId, 500)
+      items = list.map((item) => { const mapped = mapGoogleFileToAliModel(item, driveId, parentId); (mapped as any).user_id = userId; return mapped })
+      console.log('使用 Google Drive API 获取文件列表')
     } else if (isAliyunUser(userId)) {
       // 阿里云盘（默认）
       const result = await AliDirFileList.ApiDirFileList(

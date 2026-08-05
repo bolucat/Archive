@@ -3,6 +3,7 @@ import getFileIcon from '../aliapi/fileicon'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import message from '../utils/message'
+import { getProviderTokenForUser } from '../drive/account'
 
 export type OneDriveItem = {
   id: string
@@ -50,15 +51,7 @@ type OneDriveChildrenResp = {
 
 const GRAPH_API_HOST = 'https://graph.microsoft.com/v1.0'
 
-const getOneDriveToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
-}
+export const getOneDriveToken = (user_id: string) => getProviderTokenForUser(user_id, 'onedrive')
 
 const graphRequest = async <T>(user_id: string, pathOrUrl: string, fallback: string): Promise<T | null> => {
   const token = await getOneDriveToken(user_id)

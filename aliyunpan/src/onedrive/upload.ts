@@ -1,16 +1,8 @@
+import { getOneDriveToken } from './dirfilelist'
+
 const GRAPH_API_HOST = 'https://graph.microsoft.com/v1.0'
 const SMALL_UPLOAD_LIMIT = 250 * 1024 * 1024
 const SESSION_CHUNK_SIZE = 10 * 1024 * 1024
-
-const getOneDriveToken = async (user_id: string) => {
-  const { default: UserDAL } = await import('../user/userdal')
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
-}
 
 const encodePathSegment = (value: string) => encodeURIComponent(value).replace(/%2F/g, '/')
 
@@ -112,6 +104,7 @@ const uploadSmallFile = async (accessToken: string, fileHandle: import('fs/promi
   })
   const data = await resp.json().catch(() => undefined)
   if (!resp.ok || data?.error) return data?.error?.message || '上传 OneDrive 文件失败'
+  if (!data?.id) return 'OneDrive 上传完成但未返回文件 ID'
   fileui.File.uploaded_file_id = data?.id || ''
   fileui.File.uploaded_is_rapid = false
   await recordUploadProgress(fileui.UploadID, buff.length, buff.length)
@@ -142,13 +135,12 @@ const uploadSessionFile = async (accessToken: string, fileHandle: import('fs/pro
       fileui.File.uploaded_is_rapid = false
     }
   }
-  return 'success'
+  return fileui.File.uploaded_file_id ? 'success' : 'OneDrive 上传完成但未返回文件 ID'
 }
 
 export default class OneDriveUploadDisk {
   static async UploadOneFile(fileui: import('../utils/dbupload').IUploadingUI): Promise<string> {
-    const { default: UserDAL } = await import('../user/userdal')
-    const token = await UserDAL.GetUserTokenFromDB(fileui.user_id)
+    const token = await getOneDriveToken(fileui.user_id)
     if (!token?.access_token) return '找不到上传token，请重试'
     if (fileui.encType) return 'OneDrive 暂不支持加密上传'
 

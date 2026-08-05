@@ -2,6 +2,8 @@ use std::net::SocketAddr;
 #[cfg(test)]
 use std::{sync::Arc, time::Duration};
 
+#[cfg(test)]
+use async_trait::async_trait;
 use eyre::Context;
 use tokio::{
 	io::{AsyncReadExt, AsyncWriteExt},
@@ -407,6 +409,7 @@ async fn start_test_proxy(socks_port: u16) -> eyre::Result<(Arc<wind_core::AppCo
 			auth: wind_socks::inbound::AuthMode::NoAuth,
 			skip_auth: false,
 			allow_udp: true,
+			inbound_tag: "test-socks".into(),
 			hooks: Default::default(),
 		},
 		tuic_port: 0, // Let OS assign a port
@@ -433,7 +436,7 @@ struct TestConfig {
 async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> eyre::Result<()> {
 	use std::collections::HashMap;
 
-	use wind_core::{InboundCallback, inbound::AbstractInbound, tcp::AbstractTcpStream, types::TargetAddr};
+	use wind_core::{Dispatcher, FlowContext, Outbound, RouteAction, Router, inbound::AbstractInbound, tcp::AbstractTcpStream};
 
 	let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
 	let cert_der = cert.cert.der().to_vec();
@@ -459,28 +462,34 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 		..Default::default()
 	};
 
-	#[derive(Clone)]
-	struct TestManager {
-		socks_inbound: Arc<wind_socks::inbound::SocksInbound>,
-		tuic_inbound: Arc<wind_tuic::quinn::inbound::TuicInbound>,
-	}
+	struct TestManager;
 
-	impl InboundCallback for TestManager {
-		async fn handle_tcpstream(&self, target_addr: TargetAddr, stream: impl AbstractTcpStream) -> eyre::Result<()> {
-			handle_tcp_direct(target_addr, stream).await?;
-			Ok(())
-		}
+	struct TestRouter;
 
-		async fn handle_udpstream(&self, stream: wind_core::udp::UdpStream) -> eyre::Result<()> {
-			handle_udp_direct(stream).await?;
-			Ok(())
+	impl Router for TestRouter {
+		#[allow(clippy::manual_async_fn)]
+		fn route(&self, _ctx: &FlowContext) -> impl std::future::Future<Output = eyre::Result<RouteAction>> + Send {
+			async { Ok(RouteAction::Forward("default".to_string())) }
 		}
 	}
 
-	async fn handle_tcp_direct(target_addr: TargetAddr, mut inbound_stream: impl AbstractTcpStream) -> eyre::Result<()> {
+	#[async_trait]
+	impl Outbound for TestManager {
+		async fn handle_tcp(&self, ctx: FlowContext, stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+			handle_tcp_direct(ctx, stream).await?;
+			Ok(())
+		}
+
+		async fn handle_udp(&self, ctx: FlowContext, stream: wind_core::udp::UdpStream) -> eyre::Result<()> {
+			handle_udp_direct(ctx, stream).await?;
+			Ok(())
+		}
+	}
+
+	async fn handle_tcp_direct(ctx: FlowContext, mut inbound_stream: impl AbstractTcpStream) -> eyre::Result<()> {
 		use tokio::io::AsyncWriteExt;
 
-		let addr = target_addr.to_string();
+		let addr = ctx.target.to_string();
 		let mut outbound_stream = tokio::net::TcpStream::connect(&addr).await?;
 
 		let (mut inbound_read, mut inbound_write) = tokio::io::split(&mut inbound_stream);
@@ -502,7 +511,7 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 		Ok(())
 	}
 
-	async fn handle_udp_direct(stream: wind_core::udp::UdpStream) -> eyre::Result<()> {
+	async fn handle_udp_direct(_ctx: FlowContext, stream: wind_core::udp::UdpStream) -> eyre::Result<()> {
 		use std::{collections::HashMap, sync::Arc};
 
 		use tokio::sync::Mutex;
@@ -528,19 +537,14 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 						let source_addr = packet.target.clone();
 						tokio::spawn(async move {
 							let mut buf = vec![0u8; 65536];
-							loop {
-								match target_sock_for_recv.recv_from(&mut buf).await {
-									Ok((len, _from)) => {
-										let reply_packet = wind_core::udp::UdpPacket {
-											source: None,
-											target: source_addr.clone(),
-											payload: tokio_util::bytes::Bytes::copy_from_slice(&buf[..len]),
-										};
-										if let Err(e) = tx_for_recv.send(reply_packet).await {
-											eprintln!("UDP relay: failed to send reply packet: {}", e);
-										}
-									}
-									Err(_) => break,
+							while let Ok((len, _from)) = target_sock_for_recv.recv_from(&mut buf).await {
+								let reply_packet = wind_core::udp::UdpPacket {
+									source: None,
+									target: source_addr.clone(),
+									payload: tokio_util::bytes::Bytes::copy_from_slice(&buf[..len]),
+								};
+								if let Err(e) = tx_for_recv.send(reply_packet).await {
+									eprintln!("UDP relay: failed to send reply packet: {}", e);
 								}
 							}
 						});
@@ -565,20 +569,18 @@ async fn run_test_proxy(ctx: Arc<wind_core::AppContext>, config: TestConfig) -> 
 		ctx.token.child_token(),
 	));
 
-	let manager = Arc::new(TestManager {
-		socks_inbound: socks_inbound.clone(),
-		tuic_inbound: tuic_inbound.clone(),
-	});
+	let mut dispatcher = Dispatcher::new(TestRouter);
+	dispatcher.add_handler("default", Arc::new(TestManager) as Arc<dyn Outbound>);
 
-	let manager_for_tuic = manager.clone();
+	let dispatcher_for_tuic = dispatcher.clone();
 	ctx.tasks.spawn(async move {
-		manager_for_tuic.tuic_inbound.listen(manager_for_tuic.as_ref()).await?;
+		tuic_inbound.listen(&dispatcher_for_tuic).await?;
 		eyre::Ok(())
 	});
 
-	let manager_for_socks = manager.clone();
+	let dispatcher_for_socks = dispatcher.clone();
 	ctx.tasks.spawn(async move {
-		manager_for_socks.socks_inbound.listen(manager_for_socks.as_ref()).await?;
+		socks_inbound.listen(&dispatcher_for_socks).await?;
 		eyre::Ok(())
 	});
 

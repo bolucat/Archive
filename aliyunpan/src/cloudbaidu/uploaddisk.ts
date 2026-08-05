@@ -1,8 +1,8 @@
 import path from 'path'
 import { OpenFileHandle } from '../utils/filehelper'
 import { IUploadingUI } from '../utils/dbupload'
-import UserDAL from '../user/userdal'
 import { Sleep } from '../utils/format'
+import { getBaiduToken } from './auth'
 import AliUploadDisk from '../aliapi/uploaddisk'
 import {
   apiBaiduCreateFile,
@@ -39,7 +39,7 @@ const readSlice = async (filePath: string, start: number, size: number) => {
 
 export default class BaiduUploadDisk {
   static async UploadOneFile(fileui: IUploadingUI): Promise<string> {
-    const token = await UserDAL.GetUserTokenFromDB(fileui.user_id)
+    const token = await getBaiduToken(fileui.user_id)
     if (!token?.access_token) return '找不到上传token，请重试'
 
     const filePath = path.join(fileui.localFilePath, fileui.File.partPath)

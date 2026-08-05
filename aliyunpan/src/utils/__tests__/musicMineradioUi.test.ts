@@ -789,6 +789,8 @@ describe('Mineradio music UI shell', () => {
     expect(console).toContain('SlidersHorizontal')
     expect(console).toContain("showFxPanel ? 'active' : ''")
     expect(console).toContain("emit('toggle-fx')")
+    expect(console).toContain("import SoundEffectBtn from '../../components/SoundEffectBtn.vue'")
+    expect(console.indexOf('<SoundEffectBtn')).toBeLessThan(console.indexOf('id="visual-console-btn"'))
     expect(console).toContain('quality-pill')
     expect(console).toContain('quality-popover')
     expect(console).toContain('quality-option')
@@ -798,8 +800,6 @@ describe('Mineradio music UI shell', () => {
     expect(console).toContain('volume-popover')
     expect(console).not.toContain('music-console-main')
     expect(console).not.toContain('music-console-cover')
-    expect(console).not.toContain('SoundEffectBtn')
-    expect(console).not.toContain('se-trigger')
     expect(console).not.toContain('set-sleep')
     expect(console).not.toContain('music-sleep-menu')
     expect(console).toContain('width: min(1120px, calc(100vw - clamp(20px, 5vw, 72px)))')
@@ -932,6 +932,25 @@ describe('Mineradio music UI shell', () => {
     expect(stage).toContain('shelfMgr.setHoveredContent(contentHit)')
     expect(stage).toContain('shelfMgr.setHoveredContent(-1)')
     expect(shelf).not.toContain('if (this.onCardClick) {\n      this.onCardClick(this.cards[index].card)\n    }\n    this.playClickSfx()')
+  })
+
+  it('keeps 3D shelf rows readable against the visual stage', () => {
+    const shelf = readComponent('src/utils/radio/ShelfManager.ts')
+    const rowFactory = shelf.slice(shelf.indexOf('private createContentRow'), shelf.indexOf('private createContentBackdrop'))
+    const backdropFactory = shelf.slice(shelf.indexOf('private createContentBackdrop'), shelf.indexOf('private createContentCloseControl'))
+
+    expect(rowFactory).toContain("ctx.fillStyle = '#fff'")
+    expect(rowFactory).toContain("ctx.fillStyle = 'rgba(255,255,255,.78)'")
+    expect(backdropFactory).toContain("ctx.fillStyle = '#fff'")
+    expect(backdropFactory).toContain("ctx.fillStyle = 'rgba(255,255,255,.76)'")
+    expect(shelf).toContain('Math.max(0.32, 0.94 - absD * 0.11)')
+  })
+
+  it('clips 3D shelf rows to the playlist frame', () => {
+    const shelf = readComponent('src/utils/radio/ShelfManager.ts')
+
+    expect(shelf).toContain('const rowY = -0.82 - delta * (isSide ? 0.74 : 0.42)')
+    expect(shelf).toContain('rowY - 0.30 >= -2.18 && rowY + 0.30 <= 2.18')
   })
 
   it('normalizes the Mineradio FX config controls used by the player', () => {

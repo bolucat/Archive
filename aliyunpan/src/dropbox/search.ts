@@ -79,17 +79,33 @@ export const buildDropboxSearchBody = (query: string, limit = 100) => ({
   }
 })
 
+export const buildDropboxSearchContinueBody = (cursor: string) => ({ cursor })
+
 const unwrapSearchMetadata = (match: DropboxSearchMatch): DropboxMetadata | undefined => {
   const metadata = match.metadata as any
   return metadata?.metadata || metadata
 }
 
 export const apiDropboxSearch = async (user_id: string, query: string, limit = 100): Promise<DropboxMetadata[]> => {
-  const data = await dropboxRpc<DropboxSearchResp>(user_id, '/files/search_v2', buildDropboxSearchBody(query, limit), '搜索 Dropbox 文件失败')
-  const matches = Array.isArray(data?.matches) ? data.matches : []
-  return matches
-    .map(unwrapSearchMetadata)
-    .filter((item): item is DropboxMetadata => !!item && item['.tag'] !== 'deleted')
+  const items: DropboxMetadata[] = []
+  const seen = new Set<string>()
+  let cursor = ''
+  let hasMore = false
+  do {
+    const data = await dropboxRpc<DropboxSearchResp>(user_id, cursor ? '/files/search/continue_v2' : '/files/search_v2', cursor ? buildDropboxSearchContinueBody(cursor) : buildDropboxSearchBody(query, limit), '搜索 Dropbox 文件失败')
+    if (!data) break
+    for (const item of (Array.isArray(data.matches) ? data.matches : []).map(unwrapSearchMetadata)) {
+      if (!item || item['.tag'] === 'deleted') continue
+      const key = item.id || item.path_lower || item.path_display || item.name
+      if (seen.has(key)) continue
+      seen.add(key)
+      items.push(item)
+      if (items.length >= limit) return items
+    }
+    hasMore = !!data.has_more
+    cursor = data.cursor || ''
+  } while (hasMore && cursor)
+  return items
 }
 
 export const filterDropboxSearchResults = (items: IAliGetFileModel[], filters: DropboxSearchFilters): IAliGetFileModel[] => {

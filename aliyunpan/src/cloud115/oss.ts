@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import nodehttps from 'https'
 import type { ClientRequest } from 'http'
+import { formatOssMultipartETag } from '../utils/oss'
 
 export type OssCredentials = {
   endpoint: string
@@ -22,14 +23,21 @@ export const parseOssCallbackResult = (body: string): { fileId: string; error: s
   }
 }
 
-const normalizeEndpoint = (endpoint: string) => {
+export const parseOssError = (body: string) => {
+  const code = body.match(/<Code>([^<]+)<\/Code>/i)?.[1] || ''
+  const message = body.match(/<Message>([^<]+)<\/Message>/i)?.[1] || ''
+  return [code, message].filter(Boolean).join(': ')
+}
+
+export const normalizeDrive115OssEndpoint = (endpoint: string) => {
   if (!endpoint) return ''
-  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) return endpoint
+  if (endpoint.startsWith('https://')) return endpoint
+  if (endpoint.startsWith('http://')) return `https://${endpoint.slice('http://'.length)}`
   return `https://${endpoint}`
 }
 
 const buildHostInfo = (endpoint: string, bucket: string) => {
-  const url = new URL(normalizeEndpoint(endpoint))
+  const url = new URL(normalizeDrive115OssEndpoint(endpoint))
   const host = url.hostname.startsWith(`${bucket}.`) ? url.hostname : `${bucket}.${url.hostname}`
   return { protocol: url.protocol, host }
 }
@@ -75,8 +83,7 @@ const buildAuthorization = (
 export const ossInitiateMultipart = async (
   cred: OssCredentials,
   bucket: string,
-  object: string,
-  callback?: { callback?: string; callback_var?: string }
+  object: string
 ) => {
   const { protocol, host } = buildHostInfo(cred.endpoint, bucket)
   const params = { uploads: '' }
@@ -85,8 +92,6 @@ export const ossInitiateMultipart = async (
     'Content-Type': 'application/xml'
   }
   if (cred.securityToken) headers['x-oss-security-token'] = cred.securityToken
-  if (callback?.callback) headers['x-oss-callback'] = callback.callback
-  if (callback?.callback_var) headers['x-oss-callback-var'] = callback.callback_var
   const stringToSign = buildAuthorization('POST', bucket, object, headers, params)
   headers.Authorization = `OSS ${cred.accessKeyId}:${hmacSha1(cred.accessKeySecret, stringToSign)}`
 
@@ -165,7 +170,7 @@ export const ossCompleteMultipart = async (
   parts.forEach((part) => {
     bodyXml.push('<Part>')
     bodyXml.push(`<PartNumber>${part.partNumber}</PartNumber>`)
-    bodyXml.push(`<ETag>${part.etag}</ETag>`)
+    bodyXml.push(`<ETag>${formatOssMultipartETag(part.etag)}</ETag>`)
     bodyXml.push('</Part>')
   })
   bodyXml.push('</CompleteMultipartUpload>')

@@ -7,25 +7,37 @@
 //! the loop returns within a bounded time — both idle and with a live
 //! connection — rather than hanging on shutdown.
 
-use std::{net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use tokio_util::sync::CancellationToken;
-use wind_core::{AbstractInbound, InboundCallback, tcp::AbstractTcpStream, types::TargetAddr, udp::UdpStream};
+use wind_core::{
+	AbstractInbound, Dispatcher, FlowContext, Outbound, RouteAction, Router, tcp::AbstractTcpStream, udp::UdpStream,
+};
 use wind_socks::inbound::{AuthMode, SocksInbound, SocksInboundOpt};
 
-/// A callback whose handlers never complete on their own. Forces shutdown to be
+/// Router that forwards everything to the `"default"` outbound handler.
+struct ForwardRouter;
+
+impl Router for ForwardRouter {
+	#[allow(clippy::manual_async_fn)]
+	fn route(&self, _ctx: &FlowContext) -> impl std::future::Future<Output = eyre::Result<RouteAction>> + Send {
+		async { Ok(RouteAction::Forward("default".to_string())) }
+	}
+}
+
+/// A handler whose relay never completes on its own. Forces shutdown to be
 /// driven by the cancellation chain (the per-connection child token), not by a
 /// session finishing naturally.
-#[derive(Clone)]
-struct ParkCallback;
+struct ParkOutbound;
 
-impl InboundCallback for ParkCallback {
-	async fn handle_tcpstream(&self, _target: TargetAddr, _stream: impl AbstractTcpStream + 'static) -> eyre::Result<()> {
+#[async_trait::async_trait]
+impl Outbound for ParkOutbound {
+	async fn handle_tcp(&self, _ctx: FlowContext, _stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
 		std::future::pending::<()>().await;
 		Ok(())
 	}
 
-	async fn handle_udpstream(&self, _udp_stream: UdpStream) -> eyre::Result<()> {
+	async fn handle_udp(&self, _ctx: FlowContext, _udp_stream: UdpStream) -> eyre::Result<()> {
 		std::future::pending::<()>().await;
 		Ok(())
 	}
@@ -45,13 +57,13 @@ async fn spawn_inbound(cancel: CancellationToken) -> (SocketAddr, tokio::task::J
 		auth: AuthMode::NoAuth,
 		skip_auth: false,
 		allow_udp: false,
+		inbound_tag: "test-socks".into(),
 		hooks: Default::default(),
 	};
+	let mut dispatcher = Dispatcher::new(ForwardRouter);
+	dispatcher.add_handler("default", Arc::new(ParkOutbound));
 	let inbound = SocksInbound::new(opts, cancel);
-	let handle = tokio::spawn(async move {
-		let cb = ParkCallback;
-		inbound.listen(&cb).await
-	});
+	let handle = tokio::spawn(async move { inbound.listen(&dispatcher).await });
 
 	// Let the loop bind and reach `accept()`.
 	tokio::time::sleep(Duration::from_millis(200)).await;

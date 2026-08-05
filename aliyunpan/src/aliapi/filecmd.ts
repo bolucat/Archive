@@ -2,63 +2,17 @@ import DebugLog from '../utils/debuglog'
 import AliHttp from './alihttp'
 import { IAliFileItem, IAliGetFileModel } from './alimodels'
 import AliDirFileList from './dirfilelist'
-import { ApiBatch, ApiBatchMaker, ApiBatchMaker2, ApiBatchSuccess, EncodeEncName, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from './utils'
+import { ApiBatch, ApiBatchMaker, ApiBatchMaker2, ApiBatchSuccess, EncodeEncName } from './utils'
 import { IDownloadUrl } from './models'
 import AliFile from './file'
 import message from '../utils/message'
 import usePanFileStore from '../pan/panfilestore'
-import usePanTreeStore from '../pan/pantreestore'
-import { apiCloud123CopyBatch, apiCloud123CopySingle, apiCloud123DeleteBatch, apiCloud123FileDetail, apiCloud123FileInfos, apiCloud123Mkdir, apiCloud123MoveBatch, apiCloud123RecoverBatch, apiCloud123TrashBatch } from '../cloud123/filecmd'
-import { mapCloud123InfoToAliModel } from '../cloud123/dirfilelist'
-import { apiDrive115Mkdir } from '../cloud115/filecmd'
-import { apiDrive115CopyBatch } from '../cloud115/copy'
-import { apiDrive115MoveBatch } from '../cloud115/move'
-import { apiDrive115Rename } from '../cloud115/rename'
-import { apiDrive115TrashBatch, apiDrive115TrashDelete, apiDrive115TrashRestore } from '../cloud115/trash'
-import { apiBaiduCopy, apiBaiduDelete, apiBaiduMove, apiBaiduRename } from '../cloudbaidu/filemanager'
-import { apiBaiduCreateDir, buildBaiduUploadPath } from '../cloudbaidu/upload'
 import { isWebDavDrive } from '../utils/webdavClient'
-import { apiPikPakCopyBatch, apiPikPakMkdir, apiPikPakMoveBatch, apiPikPakRename, apiPikPakTrashBatch, apiPikPakTrashDelete, apiPikPakTrashRestore } from '../pikpak/filecmd'
-import { apiQuarkMkdir, apiQuarkMoveBatch, apiQuarkRename, apiQuarkTrashBatch } from '../quark/filecmd'
-import { apiCloud139CopyBatch, apiCloud139Mkdir, apiCloud139MoveBatch, apiCloud139Rename, apiCloud139TrashBatch } from '../cloud139/filecmd'
-import { apiCloud189CopyBatch, apiCloud189Mkdir, apiCloud189MoveBatch, apiCloud189Rename, apiCloud189TrashBatch } from '../cloud189/filecmd'
-import { apiGuangyaCopyBatch, apiGuangyaMkdir, apiGuangyaMoveBatch, apiGuangyaRename, apiGuangyaTrashBatch } from '../guangya/filecmd'
-import { apiDropboxCopyBatch, apiDropboxDeleteBatch, apiDropboxMkdir, apiDropboxMoveBatch, apiDropboxRename } from '../dropbox/filecmd'
-import { apiOneDriveCopyBatch, apiOneDriveDeleteBatch, apiOneDriveMkdir, apiOneDriveMoveBatch, apiOneDriveRename } from '../onedrive/filecmd'
-import { apiBoxCopyBatch, apiBoxDeleteBatch, apiBoxMkdir, apiBoxMoveBatch, apiBoxRename } from '../box/filecmd'
+import UserDAL from '../user/userdal'
+import { resolveDriveProvider } from '../utils/driveProvider'
+import { cleanProviderTrash, copyProviderFiles, createProviderFolder, deleteProviderFiles, getProviderFileCommandContext, getProviderFileCommandNotice, getProviderFilesInfo, moveProviderFiles, renameProviderFiles, restoreProviderTrash, trashProviderFiles } from '../drive/providerFileCmd'
 
 export default class AliFileCmd {
-  static ResolveBaiduPaths(file_idList: string[]): string[] {
-    if (!file_idList.length) return []
-    const list = usePanFileStore().ListDataRaw || []
-    return file_idList.map((id) => {
-      if (id.startsWith('/')) return id
-      const hit: any = list.find((item: any) => item.file_id === id)
-      if (hit?.path) return hit.path
-      const match = hit?.description && /baidu_path:([^;]+)/.exec(hit.description)
-      if (match && match[1]) return match[1]
-      return id
-    })
-  }
-  static ResolveBaiduTargetPath(file_id: string, path: string = '', description: string = ''): string {
-    if (path) return path
-    if (!file_id) return '/'
-    if (file_id.startsWith('/')) return file_id
-    const directMatch = description && /baidu_path:([^;]+)/.exec(description)
-    if (directMatch && directMatch[1]) return directMatch[1]
-    const list = usePanFileStore().ListDataRaw || []
-    const hit: any = list.find((item: any) => item.file_id === file_id)
-    if (hit?.path) return hit.path
-    const listMatch = hit?.description && /baidu_path:([^;]+)/.exec(hit.description)
-    if (listMatch && listMatch[1]) return listMatch[1]
-    const selectDir: any = usePanTreeStore().selectDir
-    if (selectDir?.file_id === file_id) {
-      if (selectDir.path) return selectDir.path
-      const dirMatch = selectDir.description && /baidu_path:([^;]+)/.exec(selectDir.description)
-      if (dirMatch && dirMatch[1]) return dirMatch[1]
-    }
-    return file_id
-  }
   static async ApiCreatNewForder(
     user_id: string, drive_id: string,
     parent_file_id: string, creatDirName: string,
@@ -66,50 +20,12 @@ export default class AliFileCmd {
   ): Promise<{ file_id: string; error: string }> {
     const result = { file_id: '', error: '新建文件夹失败' }
     if (!user_id || !drive_id || !parent_file_id) return result
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return { file_id: '', error: route.error }
     if (isWebDavDrive(drive_id)) {
       return { file_id: '', error: 'WebDAV / AList 文件源为只读' }
     }
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      if (parent_file_id.includes('root')) parent_file_id = '0'
-      const resp = await apiCloud123Mkdir(user_id, parent_file_id, creatDirName)
-      return { file_id: resp.file_id, error: resp.error }
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      if (parent_file_id.includes('root')) parent_file_id = '0'
-      const resp = await apiDrive115Mkdir(user_id, parent_file_id, creatDirName)
-      return { file_id: resp.file_id, error: resp.error }
-    }
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      if (parent_file_id.includes('root')) parent_file_id = '/'
-      const dirPath = buildBaiduUploadPath(parent_file_id || '/', creatDirName)
-      const rtype = check_name_mode === 'auto_rename' ? 1 : 0
-      const resp = await apiBaiduCreateDir(user_id, dirPath, rtype)
-      return { file_id: resp.path, error: resp.error }
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakMkdir(user_id, parent_file_id.includes('root') ? 'pikpak_root' : parent_file_id, creatDirName)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return apiQuarkMkdir(user_id, parent_file_id.includes('root') ? 'quark_root' : parent_file_id, creatDirName)
-    }
-    if (isCloud139User(user_id) || drive_id === 'cloud139') {
-      return apiCloud139Mkdir(user_id, parent_file_id.includes('root') ? 'cloud139_root' : parent_file_id, creatDirName)
-    }
-    if (isCloud189User(user_id) || drive_id === 'cloud189') {
-      return apiCloud189Mkdir(user_id, parent_file_id.includes('root') ? 'cloud189_root' : parent_file_id, creatDirName)
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      return apiGuangyaMkdir(user_id, parent_file_id.includes('root') ? 'guangya_root' : parent_file_id, creatDirName)
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      return apiDropboxMkdir(user_id, parent_file_id.includes('root') ? 'dropbox_root' : parent_file_id, creatDirName)
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      return apiOneDriveMkdir(user_id, parent_file_id.includes('root') ? 'onedrive_root' : parent_file_id, creatDirName)
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      return apiBoxMkdir(user_id, parent_file_id.includes('root') ? 'box_root' : parent_file_id, creatDirName)
-    }
+    if (route.provider !== 'aliyun') return createProviderFolder(route.provider, user_id, parent_file_id, creatDirName, { checkNameMode: check_name_mode })
     if (parent_file_id.includes('root')) parent_file_id = 'root'
     const url = 'adrive/v2/file/createWithFolders'
     const name = EncodeEncName(user_id, creatDirName, true, encType)
@@ -135,43 +51,12 @@ export default class AliFileCmd {
 
 
   static async ApiTrashBatch(user_id: string, drive_id: string, file_idList: string[]): Promise<string[]> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
     if (isWebDavDrive(drive_id)) {
       return []
     }
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      return apiCloud123TrashBatch(user_id, file_idList)
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      return apiDrive115TrashBatch(user_id, file_idList)
-    }
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      const paths = AliFileCmd.ResolveBaiduPaths(file_idList)
-      return apiBaiduDelete(user_id, paths)
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakTrashBatch(user_id, file_idList)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return apiQuarkTrashBatch(user_id, file_idList)
-    }
-    if (isCloud139User(user_id) || drive_id === 'cloud139') {
-      return apiCloud139TrashBatch(user_id, file_idList)
-    }
-    if (isCloud189User(user_id) || drive_id === 'cloud189') {
-      return apiCloud189TrashBatch(user_id, file_idList)
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      return apiGuangyaTrashBatch(user_id, file_idList)
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      return apiDropboxDeleteBatch(user_id, file_idList)
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      return apiOneDriveDeleteBatch(user_id, file_idList)
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      return apiBoxDeleteBatch(user_id, file_idList)
-    }
+    if (route.provider !== 'aliyun') return trashProviderFiles(route.provider, user_id, file_idList, getProviderFileCommandContext(route.provider, file_idList))
     const batchList = ApiBatchMaker('/recyclebin/trash', file_idList, (file_id: string) => {
       return { drive_id: drive_id, file_id: file_id }
     })
@@ -180,44 +65,17 @@ export default class AliFileCmd {
 
 
   static async ApiDeleteBatch(user_id: string, drive_id: string, file_idList: string[]): Promise<string[]> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
     if (isWebDavDrive(drive_id)) {
       return []
     }
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      return apiCloud123DeleteBatch(user_id, file_idList)
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      message.error('115网盘不支持直接彻底删除，请先移入回收站后再删除')
+    const notice = getProviderFileCommandNotice(route.provider, 'delete')
+    if (notice) {
+      message.info(notice)
       return []
     }
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      const paths = AliFileCmd.ResolveBaiduPaths(file_idList)
-      return apiBaiduDelete(user_id, paths)
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakTrashDelete(user_id, file_idList)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return apiQuarkTrashBatch(user_id, file_idList)
-    }
-    if (isCloud139User(user_id) || drive_id === 'cloud139') {
-      return apiCloud139TrashBatch(user_id, file_idList)
-    }
-    if (isCloud189User(user_id) || drive_id === 'cloud189') {
-      return apiCloud189TrashBatch(user_id, file_idList)
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      return apiGuangyaTrashBatch(user_id, file_idList)
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      return apiDropboxDeleteBatch(user_id, file_idList)
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      return apiOneDriveDeleteBatch(user_id, file_idList)
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      return apiBoxDeleteBatch(user_id, file_idList, true)
-    }
+    if (route.provider !== 'aliyun') return deleteProviderFiles(route.provider, user_id, file_idList, getProviderFileCommandContext(route.provider, file_idList))
     const batchList = ApiBatchMaker('/file/delete', file_idList, (file_id: string) => {
       return { drive_id: drive_id, file_id: file_id }
     })
@@ -231,118 +89,12 @@ export default class AliFileCmd {
     name: string;
     isDir: boolean
   }[]> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
     if (isWebDavDrive(drive_id)) {
       return []
     }
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      const pathList = AliFileCmd.ResolveBaiduPaths(file_idList)
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const path = pathList[i] || file_id
-        const name = names[i] || ''
-        if (!path || !name) continue
-        const resp = await apiBaiduRename(user_id, path, name)
-        if (resp.length) {
-          successList.push({ file_id, name, parent_file_id: '', isDir: true })
-        }
-      }
-      return successList
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await apiDrive115Rename(user_id, file_id, name)
-        if (resp.success) {
-          successList.push({ file_id, name: resp.name, parent_file_id: '', isDir: true })
-        }
-      }
-      return successList
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await apiPikPakRename(user_id, file_id, name)
-        if (resp.success) {
-          successList.push({ file_id, name: resp.name, parent_file_id: resp.parent_file_id, isDir: resp.isDir })
-        }
-      }
-      return successList
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await apiQuarkRename(user_id, file_id, name)
-        if (resp.success) {
-          successList.push({ file_id, name: resp.name, parent_file_id: resp.parent_file_id, isDir: resp.isDir })
-        }
-      }
-      return successList
-    }
-    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isGuangyaUser(user_id) || drive_id === 'guangya') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      const rename = isGuangyaUser(user_id) || drive_id === 'guangya'
-        ? apiGuangyaRename
-        : isCloud139User(user_id) || drive_id === 'cloud139'
-          ? apiCloud139Rename
-          : apiCloud189Rename
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await rename(user_id, file_id, name)
-        if (resp.success) successList.push({ file_id, name: resp.name, parent_file_id: resp.parent_file_id, isDir: resp.isDir })
-      }
-      return successList
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await apiDropboxRename(user_id, file_id, name)
-        if (resp.success) {
-          successList.push({ file_id: resp.file_id, name: resp.name, parent_file_id: resp.parent_file_id, isDir: resp.isDir })
-        }
-      }
-      return successList
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await apiOneDriveRename(user_id, file_id, name)
-        if (!resp.error) {
-          successList.push({ file_id: resp.file_id || file_id, name, parent_file_id: '', isDir: true })
-        }
-      }
-      return successList
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      const successList: { file_id: string; parent_file_id: string; name: string; isDir: boolean }[] = []
-      for (let i = 0, maxi = file_idList.length; i < maxi; i++) {
-        const file_id = file_idList[i]
-        const name = names[i] || ''
-        if (!file_id || !name) continue
-        const resp = await apiBoxRename(user_id, file_id, name)
-        if (resp) {
-          successList.push({ file_id: resp.file_id || file_id, name, parent_file_id: resp.parent_file_id || '', isDir: resp.isDir })
-        }
-      }
-      return successList
-    }
+    if (route.provider !== 'aliyun') return renameProviderFiles(route.provider, user_id, file_idList, names, getProviderFileCommandContext(route.provider, file_idList))
     const batchList = ApiBatchMaker2('/file/update', file_idList, names, (file_id: string, name: string) => {
       return { drive_id: drive_id, file_id: file_id, name: name, check_name_mode: 'refuse' }
     })
@@ -361,8 +113,11 @@ export default class AliFileCmd {
 
 
   static async ApiFavorBatch(user_id: string, drive_id: string, isfavor: boolean, ismessage: boolean, file_idList: string[]): Promise<string[]> {
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') return []
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') return []
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || route.provider !== 'aliyun') {
+      if (ismessage) message.info('当前网盘暂不支持收藏操作')
+      return []
+    }
     const batchList = ApiBatchMaker('/file/update', file_idList, (file_id: string) => {
       return { drive_id: drive_id, file_id: file_id, custom_index_key: isfavor ? 'starred_yes' : '', starred: isfavor }
     })
@@ -371,25 +126,13 @@ export default class AliFileCmd {
 
 
   static async ApiTrashCleanBatch(user_id: string, drive_id: string, ismessage: boolean, file_idList: string[]): Promise<string[]> {
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      return apiCloud123DeleteBatch(user_id, file_idList)
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      return apiDrive115TrashDelete(user_id, file_idList)
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakTrashDelete(user_id, file_idList)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return apiQuarkTrashBatch(user_id, file_idList)
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      message.info('光鸭云盘请在官方客户端彻底删除回收站文件')
-      return []
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      message.info('Dropbox 已删除文件请在官方客户端恢复或彻底删除')
-      return []
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
+    if (route.provider !== 'aliyun') {
+      const result = await cleanProviderTrash(route.provider, user_id, file_idList, getProviderFileCommandContext(route.provider, file_idList))
+      if (result.length || !ismessage) return result
+      message.info(getProviderFileCommandNotice(route.provider, 'trashClean') || '当前网盘暂不支持彻底删除回收站文件')
+      return result
     }
     const batchList = ApiBatchMaker('/file/delete', file_idList, (file_id: string) => {
       return { drive_id: drive_id, file_id: file_id }
@@ -399,26 +142,13 @@ export default class AliFileCmd {
 
 
   static async ApiTrashRestoreBatch(user_id: string, drive_id: string, ismessage: boolean, file_idList: string[]): Promise<string[]> {
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      return apiCloud123RecoverBatch(user_id, file_idList)
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      return apiDrive115TrashRestore(user_id, file_idList)
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakTrashRestore(user_id, file_idList)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      message.info('夸克网盘请在官方客户端恢复回收站文件')
-      return []
-    }
-    if (isCloud139User(user_id) || drive_id === 'cloud139' || isCloud189User(user_id) || drive_id === 'cloud189' || isGuangyaUser(user_id) || drive_id === 'guangya') {
-      message.info('请在官方客户端恢复回收站文件')
-      return []
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      message.info('Dropbox 已删除文件请在官方客户端恢复')
-      return []
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
+    if (route.provider !== 'aliyun') {
+      const result = await restoreProviderTrash(route.provider, user_id, file_idList, getProviderFileCommandContext(route.provider, file_idList))
+      if (result.length || !ismessage) return result
+      message.info(getProviderFileCommandNotice(route.provider, 'trashRestore') || '当前网盘暂不支持恢复回收站文件')
+      return result
     }
     const batchList = ApiBatchMaker('/recyclebin/restore', file_idList, (file_id: string) => {
       return { drive_id: drive_id, file_id: file_id }
@@ -427,6 +157,8 @@ export default class AliFileCmd {
   }
 
   static async ApiFileHistoryBatch(user_id: string, drive_id: string, file_idList: string[]) {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || route.provider !== 'aliyun') return []
     let allTask = []
     const loadingKey = 'filehistorybatch' + Date.now().toString()
     message.loading('清除历史 执行中...', 60, loadingKey)
@@ -444,14 +176,10 @@ export default class AliFileCmd {
   }
 
   static async ApiFileColorBatch(user_id: string, drive_id: string, description: string, color: string, file_idList: string[]) {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
     if (isWebDavDrive(drive_id)) return
-    if (isCloud123User(user_id) || drive_id === 'cloud123') return
-    if (isDrive115User(user_id) || drive_id === 'drive115') return
-    if (isBaiduUser(user_id) || drive_id === 'baidu') return
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') return
-    if (isQuarkUser(user_id) || drive_id === 'quark') return
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') return
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') return
+    if (route.provider !== 'aliyun') return
     // 防止加密标记清空
     let parts = description.split(',') || []
     let encryptPart = parts.find((part: any) => part.includes('xbyEncrypt')) || ''
@@ -491,6 +219,8 @@ export default class AliFileCmd {
   }[]): Promise<string[] | string> {
     const successList: string[] = []
     if (!resumeList || resumeList.length == 0) return Promise.resolve(successList)
+    const route = resolveDriveProvider(user_id, '', UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || route.provider !== 'aliyun') return successList
 
     const url = 'adrive/v1/file/resumeDeleted'
     const postData = JSON.stringify({ resume_file_list: resumeList })
@@ -528,46 +258,14 @@ export default class AliFileCmd {
 
 
   static async ApiMoveBatch(user_id: string, drive_id: string, file_idList: string[], to_drive_id: string, to_parent_file_id: string, to_parent_description: string = ''): Promise<string[]> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    const targetRoute = resolveDriveProvider(user_id, to_drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || !targetRoute.isValid) return []
     if (isWebDavDrive(drive_id)) {
       return []
     }
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      if (to_parent_file_id.includes('root')) to_parent_file_id = '0'
-      return apiCloud123MoveBatch(user_id, file_idList, to_parent_file_id)
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      if (to_parent_file_id.includes('root')) to_parent_file_id = '0'
-      return apiDrive115MoveBatch(user_id, file_idList, to_parent_file_id)
-    }
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      if (to_parent_file_id.includes('root')) to_parent_file_id = '/'
-      to_parent_file_id = AliFileCmd.ResolveBaiduTargetPath(to_parent_file_id, to_parent_file_id, to_parent_description)
-      const paths = AliFileCmd.ResolveBaiduPaths(file_idList)
-      return apiBaiduMove(user_id, paths, to_parent_file_id)
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'pikpak_root' : to_parent_file_id)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      return apiQuarkMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'quark_root' : to_parent_file_id)
-    }
-    if (isCloud139User(user_id) || drive_id === 'cloud139') {
-      return apiCloud139MoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud139_root' : to_parent_file_id)
-    }
-    if (isCloud189User(user_id) || drive_id === 'cloud189') {
-      return apiCloud189MoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud189_root' : to_parent_file_id)
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      return apiGuangyaMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'guangya_root' : to_parent_file_id)
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      return apiDropboxMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'dropbox_root' : to_parent_file_id, to_parent_description)
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      return apiOneDriveMoveBatch(user_id, to_parent_file_id.includes('root') ? 'onedrive_root' : to_parent_file_id, file_idList)
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      return apiBoxMoveBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'box_root' : to_parent_file_id)
+    if (route.provider !== 'aliyun') {
+      return moveProviderFiles(route.provider, user_id, file_idList, to_parent_file_id, { parentDescription: to_parent_description, ...getProviderFileCommandContext(route.provider, file_idList, to_parent_file_id, to_parent_description) })
     }
     if (to_parent_file_id.includes('root')) to_parent_file_id = 'root'
     const batchList = ApiBatchMaker('/file/move', file_idList, (file_id: string) => {
@@ -590,51 +288,20 @@ export default class AliFileCmd {
 
 
   static async ApiCopyBatch(user_id: string, drive_id: string, file_idList: string[], to_drive_id: string, to_parent_file_id: string, to_parent_description: string = ''): Promise<string[]> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    const targetRoute = resolveDriveProvider(user_id, to_drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || !targetRoute.isValid) return []
     if (isWebDavDrive(drive_id)) {
       return []
     }
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      if (to_parent_file_id.includes('root')) to_parent_file_id = '0'
-      if (file_idList.length <= 1) {
-        return apiCloud123CopySingle(user_id, file_idList[0], to_parent_file_id)
-      }
-      return apiCloud123CopyBatch(user_id, file_idList, to_parent_file_id)
-    }
-    if (isDrive115User(user_id) || drive_id === 'drive115') {
-      if (to_parent_file_id.includes('root')) to_parent_file_id = '0'
-      return apiDrive115CopyBatch(user_id, file_idList, to_parent_file_id)
-    }
-    if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      if (to_parent_file_id.includes('root')) to_parent_file_id = '/'
-      to_parent_file_id = AliFileCmd.ResolveBaiduTargetPath(to_parent_file_id, to_parent_file_id, to_parent_description)
-      const paths = AliFileCmd.ResolveBaiduPaths(file_idList)
-      return apiBaiduCopy(user_id, paths, to_parent_file_id)
-    }
-    if (isPikPakUser(user_id) || drive_id === 'pikpak') {
-      return apiPikPakCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'pikpak_root' : to_parent_file_id)
-    }
-    if (isQuarkUser(user_id) || drive_id === 'quark') {
-      message.info('夸克网盘暂不支持复制')
+    const notice = getProviderFileCommandNotice(route.provider, 'copy')
+    if (notice) {
+      message.info(notice)
       return []
     }
-    if (isCloud139User(user_id) || drive_id === 'cloud139') {
-      return apiCloud139CopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud139_root' : to_parent_file_id)
-    }
-    if (isCloud189User(user_id) || drive_id === 'cloud189') {
-      return apiCloud189CopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'cloud189_root' : to_parent_file_id)
-    }
-    if (isGuangyaUser(user_id) || drive_id === 'guangya') {
-      return apiGuangyaCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'guangya_root' : to_parent_file_id)
-    }
-    if (isDropboxUser(user_id) || drive_id === 'dropbox') {
-      return apiDropboxCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'dropbox_root' : to_parent_file_id, to_parent_description)
-    }
-    if (isOneDriveUser(user_id) || drive_id === 'onedrive') {
-      const list = usePanFileStore().GetSelected().filter((item) => file_idList.includes(item.file_id)).map((item) => ({ file_id: item.file_id, name: item.name }))
-      return apiOneDriveCopyBatch(user_id, to_parent_file_id.includes('root') ? 'onedrive_root' : to_parent_file_id, list.length ? list : file_idList.map((file_id) => ({ file_id, name: '' })))
-    }
-    if (isBoxUser(user_id) || drive_id === 'box') {
-      return apiBoxCopyBatch(user_id, file_idList, to_parent_file_id.includes('root') ? 'box_root' : to_parent_file_id)
+    if (route.provider !== 'aliyun') {
+      const selectedNames = new Map(usePanFileStore().GetSelected().map((item) => [item.file_id, item.name]))
+      return copyProviderFiles(route.provider, user_id, file_idList, to_parent_file_id, { parentDescription: to_parent_description, names: selectedNames, ...getProviderFileCommandContext(route.provider, file_idList, to_parent_file_id, to_parent_description) })
     }
     if (to_parent_file_id.includes('root')) to_parent_file_id = 'root'
     const batchList = ApiBatchMaker('/file/copy', file_idList, (file_id: string) => {
@@ -657,15 +324,9 @@ export default class AliFileCmd {
 
 
   static async ApiGetFileBatch(user_id: string, drive_id: string, file_idList: string[]): Promise<IAliGetFileModel[]> {
-    if (isCloud123User(user_id) || drive_id === 'cloud123') {
-      if (file_idList.length === 1) {
-        const detail = await apiCloud123FileDetail(user_id, file_idList[0])
-        if (!detail) return []
-        return [mapCloud123InfoToAliModel(detail)]
-      }
-      const list = await apiCloud123FileInfos(user_id, file_idList)
-      return list.map((item) => mapCloud123InfoToAliModel(item))
-    }
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return []
+    if (route.provider !== 'aliyun') return getProviderFilesInfo(route.provider, user_id, file_idList)
     const batchList = ApiBatchMaker('/file/get', file_idList, (file_id: string) => {
       return {
         drive_id: drive_id,
@@ -687,6 +348,8 @@ export default class AliFileCmd {
   }
 
   static async ApiGetFileDownloadUrlBatch(user_id: string, drive_id: string, file_idList: string[]): Promise<IDownloadUrl[]> {
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid || route.provider !== 'aliyun') return []
     const batchList = ApiBatchMaker('/file/get_download_url', file_idList, (file_id: string) => {
       return {
         drive_id: drive_id,

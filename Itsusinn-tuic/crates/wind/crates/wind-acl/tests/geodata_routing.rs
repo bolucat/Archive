@@ -7,8 +7,23 @@ use std::sync::Arc;
 
 use geosite_rs::{Cidr, Domain, GeoIp, GeoIpList, GeoSite, GeoSiteList, encode_geoip, encode_geosite};
 use wind_acl::AclEngine;
-use wind_core::{RouteAction, Router, types::TargetAddr};
+use wind_core::{FlowContext, RouteAction, Router, hooks::Protocol, types::TargetAddr};
 use wind_geodata::GeoData;
+use wind_rule::NetworkType;
+
+/// Minimal [`FlowContext`] for a plain TCP connection with no client metadata.
+fn fc(target: &TargetAddr) -> FlowContext {
+	FlowContext {
+		target: target.clone(),
+		network: NetworkType::Tcp,
+		source: None,
+		inbound_tag: Arc::from("test"),
+		protocol: Protocol::Tuic,
+		user: None,
+		inbound_port: None,
+		inbound_type: None,
+	}
+}
 
 fn build_geodata() -> (tempfile::TempPath, Arc<GeoData>) {
 	let geosite = GeoSiteList {
@@ -50,14 +65,14 @@ async fn geoip_rule_matches_when_geodata_is_wired() {
 	// 1.2.3.4 is in the CN block → rejected.
 	let cn = TargetAddr::IPv4("1.2.3.4".parse().unwrap(), 443);
 	assert!(
-		matches!(engine.route(&cn, true).await.unwrap(), RouteAction::Reject(_)),
+		matches!(engine.route(&fc(&cn)).await.unwrap(), RouteAction::Reject(_)),
 		"CN IP should be rejected by geoip:cn"
 	);
 
 	// 9.9.9.9 is outside CN → falls through to the default outbound.
 	let other = TargetAddr::IPv4("9.9.9.9".parse().unwrap(), 443);
 	assert!(
-		matches!(engine.route(&other, true).await.unwrap(), RouteAction::Forward(o) if o == "direct"),
+		matches!(engine.route(&fc(&other)).await.unwrap(), RouteAction::Forward(o) if o == "direct"),
 		"non-CN IP should reach the default outbound"
 	);
 }
@@ -74,13 +89,13 @@ async fn geosite_rule_matches_when_geodata_is_wired() {
 
 	let g = TargetAddr::Domain("mail.google.com".to_string(), 443);
 	assert!(
-		matches!(engine.route(&g, true).await.unwrap(), RouteAction::Reject(_)),
+		matches!(engine.route(&fc(&g)).await.unwrap(), RouteAction::Reject(_)),
 		"google.com subdomain should be rejected by geosite:google"
 	);
 
 	let other = TargetAddr::Domain("example.com".to_string(), 443);
 	assert!(
-		matches!(engine.route(&other, true).await.unwrap(), RouteAction::Forward(o) if o == "direct"),
+		matches!(engine.route(&fc(&other)).await.unwrap(), RouteAction::Forward(o) if o == "direct"),
 		"non-google domain should reach the default outbound"
 	);
 }
@@ -98,7 +113,7 @@ async fn geoip_rule_never_matches_without_geodata() {
 
 	let cn = TargetAddr::IPv4("1.2.3.4".parse().unwrap(), 443);
 	assert!(
-		matches!(engine.route(&cn, true).await.unwrap(), RouteAction::Forward(o) if o == "direct"),
+		matches!(engine.route(&fc(&cn)).await.unwrap(), RouteAction::Forward(o) if o == "direct"),
 		"without geodata the geoip rule must not match"
 	);
 }

@@ -20,10 +20,12 @@ export type BoxShareTarget = {
   id: string
 }
 
-export const buildBoxSharedLinkBody = () => ({
+export const buildBoxSharedLinkBody = (expiration = '', sharePwd = '') => ({
   shared_link: {
     access: 'open',
-    permissions: { can_download: true }
+    permissions: { can_download: true },
+    ...(sharePwd ? { password: sharePwd } : {}),
+    ...(expiration ? { unshared_at: expiration } : {})
   }
 })
 
@@ -83,7 +85,9 @@ export const apiBoxShareCreate = async (
   drive_id: string,
   file_id_list: string[],
   share_name: string,
-  isFolder = false
+  isFolder = false,
+  expiration = '',
+  sharePwd = ''
 ): Promise<{ item?: IAliShareItem; error: string }> => {
   if (file_id_list.length !== 1) return { error: 'Box 分享链接一次只能选择一个文件或文件夹' }
   const data = await boxApiRequest<BoxSharedLinkItem>(
@@ -92,7 +96,7 @@ export const apiBoxShareCreate = async (
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildBoxSharedLinkBody())
+      body: JSON.stringify(buildBoxSharedLinkBody(expiration, sharePwd))
     },
     '创建 Box 分享链接失败'
   )

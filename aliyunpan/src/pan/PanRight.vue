@@ -58,7 +58,8 @@ import { menuOpenFile } from '../utils/openfile'
 import { throttle } from '../utils/debounce'
 import { TestButton } from '../utils/mosehelper'
 import usePanTreeStore from './pantreestore'
-import { GetDriveID, GetDriveType, isAliyunUser, isCloud123User, isDrive115User, isGuangyaUser, isPikPakUser } from '../aliapi/utils'
+import { getDriveId as GetDriveID, getDriveType as GetDriveType } from '../drive/context'
+import { isAliyunUser, isCloud123User, isDrive115User, isGuangyaUser, isPikPakUser } from '../utils/driveIdentity'
 import { xorWith } from 'lodash'
 import { flattenDriveToolFolders, moveDriveToolFiles, type OrganizeFileItem } from '../utils/drive-tools/organize'
 import { buildMediaOrganizePlan, executeMediaOrganizePlan, mapMediaOrganizeFiles } from '../utils/drive-tools/mediaOrganize'
@@ -73,7 +74,7 @@ import {
   supportsShareImport,
   supportsTrashMove,
   supportsTrashPermanentDelete
-} from '../aliapi/providerFeatures'
+} from '../drive/providerFeatures'
 
 
 const viewlist = ref()

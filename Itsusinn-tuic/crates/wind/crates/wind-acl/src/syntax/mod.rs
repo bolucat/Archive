@@ -1,7 +1,7 @@
 //! Per-project ACL / routing rule dialects ("syntaxes").
 //!
 //! Each submodule parses one upstream project's rule format into the shared
-//! wind representation (`wind_core::rule::Rule` / this crate's [`Ruleset`]):
+//! wind representation (`wind_rule::Rule` / this crate's [`Ruleset`]):
 //!
 //! * [`apernet`] — the real Hysteria 2 ACL (`apernet/hysteria`), a
 //!   function-call form: `reject(geoip:cn)`, `default(8.8.8.8, udp/53,

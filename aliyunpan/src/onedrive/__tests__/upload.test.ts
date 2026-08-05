@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../dirfilelist', () => ({ getOneDriveToken: vi.fn() }))
+
 import { buildOneDriveSmallUploadPath, buildOneDriveUploadSessionBody, buildOneDriveUploadSessionPath, toOneDriveConflictBehavior } from '../upload'
 
 describe('OneDrive upload helpers', () => {

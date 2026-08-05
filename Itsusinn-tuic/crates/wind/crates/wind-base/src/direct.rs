@@ -12,7 +12,7 @@ use tokio::{
 };
 use tracing::Instrument;
 use wind_core::{
-	OutboundAction,
+	FlowContext, Outbound,
 	resolve::Resolver,
 	tcp::{AbstractTcpStream, TcpKeepalive},
 	types::TargetAddr,
@@ -71,8 +71,9 @@ impl DirectOutbound {
 }
 
 #[async_trait]
-impl OutboundAction for DirectOutbound {
-	async fn handle_tcp(&self, target: TargetAddr, mut stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+impl Outbound for DirectOutbound {
+	async fn handle_tcp(&self, ctx: FlowContext, mut stream: Box<dyn AbstractTcpStream + 'static>) -> eyre::Result<()> {
+		let target = ctx.target;
 		let span = tracing::debug_span!("direct_tcp", target = %target);
 		async move {
 			let target_sa = resolve_target_with_preference(&target, self.resolver.as_ref(), self.opts.ip_mode).await?;
@@ -89,7 +90,7 @@ impl OutboundAction for DirectOutbound {
 		.await
 	}
 
-	async fn handle_udp(&self, udp_stream: UdpStream) -> eyre::Result<()> {
+	async fn handle_udp(&self, _ctx: FlowContext, udp_stream: UdpStream) -> eyre::Result<()> {
 		let span = tracing::debug_span!("direct_udp");
 		relay_udp_direct(self.opts.clone(), self.resolver.clone(), udp_stream)
 			.instrument(span)
@@ -205,7 +206,6 @@ async fn connect_direct_tcp_socket2(
 
 	sock.set_nonblocking(true)?;
 	// socket2::Socket::connect is blocking; run on the blocking pool.
-	let addr = addr;
 	let sock = tokio::task::spawn_blocking(move || -> std::io::Result<socket2::Socket> {
 		sock.connect(&addr.into())?;
 		Ok(sock)
@@ -276,7 +276,6 @@ async fn connect_direct_tcp_with_tfo(addr: SocketAddr, opts: &DirectOutboundOpts
 
 	sock.set_nonblocking(true)?;
 	// socket2::Socket::connect is blocking; run on the blocking pool.
-	let addr = addr;
 	let sock = tokio::task::spawn_blocking(move || -> std::io::Result<socket2::Socket> {
 		sock.connect(&addr.into())?;
 		Ok(sock)

@@ -87,6 +87,7 @@ function driveLabel(token: ITokenInfo): string {
   if (token.tokenfrom === '189') return '天翼云盘'
   if (token.tokenfrom === 'guangya') return '光鸭云盘'
   if (token.tokenfrom === 'pikpak') return 'PikPak'
+  if (token.tokenfrom === 'google') return 'Google Drive'
   return '阿里云盘'
 }
 
@@ -234,6 +235,19 @@ async function searchGuangya(token: ITokenInfo, keyword: string): Promise<Global
   }
 }
 
+async function searchGoogle(token: ITokenInfo, keyword: string): Promise<GlobalSearchResult[]> {
+  try {
+    const { apiGoogleSearch, mapGoogleFileToAliModel } = await import('../google/dirfilelist')
+    const items = await apiGoogleSearch(token.user_id, keyword)
+    const label = driveLabel(token)
+    const uname = userName(token)
+    const driveId = token.default_drive_id || 'google'
+    return items.slice(0, 30).map((item) => cloudResult(mapGoogleFileToAliModel(item, driveId, item.parents?.[0] || 'google_root'), 'google', label, uname, token.user_id))
+  } catch {
+    return []
+  }
+}
+
 async function searchMediaServers(keyword: string): Promise<GlobalSearchResult[]> {
   try {
     const { default: useMediaServerRegistryStore } = await import('../store/mediaServerRegistry')
@@ -271,7 +285,9 @@ function dispatchSearch(token: ITokenInfo, keyword: string): Promise<GlobalSearc
   if (tf === 'dropbox') return searchDropbox(token, keyword)
   if (tf === 'box') return searchBox(token, keyword)
   if (tf === 'guangya') return searchGuangya(token, keyword)
-  return searchAliyun(token, keyword)
+  if (tf === 'google') return searchGoogle(token, keyword)
+  if (tf === 'aliyun' || !tf || tf === 'unknown') return searchAliyun(token, keyword)
+  return Promise.resolve([])
 }
 
 export async function searchAllDrives(keyword: string, opts?: { platforms?: string[]; includeMediaServers?: boolean }): Promise<GlobalSearchResult[]> {

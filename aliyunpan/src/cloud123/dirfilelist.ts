@@ -2,8 +2,8 @@ import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getCloud123Token } from './auth'
 
 export type Cloud123FileItem = {
   fileId: number
@@ -51,16 +51,7 @@ export const apiCloud123FileListPage = async (
   searchMode: number = 0,
   lastFileId: string | number = ''
 ): Promise<{ items: Cloud123FileItem[]; lastFileId: number }> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     message.error('未登录 123 网盘')
     return { items: [], lastFileId: -1 }

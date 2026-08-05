@@ -2,8 +2,8 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import getFileIcon from '../aliapi/fileicon'
 import { HanToPin } from '../utils/utils'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getBaiduToken } from './auth'
 
 export type BaiduFileItem = {
   fs_id: number
@@ -36,16 +36,7 @@ export const apiBaiduFileList = async (
   limit = 1000,
   desc = 0
 ): Promise<BaiduFileItem[]> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) {
     message.error('未登录百度网盘')
     return []
@@ -82,16 +73,7 @@ export const apiBaiduSearch = async (
   dir = '/',
   recursion = true
 ): Promise<BaiduFileItem[]> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getBaiduToken(user_id)
   if (!token?.access_token) {
     message.error('未登录百度网盘')
     return []

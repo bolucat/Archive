@@ -9,10 +9,8 @@
 use std::net::IpAddr;
 
 use wind_acl::{MapField, Match, Ruleset, Side, Verdict, compile};
-use wind_core::{
-	RouteAction,
-	rule::{MatchContext, NetworkType, Rule},
-};
+use wind_core::RouteAction;
+use wind_rule::{MatchContext, NetworkType, Rule};
 
 /// A representative config exercising typed leaves (domain/ip/port/proto),
 /// Predicate fallbacks (geoip/process/wildcard/compound), Pass 1 same-verdict

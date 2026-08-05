@@ -15,7 +15,7 @@ impl<T> AbstractTcpStream for T where T: AsyncRead + AsyncWrite + Send + Unpin {
 
 /// TCP keepalive parameters for outbound connections.
 ///
-/// When set on a `DirectOutboundOpts` or `Socks5ActionOpts`, `SO_KEEPALIVE` is
+/// When set on a `DirectOutboundOpts` or `SocksOutboundOpts`, `SO_KEEPALIVE` is
 /// enabled and (on Linux) the keepalive timers are tuned accordingly.  `None`
 /// means leave the socket at the OS default (typically keepalive off).
 #[derive(Clone, Debug)]

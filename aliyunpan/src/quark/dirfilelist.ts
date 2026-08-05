@@ -4,7 +4,7 @@ import getFileIcon from '../aliapi/fileicon'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import { HanToPin } from '../utils/utils'
 import message from '../utils/message'
-import UserDAL from '../user/userdal'
+import { getProviderTokenForUser } from '../drive/account'
 import { quarkAuthHeaders, quarkDownloadHeaders, syncQuarkCookiesToElectron } from './auth'
 
 export type QuarkFileItem = {
@@ -47,14 +47,7 @@ const quarkParams = (params: Record<string, string | number | undefined> = {}) =
   return qs
 }
 
-const getToken = async (user_id: string) => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-    if (dbToken) token = dbToken
-  }
-  return token
-}
+export const getQuarkToken = (user_id: string) => getProviderTokenForUser(user_id, 'quark')
 
 export const quarkRequest = async <T = any>(
   user_id: string,
@@ -63,7 +56,7 @@ export const quarkRequest = async <T = any>(
   params: Record<string, string | number | undefined> = {},
   silent = false
 ): Promise<T | { __error: true; code: number; message: string } | null> => {
-  const token = await getToken(user_id)
+  const token = await getQuarkToken(user_id)
   if (!token?.access_token) {
     message.error('未登录夸克网盘')
     return null
@@ -106,7 +99,7 @@ export const apiQuarkFileList = async (
   size = 100,
   page = 1
 ): Promise<{ items: QuarkFileItem[]; total: number }> => {
-  const token = await getToken(user_id)
+  const token = await getQuarkToken(user_id)
   if (token?.access_token && typeof window !== 'undefined' && (window as any).WebQuarkFileList) {
     const result = await (window as any).WebQuarkFileList({ cookie: token.access_token, parentId: parentId === 'quark_root' ? '0' : parentId, size, page })
     const data = result?.body ? JSON.parse(result.body) : undefined
@@ -157,7 +150,7 @@ export const apiQuarkFileDetail = async (user_id: string, fileId: string): Promi
 }
 
 export const apiQuarkDownloadUrl = async (user_id: string, fileId: string): Promise<{ url: string; size: number; name: string; error: string; headers?: Record<string, string> }> => {
-  const token = await getToken(user_id)
+  const token = await getQuarkToken(user_id)
   if (!token?.access_token) {
     message.error('未登录夸克网盘')
     return { url: '', size: 0, name: '', error: '未登录夸克网盘' }

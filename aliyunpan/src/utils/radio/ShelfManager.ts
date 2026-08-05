@@ -1112,8 +1112,8 @@ export class ShelfManager {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       const bg = ctx.createLinearGradient(0, 0, canvas.width, 0)
       bg.addColorStop(0, isActive ? 'rgba(0,245,212,.28)' : 'rgba(255,255,255,.08)')
-      bg.addColorStop(0.54, 'rgba(9,11,16,.62)')
-      bg.addColorStop(1, 'rgba(244,210,138,.08)')
+      bg.addColorStop(0.54, 'rgba(9,11,16,.82)')
+      bg.addColorStop(1, 'rgba(244,210,138,.14)')
       ctx.fillStyle = bg
       roundRect(ctx, 10, 12, canvas.width - 20, canvas.height - 24, 32)
       ctx.fill()
@@ -1127,18 +1127,21 @@ export class ShelfManager {
       ctx.textBaseline = 'middle'
       ctx.fillText(String(index + 1).padStart(2, '0'), 120, 88)
       ctx.textAlign = 'left'
-      ctx.fillStyle = 'rgba(255,255,255,.94)'
+      ctx.fillStyle = '#fff'
       ctx.font = '800 44px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
+      ctx.shadowColor = 'rgba(0,0,0,.82)'
+      ctx.shadowBlur = 12
       const name = track?.file_name || track?.name || '未知曲目'
       ctx.fillText(truncateCanvasText(ctx, name, 930), 160, 74)
-      ctx.fillStyle = 'rgba(255,255,255,.45)'
+      ctx.shadowBlur = 0
+      ctx.fillStyle = 'rgba(255,255,255,.78)'
       ctx.font = '700 26px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
       ctx.fillText(truncateCanvasText(ctx, track?.artist || track?.description || 'BoxPlayer Radio', 900), 160, 120)
-      ctx.fillStyle = 'rgba(255,255,255,.56)'
+      ctx.fillStyle = 'rgba(255,255,255,.76)'
       ctx.font = '800 22px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
       ctx.textAlign = 'right'
       ctx.fillText('NEXT', 1205, 92)
-      ctx.fillStyle = 'rgba(255,255,255,.48)'
+      ctx.fillStyle = 'rgba(255,255,255,.70)'
       ctx.fillText('SAVE', 1310, 92)
       ctx.fillStyle = accent
       ctx.fillText('PLAY', 1410, 92)
@@ -1170,8 +1173,8 @@ export class ShelfManager {
       ctx.clearRect(0, 0, canvas.width, canvas.height)
       const bg = ctx.createLinearGradient(0, 0, canvas.width, canvas.height)
       bg.addColorStop(0, 'rgba(255,255,255,.12)')
-      bg.addColorStop(0.36, 'rgba(18,20,27,.76)')
-      bg.addColorStop(1, 'rgba(0,0,0,.82)')
+      bg.addColorStop(0.36, 'rgba(18,20,27,.86)')
+      bg.addColorStop(1, 'rgba(0,0,0,.92)')
       ctx.fillStyle = bg
       roundRect(ctx, 18, 18, canvas.width - 36, canvas.height - 36, 44)
       ctx.fill()
@@ -1190,11 +1193,14 @@ export class ShelfManager {
       ctx.textAlign = 'left'
       ctx.textBaseline = 'alphabetic'
       ctx.fillText(`${trackCount} TRACKS`, 76, 116)
-      ctx.fillStyle = 'rgba(255,255,255,.96)'
+      ctx.fillStyle = '#fff'
       ctx.font = '900 54px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
+      ctx.shadowColor = 'rgba(0,0,0,.82)'
+      ctx.shadowBlur = 14
       const title = card.title || '当前队列'
       ctx.fillText(truncateCanvasText(ctx, title, 820), 76, 186)
-      ctx.fillStyle = 'rgba(255,255,255,.52)'
+      ctx.shadowBlur = 0
+      ctx.fillStyle = 'rgba(255,255,255,.76)'
       ctx.font = '760 28px -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif'
       const subtitle = card.subtitle || 'BoxPlayer Radio'
       ctx.fillText(truncateCanvasText(ctx, subtitle, 880), 78, 236)
@@ -1340,11 +1346,13 @@ export class ShelfManager {
       const isHovered = row.index === this.hoveredContentIndex
       const rowIntro = clamp01(this.contentAlpha * 1.4 - Math.min(0.48, row.index * 0.045))
       const rowEase = Math.sin(rowIntro * Math.PI * 0.5)
-      row.group.visible = absD <= 3.8
-      row.group.position.set((1 - rowEase) * (isSide ? 0.42 : -0.26), -0.82 - delta * (isSide ? 0.74 : 0.42), 0.04 - (1 - rowEase) * 0.12)
+      const rowY = -0.82 - delta * (isSide ? 0.74 : 0.42)
+      const isInsideContentFrame = rowY - 0.30 >= -2.18 && rowY + 0.30 <= 2.18
+      row.group.visible = absD <= 3.8 && isInsideContentFrame
+      row.group.position.set((1 - rowEase) * (isSide ? 0.42 : -0.26), rowY, 0.04 - (1 - rowEase) * 0.12)
       row.group.scale.setScalar((isHovered ? 1.025 : 1) * (0.98 + rowEase * 0.02))
       row.group.renderOrder = 90 + Math.round((5 - Math.min(5, absD)) * 10) + (isHovered ? 8 : 0)
-      row.plane.material.opacity = Math.min(1, Math.max(0.16, 0.88 - absD * 0.15) + (isHovered ? 0.12 : 0)) * this.presenceAlpha * ease * rowEase
+      row.plane.material.opacity = Math.min(1, Math.max(0.32, 0.94 - absD * 0.11) + (isHovered ? 0.08 : 0)) * this.presenceAlpha * ease * rowEase
     }
     if (this.contentClose) {
       this.contentClose.group.visible = ease > 0.04

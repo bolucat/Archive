@@ -1,4 +1,4 @@
-//! Evaluation of a [`Ruleset`] against a `wind_core::rule::MatchContext`.
+//! Evaluation of a [`Ruleset`] against a `wind_rule::MatchContext`.
 //!
 //! Semantics follow `specs/acl-ir.md` §4: scan the entry chain top-to-bottom;
 //! on a match run the statements then apply the verdict; `Jump` pushes a return
@@ -7,7 +7,8 @@
 
 use std::net::IpAddr;
 
-use wind_core::{RouteAction, rule::MatchContext};
+use wind_core::RouteAction;
+use wind_rule::MatchContext;
 
 use crate::model::{DomainSet, MapField, Match, Ruleset, SetData, Side, Verdict};
 
@@ -151,7 +152,7 @@ fn side_port(ctx: &MatchContext, side: Side) -> Option<u16> {
 }
 
 /// Whether a single [`DomainTest`] matches a host. The exact, allocation-free
-/// algorithms are copied verbatim from `wind_core::rule` so a typed domain leaf
+/// algorithms are copied verbatim from `wind_rule` so a typed domain leaf
 /// evaluates identically to the legacy `Rule::matches`.
 fn domain_test_matches(test: &crate::model::DomainTest, host: &str) -> bool {
 	use crate::model::DomainTest::*;
@@ -169,7 +170,7 @@ fn domain_set_contains(ds: &DomainSet, host: &str) -> bool {
 }
 
 /// `host == suffix` OR `host` ends with `.{suffix}`, ASCII-case-insensitive.
-/// Verbatim from `wind_core::rule`. `suffix_lc` is expected lower-cased.
+/// Verbatim from `wind_rule`. `suffix_lc` is expected lower-cased.
 fn ascii_ci_ends_with_dot_or_eq(host: &str, suffix_lc: &str) -> bool {
 	let hb = host.as_bytes();
 	let sb = suffix_lc.as_bytes();
@@ -186,7 +187,7 @@ fn ascii_ci_ends_with_dot_or_eq(host: &str, suffix_lc: &str) -> bool {
 	hb[dot_pos + 1..].iter().zip(sb).all(|(a, b)| a.eq_ignore_ascii_case(b))
 }
 
-/// ASCII-case-insensitive substring search. Verbatim from `wind_core::rule`.
+/// ASCII-case-insensitive substring search. Verbatim from `wind_rule`.
 /// `needle_lc` is expected lower-cased.
 fn ascii_ci_contains(host: &str, needle_lc: &str) -> bool {
 	let hb = host.as_bytes();

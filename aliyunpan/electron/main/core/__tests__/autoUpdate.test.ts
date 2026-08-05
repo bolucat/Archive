@@ -183,12 +183,50 @@ describe('createAutoUpdateController', () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'boxplayer-update-'))
     writeFileSync(join(userDataPath, 'setting.config'), JSON.stringify({
       uiUpdateProxyEnable: true,
-      uiUpdateProxyUrl: 'https://gh-proxy.com/'
+      uiUpdateProxyUrl: 'https://gh-proxy.com/',
+      uiLaunchAutoCheckUpdate: true
     }))
 
     expect(readUpdateProxyPreferences(userDataPath)).toEqual({
       enabled: true,
-      url: 'https://gh-proxy.com/'
+      url: 'https://gh-proxy.com/',
+      autoCheckOnLaunch: true
     })
+  })
+
+  it('does not check or download updates on launch when startup checking is disabled', async () => {
+    vi.useFakeTimers()
+    const updater = new FakeUpdater()
+    createAutoUpdateController({
+      updater,
+      dialog: { showMessageBox: vi.fn() },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      currentVersion: '4.0.11',
+      isPackaged: true,
+      updateProxy: { enabled: false, url: '', autoCheckOnLaunch: false }
+    })
+
+    await vi.advanceTimersByTimeAsync(2_000)
+    expect(updater.checkForUpdates).not.toHaveBeenCalled()
+    expect(updater.downloadUpdate).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('still allows a manual update check when startup checking is disabled', async () => {
+    const updater = new FakeUpdater()
+    updater.checkForUpdates.mockImplementation(async () => {
+      updater.emit('update-not-available', { version: '4.0.11' })
+    })
+    const controller = createAutoUpdateController({
+      updater,
+      dialog: { showMessageBox: vi.fn() },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      currentVersion: '4.0.11',
+      isPackaged: true,
+      updateProxy: { enabled: false, url: '', autoCheckOnLaunch: false }
+    })
+
+    expect(await controller.checkNow(true)).toEqual({ status: 'up-to-date', version: '4.0.11' })
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(1)
   })
 })

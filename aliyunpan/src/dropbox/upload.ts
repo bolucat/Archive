@@ -5,6 +5,7 @@ import { FileHandle } from 'fs/promises'
 import type { IUploadingUI } from '../utils/dbupload'
 import { Sleep } from '../utils/format'
 import { resolveDropboxCommandPath } from './filecmd'
+import { getDropboxToken } from './dirfilelist'
 
 const DROPBOX_CONTENT_HOST = 'content.dropboxapi.com'
 const SMALL_UPLOAD_LIMIT = 150 * 1024 * 1024
@@ -80,8 +81,12 @@ const dropboxContentRequest = <T>(accessToken: string, endpoint: string, apiArg:
       })
       res.on('end', () => {
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-          const data = raw ? JSON.parse(raw) : {}
-          resolve({ data: data as T, error: '' })
+          try {
+            const data = raw ? JSON.parse(raw) : {}
+            resolve({ data: data as T, error: '' })
+          } catch {
+            resolve({ error: fallback })
+          }
         } else {
           resolve({ error: parseDropboxContentError(raw, fallback) })
         }
@@ -145,7 +150,9 @@ const uploadSmallFile = async (accessToken: string, fileHandle: FileHandle, file
     '上传 Dropbox 文件失败'
   )
   if (resp.error) return resp.error
-  fileui.File.uploaded_file_id = resp.data?.id || resp.data?.path_display || uploadPath
+  const fileId = resp.data?.id || resp.data?.path_display || ''
+  if (!fileId) return 'Dropbox 上传完成但未返回文件 ID'
+  fileui.File.uploaded_file_id = fileId
   fileui.File.uploaded_is_rapid = false
   await recordUploadProgress(fileui.UploadID, buff.length, buff.length)
   return 'success'
@@ -180,7 +187,9 @@ const uploadSessionFile = async (accessToken: string, fileHandle: FileHandle, fi
     offset += buff.length
     await recordUploadProgress(fileui.UploadID, buff.length, offset)
     if (isLast) {
-      fileui.File.uploaded_file_id = resp.data?.id || resp.data?.path_display || uploadPath
+      const fileId = resp.data?.id || resp.data?.path_display || ''
+      if (!fileId) return 'Dropbox 上传完成但未返回文件 ID'
+      fileui.File.uploaded_file_id = fileId
       fileui.File.uploaded_is_rapid = false
     }
   }
@@ -189,8 +198,7 @@ const uploadSessionFile = async (accessToken: string, fileHandle: FileHandle, fi
 
 export default class DropboxUploadDisk {
   static async UploadOneFile(fileui: IUploadingUI): Promise<string> {
-    const { default: UserDAL } = await import('../user/userdal')
-    const token = await UserDAL.GetUserTokenFromDB(fileui.user_id)
+    const token = await getDropboxToken(fileui.user_id)
     if (!token?.access_token) return '找不到上传token，请重试'
     if (fileui.encType) return 'Dropbox 暂不支持加密上传'
 

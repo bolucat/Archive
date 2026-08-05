@@ -7,7 +7,6 @@ use wind_core::types::TargetAddr;
 pub mod action;
 pub mod ext;
 pub mod inbound;
-pub mod outbound;
 pub mod udp;
 
 #[derive(Debug, Snafu)]

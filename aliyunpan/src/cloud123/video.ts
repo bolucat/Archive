@@ -1,5 +1,5 @@
-import UserDAL from '../user/userdal'
 import message from '../utils/message'
+import { getCloud123Token } from './auth'
 
 export type Cloud123TranscodeItem = {
   url: string
@@ -27,16 +27,7 @@ export const apiCloud123TranscodeList = async (
   user_id: string,
   fileId: string
 ): Promise<{ status: number; list: Cloud123TranscodeItem[] } | string> => {
-  let token = UserDAL.GetUserToken(user_id)
-  if (!token?.access_token) {
-    const dbToken = await UserDAL.GetUserTokenFromDB(user_id)
-
-    if (dbToken) {
-
-      token = dbToken
-
-    }
-  }
+  const token = await getCloud123Token(user_id)
   if (!token?.access_token) return '未登录 123 云盘'
   if (!fileId) return '参数错误'
   const params = new URLSearchParams({ fileId })

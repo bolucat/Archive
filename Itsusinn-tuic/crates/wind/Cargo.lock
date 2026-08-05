@@ -5534,6 +5534,7 @@ checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 name = "wind"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
  "clap",
  "clap_derive",
  "const-str",
@@ -5561,6 +5562,7 @@ dependencies = [
 name = "wind-acl"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
  "derive_more",
  "eyre",
  "geosite-rs",
@@ -5573,9 +5575,9 @@ dependencies = [
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "tracing",
- "wind-base",
  "wind-core",
  "wind-geodata",
+ "wind-rule",
 ]
 
 [[package]]
@@ -5623,13 +5625,11 @@ dependencies = [
  "dashmap",
  "eyre",
  "futures",
- "ipnet",
  "pin-project",
  "pin-project-lite",
  "quinn 0.12.0",
  "quinn-udp 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.10.2",
- "regex",
  "serde",
  "serde_json",
  "socket2 0.6.5",
@@ -5637,6 +5637,8 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
+ "wind-acl",
+ "wind-rule",
 ]
 
 [[package]]
@@ -5670,6 +5672,7 @@ dependencies = [
 name = "wind-naive"
 version = "0.2.0"
 dependencies = [
+ "async-trait",
  "bytes",
  "cronet-rs",
  "eyre",
@@ -5710,6 +5713,14 @@ dependencies = [
  "tokio-util",
  "tracing",
  "wind-core",
+]
+
+[[package]]
+name = "wind-rule"
+version = "0.2.0"
+dependencies = [
+ "ipnet",
+ "regex",
 ]
 
 [[package]]
@@ -5761,6 +5772,7 @@ name = "wind-tuic"
 version = "0.2.0"
 dependencies = [
  "arc-swap",
+ "async-trait",
  "aws-lc-rs",
  "bytes",
  "color-eyre",

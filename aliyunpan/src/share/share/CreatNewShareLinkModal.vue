@@ -7,6 +7,7 @@ import { usePanTreeStore, useSettingStore } from '../../store'
 import { humanDateTime, randomSharePassword } from '../../utils/format'
 import message from '../../utils/message'
 import AliShare from '../../aliapi/share'
+import DriveShare from '../../drive/share'
 import ShareDAL from './ShareDAL'
 import { ArrayKeyList } from '../../utils/utils'
 import { copyToClipboard } from '../../utils/electronhelper'
@@ -114,8 +115,8 @@ const handleOK = async (multi: boolean) => {
     let url = ''
     if (shareType.value.type === 's') {
       result = form.paid && isCloud123.value
-        ? await AliShare.ApiCreatCloud123PaidShare(user_id, drive_id, share_name, file_id_list, Number(form.payAmount), form.resourceDesc, form.isReward ? 1 : 0)
-        : await AliShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list, Boolean(props.filelist[0]?.isDir))
+        ? await DriveShare.ApiCreatCloud123PaidShare(user_id, drive_id, share_name, file_id_list, Number(form.payAmount), form.resourceDesc, form.isReward ? 1 : 0)
+        : await DriveShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list, Boolean(props.filelist[0]?.isDir))
       if (typeof result == 'string') {
         okLoading.value = false
         message.error(result)
@@ -151,8 +152,8 @@ const handleOK = async (multi: boolean) => {
     for (let i = 0; i < file_id_list.length; i++) {
       if (shareType.value.type === 's') {
         result = form.paid && isCloud123.value
-          ? await AliShare.ApiCreatCloud123PaidShare(user_id, drive_id, share_name, file_id_list.slice(i, i + 1), Number(form.payAmount), form.resourceDesc, form.isReward ? 1 : 0)
-          : await AliShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list.slice(i, i + 1), Boolean(props.filelist[i]?.isDir))
+          ? await DriveShare.ApiCreatCloud123PaidShare(user_id, drive_id, share_name, file_id_list.slice(i, i + 1), Number(form.payAmount), form.resourceDesc, form.isReward ? 1 : 0)
+          : await DriveShare.ApiCreatShare(user_id, drive_id, expiration, share_pwd, share_name, file_id_list.slice(i, i + 1), Boolean(props.filelist[i]?.isDir))
       } else {
         result = await AliTransferShare.ApiCreatTransferShare(user_id, drive_id, file_id_list.slice(i, i + 1))
       }

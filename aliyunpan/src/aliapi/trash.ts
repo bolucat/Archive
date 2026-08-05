@@ -3,17 +3,9 @@ import message from '../utils/message'
 import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliFileItem, IAliGetFileModel } from './alimodels'
 import AliDirFileList, { IAliFileResp } from './dirfilelist'
-import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
-import { apiCloud123FileListPage, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
-import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
-import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
-import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
-import { apiCloud139FileListPage, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
-import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
-import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
-import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
-import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
-import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
+import { listProviderItems } from '../drive/providerList'
+import UserDAL from '../user/userdal'
+import { resolveDriveProvider } from '../utils/driveProvider'
 
 export default class AliTrash {
 
@@ -72,6 +64,17 @@ export default class AliTrash {
       m_drive_id: drive_id,
       dirID: dirID,
       dirName: dirName
+    }
+
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (!route.isValid) return dir
+    if (route.provider !== 'aliyun' && route.provider !== 'webdav' && route.provider !== 'alist') {
+      const result = await listProviderItems(route.provider, user_id, drive_id, dirID, type !== 'folder')
+      if (!result) return dir
+      dir.items = max > 0 ? result.items.slice(0, max) : result.items
+      dir.itemsKey = new Set(dir.items.map(item => item.file_id))
+      dir.itemsTotal = result.total
+      return dir
     }
 
     if (!order) order = 'updated_at desc'
@@ -146,76 +149,12 @@ export default class AliTrash {
   }
 
   static async ApiFileListOnePageAria(orderby: string, order: string, dir: IAliFileResp) {
-    const pageSize = 100
-    const parentId = dir.dirID.includes('root') ? '0' : dir.dirID
-    if (dir.m_drive_id === 'cloud123') {
-      const page = await apiCloud123FileListPage(dir.m_user_id, parentId, pageSize, false, '', 0, dir.next_marker || '')
-      AliTrash.appendProviderItems(dir, page.items.map((item) => mapCloud123FileToAliModel(item)))
-      dir.next_marker = page.lastFileId > 0 && page.items.length === pageSize ? String(page.lastFileId) : ''
-      return true
-    }
-    if (dir.m_drive_id === 'drive115') {
-      const offset = Number(dir.next_marker || 0)
-      const list = await apiDrive115FileList(dir.m_user_id, parentId, pageSize, offset, true)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapDrive115FileToAliModel(item, dir.m_drive_id)))
-      dir.next_marker = list.length === pageSize ? String(offset + pageSize) : ''
-      return true
-    }
-    if (dir.m_drive_id === 'baidu') {
-      const dirPath = (dir as any).dirPath || '/'
-      const offset = Number(dir.next_marker || 0)
-      const list = await apiBaiduFileList(dir.m_user_id, dirPath, 'name', offset, 1000)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapBaiduFileToAliModel(item, dir.m_drive_id, dirPath)))
-      dir.next_marker = list.length === 1000 ? String(offset + 1000) : ''
-      return true
-    }
-    if (dir.m_drive_id === 'pikpak') {
-      const page = await apiPikPakFileList(dir.m_user_id, dir.dirID, pageSize, dir.next_marker || '')
-      AliTrash.appendProviderItems(dir, page.items.map((item) => mapPikPakFileToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = page.nextPageToken || ''
-      return true
-    }
-    if (dir.m_drive_id === 'quark') {
-      const page = Number(dir.next_marker || 1)
-      const result = await apiQuarkFileList(dir.m_user_id, dir.dirID, pageSize, page)
-      AliTrash.appendProviderItems(dir, result.items.map((item) => mapQuarkFileToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = page * pageSize < result.total ? String(page + 1) : ''
-      return true
-    }
-    if (dir.m_drive_id === 'cloud139') {
-      const result = await apiCloud139FileListPage(dir.m_user_id, parentId, 1000, dir.next_marker || '')
-      AliTrash.appendProviderItems(dir, result.items.map((item) => mapCloud139FileToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = result.nextCursor
-      return true
-    }
-    if (dir.m_drive_id === 'cloud189') {
-      const page = Number(dir.next_marker || 1)
-      const list = await apiCloud189FileList(dir.m_user_id, parentId, 1000, page)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapCloud189FileToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = list.length === 1000 ? String(page + 1) : ''
-      return true
-    }
-    if (dir.m_drive_id === 'guangya') {
-      const list = await apiGuangyaFileList(dir.m_user_id, parentId, 1000)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapGuangyaFileToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = ''
-      return true
-    }
-    if (dir.m_drive_id === 'dropbox') {
-      const list = await apiDropboxFileList(dir.m_user_id, dir.dirID, 1000)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapDropboxFileToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = ''
-      return true
-    }
-    if (dir.m_drive_id === 'onedrive') {
-      const list = await apiOneDriveFileList(dir.m_user_id, dir.dirID)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapOneDriveItemToAliModel(item, dir.m_drive_id, dir.dirID)))
-      dir.next_marker = ''
-      return true
-    }
-    if (dir.m_drive_id === 'box') {
-      const list = await apiBoxFileList(dir.m_user_id, dir.dirID, 1000)
-      AliTrash.appendProviderItems(dir, list.map((item) => mapBoxItemToAliModel(item, dir.m_drive_id, dir.dirID)))
+    const route = resolveDriveProvider(dir.m_user_id, dir.m_drive_id, UserDAL.GetUserToken(dir.m_user_id)?.tokenfrom)
+    if (!route.isValid) return false
+    if (route.provider !== 'aliyun' && route.provider !== 'webdav' && route.provider !== 'alist') {
+      const result = await listProviderItems(route.provider, dir.m_user_id, dir.m_drive_id, dir.dirID, true)
+      if (!result) return false
+      AliTrash.appendProviderItems(dir, result.items)
       dir.next_marker = ''
       return true
     }

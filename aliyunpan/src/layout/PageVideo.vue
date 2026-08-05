@@ -8,6 +8,7 @@ import Artplayer from 'artplayer'
 import HlsJs from 'hls.js'
 import * as dashjs from 'dashjs'
 import AliFile from '../aliapi/file'
+import DriveFile from '../drive/file'
 import AliDirFileList from '../aliapi/dirfilelist'
 import levenshtein from 'fast-levenshtein'
 import type { SettingOption } from 'artplayer/types/setting'
@@ -51,18 +52,9 @@ import { simpleToTradition, traditionToSimple } from 'chinese-simple2traditional
 import path from 'path'
 import UserDAL from '../user/userdal'
 import Config from '../config'
-import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
-import { apiCloud123FileList, mapCloud123FileToAliModel } from '../cloud123/dirfilelist'
-import { apiGuangyaFileList, mapGuangyaFileToAliModel } from '../guangya/dirfilelist'
-import { apiDrive115FileList, mapDrive115FileToAliModel } from '../cloud115/dirfilelist'
-import { apiBaiduFileList, mapBaiduFileToAliModel } from '../cloudbaidu/dirfilelist'
-import { apiPikPakFileList, mapPikPakFileToAliModel } from '../pikpak/dirfilelist'
-import { apiQuarkFileList, mapQuarkFileToAliModel } from '../quark/dirfilelist'
-import { apiDropboxFileList, mapDropboxFileToAliModel } from '../dropbox/dirfilelist'
-import { apiOneDriveFileList, mapOneDriveItemToAliModel } from '../onedrive/dirfilelist'
-import { apiBoxFileList, mapBoxItemToAliModel } from '../box/dirfilelist'
-import { apiCloud139FileList, mapCloud139FileToAliModel } from '../cloud139/dirfilelist'
-import { apiCloud189FileList, mapCloud189FileToAliModel } from '../cloud189/dirfilelist'
+import { isBoxUser, isDropboxUser, isOneDriveUser, isQuarkUser } from '../aliapi/utils'
+import { listProviderItems } from '../drive/providerList'
+import { resolveDriveProvider } from '../utils/driveProvider'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import MpvEmbeddedSurface from '../components/MpvEmbeddedSurface.vue'
@@ -105,7 +97,6 @@ const mpvEmbeddedQualities = ref<selectorItem[]>([])
 const mpvEmbeddedExternalSubtitle = ref<{ url: string; title?: string } | undefined>(undefined)
 const mpvPlaylistReady = ref(false)
 
-const canUseAliyunFileList = (userId: string) => isAliyunUser(userId)
 
 const updateWindowTitle = (name?: string) => {
   document.title = name || pageVideo.file_name || t('video.onlinePreview')
@@ -395,7 +386,7 @@ const resolveHeaderAwareVideoUrl = (
   quality: string,
   proxyKind = ''
 ) => {
-  if (!pageVideo.encType) return url
+  if (!pageVideo.encType && !hasPlaybackHeaders(headers)) return url
   return getProxyUrl({
     user_id: pageVideo.user_id,
     drive_id: pageVideo.drive_id,
@@ -1322,56 +1313,19 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
       if (connection) {
         items = await listWebDavDirectory(connection, dir_id || '/')
       }
-    } else if (isCloud123User(pageVideo.user_id) || pageVideo.drive_id === 'cloud123') {
-      const list = await apiCloud123FileList(pageVideo.user_id, dir_id, 500, false)
-      items = list.map(item => mapCloud123FileToAliModel(item))
-    } else if (isGuangyaUser(pageVideo.user_id) || pageVideo.drive_id === 'guangya') {
-      const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'guangya_root'
-      const list = await apiGuangyaFileList(pageVideo.user_id, parentId, 500)
-      items = list.map(item => mapGuangyaFileToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isDrive115User(pageVideo.user_id) || pageVideo.drive_id === 'drive115') {
-      const list = await apiDrive115FileList(pageVideo.user_id, dir_id, 200, 0, true)
-      items = list.map(item => mapDrive115FileToAliModel(item, pageVideo.drive_id))
-    } else if (isBaiduUser(pageVideo.user_id) || pageVideo.drive_id === 'baidu') {
-      const list = await apiBaiduFileList(pageVideo.user_id, dir_id || '/', 'name', 0, 1000)
-      items = list.map(item => mapBaiduFileToAliModel(item, pageVideo.drive_id, dir_id || '/'))
-    } else if (isPikPakUser(pageVideo.user_id) || pageVideo.drive_id === 'pikpak') {
-      const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'pikpak_root'
-      const list = await apiPikPakFileList(pageVideo.user_id, parentId, 500)
-      items = list.items.map(item => mapPikPakFileToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isQuarkUser(pageVideo.user_id) || pageVideo.drive_id === 'quark') {
-      const parentId = dir_id && !dir_id.includes('root') ? dir_id : '0'
-      const list = await apiQuarkFileList(pageVideo.user_id, parentId, 500)
-      items = list.items.map(item => mapQuarkFileToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isDropboxUser(pageVideo.user_id) || pageVideo.drive_id === 'dropbox') {
-      const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'dropbox_root'
-      const list = await apiDropboxFileList(pageVideo.user_id, parentId, 500)
-      items = list.map(item => mapDropboxFileToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isOneDriveUser(pageVideo.user_id) || pageVideo.drive_id === 'onedrive') {
-      const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'onedrive_root'
-      const list = await apiOneDriveFileList(pageVideo.user_id, parentId)
-      items = list.map(item => mapOneDriveItemToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isBoxUser(pageVideo.user_id) || pageVideo.drive_id === 'box') {
-      const parentId = dir_id && !dir_id.includes('root') ? dir_id : 'box_root'
-      const list = await apiBoxFileList(pageVideo.user_id, parentId, 500)
-      items = list.map(item => mapBoxItemToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isCloud139User(pageVideo.user_id) || pageVideo.drive_id === 'cloud139') {
-      const parentId = dir_id || 'cloud139_root'
-      const list = await apiCloud139FileList(pageVideo.user_id, parentId, 500)
-      items = list.map(item => mapCloud139FileToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (isCloud189User(pageVideo.user_id) || pageVideo.drive_id === 'cloud189') {
-      const parentId = dir_id || 'cloud189_root'
-      const list = await apiCloud189FileList(pageVideo.user_id, parentId, 1000)
-      items = list.map(item => mapCloud189FileToAliModel(item, pageVideo.drive_id, parentId))
-    } else if (canUseAliyunFileList(pageVideo.user_id)) {
-      const dir = await AliDirFileList.ApiDirFileList(pageVideo.user_id, pageVideo.drive_id, dir_id, '', 'name asc', '')
-      items = dir.items || []
     } else {
-      console.warn('[PageVideo] skip Aliyun file list for non-Aliyun source', {
-        user_id: pageVideo.user_id,
-        drive_id: pageVideo.drive_id,
-        dir_id
-      })
+      const route = resolveDriveProvider(pageVideo.user_id, pageVideo.drive_id, UserDAL.GetUserToken(pageVideo.user_id)?.tokenfrom)
+      const providerResult = route.isValid && route.provider !== 'aliyun'
+        ? await listProviderItems(route.provider, pageVideo.user_id, pageVideo.drive_id, dir_id, true)
+        : undefined
+      if (providerResult) {
+        items = providerResult.items
+      } else if (route.isValid && route.provider === 'aliyun') {
+        const dir = await AliDirFileList.ApiDirFileList(pageVideo.user_id, pageVideo.drive_id, dir_id, '', 'name asc', '')
+        items = dir.items || []
+      } else {
+        console.warn('[PageVideo] skip unknown or mismatched drive source', { user_id: pageVideo.user_id, drive_id: pageVideo.drive_id, dir_id, error: route.error })
+      }
     }
     for (let item of items) {
       const fileInfo = {
@@ -2766,7 +2720,7 @@ const readSubtitleItemText = async (item: selectorItem) => {
 const resolveCloudSubtitleUrl = async (item: selectorItem): Promise<string> => {
   if (!item.file_id) return item.url || ''
   const driveId = item.drive_id || pageVideo.drive_id
-  const data = await AliFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400)
+  const data = await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400)
   if (typeof data === 'string' || !data.url) return ''
   return getProxyUrl({
     user_id: pageVideo.user_id,

@@ -9,6 +9,7 @@
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
+use async_trait::async_trait;
 use eyre::Context;
 use quinn::{Endpoint, EndpointConfig, IdleTimeout, ServerConfig, TokioRuntime, TransportConfig, VarInt};
 use rustls::{
@@ -18,7 +19,7 @@ use rustls::{
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, error, info, warn};
 use uuid::Uuid;
-use wind_core::{AbstractInbound, AppContext, InboundCallback, InboundHooks};
+use wind_core::{AbstractInbound, AppContext, Dispatcher, InboundCallback, InboundHooks, Router};
 use wind_quic::quinn::QuinnConnection;
 
 use crate::quinn::CongestionControl;
@@ -135,6 +136,10 @@ pub struct TuicInboundOpts {
 	/// management). Defaults to all-`None` (no behavior change).
 	pub hooks: InboundHooks,
 
+	/// Stable per-inbound identifier used by `IN-NAME` routing rules.
+	/// Defaults to `"tuic"`.
+	pub inbound_tag: Arc<str>,
+
 	/// Live-connection registry for per-user connection limits + active kick.
 	/// Defaults to `None` (no registration). When set, each authenticated
 	/// connection registers itself and `kick_user` can drop it.
@@ -165,6 +170,7 @@ impl Default for TuicInboundOpts {
 			newreno_loss_reduction_factor: None,
 			masquerade: None,
 			hooks: InboundHooks::default(),
+			inbound_tag: Arc::from("tuic"),
 			active: None,
 		}
 	}
@@ -281,8 +287,9 @@ impl TuicInbound {
 	}
 }
 
-impl AbstractInbound for TuicInbound {
-	async fn listen(&self, cb: &impl InboundCallback) -> eyre::Result<()> {
+#[async_trait]
+impl<R: Router> AbstractInbound<R> for TuicInbound {
+	async fn listen(&self, cb: &Dispatcher<R>) -> eyre::Result<()> {
 		let config = self.create_server_config()?;
 
 		let socket = std::net::UdpSocket::bind(self.opts.listen_addr)
@@ -312,6 +319,7 @@ impl AbstractInbound for TuicInbound {
 					let masquerade = opts.masquerade.clone();
 					let hooks = opts.hooks.clone();
 					let active = opts.active.clone();
+					let inbound_tag = opts.inbound_tag.clone();
 					let cb = cb.clone();
 					let conn_cancel = self.cancel.child_token();
 					let remote = incoming.remote_address();
@@ -327,7 +335,7 @@ impl AbstractInbound for TuicInbound {
 					// `tasks.close()` + `tasks.wait()` after cancelling).
 					self.ctx.tasks.spawn(spawn_logged(
 						"Connection handler",
-						handle_connection(incoming, users, auth_timeout, zero_rtt, masquerade, cb, conn_cancel, hooks, active),
+						handle_connection(incoming, users, auth_timeout, zero_rtt, masquerade, cb, conn_cancel, hooks, active, inbound_tag),
 					).instrument(span));
 				}
 				else => {
@@ -351,7 +359,7 @@ impl AbstractInbound for TuicInbound {
 /// Complete the quinn handshake (incl. optional 0-RTT) for one incoming
 /// connection, then drive it through the backend-agnostic server core.
 #[allow(clippy::too_many_arguments)]
-async fn handle_connection<C: InboundCallback>(
+async fn handle_connection<C: InboundCallback + Clone>(
 	incoming: quinn::Incoming,
 	users: Arc<HashMap<Uuid, String>>,
 	auth_timeout: Duration,
@@ -361,6 +369,7 @@ async fn handle_connection<C: InboundCallback>(
 	cancel: CancellationToken,
 	hooks: InboundHooks,
 	active: Option<crate::active::ActiveConnections>,
+	inbound_tag: Arc<str>,
 ) -> eyre::Result<()> {
 	let remote_addr = incoming.remote_address();
 
@@ -410,6 +419,7 @@ async fn handle_connection<C: InboundCallback>(
 		masquerade,
 		hooks,
 		active,
+		inbound_tag,
 	)
 	.await;
 

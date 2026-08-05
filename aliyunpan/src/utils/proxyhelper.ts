@@ -7,6 +7,7 @@ import { GetExpiresTime } from './utils'
 import { decodeName } from '../module/flow-enc/utils'
 import { IAliFileItem, IAliGetFileModel } from '../aliapi/alimodels'
 import AliFile from '../aliapi/file'
+import DriveFile from '../drive/file'
 import path from 'path'
 import { localPwd } from './aria2c'
 import os from 'os'
@@ -266,7 +267,7 @@ export async function getRawUrl(
   // 违规文件无法获取地址
   const needOriginQuality = !encType && preview_type === 'video' && !data.qualities.some((q: any) => q.quality === 'Origin')
   if ((!weifa && !data.url) || uiVideoPlayer == 'web' || needOriginQuality) {
-    let downUrl = await AliFile.ApiFileDownloadUrl(user_id, drive_id, file_id, 14400)
+    let downUrl = await DriveFile.ApiFileDownloadUrl(user_id, drive_id, file_id, 14400)
     if (typeof downUrl != 'string') {
       if (!encType && preview_type && !data.qualities.some((q: any) => q.quality === 'Origin')) {
         data.qualities.unshift({ quality: 'Origin', html: '原画', label: '原画', value: '', url: downUrl.url, type: detectProxyVideoType(downUrl.url) })
@@ -386,6 +387,12 @@ export async function createProxyServer(port: number) {
           upstreamHeaders.authorization = `Bearer ${token.access_token}`
         }
         upstreamHeaders['user-agent'] = DRIVE115_DOWN_AGENT
+      }
+      if (query.drive_id === 'google') {
+        const token = await UserDAL.EnsureUserTokenReady(String(query.user_id || ''))
+        if (token?.tokenfrom === 'google' && token.access_token) {
+          upstreamHeaders.authorization = `Bearer ${token.access_token}`
+        }
       }
       if (query.drive_id === 'quark' || isQuarkUser(String(query.user_id || ''))) {
         const token = await getQuarkProxyToken(String(query.user_id || ''))

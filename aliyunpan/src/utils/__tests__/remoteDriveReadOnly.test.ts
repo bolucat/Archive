@@ -12,10 +12,10 @@ describe.each(['webdav', 'alist'])('%s remote drive capabilities', platform => {
 })
 
 it('maps both virtual account types and drive ids to the read-only manifest', () => {
-  const source = readFileSync(new URL('../../aliapi/providerFeatures.ts', import.meta.url), 'utf8')
-  expect(source).toContain('isRemoteDriveUser(userId)')
-  expect(source).toContain("drive.startsWith('webdav:')")
-  expect(source).toContain("return 'webdav'")
+  const source = readFileSync(new URL('../../drive/providerFeatures.ts', import.meta.url), 'utf8')
+  expect(source).toContain('resolveDriveProvider(userId, driveId, UserDAL.GetUserToken(userId)?.tokenfrom)')
+  expect(source).toContain("route.provider === 'webdav'")
+  expect(source).toContain("? 'webdav' : route.provider")
 })
 
 it('gates file-page mutations with provider capabilities', () => {

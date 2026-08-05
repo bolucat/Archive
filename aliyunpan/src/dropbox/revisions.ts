@@ -7,14 +7,12 @@ type DropboxListRevisionsResp = {
 
 export const buildDropboxListRevisionsBody = (fileId: string, limit = 20) => ({
   path: fileId,
-  mode: {
-    '.tag': 'path'
-  },
+  mode: fileId.startsWith('id:') ? { '.tag': 'id' } : { '.tag': 'path' },
   limit: Math.max(1, Math.min(limit, 100))
 })
 
-export const buildDropboxRestoreBody = (fileId: string, rev: string) => ({
-  path: fileId,
+export const buildDropboxRestoreBody = (filePath: string, rev: string) => ({
+  path: filePath,
   rev
 })
 
@@ -23,6 +21,6 @@ export const apiDropboxListRevisions = async (user_id: string, fileId: string, l
   return Array.isArray(data?.entries) ? data.entries : []
 }
 
-export const apiDropboxRestoreRevision = async (user_id: string, fileId: string, rev: string): Promise<DropboxMetadata | null> => {
-  return await dropboxRpc<DropboxMetadata>(user_id, '/files/restore', buildDropboxRestoreBody(fileId, rev), '恢复 Dropbox 文件版本失败')
+export const apiDropboxRestoreRevision = async (user_id: string, filePath: string, rev: string): Promise<DropboxMetadata | null> => {
+  return await dropboxRpc<DropboxMetadata>(user_id, '/files/restore', buildDropboxRestoreBody(filePath, rev), '恢复 Dropbox 文件版本失败')
 }

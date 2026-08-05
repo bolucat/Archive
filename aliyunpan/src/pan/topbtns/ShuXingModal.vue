@@ -9,7 +9,7 @@ import { humanDateTimeDateStr, humanSize, humanTime } from '../../utils/format'
 import { ref } from 'vue'
 import { Modal } from '@arco-design/web-vue'
 import DebugLog from '../../utils/debuglog'
-import { GetDriveID, isBaiduUser, isCloud123User, isDrive115User, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
+import { GetDriveID, isBaiduUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
 import { getEncType, getRawUrl } from '../../utils/proxyhelper'
 import { apiCloud123FileDetail } from '../../cloud123/filecmd'
 import { apiDrive115FileDetail } from '../../cloud115/filecmd'
@@ -23,8 +23,13 @@ import type { DropboxMetadata } from '../../dropbox/dirfilelist'
 import { apiDropboxListRevisions, apiDropboxRestoreRevision } from '../../dropbox/revisions'
 import { apiOneDriveFileDetail, mapOneDriveItemToAliModel } from '../../onedrive/dirfilelist'
 import { apiOneDriveListVersions, apiOneDriveRestoreVersion, OneDriveVersion } from '../../onedrive/revisions'
-import { apiGuangyaFileDetail, mapGuangyaFileToAliModel } from '../../guangya/dirfilelist'
+import { apiGuangyaFileDetail, getGuangyaFileId, mapGuangyaFileToAliModel } from '../../guangya/dirfilelist'
 import { apiQuarkFileDetail, mapQuarkFileToAliModel } from '../../quark/dirfilelist'
+import { apiBoxFileDetail, mapBoxItemToAliModel } from '../../box/dirfilelist'
+import { apiBoxDeleteVersion, apiBoxListVersions, apiBoxPromoteVersion, BoxFileVersion } from '../../box/revisions'
+import { apiGoogleDeleteRevision, apiGoogleListRevisions, apiGoogleUpdateRevision, GoogleRevision } from '../../google/revisions'
+import { apiGoogleDeletePermission, apiGoogleListPermissions } from '../../google/share'
+import { resolveDriveFileToken } from '../../drive/account'
 
 const props = defineProps({
   visible: {
@@ -51,15 +56,30 @@ const dropboxRevisionLoading = ref(false)
 const isOneDriveFile = ref(false)
 const oneDriveVersions = ref<OneDriveVersion[]>([])
 const oneDriveVersionLoading = ref(false)
+const isBoxFile = ref(false)
+const boxVersions = ref<BoxFileVersion[]>([])
+const boxVersionLoading = ref(false)
+const isGoogleFile = ref(false)
+const googleRevisions = ref<GoogleRevision[]>([])
+const googleRevisionLoading = ref(false)
+const googlePermissions = ref<Array<{ id?: string; type?: string; role?: string }>>([])
+const googlePermissionLoading = ref(false)
+const activeUserId = ref('')
+const activeDriveId = ref('')
 const handleOpen = async () => {
   const pantreeStore = usePanTreeStore()
   let file_id = ''
   let drive_id = ''
   let file_desc = ''
+  let file_user_id = ''
+  let selectedFile: any
+  let selectedIsDir = props.istree
   if (props.istree) {
+    selectedFile = pantreeStore.selectDir
     file_id = pantreeStore.selectDir.file_id
     drive_id = pantreeStore.selectDir.drive_id
     file_desc = pantreeStore.selectDir.description || ''
+    file_user_id = (pantreeStore.selectDir as any).user_id || ''
   } else {
     const panfileStore = usePanFileStore()
     let fileList = panfileStore.GetSelected()
@@ -68,33 +88,49 @@ const handleOpen = async () => {
       panfileStore.mKeyboardSelect(focus, false, false)
       fileList = panfileStore.GetSelected()
     }
+    selectedFile = fileList[0]
     file_id = fileList[0].file_id
     drive_id = fileList[0].drive_id
     file_desc = fileList[0].description || ''
+    file_user_id = (fileList[0] as any).user_id || ''
+    selectedIsDir = !!fileList[0].isDir
   }
   if (props.ispic) {
     drive_id = GetDriveID(pantreeStore.user_id, 'pic')
+    file_user_id = pantreeStore.user_id
   }
   if (!file_id) {
     message.error('没有选中任何文件')
   } else {
-    const isCloudUser = isCloud123User(pantreeStore.user_id)
+    const token = await resolveDriveFileToken({ drive_id, user_id: file_user_id }, pantreeStore.user_id)
+    if (!token?.user_id) {
+      message.error(`未找到 ${drive_id} 对应的已登录账号`)
+      return
+    }
+    const user_id = token.user_id
+    activeUserId.value = user_id
+    activeDriveId.value = drive_id
+    const isCloudUser = isCloud123User(user_id)
       || drive_id === 'cloud123'
       || pantreeStore.selectDir.drive_id === 'cloud123'
-    const is115User = isDrive115User(pantreeStore.user_id) || drive_id === 'drive115'
-    const isBaidu = isBaiduUser(pantreeStore.user_id) || drive_id === 'baidu'
-    const isPikPak = isPikPakUser(pantreeStore.user_id) || drive_id === 'pikpak'
-    const isQuark = isQuarkUser(pantreeStore.user_id) || drive_id === 'quark'
-    const isDropbox = isDropboxUser(pantreeStore.user_id) || drive_id === 'dropbox'
-    const isOneDrive = isOneDriveUser(pantreeStore.user_id) || drive_id === 'onedrive'
-    const isGuangya = isGuangyaUser(pantreeStore.user_id) || drive_id === 'guangya'
+    const is115User = isDrive115User(user_id) || drive_id === 'drive115'
+    const isBaidu = isBaiduUser(user_id) || drive_id === 'baidu'
+    const isPikPak = isPikPakUser(user_id) || drive_id === 'pikpak'
+    const isQuark = isQuarkUser(user_id) || drive_id === 'quark'
+    const isDropbox = isDropboxUser(user_id) || drive_id === 'dropbox'
+    const isOneDrive = isOneDriveUser(user_id) || drive_id === 'onedrive'
+    const isGuangya = isGuangyaUser(user_id) || drive_id === 'guangya'
+    const isBox = isBoxUser(user_id) || drive_id === 'box'
+    const isGoogle = isGoogleUser(user_id) || drive_id === 'google'
     isDropboxFile.value = isDropbox
     isOneDriveFile.value = isOneDrive
+    isBoxFile.value = isBox
+    isGoogleFile.value = isGoogle
     if (isCloudUser) {
       const pathList = TreeStore.GetDirPath(drive_id, file_id)
       const pathNames = pathList.map((item) => item.name).filter((name) => name)
       dirPath.value = '/' + pathNames.join('/')
-      const detail = await apiCloud123FileDetail(pantreeStore.user_id, file_id)
+      const detail = await apiCloud123FileDetail(user_id, file_id)
       if (detail) {
         const mapped: any = mapCloud123InfoToAliModel(detail)
         mapped.type = mapped.isDir ? 'folder' : 'file'
@@ -103,7 +139,7 @@ const handleOpen = async () => {
         fileInfo.value = mapped
       }
     } else if (is115User) {
-      const detail = await apiDrive115FileDetail(pantreeStore.user_id, file_id)
+      const detail = await apiDrive115FileDetail(user_id, file_id)
       if (detail) {
         const mapped: any = mapDrive115DetailToAliModel(detail, drive_id)
         mapped.type = mapped.isDir ? 'folder' : 'file'
@@ -132,7 +168,7 @@ const handleOpen = async () => {
       console.log('descInfo:', descInfo)
       console.log('fsid:', fsid)
       if (fsid) {
-        const metas = await apiBaiduFileMetas(pantreeStore.user_id, [fsid], 0, 1, 1, 1, 1)
+        const metas = await apiBaiduFileMetas(user_id, [fsid], 0, 1, 1, 1, 1)
         console.log('API metas 响应:', metas)
         const meta = metas && metas[0]
         if (meta) {
@@ -156,7 +192,7 @@ const handleOpen = async () => {
       const pathList = TreeStore.GetDirPath(drive_id, file_id)
       const pathNames = pathList.map((item) => item.name).filter((name) => name)
       dirPath.value = '/' + pathNames.join('/')
-      const detail = await apiPikPakFileDetail(pantreeStore.user_id, file_id)
+      const detail = await apiPikPakFileDetail(user_id, file_id)
       if (detail) {
         const mapped: any = mapPikPakFileToAliModel(detail, drive_id, detail.parent_id || 'pikpak_root')
         mapped.type = mapped.isDir ? 'folder' : 'file'
@@ -168,7 +204,7 @@ const handleOpen = async () => {
       const pathList = TreeStore.GetDirPath(drive_id, file_id)
       const pathNames = pathList.map((item) => item.name).filter((name) => name)
       dirPath.value = '/' + pathNames.join('/')
-      const detail = await apiQuarkFileDetail(pantreeStore.user_id, file_id)
+      const detail = await apiQuarkFileDetail(user_id, file_id)
       if (detail) {
         const mapped: any = mapQuarkFileToAliModel(detail, drive_id, detail.pdir_fid || 'quark_root')
         mapped.type = mapped.isDir ? 'folder' : 'file'
@@ -177,7 +213,7 @@ const handleOpen = async () => {
         fileInfo.value = mapped
       }
     } else if (isDropbox) {
-      const detail = await apiDropboxFileDetail(pantreeStore.user_id, file_id)
+      const detail = await apiDropboxFileDetail(user_id, file_id)
       if (detail) {
         const parentPath = detail.path_display?.split('/').filter(Boolean) || []
         parentPath.pop()
@@ -191,7 +227,7 @@ const handleOpen = async () => {
         fileInfo.value = mapped
       }
     } else if (isOneDrive) {
-      const detail = await apiOneDriveFileDetail(pantreeStore.user_id, file_id)
+      const detail = await apiOneDriveFileDetail(user_id, file_id)
       if (detail) {
         const parentPath = (detail.parentReference?.path || '').replace(/^\/drive\/root:/, '') || '/'
         dirPath.value = parentPath || '/'
@@ -207,28 +243,41 @@ const handleOpen = async () => {
       const pathList = TreeStore.GetDirPath(drive_id, file_id)
       const pathNames = pathList.map((item) => item.name).filter((name) => name)
       dirPath.value = '/' + pathNames.join('/')
-      const detail = await apiGuangyaFileDetail(pantreeStore.user_id, file_id)
-      if (detail) {
-        const mapped: any = mapGuangyaFileToAliModel(detail, drive_id || 'guangya', detail.parentId || detail.parentFileId || 'guangya_root')
+      const detail = await apiGuangyaFileDetail(user_id, file_id)
+      const source = detail && getGuangyaFileId(detail) ? detail : selectedFile
+      if (source) {
+        const mapped: any = mapGuangyaFileToAliModel(source, drive_id || 'guangya', source.parentId || source.parentFileId || source.parent_file_id || 'guangya_root')
         mapped.type = mapped.isDir ? 'folder' : 'file'
-        mapped.created_at = detail.createAt || detail.createdAt || detail.created_at || detail.createTime || ''
-        mapped.updated_at = detail.updateAt || detail.updatedAt || detail.updated_at || detail.updateTime || mapped.created_at
-        mapped.content_hash = detail.contentHash || detail.content_hash || detail.md5 || detail.sha1 || detail.gcid || ''
+        mapped.created_at = source.createAt || source.createdAt || source.created_at || source.createTime || ''
+        mapped.updated_at = source.updateAt || source.updatedAt || source.updated_at || source.updateTime || mapped.created_at
+        mapped.content_hash = source.contentHash || source.content_hash || source.md5 || source.sha1 || source.gcid || ''
         fileInfo.value = mapped
+      }
+    } else if (isBox) {
+      const detail = await apiBoxFileDetail(user_id, file_id, selectedIsDir)
+      if (detail) {
+        const mapped: any = mapBoxItemToAliModel(detail, drive_id || 'box', detail.parent?.id || 'box_root')
+        mapped.type = mapped.isDir ? 'folder' : 'file'
+        mapped.created_at = detail.created_at || ''
+        mapped.updated_at = detail.modified_at || detail.created_at || ''
+        mapped.content_hash = detail.sha1 || ''
+        fileInfo.value = mapped
+        const pathEntries = detail.path_collection?.entries || []
+        dirPath.value = '/' + pathEntries.map((entry) => entry.name || '').filter(Boolean).join('/')
       }
     } else {
       let path_file_id = props.ispic ? 'pic_root' : file_id
       let fileName = pantreeStore.selectDir.name
-      AliFile.ApiFileGetPathString(pantreeStore.user_id, drive_id, path_file_id, '/').then((data) => {
+      AliFile.ApiFileGetPathString(user_id, drive_id, path_file_id, '/').then((data) => {
         dirPath.value = '/' + data + (props.ispic ? '/' + fileName : '')
       })
-      fileInfo.value = await AliFile.ApiFileInfo(pantreeStore.user_id, drive_id, file_id, props.ispic)
+      fileInfo.value = await AliFile.ApiFileInfo(user_id, drive_id, file_id, props.ispic)
     }
     if (fileInfo.value && ['audio', 'video'].includes(fileInfo.value.category)) {
       const encType = getEncType(fileInfo.value)
       const category = fileInfo.value.category
       const rawUrl = await getRawUrl(
-        pantreeStore.user_id, drive_id, file_id,
+        user_id, drive_id, file_id,
         encType, '',
         category === 'audio', category
       )
@@ -238,8 +287,8 @@ const handleOpen = async () => {
         fileInfo.value.thumbnail = rawUrl.url
       }
     }
-    if (fileInfo.value?.type == 'folder' && !isCloudUser && !is115User && !isBaidu && !isPikPak && !isQuark && !isDropbox && !isOneDrive && !isGuangya) {
-      dirInfo.value = await AliFile.ApiFileGetFolderSize(pantreeStore.user_id, drive_id, file_id)
+    if (fileInfo.value?.type == 'folder' && !isCloudUser && !is115User && !isBaidu && !isPikPak && !isQuark && !isDropbox && !isOneDrive && !isGuangya && !isBox) {
+      dirInfo.value = await AliFile.ApiFileGetFolderSize(user_id, drive_id, file_id)
     }
   }
 }
@@ -256,6 +305,11 @@ const handleClose = () => {
   isOneDriveFile.value = false
   oneDriveVersions.value = []
   oneDriveVersionLoading.value = false
+  isBoxFile.value = false
+  boxVersions.value = []
+  boxVersionLoading.value = false
+  activeUserId.value = ''
+  activeDriveId.value = ''
 }
 
 const makeFenBianLv = (width: number | undefined, height: number | undefined) => {
@@ -318,9 +372,8 @@ const handleCopyJson = () => {
   }
 }
 const handleCopyDownload = () => {
-  const pantreeStore = usePanTreeStore()
-  if (fileInfo.value) {
-    getRawUrl(pantreeStore.user_id, pantreeStore.drive_id, fileInfo.value.file_id || '', getEncType(fileInfo.value)).then(data => {
+  if (fileInfo.value && activeUserId.value && activeDriveId.value) {
+    getRawUrl(activeUserId.value, activeDriveId.value, fileInfo.value.file_id || '', getEncType(fileInfo.value)).then(data => {
       if (data && typeof data !== 'string' && data.url) {
         copyToClipboard(data.url)
         message.success('下载链接已复制到剪切板，4小时内有效')
@@ -340,12 +393,11 @@ const handleCopyThumbnail = () => {
 }
 
 const handleLoadDropboxRevisions = async () => {
-  const pantreeStore = usePanTreeStore()
   const fileId = fileInfo.value?.file_id || ''
-  if (!fileId) return
+  if (!fileId || !activeUserId.value) return
   dropboxRevisionLoading.value = true
   try {
-    dropboxRevisions.value = await apiDropboxListRevisions(pantreeStore.user_id, fileId, 20)
+    dropboxRevisions.value = await apiDropboxListRevisions(activeUserId.value, fileId, 20)
     if (dropboxRevisions.value.length === 0) message.info('没有可恢复的历史版本')
   } finally {
     dropboxRevisionLoading.value = false
@@ -353,16 +405,15 @@ const handleLoadDropboxRevisions = async () => {
 }
 
 const handleRestoreDropboxRevision = (revision: DropboxMetadata) => {
-  const pantreeStore = usePanTreeStore()
-  const fileId = fileInfo.value?.file_id || ''
-  if (!fileId || !revision.rev) return
+  const filePath = fileInfo.value?.path || ''
+  if (!filePath || !revision.rev || !activeUserId.value) return
   Modal.confirm({
     title: '恢复 Dropbox 版本',
     content: `恢复到 ${humanDateTimeDateStr(revision.server_modified || revision.client_modified)} 的版本？`,
     okText: '恢复',
     cancelText: '取消',
     onOk: async () => {
-      const restored = await apiDropboxRestoreRevision(pantreeStore.user_id, fileId, revision.rev || '')
+      const restored = await apiDropboxRestoreRevision(activeUserId.value, filePath, revision.rev || '')
       if (restored) {
         message.success('Dropbox 文件版本已恢复')
         dropboxRevisions.value = []
@@ -372,12 +423,11 @@ const handleRestoreDropboxRevision = (revision: DropboxMetadata) => {
 }
 
 const handleLoadOneDriveVersions = async () => {
-  const pantreeStore = usePanTreeStore()
   const fileId = fileInfo.value?.file_id || ''
-  if (!fileId) return
+  if (!fileId || !activeUserId.value) return
   oneDriveVersionLoading.value = true
   try {
-    oneDriveVersions.value = await apiOneDriveListVersions(pantreeStore.user_id, fileId)
+    oneDriveVersions.value = await apiOneDriveListVersions(activeUserId.value, fileId)
     if (oneDriveVersions.value.length === 0) message.info('没有可恢复的历史版本')
   } finally {
     oneDriveVersionLoading.value = false
@@ -385,19 +435,64 @@ const handleLoadOneDriveVersions = async () => {
 }
 
 const handleRestoreOneDriveVersion = (version: OneDriveVersion) => {
-  const pantreeStore = usePanTreeStore()
   const fileId = fileInfo.value?.file_id || ''
-  if (!fileId || !version.id) return
+  if (!fileId || !version.id || !activeUserId.value) return
   Modal.confirm({
     title: '恢复 OneDrive 版本',
     content: `恢复到 ${humanDateTimeDateStr(version.lastModifiedDateTime)} 的版本？`,
     okText: '恢复',
     cancelText: '取消',
     onOk: async () => {
-      const restored = await apiOneDriveRestoreVersion(pantreeStore.user_id, fileId, version.id || '')
+      const restored = await apiOneDriveRestoreVersion(activeUserId.value, fileId, version.id || '')
       if (restored) {
         message.success('OneDrive 文件版本已恢复')
         oneDriveVersions.value = []
+      }
+    }
+  })
+}
+
+const handleLoadBoxVersions = async () => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !activeUserId.value) return
+  boxVersionLoading.value = true
+  try {
+    boxVersions.value = await apiBoxListVersions(activeUserId.value, fileId)
+    if (boxVersions.value.length === 0) message.info('没有可恢复的历史版本')
+  } finally {
+    boxVersionLoading.value = false
+  }
+}
+
+const handleRestoreBoxVersion = (version: BoxFileVersion) => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !version.id || !activeUserId.value) return
+  Modal.confirm({
+    title: '恢复 Box 版本',
+    content: `恢复到 ${humanDateTimeDateStr(version.modified_at)} 的版本？`,
+    okText: '恢复',
+    cancelText: '取消',
+    onOk: async () => {
+      if (await apiBoxPromoteVersion(activeUserId.value, fileId, version.id || '')) {
+        message.success('Box 文件版本已恢复')
+        boxVersions.value = []
+      }
+    }
+  })
+}
+
+const handleDeleteBoxVersion = (version: BoxFileVersion) => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !version.id || !activeUserId.value) return
+  Modal.confirm({
+    title: '删除 Box 历史版本',
+    content: `永久删除 ${humanDateTimeDateStr(version.modified_at)} 的历史版本？此操作无法恢复。`,
+    okText: '永久删除',
+    cancelText: '取消',
+    onOk: async () => {
+      if (await apiBoxDeleteVersion(activeUserId.value, fileId, version.id || '')) {
+        message.success('Box 历史版本已删除')
+        await handleLoadBoxVersions()
       }
     }
   })
@@ -411,6 +506,55 @@ const parseBaiduDesc = (desc: string) => {
     path: pathMatch ? pathMatch[1] : ''
   }
 }
+const handleLoadGoogleRevisions = async () => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !activeUserId.value) return
+  googleRevisionLoading.value = true
+  try {
+    googleRevisions.value = await apiGoogleListRevisions(activeUserId.value, fileId)
+    if (!googleRevisions.value.length) message.info('没有可管理的历史版本')
+  } finally { googleRevisionLoading.value = false }
+}
+
+const handleLoadGooglePermissions = async () => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !activeUserId.value) return
+  googlePermissionLoading.value = true
+  try { googlePermissions.value = await apiGoogleListPermissions(activeUserId.value, fileId) } finally { googlePermissionLoading.value = false }
+}
+
+const handleRevokeGooglePermission = (permissionId: string) => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !permissionId || !activeUserId.value) return
+  Modal.confirm({ title: '撤销 Google Drive 分享', content: '确认撤销此公开分享权限？持有链接的用户将无法继续访问。', okText: '撤销', cancelText: '取消', onOk: async () => {
+    if (await apiGoogleDeletePermission(activeUserId.value, fileId, permissionId)) {
+      googlePermissions.value = googlePermissions.value.filter((item) => item.id !== permissionId)
+      message.success('分享权限已撤销')
+    }
+  } })
+}
+
+const handleGoogleRevisionPinned = async (revision: GoogleRevision, keepForever: boolean) => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !revision.id || !activeUserId.value) return
+  const updated = await apiGoogleUpdateRevision(activeUserId.value, fileId, revision.id, keepForever)
+  if (updated) {
+    revision.keepForever = keepForever
+    message.success(keepForever ? '版本已固定' : '已取消固定版本')
+  }
+}
+
+const handleDeleteGoogleRevision = (revision: GoogleRevision) => {
+  const fileId = fileInfo.value?.file_id || ''
+  if (!fileId || !revision.id || !activeUserId.value) return
+  Modal.confirm({ title: '删除 Google Drive 版本', content: '确认永久删除这个历史版本？此操作无法撤销。', okText: '删除', cancelText: '取消', onOk: async () => {
+    if (await apiGoogleDeleteRevision(activeUserId.value, fileId, revision.id || '')) {
+      googleRevisions.value = googleRevisions.value.filter((item) => item.id !== revision.id)
+      message.success('历史版本已删除')
+    }
+  } })
+}
+
 </script>
 
 <template>
@@ -606,6 +750,47 @@ const parseBaiduDesc = (desc: string) => {
             <span>{{ humanDateTimeDateStr(version.lastModifiedDateTime) }}</span>
             <span>{{ humanSize(version.size || 0) }}</span>
             <a-button type='outline' size='mini' @click='() => handleRestoreOneDriveVersion(version)'>恢复</a-button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isBoxFile && fileInfo?.type == 'file'">
+        <div class='h16'></div>
+        <a-row>
+          <a-col flex='1'> Box 版本：</a-col>
+          <a-col flex='120px'>
+            <a-button type='outline' size='mini' :loading='boxVersionLoading' @click='handleLoadBoxVersions'>加载版本</a-button>
+          </a-col>
+        </a-row>
+        <div v-if='boxVersions.length > 0' class='dropboxrevisionlist'>
+          <div v-for='version in boxVersions' :key='version.id || version.modified_at' class='dropboxrevisionitem'>
+            <span>{{ humanDateTimeDateStr(version.modified_at) }}</span>
+            <span>{{ humanSize(version.size || 0) }}</span>
+            <a-button type='outline' size='mini' @click='() => handleRestoreBoxVersion(version)'>恢复</a-button>
+            <a-button status='danger' type='outline' size='mini' @click='() => handleDeleteBoxVersion(version)'>删除</a-button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isGoogleFile && fileInfo?.type == 'file'">
+        <div class='h16'></div>
+        <a-row><a-col flex='1'> Google Drive 版本：</a-col><a-col flex='120px'><a-button type='outline' size='mini' :loading='googleRevisionLoading' @click='handleLoadGoogleRevisions'>加载版本</a-button></a-col></a-row>
+        <div v-if='googleRevisions.length > 0' class='dropboxrevisionlist'>
+          <div v-for='revision in googleRevisions' :key='revision.id || revision.modifiedTime' class='dropboxrevisionitem'>
+            <span>{{ humanDateTimeDateStr(revision.modifiedTime) }}</span><span>{{ humanSize(Number(revision.size || 0)) }}</span>
+            <a-button type='outline' size='mini' @click='() => handleGoogleRevisionPinned(revision, !revision.keepForever)'>{{ revision.keepForever ? '取消固定' : '固定' }}</a-button>
+            <a-button status='danger' type='outline' size='mini' @click='() => handleDeleteGoogleRevision(revision)'>删除</a-button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isGoogleFile">
+        <div class='h16'></div>
+        <a-row><a-col flex='1'> Google Drive 分享权限：</a-col><a-col flex='120px'><a-button type='outline' size='mini' :loading='googlePermissionLoading' @click='handleLoadGooglePermissions'>加载权限</a-button></a-col></a-row>
+        <div v-if='googlePermissions.length > 0' class='dropboxrevisionlist'>
+          <div v-for='permission in googlePermissions' :key='permission.id' class='dropboxrevisionitem'>
+            <span>{{ permission.type === 'anyone' ? '持有链接的任何人' : permission.type }}</span><span>{{ permission.role }}</span>
+            <a-button v-if="permission.type === 'anyone'" status='danger' type='outline' size='mini' @click='() => handleRevokeGooglePermission(permission.id || "")'>撤销链接</a-button>
           </div>
         </div>
       </div>

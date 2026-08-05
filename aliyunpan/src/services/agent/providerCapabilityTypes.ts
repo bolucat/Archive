@@ -1,6 +1,6 @@
 export type DriveCapability = 'list' | 'search' | 'download' | 'upload' | 'createFolder' | 'rename' | 'move' | 'copy' | 'share' | 'recycleBin' | 'directLink' | 'mediaTranscode'
 export type DriveOperation =
-  | 'files.list' | 'files.search' | 'files.download' | 'files.createFolder' | 'files.rename' | 'files.move' | 'files.copy'
+  | 'files.list' | 'files.search' | 'files.download' | 'files.downloadZip' | 'files.createFolder' | 'files.rename' | 'files.move' | 'files.copy'
   | 'upload.local' | 'upload.memory' | 'upload.encrypted'
   | 'share.create' | 'share.import' | 'share.cancel'
   | 'trash.move' | 'trash.list' | 'trash.restore' | 'trash.delete' | 'trash.empty'
@@ -27,13 +27,14 @@ export interface ProviderCapabilityManifest {
 
 const capabilityKeys: DriveCapability[] = ['list', 'search', 'download', 'upload', 'createFolder', 'rename', 'move', 'copy', 'share', 'recycleBin', 'directLink', 'mediaTranscode']
 
-export const operationKeys: DriveOperation[] = ['files.list', 'files.search', 'files.download', 'files.createFolder', 'files.rename', 'files.move', 'files.copy', 'upload.local', 'upload.memory', 'upload.encrypted', 'share.create', 'share.import', 'share.cancel', 'trash.move', 'trash.list', 'trash.restore', 'trash.delete', 'trash.empty', 'offline.magnet', 'offline.http', 'links.direct', 'media.transcode']
+export const operationKeys: DriveOperation[] = ['files.list', 'files.search', 'files.download', 'files.downloadZip', 'files.createFolder', 'files.rename', 'files.move', 'files.copy', 'upload.local', 'upload.memory', 'upload.encrypted', 'share.create', 'share.import', 'share.cancel', 'trash.move', 'trash.list', 'trash.restore', 'trash.delete', 'trash.empty', 'offline.magnet', 'offline.http', 'links.direct', 'media.transcode']
 
 function legacyOperations(capabilities: Record<DriveCapability, boolean>): Record<DriveOperation, boolean> {
   return {
     'files.list': capabilities.list,
     'files.search': capabilities.search,
     'files.download': capabilities.download,
+    'files.downloadZip': false,
     'files.createFolder': capabilities.createFolder,
     'files.rename': capabilities.rename,
     'files.move': capabilities.move,

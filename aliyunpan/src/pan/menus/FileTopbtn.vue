@@ -1,9 +1,9 @@
 <script setup lang='ts'>
 import { computed } from 'vue'
-import { usePanTreeStore } from '../../store'
-import { isAliyunUser as isAliyunAccountUser, isBoxUser, isDropboxUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
+import { usePanFileStore, usePanTreeStore } from '../../store'
+import { isAliyunUser as isAliyunAccountUser, isBoxUser, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
-import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete } from '../../aliapi/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete, supportsZipDownload } from '../../drive/providerFeatures'
 
 import {
   menuAddAlbumSelectFile,
@@ -62,13 +62,15 @@ const props = defineProps({
 
 const istree = false
 const panTreeStore = usePanTreeStore()
+const panFileStore = usePanFileStore()
 const isAliyunAccount = computed(() => isAliyunAccountUser(panTreeStore.user_id || ''))
 const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
 const isBox = computed(() => isBoxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'box')
+const isGoogle = computed(() => isGoogleUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'google')
 const isGuangya = computed(() => isGuangyaUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'guangya')
 const isPikPak = computed(() => isPikPakUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'pikpak')
-const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGuangya.value || isPikPak.value)
+const isThirdPartyDrive = computed(() => isDropbox.value || isOneDrive.value || isBox.value || isGoogle.value || isGuangya.value || isPikPak.value)
 const isShareSupported = computed(() => supportsCreateShare(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isMoveSupported = computed(() => supportsMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
@@ -76,6 +78,12 @@ const isRenameSupported = computed(() => supportsRename(panTreeStore.user_id || 
 const isTrashSupported = computed(() => supportsTrashMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isPermanentDeleteSupported = computed(() => supportsTrashPermanentDelete(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
+const isBoxZipDownload = computed(() => {
+  if (!supportsZipDownload(panTreeStore.user_id || '', panTreeStore.drive_id || '')) return false
+  const files = panFileStore.GetSelected()
+  if (isDropbox.value) return files.length === 1 && files[0].isDir
+  return props.isselectedmulti || files.some(file => file.isDir)
+})
 const isShowBtn = computed(() => {
   return (props.dirtype === 'pic' && props.inputpicType != 'mypic')
     || props.dirtype === 'mypic' || ['search', 'color', 'pan'].includes(props.dirtype)
@@ -87,9 +95,13 @@ const isPic = computed(() => {
 
 <template>
   <div v-show="isselected && dirtype !== 'trash' && dirtype !== 'recover'" class='toppanbtn'>
-    <a-button v-if='!isPic && dirtype != "video"' type='text' size='small' tabindex='-1' title='Ctrl+D'
+    <a-button v-if='!isPic && dirtype != "video" && !isBoxZipDownload' type='text' size='small' tabindex='-1' title='Ctrl+D'
               @click='() => menuDownload(istree)'>
       <IconFont name="icondownload" />{{ t('file.download') }}
+    </a-button>
+    <a-button v-if='!isPic && dirtype != "video" && isBoxZipDownload' type='text' size='small' tabindex='-1' title='Ctrl+D'
+              @click='() => menuDownload(istree)'>
+      <IconFont name="iconfile-zip" />ZIP {{ t('file.download') }}
     </a-button>
     <a-button v-if="!isPic && dirtype != 'video' && dirtype !== 'search' && isShareSupported" type='text' size='small' tabindex='-1'
               title='Ctrl+S'
