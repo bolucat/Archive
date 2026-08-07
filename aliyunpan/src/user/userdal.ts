@@ -21,8 +21,11 @@ import { promptAutoScanForUser } from '../utils/libraryAutoScanPrompt'
 import { getWebDavConnection, getWebDavConnectionId, getWebDavConnections } from '../utils/webdavClient'
 import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
 import { supportsAliyunAutoSign } from './autoSignPolicy'
+import { getStoredTokenProvider } from '../utils/driveProvider'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
+
+const getTokenRefreshState = (token: ITokenInfo) => [token.access_token, token.refresh_token, token.expires_in, token.expire_time, token.token_type, token.default_drive_id].join('\u0000')
 
 export default class UserDAL {
   private static cliSyncTimer: ReturnType<typeof setTimeout> | undefined
@@ -84,16 +87,17 @@ export default class UserDAL {
 
   private static async ensureTokenReady(token: ITokenInfo, force = false): Promise<ITokenInfo | null> {
     try {
+      const previousRefreshState = getTokenRefreshState(token)
       const oauthToken = await ensureProviderAccessToken(token, force)
       if (oauthToken !== undefined) {
         if (!oauthToken) return null
-        if (oauthToken !== token) this.SaveUserToken(oauthToken)
+        if (oauthToken !== token || getTokenRefreshState(oauthToken) !== previousRefreshState) this.SaveUserToken(oauthToken)
         return oauthToken
       }
       const sessionToken = await ensureProviderSession(token, force)
       if (sessionToken !== undefined) {
         if (!sessionToken) return null
-        if (sessionToken !== token) this.SaveUserToken(sessionToken)
+        if (sessionToken !== token || getTokenRefreshState(sessionToken) !== previousRefreshState) this.SaveUserToken(sessionToken)
         return sessionToken
       }
       if (isGuangyaUser(token)) {
@@ -195,21 +199,16 @@ export default class UserDAL {
     for (let i = 0, maxi = tokenList.length; i < maxi; i++) {
       const token = tokenList[i]
       try {
+        const previousRefreshState = getTokenRefreshState(token)
         const expireTime = new Date(token.expire_time || 0).getTime()
         const providerToken = await ensureProviderAccessToken(token, !!expireTime && expireTime - dateNow <= 1000 * 60 * 5)
         if (providerToken !== undefined) {
-          if (providerToken && providerToken !== token) {
-            UserTokenMap.set(providerToken.user_id, providerToken)
-            await DB.saveUser(providerToken)
-          }
+          if (providerToken && (providerToken !== token || getTokenRefreshState(providerToken) !== previousRefreshState)) UserDAL.SaveUserToken(providerToken)
           continue
         }
         const sessionToken = await ensureProviderSession(token, !!expireTime && expireTime - dateNow <= 1000 * 60 * 5)
         if (sessionToken !== undefined) {
-          if (sessionToken && sessionToken !== token) {
-            UserTokenMap.set(sessionToken.user_id, sessionToken)
-            await DB.saveUser(sessionToken)
-          }
+          if (sessionToken && (sessionToken !== token || getTokenRefreshState(sessionToken) !== previousRefreshState)) UserDAL.SaveUserToken(sessionToken)
           continue
         }
         if (isGuangyaUser(token)) {
@@ -243,7 +242,12 @@ export default class UserDAL {
   }
 
   static GetUserToken(user_id: string): ITokenInfo {
-    if (user_id && UserTokenMap.has(user_id)) return UserTokenMap.get(user_id)!
+    if (user_id && UserTokenMap.has(user_id)) {
+      const token = UserTokenMap.get(user_id)!
+      const provider = getStoredTokenProvider(token)
+      if (provider !== 'unknown' && token.tokenfrom !== provider) token.tokenfrom = provider
+      return token
+    }
 
     return {
       tokenfrom: 'unknown',

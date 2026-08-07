@@ -36,7 +36,7 @@ export const moveDriveToolFiles = async (files: OrganizeFileItem[], targetParent
 export const flattenDriveToolFolders = async (files: OrganizeFileItem[], targetParentId: string, targetDriveId = ''): Promise<OrganizeResult> => {
   const children: OrganizeFileItem[] = []
   for (const file of files) {
-    const listed = await listDriveToolChildren(file.userId, file.driveId, file.fileId).catch(() => [] as IAliGetFileModel[])
+    const listed = await listDriveToolChildren(file.userId, file.driveId, file.fileId)
     children.push(...listed.map(item => ({ userId: file.userId, driveId: item.drive_id, fileId: item.file_id, name: item.name })))
   }
   return moveDriveToolFiles(children, targetParentId, targetDriveId)

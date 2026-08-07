@@ -36,6 +36,7 @@ import BookReaderModal from './BookReaderModal.vue'
 import StatsPage from './StatsPage.vue'
 import { useReaderI18n } from '../utils/readerI18n'
 import { t } from '../i18n'
+import { getStoredTokenProvider } from '../utils/driveProvider'
 
 withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
@@ -846,15 +847,19 @@ async function clearLibrary() {
   message.success(t('book.libraryCleared'))
 }
 
-function openBook(book: IBookItem, options: { keepAnnotationTarget?: boolean } = {}) {
+async function openBook(book: IBookItem, options: { keepAnnotationTarget?: boolean } = {}) {
   if (!options.keepAnnotationTarget) pendingAnnotationTarget.value = null
 
+  const token = book.user_id && book.user_id !== 'local' ? await UserDAL.GetUserTokenFromDB(book.user_id) : undefined
+  const tokenfrom = getStoredTokenProvider(token)
+  const readerBook = tokenfrom === 'unknown' ? book : { ...book, tokenfrom }
+
   if (window.WebOpenWindow) {
-    window.WebOpenWindow({ page: 'PageBookReader', data: JSON.parse(JSON.stringify(book)), theme: 'dark' })
+    window.WebOpenWindow({ page: 'PageBookReader', data: JSON.parse(JSON.stringify(readerBook)), theme: 'dark' })
     return
   }
 
-  selectedBook.value = book
+  selectedBook.value = readerBook
   readerVisible.value = true
 }
 

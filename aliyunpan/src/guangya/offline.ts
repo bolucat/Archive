@@ -58,7 +58,10 @@ export const apiGuangyaOfflineProcess = async (user_id: string, taskId: string):
     const body = data?.data || data || {}
     const list = body?.list || body?.items || body?.records || body?.content || []
     const raw = Array.isArray(list) ? list.find((item) => String(item?.taskId || item?.id || item?.task_id || '') === String(taskId)) : undefined
-    if (!raw) return { status: 2, process: 100, error: '' }
+    // A missing row can mean the provider list is eventually consistent. Do
+    // not turn that uncertainty into a completed transfer before landing is
+    // verified in the task-owned staging directory.
+    if (!raw) return { status: 0, process: 0, error: '' }
     const task = normalizeTask(raw)
     const process = task.process <= 1 && task.process > 0 ? Math.round(task.process * 100) : task.process
     return { status: task.status, process, error: '' }

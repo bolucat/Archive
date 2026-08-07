@@ -114,6 +114,8 @@ export async function askIndexedDocument(input: {
     prompt: input.question,
     signal: input.signal,
     maxContextChars: 16_000,
+    requireToolCall: true,
+    maxToolCallsPerTurn: 1,
     tools: {
       lookupDocument: {
         description: `搜索用户主动选择并已在本机建立索引的文档《${input.fileName}》`,

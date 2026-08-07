@@ -14,6 +14,8 @@ export interface EmptyDirScanResult {
   rootId: string
   scannedDirs: number
   emptyDirs: EmptyDirItem[]
+  failedDirs: number
+  errors: string[]
   truncated: boolean
   report: string
 }
@@ -39,7 +41,9 @@ export const scanDriveEmptyDirs = async (userId: string, driveId: string, rootId
   const queue: { fileId: string; path: string; item?: IAliGetFileModel }[] = [{ fileId: rootId, path: '' }]
   const emptyDirs: EmptyDirItem[] = []
   let scannedDirs = 0
+  let failedDirs = 0
   let truncated = false
+  const errors: string[] = []
 
   while (queue.length) {
     if (scannedDirs >= maxDirs) {
@@ -48,7 +52,14 @@ export const scanDriveEmptyDirs = async (userId: string, driveId: string, rootId
     }
     const current = queue.shift()!
     scannedDirs += 1
-    const children = await listDriveToolChildren(userId, driveId, current.fileId).catch(() => [])
+    let children: IAliGetFileModel[]
+    try {
+      children = await listDriveToolChildren(userId, driveId, current.fileId)
+    } catch (error: any) {
+      failedDirs += 1
+      errors.push(`${current.path || '根目录'}：${error?.message || '读取目录失败'}`)
+      continue
+    }
     const childDirs = children.filter(item => item.isDir)
     if (current.item && children.length === 0) {
       emptyDirs.push(toEmptyDir(current.item, userId, current.path || current.item.name))
@@ -58,8 +69,8 @@ export const scanDriveEmptyDirs = async (userId: string, driveId: string, rootId
     }
   }
 
-  const report = `空目录扫描完成：找到 ${emptyDirs.length} 个，已扫 ${scannedDirs} 个目录${truncated ? '，结果可能未扫全' : ''}`
-  return { rootId, scannedDirs, emptyDirs, truncated, report }
+  const report = `空目录扫描完成：找到 ${emptyDirs.length} 个，已扫 ${scannedDirs} 个目录${failedDirs ? `，${failedDirs} 个目录读取失败` : ''}${truncated ? '，结果可能未扫全' : ''}`
+  return { rootId, scannedDirs, emptyDirs, failedDirs, errors, truncated, report }
 }
 
 export const deleteDriveEmptyDirs = async (dirs: EmptyDirItem[]): Promise<EmptyDirDeleteResult> => {

@@ -209,7 +209,8 @@ export const createAListConnection = (input: {
 export const buildWebDavDownloadUrl = (config: WebDavConnectionConfig, relativePath: string): string => {
   const requestPath = joinDavPath(config.rootPath, relativePath)
   const baseUrl = new URL(config.url.endsWith('/') ? config.url : `${config.url}/`)
-  const encodedPath = requestPath
+  const fullPath = joinDavPath(baseUrl.pathname || '/', requestPath)
+  const encodedPath = fullPath
     .split('/')
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
@@ -292,6 +293,7 @@ export const getWebDavPlayUrl = async (config: WebDavConnectionConfig, relativeP
 }
 
 export const getWebDavDownloadUrl = async (config: WebDavConnectionConfig, relativePath: string): Promise<string> => {
+  if (config.kind !== 'alist') return buildWebDavDownloadUrl(config, relativePath)
   try {
     return await getWebDavPlayUrl(config, relativePath)
   } catch (error) {

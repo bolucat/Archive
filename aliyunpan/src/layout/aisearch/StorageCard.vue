@@ -6,6 +6,8 @@ import { humanSize } from '../../utils/format'
 
 defineProps<{
   state: 'scanning' | 'done' | 'error'
+  title?: string
+  report?: string
   output?: { drives: { name: string; totalSize: number; fileCount: number; topLarge: FileResult[] }[]; oldestFiles: FileResult[]; unusedFiles: FileResult[] }
   error?: string
 }>()
@@ -23,7 +25,7 @@ const showUnused = ref(false)
     </div>
 
     <template v-else-if="state === 'done' && output">
-      <div class="sc-header"><HardDrive :size="14" :stroke-width="1.5" /> 存储空间分析</div>
+      <div class="sc-header"><HardDrive :size="14" :stroke-width="1.5" /> {{ title || '存储空间分析' }}</div>
       <div class="sc-drives">
         <div v-for="d in output.drives" :key="d.name" class="sc-drive">
           <div class="sc-drive-name">{{ d.name }}</div>
@@ -53,6 +55,7 @@ const showUnused = ref(false)
           <span class="sc-file-drive">{{ f.providerName }}</span>
         </div>
       </div>
+      <div v-if="report" class="sc-report">{{ report }}</div>
     </template>
 
     <div v-else-if="state === 'error'" class="sc-status sc-error">
@@ -83,6 +86,7 @@ const showUnused = ref(false)
 .sc-file-size { font-size: 11px; color: var(--color-text-4); flex-shrink: 0; }
 .sc-file-drive { font-size: 10px; color: var(--color-text-4); flex-shrink: 0; }
 .sc-retry { margin-left: auto; padding: 2px 10px; font-size: 12px; color: rgb(var(--primary-6)); background: transparent; border: 1px solid rgb(var(--primary-6)); border-radius: 4px; cursor: pointer; }
+.sc-report { padding: 9px 14px; color: var(--color-text-4); border-top: 1px solid var(--color-border-2); font-size: 11px; line-height: 1.5; }
 .sc-spin { animation: sc-spin 1s linear infinite; }
 @keyframes sc-spin { to { transform: rotate(360deg); } }
 </style>

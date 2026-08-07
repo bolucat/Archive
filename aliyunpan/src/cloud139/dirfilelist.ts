@@ -146,7 +146,7 @@ const listFromResponse = (data: any): Cloud139FileItem[] => {
   return Array.isArray(list) ? list : []
 }
 
-export const apiCloud139FileListPage = async (user_id: string, parentId: string | number, size = 100, pageCursor = ''): Promise<{ items: Cloud139FileItem[]; nextCursor: string }> => {
+export const apiCloud139FileListPage = async (user_id: string, parentId: string | number, size = 100, pageCursor = '', strict = false): Promise<{ items: Cloud139FileItem[]; nextCursor: string }> => {
   try {
     const data = await cloud139Request(user_id, '/file/list', {
       imageThumbnailStyleList: ['Small', 'Large'],
@@ -159,13 +159,16 @@ export const apiCloud139FileListPage = async (user_id: string, parentId: string 
     const nextCursor = String(raw?.pageInfo?.nextPageCursor || raw?.pageInfo?.nextCursor || raw?.nextPageCursor || raw?.nextCursor || '')
     return { items: listFromResponse(data), nextCursor: nextCursor === pageCursor ? '' : nextCursor }
   } catch (error: any) {
-    try {
-      if (pageCursor) return { items: [], nextCursor: '' }
-      return { items: await cloud139OldFileList(user_id, parentId, size), nextCursor: '' }
-    } catch {
-      message.error(error?.message || '获取 139 云盘文件列表失败')
-      return { items: [], nextCursor: '' }
+    if (!pageCursor) {
+      try {
+        return { items: await cloud139OldFileList(user_id, parentId, size), nextCursor: '' }
+      } catch (fallbackError: any) {
+        if (strict) throw fallbackError
+      }
     }
+    if (strict) throw error
+    message.error(error?.message || '获取 139 云盘文件列表失败')
+    return { items: [], nextCursor: '' }
   }
 }
 

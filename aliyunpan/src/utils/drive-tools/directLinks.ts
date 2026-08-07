@@ -2,6 +2,7 @@ import type { IAliGetFileModel } from '../../aliapi/alimodels'
 import { resolveDriveProvider } from '../driveProvider'
 import type { IDownloadUrl } from '../../aliapi/models'
 import { resolveDriveFileToken } from '../../drive/account'
+import UserDAL from '../../user/userdal'
 
 export type DirectLinkFormat = 'url' | 'aria2'
 
@@ -23,6 +24,8 @@ export interface DirectLinkExportResult {
   failures: { name: string; reason: string }[]
   text: string
 }
+
+const MAX_DIRECTORY_LIST_ITEMS = 20_000
 
 export const normalizeDriveToolDriveId = (driveId: string): string => {
   const id = String(driveId || '')
@@ -79,7 +82,7 @@ const listAllCloud123Children = async (userId: string, parentId: string | number
   const limit = 100
   let lastFileId: string | number = ''
   for (let i = 0; i < 200; i++) {
-    const page = await apiCloud123FileListPage(userId, parentId, limit, false, '', 0, lastFileId)
+    const page = await apiCloud123FileListPage(userId, parentId, limit, false, '', 0, lastFileId, true)
     output.push(...page.items.map(item => ({ ...mapCloud123FileToAliModel(item), drive_id: driveId })))
     if (!page.items.length || page.items.length < limit || page.lastFileId === -1 || page.lastFileId === Number(lastFileId)) break
     lastFileId = page.lastFileId
@@ -91,10 +94,97 @@ const listAllDrive115Children = async (userId: string, parentId: string | number
   const { apiDrive115FileList, mapDrive115FileToAliModel } = await import('../../cloud115/dirfilelist')
   const output: IAliGetFileModel[] = []
   const limit = 200
-  for (let offset = 0; offset < 200000; offset += limit) {
-    const page = await apiDrive115FileList(userId, Number(parentId || 0), limit, offset, true)
+  for (let offset = 0; offset < MAX_DIRECTORY_LIST_ITEMS; offset += limit) {
+    const page = await apiDrive115FileList(userId, Number(parentId || 0), limit, offset, true, { silent: true, strict: true })
     output.push(...page.map(item => mapDrive115FileToAliModel(item, driveId)))
     if (page.length < limit) break
+  }
+  return output
+}
+
+const listAllBaiduChildren = async (userId: string, parentId: string | number, driveId: string): Promise<IAliGetFileModel[]> => {
+  const { apiBaiduFileList, mapBaiduFileToAliModel } = await import('../../cloudbaidu/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  const limit = 1000
+  for (let start = 0; output.length < MAX_DIRECTORY_LIST_ITEMS; start += limit) {
+    const page = await apiBaiduFileList(userId, String(parentId), 'name', start, limit, 0, true)
+    output.push(...page.map(item => mapBaiduFileToAliModel(item, driveId, String(parentId))))
+    if (page.length < limit) break
+  }
+  return output
+}
+
+const listAllPikPakChildren = async (userId: string, parentId: string, driveId: string): Promise<IAliGetFileModel[]> => {
+  const { apiPikPakFileList, mapPikPakFileToAliModel } = await import('../../pikpak/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  const seen = new Set<string>()
+  let pageToken = ''
+  do {
+    const page = await apiPikPakFileList(userId, parentId, 100, pageToken, false, true)
+    output.push(...page.items.map(item => mapPikPakFileToAliModel(item, driveId, parentId)))
+    pageToken = page.nextPageToken
+    if (pageToken && seen.has(pageToken)) break
+    seen.add(pageToken)
+  } while (pageToken && output.length < MAX_DIRECTORY_LIST_ITEMS)
+  return output
+}
+
+const listAllQuarkChildren = async (userId: string, parentId: string | number, driveId: string, fileId: string): Promise<IAliGetFileModel[]> => {
+  const { apiQuarkFileList, mapQuarkFileToAliModel } = await import('../../quark/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  const size = 200
+  for (let pageNumber = 1; output.length < MAX_DIRECTORY_LIST_ITEMS; pageNumber++) {
+    const page = await apiQuarkFileList(userId, String(parentId), size, pageNumber, true)
+    output.push(...page.items.map(item => mapQuarkFileToAliModel(item, driveId, fileId)))
+    if (!page.items.length || output.length >= page.total || page.items.length < size) break
+  }
+  return output
+}
+
+const listAllCloud139Children = async (userId: string, parentId: string | number, driveId: string, fileId: string): Promise<IAliGetFileModel[]> => {
+  const { apiCloud139FileListPage, mapCloud139FileToAliModel } = await import('../../cloud139/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  const seen = new Set<string>()
+  let cursor = ''
+  do {
+    const page = await apiCloud139FileListPage(userId, parentId, 200, cursor, true)
+    output.push(...page.items.map(item => mapCloud139FileToAliModel(item, driveId, fileId)))
+    cursor = page.nextCursor
+    if (cursor && seen.has(cursor)) break
+    seen.add(cursor)
+  } while (cursor && output.length < MAX_DIRECTORY_LIST_ITEMS)
+  return output
+}
+
+const listAllCloud189Children = async (userId: string, parentId: string | number, driveId: string, fileId: string): Promise<IAliGetFileModel[]> => {
+  const { apiCloud189FileList, mapCloud189FileToAliModel } = await import('../../cloud189/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  const size = 1000
+  for (let pageNumber = 1; output.length < MAX_DIRECTORY_LIST_ITEMS; pageNumber++) {
+    const page = await apiCloud189FileList(userId, parentId, size, pageNumber, true)
+    output.push(...page.map(item => mapCloud189FileToAliModel(item, driveId, fileId)))
+    if (page.length < size) break
+  }
+  return output
+}
+
+const listAllGuangyaChildren = async (userId: string, parentId: string | number, driveId: string, fileId: string): Promise<IAliGetFileModel[]> => {
+  const { apiGuangyaFileListPage, mapGuangyaFileToAliModel } = await import('../../guangya/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  for (let pageNumber = 0; output.length < MAX_DIRECTORY_LIST_ITEMS; pageNumber++) {
+    const page = await apiGuangyaFileListPage(userId, parentId, pageNumber, 100)
+    output.push(...page.items.map(item => mapGuangyaFileToAliModel(item, driveId, fileId)))
+    if (!page.hasMore) break
+  }
+  return output
+}
+
+const listAllAliyunChildren = async (userId: string, driveId: string, fileId: string): Promise<IAliGetFileModel[]> => {
+  const { default: AliDirFileList } = await import('../../aliapi/dirfilelist')
+  const output: IAliGetFileModel[] = []
+  for await (const page of AliDirFileList.ApiDirFileListPages(userId, driveId, fileId, '', 'name asc')) {
+    output.push(...page)
+    if (output.length >= MAX_DIRECTORY_LIST_ITEMS) break
   }
   return output
 }
@@ -119,8 +209,13 @@ export const listDriveToolChildren = async (userId: string, driveId: string, fil
   if (driveId.startsWith('webdav:')) {
     const { getWebDavConnection, getWebDavConnectionId, listWebDavDirectory } = await import('../webdavClient')
     const connection = getWebDavConnection(getWebDavConnectionId(driveId))
-    return connection ? listWebDavDirectory(connection, fileId || '/') : []
+    if (!connection) throw new Error('WebDAV 连接不存在或已失效')
+    return listWebDavDirectory(connection, fileId || '/')
   }
+  const token = UserDAL.GetUserToken(userId) || await UserDAL.GetUserTokenFromDB(userId)
+  const route = resolveDriveProvider(userId, driveId, token?.tokenfrom)
+  if (!route.isValid) throw new Error(route.error)
+  if (!token?.access_token) throw new Error(`未登录 ${route.provider === 'aliyun' ? '阿里云盘' : route.provider}`)
   const providerDriveId = normalizeDriveToolDriveId(driveId)
   const parentId = providerRootParent(providerDriveId, fileId)
   if (providerDriveId === 'cloud123') {
@@ -130,52 +225,41 @@ export const listDriveToolChildren = async (userId: string, driveId: string, fil
     return listAllDrive115Children(userId, parentId, providerDriveId)
   }
   if (providerDriveId === 'baidu') {
-    const { apiBaiduFileList, mapBaiduFileToAliModel } = await import('../../cloudbaidu/dirfilelist')
-    return (await apiBaiduFileList(userId, parentId, 'name', 0, 1000)).map(item => mapBaiduFileToAliModel(item, providerDriveId, parentId))
+    return listAllBaiduChildren(userId, parentId, providerDriveId)
   }
   if (providerDriveId === 'pikpak') {
-    const { apiPikPakFileList, mapPikPakFileToAliModel } = await import('../../pikpak/dirfilelist')
-    const { items } = await apiPikPakFileList(userId, parentId, 100)
-    return items.map(item => mapPikPakFileToAliModel(item, providerDriveId, parentId))
+    return listAllPikPakChildren(userId, parentId, providerDriveId)
   }
   if (providerDriveId === 'quark') {
-    const { apiQuarkFileList, mapQuarkFileToAliModel } = await import('../../quark/dirfilelist')
-    const { items } = await apiQuarkFileList(userId, parentId, 200)
-    return items.map(item => mapQuarkFileToAliModel(item, providerDriveId, fileId))
+    return listAllQuarkChildren(userId, parentId, providerDriveId, fileId)
   }
   if (providerDriveId === 'cloud139') {
-    const { apiCloud139FileList, mapCloud139FileToAliModel } = await import('../../cloud139/dirfilelist')
-    return (await apiCloud139FileList(userId, parentId, 200)).map(item => mapCloud139FileToAliModel(item, providerDriveId, fileId))
+    return listAllCloud139Children(userId, parentId, providerDriveId, fileId)
   }
   if (providerDriveId === 'cloud189') {
-    const { apiCloud189FileList, mapCloud189FileToAliModel } = await import('../../cloud189/dirfilelist')
-    return (await apiCloud189FileList(userId, parentId, 200)).map(item => mapCloud189FileToAliModel(item, providerDriveId, fileId))
+    return listAllCloud189Children(userId, parentId, providerDriveId, fileId)
   }
   if (providerDriveId === 'guangya') {
-    const { apiGuangyaFileList, mapGuangyaFileToAliModel } = await import('../../guangya/dirfilelist')
-    return (await apiGuangyaFileList(userId, parentId, 200)).map(item => mapGuangyaFileToAliModel(item, providerDriveId, fileId))
+    return listAllGuangyaChildren(userId, parentId, providerDriveId, fileId)
   }
   if (providerDriveId === 'dropbox') {
     const { apiDropboxFileList, mapDropboxFileToAliModel } = await import('../../dropbox/dirfilelist')
-    return (await apiDropboxFileList(userId, parentId, 500)).map(item => mapDropboxFileToAliModel(item, providerDriveId, parentId))
+    return (await apiDropboxFileList(userId, parentId, 500, true)).map(item => mapDropboxFileToAliModel(item, providerDriveId, parentId))
   }
   if (providerDriveId === 'onedrive') {
     const { apiOneDriveFileList, mapOneDriveItemToAliModel } = await import('../../onedrive/dirfilelist')
-    return (await apiOneDriveFileList(userId, parentId)).map(item => mapOneDriveItemToAliModel(item, providerDriveId, parentId))
+    return (await apiOneDriveFileList(userId, parentId, true)).map(item => mapOneDriveItemToAliModel(item, providerDriveId, parentId))
   }
   if (providerDriveId === 'box') {
     const { apiBoxFileList, mapBoxItemToAliModel } = await import('../../box/dirfilelist')
-    return (await apiBoxFileList(userId, parentId)).map(item => mapBoxItemToAliModel(item, providerDriveId, parentId))
+    return (await apiBoxFileList(userId, parentId, 500, true)).map(item => mapBoxItemToAliModel(item, providerDriveId, parentId))
   }
   if (providerDriveId === 'google') {
     const { listGoogleItems } = await import('../../google/adapter')
     return (await listGoogleItems(userId, driveId, fileId, true)).items
   }
-  const route = resolveDriveProvider(userId, driveId)
-  if (!route.isValid || route.provider !== 'aliyun') return []
-  const { default: AliDirFileList } = await import('../../aliapi/dirfilelist')
-  const dir = await AliDirFileList.ApiDirFileList(userId, driveId, fileId, '', 'name asc')
-  return dir.items
+  if (route.provider !== 'aliyun') throw new Error(`当前网盘 ${route.provider} 未接入目录读取适配器`)
+  return listAllAliyunChildren(userId, driveId, fileId)
 }
 
 export const flattenDriveToolFiles = async (files: IAliGetFileModel[], userId: string, maxFiles = 300): Promise<IAliGetFileModel[]> => {
@@ -187,7 +271,7 @@ export const flattenDriveToolFiles = async (files: IAliGetFileModel[], userId: s
       output.push(item)
       continue
     }
-    const children = await listDriveToolChildren(userId, item.drive_id, item.file_id).catch(() => [])
+    const children = await listDriveToolChildren(userId, item.drive_id, item.file_id)
     queue.push(...children)
   }
   return output.slice(0, maxFiles)

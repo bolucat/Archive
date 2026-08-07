@@ -34,11 +34,13 @@ export const apiBaiduFileList = async (
   order = 'name',
   start = 0,
   limit = 1000,
-  desc = 0
+  desc = 0,
+  strict = false
 ): Promise<BaiduFileItem[]> => {
   const token = await getBaiduToken(user_id)
   if (!token?.access_token) {
     message.error('未登录百度网盘')
+    if (strict) throw new Error('未登录百度网盘')
     return []
   }
   const params = new URLSearchParams({
@@ -60,10 +62,14 @@ export const apiBaiduFileList = async (
   })
   if (!resp.ok) {
     message.error('获取百度网盘文件列表失败')
+    if (strict) throw new Error(`获取百度网盘文件列表失败 HTTP ${resp.status}`)
     return []
   }
   const data = (await resp.json()) as BaiduFileListResp
-  if (data?.errno !== 0 || !Array.isArray(data.list)) return []
+  if (data?.errno !== 0 || !Array.isArray(data.list)) {
+    if (strict) throw new Error(`获取百度网盘文件列表失败（errno ${data?.errno ?? 'unknown'}）`)
+    return []
+  }
   return data.list
 }
 

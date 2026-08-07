@@ -20,7 +20,7 @@ export interface BoxPlayerAgentModelConfig {
 /** Stable public configuration for every BoxPlayer PI Agent session. */
 export interface AgentSessionConfig {
   surface: AgentSurface
-  session?: { id?: string; messages?: AgentMessageInput[]; rawMessages?: unknown[] }
+  session?: { id?: string; messages?: AgentMessageInput[] }
   model: BoxPlayerAgentModelConfig
   systemPrompt: string
   /** Trusted application metadata only. Never place document or user text here. */

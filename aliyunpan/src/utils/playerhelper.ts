@@ -28,6 +28,7 @@ import { listProviderItems } from '../drive/providerList'
 import { resolveDriveProvider } from './driveProvider'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
 import { buildDirectPlayerInvocation, buildPlayerCommand, formatPlayerArg, isMpvCommand, parsePlayerParams, redactMpvArgs } from './mpvPlayerPolicy'
+import UserDAL from '../user/userdal'
 
 const currentPlayerPlatform = () => (is.windows() ? 'win32' : is.macOS() ? 'darwin' : is.linux() ? 'linux' : process.platform)
 const createMpvSocketPath = () => {
@@ -250,7 +251,7 @@ const PlayerUtils = {
     }
     return { info, play_duration, play_cursor }
   },
-  async getDirFileList(user_id: string, drive_id: string, parent_file_id: string) {
+  async getDirFileList(user_id: string, drive_id: string, parent_file_id: string, tokenfrom?: string) {
     let items: IAliGetFileModel[] = []
     if (isWebDavDrive(drive_id)) {
       const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
@@ -258,7 +259,7 @@ const PlayerUtils = {
         items = await listWebDavDirectory(connection, parent_file_id || '/')
       }
     } else {
-      const route = resolveDriveProvider(user_id, drive_id)
+      const route = resolveDriveProvider(user_id, drive_id, tokenfrom || UserDAL.GetUserToken(user_id)?.tokenfrom)
       const providerResult = route.isValid && route.provider !== 'aliyun'
         ? await listProviderItems(route.provider, user_id, drive_id, parent_file_id, true)
         : undefined
@@ -595,7 +596,7 @@ const PlayerUtils = {
     let fileList: IAliGetFileModel[] = []
     if (uiVideoEnablePlayerList) {
       if (file.compilation_id) {
-        fileList = await this.getDirFileList(token.user_id, file.drive_id, file.parent_file_id)
+        fileList = await this.getDirFileList(token.user_id, file.drive_id, file.parent_file_id, token.tokenfrom)
       } else {
         fileList = usePanFileStore().ListDataRaw
       }

@@ -6,9 +6,7 @@ function invoke<T = any>(channel: string, ...args: any[]): Promise<T> {
     console.error('[Reedy][Client] ReedyInvoke not available on window')
     throw new Error('ReedyClient: ReedyInvoke not available — ensure preload script is loaded')
   }
-  console.log('[Reedy][Client] IPC invoke:', channel, args.length ? args.map(a => typeof a === 'object' ? `[object ${a?.length !== undefined ? 'array/' + a.length : 'object'}]` : a) : [])
   return fn(channel, ...args).then((res: T) => {
-    console.log('[Reedy][Client] IPC response:', channel, typeof res === 'object' ? (Array.isArray(res) ? `array(${res.length})` : 'object') : typeof res)
     return res
   }).catch((err: any) => {
     console.error('[Reedy][Client] IPC error:', channel, err?.message || err)

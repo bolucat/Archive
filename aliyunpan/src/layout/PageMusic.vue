@@ -832,7 +832,7 @@ async function resolveUrl(idx: number) {
     const playback = await getMediaServerPlaybackInfo(config, track.media_server_item_id, track.media_server_source_id)
     return playback.url
   }
-  const d = await getRawUrl(track.user_id, track.drive_id, track.file_id, track.encType || '', track.password || '', false, 'audio')
+  const d = await getRawUrl(track.user_id, track.drive_id, track.file_id, track.encType || '', track.password || '', false, 'audio', '', '', track.tokenfrom)
   if (typeof d === 'string') throw new Error(d || t('music.getUrlFailed'))
   return d.url || ''
 }
@@ -1172,7 +1172,7 @@ function emitState() {
 
 function loadPageMusic(d: any) {
   playlist.value = (d.playlist || []).slice()
-  if (!playlist.value.length) playlist.value = [{ user_id: d.user_id, drive_id: d.drive_id, file_id: d.file_id, parent_file_id: d.parent_file_id, file_name: d.file_name, encType: d.encType, password: d.password }]
+  if (!playlist.value.length) playlist.value = [{ user_id: d.user_id, tokenfrom: d.tokenfrom, drive_id: d.drive_id, file_id: d.file_id, parent_file_id: d.parent_file_id, file_name: d.file_name, encType: d.encType, password: d.password }]
   let idx = playlist.value.findIndex((t) => t.file_id === d.file_id && t.drive_id === d.drive_id && t.user_id === d.user_id)
   if (idx < 0) idx = 0
   curIdx.value = idx

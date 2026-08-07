@@ -1,13 +1,8 @@
 import type { IAliGetFileModel } from '../../aliapi/alimodels'
-import { apiCloud123FileList } from '../../cloud123/dirfilelist'
 import { apiCloud123OfflineProcess } from '../../cloud123/offline'
-import { apiDrive115FileList } from '../../cloud115/dirfilelist'
 import { apiDrive115OfflineProcess } from '../../cloud115/offline'
-import { apiGuangyaFileList, getGuangyaFileId, getGuangyaFileName, isGuangyaDir } from '../../guangya/dirfilelist'
 import { apiGuangyaOfflineProcess } from '../../guangya/offline'
-import { apiPikPakFileList } from '../../pikpak/dirfilelist'
 import { apiPikPakOfflineProcess } from '../../pikpak/offline'
-import { apiQuarkFileList } from '../../quark/dirfilelist'
 import AliFileCmd from '../../aliapi/filecmd'
 import { MediaScanner } from '../../utils/mediaScanner'
 import Config from '../../config'
@@ -24,7 +19,7 @@ import { addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, b
 import { buildTrackingSnapshot, extractObtainedEpisodeNumbers, nextPatrolAt, readTrackingMetadata } from './tracking'
 import { isPro } from '../../utils/usageLimit'
 import { assessMediaAcquisitionEpisodeCoverage, canTryNextMediaAcquisitionCandidate, isMediaAcquisitionCandidateSupported, isSystemicMediaAcquisitionFailure, isTransientMediaAcquisitionFailure, mediaAcquisitionCandidateCoveragePlan, scoreMediaAcquisitionCandidate } from './candidatePolicy'
-import { getMediaAcquisitionCapability, normalizeMediaAcquisitionRootFolder, normalizeMediaAcquisitionPlatform } from './capabilities'
+import { getMediaAcquisitionCapability, normalizeMediaAcquisitionPlatform } from './capabilities'
 import { runHistoricalMediaLibraryGapScan } from './historicalLibraryScanner'
 import { listMediaAcquisitionDirectoryEntries, listMediaAcquisitionTargetFiles, listMediaAcquisitionTargetLeafFiles, newMediaAcquisitionFiles, resolveMediaAcquisitionLeafFolder } from './targetSnapshot'
 import { ensureMediaAcquisitionLeafFolder, ensureMediaAcquisitionSeasonFolder, organizeMediaAcquisitionFiles } from './organizer'
@@ -1530,36 +1525,7 @@ async function inspectLandedMediaFiles(run: MediaAcquisitionRunView, candidate: 
 }
 
 async function listTargetNames(target: MediaAcquisitionTarget): Promise<string[]> {
-  const platform = normalizeMediaAcquisitionPlatform(target.targetPlatform)
-  const queue = [{ id: normalizeMediaAcquisitionRootFolder(platform, target.targetParentFileId), depth: 0 }]
-  const names: string[] = []
-  let visitedDirectories = 0
-  while (queue.length && names.length < 1000 && visitedDirectories < 12) {
-    const current = queue.shift()!
-    visitedDirectories += 1
-    const entries: Array<{ id: string; name: string; isDir: boolean }> = []
-    if (platform === '115') {
-      const items = await apiDrive115FileList(target.targetUserId, current.id.includes('root') ? '0' : current.id, 200, 0, true, { silent: true })
-      entries.push(...items.map(item => ({ id: String(item.fid), name: item.fn, isDir: String(item.fc) === '0' })))
-    } else if (platform === 'guangya') {
-      const items = await apiGuangyaFileList(target.targetUserId, current.id)
-      entries.push(...items.map(item => ({ id: getGuangyaFileId(item), name: getGuangyaFileName(item), isDir: isGuangyaDir(item) })))
-    } else if (platform === 'pikpak') {
-      const items = (await apiPikPakFileList(target.targetUserId, current.id, 100)).items
-      entries.push(...items.map(item => ({ id: item.id, name: item.name, isDir: String(item.kind || '').includes('folder') })))
-    } else if (platform === 'quark') {
-      const items = (await apiQuarkFileList(target.targetUserId, current.id.includes('root') ? 'quark_root' : current.id, 100)).items
-      entries.push(...items.map(item => ({ id: String(item.fid), name: item.file_name, isDir: Number(item.file_type || 0) === 0 })))
-    } else if (platform === 'cloud123') {
-      const items = await apiCloud123FileList(target.targetUserId, current.id.includes('root') ? '0' : current.id, 100)
-      entries.push(...items.map(item => ({ id: String(item.fileId), name: item.filename, isDir: item.type === 1 })))
-    }
-    for (const entry of entries) {
-      if (entry.name) names.push(entry.name)
-      if (entry.isDir && entry.id && current.depth < 3) queue.push({ id: entry.id, depth: current.depth + 1 })
-    }
-  }
-  return names
+  return (await listMediaAcquisitionTargetFiles(target)).map(file => file.name)
 }
 
 async function syncTracking(run: MediaAcquisitionRunView): Promise<MediaAcquisitionTrackingItem | undefined> {

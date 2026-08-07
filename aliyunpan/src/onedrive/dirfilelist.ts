@@ -53,10 +53,11 @@ const GRAPH_API_HOST = 'https://graph.microsoft.com/v1.0'
 
 export const getOneDriveToken = (user_id: string) => getProviderTokenForUser(user_id, 'onedrive')
 
-const graphRequest = async <T>(user_id: string, pathOrUrl: string, fallback: string): Promise<T | null> => {
+const graphRequest = async <T>(user_id: string, pathOrUrl: string, fallback: string, strict = false): Promise<T | null> => {
   const token = await getOneDriveToken(user_id)
   if (!token?.access_token) {
     message.error('未登录 OneDrive')
+    if (strict) throw new Error('未登录 OneDrive')
     return null
   }
   const url = pathOrUrl.startsWith('https://') ? pathOrUrl : `${GRAPH_API_HOST}${pathOrUrl}`
@@ -69,6 +70,7 @@ const graphRequest = async <T>(user_id: string, pathOrUrl: string, fallback: str
   const data = await resp.json().catch(() => undefined)
   if (!resp.ok || data?.error) {
     message.error(data?.error?.message || fallback)
+    if (strict) throw new Error(data?.error?.message || fallback)
     return null
   }
   return data as T
@@ -83,19 +85,19 @@ export const buildOneDriveChildrenPath = (parentId: string): string => {
 export const getOneDriveDownloadUrl = (item?: OneDriveItem | null): string =>
   item?.['@microsoft.graph.downloadUrl'] || item?.['@content.downloadUrl'] || ''
 
-export const apiOneDriveFileList = async (user_id: string, parentId: string): Promise<OneDriveItem[]> => {
+export const apiOneDriveFileList = async (user_id: string, parentId: string, strict = false): Promise<OneDriveItem[]> => {
   const items: OneDriveItem[] = []
   let nextLink = ''
   do {
-    const page = await apiOneDriveFileListPage(user_id, parentId, nextLink)
+    const page = await apiOneDriveFileListPage(user_id, parentId, nextLink, strict)
     items.push(...page.items)
     nextLink = page.nextLink
   } while (nextLink)
   return items
 }
 
-export const apiOneDriveFileListPage = async (user_id: string, parentId: string, nextLink = ''): Promise<{ items: OneDriveItem[]; nextLink: string }> => {
-  const data = await graphRequest<OneDriveChildrenResp>(user_id, nextLink || buildOneDriveChildrenPath(parentId), '获取 OneDrive 文件列表失败')
+export const apiOneDriveFileListPage = async (user_id: string, parentId: string, nextLink = '', strict = false): Promise<{ items: OneDriveItem[]; nextLink: string }> => {
+  const data = await graphRequest<OneDriveChildrenResp>(user_id, nextLink || buildOneDriveChildrenPath(parentId), '获取 OneDrive 文件列表失败', strict)
   return { items: Array.isArray(data?.value) ? data.value : [], nextLink: data?.['@odata.nextLink'] || '' }
 }
 

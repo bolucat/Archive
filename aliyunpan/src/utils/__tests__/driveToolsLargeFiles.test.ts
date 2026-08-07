@@ -15,6 +15,7 @@ vi.mock('../drive-tools/directLinks', () => ({
         { file_id: 'big-zip', drive_id: 'drive', parent_file_id: 'dir1', name: 'archive.zip', isDir: false, size: 2 * 1024 * 1024 * 1024, ext: 'zip', category: 'others', icon: 'iconfile_zip' }
       ]
     }
+    if (fileId === 'denied') throw new Error('permission denied')
     return []
   })
 }))
@@ -30,5 +31,21 @@ describe('scanDriveLargeFiles', () => {
     await expect(scanDriveLargeFiles(targets, 'zip')).resolves.toMatchObject({
       files: [{ fileId: 'big-zip' }]
     })
+  })
+
+  it('reports unreadable directories instead of treating them as empty', async () => {
+    const targets = [{ userId: 'u', driveId: 'drive', rootId: 'denied', name: 'Drive' }]
+    await expect(scanDriveLargeFiles(targets, 'size100')).resolves.toMatchObject({
+      files: [],
+      failedDirs: 1,
+      errors: ['Drive：permission denied']
+    })
+  })
+
+  it('allows a zero threshold for complete storage analysis', async () => {
+    const targets = [{ userId: 'u', driveId: 'drive', rootId: 'root', name: 'Drive' }]
+    const result = await scanDriveLargeFiles(targets, 'size', { customSizeMB: 0 })
+    expect(result.scannedFiles).toBe(3)
+    expect(result.files.map(file => file.fileId)).toEqual(expect.arrayContaining(['small', 'big-video', 'big-zip']))
   })
 })

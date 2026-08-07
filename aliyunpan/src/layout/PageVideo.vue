@@ -44,6 +44,7 @@ import {
   searchSubtitles
 } from '../utils/subtitleApi'
 import type { SubtitleSearchResult } from '../utils/subtitleApi'
+import { dedupeSubtitleSelectors } from '../utils/subtitleSelector'
 import message from '../utils/message'
 import { captureVideoQualitySwitchPlaybackState } from '../utils/videoQualitySwitch'
 import { getLocalVideoProgress, saveLocalVideoProgress } from '../utils/videoProgress'
@@ -1314,7 +1315,7 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
         items = await listWebDavDirectory(connection, dir_id || '/')
       }
     } else {
-      const route = resolveDriveProvider(pageVideo.user_id, pageVideo.drive_id, UserDAL.GetUserToken(pageVideo.user_id)?.tokenfrom)
+      const route = resolveDriveProvider(pageVideo.user_id, pageVideo.drive_id, pageVideo.tokenfrom || UserDAL.GetUserToken(pageVideo.user_id)?.tokenfrom)
       const providerResult = route.isValid && route.provider !== 'aliyun'
         ? await listProviderItems(route.provider, pageVideo.user_id, pageVideo.drive_id, dir_id, true)
         : undefined
@@ -1362,6 +1363,7 @@ const refreshSetting = async (art: Artplayer, item: any) => {
   pageVideo.file_name = item.html
   pageVideo.file_id = item.file_id || ''
   if (item.user_id) pageVideo.user_id = item.user_id
+  if (item.tokenfrom) pageVideo.tokenfrom = item.tokenfrom
   if (item.drive_id) pageVideo.drive_id = item.drive_id
   if (item.parent_file_id) pageVideo.parent_file_id = item.parent_file_id
   if (typeof item.password === 'string') pageVideo.password = item.password
@@ -2118,7 +2120,7 @@ const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Rec
     return { url: mediaUrl, headers: pageVideo.media_headers, type: getArtVideoType(mediaUrl), qualityLabel: pageVideo.media_server_source_label || t('video.mediaServer') }
   }
 
-  const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty')
+  const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty', pageVideo.tokenfrom)
   if (typeof data === 'string') return { url: '', error: data }
   if (!data.qualities.length) return { url: '', error: t('video.getVideoUrlFailed') }
 
@@ -2335,7 +2337,7 @@ const getVideoInfo = async (art: Artplayer) => {
     return
   }
   // 获取视频链接
-  const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty')
+  const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty', pageVideo.tokenfrom)
   if (typeof data != 'string' && data.qualities.length > 0) {
     // 画质
     let uiVideoQuality = useSettingStore().uiVideoQuality
@@ -2478,6 +2480,7 @@ const buildPageVideoPlayList = async (file_id?: string) => {
         description: item.description,
         play_cursor: item.play_cursor,
         user_id: item.user_id,
+        tokenfrom: item.tokenfrom || pageVideo.tokenfrom,
         drive_id: item.drive_id,
         parent_file_id: item.parent_file_id,
         password: item.password,
@@ -2720,7 +2723,7 @@ const readSubtitleItemText = async (item: selectorItem) => {
 const resolveCloudSubtitleUrl = async (item: selectorItem): Promise<string> => {
   if (!item.file_id) return item.url || ''
   const driveId = item.drive_id || pageVideo.drive_id
-  const data = await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400)
+  const data = await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400, pageVideo.tokenfrom)
   if (typeof data === 'string' || !data.url) return ''
   return getProxyUrl({
     user_id: pageVideo.user_id,
@@ -2833,7 +2836,7 @@ const getSubTitleList = async (art: Artplayer) => {
   }
   let onlineSubSelector = await getDirFileList(file_id, hasDir, '', /srt|vtt|ass|ssa/) || []
   // console.log('onlineSubSelector', onlineSubSelector)
-  subSelector = [...embedSubSelector, ...onlineSubSelector, ...downloadedSubSelector]
+  subSelector = dedupeSubtitleSelectors([...embedSubSelector, ...onlineSubSelector, ...downloadedSubSelector])
   if (subSelector.length === 0) {
     subSelector.push({ html: t('video.noAvailableSubtitle'), name: '', url: '', default: true })
   } else {

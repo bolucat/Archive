@@ -42,6 +42,17 @@ describe('PikPak share helpers', () => {
     expect(String(fetchMock.mock.calls[1][0])).toContain('page_token=next')
   })
 
+  it('rejects a repeated pagination token instead of returning a partial list', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ files: [{ id: 'file-1', kind: 'drive#file', name: 'one.mkv' }], next_page_token: 'loop' }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ files: [{ id: 'file-2', kind: 'drive#file', name: 'two.mkv' }], next_page_token: 'loop' }), { status: 200 }))
+
+    const result = await apiPikPakShareFileList('pikpak:share-id', 'pass-token', 'root')
+
+    expect(result).toEqual({ items: [], next_marker: '', error: 'PikPak 分享列表分页游标重复' })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('restores shares to PikPak root even when the final target is a child folder', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({}), { status: 200 }))
 

@@ -17,9 +17,9 @@ import { resolveDriveProvider } from '../utils/driveProvider'
 
 /** Provider-neutral file operations. AliFile only handles the Aliyun branch. */
 export default class DriveFile {
-  static async ApiFileDownloadUrl(userId: string, driveId: string, fileId: string, expireSec: number): Promise<IDownloadUrl | string> {
+  static async ApiFileDownloadUrl(userId: string, driveId: string, fileId: string, expireSec: number, tokenfrom = ''): Promise<IDownloadUrl | string> {
     if (!driveId || !fileId) return '参数错误'
-    const route = resolveDriveProvider(userId, driveId, UserDAL.GetUserToken(userId)?.tokenfrom)
+    const route = resolveDriveProvider(userId, driveId, tokenfrom || UserDAL.GetUserToken(userId)?.tokenfrom)
     if (!route.isValid) return route.error
 
     switch (route.provider) {

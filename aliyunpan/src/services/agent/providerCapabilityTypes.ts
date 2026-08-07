@@ -64,7 +64,8 @@ export function defineProviderCapabilities(input: Omit<ProviderCapabilityManifes
   })) as Record<DriveCapability, ProviderCapabilityEvidence>
   const operations = { ...legacyOperations(input.capabilities), ...input.operations }
   const agentTools = ['listDrives', 'getConnectedDriveCapabilities']
-  if (operations['files.search']) agentTools.push('searchMyFiles', 'analyzeStorage', 'categorizeFiles')
+  if (operations['files.search']) agentTools.push('searchMyFiles')
+  if (operations['files.list']) agentTools.push('analyzeStorage', 'categorizeFiles')
   if (operations['files.list']) agentTools.push('scanDriveLargeFiles', 'findDuplicates', 'scanDriveEmptyDirs')
   if (operations['files.download']) agentTools.push('downloadFiles')
   if (operations['files.move']) agentTools.push('moveFiles', 'organizeFiles')

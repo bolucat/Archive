@@ -57,11 +57,13 @@ export const apiPikPakFileList = async (
   parentId: string,
   limit = 100,
   pageToken = '',
-  trashed = false
+  trashed = false,
+  strict = false
 ): Promise<{ items: PikPakFileItem[]; nextPageToken: string }> => {
   const token = await getPikPakToken(user_id)
   if (!token?.access_token) {
     message.error('未登录 PikPak')
+    if (strict) throw new Error('未登录 PikPak')
     return { items: [], nextPageToken: '' }
   }
   const params = new URLSearchParams()
@@ -80,6 +82,7 @@ export const apiPikPakFileList = async (
   const data = await resp.json().catch(() => undefined) as PikPakFileListResp | any
   if (!resp.ok || data?.error) {
     message.error(data?.error_description || data?.message || '获取 PikPak 文件列表失败')
+    if (strict) throw new Error(parsePikPakError(data, '获取 PikPak 文件列表失败'))
     return { items: [], nextPageToken: '' }
   }
   return {

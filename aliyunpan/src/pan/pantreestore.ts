@@ -9,6 +9,7 @@ import { isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User,
 import message from '../utils/message'
 import type { QuickFileEntry } from './quickFiles'
 import { t } from '../i18n'
+import { mergeTreeRootsPreservingOrder } from './treeRootMerge'
 
 export interface PanTreeState {
   user_id: string
@@ -250,13 +251,7 @@ const usePanTreeStore = defineStore('pantree', {
 
     mSaveTreeAllNode(drive_id: string, roots: TreeNodeData[], rootMap: Map<string, TreeNodeData>) {
       if (this.drive_id !== drive_id) return
-      const rootKeys = new Set(roots.map((root) => root.key))
-      const list: TreeNodeData[] = []
-      for (let i = 0, maxi = this.treeData.length; i < maxi; i++) {
-        if (!rootKeys.has(this.treeData[i].key)) list.push(this.treeData[i])
-      }
-      list.push(...roots)
-      this.treeData = list
+      this.treeData = mergeTreeRootsPreservingOrder(this.treeData, roots)
       treeDataMap = rootMap
     },
 

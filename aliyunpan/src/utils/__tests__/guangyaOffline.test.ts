@@ -31,4 +31,9 @@ describe('Guangya offline workflow', () => {
     expect(guangyaRequest).toHaveBeenCalledTimes(1)
     expect(guangyaRequest).toHaveBeenCalledWith('guangya_user', '/cloudcollection/v1/create_task', { url: 'https://example.com/subtitle.srt', parentId: 'folder-1', newName: 'Demo.zh-CN.srt' })
   })
+
+  it('keeps an absent task pending instead of treating it as complete', async () => {
+    guangyaRequest.mockResolvedValueOnce({ data: { list: [] } })
+    await expect(apiGuangyaOfflineProcess('guangya_user', 'missing-task')).resolves.toEqual({ status: 0, process: 0, error: '' })
+  })
 })

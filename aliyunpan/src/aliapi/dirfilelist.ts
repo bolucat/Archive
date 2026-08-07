@@ -10,6 +10,7 @@ import { IAliFileItem, IAliGetFileModel } from './alimodels'
 import getFileIcon from './fileicon'
 import { DecodeEncName, GetDriveID } from './utils'
 import { buildAliColorSearchDriveIds } from './colorSearch'
+import { resolveAliFileDriveId } from './fileModelDrive'
 import { listProviderSpecialItems } from '../drive/providerSpecialList'
 
 
@@ -46,7 +47,7 @@ export function NewIAliFileResp(user_id: string, drive_id: string, dirID: string
 export default class AliDirFileList {
   static ItemJsonmask = 'category%2Ccreated_at%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription%2Cfrom_share_id'
 
-  static getFileInfo(user_id: string, item: IAliFileItem, downUrl: string): IAliGetFileModel {
+  static getFileInfo(user_id: string, item: IAliFileItem, downUrl: string, requestDriveId = ''): IAliGetFileModel {
     const size = item.size ? item.size : 0
     const file_count = item.file_count || item.image_count || item.video_count || 0
     const time = new Date(item.updated_at || item.created_at || item.gmt_deleted || item.last_played_at || '')
@@ -55,7 +56,7 @@ export default class AliDirFileList {
     const { name, mine_type, ext } = DecodeEncName(user_id, item)
     const add: IAliGetFileModel = {
       __v_skip: true,
-      drive_id: item.drive_id,
+      drive_id: resolveAliFileDriveId(item.drive_id, requestDriveId),
       file_id: item.file_id,
       parent_file_id: item.parent_file_id || '',
       name: name,
@@ -353,7 +354,7 @@ export default class AliDirFileList {
     }
     const resp = await AliHttp.Post('adrive/v1.0/openFile/search', postData, user_id, '')
     const items = (resp?.body?.items || []) as any[]
-    return items.map((item: any) => AliDirFileList.getFileInfo(user_id, item, ''))
+    return items.map((item: any) => AliDirFileList.getFileInfo(user_id, item, '', drive_id))
   }
 
   static async ApiDirFileList(user_id: string, drive_id: string, dirID: string, dirName: string, order: string, type: string = '', albumID?: string, refresh: boolean = true): Promise<IAliFileResp> {
@@ -475,10 +476,10 @@ export default class AliDirFileList {
     const seenMarkers = new Set<string>()
 
     do {
-      if (seenMarkers.has(dir.next_marker)) return
+      if (seenMarkers.has(dir.next_marker)) throw new Error('阿里云盘目录分页游标重复')
       seenMarkers.add(dir.next_marker)
       const isGet = await AliDirFileList._ApiDirFileListOnePage(normalizedOrder[0], normalizedOrder[1], dir, type, pageIndex, refresh)
-      if (!isGet || dir.next_marker === 'cancel') return
+      if (!isGet || dir.next_marker === 'cancel') throw new Error('获取阿里云盘目录列表失败')
       const items = dir.items
       dir.items = []
       dir.itemsKey.clear()
@@ -926,7 +927,7 @@ export default class AliDirFileList {
               }
             }
             if (dir.itemsKey.has(item.file_id)) continue
-            const add = AliDirFileList.getFileInfo(dir.m_user_id, item, downUrl)
+            const add = AliDirFileList.getFileInfo(dir.m_user_id, item, downUrl, dir.m_drive_id)
             if (isRecover) add.description = item.content_hash
             if (isVideo) add.compilation_id = item.compilation_id
             if (isPic) add.album_id = item.album_id

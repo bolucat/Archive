@@ -25,6 +25,8 @@ export interface LargeFileScanResult {
   files: LargeFileItem[]
   scannedDirs: number
   scannedFiles: number
+  failedDirs: number
+  errors: string[]
   truncated: boolean
   report: string
 }
@@ -51,7 +53,7 @@ const thresholdForMode = (mode: LargeFileScanMode, customSizeMB: number) => {
   if (mode === 'size5000') return 5 * gb
   if (mode === 'size1000' || mode === 'video' || mode === 'doc' || mode === 'zip' || mode === 'others') return gb
   if (mode === 'size100') return 100 * mb
-  return Math.max(1, customSizeMB) * mb
+  return Math.max(0, customSizeMB) * mb
 }
 
 const matchesMode = (item: IAliGetFileModel, mode: LargeFileScanMode, minSize: number) => {
@@ -86,13 +88,15 @@ export const scanDriveLargeFiles = async (
   mode: LargeFileScanMode,
   options: { customSizeMB?: number; maxDirs?: number; maxFiles?: number } = {}
 ): Promise<LargeFileScanResult> => {
-  const minSize = thresholdForMode(mode, options.customSizeMB || 100)
+  const minSize = thresholdForMode(mode, options.customSizeMB ?? 100)
   const maxDirs = options.maxDirs || 2000
   const maxFiles = options.maxFiles || 20000
   const files: LargeFileItem[] = []
   let scannedDirs = 0
   let scannedFiles = 0
+  let failedDirs = 0
   let truncated = false
+  const errors: string[] = []
 
   for (const target of targets) {
     let targetDirs = 0
@@ -106,7 +110,14 @@ export const scanDriveLargeFiles = async (
       const current = queue.shift()!
       scannedDirs += 1
       targetDirs += 1
-      const children = await listDriveToolChildren(target.userId, target.driveId, current.fileId).catch(() => [])
+      let children: IAliGetFileModel[]
+      try {
+        children = await listDriveToolChildren(target.userId, target.driveId, current.fileId)
+      } catch (error: any) {
+        failedDirs += 1
+        errors.push(`${current.path || target.name}：${error?.message || '读取目录失败'}`)
+        continue
+      }
       for (const item of children) {
         const itemPath = current.path ? `${current.path}/${item.name}` : item.name
         if (item.isDir) {
@@ -116,6 +127,10 @@ export const scanDriveLargeFiles = async (
         scannedFiles += 1
         targetFiles += 1
         if (matchesMode(item, mode, minSize)) files.push(toLargeFile(item, target.userId, itemPath))
+        if (targetFiles >= maxFiles) {
+          truncated = true
+          break
+        }
       }
     }
   }
@@ -125,8 +140,10 @@ export const scanDriveLargeFiles = async (
     files,
     scannedDirs,
     scannedFiles,
+    failedDirs,
+    errors,
     truncated,
-    report: `大文件扫描完成：找到 ${files.length} 个，已扫 ${scannedDirs} 个目录、${scannedFiles} 个文件${truncated ? '，结果可能未扫全' : ''}`
+    report: `大文件扫描完成：找到 ${files.length} 个，已扫 ${scannedDirs} 个目录、${scannedFiles} 个文件${failedDirs ? `，${failedDirs} 个目录读取失败` : ''}${truncated ? '，结果可能未扫全' : ''}`
   }
 }
 

@@ -214,7 +214,8 @@ export async function getRawUrl(
   weifa: boolean = false,
   preview_type: string = '',
   quality: string = '',
-  promotionSkuCode = ''
+  promotionSkuCode = '',
+  tokenfrom = ''
 ): Promise<string | IRawUrl> {
   let data: any = {
     drive_id: drive_id,
@@ -267,7 +268,7 @@ export async function getRawUrl(
   // 违规文件无法获取地址
   const needOriginQuality = !encType && preview_type === 'video' && !data.qualities.some((q: any) => q.quality === 'Origin')
   if ((!weifa && !data.url) || uiVideoPlayer == 'web' || needOriginQuality) {
-    let downUrl = await DriveFile.ApiFileDownloadUrl(user_id, drive_id, file_id, 14400)
+    let downUrl = await DriveFile.ApiFileDownloadUrl(user_id, drive_id, file_id, 14400, tokenfrom)
     if (typeof downUrl != 'string') {
       if (!encType && preview_type && !data.qualities.some((q: any) => q.quality === 'Origin')) {
         data.qualities.unshift({ quality: 'Origin', html: '原画', label: '原画', value: '', url: downUrl.url, type: detectProxyVideoType(downUrl.url) })

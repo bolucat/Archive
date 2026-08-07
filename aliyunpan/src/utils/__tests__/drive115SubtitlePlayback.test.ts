@@ -34,7 +34,7 @@ describe('115 subtitle playback', () => {
     const playerSource = readSource('src/layout/PageVideo.vue')
     const source = readSource('src/utils/proxyhelper.ts')
 
-    expect(playerSource).toContain('await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400)')
+    expect(playerSource).toContain('await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400, pageVideo.tokenfrom)')
     expect(playerSource).toContain("proxy_kind: 'subtitle'")
     expect(playerSource).toContain('proxy_headers: hasPlaybackHeaders(data.headers) ? JSON.stringify(data.headers) : undefined')
     expect(playerSource).not.toContain('const data = await AliFile.ApiFileDownText(pageVideo.user_id, pageVideo.drive_id, item.file_id')

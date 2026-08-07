@@ -6,7 +6,7 @@ import { apiQuarkMkdir } from '../filecmd'
 
 vi.mock('../../user/userdal', () => ({
   default: {
-    GetUserToken: () => ({ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1' }),
+    GetUserToken: () => ({ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1', tokenfrom: 'quark' }),
     GetUserTokenFromDB: async () => null,
     GetUserListFromDB: async () => [{ access_token: '__uid=u1; __kps=kps1', user_id: 'quark_u1', tokenfrom: 'quark' }],
     SaveUserToken: vi.fn()

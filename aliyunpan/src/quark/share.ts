@@ -352,7 +352,7 @@ export const apiQuarkShareFileList = async (shareId: string, stoken: string, dir
     const total = Number(data.data?.metadata?._total || data.data?.total || data.data?.count || 0)
     hasMore = total ? items.length < total : list.length === 100
     page += 1
-  } while (hasMore && items.length < 1000)
+  } while (hasMore)
   return { items, next_marker: hasMore ? String(page) : '', error: '' }
 }
 

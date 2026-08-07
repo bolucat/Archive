@@ -112,4 +112,12 @@ describe('video library scan controls', () => {
     expect(main).toContain("if (args.page == 'PageMain')")
     expect(main).toContain('startMediaAcquisitionWorkflowRunner()')
   })
+
+  it('hydrates the bound cloud account before mounting an independent media window', () => {
+    const main = readSource('src/main.ts')
+
+    expect(main).toContain("import UserDAL from './user/userdal'")
+    expect(main).toContain("window.Electron.ipcRenderer.on('setPage', async")
+    expect(main).toMatch(/const pageUserId = String\(args\?\.data\?\.user_id \|\| ''\)\s+if \(pageUserId\) await UserDAL\.GetUserTokenFromDB\(pageUserId\)\s+if \(args\.page == 'PageMain'\)/)
+  })
 })

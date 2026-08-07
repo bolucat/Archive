@@ -49,11 +49,13 @@ export const apiCloud123FileListPage = async (
   trashed: boolean = false,
   searchData: string = '',
   searchMode: number = 0,
-  lastFileId: string | number = ''
+  lastFileId: string | number = '',
+  strict = false
 ): Promise<{ items: Cloud123FileItem[]; lastFileId: number }> => {
   const token = await getCloud123Token(user_id)
   if (!token?.access_token) {
     message.error('未登录 123 网盘')
+    if (strict) throw new Error('未登录 123 网盘')
     return { items: [], lastFileId: -1 }
   }
   const params = new URLSearchParams()
@@ -76,10 +78,14 @@ export const apiCloud123FileListPage = async (
   })
   if (!resp.ok) {
     message.error('获取 123 网盘文件列表失败')
+    if (strict) throw new Error('获取 123 网盘文件列表失败')
     return { items: [], lastFileId: -1 }
   }
   const data = (await resp.json()) as Cloud123FileListResp
-  if (data.code !== 0 || !data.data?.fileList) return { items: [], lastFileId: -1 }
+  if (data.code !== 0 || !data.data?.fileList) {
+    if (strict) throw new Error(data?.message || '获取 123 网盘文件列表失败')
+    return { items: [], lastFileId: -1 }
+  }
   const items = trashed ? data.data.fileList.filter((item) => item.trashed === 1) : data.data.fileList.filter((item) => item.trashed !== 1)
   return { items, lastFileId: Number(data.data.lastFileId || -1) }
 }

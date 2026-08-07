@@ -37,6 +37,20 @@ const DESTRUCTIVE_TOOL_NAMES = new Set(['deleteFiles'])
 const DEFAULT_MAX_CONTEXT_CHARS = 16_000
 const MAX_TOOL_RESULT_CHARS = 8_000
 
+// A model response must never become a future system instruction. These markers
+// identify prompt/template text that was accidentally rendered as an assistant reply.
+const AGENT_PROMPT_LEAK_PATTERNS = [
+  /place__holder|<\/?tool_calls>|tool call guidelines|maximum agent turns reached/i,
+  /please (?:refer|follow|review) (?:to )?(?:the )?(?:above )?(?:schema|format|user.?s last message)/i,
+  /always output all function calls|required parameters before making a tool call/i,
+  /用户正在与\s*boxplayer.*(?:助手|对话)|你的记忆没有开启|当前已登录网盘的运行时能力/i,
+  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:当前情况|用户消息|长期记忆读取)\s*(?:\n|$)/i
+]
+
+export function isLeakedAgentContext(text: string): boolean {
+  return AGENT_PROMPT_LEAK_PATTERNS.some(pattern => pattern.test(text))
+}
+
 export function inferToolPermission(name: string): AgentPermission {
   if (DESTRUCTIVE_TOOL_NAMES.has(name)) return 'destructive'
   if (WRITE_TOOL_NAMES.has(name)) return 'write'
@@ -69,7 +83,10 @@ export function toPiTools(tools: Record<string, BoxPlayerAgentTool> = {}): Agent
 
 function stringifyToolResult(result: unknown): string {
   const text = typeof result === 'string' ? result : JSON.stringify(result ?? null)
-  return text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n[Tool result truncated for the model.]` : text
+  const truncated = text.length > MAX_TOOL_RESULT_CHARS ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n[Tool result truncated for the model.]` : text
+  // File names, share notes and document text are data supplied by external
+  // systems. Keep a stable boundary so the model must not treat them as rules.
+  return `<tool-result trust="untrusted">${truncated}</tool-result>`
 }
 
 function isToolFailure(result: unknown): result is { error: string } {
@@ -87,9 +104,8 @@ function emptyUsage(): AssistantMessage['usage'] {
   }
 }
 
-export function toPiMessages(messages: Array<{ role: 'user' | 'assistant'; content: string }>, model: BoxPlayerAgentModelConfig, rawMessages?: unknown[]): AgentMessage[] {
-  if (Array.isArray(rawMessages) && rawMessages.length) return rawMessages as AgentMessage[]
-  return messages.filter(message => message.content.trim()).map((message): Message => {
+export function toPiMessages(messages: Array<{ role: 'user' | 'assistant'; content: string }>, model: BoxPlayerAgentModelConfig, _rawMessages?: unknown[]): AgentMessage[] {
+  return messages.filter(message => message.content.trim() && !(message.role === 'assistant' && isLeakedAgentContext(message.content))).map((message): Message => {
     if (message.role === 'user') return { role: 'user', content: message.content, timestamp: Date.now() }
     return {
       role: 'assistant',
@@ -148,7 +164,7 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
       model: createPiModel(options.model),
       thinkingLevel: 'off',
       tools: toPiTools(allowedTools),
-      messages: toPiMessages(options.messages || options.session?.messages || [], options.model, options.session?.rawMessages)
+      messages: toPiMessages(options.messages || options.session?.messages || [], options.model)
     },
     sessionId: options.session?.id,
     getApiKey: () => resolvePiApiKey(options.model),
@@ -195,6 +211,7 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
         completedToolSteps.push(signature)
         if (shouldStopForRepeatedAgentToolSteps(completedToolSteps, options.maxRepeatedToolCalls)) {
           repetitionStopped = true
+          expectedStop = true
           agent.abort()
           await options.onEvent?.({ type: 'error', message: 'Repeated tool call limit reached.' })
         }
@@ -215,6 +232,7 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
       turnCount++
       toolCallsThisTurn = 0
       if (turnCount > (options.maxTurns || 5)) {
+        expectedStop = true
         agent.abort()
         await options.onEvent?.({ type: 'error', message: 'Maximum agent turns reached.' })
         return

@@ -33,6 +33,7 @@ const RATE_LIMIT_COOLDOWN_MS = 2 * 60 * 1000
 
 type Drive115RequestOptions = {
   silent?: boolean
+  strict?: boolean
 }
 
 let listQueue: Promise<unknown> = Promise.resolve()
@@ -91,10 +92,12 @@ export const apiDrive115FileList = async (
   const token = await getDrive115Token(user_id)
   if (!token?.access_token) {
     reportDrive115ListError('未登录 115 网盘', options)
+    if (options.strict) throw new Error('未登录 115 网盘')
     return []
   }
   if (rateLimitedUntil > Date.now()) {
     reportDrive115ListError('已达到当前访问上限，请稍后再试', options)
+    if (options.strict) throw new Error('已达到当前访问上限，请稍后再试')
     return []
   }
   const params = new URLSearchParams()
@@ -111,6 +114,7 @@ export const apiDrive115FileList = async (
   }))
   if (!resp.ok) {
     reportDrive115ListError('获取 115 网盘文件列表失败', options)
+    if (options.strict) throw new Error(`获取 115 网盘文件列表失败 HTTP ${resp.status}`)
     return []
   }
   const data = (await resp.json()) as Drive115FileListResp
@@ -118,6 +122,7 @@ export const apiDrive115FileList = async (
     const msg = data?.message || '获取 115 网盘文件列表失败'
     if (isRateLimitMessage(msg)) rateLimitedUntil = Date.now() + RATE_LIMIT_COOLDOWN_MS
     reportDrive115ListError(msg, options)
+    if (options.strict) throw new Error(msg)
     return []
   }
   return data.data

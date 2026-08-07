@@ -123,12 +123,16 @@ export const apiPikPakShareFileList = async (shareId: string, passCodeToken: str
   try {
     const items: IAliShareFileItem[] = []
     let pageToken = ''
+    const seenPageTokens = new Set<string>()
     do {
       const data = await requestPublicShare('/drive/v1/share/detail', { limit: '100', thumbnail_size: 'SIZE_LARGE', order: '6', share_id: decodePikPakShareId(shareId), parent_id: parentId === 'root' ? '' : parentId, pass_code_token: passCodeToken, page_token: pageToken })
       const pageItems = data?.files || data?.file_list || []
       if (Array.isArray(pageItems)) items.push(...pageItems.map(item => toShareFile(item, parentId)))
-      pageToken = String(data?.next_page_token || data?.nextPageToken || '')
-    } while (pageToken && items.length < 1000)
+      const nextPageToken = String(data?.next_page_token || data?.nextPageToken || '')
+      if (nextPageToken && seenPageTokens.has(nextPageToken)) return { items: [], next_marker: '', error: 'PikPak 分享列表分页游标重复' }
+      if (nextPageToken) seenPageTokens.add(nextPageToken)
+      pageToken = nextPageToken
+    } while (pageToken)
     return { items, next_marker: pageToken, error: '' }
   } catch (error: any) {
     return { items: [], next_marker: '', error: error?.message || '获取 PikPak 分享文件失败' }

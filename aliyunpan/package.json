@@ -1,7 +1,7 @@
 {
   "name": "boxplayer",
   "description": "BoxPlayer",
-  "version": "5.0.13",
+  "version": "5.0.14",
   "main": "dist/electron/main/index.js",
   "packageManager": "pnpm@10.32.1",
   "author": {

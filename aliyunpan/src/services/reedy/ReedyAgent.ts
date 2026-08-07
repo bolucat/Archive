@@ -34,20 +34,11 @@ export interface ReedyStreamCallbacks {
 }
 
 export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedyStreamCallbacks): Promise<void> {
-  console.log('[Reedy][Agent] runReedyStream start', {
-    bookHash: config.bookHash,
-    bookTitle: config.bookTitle,
-    chapterTitle: config.chapterTitle,
-    currentChapter: config.currentChapter,
-    hasEmbeddingModel: !!config.embeddingModel,
-    messageCount: config.messages.length,
-    maxSteps: config.maxSteps || 5
-  })
-
   const tools: Record<string, any> = {}
+  const readingContextRequest = /(?:进度|读到|看到|当前位置|第几页|第几章|阅读位置|where.*(?:read|left off)|reading progress)/i.test(config.prompt)
 
   // lookupPassage tool
-  if (!config.toolAllowlist || config.toolAllowlist.includes('lookupPassage')) {
+  if (!readingContextRequest && (!config.toolAllowlist || config.toolAllowlist.includes('lookupPassage'))) {
     tools.lookupPassage = {
       description:
         'REQUIRED first tool when the user asks about book content, current chapter, plot, characters, themes, or anything inside the book. Search the currently open book for passages matching the given query. Returns up to topK relevant text excerpts with CFI position anchors. Always call this before answering any question about the book.',
@@ -57,7 +48,6 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
       }),
       execute: async (args: { query: string; topK: number }) => {
         const { query, topK } = args
-        console.log('[Reedy][Agent] lookupPassage called', { query: query.slice(0, 80), topK })
         callbacks.onToolCall?.('lookupPassage', { query, topK })
 
         try {
@@ -65,32 +55,25 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
           if (embeddingAvailable === null) {
             const meta = await reedyClient.getMeta(config.bookHash)
             embeddingAvailable = meta !== null && meta.embedding_dim > 0
-            console.log('[Reedy][Agent] embeddingAvailable:', embeddingAvailable)
           }
 
           let results: any[]
           if (config.embeddingModel && embeddingAvailable) {
             const { embed } = await import('ai')
             try {
-              console.log('[Reedy][Agent] embedding query...')
               const embResult = await embed({ model: config.embeddingModel, value: query })
-              console.log('[Reedy][Agent] embedding success, dim:', embResult.embedding?.length)
               if (embResult.embedding?.length) {
                 results = await reedyClient.search(config.bookHash, embResult.embedding, query, topK)
               } else {
-                console.warn('[Reedy][Agent] embedding empty, falling back to FTS')
                 results = await reedyClient.search(config.bookHash, new Float32Array(0), query, topK)
               }
             } catch (embErr: any) {
-              console.warn('[Reedy][Agent] embedding failed:', embErr?.message || embErr)
               results = await reedyClient.search(config.bookHash, new Float32Array(0), query, topK)
             }
           } else {
-            console.warn('[Reedy][Agent] embedding skipped (no embeddings available), using FTS only')
             results = await reedyClient.search(config.bookHash, new Float32Array(0), query, topK)
           }
 
-          console.log('[Reedy][Agent] search returned', results?.length ?? 0, 'results')
 
           if (!results || results.length === 0) {
             callbacks.onToolResult?.('lookupPassage', true, 'No matching passages found.')
@@ -115,11 +98,9 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
           output += '</search-results>'
 
           const resultText = output.length > 6000 ? output.slice(0, 6000) + '\n<!-- results truncated -->' : output
-          console.log('[Reedy][Agent] lookupPassage result length:', resultText.length)
           callbacks.onToolResult?.('lookupPassage', true, `Found ${results.length} passages`)
           return { citations, passages: resultText }
         } catch (e: any) {
-          console.error('[Reedy][Agent] lookupPassage error:', e)
           callbacks.onToolResult?.('lookupPassage', false, e?.message || 'Search failed')
           return `Search error: ${e?.message || 'unknown error'}`
         }
@@ -128,7 +109,7 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
   }
 
   // addCitation tool
-  if (!config.toolAllowlist || config.toolAllowlist.includes('addCitation')) {
+  if (false && config.toolAllowlist?.includes('addCitation')) {
     tools.addCitation = {
       description: 'Record a citation referencing a specific passage in the book.',
       inputSchema: z.object({
@@ -144,7 +125,7 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
   }
 
   // getReadingContext tool
-  if (!config.toolAllowlist || config.toolAllowlist.includes('getReadingContext')) {
+  if (readingContextRequest && (!config.toolAllowlist || config.toolAllowlist.includes('getReadingContext'))) {
     tools.getReadingContext = {
       description: 'ONLY use for questions about reading progress, position, or page location. Do NOT use for questions about book content, plot, characters, or themes — for those, call lookupPassage instead.',
       inputSchema: z.object({}),
@@ -159,14 +140,10 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
           selection: config.selection || '',
           note: 'Use lookupPassage to search for book content. getReadingContext only returns position metadata.'
         }
-        console.log('[Reedy][Agent] getReadingContext called, returning:', ctx)
         return JSON.stringify(ctx)
       }
     }
   }
-
-  console.log('[Reedy][Agent] tools registered:', Object.keys(tools))
-  console.log('[Reedy][Agent] system prompt length:', config.system.length)
 
   let embeddingAvailable: boolean | null = null
 
@@ -194,18 +171,17 @@ export async function runReedyStream(config: ReedyChatConfig, callbacks: ReedySt
       toolAllowlist: config.toolAllowlist || undefined,
       maxTurns: config.maxSteps,
       maxContextChars: 16_000,
+      requireToolCall: true,
+      maxToolCallsPerTurn: 1,
       onEvent: event => {
-        console.log('[Reedy][Agent] event:', event.type)
         if (event.type === 'text_delta' && event.text.length > 0) callbacks.onToken(event.text)
         if (event.type === 'turn_end') callbacks.onStepFinish?.(0)
         if (event.type === 'error') throw new Error(event.message)
       }
     })
 
-    console.log('[Reedy][Agent] stream done')
     callbacks.onDone()
   } catch (e: any) {
-    console.error('[Reedy][Agent] stream exception:', e)
     callbacks.onError(e?.message || 'Stream failed')
   }
 }

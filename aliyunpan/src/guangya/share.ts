@@ -270,7 +270,7 @@ export const apiGuangyaShareFileList = async (share_id: string, accessToken: str
       const total = Number(body?.total || body?.totalCount || 0)
       hasMore = total ? items.length < total : pageItems.length === 100
       page += 1
-    } while (hasMore && items.length < 1000)
+    } while (hasMore)
     return { items, next_marker: hasMore ? String(page) : '', error: '' }
   } catch (error: any) {
     return { items: [], next_marker: '', error: error?.message || '获取光鸭云盘分享文件失败' }

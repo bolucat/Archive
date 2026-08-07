@@ -3,7 +3,7 @@ import AliArchive from '../aliapi/archive'
 import AliFile from '../aliapi/file'
 import AliFileCmd from '../aliapi/filecmd'
 import ServerHttp from '../aliapi/server'
-import { ITokenInfo, useAppStore, useFootStore, usePanFileStore, useSettingStore, useUserStore } from '../store'
+import { ITokenInfo, useAppStore, useFootStore, usePanFileStore, usePanTreeStore, useSettingStore, useUserStore } from '../store'
 import { IPageCode, IPageDocx, IPageEpub, IPageImage, IPageMusic, IPageMusicTrack, IPageOffice, IPagePdf, IPageSheet, IPageVideo, IPageVideoPlaylistEntry } from '../store/appstore'
 import UserDAL from '../user/userdal'
 import { clickWait } from './debounce'
@@ -21,8 +21,8 @@ async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo |
   return resolveDriveFileToken(file as IAliGetFileModel & { user_id?: string }, useUserStore().user_id)
 }
 
-function buildSiblingVideoPlaylist(file: IAliGetFileModel, userId: string, provided?: IPageVideoPlaylistEntry[]): IPageVideoPlaylistEntry[] {
-  if (provided && provided.length > 0) return provided
+function buildSiblingVideoPlaylist(file: IAliGetFileModel, userId: string, tokenfrom: string, provided?: IPageVideoPlaylistEntry[]): IPageVideoPlaylistEntry[] {
+  if (provided && provided.length > 0) return provided.map((item) => ({ ...item, tokenfrom: item.tokenfrom || tokenfrom }))
   const rawItems = usePanFileStore().ListDataRaw || []
   const visibleItems = rawItems.filter((item: any) => !item.isDir)
   const sameDirectory = visibleItems.filter((item: any) => item.parent_file_id === file.parent_file_id)
@@ -33,6 +33,7 @@ function buildSiblingVideoPlaylist(file: IAliGetFileModel, userId: string, provi
     .sort((left: any, right: any) => String(left.name || left.file_name || '').localeCompare(String(right.name || right.file_name || ''), undefined, { numeric: true, sensitivity: 'base' }))
     .map((item: any): IPageVideoPlaylistEntry => ({
       user_id: userId,
+      tokenfrom,
       drive_id: item.drive_id || file.drive_id,
       file_id: item.file_id,
       parent_file_id: item.parent_file_id || file.parent_file_id,
@@ -66,6 +67,7 @@ export async function menuOpenFile(
   }
 ): Promise<void> {
   if (clickWait('menuOpenFile', 500)) return
+  if (!file.drive_id) file = { ...file, drive_id: usePanTreeStore().drive_id }
   const file_id = file.file_id
   let parent_file_id = file.parent_file_id
   if (parent_file_id.includes('root')) parent_file_id = 'root'
@@ -273,6 +275,7 @@ async function Video(
     }
     const pageVideo: IPageVideo = {
       user_id: token.user_id,
+      tokenfrom: token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom,
       file_name: file.name,
       html: file.name,
       drive_id: file.drive_id,
@@ -284,7 +287,7 @@ async function Video(
       encType: getEncType(playCursorInfo?.info || ''),
       play_cursor: play_cursor,
       custom_playlist_label: options?.customPlaylistLabel || '',
-      custom_playlist: buildSiblingVideoPlaylist(file, token.user_id, options?.customPlaylist)
+      custom_playlist: buildSiblingVideoPlaylist(file, token.user_id, token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom, options?.customPlaylist)
     }
     window.WebOpenWindow({ page: 'PageVideo', data: pageVideo, theme: 'dark' })
     return
@@ -580,6 +583,7 @@ async function Audio(file: IAliGetFileModel, password: string = ''): Promise<voi
 
   const playlist: IPageMusicTrack[] = sourceList.map((item) => ({
     user_id: ((item as any).user_id as string) || token.user_id,
+    tokenfrom: token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom,
     drive_id: item.drive_id,
     file_id: item.file_id,
     parent_file_id: item.parent_file_id,
@@ -597,6 +601,7 @@ async function Audio(file: IAliGetFileModel, password: string = ''): Promise<voi
   if (!playlist.find((t) => t.file_id === file.file_id)) {
     playlist.unshift({
       user_id: ((file as any).user_id as string) || token.user_id,
+      tokenfrom: token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom,
       drive_id: file.drive_id,
       file_id: file.file_id,
       parent_file_id: file.parent_file_id,
@@ -614,6 +619,7 @@ async function Audio(file: IAliGetFileModel, password: string = ''): Promise<voi
 
   const pageMusic: IPageMusic = {
     user_id: token.user_id,
+    tokenfrom: token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom,
     drive_id: file.drive_id,
     file_id: file.file_id,
     parent_file_id: file.parent_file_id,

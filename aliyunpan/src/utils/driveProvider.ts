@@ -164,6 +164,13 @@ export const getDriveProviderByAccount = (userId?: string, tokenfrom?: string): 
   return prefix?.[1] || 'unknown'
 }
 
+/** Historical Aliyun accounts were persisted before tokenfrom was required. */
+export const getStoredTokenProvider = (token?: Pick<ITokenInfo, 'user_id' | 'tokenfrom' | 'access_token'>): DriveProvider => {
+  if (!token?.user_id) return 'unknown'
+  const provider = getDriveProviderByAccount(token.user_id, token.tokenfrom)
+  return provider === 'unknown' ? 'aliyun' : provider
+}
+
 /**
  * A static third-party drive id is authoritative. Never send a mismatched
  * account/drive pair to the Aliyun fallback merely because account lookup failed.

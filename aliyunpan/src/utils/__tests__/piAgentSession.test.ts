@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 import { createAssistantMessageEventStream } from '@earendil-works/pi-ai'
 import { addAgentFeatureToPayload } from '../../services/agent/model'
-import { formatAgentModelError, inferToolPermission, runBoxPlayerAgent, shouldStopForRepeatedAgentToolSteps, toPiMessages, toPiTools } from '../../services/agent/session'
+import { formatAgentModelError, inferToolPermission, isLeakedAgentContext, runBoxPlayerAgent, shouldStopForRepeatedAgentToolSteps, toPiMessages, toPiTools } from '../../services/agent/session'
 
 const { streamOpenAICompletions } = vi.hoisted(() => ({
   streamOpenAICompletions: vi.fn()
@@ -64,7 +64,7 @@ describe('BoxPlayer PI Agent runtime', () => {
     expect(tool.executionMode).toBe('parallel')
     const result = await tool.execute('call-1', { keyword: 'movie' } as any)
     expect(execute).toHaveBeenCalledWith({ keyword: 'movie' }, expect.objectContaining({ reportProgress: expect.any(Function) }))
-    expect(result.content).toEqual([{ type: 'text', text: '{"count":2}' }])
+    expect(result.content).toEqual([{ type: 'text', text: '<tool-result trust="untrusted">{"count":2}</tool-result>' }])
     expect(result.details).toEqual({ count: 2 })
   })
 
@@ -117,14 +117,22 @@ describe('BoxPlayer PI Agent runtime', () => {
     expect(messages[1].role).toBe('assistant')
   })
 
-  it('keeps a restored PI transcript intact across an Agent wake-up', () => {
+  it('drops leaked assistant prompt text from future agent context', () => {
+    const model = { endpoint: 'https://example.com/v1', modelId: 'model', apiKey: 'key', providerName: 'test' }
+    const leaked = 'Please refer to the above schema and always prefix your tool calls with <<|place__holder|>tool_calls>'
+
+    expect(isLeakedAgentContext(leaked)).toBe(true)
+    expect(toPiMessages([{ role: 'user', content: '分析存储空间' }, { role: 'assistant', content: leaked }], model)).toHaveLength(1)
+  })
+
+  it('does not trust a restored raw PI transcript', () => {
     const restored = [
       { role: 'user', content: '选择候选', timestamp: 1 },
       assistantMessage([{ type: 'toolCall', id: 'candidate-1', name: 'listCandidates', arguments: {} }], 'toolUse'),
       { role: 'toolResult', toolCallId: 'candidate-1', toolName: 'listCandidates', content: [{ type: 'text', text: '{"snapshotId":"snapshot-1"}' }], timestamp: 2 }
     ]
 
-    expect(toPiMessages([], { endpoint: '', modelId: 'model', apiKey: '', providerName: 'test' }, restored)).toBe(restored)
+    expect(toPiMessages([], { endpoint: '', modelId: 'model', apiKey: '', providerName: 'test' }, restored)).toEqual([])
   })
 
   it('runs the PI tool loop with a fake model and streams the final answer', async () => {

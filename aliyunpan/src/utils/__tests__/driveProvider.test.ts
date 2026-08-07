@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isProviderTokenForUser, isTokenCompatibleWithDrive, resolveDriveProvider } from '../driveProvider'
+import { getStoredTokenProvider, isProviderTokenForUser, isTokenCompatibleWithDrive, resolveDriveProvider } from '../driveProvider'
 
 describe('resolveDriveProvider', () => {
   it('uses a known third-party drive id when the account cache is unavailable', () => {
@@ -12,6 +12,15 @@ describe('resolveDriveProvider', () => {
 
   it('allows provider-specific dynamic drive ids when the account is known', () => {
     expect(resolveDriveProvider('cloud123_user', 'actual-cloud123-drive')).toMatchObject({ provider: 'cloud123', isValid: true })
+  })
+
+  it('uses the stored token provider for Aliyun accounts without a provider-prefixed user id', () => {
+    expect(resolveDriveProvider('25fd55383d5a4bb5a7319ad66c4c7e75', '55307005', 'aliyun')).toMatchObject({ provider: 'aliyun', isValid: true })
+  })
+
+  it('normalizes a legacy stored Aliyun token without weakening unknown drive detection', () => {
+    expect(getStoredTokenProvider({ user_id: '25fd55383d5a4bb5a7319ad66c4c7e75', tokenfrom: 'unknown', access_token: '' })).toBe('aliyun')
+    expect(getStoredTokenProvider({ user_id: '', tokenfrom: 'unknown', access_token: '' })).toBe('unknown')
   })
 
   it('does not classify an unknown account and drive as Aliyun', () => {

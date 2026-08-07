@@ -69,10 +69,11 @@ export const getBoxToken = async (user_id: string) => {
   })
 }
 
-export const boxApiRequest = async <T>(user_id: string, pathOrUrl: string, init: RequestInit, fallback: string, silent = false): Promise<T | null> => {
+export const boxApiRequest = async <T>(user_id: string, pathOrUrl: string, init: RequestInit, fallback: string, silent = false, strict = false): Promise<T | null> => {
   const token = await getBoxToken(user_id)
   if (!token?.access_token) {
     if (!silent) message.error('未登录 Box')
+    if (strict) throw new Error('未登录 Box')
     return null
   }
   const url = pathOrUrl.startsWith('https://') ? pathOrUrl : `${BOX_API_HOST}${pathOrUrl}`
@@ -90,6 +91,7 @@ export const boxApiRequest = async <T>(user_id: string, pathOrUrl: string, init:
   }
   if (!resp.ok || data?.error) {
     if (!silent) message.error(data?.message || fallback)
+    if (strict) throw new Error(data?.message || fallback)
     return null
   }
   return (data || {}) as T
@@ -114,11 +116,11 @@ export const buildBoxDetailPath = (fileId: string, isFolder: boolean): string =>
   return `/${isFolder ? 'folders' : 'files'}/${encodeURIComponent(id)}?${params.toString()}`
 }
 
-export const apiBoxFileList = async (user_id: string, parentId: string, limit = 500): Promise<BoxItem[]> => {
+export const apiBoxFileList = async (user_id: string, parentId: string, limit = 500, strict = false): Promise<BoxItem[]> => {
   let offset = 0
   const items: BoxItem[] = []
   while (true) {
-    const page = await apiBoxFileListPage(user_id, parentId, limit, offset)
+    const page = await apiBoxFileListPage(user_id, parentId, limit, offset, strict)
     items.push(...page.items)
     if (!page.items.length || page.nextOffset === null) break
     offset = page.nextOffset
@@ -126,8 +128,8 @@ export const apiBoxFileList = async (user_id: string, parentId: string, limit = 
   return items
 }
 
-export const apiBoxFileListPage = async (user_id: string, parentId: string, limit = 500, offset = 0): Promise<{ items: BoxItem[]; nextOffset: number | null }> => {
-  const data = await boxApiRequest<BoxCollectionResp>(user_id, buildBoxChildrenPath(parentId, limit, offset), { method: 'GET', headers: { 'x-rep-hints': '[jpg?dimensions=320x320]' } }, '获取 Box 文件列表失败')
+export const apiBoxFileListPage = async (user_id: string, parentId: string, limit = 500, offset = 0, strict = false): Promise<{ items: BoxItem[]; nextOffset: number | null }> => {
+  const data = await boxApiRequest<BoxCollectionResp>(user_id, buildBoxChildrenPath(parentId, limit, offset), { method: 'GET', headers: { 'x-rep-hints': '[jpg?dimensions=320x320]' } }, '获取 Box 文件列表失败', false, strict)
   const items = Array.isArray(data?.entries) ? data.entries : []
   const nextOffset = offset + Number(data?.limit || limit)
   return { items, nextOffset: !data || !items.length || nextOffset >= Number(data.total_count || 0) ? null : nextOffset }

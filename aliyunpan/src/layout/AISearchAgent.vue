@@ -5,6 +5,8 @@ import { useAppStore } from '../store'
 import message from '../utils/message'
 import { useAISearchChat } from './aisearch/useAISearchChat'
 import ReasonChain from './aisearch/ReasonChain.vue'
+import BorderBeam from './aisearch/BorderBeam.vue'
+import ThinkingOrb from './aisearch/ThinkingOrb.vue'
 import ClarifyCard from './aisearch/ClarifyCard.vue'
 import SearchFilesCard from './aisearch/SearchFilesCard.vue'
 import SearchLinksCard from './aisearch/SearchLinksCard.vue'
@@ -36,6 +38,7 @@ const appStore = useAppStore()
 const { messages, loading, memories, activeDocument, threads, activeThreadId, setDocumentContext, openConversation, newConversation, deleteConversation, sendMessage, stop, clear, removeMemory, confirmAction, cancelAction } = useAISearchChat()
 const chatContainer = ref<HTMLElement>()
 const inputText = ref('')
+const composerFocused = ref(false)
 const acquisitionRequest = ref<MediaAcquisitionRequest | null>(null)
 const acquisitionVisible = ref(false)
 const visibleMessages = computed(() => messages.value.filter(message => message.role === 'user' || message.parts.some((part: any) => part.type !== 'text' || Boolean(part.text?.trim()))))
@@ -135,7 +138,8 @@ function handleDriveConfirm(selected: { userId: string; name: string; platform: 
   }
   const desc = selected.map(d => `${PLATFORM_LABELS[d.platform] || d.platform}(${d.name})`).join('、')
   const platforms = selected.map(d => d.platform)
-  handleSend(`用户选择了: ${desc}。platforms: ${platforms.join(',')}`)
+  const targets = selected.map(d => ({ userId: d.userId, driveId: d.driveId, platform: d.platform }))
+  handleSend(`用户选择了: ${desc}。platforms: ${platforms.join(',')}。selectedDriveTargets: ${JSON.stringify(targets)}`)
 }
 
 function handleConfirmAction(msgId: string, partIndex: number) { confirmAction(msgId, partIndex) }
@@ -213,6 +217,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
         </div>
       </aside>
 
+      <BorderBeam class="ai-workspace-beam" :active="loading">
       <main class="ai-workspace-main">
     <header class="ai-workspace-header">
       <div class="ai-workspace-title">
@@ -223,7 +228,8 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
         </div>
       </div>
       <div class="ai-workspace-status" :class="{ active: loading }">
-        <span class="ai-status-pulse" />
+        <ThinkingOrb v-if="loading" class="ai-status-orb" />
+        <span v-else class="ai-status-pulse" />
         {{ loading ? t('ai.processing') : aiEnabled ? t('ai.ready') : t('ai.previewOnly') }}
       </div>
     </header>
@@ -376,6 +382,8 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
             <StorageCard
               v-else-if="part.type === 'tool-analyzeStorage'"
               :state="(part as any).state"
+              :title="(part as any).title"
+              :report="(part as any).report"
               :output="(part as any).output"
               :error="(part as any).error"
               @navigate="handleFileNavigate"
@@ -501,6 +509,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
           {{ hint }}
         </button>
       </div>
+      <BorderBeam class="ai-input-beam" :active="loading || composerFocused">
       <div class="ai-input-bar" :class="{ disabled: !aiEnabled }">
         <textarea
           v-model="inputText"
@@ -508,6 +517,8 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
           :placeholder="aiEnabled ? t('ai.inputPlaceholder') : t('ai.inputDisabledPlaceholder')"
           rows="1"
           :disabled="!aiEnabled || loading"
+          @blur="composerFocused = false"
+          @focus="composerFocused = true"
           @keydown="handleComposerKeydown"
         />
         <button
@@ -525,6 +536,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
           @click="handleInputSend"
         ><Send :size="16" :stroke-width="2" /><span>{{ t('ai.send') }}</span></button>
       </div>
+      </BorderBeam>
     </div>
 
     <!-- footer -->
@@ -533,6 +545,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
       <span class="ai-msg-count">{{ requestCount }} {{ t('ai.requests') }} · {{ toolActivityCount }} {{ t('ai.toolActivities') }}</span>
     </div>
       </main>
+      </BorderBeam>
 
       <aside class="ai-activity-panel">
         <div class="ai-activity-heading">
@@ -655,6 +668,7 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 .ai-bottom { flex-shrink: 0; padding: 0 max(48px, calc((100% - 920px) / 2)) 14px; background: linear-gradient(to bottom, transparent, var(--color-bg-1) 24%); }
 .ai-suggestions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
 .ai-suggestions-label { font-size: 12px; color: var(--color-text-4); flex-shrink: 0; margin-right: 2px; }
+.ai-input-beam { border-radius: 15px; }
 .ai-input-bar { display: flex; align-items: flex-end; gap: 8px; padding: 7px 8px 7px 14px; background: var(--color-bg-1); border: 1px solid var(--color-border-2); border-radius: 15px; box-shadow: 0 10px 28px rgba(0, 0, 0, .06); transition: border-color .18s, box-shadow .18s; }
 .ai-input-bar:focus-within { border-color: rgba(var(--primary-6), .65); box-shadow: 0 0 0 3px rgba(var(--primary-6), .11), 0 10px 28px rgba(0, 0, 0, .06); }
 .ai-input { flex: 1; min-height: 26px; max-height: 120px; padding: 6px 0; resize: none; font-size: 14px; line-height: 1.55; color: var(--color-text-1); background: transparent; border: 0; outline: none; font-family: inherit; }
@@ -706,12 +720,15 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
 .ai-rail-foot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--color-text-4); }
 .ai-rail-foot-dot.active { background: #34d399; box-shadow: 0 0 0 4px rgba(52, 211, 153, .10); }
 
+.ai-workspace-beam { min-width: 0; min-height: 0; border-radius: 24px; }
+.ai-workspace-beam > .ai-workspace-main { height: 100%; }
 .ai-workspace-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; background: var(--app-glass-panel); }
 .ai-workspace-header { min-height: 70px; padding: 0 34px; border-bottom-color: color-mix(in srgb, var(--color-border-2) 80%, transparent); background: color-mix(in srgb, var(--color-bg-1) 68%, transparent); backdrop-filter: blur(18px); }
 .ai-workspace-mark { width: 34px; height: 34px; border-radius: 11px; background: linear-gradient(145deg, rgb(var(--primary-5)), #8b5cf6); }
 .ai-workspace-title strong { font-size: 15px; }
 .ai-workspace-title span { font-size: 11px; }
 .ai-workspace-status { padding: 6px 9px; background: var(--color-fill-1); border: 1px solid var(--color-border-2); border-radius: 999px; }
+.ai-status-orb { width: 16px; height: 16px; flex-basis: 16px; transform: scale(.53); margin: -7px; }
 .ai-messages { padding: 30px clamp(28px, 5vw, 76px); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
 .ai-message-list { display: flex; flex-direction: column; width: 100%; }
 :global(#xbybody .ai-workspace-main .ai-msg-body) { color: inherit !important; background: transparent !important; border-color: transparent !important; box-shadow: none !important; backdrop-filter: none !important; }

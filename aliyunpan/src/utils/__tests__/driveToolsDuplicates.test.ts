@@ -3,6 +3,7 @@ import { scanDriveDuplicates } from '../drive-tools/duplicates'
 
 vi.mock('../drive-tools/directLinks', () => ({
   listDriveToolChildren: vi.fn(async (_userId: string, _driveId: string, fileId: string) => {
+    if (fileId === 'denied') throw new Error('permission denied')
     if (fileId === 'root') return [
       { __v_skip: true, drive_id: 'guangya', file_id: 'dir', parent_file_id: 'root', name: '电影', isDir: true, size: 0, sizeStr: '', time: 0, timeStr: '', icon: 'folder' },
       { __v_skip: true, drive_id: 'guangya', file_id: 'plain', parent_file_id: 'root', name: 'movie.mp4', isDir: false, size: 10, sizeStr: '10 B', time: 1, timeStr: '', icon: 'file', content_hash: 'hash-a' }
@@ -27,5 +28,10 @@ describe('drive-tools duplicates', () => {
     const result = await scanDriveDuplicates([target], 'contentHash')
     expect(result.groups).toHaveLength(1)
     expect(result.groups[0].files).toHaveLength(3)
+  })
+
+  it('reports unreadable directories instead of treating them as empty results', async () => {
+    const result = await scanDriveDuplicates([{ ...target, rootId: 'denied' }], 'contentHash')
+    expect(result).toMatchObject({ failedDirs: 1, errors: ['光鸭：permission denied'] })
   })
 })

@@ -97,7 +97,8 @@ export const apiQuarkFileList = async (
   user_id: string,
   parentId = '0',
   size = 100,
-  page = 1
+  page = 1,
+  strict = false
 ): Promise<{ items: QuarkFileItem[]; total: number }> => {
   const token = await getQuarkToken(user_id)
   if (token?.access_token && typeof window !== 'undefined' && (window as any).WebQuarkFileList) {
@@ -108,6 +109,7 @@ export const apiQuarkFileList = async (
       return { items, total: Number(data?.metadata?._total || data?.data?.metadata?._total || items.length) }
     }
     if (data?.code === 31001 || /require login/i.test(data?.message || '')) message.error('夸克网盘登录 Cookie 无效或未写入，请重新登录夸克')
+    if (strict) throw new Error(data?.message || '夸克网盘请求失败')
     return { items: [], total: 0 }
   }
   const data = await quarkRequest(user_id, 'file/sort', {}, {
@@ -119,7 +121,10 @@ export const apiQuarkFileList = async (
     fetch_risk_file_name: 1,
     _sort: 'file_name:asc'
   })
-  if (!data || isQuarkError(data)) return { items: [], total: 0 }
+  if (!data || isQuarkError(data)) {
+    if (strict) throw new Error(data?.message || '夸克网盘请求失败')
+    return { items: [], total: 0 }
+  }
   return {
     items: getListFromResponse(data),
     total: Number((data as any)?.metadata?._total || (data as any)?.data?.metadata?._total || getListFromResponse(data).length)

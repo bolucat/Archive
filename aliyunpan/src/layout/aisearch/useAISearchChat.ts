@@ -3,7 +3,7 @@ import { z } from 'zod'
 import Config from '../../config'
 import { getAIConfig } from '../../utils/bookAI'
 import { isBoxPlayerCloudProvider, mapBoxPlayerCloudAIError } from '../../utils/boxplayerCloudAI'
-import { runBoxPlayerAgent } from '../../services/agent'
+import { isLeakedAgentContext, runBoxPlayerAgent } from '../../services/agent'
 import { buildBoxPlayerCapabilityKnowledge, BOXPLAYER_CAPABILITIES, getBoxPlayerCapability } from '../../services/agent/boxplayerCapabilities'
 import { buildWorkspaceMemoryContext, forgetWorkspaceMemory, listWorkspaceMemories, rememberWorkspaceFact, type WorkspaceMemory } from '../../services/agent/workspaceMemory'
 import useAppStore from '../../store/appstore'
@@ -47,6 +47,88 @@ const CHAT_SESSION_KEY = 'ai_search_agent_session_v1'
 const CHAT_THREADS_KEY = 'ai_search_chat_threads_v1'
 const ACTIVE_THREAD_KEY = 'ai_search_active_thread_v1'
 
+const INTERNAL_AGENT_TEXT_MARKERS = [
+  'please always be enthusiastic and maintain a smooth conversation',
+  'remember that the number of tool calls has a maximum limit',
+  'always output all function calls required to complete the user',
+  'you must follow the tool call guidelines',
+  '你的记忆没有开启，这意味着你必须将需要记忆的信息存储到对话中',
+  '## boxplayer 功能知识库',
+  '## 当前已登录网盘的运行时能力'
+]
+
+function isInternalAgentText(text: string): boolean {
+  const value = text.toLocaleLowerCase()
+  return isLeakedAgentContext(text) || INTERNAL_AGENT_TEXT_MARKERS.some(marker => value.includes(marker))
+}
+
+function inferExplicitPlatforms(text: string): string[] {
+  const value = text.toLocaleLowerCase()
+  const matches: Array<[string, RegExp]> = [
+    ['aliyun', /阿里云盘|aliyun|alipan/], ['baidu', /百度网盘|baidu/], ['115', /115网盘|115 云盘/], ['cloud123', /123网盘|123 云盘/],
+    ['google', /google drive|google 云盘|谷歌云盘/], ['onedrive', /onedrive/], ['dropbox', /dropbox/], ['box', /box 网盘/], ['pikpak', /pikpak/], ['quark', /夸克网盘|quark/]
+  ]
+  return matches.filter(([, pattern]) => pattern.test(value)).map(([platform]) => platform)
+}
+
+function isStorageAnalysisRequest(text: string): boolean {
+  return /存储空间|占用空间|空间分析|清理空间/.test(text)
+}
+
+function isLargeFileRequest(text: string): boolean {
+  return /大文件/.test(text)
+}
+
+function isDuplicateFileRequest(text: string): boolean {
+  return /重复文件|查找重复|查重|去重/.test(text) && !/(?:删除|移入回收站).*(?:重复|副本)/.test(text)
+}
+
+function isCategorizeFilesRequest(text: string): boolean {
+  return /^(?:帮我|请)?(?:整理|分类)(?:一下)?文件[。！!]?$/u.test(text.trim())
+}
+
+function isEmptyDirectoryRequest(text: string): boolean {
+  return /扫描空目录|查找空目录|清理空目录/.test(text)
+}
+
+function isDuplicateCardDeleteRequest(text: string): boolean {
+  return /^删除以下\d+个重复文件\s*:/u.test(text.trim())
+}
+
+type SelectedDriveTarget = { userId: string; driveId: string; platform: string }
+
+function parseSelectedDriveTargets(text: string): SelectedDriveTarget[] {
+  const labelIndex = text.search(/selectedDriveTargets\s*:/i)
+  if (labelIndex < 0) return []
+  const arrayStart = text.indexOf('[', labelIndex)
+  if (arrayStart < 0) return []
+  let depth = 0
+  let quoted = false
+  let escaped = false
+  for (let index = arrayStart; index < text.length; index++) {
+    const char = text[index]
+    if (quoted) {
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') quoted = false
+      continue
+    }
+    if (char === '"') quoted = true
+    else if (char === '[') depth += 1
+    else if (char === ']') {
+      depth -= 1
+      if (depth !== 0) continue
+      try {
+        const parsed = JSON.parse(text.slice(arrayStart, index + 1))
+        return Array.isArray(parsed) ? parsed.filter(item => item && typeof item.userId === 'string' && typeof item.driveId === 'string' && typeof item.platform === 'string') : []
+      } catch {
+        return []
+      }
+    }
+  }
+  return []
+}
+
 export interface WorkspaceDocumentContext {
   file: any
   userId: string
@@ -78,14 +160,34 @@ function loadHistory(): ChatMessage[] {
     if (!raw) return []
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((m: any) => m?.id && Array.isArray(m.parts))
+    return sanitizePersistedMessages(parsed.filter((m: any) => m?.id && Array.isArray(m.parts)))
   } catch {
     return []
   }
 }
 
-function saveHistory(messages: ChatMessage[]) {
-  try { localStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-50))) } catch {}
+function redactPersistedChatValue(value: any, parentKey = ''): any {
+  if (Array.isArray(value)) return value.map(item => redactPersistedChatValue(item, parentKey))
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && /(?:[?&](?:token|signature|expires|x-oss-signature|authorization)=|^https?:\/\/[^\s]+(?:aliyuncs|googleusercontent|dropboxusercontent))/i.test(value)) return '[已脱敏的临时直链]'
+    if (typeof value === 'string') return value.replace(/((?:提取码|密码|password|pwd)\s*[:：]?\s*)\S+/gi, '$1[已脱敏]')
+    return value
+  }
+  const output: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (/password|token|secret|authorization|cookie|proxy_headers/i.test(key)) output[key] = '[已脱敏]'
+    else if (key === 'text' && parentKey === 'output' && (value as any).total !== undefined && /https?:\/\//i.test(String(item || ''))) output[key] = '[直链仅在本次会话中显示]'
+    else output[key] = redactPersistedChatValue(item, key)
+  }
+  return output
+}
+
+function sanitizePersistedMessages(messages: ChatMessage[]): ChatMessage[] {
+  const redacted = redactPersistedChatValue(messages) as ChatMessage[]
+  return redacted.map(message => ({
+    ...message,
+    parts: message.parts.filter(part => message.role !== 'assistant' || part.type !== 'text' || !isInternalAgentText(part.text))
+  })).filter(message => message.parts.length > 0)
 }
 
 function createThread(documentContext?: WorkspaceDocumentContext): WorkspaceChatThread {
@@ -99,7 +201,7 @@ function loadThreads(): WorkspaceChatThread[] {
     if (raw) {
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
-        const threads = parsed.filter((thread: any) => thread?.id && Array.isArray(thread.messages))
+        const threads = parsed.filter((thread: any) => thread?.id && Array.isArray(thread.messages)).map((thread: any) => ({ ...thread, messages: sanitizePersistedMessages(thread.messages) }))
         if (threads.length) return threads
       }
     }
@@ -153,7 +255,7 @@ export function useAISearchChat() {
     if (thread.title === '新对话' && messages.value[0]?.role === 'user') thread.title = String((messages.value[0].parts[0] as any)?.text || '新对话').slice(0, 30)
     threads.value = [...threads.value].sort((a, b) => b.updatedAt - a.updatedAt)
     try {
-      localStorage.setItem(CHAT_THREADS_KEY, JSON.stringify(threads.value))
+      localStorage.setItem(CHAT_THREADS_KEY, JSON.stringify(threads.value.map(thread => ({ ...thread, messages: sanitizePersistedMessages(thread.messages) }))))
       localStorage.setItem(ACTIVE_THREAD_KEY, activeThreadId.value)
     } catch {}
   }
@@ -218,6 +320,11 @@ export function useAISearchChat() {
     if (msg) msg.parts = [...msg.parts, part]
   }
 
+  function removePart(msgId: string, part: MessagePart) {
+    const msg = messages.value.find(m => m.id === msgId)
+    if (msg) msg.parts = msg.parts.filter(item => item !== part)
+  }
+
   function getMatchKey(input: any): string | null {
     if (input?.keyword) return `k:${input.keyword}`
     if (input?.url) return `u:${input.url}`
@@ -255,32 +362,49 @@ export function useAISearchChat() {
   }
 
   // scan drives by searching common patterns, never touches media servers
-  async function scanAllDrives(platforms?: string[]): Promise<GlobalSearchResult[]> {
-    const patterns = ['pdf', 'mp4', 'mkv', 'txt', 'jpg', 'png', 'mp3', 'zip', 'doc', 'xls', 'ppt', 'epub', 'mobi', 'flac', 'rar', '7z', 'avi', 'wmv', 'mov']
-    const seen = new Set<string>()
-    const results = await Promise.all(
-      patterns.map(p =>
-        searchAllDrives(p, { platforms, includeMediaServers: false }).catch(() => [] as GlobalSearchResult[])
-      )
-    )
-    const all: GlobalSearchResult[] = []
-    for (const batch of results) {
-      for (const r of batch) {
-        const key = `${r.drive_id}:${r.file_id}`
-        if (!seen.has(key)) { seen.add(key); all.push(r) }
+  async function scanAllDrives(platforms?: string[], selectedTargets: SelectedDriveTarget[] = []): Promise<GlobalSearchResult[]> {
+    const targets = await resolveScanTargets(platforms, selectedTargets)
+    const data = await scanDriveLargeFiles(targets, 'size', { customSizeMB: 0, maxDirs: 2000, maxFiles: 20_000 })
+    if (data.failedDirs) throw new Error(data.errors.slice(0, 2).join('；') || '无法完整读取目标网盘')
+    if (data.truncated) throw new Error('全盘扫描超过 2000 个目录或 20000 个文件，已拒绝将不完整结果作为存储分析。请缩小网盘或目录范围后重试。')
+    return data.files.map(file => {
+      const token = UserDAL.GetUserToken(file.userId)
+      return {
+        id: `${file.driveId}:${file.userId}:${file.fileId}`,
+        name: file.name,
+        ext: file.ext,
+        size: file.size,
+        isDir: false,
+        file_id: file.fileId,
+        parent_file_id: file.parentFileId,
+        drive_id: file.driveId,
+        user_id: file.userId,
+        source: 'cloud' as const,
+        provider: token?.tokenfrom || file.driveId,
+        providerName: token?.nick_name || token?.user_name || token?.name || file.driveId,
+        userName: token?.nick_name || token?.user_name || token?.name || file.userId,
+        icon: file.icon,
+        path: file.path
       }
-    }
-    return all
+    })
   }
 
-  async function getUserIdForPlatform(platform: 'aliyun' | 'quark' | 'guangya'): Promise<{ userId: string; driveId: string } | null> {
+  async function getUserIdForPlatform(platform: 'aliyun' | 'quark' | 'guangya', selectedTargets: SelectedDriveTarget[] = []): Promise<{ userId: string; driveId: string } | null> {
     const users = await UserDAL.GetUserListFromDB()
-    for (const u of users) {
-      if (!u?.user_id || !u?.access_token) continue
-      if (platform === 'quark' && u.tokenfrom === 'quark') return { userId: u.user_id, driveId: 'quark' }
-      if (platform === 'guangya' && u.tokenfrom === 'guangya') return { userId: u.user_id, driveId: 'guangya' }
-      if (platform === 'aliyun' && u.tokenfrom === 'aliyun') return { userId: u.user_id, driveId: u.default_drive_id || '' }
+    const matches = users.filter(u => u?.user_id && u?.access_token && u.tokenfrom === platform)
+    const selected = selectedTargets.filter(target => driveToolPlatformMatches(platform, target.platform))
+    if (selected.length === 1) {
+      const user = matches.find(item => item.user_id === selected[0].userId)
+      if (!user) return null
+      const expectedDriveId = platform === 'aliyun' ? selected[0].driveId : driveToolDriveIdForPlatform(platform, user.default_drive_id)
+      if (selected[0].driveId !== expectedDriveId) return null
+      return { userId: user.user_id, driveId: expectedDriveId }
     }
+    if (matches.length !== 1) return null
+    const u = matches[0]
+    if (platform === 'quark') return { userId: u.user_id, driveId: 'quark' }
+    if (platform === 'guangya') return { userId: u.user_id, driveId: 'guangya' }
+    if (platform === 'aliyun') return { userId: u.user_id, driveId: u.default_drive_id || '' }
     return null
   }
 
@@ -288,14 +412,25 @@ export function useAISearchChat() {
     return driveToolRootIdFor(driveId)
   }
 
-  async function resolveDriveForTool(args: any): Promise<{ userId: string; driveId: string; rootId: string } | null> {
+  async function resolveDriveForTool(args: any, selectedTargets: SelectedDriveTarget[] = []): Promise<{ userId: string; driveId: string; rootId: string } | null> {
     if (args.userId && args.driveId) {
       const driveId = normalizeDriveToolDriveId(args.driveId)
-      return { userId: args.userId, driveId, rootId: args.rootId || defaultRootForDrive(driveId) }
+      if (!selectedTargets.some(target => target.userId === args.userId && normalizeDriveToolDriveId(target.driveId) === driveId)) return null
+      const users = await UserDAL.GetUserListFromDB()
+      const user = users.find(item => item?.user_id === args.userId && item?.access_token)
+      if (!user) return null
+      const validDriveIds = user.tokenfrom === 'aliyun'
+        ? [user.default_drive_id, user.resource_drive_id, user.backup_drive_id]
+        : [driveToolDriveIdForPlatform(user.tokenfrom || '', user.default_drive_id)]
+      if (!validDriveIds.includes(driveId)) return null
+      const rootId = args.rootId || defaultRootForDrive(driveId)
+      if (args.rootId && args.rootId !== defaultRootForDrive(driveId)) return null
+      return { userId: user.user_id, driveId, rootId }
     }
     const users = await UserDAL.GetUserListFromDB()
-    const user = users.find((u: any) => u?.user_id && u?.access_token && driveToolPlatformMatches(u.tokenfrom || 'aliyun', args.platform))
-    if (!user) return null
+    const matches = users.filter((u: any) => u?.user_id && u?.access_token && driveToolPlatformMatches(u.tokenfrom || 'aliyun', args.platform))
+    if (matches.length !== 1) return null
+    const user = matches[0]
     const driveId = user.tokenfrom === 'aliyun'
       ? (user.resource_drive_id || user.backup_drive_id || user.default_drive_id)
       : driveToolDriveIdForPlatform(user.tokenfrom || '', user.default_drive_id)
@@ -311,7 +446,11 @@ export function useAISearchChat() {
       const platform = user?.tokenfrom || 'aliyun'
       if (!user?.user_id || !user?.access_token || !shouldUsePlatform(platform)) continue
       const name = user.nick_name || user.user_name || user.name || user.user_id
-      const add = (driveId: string, rootId: string, suffix: string) => { if (driveId) targets.push({ userId: user.user_id, driveId, rootId, name: `${name}${suffix}` }) }
+      const add = (driveId: string, rootId: string, suffix: string) => {
+        if (driveId && !targets.some(target => target.userId === user.user_id && target.driveId === driveId)) {
+          targets.push({ userId: user.user_id, driveId, rootId, name: `${name}${suffix}` })
+        }
+      }
       if (platform === 'aliyun') {
         add(user.resource_drive_id, 'resource_root', ' / 资源盘')
         add(user.backup_drive_id, 'backup_root', ' / 备份盘')
@@ -326,6 +465,40 @@ export function useAISearchChat() {
         targets.push({ userId: connection.id, driveId: `webdav:${connection.id}`, rootId: '/', name: `${connection.name} / WebDAV` })
       }
     }
+    return targets
+  }
+
+  async function buildSelectedDriveTargetsForTool(selectedTargets: SelectedDriveTarget[]): Promise<DuplicateDriveTarget[]> {
+    const users = await UserDAL.GetUserListFromDB()
+    const targets: DuplicateDriveTarget[] = []
+    for (const selected of selectedTargets) {
+      const user = users.find(item => item?.user_id === selected.userId && item?.access_token)
+      if (!user || !driveToolPlatformMatches(user.tokenfrom || 'aliyun', selected.platform)) throw new Error('所选网盘账号已失效，请重新选择')
+      const driveId = normalizeDriveToolDriveId(selected.driveId)
+      const validDriveIds = user.tokenfrom === 'aliyun'
+        ? [user.default_drive_id, user.resource_drive_id, user.backup_drive_id]
+        : [driveToolDriveIdForPlatform(user.tokenfrom || '', user.default_drive_id)]
+      if (!validDriveIds.includes(driveId)) throw new Error('所选网盘目标无效，请重新选择')
+      const name = user.nick_name || user.user_name || user.name || user.user_id
+      if (!targets.some(target => target.userId === user.user_id && target.driveId === driveId)) {
+        targets.push({ userId: user.user_id, driveId, rootId: defaultRootForDrive(driveId), name })
+      }
+    }
+    if (!targets.length) throw new Error('请先选择要操作的网盘账号')
+    return targets
+  }
+
+  async function resolveScanTargets(platforms: string[] | undefined, selectedTargets: SelectedDriveTarget[]): Promise<DuplicateDriveTarget[]> {
+    if (selectedTargets.length) {
+      const targets = await buildSelectedDriveTargetsForTool(selectedTargets)
+      if (platforms?.length && targets.some(target => !platforms.some(platform => driveToolPlatformMatches(UserDAL.GetUserToken(target.userId)?.tokenfrom || '', platform)))) {
+        throw new Error('工具请求的平台与已选择网盘不一致，请重新选择网盘')
+      }
+      return targets
+    }
+    const targets = await buildDriveTargetsForTool(platforms)
+    const accountKeys = new Set(targets.filter(target => !target.driveId.startsWith('webdav:')).map(target => target.userId))
+    if (accountKeys.size > 1) throw new Error('存在多个已登录网盘账号，请先选择要操作的账号')
     return targets
   }
 
@@ -406,16 +579,42 @@ export function useAISearchChat() {
     const userMsgId = `${Date.now()}-u`
     const aiMsgId = `${Date.now()}-a`
 
+    messages.value = sanitizePersistedMessages(messages.value)
     messages.value = [...messages.value, { id: userMsgId, role: 'user', parts: [{ type: 'text', text: kw }] }]
     messages.value = [...messages.value, { id: aiMsgId, role: 'assistant', parts: [] }]
     loading.value = true
     saveCurrentHistory(messages.value)
     scrollBottom()
 
-    const selectedPlatforms = kw.match(/platforms:\s*([^。\n]+)/i)?.[1]?.split(',').map(item => item.trim()).filter(Boolean)
-    if (selectedPlatforms?.length) {
-      await rememberWorkspaceFact('preferred-drives', `用户最近选择操作的网盘：${selectedPlatforms.join('、')}。优先将它们作为后续网盘任务的候选范围，但仍需在涉及多网盘操作时征求确认。`, userMsgId).catch(() => null)
-      await refreshMemories()
+    const selectedDriveTargets = parseSelectedDriveTargets(kw)
+    const explicitPlatforms = inferExplicitPlatforms(kw)
+    const previousUserRequest = messages.value.slice(0, -2).reverse().find(message => message.role === 'user' && !parseSelectedDriveTargets((message.parts[0] as any)?.text || '').length)
+    const workflowIntentText = [String((previousUserRequest?.parts[0] as any)?.text || ''), kw].join('\n')
+    const storageAnalysisWorkflow = isStorageAnalysisRequest(workflowIntentText)
+    const largeFileWorkflow = !storageAnalysisWorkflow && isLargeFileRequest(workflowIntentText)
+    const duplicateFileWorkflow = !storageAnalysisWorkflow && !largeFileWorkflow && isDuplicateFileRequest(workflowIntentText)
+    const categorizeFilesWorkflow = !storageAnalysisWorkflow && !largeFileWorkflow && !duplicateFileWorkflow && isCategorizeFilesRequest(workflowIntentText)
+    const emptyDirectoryWorkflow = !storageAnalysisWorkflow && !largeFileWorkflow && !duplicateFileWorkflow && !categorizeFilesWorkflow && isEmptyDirectoryRequest(workflowIntentText)
+    const selectedReadOnlyWorkflow = selectedDriveTargets.length > 0 && (storageAnalysisWorkflow || largeFileWorkflow || duplicateFileWorkflow || categorizeFilesWorkflow || emptyDirectoryWorkflow)
+    const duplicateCardDeleteWorkflow = isDuplicateCardDeleteRequest(kw)
+    const trustedFileTargets = new Set<string>()
+    const fileTargetKey = (file: { userId?: string; driveId?: string; fileId?: string }) => `${file.userId || ''}\n${file.driveId || ''}\n${file.fileId || ''}`
+    const rememberTrustedFiles = (files: Array<{ userId?: string; driveId?: string; fileId?: string }>) => {
+      for (const file of files) if (file.userId && file.driveId && file.fileId) trustedFileTargets.add(fileTargetKey(file))
+    }
+    const isTrustedFileFromConversation = (file: { userId?: string; driveId?: string; fileId?: string }): boolean => {
+      const targetKey = fileTargetKey(file)
+      const containsTarget = (value: any): boolean => {
+        if (Array.isArray(value)) return value.some(containsTarget)
+        if (!value || typeof value !== 'object') return false
+        if (fileTargetKey(value) === targetKey) return true
+        return Object.values(value).some(containsTarget)
+      }
+      return messages.value.some(message => message.role === 'assistant' && message.parts.some(part => part.type !== 'text' && containsTarget(part)))
+    }
+    const validateFileTool = (files: Array<{ userId?: string; driveId?: string; fileId?: string }>, toolName: string): string | null => {
+      if (files.some(file => !trustedFileTargets.has(fileTargetKey(file)) && !isTrustedFileFromConversation(file))) return '目标文件不是搜索或扫描工具展示过的结果，已拒绝执行。请先搜索或扫描后再操作。'
+      return unsupportedFileToolMessage(files, toolName)
     }
 
     try {
@@ -424,7 +623,7 @@ export function useAISearchChat() {
         .filter(m => m.role === 'user' || m.role === 'assistant')
         .map(m => ({
           role: m.role as 'user' | 'assistant',
-          content: m.parts.filter(p => p.type === 'text').map(p => (p as any).text).join('\n'),
+          content: m.parts.filter(p => p.type === 'text' && (m.role !== 'assistant' || !isInternalAgentText((p as any).text || ''))).map(p => (p as any).text).join('\n'),
         }))
 
       let textPart: any = null
@@ -476,7 +675,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 - getBoxPlayerCapabilities: 查询已注册的 BoxPlayer 功能、工具和限制
 - openBoxPlayerModule: 打开已注册的 BoxPlayer 功能页面；只导航，不改变设置或数据
 - rememberPreference: 仅在用户明确要求记住时保存偏好到本机长期记忆
-- analyzeActiveDocument: 本机解析、索引并分析当前从网盘打开的文档；返回可引用的内容
+- analyzeActiveDocument: 本机解析并索引当前从网盘打开的文档；回答时最多将 5 个检索片段发送给已配置的 AI 模型，返回可引用的内容
 - getConnectedDriveCapabilities: 查询当前已登录网盘及各自支持的操作
 - listMediaAcquisitionTasks: 查询媒体获取 Agent 的任务队列、进度、候选资源和最近事件
 - listMediaAcquisitionTracking: 查询追更剧集、已播缺集、已获取集数和下次巡检时间
@@ -486,8 +685,10 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 ## 核心规则（必须遵守）
 1. 用户提到文件相关操作，必须调用对应工具，不能只回复文字
 2. 禁止在未调用工具的情况下编造文件名、大小等信息
-3. 多网盘场景必须先调用 listDrives：
-   - 用户要求整理/分析/查重时，先调用 listDrives
+3. 网盘范围选择：
+   - 用户未指定网盘，或明确要求多个网盘时，先调用 listDrives
+   - 用户明确指定单个平台时，调用 listDrives({ platforms: [平台名] })；仅有一个账号时直接使用返回的账号继续操作，多个账号时等待用户在选择器中选择
+   - 用户选择账号后，消息中的 selectedDriveTargets 是唯一允许使用的账号和 driveId；后续扫描必须使用这些目标，不能扩大到同平台其他账号
    - 用户要求清理重复文件时，提取消息中的 JSON 数组，直接调用 deleteFiles({ files: [...] })，先展示确认信息
    - listDrives 会在界面弹出网盘选择器，让用户勾选并点确定
    - 用户选择后你会收到类似"用户选择了: 阿里云盘(zxm)、百度网盘。platforms: aliyun,baidu"的消息，提取 platforms 列表传给工具
@@ -502,31 +703,38 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 4. 工具返回结果后，简要总结即可
 5. moveFiles、deleteFiles、organizeFiles、mediaOrganizeFiles、importMiaochuanToGuangya、importGuangyaMagnets 和 deleteDriveEmptyDirs 必须先展示确认信息
 6. 完全无关的问题可以正常简短回复
-7. 最多调用工具 5 次
+7. 不调用与当前问题无关的工具；大文件/存储任务不得调用 TMDB 或豆瓣电影工具
 
 ## 回复格式
 不要展示模型内部思考过程。需要调用工具时，先用一句简短的执行说明告知用户接下来要做什么；工具返回后用清晰结论、结果和可选后续操作回复。`,
         prompt: kw,
         tools: {
           listDrives: {
-            description: '列出用户所有已登录的网盘，让用户在界面中选择要操作的网盘',
-            inputSchema: z.object({}),
-            execute: async () => {
+            description: '列出已登录网盘；传 platforms 时只返回这些平台。多个账号时让用户在界面中选择。',
+            inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('可选的平台筛选，如 ["aliyun"]') }),
+            execute: async (args: any) => {
               const users = await UserDAL.GetUserListFromDB()
+	              const platforms = args.platforms?.length ? args.platforms : explicitPlatforms
 	              const drives: { userId: string; name: string; platform: string; driveId: string; capabilities: ProviderCapabilityManifest }[] = []
 	              for (const u of users) {
 	                if (!u?.user_id || !u?.access_token) continue
 	                const name = u.nick_name || u.user_name || u.name || u.user_id
 	                const platform = u.tokenfrom || 'aliyun'
+	                if (platforms.length && !platforms.some((requested: string) => driveToolPlatformMatches(platform, requested))) continue
 	                if (platform === 'aliyun') {
                   drives.push({ userId: u.user_id, name, platform, driveId: u.resource_drive_id || u.backup_drive_id || u.default_drive_id || '', capabilities: getProviderCapabilities(platform) })
                 } else {
                   drives.push({ userId: u.user_id, name, platform, driveId: driveToolDriveIdForPlatform(platform, u.default_drive_id), capabilities: getProviderCapabilities(platform) })
                 }
               }
-              appendPart(aiMsgId, { type: 'tool-listDrives', state: 'select', drives } as MessagePart)
-              scrollBottom()
-              return { count: drives.length, drives }
+              if (!drives.length) return { error: '没有找到符合条件的已登录网盘账号' }
+              if (drives.length > 1) {
+                appendPart(aiMsgId, { type: 'tool-listDrives', state: 'select', drives } as MessagePart)
+                scrollBottom()
+                return { awaitingSelection: true, count: drives.length, platforms }
+              }
+              const [drive] = drives
+              return { count: 1, selectedDrive: { userId: drive.userId, driveId: drive.driveId, platform: drive.platform, name: drive.name } }
             },
           },
 
@@ -652,7 +860,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
           },
 
           analyzeActiveDocument: {
-            description: '本机解析、索引并分析当前工作台上下文中的 PDF、DOCX、EPUB、TXT 或 Markdown 文档；只能基于检索到的文档内容回答',
+            description: '本机解析并索引当前工作台上下文中的 PDF、DOCX、EPUB、TXT 或 Markdown 文档；回答时最多将 5 个检索片段发送给已配置的 AI 模型，只能基于检索到的文档内容回答',
             inputSchema: z.object({ query: z.string().describe('对当前文档的分析问题，例如“概括核心内容和风险”') }),
             execute: async (args: any) => {
               const document = getActiveDocumentDetails()
@@ -694,6 +902,9 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             }),
             execute: async (args: any) => {
               const keyword = args.keyword
+              const requestedPlatforms = args.platforms?.length ? args.platforms : explicitPlatforms
+              const unsupported = unsupportedPlatformToolMessage(requestedPlatforms, 'searchMyFiles')
+              if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, {
                 type: 'tool-searchMyFiles',
                 state: 'running',
@@ -702,13 +913,15 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               scrollBottom()
 
               try {
-                const r = await searchAllDrives(keyword, { platforms: args.platforms, includeMediaServers: false })
+                const targets = selectedDriveTargets.length ? await buildSelectedDriveTargetsForTool(selectedDriveTargets) : []
+                const r = await searchAllDrives(keyword, { platforms: requestedPlatforms, targets, includeMediaServers: false })
                 const files: FileResult[] = r.slice(0, 30).map((f: GlobalSearchResult) => ({
                   name: f.name, ext: f.ext, size: f.size, isDir: f.isDir,
                   provider: f.provider, providerName: f.providerName,
                   driveId: f.drive_id, fileId: f.file_id,
                   parentFileId: f.parent_file_id, userId: f.user_id, source: f.source,
                 }))
+                rememberTrustedFiles(files)
                 updateToolPart(aiMsgId, 'tool-searchMyFiles', { keyword }, (part: any) => {
                   part.state = 'done'
                   part.output = { total: r.length, files }
@@ -844,7 +1057,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                 scrollBottom()
                 return { pending: false, error: 'no valid files' }
               }
-              const account = await getUserIdForPlatform('guangya')
+              const account = await getUserIdForPlatform('guangya', selectedDriveTargets)
               if (!account) {
                 appendPart(aiMsgId, { type: 'tool-miaochuan', state: 'error', error: '请先登录光鸭云盘' } as MessagePart)
                 scrollBottom()
@@ -854,7 +1067,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                 type: 'tool-miaochuan',
                 state: 'confirm',
                 input: {
-                  parentId: args.parentId || 'guangya_root',
+                  parentId: args.parentId || 'guangya_root', userId: account.userId,
                   files: parsed.files.map(file => ({ path: file.path, name: file.name, size: file.size, md5: file.md5, gcid: file.gcid }))
                 },
                 output: { total: parsed.files.length, report: parsed.report }
@@ -873,7 +1086,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               const files = args.files || []
               const format: DirectLinkFormat = args.format || 'aria2'
               if (!files.length) return { total: 0, success: 0, failed: 0, error: 'no files' }
-              const unsupported = unsupportedFileToolMessage(files, 'exportDirectLinks')
+              const unsupported = validateFileTool(files, 'exportDirectLinks')
               if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-directLinks', state: 'running', input: { files, format } } as MessagePart)
               scrollBottom()
@@ -908,7 +1121,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                   part.output = { total: result.total, success: result.success, failed: result.failed, text: result.text }
                 })
                 scrollBottom()
-                return { total: result.total, success: result.success, failed: result.failed, textPreview: result.text.slice(0, 4000) }
+                return { total: result.total, success: result.success, failed: result.failed, message: '直链已生成并仅显示在本地界面，不会发送给模型。' }
               } catch (e: any) {
                 updateToolPart(aiMsgId, 'tool-directLinks', {}, (part: any) => {
                   part.state = 'error'
@@ -932,7 +1145,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                 scrollBottom()
                 return { pending: false, error: 'no magnets' }
               }
-              const account = await getUserIdForPlatform('guangya')
+              const account = await getUserIdForPlatform('guangya', selectedDriveTargets)
               if (!account) {
                 appendPart(aiMsgId, { type: 'tool-guangyaMagnets', state: 'error', error: '请先登录光鸭云盘' } as MessagePart)
                 scrollBottom()
@@ -941,7 +1154,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               appendPart(aiMsgId, {
                 type: 'tool-guangyaMagnets',
                 state: 'confirm',
-                input: { text: args.text || '', parentId: args.parentId || 'guangya_root', magnets }
+                input: { text: args.text || '', parentId: args.parentId || 'guangya_root', userId: account.userId, magnets }
               } as MessagePart)
               scrollBottom()
               return { pending: true, total: magnets.length }
@@ -956,26 +1169,38 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               rootId: z.string().optional().describe('扫描根目录 ID；不传则使用该网盘根目录'),
             }),
             execute: async (args: any) => {
-              const target = await resolveDriveForTool(args)
-              if (!target) {
+              const targets = selectedDriveTargets.length
+                ? await buildSelectedDriveTargetsForTool(selectedDriveTargets)
+                : [await resolveDriveForTool(args, selectedDriveTargets)].filter((target): target is { userId: string; driveId: string; rootId: string } => !!target)
+              if (!targets.length) {
                 appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'error', error: '请先选择或登录要扫描的网盘' } as MessagePart)
                 scrollBottom()
                 return { error: 'no drive account' }
               }
-              const token = UserDAL.GetUserToken(target.userId)
-              const unsupported = unsupportedAgentToolMessage(getProviderCapabilities(token?.tokenfrom || (target.driveId.startsWith('webdav:') ? 'webdav' : '')), 'scanDriveEmptyDirs')
-              if (unsupported) return { error: unsupported }
-              appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'scanning', input: { rootId: target.rootId } } as MessagePart)
+              appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'scanning' } as MessagePart)
               scrollBottom()
               try {
-                const result = await scanDriveEmptyDirs(target.userId, target.driveId, target.rootId)
+                const emptyDirs: any[] = []
+                let scannedDirs = 0
+                const reports: string[] = []
+                for (const target of targets) {
+                  const token = UserDAL.GetUserToken(target.userId)
+                  const unsupported = unsupportedAgentToolMessage(getProviderCapabilities(token?.tokenfrom || (target.driveId.startsWith('webdav:') ? 'webdav' : '')), 'scanDriveEmptyDirs')
+                  if (unsupported) throw new Error(unsupported)
+                  const result = await scanDriveEmptyDirs(target.userId, target.driveId, target.rootId)
+                  if (result.failedDirs || result.truncated) throw new Error(result.errors.slice(0, 2).join('；') || '空目录扫描未完成，已拒绝将不完整结果用于删除')
+                  emptyDirs.push(...result.emptyDirs)
+                  scannedDirs += result.scannedDirs
+                  if (result.report) reports.push(result.report)
+                }
+                rememberTrustedFiles(emptyDirs)
                 updateToolPart(aiMsgId, 'tool-guangyaEmptyDirs', {}, (part: any) => {
                   part.state = 'done'
-                  part.input = { rootId: target.rootId, dirs: result.emptyDirs }
-                  part.output = { scannedDirs: result.scannedDirs, total: result.emptyDirs.length, report: result.report }
+                  part.input = { dirs: emptyDirs }
+                  part.output = { scannedDirs, total: emptyDirs.length, report: reports.join('\n') }
                 })
                 scrollBottom()
-                return { scannedDirs: result.scannedDirs, total: result.emptyDirs.length, dirs: result.emptyDirs.slice(0, 50) }
+                return { scannedDirs, total: emptyDirs.length, dirs: emptyDirs.slice(0, 50) }
               } catch (e: any) {
                 updateToolPart(aiMsgId, 'tool-guangyaEmptyDirs', {}, (part: any) => {
                   part.state = 'error'
@@ -994,7 +1219,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             execute: async (args: any) => {
               const dirs = args.dirs || []
               if (!dirs.length) return { pending: false, total: 0 }
-              const unsupported = unsupportedFileToolMessage(dirs, 'deleteDriveEmptyDirs')
+              const unsupported = validateFileTool(dirs, 'deleteDriveEmptyDirs')
               if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-guangyaEmptyDirs', state: 'confirm', input: { dirs } } as MessagePart)
               scrollBottom()
@@ -1019,9 +1244,9 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               appendPart(aiMsgId, { type: 'tool-importShare', state: 'parsing', input: { url, password: password || '' } } as MessagePart)
               scrollBottom()
               const platform = isQuark ? 'quark' : 'aliyun'
-              const account = await getUserIdForPlatform(platform)
+              const account = await getUserIdForPlatform(platform, selectedDriveTargets)
               if (!account) {
-                updateToolPart(aiMsgId, 'tool-importShare', { url }, (p: any) => { p.state = 'error'; p.error = `未登录${platform === 'quark' ? '夸克' : '阿里云'}盘` })
+                updateToolPart(aiMsgId, 'tool-importShare', { url }, (p: any) => { p.state = 'error'; p.error = `请先在网盘选择器中选择一个${platform === 'quark' ? '夸克' : '阿里云'}盘账号` })
                 scrollBottom()
                 return { error: 'no account' }
               }
@@ -1032,7 +1257,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                   if (!parsed.id) throw new Error('解析夸克分享链接失败')
                   shareId = parsed.id.replace('quark:', '')
                   const { apiQuarkShareToken } = await import('../../quark/share')
-                  shareToken = await apiQuarkShareToken(shareId, password || '')
+                  shareToken = await apiQuarkShareToken(shareId, password || '', account.userId)
                 } else {
                   shareId = url.split(/\.com\/s\/([\w]+)/)[1]
                   shareToken = await AliShare.ApiGetShareToken(shareId, password || '')
@@ -1041,8 +1266,9 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                 updateToolPart(aiMsgId, 'tool-importShare', { url }, (p: any) => { p.state = 'listing' })
                 scrollBottom()
                 const fileResp = isQuark
-                  ? await (await import('../../quark/share')).apiQuarkShareFileList(shareId, shareToken, 'root')
+                  ? await (await import('../../quark/share')).apiQuarkShareFileList(shareId, shareToken, 'root', account.userId)
                   : await AliShare.ApiShareFileList(shareId, shareToken, 'root')
+                if (fileResp?.next_marker) throw new Error('分享文件超过当前一次可安全导入的数量，请在网盘页面分批转存')
                 const files = fileResp?.items || []
                 if (!files.length) {
                   updateToolPart(aiMsgId, 'tool-importShare', { url }, (p: any) => { p.state = 'done'; p.output = { shareName: '', fileCount: 0, savedCount: 0, platform: platform === 'quark' ? '夸克网盘' : '阿里云盘' } })
@@ -1065,7 +1291,9 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
           }
         }
 
-        const result = await AliShare.ApiSaveShareFilesBatch(shareId, shareToken, account.userId, account.driveId, 'quark_root', fileIds)
+        const result = isQuark
+          ? await (await import('../../quark/share')).apiQuarkSaveShareFilesBatch(shareId, shareToken, account.userId, 'quark_root', fileIds)
+          : await AliShare.ApiSaveShareFilesBatch(shareId, shareToken, account.userId, account.driveId, 'root', fileIds)
                 updateToolPart(aiMsgId, 'tool-importShare', { url }, (p: any) => {
                   if (result === 'success') {
                     p.state = 'done'
@@ -1094,7 +1322,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             execute: async (args: any) => {
               const files = args.files || []
               if (!files.length) return { total: 0, success: 0 }
-              const unsupported = unsupportedFileToolMessage(files, 'downloadFiles')
+              const unsupported = validateFileTool(files, 'downloadFiles')
               if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-downloadFiles', state: 'running', input: { files } } as MessagePart)
               scrollBottom()
@@ -1122,15 +1350,18 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 	              appendPart(aiMsgId, { type: 'tool-findDuplicates', state: 'scanning' } as MessagePart)
 	              scrollBottom()
 	              try {
-	                const targets = await buildDriveTargetsForTool(args.platforms)
+	                const requestedPlatforms = args.platforms?.length ? args.platforms : explicitPlatforms
+	                const targets = await resolveScanTargets(requestedPlatforms, selectedDriveTargets)
 	                const targetUnsupported = unsupportedDriveTargetToolMessage(targets, 'findDuplicates')
 	                if (targetUnsupported) throw new Error(targetUnsupported)
 	                const data = await scanDriveDuplicates(targets, (args.mode || 'helperName') as DuplicateScanMode)
+	                if (data.failedDirs || data.truncated) throw new Error(data.errors.slice(0, 2).join('；') || '重复文件扫描未完成，已拒绝使用不完整结果')
                 const groups = data.groups.slice(0, 20).map(group => ({
                   name: group.label,
                   size: group.files[0]?.size || 0,
                   files: group.files.map(file => ({ name: file.name, ext: file.name.includes('.') ? file.name.split('.').pop() || '' : '', size: file.size, isDir: false, provider: file.driveId, providerName: file.path.split('/')[0] || file.driveId, driveId: file.driveId, fileId: file.fileId, parentFileId: file.parentFileId, userId: file.userId, source: file.path }))
                 }))
+                rememberTrustedFiles(groups.flatMap(group => group.files))
                 updateToolPart(aiMsgId, 'tool-findDuplicates', {}, (p: any) => { p.state = 'done'; p.output = { totalFiles: data.scannedFiles, groups } })
                 scrollBottom()
                 return { totalFiles: data.scannedFiles, groupCount: groups.length, report: data.report }
@@ -1155,11 +1386,13 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 	              appendPart(aiMsgId, { type: 'tool-analyzeStorage', state: 'scanning' } as MessagePart)
 	              scrollBottom()
 	              try {
-	                const targets = await buildDriveTargetsForTool(args.platforms)
+	                const requestedPlatforms = args.platforms?.length ? args.platforms : explicitPlatforms
+	                const targets = await resolveScanTargets(requestedPlatforms, selectedDriveTargets)
 	                const targetUnsupported = unsupportedDriveTargetToolMessage(targets, 'scanDriveLargeFiles')
 	                if (targetUnsupported) throw new Error(targetUnsupported)
-	                const data = await scanDriveLargeFiles(targets, (args.mode || 'size1000') as LargeFileScanMode, { customSizeMB: args.customSizeMB || 100 })
-	                const topLarge: FileResult[] = data.files.slice(0, 30).map(file => ({
+	                const data = await scanDriveLargeFiles(targets, (args.mode || 'size1000') as LargeFileScanMode, { customSizeMB: args.customSizeMB ?? 100 })
+	                if (data.failedDirs || data.truncated) throw new Error(data.errors.slice(0, 2).join('；') || '扫描未完成，已拒绝使用不完整结果')
+                const topLarge: FileResult[] = data.files.slice(0, 30).map(file => ({
 	                  name: file.name,
 	                  ext: file.ext,
 	                  size: file.size,
@@ -1170,10 +1403,13 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 	                  fileId: file.fileId,
 	                  parentFileId: file.parentFileId,
 	                  userId: file.userId,
-	                  source: file.path
-	                }))
+                  source: file.path
+                }))
+                rememberTrustedFiles(topLarge)
 	                updateToolPart(aiMsgId, 'tool-analyzeStorage', {}, (p: any) => {
 	                  p.state = 'done'
+	                  p.title = '大文件扫描'
+	                  p.report = data.report
 	                  p.output = { drives: [{ name: '大文件扫描', totalSize: data.files.reduce((sum, file) => sum + file.size, 0), fileCount: data.files.length, topLarge }], oldestFiles: [], unusedFiles: [] }
 	                })
 	                scrollBottom()
@@ -1190,14 +1426,15 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             description: '分析存储空间使用情况，platforms 参数指定要分析的网盘',
             inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表') }),
             execute: async (args: any) => {
-              const unsupported = unsupportedPlatformToolMessage(args.platforms, 'analyzeStorage')
+	              const requestedPlatforms = args.platforms?.length ? args.platforms : explicitPlatforms
+	              const unsupported = unsupportedPlatformToolMessage(requestedPlatforms, 'analyzeStorage')
               if (unsupported) return { error: unsupported }
-              const connectedUnsupported = await unsupportedConnectedPlatformToolMessage(args.platforms, 'analyzeStorage')
+	              const connectedUnsupported = selectedDriveTargets.length ? null : await unsupportedConnectedPlatformToolMessage(requestedPlatforms, 'analyzeStorage')
               if (connectedUnsupported) return { error: connectedUnsupported }
               appendPart(aiMsgId, { type: 'tool-analyzeStorage', state: 'scanning' } as MessagePart)
               scrollBottom()
               try {
-                const allFiles = await scanAllDrives(args.platforms)
+	                const allFiles = await scanAllDrives(requestedPlatforms, selectedDriveTargets)
                 const driveMap = new Map<string, { totalSize: number; count: number; files: FileResult[] }>()
                 for (const f of allFiles) {
                   const key = f.providerName
@@ -1207,6 +1444,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
                   d.files.push({ name: f.name, ext: f.ext, size: f.size, isDir: f.isDir, provider: f.provider, providerName: f.providerName, driveId: f.drive_id, fileId: f.file_id, parentFileId: f.parent_file_id, userId: f.user_id, source: f.source })
                 }
                 const drives = Array.from(driveMap.entries()).map(([name, d]) => ({ name, totalSize: d.totalSize, fileCount: d.count, topLarge: [...d.files].sort((a, b) => b.size - a.size).slice(0, 10) }))
+                rememberTrustedFiles(drives.flatMap(drive => drive.topLarge))
                 const oldestFiles: FileResult[] = []
                 updateToolPart(aiMsgId, 'tool-analyzeStorage', {}, (p: any) => { p.state = 'done'; p.output = { drives, oldestFiles, unusedFiles: [] } })
                 scrollBottom()
@@ -1223,14 +1461,15 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             description: '分析文件类型分布，platforms 参数指定要分类的网盘',
             inputSchema: z.object({ platforms: z.array(z.string()).optional().describe('网盘平台名列表') }),
             execute: async (args: any) => {
-              const unsupported = unsupportedPlatformToolMessage(args.platforms, 'categorizeFiles')
+	              const requestedPlatforms = args.platforms?.length ? args.platforms : explicitPlatforms
+	              const unsupported = unsupportedPlatformToolMessage(requestedPlatforms, 'categorizeFiles')
               if (unsupported) return { error: unsupported }
-              const connectedUnsupported = await unsupportedConnectedPlatformToolMessage(args.platforms, 'categorizeFiles')
+	              const connectedUnsupported = selectedDriveTargets.length ? null : await unsupportedConnectedPlatformToolMessage(requestedPlatforms, 'categorizeFiles')
               if (connectedUnsupported) return { error: connectedUnsupported }
               appendPart(aiMsgId, { type: 'tool-categorizeFiles', state: 'planning' } as MessagePart)
               scrollBottom()
               try {
-                const allFiles = await scanAllDrives(args.platforms)
+	                const allFiles = await scanAllDrives(requestedPlatforms, selectedDriveTargets)
                 const catMap: Record<string, { exts: string[]; count: number; size: number }> = {
                   '视频': { exts: ['mp4','mkv','avi','mov','wmv','flv','webm'], count: 0, size: 0 },
                   '文档': { exts: ['pdf','doc','docx','txt','md','xls','xlsx','ppt','pptx'], count: 0, size: 0 },
@@ -1267,7 +1506,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 	            execute: async (args: any) => {
               const { files, targetDir } = args
               if (!files?.length) return { total: 0, success: 0 }
-              const unsupported = unsupportedFileToolMessage(files, 'moveFiles')
+              const unsupported = validateFileTool(files, 'moveFiles')
               if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-moveFiles', state: 'confirm', input: { files, targetDir } } as MessagePart)
               scrollBottom()
@@ -1285,7 +1524,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 	            execute: async (args: any) => {
 	              const files = args.files || []
 	              if (!files.length) return { total: 0, success: 0 }
-                const unsupported = unsupportedFileToolMessage(files, 'organizeFiles')
+                const unsupported = validateFileTool(files, 'organizeFiles')
                 if (unsupported) return { error: unsupported }
 	              const targetDir = args.targetDir || files[0]?.parentFileId || ''
 	              if (!targetDir) return { pending: false, error: 'missing targetDir' }
@@ -1304,7 +1543,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
 	            execute: async (args: any) => {
 	              const files = args.files || []
 	              if (!files.length || !args.rootParentId) return { total: 0, success: 0, error: 'missing files or rootParentId' }
-                const unsupported = unsupportedFileToolMessage(files, 'mediaOrganizeFiles')
+                const unsupported = validateFileTool(files, 'mediaOrganizeFiles')
                 if (unsupported) return { error: unsupported }
 	              const plans = buildMediaOrganizePlan(files.map((file: any) => ({ userId: file.userId, driveId: file.driveId, fileId: file.fileId, name: file.name, isDir: !!file.isDir })), args.rootParentId)
 	              if (!plans.length) return { pending: false, total: 0, error: '没有识别到可整理的媒体文件或文件夹' }
@@ -1460,13 +1699,36 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             execute: async (args: any) => {
               const { files } = args
               if (!files?.length) return { total: 0, success: 0 }
-              const unsupported = unsupportedFileToolMessage(files, 'deleteFiles')
+              const unsupported = validateFileTool(files, 'deleteFiles')
               if (unsupported) return { error: unsupported }
               appendPart(aiMsgId, { type: 'tool-deleteFiles', state: 'confirm', input: { files } } as MessagePart)
               scrollBottom()
               return { pending: true }
             },
           },
+        },
+        toolAllowlist: storageAnalysisWorkflow
+          ? (selectedReadOnlyWorkflow ? ['analyzeStorage'] : ['listDrives', 'analyzeStorage'])
+          : largeFileWorkflow
+            ? (selectedReadOnlyWorkflow ? ['scanDriveLargeFiles'] : ['listDrives', 'scanDriveLargeFiles'])
+            : duplicateFileWorkflow
+              ? (selectedReadOnlyWorkflow ? ['findDuplicates'] : ['listDrives', 'findDuplicates'])
+              : categorizeFilesWorkflow
+                ? (selectedReadOnlyWorkflow ? ['categorizeFiles'] : ['listDrives', 'categorizeFiles'])
+                : emptyDirectoryWorkflow
+                  ? (selectedReadOnlyWorkflow ? ['scanDriveEmptyDirs'] : ['listDrives', 'scanDriveEmptyDirs'])
+                  : duplicateCardDeleteWorkflow
+                    ? ['deleteFiles']
+                    : undefined,
+        requireToolCall: storageAnalysisWorkflow || largeFileWorkflow || duplicateFileWorkflow || categorizeFilesWorkflow || emptyDirectoryWorkflow || duplicateCardDeleteWorkflow,
+        maxTurns: selectedReadOnlyWorkflow || duplicateCardDeleteWorkflow ? 2 : 8,
+        maxToolCalls: selectedReadOnlyWorkflow || duplicateCardDeleteWorkflow ? 1 : 8,
+        shouldStopAfterToolResult: ({ toolName, result }) => {
+          const details = (result as any)?.details || result
+          if (toolName === 'listDrives' && details?.awaitingSelection) return '等待用户选择网盘账号'
+          if (['analyzeStorage', 'scanDriveLargeFiles', 'categorizeFiles', 'findDuplicates', 'scanDriveEmptyDirs'].includes(toolName)) return '扫描已结束'
+          if (toolName === 'deleteFiles' && details?.pending) return '等待用户确认删除'
+          return undefined
         },
         signal: abortController?.signal,
         requestApproval: async request => {
@@ -1476,19 +1738,30 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
         },
         onEvent: event => {
           if (event.type === 'text_delta') {
+            if (textPart?.blocked) return
             if (!textPart) {
               textPart = { type: 'text', text: '' }
               appendPart(aiMsgId, textPart)
             }
             textPart.text += event.text
+            if (isInternalAgentText(textPart.text)) {
+              textPart.blocked = true
+              removePart(aiMsgId, textPart)
+              abortController?.abort()
+            }
             scrollBottom()
           }
           if (event.type === 'error') {
+            if (textPart?.blocked) return
             if (!textPart) {
               textPart = { type: 'text', text: '' }
               appendPart(aiMsgId, textPart)
             }
-            const errorMessage = isBoxPlayerCloudProvider(config.providerName) ? mapBoxPlayerCloudAIError(event.message) : event.message
+            const errorMessage = event.message === 'Maximum agent turns reached.'
+              ? '任务步骤超出限制，已停止继续执行。'
+              : event.message === 'Repeated tool call limit reached.'
+                ? '检测到重复工具调用，已停止继续执行。'
+                : isBoxPlayerCloudProvider(config.providerName) ? mapBoxPlayerCloudAIError(event.message) : event.message
             textPart.text += `${textPart.text ? '\n\n' : ''}❌ ${errorMessage || 'AI 请求失败'}`
             scrollBottom()
           }
@@ -1532,8 +1805,8 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
     scrollBottom()
     try {
       if (part.type === 'tool-miaochuan') {
-        const account = await getUserIdForPlatform('guangya')
-        if (!account) throw new Error('请先登录光鸭云盘')
+        const account = part.input?.userId ? { userId: part.input.userId, driveId: 'guangya' } : null
+        if (!account || UserDAL.GetUserToken(account.userId)?.tokenfrom !== 'guangya') throw new Error('所选光鸭云盘账号已失效，请重新选择')
         const files = part.input?.files || []
         const result = await apiGuangyaImportMiaochuan(account.userId, part.input?.parentId || 'guangya_root', files)
         part.state = 'done'
@@ -1549,8 +1822,8 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
         return
       }
       if (part.type === 'tool-guangyaMagnets') {
-        const account = await getUserIdForPlatform('guangya')
-        if (!account) throw new Error('请先登录光鸭云盘')
+        const account = part.input?.userId ? { userId: part.input.userId, driveId: 'guangya' } : null
+        if (!account || UserDAL.GetUserToken(account.userId)?.tokenfrom !== 'guangya') throw new Error('所选光鸭云盘账号已失效，请重新选择')
         const result = await importGuangyaMagnets(account.userId, part.input?.parentId || 'guangya_root', part.input?.text || '')
         part.state = 'done'
         part.output = { total: result.total, success: result.success, failed: result.failed, report: result.report }
@@ -1620,10 +1893,6 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
     }
     scrollBottom()
     saveCurrentHistory(messages.value)
-    if (part.state === 'done' && part.output?.success) {
-      await rememberWorkspaceFact('last-successful-operation', `最近成功操作：${part.type}，${part.output.report || `成功 ${part.output.success}/${part.output.total || part.output.success}`}`)
-      await refreshMemories()
-    }
   }
 
   function cancelAction(msgId: string, partIndex: number) {

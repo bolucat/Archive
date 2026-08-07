@@ -74,6 +74,7 @@ export interface IPageVideoXBT {
 
 export interface IPageVideoPlaylistEntry {
   user_id: string
+  tokenfrom?: string
   drive_id: string
   file_id: string
   parent_file_id: string
@@ -88,6 +89,7 @@ export interface IPageVideoPlaylistEntry {
 
 export interface IPageVideo {
   user_id: string
+  tokenfrom?: string
   drive_id: string
   file_id: string
   parent_file_id: string
@@ -122,6 +124,7 @@ export interface IPageVideo {
 
 export interface IPageMusicTrack {
   user_id: string
+  tokenfrom?: string
   drive_id: string
   file_id: string
   parent_file_id: string
@@ -143,6 +146,7 @@ export interface IPageMusicTrack {
 
 export interface IPageMusic {
   user_id: string
+  tokenfrom?: string
   drive_id: string
   file_id: string
   parent_file_id: string

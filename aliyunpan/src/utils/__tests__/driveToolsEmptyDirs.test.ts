@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { deleteDriveEmptyDirs } from '../drive-tools/emptyDirs'
+import { deleteDriveEmptyDirs, scanDriveEmptyDirs } from '../drive-tools/emptyDirs'
 
 vi.mock('../../aliapi/filecmd', () => ({
   default: {
@@ -11,6 +11,13 @@ vi.mock('../webdavClient', () => ({
   deleteWebDavPath: vi.fn(async () => undefined),
   getWebDavConnection: vi.fn(() => ({ id: 'dav' })),
   getWebDavConnectionId: vi.fn(() => 'dav')
+}))
+
+vi.mock('../drive-tools/directLinks', () => ({
+  listDriveToolChildren: vi.fn(async (_userId: string, _driveId: string, fileId: string) => {
+    if (fileId === 'root') return [{ file_id: 'denied', parent_file_id: 'root', drive_id: 'guangya', name: 'denied', isDir: true }]
+    throw new Error('permission denied')
+  })
 }))
 
 describe('drive-tools empty dirs', () => {
@@ -40,5 +47,10 @@ describe('drive-tools empty dirs', () => {
     ])
     expect(result).toMatchObject({ total: 1, success: 0, failed: 1 })
     expect(result.deletedFileKeys).toEqual([])
+  })
+
+  it('does not classify an unreadable child directory as empty', async () => {
+    const result = await scanDriveEmptyDirs('u', 'guangya', 'root')
+    expect(result).toMatchObject({ emptyDirs: [], failedDirs: 1, errors: ['denied：permission denied'] })
   })
 })

@@ -35,6 +35,8 @@ export interface DuplicateScanResult {
   groups: DuplicateGroup[]
   scannedDirs: number
   scannedFiles: number
+  failedDirs: number
+  errors: string[]
   truncated: boolean
   report: string
 }
@@ -93,7 +95,9 @@ export const scanDriveDuplicates = async (
   const candidates = new Map<string, { label: string; files: DuplicateFileItem[] }>()
   let scannedDirs = 0
   let scannedFiles = 0
+  let failedDirs = 0
   let truncated = false
+  const errors: string[] = []
 
   for (const target of targets) {
     let targetDirs = 0
@@ -107,7 +111,14 @@ export const scanDriveDuplicates = async (
       const current = queue.shift()!
       scannedDirs += 1
       targetDirs += 1
-      const children = await listDriveToolChildren(target.userId, target.driveId, current.fileId).catch(() => [])
+      let children: IAliGetFileModel[]
+      try {
+        children = await listDriveToolChildren(target.userId, target.driveId, current.fileId)
+      } catch (error: any) {
+        failedDirs += 1
+        errors.push(`${current.path || target.name}：${error?.message || '读取目录失败'}`)
+        continue
+      }
       for (const item of children) {
         const itemPath = current.path ? `${current.path}/${item.name}` : item.name
         if (item.isDir) {
@@ -116,6 +127,10 @@ export const scanDriveDuplicates = async (
         }
         scannedFiles += 1
         targetFiles += 1
+        if (targetFiles >= maxFiles) {
+          truncated = true
+          break
+        }
         let key = ''
         let label = ''
         if (mode === 'helperName') {
@@ -136,7 +151,7 @@ export const scanDriveDuplicates = async (
   }
 
   const groups = Array.from(candidates.entries())
-    .filter(([, entry]) => mode === 'helperName' ? entry.files.length > 0 : entry.files.length > 1)
+    .filter(([, entry]) => entry.files.length > 1)
     .map(([key, entry]) => ({ key, label: mode === 'helperName' ? entry.label : `${entry.files[0].sizeStr || entry.files[0].size} - ${entry.files[0].contentHash}`, files: entry.files }))
     .sort((a, b) => b.files.reduce((sum, item) => sum + item.size, 0) - a.files.reduce((sum, item) => sum + item.size, 0))
 
@@ -144,8 +159,10 @@ export const scanDriveDuplicates = async (
     groups,
     scannedDirs,
     scannedFiles,
+    failedDirs,
+    errors,
     truncated,
-    report: `重复项扫描完成：找到 ${groups.length} 组，${groups.reduce((sum, group) => sum + group.files.length, 0)} 个候选文件；已扫 ${scannedDirs} 个目录、${scannedFiles} 个文件${truncated ? '，结果可能未扫全' : ''}`
+    report: `重复项扫描完成：找到 ${groups.length} 组，${groups.reduce((sum, group) => sum + group.files.length, 0)} 个候选文件；已扫 ${scannedDirs} 个目录、${scannedFiles} 个文件${failedDirs ? `，${failedDirs} 个目录读取失败` : ''}${truncated ? '，结果可能未扫全' : ''}`
   }
 }
 

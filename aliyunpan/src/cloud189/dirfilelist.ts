@@ -86,7 +86,7 @@ const signedForm = async (user_id: string, action: string, form: Record<string, 
   return data
 }
 
-export const apiCloud189FileList = async (user_id: string, parentId: string | number, size = 1000, pageNum = 1): Promise<Cloud189FileItem[]> => {
+export const apiCloud189FileList = async (user_id: string, parentId: string | number, size = 1000, pageNum = 1, strict = false): Promise<Cloud189FileItem[]> => {
   try {
     const data = await signedGet(user_id, 'listFiles.action', {
       folderId: apiParentId(parentId),
@@ -105,6 +105,7 @@ export const apiCloud189FileList = async (user_id: string, parentId: string | nu
     return [...folders, ...files]
   } catch (error: any) {
     message.error(error?.message || '获取天翼云盘文件列表失败')
+    if (strict) throw error
     return []
   }
 }

@@ -55,7 +55,7 @@ export const executeMediaOrganizePlan = async (plans: MediaOrganizePlanItem[], r
     let failed = false
     if (item.driveId.startsWith('webdav:')) continue
     for (const segment of item.targetSegments) {
-      const existing = await listDriveToolChildren(item.userId, item.driveId, parentId).catch(() => []).then(items => items.find(child => child.isDir && child.name === segment))
+      const existing = (await listDriveToolChildren(item.userId, item.driveId, parentId)).find(child => child.isDir && child.name === segment)
       if (existing) {
         parentId = existing.file_id
         continue

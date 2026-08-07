@@ -24,6 +24,11 @@ export interface GlobalSearchResult {
   path?: string
 }
 
+export interface GlobalSearchDriveTarget {
+  userId: string
+  driveId: string
+}
+
 function cloudResult(
   item: IAliGetFileModel,
   provider: string,
@@ -95,18 +100,19 @@ function userName(token: ITokenInfo): string {
   return token.nick_name || token.user_name || token.name || token.user_id
 }
 
-async function searchAliyun(token: ITokenInfo, keyword: string): Promise<GlobalSearchResult[]> {
+async function searchAliyun(token: ITokenInfo, keyword: string, allowedDriveIds: string[] = []): Promise<GlobalSearchResult[]> {
   const { default: AliDirFileList } = await import('../aliapi/dirfilelist')
   const drives: string[] = []
   if (token.resource_drive_id) drives.push(token.resource_drive_id)
   if (token.backup_drive_id && token.backup_drive_id !== token.resource_drive_id) drives.push(token.backup_drive_id)
   if (!drives.length && token.default_drive_id) drives.push(token.default_drive_id)
+  const selectedDrives = allowedDriveIds.length ? drives.filter(driveId => allowedDriveIds.includes(driveId)) : drives
 
   const label = driveLabel(token)
   const uname = userName(token)
 
   const results: GlobalSearchResult[] = []
-  for (const driveId of drives) {
+  for (const driveId of selectedDrives) {
     try {
       const items = await AliDirFileList.ApiSearchByName(token.user_id, driveId, keyword, 30)
       for (const item of items) {
@@ -275,7 +281,7 @@ function isSkipProvider(token: ITokenInfo): boolean {
   return token.tokenfrom === '139' || token.tokenfrom === '189' || token.tokenfrom === 'pikpak'
 }
 
-function dispatchSearch(token: ITokenInfo, keyword: string): Promise<GlobalSearchResult[]> {
+function dispatchSearch(token: ITokenInfo, keyword: string, allowedDriveIds: string[] = []): Promise<GlobalSearchResult[]> {
   const tf = token.tokenfrom
   if (tf === 'cloud123') return searchCloud123(token, keyword)
   if (tf === '115') return searchCloud115(token, keyword)
@@ -286,11 +292,11 @@ function dispatchSearch(token: ITokenInfo, keyword: string): Promise<GlobalSearc
   if (tf === 'box') return searchBox(token, keyword)
   if (tf === 'guangya') return searchGuangya(token, keyword)
   if (tf === 'google') return searchGoogle(token, keyword)
-  if (tf === 'aliyun' || !tf || tf === 'unknown') return searchAliyun(token, keyword)
+  if (tf === 'aliyun' || !tf || tf === 'unknown') return searchAliyun(token, keyword, allowedDriveIds)
   return Promise.resolve([])
 }
 
-export async function searchAllDrives(keyword: string, opts?: { platforms?: string[]; includeMediaServers?: boolean }): Promise<GlobalSearchResult[]> {
+export async function searchAllDrives(keyword: string, opts?: { platforms?: string[]; targets?: GlobalSearchDriveTarget[]; includeMediaServers?: boolean }): Promise<GlobalSearchResult[]> {
   if (!keyword || keyword.trim().length < 2) return []
 
   const k = keyword.trim()
@@ -308,7 +314,9 @@ export async function searchAllDrives(keyword: string, opts?: { platforms?: stri
     if (!token.access_token || !token.user_id) continue
     if (isSkipProvider(token)) continue
     if (opts?.platforms?.length && !opts.platforms.includes(token.tokenfrom || 'aliyun')) continue
-    promises.push(dispatchSearch(token, k))
+    const selectedTargets = opts?.targets?.filter(target => target.userId === token.user_id) || []
+    if (opts?.targets?.length && !selectedTargets.length) continue
+    promises.push(dispatchSearch(token, k, selectedTargets.map(target => target.driveId)))
   }
 
   if (opts?.includeMediaServers !== false) {

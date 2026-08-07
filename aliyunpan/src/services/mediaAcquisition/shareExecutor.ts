@@ -13,6 +13,7 @@ import { cleanupFailedMediaAcquisitionStagingTarget, ensureMediaAcquisitionStagi
 
 type ParsedShare = { platform: 'aliyun' | 'quark' | 'guangya' | 'pikpak'; shareId: string; password: string }
 type PreparedShareImport = { importTo: (target: MediaAcquisitionRunView['target']) => Promise<string> }
+const SHARE_IMPORT_BATCH_SIZE = 100
 
 export function parseMediaAcquisitionShare(locator: string, password = ''): ParsedShare | null {
   const quark = parseQuarkShareLink(locator)
@@ -99,7 +100,7 @@ async function prepareShareImport(run: MediaAcquisitionRunView, parsed: ParsedSh
     const files = listing.items || []
     if (!files.length) throw new Error('分享中没有可导入的文件')
     await recordShareSnapshot(run, parsed.platform, files)
-    return { importTo: target => AliShare.ApiSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetDriveId, target.targetParentFileId, files.map(file => file.file_id)) }
+    return { importTo: target => importShareFilesInBatches(files, fileIds => AliShare.ApiSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetDriveId, target.targetParentFileId, fileIds)) }
   }
   if (parsed.platform === 'quark') {
     const session = await refreshQuarkTargetSession(run.target.targetUserId)
@@ -109,27 +110,40 @@ async function prepareShareImport(run: MediaAcquisitionRunView, parsed: ParsedSh
     if (!token || token.startsWith('，')) throw new Error(token?.replace(/^，/, '') || '获取夸克分享凭证失败')
     const listing = await apiQuarkShareFileList(parsed.shareId, token, 'root', run.target.targetUserId)
     if (listing.error) throw new Error(listing.error)
+    if (listing.next_marker) throw new Error(`获取夸克分享文件失败：${listing.next_marker}`)
     const files = listing.items || []
     if (!files.length) throw new Error('分享中没有可导入的文件')
     await recordShareSnapshot(run, parsed.platform, files)
-    return { importTo: target => apiQuarkSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetParentFileId, files.map(file => file.file_id)) }
+    return { importTo: target => importShareFilesInBatches(files, fileIds => apiQuarkSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetParentFileId, fileIds)) }
   }
   if (parsed.platform === 'guangya') {
     const token = await apiGuangyaShareToken(parsed.shareId, parsed.password)
     if (!token || token.startsWith('，')) throw new Error(token?.replace(/^，/, '') || '获取光鸭云盘分享凭证失败')
     const listing = await apiGuangyaShareFileList(parsed.shareId, token, 'root')
     if (listing.error) throw new Error(listing.error)
+    if (listing.next_marker) throw new Error(`获取光鸭云盘分享文件失败：${listing.next_marker}`)
     if (!listing.items.length) throw new Error('分享中没有可导入的文件')
     await recordShareSnapshot(run, parsed.platform, listing.items)
-    return { importTo: target => apiGuangyaSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetParentFileId, listing.items.map(file => file.file_id)) }
+    return { importTo: target => importShareFilesInBatches(listing.items, fileIds => apiGuangyaSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetParentFileId, fileIds)) }
   }
   const token = await apiPikPakShareToken(parsed.shareId, parsed.password)
   if (!token || token.startsWith('，')) throw new Error(token?.replace(/^，/, '') || '获取 PikPak 分享凭证失败')
   const listing = await apiPikPakShareFileList(parsed.shareId, token, 'root')
   if (listing.error) throw new Error(listing.error)
+  if (listing.next_marker) throw new Error(`获取 PikPak 分享文件失败：${listing.next_marker}`)
   if (!listing.items.length) throw new Error('分享中没有可导入的文件')
   await recordShareSnapshot(run, parsed.platform, listing.items)
-  return { importTo: target => apiPikPakSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetParentFileId, listing.items.map(file => file.file_id)) }
+  return { importTo: target => importShareFilesInBatches(listing.items, fileIds => apiPikPakSaveShareFilesBatch(parsed.shareId, token, target.targetUserId, target.targetParentFileId, fileIds)) }
+}
+
+async function importShareFilesInBatches(files: Array<{ file_id: string }>, save: (fileIds: string[]) => Promise<string>): Promise<string> {
+  let asyncSubmitted = false
+  for (let offset = 0; offset < files.length; offset += SHARE_IMPORT_BATCH_SIZE) {
+    const result = await save(files.slice(offset, offset + SHARE_IMPORT_BATCH_SIZE).map(file => file.file_id))
+    if (result !== 'success' && result !== 'async') return result || '分享转存失败'
+    asyncSubmitted ||= result === 'async'
+  }
+  return asyncSubmitted ? 'async' : 'success'
 }
 
 async function refreshQuarkTargetSession(userId: string): Promise<'refreshed' | 'different-account' | 'unavailable'> {

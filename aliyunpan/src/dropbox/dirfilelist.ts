@@ -37,10 +37,11 @@ export const getDropboxToken = async (user_id: string) => {
   return getProviderTokenForUser(user_id, 'dropbox')
 }
 
-export const dropboxRpc = async <T>(user_id: string, endpoint: string, body: any, fallback: string): Promise<T | null> => {
+export const dropboxRpc = async <T>(user_id: string, endpoint: string, body: any, fallback: string, strict = false): Promise<T | null> => {
   const token = await getDropboxToken(user_id)
   if (!token?.access_token) {
     message.error('未登录 Dropbox')
+    if (strict) throw new Error('未登录 Dropbox')
     return null
   }
   const resp = await fetch(`${DROPBOX_API_HOST}${endpoint}`, {
@@ -54,6 +55,7 @@ export const dropboxRpc = async <T>(user_id: string, endpoint: string, body: any
   const data = await resp.json().catch(() => undefined)
   if (!resp.ok || data?.error) {
     message.error(data?.error_summary || fallback)
+    if (strict) throw new Error(data?.error_summary || fallback)
     return null
   }
   return data as T
@@ -70,18 +72,18 @@ export const resolveDropboxParentIdFromPath = (pathValue: string | undefined): s
   return parentPath || 'dropbox_root'
 }
 
-export const apiDropboxFileList = async (user_id: string, parentId: string, limit = 500): Promise<DropboxMetadata[]> => {
+export const apiDropboxFileList = async (user_id: string, parentId: string, limit = 500, strict = false): Promise<DropboxMetadata[]> => {
   const items: DropboxMetadata[] = []
   let cursor = ''
   do {
-    const page = await apiDropboxFileListPage(user_id, parentId, limit, cursor)
+    const page = await apiDropboxFileListPage(user_id, parentId, limit, cursor, strict)
     items.push(...page.items)
     cursor = page.hasMore ? page.cursor : ''
   } while (cursor)
   return items
 }
 
-export const apiDropboxFileListPage = async (user_id: string, parentId: string, limit = 500, cursor = ''): Promise<{ items: DropboxMetadata[]; cursor: string; hasMore: boolean }> => {
+export const apiDropboxFileListPage = async (user_id: string, parentId: string, limit = 500, cursor = '', strict = false): Promise<{ items: DropboxMetadata[]; cursor: string; hasMore: boolean }> => {
   const first = await dropboxRpc<DropboxListFolderResp>(user_id, cursor ? '/files/list_folder/continue' : '/files/list_folder', cursor ? { cursor } : {
     path: resolveDropboxListPath(parentId),
     recursive: false,
@@ -90,7 +92,7 @@ export const apiDropboxFileListPage = async (user_id: string, parentId: string, 
     include_has_explicit_shared_members: false,
     include_mounted_folders: true,
     limit
-  }, '获取 Dropbox 文件列表失败')
+  }, '获取 Dropbox 文件列表失败', strict)
   if (!first) return { items: [], cursor: '', hasMore: false }
   return { items: (Array.isArray(first.entries) ? first.entries : []).filter((item) => item['.tag'] !== 'deleted'), cursor: first.cursor || '', hasMore: !!first.has_more }
 }

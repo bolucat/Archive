@@ -10,6 +10,7 @@ import { WorkerPage } from './workerpage/workercmd'
 import ServerHttp from './aliapi/server'
 import { startMediaAcquisitionWorkflowRunner, wakeMediaAcquisitionWorkflowRunner } from './services/mediaAcquisition/workflowRunner'
 import { setLocale } from './i18n'
+import UserDAL from './user/userdal'
 
 window.onerror = function (errorMessage, scriptURI, lineNo, columnNo, error) {
   try {
@@ -82,7 +83,11 @@ setLocale(settingStore.uiLanguage)
 settingStore.$subscribe((_mutation, state) => setLocale(state.uiLanguage))
 app.mount('#app')
 window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => {
-  if (window.IsMainPage) wakeMediaAcquisitionWorkflowRunner()
+  // A deep-link page can receive the durable main-process wake before the UI
+  // switches back to PageMain. The runner is lease-protected, so start it in
+  // every renderer route rather than silently dropping queued work.
+  startMediaAcquisitionWorkflowRunner()
+  wakeMediaAcquisitionWorkflowRunner()
 })
 
 
@@ -130,11 +135,14 @@ window.Electron.ipcRenderer.on('setDownloadPort', (_event: any, args: any) => {
   }
 })
 
-window.Electron.ipcRenderer.on('setPage', (_event: any, args: any) => {
+window.Electron.ipcRenderer.on('setPage', async (_event: any, args: any) => {
   console.log('setPage', args.page, args)
   const appStore = useAppStore()
   const settingStore = useSettingStore()
   if (args.theme && settingStore) appStore.toggleTheme(args.theme)
+
+  const pageUserId = String(args?.data?.user_id || '')
+  if (pageUserId) await UserDAL.GetUserTokenFromDB(pageUserId)
 
   if (args.page == 'PageMain') {
     PageMain()
