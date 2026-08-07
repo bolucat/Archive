@@ -11,6 +11,7 @@ import ServerHttp from './aliapi/server'
 import { startMediaAcquisitionWorkflowRunner, wakeMediaAcquisitionWorkflowRunner } from './services/mediaAcquisition/workflowRunner'
 import { setLocale } from './i18n'
 import UserDAL from './user/userdal'
+import { startAnalytics } from './analytics/posthog'
 
 window.onerror = function (errorMessage, scriptURI, lineNo, columnNo, error) {
   try {
@@ -82,6 +83,7 @@ const settingStore = useSettingStore()
 setLocale(settingStore.uiLanguage)
 settingStore.$subscribe((_mutation, state) => setLocale(state.uiLanguage))
 app.mount('#app')
+startAnalytics()
 window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => {
   // A deep-link page can receive the durable main-process wake before the UI
   // switches back to PageMain. The runner is lease-protected, so start it in

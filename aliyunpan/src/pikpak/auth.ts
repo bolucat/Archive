@@ -44,6 +44,8 @@ export const captchaSign = (deviceId: string, timestamp: string): string => {
   return `1.${sign}`
 }
 
+export const buildPikPakCaptchaMeta = (username: string): Record<string, string> => ({ username })
+
 const buildHeaders = (deviceId?: string, accessToken?: string): HeadersInit => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json; charset=utf-8',
@@ -119,14 +121,9 @@ const emptyToken = (): ITokenInfo => ({
 export const loginPikPak = async (username: string, password: string): Promise<ITokenInfo> => {
   const deviceId = MD5(`${username}${password}`).toString()
   const loginUrl = `${PIKPAK_USER_HOST}/v1/auth/signin`
-  const meta: Record<string, string> = {}
-  if (/^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$/.test(username)) {
-    meta.email = username
-  } else if (/^\d{11,18}$/.test(username)) {
-    meta.phone_number = username
-  } else {
-    meta.username = username
-  }
+  // The sign-in request always uses `username`. Phone-number normalization in a
+  // typed captcha meta object changes 155... to +86155..., invalidating captcha.
+  const meta = buildPikPakCaptchaMeta(username)
   const captcha = await pikpakJson<{ captcha_token?: string }>(`${PIKPAK_USER_HOST}/v1/shield/captcha/init`, {
     method: 'POST',
     headers: buildHeaders(deviceId),

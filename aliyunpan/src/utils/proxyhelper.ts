@@ -20,6 +20,7 @@ import { isAliyunUser, isQuarkUser } from '../aliapi/utils'
 import { isWebDavDrive } from './webdavClient'
 import { QUARK_DOWNLOAD_AGENT, readQuarkCookieStringFromElectron } from '../quark/auth'
 import { DRIVE115_DOWN_AGENT } from '@shared/drive115'
+import { createMpvProxyContext, isM3u8Response, resolveMpvProxyUri, rewriteMpvProxyPlaylist } from './proxyMediaRewrite'
 
 // 默认maxFreeSockets=256
 const httpsAgent = new HttpsAgent({ keepAlive: true })
@@ -314,6 +315,18 @@ export async function createProxyServer(port: number) {
     if (pathname === '/proxy') {
       const driveId = String(drive_id || '')
       const fileId = String(file_id || '')
+      const isAuthenticatedMpvProxy = String(proxy_kind || '') === 'mpv'
+      const mpvProxyContext = createMpvProxyContext({ user_id, drive_id, file_id, file_size, quality, proxy_headers, proxy_kind })
+      const buildMpvProxyUrl = (target: string) => getProxyUrl({
+        user_id: mpvProxyContext.user_id,
+        drive_id: mpvProxyContext.drive_id,
+        file_id: mpvProxyContext.file_id,
+        file_size: Number(mpvProxyContext.file_size) || undefined,
+        quality: mpvProxyContext.quality,
+        proxy_headers: mpvProxyContext.proxy_headers,
+        proxy_kind: mpvProxyContext.proxy_kind,
+        proxy_url: target
+      })
       const isMediaServerProxy = driveId === MEDIA_SERVER_DRIVE_ID
       let proxyInfo: any = isMediaServerProxy ? undefined : await Db.getValueObject('ProxyInfo')
       let proxyUrl = proxy_url || (proxyInfo && proxyInfo.proxy_url || '') || ''
@@ -462,9 +475,26 @@ export async function createProxyServer(port: number) {
               quarkErrorLength += limitedChunk.length
             })
           }
-          clientRes.statusCode = httpResp.statusCode
-          for (const key in httpResp.headers) {
-            clientRes.setHeader(key, httpResp.headers[key])
+          const responseHeaders = { ...httpResp.headers }
+          const statusCode = Number(httpResp.statusCode || 0)
+          const shouldRewritePlaylist = isAuthenticatedMpvProxy && statusCode >= 200 && statusCode < 300 && isM3u8Response(String(proxyUrl), responseHeaders['content-type']) && ['', 'identity'].includes(String(responseHeaders['content-encoding'] || '').toLowerCase())
+          if (isAuthenticatedMpvProxy && statusCode >= 300 && statusCode < 400 && typeof responseHeaders.location === 'string') {
+            responseHeaders.location = resolveMpvProxyUri(responseHeaders.location, String(proxyUrl), mpvProxyContext, target => buildMpvProxyUrl(target))
+          }
+          if (shouldRewritePlaylist) {
+            delete responseHeaders['content-length']
+            delete responseHeaders['transfer-encoding']
+            delete responseHeaders['content-range']
+            delete responseHeaders['accept-ranges']
+            delete responseHeaders.etag
+            delete responseHeaders['content-md5']
+            delete responseHeaders.digest
+            delete responseHeaders['last-modified']
+            responseHeaders['content-type'] = 'application/vnd.apple.mpegurl; charset=utf-8'
+          }
+          clientRes.statusCode = statusCode
+          for (const key in responseHeaders) {
+            clientRes.setHeader(key, responseHeaders[key])
           }
           if (content_disposition === 'inline') {
             const inlineFileName = String(file_name || getUrlFileName(proxyUrl) || 'preview')
@@ -495,16 +525,43 @@ export async function createProxyServer(port: number) {
               clientRes.setHeader('content-disposition', `attachment; filename*=UTF-8''${encodeURIComponent(decName + ext)};`)
             }
           }
-          httpResp.on('end', () => {
-            reportQuarkError()
-            resolve(true)
-          })
-          httpResp.on('close', reportQuarkError)
-          if (decryptTransform) {
-            httpResp.pipe(decryptTransform).pipe(clientRes)
+          if (shouldRewritePlaylist) {
+            const chunks: Buffer[] = []
+            const maxPlaylistBytes = 2 * 1024 * 1024
+            let playlistBytes = 0
+            let playlistAborted = false
+            httpResp.on('data', (chunk: Buffer | string) => {
+              if (playlistAborted) return
+              const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+              playlistBytes += buffer.length
+              if (playlistBytes > maxPlaylistBytes) {
+                playlistAborted = true
+                httpResp.destroy()
+                clientRes.destroy(new Error('HLS playlist exceeds size limit'))
+                resolve(false)
+                return
+              }
+              chunks.push(buffer)
+            })
+            httpResp.on('end', () => {
+              if (playlistAborted) return
+              reportQuarkError()
+              const playlist = Buffer.concat(chunks).toString('utf8')
+              clientRes.end(rewriteMpvProxyPlaylist(playlist, String(proxyUrl), mpvProxyContext, target => buildMpvProxyUrl(target)))
+              resolve(true)
+            })
           } else {
-            httpResp.pipe(clientRes)
+            httpResp.on('end', () => {
+              reportQuarkError()
+              resolve(true)
+            })
+            if (decryptTransform) {
+              httpResp.pipe(decryptTransform).pipe(clientRes)
+            } else {
+              httpResp.pipe(clientRes)
+            }
           }
+          httpResp.on('close', reportQuarkError)
         })
         clientReq.pipe(agentServer)
         // 关闭解密流

@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+const pikpakToken = { user_id: 'user-1', tokenfrom: 'pikpak', access_token: 'access-token' }
+
 vi.mock('../../user/userdal', () => ({
-  default: { GetUserToken: vi.fn(() => ({ access_token: 'access-token' })) }
+  default: {
+    GetUserToken: vi.fn(() => pikpakToken),
+    GetUserTokenFromDB: vi.fn(async () => pikpakToken)
+  }
 }))
 
 import { apiPikPakSaveShareFilesBatch, apiPikPakShareFileList, apiPikPakShareToken, parsePikPakShareLink } from '../share'

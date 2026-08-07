@@ -1,8 +1,10 @@
 // vitest.config.ts
 import { defineConfig } from 'vitest/config'
+import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
 export default defineConfig({
+  plugins: [vue()],
   resolve: {
     alias: {
       '@shared': path.resolve(__dirname, 'shared'),
@@ -22,6 +24,7 @@ export default defineConfig({
       'scripts/__tests__/**/*.test.mjs',
       'src/media-server/__tests__/**/*.test.ts',
       'src/utils/__tests__/**/*.test.ts',
+      'src/analytics/__tests__/**/*.test.ts',
       'src/aliapi/__tests__/**/*.test.ts',
       'src/pikpak/__tests__/**/*.test.ts',
       'src/quark/__tests__/**/*.test.ts',

@@ -41,7 +41,9 @@ const secretNames = [
   'BOXPLAYER_SITE_URL',
   'APPLE_ID',
   'APPLE_PASSWORD',
-  'APPLE_TEAM_ID'
+  'APPLE_TEAM_ID',
+  'POSTHOG_PROJECT_API_KEY',
+  'POSTHOG_HOST'
 ]
 
 function parseArgs(argv) {

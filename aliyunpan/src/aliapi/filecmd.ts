@@ -10,7 +10,7 @@ import usePanFileStore from '../pan/panfilestore'
 import { isWebDavDrive } from '../utils/webdavClient'
 import UserDAL from '../user/userdal'
 import { resolveDriveProvider } from '../utils/driveProvider'
-import { cleanProviderTrash, copyProviderFiles, createProviderFolder, deleteProviderFiles, getProviderFileCommandContext, getProviderFileCommandNotice, getProviderFilesInfo, moveProviderFiles, renameProviderFiles, restoreProviderTrash, trashProviderFiles } from '../drive/providerFileCmd'
+import { cleanProviderTrash, copyProviderFiles, createProviderFolder, deleteProviderFiles, getProviderFileCommandContext, getProviderFileCommandNotice, getProviderFilesInfo, getProviderFolderCommandContext, moveProviderFiles, renameProviderFiles, restoreProviderTrash, trashProviderFiles } from '../drive/providerFileCmd'
 
 export default class AliFileCmd {
   static async ApiCreatNewForder(
@@ -25,7 +25,7 @@ export default class AliFileCmd {
     if (isWebDavDrive(drive_id)) {
       return { file_id: '', error: 'WebDAV / AList 文件源为只读' }
     }
-    if (route.provider !== 'aliyun') return createProviderFolder(route.provider, user_id, parent_file_id, creatDirName, { checkNameMode: check_name_mode })
+    if (route.provider !== 'aliyun') return createProviderFolder(route.provider, user_id, parent_file_id, creatDirName, { checkNameMode: check_name_mode, ...getProviderFolderCommandContext(route.provider, parent_file_id) })
     if (parent_file_id.includes('root')) parent_file_id = 'root'
     const url = 'adrive/v2/file/createWithFolders'
     const name = EncodeEncName(user_id, creatDirName, true, encType)

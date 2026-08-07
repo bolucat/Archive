@@ -1355,6 +1355,18 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
   return filterList
 }
 
+const getSubtitleFileList = async (): Promise<selectorItem[]> => {
+  const subtitlePattern = /srt|vtt|ass|ssa/
+  const currentDirItems = await getDirFileList(pageVideo.parent_file_id, false, '')
+  const subtitleFiles = currentDirItems.filter((item) => subtitlePattern.test(item.ext || ''))
+
+  // Subtitle libraries are commonly stored in immediate child folders. Keep the video folder first so a sibling subtitle wins ties.
+  for (const dir of currentDirItems.filter((item) => item.isDir && item.file_id)) {
+    subtitleFiles.push(...await getDirFileList(dir.file_id, true, '', subtitlePattern, true))
+  }
+  return dedupeSubtitleSelectors(subtitleFiles)
+}
+
 
 const refreshSetting = async (art: Artplayer, item: any) => {
   // 刷新文件
@@ -2074,26 +2086,14 @@ const resolveRawMpvQualitySource = (data: IRawUrl, preferredQuality?: string): {
   }
 
   const defaultHeaders = defaultQuality.headers || data.headers
-  const directUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '')
-  const isOriginQuality = ['Origin', '100'].includes(String(defaultQuality.quality || '')) || defaultQuality.html === '原画'
-  const use115OriginProxy = !pageVideo.encType && pageVideo.drive_id === 'drive115' && isOriginQuality
-  const defaultUrl = use115OriginProxy
-    ? getProxyUrl({
-      user_id: pageVideo.user_id,
-      drive_id: pageVideo.drive_id,
-      file_id: pageVideo.file_id,
-      file_size: data.size,
-      quality: defaultQuality.quality || 'Origin',
-      proxy_url: directUrl,
-      proxy_headers: defaultHeaders ? JSON.stringify(defaultHeaders) : undefined,
-      proxy_kind: 'mpv'
-    })
-    : directUrl
+  const useAuthenticatedMpvProxy = !pageVideo.encType && hasPlaybackHeaders(defaultHeaders)
+  const defaultUrl = resolveHeaderAwareVideoUrl(defaultQuality.url, defaultHeaders, data.size, defaultQuality.quality || '', useAuthenticatedMpvProxy ? 'mpv' : '')
+  const mpvHeaders = defaultUrl === defaultQuality.url ? defaultHeaders : undefined
   const defaultQualityWidth = (defaultQuality as any).width
   return {
     quality: defaultQuality,
     url: defaultUrl,
-    headers: defaultHeaders,
+    headers: mpvHeaders,
     type: defaultQuality.type,
     qualityLabel: defaultQuality.html || defaultQuality.quality || (defaultQualityWidth ? `${defaultQualityWidth}p` : '原画')
   }
@@ -2140,7 +2140,7 @@ const resolveMpvEmbeddedExternalSubtitle = async (): Promise<{ url: string; titl
   if (pageVideo.drive_id === 'local' || pageVideo.drive_id === 'media_server') return undefined
   if (!pageVideo.parent_file_id || !pageVideo.file_name) return undefined
 
-  const subtitleFiles = await getDirFileList(pageVideo.parent_file_id, false, '', /srt|vtt|ass|ssa/) || []
+  const subtitleFiles = await getSubtitleFileList()
   if (!subtitleFiles.length) return undefined
   const subtitleFile = PlayerUtils.filterSubtitleFile(pageVideo.file_name, subtitleFiles as any) as selectorItem | undefined
   if (!subtitleFile?.file_id) return undefined
@@ -2821,20 +2821,9 @@ const clearDownloadedSubtitleSelector = () => {
 }
 
 const getSubTitleList = async (art: Artplayer) => {
-  // 尝试加载当前文件夹字幕文件
+  // Load subtitles from the video folder and each immediate child folder.
   let subSelector: selectorItem[]
-  const hasDir = art.storage.get('subTitleListMode') as boolean
-  // 加载二级目录(仅加载一个文件夹)
-  let file_id = ''
-  if (hasDir) {
-    try {
-      file_id = curDirFileList.find(file => file.isDir).file_id
-    } catch (err) {
-    }
-  } else {
-    file_id = pageVideo.parent_file_id
-  }
-  let onlineSubSelector = await getDirFileList(file_id, hasDir, '', /srt|vtt|ass|ssa/) || []
+  const onlineSubSelector = await getSubtitleFileList()
   // console.log('onlineSubSelector', onlineSubSelector)
   subSelector = dedupeSubtitleSelectors([...embedSubSelector, ...onlineSubSelector, ...downloadedSubSelector])
   if (subSelector.length === 0) {

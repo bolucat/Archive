@@ -22,6 +22,7 @@ import { getWebDavConnection, getWebDavConnectionId, getWebDavConnections } from
 import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
 import { supportsAliyunAutoSign } from './autoSignPolicy'
 import { getStoredTokenProvider } from '../utils/driveProvider'
+import { captureProviderLogin } from '../analytics/posthog'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
 
@@ -406,6 +407,7 @@ export default class UserDAL {
     })
     // 加载网盘文件
     await UserDAL.LoadPanData(token)
+    if (isInteractive && token.tokenfrom !== 'unknown') captureProviderLogin(token.tokenfrom)
     // 刷新所有状态
     PanDAL.aReLoadQuickFile(token.user_id)
     useAppStore().resetTab(useSettingStore().uiDefaultTab || 'pan')

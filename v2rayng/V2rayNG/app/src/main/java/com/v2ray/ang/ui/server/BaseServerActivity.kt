@@ -100,8 +100,7 @@ abstract class BaseServerActivity : BaseComponentActivity() {
 
     @Composable
     protected fun CommonBasicFields(
-        state: ServerUiState,
-        showPort: Boolean = true
+        state: ServerUiState
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FormTextField(
@@ -114,14 +113,12 @@ abstract class BaseServerActivity : BaseComponentActivity() {
                 state.address,
                 { state.address = it }
             )
-            if (showPort) {
-                FormTextField(
-                    stringResource(R.string.server_lab_port),
-                    state.port,
-                    { state.port = it },
-                    keyboardType = KeyboardType.Number
-                )
-            }
+            FormTextField(
+                stringResource(R.string.server_lab_port),
+                state.port,
+                { state.port = it },
+                keyboardType = KeyboardType.Number
+            )
         }
     }
 
@@ -461,14 +458,14 @@ abstract class BaseServerActivity : BaseComponentActivity() {
                             IconButton(onClick = { showDeleteDialog = true }) {
                                 Icon(
                                     painterResource(R.drawable.ic_delete_24dp),
-                                    stringResource(R.string.menu_item_del_config)
+                                    stringResource(R.string.acc_delete)
                                 )
                             }
                         }
                         IconButton(onClick = onSaveClick) {
                             Icon(
                                 painterResource(R.drawable.ic_fab_check),
-                                stringResource(R.string.menu_item_save_config)
+                                stringResource(R.string.acc_save)
                             )
                         }
                     }

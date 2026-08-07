@@ -1,4 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('../../aliapi/fileicon', () => ({ default: vi.fn((item: { isDir?: boolean }) => item.isDir ? 'iconfile-folder' : 'iconfile-video') }))
+vi.mock('../../utils/message', () => ({ default: { error: vi.fn() } }))
+vi.mock('../../drive/account', () => ({ getProviderTokenForUser: vi.fn() }))
+vi.mock('../auth', () => ({ captchaSign: vi.fn(), pikpakAuthHeaders: vi.fn(() => ({})) }))
+
 import { mapPikPakFileToAliModel } from '../dirfilelist'
 
 (globalThis as any).pinyinlite = (input: string) => input.split('').map((char) => [char])

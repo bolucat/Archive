@@ -13,13 +13,13 @@ export const resolveBaiduPaths = (fileIds: string[], items: BaiduPathItem[]): st
 })
 
 export const resolveBaiduTargetPath = (fileId: string, path: string, description: string, items: BaiduPathItem[], selectedDir?: BaiduPathItem): string => {
-  if (path) return path
-  if (!fileId) return '/'
+  if (path.startsWith('/')) return path
+  if (!fileId || fileId === 'baidu_root') return '/'
   if (fileId.startsWith('/')) return fileId
   const item = items.find(value => value.file_id === fileId)
   if (item?.path) return item.path
   if (selectedDir?.file_id === fileId && selectedDir.path) return selectedDir.path
-  return descriptionPath(description) || descriptionPath(item?.description) || descriptionPath(selectedDir?.description) || fileId
+  return descriptionPath(description) || descriptionPath(item?.description) || descriptionPath(selectedDir?.description) || ''
 }
 
 export type BaiduFileMetaItem = {

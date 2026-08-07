@@ -385,7 +385,7 @@ bool MpvContext::load(const std::string& url, const std::string& options) {
     if (!m_mpv) return false;
 
     if (!options.empty()) {
-        const char* cmd[] = {"loadfile", url.c_str(), "replace", options.c_str(), nullptr};
+        const char* cmd[] = {"loadfile", url.c_str(), "replace", "-1", options.c_str(), nullptr};
         int result = mpv_command(m_mpv, cmd);
         return result >= 0;
     }
@@ -492,7 +492,7 @@ bool MpvContext::addAudio(const std::string& url, const std::string& title) {
         title.empty() ? nullptr : title.c_str(),
         nullptr
     };
-    return mpv_command(m_mpv, cmd) >= 0;
+    return mpv_command_async(m_mpv, 0, cmd) >= 0;
 }
 
 bool MpvContext::addSubtitle(const std::string& url, const std::string& title) {
@@ -505,8 +505,7 @@ bool MpvContext::addSubtitle(const std::string& url, const std::string& title) {
         title.empty() ? nullptr : title.c_str(),
         nullptr
     };
-    int result = mpv_command(m_mpv, cmd);
-    return result >= 0;
+    return mpv_command_async(m_mpv, 0, cmd) >= 0;
 }
 
 namespace {

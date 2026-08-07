@@ -26,6 +26,9 @@ export default defineConfig(({ command }) => {
 
   const isBuild = command === 'build'
   return {
+    define: {
+      __APP_VERSION__: JSON.stringify(pkg.version)
+    },
     resolve: { alias: sharedAlias },
     build: {
       rollupOptions: {

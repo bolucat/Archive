@@ -46,12 +46,24 @@ export const getProviderFileCommandContext = (provider: DriveProvider, fileIds: 
   return {}
 }
 
+export const getProviderFolderCommandContext = (provider: DriveProvider, parentFileId: string): ProviderFileCommandOptions => {
+  if (provider !== 'baidu') return {}
+  const fileStore = usePanFileStore()
+  return {
+    targetPath: resolveBaiduTargetPath(parentFileId, '', '', fileStore.ListDataRaw || [], usePanTreeStore().selectDir)
+  }
+}
+
 /** Thin routing table. Provider API calls stay in each provider adapter. */
 export const createProviderFolder = (provider: DriveProvider, userId: string, parentFileId: string, name: string, options: ProviderFileCommandOptions = {}) => {
   switch (provider) {
     case 'cloud123': return createCloud123Folder(userId, parentFileId, name)
     case '115': return createDrive115Folder(userId, parentFileId, name)
-    case 'baidu': return createBaiduFolder(userId, options.targetPath || parentFileId, name, options.checkNameMode || 'refuse')
+    case 'baidu': {
+      const parentPath = options.targetPath || (parentFileId.startsWith('/') ? parentFileId : '')
+      if (!parentPath) return Promise.resolve({ file_id: '', error: '无法确定百度网盘父文件夹路径，请刷新目录后重试' })
+      return createBaiduFolder(userId, parentPath, name, options.checkNameMode || 'refuse')
+    }
     case 'pikpak': return createPikPakFolder(userId, parentFileId, name)
     case 'quark': return createQuarkFolder(userId, parentFileId, name)
     case '139': return createCloud139Folder(userId, parentFileId, name)
@@ -121,7 +133,10 @@ export const moveProviderFiles = (provider: DriveProvider, userId: string, fileI
   switch (provider) {
     case 'cloud123': return moveCloud123Files(userId, fileIds, parentFileId)
     case '115': return moveDrive115Files(userId, fileIds, parentFileId)
-    case 'baidu': return moveBaiduFiles(userId, options.sourcePaths || fileIds, options.targetPath || parentFileId)
+    case 'baidu': {
+      const targetPath = options.targetPath || (parentFileId.startsWith('/') ? parentFileId : '')
+      return targetPath ? moveBaiduFiles(userId, options.sourcePaths || fileIds, targetPath) : Promise.resolve([])
+    }
     case 'pikpak': return movePikPakFiles(userId, fileIds, parentFileId)
     case 'quark': return moveQuarkFiles(userId, fileIds, parentFileId)
     case '139': return moveCloud139Files(userId, fileIds, parentFileId)
@@ -139,7 +154,10 @@ export const copyProviderFiles = (provider: DriveProvider, userId: string, fileI
   switch (provider) {
     case 'cloud123': return copyCloud123Files(userId, fileIds, parentFileId)
     case '115': return copyDrive115Files(userId, fileIds, parentFileId)
-    case 'baidu': return copyBaiduFiles(userId, options.sourcePaths || fileIds, options.targetPath || parentFileId)
+    case 'baidu': {
+      const targetPath = options.targetPath || (parentFileId.startsWith('/') ? parentFileId : '')
+      return targetPath ? copyBaiduFiles(userId, options.sourcePaths || fileIds, targetPath) : Promise.resolve([])
+    }
     case 'pikpak': return copyPikPakFiles(userId, fileIds, parentFileId)
     case '139': return copyCloud139Files(userId, fileIds, parentFileId)
     case '189': return copyCloud189Files(userId, fileIds, parentFileId)
