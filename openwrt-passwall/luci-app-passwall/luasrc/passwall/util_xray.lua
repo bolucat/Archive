@@ -1405,11 +1405,15 @@ function gen_config(var)
 						[".name"] = "GFW_Mode_List",
 						remarks = "GFW_Mode_List",
 						domain_list = (domain_list ~= "") and domain_list or nil,
-						ip_list = (ip_list ~= "") and ip_list or nil
+						ip_list = (ip_list ~= "") and ip_list or nil,
+						group = node["shunt_group"]
 					})
 				end
 			end
 			foreach_shunt_rule(function(e)
+				if node["shunt_group"] ~= e.group then
+					return
+				end
 				local outbound_tag = gen_shunt_node(e[".name"])
 				if outbound_tag and e.remarks then
 					if outbound_tag == "default" then
@@ -1729,7 +1733,7 @@ function gen_config(var)
 			elseif remote_dns_query_strategy == "UseIPv6" then
 				table.insert(fakedns, fakedns6)
 			end
-			if remote_dns_fake and inner_fakedns ~= "1" then
+			if remote_dns_fake then
 				table.insert(dns.servers, 1, _remote_fakedns)
 			end
 		end

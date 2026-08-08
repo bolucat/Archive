@@ -334,8 +334,8 @@ msgstr "Вы действительно хотите удалить выбран
 msgid "You no select nodes !"
 msgstr "Вы не выбрали ни одного узла!"
 
-msgid "Are you sure set to"
-msgstr "Вы действительно хотите назначить"
+msgid "Are you sure set this node?"
+msgstr "Вы уверены, что задали этот узел?"
 
 msgid "the server?"
 msgstr "активным сервером?"
@@ -971,6 +971,9 @@ msgstr "Примечание: увеличивает нагрузку на си�
 msgid "Shunt Rule"
 msgstr "Правила разделения трафика"
 
+msgid "Shunt Rule Group"
+msgstr "Группа правил шунтирования"
+
 msgid "Please note attention to the priority, the higher the order, the higher the priority."
 msgstr "Обратите внимание: правила выше в списке имеют более высокий приоритет."
 
@@ -1504,6 +1507,12 @@ msgstr "Запись журнала"
 
 msgid "Log Level"
 msgstr "Уровень записи журнала"
+
+msgid "Log File"
+msgstr "Файл журнала"
+
+msgid "View Log"
+msgstr "Просмотреть журнал"
 
 msgid "Not enabled log"
 msgstr "Запись журнала отключена"
@@ -2376,6 +2385,9 @@ msgstr "Успешно разобран [%s], количество узлов: %
 msgid "Get subscription content for [%s] is empty. This may be due to an invalid subscription address or a network problem. Please diagnose the issue!"
 msgstr "Содержимое подписки [%s] пусто. Возможно, адрес подписки неверен или есть проблема с сетью. Пожалуйста, проведите диагностику!"
 
+msgid "No Proxy"
+msgstr "Без прокси"
+
 msgid "Proxy"
 msgstr "Прокси"
 
@@ -2423,3 +2435,9 @@ msgstr "Отключить повторное использование TLS"
 
 msgid "Not Set"
 msgstr "Не задано"
+
+msgid "Cipher Suites"
+msgstr "Наборы шифров"
+
+msgid "Configures the list of supported cipher suites, separated by :"
+msgstr "Задает список поддерживаемых наборов шифров, разделенных двоеточием (:)."

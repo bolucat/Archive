@@ -51,14 +51,14 @@ function index()
 	entry({"admin", "services", appname, "socks_config"}, cbi(appname .. "/client/socks_config")).leaf = true
 	entry({"admin", "services", appname, "acl"}, cbi(appname .. "/client/acl"), _("Access control"), 98).leaf = true
 	entry({"admin", "services", appname, "acl_config"}, cbi(appname .. "/client/acl_config")).leaf = true
-	entry({"admin", "services", appname, "log"}, form(appname .. "/client/log"), _("Runtime Logs"), 999).leaf = true
+	entry({"admin", "services", appname, "log"}, template(appname .. "/log/log"), _("Runtime Logs"), 999).leaf = true
 
 	--[[ Server ]]
 	entry({"admin", "services", appname, "server"}, cbi(appname .. "/server/index"), _("Server-Side"), 99).leaf = true
 	entry({"admin", "services", appname, "server_user"}, cbi(appname .. "/server/user")).leaf = true
 
 	--[[ API ]]
-	entry({"admin", "services", appname, "server_user_update"}, call("server_user_update")).leaf = true
+	entry({"admin", "services", appname, "server_update_config"}, call("server_update_config")).leaf = true
 	entry({"admin", "services", appname, "server_user_status"}, call("server_user_status")).leaf = true
 	entry({"admin", "services", appname, "server_user_log"}, call("server_user_log")).leaf = true
 	entry({"admin", "services", appname, "server_get_log"}, call("server_get_log")).leaf = true
@@ -261,7 +261,7 @@ end
 
 function get_socks_log()
 	local name = http.formvalue("name")
-	local path = "/tmp/etc/passwall2/SOCKS_" .. name .. ".log"
+	local path = "/tmp/etc/passwall2/" .. name .. ".log"
 	if nixio.fs.access(path) then
 		local content = luci.sys.exec("tail -n 5000 ".. path)
 		content = content:gsub("\n", "<br />")
@@ -273,7 +273,7 @@ end
 
 function get_acl_log()
 	local id = http.formvalue("id")
-	local path = "/tmp/log/passwall2_acl_" .. id .. ".log"
+	local path = api.TMP_PATH .. "/acl/" .. id .. "/node.log"
 	if nixio.fs.access(path) then
 		local content = luci.sys.exec("tail -n 5000 '" .. path .. "'")
 		content = content:gsub("\n", "<br />")
@@ -309,7 +309,7 @@ function socks_status()
 	local index = http.formvalue("index")
 	local id = http.formvalue("id")
 	e.index = index
-	e.socks_status = luci.sys.call(string.format("/bin/busybox top -bn1 | grep -v -E 'grep|acl/|acl_' | grep '%s/bin/' | grep '%s' | grep 'SOCKS_' > /dev/null", appname, id)) == 0
+	e.socks_status = luci.sys.call(string.format("/bin/busybox top -bn1 | grep -v -E 'grep|acl/|acl_' | grep '%s/bin/' | grep '%s' > /dev/null", appname, id)) == 0
 	local use_http = uci:get(appname, id, "http_port") or 0
 	e.use_http = 0
 	if tonumber(use_http) > 0 then
@@ -439,7 +439,7 @@ end
 function clear_all_nodes()
 	uci:set(appname, '@global[0]', "enabled", "0")
 	uci:set(appname, '@global[0]', "socks_enabled", "0")
-	uci:set(appname, '@haproxy_config[0]', "balancing_enable", "0")
+	uci:set(appname, '@global_haproxy[0]', "balancing_enable", "0")
 	uci:delete(appname, '@global[0]', "node")
 	uci:foreach(appname, "socks", function(t)
 		uci:delete(appname, t[".name"])
@@ -652,7 +652,7 @@ function rollback_rules()
 	http_write_json_ok()
 end
 
-function server_user_update()
+function server_update_config()
 	local id = http.formvalue("id") -- Node id
 	local data = http.formvalue("data") -- json new Data
 	if id and data then
