@@ -91,6 +91,26 @@ local function convert_geofile()
 	convert(GEO_VAR.IP_PATH, "geoip", GEO_VAR.IP_TAGS)
 end
 
+local function get_log_level(s)
+	if s == "warning" then s = "warn" end
+	return s
+end
+
+--[[
+local cipherSuites = {
+	"TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256",
+	"TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA", "TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA",
+	"TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA", "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+	"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+	"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256", "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256"
+}
+local cipherSuites_lookup = {}
+for i, v in ipairs(cipherSuites) do
+	cipherSuites_lookup[v] = true
+end
+]]--
+
 function parseDNS(str)
 	local result_dns_server
 	-- [proto]://[ip]
@@ -256,6 +276,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 				fragment = fragment,
 				record_fragment = record_fragment,
 				certificate = (node.tls_certificate == "1" and node.tls_certificate_pem ~= "") and split(node.tls_certificate_pem, "\n") or nil,
+				cipher_suites = (node.cipherSuites and #node.cipherSuites > 0) and node.cipherSuites or nil,
 				ech = (node.ech == "1") and (function()
 					local function get_ech_domain(s) --兼容xray "域名+DNS" 格式ech
 						local domain, dns = s:match("^([^+]+)%+(.+)$")
@@ -1072,7 +1093,7 @@ function gen_config_server(node)
 	local config = {
 		log = {
 			disabled = (not node or node.log == "0") and true or false,
-			level = node.loglevel or "info",
+			level = get_log_level(node.loglevel) or "info",
 			timestamp = true,
 			--output = logfile,
 		},
@@ -2160,7 +2181,7 @@ function gen_config(var)
 		local config = {
 			log = {
 				disabled = log == "0" and true or false,
-				level = loglevel,
+				level = get_log_level(loglevel),
 				timestamp = true,
 				output = logfile,
 			},

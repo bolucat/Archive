@@ -287,11 +287,25 @@ o.default = "1"
 o.rmempty = false
 
 loglevel = s:taboption("log", ListValue, "loglevel", translate("Log Level"))
-loglevel.default = "warning"
+loglevel.default = "warn"
 loglevel:value("debug")
 loglevel:value("info")
-loglevel:value("warning")
+loglevel:value("warn")
 loglevel:value("error")
+
+o = s:taboption("log", DummyValue, "_log", translate("Log File"))
+o.rawhtml = true
+o.cfgvalue = function(t, n)
+	local log_path = api.TMP_PATH .. "/acl/default/global.log"
+	local log_url = api.url("get_redir_log") .. "?id=default&name=global"
+	return string.format(
+		'<code>%s</code>&nbsp;&nbsp;<input class="btn cbi-button cbi-button-apply" type="button" value="%s" onclick="window.open(\'%s\', \'_blank\')" />',
+		log_path,
+		translate("View Log"),
+		log_url
+	)
+end
+o:depends("log_node", "1")
 
 s:tab("faq", "FAQ")
 
@@ -312,10 +326,9 @@ s2.anonymous = true
 s2.addremove = true
 s2.extedit = api.url("socks_config", "%s")
 function s2.create(e, t)
-	local uuid = api.gen_short_uuid(5)
-	uuid = "socks_" .. uuid
-	TypedSection.create(e, uuid)
-	luci.http.redirect(e.extedit:format(uuid))
+	local uid = "socks_" .. api.gen_random_char(5)
+	TypedSection.create(e, uid)
+	luci.http.redirect(e.extedit:format(uid))
 end
 
 o = s2:option(DummyValue, "status", translate("Status"))

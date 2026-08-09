@@ -31,6 +31,11 @@ local function get_domain_excluded()
 	return hosts
 end
 
+local function get_log_level(s)
+	if s == "warn" then s = "warning" end
+	return s
+end
+
 function gen_outbound(flag, node, tag, proxy_table)
 	local result = nil
 	if node then
@@ -165,7 +170,8 @@ function gen_outbound(flag, node, tag, proxy_table)
 					certificates = (node.tls_certificate == "1" and node.tls_certificate_pem ~= "") and {
 						certificate = api.split(node.tls_certificate_pem, "\n"),
 						usage = "verify"
-					} or nil
+					} or nil,
+					cipherSuites = node.cipherSuites or nil
 				} or nil,
 				realitySettings = (node.stream_security == "reality") and {
 					serverName = node.tls_serverName,
@@ -453,7 +459,7 @@ function gen_outbound(flag, node, tag, proxy_table)
 			local dns_key = dns_proto .. "|" .. config_address .. "|" .. tostring(config_port)
 			if not GLOBAL.DNS_SERVER[dns_key] then
 				GLOBAL.DNS_SERVER[dns_key] = {
-					tag = "dns-node-" .. api.gen_short_uuid(),
+					tag = "dns-node-" .. api.gen_random_char(),
 					-- queryStrategy = node.domain_strategy or "UseIP",
 					address = config_address,
 					port = config_port,
@@ -635,7 +641,7 @@ function gen_config_server(node)
 	local config = {
 		log = {
 			-- error = "/tmp/etc/passwall_server/log/" .. user[".name"] .. ".log",
-			loglevel = ("1" == node.log) and node.loglevel or "none"
+			loglevel = ("1" == node.log) and get_log_level(node.loglevel) or "none"
 		},
 		-- 传入连接
 		inbounds = {
@@ -981,37 +987,26 @@ function gen_config(var)
 		end
 
 
-		function gen_socks_config_node(node_id, socks_id, remarks)
-			if node_id then
-				socks_id = node_id:sub(1 + #"Socks_")
-			end
-			local result
-			local socks_node = uci:get_all(appname, socks_id) or nil
-			if socks_node then
-				if not remarks then
-					remarks = socks_node.port
-				end
-				result = {
-					[".name"] = "Socksid_" .. socks_id,
-					remarks = remarks,
+		function get_node_by_id(node_id)
+			if not node_id or node_id == "" or node_id == "nil" then return nil end
+			local section = uci:get_all(appname, node_id) or {}
+			if section[".type"] == "socks" then
+				local result = {
+					[".name"] = node_id,
+					remarks = "socks[%s]" % section.port,
 					type = "Xray",
 					protocol = "socks",
 					address = "127.0.0.1",
-					port = socks_node.port,
+					port = section.port,
 					transport = "tcp",
 					stream_security = "none"
 				}
+				return result
 			end
-			return result
-		end
-
-		function get_node_by_id(node_id)
-			if not node_id or node_id == "" or node_id == "nil" then return nil end
-			if node_id:find("Socks_") then
-				return gen_socks_config_node(node_id)
-			else
-				return uci:get_all(appname, node_id)
+			if section[".type"] == "nodes" then
+				return section
 			end
+			return nil
 		end
 
 		function gen_loopback(outbound_tag, loopback_dst)
@@ -1977,7 +1972,7 @@ function gen_config(var)
 			end)(),
 			log = {
 				-- error = string.format("/tmp/etc/%s/%s.log", appname, node[".name"]),
-				loglevel = loglevel
+				loglevel = get_log_level(loglevel)
 			},
 			-- DNS
 			dns = dns,

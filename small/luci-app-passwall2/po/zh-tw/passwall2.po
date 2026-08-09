@@ -1499,6 +1499,12 @@ msgstr "啟用節點日誌"
 msgid "Log Level"
 msgstr "日誌等級"
 
+msgid "Log File"
+msgstr "日誌檔案"
+
+msgid "View Log"
+msgstr "查看日誌"
+
 msgid "Not enabled log"
 msgstr "未啟用日誌"
 
@@ -2373,6 +2379,9 @@ msgstr "成功解析【%s】節點，數量：%s"
 msgid "Get subscription content for [%s] is empty. This may be due to an invalid subscription address or a network problem. Please diagnose the issue!"
 msgstr "獲取到的【%s】訂閱內容為空，可能是訂閱地址無效，或是網絡問題，請診斷！"
 
+msgid "No Proxy"
+msgstr "不代理"
+
 msgid "Proxy"
 msgstr "代理"
 
@@ -2424,5 +2433,5 @@ msgstr "未設置"
 msgid "Cipher Suites"
 msgstr "密碼套件"
 
-msgid "Configures the list of supported cipher suites, separated by :"
-msgstr "配置支援的密碼套件列表，以冒號 (:) 分隔。"
+msgid "Configures the list of supported cipher suites."
+msgstr "配置支援的密碼套件列表。"

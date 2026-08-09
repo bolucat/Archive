@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/enfein/mieru/v3/apis/constant"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"github.com/enfein/mieru/v3/pkg/cipher"
 	"google.golang.org/protobuf/proto"
@@ -95,7 +96,7 @@ func TestBuildServerUserStateRejectsInvalidNames(t *testing.T) {
 	duplicateB := &appctlpb.User{Name: proto.String("duplicate"), Password: proto.String("password-b")}
 	state := buildServerUserState(map[string]*appctlpb.User{
 		"empty":      {Password: proto.String("password")},
-		"long":       {Name: proto.String(strings.Repeat("x", maxUserNameLen+1)), Password: proto.String("password")},
+		"long":       {Name: proto.String(strings.Repeat("x", constant.MaxUserNameLen+1)), Password: proto.String("password")},
 		"duplicate1": duplicateA,
 		"duplicate2": duplicateB,
 		"valid-key":  {Name: proto.String("valid"), Password: proto.String("password")},
@@ -166,8 +167,10 @@ func TestTCPUnderlayAcceptedBeforeReloadUsesCurrentGeneration(t *testing.T) {
 	mux.SetServerUsers(newUsers)
 
 	encrypted := encryptDiscoveryMetadata(t, newCredential, newUser, newUsers, true, newDummyMetadata())
-	if _, err := underlay.serverInitRecvBlockCipherAndDecryptMetadata(encrypted); err != nil {
+	if _, authentication, err := underlay.serverInitRecvBlockCipherAndDecryptMetadata(encrypted); err != nil {
 		t.Fatalf("TCP discovery after reload failed: %v", err)
+	} else {
+		underlay.serverUserPolicy = authentication.policy
 	}
 	if got := underlay.recv.BlockContext().UserName; got != newUser {
 		t.Fatalf("TCP discovery user = %q, want %q", got, newUser)
@@ -190,18 +193,19 @@ func TestTCPDiscoveryRetriesWhenGenerationChanges(t *testing.T) {
 	newUsers := userMap(makeTestUser(newUser, newCredential))
 	encrypted := encryptDiscoveryMetadata(t, newCredential, newUser, newUsers, true, newDummyMetadata())
 	var reload sync.Once
-	block, plaintext, policy, err := discoverServerUser(
+	result, err := discoverServerUser(
 		&mux.serverUsers,
 		&mux.serverUserHintIsMandatory,
 		encrypted,
+		serverUserDiscoverySource{},
 		true,
 		func(*serverUserState) { reload.Do(func() { mux.SetServerUsers(newUsers) }) },
 	)
 	if err != nil {
 		t.Fatalf("TCP discovery with concurrent reload failed: %v", err)
 	}
-	if block == nil || !bytes.Equal(plaintext, newDummyMetadata()) || policy.name != newUser {
-		t.Fatalf("TCP discovery = (block nil=%t, plaintext=%x, policy=%q), want authenticated %q", block == nil, plaintext, policy.name, newUser)
+	if result.block == nil || !bytes.Equal(result.decryptedMetadata, newDummyMetadata()) || result.policy.name != newUser {
+		t.Fatalf("TCP discovery = (block nil=%t, plaintext=%x, policy=%q), want authenticated %q", result.block == nil, result.decryptedMetadata, result.policy.name, newUser)
 	}
 }
 
@@ -248,10 +252,11 @@ func TestUDPDiscoveryUsesCurrentGenerationAndRetainsPolicySnapshot(t *testing.T)
 	mux.SetServerUsers(newUsers)
 
 	encrypted := encryptDiscoveryMetadata(t, newCredential, newUser, newUsers, true, newDummyMetadata())
-	block, _, policy, err := underlay.serverTryDecryptMetadataForNewSession(encrypted, encrypted[:cipher.DefaultNonceSize])
+	block, _, authentication, err := underlay.serverTryDecryptMetadataForNewSession(encrypted, serverUserDiscoverySource{})
 	if err != nil {
 		t.Fatalf("UDP discovery after reload failed: %v", err)
 	}
+	policy := authentication.policy
 	if block.BlockContext().UserName != newUser || policy.name != newUser {
 		t.Fatalf("UDP discovery selected block user %q and policy %q, want %q", block.BlockContext().UserName, policy.name, newUser)
 	}

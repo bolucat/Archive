@@ -16,7 +16,6 @@
 package protocol
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -24,13 +23,11 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/enfein/mieru/v3/apis/constant"
 	"github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
 	"github.com/enfein/mieru/v3/pkg/cipher"
 	"github.com/enfein/mieru/v3/pkg/log"
 )
-
-// This limit matches with pkg/appctl/appctlcommon/server.go and pkg/appctl/appctlcommon/client.go
-const maxUserNameLen = 64
 
 // serverUser is the immutable authentication record used by server side user discovery.
 // IDs are dense within one generation and start at 1. ID 0 is reserved for an
@@ -61,6 +58,115 @@ type serverUserQuota struct {
 type serverUserState struct {
 	users []serverUser
 	cache *sourceUserCache
+}
+
+// serverUserDiscoverySource identifies an optional source-user cache lookup.
+// A zero value disables the cache without changing authentication fallback.
+type serverUserDiscoverySource struct {
+	key   [16]byte
+	valid bool
+}
+
+type serverUserMatchOrigin uint8
+
+const (
+	serverUserMatchUnknown serverUserMatchOrigin = iota
+	serverUserMatchCachedHint
+	serverUserMatchRegistryHint
+	serverUserMatchCachedFallback
+	serverUserMatchRegistryFallback
+)
+
+// serverUserDiscoveryResult contains only the matched identity and immutable
+// policy needed after discovery. generation is retained only while the caller
+// validates and commits initial authentication; established connections and
+// sessions must not retain it.
+type serverUserDiscoveryResult struct {
+	block             cipher.BlockCipher
+	decryptedMetadata []byte
+	userID            uint32
+	userContext       cipher.BlockContext
+	policy            serverUserPolicy
+	origin            serverUserMatchOrigin
+	generation        *serverUserState
+	attempts          int
+}
+
+// serverUserAuthentication is retained only while a newly authenticated
+// segment is structurally validated and dispatched. In particular, generation
+// must not be retained by an established underlay or session.
+type serverUserAuthentication struct {
+	userID     uint32
+	policy     serverUserPolicy
+	origin     serverUserMatchOrigin
+	generation *serverUserState
+	source     serverUserDiscoverySource
+}
+
+func (r serverUserDiscoveryResult) authentication(source serverUserDiscoverySource) serverUserAuthentication {
+	return serverUserAuthentication{
+		userID:     r.userID,
+		policy:     r.policy,
+		origin:     r.origin,
+		generation: r.generation,
+		source:     source,
+	}
+}
+
+func (a *serverUserAuthentication) valid() bool {
+	return a != nil && a.userID != 0 && a.generation != nil
+}
+
+// recordAuthenticated records only into the generation used for discovery.
+// A concurrent reload may already have retired that generation's cache, in
+// which case the update is intentionally a no-op.
+func (a *serverUserAuthentication) recordAuthenticated() {
+	if !a.valid() {
+		return
+	}
+	generation := a.generation
+	a.generation = nil
+	if a.source.valid && generation.cache != nil {
+		generation.cache.recordAuthenticated(a.source.key, a.userID)
+	}
+}
+
+// validateNewServerSessionSegment enforces the only protocol that may create a
+// server session. Callers run this after payload authentication and padding
+// validation, immediately before initial protocol dispatch.
+func validateNewServerSessionSegment(seg *segment) error {
+	if seg == nil || seg.metadata == nil {
+		return fmt.Errorf("new server session segment is nil")
+	}
+	ss, ok := seg.metadata.(*sessionStruct)
+	if !ok || ss.Protocol() != openSessionRequest {
+		return fmt.Errorf("protocol %v can't create a server session", seg.metadata.Protocol())
+	}
+	if ss.sessionID == 0 {
+		return fmt.Errorf("reserved session ID %d is used", ss.sessionID)
+	}
+	return nil
+}
+
+// validateServerSegmentDirection rejects protocols that can only be sent by a
+// server. Unknown-session UDP data and close messages in the client-to-server
+// direction remain dispatchable so the existing close-session behavior is
+// preserved, but they never create a source-user association.
+func validateServerSegmentDirection(seg *segment) error {
+	if seg == nil || seg.metadata == nil {
+		return fmt.Errorf("server segment is nil")
+	}
+	switch seg.metadata.Protocol() {
+	case openSessionRequest,
+		closeSessionRequest,
+		closeSessionResponse,
+		dataClientToServer,
+		dataClientToServerLowEntropy,
+		ackClientToServer:
+		return nil
+	default:
+		return fmt.Errorf("protocol %v has the wrong direction for a server", seg.metadata.Protocol())
+	}
 }
 
 // sourceUserCache owns an atomically detachable table. Cache lookup and update
@@ -164,8 +270,8 @@ func buildServerUserState(users map[string]*appctlpb.User, stats *sourceUserCach
 			}
 			continue
 		}
-		if len(input.name) > maxUserNameLen {
-			log.Warnf("Skipping server user %q: name exceeds %d bytes", input.name, maxUserNameLen)
+		if len(input.name) > constant.MaxUserNameLen {
+			log.Warnf("Skipping server user %q: name exceeds %d bytes", input.name, constant.MaxUserNameLen)
 			continue
 		}
 
@@ -250,76 +356,172 @@ func discoverServerUser(
 	publisher *atomic.Pointer[serverUserState],
 	hintMandatory *atomic.Bool,
 	encryptedMetadata []byte,
+	source serverUserDiscoverySource,
 	requireCurrent bool,
 	afterAttempt func(*serverUserState),
-) (cipher.BlockCipher, []byte, serverUserPolicy, error) {
+) (serverUserDiscoveryResult, error) {
 	if len(encryptedMetadata) < cipher.DefaultNonceSize {
-		return nil, nil, serverUserPolicy{}, fmt.Errorf("encrypted metadata is shorter than nonce")
+		return serverUserDiscoveryResult{}, fmt.Errorf("encrypted metadata is shorter than nonce")
 	}
 	if publisher == nil {
-		return nil, nil, serverUserPolicy{}, fmt.Errorf("server user publisher is nil")
+		return serverUserDiscoveryResult{}, fmt.Errorf("server user publisher is nil")
 	}
 
 	for {
 		state := publisher.Load()
 		if state == nil || len(state.users) == 0 {
-			return nil, nil, serverUserPolicy{}, fmt.Errorf("no server user found")
+			return serverUserDiscoveryResult{}, fmt.Errorf("no server user found")
 		}
 		mandatory := false
 		if hintMandatory != nil {
 			mandatory = hintMandatory.Load()
 		}
 
-		block, plaintext, policy := tryServerUserState(state, encryptedMetadata, mandatory)
+		result := tryServerUserState(state, encryptedMetadata, source, mandatory)
 		if afterAttempt != nil {
 			afterAttempt(state)
 		}
 		if requireCurrent && publisher.Load() != state {
 			continue
 		}
-		if block == nil {
-			return nil, nil, serverUserPolicy{}, fmt.Errorf("cipher.TryDecrypt() failed for all users")
+		if result.block == nil {
+			return serverUserDiscoveryResult{}, fmt.Errorf("cipher.TryDecrypt() failed for all users")
 		}
-		return block, plaintext, policy, nil
+		result.generation = state
+		return result, nil
 	}
 }
 
-func tryServerUserState(state *serverUserState, encryptedMeta []byte, hintMandatory bool) (cipher.BlockCipher, []byte, serverUserPolicy) {
+// tryServerUserState applies the identity-preserving candidate order:
+// cached hint matches, remaining registry hint matches, cached optional
+// fallback, then remaining registry optional fallback. Each user is tried at
+// most once even when it appears in more than one phase.
+func tryServerUserState(state *serverUserState, encryptedMeta []byte, source serverUserDiscoverySource, hintMandatory bool) serverUserDiscoveryResult {
 	nonce := encryptedMeta[:cipher.DefaultNonceSize]
-	for i := range state.users {
-		user := &state.users[i]
-		if !checkServerUserHint(user.name, nonce) {
+	var cachedIDs [sourceUserCacheUsers]uint32
+	cachedCount := 0
+	if source.valid && state.cache != nil {
+		cachedIDs, cachedCount = state.cache.lookup(source.key)
+	}
+
+	var attemptedCachedIDs [sourceUserCacheUsers]uint32
+	attemptedCachedCount := 0
+	attempts := 0
+
+	// A successful cached hint match is the normal warm path and returns
+	// without scanning the complete registry.
+	for i := 0; i < cachedCount; i++ {
+		user := serverUserByID(state, cachedIDs[i])
+		if user == nil || serverUserIDWasAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id) || !cipher.CheckUserFromHint([]byte(user.name), nonce) {
 			continue
 		}
-		cipher.ServerHintMatchDecrypt.Add(1)
-		block, plaintext, err := cipher.TryDecrypt(encryptedMeta, user.credential[:], true)
-		if err == nil {
-			return block, plaintext, user.policy
+		attemptedCachedCount = markServerUserIDAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id)
+		attempts++
+		if result := tryServerUser(user, encryptedMeta, true, serverUserMatchCachedHint); result.block != nil {
+			result.attempts = attempts
+			return result
 		}
-		cipher.ServerFailedHintMatchDecrypt.Add(1)
 	}
 
-	if !hintMandatory {
-		for i := range state.users {
-			user := &state.users[i]
-			block, plaintext, err := cipher.TryDecrypt(encryptedMeta, user.credential[:], true)
-			if err == nil {
-				return block, plaintext, user.policy
-			}
+	// All registry hint matches retain precedence over cached users whose
+	// names do not match the hint, including when credentials are shared.
+	for i := range state.users {
+		user := &state.users[i]
+		if serverUserIDWasAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id) || !cipher.CheckUserFromHint([]byte(user.name), nonce) {
+			continue
+		}
+		attempts++
+		if result := tryServerUser(user, encryptedMeta, true, serverUserMatchRegistryHint); result.block != nil {
+			result.attempts = attempts
+			return result
 		}
 	}
-	return nil, nil, serverUserPolicy{}
+
+	if hintMandatory {
+		return serverUserDiscoveryResult{attempts: attempts}
+	}
+
+	for i := 0; i < cachedCount; i++ {
+		user := serverUserByID(state, cachedIDs[i])
+		if user == nil || serverUserIDWasAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id) {
+			continue
+		}
+		// Hint matches were already tried in one of the two preceding phases.
+		if cipher.CheckUserFromHint([]byte(user.name), nonce) {
+			continue
+		}
+		attemptedCachedCount = markServerUserIDAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id)
+		attempts++
+		if result := tryServerUser(user, encryptedMeta, false, serverUserMatchCachedFallback); result.block != nil {
+			result.attempts = attempts
+			return result
+		}
+	}
+
+	for i := range state.users {
+		user := &state.users[i]
+		if serverUserIDWasAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id) {
+			continue
+		}
+		// Every hint match was tried during the registry hint phase. Skipping
+		// them here avoids a second cipher trial without an unbounded ID set.
+		if cipher.CheckUserFromHint([]byte(user.name), nonce) {
+			continue
+		}
+		attempts++
+		if result := tryServerUser(user, encryptedMeta, false, serverUserMatchRegistryFallback); result.block != nil {
+			result.attempts = attempts
+			return result
+		}
+	}
+	return serverUserDiscoveryResult{attempts: attempts}
 }
 
-// checkServerUserHint is a faster implementation of
-// cipher.CheckUserFromHint function.
-func checkServerUserHint(name string, nonce []byte) bool {
-	if len(nonce) < cipher.NoncePrefixLenForUserHint+cipher.NonceSuffixLenForUserHint {
-		return false
+func serverUserIDWasAttempted(attempted *[sourceUserCacheUsers]uint32, count int, userID uint32) bool {
+	for i := 0; i < count; i++ {
+		if attempted[i] == userID {
+			return true
+		}
 	}
-	var input [maxUserNameLen + cipher.NoncePrefixLenForUserHint]byte
-	n := copy(input[:], name)
-	n += copy(input[n:], nonce[:cipher.NoncePrefixLenForUserHint])
-	output := sha256.Sum256(input[:n])
-	return bytes.Equal(output[:cipher.NonceSuffixLenForUserHint], nonce[len(nonce)-cipher.NonceSuffixLenForUserHint:])
+	return false
+}
+
+func markServerUserIDAttempted(attempted *[sourceUserCacheUsers]uint32, count int, userID uint32) int {
+	if count < len(attempted) && !serverUserIDWasAttempted(attempted, count, userID) {
+		attempted[count] = userID
+		return count + 1
+	}
+	return count
+}
+
+func serverUserByID(state *serverUserState, userID uint32) *serverUser {
+	if state == nil || userID == 0 || userID > uint32(len(state.users)) {
+		return nil
+	}
+	user := &state.users[userID-1]
+	if user.id != userID {
+		return nil
+	}
+	return user
+}
+
+func tryServerUser(user *serverUser, encryptedMeta []byte, hintMatch bool, origin serverUserMatchOrigin) serverUserDiscoveryResult {
+	if hintMatch {
+		cipher.ServerHintMatchDecrypt.Add(1)
+	}
+	block, plaintext, err := cipher.TryDecrypt(encryptedMeta, user.credential[:], true)
+	if err != nil {
+		if hintMatch {
+			cipher.ServerFailedHintMatchDecrypt.Add(1)
+		}
+		return serverUserDiscoveryResult{}
+	}
+	return serverUserDiscoveryResult{
+		block:             block,
+		decryptedMetadata: plaintext,
+		userID:            user.id,
+		userContext:       cipher.BlockContext{UserName: user.name},
+		policy:            user.policy,
+		origin:            origin,
+	}
 }

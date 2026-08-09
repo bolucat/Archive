@@ -1507,6 +1507,12 @@ msgstr "فعال‌سازی گزارش گره"
 msgid "Log Level"
 msgstr "سطح گزارش"
 
+msgid "Log File"
+msgstr "فایل لاگ"
+
+msgid "View Log"
+msgstr "مشاهده گزارش"
+
 msgid "Not enabled log"
 msgstr "گزارش فعال نیست"
 
@@ -2381,6 +2387,9 @@ msgstr "گره [%s] با موفقیت حل شد، تعداد: %s"
 msgid "Get subscription content for [%s] is empty. This may be due to an invalid subscription address or a network problem. Please diagnose the issue!"
 msgstr "دریافت محتوای اشتراک برای [%s] خالی است. این ممکن است به دلیل آدرس اشتراک نامعتبر یا مشکل شبکه باشد. لطفاً مشکل را بررسی کنید!"
 
+msgid "No Proxy"
+msgstr "بدون پروکسی"
+
 msgid "Proxy"
 msgstr "پروکسی"
 
@@ -2432,5 +2441,5 @@ msgstr "تنظیم نشده"
 msgid "Cipher Suites"
 msgstr "سوئیت‌های رمزدار"
 
-msgid "Configures the list of supported cipher suites, separated by :"
-msgstr "فهرست مجموعه‌های رمز پشتیبانی‌شده را که با موارد زیر از هم جدا شده‌اند، پیکربندی می‌کند:"
+msgid "Configures the list of supported cipher suites."
+msgstr "فهرست مجموعه‌های رمز پشتیبانی‌شده را پیکربندی می‌کند."
