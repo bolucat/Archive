@@ -239,6 +239,9 @@ pub struct ClientTlsConfig {
 	pub verify_certificate: bool,
 	/// ALPN protocols to advertise, most-preferred first.
 	pub alpn: Vec<Vec<u8>>,
+	/// Allow 0-RTT early data on resumed sessions. Requires the server to
+	/// accept it (`TransportConfig::enable_0rtt`) and a cached session ticket.
+	pub enable_early_data: bool,
 }
 
 impl ClientTlsConfig {
@@ -248,6 +251,7 @@ impl ClientTlsConfig {
 			server_name: server_name.into(),
 			verify_certificate: true,
 			alpn: vec![b"h3".to_vec()],
+			enable_early_data: false,
 		}
 	}
 }

@@ -78,6 +78,9 @@ pub(super) fn client_crypto(cfg: &ClientTlsConfig) -> Result<rustls::ClientConfi
 			.with_no_client_auth()
 	};
 	crypto.alpn_protocols = cfg.alpn.clone();
+	// 0-RTT: quinn only attempts early data when the rustls client config opts
+	// in via `enable_early_data` (see quinn's `QuicClientConfig` docs).
+	crypto.enable_early_data = cfg.enable_early_data;
 	Ok(crypto)
 }
 

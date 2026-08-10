@@ -247,6 +247,66 @@ pub async fn connect(
 	})
 }
 
+/// A quinn client endpoint that reuses the same TLS [`ClientConfig`] across
+/// multiple connections.
+///
+/// Unlike [`connect`] — which builds a fresh endpoint *and* client config per
+/// call, discarding the in-memory session-ticket store — this struct keeps the
+/// config alive, so a second `connect` can resume the TLS session established
+/// by the first and replay 0-RTT early data (observable via
+/// `Connecting::into_0rtt` / `ZeroRttAccepted`).
+pub struct QuinnClient {
+	endpoint: Endpoint,
+	client_config: ClientConfig,
+	server_name: String,
+}
+
+impl QuinnClient {
+	/// Create a client endpoint bound to an ephemeral local socket.
+	pub async fn new(tls_cfg: &ClientTlsConfig, transport: &TransportConfig) -> Result<Self, QuicError> {
+		tls::ensure_provider();
+		let crypto = tls::client_crypto(tls_cfg)?;
+		let mut client_config = ClientConfig::new(Arc::new(
+			quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
+				.map_err(|e| QuicError::Tls(format!("quinn client config: {e}")))?,
+		));
+		client_config.transport_config(Arc::new(build_transport(transport)?));
+
+		let bind_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0));
+		let socket = std::net::UdpSocket::bind(bind_addr).map_err(|e| QuicError::Endpoint(format!("bind client: {e}")))?;
+		let endpoint = Endpoint::new(EndpointConfig::default(), None, socket, Arc::new(TokioRuntime))
+			.map_err(|e| QuicError::Endpoint(format!("create client endpoint: {e}")))?;
+
+		Ok(Self {
+			endpoint,
+			client_config,
+			server_name: tls_cfg.server_name.clone(),
+		})
+	}
+
+	/// Begin connecting to `peer`, returning the raw quinn `Connecting` so
+	/// callers can observe 0-RTT via `into_0rtt` / `ZeroRttAccepted`.
+	pub fn connecting(&self, peer: SocketAddr) -> Result<quinn::Connecting, QuicError> {
+		self.endpoint
+			.connect_with(self.client_config.clone(), peer, &self.server_name)
+			.map_err(|e| QuicError::ConnectionLost(format!("connect {peer}: {e}")))
+	}
+
+	/// Connect to `peer` and wait for the handshake to complete.
+	pub async fn connect(&self, peer: SocketAddr) -> Result<QuinnConnection, QuicError> {
+		let conn = self.connecting(peer)?.await?;
+		Ok(QuinnConnection {
+			conn,
+			_endpoint: Some(Arc::new(self.endpoint.clone())),
+		})
+	}
+
+	/// The underlying quinn endpoint.
+	pub fn endpoint(&self) -> &Endpoint {
+		&self.endpoint
+	}
+}
+
 fn build_transport(t: &TransportConfig) -> Result<QuinnTransport, QuicError> {
 	let mut tr = QuinnTransport::default();
 	let bidi = VarInt::from_u64(t.max_concurrent_bidi_streams)

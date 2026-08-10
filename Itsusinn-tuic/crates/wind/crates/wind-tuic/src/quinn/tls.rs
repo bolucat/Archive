@@ -40,6 +40,12 @@ pub(crate) fn tls_config(_servername: &str, opts: &TuicOutboundOpts) -> Result<r
 	}
 	config.alpn_protocols = alpn;
 
+	// 0-RTT: without `enable_early_data` on the rustls client config, quinn never
+	// attempts to send early data even when the server accepts it (see the quinn
+	// `QuicClientConfig` docs). Wire the caller's `zero_rtt_handshake` flag through
+	// so a resumed handshake can actually replay early data.
+	config.enable_early_data = opts.zero_rtt_handshake;
+
 	Ok(config)
 }
 
@@ -160,6 +166,27 @@ mod tests {
 		assert!(
 			!cfg.alpn_protocols.contains(&b"h3".to_vec()),
 			"hardcoded \"h3\" must no longer override the caller's ALPN choice"
+		);
+	}
+
+	#[test]
+	fn enable_early_data_tracks_zero_rtt_handshake() {
+		install_provider();
+
+		let mut off = opts_with(vec!["h3".into()]);
+		off.zero_rtt_handshake = false;
+		let cfg_off = tls_config("localhost", &off).expect("tls_config must succeed");
+		assert!(
+			!cfg_off.enable_early_data,
+			"0-RTT must stay disabled on the rustls client config when zero_rtt_handshake=false"
+		);
+
+		let mut on = opts_with(vec!["h3".into()]);
+		on.zero_rtt_handshake = true;
+		let cfg_on = tls_config("localhost", &on).expect("tls_config must succeed");
+		assert!(
+			cfg_on.enable_early_data,
+			"zero_rtt_handshake=true must enable enable_early_data on the rustls client config"
 		);
 	}
 }

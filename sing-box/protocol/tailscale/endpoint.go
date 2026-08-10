@@ -55,7 +55,6 @@ import (
 	"github.com/sagernet/tailscale/tailcfg"
 	"github.com/sagernet/tailscale/tsnet"
 	"github.com/sagernet/tailscale/types/nettype"
-	"github.com/sagernet/tailscale/util/dnsname"
 	"github.com/sagernet/tailscale/version"
 	"github.com/sagernet/tailscale/wgengine"
 	"github.com/sagernet/tailscale/wgengine/router"
@@ -97,12 +96,12 @@ type Endpoint struct {
 	onReconfigHook    wgengine.ReconfigListener
 	sshReconfigHook   wgengine.ReconfigListener
 
-	cfg                *wgcfg.Config
-	routerCfg          *router.Config
-	dnsCfg             *tsDNS.Config
-	routeDomains       common.TypedValue[map[string]bool]
-	searchDomains      atomic.Bool
-	magicHostsUnrouted atomic.Bool
+	cfg           *wgcfg.Config
+	routerCfg     *router.Config
+	dnsCfg        *tsDNS.Config
+	routeDomains  common.TypedValue[map[string]bool]
+	routeSuffixes common.TypedValue[[]string]
+	searchDomains atomic.Bool
 
 	acceptRoutes               bool
 	exitNode                   string
@@ -918,13 +917,15 @@ func (t *Endpoint) PreferredDomain(metadata *adapter.InboundContext, domain stri
 	if routeDomains[domain] {
 		return true
 	}
-	if t.magicHostsUnrouted.Load() && t.started.Load() {
-		fqdn, err := dnsname.ToFQDN(domain)
-		if err == nil {
-			_, found := t.server.ExportLocalBackend().ExportMagicDNSHosts().LookupHost(fqdn)
-			if found {
-				return true
-			}
+	if t.started.Load() {
+		magicHosts := t.server.ExportLocalBackend().ExportMagicDNSHosts()
+		if _, found := lookupHosts(nil, magicHosts, domain); found {
+			return true
+		}
+	}
+	for _, suffix := range t.routeSuffixes.Load() {
+		if mDNS.IsSubDomain(suffix, domain) {
+			return true
 		}
 	}
 	return !strings.Contains(domain, ".") && t.searchDomains.Load()
@@ -962,15 +963,19 @@ func (t *Endpoint) onReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCf
 	t.dnsCfg = dnsCfg
 
 	routeDomains := make(map[string]bool)
-	for fqdn := range dnsCfg.Routes {
+	for fqdn := range dnsCfg.Hosts {
 		routeDomains[fqdn.WithoutTrailingDot()] = true
 	}
 	for _, fqdn := range dnsCfg.SearchDomains {
 		routeDomains[fqdn.WithoutTrailingDot()] = true
 	}
+	routeSuffixes := make([]string, 0, len(dnsCfg.Routes))
+	for fqdn := range dnsCfg.Routes {
+		routeSuffixes = append(routeSuffixes, fqdn.WithoutTrailingDot())
+	}
 	t.routeDomains.Store(routeDomains)
+	t.routeSuffixes.Store(routeSuffixes)
 	t.searchDomains.Store(len(dnsCfg.SearchDomains) > 0)
-	t.magicHostsUnrouted.Store(dnsCfg.MagicDNSHostsUnrouted)
 
 	if t.onReconfigHook != nil {
 		t.onReconfigHook(cfg, routerCfg, dnsCfg)

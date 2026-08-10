@@ -53,6 +53,28 @@ impl QuicheConnection {
 			peer_addr,
 		}))
 	}
+
+	/// Read the current TLS session (resumption ticket) from the driver, if
+	/// one has been received and processed yet. May be `None` until the
+	/// server's NewSessionTicket arrives — poll until `Some` if you need it.
+	/// Pass the returned ticket to
+	/// [`wind_quic::quiche::connect_with_session`] on a later connection to
+	/// resume the session and attempt 0-RTT early data.
+	pub async fn session(&self) -> Option<Vec<u8>> {
+		let (reply_tx, reply_rx) = oneshot::channel();
+		if self.0.cmd_tx.send(DriverCommand::Session(reply_tx)).is_err() {
+			return None;
+		}
+		reply_rx.await.ok().flatten()
+	}
+
+	/// BoringSSL `SSL_early_data_reason` captured when the handshake completed.
+	///
+	/// For clients: `0` = not sent, `1` = rejected, `2` = accepted. Use it to
+	/// assert that a resumed handshake's early data was actually accepted.
+	pub fn early_data_reason(&self) -> u32 {
+		self.0.shared.early_data_reason.load(Ordering::Relaxed)
+	}
 }
 
 impl QuicConnection for QuicheConnection {

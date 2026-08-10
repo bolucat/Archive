@@ -250,10 +250,29 @@ pub async fn bind_server(
 
 /// Connect to `peer` as a client, returning an established
 /// [`QuicheConnection`].
+///
+/// This is [`connect_with_session`] without a resumption ticket (always a
+/// fresh 1-RTT handshake).
 pub async fn connect(
 	peer: SocketAddr,
 	tls_cfg: &ClientTlsConfig,
 	transport: &TransportConfig,
+) -> Result<QuicheConnection, QuicError> {
+	connect_with_session(peer, tls_cfg, transport, None).await
+}
+
+/// Connect to `peer` as a client, optionally resuming a previous TLS session.
+///
+/// Pass the ticket previously returned by
+/// [`QuicheConnection::session`](crate::quiche::conn::QuicheConnection::session)
+/// (from an earlier handshake to the same server) to attempt TLS session
+/// resumption and, when both sides have 0-RTT enabled (`enable_0rtt`), replay
+/// early data on the resumed handshake.
+pub async fn connect_with_session(
+	peer: SocketAddr,
+	tls_cfg: &ClientTlsConfig,
+	transport: &TransportConfig,
+	session: Option<Vec<u8>>,
 ) -> Result<QuicheConnection, QuicError> {
 	let bind_addr = SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0));
 	let udp = UdpSocket::bind(bind_addr)
@@ -269,7 +288,8 @@ pub async fn connect(
 	let mut settings = quic_settings(transport);
 	settings.verify_peer = tls_cfg.verify_certificate;
 	settings.alpn = tls_cfg.alpn.clone();
-	let params = ConnectionParams::new_client(settings, None, Hooks { connection_hook: None });
+	let mut params = ConnectionParams::new_client(settings, None, Hooks { connection_hook: None });
+	params.session = session;
 
 	let span = tracing::info_span!("quiche-conn", peer = %peer);
 	let (driver, est_rx) = BridgeDriver::new(false, peer, span);

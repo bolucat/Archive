@@ -32,7 +32,7 @@ use std::{
 	pin::Pin,
 	sync::{
 		Arc,
-		atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+		atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering},
 	},
 	task::{Context, Poll},
 };
@@ -102,6 +102,9 @@ pub(crate) enum DriverCommand {
 		context: Vec<u8>,
 		reply: oneshot::Sender<Option<Vec<u8>>>,
 	},
+	/// Read the current TLS resumption session (may be `None` until the server's
+	/// NewSessionTicket has arrived and been processed).
+	Session(oneshot::Sender<Option<Vec<u8>>>),
 	/// Shut down one direction of a stream with an error code.
 	StreamShutdown { sid: u64, write: bool, code: u64 },
 	/// Close the connection.
@@ -130,6 +133,10 @@ pub(crate) struct Shared {
 	/// Cumulative wire bytes received from the peer (client→server = upload).
 	/// See [`sent_bytes`](Self::sent_bytes).
 	pub recv_bytes: AtomicU64,
+	/// BoringSSL `SSL_early_data_reason` captured once the handshake completes
+	/// (0 = not sent, 1 = rejected, 2 = accepted, ...). See
+	/// [`quiche::Connection::early_data_reason`].
+	pub early_data_reason: AtomicU32,
 }
 
 /// Per-stream bridge state held by the driver.
@@ -241,6 +248,7 @@ pub(crate) struct BridgeDriver {
 	out_datagrams: VecDeque<Bytes>,
 	pending_opens: VecDeque<PendingOpen>,
 	pending_exports: VecDeque<ExportReq>,
+	pending_sessions: VecDeque<oneshot::Sender<Option<Vec<u8>>>>,
 	pending_shutdowns: VecDeque<(u64, bool, u64)>,
 	pending_close: Option<(u32, Vec<u8>)>,
 
@@ -263,6 +271,7 @@ impl BridgeDriver {
 			closed_notify: Notify::new(),
 			sent_bytes: AtomicU64::new(0),
 			recv_bytes: AtomicU64::new(0),
+			early_data_reason: AtomicU32::new(0),
 		});
 		let handle = Handle::new(
 			cmd_tx.clone(),
@@ -290,6 +299,7 @@ impl BridgeDriver {
 			out_datagrams: VecDeque::new(),
 			pending_opens: VecDeque::new(),
 			pending_exports: VecDeque::new(),
+			pending_sessions: VecDeque::new(),
 			pending_shutdowns: VecDeque::new(),
 			pending_close: None,
 			shared,
@@ -559,6 +569,7 @@ impl BridgeDriver {
 			// The wake itself is the work: `process_writes` re-flushes every
 			// stream's `pending_in` right after `wait_for_data` returns.
 			DriverCommand::FlushInbound(_sid) => {}
+			DriverCommand::Session(reply) => self.pending_sessions.push_back(reply),
 			DriverCommand::Export {
 				out_len,
 				label,
@@ -608,6 +619,12 @@ impl ApplicationOverQuic for BridgeDriver {
 		self.shared
 			.max_dgram
 			.store(qconn.dgram_max_writable_len().unwrap_or(0), Ordering::Relaxed);
+		// Capture the early-data verdict now that the handshake has completed
+		// (BoringSSL reports whether 0-RTT was accepted/rejected once the
+		// handshake settles).
+		self.shared
+			.early_data_reason
+			.store(qconn.early_data_reason(), Ordering::Relaxed);
 		debug!(trace = qconn.trace_id(), "wind-quic quiche connection established");
 		if let (Some(tx), Some(handle)) = (self.established_tx.take(), self.handle.take()) {
 			let _ = tx.send(handle);
@@ -729,6 +746,10 @@ impl ApplicationOverQuic for BridgeDriver {
 		while let Some((out_len, label, context, reply)) = self.pending_exports.pop_front() {
 			let res = export_keying_material(qconn, out_len, &label, &context);
 			let _ = reply.send(res);
+		}
+
+		while let Some(reply) = self.pending_sessions.pop_front() {
+			let _ = reply.send(qconn.session().map(|s| s.to_vec()));
 		}
 
 		// Cache cumulative wire byte counters into `shared` so handles read them

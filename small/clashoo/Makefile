@@ -1,18 +1,18 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashoo
-PKG_SHORT_SHA:=8d71008
-PKG_COMMIT_DATE:=2026.08.08
+PKG_SHORT_SHA:=cf98d2d
+PKG_COMMIT_DATE:=2026.08.10
 
 PKG_VERSION:=$(PKG_COMMIT_DATE)~$(PKG_SHORT_SHA)
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE:=$(PKG_NAME)-alpha-$(PKG_SHORT_SHA).tar.gz
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-alpha-$(PKG_SHORT_SHA)
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-alpha-$(PKG_SHORT_SHA)
 PKG_SOURCE_URL:=https://github.com/kenzok8/openwrt-clashoo/releases/download/mihomo-src
-PKG_SOURCE_VERSION:=8d7100815edf517bbf9c3e615e604db3a5963706
-PKG_HASH:=1d58abf4648cf0812711cb0aa1d708f3d27e08ed493cac7b9dbb4d351619b383
+PKG_SOURCE_VERSION:=cf98d2d5fd34d60c5b2cec5711ec2730a13b5a72
+PKG_HASH:=2e0ad259b1450362f837f7c2736091c7248d38f5ab2890bc76c454c793270dc0
 PKG_BUILD_VERSION:=alpha-$(PKG_SHORT_SHA)
 
 PKG_LICENSE:=GPL3.0+
@@ -72,6 +72,7 @@ define Package/clashoo/install
 	$(CP) $(CURDIR)/files/usr/share/clashoo/* $(1)/usr/share/clashoo/
 	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/migrate_lan_acl.sh $(1)/usr/share/clashoo/migrate_lan_acl.sh
 	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/detect_core_arch.sh $(1)/usr/share/clashoo/detect_core_arch.sh
+	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/diagnose_bypass.sh $(1)/usr/share/clashoo/diagnose_bypass.sh
 
 	$(RM) $(1)/usr/share/clashoo/dashboard
 	$(RM) $(1)/usr/share/clashoo/yacd
