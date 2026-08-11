@@ -1,9 +1,70 @@
 package coreObj
 
 import (
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 )
+
+// PinnedPeerCertSha256Hex normalizes a peer certificate pin value found in an
+// imported link into the hex string that xray-core's "pinnedPeerCertSha256"
+// field expects (comma-separated lowercase hex, 64 chars each).
+//
+// Link formats disagree about the pin representation:
+//   - xray/v2rayN style: base64 of the SHA256 hash
+//   - sing-box / hysteria2 style: hex string of the SHA256 hash
+//   - some formats may include an optional "sha256:" prefix
+//   - openssl-style pins may separate octets with colons (AB:CD:EF:...)
+//   - multiple pins may be joined with commas
+//
+// An empty input yields ("", nil). A non-empty pin that cannot be normalized
+// returns an error so a silently dropped pin never downgrades verification.
+func PinnedPeerCertSha256Hex(pin string) (string, error) {
+	pin = strings.TrimSpace(pin)
+	if pin == "" {
+		return "", nil
+	}
+	var out []string
+	for _, part := range strings.Split(pin, ",") {
+		part = strings.TrimSpace(part)
+		part = strings.TrimPrefix(part, "sha256:")
+		part = strings.TrimPrefix(part, "SHA256:")
+		// Strip openssl-style colons: AB:CD:EF:...
+		part = strings.ReplaceAll(part, ":", "")
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Try hex (32 bytes = 64 hex chars).
+		if raw, err := hex.DecodeString(part); err == nil && len(raw) == 32 {
+			out = append(out, hex.EncodeToString(raw))
+			continue
+		}
+		// Try base64 / base64url, with or without padding.
+		var raw []byte
+		matched := false
+		for _, dec := range []*base64.Encoding{
+			base64.StdEncoding,
+			base64.RawStdEncoding,
+			base64.URLEncoding,
+			base64.RawURLEncoding,
+		} {
+			if decoded, err := dec.DecodeString(part); err == nil && len(decoded) == 32 {
+				raw = decoded
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return "", fmt.Errorf("unrecognized peer certificate pin: %q", pin)
+		}
+		out = append(out, hex.EncodeToString(raw))
+	}
+	return strings.Join(out, ","), nil
+}
 
 type APIObject struct {
 	Tag      string   `json:"tag"`
@@ -152,13 +213,17 @@ func (s Settings) MarshalJSON() ([]byte, error) {
 }
 
 type TLSSettings struct {
-	ServerName                       interface{}   `json:"serverName,omitempty"`
-	Alpn                             []string      `json:"alpn,omitempty"`
-	PinnedPeerCertificateChainSha256 string        `json:"pinnedPeerCertificateChainSha256,omitempty"`
-	PinnedPeerCertSha256             string        `json:"pinnedPeerCertSha256,omitempty"`
-	VerifyPeerCertByName             string        `json:"verifyPeerCertByName,omitempty"`
-	Certificates                     []Certificate `json:"certificates,omitempty"`
-	Fingerprint                      string        `json:"fingerprint,omitempty"`
+	ServerName interface{} `json:"serverName,omitempty"`
+	Alpn       []string    `json:"alpn,omitempty"`
+	// PinnedPeerCertSha256 pins the peer certificate by the SHA256 hash of its
+	// DER-encoded leaf certificate (or a CA certificate within its chain).
+	// xray-core expects a comma-separated hex string. Use PinnedPeerCertSha256Hex()
+	// to build this from the value found in imported links (which may be hex or
+	// base64).
+	PinnedPeerCertSha256 string        `json:"pinnedPeerCertSha256,omitempty"`
+	VerifyPeerCertByName string        `json:"verifyPeerCertByName,omitempty"`
+	Certificates         []Certificate `json:"certificates,omitempty"`
+	Fingerprint          string        `json:"fingerprint,omitempty"`
 }
 type Certificate struct {
 	CertificateFile string `json:"certificateFile"`
@@ -174,21 +239,21 @@ type WsSettings struct {
 	EarlyDataHeaderName string  `json:"earlyDataHeaderName,omitempty"`
 }
 type StreamSettings struct {
-	Network         string           `json:"network,omitempty"`
-	Security        string           `json:"security,omitempty"`
-	TLSSettings     *TLSSettings     `json:"tlsSettings,omitempty"`
-	XTLSSettings    *TLSSettings     `json:"xtlsSettings,omitempty"`
-	XHTTPSettings   *XHTTPSettings   `json:"xhttpSettings,omitempty"`
-	RealitySettings *RealitySettings `json:"realitySettings,omitempty"`
-	TCPSettings     *TCPSettings     `json:"tcpSettings,omitempty"`
-	KcpSettings     *KcpSettings     `json:"kcpSettings,omitempty"`
-	WsSettings      *WsSettings      `json:"wsSettings,omitempty"`
-	HTTPSettings    *HttpSettings    `json:"httpSettings,omitempty"`
-	GrpcSettings    *GrpcSettings    `json:"grpcSettings,omitempty"`
-	QuicSettings    *QuicSettings    `json:"quicSettings,omitempty"`
+	Network          string            `json:"network,omitempty"`
+	Security         string            `json:"security,omitempty"`
+	TLSSettings      *TLSSettings      `json:"tlsSettings,omitempty"`
+	XTLSSettings     *TLSSettings      `json:"xtlsSettings,omitempty"`
+	XHTTPSettings    *XHTTPSettings    `json:"xhttpSettings,omitempty"`
+	RealitySettings  *RealitySettings  `json:"realitySettings,omitempty"`
+	TCPSettings      *TCPSettings      `json:"tcpSettings,omitempty"`
+	KcpSettings      *KcpSettings      `json:"kcpSettings,omitempty"`
+	WsSettings       *WsSettings       `json:"wsSettings,omitempty"`
+	HTTPSettings     *HttpSettings     `json:"httpSettings,omitempty"`
+	GrpcSettings     *GrpcSettings     `json:"grpcSettings,omitempty"`
+	QuicSettings     *QuicSettings     `json:"quicSettings,omitempty"`
 	HysteriaSettings *HysteriaSettings `json:"hysteriaSettings,omitempty"`
 	FinalMask        *FinalMask        `json:"finalmask,omitempty"`
-	Sockopt         *Sockopt         `json:"sockopt,omitempty"`
+	Sockopt          *Sockopt          `json:"sockopt,omitempty"`
 }
 type HysteriaSettings struct {
 	Version int32  `json:"version"`
@@ -210,12 +275,12 @@ type RealitySettings struct {
 	SpiderX     string `json:"spiderX,omitempty"`
 }
 type GrpcSettings struct {
-	ServiceName          string `json:"serviceName"`
-	MultiMode            bool   `json:"multiMode,omitempty"`
-	IdleTimeout          int    `json:"idle_timeout,omitempty"`
-	HealthCheckTimeout   int    `json:"health_check_timeout,omitempty"`
-	PermitWithoutStream  bool   `json:"permit_without_stream,omitempty"`
-	InitialWindowsSize   int    `json:"initial_windows_size,omitempty"`
+	ServiceName         string `json:"serviceName"`
+	MultiMode           bool   `json:"multiMode,omitempty"`
+	IdleTimeout         int    `json:"idle_timeout,omitempty"`
+	HealthCheckTimeout  int    `json:"health_check_timeout,omitempty"`
+	PermitWithoutStream bool   `json:"permit_without_stream,omitempty"`
+	InitialWindowsSize  int    `json:"initial_windows_size,omitempty"`
 }
 type Sockopt struct {
 	Mark        *int    `json:"mark,omitempty"`
@@ -334,6 +399,7 @@ type XHTTPSettings struct {
 	Xmux                 *XHTTPXmux        `json:"xmux,omitempty"`
 	UplinkHTTPMethod     string            `json:"uplinkHTTPMethod,omitempty"`
 }
+
 // WireGuard 出站配置
 type WireGuardSettings struct {
 	SecretKey  string          `json:"secretKey"`
@@ -389,15 +455,15 @@ type Policy struct {
 
 // DnsModuleStatus 表示新 DNS 模块的运行状态，用于 API 报告。
 type DnsModuleStatus struct {
-	Healthy       bool              `json:"healthy"`
-	ListenAddr    string            `json:"listenAddr"`
-	TotalQueries  int64             `json:"totalQueries"`
-	RejectedQuery int64             `json:"rejectedQueries"`
-	BypassedQuery int64             `json:"bypassedQueries"`
-	CacheHits     int64             `json:"cacheHits"`
-	CacheMisses   int64             `json:"cacheMisses"`
-	AvgRTT        time.Duration     `json:"avgRtt"`
-	RoutedQueries map[string]int64  `json:"routedQueries"`
-	NumRules      int               `json:"numRules"`
-	NumUpstreams  int               `json:"numUpstreams"`
+	Healthy       bool             `json:"healthy"`
+	ListenAddr    string           `json:"listenAddr"`
+	TotalQueries  int64            `json:"totalQueries"`
+	RejectedQuery int64            `json:"rejectedQueries"`
+	BypassedQuery int64            `json:"bypassedQueries"`
+	CacheHits     int64            `json:"cacheHits"`
+	CacheMisses   int64            `json:"cacheMisses"`
+	AvgRTT        time.Duration    `json:"avgRtt"`
+	RoutedQueries map[string]int64 `json:"routedQueries"`
+	NumRules      int              `json:"numRules"`
+	NumUpstreams  int              `json:"numUpstreams"`
 }

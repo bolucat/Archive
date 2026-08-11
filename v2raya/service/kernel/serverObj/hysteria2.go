@@ -121,8 +121,12 @@ func (s *Hysteria2) Configuration(info PriorInfo) (c Configuration, err error) {
 		return c, fmt.Errorf("hysteria2: marshal settings: %w", err)
 	}
 
+	pins, err := coreObj.PinnedPeerCertSha256Hex(p.pinnedPeerCertSha256)
+	if err != nil {
+		return c, fmt.Errorf("hysteria2: %w", err)
+	}
 	tlsSettings := &coreObj.TLSSettings{
-		PinnedPeerCertSha256: p.pinnedPeerCertSha256,
+		PinnedPeerCertSha256: pins,
 		VerifyPeerCertByName: p.verifyPeerCertByName,
 	}
 	if p.sni == "" {

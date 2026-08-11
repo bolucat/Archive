@@ -235,7 +235,6 @@
               <option value="none">{{ $t("setting.options.off") }}</option>
               <option value="tls">tls</option>
               <option v-if="variant() === 'xray'" value="reality">reality</option>
-              <option v-if="variant() === 'xray'" value="xtls">xtls</option>
             </b-select>
           </b-field>
           <b-field v-if="v2ray.tls !== 'none'" label="SNI" label-position="on-border">
@@ -1226,7 +1225,9 @@ export default {
   },
   methods: {
     variant() {
-      return localStorage["variant"]?.toLowerCase() || "v2ray";
+      const v = (localStorage["variant"] || "v2ray").toLowerCase();
+      // v2raya_core is the merged xray-based core; treat it as the revised "xray" variant.
+      return v === "v2rayacore" ? "xray" : v;
     },
     handleV2rayProtocolSwitch() {
       // protocol is now driven by tab selection
@@ -1242,6 +1243,21 @@ export default {
         obj.type = obj.type || "none";
         obj.scy = obj.scy || "auto";
         obj.protocol = obj.protocol || "vmess";
+        // xhttpHeaders arrives as a JSON-encoded string; convert it to the
+        // array model used by the GUI so the editor round-trips correctly.
+        if (typeof obj.xhttpHeaders === "string") {
+          try {
+            const hdrsObj = JSON.parse(obj.xhttpHeaders);
+            obj.xhttpHeaders = Object.entries(hdrsObj || {}).map(([key, value]) => ({ key, value }));
+          } catch (_) {
+            obj.xhttpHeaders = [];
+          }
+        }
+        if (!Array.isArray(obj.xhttpHeaders)) obj.xhttpHeaders = [];
+        // multiMode/permitWithoutStream arrive as strings; restore the booleans
+        // used by the GUI model.
+        if (typeof obj.multiMode === "string") obj.multiMode = obj.multiMode === "true" || obj.multiMode === "1";
+        if (typeof obj.permitWithoutStream === "string") obj.permitWithoutStream = obj.permitWithoutStream === "true" || obj.permitWithoutStream === "1";
         return obj;
       } else if (url.toLowerCase().startsWith("vless://")) {
         let u = parseURL(url);
@@ -1257,7 +1273,7 @@ export default {
           path: u.params.path || u.params.serviceName || "",
           alpn: u.params.alpn || "",
           sni: u.params.sni || "",
-          tls: u.params.security || "none",
+          tls: u.params.security === "xtls" ? "tls" : u.params.security || "none",
           quicSecurity: u.params.quicSecurity || "none",
           fp: u.params.fp || "",
           pbk: u.params.pbk || "",
@@ -1615,6 +1631,20 @@ export default {
         case "vmess":
           //https://github.com/2dust/v2rayN/wiki/%E5%88%86%E4%BA%AB%E9%93%BE%E6%8E%A5%E6%A0%BC%E5%BC%8F%E8%AF%B4%E6%98%8E(ver-2)
           obj = Object.assign({}, srcObj);
+          // xhttpHeaders is stored on the backend as a JSON-encoded string; the
+          // GUI model uses an array of {key,value}. Serialize as a string so the
+          // vmess payload can round-trip through the backend parser.
+          if (Array.isArray(obj.xhttpHeaders)) {
+            const hdrsObj = {};
+            obj.xhttpHeaders.forEach(h => {
+              if (h && h.key) hdrsObj[h.key] = h.value;
+            });
+            obj.xhttpHeaders = Object.keys(hdrsObj).length > 0 ? JSON.stringify(hdrsObj) : "";
+          }
+          // multiMode/permitWithoutStream are stored as strings on the backend
+          // but modeled as booleans in the GUI; serialize them as strings.
+          if (typeof obj.multiMode === "boolean") obj.multiMode = obj.multiMode ? "true" : "false";
+          if (typeof obj.permitWithoutStream === "boolean") obj.permitWithoutStream = obj.permitWithoutStream ? "true" : "false";
           switch (obj.net) {
             case "kcp":
             case "tcp":
