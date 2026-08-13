@@ -2,7 +2,7 @@ import type { IAliShareItem } from '../aliapi/alimodels'
 import type { IDownloadUrl, IVideoPreviewUrl } from '../aliapi/models'
 import { humanExpiration } from '../utils/format'
 import { GetExpiresTime } from '../utils/utils'
-import { apiCloud123CopyBatch, apiCloud123CopySingle, apiCloud123DeleteBatch, apiCloud123DownloadInfo, apiCloud123FileDetail, apiCloud123FileInfos, apiCloud123Mkdir, apiCloud123MoveBatch, apiCloud123RecoverBatch, apiCloud123RenameBatch, apiCloud123TrashBatch } from './filecmd'
+import { apiCloud123CopyBatch, apiCloud123CopySingle, apiCloud123DownloadInfo, apiCloud123FileDetail, apiCloud123FileInfos, apiCloud123Mkdir, apiCloud123MoveBatch, apiCloud123RecoverBatch, apiCloud123RenameBatch, apiCloud123TrashBatch } from './filecmd'
 import { apiCloud123FileList, mapCloud123FileToAliModel, mapCloud123InfoToAliModel } from './dirfilelist'
 import { apiCloud123PaidShareCreate, apiCloud123ShareCreate, apiCloud123ShareList, getCloud123ShareUrl } from './share'
 import { apiCloud123TranscodeList } from './video'
@@ -95,7 +95,6 @@ export const getCloud123VideoPreview = async (userId: string, driveId: string, f
 
 export const createCloud123Folder = (userId: string, parentFileId: string, name: string) => apiCloud123Mkdir(userId, parentFileId.includes('root') ? '0' : parentFileId, name)
 export const trashCloud123Files = (userId: string, fileIds: string[]) => apiCloud123TrashBatch(userId, fileIds)
-export const deleteCloud123Files = (userId: string, fileIds: string[]) => apiCloud123DeleteBatch(userId, fileIds)
 export const restoreCloud123Files = (userId: string, fileIds: string[]) => apiCloud123RecoverBatch(userId, fileIds)
 export const renameCloud123Files = (userId: string, fileIds: string[], names: string[]) => apiCloud123RenameBatch(userId, fileIds, names)
 export const moveCloud123Files = (userId: string, fileIds: string[], parentFileId: string) => apiCloud123MoveBatch(userId, fileIds, parentFileId.includes('root') ? '0' : parentFileId)

@@ -176,7 +176,7 @@ describe('Mineradio music UI shell', () => {
     expect(stage).toContain('--music-lyric-glow')
     expect(stage).toContain('ResizeObserver')
     expect(stage).toContain('prefers-reduced-motion')
-    expect(stage).toContain('top: calc(100% - clamp(176px, 20vh, 216px))')
+    expect(stage).toContain('top: calc(100% - clamp(144px, 17vh, 184px))')
     expect(stage).not.toContain('top: calc(50% + min(164px, 22vh))')
 
     const shelf = readComponent('src/utils/mineradio/ShelfManager.ts')

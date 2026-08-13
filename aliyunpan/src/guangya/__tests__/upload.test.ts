@@ -21,9 +21,9 @@ describe('Guangya OSS upload', () => {
     await expect(apiGuangyaUploadInfo('user', 'task-1')).resolves.toMatchObject({ fileId: '', uploading: true, error: '' })
   })
 
-  it('signs a direct upload with the required OSS date, token, and content MD5 headers', async () => {
+  it('posts a direct upload using the returned OSS form policy', async () => {
     guangyaRequest
-      .mockResolvedValueOnce({ data: { taskId: 'task-1', fullEndPoint: 'https://oss.example.com', bucketName: 'bucket', objectPath: 'folder/file.txt', creds: { accessKeyID: 'key', secretAccessKey: 'secret', sessionToken: 'sts-token' } } })
+      .mockResolvedValueOnce({ data: { taskId: 'task-1', objectPath: 'folder/file.txt', params: { url: 'https://oss.example.com', multipart: { OSSAccessKeyId: 'key', Signature: 'signature', key: 'folder/file.txt', policy: 'policy', 'x:user_data': 'user-data' } } } })
       .mockResolvedValueOnce({ data: { message: '文件上传中' } })
       .mockResolvedValueOnce({ data: { fileId: 'file-1' } })
     const fetchMock = vi.fn().mockResolvedValue({ ok: true })
@@ -31,10 +31,19 @@ describe('Guangya OSS upload', () => {
 
     await expect(apiGuangyaUploadBuffer('user', 'root', 'file.txt', Buffer.from('hello'))).resolves.toEqual({ file_id: 'file-1', error: '' })
 
-    const headers = fetchMock.mock.calls[0][1].headers
-    expect(headers['x-oss-date']).toBeTruthy()
-    expect(headers['x-oss-security-token']).toBe('sts-token')
-    expect(headers['Content-MD5']).toBe('XUFAKrxLKna5cZ2REBfFkg==')
-    expect(headers.Authorization).toMatch(/^OSS key:/)
+    expect(guangyaRequest).toHaveBeenNthCalledWith(1, 'user', '/nd.bizuserres.s/v1/get_res_center_token', {
+      capacity: 1,
+      name: 'file.txt',
+      parentId: 'root',
+      res: { fileSize: 5, md5: 'XUFAKrxLKna5cZ2REBfFkg==' }
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith('https://oss.example.com', expect.objectContaining({ method: 'POST' }))
+    const form = fetchMock.mock.calls[0][1].body as FormData
+    expect(form.get('key')).toBe('folder/file.txt')
+    expect(form.get('OSSAccessKeyId')).toBe('key')
+    expect(form.get('Signature')).toBe('signature')
+    expect(form.get('policy')).toBe('policy')
+    expect(form.get('x:user_data')).toBe('user-data')
   })
 })

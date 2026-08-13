@@ -10,6 +10,11 @@ import { buildShelfGroups, loadGlobalNoteTags, normalizeBookSortMode, normalizeB
 import DB from '../utils/db'
 import UserDAL from '../user/userdal'
 import AliHttp from '../aliapi/alihttp'
+import { buildExternalBookMetadataPatch, canHydrateExternalBookMetadata, lookupExternalBookMetadata } from '../utils/bookExternalMetadata'
+import DebugLog from '../utils/debuglog'
+import { parseBookMeta } from '../utils/bookFilenameMeta'
+
+export { parseBookMeta } from '../utils/bookFilenameMeta'
 
 const LS_LASTSCAN = 'bookLibrary.lastScanAt'
 const LS_SUBTAB = 'bookLibrary.subTab'
@@ -18,14 +23,11 @@ const LS_MANAGER_SORT_ORDER = 'bookLibrary.readerSortOrder'
 const LS_VIEW_MODE = 'bookLibrary.readerViewMode'
 const BOOK_THUMBNAIL_HYDRATE_LIMIT = 72
 const BOOK_THUMBNAIL_HYDRATE_CONCURRENCY = 6
+const BOOK_EXTERNAL_METADATA_HYDRATE_LIMIT = 24
+const BOOK_EXTERNAL_METADATA_HYDRATE_CONCURRENCY = 3
 const BOOK_PAGE_SIZE = 240
 
 export type BookSubTab = 'shelf' | 'all' | 'authors' | 'formats' | 'folders'
-
-const AUTHOR_TITLE_RE = /^(.+?)\s*[-–—_]\s*(.+)$/
-const BRACKET_AUTHOR_RE = /^[\[【（(](.+?)[\]】）)]\s*(.+)$/
-const TITLE_AUTHOR_RE = /^(.+?)\s*[\(（](.+?)[\)）]$/
-const COMMON_TAGS_RE = /(?:\[[^\]]+\]|【[^】]+】|（[^）]+）|\([^)]+\))/g
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -40,54 +42,6 @@ function loadJson<T>(key: string, fallback: T): T {
 
 function saveJson(key: string, value: unknown) {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
-}
-
-function stripExt(name: string): string {
-  if (!name) return ''
-  const i = name.lastIndexOf('.')
-  return i > 0 ? name.slice(0, i) : name
-}
-
-export function parseBookMeta(fileName: string): Pick<IBookItem, 'title' | 'author' | 'summary' | 'metadata_source'> {
-  const raw = stripExt(fileName).replace(/\s+/g, ' ').trim()
-  if (!raw) return { title: fileName || '未命名书籍', author: '未知作者', summary: '', metadata_source: 'unknown' }
-
-  const bracket = raw.match(BRACKET_AUTHOR_RE)
-  if (bracket?.[1] && bracket?.[2]) {
-    return {
-      author: bracket[1].trim(),
-      title: bracket[2].replace(COMMON_TAGS_RE, ' ').replace(/\s+/g, ' ').trim(),
-      summary: '',
-      metadata_source: 'filename'
-    }
-  }
-
-  const titleAuthor = raw.match(TITLE_AUTHOR_RE)
-  if (titleAuthor?.[1] && titleAuthor?.[2] && titleAuthor[2].length <= 40) {
-    return {
-      title: titleAuthor[1].replace(COMMON_TAGS_RE, ' ').replace(/\s+/g, ' ').trim(),
-      author: titleAuthor[2].trim(),
-      summary: '',
-      metadata_source: 'filename'
-    }
-  }
-
-  const pair = raw.match(AUTHOR_TITLE_RE)
-  if (pair?.[1] && pair?.[2] && pair[1].length <= 40) {
-    return {
-      author: pair[1].trim(),
-      title: pair[2].replace(COMMON_TAGS_RE, ' ').replace(/\s+/g, ' ').trim(),
-      summary: '',
-      metadata_source: 'filename'
-    }
-  }
-
-  return {
-    title: raw.replace(COMMON_TAGS_RE, ' ').replace(/\s+/g, ' ').trim() || raw,
-    author: '未知作者',
-    summary: '',
-    metadata_source: 'filename'
-  }
 }
 
 function ensureBookMeta(book: IBookItem): IBookItem {
@@ -126,6 +80,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   const loadedBookRecordCount = ref(0)
   const isLoadingNextPage = ref(false)
   const hydratedThumbnailIds = new Set<string>()
+  const hydratedExternalMetadataIds = new Set<string>()
   const notesByBookId = ref<Record<string, IBookNote[]>>({})
   const bookmarksByBookId = ref<Record<string, IBookBookmark[]>>({})
   const loaded = ref(false)
@@ -183,6 +138,38 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
         return update ? { ...book, ...update } : book
       })
     }
+  }
+
+  async function hydrateExternalBookMetadata(sourceBooks: IBookItem[]) {
+    const sources = sourceBooks
+      .filter((book) => !hydratedExternalMetadataIds.has(book.id) && canHydrateExternalBookMetadata(book))
+      .slice(0, BOOK_EXTERNAL_METADATA_HYDRATE_LIMIT)
+    if (sources.length) DebugLog.mSaveLog('info', `[book-metadata] 本页待补全 ${sources.length} 本（最多 ${BOOK_EXTERNAL_METADATA_HYDRATE_LIMIT} 本）`, undefined)
+    for (const book of sources) hydratedExternalMetadataIds.add(book.id)
+    const updates = new Map<string, Partial<IBookItem>>()
+    for (let index = 0; index < sources.length; index += BOOK_EXTERNAL_METADATA_HYDRATE_CONCURRENCY) {
+      const batch = sources.slice(index, index + BOOK_EXTERNAL_METADATA_HYDRATE_CONCURRENCY)
+      const resolved = await Promise.all(batch.map(async (book) => {
+        try {
+          const meta = await lookupExternalBookMetadata(book, fetch, (message, error) => {
+            if (error || message.includes('HTTP ')) DebugLog.mSaveWarning(message, error)
+            else DebugLog.mSaveLog('info', message, undefined)
+          })
+          return meta ? { id: book.id, patch: buildExternalBookMetadataPatch(meta) } : null
+        } catch (error) {
+          DebugLog.mSaveWarning(`[book-metadata] ${book.file_name} 元数据补全失败`, error)
+          return null
+        }
+      }))
+      for (const item of resolved) {
+        if (item) updates.set(item.id, item.patch)
+      }
+    }
+    if (sources.length) DebugLog.mSaveLog('info', `[book-metadata] 本页补全完成：命中 ${updates.size}/${sources.length}，含封面 ${[...updates.values()].filter((patch) => !!patch.cover_url).length}/${updates.size}`, undefined)
+    if (!updates.size) return
+    const changed = books.value.map((book) => updates.has(book.id) ? { ...book, ...updates.get(book.id) } : book)
+    books.value = changed
+    await DB.saveBookItems(changed.filter((book) => updates.has(book.id))).catch(() => {})
   }
 
   const activeBooks = computed(() => books.value.filter((book) => !book.deleted_at))
@@ -299,6 +286,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
       loadedBookRecordCount.value += list.length
       if (fixed.length) DB.saveBookItems(fixed).catch(() => {})
       void hydrateAliyunThumbnails(fixed)
+      void hydrateExternalBookMetadata(fixed)
       return fixed.length > 0
     } finally {
       isLoadingNextPage.value = false
@@ -380,6 +368,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
       books.value = []
       loadedBookRecordCount.value = 0
       hydratedThumbnailIds.clear()
+      hydratedExternalMetadataIds.clear()
       await refreshBookCounts()
       await loadNextPage()
     }
@@ -387,19 +376,22 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
 
   async function updateBookMetadata(id: string, patch: Partial<IBookItem>) {
     const idx = books.value.findIndex((b) => b.id === id)
-    if (idx < 0) return
+    const current = idx >= 0 ? books.value[idx] : (await DB.getBookItemsByIds([id]).catch(() => []))[0]
+    if (!current) return
     const merged: IBookItem = {
-      ...books.value[idx],
+      ...current,
       ...patch,
-      id: books.value[idx].id,
+      id: current.id,
       metadata_updated_at: Date.now()
     }
-    books.value = [
-      ...books.value.slice(0, idx),
-      merged,
-      ...books.value.slice(idx + 1)
-    ]
-    DB.saveBookItems([merged]).catch(() => {})
+    if (idx >= 0) {
+      books.value = [
+        ...books.value.slice(0, idx),
+        merged,
+        ...books.value.slice(idx + 1)
+      ]
+    }
+    await DB.saveBookItems([merged]).catch(() => {})
   }
 
   async function toggleFavoriteBook(id: string) {

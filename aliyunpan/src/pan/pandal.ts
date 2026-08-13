@@ -68,6 +68,21 @@ export default class PanDAL {
     panfileStore.mSaveDirFileLoadingPart(0, dir, dir.itemsTotal || 0)
     await TreeStore.SaveOneDirFileList(dir, hasFiles)
     if (hasFiles) panfileStore.mSaveDirFileLoadingFinish(driveId, dirId, dir.items, dir.itemsTotal || 0)
+    const panTreeStore = usePanTreeStore()
+    if (panTreeStore.user_id === userId && panTreeStore.drive_id === driveId && !panTreeStore.selectDir.file_id) {
+      const currentDir: IAliGetDirModel = {
+        __v_skip: true,
+        drive_id: driveId,
+        file_id: dirId,
+        parent_file_id: '',
+        name: dirName,
+        namesearch: '',
+        size: 0,
+        time: 0,
+        description: ''
+      }
+      panTreeStore.mShowDir(currentDir, [currentDir], [dirId], [dirId])
+    }
     PanDAL.RefreshPanTreeAllNode(driveId)
   }
 

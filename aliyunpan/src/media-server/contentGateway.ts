@@ -166,6 +166,30 @@ interface MediaServerMediaStream {
   IsDefault?: boolean
   IsExternal?: boolean
   IsForced?: boolean
+  DeliveryUrl?: string
+}
+
+const browserUnsupportedAudioCodecs = new Set([
+  'ac3',
+  'ac-3',
+  'eac3',
+  'ec-3',
+  'dts',
+  'dts-hd',
+  'dca',
+  'truehd',
+  'mlp'
+])
+
+const requiresBrowserAudioTranscoding = (source: MediaServerMediaSource | undefined, audioStreamIndex?: number) => {
+  const audioStreams = (source?.MediaStreams || []).filter((stream) => (stream.Type || '').toLowerCase() === 'audio')
+  if (audioStreams.length === 0) return false
+  const selectedStream = typeof audioStreamIndex === 'number' && audioStreamIndex >= 0
+    ? audioStreams.find((stream) => stream.Index === audioStreamIndex)
+    : audioStreams.find((stream) => stream.Index === source?.DefaultAudioStreamIndex)
+      || audioStreams.find((stream) => stream.IsDefault)
+      || audioStreams[0]
+  return browserUnsupportedAudioCodecs.has(String(selectedStream?.Codec || '').toLowerCase())
 }
 
 interface BaseQueryResult {
@@ -932,7 +956,8 @@ export const getMediaServerPlaybackInfo = async (
   playbackQuality: MediaServerPlaybackQuality = 'max',
   compatibilityMode: MediaServerPlaybackCompatibility = 'auto',
   customDeviceProfile?: MediaServerCustomDeviceProfile,
-  bitrateTestSize: MediaServerBitrateTestSize = '5000000'
+  bitrateTestSize: MediaServerBitrateTestSize = '5000000',
+  preferTranscoding = false
 ): Promise<MediaServerPlaybackInfo> => {
   if (config.type === 'plex') return getPlexMediaServerPlaybackInfo(config, itemId, sourceId, videoStreamIndex)
   ensureServerContext(config)
@@ -945,42 +970,76 @@ export const getMediaServerPlaybackInfo = async (
   const fallbackPlayCursorSeconds = detailPayload.UserData?.PlaybackPositionTicks
     ? Math.max(0, Math.floor(detailPayload.UserData.PlaybackPositionTicks / 10_000_000))
     : 0
+  const requestedSource = (detailPayload.MediaSources || []).find((entry) => sourceId && entry.Id === sourceId) || detailPayload.MediaSources?.[0]
+  const forceBrowserCompatiblePlayback = preferTranscoding
+    || (compatibilityMode !== 'directPlay' && requiresBrowserAudioTranscoding(requestedSource, audioStreamIndex))
 
   const maxStreamingBitrate = playbackQuality === 'auto'
     ? await testMediaServerBitrate(config, bitrateTestSize)
     : getMediaServerMaxStreamingBitrate(playbackQuality)
 
-  const query = new URLSearchParams({
-    UserId: config.userId || '',
-    StartTimeTicks: '0',
-    AutoOpenLiveStream: 'false'
-  })
-  if (maxStreamingBitrate) query.set('MaxStreamingBitrate', String(maxStreamingBitrate))
-  if (sourceId) query.set('MediaSourceId', sourceId)
-  if (typeof videoStreamIndex === 'number' && videoStreamIndex >= 0) query.set('VideoStreamIndex', String(videoStreamIndex))
-  if (typeof audioStreamIndex === 'number' && audioStreamIndex >= 0) query.set('AudioStreamIndex', String(audioStreamIndex))
-  if (typeof subtitleStreamIndex === 'number' && subtitleStreamIndex >= 0) query.set('SubtitleStreamIndex', String(subtitleStreamIndex))
-  const playbackPayload = await mediaServerFetch<MediaServerPlaybackResponse>(
-    config,
-    `/Items/${encodeURIComponent(itemId)}/PlaybackInfo?${query.toString()}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        DeviceProfile: buildMediaServerDeviceProfile(maxStreamingBitrate, compatibilityMode, customDeviceProfile),
-        VideoStreamIndex: typeof videoStreamIndex === 'number' && videoStreamIndex >= 0 ? videoStreamIndex : undefined,
-        AudioStreamIndex: typeof audioStreamIndex === 'number' && audioStreamIndex >= 0 ? audioStreamIndex : undefined,
-        SubtitleStreamIndex: typeof subtitleStreamIndex === 'number' && subtitleStreamIndex >= 0 ? subtitleStreamIndex : undefined
-      })
+  const requestPlaybackInfo = (forceTranscoding: boolean, forceDirectPlay = false) => {
+    const query = new URLSearchParams({
+      UserId: config.userId || '',
+      StartTimeTicks: '0',
+      AutoOpenLiveStream: 'false'
+    })
+    if (maxStreamingBitrate) query.set('MaxStreamingBitrate', String(maxStreamingBitrate))
+    if (sourceId) query.set('MediaSourceId', sourceId)
+    if (typeof videoStreamIndex === 'number' && videoStreamIndex >= 0) query.set('VideoStreamIndex', String(videoStreamIndex))
+    if (typeof audioStreamIndex === 'number' && audioStreamIndex >= 0) query.set('AudioStreamIndex', String(audioStreamIndex))
+    if (typeof subtitleStreamIndex === 'number' && subtitleStreamIndex >= 0) query.set('SubtitleStreamIndex', String(subtitleStreamIndex))
+    if (forceTranscoding) {
+      query.set('EnableDirectPlay', 'false')
+      query.set('EnableDirectStream', 'false')
+      query.set('EnableTranscoding', 'true')
+    } else if (forceDirectPlay) {
+      query.set('EnableDirectPlay', 'true')
+      query.set('EnableDirectStream', 'true')
+      query.set('EnableTranscoding', 'false')
     }
-  )
+    return mediaServerFetch<MediaServerPlaybackResponse>(
+      config,
+      `/Items/${encodeURIComponent(itemId)}/PlaybackInfo?${query.toString()}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          DeviceProfile: buildMediaServerDeviceProfile(maxStreamingBitrate, forceDirectPlay ? 'directPlay' : compatibilityMode, customDeviceProfile),
+          VideoStreamIndex: typeof videoStreamIndex === 'number' && videoStreamIndex >= 0 ? videoStreamIndex : undefined,
+          AudioStreamIndex: typeof audioStreamIndex === 'number' && audioStreamIndex >= 0 ? audioStreamIndex : undefined,
+          SubtitleStreamIndex: typeof subtitleStreamIndex === 'number' && subtitleStreamIndex >= 0 ? subtitleStreamIndex : undefined,
+          EnableDirectPlay: forceTranscoding ? false : forceDirectPlay ? true : undefined,
+          EnableDirectStream: forceTranscoding ? false : forceDirectPlay ? true : undefined,
+          EnableTranscoding: forceTranscoding ? true : forceDirectPlay ? false : undefined
+        })
+      }
+    )
+  }
+  const resolvePlaybackSource = (payload: MediaServerPlaybackResponse) => {
+    const matchingSources = requestedSource
+      ? (payload.MediaSources || []).filter((entry) => entry.Id === requestedSource.Id)
+      : []
+    return requestedSource
+      ? matchingSources.find((entry) => entry.ETag && entry.ETag === requestedSource.ETag)
+        || (matchingSources.length === 1 ? matchingSources[0] : undefined)
+        || (matchingSources.length === 0 && (payload.MediaSources || []).length === 1 ? payload.MediaSources?.[0] : undefined)
+      : undefined
+  }
 
-  const requestedSource = (detailPayload.MediaSources || []).find((entry) => sourceId && entry.Id === sourceId) || detailPayload.MediaSources?.[0]
-  const source = requestedSource
-    ? (playbackPayload.MediaSources || []).find((entry) => entry.Id === requestedSource.Id && entry.ETag === requestedSource.ETag)
-    : undefined
+  let useBrowserCompatiblePlayback = forceBrowserCompatiblePlayback
+  let playbackPayload = await requestPlaybackInfo(useBrowserCompatiblePlayback)
+  let source = resolvePlaybackSource(playbackPayload)
+
+  // Some servers omit both direct and transcoding URLs when direct play is disabled.
+  // Retry without the compatibility restriction so the original source remains playable.
+  if (useBrowserCompatiblePlayback && source && !source.TranscodingUrl) {
+    useBrowserCompatiblePlayback = false
+    playbackPayload = await requestPlaybackInfo(false, true)
+    source = resolvePlaybackSource(playbackPayload)
+  }
 
   if (!source) {
     throw new Error('Matching media source not in playback info')
@@ -990,7 +1049,11 @@ export const getMediaServerPlaybackInfo = async (
   const transcodingUrl = source.TranscodingUrl
   const isHttpProtocol = (source.Protocol || '').toLowerCase() === 'http'
   let playUrl = ''
-  if (isHttpProtocol && directUrl) {
+  let tracksSelectable = false
+  if (transcodingUrl && useBrowserCompatiblePlayback) {
+    playUrl = buildAbsoluteMediaServerUrl(config, transcodingUrl)
+    tracksSelectable = true
+  } else if (isHttpProtocol && directUrl) {
     playUrl = buildAbsoluteMediaServerUrl(config, directUrl)
   } else if (isHttpProtocol && source.Path) {
     playUrl = source.Path
@@ -998,6 +1061,7 @@ export const getMediaServerPlaybackInfo = async (
     playUrl = buildAbsoluteMediaServerUrl(config, directUrl)
   } else if (transcodingUrl && compatibilityMode !== 'directPlay') {
     playUrl = buildAbsoluteMediaServerUrl(config, transcodingUrl)
+    tracksSelectable = true
   } else {
     const streamQuery = new URLSearchParams({
       static: 'true',
@@ -1011,11 +1075,26 @@ export const getMediaServerPlaybackInfo = async (
   const headers: Record<string, string> = config.type === 'emby'
     ? {
         'X-Emby-Authorization': createJellyfinAuthorization(config),
-        'X-Emby-Token': config.accessToken || ''
+        'X-Emby-Token': config.accessToken || '',
+        // Some Emby servers behind Cloudflare reject libmpv's default User-Agent.
+        'User-Agent': 'SenPlayer'
       }
     : {
         Authorization: createJellyfinAuthorization(config)
       }
+
+  const subtitleSources = (source.MediaStreams || [])
+    .filter((stream) => (stream.Type || '').toLowerCase() === 'subtitle' && typeof stream.Index === 'number' && (stream.IsExternal || !!stream.DeliveryUrl))
+    .map((stream) => {
+      const codec = String(stream.Codec || 'srt').toLowerCase()
+      const subtitlePath = stream.DeliveryUrl
+        || `/Videos/${encodeURIComponent(itemId)}/${encodeURIComponent(source.Id || sourceId || '')}/Subtitles/${stream.Index}/Stream.${codec}`
+      return {
+        url: withMediaServerPlaybackAuth(config, buildAbsoluteMediaServerUrl(config, subtitlePath)),
+        title: stream.DisplayTitle || stream.Title || stream.Language || `字幕 ${stream.Index}`,
+        streamIndex: stream.Index
+      }
+    })
 
   return {
     url: withMediaServerPlaybackAuth(config, playUrl),
@@ -1023,6 +1102,8 @@ export const getMediaServerPlaybackInfo = async (
       ...headers,
       ...(source.RequiredHttpHeaders || {})
     },
+    subtitleSources,
+    tracksSelectable,
     playSessionId: playbackPayload.PlaySessionId || source.Id,
     playCursorSeconds: fallbackPlayCursorSeconds,
     videoStreamIndex: typeof videoStreamIndex === 'number' && videoStreamIndex >= 0

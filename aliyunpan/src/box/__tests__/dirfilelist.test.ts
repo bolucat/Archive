@@ -73,7 +73,7 @@ describe('Box dirfilelist helpers', () => {
     expect(model.parent_file_id).toBe('folder-id')
     expect(model.ext).toBe('mp4')
     expect(model.sizeStr).toBe('1.00MB')
-    expect(model.thumbnail).toBe('https://thumb/1.png')
+    expect(model.thumbnail).toBe('https://thumb/{+asset_path}')
     expect((model as any).content_hash).toBe('sha1')
     expect(model.description).toContain('box_download:')
     expect(model.description).toContain('box_shared:')

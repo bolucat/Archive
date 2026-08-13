@@ -82,6 +82,47 @@ const musicPlayerStore = useMusicPlayerStore()
 const bookStore = useBookLibraryStore()
 const mediaStore = useMediaLibraryStore()
 
+const SYSTEM_VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'webm', 'ts', 'm2ts', 'flv', 'wmv', 'mpg', 'mpeg'])
+const SYSTEM_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'wma', 'aiff', 'ape'])
+const SYSTEM_BOOK_EXTENSIONS = new Set(['epub', 'pdf', 'mobi', 'azw', 'azw3', 'fb2', 'txt', 'md', 'markdown', 'docx', 'html', 'htm', 'cbz', 'cbr', 'cbt', 'cb7'])
+
+function getSystemFileExtension(filePath: string): string {
+  const name = filePath.split(/[\\/]/).pop() || ''
+  return name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : ''
+}
+
+function openSystemFile(payload: { filePath: string; fileUrl: string }) {
+  const filePath = payload?.filePath || ''
+  const fileUrl = payload?.fileUrl || ''
+  const fileName = filePath.split(/[\\/]/).pop() || filePath
+  const ext = getSystemFileExtension(filePath)
+  if (!filePath || !fileUrl || !fileName) return
+
+  if (SYSTEM_VIDEO_EXTENSIONS.has(ext)) {
+    window.WebOpenWindow?.({
+      page: 'PageVideo',
+      theme: appStore.appTheme,
+      data: { user_id: 'local', drive_id: 'local', file_id: filePath, parent_file_id: '', parent_file_name: '', file_name: fileName, html: '', encType: '', password: '', expire_time: 0, play_cursor: 0 }
+    })
+    return
+  }
+  if (SYSTEM_AUDIO_EXTENSIONS.has(ext)) {
+    const track = { user_id: 'local', drive_id: 'local', file_id: filePath, parent_file_id: '', file_name: fileName, ext, encType: '', password: '', local_url: fileUrl }
+    window.WebOpenWindow?.({ page: 'PageMusic', theme: appStore.appTheme, data: { ...track, parent_file_name: '', playlist: [track] } })
+    return
+  }
+  if (SYSTEM_BOOK_EXTENSIONS.has(ext)) {
+    const now = Date.now()
+    window.WebOpenWindow?.({
+      page: 'PageBookReader',
+      theme: 'dark',
+      data: { id: `system-${now}`, user_id: 'local', drive_id: 'local', file_id: filePath, parent_file_id: '', file_name: fileName, ext, size: 0, category: ['cbz', 'cbr', 'cbt', 'cb7'].includes(ext) ? 'comic' : 'book', title: fileName.replace(/\.[^.]+$/, ''), scanned_at: now, updated_at: now, sourceUrlOverride: fileUrl }
+    })
+    return
+  }
+  message.warning(`暂不支持打开 ${fileName}`)
+}
+
 const handleMusicLibraryClick = () => {
   appStore.toggleTab('music')
 }
@@ -327,6 +368,7 @@ onMounted(() => {
   bootstrapMusicLibrary()
   bootstrapBookLibrary()
   bootstrapMediaLibrary()
+  window.onExternalFileOpen?.(openSystemFile)
   window.AutoUpdateGetState?.().then((state) => {
     if (state.status === 'downloading') footStore.mSaveUpdateDownloadProgress(Math.max(0.01, state.percent ?? 0))
   })

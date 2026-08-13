@@ -10,6 +10,7 @@ import { IMusicTrack } from '../types/music'
 import { buildLibrarySourceId } from '../types/librarySource'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
+import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 
 
 const AUDIO_EXTS = new Set([
@@ -334,7 +335,8 @@ class MusicScanner {
         const seen = new Set<string>()
         const driveLabel = drive_id.slice(-6)
         store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
-        for await (const items of AliFileWalk.ApiWalkFilePages(token.user_id, drive_id, 'root', '', 'updated_at desc', 'file')) {
+        const scope = libraryScanRateLimitScope(token.user_id, drive_id)
+        for await (const items of AliFileWalk.ApiWalkFilePages(token.user_id, drive_id, 'root', '', 'updated_at desc', 'file', scope)) {
           if (this.shouldStop) break
           scanned += items.length
           // walk API does not guarantee order, so filter every page instead of
@@ -409,15 +411,16 @@ class MusicScanner {
   }
 
   private async *iterateFolderPages(folder: IAliGetFileModel, user_id: string, drive_id: string): AsyncGenerator<IAliGetFileModel[]> {
+    const scope = libraryScanRateLimitScope(user_id, drive_id)
     if (isThirdPartyProviderFolder(user_id, drive_id)) {
-      yield* iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
+      yield* rateLimitScanPages(scope, iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop }))
       return
     }
     if (isAliyunUser(user_id)) {
-      yield* AliDirFileList.ApiDirFileListPages(user_id, drive_id, folder.file_id, folder.name || '', 'name asc', '', false)
+      yield* AliDirFileList.ApiDirFileListPages(user_id, drive_id, folder.file_id, folder.name || '', 'name asc', '', false, scope)
       return
     }
-    yield await this.listFolder(folder, user_id, drive_id)
+    yield* rateLimitSingleScanPage(scope, () => this.listFolder(folder, user_id, drive_id))
   }
 
   private async listFolder(

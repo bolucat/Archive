@@ -443,6 +443,7 @@ const buildAliFileModel = (driveFile: DriveFileItem): IAliGetFileModel => {
     isDir: false,
     thumbnail: driveFile.thumbnailLink || '',
     description: driveFile.contentHash || '',
+    library_subtitle_files: driveFile.subtitleFiles || [],
     media_width: driveFile.height,
     media_height: driveFile.height,
     media_duration: driveFile.videoDuration,

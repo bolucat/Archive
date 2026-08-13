@@ -1,8 +1,10 @@
 import JSZip from 'jszip'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.js?url'
 
-export const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
-export const MAX_DOCUMENT_CHARS = 2_000_000
+// Keep the V1 ceiling aligned with the workspace contract. Parsing remains
+// local and page-aware; large documents are never sent wholesale to a model.
+export const MAX_DOCUMENT_BYTES = 200 * 1024 * 1024
+export const MAX_DOCUMENT_CHARS = 8_000_000
 
 export interface ParsedDocumentSection {
   index: number

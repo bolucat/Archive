@@ -42,7 +42,14 @@ describe('Guangya dirfilelist helpers', () => {
     expect(helpers.getGuangyaFileId({ fileId: 'file-id' })).toBe('file-id')
     expect(helpers.getGuangyaFileName({ fileName: 'movie.mp4' })).toBe('movie.mp4')
     expect(helpers.isGuangyaDir({ type: 'folder' })).toBe(true)
+    expect(helpers.isGuangyaDir({ fileName: 'test', dirType: 1, resType: 2 })).toBe(true)
+    expect(helpers.isGuangyaDir({ fileName: 'test', fileSize: 126, fileType: 11, dirType: 1, resType: 1 })).toBe(false)
+    expect(helpers.isGuangyaDir({ fileName: 'note.txt', dirType: 1 })).toBe(false)
     expect(helpers.isGuangyaDir({ name: 'movie.mp4', type: 'file' })).toBe(false)
+  })
+
+  it('reads the signed download URL returned by Guangya', () => {
+    expect(helpers.getGuangyaDownloadUrlFromResponse({ data: { signedURL: 'https://vip-lixian-08.guangyapan.com/download' } })).toBe('https://vip-lixian-08.guangyapan.com/download')
   })
 
   it('maps Guangya files into the shared cloud file model with hashes', () => {

@@ -2605,6 +2605,8 @@ const openMediaServerPlayback = async (
       play_cursor: playback.playCursorSeconds || 0,
       media_url: playback.url,
       media_headers: playback.headers,
+      media_subtitle_sources: playback.subtitleSources || [],
+      media_server_tracks_selectable: playback.tracksSelectable === true,
       media_server_id: server.id,
       media_server_item_id: item.id,
       media_server_source_id: options?.sourceId || '',

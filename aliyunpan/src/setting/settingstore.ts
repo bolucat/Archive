@@ -74,6 +74,7 @@ export interface SettingState {
   uiVideoPlayerHistory: boolean
   uiVideoPlayerParams: string
   uiVideoSubtitleMode: string
+  mediaLibrarySubtitleScope: 'same-folder' | 'include-subfolders'
   uiVideoPlayerPath: string
 
   uiAutoColorVideo: boolean
@@ -289,6 +290,7 @@ const setting: SettingState = {
   uiVideoPlayerHistory: false,
   uiVideoPlayerParams: '',
   uiVideoSubtitleMode: 'auto',
+  mediaLibrarySubtitleScope: 'same-folder',
   uiVideoPlayerPath: '',
 
   uiAutoPlaycursorVideo: true,
@@ -511,6 +513,7 @@ function _loadSetting(val: any) {
   setting.uiVideoPlayerHistory = defaultBool(val.uiVideoPlayerHistory, false)
   setting.uiVideoPlayerParams = defaultString(val.uiVideoPlayerParams, '')
   setting.uiVideoSubtitleMode = defaultValue(val.uiVideoSubtitleMode, ['close', 'auto', 'select'])
+  setting.mediaLibrarySubtitleScope = defaultValue(val.mediaLibrarySubtitleScope, ['same-folder', 'include-subfolders']) as SettingState['mediaLibrarySubtitleScope']
   setting.uiVideoPlayerPath = defaultString(val.uiVideoPlayerPath, '')
   setting.uiAutoPlaycursorVideo = defaultBool(val.uiAutoPlaycursorVideo, true)
   setting.uiAutoColorVideo = defaultBool(val.uiAutoColorVideo, true)
@@ -799,6 +802,7 @@ const useSettingStore = defineStore('setting', {
       }
       SaveSetting()
       useAppStore().toggleTheme(setting.uiTheme)
+      if (Object.hasOwn(partial, 'uiTheme')) window.WebSaveTheme({ theme: setting.uiTheme })
       window.MainProxyHost = setting.debugProxyHost
       window.MainProxyPort = setting.debugProxyPort
       window.WinMsgToUpload({ cmd: 'SettingRefresh' })

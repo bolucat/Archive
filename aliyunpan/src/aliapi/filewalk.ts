@@ -2,6 +2,7 @@ import DebugLog from '../utils/debuglog'
 import AliHttp, { IUrlRespData } from './alihttp'
 import { IAliFileItem } from './alimodels'
 import AliDirFileList, { IAliFileResp } from './dirfilelist'
+import { isScanRateLimitedError, runRateLimitedScanRequest } from '../utils/libraryScanRateLimiter'
 
 export default class AliFileWalk {
   static async ApiWalkFileList(user_id: string, drive_id: string, dirID: string, dirName: string, order: string, type: string = '', max: number = 3000): Promise<IAliFileResp> {
@@ -32,7 +33,7 @@ export default class AliFileWalk {
   }
 
   /** Streams walk pages so library scanners never retain an entire drive in memory. */
-  static async *ApiWalkFilePages(user_id: string, drive_id: string, dirID: string, dirName: string, order: string = 'updated_at desc', type: string = ''): AsyncGenerator<IAliFileResp['items']> {
+  static async *ApiWalkFilePages(user_id: string, drive_id: string, dirID: string, dirName: string, order: string = 'updated_at desc', type: string = '', rateLimitScope = ''): AsyncGenerator<IAliFileResp['items']> {
     const dir: IAliFileResp = {
       items: [], itemsKey: new Set(), punished_file_count: 0, next_marker: '',
       m_user_id: user_id, m_drive_id: drive_id, dirID, dirName
@@ -44,7 +45,7 @@ export default class AliFileWalk {
       const marker = dir.next_marker
       if (seenMarkers.has(marker)) return
       seenMarkers.add(marker)
-      const isGet = await AliFileWalk._ApiWalkFileListOnePage(orders[0], orders[1], dir, type)
+      const isGet = await AliFileWalk._ApiWalkFileListOnePage(orders[0], orders[1], dir, type, rateLimitScope)
       if (!isGet || dir.next_marker === 'cancel') return
       const items = dir.items
       dir.items = []
@@ -53,7 +54,7 @@ export default class AliFileWalk {
     } while (dir.next_marker)
   }
 
-  private static async _ApiWalkFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string = '') {
+  private static async _ApiWalkFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string = '', rateLimitScope = '') {
     const url = 'v2/file/walk?jsonmask=next_marker%2Citems(category%2Ccreated_at%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription)'
     let postData = {
       drive_id: dir.m_drive_id,
@@ -67,7 +68,14 @@ export default class AliFileWalk {
       // order_direction: order.toUpperCase()
     }
     if (type) postData = Object.assign(postData, { type })
-    const resp = await AliHttp.Post(url, postData, dir.m_user_id, '')
+    const request = async () => {
+      const resp = await AliHttp.Post(url, postData, dir.m_user_id, '')
+      const body = resp.body as { code?: unknown; message?: unknown } | undefined
+      const error = { status: resp.code, code: body?.code, message: body?.message }
+      if (isScanRateLimitedError(error)) throw Object.assign(new Error(String(body?.message || body?.code || resp.code)), error)
+      return resp
+    }
+    const resp = rateLimitScope ? await runRateLimitedScanRequest(rateLimitScope, request) : await request()
     return AliFileWalk._FileListOnePage(dir, resp)
   }
 

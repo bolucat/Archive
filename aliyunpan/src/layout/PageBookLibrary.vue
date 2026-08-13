@@ -37,6 +37,8 @@ import StatsPage from './StatsPage.vue'
 import { useReaderI18n } from '../utils/readerI18n'
 import { t } from '../i18n'
 import { getStoredTokenProvider } from '../utils/driveProvider'
+import { groupBookWorks } from '../utils/bookWorks'
+import DB from '../utils/db'
 
 withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true })
 
@@ -305,7 +307,33 @@ const readerVisibleBooks = computed(() => {
   return sortBooksForManagerView(filtered, effectiveSortMode.value, effectiveSortOrder.value)
 })
 
-const renderedBooks = computed(() => readerVisibleBooks.value.slice(0, bookRenderLimit.value))
+const collectionWorks = computed(() => groupBookWorks(readerVisibleBooks.value))
+const collectionBooks = computed(() => collectionWorks.value.map((work) => work.book))
+const renderedBooks = computed(() => collectionBooks.value.slice(0, bookRenderLimit.value))
+
+function bookVariants(book: IBookItem): IBookItem[] {
+  return collectionWorks.value.find((work) => work.variants.some((variant) => variant.id === book.id))?.variants || [book]
+}
+
+function bookVariantFormats(book: IBookItem): string[] {
+  return Array.from(new Set(bookVariants(book).map((variant) => (variant.ext || 'BOOK').toUpperCase())))
+}
+
+function isBookWorkSelected(book: IBookItem): boolean {
+  return bookVariants(book).every((variant) => selectedBookIds.value.includes(variant.id))
+}
+
+function toggleBookWorkSelected(book: IBookItem, event?: Event) {
+  event?.stopPropagation()
+  const ids = bookVariants(book).map((variant) => variant.id)
+  const selected = new Set(selectedBookIds.value)
+  const isSelected = ids.every((id) => selected.has(id))
+  for (const id of ids) {
+    if (isSelected) selected.delete(id)
+    else selected.add(id)
+  }
+  selectedBookIds.value = Array.from(selected)
+}
 
 const showMoreBooks = async () => {
   await bookStore.loadNextPage()
@@ -850,9 +878,11 @@ async function clearLibrary() {
 async function openBook(book: IBookItem, options: { keepAnnotationTarget?: boolean } = {}) {
   if (!options.keepAnnotationTarget) pendingAnnotationTarget.value = null
 
-  const token = book.user_id && book.user_id !== 'local' ? await UserDAL.GetUserTokenFromDB(book.user_id) : undefined
+  const savedBook = (await DB.getBookItemsByIds([book.id]).catch(() => []))[0]
+  const latestBook = savedBook ? { ...book, ...savedBook } : book
+  const token = latestBook.user_id && latestBook.user_id !== 'local' ? await UserDAL.GetUserTokenFromDB(latestBook.user_id) : undefined
   const tokenfrom = getStoredTokenProvider(token)
-  const readerBook = tokenfrom === 'unknown' ? book : { ...book, tokenfrom }
+  const readerBook = tokenfrom === 'unknown' ? latestBook : { ...latestBook, tokenfrom }
 
   if (window.WebOpenWindow) {
     window.WebOpenWindow({ page: 'PageBookReader', data: JSON.parse(JSON.stringify(readerBook)), theme: 'dark' })
@@ -1464,7 +1494,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
             <h2>{{ activeManagerTitle }}</h2>
             <p>{{ activeManagerSubtitle }}</p>
           </div>
-          <span v-if='isCollectionManagerView' class='book-total-count'>{{ t('book.totalBooks', { count: readerVisibleBooks.length }) }}</span>
+          <span v-if='isCollectionManagerView' class='book-total-count'>{{ t('book.totalWorks', { works: collectionBooks.length, files: readerVisibleBooks.length }) }}</span>
         </div>
         <div class='book-header-ctrl-row'>
           <a-input v-model='query' allow-clear size='small' class='book-search' :placeholder='bookSearchPlaceholder'>
@@ -1967,13 +1997,13 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
         </template>
 
         <template v-else-if='isCollectionManagerView'>
-          <a-empty v-if='!readerVisibleBooks.length' :description="t('book.noMatchedBooks')" />
+          <a-empty v-if='!collectionBooks.length' :description="t('book.noMatchedBooks')" />
           <template v-else-if="bookStore.viewMode === 'list'">
             <div class='book-list book-list-linear'>
               <div
                 v-for='book in renderedBooks'
                 :key='book.id'
-                :class="['book-list-item', isBookSelected(book) ? 'multi-selected' : '']"
+                :class="['book-list-item', isBookWorkSelected(book) ? 'multi-selected' : '']"
                 role='button'
                 tabindex='0'
                 @click='openBook(book)'
@@ -1982,12 +2012,12 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                 @contextmenu.prevent='openBookContextMenu($event, book)'
               >
                 <button
-                  :class="['book-select-button', isBookSelected(book) ? 'checked' : '']"
+                  :class="['book-select-button', isBookWorkSelected(book) ? 'checked' : '']"
                   :title="t('book.selectBook')"
-                  @click='toggleBookSelected(book, $event)'
+                  @click='toggleBookWorkSelected(book, $event)'
                   @keydown.stop
                 >
-                  <span v-if='isBookSelected(book)'>✓</span>
+                  <span v-if='isBookWorkSelected(book)'>✓</span>
                 </button>
                 <div class='book-list-cover' :style="{ background: formatCoverColor(book) }">
                   <img v-if='shouldUseCoverImage(book)' :src='bookCoverImage(book)' alt='' @error='onCoverImgError(book.id, $event)' />
@@ -1997,6 +2027,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   <div class='book-list-title'>{{ bookDisplayTitle(book) }}</div>
                   <div class='book-list-sub'>
                     {{ book.author || t('book.unknownAuthor') }} · {{ (book.ext || '').toUpperCase() }} · {{ humanSize(book.size || 0) }}
+                    <span v-if='bookVariants(book).length > 1' class='book-variant-chip'>{{ t('book.versionCount', { count: bookVariants(book).length }) }} · {{ bookVariantFormats(book).join(' · ') }}</span>
                     <span v-if='readerBadgeFor(book)' :class="['book-engine-chip', 'book-engine-' + readerBadgeFor(book)!.tone]">
                       {{ readerBadgeFor(book)!.label }}
                     </span>
@@ -2019,7 +2050,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <div
                 v-for='book in renderedBooks'
                 :key='book.id'
-                :class="['book-cover-item', isBookSelected(book) ? 'multi-selected' : '']"
+                :class="['book-cover-item', isBookWorkSelected(book) ? 'multi-selected' : '']"
                 @click='openBook(book)'
                 @contextmenu.prevent='openBookContextMenu($event, book)'
               >
@@ -2030,11 +2061,11 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   </span>
                 </div>
                 <button
-                  :class="['book-select-button book-cover-select', isBookSelected(book) ? 'checked' : '']"
+                  :class="['book-select-button book-cover-select', isBookWorkSelected(book) ? 'checked' : '']"
                   :title="t('book.selectBook')"
-                  @click.stop='toggleBookSelected(book, $event)'
+                  @click.stop='toggleBookWorkSelected(book, $event)'
                 >
-                  <span v-if='isBookSelected(book)'>✓</span>
+                  <span v-if='isBookWorkSelected(book)'>✓</span>
                 </button>
                 <div class='book-cover-item-cover' :style="{ background: formatCoverColor(book) }">
                   <img v-if='shouldUseCoverImage(book)' :src='bookCoverImage(book)' alt='' @error='onCoverImgError(book.id, $event)' />
@@ -2050,6 +2081,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   <div class='book-cover-item-meta'>
                     <span>{{ (book.ext || '').toUpperCase() }}</span>
                     <span>{{ humanSize(book.size || 0) }}</span>
+                    <span v-if='bookVariants(book).length > 1' class='book-variant-chip'>{{ t('book.versionCount', { count: bookVariants(book).length }) }} · {{ bookVariantFormats(book).join(' · ') }}</span>
                   </div>
                 </div>
               </div>
@@ -2060,7 +2092,7 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
               <div
                 v-for='book in renderedBooks'
                 :key='book.id'
-                :class="['book-card-item', isBookSelected(book) ? 'multi-selected' : '']"
+                :class="['book-card-item', isBookWorkSelected(book) ? 'multi-selected' : '']"
                 :style="{ '--cover-color': formatCoverColor(book) }"
                 @click='openBook(book)'
                 @contextmenu.prevent='openBookContextMenu($event, book)'
@@ -2069,23 +2101,27 @@ watch(() => managerPreferences.value.isPreventSleep, (enabled) => {
                   <img v-if='shouldUseCoverImage(book)' :src='bookCoverImage(book)' alt='' @error='onCoverImgError(book.id, $event)' />
                   <span v-if='shouldShowCoverFallback(book)' class='book-card-item-format'>{{ (book.ext || 'BOOK').toUpperCase() }}</span>
                   <button
-                    :class="['book-select-button book-card-select', isBookSelected(book) ? 'checked' : '']"
+                    :class="['book-select-button book-card-select', isBookWorkSelected(book) ? 'checked' : '']"
                     :title="t('book.selectBook')"
-                    @click.stop='toggleBookSelected(book, $event)'
+                    @click.stop='toggleBookWorkSelected(book, $event)'
                   >
-                    <span v-if='isBookSelected(book)'>✓</span>
+                    <span v-if='isBookWorkSelected(book)'>✓</span>
                   </button>
                   <span v-if='book.is_favorite' class='book-card-item-favorite' @click.stop='toggleBookFavorite(book, $event)'>
                     <Heart :size='12' :stroke-width='2' fill='currentColor' />
                   </span>
                 </div>
                 <div class='book-card-item-title'>{{ bookDisplayTitle(book) }}</div>
+                <div v-if='bookVariants(book).length > 1' class='book-card-variants'>
+                  <span>{{ t('book.versionCount', { count: bookVariants(book).length }) }}</span>
+                  <em>{{ bookVariantFormats(book).join(' · ') }}</em>
+                </div>
                 <span v-if='readingProgressLabel(book)' class='book-card-item-progress'>{{ readingProgressLabel(book) }}</span>
               </div>
             </div>
           </template>
-          <div v-if='bookStore.hasMoreBooks || renderedBooks.length < readerVisibleBooks.length' class='book-load-more'>
-            <a-button @click='showMoreBooks'>{{ t('book.showMoreBooks', { shown: renderedBooks.length, total: readerVisibleBooks.length }) }}</a-button>
+          <div v-if='bookStore.hasMoreBooks || renderedBooks.length < collectionBooks.length' class='book-load-more'>
+            <a-button @click='showMoreBooks'>{{ t('book.showMoreBooks', { shown: renderedBooks.length, total: collectionBooks.length }) }}</a-button>
           </div>
         </template>
       </section>
@@ -3266,6 +3302,35 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
   color: var(--color-text-1);
 }
 
+.book-card-variants {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 80%;
+  margin: 3px auto 0;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 10px;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.book-card-variants span,
+.book-variant-chip {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: rgb(var(--primary-6));
+  background: rgba(var(--primary-6), .1);
+  font-weight: 600;
+}
+
+.book-card-variants em {
+  overflow: hidden;
+  font-style: normal;
+  text-overflow: ellipsis;
+}
+
 .book-card-item-progress {
   display: block;
   margin: 4px auto 8px;
@@ -3801,6 +3866,10 @@ body[arco-theme='dark'] :global(.manager-settings-scroll) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.book-list-sub .book-variant-chip {
+  margin-left: 6px;
 }
 
 .book-list-item.trash-item {

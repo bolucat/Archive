@@ -1499,7 +1499,7 @@ onBeforeUnmount(() => {
 .music-stage-copy {
   position: absolute;
   left: 50%;
-  top: calc(100% - clamp(176px, 20vh, 216px));
+  top: calc(100% - clamp(144px, 17vh, 184px));
   width: min(520px, 80%);
   transform: translateX(-50%) translateY(-100%);
   text-align: center;

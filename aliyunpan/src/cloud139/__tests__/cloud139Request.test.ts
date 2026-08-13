@@ -2,9 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../user/userdal', () => ({
   default: {
-    GetUserToken: vi.fn(() => ({
+    GetUserToken: vi.fn((user_id: string) => ({
       access_token: 'token-value',
-      user_id: 'cloud139_13800138000',
+      tokenfrom: '139',
+      user_id,
       user_name: '13800138000',
       nick_name: '139云盘 13800138000'
     })),

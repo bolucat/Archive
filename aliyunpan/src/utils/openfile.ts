@@ -4,7 +4,7 @@ import AliFile from '../aliapi/file'
 import AliFileCmd from '../aliapi/filecmd'
 import ServerHttp from '../aliapi/server'
 import { ITokenInfo, useAppStore, useFootStore, usePanFileStore, usePanTreeStore, useSettingStore, useUserStore } from '../store'
-import { IPageCode, IPageDocx, IPageEpub, IPageImage, IPageMusic, IPageMusicTrack, IPageOffice, IPagePdf, IPageSheet, IPageVideo, IPageVideoPlaylistEntry } from '../store/appstore'
+import { IPageCode, IPageDocx, IPageImage, IPageMusic, IPageMusicTrack, IPageOffice, IPagePdf, IPageSheet, IPageVideo, IPageVideoPlaylistEntry, IPageVideoSubtitleFile } from '../store/appstore'
 import UserDAL from '../user/userdal'
 import { clickWait } from './debounce'
 import DebugLog from './debuglog'
@@ -16,6 +16,9 @@ import { getLocalVideoProgress } from './videoProgress'
 import { isVideoFile } from './videoFile'
 import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../aliapi/utils'
 import { resolveDriveFileToken } from '../drive/account'
+import { parseBookMeta } from './bookFilenameMeta'
+import { isReaderFormat, normalizeBookExt } from './bookReaderCapabilities'
+import type { IBookItem } from '../types/book'
 
 async function resolveTokenForFile(file: IAliGetFileModel): Promise<ITokenInfo | undefined> {
   return resolveDriveFileToken(file as IAliGetFileModel & { user_id?: string }, useUserStore().user_id)
@@ -54,8 +57,45 @@ const SHEET_PREVIEW_DRIVES = PDF_PREVIEW_DRIVES
 const SHEET_PREVIEW_EXTS = new Set(['xls', 'xlsx', 'xlsm', 'xlsb', 'csv', 'tsv'])
 const OFFICE_TO_PDF_EXTS = new Set(['doc', 'docm', 'dot', 'dotm', 'dotx', 'rtf', 'odt', 'ott', 'wps', 'wpt', 'xls', 'xlsx', 'xlsm', 'xlsb', 'xlt', 'xltx', 'ods', 'ots', 'ppt', 'pptx', 'pptm', 'pps', 'ppsx', 'pot', 'potx', 'odp', 'dps', 'dpt'])
 
+function getPreviewTheme(): 'light' | 'dark' {
+  const appStore = useAppStore()
+  return appStore.appTheme === 'dark' || (appStore.appTheme === 'system' && appStore.appDark) ? 'dark' : 'light'
+}
+
 function TextPreviewExt(fileExt: string): string {
   return TEXT_PREVIEW_EXTS.has((fileExt || '').toLowerCase().replace('.', '').trim()) ? 'plain' : ''
+}
+
+function getBookFileExt(file: IAliGetFileModel): string {
+  return normalizeBookExt(file.ext || file.name?.split('.').pop() || '')
+}
+
+async function Book(file: IAliGetFileModel): Promise<void> {
+  const token = await resolveTokenForFile(file)
+  if (!token || !token.access_token) {
+    message.error('在线阅读失败，账号失效，操作取消')
+    return
+  }
+  const ext = getBookFileExt(file)
+  const metadata = parseBookMeta(file.name || '未命名书籍')
+  const book: IBookItem = {
+    id: `cloud:${token.user_id}:${file.drive_id}:${file.file_id}`,
+    user_id: token.user_id,
+    tokenfrom: token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom,
+    drive_id: file.drive_id,
+    file_id: file.file_id,
+    parent_file_id: file.parent_file_id,
+    file_name: file.name || '未命名书籍',
+    ext,
+    size: file.size || 0,
+    category: ['cbz', 'cbr', 'cbt', 'cb7'].includes(ext) ? 'comic' : 'book',
+    thumbnail: file.thumbnail,
+    description: file.description,
+    ...metadata,
+    scanned_at: Date.now(),
+    updated_at: Date.now()
+  }
+  window.WebOpenWindow({ page: 'PageBookReader', data: book, theme: 'dark' })
 }
 
 export async function menuOpenFile(
@@ -80,12 +120,13 @@ export async function menuOpenFile(
     Archive(file.drive_id, file.file_id, file.name, file.parent_file_id, file.icon == 'iconweifa')
     return
   }
-  // EPUB uses the provider-neutral download gateway, so it is safe for Aliyun and every supported cloud drive.
-  if ((file.ext || '').toLowerCase() === 'epub') {
-    await Epub(file, password)
+  // All reader-supported formats use the provider-neutral download gateway
+  // inside BookReaderModal, so they work for every supported cloud drive.
+  // Keep PDF on its dedicated viewer because it provides page navigation and
+  // the document AI sidebar.
+  if (getBookFileExt(file) !== 'pdf' && isReaderFormat(getBookFileExt(file))) {
+    await Book(file)
     return
-  }
-  if (file.ext == 'djvu' || file.ext == 'azw3' || file.ext == 'mobi' || file.ext == 'cbr' || file.ext == 'cbz' || file.ext == 'cbt' || file.ext == 'fb2') {
   }
 
   if (file.category.startsWith('doc')) {
@@ -94,7 +135,11 @@ export async function menuOpenFile(
       await Code(file, textExt, password)
       return
     }
-    if ((file.ext || '').toLowerCase() === 'pdf' && PDF_PREVIEW_DRIVES.has(file.drive_id || '')) {
+    // PDF.js uses the provider-neutral download proxy below, so PDFs from
+    // Aliyun and every third-party drive must take the same local preview
+    // route. Falling through here opens the legacy remote Office iframe,
+    // which cannot host the BoxPlayer AI sidebar.
+    if ((file.ext || '').toLowerCase() === 'pdf') {
       await Pdf(file, password)
       return
     }
@@ -273,6 +318,14 @@ async function Video(
     if (info && typeof info !== 'string') {
       parent_file_name = info.name
     }
+    const librarySubtitleFiles: IPageVideoSubtitleFile[] = ((file as any).library_subtitle_files || []).map((subtitle: any) => ({
+      file_id: subtitle.id,
+      name: subtitle.name,
+      parent_file_id: subtitle.parentFileId || file.parent_file_id,
+      drive_id: subtitle.driveId || file.drive_id,
+      user_id: subtitle.userId || token.user_id,
+      ext: subtitle.name?.split('.').pop()
+    }))
     const pageVideo: IPageVideo = {
       user_id: token.user_id,
       tokenfrom: token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom,
@@ -287,7 +340,8 @@ async function Video(
       encType: getEncType(playCursorInfo?.info || ''),
       play_cursor: play_cursor,
       custom_playlist_label: options?.customPlaylistLabel || '',
-      custom_playlist: buildSiblingVideoPlaylist(file, token.user_id, token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom, options?.customPlaylist)
+      custom_playlist: buildSiblingVideoPlaylist(file, token.user_id, token.tokenfrom === 'unknown' ? 'aliyun' : token.tokenfrom, options?.customPlaylist),
+      library_subtitle_files: librarySubtitleFiles
     }
     window.WebOpenWindow({ page: 'PageVideo', data: pageVideo, theme: 'dark' })
     return
@@ -393,38 +447,7 @@ async function Pdf(file: IAliGetFileModel, password: string = ''): Promise<void>
       file_name: file.name
     })
   }
-  window.WebOpenWindow({ page: 'PagePdf', data: pagePdf, theme: 'dark' })
-}
-
-async function Epub(file: IAliGetFileModel, password: string = ''): Promise<void> {
-  const token = await resolveTokenForFile(file)
-  if (!token || !token.access_token) {
-    message.error('在线预览失败 账号失效，操作取消')
-    return
-  }
-  message.loading('加载中...', 2)
-  const rawData = await getRawUrl(token.user_id, file.drive_id, file.file_id, getEncType(file), password, file.icon == 'iconweifa', 'other', 'Origin')
-  if (typeof rawData === 'string' || !rawData.url) {
-    message.error(typeof rawData === 'string' ? rawData : '获取 EPUB 预览链接失败，操作取消')
-    return
-  }
-  const pageEpub: IPageEpub = {
-    user_id: token.user_id,
-    drive_id: file.drive_id,
-    file_id: file.file_id,
-    file_name: file.name,
-    preview_url: getProxyUrl({
-      user_id: token.user_id,
-      drive_id: file.drive_id,
-      file_id: file.file_id,
-      file_size: rawData.size || file.size,
-      proxy_url: rawData.url,
-      proxy_headers: JSON.stringify(rawData.headers || {}),
-      content_disposition: 'inline',
-      file_name: file.name
-    })
-  }
-  window.WebOpenWindow({ page: 'PageEpub', data: pageEpub, theme: 'dark' })
+  window.WebOpenWindow({ page: 'PagePdf', data: pagePdf, theme: getPreviewTheme(), appTheme: useAppStore().appTheme })
 }
 
 async function Docx(file: IAliGetFileModel, password: string = ''): Promise<void> {
@@ -492,10 +515,12 @@ async function OfficePdf(file: IAliGetFileModel, password: string = ''): Promise
     user_id: token.user_id,
     drive_id: file.drive_id,
     file_id: file.file_id,
-    file_name: file.name + '.pdf',
+    // Keep the original extension in the preview context. The converted
+    // preview is PDF, but Document AI must download and parse the source file.
+    file_name: file.name,
     preview_url: converted.pdfUrl
   }
-  window.WebOpenWindow({ page: 'PagePdf', data: pagePdf, theme: 'dark' })
+  window.WebOpenWindow({ page: 'PagePdf', data: pagePdf, theme: getPreviewTheme(), appTheme: useAppStore().appTheme })
 }
 
 async function Sheet(file: IAliGetFileModel, password: string = ''): Promise<void> {

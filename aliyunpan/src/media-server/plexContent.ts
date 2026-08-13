@@ -63,6 +63,7 @@ interface PlexGuid {
 
 interface PlexStream {
   id?: string | number
+  key?: string
   index?: number
   streamType?: number
   streamTypeID?: number
@@ -753,9 +754,17 @@ export const getPlexMediaServerPlaybackInfo = async (
   const { item, part } = await selectedPlexPart(config, itemId, sourceId)
   if (!part.key) throw new Error('Plex 未返回可播放地址')
   const videoStream = part.Stream?.find((stream) => streamKind(stream) === 'video')
+  const subtitleSources = (part.Stream || [])
+    .filter((stream) => streamKind(stream) === 'subtitle' && !!stream.key)
+    .map((stream) => ({
+      url: withPlexToken(config, plexAbsoluteUrl(config, stream.key || '')),
+      title: stream.displayTitle || stream.title || stream.language || stream.languageCode || '字幕',
+      streamIndex: stream.index
+    }))
   return {
     url: withPlexToken(config, plexAbsoluteUrl(config, part.key)),
     headers: mediaServerHeaders(config),
+    subtitleSources,
     playSessionId: String(part.id || item.ratingKey || itemId),
     playCursorSeconds: item.viewOffset ? Math.max(0, Math.floor(item.viewOffset / 1000)) : 0,
     videoStreamIndex: typeof videoStreamIndex === 'number' && videoStreamIndex >= 0 ? videoStreamIndex : videoStream?.index

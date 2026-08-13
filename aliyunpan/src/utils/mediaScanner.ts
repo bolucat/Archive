@@ -10,8 +10,11 @@ import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDi
 import UserDAL from '../user/userdal'
 import { buildExpectedSeasons } from './mediaCoverage'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
+import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 import DB from './db'
 import { mergeDriveFileSources } from './mediaSourceMembership'
+import { associateMediaSubtitles, type MediaSubtitleFolderScope } from './mediaSubtitleAssociation'
+import useSettingStore from '../setting/settingstore'
 
 type ScanContext = {
   userId: string
@@ -21,6 +24,7 @@ type ScanContext = {
 }
 
 type MediaScanHint = { tmdbId?: number; title: string; year?: number; mediaType: 'movie' | 'tv' | 'anime' }
+type SubtitleAssociationIndex = { files: DriveFileItem[]; folderParents: Map<string, string> }
 
 const PERSISTENCE_CHECKPOINT_ITEMS = 100
 const PERSISTENCE_CHECKPOINT_MS = 3000
@@ -42,6 +46,7 @@ export class MediaScanner {
     '.mpg', '.mpeg', '.3gp', '.rmvb', '.asf', '.divx', '.xvid', '.ts',
     '.m2ts', '.mts', '.vob', '.ogv', '.dv'
   ])
+  private readonly SUBTITLE_EXTENSIONS = new Set(['.srt', '.vtt', '.ass', '.ssa'])
 
   static getInstance(): MediaScanner {
     if (!MediaScanner.instance) {
@@ -91,20 +96,8 @@ export class MediaScanner {
       sourceWasExisting = this.mediaStore.folders.some(source => source.id === folderKey)
       previousFileIds = await DB.getMediaLibraryFolderFileIds(folderKey)
       const existingIds = new Set<string>()
+      const subtitleIndex: SubtitleAssociationIndex = { files: [], folderParents: new Map() }
       let totalProcessed = 0
-
-      // 立即添加文件夹到源列表，用户无需等待刮削完成即可看到
-      this.mediaStore.addFolder({
-        id: folderKey,
-        fileId: folder.file_id,
-        name: folder.name,
-        path: folder.path || '',
-        userId: scanContext.userId,
-        driveId: scanContext.driveId,
-        driveServerId: scanContext.driveServerId,
-        scanDate: new Date(),
-        itemCount: 0
-      })
 
       console.log('开始扫描网盘文件夹:', folder.name)
       const shouldRunAIScrape = Boolean(options.aiScrape && await this.canRunInternalAIScrape())
@@ -128,29 +121,32 @@ export class MediaScanner {
           while (pendingAIUnmatched.length >= 10) {
             await this.applyBatchAIScrapeResults(pendingAIUnmatched.splice(0, 10), folder.name, folderKey, false)
           }
-        }
+        }, subtitleIndex
       )
 
       await flushAIUnmatched()
 
       if (!this.shouldStop) {
+        this.applySubtitleAssociations(folderKey, scanContext, subtitleIndex, useSettingStore().mediaLibrarySubtitleScope)
         if (!options.incremental) {
           await DB.reconcileMediaLibraryFolder(folderKey, [...existingIds])
           this.mediaStore.reconcileFolderSource(folderKey, existingIds)
         }
-        const mediaFolder: MediaLibraryFolder = {
-          id: folderKey,
-          fileId: folder.file_id,
-          name: folder.name,
-          path: folder.path || '',
-          userId: scanContext.userId,
-          driveId: scanContext.driveId,
-          driveServerId: scanContext.driveServerId,
-          scanDate: new Date(),
-          itemCount: totalFound
+        if (totalFound > 0) {
+          const mediaFolder: MediaLibraryFolder = {
+            id: folderKey,
+            fileId: folder.file_id,
+            name: folder.name,
+            path: folder.path || '',
+            userId: scanContext.userId,
+            driveId: scanContext.driveId,
+            driveServerId: scanContext.driveServerId,
+            scanDate: new Date(),
+            itemCount: totalFound
+          }
+          this.mediaStore.addFolder(mediaFolder)
+          this.mediaStore.pruneOrphanDuplicateFolders()
         }
-        this.mediaStore.addFolder(mediaFolder)
-        this.mediaStore.pruneOrphanDuplicateFolders()
         if (!options.silent) {
           message.success(`扫描完成！共处理 ${totalProcessed} 个视频文件`)
         }
@@ -193,6 +189,7 @@ export class MediaScanner {
     mediaHint: MediaScanHint | undefined,
     onProgress: (stats: { processed: number }) => void,
     onAIUnmatched: (files: DriveFileItem[]) => Promise<void>,
+    subtitleIndex: SubtitleAssociationIndex,
     depth = 0,
     relativePath = folder.path || folder.name
   ): Promise<number> {
@@ -202,15 +199,22 @@ export class MediaScanner {
 
     try {
       console.log(`正在扫描: ${folder.name} (深度: ${depth})`)
+      subtitleIndex.folderParents.set(folder.file_id, folder.parent_file_id || '')
       for await (const items of this.iterateFolderPages(folder, scanContext)) {
         if (this.shouldStop) break
         const videoFiles: DriveFileItem[] = []
         const subFolders: IAliGetFileModel[] = []
         for (const item of items) {
-          if (item.isDir) subFolders.push(item)
+          if (item.isDir) {
+            subtitleIndex.folderParents.set(item.file_id, item.parent_file_id || folder.file_id)
+            subFolders.push(item)
+          }
           else if (this.isVideoFile(item.name)) {
             const itemPath = relativePath ? `${relativePath.replace(/\/$/, '')}/${item.name}` : item.name
             videoFiles.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.description || '', thumbnailLink: item.thumbnail || undefined, videoDuration: item.media_duration, height: item.media_height, sourceFolderIds: [folderKey] })
+          } else if (this.isSubtitleFile(item.name)) {
+            const itemPath = relativePath ? `${relativePath.replace(/\/$/, '')}/${item.name}` : item.name
+            subtitleIndex.files.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.description || '', sourceFolderIds: [folderKey] })
           }
         }
         if (incremental && videoFiles.length) {
@@ -230,7 +234,7 @@ export class MediaScanner {
         }
         for (const sub of subFolders) {
           if (this.shouldStop) break
-          totalFound += await this.scrapeFolderRecursive(sub, scanContext, folderKey, existingIds, incremental, deferUnmatchedForAI, mediaHint, onProgress, onAIUnmatched, depth + 1, relativePath ? `${relativePath.replace(/\/$/, '')}/${sub.name}` : sub.name)
+          totalFound += await this.scrapeFolderRecursive(sub, scanContext, folderKey, existingIds, incremental, deferUnmatchedForAI, mediaHint, onProgress, onAIUnmatched, subtitleIndex, depth + 1, relativePath ? `${relativePath.replace(/\/$/, '')}/${sub.name}` : sub.name)
         }
       }
     } catch (error) {
@@ -242,16 +246,17 @@ export class MediaScanner {
   }
 
   private async *iterateFolderPages(folder: IAliGetFileModel, scanContext: ScanContext): AsyncGenerator<IAliGetFileModel[]> {
+    const scope = libraryScanRateLimitScope(scanContext.userId, folder.drive_id || scanContext.driveId)
     const listMethodWasOverridden = this.getFolderItemsWithRetry !== MediaScanner.prototype.getFolderItemsWithRetry
     if (!listMethodWasOverridden && isThirdPartyProviderFolder(scanContext.userId, folder.drive_id || scanContext.driveId)) {
-      yield* iterateProviderFolderPages({ folder, userId: scanContext.userId, driveId: folder.drive_id || scanContext.driveId, silent: scanContext.silent, shouldStop: () => this.shouldStop })
+      yield* rateLimitScanPages(scope, iterateProviderFolderPages({ folder, userId: scanContext.userId, driveId: folder.drive_id || scanContext.driveId, silent: scanContext.silent, shouldStop: () => this.shouldStop }))
       return
     }
     if (!listMethodWasOverridden && isAliyunUser(scanContext.userId)) {
-      yield* AliDirFileList.ApiDirFileListPages(scanContext.userId, folder.drive_id || scanContext.driveId, folder.file_id, folder.name, 'name asc', '', false)
+      yield* AliDirFileList.ApiDirFileListPages(scanContext.userId, folder.drive_id || scanContext.driveId, folder.file_id, folder.name, 'name asc', '', false, scope)
       return
     }
-    yield await this.getFolderItemsWithRetry(folder, scanContext)
+    yield* rateLimitSingleScanPage(scope, () => this.getFolderItemsWithRetry(folder, scanContext))
   }
 
   private getIndexedDriveFileIds(): Set<string> {
@@ -667,6 +672,34 @@ export class MediaScanner {
   private isVideoFile(filename: string): boolean {
     const ext = '.' + (filename.split('.').pop()?.toLowerCase() || '')
     return this.VIDEO_EXTENSIONS.has(ext)
+  }
+
+  private isSubtitleFile(filename: string): boolean {
+    const ext = '.' + (filename.split('.').pop()?.toLowerCase() || '')
+    return this.SUBTITLE_EXTENSIONS.has(ext)
+  }
+
+  private applySubtitleAssociations(folderKey: string, scanContext: ScanContext, subtitleIndex: SubtitleAssociationIndex, scope: MediaSubtitleFolderScope) {
+    const belongsToScan = (file: DriveFileItem) => file.driveServerId === scanContext.driveServerId
+      && file.userId === scanContext.userId
+      && file.driveId === scanContext.driveId
+      && file.sourceFolderIds?.includes(folderKey)
+    const associateFiles = (files: DriveFileItem[] = []) => files.map((file) => (
+      belongsToScan(file) ? associateMediaSubtitles(file, subtitleIndex.files, subtitleIndex.folderParents, scope) : file
+    ))
+
+    for (const item of this.mediaStore.mediaItems) {
+      const driveFiles = associateFiles(item.driveFiles)
+      const seasons = item.seasons?.map((season) => ({
+        ...season,
+        episodes: season.episodes?.map((episode) => ({ ...episode, driveFiles: associateFiles(episode.driveFiles) }))
+      }))
+      const collectionMovies = item.collectionMovies?.map((movie) => ({ ...movie, driveFiles: associateFiles(movie.driveFiles) }))
+      const changed = driveFiles.some((file, index) => file !== item.driveFiles[index])
+        || seasons?.some((season, seasonIndex) => season.episodes?.some((episode, episodeIndex) => episode.driveFiles.some((file, fileIndex) => file !== item.seasons?.[seasonIndex].episodes?.[episodeIndex].driveFiles[fileIndex])))
+        || collectionMovies?.some((movie, index) => movie.driveFiles.some((file, fileIndex) => file !== item.collectionMovies?.[index].driveFiles[fileIndex]))
+      if (changed) this.mediaStore.updateMediaItem(item.id, { driveFiles, seasons, collectionMovies })
+    }
   }
 
   private parseTmdbId(fileName: string): string | null {

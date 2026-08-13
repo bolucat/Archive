@@ -14,7 +14,7 @@ const sharedAlias = {
 }
 // Native addons must stay outside Rollup. better-sqlite3 resolves its .node
 // binding at runtime, which cannot work once its CommonJS loader is bundled.
-const electronMainExternal = [...Object.keys('dependencies' in pkg ? pkg.dependencies : {}), 'better-sqlite3', '@motrix/nat-api', 'aria2-lib']
+const electronMainExternal = [...Object.keys('dependencies' in pkg ? pkg.dependencies : {}), 'better-sqlite3', '@motrix/nat-api', 'aria2-lib', 'pdfjs-dist']
 
 // https://vitejs.dev/config/
 // @ts-ignore
@@ -65,14 +65,15 @@ export default defineConfig(({ command }) => {
               outDir: 'dist/electron/main',
               rollupOptions: {
                 input: {
-                  index: path.resolve(__dirname, 'electron/main/index.ts')
+                  index: path.resolve(__dirname, 'electron/main/index.ts'),
+                  pdfExtractWorker: path.resolve(__dirname, 'electron/main/documentInsight/pdfExtractWorker.ts')
                 },
                 output: {
                   entryFileNames: '[name].js',
                   chunkFileNames: '[name].js'
                 },
                 // @ts-ignore
-                external: electronMainExternal
+                external: (id: string) => electronMainExternal.includes(id) || id.startsWith('pdfjs-dist/')
               }
             }
           }

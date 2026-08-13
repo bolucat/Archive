@@ -36,6 +36,6 @@ export async function resolvePiApiKey(config: BoxPlayerAgentModelConfig): Promis
 
 export function addAgentFeatureToPayload(payload: unknown, surface: AgentSurface): unknown {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload
-  const feature = surface === 'ai_search' ? 'ai_search' : surface === 'document' ? 'document_analysis' : 'reader_chat'
+  const feature = surface === 'ai_search' || surface === 'workspace' ? 'ai_search' : surface === 'document' ? 'document_analysis' : 'reader_chat'
   return { ...(payload as Record<string, unknown>), feature }
 }

@@ -1,6 +1,7 @@
 type SubtitleSelectorItem = {
   file_id?: string
   url?: string
+  data?: string
   name?: string
   html?: string
 }
@@ -19,3 +20,8 @@ export const dedupeSubtitleSelectors = <T extends SubtitleSelectorItem>(items: T
   items.forEach((item, index) => unique.set(subtitleSelectorKey(item, index), item))
   return [...unique.values()]
 }
+
+export const hasSubtitleSource = (item?: SubtitleSelectorItem) => !!item && (!!item.url || !!item.file_id || typeof item.data === 'string')
+
+/** Single-subtitle selection must expose every playable item, not just the two dual-subtitle candidates. */
+export const selectSingleSubtitleCandidates = <T extends SubtitleSelectorItem>(items: T[]) => items.filter(hasSubtitleSource)

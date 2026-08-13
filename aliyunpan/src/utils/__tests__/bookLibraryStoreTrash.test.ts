@@ -105,6 +105,7 @@ async function createStore() {
 describe('booklibrary trash behavior', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('self', globalThis)
     vi.stubGlobal('localStorage', {
       getItem: vi.fn(() => null),
       setItem: vi.fn()
@@ -151,6 +152,22 @@ describe('booklibrary trash behavior', () => {
 
     expect(dbMock.deleteBookLibrarySource).toHaveBeenCalledWith('book|user|drive|folder')
     expect(store.byFolder).toEqual([])
+  })
+
+  it('updates a persisted book when the reader window has not loaded the library list', async () => {
+    const saved = book({ reading_progress: 10 })
+    dbMock.getBookItemsByIds.mockResolvedValue([saved])
+    const store = await createStore()
+
+    await store.updateBookMetadata(saved.id, { reading_progress: 55, reading_position: { page: '11 / 20' } })
+
+    expect(dbMock.saveBookItems).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: saved.id,
+        reading_progress: 55,
+        reading_position: { page: '11 / 20' }
+      })
+    ])
   })
 
   it('keeps a book that still belongs to another scanned source', async () => {

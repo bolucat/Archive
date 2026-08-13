@@ -1,4 +1,4 @@
-import type { BookMeta, ScoredChunk, MemoryScope, MemoryRow } from './types'
+import type { BookMeta, ChunkRow, ScoredChunk, MemoryScope, MemoryRow } from './types'
 
 function invoke<T = any>(channel: string, ...args: any[]): Promise<T> {
   const fn = (typeof window !== 'undefined' ? (window as any).ReedyInvoke : null) as ((ch: string, ...a: any[]) => Promise<T>) | null
@@ -57,6 +57,10 @@ export class ReedyClient {
   ): Promise<ScoredChunk[]> {
     const emb = Array.from(queryEmbedding instanceof Float32Array ? queryEmbedding : new Float32Array(queryEmbedding as number[]))
     return invoke('reedy:search', bookHash, emb, queryText, topK, spoilerBound)
+  }
+
+  async getChunks(bookHash: string): Promise<ChunkRow[]> {
+    return invoke('reedy:get-chunks', bookHash)
   }
 
   async writeMemory(args: {

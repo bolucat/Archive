@@ -624,7 +624,8 @@ const qualityOptions = [
   text-align: right;
 }
 .control-status {
-  max-width: 84%;
+  align-self: center;
+  width: min(84%, 520px);
   overflow: hidden;
   margin-top: -4px;
   color: rgba(255,255,255,.42);

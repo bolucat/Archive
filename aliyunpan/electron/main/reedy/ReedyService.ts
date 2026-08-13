@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { ReedyDb } from './db/ReedyDb'
-import type { BookMeta, IndexingStatus, Skill, MemoryScope, ScoredChunk } from '@shared/types/reedy'
+import type { BookMeta, ChunkRow, IndexingStatus, Skill, MemoryScope, ScoredChunk } from '@shared/types/reedy'
 
 let db: ReedyDb | null = null
 
@@ -82,6 +82,11 @@ export function hybridSearch(
   const results = getDb().hybridSearch(bookHash, queryEmbedding, queryText, topK, spoilerBoundPosition)
   console.log('[Reedy][Service] hybridSearch results:', results.length, 'first score:', results[0]?.score)
   return results
+}
+
+/** Only used by the explicit, user-started deep-reading flow. */
+export function getBookChunks(bookHash: string): ChunkRow[] {
+  return getDb().getChunks(bookHash)
 }
 
 // ---------------------------------------------------------------------------

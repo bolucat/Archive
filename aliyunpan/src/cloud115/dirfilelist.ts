@@ -16,6 +16,10 @@ export type Drive115FileItem = {
   uet?: number
   uppt?: number
   ico?: string
+  thumb?: string
+  thumbnail?: string
+  thumbnail_url?: string
+  thumb_url?: string
 }
 
 export type Drive115FileListResp = {
@@ -79,6 +83,12 @@ const toTime = (val?: number | string) => {
   const n = Number(val)
   if (!Number.isFinite(n) || n <= 0) return 0
   return n < 1000000000000 ? n * 1000 : n
+}
+
+const pickDrive115Thumbnail = (item: { thumb?: string; thumbnail?: string; thumbnail_url?: string; thumb_url?: string; ico?: string }) => {
+  const thumbnail = [item.thumbnail, item.thumbnail_url, item.thumb, item.thumb_url, item.ico]
+    .find((value) => typeof value === 'string' && /^(https?:|data:image\/)/i.test(value))
+  return thumbnail || ''
 }
 
 export const apiDrive115FileList = async (
@@ -161,7 +171,7 @@ export const mapDrive115FileToAliModel = (item: Drive115FileItem, drive_id: stri
     timeStr,
     starred: false,
     isDir,
-    thumbnail: '',
+    thumbnail: pickDrive115Thumbnail(item),
     description: ''
   }
 }
@@ -174,6 +184,10 @@ export type Drive115SearchItem = {
   user_utime?: string | number
   file_category?: string
   ico?: string
+  thumb?: string
+  thumbnail?: string
+  thumbnail_url?: string
+  thumb_url?: string
 }
 
 export type Drive115SearchResp = {
@@ -193,6 +207,10 @@ export type Drive115TrashItem = {
   cid?: number
   parent_name?: string
   pick_code?: string
+  thumb?: string
+  thumbnail?: string
+  thumbnail_url?: string
+  thumb_url?: string
 }
 
 export const apiDrive115Search = async (
@@ -258,7 +276,7 @@ export const mapDrive115SearchToAliModel = (item: Drive115SearchItem, drive_id: 
     timeStr,
     starred: false,
     isDir,
-    thumbnail: '',
+    thumbnail: pickDrive115Thumbnail(item),
     description: ''
   }
 }
@@ -296,7 +314,7 @@ export const mapDrive115TrashToAliModel = (item: Drive115TrashItem, drive_id: st
     timeStr,
     starred: false,
     isDir,
-    thumbnail: '',
+    thumbnail: pickDrive115Thumbnail(item),
     description: ''
   }
 }

@@ -5,11 +5,11 @@ import path from 'node:path'
 const root = path.resolve(__dirname, '../../..')
 
 describe('cloud139 document preview routing', () => {
-  it('routes cloud139 PDFs through raw-url PDF preview instead of Aliyun office preview', () => {
+  it('routes every cloud PDF through raw-url PDF preview instead of the legacy office preview', () => {
     const source = fs.readFileSync(path.join(root, 'src/utils/openfile.ts'), 'utf8')
 
-    expect(source).toContain("const PDF_PREVIEW_DRIVES = new Set(['cloud123', 'drive115', 'baidu', 'pikpak', 'dropbox', 'onedrive', 'box', 'guangya', 'cloud139', 'cloud189'])")
-    expect(source).toContain("if ((file.ext || '').toLowerCase() === 'pdf' && PDF_PREVIEW_DRIVES.has(file.drive_id || ''))")
+    expect(source).toContain("if ((file.ext || '').toLowerCase() === 'pdf')")
+    expect(source).toContain('await Pdf(file, password)')
   })
 
   it('does not call Aliyun office preview for cloud139 drives', () => {

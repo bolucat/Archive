@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   isReaderFormat,
+  isComicBookFormat,
+  isFixedLayoutBookFormat,
   isLegacyScanOnlyBookFormat,
   isReadableBookFormat,
   isScannableBookFormat
@@ -39,5 +41,15 @@ describe('bookReaderCapabilities', () => {
     for (const ext of ['epub', 'pdf', 'txt', 'md', 'markdown', 'mobi', 'azw', 'azw3', 'fb2', 'cbz', 'cbr', 'cbt', 'cb7', 'docx', 'html', 'htm']) {
       expect(isScannableBookFormat(ext)).toBe(true)
     }
+  })
+
+  it('distinguishes fixed-layout page totals from reflowable chapter pages', () => {
+    for (const ext of ['pdf', 'cbz', 'cbr', 'cbt', 'cb7']) expect(isFixedLayoutBookFormat(ext)).toBe(true)
+    for (const ext of ['epub', 'mobi', 'azw3', 'txt', 'md', 'docx']) expect(isFixedLayoutBookFormat(ext)).toBe(false)
+  })
+
+  it('identifies archive-based comic books separately from PDFs', () => {
+    for (const ext of ['cbz', 'cbr', 'cbt', 'cb7']) expect(isComicBookFormat(ext)).toBe(true)
+    for (const ext of ['pdf', 'epub', 'mobi', 'txt']) expect(isComicBookFormat(ext)).toBe(false)
   })
 })

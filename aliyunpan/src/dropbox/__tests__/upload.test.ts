@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('../dirfilelist', () => ({ getDropboxToken: vi.fn() }))
 vi.mock('../filecmd', () => ({
-  resolveDropboxCommandPath: (parentId: string) => parentId === 'dropbox_root' ? '' : parentId
+  resolveDropboxCommandPath: (parentId: string, description = '') => parentId === 'dropbox_root' ? '' : description || parentId
 }))
 
 import {
@@ -10,6 +10,7 @@ import {
   buildDropboxUploadPath,
   buildDropboxUploadSessionCursor,
   apiDropboxUploadBuffer,
+  parseDropboxContentError,
   toDropboxWriteMode
 } from '../upload'
 
@@ -18,6 +19,7 @@ describe('Dropbox upload helpers', () => {
     expect(buildDropboxUploadPath('dropbox_root', 'movie.mkv')).toBe('/movie.mkv')
     expect(buildDropboxUploadPath('/Movies', 'movie.mkv')).toBe('/Movies/movie.mkv')
     expect(buildDropboxUploadPath('/Movies', 'Season 1/E01.mkv')).toBe('/Movies/Season 1/E01.mkv')
+    expect(buildDropboxUploadPath('id:folder', 'note.txt', '/Movies')).toBe('/Movies/note.txt')
   })
 
   it('maps app conflict modes to Dropbox write modes', () => {
@@ -46,5 +48,10 @@ describe('Dropbox upload helpers', () => {
 
   it('exposes a buffer upload helper for creating text files', () => {
     expect(typeof apiDropboxUploadBuffer).toBe('function')
+  })
+
+  it('explains folder and file name conflicts from Dropbox', () => {
+    expect(parseDropboxContentError('{"error_summary":"path/conflict/folder/..."}', '上传失败')).toBe('同名文件夹已存在，请更换文件名')
+    expect(parseDropboxContentError('{"error_summary":"path/conflict/file/..."}', '上传失败')).toBe('同名文件已存在，请更换文件名')
   })
 })

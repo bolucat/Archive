@@ -19,7 +19,7 @@ const props = defineProps<{
   qualityLabel?: string
   qualities?: Array<{ html?: string; quality?: string; name?: string; label?: string; value?: string }>
   currentQuality?: string
-  externalSubtitle?: { url: string; title?: string }
+  subtitleSources?: Array<{ url: string; title?: string }>
   playlist?: Array<{ file_id?: string; html?: string; name?: string; default?: boolean }>
   chapters?: Array<{ start: number; end: number; title?: string }>
   currentFileId?: string
@@ -180,7 +180,7 @@ const playButtonLabel = computed(() => paused.value ? '播放' : '暂停')
 const qualityLabel = computed(() => props.qualityLabel || '自动')
 const progressPercent = computed(() => duration.value > 0 ? `${Math.max(0, Math.min(100, (position.value / duration.value) * 100))}%` : '0%')
 const volumePercent = computed(() => `${Math.max(0, Math.min(100, volume.value))}%`)
-const subtitleSelectValue = computed(() => props.externalSubtitle?.url ? 'external' : `track:${subtitleTrackId.value}`)
+const subtitleSelectValue = computed(() => `track:${subtitleTrackId.value}`)
 const secondarySubtitleSelectValue = computed(() => `track:${secondarySubtitleTrackId.value}`)
 const settingsTab = ref<'video' | 'audio' | 'subtitle'>('video')
 
@@ -455,7 +455,7 @@ const applyStatusResult = (result: any) => {
   if (Array.isArray(result.trackStatus?.tracks)) tracks.value = result.trackStatus.tracks
   if (typeof result.trackStatus?.audioId === 'number') audioTrackId.value = result.trackStatus.audioId
   if (typeof result.trackStatus?.subtitleId === 'number') subtitleTrackId.value = result.trackStatus.subtitleId
-  const autoSubtitleTrackId = getAutoSubtitleTrackId(tracks.value, subtitleTrackId.value, Boolean(props.externalSubtitle?.url))
+  const autoSubtitleTrackId = getAutoSubtitleTrackId(tracks.value, subtitleTrackId.value, Boolean(props.subtitleSources?.length))
   if (autoSubtitleTrackId != null && autoSubtitleTrackId !== autoSelectedSubtitleTrackId) {
     autoSelectedSubtitleTrackId = autoSubtitleTrackId
     void control('setSubtitleTrack', autoSubtitleTrackId)
@@ -532,7 +532,10 @@ const load = async () => {
   if (sequence !== loadSequence) return
   loaded.value = true
   await applySubtitleStyle()
-  if (props.externalSubtitle?.url) await control('addSubtitle', undefined, { url: props.externalSubtitle.url, title: props.externalSubtitle.title || '自动字幕' })
+  for (const subtitle of props.subtitleSources || []) {
+    if (subtitle.url) await control('addSubtitle', undefined, { url: subtitle.url, title: subtitle.title || '自动字幕' })
+  }
+  await updateStatus()
   // Subtitle setup may reload/reset the native stream. It must happen before
   // the final seek; otherwise a successful resume can be overwritten by 0.
   await control('play')
@@ -673,10 +676,6 @@ const handleAddExternalAudio = () => {
 const handleSubtitleTrackChange = async (event: Event) => {
   revealControls()
   const selectedValue = String((event.target as HTMLSelectElement).value || 'track:-1')
-  if (selectedValue === 'external') {
-    if (props.externalSubtitle?.url) await control('addSubtitle', undefined, { url: props.externalSubtitle.url, title: props.externalSubtitle.title || '自动字幕' })
-    return
-  }
   const nextTrackId = Number(selectedValue.replace(/^track:/, ''))
   subtitleTrackId.value = nextTrackId
   await control('setSubtitleTrack', nextTrackId)
@@ -969,9 +968,13 @@ watch([paused, loading, errorText, seeking], () => {
   if (isControlsPinned()) controlsVisible.value = true
 })
 
-watch(() => props.externalSubtitle?.url, (url) => {
-  if (url && props.url && loaded.value) void control('addSubtitle', undefined, { url, title: props.externalSubtitle?.title || '自动字幕' })
-})
+watch(() => props.subtitleSources, async (sources) => {
+  if (!props.url || !loaded.value) return
+  for (const subtitle of sources || []) {
+    if (subtitle.url) await control('addSubtitle', undefined, { url: subtitle.url, title: subtitle.title || '自动字幕' })
+  }
+  await updateStatus()
+}, { deep: true })
 
 watch(chapters, (nextChapters) => {
   if (!nextChapters.length && playlistTab.value === 'chapters') playlistTab.value = 'playlist'
@@ -1158,7 +1161,7 @@ watch(chapters, (nextChapters) => {
           <div v-else class="mpv-side-settings-content">
             <section class="mpv-side-section">
               <span class="mpv-side-label">字幕轨道</span>
-              <label class="mpv-side-select-row"><span>字幕</span><select :value="subtitleSelectValue" title="字幕" @change="handleSubtitleTrackChange"><option value="track:-1">关闭字幕</option><option v-for="track in subtitleTracks" :key="`sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option><option v-if="props.externalSubtitle?.url" value="external">{{ props.externalSubtitle?.title || '同目录外挂字幕' }}</option></select></label>
+              <label class="mpv-side-select-row"><span>字幕</span><select :value="subtitleSelectValue" title="字幕" @change="handleSubtitleTrackChange"><option value="track:-1">关闭字幕</option><option v-for="track in subtitleTracks" :key="`sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option></select></label>
               <label class="mpv-side-select-row"><span>副字幕</span><select :value="secondarySubtitleSelectValue" title="副字幕" @change="handleSecondarySubtitleTrackChange"><option value="track:-1">关闭副字幕</option><option v-for="track in subtitleTracks" :key="`secondary-sub-${track.id}`" :value="`track:${track.id}`">{{ formatTrackLabel(track) }}</option></select></label>
               <div class="mpv-side-action-row"><button class="mpv-side-action" type="button" @click="handleAddExternalSubtitle">加载字幕…</button><button class="mpv-side-action" type="button" @click="openSubtitleSearchModal"><Captions :size="15" /> 在线查找</button></div>
             </section>

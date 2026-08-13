@@ -87,6 +87,15 @@ export interface IPageVideoPlaylistEntry {
   encType?: string
 }
 
+export interface IPageVideoSubtitleFile {
+  file_id: string
+  name: string
+  parent_file_id: string
+  drive_id: string
+  user_id?: string
+  ext?: string
+}
+
 export interface IPageVideo {
   user_id: string
   tokenfrom?: string
@@ -103,6 +112,8 @@ export interface IPageVideo {
   play_esposide?: number
   media_url?: string
   media_headers?: Record<string, string>
+  media_subtitle_sources?: Array<{ url: string, title?: string, streamIndex?: number }>
+  media_server_tracks_selectable?: boolean
   media_server_id?: string
   media_server_item_id?: string
   media_server_source_id?: string
@@ -120,6 +131,7 @@ export interface IPageVideo {
   media_server_chapters?: Array<{ start: number, end: number, title: string }>
   custom_playlist_label?: string
   custom_playlist?: IPageVideoPlaylistEntry[]
+  library_subtitle_files?: IPageVideoSubtitleFile[]
 }
 
 export interface IPageMusicTrack {

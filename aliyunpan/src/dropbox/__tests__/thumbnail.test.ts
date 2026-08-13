@@ -1,4 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.hoisted(() => {
+  ;(globalThis as any).self = globalThis
+})
+
 import { buildDropboxThumbnailArg, buildDropboxThumbnailBatchBody, buildDropboxThumbnailDataUrl } from '../thumbnail'
 
 describe('Dropbox thumbnail helpers', () => {
@@ -21,8 +26,8 @@ describe('Dropbox thumbnail helpers', () => {
   it('batches thumbnail requests using the official 25-entry argument shape', () => {
     expect(buildDropboxThumbnailBatchBody(['id:one', 'id:two'], 'jpeg', 'w256h256')).toEqual({
       entries: [
-        { path: 'id:one', format: 'jpeg', size: 'w256h256', mode: 'strict', quality: 'quality_80' },
-        { path: 'id:two', format: 'jpeg', size: 'w256h256', mode: 'strict', quality: 'quality_80' }
+        { path: 'id:one', format: 'jpeg', size: 'w256h256', mode: 'strict' },
+        { path: 'id:two', format: 'jpeg', size: 'w256h256', mode: 'strict' }
       ]
     })
   })

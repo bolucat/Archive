@@ -23,7 +23,7 @@ describe('subtitleApi', () => {
             release: 'low',
             language: 'en',
             new_download_count: 2,
-            files: [{ file_id: 11 }]
+            files: [{ file_id: 11, file_name: 'low.srt' }]
           }
         }, {
           id: 'b',
@@ -31,7 +31,7 @@ describe('subtitleApi', () => {
             release: 'high',
             language: 'zh-cn',
             new_download_count: 100,
-            files: [{ file_id: 12 }]
+            files: [{ file_id: 12, file_name: 'high.ass' }]
           }
         }]
       })
@@ -43,6 +43,50 @@ describe('subtitleApi', () => {
       headers: expect.objectContaining({ 'Api-Key': expect.any(String) })
     }))
     expect(results.map((item) => item.name)).toEqual(['high', 'low'])
+    expect(results.map((item) => item.format)).toEqual(['ass', 'srt'])
+  })
+
+  it('preserves the subtitle file format from the search result', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [{
+          id: 'ass',
+          attributes: {
+            language: 'zh-cn',
+            files: [{ file_id: 14, file_name: 'episode.zh.ass' }]
+          }
+        }]
+      })
+    })
+
+    const [result] = await searchSubtitles('movie', 'zh-cn', fetchMock as any)
+
+    expect(result.format).toBe('ass')
+  })
+
+  it('returns every downloadable file so format filters do not hide ASS alternatives', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [{
+          id: 'multi',
+          attributes: {
+            release: 'episode',
+            language: 'en',
+            files: [
+              { file_id: 21, file_name: 'episode.en.srt' },
+              { file_id: 22, file_name: 'episode.en.ass' },
+              { file_id: 23, file_name: 'episode.en.sub' }
+            ]
+          }
+        }]
+      })
+    })
+
+    const results = await searchSubtitles('movie', 'en', fetchMock as any)
+
+    expect(results.map((item) => [item.fileId, item.format])).toEqual([[21, 'srt'], [22, 'ass'], [23, 'unknown']])
   })
 
   it('loads download details and derives subtitle extension', async () => {

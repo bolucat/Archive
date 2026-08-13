@@ -68,6 +68,8 @@ import {
   supportsCreateFolder,
   supportsCreateShare,
   supportsCreateTextFile,
+  isWritableProviderDirectory,
+  supportsDirectPermanentDelete,
   supportsLocalUpload,
   supportsMove,
   supportsRename,
@@ -104,16 +106,19 @@ const panfileStore = usePanFileStore()
 const panTreeStore = usePanTreeStore()
 const currentDriveId = computed(() => panTreeStore.drive_id || panfileStore.DriveID || '')
 const currentUserId = computed(() => panTreeStore.user_id || '')
+const canWriteCurrentDirectory = computed(() => isWritableProviderDirectory(panTreeStore.selectDir.file_id || ''))
 const canCopy = computed(() => supportsCopy(currentUserId.value, currentDriveId.value))
-const canCreateFolder = computed(() => supportsCreateFolder(currentUserId.value, currentDriveId.value))
-const canCreateTextFile = computed(() => supportsCreateTextFile(currentUserId.value, currentDriveId.value))
+const canCreateFolder = computed(() => canWriteCurrentDirectory.value && supportsCreateFolder(currentUserId.value, currentDriveId.value))
+const canCreateTextFile = computed(() => canWriteCurrentDirectory.value && supportsCreateTextFile(currentUserId.value, currentDriveId.value))
 const canCreateShare = computed(() => supportsCreateShare(currentUserId.value, currentDriveId.value))
 const canImportShare = computed(() => supportsShareImport(currentUserId.value, currentDriveId.value))
 const canMove = computed(() => supportsMove(currentUserId.value, currentDriveId.value))
 const canRename = computed(() => supportsRename(currentUserId.value, currentDriveId.value))
 const canTrash = computed(() => supportsTrashMove(currentUserId.value, currentDriveId.value))
-const canDeletePermanently = computed(() => supportsTrashPermanentDelete(currentUserId.value, currentDriveId.value))
-const canUpload = computed(() => supportsLocalUpload(currentUserId.value, currentDriveId.value))
+const canDeletePermanently = computed(() => panfileStore.SelectDirType === 'trash'
+  ? supportsTrashPermanentDelete(currentUserId.value, currentDriveId.value)
+  : supportsDirectPermanentDelete(currentUserId.value, currentDriveId.value))
+const canUpload = computed(() => canWriteCurrentDirectory.value && supportsLocalUpload(currentUserId.value, currentDriveId.value))
 
 const isOfflineDownloadSupported = computed(() => {
   if (panfileStore.SelectDirType !== 'pan') return false

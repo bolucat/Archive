@@ -9,6 +9,7 @@ export const ua = 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTM
 export const Referer = 'https://www.aliyundrive.com/'
 export const AppWindow: {
   mainWindow: BrowserWindow | undefined
+  previewWindows: Set<BrowserWindow>
   uploadWindow: BrowserWindow | undefined
   downloadWindow: BrowserWindow | undefined
   readerWindow: BrowserWindow | undefined
@@ -18,6 +19,7 @@ export const AppWindow: {
   winTheme: string
 } = {
   mainWindow: undefined,
+  previewWindows: new Set(),
   uploadWindow: undefined,
   downloadWindow: undefined,
   readerWindow: undefined,
@@ -56,10 +58,11 @@ const debounceResize = (fn: any, wait: number) => {
   }, wait)
 }
 nativeTheme.on('updated', () => {
-  if (AppWindow.mainWindow && !AppWindow.mainWindow.isDestroyed())
-    AppWindow.mainWindow.webContents.send('setTheme', {
-      dark: nativeTheme.shouldUseDarkColors
-    })
+  const message = { dark: nativeTheme.shouldUseDarkColors }
+  if (AppWindow.mainWindow && !AppWindow.mainWindow.isDestroyed()) AppWindow.mainWindow.webContents.send('setTheme', message)
+  for (const win of AppWindow.previewWindows) {
+    if (!win.isDestroyed()) win.webContents.send('setTheme', message)
+  }
 })
 
 export function createMainWindow() {

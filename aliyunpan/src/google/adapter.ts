@@ -38,7 +38,10 @@ export const createGoogleShare = async (userId: string, driveId: string, fileIds
   return result.error || result.item || '创建 Google Drive 分享链接失败'
 }
 
-export const uploadGoogleTextFile = (userId: string, parentFileId: string, fileName: string, content: string) => apiGoogleUploadBuffer(userId, parentFileId, fileName, Buffer.from(content || '', 'utf-8'))
+export const uploadGoogleTextFile = async (userId: string, parentFileId: string, fileName: string, content: string): Promise<string> => {
+  const result = await apiGoogleUploadBuffer(userId, parentFileId, fileName, Buffer.from(content || '', 'utf-8'))
+  return result.error || 'success'
+}
 
 export const createGoogleFolder = (userId: string, parentFileId: string, name: string) => apiGoogleMkdir(userId, parentFileId.includes('root') ? 'google_root' : parentFileId, name)
 export const trashGoogleFiles = (userId: string, fileIds: string[]) => apiGoogleTrashBatch(userId, fileIds)

@@ -60,7 +60,17 @@ const listFromResponse = (data: any): GuangyaFileItem[] => {
 
 export const isGuangyaDir = (item: GuangyaFileItem): boolean => {
   const type = String(item.type ?? item.fileType ?? item.resType ?? item.category ?? '').toLowerCase()
-  return !!(item.isDir || item.isdir || item.dir || item.isFolder || item.folder || item.dirName || type === 'folder' || type === 'dir' || type === 'directory' || type === '0')
+  const resType = String(item.resType ?? item.res_type ?? '')
+  const dirType = String(item.dirType ?? item.dir_type ?? '')
+  const name = String(item.name || item.fileName || item.filename || item.title || '')
+  const explicitDir = item.isDir || item.isdir || item.dir || item.isFolder || item.folder || item.dirName || type === 'folder' || type === 'dir' || type === 'directory' || type === '0'
+  if (explicitDir) return true
+  // Guangya returns dirType: 1 for both regular files and folders. resType is
+  // authoritative: 1 is a file, 2 is a directory.
+  if (resType === '1') return false
+  if (resType === '2') return true
+  if (/\.[a-z0-9]{1,16}$/i.test(name)) return false
+  return dirType === '1'
 }
 
 export const getGuangyaFileId = (item: GuangyaFileItem): string => String(item.fileId || item.file_id || item.id || item.resId || item.resourceId || '')
@@ -144,11 +154,16 @@ export const apiGuangyaFileDetail = async (user_id: string, fileId: string): Pro
   }
 }
 
+export const getGuangyaDownloadUrlFromResponse = (data: any): string => {
+  const info = data?.data || data || {}
+  return String(info.signedURL || info.signedUrl || info.url || info.downloadUrl || info.download_url || info.cdnUrl || info.cdn_url || '')
+}
+
 export const apiGuangyaDownloadInfo = async (user_id: string, fileId: string): Promise<{ url: string; size: number; name: string; error: string }> => {
   try {
     const data = await guangyaRequest(user_id, '/nd.bizuserres.s/v1/get_res_download_url', { fileId })
     const info = data?.data || data || {}
-    const url = String(info.url || info.downloadUrl || info.download_url || info.cdnUrl || info.cdn_url || '')
+    const url = getGuangyaDownloadUrlFromResponse(data)
     return { url, size: Number(info.size || 0), name: info.name || info.fileName || '', error: url ? '' : '光鸭云盘未返回下载链接' }
   } catch (error: any) {
     return { url: '', size: 0, name: '', error: error?.message || '获取光鸭云盘下载地址失败' }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildAriaAddOptions, shouldCheckExistingDownloadTarget } from './aria2AddOptions'
+import { buildAriaAddOptions, resolveProviderDownloadSplit, shouldCheckExistingDownloadTarget } from './aria2AddOptions'
 
 describe('buildAriaAddOptions', () => {
   it('keeps HTTP-only options on URI downloads', () => {
@@ -63,5 +63,11 @@ describe('buildAriaAddOptions', () => {
     expect(shouldCheckExistingDownloadTarget('magnet')).toBe(false)
     expect(shouldCheckExistingDownloadTarget('torrent')).toBe(false)
     expect(shouldCheckExistingDownloadTarget('url')).toBe(true)
+  })
+
+  it('uses one connection for Quark signed downloads while preserving the configured split elsewhere', () => {
+    expect(resolveProviderDownloadSplit('quark', 8)).toBe(1)
+    expect(resolveProviderDownloadSplit('drive115', 8)).toBe(1)
+    expect(resolveProviderDownloadSplit('aliyun', 8)).toBe(8)
   })
 })

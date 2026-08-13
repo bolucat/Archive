@@ -2,7 +2,7 @@
 import { KeyboardState, useAppStore, useKeyboardStore, usePanFileStore, useSettingStore } from '../store'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import type { MediaLibraryItem } from '../types/media'
-import { h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Button, Input, Modal, Option as AOption, Select } from '@arco-design/web-vue'
 import Artplayer from 'artplayer'
 import HlsJs from 'hls.js'
@@ -29,6 +29,7 @@ import JASSUBWorker from 'jassub/dist/jassub-worker.js?url'
 import JASSUBWorkerWasm from 'jassub/dist/jassub-worker.wasm?url'
 import JASSUBWorkerModernWasm from 'jassub/dist/jassub-worker-modern.wasm?url'
 import JASSUBDefaultFont from 'jassub/dist/default.woff2?url'
+import JASSUBCjkFont from '../assets/fonts/NotoSansCJKsc-Regular.otf?url'
 import {
   autoMatchDanmaku,
   buildDanmakuPluginOption,
@@ -39,12 +40,16 @@ import {
 import type { DanmakuApiConfig, DanmakuEpisode, DanmakuSearchAnime } from '../utils/danmakuApi'
 import {
   formatSubtitleDownloadCount,
+  decodeSubtitleBuffer,
   getSubtitleDownload,
   getSubtitleExtension,
   searchSubtitles
 } from '../utils/subtitleApi'
-import type { SubtitleSearchResult } from '../utils/subtitleApi'
-import { dedupeSubtitleSelectors } from '../utils/subtitleSelector'
+import type { SubtitleSearchFormat, SubtitleSearchResult } from '../utils/subtitleApi'
+import { dedupeSubtitleSelectors, hasSubtitleSource, selectSingleSubtitleCandidates } from '../utils/subtitleSelector'
+import { formatEmbeddedSubtitleLabel } from '../utils/subtitleLanguage'
+import { resolveFullscreenModalContainer } from '../utils/fullscreenModal'
+import { updateSettingPreservingActivePanel } from '../utils/artplayerSetting'
 import message from '../utils/message'
 import { captureVideoQualitySwitchPlaybackState } from '../utils/videoQualitySwitch'
 import { getLocalVideoProgress, saveLocalVideoProgress } from '../utils/videoProgress'
@@ -59,7 +64,7 @@ import { resolveDriveProvider } from '../utils/driveProvider'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import useMediaServerRegistryStore from '../store/mediaServerRegistry'
 import MpvEmbeddedSurface from '../components/MpvEmbeddedSurface.vue'
-import { t } from '../i18n'
+import { t, useLocale } from '../i18n'
 import {
   getMediaServerItemDetail,
   getMediaServerPlaybackInfo,
@@ -68,10 +73,26 @@ import {
   reportMediaServerPlaybackStop
 } from '../media-server/contentGateway'
 
+let jassubCjkFontData: Uint8Array | undefined
+
+const getJassubCjkFont = async (): Promise<Uint8Array | undefined> => {
+  if (jassubCjkFontData) return jassubCjkFontData
+  try {
+    const response = await fetch(JASSUBCjkFont)
+    if (!response.ok) return undefined
+    const data = new Uint8Array(await response.arrayBuffer())
+    if (data.byteLength > 0) jassubCjkFontData = data
+    return jassubCjkFontData
+  } catch {
+    return undefined
+  }
+}
+
 const appStore = useAppStore()
 const mediaStore = useMediaLibraryStore()
 const mediaServerRegistry = useMediaServerRegistryStore()
 const pageVideo = appStore.pageVideo!
+const locale = useLocale()
 const isTop = ref(false)
 let autoPlayNumber = 0
 let lastPlayNumber = -1
@@ -86,6 +107,7 @@ let pendingMediaServerSeekTime: number | null = null
 const mediaServerControlNames = new Set<string>()
 let danmakuAutoLoadingKey = ''
 let danmakuAutoLoadedKey = ''
+let activeSearchModal: { close: () => void } | undefined
 const useMacEmbeddedMpv = useSettingStore().uiVideoPlayer === 'mpv' && window.platform === 'darwin'
 const mpvEmbeddedUrl = ref('')
 const mpvEmbeddedHeaders = ref<Record<string, string>>({})
@@ -95,7 +117,7 @@ const mpvEmbeddedStartPosition = ref(0)
 const mpvEmbeddedQualityLabel = ref('')
 const mpvEmbeddedQuality = ref('')
 const mpvEmbeddedQualities = ref<selectorItem[]>([])
-const mpvEmbeddedExternalSubtitle = ref<{ url: string; title?: string } | undefined>(undefined)
+const mpvEmbeddedSubtitleSources = ref<Array<{ url: string; title?: string; streamIndex?: number }>>([])
 const mpvPlaylistReady = ref(false)
 
 
@@ -177,7 +199,8 @@ const refreshMediaServerPlayback = async (
   sourceId = '',
   videoStreamIndex = -1,
   audioStreamIndex = -1,
-  subtitleStreamIndex = -1
+  subtitleStreamIndex = -1,
+  forceCompatiblePlayback = false
 ) => {
   mediaServerRegistry.ensureLoaded()
   const serverId = pageVideo.media_server_id || ''
@@ -199,15 +222,20 @@ const refreshMediaServerPlayback = async (
     audioStreamIndex,
     subtitleStreamIndex,
     useSettingStore().uiMediaServerVideoQuality,
-    useSettingStore().uiMediaServerCompatibilityMode,
+    forceCompatiblePlayback && useSettingStore().uiMediaServerCompatibilityMode !== 'directPlay'
+      ? 'mostCompatible'
+      : useSettingStore().uiMediaServerCompatibilityMode,
     useSettingStore().uiMediaServerCustomDeviceProfile,
-    useSettingStore().uiMediaServerBitrateTestSize
+    useSettingStore().uiMediaServerBitrateTestSize,
+    forceCompatiblePlayback
   )
   const resumeTime = art.currentTime || pageVideo.play_cursor || playback.playCursorSeconds || 0
   pendingMediaServerSeekTime = resumeTime
   pageVideo.play_cursor = resumeTime
   pageVideo.media_url = playback.url
   pageVideo.media_headers = playback.headers
+  pageVideo.media_subtitle_sources = playback.subtitleSources || []
+  pageVideo.media_server_tracks_selectable = playback.tracksSelectable === true
   pageVideo.media_server_source_id = sourceId || pageVideo.media_server_source_id || ''
   pageVideo.media_server_play_session_id = playback.playSessionId || pageVideo.media_server_play_session_id || ''
   if (videoStreamIndex >= 0) {
@@ -220,6 +248,7 @@ const refreshMediaServerPlayback = async (
     pageVideo.media_server_subtitle_label = (pageVideo.media_server_subtitle_options || []).find((item) => item.streamIndex === subtitleStreamIndex)?.label || pageVideo.media_server_subtitle_label || ''
   }
   setArtVideoUrl(art, resolveHeaderAwareVideoUrl(playback.url, playback.headers, 0, 'media_server'), getArtVideoType(playback.url))
+  await loadMediaServerWebSubtitle(art, subtitleStreamIndex)
   mediaServerReportStarted = false
   mediaServerStopReported = false
   await sendMediaServerStartReport(resumeTime)
@@ -578,6 +607,7 @@ type selectorItem = {
   drive_id?: string;
   parent_file_id?: string;
   password?: string;
+  tokenfrom?: string;
   encType?: string;
   headers?: Record<string, string>;
   isDir?: boolean;
@@ -771,6 +801,7 @@ const renderMediaServerControls = (art: Artplayer) => {
   const videoLabel = pageVideo.media_server_video_label || ''
   const audioLabel = pageVideo.media_server_audio_label || ''
   const subtitleLabel = pageVideo.media_server_subtitle_label || ''
+  const tracksSelectable = pageVideo.media_server_tracks_selectable === true
 
   if (sourceOptions.length > 1) {
     upsertMediaServerControl(art, {
@@ -822,7 +853,8 @@ const renderMediaServerControls = (art: Artplayer) => {
           pageVideo.media_server_source_id || '',
           item.streamIndex,
           findMediaServerStreamIndex(pageVideo.media_server_audio_options, pageVideo.media_server_audio_label),
-          findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label)
+          findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label),
+          true
         )
         return t('video.videoStream')
       }
@@ -832,7 +864,7 @@ const renderMediaServerControls = (art: Artplayer) => {
     removeMediaServerControl(art, 'quality')
   }
 
-  if (audioLabel) {
+  if (tracksSelectable && audioLabel) {
     upsertMediaServerControl(art, {
       name: 'mediaServerAudio',
       index: 19,
@@ -852,7 +884,8 @@ const renderMediaServerControls = (art: Artplayer) => {
           pageVideo.media_server_source_id || '',
           findMediaServerStreamIndex(pageVideo.media_server_video_options, pageVideo.media_server_video_label),
           item.streamIndex,
-          findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label)
+          findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label),
+          true
         )
         return t('video.audioTrack')
       }
@@ -861,7 +894,7 @@ const renderMediaServerControls = (art: Artplayer) => {
     removeMediaServerControl(art, 'mediaServerAudio')
   }
 
-  if (subtitleLabel) {
+  if (tracksSelectable && subtitleLabel) {
     upsertMediaServerControl(art, {
       name: 'mediaServerSubtitle',
       index: 20,
@@ -881,7 +914,8 @@ const renderMediaServerControls = (art: Artplayer) => {
           pageVideo.media_server_source_id || '',
           findMediaServerStreamIndex(pageVideo.media_server_video_options, pageVideo.media_server_video_label),
           findMediaServerStreamIndex(pageVideo.media_server_audio_options, pageVideo.media_server_audio_label),
-          item.streamIndex
+          item.streamIndex,
+          true
         )
         return t('video.subtitle')
       }
@@ -1012,6 +1046,8 @@ const switchMediaServerPlaylistItem = async (art: Artplayer, item: selectorItem)
     pageVideo.play_cursor = playback.playCursorSeconds || 0
     pageVideo.media_url = playback.url
     pageVideo.media_headers = playback.headers
+    pageVideo.media_subtitle_sources = playback.subtitleSources || []
+    pageVideo.media_server_tracks_selectable = playback.tracksSelectable === true
     pageVideo.media_server_item_id = detail.id
     pageVideo.media_server_source_id = sourceOption?.id || ''
     pageVideo.media_server_source_label = sourceOption?.title || ''
@@ -1103,7 +1139,6 @@ const createVideo = async (name: string) => {
 const initStorage = (art: Artplayer) => {
   const storage = art.storage
   if (storage.get('autoJumpCursor') === undefined) storage.set('autoJumpCursor', true)
-  if (storage.get('subTitleListMode') === undefined) storage.set('subTitleListMode', false)
   if (storage.get('subtitleSize') === undefined) storage.set('subtitleSize', 30)
   if (storage.get('subtitleTranslate') === undefined) storage.set('subtitleTranslate', 0)
   if (storage.get('autoSkipEnd') === undefined) storage.set('autoSkipEnd', 0)
@@ -1355,14 +1390,27 @@ const getDirFileList = async (dir_id: string, hasDir: boolean, category: string 
   return filterList
 }
 
-const getSubtitleFileList = async (): Promise<selectorItem[]> => {
+const getSubtitleFileList = async (includeSubfolders = false): Promise<selectorItem[]> => {
   const subtitlePattern = /srt|vtt|ass|ssa/
   const currentDirItems = await getDirFileList(pageVideo.parent_file_id, false, '')
-  const subtitleFiles = currentDirItems.filter((item) => subtitlePattern.test(item.ext || ''))
+  const subtitleFiles = [
+    ...(pageVideo.library_subtitle_files || []).map((item) => ({
+      html: item.name,
+      name: item.name,
+      file_id: item.file_id,
+      parent_file_id: item.parent_file_id,
+      drive_id: item.drive_id,
+      user_id: item.user_id,
+      ext: item.ext || item.name.split('.').pop() || ''
+    })),
+    ...currentDirItems.filter((item) => subtitlePattern.test(item.ext || ''))
+  ]
 
-  // Subtitle libraries are commonly stored in immediate child folders. Keep the video folder first so a sibling subtitle wins ties.
-  for (const dir of currentDirItems.filter((item) => item.isDir && item.file_id)) {
-    subtitleFiles.push(...await getDirFileList(dir.file_id, true, '', subtitlePattern, true))
+  if (includeSubfolders) {
+    // Subtitle libraries are commonly stored in immediate child folders. Keep the video folder first so a sibling subtitle wins ties.
+    for (const dir of currentDirItems.filter((item) => item.isDir && item.file_id)) {
+      subtitleFiles.push(...await getDirFileList(dir.file_id, true, '', subtitlePattern, true))
+    }
   }
   return dedupeSubtitleSelectors(subtitleFiles)
 }
@@ -1552,6 +1600,37 @@ const getSubtitleItemExt = (item: selectorItem) => {
   return String(item.ext || getSubtitleExtension(item.name || item.url || item.html)).toLowerCase()
 }
 
+const refreshCurrentSubtitleCue = async (art: Artplayer) => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const textTrack = (art.subtitle as any).textTrack as TextTrack | undefined
+    if (textTrack?.activeCues != null) {
+      ;(art.subtitle as any).update()
+      return
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+}
+
+const switchNativeSubtitle = async (art: Artplayer, url: string, name: string, ext: string) => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  let settled = false
+  const subtitleLoaded = new Promise<void>((resolve) => {
+    const finish = () => {
+      if (settled) return
+      settled = true
+      if (timeoutId) clearTimeout(timeoutId)
+      resolve()
+    }
+    art.once('subtitleLoad', finish)
+    timeoutId = setTimeout(finish, 1500)
+  })
+  await art.subtitle.switch(url, { name, type: ext, escape: false })
+  await subtitleLoaded
+  // ArtPlayer does not refresh the active cue when a new track loads while paused.
+  await refreshCurrentSubtitleCue(art)
+  art.subtitle.show = true
+}
+
 const switchSubtitleText = async (art: Artplayer, name: string, ext: string, data: string) => {
   if (isAssSubtitleType(ext)) {
     const instance = getJassubInstance(art)
@@ -1567,12 +1646,7 @@ const switchSubtitleText = async (art: Artplayer, name: string, ext: string, dat
   }
 
   clearJassubSubtitle(art)
-  await art.subtitle.switch(onlineSubData.dataUrl, {
-    name,
-    type: ext,
-    escape: false
-  })
-  art.subtitle.show = true
+  await switchNativeSubtitle(art, onlineSubData.dataUrl, name, ext)
   art.notice.show = t('video.switchSubtitle', { name })
 }
 
@@ -1617,7 +1691,22 @@ const toStringValue = (value: unknown) => {
   return typeof value === 'string' ? value : String(value ?? '')
 }
 
+const focusActiveSearchModal = () => {
+  if (!activeSearchModal) return false
+  requestAnimationFrame(() => {
+    const dialog = document.querySelector<HTMLElement>('.arco-modal.danmaku-search-modal')
+    const focusTarget = dialog?.querySelector<HTMLElement>('.danmaku-search-input') || dialog
+    focusTarget?.focus({ preventScroll: true })
+  })
+  return true
+}
+
+const getSearchModalPopupContainer = (art: Artplayer) => {
+  return resolveFullscreenModalContainer(art.fullscreen, document.fullscreenElement) as HTMLElement | undefined
+}
+
 const openDanmakuSearchModal = (art: Artplayer) => {
+  if (focusActiveSearchModal()) return
   const apis = getDanmakuApis()
   if (!apis.length) {
     message.warning(t('video.configureDanmakuApi'))
@@ -1807,18 +1896,25 @@ const openDanmakuSearchModal = (art: Artplayer) => {
     closable: false,
     footer: false,
     maskClosable: true,
+    renderToBody: true,
+    popupContainer: getSearchModalPopupContainer(art),
     modalClass: 'danmaku-search-modal',
     bodyClass: 'danmaku-search-modal-body',
     onOpen: runSearch,
+    onClose: () => {
+      if (activeSearchModal === modal) activeSearchModal = undefined
+    },
     content: () => h('div', { class: 'danmaku-modal' }, [
       renderHeader(),
       viewMode.value === 'episodes' ? renderEpisodesView() : renderSearchView()
     ])
   })
+  activeSearchModal = modal
 }
 
 const loadSubtitleTextToPlayer = async (art: Artplayer, name: string, ext: string, data: string) => {
   clearMultipleSubtitleState(art)
+  const normalizedExt = getSubtitleExtension(`subtitle.${ext || getSubtitleExtension(name)}`)
   if (onlineSubData.dataUrl) URL.revokeObjectURL(onlineSubData.dataUrl)
   const subtitleTranslate = art.storage.get('subtitleTranslate')
   if (subtitleTranslate === 1) {
@@ -1829,9 +1925,66 @@ const loadSubtitleTextToPlayer = async (art: Artplayer, name: string, ext: strin
     onlineSubData.data = data
   }
   onlineSubData.name = name
-  onlineSubData.ext = ext
-  onlineSubData.dataUrl = URL.createObjectURL(new Blob([onlineSubData.data], { type: ext }))
-  await switchSubtitleText(art, name, ext, onlineSubData.data)
+  onlineSubData.ext = normalizedExt
+  onlineSubData.dataUrl = URL.createObjectURL(new Blob([onlineSubData.data], { type: normalizedExt === 'vtt' ? 'text/vtt' : 'text/plain' }))
+  await switchSubtitleText(art, name, normalizedExt, onlineSubData.data)
+}
+
+const selectLocalSubtitleFile = () => new Promise<File | undefined>((resolve) => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.ass,.ssa,.srt,.vtt'
+  input.style.display = 'none'
+  const cleanup = () => input.remove()
+  input.addEventListener('change', () => {
+    const file = input.files?.[0]
+    cleanup()
+    resolve(file)
+  }, { once: true })
+  input.addEventListener('cancel', () => {
+    cleanup()
+    resolve(undefined)
+  }, { once: true })
+  document.body.appendChild(input)
+  input.click()
+})
+
+const importLocalSubtitle = async (art: Artplayer) => {
+  try {
+    let name = ''
+    let data = ''
+    if (typeof window.WebShowOpenDialog === 'function') {
+      const paths = await window.WebShowOpenDialog({
+        title: t('video.importLocalSubtitle'),
+        buttonLabel: t('common.open'),
+        properties: ['openFile'],
+        filters: [{ name: 'Subtitle files', extensions: ['ass', 'ssa', 'srt', 'vtt'] }]
+      })
+      const subtitlePath = paths[0]
+      if (!subtitlePath) return
+      const fs = window.require?.('fs') as { readFileSync?: (filePath: string) => Uint8Array } | undefined
+      const bytes = fs?.readFileSync?.(subtitlePath)
+      if (!bytes) throw new Error('Unable to read subtitle file')
+      name = path.basename(subtitlePath)
+      data = decodeSubtitleBuffer(Uint8Array.from(bytes).buffer)
+    } else {
+      const file = await selectLocalSubtitleFile()
+      if (!file) return
+      name = file.name
+      data = decodeSubtitleBuffer(await file.arrayBuffer())
+    }
+    const ext = getSubtitleExtension(name)
+    await loadSubtitleTextToPlayer(art, name, ext, data)
+    addDownloadedSubtitleToSelector(name, ext, data)
+    // The local subtitle is already active. A cloud-directory refresh is optional
+    // and must not turn a successful import into a visible failure.
+    await getSubTitleList(art, false).catch((error) => {
+      console.warn('刷新字幕列表失败，本地字幕已加载:', error)
+    })
+  } catch (error) {
+    console.error('导入本地字幕失败:', error)
+    art.notice.show = t('video.subtitleLoadFailed')
+  }
 }
 
 const addDownloadedSubtitleToSelector = (name: string, ext: string, data: string) => {
@@ -1852,34 +2005,50 @@ const addDownloadedSubtitleToSelector = (name: string, ext: string, data: string
 
 const loadSubtitleUrlToPlayer = async (art: Artplayer, item: selectorItem) => {
   clearMultipleSubtitleState(art)
-  if (typeof item.data === 'string') {
+  if (typeof item.data === 'string' && item.data.length > 0) {
     await loadSubtitleTextToPlayer(art, item.name || item.html, item.ext || getSubtitleExtension(item.name || item.html), item.data)
     return item.html
   }
   const ext = getSubtitleItemExt(item)
-  if (isAssSubtitleType(ext)) {
-    const response = await fetch(item.url)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    await loadSubtitleTextToPlayer(art, item.name || item.html, ext, await response.text())
-    return item.html
-  }
-  clearJassubSubtitle(art)
-  onlineSubData.name = item.name || item.html
-  onlineSubData.data = ''
-  onlineSubData.dataUrl = ''
-  onlineSubData.ext = ext
-  await art.subtitle.switch(item.url, { name: item.name, type: ext, escape: false })
-  art.subtitle.show = true
+  const response = await fetch(item.url)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  await loadSubtitleTextToPlayer(art, item.name || item.html, ext, decodeSubtitleBuffer(await response.arrayBuffer()))
   return item.html
 }
 
+const loadMediaServerWebSubtitle = async (art: Artplayer, preferredStreamIndex = -1) => {
+  const sources = pageVideo.media_subtitle_sources || []
+  embedSubSelector = sources.map((source) => ({
+    html: formatEmbeddedSubtitleLabel(source.title, locale.value) || t('video.subtitle'),
+    name: formatEmbeddedSubtitleLabel(source.title, locale.value) || t('video.subtitle'),
+    ext: getSubtitleExtension(source.url),
+    url: source.url,
+    default: source.streamIndex === preferredStreamIndex
+  }))
+  if (!embedSubSelector.length) return
+
+  const selected = embedSubSelector.find((item) => item.default)
+    || embedSubSelector.find((item) => item.name === pageVideo.media_server_subtitle_label)
+    || embedSubSelector[0]
+  embedSubSelector.forEach((item) => { item.default = item === selected })
+  try {
+    await loadSubtitleUrlToPlayer(art, selected)
+  } catch (error) {
+    console.error('媒体服务器字幕加载失败:', error)
+    art.notice.show = t('video.subtitleLoadFailed')
+  }
+}
+
 const openSubtitleSearchModal = (art: Artplayer) => {
+  if (focusActiveSearchModal()) return
   const keyword = ref(getVideoSearchTitle())
   const language = ref('zh-cn')
+  const format = ref<'all' | Exclude<SubtitleSearchFormat, 'unknown'>>('all')
   const loading = ref(false)
   const downloadingFileId = ref<number>()
   const errorText = ref('')
   const results = ref<SubtitleSearchResult[]>([])
+  const visibleResults = computed(() => format.value === 'all' ? results.value : results.value.filter((subtitle) => subtitle.format === format.value))
   let modal: any
 
   const runSearch = async () => {
@@ -1928,7 +2097,10 @@ const openSubtitleSearchModal = (art: Artplayer) => {
         h('span', { class: 'subtitle-doc-glyph' })
       ]),
       h('span', { class: 'danmaku-result-copy' }, [
-        h('span', { class: 'danmaku-result-title' }, subtitle.name),
+        h('span', { class: 'subtitle-result-title-row' }, [
+          h('span', { class: 'danmaku-result-title' }, subtitle.name),
+          ...(subtitle.format === 'unknown' ? [] : [h('span', { class: 'subtitle-format-badge' }, subtitle.format.toUpperCase())])
+        ]),
         h('span', { class: 'danmaku-result-meta' }, `${subtitle.language}  下载: ${formatSubtitleDownloadCount(subtitle.downloadCount)}`)
       ]),
       h('span', { class: ['subtitle-download-arrow', downloadingFileId.value === subtitle.fileId ? 'is-loading' : ''] }, downloadingFileId.value === subtitle.fileId ? t('video.loading') : t('video.load'))
@@ -1939,7 +2111,8 @@ const openSubtitleSearchModal = (art: Artplayer) => {
     if (loading.value && !results.value.length) return h('div', { class: 'danmaku-empty' }, `${t('video.searching')}...`)
     if (errorText.value) return h('div', { class: 'danmaku-empty' }, errorText.value)
     if (!results.value.length) return h('div', { class: 'danmaku-empty' }, keyword.value.trim() ? t('video.noSubtitleFound') : t('video.enterSearchKeyword'))
-    return results.value.map(renderSubtitleRow)
+    if (!visibleResults.value.length) return h('div', { class: 'danmaku-empty' }, t('video.noSubtitleFormatFound'))
+    return visibleResults.value.map(renderSubtitleRow)
   }
 
   modal = Modal.open({
@@ -1949,9 +2122,14 @@ const openSubtitleSearchModal = (art: Artplayer) => {
     closable: false,
     footer: false,
     maskClosable: false,
+    renderToBody: true,
+    popupContainer: getSearchModalPopupContainer(art),
     modalClass: 'danmaku-search-modal subtitle-search-modal',
     bodyClass: 'danmaku-search-modal-body',
     onOpen: runSearch,
+    onClose: () => {
+      if (activeSearchModal === modal) activeSearchModal = undefined
+    },
     content: () => h('div', { class: 'danmaku-modal' }, [
       h('div', { class: 'danmaku-full-header' }, [
         h('button', {
@@ -1975,6 +2153,19 @@ const openSubtitleSearchModal = (art: Artplayer) => {
               if (keyword.value.trim()) void runSearch()
             }
           }, () => subtitleLanguages.map((item) => h(AOption, { value: item.code }, () => item.name))),
+          h(Select, {
+            class: 'subtitle-format-select',
+            modelValue: format.value,
+            triggerProps: { autoFitPopupMinWidth: true },
+            'onUpdate:modelValue': (value: string | number | boolean | Record<string, any> | Array<string | number | boolean | Record<string, any>>) => {
+              format.value = toStringValue(value) as 'all' | Exclude<SubtitleSearchFormat, 'unknown'>
+            }
+          }, () => [
+            ['all', t('video.subtitleFormatAll')],
+            ['srt', 'SRT'],
+            ['ass', 'ASS'],
+            ['vtt', 'VTT']
+          ].map(([value, label]) => h(AOption, { value }, () => label))),
           h('div', { class: 'danmaku-input-wrap' }, [
             h(Input, {
               class: 'danmaku-search-input',
@@ -1994,7 +2185,7 @@ const openSubtitleSearchModal = (art: Artplayer) => {
         ]),
         h('section', { class: 'danmaku-result-shell' }, [
           h('div', { class: 'danmaku-result-toolbar' }, [
-            h('span', {}, loading.value ? t('video.searching') : results.value.length ? t('video.foundSubtitles', { count: results.value.length }) : t('video.searchResults')),
+            h('span', {}, loading.value ? t('video.searching') : visibleResults.value.length ? t('video.foundSubtitles', { count: visibleResults.value.length }) : t('video.searchResults')),
             h('span', {}, subtitleLanguages.find(item => item.code === language.value)?.name || '')
           ]),
           h('div', { class: 'danmaku-modal-list' }, renderContentState())
@@ -2002,6 +2193,7 @@ const openSubtitleSearchModal = (art: Artplayer) => {
       ])
     ])
   })
+  activeSearchModal = modal
 }
 
 const defaultControls = async (art: Artplayer) => {
@@ -2063,14 +2255,27 @@ const loadPlugins = async (art: Artplayer) => {
     danmuku: []
   } as any))
   // ASS/SSA 字幕插件
+  const cjkFont = await getJassubCjkFont()
+  const availableFonts: Record<string, string | Uint8Array> = {
+    'liberation sans': JASSUBDefaultFont
+  }
+  let fallbackFont = 'liberation sans'
+  if (cjkFont) {
+    availableFonts['noto sans cjk sc'] = cjkFont
+    availableFonts['noto sans sc'] = cjkFont
+    availableFonts['pingfang sc'] = cjkFont
+    availableFonts['microsoft yahei'] = cjkFont
+    availableFonts.simhei = cjkFont
+    availableFonts.simsun = cjkFont
+    fallbackFont = 'noto sans cjk sc'
+  }
   art.plugins.add(artplayerPluginJassub({
     workerUrl: JASSUBWorker,
     wasmUrl: JASSUBWorkerWasm,
     modernWasmUrl: JASSUBWorkerModernWasm,
-    availableFonts: {
-      'liberation sans': JASSUBDefaultFont
-    },
-    fallbackFont: 'liberation sans',
+    fonts: cjkFont ? [cjkFont] : [],
+    availableFonts: availableFonts as any,
+    fallbackFont,
     subContent: '[Script Info]\nScriptType: v4.00+'
   }))
   clearJassubSubtitle(art)
@@ -2099,7 +2304,7 @@ const resolveRawMpvQualitySource = (data: IRawUrl, preferredQuality?: string): {
   }
 }
 
-const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Record<string, string>; type?: string; qualityLabel?: string; quality?: string; qualities?: selectorItem[]; error?: string }> => {
+const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Record<string, string>; type?: string; qualityLabel?: string; quality?: string; qualities?: selectorItem[]; subtitles?: Array<{ url: string; title?: string; streamIndex?: number }>; error?: string }> => {
   if (pageVideo.drive_id === 'local') {
     const urlModule = window.require?.('url')
     const filePath = pageVideo.file_id || (pageVideo as any).file_path || ''
@@ -2117,7 +2322,29 @@ const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Rec
     }
     const mediaUrl = pageVideo.media_url || ''
     if (!mediaUrl) return { url: '', error: t('video.getMediaServerUrlFailed') }
-    return { url: mediaUrl, headers: pageVideo.media_headers, type: getArtVideoType(mediaUrl), qualityLabel: pageVideo.media_server_source_label || t('video.mediaServer') }
+    const mediaHeaders = pageVideo.media_headers
+    // The native libmpv addon accepts no per-file HTTP options. Route authenticated
+    // media-server streams through the local proxy, as other authenticated drives do.
+    const useAuthenticatedMpvProxy = hasPlaybackHeaders(mediaHeaders)
+    const mpvUrl = useAuthenticatedMpvProxy
+      ? getProxyUrl({
+          user_id: pageVideo.user_id,
+          drive_id: pageVideo.drive_id,
+          file_id: pageVideo.media_server_item_id || pageVideo.file_id,
+          file_size: 0,
+          quality: 'media_server',
+          proxy_url: mediaUrl,
+          proxy_headers: JSON.stringify(mediaHeaders),
+          proxy_kind: 'mpv'
+        })
+      : mediaUrl
+    return {
+      url: mpvUrl,
+      headers: useAuthenticatedMpvProxy ? undefined : mediaHeaders,
+      type: getArtVideoType(mediaUrl),
+      qualityLabel: pageVideo.media_server_source_label || t('video.mediaServer'),
+      subtitles: pageVideo.media_subtitle_sources || []
+    }
   }
 
   const data: string | IRawUrl = await getRawUrl(pageVideo.user_id, pageVideo.drive_id, pageVideo.file_id, pageVideo.encType, pageVideo.password, false, 'video', '', 'thirdParty', pageVideo.tokenfrom)
@@ -2131,7 +2358,20 @@ const resolvePageVideoMpvSource = async (): Promise<{ url: string; headers?: Rec
     default: q.quality === defaultQuality.quality
   }))
   pageVideo.expire_time = GetExpiresTime(defaultQuality.url)
-  return { url: source.url, headers: source.headers, type: source.type, qualityLabel: source.qualityLabel, quality: defaultQuality.quality, qualities }
+  const subtitles = (data.subtitles || []).map((subtitle) => ({
+    url: subtitle.headers
+      ? getProxyUrl({
+        user_id: pageVideo.user_id,
+        drive_id: pageVideo.drive_id,
+        file_id: pageVideo.file_id,
+        proxy_kind: 'subtitle',
+        proxy_url: subtitle.url,
+        proxy_headers: JSON.stringify(subtitle.headers)
+      })
+      : subtitle.url,
+    title: formatEmbeddedSubtitleLabel(subtitle.language, locale.value)
+  }))
+  return { url: source.url, headers: source.headers, type: source.type, qualityLabel: source.qualityLabel, quality: defaultQuality.quality, qualities, subtitles }
 }
 
 const resolveMpvEmbeddedExternalSubtitle = async (): Promise<{ url: string; title?: string } | undefined> => {
@@ -2140,7 +2380,7 @@ const resolveMpvEmbeddedExternalSubtitle = async (): Promise<{ url: string; titl
   if (pageVideo.drive_id === 'local' || pageVideo.drive_id === 'media_server') return undefined
   if (!pageVideo.parent_file_id || !pageVideo.file_name) return undefined
 
-  const subtitleFiles = await getSubtitleFileList()
+  const subtitleFiles = await getSubtitleFileList(useSettingStore().mediaLibrarySubtitleScope === 'include-subfolders')
   if (!subtitleFiles.length) return undefined
   const subtitleFile = PlayerUtils.filterSubtitleFile(pageVideo.file_name, subtitleFiles as any) as selectorItem | undefined
   if (!subtitleFile?.file_id) return undefined
@@ -2180,10 +2420,13 @@ const loadMpvEmbeddedCurrentVideo = async (resumePosition = pageVideo.play_curso
     userAgent: source.headers && Object.entries(source.headers).find(([key]) => key.toLowerCase() === 'user-agent')?.[1] || ''
   })
   try {
-    mpvEmbeddedExternalSubtitle.value = await resolveMpvEmbeddedExternalSubtitle()
+    const subtitleSources = [...(source.subtitles || [])]
+    const externalSubtitle = await resolveMpvEmbeddedExternalSubtitle()
+    if (externalSubtitle && !subtitleSources.some((item) => item.url === externalSubtitle.url)) subtitleSources.push(externalSubtitle)
+    mpvEmbeddedSubtitleSources.value = subtitleSources
   } catch (error) {
     console.warn('MPV 自动加载同目录字幕失败:', error)
-    mpvEmbeddedExternalSubtitle.value = undefined
+    mpvEmbeddedSubtitleSources.value = source.subtitles || []
   }
   return true
 }
@@ -2278,6 +2521,8 @@ const switchMpvMediaServerPlaylistItem = async (item: selectorItem) => {
     pageVideo.play_cursor = playback.playCursorSeconds || 0
     pageVideo.media_url = playback.url
     pageVideo.media_headers = playback.headers
+    pageVideo.media_subtitle_sources = playback.subtitleSources || []
+    pageVideo.media_server_tracks_selectable = playback.tracksSelectable === true
     pageVideo.media_server_source_id = state?.sourceId || ''
     pageVideo.media_server_source_label = state?.sourceLabel || ''
     pageVideo.media_server_play_session_id = playback.playSessionId || ''
@@ -2333,6 +2578,7 @@ const getVideoInfo = async (art: Artplayer) => {
       return
     }
     setArtVideoUrl(art, resolveHeaderAwareVideoUrl(mediaUrl, pageVideo.media_headers, 0, 'media_server'), getArtVideoType(mediaUrl))
+    await loadMediaServerWebSubtitle(art, findMediaServerStreamIndex(pageVideo.media_server_subtitle_options, pageVideo.media_server_subtitle_label))
     renderMediaServerControls(art)
     return
   }
@@ -2433,8 +2679,8 @@ const getVideoInfo = async (art: Artplayer) => {
           })
           : subtitle.url
         embedSubSelector.push({
-          html: t('video.embeddedSubtitle', { language: subtitle.language }),
-          name: subtitle.language,
+          html: formatEmbeddedSubtitleLabel(subtitle.language, locale.value),
+          name: formatEmbeddedSubtitleLabel(subtitle.language, locale.value),
           ext: getSubtitleExtension(subtitle.url),
           url: subtitleUrl,
           default: i === 0
@@ -2708,25 +2954,26 @@ const isMultipleSubtitleSupported = (item: selectorItem) => {
   return ['srt', 'vtt'].includes(ext) && (!!item.url || !!item.file_id || typeof item.data === 'string')
 }
 
-const hasSubtitleSource = (item?: selectorItem) => {
-  return !!item && (!!item.url || !!item.file_id || typeof item.data === 'string')
-}
-
 const readSubtitleItemText = async (item: selectorItem) => {
   if (!item.file_id) return ''
   const url = await resolveCloudSubtitleUrl(item)
-  if (!url) return ''
+  if (!url) throw new Error(`Unable to resolve subtitle URL: ${item.name || item.html}`)
   const response = await fetch(url)
-  return response.ok ? response.text() : ''
+  if (!response.ok) throw new Error(`Subtitle request failed: HTTP ${response.status}`)
+  const data = decodeSubtitleBuffer(await response.arrayBuffer())
+  if (!data.trim()) throw new Error(`Subtitle response is empty: ${item.name || item.html}`)
+  return data
 }
 
 const resolveCloudSubtitleUrl = async (item: selectorItem): Promise<string> => {
   if (!item.file_id) return item.url || ''
+  const userId = item.user_id || pageVideo.user_id
   const driveId = item.drive_id || pageVideo.drive_id
-  const data = await DriveFile.ApiFileDownloadUrl(pageVideo.user_id, driveId, item.file_id, 14400, pageVideo.tokenfrom)
+  const tokenfrom = item.tokenfrom || (userId === pageVideo.user_id ? pageVideo.tokenfrom : '')
+  const data = await DriveFile.ApiFileDownloadUrl(userId, driveId, item.file_id, 14400, tokenfrom)
   if (typeof data === 'string' || !data.url) return ''
   return getProxyUrl({
-    user_id: pageVideo.user_id,
+    user_id: userId,
     drive_id: driveId,
     file_id: item.file_id,
     encType: item.encType,
@@ -2801,15 +3048,48 @@ const applyMultipleSubtitles = async (art: Artplayer, items: selectorItem[], rev
   return true
 }
 
-const loadOnlineSub = async (art: Artplayer, item: any) => {
+const loadOnlineSub = async (art: Artplayer, item: selectorItem) => {
   clearMultipleSubtitleState(art)
   const data = await readSubtitleItemText(item)
-  if (data) {
-    await loadSubtitleTextToPlayer(art, item.name, item.ext, data)
-    return item.html
-  } else {
-    art.notice.show = t('video.loadNamedSubtitleFailed', { name: item.name })
-  }
+  await loadSubtitleTextToPlayer(art, item.name || item.html, getSubtitleItemExt(item), data)
+  return item.html
+}
+
+const loadSubtitleItem = async (art: Artplayer, item: selectorItem) => {
+  return item.file_id
+    ? loadOnlineSub(art, item)
+    : loadSubtitleUrlToPlayer(art, item)
+}
+
+const updateSubtitleListControl = (art: Artplayer, subSelector: selectorItem[], subDefault: selectorItem) => {
+  art.controls.update({
+    name: 'subtitleListControl',
+    index: 20,
+    position: 'right',
+    style: { padding: '0 10px', marginRight: '8px', opacity: '0.92' },
+    html: t('video.subtitle'),
+    tooltip: hasSubtitleSource(subDefault) ? subDefault.html : t('video.noAvailableSubtitle'),
+    selector: subSelector,
+    onSelect: async (selector: any, element: HTMLElement) => {
+      const item = selector as selectorItem
+      if (!hasSubtitleSource(item)) {
+        art.notice.show = t('video.noAvailableSubtitle')
+        Artplayer.utils.removeClass(element, 'art-current')
+        return t('video.subtitle')
+      }
+      if (!art.subtitle.show) art.subtitle.show = true
+      try {
+        art.notice.show = ''
+        await loadSubtitleItem(art, item)
+        return t('video.subtitle')
+      } catch (error) {
+        console.error('加载字幕失败:', error)
+        art.notice.show = `加载${item.name || item.html}字幕失败`
+        Artplayer.utils.removeClass(element, 'art-current')
+        return t('video.subtitle')
+      }
+    }
+  })
 }
 
 // 内嵌字幕
@@ -2820,10 +3100,11 @@ const clearDownloadedSubtitleSelector = () => {
   downloadedSubSelector = []
 }
 
-const getSubTitleList = async (art: Artplayer) => {
+const getSubTitleList = async (art: Artplayer, autoLoad = true) => {
   // Load subtitles from the video folder and each immediate child folder.
   let subSelector: selectorItem[]
-  const onlineSubSelector = await getSubtitleFileList()
+  const includeSubfolders = useSettingStore().mediaLibrarySubtitleScope === 'include-subfolders'
+  const onlineSubSelector = await getSubtitleFileList(includeSubfolders)
   // console.log('onlineSubSelector', onlineSubSelector)
   subSelector = dedupeSubtitleSelectors([...embedSubSelector, ...onlineSubSelector, ...downloadedSubSelector])
   if (subSelector.length === 0) {
@@ -2831,7 +3112,7 @@ const getSubTitleList = async (art: Artplayer) => {
   } else {
     let subtitleSize = art.storage.get('subtitleSize') + 'px'
     const hasDownloadedDefault = downloadedSubSelector.some((item) => item.default)
-    if (onlineSubSelector.length > 0 && !hasDownloadedDefault) {
+    if (autoLoad && onlineSubSelector.length > 0 && !hasDownloadedDefault) {
       const fileName = pageVideo.file_name
       // 自动加载同名字幕
       const similarity = subSelector.reduce((min, item, index) => {
@@ -2847,18 +3128,26 @@ const getSubTitleList = async (art: Artplayer) => {
         subSelector.forEach(v => v.default = false)
         subSelector[similarity.index].default = true
         art.subtitle.style('fontSize', subtitleSize)
-        await loadOnlineSub(art, subSelector[similarity.index])
+        await loadSubtitleItem(art, subSelector[similarity.index])
       }
-    } else if (embedSubSelector.length > 0 && !hasDownloadedDefault) {
+    } else if (autoLoad && embedSubSelector.length > 0 && !hasDownloadedDefault) {
       await loadSubtitleUrlToPlayer(art, embedSubSelector[0])
       art.subtitle.style('fontSize', subtitleSize)
     }
   }
+  if (!autoLoad && onlineSubData.name) {
+    const current = subSelector.find((item) => (item.name || item.html) === onlineSubData.name)
+    if (current) {
+      subSelector.forEach((item) => { item.default = item === current })
+    }
+  }
   const subDefault = subSelector.find((item) => item.default) || subSelector[0]
+  updateSubtitleListControl(art, subSelector, subDefault)
   const multipleSubtitleCandidates = subSelector.filter(isMultipleSubtitleSupported)
+  const singleSubtitleCandidates = selectSingleSubtitleCandidates(subSelector)
   const subtitleTranslate = art.storage.get('subtitleTranslate')
   // 字幕设置面板
-  art.setting.update({
+  updateSettingPreservingActivePanel(art.setting as any, {
     name: 'Subtitle',
     html: t('video.subtitleSettings'),
     tooltip: art.subtitle.show ? (hasSubtitleSource(subDefault) ? t('video.subtitleOn') : subDefault.html) : t('video.subtitleOff'),
@@ -2933,14 +3222,10 @@ const getSubTitleList = async (art: Artplayer) => {
         return item.html
       }
     }, {
-      html: t('video.subtitleList'),
-      tooltip: art.storage.get('subTitleListMode') ? t('video.includeSubfolders') : t('video.sameFolder'),
-      switch: art.storage.get('subTitleListMode'),
-      onSwitch: async (item: SettingOption) => {
-        item.tooltip = item.switch ? t('video.sameFolder') : t('video.includeSubfolders')
-        art.storage.set('subTitleListMode', !item.switch)
-        await getSubTitleList(art)
-        return !item.switch
+      html: t('video.importLocalSubtitle'),
+      tooltip: t('video.importLocalSubtitle'),
+      onClick: async (item: SettingOption) => {
+        await importLocalSubtitle(art)
       }
     }, ...(multipleSubtitleCandidates.length >= 2 ? [{
       html: t('video.dualSubtitle'),
@@ -2970,15 +3255,15 @@ const getSubTitleList = async (art: Artplayer) => {
         if (ok && item.$parent) item.$parent.tooltip = item.mode === 'reverse' ? t('video.reverse') : t('video.on')
         return item.html
       }
-    }, {
+    }] : []), ...(singleSubtitleCandidates.length ? [{
       html: t('video.singleSubtitle'),
       tooltip: t('video.selectDisplay'),
-      selector: multipleSubtitleCandidates.slice(0, 2).map((candidate, index) => ({
+      selector: singleSubtitleCandidates.map((candidate, index) => ({
         html: candidate.name || candidate.html || t('video.subtitleIndex', { index: index + 1 }),
         subtitleIndex: index
       })),
       onSelect: async (item: SettingOption) => {
-        const candidate = multipleSubtitleCandidates[item.subtitleIndex]
+        const candidate = singleSubtitleCandidates[item.subtitleIndex]
         if (!candidate) return item.html
         clearMultipleSubtitleState(art)
         if (candidate.file_id) await loadOnlineSub(art, candidate)
@@ -3005,20 +3290,21 @@ const getSubTitleList = async (art: Artplayer) => {
         art.subtitle.style('fontSize', size)
         return size
       }
-    }, ...subSelector],
-    onSelect: (selector: any, element: HTMLElement, event: Event) => {
+    }],
+    onSelect: async (selector: any, element: HTMLElement, event: Event) => {
       const item = selector as selectorItem
+      // Setting actions (for example “Import Local Subtitle”) also bubble here.
+      // They are not subtitle sources and must never be handed to the subtitle loader.
+      if (!hasSubtitleSource(item)) return false
       if (art.subtitle.show) {
-        if (!item.file_id) {
+        try {
           art.notice.show = ''
-          loadSubtitleUrlToPlayer(art, item).then(() => item.html).catch((error) => {
-            console.error('加载字幕失败:', error)
-            art.notice.show = `加载${item.name || item.html}字幕失败`
-          })
-        } else {
-          loadOnlineSub(art, item).then((result) => {
-            return result
-          })
+          return await loadSubtitleItem(art, item)
+        } catch (error) {
+          console.error('加载字幕失败:', error)
+          art.notice.show = `加载${item.name || item.html}字幕失败`
+          Artplayer.utils.removeClass(element, 'art-current')
+          return false
         }
       } else {
         art.notice.show = t('video.subtitleNotEnabled')
@@ -3152,6 +3438,8 @@ const handleTop = (_e: any) => {
 }
 
 onBeforeUnmount(() => {
+  activeSearchModal?.close()
+  activeSearchModal = undefined
   if (pageVideo.drive_id === 'media_server') {
     void sendMediaServerStopReport(useMacEmbeddedMpv ? mpvEmbeddedStatus.value?.position || pageVideo.play_cursor || 0 : ArtPlayerRef?.currentTime || 0)
   }
@@ -3219,7 +3507,7 @@ onBeforeUnmount(() => {
         :current-file-id="pageVideo.drive_id === 'media_server' ? pageVideo.media_server_item_id || pageVideo.file_id : pageVideo.file_id"
         :current-quality="mpvEmbeddedQuality"
         :chapters="pageVideo.media_server_chapters || []"
-        :external-subtitle="mpvEmbeddedExternalSubtitle"
+        :subtitle-sources="mpvEmbeddedSubtitleSources"
         :headers="mpvEmbeddedHeaders"
         :playlist="[...playList]"
         :qualities="mpvEmbeddedQualities"
@@ -3348,6 +3636,7 @@ onBeforeUnmount(() => {
 
 :deep(#artPlayer .JASSUB canvas) {
   pointer-events: none;
+  transform: translateY(-5%);
 }
 
 .danmaku-modal {
@@ -3876,7 +4165,11 @@ onBeforeUnmount(() => {
 }
 
 .subtitle-searchbar {
-  grid-template-columns: 150px minmax(0, 1fr) 116px;
+  grid-template-columns: 150px 116px minmax(0, 1fr) 116px;
+}
+
+.subtitle-format-select .arco-select-view-single {
+  min-width: 116px;
 }
 
 .danmaku-api-select .arco-select-view-single {
@@ -4103,6 +4396,30 @@ onBeforeUnmount(() => {
   min-width: 0;
   flex-direction: column;
   gap: 6px;
+}
+
+.subtitle-result-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.subtitle-result-title-row .danmaku-result-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.subtitle-format-badge {
+  flex: 0 0 auto;
+  border: 1px solid rgba(113, 165, 255, .42);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: #9dc0ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .danmaku-result-title {

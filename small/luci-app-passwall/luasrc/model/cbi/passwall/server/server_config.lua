@@ -1,10 +1,10 @@
-api = require "luci.passwall2.api"
+api = require "luci.passwall.api"
 appname = api.appname
 fs = api.fs
 
 api.set_default_cbi()
 
-m = Map("passwall2_server", translate("Server Config"))
+m = Map("passwall_server", translate("Server Config"))
 m.redirect = api.url("server")
 api.set_apply_on_parse(m)
 
@@ -20,7 +20,12 @@ m:append(header)
 
 m:append(Template(appname .. "/cbi/nodes_listvalue_com"))
 
-s = m:section(NamedSection, arg[1], "user", "")
+user_list = {}
+m.uci:foreach(m.config, "user", function(s)
+	user_list[#user_list + 1] = s
+end)
+
+s = m:section(NamedSection, arg[1], "server", "")
 s.addremove = false
 s.dynamic = false
 
@@ -42,7 +47,9 @@ for filename in fs.dir(types_dir) do
 	table.insert(type_table, filename)
 end
 table.sort(type_table, function(a, b)
-    return a < b
+	if a == "socks.lua" then return true end
+	if b == "socks.lua" then return false end
+	return a < b
 end)
 
 for index, value in ipairs(type_table) do

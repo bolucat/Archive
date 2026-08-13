@@ -13,7 +13,7 @@ import { usePanTreeStore, usePanFileStore } from '../../store'
 import message from '../../utils/message'
 import PanDAL from '../pandal'
 import { isAliyunUser } from '../../aliapi/utils'
-import { supportsCreateFolder, supportsCreateTextFile, supportsEncryptedFileOperations, supportsLocalUpload, supportsShareImport } from '../../drive/providerFeatures'
+import { isWritableProviderDirectory, supportsCreateFolder, supportsCreateTextFile, supportsEncryptedFileOperations, supportsLocalUpload, supportsShareImport } from '../../drive/providerFeatures'
 import { t } from '../../i18n'
 
 const props = defineProps({
@@ -40,10 +40,11 @@ const panTreeStore = usePanTreeStore()
 const panFileStore = usePanFileStore()
 
 const isShareImportSupported = computed(() => supportsShareImport(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
-const canCreateTextFile = computed(() => supportsCreateTextFile(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
-const canCreateFolder = computed(() => supportsCreateFolder(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
-const canUploadLocal = computed(() => supportsLocalUpload(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
-const canUseEncryption = computed(() => supportsEncryptedFileOperations(panTreeStore.user_id || ''))
+const canWriteCurrentDirectory = computed(() => isWritableProviderDirectory(panTreeStore.selectDir.file_id || ''))
+const canCreateTextFile = computed(() => canWriteCurrentDirectory.value && supportsCreateTextFile(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const canCreateFolder = computed(() => canWriteCurrentDirectory.value && supportsCreateFolder(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const canUploadLocal = computed(() => canWriteCurrentDirectory.value && supportsLocalUpload(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const canUseEncryption = computed(() => canWriteCurrentDirectory.value && supportsEncryptedFileOperations(panTreeStore.user_id || ''))
 const canCreateAnything = computed(() => canCreateTextFile.value || canCreateFolder.value || canUseEncryption.value)
 
 const isShowBtn = computed(() => {

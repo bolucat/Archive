@@ -250,9 +250,9 @@ export default class AliHttp {
   }
 
 
-  static async GetString(url: string, user_id: string, fileSize: number, maxSize: number): Promise<IUrlRespData> {
+  static async GetString(url: string, user_id: string, fileSize: number, maxSize: number, requestHeaders: Record<string, string> = {}, allowProviderUrl: boolean = false): Promise<IUrlRespData> {
     const blocked = nonAliyunRequest(user_id)
-    if (blocked) return blocked
+    if (blocked && !allowProviderUrl) return blocked
     if (!url.startsWith('http') && !url.startsWith('https')) {
       if (url.includes('adrive/v1.0') || url.includes('adrive/v1.1')) {
         url = AliHttp.baseOpenApi + url
@@ -261,7 +261,7 @@ export default class AliHttp {
       }
     }
     for (let i = 0; i <= 5; i++) {
-      const resp = await AliHttp._GetString(url, user_id, fileSize, maxSize)
+      const resp = await AliHttp._GetString(url, user_id, fileSize, maxSize, requestHeaders)
       if (AliHttp.HttpCodeBreak(resp.code)) return resp
       else if (i == 5) return resp
       else await Sleep(2000)
@@ -269,10 +269,10 @@ export default class AliHttp {
     return { code: 609, header: '', body: 'NetError GetStringLost' }
   }
 
-  private static _GetString(url: string, user_id: string, fileSize: number, maxSize: number): Promise<IUrlRespData> {
+  private static _GetString(url: string, user_id: string, fileSize: number, maxSize: number, requestHeaders: Record<string, string> = {}): Promise<IUrlRespData> {
     return UserDAL.GetUserTokenFromDB(user_id).then((token) => {
-      const headers: any = {}
-      if (token) {
+      const headers: any = { ...requestHeaders }
+      if (token && !isNonAliyunProvider(token)) {
         let token_type = token.token_type
         let access_token = token.access_token
         let need_open_api = url.includes('openapi')

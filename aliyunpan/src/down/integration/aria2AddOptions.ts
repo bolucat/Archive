@@ -34,3 +34,7 @@ export const buildAriaAddOptions = (input: BuildAriaAddOptionsInput): Record<str
 
 export const shouldCheckExistingDownloadTarget = (sourceType: string): boolean =>
   !['magnet', 'torrent', 'torrent-url'].includes(sourceType)
+
+/** Quark and 115 signed URLs bind request context and must not be split by aria2. */
+export const resolveProviderDownloadSplit = (provider: string, configuredSplit: number): number =>
+  provider === 'quark' || provider === 'drive115' ? 1 : configuredSplit

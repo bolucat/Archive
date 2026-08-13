@@ -4,9 +4,12 @@ export interface SubtitleSearchResult {
   id: string
   name: string
   language: string
+  format: SubtitleSearchFormat
   downloadCount: number
   fileId: number
 }
+
+export type SubtitleSearchFormat = 'srt' | 'ass' | 'vtt' | 'unknown'
 
 export interface SubtitleDownloadResult {
   fileName: string
@@ -45,21 +48,24 @@ export async function searchSubtitles(query: string, language: string, fetcher: 
   })
   const data = await readJson<any>(response as Response)
   return (data.data || [])
-    .map((item: any): SubtitleSearchResult | undefined => {
+    .flatMap((item: any): SubtitleSearchResult[] => {
       const attributes = item?.attributes || {}
-      const firstFile = Array.isArray(attributes.files) ? attributes.files[0] : undefined
-      const fileId = Number(firstFile?.file_id)
-      const name = String(attributes.release || firstFile?.file_name || '').trim()
-      if (!fileId || !name) return undefined
-      return {
-        id: String(item.id || fileId),
-        name,
-        language: String(attributes.language || language),
-        downloadCount: Number(attributes.new_download_count || 0),
-        fileId
-      }
+      const files = Array.isArray(attributes.files) ? attributes.files : []
+      return files.flatMap((file: any): SubtitleSearchResult[] => {
+        const fileId = Number(file?.file_id)
+        const fileName = String(file?.file_name || '').trim()
+        const name = String(attributes.release || fileName).trim()
+        if (!fileId || !name) return []
+        return [{
+          id: `${item.id || 'subtitle'}:${fileId}`,
+          name,
+          language: String(attributes.language || language),
+          format: getSubtitleSearchFormat(fileName),
+          downloadCount: Number(attributes.new_download_count || 0),
+          fileId
+        }]
+      })
     })
-    .filter(Boolean)
     .sort((a: SubtitleSearchResult, b: SubtitleSearchResult) => b.downloadCount - a.downloadCount) as SubtitleSearchResult[]
 }
 
@@ -82,11 +88,35 @@ export async function getSubtitleDownload(fileId: number, fetcher: FetchLike = f
   }
 }
 
-export function getSubtitleExtension(fileName: string) {
+export function getSubtitleSearchFormat(fileName: string): SubtitleSearchFormat {
   const ext = fileName.split('?')[0].split('#')[0].split('.').pop()?.toLowerCase() || 'srt'
   if (ext === 'ass' || ext === 'ssa') return 'ass'
   if (ext === 'vtt') return 'vtt'
-  return 'srt'
+  if (ext === 'srt') return 'srt'
+  return 'unknown'
+}
+
+export function getSubtitleExtension(fileName: string) {
+  const format = getSubtitleSearchFormat(fileName)
+  return format === 'unknown' ? 'srt' : format
+}
+
+export function decodeSubtitleBuffer(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer)
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return new TextDecoder('utf-16le').decode(buffer)
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return new TextDecoder('utf-16be').decode(buffer)
+
+  const sampleLength = Math.min(bytes.length, 256)
+  let evenNulls = 0
+  let oddNulls = 0
+  for (let index = 0; index < sampleLength; index += 1) {
+    if (bytes[index] !== 0) continue
+    if (index % 2 === 0) evenNulls += 1
+    else oddNulls += 1
+  }
+  if (oddNulls > sampleLength / 8) return new TextDecoder('utf-16le').decode(buffer)
+  if (evenNulls > sampleLength / 8) return new TextDecoder('utf-16be').decode(buffer)
+  return new TextDecoder('utf-8').decode(buffer)
 }
 
 export function formatSubtitleDownloadCount(count: number) {

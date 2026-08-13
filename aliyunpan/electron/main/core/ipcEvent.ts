@@ -1,7 +1,7 @@
 import { AppWindow, createElectronWindow, createReaderWindow, Referer, ua } from './window'
 import path from 'path'
 import is from 'electron-is'
-import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, net, powerSaveBlocker, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, nativeTheme, net, powerSaveBlocker, session, shell } from 'electron'
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'fs'
 import { exec, execFile, spawn, SpawnOptions } from 'child_process'
 import os from 'os'
@@ -22,6 +22,7 @@ import {
   storeEmbeddings,
   storeMeta,
   hybridSearch,
+  getBookChunks,
   writeMemory,
   searchMemories,
   listMemories,
@@ -37,6 +38,12 @@ import {
 import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, beginMediaAcquisitionSearch, cancelMediaAcquisitionRun, claimRunnableMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, clearMediaAcquisitionNotifications, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, createMediaAcquisitionTracking, endMediaAcquisitionTracking, failMediaAcquisitionCandidate, failMediaAcquisitionRun, finishMediaAcquisitionSearchWithoutCandidates, forceCancelMediaAcquisitionRun, getMediaAcquisitionAgentSandbox, getMediaAcquisitionAgentSession, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionCandidateLocator, getMediaAcquisitionTarget, listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionStates, listMediaAcquisitionTracking, listRunnableMediaAcquisitionRuns, markMediaAcquisitionCandidateTransferring, markMediaAcquisitionNoCoverage, markMediaAcquisitionNotificationsRead, partialMediaAcquisitionCandidate, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, retryMediaAcquisitionSearch, saveMediaAcquisitionAgentSandbox, saveMediaAcquisitionAgentSession, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from '../mediaAcquisition/MediaAcquisitionService'
 import type { CreateMediaAcquisitionCandidateInput, CreateMediaAcquisitionRunInput, CreateMediaAcquisitionTrackingInput, MediaAcquisitionEvent, MediaAcquisitionFileSnapshot, MediaAcquisitionPhase } from '@shared/types/mediaAcquisition'
 import { getAssrtSubtitleFiles, searchAssrtSubtitles } from '../mediaAcquisition/assrt'
+import { addWorkspaceEvidence, addWorkspaceEvent, approveWorkspacePlan, archiveWorkspaceTask, cancelWorkspaceTask, completeWorkspaceTask, createWorkspaceTask, getWorkspaceTask, listWorkspaceTasks, rejectWorkspacePlan, restoreWorkspaceTask, resumeWorkspaceTask, saveWorkspacePlan, updateWorkspacePlanSelection } from '../workspaceAgent/WorkspaceAgentService'
+import type { CreateWorkspacePlanInput, CreateWorkspaceTaskInput, UpdateWorkspacePlanSelectionInput, WorkspaceExecutionEvent } from '@shared/types/workspaceAgent'
+import { completeDocumentReadingUnit, createDocumentReadingJob, failDocumentReadingUnit, getDocumentReadingJob, listDocumentReadingJobs, setDocumentReadingJobStatus } from '../documentInsight/DocumentReadingService'
+import type { CreateDocumentReadingJobInput, DocumentReadingJobStatus } from '@shared/types/documentReading'
+import { downloadAndExtractPdf } from '../documentInsight/PdfExtractionService'
+import { sendPdfProgress } from '../documentInsight/pdfProgress'
 
 let psbId: any
 const panHubStreamControllers = new Map<string, AbortController>()
@@ -190,6 +197,7 @@ export default class ipcEvent {
     this.handleWebToElectronCB()
     this.handleShowContextMenu()
     this.handleWebShowOpenDialogSync()
+    this.handleWebShowOpenDialog()
     this.handleWebShowSaveDialogSync()
     this.handleWebShowItemInFolder()
     this.handleWebPlatformSync()
@@ -230,6 +238,7 @@ export default class ipcEvent {
     registerMediaImageCacheIpc()
     this.handleReedy()
     this.handleMediaAcquisition()
+    this.handleDocumentReading()
   }
 
   private static handleMpvEmbedded() {
@@ -287,6 +296,30 @@ export default class ipcEvent {
     ipcMain.handle('mediaAcquisition:addEvent', (_event, runId: string, level: MediaAcquisitionEvent['level'], phase: MediaAcquisitionPhase, message: string, data?: Record<string, unknown>) => addMediaAcquisitionEvent(runId, level, phase, message, data))
     ipcMain.handle('mediaAcquisition:assrtSearch', (_event, data: { token?: string; query?: string }) => searchAssrtSubtitles(data?.token, data?.query))
     ipcMain.handle('mediaAcquisition:assrtDetail', (_event, data: { token?: string; subtitleId?: number }) => getAssrtSubtitleFiles(data?.token, data?.subtitleId))
+    ipcMain.handle('workspaceAgent:create', (_event, input: CreateWorkspaceTaskInput) => createWorkspaceTask(input))
+    ipcMain.handle('workspaceAgent:list', (_event, limit?: number, includeArchived?: boolean) => listWorkspaceTasks(limit, includeArchived))
+    ipcMain.handle('workspaceAgent:get', (_event, taskId: string) => getWorkspaceTask(taskId))
+    ipcMain.handle('workspaceAgent:addEvidence', (_event, taskId: string, source: string, summary: string, data: Record<string, unknown>) => addWorkspaceEvidence(taskId, source, summary, data))
+    ipcMain.handle('workspaceAgent:savePlan', (_event, input: CreateWorkspacePlanInput) => saveWorkspacePlan(input))
+    ipcMain.handle('workspaceAgent:approve', (_event, taskId: string, hash: string) => approveWorkspacePlan(taskId, hash))
+    ipcMain.handle('workspaceAgent:updateSelection', (_event, input: UpdateWorkspacePlanSelectionInput) => updateWorkspacePlanSelection(input))
+    ipcMain.handle('workspaceAgent:reject', (_event, taskId: string, hash: string) => rejectWorkspacePlan(taskId, hash))
+    ipcMain.handle('workspaceAgent:complete', (_event, taskId: string, status: 'completed' | 'partial' | 'failed' | 'stale', message: string) => completeWorkspaceTask(taskId, status, message))
+    ipcMain.handle('workspaceAgent:cancel', (_event, taskId: string) => cancelWorkspaceTask(taskId))
+    ipcMain.handle('workspaceAgent:resume', (_event, taskId: string) => resumeWorkspaceTask(taskId))
+    ipcMain.handle('workspaceAgent:archive', (_event, taskId: string) => archiveWorkspaceTask(taskId))
+    ipcMain.handle('workspaceAgent:restore', (_event, taskId: string) => restoreWorkspaceTask(taskId))
+    ipcMain.handle('workspaceAgent:addEvent', (_event, taskId: string, level: WorkspaceExecutionEvent['level'], message: string, data?: Record<string, unknown>) => addWorkspaceEvent(taskId, level, message, data))
+  }
+
+  private static handleDocumentReading() {
+    ipcMain.handle('documentReading:create', (_event, input: CreateDocumentReadingJobInput) => createDocumentReadingJob(input))
+    ipcMain.handle('documentReading:get', (_event, id: string) => getDocumentReadingJob(id))
+    ipcMain.handle('documentReading:listForSource', (_event, sourceId: string) => listDocumentReadingJobs(sourceId))
+    ipcMain.handle('documentReading:setStatus', (_event, id: string, status: DocumentReadingJobStatus, errorMessage?: string) => setDocumentReadingJobStatus(id, status, errorMessage))
+    ipcMain.handle('documentReading:completeUnit', (_event, input: { jobId: string; index: number; summary: string; keyPoints: string[]; citationLocations: string[] }) => completeDocumentReadingUnit(input))
+    ipcMain.handle('documentReading:failUnit', (_event, jobId: string, index: number, message: string) => failDocumentReadingUnit(jobId, index, message))
+    ipcMain.handle('documentReading:extractPdf', (event, input: { requestId?: string; url: string; headers?: Record<string, string> }) => downloadAndExtractPdf({ ...input, onProgress: progress => sendPdfProgress(event.sender, input?.requestId || '', progress) }))
   }
 
   private static handleWebToElectron() {
@@ -421,9 +454,16 @@ export default class ipcEvent {
 
   private static handleWebShowOpenDialogSync() {
     ipcMain.on('WebShowOpenDialogSync', (event, config) => {
-      dialog.showOpenDialog(AppWindow.mainWindow!, config).then((result) => {
-        event.returnValue = result.filePaths
-      })
+      const window = BrowserWindow.fromWebContents(event.sender) || AppWindow.mainWindow
+      event.returnValue = dialog.showOpenDialogSync(window!, config) || []
+    })
+  }
+
+  private static handleWebShowOpenDialog() {
+    ipcMain.handle('WebShowOpenDialog', async (event, config) => {
+      const window = BrowserWindow.fromWebContents(event.sender) || AppWindow.mainWindow
+      const result = await dialog.showOpenDialog(window!, config)
+      return result.canceled ? [] : result.filePaths
     })
   }
 
@@ -522,6 +562,10 @@ export default class ipcEvent {
       try {
         const themeJson = getUserDataPath('theme.json')
         writeFileSync(themeJson, `{"theme":"${data.theme || ''}"}`, 'utf-8')
+        const message = { theme: data.theme || 'system', dark: nativeTheme.shouldUseDarkColors }
+        for (const win of AppWindow.previewWindows) {
+          if (!win.isDestroyed()) win.webContents.send('setTheme', message)
+        }
       } catch {
       }
     })
@@ -986,8 +1030,11 @@ export default class ipcEvent {
     if (winWidth < 1080) winWidth = 1080
     ipcMain.on('WebOpenWindow', (event, data) => {
       const win = createElectronWindow(winWidth, AppWindow.winHeight, true, 'main2', data.theme, true, data.page === 'PageMusic' ? 'music' : undefined)
+      AppWindow.previewWindows.add(win)
+      win.once('closed', () => AppWindow.previewWindows.delete(win))
       win.on('ready-to-show', function() {
         win.webContents.send('setPage', data)
+        win.webContents.send('setTheme', { dark: nativeTheme.shouldUseDarkColors })
         win.setTitle('预览窗口')
         win.show()
         if (data.page === 'PageBookReader') {
@@ -1393,6 +1440,7 @@ export default class ipcEvent {
     ipcMain.handle('reedy:search', (_event, bookHash: string, queryEmbedding: number[], queryText: string, topK: number, spoilerBound?: number) => {
       return hybridSearch(bookHash, queryEmbedding, queryText, topK, spoilerBound)
     })
+    ipcMain.handle('reedy:get-chunks', (_event, bookHash: string) => getBookChunks(bookHash))
 
     // Cleanup on app quit
     ipcMain.handle('reedy:destroy', () => {

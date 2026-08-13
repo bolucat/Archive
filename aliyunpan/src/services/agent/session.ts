@@ -158,6 +158,10 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
   let payloadToolAllowlist: Set<string> | undefined
   let repetitionStopped = false
   let expectedStop = false
+  // Tool choice "required" is only needed for the initial evidence lookup.
+  // Keeping it for follow-up turns traps the model in a tool-call loop and
+  // prevents it from ever producing the final answer.
+  let requireInitialToolCall = !!options.requireToolCall
   const agent = new Agent({
     initialState: {
       systemPrompt: systemPromptWithContext(options.systemPrompt, options.context),
@@ -180,12 +184,13 @@ export async function runBoxPlayerAgent(options: RunBoxPlayerAgentOptions): Prom
           ? { tools: ((featured as Record<string, unknown>).tools as Array<any>).filter(tool => payloadToolAllowlist?.has(tool?.function?.name)) }
           : {}),
         ...(options.maxToolCallsPerTurn === 1 ? { parallel_tool_calls: false } : {}),
-        ...(options.requireToolCall ? { tool_choice: 'required' } : {})
+        ...(requireInitialToolCall ? { tool_choice: 'required' } : {})
       }
     },
     transformContext: async messages => pruneContext(messages, options.maxContextChars || DEFAULT_MAX_CONTEXT_CHARS),
     toolExecution: options.toolExecution || 'parallel',
     beforeToolCall: async ({ toolCall, args }) => {
+      requireInitialToolCall = false
       toolCallCount++
       if (toolCallCount > (options.maxToolCalls || 5)) return { block: true, reason: 'Tool call limit reached.' }
       toolCallsThisTurn++

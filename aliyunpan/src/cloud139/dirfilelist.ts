@@ -58,6 +58,10 @@ const cloud139Request = async (user_id: string, endpoint: string, body: any): Pr
     const data = await resp.json().catch(() => undefined)
     if (resp.ok && data?.success !== false && data?.code !== '9000' && data?.code !== '9008' && data?.code !== '9100') return data
     lastError = data?.message || data?.msg || data?.error_msg || `139 云盘请求失败 HTTP ${resp.status}`
+    // The routed host can expose either /hcy or /orchestration. Only a missing
+    // route merits trying the alternate path; validation and permission errors
+    // must be returned intact instead of being masked by a later 404.
+    if (resp.status !== 404 && !/route not found/i.test(lastError)) throw new Error(lastError)
   }
   throw new Error(lastError || '139 云盘请求失败')
 }

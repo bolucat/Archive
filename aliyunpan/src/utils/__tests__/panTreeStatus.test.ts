@@ -19,6 +19,13 @@ describe('main folder tree affordance', () => {
     expect(mainTree).toContain('class="ant-tree-switcher-lucide"')
     expect(mainTree).toContain('name="iconArrow-Right2"')
   })
+
+  it('shows the recent-files virtual directory only for Box accounts', () => {
+    const treeFilter = panLeftSource.slice(panLeftSource.indexOf('const filterTreeData'), panLeftSource.indexOf('const folderPreviewRef'))
+    expect(treeFilter).toContain("pantreeStore.treeData.filter((item) => item.key !== 'recent' || isBoxUser(userId))")
+    expect(treeFilter).toContain('? providerTreeData.filter')
+    expect(treeFilter).toContain(': providerTreeData.filter')
+  })
 })
 
 describe('Aliyun color-label navigation', () => {

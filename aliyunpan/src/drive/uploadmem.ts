@@ -9,7 +9,7 @@ import { uploadGuangyaTextFile } from '../guangya/adapter'
 
 /** Provider-neutral entry point. Provider implementations stay in their own directories. */
 export default class DriveUploadMem {
-  static async UploadMem(user_id: string, drive_id: string, parent_file_id: string, creatFileName: string, context: string, encType: string = '') {
+  static async UploadMem(user_id: string, drive_id: string, parent_file_id: string, creatFileName: string, context: string, encType: string = '', parentDescription: string = '') {
     const token = await UserDAL.GetUserTokenFromDB(user_id)
     if (!token || !token.access_token) return '账号失效，操作取消'
 
@@ -17,7 +17,7 @@ export default class DriveUploadMem {
     if (!route.isValid) return route.error
 
     switch (route.provider) {
-      case 'dropbox': return uploadDropboxTextFile(token.access_token, parent_file_id, creatFileName, context, encType)
+      case 'dropbox': return uploadDropboxTextFile(token.access_token, parent_file_id, creatFileName, context, encType, parentDescription)
       case 'onedrive': return uploadOneDriveTextFile(user_id, parent_file_id, creatFileName, context, encType)
       case 'box': return uploadBoxTextFile(user_id, parent_file_id, creatFileName, context, encType)
       case 'google': return uploadGoogleTextFile(user_id, parent_file_id, creatFileName, context)

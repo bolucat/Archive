@@ -2231,7 +2231,8 @@ const buildAliFileModel = (driveFile: DriveFileItem): IAliGetFileModel => {
     media_play_cursor: '',
     media_time: '',
     user_meta: '',
-    user_id: driveFile.userId || ''
+    user_id: driveFile.userId || '',
+    library_subtitle_files: driveFile.subtitleFiles || []
   } as IAliGetFileModel
 }
 

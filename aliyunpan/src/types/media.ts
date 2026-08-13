@@ -119,6 +119,7 @@ export interface DriveFileItem {
   cloudType?: string
   fileHash?: string
   sourceFolderIds?: string[]
+  subtitleFiles?: Array<Omit<DriveFileItem, 'subtitleFiles'>>
 }
 
 // API响应结构

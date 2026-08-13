@@ -121,6 +121,55 @@ describe('BookReaderModal template structure', () => {
     expect(syncSource).not.toContain('rendition.getProgress().then')
   })
 
+  it('keeps reflowable chapter pages separate from fixed-layout document pages', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const widgetSource = readFileSync(resolve(__dirname, '../../layout/book-reader/ReaderPageWidget.vue'), 'utf8')
+
+    expect(source).toContain('isFixedLayoutBookFormat')
+    expect(source).toContain(':is-fixed-layout="readerIsFixedLayout"')
+    expect(source).toContain("readerIsFixedLayout ? 'Page' : 'Chapter page'")
+    expect(widgetSource).toContain('isFixedLayout: boolean')
+    expect(widgetSource).toContain('Chapter ${props.currentChapter || 1}')
+  })
+
+  it('gives archive-based comic books their own layout and reading direction controls', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+
+    expect(source).toContain('isComicBookFormat')
+    expect(source).toContain("const comicLayoutMode = ref<BookReaderLayoutMode>('single')")
+    expect(source).toContain("const comicReadingDirection = ref<'ltr' | 'rtl'>('ltr')")
+    expect(source).toContain('activeReaderLayoutMode')
+    expect(source).toContain("'viewer-comic': readerIsComic")
+    expect(source).toContain('Comic layout')
+    expect(source).toContain('Reading direction')
+    expect(source).toContain('stage-reader-comic-rtl')
+  })
+
+  it('materializes system-opened local books before ReaderKit fetches them', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+
+    expect(source).toContain('readLocalBookSource(props.sourceUrlOverride)')
+    expect(source).toContain("window.require('fs')")
+    expect(source).toContain('URL.createObjectURL(new Blob([new Uint8Array(bytes)]))')
+    expect(source).toContain('URL.revokeObjectURL(localBookObjectUrl)')
+  })
+
+  it('refreshes page and chapter labels after any engine page change without accepting stale progress', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const hookStart = source.indexOf('function bindRenderedHook')
+    const hookEnd = source.indexOf('async function loadReaderBookBook', hookStart)
+    const hookSource = source.slice(hookStart, hookEnd)
+    const syncStart = source.indexOf('function syncReaderProgress')
+    const syncEnd = source.indexOf('function bindReaderIframeEventListeners', syncStart)
+    const syncSource = source.slice(syncStart, syncEnd)
+
+    expect(hookSource).toContain('syncReaderProgress(2)')
+    expect(hookSource).toContain('scheduleBookPositionSave()')
+    expect(syncSource).toContain('readerProgressRequestId')
+    expect(syncSource).toContain('requestId !== readerProgressRequestId')
+    expect(syncSource).toContain('position?.chapterDocIndex')
+  })
+
   it('applies reader margin through live iframe content CSS instead of rerendering the book', () => {
     const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
     const styleStart = source.indexOf('const readerStageStyle')
@@ -132,7 +181,7 @@ describe('BookReaderModal template structure', () => {
 
     expect(source).toContain("from '../utils/bookReaderLayout'")
     expect(styleSource).toContain('buildReaderStageStyle')
-    expect(source).toContain('buildReaderContentMarginCss(readerMargin.value, readerLayoutMode.value)')
+    expect(source).toContain('buildReaderContentMarginCss(readerMargin.value, activeReaderLayoutMode.value)')
     expect(source).toContain("marginStyle.id = 'reader-content-margin-override'")
     expect(source).toContain('watch([readerMargin], () => {')
     expect(source).toContain('applyReaderStyles()')
@@ -147,10 +196,11 @@ describe('BookReaderModal template structure', () => {
     const applySource = source.slice(applyStart, applyEnd)
 
     expect(source).toContain('applyDoublePageCss')
-    expect(applySource).toContain('applyDoublePageCss(container, readerLayoutMode.value)')
-    // 双页模式仍需注入 column-count: 2 到 documentElement
-    expect(readerSource).toContain("doc.documentElement.style.setProperty('column-count', '2', 'important')")
+    expect(applySource).toContain('applyDoublePageCss(container, activeReaderLayoutMode.value)')
+    // 双页模式仍需注入 column-count: 2，但不能污染单页引擎自己的分页样式。
+    expect(readerSource).toContain("doc.documentElement.setAttribute('data-boxplayer-double-page', 'true')")
     expect(readerSource).toContain('kookit-double-page-override')
+    expect(readerSource).not.toContain("for (const el of [doc.documentElement, doc.body])")
     // 单页/滚动模式不能强制 column-count:1 / overflow:hidden / width:100%（boxplayer
     // 的横向分页和容器滚动会被破坏，造成只显示部分文字）
     expect(readerSource).not.toMatch(/createElement\(['"]style['"]\)[\s\S]{0,80}kookit-single-page-override/)
@@ -172,6 +222,7 @@ describe('BookReaderModal template structure', () => {
     expect(readerSource).toContain('scope.pdfjsLib')
     expect(createReaderSource).toContain('await configurePdfJsWorker()')
     expect(createReaderSource.indexOf('await configurePdfJsWorker()')).toBeLessThan(createReaderSource.indexOf("import('../vendor/reader/readerkit.min.js')"))
+    expect(readerSource).toContain('await waitForReaderRender(rendition.goToPosition?.(')
   })
 
   it('does not reset custom reader colors when font size changes', () => {

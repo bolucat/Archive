@@ -52,11 +52,14 @@ export const buildDropboxUploadSessionCursor = (sessionId: string, offset: numbe
   offset
 })
 
-const parseDropboxContentError = (data: string, fallback: string): string => {
+export const parseDropboxContentError = (data: string, fallback: string): string => {
   if (!data) return fallback
   try {
     const parsed = JSON.parse(data)
-    return parsed?.error_summary || parsed?.error_description || parsed?.message || fallback
+    const error = parsed?.error_summary || parsed?.error_description || parsed?.message || ''
+    if (String(error).startsWith('path/conflict/folder')) return '同名文件夹已存在，请更换文件名'
+    if (String(error).startsWith('path/conflict/file')) return '同名文件已存在，请更换文件名'
+    return error || fallback
   } catch {
     return data || fallback
   }
@@ -125,10 +128,11 @@ export const apiDropboxUploadBuffer = async (
   parentId: string,
   fileName: string,
   buff: Buffer,
-  checkNameMode = 'refuse'
+  checkNameMode = 'refuse',
+  parentDescription = ''
 ): Promise<{ file_id: string; error: string }> => {
   if (!accessToken) return { file_id: '', error: '找不到上传token，请重试' }
-  const uploadPath = buildDropboxUploadPath(parentId || 'dropbox_root', fileName)
+  const uploadPath = buildDropboxUploadPath(parentId || 'dropbox_root', fileName, parentDescription)
   const resp = await uploadBufferWithRetry<DropboxUploadResponse>(
     accessToken,
     '/files/upload',

@@ -31,4 +31,15 @@ describe('book library large collection safeguards', () => {
     expect(source).toContain("v-for='book in renderedBooks'")
     expect(source).toContain('显示更多（已显示')
   })
+
+  it('recognizes title-author filenames that start with a catalogue number', () => {
+    const source = read('src/store/booklibrary.ts')
+    const parserSource = read('src/utils/bookFilenameMeta.ts')
+
+    expect(source).toContain("export { parseBookMeta } from '../utils/bookFilenameMeta'")
+    expect(parserSource).toContain('const CATALOG_PREFIX_RE')
+    expect(parserSource).toContain('CATALOG_PREFIX_RE.test(raw)')
+    expect(parserSource).toContain('title: left || raw')
+    expect(parserSource).toContain('author: right || \'未知作者\'')
+  })
 })

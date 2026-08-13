@@ -216,7 +216,7 @@
     </div>
 
     <!-- 媒体库文件夹列表 -->
-    <div class="nav-section" v-if="mediaStore.folders.length > 0">
+    <div class="nav-section" v-if="visibleVideoFolders.length > 0">
       <div class="nav-header">
         <Folder class="nav-header-icon" />
         <span>{{ t('media.fileSources') }}</span>
@@ -224,7 +224,7 @@
 
       <div class="nav-items">
         <div
-          v-for="folder in mediaStore.folders"
+          v-for="folder in visibleVideoFolders"
           :key="folder.id"
           class="nav-item folder-item"
           :class="{ active: selectedFolder?.id === folder.id }"
@@ -248,7 +248,7 @@
         v-model:selected-ids="selectedScanSourceIds"
         :drive-options="scanSourceOptions"
         :is-scanning="mediaStore.isScanning"
-        :idle-status-text="mediaStore.folders.length ? `${mediaStore.folders.length} ${t('media.sourcesUnit')}` : t('scan.notScanned')"
+        :idle-status-text="visibleVideoFolders.length ? `${visibleVideoFolders.length} ${t('media.sourcesUnit')}` : t('scan.notScanned')"
         :scanning-status-text="`${t('scan.scanning')} ${mediaStore.scanProgress}/${mediaStore.scanTotal}`"
         :import-label="t('media.importLocalVideo')"
         import-icon-name="iconfolder"
@@ -325,6 +325,11 @@ import { t } from '../i18n'
 
 const mediaStore = useMediaLibraryStore()
 const mediaScanner = MediaScanner.getInstance()
+
+const visibleVideoFolders = computed(() => {
+  const indexedFolderIds = new Set(mediaStore.mediaItems.map(item => item.folderId).filter(Boolean))
+  return mediaStore.folders.filter(folder => folder.itemCount > 0 || indexedFolderIds.has(folder.id))
+})
 
 // 状态
 const activeCategory = ref('home')
@@ -497,7 +502,7 @@ const scanSourceTargets = computed<ScanSourceTarget[]>(() => {
       if (!options.has(target.value)) options.set(target.value, target)
     }
   }
-  for (const folder of mediaStore.folders) {
+  for (const folder of visibleVideoFolders.value) {
     const value = getFolderScanSourceId(folder)
     if (!value || options.has(value)) continue
     const folderModel = mediaFolderToAliModel(folder)

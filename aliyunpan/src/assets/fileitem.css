@@ -449,8 +449,9 @@ body[arco-theme='dark'] .griditem .select:hover {
 
 .gridicon img {
     display: block;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
     border-radius: 5px;
     position: relative;
     border: 1px solid rgba(132, 133, 141, 0.16);

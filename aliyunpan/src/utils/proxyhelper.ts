@@ -14,7 +14,7 @@ import os from 'os'
 import DebugLog from './debuglog'
 import message from './message'
 import UserDAL, { UserTokenMap } from '../user/userdal'
-import { buildUpstreamProxyHeaders } from './proxyHeaders'
+import { buildUpstreamProxyHeaders, ensureInlinePreviewRange, normalizeProxyRangeHeaders, normalizeProxyStatusCode, type ProxyResponseHeaders } from './proxyHeaders'
 import { MEDIA_SERVER_DRIVE_ID, shouldRefreshProxyUrl } from './proxyCache'
 import { isAliyunUser, isQuarkUser } from '../aliapi/utils'
 import { isWebDavDrive } from './webdavClient'
@@ -386,7 +386,10 @@ export async function createProxyServer(port: number) {
           await flowEnc.setPosition(start)
         }
       }
-      const upstreamHeaders = buildUpstreamProxyHeaders(clientReq.headers, String(proxy_headers || ''))
+      const upstreamHeaders = ensureInlinePreviewRange(
+        buildUpstreamProxyHeaders(clientReq.headers, String(proxy_headers || '')),
+        content_disposition === 'inline'
+      )
       if (query.drive_id === 'baidu') {
         upstreamHeaders['user-agent'] = 'pan.baidu.com'
         upstreamHeaders['referer'] = 'https://pan.baidu.com/'
@@ -448,7 +451,14 @@ export async function createProxyServer(port: number) {
           xUrlp: upstreamHeaders['x-urlp'] || ''
         })
       }
-      await new Promise((resolve, reject) => {
+      await new Promise((resolve) => {
+        let isFinished = false
+        const finishResponse = (endClient = false) => {
+          if (isFinished) return
+          isFinished = true
+          if (endClient && !clientRes.writableEnded) clientRes.end()
+          resolve(true)
+        }
         // 处理请求，让下载的流量经过代理服务器
         const httpRequest = ~proxyUrl.indexOf('https') ? https : http
         const agentServer = httpRequest.request(proxyUrl, {
@@ -475,9 +485,9 @@ export async function createProxyServer(port: number) {
               quarkErrorLength += limitedChunk.length
             })
           }
-          const responseHeaders = { ...httpResp.headers }
+          const responseHeaders = normalizeProxyRangeHeaders({ ...httpResp.headers } as ProxyResponseHeaders)
           const statusCode = Number(httpResp.statusCode || 0)
-          const shouldRewritePlaylist = isAuthenticatedMpvProxy && statusCode >= 200 && statusCode < 300 && isM3u8Response(String(proxyUrl), responseHeaders['content-type']) && ['', 'identity'].includes(String(responseHeaders['content-encoding'] || '').toLowerCase())
+          const shouldRewritePlaylist = isAuthenticatedMpvProxy && statusCode >= 200 && statusCode < 300 && isM3u8Response(String(proxyUrl), String(responseHeaders['content-type'] || '')) && ['', 'identity'].includes(String(responseHeaders['content-encoding'] || '').toLowerCase())
           if (isAuthenticatedMpvProxy && statusCode >= 300 && statusCode < 400 && typeof responseHeaders.location === 'string') {
             responseHeaders.location = resolveMpvProxyUri(responseHeaders.location, String(proxyUrl), mpvProxyContext, target => buildMpvProxyUrl(target))
           }
@@ -492,15 +502,16 @@ export async function createProxyServer(port: number) {
             delete responseHeaders['last-modified']
             responseHeaders['content-type'] = 'application/vnd.apple.mpegurl; charset=utf-8'
           }
-          clientRes.statusCode = statusCode
+          clientRes.statusCode = normalizeProxyStatusCode(statusCode, responseHeaders['content-range'])
           for (const key in responseHeaders) {
-            clientRes.setHeader(key, responseHeaders[key])
+            const value = responseHeaders[key]
+            if (value !== undefined) clientRes.setHeader(key, value)
           }
           if (content_disposition === 'inline') {
             const inlineFileName = String(file_name || getUrlFileName(proxyUrl) || 'preview')
             clientRes.setHeader('content-disposition', `inline; filename*=UTF-8''${encodeURIComponent(inlineFileName)};`)
           }
-          if (clientRes.statusCode % 300 < 5) {
+          if (statusCode % 300 < 5) {
             // 可能出现304，redirectUrl = undefined
             const redirectUrl = httpResp.headers.location || '-'
             if (decryptTransform) {
@@ -511,9 +522,6 @@ export async function createProxyServer(port: number) {
               })
             }
             console.log('302 redirectUrl:', redirectUrl)
-          } else if (httpResp.headers['content-range'] && httpResp.statusCode === 200) {
-            // 文件断点续传下载
-            clientRes.statusCode = 206
           }
           // 解密文件名
           if (clientReq.method === 'GET' && clientRes.statusCode === 200 && encType && securityFileNameAutoDecrypt) {
@@ -548,12 +556,12 @@ export async function createProxyServer(port: number) {
               reportQuarkError()
               const playlist = Buffer.concat(chunks).toString('utf8')
               clientRes.end(rewriteMpvProxyPlaylist(playlist, String(proxyUrl), mpvProxyContext, target => buildMpvProxyUrl(target)))
-              resolve(true)
+              finishResponse()
             })
           } else {
             httpResp.on('end', () => {
               reportQuarkError()
-              resolve(true)
+              finishResponse()
             })
             if (decryptTransform) {
               httpResp.pipe(decryptTransform).pipe(clientRes)
@@ -561,7 +569,18 @@ export async function createProxyServer(port: number) {
               httpResp.pipe(clientRes)
             }
           }
-          httpResp.on('close', reportQuarkError)
+          httpResp.on('aborted', () => {
+            reportQuarkError()
+            finishResponse(true)
+          })
+          httpResp.on('error', () => {
+            reportQuarkError()
+            finishResponse(true)
+          })
+          httpResp.on('close', () => {
+            reportQuarkError()
+            if (!httpResp.complete) finishResponse(true)
+          })
         })
         clientReq.pipe(agentServer)
         // 关闭解密流
@@ -569,7 +588,7 @@ export async function createProxyServer(port: number) {
           decryptTransform && decryptTransform.destroy()
         })
         agentServer.on('error', (e: Error) => {
-          clientRes.end()
+          finishResponse(true)
           console.log('proxyServer socket error: ' + e)
         })
         // 重定向的请求 关闭时 关闭被重定向的请求

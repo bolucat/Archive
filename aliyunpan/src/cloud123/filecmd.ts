@@ -7,6 +7,11 @@ export type Cloud123MkdirResult = {
   error: string
 }
 
+export const getCloud123MkdirFileId = (data: any): string => {
+  const fileId = data?.data?.dirID || data?.data?.fileID || data?.data?.fileId || data?.data?.file_id || ''
+  return fileId ? String(fileId) : ''
+}
+
 export const apiCloud123Mkdir = async (user_id: string, parent_id: string, name: string): Promise<Cloud123MkdirResult> => {
   const result: Cloud123MkdirResult = { file_id: '', error: '新建文件夹失败' }
   const token = await getCloud123Token(user_id)
@@ -26,7 +31,7 @@ export const apiCloud123Mkdir = async (user_id: string, parent_id: string, name:
     if (!resp.ok) return result
     const data = await resp.json()
     if (data?.code === 0) {
-      const fileId = data?.data?.fileID || data?.data?.fileId || data?.data?.file_id || ''
+      const fileId = getCloud123MkdirFileId(data)
       return { file_id: fileId ? String(fileId) : '', error: '' }
     }
     if (data?.message) result.error = data.message
@@ -96,32 +101,6 @@ export const apiCloud123RecoverBatch = async (user_id: string, file_id_list: str
     return fileIDs.filter((id) => !abnormalSet.has(id)).map((id) => String(id))
   } catch (err: any) {
     message.error('从回收站恢复失败 ' + (err?.message || ''))
-    return []
-  }
-}
-
-export const apiCloud123DeleteBatch = async (user_id: string, file_id_list: string[]): Promise<string[]> => {
-  const token = await getCloud123Token(user_id)
-  if (!token?.access_token) return []
-  const url = 'https://open-api.123pan.com/api/v1/file/delete'
-  const fileIDs = file_id_list.map((id) => Number(id)).filter((id) => !Number.isNaN(id))
-  if (fileIDs.length === 0) return []
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Platform: 'open_platform',
-        Authorization: `Bearer ${token.access_token}`
-      },
-      body: JSON.stringify({ fileIDs })
-    })
-    if (!resp.ok) return []
-    const data = await resp.json()
-    if (data?.code !== 0) return []
-    return fileIDs.map((id) => String(id))
-  } catch (err: any) {
-    message.error('彻底删除失败 ' + (err?.message || ''))
     return []
   }
 }

@@ -79,6 +79,8 @@ export interface MediaServerSourceOption {
 export interface MediaServerPlaybackInfo {
   url: string
   headers: Record<string, string>
+  subtitleSources?: Array<{ url: string; title?: string; streamIndex?: number }>
+  tracksSelectable?: boolean
   playSessionId?: string
   playCursorSeconds?: number
   videoStreamIndex?: number

@@ -24,4 +24,27 @@ describe('ReaderShell contract', () => {
     expect(modal).toContain("import ReaderShell from './book-reader/ReaderShell.vue'")
     expect(modal).toContain('<ReaderShell')
   })
+
+  it('persists the reading position before Exit closes the reader', () => {
+    const modal = read('src/layout/BookReaderModal.vue')
+    const closeStart = modal.indexOf('async function close()')
+    const saveStart = modal.indexOf('await saveBookPosition(true)', closeStart)
+    const emitStart = modal.indexOf("emit('update:visible', false)", closeStart)
+
+    expect(closeStart).toBeGreaterThan(-1)
+    expect(saveStart).toBeGreaterThan(closeStart)
+    expect(emitStart).toBeGreaterThan(saveStart)
+  })
+
+  it('opens books with their latest persisted reading position', () => {
+    const library = read('src/layout/PageBookLibrary.vue')
+    expect(library).toContain("import DB from '../utils/db'")
+    expect(library).toContain('const savedBook = (await DB.getBookItemsByIds([book.id]).catch(() => []))[0]')
+  })
+
+  it('labels pagination as chapter-relative', () => {
+    const widget = read('src/layout/book-reader/ReaderPageWidget.vue')
+    expect(widget).toContain('Chapter Page ${currentPage}')
+    expect(widget).toContain('Chapter Page ${currentPage * 2 - 1}')
+  })
 })

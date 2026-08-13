@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dedupeSubtitleSelectors } from '../subtitleSelector'
+import { dedupeSubtitleSelectors, selectSingleSubtitleCandidates } from '../subtitleSelector'
 
 describe('dedupeSubtitleSelectors', () => {
   it('keeps only the latest copy when a downloaded subtitle also appears in the cloud directory', () => {
@@ -14,5 +14,16 @@ describe('dedupeSubtitleSelectors', () => {
     const second = { name: 'episode.zh-TW.srt' }
 
     expect(dedupeSubtitleSelectors([first, second])).toEqual([first, second])
+  })
+
+  it('keeps every playable subtitle for the single-subtitle menu', () => {
+    const subtitles = [
+      { name: 'zh-Hans', url: 'https://example.com/zh.vtt' },
+      { name: 'zh-Hant', url: 'https://example.com/zh-hant.vtt' },
+      { name: 'English', url: 'https://example.com/en.vtt' },
+      { name: 'Unavailable' }
+    ]
+
+    expect(selectSingleSubtitleCandidates(subtitles).map((item) => item.name)).toEqual(['zh-Hans', 'zh-Hant', 'English'])
   })
 })

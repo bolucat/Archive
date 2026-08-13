@@ -37,7 +37,7 @@ import {
 import type { IBookItem } from '../types/book'
 import type { IBookBookmark } from '../types/bookBookmark'
 import type { IBookNote } from '../types/bookNote'
-import { getFormat } from '../utils/bookReaderCapabilities'
+import { getFormat, isComicBookFormat, isFixedLayoutBookFormat } from '../utils/bookReaderCapabilities'
 import { buildBookReadingPatch, buildBookReadingTimePatch, normalizeReaderPosition, type BookReaderPosition } from '../utils/bookReaderState'
 import {
   loadBookReaderPreferences,
@@ -125,9 +125,12 @@ const readerContainer = ref<HTMLDivElement>()
 const loading = ref(false)
 const errorText = ref('')
 const sourceUrl = ref('')
+let localBookObjectUrl = ''
 const readerMode = ref<BookReaderThemeMode>(savedPreferences.themeMode)
 const fontSize = ref(savedPreferences.fontSize)
 const readerLayoutMode = ref<BookReaderLayoutMode>(savedPreferences.readerLayoutMode)
+const comicLayoutMode = ref<BookReaderLayoutMode>('single')
+const comicReadingDirection = ref<'ltr' | 'rtl'>('ltr')
 const readerIndent = ref(savedPreferences.readerIndent)
 const readerHyphenation = ref(savedPreferences.readerHyphenation)
 const readerBionic = ref(savedPreferences.readerBionic)
@@ -178,6 +181,8 @@ const progressText = ref('')
 const readingProgressValue = ref(0)
 const currentPage = ref(0)
 const totalPage = ref(0)
+const isPageJumpEditing = ref(false)
+const isChapterJumpEditing = ref(false)
 const bookChapters = ref<BookChapter[]>([])
 const selectedBookChapter = ref<number | undefined>(undefined)
 const searchQuery = ref('')
@@ -296,8 +301,10 @@ const fullTranslationController = createBookFullTranslationController({
   }
 })
 let applyFullTranslationPromise = Promise.resolve()
+let readerProgressRequestId = 0
 
 function jumpToChapter() {
+  isChapterJumpEditing.value = false
   const raw = chapterJumpText.value.trim()
   if (!raw) {
     chapterJumpText.value = String((selectedBookChapter.value ?? 0) + 1)
@@ -308,13 +315,14 @@ function jumpToChapter() {
     chapterJumpText.value = String((selectedBookChapter.value ?? 0) + 1)
     return
   }
-  selectBookChapter(num - 1)
+  void selectBookChapter(num - 1)
   chapterJumpText.value = String(num)
   // Blur the input so keyboard arrows navigate pages instead
   ;(document.activeElement as HTMLInputElement)?.blur()
 }
 
-function jumpToPage() {
+async function jumpToPage() {
+  isPageJumpEditing.value = false
   const raw = pageJumpText.value.trim()
   if (!raw) {
     pageJumpText.value = String(currentPage.value || 1)
@@ -327,7 +335,9 @@ function jumpToPage() {
     return
   }
   if (bookReader?.rendition?.goToPage) {
-    bookReader.rendition.goToPage(num)
+    await bookReader.rendition.goToPage(num)
+    syncReaderProgress(2)
+    void saveBookPosition()
   }
   pageJumpText.value = String(num)
   ;(document.activeElement as HTMLInputElement)?.blur()
@@ -390,7 +400,11 @@ const hoverTimers: Partial<Record<EdgeSide, number>> = {}
 
 const ext = computed(() => (props.book?.ext || '').toLowerCase())
 const readerIsPDF = computed(() => ext.value === 'pdf')
+const readerIsComic = computed(() => isComicBookFormat(ext.value))
+const readerIsFixedLayout = computed(() => isFixedLayoutBookFormat(ext.value))
 const isReader = computed(() => true)
+const activeReaderLayoutMode = computed<BookReaderLayoutMode>(() => (readerIsComic.value ? comicLayoutMode.value : readerLayoutMode.value))
+const isComicRightToLeft = computed(() => readerIsComic.value && comicReadingDirection.value === 'rtl')
 const canUseTextToSpeech = computed(() => true)
 const speechLocales = computed(() => {
   const locales = speechVoices.value.map((voice) => voice.lang).filter(Boolean)
@@ -410,16 +424,16 @@ const filteredSpeechVoices = computed(() => {
 const selectedSpeechVoice = computed(() => speechVoices.value.find((voice) => getSpeechVoiceId(voice) === readerVoiceURI.value))
 const readerTitle = computed(() => props.book?.title || props.book?.file_name || t('reader.title'))
 const modeClass = computed(() => `reader-${readerMode.value}`)
-const isDoublePageMode = computed(() => isReader.value && readerLayoutMode.value === 'double')
+const isDoublePageMode = computed(() => isReader.value && activeReaderLayoutMode.value === 'double')
 const shellThemeStyle = computed(() => {
   if (!isReader.value) return {}
-  const visiblePageColor = applyReaderBrightnessToColor(readerBackgroundColor.value, readerBrightness.value)
+  const visiblePageColor = readerIsComic.value ? '#0b0c0f' : applyReaderBrightnessToColor(readerBackgroundColor.value, readerBrightness.value)
   return {
     '--reader-page': visiblePageColor,
     '--reader-text': readerTextColor.value
   }
 })
-const readerVisibleBackgroundColor = computed(() => applyReaderBrightnessToColor(readerBackgroundColor.value, readerBrightness.value))
+const readerVisibleBackgroundColor = computed(() => (readerIsComic.value ? '#0b0c0f' : applyReaderBrightnessToColor(readerBackgroundColor.value, readerBrightness.value)))
 const currentBookNotes = computed<IBookNote[]>(() => {
   const id = props.book?.id
   return id ? [...(bookStore.notesByBookId[id] || [])].sort((a, b) => a.created_at - b.created_at) : []
@@ -451,10 +465,10 @@ const readerStageStyle = computed(() =>
   buildReaderStageStyle({
     scale: readerScale.value,
     margin: readerMargin.value,
-    backgroundColor: readerBackgroundColor.value,
+    backgroundColor: readerIsComic.value ? '#0b0c0f' : readerBackgroundColor.value,
     textColor: readerTextColor.value,
-    brightness: readerBrightness.value,
-    layoutMode: readerLayoutMode.value
+    brightness: readerIsComic.value ? 1 : readerBrightness.value,
+    layoutMode: activeReaderLayoutMode.value
   })
 )
 const selectionPopupStyle = computed(() => ({
@@ -473,7 +487,8 @@ const imagePreviewStyle = computed(() => ({
   transform: getBookImageTransform(imagePreviewRotateIndex.value)
 }))
 
-function close() {
+async function close() {
+  await saveBookPosition(true)
   exitReaderFullscreen()
   emit('update:visible', false)
 }
@@ -615,6 +630,7 @@ function flushReadingSession() {
 }
 
 function cleanup() {
+  readerProgressRequestId += 1
   readerLifecycleToken += 1
   fullTranslationRerenderRequestId += 1
   finishPanelResize()
@@ -642,9 +658,19 @@ function cleanup() {
     bookReader.destroy()
     bookReader = null
   }
+  if (localBookObjectUrl) {
+    URL.revokeObjectURL(localBookObjectUrl)
+    localBookObjectUrl = ''
+  }
   sourceUrl.value = ''
   progressText.value = ''
   readingProgressValue.value = 0
+  currentPage.value = 0
+  totalPage.value = 0
+  pageJumpText.value = ''
+  chapterJumpText.value = ''
+  isPageJumpEditing.value = false
+  isChapterJumpEditing.value = false
   bookChapters.value = []
   selectedBookChapter.value = undefined
   searchResults.value = []
@@ -842,7 +868,7 @@ function handleReaderIframeKeyDown(event: KeyboardEvent) {
   if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
   if (hasReaderSelection()) return
 
-  const isScroll = readerLayoutMode.value === 'scroll'
+  const isScroll = activeReaderLayoutMode.value === 'scroll'
   const key = event.key.toLowerCase()
   const isScrollKey = ['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'pageup', 'pagedown', ' ', 'home', 'end'].includes(key)
 
@@ -863,7 +889,7 @@ let lastReaderWheelAt = 0
 
 function handleReaderIframeWheel(event: WheelEvent) {
   if (!props.visible || !isReader.value) return
-  if (readerLayoutMode.value === 'scroll') {
+  if (activeReaderLayoutMode.value === 'scroll') {
     scheduleBookPositionSave(true)
     return // native scroll
   }
@@ -878,7 +904,7 @@ function handleReaderIframeWheel(event: WheelEvent) {
 }
 
 function handleReaderIframeTouchStart(event: TouchEvent) {
-  if (!props.visible || !isReader.value || readerLayoutMode.value === 'scroll') return
+  if (!props.visible || !isReader.value || activeReaderLayoutMode.value === 'scroll') return
   const touch = event.touches[0]
   if (!touch) return
   readerTouchStart = { x: touch.clientX, y: touch.clientY, time: Date.now() }
@@ -886,7 +912,7 @@ function handleReaderIframeTouchStart(event: TouchEvent) {
 
 function handleReaderIframeTouchEnd(event: TouchEvent) {
   if (!props.visible || !isReader.value) return
-  if (readerLayoutMode.value === 'scroll') {
+  if (activeReaderLayoutMode.value === 'scroll') {
     scheduleBookPositionSave(true)
     return // native scroll
   }
@@ -901,7 +927,7 @@ function handleReaderIframeTouchEnd(event: TouchEvent) {
   if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.25) return
   event.preventDefault()
   window.setTimeout(() => {
-    if (!props.visible || !isReader.value || readerLayoutMode.value === 'scroll') return
+    if (!props.visible || !isReader.value || activeReaderLayoutMode.value === 'scroll') return
     if (selectionPopupVisible.value || hasReaderSelection()) return
     if (dx < 0) nextPage()
     else prevPage()
@@ -986,7 +1012,7 @@ function bindIframeColumnGuard(iframe: HTMLIFrameElement) {
   const doc = iframe.contentDocument
   if (!doc?.documentElement) return
   const guard = new MutationObserver((mutations) => {
-    if (readerLayoutMode.value === 'double') return
+    if (activeReaderLayoutMode.value === 'double') return
     // 单页/滚动模式下，引擎可能在异步加载阶段写入双页相关 column 样式残留，
     // 这里只在检测到样式变更时调用 applyDoublePageCss 清理双页覆盖（不再注入
     // column-count:1，避免破坏 boxplayer 的横向分页 / 容器滚动）。
@@ -996,7 +1022,7 @@ function bindIframeColumnGuard(iframe: HTMLIFrameElement) {
       return false
     })
     if (!needsApply) return
-    applyDoublePageCss(readerContainer.value!, readerLayoutMode.value)
+    applyDoublePageCss(readerContainer.value!, activeReaderLayoutMode.value)
   })
   guard.observe(doc.documentElement, { attributeFilter: ['style'], attributes: true, childList: true, subtree: true })
   if (doc.body) {
@@ -1012,6 +1038,8 @@ function bindRenderedHook() {
   if (!rendition?.on || !currentReader) return
   function handlePageChanged() {
     if (currentReader !== bookReader) return
+    syncReaderProgress(2)
+    scheduleBookPositionSave()
     scheduleFullTranslation().catch(() => {})
   }
   function handleRendered() {
@@ -1022,7 +1050,7 @@ function bindRenderedHook() {
     // 多次延迟覆盖，对抗引擎的异步写入
     const apply = () => {
       if (currentReader !== bookReader || !readerContainer.value) return
-      applyDoublePageCss(readerContainer.value!, readerLayoutMode.value)
+      applyDoublePageCss(readerContainer.value!, activeReaderLayoutMode.value)
       const fontFamily = readerFontFamily.value === 'Built-in font' ? '' : readerFontFamily.value
       const iframes = readerContainer.value!.querySelectorAll('iframe')
       iframes.forEach((iframe) => {
@@ -1039,7 +1067,7 @@ function bindRenderedHook() {
             fontStyle.textContent = `body *{font-family:"${fontFamily}",sans-serif!important}`
           }
         }
-        if (readerLayoutMode.value === 'scroll') {
+        if (activeReaderLayoutMode.value === 'scroll') {
           const el = iframe as HTMLIFrameElement
           el.style.setProperty('overflow', 'visible', 'important')
           const doc = el.contentDocument
@@ -1048,7 +1076,7 @@ function bindRenderedHook() {
         const iframeDoc = iframe.contentDocument
         if (iframeDoc) injectTranslationLoadingOverride(iframeDoc)
       })
-      if (readerLayoutMode.value === 'scroll') {
+      if (activeReaderLayoutMode.value === 'scroll') {
         readerContainer.value!.style.setProperty('overflow-y', 'auto', 'important')
       }
     }
@@ -1208,9 +1236,9 @@ function injectTranslationLoadingOverride(doc: Document) {
 function applyReaderStyles() {
   const container = readerContainer.value
   if (!container) return
-  const isScroll = readerLayoutMode.value === 'scroll'
+  const isScroll = activeReaderLayoutMode.value === 'scroll'
   const iframes = container.querySelectorAll('iframe')
-  applyDoublePageCss(container, readerLayoutMode.value)
+  applyDoublePageCss(container, activeReaderLayoutMode.value)
 
   // 先设置容器可滚动
   if (isScroll && container) {
@@ -1249,7 +1277,7 @@ function applyReaderStyles() {
       marginStyle.id = 'reader-content-margin-override'
       doc.head.appendChild(marginStyle)
     }
-    marginStyle.textContent = buildReaderContentMarginCss(readerMargin.value, readerLayoutMode.value)
+    marginStyle.textContent = buildReaderContentMarginCss(readerMargin.value, activeReaderLayoutMode.value)
 
     injectTranslationLoadingOverride(doc)
 
@@ -1276,7 +1304,7 @@ function buildCurrentReaderOptions(): BookReaderOptions {
     ext: ext.value,
     container: readerContainer.value!,
     initialPosition: savedPosition,
-    readerMode: readerLayoutMode.value,
+    readerMode: activeReaderLayoutMode.value,
     isDarkMode: readerMode.value === 'dark',
     fontSize: fontSize.value,
     isIndent: readerIndent.value,
@@ -1331,10 +1359,17 @@ async function locateAnnotationTarget() {
 
 function syncReaderProgress(retry = 0) {
   if (!bookReader) return
+  const currentReader = bookReader
+  const requestId = ++readerProgressRequestId
   try {
     const position = bookReader.getPosition()
+    const chapterIndex = Number(position?.chapterDocIndex)
+    if (Number.isInteger(chapterIndex) && chapterIndex >= 0 && chapterIndex < bookChapters.value.length) {
+      selectedBookChapter.value = chapterIndex
+      if (!isChapterJumpEditing.value) chapterJumpText.value = String(chapterIndex + 1)
+    }
     if (position?.percentage !== undefined) {
-      readingProgressValue.value = Math.round(position.percentage * 100)
+      readingProgressValue.value = Math.max(0, Math.min(100, Math.round(position.percentage * 100)))
       const chapter = position.chapterTitle
       progressText.value = chapter || `${readingProgressValue.value}%`
     }
@@ -1342,12 +1377,16 @@ function syncReaderProgress(retry = 0) {
     if (rendition?.getProgress) {
       Promise.resolve(rendition.getProgress())
         .then((p: any) => {
+          if (currentReader !== bookReader || requestId !== readerProgressRequestId) return
           const pageProgress = normalizeReaderPageProgress(p, position)
           const fallbackProgress = pageProgress.currentPage ? pageProgress : estimateReaderPageProgressFromElement(readerContainer.value)
           if (pageProgress.percentage !== undefined) {
-            readingProgressValue.value = Math.round(pageProgress.percentage * 100)
+            readingProgressValue.value = Math.max(0, Math.min(100, Math.round(pageProgress.percentage * 100)))
           }
-          if (fallbackProgress.currentPage) currentPage.value = fallbackProgress.currentPage
+          if (fallbackProgress.currentPage) {
+            currentPage.value = fallbackProgress.currentPage
+            if (!isPageJumpEditing.value) pageJumpText.value = String(fallbackProgress.currentPage)
+          }
           if (fallbackProgress.totalPage) totalPage.value = fallbackProgress.totalPage
           if (!fallbackProgress.currentPage && retry > 0) {
             window.setTimeout(() => syncReaderProgress(retry - 1), 350)
@@ -1357,7 +1396,10 @@ function syncReaderProgress(retry = 0) {
     } else {
       const pageProgress = normalizeReaderPageProgress(undefined, position)
       const fallbackProgress = pageProgress.currentPage ? pageProgress : estimateReaderPageProgressFromElement(readerContainer.value)
-      if (fallbackProgress.currentPage) currentPage.value = fallbackProgress.currentPage
+      if (fallbackProgress.currentPage) {
+        currentPage.value = fallbackProgress.currentPage
+        if (!isPageJumpEditing.value) pageJumpText.value = String(fallbackProgress.currentPage)
+      }
       if (fallbackProgress.totalPage) totalPage.value = fallbackProgress.totalPage
     }
   } catch {}
@@ -1438,7 +1480,7 @@ function togglePanel(side: EdgeSide) {
 }
 
 async function resolveSourceUrl(book: IBookItem): Promise<string> {
-  if (props.sourceUrlOverride) return props.sourceUrlOverride
+  if (props.sourceUrlOverride) return readLocalBookSource(props.sourceUrlOverride)
 
   // 本地导入的图书：从 description 中提取 dataUrl
   if (book.user_id === 'local' || book.drive_id === 'local') {
@@ -1465,6 +1507,15 @@ async function resolveSourceUrl(book: IBookItem): Promise<string> {
     content_disposition: 'inline',
     file_name: book.file_name
   })
+}
+
+function readLocalBookSource(source: string): string {
+  if (!source.startsWith('file:') || !window.require) return source
+  const fs = window.require('fs') as { readFileSync: (filePath: string) => Uint8Array }
+  const url = window.require('url') as { fileURLToPath: (fileUrl: string) => string }
+  const bytes = fs.readFileSync(url.fileURLToPath(source))
+  localBookObjectUrl = URL.createObjectURL(new Blob([new Uint8Array(bytes)]))
+  return localBookObjectUrl
 }
 
 function scheduleBookPositionSave(record = false) {
@@ -2799,12 +2850,14 @@ function scrollReaderByNativeArrow(direction: -1 | 1) {
 }
 
 function handleReaderPrevButton() {
-  if (readerLayoutMode.value === 'scroll') scrollPageUp()
+  if (activeReaderLayoutMode.value === 'scroll') scrollPageUp()
+  else if (isComicRightToLeft.value) nextPage()
   else prevPage()
 }
 
 function handleReaderNextButton() {
-  if (readerLayoutMode.value === 'scroll') scrollPageDown()
+  if (activeReaderLayoutMode.value === 'scroll') scrollPageDown()
+  else if (isComicRightToLeft.value) prevPage()
   else nextPage()
 }
 
@@ -2819,7 +2872,7 @@ function handleKeyDown(e: KeyboardEvent) {
   const tag = target?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
   const key = e.key.toLowerCase()
-  const isScroll = readerLayoutMode.value === 'scroll'
+  const isScroll = activeReaderLayoutMode.value === 'scroll'
 
   const isNavKey = ['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'pageup', 'pagedown', ' '].includes(key)
   if (isNavKey) {
@@ -2953,6 +3006,7 @@ watch(
     readerScale,
     fontSize,
     readerLayoutMode,
+    comicLayoutMode,
     readerBookLayout,
     readerConvertChinese,
     readerTextOrientation,
@@ -3052,24 +3106,27 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="visible" :class="['viewer', modeClass, { 'viewer-scroll': readerLayoutMode === 'scroll' }]" :style="shellThemeStyle" @keydown="handleKeyDown">
+    <div v-if="visible" :class="['viewer', modeClass, { 'viewer-scroll': activeReaderLayoutMode === 'scroll', 'viewer-comic': readerIsComic }]" :style="shellThemeStyle" @keydown="handleKeyDown">
       <ReaderBackground :page-color="readerVisibleBackgroundColor" />
       <ReaderPageWidget
         :chapter-title="progressText"
         :book-name="readerTitle"
         :percentage="readingProgressValue"
         :reading-time="readingTimeDisplay"
-        :layout-mode="readerLayoutMode"
+        :layout-mode="activeReaderLayoutMode"
         :text-color="readerTextColor"
         :show-page-border="readerIsShowPageBorder"
         :current-page="currentPage"
         :total-page="totalPage"
+        :current-chapter="(selectedBookChapter ?? 0) + 1"
+        :chapter-count="bookChapters.length"
+        :is-fixed-layout="readerIsFixedLayout"
         :hide-footer="readerIsHideFooter"
       />
 
       <!-- 阅读舞台 -->
-      <div :class="['reader-stage', { 'reader-stage-scroll': readerLayoutMode === 'scroll' }]">
-        <div id="page-area" ref="readerContainer" :class="['stage-reader', { 'stage-reader-double': isDoublePageMode, 'stage-reader-scroll': readerLayoutMode === 'scroll' }]" :style="readerStageStyle"></div>
+      <div :class="['reader-stage', { 'reader-stage-scroll': activeReaderLayoutMode === 'scroll', 'reader-stage-comic': readerIsComic }]">
+        <div id="page-area" ref="readerContainer" :class="['stage-reader', { 'stage-reader-comic': readerIsComic, 'stage-reader-comic-rtl': isComicRightToLeft, 'stage-reader-double': isDoublePageMode, 'stage-reader-scroll': activeReaderLayoutMode === 'scroll' }]" :style="readerStageStyle"></div>
         <a-spin v-if="loading" class="stage-loading" :size="32" :tip="t('loading')" />
         <a-empty v-if="!loading && errorText" class="stage-error" :description="errorText" />
       </div>
@@ -3197,12 +3254,14 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- koodo-style page-turn: prev on left, next on right -->
-      <button v-if="isReader && !readerIsHidePageButton" class="page-turn-prev" :style="{ left: lockedPanels.left ? '315px' : '15px' }" type="button" @pointerdown.stop.prevent="handleReaderPrevButton" :title="t('previous.page')">
-        <ChevronLeft :size="20" :stroke-width="2.5" />
+      <button v-if="isReader && !readerIsHidePageButton" class="page-turn-prev" :style="{ left: lockedPanels.left ? '315px' : '15px' }" type="button" @pointerdown.stop.prevent="handleReaderPrevButton" :title="isComicRightToLeft ? t('next.page') : t('previous.page')">
+        <ChevronRight v-if="isComicRightToLeft" :size="20" :stroke-width="2.5" />
+        <ChevronLeft v-else :size="20" :stroke-width="2.5" />
       </button>
       <div class="page-turn-cluster" :style="rightPageTurnStyle">
-        <button v-if="isReader && !readerIsHidePageButton" class="page-turn-btn page-turn-next" type="button" @pointerdown.stop.prevent="handleReaderNextButton" :title="t('next.page')">
-          <ChevronRight :size="20" :stroke-width="2.5" />
+        <button v-if="isReader && !readerIsHidePageButton" class="page-turn-btn page-turn-next" type="button" @pointerdown.stop.prevent="handleReaderNextButton" :title="isComicRightToLeft ? t('previous.page') : t('next.page')">
+          <ChevronLeft v-if="isComicRightToLeft" :size="20" :stroke-width="2.5" />
+          <ChevronRight v-else :size="20" :stroke-width="2.5" />
         </button>
         <button v-if="canUseTextToSpeech && !readerIsHideAudiobookButton" class="page-turn-btn" :class="{ active: speechActive }" type="button" @click.stop.prevent="speechActive ? stopReaderSpeech() : speakCurrentPage()" :title="t('tts')">
           <Volume2 :size="20" :stroke-width="speechActive ? 2.5 : 1.8" />
@@ -3216,7 +3275,7 @@ onBeforeUnmount(() => {
 
       <!-- Top-right corner: scale + PDF convert + grid menu (koodo-style) -->
       <div v-show="!isRightPanelVisible" class="reader-topright-controls" :style="rightFloatingControlsStyle">
-        <div v-if="(readerLayoutMode === 'scroll' || readerLayoutMode === 'single') && !readerIsHideScaleButton" class="reader-scale-wrap">
+        <div v-if="(activeReaderLayoutMode === 'scroll' || activeReaderLayoutMode === 'single') && !readerIsHideScaleButton" class="reader-scale-wrap">
           <div class="reader-scale-btn" @click="isShowScale = !isShowScale">
             <ZoomIn :size="18" :stroke-width="1.8" />
           </div>
@@ -3422,18 +3481,28 @@ onBeforeUnmount(() => {
         <div v-if="rightTab === 'settings'" class="panel-body panel-settings" :class="{ 'settings-locked': settingsLocked }" style="overflow-y: auto; flex: 1">
           <!-- View Mode (match koodo ModeControl) -->
           <div class="setting-section">
-            <div class="setting-section-title">{{ t('view.mode') }}</div>
+            <div class="setting-section-title">{{ readerIsComic ? 'Comic layout' : t('view.mode') }}</div>
             <div class="view-mode-control">
-              <div :class="['view-mode-btn', readerLayoutMode === 'single' ? 'active' : '']" @click="readerLayoutMode = 'single'" title="Single page">
+              <div :class="['view-mode-btn', activeReaderLayoutMode === 'single' ? 'active' : '']" @click="readerIsComic ? (comicLayoutMode = 'single') : (readerLayoutMode = 'single')" title="Single page">
                 <BookOpen :size="18" :stroke-width="1.8" />
               </div>
-              <div :class="['view-mode-btn', readerLayoutMode === 'double' ? 'active' : '']" @click="readerLayoutMode = 'double'" title="Double page">
+              <div :class="['view-mode-btn', activeReaderLayoutMode === 'double' ? 'active' : '']" @click="readerIsComic ? (comicLayoutMode = 'double') : (readerLayoutMode = 'double')" title="Double page">
                 <span style="font-size: 18px; font-weight: 600">⧉</span>
               </div>
-              <div :class="['view-mode-btn', readerLayoutMode === 'scroll' ? 'active' : '']" @click="readerLayoutMode = 'scroll'" title="Scroll">
+              <div :class="['view-mode-btn', activeReaderLayoutMode === 'scroll' ? 'active' : '']" @click="readerIsComic ? (comicLayoutMode = 'scroll') : (readerLayoutMode = 'scroll')" title="Scroll">
                 <List :size="18" :stroke-width="1.8" />
               </div>
             </div>
+            <template v-if="readerIsComic">
+              <div class="comic-layout-hint">Single page is recommended for spreads; use two-page mode for regular albums.</div>
+              <div class="comic-direction-row">
+                <span>Reading direction</span>
+                <a-radio-group v-model="comicReadingDirection" type="button" size="mini">
+                  <a-radio value="ltr">LTR</a-radio>
+                  <a-radio value="rtl">RTL</a-radio>
+                </a-radio-group>
+              </div>
+            </template>
           </div>
 
           <!-- Background Color (match koodo ThemeList) -->
@@ -4027,26 +4096,32 @@ onBeforeUnmount(() => {
       <!-- koodo-style Bottom Panel (ProgressPanel) -->
       <div :class="['edge-panel', 'panel-bottom', isBottomPanelVisible ? 'open' : '']" @mouseleave="hidePanel('bottom')">
         <div class="progress-panel-inner">
-          <p class="progress-text">
-            <span>Progress: {{ readingProgressValue }}%</span>
+          <p class="progress-heading">
+            <span>Reading progress</span>
+            <strong>{{ readingProgressValue }}%</strong>
           </p>
-          <p class="progress-text" style="margin-top: 0">
-            <span>Pages</span>
-            <input type="text" class="progress-jump-input" :value="pageJumpText" @focus="pageJumpText = ''" @input="pageJumpText = ($event.target as HTMLInputElement).value" @blur="jumpToPage" @keydown.enter="jumpToPage" />
+          <p class="progress-context">
+            <template v-if="!readerIsFixedLayout">
+              <span>Chapter</span>
+              <input type="text" class="progress-jump-input" :value="chapterJumpText || (selectedBookChapter ?? 0) + 1" inputmode="numeric" @focus="isChapterJumpEditing = true; ($event.target as HTMLInputElement).select()" @input="chapterJumpText = ($event.target as HTMLInputElement).value" @blur="jumpToChapter" @keydown.enter.prevent="($event.target as HTMLInputElement).blur()" />
+              <span>/ {{ bookChapters.length || '-' }}</span>
+              <span class="progress-divider">·</span>
+            </template>
+            <span>{{ readerIsFixedLayout ? 'Page' : 'Chapter page' }}</span>
+            <input type="text" class="progress-jump-input" :value="pageJumpText || currentPage || ''" inputmode="numeric" @focus="isPageJumpEditing = true; ($event.target as HTMLInputElement).select()" @input="pageJumpText = ($event.target as HTMLInputElement).value" @blur="jumpToPage" @keydown.enter.prevent="($event.target as HTMLInputElement).blur()" />
             <span>/ {{ totalPage || currentPage || '-' }}</span>
-            &nbsp;&nbsp;&nbsp;
-            <span>Chapters</span>
-            <input type="text" class="progress-jump-input" :value="chapterJumpText" @focus="chapterJumpText = ''" @input="chapterJumpText = ($event.target as HTMLInputElement).value" @blur="jumpToChapter" @keydown.enter="jumpToChapter" />
-            <span>/ {{ bookChapters.length || '-' }}</span>
           </p>
-          <div style="display: flex; justify-content: space-between; align-items: center; width: 90%; margin-left: 5%">
-            <div class="chapter-btn prev-chapter-btn" @click="prevPage()" :title="t('previous.page')">
+          <div class="progress-controls">
+            <button type="button" class="chapter-btn prev-chapter-btn" :title="t('previous.page')" :aria-label="t('previous.page')" @click="prevPage()">
               <ChevronLeft :size="14" :stroke-width="2.5" />
+            </button>
+            <div class="progress-range-wrap">
+              <input :value="readingProgressValue" type="range" class="progress-range" min="0" max="100" step="1" aria-label="Reading progress" :aria-valuetext="`${readingProgressValue}%`" :style="{ '--progress-fill': `${readingProgressValue}%` }" @input="readingProgressValue = Number(($event.target as HTMLInputElement).value)" @change="seekReaderProgress(readingProgressValue)" />
+              <span class="progress-range-value">{{ readingProgressValue }}%</span>
             </div>
-            <input :value="readingProgressValue" type="range" class="progress-range" min="0" max="100" step="1" @input="readingProgressValue = Number(($event.target as HTMLInputElement).value)" @change="seekReaderProgress(readingProgressValue)" />
-            <div class="chapter-btn next-chapter-btn" @click="nextPage()" :title="t('next.page')">
+            <button type="button" class="chapter-btn next-chapter-btn" :title="t('next.page')" :aria-label="t('next.page')" @click="nextPage()">
               <ChevronRight :size="14" :stroke-width="2.5" />
-            </div>
+            </button>
           </div>
           <ReaderPanelButton class="panel-pin" :active="lockedPanels.bottom" :title="lockedPanels.bottom ? t('unlock') : t('lock.panel')" @click="togglePanelLock('bottom')">
             <Pin v-if="lockedPanels.bottom" :size="14" :stroke-width="1.8" />
@@ -4242,6 +4317,28 @@ onBeforeUnmount(() => {
 }
 .stage-reader-scroll:hover::-webkit-scrollbar-thumb {
   background: rgba(128, 128, 128, 0.3);
+}
+
+.reader-stage-comic {
+  top: 18px;
+  bottom: 18px;
+  user-select: none;
+}
+.stage-reader-comic {
+  background: #0b0c0f;
+  color: #fff;
+}
+.stage-reader-comic :deep(iframe) {
+  background: #0b0c0f !important;
+}
+.stage-reader-comic-rtl {
+  direction: rtl;
+}
+.stage-reader-comic.stage-reader-double::before {
+  left: 50%;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow: none;
 }
 
 /* Double-page spine (keep existing) */
@@ -5116,6 +5213,22 @@ onBeforeUnmount(() => {
 .view-mode-btn:hover {
   opacity: 0.7;
 }
+.comic-layout-hint {
+  margin-top: 10px;
+  color: var(--panel-fg);
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.62;
+}
+.comic-direction-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--panel-fg);
+  font-size: 12px;
+}
 
 .color-swatch-list {
   display: flex;
@@ -5276,16 +5389,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 0;
-  gap: 0;
+  padding: 10px 18px 12px;
+  gap: 3px;
 }
 
-.progress-text {
-  font-size: 15px;
+.progress-heading,
+.progress-context {
   width: 100%;
   text-align: center;
-  height: 25px;
-  overflow: hidden;
   margin: 0;
   color: var(--panel-fg);
   display: flex;
@@ -5293,20 +5404,43 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 4px;
 }
-.progress-text span {
+.progress-heading {
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0.02em;
+  opacity: 0.72;
+}
+.progress-heading strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  opacity: 1;
+}
+.progress-context {
+  min-height: 24px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.progress-context span {
   opacity: 0.75;
   font-size: 13px;
 }
+.progress-divider {
+  margin: 0 6px;
+}
 .progress-jump-input {
-  width: 30px;
+  width: 42px;
   height: 20px;
-  border: 2px solid rgba(128, 128, 128, 0.4);
-  border-radius: 5px;
+  border: 1px solid rgba(128, 128, 128, 0.45);
+  border-radius: 4px;
   outline: none;
   text-align: center;
   font-size: 12px;
-  background: transparent;
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--reader-page) 76%, transparent);
   color: var(--panel-fg);
+}
+.progress-jump-input:focus {
+  border-color: var(--reader-text);
 }
 
 .chapter-btn {
@@ -5329,12 +5463,34 @@ onBeforeUnmount(() => {
   border-color: rgba(112, 112, 112, 0.8);
 }
 
+.progress-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: min(720px, 92vw);
+  gap: 10px;
+}
+.progress-range-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: 9px;
+}
 .progress-range {
   -webkit-appearance: none;
-  width: 200px;
-  background: transparent;
-  margin: 0 8px;
+  width: 100%;
+  min-width: 120px;
+  height: 18px;
+  margin: 0;
   cursor: pointer;
+}
+.progress-range-value {
+  width: 34px;
+  color: var(--panel-fg);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 .progress-range::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -5358,18 +5514,24 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
 }
 .progress-range::-webkit-slider-runnable-track {
-  width: 200px;
-  height: 0;
-  border-bottom: 2px solid rgba(112, 112, 112, 1);
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
   cursor: pointer;
-  background: transparent;
+  background: linear-gradient(to right, var(--reader-text) var(--progress-fill), rgba(112, 112, 112, 0.32) var(--progress-fill));
 }
 .progress-range::-moz-range-track {
-  width: 200px;
-  height: 0;
-  border-bottom: 2px solid rgba(112, 112, 112, 1);
+  width: 100%;
+  height: 3px;
+  border-radius: 999px;
+  border: 0;
   cursor: pointer;
-  background: transparent;
+  background: rgba(112, 112, 112, 0.32);
+}
+.progress-range::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--reader-text);
 }
 
 /* === POPUPS (keep existing) === */

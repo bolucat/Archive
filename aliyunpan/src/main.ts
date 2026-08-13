@@ -141,7 +141,7 @@ window.Electron.ipcRenderer.on('setPage', async (_event: any, args: any) => {
   console.log('setPage', args.page, args)
   const appStore = useAppStore()
   const settingStore = useSettingStore()
-  if (args.theme && settingStore) appStore.toggleTheme(args.theme)
+  if (args.appTheme && settingStore) appStore.toggleTheme(args.appTheme)
 
   const pageUserId = String(args?.data?.user_id || '')
   if (pageUserId) await UserDAL.GetUserTokenFromDB(pageUserId)
@@ -182,6 +182,7 @@ window.Electron.ipcRenderer.on('setPage', async (_event: any, args: any) => {
 
 window.Electron.ipcRenderer.on('setTheme', (_event: any, args: any) => {
   const appStore = useAppStore()
+  if (args.theme) appStore.toggleTheme(args.theme)
   appStore.toggleDark(args.dark)
 })
 

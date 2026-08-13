@@ -120,7 +120,7 @@ const encodeDescription = (item: OneDriveItem) => {
 
 const pickThumbnail = (item: OneDriveItem): string => {
   const thumbnail = item.thumbnails?.[0]
-  return thumbnail?.medium?.url || thumbnail?.large?.url || thumbnail?.small?.url || ''
+  return thumbnail?.large?.url || thumbnail?.medium?.url || thumbnail?.small?.url || ''
 }
 
 export const mapOneDriveItemToAliModel = (item: OneDriveItem, drive_id: string, parentId: string): IAliGetFileModel => {

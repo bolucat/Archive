@@ -257,7 +257,7 @@ const usePanFileStore = defineStore('panfile', {
       if (!value || value == this.ListOrderKey) return
       TreeStore.SaveDirOrder(this.DriveID, this.DirID, value)
       this.$patch({ ListOrderKey: value, ListSelected: new Set<string>(), ListFocusKey: '', ListSelectKey: '' })
-      PanDAL.aReLoadOneDirToShow('', 'refresh', false)
+      this.mRefreshListDataShow(true)
     },
 
     mGridListData(value: string, column: number) {
@@ -285,15 +285,11 @@ const usePanFileStore = defineStore('panfile', {
         for (let i = 0, maxi = results.length; i < maxi; i++) {
           if (results[i].score > -200000) showList.push(results[i].obj)
         }
-        // 重新排序
-        const orders = this.ListOrderKey
-          .replace(' desc', ' DESC')
-          .replace(' asc', ' ASC')
-          .split(' ')
-        OrderDir(orders[0], orders[1], showList)
       } else {
         showList = this.ListDataRaw.concat()
       }
+      const orders = this.ListOrderKey.replace('ext ', 'updated_at ').split(' ')
+      showList = OrderDir(orders[0], orders[1], showList) as Item[]
       Object.freeze(showList)
       const gridList: GridItem[] = []
       const column = this.ListShowColumn

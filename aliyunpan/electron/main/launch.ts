@@ -13,7 +13,7 @@ import { createServer, type Server } from 'node:http'
 import exception from './core/exception'
 import ipcEvent from './core/ipcEvent'
 import MotrixApplication from './aria/MotrixApplication'
-import { registerExternalDownloadProtocol } from './core/protocol'
+import { extractExternalFileArg, openExternalFile, registerExternalDownloadProtocol, registerExternalFileProtocol } from './core/protocol'
 import { destroyDb } from './reedy/ReedyService'
 import { DRIVE115_DOWN_AGENT } from '@shared/drive115'
 import { Drive115PlaybackAuthRegistry } from './drive115PlaybackAuth'
@@ -67,6 +67,8 @@ export default class launch extends EventEmitter {
   }
 
   init() {
+    // macOS 会在 app ready 之前派发 open-file；必须尽早注册，路径会在主窗口加载后再转发。
+    registerExternalFileProtocol(() => AppWindow.mainWindow)
     this.start()
     if (is.mas()) return
     const gotSingleLock = app.requestSingleInstanceLock()
@@ -83,6 +85,8 @@ export default class launch extends EventEmitter {
           this.dispatchOAuthUrl(oauthUrl)
           return
         }
+        const externalFile = extractExternalFileArg(commandLine)
+        if (externalFile) openExternalFile(externalFile)
         if (AppWindow.mainWindow && AppWindow.mainWindow.isDestroyed() == false) {
           if (AppWindow.mainWindow.isMinimized()) {
             AppWindow.mainWindow.restore()
@@ -293,6 +297,7 @@ export default class launch extends EventEmitter {
           })
           .finally(() => {
             createMainWindow()
+            registerExternalFileProtocol(() => AppWindow.mainWindow)
             startMediaAcquisitionWakeScheduler()
             createTray()
             registerAutoUpdate()

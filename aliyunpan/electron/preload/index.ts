@@ -62,6 +62,9 @@ window.WebShowOpenDialogSync = function(config: any, callback: any) {
   } catch {
   }
 }
+window.WebShowOpenDialog = function(config: any) {
+  return ipcRenderer.invoke('WebShowOpenDialog', config)
+}
 
 window.WebShowSaveDialogSync = function(config: any, callback: any) {
   try {
@@ -400,6 +403,21 @@ window.ReedyInvoke = async function(channel: string, ...args: any[]) {
   }
 }
 
+window.DocumentReadingExtractPdf = async function(input: any, onProgress?: (progress: any) => void) {
+  const requestId = Math.random().toString(36).slice(2)
+  const listener = (_event: Electron.IpcRendererEvent, id: string, progress: any) => {
+    if (id === requestId) onProgress?.(progress)
+  }
+  ipcRenderer.on('documentReading:pdfProgress', listener)
+  try {
+    // Functions cannot cross Electron's structured-clone IPC boundary.
+    // Progress returns through the event listener above instead.
+    return await ipcRenderer.invoke('documentReading:extractPdf', { requestId, url: input.url, headers: input.headers })
+  } finally {
+    ipcRenderer.removeListener('documentReading:pdfProgress', listener)
+  }
+}
+
 function createRightMenu() {
   window.addEventListener('contextmenu', (e) => {
       if (e) e.preventDefault()
@@ -438,6 +456,20 @@ createRightMenu()
 
 window.onExternalDownloadOpen = (callback: (payload: string) => void) => {
   ipcRenderer.on('external-download:open', (_event, payload: string) => callback(payload))
+}
+
+const pendingExternalFilePayloads: Array<{ filePath: string; fileUrl: string }> = []
+const externalFileCallbacks = new Set<(payload: { filePath: string; fileUrl: string }) => void>()
+ipcRenderer.on('external-file:open', (_event, payload: { filePath: string; fileUrl: string }) => {
+  if (!externalFileCallbacks.size) {
+    pendingExternalFilePayloads.push(payload)
+    return
+  }
+  externalFileCallbacks.forEach((callback) => callback(payload))
+})
+window.onExternalFileOpen = (callback: (payload: { filePath: string; fileUrl: string }) => void) => {
+  externalFileCallbacks.add(callback)
+  while (pendingExternalFilePayloads.length) callback(pendingExternalFilePayloads.shift()!)
 }
 
 // fix: new-windows event

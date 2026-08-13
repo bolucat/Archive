@@ -1,6 +1,6 @@
 import type { ZodType } from 'zod'
 
-export type AgentSurface = 'ai_search' | 'reader' | 'document'
+export type AgentSurface = 'ai_search' | 'workspace' | 'reader' | 'document'
 export type AgentPermission = 'read' | 'navigate' | 'write' | 'destructive'
 export type AgentExecutionMode = 'parallel' | 'sequential'
 export type AgentMessageInput = { role: 'user' | 'assistant'; content: string }

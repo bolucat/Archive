@@ -11,11 +11,19 @@ const props = defineProps<{
   showPageBorder: boolean
   currentPage: number
   totalPage: number
+  currentChapter: number
+  chapterCount: number
+  isFixedLayout: boolean
   hideFooter: boolean
 }>()
 
 const isDouble = computed(() => props.layoutMode === 'double')
-const isSingle = computed(() => props.layoutMode !== 'double')
+const chapterPrefix = computed(() => (props.chapterCount ? `Chapter ${props.currentChapter || 1} / ${props.chapterCount} · ` : ''))
+const pageText = computed(() => {
+  const current = props.currentPage || '—'
+  const total = props.totalPage ? ` / ${props.totalPage}` : ''
+  return `${props.isFixedLayout ? '' : chapterPrefix.value}Page ${current}${total}`
+})
 </script>
 
 <template>
@@ -36,12 +44,12 @@ const isSingle = computed(() => props.layoutMode !== 'double')
 
   <!-- koodo footer-container -->
   <div v-if="!hideFooter" class="pw-footer">
-    <template v-if="isDouble">
-      <span class="pw-footer-page">{{ currentPage ? `Page ${currentPage * 2 - 1}` : 'Page —' }}</span>
-      <span class="pw-footer-page">{{ currentPage ? `Page ${currentPage * 2}` : 'Page —' }}</span>
+    <template v-if="isDouble && !isFixedLayout">
+      <span class="pw-footer-page">{{ `${chapterPrefix}Page ${currentPage ? currentPage * 2 - 1 : '—'}` }}</span>
+      <span class="pw-footer-page">{{ `Page ${currentPage ? currentPage * 2 : '—'}` }}</span>
     </template>
     <template v-else>
-      <span>{{ currentPage ? `Page ${currentPage}` : 'Page —' }}<span v-if="totalPage"> / {{ totalPage }}</span></span>
+      <span>{{ pageText }}</span>
     </template>
   </div>
 

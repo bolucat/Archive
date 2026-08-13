@@ -17,6 +17,7 @@ declare interface Window {
   WebSpawnSync: any
   WebExecSync: any
   WebShowOpenDialogSync: any
+  WebShowOpenDialog: (config: Electron.OpenDialogOptions) => Promise<string[]>
   WebShowSaveDialogSync: any
   WebShowItemInFolder: any
   WebPlatformSync: any
@@ -37,6 +38,7 @@ declare interface Window {
   WebQuarkDownloadUrl: any
   WebSetCookies: any
   WebOpenWindow: any
+  onExternalFileOpen: (callback: (payload: { filePath: string; fileUrl: string }) => void) => void
   WebOpenLyric: any
   WebSendLyric: any
   WebCloseLyric: any

@@ -9,6 +9,7 @@ import { buildLibrarySourceId } from '../types/librarySource'
 import { isScannableBookFormat } from './bookReaderCapabilities'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
+import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 
 const ISBN_RE = /(?:ISBN(?:-1[03])?:?\s*)?((?:97[89][-\s]?)?\d[-\s]?\d{2,5}[-\s]?\d{2,7}[-\s]?\d{1,7}[-\s]?[\dXx])/g
 
@@ -333,21 +334,22 @@ class BookScanner {
   }
 
   private async *iterateFolderPages(folder: IAliGetFileModel, user_id: string, drive_id: string): AsyncGenerator<IAliGetFileModel[]> {
+    const scope = libraryScanRateLimitScope(user_id, drive_id)
     if (isWebDavDrive(drive_id)) {
       const connection = getWebDavConnection(getWebDavConnectionId(drive_id))
       if (!connection) throw new Error('WebDAV 连接不存在或已被移除')
-      yield await listWebDavDirectory(connection, (folder as any).path || folder.file_id || '/')
+      yield* rateLimitSingleScanPage(scope, () => listWebDavDirectory(connection, (folder as any).path || folder.file_id || '/'))
       return
     }
     if (isThirdPartyProviderFolder(user_id, drive_id)) {
-      yield* iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
+      yield* rateLimitScanPages(scope, iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop }))
       return
     }
     if (isAliyunUser(user_id)) {
-      yield* AliDirFileList.ApiDirFileListPages(user_id, drive_id, folder.file_id, folder.name || '', 'name asc', '', false)
+      yield* AliDirFileList.ApiDirFileListPages(user_id, drive_id, folder.file_id, folder.name || '', 'name asc', '', false, scope)
       return
     }
-    yield await this.listFolder(folder, user_id, drive_id)
+    yield* rateLimitSingleScanPage(scope, () => this.listFolder(folder, user_id, drive_id))
   }
 
   private async listFolder(folder: IAliGetFileModel, user_id: string, drive_id: string): Promise<IAliGetFileModel[]> {

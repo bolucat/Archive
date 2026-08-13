@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
-import { Search, X, File, Folder, ArrowUpRight, Film, Tv, Monitor, Clock, ChevronRight } from 'lucide-vue-next'
+import { Search, X, File, Folder, ArrowUpRight, Film, Tv, Monitor, Clock, ChevronRight, Sparkles } from 'lucide-vue-next'
 import { useAppStore, useSettingStore } from '../store'
 import { humanSize } from '../utils/format'
 import { searchAllDrives, searchResultGroupTitle, type GlobalSearchResult } from '../utils/globalSearch'
@@ -21,6 +21,7 @@ import MediaAcquisitionTargetModal from '../components/MediaAcquisitionTargetMod
 import type { MediaAcquisitionRequest, MediaAcquisitionState } from '@shared/types/mediaAcquisition'
 import { listMediaAcquisitionStates } from '../services/mediaAcquisition/client'
 import { t } from '../i18n'
+import { isDocumentInsightFile, openDocumentInsight, toDocumentInsightSource } from '../services/documents/insight'
 
 const appStore = useAppStore()
 const HISTORY_KEY = 'global_search_history'
@@ -424,6 +425,17 @@ async function handleClick(result: GlobalSearchResult) {
   })
 }
 
+function canAskDocument(result: GlobalSearchResult): boolean {
+  return result.source === 'cloud' && isDocumentInsightFile(result)
+}
+
+function openDocumentAI(result: GlobalSearchResult, initialPrompt = '') {
+  const source = toDocumentInsightSource(result, result.user_id)
+  if (!source) return
+  openDocumentInsight({ sources: [source], initialPrompt, scopeName: result.providerName })
+  appStore.toggleTab('ai-workspace')
+}
+
 function handleKeyDown(event: KeyboardEvent) {
   if (event.key === 'Escape') {
     inputRef.value?.blur()
@@ -625,6 +637,7 @@ onUnmounted(() => {
                         <span class="gs-page-source">{{ item.providerName }}</span>
                       </div>
                     </div>
+                    <button v-if="canAskDocument(item)" type="button" class="gs-document-ai" title="使用 BoxPlayer AI 问答" @click.stop="openDocumentAI(item)"><Sparkles :size="14" />AI 问答</button>
                     <ArrowUpRight :size="14" :stroke-width="1.5" class="gs-page-result-go" />
                   </div>
                 </div>
@@ -689,6 +702,7 @@ onUnmounted(() => {
                       <span class="gs-page-source">{{ item.providerName }}</span>
                     </div>
                   </div>
+                  <button v-if="canAskDocument(item)" type="button" class="gs-document-ai" title="使用 BoxPlayer AI 问答" @click.stop="openDocumentAI(item)"><Sparkles :size="14" />AI 问答</button>
                   <ArrowUpRight :size="16" :stroke-width="1.5" class="gs-page-result-go" />
                 </div>
               </div>
@@ -1146,6 +1160,8 @@ onUnmounted(() => {
   opacity: 0;
   transition: opacity 0.15s;
 }
+
+.gs-document-ai { display:inline-flex; flex:0 0 auto; align-items:center; gap:4px; margin-left:auto; padding:5px 8px; border:1px solid rgba(120,98,232,.35); border-radius:7px; color:#705ce2; background:transparent; cursor:pointer; font:inherit; font-size:11px; font-weight:650; }.gs-document-ai:hover { border-color:#8067ed; background:rgba(120,98,232,.1); }
 
 .gs-page-result-item:hover .gs-page-result-go {
   opacity: 1;

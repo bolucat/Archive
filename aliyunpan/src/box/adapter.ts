@@ -6,6 +6,17 @@ import { apiBoxUploadBuffer } from './upload'
 import { apiBoxCopyBatch, apiBoxDeleteBatch, apiBoxMkdir, apiBoxMoveBatch, apiBoxRename, apiBoxTrashListPage, apiBoxTrashPurge, apiBoxTrashRestore, type BoxItemType } from './filecmd'
 import { apiBoxSearch, mapBoxSearchItems, parseBoxSearchId } from './search'
 import { apiBoxFavoriteItems, apiBoxRecentItems } from './collections'
+import { apiBoxThumbnail } from './thumbnail'
+
+const hydrateBoxThumbnails = async (userId: string, items: any[]) => {
+  const candidates = items.filter(item => !item.isDir && !!item.thumbnail).slice(0, 40)
+  for (let index = 0; index < candidates.length; index += 6) {
+    await Promise.all(candidates.slice(index, index + 6).map(async item => {
+      item.thumbnail = await apiBoxThumbnail(userId, item.thumbnail).catch(() => '')
+    }))
+  }
+  return items
+}
 
 export const listBoxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
   const isSearch = dirId.startsWith('search') || dirId.startsWith('box_search:')
@@ -14,23 +25,25 @@ export const listBoxItems = async (userId: string, driveId: string, dirId: strin
     if (!query) return { items: [], total: 0, error: '搜索关键字不能为空' }
     const items = mapBoxSearchItems(await apiBoxSearch(userId, query), driveId)
     const visibleItems = includeFiles ? items : items.filter(item => item.isDir)
-    return { items: visibleItems, total: visibleItems.length }
+    return { items: await hydrateBoxThumbnails(userId, visibleItems), total: visibleItems.length }
   }
 
   const parentId = dirId === 'box_root' ? 'box_root' : dirId
   const items = (await apiBoxFileList(userId, parentId)).map(item => mapBoxItemToAliModel(item, driveId, parentId))
   const visibleItems = includeFiles ? items : items.filter(item => item.isDir)
-  return { items: visibleItems, total: visibleItems.length }
+  return { items: await hydrateBoxThumbnails(userId, visibleItems), total: visibleItems.length }
 }
 
 export const listBoxSpecialItems = async (userId: string, dirId: string, maxItems = 0) => {
   if (dirId === 'recent') {
     const items = await apiBoxRecentItems(userId)
-    return { items: maxItems > 0 ? items.slice(0, maxItems) : items, total: items.length }
+    const visibleItems = maxItems > 0 ? items.slice(0, maxItems) : items
+    return { items: await hydrateBoxThumbnails(userId, visibleItems), total: items.length }
   }
   if (dirId === 'favorite') {
     const items = await apiBoxFavoriteItems(userId)
-    return { items: maxItems > 0 ? items.slice(0, maxItems) : items, total: items.length }
+    const visibleItems = maxItems > 0 ? items.slice(0, maxItems) : items
+    return { items: await hydrateBoxThumbnails(userId, visibleItems), total: items.length }
   }
   if (dirId !== 'trash') return undefined
 
@@ -42,7 +55,7 @@ export const listBoxSpecialItems = async (userId: string, dirId: string, maxItem
     marker = page.nextMarker
   } while (marker && (!maxItems || items.length < maxItems))
   const visibleItems = maxItems > 0 ? items.slice(0, maxItems) : items
-  return { items: visibleItems, total: items.length }
+  return { items: await hydrateBoxThumbnails(userId, visibleItems), total: items.length }
 }
 
 export const listBoxShares = (userId: string) => apiBoxShareList(userId)

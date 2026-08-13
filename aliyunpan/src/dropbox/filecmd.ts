@@ -129,8 +129,8 @@ const resolveCurrentName = async (fileId: string): Promise<string> => {
   return path.split('/').filter(Boolean).pop() || fileId
 }
 
-export const apiDropboxMkdir = async (user_id: string, parentId: string, name: string): Promise<{ file_id: string; error: string }> => {
-  const path = buildDropboxChildPath(parentId, name)
+export const apiDropboxMkdir = async (user_id: string, parentId: string, name: string, parentDescription = ''): Promise<{ file_id: string; error: string }> => {
+  const path = buildDropboxChildPath(parentId, name, parentDescription)
   const resp = await dropboxRpc<DropboxFileMetadataResp>(user_id, '/files/create_folder_v2', { path, autorename: false }, '新建文件夹')
   if (resp.error) return { file_id: '', error: resp.error }
   return { file_id: resp.data?.metadata?.id || resp.data?.metadata?.path_display || path, error: '' }

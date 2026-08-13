@@ -1,4 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { vi } from 'vitest'
+
+vi.hoisted(() => {
+  ;(globalThis as any).self = globalThis
+})
+
+vi.mock('../../utils/format', () => ({ Sleep: vi.fn() }))
+
 import {
   buildDropboxChildPath,
   buildDropboxRelocationBatchBody,
@@ -25,6 +33,7 @@ describe('Dropbox file command helpers', () => {
     expect(buildDropboxChildPath('dropbox_root', 'New Folder')).toBe('/New Folder')
     expect(buildDropboxChildPath('/Movies', 'demo.mkv')).toBe('/Movies/demo.mkv')
     expect(buildDropboxChildPath('id:folder', 'demo.mkv', 'dropbox_path:%2FMovies')).toBe('/Movies/demo.mkv')
+    expect(buildDropboxChildPath('id:folder', 'New Folder', 'dropbox_path:%2FMovies')).toBe('/Movies/New Folder')
   })
 
   it('derives a parent path from a Dropbox path', () => {

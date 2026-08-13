@@ -16,6 +16,13 @@ export type Cloud123FileItem = {
   trashed: number
   createAt?: string
   updateAt?: string
+  thumbnail?: string
+  thumbnailUrl?: string
+  thumbnailURL?: string
+  previewUrl?: string
+  previewURL?: string
+  cover?: string
+  coverUrl?: string
 }
 
 export type Cloud123FileListResp = {
@@ -123,7 +130,7 @@ export const mapCloud123FileToAliModel = (item: Cloud123FileItem): IAliGetFileMo
     timeStr,
     starred: false,
     isDir,
-    thumbnail: '',
+    thumbnail: pickCloud123Thumbnail(item),
     description: ''
   }
 }
@@ -161,7 +168,13 @@ export const mapCloud123InfoToAliModel = (item: any): IAliGetFileModel => {
     timeStr,
     starred: false,
     isDir,
-    thumbnail: '',
+    thumbnail: pickCloud123Thumbnail(item),
     description: ''
   }
+}
+
+const pickCloud123Thumbnail = (item: Partial<Cloud123FileItem> & Record<string, unknown>) => {
+  const thumbnail = [item.thumbnail, item.thumbnailUrl, item.thumbnailURL, item.previewUrl, item.previewURL, item.cover, item.coverUrl]
+    .find((value) => typeof value === 'string' && value.length > 0)
+  return typeof thumbnail === 'string' ? thumbnail : ''
 }

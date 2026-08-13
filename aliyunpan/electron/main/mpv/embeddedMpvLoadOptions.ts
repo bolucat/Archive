@@ -1,5 +1,7 @@
 import type { EmbeddedMpvLoadRequest } from './embeddedMpvBridge'
 
+const escapeMpvHeaderValue = (value: unknown) => String(value).replace(/\\/g, '\\\\').replace(/,/g, '\\,')
+
 export function buildMpvLoadOptions(request: EmbeddedMpvLoadRequest): string {
   const options: string[] = []
 
@@ -9,7 +11,7 @@ export function buildMpvLoadOptions(request: EmbeddedMpvLoadRequest): string {
   const referrer = headers.find(([key]) => key.toLowerCase() === 'referer' || key.toLowerCase() === 'referrer')?.[1]
   const headerFields = headers
     .filter(([key]) => !['user-agent', 'referer', 'referrer'].includes(key.toLowerCase()))
-    .map(([key, value]) => `${key}: ${String(value)}`)
+    .map(([key, value]) => `${key}: ${escapeMpvHeaderValue(value)}`)
 
   if (userAgent) options.push(`user-agent=${String(userAgent)}`)
   if (referrer) options.push(`referrer=${String(referrer)}`)

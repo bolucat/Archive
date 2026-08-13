@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { MAX_DOCUMENT_BYTES, parseDocument } from '../../services/documents/parser'
 import { chunkSection } from '../../services/ai/utils/chunker'
 
-describe('local document analysis', () => {
+describe('document parser', () => {
+  it('keeps the V1 200 MB document ceiling explicit', () => {
+    expect(MAX_DOCUMENT_BYTES).toBe(200 * 1024 * 1024)
+  })
+
   it('parses UTF-8 text without uploading it', async () => {
     const data = new TextEncoder().encode('第一段\n\n第二段').buffer
     const parsed = await parseDocument('notes.md', data)
@@ -13,7 +17,8 @@ describe('local document analysis', () => {
 
   it('rejects unsupported files and files above the local limit', async () => {
     await expect(parseDocument('sheet.xlsx', new ArrayBuffer(10))).rejects.toThrow('unsupported_document_type')
-    await expect(parseDocument('large.txt', new ArrayBuffer(MAX_DOCUMENT_BYTES + 1))).rejects.toThrow('document_too_large')
+    const oversized = { byteLength: MAX_DOCUMENT_BYTES + 1 } as ArrayBuffer
+    await expect(parseDocument('large.txt', oversized)).rejects.toThrow('document_too_large')
   })
 
   it('uses 500-character chunks with overlap for retrieval', () => {

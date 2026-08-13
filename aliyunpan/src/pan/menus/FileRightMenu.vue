@@ -25,10 +25,11 @@ import BookScanner from '../../utils/bookScanner'
 import message from '../../utils/message'
 import { isAliyunUser as isAliyunAccountUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
-import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete, supportsZipDownload } from '../../drive/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsDirectPermanentDelete, supportsMove, supportsRename, supportsTrashMove, supportsZipDownload } from '../../drive/providerFeatures'
 import { apiDrive115FileDetailResult } from '../../cloud115/filecmd'
 import { resolveDriveFileToken } from '../../drive/account'
 import { t } from '../../i18n'
+import { isDocumentInsightFile, MAX_DOCUMENT_INSIGHT_SOURCES, openDocumentInsight, toDocumentInsightSource } from '../../services/documents/insight'
 
 let istree = false
 const settingStore = useSettingStore()
@@ -164,7 +165,7 @@ const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', 
 const isMoveSupported = computed(() => supportsMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isRenameSupported = computed(() => supportsRename(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isTrashSupported = computed(() => supportsTrashMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
-const isPermanentDeleteSupported = computed(() => supportsTrashPermanentDelete(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isPermanentDeleteSupported = computed(() => supportsDirectPermanentDelete(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const hasFileOperations = computed(() => isMoveSupported.value || isCopySupported.value || isTrashSupported.value || isPermanentDeleteSupported.value || props.dirtype === 'mypic')
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
 const isDrive115Video = computed(() => {
@@ -209,20 +210,18 @@ const isSelectedFolder = computed(() => {
 
 const isDocumentAIAvailable = computed(() => {
   const selected = panFileStore.GetSelected()
-  if (selected.length !== 1 || selected[0].isDir) return false
-  const name = String(selected[0].name || '').toLowerCase()
-  return ['.pdf', '.docx', '.epub', '.txt', '.md', '.markdown'].some(extension => name.endsWith(extension))
+  return selected.length > 0 && selected.length <= MAX_DOCUMENT_INSIGHT_SOURCES && selected.every(isDocumentInsightFile)
 })
 
-function openDocumentAI() {
+function openDocumentAI(initialPrompt = '') {
   const selected = panFileStore.GetSelected()
-  if (selected.length !== 1 || !isDocumentAIAvailable.value) {
+  if (!isDocumentAIAvailable.value) {
     message.warning(t('file.documentAiUnsupported'))
     return
   }
-  const file = selected[0]
-  sessionStorage.setItem('boxplayer:pending-document-ai', JSON.stringify({ file, userId: (file as any).user_id || panTreeStore.user_id || '' }))
-  window.dispatchEvent(new CustomEvent('boxplayer:open-document-ai'))
+  const sources = selected.map(file => toDocumentInsightSource(file, panTreeStore.user_id || '')).filter(Boolean) as any[]
+  const availableSources = panFileStore.ListDataShow.map(file => toDocumentInsightSource(file, panTreeStore.user_id || '')).filter(Boolean) as any[]
+  openDocumentInsight({ sources, availableSources, scopeName: String(panTreeStore.selectDir?.name || ''), initialPrompt })
   appStore.toggleTab('ai-workspace')
 }
 </script>
@@ -238,10 +237,13 @@ function openDocumentAI() {
         <template #icon><IconFont name="iconfile-zip" /></template>
         <template #default>ZIP {{ t('file.download') }}</template>
       </a-doption>
-      <a-doption v-if='isDocumentAIAvailable' @click='openDocumentAI'>
-        <template #icon><IconFont name="iconscan" /></template>
-        <template #default>{{ t('file.analyzeWithAi') }} <span class="ai-pro-badge">Pro</span></template>
-      </a-doption>
+      <a-dsubmenu v-if='isDocumentAIAvailable' trigger='hover'>
+        <template #default><span class='arco-dropdown-option-icon'><IconFont name="iconscan" /></span>{{ t('file.analyzeWithAi') }} <span class="ai-pro-badge">Pro</span></template>
+        <template #content>
+          <a-doption @click='openDocumentAI()'>AI 问答</a-doption>
+          <a-doption @click="openDocumentAI('总结这些来源')">AI 摘要</a-doption>
+        </template>
+      </a-dsubmenu>
       <a-doption v-if='isDrive115Torrent' @click='openDrive115Torrent'>
         <template #icon><IconFont name="icondownload" /></template>
         <template #default>{{ t('file.drive115CloudDownload') }}</template>

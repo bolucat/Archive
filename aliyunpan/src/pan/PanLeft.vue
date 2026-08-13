@@ -223,11 +223,12 @@ const quickSelectedKeys = computed(() => {
   return item ? [item.id] : []
 })
 const filterTreeData = computed(() => {
-  const isRemoteDrive = isRemoteDriveUser(pantreeStore.user_id || '')
-  const isCloudUser = isCloud123User(pantreeStore.user_id || '') || isPikPakUser(pantreeStore.user_id || '') || isDropboxUser(pantreeStore.user_id || '') || isOneDriveUser(pantreeStore.user_id || '') || isBoxUser(pantreeStore.user_id || '') || isRemoteDrive
+  const userId = pantreeStore.user_id || ''
+  const isRemoteDrive = isRemoteDriveUser(userId)
+  const isCloudUser = isCloud123User(userId) || isPikPakUser(userId) || isDropboxUser(userId) || isOneDriveUser(userId) || isBoxUser(userId) || isRemoteDrive
+  const providerTreeData = pantreeStore.treeData.filter((item) => item.key !== 'recent' || isBoxUser(userId))
   const baseList = isCloudUser
-    ? pantreeStore.treeData.filter((item) => {
-      if (item.key === 'recent') return isBoxUser(pantreeStore.user_id || '')
+    ? providerTreeData.filter((item) => {
       if (item.key === 'backup_root') return false
       if (item.key === 'resource_root') return false
       if (item.key === 'pic_root') return false
@@ -235,7 +236,7 @@ const filterTreeData = computed(() => {
       if (isRemoteDrive && (item.key === 'trash' || item.key === 'search')) return false
       return true
     })
-    : pantreeStore.treeData.filter((item) => {
+    : providerTreeData.filter((item) => {
       if (!isAliyunAccount.value && (item.key === 'backup_root' || item.key === 'resource_root')) {
         return false
       }

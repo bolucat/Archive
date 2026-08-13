@@ -25,6 +25,9 @@ const LEGACY_SCAN_ONLY_FORMATS = new Set([
   'umd'
 ])
 
+const FIXED_LAYOUT_FORMATS = new Set(['pdf', 'cbz', 'cbr', 'cbt', 'cb7'])
+const COMIC_FORMATS = new Set(['cbz', 'cbr', 'cbt', 'cb7'])
+
 export function normalizeBookExt(ext = ''): string {
   return ext.trim().replace(/^\./, '').toLowerCase()
 }
@@ -43,6 +46,14 @@ export function isLegacyScanOnlyBookFormat(ext = ''): boolean {
 
 export function isScannableBookFormat(ext = ''): boolean {
   return isReadableBookFormat(ext) || isLegacyScanOnlyBookFormat(ext)
+}
+
+export function isFixedLayoutBookFormat(ext = ''): boolean {
+  return FIXED_LAYOUT_FORMATS.has(normalizeBookExt(ext))
+}
+
+export function isComicBookFormat(ext = ''): boolean {
+  return COMIC_FORMATS.has(normalizeBookExt(ext))
 }
 
 export function getFormat(ext = ''): string {

@@ -1,9 +1,9 @@
 <script setup lang='ts'>
 import { computed } from 'vue'
-import { usePanFileStore, usePanTreeStore } from '../../store'
+import { useAppStore, usePanFileStore, usePanTreeStore } from '../../store'
 import { isAliyunUser as isAliyunAccountUser, isBoxUser, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser } from '../../aliapi/utils'
 import { isWebDavDrive } from '../../utils/webdavClient'
-import { supportsCopy, supportsCreateShare, supportsMove, supportsRename, supportsTrashMove, supportsTrashPermanentDelete, supportsZipDownload } from '../../drive/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsDirectPermanentDelete, supportsMove, supportsRename, supportsTrashMove, supportsZipDownload } from '../../drive/providerFeatures'
 
 import {
   menuAddAlbumSelectFile,
@@ -24,6 +24,8 @@ import {
 } from '../topbtns/topbtn'
 import { modalRename, modalShuXing } from '../../utils/modal'
 import { t } from '../../i18n'
+import message from '../../utils/message'
+import { isDocumentInsightFile, MAX_DOCUMENT_INSIGHT_SOURCES, openDocumentInsight, toDocumentInsightSource } from '../../services/documents/insight'
 
 const props = defineProps({
   dirtype: {
@@ -63,6 +65,7 @@ const props = defineProps({
 const istree = false
 const panTreeStore = usePanTreeStore()
 const panFileStore = usePanFileStore()
+const appStore = useAppStore()
 const isAliyunAccount = computed(() => isAliyunAccountUser(panTreeStore.user_id || ''))
 const isDropbox = computed(() => isDropboxUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'dropbox')
 const isOneDrive = computed(() => isOneDriveUser(panTreeStore.user_id || '') || panTreeStore.drive_id === 'onedrive')
@@ -76,7 +79,7 @@ const isCopySupported = computed(() => supportsCopy(panTreeStore.user_id || '', 
 const isMoveSupported = computed(() => supportsMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isRenameSupported = computed(() => supportsRename(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isTrashSupported = computed(() => supportsTrashMove(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
-const isPermanentDeleteSupported = computed(() => supportsTrashPermanentDelete(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
+const isPermanentDeleteSupported = computed(() => supportsDirectPermanentDelete(panTreeStore.user_id || '', panTreeStore.drive_id || ''))
 const isWebDav = computed(() => isWebDavDrive(panTreeStore.drive_id || panTreeStore.selectDir.drive_id))
 const isBoxZipDownload = computed(() => {
   if (!supportsZipDownload(panTreeStore.user_id || '', panTreeStore.drive_id || '')) return false
@@ -91,6 +94,22 @@ const isShowBtn = computed(() => {
 const isPic = computed(() => {
   return (props.dirtype === 'pic' && props.inputpicType == 'mypic')
 })
+const isDocumentAIAvailable = computed(() => {
+  const selected = panFileStore.GetSelected()
+  return selected.length > 0 && selected.length <= MAX_DOCUMENT_INSIGHT_SOURCES && selected.every(isDocumentInsightFile)
+})
+
+function openDocumentAI(initialPrompt = '') {
+  const selected = panFileStore.GetSelected()
+  if (!isDocumentAIAvailable.value) {
+    message.warning(t('file.documentAiUnsupported'))
+    return
+  }
+  const sources = selected.map(file => toDocumentInsightSource(file, panTreeStore.user_id || '')).filter(Boolean) as any[]
+  const availableSources = panFileStore.ListDataShow.map(file => toDocumentInsightSource(file, panTreeStore.user_id || '')).filter(Boolean) as any[]
+  openDocumentInsight({ sources, availableSources, scopeName: String(panTreeStore.selectDir?.name || ''), initialPrompt })
+  appStore.toggleTab('ai-workspace')
+}
 </script>
 
 <template>
@@ -99,6 +118,13 @@ const isPic = computed(() => {
               @click='() => menuDownload(istree)'>
       <IconFont name="icondownload" />{{ t('file.download') }}
     </a-button>
+    <a-dropdown v-if='isDocumentAIAvailable' trigger='hover' class='rightmenu' position='bl'>
+      <a-button type='text' size='small' tabindex='-1' title='BoxPlayer AI'><IconFont name="iconscan" />{{ t('file.analyzeWithAi') }} <span class='ai-pro-badge'>Pro</span><IconFont name='icondown' /></a-button>
+      <template #content>
+        <a-doption @click="openDocumentAI()">AI 问答</a-doption>
+        <a-doption @click="openDocumentAI('总结这些来源')">AI 摘要</a-doption>
+      </template>
+    </a-dropdown>
     <a-button v-if='!isPic && dirtype != "video" && isBoxZipDownload' type='text' size='small' tabindex='-1' title='Ctrl+D'
               @click='() => menuDownload(istree)'>
       <IconFont name="iconfile-zip" />ZIP {{ t('file.download') }}

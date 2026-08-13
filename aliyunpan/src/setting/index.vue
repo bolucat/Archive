@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useAppStore } from '../store'
 import SettingPlay from './SettingPlay.vue'
 import SettingMediaServerPlayback from './SettingMediaServerPlayback.vue'
@@ -25,6 +25,56 @@ withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sidebarVisible: true
 let observer: any
 
 const hideSetting = computed(() => appStore.appTab !== 'setting')
+const settingSearch = ref('')
+const settingSearchResults = ref<Array<{ label: string; element: HTMLElement }>>([])
+const settingSearchAnchor = ref<HTMLElement>()
+const settingSearchPopupStyle = ref<Record<string, string>>({})
+
+const matchesSettingSearch = (text: string, query: string) => {
+  const source = text.toLocaleLowerCase()
+  const keyword = query.toLocaleLowerCase().replace(/\s+/g, '')
+  if (!keyword) return true
+  if (source.includes(keyword)) return true
+  let position = 0
+  return [...keyword].every((character) => {
+    position = source.indexOf(character, position)
+    if (position < 0) return false
+    position += character.length
+    return true
+  })
+}
+
+const refreshSettingSearch = async () => {
+  await nextTick()
+  const query = settingSearch.value.trim()
+  if (!query) {
+    settingSearchResults.value = []
+    return
+  }
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('#SettingObserver .settingrow'))
+  settingSearchResults.value = rows
+    .filter((row) => matchesSettingSearch(row.innerText.replace(/\s+/g, ' '), query))
+    .slice(0, 20)
+    .map((element) => ({ label: element.innerText.replace(/\s+/g, ' ').trim(), element }))
+  updateSettingSearchPopupPosition()
+}
+
+const updateSettingSearchPopupPosition = () => {
+  const rect = settingSearchAnchor.value?.getBoundingClientRect()
+  if (!rect) return
+  settingSearchPopupStyle.value = {
+    left: `${Math.round(rect.left)}px`,
+    top: `${Math.round(rect.bottom + 8)}px`,
+    width: `${Math.max(300, Math.round(rect.width))}px`
+  }
+}
+
+const locateSettingSearchResult = (result: { element: HTMLElement }) => {
+  result.element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  result.element.classList.remove('settings-search-hit')
+  window.requestAnimationFrame(() => result.element.classList.add('settings-search-hit'))
+  window.setTimeout(() => result.element.classList.remove('settings-search-hit'), 1400)
+}
 
 const sectionMeta: Record<string, { title: string }> = {
   SettingUI: { title: 'settings.app' },
@@ -46,6 +96,7 @@ const sectionMeta: Record<string, { title: string }> = {
 }
 
 onMounted(() => {
+  window.addEventListener('resize', updateSettingSearchPopupPosition)
   const root = document.getElementById('SettingObserver')
   if (!root) return
 
@@ -90,6 +141,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (observer) observer.disconnect()
+  window.removeEventListener('resize', updateSettingSearchPopupPosition)
 })
 </script>
 
@@ -99,6 +151,9 @@ onUnmounted(() => {
       <div class='headdesc settings-side-title'>
         <span class="settings-side-kicker">{{ t('settings.preferences') }}</span>
         <strong>{{ t('settings.center') }}</strong>
+      </div>
+      <div ref="settingSearchAnchor" class="settings-search">
+        <a-input-search v-model="settingSearch" allow-clear :placeholder="t('settings.searchPlaceholder')" @input="refreshSettingSearch" @clear="refreshSettingSearch" />
       </div>
       <a-menu :selected-keys="[appStore.GetAppTabMenu]" :style="{ width: '100%' }" class="xbyleftmenu single-boundary-sidebar-menu"
               @update:selected-keys="appStore.toggleTabMenu('setting', $event[0])">
@@ -172,6 +227,12 @@ onUnmounted(() => {
         </a-menu-item>
       </a-menu>
     </a-layout-sider>
+    <Teleport to="body">
+      <div v-if="settingSearch.trim()" class="settings-search-results settings-search-results-popup" :style="settingSearchPopupStyle">
+        <button v-for="result in settingSearchResults" :key="result.label" type="button" @click="locateSettingSearchResult(result)">{{ result.label }}</button>
+        <span v-if="!settingSearchResults.length">{{ t('settings.searchNoResults') }}</span>
+      </div>
+    </Teleport>
     <a-layout-content id="SettingObserver" class="xbyright fullscroll settings-content" tabindex="-1" @keydown.tab.prevent="() => true">
       <div id="SettingDiv" class="settings-content-inner">
 <!--        <div class="settings-hero">-->
@@ -283,6 +344,75 @@ onUnmounted(() => {
   position: relative;
   width: min(1180px, 100%);
   margin: 0 auto;
+}
+
+.settings-search {
+  position: relative;
+  z-index: 3;
+  margin: 0 4px 16px;
+}
+
+.settings-search .arco-input-wrapper {
+  min-height: 36px;
+  padding-inline: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.settings-search .arco-input {
+  color: #26364f;
+  font-size: 12px;
+}
+
+.settings-search .arco-input::placeholder {
+  color: #77869c;
+  opacity: 1;
+}
+
+.settings-search-results {
+  display: grid;
+  gap: 6px;
+  max-height: 200px;
+  margin-top: 8px;
+  padding: 6px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.78);
+  box-shadow: 0 10px 22px rgba(78, 97, 128, 0.1);
+}
+
+.settings-search-results-popup {
+  position: fixed;
+  z-index: 1001;
+  max-width: calc(100vw - 16px);
+  max-height: min(360px, calc(100vh - 24px));
+}
+
+.settings-search-results button,
+.settings-search-results span {
+  overflow: hidden;
+  padding: 8px 10px;
+  color: #52627c;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(241, 245, 249, 0.78);
+}
+
+.settings-search-results button { cursor: pointer; }
+.settings-search-results button:hover { color: #1d4ed8; background: rgba(219, 234, 254, 0.9); }
+.settings-search-hit { animation: settings-search-hit 1.4s ease-out; }
+
+@keyframes settings-search-hit {
+  0%, 45% { background: rgba(147, 197, 253, 0.32); }
+  100% { background: transparent; }
 }
 
 .settings-hero {
@@ -755,6 +885,37 @@ body[arco-theme='dark'] .settings-side-title {
   box-shadow:
     0 18px 36px rgba(0, 0, 0, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+}
+
+body[arco-theme='dark'] .settings-search .arco-input-wrapper {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+body[arco-theme='dark'] .settings-search .arco-input {
+  color: rgba(238, 244, 252, 0.94);
+}
+
+body[arco-theme='dark'] .settings-search .arco-input::placeholder {
+  color: rgba(191, 201, 216, 0.56);
+}
+
+body[arco-theme='dark'] .settings-search-results {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(18, 24, 34, 0.9);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+body[arco-theme='dark'] .settings-search-results button,
+body[arco-theme='dark'] .settings-search-results span {
+  color: rgba(210, 221, 236, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+body[arco-theme='dark'] .settings-search-results button:hover {
+  color: #8ff5ea;
+  background: rgba(0, 245, 212, 0.1);
 }
 
 body[arco-theme='dark'] .settings-hero {

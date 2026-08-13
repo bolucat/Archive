@@ -61,6 +61,13 @@
 12. **Media organization**: classify and organize media files into a complete personal media library.<br>
 13. **Unified search**: search across cloud drives and local libraries to find media quickly.<br>
 
+## Document AI
+13.1 **Single-document questions**: open a supported PDF, EPUB, TXT, Markdown, or DOCX file and select **BoxPlayer AI / Analyze with AI** to ask about that document in Preview.<br>
+13.2 **Multi-document conversations**: select supported files from a cloud-drive list, folder, or search result, then ask one question across up to 10 sources.<br>
+13.3 **Grounded answers**: start with built-in prompts such as Summarize, Key takeaways, Improve, and Next steps; answers include hoverable source citations and PDF location jumps.<br>
+13.4 **Source control**: browse the current cloud drive from the conversation to add files in batches, use global filename search as a shortcut, and type `@filename` to clarify the source in a prompt.<br>
+13.5 **Conversation controls**: switch to a wider view, clear the current conversation, copy an answer, and submit response feedback without leaving the document workflow.<br>
+
 ## Playback
 14. **Online HD playback**: play original-quality videos in many formats directly from cloud drives.<br>
 15. **Multi-audio tracks**: switch between audio tracks inside the player.<br>

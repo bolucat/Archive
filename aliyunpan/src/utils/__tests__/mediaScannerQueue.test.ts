@@ -18,6 +18,7 @@ const storage = new Map<string, string>()
 
 vi.mock('../../store/medialibrary', () => ({ useMediaLibraryStore: () => mediaStore }))
 vi.mock('../../store', () => ({ usePanTreeStore: () => ({ drive_id: 'quark', user_id: 'quark_user' }) }))
+vi.mock('../../setting/settingstore', () => ({ default: () => ({ mediaLibrarySubtitleScope: 'same-folder' }) }))
 vi.mock('../../user/userdal', () => ({
   default: {
     GetUserToken: vi.fn().mockReturnValue({ user_id: 'quark_user', tokenfrom: 'quark' }),
@@ -100,6 +101,15 @@ describe('MediaScanner scan queue', () => {
     expect(storage.has('media_scan_checkpoint')).toBe(false)
     finishScan()
     await scan
+  })
+
+  it('does not add a video source when the folder contains no videos', async () => {
+    const scanner = new MediaScanner()
+    ;(scanner as any).getFolderItemsWithRetry = vi.fn().mockResolvedValue([])
+
+    await scanner.scanFolder(folder('book-only-folder'), 'quark', { silent: true })
+
+    expect(mediaStore.addFolder).not.toHaveBeenCalled()
   })
 
   it('rejects a silent Agent scan when provider traversal fails', async () => {

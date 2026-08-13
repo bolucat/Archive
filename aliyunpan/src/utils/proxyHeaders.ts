@@ -1,5 +1,7 @@
 import type { IncomingHttpHeaders } from 'http'
 
+export type ProxyResponseHeaders = Record<string, string | string[] | number | undefined>
+
 const DROPPED_UPSTREAM_HEADERS = new Set([
   'host',
   'connection',
@@ -42,5 +44,23 @@ export function buildUpstreamProxyHeaders(
     }
   }
 
+  return headers
+}
+
+export function ensureInlinePreviewRange(headers: Record<string, string | string[]>, isInlinePreview: boolean): Record<string, string | string[]> {
+  if (isInlinePreview && !headers.range) headers.range = 'bytes=0-'
+  return headers
+}
+
+export function normalizeProxyStatusCode(statusCode: number, contentRange?: string | string[] | number): number {
+  return statusCode === 200 && !!contentRange ? 206 : statusCode
+}
+
+export function normalizeProxyRangeHeaders(headers: ProxyResponseHeaders): ProxyResponseHeaders {
+  const acceptRanges = headers['accept-ranges']
+  const values = Array.isArray(acceptRanges) ? acceptRanges : String(acceptRanges || '').split(',').map(value => value.trim()).filter(Boolean)
+  if (headers['content-range'] && values.length > 0 && values.every(value => String(value).toLowerCase() === 'bytes')) {
+    headers['accept-ranges'] = 'bytes'
+  }
   return headers
 }

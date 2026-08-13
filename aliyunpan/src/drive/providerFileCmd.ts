@@ -1,5 +1,5 @@
 import type { IAliGetFileModel } from '../aliapi/alimodels'
-import { copyCloud123Files, createCloud123Folder, deleteCloud123Files, getCloud123FilesInfo, moveCloud123Files, renameCloud123Files, restoreCloud123Files, trashCloud123Files } from '../cloud123/adapter'
+import { copyCloud123Files, createCloud123Folder, getCloud123FilesInfo, moveCloud123Files, renameCloud123Files, restoreCloud123Files, trashCloud123Files } from '../cloud123/adapter'
 import { copyDrive115Files, createDrive115Folder, deleteDrive115TrashFiles, moveDrive115Files, renameDrive115Files, restoreDrive115TrashFiles, trashDrive115Files } from '../cloud115/adapter'
 import { copyBaiduFiles, createBaiduFolder, moveBaiduFiles, renameBaiduFiles, trashBaiduFiles } from '../cloudbaidu/adapter'
 import { copyPikPakFiles, createPikPakFolder, deletePikPakTrashFiles, movePikPakFiles, renamePikPakFiles, restorePikPakTrashFiles, trashPikPakFiles } from '../pikpak/adapter'
@@ -22,6 +22,7 @@ export type ProviderFileCommandOptions = { parentDescription?: string; names?: s
 export type ProviderFileCommandNotice = 'delete' | 'trashClean' | 'trashRestore' | 'copy'
 
 export const getProviderFileCommandNotice = (provider: DriveProvider, operation: ProviderFileCommandNotice): string => {
+  if ((operation === 'delete' || operation === 'trashClean') && provider === 'cloud123') return '123 网盘开放 API 暂不支持彻底删除回收站文件，请在官方客户端或网页端操作'
   if (operation === 'delete' && provider === '115') return '115网盘不支持直接彻底删除，请先移入回收站后再删除'
   if (operation === 'delete' && provider === 'box') return 'Box 文件需先移入回收站后才能彻底删除'
   if (operation === 'trashClean' && provider === 'guangya') return '光鸭云盘请在官方客户端彻底删除回收站文件'
@@ -47,8 +48,13 @@ export const getProviderFileCommandContext = (provider: DriveProvider, fileIds: 
 }
 
 export const getProviderFolderCommandContext = (provider: DriveProvider, parentFileId: string): ProviderFileCommandOptions => {
-  if (provider !== 'baidu') return {}
   const fileStore = usePanFileStore()
+  if (provider === 'dropbox') {
+    const selected = usePanTreeStore().selectDir
+    const parent = (fileStore.ListDataRaw || []).find(item => item.file_id === parentFileId)
+    return { parentDescription: parent?.description || (selected.file_id === parentFileId ? selected.description : '') }
+  }
+  if (provider !== 'baidu') return {}
   return {
     targetPath: resolveBaiduTargetPath(parentFileId, '', '', fileStore.ListDataRaw || [], usePanTreeStore().selectDir)
   }
@@ -69,7 +75,7 @@ export const createProviderFolder = (provider: DriveProvider, userId: string, pa
     case '139': return createCloud139Folder(userId, parentFileId, name)
     case '189': return createCloud189Folder(userId, parentFileId, name)
     case 'guangya': return createGuangyaFolder(userId, parentFileId, name)
-    case 'dropbox': return createDropboxFolder(userId, parentFileId, name)
+    case 'dropbox': return createDropboxFolder(userId, parentFileId, name, options.parentDescription)
     case 'onedrive': return createOneDriveFolder(userId, parentFileId, name)
     case 'box': return createBoxFolder(userId, parentFileId, name)
     case 'google': return createGoogleFolder(userId, parentFileId, name)
@@ -97,7 +103,6 @@ export const trashProviderFiles = (provider: DriveProvider, userId: string, file
 
 export const deleteProviderFiles = (provider: DriveProvider, userId: string, fileIds: string[], options: ProviderFileCommandOptions = {}): Promise<string[]> => {
   switch (provider) {
-    case 'cloud123': return deleteCloud123Files(userId, fileIds)
     case 'baidu': return trashBaiduFiles(userId, options.sourcePaths || fileIds)
     case 'pikpak': return deletePikPakTrashFiles(userId, fileIds)
     case 'quark': return trashQuarkFiles(userId, fileIds)
@@ -179,7 +184,6 @@ export const cleanProviderTrash = (provider: DriveProvider, userId: string, file
   switch (provider) {
     case 'box': return cleanBoxTrashFiles(userId, fileIds, options.boxTypes)
     case 'google': return deleteGoogleFiles(userId, fileIds)
-    case 'cloud123': return deleteCloud123Files(userId, fileIds)
     case '115': return deleteDrive115TrashFiles(userId, fileIds)
     case 'pikpak': return deletePikPakTrashFiles(userId, fileIds)
     case 'quark': return trashQuarkFiles(userId, fileIds)

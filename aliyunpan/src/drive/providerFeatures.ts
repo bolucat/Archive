@@ -26,6 +26,18 @@ export const supportsCopy = (userId: string, driveId: string) => supportsProvide
 export const supportsTrashMove = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'trash.move')
 export const supportsTrashRestore = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'trash.restore')
 export const supportsTrashPermanentDelete = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'trash.delete')
+export const supportsDirectPermanentDelete = (userId: string, driveId: string) => {
+  const provider = providerPlatform(userId, driveId)
+  return provider !== '115' && provider !== 'box' && supportsProviderOperation(userId, driveId, 'trash.delete')
+}
+
+export const isWritableProviderDirectory = (fileId: string) => {
+  const id = String(fileId || '')
+  // The toolbar can render before the root directory has been hydrated into
+  // selectDir. Treat that transient empty value as writable; individual file
+  // operations still validate the destination before sending a request.
+  return !id.startsWith('search') && !['recent', 'favorite', 'trash', 'google_shared', 'google_shared_drives'].includes(id)
+}
 
 export function isProviderReadOnly(userId: string, driveId: string): boolean {
   return !(['files.createFolder', 'files.rename', 'files.move', 'files.copy', 'upload.local', 'upload.memory', 'upload.encrypted', 'share.create', 'share.import', 'trash.move', 'trash.delete'] as DriveOperation[])

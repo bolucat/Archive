@@ -160,7 +160,7 @@ export const mapCloud189FileToAliModel = (item: Cloud189FileItem, drive_id = 'cl
     timeStr: time ? humanDateTimeDateStr(new Date(time).toISOString()) : '',
     starred: false,
     isDir,
-    thumbnail: item.icon?.smallUrl || item.icon?.mediumUrl || item.icon?.max600 || '',
+    thumbnail: item.icon?.max600 || item.icon?.mediumUrl || item.icon?.smallUrl || '',
     description: `cloud189_id:${file_id}`
   }
 }

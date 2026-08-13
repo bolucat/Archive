@@ -345,6 +345,17 @@ export default class TreeStore {
       time: 0,
       description: ''
     }
+    if (file_id == 'recent') return {
+      __v_skip: true,
+      drive_id,
+      file_id: 'recent',
+      parent_file_id: '',
+      name: '最近文件',
+      namesearch: '',
+      size: 0,
+      time: 0,
+      description: ''
+    }
     if (file_id == 'trash') return {
       __v_skip: true,
       drive_id,
@@ -485,6 +496,17 @@ export default class TreeStore {
       file_id: 'favorite',
       parent_file_id: '',
       name: t('tree.favorites'),
+      namesearch: '',
+      size: 0,
+      time: 0,
+      description: ''
+    }]
+    if (file_id == 'recent') return [{
+      __v_skip: true,
+      drive_id,
+      file_id: 'recent',
+      parent_file_id: '',
+      name: '最近文件',
       namesearch: '',
       size: 0,
       time: 0,

@@ -28,13 +28,13 @@ export const createDropboxShare = async (userId: string, driveId: string, fileId
   return result.error || result.item || '创建 Dropbox 分享链接失败'
 }
 
-export const uploadDropboxTextFile = async (accessToken: string, parentFileId: string, fileName: string, content: string, encType: string) => {
+export const uploadDropboxTextFile = async (accessToken: string, parentFileId: string, fileName: string, content: string, encType: string, parentDescription = '') => {
   if (encType) return 'Dropbox 暂不支持加密新建文件'
-  const result = await apiDropboxUploadBuffer(accessToken, parentFileId, fileName, Buffer.from(content || '', 'utf-8'), 'refuse')
+  const result = await apiDropboxUploadBuffer(accessToken, parentFileId, fileName, Buffer.from(content || '', 'utf-8'), 'refuse', parentDescription)
   return result.error || 'success'
 }
 
-export const createDropboxFolder = (userId: string, parentFileId: string, name: string) => apiDropboxMkdir(userId, parentFileId.includes('root') ? 'dropbox_root' : parentFileId, name)
+export const createDropboxFolder = (userId: string, parentFileId: string, name: string, parentDescription = '') => apiDropboxMkdir(userId, parentFileId.includes('root') ? 'dropbox_root' : parentFileId, name, parentDescription)
 
 export const trashDropboxFiles = (userId: string, fileIds: string[]) => apiDropboxDeleteBatch(userId, fileIds)
 

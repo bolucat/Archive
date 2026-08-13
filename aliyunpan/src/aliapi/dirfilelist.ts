@@ -12,6 +12,7 @@ import { DecodeEncName, GetDriveID } from './utils'
 import { buildAliColorSearchDriveIds } from './colorSearch'
 import { resolveAliFileDriveId } from './fileModelDrive'
 import { listProviderSpecialItems } from '../drive/providerSpecialList'
+import { isScanRateLimitedError, runRateLimitedScanRequest } from '../utils/libraryScanRateLimiter'
 
 
 export interface IAliFileResp {
@@ -468,7 +469,7 @@ export default class AliDirFileList {
    * Streams ordinary directory-list pages without retaining preceding pages.
    * Scanner callers must use this instead of ApiDirFileList for large folders.
    */
-  static async *ApiDirFileListPages(user_id: string, drive_id: string, dirID: string, dirName: string, order: string = 'name asc', type: string = '', refresh: boolean = false): AsyncGenerator<IAliGetFileModel[]> {
+  static async *ApiDirFileListPages(user_id: string, drive_id: string, dirID: string, dirName: string, order: string = 'name asc', type: string = '', refresh: boolean = false, rateLimitScope = ''): AsyncGenerator<IAliGetFileModel[]> {
     if (!user_id || !drive_id || !dirID) return
     const dir = NewIAliFileResp(user_id, drive_id, dirID, dirName)
     const normalizedOrder = order.replace(' desc', ' DESC').replace(' asc', ' ASC').split(' ')
@@ -478,7 +479,7 @@ export default class AliDirFileList {
     do {
       if (seenMarkers.has(dir.next_marker)) throw new Error('阿里云盘目录分页游标重复')
       seenMarkers.add(dir.next_marker)
-      const isGet = await AliDirFileList._ApiDirFileListOnePage(normalizedOrder[0], normalizedOrder[1], dir, type, pageIndex, refresh)
+      const isGet = await AliDirFileList._ApiDirFileListOnePage(normalizedOrder[0], normalizedOrder[1], dir, type, pageIndex, refresh, rateLimitScope)
       if (!isGet || dir.next_marker === 'cancel') throw new Error('获取阿里云盘目录列表失败')
       const items = dir.items
       dir.items = []
@@ -488,7 +489,7 @@ export default class AliDirFileList {
     } while (dir.next_marker)
   }
 
-  private static async _ApiDirFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string, pageIndex: number, refresh: boolean = true): Promise<boolean> {
+  private static async _ApiDirFileListOnePage(orderby: string, order: string, dir: IAliFileResp, type: string, pageIndex: number, refresh: boolean = true, rateLimitScope = ''): Promise<boolean> {
     let url = 'adrive/v3/file/list'
     if (useSettingStore().uiShowPanMedia == false) {
       url += '?jsonmask=next_marker%2Citems(' + AliDirFileList.ItemJsonmask + ')'
@@ -510,7 +511,14 @@ export default class AliDirFileList {
       postData = Object.assign(postData, { type })
       pageIndex = -1
     }
-    const resp = await AliHttp.Post(url, postData, dir.m_user_id, '')
+    const request = async () => {
+      const resp = await AliHttp.Post(url, postData, dir.m_user_id, '')
+      const body = resp.body as { code?: unknown; message?: unknown } | undefined
+      const error = { status: resp.code, code: body?.code, message: body?.message }
+      if (isScanRateLimitedError(error)) throw Object.assign(new Error(String(body?.message || body?.code || resp.code)), error)
+      return resp
+    }
+    const resp = rateLimitScope ? await runRateLimitedScanRequest(rateLimitScope, request) : await request()
     return AliDirFileList._FileListOnePage(orderby, order, dir, resp, pageIndex, type, refresh)
   }
 

@@ -161,13 +161,14 @@ describe('getMediaServerPlaybackInfo', () => {
     expect(url.searchParams.get('tag')).toBe('item-etag')
   })
 
-  it('throws when playback info does not include the requested source id and etag pair', async () => {
+  it('throws when playback info returns multiple sources without the requested source id and etag pair', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const payload = url.includes('/PlaybackInfo?')
         ? {
             PlaySessionId: 'play-session-1',
             MediaSources: [
-              { Id: 'source-1', ETag: 'etag-wrong', DirectStreamUrl: '/Videos/item-1/wrong.mkv' }
+              { Id: 'source-wrong-1', ETag: 'etag-wrong-1', DirectStreamUrl: '/Videos/item-1/wrong-1.mkv' },
+              { Id: 'source-wrong-2', ETag: 'etag-wrong-2', DirectStreamUrl: '/Videos/item-1/wrong-2.mkv' }
             ]
           }
         : {
@@ -259,6 +260,97 @@ describe('getMediaServerPlaybackInfo', () => {
     const playback = await getMediaServerPlaybackInfo(baseConfig('jellyfin'), 'item-1', 'source-1', -1, -1, -1, 'max', 'mostCompatible')
 
     expect(playback.url).toContain('/Videos/item-1/direct.mp4')
+    expect(playback.tracksSelectable).toBe(false)
+  })
+
+  it('requests a browser compatible transcode for an EAC3 default audio stream', async () => {
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const payload = url.includes('/PlaybackInfo?')
+        ? {
+            PlaySessionId: 'play-session-1',
+            MediaSources: [{
+              Id: 'source-1',
+              ETag: 'source-etag',
+              Protocol: 'http',
+              DirectStreamUrl: '/Videos/item-1/original.mkv',
+              TranscodingUrl: '/Videos/item-1/master.m3u8?AudioCodec=aac',
+              MediaStreams: [{ Index: 1, Type: 'Audio', Codec: 'eac3', IsDefault: true }]
+            }]
+          }
+        : {
+            Id: 'item-1',
+            ETag: 'item-etag',
+            MediaSources: [{
+              Id: 'source-1',
+              ETag: 'source-etag',
+              DefaultAudioStreamIndex: 1,
+              MediaStreams: [{ Index: 1, Type: 'Audio', Codec: 'eac3', IsDefault: true }]
+            }]
+          }
+      return { ok: true, json: async () => payload }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const playback = await getMediaServerPlaybackInfo(baseConfig('emby'), 'item-1', 'source-1')
+    const playbackInfoCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/PlaybackInfo?'))
+    const requestUrl = new URL(String(playbackInfoCall?.[0]))
+    const requestBody = JSON.parse(String(playbackInfoCall?.[1]?.body || '{}'))
+
+    expect(requestUrl.searchParams.get('EnableTranscoding')).toBe('true')
+    expect(requestBody).toEqual(expect.objectContaining({
+      EnableDirectPlay: false,
+      EnableDirectStream: false,
+      EnableTranscoding: true
+    }))
+    expect(playback.url).toContain('/Videos/item-1/master.m3u8')
+    expect(playback.tracksSelectable).toBe(true)
+    expect(playback.headers['User-Agent']).toBe('SenPlayer')
+  })
+
+  it('falls back to direct play when an EAC3 stream has no server transcode url', async () => {
+    const fetchMock = vi.fn(async (url: string, _init?: RequestInit) => {
+      const isForcedCompatibilityRequest = new URL(url).searchParams.get('EnableTranscoding') === 'true'
+      const payload = url.includes('/PlaybackInfo?')
+        ? {
+            PlaySessionId: 'play-session-1',
+            MediaSources: [{
+              Id: 'source-1',
+              ETag: 'source-etag',
+              Protocol: 'http',
+              DirectStreamUrl: isForcedCompatibilityRequest ? undefined : '/Videos/item-1/original.mkv',
+              MediaStreams: [{ Index: 1, Type: 'Audio', Codec: 'eac3', IsDefault: true }]
+            }]
+          }
+        : {
+            Id: 'item-1',
+            ETag: 'item-etag',
+            MediaSources: [{
+              Id: 'source-1',
+              ETag: 'source-etag',
+              DefaultAudioStreamIndex: 1,
+              MediaStreams: [{ Index: 1, Type: 'Audio', Codec: 'eac3', IsDefault: true }]
+            }]
+          }
+      return { ok: true, json: async () => payload }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const playback = await getMediaServerPlaybackInfo(baseConfig('emby'), 'item-1', 'source-1')
+    const playbackInfoCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/PlaybackInfo?'))
+    const fallbackRequestUrl = new URL(String(playbackInfoCalls[1][0]))
+    const fallbackRequestBody = JSON.parse(String(playbackInfoCalls[1][1]?.body || '{}'))
+
+    expect(playbackInfoCalls).toHaveLength(2)
+    expect(fallbackRequestUrl.searchParams.get('EnableDirectPlay')).toBe('true')
+    expect(fallbackRequestUrl.searchParams.get('EnableDirectStream')).toBe('true')
+    expect(fallbackRequestUrl.searchParams.get('EnableTranscoding')).toBe('false')
+    expect(fallbackRequestBody).toEqual(expect.objectContaining({
+      EnableDirectPlay: true,
+      EnableDirectStream: true,
+      EnableTranscoding: false
+    }))
+    expect(playback.url).toContain('/Videos/item-1/original.mkv')
+    expect(playback.tracksSelectable).toBe(false)
   })
 
   it('requests a browser compatible transcode when media server quality limits bitrate', async () => {
@@ -333,6 +425,7 @@ describe('getMediaServerPlaybackInfo', () => {
     const playback = await getMediaServerPlaybackInfo(baseConfig('jellyfin'), 'item-1', 'source-1', -1, -1, -1, 'max', 'mostCompatible')
 
     expect(playback.url).toContain('/Videos/item-1/master.m3u8')
+    expect(playback.tracksSelectable).toBe(true)
   })
 
   it('adds saved custom device profiles to the default profile for playback info requests', async () => {

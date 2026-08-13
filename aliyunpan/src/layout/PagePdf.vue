@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.js?url'
+import { Sparkles } from 'lucide-vue-next'
+import DocumentAIModal from '../components/DocumentAIModal.vue'
+import LimitReachedModal from '../setting/LimitReachedModal.vue'
 import { KeyboardState, useAppStore, useKeyboardStore } from '../store'
 import { TestAlt, TestKey } from '../utils/keyboardhelper'
 import message from '../utils/message'
+import { isPro } from '../utils/usageLimit'
 
 ;(pdfjsLib as any).GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 
@@ -23,6 +27,14 @@ const pageCount = ref(0)
 const scale = ref(1.15)
 const loading = ref(true)
 const errorText = ref('')
+const aiVisible = ref(false)
+const aiInitialPrompt = ref('')
+const showUpgradeModal = ref(false)
+const aiFile = computed(() => {
+  const file = appStore.pagePdf
+  if (!file) return null
+  return { file_id: file.file_id, drive_id: file.drive_id, name: file.file_name }
+})
 
 let pdfDoc: any = null
 let loadingTask: any = null
@@ -131,6 +143,20 @@ const zoomIn = () => {
   scale.value = Math.min(3, Number((scale.value + 0.15).toFixed(2)))
 }
 
+const openDocumentAI = (prompt = '') => {
+  if (!isPro()) {
+    showUpgradeModal.value = true
+    return
+  }
+  aiInitialPrompt.value = prompt
+  aiVisible.value = true
+}
+
+const jumpToLocation = (location: string) => {
+  const page = Number(location.match(/^page:(\d+)/)?.[1] || 0)
+  if (page > 0 && page <= pageCount.value) pageNum.value = page
+}
+
 watch([pageNum, scale], () => {
   renderPage()
 })
@@ -152,7 +178,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <a-layout style="height: 100vh; background: #f2f4f7" draggable="false">
+  <a-layout class="pdf-shell" style="height: 100vh" draggable="false">
     <a-layout-header id="xbyhead" draggable="false">
       <div id="xbyhead2" class="q-electron-drag">
         <a-button type="text" tabindex="-1">
@@ -166,6 +192,13 @@ onBeforeUnmount(() => {
           <a-button type="outline" size="mini" @click="zoomOut">-</a-button>
           <span class="pdf-page-text">{{ Math.round(scale * 100) }}%</span>
           <a-button type="outline" size="mini" @click="zoomIn">+</a-button>
+          <a-dropdown trigger="hover">
+            <a-button class="pdf-ai-button" type="outline" size="mini"><Sparkles :size="14" /> BoxPlayer AI</a-button>
+            <template #content>
+              <a-doption @click="openDocumentAI('总结这份文档')">总结这份文档</a-doption>
+              <a-doption @click="openDocumentAI()">询问这份文档</a-doption>
+            </template>
+          </a-dropdown>
         </div>
         <div class="flexauto"></div>
         <a-button type='text' tabindex='-1' title='最小化 Alt+M' @click='handleMinClick'>
@@ -179,22 +212,46 @@ onBeforeUnmount(() => {
         </a-button>
       </div>
     </a-layout-header>
-    <a-layout-content style="height: calc(100vh - 42px); background: #f2f4f7">
+    <a-layout-content class="pdf-shell__content" style="height: calc(100vh - 42px)">
+      <div class="pdf-content">
       <div class="pdf-preview">
         <a-spin v-if="loading" class="pdf-loading" :size="32" tip="加载中..." />
         <a-empty v-if="!loading && errorText" class="pdf-error" :description="errorText" />
         <canvas ref="canvasRef" class="pdf-canvas" />
       </div>
+      <DocumentAIModal v-if="aiVisible && aiFile" :visible="aiVisible" :file="aiFile" :initial-prompt="aiInitialPrompt" mode="sidebar" :user-id="appStore.pagePdf?.user_id || ''" @jump-to-location="jumpToLocation" @update:visible="aiVisible = $event" />
+      </div>
     </a-layout-content>
   </a-layout>
+  <LimitReachedModal :visible="showUpgradeModal" @update:visible="showUpgradeModal = $event" />
 </template>
 
 <style scoped>
+.pdf-shell,
+.pdf-shell__content {
+  background: var(--color-bg-2);
+}
+
 .pdf-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-left: 12px;
+}
+
+.pdf-ai-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  color: #6558e8;
+}
+
+.pdf-content {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 .pdf-page-text {
@@ -206,7 +263,8 @@ onBeforeUnmount(() => {
 
 .pdf-preview {
   position: relative;
-  width: 100%;
+  min-width: 0;
+  flex: 1;
   height: 100%;
   overflow: auto;
   text-align: center;

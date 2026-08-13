@@ -4,8 +4,10 @@ export const apiCloud139Mkdir = async (user_id: string, parentId: string, name: 
   try {
     const data = await cloud139Request(user_id, '/file/create', {
       parentFileId: cloud139ApiParentId(parentId),
-      fileName: name,
-      type: 'folder'
+      name,
+      description: '',
+      type: 'folder',
+      fileRenameMode: 'force_rename'
     })
     const fileId = data?.data?.fileId || data?.data?.catalogId || data?.fileId || data?.catalogId || ''
     return { file_id: String(fileId || ''), error: fileId ? '' : '新建文件夹失败' }

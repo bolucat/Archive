@@ -535,7 +535,7 @@ export default class AliFile {
     // 原始文件大小
     if (filesize === -1) filesize = downUrl.size
     if (maxsize === -1) maxsize = downUrl.size
-    const resp = await AliHttp.GetString(downUrl.url, '', filesize, maxsize)
+    const resp = await AliHttp.GetString(downUrl.url, user_id, filesize, maxsize, downUrl.headers || {}, true)
     if (AliHttp.IsSuccess(resp.code)) {
       if (typeof resp.body == 'string') return resp.body
       return JSON.stringify(resp.body, undefined, 2)

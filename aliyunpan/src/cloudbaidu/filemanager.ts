@@ -42,6 +42,7 @@ const requestFileManager = async (
   if (!resp.ok) return []
   const data = (await resp.json()) as BaiduFileManagerResp
   if (data?.errno !== 0) return []
+  if (opera === 'delete' && data.taskid) return filelist.filter((path): path is string => typeof path === 'string' && !!path)
   return (data.info || []).map((item) => item.path || '').filter(Boolean)
 }
 
@@ -61,5 +62,5 @@ export const apiBaiduRename = async (user_id: string, path: string, newname: str
 }
 
 export const apiBaiduDelete = async (user_id: string, paths: string[]): Promise<string[]> => {
-  return requestFileManager(user_id, 'delete', paths, 'fail', 1)
+  return requestFileManager(user_id, 'delete', paths, 'fail', 2)
 }

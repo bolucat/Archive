@@ -75,7 +75,7 @@ export default defineComponent({
         }
 
         this.okLoading = true
-        DriveUploadMem.UploadMem(pantreeStore.user_id, pantreeStore.drive_id, pantreeStore.selectDir.file_id, newName, this.form.fileContext, this.encType)
+        DriveUploadMem.UploadMem(pantreeStore.user_id, pantreeStore.drive_id, pantreeStore.selectDir.file_id, newName, this.form.fileContext, this.encType, pantreeStore.selectDir.description || '')
           .then((data) => {
             this.okLoading = false
             if (data && data == 'success') {

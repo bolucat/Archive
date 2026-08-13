@@ -26,7 +26,7 @@ export const buildDropboxThumbnailDataUrl = (bytes: Uint8Array, format: DropboxT
 }
 
 export const buildDropboxThumbnailBatchBody = (fileIds: string[], format: DropboxThumbnailFormat = 'jpeg', size: DropboxThumbnailSize = 'w256h256') => ({
-  entries: fileIds.map((path) => ({ path, format, size, mode: 'strict', quality: 'quality_80' }))
+  entries: fileIds.map((path) => ({ path, format, size, mode: 'strict' }))
 })
 
 type DropboxThumbnailBatchResponse = {

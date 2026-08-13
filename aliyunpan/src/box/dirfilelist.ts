@@ -153,7 +153,7 @@ const encodeDescription = (item: BoxItem) => {
 
 const pickThumbnail = (item: BoxItem) => {
   const template = item.representations?.entries?.[0]?.content?.url_template || ''
-  return template ? template.replace('{+asset_path}', '1.png') : ''
+  return template
 }
 
 export const mapBoxItemToAliModel = (item: BoxItem, drive_id: string, parentId: string): IAliGetFileModel => {

@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { menuTrashSelectFile, topRecoverSelectedFile, topRestoreSelectedFile } from '../topbtns/topbtn'
+import { computed } from 'vue'
+import usePanTreeStore from '../pantreestore'
+import { supportsTrashPermanentDelete } from '../../drive/providerFeatures'
 
 const props = defineProps({
   dirtype: {
@@ -7,6 +10,9 @@ const props = defineProps({
     required: true
   }
 })
+
+const panTreeStore = usePanTreeStore()
+const showTrashPermanentDelete = computed(() => props.dirtype === 'trash' && supportsTrashPermanentDelete(panTreeStore.user_id, panTreeStore.drive_id))
 
 </script>
 
@@ -23,7 +29,7 @@ const props = defineProps({
         <template #default>还原选中</template>
       </a-doption>
 
-      <a-doption v-show="dirtype == 'trash'" @click="() => menuTrashSelectFile(false, true)">
+      <a-doption v-if="showTrashPermanentDelete" @click="() => menuTrashSelectFile(false, true)">
         <template #icon><IconFont name="iconrest" /></template>
         <template #default>彻底删除</template>
       </a-doption>
