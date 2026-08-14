@@ -44,6 +44,14 @@ export function buildInitialReaderPosition(position?: BookReaderPosition): BookR
   }
 }
 
+export function hasMeaningfulReadingPosition(position?: BookReaderPosition): boolean {
+  if (!position) return false
+  if (Number(position.percentage) > 0) return true
+  if (position.cfi || position.text || position.xpath || position.chapterHref) return true
+  if (Number(position.chapterDocIndex) > 0) return true
+  return Number(position.page) > 1
+}
+
 export function normalizeReaderPercentage(value: unknown): number {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return 0

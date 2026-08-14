@@ -15,6 +15,7 @@ const props = defineProps<{
   chapterCount: number
   isFixedLayout: boolean
   hideFooter: boolean
+  hideHeader: boolean
 }>()
 
 const isDouble = computed(() => props.layoutMode === 'double')
@@ -31,13 +32,13 @@ const pageText = computed(() => {
   <template v-if="showPageBorder">
     <div class="pw-page-border" :style="{ borderColor: textColor }" />
     <div class="pw-page-border-inner" :style="{ borderColor: textColor }" />
-    <div class="pw-page-border-header-line" :style="{ backgroundColor: textColor }" />
+    <div v-if="!hideHeader" class="pw-page-border-header-line" :style="{ backgroundColor: textColor }" />
     <div v-if="!hideFooter" class="pw-page-border-footer-line" :style="{ backgroundColor: textColor }" />
     <div v-if="isDouble" class="pw-page-border-center-line" :style="{ backgroundColor: textColor }" />
   </template>
 
   <!-- koodo header-container -->
-  <div class="pw-header">
+  <div v-if="!hideHeader" class="pw-header">
     <span class="pw-header-left">{{ chapterTitle || '' }}</span>
     <span class="pw-header-right">{{ bookName }}</span>
   </div>
@@ -124,15 +125,16 @@ const pageText = computed(() => {
 /* koodo header-container */
 .pw-header {
   position: absolute;
-  top: 13px;
+  top: 16px;
   left: 0;
   right: 0;
-  height: 25px;
+  height: 20px;
   display: flex;
   align-items: center;
-  font-size: 13px;
-  line-height: 30px;
-  opacity: 0.3;
+  font-size: 11px;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  opacity: 0.42;
   pointer-events: none;
   z-index: 6;
   white-space: nowrap;
@@ -140,28 +142,29 @@ const pageText = computed(() => {
 .pw-header-left,
 .pw-header-right {
   width: 50%;
-  padding-left: 10%;
-  padding-right: 10%;
+  padding-left: 7%;
+  padding-right: 7%;
   text-overflow: ellipsis;
   white-space: nowrap;
   overflow: hidden;
   text-align: center;
-  line-height: 30px;
+  line-height: 20px;
 }
 
 /* koodo footer-container */
 .pw-footer {
   position: absolute;
-  bottom: 14px;
+  bottom: 16px;
   left: 0;
   right: 0;
-  height: 25px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  line-height: 30px;
-  opacity: 0.3;
+  font-size: 11px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.42;
   pointer-events: none;
   z-index: 6;
   white-space: nowrap;
@@ -172,17 +175,18 @@ const pageText = computed(() => {
   white-space: nowrap;
   overflow: hidden;
   text-align: center;
-  line-height: 30px;
+  line-height: 20px;
 }
 
 /* koodo footer-time */
 .pw-footer-time {
   position: absolute;
-  top: 6px;
-  left: 20px;
-  font-size: 13px;
-  letter-spacing: 0.5px;
-  opacity: 0.5;
+  top: 16px;
+  left: 28px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  opacity: 0.42;
   pointer-events: none;
   z-index: 6;
 }

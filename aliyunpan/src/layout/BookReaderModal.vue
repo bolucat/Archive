@@ -41,7 +41,12 @@ import { getFormat, isComicBookFormat, isFixedLayoutBookFormat } from '../utils/
 import { buildBookReadingPatch, buildBookReadingTimePatch, normalizeReaderPosition, type BookReaderPosition } from '../utils/bookReaderState'
 import {
   loadBookReaderPreferences,
+  loadBookReaderStylePreferences,
+  removeBookReaderStylePreferences,
   saveBookReaderPreferences,
+  saveBookReaderStylePreferences,
+  DEFAULT_BOOK_READER_PREFERENCES,
+  type BookReaderPreferences,
   type BookReaderThemeMode,
   type BookReaderLayoutMode,
   type BookReaderBookLayout,
@@ -54,6 +59,7 @@ import { createBookReader, applyDoublePageCss, type BookChapter, type BookSearch
 import { scrollReaderPageArea } from '../utils/bookReaderScroll'
 import { estimateReaderPageProgressFromElement, normalizeReaderPageProgress } from '../utils/bookReaderProgress'
 import { applyReaderBrightnessToColor, buildReaderContentMarginCss, buildReaderStageStyle } from '../utils/bookReaderLayout'
+import { hasMeaningfulReadingPosition } from '../utils/bookReaderParity'
 import { type AnnotationExportFormat, exportAnnotations as exportAnnotationsFn } from '../utils/bookAnnotationExport'
 import {
   buildBookAIRequest,
@@ -232,6 +238,7 @@ const handledInitialAnnotationTargetKey = ref('')
 let bookReader: BookReaderHandle | null = null
 let readerSaveTimer: number | undefined
 let readerSaveNeedsRecord = false
+let readerMarginReflowTimer: number | undefined
 let readerIframeEventCleanup: (() => void) | null = null
 let readerRenderedCleanup: (() => void) | null = null
 let readingSessionBookId = ''
@@ -424,6 +431,10 @@ const filteredSpeechVoices = computed(() => {
 const selectedSpeechVoice = computed(() => speechVoices.value.find((voice) => getSpeechVoiceId(voice) === readerVoiceURI.value))
 const readerTitle = computed(() => props.book?.title || props.book?.file_name || t('reader.title'))
 const modeClass = computed(() => `reader-${readerMode.value}`)
+const readerSelectTriggerProps = computed(() => ({
+  autoFitPopupMinWidth: true,
+  contentClass: `reader-settings-select-popup reader-settings-select-popup-${readerMode.value}`
+}))
 const isDoublePageMode = computed(() => isReader.value && activeReaderLayoutMode.value === 'double')
 const shellThemeStyle = computed(() => {
   if (!isReader.value) return {}
@@ -468,6 +479,7 @@ const readerStageStyle = computed(() =>
     backgroundColor: readerIsComic.value ? '#0b0c0f' : readerBackgroundColor.value,
     textColor: readerTextColor.value,
     brightness: readerIsComic.value ? 1 : readerBrightness.value,
+    invert: readerIsPDF.value && readerIsInvert.value,
     layoutMode: activeReaderLayoutMode.value
   })
 )
@@ -567,7 +579,7 @@ function handleFullscreen() {
 
 const bookLayoutOptions = [
   { value: '', label: t('layout.default') },
-  { value: 'boxplayer', label: t('layout.recommended') },
+  { value: 'kookit', label: t('layout.recommended') },
   { value: 'heti', label: t('layout.heti') },
   { value: 'han', label: t('layout.han') },
   { value: 'typo', label: t('layout.typo') },
@@ -636,9 +648,14 @@ function cleanup() {
   finishPanelResize()
   flushReadingSession()
   stopReaderSpeech()
+  stopReaderAutoScroll()
   if (readerSaveTimer) {
     window.clearTimeout(readerSaveTimer)
     readerSaveTimer = undefined
+  }
+  if (readerMarginReflowTimer) {
+    window.clearTimeout(readerMarginReflowTimer)
+    readerMarginReflowTimer = undefined
   }
   readerSaveNeedsRecord = false
   for (const side of Object.keys(hoverTimers) as EdgeSide[]) {
@@ -730,6 +747,11 @@ function updateBookSelectionPopup() {
     selectedReaderText.value = selection.text
     selectedReaderSentence.value = selection.sentence
     selectionPopupPosition.value = { x: selection.x, y: selection.y }
+
+    if (readerIsWordDefinition.value && !/\s/.test(selection.text) && selection.text.length <= 40) {
+      openBookLookupPopup('dict')
+      return
+    }
 
     // Auto-trigger if selectAction is set
     const action = readerSelectAction.value
@@ -1055,17 +1077,17 @@ function bindRenderedHook() {
       const iframes = readerContainer.value!.querySelectorAll('iframe')
       iframes.forEach((iframe) => {
         bindIframeColumnGuard(iframe as HTMLIFrameElement)
-        if (fontFamily) {
-          const doc = iframe.contentDocument
-          if (doc?.head) {
-            let fontStyle = doc.getElementById('reader-font-override') as HTMLStyleElement | null
+        const doc = iframe.contentDocument
+        if (doc?.head) {
+          let fontStyle = doc.getElementById('reader-font-override') as HTMLStyleElement | null
+          if (fontFamily) {
             if (!fontStyle) {
               fontStyle = doc.createElement('style')
               fontStyle.id = 'reader-font-override'
               doc.head.appendChild(fontStyle)
             }
-            fontStyle.textContent = `body *{font-family:"${fontFamily}",sans-serif!important}`
-          }
+            fontStyle.textContent = `html,body,body *{font-family:"${fontFamily}",sans-serif!important}`
+          } else fontStyle?.remove()
         }
         if (activeReaderLayoutMode.value === 'scroll') {
           const el = iframe as HTMLIFrameElement
@@ -1079,6 +1101,7 @@ function bindRenderedHook() {
       if (activeReaderLayoutMode.value === 'scroll') {
         readerContainer.value!.style.setProperty('overflow-y', 'auto', 'important')
       }
+      applyReaderStyles()
     }
     apply()
     requestAnimationFrame(() => apply())
@@ -1111,6 +1134,10 @@ async function loadReaderBookBook(_url: string, book: any) {
   bookReader = nextReader
   bookChapters.value = nextReader.getChapters()
   bindRenderedHook()
+  const savedPosition = normalizeReaderPosition(book?.reading_position)
+  if (!props.initialAnnotationTarget && !hasMeaningfulReadingPosition(savedPosition) && bookChapters.value.length) {
+    await nextReader.goToChapter(0)
+  }
   const notes = book ? await bookStore.loadNotesByBookId(book.id) : []
   if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
   if (book) await bookStore.loadBookmarksByBookId(book.id)
@@ -1124,10 +1151,14 @@ async function loadReaderBookBook(_url: string, book: any) {
   if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return
   bindReaderIframeEventListeners()
   applyReaderStyles()
+  syncReaderAutoScroll()
   await scheduleFullTranslation().catch(() => {})
 }
 
 let readerRerenderPromise = Promise.resolve(true)
+let readerAutoScrollTimer: number | undefined
+let readerAutoScrollBusy = false
+let applyingReaderPreferences = false
 async function rerenderBookReader() {
   const lifecycleToken = readerLifecycleToken
   const queuedRerender = readerRerenderPromise
@@ -1164,6 +1195,7 @@ async function rerenderBookReader() {
         if (lifecycleToken !== readerLifecycleToken || !props.visible || bookReader !== nextReader || (props.book?.id || '') !== currentBookId) return false
         bindReaderIframeEventListeners()
         applyReaderStyles()
+        syncReaderAutoScroll()
         return true
       } catch (e) {
         console.error(e)
@@ -1251,7 +1283,9 @@ function applyReaderStyles() {
     const body = doc.body
     if (!body) return
 
-    body.style.setProperty('background-color', readerBackgroundColor.value, 'important')
+    const pageBackground = readerIsPDF.value && readerIsHideBackground.value ? 'transparent' : readerBackgroundColor.value
+    body.style.setProperty('background-color', pageBackground, 'important')
+    doc.documentElement.style.setProperty('background-color', pageBackground, 'important')
 
     let style = doc.querySelector('#reader-text-color-override')
     if (!style) {
@@ -1259,17 +1293,27 @@ function applyReaderStyles() {
       style.id = 'reader-text-color-override'
       doc.head.appendChild(style)
     }
-    style.textContent = `body *{color:${readerTextColor.value}!important}`
+    style.textContent = `html, body { color: ${readerTextColor.value} !important; } body :not(img):not(svg):not(path) { color: ${readerTextColor.value} !important; }`
 
+    let fontStyle = doc.querySelector('#reader-font-override') as HTMLStyleElement | null
     if (readerFontFamily.value !== 'Built-in font') {
-      let fontStyle = doc.querySelector('#reader-font-override') as HTMLStyleElement | null
       if (!fontStyle) {
         fontStyle = doc.createElement('style')
         fontStyle.id = 'reader-font-override'
         doc.head.appendChild(fontStyle)
       }
-      fontStyle.textContent = `body *{font-family:"${readerFontFamily.value}",sans-serif!important}`
-    }
+      fontStyle.textContent = `html,body,body *{font-family:"${readerFontFamily.value}",sans-serif!important}`
+    } else fontStyle?.remove()
+
+    let customStyle = doc.querySelector('#reader-custom-style-override') as HTMLStyleElement | null
+    if (readerIsCustomCSS.value && readerCustomCSS.value.trim()) {
+      if (!customStyle) {
+        customStyle = doc.createElement('style')
+        customStyle.id = 'reader-custom-style-override'
+        doc.head.appendChild(customStyle)
+      }
+      customStyle.textContent = readerCustomCSS.value
+    } else customStyle?.remove()
 
     let marginStyle = doc.querySelector('#reader-content-margin-override')
     if (!marginStyle) {
@@ -1322,6 +1366,7 @@ function buildCurrentReaderOptions(): BookReaderOptions {
     fullTranslationMode: readerFullTranslationMode.value,
     textOrientation: readerTextOrientation.value,
     customCSS: readerIsCustomCSS.value ? readerCustomCSS.value : '',
+    isStartFromEven: readerIsStartFromEven.value,
     isBold: readerIsBold.value,
     isItalic: readerIsItalic.value,
     isUnderline: readerIsUnderline.value,
@@ -2685,7 +2730,8 @@ async function speakCurrentPage() {
 }
 
 function saveReaderPreferences() {
-  saveBookReaderPreferences({
+  if (applyingReaderPreferences) return
+  const preferences: Partial<BookReaderPreferences> = {
     themeMode: readerMode.value,
     fontSize: fontSize.value,
     readerLayoutMode: readerLayoutMode.value,
@@ -2739,38 +2785,84 @@ function saveReaderPreferences() {
     readerIsHidePDFConvertButton: readerIsHidePDFConvertButton.value,
     readerIsSeperateStyle: readerIsSeperateStyle.value,
     readerIsWordDefinition: readerIsWordDefinition.value
+  }
+  const bookId = props.book?.id || ''
+  if (readerIsSeperateStyle.value && bookId) saveBookReaderStylePreferences(bookId, preferences)
+  else saveBookReaderPreferences(preferences)
+}
+
+function applyReaderPreferences(preferences: BookReaderPreferences) {
+  applyingReaderPreferences = true
+  readerMode.value = preferences.themeMode
+  fontSize.value = preferences.fontSize
+  readerLayoutMode.value = preferences.readerLayoutMode
+  readerIndent.value = preferences.readerIndent
+  readerHyphenation.value = preferences.readerHyphenation
+  readerBionic.value = preferences.readerBionic
+  readerParaSpacing.value = preferences.readerParaSpacing
+  readerLineHeight.value = preferences.readerLineHeight
+  readerTextAlign.value = preferences.readerTextAlign
+  readerPageWidth.value = preferences.readerPageWidth
+  readerBackgroundColor.value = preferences.readerBackgroundColor
+  readerTextColor.value = preferences.readerTextColor
+  readerVoiceLocale.value = preferences.readerVoiceLocale
+  readerVoiceName.value = preferences.readerVoiceName
+  readerVoiceURI.value = preferences.readerVoiceURI
+  readerVoiceRate.value = preferences.readerVoiceRate
+  readerPopupActionKeys.value = preferences.readerPopupActionKeys
+  readerFontFamily.value = preferences.readerFontFamily
+  readerSubFontFamily.value = preferences.readerSubFontFamily
+  readerMargin.value = preferences.readerMargin
+  readerLetterSpacing.value = preferences.readerLetterSpacing
+  readerScale.value = preferences.readerScale
+  readerBrightness.value = preferences.readerBrightness
+  readerSelectAction.value = preferences.readerSelectAction
+  readerIsBold.value = preferences.readerIsBold
+  readerIsItalic.value = preferences.readerIsItalic
+  readerIsUnderline.value = preferences.readerIsUnderline
+  readerIsShadow.value = preferences.readerIsShadow
+  readerIsSliding.value = preferences.readerIsSliding
+  readerIsOrphanWidow.value = preferences.readerIsOrphanWidow
+  readerIsAllowScript.value = preferences.readerIsAllowScript
+  readerIsAutoScroll.value = preferences.readerIsAutoScroll
+  readerBookLayout.value = preferences.readerBookLayout
+  readerConvertChinese.value = preferences.readerConvertChinese
+  readerFullTranslationMode.value = preferences.readerFullTranslationMode
+  transTarget.value = preferences.readerTranslationTarget
+  readerTextOrientation.value = preferences.readerTextOrientation
+  readerCustomCSS.value = preferences.readerCustomCSS
+  readerIsCustomCSS.value = preferences.readerIsCustomCSS
+  readerIsInvert.value = preferences.readerIsInvert
+  readerIsStartFromEven.value = preferences.readerIsStartFromEven
+  readerIsShowPageBorder.value = preferences.readerIsShowPageBorder
+  readerIsHideFooter.value = preferences.readerIsHideFooter
+  readerIsHideHeader.value = preferences.readerIsHideHeader
+  readerIsHideBackground.value = preferences.readerIsHideBackground
+  readerIsHidePageButton.value = preferences.readerIsHidePageButton
+  readerIsHideMenuButton.value = preferences.readerIsHideMenuButton
+  readerIsHideAudiobookButton.value = preferences.readerIsHideAudiobookButton
+  readerIsHideAIButton.value = preferences.readerIsHideAIButton
+  readerIsHideScaleButton.value = preferences.readerIsHideScaleButton
+  readerIsHidePDFConvertButton.value = preferences.readerIsHidePDFConvertButton
+  readerIsSeperateStyle.value = preferences.readerIsSeperateStyle
+  readerIsWordDefinition.value = preferences.readerIsWordDefinition
+  void nextTick(() => {
+    applyingReaderPreferences = false
   })
 }
 
-function clearAllStyles() {
-  fontSize.value = 18
-  readerIndent.value = true
-  readerHyphenation.value = false
-  readerBionic.value = false
-  readerParaSpacing.value = '24'
-  readerLineHeight.value = '1.5'
-  readerTextAlign.value = ''
-  readerFontFamily.value = 'Built-in font'
-  readerIsBold.value = false
-  readerIsItalic.value = false
-  readerIsUnderline.value = false
-  readerIsShadow.value = false
-  readerIsSliding.value = false
-  readerIsOrphanWidow.value = true
-  readerIsAllowScript.value = false
-  readerMargin.value = 0
-  readerLetterSpacing.value = 0
-  readerScale.value = 1
-  readerBookLayout.value = ''
-  readerConvertChinese.value = ''
-  readerFullTranslationMode.value = 'no'
-  readerTextOrientation.value = ''
-  readerCustomCSS.value = ''
-  readerIsCustomCSS.value = false
-  readerIsInvert.value = false
-  readerIsSeperateStyle.value = false
-  readerIsWordDefinition.value = false
+function changeReaderSeparateStyle(enabled: boolean) {
+  const bookId = props.book?.id || ''
+  if (!enabled && bookId) removeBookReaderStylePreferences(bookId)
   saveReaderPreferences()
+}
+
+function restoreReaderDefaults() {
+  const bookId = props.book?.id || ''
+  if (bookId) removeBookReaderStylePreferences(bookId)
+  applyReaderPreferences({ ...DEFAULT_BOOK_READER_PREFERENCES })
+  saveBookReaderPreferences(DEFAULT_BOOK_READER_PREFERENCES)
+  message.success(t('restore.defaults.done'))
 }
 
 async function loadReader() {
@@ -2780,6 +2872,7 @@ async function loadReader() {
   const currentBookId = props.book?.id || ''
   const currentReader = bookReader
   if (!props.visible || !book) return
+  applyReaderPreferences(loadBookReaderStylePreferences(book.id) || loadBookReaderPreferences())
   loading.value = true
   errorText.value = ''
   try {
@@ -2808,6 +2901,66 @@ function nextPage() {
   if (!bookReader || Date.now() - pageTurnLock < 300) return
   pageTurnLock = Date.now()
   bookReader.next().then(() => saveBookPosition())
+}
+
+function stopReaderAutoScroll() {
+  if (readerAutoScrollTimer) {
+    window.clearInterval(readerAutoScrollTimer)
+    readerAutoScrollTimer = undefined
+  }
+  readerAutoScrollBusy = false
+}
+
+function syncReaderAutoScroll() {
+  stopReaderAutoScroll()
+  if (!props.visible || !bookReader || !readerIsAutoScroll.value) return
+  const isScroll = activeReaderLayoutMode.value === 'scroll'
+  readerAutoScrollTimer = window.setInterval(() => {
+    if (!bookReader || readerAutoScrollBusy || !readerIsAutoScroll.value) return
+    if (!isScroll) {
+      nextPage()
+      return
+    }
+    const container = readerContainer.value
+    if (!container) return
+    const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight)
+    if (container.scrollTop < maxScrollTop - 2) {
+      container.scrollTop = Math.min(maxScrollTop, container.scrollTop + 1)
+      scheduleBookPositionSave(true)
+      return
+    }
+    readerAutoScrollBusy = true
+    bookReader
+      .next()
+      .then(() => {
+        if (readerContainer.value) readerContainer.value.scrollTop = 0
+        scheduleBookPositionSave(true)
+      })
+      .finally(() => {
+        readerAutoScrollBusy = false
+      })
+  }, isScroll ? 25 : 12000)
+}
+
+async function exportPdfText() {
+  if (!readerIsPDF.value || !bookReader) return
+  try {
+    const text = await bookReader.getPlainText()
+    if (!text.trim()) {
+      message.warning('未能从此 PDF 提取文本')
+      return
+    }
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${(props.book?.title || props.book?.file_name || 'book').replace(/[\\/:*?"<>|]/g, '_')}.txt`
+    link.click()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+    message.success('PDF 文本已导出')
+  } catch {
+    message.error('PDF 转文本失败')
+  }
 }
 
 async function scrollReaderContentBy(direction: -1 | 1) {
@@ -2958,29 +3111,34 @@ watch(
   }
 )
 
-let lastCustomBg = 'rgba(255,255,255,1)'
-let lastCustomFg = 'rgba(0,0,0,1)'
-
 watch([readerMode], () => {
-  if (readerMode.value === 'dark') {
-    lastCustomBg = readerBackgroundColor.value
-    lastCustomFg = readerTextColor.value
-    readerBackgroundColor.value = 'rgba(44,47,49,1)'
-    readerTextColor.value = 'rgba(255,255,255,1)'
-  } else if (readerMode.value === 'eye') {
-    lastCustomBg = readerBackgroundColor.value
-    lastCustomFg = readerTextColor.value
-    readerBackgroundColor.value = 'rgba(244,236,216,1)'
-    readerTextColor.value = 'rgba(74,69,48,1)'
-  } else {
-    readerBackgroundColor.value = lastCustomBg
-    readerTextColor.value = lastCustomFg
+  const themeColors: Record<BookReaderThemeMode, { background: string; text: string }> = {
+    paper: { background: 'rgba(255,255,255,1)', text: 'rgba(0,0,0,1)' },
+    eye: { background: 'rgba(241,232,212,1)', text: 'rgba(57,49,36,1)' },
+    dark: { background: 'rgba(37,40,42,1)', text: 'rgba(231,225,213,1)' }
   }
+  const colors = themeColors[readerMode.value]
+  readerBackgroundColor.value = colors.background
+  readerTextColor.value = colors.text
   saveReaderPreferences()
+  applyReaderStyles()
 })
 
 watch([readerPageWidth], () => {
   saveReaderPreferences()
+})
+
+watch([readerIsStartFromEven], async () => {
+  saveReaderPreferences()
+  if (bookReader) await rerenderBookReader()
+})
+
+watch([readerIsShowPageBorder, readerIsHideFooter, readerIsHideHeader, readerIsHideBackground, readerIsHidePageButton, readerIsHideMenuButton, readerIsHideAudiobookButton, readerIsHideAIButton, readerIsHideScaleButton, readerIsHidePDFConvertButton], () => {
+  saveReaderPreferences()
+})
+
+watch([readerIsAutoScroll, readerLayoutMode, comicLayoutMode], () => {
+  syncReaderAutoScroll()
 })
 
 // Font/style changes: full re-render to apply (like koodo)
@@ -3001,7 +3159,6 @@ watch(
     readerIsSliding,
     readerIsOrphanWidow,
     readerIsAllowScript,
-    readerIsAutoScroll,
     readerLetterSpacing,
     readerScale,
     fontSize,
@@ -3039,6 +3196,11 @@ watch([readerBackgroundColor, readerTextColor], () => {
 watch([readerMargin], () => {
   saveReaderPreferences()
   applyReaderStyles()
+  if (readerMarginReflowTimer) window.clearTimeout(readerMarginReflowTimer)
+  readerMarginReflowTimer = window.setTimeout(() => {
+    readerMarginReflowTimer = undefined
+    if (bookReader) void rerenderBookReader()
+  }, 180)
 })
 
 watch([readerBrightness, readerSelectAction], () => {
@@ -3106,8 +3268,8 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="visible" :class="['viewer', modeClass, { 'viewer-scroll': activeReaderLayoutMode === 'scroll', 'viewer-comic': readerIsComic }]" :style="shellThemeStyle" @keydown="handleKeyDown">
-      <ReaderBackground :page-color="readerVisibleBackgroundColor" />
+    <div v-if="visible" :class="['viewer', modeClass, { 'viewer-scroll': activeReaderLayoutMode === 'scroll', 'viewer-comic': readerIsComic, 'viewer-background-hidden': readerIsPDF && readerIsHideBackground }]" :style="shellThemeStyle" @keydown="handleKeyDown">
+      <ReaderBackground v-if="!(readerIsPDF && readerIsHideBackground)" :page-color="readerVisibleBackgroundColor" />
       <ReaderPageWidget
         :chapter-title="progressText"
         :book-name="readerTitle"
@@ -3122,11 +3284,12 @@ onBeforeUnmount(() => {
         :chapter-count="bookChapters.length"
         :is-fixed-layout="readerIsFixedLayout"
         :hide-footer="readerIsHideFooter"
+        :hide-header="readerIsHideHeader"
       />
 
       <!-- 阅读舞台 -->
       <div :class="['reader-stage', { 'reader-stage-scroll': activeReaderLayoutMode === 'scroll', 'reader-stage-comic': readerIsComic }]">
-        <div id="page-area" ref="readerContainer" :class="['stage-reader', { 'stage-reader-comic': readerIsComic, 'stage-reader-comic-rtl': isComicRightToLeft, 'stage-reader-double': isDoublePageMode, 'stage-reader-scroll': activeReaderLayoutMode === 'scroll' }]" :style="readerStageStyle"></div>
+        <div id="page-area" ref="readerContainer" :class="['stage-reader', { 'stage-reader-comic': readerIsComic, 'stage-reader-comic-rtl': isComicRightToLeft, 'stage-reader-double': isDoublePageMode, 'stage-reader-scroll': activeReaderLayoutMode === 'scroll', 'stage-reader-background-hidden': readerIsPDF && readerIsHideBackground }]" :style="readerStageStyle"></div>
         <a-spin v-if="loading" class="stage-loading" :size="32" :tip="t('loading')" />
         <a-empty v-if="!loading && errorText" class="stage-error" :description="errorText" />
       </div>
@@ -3284,7 +3447,7 @@ onBeforeUnmount(() => {
             <span style="font-size: 12px; opacity: 0.6">%</span>
           </div>
         </div>
-        <div v-if="readerIsPDF && !readerIsHidePDFConvertButton" class="reader-scale-btn" :title="t('pdf.to.text')">
+        <div v-if="readerIsPDF && !readerIsHidePDFConvertButton" class="reader-scale-btn" :title="t('pdf.to.text')" @click="exportPdfText">
           <Type :size="18" :stroke-width="1.8" />
         </div>
         <div v-if="!readerIsHideMenuButton" class="reader-scale-btn" @click="toggleAllPanels" :title="t('show.hide.panel')">
@@ -3434,11 +3597,11 @@ onBeforeUnmount(() => {
 
         <!-- 操作栏: 添加高亮/书签/导出/删除 -->
         <div v-if="isReader" class="nav-actions-bar">
-          <a-button size="mini" :loading="highlightSaving" :title="t('add.highlight')" @click="createBookHighlight()">
+          <a-button class="reader-panel-action" size="mini" :loading="highlightSaving" :title="t('add.highlight')" @click="createBookHighlight()">
             <template #icon><Edit3 :size="13" /></template>
             Highlight
           </a-button>
-          <a-button size="mini" :loading="bookmarkSaving" :title="t('add.bookmark')" @click="createBookBookmark">
+          <a-button class="reader-panel-action" size="mini" :loading="bookmarkSaving" :title="t('add.bookmark')" @click="createBookBookmark">
             <template #icon><BookmarkPlus :size="13" /></template>
             Bookmark
           </a-button>
@@ -3479,6 +3642,13 @@ onBeforeUnmount(() => {
           <button v-if="rightTab === 'settings'" class="lang-toggle-btn" :title="locale === 'zh' ? 'Switch to English' : t('switch.zh')" @click="setLocale(locale === 'zh' ? 'en' : 'zh')">{{ locale === 'zh' ? 'EN' : '中' }}</button>
         </div>
         <div v-if="rightTab === 'settings'" class="panel-body panel-settings" :class="{ 'settings-locked': settingsLocked }" style="overflow-y: auto; flex: 1">
+          <div class="setting-reset-row">
+            <a-button class="reader-reset-button" size="mini" @click="restoreReaderDefaults">
+              <template #icon><RotateCcw :size="13" /></template>
+              {{ t('restore.defaults') }}
+            </a-button>
+          </div>
+
           <!-- View Mode (match koodo ModeControl) -->
           <div class="setting-section">
             <div class="setting-section-title">{{ readerIsComic ? 'Comic layout' : t('view.mode') }}</div>
@@ -3582,16 +3752,16 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <!-- Margin -->
+          <!-- Horizontal page margin -->
           <div class="setting-section">
             <div class="setting-section-title">
               {{ t('margin') }}
-              <a-input-number v-model="readerMargin" :min="-40" :max="80" :step="5" size="mini" class="slider-input-num" @change="saveReaderPreferences()" />
+              <a-input-number v-model="readerMargin" :min="24" :max="160" :step="4" size="mini" class="slider-input-num" @change="saveReaderPreferences()" />
             </div>
             <div class="slider-range-row">
-              <span class="slider-min-label">-40</span>
-              <a-slider v-model="readerMargin" :min="-40" :max="80" :step="5" style="flex: 1; margin: 0 4px" />
-              <span class="slider-max-label">80</span>
+              <span class="slider-min-label">24</span>
+              <a-slider v-model="readerMargin" :min="24" :max="160" :step="4" style="flex: 1; margin: 0 4px" />
+              <span class="slider-max-label">160</span>
             </div>
           </div>
 
@@ -3621,19 +3791,6 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <!-- Scale / Page width -->
-          <div class="setting-section">
-            <div class="setting-section-title">
-              {{ t('page.width') }}
-              <a-input-number v-model="readerScale" :min="0.5" :max="3" :step="0.1" size="mini" class="slider-input-num" @change="saveReaderPreferences()" />
-            </div>
-            <div class="slider-range-row">
-              <span class="slider-min-label">0.5</span>
-              <a-slider v-model="readerScale" :min="0.5" :max="3" :step="0.1" style="flex: 1; margin: 0 4px" />
-              <span class="slider-max-label">3</span>
-            </div>
-          </div>
-
           <!-- Brightness -->
           <div class="setting-section">
             <div class="setting-section-title">
@@ -3650,14 +3807,14 @@ onBeforeUnmount(() => {
           <!-- Dropdowns (match koodo DropdownList order) -->
           <div class="setting-section">
             <div class="setting-section-title">{{ t('book.layout') }}</div>
-            <a-select v-model="readerBookLayout" size="small" style="width: 100%">
+            <a-select v-model="readerBookLayout" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option v-for="opt in bookLayoutOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
             </a-select>
           </div>
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('font.family') }}</div>
-            <a-select v-model="readerFontFamily" size="small" style="width: 100%">
+            <a-select v-model="readerFontFamily" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option value="Built-in font">Built-in font</a-option>
               <a-option value="Times New Roman">Times New Roman</a-option>
               <a-option value="Georgia">Georgia</a-option>
@@ -3678,7 +3835,7 @@ onBeforeUnmount(() => {
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('line.height') }}</div>
-            <a-select v-model="readerLineHeight" size="small" style="width: 100%">
+            <a-select v-model="readerLineHeight" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option value="">Default</a-option>
               <a-option value="1.25">1.25</a-option>
               <a-option value="1.5">1.5</a-option>
@@ -3689,7 +3846,7 @@ onBeforeUnmount(() => {
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('text.alignment') }}</div>
-            <a-select v-model="readerTextAlign" size="small" style="width: 100%">
+            <a-select v-model="readerTextAlign" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option value="">Default</a-option>
               <a-option value="Left">Left</a-option>
               <a-option value="Justify">Justify</a-option>
@@ -3699,7 +3856,7 @@ onBeforeUnmount(() => {
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('text.orientation') }}</div>
-            <a-select v-model="readerTextOrientation" size="small" style="width: 100%">
+            <a-select v-model="readerTextOrientation" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option value="">Default</a-option>
               <a-option value="horizontal">Horizontal</a-option>
               <a-option value="vertical">Vertical</a-option>
@@ -3708,14 +3865,14 @@ onBeforeUnmount(() => {
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('chinese.conversion') }}</div>
-            <a-select v-model="readerConvertChinese" size="small" style="width: 100%">
+            <a-select v-model="readerConvertChinese" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option v-for="opt in convertChineseOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
             </a-select>
           </div>
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('action.after.select') }}</div>
-            <a-select v-model="readerSelectAction" size="small" style="width: 100%" @change="saveReaderPreferences()">
+            <a-select v-model="readerSelectAction" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps" @change="saveReaderPreferences()">
               <a-option value="">Default</a-option>
               <a-option value="translation">Translate · Pro</a-option>
               <a-option value="dict">Dictionary</a-option>
@@ -3727,11 +3884,11 @@ onBeforeUnmount(() => {
 
           <div class="setting-section">
             <div class="setting-section-title">{{ t('full.text.translation') }} <span class="pro-pill">Pro</span></div>
-            <a-select v-model="readerFullTranslationMode" size="small" style="width: 100%">
+            <a-select v-model="readerFullTranslationMode" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
               <a-option v-for="opt in fullTranslationModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</a-option>
             </a-select>
             <div v-if="readerFullTranslationMode !== 'no'" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px">
-              <a-select v-model="transTarget" size="small" style="width: 100%">
+              <a-select v-model="transTarget" size="small" style="width: 100%" :trigger-props="readerSelectTriggerProps">
                 <a-option v-for="lang in transLanguages" :key="lang.value" :value="lang.value">{{ lang.label }}</a-option>
               </a-select>
               <div v-if="fullTranslationLoading || fullTranslationError" class="full-translation-status" :class="{ 'is-error': !!fullTranslationError && !fullTranslationLoading }">
@@ -3759,11 +3916,7 @@ onBeforeUnmount(() => {
               <a-switch
                 v-model="readerIsSeperateStyle"
                 size="small"
-                @change="
-                  (v: boolean) => {
-                    saveReaderPreferences()
-                  }
-                "
+                @change="changeReaderSeparateStyle"
               />
             </div>
             <div v-if="readerIsSeperateStyle" style="margin: 4px 0; font-size: 11px; color: var(--color-text-3)">{{ t('separate.style.desc') }}</div>
@@ -3907,7 +4060,7 @@ onBeforeUnmount(() => {
                 <button
                   class="clear-style-dropdown-item"
                   @click="
-                    clearAllStyles();
+                    restoreReaderDefaults();
                     isShowClearStyleMenu = false
                   "
                 >
@@ -3963,11 +4116,11 @@ onBeforeUnmount(() => {
             <div class="setting-section">
               <div class="setting-section-title">{{ t('tts') }}</div>
               <div class="setting-stack">
-                <a-select v-model="readerVoiceLocale" size="small" :placeholder="t('tts.language')">
+                <a-select v-model="readerVoiceLocale" size="small" :placeholder="t('tts.language')" :trigger-props="readerSelectTriggerProps">
                   <a-option value="">{{ t('tts.all.languages') }}</a-option>
                   <a-option v-for="locale in speechLocales" :key="locale" :value="locale">{{ locale }}</a-option>
                 </a-select>
-                <a-select v-model="readerVoiceURI" size="small" :placeholder="t('system.default')">
+                <a-select v-model="readerVoiceURI" size="small" :placeholder="t('system.default')" :trigger-props="readerSelectTriggerProps">
                   <a-option value="">{{ t('tts.voice') }}</a-option>
                   <a-option v-for="voice in filteredSpeechVoices" :key="getSpeechVoiceId(voice)" :value="getSpeechVoiceId(voice)">{{ voice.name }}{{ voice.lang ? ` · ${voice.lang}` : '' }}</a-option>
                 </a-select>
@@ -3976,7 +4129,7 @@ onBeforeUnmount(() => {
                   {{ t('tts.speed') }}
                   <span class="setting-value">{{ readerVoiceRate.toFixed(1) }}x</span>
                 </div>
-                <a-select v-model="readerVoiceRate" size="small">
+                <a-select v-model="readerVoiceRate" size="small" :trigger-props="readerSelectTriggerProps">
                   <a-option v-for="v in SPEECH_SPEED_VALUES" :key="v" :value="v">{{ v }}x</a-option>
                 </a-select>
                 <a-button size="small" @click="previewReaderSpeechVoice">{{ t('tts.test') }}</a-button>
@@ -4096,18 +4249,14 @@ onBeforeUnmount(() => {
       <!-- koodo-style Bottom Panel (ProgressPanel) -->
       <div :class="['edge-panel', 'panel-bottom', isBottomPanelVisible ? 'open' : '']" @mouseleave="hidePanel('bottom')">
         <div class="progress-panel-inner">
-          <p class="progress-heading">
-            <span>Reading progress</span>
-            <strong>{{ readingProgressValue }}%</strong>
-          </p>
           <p class="progress-context">
             <template v-if="!readerIsFixedLayout">
-              <span>Chapter</span>
+              <span class="progress-label">Chapter</span>
               <input type="text" class="progress-jump-input" :value="chapterJumpText || (selectedBookChapter ?? 0) + 1" inputmode="numeric" @focus="isChapterJumpEditing = true; ($event.target as HTMLInputElement).select()" @input="chapterJumpText = ($event.target as HTMLInputElement).value" @blur="jumpToChapter" @keydown.enter.prevent="($event.target as HTMLInputElement).blur()" />
               <span>/ {{ bookChapters.length || '-' }}</span>
               <span class="progress-divider">·</span>
             </template>
-            <span>{{ readerIsFixedLayout ? 'Page' : 'Chapter page' }}</span>
+            <span class="progress-label">{{ readerIsFixedLayout ? 'Page' : 'Chapter page' }}</span>
             <input type="text" class="progress-jump-input" :value="pageJumpText || currentPage || ''" inputmode="numeric" @focus="isPageJumpEditing = true; ($event.target as HTMLInputElement).select()" @input="pageJumpText = ($event.target as HTMLInputElement).value" @blur="jumpToPage" @keydown.enter.prevent="($event.target as HTMLInputElement).blur()" />
             <span>/ {{ totalPage || currentPage || '-' }}</span>
           </p>
@@ -4123,9 +4272,10 @@ onBeforeUnmount(() => {
               <ChevronRight :size="14" :stroke-width="2.5" />
             </button>
           </div>
-          <ReaderPanelButton class="panel-pin" :active="lockedPanels.bottom" :title="lockedPanels.bottom ? t('unlock') : t('lock.panel')" @click="togglePanelLock('bottom')">
+          <ReaderPanelButton class="progress-pin" :active="lockedPanels.bottom" :title="lockedPanels.bottom ? t('unlock') : t('lock.panel')" @click="togglePanelLock('bottom')">
             <Pin v-if="lockedPanels.bottom" :size="14" :stroke-width="1.8" />
             <PinOff v-else :size="14" :stroke-width="1.8" />
+            <span>{{ lockedPanels.bottom ? t('unlock') : t('lock.panel') }}</span>
           </ReaderPanelButton>
         </div>
       </div>
@@ -4179,44 +4329,57 @@ onBeforeUnmount(() => {
   inset: 0;
   height: 100%;
   z-index: 1000;
+  background: var(--reader-page);
 }
 .viewer-scroll {
   /* scrolling handled by stage-reader-scroll */
 }
+.viewer-background-hidden,
+.viewer-background-hidden .stage-reader,
+.viewer-background-hidden .stage-reader :deep(iframe) {
+  background: transparent !important;
+}
 
 /* Theme variables */
 .reader-paper {
-  --reader-bg: #f2f4f7;
-  --reader-page: #ffffff;
-  --reader-text: #1f2937;
-  --panel-bg: rgba(255, 255, 255, 0.96);
-  --panel-border: rgba(0, 0, 0, 0.08);
-  --panel-fg: #1f2937;
-  --trigger-bg: rgba(75, 75, 75, 0.3);
+  --reader-bg: #fbfaf7;
+  --reader-page: #fbfaf7;
+  --reader-text: #25231e;
+  --panel-bg: rgba(251, 250, 247, 0.92);
+  --panel-border: rgba(56, 49, 39, 0.14);
+  --panel-fg: #25231e;
+  --trigger-bg: rgba(56, 49, 39, 0.22);
 }
 .reader-eye {
-  --reader-bg: #e9dfc8;
-  --reader-page: #f4ecd8;
-  --reader-text: #2e2a20;
-  --panel-bg: rgba(247, 238, 217, 0.97);
-  --panel-border: rgba(0, 0, 0, 0.1);
-  --panel-fg: #2e2a20;
-  --trigger-bg: rgba(75, 75, 75, 0.3);
+  --reader-bg: #f1e8d4;
+  --reader-page: #f1e8d4;
+  --reader-text: #393124;
+  --panel-bg: rgba(241, 232, 212, 0.92);
+  --panel-border: rgba(76, 61, 40, 0.16);
+  --panel-fg: #393124;
+  --trigger-bg: rgba(76, 61, 40, 0.22);
 }
 .reader-dark {
-  --reader-bg: #0f0f10;
-  --reader-page: #171717;
-  --reader-text: #e8e3d8;
-  --panel-bg: rgba(28, 28, 30, 0.96);
-  --panel-border: rgba(255, 255, 255, 0.12);
-  --panel-fg: #e8e3d8;
-  --trigger-bg: rgba(200, 200, 200, 0.2);
+  --reader-bg: #25282a;
+  --reader-page: #25282a;
+  --reader-text: #e7e1d5;
+  --panel-bg: rgba(37, 40, 42, 0.92);
+  --panel-border: rgba(238, 229, 213, 0.14);
+  --panel-fg: #e9e3d6;
+  --trigger-bg: rgba(238, 229, 213, 0.2);
 }
 .reader-dark .panel-top .op-btn {
   color: #e8e3d8;
 }
 .reader-dark .progress-range::-webkit-slider-thumb {
-  background: #333;
+  background: #25282a;
+}
+
+@media (min-width: 1180px) {
+  .reader-stage:not(.reader-stage-comic) {
+    left: 4vw;
+    right: 4vw;
+  }
 }
 
 /* Animations (koodo match) */
@@ -4265,7 +4428,7 @@ onBeforeUnmount(() => {
 .reader-stage {
   position: absolute;
   top: 28px;
-  bottom: 25px;
+  bottom: 28px;
   left: 0;
   right: 0;
   z-index: 5;
@@ -4281,8 +4444,11 @@ onBeforeUnmount(() => {
   position: relative;
   height: 100%;
   overflow: hidden;
+  contain: layout paint;
   background: var(--reader-page);
   color: var(--reader-text);
+  border-radius: 0;
+  box-shadow: none;
 }
 
 /* single/double iframe: fill container */
@@ -4293,6 +4459,7 @@ onBeforeUnmount(() => {
   background: var(--reader-page);
   border: 0;
   display: block;
+  overflow: hidden;
 }
 
 /* scroll mode: overflow on the container itself, iframe uses boxplayer engine's native height */
@@ -4327,6 +4494,8 @@ onBeforeUnmount(() => {
 .stage-reader-comic {
   background: #0b0c0f;
   color: #fff;
+  border-radius: 0;
+  box-shadow: none;
 }
 .stage-reader-comic :deep(iframe) {
   background: #0b0c0f !important;
@@ -4375,7 +4544,7 @@ onBeforeUnmount(() => {
 /* === EDGE TRIGGER ZONES (koodo match) === */
 .edge-trigger {
   position: absolute;
-  background-color: rgba(75, 75, 75, 0.3);
+  background-color: var(--trigger-bg);
   z-index: 10;
   opacity: 0;
   display: flex;
@@ -4383,7 +4552,7 @@ onBeforeUnmount(() => {
   align-items: center;
   cursor: pointer;
   color: white;
-  transition: opacity 0.15s;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
 }
 .edge-trigger:hover {
   opacity: 1;
@@ -4402,61 +4571,64 @@ onBeforeUnmount(() => {
 }
 
 .trigger-left {
-  width: 40px;
-  height: 60%;
+  width: 32px;
+  height: 48%;
   left: 0;
   top: calc(50vh - 30%);
-  border-radius: 0 20px 20px 0;
+  border-radius: 0 16px 16px 0;
 }
 
 .trigger-right {
-  width: 40px;
-  height: 60%;
+  width: 32px;
+  height: 48%;
   right: 0;
   top: calc(50vh - 30%);
-  border-radius: 20px 0 0 20px;
+  border-radius: 16px 0 0 16px;
 }
 
 .trigger-top {
-  width: 60%;
-  height: 40px;
-  left: calc(50vw - 30%);
+  width: 44%;
+  height: 28px;
+  left: 28%;
   top: 0;
-  border-radius: 0 0 20px 20px;
+  border-radius: 0 0 14px 14px;
 }
 
 .trigger-bottom {
-  width: 60%;
-  height: 40px;
-  left: calc(50vw - 30%);
+  width: 44%;
+  height: 28px;
+  left: 28%;
   bottom: 0;
-  border-radius: 20px 20px 0 0;
+  border-radius: 14px 14px 0 0;
 }
 
 /* === FLOATING PAGE-TURN BUTTONS (koodo match) === */
 .page-turn-prev {
   position: absolute;
-  bottom: 10px;
-  left: 15px;
-  width: 40px;
-  height: 40px;
+  bottom: 22px;
+  left: 22px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 12;
-  background: rgb(var(--primary-6));
-  color: #fff;
-  opacity: 0.55;
-  transition: opacity 0.15s;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--panel-fg);
+  box-shadow: none;
+  opacity: 0.26;
+  transition: opacity 0.2s ease, transform 0.2s ease;
 }
 .page-turn-prev:hover {
-  opacity: 0.85;
+  opacity: 1;
+  transform: scale(1.05);
 }
 .page-turn-cluster {
   position: absolute;
-  bottom: 10px;
+  bottom: 22px;
   display: flex;
   flex-direction: column-reverse;
   align-items: center;
@@ -4465,17 +4637,19 @@ onBeforeUnmount(() => {
 }
 .page-turn-btn {
   position: relative;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   cursor: pointer;
   display: flex;
   justify-content: center;
   align-items: center;
   flex-shrink: 0;
-  background: rgb(var(--primary-6));
-  color: #fff;
-  opacity: 0.55;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  border: 1px solid var(--panel-border);
+  box-shadow: none;
+  opacity: 0.26;
   transition:
     opacity 0.15s,
     transform 0.15s;
@@ -4483,18 +4657,19 @@ onBeforeUnmount(() => {
 }
 
 .page-turn-btn:hover {
-  opacity: 0.85;
+  opacity: 1;
   transform: scale(1.05);
 }
 .page-turn-btn.active {
   opacity: 0.9;
   background: rgb(var(--primary-6));
+  color: #fff;
 }
 
 /* === TOP-RIGHT CORNER CONTROLS (koodo match) === */
 .reader-topright-controls {
-  position: fixed;
-  top: 0;
+  position: absolute;
+  top: 8px;
   z-index: 1011;
   display: flex;
   flex-shrink: 0;
@@ -4503,19 +4678,24 @@ onBeforeUnmount(() => {
   gap: 0;
 }
 .reader-scale-btn {
-  width: 50px;
-  height: 50px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  opacity: 0.7;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  opacity: 0.35;
   color: var(--reader-text);
   transition: opacity 0.15s;
 }
 .reader-scale-btn:hover {
   opacity: 1;
+  border-color: var(--panel-border);
+  background: var(--panel-bg);
 }
 .reader-scale-wrap {
   position: relative;
@@ -4766,6 +4946,7 @@ onBeforeUnmount(() => {
   text-align: center;
   padding-bottom: 5px;
   font-size: 13px;
+  color: var(--panel-fg);
   opacity: 0.5;
 }
 .nav-tab:hover,
@@ -4946,6 +5127,23 @@ onBeforeUnmount(() => {
   padding: 6px 8px;
   border-top: 1px solid var(--panel-border);
   flex-wrap: wrap;
+}
+.reader-panel-action,
+.reader-reset-button {
+  color: var(--panel-fg) !important;
+  border-color: var(--panel-border) !important;
+  background: rgba(128, 128, 128, 0.08) !important;
+}
+.reader-panel-action:hover,
+.reader-reset-button:hover {
+  color: var(--panel-fg) !important;
+  border-color: rgba(var(--primary-6), 0.56) !important;
+  background: rgba(var(--primary-6), 0.1) !important;
+}
+.reader-panel-action:disabled,
+.reader-reset-button:disabled {
+  color: var(--panel-fg) !important;
+  opacity: 0.48;
 }
 .nav-export-format {
   height: 24px;
@@ -5188,6 +5386,11 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 8px;
 }
+.setting-reset-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 2px 0 10px;
+}
 
 .view-mode-control {
   display: flex;
@@ -5314,6 +5517,15 @@ onBeforeUnmount(() => {
 .panel-settings :deep(.arco-btn-text) {
   color: var(--panel-fg) !important;
 }
+.panel-settings :deep(.arco-select-view) {
+  color: var(--panel-fg) !important;
+  background: rgba(128, 128, 128, 0.08) !important;
+  border-color: var(--panel-border) !important;
+}
+.panel-settings :deep(.arco-select-view .arco-select-view-suffix),
+.panel-settings :deep(.arco-select-view .arco-icon) {
+  color: var(--panel-fg) !important;
+}
 .panel-settings :deep(.arco-radio-group-button .arco-radio-button) {
   color: var(--panel-fg);
   border-color: rgba(0, 0, 0, 0.18);
@@ -5342,6 +5554,86 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 
+/* Select popups are teleported outside the reader, so they need their own theme. */
+:global(.reader-settings-select-popup) {
+  --reader-select-bg: #fbfaf7;
+  --reader-select-fg: #25231e;
+  --reader-select-border: rgba(56, 49, 39, 0.16);
+  --reader-select-hover: rgba(56, 49, 39, 0.08);
+  --reader-select-selected: rgba(var(--primary-6), 0.12);
+}
+:global(.reader-settings-select-popup.reader-settings-select-popup-eye) {
+  --reader-select-bg: #f1e8d4;
+  --reader-select-fg: #393124;
+  --reader-select-border: rgba(76, 61, 40, 0.18);
+  --reader-select-hover: rgba(76, 61, 40, 0.08);
+}
+:global(.reader-settings-select-popup.reader-settings-select-popup-dark) {
+  --reader-select-bg: #25282a;
+  --reader-select-fg: #e7e1d5;
+  --reader-select-border: rgba(255, 255, 255, 0.085);
+  --reader-select-hover: rgba(255, 255, 255, 0.072);
+  --reader-select-selected: rgba(0, 245, 212, 0.12);
+}
+:global(body[arco-theme='dark'] .reader-settings-select-popup) {
+  --color-bg-popup: var(--reader-select-bg) !important;
+  --color-text-1: var(--reader-select-fg) !important;
+  --color-fill-2: var(--reader-select-hover) !important;
+}
+:global(.reader-settings-select-popup.arco-select-dropdown),
+:global(.reader-settings-select-popup .arco-select-dropdown) {
+  padding: 4px !important;
+  background: var(--reader-select-bg) !important;
+  border: 1px solid var(--reader-select-border) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: none !important;
+}
+:global(body[arco-theme='dark'] .reader-settings-select-popup.arco-select-dropdown),
+:global(body[arco-theme='dark'] .reader-settings-select-popup .arco-select-dropdown) {
+  background-color: var(--reader-select-bg) !important;
+  background-image: none !important;
+  border-color: var(--reader-select-border) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: none !important;
+}
+:global(.reader-settings-select-popup .arco-select-option),
+:global(.reader-settings-select-popup.arco-select-dropdown .arco-select-option) {
+  min-height: 30px;
+  padding: 5px 8px !important;
+  color: var(--reader-select-fg) !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+}
+:global(body[arco-theme='dark'] .reader-settings-select-popup .arco-select-option),
+:global(body[arco-theme='dark'] .reader-settings-select-popup.arco-select-dropdown .arco-select-option) {
+  color: var(--reader-select-fg) !important;
+  background-color: transparent !important;
+}
+:global(.reader-settings-select-popup .arco-select-option:hover),
+:global(.reader-settings-select-popup .arco-select-option-hover),
+:global(.reader-settings-select-popup .arco-select-option-selected),
+:global(.reader-settings-select-popup .arco-select-option.selected) {
+  color: var(--reader-select-fg) !important;
+  background: var(--reader-select-hover) !important;
+  box-shadow: none !important;
+}
+:global(body[arco-theme='dark'] .reader-settings-select-popup .arco-select-option:hover),
+:global(body[arco-theme='dark'] .reader-settings-select-popup .arco-select-option-active),
+:global(body[arco-theme='dark'] .reader-settings-select-popup .arco-select-option-hover),
+:global(body[arco-theme='dark'] .reader-settings-select-popup .arco-select-option-selected) {
+  color: var(--reader-select-fg) !important;
+  background-color: var(--reader-select-hover) !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+:global(.reader-settings-select-popup .arco-select-option-selected),
+:global(.reader-settings-select-popup .arco-select-option.selected) {
+  color: rgb(var(--primary-6)) !important;
+  background: var(--reader-select-selected) !important;
+  font-weight: 500;
+}
+
 /* Slider with numeric input + min/max labels */
 .slider-input-num {
   float: right;
@@ -5362,20 +5654,21 @@ onBeforeUnmount(() => {
 
 /* === BOTTOM PANEL (koodo progress-panel) === */
 .panel-bottom {
-  width: 450px;
-  height: 100px;
+  width: min(680px, calc(100vw - 32px));
+  height: 52px;
   bottom: 0;
-  left: calc(50% - 225px);
-  border-radius: 10px 10px 0 0;
+  left: max(16px, calc(50% - 340px));
+  border-radius: 12px 12px 0 0;
   border: 1px solid var(--panel-border);
   border-bottom: 0;
+  box-shadow: 0 -5px 18px rgba(32, 28, 20, 0.08);
   transition: transform 0.5s ease;
   transition:
     transform 0.35s ease,
     opacity 0.35s ease;
 }
 .panel-bottom:not(.open) {
-  transform: translateY(110px);
+  transform: translateY(66px);
   opacity: 0;
   pointer-events: none;
 }
@@ -5387,15 +5680,14 @@ onBeforeUnmount(() => {
 
 .progress-panel-inner {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 10px 18px 12px;
-  gap: 3px;
+  height: 100%;
+  padding: 0 12px 0 14px;
+  gap: 10px;
 }
 
 .progress-heading,
 .progress-context {
-  width: 100%;
   text-align: center;
   margin: 0;
   color: var(--panel-fg);
@@ -5405,7 +5697,7 @@ onBeforeUnmount(() => {
   gap: 4px;
 }
 .progress-heading {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 18px;
   letter-spacing: 0.02em;
   opacity: 0.72;
@@ -5416,22 +5708,26 @@ onBeforeUnmount(() => {
   opacity: 1;
 }
 .progress-context {
-  min-height: 24px;
-  font-size: 13px;
+  flex-shrink: 0;
+  min-height: 26px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 .progress-context span {
-  opacity: 0.75;
-  font-size: 13px;
+  opacity: 0.7;
+  font-size: 11px;
+}
+.progress-label {
+  font-weight: 600;
 }
 .progress-divider {
-  margin: 0 6px;
+  margin: 0 3px;
 }
 .progress-jump-input {
-  width: 42px;
-  height: 20px;
-  border: 1px solid rgba(128, 128, 128, 0.45);
-  border-radius: 4px;
+  width: 32px;
+  height: 24px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
   outline: none;
   text-align: center;
   font-size: 12px;
@@ -5444,14 +5740,14 @@ onBeforeUnmount(() => {
 }
 
 .chapter-btn {
-  width: 25px;
-  height: 25px;
-  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   cursor: pointer;
-  border: 2px solid rgba(112, 112, 112, 0.5);
-  background: #fff;
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--reader-page) 88%, transparent);
   flex-shrink: 0;
   color: rgba(112, 112, 112, 1);
 }
@@ -5467,8 +5763,9 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  width: min(720px, 92vw);
-  gap: 10px;
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
 }
 .progress-range-wrap {
   display: flex;
@@ -5481,7 +5778,7 @@ onBeforeUnmount(() => {
   -webkit-appearance: none;
   width: 100%;
   min-width: 120px;
-  height: 18px;
+  height: 16px;
   margin: 0;
   cursor: pointer;
 }
@@ -5492,22 +5789,36 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+.progress-pin {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  gap: 0;
+  border: 1px solid var(--panel-border);
+  border-radius: 7px;
+  color: var(--panel-fg);
+  font-size: 0;
+}
+.progress-pin.active {
+  background: color-mix(in srgb, rgb(var(--primary-6)) 20%, transparent);
+}
 .progress-range::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(112, 112, 112, 1);
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(var(--primary-6));
   border-radius: 50%;
   background: rgba(255, 255, 255, 1);
   cursor: pointer;
   position: relative;
-  bottom: 9px;
+  bottom: 6px;
   box-sizing: border-box;
 }
 .progress-range::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(112, 112, 112, 1);
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgb(var(--primary-6));
   border-radius: 50%;
   background: rgba(255, 255, 255, 1);
   cursor: pointer;
@@ -6810,20 +7121,21 @@ onBeforeUnmount(() => {
 }
 .page-turn-prev {
   position: absolute;
-  bottom: 10px;
-  left: 15px !important;
+  bottom: 22px;
+  left: 22px !important;
   z-index: 12;
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgb(var(--primary-6));
-  color: #fff;
-  opacity: 0.55;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--panel-fg);
+  opacity: 0.26;
 }
 .page-turn-cluster {
   position: absolute;
-  bottom: 10px;
-  right: 15px !important;
+  bottom: 22px;
+  right: 22px !important;
   display: flex;
   flex-direction: column-reverse;
   align-items: center;
@@ -6831,17 +7143,18 @@ onBeforeUnmount(() => {
   z-index: 12;
 }
 .page-turn-btn {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgb(var(--primary-6));
-  color: #fff;
-  opacity: 0.55;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--panel-fg);
+  opacity: 0.26;
 }
 .reader-topright-controls {
-  position: fixed;
-  top: 0;
-  right: 5px !important;
+  position: absolute;
+  top: 8px;
+  right: 12px !important;
   z-index: 1011;
   display: flex;
   align-items: center;

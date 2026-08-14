@@ -387,6 +387,14 @@ describe('BookReaderModal template structure', () => {
     expect(styleConfigSource).toContain("key === 'fullTranslationBooks' && fullTranslationEnabled ? [''] : []")
   })
 
+  it('uses the bundled Koodo CSS layout identifiers', () => {
+    const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
+    const readerSource = readFileSync(resolve(__dirname, '../bookReader.ts'), 'utf8')
+
+    expect(source).toContain("{ value: 'kookit', label: t('layout.recommended') }")
+    expect(readerSource).toContain("bookLayout: options.bookLayout || ''")
+  })
+
   it('guards full translation lifecycle with tokens across cleanup, load, and rerender queues', () => {
     const source = readFileSync(resolve(__dirname, '../../layout/BookReaderModal.vue'), 'utf8')
     const varsSource = sliceBetween(source, 'let bookReader: BookReaderHandle | null = null', 'const readingTimeSeconds = ref(0)')

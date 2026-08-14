@@ -36,6 +36,7 @@ type serverUser struct {
 	id         uint32
 	name       string
 	credential [sha256.Size]byte
+	decryptor  *cipher.StatelessDecryptor
 	policy     serverUserPolicy
 }
 
@@ -179,15 +180,6 @@ type sourceUserCache struct {
 	bucketLocks [sourceUserCacheLockStripes]sync.Mutex
 }
 
-// sourceUserCacheStats has Mux lifetime rather than generation lifetime.
-type sourceUserCacheStats struct {
-	lookups   atomic.Uint64
-	hits      atomic.Uint64
-	misses    atomic.Uint64
-	records   atomic.Uint64
-	evictions atomic.Uint64
-}
-
 const (
 	sourceUserCacheBucketCount = 16384
 	sourceUserCacheWays        = 4
@@ -280,10 +272,16 @@ func buildServerUserState(users map[string]*appctlpb.User, stats *sourceUserCach
 			log.Warnf("Skipping server user %q: %v", input.name, err)
 			continue
 		}
+		decryptor, err := cipher.NewStatelessDecryptor(credential[:])
+		if err != nil {
+			log.Warnf("Skipping server user %q: failed to prepare credential", input.name)
+			continue
+		}
 		compiled = append(compiled, serverUser{
 			id:         uint32(len(compiled) + 1),
 			name:       input.name,
 			credential: credential,
+			decryptor:  decryptor,
 			policy:     buildServerUserPolicy(input.user),
 		})
 	}
@@ -387,6 +385,9 @@ func discoverServerUser(
 		if result.block == nil {
 			return serverUserDiscoveryResult{}, fmt.Errorf("cipher.TryDecrypt() failed for all users")
 		}
+		if state.cache != nil && state.cache.stats != nil && (result.origin == serverUserMatchCachedHint || result.origin == serverUserMatchCachedFallback) {
+			state.cache.stats.authenticationHits.Add(1)
+		}
 		result.generation = state
 		return result, nil
 	}
@@ -398,6 +399,7 @@ func discoverServerUser(
 // most once even when it appears in more than one phase.
 func tryServerUserState(state *serverUserState, encryptedMeta []byte, source serverUserDiscoverySource, hintMandatory bool) serverUserDiscoveryResult {
 	nonce := encryptedMeta[:cipher.DefaultNonceSize]
+	var trialPlaintext [MetadataLength]byte
 	var cachedIDs [sourceUserCacheUsers]uint32
 	cachedCount := 0
 	if source.valid && state.cache != nil {
@@ -417,7 +419,7 @@ func tryServerUserState(state *serverUserState, encryptedMeta []byte, source ser
 		}
 		attemptedCachedCount = markServerUserIDAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id)
 		attempts++
-		if result := tryServerUser(user, encryptedMeta, true, serverUserMatchCachedHint); result.block != nil {
+		if result := tryServerUser(user, encryptedMeta, trialPlaintext[:0], true, serverUserMatchCachedHint); result.block != nil {
 			result.attempts = attempts
 			return result
 		}
@@ -425,13 +427,18 @@ func tryServerUserState(state *serverUserState, encryptedMeta []byte, source ser
 
 	// All registry hint matches retain precedence over cached users whose
 	// names do not match the hint, including when credentials are shared.
+	// Reaching this point enters a complete-registry phase, whether or not a
+	// registry user ultimately wins.
+	if state.cache != nil && state.cache.stats != nil {
+		state.cache.stats.fullFallbacks.Add(1)
+	}
 	for i := range state.users {
 		user := &state.users[i]
 		if serverUserIDWasAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id) || !cipher.CheckUserFromHint([]byte(user.name), nonce) {
 			continue
 		}
 		attempts++
-		if result := tryServerUser(user, encryptedMeta, true, serverUserMatchRegistryHint); result.block != nil {
+		if result := tryServerUser(user, encryptedMeta, trialPlaintext[:0], true, serverUserMatchRegistryHint); result.block != nil {
 			result.attempts = attempts
 			return result
 		}
@@ -452,7 +459,7 @@ func tryServerUserState(state *serverUserState, encryptedMeta []byte, source ser
 		}
 		attemptedCachedCount = markServerUserIDAttempted(&attemptedCachedIDs, attemptedCachedCount, user.id)
 		attempts++
-		if result := tryServerUser(user, encryptedMeta, false, serverUserMatchCachedFallback); result.block != nil {
+		if result := tryServerUser(user, encryptedMeta, trialPlaintext[:0], false, serverUserMatchCachedFallback); result.block != nil {
 			result.attempts = attempts
 			return result
 		}
@@ -469,7 +476,7 @@ func tryServerUserState(state *serverUserState, encryptedMeta []byte, source ser
 			continue
 		}
 		attempts++
-		if result := tryServerUser(user, encryptedMeta, false, serverUserMatchRegistryFallback); result.block != nil {
+		if result := tryServerUser(user, encryptedMeta, trialPlaintext[:0], false, serverUserMatchRegistryFallback); result.block != nil {
 			result.attempts = attempts
 			return result
 		}
@@ -505,11 +512,11 @@ func serverUserByID(state *serverUserState, userID uint32) *serverUser {
 	return user
 }
 
-func tryServerUser(user *serverUser, encryptedMeta []byte, hintMatch bool, origin serverUserMatchOrigin) serverUserDiscoveryResult {
+func tryServerUser(user *serverUser, encryptedMeta, dst []byte, hintMatch bool, origin serverUserMatchOrigin) serverUserDiscoveryResult {
 	if hintMatch {
 		cipher.ServerHintMatchDecrypt.Add(1)
 	}
-	block, plaintext, err := cipher.TryDecrypt(encryptedMeta, user.credential[:], true)
+	block, plaintext, err := user.decryptor.TryDecrypt(encryptedMeta, dst)
 	if err != nil {
 		if hintMatch {
 			cipher.ServerFailedHintMatchDecrypt.Add(1)

@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { applyReaderBrightnessToColor, buildReaderContentMarginCss, buildReaderStageStyle } from '../bookReaderLayout'
 
 describe('buildReaderStageStyle', () => {
-  it('shrinks container width when margin increases (koodo approach)', () => {
-    // Node env: vw = 1200
-    // margin=0: rawWidth = 1200*1 - 1200*0.4 - 0 = 720
-    expect(buildReaderStageStyle({ scale: 1, margin: 0, backgroundColor: '#fff', textColor: '#111', brightness: 1 }).width).toBe('min(720px, calc(100% - 40px))')
-    // margin=40: rawWidth = 1200*1 - 1200*0.4 - 80 = 640
-    expect(buildReaderStageStyle({ scale: 1, margin: 40, backgroundColor: '#fff', textColor: '#111', brightness: 1 }).width).toBe('min(640px, calc(100% - 40px))')
+  it('uses horizontal page margin as the reading measure', () => {
+    expect(buildReaderStageStyle({ scale: 1, margin: 24, backgroundColor: '#fff', textColor: '#111', brightness: 1 }).width).toBe('min(calc(100% - 48px), max(360px, calc(100% - 48px)))')
+    expect(buildReaderStageStyle({ scale: 1, margin: 40, backgroundColor: '#fff', textColor: '#111', brightness: 1 }).width).toBe('min(calc(100% - 48px), max(360px, calc(100% - 80px)))')
+  })
+
+  it('applies the same page margin in scroll and double-page layouts', () => {
+    expect(buildReaderStageStyle({ scale: 1, margin: 30, layoutMode: 'scroll', backgroundColor: '#fff', textColor: '#111', brightness: 1 }).width).toBe('min(calc(100% - 48px), max(360px, calc(100% - 60px)))')
+    expect(buildReaderStageStyle({ scale: 1, margin: 30, layoutMode: 'double', backgroundColor: '#fff', textColor: '#111', brightness: 1 }).width).toBe('min(calc(100% - 48px), max(360px, calc(100% - 60px)))')
   })
 
   it('builds content margin CSS (no body padding — koodo uses container width for margin)', () => {
@@ -27,5 +29,10 @@ describe('buildReaderStageStyle', () => {
   it('keeps the outer reader background visually aligned with brightness-filtered pages', () => {
     expect(applyReaderBrightnessToColor('rgba(233,223,200,1)', 0.7)).toBe('rgba(163,156,140,1)')
     expect(applyReaderBrightnessToColor('#e9dfc8', 0.7)).toBe('#a39c8c')
+  })
+
+  it('combines PDF invert mode with the current brightness filter', () => {
+    const style = buildReaderStageStyle({ scale: 1, margin: 0, backgroundColor: '#fff', textColor: '#000', brightness: 0.8, invert: true })
+    expect(style.filter).toBe('brightness(0.8) invert(1) hue-rotate(180deg)')
   })
 })

@@ -65,6 +65,7 @@ export interface BookReaderPreferences {
 }
 
 const LS_KEY = 'bookReader.preferences'
+const BOOK_STYLE_KEY_PREFIX = 'bookReader.book-style.'
 export const READER_BACKGROUND_COLORS = ['rgba(255,255,255,1)', 'rgba(44,47,49,1)', 'rgba(233, 216, 188,1)', 'rgba(197, 231, 207,1)']
 export const READER_TEXT_COLORS = ['rgba(0,0,0,1)', 'rgba(255,255,255,1)', 'rgba(89, 68, 41,1)', 'rgba(54, 80, 62,1)']
 
@@ -208,7 +209,7 @@ export function normalizeBookReaderPreferences(value: unknown): BookReaderPrefer
     readerPopupActionKeys: normalizeBookPopupActionKeys(raw.readerPopupActionKeys),
     readerFontFamily: typeof raw.readerFontFamily === 'string' ? raw.readerFontFamily : DEFAULT_BOOK_READER_PREFERENCES.readerFontFamily,
     readerSubFontFamily: typeof raw.readerSubFontFamily === 'string' ? raw.readerSubFontFamily : '',
-    readerMargin: clampNumber(raw.readerMargin, -40, 80, 0),
+    readerMargin: clampNumber(raw.readerMargin, 24, 160, DEFAULT_BOOK_READER_PREFERENCES.readerMargin),
     readerLetterSpacing: clampNumber(raw.readerLetterSpacing, 0, 20, 0),
     readerScale: clampNumber(raw.readerScale, 0.5, 3, 1),
     readerBrightness: clampNumber(raw.readerBrightness, 0.3, 1, 1),
@@ -263,4 +264,30 @@ export function saveBookReaderPreferences(preferences: Partial<BookReaderPrefere
     storage.setItem(LS_KEY, JSON.stringify(normalized))
   } catch {}
   return normalized
+}
+
+export function loadBookReaderStylePreferences(bookId: string, storage: Storage = localStorage): BookReaderPreferences | null {
+  if (!bookId) return null
+  try {
+    const raw = storage.getItem(`${BOOK_STYLE_KEY_PREFIX}${bookId}`)
+    return raw ? normalizeBookReaderPreferences(JSON.parse(raw)) : null
+  } catch {
+    return null
+  }
+}
+
+export function saveBookReaderStylePreferences(bookId: string, preferences: Partial<BookReaderPreferences>, storage: Storage = localStorage): BookReaderPreferences | null {
+  if (!bookId) return null
+  const normalized = normalizeBookReaderPreferences(preferences)
+  try {
+    storage.setItem(`${BOOK_STYLE_KEY_PREFIX}${bookId}`, JSON.stringify(normalized))
+  } catch {}
+  return normalized
+}
+
+export function removeBookReaderStylePreferences(bookId: string, storage: Storage = localStorage) {
+  if (!bookId) return
+  try {
+    storage.removeItem(`${BOOK_STYLE_KEY_PREFIX}${bookId}`)
+  } catch {}
 }

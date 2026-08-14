@@ -4,6 +4,7 @@ export interface ReaderStageStyleOptions {
   backgroundColor: string
   textColor: string
   brightness: number
+  invert?: boolean
 }
 
 function clampColor(value: number): number {
@@ -30,43 +31,41 @@ export function applyReaderBrightnessToColor(color: string, brightness: number):
 }
 
 export function buildReaderStageStyle(options: ReaderStageStyleOptions & { layoutMode?: string }) {
-  const scale = Number.isFinite(options.scale) ? options.scale : 1
-  const clampScale = Math.min(scale, 4)
-  const margin = Number.isFinite(options.margin) ? options.margin : 0
+  const margin = Math.max(24, Number.isFinite(options.margin) ? options.margin : 24)
+  // Keep a readable minimum measure on narrow windows. This also prevents a
+  // large margin from shrinking a paginated iframe enough to expose adjacent pages.
+  const width = `min(calc(100% - 48px), max(360px, calc(100% - ${margin * 2}px)))`
+
+  const filter = `brightness(${options.brightness})${options.invert ? ' invert(1) hue-rotate(180deg)' : ''}`
 
   if (options.layoutMode === 'scroll') {
     // koodo: margin 缩小容器宽度而非给 body 加 padding
-    const marginReduce = margin > 0 ? ` - ${margin * 2}px` : ''
     return {
-      width: `calc(100% - 40px${marginReduce})`,
+      width,
       margin: '0 auto',
       backgroundColor: options.backgroundColor,
       color: options.textColor,
-      filter: `brightness(${options.brightness})`
+      filter
     }
   }
 
   if (options.layoutMode === 'double') {
-    const width = `calc(100vw - ${80 + margin * 2}px)`
     return {
-      width: `min(${width}, calc(100% - 40px))`,
+      width,
       margin: '0 auto',
       backgroundColor: options.backgroundColor,
       color: options.textColor,
-      filter: `brightness(${options.brightness})`
+      filter
     }
   }
 
-  // 单页: koodo 公式 clientWidth * scale - clientWidth * 0.4 - margin*2
-  const vw = typeof window !== 'undefined' ? window.innerWidth : 1200
-  const rawWidth = Math.round(vw * clampScale - vw * 0.4 - margin * 2)
-  const width = Math.max(360, rawWidth)
+  // 单页/双页/滚动统一以页边距确定正文距离左右边界的留白。
   return {
-    width: `min(${width}px, calc(100% - 40px))`,
+    width,
     margin: '0 auto',
     backgroundColor: options.backgroundColor,
     color: options.textColor,
-    filter: `brightness(${options.brightness})`
+    filter
   }
 }
 

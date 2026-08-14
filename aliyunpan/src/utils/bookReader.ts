@@ -45,6 +45,7 @@ export interface BookReaderOptions {
   fullTranslationMode?: string
   textOrientation?: string
   customCSS?: string
+  isStartFromEven?: boolean
 }
 
 export interface BookChapter {
@@ -103,6 +104,7 @@ export interface BookReaderHandle {
   getBatchTransTexts: () => Promise<string[]>
   handleBatchTransResult: (texts: string[], translations: string[]) => void
   getBookCover: () => Promise<string | null>
+  getPlainText: () => Promise<string>
   destroy: () => void
   _ReaderKit: RenderKitModule
   _contentBuffer: ArrayBuffer
@@ -146,7 +148,7 @@ function createReaderOptions(options: BookReaderOptions) {
     isMobile: 'no',
     isIndent: options.isIndent === false ? 'no' : 'yes',
     isHyphenation: options.isHyphenation ? 'yes' : 'no',
-    isStartFromEven: 'no',
+    isStartFromEven: options.isStartFromEven ? 'yes' : 'no',
     isAllowScript: options.isAllowScript ? 'yes' : 'no',
     isBionic: options.isBionic ? 'yes' : 'no',
     password: '',
@@ -170,6 +172,8 @@ export function createReaderStyleConfig(options: BookReaderOptions) {
   const fullTranslationEnabled = options.fullTranslationMode === 'both' || options.fullTranslationMode === 'target'
   const readerConfig: Record<string, string> = {
     readerMode: options.readerMode || 'double',
+    bookLayout: options.bookLayout || '',
+    textOrientation: options.textOrientation || '',
     backgroundColor: options.backgroundColor || '',
     textColor: options.textColor || '',
     fontSize: String(options.fontSize || 18),
@@ -191,6 +195,11 @@ export function createReaderStyleConfig(options: BookReaderOptions) {
     isUnderline: options.isUnderline ? 'yes' : 'no',
     isShadow: options.isShadow ? 'yes' : 'no',
     isSliding: options.isSliding ? 'yes' : 'no',
+    isOrphanWidow: options.isOrphanWidow === false ? 'no' : 'yes',
+    isAllowScript: options.isAllowScript ? 'yes' : 'no',
+    isAutoScroll: options.isAutoScroll ? 'yes' : 'no',
+    isStartFromEven: options.isStartFromEven ? 'yes' : 'no',
+    customCSS: options.customCSS || '',
     margin: String(options.margin ?? 0),
     letterSpacing: String(options.letterSpacing ?? 0),
     fullTranslationMode: options.fullTranslationMode || 'no'
@@ -392,6 +401,23 @@ async function getAudioText(rendition: any): Promise<string> {
   return getVisibleText(rendition)
 }
 
+async function extractPdfText(content: ArrayBuffer): Promise<string> {
+  const pdfjsLib = await import('pdfjs-dist')
+  const pdfjs = pdfjsLib as any
+  const document = await pdfjs.getDocument({ data: content.slice(0) }).promise
+  try {
+    const pages: string[] = []
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+      const page = await document.getPage(pageNumber)
+      const textContent = await page.getTextContent()
+      pages.push((textContent.items || []).map((item: any) => item.str || '').join(''))
+    }
+    return pages.filter(Boolean).join('\n\n')
+  } finally {
+    await document.destroy?.()
+  }
+}
+
 export async function waitForReaderRender(renderResult: unknown): Promise<void> {
   if (!renderResult || typeof (renderResult as PromiseLike<void>).then !== 'function') return
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -536,6 +562,7 @@ export async function createBookReader(options: BookReaderOptions, cachedContent
     },
     getVisibleText: async () => getVisibleText(rendition),
     getAudioText: async () => getAudioText(rendition),
+    getPlainText: async () => (getFormat(options.ext) === 'PDF' ? extractPdfText(content) : getAudioText(rendition)),
     getBookCover: async () => {
       try {
         const meta = await rendition.getMetadata?.()

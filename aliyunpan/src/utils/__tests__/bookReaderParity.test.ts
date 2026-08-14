@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildInitialReaderPosition, getPanelVisible, nextPanelLockState, normalizeReaderPercentage, serializeReaderPositionForJump } from '../bookReaderParity'
+import { buildInitialReaderPosition, getPanelVisible, hasMeaningfulReadingPosition, nextPanelLockState, normalizeReaderPercentage, serializeReaderPositionForJump } from '../bookReaderParity'
 import { createReaderStyleConfig, readRecordedReaderPosition, waitForReaderRender } from '../bookReader'
 
 describe('readerParity', () => {
@@ -33,6 +33,12 @@ describe('readerParity', () => {
       chapterDocIndex: '2',
       count: 0
     })
+  })
+
+  it('treats the initial cover position as unread but retains actual reading locations', () => {
+    expect(hasMeaningfulReadingPosition({ percentage: 0, chapterDocIndex: '0', page: '1' })).toBe(false)
+    expect(hasMeaningfulReadingPosition({ chapterHref: 'OEBPS/Text/chapter.xhtml' })).toBe(true)
+    expect(hasMeaningfulReadingPosition({ percentage: 0.01 })).toBe(true)
   })
 
   it('normalizes Reader progress jumps to a 0-1 percentage', () => {
@@ -83,6 +89,12 @@ describe('readerParity', () => {
       textAlign: 'Justify',
       isIndent: false,
       isHyphenation: true,
+      isOrphanWidow: false,
+      isAllowScript: true,
+      isAutoScroll: true,
+      isStartFromEven: true,
+      bookLayout: 'tufte',
+      fontFamily: 'Georgia',
       paraSpacingValue: '36',
       backgroundColor: 'rgba(44,47,49,1)',
       textColor: 'rgba(255,255,255,1)'
@@ -93,6 +105,12 @@ describe('readerParity', () => {
     expect(config.getReaderConfig('textAlign')).toBe('Justify')
     expect(config.getReaderConfig('isIndent')).toBe('no')
     expect(config.getReaderConfig('isHyphenation')).toBe('yes')
+    expect(config.getReaderConfig('isOrphanWidow')).toBe('no')
+    expect(config.getReaderConfig('isAllowScript')).toBe('yes')
+    expect(config.getReaderConfig('isAutoScroll')).toBe('yes')
+    expect(config.getReaderConfig('isStartFromEven')).toBe('yes')
+    expect(config.getReaderConfig('bookLayout')).toBe('tufte')
+    expect(config.getReaderConfig('fontFamily')).toBe('Georgia')
     expect(config.getReaderConfig('paraSpacing')).toBe('36')
     expect(config.getReaderConfig('backgroundColor')).toBe('rgba(44,47,49,1)')
     expect(config.getReaderConfig('textColor')).toBe('rgba(255,255,255,1)')

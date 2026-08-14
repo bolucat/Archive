@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_BOOK_READER_PREFERENCES,
   loadBookReaderPreferences,
+  loadBookReaderStylePreferences,
   normalizeBookReaderPreferences,
+  removeBookReaderStylePreferences,
+  saveBookReaderStylePreferences,
   saveBookReaderPreferences
 } from '../bookReaderPreferences'
 
@@ -42,7 +45,7 @@ describe('bookReaderPreferences', () => {
     })).toEqual({
       ...DEFAULT_BOOK_READER_PREFERENCES,
       fontSize: 40,
-      readerMargin: 0,
+      readerMargin: 24,
       readerPageWidth: 1600,
       readerVoiceRate: 8
     })
@@ -90,7 +93,7 @@ describe('bookReaderPreferences', () => {
       readerVoiceName: 'Tingting',
       readerVoiceURI: 'voice-zh-cn-1',
       readerVoiceRate: 1.5,
-      readerMargin: 0,
+      readerMargin: 24,
       readerPopupActionKeys: ['note', 'highlight', 'translation', 'copy', 'speech-start'],
       readerTranslationTarget: 'en'
     })
@@ -110,5 +113,16 @@ describe('bookReaderPreferences', () => {
       readerTranslationTarget: 'en'
     })
     expect(loadBookReaderPreferences(storage)).toEqual(saved)
+  })
+
+  it('keeps independent reader styles scoped to one book', () => {
+    const storage = createStorage()
+    saveBookReaderStylePreferences('book-a', { ...DEFAULT_BOOK_READER_PREFERENCES, fontSize: 27, readerIsSeperateStyle: true }, storage)
+
+    expect(loadBookReaderStylePreferences('book-a', storage)?.fontSize).toBe(27)
+    expect(loadBookReaderStylePreferences('book-b', storage)).toBeNull()
+
+    removeBookReaderStylePreferences('book-a', storage)
+    expect(loadBookReaderStylePreferences('book-a', storage)).toBeNull()
   })
 })
