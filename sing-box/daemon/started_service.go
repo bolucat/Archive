@@ -34,9 +34,12 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-const APIVersion = 3
+const APIVersion = 4
 
-const urlTestPushMinInterval = 250 * time.Millisecond
+const (
+	urlTestPushMinInterval = 250 * time.Millisecond
+	notificationQueueSize  = 16
+)
 
 var _ StartedServiceServer = (*StartedService)(nil)
 
@@ -68,6 +71,8 @@ type StartedService struct {
 	urlTestObserver         *observable.Observer[struct{}]
 	clashModeSubscriber     *observable.Subscriber[struct{}]
 	clashModeObserver       *observable.Observer[struct{}]
+	notificationSubscriber  *observable.Subscriber[*NotificationEvent]
+	notificationObserver    *observable.Observer[*NotificationEvent]
 }
 
 type ServiceOptions struct {
@@ -106,11 +111,13 @@ func NewStartedService(options ServiceOptions) *StartedService {
 		logSubscriber:           observable.NewSubscriber[*log.Entry](128),
 		urlTestSubscriber:       observable.NewSubscriber[struct{}](1),
 		clashModeSubscriber:     observable.NewSubscriber[struct{}](1),
+		notificationSubscriber:  observable.NewSubscriber[*NotificationEvent](notificationQueueSize),
 	}
 	s.serviceStatusObserver = observable.NewObserver(s.serviceStatusSubscriber, 2)
 	s.logObserver = observable.NewObserver(s.logSubscriber, 64)
 	s.urlTestObserver = observable.NewObserver(s.urlTestSubscriber, 1)
 	s.clashModeObserver = observable.NewObserver(s.clashModeSubscriber, 1)
+	s.notificationObserver = observable.NewObserver(s.notificationSubscriber, notificationQueueSize)
 	return s
 }
 
@@ -283,6 +290,7 @@ func (s *StartedService) Close() {
 	s.logSubscriber.Close()
 	s.urlTestSubscriber.Close()
 	s.clashModeSubscriber.Close()
+	s.notificationSubscriber.Close()
 }
 
 func (s *StartedService) CloseService() error {
@@ -1372,6 +1380,107 @@ func subscribeEndpointStatus[T endpointStatusProvider](ctx context.Context, star
 	})
 }
 
+type taggedStatusSource[T any] struct {
+	tag       string
+	subscribe func(ctx context.Context, listener func(T))
+}
+
+func streamTaggedStatus[T any](ctx context.Context, sources []taggedStatusSource[T], send func(statuses map[string]T) error) error {
+	type subscription struct {
+		tag      string
+		latest   chan T
+		finished chan struct{}
+	}
+	var waitGroup sync.WaitGroup
+	subscriptions := make([]subscription, 0, len(sources))
+	for _, source := range sources {
+		current := subscription{
+			tag:      source.tag,
+			latest:   make(chan T, 1),
+			finished: make(chan struct{}),
+		}
+		subscriptions = append(subscriptions, current)
+		waitGroup.Go(func() {
+			defer close(current.finished)
+			source.subscribe(ctx, func(status T) {
+				storeLatestStatus(current.latest, status)
+			})
+		})
+	}
+
+	statuses := make(map[string]T, len(sources))
+	for _, current := range subscriptions {
+		select {
+		case status := <-current.latest:
+			statuses[current.tag] = status
+		case <-current.finished:
+			select {
+			case status := <-current.latest:
+				statuses[current.tag] = status
+			default:
+			}
+		case <-ctx.Done():
+			return nil
+		}
+	}
+	err := send(statuses)
+	if err != nil {
+		return err
+	}
+
+	type taggedStatus struct {
+		tag    string
+		status T
+	}
+	updates := make(chan taggedStatus, len(sources))
+	for _, current := range subscriptions {
+		waitGroup.Go(func() {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case status := <-current.latest:
+					select {
+					case updates <- taggedStatus{tag: current.tag, status: status}:
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		})
+	}
+	go func() {
+		waitGroup.Wait()
+		close(updates)
+	}()
+
+	for update := range updates {
+		statuses[update.tag] = update.status
+		err = send(statuses)
+		if err != nil {
+			return err
+		}
+	}
+	<-ctx.Done()
+	return nil
+}
+
+func storeLatestStatus[T any](slot chan T, status T) {
+	select {
+	case slot <- status:
+		return
+	default:
+	}
+	select {
+	case <-slot:
+	default:
+	}
+	select {
+	case slot <- status:
+	default:
+	}
+}
+
 func (s *StartedService) StartNetworkQualityTest(
 	request *NetworkQualityTestRequest,
 	server grpc.ServerStreamingServer[NetworkQualityTestProgress],
@@ -1484,60 +1593,27 @@ func (s *StartedService) SubscribeTailscaleStatus(
 				})
 			}
 		}
-		if len(endpoints) == 0 {
-			sendErr := server.Send(&TailscaleStatusUpdate{})
-			if sendErr != nil {
-				return sendErr
+		sources := common.Map(endpoints, func(endpoint tailscaleEndpoint) taggedStatusSource[*adapter.TailscaleEndpointStatus] {
+			return taggedStatusSource[*adapter.TailscaleEndpointStatus]{
+				tag: endpoint.tag,
+				subscribe: func(subscribeCtx context.Context, listener func(*adapter.TailscaleEndpointStatus)) {
+					_ = endpoint.provider.SubscribeTailscaleStatus(subscribeCtx, listener)
+				},
 			}
-			<-ctx.Done()
-			return nil
-		}
-
-		type taggedStatus struct {
-			tag    string
-			status *adapter.TailscaleEndpointStatus
-		}
-		updates := make(chan taggedStatus, len(endpoints))
-
-		var waitGroup sync.WaitGroup
-		for _, endpoint := range endpoints {
-			waitGroup.Add(1)
-			go func(tag string, provider adapter.TailscaleEndpoint) {
-				defer waitGroup.Done()
-				_ = provider.SubscribeTailscaleStatus(ctx, func(endpointStatus *adapter.TailscaleEndpointStatus) {
-					select {
-					case updates <- taggedStatus{tag: tag, status: endpointStatus}:
-					case <-ctx.Done():
-					}
-				})
-			}(endpoint.tag, endpoint.provider)
-		}
-
-		go func() {
-			waitGroup.Wait()
-			close(updates)
-		}()
-
-		var tags []string
-		statuses := make(map[string]*adapter.TailscaleEndpointStatus, len(endpoints))
-		for update := range updates {
-			if _, exists := statuses[update.tag]; !exists {
-				tags = append(tags, update.tag)
+		})
+		return streamTaggedStatus(ctx, sources, func(statuses map[string]*adapter.TailscaleEndpointStatus) error {
+			protoEndpoints := make([]*TailscaleEndpointStatus, 0, len(endpoints))
+			for _, endpoint := range endpoints {
+				endpointStatus, found := statuses[endpoint.tag]
+				if !found {
+					continue
+				}
+				protoEndpoints = append(protoEndpoints, tailscaleEndpointStatusToProto(endpoint.tag, endpointStatus, selectedLocale))
 			}
-			statuses[update.tag] = update.status
-			protoEndpoints := make([]*TailscaleEndpointStatus, 0, len(statuses))
-			for _, tag := range tags {
-				protoEndpoints = append(protoEndpoints, tailscaleEndpointStatusToProto(tag, statuses[tag], selectedLocale))
-			}
-			sendErr := server.Send(&TailscaleStatusUpdate{
+			return server.Send(&TailscaleStatusUpdate{
 				Endpoints: protoEndpoints,
 			})
-			if sendErr != nil {
-				return sendErr
-			}
-		}
-		<-ctx.Done()
-		return nil
+		})
 	})
 }
 
@@ -1557,14 +1633,18 @@ func tailscaleEndpointStatusToProto(tag string, s *adapter.TailscaleEndpointStat
 		}
 	}
 	result := &TailscaleEndpointStatus{
-		EndpointTag:    tag,
-		BackendState:   s.BackendState,
-		StateText:      selectedLocale.TailscaleStateText(s.BackendState),
-		AuthURL:        s.AuthURL,
-		NetworkName:    s.NetworkName,
-		MagicDNSSuffix: s.MagicDNSSuffix,
-		UserGroups:     userGroups,
-		KeyAuth:        s.KeyAuth,
+		EndpointTag:        tag,
+		BackendState:       s.BackendState,
+		StateText:          selectedLocale.TailscaleStateText(s.BackendState),
+		AuthURL:            s.AuthURL,
+		NetworkName:        s.NetworkName,
+		MagicDNSSuffix:     s.MagicDNSSuffix,
+		UserGroups:         userGroups,
+		KeyAuth:            s.KeyAuth,
+		CanShareFiles:      s.CanShareFiles,
+		WaitingFileCount:   s.WaitingFileCount,
+		ReceivingFileCount: s.ReceivingFileCount,
+		UnreadFileCount:    s.UnreadFileCount,
 	}
 	if s.Self != nil {
 		result.Self = tailscalePeerToProto(s.Self)
@@ -1577,22 +1657,23 @@ func tailscaleEndpointStatusToProto(tag string, s *adapter.TailscaleEndpointStat
 
 func tailscalePeerToProto(peer *adapter.TailscalePeer) *TailscalePeer {
 	return &TailscalePeer{
-		StableID:       peer.StableID,
-		HostName:       peer.HostName,
-		DnsName:        peer.DNSName,
-		Os:             peer.OS,
-		TailscaleIPs:   peer.TailscaleIPs,
-		SshHostKeys:    peer.SSHHostKeys,
-		Online:         peer.Online,
-		ExitNode:       peer.ExitNode,
-		ExitNodeOption: peer.ExitNodeOption,
-		ShareeNode:     peer.ShareeNode,
-		Expired:        peer.Expired,
-		Active:         peer.Active,
-		RxBytes:        peer.RxBytes,
-		TxBytes:        peer.TxBytes,
-		KeyExpiry:      peer.KeyExpiry,
-		LastSeen:       peer.LastSeen,
+		StableID:        peer.StableID,
+		HostName:        peer.HostName,
+		DnsName:         peer.DNSName,
+		Os:              peer.OS,
+		TailscaleIPs:    peer.TailscaleIPs,
+		SshHostKeys:     peer.SSHHostKeys,
+		Online:          peer.Online,
+		ExitNode:        peer.ExitNode,
+		ExitNodeOption:  peer.ExitNodeOption,
+		ShareeNode:      peer.ShareeNode,
+		Expired:         peer.Expired,
+		Active:          peer.Active,
+		CanReceiveFiles: peer.CanReceiveFiles,
+		RxBytes:         peer.RxBytes,
+		TxBytes:         peer.TxBytes,
+		KeyExpiry:       peer.KeyExpiry,
+		LastSeen:        peer.LastSeen,
 	}
 }
 
@@ -1608,35 +1689,9 @@ func (s *StartedService) StartTailscalePing(
 	boxService := s.instance
 	s.serviceAccess.RUnlock()
 
-	var provider adapter.TailscaleEndpoint
-	if request.EndpointTag != "" {
-		endpoint, err := resolveTailscaleEndpoint(boxService, request.EndpointTag)
-		if err != nil {
-			return err
-		}
-		pingProvider, loaded := endpoint.(adapter.TailscaleEndpoint)
-		if !loaded {
-			return status.Error(codes.FailedPrecondition, "endpoint does not support ping")
-		}
-		provider = pingProvider
-	} else {
-		endpointManager := service.FromContext[adapter.EndpointManager](boxService.ctx)
-		if endpointManager == nil {
-			return status.Error(codes.FailedPrecondition, "endpoint manager not available")
-		}
-		for _, endpoint := range endpointManager.Endpoints() {
-			if endpoint.Type() != C.TypeTailscale {
-				continue
-			}
-			pingProvider, loaded := endpoint.(adapter.TailscaleEndpoint)
-			if loaded {
-				provider = pingProvider
-				break
-			}
-		}
-		if provider == nil {
-			return status.Error(codes.NotFound, "no Tailscale endpoint found")
-		}
+	provider, _, err := resolveTailscaleProvider(boxService, request.EndpointTag)
+	if err != nil {
+		return err
 	}
 
 	return provider.StartTailscalePing(server.Context(), request.PeerIP, func(result *adapter.TailscalePingResult) {
@@ -1644,6 +1699,7 @@ func (s *StartedService) StartTailscalePing(
 			LatencyMs:      result.LatencyMs,
 			IsDirect:       result.IsDirect,
 			Endpoint:       result.Endpoint,
+			PeerRelay:      result.PeerRelay,
 			DerpRegionID:   result.DERPRegionID,
 			DerpRegionCode: result.DERPRegionCode,
 			Error:          result.Error,
@@ -1949,6 +2005,58 @@ func (s *StartedService) CancelOpenVPNChallenge(ctx context.Context, request *Op
 		return nil, err
 	}
 	return &emptypb.Empty{}, nil
+}
+
+func (s *StartedService) SendNotification(notification *adapter.Notification) error {
+	s.notificationSubscriber.Emit(&NotificationEvent{
+		Event: &NotificationEvent_Send{
+			Send: &Notification{
+				Identifier: notification.Identifier,
+				TypeName:   notification.TypeName,
+				TypeID:     notification.TypeID,
+				Title:      notification.Title,
+				Subtitle:   notification.Subtitle,
+				Body:       notification.Body,
+				OpenURL:    notification.OpenURL,
+			},
+		},
+	})
+	return nil
+}
+
+func (s *StartedService) CancelNotification(identifier string, typeID int32) error {
+	s.notificationSubscriber.Emit(&NotificationEvent{
+		Event: &NotificationEvent_Cancel{
+			Cancel: &NotificationCancel{
+				Identifier: identifier,
+				TypeID:     typeID,
+			},
+		},
+	})
+	return nil
+}
+
+func (s *StartedService) SubscribeNotifications(empty *emptypb.Empty, server grpc.ServerStreamingServer[NotificationEvent]) error {
+	subscription, done, err := s.notificationObserver.Subscribe()
+	if err != nil {
+		return err
+	}
+	defer s.notificationObserver.UnSubscribe(subscription)
+	for {
+		select {
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		case <-server.Context().Done():
+			return server.Context().Err()
+		case <-done:
+			return nil
+		case event := <-subscription:
+			err = server.Send(event)
+			if err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (s *StartedService) mustEmbedUnimplementedStartedServiceServer() {
