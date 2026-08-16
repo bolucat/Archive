@@ -61,6 +61,7 @@ type Hysteria2Option struct {
 	CWND              int        `proxy:"cwnd,omitempty"`
 	BBRProfile        string     `proxy:"bbr-profile,omitempty"`
 	UdpMTU            int        `proxy:"udp-mtu,omitempty"`
+	HandshakeTimeout  int        `proxy:"handshake-timeout,omitempty"`
 
 	RealmOpts Hysteria2RealmOption `proxy:"realm-opts,omitempty"`
 
@@ -225,11 +226,12 @@ func NewHysteria2(option Hysteria2Option) (*Hysteria2, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			return common.DialQuic(ctx, addr, outbound.DialOptions(), dialer, tlsCfg, cfg, early)
+			return common.DialQuic(ctx, addr, outbound.DialOptions(), dialer, tlsCfg, cfg, common.DialQuicOption{Early: early})
 		}),
 		SetBBRCongestion: func(quicConn *quic.Conn) {
 			common.SetCongestionController(quicConn, "bbr", option.CWND, option.BBRProfile)
 		},
+		HandshakeTimeout: time.Duration(option.HandshakeTimeout) * time.Second,
 	}
 
 	var serverPorts []uint16

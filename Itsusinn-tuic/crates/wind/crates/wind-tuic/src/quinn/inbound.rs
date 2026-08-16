@@ -16,6 +16,7 @@ use rustls::{
 	ServerConfig as RustlsServerConfig,
 	pki_types::{CertificateDer, PrivateKeyDer},
 };
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, error, info, warn};
 use uuid::Uuid;
@@ -144,6 +145,11 @@ pub struct TuicInboundOpts {
 	/// Defaults to `None` (no registration). When set, each authenticated
 	/// connection registers itself and `kick_user` can drop it.
 	pub active: Option<crate::active::ActiveConnections>,
+
+	/// Optional channel for reporting the actually-bound address back to the
+	/// caller (e.g. a test that binds to `0.0.0.0:0` and needs the OS-assigned
+	/// port). `None` disables reporting.
+	pub bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
 }
 
 impl Default for TuicInboundOpts {
@@ -172,6 +178,7 @@ impl Default for TuicInboundOpts {
 			hooks: InboundHooks::default(),
 			inbound_tag: Arc::from("tuic"),
 			active: None,
+			bound_addr: None,
 		}
 	}
 }
@@ -299,6 +306,9 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 			.wrap_err("Failed to create QUIC endpoint")?;
 
 		info!("TUIC server listening on {}", endpoint.local_addr().unwrap());
+		if let Some(tx) = &self.opts.bound_addr {
+			let _ = tx.send_replace(Some(endpoint.local_addr().unwrap()));
+		}
 
 		let users = Arc::new(self.opts.users.clone());
 

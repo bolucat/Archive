@@ -9,6 +9,7 @@
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, info};
 use uuid::Uuid;
@@ -55,6 +56,9 @@ pub struct TuicheInbound {
 	inbound_tag: Arc<str>,
 	/// Live-connection registry for per-user connection limits + active kick.
 	active: Option<crate::active::ActiveConnections>,
+	/// Optional channel for reporting the actually-bound address back to the
+	/// caller (e.g. a test that binds to `0.0.0.0:0`). `None` disables it.
+	bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
 }
 
 impl TuicheInbound {
@@ -79,6 +83,7 @@ impl TuicheInbound {
 		hooks: InboundHooks,
 		active: Option<crate::active::ActiveConnections>,
 		inbound_tag: Arc<str>,
+		bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
 	) -> Self {
 		Self {
 			listen_addr,
@@ -92,6 +97,7 @@ impl TuicheInbound {
 			hooks,
 			active,
 			inbound_tag,
+			bound_addr,
 		}
 	}
 
@@ -111,6 +117,9 @@ impl<R: Router> AbstractInbound<R> for TuicheInbound {
 		let transport = self.opts.to_transport();
 
 		let mut acceptor = bind_server(self.listen_addr, &tls, &transport, Some(&self.cert_store)).await?;
+		if let Some(tx) = &self.bound_addr {
+			let _ = tx.send_replace(Some(acceptor.local_addr()));
+		}
 
 		let users = Arc::new(self.users.clone());
 		// Root of every per-connection token: cancelling `self.cancel` (e.g. from
@@ -189,6 +198,7 @@ pub struct TuicheInboundBuilder {
 	hooks: InboundHooks,
 	inbound_tag: Arc<str>,
 	active: Option<crate::active::ActiveConnections>,
+	bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
 }
 
 impl TuicheInboundBuilder {
@@ -205,6 +215,7 @@ impl TuicheInboundBuilder {
 			hooks: InboundHooks::default(),
 			inbound_tag: Arc::from("tuic"),
 			active: None,
+			bound_addr: None,
 		}
 	}
 
@@ -248,6 +259,13 @@ impl TuicheInboundBuilder {
 	/// Set the listen address.
 	pub fn listen_addr(mut self, addr: SocketAddr) -> Self {
 		self.listen_addr = Some(addr);
+		self
+	}
+
+	/// Report the actually-bound address (once the OS assigns the port) through
+	/// this watch channel. Useful for `0.0.0.0:0` binds.
+	pub fn bound_addr(mut self, tx: watch::Sender<Option<SocketAddr>>) -> Self {
+		self.bound_addr = Some(tx);
 		self
 	}
 
@@ -309,6 +327,7 @@ impl TuicheInboundBuilder {
 			hooks: self.hooks,
 			active: self.active,
 			inbound_tag: self.inbound_tag,
+			bound_addr: self.bound_addr,
 		})
 	}
 }

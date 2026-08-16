@@ -89,6 +89,7 @@ async fn spawn_socks(auth: AuthMode) -> (SocketAddr, CancellationToken) {
 		allow_udp: false,
 		inbound_tag: "test-socks".into(),
 		hooks: Default::default(),
+		bound_addr: None,
 	};
 	let cancel = CancellationToken::new();
 	let inbound = SocksInbound::new(opts, cancel.clone());

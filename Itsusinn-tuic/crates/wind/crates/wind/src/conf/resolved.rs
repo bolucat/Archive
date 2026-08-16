@@ -137,6 +137,7 @@ fn resolve_inbounds(inbounds: Vec<InboundConfig>) -> eyre::Result<Vec<ResolvedIn
 				allow_udp: s.allow_udp,
 				inbound_tag: Arc::from(s.tag.as_str()),
 				hooks: Default::default(),
+				bound_addr: None,
 			}),
 		});
 	}

@@ -126,7 +126,7 @@ func NewShadowQuic(option ShadowQuicOption) (*ShadowQuic, error) {
 
 	quicVersions := shadowquic.DefaultQUICVersions()
 	if len(option.QUICVersions) > 0 {
-		parsedVersions, _, err := shadowquic.ParseQUICVersionProfile(option.QUICVersions)
+		parsedVersions, err := shadowquic.ParseQUICVersions(option.QUICVersions)
 		if err != nil {
 			return nil, err
 		}
@@ -181,7 +181,7 @@ func NewShadowQuic(option ShadowQuicOption) (*ShadowQuic, error) {
 		CWND:                 option.CWND,
 		BBRProfile:           option.BBRProfile,
 		Dial: func(ctx context.Context) (*quic.Conn, error) {
-			_, quicConn, err := shadowquic.DialQuic(ctx, outbound.addr, outbound.DialOptions(), outbound.dialer, outbound.tlsConfig, outbound.quicConfig, option.ZeroRTT)
+			_, quicConn, err := shadowquic.DialQuic(ctx, outbound.addr, outbound.DialOptions(), outbound.dialer, outbound.tlsConfig, outbound.quicConfig, shadowquic.DialQuicOption{Early: option.ZeroRTT})
 			if err != nil {
 				return nil, err
 			}

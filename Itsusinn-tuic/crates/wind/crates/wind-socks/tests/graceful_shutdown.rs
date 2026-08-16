@@ -59,6 +59,7 @@ async fn spawn_inbound(cancel: CancellationToken) -> (SocketAddr, tokio::task::J
 		allow_udp: false,
 		inbound_tag: "test-socks".into(),
 		hooks: Default::default(),
+		bound_addr: None,
 	};
 	let mut dispatcher = Dispatcher::new(ForwardRouter);
 	dispatcher.add_handler("default", Arc::new(ParkOutbound));

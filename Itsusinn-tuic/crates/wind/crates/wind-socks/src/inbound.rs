@@ -8,7 +8,7 @@ use fast_socks5::{ReplyError, Socks5Command, server::Socks5ServerProtocol, util:
 use snafu::ResultExt;
 use tokio::{
 	net::{TcpListener, TcpStream},
-	sync::mpsc,
+	sync::{mpsc, watch},
 };
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, error, info, warn};
@@ -45,6 +45,10 @@ pub struct SocksInboundOpt {
 	/// Downstream extensibility hooks (auth / traffic stats / connection
 	/// management). Defaults to all-`None` (no behavior change).
 	pub hooks: InboundHooks,
+
+	/// Optional channel for reporting the actually-bound address back to the
+	/// caller (e.g. a test that binds to `127.0.0.1:0`). `None` disables it.
+	pub bound_addr: Option<watch::Sender<Option<SocketAddr>>>,
 }
 
 pub enum AuthMode {
@@ -61,6 +65,9 @@ pub struct SocksInbound {
 impl<R: Router> AbstractInbound<R> for SocksInbound {
 	async fn listen(&self, cb: &Dispatcher<R>) -> eyre::Result<()> {
 		let listener = TcpListener::bind(self.opts.listen_addr).await?;
+		if let Some(tx) = &self.opts.bound_addr {
+			let _ = tx.send_replace(Some(listener.local_addr()?));
+		}
 		// Track per-connection tasks so shutdown can wait for them instead of
 		// leaving in-flight sessions to be killed by runtime teardown. Each task
 		// also gets a child token so cancellation aborts the session promptly.
