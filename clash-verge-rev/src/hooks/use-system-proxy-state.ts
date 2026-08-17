@@ -1,16 +1,25 @@
 import { useRef } from 'react'
 import { closeAllConnections } from 'tauri-plugin-mihomo-api'
 
+import { useDisplayedMixedPort } from '@/hooks/use-displayed-mixed-port'
 import { useVerge } from '@/hooks/use-verge'
-import { useClashConfigData, useSystemData } from '@/providers/app-data-context'
-import { getAutotemProxy, getEmbeddedServerPort } from '@/services/cmds'
-import { revalidateQueries, useQuery } from '@/services/query-client'
+import { useSystemData } from '@/providers/app-data-context'
+import {
+  getAutotemProxy,
+  getEmbeddedServerPort,
+  patchVergeConfig,
+} from '@/services/cmds'
+import {
+  getCacheData,
+  revalidateQueries,
+  useQuery,
+} from '@/services/query-client'
 
 // 系统代理状态检测统一逻辑
 export const useSystemProxyState = () => {
-  const { verge, mutateVerge, patchVerge } = useVerge()
+  const { verge, mutateVerge } = useVerge()
   const { sysproxy } = useSystemData()
-  const { clashConfig } = useClashConfigData()
+  const displayedMixedPort = useDisplayedMixedPort()
   const { data: autoproxy } = useQuery({
     queryKey: ['getAutotemProxy'],
     queryFn: getAutotemProxy,
@@ -22,12 +31,7 @@ export const useSystemProxyState = () => {
     queryFn: getEmbeddedServerPort,
   })
 
-  const {
-    enable_system_proxy,
-    proxy_auto_config,
-    proxy_host,
-    verge_mixed_port,
-  } = verge ?? {}
+  const { proxy_auto_config, proxy_host } = verge ?? {}
 
   // OS 实际状态：enable + 地址匹配本应用
   const indicator = (() => {
@@ -38,8 +42,7 @@ export const useSystemProxyState = () => {
       return autoproxy.url === `http://${host}:${pacPort}/commands/pac`
     } else {
       if (!sysproxy?.enable) return false
-      const port = verge_mixed_port || clashConfig?.mixedPort || 7897
-      return sysproxy.server === `${host}:${port}`
+      return sysproxy.server === `${host}:${displayedMixedPort}`
     }
   })()
 
@@ -48,6 +51,10 @@ export const useSystemProxyState = () => {
   const busyRef = useRef(false)
 
   const toggleSystemProxy = async (enabled: boolean) => {
+    // Roll failed optimistic writes back to the latest confirmed state.
+    let confirmed =
+      getCacheData<IVergeConfig>(['getVergeConfig'])?.enable_system_proxy ??
+      false
     mutateVerge(
       (prev) => (prev ? { ...prev, enable_system_proxy: enabled } : prev),
       false,
@@ -57,18 +64,47 @@ export const useSystemProxyState = () => {
     if (busyRef.current) return
     busyRef.current = true
 
+    let failed = false
     try {
       while (pendingRef.current !== null) {
         const target = pendingRef.current
         pendingRef.current = null
-        await patchVerge({ enable_system_proxy: target })
+        // Revalidate once below so a refetch failure cannot look like a patch failure.
+        await patchVergeConfig({ enable_system_proxy: target })
+        confirmed = target
         if (!target && verge?.auto_close_connection) {
           await closeAllConnections().catch(() => {})
         }
       }
+    } catch (error) {
+      failed = true
+      mutateVerge(
+        (prev) => (prev ? { ...prev, enable_system_proxy: confirmed } : prev),
+        false,
+      )
+      // Queued requests assumed the failed state was reached.
+      pendingRef.current = null
+      throw error
     } finally {
       busyRef.current = false
-      await revalidateQueries([['getSystemProxy'], ['getAutotemProxy']])
+      const revalidated = revalidateQueries([
+        ['getVergeConfig'],
+        ['getSystemProxy'],
+        ['getAutotemProxy'],
+      ])
+      if (failed) {
+        // Preserve the classified toggle failure.
+        try {
+          await revalidated
+        } catch (error) {
+          console.warn(
+            '[system-proxy] revalidating after a failed toggle failed too:',
+            error,
+          )
+        }
+      } else {
+        await revalidated
+      }
     }
   }
 
@@ -77,7 +113,6 @@ export const useSystemProxyState = () => {
 
   return {
     indicator,
-    configState: enable_system_proxy ?? false,
     toggleSystemProxy,
     invalidateProxyState,
   }

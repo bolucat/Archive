@@ -30,6 +30,7 @@ declare interface Window {
   WebRelaunchAria: () => Promise<number>
   AutoUpdateGetState: () => Promise<any>
   AutoUpdateCheck: (force?: boolean) => Promise<any>
+  AutoUpdateInstall: () => Promise<boolean>
   AutoUpdateOnStateChanged: (callback: (state: any) => void) => () => void
   WebSetProgressBar: any
   WebGetCookies: any

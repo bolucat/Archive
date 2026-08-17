@@ -2,7 +2,7 @@ use crate::{Type, core::handle, logging};
 use anyhow::Result;
 use serde::Deserialize;
 use std::time::Duration;
-use tauri_plugin_mihomo::models::ConnectionId;
+use tauri_plugin_mihomo::models::WsConnectionId;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 
@@ -37,7 +37,7 @@ enum InternalWsEvent<T> {
 /// Mihomo WebSocket 订阅句柄（通用事件流）。
 pub struct MihomoWsEventStream<T> {
     /// 当前订阅连接 ID，用于主动断开。
-    pub connection_id: ConnectionId,
+    pub connection_id: WsConnectionId,
     /// 当前订阅消息接收器。
     receiver: mpsc::Receiver<InternalWsEvent<T>>,
     /// 最近一次收到有效事件的时间戳。
@@ -75,7 +75,6 @@ pub async fn connect_traffic_stream() -> Result<MihomoWsEventStream<TrafficSpeed
     let (message_tx, message_rx) = mpsc::channel::<InternalWsEvent<TrafficSpeedEvent>>(MIHOMO_WS_STREAM_BUFFER_SIZE);
     // 建立 Mihomo `/traffic` WebSocket 订阅。
     let connection_id = handle::Handle::mihomo()
-        .await
         .ws_traffic({
             let message_tx = message_tx.clone();
             move |message| {
@@ -97,15 +96,9 @@ impl<T> MihomoWsEventStream<T> {
     /// 等待下一次可用事件或结束状态。
     ///
     /// # Arguments
-    /// * `idle_poll_interval` - 空闲检查间隔
     /// * `stale_timeout` - 无有效事件超时时间
     /// * `should_exit` - 上层退出判定函数
-    pub async fn next_event<F>(
-        &mut self,
-        _idle_poll_interval: Duration, // 签名保留，但内部逻辑已进化为更高效的驱动方式
-        stale_timeout: Duration,
-        should_exit: F,
-    ) -> StreamConsumeState<T>
+    pub async fn next_event<F>(&mut self, stale_timeout: Duration, should_exit: F) -> StreamConsumeState<T>
     where
         F: Fn() -> bool,
     {
@@ -143,9 +136,8 @@ impl<T> MihomoWsEventStream<T> {
 ///
 /// # Arguments
 /// * `connection_id` - 目标连接 ID
-pub async fn disconnect_connection(connection_id: ConnectionId) {
+pub async fn disconnect_connection(connection_id: WsConnectionId) {
     if let Err(err) = handle::Handle::mihomo()
-        .await
         .disconnect(connection_id, Some(MIHOMO_WS_STREAM_CLOSE_CODE))
         .await
     {

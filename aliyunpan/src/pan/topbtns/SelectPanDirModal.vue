@@ -15,7 +15,7 @@ import AliTrash from '../../aliapi/trash'
 import { fileiconfn } from '../pantreestore'
 import { GetDriveID, GetDriveType, isBaiduUser, isBoxUser, isCloud139User, isCloud189User, isCloud123User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser } from '../../aliapi/utils'
 import { IAliGetDirModel } from '../../aliapi/alimodels'
-import { apiCloud123FileList, mapCloud123FileToAliModel } from '../../cloud123/dirfilelist'
+import { apiCloud123DirectoryFileList, mapCloud123FileToAliModel } from '../../cloud123/dirfilelist'
 import { apiDrive115FileList, mapDrive115FileToAliModel } from '../../cloud115/dirfilelist'
 import { apiBaiduFileList, mapBaiduFileToAliModel } from '../../cloudbaidu/dirfilelist'
 import { apiPikPakFileList, mapPikPakFileToAliModel } from '../../pikpak/dirfilelist'
@@ -303,8 +303,8 @@ const handleTreeSelect = (keys: any[], info: {
 const apiLoad = (key: any) => {
   const onlyDirs = props.selecttype !== 'select'
   if (isCloud123User(user_id.value)) {
-    const parentFileId = key.includes('root') ? 0 : Number(key)
-    return apiCloud123FileList(user_id.value, parentFileId, 100, false)
+    const parentFileId = String(key).includes('root') ? '0' : String(key)
+    return apiCloud123DirectoryFileList(user_id.value, parentFileId, false)
       .then((list) => {
         const addList: TreeNodeData[] = []
         for (let i = 0, maxi = list.length; i < maxi; i++) {
@@ -335,7 +335,7 @@ const apiLoad = (key: any) => {
       })
   }
   if (isDrive115User(user_id.value)) {
-    const parentCid = key.includes('root') ? 0 : Number(key)
+    const parentCid = String(key).includes('root') ? '0' : String(key)
     return apiDrive115FileList(user_id.value, parentCid, 200, 0, true)
       .then((list) => {
         const addList: TreeNodeData[] = []

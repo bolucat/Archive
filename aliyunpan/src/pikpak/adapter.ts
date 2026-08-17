@@ -6,14 +6,14 @@ import { apiPikPakDownloadInfo, apiPikPakFileDetail, apiPikPakFileList, mapPikPa
 import { apiPikPakShareCreate, apiPikPakShareList, encodePikPakShareId } from './share'
 import { apiPikPakCopyBatch, apiPikPakMkdir, apiPikPakMoveBatch, apiPikPakRename, apiPikPakTrashBatch, apiPikPakTrashDelete, apiPikPakTrashRestore } from './filecmd'
 
-export const listPikPakItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
+export const listPikPakItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, pageToken = '') => {
   if (dirId.startsWith('search')) return { items: [], total: 0, error: 'PikPak 暂不支持搜索' }
   const isTrash = dirId === 'trash'
   const parentId = dirId === 'pikpak_root' || isTrash ? 'pikpak_root' : dirId
-  const { items } = await apiPikPakFileList(userId, parentId, 100, '', isTrash)
+  const { items, nextPageToken } = await apiPikPakFileList(userId, parentId, 100, pageToken, isTrash)
   const mappedItems = items.map(item => mapPikPakFileToAliModel(item, driveId, parentId))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)
-  return { items: visibleItems, total: visibleItems.length }
+  return { items: visibleItems, total: visibleItems.length, nextCursor: includeFiles ? nextPageToken : '' }
 }
 
 export const listPikPakShares = async (userId: string): Promise<{ items: IAliShareItem[]; error: string }> => {

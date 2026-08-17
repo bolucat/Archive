@@ -17,23 +17,24 @@ export type ProviderListResult = {
   items: IAliGetFileModel[]
   total: number
   error?: string
+  nextCursor?: string
 }
 
 /** Thin registry for provider-owned directory, search, and thumbnail adapters. */
-export const listProviderItems = (provider: DriveProvider, userId: string, driveId: string, dirId: string, includeFiles: boolean): Promise<ProviderListResult> | undefined => {
+export const listProviderItems = (provider: DriveProvider, userId: string, driveId: string, dirId: string, includeFiles: boolean, cursor = ''): Promise<ProviderListResult> | undefined => {
   switch (provider) {
-    case 'baidu': return listBaiduItems(userId, driveId, dirId, includeFiles)
-    case 'cloud123': return listCloud123Items(userId, driveId, dirId, includeFiles)
-    case '139': return listCloud139Items(userId, driveId, dirId, includeFiles)
-    case '189': return listCloud189Items(userId, driveId, dirId, includeFiles)
-    case 'guangya': return listGuangyaItems(userId, driveId, dirId, includeFiles)
-    case '115': return listDrive115Items(userId, driveId, dirId, includeFiles)
-    case 'pikpak': return listPikPakItems(userId, driveId, dirId, includeFiles)
-    case 'quark': return listQuarkItems(userId, driveId, dirId, includeFiles)
-    case 'box': return listBoxItems(userId, driveId, dirId, includeFiles)
-    case 'dropbox': return listDropboxItems(userId, driveId, dirId, includeFiles)
-    case 'onedrive': return listOneDriveItems(userId, driveId, dirId, includeFiles)
-    case 'google': return listGoogleItems(userId, driveId, dirId, includeFiles)
+    case 'baidu': return listBaiduItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
+    case 'cloud123': return listCloud123Items(userId, driveId, dirId, includeFiles, cursor)
+    case '139': return listCloud139Items(userId, driveId, dirId, includeFiles, cursor)
+    case '189': return listCloud189Items(userId, driveId, dirId, includeFiles, Number(cursor) || 1)
+    case 'guangya': return listGuangyaItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
+    case '115': return listDrive115Items(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
+    case 'pikpak': return listPikPakItems(userId, driveId, dirId, includeFiles, cursor)
+    case 'quark': return listQuarkItems(userId, driveId, dirId, includeFiles, Number(cursor) || 1)
+    case 'box': return listBoxItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
+    case 'dropbox': return listDropboxItems(userId, driveId, dirId, includeFiles, cursor)
+    case 'onedrive': return listOneDriveItems(userId, driveId, dirId, includeFiles, cursor)
+    case 'google': return listGoogleItems(userId, driveId, dirId, includeFiles, cursor)
     default: return undefined
   }
 }

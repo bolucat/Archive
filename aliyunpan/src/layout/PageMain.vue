@@ -82,6 +82,20 @@ const musicPlayerStore = useMusicPlayerStore()
 const bookStore = useBookLibraryStore()
 const mediaStore = useMediaLibraryStore()
 
+function syncAutoUpdateState(state: { status?: string; percent?: number; version?: string }) {
+  const status = state.status === 'downloading' || state.status === 'downloaded' || state.status === 'error' ? state.status : 'idle'
+  footStore.updateStore({
+    updateDownloadProgress: status === 'downloading' ? Math.max(0, Math.min(100, state.percent ?? 0)) : status === 'downloaded' ? 100 : 0,
+    updateDownloadStatus: status,
+    updateDownloadVersion: state.version || ''
+  })
+}
+
+async function handleInstallUpdate() {
+  const installed = await window.AutoUpdateInstall?.()
+  if (!installed) message.warning('更新尚未下载完成')
+}
+
 const SYSTEM_VIDEO_EXTENSIONS = new Set(['mp4', 'mkv', 'avi', 'mov', 'webm', 'ts', 'm2ts', 'flv', 'wmv', 'mpg', 'mpeg'])
 const SYSTEM_AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'm4a', 'aac', 'wav', 'ogg', 'opus', 'wma', 'aiff', 'ape'])
 const SYSTEM_BOOK_EXTENSIONS = new Set(['epub', 'pdf', 'mobi', 'azw', 'azw3', 'fb2', 'txt', 'md', 'markdown', 'docx', 'html', 'htm', 'cbz', 'cbr', 'cbt', 'cb7'])
@@ -370,10 +384,10 @@ onMounted(() => {
   bootstrapMediaLibrary()
   window.onExternalFileOpen?.(openSystemFile)
   window.AutoUpdateGetState?.().then((state) => {
-    if (state.status === 'downloading') footStore.mSaveUpdateDownloadProgress(Math.max(0.01, state.percent ?? 0))
+    syncAutoUpdateState(state)
   })
   removeAutoUpdateStateListener = window.AutoUpdateOnStateChanged?.((state) => {
-    footStore.mSaveUpdateDownloadProgress(state.status === 'downloading' ? Math.max(0.01, state.percent ?? 0) : 0)
+    syncAutoUpdateState(state)
   })
 })
 
@@ -581,13 +595,16 @@ onUnmounted(() => {
             </span>
           </div>
 
-          <div class='footerBar fix update-progress-foot' v-show='footStore.updateDownloadProgress > 0 && footStore.updateDownloadProgress < 100' :title="`${t('footer.newVersion')} ${Math.round(footStore.updateDownloadProgress)}%`">
+          <div class='footerBar fix update-progress-foot' v-show="footStore.updateDownloadStatus === 'downloading'" :title="`${t('footer.newVersion')} ${Math.round(footStore.updateDownloadProgress)}%`">
             <svg aria-hidden='true' class='update-progress-ring' viewBox='0 0 20 20'>
               <circle class='update-progress-track' cx='10' cy='10' fill='none' r='8' stroke-width='2' />
               <circle class='update-progress-value' cx='10' cy='10' fill='none' r='8' stroke-width='2' :style='{ strokeDashoffset: 50.27 * (1 - footStore.updateDownloadProgress / 100) }' />
             </svg>
             <span class='update-progress-label'>{{ Math.round(footStore.updateDownloadProgress) }}%</span>
           </div>
+          <button class='footerBar fix update-progress-foot update-ready-foot' v-show="footStore.updateDownloadStatus === 'downloaded'" :title="`${footStore.updateDownloadVersion || t('footer.newVersion')} 已下载，点击重启安装`" @click='handleInstallUpdate'>
+            {{ footStore.updateDownloadVersion || t('footer.newVersion') }} · 安装
+          </button>
 
           <div class='footerBar fix'>
             <span class='footAria' :title="t('footer.ariaConnected')" v-if='footStore.ariaInfo'> {{ footStore.ariaInfo }} </span>

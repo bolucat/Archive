@@ -1,6 +1,6 @@
 import type { IDownloadUrl } from '../aliapi/models'
 import { GetExpiresTime } from '../utils/utils'
-import { apiBoxFileDetail, apiBoxFileList, buildBoxDownloadUrl, getBoxToken, mapBoxItemToAliModel } from './dirfilelist'
+import { apiBoxFileDetail, apiBoxFileListPage, buildBoxDownloadUrl, getBoxToken, mapBoxItemToAliModel } from './dirfilelist'
 import { apiBoxShareCreate, apiBoxShareList } from './share'
 import { apiBoxUploadBuffer } from './upload'
 import { apiBoxCopyBatch, apiBoxDeleteBatch, apiBoxMkdir, apiBoxMoveBatch, apiBoxRename, apiBoxTrashListPage, apiBoxTrashPurge, apiBoxTrashRestore, type BoxItemType } from './filecmd'
@@ -18,7 +18,7 @@ const hydrateBoxThumbnails = async (userId: string, items: any[]) => {
   return items
 }
 
-export const listBoxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
+export const listBoxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, offset = 0) => {
   const isSearch = dirId.startsWith('search') || dirId.startsWith('box_search:')
   if (isSearch) {
     const { query } = parseBoxSearchId(dirId)
@@ -29,9 +29,10 @@ export const listBoxItems = async (userId: string, driveId: string, dirId: strin
   }
 
   const parentId = dirId === 'box_root' ? 'box_root' : dirId
-  const items = (await apiBoxFileList(userId, parentId)).map(item => mapBoxItemToAliModel(item, driveId, parentId))
+  const page = await apiBoxFileListPage(userId, parentId, 500, offset)
+  const items = page.items.map(item => mapBoxItemToAliModel(item, driveId, parentId))
   const visibleItems = includeFiles ? items : items.filter(item => item.isDir)
-  return { items: await hydrateBoxThumbnails(userId, visibleItems), total: visibleItems.length }
+  return { items: await hydrateBoxThumbnails(userId, visibleItems), total: visibleItems.length, nextCursor: includeFiles && page.nextOffset !== null ? String(page.nextOffset) : '' }
 }
 
 export const listBoxSpecialItems = async (userId: string, dirId: string, maxItems = 0) => {

@@ -36,6 +36,7 @@ export interface SettingState {
   uiImageMode: string
   uiExitOnClose: boolean
   uiLaunchAutoCheckUpdate: boolean
+  uiLaunchMaximized: boolean
   uiLaunchAutoSign: boolean
   uiLaunchStart: boolean
   uiLaunchStartShow: boolean
@@ -252,6 +253,7 @@ const setting: SettingState = {
   uiImageMode: 'fill',
   uiExitOnClose: false,
   uiLaunchAutoCheckUpdate: false,
+  uiLaunchMaximized: false,
   uiLaunchAutoSign: false,
   uiLaunchStart: false,
   uiLaunchStartShow: false,
@@ -476,6 +478,7 @@ function _loadSetting(val: any) {
   setting.uiImageMode = defaultValue(val.uiImageMode, ['fill', 'width', 'web'])
   setting.uiExitOnClose = defaultBool(val.uiExitOnClose, false)
   setting.uiLaunchAutoCheckUpdate = defaultBool(val.uiLaunchAutoCheckUpdate, false)
+  setting.uiLaunchMaximized = defaultBool(val.uiLaunchMaximized, false)
   setting.uiLaunchAutoSign = defaultBool(val.uiLaunchAutoSign, false)
   setting.uiLaunchStart = defaultBool(val.uiLaunchStart, false)
   setting.uiLaunchStartShow = defaultBool(val.uiLaunchStartShow, false)

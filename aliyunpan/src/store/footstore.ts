@@ -53,6 +53,8 @@ export interface FootState {
   ariaInfo: string
 
   updateDownloadProgress: number
+  updateDownloadStatus: 'idle' | 'downloading' | 'downloaded' | 'error'
+  updateDownloadVersion: string
 }
 
 const useFootStore = defineStore('foot', {
@@ -71,7 +73,9 @@ const useFootStore = defineStore('foot', {
     panSpaceInfo: '',
     picSpaceInfo: '',
     ariaInfo: '',
-    updateDownloadProgress: 0
+    updateDownloadProgress: 0,
+    updateDownloadStatus: 'idle',
+    updateDownloadVersion: ''
   }),
 
   getters: {

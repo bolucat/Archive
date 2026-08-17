@@ -24,11 +24,12 @@ export type BaiduFileItem = {
 export type BaiduFileListResp = {
   errno: number
   list?: BaiduFileItem[]
+  has_more?: number
 }
 
 const API_URL = 'https://pan.baidu.com/rest/2.0/xpan/file'
 
-export const apiBaiduFileList = async (
+export const apiBaiduFileListPage = async (
   user_id: string,
   dir: string,
   order = 'name',
@@ -36,12 +37,12 @@ export const apiBaiduFileList = async (
   limit = 1000,
   desc = 0,
   strict = false
-): Promise<BaiduFileItem[]> => {
+): Promise<{ items: BaiduFileItem[]; hasMore: boolean }> => {
   const token = await getBaiduToken(user_id)
   if (!token?.access_token) {
     message.error('未登录百度网盘')
     if (strict) throw new Error('未登录百度网盘')
-    return []
+    return { items: [], hasMore: false }
   }
   const params = new URLSearchParams({
     method: 'list',
@@ -63,14 +64,18 @@ export const apiBaiduFileList = async (
   if (!resp.ok) {
     message.error('获取百度网盘文件列表失败')
     if (strict) throw new Error(`获取百度网盘文件列表失败 HTTP ${resp.status}`)
-    return []
+    return { items: [], hasMore: false }
   }
   const data = (await resp.json()) as BaiduFileListResp
   if (data?.errno !== 0 || !Array.isArray(data.list)) {
     if (strict) throw new Error(`获取百度网盘文件列表失败（errno ${data?.errno ?? 'unknown'}）`)
-    return []
+    return { items: [], hasMore: false }
   }
-  return data.list
+  return { items: data.list, hasMore: Number(data.has_more) === 1 }
+}
+
+export const apiBaiduFileList = async (user_id: string, dir: string, order = 'name', start = 0, limit = 1000, desc = 0, strict = false): Promise<BaiduFileItem[]> => {
+  return (await apiBaiduFileListPage(user_id, dir, order, start, limit, desc, strict)).items
 }
 
 export const apiBaiduSearch = async (

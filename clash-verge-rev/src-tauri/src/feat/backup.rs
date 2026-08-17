@@ -1,6 +1,6 @@
 use crate::{
     config::{Config, IClashTemp, IProfiles, IVerge},
-    core::backup,
+    core::{backup, proxy_control::SystemProxyStateUnknown},
     process::AsyncHandler,
     utils::{
         dirs::{PathBufExec as _, app_home_dir, local_backup_dir, verge_path},
@@ -63,6 +63,10 @@ async fn finalize_restored_verge_config(
     // Use not_save_file = true to avoid extra I/O (we already persisted the restored file).
     if let Err(err) = super::patch_verge(&restored, true).await {
         logging!(error, Type::Backup, "Failed to apply restored verge config: {err:#?}");
+        // Propagate unknown proxy state; ordinary side-effect failures stay logged.
+        if SystemProxyStateUnknown::is_in(&err) {
+            return Err(err);
+        }
     }
     Ok(())
 }
@@ -130,6 +134,7 @@ pub async fn restore_webdav_backup(filename: String) -> Result<()> {
     let value = backup_storage_path.clone();
     let file = AsyncHandler::spawn_blocking(move || std::fs::File::open(&value)).await??;
     let mut zip = zip::ZipArchive::new(file)?;
+    let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
     zip.extract(app_home_dir()?)?;
     let res = finalize_restored_verge_config(webdav_url, webdav_username, webdav_password).await;
     // Finally remove the temp file (attempt cleanup even if finalize fails)
@@ -313,6 +318,7 @@ pub async fn restore_local_backup(filename: String) -> Result<()> {
 
     let file = AsyncHandler::spawn_blocking(move || std::fs::File::open(&target_path)).await??;
     let mut zip = zip::ZipArchive::new(file)?;
+    let _profile_write = crate::config::profiles::PROFILE_WRITE_LOCK.lock().await;
     zip.extract(app_home_dir()?)?;
     finalize_restored_verge_config(webdav_url, webdav_username, webdav_password).await?;
     Ok(())

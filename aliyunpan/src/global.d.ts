@@ -40,6 +40,7 @@ declare global {
     WebPlatformSync: any
     AutoUpdateGetState?: () => Promise<any>
     AutoUpdateCheck?: (force?: boolean) => Promise<any>
+    AutoUpdateInstall?: () => Promise<boolean>
     AutoUpdateOnStateChanged?: (callback: (state: any) => void) => () => void
     UploadPort: any
     DownloadPort: any

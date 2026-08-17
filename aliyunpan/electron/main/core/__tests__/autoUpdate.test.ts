@@ -38,7 +38,7 @@ describe('createAutoUpdateController', () => {
     expect(updater.allowPrerelease).toBe(true)
     expect(updater.autoDownload).toBe(false)
     expect(updater.autoInstallOnAppQuit).toBe(true)
-    expect(updater.setFeedURL).toHaveBeenCalledWith('https://gh-proxy.com/https://github.com/gaozhangmin/boxplayer/releases/latest/download/')
+    expect(updater.setFeedURL).toHaveBeenCalledWith('https://github.com/gaozhangmin/boxplayer/releases/latest/download/')
   })
 
   it('publishes background download progress to the renderer state', () => {
@@ -112,6 +112,16 @@ describe('createAutoUpdateController', () => {
     expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true)
   })
 
+  it('installs a downloaded update when requested from the renderer', () => {
+    const updater = new FakeUpdater()
+    const controller = createAutoUpdateController({ updater, dialog: { showMessageBox: vi.fn().mockResolvedValue({ response: 1 }) }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, currentVersion: '4.0.11', isPackaged: true })
+
+    expect(controller.installNow()).toBe(false)
+    updater.emit('update-downloaded', { version: '4.0.12' })
+    expect(controller.installNow()).toBe(true)
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true)
+  })
+
   it('falls back to GitHub when the configured proxy cannot check for updates', async () => {
     const updater = new FakeUpdater()
     const dialog = { showMessageBox: vi.fn() }
@@ -143,7 +153,7 @@ describe('createAutoUpdateController', () => {
     expect(updater.downloadUpdate).toHaveBeenCalledTimes(1)
   })
 
-  it('uses gh-proxy when the proxy is disabled or invalid', () => {
+  it('uses GitHub directly when the proxy is disabled or invalid', () => {
     const disabledUpdater = new FakeUpdater()
     const invalidUpdater = new FakeUpdater()
     const createController = (updater: FakeUpdater, updateProxy: { enabled: boolean; url: string }) => createAutoUpdateController({ updater, dialog: { showMessageBox: vi.fn() }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, currentVersion: '4.0.11', isPackaged: true, updateProxy })
@@ -151,7 +161,7 @@ describe('createAutoUpdateController', () => {
     createController(disabledUpdater, { enabled: false, url: '' })
     createController(invalidUpdater, { enabled: true, url: 'ftp://invalid.example' })
 
-    const defaultFeed = 'https://gh-proxy.com/https://github.com/gaozhangmin/boxplayer/releases/latest/download/'
+    const defaultFeed = 'https://github.com/gaozhangmin/boxplayer/releases/latest/download/'
     expect(disabledUpdater.setFeedURL).toHaveBeenCalledWith(defaultFeed)
     expect(invalidUpdater.setFeedURL).toHaveBeenCalledWith(defaultFeed)
   })

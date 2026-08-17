@@ -134,7 +134,7 @@ bytes = "1.7"
 byte_string = "1.0"
 byteorder = "1.5"
 rand = "0.10"
-rocksdb = { version = "0.24", optional = true }
+rocksdb = { version = "0.25", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.38", features = [
@@ -182,7 +182,7 @@ zstd = { version = "0.13", optional = true }
 base64 = { version = "0.23" }
 
 etherparse = { version = "0.21", optional = true }
-smoltcp = { version = "0.13", optional = true, default-features = false, features = [
+smoltcp = { version = "0.14", optional = true, default-features = false, features = [
     "std",
     "log",
     "medium-ip",

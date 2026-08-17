@@ -158,7 +158,6 @@ const settingSwitchGroups: Record<BookManagerSettingTabKey, Array<{ key: keyof B
     { key: 'isDeleteShelfBook', label: t('book.deleteWhenRemoveFromShelf'), desc: t('book.deleteWhenRemoveFromShelfDesc') },
     { key: 'isPreventSleep', label: t('book.preventSleep') },
     { key: 'isAlwaysOnTop', label: t('book.alwaysOnTop') },
-    { key: 'isAutoMaximizeWin', label: t('book.autoMaximizeMainWindow') },
     { key: 'isAutoLaunch', label: t('book.autoLaunch') },
     { key: 'isMinimizeToTray', label: t('book.minimizeToTray') },
     { key: 'isPreventAdd', label: t('book.preventAddToLibrary') },

@@ -67,6 +67,7 @@ nativeTheme.on('updated', () => {
 
 export function createMainWindow() {
   Menu.setApplicationMenu(null)
+  let launchMaximized = false
   try {
     const configJson = getUserDataPath('config.json')
     if (existsSync(configJson)) {
@@ -74,6 +75,11 @@ export function createMainWindow() {
       AppWindow.winWidth = configData.width
       AppWindow.winHeight = configData.height
     }
+  } catch {
+  }
+  try {
+    const settingJson = getUserDataPath('setting.config')
+    if (existsSync(settingJson)) launchMaximized = JSON.parse(readFileSync(settingJson, 'utf-8')).uiLaunchMaximized === true
   } catch {
   }
   try {
@@ -99,6 +105,7 @@ export function createMainWindow() {
     }
   }
   AppWindow.mainWindow = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main', AppWindow.winTheme, true, 'app')
+  if (launchMaximized) AppWindow.mainWindow.maximize()
 
   const showMainPage = () => {
     if (!AppWindow.mainWindow || AppWindow.mainWindow.isDestroyed()) return

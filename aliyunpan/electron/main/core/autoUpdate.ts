@@ -6,7 +6,6 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const UPDATE_CHECK_DELAY_MS = 1000
-const DEFAULT_UPDATE_PROXY_URL = 'https://gh-proxy.com'
 const GITHUB_UPDATE_FEED_URL = 'https://github.com/gaozhangmin/boxplayer/releases/latest/download/'
 
 type AutoUpdateLogger = Pick<typeof console, 'info' | 'warn' | 'error'>
@@ -55,7 +54,7 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     state = nextState
     onStateChange?.(getState())
   }
-  if (isMas || !isPackaged) return { getState, checkNow: async () => getState() }
+  if (isMas || !isPackaged) return { getState, checkNow: async () => getState(), installNow: () => false }
 
   updater.autoDownload = false
   updater.autoInstallOnAppQuit = true
@@ -171,7 +170,13 @@ export function createAutoUpdateController(options: AutoUpdateControllerOptions)
     }, UPDATE_CHECK_DELAY_MS)
   }
 
-  return { getState, checkNow }
+  const installNow = () => {
+    if (!hasDownloaded) return false
+    updater.quitAndInstall(false, true)
+    return true
+  }
+
+  return { getState, checkNow, installNow }
 }
 
 export function readUpdateProxyPreferences(userDataPath: string): UpdateProxyPreferences {
@@ -189,7 +194,7 @@ export function readUpdateProxyPreferences(userDataPath: string): UpdateProxyPre
 
 function buildProxyUpdateFeed(preferences: UpdateProxyPreferences) {
   const configuredProxy = preferences.enabled ? normalizeUpdateProxyUrl(preferences.url) : ''
-  return `${configuredProxy || DEFAULT_UPDATE_PROXY_URL}/${GITHUB_UPDATE_FEED_URL}`
+  return configuredProxy ? `${configuredProxy}/${GITHUB_UPDATE_FEED_URL}` : GITHUB_UPDATE_FEED_URL
 }
 
 function normalizeUpdateProxyUrl(url: string) {
@@ -218,6 +223,8 @@ export function registerAutoUpdate() {
   })
   ipcMain.removeHandler('AutoUpdate:GetState')
   ipcMain.removeHandler('AutoUpdate:Check')
+  ipcMain.removeHandler('AutoUpdate:Install')
   ipcMain.handle('AutoUpdate:GetState', () => controller.getState())
   ipcMain.handle('AutoUpdate:Check', (_event, force?: boolean) => controller.checkNow(force === true))
+  ipcMain.handle('AutoUpdate:Install', () => controller.installNow())
 }

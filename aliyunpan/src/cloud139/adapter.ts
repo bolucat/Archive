@@ -1,13 +1,14 @@
 import type { IDownloadUrl } from '../aliapi/models'
 import { GetExpiresTime } from '../utils/utils'
-import { apiCloud139DownloadInfo, apiCloud139FileDetail, apiCloud139FileList, cloud139DownloadHeaders, mapCloud139FileToAliModel } from './dirfilelist'
+import { apiCloud139DownloadInfo, apiCloud139FileDetail, apiCloud139FileListPage, cloud139DownloadHeaders, mapCloud139FileToAliModel } from './dirfilelist'
 import { apiCloud139CopyBatch, apiCloud139Mkdir, apiCloud139MoveBatch, apiCloud139Rename, apiCloud139TrashBatch } from './filecmd'
 
-export const listCloud139Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
+export const listCloud139Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, cursor = '') => {
   const parentId = dirId === 'cloud139_root' ? '/' : dirId
-  const mappedItems = (await apiCloud139FileList(userId, parentId, 200)).map(item => mapCloud139FileToAliModel(item, driveId, dirId))
+  const page = await apiCloud139FileListPage(userId, parentId, 200, cursor)
+  const mappedItems = page.items.map(item => mapCloud139FileToAliModel(item, driveId, dirId))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)
-  return { items: visibleItems, total: mappedItems.length }
+  return { items: visibleItems, total: mappedItems.length, nextCursor: page.nextCursor }
 }
 
 export const getCloud139DownloadUrl = async (userId: string, driveId: string, fileId: string): Promise<IDownloadUrl | string> => {

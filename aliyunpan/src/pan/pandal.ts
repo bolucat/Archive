@@ -58,6 +58,42 @@ const finishAllDirLoading = (drive_id: string) => {
 }
 
 export default class PanDAL {
+  private static providerNextCursor = new Map<string, string>()
+  private static providerLoadingMore = new Set<string>()
+
+  private static saveProviderCursor(userId: string, driveId: string, dirId: string, hasFiles: boolean, cursor?: string) {
+    const key = `${userId}:${driveId}:${dirId}`
+    if (hasFiles && cursor) PanDAL.providerNextCursor.set(key, cursor)
+    else PanDAL.providerNextCursor.delete(key)
+  }
+
+  static async LoadMoreCurrentProviderItems(): Promise<void> {
+    const store = usePanFileStore()
+    const tree = usePanTreeStore()
+    const key = `${tree.user_id}:${store.DriveID}:${store.DirID}`
+    const cursor = PanDAL.providerNextCursor.get(key)
+    if (!cursor || PanDAL.providerLoadingMore.has(key)) return
+    const route = resolveDriveProvider(tree.user_id, store.DriveID, UserDAL.GetUserToken(tree.user_id)?.tokenfrom)
+    if (route.provider !== 'cloud123' && route.provider !== '115' && route.provider !== 'baidu' && route.provider !== 'pikpak' && route.provider !== 'quark' && route.provider !== '139' && route.provider !== '189' && route.provider !== 'guangya' && route.provider !== 'box' && route.provider !== 'dropbox' && route.provider !== 'onedrive' && route.provider !== 'google') return
+    PanDAL.providerLoadingMore.add(key)
+    try {
+      const result = await listProviderItems(route.provider, tree.user_id, store.DriveID, store.DirID, true, cursor)
+      if (!result || store.DriveID !== tree.drive_id || store.DirID !== tree.selectDir.file_id) return
+      const existing = new Set(store.ListDataRaw.map((item: any) => item.file_id))
+      const items = result.items.filter(item => !existing.has(item.file_id))
+      if (items.length) {
+        store.ListDataRaw = store.ListDataRaw.concat(items)
+        const order = TreeStore.GetDirOrder(store.DriveID, store.DirID).replace('ext ', 'updated_at ').split(' ')
+        OrderDir(order[0], order[1], store.ListDataRaw)
+        store.mRefreshListDataShow(true)
+      }
+      if (result.nextCursor) PanDAL.providerNextCursor.set(key, result.nextCursor)
+      else PanDAL.providerNextCursor.delete(key)
+    } finally {
+      PanDAL.providerLoadingMore.delete(key)
+    }
+  }
+
   private static async SaveProviderDirFileList(userId: string, driveId: string, dirId: string, dirName: string, items: any[], total: number, hasFiles: boolean): Promise<void> {
     const dir = NewIAliFileResp(userId, driveId, dirId, dirName)
     dir.items = items
@@ -319,7 +355,7 @@ export default class PanDAL {
     const isCloudUser = isCloud123User(user_id)
     const providerRoute = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
     if (!dir || (dirPath.length == 0 && !file_id.includes('root'))) {
-      if (isCloudUser) {
+      if (isCloudUser && file_id !== 'cloud_root') {
         // 123 网盘不支持路径查询，依赖已加载的目录结构
       } else if (isBaiduUser(user_id) && file_id.startsWith('/')) {
         const dirName = file_id === '/' ? '根目录' : file_id.split('/').filter(Boolean).pop() || '根目录'
@@ -479,6 +515,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -494,6 +531,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -509,6 +547,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -525,6 +564,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -540,6 +580,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -555,6 +596,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -570,6 +612,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -586,6 +629,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -602,6 +646,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {
@@ -625,6 +670,7 @@ export default class PanDAL {
             panfileStore.mSaveDirFileLoadingPart(0, dir, dir.itemsTotal || 0)
             TreeStore.SaveOneDirFileList(dir, hasFiles).then(() => {
               if (hasFiles) panfileStore.mSaveDirFileLoadingFinish(drive_id, dirID, dir.items, dir.itemsTotal || 0)
+              PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
               PanDAL.RefreshPanTreeAllNode(drive_id)
               resolve(true)
             })
@@ -643,6 +689,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
             resolve(true)
           })
           .catch(() => {

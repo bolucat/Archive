@@ -76,10 +76,10 @@ const graphRequest = async <T>(user_id: string, pathOrUrl: string, fallback: str
   return data as T
 }
 
-export const buildOneDriveChildrenPath = (parentId: string): string => {
-  const expand = '$expand=thumbnails'
-  if (!parentId || parentId === 'onedrive_root') return `/me/drive/root/children?${expand}`
-  return `/me/drive/items/${encodeURIComponent(parentId)}/children?${expand}`
+export const buildOneDriveChildrenPath = (parentId: string, pageSize = 200): string => {
+  const query = new URLSearchParams({ '$expand': 'thumbnails', '$top': String(pageSize) }).toString()
+  if (!parentId || parentId === 'onedrive_root') return `/me/drive/root/children?${query}`
+  return `/me/drive/items/${encodeURIComponent(parentId)}/children?${query}`
 }
 
 export const getOneDriveDownloadUrl = (item?: OneDriveItem | null): string =>
@@ -96,8 +96,8 @@ export const apiOneDriveFileList = async (user_id: string, parentId: string, str
   return items
 }
 
-export const apiOneDriveFileListPage = async (user_id: string, parentId: string, nextLink = '', strict = false): Promise<{ items: OneDriveItem[]; nextLink: string }> => {
-  const data = await graphRequest<OneDriveChildrenResp>(user_id, nextLink || buildOneDriveChildrenPath(parentId), '获取 OneDrive 文件列表失败', strict)
+export const apiOneDriveFileListPage = async (user_id: string, parentId: string, nextLink = '', strict = false, pageSize = 200): Promise<{ items: OneDriveItem[]; nextLink: string }> => {
+  const data = await graphRequest<OneDriveChildrenResp>(user_id, nextLink || buildOneDriveChildrenPath(parentId, pageSize), '获取 OneDrive 文件列表失败', strict)
   return { items: Array.isArray(data?.value) ? data.value : [], nextLink: data?.['@odata.nextLink'] || '' }
 }
 

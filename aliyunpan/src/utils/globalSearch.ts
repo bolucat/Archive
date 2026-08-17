@@ -102,10 +102,7 @@ function userName(token: ITokenInfo): string {
 
 async function searchAliyun(token: ITokenInfo, keyword: string, allowedDriveIds: string[] = []): Promise<GlobalSearchResult[]> {
   const { default: AliDirFileList } = await import('../aliapi/dirfilelist')
-  const drives: string[] = []
-  if (token.resource_drive_id) drives.push(token.resource_drive_id)
-  if (token.backup_drive_id && token.backup_drive_id !== token.resource_drive_id) drives.push(token.backup_drive_id)
-  if (!drives.length && token.default_drive_id) drives.push(token.default_drive_id)
+  const drives = [...new Set([token.default_drive_id, token.resource_drive_id, token.backup_drive_id, token.pic_drive_id].filter(Boolean))]
   const selectedDrives = allowedDriveIds.length ? drives.filter(driveId => allowedDriveIds.includes(driveId)) : drives
 
   const label = driveLabel(token)

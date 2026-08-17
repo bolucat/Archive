@@ -6,7 +6,7 @@ import { getBaiduToken } from './auth'
 import { apiBaiduFileMetas, mapBaiduMetaToAliFileItem } from './filecmd'
 import { apiBaiduCopy, apiBaiduDelete, apiBaiduMove, apiBaiduRename } from './filemanager'
 import { apiBaiduCreateDir, buildBaiduUploadPath } from './upload'
-import { apiBaiduFileList, apiBaiduSearch, mapBaiduFileToAliModel } from './dirfilelist'
+import { apiBaiduFileListPage, apiBaiduSearch, mapBaiduFileToAliModel } from './dirfilelist'
 
 const resolveBaiduDirPath = (driveId: string, dirId: string): string => {
   if (!dirId || dirId === 'baidu_root') return '/'
@@ -20,19 +20,20 @@ const resolveBaiduDirPath = (driveId: string, dirId: string): string => {
   return match?.[1] || '/'
 }
 
-export const listBaiduItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
+export const listBaiduItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, start = 0) => {
   const isSearch = dirId.startsWith('search')
   const dirPath = resolveBaiduDirPath(driveId, dirId)
   const parentPath = isSearch ? '/' : dirPath
   const [sortKey, sortDirection] = TreeStore.GetDirOrder(driveId, dirId).split(' ')
   const order = sortKey === 'updated_at' ? 'time' : sortKey === 'size' ? 'size' : 'name'
   const desc = sortDirection === 'desc' ? 1 : 0
-  const list = isSearch
-    ? await apiBaiduSearch(userId, dirId.substring('search'.length).trim(), '/', true)
-    : await apiBaiduFileList(userId, dirPath, order, 0, 1000, desc)
+  const result = isSearch
+    ? { items: await apiBaiduSearch(userId, dirId.substring('search'.length).trim(), '/', true), hasMore: false }
+    : await apiBaiduFileListPage(userId, dirPath, order, start, 1000, desc)
+  const list = result.items
   const mappedItems = list.map(item => mapBaiduFileToAliModel(item, driveId, parentPath))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)
-  return { items: visibleItems, total: visibleItems.length }
+  return { items: visibleItems, total: visibleItems.length, nextCursor: includeFiles && result.hasMore ? String(start + 1000) : '' }
 }
 
 export const getBaiduDownloadUrl = async (userId: string, driveId: string, fileId: string): Promise<IDownloadUrl | string> => {

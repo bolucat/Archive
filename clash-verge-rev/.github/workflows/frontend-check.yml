@@ -51,7 +51,7 @@ jobs:
       - uses: actions/setup-node@v7
         if: steps.check_frontend.outputs.frontend == 'true'
         with:
-          node-version: '24.18.0'
+          node-version: '24.19.0'
           cache: 'pnpm'
 
       - name: Restore pnpm cache
@@ -77,6 +77,10 @@ jobs:
       - name: Run TypeScript typecheck
         if: steps.check_frontend.outputs.frontend == 'true'
         run: pnpm typecheck
+
+      - name: Run tests
+        if: steps.check_frontend.outputs.frontend == 'true'
+        run: pnpm test
 
       - name: Run Knip
         if: steps.check_frontend.outputs.frontend == 'true'

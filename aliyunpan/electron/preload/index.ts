@@ -146,6 +146,13 @@ window.AutoUpdateCheck = async function(force = false) {
     return { status: 'error' }
   }
 }
+window.AutoUpdateInstall = async function() {
+  try {
+    return await ipcRenderer.invoke('AutoUpdate:Install')
+  } catch {
+    return false
+  }
+}
 window.AutoUpdateOnStateChanged = function(callback: (state: any) => void) {
   const listener = (_event: Electron.IpcRendererEvent, state: any) => callback(state)
   ipcRenderer.on('AutoUpdate:StateChanged', listener)

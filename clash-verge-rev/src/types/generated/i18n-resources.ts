@@ -231,6 +231,18 @@ export interface TranslationResources {
           title: string
           unavailableMessage: string
         }
+        sysproxyPrivilege: {
+          alternative: string
+          applying: string
+          installing: string
+          later: string
+          message: string
+          restarting: string
+          serviceReadyMessage: string
+          title: string
+          tunMessage: string
+          tunTitle: string
+        }
       }
       feedback: {
         errors: {
@@ -381,6 +393,9 @@ export interface TranslationResources {
             local: string
             remote: string
           }
+          warnings: {
+            frequentUpdate: string
+          }
         }
         proxiesEditor: {
           actions: {
@@ -508,8 +523,29 @@ export interface TranslationResources {
           warning: string
         }
         empty: {
+          actions: {
+            openLogs: string
+            openProfiles: string
+            restartCore: string
+          }
+          coreUnavailable: {
+            description: string
+            title: string
+          }
+          inactiveSubscription: {
+            description: string
+            title: string
+          }
           noAvailableGroups: string
           noProxies: string
+          noProxyInfo: {
+            description: string
+            title: string
+          }
+          noSubscriptions: {
+            description: string
+            title: string
+          }
         }
         labels: {
           delayCheckReset: string
@@ -775,6 +811,12 @@ export interface TranslationResources {
             sidecarFailed: string
             uninstallFailed: string
           }
+          sysproxy: {
+            directFallback: string
+            guardStopped: string
+            privilegeRequired: string
+            sidecarWhileServiceReady: string
+          }
         }
         notifications: {
           clash: {
@@ -893,6 +935,8 @@ export interface TranslationResources {
             tproxy: string
           }
           messages: {
+            automaticFallback: string
+            automaticFallbackFailed: string
             portInUse: string
             portTooHigh: string
             portTooLow: string
@@ -1274,11 +1318,17 @@ export interface TranslationResources {
         proxyControl: {
           actions: {
             installService: string
+            switchToServiceMode: string
             uninstallService: string
           }
           fields: {
             systemProxy: string
             tunMode: string
+          }
+          messages: {
+            installedCheckProxy: string
+            installedCoreNotOnService: string
+            installedProxyRestored: string
           }
           tooltips: {
             systemProxy: string

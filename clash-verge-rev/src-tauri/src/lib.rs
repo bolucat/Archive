@@ -24,7 +24,6 @@ use tauri::{AppHandle, Manager as _};
 #[cfg(target_os = "macos")]
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_deep_link::DeepLinkExt as _;
-use tauri_plugin_mihomo::RejectPolicy;
 
 pub static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
 /// Application initialization helper functions
@@ -32,11 +31,10 @@ mod app_init {
     use super::*;
 
     /// Initialize singleton monitoring for other instances
-    pub fn init_singleton_check() -> Result<()> {
+    pub fn init_singleton_check() -> Result<server::SingletonDisposition> {
         AsyncHandler::block_on(async move {
             logging!(info, Type::Setup, "开始检查单例实例...");
-            server::check_singleton().await?;
-            Ok(())
+            server::check_singleton().await
         })
     }
 
@@ -59,15 +57,6 @@ mod app_init {
                 tauri_plugin_mihomo::Builder::new()
                     .protocol(tauri_plugin_mihomo::models::Protocol::LocalSocket)
                     .socket_path(crate::config::IClashTemp::guard_external_controller_ipc())
-                    .pool_config(
-                        tauri_plugin_mihomo::IpcPoolConfigBuilder::new()
-                            .min_connections(3)
-                            .max_connections(32)
-                            .idle_timeout(std::time::Duration::from_secs(60))
-                            .health_check_interval(std::time::Duration::from_secs(60))
-                            .reject_policy(RejectPolicy::Wait)
-                            .build(),
-                    )
                     .build(),
             );
 
@@ -134,7 +123,8 @@ mod app_init {
             tauri_plugin_clash_verge_sysinfo::commands::get_app_uptime,
             tauri_plugin_clash_verge_sysinfo::commands::app_is_admin,
             tauri_plugin_clash_verge_sysinfo::commands::export_diagnostic_info,
-            cmd::is_port_in_use,
+            cmd::probe_listener,
+            cmd::save_proxy_ports,
             cmd::get_sys_proxy,
             cmd::get_auto_proxy,
             cmd::get_embedded_server_port,
@@ -149,7 +139,8 @@ mod app_init {
             cmd::start_core,
             cmd::stop_core,
             cmd::restart_core,
-            cmd::get_running_mode,
+            cmd::get_runtime_state,
+            cmd::get_pending_failures,
             cmd::get_auto_launch_status,
             cmd::entry_lightweight_mode,
             cmd::exit_lightweight_mode,
@@ -157,8 +148,6 @@ mod app_init {
             cmd::uninstall_service,
             cmd::reinstall_service,
             cmd::repair_service,
-            cmd::is_service_available,
-            cmd::get_service_install_state,
             cmd::continue_with_sidecar,
             cmd::get_clash_info,
             cmd::patch_clash_config,
@@ -175,6 +164,7 @@ mod app_init {
             cmd::invoke_uwp_tool,
             cmd::copy_clash_env,
             cmd::sync_tray_proxy_selection,
+            cmd::record_selected_node,
             cmd::save_dns_config,
             cmd::apply_dns_config,
             cmd::check_dns_config_exists,
@@ -222,17 +212,40 @@ mod app_init {
     }
 }
 
-pub fn run() {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StartupAction {
+    Continue,
+    ExitSuccess,
+    ExitFailure,
+}
+
+fn handle_singleton_startup(
+    result: Result<server::SingletonDisposition>,
+    report_error: impl FnOnce(&anyhow::Error),
+) -> StartupAction {
+    match result {
+        Ok(server::SingletonDisposition::Primary) => StartupAction::Continue,
+        Ok(server::SingletonDisposition::Secondary) => StartupAction::ExitSuccess,
+        Err(error) => {
+            report_error(&error);
+            StartupAction::ExitFailure
+        }
+    }
+}
+
+pub fn run() -> std::process::ExitCode {
     #[cfg(all(target_os = "macos", not(debug_assertions), not(test), not(feature = "verge-dev")))]
     if utils::macos_launch_guard::enforce_before_initialization() == utils::macos_launch_guard::LaunchDisposition::Exit
     {
-        return;
+        return std::process::ExitCode::SUCCESS;
     }
 
     let _ = utils::dirs::init_portable_flag();
 
-    if app_init::init_singleton_check().is_err() {
-        return;
+    match handle_singleton_startup(app_init::init_singleton_check(), utils::startup::report_error) {
+        StartupAction::Continue => {}
+        StartupAction::ExitSuccess => return std::process::ExitCode::SUCCESS,
+        StartupAction::ExitFailure => return std::process::ExitCode::FAILURE,
     }
 
     #[cfg(target_os = "linux")]
@@ -492,4 +505,30 @@ pub fn run() {
         },
         _ => {}
     });
+    std::process::ExitCode::SUCCESS
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::{StartupAction, handle_singleton_startup};
+    use crate::utils::server::SingletonDisposition;
+    use std::cell::Cell;
+
+    #[test]
+    fn secondary_instance_exits_quietly_and_successfully() {
+        let reported = Cell::new(false);
+        let action = handle_singleton_startup(Ok(SingletonDisposition::Secondary), |_| reported.set(true));
+
+        assert_eq!(action, StartupAction::ExitSuccess);
+        assert!(!reported.get());
+    }
+
+    #[test]
+    fn fatal_singleton_error_is_reported_and_fails_startup() {
+        let reported = Cell::new(false);
+        let action = handle_singleton_startup(Err(anyhow::anyhow!("listener failed")), |_| reported.set(true));
+
+        assert_eq!(action, StartupAction::ExitFailure);
+        assert!(reported.get());
+    }
 }

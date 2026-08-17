@@ -49,6 +49,17 @@ export const apiCloud123FileList = async (
   return page.items
 }
 
+export const apiCloud123DirectoryFileList = async (user_id: string, parentFileId: string | number, trashed: boolean = false, searchData: string = '', searchMode: number = 0): Promise<Cloud123FileItem[]> => {
+  const items: Cloud123FileItem[] = []
+  let lastFileId: string | number = ''
+  while (true) {
+    const page = await apiCloud123FileListPage(user_id, parentFileId, 100, trashed, searchData, searchMode, lastFileId)
+    items.push(...page.items)
+    if (page.lastFileId < 0 || !page.items.length || String(page.lastFileId) === String(lastFileId)) return items
+    lastFileId = page.lastFileId
+  }
+}
+
 export const apiCloud123FileListPage = async (
   user_id: string,
   parentFileId: string | number,
@@ -94,7 +105,7 @@ export const apiCloud123FileListPage = async (
     return { items: [], lastFileId: -1 }
   }
   const items = trashed ? data.data.fileList.filter((item) => item.trashed === 1) : data.data.fileList.filter((item) => item.trashed !== 1)
-  return { items, lastFileId: Number(data.data.lastFileId || -1) }
+  return { items, lastFileId: Number(data.data.lastFileId ?? -1) }
 }
 
 export const mapCloud123FileToAliModel = (item: Cloud123FileItem): IAliGetFileModel => {

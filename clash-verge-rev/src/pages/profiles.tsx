@@ -25,7 +25,7 @@ import {
   TextSnippetOutlined,
 } from '@mui/icons-material'
 import { Box, Button, Divider, Grid, IconButton, Stack } from '@mui/material'
-import { listen, TauriEvent } from '@tauri-apps/api/event'
+import { TauriEvent } from '@tauri-apps/api/event'
 import { readText } from '@tauri-apps/plugin-clipboard-manager'
 import { readTextFile } from '@tauri-apps/plugin-fs'
 import { useLockFn } from 'ahooks'
@@ -60,7 +60,8 @@ import {
   reorderProfile,
   updateProfile,
 } from '@/services/cmds'
-import { showNotice } from '@/services/notice-service'
+import { subscribeVergeEvents } from '@/services/events'
+import { errorDetail, showNotice } from '@/services/notice-service'
 import {
   fetchCacheData,
   revalidateQueries,
@@ -245,7 +246,7 @@ const ProfilePage = () => {
       console.error('[紧急刷新] 失败:', error)
       showNotice.error(
         'profiles.page.feedback.notices.emergencyRefreshFailed',
-        { message: String(error) },
+        { message: errorDetail(error) },
         4000,
       )
     }
@@ -296,8 +297,9 @@ const ProfilePage = () => {
     } catch (initialErr) {
       console.warn('[订阅导入] 首次导入失败:', initialErr)
 
-      if (String(initialErr).toLowerCase().includes('legacy tls')) {
-        showNotice.error(String(initialErr))
+      const initialDetail = errorDetail(initialErr)
+      if (initialDetail.toLowerCase().includes('legacy tls')) {
+        showNotice.error(initialErr)
         return
       }
 
@@ -315,7 +317,7 @@ const ProfilePage = () => {
         // 回退导入也失败
         showNotice.error(
           'profiles.page.feedback.notifications.importFail',
-          String(retryErr),
+          retryErr,
         )
       }
     } finally {
@@ -584,52 +586,32 @@ const ProfilePage = () => {
     [setLoadingCache],
   )
 
-  useEffect(() => {
-    let disposed = false
-    let unlisteners: Array<() => void> = []
-
-    Promise.allSettled([
-      listen<{ uid?: string }>('profile-update-started', ({ payload }) => {
-        if (payload.uid) setLoadingProfiles([payload.uid], true)
+  useEffect(
+    () =>
+      subscribeVergeEvents({
+        'profile-update-started': ({ uid }) => {
+          if (uid) setLoadingProfiles([uid], true)
+        },
+        'profile-update-completed': ({ uid }) => {
+          if (!uid) return
+          setLoadingProfiles([uid], false)
+          setCompletedUpdateRevisions((current) => {
+            const next = new Map(current)
+            next.set(uid, (next.get(uid) ?? 0) + 1)
+            return next
+          })
+          void mutateProfiles()
+        },
+        'verge://timer-updated': (uid) => {
+          setTimerUpdateRevisions((current) => {
+            const next = new Map(current)
+            next.set(uid, (next.get(uid) ?? 0) + 1)
+            return next
+          })
+        },
       }),
-      listen<{ uid?: string }>('profile-update-completed', ({ payload }) => {
-        const { uid } = payload
-        if (!uid) return
-        setLoadingProfiles([uid], false)
-        setCompletedUpdateRevisions((current) => {
-          const next = new Map(current)
-          next.set(uid, (next.get(uid) ?? 0) + 1)
-          return next
-        })
-        void mutateProfiles()
-      }),
-      listen<string>('verge://timer-updated', ({ payload: uid }) => {
-        setTimerUpdateRevisions((current) => {
-          const next = new Map(current)
-          next.set(uid, (next.get(uid) ?? 0) + 1)
-          return next
-        })
-      }),
-    ]).then((results) => {
-      const registeredUnlisteners = results.flatMap((result) =>
-        result.status === 'fulfilled' ? [result.value] : [],
-      )
-      results.forEach((result) => {
-        if (result.status === 'rejected') console.error(result.reason)
-      })
-
-      if (disposed) {
-        registeredUnlisteners.forEach((unlisten) => unlisten())
-      } else {
-        unlisteners = registeredUnlisteners
-      }
-    })
-
-    return () => {
-      disposed = true
-      unlisteners.forEach((unlisten) => unlisten())
-    }
-  }, [mutateProfiles, setLoadingProfiles])
+    [mutateProfiles, setLoadingProfiles],
+  )
 
   const runProfileUpdates = useCallback(
     async (uids: string[]) => {

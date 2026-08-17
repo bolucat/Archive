@@ -624,15 +624,19 @@ const qualityOptions = [
   text-align: right;
 }
 .control-status {
-  align-self: center;
+  position: absolute;
+  z-index: 2;
+  bottom: 8px;
+  left: 50%;
   width: min(84%, 520px);
   overflow: hidden;
-  margin-top: -4px;
   color: rgba(255,255,255,.42);
   font-size: 11px;
+  pointer-events: none;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transform: translateX(-50%);
 }
 .control-status.error {
   color: #ff9aa8;

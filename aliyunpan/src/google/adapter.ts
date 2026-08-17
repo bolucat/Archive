@@ -1,5 +1,5 @@
 import type { IDownloadUrl } from '../aliapi/models'
-import { apiGoogleFileDetail, apiGoogleFileList, apiGoogleSearch, apiGoogleSharedDriveFileList, apiGoogleSharedDrives, apiGoogleSharedWithMeList, apiGoogleTrashList, buildGoogleDownloadUrl, buildGoogleExportUrl, getGoogleSharedDriveIdForFile, getGoogleToken, mapGoogleFileToAliModel, parseGoogleSearchId } from './dirfilelist'
+import { apiGoogleFileDetail, apiGoogleFileListPage, apiGoogleSearch, apiGoogleSharedDriveFileList, apiGoogleSharedDrives, apiGoogleSharedWithMeList, apiGoogleTrashList, buildGoogleDownloadUrl, buildGoogleExportUrl, getGoogleSharedDriveIdForFile, getGoogleToken, mapGoogleFileToAliModel, parseGoogleSearchId } from './dirfilelist'
 import { apiGoogleResolveDownload } from './download'
 import { apiGoogleShareCreate } from './share'
 import { apiGoogleUploadBuffer } from './upload'
@@ -58,7 +58,7 @@ export const renameGoogleFiles = async (userId: string, fileIds: string[], names
   return results
 }
 
-export const listGoogleItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
+export const listGoogleItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, pageToken = '') => {
   const search = parseGoogleSearchId(dirId)
   if (dirId.startsWith('search') || dirId.startsWith('google_search:')) {
     if (!search.query) return { items: [], total: 0, error: '搜索关键字不能为空' }
@@ -68,13 +68,14 @@ export const listGoogleItems = async (userId: string, driveId: string, dirId: st
   }
   const parentId = dirId === 'google_root' ? 'google_root' : dirId
   const sharedDriveId = dirId.startsWith('google_shared_drive:') ? dirId.slice('google_shared_drive:'.length) : getGoogleSharedDriveIdForFile(dirId)
-  const list = dirId === 'google_shared_drives'
+  const result = dirId === 'google_shared_drives'
     ? (await apiGoogleSharedDrives(userId)).map(drive => ({ id: `google_shared_drive:${drive.id}`, name: drive.name, mimeType: 'application/vnd.google-apps.folder' }))
     : dirId === 'trash' ? await apiGoogleTrashList(userId)
       : dirId === 'google_shared' ? await apiGoogleSharedWithMeList(userId)
         : sharedDriveId ? await apiGoogleSharedDriveFileList(userId, sharedDriveId, dirId.startsWith('google_shared_drive:') ? 'root' : dirId)
-          : await apiGoogleFileList(userId, parentId)
+          : await apiGoogleFileListPage(userId, parentId, pageToken, 1000)
+  const list = Array.isArray(result) ? result : result.items
   const items = list.map(item => mapGoogleFileToAliModel(item, driveId, parentId))
   const visible = includeFiles ? items : items.filter(item => item.isDir)
-  return { items: visible, total: visible.length }
+  return { items: visible, total: visible.length, nextCursor: includeFiles && !Array.isArray(result) ? result.nextPageToken : '' }
 }

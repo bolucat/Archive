@@ -475,6 +475,11 @@ const handleImportAsar = () => {
           {{ t('settings.showOnStart') }}
         </MySwitch>
       </div>
+      <div class='settingrow'>
+        <MySwitch :value='settingStore.uiLaunchMaximized' @update:value='cb({ uiLaunchMaximized: $event })'>
+          {{ t('book.autoMaximizeMainWindow') }}
+        </MySwitch>
+      </div>
     </template>
     <div class='settingspace'></div>
     <div class='settinghead'>{{ t('settings.update') }}</div>

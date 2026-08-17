@@ -89,13 +89,11 @@ const inputsearchType = ref<string[]>([])
 const handleListScroll = (event: any) => {
   onHideRightMenuScroll()
   cancelFolderPreview()
-  if (panfileStore.SelectDirType !== 'trash') return
-  if (!isDrive115User(panTreeStore.user_id || '')) return
   const target = event?.target as HTMLElement | undefined
   if (!target) return
   const distance = target.scrollHeight - target.scrollTop - target.clientHeight
   if (distance < 120) {
-    // PanDAL.LoadMoreDrive115Trash(panTreeStore.user_id, panfileStore.DriveID)
+    void PanDAL.LoadMoreCurrentProviderItems()
   }
 }
 

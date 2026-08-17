@@ -1,15 +1,16 @@
 import type { IDownloadUrl } from '../aliapi/models'
 import { GetExpiresTime } from '../utils/utils'
-import { apiGuangyaDownloadInfo, apiGuangyaFileDetail, apiGuangyaFileList, mapGuangyaFileToAliModel } from './dirfilelist'
+import { apiGuangyaDownloadInfo, apiGuangyaFileDetail, apiGuangyaFileListPage, mapGuangyaFileToAliModel } from './dirfilelist'
 import { apiGuangyaShareCreate, apiGuangyaShareList } from './share'
 import { apiGuangyaUploadBuffer } from './upload'
 import { apiGuangyaCopyBatch, apiGuangyaMkdir, apiGuangyaMoveBatch, apiGuangyaRename, apiGuangyaTrashBatch } from './filecmd'
 
-export const listGuangyaItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean) => {
+export const listGuangyaItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, page = 0) => {
   const parentId = dirId === 'guangya_root' ? 'guangya_root' : dirId
-  const mappedItems = (await apiGuangyaFileList(userId, parentId, 200)).map(item => mapGuangyaFileToAliModel(item, driveId, dirId))
+  const result = await apiGuangyaFileListPage(userId, parentId, page, 100)
+  const mappedItems = result.items.map(item => mapGuangyaFileToAliModel(item, driveId, dirId))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)
-  return { items: visibleItems, total: visibleItems.length }
+  return { items: visibleItems, total: visibleItems.length, nextCursor: includeFiles && result.hasMore ? String(page + 1) : '' }
 }
 
 export const getGuangyaDownloadUrl = async (userId: string, driveId: string, fileId: string): Promise<IDownloadUrl | string> => {

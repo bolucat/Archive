@@ -20,6 +20,10 @@ pub mod timing {
     pub const CONFIG_UPDATE_DEBOUNCE: Duration = Duration::from_millis(300);
     pub const STARTUP_ERROR_DELAY: Duration = Duration::from_secs(2);
 
+    // How long a re-asked staging request is worth waiting for. One that already landed answers in
+    // milliseconds; anything slower means the Service is still working, so ReplaceCore beats waiting.
+    pub const STAGE_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
+
     // Windows 服务冷启动较慢,避免过早回退 sidecar。
     #[cfg(target_os = "windows")]
     pub const SERVICE_WAIT_MAX: Duration = Duration::from_millis(30000);
@@ -37,6 +41,11 @@ pub mod timing {
     pub const SERVICE_START_RETRIES: usize = 5;
     #[cfg(target_os = "windows")]
     pub const SERVICE_START_RETRY_DELAY: Duration = Duration::from_millis(300);
+}
+
+pub mod profile {
+    /// Floor, in minutes, for how often a profile may auto-update (24 hours).
+    pub const MIN_UPDATE_INTERVAL: u64 = 1440;
 }
 
 pub mod files {
