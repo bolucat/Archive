@@ -19,7 +19,7 @@
       "description": "Audio file"
     },
     {
-      "ext": ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "txt", "md", "markdown", "docx", "html", "htm", "cbz", "cbr", "cbt", "cb7"],
+      "ext": ["epub", "pdf", "mobi", "azw", "azw3", "fb2", "md", "markdown", "html", "htm", "cbz", "cbr", "cbt", "cb7"],
       "name": "BoxPlayer Book",
       "description": "Book or comic file"
     }

@@ -4,7 +4,8 @@ import UserDAL from '../user/userdal'
 import BookScanner from './bookScanner'
 import DebugLog from './debuglog'
 
-const FIRST_RUN_DELAY_MS = 10 * 1000
+// Stagger with music/video scans so a restored library cannot burst one account's API quota.
+const FIRST_RUN_DELAY_MS = 45 * 1000
 const RECHECK_INTERVAL_MS = 30 * 60 * 1000
 
 let started = false

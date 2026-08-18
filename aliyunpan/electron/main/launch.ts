@@ -286,25 +286,25 @@ export default class launch extends EventEmitter {
             }
           })
         })
-        this.motrixApp = new MotrixApplication()
-        this.motrixApp.init().catch((err: any) => console.error('[MotrixApp] init failed', err))
+        createMainWindow()
+        registerExternalFileProtocol(() => AppWindow.mainWindow)
+        startMediaAcquisitionWakeScheduler()
+        createTray()
+        registerAutoUpdate()
+        if (this.pendingOAuthUrl) {
+          this.dispatchOAuthUrl(this.pendingOAuthUrl)
+          this.pendingOAuthUrl = null
+        }
+        setTimeout(() => {
+          this.motrixApp = new MotrixApplication()
+          this.motrixApp.init().catch((err: any) => console.error('[MotrixApp] init failed', err))
+        }, 3000)
 
         const defaultSessionExtensions = session.defaultSession.extensions
         const loadCrxExtension = defaultSessionExtensions?.loadExtension ? defaultSessionExtensions.loadExtension.bind(defaultSessionExtensions) : session.defaultSession.loadExtension.bind(session.defaultSession)
         loadCrxExtension(getStaticPath('crx'), { allowFileAccess: true })
           .catch((err: any) => {
             console.error('[launch] load crx extension failed', err)
-          })
-          .finally(() => {
-            createMainWindow()
-            registerExternalFileProtocol(() => AppWindow.mainWindow)
-            startMediaAcquisitionWakeScheduler()
-            createTray()
-            registerAutoUpdate()
-            if (this.pendingOAuthUrl) {
-              this.dispatchOAuthUrl(this.pendingOAuthUrl)
-              this.pendingOAuthUrl = null
-            }
           })
       })
       .catch((err: any) => {

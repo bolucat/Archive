@@ -53,8 +53,8 @@ export const renameDropboxFiles = async (userId: string, fileIds: string[], name
 export const moveDropboxFiles = (userId: string, fileIds: string[], parentFileId: string, parentDescription = '') => apiDropboxMoveBatch(userId, fileIds, parentFileId.includes('root') ? 'dropbox_root' : parentFileId, parentDescription)
 export const copyDropboxFiles = (userId: string, fileIds: string[], parentFileId: string, parentDescription = '') => apiDropboxCopyBatch(userId, fileIds, parentFileId.includes('root') ? 'dropbox_root' : parentFileId, parentDescription)
 
-export const listDropboxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, cursor = '') => {
-  const hydrateThumbnails = async (items: any[]) => {
+export const listDropboxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, cursor = '', hydrateThumbnails = true) => {
+  const hydrateItemThumbnails = async (items: any[]) => {
     const candidates = items.filter(item => !item.isDir && !item.thumbnail && item.category === 'image').slice(0, 40)
     const thumbnails = await apiDropboxThumbnails(userId, candidates.map(item => item.file_id)).catch(() => new Map<string, string>())
     candidates.forEach(item => {
@@ -72,13 +72,13 @@ export const listDropboxItems = async (userId: string, driveId: string, dirId: s
     })
     const filtered = filterDropboxSearchResults(items, filters)
     const visible = includeFiles ? filtered : filtered.filter(item => item.isDir)
-    return { items: await hydrateThumbnails(visible), total: visible.length }
+    return { items: await hydrateItemThumbnails(visible), total: visible.length }
   }
   const parentId = dirId === 'dropbox_root' ? 'dropbox_root' : dirId
   const page = await apiDropboxFileListPage(userId, parentId, 500, cursor)
   const items = page.items.map(item => mapDropboxFileToAliModel(item, driveId, parentId))
   const visible = includeFiles ? items : items.filter(item => item.isDir)
-  return { items: await hydrateThumbnails(visible), total: visible.length, nextCursor: includeFiles && page.hasMore ? page.cursor : '' }
+  return { items: hydrateThumbnails ? await hydrateItemThumbnails(visible) : visible, total: visible.length, nextCursor: includeFiles && page.hasMore ? page.cursor : '' }
 }
 
 export const listDropboxShares = async (userId: string): Promise<{ items: IAliShareItem[]; error: string }> => {

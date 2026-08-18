@@ -217,10 +217,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          release_doc="docs/releases/${GITHUB_REF_NAME}.md"
-          if [[ -f "${release_doc}" ]]; then
+          version_without_v="${GITHUB_REF_NAME#v}"
+          release_doc=""
+          shopt -s nullglob
+          for candidate in "docs/releases/${GITHUB_REF_NAME}.md" "docs/releases/${version_without_v}.md" docs/releases/*"${GITHUB_REF_NAME}"-release.md docs/releases/*"${version_without_v}"-release.md; do
+            if [[ -f "${candidate}" ]]; then
+              release_doc="${candidate}"
+              break
+            fi
+          done
+          if [[ -n "${release_doc}" ]]; then
+            echo "Using release notes from ${release_doc}"
             cp "${release_doc}" release-notes.md
           else
+            echo "No versioned release document found; generating GitHub notes"
             gh api "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
               -f tag_name="${GITHUB_REF_NAME}" \
               --jq .body > release-notes.md

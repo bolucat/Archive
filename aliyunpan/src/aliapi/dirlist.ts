@@ -6,6 +6,7 @@ import dayjs from 'dayjs'
 import AliTrash from './trash'
 import type { DirData } from '../store/treestore'
 import AliUser from './user'
+import { libraryScanRateLimitScope, runRateLimitedScanRequest } from '../utils/libraryScanRateLimiter'
 
 export interface IAliDirResp {
   items: IAliGetDirModel[]
@@ -309,10 +310,11 @@ export default class AliDirList {
     if (!user_id || !drive_id) return result
 
     const allMap = new Map<string, DirData>()
-    const dirCount = await AliUser.ApiUserDriveFileCount(user_id, '', 'folder')
+    const rateLimitScope = libraryScanRateLimitScope(user_id, drive_id)
+    const dirCount = await runRateLimitedScanRequest(rateLimitScope, () => AliUser.ApiUserDriveFileCount(user_id, '', 'folder'))
     const PIDList: string[] = []
 
-    const root = await AliTrash.ApiDirFileListNoLock(user_id, drive_id, drive_root, '', 'name ASC', 'folder', 0)
+    const root = await runRateLimitedScanRequest(rateLimitScope, () => AliTrash.ApiDirFileListNoLock(user_id, drive_id, drive_root, '', 'name ASC', 'folder', 0))
     for (let i = 0, maxi = root.items.length; i < maxi; i++) {
       const item = root.items[i]
       if (item.parent_file_id === 'root') {
@@ -362,7 +364,7 @@ export default class AliDirList {
           marker: dir.next_marker
         }
         const url = 'adrive/v3/file/search?jsonmask=next_marker%2Citems(drive_id%2Ccreated_at%2Cfile_id%2Cname%2Cparent_file_id%2Cupdated_at%2Cdescription)'
-        const resp = await AliHttp.Post(url, postData, user_id, '')
+        const resp = await runRateLimitedScanRequest(rateLimitScope, () => AliHttp.Post(url, postData, user_id, ''))
         try {
           if (AliHttp.IsSuccess(resp.code)) {
             const items = resp.body.items

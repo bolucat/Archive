@@ -14,6 +14,7 @@ import { createProxyServer } from '../utils/proxyhelper'
 import cache from '../utils/cache'
 import WebDavServer from '../module/webdav'
 import message from '../utils/message'
+import { startBackgroundStartupTasks } from '../utils/startupTask'
 
 export function PageMain() {
   if (window.WinMsg) return
@@ -21,18 +22,8 @@ export function PageMain() {
   //useSettingStore().WebSetProxy()
   Promise.resolve()
     .then(async () => {
-      // 创建代理server
-      if (!window.MainProxyServer) {
-        window.MainProxyHost = useSettingStore().debugProxyHost
-        window.MainProxyPort = useSettingStore().debugProxyPort
-        window.MainProxyServer = await createProxyServer(window.MainProxyPort)
-        window.MainProxyServer.on('close', async () => {
-          await Sleep(2000)
-          window.MainProxyServer = await createProxyServer(window.MainProxyPort)
-        })
-      }
       // DebugLog.mSaveSuccess('小白羊启动')
-      await ShareDAL.aLoadFromDB().catch((err: any) => {
+      void ShareDAL.aLoadFromDB().catch((err: any) => {
         DebugLog.mSaveDanger('ShareDALLDB', err)
       })
       // 加载数据库用户
@@ -40,57 +31,66 @@ export function PageMain() {
         DebugLog.mSaveDanger('UserDALLDB', err)
       })
     })
-    .then(async () => {
-      await Sleep(500)
-      // 启动时检查更新
-      if (useSettingStore().uiLaunchAutoCheckUpdate) {
-        window.AutoUpdateCheck?.(false).then((state: { status?: string; version?: string }) => {
-          if (state?.status === 'downloading') {
-            message.info(state.version ? `发现新版本 ${state.version}，正在后台下载` : '发现新版本，正在后台下载')
+    .then(() => {
+      startBackgroundStartupTasks([
+        {
+          label: 'CreateProxyServer',
+          run: async () => {
+            if (window.MainProxyServer) return
+            window.MainProxyHost = useSettingStore().debugProxyHost
+            window.MainProxyPort = useSettingStore().debugProxyPort
+            window.MainProxyServer = await createProxyServer(window.MainProxyPort)
+            window.MainProxyServer.on('close', async () => {
+              await Sleep(2000)
+              window.MainProxyServer = await createProxyServer(window.MainProxyPort)
+            })
           }
-        }).catch((err: any) => DebugLog.mSaveDanger('CheckUpgrade', err))
-      }
-      // 重新启动未完成的下载和上传任务
-      await DownDAL.aReloadDowning().catch((err: any) => {
-        DebugLog.mSaveDanger('aReloadDowning', err)
+        },
+        {
+          label: 'CheckUpgrade',
+          run: async () => {
+            await Sleep(1500)
+            if (!useSettingStore().uiLaunchAutoCheckUpdate) return
+            const state = await window.AutoUpdateCheck?.(false)
+            if (state?.status === 'downloading') message.info(state.version ? `发现新版本 ${state.version}，正在后台下载` : '发现新版本，正在后台下载')
+          }
+        },
+        {
+          label: 'RestoreTransferState',
+          run: async () => {
+            await Sleep(500)
+            await DownDAL.aReloadDowning()
+            await DownDAL.aReloadDowned()
+            await UploadingDAL.aReloadUploading()
+            await UploadDAL.aReloadUploaded()
+          }
+        },
+        {
+          label: 'AppStorageSize',
+          run: async () => {
+            await Sleep(1500)
+            await AppCache.aLoadStorageSize()
+          }
+        },
+        {
+          label: 'StartWebDav',
+          run: async () => {
+            if (!useSettingStore().webDavAutoEnable) {
+              useSettingStore().webDavEnable = false
+              return
+            }
+            await WebDavServer.config({
+              port: useSettingStore().webDavPort,
+              hostname: useSettingStore().webDavHost,
+              requireAuthentification: false
+            }).start()
+            useSettingStore().webDavEnable = WebDavServer.isStarted()
+          }
+        }
+      ], (label, err: any) => {
+        if (label === 'StartWebDav') useSettingStore().webDavEnable = false
+        DebugLog.mSaveDanger(label, err)
       })
-
-      await DownDAL.aReloadDowned().catch((err: any) => {
-        DebugLog.mSaveDanger('aReloadDowned', err)
-      })
-
-      await UploadingDAL.aReloadUploading().catch((err: any) => {
-        DebugLog.mSaveDanger('aReloadUploading', err)
-      })
-
-      await UploadDAL.aReloadUploaded().catch((err: any) => {
-        DebugLog.mSaveDanger('aReloadUploaded', err)
-      })
-      await Sleep(500)
-
-      await AppCache.aLoadDirSize().catch((err: any) => {
-        DebugLog.mSaveDanger('AppDirDALDB', err)
-      })
-
-      await AppCache.aLoadCacheSize().catch((err: any) => {
-        DebugLog.mSaveDanger('AppCacheDALDB', err)
-      })
-
-      // 启动WebDav
-      if (useSettingStore().webDavAutoEnable) {
-        await WebDavServer.config({
-          port: useSettingStore().webDavPort,
-          hostname: useSettingStore().webDavHost,
-          requireAuthentification: false
-        }).start().then(() => {
-          useSettingStore().webDavEnable = WebDavServer.isStarted()
-        }).catch((err: any) => {
-          useSettingStore().webDavEnable = false
-        })
-      } else {
-        useSettingStore().webDavEnable = false
-      }
-      // 开启定时任务
       setTimeout(timeEvent, 1000)
     })
     .catch((err: any) => {

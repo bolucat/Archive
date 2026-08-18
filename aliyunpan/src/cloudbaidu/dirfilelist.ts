@@ -4,6 +4,7 @@ import { HanToPin } from '../utils/utils'
 import { humanDateTimeDateStr, humanSize } from '../utils/format'
 import message from '../utils/message'
 import { getBaiduToken } from './auth'
+import { baiduFetch } from './request'
 
 export type BaiduFileItem = {
   fs_id: number
@@ -56,11 +57,13 @@ export const apiBaiduFileListPage = async (
     desc: String(desc)
   })
   const url = `${API_URL}?${params.toString()}`
-  const resp = await fetch(url, {
-    headers: {
-      'User-Agent': 'pan.baidu.com'
-    }
-  })
+  let resp: Response
+  try {
+    resp = await baiduFetch(url, { headers: { 'User-Agent': 'pan.baidu.com' } })
+  } catch {
+    if (strict) throw new Error('获取百度网盘文件列表超时')
+    return { items: [], hasMore: false }
+  }
   if (!resp.ok) {
     message.error('获取百度网盘文件列表失败')
     if (strict) throw new Error(`获取百度网盘文件列表失败 HTTP ${resp.status}`)
@@ -100,11 +103,13 @@ export const apiBaiduSearch = async (
   })
   if (recursion) params.set('recursion', '1')
   const url = `${API_URL}?${params.toString()}`
-  const resp = await fetch(url, {
-    headers: {
-      'User-Agent': 'pan.baidu.com'
-    }
-  })
+  let resp: Response
+  try {
+    resp = await baiduFetch(url, { headers: { 'User-Agent': 'pan.baidu.com' } })
+  } catch {
+    message.error('搜索百度网盘文件超时')
+    return []
+  }
   if (!resp.ok) {
     message.error('获取百度网盘搜索结果失败')
     return []

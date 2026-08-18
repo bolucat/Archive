@@ -1,6 +1,10 @@
 import { AppWindow } from '../core/window'
 
-const WAKE_INTERVAL_MS = 15_000
+// The renderer starts its own runner after PageMain is ready. This scheduler is
+// only a recovery mechanism for renderer reloads / hidden windows, so waking
+// it every few seconds (or immediately during cold start) competes with the
+// initial account and drive loading work.
+const WAKE_INTERVAL_MS = 60_000
 let timer: ReturnType<typeof setInterval> | undefined
 
 /**
@@ -14,7 +18,6 @@ export function startMediaAcquisitionWakeScheduler(): void {
     const window = AppWindow.mainWindow
     if (window && !window.isDestroyed()) window.webContents.send('mediaAcquisition:wake')
   }
-  wake()
   timer = setInterval(wake, WAKE_INTERVAL_MS)
 }
 

@@ -1,17 +1,7 @@
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import { resolveDriveProvider, type DriveProvider } from './driveProvider'
-import { iterateCloud123FolderPages } from '../cloud123/scan'
-import { iterateDrive115FolderPages } from '../cloud115/scan'
-import { iterateBaiduFolderPages } from '../cloudbaidu/scan'
-import { iteratePikPakFolderPages } from '../pikpak/scan'
-import { iterateQuarkFolderPages } from '../quark/scan'
-import { iterateCloud139FolderPages } from '../cloud139/scan'
-import { iterateCloud189FolderPages } from '../cloud189/scan'
-import { iterateDropboxFolderPages } from '../dropbox/scan'
-import { iterateOneDriveFolderPages } from '../onedrive/scan'
-import { iterateBoxFolderPages } from '../box/scan'
-import { iterateGuangyaFolderPages } from '../guangya/scan'
-import { iterateGoogleFolderPages } from '../google/scan'
+import { listProviderItems } from '../drive/providerList'
+import { iterateProviderPages } from '../drive/providerPagination'
 
 export type ProviderFolderListOptions = {
   folder: IAliGetFileModel
@@ -34,56 +24,8 @@ export const isThirdPartyProviderFolder = (userId: string, driveId: string): boo
 export async function* iterateProviderFolderPages(options: ProviderFolderListOptions): AsyncGenerator<IAliGetFileModel[]> {
   const { folder, userId, driveId } = options
   const route = resolveDriveProvider(userId, driveId)
-  if (!route.isValid) return
-
-  if (route.provider === 'cloud123') {
-    yield* iterateCloud123FolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === '115') {
-    yield* iterateDrive115FolderPages(folder, userId, driveId, !!options.silent, options.shouldStop)
-    return
-  }
-  if (route.provider === 'baidu') {
-    yield* iterateBaiduFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === 'pikpak') {
-    yield* iteratePikPakFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === 'quark') {
-    yield* iterateQuarkFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === '139') {
-    yield* iterateCloud139FolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === '189') {
-    yield* iterateCloud189FolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-
-  if (route.provider === 'dropbox') {
-    yield* iterateDropboxFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === 'onedrive') {
-    yield* iterateOneDriveFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === 'box') {
-    yield* iterateBoxFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === 'guangya') {
-    yield* iterateGuangyaFolderPages(folder, userId, driveId, options.shouldStop)
-    return
-  }
-  if (route.provider === 'google') {
-    yield* iterateGoogleFolderPages(folder, userId, driveId, options.shouldStop)
-  }
+  if (!route.isValid || !isScanProvider(route.provider)) return
+  yield* iterateProviderPages(cursor => listProviderItems(route.provider, userId, driveId, folder.file_id, true, cursor, { skipThumbnailHydration: true }), options.shouldStop)
 }
 
 /**

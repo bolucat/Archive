@@ -16,4 +16,12 @@ describe('Aliyun color-label search', () => {
     expect(pageSearch).toContain('postData.drive_id_list = buildAliColorSearchDriveIds')
     expect(pageSearch).toContain('delete postData.drive_id')
   })
+
+  it('routes a selected search range through the Aliyun multi-drive search endpoint', () => {
+    const source = readFileSync(new URL('../dirfilelist.ts', import.meta.url), 'utf8')
+    const pageSearch = source.slice(source.indexOf('static async _ApiSearchFileListOnePage'), source.indexOf('static async _ApiSearchFileListCount'))
+    expect(pageSearch).toContain("if (k == 'range')")
+    expect(pageSearch).toContain("url = 'adrive/v3/file/search'")
+    expect(pageSearch).toContain('postData.drive_id_list = Array.from(searchDriveIds)')
+  })
 })

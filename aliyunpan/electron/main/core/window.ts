@@ -158,8 +158,6 @@ export function createMainWindow() {
     if (is.linux()) {
       AppWindow.mainWindow!.show()
     }
-    creatUploadPort()
-    creatDownloadPort()
   })
 
   AppWindow.mainWindow.webContents.on('render-process-gone', function(event, details) {
@@ -168,8 +166,6 @@ export function createMainWindow() {
     }
   })
 
-  createUpload()
-  createDownload()
 }
 
 export function createTray() {
@@ -502,6 +498,11 @@ function createDownload() {
   AppWindow.downloadWindow.webContents.closeDevTools()
   AppWindow.downloadWindow.hide()
 }
+
+ipcMain.on('EnsureTransferWorker', (_event, type: unknown) => {
+  if (type === 'upload') createUpload()
+  else if (type === 'download') createDownload()
+})
 
 export function createReaderWindow(bookData: any) {
   if (AppWindow.readerWindow && !AppWindow.readerWindow.isDestroyed()) {

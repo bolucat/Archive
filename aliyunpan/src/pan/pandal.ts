@@ -13,6 +13,7 @@ import AliAlbum from '../aliapi/album'
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from '../utils/webdavClient'
 import { resolveDriveProvider, type DriveProvider } from '../utils/driveProvider'
 import { listProviderItems } from '../drive/providerList'
+import { beginProviderPage, cancelProviderPage, completeProviderPage, createProviderPaginationState, type ProviderPaginationState } from '../drive/providerPagination'
 import { getProviderFileInfo } from '../drive/providerFile'
 import { OrderDir } from '../utils/filenameorder'
 import UserDAL from '../user/userdal'
@@ -36,15 +37,37 @@ const RefreshLock = new Set<string>()
 const AllDirLoadingDrives = new Set<string>()
 const AllDirLoadingTimers = new Map<string, number>()
 const ALL_DIR_LOADING_TIMEOUT = 5 * 60 * 1000
+const ALL_DIR_REFRESH_START_DELAY = 5_000
+const AllDirRefreshQueue: Array<{ user_id: string; drive_id: string; drive_root: string }> = []
+const AllDirQueuedDrives = new Set<string>()
+let allDirRefreshDrive = ''
+let allDirRefreshTimer: number | undefined
+
+const startNextAllDirRefresh = () => {
+  if (allDirRefreshDrive || allDirRefreshTimer !== undefined) return
+  const task = AllDirRefreshQueue.shift()
+  if (!task) return
+  allDirRefreshTimer = window.setTimeout(() => {
+    allDirRefreshTimer = undefined
+    allDirRefreshDrive = task.drive_id
+    beginAllDirLoading(task.drive_id)
+    window.WinMsgToUpload({ cmd: 'AllDirList', ...task })
+  }, ALL_DIR_REFRESH_START_DELAY)
+}
+
+const queueAllDirRefresh = (user_id: string, drive_id: string, drive_root: string) => {
+  if (!user_id || !drive_id || AllDirQueuedDrives.has(drive_id) || AllDirLoadingDrives.has(drive_id)) return
+  AllDirQueuedDrives.add(drive_id)
+  AllDirRefreshQueue.push({ user_id, drive_id, drive_root })
+  startNextAllDirRefresh()
+}
 
 const beginAllDirLoading = (drive_id: string) => {
   AllDirLoadingDrives.add(drive_id)
   useFootStore().mSaveLoading('加载全部文件夹...')
   if (AllDirLoadingTimers.has(drive_id)) return
   const timer = window.setTimeout(() => {
-    AllDirLoadingTimers.delete(drive_id)
-    AllDirLoadingDrives.delete(drive_id)
-    if (AllDirLoadingDrives.size === 0) useFootStore().mSaveLoading('')
+    finishAllDirLoading(drive_id)
   }, ALL_DIR_LOADING_TIMEOUT)
   AllDirLoadingTimers.set(drive_id, timer)
 }
@@ -54,41 +77,51 @@ const finishAllDirLoading = (drive_id: string) => {
   if (timer !== undefined) window.clearTimeout(timer)
   AllDirLoadingTimers.delete(drive_id)
   AllDirLoadingDrives.delete(drive_id)
+  AllDirQueuedDrives.delete(drive_id)
+  if (allDirRefreshDrive === drive_id) allDirRefreshDrive = ''
   useFootStore().mSaveLoading(AllDirLoadingDrives.size > 0 ? '加载全部文件夹...' : '')
+  startNextAllDirRefresh()
 }
 
 export default class PanDAL {
-  private static providerNextCursor = new Map<string, string>()
+  private static providerPagination = new Map<string, ProviderPaginationState>()
   private static providerLoadingMore = new Set<string>()
 
-  private static saveProviderCursor(userId: string, driveId: string, dirId: string, hasFiles: boolean, cursor?: string) {
+  private static saveProviderCursor(userId: string, driveId: string, dirId: string, hasFiles: boolean, result?: { items: any[]; nextCursor?: string }) {
     const key = `${userId}:${driveId}:${dirId}`
-    if (hasFiles && cursor) PanDAL.providerNextCursor.set(key, cursor)
-    else PanDAL.providerNextCursor.delete(key)
+    if (!hasFiles || !result) return void PanDAL.providerPagination.delete(key)
+    const state = createProviderPaginationState(result.items)
+    beginProviderPage(state, '')
+    completeProviderPage(state, result)
+    if (state.cursor) PanDAL.providerPagination.set(key, state)
+    else PanDAL.providerPagination.delete(key)
   }
 
   static async LoadMoreCurrentProviderItems(): Promise<void> {
     const store = usePanFileStore()
     const tree = usePanTreeStore()
     const key = `${tree.user_id}:${store.DriveID}:${store.DirID}`
-    const cursor = PanDAL.providerNextCursor.get(key)
-    if (!cursor || PanDAL.providerLoadingMore.has(key)) return
+    const state = PanDAL.providerPagination.get(key)
+    if (!state || PanDAL.providerLoadingMore.has(key)) return
     const route = resolveDriveProvider(tree.user_id, store.DriveID, UserDAL.GetUserToken(tree.user_id)?.tokenfrom)
     if (route.provider !== 'cloud123' && route.provider !== '115' && route.provider !== 'baidu' && route.provider !== 'pikpak' && route.provider !== 'quark' && route.provider !== '139' && route.provider !== '189' && route.provider !== 'guangya' && route.provider !== 'box' && route.provider !== 'dropbox' && route.provider !== 'onedrive' && route.provider !== 'google') return
+    const cursor = beginProviderPage(state)
+    if (!cursor) return
     PanDAL.providerLoadingMore.add(key)
     try {
       const result = await listProviderItems(route.provider, tree.user_id, store.DriveID, store.DirID, true, cursor)
       if (!result || store.DriveID !== tree.drive_id || store.DirID !== tree.selectDir.file_id) return
-      const existing = new Set(store.ListDataRaw.map((item: any) => item.file_id))
-      const items = result.items.filter(item => !existing.has(item.file_id))
+      const items = completeProviderPage(state, result)
       if (items.length) {
         store.ListDataRaw = store.ListDataRaw.concat(items)
         const order = TreeStore.GetDirOrder(store.DriveID, store.DirID).replace('ext ', 'updated_at ').split(' ')
         OrderDir(order[0], order[1], store.ListDataRaw)
         store.mRefreshListDataShow(true)
       }
-      if (result.nextCursor) PanDAL.providerNextCursor.set(key, result.nextCursor)
-      else PanDAL.providerNextCursor.delete(key)
+      if (!state.cursor) PanDAL.providerPagination.delete(key)
+    } catch (error) {
+      cancelProviderPage(state, cursor)
+      throw error
     } finally {
       PanDAL.providerLoadingMore.delete(key)
     }
@@ -130,10 +163,12 @@ export default class PanDAL {
     if (!user_id) return
     useFootStore().mSaveLoading(loadingText)
     const driveType = GetDriveType(user_id, driveId)
-    const result = await listProviderItems(provider, user_id, driveId, rootId, false)
-    const dirs = (result?.items || []).map(item => ({ file_id: item.file_id, drive_id: driveId, parent_file_id: driveType.key, name: item.name, description: item.description || '', time: item.time, size: 0 })) as IAliGetDirModel[]
+    const result = await listProviderItems(provider, user_id, driveId, rootId, true)
+    const dirs = (result?.items || []).filter(item => item.isDir).map(item => ({ file_id: item.file_id, drive_id: driveId, parent_file_id: driveType.key, name: item.name, description: item.description || '', time: item.time, size: 0 })) as IAliGetDirModel[]
     await TreeStore.ConvertToOneDriver(user_id, driveId, dirs, false, true)
-    PanDAL.RefreshPanTreeAllNode(driveId)
+    const rootName = driveType.title || '根目录'
+    await PanDAL.SaveProviderDirFileList(user_id, driveId, rootId, rootName, result?.items || [], result?.total || 0, true)
+    PanDAL.saveProviderCursor(user_id, driveId, rootId, true, result)
     useFootStore().mSaveLoading('')
   }
 
@@ -214,8 +249,7 @@ export default class PanDAL {
         return
       }
     }
-    beginAllDirLoading(drive_id)
-    window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id: drive_id, drive_root: 'backup_root' })
+    queueAllDirRefresh(user_id, drive_id, 'backup_root')
   }
 
   static async aReLoadResourceDrive(token: ITokenInfo): Promise<void> {
@@ -235,8 +269,7 @@ export default class PanDAL {
         return
       }
     }
-    beginAllDirLoading(resource_drive_id)
-    window.WinMsgToUpload({ cmd: 'AllDirList', user_id, drive_id: resource_drive_id, drive_root: 'resource_root' })
+    queueAllDirRefresh(user_id, resource_drive_id, 'resource_root')
   }
 
   static async aReLoadDriveSave(OneDriver: IDriverModel, error: string, drive_id: string): Promise<void> {
@@ -515,7 +548,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -531,7 +564,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -547,7 +580,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -564,7 +597,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -580,7 +613,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -596,7 +629,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -612,7 +645,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -629,7 +662,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -646,7 +679,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {
@@ -670,7 +703,7 @@ export default class PanDAL {
             panfileStore.mSaveDirFileLoadingPart(0, dir, dir.itemsTotal || 0)
             TreeStore.SaveOneDirFileList(dir, hasFiles).then(() => {
               if (hasFiles) panfileStore.mSaveDirFileLoadingFinish(drive_id, dirID, dir.items, dir.itemsTotal || 0)
-              PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+              PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
               PanDAL.RefreshPanTreeAllNode(drive_id)
               resolve(true)
             })
@@ -689,7 +722,7 @@ export default class PanDAL {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)
             await PanDAL.SaveProviderDirFileList(user_id, drive_id, dirID, dirName, result.items, result.total, hasFiles)
-            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result.nextCursor)
+            PanDAL.saveProviderCursor(user_id, drive_id, dirID, hasFiles, result)
             resolve(true)
           })
           .catch(() => {

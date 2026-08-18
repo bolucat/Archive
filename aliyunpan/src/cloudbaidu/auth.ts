@@ -1,6 +1,7 @@
 import type { ITokenInfo } from '../user/userstore'
 import { getProviderTokenForUser } from '../drive/account'
 import { humanSize } from '../utils/format'
+import { baiduFetch } from './request'
 
 export { buildBaiduAuthUrl, exchangeBaiduCodeForToken, refreshBaiduAccessToken } from '../utils/baidu'
 
@@ -11,7 +12,13 @@ export const refreshBaiduUserInfo = async (token: ITokenInfo): Promise<boolean> 
   if (!token.access_token) return false
   try {
     const userParams = new URLSearchParams({ method: 'uinfo', access_token: token.access_token, vip_version: 'v2' })
-    const userResp = await fetch(`https://pan.baidu.com/rest/2.0/xpan/nas?${userParams.toString()}`, { headers: { 'User-Agent': 'pan.baidu.com' } })
+    const quotaParams = new URLSearchParams({ access_token: token.access_token, checkfree: '1', checkexpire: '1' })
+    const [userResult, quotaResult] = await Promise.allSettled([
+      baiduFetch(`https://pan.baidu.com/rest/2.0/xpan/nas?${userParams.toString()}`, { headers: { 'User-Agent': 'pan.baidu.com' } }),
+      baiduFetch(`https://pan.baidu.com/api/quota?${quotaParams.toString()}`, { headers: { 'User-Agent': 'pan.baidu.com' } })
+    ])
+    if (userResult.status !== 'fulfilled') return false
+    const userResp = userResult.value
     if (!userResp.ok) return false
     const user = await userResp.json()
     if (user?.errno !== 0) return false
@@ -22,9 +29,8 @@ export const refreshBaiduUserInfo = async (token: ITokenInfo): Promise<boolean> 
     if (user.vip_type === 1) token.vipname = 'VIP'
     if (!token.user_id && user.uk) token.user_id = `baidu_${user.uk}`
 
-    const quotaParams = new URLSearchParams({ access_token: token.access_token, checkfree: '1', checkexpire: '1' })
-    const quotaResp = await fetch(`https://pan.baidu.com/api/quota?${quotaParams.toString()}`, { headers: { 'User-Agent': 'pan.baidu.com' } })
-    if (!quotaResp.ok) return true
+    if (quotaResult.status !== 'fulfilled' || !quotaResult.value.ok) return true
+    const quotaResp = quotaResult.value
     const quota = await quotaResp.json()
     if (quota?.errno !== 0) return true
     if (typeof quota.total === 'number') token.total_size = quota.total

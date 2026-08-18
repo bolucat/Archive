@@ -48,6 +48,10 @@ export function getProviderCapabilities(platform?: string): ProviderCapabilityMa
   })
 }
 
+export function supportsProviderSearch(platform?: string): boolean {
+  return getProviderCapabilities(platform).operations['files.search']
+}
+
 export function formatProviderCapabilities(manifests: ProviderCapabilityManifest[]): string {
   if (!manifests.length) return '当前没有已登录网盘。'
   return manifests.map(item => {

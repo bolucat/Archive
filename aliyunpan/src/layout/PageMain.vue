@@ -1,5 +1,5 @@
 <script setup lang='ts'>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   KeyboardState,
   useAppStore,
@@ -26,18 +26,8 @@ import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
 import { t } from '../i18n'
 
-import Setting from '../setting/index.vue'
-import Rss from '../rss/index.vue'
-import Share from '../share/index.vue'
-import Down from '../down/index.vue'
 import Pan from '../pan/index.vue'
-import MediaLibraryView from '../views/MediaLibraryView.vue'
-import MediaServerView from '../views/MediaServerView.vue'
 import DropOverlay from '../components/radio/DropOverlay.vue'
-import PageMusicLibrary from './PageMusicLibrary.vue'
-import PageBookLibrary from './PageBookLibrary.vue'
-import PageGlobalSearch from './PageGlobalSearch.vue'
-import PageAIWorkspace from './PageAIWorkspace.vue'
 
 import UserInfo from '../user/UserInfo.vue'
 import UserLogin from '../user/UserLogin.vue'
@@ -47,6 +37,17 @@ import LimitReachedModal from '../setting/LimitReachedModal.vue'
 import MyModal from './MyModal.vue'
 import { B64decode } from '../utils/format'
 import { throttle } from '../utils/debounce'
+
+const Setting = defineAsyncComponent(() => import('../setting/index.vue'))
+const Rss = defineAsyncComponent(() => import('../rss/index.vue'))
+const Share = defineAsyncComponent(() => import('../share/index.vue'))
+const Down = defineAsyncComponent(() => import('../down/index.vue'))
+const MediaLibraryView = defineAsyncComponent(() => import('../views/MediaLibraryView.vue'))
+const MediaServerView = defineAsyncComponent(() => import('../views/MediaServerView.vue'))
+const PageMusicLibrary = defineAsyncComponent(() => import('./PageMusicLibrary.vue'))
+const PageBookLibrary = defineAsyncComponent(() => import('./PageBookLibrary.vue'))
+const PageGlobalSearch = defineAsyncComponent(() => import('./PageGlobalSearch.vue'))
+const PageAIWorkspace = defineAsyncComponent(() => import('./PageAIWorkspace.vue'))
 
 const wechatPayImage = 'images/wechat_pay.jpg'
 const alipayImage = 'images/alipay.jpg'
@@ -64,7 +65,7 @@ const sidebarVisibility = ref<Record<'down' | 'share' | 'rss' | 'setting' | 'mus
   'ai-workspace': true
 })
 const showLimitModal = ref(false)
-setInterval(() => {
+const pricingPollTimer = window.setInterval(() => {
   if (localStorage.getItem('boxplayer_show_pricing') === '1') {
     localStorage.removeItem('boxplayer_show_pricing')
     showLimitModal.value = true
@@ -392,6 +393,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.clearInterval(pricingPollTimer)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('mousedown', onMouseDown)
@@ -444,7 +446,7 @@ onUnmounted(() => {
       </div>
     </a-layout-header>
     <a-layout-content id='xbybody'>
-      <a-tabs type='text' :direction="'horizontal'" class='hidetabs' :justify='true' :active-key='appStore.appTab'>
+      <a-tabs type='text' :direction="'horizontal'" class='hidetabs' :justify='true' :active-key='appStore.appTab' lazy-load>
         <a-tab-pane key='pan' title='1'>
           <Pan :visible='panVisible' />
         </a-tab-pane>

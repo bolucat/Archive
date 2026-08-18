@@ -4,7 +4,8 @@ import MusicScanner from './musicScanner'
 import UserDAL from '../user/userdal'
 import DebugLog from './debuglog'
 
-const FIRST_RUN_DELAY_MS = 8 * 1000
+// Let the account and its first folder render before background scans consume cloud API quota.
+const FIRST_RUN_DELAY_MS = 30 * 1000
 const RECHECK_INTERVAL_MS = 30 * 60 * 1000
 
 let started = false

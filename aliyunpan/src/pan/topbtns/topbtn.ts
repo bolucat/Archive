@@ -32,7 +32,10 @@ import { isEmpty } from 'lodash'
 import { GetDriveID, isAliyunUser, isBoxUser, isCloud123User, isDrive115User, isDropboxUser, isPikPakUser } from '../../aliapi/utils'
 import AliAlbum from '../../aliapi/album'
 import { getEncType } from '../../utils/proxyhelper'
-import { supportsCopy, supportsCreateShare, supportsLocalUpload, supportsMove, supportsTrashMove, supportsTrashPermanentDelete } from '../../drive/providerFeatures'
+import { supportsCopy, supportsCreateShare, supportsLocalUpload, supportsMove, supportsSearch, supportsTrashMove, supportsTrashPermanentDelete } from '../../drive/providerFeatures'
+import { getDriveProviderLabel } from '../../utils/driveProvider'
+import UserDAL from '../../user/userdal'
+import { t } from '../../i18n'
 import { Modal, Option, Select } from '@arco-design/web-vue'
 import { h } from 'vue'
 import { apiCloud123TrashDeleteAll } from '../../cloud123/filecmd'
@@ -877,6 +880,11 @@ export async function topSearchAll(word: string, inputsearchType: string[]) {
   const pantreeStore = usePanTreeStore()
   if (!pantreeStore.user_id || !inputsearchType || !pantreeStore.selectDir.file_id) {
     message.error('搜索失败 父文件夹错误')
+    return
+  }
+  if (!supportsSearch(pantreeStore.user_id, pantreeStore.drive_id)) {
+    const provider = getDriveProviderLabel(UserDAL.GetUserToken(pantreeStore.user_id)?.tokenfrom)
+    message.warning(t('pan.unsupportedFeature', { provider }))
     return
   }
   if (!isAliyunUser(pantreeStore.user_id)) {

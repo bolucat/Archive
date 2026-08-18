@@ -17,7 +17,7 @@ import { modalUpload } from '../utils/modal'
 import { getDriveType as GetDriveType } from '../drive/context'
 import { isAliyunUser, isBaiduUser, isBoxUser, isCloud123User, isCloud139User, isCloud189User, isDrive115User, isDropboxUser, isGoogleUser, isGuangyaUser, isOneDriveUser, isPikPakUser, isQuarkUser, isRemoteDriveUser } from '../utils/driveIdentity'
 import { t } from '../i18n'
-import { supportsLocalUpload, supportsMove } from '../drive/providerFeatures'
+import { supportsLocalUpload, supportsMove, supportsSearch } from '../drive/providerFeatures'
 import { quickFileId, type QuickFileEntry } from './quickFiles'
 
 const treeref = ref()
@@ -229,6 +229,7 @@ const filterTreeData = computed(() => {
   const providerTreeData = pantreeStore.treeData.filter((item) => item.key !== 'recent' || isBoxUser(userId))
   const baseList = isCloudUser
     ? providerTreeData.filter((item) => {
+      if (item.key === 'search' && !supportsSearch(userId, pantreeStore.drive_id)) return false
       if (item.key === 'backup_root') return false
       if (item.key === 'resource_root') return false
       if (item.key === 'pic_root') return false
@@ -237,6 +238,7 @@ const filterTreeData = computed(() => {
       return true
     })
     : providerTreeData.filter((item) => {
+      if (item.key === 'search' && !supportsSearch(userId, pantreeStore.drive_id)) return false
       if (!isAliyunAccount.value && (item.key === 'backup_root' || item.key === 'resource_root')) {
         return false
       }

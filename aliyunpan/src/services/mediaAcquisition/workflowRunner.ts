@@ -30,6 +30,7 @@ import { getMediaAcquisitionSearchEvidence } from './searchEvidence'
 import { discardMediaAcquisitionStagingTarget } from './staging'
 
 const POLL_INTERVAL_MS = 8_000
+const INITIAL_TICK_DELAY_MS = 15_000
 
 function buildTrustedAgentSelectionReason(run: MediaAcquisitionRunView, candidate: MediaAcquisitionCandidate, agentReason: string) {
   const coverage = run.target.mediaType === 'movie'
@@ -54,6 +55,7 @@ const MEDIA_ACQUISITION_SANDBOX_SKILLS = {
 type MediaAcquisitionSkillSection = keyof typeof MEDIA_ACQUISITION_SANDBOX_SKILLS
 type MediaAcquisitionSubtitleSnapshotCandidate = { id: string; name: string; language: string; score: number }
 let timer: number | undefined
+let initialTickTimer: number | undefined
 let running = false
 let completedMediaLibraryRepairStarted = false
 const workflowWorkerId = `renderer-${crypto.randomUUID()}`
@@ -74,9 +76,10 @@ function traceAgentDecision(runId: string, stage: string, data?: unknown): void 
 
 export function startMediaAcquisitionWorkflowRunner(): void {
   if (timer || !window.Electron?.ipcRenderer) return
-  void cleanupTerminalMediaAcquisitionStagingDirectories()
-  void repairCompletedMediaLibraryIndexes()
-  void tick()
+  initialTickTimer = window.setTimeout(() => {
+    initialTickTimer = undefined
+    void tick()
+  }, INITIAL_TICK_DELAY_MS)
   timer = window.setInterval(() => void tick(), POLL_INTERVAL_MS)
 }
 
@@ -85,6 +88,8 @@ export function wakeMediaAcquisitionWorkflowRunner(): void {
 }
 
 export function stopMediaAcquisitionWorkflowRunner(): void {
+  if (initialTickTimer) window.clearTimeout(initialTickTimer)
+  initialTickTimer = undefined
   if (timer) window.clearInterval(timer)
   timer = undefined
 }
@@ -119,6 +124,7 @@ async function tick(): Promise<void> {
   if (running) return
   running = true
   try {
+    await repairCompletedMediaLibraryIndexes()
     await runHistoricalMediaLibraryGapScan()
     await runTrackingPatrol()
     await cleanupTerminalMediaAcquisitionStagingDirectories()

@@ -5,7 +5,8 @@ import type { MediaLibraryFolder } from '../types/media'
 import type { IAliGetFileModel } from '../aliapi/alimodels'
 import DebugLog from './debuglog'
 
-const FIRST_RUN_DELAY_MS = 12 * 1000
+// Video metadata scans are the heaviest; start after the primary cloud-drive UI is settled.
+const FIRST_RUN_DELAY_MS = 60 * 1000
 const RECHECK_INTERVAL_MS = 30 * 60 * 1000
 const LS_LAST_SCAN = 'mediaLibrary.autoScan.lastAt'
 

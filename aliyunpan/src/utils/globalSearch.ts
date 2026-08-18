@@ -2,6 +2,7 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import type { ITokenInfo } from '../user/userstore'
 import type { MediaServerConfig } from '../types/mediaServer'
 import type { MediaServerLibraryNode } from '../types/mediaServerContent'
+import { supportsProviderSearch } from '../services/agent/providerCapabilities'
 
 export interface GlobalSearchResult {
   id: string
@@ -274,10 +275,6 @@ async function searchMediaServers(keyword: string): Promise<GlobalSearchResult[]
   }
 }
 
-function isSkipProvider(token: ITokenInfo): boolean {
-  return token.tokenfrom === '139' || token.tokenfrom === '189' || token.tokenfrom === 'pikpak'
-}
-
 function dispatchSearch(token: ITokenInfo, keyword: string, allowedDriveIds: string[] = []): Promise<GlobalSearchResult[]> {
   const tf = token.tokenfrom
   if (tf === 'cloud123') return searchCloud123(token, keyword)
@@ -309,7 +306,7 @@ export async function searchAllDrives(keyword: string, opts?: { platforms?: stri
 
   for (const token of tokens) {
     if (!token.access_token || !token.user_id) continue
-    if (isSkipProvider(token)) continue
+    if (!supportsProviderSearch(token.tokenfrom)) continue
     if (opts?.platforms?.length && !opts.platforms.includes(token.tokenfrom || 'aliyun')) continue
     const selectedTargets = opts?.targets?.filter(target => target.userId === token.user_id) || []
     if (opts?.targets?.length && !selectedTargets.length) continue

@@ -18,7 +18,7 @@ const hydrateBoxThumbnails = async (userId: string, items: any[]) => {
   return items
 }
 
-export const listBoxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, offset = 0) => {
+export const listBoxItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, offset = 0, hydrateThumbnails = true) => {
   const isSearch = dirId.startsWith('search') || dirId.startsWith('box_search:')
   if (isSearch) {
     const { query } = parseBoxSearchId(dirId)
@@ -32,7 +32,7 @@ export const listBoxItems = async (userId: string, driveId: string, dirId: strin
   const page = await apiBoxFileListPage(userId, parentId, 500, offset)
   const items = page.items.map(item => mapBoxItemToAliModel(item, driveId, parentId))
   const visibleItems = includeFiles ? items : items.filter(item => item.isDir)
-  return { items: await hydrateBoxThumbnails(userId, visibleItems), total: visibleItems.length, nextCursor: includeFiles && page.nextOffset !== null ? String(page.nextOffset) : '' }
+  return { items: hydrateThumbnails ? await hydrateBoxThumbnails(userId, visibleItems) : visibleItems, total: visibleItems.length, nextCursor: includeFiles && page.nextOffset !== null ? String(page.nextOffset) : '' }
 }
 
 export const listBoxSpecialItems = async (userId: string, dirId: string, maxItems = 0) => {

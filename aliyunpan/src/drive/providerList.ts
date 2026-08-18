@@ -20,8 +20,10 @@ export type ProviderListResult = {
   nextCursor?: string
 }
 
+export type ProviderListOptions = { skipThumbnailHydration?: boolean }
+
 /** Thin registry for provider-owned directory, search, and thumbnail adapters. */
-export const listProviderItems = (provider: DriveProvider, userId: string, driveId: string, dirId: string, includeFiles: boolean, cursor = ''): Promise<ProviderListResult> | undefined => {
+export const listProviderItems = (provider: DriveProvider, userId: string, driveId: string, dirId: string, includeFiles: boolean, cursor = '', options?: ProviderListOptions): Promise<ProviderListResult> | undefined => {
   switch (provider) {
     case 'baidu': return listBaiduItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
     case 'cloud123': return listCloud123Items(userId, driveId, dirId, includeFiles, cursor)
@@ -31,8 +33,8 @@ export const listProviderItems = (provider: DriveProvider, userId: string, drive
     case '115': return listDrive115Items(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
     case 'pikpak': return listPikPakItems(userId, driveId, dirId, includeFiles, cursor)
     case 'quark': return listQuarkItems(userId, driveId, dirId, includeFiles, Number(cursor) || 1)
-    case 'box': return listBoxItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
-    case 'dropbox': return listDropboxItems(userId, driveId, dirId, includeFiles, cursor)
+    case 'box': return options?.skipThumbnailHydration ? listBoxItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0, false) : listBoxItems(userId, driveId, dirId, includeFiles, Number(cursor) || 0)
+    case 'dropbox': return options?.skipThumbnailHydration ? listDropboxItems(userId, driveId, dirId, includeFiles, cursor, false) : listDropboxItems(userId, driveId, dirId, includeFiles, cursor)
     case 'onedrive': return listOneDriveItems(userId, driveId, dirId, includeFiles, cursor)
     case 'google': return listGoogleItems(userId, driveId, dirId, includeFiles, cursor)
     default: return undefined

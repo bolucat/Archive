@@ -1,5 +1,5 @@
 <script lang="ts">
-import { computed, h, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, h, onMounted, ref } from 'vue'
 import { ConfigProvider } from '@arco-design/web-vue'
 import enUS from '@arco-design/web-vue/es/locale/lang/en-us'
 import zhCN from '@arco-design/web-vue/es/locale/lang/zh-cn'
@@ -10,19 +10,20 @@ import PageMain from './layout/PageMain.vue'
 import './assets/global.css'
 import './assets/fileitem.css'
 import './assets/antd.css'
-import PageVideoXBTVue from './layout/PageVideoXBT.vue'
-import PageCode from './layout/PageCode.vue'
-import PageOffice from './layout/PageOffice.vue'
-import PagePdf from './layout/PagePdf.vue'
-import PageEpub from './layout/PageEpub.vue'
-import PageBookReader from './layout/PageBookReader.vue'
-import PageDocx from './layout/PageDocx.vue'
-import PageSheet from './layout/PageSheet.vue'
-import PageImage from './layout/PageImage.vue'
-import PageVideo from './layout/PageVideo.vue'
-import PageMusic from './layout/PageMusic.vue'
-import PageLyric from './lyric/PageLyric.vue'
-import PageWorker from './layout/PageWorker.vue'
+
+const PageVideoXBTVue = defineAsyncComponent(() => import('./layout/PageVideoXBT.vue'))
+const PageCode = defineAsyncComponent(() => import('./layout/PageCode.vue'))
+const PageOffice = defineAsyncComponent(() => import('./layout/PageOffice.vue'))
+const PagePdf = defineAsyncComponent(() => import('./layout/PagePdf.vue'))
+const PageEpub = defineAsyncComponent(() => import('./layout/PageEpub.vue'))
+const PageBookReader = defineAsyncComponent(() => import('./layout/PageBookReader.vue'))
+const PageDocx = defineAsyncComponent(() => import('./layout/PageDocx.vue'))
+const PageSheet = defineAsyncComponent(() => import('./layout/PageSheet.vue'))
+const PageImage = defineAsyncComponent(() => import('./layout/PageImage.vue'))
+const PageVideo = defineAsyncComponent(() => import('./layout/PageVideo.vue'))
+const PageMusic = defineAsyncComponent(() => import('./layout/PageMusic.vue'))
+const PageLyric = defineAsyncComponent(() => import('./lyric/PageLyric.vue'))
+const PageWorker = defineAsyncComponent(() => import('./layout/PageWorker.vue'))
 
 function shouldShowPageLoadingSplash() {
   if (typeof window === 'undefined') return false

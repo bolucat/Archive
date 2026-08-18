@@ -10,6 +10,29 @@ import fsPromises from 'fs/promises'
 
 export default class AppCache {
 
+  private static async LoadStorageSize(dir: string, inCache = false): Promise<{ total: number; cache: number }> {
+    try {
+      const childFiles = await fsPromises.readdir(dir, { withFileTypes: true })
+      let total = 0
+      let cache = 0
+      for (const child of childFiles) {
+        const childPath = path.join(dir, child.name)
+        if (child.isFile()) {
+          const stat = await fsPromises.lstat(childPath).catch(() => ({ size: 0 }))
+          total += stat.size
+          if (inCache) cache += stat.size
+        } else if (child.isDirectory()) {
+          const childSize = await AppCache.LoadStorageSize(childPath, inCache || child.name === 'Cache')
+          total += childSize.total
+          cache += childSize.cache
+        }
+      }
+      return { total, cache }
+    } catch {
+      return { total: 0, cache: 0 }
+    }
+  }
+
   static async LoadDirSize(dir: string): Promise<number> {
     try {
       const childFiles = await fsPromises.readdir(dir, { withFileTypes: true }).catch((err: any) => {
@@ -82,6 +105,15 @@ export default class AppCache {
     const cacheSize = await AppCache.LoadCacheDirSize(path.join(userData, 'Cache'))
     if (cacheSize > 800 * 1024 * 1024) message.warning('缓存文件夹体积较大，该去 设置 里清理了')
     useSettingStore().debugCacheSize = humanSize(cacheSize)
+  }
+
+  static async aLoadStorageSize(): Promise<void> {
+    const userData = getUserData()
+    if (!userData) return
+    const { total, cache } = await AppCache.LoadStorageSize(userData)
+    if (total > 800 * 1024 * 1024) message.warning('缓存文件夹体积较大，该去 设置 里清理了')
+    useSettingStore().debugDirSize = humanSize(total)
+    useSettingStore().debugCacheSize = humanSize(cache)
   }
   
   static async aClearDir(delby: string): Promise<void> {

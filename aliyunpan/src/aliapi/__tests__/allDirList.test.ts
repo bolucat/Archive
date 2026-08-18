@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   count: vi.fn(),
   listRoot: vi.fn(),
-  post: vi.fn()
+  post: vi.fn(),
+  rateLimited: vi.fn()
 }))
 
 vi.mock('../user', () => ({ default: { ApiUserDriveFileCount: mocks.count } }))
@@ -16,6 +17,10 @@ vi.mock('../alihttp', () => ({
     HttpCodeBreak: (code: number) => (code >= 200 && code <= 300) || code === 400 || (code > 402 && code <= 428),
     Post: mocks.post
   }
+}))
+vi.mock('../../utils/libraryScanRateLimiter', () => ({
+  libraryScanRateLimitScope: (userId: string) => `cloud:${userId}`,
+  runRateLimitedScanRequest: mocks.rateLimited
 }))
 
 Object.assign(globalThis, {
@@ -31,6 +36,7 @@ describe('AliDirList.ApiFastAllDirListByPID', () => {
 
   it('stops the full-directory scan when a batch request is rejected', async () => {
     const { default: AliDirList } = await import('../dirlist')
+    mocks.rateLimited.mockImplementation(async (_scope: string, request: () => Promise<unknown>) => request())
     mocks.count.mockResolvedValue(1)
     mocks.listRoot.mockResolvedValue({
       items: [{ file_id: 'folder-1', drive_id: 'drive-1', parent_file_id: 'root', name: 'Folder 1', time: 0, size: 0 }],
@@ -49,6 +55,8 @@ describe('AliDirList.ApiFastAllDirListByPID', () => {
     const result = await AliDirList.ApiFastAllDirListByPID('user-1', 'drive-1', 'resource_root')
 
     expect(mocks.post).toHaveBeenCalledTimes(1)
+    expect(mocks.rateLimited).toHaveBeenCalledTimes(3)
+    expect(mocks.rateLimited).toHaveBeenCalledWith('cloud:user-1', expect.any(Function))
     expect(result.next_marker).toBe('403')
   })
 })

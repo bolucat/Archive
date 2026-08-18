@@ -96,11 +96,23 @@ window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => {
 window.WinMsgToMain = function (event: any) {
   if (window.MainPort) window.MainPort.postMessage(event)
 }
+const pendingUploadEvents: any[] = []
+const pendingDownloadEvents: any[] = []
 window.WinMsgToUpload = function (event: any) {
-  if (window.UploadPort) window.UploadPort.postMessage(event)
+  if (window.UploadPort) {
+    window.UploadPort.postMessage(event)
+    return
+  }
+  pendingUploadEvents.push(event)
+  window.Electron.ipcRenderer.send('EnsureTransferWorker', 'upload')
 }
 window.WinMsgToDownload = function (event: any) {
-  if (window.DownloadPort) window.DownloadPort.postMessage(event)
+  if (window.DownloadPort) {
+    window.DownloadPort.postMessage(event)
+    return
+  }
+  pendingDownloadEvents.push(event)
+  window.Electron.ipcRenderer.send('EnsureTransferWorker', 'download')
 }
 
 window.Electron.ipcRenderer.on('setPort', (_event: any, args: any) => {
@@ -124,6 +136,7 @@ window.Electron.ipcRenderer.on('setUploadPort', (_event: any, args: any) => {
       } catch {}
     })
   }
+  while (pendingUploadEvents.length) window.UploadPort.postMessage(pendingUploadEvents.shift())
 })
 window.Electron.ipcRenderer.on('setDownloadPort', (_event: any, args: any) => {
   const [port] = _event.ports
@@ -135,6 +148,7 @@ window.Electron.ipcRenderer.on('setDownloadPort', (_event: any, args: any) => {
       } catch {}
     })
   }
+  while (pendingDownloadEvents.length) window.DownloadPort.postMessage(pendingDownloadEvents.shift())
 })
 
 window.Electron.ipcRenderer.on('setPage', async (_event: any, args: any) => {

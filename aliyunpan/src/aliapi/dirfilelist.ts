@@ -169,6 +169,7 @@ export default class AliDirFileList {
     let url = 'adrive/v1.0/openFile/search'
     let query = ''
     const isColorSearch = dir.dirID.startsWith('color')
+    const searchDriveIds = new Set<string>()
     if (isColorSearch) {
       url = 'adrive/v3/file/search'
       const color = dir.dirID.substring('color'.length).split(' ')[0].replace('#', 'c')
@@ -187,7 +188,12 @@ export default class AliDirFileList {
         const kv = search[i].split(':')
         const k = kv[0]
         const v = kv[1]
-        if (k == 'type') {
+        if (k == 'range') {
+          for (const drive of v.split(',')) {
+            const driveId = GetDriveID(dir.m_user_id, drive)
+            if (driveId) searchDriveIds.add(driveId)
+          }
+        } else if (k == 'type') {
           const arr = v.split(',')
           let type = ''
           for (let j = 0; j < arr.length; j++) {
@@ -241,6 +247,10 @@ export default class AliDirFileList {
     if (isColorSearch) {
       postData.drive_id_list = buildAliColorSearchDriveIds(GetDriveID(dir.m_user_id, 'backup'), GetDriveID(dir.m_user_id, 'resource'))
       delete postData.drive_id
+    } else if (searchDriveIds.size > 0) {
+      url = 'adrive/v3/file/search'
+      postData.drive_id_list = Array.from(searchDriveIds)
+      delete postData.drive_id
     }
     const resp = await AliHttp.Post(url, postData, dir.m_user_id, '')
     return AliDirFileList._FileListOnePage(orderby, order, dir, resp, pageIndex)
@@ -251,6 +261,7 @@ export default class AliDirFileList {
 
     let query = ''
     const isColorSearch = dir.dirID.startsWith('color')
+    const searchDriveIds = new Set<string>()
     if (isColorSearch) {
       url = 'adrive/v3/file/search'
       const color = dir.dirID.substring('color'.length).split(' ')[0].replace('#', 'c')
@@ -269,7 +280,12 @@ export default class AliDirFileList {
         const kv = search[i].split(':')
         const k = kv[0]
         const v = kv[1]
-        if (k == 'type') {
+        if (k == 'range') {
+          for (const drive of v.split(',')) {
+            const driveId = GetDriveID(dir.m_user_id, drive)
+            if (driveId) searchDriveIds.add(driveId)
+          }
+        } else if (k == 'type') {
           const arr = v.split(',')
           let type = ''
           for (let j = 0; j < arr.length; j++) {
@@ -321,6 +337,10 @@ export default class AliDirFileList {
     }
     if (isColorSearch) {
       postData.drive_id_list = buildAliColorSearchDriveIds(GetDriveID(dir.m_user_id, 'backup'), GetDriveID(dir.m_user_id, 'resource'))
+      delete postData.drive_id
+    } else if (searchDriveIds.size > 0) {
+      url = 'adrive/v3/file/search'
+      postData.drive_id_list = Array.from(searchDriveIds)
       delete postData.drive_id
     }
     const resp = await AliHttp.Post(url, postData, dir.m_user_id, '')

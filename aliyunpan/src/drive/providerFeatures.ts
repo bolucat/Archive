@@ -14,6 +14,7 @@ export function supportsProviderOperation(userId: string, driveId: string, opera
 }
 
 export const supportsCreateTextFile = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'upload.memory')
+export const supportsSearch = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'files.search')
 export const supportsCreateFolder = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'files.createFolder')
 export const supportsLocalUpload = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'upload.local')
 export const supportsZipDownload = (userId: string, driveId: string) => supportsProviderOperation(userId, driveId, 'files.downloadZip')

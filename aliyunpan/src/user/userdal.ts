@@ -23,6 +23,7 @@ import { createRemoteDriveAccount } from '../utils/remoteDriveAccount'
 import { supportsAliyunAutoSign } from './autoSignPolicy'
 import { getStoredTokenProvider } from '../utils/driveProvider'
 import { captureProviderLogin } from '../analytics/posthog'
+import { withStartupTimeout } from '../utils/startupTask'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
 
@@ -157,32 +158,36 @@ export default class UserDAL {
 
     let hasLogin = false
     let defaultUserLoaded = false
-    for (const token of orderedTokens) {
-      if (hasLogin) {
-        // 已经选出了一个账号成功登录；其余账号仅尝试静默刷新 + 签到，
-        // 不影响 UserInfo 列表显示
-        try {
-          const prepared = await this.ensureTokenReady(token)
-          if (prepared?.user_id) {
-            await this.UserAutoSign(prepared)
-          }
-        } catch (err: any) {
-          DebugLog.mSaveDanger('aLoadFromDB autoSign ' + (token?.user_id || ''), err)
-        }
-        continue
-      }
+    let loadedIndex = -1
+    for (let index = 0; index < orderedTokens.length; index++) {
+      const token = orderedTokens[index]
       // 还未选出可登录账号：依次尝试。任意一步失败都 fallback 到下一个
       try {
-        const prepared = await this.ensureTokenReady(token)
+        const prepared = await withStartupTimeout(this.ensureTokenReady(token), `账号 ${token?.user_id || ''} 初始化`)
         if (!prepared?.user_id) continue
         await this.UserLogin(prepared)
         hasLogin = true
+        loadedIndex = index
         if (defaultUser && prepared.user_id === defaultUser) defaultUserLoaded = true
+        break
       } catch (err: any) {
         DebugLog.mSaveDanger('aLoadFromDB userLogin ' + (token?.user_id || ''), err)
         // 失败的账号 token 已在 UserTokenMap 中（顶部统一塞过），
         // UserInfo.vue 仍可列出并支持手动切换
       }
+    }
+    if (loadedIndex >= 0) {
+      const pendingTokens = orderedTokens.slice(loadedIndex + 1)
+      void (async () => {
+        for (const token of pendingTokens) {
+          try {
+            const prepared = await withStartupTimeout(this.ensureTokenReady(token), `后台刷新账号 ${token?.user_id || ''}`)
+            if (prepared?.user_id) await this.UserAutoSign(prepared)
+          } catch (err: any) {
+            DebugLog.mSaveDanger('aLoadFromDB autoSign ' + (token?.user_id || ''), err)
+          }
+        }
+      })()
     }
     if (defaultUser && !defaultUserLoaded) {
       console.log('aLoadFromDB defaultUser failed, fallback used. defaultUser=', defaultUser)
@@ -363,28 +368,29 @@ export default class UserDAL {
       useUserStore().userLogin(initialUserId)
       UserTokenMap.set(initialUserId, token)
     }
-    const sessionToken = await ensureProviderSession(token)
-    if (sessionToken && sessionToken !== token) Object.assign(token, sessionToken)
-    const quotaApplied = await applyProviderQuota(token)
-    const accountInfoRefreshed = quotaApplied === undefined ? await refreshProviderAccountInfo(token) : undefined
-    if (quotaApplied !== undefined || accountInfoRefreshed !== undefined) {
-      // Provider adapters own account/session metadata.
-    } else if (isNonAliyunProvider(token)) {
-      // 已知非阿里云盘 provider 但未在上面 if 链命中,跳过 aliyun 兜底
-    } else {
-      // 加载用户信息
+    const refreshAccountInfo = async () => {
+      const sessionToken = await ensureProviderSession(token)
+      if (sessionToken && sessionToken !== token) Object.assign(token, sessionToken)
+      const quotaApplied = await applyProviderQuota(token)
+      const accountInfoRefreshed = quotaApplied === undefined ? await refreshProviderAccountInfo(token) : undefined
+      if (quotaApplied !== undefined || accountInfoRefreshed !== undefined) return
+      if (isNonAliyunProvider(token)) return
       await Promise.all([
         AliUser.ApiUserInfo(token),
         AliUser.ApiUserDriveInfo(token),
         AliUser.ApiUserPic(token),
         AliUser.ApiUserVip(token),
-        // 刷新Session
         AliUser.ApiSessionRefreshAccount(token, false),
-        // 刷新OpenApiToken
         AliUser.OpenApiTokenRefreshAccount(token, false),
-        // 登陆后自动签到
         UserDAL.UserAutoSign(token)
       ])
+    }
+    if (isInteractive || !initialUserId) {
+      await withStartupTimeout(refreshAccountInfo(), `账号 ${initialUserId || ''} 用户信息`)
+    } else {
+      void withStartupTimeout(refreshAccountInfo(), `后台刷新账号 ${initialUserId} 用户信息`)
+        .then(() => UserDAL.SaveUserToken(token))
+        .catch((err: any) => DebugLog.mSaveWarning('UserLogin refreshAccountInfo ' + initialUserId, err?.message || err))
     }
     if (token.user_id && token.user_id !== initialUserId) {
       if (initialUserId) {
@@ -405,8 +411,10 @@ export default class UserDAL {
       tokenfrom: token.tokenfrom,
       login: true
     })
-    // 加载网盘文件
-    await UserDAL.LoadPanData(token)
+    // 已保存账号优先进入网盘，目录和账号资料在后台补全，避免任一网盘阻塞启动。
+    const loadPanData = UserDAL.LoadPanData(token)
+    if (isInteractive) await loadPanData
+    else void loadPanData.catch((err: any) => DebugLog.mSaveWarning('UserLogin LoadPanData ' + token.user_id, err?.message || err))
     if (isInteractive && token.tokenfrom !== 'unknown') captureProviderLogin(token.tokenfrom)
     // 刷新所有状态
     PanDAL.aReLoadQuickFile(token.user_id)
@@ -424,64 +432,63 @@ export default class UserDAL {
 
   static async LoadPanData(token: ITokenInfo) {
     console.warn('LoadPanData....')
-    const loadSingleRootDrive = async (reload: () => Promise<void>, drive_id: string, root_id: string) => {
+    const loadSingleRootDrive = async (reload: () => Promise<void>) => {
       try {
         await reload()
-        await PanDAL.aReLoadOneDirToShow(drive_id, root_id, true)
       } finally {
         useFootStore().mSaveLoading('')
       }
     }
     if (isCloud123User(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadCloudDrive(token), token.default_drive_id || 'cloud123', 'cloud_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloudDrive(token))
       return
     }
     if (isBaiduUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadBaiduDrive(token), token.default_drive_id || 'baidu', 'baidu_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadBaiduDrive(token))
       return
     }
     if (isDrive115User(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadDrive115(token), token.default_drive_id || 'drive115', 'drive115_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadDrive115(token))
       return
     }
     if (isPikPakUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadPikPakDrive(token), token.default_drive_id || 'pikpak', 'pikpak_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadPikPakDrive(token))
       return
     }
     if (isQuarkUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadQuarkDrive(token), token.default_drive_id || 'quark', 'quark_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadQuarkDrive(token))
       return
     }
     if (isCloud139User(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadCloud139Drive(token), token.default_drive_id || 'cloud139', 'cloud139_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloud139Drive(token))
       return
     }
     if (isCloud189User(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadCloud189Drive(token), token.default_drive_id || 'cloud189', 'cloud189_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloud189Drive(token))
       return
     }
     if (isGuangyaUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadGuangyaDrive(token), token.default_drive_id || 'guangya', 'guangya_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadGuangyaDrive(token))
       return
     }
     if (isDropboxUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadDropboxDrive(token), token.default_drive_id || 'dropbox', 'dropbox_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadDropboxDrive(token))
       return
     }
     if (isOneDriveUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadOneDrive(token), token.default_drive_id || 'onedrive', 'onedrive_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadOneDrive(token))
       return
     }
     if (isBoxUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadBoxDrive(token), token.default_drive_id || 'box', 'box_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadBoxDrive(token))
       return
     }
     if (isGoogleUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadGoogleDrive(token), token.default_drive_id || 'google', 'google_root')
+      await loadSingleRootDrive(() => PanDAL.aReLoadGoogleDrive(token))
       return
     }
     if (isRemoteDriveUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadWebDavDrive(token), token.default_drive_id, '/')
+      await loadSingleRootDrive(() => PanDAL.aReLoadWebDavDrive(token))
       return
     }
     // 刷新网盘数据
