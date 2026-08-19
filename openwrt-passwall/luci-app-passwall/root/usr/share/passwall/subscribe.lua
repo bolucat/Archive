@@ -145,13 +145,14 @@ do
 		CONFIG[#CONFIG + 1] = {
 			log = true,
 			remarks = name .. "节点",
-			currentNode = node_id and (function()
-				local section = uci_get(node_id) or {}
+			currentNode = (function(id)
+				local section = id and uci_get(id) or nil
+				if not section then return nil end
 				if section[".type"] == "socks" then
-					return { Socks = node_id }
+					return { Socks = id }
 				end
 				return section
-			end)() or nil,
+			end)(node_id),
 			set = function(o, server)
 				uci_set(szType, option, server)
 				o.newNodeId = server
@@ -264,13 +265,14 @@ do
 					log = true,
 					id = t[".name"],
 					remarks = "访问控制列表[" .. i .. "]",
-					currentNode = node_id and (function()
-						local section = uci_get(node_id) or {}
+					currentNode = (function(id)
+						local section = id and uci_get(id) or nil
+						if not section then return nil end
 						if section[".type"] == "socks" then
-							return { Socks = node_id }
+							return { Socks = id }
 						end
 						return section
-					end)() or nil,
+					end)(node_id),
 					set = function(o, server)
 						uci_set(t[".name"], option, server)
 						o.newNodeId = server
@@ -1469,8 +1471,6 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 		result.tls_serverName = params.sni
 		result.tls_pinSHA256 = params.pcs or params.pinsha256
 		result.tls_CertByName = params.vcn
-		local insecure = params.allowinsecure or params.insecure
-		result.tls_allowInsecure = (insecure == "1" or insecure == "0") and insecure or (sub_allowinsecure and "1" or "0")
 		result.hysteria2_up_mbps = params.upmbps or (sub_cfg and sub_hy_up_mbps or nil)
 		result.hysteria2_down_mbps = params.downmbps or (sub_cfg and sub_hy_down_mbps or nil)
 		result.hysteria2_hop = params.mport
@@ -1482,19 +1482,26 @@ local function processData(szType, content, add_mode, group, sub_cfg)
 			result.hysteria2_obfs_MinPacketSize = params.minpacketsize or "512"
 			result.hysteria2_obfs_MaxPacketSize = params.maxpacketsize or "1200"
 		end
-
 		if (sub_hysteria2_type == "sing-box" and has_singbox) or (sub_hysteria2_type == "xray" and has_xray) then
 			local is_singbox = sub_hysteria2_type == "sing-box" and has_singbox
 			result.type = is_singbox and 'sing-box' or 'Xray'
 			result.protocol = "hysteria2"
 			result.use_finalmask = (params.fm and params.fm ~= "") and "1" or nil
 			result.finalmask = (params.fm and params.fm ~= "") and api.base64Encode(params.fm) or nil
+			if is_singbox and (params.pcs or params.pinsha256) then
+				params.allowinsecure = "1"
+			end
 		elseif has_hysteria2 then
 			result.type = "Hysteria2"
+			if params.pcs or params.pinsha256 then
+				params.allowinsecure = "0"
+			end
 		else
 			log("跳过 Hysteria2 节点，因未适配到 Hysteria2 核心程序，或未正确设置节点使用类型。")
 			return nil
 		end
+		local insecure = params.allowinsecure or params.insecure
+		result.tls_allowInsecure = (insecure == "1" or insecure == "0") and insecure or (sub_allowinsecure and "1" or "0")
 	elseif szType == 'tuic' then
 		if has_singbox then
 			result.type = 'sing-box'
