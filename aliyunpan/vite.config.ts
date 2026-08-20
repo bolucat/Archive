@@ -31,6 +31,10 @@ export default defineConfig(({ command }) => {
     },
     resolve: { alias: sharedAlias },
     build: {
+      // Packaged windows load static HTML from file:// inside app.asar. Keep
+      // application styles in one predictable entry file instead of relying
+      // on CSS attached to a lazy-loaded Vue chunk.
+      cssCodeSplit: false,
       rollupOptions: {
         output: {
           chunkFileNames: '[name].js',
