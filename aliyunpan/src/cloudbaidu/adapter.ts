@@ -8,7 +8,7 @@ import { apiBaiduCopy, apiBaiduDelete, apiBaiduMove, apiBaiduRename } from './fi
 import { apiBaiduCreateDir, buildBaiduUploadPath } from './upload'
 import { apiBaiduFileListPage, apiBaiduSearch, mapBaiduFileToAliModel } from './dirfilelist'
 
-const resolveBaiduDirPath = (driveId: string, dirId: string): string => {
+const resolveCachedBaiduDirPath = (driveId: string, dirId: string): string => {
   if (!dirId || dirId === 'baidu_root') return '/'
   if (dirId.startsWith('/')) return dirId
   const dir = TreeStore.GetDir(driveId, dirId)
@@ -17,12 +17,22 @@ const resolveBaiduDirPath = (driveId: string, dirId: string): string => {
   if (selectedDir?.file_id === dirId && selectedDir?.path) return selectedDir.path
   const description = dir?.description || selectedDir?.description || ''
   const match = /baidu_path:([^;]+)/.exec(description)
-  return match?.[1] || '/'
+  return match?.[1] || ''
+}
+
+export const resolveBaiduDirectoryPath = async (userId: string, driveId: string, dirId: string): Promise<string> => {
+  const cachedPath = resolveCachedBaiduDirPath(driveId, dirId)
+  if (cachedPath) return cachedPath
+  const fsId = Number(dirId.match(/baidu_fsid:(\d+)/)?.[1] || dirId)
+  if (!Number.isFinite(fsId)) return ''
+  const metas = await apiBaiduFileMetas(userId, [fsId], 0)
+  return metas?.[0]?.path || ''
 }
 
 export const listBaiduItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, start = 0) => {
   const isSearch = dirId.startsWith('search')
-  const dirPath = resolveBaiduDirPath(driveId, dirId)
+  const dirPath = isSearch ? '/' : await resolveBaiduDirectoryPath(userId, driveId, dirId)
+  if (!dirPath) return { items: [], total: 0, error: '无法确定百度网盘目录路径，请刷新目录后重试' }
   const parentPath = isSearch ? '/' : dirPath
   const [sortKey, sortDirection] = TreeStore.GetDirOrder(driveId, dirId).split(' ')
   const order = sortKey === 'updated_at' ? 'time' : sortKey === 'size' ? 'size' : 'name'

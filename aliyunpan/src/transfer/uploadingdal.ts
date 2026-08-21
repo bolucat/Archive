@@ -7,6 +7,9 @@ import { CheckWindowsBreakPath, FileSystemErrorMessage } from '../utils/filehelp
 import { humanSize, humanSizeSpeed } from '../utils/format'
 import message from '../utils/message'
 import UploadingData from './uploadingdata'
+import UserDAL from '../user/userdal'
+import { getProviderFolderCommandContext } from '../drive/providerFileCmd'
+import { resolveDriveProvider } from '../utils/driveProvider'
 import path from 'node:path'
 import fspromises from 'fs/promises'
 import { Stats } from 'fs'
@@ -234,6 +237,15 @@ export default class UploadingDAL {
   static async aUploadLocalFiles(user_id: string, drive_id: string, parent_file_id: string, files: string[], check_name_mode: string, tip: boolean, encType: string = '') {
     if (!user_id) return 0
     if (!files || files.length == 0) return 0
+    const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    if (route.isValid && route.provider === 'baidu') {
+      const parentPath = getProviderFolderCommandContext('baidu', parent_file_id).targetPath
+      if (!parentPath) {
+        message.error('无法确定百度网盘上传位置，请刷新目录后重试')
+        return 0
+      }
+      parent_file_id = parentPath
+    }
     const dateNow = Date.now()
     const loadingKey = 'adduploading_' + dateNow
     if (tip) {

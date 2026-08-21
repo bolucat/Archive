@@ -103,12 +103,17 @@ const listAllDrive115Children = async (userId: string, parentId: string | number
 }
 
 const listAllBaiduChildren = async (userId: string, parentId: string | number, driveId: string): Promise<IAliGetFileModel[]> => {
-  const { apiBaiduFileList, mapBaiduFileToAliModel } = await import('../../cloudbaidu/dirfilelist')
+  const [{ apiBaiduFileList, mapBaiduFileToAliModel }, { resolveBaiduDirectoryPath }] = await Promise.all([
+    import('../../cloudbaidu/dirfilelist'),
+    import('../../cloudbaidu/adapter')
+  ])
+  const parentPath = await resolveBaiduDirectoryPath(userId, driveId, String(parentId))
+  if (!parentPath) throw new Error('无法确定百度网盘目录路径，请刷新目录后重试')
   const output: IAliGetFileModel[] = []
   const limit = 1000
   for (let start = 0; output.length < MAX_DIRECTORY_LIST_ITEMS; start += limit) {
-    const page = await apiBaiduFileList(userId, String(parentId), 'name', start, limit, 0, true)
-    output.push(...page.map(item => mapBaiduFileToAliModel(item, driveId, String(parentId))))
+    const page = await apiBaiduFileList(userId, parentPath, 'name', start, limit, 0, true)
+    output.push(...page.map(item => mapBaiduFileToAliModel(item, driveId, parentPath)))
     if (page.length < limit) break
   }
   return output

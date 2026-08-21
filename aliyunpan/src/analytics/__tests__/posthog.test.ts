@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('posthog-js', () => ({ default: { init: vi.fn(), identify: vi.fn(), capture: vi.fn() } }))
 vi.mock('../../store', () => ({ useSettingStore: vi.fn(() => ({ uiLanguage: 'zh-CN' })) }))
 
-import { redactAnalyticsSecrets, resolveCloudApiFailure } from '../posthog'
+import { redactAnalyticsSecrets, resolveCloudApiFailure, shouldCaptureCloudApiFailure } from '../posthog'
 
 describe('analytics privacy contract', () => {
   it('uses UUID-shaped anonymous installation identifiers', () => {
@@ -18,5 +18,12 @@ describe('analytics privacy contract', () => {
 
   it('redacts credentials from network error text', () => {
     expect(redactAnalyticsSecrets('Authorization: Bearer abc\nCookie: sid=abc\npassword=abc')).toBe('Authorization:[REDACTED]\nCookie: [REDACTED]\npassword=[REDACTED]')
+  })
+
+  it('does not report Aliyun token refresh attempts as final failures', () => {
+    const aliyun = resolveCloudApiFailure('https://api.aliyundrive.com/v2/file/download', 401)
+    const baidu = resolveCloudApiFailure('https://pan.baidu.com/rest/2.0/xpan/file', 401)
+    expect(aliyun && shouldCaptureCloudApiFailure(aliyun)).toBe(false)
+    expect(baidu && shouldCaptureCloudApiFailure(baidu)).toBe(true)
   })
 })

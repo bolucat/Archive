@@ -43,4 +43,13 @@ describe('book external metadata', () => {
     expect(source).toContain('log?.(`${logPrefix} Google Books 请求失败`, error)')
     expect(source).toContain('log?.(`${logPrefix} Google Books 命中：')
   })
+
+  it('pauses additional lookups after a transient Google Books failure', async () => {
+    const unavailable = vi.fn(async () => { throw new Error('HTTP 503') })
+    const skipped = vi.fn()
+    await expect(lookupExternalBookMetadata(book(), unavailable as unknown as typeof fetch)).resolves.toBeNull()
+    await expect(lookupExternalBookMetadata(book({ id: 'second' }), skipped as unknown as typeof fetch)).resolves.toBeNull()
+    expect(unavailable).toHaveBeenCalledTimes(1)
+    expect(skipped).not.toHaveBeenCalled()
+  })
 })

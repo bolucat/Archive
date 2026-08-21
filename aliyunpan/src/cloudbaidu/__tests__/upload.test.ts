@@ -6,7 +6,8 @@ const request = vi.hoisted(() => vi.fn())
 vi.mock('https', () => ({ default: { request } }))
 vi.mock('../auth', () => ({ getBaiduToken: vi.fn() }))
 
-import { apiBaiduUploadPart } from '../upload'
+import { apiBaiduUploadPart, buildBaiduUploadPath } from '../upload'
+import { resolveBaiduUploadParentPath } from '../filecmd'
 
 describe('apiBaiduUploadPart', () => {
   beforeEach(() => request.mockReset())
@@ -26,5 +27,13 @@ describe('apiBaiduUploadPart', () => {
     })
 
     await expect(apiBaiduUploadPart('https://d.pcs.baidu.com', 'token', '/test.mp4', 'upload-id', 0, Buffer.from('part'))).resolves.toBe(true)
+  })
+})
+
+describe('Baidu upload destinations', () => {
+  it('uses the cached absolute path instead of a numeric folder id', () => {
+    const parentPath = resolveBaiduUploadParentPath('987654', 'baidu_fsid:987654;baidu_path:/Books/Inbox', [], undefined)
+
+    expect(buildBaiduUploadPath(parentPath, 'demo.epub')).toBe('/Books/Inbox/demo.epub')
   })
 })

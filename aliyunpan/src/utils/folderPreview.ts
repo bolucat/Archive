@@ -53,10 +53,13 @@ async function fetchFolderItemsRaw(p: FolderPreviewParams): Promise<IAliGetFileM
 
   try {
     if (isBaiduUser(user_id) || drive_id === 'baidu') {
-      const mod = await tryDynamicImport(() => import('../cloudbaidu/dirfilelist'))
-      if (!mod) return []
-      // 百度网盘的目录列表 API 用路径而非 fs_id
-      const dir = path && path.length ? path : (file_id === '/' ? '/' : path || '/')
+      const [mod, adapter] = await Promise.all([
+        tryDynamicImport(() => import('../cloudbaidu/dirfilelist')),
+        tryDynamicImport(() => import('../cloudbaidu/adapter'))
+      ])
+      if (!mod || !adapter) return []
+      const dir = path || await adapter.resolveBaiduDirectoryPath(user_id, drive_id, file_id)
+      if (!dir) return []
       const list = await mod.apiBaiduFileList(user_id, dir, 'name', 0, MAX_PREVIEW_FILES, 0)
       return (list || []).map((item: any) => {
         const mapped = mod.mapBaiduFileToAliModel(item, drive_id, dir)

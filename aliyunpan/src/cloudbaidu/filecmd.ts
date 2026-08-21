@@ -22,6 +22,10 @@ export const resolveBaiduTargetPath = (fileId: string, path: string, description
   return descriptionPath(description) || descriptionPath(item?.description) || descriptionPath(selectedDir?.description) || ''
 }
 
+export const resolveBaiduUploadParentPath = (fileId: string, description: string, items: BaiduPathItem[], selectedDir?: BaiduPathItem): string => {
+  return resolveBaiduTargetPath(fileId, '', description, items, selectedDir)
+}
+
 export type BaiduFileMetaItem = {
   category?: number
   dlink?: string

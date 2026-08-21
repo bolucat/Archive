@@ -73,6 +73,7 @@ import {
   supportsLocalUpload,
   supportsMove,
   supportsRename,
+  supportsSearch,
   supportsShareImport,
   supportsTrashMove,
   supportsTrashPermanentDelete
@@ -86,15 +87,13 @@ const inputpicType = ref('pic_root')
 const inputselectType = ref('backup')
 const inputsearchType = ref<string[]>([])
 
-const handleListScroll = (event: any) => {
+const handleListScroll = () => {
   onHideRightMenuScroll()
   cancelFolderPreview()
-  const target = event?.target as HTMLElement | undefined
-  if (!target) return
-  const distance = target.scrollHeight - target.scrollTop - target.clientHeight
-  if (distance < 120) {
-    void PanDAL.LoadMoreCurrentProviderItems()
-  }
+}
+
+const handleListReachBottom = () => {
+  void PanDAL.LoadMoreCurrentProviderItems()
 }
 
 const appStore = useAppStore()
@@ -112,6 +111,7 @@ const canCreateShare = computed(() => supportsCreateShare(currentUserId.value, c
 const canImportShare = computed(() => supportsShareImport(currentUserId.value, currentDriveId.value))
 const canMove = computed(() => supportsMove(currentUserId.value, currentDriveId.value))
 const canRename = computed(() => supportsRename(currentUserId.value, currentDriveId.value))
+const canSearchCurrentDrive = computed(() => supportsSearch(currentUserId.value, currentDriveId.value))
 const canTrash = computed(() => supportsTrashMove(currentUserId.value, currentDriveId.value))
 const canDeletePermanently = computed(() => panfileStore.SelectDirType === 'trash'
   ? supportsTrashPermanentDelete(currentUserId.value, currentDriveId.value)
@@ -460,6 +460,16 @@ const handleSearchInput = (value: string) => {
 const handleSearchEnter = (event: any) => {
   event.target.blur()
   viewlist.value.scrollIntoView(0)
+}
+const globalSearchKeyword = ref('')
+const handleGlobalSearch = (value: string) => {
+  const keyword = value.trim()
+  if (!keyword) return
+  void topSearchAll(keyword, inputsearchType.value)
+}
+const handleGlobalSearchEnter = (event: any) => {
+  event.target.blur()
+  handleGlobalSearch(event.target.value || globalSearchKeyword.value)
 }
 
 const menuShowVideo = ref(false)
@@ -893,6 +903,22 @@ const onPanDragEnd = (ev: any) => {
     <div style='flex-grow: 1'></div>
     <div class='toppanbtn'>
       <a-input-search
+        v-if='canSearchCurrentDrive'
+        ref='inputsearch'
+        v-model='globalSearchKeyword'
+        :input-attrs="{ tabindex: '-1' }"
+        size='small'
+        title='Ctrl+F / F3 / Space'
+        :placeholder="t('pan.globalSearch')"
+        :loading='panfileStore.ListLoading'
+        draggable='false'
+        allow-clear
+        @dragenter.stop='() => false'
+        @search='(value:string)=>handleGlobalSearch(value)'
+        @press-enter='handleGlobalSearchEnter'
+        @keydown.esc=';($event.target as any).blur()' />
+      <a-input-search
+        v-else
         ref='inputsearch'
         v-model='panfileStore.ListSearchKey'
         :input-attrs="{ tabindex: '-1' }"
@@ -1032,7 +1058,8 @@ const onPanDragEnd = (ev: any) => {
       style='width: 100%'
       :data='panfileStore.ListDataShow'
       tabindex='-1'
-      @scroll='handleListScroll'>
+      @scroll='handleListScroll'
+      @reach-bottom='handleListReachBottom'>
       <template #empty>
         <a-empty :description="t('pan.emptyFolder')" />
       </template>
@@ -1197,7 +1224,8 @@ const onPanDragEnd = (ev: any) => {
       style='width: 100%'
       :data='panfileStore.ListDataGrid'
       tabindex='-1'
-      @scroll='handleListScroll'>
+      @scroll='handleListScroll'
+      @reach-bottom='handleListReachBottom'>
       <template #empty>
         <a-empty :description="t('pan.emptyFolder')" />
       </template>
@@ -1354,7 +1382,8 @@ const onPanDragEnd = (ev: any) => {
       style='width: 100%'
       :data='panfileStore.ListDataGrid'
       tabindex='-1'
-      @scroll='handleListScroll'>
+      @scroll='handleListScroll'
+      @reach-bottom='handleListReachBottom'>
       <template #empty>
         <a-empty :description="t('pan.emptyFolder')" />
       </template>

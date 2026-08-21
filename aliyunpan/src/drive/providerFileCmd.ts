@@ -14,7 +14,7 @@ import { copyGoogleFiles, createGoogleFolder, deleteGoogleFiles, moveGoogleFiles
 import type { DriveProvider } from '../utils/driveProvider'
 import usePanFileStore from '../pan/panfilestore'
 import usePanTreeStore from '../pan/pantreestore'
-import { resolveBaiduPaths, resolveBaiduTargetPath } from '../cloudbaidu/filecmd'
+import { resolveBaiduPaths, resolveBaiduTargetPath, resolveBaiduUploadParentPath } from '../cloudbaidu/filecmd'
 import { getBoxSelectedTypes } from '../box/filecmd'
 
 export type ProviderRenameResult = { file_id: string; parent_file_id: string; name: string; isDir: boolean }
@@ -55,8 +55,9 @@ export const getProviderFolderCommandContext = (provider: DriveProvider, parentF
     return { parentDescription: parent?.description || (selected.file_id === parentFileId ? selected.description : '') }
   }
   if (provider !== 'baidu') return {}
+  const selectedDir = usePanTreeStore().selectDir
   return {
-    targetPath: resolveBaiduTargetPath(parentFileId, '', '', fileStore.ListDataRaw || [], usePanTreeStore().selectDir)
+    targetPath: resolveBaiduUploadParentPath(parentFileId, selectedDir.file_id === parentFileId ? selectedDir.description : '', fileStore.ListDataRaw || [], selectedDir)
   }
 }
 

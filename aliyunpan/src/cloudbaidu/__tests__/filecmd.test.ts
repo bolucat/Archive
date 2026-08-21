@@ -13,4 +13,8 @@ describe('resolveBaiduTargetPath', () => {
   it('does not treat an unresolved fs_id as a root directory name', () => {
     expect(resolveBaiduTargetPath('483108569491', '', '', [])).toBe('')
   })
+
+  it('uses the cached directory description when the fs_id is not in the current list', () => {
+    expect(resolveBaiduTargetPath('483108569491', '', 'baidu_fsid:483108569491;baidu_path:/电影/待整理', [])).toBe('/电影/待整理')
+  })
 })

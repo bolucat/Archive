@@ -62,6 +62,12 @@ export const resolveCloudApiFailure = (url: string, statusCode?: number, serverE
   return provider ? { provider, statusCode, failureKind: statusCode ? 'http' : 'network', requestUrl: redactAnalyticsSecrets(url), serverError: serverError === undefined ? undefined : redactAnalyticsSecrets(serverError) } : undefined
 }
 
+export const shouldCaptureCloudApiFailure = (failure: CloudApiFailure): boolean => {
+  // AliHttp refreshes an expired Aliyun token and retries the original request.
+  // The first 401 is expected in that recovery path, not a user-visible failure.
+  return !(failure.provider === 'aliyun' && failure.statusCode === 401)
+}
+
 const getInstallId = () => {
   let id = localStorage.getItem(installIdKey)
   if (!id) {
@@ -118,18 +124,18 @@ const installCloudApiFailureTracking = () => {
       if (!response.ok) {
         const responseBody = await response.clone().text().catch(() => '')
         const failure = resolveCloudApiFailure(url, response.status, responseBody)
-        if (failure) captureCloudApiFailure(failure)
+        if (failure && shouldCaptureCloudApiFailure(failure)) captureCloudApiFailure(failure)
       }
       return response
     } catch (error) {
       const failure = resolveCloudApiFailure(url, undefined, error instanceof Error ? error.message : error)
-      if (failure) captureCloudApiFailure(failure)
+      if (failure && shouldCaptureCloudApiFailure(failure)) captureCloudApiFailure(failure)
       throw error
     }
   }
   axios.interceptors.response.use(undefined, (error) => {
     const failure = resolveCloudApiFailure(String(error?.config?.url || ''), Number(error?.response?.status) || undefined, error?.response?.data || error?.message)
-    if (failure) captureCloudApiFailure(failure)
+    if (failure && shouldCaptureCloudApiFailure(failure)) captureCloudApiFailure(failure)
     return Promise.reject(error)
   })
 }

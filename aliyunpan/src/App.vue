@@ -1,11 +1,10 @@
 <script lang="ts">
-import { computed, defineAsyncComponent, h, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, h } from 'vue'
 import { ConfigProvider } from '@arco-design/web-vue'
 import enUS from '@arco-design/web-vue/es/locale/lang/en-us'
 import zhCN from '@arco-design/web-vue/es/locale/lang/zh-cn'
 import { useLocale } from './i18n'
 import { useAppStore } from './store'
-import PageLoading from './layout/PageLoading.vue'
 import PageMain from './layout/PageMain.vue'
 import './assets/global.css'
 import './assets/fileitem.css'
@@ -25,33 +24,14 @@ const PageMusic = defineAsyncComponent(() => import('./layout/PageMusic.vue'))
 const PageLyric = defineAsyncComponent(() => import('./lyric/PageLyric.vue'))
 const PageWorker = defineAsyncComponent(() => import('./layout/PageWorker.vue'))
 
-function shouldShowPageLoadingSplash() {
-  if (typeof window === 'undefined') return false
-  const splash = new URLSearchParams(window.location.search).get('splash')
-  return splash === 'app' || splash === 'music'
-}
-
-const PAGE_LOADING_SPLASH_MIN_MS = 1200
-
 export default {
   setup() {
     const appStore = useAppStore()
     const locale = useLocale()
     const arcoLocale = computed(() => locale.value === 'en-US' ? enUS : zhCN)
-    const showStartupSplash = shouldShowPageLoadingSplash()
-    const splashReady = ref(!showStartupSplash)
-
-    onMounted(() => {
-      if (!showStartupSplash) return
-      window.setTimeout(() => {
-        splashReady.value = true
-      }, PAGE_LOADING_SPLASH_MIN_MS)
-    })
-
     return () => {
       let page
-      if (!splashReady.value) page = h(PageLoading)
-      else if (appStore.appPage == 'PageMain') page = h(PageMain)
+      if (appStore.appPage == 'PageMain' || appStore.appPage == 'PageLoading') page = h(PageMain)
       else if (appStore.appPage == 'PageOffice') page = h(PageOffice)
       else if (appStore.appPage == 'PagePdf') page = h(PagePdf)
       else if (appStore.appPage == 'PageEpub') page = h(PageEpub)
@@ -65,18 +45,9 @@ export default {
       else if (appStore.appPage == 'PageMusic') page = h(PageMusic)
       else if (appStore.appPage == 'PageLyric') page = h(PageLyric)
       else if (appStore.appPage == 'PageWorker') page = h(PageWorker)
-      else if (shouldShowPageLoadingSplash()) page = h(PageLoading)
-      else page = h('div', { class: 'desktop-loading-empty' })
+      else page = h(PageMain)
       return h(ConfigProvider, { locale: arcoLocale.value }, () => page)
     }
   }
 }
 </script>
-
-<style>
-.desktop-loading-empty {
-  position: absolute;
-  inset: 0;
-  background: transparent;
-}
-</style>

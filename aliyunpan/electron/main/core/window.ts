@@ -104,7 +104,7 @@ export function createMainWindow() {
       AppWindow.winHeight = 680
     }
   }
-  AppWindow.mainWindow = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main', AppWindow.winTheme, true, 'app')
+  AppWindow.mainWindow = createElectronWindow(AppWindow.winWidth, AppWindow.winHeight, true, 'main', AppWindow.winTheme)
   if (launchMaximized) AppWindow.mainWindow.maximize()
 
   const showMainPage = () => {
@@ -168,6 +168,28 @@ export function createMainWindow() {
 
 }
 
+async function openDefaultAppSettings() {
+  if (is.windows()) {
+    try {
+      await shell.openExternal('ms-settings:defaultapps')
+      return
+    } catch {
+      // Fall through to the platform-neutral instructions below.
+    }
+  }
+
+  const { dialog } = await import('electron')
+  const isMac = is.macOS()
+  await dialog.showMessageBox({
+    type: 'info',
+    title: '设置默认应用',
+    message: isMac ? '请在 Finder 中选择 BoxPlayer 作为文件打开方式' : '请在系统中选择 BoxPlayer 作为默认应用',
+    detail: isMac
+      ? '在 Finder 中选中视频、音频或书籍文件，按 ⌘I，在“打开方式”中选择 BoxPlayer；如需应用到同类文件，点击“全部更改…”。'
+      : '请在系统设置或文件管理器中，将所需的视频、音频或书籍格式关联到 BoxPlayer。'
+  })
+}
+
 export function createTray() {
   const trayMenuTemplate = [
     {
@@ -181,6 +203,10 @@ export function createTray() {
           createMainWindow()
         }
       }
+    },
+    {
+      label: '系统默认应用设置',
+      click: () => void openDefaultAppSettings()
     },
     {
       label: '安装命令行工具',
@@ -240,7 +266,7 @@ export function createTray() {
   })
 }
 
-export function createElectronWindow(width: number, height: number, center: boolean, page: string, theme: string, devTools: boolean = true, splash?: 'app' | 'music') {
+export function createElectronWindow(width: number, height: number, center: boolean, page: string, theme: string, devTools: boolean = true) {
   const win = new BrowserWindow({
     show: false,
     width: width,
@@ -273,18 +299,9 @@ export function createElectronWindow(width: number, height: number, center: bool
   })
   win.removeMenu()
   if (DEBUGGING) {
-    const devUrl = process.env.VITE_DEV_SERVER_URL || ''
-    let loadUrl = devUrl
-    if (splash && devUrl) {
-      try {
-        const url = new URL(devUrl)
-        url.searchParams.set('splash', splash)
-        loadUrl = url.toString()
-      } catch {}
-    }
-    win.loadURL(loadUrl, { userAgent: ua, httpReferrer: Referer })
+    win.loadURL(process.env.VITE_DEV_SERVER_URL || '', { userAgent: ua, httpReferrer: Referer })
   } else {
-    win.loadURL('file://' + getAsarPath('dist/' + page + '.html') + (splash ? `?splash=${splash}` : ''), {
+    win.loadURL('file://' + getAsarPath('dist/' + page + '.html'), {
       userAgent: ua,
       httpReferrer: Referer
     })

@@ -364,6 +364,12 @@ export default class AliUser {
           }
           const result = rewardResp.body.result
           reward = `【${result['notice']}】`
+        } else if (rewardResp.code === 403 && /升级最新客户端/.test(String(rewardResp.body?.message || ''))) {
+          message.info(`【${token.nick_name || token.user_name}】签到成功，奖励请前往官方客户端领取`)
+          return parseInt(sign_data['calendarDay'])
+        } else {
+          message.error('签到后领取奖励失败，请前往手机端领取' + rewardResp.body?.message)
+          return -1
         }
       } else {
         reward = `【${sign_data['reward']['notice']}】`

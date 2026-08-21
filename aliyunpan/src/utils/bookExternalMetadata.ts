@@ -37,8 +37,11 @@ type BookMetadataCandidate = {
 
 const GOOGLE_BOOKS_SEARCH_URL = 'https://www.googleapis.com/books/v1/volumes'
 const EXTERNAL_BOOK_METADATA_TIMEOUT_MS = 6000
+const GOOGLE_BOOKS_FAILURE_COOLDOWN_MS = 5 * 60 * 1000
 const UNKNOWN_AUTHOR = new Set(['', '未知作者', 'unknown author'])
 export type ExternalBookMetadataLogger = (message: string, error?: unknown) => void
+
+let googleBooksUnavailableUntil = 0
 
 function normalized(value = ''): string {
   return value.toLowerCase().replace(/[\s\p{P}\p{S}_]+/gu, '')
@@ -100,6 +103,11 @@ async function lookupGoogleBooksMetadata(book: IBookItem, request: typeof fetch)
   }
 }
 
+function isGoogleBooksTemporaryFailure(error: unknown): boolean {
+  const message = String(error instanceof Error ? error.message : error || '')
+  return /HTTP (?:429|5\d\d)|signal timed out|TimeoutError/i.test(message)
+}
+
 export function canHydrateExternalBookMetadata(book: IBookItem): boolean {
   return !book.cover_url && !book.thumbnail && !String(book.metadata_source || '').startsWith('googlebooks') && !!(book.title || book.file_name)
 }
@@ -108,6 +116,10 @@ export async function lookupExternalBookMetadata(book: IBookItem, request: typeo
   const logPrefix = `[book-metadata] ${book.ext.toUpperCase()} ${book.file_name}`
   if (!GOOGLE_BOOKS_API_TOKEN) {
     log?.(`${logPrefix} 未配置 GOOGLE_BOOKS_API_TOKEN，跳过 Google Books 查询`)
+    return null
+  }
+  if (googleBooksUnavailableUntil > Date.now()) {
+    log?.(`${logPrefix} Google Books 暂不可用，稍后自动重试`)
     return null
   }
   try {
@@ -120,6 +132,7 @@ export async function lookupExternalBookMetadata(book: IBookItem, request: typeo
     log?.(`${logPrefix} Google Books 命中：${meta.title || '-'}，封面=${meta.coverUrl ? '有' : '无'}`)
     return meta
   } catch (error) {
+    if (isGoogleBooksTemporaryFailure(error)) googleBooksUnavailableUntil = Date.now() + GOOGLE_BOOKS_FAILURE_COOLDOWN_MS
     log?.(`${logPrefix} Google Books 请求失败`, error)
     return null
   }
