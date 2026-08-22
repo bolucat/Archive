@@ -116,7 +116,7 @@ export function modalArchivePassword(user_id: string, drive_id: string, file_id:
 export function modalUpload(file_id: string, filelist: string[], ispic: boolean = false, encType: string = '') {
   const panTreeStore = usePanTreeStore()
   const settingStore = useSettingStore()
-  UploadingDAL.aUploadLocalFiles(panTreeStore.user_id, panTreeStore.drive_id, file_id, filelist, settingStore.downUploadWhatExist, true, encType)
+  UploadingDAL.aUploadLocalFiles(panTreeStore.user_id, panTreeStore.drive_id, file_id || panTreeStore.selectDir.file_id, filelist, settingStore.downUploadWhatExist, true, encType)
 }
 
 export function modalDownload(istree: boolean) {

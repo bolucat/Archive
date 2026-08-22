@@ -419,7 +419,9 @@ class XBYDB3 extends Dexie {
     if (!ids.length) return new Set()
     if (!this.isOpen()) await this.open()
     const records = await this.imedia_file.where('fileId').anyOf(ids).toArray()
-    return new Set(records.map(record => record.fileId))
+    const mediaItems = await this.imedia_item.bulkGet([...new Set(records.map(record => record.mediaId))])
+    const retryingMediaIds = new Set(mediaItems.filter((item): item is MediaLibraryItem => !!item?.scrapeRetrying).map(item => item.id))
+    return new Set(records.filter(record => !retryingMediaIds.has(record.mediaId)).map(record => record.fileId))
   }
 
   async getMediaLibraryFolderFileIds(folderId: string): Promise<string[]> {

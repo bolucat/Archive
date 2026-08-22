@@ -5,6 +5,8 @@ import { useSettingStore } from '../store'
 
 declare const __APP_VERSION__: string
 
+const getAppVersion = () => typeof __APP_VERSION__ === 'undefined' ? '' : __APP_VERSION__
+
 type Provider = 'aliyun' | 'cloud123' | '115' | '139' | '189' | 'guangya' | 'baidu' | 'pikpak' | 'quark' | 'dropbox' | 'onedrive' | 'box' | 'google' | 'webdav' | 'alist'
 
 const installIdKey = 'boxplayer.analytics.install_id'
@@ -12,6 +14,29 @@ let initialized = false
 let networkFailureTrackingInstalled = false
 
 type CloudApiFailure = { provider: Provider; statusCode?: number; failureKind: 'http' | 'network'; requestUrl: string; serverError?: string }
+export type MediaScrapeUnrecognizedInput = {
+  fileName: string
+  normalizedFileName: string
+  cleanedTitle: string
+  releaseYear?: number
+  seasonNumber?: number
+  episodeNumber?: number
+  stage: 'tmdb_no_match' | 'ai_no_match'
+  tmdbOutcome: 'no_match'
+  aiOutcome: 'not_attempted' | 'no_candidate' | 'candidate_rejected' | 'tmdb_no_match_after_ai'
+  aiCandidate?: {
+    title: string
+    type: 'movie' | 'tv' | 'unknown'
+    year?: number
+    season?: number
+    episode?: number
+    confidence: number
+  }
+  hasFingerprint: boolean
+  fingerprintAlgorithm?: string
+}
+
+const mediaFilenameNormalizerVersion = '2026-08-21.1'
 
 const secretKeyPattern = 'access[_-]?token|refresh[_-]?token|id[_-]?token|authorization|cookie|password|client[_-]?secret|signature|x-signature|share[_-]?token'
 const isSecretKey = (key: string) => new RegExp(`^(?:${secretKeyPattern})$`, 'i').test(key)
@@ -87,19 +112,58 @@ export const startAnalytics = () => {
     capture_pageview: false,
     capture_pageleave: false,
     disable_session_recording: true,
-    persistence: 'localStorage',
-    loaded: (client) => {
-      client.identify(getInstallId())
-      client.capture('app_opened', { app_version: __APP_VERSION__, platform: window.platform || process.platform, locale: useSettingStore().uiLanguage })
-    }
+    persistence: 'localStorage'
   })
   initialized = true
+  // posthog-js queues these calls until its transport is ready. Sending them
+  // immediately avoids losing the startup event when `loaded` is delayed.
+  posthog.identify(getInstallId())
+  posthog.capture('app_opened', { app_version: getAppVersion(), platform: window.platform || process.platform, locale: useSettingStore().uiLanguage })
   installCloudApiFailureTracking()
 }
 
 export const captureProviderLogin = (provider: Provider) => {
   if (!initialized) return
   posthog.capture('provider_login_succeeded', { provider })
+}
+
+// Recognition-quality telemetry deliberately contains no path, account, file ID,
+// download URL, cloud provider, or content hash. The three filename stages below
+// make parser regressions diagnosable without collecting any cloud-drive context.
+export const buildMediaScrapeUnrecognizedProperties = (input: MediaScrapeUnrecognizedInput) => {
+  const fileName = String(input.fileName || '').split(/[\\/]/).pop()?.slice(0, 512) || ''
+  const extension = fileName.match(/\.([^.]+)$/)?.[1]?.toLowerCase() || ''
+  const cleanedTitle = String(input.cleanedTitle || '').slice(0, 512)
+  return {
+    file_name: fileName,
+    file_extension: extension,
+    normalized_file_name: String(input.normalizedFileName || '').slice(0, 512),
+    cleaned_title: cleanedTitle,
+    title_parse_status: cleanedTitle.trim() ? 'valid_title' : 'missing_title',
+    year_detected: input.releaseYear !== undefined,
+    episode_pattern_detected: input.seasonNumber !== undefined && input.episodeNumber !== undefined,
+    normalizer_version: mediaFilenameNormalizerVersion,
+    release_year: input.releaseYear || 0,
+    season_number: input.seasonNumber || 0,
+    episode_number: input.episodeNumber || 0,
+    failure_stage: input.stage,
+    tmdb_outcome: input.tmdbOutcome,
+    ai_outcome: input.aiOutcome,
+    ai_candidate_title: String(input.aiCandidate?.title || '').slice(0, 512),
+    ai_candidate_type: input.aiCandidate?.type || '',
+    ai_candidate_year: input.aiCandidate?.year || 0,
+    ai_candidate_season: input.aiCandidate?.season || 0,
+    ai_candidate_episode: input.aiCandidate?.episode || 0,
+    ai_candidate_confidence: input.aiCandidate ? Math.round(input.aiCandidate.confidence * 100) / 100 : 0,
+    has_content_fingerprint: input.hasFingerprint,
+    fingerprint_algorithm: String(input.fingerprintAlgorithm || '').slice(0, 64),
+    app_version: getAppVersion()
+  }
+}
+
+export const captureMediaScrapeUnrecognized = (input: MediaScrapeUnrecognizedInput) => {
+  if (!initialized) return
+  posthog.capture('media_scrape_unrecognized_filename', buildMediaScrapeUnrecognizedProperties(input))
 }
 
 export const captureCloudApiFailure = (failure: CloudApiFailure) => {

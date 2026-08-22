@@ -238,8 +238,9 @@ export default class UploadingDAL {
     if (!user_id) return 0
     if (!files || files.length == 0) return 0
     const route = resolveDriveProvider(user_id, drive_id, UserDAL.GetUserToken(user_id)?.tokenfrom)
+    const parentContext = route.isValid ? getProviderFolderCommandContext(route.provider, parent_file_id) : {}
     if (route.isValid && route.provider === 'baidu') {
-      const parentPath = getProviderFolderCommandContext('baidu', parent_file_id).targetPath
+      const parentPath = parentContext.targetPath
       if (!parentPath) {
         message.error('无法确定百度网盘上传位置，请刷新目录后重试')
         return 0
@@ -301,6 +302,7 @@ export default class UploadingDAL {
               user_id: user_id,
               localFilePath: basePath,
               parent_file_id: parent_file_id,
+              parent_description: parentContext.parentDescription || '',
               drive_id: drive_id,
               isDir: isDir,
               encType: encType,

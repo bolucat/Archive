@@ -1,5 +1,5 @@
 import { useMediaLibraryStore } from '../store/medialibrary'
-import { TmdbService, tmdbImageUrl } from './tmdb'
+import { TmdbService, TmdbTransientError, tmdbImageUrl } from './tmdb'
 import type { MediaLibraryItem, DriveFileItem, MediaLibraryFolder } from '../types/media'
 import { IAliGetFileModel } from '../aliapi/alimodels'
 import AliDirFileList from '../aliapi/dirfilelist'
@@ -14,7 +14,9 @@ import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage 
 import DB from './db'
 import { mergeDriveFileSources } from './mediaSourceMembership'
 import { associateMediaSubtitles, type MediaSubtitleFolderScope } from './mediaSubtitleAssociation'
+import { buildMediaFingerprint } from './mediaFingerprint'
 import useSettingStore from '../setting/settingstore'
+import { captureMediaScrapeUnrecognized } from '../analytics/posthog'
 
 type ScanContext = {
   userId: string
@@ -28,6 +30,11 @@ type SubtitleAssociationIndex = { files: DriveFileItem[]; folderParents: Map<str
 
 const PERSISTENCE_CHECKPOINT_ITEMS = 100
 const PERSISTENCE_CHECKPOINT_MS = 3000
+// TMDB 的 429/超时/5xx 已在请求层做短暂重试；这里再对单个媒体文件
+// 做两轮退避重试，避免临时网络抖动要求用户手动重新扫描整个目录。
+const TMDB_TRANSIENT_RETRY_DELAYS_MS = [3000, 10000]
+
+const waitForMediaRetry = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs))
 
 export class MediaScanner {
   private static instance: MediaScanner
@@ -98,6 +105,7 @@ export class MediaScanner {
       const existingIds = new Set<string>()
       const subtitleIndex: SubtitleAssociationIndex = { files: [], folderParents: new Map() }
       let totalProcessed = 0
+      let unresolvedTransientFailures = 0
 
       console.log('开始扫描网盘文件夹:', folder.name)
       const shouldRunAIScrape = Boolean(options.aiScrape && await this.canRunInternalAIScrape())
@@ -111,8 +119,9 @@ export class MediaScanner {
 
       // Phase 1: 边遍历边 TMDB 匹配（跳过 AI 兜底）
       totalFound = await this.scrapeFolderRecursive(folder, scanContext, folderKey, existingIds, options.incremental, shouldRunAIScrape, options.mediaHint,
-        ({ processed }) => {
+        ({ processed, unresolved = 0 }) => {
           totalProcessed += processed
+          unresolvedTransientFailures += unresolved
           this.mediaStore.setScanProgress(totalProcessed, Math.max(1, totalProcessed))
           this.checkpointScanPersistence(processed)
         },
@@ -148,7 +157,11 @@ export class MediaScanner {
           this.mediaStore.pruneOrphanDuplicateFolders()
         }
         if (!options.silent) {
-          message.success(`扫描完成！共处理 ${totalProcessed} 个视频文件`)
+          if (unresolvedTransientFailures > 0) {
+            message.warning(`扫描完成：${unresolvedTransientFailures} 个文件的 TMDB 请求已自动重试两次仍失败，已保留现有资料；下次增量扫描会继续重试`)
+          } else {
+            message.success(`扫描完成！共处理 ${totalProcessed} 个视频文件`)
+          }
         }
         completed = true
       } else {
@@ -187,7 +200,7 @@ export class MediaScanner {
     incremental: boolean | undefined,
     deferUnmatchedForAI: boolean,
     mediaHint: MediaScanHint | undefined,
-    onProgress: (stats: { processed: number }) => void,
+    onProgress: (stats: { processed: number; unresolved?: number }) => void,
     onAIUnmatched: (files: DriveFileItem[]) => Promise<void>,
     subtitleIndex: SubtitleAssociationIndex,
     depth = 0,
@@ -211,10 +224,10 @@ export class MediaScanner {
           }
           else if (this.isVideoFile(item.name)) {
             const itemPath = relativePath ? `${relativePath.replace(/\/$/, '')}/${item.name}` : item.name
-            videoFiles.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.description || '', thumbnailLink: item.thumbnail || undefined, videoDuration: item.media_duration, height: item.media_height, sourceFolderIds: [folderKey] })
+            videoFiles.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.content_hash || '', contentHashName: item.content_hash_name || '', thumbnailLink: item.thumbnail || undefined, videoDuration: item.media_duration, height: item.media_height, sourceFolderIds: [folderKey] })
           } else if (this.isSubtitleFile(item.name)) {
             const itemPath = relativePath ? `${relativePath.replace(/\/$/, '')}/${item.name}` : item.name
-            subtitleIndex.files.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.description || '', sourceFolderIds: [folderKey] })
+            subtitleIndex.files.push({ id: item.file_id, name: item.name, path: itemPath, parentFileId: item.parent_file_id || folder.file_id, userId: scanContext.userId, driveId: item.drive_id || scanContext.driveId, driveServerId: scanContext.driveServerId, fileSize: item.size || 0, contentHash: item.content_hash || '', contentHashName: item.content_hash_name || '', sourceFolderIds: [folderKey] })
           }
         }
         if (incremental && videoFiles.length) {
@@ -225,12 +238,14 @@ export class MediaScanner {
         totalFound += videoFiles.length
         for (let i = 0; i < toProcess.length && !this.shouldStop; i += 3) {
           const batch = toProcess.slice(i, i + 3)
-          const results = await Promise.allSettled(batch.map(f => this.processVideoFileWithoutAI(f, folder.name, folderKey, mediaHint)))
-          const unmatched = results.filter((r): r is PromiseFulfilledResult<DriveFileItem | null> => r.status === 'fulfilled' && !!r.value).map(r => r.value!)
+          const { unmatched, completed, unresolved } = await this.processVideoBatchWithTransientRetry(batch, folder.name, folderKey, mediaHint)
           if (deferUnmatchedForAI) await onAIUnmatched(unmatched)
           else unmatched.forEach(item => this.addUnmatchedMediaItem(item, folder.name, folderKey))
-          onProgress({ processed: batch.length })
-          batch.forEach(file => existingIds.add(this.getScopedDriveFileKey(file)))
+          unresolved.forEach(item => this.addRetryPendingMediaItem(item, folder.name, folderKey))
+          onProgress({ processed: batch.length, unresolved: unresolved.length })
+          // 临时失败不能在完整扫描时被当作已删除文件。新文件没有持久化
+          // 映射，下一次增量扫描仍会再次尝试；已有资料则保持原资料不被清理。
+          completed.concat(unresolved).forEach(file => existingIds.add(this.getScopedDriveFileKey(file)))
         }
         for (const sub of subFolders) {
           if (this.shouldStop) break
@@ -243,6 +258,44 @@ export class MediaScanner {
     }
 
     return totalFound
+  }
+
+  private async processVideoBatchWithTransientRetry(files: DriveFileItem[], folderName: string, folderId: string, mediaHint?: MediaScanHint): Promise<{ unmatched: DriveFileItem[]; completed: DriveFileItem[]; unresolved: DriveFileItem[] }> {
+    const unmatched: DriveFileItem[] = []
+    const completed: DriveFileItem[] = []
+    let pending = files
+
+    for (let attempt = 0; pending.length && !this.shouldStop; attempt++) {
+      const current = pending
+      pending = []
+      const results = await Promise.allSettled(current.map(file => this.processVideoFileWithoutAI(file, folderName, folderId, mediaHint)))
+      results.forEach((result, index) => {
+        const file = current[index]
+        if (result.status === 'fulfilled') {
+          completed.push(file)
+          if (result.value) unmatched.push(result.value)
+          return
+        }
+        if (result.reason instanceof TmdbTransientError) {
+          pending.push(file)
+          return
+        }
+        // processVideoFileWithoutAI 已将非临时错误降级为未匹配；这里仅作
+        // 防御性保护，避免未知异常导致完整扫描误删已有媒体资料。
+        console.error(`处理视频文件失败，保留现有资料: ${file.name}`, result.reason)
+        completed.push(file)
+      })
+
+      const retryDelay = TMDB_TRANSIENT_RETRY_DELAYS_MS[attempt]
+      if (!pending.length || retryDelay === undefined || this.shouldStop) break
+      console.warn(`TMDB 临时失败，${pending.length} 个文件将在 ${Math.round(retryDelay / 1000)} 秒后自动重试（${attempt + 1}/${TMDB_TRANSIENT_RETRY_DELAYS_MS.length}）`)
+      await waitForMediaRetry(retryDelay)
+    }
+
+    if (pending.length) {
+      pending.forEach(file => console.warn(`TMDB 临时失败，已完成自动重试并保留待下次增量扫描: ${file.name}`))
+    }
+    return { unmatched, completed, unresolved: pending }
   }
 
   private async *iterateFolderPages(folder: IAliGetFileModel, scanContext: ScanContext): AsyncGenerator<IAliGetFileModel[]> {
@@ -471,7 +524,8 @@ export class MediaScanner {
               driveId: item.drive_id || scanContext.driveId,
               driveServerId: scanContext.driveServerId,
               fileSize: item.size || 0,
-              contentHash: item.description || '', // 使用 description 替代 sha1
+              contentHash: item.content_hash || '',
+              contentHashName: item.content_hash_name || '',
               thumbnailLink: item.thumbnail || undefined,
               videoDuration: item.media_duration,
               height: item.media_height
@@ -820,6 +874,7 @@ export class MediaScanner {
   // TMDB 匹配（不含 AI 兜底）：成功返回 null，失败返回未匹配文件供批量 AI 处理
   private async processVideoFileWithoutAI(file: DriveFileItem, folderName: string, folderId?: string, mediaHint?: MediaScanHint): Promise<DriveFileItem | null> {
     try {
+      this.removeRetryPendingMediaItem(file)
       const fileName = file.name.replace(/\.[^/.]+$/, '')
       const normalized = this.tmdbService.normalizeFileName(file.name, file.path || `${folderName}/${file.name}`)
       const seasonEpisode = normalized.seasonNumber === undefined || normalized.episodeNumber === undefined
@@ -841,11 +896,11 @@ export class MediaScanner {
           : this.parseTmdbId(fileName)
         const year = normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear)
         const shouldUseYear = Boolean(year && !lookupName.includes(year))
-        const fileHash = file.fileHash || file.contentHash
+        const fingerprint = buildMediaFingerprint(file)
 
         const tvResult = tmdbId
-          ? await this.tmdbService.searchTV(lookupName, seasonEpisode.season, shouldUseYear ? year : undefined, tmdbId, fileHash)
-          : await this.tmdbService.searchTV(lookupName, seasonEpisode.season, shouldUseYear ? year : undefined, undefined, fileHash, fileName)
+          ? await this.tmdbService.searchTV(lookupName, seasonEpisode.season, shouldUseYear ? year : undefined, tmdbId, fingerprint)
+          : await this.tmdbService.searchTV(lookupName, seasonEpisode.season, shouldUseYear ? year : undefined, undefined, fingerprint, fileName)
 
         const matchedEpisode = tvResult?.current_season?.episodes?.find(ep => ep.episode_number === seasonEpisode.episode)
         if (tvResult && tvResult.current_season && matchedEpisode) {
@@ -861,7 +916,7 @@ export class MediaScanner {
       // 电影处理：Agent 已确认 TMDB ID 时，直接按 ID 获取元数据；只有旧任务没有 ID 时才按标题搜索。
       const movie = mediaHint?.mediaType === 'movie' && mediaHint.tmdbId
         ? await this.tmdbService.getMovieByTmdbId(mediaHint.tmdbId)
-        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear), undefined, file.fileHash || file.contentHash, file.name)
+        : await this.tmdbService.searchMovie(lookupName, mediaHint?.year ? String(mediaHint.year) : normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear), undefined, buildMediaFingerprint(file), file.name)
       if (movie) {
         const collection = movie.belongs_to_collection
         const mediaItem: MediaLibraryItem = {
@@ -917,11 +972,12 @@ export class MediaScanner {
       return file
     } catch (error) {
       console.error(`处理文件失败: ${file.name}`, error)
+      if (error instanceof TmdbTransientError) throw error
       return file
     }
   }
 
-  private addUnmatchedMediaItem(file: DriveFileItem, folderName: string, folderId?: string): void {
+  private addUnmatchedMediaItem(file: DriveFileItem, folderName: string, folderId?: string, stage: 'tmdb_no_match' | 'ai_no_match' = 'tmdb_no_match', aiOutcome: 'not_attempted' | 'no_candidate' | 'candidate_rejected' | 'tmdb_no_match_after_ai' = 'not_attempted', aiCandidate?: { title: string; type: 'movie' | 'tv' | 'unknown'; year?: number; season?: number; episode?: number; confidence: number }): void {
     this.mediaStore.addMediaItem({
       id: this.getScopedDriveFileKey(file),
       parentId: folderName,
@@ -932,8 +988,47 @@ export class MediaScanner {
       posterUrl: file.thumbnailLink || undefined,
       genres: [],
       driveFiles: [file],
+      scrapeRetrying: false,
       addedAt: new Date()
     })
+    const normalized = this.tmdbService.normalizeFileName(file.name)
+    captureMediaScrapeUnrecognized({
+      fileName: file.name,
+      normalizedFileName: normalized.normalizedFileName,
+      cleanedTitle: normalized.cleanedTitle,
+      releaseYear: normalized.releaseYear,
+      seasonNumber: normalized.seasonNumber,
+      episodeNumber: normalized.episodeNumber,
+      stage,
+      tmdbOutcome: 'no_match',
+      aiOutcome,
+      aiCandidate,
+      hasFingerprint: !!buildMediaFingerprint(file),
+      fingerprintAlgorithm: file.contentHashName
+    })
+  }
+
+  private addRetryPendingMediaItem(file: DriveFileItem, folderName: string, folderId?: string): void {
+    this.mediaStore.addMediaItem({
+      id: this.getScopedDriveFileKey(file),
+      parentId: folderName,
+      folderId: folderId || `${file.driveId}`,
+      folderPath: file.path.substring(0, file.path.lastIndexOf('/')) || '',
+      type: 'unmatched',
+      name: file.name.replace(/\.[^/.]+$/, '') || file.name,
+      posterUrl: file.thumbnailLink || undefined,
+      overview: 'TMDB 服务暂时不可用，等待下次自动重新刮削。',
+      genres: [],
+      driveFiles: [file],
+      scrapeRetrying: true,
+      addedAt: new Date()
+    })
+  }
+
+  private removeRetryPendingMediaItem(file: DriveFileItem): void {
+    const id = this.getScopedDriveFileKey(file)
+    const pending = this.mediaStore.mediaItems.find(item => item.id === id && item.scrapeRetrying)
+    if (pending) this.mediaStore.removeMediaItem(id)
   }
 
   // 构建电视剧 MediaLibraryItem（从 processVideoFileWithoutAI 抽取）
@@ -1038,7 +1133,7 @@ export class MediaScanner {
         const tmdbId = this.parseTmdbId(fileName)
         const year = normalized.releaseYear === undefined ? undefined : String(normalized.releaseYear)
         const shouldUseYear = Boolean(year && !lookupName.includes(year))
-        const fileHash = file.fileHash || file.contentHash
+        const fingerprint = buildMediaFingerprint(file)
 
         const tvResult = tmdbId
           ? await this.tmdbService.searchTV(
@@ -1046,14 +1141,14 @@ export class MediaScanner {
               seasonEpisode.season,
               shouldUseYear ? year : undefined,
               tmdbId,
-              fileHash
+              fingerprint
             )
           : await this.tmdbService.searchTV(
               lookupName,
               seasonEpisode.season,
               shouldUseYear ? year : undefined,
               undefined,
-              fileHash,
+              fingerprint,
               fileName
             )
 
@@ -1249,7 +1344,15 @@ export class MediaScanner {
           this.mediaStore.addMediaItem(r.mediaItem)
         }
         saved++
-      } else if (r.file.driveFile) this.addUnmatchedMediaItem(r.file.driveFile, folderName, folderId)
+      } else if (r.file.driveFile && !r.error) {
+        const aiOutcome = r.decision && r.decision.type !== 'unknown'
+          ? 'tmdb_no_match_after_ai'
+          : r.candidate ? 'candidate_rejected' : 'no_candidate'
+        this.addUnmatchedMediaItem(r.file.driveFile, folderName, folderId, 'ai_no_match', aiOutcome, r.candidate || undefined)
+      } else if (r.error) {
+        if (r.file.driveFile) this.addRetryPendingMediaItem(r.file.driveFile, folderName, folderId)
+        console.warn(`AI/TMDB 临时失败，将在下次扫描重试: ${r.file.name}`, r.error)
+      }
     }
 
     if (!silent && saved > 0) {

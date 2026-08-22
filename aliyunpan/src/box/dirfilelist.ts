@@ -192,6 +192,7 @@ export const mapBoxItemToAliModel = (item: BoxItem, drive_id: string, parentId: 
     thumbnail: pickThumbnail(item),
     description: encodeDescription(item),
     content_hash: item.sha1 || '',
+    content_hash_name: item.sha1 ? 'sha1' : '',
     created_at: item.created_at || item.content_created_at || '',
     updated_at: item.modified_at || item.content_modified_at || item.created_at || '',
     type: isDir ? 'folder' : 'file'

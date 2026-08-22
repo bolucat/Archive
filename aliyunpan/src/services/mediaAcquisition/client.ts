@@ -74,8 +74,20 @@ export function addMediaAcquisitionCandidate(runId: string, input: CreateMediaAc
   return invoke('mediaAcquisition:addCandidate', runId, input)
 }
 
-export function getMediaAcquisitionCandidateLocator(runId: string, candidateId: string): Promise<{ locator: string; password?: string } | null> {
-  return invoke('mediaAcquisition:getCandidateLocator', runId, candidateId)
+export function submitMediaAcquisitionProviderTransfer(runId: string, candidateId: string, parentId: string, ticket?: { workflowId: string; grantId: string } | null): Promise<{ taskId?: string; fileId?: string; activity: string }> {
+  return invoke('mediaAcquisition:submitProviderTransfer', { runId, candidateId, parentId, ticket: ticket || null })
+}
+
+export function submitMediaAcquisitionProviderShareImport(runId: string, candidateId: string, parentId: string, ticket?: { workflowId: string; grantId: string } | null): Promise<{ status: 'success' | 'async'; fileCount: number; activity: string }> {
+  return invoke('mediaAcquisition:submitProviderShareImport', { runId, candidateId, parentId, ticket: ticket || null })
+}
+
+export function submitMediaAcquisitionExternalUrl(runId: string, parentId: string, url: string, fileName: string): Promise<{ taskId?: string; fileId?: string; activity: string }> {
+  return invoke('mediaAcquisition:submitExternalUrl', { runId, parentId, url, fileName })
+}
+
+export function getMediaAcquisitionProviderTransferStatus(runId: string, taskId?: string, fileId?: string): Promise<{ progress: number; completed: boolean; failed: boolean; message?: string; error?: string }> {
+  return invoke('mediaAcquisition:getProviderTransferStatus', { runId, taskId, fileId })
 }
 
 export function recordMediaAcquisitionCandidateBaseline(runId: string, candidateId: string, files: MediaAcquisitionFileSnapshot[]): Promise<MediaAcquisitionRunView | null> {

@@ -344,4 +344,6 @@ export interface IAliGetFileModel {
   media_play_cursor?: string
   media_time?: string
   user_meta?: string
+  content_hash?: string
+  content_hash_name?: string
 }

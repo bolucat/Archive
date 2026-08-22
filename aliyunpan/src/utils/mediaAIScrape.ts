@@ -4,6 +4,7 @@ import { resolveAIProviderConfig } from './bookAI'
 import { isBoxPlayerCloudProvider, scrapeMediaWithBoxPlayerCloud, type BoxPlayerCloudMediaScrapeResult } from './boxplayerCloudAI'
 import { checkAndIncrement, isPro } from './usageLimit'
 import { TmdbService, tmdbImageUrl } from './tmdb'
+import { buildMediaFingerprint } from './mediaFingerprint'
 import type { DriveFileItem, MediaCollectionMovie, MediaEpisode, MediaLibraryItem, MediaLibraryTvSeriesItem, MovieItem } from '../types/media'
 
 export interface MediaAIScrapeInput {
@@ -27,6 +28,7 @@ export interface MediaAIScrapeDecision {
   season?: number
   episode?: number
   tmdbId?: number
+  altTitles?: string[]
   confidence: number
   allowOverwrite: boolean
   reason: string
@@ -45,6 +47,9 @@ export interface AIScrapeApplyOptions {
 }
 
 const MIN_CONFIDENCE = 0.65
+// The API aborts DeepSeek after 45 seconds. Keep five seconds for the network
+// round trip so the UI never fails before the server can send its result.
+const MEDIA_SCRAPE_CLIENT_TIMEOUT_MS = 50_000
 
 export function canUseMediaAIScrape(options: { manual: boolean }): { allowed: boolean, message?: string } {
   if (options.manual) return checkAndIncrement('mediaAIScrape', 1, { metered: false })
@@ -73,6 +78,7 @@ export function normalizeMediaAIScrapeDecision(value: unknown): { usable: boolea
     season: optionalInt(raw.season),
     episode: optionalInt(raw.episode),
     tmdbId: optionalInt(raw.tmdbId),
+    altTitles: normalizeAltTitles(raw.altTitles || raw.alt_titles),
     confidence,
     allowOverwrite: raw.allowOverwrite === true,
     reason: String(raw.reason || '').slice(0, 160)
@@ -92,7 +98,7 @@ export async function scrapeMediaWithAI(input: MediaAIScrapeInput, options: { ma
 
   try {
     DebugLog.mSaveLog('info', '[MediaAIScrape] input ' + JSON.stringify(buildInputLog(input)), undefined)
-    const decision = await scrapeSingleMediaWithBoxPlayerCloud(input, options.timeoutMs || 20000)
+    const decision = await scrapeSingleMediaWithBoxPlayerCloud(input, options.timeoutMs || MEDIA_SCRAPE_CLIENT_TIMEOUT_MS)
     const normalized = normalizeMediaAIScrapeDecision(decision)
     if (!normalized.usable || !normalized.decision) return { ok: false, decision, provider: cfg.providerName, error: normalized.reason || 'AI 决策不可用' }
     return { ok: true, decision: normalized.decision, provider: cfg.providerName }
@@ -116,13 +122,13 @@ export async function applyAIScrapeResult(input: MediaAIScrapeInput, result: Med
   const now = options.now?.() || new Date()
 
   if (decision.type === 'movie') {
-    const movie = await tmdb.searchMovie(decision.title, decision.year ? String(decision.year) : undefined, undefined, file.fileHash || file.contentHash, file.name)
+    const movie = await searchMovieWithTitles(tmdb, decision, file)
     if (!movie) return null
     return decorateAIScrapeItem(movieToMediaItem(movie, files, folderName, folderId, folderPath, now), result, input.item)
   }
 
   if (decision.type === 'tv') {
-    const tv = await tmdb.searchTV(decision.title, decision.season || 1, decision.year ? String(decision.year) : undefined, undefined, file.fileHash || file.contentHash, file.name)
+    const tv = await searchTvWithTitles(tmdb, decision, file)
     if (!tv) return null
     const item = tvToMediaItem(tv, decision, files, folderName, folderId, folderPath, now)
     return item ? decorateAIScrapeItem(item, result, input.item) : null
@@ -329,20 +335,17 @@ function buildInputLog(input: MediaAIScrapeInput): Record<string, unknown> {
   }
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('AI 刮削超时')), timeoutMs)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (error) => {
-        clearTimeout(timer)
-        reject(error)
-      }
-    )
-  })
+async function scrapeMediaWithAbortTimeout(items: Parameters<typeof scrapeMediaWithBoxPlayerCloud>[0], timeoutMs: number): Promise<BoxPlayerCloudMediaScrapeResult[]> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await scrapeMediaWithBoxPlayerCloud(items, controller.signal)
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('AI 刮削超时')
+    throw error
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export interface BatchScrapeFileInfo {
@@ -354,6 +357,9 @@ export interface BatchScrapeFileInfo {
 
 export interface BatchScrapeResult {
   file: BatchScrapeFileInfo
+  // Candidate is retained for recognition diagnostics even when validation rejects
+  // it. Only a valid decision is permitted to query TMDB.
+  candidate?: MediaAIScrapeDecision | null
   decision?: MediaAIScrapeDecision | null
   mediaItem?: MediaLibraryItem | null
   error?: string
@@ -374,38 +380,37 @@ export async function batchScrapeMediaWithAI(files: BatchScrapeFileInfo[], folde
 
   try {
     DebugLog.mSaveLog('info', '[BatchAIScrape] input ' + files.length + ' files, folder: ' + folderName, undefined)
-    const decisions = await scrapeBatchMediaWithBoxPlayerCloud(files, folderName)
+    const batch = await scrapeBatchMediaWithBoxPlayerCloud(files, folderName)
     const tmdb = TmdbService.getInstance()
     const now = new Date()
 
-    const results: BatchScrapeResult[] = []
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      const decision = decisions[i]
+    const results = await mapWithConcurrency(files, 3, async (file, i): Promise<BatchScrapeResult> => {
+      if (batch.errors[i]) return { file, error: batch.errors[i] }
+      const decision = batch.decisions[i]
+      const candidate = batch.candidates[i]
       if (!decision || decision.type === 'unknown') {
-        results.push({ file, decision })
-        continue
+        return { file, candidate, decision }
       }
 
       try {
         let mediaItem: MediaLibraryItem | null = null
         if (decision.type === 'movie') {
-          const movie = await tmdb.searchMovie(decision.title, decision.year ? String(decision.year) : undefined, undefined)
+          const movie = await searchMovieWithTitles(tmdb, decision, toDriveFileItem(file))
           if (movie) {
             mediaItem = decorateAIScrapeItem(movieToMediaItem(movie, [toDriveFileItem(file)], folderName, undefined, file.path.substring(0, file.path.lastIndexOf('/')) || '', now), { ok: true, decision, provider: cfg.providerName })
           }
         } else if (decision.type === 'tv') {
-          const tv = await tmdb.searchTV(decision.title, decision.season || 1, decision.year ? String(decision.year) : undefined, undefined)
+          const tv = await searchTvWithTitles(tmdb, decision, toDriveFileItem(file))
           if (tv) {
             mediaItem = tvToMediaItem(tv, decision, [toDriveFileItem(file)], folderName, undefined, file.path.substring(0, file.path.lastIndexOf('/')) || '', now)
             if (mediaItem) mediaItem = decorateAIScrapeItem(mediaItem, { ok: true, decision, provider: cfg.providerName })
           }
         }
-        results.push({ file, decision, mediaItem })
+        return { file, candidate, decision, mediaItem }
       } catch (e: any) {
-        results.push({ file, decision, error: e?.message || 'TMDB 查询失败' })
+        return { file, candidate, decision, error: e?.message || 'TMDB 查询失败' }
       }
-    }
+    })
     return results
   } catch (error: any) {
     const msg = error?.message || String(error)
@@ -417,36 +422,47 @@ export async function batchScrapeMediaWithAI(files: BatchScrapeFileInfo[], folde
 async function scrapeSingleMediaWithBoxPlayerCloud(input: MediaAIScrapeInput, timeoutMs: number): Promise<MediaAIScrapeDecision> {
   const file = input.file || input.item?.driveFiles?.[0]
   if (!file) throw new Error('没有可供刮削的视频文件')
-  const results = await withTimeout(scrapeMediaWithBoxPlayerCloud([{
+  const results = await scrapeMediaWithAbortTimeout([{
     id: file.id || '0',
     filename: file.name,
     folderHint: input.folderName || input.item?.folderPath || input.folderContext?.join(' | ') || '',
     pathHint: file.path
-  }]), timeoutMs)
+  }], timeoutMs)
   const normalized = normalizeCloudMediaScrapeDecision(results[0])
   if (!normalized.decision) throw new Error(normalized.reason || 'AI 未返回有效刮削决策')
   DebugLog.mSaveLog('info', '[MediaAIScrape] cloud result ' + JSON.stringify(results[0]), undefined)
   return normalized.decision
 }
 
-async function scrapeBatchMediaWithBoxPlayerCloud(files: BatchScrapeFileInfo[], folderName: string): Promise<Array<MediaAIScrapeDecision | null>> {
+async function scrapeBatchMediaWithBoxPlayerCloud(files: BatchScrapeFileInfo[], folderName: string): Promise<{ decisions: Array<MediaAIScrapeDecision | null>, candidates: Array<MediaAIScrapeDecision | null>, errors: Array<string | undefined> }> {
   const decisions: Array<MediaAIScrapeDecision | null> = Array(files.length).fill(null)
+  const candidates: Array<MediaAIScrapeDecision | null> = Array(files.length).fill(null)
+  const errors: Array<string | undefined> = Array(files.length).fill(undefined)
   const chunks = Array.from({ length: Math.ceil(files.length / 10) }, (_, index) => files.slice(index * 10, index * 10 + 10))
   for (const [chunkIndex, chunk] of chunks.entries()) {
-    const results = await withTimeout(scrapeMediaWithBoxPlayerCloud(chunk.map((file, index) => ({
-      id: String(chunkIndex * 10 + index),
-      filename: file.name,
-      folderHint: folderName,
-      pathHint: file.path
-    }))), 60000)
-    for (const result of results) {
-      const byId = Number(result.id)
-      const index = Number.isInteger(byId) ? byId : result.idx
-      const normalized = normalizeCloudMediaScrapeDecision(result)
-      if (typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < files.length && normalized.usable && normalized.decision) decisions[index] = normalized.decision
+    try {
+      const results = await scrapeMediaWithAbortTimeout(chunk.map((file, index) => ({
+        id: String(chunkIndex * 10 + index),
+        filename: file.name,
+        folderHint: folderName,
+        pathHint: file.path
+      })), MEDIA_SCRAPE_CLIENT_TIMEOUT_MS)
+      for (const result of results) {
+        const byId = Number(result.id)
+        const index = Number.isInteger(byId) ? byId : result.idx
+        const normalized = normalizeCloudMediaScrapeDecision(result)
+        if (typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < files.length) {
+          if (normalized.decision) candidates[index] = normalized.decision
+          if (normalized.usable && normalized.decision) decisions[index] = normalized.decision
+        }
+      }
+    } catch (error: any) {
+      const message = error?.message || 'AI 刮削请求失败'
+      DebugLog.mSaveWarning(`[BatchAIScrape] chunk ${chunkIndex + 1} failed: ${message}`)
+      for (let index = chunkIndex * 10; index < Math.min(files.length, chunkIndex * 10 + chunk.length); index++) errors[index] = message
     }
   }
-  return decisions
+  return { decisions, candidates, errors }
 }
 
 function normalizeCloudMediaScrapeDecision(result: BoxPlayerCloudMediaScrapeResult | undefined): { usable: boolean, decision?: MediaAIScrapeDecision, reason?: string } {
@@ -454,9 +470,48 @@ function normalizeCloudMediaScrapeDecision(result: BoxPlayerCloudMediaScrapeResu
   return normalizeMediaAIScrapeDecision({
     ...result,
     tmdbId: result.tmdb_id,
+    altTitles: result.alt_titles,
     allowOverwrite: true,
     reason: ''
   })
+}
+
+function normalizeAltTitles(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return Array.from(new Set(value.map(item => String(item || '').trim()).filter(Boolean))).slice(0, 5)
+}
+
+function mediaTitles(decision: MediaAIScrapeDecision): string[] {
+  return Array.from(new Set([decision.title, ...(decision.altTitles || [])].map(title => title.trim()).filter(Boolean)))
+}
+
+async function searchMovieWithTitles(tmdb: Pick<TmdbService, 'searchMovie'>, decision: MediaAIScrapeDecision, file: DriveFileItem): Promise<MovieItem | null> {
+  for (const title of mediaTitles(decision)) {
+    const movie = await tmdb.searchMovie(title, decision.year ? String(decision.year) : undefined, undefined, buildMediaFingerprint(file), file.name)
+    if (movie) return movie
+  }
+  return null
+}
+
+async function searchTvWithTitles(tmdb: Pick<TmdbService, 'searchTV'>, decision: MediaAIScrapeDecision, file: DriveFileItem): Promise<MediaLibraryTvSeriesItem | null> {
+  for (const title of mediaTitles(decision)) {
+    const tv = await tmdb.searchTV(title, decision.season || 1, decision.year ? String(decision.year) : undefined, undefined, buildMediaFingerprint(file), file.name)
+    if (tv) return tv
+  }
+  return null
+}
+
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, worker: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  let next = 0
+  const run = async () => {
+    while (next < items.length) {
+      const index = next++
+      results[index] = await worker(items[index], index)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run))
+  return results
 }
 
 function toDriveFileItem(f: BatchScrapeFileInfo): DriveFileItem {

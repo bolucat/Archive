@@ -8,24 +8,102 @@ import type {
 } from '../types/media'
 import Config from '../config'
 import { mediaFileNormalizer, type NormalizedMediaFileDescriptor } from './mediaFileNormalizer'
+import type { MediaFingerprint } from './mediaFingerprint'
 
 const TMDB_BASE_URL = `${Config.BOXPLAYER_API_URL.replace(/\/+$/, '')}/api/tmdb`
+const TMDB_REQUEST_TIMEOUT_MS = 45_000
+const TMDB_MAX_RETRY_AFTER_MS = 15_000
 
-async function fetchWithRetry(url: string, retries = 3, delayMs = 2000): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const resp = await fetch(url)
-    if (resp.ok) return resp
-    if (resp.status === 429 && attempt < retries) {
-      await new Promise(r => setTimeout(r, delayMs * Math.pow(2, attempt)))
-      continue
+export class TmdbTransientError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TmdbTransientError'
+  }
+}
+
+async function fetchWithRetry(url: string, retries = 3, delayMs = 2000, timeoutMs = TMDB_REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      let resp: Response
+      try {
+        resp = await fetch(url, { signal: controller.signal })
+      } catch (error) {
+        if (controller.signal.aborted) throw new Error(`TMDB fetch timed out after ${timeoutMs}ms`)
+        if (attempt < retries) {
+          await waitForRetry(delayMs * Math.pow(2, attempt), controller.signal)
+          continue
+        }
+        throw error
+      }
+      if (resp.ok) return resp
+
+      const retryable = resp.status === 429 || resp.status === 500 || resp.status === 502 || resp.status === 503 || resp.status === 504
+      if (retryable && attempt < retries) {
+        const fallbackDelay = delayMs * Math.pow(2, attempt)
+        await waitForRetry(getRetryDelayMs(resp, fallbackDelay), controller.signal)
+        continue
+      }
+      throw new Error(`TMDB fetch failed: ${resp.status}`)
     }
-    throw new Error(`TMDB fetch failed: ${resp.status}`)
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`TMDB fetch timed out after ${timeoutMs}ms`)
+    throw error
+  } finally {
+    clearTimeout(timer)
   }
   throw new Error(`TMDB fetch failed after ${retries} retries`)
 }
 
+function getRetryDelayMs(response: Response, fallbackDelayMs: number): number {
+  const retryAfter = response.headers?.get('retry-after')?.trim()
+  if (!retryAfter) return fallbackDelayMs
+  const seconds = Number(retryAfter)
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(TMDB_MAX_RETRY_AFTER_MS, Math.max(1000, Math.round(seconds * 1000)))
+  }
+  const dateDelay = Date.parse(retryAfter) - Date.now()
+  return Number.isFinite(dateDelay) && dateDelay > 0
+    ? Math.min(TMDB_MAX_RETRY_AFTER_MS, Math.max(1000, dateDelay))
+    : fallbackDelayMs
+}
+
+function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(done, delayMs)
+    const abort = () => done(new Error('TMDB fetch aborted'))
+    function done(error?: Error) {
+      clearTimeout(timer)
+      signal.removeEventListener('abort', abort)
+      if (error) reject(error)
+      else resolve()
+    }
+    signal.addEventListener('abort', abort, { once: true })
+  })
+}
+
 export const TMDB_BASE = TMDB_BASE_URL
 export const TMDB_BASE_URL_PROXY = `${TMDB_BASE_URL}/proxy`
+
+type TmdbFingerprintInput = MediaFingerprint | string | undefined
+
+function appendFingerprint(params: URLSearchParams, fingerprint: TmdbFingerprintInput): void {
+  if (!fingerprint) return
+  if (typeof fingerprint === 'string') {
+    params.append('md5', fingerprint)
+    return
+  }
+  params.append('fingerprintNamespace', fingerprint.fingerprintNamespace)
+  params.append('fingerprint', fingerprint.fingerprint)
+  params.append('fileSize', String(fingerprint.fileSize))
+}
+
+function unwrapTmdbResponse<T>(payload: { code?: number; data?: T; msg?: string }): T | null {
+  if (payload?.code === undefined || payload.code === 0) return payload.data || null
+  if (payload.code === 404) return null
+  throw new TmdbTransientError(payload.msg || `TMDB 服务暂时不可用（${payload.code}）`)
+}
 
 export function tmdbImageUrl(path?: string | null, size: string = 'w500'): string {
   const imagePath = String(path || '').replace(/^\/+/, '')
@@ -48,7 +126,7 @@ export class TmdbService {
     queryName: string,
     year?: string,
     tmdbId?: string,
-    fileHash?: string,
+    fingerprint?: TmdbFingerprintInput,
     fileName?: string
   ): Promise<MovieItem | null> {
     try {
@@ -65,9 +143,7 @@ export class TmdbService {
       if (year) {
         params.append('year', year)
       }
-      if (fileHash) {
-        params.append('md5', fileHash)
-      }
+      appendFingerprint(params, fingerprint)
       if (fileName) {
         params.append('fileName', fileName)
       }
@@ -75,10 +151,11 @@ export class TmdbService {
       const response = await fetchWithRetry(`${TMDB_BASE_URL}/movie?${params}`)
 
       const data: MovieItemResponse = await response.json()
-      return data.data || null
+      return unwrapTmdbResponse(data)
     } catch (error) {
       console.error('Error searching movie:', error)
-      return null
+      if (error instanceof TmdbTransientError) throw error
+      throw new TmdbTransientError(error instanceof Error ? error.message : 'TMDB 查询失败')
     }
   }
 
@@ -113,7 +190,7 @@ export class TmdbService {
     season: number,
     year?: string,
     tmdbId?: string,
-    fileHash?: string,
+    fingerprint?: TmdbFingerprintInput,
     fileName?: string
   ): Promise<MediaLibraryTvSeriesItem | null> {
     try {
@@ -131,9 +208,7 @@ export class TmdbService {
       if (year) {
         params.append('year', year)
       }
-      if (fileHash) {
-        params.append('md5', fileHash)
-      }
+      appendFingerprint(params, fingerprint)
       if (fileName) {
         params.append('fileName', fileName)
       }
@@ -141,10 +216,11 @@ export class TmdbService {
       const response = await fetchWithRetry(`${TMDB_BASE_URL}/tv?${params}`)
 
       const data: TvSeriesItemResponse = await response.json()
-      return data.data || null
+      return unwrapTmdbResponse(data)
     } catch (error) {
       console.error('Error searching TV show:', error)
-      return null
+      if (error instanceof TmdbTransientError) throw error
+      throw new TmdbTransientError(error instanceof Error ? error.message : 'TMDB 查询失败')
     }
   }
 

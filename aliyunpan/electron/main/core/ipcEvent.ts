@@ -10,7 +10,6 @@ import { getAsarPath, getStaticPath, getUserDataPath } from '../utils/mainfile'
 import { registerMediaImageCacheIpc } from '../mediaImageCache'
 import { createHash } from 'crypto'
 import { getMotrixApplicationRpcPort } from '../aria/runtime'
-import { pathToFileURL } from 'url'
 import { request as httpsRequest } from 'https'
 import { requestPanHub, requestPanHubStream } from './panHubRequest'
 import { embeddedMpvBridge } from '../mpv/embeddedMpvBridge'
@@ -35,11 +34,17 @@ import {
   wipeAllData,
   destroyDb
 } from '../reedy/ReedyService'
-import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, beginMediaAcquisitionSearch, cancelMediaAcquisitionRun, claimRunnableMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, clearMediaAcquisitionNotifications, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, createMediaAcquisitionTracking, endMediaAcquisitionTracking, failMediaAcquisitionCandidate, failMediaAcquisitionRun, finishMediaAcquisitionSearchWithoutCandidates, forceCancelMediaAcquisitionRun, getMediaAcquisitionAgentSandbox, getMediaAcquisitionAgentSession, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionCandidateLocator, getMediaAcquisitionTarget, listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionStates, listMediaAcquisitionTracking, listRunnableMediaAcquisitionRuns, markMediaAcquisitionCandidateTransferring, markMediaAcquisitionNoCoverage, markMediaAcquisitionNotificationsRead, partialMediaAcquisitionCandidate, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, retryMediaAcquisitionSearch, saveMediaAcquisitionAgentSandbox, saveMediaAcquisitionAgentSession, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from '../mediaAcquisition/MediaAcquisitionService'
+import { addMediaAcquisitionCandidate, addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, beginMediaAcquisitionSearch, cancelMediaAcquisitionRun, claimRunnableMediaAcquisitionRun, clearCompletedMediaAcquisitionRuns, clearMediaAcquisitionNotifications, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, createMediaAcquisitionTracking, endMediaAcquisitionTracking, failMediaAcquisitionCandidate, failMediaAcquisitionRun, finishMediaAcquisitionSearchWithoutCandidates, forceCancelMediaAcquisitionRun, getMediaAcquisitionAgentSandbox, getMediaAcquisitionAgentSession, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionTarget, listMediaAcquisitionNotifications, listMediaAcquisitionRuns, listMediaAcquisitionStates, listMediaAcquisitionTracking, listRunnableMediaAcquisitionRuns, markMediaAcquisitionCandidateTransferring, markMediaAcquisitionNoCoverage, markMediaAcquisitionNotificationsRead, partialMediaAcquisitionCandidate, recordMediaAcquisitionCandidateBaseline, recordMediaAcquisitionExternalTask, recordMediaAcquisitionTransferIntent, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, retryMediaAcquisitionSearch, saveMediaAcquisitionAgentSandbox, saveMediaAcquisitionAgentSession, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from '../mediaAcquisition/MediaAcquisitionService'
+import { getMediaAcquisitionProviderTransferStatus, submitMediaAcquisitionExternalUrl, submitMediaAcquisitionProviderShareImport, submitMediaAcquisitionProviderTransfer } from '../mediaAcquisition/MediaProviderAdapter'
 import type { CreateMediaAcquisitionCandidateInput, CreateMediaAcquisitionRunInput, CreateMediaAcquisitionTrackingInput, MediaAcquisitionEvent, MediaAcquisitionFileSnapshot, MediaAcquisitionPhase } from '@shared/types/mediaAcquisition'
 import { getAssrtSubtitleFiles, searchAssrtSubtitles } from '../mediaAcquisition/assrt'
-import { addWorkspaceEvidence, addWorkspaceEvent, approveWorkspacePlan, archiveWorkspaceTask, cancelWorkspaceTask, completeWorkspaceTask, createWorkspaceTask, getWorkspaceTask, listWorkspaceTasks, rejectWorkspacePlan, restoreWorkspaceTask, resumeWorkspaceTask, saveWorkspacePlan, updateWorkspacePlanSelection } from '../workspaceAgent/WorkspaceAgentService'
+import { addWorkspaceEvidence, addWorkspaceEvent, approveWorkspacePlan, archiveWorkspaceTask, cancelWorkspaceTask, completeWorkspaceTask, createWorkspaceTask, getWorkspaceTask, getWorkspaceTaskV1Audit, listWorkspaceTasks, rejectWorkspacePlan, restoreWorkspaceTask, resumeWorkspaceTask, saveWorkspacePlan, updateWorkspacePlanSelection } from '../workspaceAgent/WorkspaceAgentService'
 import type { CreateWorkspacePlanInput, CreateWorkspaceTaskInput, UpdateWorkspacePlanSelectionInput, WorkspaceExecutionEvent } from '@shared/types/workspaceAgent'
+import { agentV1Status, getAgentWorkflow } from '../agent/AgentControlService'
+import { beginAiSearchV1Audit, collectAiSearchStorageStats, confirmAiSearchV1Write, finishAiSearchV1Audit, recordAiSearchV1Evidence, type BeginAiSearchV1AuditInput, type RecordAiSearchV1EvidenceInput } from '../aiSearch/AiSearchV1Bridge'
+import { beginMediaAcquisitionV1Transfer, completeMediaAcquisitionV1Transfer, type MediaAcquisitionTransferTicket } from '../mediaAcquisition/MediaAcquisitionV1Bridge'
+import { beginDocumentV1Audit, finishDocumentV1Audit, recordDocumentV1Citation, type DocumentAgentV1Source } from '../documentInsight/DocumentAgentV1Bridge'
+import { runBundledCloudDriveCli } from '../agent/CloudDriveCliGateway'
 import { completeDocumentReadingUnit, createDocumentReadingJob, failDocumentReadingUnit, getDocumentReadingJob, listDocumentReadingJobs, setDocumentReadingJobStatus } from '../documentInsight/DocumentReadingService'
 import type { CreateDocumentReadingJobInput, DocumentReadingJobStatus } from '@shared/types/documentReading'
 import { downloadAndExtractPdf } from '../documentInsight/PdfExtractionService'
@@ -125,12 +130,6 @@ function convertOfficeFileToPdf(soffice: string, inputPath: string, outDir: stri
       }
     })
   })
-}
-
-async function runBundledCloudDriveCli(args: string[]) {
-  const modulePath = path.join(app.getAppPath(), 'clouddrive-cli', 'core', 'commands.mjs')
-  const mod = await import(pathToFileURL(modulePath).href)
-  return mod.runBoxPlayerCli(args)
 }
 
 function pushCliOption(argv: string[], flag: string, value: unknown) {
@@ -275,7 +274,10 @@ export default class ipcEvent {
     ipcMain.handle('mediaAcquisition:finishSearchWithoutCandidates', (_event, runId: string) => finishMediaAcquisitionSearchWithoutCandidates(runId))
     ipcMain.handle('mediaAcquisition:retrySearch', (_event, runId: string, message: string, delayMs: number, maxRetries?: number) => retryMediaAcquisitionSearch(runId, message, delayMs, maxRetries))
     ipcMain.handle('mediaAcquisition:addCandidate', (_event, runId: string, input: CreateMediaAcquisitionCandidateInput) => addMediaAcquisitionCandidate(runId, input))
-    ipcMain.handle('mediaAcquisition:getCandidateLocator', (_event, runId: string, candidateId: string) => getMediaAcquisitionCandidateLocator(runId, candidateId))
+    ipcMain.handle('mediaAcquisition:submitProviderTransfer', (_event, data: { runId: string; candidateId: string; parentId: string; ticket?: MediaAcquisitionTransferTicket | null }) => submitMediaAcquisitionProviderTransfer(data.runId, data.candidateId, data.parentId, data.ticket))
+    ipcMain.handle('mediaAcquisition:submitProviderShareImport', (_event, data: { runId: string; candidateId: string; parentId: string; ticket?: MediaAcquisitionTransferTicket | null }) => submitMediaAcquisitionProviderShareImport(data.runId, data.candidateId, data.parentId, data.ticket))
+    ipcMain.handle('mediaAcquisition:submitExternalUrl', (_event, data: { runId: string; parentId: string; url: string; fileName: string }) => submitMediaAcquisitionExternalUrl(data.runId, data.parentId, data.url, data.fileName))
+    ipcMain.handle('mediaAcquisition:getProviderTransferStatus', (_event, data: { runId: string; taskId?: string; fileId?: string }) => getMediaAcquisitionProviderTransferStatus(data.runId, data.taskId, data.fileId))
     ipcMain.handle('mediaAcquisition:recordCandidateBaseline', (_event, runId: string, candidateId: string, files: MediaAcquisitionFileSnapshot[]) => recordMediaAcquisitionCandidateBaseline(runId, candidateId, files))
     ipcMain.handle('mediaAcquisition:getCandidateBaseline', (_event, runId: string, candidateId: string) => getMediaAcquisitionCandidateBaseline(runId, candidateId))
     ipcMain.handle('mediaAcquisition:markCandidateTransferring', (_event, runId: string, candidateId: string) => markMediaAcquisitionCandidateTransferring(runId, candidateId))
@@ -299,6 +301,7 @@ export default class ipcEvent {
     ipcMain.handle('workspaceAgent:create', (_event, input: CreateWorkspaceTaskInput) => createWorkspaceTask(input))
     ipcMain.handle('workspaceAgent:list', (_event, limit?: number, includeArchived?: boolean) => listWorkspaceTasks(limit, includeArchived))
     ipcMain.handle('workspaceAgent:get', (_event, taskId: string) => getWorkspaceTask(taskId))
+    ipcMain.handle('workspaceAgent:getV1Audit', (_event, taskId: string) => getWorkspaceTaskV1Audit(taskId))
     ipcMain.handle('workspaceAgent:addEvidence', (_event, taskId: string, source: string, summary: string, data: Record<string, unknown>) => addWorkspaceEvidence(taskId, source, summary, data))
     ipcMain.handle('workspaceAgent:savePlan', (_event, input: CreateWorkspacePlanInput) => saveWorkspacePlan(input))
     ipcMain.handle('workspaceAgent:approve', (_event, taskId: string, hash: string) => approveWorkspacePlan(taskId, hash))
@@ -310,6 +313,18 @@ export default class ipcEvent {
     ipcMain.handle('workspaceAgent:archive', (_event, taskId: string) => archiveWorkspaceTask(taskId))
     ipcMain.handle('workspaceAgent:restore', (_event, taskId: string) => restoreWorkspaceTask(taskId))
     ipcMain.handle('workspaceAgent:addEvent', (_event, taskId: string, level: WorkspaceExecutionEvent['level'], message: string, data?: Record<string, unknown>) => addWorkspaceEvent(taskId, level, message, data))
+    ipcMain.handle('agentV1:status', () => agentV1Status())
+    ipcMain.handle('agentV1:getWorkflow', (_event, workflowId: string) => getAgentWorkflow(workflowId))
+    ipcMain.handle('agentV1:aiSearch:beginAudit', (_event, input: BeginAiSearchV1AuditInput) => beginAiSearchV1Audit(input))
+    ipcMain.handle('agentV1:aiSearch:recordEvidence', (_event, input: RecordAiSearchV1EvidenceInput) => recordAiSearchV1Evidence(input))
+    ipcMain.handle('agentV1:aiSearch:finishAudit', (_event, sessionId: string, runId: string, status?: 'completed' | 'failed' | 'cancelled', message?: string) => finishAiSearchV1Audit(sessionId, runId, status, message))
+    ipcMain.handle('agentV1:aiSearch:collectStorageStats', (_event, workflowId: string) => collectAiSearchStorageStats(workflowId))
+    ipcMain.handle('agentV1:aiSearch:confirmWrite', (_event, input: import('../aiSearch/AiSearchV1Bridge').ConfirmAiSearchV1WriteInput) => confirmAiSearchV1Write(input))
+    ipcMain.handle('agentV1:media:beginTransfer', (_event, runId: string, candidateId: string, reason: string) => beginMediaAcquisitionV1Transfer(runId, candidateId, reason))
+    ipcMain.handle('agentV1:media:completeTransfer', (_event, ticket: MediaAcquisitionTransferTicket, success: boolean, message: string) => completeMediaAcquisitionV1Transfer(ticket, success, message))
+    ipcMain.handle('agentV1:document:beginAudit', (_event, input: { sessionId: string; runId: string; goal: string; sources: DocumentAgentV1Source[] }) => beginDocumentV1Audit(input))
+    ipcMain.handle('agentV1:document:recordCitation', (_event, workflowId: string, input: { sourceId: string; location: string }) => recordDocumentV1Citation(workflowId, input))
+    ipcMain.handle('agentV1:document:finishAudit', (_event, workflowId: string, status: 'completed' | 'failed' | 'cancelled', message: string) => finishDocumentV1Audit(workflowId, status, message))
   }
 
   private static handleDocumentReading() {

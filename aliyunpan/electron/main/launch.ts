@@ -1,5 +1,6 @@
 import { AppWindow, createMainWindow, createTray } from './core/window'
 import { startMediaAcquisitionWakeScheduler } from './mediaAcquisition/MediaAcquisitionWakeScheduler'
+import { startAgentCliExecutionScheduler, stopAgentCliExecutionScheduler } from './agent/AgentCliExecutionScheduler'
 import { app, ipcMain, protocol, session } from 'electron'
 import { registerAutoUpdate } from './core/autoUpdate'
 import { registerMediaImageCacheProtocol } from './mediaImageCache'
@@ -289,6 +290,7 @@ export default class launch extends EventEmitter {
         createMainWindow()
         registerExternalFileProtocol(() => AppWindow.mainWindow)
         startMediaAcquisitionWakeScheduler()
+        startAgentCliExecutionScheduler()
         createTray()
         registerAutoUpdate()
         if (this.pendingOAuthUrl) {
@@ -348,6 +350,7 @@ export default class launch extends EventEmitter {
 
   handleAppWillQuit() {
     app.on('will-quit', async () => {
+      stopAgentCliExecutionScheduler()
       this.stopGoogleOAuthLoopback()
       try { await this.motrixApp?.quit() } catch {}
       try { destroyDb() } catch {}

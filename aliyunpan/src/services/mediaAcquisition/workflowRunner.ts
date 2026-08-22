@@ -1,21 +1,18 @@
 import type { IAliGetFileModel } from '../../aliapi/alimodels'
-import { apiCloud123OfflineProcess } from '../../cloud123/offline'
-import { apiDrive115OfflineProcess } from '../../cloud115/offline'
-import { apiGuangyaOfflineProcess } from '../../guangya/offline'
-import { apiPikPakOfflineProcess } from '../../pikpak/offline'
 import AliFileCmd from '../../aliapi/filecmd'
 import { MediaScanner } from '../../utils/mediaScanner'
 import Config from '../../config'
 import useSettingStore from '../../setting/settingstore'
 import { getAIConfig } from '../../utils/bookAI'
 import { runBoxPlayerAgent } from '../agent'
+import { beginMediaAcquisitionV1Transfer, completeMediaAcquisitionV1Transfer, type MediaAcquisitionV1TransferTicket } from '../agent/agentV1AuditClient'
 import { z } from 'zod'
 import type { MediaAcquisitionCandidate, MediaAcquisitionFileSnapshot, MediaAcquisitionRunView, MediaAcquisitionSeasonTarget, MediaAcquisitionTarget, MediaAcquisitionTrackingItem } from '@shared/types/mediaAcquisition'
 import { searchAdditionalMediaAcquisitionCandidates, searchMediaAcquisitionCandidates } from './agent'
 import { executeMediaAcquisitionHttpCandidate, executeMediaAcquisitionMagnetCandidate } from './magnetExecutor'
 import { executeMediaAcquisitionShareCandidate } from './shareExecutor'
 import { transferAutoChineseSubtitle, viewAutoChineseSubtitleSnapshot } from './subtitleExecutor'
-import { addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, claimRunnableMediaAcquisitionRun, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, failMediaAcquisitionCandidate, failMediaAcquisitionRun, getMediaAcquisitionAgentSandbox, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionTarget, listMediaAcquisitionRuns, listMediaAcquisitionTracking, markMediaAcquisitionNoCoverage, partialMediaAcquisitionCandidate, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, saveMediaAcquisitionAgentSandbox, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from './client'
+import { addMediaAcquisitionEvent, beginMediaAcquisitionCandidateVerification, beginMediaAcquisitionOrganizing, claimRunnableMediaAcquisitionRun, completeMediaAcquisitionCandidate, completeMediaAcquisitionRun, continueMediaAcquisitionAfterPartial, createMediaAcquisitionRun, failMediaAcquisitionCandidate, failMediaAcquisitionRun, getMediaAcquisitionAgentSandbox, getMediaAcquisitionCandidateBaseline, getMediaAcquisitionProviderTransferStatus, getMediaAcquisitionTarget, listMediaAcquisitionRuns, listMediaAcquisitionTracking, markMediaAcquisitionNoCoverage, partialMediaAcquisitionCandidate, releaseMediaAcquisitionRunClaim, renewMediaAcquisitionRunClaim, retryMediaAcquisitionCandidate, saveMediaAcquisitionAgentSandbox, selectMediaAcquisitionCandidate, updateMediaAcquisitionExternalTaskProgress, upsertMediaAcquisitionTracking } from './client'
 import { buildTrackingSnapshot, extractObtainedEpisodeNumbers, nextPatrolAt, readTrackingMetadata } from './tracking'
 import { isPro } from '../../utils/usageLimit'
 import { assessMediaAcquisitionEpisodeCoverage, canTryNextMediaAcquisitionCandidate, isMediaAcquisitionCandidateSupported, isSystemicMediaAcquisitionFailure, isTransientMediaAcquisitionFailure, mediaAcquisitionCandidateCoveragePlan, scoreMediaAcquisitionCandidate } from './candidatePolicy'
@@ -45,14 +42,6 @@ const VIDEO_EXT = /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|rmvb|ts|m2ts
 const SUBTITLE_EXT = /\.(srt|ass|ssa|sub|idx|vtt|sup|smi)$/i
 const AGENT_SECRET_KEY = /authorization|cookie|token|password|secret|api[_-]?key|locator/i
 const TERMINAL_RUN_STATUSES = new Set<MediaAcquisitionRunView['status']>(['completed', 'partial', 'no_coverage', 'failed', 'cancelled'])
-const MEDIA_ACQUISITION_SANDBOX_SKILLS = {
-  protocol: '每个写操作前先列出证据、事实和最小行动。候选标题是线索，暂存目录与目标目录的真实回读才是落盘事实。所有写操作只能使用本轮 inspect 或资源快照返回的句柄。',
-  search: '搜索只为形成覆盖当前需求的最小候选集；已有可靠覆盖时停止搜索和转存。关键词必须包含片名，画质与字幕词只用于排序，不应缩窄检索。',
-  transfer: 'transferCandidate 必须使用本任务已观察到的 snapshotId 与 candidateId。账户空间、登录、VIP、鉴权等系统性错误立即停止，不再尝试其它候选；普通失效分享才交回下一轮 Agent 决策。',
-  organize: '落盘后先 inspectStaging。剧集/动画用 moveToSeason 提交已观察文件 ID，电影用 flattenMovie。随后 inspectTargetDir，确认真实文件后才能 markObtained。',
-  cleanup: '目标目录确认后，剧集/动画只清理本候选专属暂存目录；电影目录是最终目录，不得清理。deleteFiles 只能删除相应 inspect 快照内的文件。'
-} as const
-type MediaAcquisitionSkillSection = keyof typeof MEDIA_ACQUISITION_SANDBOX_SKILLS
 type MediaAcquisitionSubtitleSnapshotCandidate = { id: string; name: string; language: string; score: number }
 let timer: number | undefined
 let initialTickTimer: number | undefined
@@ -412,8 +401,8 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
   const observedTargetCoverage = new Set<string>()
   const subtitleSnapshots = new Map<string, MediaAcquisitionSubtitleSnapshotCandidate[]>()
   const transferredSubtitleFileIds = new Set<string>()
-  const readSkillSections = new Set<MediaAcquisitionSkillSection>()
   const observedCandidateSnapshots = new Map<string, Set<string>>()
+  const mediaTransferTickets = new Map<string, MediaAcquisitionV1TransferTicket>()
   const targetSnapshots = new Map<number, Promise<MediaAcquisitionFileSnapshot[]>>()
   const searchEvidence = getMediaAcquisitionSearchEvidence(run.events)
   let additionalSearchCount = searchEvidence.agentKeywords.size
@@ -424,12 +413,9 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
   const additionalSearchKeywords = new Set([...searchEvidence.providerKeywords, normalizeSearchKeyword(run.target.title)])
   const searchBudget = run.target.mediaType === 'movie' ? MOVIE_AGENT_SEARCH_BUDGET : AGENT_SEARCH_BUDGET
   const transferUntilLandedAvailable = run.target.mediaType === 'movie' && normalizeMediaAcquisitionPlatform(run.target.targetPlatform) === '115' && !!getMediaAcquisitionCapability(run.target.targetPlatform)?.shareImport
-  const selectionTools = ['readSkill', 'listCandidates', 'viewResourceSnapshot', 'searchResources', 'inspectTargetDir', 'transferCandidate', ...(transferUntilLandedAvailable ? ['transferUntilLanded'] : []), 'reportNoCoverage']
-  const organizingTools = ['readSkill', 'inspectTargetDir', 'inspectStaging', 'moveToSeason', 'flattenMovie', 'deleteFiles', 'markObtained', 'viewSubtitleSnapshot', 'transferSubtitle', 'renameSubtitle', 'discardStaging', 'finish']
+  const selectionTools = ['listCandidates', 'viewResourceSnapshot', 'searchResources', 'inspectTargetDir', 'transferCandidate', ...(transferUntilLandedAvailable ? ['transferUntilLanded'] : []), 'reportNoCoverage']
+  const organizingTools = ['inspectTargetDir', 'inspectStaging', 'moveToSeason', 'flattenMovie', 'deleteFiles', 'markObtained', 'viewSubtitleSnapshot', 'transferSubtitle', 'renameSubtitle', 'discardStaging', 'finish']
   const persistedSandbox = await getMediaAcquisitionAgentSandbox(run.id)
-  for (const section of mediaAcquisitionSandboxStringArray(persistedSandbox.readSkillSections)) {
-    if (section in MEDIA_ACQUISITION_SANDBOX_SKILLS) readSkillSections.add(section as MediaAcquisitionSkillSection)
-  }
   for (const [snapshotId, candidateIds] of mediaAcquisitionSandboxSnapshots(persistedSandbox.candidateSnapshots)) observedCandidateSnapshots.set(snapshotId, new Set(candidateIds))
   for (const [snapshotId, candidates] of mediaAcquisitionSandboxSubtitleSnapshots(persistedSandbox.subtitleSnapshots)) subtitleSnapshots.set(snapshotId, candidates)
   for (const fileId of mediaAcquisitionSandboxStringArray(persistedSandbox.transferredSubtitleFileIds)) transferredSubtitleFileIds.add(fileId)
@@ -453,22 +439,10 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
     await runBoxPlayerAgent({
       surface: 'ai_search',
       model: config,
-      systemPrompt: `你是 BoxPlayer 媒体获取 Agent，在严格 sandbox 内按“观察 -> 决策 -> 行动 -> 核验”执行。每轮只调用一个当前必要的工具，等待结果后再决定下一步。readSkill 提供按需领域手册；只在相关情境首次出现或规则确实遗忘时读取对应章节，不要预读全部章节，不要把阅读手册当作独立目标。只能使用系统提供的候选和工具，不得编造链接或尝试其它网盘操作。选择阶段必须先调用 viewResourceSnapshot 查看系统预热的裸标题快照；候选只能通过该工具或 searchResources 观察。先确认标题和年份；缺集任务优先覆盖缺失集。每次读取会返回 snapshotId，transferCandidate 必须携带该已读 snapshotId，不能使用未读或过期快照的候选。如果候选不足、不可靠或未覆盖缺集，可以使用 searchResources 追加搜索，但关键词必须包含目标标题且不要加入画质、字幕等噪声词；缺集、追更或疑似重复入库时应使用 inspectTargetDir 查看目标目录快照。分享导入、磁力离线和 HTTP 外链离线基础优先级相同，统一按用户画质、字幕语言、年份和季集覆盖证据排序。画质与语言只依据候选标题证据判断，不能声称标题未标明的能力。蓝光原盘、ISO、BDMV 不是优先的可播放视频。候选落盘后，先 inspectStaging；外挂字幕先进入同一暂存区，使用 renameSubtitle 批量改为与对应视频同名后，再与视频同批 moveToSeason；核验目标目录、markObtained、discardStaging 后才 finish。${transferUntilLandedAvailable ? '电影的多个同片 115 分享候选可用 transferUntilLanded 按你给出的顺序串行尝试；首个落盘或异步提交后必须停止。' : '当前目标网盘未开放 115 分享导入，不得调用 transferUntilLanded；只使用已开放的转存方式。'}其它情况调用 transferCandidate 提交一次受限转存并写明选择理由；转存工具会记录真实任务状态。只有所有已观察候选都明显不可靠、无法覆盖或确属其它作品时才调用 reportNoCoverage。reportNoCoverage 的理由只能引用当前目标「${run.target.title}」及当前候选证据，不能出现其它影视任务的标题。`,
+      systemPrompt: `你是 BoxPlayer 媒体获取 Agent，在严格 sandbox 内按“观察 -> 决策 -> 行动 -> 核验”执行。每轮只调用一个当前必要的工具，等待结果后再决定下一步。只能使用系统提供的候选和工具，不得编造链接或尝试其它网盘操作。每个写操作前先列出证据、事实和最小行动；候选标题只是线索，暂存目录与目标目录的真实回读才是落盘事实。选择阶段必须先调用 viewResourceSnapshot 查看系统预热的裸标题快照；候选只能通过该工具或 searchResources 观察。先确认标题和年份；缺集任务优先覆盖缺失集。每次读取会返回 snapshotId，transferCandidate 必须携带该已读 snapshotId，不能使用未读或过期快照的候选。如果候选不足、不可靠或未覆盖缺集，可以使用 searchResources 追加搜索，但关键词必须包含目标标题且不要加入画质、字幕等噪声词；缺集、追更或疑似重复入库时应使用 inspectTargetDir 查看目标目录快照。分享导入、磁力离线和 HTTP 外链离线基础优先级相同，统一按用户画质、字幕语言、年份和季集覆盖证据排序。画质与语言只依据候选标题证据判断，不能声称标题未标明的能力。蓝光原盘、ISO、BDMV 不是优先的可播放视频。候选落盘后，先 inspectStaging；外挂字幕先进入同一暂存区，使用 renameSubtitle 批量改为与对应视频同名后，再与视频同批 moveToSeason；核验目标目录、markObtained、discardStaging 后才 finish。${transferUntilLandedAvailable ? '电影的多个同片 115 分享候选可用 transferUntilLanded 按你给出的顺序串行尝试；首个落盘或异步提交后必须停止。' : '当前目标网盘未开放 115 分享导入，不得调用 transferUntilLanded；只使用已开放的转存方式。'}其它情况调用 transferCandidate 提交一次受限转存并写明选择理由；转存工具会记录真实任务状态。只有所有已观察候选都明显不可靠、无法覆盖或确属其它作品时才调用 reportNoCoverage。reportNoCoverage 的理由只能引用当前目标「${run.target.title}」及当前候选证据，不能出现其它影视任务的标题。`,
       prompt: active ? `继续同一个 sandbox：候选「${active.title}」已提交或已落盘。禁止再选或转存其它候选；先 inspectStaging，随后完成整理、核验、清理和 finish。` : `为「${run.target.title}${run.target.year ? ` (${run.target.year})` : ''}」选择资源。${run.target.alternativeTitles?.length ? `可确认别名：${run.target.alternativeTitles.join('、')}。` : ''}${mediaAcquisitionSeasonTargets(run.target).length ? `覆盖计划：${mediaAcquisitionSeasonTargets(run.target).map(target => `S${String(target.seasonNumber).padStart(2, '0')}${target.missingEpisodes.length ? ` E${target.missingEpisodes.join('、E')}` : ''}`).join('；')}。候选可以先覆盖其中一季；每次落盘后必须依据逐季目录事实决定是否还需要下一个候选。` : ''}目标网盘：${run.target.targetPlatform}。画质偏好：${run.target.preferredQuality || 'auto'}；${run.target.fetchSubtitles ? `字幕语言偏好：${run.target.preferredLanguage || 'auto'}` : '用户未要求字幕'}。候选已按规则分数从高到低排列；请比较全部候选，必要时核对各季目标目录后选择。${failedCandidates.length ? '已有候选失败，请根据失败证据重新选择，不能机械地按原搜索顺序轮询。' : ''}`,
       untrustedContext: { sandboxState: mediaAcquisitionSandboxState(run) },
       tools: {
-        readSkill: {
-          description: `按需读取媒体获取领域手册。可用章节：${Object.keys(MEDIA_ACQUISITION_SANDBOX_SKILLS).join('、')}。在对应情境出现时读取或重读相关章节，然后继续观察、行动和核验。`,
-          inputSchema: z.object({ section: z.enum(['protocol', 'search', 'transfer', 'organize', 'cleanup']) }),
-          allowErrorResult: true,
-          execute: (args: { section: MediaAcquisitionSkillSection }) => {
-            const alreadyRead = readSkillSections.has(args.section)
-            readSkillSections.add(args.section)
-            return alreadyRead
-              ? { section: args.section, alreadyRead: true, instruction: '该章节已读且内容未变化。不要再次读取；继续执行当前阶段的观察、转存或核验工具。' }
-              : { section: args.section, alreadyRead: false, body: MEDIA_ACQUISITION_SANDBOX_SKILLS[args.section] }
-          }
-        },
         listCandidates: {
           description: '列出当前任务可选择的候选资源。',
           inputSchema: z.object({}),
@@ -584,7 +558,9 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
           permission: 'write',
           executionMode: 'sequential',
           allowErrorResult: true,
-          execute: async (args: { snapshotId: string; candidateId: string; reason: string }) => asMediaAcquisitionAgentEvidence(async () => {
+          execute: async (args: { snapshotId: string; candidateId: string; reason: string }, context) => {
+            const ticket = context ? mediaTransferTickets.get(context.toolCallId) : undefined
+            const result = await asMediaAcquisitionAgentEvidence(async () => {
             if (active) return { error: 'SANDBOX_AWAITING_LANDING：已有候选正在落盘或整理，禁止并行转存。' }
             if (transferSubmitted) return { error: 'SANDBOX_AWAITING_LANDING：本轮已提交一个候选，必须等待真实落盘后再继续。' }
             if (await isMediaAcquisitionSandboxCoverageMet(run)) return { error: 'SANDBOX_COVERAGE_ALREADY_MET：目标目录已满足本任务覆盖，拒绝继续转存。' }
@@ -599,9 +575,9 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
             const selected = latest?.candidates.find(item => item.id === candidate.id)
             if (!latest || selected?.status !== 'selected') return { error: '候选已被其他安全事务处理，未提交新的网盘转存。' }
             try {
-              if (selected.kind === 'magnet') await executeMediaAcquisitionMagnetCandidate(latest, selected.id)
-              else if (selected.kind === 'http') await executeMediaAcquisitionHttpCandidate(latest, selected.id)
-              else await executeMediaAcquisitionShareCandidate(latest, selected.id)
+              if (selected.kind === 'magnet') await executeMediaAcquisitionMagnetCandidate(latest, selected.id, ticket)
+              else if (selected.kind === 'http') await executeMediaAcquisitionHttpCandidate(latest, selected.id, ticket)
+              else await executeMediaAcquisitionShareCandidate(latest, selected.id, ticket)
             } catch (error: any) {
               const message = error?.message || '网盘转存失败'
               // Executor 已负责记录候选失败和清理暂存。这里的职责是把账户、
@@ -630,6 +606,14 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
               } : undefined
             }
           })
+            if (ticket && context) {
+              mediaTransferTickets.delete(context.toolCallId)
+              const submitted = !!(result && typeof result === 'object' && (result as { submitted?: unknown }).submitted === true)
+              const message = submitted ? '网盘转存已提交，等待落盘核验' : String((result && typeof result === 'object' && (result as { error?: unknown }).error) || '网盘未提交候选转存')
+              await completeMediaAcquisitionV1Transfer(ticket, submitted, message)
+            }
+            return result
+          }
         },
         transferUntilLanded: {
           description: '仅电影：按 Agent 已确认的优先顺序，依次提交同一影片的分享候选；每次都回读暂存目录，首个真实落盘或进入异步网盘任务后立即停止，绝不并行提交。',
@@ -978,7 +962,32 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
           traceAgentDecision(run.id, 'agent_end', { activeCandidateId: active?.id, transferSubmitted, noCoverageReason, agentStopReason, finished })
         }
       },
-      requestApproval: async () => true,
+      requestApproval: async request => {
+        if (request.toolName === 'transferCandidate') {
+          const args = request.args as { snapshotId?: string; candidateId?: string; reason?: string }
+          const candidate = args.candidateId ? sandboxCandidates(run, candidates).find(item => item.id === args.candidateId) : undefined
+          if (!candidate || !args.snapshotId || !observedCandidateSnapshots.get(args.snapshotId)?.has(candidate.id)) return false
+          const transferKind = candidate.kind === 'share' ? '分享导入' : candidate.kind === 'magnet' ? '磁力离线下载' : 'HTTP 离线下载'
+          const approved = window.confirm(`允许 BoxPlayer 提交候选转存吗？\n\n候选：${candidate.title}\n方式：${transferKind}\n目标：${run.target.targetPlatform} · ${run.target.title}\n\n提交后会先写入一次性执行票据，再由网盘回读核验实际落盘结果。`)
+          if (!approved) {
+            await addMediaAcquisitionEvent(run.id, 'info', 'select', '用户拒绝候选转存。', { tool: 'transferCandidate', candidateId: candidate.id })
+            return false
+          }
+          const ticket = await beginMediaAcquisitionV1Transfer(run.id, candidate.id, String(args.reason || '用户确认候选转存'))
+          if (ticket) mediaTransferTickets.set(request.toolCallId, ticket)
+          return true
+        }
+        if (request.toolName === 'transferUntilLanded') {
+          const args = request.args as { snapshotId?: string; candidateIds?: string[] }
+          const observed = args.snapshotId ? observedCandidateSnapshots.get(args.snapshotId) : undefined
+          const candidatesToTry = [...new Set(args.candidateIds || [])].map(candidateId => sandboxCandidates(run, candidates).find(item => item.id === candidateId)).filter((candidate): candidate is MediaAcquisitionCandidate => !!candidate && !!observed?.has(candidate.id))
+          if (!candidatesToTry.length) return false
+          return window.confirm(`允许 BoxPlayer 依序尝试 ${candidatesToTry.length} 个 115 分享候选吗？\n\n${candidatesToTry.map((candidate, index) => `${index + 1}. ${candidate.title}`).join('\n')}\n\n首个提交成功或检测到落盘后会立即停止。`)
+        }
+        // 其余写操作只能作用于本次已确认候选的暂存目录或目标目录，仍受
+        // sandbox 的已观察文件 ID 与目标根目录约束，不会扩大候选转存授权。
+        return true
+      },
       maxTurns: 60,
       // Scout V2 的单轮硬上限为 60。maxTurns 已为 60，不能再用更小的
       // tool-call 上限提前截断一个仍在按快照核验的 Agent。
@@ -988,7 +997,6 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
     await saveMediaAcquisitionAgentSandbox(run.id, {
       ...persistedSandbox,
       phase: finished ? 'finished' : transferSubmitted ? 'awaiting_landing' : active ? 'organizing' : 'selecting',
-      readSkillSections: [...readSkillSections],
       candidateSnapshots: Object.fromEntries([...observedCandidateSnapshots].map(([snapshotId, candidateIds]) => [snapshotId, [...candidateIds]])),
       subtitleSnapshots: Object.fromEntries([...subtitleSnapshots].map(([snapshotId, candidates]) => [snapshotId, candidates])),
       transferredSubtitleFileIds: [...transferredSubtitleFileIds],
@@ -1029,7 +1037,7 @@ async function runMediaAcquisitionSandboxSelection(run: MediaAcquisitionRunView,
     traceAgentDecision(run.id, 'active_candidate', { candidateId: active.id, title: active.title, status: active.status })
     return { candidate: active }
   }
-  traceAgentDecision(run.id, 'empty_result', { candidateCount: candidates.length, readSkillSections: [...readSkillSections] })
+  traceAgentDecision(run.id, 'empty_result', { candidateCount: candidates.length })
   return { unavailableReason: 'Agent 未给出明确候选选择，未执行自动转存' }
 }
 
@@ -1489,25 +1497,7 @@ function hasRemainingCandidate(run: MediaAcquisitionRunView, candidateId: string
 }
 
 async function getOfflineProcess(run: MediaAcquisitionRunView, candidate: MediaAcquisitionCandidate): Promise<{ progress: number; completed: boolean; failed: boolean; message?: string; error?: string }> {
-  const platform = normalizeMediaAcquisitionPlatform(run.target.targetPlatform)
-  if (!candidate.externalTaskId) return { progress: 100, completed: true, failed: false, message: '正在核对分享转存结果' }
-  if (platform === '115') {
-    const value = await apiDrive115OfflineProcess(run.target.targetUserId, candidate.externalTaskId)
-    return { progress: value.process, completed: value.status === 2 || value.process >= 100, failed: value.status < 0, error: value.error, message: value.name }
-  }
-  if (platform === 'guangya') {
-    const value = await apiGuangyaOfflineProcess(run.target.targetUserId, candidate.externalTaskId)
-    return { progress: value.process, completed: value.status === 2 || value.process >= 100, failed: value.status === 3 || value.status === 4, error: value.error }
-  }
-  if (platform === 'pikpak') {
-    const value = await apiPikPakOfflineProcess(run.target.targetUserId, candidate.externalTaskId, candidate.externalFileId)
-    return { progress: value.process, completed: value.status === 2 || value.process >= 100, failed: value.status === 1, error: value.error }
-  }
-  if (platform === 'cloud123') {
-    const value = await apiCloud123OfflineProcess(run.target.targetUserId, candidate.externalTaskId)
-    return { progress: value.process, completed: value.status === 2 || value.process >= 100, failed: value.status < 0, error: value.error }
-  }
-  return { progress: 0, completed: false, failed: true, message: `${run.target.targetPlatform} 暂无离线任务查询接口` }
+  return getMediaAcquisitionProviderTransferStatus(run.id, candidate.externalTaskId, candidate.externalFileId)
 }
 
 async function inspectLandedMediaFiles(run: MediaAcquisitionRunView, candidate: MediaAcquisitionCandidate): Promise<{ baseline: MediaAcquisitionFileSnapshot[]; current: MediaAcquisitionFileSnapshot[]; added: MediaAcquisitionFileSnapshot[]; landed: MediaAcquisitionFileSnapshot[]; rejected: MediaAcquisitionFileSnapshot[]; snapshotFolderId: string }> {

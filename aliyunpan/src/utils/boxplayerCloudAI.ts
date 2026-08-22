@@ -30,6 +30,7 @@ export interface BoxPlayerCloudMediaScrapeResult {
   season?: number | null
   episode?: number | null
   confidence?: number | null
+  alt_titles?: string[] | null
 }
 
 export interface BoxPlayerCloudStreamCallbacks {
@@ -111,7 +112,7 @@ export async function completeBoxPlayerCloudChat(request: BoxPlayerCloudChatRequ
   return text
 }
 
-export async function scrapeMediaWithBoxPlayerCloud(items: BoxPlayerCloudMediaScrapeItem[]): Promise<BoxPlayerCloudMediaScrapeResult[]> {
+export async function scrapeMediaWithBoxPlayerCloud(items: BoxPlayerCloudMediaScrapeItem[], signal?: AbortSignal): Promise<BoxPlayerCloudMediaScrapeResult[]> {
   const token = await getBoxPlayerAccessToken()
   const response = await fetch(getBoxPlayerMediaScrapeUrl(), {
     method: 'POST',
@@ -119,6 +120,7 @@ export async function scrapeMediaWithBoxPlayerCloud(items: BoxPlayerCloudMediaSc
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
+    signal,
     body: JSON.stringify({ items })
   })
   if (!response.ok) throw new Error(await readCloudAIError(response))
@@ -194,6 +196,7 @@ export function mapBoxPlayerCloudAIError(error: unknown): string {
     monthly_char_quota_exceeded: '本月 AI 字符额度已用完',
     monthly_ai_credit_quota_exceeded: '本月内置 AI 额度已用完。你可以等待下月重置，或在设置中改用自己的 AI API Key。',
     ai_provider_quota_exceeded: 'Cloudflare Unified Billing 余额不足，请先充值后再试',
+    ai_upstream_timeout: 'AI 刮削服务超时，请稍后重试',
     input_too_large: '输入内容过长',
     text_too_large: '文本过长'
   }

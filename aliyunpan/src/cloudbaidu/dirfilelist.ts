@@ -156,6 +156,8 @@ export const mapBaiduFileToAliModel = (item: BaiduFileItem, drive_id: string, pa
     isDir,
     thumbnail,
     path: item.path || '',
-    description
+    description,
+    content_hash: item.md5 || '',
+    content_hash_name: item.md5 ? 'md5' : ''
   }
 }

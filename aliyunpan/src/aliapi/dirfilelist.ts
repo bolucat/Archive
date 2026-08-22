@@ -46,7 +46,7 @@ export function NewIAliFileResp(user_id: string, drive_id: string, dirID: string
 }
 
 export default class AliDirFileList {
-  static ItemJsonmask = 'category%2Ccreated_at%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription%2Cfrom_share_id'
+  static ItemJsonmask = 'category%2Ccreated_at%2Cdrive_id%2Cfile_extension%2Cfile_id%2Chidden%2Cmime_extension%2Cmime_type%2Cname%2Cparent_file_id%2Cpunish_flag%2Csize%2Cstarred%2Ctype%2Cupdated_at%2Cdescription%2Cfrom_share_id%2Ccontent_hash%2Ccontent_hash_name'
 
   static getFileInfo(user_id: string, item: IAliFileItem, downUrl: string, requestDriveId = ''): IAliGetFileModel {
     const size = item.size ? item.size : 0
@@ -78,7 +78,9 @@ export default class AliDirFileList {
       from_share_id: item.from_share_id,
       punish_flag: item.punish_flag,
       description: item.description || '',
-      user_meta: item.user_meta || ''
+      user_meta: item.user_meta || '',
+      content_hash: item.content_hash || '',
+      content_hash_name: item.content_hash_name || ''
     }
     if (!isDir) {
       const icon = getFileIcon(add.category, add.ext, add.ext || item.mime_extension, add.mime_type, add.size)

@@ -18,6 +18,8 @@ export interface MediaLibraryItem {
   imdbId?: string
   tvdbId?: string
   aiScrape?: { provider: string; confidence: number; reason: string; updatedAt: number }
+  // TMDB / AI 暂时不可用时仍显示该文件，并在后续增量扫描中优先重试。
+  scrapeRetrying?: boolean
   metadataSource?: 'tmdb' | 'ai-tmdb' | 'filename' | 'manual'
   metadataUpdatedAt?: number
   seasons?: MediaSeason[]
@@ -113,6 +115,7 @@ export interface DriveFileItem {
   driveServerId: string
   fileSize: number
   contentHash?: string
+  contentHashName?: string
   thumbnailLink?: string
   videoDuration?: string
   height?: number

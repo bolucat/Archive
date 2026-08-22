@@ -82,8 +82,10 @@ app.use(store)
 const settingStore = useSettingStore()
 setLocale(settingStore.uiLanguage)
 settingStore.$subscribe((_mutation, state) => setLocale(state.uiLanguage))
-app.mount('#app')
+// Page components can request cloud data as soon as Vue mounts, so install
+// network-failure tracking before those first requests begin.
 startAnalytics()
+app.mount('#app')
 window.Electron.ipcRenderer.on('mediaAcquisition:wake', () => {
   // A deep-link page can receive the durable main-process wake before the UI
   // switches back to PageMain. The runner is lease-protected, so start it in

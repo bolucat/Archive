@@ -2,6 +2,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import type { CreateMediaAcquisitionCandidateInput, CreateMediaAcquisitionRunInput, CreateMediaAcquisitionTrackingInput, MediaAcquisitionEvent, MediaAcquisitionFileSnapshot, MediaAcquisitionNotification, MediaAcquisitionPhase, MediaAcquisitionRunView, MediaAcquisitionSeasonTarget, MediaAcquisitionState, MediaAcquisitionTarget, MediaAcquisitionTrackingItem } from '@shared/types/mediaAcquisition'
 import { MediaAcquisitionDb } from './MediaAcquisitionDb'
+import { mirrorMediaAcquisitionRun } from './MediaAcquisitionV1Bridge'
 
 let db: MediaAcquisitionDb | null = null
 
@@ -12,12 +13,18 @@ function getDb(): MediaAcquisitionDb {
 
 export function createMediaAcquisitionRun(input: CreateMediaAcquisitionRunInput): MediaAcquisitionRunView {
   validateCreateInput(input)
-  return getDb().createRun(input)
+  const run = getDb().createRun(input)
+  mirrorMediaRun(run)
+  return run
 }
 
 export function listMediaAcquisitionRuns(limit?: number): MediaAcquisitionRunView[] {
-  return getDb().listRuns(Math.min(Math.max(limit || 50, 1), 200))
+  const runs = getDb().listRuns(Math.min(Math.max(limit || 50, 1), 200))
+  runs.forEach(mirrorMediaRun)
+  return runs
 }
+
+export function getMediaAcquisitionRun(runId: string): MediaAcquisitionRunView | null { return getDb().getRun(runId) }
 
 export function listMediaAcquisitionStates(): MediaAcquisitionState[] { return getDb().listStates() }
 export function listRunnableMediaAcquisitionRuns(limit?: number): MediaAcquisitionRunView[] { return getDb().listRunnableRuns(Math.min(Math.max(limit || 20, 1), 100)) }
@@ -66,7 +73,9 @@ export function retryMediaAcquisitionSearch(runId: string, message: string, dela
 export function addMediaAcquisitionCandidate(runId: string, input: CreateMediaAcquisitionCandidateInput): MediaAcquisitionRunView | null {
   if (!runId || !input.title?.trim() || !input.locator?.trim()) throw new Error('候选资源信息不完整')
   if (!['share', 'magnet', 'http'].includes(input.kind)) throw new Error('不支持的候选资源类型')
-  return getDb().addCandidate(runId, input)
+  const run = getDb().addCandidate(runId, input)
+  if (run) mirrorMediaRun(run)
+  return run
 }
 
 export function getMediaAcquisitionCandidateLocator(runId: string, candidateId: string): { locator: string; password?: string } | null {
@@ -161,4 +170,13 @@ function validateTrackingInput(input: CreateMediaAcquisitionTrackingInput): void
   if (!Number.isInteger(input.seasonNumber) || input.seasonNumber <= 0) throw new Error('请选择要追更的季')
   if (!input.targetUserId || !input.targetDriveId || !input.targetPlatform || !input.targetParentFileId) throw new Error('请先选择目标网盘和保存目录')
   if (!['tv', 'anime'].includes(input.mediaType)) throw new Error('只有电视剧和动漫支持追更')
+}
+
+function mirrorMediaRun(run: MediaAcquisitionRunView): void {
+  try {
+    mirrorMediaAcquisitionRun(run)
+  } catch (error) {
+    // Agent V1 is an opt-in shadow path; it must not interrupt legacy acquisition.
+    console.warn('[Agent V1] media acquisition mirror failed', error)
+  }
 }

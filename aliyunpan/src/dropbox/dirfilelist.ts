@@ -163,6 +163,7 @@ export const mapDropboxFileToAliModel = (item: DropboxMetadata, drive_id: string
     thumbnail: '',
     description: encodeDescription(item),
     content_hash: item.content_hash || '',
+    content_hash_name: item.content_hash ? 'dropbox-content-hash' : '',
     created_at: item.server_modified || item.client_modified || '',
     updated_at: item.server_modified || item.client_modified || '',
     type: isDir ? 'folder' : 'file'

@@ -207,7 +207,7 @@ export default class DropboxUploadDisk {
     if (fileui.encType) return 'Dropbox 暂不支持加密上传'
 
     const filePath = path.join(fileui.localFilePath, fileui.File.partPath)
-    const uploadPath = buildDropboxUploadPath(fileui.parent_file_id || 'dropbox_root', fileui.File.name)
+    const uploadPath = buildDropboxUploadPath(fileui.parent_file_id || 'dropbox_root', fileui.File.name, fileui.parent_description || '')
     fileui.Info.uploadState = 'running'
     const { OpenFileHandle } = await import('../utils/filehelper')
     const opened = await OpenFileHandle(filePath)

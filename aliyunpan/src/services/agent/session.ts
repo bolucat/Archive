@@ -71,6 +71,7 @@ export function toPiTools(tools: Record<string, BoxPlayerAgentTool> = {}): Agent
     executionMode: tool.executionMode || ((tool.permission || inferToolPermission(registeredName)) === 'read' ? 'parallel' : 'sequential'),
     execute: async (_toolCallId, args, signal, onUpdate) => {
       const result = await tool.execute(args, {
+        toolCallId: _toolCallId,
         signal,
         reportProgress: progress => onUpdate?.({ content: [{ type: 'text', text: stringifyToolResult(progress) }], details: progress })
       })

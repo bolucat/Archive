@@ -25,8 +25,16 @@ vi.mock('../../user/userdal', () => ({
     GetUserListFromDB: vi.fn().mockResolvedValue([])
   }
 }))
+class MockTmdbTransientError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'TmdbTransientError'
+  }
+}
+
 vi.mock('../tmdb', () => ({
   TmdbService: { getInstance: () => ({}) },
+  TmdbTransientError: MockTmdbTransientError,
   tmdbImageUrl: vi.fn()
 }))
 vi.mock('../db', () => ({
@@ -152,5 +160,24 @@ describe('MediaScanner scan queue', () => {
 
     ;(scanner as any).checkpointScanPersistence(1)
     expect(mediaStore.checkpointPersistenceBatch).toHaveBeenCalledTimes(1)
+  })
+
+  it('automatically retries transient TMDB failures before completing a scan batch', async () => {
+    vi.useFakeTimers()
+    try {
+      const scanner = new MediaScanner()
+      const file = { id: 'retry-file', name: 'Retry.Movie.2026.mkv', path: '/Retry.Movie.2026.mkv', driveId: 'quark', driveServerId: 'quark', fileSize: 1 } as any
+      const processFile = vi.spyOn(scanner as any, 'processVideoFileWithoutAI')
+        .mockRejectedValueOnce(new MockTmdbTransientError('429'))
+        .mockResolvedValueOnce(null)
+
+      const result = (scanner as any).processVideoBatchWithTransientRetry([file], 'folder', 'folder-id')
+      await vi.advanceTimersByTimeAsync(3000)
+
+      await expect(result).resolves.toEqual({ unmatched: [], completed: [file], unresolved: [] })
+      expect(processFile).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

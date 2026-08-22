@@ -16,6 +16,7 @@ import { searchAllDrives } from '../utils/globalSearch'
 import { resolveDriveProvider } from '../utils/driveProvider'
 import UserDAL from '../user/userdal'
 import { completeDocumentReadingUnit, createDocumentReadingJob, extractPdfForDocumentReading, listDocumentReadingJobs, setDocumentReadingJobStatus } from '../services/documents/reading'
+import { beginDocumentV1Audit, finishDocumentV1Audit, recordDocumentV1Citation, type DocumentAgentV1Source } from '../services/agent/agentV1AuditClient'
 import { renderMarkdown as renderDocumentMarkdown } from '../layout/aisearch/markdown'
 import type { DocumentReadingJobView } from '@shared/types/documentReading'
 import message from '../utils/message'
@@ -147,6 +148,19 @@ function getDocumentAIConfig() {
   // configuration so a configured main workspace also works in PDF preview.
   migrateSoleSavedBYOKAsDefault()
   return getAIConfig()
+}
+
+function getDocumentAuditSources(): DocumentAgentV1Source[] {
+  return readySources.value.flatMap(source => {
+    const file = source.file || {}
+    const userId = String(source.userId || '')
+    const driveId = String(file.drive_id || '')
+    const fileId = String(file.file_id || '')
+    const token = UserDAL.GetUserToken(userId)
+    const route = resolveDriveProvider(userId, driveId, token?.tokenfrom)
+    if (!userId || !driveId || !fileId || !route.isValid) return []
+    return [{ sourceId: source.id, fileName: source.fileName, userId, driveId, fileId, parentFileId: String(file.parent_file_id || '') || undefined, platform: route.provider }]
+  })
 }
 
 function requireDocumentAIPro(): boolean {
@@ -359,6 +373,8 @@ async function ask(promptOverride?: string) {
   const settings = createBookAISettings()
   const provider = getAIProvider(settings)
   const controller = new AbortController()
+  const auditRunId = crypto.randomUUID()
+  const auditWorkflowId = await beginDocumentV1Audit({ sessionId: `document:${readySources.value.map(source => source.id).join(',')}`, runId: auditRunId, goal: prompt, sources: getDocumentAuditSources() }).catch(() => null)
   abortController.value = controller
   answerTimedOut.value = false
   asking.value = true
@@ -386,10 +402,13 @@ async function ask(promptOverride?: string) {
         status.value = '已检索到证据，正在生成回答…'
         const item: DocumentCitation = { sourceId: citation.sourceId, sourceFile: citation.sourceFile, location: citation.location || '正文', section: citation.section || '正文', text: citation.text }
         if (!assistantMessage.citations.some(existing => existing.sourceId === item.sourceId && existing.location === item.location && existing.text === item.text)) assistantMessage.citations.push(item)
+        if (auditWorkflowId) void recordDocumentV1Citation(auditWorkflowId, { sourceId: item.sourceId, location: item.location })
       }
     })
     if (!assistantMessage.text.trim()) throw new Error('模型未返回回答，请重试')
+    if (auditWorkflowId) void finishDocumentV1Audit(auditWorkflowId, 'completed', '文档问答已完成。')
   } catch (error: any) {
+    if (auditWorkflowId) void finishDocumentV1Audit(auditWorkflowId, controller.signal.aborted ? 'cancelled' : 'failed', errorMessage(error))
     if (controller.signal.aborted) {
       status.value = answerTimedOut.value ? '回答超时，已停止本次请求。' : '已停止本次回答。'
       if (!assistantMessage.text) assistantMessage.text = answerTimedOut.value ? '回答超过 90 秒仍未完成，已停止本次请求。' : '已停止本次回答。'

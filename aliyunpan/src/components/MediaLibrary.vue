@@ -1783,6 +1783,7 @@ const getItemDisplayImage = (item: MediaLibraryItem) => {
 }
 
 const getItemTypeLabel = (item: MediaLibraryItem) => {
+  if (item.scrapeRetrying) return t('media.retryable')
   if (item.type === 'movie') return t('mediaLibrary.typeMovie')
   if (item.type === 'tv') return t('mediaLibrary.typeTv')
   return t('mediaLibrary.typeUnmatched')

@@ -4,6 +4,7 @@ import Config from '../../config'
 import { getAIConfig } from '../../utils/bookAI'
 import { isBoxPlayerCloudProvider, mapBoxPlayerCloudAIError } from '../../utils/boxplayerCloudAI'
 import { isLeakedAgentContext, runBoxPlayerAgent } from '../../services/agent'
+import { beginAiSearchV1Audit, collectAiSearchStorageStats, confirmAiSearchV1Write, finishAiSearchV1Audit, getAgentV1Workflow, recordAiSearchV1Evidence } from '../../services/agent/agentV1AuditClient'
 import { buildBoxPlayerCapabilityKnowledge, BOXPLAYER_CAPABILITIES, getBoxPlayerCapability } from '../../services/agent/boxplayerCapabilities'
 import { buildWorkspaceMemoryContext, forgetWorkspaceMemory, listWorkspaceMemories, rememberWorkspaceFact, type WorkspaceMemory } from '../../services/agent/workspaceMemory'
 import useAppStore from '../../store/appstore'
@@ -587,6 +588,12 @@ export function useAISearchChat() {
     scrollBottom()
 
     const selectedDriveTargets = parseSelectedDriveTargets(kw)
+    const agentV1RunId = crypto.randomUUID()
+    const agentV1Target = selectedDriveTargets.length === 1 ? { ...selectedDriveTargets[0], rootId: defaultRootForDrive(selectedDriveTargets[0].driveId) } : undefined
+    const agentV1WorkflowId = await beginAiSearchV1Audit({ sessionId, runId: agentV1RunId, goal: kw, target: agentV1Target }).catch(() => null)
+    let agentV1Error = ''
+    let agentV1Cancelled = false
+    abortController?.signal.addEventListener('abort', () => { agentV1Cancelled = true }, { once: true })
     const explicitPlatforms = inferExplicitPlatforms(kw)
     const previousUserRequest = messages.value.slice(0, -2).reverse().find(message => message.role === 'user' && !parseSelectedDriveTargets((message.parts[0] as any)?.text || '').length)
     const workflowIntentText = [String((previousUserRequest?.parts[0] as any)?.text || ''), kw].join('\n')
@@ -1434,6 +1441,16 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
               appendPart(aiMsgId, { type: 'tool-analyzeStorage', state: 'scanning' } as MessagePart)
               scrollBottom()
               try {
+	                if (agentV1WorkflowId && selectedDriveTargets.length === 1) {
+	                  const stats = await collectAiSearchStorageStats(agentV1WorkflowId)
+	                  if (!stats) throw new Error('无法读取受限网盘统计结果')
+	                  const name = selectedDriveTargets[0].platform
+	                  const categories = Object.entries(stats.byCategory).map(([category, value]) => ({ category, ...value }))
+	                  const drives = [{ name, totalSize: stats.totalSize, fileCount: stats.totalFiles, topLarge: [] as FileResult[] }]
+	                  updateToolPart(aiMsgId, 'tool-analyzeStorage', {}, (p: any) => { p.state = 'done'; p.output = { drives, oldestFiles: [], unusedFiles: [] }; p.report = `已在授权根目录的前 ${stats.maxDepth} 层完成只读统计：${stats.totalFiles} 个文件、${stats.totalDirs} 个目录` })
+	                  scrollBottom()
+	                  return { drives: 1, totalFiles: stats.totalFiles, totalDirs: stats.totalDirs, totalSize: stats.totalSize, maxDepth: stats.maxDepth, categories, topExtensions: stats.topExtensions }
+	                }
 	                const allFiles = await scanAllDrives(requestedPlatforms, selectedDriveTargets)
                 const driveMap = new Map<string, { totalSize: number; count: number; files: FileResult[] }>()
                 for (const f of allFiles) {
@@ -1736,7 +1753,10 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
           if (deferredApprovalTools.has(request.toolName)) return true
           return window.confirm(`允许 AI 执行“${request.toolName}”操作吗？\n\n参数：${JSON.stringify(request.args).slice(0, 500)}`)
         },
-        onEvent: event => {
+        onEvent: async event => {
+          if (event.type === 'tool_complete' && agentV1WorkflowId) {
+            await recordAiSearchV1Evidence({ sessionId, runId: agentV1RunId, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError, result: event.result })
+          }
           if (event.type === 'text_delta') {
             if (textPart?.blocked) return
             if (!textPart) {
@@ -1752,6 +1772,7 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
             scrollBottom()
           }
           if (event.type === 'error') {
+            agentV1Error = event.message || 'AI 搜索对话失败'
             if (textPart?.blocked) return
             if (!textPart) {
               textPart = { type: 'text', text: '' }
@@ -1767,7 +1788,9 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
           }
         }
       })
+      if (agentV1WorkflowId) await finishAiSearchV1Audit(sessionId, agentV1RunId, agentV1Cancelled ? 'cancelled' : agentV1Error ? 'failed' : 'completed', agentV1Cancelled ? 'AI 搜索对话已取消' : agentV1Error || 'AI 搜索对话已结束')
     } catch (e: any) {
+      if (agentV1WorkflowId) await finishAiSearchV1Audit(sessionId, agentV1RunId, e?.name === 'AbortError' ? 'cancelled' : 'failed', e?.name === 'AbortError' ? 'AI 搜索对话已取消' : e?.message || 'AI 搜索对话失败')
       if (e?.name === 'AbortError') return
       appendPart(aiMsgId, {
         type: 'text',
@@ -1804,6 +1827,10 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
     part.state = 'running'
     scrollBottom()
     try {
+      if (part.type === 'tool-moveFiles' || part.type === 'tool-deleteFiles' || (part.type === 'tool-organizeFiles' && (part.input?.mode || 'moveToDir') === 'moveToDir')) {
+        const submitted = await submitAiSearchV1Write(msgId, partIndex, part)
+        if (submitted) return
+      }
       if (part.type === 'tool-miaochuan') {
         const account = part.input?.userId ? { userId: part.input.userId, driveId: 'guangya' } : null
         if (!account || UserDAL.GetUserToken(account.userId)?.tokenfrom !== 'guangya') throw new Error('所选光鸭云盘账号已失效，请重新选择')
@@ -1893,6 +1920,53 @@ ${formatProviderCapabilities(connectedProviderCapabilities)}
     }
     scrollBottom()
     saveCurrentHistory(messages.value)
+  }
+
+  async function submitAiSearchV1Write(msgId: string, partIndex: number, part: any): Promise<boolean> {
+    const files = Array.isArray(part.input?.files) ? part.input.files : []
+    const userId = files[0]?.userId
+    const driveId = files[0]?.driveId
+    if (!userId || !driveId || files.some((file: any) => file.userId !== userId || file.driveId !== driveId)) return false
+    const account = UserDAL.GetUserToken(userId)
+    if (!account) throw new Error('所选网盘账号已失效，请重新选择')
+    const result = await confirmAiSearchV1Write({
+      confirmationId: `${activeThreadId.value}:${msgId}:${partIndex}`,
+      kind: part.type === 'tool-deleteFiles' ? 'trash' : 'move',
+      target: { userId, driveId, platform: normalizeDriveToolPlatform(account.tokenfrom || 'aliyun'), rootId: driveToolRootIdFor(driveId) },
+      fileIds: files.map((file: any) => String(file.fileId)),
+      targetParentFileId: part.type === 'tool-deleteFiles' ? undefined : String(part.input?.targetDir || '')
+    })
+    if (!result) return false
+    part.output = { total: files.length, success: 0, failed: 0, report: '已生成 Agent V1 执行计划，正在进行执行前校验…' }
+    scrollBottom()
+    saveCurrentHistory(messages.value)
+    void watchAiSearchV1Write(msgId, partIndex, result.workflowId)
+    return true
+  }
+
+  async function watchAiSearchV1Write(msgId: string, partIndex: number, workflowId: string): Promise<void> {
+    // Match the default execution-grant lifetime. Large confirmed batches may
+    // need several minutes because every item is re-read before the write.
+    for (let attempt = 0; attempt < 600; attempt++) {
+      await new Promise(resolve => window.setTimeout(resolve, 1_000))
+      const workflow = await getAgentV1Workflow(workflowId)
+      const message = messages.value.find(item => item.id === msgId)
+      const part = message?.parts[partIndex] as any
+      if (!workflow || !part || part.state !== 'running') return
+      if (workflow.status !== 'completed' && workflow.status !== 'failed' && workflow.status !== 'cancelled' && workflow.status !== 'expired') continue
+      const success = workflow.receipts.filter(item => item.status === 'succeeded').length
+      const failed = workflow.receipts.filter(item => item.status === 'failed').length
+      if (workflow.status === 'completed') {
+        part.state = 'done'
+        part.output = { total: workflow.plan?.actions.length || success + failed, success, failed, report: `Agent V1 已完成：成功 ${success}${failed ? `，失败 ${failed}` : ''}` }
+      } else {
+        part.state = 'error'
+        part.error = workflow.events.at(-1)?.message || `Agent V1 执行${workflow.status === 'expired' ? '已过期' : '失败'}`
+      }
+      scrollBottom()
+      saveCurrentHistory(messages.value)
+      return
+    }
   }
 
   function cancelAction(msgId: string, partIndex: number) {

@@ -6,6 +6,7 @@ export type AgentExecutionMode = 'parallel' | 'sequential'
 export type AgentMessageInput = { role: 'user' | 'assistant'; content: string }
 
 export interface AgentToolExecutionContext {
+  toolCallId: string
   signal?: AbortSignal
   reportProgress: (progress: unknown) => void
 }

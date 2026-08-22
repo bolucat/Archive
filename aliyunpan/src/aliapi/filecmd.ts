@@ -10,13 +10,13 @@ import usePanFileStore from '../pan/panfilestore'
 import { isWebDavDrive } from '../utils/webdavClient'
 import UserDAL from '../user/userdal'
 import { resolveDriveProvider } from '../utils/driveProvider'
-import { cleanProviderTrash, copyProviderFiles, createProviderFolder, deleteProviderFiles, getProviderFileCommandContext, getProviderFileCommandNotice, getProviderFilesInfo, getProviderFolderCommandContext, moveProviderFiles, renameProviderFiles, restoreProviderTrash, trashProviderFiles } from '../drive/providerFileCmd'
+import { cleanProviderTrash, copyProviderFiles, createProviderFolder, deleteProviderFiles, getProviderFileCommandContext, getProviderFileCommandNotice, getProviderFilesInfo, getProviderFolderCommandContext, moveProviderFiles, renameProviderFiles, restoreProviderTrash, trashProviderFiles, type ProviderFileCommandOptions } from '../drive/providerFileCmd'
 
 export default class AliFileCmd {
   static async ApiCreatNewForder(
     user_id: string, drive_id: string,
     parent_file_id: string, creatDirName: string,
-    encType: string = '', check_name_mode: string = 'refuse'
+    encType: string = '', check_name_mode: string = 'refuse', providerOptions: ProviderFileCommandOptions = {}
   ): Promise<{ file_id: string; error: string }> {
     const result = { file_id: '', error: '新建文件夹失败' }
     if (!user_id || !drive_id || !parent_file_id) return result
@@ -25,7 +25,7 @@ export default class AliFileCmd {
     if (isWebDavDrive(drive_id)) {
       return { file_id: '', error: 'WebDAV / AList 文件源为只读' }
     }
-    if (route.provider !== 'aliyun') return createProviderFolder(route.provider, user_id, parent_file_id, creatDirName, { checkNameMode: check_name_mode, ...getProviderFolderCommandContext(route.provider, parent_file_id) })
+    if (route.provider !== 'aliyun') return createProviderFolder(route.provider, user_id, parent_file_id, creatDirName, { checkNameMode: check_name_mode, ...getProviderFolderCommandContext(route.provider, parent_file_id), ...providerOptions })
     if (parent_file_id.includes('root')) parent_file_id = 'root'
     const url = 'adrive/v2/file/createWithFolders'
     const name = EncodeEncName(user_id, creatDirName, true, encType)

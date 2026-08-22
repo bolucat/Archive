@@ -57,6 +57,7 @@ import message from '../utils/message'
 import { menuOpenFile } from '../utils/openfile'
 import { throttle } from '../utils/debounce'
 import { TestButton } from '../utils/mosehelper'
+import { isValidDropUploadTarget } from '../utils/uploadTarget'
 import usePanTreeStore from './pantreestore'
 import { getDriveId as GetDriveID, getDriveType as GetDriveType } from '../drive/context'
 import { isAliyunUser, isCloud123User, isDrive115User, isGuangyaUser, isPikPakUser } from '../utils/driveIdentity'
@@ -701,20 +702,26 @@ const onPanDrop = (e: any) => {
 
   if (panfileStore.DirID.startsWith('color')) {
     message.error(t('pan.noUploadToColor'))
+    return
   }
   if (panfileStore.DirID.startsWith('search')) {
     message.error(t('pan.noUploadToSearch'))
+    return
   }
   if (panfileStore.DirID == 'favorite') {
     message.error(t('pan.noUploadToFavorite'))
+    return
   }
   if (panfileStore.DirID == 'recover') {
     message.error(t('pan.noUploadToRecover'))
+    return
   }
   if (panfileStore.DirID == 'trash') {
     message.error(t('pan.noUploadToTrash'))
+    return
   }
-  if (panfileStore.DirID.length != 40 && !panfileStore.DirID.includes('root')) {
+  const targetDirId = panfileStore.DirID || panTreeStore.selectDir.file_id
+  if (!isValidDropUploadTarget(panTreeStore.user_id, panTreeStore.drive_id || panfileStore.DriveID, targetDirId)) {
     message.error(t('pan.invalidUploadTarget'))
     return
   }
@@ -733,7 +740,7 @@ const onPanDrop = (e: any) => {
       message.error('无法读取拖拽文件的本地路径，请重新拖拽或使用上传按钮')
       return
     }
-    modalUpload(panfileStore.DirID, files)
+    modalUpload(targetDirId, files)
   }
 }
 const onPanDragEnter = (ev: any) => {

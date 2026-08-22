@@ -34,6 +34,7 @@ export interface IStateUploadTask {
   
   user_id: string
   parent_file_id: string
+  parent_description?: string
   drive_id: string
   
   check_name_mode: string
@@ -105,6 +106,7 @@ export interface IUploadingUI {
   UploadID: number
   user_id: string
   parent_file_id: string
+  parent_description?: string
   drive_id: string
   check_name_mode: string
   localFilePath: string

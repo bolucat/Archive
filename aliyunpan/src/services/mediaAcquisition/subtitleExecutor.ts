@@ -1,12 +1,8 @@
 import Config from '../../config'
-import { apiCloud123OfflineProcess } from '../../cloud123/offline'
-import { apiDrive115OfflineProcess } from '../../cloud115/offline'
-import { apiGuangyaOfflineProcess } from '../../guangya/offline'
-import { apiPikPakOfflineProcess } from '../../pikpak/offline'
 import useSettingStore from '../../setting/settingstore'
 import type { MediaAcquisitionFileSnapshot, MediaAcquisitionRunView, MediaAcquisitionTarget } from '@shared/types/mediaAcquisition'
 import { getMediaAcquisitionCapability } from './capabilities'
-import { addMediaAcquisitionEvent } from './client'
+import { addMediaAcquisitionEvent, getMediaAcquisitionProviderTransferStatus } from './client'
 import { getAssrtSubtitleCandidateFiles, searchAssrtSubtitleCandidates, type AssrtSubtitleCandidate, type AssrtSubtitleFile } from './assrt'
 import { submitExternalUrlOffline, type ExternalUrlOfflineSubmission } from './externalUrlExecutor'
 import { buildSidecarSubtitleName, buildSubtitleSearchQuery, isConfirmedNonDomesticMediaOrigin, pickSubtitleReferenceVideo } from './subtitleNaming'
@@ -122,7 +118,7 @@ async function submitSubtitlePackage(run: MediaAcquisitionRunView, files: AssrtS
     const targetName = subtitleTargetName(file, videos, usedNames)
     usedNames.add(targetName.toLowerCase())
     try {
-      const submission = await submitExternalUrlOffline(target, file.url, targetName)
+      const submission = await submitExternalUrlOffline(run.id, target, file.url, targetName)
       outcomes.push({ source: file.name, target: targetName, verified: await waitSubtitleTask(run, submission), taskId: submission.taskId, fileId: submission.fileId })
     } catch (error: any) {
       outcomes.push({ source: file.name, target: targetName, verified: false, error: error?.message || '未知错误' })
@@ -149,23 +145,6 @@ async function waitSubtitleTask(run: MediaAcquisitionRunView, submission: Extern
 }
 
 async function getSubtitleProcess(run: MediaAcquisitionRunView, submission: ExternalUrlOfflineSubmission): Promise<{ completed: boolean; failed: boolean; error?: string }> {
-  if (!submission.taskId && submission.fileId) return { completed: true, failed: false }
-  if (!submission.taskId) return { completed: false, failed: false }
-  if (submission.platform === '115') {
-    const value = await apiDrive115OfflineProcess(run.target.targetUserId, submission.taskId)
-    return { completed: value.status === 2 || value.process >= 100, failed: value.status < 0, error: value.error }
-  }
-  if (submission.platform === 'guangya') {
-    const value = await apiGuangyaOfflineProcess(run.target.targetUserId, submission.taskId)
-    return { completed: value.status === 2 || value.process >= 100, failed: value.status === 3 || value.status === 4, error: value.error }
-  }
-  if (submission.platform === 'pikpak') {
-    const value = await apiPikPakOfflineProcess(run.target.targetUserId, submission.taskId, submission.fileId)
-    return { completed: value.status === 2 || value.process >= 100, failed: value.status === 1, error: value.error }
-  }
-  if (submission.platform === 'cloud123') {
-    const value = await apiCloud123OfflineProcess(run.target.targetUserId, submission.taskId)
-    return { completed: value.status === 2 || value.process >= 100, failed: value.status < 0, error: value.error }
-  }
-  return { completed: false, failed: false }
+  const value = await getMediaAcquisitionProviderTransferStatus(run.id, submission.taskId, submission.fileId)
+  return { completed: value.completed, failed: value.failed, error: value.error }
 }

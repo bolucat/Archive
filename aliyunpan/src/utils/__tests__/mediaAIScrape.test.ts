@@ -97,10 +97,11 @@ describe('mediaAIScrape', () => {
       production_countries: [{ iso31661: 'US', name: '美国' }]
     }
 
+    const searchMovie = vi.fn(async () => movie)
     const item = await applyAIScrapeResult(
       { file, folderName: 'Movies', folderId: 'folder-1' },
       { ok: true, decision: { type: 'movie', title: 'Arrival', year: 2016, tmdbId: 42, confidence: 0.93, allowOverwrite: true, reason: 'exact' }, provider: 'test' },
-      { tmdb: { searchMovie: vi.fn(async () => movie) } as any }
+      { tmdb: { searchMovie } as any }
     )
 
     expect(item).toMatchObject({
@@ -111,6 +112,11 @@ describe('mediaAIScrape', () => {
     })
     expect(item?.driveFiles).toEqual([file])
     expect(item?.aiScrape?.confidence).toBe(0.93)
+    expect(searchMovie).toHaveBeenCalledWith('Arrival', '2016', undefined, {
+      fingerprintNamespace: 'aliyun:sha1',
+      fingerprint: 'hash',
+      fileSize: 1024
+    }, 'Arrival.2016.mkv')
   })
 
   it('maps an AI TV decision to the requested episode', async () => {
@@ -150,6 +156,33 @@ describe('mediaAIScrape', () => {
       driveFiles: [file]
     })
   })
+
+  it('tries AI-provided alternate titles after the primary title misses', async () => {
+    const { applyAIScrapeResult } = await import('../mediaAIScrape')
+    const searchMovie = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 7,
+        title: 'Arrival',
+        original_title: 'Arrival',
+        original_language: 'en',
+        overview: '',
+        release_date: '2016-11-11',
+        vote_average: 8,
+        genres: [],
+        credits: {},
+        production_countries: []
+      })
+
+    const item = await applyAIScrapeResult(
+      { file: driveFile() },
+      { ok: true, decision: { type: 'movie', title: '降临', altTitles: ['Arrival'], confidence: 0.9, allowOverwrite: true, reason: '' }, provider: 'test' },
+      { tmdb: { searchMovie } as any }
+    )
+
+    expect(item?.tmdbId).toBe(7)
+    expect(searchMovie.mock.calls.map(call => call[0])).toEqual(['降临', 'Arrival'])
+  })
 })
 
 function driveFile(overrides: Partial<DriveFileItem> = {}): DriveFileItem {
@@ -162,6 +195,7 @@ function driveFile(overrides: Partial<DriveFileItem> = {}): DriveFileItem {
     driveServerId: 'aliyun',
     fileSize: 1024,
     contentHash: 'hash',
+    contentHashName: 'sha1',
     ...overrides
   }
 }

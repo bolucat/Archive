@@ -2,6 +2,7 @@ import type { Model } from '@earendil-works/pi-ai'
 import Config from '../../config'
 import { getBoxPlayerAccessToken } from '../../utils/boxplayerAuth'
 import type { AgentSurface, BoxPlayerAgentModelConfig } from './types'
+import { resolveAgentModelEndpoint } from '@shared/agentModelTransport'
 
 // These limits intentionally match boxplayer-ai-api rather than a provider's theoretical limit.
 const DEFAULT_CONTEXT_WINDOW = 24_000
@@ -9,11 +10,7 @@ const DEFAULT_MAX_TOKENS = 2_400
 
 export function createPiModel(config: BoxPlayerAgentModelConfig): Model<'openai-completions'> {
   const isCloud = config.providerName === 'boxplayer-cloud'
-  const baseUrl = isCloud
-    ? `${Config.BOXPLAYER_AI_API_URL.replace(/\/+$/, '')}/v1`
-    : config.endpoint.replace(/\/+$/, '')
-
-  if (!baseUrl) throw new Error('AI endpoint is not configured')
+  const baseUrl = resolveAgentModelEndpoint({ providerName: config.providerName, endpoint: config.endpoint, cloudBaseUrl: Config.BOXPLAYER_AI_API_URL, allowInsecureHttp: true })
 
   return {
     id: config.modelId,

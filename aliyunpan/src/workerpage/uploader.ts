@@ -154,18 +154,22 @@ interface ReadConfig {
   user_id: string
   drive_id: string
   parent_file_id: string
+  parent_description?: string
   localFilePath: string
   filetime: number
   encType: string
   ingoredList: string[]
 }
 
+const createRemoteFolder = (readConfig: ReadConfig, name: string) =>
+  AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, name, readConfig.encType, 'refuse', { parentDescription: readConfig.parent_description })
+
 async function creatDirAndReadChildren(fileui: IUploadingUI): Promise<void> {
   fileui.Info.uploadState = '读取中'
 
   let uploaded_file_id = ''
   if (fileui.File.IsRoot) {
-    const data = await AliFileCmd.ApiCreatNewForder(fileui.user_id, fileui.drive_id, fileui.parent_file_id, fileui.File.name, fileui.encType)
+    const data = await AliFileCmd.ApiCreatNewForder(fileui.user_id, fileui.drive_id, fileui.parent_file_id, fileui.File.name, fileui.encType, 'refuse', { parentDescription: fileui.parent_description })
     if (data.error) {
       fileui.Info.uploadState = 'error'
       fileui.Info.failedCode = 503
@@ -184,6 +188,7 @@ async function creatDirAndReadChildren(fileui: IUploadingUI): Promise<void> {
     user_id: fileui.user_id,
     drive_id: fileui.drive_id,
     parent_file_id: fileui.parent_file_id,
+    parent_description: fileui.parent_description,
     localFilePath: fileui.localFilePath,
     filetime: fileTime,
     encType: fileui.encType,
@@ -319,13 +324,13 @@ async function readChildrenDiGui(addFileList: IStateUploadTaskFile[], addDirList
   const localDirPath = path.join(readConfig.localFilePath, diritem.partPath, path.sep)
   const dirFiles = await readDir(localDirPath, readConfig.ingoredList)
   if (dirFiles.error) {
-    plist.push(AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, diritem.name, readConfig.encType))
+    plist.push(createRemoteFolder(readConfig, diritem.name))
     addDirList.push(diritem)
     return
   }
   if (dirFiles.fileList.length == 0) {
     if (dirFiles.dirList.length == 0) {
-      plist.push(AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, diritem.name, readConfig.encType))
+      plist.push(createRemoteFolder(readConfig, diritem.name))
       return
     } else if (dirFiles.dirList.length <= MAXDIR) {
       await AddDirs(addFileList, addDirList, dirFiles.dirList, diritem.partPath, diritem.name, readConfig, Info)
@@ -352,19 +357,19 @@ async function readChildrenDiGui(addFileList: IStateUploadTaskFile[], addDirList
 
   if (dirFiles.fileList.length <= MAXFILE) {
     if (dirFiles.dirList.length == 0) {
-      plist.push(AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, diritem.name, readConfig.encType))
+      plist.push(createRemoteFolder(readConfig, diritem.name))
       await AddFiles(addFileList, dirFiles.fileList, diritem.partPath, diritem.name, readConfig)
     } else if (dirFiles.dirList.length <= MAXDIR) {
-      plist.push(AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, diritem.name, readConfig.encType))
+      plist.push(createRemoteFolder(readConfig, diritem.name))
       await AddFiles(addFileList, dirFiles.fileList, diritem.partPath, diritem.name, readConfig)
       await AddDirs(addFileList, addDirList, dirFiles.dirList, diritem.partPath, diritem.name, readConfig, Info)
     } else {
-      plist.push(AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, diritem.name, readConfig.encType))
+      plist.push(createRemoteFolder(readConfig, diritem.name))
       addDirList.push(diritem)
     }
   } else {
     if (dirFiles.dirList.length == 0) {
-      plist.push(AliFileCmd.ApiCreatNewForder(readConfig.user_id, readConfig.drive_id, readConfig.parent_file_id, diritem.name, readConfig.encType))
+      plist.push(createRemoteFolder(readConfig, diritem.name))
       addDirList.push(diritem)
     } else if (dirFiles.dirList.length <= MAXDIR) {
       addDirList.push(diritem)

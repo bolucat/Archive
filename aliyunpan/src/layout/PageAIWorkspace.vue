@@ -6,6 +6,7 @@ import { getAIConfig, migrateSoleSavedBYOKAsDefault } from '../utils/bookAI'
 import { isBoxPlayerCloudProvider } from '../utils/boxplayerCloudAI'
 import { isLoggedIn, isPro } from '../utils/usageLimit'
 import WorkspaceAgent from './WorkspaceAgent.vue'
+import AISearchAgent from './AISearchAgent.vue'
 import DocumentAIModal from '../components/DocumentAIModal.vue'
 import MediaAcquisitionNotifications from './aisearch/MediaAcquisitionNotifications.vue'
 import MediaAcquisitionTasks from './aisearch/MediaAcquisitionTasks.vue'
@@ -19,7 +20,7 @@ const props = withDefaults(defineProps<{ sidebarVisible?: boolean }>(), { sideba
 migrateSoleSavedBYOKAsDefault()
 const documentContext = ref<DocumentInsightLaunchContext | null>(null)
 const activeView = ref<'chat' | 'mediaTasks' | 'tracking' | 'notifications'>('chat')
-const workspaceMode = ref<'documents' | 'plans'>('documents')
+const workspaceMode = ref<'agent' | 'documents' | 'plans'>('agent')
 const activeTaskCount = ref(0)
 const trackingCount = ref(0)
 const unreadNotificationCount = ref(0)
@@ -103,6 +104,12 @@ onBeforeUnmount(() => {
     </div>
     <div :class="['ai-workspace-content', { 'ai-workspace-content--chat': activeView === 'chat' }]">
       <section v-show="activeView === 'chat'" class="ai-workspace-shell">
+        <nav class="ai-workspace-mode-switcher" aria-label="AI workspace mode">
+          <button type="button" :class="{ active: workspaceMode === 'agent' }" @click="workspaceMode = 'agent'">AI 助手</button>
+          <button type="button" :class="{ active: workspaceMode === 'documents' }" @click="workspaceMode = 'documents'">文档洞察</button>
+          <button type="button" :class="{ active: workspaceMode === 'plans' }" @click="workspaceMode = 'plans'">可审查计划</button>
+        </nav>
+        <AISearchAgent v-show="workspaceMode === 'agent'" :ai-enabled="aiEnabled" :sidebar-visible="props.sidebarVisible" @search-resource="openPanHubSearch" />
         <div v-show="workspaceMode === 'documents'" class="ai-workspace-document-state">
           <DocumentAIModal v-if="documentContext" :visible="!!documentContext" :available-sources="documentContext.availableSources || []" :initial-prompt="documentContext.initialPrompt || ''" mode="workspace" :scope-name="documentContext.scopeName || ''" :sources="documentContext.sources || []" @update:visible="visible => { if (!visible) documentContext = null }" />
           <section v-else class="document-insight-home">
@@ -131,7 +138,7 @@ onBeforeUnmount(() => {
 .ai-workspace-page { position: relative; display: flex; flex-direction: column; box-sizing: border-box; height: 100%; min-height: 0; gap: 14px; padding: 18px; overflow: hidden; background: transparent; }
 .ai-workspace-content { flex: 1; min-height: 0; overflow: hidden; border: 1px solid var(--app-glass-line); border-radius: 24px; background: var(--app-glass-panel); box-shadow: 0 20px 60px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.075); backdrop-filter: blur(24px) saturate(1.14); }
 .ai-workspace-content--chat { border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
-.ai-workspace-shell { display:flex; height:100%; min-height:0; flex-direction:column; gap:10px; }
+.ai-workspace-shell { display:flex; height:100%; min-height:0; flex-direction:column; gap:10px; }.ai-workspace-mode-switcher { display:flex; align-self:center; gap:3px; padding:3px; border:1px solid var(--color-border-2); border-radius:9px; background:var(--color-bg-2); }.ai-workspace-mode-switcher button { min-width:86px; padding:6px 10px; border:0; border-radius:6px; color:var(--color-text-2); background:transparent; cursor:pointer; font:inherit; font-size:12px; font-weight:650; }.ai-workspace-mode-switcher button.active { color:var(--color-text-1); background:var(--color-fill-2); }
 .ai-workspace-document-state { min-height:0; flex:1; overflow:hidden; }.document-insight-home { display:flex; height:100%; min-height:0; box-sizing:border-box; flex-direction:column; align-items:center; justify-content:center; padding:38px; color:var(--color-text-2); text-align:center; }.document-insight-home__icon { display:grid; width:58px; height:58px; place-items:center; margin-bottom:17px; border-radius:18px; color:#fff; background:linear-gradient(135deg,#ff3fd8,#795cff 49%,#38a7ff); box-shadow:0 12px 28px rgba(104,84,233,.25); }.document-insight-home__eyebrow { margin:0 0 6px; color:#8067eb; font-size:12px; font-weight:700; letter-spacing:.03em; }.document-insight-home h1 { margin:0; color:var(--color-text-1); font-size:23px; letter-spacing:-.4px; }.document-insight-home>p:not(.document-insight-home__eyebrow) { max-width:570px; margin:10px 0 24px; font-size:13px; line-height:1.75; }.document-insight-home__steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:min(760px,100%); gap:10px; text-align:left; }.document-insight-home__steps article { display:grid; gap:6px; padding:15px; border:1px solid var(--color-border-2); border-radius:11px; background:var(--color-bg-2); }.document-insight-home__steps svg { color:#7964ea; }.document-insight-home__steps strong { color:var(--color-text-1); font-size:13px; }.document-insight-home__steps span { font-size:11px; line-height:1.55; }.document-insight-home__actions { display:flex; flex-wrap:wrap; justify-content:center; gap:9px; margin-top:20px; }.document-insight-home__actions button { display:inline-flex; align-items:center; gap:7px; padding:9px 13px; border-radius:8px; cursor:pointer; font:inherit; font-size:12px; font-weight:650; }.document-insight-home__open-pan { border:0; color:#fff; background:linear-gradient(100deg,#5d5cff,#806eff); }.document-insight-home__plan-link { border:1px solid rgba(122,100,234,.45); color:#735cde; background:transparent; }
 .ai-workspace-view-switcher { display: flex; align-self: center; max-width: 100%; height: 38px; min-height: 38px; align-items: center; gap: 5px; overflow-x: auto; overflow-y: hidden; padding: 3px; border: 1px solid var(--color-border-2); border-radius: 10px; background: var(--color-bg-2); scrollbar-width: none; }
 .ai-workspace-view-switcher::-webkit-scrollbar { display: none; }
