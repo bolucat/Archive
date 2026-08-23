@@ -64,18 +64,23 @@ func NewServer(config *Config) (Server, error) {
 		AssumePeerMaxDatagramFrameSize: protocol.MaxDatagramFrameSize,
 		DisablePathManager:             true,
 	}
-	srk := config.StatelessResetKey
-	if srk == nil {
-		var k quic.StatelessResetKey
-		if _, err := crand.Read(k[:]); err != nil {
-			return nil, err
-		}
-		srk = &k
-	}
 	tr := &quic.Transport{
-		Conn:              config.Conn,
-		DisableGSO:        config.QUICConfig.DisableGSO,
-		StatelessResetKey: srk,
+		Conn:       config.Conn,
+		DisableGSO: config.QUICConfig.DisableGSO,
+	}
+	// A nil key means quic-go never sends stateless resets. Clients then have to
+	// wait for the idle timeout to notice the server is gone, so keep them on
+	// unless the user explicitly asks otherwise.
+	if !config.QUICConfig.DisableStatelessReset {
+		srk := config.StatelessResetKey
+		if srk == nil {
+			var k quic.StatelessResetKey
+			if _, err := crand.Read(k[:]); err != nil {
+				return nil, err
+			}
+			srk = &k
+		}
+		tr.StatelessResetKey = srk
 	}
 	listener, err := tr.Listen(tlsConfig, quicConfig)
 	if err != nil {

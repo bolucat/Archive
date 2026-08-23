@@ -74,6 +74,7 @@ o = s:option(Value, "udp_no_redir_ports", translate("UDP No Redir Ports"),
 o.default = "disable"
 o:value("disable", translate("No patterns are used"))
 o:value("1:65535", translate("All"))
+o:value("1:52,54:442,444:65535", translatef("Forward only %s", "53, 443"))
 o.validate = port_validate
 
 ---- TCP Proxy Drop Ports
@@ -119,11 +120,8 @@ o:value("1", "Nftables")
 
 ---- Check the transparent proxy component
 local handle = io.popen("lsmod")
-local mods = ""
-if handle then
-	mods = handle:read("*a") or ""
-	handle:close()
-end
+local mods = handle and handle:read("*a") or ""
+if handle then handle:close() end
 
 if (mods:find("REDIRECT") and mods:find("TPROXY")) or (mods:find("nft_redir") and mods:find("nft_tproxy")) then
 	o = s:option(ListValue, "tcp_proxy_way", translate("TCP Proxy Way"))

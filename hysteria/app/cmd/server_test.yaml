@@ -63,6 +63,7 @@ quic:
   maxIdleTimeout: 999s
   maxIncomingStreams: 256
   disablePathMTUDiscovery: true
+  disableStatelessReset: true
 
 mimic:
   enabled: true

@@ -132,7 +132,6 @@ Selected during installation based on your needs:
 - Sing-Box
 - Shadowsocks-Rust
 - ShadowsocksR
-- Hysteria2
 - HAProxy
 
 ## 🚀 Features
@@ -141,7 +140,6 @@ Selected during installation based on your needs:
 - **Xray** (HTTP, Socks, Shadowsocks, VMess, VLESS, Trojan, Hysteria2, WireGuard)
 - **Sing-Box** (HTTP, Socks, SSH, Shadowsocks, VMess, VLESS, Trojan, TUIC, Hysteria, Hysteria2, WireGuard, AnyTLS)
 - **Shadowsocks-Rust**
-- **Hysteria2** for high-performance UDP transport
 - **ShadowsocksR** legacy support
 - **HAProxy** The Reliable, High Performance TCP/HTTP Load Balancer
 

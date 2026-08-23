@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=clashoo
-PKG_SHORT_SHA:=8e6738f
-PKG_COMMIT_DATE:=2026.08.22
+PKG_SHORT_SHA:=f295ba6
+PKG_COMMIT_DATE:=2026.08.23
 
 PKG_VERSION:=$(PKG_COMMIT_DATE)~$(PKG_SHORT_SHA)
 PKG_RELEASE:=2
@@ -11,8 +11,8 @@ PKG_SOURCE:=$(PKG_NAME)-alpha-$(PKG_SHORT_SHA).tar.gz
 PKG_SOURCE_SUBDIR:=$(PKG_NAME)-alpha-$(PKG_SHORT_SHA)
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-alpha-$(PKG_SHORT_SHA)
 PKG_SOURCE_URL:=https://github.com/kenzok8/openwrt-clashoo/releases/download/mihomo-src
-PKG_SOURCE_VERSION:=8e6738fad4ac0198b322dcdffc38ebbe22fe49ce
-PKG_HASH:=a8d4b613e5d82677109f2174a3e3e8356ae902e9d285f537e0a2dbc03dbf1186
+PKG_SOURCE_VERSION:=f295ba6da4928af24f6f4c15f732e728b045db0a
+PKG_HASH:=72cbeafa675a3de7e3592a388acbaea334a6f68629d0abad6e9a58828ac9adf1
 PKG_BUILD_VERSION:=alpha-$(PKG_SHORT_SHA)
 
 PKG_LICENSE:=GPL3.0+
@@ -71,6 +71,7 @@ define Package/clashoo/install
 	$(INSTALL_DATA) $(CURDIR)/files/etc/config/clashoo $(1)/usr/share/clashoo/clashoo.default
 	$(CP) $(CURDIR)/files/usr/share/clashoo/* $(1)/usr/share/clashoo/
 	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/migrate_lan_acl.sh $(1)/usr/share/clashoo/migrate_lan_acl.sh
+	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/migrate_fake_ip_filter.sh $(1)/usr/share/clashoo/migrate_fake_ip_filter.sh
 	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/detect_core_arch.sh $(1)/usr/share/clashoo/detect_core_arch.sh
 	$(INSTALL_BIN) $(CURDIR)/files/usr/share/clashoo/diagnose_bypass.sh $(1)/usr/share/clashoo/diagnose_bypass.sh
 
@@ -90,6 +91,7 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	rm -f /usr/share/clashoo/rmlist.sh /usr/share/clashoo/uplist.sh /usr/share/clashoo/rpc_restart_async.sh /usr/share/clashoo/rpc_update_china_ip_async.sh
 	rm -rf /usr/share/clashoo/create
 	/usr/share/clashoo/migrate_lan_acl.sh >/dev/null 2>&1 || true
+	/usr/share/clashoo/migrate_fake_ip_filter.sh >/dev/null 2>&1 || true
 	/usr/share/clashoo/detect_core_arch.sh >/dev/null 2>&1 || true
 	if [ "$$(uci -q get clashoo.config.enable 2>/dev/null)" = "1" ]; then
 		/etc/init.d/clashoo enable 2>/dev/null || true

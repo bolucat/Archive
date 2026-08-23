@@ -7,7 +7,9 @@ import (
 	"unicode"
 
 	"golang.org/x/crypto/sha3"
+	"google.golang.org/protobuf/proto"
 
+	"github.com/v2fly/v2ray-core/v5/app/subscription"
 	"github.com/v2fly/v2ray-core/v5/app/subscription/containers"
 	"github.com/v2fly/v2ray-core/v5/app/subscription/documentfetcher"
 	"github.com/v2fly/v2ray-core/v5/app/subscription/specs"
@@ -25,21 +27,29 @@ func (s *SubscriptionManagerImpl) updateSubscription(subscriptionName string) er
 	if err != nil {
 		return newError("failed to get fetcher: ", err)
 	}
-	if strings.HasPrefix(importSource.Url, "data:") {
+	isDataURL := strings.HasPrefix(importSource.Url, "data:")
+	if isDataURL {
 		docFetcher, err = documentfetcher.GetFetcher("dataurl")
 		if err != nil {
 			return newError("failed to get fetcher: ", err)
 		}
 	}
+	containerParser := ""
+	if isDataURL {
+		containerParser = "DataURLSingle"
+	}
 
-	downloadedDocument, err := docFetcher.DownloadDocument(s.ctx, importSource)
+	downloadedDocument, err := docFetcher.DownloadDocument(
+		s.ctx,
+		importSourceWithDefaultDialer(importSource, s.config.DefaultDialerTag),
+	)
 	if err != nil {
 		return newError("failed to download document: ", err)
 	}
 
 	trackedSub.originalDocument = downloadedDocument
 
-	container, err := containers.TryAllParsers(trackedSub.originalDocument, "")
+	container, err := containers.TryAllParsers(trackedSub.originalDocument, containerParser)
 	if err != nil {
 		return newError("failed to parse document: ", err)
 	}
@@ -70,6 +80,14 @@ func (s *SubscriptionManagerImpl) updateSubscription(subscriptionName string) er
 	trackedSub.currentDocument = parsedDocument
 	trackedSub.currentDocumentExpireTime = time.Now().Add(time.Second * time.Duration(importSource.DefaultExpireSeconds))
 	return nil
+}
+
+func importSourceWithDefaultDialer(importSource *subscription.ImportSource, defaultDialerTag string) *subscription.ImportSource {
+	effectiveImportSource := proto.Clone(importSource).(*subscription.ImportSource)
+	if effectiveImportSource.ImportUsingTag == "" {
+		effectiveImportSource.ImportUsingTag = defaultDialerTag
+	}
+	return effectiveImportSource
 }
 
 func (s *SubscriptionManagerImpl) polyfillServerConfig(document *specs.SubscriptionServerConfig, hash string) {

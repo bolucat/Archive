@@ -133,6 +133,7 @@ type QUICConfig struct {
 	MaxIncomingStreams             int64
 	DisablePathMTUDiscovery        bool // The server may still override this to true on unsupported platforms.
 	DisableGSO                     bool
+	DisableStatelessReset          bool
 }
 
 type CongestionConfig struct {

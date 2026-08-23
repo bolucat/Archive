@@ -11,9 +11,12 @@ import (
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/tun/device"
 	"github.com/v2fly/v2ray-core/v5/app/tun/device/gvisor"
+	"github.com/v2fly/v2ray-core/v5/app/tun/device/udpbridge"
 	"github.com/v2fly/v2ray-core/v5/app/tun/tunsorter"
 	"github.com/v2fly/v2ray-core/v5/common"
+	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/net/packetaddr"
+	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 )
@@ -26,10 +29,11 @@ type TUN struct {
 	policyManager policy.Manager
 	config        *Config
 
-	stack          *stack.Stack
-	device         device.Device
-	preopenedFD    int
-	preopenedFDSet bool
+	stack                     *stack.Stack
+	device                    device.Device
+	preopenedFD               int
+	preopenedFDSet            bool
+	packetEncodingBypassPorts []net.Port
 }
 
 func (t *TUN) Type() interface{} {
@@ -37,7 +41,6 @@ func (t *TUN) Type() interface{} {
 }
 
 func (t *TUN) Start() error {
-	DeviceConstructor := gvisor.New
 	deviceOptions := device.Options{
 		Name: t.config.Name,
 		MTU:  t.config.Mtu,
@@ -49,7 +52,19 @@ func (t *TUN) Start() error {
 		t.preopenedFDSet = false
 	}
 
-	tunDevice, err := DeviceConstructor(deviceOptions)
+	var tunDevice device.Device
+	var err error
+	if bridge := t.config.UdpBridge; bridge != nil {
+		tunDevice, err = udpbridge.New(deviceOptions, udpbridge.Options{
+			ListenAddress: bridge.ListenAddress,
+			ListenPort:    bridge.ListenPort,
+			PeerAddress:   bridge.PeerAddress,
+			PeerPort:      bridge.PeerPort,
+			QueueSize:     bridge.QueueSize,
+		})
+	} else {
+		tunDevice, err = gvisor.New(deviceOptions)
+	}
 	if err != nil {
 		return newError("failed to create device").Base(err).AtError()
 	}
@@ -57,7 +72,13 @@ func (t *TUN) Start() error {
 
 	if t.config.PacketEncoding != packetaddr.PacketAddrType_None {
 		writer := device.NewLinkWriterToWriter(tunDevice)
-		sorter := tunsorter.NewTunSorter(writer, t.dispatcher, t.config.PacketEncoding, t.ctx)
+		sorter := tunsorter.NewTunSorter(
+			writer,
+			t.dispatcher,
+			t.config.PacketEncoding,
+			t.packetEncodingContext(),
+			t.packetEncodingBypassPorts,
+		)
 		tunDeviceLayered := NewDeviceWithSorter(tunDevice, sorter)
 		tunDevice = tunDeviceLayered
 	}
@@ -73,6 +94,10 @@ func (t *TUN) Start() error {
 	t.stack = stack
 
 	return nil
+}
+
+func (t *TUN) packetEncodingContext() context.Context {
+	return session.ContextWithInbound(t.ctx, &session.Inbound{Tag: t.config.Tag})
 }
 
 func (t *TUN) Close() error {
@@ -100,7 +125,17 @@ func (t *TUN) Init(ctx context.Context, config *Config, dispatcher routing.Dispa
 	t.dispatcher = dispatcher
 	t.policyManager = policyManager
 	t.preopenedFD = -1
+	t.packetEncodingBypassPorts = make([]net.Port, 0, len(config.PacketEncodingBypassPorts))
+	for _, port := range config.PacketEncodingBypassPorts {
+		if port == 0 || port > 65535 {
+			return newError("invalid packet_encoding_bypass_ports value: ", port).AtError()
+		}
+		t.packetEncodingBypassPorts = append(t.packetEncodingBypassPorts, net.Port(port))
+	}
 	if config.PreopenedFd != nil {
+		if config.UdpBridge != nil {
+			return newError("preopened_fd and udp_bridge cannot be used together").AtError()
+		}
 		if *config.PreopenedFd < 0 {
 			return newError("invalid preopened_fd: ", *config.PreopenedFd).AtError()
 		}

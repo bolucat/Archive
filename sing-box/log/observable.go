@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,17 @@ type defaultFactory struct {
 	level             Level
 	subscriber        *observable.Subscriber[Entry]
 	observer          *observable.Observer[Entry]
+	startAccess       sync.Mutex
+	started           atomic.Bool
+	pendingEntries    []pendingEntry
+}
+
+type pendingEntry struct {
+	ctx       context.Context
+	level     Level
+	tag       string
+	message   string
+	timestamp time.Time
 }
 
 func NewDefaultFactory(
@@ -60,21 +72,34 @@ func NewDefaultFactory(
 }
 
 func (f *defaultFactory) Start() error {
+	var err error
 	if f.filePath != "" {
-		logFile, err := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
+		logFile, openErr := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+		if openErr != nil {
+			err = openErr
+		} else {
+			f.writer = logFile
+			f.file = logFile
 		}
-		f.writer = logFile
-		f.file = logFile
 	}
 	if f.needObservable {
 		f.observer = observable.NewObserver[Entry](f.subscriber, 64)
 	}
-	return nil
+	f.startAccess.Lock()
+	pendingEntries := f.pendingEntries
+	f.pendingEntries = nil
+	f.started.Store(true)
+	f.startAccess.Unlock()
+	for _, entry := range pendingEntries {
+		f.output(entry.ctx, entry.level, entry.tag, entry.message, entry.timestamp)
+	}
+	return err
 }
 
 func (f *defaultFactory) Close() error {
+	f.startAccess.Lock()
+	f.pendingEntries = nil
+	f.startAccess.Unlock()
 	return common.Close(
 		common.PtrOrNil(f.file),
 		f.subscriber,
@@ -118,6 +143,38 @@ func (f *defaultFactory) UnSubscribe(sub observable.Subscription[Entry]) {
 	f.observer.UnSubscribe(sub)
 }
 
+func (f *defaultFactory) output(ctx context.Context, level Level, tag string, message string, timestamp time.Time) {
+	if f.needObservable {
+		formatted, formattedSimple := f.formatter.FormatWithSimple(ctx, level, tag, message, timestamp)
+		if level <= f.level {
+			if level == LevelPanic {
+				panic(formatted)
+			}
+			f.writer.Write([]byte(formatted))
+			if level == LevelFatal {
+				os.Exit(1)
+			}
+		}
+		f.subscriber.Emit(Entry{level, formattedSimple})
+	} else if level <= f.level {
+		formatted := f.formatter.Format(ctx, level, tag, message, timestamp)
+		if level == LevelPanic {
+			panic(formatted)
+		}
+		f.writer.Write([]byte(formatted))
+		if level == LevelFatal {
+			os.Exit(1)
+		}
+	}
+	platformWriters := f.loadPlatformWriters()
+	if len(platformWriters) > 0 {
+		platformMessage := f.platformFormatter.Format(ctx, level, tag, message, timestamp)
+		for _, platformWriter := range platformWriters {
+			platformWriter.WriteMessage(level, platformMessage)
+		}
+	}
+}
+
 var _ ContextLogger = (*observableLogger)(nil)
 
 type observableLogger struct {
@@ -132,34 +189,17 @@ func (l *observableLogger) Log(ctx context.Context, level Level, args []any) {
 		return
 	}
 	nowTime := time.Now()
-	if l.needObservable {
-		message, messageSimple := l.formatter.FormatWithSimple(ctx, level, l.tag, F.ToString(args...), nowTime)
-		if level <= l.level {
-			if level == LevelPanic {
-				panic(message)
-			}
-			l.writer.Write([]byte(message))
-			if level == LevelFatal {
-				os.Exit(1)
-			}
+	message := F.ToString(args...)
+	if !l.started.Load() && level != LevelFatal && level != LevelPanic {
+		l.startAccess.Lock()
+		if !l.started.Load() {
+			l.pendingEntries = append(l.pendingEntries, pendingEntry{ctx, level, l.tag, message, nowTime})
+			l.startAccess.Unlock()
+			return
 		}
-		l.subscriber.Emit(Entry{level, messageSimple})
-	} else if level <= l.level {
-		message := l.formatter.Format(ctx, level, l.tag, F.ToString(args...), nowTime)
-		if level == LevelPanic {
-			panic(message)
-		}
-		l.writer.Write([]byte(message))
-		if level == LevelFatal {
-			os.Exit(1)
-		}
+		l.startAccess.Unlock()
 	}
-	if len(platformWriters) > 0 {
-		message := l.platformFormatter.Format(ctx, level, l.tag, F.ToString(args...), nowTime)
-		for _, platformWriter := range platformWriters {
-			platformWriter.WriteMessage(level, message)
-		}
-	}
+	l.output(ctx, level, l.tag, message, nowTime)
 }
 
 func (l *observableLogger) Trace(args ...any) {

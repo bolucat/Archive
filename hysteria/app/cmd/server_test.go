@@ -94,6 +94,7 @@ func TestServerConfig(t *testing.T) {
 			MaxIdleTimeout:              999 * time.Second,
 			MaxIncomingStreams:          256,
 			DisablePathMTUDiscovery:     true,
+			DisableStatelessReset:       true,
 		},
 		Mimic: mimicConfig{
 			Enabled:   true,
