@@ -16,6 +16,7 @@ import usePanFileStore from '../pan/panfilestore'
 import usePanTreeStore from '../pan/pantreestore'
 import { resolveBaiduPaths, resolveBaiduTargetPath, resolveBaiduUploadParentPath } from '../cloudbaidu/filecmd'
 import { getBoxSelectedTypes } from '../box/filecmd'
+import TreeStore from '../store/treestore'
 
 export type ProviderRenameResult = { file_id: string; parent_file_id: string; name: string; isDir: boolean }
 export type ProviderFileCommandOptions = { parentDescription?: string; names?: string[] | Map<string, string>; checkNameMode?: string; sourcePaths?: string[]; targetPath?: string; boxTypes?: Record<string, any> }
@@ -56,8 +57,10 @@ export const getProviderFolderCommandContext = (provider: DriveProvider, parentF
   }
   if (provider !== 'baidu') return {}
   const selectedDir = usePanTreeStore().selectDir
+  const treeDir = TreeStore.GetDir(fileStore.DriveID, parentFileId)
+  const parentDir = selectedDir.file_id === parentFileId ? selectedDir : treeDir
   return {
-    targetPath: resolveBaiduUploadParentPath(parentFileId, selectedDir.file_id === parentFileId ? selectedDir.description : '', fileStore.ListDataRaw || [], selectedDir)
+    targetPath: resolveBaiduUploadParentPath(parentFileId, parentDir?.description || '', fileStore.ListDataRaw || [], parentDir)
   }
 }
 

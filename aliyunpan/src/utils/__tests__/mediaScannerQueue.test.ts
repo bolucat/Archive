@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import * as nodePath from 'node:path'
 
 const mediaStore = {
   mediaItems: [] as any[],
@@ -15,10 +16,20 @@ const mediaStore = {
 }
 
 const storage = new Map<string, string>()
+const mediaDb = {
+  getIndexedMediaFileIds: vi.fn().mockResolvedValue(new Set()),
+  getMediaLibraryFolderFileIds: vi.fn().mockResolvedValue([]),
+  reconcileMediaLibraryFolder: vi.fn().mockResolvedValue(undefined)
+}
 
 vi.mock('../../store/medialibrary', () => ({ useMediaLibraryStore: () => mediaStore }))
 vi.mock('../../store', () => ({ usePanTreeStore: () => ({ drive_id: 'quark', user_id: 'quark_user' }) }))
 vi.mock('../../setting/settingstore', () => ({ default: () => ({ mediaLibrarySubtitleScope: 'same-folder' }) }))
+vi.mock('../message', () => ({ default: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() } }))
+vi.mock('../libraryScanRateLimiter', () => ({
+  libraryScanRateLimitScope: vi.fn(() => 'test-scope'),
+  rateLimitSingleScanPage: async function* (_scope: string, fetchPage: () => Promise<any[]>) { yield await fetchPage() }
+}))
 vi.mock('../../user/userdal', () => ({
   default: {
     GetUserToken: vi.fn().mockReturnValue({ user_id: 'quark_user', tokenfrom: 'quark' }),
@@ -37,13 +48,7 @@ vi.mock('../tmdb', () => ({
   TmdbTransientError: MockTmdbTransientError,
   tmdbImageUrl: vi.fn()
 }))
-vi.mock('../db', () => ({
-  default: {
-    getIndexedMediaFileIds: vi.fn().mockResolvedValue(new Set()),
-    getMediaLibraryFolderFileIds: vi.fn().mockResolvedValue([]),
-    reconcileMediaLibraryFolder: vi.fn().mockResolvedValue(undefined)
-  }
-}))
+vi.mock('../db', () => ({ default: mediaDb }))
 
 let MediaScanner: typeof import('../mediaScanner').MediaScanner
 
@@ -71,6 +76,8 @@ describe('MediaScanner scan queue', () => {
     vi.clearAllMocks()
     storage.clear()
     mediaStore.mediaItems = []
+    mediaStore.folders = []
+    mediaDb.getMediaLibraryFolderFileIds.mockResolvedValue([])
   })
 
   it('runs an Agent silent scan after an existing media-library scan finishes', async () => {
@@ -162,22 +169,71 @@ describe('MediaScanner scan queue', () => {
     expect(mediaStore.checkpointPersistenceBatch).toHaveBeenCalledTimes(1)
   })
 
-  it('automatically retries transient TMDB failures before completing a scan batch', async () => {
+  it('leaves a final request-layer transient failure pending for the next incremental scan', async () => {
     vi.useFakeTimers()
     try {
       const scanner = new MediaScanner()
       const file = { id: 'retry-file', name: 'Retry.Movie.2026.mkv', path: '/Retry.Movie.2026.mkv', driveId: 'quark', driveServerId: 'quark', fileSize: 1 } as any
       const processFile = vi.spyOn(scanner as any, 'processVideoFileWithoutAI')
-        .mockRejectedValueOnce(new MockTmdbTransientError('429'))
-        .mockResolvedValueOnce(null)
+        .mockRejectedValue(new MockTmdbTransientError('429'))
 
       const result = (scanner as any).processVideoBatchWithTransientRetry([file], 'folder', 'folder-id')
-      await vi.advanceTimersByTimeAsync(3000)
+      await vi.runAllTimersAsync()
 
-      await expect(result).resolves.toEqual({ unmatched: [], completed: [file], unresolved: [] })
-      expect(processFile).toHaveBeenCalledTimes(2)
+      await expect(result).resolves.toEqual({ unmatched: [], completed: [], unresolved: [file] })
+      expect(processFile).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
+    }
+  })
+
+  it('keeps cloud scan progress below 100 percent until traversal completes', async () => {
+    const scanner = new MediaScanner()
+    const video = { drive_id: 'quark', file_id: 'video-file', parent_file_id: 'movie-folder', name: 'Movie.2026.mkv', path: '/Movie.2026.mkv', isDir: false, size: 1 } as any
+    ;(scanner as any).getFolderItemsWithRetry = vi.fn().mockResolvedValue([video])
+    vi.spyOn(scanner as any, 'processVideoFileWithoutAI').mockResolvedValue(null)
+
+    await scanner.scanFolder(folder('movie-folder'), 'quark', { silent: true })
+
+    expect(mediaStore.setScanProgress).toHaveBeenCalledWith(1, 2)
+    expect(mediaStore.setScanProgress).toHaveBeenLastCalledWith(1, 1)
+  })
+
+  it('uses the shared scrape result pipeline for local video files', async () => {
+    vi.stubGlobal('window', { require: (name: string) => name === 'path' ? nodePath : {} })
+    try {
+      const scanner = new MediaScanner()
+      const file = { id: '/movies/Movie.2026.mkv', name: 'Movie.2026.mkv', path: '/movies/Movie.2026.mkv', userId: 'local', driveId: 'local', driveServerId: 'local', fileSize: 1 } as any
+      vi.spyOn(scanner as any, 'iterateLocalVideoFiles').mockImplementation(async function* () { yield file })
+      const sharedPipeline = vi.spyOn(scanner as any, 'processVideoBatchWithTransientRetry').mockResolvedValue({ unmatched: [file], completed: [file], unresolved: [] })
+      const addUnmatched = vi.spyOn(scanner as any, 'addUnmatchedMediaItem').mockImplementation(() => undefined)
+      const legacyPipeline = vi.spyOn(scanner as any, 'processVideoFile').mockResolvedValue(undefined)
+
+      await scanner.scanLocalFolder('/movies')
+
+      expect(sharedPipeline).toHaveBeenCalledWith([file], 'movies', 'local_/movies')
+      expect(addUnmatched).toHaveBeenCalledWith(file, 'movies', 'local_/movies')
+      expect(legacyPipeline).not.toHaveBeenCalled()
+    } finally {
+      delete (globalThis as any).window
+    }
+  })
+
+  it('restores the previous local source membership when traversal fails', async () => {
+    vi.stubGlobal('window', { require: (name: string) => name === 'path' ? nodePath : {} })
+    try {
+      const scanner = new MediaScanner()
+      mediaStore.folders = [{ id: 'local_/movies' }]
+      mediaDb.getMediaLibraryFolderFileIds.mockResolvedValueOnce(['local:::local:::existing-file'])
+      vi.spyOn(scanner as any, 'iterateLocalVideoFiles').mockImplementation(async function* () { throw new Error('local traversal failed') })
+
+      await scanner.scanLocalFolder('/movies')
+
+      expect(mediaDb.reconcileMediaLibraryFolder).toHaveBeenCalledWith('local_/movies', ['local:::local:::existing-file'])
+      expect(mediaStore.reconcileFolderSource).toHaveBeenCalledWith('local_/movies', ['local:::local:::existing-file'])
+      expect(mediaStore.removeFolder).not.toHaveBeenCalled()
+    } finally {
+      delete (globalThis as any).window
     }
   })
 })

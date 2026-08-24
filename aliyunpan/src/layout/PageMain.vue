@@ -17,11 +17,12 @@ import useBookLibraryStore from '../store/booklibrary'
 import { useMediaLibraryStore } from '../store/medialibrary'
 import { BookOpen, Music, PanelLeftClose, PanelLeftOpen, Pause, Play, SkipBack, SkipForward, Video } from 'lucide-vue-next'
 import { onHideRightMenu, TestAlt, TestCtrl, TestKey, TestShift } from '../utils/keyboardhelper'
-import { copyToClipboard, openExternal } from '../utils/electronhelper'
+import { copyToClipboard, getFromClipboard, openExternal } from '../utils/electronhelper'
 import { bootstrapMusicLibrary, shutdownMusicLibrary } from '../utils/musicLibraryBootstrap'
 import { bootstrapMediaLibrary, shutdownMediaLibrary } from '../utils/mediaLibraryBootstrap'
 import { bootstrapBookLibrary, shutdownBookLibrary } from '../utils/bookLibraryBootstrap'
 import { QRCode as AntQRCode } from 'ant-design-vue'
+import { Modal } from '@arco-design/web-vue'
 import DebugLog from '../utils/debuglog'
 import message from '../utils/message'
 import { t } from '../i18n'
@@ -37,6 +38,8 @@ import LimitReachedModal from '../setting/LimitReachedModal.vue'
 import MyModal from './MyModal.vue'
 import { B64decode } from '../utils/format'
 import { throttle } from '../utils/debounce'
+import { modalDaoRuShareLink } from '../utils/modal'
+import { detectShareLink } from '../utils/shareLinkDetection'
 
 const Setting = defineAsyncComponent(() => import('../setting/index.vue'))
 const Rss = defineAsyncComponent(() => import('../rss/index.vue'))
@@ -78,6 +81,9 @@ const keyboardStore = useKeyboardStore()
 const mouseStore = useMouseStore()
 const footStore = useFootStore()
 let removeAutoUpdateStateListener: (() => void) | undefined
+let shareClipboardTimer: number | undefined
+let lastShareClipboardSignature = ''
+let shareClipboardPromptOpen = false
 const musicStore = useMusicLibraryStore()
 const musicPlayerStore = useMusicPlayerStore()
 const bookStore = useBookLibraryStore()
@@ -90,6 +96,48 @@ function syncAutoUpdateState(state: { status?: string; percent?: number; version
     updateDownloadStatus: status,
     updateDownloadVersion: state.version || ''
   })
+}
+
+function checkClipboardShareLink() {
+  if (document.visibilityState !== 'visible' || shareClipboardPromptOpen) return
+  let clipboardText = ''
+  try {
+    clipboardText = getFromClipboard()
+  } catch {
+    return
+  }
+  const share = detectShareLink(clipboardText)
+  if (!share) return
+  const signature = `${share.provider}:${share.url}:${share.password}`
+  if (signature === lastShareClipboardSignature) return
+  lastShareClipboardSignature = signature
+  shareClipboardPromptOpen = true
+  const isEnglish = settingStore.uiLanguage === 'en-US'
+  Modal.confirm({
+    title: isEnglish ? `${share.providerName} share link detected` : `检测到${share.providerName}分享链接`,
+    content: share.canImport
+      ? (isEnglish ? 'View this share in BoxPlayer and choose files to save?' : '是否在 BoxPlayer 中查看并选择要保存的文件？')
+      : (isEnglish ? `BoxPlayer cannot directly save ${share.providerName} share links yet. Open it in your browser?` : `BoxPlayer 暂不支持直接转存${share.providerName}分享链接，是否使用浏览器打开？`),
+    okText: share.canImport ? (isEnglish ? 'View and save' : '查看并保存') : (isEnglish ? 'Open link' : '打开链接'),
+    cancelText: isEnglish ? 'Ignore' : '忽略',
+    onOk: () => {
+      shareClipboardPromptOpen = false
+      if (share.canImport) modalDaoRuShareLink(share.url, share.password)
+      else openExternal(share.url)
+    },
+    onCancel: () => {
+      shareClipboardPromptOpen = false
+    }
+  })
+}
+
+function scheduleClipboardShareCheck() {
+  window.clearTimeout(shareClipboardTimer)
+  shareClipboardTimer = window.setTimeout(checkClipboardShareLink, 250)
+}
+
+function handleDocumentVisibilityChange() {
+  if (document.visibilityState === 'visible') scheduleClipboardShareCheck()
 }
 
 async function handleInstallUpdate() {
@@ -376,6 +424,8 @@ onMounted(() => {
   window.addEventListener('resize', onResize, { passive: true })
   window.addEventListener('keydown', onKeyDown, true)
   window.addEventListener('mousedown', onMouseDown, true)
+  window.addEventListener('focus', scheduleClipboardShareCheck)
+  document.addEventListener('visibilitychange', handleDocumentVisibilityChange)
   setTimeout(() => {
     onHideRightMenu()
   }, 300)
@@ -390,13 +440,17 @@ onMounted(() => {
   removeAutoUpdateStateListener = window.AutoUpdateOnStateChanged?.((state) => {
     syncAutoUpdateState(state)
   })
+  shareClipboardTimer = window.setTimeout(checkClipboardShareLink, 800)
 })
 
 onUnmounted(() => {
+  window.clearTimeout(shareClipboardTimer)
   window.clearInterval(pricingPollTimer)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('mousedown', onMouseDown)
+  window.removeEventListener('focus', scheduleClipboardShareCheck)
+  document.removeEventListener('visibilitychange', handleDocumentVisibilityChange)
   window.removeEventListener('click', onHideRightMenu)
   shutdownMusicLibrary()
   shutdownMediaLibrary()

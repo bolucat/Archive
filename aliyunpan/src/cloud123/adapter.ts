@@ -19,12 +19,12 @@ const shareItem = (driveId: string, fileIds: string[], shareId: string, shareNam
   created_at: '', creator: '', description: '', display_name: '', display_label: '', download_count: 0, drive_id: driveId, expiration, expired: false, file_id: '', file_id_list: fileIds, icon: 'iconwenjian', preview_count: 0, save_count: 0, share_id: shareId, share_msg: '', full_share_msg: '', share_name: shareName, share_policy: '', share_pwd: sharePwd, share_url: shareUrl, status: '', updated_at: '', is_share_saved: false, share_saved: ''
 })
 
-export const listCloud123Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, lastFileId: string | number = '') => {
+export const listCloud123Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, lastFileId: string | number = '', strict = false) => {
   const isTrash = dirId === 'trash'
   const isSearch = dirId.startsWith('search')
   const parentFileId = dirId === 'cloud_root' || isTrash ? 0 : dirId
   const searchData = isSearch ? dirId.substring('search'.length).trim() : ''
-  const page = includeFiles ? await apiCloud123FileListPage(userId, parentFileId, 100, isTrash, searchData, 0, lastFileId) : undefined
+  const page = includeFiles ? await apiCloud123FileListPage(userId, parentFileId, 100, isTrash, searchData, 0, lastFileId, strict) : undefined
   const sourceItems = page?.items || await apiCloud123DirectoryFileList(userId, parentFileId, isTrash, searchData)
   const items = sourceItems.map(item => {
     const mapped = mapCloud123FileToAliModel(item)

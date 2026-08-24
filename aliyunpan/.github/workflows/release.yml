@@ -188,6 +188,8 @@ jobs:
           BOXPLAYER_SUPABASE_URL: ${{ secrets.BOXPLAYER_SUPABASE_URL }}
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
           BOXPLAYER_SITE_URL: ${{ secrets.BOXPLAYER_SITE_URL }}
+          POSTHOG_PROJECT_API_KEY: ${{ secrets.POSTHOG_PROJECT_API_KEY }}
+          POSTHOG_HOST: ${{ secrets.POSTHOG_HOST }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

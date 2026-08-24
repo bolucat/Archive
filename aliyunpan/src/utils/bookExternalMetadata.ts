@@ -15,6 +15,12 @@ export interface ExternalBookMetadata {
   source?: 'googlebooks'
 }
 
+export type ExternalBookMetadataLookupResult =
+  | { status: 'matched'; metadata: ExternalBookMetadata }
+  | { status: 'no-match' }
+  | { status: 'retry-later'; retryAt: number }
+  | { status: 'unavailable' }
+
 type GoogleBooksVolume = {
   volumeInfo?: {
     title?: string
@@ -72,7 +78,10 @@ function matchScore(book: IBookItem, candidate: BookMetadataCandidate): number {
   let score = title === candidateTitle ? 75 : (candidateTitle.includes(title) || title.includes(candidateTitle) ? 50 : 0)
   const author = normalized(book.author || '')
   const authors = (candidate.authors || []).map((value) => normalized(value))
-  if (!UNKNOWN_AUTHOR.has(author) && authors.some((value) => value === author || value.includes(author) || author.includes(value))) score += 25
+  if (!UNKNOWN_AUTHOR.has(author) && authors.length) {
+    if (!authors.some((value) => value === author || value.includes(author) || author.includes(value))) return 0
+    score += 25
+  }
   return score
 }
 
@@ -109,33 +118,42 @@ function isGoogleBooksTemporaryFailure(error: unknown): boolean {
 }
 
 export function canHydrateExternalBookMetadata(book: IBookItem): boolean {
-  return !book.cover_url && !book.thumbnail && !String(book.metadata_source || '').startsWith('googlebooks') && !!(book.title || book.file_name)
+  return !String(book.metadata_source || '').startsWith('googlebooks') && !!(book.title || book.file_name)
 }
 
-export async function lookupExternalBookMetadata(book: IBookItem, request: typeof fetch = fetch, log?: ExternalBookMetadataLogger): Promise<ExternalBookMetadata | null> {
+export async function lookupExternalBookMetadataResult(book: IBookItem, request: typeof fetch = fetch, log?: ExternalBookMetadataLogger): Promise<ExternalBookMetadataLookupResult> {
   const logPrefix = `[book-metadata] ${book.ext.toUpperCase()} ${book.file_name}`
   if (!GOOGLE_BOOKS_API_TOKEN) {
     log?.(`${logPrefix} 未配置 GOOGLE_BOOKS_API_TOKEN，跳过 Google Books 查询`)
-    return null
+    return { status: 'unavailable' }
   }
   if (googleBooksUnavailableUntil > Date.now()) {
     log?.(`${logPrefix} Google Books 暂不可用，稍后自动重试`)
-    return null
+    return { status: 'retry-later', retryAt: googleBooksUnavailableUntil }
   }
   try {
     log?.(`${logPrefix} 查询 Google Books：title=${book.title || '-'} author=${book.author || '-'} isbn=${book.isbn || '-'}`)
     const meta = await runRateLimitedScanRequest('external:googlebooks', () => lookupGoogleBooksMetadata(book, request))
     if (!meta) {
       log?.(`${logPrefix} Google Books 未命中`)
-      return null
+      return { status: 'no-match' }
     }
     log?.(`${logPrefix} Google Books 命中：${meta.title || '-'}，封面=${meta.coverUrl ? '有' : '无'}`)
-    return meta
+    return { status: 'matched', metadata: meta }
   } catch (error) {
-    if (isGoogleBooksTemporaryFailure(error)) googleBooksUnavailableUntil = Date.now() + GOOGLE_BOOKS_FAILURE_COOLDOWN_MS
+    if (isGoogleBooksTemporaryFailure(error)) {
+      googleBooksUnavailableUntil = Date.now() + GOOGLE_BOOKS_FAILURE_COOLDOWN_MS
+      log?.(`${logPrefix} Google Books 请求失败`, error)
+      return { status: 'retry-later', retryAt: googleBooksUnavailableUntil }
+    }
     log?.(`${logPrefix} Google Books 请求失败`, error)
-    return null
+    return { status: 'unavailable' }
   }
+}
+
+export async function lookupExternalBookMetadata(book: IBookItem, request: typeof fetch = fetch, log?: ExternalBookMetadataLogger): Promise<ExternalBookMetadata | null> {
+  const result = await lookupExternalBookMetadataResult(book, request, log)
+  return result.status === 'matched' ? result.metadata : null
 }
 
 export function buildExternalBookMetadataPatch(meta: ExternalBookMetadata, now = Date.now()): Partial<IBookItem> {
@@ -150,4 +168,10 @@ export function buildExternalBookMetadataPatch(meta: ExternalBookMetadata, now =
   if (meta.language) patch.language = meta.language
   if (meta.subjects?.length) patch.subjects = meta.subjects
   return patch
+}
+
+export function buildExternalBookMetadataOutcomePatch(result: ExternalBookMetadataLookupResult, now = Date.now()): Partial<IBookItem> | null {
+  if (result.status === 'matched') return buildExternalBookMetadataPatch(result.metadata, now)
+  if (result.status === 'no-match') return { metadata_source: 'googlebooks-no-match', metadata_updated_at: now }
+  return null
 }

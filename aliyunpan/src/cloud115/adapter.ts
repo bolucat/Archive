@@ -10,7 +10,7 @@ import { apiDrive115Rename } from './rename'
 import { apiDrive115TrashBatch, apiDrive115TrashDelete, apiDrive115TrashRestore } from './trash'
 import { apiDrive115TrashList } from './trash'
 
-export const listDrive115Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, offset = 0) => {
+export const listDrive115Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, offset = 0, strict = false) => {
   if (dirId === 'trash') {
     const { items, total } = await apiDrive115TrashList(userId, 200, 0)
     const mappedItems = items.map(item => mapDrive115TrashToAliModel(item, driveId))
@@ -27,7 +27,7 @@ export const listDrive115Items = async (userId: string, driveId: string, dirId: 
 
   const parentId = dirId === 'drive115_root' ? 0 : dirId
   const pageSize = 200
-  const items = (await apiDrive115FileList(userId, parentId, pageSize, offset, true)).map(item => mapDrive115FileToAliModel(item, driveId))
+  const items = (await apiDrive115FileList(userId, parentId, pageSize, offset, true, { strict })).map(item => mapDrive115FileToAliModel(item, driveId))
   const visibleItems = includeFiles ? items : items.filter(item => item.isDir)
   return { items: visibleItems, total: visibleItems.length, nextCursor: includeFiles && items.length === pageSize ? String(offset + pageSize) : '' }
 }

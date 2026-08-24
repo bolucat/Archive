@@ -2,6 +2,7 @@ import type { IAliGetFileModel } from '../aliapi/alimodels'
 import { resolveDriveProvider, type DriveProvider } from './driveProvider'
 import { listProviderItems } from '../drive/providerList'
 import { iterateProviderPages } from '../drive/providerPagination'
+import { libraryScanRateLimitScope, runRateLimitedScanRequest } from './libraryScanRateLimiter'
 
 export type ProviderFolderListOptions = {
   folder: IAliGetFileModel
@@ -25,7 +26,12 @@ export async function* iterateProviderFolderPages(options: ProviderFolderListOpt
   const { folder, userId, driveId } = options
   const route = resolveDriveProvider(userId, driveId)
   if (!route.isValid || !isScanProvider(route.provider)) return
-  yield* iterateProviderPages(cursor => listProviderItems(route.provider, userId, driveId, folder.file_id, true, cursor, { skipThumbnailHydration: true }), options.shouldStop)
+  const scope = libraryScanRateLimitScope(userId, driveId)
+  yield* iterateProviderPages(cursor => runRateLimitedScanRequest(scope, async () => {
+    const page = await listProviderItems(route.provider, userId, driveId, folder.file_id, true, cursor, { skipThumbnailHydration: true })
+    if (!page) throw new Error(`Unsupported provider pagination route: ${route.provider}`)
+    return page
+  }), options.shouldStop)
 }
 
 /**

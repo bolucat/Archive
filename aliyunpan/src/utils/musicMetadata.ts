@@ -42,11 +42,25 @@ interface MetaQuery {
   artistHint?: string
   titleHint?: string
   albumHint?: string
+  includeLyrics?: boolean
 }
 
 const META_TTL_MS = 24 * 60 * 60 * 1000
 const memCache = new Map<string, { ts: number, data: MusicMetadata }>()
 const inflight = new Map<string, Promise<MusicMetadata>>()
+
+export class MusicMetadataTransientError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MusicMetadataTransientError'
+  }
+}
+
+function isTransientMetadataRequestError(error: any): boolean {
+  const status = Number(error?.response?.status || error?.status || 0)
+  const code = String(error?.code || '')
+  return status === 429 || status >= 500 || !status || ['ECONNABORTED', 'ETIMEDOUT', 'ERR_NETWORK', 'ERR_CANCELED'].includes(code)
+}
 
 const COMMON_BRACKETS_RE = /[\(\[（【][^\)\]）】]*[\)\]）】]/g
 const TRAILING_TAGS_RE = /\s*-\s*(official|mv|hd|hq|lossless|live|remix|cover|伴奏|纯音乐|高清|无损|完整版|live现场)\s*$/gi
@@ -98,7 +112,7 @@ function buildKey(q: MetaQuery): string {
   const artist = (q.artistHint || guess.artist || '').trim()
   const title = (q.titleHint || guess.title || '').trim()
   const dur = q.durationSec ? Math.round(q.durationSec) : 0
-  return `${artist}|${title}|${dur}`.toLowerCase()
+  return `${artist}|${title}|${dur}|lyrics:${q.includeLyrics !== false}`.toLowerCase()
 }
 
 export function parseLrc(lrc: string, durationSec?: number): LyricLine[] {
@@ -223,23 +237,24 @@ async function fetchITunes(artist: string, title: string): Promise<{ cover: stri
     const resp = await axios.get('https://itunes.apple.com/search', {
       params: { term, entity: 'song', limit: 5, country: 'us' },
       timeout: 8000
-    }).catch(() => null)
+    })
     const results: any[] = resp?.data?.results || []
     if (!results.length) return null
     const lower = (s: any) => String(s || '').toLowerCase()
     const targetTitle = lower(title)
     const targetArtist = lower(artist)
     const score = (r: any) => {
-      let s = 0
-      if (lower(r.trackName) === targetTitle) s += 4
-      else if (lower(r.trackName).includes(targetTitle)) s += 2
-      if (targetArtist && lower(r.artistName) === targetArtist) s += 3
-      else if (targetArtist && lower(r.artistName).includes(targetArtist)) s += 1
-      return s
+      const candidateTitle = lower(r.trackName)
+      const candidateArtist = lower(r.artistName)
+      const titleScore = candidateTitle === targetTitle ? 4 : candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle) ? 2 : 0
+      const artistScore = !targetArtist ? 0 : candidateArtist === targetArtist ? 3 : candidateArtist.includes(targetArtist) || targetArtist.includes(candidateArtist) ? 1 : 0
+      return { total: titleScore + artistScore, titleScore, artistScore }
     }
-    results.sort((a, b) => score(b) - score(a))
+    results.sort((a, b) => score(b).total - score(a).total)
     const r = results[0]
     if (!r) return null
+    const best = score(r)
+    if (best.titleScore < 2 || (targetArtist ? best.artistScore < 1 : best.titleScore < 4)) return null
     let cover: string = r.artworkUrl100 || r.artworkUrl60 || ''
     if (cover) cover = cover.replace(/\/\d+x\d+bb\.(jpg|png)$/i, '/600x600bb.jpg')
     return {
@@ -250,6 +265,7 @@ async function fetchITunes(artist: string, title: string): Promise<{ cover: stri
     }
   } catch (e) {
     DebugLog.mSaveWarning('iTunes error: ' + (e as Error).message)
+    if (isTransientMetadataRequestError(e)) throw new MusicMetadataTransientError((e as Error)?.message || 'iTunes 暂时不可用')
     return null
   }
 }
@@ -282,6 +298,9 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
     let lrcText = ''
     let lyricLineSource: MusicMetadataDebug['lyricLineSource'] = 'empty'
     let coverUrl = ''
+    let resolvedTitle = title || guess.title
+    let resolvedArtist = artist || guess.artist
+    let resolvedAlbum = album
     let lyricDebug: LyricFetchDebug | undefined
     const metadataSources = new Set<string>(['filename'])
 
@@ -290,13 +309,18 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
       const itunesRes = await fetchITunes(artist, title)
       if (itunesRes) {
         coverUrl = itunesRes.cover || ''
+        resolvedTitle = itunesRes.title || resolvedTitle
+        resolvedArtist = itunesRes.artist || resolvedArtist
+        resolvedAlbum = itunesRes.album || resolvedAlbum
         if (itunesRes.cover) metadataSources.add('itunes:cover')
         if (itunesRes.album || itunesRes.artist || itunesRes.title) metadataSources.add('itunes:metadata')
       }
-    } catch {}
+    } catch (error) {
+      if (q.includeLyrics === false && error instanceof MusicMetadataTransientError) throw error
+    }
 
     // SDK fallback for lyrics (skip LRCLIB)
-    if (title) {
+    if (title && q.includeLyrics !== false) {
       try {
         const sdkLyric = await sdkFetchLyricDetailed({ name: title, singer: artist, interval: formatDurationForSdk(q.durationSec) })
         lyricDebug = sdkLyric.debug
@@ -331,9 +355,9 @@ export async function fetchMusicMetadata(q: MetaQuery): Promise<MusicMetadata> {
     lyricLineSource = parsedLyric.source || lyricLineSource
     const lyricReason = getLyricDebugReason(lyricDebug, lrcText, lines.length, lyricLineSource)
     const data: MusicMetadata = {
-      title: title || guess.title,
-      artist: artist || guess.artist,
-      album: album || '',
+      title: resolvedTitle,
+      artist: resolvedArtist,
+      album: resolvedAlbum,
       cover: coverUrl,
       metadataSources: Array.from(metadataSources),
       lrc: lrcText,

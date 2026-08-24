@@ -11,8 +11,8 @@ describe('analytics privacy contract', () => {
   })
 
   it('keeps diagnostics while redacting credentials', () => {
-    expect(resolveCloudApiFailure('https://api-drive.mypikpak.com/drive/v1/files?access_token=secret&parent_id=private', 403, { message: 'denied', refresh_token: 'secret' })).toEqual({ provider: 'pikpak', statusCode: 403, failureKind: 'http', requestUrl: 'https://api-drive.mypikpak.com/drive/v1/files?access_token=[REDACTED]&parent_id=private', serverError: '{"message":"denied","refresh_token":"[REDACTED]"}' })
-    expect(resolveCloudApiFailure('https://pan.baidu.com/rest/2.0/xpan/file?access_token=secret', 401)).toMatchObject({ provider: 'baidu', requestUrl: 'https://pan.baidu.com/rest/2.0/xpan/file?access_token=[REDACTED]' })
+    expect(resolveCloudApiFailure('https://api-drive.mypikpak.com/drive/v1/files?access_token=secret&parent_id=private#fragment', 403, { message: 'denied', refresh_token: 'secret' })).toEqual({ provider: 'pikpak', statusCode: 403, failureKind: 'http', requestUrl: 'https://api-drive.mypikpak.com/drive/v1/files', serverError: '{"message":"denied","refresh_token":"[REDACTED]"}' })
+    expect(resolveCloudApiFailure('https://pan.baidu.com/rest/2.0/xpan/file?access_token=secret', 401)).toMatchObject({ provider: 'baidu', requestUrl: 'https://pan.baidu.com/rest/2.0/xpan/file' })
     expect(resolveCloudApiFailure('https://example.com/private-file', 500)).toBeUndefined()
   })
 

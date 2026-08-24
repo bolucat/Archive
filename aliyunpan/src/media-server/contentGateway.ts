@@ -881,7 +881,14 @@ export const getMediaServerItemDetail = async (
 const buildAbsoluteMediaServerUrl = (config: MediaServerConfig, value: string) => {
   if (!value) return ''
   if (/^https?:\/\//i.test(value)) return value
-  return new URL(value, `${config.baseUrl.replace(/\/+$/, '')}/`).toString()
+  const baseUrl = config.baseUrl.replace(/\/+$/, '')
+  if (!value.startsWith('/')) return new URL(value, `${baseUrl}/`).toString()
+
+  const base = new URL(`${baseUrl}/`)
+  const basePath = base.pathname.replace(/\/+$/, '')
+  if (!basePath || basePath === '/') return new URL(value, base.origin).toString()
+  if (value === basePath || value.startsWith(`${basePath}/`)) return new URL(value, base.origin).toString()
+  return `${base.origin}${basePath}${value}`
 }
 
 const pickFileNameFromSource = (item: MediaServerBaseItem, source?: MediaServerMediaSource) => {

@@ -8,6 +8,7 @@ const MAX_FAIL_PER_RUN = 12
 
 let running = false
 let stopRequested = false
+const retryAfterByTrackId = new Map<string, number>()
 
 export function isMusicEnrichmentRunning(): boolean {
   return running
@@ -26,15 +27,15 @@ export async function enrichMusicLibrary(maxItems: number = 60): Promise<number>
   if (running) return 0
   running = true
   stopRequested = false
-  let enriched = 0
+  let attempted = 0
   let failures = 0
   try {
     const store = useMusicLibraryStore()
-    // 选出无 cover_url 且未尝试过 enrich 或上次 enrich 距今 > 24h 的
     const now = Date.now()
-    const candidates = store.tracks
-      .filter((t) => !t.cover_url && (!t.enriched_at || now - t.enriched_at > 24 * 60 * 60 * 1000))
-      .slice(0, maxItems)
+    for (const [id, retryAt] of retryAfterByTrackId) {
+      if (retryAt <= now) retryAfterByTrackId.delete(id)
+    }
+    const candidates = await store.getEnrichmentCandidates(maxItems, now, new Set(retryAfterByTrackId.keys()))
     if (!candidates.length) return 0
 
     const queue = [...candidates]
@@ -49,16 +50,22 @@ export async function enrichMusicLibrary(maxItems: number = 60): Promise<number>
               filename: t.file_name,
               artistHint: t.artist || '',
               titleHint: t.title || '',
-              albumHint: t.album || ''
+              albumHint: t.album || '',
+              includeLyrics: false
             })
-            if (meta && (meta.cover || meta.album || meta.artist || meta.title)) {
+            const hasExternalMetadata = !!meta?.metadataSources?.some((source) => source !== 'filename')
+            if (meta && hasExternalMetadata) {
               const patch: Record<string, unknown> = { enriched_at: Date.now() }
               if (meta.cover) patch.cover_url = meta.cover
-              if (meta.album && !t.album) patch.album = meta.album
-              if (meta.artist && !t.artist) patch.artist = meta.artist
-              if (meta.title && !t.title) patch.title = meta.title
+              const hasITunesMetadata = meta.metadataSources?.includes('itunes:metadata')
+              if (hasITunesMetadata && t.metadata_source !== 'manual') {
+                if (meta.album) patch.album = meta.album
+                if (meta.artist) patch.artist = meta.artist
+                if (meta.title) patch.title = meta.title
+                patch.metadata_source = 'itunes'
+              }
               await store.updateTrackEnrichment(t.id, patch)
-              if (meta.cover) enriched += 1
+              retryAfterByTrackId.delete(t.id)
             } else {
               // 标记尝试过，避免下次再选中
               await store.updateTrackEnrichment(t.id, { enriched_at: Date.now() })
@@ -66,8 +73,10 @@ export async function enrichMusicLibrary(maxItems: number = 60): Promise<number>
             }
           } catch (e) {
             failures += 1
+            retryAfterByTrackId.set(t.id, Date.now() + 60_000)
             DebugLog.mSaveWarning('enrichMusicLibrary item failed: ' + (e as Error).message)
           }
+          attempted += 1
           await new Promise((r) => setTimeout(r, BATCH_DELAY_MS))
         }
       })())
@@ -77,5 +86,5 @@ export async function enrichMusicLibrary(maxItems: number = 60): Promise<number>
     running = false
     stopRequested = false
   }
-  return enriched
+  return attempted
 }

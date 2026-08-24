@@ -105,14 +105,16 @@ describe('mediaAIScrape', () => {
     )
 
     expect(item).toMatchObject({
+      id: '42',
       type: 'movie',
       name: 'Arrival',
+      folderId: 'folder-1',
       tmdbId: 42,
       metadataSource: 'ai-tmdb'
     })
     expect(item?.driveFiles).toEqual([file])
     expect(item?.aiScrape?.confidence).toBe(0.93)
-    expect(searchMovie).toHaveBeenCalledWith('Arrival', '2016', undefined, {
+    expect(searchMovie).toHaveBeenCalledWith('Arrival', '2016', '42', {
       fingerprintNamespace: 'aliyun:sha1',
       fingerprint: 'hash',
       fileSize: 1024
@@ -143,10 +145,11 @@ describe('mediaAIScrape', () => {
       }
     }
 
+    const searchTV = vi.fn(async () => tv)
     const item = await applyAIScrapeResult(
       { file, folderName: 'Some Show', folderId: 'folder-2' },
-      { ok: true, decision: { type: 'tv', title: 'Some Show', season: 2, episode: 3, confidence: 0.88, allowOverwrite: true, reason: 'episode naming' }, provider: 'test' },
-      { tmdb: { searchTV: vi.fn(async () => tv) } as any }
+      { ok: true, decision: { type: 'tv', title: 'Some Show', tmdbId: 100, season: 2, episode: 3, confidence: 0.88, allowOverwrite: true, reason: 'episode naming' }, provider: 'test' },
+      { tmdb: { searchTV } as any }
     )
 
     expect(item?.type).toBe('tv')
@@ -155,6 +158,8 @@ describe('mediaAIScrape', () => {
       episodeNumber: 3,
       driveFiles: [file]
     })
+    expect(item?.folderId).toBe('folder-2')
+    expect(searchTV).toHaveBeenCalledWith('Some Show', 2, undefined, '100', expect.any(Object), 'messy.name.203.mkv')
   })
 
   it('tries AI-provided alternate titles after the primary title misses', async () => {

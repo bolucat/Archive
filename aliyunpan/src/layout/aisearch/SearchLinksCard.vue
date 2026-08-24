@@ -3,6 +3,7 @@ import { Globe, Loader2, AlertCircle, Copy, ExternalLink, Download } from 'lucid
 import { modalDaoRuShareLink } from '../../utils/modal'
 import type { LinkResult } from './types'
 import { t } from '../../i18n'
+import { canImportShareLink } from '../../utils/shareLinkDetection'
 
 const props = defineProps<{
   state: 'pending' | 'running' | 'done' | 'error'
@@ -18,7 +19,7 @@ function copyText(text: string) {
 }
 
 function canSave(url: string): boolean {
-  return /aliyundrive\.com\/s\/|alipan\.com\/s\/|pan\.quark\.cn\/s\//i.test(url)
+  return canImportShareLink(url)
 }
 
 function parseSharePwd(url: string, password: string): string {

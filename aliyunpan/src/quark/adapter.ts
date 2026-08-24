@@ -4,12 +4,12 @@ import { apiQuarkDownloadUrl, apiQuarkFileDetail, apiQuarkFileList, apiQuarkSear
 import { apiQuarkShareCreate, apiQuarkShareList } from './share'
 import { apiQuarkMkdir, apiQuarkMoveBatch, apiQuarkRename, apiQuarkTrashBatch } from './filecmd'
 
-export const listQuarkItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, page = 1) => {
+export const listQuarkItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, page = 1, strict = false) => {
   const isSearch = dirId.startsWith('search')
   const parentId = dirId === 'quark_root' ? '0' : dirId
   const result = isSearch
     ? { items: await apiQuarkSearch(userId, dirId.substring('search'.length).trim(), 200), total: 0 }
-    : await apiQuarkFileList(userId, parentId, 200, page)
+    : await apiQuarkFileList(userId, parentId, 200, page, strict)
   const mappedItems = result.items.map(item => mapQuarkFileToAliModel(item, driveId, isSearch ? 'quark_root' : dirId))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)
   return { items: visibleItems, total: result.total || visibleItems.length, nextCursor: includeFiles && page * 200 < result.total ? String(page + 1) : '' }

@@ -1,7 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const adapters = vi.hoisted(() => {
-  const result = () => Promise.resolve({ items: [], total: 0 })
+  const result = (): Promise<{ items: any[]; total: number; nextCursor?: string }> => Promise.resolve({ items: [], total: 0 })
   return {
     baidu: vi.fn(result), cloud123: vi.fn(result), cloud139: vi.fn(result), cloud189: vi.fn(result), drive115: vi.fn(result), dropbox: vi.fn(result), google: vi.fn(result), guangya: vi.fn(result), onedrive: vi.fn(result), pikpak: vi.fn(result), quark: vi.fn(result), box: vi.fn(result)
   }
@@ -22,8 +22,11 @@ vi.mock('../../box/adapter', () => ({ listBoxItems: adapters.box }))
 
 import { listProviderItems } from '../../drive/providerList'
 import { iterateProviderPages } from '../../drive/providerPagination'
+import { iterateProviderFolderPages } from '../providerFolderList'
 
 describe('网盘主列表分页注册表', () => {
+  beforeEach(() => vi.clearAllMocks())
+
   it.each([
     ['baidu', '400', 'baidu', 400],
     ['cloud123', 'last-file-id', 'cloud123', 'last-file-id'],
@@ -40,7 +43,7 @@ describe('网盘主列表分页注册表', () => {
   ] as const)('%s forwards its continuation cursor unchanged to its adapter', async (provider, cursor, adapter, expectedCursor) => {
     await listProviderItems(provider, 'user', 'drive', 'folder', true, cursor)
 
-    expect(adapters[adapter]).toHaveBeenLastCalledWith('user', 'drive', 'folder', true, expectedCursor)
+    expect(adapters[adapter].mock.calls.at(-1)?.slice(0, 5)).toEqual(['user', 'drive', 'folder', true, expectedCursor])
   })
 
   it('keeps the scroll-to-load wiring on every PanRight list view', async () => {
@@ -48,7 +51,7 @@ describe('网盘主列表分页注册表', () => {
     const panDal = await import('../../pan/pandal.ts?raw')
 
     expect((source.default.match(/@scroll='handleListScroll'/g) || [])).toHaveLength(3)
-    expect(source.default).toContain('distance < 120')
+    expect((source.default.match(/@reach-bottom='handleListReachBottom'/g) || [])).toHaveLength(3)
     expect(source.default).toContain('PanDAL.LoadMoreCurrentProviderItems()')
     expect(panDal.default).toContain('providerLoadingMore')
     expect(panDal.default).toContain('store.ListDataRaw = store.ListDataRaw.concat(items)')
@@ -56,6 +59,29 @@ describe('网盘主列表分页注册表', () => {
 })
 
 describe('统一分页状态机', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('retries the same provider cursor after a 429 instead of abandoning the folder', async () => {
+    vi.useFakeTimers()
+    try {
+      adapters.cloud123
+        .mockRejectedValueOnce(new Error('429 Too Many Requests'))
+        .mockResolvedValueOnce({ items: [{ file_id: 'file-a' }], total: 1, nextCursor: '' })
+      const received: string[] = []
+      const result = (async () => {
+        for await (const page of iterateProviderFolderPages({ folder: { file_id: '0' } as any, userId: 'cloud123_test', driveId: 'cloud123' })) received.push(...page.map(item => item.file_id))
+      })()
+
+      await vi.runAllTimersAsync()
+      await result
+
+      expect(received).toEqual(['file-a'])
+      expect(adapters.cloud123).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('跨页去重，并在空 cursor 时结束', async () => {
     const requested: string[] = []
     const pages = [

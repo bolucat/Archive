@@ -94,7 +94,9 @@ const handleListScroll = () => {
 }
 
 const handleListReachBottom = () => {
-  void PanDAL.LoadMoreCurrentProviderItems()
+  void PanDAL.LoadMoreCurrentProviderItems().catch((error: any) => {
+    message.warning(`加载下一页失败，滚动到底部可重试：${error?.message || '网络请求失败'}`)
+  })
 }
 
 const appStore = useAppStore()

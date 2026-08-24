@@ -165,7 +165,8 @@ export async function manualAIScrapeItems(item: MediaLibraryItem): Promise<Media
       fileSize: file.fileSize,
       driveFile: file
     })),
-    item.name
+    item.name,
+    item.folderId
   )
   const scraped = results
     .map(result => result.mediaItem)
@@ -211,8 +212,7 @@ function movieToMediaItem(movie: MovieItem, files: DriveFileItem[], folderName: 
     }
   }
   return {
-    ...movieItem,
-    id: `${files[0].id}`
+    ...movieItem
   }
 }
 
@@ -365,7 +365,7 @@ export interface BatchScrapeResult {
   error?: string
 }
 
-export async function batchScrapeMediaWithAI(files: BatchScrapeFileInfo[], folderName: string): Promise<BatchScrapeResult[]> {
+export async function batchScrapeMediaWithAI(files: BatchScrapeFileInfo[], folderName: string, folderId?: string): Promise<BatchScrapeResult[]> {
   if (!files.length) return []
 
   const cfg = resolveAIProviderConfig()
@@ -397,12 +397,12 @@ export async function batchScrapeMediaWithAI(files: BatchScrapeFileInfo[], folde
         if (decision.type === 'movie') {
           const movie = await searchMovieWithTitles(tmdb, decision, toDriveFileItem(file))
           if (movie) {
-            mediaItem = decorateAIScrapeItem(movieToMediaItem(movie, [toDriveFileItem(file)], folderName, undefined, file.path.substring(0, file.path.lastIndexOf('/')) || '', now), { ok: true, decision, provider: cfg.providerName })
+            mediaItem = decorateAIScrapeItem(movieToMediaItem(movie, [toDriveFileItem(file)], folderName, folderId, file.path.substring(0, file.path.lastIndexOf('/')) || '', now), { ok: true, decision, provider: cfg.providerName })
           }
         } else if (decision.type === 'tv') {
           const tv = await searchTvWithTitles(tmdb, decision, toDriveFileItem(file))
           if (tv) {
-            mediaItem = tvToMediaItem(tv, decision, [toDriveFileItem(file)], folderName, undefined, file.path.substring(0, file.path.lastIndexOf('/')) || '', now)
+            mediaItem = tvToMediaItem(tv, decision, [toDriveFileItem(file)], folderName, folderId, file.path.substring(0, file.path.lastIndexOf('/')) || '', now)
             if (mediaItem) mediaItem = decorateAIScrapeItem(mediaItem, { ok: true, decision, provider: cfg.providerName })
           }
         }
@@ -487,7 +487,7 @@ function mediaTitles(decision: MediaAIScrapeDecision): string[] {
 
 async function searchMovieWithTitles(tmdb: Pick<TmdbService, 'searchMovie'>, decision: MediaAIScrapeDecision, file: DriveFileItem): Promise<MovieItem | null> {
   for (const title of mediaTitles(decision)) {
-    const movie = await tmdb.searchMovie(title, decision.year ? String(decision.year) : undefined, undefined, buildMediaFingerprint(file), file.name)
+    const movie = await tmdb.searchMovie(title, decision.year ? String(decision.year) : undefined, decision.tmdbId === undefined ? undefined : String(decision.tmdbId), buildMediaFingerprint(file), file.name)
     if (movie) return movie
   }
   return null
@@ -495,7 +495,7 @@ async function searchMovieWithTitles(tmdb: Pick<TmdbService, 'searchMovie'>, dec
 
 async function searchTvWithTitles(tmdb: Pick<TmdbService, 'searchTV'>, decision: MediaAIScrapeDecision, file: DriveFileItem): Promise<MediaLibraryTvSeriesItem | null> {
   for (const title of mediaTitles(decision)) {
-    const tv = await tmdb.searchTV(title, decision.season || 1, decision.year ? String(decision.year) : undefined, undefined, buildMediaFingerprint(file), file.name)
+    const tv = await tmdb.searchTV(title, decision.season || 1, decision.year ? String(decision.year) : undefined, decision.tmdbId === undefined ? undefined : String(decision.tmdbId), buildMediaFingerprint(file), file.name)
     if (tv) return tv
   }
   return null

@@ -50,7 +50,7 @@ export const renameOneDriveFiles = async (userId: string, fileIds: string[], nam
   return results
 }
 
-export const listOneDriveItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, nextLink = '') => {
+export const listOneDriveItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, nextLink = '', strict = false) => {
   if (dirId.startsWith('search')) {
     const filters = parseOneDriveSearchId(dirId)
     if (!filters.query) return { items: [], total: 0, error: '搜索关键字不能为空' }
@@ -59,7 +59,7 @@ export const listOneDriveItems = async (userId: string, driveId: string, dirId: 
     return { items: visible, total: visible.length }
   }
   const parentId = dirId === 'onedrive_root' ? 'onedrive_root' : dirId
-  const page = await apiOneDriveFileListPage(userId, parentId, nextLink, false, 200)
+  const page = await apiOneDriveFileListPage(userId, parentId, nextLink, strict, 200)
   const items = page.items.map(item => mapOneDriveItemToAliModel(item, driveId, parentId))
   const visible = includeFiles ? items : items.filter(item => item.isDir)
   return { items: visible, total: visible.length, nextCursor: includeFiles ? page.nextLink : '' }

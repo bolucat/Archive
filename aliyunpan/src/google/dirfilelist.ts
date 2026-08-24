@@ -53,16 +53,19 @@ export const getGoogleToken = async (userId: string) => {
   return token?.user_id ? await UserDAL.EnsureUserTokenReady(token.user_id) : token
 }
 
-export const googleDriveRequest = async <T>(userId: string, path: string, init: RequestInit, fallback: string, silent = false): Promise<T | null> => {
+export const googleDriveRequest = async <T>(userId: string, path: string, init: RequestInit, fallback: string, silent = false, strict = false): Promise<T | null> => {
   const token = await getGoogleToken(userId)
   if (!token?.access_token) {
     if (!silent) message.error('未登录 Google Drive')
+    if (strict) throw new Error('未登录 Google Drive')
     return null
   }
   const response = await fetch(path.startsWith('https://') ? path : `${GOOGLE_DRIVE_API}${path}`, { ...init, headers: { Authorization: `Bearer ${token.access_token}`, ...(init.headers as Record<string, string> || {}) } })
   const data = await response.json().catch(() => undefined)
   if (!response.ok || data?.error) {
-    if (!silent) message.error(data?.error?.message || fallback)
+    const errorText = data?.error?.message || fallback
+    if (!silent) message.error(errorText)
+    if (strict) throw new Error(errorText)
     return null
   }
   return data as T
@@ -91,8 +94,8 @@ export const buildGoogleSharedWithMeListPath = (pageToken = '', pageSize = 1000)
   return `/files?${params.toString()}`
 }
 
-export const apiGoogleFileListPage = async (userId: string, parentId: string, pageToken = '', pageSize = 1000) => {
-  const data = await googleDriveRequest<GoogleListResponse>(userId, buildGoogleFilesListPath(parentId, pageToken, pageSize), { method: 'GET' }, '获取 Google Drive 文件列表失败')
+export const apiGoogleFileListPage = async (userId: string, parentId: string, pageToken = '', pageSize = 1000, strict = false) => {
+  const data = await googleDriveRequest<GoogleListResponse>(userId, buildGoogleFilesListPath(parentId, pageToken, pageSize), { method: 'GET' }, '获取 Google Drive 文件列表失败', false, strict)
   return { items: data?.files || [], nextPageToken: data?.nextPageToken || '' }
 }
 

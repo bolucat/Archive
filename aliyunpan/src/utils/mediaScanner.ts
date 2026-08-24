@@ -10,7 +10,7 @@ import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDi
 import UserDAL from '../user/userdal'
 import { buildExpectedSeasons } from './mediaCoverage'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
-import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage } from './libraryScanRateLimiter'
+import { libraryScanRateLimitScope, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 import DB from './db'
 import { mergeDriveFileSources } from './mediaSourceMembership'
 import { associateMediaSubtitles, type MediaSubtitleFolderScope } from './mediaSubtitleAssociation'
@@ -30,11 +30,6 @@ type SubtitleAssociationIndex = { files: DriveFileItem[]; folderParents: Map<str
 
 const PERSISTENCE_CHECKPOINT_ITEMS = 100
 const PERSISTENCE_CHECKPOINT_MS = 3000
-// TMDB 的 429/超时/5xx 已在请求层做短暂重试；这里再对单个媒体文件
-// 做两轮退避重试，避免临时网络抖动要求用户手动重新扫描整个目录。
-const TMDB_TRANSIENT_RETRY_DELAYS_MS = [3000, 10000]
-
-const waitForMediaRetry = (delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs))
 
 export class MediaScanner {
   private static instance: MediaScanner
@@ -122,7 +117,7 @@ export class MediaScanner {
         ({ processed, unresolved = 0 }) => {
           totalProcessed += processed
           unresolvedTransientFailures += unresolved
-          this.mediaStore.setScanProgress(totalProcessed, Math.max(1, totalProcessed))
+          this.mediaStore.setScanProgress(totalProcessed, totalProcessed + 1)
           this.checkpointScanPersistence(processed)
         },
         async (unmatched) => {
@@ -156,9 +151,10 @@ export class MediaScanner {
           this.mediaStore.addFolder(mediaFolder)
           this.mediaStore.pruneOrphanDuplicateFolders()
         }
+        this.mediaStore.setScanProgress(totalProcessed, totalProcessed)
         if (!options.silent) {
           if (unresolvedTransientFailures > 0) {
-            message.warning(`扫描完成：${unresolvedTransientFailures} 个文件的 TMDB 请求已自动重试两次仍失败，已保留现有资料；下次增量扫描会继续重试`)
+            message.warning(`扫描完成：${unresolvedTransientFailures} 个文件的 TMDB 请求在请求层退避重试后仍失败，已保留现有资料；下次增量扫描会继续重试`)
           } else {
             message.success(`扫描完成！共处理 ${totalProcessed} 个视频文件`)
           }
@@ -263,46 +259,33 @@ export class MediaScanner {
   private async processVideoBatchWithTransientRetry(files: DriveFileItem[], folderName: string, folderId: string, mediaHint?: MediaScanHint): Promise<{ unmatched: DriveFileItem[]; completed: DriveFileItem[]; unresolved: DriveFileItem[] }> {
     const unmatched: DriveFileItem[] = []
     const completed: DriveFileItem[] = []
-    let pending = files
-
-    for (let attempt = 0; pending.length && !this.shouldStop; attempt++) {
-      const current = pending
-      pending = []
-      const results = await Promise.allSettled(current.map(file => this.processVideoFileWithoutAI(file, folderName, folderId, mediaHint)))
-      results.forEach((result, index) => {
-        const file = current[index]
-        if (result.status === 'fulfilled') {
-          completed.push(file)
-          if (result.value) unmatched.push(result.value)
-          return
-        }
-        if (result.reason instanceof TmdbTransientError) {
-          pending.push(file)
-          return
-        }
-        // processVideoFileWithoutAI 已将非临时错误降级为未匹配；这里仅作
-        // 防御性保护，避免未知异常导致完整扫描误删已有媒体资料。
-        console.error(`处理视频文件失败，保留现有资料: ${file.name}`, result.reason)
+    const unresolved: DriveFileItem[] = []
+    const results = await Promise.allSettled(files.map(file => this.processVideoFileWithoutAI(file, folderName, folderId, mediaHint)))
+    results.forEach((result, index) => {
+      const file = files[index]
+      if (result.status === 'fulfilled') {
         completed.push(file)
-      })
-
-      const retryDelay = TMDB_TRANSIENT_RETRY_DELAYS_MS[attempt]
-      if (!pending.length || retryDelay === undefined || this.shouldStop) break
-      console.warn(`TMDB 临时失败，${pending.length} 个文件将在 ${Math.round(retryDelay / 1000)} 秒后自动重试（${attempt + 1}/${TMDB_TRANSIENT_RETRY_DELAYS_MS.length}）`)
-      await waitForMediaRetry(retryDelay)
-    }
-
-    if (pending.length) {
-      pending.forEach(file => console.warn(`TMDB 临时失败，已完成自动重试并保留待下次增量扫描: ${file.name}`))
-    }
-    return { unmatched, completed, unresolved: pending }
+        if (result.value) unmatched.push(result.value)
+        return
+      }
+      if (result.reason instanceof TmdbTransientError) {
+        console.warn(`TMDB 请求层退避重试后仍失败，保留待下次增量扫描: ${file.name}`)
+        unresolved.push(file)
+        return
+      }
+      // processVideoFileWithoutAI 已将非临时错误降级为未匹配；这里仅作
+      // 防御性保护，避免未知异常导致完整扫描误删已有媒体资料。
+      console.error(`处理视频文件失败，保留现有资料: ${file.name}`, result.reason)
+      completed.push(file)
+    })
+    return { unmatched, completed, unresolved }
   }
 
   private async *iterateFolderPages(folder: IAliGetFileModel, scanContext: ScanContext): AsyncGenerator<IAliGetFileModel[]> {
     const scope = libraryScanRateLimitScope(scanContext.userId, folder.drive_id || scanContext.driveId)
     const listMethodWasOverridden = this.getFolderItemsWithRetry !== MediaScanner.prototype.getFolderItemsWithRetry
     if (!listMethodWasOverridden && isThirdPartyProviderFolder(scanContext.userId, folder.drive_id || scanContext.driveId)) {
-      yield* rateLimitScanPages(scope, iterateProviderFolderPages({ folder, userId: scanContext.userId, driveId: folder.drive_id || scanContext.driveId, silent: scanContext.silent, shouldStop: () => this.shouldStop }))
+      yield* iterateProviderFolderPages({ folder, userId: scanContext.userId, driveId: folder.drive_id || scanContext.driveId, silent: scanContext.silent, shouldStop: () => this.shouldStop })
       return
     }
     if (!listMethodWasOverridden && isAliyunUser(scanContext.userId)) {
@@ -401,10 +384,15 @@ export class MediaScanner {
     this.mediaStore.beginPersistenceBatch()
     this.resetPersistenceCheckpoint()
     let completed = false
+    let sourceId = ''
+    let sourceWasExisting = false
+    let previousFileIds: string[] = []
 
     try {
       const folderName = path.basename(folderPath)
-      const sourceId = `local_${folderPath}`
+      sourceId = `local_${folderPath}`
+      sourceWasExisting = this.mediaStore.folders.some(source => source.id === sourceId)
+      previousFileIds = await DB.getMediaLibraryFolderFileIds(sourceId)
       const seenFileIds = new Set<string>()
       this.saveLocalScanCheckpoint(folderPath, folderName)
       let videoCount = 0
@@ -415,7 +403,7 @@ export class MediaScanner {
         if (!batch.length) return
         if (!sourceAdded) {
           this.mediaStore.addFolder({
-            id: `local_${folderPath}`,
+            id: sourceId,
             fileId: folderPath,
             name: folderName,
             path: folderPath,
@@ -427,9 +415,12 @@ export class MediaScanner {
           })
           sourceAdded = true
         }
-        await Promise.allSettled(batch.map(file => this.processVideoFile(file, folderName, sourceId)))
+        const currentBatch = batch
+        const { unmatched, unresolved } = await this.processVideoBatchWithTransientRetry(currentBatch, folderName, sourceId)
+        unmatched.forEach(file => this.addUnmatchedMediaItem(file, folderName, sourceId))
+        unresolved.forEach(file => this.addRetryPendingMediaItem(file, folderName, sourceId))
         processed += batch.length
-        this.mediaStore.setScanProgress(processed, Math.max(processed, videoCount))
+        this.mediaStore.setScanProgress(processed, Math.max(processed + 1, videoCount))
         this.checkpointScanPersistence(batch.length)
         batch = []
         await new Promise(resolve => setTimeout(resolve, 100))
@@ -467,6 +458,7 @@ export class MediaScanner {
 
         this.mediaStore.addFolder(mediaFolder)
         this.mediaStore.pruneOrphanDuplicateFolders()
+        this.mediaStore.setScanProgress(videoCount, videoCount)
         message.success(`扫描完成！共处理 ${videoCount} 个视频文件`)
         completed = true
       } else {
@@ -474,6 +466,11 @@ export class MediaScanner {
       }
     } catch (error) {
       console.error('扫描本地文件夹时出错:', error)
+      if (sourceId) {
+        await DB.reconcileMediaLibraryFolder(sourceId, previousFileIds).catch(() => {})
+        this.mediaStore.reconcileFolderSource(sourceId, previousFileIds)
+        if (!sourceWasExisting) this.mediaStore.removeFolder(sourceId)
+      }
       message.error('扫描失败: ' + (error as Error).message)
     } finally {
       this.isScanning = false
@@ -1333,7 +1330,7 @@ export class MediaScanner {
 
     if (!silent) message.info(`"${folderName}" 中有 ${unmatchedFiles.length} 个未匹配视频，正在 AI 识别…`)
     const fileInfos = unmatchedFiles.map(f => ({ name: f.name, path: f.path, fileSize: f.fileSize, driveFile: f }))
-    const results = await batchScrapeMediaWithAI(fileInfos, folderName)
+    const results = await batchScrapeMediaWithAI(fileInfos, folderName, folderId)
 
     let saved = 0
     for (const r of results) {

@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { Copy, Check, Lock, Calendar, ExternalLink, Download } from 'lucide-vue-next'
 import message from '../utils/message'
 import { modalDaoRuShareLink } from '../utils/modal'
+import { canImportShareLink } from '../utils/shareLinkDetection'
 
 export interface PanHubLink { url: string; password: string; note: string; datetime: string; source?: string }
 
@@ -14,7 +15,7 @@ const copiedUrl = ref('')
 let copyTimer: ReturnType<typeof setTimeout>|null = null
 
 const handleCopy = (url: string) => { navigator.clipboard.writeText(url).catch(()=>{}); copiedUrl.value = url; if(copyTimer)clearTimeout(copyTimer); copyTimer = setTimeout(()=>{copiedUrl.value=''},1500); emit('copy',url) }
-function canSave(url: string): boolean { return /aliyundrive\.com\/s\/|alipan\.com\/s\/|quark\.cn\/s\/|123pan\.com\/s\//i.test(url) }
+function canSave(url: string): boolean { return canImportShareLink(url) }
 function isMagnet(url: string): boolean { return /^magnet:\?/i.test(url.trim()) }
 function handleLinkClick(event: MouseEvent, item: PanHubLink) { if(!isMagnet(item.url))return;event.preventDefault();emit('magnet',item.url,item.note||'') }
 function parseSharePwd(url: string, password: string): string { if(password)return password; const m=url.match(/[?&#]pwd=([0-9a-zA-Z]+)/i)||url.match(/(?:提取码|密码)[^0-9a-zA-Z]{0,8}([0-9a-zA-Z]{4,8})/i); return m?.[1]||'' }

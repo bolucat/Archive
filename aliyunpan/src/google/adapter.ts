@@ -58,7 +58,7 @@ export const renameGoogleFiles = async (userId: string, fileIds: string[], names
   return results
 }
 
-export const listGoogleItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, pageToken = '') => {
+export const listGoogleItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, pageToken = '', strict = false) => {
   const search = parseGoogleSearchId(dirId)
   if (dirId.startsWith('search') || dirId.startsWith('google_search:')) {
     if (!search.query) return { items: [], total: 0, error: '搜索关键字不能为空' }
@@ -73,7 +73,7 @@ export const listGoogleItems = async (userId: string, driveId: string, dirId: st
     : dirId === 'trash' ? await apiGoogleTrashList(userId)
       : dirId === 'google_shared' ? await apiGoogleSharedWithMeList(userId)
         : sharedDriveId ? await apiGoogleSharedDriveFileList(userId, sharedDriveId, dirId.startsWith('google_shared_drive:') ? 'root' : dirId)
-          : await apiGoogleFileListPage(userId, parentId, pageToken, 1000)
+          : await apiGoogleFileListPage(userId, parentId, pageToken, 1000, strict)
   const list = Array.isArray(result) ? result : result.items
   const items = list.map(item => mapGoogleFileToAliModel(item, driveId, parentId))
   const visible = includeFiles ? items : items.filter(item => item.isDir)

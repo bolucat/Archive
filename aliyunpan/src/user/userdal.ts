@@ -24,6 +24,7 @@ import { supportsAliyunAutoSign } from './autoSignPolicy'
 import { getStoredTokenProvider } from '../utils/driveProvider'
 import { captureProviderLogin } from '../analytics/posthog'
 import { withStartupTimeout } from '../utils/startupTask'
+import { loadInitialProviderRoot, shouldRetryInitialRootLoad } from './startupProviderRootLoad'
 
 export const UserTokenMap = new Map<string, ITokenInfo>()
 
@@ -432,9 +433,9 @@ export default class UserDAL {
 
   static async LoadPanData(token: ITokenInfo) {
     console.warn('LoadPanData....')
-    const loadSingleRootDrive = async (reload: () => Promise<void>) => {
+    const loadSingleRootDrive = async (reload: () => Promise<void>, provider = '') => {
       try {
-        await reload()
+        await loadInitialProviderRoot(shouldRetryInitialRootLoad(provider), reload)
       } finally {
         useFootStore().mSaveLoading('')
       }
@@ -444,7 +445,7 @@ export default class UserDAL {
       return
     }
     if (isBaiduUser(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadBaiduDrive(token))
+      await loadSingleRootDrive(() => PanDAL.aReLoadBaiduDrive(token), 'baidu')
       return
     }
     if (isDrive115User(token)) {
@@ -460,7 +461,7 @@ export default class UserDAL {
       return
     }
     if (isCloud139User(token)) {
-      await loadSingleRootDrive(() => PanDAL.aReLoadCloud139Drive(token))
+      await loadSingleRootDrive(() => PanDAL.aReLoadCloud139Drive(token), '139')
       return
     }
     if (isCloud189User(token)) {

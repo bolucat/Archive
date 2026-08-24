@@ -260,7 +260,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
   async function loadTrackPage(options: { reset?: boolean; query?: string } = {}) {
     const reset = options.reset === true
     const query = options.query ?? activeQuery.value
-    if (isLoadingPage.value) return
+    if (isLoadingPage.value) return false
     isLoadingPage.value = true
     try {
       const offset = reset ? 0 : loadedTrackCount.value
@@ -274,9 +274,23 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
       tracks.value = reset ? fixed : [...tracks.value, ...fixed]
       loadedTrackCount.value = tracks.value.length
       rebuildTrackPositions()
+      return true
     } finally {
       isLoadingPage.value = false
     }
+  }
+
+  async function loadAllTracks() {
+    if (activeQuery.value) {
+      const reset = await loadTrackPage({ reset: true, query: '' })
+      if (!reset) return
+    }
+    while (hasMoreTracks.value && await loadTrackPage({ query: '' })) {}
+  }
+
+  async function getEnrichmentCandidates(limit: number, now: number, excludedIds: Set<string> = new Set()) {
+    const staleBefore = now - 24 * 60 * 60 * 1000
+    return (await DB.getMusicEnrichmentCandidates(limit, staleBefore, excludedIds)).map(ensureArtistTitle)
   }
 
   function setScanProgress(label: string, scanned: number, found: number) {
@@ -287,7 +301,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
 
   async function appendTracks(newTracks: IMusicTrack[]) {
     if (!newTracks.length) return
-    const existingById = new Map((await DB.getMusicTracksByIds(newTracks.map(track => track.id)).catch(() => [])).map(track => [track.id, track]))
+    const existingById = new Map((await DB.getMusicTracksByIds(newTracks.map(track => track.id))).map(track => [track.id, track]))
     const enriched = newTracks.map(ensureArtistTitle).map((track) => {
       const existing = existingById.get(track.id)
       if (!existing) return track
@@ -306,7 +320,7 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
         enriched_at: existing.enriched_at
       }
     })
-    await DB.saveMusicTracks(enriched).catch(() => {})
+    await DB.saveMusicTracks(enriched)
     for (const track of enriched) {
       const index = trackPositions.get(track.id)
       if (index === undefined) {
@@ -376,20 +390,23 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
 
   async function updateTrackEnrichment(id: string, patch: Partial<IMusicTrack>) {
     const idx = tracks.value.findIndex((t) => t.id === id)
-    if (idx < 0) return
+    const existing = idx >= 0 ? tracks.value[idx] : await DB.getMusicTrackById(id)
+    if (!existing) return false
     const merged: IMusicTrack = {
-      ...tracks.value[idx],
+      ...existing,
       ...patch,
-      id: tracks.value[idx].id,
+      id: existing.id,
       enriched_at: Date.now()
     }
-    // 触发响应式
-    tracks.value = [
-      ...tracks.value.slice(0, idx),
-      merged,
-      ...tracks.value.slice(idx + 1)
-    ]
-    DB.saveMusicTracks([merged]).catch(() => {})
+    await DB.saveMusicTracks([merged])
+    if (idx >= 0) {
+      tracks.value = [
+        ...tracks.value.slice(0, idx),
+        merged,
+        ...tracks.value.slice(idx + 1)
+      ]
+    }
+    return true
   }
 
   function setIsScanning(v: boolean, errMsg = '') {
@@ -456,6 +473,8 @@ const useMusicLibraryStore = defineStore('musiclibrary', () => {
     favoritesTracks,
     loadFromDB,
     loadTrackPage,
+    loadAllTracks,
+    getEnrichmentCandidates,
     setScanProgress,
     appendTracks,
     removeTracksByIds,

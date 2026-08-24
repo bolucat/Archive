@@ -4,6 +4,7 @@ const AUTHOR_TITLE_RE = /^(.+?)\s*[-–—_]\s*(.+)$/
 const BRACKET_AUTHOR_RE = /^[\[【（(](.+?)[\]】）)]\s*(.+)$/
 const TITLE_AUTHOR_RE = /^(.+?)\s*[\(（](.+?)[\)）]$/
 const COMMON_TAGS_RE = /(?:\[[^\]]+\]|【[^】]+】|（[^）]+）|\([^)]+\))/g
+const CATALOG_BEFORE_YEAR_RE = /^0\d{3}(?=(?:19|20)\d{2}\p{Script=Han})/u
 const CATALOG_PREFIX_RE = /^(?:(?:0\d{3,}|\d{5,})(?=(?:[.\s_-]|\p{Script=Han})))(?:[.\s_-])*/u
 const RELEASE_SUFFIX_RE = /(?:\s*[-–—_]\s*|\s+)(?:(?:19|20)\d{2}\s*(?:更新|新版|修订版|修订|完整版|珍藏版|收藏版|扫描版)|(?:最新版|更新版|修订版|扫描版))$/iu
 const ENGLISH_AUTHOR_RE = /^[A-Z][A-Za-z.'’-]*(?:\s+[A-Z][A-Za-z.'’-]*){1,3}$/
@@ -14,7 +15,7 @@ function stripExt(name: string): string {
 }
 
 function cleanBookPart(value: string): string {
-  return value.replace(CATALOG_PREFIX_RE, '').replace(COMMON_TAGS_RE, ' ').replace(RELEASE_SUFFIX_RE, '').replace(/\s+/g, ' ').trim()
+  return value.replace(CATALOG_BEFORE_YEAR_RE, '').replace(CATALOG_PREFIX_RE, '').replace(COMMON_TAGS_RE, ' ').replace(RELEASE_SUFFIX_RE, '').replace(/\s+/g, ' ').trim()
 }
 
 export function parseBookMeta(fileName: string): Pick<IBookItem, 'title' | 'author' | 'summary' | 'metadata_source'> {

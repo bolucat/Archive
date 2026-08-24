@@ -67,18 +67,33 @@ export default defineComponent({
   overflow: hidden;
 }
 .splitline {
+  position: relative;
   box-sizing: border-box;
   width: 4px;
   height: 100%;
-  border-right: 2px solid transparent;
-  border-left: 1px solid var(--color-border-2);
+  border: 0;
   user-select: none;
   margin-right: 2px;
 }
+.splitline::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 1px;
+  width: 1px;
+  background: rgba(31, 35, 41, 0.3);
+  content: '';
+}
+body[arco-theme='dark'] .splitline::before {
+  background: rgba(255, 255, 255, 0.28);
+}
 .splitline:hover {
-  border-left: 0 solid transparent;
   background: rgb(var(--primary-6));
   cursor: col-resize;
+}
+.splitline:hover::before,
+.splitline.resize::before {
+  background: transparent;
 }
 .splitline.resize {
   background: rgb(var(--primary-6));

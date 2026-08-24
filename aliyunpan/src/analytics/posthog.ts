@@ -68,9 +68,10 @@ export const redactAnalyticsSecrets = (value: unknown): string => {
 }
 
 export const resolveCloudApiFailure = (url: string, statusCode?: number, serverError?: unknown): CloudApiFailure | undefined => {
-  const host = (() => {
-    try { return new URL(url).hostname } catch { return '' }
+  const parsedUrl = (() => {
+    try { return new URL(url) } catch { return undefined }
   })()
+  const host = parsedUrl?.hostname || ''
   const provider =
     /(^|\.)aliyundrive\.com$|(^|\.)alipan\.com$/.test(host) ? 'aliyun' :
       /(^|\.)123pan\.com$/.test(host) ? 'cloud123' :
@@ -84,7 +85,7 @@ export const resolveCloudApiFailure = (url: string, statusCode?: number, serverE
                       /(^|\.)microsoft\.com$/.test(host) ? 'onedrive' :
                         /(^|\.)box\.com$/.test(host) ? 'box' :
                           /(^|\.)googleapis\.com$/.test(host) ? 'google' : undefined
-  return provider ? { provider, statusCode, failureKind: statusCode ? 'http' : 'network', requestUrl: redactAnalyticsSecrets(url), serverError: serverError === undefined ? undefined : redactAnalyticsSecrets(serverError) } : undefined
+  return provider && parsedUrl ? { provider, statusCode, failureKind: statusCode ? 'http' : 'network', requestUrl: `${parsedUrl.origin}${parsedUrl.pathname}`, serverError: serverError === undefined ? undefined : redactAnalyticsSecrets(serverError) } : undefined
 }
 
 export const shouldCaptureCloudApiFailure = (failure: CloudApiFailure): boolean => {

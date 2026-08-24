@@ -131,6 +131,27 @@ describe('getMediaServerPlaybackInfo', () => {
     expect(playback.url).toContain('/Videos/item-1/right.mkv')
   })
 
+  it('preserves an Emby reverse-proxy base path for root-relative playback urls', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const payload = url.includes('/PlaybackInfo?')
+        ? {
+            PlaySessionId: 'play-session-1',
+            MediaSources: [{ Id: 'source-1', ETag: 'source-etag', DirectStreamUrl: '/Videos/item-1/direct.mkv' }]
+          }
+        : {
+            Id: 'item-1',
+            ETag: 'item-etag',
+            MediaSources: [{ Id: 'source-1', ETag: 'source-etag' }]
+          }
+      return { ok: true, json: async () => payload }
+    }))
+
+    const config = { ...baseConfig('emby'), baseUrl: 'https://media.example.com/emby' }
+    const playback = await getMediaServerPlaybackInfo(config, 'item-1', 'source-1')
+
+    expect(new URL(playback.url).pathname).toBe('/emby/Videos/item-1/direct.mkv')
+  })
+
   it('adds the item etag to fallback stream urls', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
       const payload = url.includes('/PlaybackInfo?')

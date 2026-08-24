@@ -3,10 +3,10 @@ import { GetExpiresTime } from '../utils/utils'
 import { apiCloud189DownloadInfo, apiCloud189FileDetail, apiCloud189FileList, cloud189DownloadHeaders, mapCloud189FileToAliModel } from './dirfilelist'
 import { apiCloud189CopyBatch, apiCloud189Mkdir, apiCloud189MoveBatch, apiCloud189Rename, apiCloud189TrashBatch } from './filecmd'
 
-export const listCloud189Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, page = 1) => {
+export const listCloud189Items = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, page = 1, strict = false) => {
   const parentId = dirId === 'cloud189_root' ? '-11' : dirId
   const pageSize = 200
-  const mappedItems = (await apiCloud189FileList(userId, parentId, pageSize, page)).map(item => mapCloud189FileToAliModel(item, driveId, dirId))
+  const mappedItems = (await apiCloud189FileList(userId, parentId, pageSize, page, strict)).map(item => mapCloud189FileToAliModel(item, driveId, dirId))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)
   return { items: visibleItems, total: mappedItems.length, nextCursor: includeFiles && mappedItems.length >= pageSize ? String(page + 1) : '' }
 }

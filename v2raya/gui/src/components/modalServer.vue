@@ -217,18 +217,19 @@
             <b-input ref="v2ray_key" v-model="v2ray.key" :placeholder="$t('configureServer.password')" expanded />
           </b-field>
         </b-tab-item>
+
         <b-tab-item label="VLESS">
           <b-field label="Name" label-position="on-border">
-            <b-input v-model="v2ray.ps" :placeholder="$t('configureServer.servername')" expanded />
+            <b-input ref="vless_name" v-model="v2ray.ps" :placeholder="$t('configureServer.servername')" expanded />
           </b-field>
           <b-field label="Host" label-position="on-border">
-            <b-input v-model="v2ray.add" required placeholder="IP / HOST" expanded />
+            <b-input ref="vless_add" v-model="v2ray.add" required placeholder="IP / HOST" expanded />
           </b-field>
           <b-field label="Port" label-position="on-border">
-            <b-input v-model="v2ray.port" required :placeholder="$t('configureServer.port')" type="number" expanded />
+            <b-input ref="vless_port" v-model="v2ray.port" required :placeholder="$t('configureServer.port')" type="number" expanded />
           </b-field>
           <b-field label="ID" label-position="on-border">
-            <b-input v-model="v2ray.id" required placeholder="UserID" expanded />
+            <b-input ref="vless_id" v-model="v2ray.id" required placeholder="UserID" expanded />
           </b-field>
           <b-field v-show="v2ray.type !== 'dtls'" label="TLS" label-position="on-border">
             <b-select v-model="v2ray.tls" expanded @input="handleNetworkChange">
@@ -238,10 +239,10 @@
             </b-select>
           </b-field>
           <b-field v-if="v2ray.tls !== 'none'" label="SNI" label-position="on-border">
-            <b-input v-model="v2ray.sni" placeholder="SNI" expanded />
+            <b-input ref="vless_sni" v-model="v2ray.sni" placeholder="SNI" expanded />
           </b-field>
           <b-field v-show="v2ray.tls === 'tls' || v2ray.tls === 'reality'" label="uTLS fingerprint" label-position="on-border">
-            <b-select v-model="v2ray.fp" expanded>
+            <b-select ref="vless_fp" v-model="v2ray.fp" expanded>
               <option value="">empty</option>
               <option value="chrome">chrome</option>
               <option value="firefox">firefox</option>
@@ -275,7 +276,7 @@
             <b-input v-model="v2ray.verifyPeerCertByName" :placeholder="$t('verifyPeerCertByName')" expanded />
           </b-field>
           <b-field label="Network" label-position="on-border">
-            <b-select v-model="v2ray.net" expanded required @input="handleNetworkChange">
+            <b-select ref="vless_net" v-model="v2ray.net" expanded required @input="handleNetworkChange">
               <option value="tcp">TCP</option>
               <option value="kcp">mKCP</option>
               <option value="ws">WebSocket</option>
@@ -308,7 +309,7 @@
             <b-input v-model="v2ray.path" :placeholder="$t('configureServer.pathObfuscation')" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'ws'" label="Max Early Data" label-position="on-border">
-            <b-input v-model="v2ray.maxEarlyData" type="number" placeholder="Max Early Data" expanded />
+            <b-input ref="vless_maxEarlyData" v-model="v2ray.maxEarlyData" type="number" placeholder="Max Early Data" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'ws'" label="Early Data Header Name" label-position="on-border">
             <b-input v-model="v2ray.earlyDataHeaderName" placeholder="Early Data Header Name" expanded />
@@ -317,22 +318,22 @@
             <b-input v-model="v2ray.path" :placeholder="$t('configureServer.seedObfuscation')" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'grpc'" label="Service Name" label-position="on-border">
-            <b-input v-model="v2ray.path" type="text" expanded />
+            <b-input ref="vless_service_name" v-model="v2ray.path" type="text" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'grpc'" label="MultiMode" label-position="on-border">
             <b-switch v-model="v2ray.multiMode">{{ v2ray.multiMode ? $t('operations.yes') : $t('operations.no') }}</b-switch>
           </b-field>
           <b-field v-show="v2ray.net === 'grpc'" label="Idle Timeout" label-position="on-border">
-            <b-input v-model="v2ray.idleTimeout" type="number" placeholder="Idle Timeout (s)" expanded />
+            <b-input ref="vless_idleTimeout" v-model="v2ray.idleTimeout" type="number" placeholder="Idle Timeout (s)" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'grpc'" label="Health Check Timeout" label-position="on-border">
-            <b-input v-model="v2ray.healthCheckTimeout" type="number" placeholder="Health Check Timeout (s)" expanded />
+            <b-input ref="vless_healthCheckTimeout" v-model="v2ray.healthCheckTimeout" type="number" placeholder="Health Check Timeout (s)" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'grpc'" label="Permit Without Stream" label-position="on-border">
             <b-switch v-model="v2ray.permitWithoutStream">{{ v2ray.permitWithoutStream ? $t('operations.yes') : $t('operations.no') }}</b-switch>
           </b-field>
           <b-field v-show="v2ray.net === 'grpc'" label="Initial Windows Size" label-position="on-border">
-            <b-input v-model="v2ray.initialWindowsSize" type="number" placeholder="Initial Windows Size" expanded />
+            <b-input ref="vless_initialWindowsSize" v-model="v2ray.initialWindowsSize" type="number" placeholder="Initial Windows Size" expanded />
           </b-field>
           <!-- XHTTP fields (VLESS) -->
           <b-field v-show="v2ray.net === 'xhttp'" label="Path" label-position="on-border">
@@ -361,46 +362,46 @@
             <b-switch v-model="v2ray.noSSEHeader">{{ v2ray.noSSEHeader ? $t('operations.yes') : $t('operations.no') }}</b-switch>
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="scMaxEachPostBytes (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.scMaxEachPostBytesFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.scMaxEachPostBytesTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_scMaxEachPostBytesFrom" v-model="v2ray.scMaxEachPostBytesFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_scMaxEachPostBytesTo" v-model="v2ray.scMaxEachPostBytesTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="scMinPostsIntervalMs (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.scMinPostsIntervalFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.scMinPostsIntervalTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_scMinPostsIntervalFrom" v-model="v2ray.scMinPostsIntervalFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_scMinPostsIntervalTo" v-model="v2ray.scMinPostsIntervalTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="scMaxBufferedPosts" label-position="on-border">
-            <b-input v-model="v2ray.scMaxBufferedPosts" type="number" placeholder="scMaxBufferedPosts" expanded />
+            <b-input ref="vless_scMaxBufferedPosts" v-model="v2ray.scMaxBufferedPosts" type="number" placeholder="scMaxBufferedPosts" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="scStreamUpServerSecs (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.scStreamUpServerFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.scStreamUpServerTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_scStreamUpServerFrom" v-model="v2ray.scStreamUpServerFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_scStreamUpServerTo" v-model="v2ray.scStreamUpServerTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xPaddingBytes (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.xPaddingBytesFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.xPaddingBytesTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_xPaddingBytesFrom" v-model="v2ray.xPaddingBytesFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_xPaddingBytesTo" v-model="v2ray.xPaddingBytesTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xmux maxConcurrency (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.xmuxMaxConcurFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.xmuxMaxConcurTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_xmuxMaxConcurFrom" v-model="v2ray.xmuxMaxConcurFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_xmuxMaxConcurTo" v-model="v2ray.xmuxMaxConcurTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xmux maxConnections (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.xmuxMaxConnFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.xmuxMaxConnTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_xmuxMaxConnFrom" v-model="v2ray.xmuxMaxConnFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_xmuxMaxConnTo" v-model="v2ray.xmuxMaxConnTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xmux cMaxReuseTimes (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.xmuxCMaxReuseFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.xmuxCMaxReuseTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_xmuxCMaxReuseFrom" v-model="v2ray.xmuxCMaxReuseFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_xmuxCMaxReuseTo" v-model="v2ray.xmuxCMaxReuseTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xmux hMaxRequestTimes (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.xmuxHMaxReqFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.xmuxHMaxReqTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_xmuxHMaxReqFrom" v-model="v2ray.xmuxHMaxReqFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_xmuxHMaxReqTo" v-model="v2ray.xmuxHMaxReqTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xmux hMaxReusableSecs (From-To)" label-position="on-border">
-            <b-input v-model="v2ray.xmuxHMaxReusableFrom" type="number" placeholder="From" expanded />
-            <b-input v-model="v2ray.xmuxHMaxReusableTo" type="number" placeholder="To" expanded />
+            <b-input ref="vless_xmuxHMaxReusableFrom" v-model="v2ray.xmuxHMaxReusableFrom" type="number" placeholder="From" expanded />
+            <b-input ref="vless_xmuxHMaxReusableTo" v-model="v2ray.xmuxHMaxReusableTo" type="number" placeholder="To" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="xmux hKeepAlivePeriod" label-position="on-border">
-            <b-input v-model="v2ray.xmuxHKeepAlive" type="number" placeholder="hKeepAlivePeriod" expanded />
+            <b-input ref="vless_xmuxHKeepAlive" v-model="v2ray.xmuxHKeepAlive" type="number" placeholder="hKeepAlivePeriod" expanded />
           </b-field>
           <b-field v-show="v2ray.net === 'xhttp'" label="Custom Headers" label-position="on-border">
             <div style="width:100%">
@@ -421,9 +422,10 @@
             </b-select>
           </b-field>
           <b-field v-show="v2ray.net === 'quic'" label="Key" label-position="on-border">
-            <b-input v-model="v2ray.key" :placeholder="$t('configureServer.password')" expanded />
+            <b-input ref="vless_key" v-model="v2ray.key" :placeholder="$t('configureServer.password')" expanded />
           </b-field>
         </b-tab-item>
+
         <b-tab-item label="WireGuard">
           <b-field label="Name" label-position="on-border">
             <b-input ref="wireguard_name" v-model="wireguard.name" :placeholder="$t('configureServer.servername')" expanded />
@@ -462,6 +464,7 @@
             <b-input ref="wireguard_endpoint" v-model="wireguard.endpoint" placeholder="Endpoint (optional, default same as Address:Port)" expanded />
           </b-field>
         </b-tab-item>
+
         <b-tab-item label="SS">
           <b-field label="Name" label-position="on-border">
             <b-input ref="ss_name" v-model="ss.name" :placeholder="$t('configureServer.servername')" expanded />
@@ -553,6 +556,7 @@
             </b-select>
           </b-field>
         </b-tab-item>
+
         <b-tab-item label="SSR">
           <b-field label="Name" label-position="on-border">
             <b-input ref="ssr_name" v-model="ssr.name" :placeholder="$t('configureServer.servername')" expanded />
@@ -622,6 +626,7 @@
             <b-input ref="ssr_obfsParam" v-model="ssr.obfsParam" placeholder="(optional)" expanded />
           </b-field>
         </b-tab-item>
+
         <b-tab-item label="Trojan">
           <b-field label="Name" label-position="on-border">
             <b-input ref="trojan_name" v-model="trojan.name" :placeholder="$t('configureServer.servername')" expanded />
@@ -1529,8 +1534,8 @@ export default {
       return null;
     },
     generateURL(srcObj) {
-      let obj = {};
       let query = {};
+      let obj = {};
       let tmp;
       switch (srcObj.protocol) {
         case "vless":
@@ -1851,7 +1856,6 @@ export default {
           }
           return generateURL(tmp);
         case "anytls":
-          let query = {};
           if (srcObj.sni) {
             query.peer = srcObj.sni;
           }
@@ -1930,7 +1934,7 @@ export default {
         if (this.tabChoice === 0 && !k.startsWith("v2ray_")) {
           continue;
         }
-        if (this.tabChoice === 1 && !k.startsWith("v2ray_")) {
+        if (this.tabChoice === 1 && !k.startsWith("vless_")) {
           continue;
         }
         if (this.tabChoice === 2 && !k.startsWith("wireguard_")) {

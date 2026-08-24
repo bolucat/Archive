@@ -29,6 +29,8 @@ const aliHttpMock = vi.hoisted(() => ({
   IsSuccess: vi.fn(() => true)
 }))
 
+const metadataLookupMock = vi.hoisted(() => vi.fn(async () => ({ status: 'no-match' })))
+
 vi.mock('../../utils/db', () => ({
   default: dbMock
 }))
@@ -39,6 +41,13 @@ vi.mock('../../user/userdal', () => ({
 
 vi.mock('../../aliapi/alihttp', () => ({
   default: aliHttpMock
+}))
+
+vi.mock('../../utils/bookExternalMetadata', () => ({
+  buildExternalBookMetadataOutcomePatch: (result: any) => result.status === 'matched' ? result.metadata : result.status === 'no-match' ? { metadata_source: 'googlebooks-no-match', metadata_updated_at: Date.now() } : null,
+  canHydrateExternalBookMetadata: (item: IBookItem) => !item.cover_url && !item.thumbnail,
+  lookupExternalBookMetadata: metadataLookupMock,
+  lookupExternalBookMetadataResult: metadataLookupMock
 }))
 
 function book(overrides: Partial<IBookItem>): IBookItem {
@@ -128,6 +137,7 @@ describe('booklibrary trash behavior', () => {
     dbMock.deleteBookLibrarySource.mockResolvedValue(0)
     userDalMock.GetUserTokenFromDB.mockResolvedValue(undefined)
     aliHttpMock.GetBlob.mockResolvedValue({ code: 200, body: new Blob() })
+    metadataLookupMock.mockResolvedValue({ status: 'no-match' })
   })
 
   it('keeps an empty persisted source visible and deletes it independently of the loaded page', async () => {
@@ -232,6 +242,15 @@ describe('booklibrary trash behavior', () => {
     expect(store.books[0].thumbnail).toMatch(/^blob:/)
   })
 
+  it('queues every coverless book on a loaded page for metadata hydration', async () => {
+    dbMock.getAllBookItems.mockResolvedValue(Array.from({ length: 30 }, (_, index) => book({ id: `book-${index}`, file_id: `file-${index}`, file_name: `Book ${index}.epub`, title: `Book ${index}` })))
+
+    const store = await createStore()
+    await store.loadFromDB()
+
+    await vi.waitFor(() => expect(metadataLookupMock).toHaveBeenCalledTimes(30))
+  })
+
   it('permanently deletes books and clears attached notes and bookmarks', async () => {
     const store = await createStore()
     store.books = [
@@ -281,6 +300,15 @@ describe('booklibrary trash behavior', () => {
     }))
     expect(store.deletedBooks.map((item) => item.id)).toEqual(['deleted'])
     expect(store.activeBooks.map((item) => item.id)).toEqual(['active'])
+  })
+
+  it('does not report a scanned book as stored when the database read fails', async () => {
+    dbMock.getBookItemsByIds.mockRejectedValueOnce(new Error('IndexedDB unavailable'))
+    const store = await createStore()
+
+    await expect(store.appendBooks([book({ id: 'failed-book' })], { addToLoaded: false })).rejects.toThrow('IndexedDB unavailable')
+    expect(dbMock.saveBookItems).not.toHaveBeenCalled()
+    expect(store.books).toEqual([])
   })
 
   it('loads book records in pages instead of retaining the entire database at startup', async () => {

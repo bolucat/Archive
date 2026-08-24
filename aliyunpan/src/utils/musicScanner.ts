@@ -10,7 +10,7 @@ import { IMusicTrack } from '../types/music'
 import { buildLibrarySourceId } from '../types/librarySource'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
-import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage } from './libraryScanRateLimiter'
+import { libraryScanRateLimitScope, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 
 
 const AUDIO_EXTS = new Set([
@@ -22,7 +22,7 @@ const AUDIO_EXTS = new Set([
 ])
 
 const FOLDER_THROTTLE_MS = 60
-const BFS_MAX_DEPTH = 8
+const BFS_MAX_DEPTH = 128
 
 function nowMs() { return Date.now() }
 
@@ -332,6 +332,9 @@ class MusicScanner {
       if (this.shouldStop) break
       try {
         const sourceId = buildLibrarySourceId('music', token.user_id, drive_id, 'root')
+        // lastScanAt 是整个音乐库的时间，不能直接套给尚未建立资料源的新账号/新盘。
+        // 新源必须先完成一次全量扫描，否则源内所有较旧音频都会永久缺失。
+        const sourceSinceMs = store.sources.some(source => source.id === sourceId) ? sinceMs : 0
         const seen = new Set<string>()
         const driveLabel = drive_id.slice(-6)
         store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
@@ -343,7 +346,7 @@ class MusicScanner {
           // stopping at the first old item.
           const filtered = items.filter(isAudioFile).filter((it) => {
             const time = typeof it.time === 'number' ? it.time : 0
-            return !sinceMs || !time || time >= sinceMs
+            return !sourceSinceMs || !time || time >= sourceSinceMs
           })
           if (filtered.length) {
             const tracks = filtered.map((it) => trackFromAliModel(it, token.user_id, drive_id, '', sourceId))
@@ -353,7 +356,7 @@ class MusicScanner {
           }
           store.setScanProgress(`正在扫描 ${label} · drive ${driveLabel}`, scanned, totalFound)
         }
-        if (!this.shouldStop && !sinceMs) {
+        if (!this.shouldStop && !sourceSinceMs) {
           await store.reconcileSource(sourceId, [...seen])
           await store.saveSource({ id: sourceId, kind: 'music', user_id: token.user_id, drive_id, folder_id: 'root', name: `${label} · ${drive_id.slice(-6)}`, path: '', created_at: Date.now(), scanned_at: Date.now(), item_count: seen.size })
         }
@@ -379,8 +382,9 @@ class MusicScanner {
     if (this.shouldStop) return
     if (depth > BFS_MAX_DEPTH) {
       this.hadError = true
-      DebugLog.mSaveWarning(`musicScanner depth limit reached: ${folder.name}`)
-      return
+      const error = new Error(`musicScanner depth limit reached: ${folder.name}`)
+      DebugLog.mSaveWarning(error.message)
+      throw error
     }
     const store = useMusicLibraryStore()
     try {
@@ -407,13 +411,14 @@ class MusicScanner {
     } catch (e) {
       this.hadError = true
       DebugLog.mSaveWarning('listFolder failed: ' + (e as Error).message)
+      throw e
     }
   }
 
   private async *iterateFolderPages(folder: IAliGetFileModel, user_id: string, drive_id: string): AsyncGenerator<IAliGetFileModel[]> {
     const scope = libraryScanRateLimitScope(user_id, drive_id)
     if (isThirdPartyProviderFolder(user_id, drive_id)) {
-      yield* rateLimitScanPages(scope, iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop }))
+      yield* iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
       return
     }
     if (isAliyunUser(user_id)) {

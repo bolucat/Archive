@@ -33,6 +33,20 @@ let IsAria2cOnlineRemote: boolean = false
 
 let Aria2cRemoteRetryTime = 0
 
+const ariaErrorLastLog: Record<'local' | 'remote', number> = { local: 0, remote: 0 }
+
+export function bindAriaErrorListener(engine: { on: (event: string, listener: (error?: unknown) => void) => unknown }, ariaState: 'local' | 'remote', onDisconnect: (state: 'local' | 'remote') => void = state => SetAriaOnline(false, state)) {
+  engine.on('error', (error?: unknown) => {
+    const now = Date.now()
+    if (now - ariaErrorLastLog[ariaState] >= 5000) {
+      ariaErrorLastLog[ariaState] = now
+      const detail = error instanceof Error ? error.message : String(error || 'WebSocket 连接错误')
+      DebugLog.mSaveWarning(`Aria2${ariaState === 'local' ? '本地' : '远程'}连接错误`, detail)
+    }
+    onDisconnect(ariaState)
+  })
+}
+
 function GetAria() {
   if (useSettingStore().AriaIsLocal) return Aria2EngineLocal
   return Aria2EngineRemote
@@ -129,6 +143,7 @@ export async function AriaChangeToRemote() {
 
     const options = { host, port, secure: settingStore.ariaHttps, secret, path: '/jsonrpc' }
     Aria2EngineRemote = new Aria2({ WebSocket: global.WebSocket, fetch: (...args: any[]) => (window.fetch as any)(...args), ...options })
+    bindAriaErrorListener(Aria2EngineRemote, 'remote')
 
     Aria2EngineRemote.on('close', () => {
       if (IsAria2cOnlineRemote && !Aria2cChangeing) {
@@ -185,6 +200,7 @@ export async function AriaChangeToLocal() {
         port = window.WebRelaunchAria ? await window.WebRelaunchAria() : 16800
         const options = { host: '127.0.0.1', port, secure: false, secret: localPwd, path: '/jsonrpc' }
         Aria2EngineLocal = new Aria2({ WebSocket: global.WebSocket, fetch: (...args: any[]) => (window.fetch as any)(...args), ...options })
+        bindAriaErrorListener(Aria2EngineLocal, 'local')
         Aria2EngineLocal.on('close', () => {
           IsAria2cOnlineLocal = false
           if (useSettingStore().AriaIsLocal) {

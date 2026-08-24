@@ -610,7 +610,7 @@ class XBYDB3 extends Dexie {
   async saveMusicTracks(tracks: IMusicTrack[]): Promise<string | void> {
     if (!this.isOpen()) await this.open().catch(() => {})
     if (!tracks.length) return
-    return this.imusic_track.bulkPut(tracks).catch(() => {})
+    return this.imusic_track.bulkPut(tracks)
   }
 
   async getMusicTrackById(id: string): Promise<IMusicTrack | undefined> {
@@ -644,6 +644,14 @@ class XBYDB3 extends Dexie {
     const keyword = query.trim().toLowerCase()
     if (!keyword) return this.imusic_track.count()
     return this.imusic_track.filter(track => [track.file_name, track.title, track.artist, track.album].some(value => String(value || '').toLowerCase().includes(keyword))).count()
+  }
+
+  async getMusicEnrichmentCandidates(limit: number, staleBefore: number, excludedIds: Set<string> = new Set()): Promise<IMusicTrack[]> {
+    if (!this.isOpen()) await this.open().catch(() => {})
+    return this.imusic_track
+      .filter(track => !excludedIds.has(track.id) && !track.cover_url && (!track.enriched_at || track.enriched_at < staleBefore))
+      .limit(limit)
+      .toArray()
   }
 
   async getMusicTracksByDrive(user_id: string, drive_id: string): Promise<IMusicTrack[]> {
@@ -728,7 +736,7 @@ class XBYDB3 extends Dexie {
   async saveBookItems(books: IBookItem[]): Promise<string | void> {
     if (!this.isOpen()) await this.open().catch(() => {})
     if (!books.length) return
-    return this.ibook_item.bulkPut(books).catch(() => {})
+    return this.ibook_item.bulkPut(books)
   }
 
   async getAllBookItems(): Promise<IBookItem[]> {

@@ -18,4 +18,15 @@ describe('isValidDropUploadTarget', () => {
     expect(isValidDropUploadTarget('dropbox_user', 'dropbox', 'id:folder')).toBe(true)
     expect(isValidDropUploadTarget('onedrive_user', 'onedrive', '01ABCDEF')).toBe(true)
   })
+
+  it('routes desktop drops through the current file-list drive and directory fallbacks', async () => {
+    const modalSource = await import('../modal.ts?raw')
+    const panRightSource = await import('../../pan/PanRight.vue?raw')
+    const providerCommandSource = await import('../../drive/providerFileCmd.ts?raw')
+
+    expect(modalSource.default).toContain('panTreeStore.drive_id || panFileStore.DriveID')
+    expect(modalSource.default).toContain('file_id || panFileStore.DirID || panTreeStore.selectDir.file_id')
+    expect(panRightSource.default).toContain('modalUpload(targetDirId, files)')
+    expect(providerCommandSource.default).toContain('TreeStore.GetDir(fileStore.DriveID, parentFileId)')
+  })
 })

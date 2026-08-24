@@ -10,7 +10,7 @@ import { buildShelfGroups, loadGlobalNoteTags, normalizeBookSortMode, normalizeB
 import DB from '../utils/db'
 import UserDAL from '../user/userdal'
 import AliHttp from '../aliapi/alihttp'
-import { buildExternalBookMetadataPatch, canHydrateExternalBookMetadata, lookupExternalBookMetadata } from '../utils/bookExternalMetadata'
+import { buildExternalBookMetadataOutcomePatch, canHydrateExternalBookMetadata, lookupExternalBookMetadataResult } from '../utils/bookExternalMetadata'
 import DebugLog from '../utils/debuglog'
 import { parseBookMeta } from '../utils/bookFilenameMeta'
 
@@ -23,8 +23,6 @@ const LS_MANAGER_SORT_ORDER = 'bookLibrary.readerSortOrder'
 const LS_VIEW_MODE = 'bookLibrary.readerViewMode'
 const BOOK_THUMBNAIL_HYDRATE_LIMIT = 72
 const BOOK_THUMBNAIL_HYDRATE_CONCURRENCY = 6
-const BOOK_EXTERNAL_METADATA_HYDRATE_LIMIT = 24
-const BOOK_EXTERNAL_METADATA_HYDRATE_CONCURRENCY = 3
 const BOOK_PAGE_SIZE = 240
 
 export type BookSubTab = 'shelf' | 'all' | 'authors' | 'formats' | 'folders'
@@ -81,6 +79,9 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   const isLoadingNextPage = ref(false)
   const hydratedThumbnailIds = new Set<string>()
   const hydratedExternalMetadataIds = new Set<string>()
+  const externalMetadataQueue = new Map<string, IBookItem>()
+  let externalMetadataQueueRunning = false
+  let externalMetadataRetryTimer: ReturnType<typeof setTimeout> | undefined
   const notesByBookId = ref<Record<string, IBookNote[]>>({})
   const bookmarksByBookId = ref<Record<string, IBookBookmark[]>>({})
   const loaded = ref(false)
@@ -140,36 +141,61 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     }
   }
 
-  async function hydrateExternalBookMetadata(sourceBooks: IBookItem[]) {
-    const sources = sourceBooks
-      .filter((book) => !hydratedExternalMetadataIds.has(book.id) && canHydrateExternalBookMetadata(book))
-      .slice(0, BOOK_EXTERNAL_METADATA_HYDRATE_LIMIT)
-    if (sources.length) DebugLog.mSaveLog('info', `[book-metadata] 本页待补全 ${sources.length} 本（最多 ${BOOK_EXTERNAL_METADATA_HYDRATE_LIMIT} 本）`, undefined)
-    for (const book of sources) hydratedExternalMetadataIds.add(book.id)
-    const updates = new Map<string, Partial<IBookItem>>()
-    for (let index = 0; index < sources.length; index += BOOK_EXTERNAL_METADATA_HYDRATE_CONCURRENCY) {
-      const batch = sources.slice(index, index + BOOK_EXTERNAL_METADATA_HYDRATE_CONCURRENCY)
-      const resolved = await Promise.all(batch.map(async (book) => {
+  function scheduleExternalMetadataRetry(retryAt: number) {
+    if (externalMetadataRetryTimer) return
+    externalMetadataRetryTimer = setTimeout(() => {
+      externalMetadataRetryTimer = undefined
+      void drainExternalMetadataQueue()
+    }, Math.max(1000, retryAt - Date.now()))
+  }
+
+  async function drainExternalMetadataQueue() {
+    if (externalMetadataQueueRunning || externalMetadataRetryTimer) return
+    externalMetadataQueueRunning = true
+    try {
+      while (externalMetadataQueue.size) {
+        const next = externalMetadataQueue.entries().next().value as [string, IBookItem] | undefined
+        if (!next) break
+        const [id, source] = next
+        externalMetadataQueue.delete(id)
+        if (hydratedExternalMetadataIds.has(id) || !canHydrateExternalBookMetadata(source)) continue
         try {
-          const meta = await lookupExternalBookMetadata(book, fetch, (message, error) => {
+          const result = await lookupExternalBookMetadataResult(source, fetch, (message, error) => {
             if (error || message.includes('HTTP ')) DebugLog.mSaveWarning(message, error)
             else DebugLog.mSaveLog('info', message, undefined)
           })
-          return meta ? { id: book.id, patch: buildExternalBookMetadataPatch(meta) } : null
+          if (result.status === 'retry-later') {
+            externalMetadataQueue.set(id, source)
+            scheduleExternalMetadataRetry(result.retryAt)
+            return
+          }
+          hydratedExternalMetadataIds.add(id)
+          const patch = buildExternalBookMetadataOutcomePatch(result)
+          if (!patch) continue
+          const loadedBook = books.value.find((book) => book.id === id)
+          const changed = { ...(loadedBook || source), ...patch }
+          books.value = books.value.map((book) => book.id === id ? changed : book)
+          await DB.saveBookItems([changed])
         } catch (error) {
-          DebugLog.mSaveWarning(`[book-metadata] ${book.file_name} 元数据补全失败`, error)
-          return null
+          externalMetadataQueue.set(id, source)
+          DebugLog.mSaveWarning(`[book-metadata] ${source.file_name} 元数据补全失败，稍后重试`, error)
+          scheduleExternalMetadataRetry(Date.now() + 60_000)
+          return
         }
-      }))
-      for (const item of resolved) {
-        if (item) updates.set(item.id, item.patch)
       }
+    } finally {
+      externalMetadataQueueRunning = false
     }
-    if (sources.length) DebugLog.mSaveLog('info', `[book-metadata] 本页补全完成：命中 ${updates.size}/${sources.length}，含封面 ${[...updates.values()].filter((patch) => !!patch.cover_url).length}/${updates.size}`, undefined)
-    if (!updates.size) return
-    const changed = books.value.map((book) => updates.has(book.id) ? { ...book, ...updates.get(book.id) } : book)
-    books.value = changed
-    await DB.saveBookItems(changed.filter((book) => updates.has(book.id))).catch(() => {})
+    if (externalMetadataQueue.size && !externalMetadataRetryTimer) void drainExternalMetadataQueue()
+  }
+
+  function hydrateExternalBookMetadata(sourceBooks: IBookItem[]) {
+    const sources = sourceBooks.filter((book) => !hydratedExternalMetadataIds.has(book.id) && canHydrateExternalBookMetadata(book))
+    for (const book of sources) externalMetadataQueue.set(book.id, book)
+    if (sources.length) {
+      DebugLog.mSaveLog('info', `[book-metadata] 已加入补全队列 ${sources.length} 本，待处理 ${externalMetadataQueue.size} 本`, undefined)
+      void drainExternalMetadataQueue()
+    }
   }
 
   const activeBooks = computed(() => books.value.filter((book) => !book.deleted_at))
@@ -318,7 +344,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
   async function appendBooks(newBooks: IBookItem[], opts: { addToLoaded?: boolean } = {}) {
     if (!newBooks.length) return
     const existingById = new Map(books.value.map(book => [book.id, book]))
-    ;(await DB.getBookItemsByIds(newBooks.map(book => book.id)).catch(() => [])).forEach(book => existingById.set(book.id, book))
+    ;(await DB.getBookItemsByIds(newBooks.map(book => book.id))).forEach(book => existingById.set(book.id, book))
     const normalized = newBooks.map(ensureBookMeta).map((book) => {
       const existing = existingById.get(book.id)
       if (!existing) return book
@@ -355,7 +381,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
       }
     }).filter((book) => !book.deleted_at)
     if (!normalized.length) return
-    await DB.saveBookItems(normalized).catch(() => {})
+    await DB.saveBookItems(normalized)
     const existingByLoadedId = new Map(books.value.map((book) => [book.id, book]))
     const updates = new Map<string, IBookItem>()
     const additions: IBookItem[] = []
@@ -391,7 +417,7 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
         ...books.value.slice(idx + 1)
       ]
     }
-    await DB.saveBookItems([merged]).catch(() => {})
+    await DB.saveBookItems([merged])
   }
 
   async function toggleFavoriteBook(id: string) {
@@ -748,6 +774,9 @@ const useBookLibraryStore = defineStore('booklibrary', () => {
     deletedBookRecordCount.value = 0
     loadedBookRecordCount.value = 0
     hydratedThumbnailIds.clear()
+    externalMetadataQueue.clear()
+    if (externalMetadataRetryTimer) clearTimeout(externalMetadataRetryTimer)
+    externalMetadataRetryTimer = undefined
     notesByBookId.value = {}
     bookmarksByBookId.value = {}
     lastScanAt.value = 0

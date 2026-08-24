@@ -9,7 +9,7 @@ import { buildLibrarySourceId } from '../types/librarySource'
 import { isScannableBookFormat } from './bookReaderCapabilities'
 import DebugLog from './debuglog'
 import { isThirdPartyProviderFolder, iterateProviderFolderPages, listProviderFolderItems } from './providerFolderList'
-import { libraryScanRateLimitScope, rateLimitScanPages, rateLimitSingleScanPage } from './libraryScanRateLimiter'
+import { libraryScanRateLimitScope, rateLimitSingleScanPage } from './libraryScanRateLimiter'
 
 const ISBN_RE = /(?:ISBN(?:-1[03])?:?\s*)?((?:97[89][-\s]?)?\d[-\s]?\d{2,5}[-\s]?\d{2,7}[-\s]?\d{1,7}[-\s]?[\dXx])/g
 
@@ -28,7 +28,7 @@ function extractISBN(...values: Array<string | undefined>): string {
 import { getWebDavConnection, getWebDavConnectionId, isWebDavDrive, listWebDavDirectory } from './webdavClient'
 
 const FOLDER_THROTTLE_MS = 50
-const BFS_MAX_DEPTH = 8
+const BFS_MAX_DEPTH = 128
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -268,24 +268,29 @@ class BookScanner {
     let found = 0
     for (const drive_id of drives) {
       if (this.shouldStop) break
-      const rootFolder: IAliGetFileModel = {
-        ...({} as any),
-        file_id: 'root',
-        parent_file_id: '',
-        drive_id,
-        name: '/',
-        isDir: true
-      } as IAliGetFileModel
-      const counters = { scanned: 0, found: 0, seen: new Set<string>() }
-      const sourceId = buildLibrarySourceId('book', token.user_id, drive_id, 'root')
-      await this.bfsCollect(rootFolder, token.user_id, drive_id, '', `${label} · ${drive_id.slice(-6)}`, counters, 0, sourceId)
-      if (!this.shouldStop) {
-        await store.reconcileSource(sourceId, [...counters.seen])
-        await store.saveSource({ id: sourceId, kind: 'book', user_id: token.user_id, drive_id, folder_id: 'root', name: `${label} · ${drive_id.slice(-6)}`, path: '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+      try {
+        const rootFolder: IAliGetFileModel = {
+          ...({} as any),
+          file_id: 'root',
+          parent_file_id: '',
+          drive_id,
+          name: '/',
+          isDir: true
+        } as IAliGetFileModel
+        const counters = { scanned: 0, found: 0, seen: new Set<string>() }
+        const sourceId = buildLibrarySourceId('book', token.user_id, drive_id, 'root')
+        await this.bfsCollect(rootFolder, token.user_id, drive_id, '', `${label} · ${drive_id.slice(-6)}`, counters, 0, sourceId)
+        if (!this.shouldStop) {
+          await store.reconcileSource(sourceId, [...counters.seen])
+          await store.saveSource({ id: sourceId, kind: 'book', user_id: token.user_id, drive_id, folder_id: 'root', name: `${label} · ${drive_id.slice(-6)}`, path: '', created_at: Date.now(), scanned_at: Date.now(), item_count: counters.seen.size })
+        }
+        scanned += counters.scanned
+        found += counters.found
+        store.setScanProgress(`正在扫描 ${label}`, scanned, found)
+      } catch (e) {
+        this.hadError = true
+        DebugLog.mSaveWarning(`bookScanner.scanAliyun failed (${drive_id}): ${(e as Error).message}`)
       }
-      scanned += counters.scanned
-      found += counters.found
-      store.setScanProgress(`正在扫描 ${label}`, scanned, found)
     }
   }
 
@@ -302,8 +307,9 @@ class BookScanner {
     if (this.shouldStop) return
     if (depth > BFS_MAX_DEPTH) {
       this.hadError = true
-      DebugLog.mSaveWarning(`bookScanner depth limit reached: ${folder.name}`)
-      return
+      const error = new Error(`bookScanner depth limit reached: ${folder.name}`)
+      DebugLog.mSaveWarning(error.message)
+      throw error
     }
     const store = useBookLibraryStore()
     try {
@@ -330,6 +336,7 @@ class BookScanner {
     } catch (e) {
       this.hadError = true
       DebugLog.mSaveWarning('bookScanner.listFolder failed: ' + (e as Error).message)
+      throw e
     }
   }
 
@@ -342,7 +349,7 @@ class BookScanner {
       return
     }
     if (isThirdPartyProviderFolder(user_id, drive_id)) {
-      yield* rateLimitScanPages(scope, iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop }))
+      yield* iterateProviderFolderPages({ folder, userId: user_id, driveId: drive_id, silent: this.silent, shouldStop: () => this.shouldStop })
       return
     }
     if (isAliyunUser(user_id)) {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildExternalBookMetadataPatch, canHydrateExternalBookMetadata, lookupExternalBookMetadata } from '../bookExternalMetadata'
+import { buildExternalBookMetadataOutcomePatch, buildExternalBookMetadataPatch, canHydrateExternalBookMetadata, lookupExternalBookMetadata, lookupExternalBookMetadataResult } from '../bookExternalMetadata'
 import type { IBookItem } from '../../types/book'
 
 function book(overrides: Partial<IBookItem> = {}): IBookItem {
@@ -25,10 +25,10 @@ describe('book external metadata', () => {
     expect(logs.some((message) => message.includes('Google Books 命中'))).toBe(true)
   })
 
-  it('rejects low confidence results and preserves existing cover records', async () => {
+  it('rejects low confidence results and still enriches books that already have a thumbnail', async () => {
     const request = vi.fn(async () => ({ ok: true, json: async () => ({ items: [{ volumeInfo: { title: '不同的书', authors: ['其他作者'] } }] }) })) as unknown as typeof fetch
-    await expect(lookupExternalBookMetadata(book(), request)).resolves.toBeNull()
-    expect(canHydrateExternalBookMetadata(book({ cover_url: 'https://cover.example/a.jpg' }))).toBe(false)
+    await expect(lookupExternalBookMetadataResult(book(), request)).resolves.toEqual({ status: 'no-match' })
+    expect(canHydrateExternalBookMetadata(book({ cover_url: 'https://cover.example/a.jpg' }))).toBe(true)
     expect(buildExternalBookMetadataPatch({ title: 'Title', coverUrl: 'https://cover.example/a.jpg' }, 123)).toMatchObject({ metadata_source: 'googlebooks', metadata_updated_at: 123, cover_url: 'https://cover.example/a.jpg' })
   })
 
@@ -44,10 +44,23 @@ describe('book external metadata', () => {
     expect(source).toContain('log?.(`${logPrefix} Google Books 命中：')
   })
 
+  it('rejects an exact title when a known author explicitly disagrees', async () => {
+    const request = vi.fn(async () => ({ ok: true, json: async () => ({ items: [{ volumeInfo: { title: '三体', authors: ['完全不同的作者'], imageLinks: { thumbnail: 'https://books.google.test/wrong.jpg' } } }] }) })) as unknown as typeof fetch
+
+    await expect(lookupExternalBookMetadataResult(book(), request)).resolves.toEqual({ status: 'no-match' })
+  })
+
+  it('persists a terminal no-match marker so the next app launch does not spend quota again', () => {
+    const patch = buildExternalBookMetadataOutcomePatch({ status: 'no-match' }, 456)
+
+    expect(patch).toEqual({ metadata_source: 'googlebooks-no-match', metadata_updated_at: 456 })
+    expect(canHydrateExternalBookMetadata(book(patch || {}))).toBe(false)
+  })
+
   it('pauses additional lookups after a transient Google Books failure', async () => {
     const unavailable = vi.fn(async () => { throw new Error('HTTP 503') })
     const skipped = vi.fn()
-    await expect(lookupExternalBookMetadata(book(), unavailable as unknown as typeof fetch)).resolves.toBeNull()
+    await expect(lookupExternalBookMetadataResult(book(), unavailable as unknown as typeof fetch)).resolves.toMatchObject({ status: 'retry-later', retryAt: expect.any(Number) })
     await expect(lookupExternalBookMetadata(book({ id: 'second' }), skipped as unknown as typeof fetch)).resolves.toBeNull()
     expect(unavailable).toHaveBeenCalledTimes(1)
     expect(skipped).not.toHaveBeenCalled()

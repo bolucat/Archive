@@ -29,7 +29,7 @@ export const resolveBaiduDirectoryPath = async (userId: string, driveId: string,
   return metas?.[0]?.path || ''
 }
 
-export const listBaiduItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, start = 0) => {
+export const listBaiduItems = async (userId: string, driveId: string, dirId: string, includeFiles: boolean, start = 0, strict = false) => {
   const isSearch = dirId.startsWith('search')
   const dirPath = isSearch ? '/' : await resolveBaiduDirectoryPath(userId, driveId, dirId)
   if (!dirPath) return { items: [], total: 0, error: '无法确定百度网盘目录路径，请刷新目录后重试' }
@@ -39,7 +39,7 @@ export const listBaiduItems = async (userId: string, driveId: string, dirId: str
   const desc = sortDirection === 'desc' ? 1 : 0
   const result = isSearch
     ? { items: await apiBaiduSearch(userId, dirId.substring('search'.length).trim(), '/', true), hasMore: false }
-    : await apiBaiduFileListPage(userId, dirPath, order, start, 1000, desc)
+    : await apiBaiduFileListPage(userId, dirPath, order, start, 1000, desc, strict)
   const list = result.items
   const mappedItems = list.map(item => mapBaiduFileToAliModel(item, driveId, parentPath))
   const visibleItems = includeFiles ? mappedItems : mappedItems.filter(item => item.isDir)

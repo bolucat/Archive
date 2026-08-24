@@ -59,7 +59,11 @@ const mediaServerError = ref('')
 const lastScanText = computed(() => musicStore.lastScanAt ? formatTime(musicStore.lastScanAt) : tt('music.notScannedYet'))
 const heroTracks = computed(() => musicStore.recentlyAdded.slice(0, 5))
 const heroTrack = computed(() => heroTracks.value[0] || musicStore.tracks[0])
-const homeSubtitle = computed(() => `${tt('music.cloudMusicCount', { count: musicStore.totalCount })} · ${tt('music.artistCount', { count: musicStore.byArtist.length })} · ${tt('music.albumCount', { count: musicStore.byAlbum.length })}`)
+const homeSubtitle = computed(() => {
+  const total = tt('music.cloudMusicCount', { count: musicStore.totalCount })
+  if (musicStore.hasMoreTracks) return total
+  return `${total} · ${tt('music.artistCount', { count: musicStore.byArtist.length })} · ${tt('music.albumCount', { count: musicStore.byAlbum.length })}`
+})
 const mediaServerSubtitle = computed(() => `${tt('music.serverMusicCount', { count: mediaServerTracks.value.length })} · ${tt('music.mediaServerCount', { count: mediaServerRegistry.servers.length })}`)
 
 const filteredAll = computed<IMusicTrack[]>(() => {
@@ -70,11 +74,15 @@ let trackSearchTimer: number | undefined
 watch(searchQuery, (query) => {
   if (trackSearchTimer) window.clearTimeout(trackSearchTimer)
   trackSearchTimer = window.setTimeout(() => {
-    void musicStore.loadTrackPage({ reset: true, query })
+    void musicStore.loadTrackPage({ reset: true, query }).then((loaded) => {
+      if (loaded) scheduleEnrich()
+    })
   }, 220)
 })
 
-const loadMoreTracks = () => void musicStore.loadTrackPage()
+const loadMoreTracks = () => void musicStore.loadTrackPage().then((loaded) => {
+  if (loaded) scheduleEnrich()
+})
 const filteredMediaServerTracks = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q) return mediaServerTracks.value
@@ -596,8 +604,9 @@ async function clearLibrary() {
   message.success(tt('music.libraryCleared'))
 }
 
-function selectTab(t: MusicSubTab) {
+async function selectTab(t: MusicSubTab) {
   musicStore.setSubTab(t)
+  if (t === 'artists' || t === 'albums' || t === 'folders') await musicStore.loadAllTracks()
   scheduleEnrich()
 }
 
@@ -679,6 +688,7 @@ function homeTone(i: number): string {
 
 onMounted(async () => {
   await musicStore.loadFromDB()
+  if (musicStore.subTab === 'artists' || musicStore.subTab === 'albums' || musicStore.subTab === 'folders') await musicStore.loadAllTracks()
   const users = await UserDAL.GetUserListFromDB().catch(() => [])
   scanAccounts.value = users.filter((u) => !!u?.user_id && !!u?.access_token)
   selectedScanUserIds.value = scanAccounts.value.map((u) => u.user_id)

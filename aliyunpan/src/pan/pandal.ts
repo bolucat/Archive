@@ -109,7 +109,7 @@ export default class PanDAL {
     if (!cursor) return
     PanDAL.providerLoadingMore.add(key)
     try {
-      const result = await listProviderItems(route.provider, tree.user_id, store.DriveID, store.DirID, true, cursor)
+      const result = await listProviderItems(route.provider, tree.user_id, store.DriveID, store.DirID, true, cursor, { strict: true })
       if (!result || store.DriveID !== tree.drive_id || store.DirID !== tree.selectDir.file_id) return
       const items = completeProviderPage(state, result)
       if (items.length) {
@@ -163,13 +163,23 @@ export default class PanDAL {
     if (!user_id) return
     useFootStore().mSaveLoading(loadingText)
     const driveType = GetDriveType(user_id, driveId)
-    const result = await listProviderItems(provider, user_id, driveId, rootId, true)
-    const dirs = (result?.items || []).filter(item => item.isDir).map(item => ({ file_id: item.file_id, drive_id: driveId, parent_file_id: driveType.key, name: item.name, description: item.description || '', time: item.time, size: 0 })) as IAliGetDirModel[]
-    await TreeStore.ConvertToOneDriver(user_id, driveId, dirs, false, true)
     const rootName = driveType.title || '根目录'
-    await PanDAL.SaveProviderDirFileList(user_id, driveId, rootId, rootName, result?.items || [], result?.total || 0, true)
-    PanDAL.saveProviderCursor(user_id, driveId, rootId, true, result)
-    useFootStore().mSaveLoading('')
+    const panfileStore = usePanFileStore()
+    panfileStore.mSaveDirFileLoading(driveId, rootId, rootName)
+    try {
+      const result = await listProviderItems(provider, user_id, driveId, rootId, true, '', { strict: true })
+      if (!result) throw new Error(`不支持加载 ${provider} 网盘目录`)
+      if (result.error) throw new Error(result.error)
+      const dirs = result.items.filter(item => item.isDir).map(item => ({ file_id: item.file_id, drive_id: driveId, parent_file_id: driveType.key, name: item.name, description: item.description || '', time: item.time, size: 0 })) as IAliGetDirModel[]
+      await TreeStore.ConvertToOneDriver(user_id, driveId, dirs, false, true)
+      await PanDAL.SaveProviderDirFileList(user_id, driveId, rootId, rootName, result.items, result.total || 0, true)
+      PanDAL.saveProviderCursor(user_id, driveId, rootId, true, result)
+    } catch (error) {
+      panfileStore.mSaveDirFileLoadingFinish(driveId, rootId, [])
+      throw error
+    } finally {
+      useFootStore().mSaveLoading('')
+    }
   }
 
   static async aReLoadWebDavDrive(token: ITokenInfo): Promise<void> {
@@ -178,7 +188,7 @@ export default class PanDAL {
     pantreeStore.mSaveUser(token.user_id, drive_id, '', '', '')
     pantreeStore.drive_id = drive_id
     await TreeStore.ConvertToOneDriver(token.user_id, drive_id, [], false, true)
-    PanDAL.RefreshPanTreeAllNode(drive_id)
+    await PanDAL.aReLoadOneDirToShow(drive_id, GetDriveType(token.user_id, drive_id).key, true)
   }
 
   static async aReLoadCloudDrive(token: ITokenInfo): Promise<void> {
@@ -543,7 +553,7 @@ export default class PanDAL {
       }
 
       if (providerRoute.provider === 'cloud123') {
-        listProviderItems('cloud123', user_id, drive_id, dirID, hasFiles)!
+        listProviderItems('cloud123', user_id, drive_id, dirID, hasFiles, '', { strict: true })!
           .then(async (result) => {
             const order = TreeStore.GetDirOrder(drive_id, dirID).replace('ext ', 'updated_at ').split(' ')
             OrderDir(order[0], order[1], result.items)

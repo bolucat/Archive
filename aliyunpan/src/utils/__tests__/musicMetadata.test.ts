@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+const axiosGet = vi.hoisted(() => vi.fn())
+
 vi.mock('axios', () => ({
   default: {
-    get: vi.fn(async (url: string) => {
+    get: axiosGet
+  }
+}))
+
+function defaultAxiosGet(url: string) {
       if (String(url).includes('itunes.apple.com')) {
-        return {
+    return Promise.resolve({
           data: {
             results: [
               {
@@ -15,12 +21,10 @@ vi.mock('axios', () => ({
               }
             ]
           }
-        }
-      }
-      return { data: {} }
     })
-  }
-}))
+      }
+  return Promise.resolve({ data: {} })
+}
 
 vi.mock('../debuglog', () => ({
   default: {
@@ -56,6 +60,8 @@ vi.mock('/Users/gaozhangmin/aliyunpan/src/module/musicsdk/index.ts', musicsdkMoc
 
 describe('musicMetadata', () => {
   beforeEach(async () => {
+    axiosGet.mockReset()
+    axiosGet.mockImplementation(defaultAxiosGet)
     musicsdkMock.fetchLyricDetailed.mockReset()
     musicsdkMock.fetchLyricDetailed.mockResolvedValue({
       lyric: { lyric: '[00:01.00]hello\n[00:03.00]world' },
@@ -130,7 +136,38 @@ describe('musicMetadata', () => {
 
     expect(meta.metadataSources).toEqual(expect.arrayContaining(['filename', 'itunes:cover', 'musicsdk:lyrics']))
     expect(meta.cover).toBe('https://img.example/600x600bb.jpg')
+    expect(meta).toMatchObject({ title: 'Song', artist: 'Artist', album: 'Album' })
     expect(meta.lines.map((line) => line.text)).toEqual(['hello', 'world'])
+  })
+
+  it('skips lyric providers during background library cover enrichment', async () => {
+    const { fetchMusicMetadata } = await import('../musicMetadata')
+
+    const meta = await fetchMusicMetadata({ filename: 'Artist - Background Song.mp3', includeLyrics: false })
+
+    expect(musicsdkMock.fetchLyricDetailed).not.toHaveBeenCalled()
+    expect(meta.lines).toEqual([])
+  })
+
+  it('rejects an iTunes candidate when the title and artist do not match', async () => {
+    axiosGet.mockResolvedValueOnce({
+      data: {
+        results: [{ trackName: 'Completely Different', artistName: 'Wrong Artist', collectionName: 'Wrong Album', artworkUrl100: 'https://img.example/wrong.jpg' }]
+      }
+    })
+    const { fetchMusicMetadata } = await import('../musicMetadata')
+
+    const meta = await fetchMusicMetadata({ filename: 'Artist - Song.mp3', includeLyrics: false })
+
+    expect(meta).toMatchObject({ title: 'Song', artist: 'Artist', album: '', cover: '' })
+    expect(meta.metadataSources).not.toContain('itunes:metadata')
+  })
+
+  it('surfaces a transient iTunes failure during background enrichment', async () => {
+    axiosGet.mockRejectedValueOnce({ response: { status: 429 }, message: 'Too Many Requests' })
+    const { fetchMusicMetadata } = await import('../musicMetadata')
+
+    await expect(fetchMusicMetadata({ filename: 'Artist - Rate Limited Song.mp3', includeLyrics: false })).rejects.toMatchObject({ name: 'MusicMetadataTransientError' })
   })
 
   it('passes local track duration to lyric matching', async () => {
