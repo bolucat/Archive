@@ -109,7 +109,7 @@ func NewTemplate(serverInfos []serverInfo, setting *configure.Setting) (t *Templ
 	isTinyTunMode := setting.TransparentType == configure.TransparentTun && IsTransparentOn(setting)
 	if !isTinyTunMode {
 		//生成新 DNS 模块配置
-		if err = t.setDNS(); err != nil {
+		if err = t.setDNS(serverInfos); err != nil {
 			return nil, err
 		}
 	}

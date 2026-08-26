@@ -94,7 +94,7 @@ func (m *UpstreamManager) exchangeDirect(upstream *UpstreamInstance, query *DnsQ
 	// checking if one already exists. Calling AddECSSubnet first then SetEdns0
 	// would create TWO OPT records in the query, causing FORMERR.
 	msg.SetEdns0(4096, true)
-	if query.ClientIP != nil {
+	if query.ClientIP != nil && query.ClientIP.IsGlobalUnicast() {
 		builder := NewResponseBuilder()
 		builder.AddECSSubnet(msg, query.ClientIP)
 	}
@@ -238,7 +238,7 @@ func (m *UpstreamManager) exchangeViaProxy(upstream *UpstreamInstance, query *Dn
 	// checking if one already exists. Calling AddECSSubnet first then SetEdns0
 	// would create TWO OPT records in the query, causing FORMERR.
 	msg.SetEdns0(4096, true)
-	if query.ClientIP != nil {
+	if query.ClientIP != nil && query.ClientIP.IsGlobalUnicast() {
 		builder := NewResponseBuilder()
 		builder.AddECSSubnet(msg, query.ClientIP)
 	}
@@ -557,7 +557,7 @@ func (m *UpstreamManager) exchangeViaDispatcher(upstream *UpstreamInstance, quer
 	// checking if one already exists. Calling AddECSSubnet first then SetEdns0
 	// would create TWO OPT records in the query, causing FORMERR.
 	msg.SetEdns0(4096, true)
-	if query.ClientIP != nil {
+	if query.ClientIP != nil && query.ClientIP.IsGlobalUnicast() {
 		builder := NewResponseBuilder()
 		builder.AddECSSubnet(msg, query.ClientIP)
 	}

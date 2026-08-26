@@ -70,15 +70,15 @@ type DnsRouting struct {
 
 // setDNS 生成新 DNS 模块的配置，嵌入 xray JSON 供 v2raya-core 读取。
 // v2raya-core 启动时解析此配置并启动独立 DNS 监听器，v2rayA 不参与 DNS 查询处理。
-func (t *Template) setDNS() error {
-	return t.generateDnsModuleConfig()
+func (t *Template) setDNS(serverInfos []serverInfo) error {
+	return t.generateDnsModuleConfig(serverInfos)
 }
 
 // generateDnsModuleConfig 生成新 DNS 模块的 JSON 配置，嵌入 xray JSON 配置文件。
 // v2raya-core 启动时解析此配置并启动独立 DNS 监听器，v2rayA 不参与 DNS 查询处理。
 //
 // 生成的配置结构对应 core/dns/config.go 中的 DnsModuleConfig。
-func (t *Template) generateDnsModuleConfig() error {
+func (t *Template) generateDnsModuleConfig(serverInfos []serverInfo) error {
 	setting := t.Setting
 	if setting == nil {
 		setting = configure.GetSettingNotNil()
@@ -332,6 +332,47 @@ func (t *Template) generateDnsModuleConfig() error {
 
 			rulesList = append(rulesList, rc)
 		}
+	}
+
+	// 节点服务器域名必须直连解析：若命中默认（代理）上游，查询经 dispatcher
+	// 路由到代理出站，而代理出站连接节点又需要解析节点域名，形成死锁，
+	// 导致节点域名永远解析失败、代理通道完全不可用。
+	var nodeDomains []string
+	for _, info := range serverInfos {
+		host := info.Info.GetHostname()
+		if host != "" && net.ParseIP(host) == nil {
+			nodeDomains = append(nodeDomains, host)
+		}
+	}
+	nodeDomains = common.Deduplicate(nodeDomains)
+	if len(nodeDomains) > 0 {
+		nodeUpstreamAddr := "223.5.5.5:53"
+		for _, s := range bootstrapDns {
+			if host, _, err := net.SplitHostPort(s); err == nil {
+				if ip := net.ParseIP(host); ip != nil && !ip.IsLoopback() {
+					nodeUpstreamAddr = s
+					break
+				}
+			}
+		}
+		// 不能 append 到末尾：模块以最后一个非 bootstrap 上游作为默认上游
+		upstreams = append([]map[string]interface{}{{
+			"id":        "upstream-node",
+			"addr":      nodeUpstreamAddr,
+			"protocol":  "udp",
+			"proxy_tag": "direct",
+			"bootstrap": false,
+		}}, upstreams...)
+		rulesList = append([]map[string]interface{}{{
+			"id":            "rule-node",
+			"upstream":      "upstream-node",
+			"action":        "route",
+			"policy":        "single",
+			"domain":        nil,
+			"domain_suffix": nodeDomains,
+			"ip":            nil,
+			"client_ip":     nil,
+		}}, rulesList...)
 	}
 
 	cfg["upstreams"] = upstreams
