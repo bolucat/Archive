@@ -140,6 +140,39 @@ pub struct CoreInfos {
     pub detail: Option<CoreStateDetail>,
 }
 
+/// Where this service writes logs.
+///
+/// These are the service's own facts, not an echo of what the caller passed at
+/// start-up, which is why they are here and not in [`RuntimeInfos`].
+///
+/// **These are locations, not a grant.** Both directories are restricted to the
+/// account the service runs under plus local administrators, so a caller
+/// running as an ordinary user generally cannot read them — surface the path
+/// for a support request rather than building a tail on it. Live core output is
+/// on the event stream; the service's own logs are not streamed at all.
+///
+/// TODO: that restriction is the open question here, not a settled posture. A
+/// user-level GUI reading the archive would need one of: a widened DACL (which
+/// means teaching `nyanpasu_utils::io::atomic_fs`'s hardener *and* its verifier
+/// a second acceptable shape — the verifier rejects user-readable DACLs today,
+/// so both move together or directory creation starts failing), some other
+/// grant mechanism, or an RPC that serves the archive so the directory stays
+/// closed. All three are acceptable; none is chosen yet. The two sites that
+/// would change are `log_sink::prepare_dir` and the service's own log directory
+/// setup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct LogPathsInfo {
+    /// The service's own logs: JSON lines from `tracing-appender`, rotated
+    /// daily, seven files kept.
+    pub service_dir: PathBuf,
+    /// The core log archive: one rolling JSONL stream, rotated by size and
+    /// retained by count. Absent when the manager's sink is switched off, in
+    /// which case no such directory exists at all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core_dir: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 pub struct RuntimeInfos<'a> {
@@ -155,6 +188,12 @@ pub struct StatusResBody<'a> {
     pub version: Cow<'a, str>,
     pub core_infos: CoreInfos,
     pub runtime_infos: RuntimeInfos<'a>,
+    /// Declared last and omitted rather than null when absent, so a payload
+    /// without it is byte-identical to the pre-L3 format — the rule S7 used for
+    /// `CoreInfos`. The service always sends it; the `Option` exists so every
+    /// existing golden literal stays unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logs: Option<LogPathsInfo>,
 }
 
 pub type StatusRes<'a> = R<'a, StatusResBody<'a>>;

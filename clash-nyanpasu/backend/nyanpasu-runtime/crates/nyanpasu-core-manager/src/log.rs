@@ -5,63 +5,26 @@
 //! ANSI when writing to a pipe. Parsing is header-only and per kind: a line whose
 //! header does not match degrades to an unformatted frame instead of being lost.
 
+use std::borrow::Borrow;
+
 use chrono::{DateTime, Duration, FixedOffset, NaiveDate, NaiveTime, TimeZone};
-use clash_api::LogField;
+
+pub use nyanpasu_core_metadata::{LogField, LogFrame, LogLevel, LogStream, LogTimestamp};
 
 use crate::kind::CoreKind;
 
 pub(crate) const LOG_CHANNEL_CAPACITY: usize = 256;
 const MAX_CONTINUATION_LINES: usize = 16;
-const MAX_LOGICAL_FRAME_BYTES: usize = 16 * 1024;
 
-/// Normalized severity. Go's `fatal` and `panic` both terminate the process, so
-/// they collapse into `Fatal`; the original spelling survives in [`LogFrame::raw`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum LogLevel {
-    Trace,
-    Debug,
-    Info,
-    Warning,
-    Error,
-    Fatal,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LogStream {
-    Stdout,
-    Stderr,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogTimestamp {
-    /// Exactly as the core printed it.
-    pub raw: String,
-    /// Unix milliseconds, the same convention as `state::now_ms`.
-    pub unix_ms: Option<i64>,
-    /// The date or the zone offset came from the observation instant because the
-    /// core did not print one (clash premium and clash-rs).
-    pub inferred: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LogFrame {
-    pub epoch: u64,
-    pub kind: CoreKind,
-    pub stream: LogStream,
-    pub timestamp: Option<LogTimestamp>,
-    pub level: LogLevel,
-    /// clash premium's `[Tag]` prefix (a message convention, not a field), meow's
-    /// tracing target, or clash-rs's `file:line`.
-    pub target: Option<String>,
-    pub message: String,
-    /// Filled only where field boundaries are decidable, which today means
-    /// mihomo's quoted logfmt.
-    pub fields: Vec<LogField>,
-    /// The whole logical record with ANSI removed, continuations included.
-    pub raw: String,
-    /// Continuations were dropped after hitting a size limit.
-    pub truncated: bool,
-}
+/// The caps every frame leaving this parser respects. They live here, and only
+/// here, because bounding at the source is what lets every downstream consumer —
+/// the 32-frame diagnostic tail, the JSONL archive, the ws stream — take the
+/// frame as it is. A frame that arrives anywhere else has already been cut.
+const MAX_LOG_TEXT_BYTES: usize = 16 * 1024;
+const MAX_LOG_TARGET_BYTES: usize = 2048;
+const MAX_LOG_TIMESTAMP_RAW_BYTES: usize = 256;
+const MAX_LOG_FIELDS: usize = 64;
+const MAX_LOG_FIELD_TEXT_BYTES: usize = 1024;
 
 /// At most two frames leave the parser per line: a flushed multi-line record and
 /// the line that ended it.
@@ -82,18 +45,92 @@ struct Pending {
 
 impl Pending {
     fn append(&mut self, line: &str) {
-        if self.continuations == MAX_CONTINUATION_LINES
-            || self.frame.raw.len() + 1 + line.len() > MAX_LOGICAL_FRAME_BYTES
-        {
+        if self.continuations == MAX_CONTINUATION_LINES {
             self.frame.truncated = true;
             return;
         }
-        self.frame.raw.push('\n');
-        self.frame.raw.push_str(line);
-        self.frame.message.push('\n');
-        self.frame.message.push_str(line);
-        self.continuations += 1;
+        // Never short-circuits: both texts take the same line, and they run out
+        // of budget at different points because `raw` also carries the header.
+        let cut = append_bounded(&mut self.frame.raw, line, MAX_LOG_TEXT_BYTES)
+            | append_bounded(&mut self.frame.message, line, MAX_LOG_TEXT_BYTES);
+        if cut {
+            self.frame.truncated = true;
+            // One of the two texts is now at its cap, so there is no room for a
+            // further continuation either.
+            self.continuations = MAX_CONTINUATION_LINES;
+        } else {
+            self.continuations += 1;
+        }
     }
+}
+
+/// Appends `\n` and as much of `line` as fits. `true` means something was left
+/// behind — the caller stops appending rather than growing a hole.
+///
+/// The separator comes out of the same budget as the content, and it is only
+/// written once something can follow it: a line whose first character does not
+/// fit is dropped whole rather than turned into a blank one.
+fn append_bounded(text: &mut String, line: &str, max_bytes: usize) -> bool {
+    if text.len() >= max_bytes {
+        return true;
+    }
+    // An empty continuation *is* the separator, so it always fits here.
+    if line.is_empty() {
+        text.push('\n');
+        return false;
+    }
+    let budget = max_bytes - text.len() - 1;
+    let end = char_boundary_at_or_below(line, budget.min(line.len()));
+    if end == 0 {
+        return true;
+    }
+    text.push('\n');
+    text.push_str(&line[..end]);
+    end < line.len()
+}
+
+/// Cuts `text` down to `max_bytes`. `true` means it was cut.
+fn truncate_text(text: &mut String, max_bytes: usize) -> bool {
+    if text.len() <= max_bytes {
+        return false;
+    }
+    text.truncate(char_boundary_at_or_below(text, max_bytes));
+    true
+}
+
+/// The largest index at or below `max_bytes` that does not split a character,
+/// so a cut string is still a `str` and still serializes as valid JSON.
+fn char_boundary_at_or_below(text: &str, max_bytes: usize) -> usize {
+    let mut end = max_bytes;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    end
+}
+
+/// Brings every free-text field within its cap, in place.
+///
+/// Runs exactly once per frame, before it is emitted or held. Everything
+/// downstream — the diagnostic tail, the JSONL archive, the ws stream — then
+/// consumes the frame as it stands, which is why none of them clamp any more.
+fn bound_frame(frame: &mut LogFrame) {
+    let mut cut = truncate_text(&mut frame.message, MAX_LOG_TEXT_BYTES);
+    cut |= truncate_text(&mut frame.raw, MAX_LOG_TEXT_BYTES);
+    if let Some(target) = frame.target.as_mut() {
+        cut |= truncate_text(target, MAX_LOG_TARGET_BYTES);
+    }
+    if let Some(timestamp) = frame.timestamp.as_mut() {
+        cut |= truncate_text(&mut timestamp.raw, MAX_LOG_TIMESTAMP_RAW_BYTES);
+    }
+    if frame.fields.len() > MAX_LOG_FIELDS {
+        frame.fields.truncate(MAX_LOG_FIELDS);
+        cut = true;
+    }
+    for field in &mut frame.fields {
+        cut |= truncate_text(&mut field.key, MAX_LOG_FIELD_TEXT_BYTES);
+        cut |= truncate_text(&mut field.value, MAX_LOG_FIELD_TEXT_BYTES);
+    }
+    frame.truncated |= cut;
 }
 
 /// Stateful because clash premium needs the previous timestamp to infer date
@@ -130,18 +167,20 @@ impl LogParser {
         let line = strip_ansi(line);
         if let Some(parsed) = self.parse_header(&line, observed_at) {
             let hold = parsed.level >= LogLevel::Error;
-            let frame = LogFrame {
+            let mut frame = LogFrame {
+                at: observed_at.timestamp_millis(),
                 epoch: self.epoch,
                 kind: self.kind,
                 stream,
-                timestamp: parsed.timestamp,
                 level: parsed.level,
+                timestamp: parsed.timestamp,
                 target: parsed.target,
                 message: parsed.message,
                 fields: parsed.fields,
                 raw: line,
                 truncated: false,
             };
+            bound_frame(&mut frame);
             return self.emit(stream, frame, hold);
         }
 
@@ -161,18 +200,20 @@ impl LogParser {
             (.., LogStream::Stdout) => LogLevel::Info,
             (.., LogStream::Stderr) => LogLevel::Warning,
         };
-        let frame = LogFrame {
+        let mut frame = LogFrame {
+            at: observed_at.timestamp_millis(),
             epoch: self.epoch,
             kind: self.kind,
             stream,
-            timestamp: None,
             level,
+            timestamp: None,
             target: None,
             message: line.clone(),
             fields: Vec::new(),
             raw: line,
             truncated: false,
         };
+        bound_frame(&mut frame);
         self.emit(stream, frame, error_root && stream == LogStream::Stderr)
     }
 
@@ -222,23 +263,27 @@ impl LogParser {
 
 /// The most severe recent frame, latest first within that severity. `None` when
 /// nothing above `Info` was logged.
-pub(crate) fn error_summary(frames: &[LogFrame]) -> Option<String> {
+///
+/// Generic over the borrow so the owned frames a one-shot run produces and the
+/// `Arc`-shared frames the diagnostic tail holds both go straight in.
+pub(crate) fn error_summary<T: Borrow<LogFrame>>(frames: &[T]) -> Option<String> {
     let level = frames
         .iter()
-        .map(|frame| frame.level)
+        .map(|frame| Borrow::<LogFrame>::borrow(frame).level)
         .filter(|level| *level >= LogLevel::Warning)
         .max()?;
     frames
         .iter()
         .rev()
+        .map(Borrow::<LogFrame>::borrow)
         .find(|frame| frame.level == level)
         .map(|frame| frame.message.clone())
 }
 
-pub(crate) fn format_tail(frames: &[LogFrame]) -> String {
+pub(crate) fn format_tail<T: Borrow<LogFrame>>(frames: &[T]) -> String {
     frames
         .iter()
-        .map(|frame| frame.raw.as_str())
+        .map(|frame| Borrow::<LogFrame>::borrow(frame).raw.as_str())
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -648,7 +693,9 @@ mod tests {
         let mut frames = collect(parser.push_at(stream, line.to_owned(), observed(at)));
         frames.extend(parser.finish().into_iter().flatten());
         assert_eq!(frames.len(), 1, "expected exactly one frame for {line:?}");
-        frames.remove(0)
+        let frame = frames.remove(0);
+        assert_eq!(frame.at, observed(at).timestamp_millis());
+        frame
     }
 
     #[test]
@@ -1019,18 +1066,27 @@ mod tests {
         assert_eq!(error_summary(&frames).as_deref(), Some("stdout second"));
     }
 
+    /// A held record also fixes its clock: `at` is the instant the root line was
+    /// observed, not the instant the last continuation arrived.
     #[test]
     fn aggregates_multi_line_records_within_one_stream() {
         let mut parser = LogParser::new(CoreKind::ClashRust, 1);
-        let at = observed("2026-07-29T00:17:27+08:00");
+        let root_at = observed("2026-07-29T00:17:27+08:00");
+        let continuation_at = observed("2026-07-29T00:17:29+08:00");
+        let root =
+            "Error: invalid config: couldn't not parse config content mixed-port: not-a-port";
+        assert!(collect(parser.push_at(LogStream::Stderr, root.to_owned(), root_at)).is_empty());
         for line in [
-            "Error: invalid config: couldn't not parse config content mixed-port: not-a-port",
             "proxies: [[[",
             ": did not find expected node content at line 3 column 1, while parsing a flow node",
         ] {
-            assert!(collect(parser.push_at(LogStream::Stderr, line.to_owned(), at)).is_empty());
+            assert!(
+                collect(parser.push_at(LogStream::Stderr, line.to_owned(), continuation_at))
+                    .is_empty()
+            );
         }
         let frame = collect(parser.finish()).remove(0);
+        assert_eq!(frame.at, root_at.timestamp_millis());
         assert_eq!(frame.level, LogLevel::Error);
         assert!(!frame.truncated);
         assert_eq!(
@@ -1075,6 +1131,154 @@ mod tests {
         assert!(frame.message.starts_with("boom\nstack frame 0\n"));
         assert!(frame.message.contains("stack frame 15"));
         assert!(!frame.message.contains("stack frame 16"));
+    }
+
+    /// A single enormous line is bounded here rather than at each consumer, and
+    /// what the diagnostic paths read is the already-bounded text. The two
+    /// instantiations of the borrow — owned frames and the `Arc`s the tail holds
+    /// — are both exercised.
+    #[test]
+    fn an_oversized_root_is_bounded_for_every_diagnostic_consumer() {
+        let frame = parse_one(
+            CoreKind::Meow,
+            LogStream::Stderr,
+            &format!("warning: {}", "x".repeat(MAX_LOG_TEXT_BYTES * 2)),
+            "2026-07-29T00:17:27+08:00",
+        );
+        assert_eq!(frame.message.len(), MAX_LOG_TEXT_BYTES);
+        assert_eq!(frame.raw.len(), MAX_LOG_TEXT_BYTES);
+        assert!(frame.truncated);
+
+        assert_eq!(
+            error_summary(std::slice::from_ref(&frame))
+                .expect("a warning is above Info")
+                .len(),
+            MAX_LOG_TEXT_BYTES
+        );
+        assert_eq!(
+            format_tail(&[std::sync::Arc::new(frame)]).len(),
+            MAX_LOG_TEXT_BYTES
+        );
+    }
+
+    /// Continuations are appended up to the budget rather than concatenated and
+    /// then cut, and the prefix that survives never splits a character.
+    #[test]
+    fn a_continuation_is_appended_only_as_far_as_it_fits() {
+        let mut parser = LogParser::new(CoreKind::ClashRust, 1);
+        let root_at = observed("2026-07-29T00:17:27+08:00");
+        assert!(
+            collect(parser.push_at(LogStream::Stderr, "Error: root".to_owned(), root_at))
+                .is_empty()
+        );
+        // Three bytes per char, so the budget never lands on a boundary and the
+        // walk-back actually runs.
+        let continuation = "€".repeat(MAX_LOG_TEXT_BYTES);
+        assert!(
+            collect(parser.push_at(
+                LogStream::Stderr,
+                continuation.clone(),
+                observed("2026-07-29T00:17:28+08:00"),
+            ))
+            .is_empty()
+        );
+
+        let frame = collect(parser.finish()).remove(0);
+        let appended = frame
+            .message
+            .strip_prefix("Error: root\n")
+            .expect("the root and its separator survive");
+        assert!(continuation.starts_with(appended));
+        assert!(
+            frame.message.len() < MAX_LOG_TEXT_BYTES,
+            "the boundary walk did not run"
+        );
+        assert!(frame.raw.len() < MAX_LOG_TEXT_BYTES);
+        assert!(frame.truncated);
+        assert_eq!(frame.at, root_at.timestamp_millis());
+    }
+
+    /// The append budget at its edges. `raw` and `message` run out at different
+    /// points — `raw` also carries the header — so these cases are reached in
+    /// production by one of the two while the other still has room.
+    #[test]
+    fn the_append_budget_never_writes_a_separator_it_cannot_follow() {
+        let filled = |shortfall: usize| "x".repeat(MAX_LOG_TEXT_BYTES - shortfall);
+
+        // Already at the cap, or with room for the separator alone.
+        for shortfall in [0, 1] {
+            let mut text = filled(shortfall);
+            assert!(append_bounded(&mut text, "y", MAX_LOG_TEXT_BYTES));
+            assert_eq!(text, filled(shortfall), "shortfall = {shortfall}");
+        }
+
+        // Room for the separator and two bytes, but the next character is three.
+        let mut split = filled(3);
+        assert!(append_bounded(&mut split, "€", MAX_LOG_TEXT_BYTES));
+        assert_eq!(split, filled(3));
+
+        // A partial line, and a whole one that exactly exhausts the budget.
+        let mut partial = filled(2);
+        assert!(append_bounded(&mut partial, "abc", MAX_LOG_TEXT_BYTES));
+        assert!(partial.ends_with("\na"));
+        assert_eq!(partial.len(), MAX_LOG_TEXT_BYTES);
+
+        let mut exact = filled(4);
+        assert!(!append_bounded(&mut exact, "abc", MAX_LOG_TEXT_BYTES));
+        assert!(exact.ends_with("\nabc"));
+        assert_eq!(exact.len(), MAX_LOG_TEXT_BYTES);
+
+        // An empty continuation is fully represented by the separator itself.
+        let mut blank = filled(1);
+        assert!(!append_bounded(&mut blank, "", MAX_LOG_TEXT_BYTES));
+        assert_eq!(blank.len(), MAX_LOG_TEXT_BYTES);
+        assert!(blank.ends_with('\n'));
+    }
+
+    #[test]
+    fn oversized_metadata_and_fields_are_bounded_at_the_parser() {
+        let huge = "x".repeat(MAX_LOG_FIELD_TEXT_BYTES * 2);
+        let mut line = format!(
+            r#"time="{}" level=info msg="metadata" {}="{}""#,
+            "z".repeat(MAX_LOG_TIMESTAMP_RAW_BYTES * 2),
+            huge,
+            huge,
+        );
+        for index in 0..MAX_LOG_FIELDS {
+            line.push_str(&format!(" field{index}=value"));
+        }
+        let structured = parse_one(
+            CoreKind::Mihomo,
+            LogStream::Stdout,
+            &line,
+            "2026-07-29T00:17:27+08:00",
+        );
+        assert_eq!(
+            structured.timestamp.as_ref().unwrap().raw.len(),
+            MAX_LOG_TIMESTAMP_RAW_BYTES
+        );
+        assert_eq!(structured.fields.len(), MAX_LOG_FIELDS);
+        assert_eq!(structured.fields[0].key.len(), MAX_LOG_FIELD_TEXT_BYTES);
+        assert_eq!(structured.fields[0].value.len(), MAX_LOG_FIELD_TEXT_BYTES);
+        assert!(structured.truncated);
+
+        let targeted = parse_one(
+            CoreKind::Meow,
+            LogStream::Stdout,
+            &format!(
+                "{} INFO {}: message",
+                "z".repeat(MAX_LOG_TIMESTAMP_RAW_BYTES * 2),
+                "t".repeat(MAX_LOG_TARGET_BYTES * 2),
+            ),
+            "2026-07-29T00:17:27+08:00",
+        );
+        assert_eq!(targeted.target.unwrap().len(), MAX_LOG_TARGET_BYTES);
+        assert_eq!(
+            targeted.timestamp.as_ref().unwrap().raw.len(),
+            MAX_LOG_TIMESTAMP_RAW_BYTES
+        );
+        assert_eq!(targeted.message, "message");
+        assert!(targeted.truncated);
     }
 
     #[test]

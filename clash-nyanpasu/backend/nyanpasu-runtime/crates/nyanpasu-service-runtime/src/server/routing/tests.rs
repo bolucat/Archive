@@ -507,3 +507,33 @@ async fn the_event_stream_ignores_any_query() {
         assert_eq!(response.status(), StatusCode::UPGRADE_REQUIRED, "{uri}");
     }
 }
+
+/// `/status` is where a caller learns where the logs are, now that the service
+/// does not stream them. The core directory comes from the manager, so this
+/// pins the forwarder as well as the field.
+#[tokio::test]
+async fn the_status_response_reports_the_log_directories() {
+    let env = TestEnv::new().await;
+    let response = create_router(env.state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(STATUS_ENDPOINT)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let body: StatusRes<'static> = body_of(response).await;
+    let logs = body
+        .data
+        .expect("status returns a body")
+        .logs
+        .expect("status must report the log directories");
+    assert_eq!(logs.service_dir, crate::utils::dirs::service_logs_dir());
+    let core_dir = logs.core_dir.expect("the sink is on by default");
+    assert!(
+        core_dir.ends_with("logs"),
+        "core log dir should be the manager's archive: {core_dir:?}"
+    );
+}

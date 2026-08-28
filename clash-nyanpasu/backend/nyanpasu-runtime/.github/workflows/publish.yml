@@ -5,13 +5,27 @@ on:
     inputs:
       versionType:
         type: choice
-        description: "<major|minor|patch>"
+        description: "<major|minor|patch|premajor|preminor|prepatch|prerelease|release>"
         required: true
         default: "patch"
         options:
           - major
           - minor
           - patch
+          - premajor
+          - preminor
+          - prepatch
+          - prerelease
+          - release
+      preid:
+        type: choice
+        description: "pre-release identifier (only used by pre* / prerelease)"
+        required: true
+        default: "rc"
+        options:
+          - rc
+          - beta
+          - alpha
 
 permissions:
   contents: write
@@ -22,6 +36,7 @@ jobs:
     name: Publish ${{ inputs.versionType }} release
     outputs:
       version: ${{ steps.update-version.outputs.version }}
+      prerelease: ${{ steps.update-version.outputs.prerelease }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -52,20 +67,51 @@ jobs:
         shell: bash
         name: Bump version
         run: |
-          cargo set-version --workspace --exclude nyanpasu-utils --bump ${{ inputs.versionType }}
+          # nyanpasu-service drives the release; fail hard if the requested
+          # op doesn't apply to it (checked without --lenient).
+          CUR_SERVICE=$(cargo pkgid --package nyanpasu-service)
+          CUR_SERVICE=${CUR_SERVICE##*[@#]}
+          EXPECTED=$(python3 .github/scripts/bump-version.py --current "$CUR_SERVICE" --op ${{ inputs.versionType }} --preid ${{ inputs.preid }})
+
+          while IFS=$'\t' read -r NAME CUR; do
+            TARGET=$(python3 .github/scripts/bump-version.py --current "$CUR" --op ${{ inputs.versionType }} --preid ${{ inputs.preid }} --lenient)
+            if [ "$TARGET" != "$CUR" ]; then
+              echo "$NAME: $CUR -> $TARGET"
+              cargo set-version --package "$NAME" "$TARGET"
+            else
+              echo "$NAME: $CUR (unchanged)"
+            fi
+          done < <(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name != "nyanpasu-utils") | "\(.name)\t\(.version)"')
+
           PACKAGE_ID=$(cargo pkgid --package nyanpasu-service)
           VERSION=${PACKAGE_ID##*[@#]}
+          if [ "$VERSION" != "$EXPECTED" ]; then
+            echo "expected $EXPECTED but nyanpasu-service is $VERSION" >&2
+            exit 1
+          fi
           echo "$VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+          fi
       - name: Generate a changelog for the new version
         shell: bash
         id: build-changelog
         run: |
           touch /tmp/changelog.md
-          git-cliff --config  cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
+          LAST_STABLE=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -1)
+          if [ -n "$LAST_STABLE" ]; then
+            git-cliff --config cliff.toml --verbose --strip header --tag v${{ steps.update-version.outputs.version }} "$LAST_STABLE..HEAD" > /tmp/changelog.md
+          else
+            git-cliff --config cliff.toml --verbose --strip header --unreleased --tag v${{ steps.update-version.outputs.version }} > /tmp/changelog.md
+          fi
           if [ $? -eq 0 ]; then
             CONTENT=$(cat /tmp/changelog.md)
-            cat /tmp/changelog.md | cat - ./CHANGELOGS.md > temp && mv temp ./CHANGELOGS.md
+            if [ "${{ steps.update-version.outputs.prerelease }}" != "true" ]; then
+              cat /tmp/changelog.md | cat - ./CHANGELOGS.md > temp && mv temp ./CHANGELOGS.md
+            fi
             {
               echo 'content<<EOF'
               echo "$CONTENT"
@@ -93,6 +139,7 @@ jobs:
           body: ${{steps.build-changelog.outputs.content}}
           name: Nyanpasu Service v${{steps.update-version.outputs.version}}
           tag_name: "v${{ steps.update-version.outputs.version }}"
+          prerelease: ${{ steps.update-version.outputs.prerelease }}
           # target_commitish: ${{ steps.tag.outputs.sha }}
   release_macos:
     needs: [publish]
@@ -132,6 +179,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: "v${{ needs.publish.outputs.version }}"
+          prerelease: ${{ needs.publish.outputs.prerelease }}
           files: |
             nyanpasu-service-${{ matrix.profile.target }}.tar.gz
             nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
@@ -181,6 +229,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: "v${{ needs.publish.outputs.version }}"
+          prerelease: ${{ needs.publish.outputs.prerelease }}
           files: |
             nyanpasu-service-${{ matrix.profile.target }}.tar.gz
             nyanpasu-service-${{ matrix.profile.target }}.tar.gz.sha256
@@ -220,6 +269,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: "v${{ needs.publish.outputs.version }}"
+          prerelease: ${{ needs.publish.outputs.prerelease }}
           files: |
             nyanpasu-service-${{ matrix.profile.target }}.zip
             nyanpasu-service-${{ matrix.profile.target }}.zip.sha256

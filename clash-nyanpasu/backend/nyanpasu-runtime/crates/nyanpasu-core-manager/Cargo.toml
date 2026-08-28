@@ -1,6 +1,6 @@
 [package]
 name = "nyanpasu-core-manager"
-version = "0.1.1"
+version = "1.0.0-rc.1"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -33,6 +33,7 @@ nyanpasu-utils = {
 parking_lot.workspace = true
 schemars = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 serde_yaml_ng = "0.10"
 specta = { version = "^2.0.0-rc.25", features = ["derive"] }
 thiserror.workspace = true

@@ -33,7 +33,6 @@ use axum::{
     routing::{get, post},
 };
 use futures_util::StreamExt;
-use indexmap::IndexMap;
 use interprocess::local_socket::{
     GenericFilePath, ListenerNonblockingMode, ListenerOptions, ToFsName,
     tokio::{Listener, Stream as IpcStream, prelude::*},
@@ -56,7 +55,9 @@ use nyanpasu_ipc::{
             ConfigRevisionInfo, CoreInfos, CoreState, CoreStateDetail, RevisionIdInfo,
             RuntimeInfos, STATUS_ENDPOINT, StatusRes, StatusResBody,
         },
-        ws::events::{EVENT_URI, Event, TraceLog},
+        ws::events::{
+            ClashCoreKind, EVENT_URI, Event, LogFrame, LogLevel, LogStream, LogTimestamp,
+        },
     },
     client::{Client, ClientError},
 };
@@ -221,6 +222,7 @@ fn test_status_body() -> StatusResBody<'static> {
             nyanpasu_config_dir: Cow::Owned(PathBuf::from("/home/config")),
             nyanpasu_data_dir: Cow::Owned(PathBuf::from("/home/data")),
         },
+        logs: None,
     }
 }
 
@@ -307,14 +309,24 @@ async fn ws_handler(ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(|mut socket: WebSocket| async move {
         let events = [
             Event::new_core_status_changed(test_snapshot()),
-            Event::new_log(TraceLog {
-                timestamp: "2026-01-01T00:00:00Z".to_owned(),
-                level: "INFO".to_owned(),
-                message: "hello events".to_owned(),
-                target: "roundtrip".to_owned(),
-                fields: IndexMap::new(),
-            }),
             Event::new_core_state_changed(CoreState::Stopped(Some("bye".to_owned()))),
+            Event::new_core_log(std::sync::Arc::new(LogFrame {
+                at: 1_700_000_000_000,
+                epoch: 4,
+                kind: ClashCoreKind::Mihomo,
+                stream: LogStream::Stdout,
+                level: LogLevel::Info,
+                timestamp: Some(LogTimestamp {
+                    raw: "2026-07-29T00:16:22.646059400+08:00".to_owned(),
+                    unix_ms: Some(1_753_719_382_646),
+                    inferred: false,
+                }),
+                target: Some("dns".to_owned()),
+                message: "hello core".to_owned(),
+                fields: Vec::new(),
+                raw: "the whole logical record".to_owned(),
+                truncated: false,
+            })),
         ];
         for event in events {
             let bytes = serde_json::to_vec(&event).unwrap();
@@ -545,20 +557,6 @@ async fn events_roundtrip() {
     let event = events
         .next()
         .await
-        .expect("stream should yield the log event")
-        .expect("log event should decode");
-    match event {
-        Event::Log(log) => {
-            assert_eq!(log.message, "hello events");
-            assert_eq!(log.target, "roundtrip");
-            assert_eq!(log.level, "INFO");
-        }
-        other => panic!("expected a log event, got: {other:?}"),
-    }
-
-    let event = events
-        .next()
-        .await
         .expect("stream should yield the legacy state event")
         .expect("legacy state event should decode");
     match event {
@@ -567,6 +565,52 @@ async fn events_roundtrip() {
         }
         other => panic!("expected a core state changed event, got: {other:?}"),
     }
+
+    let _ = shutdown.send(());
+    cleanup(&placeholder);
+}
+
+/// The new variant over the real transport: it decodes through the same
+/// unchanged `EventStream` path, behind the frames a pre-L2 client already
+/// understood. A client that predates the variant fails on this one frame only
+/// — `filter_map` yields `Some(Err(Decode))` and the stream keeps running —
+/// which is what lets L2 ship without the GUI.
+#[tokio::test]
+async fn core_log_roundtrip() {
+    let placeholder = format!("nyanpasu-ipc-test-{}-core-log", std::process::id());
+    let Some((shutdown, client)) = run_server(&placeholder, test_router(Shared::default())).await
+    else {
+        return;
+    };
+
+    let mut events = client.events().await.expect("events should connect");
+    let mut seen = None;
+    for _ in 0..3 {
+        let event = events
+            .next()
+            .await
+            .expect("stream should yield three frames")
+            .expect("every frame should decode");
+        if let Event::CoreLog(log) = event {
+            seen = Some(log);
+        }
+    }
+
+    let log = seen.expect("the stream should carry a core log frame");
+    assert_eq!(log.at, 1_700_000_000_000);
+    assert_eq!(log.epoch, 4);
+    assert_eq!(log.kind, ClashCoreKind::Mihomo);
+    assert_eq!(log.stream, LogStream::Stdout);
+    assert_eq!(log.level, LogLevel::Info);
+    let timestamp = log.timestamp.as_ref().expect("the fixture parsed a header");
+    assert_eq!(timestamp.raw, "2026-07-29T00:16:22.646059400+08:00");
+    assert_eq!(timestamp.unix_ms, Some(1_753_719_382_646));
+    assert!(!timestamp.inferred);
+    assert_eq!(log.target.as_deref(), Some("dns"));
+    assert_eq!(log.message, "hello core");
+    assert!(log.fields.is_empty());
+    assert_eq!(log.raw, "the whole logical record");
+    assert!(!log.truncated);
 
     let _ = shutdown.send(());
     cleanup(&placeholder);

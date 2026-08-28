@@ -91,6 +91,16 @@ pub struct ManagerOptions {
     pub reconcile_timeout: Duration,
     pub stop_timeout: Duration,
     pub cancel_token: CancellationToken,
+    /// Write core logs as JSONL under `{runtime_dir}/logs/`. Off means the
+    /// directory is never created and nothing is written; an embedder with its
+    /// own log stack subscribes to the frames directly instead.
+    pub log_sink_enabled: bool,
+    /// Rotate the active core-log file once it reaches this size. Soft: a file
+    /// overshoots by at most the one record that crossed the line.
+    pub log_max_bytes: u64,
+    /// How many core-log files to keep, the active one included. With
+    /// `log_max_bytes` this is the directory's hard disk budget.
+    pub log_max_files: usize,
 }
 
 impl Default for ManagerOptions {
@@ -107,6 +117,12 @@ impl Default for ManagerOptions {
             reconcile_timeout: Duration::from_secs(30),
             stop_timeout: Duration::from_secs(10),
             cancel_token: CancellationToken::new(),
+            log_sink_enabled: true,
+            // 4 MiB x 5 = a 20 MiB ceiling — tighter than the service's own
+            // tracing-appender policy, which keeps 7 daily files of unbounded
+            // size. At roughly 300-600 B per record a file covers 7k-14k lines.
+            log_max_bytes: 4 * 1024 * 1024,
+            log_max_files: 5,
         }
     }
 }
@@ -132,12 +148,16 @@ mod tests {
 
     /// The compatibility pin for S10: `ManagerOptions::default()` must keep the
     /// removed passthrough behavior — the source config's HTTP controller,
-    /// never rewritten.
+    /// never rewritten. The log-sink defaults are pinned beside it because they
+    /// set a disk budget every embedder inherits without asking.
     #[test]
     fn manager_options_default_to_the_non_rewriting_policy() {
         let o = ManagerOptions::default();
         assert_eq!(o.local_ipc_policy, LocalIpcPolicy::Disable);
         assert!(o.controller_template.is_none());
         assert!(o.runtime_dir.is_none());
+        assert!(o.log_sink_enabled);
+        assert_eq!(o.log_max_bytes, 4 * 1024 * 1024);
+        assert_eq!(o.log_max_files, 5);
     }
 }

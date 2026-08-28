@@ -22,6 +22,7 @@ use crate::{
     error::Error,
     instance::Instance,
     log::{LOG_CHANNEL_CAPACITY, LogFrame},
+    log_sink::{self, SinkOptions},
     probe::ProbeHandle,
     runtime_store::{RuntimeConfigStore, RuntimeDirectoryLock, StagedRuntimeConfig},
     spec::{CoreSpec, InstanceSpec, LocalIpcPolicy, ManagerOptions, ResolvedController},
@@ -107,9 +108,17 @@ struct Inner {
     status_tx: watch::Sender<CoreStatus>,
     /// Outlives every epoch, so callers can subscribe before the first start and
     /// keep receiving across restarts and core switches.
-    log_tx: broadcast::Sender<LogFrame>,
+    log_tx: broadcast::Sender<Arc<LogFrame>>,
     epoch: AtomicU64,
     version_cache: VersionCache,
+    /// `Some` while the JSONL sink is running. `None` means the caller turned it
+    /// off, and there is deliberately no path to report — nothing will ever
+    /// appear there.
+    log_dir: Option<camino::Utf8PathBuf>,
+    /// Dropping the manager without calling `shutdown()` abandons at most the
+    /// final batch. This is diagnostic data and best-effort by design;
+    /// `shutdown()` is the graceful path.
+    log_sink: tokio::sync::Mutex<Option<log_sink::SinkHandle>>,
     // Declared last so ordinary Inner destruction drops instances/tasks before
     // releasing directory ownership.
     _runtime_lock: RuntimeDirectoryLock,
@@ -229,8 +238,40 @@ impl CoreManager {
                 )));
             }
         }
+        // Validated whether or not the sink is enabled, for the same reason the
+        // controller template above is validated under every policy:
+        // construction is the caller's last chance to hear about it.
+        if options.log_max_bytes == 0 {
+            return Err(Error::InvalidManagerOptions(
+                "log_max_bytes must be greater than zero".into(),
+            ));
+        }
+        if options.log_max_files == 0 {
+            return Err(Error::InvalidManagerOptions(
+                "log_max_files must be greater than zero".into(),
+            ));
+        }
         let max_epoch = sweep_orphans(&store).await?;
         let (status_tx, _) = watch::channel(CoreStatus::initial());
+        let (log_tx, _) = broadcast::channel(LOG_CHANNEL_CAPACITY);
+        // Subscribed here rather than inside the task, and before any instance
+        // can exist, so the sink cannot miss the start-up burst.
+        let (log_dir, log_sink) = if options.log_sink_enabled {
+            let dir = log_sink::prepare_dir(store.dir()).await?;
+            let handle = log_sink::spawn(
+                dir.clone(),
+                SinkOptions {
+                    max_bytes: options.log_max_bytes,
+                    max_files: options.log_max_files,
+                },
+                log_tx.subscribe(),
+                options.cancel_token.child_token(),
+            )
+            .await?;
+            (Some(dir), Some(handle))
+        } else {
+            (None, None)
+        };
         Ok(Self {
             inner: Arc::new(Inner {
                 options,
@@ -238,9 +279,11 @@ impl CoreManager {
                 store,
                 ctrl: tokio::sync::Mutex::default(),
                 status_tx,
-                log_tx: broadcast::channel(LOG_CHANNEL_CAPACITY).0,
+                log_tx,
                 epoch: AtomicU64::new(max_epoch),
                 version_cache: VersionCache::default(),
+                log_dir,
+                log_sink: tokio::sync::Mutex::new(log_sink),
                 _runtime_lock: runtime_lock,
             }),
         })
@@ -250,8 +293,16 @@ impl CoreManager {
         self.inner.status_tx.subscribe()
     }
 
-    pub fn subscribe_logs(&self) -> broadcast::Receiver<LogFrame> {
+    pub fn subscribe_logs(&self) -> broadcast::Receiver<Arc<LogFrame>> {
         self.inner.log_tx.subscribe()
+    }
+
+    /// Where the JSONL core-log archive is written, or `None` when the sink is
+    /// disabled. Constant for the manager's lifetime, which is why it is an
+    /// accessor and not a field on the status snapshot: putting it there would
+    /// republish an unchanging string on every transition.
+    pub fn log_dir(&self) -> Option<&camino::Utf8Path> {
+        self.inner.log_dir.as_deref()
     }
 
     pub fn status(&self) -> CoreStatus {
@@ -488,49 +539,59 @@ impl CoreManager {
     /// Like [`Self::stop`], shutdown intentionally bypasses the quarantine
     /// gate and never treats an unrelated uncertain epoch as recovered.
     pub async fn shutdown(&self) -> Result<(), Error> {
+        // Held through sink finalization so no control-plane operation can interleave
+        // between core stop and archive teardown.
         let mut ctrl = self.inner.ctrl.lock().await;
-        if let Some(active) = ctrl.current.take() {
-            let Active {
-                instance,
-                forwarder,
-                source_spec,
-                revision,
-                capabilities,
-                runtime_features,
-                ..
-            } = active;
-            abort_and_await(forwarder).await;
-            let epoch = instance.epoch();
-            self.inner.publish(
-                CoreState::Stopping { epoch },
-                Some(spec_summary(&source_spec, capabilities, runtime_features)),
-                Some(instance.controller().host.clone()),
-                Some(revision),
-            );
-            if let Err(error) = instance
-                .stop_and_confirm_dead(self.inner.options.stop_timeout)
-                .await
-            {
-                if matches!(error, Error::StopUnconfirmed(_)) {
-                    return Err(self.latch_quarantine(&mut ctrl, epoch, error));
+        let result: Result<(), Error> = async {
+            if let Some(active) = ctrl.current.take() {
+                let Active {
+                    instance,
+                    forwarder,
+                    source_spec,
+                    revision,
+                    capabilities,
+                    runtime_features,
+                    ..
+                } = active;
+                abort_and_await(forwarder).await;
+                let epoch = instance.epoch();
+                self.inner.publish(
+                    CoreState::Stopping { epoch },
+                    Some(spec_summary(&source_spec, capabilities, runtime_features)),
+                    Some(instance.controller().host.clone()),
+                    Some(revision),
+                );
+                if let Err(error) = instance
+                    .stop_and_confirm_dead(self.inner.options.stop_timeout)
+                    .await
+                {
+                    if matches!(error, Error::StopUnconfirmed(_)) {
+                        return Err(self.latch_quarantine(&mut ctrl, epoch, error));
+                    }
+                    self.publish_terminal_error(&error);
+                    return Err(error);
                 }
-                self.publish_terminal_error(&error);
-                return Err(error);
+                if let Err(error) = self.inner.store.cleanup_epoch(epoch).await {
+                    self.publish_terminal_error(&error);
+                    return Err(error);
+                }
+                self.inner.publish(
+                    CoreState::Stopped {
+                        reason: Some(StopReason::User),
+                    },
+                    None,
+                    None,
+                    None,
+                );
             }
-            if let Err(error) = self.inner.store.cleanup_epoch(epoch).await {
-                self.publish_terminal_error(&error);
-                return Err(error);
-            }
-            self.inner.publish(
-                CoreState::Stopped {
-                    reason: Some(StopReason::User),
-                },
-                None,
-                None,
-                None,
-            );
+            Ok(())
         }
-        Ok(())
+        .await;
+        let log_sink = self.inner.log_sink.lock().await.take();
+        if let Some(log_sink) = log_sink {
+            log_sink.shutdown().await;
+        }
+        result
     }
 
     fn next_epoch(&self) -> u64 {

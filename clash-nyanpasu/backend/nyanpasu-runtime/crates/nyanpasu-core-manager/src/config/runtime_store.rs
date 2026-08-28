@@ -377,7 +377,10 @@ fn installed_commit(path: Utf8PathBuf, parent_sync: std::io::Result<()>) -> Runt
     RuntimeConfigCommit { path, durability }
 }
 
-fn validate_directory_metadata(path: &Utf8Path, metadata: &std::fs::Metadata) -> Result<(), Error> {
+pub(crate) fn validate_directory_metadata(
+    path: &Utf8Path,
+    metadata: &std::fs::Metadata,
+) -> Result<(), Error> {
     if metadata.file_type().is_symlink()
         || !metadata.is_dir()
         || atomic_fs::is_reparse_point(metadata)

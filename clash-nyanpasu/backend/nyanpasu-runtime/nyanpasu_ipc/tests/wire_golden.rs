@@ -9,9 +9,9 @@ use std::{
     borrow::Cow,
     net::{IpAddr, Ipv4Addr},
     path::PathBuf,
+    sync::Arc,
 };
 
-use indexmap::IndexMap;
 use nyanpasu_ipc::api::{
     R, RBuilder, ResponseCode,
     core::{
@@ -24,9 +24,11 @@ use nyanpasu_ipc::api::{
     network::set_dns::NetworkSetDnsReq,
     status::{
         ConfigRevisionInfo, CoreControllerInfo, CoreHealthInfo, CoreHealthState, CoreInfos,
-        CoreState, CoreStateDetail, RevisionIdInfo, RuntimeInfos, StatusResBody,
+        CoreState, CoreStateDetail, LogPathsInfo, RevisionIdInfo, RuntimeInfos, StatusResBody,
     },
-    ws::events::{EVENT_URI, Event, TraceLog},
+    ws::events::{
+        ClashCoreKind, EVENT_URI, Event, LogField, LogFrame, LogLevel, LogStream, LogTimestamp,
+    },
 };
 use nyanpasu_utils::core::{ClashCoreType, CoreType};
 
@@ -326,6 +328,7 @@ fn the_status_response_is_pinned() {
             nyanpasu_config_dir: Cow::Owned(PathBuf::from("/home/config")),
             nyanpasu_data_dir: Cow::Owned(PathBuf::from("/home/data")),
         },
+        logs: None,
     };
     assert_eq!(
         serde_json::to_string(&ok_envelope(body)).unwrap(),
@@ -357,28 +360,88 @@ fn the_core_states_are_pinned() {
     );
 }
 
+/// The legacy state frame, unchanged since before S7. A service-log frame was
+/// pinned here too until L3, when the service stopped pushing its own logs.
+/// (Deliberately not naming the removed variant: §7 step 2's `rg` gate covers
+/// this file.)
 #[test]
 fn the_ws_events_are_pinned() {
-    let mut fields = IndexMap::new();
-    fields.insert("epoch".to_owned(), serde_json::json!(1));
-    let log = Event::new_log(TraceLog {
-        timestamp: "2026-01-01T00:00:00Z".to_owned(),
-        level: "INFO".to_owned(),
-        message: "hello".to_owned(),
-        target: "nyanpasu_service::core".to_owned(),
-        fields,
-    });
-    assert_eq!(
-        serde_json::to_string(&log).unwrap(),
-        concat!(
-            r#"{"Log":{"timestamp":"2026-01-01T00:00:00Z","level":"INFO","#,
-            r#""message":"hello","target":"nyanpasu_service::core","#,
-            r#""fields":{"epoch":1}}}"#
-        )
-    );
     assert_eq!(
         serde_json::to_string(&Event::new_core_state_changed(CoreState::Running)).unwrap(),
         r#"{"CoreStateChanged":"Running"}"#
+    );
+}
+
+/// The fixture both serializer pins use. `crates/nyanpasu-service-runtime`'s
+/// `ws_core_log_frames_are_pinned` builds the identical value and asserts the
+/// identical literal: the service writes with `simd_json` and the client reads
+/// with `serde_json`, so a divergence must show up as a diff between two
+/// otherwise identical strings.
+fn pinned_core_log() -> Event {
+    Event::new_core_log(Arc::new(LogFrame {
+        at: 1_700_000_000_000,
+        epoch: 1,
+        kind: ClashCoreKind::Mihomo,
+        stream: LogStream::Stdout,
+        level: LogLevel::Info,
+        timestamp: Some(LogTimestamp {
+            raw: "2026-07-29T00:16:22.646059400+08:00".to_owned(),
+            unix_ms: Some(1_753_719_382_646),
+            inferred: false,
+        }),
+        target: None,
+        message: "hello core".to_owned(),
+        fields: vec![LogField {
+            key: "request".to_owned(),
+            value: "7".to_owned(),
+        }],
+        raw: "time=\"2026-07-29T00:16:22.646059400+08:00\" level=info msg=\"hello core\" request=7"
+            .to_owned(),
+        truncated: false,
+    }))
+}
+
+#[test]
+fn the_core_log_event_is_pinned() {
+    assert_eq!(
+        serde_json::to_string(&pinned_core_log()).unwrap(),
+        concat!(
+            r#"{"CoreLog":{"at":1700000000000,"epoch":1,"kind":"mihomo","stream":"stdout","#,
+            r#""level":"info","timestamp":{"raw":"2026-07-29T00:16:22.646059400+08:00","#,
+            r#""unix_ms":1753719382646,"inferred":false},"target":null,"#,
+            r#""message":"hello core","fields":[{"key":"request","value":"7"}],"#,
+            r#""raw":"time=\"2026-07-29T00:16:22.646059400+08:00\" level=info "#,
+            r#"msg=\"hello core\" request=7","truncated":false}}"#
+        )
+    );
+}
+
+/// The degraded shape, which is the common one: a line whose header did not
+/// parse has no clock, no target and no fields — and `at` is why the record is
+/// still sortable.
+#[test]
+fn a_degraded_core_log_event_is_pinned() {
+    let event = Event::new_core_log(Arc::new(LogFrame {
+        at: 1_700_000_000_001,
+        epoch: 2,
+        kind: ClashCoreKind::ClashRust,
+        stream: LogStream::Stderr,
+        level: LogLevel::Warning,
+        timestamp: None,
+        target: None,
+        message: "unparsed line".to_owned(),
+        fields: Vec::new(),
+        raw: "unparsed line".to_owned(),
+        truncated: true,
+    }));
+    assert_eq!(
+        serde_json::to_string(&event).unwrap(),
+        concat!(
+            r#"{"CoreLog":{"at":1700000000001,"epoch":2,"kind":"clash-rs","stream":"stderr","#,
+            r#""level":"warning","timestamp":null,"target":null,"#,
+            r#""message":"unparsed line","fields":[],"raw":"unparsed line","#,
+            r#""truncated":true}}"#
+        )
     );
 }
 
@@ -549,6 +612,7 @@ fn the_enriched_status_response_is_pinned() {
             nyanpasu_config_dir: Cow::Owned(PathBuf::from("/home/config")),
             nyanpasu_data_dir: Cow::Owned(PathBuf::from("/home/data")),
         },
+        logs: None,
     };
     assert_eq!(
         serde_json::to_string(&ok_envelope(body)).unwrap(),
@@ -569,6 +633,33 @@ fn the_enriched_status_response_is_pinned() {
             r#""nyanpasu_config_dir":"/home/config","#,
             r#""nyanpasu_data_dir":"/home/data"}},"ts":1700000000}"#
         )
+    );
+}
+
+/// The L3 addition. The field is `Option` only so a payload without it matches
+/// the pre-L3 bytes exactly — which the two literals above still assert — but
+/// the service always sends it.
+#[test]
+fn the_status_log_paths_are_pinned() {
+    assert_eq!(
+        serde_json::to_string(&LogPathsInfo {
+            service_dir: PathBuf::from("/var/lib/nyanpasu-service/logs"),
+            core_dir: Some(PathBuf::from("/var/lib/nyanpasu-service/core-runtime/logs")),
+        })
+        .unwrap(),
+        concat!(
+            r#"{"service_dir":"/var/lib/nyanpasu-service/logs","#,
+            r#""core_dir":"/var/lib/nyanpasu-service/core-runtime/logs"}"#
+        )
+    );
+    // Sink disabled: the key is omitted, not null.
+    assert_eq!(
+        serde_json::to_string(&LogPathsInfo {
+            service_dir: PathBuf::from("/var/lib/nyanpasu-service/logs"),
+            core_dir: None,
+        })
+        .unwrap(),
+        r#"{"service_dir":"/var/lib/nyanpasu-service/logs"}"#
     );
 }
 

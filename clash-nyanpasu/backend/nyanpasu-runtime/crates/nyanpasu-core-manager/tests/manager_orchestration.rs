@@ -246,6 +246,63 @@ async fn log_subscription_observes_startup_frames() {
     manager.shutdown().await.expect("shutdown");
 }
 
+/// The other half of the frame contract: what the broadcast delivers also
+/// reaches disk. Reads through `log_dir()` rather than rebuilding the path,
+/// because the store canonicalizes and Windows hands back a `\\?\` prefix.
+#[tokio::test]
+async fn core_logs_are_archived_under_the_manager_log_directory() {
+    let (_guard, dir) = common::utf8_tempdir();
+    let port = common::free_port();
+    let config = common::write_config(
+        &dir,
+        &format!(
+            "external-controller: 127.0.0.1:{port}\nx-fake-core:\n  stdout-lines:\n    - 'time=\"2026-07-29T00:16:22.646059400+08:00\" level=info msg=\"archived frame\"'\n"
+        ),
+    );
+    let manager = manager(&dir).await;
+    let log_dir = manager
+        .log_dir()
+        .expect("the sink is on by default")
+        .to_owned();
+    manager
+        .start(common::mihomo_spec(&dir, config))
+        .await
+        .expect("start");
+
+    // The sink is an independent subscriber, so it lands the frame slightly
+    // after `subscribe_logs` would: poll rather than assume.
+    let record = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(record) = read_archived(&log_dir, "archived frame") {
+                break record;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .expect("the frame was never archived");
+
+    assert_eq!(record["t"], "log");
+    assert_eq!(record["epoch"], 1);
+    assert_eq!(record["kind"], "mihomo");
+    assert_eq!(record["stream"], "stdout");
+    assert_eq!(record["level"], "info");
+    assert!(record["at"].as_i64().expect("at is always present") > 0);
+    manager.shutdown().await.expect("shutdown");
+}
+
+fn read_archived(log_dir: &camino::Utf8Path, message: &str) -> Option<serde_json::Value> {
+    std::fs::read_dir(log_dir)
+        .ok()?
+        .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path()).ok())
+        .flat_map(|body| {
+            body.lines()
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .collect::<Vec<_>>()
+        })
+        .find(|record| record["message"] == message)
+}
+
 #[tokio::test]
 async fn stop_requires_a_running_core() {
     let (_guard, dir) = common::utf8_tempdir();

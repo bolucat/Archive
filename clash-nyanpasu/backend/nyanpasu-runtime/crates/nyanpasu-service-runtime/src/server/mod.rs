@@ -11,11 +11,7 @@ pub use events::EventHub;
 pub use logger::Logger;
 pub use manager_bridge::CoreManagerService as CoreManager;
 use nyanpasu_core_manager::LocalIpcPolicy;
-use nyanpasu_ipc::{
-    SERVICE_PLACEHOLDER,
-    api::ws::events::{Event as WsEvent, TraceLog},
-    server::create_server,
-};
+use nyanpasu_ipc::{SERVICE_PLACEHOLDER, server::create_server};
 use routing::{AppState, create_router};
 use tokio_util::sync::CancellationToken;
 use tracing_attributes::instrument;
@@ -39,30 +35,9 @@ pub async fn run(
 
     // The tracing writer was bound to the global logger before `run`; share that
     // instance so the `/logs` routes read the buffer that is actually being fed.
+    // Nothing forwards it anywhere else: the service's own logs are files, and
+    // `/status` reports the directory.
     let logger = Logger::global().clone();
-    let log_hub = hub.clone();
-    logger.set_subscriber(Box::new(move |logging| {
-        // Runs inside the tracing writer: stays synchronous, never logs.
-        let target = logging
-            .fields
-            .get("target")
-            .and_then(|v| v.as_str().map(|s| s.to_string()))
-            .unwrap_or("".to_string());
-        if !events::should_forward_to_hub(&target) {
-            return;
-        }
-        log_hub.send(WsEvent::new_log(TraceLog {
-            timestamp: logging.timestamp,
-            level: logging.level,
-            message: logging
-                .fields
-                .get("message")
-                .and_then(|v| v.as_str().map(|s| s.to_string()))
-                .unwrap_or("".to_string()),
-            target,
-            fields: logging.fields,
-        }));
-    }));
 
     let state = AppState {
         core_manager: core_manager.clone(),

@@ -6,7 +6,7 @@ use nyanpasu_ipc::{
     api::{
         RBuilder,
         contract::Status as StatusOp,
-        status::{RuntimeInfos, StatusRes, StatusResBody},
+        status::{LogPathsInfo, RuntimeInfos, StatusRes, StatusResBody},
     },
     server::RegisterOperation,
 };
@@ -28,6 +28,12 @@ pub async fn status(State(state): State<AppState>) -> (StatusCode, Json<StatusRe
             nyanpasu_config_dir: Cow::Owned(state.runtime.nyanpasu_config_dir.clone()),
             nyanpasu_data_dir: Cow::Owned(state.runtime.nyanpasu_data_dir.clone()),
         },
+        // Always sent. The field is optional on the wire only so a payload
+        // without it stays byte-identical to the pre-L3 format.
+        logs: Some(LogPathsInfo {
+            service_dir: crate::utils::dirs::service_logs_dir(),
+            core_dir: state.core_manager.core_log_dir(),
+        }),
     });
 
     (StatusCode::OK, Json(res))

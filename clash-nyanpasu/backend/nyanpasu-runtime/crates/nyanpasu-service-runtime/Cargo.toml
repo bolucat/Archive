@@ -3,7 +3,7 @@ name = "nyanpasu-service-runtime"
 # Must stay equal to the `nyanpasu-service` bin version: `consts::APP_VERSION` is
 # this crate's CARGO_PKG_VERSION and is what `status` reports over IPC.
 # publish.yml bumps every workspace member together, so they stay in lockstep.
-version = "1.4.5"
+version = "2.0.0-rc.1"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true
@@ -30,6 +30,7 @@ nyanpasu-utils = {
   path = "../nyanpasu-utils",
   default-features = false,
   features = [
+    "atomic_fs",
     "dirs",
     "network",
     "os",
@@ -56,7 +57,6 @@ constcat = "0.6.0"
 ctrlc = { version = "3", features = ["termination"] }
 dunce = "1.0.5"
 futures-util = { workspace = true }
-indexmap = { version = "2", features = ["serde"] }
 oneshot = "0.2"
 parking_lot = "0.12"
 semver = "1"

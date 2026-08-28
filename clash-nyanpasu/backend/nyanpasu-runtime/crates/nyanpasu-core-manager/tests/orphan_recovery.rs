@@ -129,7 +129,12 @@ async fn hard_killed_manager_is_reaped_and_all_epoch_artifacts_are_swept() {
     while let Some(entry) = entries.next_entry().await.unwrap() {
         leftovers.push(entry.file_name().to_string_lossy().into_owned());
     }
-    assert_eq!(leftovers, [".manager.lock"], "unswept artifacts");
+    // `logs` is the JSONL sink's directory, created by the recovery manager
+    // above; it holds no epoch artifacts and the sweep must leave it alone.
+    // Sorted because directory order is not a guarantee once there is more than
+    // one entry.
+    leftovers.sort();
+    assert_eq!(leftovers, [".manager.lock", "logs"], "unswept artifacts");
 
     manager
         .start(common::mihomo_spec(&dir, config))

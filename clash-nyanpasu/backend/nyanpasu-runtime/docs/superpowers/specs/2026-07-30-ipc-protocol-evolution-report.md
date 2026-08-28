@@ -170,7 +170,8 @@ pub struct CoreApplyData {
 ### P3(可选,不阻塞):错误与日志结构化
 
 - envelope 增 `error_kind`(见 P0-B)逐步映射 manager 的 23 个错误变体;
-- 新变体 `Event::CoreLog(LogFrameInfo)` 结构直通(epoch/stream/level/target/fields/truncated),替代现在压进 `TraceLog.fields` 的降级形态。
+- 新变体 `Event::CoreLog(CoreLogInfo)` 结构直通(epoch/kind/stream/level/at/timestamp_ms/target/message/fields/truncated),替代现在压进 `TraceLog.fields` 的降级形态。**2026-07-31 修订(L2 实施)**:草稿名 `LogFrameInfo` 正式改为 `CoreLogInfo`,与 wire 侧既有的 `CoreControllerInfo`/`CoreHealthInfo`/`ConfigRevisionInfo` 命名族一致。`kind` 使用 ipc 本地的 `CoreLogKind`(四值)而非 `nyanpasu_utils::core::CoreType`——后者区分 alpha 构建,而日志帧本身不携带该信息(`LogFrame.kind` 是四值的 `ClashCoreKind`)。载荷不带 `raw`、`timestamp.raw`、`inferred`:前者与 `message` 高度重叠且可达 16 KiB,后两者是解析器内情;保真副本在 L1 的 JSONL 归档里。
+。**2026-07-31 再更新(L3 实施)**:`Event::Log` 与 `TraceLog` **已从 wire 删除**,service 自身日志不再上事件流;`/status` 尾部新增 `logs` 对象(`service_dir` + 可选 `core_dir`)。随之清算:`WS_LAG_LOG_TARGET`、`should_forward_to_hub`、`Logger` 的订阅者扇出机制与 `server::run` 的 hub 转发回调全部删除——"日志→hub→滞后告警→再入 hub"的反馈回路在结构上不再可能,而不只是被过滤。核心日志 tracing 打点去重:删除 `instance.rs` 监督循环内的内联打点,保留桥上的 `forward_log`,改为按 `frame.level` 分派且不高于 `DEBUG`(Q3)。**注意**:两个目录均已按 owner/SYSTEM/Administrators 加固,普通用户态消费方读不到——`logs` 是"位置公告"而非读取授权。
 
 ## 5. 兼容与测试策略
 
@@ -195,7 +196,7 @@ pub struct CoreApplyData {
 
 | # | 问题 | 处置建议 |
 |---|---|---|
-| R1 | GUI 消费侧对单条事件解码错误的容错未验证 | S9 前在 GUI 仓实测；ws 版本协商本身已兜底。**2026-07-31（S11）**：协商已撤销，该兜底不复存在——服务与 GUI 同版本分发，兼容性改由发布协调保证 |
+| R1 | GUI 消费侧对单条事件解码错误的容错未验证 | S9 前在 GUI 仓实测；ws 版本协商本身已兜底。**2026-07-31（S11）**：协商已撤销，该兜底不复存在——服务与 GUI 同版本分发，兼容性改由发布协调保证**2026-07-31(L3)**:`Event::Log` 变体已删除。旧 GUI 若穷尽 `match` 该枚举将编译失败,若仅解码则少一个变体、且再也收不到 service 自身日志——必须与 GUI 同版本协调,发布说明须标注。 |
 | R2 | `apply` 在核心停止态的语义(报错 vs 隐式 start) | 倾向报错,保持 start 显式;实施时与 GUI 确认交互预期 |
 | R3 | envelope 加 `error_kind` 字段对第三方脚本消费者的影响 | serde 默认忽略未知字段;wire golden 会暴露任何意外 |
 | R4 | Managed 模式下若未来自动生成 secret | 独立决策,需分发与权限设计;本轮明确不做 |
@@ -203,4 +204,4 @@ pub struct CoreApplyData {
 | R6 | 存量用法:用户自声明 pipe/unix controller;第三方面板依赖 `external-controller` 直连 | 前者随 S10 放弃(小众,发布说明标注);后者文档化"显式 `Disable`",GUI 侧可评估面板流量代理作为后续增强 |
 | R7 | S10 删除 `ControllerMode` 是 core-manager 公开 API 破坏性变更 | "crates/* 不改动"约束自 S10 起解除;与 GUI 进程内复用(如有)同版本协调 |
 | R8 | `/core/start`、`/core/apply`、`/core/check` 均接受调用方任意路径,组内成员可指向任何 root 可读文件 | **接受并记录**:socket ACL 是本服务唯一的授权边界,自 `/core/start` 起一贯如此,本轮 S8 新端点未扩大该面。若日后要收窄,应做成显式的路径白名单策略,而不是在各端点里零散校验 |
-| R9 | 事件流为单一协议，快照帧比旧的两变体更密，且与日志共用 256 槽广播环（`server/events.rs:6`），启动抖动期可能略早触发 `Lagged` | **接受并记录**：稳态下事件稀疏；服务端日志记录 skipped 条数（该告警被过滤，不入 EventHub）。**2026-07-31 更新（S11）**：协商撤销后不再有连接类别之分——任何连接 `resubscribe()` 之后一律补发一帧快照，"跳到实时尾部、需自行轮询 `/status` 重新同步"的情形已消失（`events.rs` 的 `lag_recovery_with_feedback_reaches_the_tail` 已固定该路径）。若实测有压力，提高容量比拆分通道便宜 |
+| R9 | 事件流为单一协议，快照帧比旧的两变体更密，且与日志共用 256 槽广播环（`server/events.rs:6`），启动抖动期可能略早触发 `Lagged` | **接受并记录**：稳态下事件稀疏；服务端日志记录 skipped 条数（该告警被过滤，不入 EventHub）。**2026-07-31 更新（S11）**：协商撤销后不再有连接类别之分——任何连接 `resubscribe()` 之后一律补发一帧快照，"跳到实时尾部、需自行轮询 `/status` 重新同步"的情形已消失（`events.rs` 的 `lag_recovery_with_feedback_reaches_the_tail` 已固定该路径）。若实测有压力，提高容量比拆分通道便宜。**2026-07-31 再更新(L2 实施)**:本行末句"提高容量比拆分通道便宜"**已被推翻并实施了拆分**。理由不是容量估算,而是两条流的丢失语义根本不同:丢一帧状态必须触发重同步(ws 处理器补发全量快照),丢一行日志必须不触发任何东西。共用一个环时二者无法区分,只能一律按最贵的方式处理。现状:`EventHub` 内两条独立 broadcast——状态环 256、日志环 1024(`server/events.rs`),ws 处理器 `select!` 同时消费;日志环 `Lagged` 只记一条 debug(L3 后已无需专用 target——没有任何 tracing 输出会成为事件)并 `resubscribe()`,**不补发快照**;状态环 `Lagged` 行为完全不变。已接受的代价:日志帧与状态帧之间不再有全局定序。 |

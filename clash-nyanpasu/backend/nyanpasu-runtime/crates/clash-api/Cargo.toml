@@ -1,6 +1,6 @@
 [package]
 name = "clash-api"
-version = "0.1.1"
+version = "1.0.0-rc.1"
 edition.workspace = true
 repository.workspace = true
 license.workspace = true

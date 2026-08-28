@@ -26,8 +26,8 @@ use crate::{
     },
     kind::{self, CLICOLOR_FORCE_ENV_NAME, MIHOMO_SAFE_PATHS_ENV_NAME},
     log::{
-        LOG_CHANNEL_CAPACITY, LogFrame, LogLevel, LogParser, LogStream, ParsedFrames,
-        error_summary, format_tail,
+        LOG_CHANNEL_CAPACITY, LogFrame, LogParser, LogStream, ParsedFrames, error_summary,
+        format_tail,
     },
     probe::{ControllerVersionProbe, ProbeHandle, ProbePhase, ProbeResult},
     spec::{InstanceOptions, InstanceSpec, ResolvedController},
@@ -51,8 +51,8 @@ struct Shared {
     user_stop: AtomicBool,
     probe_timeout: AtomicBool,
     parser: parking_lot::Mutex<LogParser>,
-    log_tail: parking_lot::Mutex<VecDeque<LogFrame>>,
-    log_tx: broadcast::Sender<LogFrame>,
+    log_tail: parking_lot::Mutex<VecDeque<Arc<LogFrame>>>,
+    log_tx: broadcast::Sender<Arc<LogFrame>>,
     cancel: CancellationToken,
     probe_cancel: CancellationToken,
     probe_request_tx: mpsc::UnboundedSender<ProbeNowRequest>,
@@ -84,20 +84,23 @@ impl Shared {
         self.parser.lock().finish()
     }
 
+    /// Buffer the frame for diagnostics and hand it to the subscribers.
+    ///
+    /// This runs inline on the supervision loop, in the same `select!` that
+    /// decides readiness, so it does exactly two cheap things. It used to emit a
+    /// tracing event as well; every consumer that fed — the JSONL archive, and
+    /// in the service the bridge that mirrors frames into tracing — is a
+    /// broadcast subscriber, so doing it here too was a second copy of every
+    /// line paid for on the hot path.
     fn publish_log_frame(&self, frame: LogFrame) {
-        let record = frame.raw.as_str();
-        match frame.level {
-            LogLevel::Trace => tracing::trace!(target: "core", "{record}"),
-            LogLevel::Debug => tracing::debug!(target: "core", "{record}"),
-            LogLevel::Info => tracing::info!(target: "core", "{record}"),
-            LogLevel::Warning => tracing::warn!(target: "core", "{record}"),
-            LogLevel::Error | LogLevel::Fatal => tracing::error!(target: "core", "{record}"),
-        }
+        // Shared once, here: the tail and every subscriber hold the same
+        // allocation, so fan-out costs a refcount rather than a 16 KiB clone.
+        let frame = Arc::new(frame);
         let mut tail = self.log_tail.lock();
         if tail.len() == LOG_TAIL_FRAMES {
             tail.pop_front();
         }
-        tail.push_back(frame.clone());
+        tail.push_back(Arc::clone(&frame));
         drop(tail);
         let _ = self.log_tx.send(frame);
     }
@@ -111,7 +114,7 @@ impl Shared {
         }
     }
 
-    fn diagnostic_frames(&self) -> Vec<LogFrame> {
+    fn diagnostic_frames(&self) -> Vec<Arc<LogFrame>> {
         self.flush_log_record();
         self.log_tail.lock().iter().cloned().collect()
     }
@@ -139,7 +142,7 @@ pub struct InstanceBuilder {
     readiness_probe: Option<ProbeHandle>,
     liveness_probe: Option<ProbeHandle>,
     liveness_with_readiness: bool,
-    log_tx: Option<broadcast::Sender<LogFrame>>,
+    log_tx: Option<broadcast::Sender<Arc<LogFrame>>>,
 }
 
 impl Instance {
@@ -283,7 +286,7 @@ impl Instance {
         self.state_rx.clone()
     }
 
-    pub fn subscribe_logs(&self) -> broadcast::Receiver<LogFrame> {
+    pub fn subscribe_logs(&self) -> broadcast::Receiver<Arc<LogFrame>> {
         self.shared.log_tx.subscribe()
     }
 
@@ -476,7 +479,7 @@ impl InstanceBuilder {
 
     /// Lets the manager keep one log channel across epochs so subscriptions
     /// survive restarts and core switches.
-    pub(crate) fn log_sender(mut self, log_tx: broadcast::Sender<LogFrame>) -> Self {
+    pub(crate) fn log_sender(mut self, log_tx: broadcast::Sender<Arc<LogFrame>>) -> Self {
         self.log_tx = Some(log_tx);
         self
     }
@@ -971,10 +974,16 @@ mod tests {
 
         // A user stop reads no diagnostics, so the flush has to happen anyway.
         publish_terminal(&shared, None);
-        assert_eq!(
-            logs.try_recv().expect("held record").message,
-            "final record"
-        );
+        let emitted = logs.try_recv().expect("held record");
+        assert_eq!(emitted.message, "final record");
+        // One allocation reaches both the tail and the subscriber.
+        let buffered = shared
+            .log_tail
+            .lock()
+            .back()
+            .cloned()
+            .expect("the held record also lands in the diagnostic tail");
+        assert!(Arc::ptr_eq(&emitted, &buffered));
         assert!(matches!(
             state_rx_state(&shared),
             InstanceState::Stopped(StopReason::User)
