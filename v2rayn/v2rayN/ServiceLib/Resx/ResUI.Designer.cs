@@ -3016,6 +3016,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 DNS 的本地化字符串。
+        /// </summary>
+        public static string TbDNS {
+            get {
+                return ResourceManager.GetString("TbDNS", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 DNS Hosts: (&quot;domain1 ip1 ip2&quot; per line) 的本地化字符串。
         /// </summary>
         public static string TbDNSHostsConfig {
