@@ -22,7 +22,7 @@ var (
 
 func init() {
 	flag.BoolVar(&flagRunInCI, "ci", false, "Run in CI")
-	flag.BoolVar(&flagTestFlight, "testflight", false, "Override the marketing version with the version reserved for TestFlight")
+	flag.BoolVar(&flagTestFlight, "testflight", false, "Override the App Store marketing version with the version reserved for TestFlight")
 }
 
 func main() {
@@ -45,15 +45,20 @@ func main() {
 	common.Must(decoder.Decode(&project))
 	objectsMap := project["objects"].(map[string]any)
 	projectContent := string(common.Must1(os.ReadFile("sing-box.xcodeproj/project.pbxproj")))
-	marketingVersion := newVersion.VersionString()
+	newContent := projectContent
+	var marketingVersionUpdated bool
 	if flagTestFlight {
-		marketingVersion = build_shared.TestFlightVersion(newVersion)
+		testFlightVersion := build_shared.TestFlightVersion(newVersion)
+		newContent, marketingVersionUpdated = findAndReplace(objectsMap, newContent, []string{"io.nekohasekai.sfamt"}, testFlightVersion)
+		if marketingVersionUpdated {
+			log.Info("updated App Store version to ", testFlightVersion)
+		}
 	}
-	newContent, updated0 := findAndReplace(objectsMap, projectContent, []string{"io.nekohasekai.sfamt"}, marketingVersion)
-	newContent, updated1 := findAndReplace(objectsMap, newContent, []string{"io.nekohasekai.sfamt.standalone", "io.nekohasekai.sfamt.system"}, newVersion.String())
-	marketingVersionUpdated := updated0 || updated1
-	if marketingVersionUpdated {
-		log.Info("updated version to ", marketingVersion, " (", newVersion.String(), ")")
+	var standaloneVersionUpdated bool
+	newContent, standaloneVersionUpdated = findAndReplace(objectsMap, newContent, []string{"io.nekohasekai.sfamt.standalone", "io.nekohasekai.sfamt.system"}, newVersion.String())
+	if standaloneVersionUpdated {
+		marketingVersionUpdated = true
+		log.Info("updated version to ", newVersion.String())
 	}
 	var projectVersionUpdated bool
 	for environmentName, directory := range map[string]string{
