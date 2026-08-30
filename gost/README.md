@@ -3,6 +3,10 @@ GO Simple Tunnel
 
 ### GO语言实现的安全隧道
 
+> [!IMPORTANT]
+> **本项目已进入维护阶段，不再增加新的功能。**
+> 本仓库([ginuerzh/gost](https://github.com/ginuerzh/gost))已被 [go-gost/gost](https://github.com/go-gost/gost) 取代，所有新功能都在新仓库中开发，请以 [go-gost/gost](https://github.com/go-gost/gost) 为准。GOST v3 文档见 <https://gost.run>，GOST v2 文档见 <https://v2.gost.run>。
+
 [![GoDoc](https://godoc.org/github.com/ginuerzh/gost?status.svg)](https://godoc.org/github.com/ginuerzh/gost)
 [![Go Report Card](https://goreportcard.com/badge/github.com/ginuerzh/gost)](https://goreportcard.com/report/github.com/ginuerzh/gost)
 [![codecov](https://codecov.io/gh/ginuerzh/gost/branch/master/graphs/badge.svg)](https://codecov.io/gh/ginuerzh/gost/branch/master)
@@ -38,7 +42,7 @@ Telegram讨论群: <https://t.me/gogost>
 
 Google讨论组: <https://groups.google.com/d/forum/go-gost>
 
-GOST v3 <https://gost.run>
+GOST v3: <https://gost.run>
 
 安装
 ------
