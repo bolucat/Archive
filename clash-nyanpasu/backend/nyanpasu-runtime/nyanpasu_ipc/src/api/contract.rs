@@ -27,6 +27,10 @@ use super::{
         restart::CORE_RESTART_ENDPOINT,
         start::CORE_START_ENDPOINT,
         stop::CORE_STOP_ENDPOINT,
+        v2::{
+            CORE_V2_OPERATION_ENDPOINT, CORE_V2_STATUS_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT,
+            OperationInfo,
+        },
     },
     log::{LOGS_INSPECT_ENDPOINT, LOGS_RETRIEVE_ENDPOINT, LogsResBody},
     network::set_dns::{NETWORK_SET_DNS_ENDPOINT, NetworkSetDnsReq},
@@ -139,6 +143,36 @@ impl IpcOperation for LogsInspect {
     type Data = LogsResBody<'static>;
 }
 
+/// `POST /v2/core/submit`
+pub struct CoreV2Submit;
+
+impl IpcOperation for CoreV2Submit {
+    const METHOD: Method = Method::POST;
+    const PATH: &'static str = CORE_V2_SUBMIT_ENDPOINT;
+    type Req<'a> = super::core::v2::CoreSubmitReq<'a>;
+    type Data = OperationInfo;
+}
+
+/// `POST /v2/core/operation`
+pub struct CoreV2Operation;
+
+impl IpcOperation for CoreV2Operation {
+    const METHOD: Method = Method::POST;
+    const PATH: &'static str = CORE_V2_OPERATION_ENDPOINT;
+    type Req<'a> = super::core::v2::CoreOperationReq<'a>;
+    type Data = OperationInfo;
+}
+
+/// `GET /v2/core/status`
+pub struct CoreV2Status;
+
+impl IpcOperation for CoreV2Status {
+    const METHOD: Method = Method::GET;
+    const PATH: &'static str = CORE_V2_STATUS_ENDPOINT;
+    type Req<'a> = ();
+    type Data = super::status::CoreInfos;
+}
+
 /// `POST /network/set_dns`
 pub struct NetworkSetDns;
 
@@ -182,6 +216,23 @@ mod tests {
         assert_eq!(
             (NetworkSetDns::METHOD, NetworkSetDns::PATH),
             (Method::POST, "/network/set_dns")
+        );
+    }
+
+    /// The v2 control-plane endpoints, pinned for the same reason.
+    #[test]
+    fn every_v2_operation_keeps_its_declared_address() {
+        assert_eq!(
+            (CoreV2Submit::METHOD, CoreV2Submit::PATH),
+            (Method::POST, "/v2/core/submit")
+        );
+        assert_eq!(
+            (CoreV2Operation::METHOD, CoreV2Operation::PATH),
+            (Method::POST, "/v2/core/operation")
+        );
+        assert_eq!(
+            (CoreV2Status::METHOD, CoreV2Status::PATH),
+            (Method::GET, "/v2/core/status")
         );
     }
 

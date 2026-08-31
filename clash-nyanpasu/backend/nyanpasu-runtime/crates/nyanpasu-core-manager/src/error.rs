@@ -1,4 +1,5 @@
 use camino::Utf8PathBuf;
+pub use nyanpasu_core_metadata::CoreErrorKind;
 
 use crate::{kind::CoreKind, state::RevisionId};
 
@@ -71,6 +72,52 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
+impl Error {
+    /// The machine-readable classification a caller can branch on, or `None`
+    /// when this failure has none.
+    ///
+    /// `None` means "not classified", never "no error": naming a kind is a
+    /// statement of fact about the failure, and a guessed one is worse than an
+    /// absent one. The wire omits the field entirely for `None`.
+    ///
+    /// The match is exhaustive on purpose. `Error` is `#[non_exhaustive]` only
+    /// to *downstream* crates, so this — the defining crate — is the one place
+    /// a new variant can be made to fail the build instead of silently
+    /// answering `None`. Do not collapse the unclassified arms into a wildcard.
+    pub fn kind(&self) -> Option<CoreErrorKind> {
+        match self {
+            Self::AlreadyRunning => Some(CoreErrorKind::AlreadyRunning),
+            Self::NotStarted => Some(CoreErrorKind::NotStarted),
+            Self::ConfigNotFound(_) => Some(CoreErrorKind::ConfigNotFound),
+            Self::BinaryNotFound(_) => Some(CoreErrorKind::BinaryNotFound),
+            Self::ControllerMissing => Some(CoreErrorKind::ControllerMissing),
+            Self::ConfigCheckFailed(_) => Some(CoreErrorKind::ConfigCheckFailed),
+            Self::InvalidConfig(_) | Self::Yaml(_) => Some(CoreErrorKind::InvalidConfig),
+            Self::StopUnconfirmed(_) => Some(CoreErrorKind::StopUnconfirmed),
+            Self::ManagerQuarantined { .. } => Some(CoreErrorKind::Quarantined),
+            Self::RevisionConflict { .. } => Some(CoreErrorKind::RevisionConflict),
+            Self::ApplyFailed(_) => Some(CoreErrorKind::ApplyFailed),
+            Self::ApplyRollbackFailed { .. } => Some(CoreErrorKind::ApplyRollbackFailed),
+            // The durability wrapper is a warning around a real failure; report
+            // the failure's kind so a caller can still branch on it.
+            Self::DurabilityUncertain { source, .. } => source.kind(),
+            // Unclassified, listed one by one so a new variant is a compile
+            // error here. Mapping these is the protocol report's P3.
+            Self::CoreVersionProbeFailed { .. }
+            | Self::RequiredLocalIpcUnsupported { .. }
+            | Self::InvalidManagerOptions(_)
+            | Self::InvalidHealthPolicy(_)
+            | Self::UnsafeRuntimeArtifact(_)
+            | Self::RuntimeDirectoryOwned(_)
+            | Self::StartupTimeout { .. }
+            | Self::StartupFailed { .. }
+            | Self::Process(_)
+            | Self::Api(_)
+            | Self::Io(_) => None,
+        }
+    }
+}
+
 impl From<nyanpasu_utils::io::atomic_fs::AtomicFsError> for Error {
     fn from(error: nyanpasu_utils::io::atomic_fs::AtomicFsError) -> Self {
         use nyanpasu_utils::io::atomic_fs::AtomicFsError;
@@ -85,4 +132,99 @@ impl From<nyanpasu_utils::io::atomic_fs::AtomicFsError> for Error {
 fn utf8_lossy(path: std::path::PathBuf) -> Utf8PathBuf {
     Utf8PathBuf::from_path_buf(path)
         .unwrap_or_else(|path| Utf8PathBuf::from(path.to_string_lossy().into_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manager_errors_carry_their_wire_kind() {
+        let cases: [(Error, Option<CoreErrorKind>); 8] = [
+            (Error::NotStarted, Some(CoreErrorKind::NotStarted)),
+            (Error::AlreadyRunning, Some(CoreErrorKind::AlreadyRunning)),
+            (
+                Error::RevisionConflict {
+                    expected: RevisionId {
+                        epoch: 3,
+                        generation: 7,
+                        effective_hash: "fedcba9876543210".to_owned(),
+                    },
+                    actual: None,
+                },
+                Some(CoreErrorKind::RevisionConflict),
+            ),
+            (
+                Error::ManagerQuarantined {
+                    epoch: 3,
+                    reason: "death unconfirmed".to_owned(),
+                },
+                Some(CoreErrorKind::Quarantined),
+            ),
+            (
+                Error::ConfigCheckFailed("unknown field".to_owned()),
+                Some(CoreErrorKind::ConfigCheckFailed),
+            ),
+            (
+                Error::ControllerMissing,
+                Some(CoreErrorKind::ControllerMissing),
+            ),
+            (
+                Error::DurabilityUncertain {
+                    source: Box::new(Error::ApplyFailed("boom".to_owned())),
+                    warning: "sync failed".to_owned(),
+                },
+                Some(CoreErrorKind::ApplyFailed),
+            ),
+            (
+                Error::StartupFailed {
+                    stderr_tail: String::new(),
+                },
+                None,
+            ),
+        ];
+        for (error, expected) in cases {
+            assert_eq!(error.kind(), expected, "{error}");
+        }
+    }
+
+    #[test]
+    fn the_durability_wrapper_reports_its_source_kind() {
+        let error = Error::DurabilityUncertain {
+            source: Box::new(Error::ApplyFailed("boom".to_owned())),
+            warning: "sync failed".to_owned(),
+        };
+        assert_eq!(error.kind(), Some(CoreErrorKind::ApplyFailed));
+    }
+
+    #[test]
+    fn a_nested_durability_wrapper_still_reaches_the_source() {
+        let error = Error::DurabilityUncertain {
+            source: Box::new(Error::DurabilityUncertain {
+                source: Box::new(Error::RevisionConflict {
+                    expected: RevisionId {
+                        epoch: 3,
+                        generation: 7,
+                        effective_hash: "fedcba9876543210".to_owned(),
+                    },
+                    actual: None,
+                }),
+                warning: "inner sync failed".to_owned(),
+            }),
+            warning: "outer sync failed".to_owned(),
+        };
+        assert_eq!(error.kind(), Some(CoreErrorKind::RevisionConflict));
+    }
+
+    #[test]
+    fn an_unclassified_failure_has_no_kind() {
+        assert!(Error::Io(std::io::Error::other("boom")).kind().is_none());
+        assert!(
+            Error::StartupTimeout {
+                stderr_tail: String::new(),
+            }
+            .kind()
+            .is_none()
+        );
+    }
 }

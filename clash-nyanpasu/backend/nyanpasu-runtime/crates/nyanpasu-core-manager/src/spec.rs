@@ -90,6 +90,11 @@ pub struct ManagerOptions {
     pub control_timeout: Duration,
     pub reconcile_timeout: Duration,
     pub stop_timeout: Duration,
+    /// Bound on one injected [`DnsController`](crate::dns::DnsController) call.
+    /// The converge tail runs under the control lock, so an unbounded platform
+    /// command would freeze every other transaction; a timeout is treated as
+    /// "the side effect is uncertain", never as "it did not happen".
+    pub dns_timeout: Duration,
     pub cancel_token: CancellationToken,
     /// Write core logs as JSONL under `{runtime_dir}/logs/`. Off means the
     /// directory is never created and nothing is written; an embedder with its
@@ -116,6 +121,7 @@ impl Default for ManagerOptions {
             control_timeout: Duration::from_secs(10),
             reconcile_timeout: Duration::from_secs(30),
             stop_timeout: Duration::from_secs(10),
+            dns_timeout: Duration::from_secs(10),
             cancel_token: CancellationToken::new(),
             log_sink_enabled: true,
             // 4 MiB x 5 = a 20 MiB ceiling — tighter than the service's own

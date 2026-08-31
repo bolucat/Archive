@@ -81,6 +81,9 @@ impl CoreManager {
         }
         self.inner
             .publish(CoreState::Stopped { reason: None }, None, None, None);
+        // Every uncertain epoch is now proven dead; nothing may keep holding
+        // the DNS override.
+        self.dns_restore(&mut ctrl).await;
         Ok(())
     }
 }

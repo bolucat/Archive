@@ -46,7 +46,9 @@ impl TestEnv {
         let root = dir.path();
         let runtime_dir =
             Utf8PathBuf::from_path_buf(root.join("core-runtime")).expect("temp path is UTF-8");
-        let core_manager = CoreManager::new(runtime_dir, LocalIpcPolicy::Disable)
+        let data_dir =
+            Utf8PathBuf::from_path_buf(root.join("nyanpasu-data")).expect("temp path is UTF-8");
+        let core_manager = CoreManager::new(runtime_dir, LocalIpcPolicy::Disable, data_dir)
             .await
             .unwrap();
         let runtime = Arc::new(RuntimeInfos {
@@ -536,4 +538,175 @@ async fn the_status_response_reports_the_log_directories() {
         core_dir.ends_with("logs"),
         "core log dir should be the manager's archive: {core_dir:?}"
     );
+}
+
+/// The full v2 submit -> long-poll path over the wire, on a stopped manager:
+/// admission succeeds, the transaction runs to its own classified failure,
+/// and the caller reads it back from the registry.
+#[tokio::test]
+async fn v2_submit_stop_runs_to_a_classified_terminal_failure() {
+    use nyanpasu_ipc::api::core::v2::{
+        CORE_V2_OPERATION_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT, CoreCommandInfo, CoreOperationReq,
+        CoreOperationRes, CoreSubmitReq, CoreSubmitRes, OperationPhase,
+    };
+    let env = TestEnv::new().await;
+    let id = "0011223344556677-8899aabb-ccddeeff";
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_SUBMIT_ENDPOINT,
+        &CoreSubmitReq {
+            operation_id: Cow::Borrowed(id),
+            command: CoreCommandInfo::Stop,
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope: CoreSubmitRes<'static> = body_of(response).await;
+    assert_eq!(envelope.code, ResponseCode::Ok);
+    let info = envelope
+        .data
+        .expect("submit returns the admission snapshot");
+    assert_eq!(info.id, id);
+
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_OPERATION_ENDPOINT,
+        &CoreOperationReq {
+            operation_id: Cow::Borrowed(id),
+            wait_ms: Some(5_000),
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope: CoreOperationRes<'static> = body_of(response).await;
+    let info = envelope.data.expect("query returns the operation");
+    assert_eq!(info.phase, OperationPhase::Failed);
+    let error = info.error.expect("a failed operation carries its error");
+    assert_eq!(error.kind.as_deref(), Some("not_started"));
+    assert!(!error.retryable);
+}
+
+/// Same id, different payload: the idempotency registry refuses at admission,
+/// through the wire, with the pinned kind.
+#[tokio::test]
+async fn v2_submit_reuses_of_an_id_with_a_different_payload_conflict() {
+    use nyanpasu_ipc::api::core::v2::{
+        CORE_V2_SUBMIT_ENDPOINT, CoreCommandInfo, CoreSubmitReq, CoreSubmitRes,
+    };
+    let env = TestEnv::new().await;
+    let id = "0011223344556677-8899aabb-ccddeeff";
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_SUBMIT_ENDPOINT,
+        &CoreSubmitReq {
+            operation_id: Cow::Borrowed(id),
+            command: CoreCommandInfo::Stop,
+        },
+    )
+    .await;
+    let first: CoreSubmitRes<'static> = body_of(response).await;
+    assert_eq!(first.code, ResponseCode::Ok);
+
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_SUBMIT_ENDPOINT,
+        &CoreSubmitReq {
+            operation_id: Cow::Borrowed(id),
+            command: CoreCommandInfo::Recover,
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let second: CoreSubmitRes<'static> = body_of(response).await;
+    assert_eq!(second.code, ResponseCode::OtherError);
+    assert_eq!(second.error_kind.as_deref(), Some("operation_conflict"));
+    // Retrying a conflict re-submits the same losing payload, so the answer is
+    // an explicit `false` rather than an absent field the caller has to guess at.
+    assert_eq!(second.retryable, Some(false));
+}
+
+/// A malformed id and an unknown id both come back as error envelopes, and
+/// the unknown one points the caller at the recovery contract (status + CAS).
+#[tokio::test]
+async fn v2_operation_rejects_malformed_and_unknown_ids() {
+    use nyanpasu_ipc::api::core::v2::{
+        CORE_V2_OPERATION_ENDPOINT, CoreOperationReq, CoreOperationRes,
+    };
+    let env = TestEnv::new().await;
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_OPERATION_ENDPOINT,
+        &CoreOperationReq {
+            operation_id: Cow::Borrowed("not-hex"),
+            wait_ms: None,
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let envelope: CoreOperationRes<'static> = body_of(response).await;
+    assert!(envelope.msg.contains("malformed operation id"));
+
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_OPERATION_ENDPOINT,
+        &CoreOperationReq {
+            operation_id: Cow::Borrowed("ffeeddccbbaa9988-77665544-33221100"),
+            wait_ms: None,
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let envelope: CoreOperationRes<'static> = body_of(response).await;
+    assert!(envelope.msg.contains("unknown operation"));
+}
+
+/// `/v2/core/status` serves the canonical projection without touching the
+/// runtime.
+#[tokio::test]
+async fn v2_status_serves_the_canonical_projection() {
+    use nyanpasu_ipc::api::core::v2::CORE_V2_STATUS_ENDPOINT;
+    let env = TestEnv::new().await;
+    let response = create_router(env.state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(CORE_V2_STATUS_ENDPOINT)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope: nyanpasu_ipc::api::R<'static, nyanpasu_ipc::api::status::CoreInfos> =
+        body_of(response).await;
+    assert_eq!(envelope.code, ResponseCode::Ok);
+    let infos = envelope.data.expect("status always has a body");
+    assert!(matches!(infos.state, CoreState::Stopped(_)));
+    assert!(infos.r#type.is_none(), "no core was ever requested");
+}
+
+/// Daemon shutdown used to call the manager directly, which left the v2
+/// control plane wide open: a submit that landed a moment later was admitted
+/// and ran a core transaction after the daemon had already stopped its core.
+#[tokio::test]
+async fn shutdown_closes_the_v2_control_plane_to_new_work() {
+    use nyanpasu_ipc::api::core::v2::{
+        CORE_V2_SUBMIT_ENDPOINT, CoreCommandInfo, CoreSubmitReq, CoreSubmitRes,
+    };
+    let env = TestEnv::new().await;
+    env.state.core_manager.shutdown().await;
+
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_SUBMIT_ENDPOINT,
+        &CoreSubmitReq {
+            operation_id: Cow::Borrowed("0011223344556677-8899aabb-ccddeeff"),
+            command: CoreCommandInfo::Stop,
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let envelope: CoreSubmitRes<'static> = body_of(response).await;
+    assert_eq!(envelope.code, ResponseCode::OtherError);
+    assert_eq!(envelope.error_kind.as_deref(), Some("shutting_down"));
+    assert_eq!(envelope.retryable, Some(false));
 }

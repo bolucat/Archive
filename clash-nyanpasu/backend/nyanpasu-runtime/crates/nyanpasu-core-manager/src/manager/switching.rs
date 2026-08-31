@@ -6,9 +6,9 @@ use crate::{
         mihomo::{self, OverlapBlock},
     },
     error::Error,
-    instance::Instance,
     kind::CoreKind,
     probe::ProbePhase,
+    runtime::RuntimeInstance,
     spec::{InstanceSpec, ResolvedController},
     state::{ConfigRevision, CoreState},
 };
@@ -299,7 +299,8 @@ impl CoreManager {
         let reconciled = tokio::time::timeout(self.inner.options.reconcile_timeout, async {
             match restoration.as_ref() {
                 Some((patch, projection)) => {
-                    self.patch_and_verify(&instance, patch, projection).await
+                    self.patch_and_verify(instance.as_ref(), patch, projection)
+                        .await
                 }
                 None => instance.probe_now(ProbePhase::Reconcile).await.is_healthy(),
             }
@@ -358,11 +359,16 @@ impl CoreManager {
         with_switch_durability_result(result, durability_warning)
     }
 
-    fn install_switched(&self, ctrl: &mut Ctrl, instance: Instance, prepared: PreparedLaunch) {
+    fn install_switched(
+        &self,
+        ctrl: &mut Ctrl,
+        instance: Box<dyn RuntimeInstance>,
+        prepared: PreparedLaunch,
+    ) {
         let epoch = prepared.revision.epoch;
         let pid = instance.pid().unwrap_or_default();
         self.inner.publish_instance(
-            &instance,
+            instance.as_ref(),
             CoreState::Running { epoch, pid },
             &prepared.source_spec,
             &prepared.revision,
@@ -428,7 +434,7 @@ impl CoreManager {
 
         let mut check_spec = spec.clone();
         check_spec.config_path = staged.path().to_owned();
-        crate::kind::check_config(&check_spec).await?;
+        self.inner.backend.check_config(&check_spec).await?;
 
         let runtime_path = self.inner.store.commit_new(staged, epoch).await?;
         let mut effective_spec = spec.clone();
@@ -489,11 +495,11 @@ impl CoreManager {
         let full_staged = self.inner.store.stage(epoch, &full.bytes).await?;
         let mut check_spec = spec.clone();
         check_spec.config_path = full_staged.path().to_owned();
-        crate::kind::check_config(&check_spec).await?;
+        self.inner.backend.check_config(&check_spec).await?;
 
         let bootstrap_staged = self.inner.store.stage(epoch, &bootstrap.bytes).await?;
         check_spec.config_path = bootstrap_staged.path().to_owned();
-        crate::kind::check_config(&check_spec).await?;
+        self.inner.backend.check_config(&check_spec).await?;
         let runtime_path = self.inner.store.commit_new(bootstrap_staged, epoch).await?;
 
         let mut effective_spec = spec.clone();
@@ -526,7 +532,7 @@ impl CoreManager {
         effective_spec: InstanceSpec,
         epoch: u64,
         controller: ResolvedController,
-    ) -> Result<Instance, Error> {
+    ) -> Result<Box<dyn RuntimeInstance>, Error> {
         let instance = self
             .spawn_instance(effective_spec, epoch, controller)
             .await?;

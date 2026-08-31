@@ -39,7 +39,7 @@ use interprocess::local_socket::{
 };
 use nyanpasu_ipc::{
     api::{
-        RBuilder, ResponseCode,
+        CoreErrorKind, RBuilder, ResponseCode,
         core::{
             apply::{
                 ApplyOutcomeKind, CORE_APPLY_ENDPOINT, CoreApplyData, CoreApplyReq, CoreApplyRes,
@@ -48,7 +48,6 @@ use nyanpasu_ipc::{
             start::{CORE_START_ENDPOINT, CoreStartReq, CoreStartRes},
             stop::{CORE_STOP_ENDPOINT, CoreStopRes},
         },
-        error_kind,
         log::{LOGS_INSPECT_ENDPOINT, LOGS_RETRIEVE_ENDPOINT, LogsRes, LogsResBody},
         network::set_dns::{NETWORK_SET_DNS_ENDPOINT, NetworkSetDnsReq, NetworkSetDnsRes},
         status::{
@@ -401,7 +400,8 @@ async fn apply_config_conflict_handler() -> (StatusCode, Json<CoreApplyRes<'stat
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(RBuilder::other_error_with_kind(
             Cow::Borrowed("config revision conflict"),
-            Some(Cow::Borrowed(error_kind::REVISION_CONFLICT)),
+            Some(CoreErrorKind::RevisionConflict),
+            None,
         )),
     )
 }
@@ -750,6 +750,56 @@ async fn apply_config_roundtrip() {
     cleanup(&placeholder);
 }
 
+/// The control plane decides retryability per failure, not per kind, so the
+/// answer has to survive the wire in both polarities — including `false`, which
+/// an absent field would silently impersonate.
+#[tokio::test]
+async fn v2_server_error_roundtrips_kind_and_retryability() {
+    for (index, (kind, retryable)) in [
+        (CoreErrorKind::QueueFull, true),
+        (CoreErrorKind::OperationConflict, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let placeholder = format!("nyanpasu-ipc-test-{}-retry{index}", std::process::id());
+        let router = Router::new()
+            .route(STATUS_ENDPOINT, get(status_handler))
+            .route(
+                CORE_APPLY_ENDPOINT,
+                post(move || async move {
+                    let envelope: CoreApplyRes<'static> = RBuilder::other_error_with_kind(
+                        Cow::Borrowed("classified failure"),
+                        Some(kind),
+                        Some(retryable),
+                    );
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(envelope))
+                }),
+            );
+        let Some((shutdown, client)) = run_server(&placeholder, router).await else {
+            return;
+        };
+
+        let error = client.apply_config(&apply_payload()).await.unwrap_err();
+        assert_eq!(error.core_error_kind(), Some(kind));
+        assert_eq!(error.retryable(), retryable);
+        match error {
+            ClientError::Server {
+                error_kind,
+                retryable: wire,
+                ..
+            } => {
+                assert_eq!(error_kind.as_deref(), Some(kind.as_str()));
+                assert_eq!(wire, Some(retryable));
+            }
+            other => panic!("expected a classified server error, got: {other:?}"),
+        }
+
+        let _ = shutdown.send(());
+        cleanup(&placeholder);
+    }
+}
+
 /// The envelope's `error_kind` has to reach the caller, or classifying failures
 /// server-side buys nothing.
 #[tokio::test]
@@ -762,13 +812,18 @@ async fn a_server_error_kind_reaches_the_client() {
         return;
     };
 
-    match client.apply_config(&apply_payload()).await {
-        Err(ClientError::Server {
+    let error = client.apply_config(&apply_payload()).await.unwrap_err();
+    assert_eq!(
+        error.core_error_kind(),
+        Some(CoreErrorKind::RevisionConflict)
+    );
+    match error {
+        ClientError::Server {
             code,
             msg,
             error_kind,
             ..
-        }) => {
+        } => {
             assert_eq!(code, ResponseCode::OtherError);
             assert_eq!(msg, "config revision conflict");
             assert_eq!(error_kind.as_deref(), Some("revision_conflict"));

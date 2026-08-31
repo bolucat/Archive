@@ -9,10 +9,16 @@ use reqwest_websocket::{Message, Upgrade};
 use crate::api::{
     self,
     contract::{
-        CoreApply, CoreCheck, CoreRecover, CoreRestart, CoreStart, CoreStop, LogsInspect,
-        LogsRetrieve, NetworkSetDns, Status,
+        CoreApply, CoreCheck, CoreRecover, CoreRestart, CoreStart, CoreStop, CoreV2Operation,
+        CoreV2Status, CoreV2Submit, LogsInspect, LogsRetrieve, NetworkSetDns, Status,
     },
-    core::apply::{CORE_APPLY_ENDPOINT, CoreApplyData},
+    core::{
+        apply::{CORE_APPLY_ENDPOINT, CoreApplyData},
+        v2::{
+            CORE_V2_OPERATION_ENDPOINT, CORE_V2_STATUS_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT,
+            OperationInfo,
+        },
+    },
     log::{LOGS_INSPECT_ENDPOINT, LOGS_RETRIEVE_ENDPOINT},
     status::STATUS_ENDPOINT,
     ws::events::{EVENT_URI, Event},
@@ -63,6 +69,43 @@ impl Client {
     /// Dry-run a config against a core binary without touching the running one.
     pub async fn check_config(&self, payload: &api::core::check::CoreCheckReq<'_>) -> Result<()> {
         self.call::<CoreCheck>(Some(payload)).await.map(|_| ())
+    }
+
+    /// Submit one v2 control-plane operation. The reply is the operation's
+    /// admission-time snapshot; poll [`Self::core_operation`] for the result.
+    pub async fn submit_core(
+        &self,
+        payload: &api::core::v2::CoreSubmitReq<'_>,
+    ) -> Result<OperationInfo> {
+        self.call::<CoreV2Submit>(Some(payload))
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: CORE_V2_SUBMIT_ENDPOINT,
+            })
+    }
+
+    /// Query one v2 operation, optionally long-polling for its terminal state.
+    pub async fn core_operation(
+        &self,
+        payload: &api::core::v2::CoreOperationReq<'_>,
+    ) -> Result<OperationInfo> {
+        self.call::<CoreV2Operation>(Some(payload))
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: CORE_V2_OPERATION_ENDPOINT,
+            })
+    }
+
+    /// The daemon's canonical core status projection.
+    pub async fn core_status_v2(&self) -> Result<api::status::CoreInfos> {
+        self.call::<CoreV2Status>(None)
+            .await?
+            .data
+            .ok_or(ClientError::EmptyData {
+                operation: CORE_V2_STATUS_ENDPOINT,
+            })
     }
 
     /// Clear the manager's quarantine latch. Idempotent.

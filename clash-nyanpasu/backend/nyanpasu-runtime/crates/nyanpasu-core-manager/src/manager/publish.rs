@@ -1,7 +1,7 @@
 use crate::{
     Feature, RuntimeFeature,
     error::Error,
-    instance::Instance,
+    runtime::RuntimeInstance,
     spec::InstanceSpec,
     state::{
         ConfigRevision, CoreState, CoreStatus, HealthStatus, InstanceState, InstanceStatus,
@@ -35,7 +35,7 @@ impl Inner {
 
     pub(super) fn publish_active(&self, active: &Active, state: CoreState) {
         self.publish_instance(
-            &active.instance,
+            active.instance.as_ref(),
             state,
             &active.source_spec,
             &active.revision,
@@ -46,7 +46,7 @@ impl Inner {
 
     pub(super) fn publish_instance(
         &self,
-        instance: &Instance,
+        instance: &dyn RuntimeInstance,
         state: CoreState,
         source_spec: &InstanceSpec,
         revision: &ConfigRevision,

@@ -10,7 +10,7 @@ use consts::RuntimeInfos;
 pub use events::EventHub;
 pub use logger::Logger;
 pub use manager_bridge::CoreManagerService as CoreManager;
-use nyanpasu_core_manager::LocalIpcPolicy;
+use nyanpasu_core_manager::{ExecutorExit, LocalIpcPolicy};
 use nyanpasu_ipc::{SERVICE_PLACEHOLDER, server::create_server};
 use routing::{AppState, create_router};
 use tokio_util::sync::CancellationToken;
@@ -29,7 +29,9 @@ pub async fn run(
     let runtime_dir =
         camino::Utf8PathBuf::from_path_buf(crate::utils::dirs::service_core_runtime_dir())
             .map_err(|path| anyhow::anyhow!("core runtime dir is not UTF-8: {}", path.display()))?;
-    let core_manager = CoreManager::new(runtime_dir, local_ipc_policy).await?;
+    let data_dir = camino::Utf8PathBuf::from_path_buf(runtime.nyanpasu_data_dir.clone())
+        .map_err(|path| anyhow::anyhow!("nyanpasu data dir is not UTF-8: {}", path.display()))?;
+    let core_manager = CoreManager::new(runtime_dir, local_ipc_policy, data_dir).await?;
     let hub = EventHub::new();
     core_manager.spawn_bridges(hub.clone());
 
@@ -64,13 +66,35 @@ pub async fn run(
         }
         _ = token.cancelled() => {
             core_manager.shutdown().await;
-            match tokio::time::timeout(SERVER_DRAIN_TIMEOUT, &mut server).await {
-                Ok(result) => result?,
-                Err(_) => tracing::warn!(
-                    "pipe server did not drain within {SERVER_DRAIN_TIMEOUT:?}; abandoning open connections"
-                ),
-            }
+            drain(&mut server).await?;
         }
+        // The control plane owns every core transaction. If its executor is
+        // gone the daemon cannot serve `/v2/core/*` truthfully, so it stops
+        // rather than answering with a control plane that is not there.
+        exit = core_manager.until_control_closed() => {
+            if exit == ExecutorExit::Died {
+                tracing::error!("the core control executor died; shutting the service down");
+                core_manager.shutdown().await;
+                drain(&mut server).await?;
+                anyhow::bail!("the core control executor died");
+            }
+            // Clean: a local shutdown already ran. Nothing maps `Shutdown` onto
+            // the wire, so this is the service's own teardown finishing.
+            core_manager.shutdown().await;
+            drain(&mut server).await?;
+        }
+    }
+    Ok(())
+}
+
+async fn drain<E: std::error::Error + Send + Sync + 'static>(
+    server: impl std::future::Future<Output = Result<(), E>> + Unpin,
+) -> Result<(), anyhow::Error> {
+    match tokio::time::timeout(SERVER_DRAIN_TIMEOUT, server).await {
+        Ok(result) => result?,
+        Err(_) => tracing::warn!(
+            "pipe server did not drain within {SERVER_DRAIN_TIMEOUT:?}; abandoning open connections"
+        ),
     }
     Ok(())
 }

@@ -2,8 +2,10 @@
 //! atomic status publication.
 
 mod apply;
+mod dns_sync;
 mod publish;
 mod quarantine;
+mod reconcile;
 mod switching;
 
 use std::sync::{
@@ -19,11 +21,15 @@ use crate::{
     Feature, RuntimeFeature,
     capability::{ResolvedFeatures, VersionCache},
     config::{self, ConfigSnapshot, mihomo},
+    dns::{DnsController, DnsOverrideRecord},
     error::Error,
-    instance::Instance,
     log::{LOG_CHANNEL_CAPACITY, LogFrame},
     log_sink::{self, SinkOptions},
     probe::ProbeHandle,
+    runtime::{
+        RuntimeBackend, RuntimeInstance, RuntimeLaunchRequest,
+        process::{ProbePlan, ProcessRuntimeBackend},
+    },
     runtime_store::{RuntimeConfigStore, RuntimeDirectoryLock, StagedRuntimeConfig},
     spec::{CoreSpec, InstanceSpec, LocalIpcPolicy, ManagerOptions, ResolvedController},
     state::{ConfigRevision, CoreState, CoreStatus, InstanceStatus, StopReason},
@@ -56,6 +62,12 @@ pub enum SwitchOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApplyOutcome {
+    /// Nothing was running; the desired runtime was started cold. Only
+    /// [`CoreManager::reconcile`] produces this — the legacy `apply_config`
+    /// path requires a running core.
+    Started {
+        revision: ConfigRevision,
+    },
     Noop {
         revision: ConfigRevision,
     },
@@ -84,6 +96,8 @@ pub enum ApplyOutcome {
     },
 }
 
+/// A cheap-to-clone handle; every clone shares the same orchestrator state.
+#[derive(Clone)]
 pub struct CoreManager {
     inner: Arc<Inner>,
 }
@@ -91,18 +105,14 @@ pub struct CoreManager {
 pub struct CoreManagerBuilder {
     options: ManagerOptions,
     probes: ProbePlan,
-}
-
-#[derive(Clone, Default)]
-struct ProbePlan {
-    readiness: Option<ProbeHandle>,
-    liveness: Option<ProbeHandle>,
-    liveness_with_readiness: bool,
+    backend: Option<Arc<dyn RuntimeBackend>>,
+    dns: Option<Arc<dyn DnsController>>,
 }
 
 struct Inner {
     options: ManagerOptions,
-    probes: ProbePlan,
+    backend: Arc<dyn RuntimeBackend>,
+    dns: Option<Arc<dyn DnsController>>,
     store: RuntimeConfigStore,
     ctrl: tokio::sync::Mutex<Ctrl>,
     status_tx: watch::Sender<CoreStatus>,
@@ -129,6 +139,9 @@ struct Ctrl {
     current: Option<Active>,
     last_spec: Option<InstanceSpec>,
     quarantine: Vec<QuarantinedEpoch>,
+    /// The persisted-and-live DNS override, when a controller is injected and
+    /// an override is in place. Serialized by the control lock like the rest.
+    dns_record: Option<DnsOverrideRecord>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,7 +152,7 @@ struct QuarantinedEpoch {
 }
 
 struct Active {
-    instance: Instance,
+    instance: Box<dyn RuntimeInstance>,
     forwarder: tokio::task::JoinHandle<()>,
     source_spec: InstanceSpec,
     revision: ConfigRevision,
@@ -196,6 +209,21 @@ impl CoreManagerBuilder {
         self
     }
 
+    /// Replaces the default process backend. The probe methods on this builder
+    /// configure the default backend only; a custom backend owns its own
+    /// probing.
+    pub fn runtime_backend(mut self, backend: Arc<dyn RuntimeBackend>) -> Self {
+        self.backend = Some(backend);
+        self
+    }
+
+    /// Injects the host DNS override component (amendment A5 ③). Without one
+    /// the manager has zero DNS behavior.
+    pub fn dns_controller(mut self, dns: Arc<dyn DnsController>) -> Self {
+        self.dns = Some(dns);
+        self
+    }
+
     pub async fn build(self) -> Result<CoreManager, Error> {
         CoreManager::build_configured(self).await
     }
@@ -206,6 +234,8 @@ impl CoreManager {
         CoreManagerBuilder {
             options,
             probes: ProbePlan::default(),
+            backend: None,
+            dns: None,
         }
     }
 
@@ -214,7 +244,12 @@ impl CoreManager {
     }
 
     async fn build_configured(builder: CoreManagerBuilder) -> Result<Self, Error> {
-        let CoreManagerBuilder { options, probes } = builder;
+        let CoreManagerBuilder {
+            options,
+            probes,
+            backend,
+            dns,
+        } = builder;
         let runtime_dir = options
             .runtime_dir
             .clone()
@@ -231,6 +266,7 @@ impl CoreManager {
             ("control_timeout", options.control_timeout),
             ("reconcile_timeout", options.reconcile_timeout),
             ("stop_timeout", options.stop_timeout),
+            ("dns_timeout", options.dns_timeout),
         ] {
             if timeout.is_zero() {
                 return Err(Error::InvalidManagerOptions(format!(
@@ -252,6 +288,7 @@ impl CoreManager {
             ));
         }
         let max_epoch = sweep_orphans(&store).await?;
+        dns_sync::reconcile_orphan_record(&store, dns.as_deref(), options.dns_timeout).await;
         let (status_tx, _) = watch::channel(CoreStatus::initial());
         let (log_tx, _) = broadcast::channel(LOG_CHANNEL_CAPACITY);
         // Subscribed here rather than inside the task, and before any instance
@@ -272,10 +309,17 @@ impl CoreManager {
         } else {
             (None, None)
         };
+        let backend = backend.unwrap_or_else(|| {
+            Arc::new(ProcessRuntimeBackend::new(
+                probes,
+                options.cancel_token.clone(),
+            ))
+        });
         Ok(Self {
             inner: Arc::new(Inner {
                 options,
-                probes,
+                backend,
+                dns,
                 store,
                 ctrl: tokio::sync::Mutex::default(),
                 status_tx,
@@ -409,7 +453,7 @@ impl CoreManager {
 
         let pid = instance.pid().unwrap_or_default();
         self.inner.publish_instance(
-            &instance,
+            instance.as_ref(),
             CoreState::Running { epoch, pid },
             &prepared.source_spec,
             &prepared.revision,
@@ -437,6 +481,9 @@ impl CoreManager {
     /// the number of possibly live processes; it does not clear quarantine.
     pub async fn stop(&self) -> Result<(), Error> {
         let mut ctrl = self.inner.ctrl.lock().await;
+        // Restore at the head of the stop transaction: resolution must never
+        // point at a core that is being torn down.
+        self.dns_restore(&mut ctrl).await;
         let Some(active) = ctrl.current.take() else {
             return Err(Error::NotStarted);
         };
@@ -507,7 +554,7 @@ impl CoreManager {
     }
 
     pub async fn check_config(&self, spec: &InstanceSpec) -> Result<(), Error> {
-        crate::kind::check_config(spec).await
+        self.inner.backend.check_config(spec).await
     }
 
     async fn resolve_features(&self, core: &CoreSpec) -> Result<ResolvedFeatures, Error> {
@@ -542,6 +589,8 @@ impl CoreManager {
         // Held through sink finalization so no control-plane operation can interleave
         // between core stop and archive teardown.
         let mut ctrl = self.inner.ctrl.lock().await;
+        // Same head restore as `stop`.
+        self.dns_restore(&mut ctrl).await;
         let result: Result<(), Error> = async {
             if let Some(active) = ctrl.current.take() {
                 let Active {
@@ -603,24 +652,16 @@ impl CoreManager {
         effective_spec: InstanceSpec,
         epoch: u64,
         controller: ResolvedController,
-    ) -> Result<Instance, Error> {
-        let mut builder = Instance::builder(
-            effective_spec,
-            epoch,
-            controller,
-            self.inner.options.cancel_token.clone(),
-        )
-        .log_sender(self.inner.log_tx.clone());
-        if let Some(probe) = self.inner.probes.readiness.clone() {
-            builder = builder.readiness_probe(probe);
-        }
-        if let Some(probe) = self.inner.probes.liveness.clone() {
-            builder = builder.liveness_probe(probe);
-        }
-        if self.inner.probes.liveness_with_readiness {
-            builder = builder.liveness_with_readiness_probe();
-        }
-        builder.spawn().await
+    ) -> Result<Box<dyn RuntimeInstance>, Error> {
+        self.inner
+            .backend
+            .launch(RuntimeLaunchRequest {
+                effective_spec,
+                epoch,
+                controller,
+                log_tx: self.inner.log_tx.clone(),
+            })
+            .await
     }
 }
 
