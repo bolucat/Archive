@@ -33,6 +33,7 @@ type Daemon struct {
 	logger                  log.ContextLogger
 	startedService          *daemon.StartedService
 	powerManager            *powerreport.Manager
+	oomRecorder             *oomkiller.Recorder
 	server                  *grpc.Server
 	runtimeWorkingDirectory string
 	lifecycleAccess         sync.Mutex
@@ -63,14 +64,15 @@ func newDaemon() (*Daemon, error) {
 		Context:     ctx,
 		LogMaxLines: 3000,
 	})
-	reporter := libbox.NewOOMReporter(d.startedService)
-	service.MustRegister[oomkiller.OOMReporter](ctx, reporter)
+	d.oomRecorder = oomkiller.NewRecorder(libbox.OOMRecorderOptions(d.startedService))
+	service.MustRegister[*oomkiller.Recorder](ctx, d.oomRecorder)
+	d.oomRecorder.Start()
 	d.powerManager = powerreport.NewManager()
 	service.MustRegister[*powerreport.Manager](ctx, d.powerManager)
 	managedService := daemon.NewManagedService(daemon.ManagedServiceOptions{
 		Handler:     &managedHandler{d},
 		Debug:       debugEnabled,
-		OOMReporter: reporter,
+		OOMRecorder: d.oomRecorder,
 	})
 	authorizer := newAuthorizer(d)
 	serverOptions := []grpc.ServerOption{
@@ -201,7 +203,7 @@ func (d *Daemon) configureWorkingDirectoryLocked(directory string) error {
 		return err
 	}
 	libbox.PromoteOOMDraft()
-	libbox.PromotePowerReportDraft()
+	libbox.DiscardPowerReportDraft()
 	d.runtimeWorkingDirectory = directory
 	return nil
 }
@@ -260,7 +262,7 @@ func (d *Daemon) stopServiceLocked(ownerUserID string) error {
 		}
 	}
 	d.powerManager.Close()
-	libbox.PromotePowerReportDraft()
+	libbox.DiscardPowerReportDraft()
 	directory := userWorkingDirectory(ownerUserID)
 	crashReportError := tagUnownedReports(filepath.Join(directory, crashReportsDirectoryName), ownerUserID)
 	if crashReportError != nil {
@@ -289,6 +291,7 @@ func (d *Daemon) Close() {
 	}
 	_ = d.startedService.CloseService()
 	d.startedService.Close()
+	_ = d.oomRecorder.Close()
 	if d.platform != nil {
 		_ = d.platform.Close()
 	}
