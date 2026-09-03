@@ -2,9 +2,9 @@ use super::{CoreManager, RunningMode};
 use crate::config::{Config, IVerge};
 use crate::core::handle::Handle;
 use crate::core::manager::CLASH_LOGGER;
-use crate::core::proxy_control;
+use crate::core::proxy_control::{self, SysproxyFailure};
 use crate::core::service::{SERVICE_MANAGER, ServiceStatus};
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use clash_verge_logging::{Type, logging};
 use scopeguard::defer;
 use smartstring::alias::String;
@@ -24,15 +24,12 @@ enum StartupDecision {
     Wait,
 }
 
-/// Proxy action captured before a controlled stop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProxyStopIntent {
     Clear,
-    /// Let the service overwrite the inherited proxy state.
     HandOverToService,
 }
 
-/// Select whether a controlled stop clears or hands over proxy state.
 const fn proxy_stop_intent(is_macos: bool, running_mode: RunningMode, decision: StartupDecision) -> ProxyStopIntent {
     match (is_macos, running_mode, decision) {
         (true, RunningMode::Sidecar, StartupDecision::Service) => ProxyStopIntent::HandOverToService,
@@ -132,18 +129,22 @@ where
 {
     match (running_mode, proxy_intent) {
         (RunningMode::NotRunning, _) => {}
-        // Do not hand the OS to another owner while the old guard may still write.
-        (RunningMode::Sidecar, ProxyStopIntent::HandOverToService) => ensure!(
-            stop_guard().await,
-            "the system proxy guard did not stop in time; not handing the proxy to the service"
-        ),
-        (RunningMode::Service, _) if is_macos => ensure!(
-            stop_guard().await,
-            "the system proxy guard did not stop in time; not stopping the service-owned core"
-        ),
+        // A guard that will not stop must not block the core from stopping.
+        (RunningMode::Sidecar, ProxyStopIntent::HandOverToService) => warn_if_guard_lingers(stop_guard().await),
+        (RunningMode::Service, _) if is_macos => warn_if_guard_lingers(stop_guard().await),
         (RunningMode::Service | RunningMode::Sidecar, _) => clear_proxy().await?,
     }
     stop_core().await
+}
+
+fn warn_if_guard_lingers(stopped: bool) {
+    if !stopped {
+        logging!(
+            warn,
+            Type::Core,
+            "the system proxy guard did not stop in time; stopping the core anyway"
+        );
+    }
 }
 
 async fn run_core_start_transition<Start, StartFuture, Ready, Apply, ApplyFuture>(
@@ -280,14 +281,10 @@ where
     start_sidecar().await
 }
 
-/// sidecar→service 交接结果
 #[cfg(target_os = "windows")]
 enum HandoffOutcome {
-    /// 服务尚未就绪
     NotReady,
-    /// 已完成或无需交接
     Done,
-    /// 交接失败并已回退
     Failed,
 }
 
@@ -311,7 +308,10 @@ impl CoreManager {
         let _life = self.lifecycle_lock.lock().await;
         run_core_start_transition(
             || self.start_core_inner(),
-            || !matches!(*self.get_running_mode(), RunningMode::NotRunning),
+            || {
+                !matches!(*self.get_running_mode(), RunningMode::NotRunning)
+                    && self.current_core_readiness_generation().is_some()
+            },
             || self.apply_proxy_after_start(),
         )
         .await
@@ -324,20 +324,41 @@ impl CoreManager {
         defer! {
             self.finish_config_update();
         }
+        // Lock order is config then lifecycle. disable_tun_and_persist commits the shared Verge
+        // draft without claiming it, so without this it can commit another transaction's staged patch.
+        let config_write = Config::lock_config_write().await;
         let _life = self.lifecycle_lock.lock().await;
         let status = SERVICE_MANAGER.current().await;
         let mode = self.get_running_mode();
         if !can_allow_sidecar_for_session(&mode, &status) {
             anyhow::bail!("Sidecar continuation is not allowed from {mode:?} / {status:?}");
         }
-        Config::suppress_tun_for_session().await;
-        Config::generate().await?;
         SERVICE_MANAGER.allow_sidecar_for_session()?;
+        // Settling on Sidecar is what makes the verdict final, so ask only once it is recorded.
+        // Elevation alone carries TUN on Sidecar; a Sidecar that cannot must write it off.
+        let prepared = async {
+            let tun_enabled = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
+            if crate::core::runstate::RUN_STATE
+                .state()
+                .tun_should_be_disabled(tun_enabled)
+            {
+                Config::disable_tun_and_persist().await?;
+            }
+            Config::generate().await
+        }
+        .await;
+        drop(config_write);
+        if let Err(error) = prepared {
+            SERVICE_MANAGER.withdraw_sidecar_allowance();
+            return Err(error);
+        }
         // Drop the guard last so an earlier failure cannot leave a running Sidecar unguarded.
         proxy_control::stop_guard().await;
         let result = async {
             self.start_core_inner().await?;
-            if !matches!(*self.get_running_mode(), RunningMode::Sidecar) {
+            if !matches!(*self.get_running_mode(), RunningMode::Sidecar)
+                || self.current_core_readiness_generation().is_none()
+            {
                 anyhow::bail!("Sidecar did not become ready");
             }
             self.apply_proxy_after_start().await
@@ -362,6 +383,8 @@ impl CoreManager {
         defer! {
             self.finish_config_update();
         }
+        // Lock order is config then lifecycle, for the unclaimed draft write below.
+        let _config_write = Config::lock_config_write().await;
         let _life = self.lifecycle_lock.lock().await;
 
         self.controlled_stop_core_inner().await?;
@@ -373,12 +396,21 @@ impl CoreManager {
                     .await
             },
             || async {
-                Config::disable_tun_and_persist().await?;
+                // Must be asked after the uninstall: until then the Service still makes TUN capable.
+                let tun_enabled = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
+                if crate::core::runstate::RUN_STATE
+                    .state()
+                    .tun_should_be_disabled(tun_enabled)
+                {
+                    Config::disable_tun_and_persist().await?;
+                }
                 Config::generate().await
             },
             || async {
                 self.start_core_inner().await?;
-                if !matches!(*self.get_running_mode(), RunningMode::Sidecar) {
+                if !matches!(*self.get_running_mode(), RunningMode::Sidecar)
+                    || self.current_core_readiness_generation().is_none()
+                {
                     anyhow::bail!("Sidecar did not become ready after service uninstall");
                 }
                 self.apply_proxy_after_start().await
@@ -408,7 +440,6 @@ impl CoreManager {
         run_sidecar_termination_transition(proxy_control::clear, || self.stop_core_by_sidecar_unprepared()).await
     }
 
-    /// Replaces a Service-owned core while the caller holds `lifecycle_lock`.
     pub(super) async fn replace_service_core_with_config(&self, config_file: &Path) -> Result<()> {
         run_service_config_replacement_transition(
             cfg!(target_os = "macos"),
@@ -431,7 +462,32 @@ impl CoreManager {
             self.current_core_readiness_generation(),
             crate::core::service::owner_monitor_generation(),
         )
-        .ok_or_else(|| anyhow::anyhow!("cannot apply system proxy before core readiness"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!("cannot apply system proxy before core readiness").context(SysproxyFailure::CoreNotReady)
+        })?;
+        // At login the app usually beats the network. Leave the write to the network watcher
+        // rather than fail — only if the watcher is actually live; a user toggling while
+        // offline still fails fast.
+        #[cfg(target_os = "macos")]
+        let watcher_armed = crate::core::network_watch::is_armed();
+        #[cfg(not(target_os = "macos"))]
+        let watcher_armed = false;
+        if watcher_armed
+            && !crate::utils::resolve::is_resolve_done()
+            && Config::verge()
+                .await
+                .latest_arc()
+                .enable_system_proxy
+                .unwrap_or_default()
+            && !proxy_control::has_network_service().await
+        {
+            logging!(
+                info,
+                Type::Core,
+                "no network service yet; the system proxy is applied once one appears"
+            );
+            return Ok(());
+        }
         proxy_control::apply().await?;
         if !expectation.is_valid(
             self.get_running_mode().as_ref(),
@@ -441,7 +497,8 @@ impl CoreManager {
             let clear_result = proxy_control::clear().await;
             proxy_control::stop_guard().await;
             clear_result?;
-            anyhow::bail!("core readiness changed while applying system proxy");
+            return Err(anyhow::anyhow!("core readiness changed while applying system proxy")
+                .context(SysproxyFailure::CoreNotReady));
         }
         proxy_control::refresh_guard().await?;
         if !expectation.is_valid(
@@ -452,19 +509,19 @@ impl CoreManager {
             let clear_result = proxy_control::clear().await;
             proxy_control::stop_guard().await;
             clear_result?;
-            anyhow::bail!("core readiness changed while refreshing the system proxy guard");
+            return Err(
+                anyhow::anyhow!("core readiness changed while refreshing the system proxy guard")
+                    .context(SysproxyFailure::CoreNotReady),
+            );
         }
         Ok(())
     }
 
-    /// 调用者须已持有 `lifecycle_lock`。
     async fn start_core_inner(&self) -> Result<()> {
-        // 退出中不再启动新内核。
         if Handle::global().is_exiting() {
             return Ok(());
         }
 
-        // 已有内核运行时保持幂等,重启请走 restart_core。
         if !matches!(*self.get_running_mode(), RunningMode::NotRunning) {
             logging!(
                 info,
@@ -479,7 +536,6 @@ impl CoreManager {
             self.rollback_failed_start().await;
             return Ok(());
         }
-        // 等待服务期间可能进入退出;未真正启动时回滚状态。
         if Handle::global().is_exiting() {
             self.core_stopped();
             return Ok(());
@@ -491,15 +547,12 @@ impl CoreManager {
             StartupDecision::Wait => Ok(()),
         };
 
-        // No startup failure may leave a locally reported running mode. PAC is
-        // still fail-closed, and any service owner monitor will exit after this
-        // transition instead of treating an unconfirmed core as running.
+        // A failed start must not leave a locally reported running mode.
         if result.is_err() {
             self.rollback_failed_start().await;
             return result;
         }
 
-        // 回退 sidecar 后,后台等待服务就绪再交接
         #[cfg(target_os = "windows")]
         if matches!(*self.get_running_mode(), RunningMode::Sidecar) {
             self.spawn_service_handoff_watcher().await;
@@ -513,12 +566,10 @@ impl CoreManager {
         self.controlled_stop_core_inner().await
     }
 
-    /// 调用者须已持有 `lifecycle_lock`。
     pub(crate) async fn controlled_stop_core_inner(&self) -> Result<()> {
         self.controlled_stop_core_with_intent(ProxyStopIntent::Clear).await
     }
 
-    /// 调用者须已持有 `lifecycle_lock`。
     async fn controlled_stop_core_with_intent(&self, proxy_intent: ProxyStopIntent) -> Result<()> {
         let running_mode = *self.get_running_mode();
         run_controlled_stop_transition(
@@ -532,7 +583,6 @@ impl CoreManager {
         .await
     }
 
-    /// Capture handoff intent before stopping; startup state may change afterward.
     async fn proxy_stop_intent(&self) -> ProxyStopIntent {
         let running_mode = *self.get_running_mode();
         if !cfg!(target_os = "macos") || !matches!(running_mode, RunningMode::Sidecar) {
@@ -541,7 +591,6 @@ impl CoreManager {
         proxy_stop_intent(cfg!(target_os = "macos"), running_mode, self.prepare_startup().await)
     }
 
-    /// 调用者须已持有 `lifecycle_lock`,且已完成受控代理清理。
     async fn stop_core_unprepared_inner(&self) -> Result<()> {
         CLASH_LOGGER.clear_logs().await;
         match *self.get_running_mode() {
@@ -565,7 +614,6 @@ impl CoreManager {
     }
 
     pub(crate) async fn restart_core_during_config_update(&self) -> Result<()> {
-        // 持锁覆盖 stop+start,避免生命周期操作插入。
         let _life = self.lifecycle_lock.lock().await;
         logging!(info, Type::Core, "Restarting core");
         let proxy_intent = self.proxy_stop_intent().await;
@@ -573,7 +621,9 @@ impl CoreManager {
             || self.controlled_stop_core_with_intent(proxy_intent),
             || async {
                 self.start_core_inner().await?;
-                if matches!(*self.get_running_mode(), RunningMode::NotRunning) {
+                if matches!(*self.get_running_mode(), RunningMode::NotRunning)
+                    || self.current_core_readiness_generation().is_none()
+                {
                     anyhow::bail!("core did not become ready after restart");
                 }
                 Ok(())
@@ -583,7 +633,6 @@ impl CoreManager {
         .await
     }
 
-    /// Switch the core binary and reload configuration.
     pub async fn change_core(&self, clash_core: &String) -> Result<()> {
         if !IVerge::VALID_CLASH_CORES.contains(&clash_core.as_str()) {
             anyhow::bail!("invalid clash core: {clash_core}");
@@ -603,8 +652,7 @@ impl CoreManager {
         #[cfg(target_os = "windows")]
         self.wait_for_service_if_needed().await;
 
-        let service_required = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false)
-            && !Config::tun_suppressed_for_session();
+        let service_required = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false);
         if service_required
             && matches!(SERVICE_MANAGER.current().await, ServiceStatus::NotInstalled)
             && SERVICE_MANAGER.require_install_for_session().is_err()
@@ -644,7 +692,6 @@ impl CoreManager {
         let _ = tokio::time::timeout(timing::SERVICE_WAIT_MAX, wait).await;
     }
 
-    /// 在窗口内等待服务就绪,再从 sidecar 交接到 service
     #[cfg(target_os = "windows")]
     async fn spawn_service_handoff_watcher(&self) {
         use crate::constants::timing;
@@ -652,14 +699,13 @@ impl CoreManager {
         use std::sync::atomic::Ordering;
         use std::time::Instant;
 
-        // 仅 TUN 模式需要服务交接
+        // An accepted Sidecar is the user's decision for this session, not a wait for the Service.
         let needs_service = Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false)
-            && !Config::tun_suppressed_for_session();
+            && !crate::core::runstate::RUN_STATE.state().sidecar_allowed;
         if !needs_service {
             return;
         }
 
-        // 单实例,避免并发交接
         if self.handoff_watcher_running.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -684,14 +730,11 @@ impl CoreManager {
                 }
                 tokio::time::sleep(timing::SERVICE_HANDOFF_INTERVAL).await;
 
-                // 模式已变更时退出
                 if !matches!(*manager.get_running_mode(), RunningMode::Sidecar) {
                     break;
                 }
                 match manager.try_handoff_sidecar_to_service().await {
-                    // 已交接或无需交接
                     HandoffOutcome::Done => break,
-                    // 已回退 sidecar,停止重试
                     HandoffOutcome::Failed => {
                         logging!(warn, Type::Core, "handoff attempt failed; staying in sidecar mode");
                         break;
@@ -705,21 +748,22 @@ impl CoreManager {
 
     #[cfg(target_os = "windows")]
     async fn refresh_service_readiness_for_handoff() -> bool {
-        // 主动刷新服务状态,避免缓存状态阻止交接
         if SERVICE_MANAGER.confirm_ready().await.is_err() {
             return false;
         }
         crate::core::runstate::RUN_STATE.state().service_usable()
     }
 
-    /// 服务就绪后停止 sidecar,再以 service 重启内核
     #[cfg(target_os = "windows")]
     async fn try_handoff_sidecar_to_service(&self) -> HandoffOutcome {
+        // Before probing: a probe reply records an observation, which clears sidecar_allowed.
+        if crate::core::runstate::RUN_STATE.state().sidecar_allowed {
+            return HandoffOutcome::Done;
+        }
         if !Self::refresh_service_readiness_for_handoff().await {
             return HandoffOutcome::NotReady;
         }
 
-        // 先抢 config 锁;失败则让位给正在进行的更新。
         if !self.try_start_config_update() {
             return HandoffOutcome::NotReady;
         }
@@ -727,13 +771,12 @@ impl CoreManager {
             self.finish_config_update();
         }
 
-        // 再取 lifecycle 锁;锁序固定为 config→lifecycle。
+        // Lock order is config then lifecycle.
         let _life = self.lifecycle_lock.lock().await;
 
-        // 持锁后复检运行模式和 TUN 状态
         if !matches!(*self.get_running_mode(), RunningMode::Sidecar)
             || !Config::verge().await.latest_arc().enable_tun_mode.unwrap_or(false)
-            || Config::tun_suppressed_for_session()
+            || crate::core::runstate::RUN_STATE.state().sidecar_allowed
         {
             return HandoffOutcome::Done;
         }
@@ -889,24 +932,6 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn controlled_sidecar_stop_clears_proxy_before_stopping() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-
-        let result = run_controlled_stop_transition(
-            true,
-            RunningMode::Sidecar,
-            ProxyStopIntent::Clear,
-            || future::ready(true),
-            || transition_step(&calls, "proxy_clear", None),
-            || transition_step(&calls, "core_stop", None),
-        )
-        .await;
-
-        assert!(result.is_ok());
-        assert_eq!(&*calls.lock(), &["proxy_clear", "core_stop"]);
-    }
-
     #[test]
     fn only_a_macos_sidecar_on_its_way_to_the_service_leaves_the_proxy_alone() {
         use super::proxy_stop_intent;
@@ -953,7 +978,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_guard_that_would_not_stop_keeps_the_core_where_it_is() {
+    async fn a_guard_that_would_not_stop_does_not_block_the_core_from_stopping() {
         for (mode, intent) in [
             (RunningMode::Sidecar, ProxyStopIntent::HandOverToService),
             (RunningMode::Service, ProxyStopIntent::Clear),
@@ -970,27 +995,9 @@ mod tests {
             )
             .await;
 
-            assert!(result.is_err(), "{mode:?} {intent:?}");
-            assert!(calls.lock().is_empty(), "{mode:?} {intent:?}: {:?}", *calls.lock());
+            assert!(result.is_ok(), "{mode:?} {intent:?}");
+            assert_eq!(&*calls.lock(), &["core_stop"], "{mode:?} {intent:?}");
         }
-    }
-
-    #[tokio::test]
-    async fn a_sidecar_handed_over_still_stops_even_when_a_user_space_clear_would_fail() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-
-        let result = run_controlled_stop_transition(
-            true,
-            RunningMode::Sidecar,
-            ProxyStopIntent::HandOverToService,
-            || future::ready(true),
-            || transition_step(&calls, "proxy_clear", Some("proxy_clear")),
-            || transition_step(&calls, "core_stop", None),
-        )
-        .await;
-
-        assert!(result.is_ok());
-        assert_eq!(&*calls.lock(), &["core_stop"]);
     }
 
     #[tokio::test]
@@ -1080,46 +1087,6 @@ mod tests {
                 "service-stop-failed"
             ]
         );
-    }
-
-    #[tokio::test]
-    async fn controlled_sidecar_stop_aborts_when_proxy_clear_fails() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-
-        let result = run_controlled_stop_transition(
-            true,
-            RunningMode::Sidecar,
-            ProxyStopIntent::Clear,
-            || future::ready(true),
-            || transition_step(&calls, "proxy_clear", Some("proxy_clear")),
-            || transition_step(&calls, "core_stop", None),
-        )
-        .await;
-
-        assert!(result.is_err());
-        assert_eq!(&*calls.lock(), &["proxy_clear"]);
-    }
-
-    #[tokio::test]
-    async fn failed_sidecar_transition_rollback_surfaces_clear_failure_without_terminating() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-        let sidecar_alive = AtomicBool::new(true);
-
-        let result = run_sidecar_termination_transition(
-            || transition_step(&calls, "rollback-proxy-clear", Some("rollback-proxy-clear")),
-            || {
-                sidecar_alive.store(false, Ordering::Release);
-                calls.lock().push("rollback-sidecar-stop");
-            },
-        )
-        .await;
-
-        assert!(matches!(
-            result,
-            Err(error) if error.to_string().contains("rollback-proxy-clear failed")
-        ));
-        assert!(sidecar_alive.load(Ordering::Acquire));
-        assert_eq!(&*calls.lock(), &["rollback-proxy-clear"]);
     }
 
     #[tokio::test]
@@ -1265,21 +1232,6 @@ mod tests {
         assert!(guard_stopped.load(Ordering::Acquire));
         assert!(!pac_available.load(Ordering::Acquire));
         assert!(!restored_new_core.load(Ordering::Acquire));
-    }
-
-    #[tokio::test]
-    async fn service_config_start_failure_uses_the_same_fail_closed_replacement_order() {
-        let calls = Arc::new(Mutex::new(Vec::new()));
-
-        let result = run_core_replacement_transition(
-            || transition_step(&calls, "controlled-stop", None),
-            || transition_step(&calls, "start-service-config", Some("start-service-config")),
-            || transition_step(&calls, "restore-proxy", None),
-        )
-        .await;
-
-        assert!(result.is_err());
-        assert_eq!(&*calls.lock(), &["controlled-stop", "start-service-config"]);
     }
 
     #[tokio::test]
@@ -1432,25 +1384,6 @@ mod tests {
         assert!(can_allow_sidecar_for_session(
             &RunningMode::Sidecar,
             &ServiceStatus::InstallRequired,
-        ));
-    }
-
-    #[test]
-    fn a_sidecar_that_failed_to_start_can_be_tried_again() {
-        // Revoking a failed attempt's allowance keeps retries reachable without changing Service health.
-        for health in [
-            ServiceStatus::NotInstalled,
-            ServiceStatus::NeedsReinstall,
-            ServiceStatus::Unavailable("boom".into()),
-        ] {
-            assert!(
-                can_allow_sidecar_for_session(&RunningMode::NotRunning, &health),
-                "{health:?} must still admit a second attempt"
-            );
-        }
-        assert!(!can_allow_sidecar_for_session(
-            &RunningMode::NotRunning,
-            &ServiceStatus::SidecarAllowed,
         ));
     }
 

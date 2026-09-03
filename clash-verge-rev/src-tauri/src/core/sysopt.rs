@@ -1,6 +1,6 @@
 use crate::{
     config::{Config, MixedPort},
-    core::proxy_control::SystemProxyStateUnknown,
+    core::proxy_control::{self, SystemProxyStateUnknown},
     singleton,
     utils::server,
 };
@@ -137,10 +137,13 @@ where
         return Ok(());
     }
 
-    // The final disable must happen after the last in-flight guard write.
+    // The final disable should follow the last in-flight guard write, but a guard that will not
+    // stop must not keep the proxy on: disable again either way.
     if !drain_again().await {
-        anyhow::bail!(
-            "the system proxy guard did not finish within {GUARD_DRAIN_TIMEOUT:?}; the OS proxy state is unknown"
+        logging!(
+            warn,
+            Type::Core,
+            "the system proxy guard did not finish within {GUARD_DRAIN_TIMEOUT:?}; disabling anyway"
         );
     }
     disable().await
@@ -170,12 +173,29 @@ where
     first_failure([("global proxy", global), ("PAC", pac)])
 }
 
+/// Treats a missing network service as a completed disable: with nothing to write to, the
+/// requested "no proxy" state already holds.
+///
+/// Enabling still fails: the guard is opt-in and nothing else re-applies the proxy when a
+/// service appears, so a skipped enable would claim a proxy the OS never received.
+///
+/// Reports whether the write reached the OS, so recovery does not mistake a skip for evidence.
+fn skip_without_network_service(enabling: bool, outcome: sysproxy::Result<()>) -> Result<bool> {
+    match outcome {
+        Err(error) if !enabling && proxy_control::is_missing_network_service(&error) => {
+            logging!(warn, Type::Core, "no active network service, nothing to turn off");
+            Ok(false)
+        }
+        other => other.map(|()| true).map_err(anyhow::Error::from),
+    }
+}
+
 /// Force both proxy kinds off, in one blocking hop.
 async fn disable_all_proxies(sys: Sysproxy, auto: Autoproxy) -> Result<()> {
     tokio::task::spawn_blocking(move || {
         disable_both(
-            || sys.set_system_proxy().map_err(anyhow::Error::from),
-            || auto.set_auto_proxy().map_err(anyhow::Error::from),
+            || skip_without_network_service(sys.enable, sys.set_system_proxy()).map(|_reached_os| ()),
+            || skip_without_network_service(auto.enable, auto.set_auto_proxy()).map(|_reached_os| ()),
         )
     })
     .await?
@@ -242,24 +262,32 @@ impl Default for Sysopt {
 
 #[cfg(target_os = "windows")]
 static DEFAULT_BYPASS: &str = "localhost;127.*;192.168.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;<local>";
+#[cfg(target_os = "windows")]
+static BYPASS_SEPARATOR: &str = ";";
 #[cfg(target_os = "linux")]
 static DEFAULT_BYPASS: &str = "localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,::1";
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+static BYPASS_SEPARATOR: &str = ",";
 #[cfg(target_os = "macos")]
 static DEFAULT_BYPASS: &str =
     "127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,localhost,*.local,*.crashlytics.com,<local>";
+
+fn format_bypass(use_default: bool, custom_bypass: &str) -> String {
+    if custom_bypass.is_empty() {
+        DEFAULT_BYPASS.into()
+    } else if use_default {
+        format!("{DEFAULT_BYPASS}{BYPASS_SEPARATOR}{custom_bypass}").into()
+    } else {
+        custom_bypass.into()
+    }
+}
 
 async fn get_bypass() -> String {
     let verge = Config::verge().await.latest_arc();
     let use_default = verge.use_default_bypass.unwrap_or(true);
     let custom_bypass = verge.system_proxy_bypass.as_deref().unwrap_or("");
 
-    if custom_bypass.is_empty() {
-        DEFAULT_BYPASS.into()
-    } else if use_default {
-        format!("{DEFAULT_BYPASS},{custom_bypass}").into()
-    } else {
-        custom_bypass.into()
-    }
+    format_bypass(use_default, custom_bypass)
 }
 
 singleton!(Sysopt, SYSOPT);
@@ -442,16 +470,10 @@ impl Sysopt {
         let guard_was_running = !self.access_guard().read().get_state().is_stopped();
         let idle = self.access_guard().read().shutdown();
         let drained = idle.wait_timeout(GUARD_DRAIN_TIMEOUT).await;
-        if !drained {
-            // A pending guard write makes OS state unknown.
-            self.access_guard().write().set_guard_type(GuardType::None);
-            anyhow::bail!(
-                "the system proxy guard did not finish within {GUARD_DRAIN_TIMEOUT:?}; the OS proxy state is unknown"
-            );
-        }
 
-        // Skip writes only when macOS exactly matches the target.
+        // A slow guard does not stop the write, but it does make the OS read untrustworthy.
         if cfg!(target_os = "macos")
+            && drained
             && current_os_proxy_state(sys.clone(), auto.clone()).await == OsProxyState::AlreadyApplied
         {
             self.access_guard().write().set_guard_type(guard_type);
@@ -468,15 +490,17 @@ impl Sysopt {
             (off_sys, off_auto)
         };
 
-        // Track whether an earlier setter already changed the OS.
+        // Only a step that actually wrote is evidence the OS changed; a skipped one is not.
         let applied = tokio::task::spawn_blocking(move || {
-            for (index, step) in apply_steps.into_iter().enumerate() {
+            let mut earlier_step_reached_os = false;
+            for step in apply_steps {
                 let written = match step {
-                    ProxyApplyStep::Autoproxy => auto.set_auto_proxy(),
-                    ProxyApplyStep::Sysproxy => sys.set_system_proxy(),
+                    ProxyApplyStep::Autoproxy => skip_without_network_service(auto.enable, auto.set_auto_proxy()),
+                    ProxyApplyStep::Sysproxy => skip_without_network_service(sys.enable, sys.set_system_proxy()),
                 };
-                if let Err(error) = written {
-                    return Err((index > 0, anyhow::Error::from(error)));
+                match written {
+                    Ok(reached_os) => earlier_step_reached_os |= reached_os,
+                    Err(error) => return Err((earlier_step_reached_os, error)),
                 }
             }
             Ok(())
@@ -547,13 +571,79 @@ impl Sysopt {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuthoritativeState, OsProxyState, ProxyApplyStep, SystemProxyStateUnknown, authoritative_state,
-        authoritative_state_from, classify_os_proxy_state, disable_both, disable_until_the_last_write_is_ours,
-        first_failure, proxy_apply_steps, recover_from_failed_write, target_is_already_in_place,
+        AuthoritativeState, BYPASS_SEPARATOR, DEFAULT_BYPASS, OsProxyState, ProxyApplyStep, SystemProxyStateUnknown,
+        authoritative_state, authoritative_state_from, classify_os_proxy_state, disable_both,
+        disable_until_the_last_write_is_ours, first_failure, format_bypass, proxy_apply_steps,
+        recover_from_failed_write, skip_without_network_service, target_is_already_in_place,
     };
     use parking_lot::Mutex;
     use std::collections::VecDeque;
     use sysproxy::{Autoproxy, Sysproxy};
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_machine_with_no_network_service_has_nothing_to_turn_off() {
+        for missing in [
+            sysproxy::Error::NoActiveNetworkService,
+            sysproxy::Error::NetworkInterface,
+        ] {
+            assert_eq!(skip_without_network_service(false, Err(missing)).ok(), Some(false));
+        }
+        assert_eq!(skip_without_network_service(false, Ok(())).ok(), Some(true));
+        assert!(skip_without_network_service(false, Err(sysproxy::Error::RequiresAdminPrivileges)).is_err());
+    }
+
+    /// Enabling the global proxy disables PAC first; that skipped step must not look like a write.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_skipped_step_is_not_evidence_that_the_os_was_touched() {
+        let skipped = skip_without_network_service(false, Err(sysproxy::Error::NoActiveNetworkService));
+        let earlier_step_reached_os = skipped.unwrap_or(true);
+        assert!(!earlier_step_reached_os);
+
+        let failed = skip_without_network_service(true, Err(sysproxy::Error::NoActiveNetworkService))
+            .err()
+            .unwrap_or_else(|| anyhow::anyhow!("enabling without a network service must fail"));
+
+        assert_eq!(
+            authoritative_state(&failed, earlier_step_reached_os),
+            AuthoritativeState::Unchanged
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn turning_the_proxy_on_without_a_network_service_still_fails() {
+        assert!(skip_without_network_service(true, Err(sysproxy::Error::NoActiveNetworkService)).is_err());
+        assert!(skip_without_network_service(true, Err(sysproxy::Error::NetworkInterface)).is_err());
+    }
+
+    #[test]
+    fn empty_custom_bypass_uses_defaults() {
+        assert_eq!(format_bypass(false, ""), DEFAULT_BYPASS);
+    }
+
+    #[test]
+    fn custom_bypass_can_replace_defaults() {
+        assert_eq!(format_bypass(false, "example.com"), "example.com");
+    }
+
+    #[test]
+    fn default_and_custom_bypass_use_platform_separator() {
+        assert_eq!(
+            format_bypass(true, "example.com"),
+            format!("{DEFAULT_BYPASS}{BYPASS_SEPARATOR}example.com")
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_default_and_custom_bypass_use_semicolon() {
+        assert_eq!(
+            format_bypass(true, "example.com"),
+            format!("{DEFAULT_BYPASS};example.com")
+        );
+    }
 
     async fn record_disable_sequence(
         drained: bool,
@@ -747,10 +837,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_guard_that_never_finishes_is_reported_rather_than_written_over() {
+    async fn a_guard_that_never_finishes_still_gets_the_proxy_disabled() {
         assert_eq!(
-            record_disable_sequence(false, false, &[true]).await,
-            (vec!["disable", "drain"], false)
+            record_disable_sequence(false, false, &[true, true]).await,
+            (vec!["disable", "drain", "disable"], true)
         );
     }
 
@@ -769,37 +859,6 @@ mod tests {
         assert_eq!(authoritative_state(&refused, false), AuthoritativeState::Unchanged);
     }
 
-    #[cfg(not(target_os = "linux"))]
-    #[test]
-    fn only_evidence_that_a_write_landed_stands_the_guard_down() {
-        let nothing_written = anyhow::Error::new(sysproxy::Error::ProxyWrite {
-            progress: sysproxy::WriteProgress::new(0, 7),
-            source: Box::new(sysproxy::Error::RequiresAdminPrivileges),
-        });
-        let something_written = anyhow::Error::new(sysproxy::Error::ProxyWrite {
-            progress: sysproxy::WriteProgress::new(3, 7),
-            source: Box::new(sysproxy::Error::RequiresAdminPrivileges),
-        });
-
-        assert_eq!(
-            authoritative_state(&nothing_written, false),
-            AuthoritativeState::Unchanged
-        );
-        assert_eq!(
-            authoritative_state(&something_written, false),
-            AuthoritativeState::Unknown
-        );
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    #[test]
-    fn a_step_that_already_finished_stands_the_guard_down_whatever_the_error_says() {
-        let refused = anyhow::Error::new(sysproxy::Error::RequiresAdminPrivileges);
-
-        assert_eq!(authoritative_state(&refused, false), AuthoritativeState::Unchanged);
-        assert_eq!(authoritative_state(&refused, true), AuthoritativeState::Unknown);
-    }
-
     #[test]
     fn where_a_successful_setter_proves_nothing_no_failure_is_destructive() {
         let strongest_evidence = anyhow::Error::new(sysproxy::Error::ProxyWrite {
@@ -814,31 +873,6 @@ mod tests {
                 "{earlier_step_completed}"
             );
         }
-    }
-
-    #[test]
-    fn where_it_proves_something_both_kinds_of_evidence_count() {
-        let nothing_written = anyhow::Error::new(sysproxy::Error::ProxyWrite {
-            progress: sysproxy::WriteProgress::new(0, 7),
-            source: Box::new(sysproxy::Error::RequiresAdminPrivileges),
-        });
-        let partly_written = anyhow::Error::new(sysproxy::Error::ProxyWrite {
-            progress: sysproxy::WriteProgress::new(3, 7),
-            source: Box::new(sysproxy::Error::RequiresAdminPrivileges),
-        });
-
-        assert_eq!(
-            authoritative_state_from(true, &nothing_written, false),
-            AuthoritativeState::Unchanged
-        );
-        assert_eq!(
-            authoritative_state_from(true, &partly_written, false),
-            AuthoritativeState::Unknown
-        );
-        assert_eq!(
-            authoritative_state_from(true, &nothing_written, true),
-            AuthoritativeState::Unknown
-        );
     }
 
     fn holding_global(port: u16) -> sysproxy::ProxySnapshot {

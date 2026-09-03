@@ -11,11 +11,11 @@ import {
 } from '@/services/cmds'
 import {
   getCacheData,
+  removeCacheData,
   revalidateQueries,
   useQuery,
 } from '@/services/query-client'
 
-// 系统代理状态检测统一逻辑
 export const useSystemProxyState = () => {
   const { verge, mutateVerge } = useVerge()
   const { sysproxy } = useSystemData()
@@ -33,7 +33,6 @@ export const useSystemProxyState = () => {
 
   const { proxy_auto_config, proxy_host } = verge ?? {}
 
-  // OS 实际状态：enable + 地址匹配本应用
   const indicator = (() => {
     const host = proxy_host || '127.0.0.1'
     if (proxy_auto_config) {
@@ -46,7 +45,7 @@ export const useSystemProxyState = () => {
     }
   })()
 
-  // "最后一次生效"模式：快速连续点击时，只执行最终状态
+  // Coalesce rapid clicks so only the latest requested state is applied.
   const pendingRef = useRef<boolean | null>(null)
   const busyRef = useRef(false)
 
@@ -64,12 +63,10 @@ export const useSystemProxyState = () => {
     if (busyRef.current) return
     busyRef.current = true
 
-    let failed = false
     try {
       while (pendingRef.current !== null) {
         const target = pendingRef.current
         pendingRef.current = null
-        // Revalidate once below so a refetch failure cannot look like a patch failure.
         await patchVergeConfig({ enable_system_proxy: target })
         confirmed = target
         if (!target && verge?.auto_close_connection) {
@@ -77,33 +74,39 @@ export const useSystemProxyState = () => {
         }
       }
     } catch (error) {
-      failed = true
       mutateVerge(
         (prev) => (prev ? { ...prev, enable_system_proxy: confirmed } : prev),
         false,
       )
-      // Queued requests assumed the failed state was reached.
+      // Queued requests were based on a state that never landed.
       pendingRef.current = null
       throw error
     } finally {
       busyRef.current = false
-      const revalidated = revalidateQueries([
-        ['getVergeConfig'],
-        ['getSystemProxy'],
-        ['getAutotemProxy'],
-      ])
-      if (failed) {
-        // Preserve the classified toggle failure.
-        try {
-          await revalidated
-        } catch (error) {
-          console.warn(
-            '[system-proxy] revalidating after a failed toggle failed too:',
-            error,
-          )
-        }
-      } else {
-        await revalidated
+      // Refreshing cached state is not part of the toggle's result: a failed read must not
+      // turn a write that landed into a reported failure.
+      try {
+        await revalidateQueries([['getVergeConfig']])
+      } catch (error) {
+        console.warn(
+          '[system-proxy] rereading the config after a toggle failed:',
+          error,
+        )
+      }
+      // Kept separate so an unreadable config cannot discard OS state that did read.
+      try {
+        await revalidateQueries([['getSystemProxy'], ['getAutotemProxy']])
+      } catch (error) {
+        console.warn(
+          '[system-proxy] rereading the OS proxy after a toggle failed:',
+          error,
+        )
+        // The indicator reports observed OS state, so an unreadable one must read as inactive
+        // rather than stay live from a stale cache.
+        await Promise.all([
+          removeCacheData(['getSystemProxy']),
+          removeCacheData(['getAutotemProxy']),
+        ])
       }
     }
   }

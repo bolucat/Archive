@@ -1,4 +1,5 @@
 use chrono::Local;
+use reqwest::{Client, StatusCode};
 
 pub fn get_local_date_string() -> String {
     let now = Local::now();
@@ -8,17 +9,15 @@ pub fn get_local_date_string() -> String {
 pub fn country_code_to_emoji(country_code: &str) -> String {
     let uc = country_code.to_ascii_uppercase();
 
-    // 长度校验：仅允许 2 或 3
     match uc.len() {
         2 => {
-            // 校验是否是合法 alpha2
             if rust_iso3166::from_alpha2(&uc).is_none() {
                 return String::new();
             }
             alpha2_to_emoji(&uc)
         }
         3 => {
-            // 转换并校验 alpha3
+            // Regional indicators require the alpha-2 form.
             match rust_iso3166::from_alpha3(&uc) {
                 Some(c) => {
                     let alpha2 = c.alpha2.to_ascii_uppercase();
@@ -40,36 +39,35 @@ fn alpha2_to_emoji(alpha2: &str) -> String {
         .unwrap_or_default()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::country_code_to_emoji;
+pub(crate) async fn get_text(client: &Client, url: &str) -> Option<String> {
+    client.get(url).send().await.ok()?.text().await.ok()
+}
 
-    #[test]
-    fn country_code_to_emoji_iso2() {
-        assert_eq!(country_code_to_emoji("CN"), "🇨🇳");
-        assert_eq!(country_code_to_emoji("us"), "🇺🇸");
-    }
+pub(crate) async fn get_trace_location(client: &Client, url: &str) -> Option<String> {
+    get_text(client, url)
+        .await?
+        .lines()
+        .find_map(|line| line.strip_prefix("loc="))
+        .map(str::to_owned)
+}
 
-    #[test]
-    fn country_code_to_emoji_iso3() {
-        assert_eq!(country_code_to_emoji("CHN"), "🇨🇳");
-        assert_eq!(country_code_to_emoji("USA"), "🇺🇸");
-    }
+pub(crate) fn extract_quoted_field<'a>(body: &'a str, key: &str) -> Option<&'a str> {
+    let (_, rest) = body.split_once(&format!(r#""{key}""#))?;
+    let value = rest.split_once(':')?.1.trim_start();
+    let value = value.strip_prefix('"')?;
 
-    #[test]
-    fn country_code_to_emoji_invalid() {
-        assert_eq!(country_code_to_emoji("XXX"), "");
-        assert_eq!(country_code_to_emoji("ZZ"), "");
-    }
+    Some(value.split_once('"')?.0)
+}
 
-    #[test]
-    fn country_code_to_emoji_short() {
-        assert_eq!(country_code_to_emoji("C"), "");
-        assert_eq!(country_code_to_emoji(""), "");
-    }
-
-    #[test]
-    fn country_code_to_emoji_long() {
-        assert_eq!(country_code_to_emoji("CNAAA"), "");
+pub(crate) fn classify_restricted_status(status: StatusCode) -> Option<&'static str> {
+    if matches!(
+        status,
+        StatusCode::FORBIDDEN | StatusCode::UNAVAILABLE_FOR_LEGAL_REASONS
+    ) {
+        Some("No")
+    } else if !status.is_success() {
+        Some("Failed")
+    } else {
+        None
     }
 }

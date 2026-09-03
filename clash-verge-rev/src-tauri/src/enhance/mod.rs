@@ -124,7 +124,7 @@ async fn get_config_values() -> ConfigValues {
 
     let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
-        enable_tun_mode.unwrap_or(false) && !Config::tun_suppressed_for_session(),
+        enable_tun_mode.unwrap_or(false),
         enable_builtin_enhanced.unwrap_or(true),
         verge_socks_enabled.unwrap_or(false),
         verge_http_enabled.unwrap_or(false),
@@ -158,7 +158,7 @@ async fn get_config_values() -> ConfigValues {
 
 #[allow(clippy::cognitive_complexity)]
 async fn collect_profile_items(profiles: &IProfiles) -> Result<ProfileItems> {
-    let current_profile_uid = match profiles.get_current().cloned() {
+    let current_profile_uid = match profiles.current.clone() {
         Some(uid) => uid,
         None => return Ok(ProfileItems::default()),
     };
@@ -521,12 +521,10 @@ fn merge_default_config(
                     continue;
                 }
             }
-            // 处理 external-controller 键的开关逻辑
             if key.as_str() == Some("external-controller") {
                 if enable_external_controller {
                     config.insert(key, value);
                 } else {
-                    // 如果禁用了外部控制器，设置为空字符串
                     config.insert(key, "".into());
                 }
             } else {
@@ -656,7 +654,7 @@ fn ensure_fake_ip_range6(dns: &mut Mapping) {
         .map(|m| m == "fake-ip")
         .unwrap_or(true);
 
-    // 缺失或为空字符串（可能来自手动编辑的 YAML）时都需要补充
+    // Hand-edited YAML may leave the key present but empty.
     let range6_missing = dns
         .get("fake-ip-range6")
         .and_then(|v| v.as_str())
@@ -664,7 +662,7 @@ fn ensure_fake_ip_range6(dns: &mut Mapping) {
         .unwrap_or(true);
 
     if ipv6_enabled && is_fake_ip && range6_missing {
-        dns.insert(Value::from("fake-ip-range6"), Value::from("fdfe:dcba:9876::1/64"));
+        dns.insert(Value::from("fake-ip-range6"), Value::from("2001:2::0/64"));
     }
 }
 
@@ -702,10 +700,8 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
     config
 }
 
-/// Enhance mode
-/// 返回最终订阅、该订阅包含的键、和script执行的结果
+/// Returns the enhanced profile, its original keys, and script logs.
 pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, HashMap<String, ResultLog>)> {
-    // gather config values
     let cfg_vals = get_config_values().await;
     let ConfigValues {
         clash_config,
@@ -722,7 +718,6 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
         tproxy_enabled,
     } = cfg_vals;
 
-    // collect profile items
     let profile = collect_profile_items(profiles).await?;
     let config = profile.config;
     let merge_item = profile.merge_item;
@@ -736,11 +731,9 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
 
     let result_map = HashMap::new();
 
-    // 顺序项先于手动覆盖。
     let config = process_seq_items(config, rules_item, proxies_item, groups_item);
     let exists_keys = use_keys(&config).collect::<Vec<_>>();
 
-    // merge default clash config
     let config = merge_default_config(
         config,
         clash_config,
@@ -753,15 +746,12 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
         tproxy_enabled,
     );
 
-    // app 生成项先于手动覆盖。
     let config = apply_builtin_scripts(config, clash_core, enable_builtin).await;
     let config = use_tun(config, enable_tun);
     let config = apply_dns_settings(config, enable_dns_settings).await;
 
-    // 手动覆盖前锁定 app 权威字段,覆盖后由同一个值恢复。
     let authoritative = AuthoritativeFields::capture(&config, enable_dns_settings);
 
-    // 全局手动覆盖。
     let (config, exists_keys, result_map) = process_global_items(
         config,
         exists_keys,
@@ -772,11 +762,9 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
     )
     .await;
 
-    // 当前 profile 手动覆盖。
     let (config, exists_keys, result_map) =
         process_profile_items(config, exists_keys, result_map, merge_item, script_item, &profile_name).await;
 
-    // 手动覆盖后恢复 app 权威字段。
     let config = authoritative.enforce(config);
     let config = ensure_lan_bind_address(config);
 
@@ -802,7 +790,7 @@ mod fake_ip_tests {
         map
     }
 
-    const RANGE6: &str = "fdfe:dcba:9876::1/64";
+    const RANGE6: &str = "2001:2::0/64";
 
     #[test]
     fn an_ipv6_fake_ip_setup_missing_its_range_gets_one() {
@@ -954,7 +942,7 @@ mod use_tun_tests {
         assert_eq!(dns.get(Value::from("ipv6")), Some(&Value::from(true)));
         assert_eq!(
             dns.get(Value::from("fake-ip-range6")),
-            Some(&Value::from("fdfe:dcba:9876::1/64"))
+            Some(&Value::from("2001:2::0/64"))
         );
 
         let without_ipv6 = use_tun(Mapping::new(), true);

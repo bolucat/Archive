@@ -1,5 +1,4 @@
 use anyhow::{Context as _, Result, anyhow, bail};
-#[cfg(target_os = "macos")]
 use clash_verge_logging::{Type as LogType, logging};
 #[cfg(target_os = "macos")]
 use network_interface::{NetworkInterface, NetworkInterfaceConfig as _};
@@ -97,7 +96,7 @@ impl ListenerBindScope {
         })
     }
 
-    pub(crate) fn mixed_port_is_available(&self, port: u16) -> bool {
+    pub(crate) fn probe_mixed_port(&self, port: u16) -> ListenerProbeOutcome {
         let claims = self
             .addresses
             .iter()
@@ -108,7 +107,13 @@ impl ListenerBindScope {
                     .map(move |transport| BindClaim::new("mixed", address, port, transport))
             })
             .collect::<Vec<_>>();
-        matches!(probe_claims(&claims), ListenerProbeOutcome::Available)
+        probe_claims(&claims)
+    }
+
+    /// Whether `port` is provably free — for picking a replacement, where anything short of
+    /// proof should skip the candidate.
+    pub(crate) fn mixed_port_is_available(&self, port: u16) -> bool {
+        matches!(self.probe_mixed_port(port), ListenerProbeOutcome::Available)
     }
 }
 
@@ -225,6 +230,10 @@ fn proxy_claims(config: &Mapping) -> Result<Vec<BindClaim>> {
     let addresses = proxy_bind_addresses(config)?;
     let mut claims = Vec::new();
     for (key, name, transports) in PROXY_LISTENERS {
+        #[cfg(target_os = "windows")]
+        if matches!(key, "redir-port" | "tproxy-port") {
+            continue;
+        }
         let Some(port) = mapping_port(config, key)? else {
             continue;
         };
@@ -335,12 +344,57 @@ fn claims_overlap(left: &BindClaim, right: &BindClaim) -> bool {
         && (left.address == right.address || left.address.is_unspecified() || right.address.is_unspecified())
 }
 
+/// Whether a refused bind can be dismissed because nothing is actually serving the claim.
+///
+/// A refused bind is not proof a port is in use: `SO_REUSEADDR` cannot reuse a `TIME_WAIT` socket
+/// owned by a *different* user, and a service-managed Core runs as root while this process does
+/// not. So every port the Core used is briefly unbindable here even though the Core itself could
+/// rebind it at once (measured on macOS 26). "Is anything answering?" survives that asymmetry;
+/// "can I bind?" does not.
+///
+/// Restrictions, both deliberate: every concrete guard for a wildcard claim must be checked before
+/// it can be cleared. UDP has no lingering state, so a refused UDP bind is always a live socket.
+fn nothing_is_serving(claim: &BindClaim) -> bool {
+    const ANSWER_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(200);
+
+    if claim.transport != ListenerTransport::Tcp || claim.address.is_unspecified() {
+        return false;
+    }
+    // Only an explicit refusal proves absence; a timeout leaves the question open.
+    matches!(
+        std::net::TcpStream::connect_timeout(&claim.socket_addr(), ANSWER_TIMEOUT),
+        Err(error) if error.kind() == io::ErrorKind::ConnectionRefused
+    )
+}
+
 fn probe_claims(claims: &[BindClaim]) -> ListenerProbeOutcome {
     let mut sockets = Vec::with_capacity(claims.len());
     for claim in claims {
         match bind_claim(claim) {
             Ok(mut bound) => sockets.append(&mut bound),
-            Err(error) if is_bind_conflict(&error) => return conflict_outcome(claim),
+            Err(error) if is_bind_conflict(&error) => {
+                if nothing_is_serving(claim) {
+                    logging!(
+                        info,
+                        LogType::Network,
+                        "{} could not bind {} ({}), but nothing answers there; treating it as free",
+                        claim.name,
+                        claim.socket_addr(),
+                        error
+                    );
+                    continue;
+                }
+                logging!(
+                    warn,
+                    LogType::Network,
+                    "{} cannot claim {} over {}: {}",
+                    claim.name,
+                    claim.socket_addr(),
+                    transport_name(claim.transport),
+                    error
+                );
+                return conflict_outcome(claim);
+            }
             Err(error)
                 if matches!(
                     error.kind(),
@@ -370,7 +424,8 @@ fn probe_claims(claims: &[BindClaim]) -> ListenerProbeOutcome {
             }
         }
     }
-    debug_assert!(sockets.len() >= claims.len());
+    // No one-socket-per-claim assertion: a dismissed claim is one this process never bound.
+    drop(sockets);
     ListenerProbeOutcome::Available
 }
 
@@ -421,13 +476,33 @@ fn bind_claim(claim: &BindClaim) -> io::Result<Vec<Socket>> {
         }
         guard_addresses.sort_unstable();
         guard_addresses.dedup();
+        let mut stale_guard = false;
         for address in guard_addresses {
-            match bind_socket(&BindClaim::new(claim.name, address, claim.port, claim.transport)) {
+            let guard_claim = BindClaim::new(claim.name, address, claim.port, claim.transport);
+            match bind_socket(&guard_claim) {
                 Ok(socket) => sockets.push(socket),
                 // Only a conflict proves the port is taken; a vanished guard address proves nothing.
-                Err(error) if is_bind_conflict(&error) => return Err(error),
+                Err(error) if is_bind_conflict(&error) => {
+                    if nothing_is_serving(&guard_claim) {
+                        stale_guard = true;
+                        continue;
+                    }
+                    logging!(
+                        warn,
+                        LogType::Network,
+                        "{} claiming {} could not hold the overlapping address {}: {}",
+                        claim.name,
+                        claim.socket_addr(),
+                        SocketAddr::new(address, claim.port),
+                        error
+                    );
+                    return Err(error);
+                }
                 Err(_) => {}
             }
+        }
+        if stale_guard {
+            return Ok(sockets);
         }
     }
 
@@ -845,6 +920,19 @@ mod tests {
         let scope =
             ListenerBindScope::from_mapping(&mapping("allow-lan: true\nbind-address: 0.0.0.0\nipv6: false\n")?)?;
         assert!(!scope.mixed_port_is_available(port));
+        Ok(())
+    }
+
+    /// The startup fallback only moves on a proven `Conflict`, so a taken port must report one.
+    #[test]
+    fn startup_scope_reports_a_conflict_rather_than_an_unreachable_answer() -> anyhow::Result<()> {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
+        let port = listener.local_addr()?.port();
+        let scope = ListenerBindScope::from_mapping(&mapping("ipv6: false\n")?)?;
+        assert!(matches!(
+            scope.probe_mixed_port(port),
+            ListenerProbeOutcome::Conflict { .. }
+        ));
         Ok(())
     }
 
