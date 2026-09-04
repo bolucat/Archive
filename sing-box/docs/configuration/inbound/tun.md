@@ -2,9 +2,12 @@
 icon: material/new-box
 ---
 
+!!! quote "Changes in sing-box 1.15.0"
+
+    :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)
+
 !!! quote "Changes in sing-box 1.14.0"
 
-    :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
     :material-plus: [include_mac_address](#include_mac_address)  
     :material-plus: [exclude_mac_address](#exclude_mac_address)  
     :material-plus: [dns_mode](#dns_mode)  
@@ -390,7 +393,7 @@ Connection reset mark used by `auto_redirect` pre-matching.
 
 #### auto_redirect_tproxy_mark
 
-!!! question "Since sing-box 1.14.0"
+!!! question "Since sing-box 1.15.0"
 
 Connection TPROXY mark used by the `auto_redirect` iptables backend for IPv6 TCP.
 

@@ -13,6 +13,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
     public ReactiveCommand<RxVoid, RxVoid> CheckUpdateCmd { get; }
     public ReactiveCommand<RxVoid, RxVoid> CheckOnlyCmd { get; }
     [Reactive] public partial bool EnableCheckPreReleaseUpdate { get; set; }
+    [Reactive] public partial bool EnableUpdateViaProxy { get; set; }
 
     public CheckUpdateViewModel()
     {
@@ -33,11 +34,13 @@ public partial class CheckUpdateViewModel : MyReactiveObject
         });
 
         EnableCheckPreReleaseUpdate = _config.CheckUpdateItem.CheckPreReleaseUpdate;
+        EnableUpdateViaProxy = _config.CheckUpdateItem.UpdateViaProxy;
 
-        this.WhenAnyValue(
-        x => x.EnableCheckPreReleaseUpdate,
-        y => y == true)
-            .Subscribe(c => _ = OnCheckPreReleaseUpdateChanged());
+        this.WhenAnyValue(x => x.EnableCheckPreReleaseUpdate)
+            .SubscribeAsync(async _ => await OnCheckPreReleaseUpdateChanged());
+
+        this.WhenAnyValue(x => x.EnableUpdateViaProxy)
+            .Subscribe(c => _ = OnUpdateViaProxyChanged());
 
         RefreshCheckUpdateItems();
     }
@@ -50,8 +53,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
 
         models.Add(GetGeoFileCheckUpdateModel());
 
-        CheckUpdateModels.Clear();
-        CheckUpdateModels.AddRange(models);
+        CheckUpdateModels.ReplaceRange(models);
     }
 
     private CheckUpdateModel GetCheckUpdateModel(ECoreType coreType)
@@ -95,6 +97,16 @@ public partial class CheckUpdateViewModel : MyReactiveObject
             return;
         }
         _config.CheckUpdateItem.CheckPreReleaseUpdate = EnableCheckPreReleaseUpdate;
+        await SaveSelectedCoreTypes();
+    }
+
+    private async Task OnUpdateViaProxyChanged()
+    {
+        if (_config.CheckUpdateItem.UpdateViaProxy == EnableUpdateViaProxy)
+        {
+            return;
+        }
+        _config.CheckUpdateItem.UpdateViaProxy = EnableUpdateViaProxy;
         await SaveSelectedCoreTypes();
     }
 
@@ -145,7 +157,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
             }
 
             var updateService = new UpdateService(_config, async (success, msg) => await Task.CompletedTask);
-            var result = await updateService.CheckHasUpdateOnly(item.CoreType.Value, EnableCheckPreReleaseUpdate);
+            var result = await updateService.CheckHasUpdateOnly(item.CoreType.Value, EnableCheckPreReleaseUpdate, EnableUpdateViaProxy);
             if (result.Success && result.Version != null)
             {
                 await UpdateView(item.CoreType, string.Format(ResUI.MsgCheckUpdateHasNewVersion, item.CoreType, result.Version));
@@ -193,7 +205,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
                 }
                 await CheckUpdateN(EnableCheckPreReleaseUpdate);
             }
-            else if (item.CoreType == ECoreType.Xray)
+            else if (item.CoreType is ECoreType.Xray or ECoreType.sing_box)
             {
                 await CheckUpdateCore(item, EnableCheckPreReleaseUpdate);
             }
@@ -230,7 +242,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
                 UpdatedPlusPlus(null, "");
             }
         }
-        await new UpdateService(_config, _updateUI).UpdateGeoFileAll()
+        await new UpdateService(_config, _updateUI).UpdateGeoFileAll(EnableUpdateViaProxy)
             .ContinueWith(t => UpdatedPlusPlus(null, ""));
     }
 
@@ -245,7 +257,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
                 UpdatedPlusPlus(_v2rayN, msg);
             }
         }
-        await new UpdateService(_config, _updateUI).CheckUpdateGuiN(preRelease)
+        await new UpdateService(_config, _updateUI).CheckUpdateGuiN(preRelease, EnableUpdateViaProxy)
             .ContinueWith(t => UpdatedPlusPlus(_v2rayN, ""));
     }
 
@@ -263,7 +275,7 @@ public partial class CheckUpdateViewModel : MyReactiveObject
 
         if (model.CoreType.HasValue)
         {
-            await new UpdateService(_config, _updateUI).CheckUpdateCore(model.CoreType.Value, preRelease)
+            await new UpdateService(_config, _updateUI).CheckUpdateCore(model.CoreType.Value, preRelease, EnableUpdateViaProxy)
                 .ContinueWith(t => UpdatedPlusPlus(model.CoreType, ""));
         }
     }

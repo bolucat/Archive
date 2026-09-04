@@ -1,13 +1,13 @@
 namespace ServiceLib.Services;
 
-public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
+public partial class UpdateService(Config config, Func<bool, string, Task> updateFunc)
 {
     private readonly Config? _config = config;
     private readonly Func<bool, string, Task>? _updateFunc = updateFunc;
     private readonly int _timeout = 30;
     private static readonly string _tag = "UpdateService";
 
-    public async Task CheckUpdateGuiN(bool preRelease)
+    public async Task CheckUpdateGuiN(bool preRelease, bool blProxy = true)
     {
         var url = string.Empty;
         var fileName = string.Empty;
@@ -31,7 +31,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         };
 
         await UpdateFunc(false, string.Format(ResUI.MsgStartUpdating, ECoreType.v2rayN));
-        var result = await CheckUpdateAsync(downloadHandle, ECoreType.v2rayN, preRelease);
+        var result = await CheckUpdateAsync(downloadHandle, ECoreType.v2rayN, preRelease, blProxy);
         if (result.Success)
         {
             await UpdateFunc(false, string.Format(ResUI.MsgParsingSuccessfully, ECoreType.v2rayN));
@@ -39,7 +39,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
 
             url = result.Url!;
             fileName = Utils.GetTempPath(Utils.GetGuid());
-            await downloadHandle.DownloadFileAsync(new() { FileUrl = url, FilePath = fileName }, true, TimeSpan.FromSeconds(_timeout));
+            await downloadHandle.DownloadFileAsync(new() { FileUrl = url, FilePath = fileName }, blProxy, TimeSpan.FromSeconds(_timeout));
         }
         else
         {
@@ -47,7 +47,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         }
     }
 
-    public async Task CheckUpdateCore(ECoreType type, bool preRelease)
+    public async Task CheckUpdateCore(ECoreType type, bool preRelease, bool blProxy = true)
     {
         var url = string.Empty;
         var fileName = string.Empty;
@@ -80,7 +80,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         };
 
         await UpdateFunc(false, string.Format(ResUI.MsgStartUpdating, type));
-        var result = await CheckUpdateAsync(downloadHandle, type, preRelease);
+        var result = await CheckUpdateAsync(downloadHandle, type, preRelease, blProxy);
         if (result.Success)
         {
             await UpdateFunc(false, string.Format(ResUI.MsgParsingSuccessfully, type));
@@ -89,7 +89,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
             url = result.Url!;
             var ext = url.Contains(".tar.gz") ? ".tar.gz" : Path.GetExtension(url);
             fileName = Utils.GetTempPath(Utils.GetGuid() + ext);
-            await downloadHandle.DownloadFileAsync(new() { FileUrl = url, FilePath = fileName }, true, TimeSpan.FromSeconds(_timeout));
+            await downloadHandle.DownloadFileAsync(new() { FileUrl = url, FilePath = fileName }, blProxy, TimeSpan.FromSeconds(_timeout));
         }
         else
         {
@@ -100,7 +100,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         }
     }
 
-    public async Task<UpdateResult> CheckHasUpdateOnly(ECoreType type, bool preRelease)
+    public async Task<UpdateResult> CheckHasUpdateOnly(ECoreType type, bool preRelease, bool blProxy = true)
     {
         if (!CoreInfoManager.Instance.IsCheckUpdateSupported(type))
         {
@@ -109,10 +109,10 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
 
         var downloadHandle = new DownloadService();
         var checkPreRelease = CoreInfoManager.Instance.GetCheckPreRelease(type, preRelease);
-        return await CheckUpdateAsync(downloadHandle, type, checkPreRelease);
+        return await CheckUpdateAsync(downloadHandle, type, checkPreRelease, blProxy);
     }
 
-    public async Task<List<string>> CheckHasUpdateOnlyAll(bool preRelease)
+    public async Task<List<string>> CheckHasUpdateOnlyAll(bool preRelease, bool blProxy = true)
     {
         var msgs = new List<string>();
         foreach (var type in CoreInfoManager.Instance.GetCheckUpdateCoreTypes())
@@ -122,7 +122,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
                 continue;
             }
 
-            var result = await CheckHasUpdateOnly(type, preRelease);
+            var result = await CheckHasUpdateOnly(type, preRelease, blProxy);
             if (result.Success && result.Version != null)
             {
                 var msg = string.Format(ResUI.MsgCheckUpdateHasNewVersion, type, result.Version);
@@ -137,7 +137,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         return msgs;
     }
 
-    public async Task UpdateGeoFileAll()
+    public async Task UpdateGeoFileAll(bool blProxy = true)
     {
         var requests = new List<FileDownloadRequest>();
         requests.AddRange(GetGeoFilesRequest());
@@ -145,17 +145,17 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         requests.AddRange(await GetSrsFileAllRequest());
         // NOTE: srs files are more small, so we reverse the order to ensure a good download experience for the user.
         requests.Reverse();
-        await DownloadGeoFiles(requests);
+        await DownloadGeoFiles(requests, blProxy);
         await UpdateFunc(true, string.Format(ResUI.MsgDownloadGeoFileSuccessfully, "geo"));
     }
 
     #region CheckUpdate private
 
-    private async Task<UpdateResult> CheckUpdateAsync(DownloadService downloadHandle, ECoreType type, bool preRelease)
+    private async Task<UpdateResult> CheckUpdateAsync(DownloadService downloadHandle, ECoreType type, bool preRelease, bool blProxy)
     {
         try
         {
-            var result = await GetRemoteVersion(downloadHandle, type, preRelease);
+            var result = await GetRemoteVersion(downloadHandle, type, preRelease, blProxy);
             if (!result.Success || result.Version is null)
             {
                 return result;
@@ -170,14 +170,14 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         }
     }
 
-    private async Task<UpdateResult> GetRemoteVersion(DownloadService downloadHandle, ECoreType type, bool preRelease)
+    private async Task<UpdateResult> GetRemoteVersion(DownloadService downloadHandle, ECoreType type, bool preRelease, bool blProxy)
     {
         var coreInfo = CoreInfoManager.Instance.GetCoreInfo(type);
         var tagName = string.Empty;
-        if (preRelease)
+        if (preRelease || coreInfo?.LockedMaxVersion != null)
         {
             var url = coreInfo?.ReleaseApiUrl;
-            var result = await downloadHandle.TryDownloadString(url, true, Global.AppName);
+            var result = await downloadHandle.TryDownloadString(url, blProxy, Global.AppName);
             if (result.IsNullOrEmpty())
             {
                 return new UpdateResult(false, "");
@@ -187,11 +187,29 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
             var gitHubRelease = preRelease ? gitHubReleases?.First() : gitHubReleases?.First(r => r.Prerelease == false);
             tagName = gitHubRelease?.TagName;
             //var body = gitHubRelease?.Body;
+
+            if (coreInfo?.LockedMaxVersion != null)
+            {
+                var lockedMaxVersion = coreInfo.LockedMaxVersion;
+                var remoteVersion = new SemanticVersion(tagName);
+                if (remoteVersion > lockedMaxVersion)
+                {
+                    var fallbackRelease = gitHubReleases?
+                        .Where(r => preRelease || !r.Prerelease)
+                        .Select(r => new { Release = r, IsValid = SemanticVersion.TryParse(r.TagName, out var v), Version = v })
+                        .Where(x => x.IsValid && x.Version <= coreInfo.LockedMaxVersion)
+                        .MaxBy(x => x.Version)?
+                        .Release;
+
+                    gitHubRelease = fallbackRelease;
+                    tagName = gitHubRelease?.TagName;
+                }
+            }
         }
         else
         {
             var url = Path.Combine(coreInfo.Url, "latest");
-            var lastUrl = await downloadHandle.UrlRedirectAsync(url, true);
+            var lastUrl = await downloadHandle.UrlRedirectAsync(url, blProxy);
             if (lastUrl == null)
             {
                 return new UpdateResult(false, "");
@@ -201,6 +219,9 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         }
         return new UpdateResult(true, new SemanticVersion(tagName));
     }
+
+    [GeneratedRegex(@"v?(?<version>\d+\.\d+\.\d+(?:-[0-9a-zA-Z.-]+)?(?:\+[0-9a-zA-Z.-]+)?)", RegexOptions.IgnoreCase)]
+    private static partial Regex SemVerRegex();
 
     private async Task<SemanticVersion> GetCoreVersion(ECoreType type)
     {
@@ -227,23 +248,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
 
             var result = await Utils.GetCliWrapOutput(filePath, coreInfo.VersionArg);
             var echo = result ?? "";
-            var version = string.Empty;
-            switch (type)
-            {
-                case ECoreType.v2fly:
-                case ECoreType.Xray:
-                case ECoreType.v2fly_v5:
-                    version = Regex.Match(echo, $"{coreInfo.Match} ([0-9.]+) \\(").Groups[1].Value;
-                    break;
-
-                case ECoreType.mihomo:
-                    version = Regex.Match(echo, $"v[0-9.]+").Groups[0].Value;
-                    break;
-
-                case ECoreType.sing_box:
-                    version = Regex.Match(echo, $"([0-9.]+)").Groups[1].Value;
-                    break;
-            }
+            var version = SemVerRegex().Match(echo).Groups["version"].Value;
             return new SemanticVersion(version);
         }
         catch (Exception ex)
@@ -269,30 +274,25 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
                 case ECoreType.v2fly:
                 case ECoreType.Xray:
                 case ECoreType.v2fly_v5:
-                    {
-                        curVersion = await GetCoreVersion(type);
-                        message = string.Format(ResUI.IsLatestCore, type, curVersion.ToVersionString("v"));
-                        url = string.Format(coreUrl, version.ToVersionString("v"));
-                        break;
-                    }
                 case ECoreType.mihomo:
                     {
                         curVersion = await GetCoreVersion(type);
-                        message = string.Format(ResUI.IsLatestCore, type, curVersion);
-                        url = string.Format(coreUrl, version.ToVersionString("v"));
+                        message = string.Format(ResUI.IsLatestCore, type, curVersion.ToStandardVersionString("v"));
+                        url = string.Format(coreUrl, version);
                         break;
                     }
+
                 case ECoreType.sing_box:
                     {
                         curVersion = await GetCoreVersion(type);
-                        message = string.Format(ResUI.IsLatestCore, type, curVersion.ToVersionString("v"));
-                        url = string.Format(coreUrl, version.ToVersionString("v"), version);
+                        message = string.Format(ResUI.IsLatestCore, type, curVersion.ToStandardVersionString("v"));
+                        url = string.Format(coreUrl, version, version.ToString().RemovePrefix("v"));
                         break;
                     }
                 case ECoreType.v2rayN:
                     {
                         curVersion = new SemanticVersion(Utils.GetVersionInfo());
-                        message = string.Format(ResUI.IsLatestN, type, curVersion);
+                        message = string.Format(ResUI.IsLatestN, type, curVersion.ToStandardVersionString("v"));
                         url = string.Format(coreUrl, version);
                         break;
                     }
@@ -300,7 +300,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
                     throw new ArgumentException("Type");
             }
 
-            if (curVersion >= version && version != new SemanticVersion(0, 0, 0))
+            if (curVersion >= version && !version.Equals(new SemanticVersion(0, 0, 0)))
             {
                 return new UpdateResult(false, message);
             }
@@ -531,7 +531,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
         };
     }
 
-    private async Task DownloadGeoFiles(List<FileDownloadRequest> requests)
+    private async Task DownloadGeoFiles(List<FileDownloadRequest> requests, bool blProxy)
     {
         var tmpFilePathDict = new Dictionary<string, string>();
         var tmpFileRequests = new List<FileDownloadRequest>();
@@ -586,7 +586,7 @@ public class UpdateService(Config config, Func<bool, string, Task> updateFunc)
             _ = UpdateFunc(false, args.GetException().Message);
         };
 
-        await downloadHandle.DownloadSmallFilesAsync(tmpFileRequests, true, TimeSpan.FromSeconds(_timeout));
+        await downloadHandle.DownloadSmallFilesAsync(tmpFileRequests, blProxy, TimeSpan.FromSeconds(_timeout));
     }
 
     #endregion Geo private

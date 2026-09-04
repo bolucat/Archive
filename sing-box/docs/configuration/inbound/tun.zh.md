@@ -2,9 +2,12 @@
 icon: material/new-box
 ---
 
+!!! quote "sing-box 1.15.0 中的更改"
+
+    :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)
+
 !!! quote "sing-box 1.14.0 中的更改"
 
-    :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
     :material-plus: [include_mac_address](#include_mac_address)  
     :material-plus: [exclude_mac_address](#exclude_mac_address)  
     :material-plus: [dns_mode](#dns_mode)  
@@ -383,7 +386,7 @@ sing-box DNS 模块，等价于一条
 
 #### auto_redirect_tproxy_mark
 
-!!! question "自 sing-box 1.14.0 起"
+!!! question "自 sing-box 1.15.0 起"
 
 `auto_redirect` iptables 后端为 IPv6 TCP 使用的连接 TPROXY 标记。
 

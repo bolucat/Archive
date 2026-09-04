@@ -153,7 +153,7 @@ export default {
       });
     },
     fetchOutbounds() {
-      this.$axios({ url: apiRoot + "/outbound" }).then((res) => {
+      this.$axios({ url: apiRoot + "/outbounds" }).then((res) => {
         if (res.data.code === "SUCCESS") {
           this.outbounds = res.data.data.outbounds || [];
         }

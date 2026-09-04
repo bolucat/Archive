@@ -4238,6 +4238,15 @@ namespace ServiceLib.Resx {
                 return ResourceManager.GetString("TbSettingsEnableCheckPreReleaseUpdate", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   查找类似 Update via proxy 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsEnableUpdateViaProxy {
+            get {
+                return ResourceManager.GetString("TbSettingsEnableUpdateViaProxy", resourceCulture);
+            }
+        }
         
         /// <summary>
         ///   查找类似 Enable sorting Configurations by drag-n-drop (requires restart) 的本地化字符串。
@@ -4533,6 +4542,42 @@ namespace ServiceLib.Resx {
         public static string TbSettingsMixedConcurrencyCount {
             get {
                 return ResourceManager.GetString("TbSettingsMixedConcurrencyCount", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Xray Mux setting 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsMux4Ray {
+            get {
+                return ResourceManager.GetString("TbSettingsMux4Ray", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Xray Mux concurrency 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsMux4RayConcurrency {
+            get {
+                return ResourceManager.GetString("TbSettingsMux4RayConcurrency", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Xray Mux XUDP concurrency 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsMux4RayXudpConcurrency {
+            get {
+                return ResourceManager.GetString("TbSettingsMux4RayXudpConcurrency", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Xray Mux XUDP proxy UDP443 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsMux4RayXudpProxyUDP443 {
+            get {
+                return ResourceManager.GetString("TbSettingsMux4RayXudpProxyUDP443", resourceCulture);
             }
         }
         
