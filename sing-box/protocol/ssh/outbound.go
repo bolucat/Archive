@@ -35,6 +35,7 @@ func RegisterOutbound(registry *outbound.Registry) {
 var (
 	_ adapter.InterfaceUpdateListener = (*Outbound)(nil)
 	_ adapter.IdleConnectionKeeper    = (*Outbound)(nil)
+	_ adapter.OutboundWithMultiplex   = (*Outbound)(nil)
 )
 
 type Outbound struct {
@@ -216,6 +217,10 @@ func (s *Outbound) InterfaceUpdated(ctx context.Context) {
 	common.Close(s.clientConn)
 }
 
+func (s *Outbound) MultiplexEnabled() bool {
+	return true
+}
+
 func (s *Outbound) SetKeepIdleConnections(keep bool) {
 	s.clientAccess.Lock()
 	s.closeIdle = !keep
@@ -236,14 +241,14 @@ func (s *Outbound) CloseIdleConnections() {
 	common.Close(clientConn)
 }
 
-func (s *Outbound) releaseStream(client *ssh.Client) {
+func (s *Outbound) releaseStream(client *ssh.Client, keepSession bool) {
 	s.clientAccess.Lock()
 	if s.client != client {
 		s.clientAccess.Unlock()
 		return
 	}
 	s.streams--
-	if !s.closeIdle || s.streams > 0 {
+	if !s.closeIdle || keepSession || s.streams > 0 {
 		s.clientAccess.Unlock()
 		return
 	}
@@ -268,10 +273,11 @@ func (s *Outbound) DialContext(ctx context.Context, network string, destination 
 	s.clientAccess.Unlock()
 	conn, err := client.Dial(network, destination.String())
 	if err != nil {
-		s.releaseStream(client)
+		s.releaseStream(client, false)
 		return nil, err
 	}
-	return &chanConnWrapper{Conn: conn, onClose: func() { s.releaseStream(client) }}, nil
+	keepSession := adapter.KeepSessionFromContext(ctx)
+	return &chanConnWrapper{Conn: conn, onClose: func() { s.releaseStream(client, keepSession) }}, nil
 }
 
 func (s *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {

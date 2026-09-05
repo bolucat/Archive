@@ -33,6 +33,7 @@ func RegisterOutbound(registry *outbound.Registry) {
 var (
 	_ adapter.InterfaceUpdateListener = (*Outbound)(nil)
 	_ adapter.IdleConnectionKeeper    = (*Outbound)(nil)
+	_ adapter.OutboundWithMultiplex   = (*Outbound)(nil)
 )
 
 type Outbound struct {
@@ -147,6 +148,10 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {
 	_ = h.client.CloseWithError(E.New("network changed"))
+}
+
+func (h *Outbound) MultiplexEnabled() bool {
+	return true
 }
 
 func (h *Outbound) SetKeepIdleConnections(keep bool) {

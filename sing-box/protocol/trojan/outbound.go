@@ -114,7 +114,11 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (h *Outbound) MultiplexEnabled() bool {
-	return h.multiplexDialer != nil
+	if h.multiplexDialer != nil {
+		return true
+	}
+	multiplexTransport, isMultiplexTransport := h.transport.(adapter.V2RayMultiplexClientTransport)
+	return isMultiplexTransport && multiplexTransport.MultiplexEnabled()
 }
 
 func (h *Outbound) InterfaceUpdated(ctx context.Context) {

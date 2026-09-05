@@ -20,7 +20,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-var _ adapter.V2RayClientTransport = (*Client)(nil)
+var _ adapter.V2RayMultiplexClientTransport = (*Client)(nil)
 
 type Client struct {
 	ctx        context.Context
@@ -41,10 +41,10 @@ type clientConnection struct {
 	closeIdle *atomic.Bool
 }
 
-func (c *clientConnection) releaseStream() {
+func (c *clientConnection) releaseStream(keepSession bool) {
 	c.access.Lock()
 	c.streams--
-	drained := c.closeIdle.Load() && c.streams == 0
+	drained := c.closeIdle.Load() && !keepSession && c.streams == 0
 	c.access.Unlock()
 	if drained {
 		c.CloseWithError(0, "")
@@ -117,10 +117,15 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	conn.access.Unlock()
 	stream, err := conn.OpenStream()
 	if err != nil {
-		conn.releaseStream()
+		conn.releaseStream(false)
 		return nil, err
 	}
-	return &StreamWrapper{Conn: conn.Conn, Stream: stream, onClose: conn.releaseStream}, nil
+	keepSession := adapter.KeepSessionFromContext(ctx)
+	return &StreamWrapper{Conn: conn.Conn, Stream: stream, onClose: func() { conn.releaseStream(keepSession) }}, nil
+}
+
+func (c *Client) MultiplexEnabled() bool {
+	return true
 }
 
 func (c *Client) SetKeepIdleConnections(keep bool) {

@@ -22,6 +22,23 @@ define U-Boot/Default
 endef
 
 
+# RK3308 boards
+
+define U-Boot/rk3308/Default
+  BUILD_SUBTARGET:=armv8
+  DEPENDS:=+PACKAGE_u-boot-$(1):rkbin-rk3308
+  ATF:=rk3308_bl31_v2.27.elf
+  TPL:=rk3308_ddr_589MHz_uart2_m1_v2.10.bin
+endef
+
+define U-Boot/rock-pi-s-rk3308
+  $(U-Boot/rk3308/Default)
+  NAME:=ROCK Pi S
+  BUILD_DEVICES:= \
+    radxa_rock-pi-s
+endef
+
+
 # RK3328 boards
 
 define U-Boot/rk3328/Default
@@ -132,7 +149,8 @@ define U-Boot/nanopi-r4s-rk3399
   $(U-Boot/rk3399/Default)
   NAME:=NanoPi R4S
   BUILD_DEVICES:= \
-    friendlyarm_nanopi-r4s
+    friendlyarm_nanopi-r4s \
+    friendlyarm_nanopi-r4s-enterprise
   DEPENDS:=+PACKAGE_u-boot-$(1):rkbin-rk3399
   ATF:=rk3399_bl31_v1.36.elf
   USE_RKBIN:=1
@@ -427,6 +445,7 @@ define U-Boot/generic-rk3588
   $(U-Boot/rk3588/Default)
   NAME:=Generic RK3588
   BUILD_DEVICES:= \
+    bdy_g98 \
     radxa_e52c \
     radxa_e54c \
     seewo_srcm3588-io \
@@ -502,6 +521,7 @@ define U-Boot/rock-5c-rk3588s
 endef
 
 UBOOT_TARGETS := \
+  rock-pi-s-rk3308 \
   generic-rk3528 \
   nanopi-zero2-rk3528 \
   radxa-e20c-rk3528 \

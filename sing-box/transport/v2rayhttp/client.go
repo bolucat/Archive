@@ -23,7 +23,7 @@ import (
 	"golang.org/x/net/http2"
 )
 
-var _ adapter.V2RayClientTransport = (*Client)(nil)
+var _ adapter.V2RayMultiplexClientTransport = (*Client)(nil)
 
 type Client struct {
 	ctx        context.Context
@@ -141,8 +141,9 @@ func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 		request.Host = c.host[rand.Intn(hostLen)]
 	}
 	conn := NewLateHTTPConn(pipeInWriter)
+	keepSession := adapter.KeepSessionFromContext(ctx)
 	conn.onClose = func() {
-		if c.closeIdle.Load() {
+		if c.closeIdle.Load() && !keepSession {
 			CloseIdleConnections(c.transport.Load())
 		}
 	}
@@ -158,6 +159,10 @@ func (c *Client) dialHTTP2(ctx context.Context) (net.Conn, error) {
 		}
 	}()
 	return conn, nil
+}
+
+func (c *Client) MultiplexEnabled() bool {
+	return c.http2
 }
 
 func (c *Client) SetKeepIdleConnections(keep bool) {

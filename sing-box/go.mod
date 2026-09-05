@@ -44,17 +44,17 @@ require (
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
 	github.com/sagernet/nftables v0.3.0-mod.4
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7
-	github.com/sagernet/sing v0.9.1-0.20260902140658-8bb71f553f8d
-	github.com/sagernet/sing-anytls v0.0.0-20260904043735-a2775a3fbcad
+	github.com/sagernet/sing v0.9.1-0.20260904133552-ffcabb706b1c
+	github.com/sagernet/sing-anytls v0.0.0-20260904135308-cec2d74334be
 	github.com/sagernet/sing-cloudflared v0.1.3-0.20260706062323-d9787e794aa3
-	github.com/sagernet/sing-mux v0.3.6-0.20260904043737-7e4c81a2011c
+	github.com/sagernet/sing-mux v0.3.7-0.20260905054442-91d1502591ce
 	github.com/sagernet/sing-openconnect v0.0.0-20260903200519-8b89c968949d
 	github.com/sagernet/sing-openvpn v0.0.0-20260903200517-e060dda5b1f1
-	github.com/sagernet/sing-quic v0.7.1-0.20260904043739-344d4a543cbf
+	github.com/sagernet/sing-quic v0.7.1-0.20260904135313-497364e8ee3e
 	github.com/sagernet/sing-shadowsocks v0.2.8
 	github.com/sagernet/sing-shadowsocks2 v0.2.1
 	github.com/sagernet/sing-shadowtls v0.2.1
-	github.com/sagernet/sing-snell v0.0.0-20260904043742-138588f1fa53
+	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
 	github.com/sagernet/sing-tun v0.9.1-0.20260902150540-98e457e39c90
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca
 	github.com/sagernet/sing-vmess v0.2.8

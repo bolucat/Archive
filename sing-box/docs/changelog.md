@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.15.0-alpha.2
+
+* Fixes and improvements
+
 #### 1.15.0-alpha.1
 
 * Implement fully functional `auto_redirect` for Android **1**
