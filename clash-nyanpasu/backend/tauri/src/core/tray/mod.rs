@@ -434,7 +434,7 @@ impl Tray {
         match id {
             mode @ ("rule_mode" | "global_mode" | "direct_mode" | "script_mode") => {
                 let mode = &mode[0..mode.len() - 5];
-                feat::change_clash_mode(mode.into());
+                feat::change_clash_mode(app_handle, mode.into());
             }
 
             "open_window" => resolve::create_window(app_handle),
@@ -449,13 +449,13 @@ impl Tray {
             "open_app_data_dir" => crate::log_err!(ipc::open_app_data_dir()),
             "open_core_dir" => crate::log_err!(ipc::open_core_dir()),
             "open_logs_dir" => crate::log_err!(ipc::open_logs_dir()),
-            "restart_clash" => feat::restart_clash_core(),
+            "restart_clash" => feat::restart_clash_core(app_handle),
             "restart_app" => help::restart_application(app_handle),
             "quit" => {
                 help::quit_application(app_handle);
             }
             _ => {
-                proxies::on_system_tray_event(id);
+                proxies::on_system_tray_event(app_handle, id);
             }
         }
     }

@@ -112,8 +112,10 @@ pub fn install_with(manager: &dyn ServiceManager, ctx: InstallCommand) -> Result
     tracing::info!("Installing service...");
     manager.install(build_install_ctx(
         label.clone(),
-        service_binary,
-        service_data_dir,
+        InstallPaths {
+            program: service_binary,
+            working_directory: service_data_dir,
+        },
         &ctx,
         envs,
     ))?;
@@ -144,16 +146,24 @@ pub(super) fn policy_value(policy: LocalIpcPolicyArg) -> &'static str {
     }
 }
 
-fn build_install_ctx(
-    label: ServiceLabel,
+/// The two paths the service definition is written with. Both are `PathBuf`
+/// and were adjacent parameters, so a transposition compiles and is persisted
+/// into the OS service manager: the daemon is registered to launch a directory
+/// and to run out of its own binary.
+struct InstallPaths {
     program: PathBuf,
     working_directory: PathBuf,
+}
+
+fn build_install_ctx(
+    label: ServiceLabel,
+    paths: InstallPaths,
     ctx: &InstallCommand,
     environment: Vec<(String, String)>,
 ) -> ServiceInstallCtx {
     ServiceInstallCtx {
         label,
-        program,
+        program: paths.program,
         args: vec![
             OsString::from("server"),
             OsString::from("--nyanpasu-data-dir"),
@@ -168,7 +178,7 @@ fn build_install_ctx(
         ],
         contents: None,
         username: None, // because we just need to run the service as root
-        working_directory: Some(working_directory),
+        working_directory: Some(paths.working_directory),
         environment: Some(environment),
         autostart: true,
         restart_policy: RestartPolicy::default(),
@@ -228,8 +238,10 @@ mod tests {
         let environment = vec![("HOME".into(), "home".into())];
         let install_ctx = build_install_ctx(
             label(),
-            PathBuf::from("program"),
-            PathBuf::from("working-directory"),
+            InstallPaths {
+                program: PathBuf::from("program"),
+                working_directory: PathBuf::from("working-directory"),
+            },
             &ctx,
             environment.clone(),
         );

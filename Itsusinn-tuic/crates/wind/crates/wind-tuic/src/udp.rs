@@ -156,9 +156,9 @@ impl FragmentReassemblyBuffer {
 				return None;
 			}
 
-			// If this is the first fragment (frag_id == 0) and it has a real address,
-			// update the target address in case we received other fragments first with
-			// placeholder addresses
+			// If this is the first fragment (frag_id == 0) and it has a real
+			// address, update the target address in case we received other
+			// fragments first with placeholder addresses
 			if frag_id == 0 && !is_placeholder_addr {
 				meta.value().target.store(target_arc);
 			}

@@ -118,9 +118,9 @@ async fn acceptor_loop<A, AccFut, HFut, AccFn, HFn>(
 		};
 		match result {
 			Err(e) => {
-				// `ApplicationClosed`, `LocallyClosed`, and `TimedOut` are normal
-				// lifecycle events; log at debug instead of error so legitimate
-				// disconnects don't muddy operator logs.
+				// `ApplicationClosed`, `LocallyClosed`, and `TimedOut` are
+				// normal lifecycle events; log at debug instead of error so
+				// legitimate disconnects don't muddy operator logs.
 				if matches!(
 					&e,
 					QuicError::ApplicationClosed { .. } | QuicError::LocallyClosed | QuicError::TimedOut
@@ -255,8 +255,9 @@ fn spawn_h3_router<C: QuicConnection>(
 	let go = Arc::new(Notify::new());
 	// Run the masquerade parked. If it fails (invalid upstream URL, h3 setup
 	// error) the connection would otherwise leak: a non-TUIC stream has already
-	// flipped `h3_active`, so the auth-timeout guard won't reap it. Log the error
-	// and close the connection ourselves, mirroring that guard's cleanup.
+	// flipped `h3_active`, so the auth-timeout guard won't reap it. Log the
+	// error and close the connection ourselves, mirroring that guard's
+	// cleanup.
 	let close_conn = conn.clone();
 	let go_task = go.clone();
 	tokio::spawn(async move {
@@ -332,9 +333,10 @@ pub async fn serve_connection<C, CB>(
 
 	// The backend entered the per-connection `conn` span for the whole lifetime
 	// of this future. Record the stable connection id onto it now (the user is
-	// recorded later, on auth) so every line logged under this connection — each
-	// stream, datagram, and relay — carries `id`/`user` without re-stating them.
-	// Mirrors upstream tuic's `info_span!("conn", id, addr, user = Empty)`.
+	// recorded later, on auth) so every line logged under this connection —
+	// each stream, datagram, and relay — carries `id`/`user` without
+	// re-stating them. Mirrors upstream tuic's `info_span!("conn", id, addr,
+	// user = Empty)`.
 	let conn_span = tracing::Span::current();
 	conn_span.record("id", conn_info.conn_id);
 
@@ -378,15 +380,16 @@ pub async fn serve_connection<C, CB>(
 		conn_cancel: cancel.clone(),
 	});
 
-	// Per-connection HTTP/3 masquerade router: a parked `run_masquerade` task plus
-	// two channels the acceptor loops feed. `None` when masquerade is disabled.
-	// `h3_active` flips true once any stream classifies as h3 so the auth-timeout
-	// guard knows not to close what is actually an HTTP/3 connection.
+	// Per-connection HTTP/3 masquerade router: a parked `run_masquerade` task
+	// plus two channels the acceptor loops feed. `None` when masquerade is
+	// disabled. `h3_active` flips true once any stream classifies as h3 so the
+	// auth-timeout guard knows not to close what is actually an HTTP/3
+	// connection.
 	let h3 = spawn_h3_router(connection.conn.clone(), masq, cancel.clone());
 	let h3_active = Arc::new(AtomicBool::new(false));
 
-	// Authentication timeout: close the connection if it never authenticated AND
-	// never turned out to be an HTTP/3 (masquerade) connection.
+	// Authentication timeout: close the connection if it never authenticated
+	// AND never turned out to be an HTTP/3 (masquerade) connection.
 	{
 		let conn_auth = connection.clone();
 		let auth_cancel = cancel.clone();
@@ -410,8 +413,8 @@ pub async fn serve_connection<C, CB>(
 
 	// Per-user traffic sampler. A TUIC connection is exactly one authenticated
 	// user, so the QUIC connection's own wire counters are that user's traffic.
-	// Once authenticated, sample the byte counters periodically (and once more on
-	// close), recording deltas against the user — no per-stream/per-packet
+	// Once authenticated, sample the byte counters periodically (and once more
+	// on close), recording deltas against the user — no per-stream/per-packet
 	// counting needed. Unauthenticated / h3-masquerade connections never bill.
 	if connection.hooks.stats.is_some() {
 		let ctx = connection.clone();
@@ -425,10 +428,10 @@ pub async fn serve_connection<C, CB>(
 	let acceptor_cancel = cancel.child_token();
 
 	// Datagram acceptor. Classify each datagram by its first two bytes: TUIC
-	// datagrams (heartbeat / native-mode UDP) are handled inline pre-auth (so an
-	// unauthenticated peer can't spawn unbounded tasks parked on `auth_notify`)
-	// and spawned post-auth; non-TUIC datagrams are dropped — the masquerade
-	// serves no QUIC datagrams.
+	// datagrams (heartbeat / native-mode UDP) are handled inline pre-auth (so
+	// an unauthenticated peer can't spawn unbounded tasks parked on
+	// `auth_notify`) and spawned post-auth; non-TUIC datagrams are dropped —
+	// the masquerade serves no QUIC datagrams.
 	{
 		let conn = connection.clone();
 		let cb = callback.clone();
@@ -857,13 +860,13 @@ async fn handle_datagram<C: QuicConnection, CB: InboundCallback + Clone>(
 }
 
 async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, token: [u8; 32]) -> eyre::Result<()> {
-	// Resolve the user's identity + password material via the auth hook, falling
-	// back to the static user map when no hook is set. Never short-circuit on an
-	// unknown UUID — that would give an attacker both a timing oracle (skipped
-	// keying-material export) and an error-message oracle that reveals whether a
-	// UUID exists. Always run the export against either the real password or a
-	// fixed dummy and a constant-time comparison; both failure paths return the
-	// same generic error.
+	// Resolve the user's identity + password material via the auth hook,
+	// falling back to the static user map when no hook is set. Never
+	// short-circuit on an unknown UUID — that would give an attacker both a
+	// timing oracle (skipped keying-material export) and an error-message
+	// oracle that reveals whether a UUID exists. Always run the export against
+	// either the real password or a fixed dummy and a constant-time
+	// comparison; both failure paths return the same generic error.
 	const DUMMY_PASSWORD: &[u8] = b"\x00\x00\x00\x00\x00\x00\x00\x00";
 	let looked_up: Option<(UserId, Arc<[u8]>)> = match &connection.hooks.tuic_auth {
 		Some(auth) => auth.lookup(&uuid).await,
@@ -898,9 +901,10 @@ async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, 
 	}
 	let user = user.expect("user_known implies Some(user)");
 
-	// Connection-management veto now that the identity is known (e.g. a per-user
-	// concurrent-connection limit). A rejected connection is closed and never
-	// publishes its auth state, so `ensure_authed` drops all subsequent streams.
+	// Connection-management veto now that the identity is known (e.g. a
+	// per-user concurrent-connection limit). A rejected connection is closed
+	// and never publishes its auth state, so `ensure_authed` drops all
+	// subsequent streams.
 	if let Some(ch) = &connection.hooks.connection
 		&& let ConnectDecision::Reject(reason) = ch.on_authenticated(&connection.conn_info, &user).await
 	{
@@ -919,9 +923,9 @@ async fn handle_auth<C: QuicConnection>(connection: &InboundCtx<C>, uuid: Uuid, 
 	connection.conn_span.record("user", tracing::field::display(&user));
 
 	// Register this now-authenticated connection so the host can enforce a
-	// per-user limit (`count_for`) and actively kick it (`kick_user`). Done after
-	// the `on_authenticated` veto so the limit check above only counts *other*
-	// live connections for this user.
+	// per-user limit (`count_for`) and actively kick it (`kick_user`). Done
+	// after the `on_authenticated` veto so the limit check above only counts
+	// *other* live connections for this user.
 	if let Some(active) = &connection.active {
 		active.register(connection.conn_info.conn_id, user.clone(), connection.conn_cancel.clone());
 	}
@@ -1144,7 +1148,8 @@ async fn read_address_exact<R: AsyncRead + Unpin>(recv: &mut R) -> eyre::Result<
 			))
 		}
 		0x00 => {
-			// AddressType::Domain — 1-byte length + <length> bytes + 2-byte port
+			// AddressType::Domain — 1-byte length + <length> bytes + 2-byte
+			// port
 			let mut len_byte = [0u8; 1];
 			recv.read_exact(&mut len_byte)
 				.await

@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -22,7 +23,11 @@ import (
 	"github.com/sagernet/sing/contrab/maphash"
 )
 
-const pathProc = "/proc"
+const (
+	pathProc = "/proc"
+
+	processPathsAllUsers = ^uint32(0)
+)
 
 var _ Searcher = (*linuxSearcher)(nil)
 
@@ -34,7 +39,7 @@ type linuxSearcher struct {
 }
 
 type uidProcessPaths struct {
-	entries map[uint32]string
+	entries map[uint32][]string
 }
 
 func NewSearcher(config Config) (Searcher, error) {
@@ -80,11 +85,11 @@ func (s *linuxSearcher) FindProcessInfo(ctx context.Context, network string, sou
 	processInfo := &adapter.ConnectionOwner{
 		UserId: int32(uid),
 	}
-	processPath, err := s.findProcessPath(inode, uid)
+	processPaths, err := s.findProcessPaths(inode, uid)
 	if err != nil {
 		s.logger.DebugContext(ctx, "find process path: ", err)
 	} else {
-		processInfo.ProcessPaths = []string{processPath}
+		processInfo.ProcessPaths = processPaths
 	}
 	if s.packageManager != nil {
 		appID := uid % 100000
@@ -101,6 +106,8 @@ func (s *linuxSearcher) FindProcessInfo(ctx context.Context, network string, sou
 }
 
 func (s *linuxSearcher) resolveSocketByNetlink(network string, source netip.AddrPort, destination netip.AddrPort) (inode, uid uint32, err error) {
+	source = netip.AddrPortFrom(source.Addr().Unmap(), source.Port())
+	destination = netip.AddrPortFrom(destination.Addr().Unmap(), destination.Port())
 	family, protocol, err := socketDiagSettings(network, source)
 	if err != nil {
 		return 0, 0, err
@@ -118,34 +125,39 @@ func (s *linuxSearcher) resolveSocketByNetlink(network string, source netip.Addr
 			return 0, 0, err
 		}
 	}
-	return querySocketDiagOnce(family, protocol, source)
+	return dumpSocketDiag(family, protocol, source, destination)
 }
 
-func (s *linuxSearcher) findProcessPath(targetInode, uid uint32) (string, error) {
-	if cached, ok := s.processPathCache.Get(uid); ok {
-		if processPath, found := cached.entries[targetInode]; found {
-			return processPath, nil
+// The socket keeps the uid it was created with, while /proc reflects the
+// current uid of the process, so a socket created before a privilege drop
+// only appears under a scan of all users.
+func (s *linuxSearcher) findProcessPaths(targetInode, uid uint32) ([]string, error) {
+	for _, scanUID := range []uint32{uid, processPathsAllUsers} {
+		if cached, ok := s.processPathCache.Get(scanUID); ok {
+			if processPaths, found := cached.entries[targetInode]; found {
+				return processPaths, nil
+			}
+		}
+		processPaths, err := buildProcessPaths(scanUID)
+		if err != nil {
+			return nil, err
+		}
+		s.processPathCache.Add(scanUID, &uidProcessPaths{entries: processPaths})
+		inodePaths, found := processPaths[targetInode]
+		if found {
+			return inodePaths, nil
 		}
 	}
-	processPaths, err := buildProcessPathsByUID(uid)
-	if err != nil {
-		return "", err
-	}
-	s.processPathCache.Add(uid, &uidProcessPaths{entries: processPaths})
-	processPath, found := processPaths[targetInode]
-	if !found {
-		return "", E.New("process of uid(", uid, "), inode(", targetInode, ") not found")
-	}
-	return processPath, nil
+	return nil, E.New("process of uid(", uid, "), inode(", targetInode, ") not found")
 }
 
-func buildProcessPathsByUID(uid uint32) (map[uint32]string, error) {
+func buildProcessPaths(uid uint32) (map[uint32][]string, error) {
 	files, err := os.ReadDir(pathProc)
 	if err != nil {
 		return nil, err
 	}
 	buffer := make([]byte, syscall.PathMax)
-	processPaths := make(map[uint32]string)
+	processPaths := make(map[uint32][]string)
 	for _, file := range files {
 		if !file.IsDir() || !isPid(file.Name()) {
 			continue
@@ -157,7 +169,7 @@ func buildProcessPathsByUID(uid uint32) (map[uint32]string, error) {
 			}
 			return nil, err
 		}
-		if info.Sys().(*syscall.Stat_t).Uid != uid {
+		if uid != processPathsAllUsers && info.Sys().(*syscall.Stat_t).Uid != uid {
 			continue
 		}
 		processPath := filepath.Join(pathProc, file.Name())
@@ -182,8 +194,8 @@ func buildProcessPathsByUID(uid uint32) (map[uint32]string, error) {
 			if !ok {
 				continue
 			}
-			if _, loaded := processPaths[inode]; !loaded {
-				processPaths[inode] = exePath
+			if !slices.Contains(processPaths[inode], exePath) {
+				processPaths[inode] = append(processPaths[inode], exePath)
 			}
 		}
 	}

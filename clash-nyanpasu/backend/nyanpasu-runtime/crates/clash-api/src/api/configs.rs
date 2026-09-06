@@ -6,6 +6,46 @@ use reqwest::Method;
 
 use crate::{Client, LogLevel, Result, retry::RequestMetadata};
 
+/// Open response value; mutation and subscription enums remain closed.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(untagged)]
+pub enum ConfigEnum<T> {
+    Known(T),
+    Unknown(String),
+}
+
+impl<'de, T: serde::de::DeserializeOwned> serde::Deserialize<'de> for ConfigEnum<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let value = <String as serde::Deserialize>::deserialize(deserializer)?;
+        let known = serde::de::value::StrDeserializer::<serde::de::value::Error>::new(&value);
+        Ok(match T::deserialize(known) {
+            Ok(value) => Self::Known(value),
+            Err(_) => Self::Unknown(value),
+        })
+    }
+}
+
+impl<T: AsRef<str>> ConfigEnum<T> {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Known(value) => value.as_ref(),
+            Self::Unknown(value) => value,
+        }
+    }
+}
+
+impl AsRef<str> for TunnelMode {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Global => "global",
+            Self::Rule => "rule",
+            Self::Direct => "direct",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum TunnelMode {
@@ -208,54 +248,99 @@ pub struct RuntimeTuicServer {
     pub mux_option: MuxOptions,
 }
 
-/// Runtime view returned by Mihomo's `GET /configs`.
+/// Runtime view returned by `GET /configs`.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
 pub struct RuntimeConfig {
-    pub port: i64,
-    pub socks_port: i64,
-    pub redir_port: i64,
-    pub tproxy_port: i64,
-    pub mixed_port: i64,
-    pub tun: RuntimeTun,
-    pub tuic_server: RuntimeTuicServer,
-    pub ss_config: String,
-    pub vmess_config: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub socket_port: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_controller: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub socks_port: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redir_port: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tproxy_port: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mixed_port: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tun: Option<RuntimeTun>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tuic_server: Option<RuntimeTuicServer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ss_config: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vmess_config: Option<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tcptun_config: Option<String>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub udptun_config: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub authentication: Option<Vec<String>>,
     #[specta(type = Option<Vec<String>>)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub skip_auth_prefixes: Option<Vec<IpNet>>,
     #[specta(type = Option<Vec<String>>)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lan_allowed_ips: Option<Vec<IpNet>>,
     #[specta(type = Option<Vec<String>>)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lan_disallowed_ips: Option<Vec<IpNet>>,
-    pub allow_lan: bool,
-    pub bind_address: String,
-    pub inbound_tfo: bool,
-    pub inbound_mptcp: bool,
-    pub mode: TunnelMode,
-    pub unified_delay: bool,
-    pub log_level: LogLevel,
-    pub ipv6: bool,
-    pub interface_name: String,
-    pub routing_mark: i64,
-    pub geox_url: GeoUrls,
-    pub geo_auto_update: bool,
-    pub geo_update_interval: i64,
-    pub geodata_mode: bool,
-    pub geodata_loader: String,
-    pub geosite_matcher: String,
-    pub tcp_concurrent: bool,
-    pub find_process_mode: FindProcessMode,
-    pub sniffing: bool,
-    pub global_ua: String,
-    pub etag_support: bool,
-    pub keep_alive_idle: i64,
-    pub keep_alive_interval: i64,
-    pub disable_keep_alive: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allow_lan: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bind_address: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inbound_tfo: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inbound_mptcp: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ConfigEnum<TunnelMode>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unified_delay: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_level: Option<ConfigEnum<LogLevel>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipv6: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub interface_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub routing_mark: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geox_url: Option<GeoUrls>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geo_auto_update: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geo_update_interval: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geodata_mode: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geodata_loader: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geosite_matcher: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tcp_concurrent: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub find_process_mode: Option<FindProcessMode>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sniffing: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub global_ua: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub etag_support: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_alive_idle: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keep_alive_interval: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub disable_keep_alive: Option<bool>,
 }
 
 /// Body accepted by `PUT /configs`.

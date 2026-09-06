@@ -83,8 +83,8 @@ TARGET_DEVICES += widora_mangopi-mq-pro
 
 define Device/allwinner_d1-nezha
   $(call Device/Default)
-  DEVICE_VENDOR := Nezha
-  DEVICE_MODEL := D1
+  DEVICE_VENDOR := Allwinner
+  DEVICE_MODEL := D1 Nezha
   DEVICE_DTS := allwinner/sun20i-d1-nezha
   SUPPORTED_DEVICES += nezha
   DEVICE_PACKAGES += kmod-gpio-pcf857x

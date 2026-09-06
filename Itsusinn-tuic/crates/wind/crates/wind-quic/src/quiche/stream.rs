@@ -90,8 +90,8 @@ impl QuicSendStream for QuicheSend {
 	}
 
 	fn reset(&mut self, code: u64) {
-		// Best-effort: ask the worker to reset the stream's send side, then drop
-		// the back-channel so no further data is queued.
+		// Best-effort: ask the worker to reset the stream's send side, then
+		// drop the back-channel so no further data is queued.
 		let _ = self.cmd_tx.send(DriverCommand::StreamShutdown {
 			sid: self.sid,
 			write: true,
@@ -131,11 +131,11 @@ impl QuicheRecv {
 impl AsyncRead for QuicheRecv {
 	fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
 		if self.leftover.is_empty() {
-			// If the channel was full, the driver may be holding overflow in its
-			// `pending_in` (and possibly a queued FIN). Draining it here frees a
-			// slot, so nudge the driver to re-flush — otherwise that data could
-			// stall until some other event happened to wake the worker (e.g. a
-			// pure-upload stream with no reverse traffic).
+			// If the channel was full, the driver may be holding overflow in
+			// its `pending_in` (and possibly a queued FIN). Draining it here
+			// frees a slot, so nudge the driver to re-flush — otherwise that
+			// data could stall until some other event happened to wake the
+			// worker (e.g. a pure-upload stream with no reverse traffic).
 			let was_full = self.rx.capacity() == 0;
 			match self.rx.poll_recv(cx) {
 				Poll::Ready(Some(Ok(b))) => {

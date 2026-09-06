@@ -85,7 +85,8 @@ async fn complete_http01_challenges(order: &mut Order) -> Result<()> {
 		let token = challenge.token.to_string();
 		let key_auth = challenge.key_authorization().as_str().to_string();
 
-		// Register the response before telling Let's Encrypt the challenge is ready.
+		// Register the response before telling Let's Encrypt the challenge is
+		// ready.
 		challenges.write().await.insert(token, key_auth);
 		challenge.set_ready().await?;
 	}

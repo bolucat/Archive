@@ -176,7 +176,8 @@ MATCH,reject
 #[test]
 fn chain_jump_returns_to_caller() {
 	// main: if tcp jump sub; else Always -> fallback
-	// sub:  if dport 443 -> https; (else exhausted -> fallthrough -> back to main)
+	// sub:  if dport 443 -> https; (else exhausted -> fallthrough -> back to
+	// main)
 	let rs = Ruleset {
 		sets: vec![],
 		maps: vec![],

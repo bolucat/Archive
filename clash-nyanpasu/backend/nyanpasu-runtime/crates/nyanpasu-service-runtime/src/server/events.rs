@@ -181,6 +181,7 @@ mod tests {
     #[test]
     fn ws_status_frames_are_pinned() {
         let event = Event::new_core_status_changed(CoreInfos {
+            instance_id: None,
             r#type: None,
             state: CoreState::Stopped(None),
             state_changed_at: 42,

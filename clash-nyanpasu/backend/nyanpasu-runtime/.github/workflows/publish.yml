@@ -51,7 +51,7 @@ jobs:
           rustup default nightly
 
       - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.22.0
+        uses: cargo-bins/cargo-binstall@v1.23.0
       - name: Install cargo-edit
         run: |
           cargo binstall cargo-edit -y

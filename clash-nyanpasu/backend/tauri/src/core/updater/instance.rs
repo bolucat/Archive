@@ -1,13 +1,10 @@
 use super::shared::{self, CoreTypeMeta};
 use crate::{
+    client::NyanpasuClient,
     config::nyanpasu::ClashCore,
-    core::{
-        CoreManager,
-        download::{DownloadSession, DownloadStatus},
-    },
+    core::download::{DownloadSession, DownloadStatus},
 };
 use anyhow::anyhow;
-use runas::Command as RunasCommand;
 use serde::Serialize;
 use specta::Type;
 #[cfg(target_family = "unix")]
@@ -30,11 +27,26 @@ pub enum UpdaterState {
 
 pub(super) struct Updater {
     id: usize,
-    temp_dir: TempDir,
+    temp_dir: Arc<TempDir>,
     core_type: ClashCore,
     artifact: String,
-    inner: parking_lot::RwLock<UpdaterInner>,
+    inner: Arc<parking_lot::RwLock<UpdaterInner>>,
     downloader: Arc<DownloadSession>,
+    nyanpasu: NyanpasuClient,
+}
+
+struct UpdaterInstallProgress(Arc<parking_lot::RwLock<UpdaterInner>>);
+
+impl crate::client::core_lifecycle::ports::BinaryInstallProgress for UpdaterInstallProgress {
+    fn restarting(&self) {
+        self.0.write().state = UpdaterState::Restarting;
+    }
+    fn finished(&self, error: Option<&str>) {
+        self.0.write().state = match error {
+            Some(error) => UpdaterState::Failed(error.to_owned()),
+            None => UpdaterState::Done,
+        };
+    }
 }
 
 struct UpdaterInner {
@@ -54,6 +66,7 @@ pub(super) struct UpdaterBuilder {
     mirror: Option<String>,
     artifact: Option<String>,
     tag: Option<CoreTypeMeta>,
+    nyanpasu: Option<NyanpasuClient>,
 }
 
 impl UpdaterBuilder {
@@ -64,11 +77,17 @@ impl UpdaterBuilder {
             mirror: None,
             artifact: None,
             tag: None,
+            nyanpasu: None,
         }
     }
 
     pub fn set_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
+        self
+    }
+
+    pub fn set_nyanpasu_client(mut self, client: NyanpasuClient) -> Self {
+        self.nyanpasu = Some(client);
         self
     }
 
@@ -102,6 +121,9 @@ impl UpdaterBuilder {
             .ok_or(anyhow::anyhow!("artifact is required"))?;
         let tag = self.tag.ok_or(anyhow::anyhow!("tag is required"))?;
         let mirror = self.mirror.ok_or(anyhow::anyhow!("mirror is required"))?;
+        let nyanpasu = self
+            .nyanpasu
+            .ok_or(anyhow::anyhow!("nyanpasu client is required"))?;
 
         let temp_dir = TempDir::new()?;
         let inner = UpdaterInner {
@@ -119,11 +141,12 @@ impl UpdaterBuilder {
         let downloader = Arc::new(DownloadSession::new(client, download_url, save_path).await?);
         Ok(Updater {
             id: rand::random::<u32>() as usize,
-            temp_dir,
+            temp_dir: Arc::new(temp_dir),
             core_type,
-            inner: parking_lot::RwLock::new(inner),
+            inner: Arc::new(parking_lot::RwLock::new(inner)),
             artifact,
             downloader,
+            nyanpasu,
         })
     }
 }
@@ -198,26 +221,7 @@ impl Updater {
 
     async fn replace_core(&self) -> anyhow::Result<()> {
         self.dispatch_state(UpdaterState::Replacing);
-        let core_manager = CoreManager::global();
-        // TODO(actor-migration): temporary bridge to the legacy global core manager.
-        // Reason: the updater has not yet been injected with the core lifecycle port.
-        // Remove when: the updater receives the lifecycle port through the composition root.
-        let lifecycle = core_manager.begin_lifecycle().await;
-        let current_core = crate::config::Config::verge()
-            .latest()
-            .clash_core
-            .unwrap_or_default();
-        tracing::debug!("current core: {}", current_core);
 
-        let runtime_paths = if current_core == self.core_type {
-            let resolver = crate::utils::path::PathResolver::from_env()?;
-            let runtime_paths = crate::client::RuntimePaths::from_resolver(&resolver)?;
-            tracing::debug!("stopping core to replace");
-            lifecycle.stop_core().await?;
-            Some(runtime_paths)
-        } else {
-            None
-        };
         #[cfg(target_os = "windows")]
         let target_core = format!("{}.exe", self.core_type);
         #[cfg(not(target_os = "windows"))]
@@ -225,59 +229,21 @@ impl Updater {
         let core_dir = tauri::utils::platform::current_exe()?;
         let core_dir = core_dir.parent().ok_or(anyhow!("failed to get core dir"))?;
         let target_core = core_dir.join(target_core);
-        tracing::debug!("copying core to {:?}", target_core);
         let tmp_core_path = self.temp_dir.path().join(format!(
             "{}{}",
             self.core_type,
             std::env::consts::EXE_SUFFIX
         ));
-        match tokio::fs::copy(tmp_core_path.clone(), target_core.clone()).await {
-            Ok(size) => {
-                tracing::debug!("copied core to {:?} ({} bytes)", target_core, size);
-            }
-            Err(err) => {
-                tracing::warn!(
-                    "failed to copy core: {}, trying to use elevated permission to copy and override core",
-                    err
-                );
-                let mut target_core_str = target_core.to_str().unwrap().to_string();
-                if target_core_str.starts_with("\\\\?\\") {
-                    target_core_str = target_core_str[4..].to_string();
-                }
-                tracing::debug!("tmp core path: {:?}", tmp_core_path);
-                tracing::debug!("target core path: {:?}", target_core_str);
-                // 防止 UAC 弹窗堵塞主线程
-                let status_code = tokio::task::spawn_blocking(move || {
-                    #[cfg(target_os = "windows")]
-                    {
-                        RunasCommand::new("cmd")
-                            .args(&[
-                                "/C",
-                                "copy",
-                                "/Y",
-                                tmp_core_path.to_str().unwrap(),
-                                &target_core_str,
-                            ])
-                            .status()
-                    }
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        RunasCommand::new("cp")
-                            .args(&["-f", tmp_core_path.to_str().unwrap(), &target_core_str])
-                            .status()
-                    }
-                })
-                .await??;
-                if !status_code.success() {
-                    anyhow::bail!("failed to copy core: {}", status_code);
-                }
-            }
-        };
 
-        if let Some(runtime_paths) = runtime_paths.as_ref() {
-            self.dispatch_state(UpdaterState::Restarting);
-            lifecycle.run_core_from(runtime_paths.product()).await?;
-        }
+        self.nyanpasu
+            .replace_core_binary(crate::client::core_lifecycle::ports::PreparedCoreBinary {
+                target: self.core_type,
+                source: tmp_core_path,
+                destination: target_core,
+                staging: self.temp_dir.clone(),
+                progress: Arc::new(UpdaterInstallProgress(self.inner.clone())),
+            })
+            .await?;
 
         Ok(())
     }
@@ -305,7 +271,11 @@ impl Updater {
         }
         if let Err(e) = self.replace_core().await {
             tracing::error!("failed to replace core: {}", e);
-            self.dispatch_state(UpdaterState::Failed(e.to_string()));
+            // The terminal notification can race the requester's timeout.
+            let mut inner = self.inner.write();
+            if !matches!(inner.state, UpdaterState::Done) {
+                inner.state = UpdaterState::Failed(e.to_string());
+            }
             return;
         }
         self.dispatch_state(UpdaterState::Done);

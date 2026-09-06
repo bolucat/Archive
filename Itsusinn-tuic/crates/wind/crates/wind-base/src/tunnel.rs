@@ -357,8 +357,8 @@ mod tests {
 				TestHandler::UdpEcho => {
 					let UdpStream { tx, mut rx } = udp_stream;
 					while let Some(pkt) = rx.recv().await {
-						// Echo the payload back with source=target so the reply bridge
-						// sends it to the original client.
+						// Echo the payload back with source=target so the reply
+						// bridge sends it to the original client.
 						let reply = UdpPacket {
 							payload: pkt.payload,
 							target: pkt.target,

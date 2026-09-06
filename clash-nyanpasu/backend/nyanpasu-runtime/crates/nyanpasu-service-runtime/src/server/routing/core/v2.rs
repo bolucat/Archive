@@ -40,3 +40,14 @@ pub async fn status(State(state): State<AppState>) -> (StatusCode, Json<R<'stati
     let infos = state.core_manager.status().await;
     (StatusCode::OK, Json(RBuilder::success(infos)))
 }
+
+/// Credentials are fetched explicitly, never broadcast with status snapshots.
+pub async fn api_connection(
+    State(state): State<AppState>,
+) -> (
+    StatusCode,
+    Json<R<'static, Option<nyanpasu_ipc::api::core::v2::CoreApiConnection>>>,
+) {
+    let connection = state.core_manager.api_connection().await;
+    (StatusCode::OK, Json(RBuilder::success(connection)))
+}

@@ -10,9 +10,15 @@
 //! Desired state arrives by facade orchestration, never by config-watch
 //! subscription — two owners racing one change was the audited 5d/5e failure
 //! shape.
+//!
+//! The facade's host-transition lock coordinates only this app process. A
+//! second app instance or CLI can still race before the daemon is stopped;
+//! stopping it inside this mailbox turn is the point after which its control
+//! plane cannot admit another reconcile.
 
 use std::sync::Arc;
 
+use futures::future::BoxFuture;
 use ractor::{Actor, ActorProcessingErr, ActorRef, RpcReplyPort};
 use tokio::sync::watch;
 
@@ -22,7 +28,7 @@ use nyanpasu_ipc::{
     types::{ServiceStatus, StatusInfo},
 };
 
-use super::endpoint::{BoxFuture, EndpointHandle};
+use super::endpoint::EndpointHandle;
 use crate::core::service::compat::ServiceCompat;
 
 /// Elevated daemon mechanics behind one narrow boundary. `probe` reports
@@ -31,18 +37,20 @@ use crate::core::service::compat::ServiceCompat;
 /// every call here (including `probe`) with its own timeout and turns an
 /// elapsed bound into the same `Err` shape, so a hung daemon surfaces as
 /// `ServicePhase::Unknown`, not as evidence of anything.
+#[async_trait::async_trait]
 pub trait ServiceHostAdapter: Send + Sync {
-    fn probe(&self) -> BoxFuture<'_, Result<StatusInfo<'static>, String>>;
-    fn install(&self) -> BoxFuture<'_, Result<(), String>>;
-    fn uninstall(&self) -> BoxFuture<'_, Result<(), String>>;
-    fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>>;
-    fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>>;
-    fn update(&self) -> BoxFuture<'_, Result<(), String>>;
+    async fn probe(&self) -> Result<StatusInfo<'static>, String>;
+    async fn install(&self) -> Result<(), String>;
+    async fn uninstall(&self) -> Result<(), String>;
+    async fn start_daemon(&self) -> Result<(), String>;
+    async fn stop_daemon(&self) -> Result<(), String>;
+    async fn update(&self) -> Result<(), String>;
     /// The v2 control endpoint for a daemon that passed the version gate.
     fn endpoint(&self) -> EndpointHandle;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
 pub enum ServicePhase {
     Probing,
     NotInstalled,
@@ -66,8 +74,12 @@ pub enum ServicePhase {
 
 /// The watch projection (UI settings page + facade). Daemon state, never a
 /// second copy of core state.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, specta::Type)]
 pub struct ServiceHostStatus {
+    pub name: std::borrow::Cow<'static, str>,
+    pub version: std::borrow::Cow<'static, str>,
+    pub status: ServiceStatus,
+    pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
     pub phase: ServicePhase,
     pub compat: ServiceCompat,
     pub restart_attempts: u8,
@@ -96,6 +108,16 @@ pub enum ServiceActorMessage {
     },
     StopDaemon {
         reply: RpcReplyPort<Result<(), CoreError>>,
+    },
+    /// Adopt-only counterpart to `EnsureReady`: one probe, and the endpoint
+    /// back only if that same probe says `Ready`. It never installs, starts,
+    /// or updates, so a caller that must not raise a UAC prompt -- boot
+    /// restoring a persisted host -- can ask for the daemon without ever
+    /// converging one. Deciding from a cached phase and then calling
+    /// `EnsureReady` is not the same thing: the daemon can stop in between,
+    /// and the convergence would run.
+    AdoptIfReady {
+        reply: RpcReplyPort<Result<EndpointHandle, CoreError>>,
     },
     /// Explicit probe. It reports and never escapes: `Exhausted` is cleared
     /// only by an explicit `EnsureReady`, which is the same rule as the
@@ -141,7 +163,30 @@ pub struct ServiceActorState {
 
 impl ServiceActorState {
     fn publish(&self, phase: ServicePhase, compat: ServiceCompat) {
+        let current = self.status_tx.borrow().clone();
         self.status_tx.send_replace(ServiceHostStatus {
+            name: current.name.clone(),
+            version: current.version.clone(),
+            status: current.status,
+            server: current.server.clone(),
+            phase,
+            compat,
+            restart_attempts: self.restart_attempts,
+        });
+    }
+
+    fn publish_probe(
+        &self,
+        phase: ServicePhase,
+        compat: ServiceCompat,
+        info: Option<&StatusInfo<'static>>,
+    ) {
+        let current = self.status_tx.borrow().clone();
+        self.status_tx.send_replace(ServiceHostStatus {
+            name: info.map_or_else(|| current.name.clone(), |info| info.name.clone()),
+            version: info.map_or_else(|| current.version.clone(), |info| info.version.clone()),
+            status: info.map_or(current.status, |info| info.status),
+            server: info.map_or_else(|| current.server.clone(), |info| info.server.clone()),
             phase,
             compat,
             restart_attempts: self.restart_attempts,
@@ -210,7 +255,7 @@ impl ServiceActorState {
         } else {
             phase
         };
-        self.publish(published, compat.clone());
+        self.publish_probe(published, compat.clone(), result.as_ref().ok());
         (result, compat, phase)
     }
 
@@ -308,6 +353,21 @@ impl Actor for ServiceActor {
             ServiceActorMessage::EnsureReady { reply } => {
                 let _ = reply.send(state.ensure_ready().await);
             }
+            ServiceActorMessage::AdoptIfReady { reply } => {
+                let (_, compat, phase) = state.probe_and_publish().await;
+                let result = if phase == ServicePhase::Ready {
+                    Ok(state.adapter.endpoint())
+                } else {
+                    Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        format!(
+                            "the daemon is {phase:?} ({compat:?}); adopting it would have to install or start it"
+                        ),
+                        true,
+                    ))
+                };
+                let _ = reply.send(result);
+            }
             ServiceActorMessage::Install { reply } => {
                 state.publish(ServicePhase::Installing, ServiceCompat::Unknown);
                 let result = state
@@ -391,11 +451,23 @@ impl Actor for ServiceActor {
                         });
                     }
                     state.publish(ServicePhase::Uninstalling, ServiceCompat::Unknown);
-                    if info.status == ServiceStatus::Running {
-                        state
-                            .bounded(state.adapter.stop_daemon())
-                            .await
-                            .map_err(|error| ServiceActorState::command_error("stop", error))?;
+                    state
+                        .bounded(state.adapter.stop_daemon())
+                        .await
+                        .map_err(|error| ServiceActorState::command_error("stop", error))?;
+                    let stopped = state.bounded(state.adapter.probe()).await;
+                    if !matches!(
+                        stopped,
+                        Ok(StatusInfo {
+                            status: ServiceStatus::Stopped | ServiceStatus::NotInstalled,
+                            ..
+                        })
+                    ) {
+                        return Err(CoreError::new(
+                            CoreErrorKind::AlreadyRunning,
+                            "the daemon did not prove it stopped; uninstall was refused",
+                            false,
+                        ));
                     }
                     state
                         .bounded(state.adapter.uninstall())
@@ -486,14 +558,11 @@ fn command_and_probe_budget(command_timeout: std::time::Duration) -> std::time::
     command_timeout * 2 + CALL_BUDGET_SLACK
 }
 
-/// Caller bound for [`ServiceClient::uninstall`]. Four legs, worst case: the
-/// guard's own preflight probe, the conditional `stop_daemon` (only when
-/// that probe found the daemon `Running`), the `uninstall` call itself, and
-/// the handler's final `probe_and_publish`. All four sit on the same path
-/// when uninstalling a daemon that is running, which is the ordinary case
-/// this call exists for.
+/// Caller bound for [`ServiceClient::uninstall`]. Five legs: the guard probe,
+/// `stop_daemon`, the structural stopped-state proof, `uninstall`, and the
+/// handler's final `probe_and_publish`.
 fn uninstall_budget(command_timeout: std::time::Duration) -> std::time::Duration {
-    command_timeout * 4 + CALL_BUDGET_SLACK
+    command_timeout * 5 + CALL_BUDGET_SLACK
 }
 
 /// Caller bound for [`ServiceClient::ensure_ready`]. Six legs, worst case:
@@ -552,6 +621,10 @@ impl ServiceClient {
         command_timeout: std::time::Duration,
     ) -> Result<Self, ractor::SpawnErr> {
         let (status_tx, status_rx) = watch::channel(ServiceHostStatus {
+            name: std::borrow::Cow::Borrowed("nyanpasu-service"),
+            version: std::borrow::Cow::Borrowed(""),
+            status: ServiceStatus::NotInstalled,
+            server: None,
             phase: ServicePhase::Probing,
             compat: ServiceCompat::Unknown,
             restart_attempts: 0,
@@ -589,6 +662,17 @@ impl ServiceClient {
         self.call(
             |reply| ServiceActorMessage::EnsureReady { reply },
             self.ensure_ready_budget,
+        )
+        .await?
+    }
+
+    /// The endpoint of a daemon that is already `Ready`, or an error. Unlike
+    /// [`Self::ensure_ready`] this never converges, so its worst case is a
+    /// single probe leg and it borrows `probe`'s budget.
+    pub async fn adopt_if_ready(&self) -> Result<EndpointHandle, CoreError> {
+        self.call(
+            |reply| ServiceActorMessage::AdoptIfReady { reply },
+            self.probe_budget,
         )
         .await?
     }
@@ -683,7 +767,9 @@ mod tests {
     };
 
     use super::*;
-    use crate::core::actor_v2::endpoint::{ControlEndpoint, CoreStatusSnapshot, ExecutionHost};
+    use crate::core::actor_v2::endpoint::{
+        ControlEndpoint, CoreStatusSnapshot, CoreSubmission, ExecutionHost,
+    };
     use nyanpasu_ipc::api::status::{CoreInfos, CoreState, StatusResBody};
     use std::borrow::Cow;
 
@@ -709,6 +795,8 @@ mod tests {
         /// F6: `install` never resolves, so only the actor's own bound can
         /// end it.
         hang_install: AtomicBool,
+        stop_succeeds: AtomicBool,
+        calls: Mutex<Vec<&'static str>>,
     }
 
     impl FakeDaemon {
@@ -725,6 +813,8 @@ mod tests {
                 fail_start: AtomicBool::new(false),
                 probe_fail: AtomicBool::new(false),
                 hang_install: AtomicBool::new(false),
+                stop_succeeds: AtomicBool::new(true),
+                calls: Mutex::new(Vec::new()),
             })
         }
 
@@ -734,124 +824,121 @@ mod tests {
     }
 
     struct NullEndpoint;
+    #[async_trait::async_trait]
     impl ControlEndpoint for NullEndpoint {
         fn host(&self) -> ExecutionHost {
             ExecutionHost::Service
         }
-        fn submit<'a>(
-            &'a self,
-            _envelope: nyanpasu_core_manager::CoreCommandEnvelope,
-        ) -> BoxFuture<'a, Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError>> {
+        async fn submit(
+            &self,
+            _submission: CoreSubmission,
+        ) -> Result<nyanpasu_ipc::api::core::v2::OperationInfo, CoreError> {
             unimplemented!("routing is the CoreActor business")
         }
-        fn wait_operation<'a>(
-            &'a self,
+        async fn wait_operation(
+            &self,
             _id: nyanpasu_core_manager::OperationId,
             _timeout: std::time::Duration,
-        ) -> BoxFuture<'a, Option<nyanpasu_ipc::api::core::v2::OperationInfo>> {
+        ) -> Option<nyanpasu_ipc::api::core::v2::OperationInfo> {
             unimplemented!()
         }
-        fn status<'a>(&'a self) -> BoxFuture<'a, Result<CoreStatusSnapshot, CoreError>> {
+        async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
             unimplemented!()
         }
     }
 
+    #[async_trait::async_trait]
     impl ServiceHostAdapter for FakeDaemon {
-        fn probe(&self) -> BoxFuture<'_, Result<StatusInfo<'static>, String>> {
-            Box::pin(async move {
-                if self.probe_fail.load(Ordering::SeqCst) {
-                    return Err("probe unreachable".to_owned());
-                }
-                let (installed, running, version) = self.state.lock().unwrap().clone();
-                let status = match (installed, running) {
-                    (false, _) => ServiceStatus::NotInstalled,
-                    (true, false) => ServiceStatus::Stopped,
-                    (true, true) => ServiceStatus::Running,
-                };
-                let detail = self.core_detail.lock().unwrap().clone();
-                let blind = self.probe_blind.load(Ordering::SeqCst);
-                let server = (installed && running && !blind).then(|| StatusResBody {
-                    version: Cow::Owned(version.clone()),
-                    core_infos: CoreInfos {
-                        r#type: None,
-                        // The coarse projection a real daemon publishes: every
-                        // transitional detail collapses into one of these two
-                        // shapes, which is exactly why it cannot be a guard.
-                        state: match detail {
-                            Some(CoreStateDetail::Running { .. })
-                            | Some(CoreStateDetail::Switching { .. })
-                            | Some(CoreStateDetail::Stopping { .. }) => CoreState::Running,
-                            _ => CoreState::Stopped(None),
-                        },
-                        state_changed_at: 0,
-                        config_path: None,
-                        controller: None,
-                        health: None,
-                        revision: None,
-                        detail,
+        async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+            self.calls.lock().unwrap().push("probe");
+            if self.probe_fail.load(Ordering::SeqCst) {
+                return Err("probe unreachable".to_owned());
+            }
+            let (installed, running, version) = self.state.lock().unwrap().clone();
+            let status = match (installed, running) {
+                (false, _) => ServiceStatus::NotInstalled,
+                (true, false) => ServiceStatus::Stopped,
+                (true, true) => ServiceStatus::Running,
+            };
+            let detail = self.core_detail.lock().unwrap().clone();
+            let blind = self.probe_blind.load(Ordering::SeqCst);
+            let server = (installed && running && !blind).then(|| StatusResBody {
+                version: Cow::Owned(version.clone()),
+                core_infos: CoreInfos {
+                    instance_id: None,
+                    r#type: None,
+                    // The coarse projection a real daemon publishes: every
+                    // transitional detail collapses into one of these two
+                    // shapes, which is exactly why it cannot be a guard.
+                    state: match detail {
+                        Some(CoreStateDetail::Running { .. })
+                        | Some(CoreStateDetail::Switching { .. })
+                        | Some(CoreStateDetail::Stopping { .. }) => CoreState::Running,
+                        _ => CoreState::Stopped(None),
                     },
-                    runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
-                        service_data_dir: Cow::Owned(std::path::PathBuf::new()),
-                        service_config_dir: Cow::Owned(std::path::PathBuf::new()),
-                        nyanpasu_config_dir: Cow::Owned(std::path::PathBuf::new()),
-                        nyanpasu_data_dir: Cow::Owned(std::path::PathBuf::new()),
-                    },
-                    logs: None,
-                });
-                Ok(StatusInfo {
-                    name: Cow::Borrowed("nyanpasu-service"),
-                    version: Cow::Borrowed("test"),
-                    status,
-                    server,
-                })
+                    state_changed_at: 0,
+                    config_path: None,
+                    controller: None,
+                    health: None,
+                    revision: None,
+                    detail,
+                },
+                runtime_infos: nyanpasu_ipc::api::status::RuntimeInfos {
+                    service_data_dir: Cow::Owned(std::path::PathBuf::new()),
+                    service_config_dir: Cow::Owned(std::path::PathBuf::new()),
+                    nyanpasu_config_dir: Cow::Owned(std::path::PathBuf::new()),
+                    nyanpasu_data_dir: Cow::Owned(std::path::PathBuf::new()),
+                },
+                logs: None,
+            });
+            Ok(StatusInfo {
+                name: Cow::Borrowed("nyanpasu-service"),
+                version: Cow::Borrowed("test"),
+                status,
+                server,
             })
         }
-        fn install(&self) -> BoxFuture<'_, Result<(), String>> {
+        async fn install(&self) -> Result<(), String> {
             if self.hang_install.load(Ordering::SeqCst) {
                 // Never resolves: only the actor's own `command_timeout`
                 // bound (F6) can end this call.
-                return Box::pin(std::future::pending::<Result<(), String>>());
+                return std::future::pending::<Result<(), String>>().await;
             }
-            Box::pin(async move {
-                self.installs.fetch_add(1, Ordering::SeqCst);
-                if self.fail_install.load(Ordering::SeqCst) {
-                    return Err("install refused".to_owned());
-                }
-                let mut state = self.state.lock().unwrap();
-                state.0 = true;
-                state.1 = true; // install auto-starts, like most platforms
-                Ok(())
-            })
+
+            self.installs.fetch_add(1, Ordering::SeqCst);
+            if self.fail_install.load(Ordering::SeqCst) {
+                return Err("install refused".to_owned());
+            }
+            let mut state = self.state.lock().unwrap();
+            state.0 = true;
+            state.1 = true; // install auto-starts, like most platforms
+            Ok(())
         }
-        fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async move {
-                self.uninstalls.fetch_add(1, Ordering::SeqCst);
-                *self.state.lock().unwrap() = (false, false, String::new());
-                Ok(())
-            })
+        async fn uninstall(&self) -> Result<(), String> {
+            self.calls.lock().unwrap().push("uninstall");
+            self.uninstalls.fetch_add(1, Ordering::SeqCst);
+            *self.state.lock().unwrap() = (false, false, String::new());
+            Ok(())
         }
-        fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async move {
-                self.starts.fetch_add(1, Ordering::SeqCst);
-                if self.fail_start.load(Ordering::SeqCst) {
-                    return Err("start refused".to_owned());
-                }
-                self.state.lock().unwrap().1 = true;
-                Ok(())
-            })
+        async fn start_daemon(&self) -> Result<(), String> {
+            self.starts.fetch_add(1, Ordering::SeqCst);
+            if self.fail_start.load(Ordering::SeqCst) {
+                return Err("start refused".to_owned());
+            }
+            self.state.lock().unwrap().1 = true;
+            Ok(())
         }
-        fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async move {
+        async fn stop_daemon(&self) -> Result<(), String> {
+            self.calls.lock().unwrap().push("stop_daemon");
+            if self.stop_succeeds.load(Ordering::SeqCst) {
                 self.state.lock().unwrap().1 = false;
-                Ok(())
-            })
+            }
+            Ok(())
         }
-        fn update(&self) -> BoxFuture<'_, Result<(), String>> {
-            Box::pin(async move {
-                self.updates.fetch_add(1, Ordering::SeqCst);
-                self.state.lock().unwrap().2 = "2.0.0".to_owned();
-                Ok(())
-            })
+        async fn update(&self) -> Result<(), String> {
+            self.updates.fetch_add(1, Ordering::SeqCst);
+            self.state.lock().unwrap().2 = "2.0.0".to_owned();
+            Ok(())
         }
         fn endpoint(&self) -> EndpointHandle {
             Arc::new(NullEndpoint)
@@ -888,24 +975,25 @@ mod tests {
         // The startup auto-update is stubbed into a no-op that leaves the old
         // version in place.
         struct StubbornDaemon(Arc<FakeDaemon>);
+        #[async_trait::async_trait]
         impl ServiceHostAdapter for StubbornDaemon {
-            fn probe(&self) -> BoxFuture<'_, Result<StatusInfo<'static>, String>> {
-                self.0.probe()
+            async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+                self.0.probe().await
             }
-            fn install(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.install()
+            async fn install(&self) -> Result<(), String> {
+                self.0.install().await
             }
-            fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.uninstall()
+            async fn uninstall(&self) -> Result<(), String> {
+                self.0.uninstall().await
             }
-            fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.start_daemon()
+            async fn start_daemon(&self) -> Result<(), String> {
+                self.0.start_daemon().await
             }
-            fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.stop_daemon()
+            async fn stop_daemon(&self) -> Result<(), String> {
+                self.0.stop_daemon().await
             }
-            fn update(&self) -> BoxFuture<'_, Result<(), String>> {
-                Box::pin(async { Ok(()) }) // succeeds without changing anything
+            async fn update(&self) -> Result<(), String> {
+                Ok(()) // succeeds without changing anything
             }
             fn endpoint(&self) -> EndpointHandle {
                 self.0.endpoint()
@@ -938,6 +1026,33 @@ mod tests {
         client.uninstall().await.unwrap();
         assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 1);
         assert_eq!(client.status().phase, ServicePhase::NotInstalled);
+    }
+
+    #[tokio::test]
+    async fn uninstall_stops_the_daemon_before_removing_it() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        daemon.calls.lock().unwrap().clear();
+
+        client.uninstall().await.unwrap();
+
+        let calls = daemon.calls.lock().unwrap().clone();
+        assert_eq!(&calls[..4], &["probe", "stop_daemon", "probe", "uninstall"]);
+    }
+
+    #[tokio::test]
+    async fn uninstall_refuses_when_the_daemon_will_not_stop() {
+        let daemon = FakeDaemon::new(true, true, "2.0.0");
+        daemon.set_detail(Some(CoreStateDetail::Stopped { reason: None }));
+        daemon.stop_succeeds.store(false, Ordering::SeqCst);
+        let client = ServiceClient::spawn(daemon.clone(), 2).await.unwrap();
+        daemon.calls.lock().unwrap().clear();
+
+        let error = client.uninstall().await.unwrap_err();
+
+        assert_eq!(error.kind, Some(CoreErrorKind::AlreadyRunning));
+        assert_eq!(daemon.uninstalls.load(Ordering::SeqCst), 0);
     }
 
     #[tokio::test]
@@ -1237,24 +1352,25 @@ mod tests {
         // Stub the startup auto-update so the daemon stays `Incompatible`
         // instead of being upgraded by `pre_start`.
         struct StubbornDaemon(Arc<FakeDaemon>);
+        #[async_trait::async_trait]
         impl ServiceHostAdapter for StubbornDaemon {
-            fn probe(&self) -> BoxFuture<'_, Result<StatusInfo<'static>, String>> {
-                self.0.probe()
+            async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+                self.0.probe().await
             }
-            fn install(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.install()
+            async fn install(&self) -> Result<(), String> {
+                self.0.install().await
             }
-            fn uninstall(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.uninstall()
+            async fn uninstall(&self) -> Result<(), String> {
+                self.0.uninstall().await
             }
-            fn start_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.start_daemon()
+            async fn start_daemon(&self) -> Result<(), String> {
+                self.0.start_daemon().await
             }
-            fn stop_daemon(&self) -> BoxFuture<'_, Result<(), String>> {
-                self.0.stop_daemon()
+            async fn stop_daemon(&self) -> Result<(), String> {
+                self.0.stop_daemon().await
             }
-            fn update(&self) -> BoxFuture<'_, Result<(), String>> {
-                Box::pin(async { Ok(()) }) // succeeds without changing anything
+            async fn update(&self) -> Result<(), String> {
+                Ok(()) // succeeds without changing anything
             }
             fn endpoint(&self) -> EndpointHandle {
                 self.0.endpoint()
@@ -1279,7 +1395,7 @@ mod tests {
     /// message; `EnsureReady`'s own worst case is six sequential bounded legs
     /// (`converge`'s three probes plus its conditional install and start,
     /// plus `ensure_ready`'s recovery probe on failure -- see
-    /// `ensure_ready_budget`'s doc), and `Uninstall`'s is four. A timing test
+    /// `ensure_ready_budget`'s doc), and `Uninstall`'s is five. A timing test
     /// cannot discriminate this at safe-for-CI durations: shrinking
     /// `command_timeout` shrinks every leg together, so the fixed 30s slack
     /// swamps the gap at any tiny bound and the pre-fix code would pass a
@@ -1295,7 +1411,7 @@ mod tests {
         ] {
             let one_leg = command_timeout;
             let two_legs = command_timeout * 2;
-            let four_legs = command_timeout * 4;
+            let five_legs = command_timeout * 5;
             let six_legs = command_timeout * 6;
 
             assert!(
@@ -1307,8 +1423,8 @@ mod tests {
                 "command_and_probe_budget must outlast {two_legs:?} at command_timeout={command_timeout:?}"
             );
             assert!(
-                uninstall_budget(command_timeout) > four_legs,
-                "uninstall_budget must outlast {four_legs:?} at command_timeout={command_timeout:?}"
+                uninstall_budget(command_timeout) > five_legs,
+                "uninstall_budget must outlast {five_legs:?} at command_timeout={command_timeout:?}"
             );
             assert!(
                 ensure_ready_budget(command_timeout) > six_legs,
@@ -1324,7 +1440,7 @@ mod tests {
         // uninstall side effects still in flight.
         let old_fixed_budget = DEFAULT_SERVICE_COMMAND_TIMEOUT + std::time::Duration::from_secs(30);
         let ensure_ready_worst_case = DEFAULT_SERVICE_COMMAND_TIMEOUT * 6;
-        let uninstall_worst_case = DEFAULT_SERVICE_COMMAND_TIMEOUT * 4;
+        let uninstall_worst_case = DEFAULT_SERVICE_COMMAND_TIMEOUT * 5;
         assert!(ensure_ready_worst_case > old_fixed_budget);
         assert!(uninstall_worst_case > old_fixed_budget);
         assert!(ensure_ready_budget(DEFAULT_SERVICE_COMMAND_TIMEOUT) > ensure_ready_worst_case);

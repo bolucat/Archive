@@ -8,17 +8,14 @@ mod quarantine;
 mod reconcile;
 mod switching;
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicU64, Ordering},
-};
+use std::sync::Arc;
 
 use enumset::EnumSet;
 use serde_yaml_ng::Mapping;
 use tokio::sync::{broadcast, watch};
 
 use crate::{
-    Feature, RuntimeFeature,
+    Epoch, Feature, RuntimeFeature,
     capability::{ResolvedFeatures, VersionCache},
     config::{self, ConfigSnapshot, mihomo},
     dns::{DnsController, DnsOverrideRecord},
@@ -35,7 +32,7 @@ use crate::{
     state::{ConfigRevision, CoreState, CoreStatus, InstanceStatus, StopReason},
 };
 
-use publish::{instance_core_state, spec_summary};
+use publish::instance_core_state;
 use quarantine::{reject_quarantine, sweep_orphans};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +116,6 @@ struct Inner {
     /// Outlives every epoch, so callers can subscribe before the first start and
     /// keep receiving across restarts and core switches.
     log_tx: broadcast::Sender<Arc<LogFrame>>,
-    epoch: AtomicU64,
     version_cache: VersionCache,
     /// `Some` while the JSONL sink is running. `None` means the caller turned it
     /// off, and there is deliberately no path to report — nothing will ever
@@ -134,8 +130,8 @@ struct Inner {
     _runtime_lock: RuntimeDirectoryLock,
 }
 
-#[derive(Default)]
 struct Ctrl {
+    epochs: EpochAllocator,
     current: Option<Active>,
     last_spec: Option<InstanceSpec>,
     quarantine: Vec<QuarantinedEpoch>,
@@ -144,50 +140,95 @@ struct Ctrl {
     dns_record: Option<DnsOverrideRecord>,
 }
 
+impl Ctrl {
+    fn new(max_epoch: u64) -> Self {
+        Self {
+            epochs: EpochAllocator::seeded(max_epoch),
+            current: None,
+            last_spec: None,
+            quarantine: Vec::new(),
+            dns_record: None,
+        }
+    }
+}
+
+/// Hands out epoch numbers: monotone for the manager's lifetime and seeded
+/// past every artifact found on disk, so a number is never reused within one
+/// runtime directory. It lives under the control lock because every allocation
+/// happens inside a control transaction, which is also why it is not atomic.
+/// Never returns 0, which is reserved for "no epoch"; exhausting 2^64 epochs in
+/// one directory is an invariant violation, not a wrap.
+struct EpochAllocator {
+    last: u64,
+}
+
+impl EpochAllocator {
+    fn seeded(max_seen: u64) -> Self {
+        Self { last: max_seen }
+    }
+
+    fn next(&mut self) -> Epoch {
+        self.last = self.last.checked_add(1).expect("epoch space exhausted");
+        Epoch::new(self.last).expect("a checked increment cannot produce zero")
+    }
+}
+
 #[derive(Debug, Clone)]
 struct QuarantinedEpoch {
-    epoch: u64,
+    epoch: Epoch,
     reason: String,
     death_proven: bool,
+}
+
+/// Everything the manager knows about one epoch besides the live process.
+/// Built once by a prepare step, carried whole into [`Active`], and reused
+/// verbatim to relaunch the same epoch on rollback. Deliberately not `Clone`:
+/// every consumer moves or borrows it; a clone would be two sources of truth
+/// for one epoch.
+struct EpochPlan {
+    source_spec: InstanceSpec,
+    effective_spec: InstanceSpec,
+    controller: ResolvedController,
+    revision: ConfigRevision,
+    capabilities: EnumSet<Feature>,
+    runtime_features: EnumSet<RuntimeFeature>,
+    source_document: Mapping,
+    effective_document: Mapping,
+}
+
+impl EpochPlan {
+    fn classification_view(&self) -> mihomo::ConfigClassificationView<'_> {
+        mihomo::ConfigClassificationView {
+            source: &self.source_document,
+            effective: &self.effective_document,
+            spec: &self.source_spec,
+        }
+    }
 }
 
 struct Active {
     instance: Box<dyn RuntimeInstance>,
     forwarder: tokio::task::JoinHandle<()>,
-    source_spec: InstanceSpec,
-    revision: ConfigRevision,
-    capabilities: EnumSet<Feature>,
-    runtime_features: EnumSet<RuntimeFeature>,
-    source_document: Mapping,
-    effective_document: Mapping,
+    plan: EpochPlan,
 }
 
-struct PreparedLaunch {
-    source_spec: InstanceSpec,
-    effective_spec: InstanceSpec,
-    controller: ResolvedController,
-    revision: ConfigRevision,
-    capabilities: EnumSet<Feature>,
-    runtime_features: EnumSet<RuntimeFeature>,
-    source_document: Mapping,
-    effective_document: Mapping,
+/// A stop that could not be proven, carrying the epoch it belongs to. What to
+/// do about it — discard a half-built candidate first, wrap the error, publish,
+/// latch quarantine — differs per transaction and stays with the caller, in the
+/// order that caller already has.
+struct RetireFailure {
+    epoch: Epoch,
+    error: Error,
 }
 
 struct PreparedGraceful {
-    launch: PreparedLaunch,
+    plan: EpochPlan,
     full_staged: StagedRuntimeConfig,
     restoration: Option<(Box<clash_api::ConfigPatch>, mihomo::RuntimeProjection)>,
 }
 
 struct PreparedApply {
-    source_spec: InstanceSpec,
-    effective_spec: InstanceSpec,
-    controller: ResolvedController,
-    revision: ConfigRevision,
-    capabilities: EnumSet<Feature>,
-    runtime_features: EnumSet<RuntimeFeature>,
-    source_document: Mapping,
-    effective_document: Mapping,
+    plan: EpochPlan,
     staged: StagedRuntimeConfig,
 }
 
@@ -261,7 +302,7 @@ impl CoreManager {
         // endpoint is a configuration error whether or not this core ends up
         // selecting local IPC, and construction is the caller's last chance to
         // fix it.
-        config::managed_endpoint_path(store.dir(), options.controller_template.as_deref(), 0)?;
+        config::validate_managed_endpoint(store.dir(), options.controller_template.as_deref())?;
         for (name, timeout) in [
             ("control_timeout", options.control_timeout),
             ("reconcile_timeout", options.reconcile_timeout),
@@ -321,10 +362,9 @@ impl CoreManager {
                 backend,
                 dns,
                 store,
-                ctrl: tokio::sync::Mutex::default(),
+                ctrl: tokio::sync::Mutex::new(Ctrl::new(max_epoch)),
                 status_tx,
                 log_tx,
-                epoch: AtomicU64::new(max_epoch),
                 version_cache: VersionCache::default(),
                 log_dir,
                 log_sink: tokio::sync::Mutex::new(log_sink),
@@ -349,6 +389,20 @@ impl CoreManager {
         self.inner.log_dir.as_deref()
     }
 
+    /// Read credentials from the applied plan, never from a desired config.
+    pub async fn api_connection(&self) -> Option<crate::ApiConnection> {
+        let ctrl = self.inner.ctrl.lock().await;
+        let active = ctrl.current.as_ref()?;
+        let snapshot = active.instance.state().borrow().clone();
+        if !matches!(snapshot.state, crate::InstanceState::Running { .. }) {
+            return None;
+        }
+        Some(crate::ApiConnection {
+            instance_id: snapshot.instance_id?,
+            controller: active.plan.controller.clone(),
+        })
+    }
+
     pub fn status(&self) -> CoreStatus {
         self.inner.status_tx.borrow().clone()
     }
@@ -370,26 +424,12 @@ impl CoreManager {
         if running {
             return Err(Error::AlreadyRunning);
         }
-        if let Some(stale) = ctrl.current.take() {
-            abort_and_await(stale.forwarder).await;
-            let epoch = stale.instance.epoch();
-            if let Err(error) = stale
-                .instance
-                .stop_and_confirm_dead(self.inner.options.stop_timeout)
-                .await
-            {
-                if matches!(error, Error::StopUnconfirmed(_)) {
-                    return Err(self.latch_quarantine(&mut ctrl, epoch, error));
-                }
-                return Err(error);
-            }
-            self.inner.store.cleanup_epoch(epoch).await?;
-        }
+        self.discard_stale(&mut ctrl).await?;
         self.start_locked(&mut ctrl, spec).await
     }
 
     async fn start_locked(&self, ctrl: &mut Ctrl, spec: InstanceSpec) -> Result<(), Error> {
-        let epoch = self.next_epoch();
+        let epoch = ctrl.epochs.next();
         let snapshot = match ConfigSnapshot::load(&spec.config_path).await {
             Ok(snapshot) => snapshot,
             Err(error) => {
@@ -408,22 +448,11 @@ impl CoreManager {
         self.start_prepared(ctrl, prepared).await
     }
 
-    async fn start_prepared(&self, ctrl: &mut Ctrl, prepared: PreparedLaunch) -> Result<(), Error> {
-        let epoch = prepared.revision.epoch;
-        self.inner.publish(
-            CoreState::Starting { epoch },
-            Some(spec_summary(
-                &prepared.source_spec,
-                prepared.capabilities,
-                prepared.runtime_features,
-            )),
-            Some(prepared.controller.host.clone()),
-            Some(prepared.revision.clone()),
-        );
-        let instance = match self
-            .spawn_instance(prepared.effective_spec, epoch, prepared.controller)
-            .await
-        {
+    async fn start_prepared(&self, ctrl: &mut Ctrl, plan: EpochPlan) -> Result<(), Error> {
+        let epoch = plan.revision.epoch;
+        self.inner
+            .publish(CoreState::Starting { epoch }, Some(&plan));
+        let instance = match self.spawn_instance(&plan).await {
             Ok(instance) => instance,
             Err(error) => {
                 let _ = self.inner.store.cleanup_epoch(epoch).await;
@@ -452,26 +481,9 @@ impl CoreManager {
         }
 
         let pid = instance.pid().unwrap_or_default();
-        self.inner.publish_instance(
-            instance.as_ref(),
-            CoreState::Running { epoch, pid },
-            &prepared.source_spec,
-            &prepared.revision,
-            prepared.capabilities,
-            prepared.runtime_features,
-        );
-        let forwarder = spawn_forwarder(&self.inner, instance.state(), epoch);
-        ctrl.last_spec = Some(prepared.source_spec.clone());
-        ctrl.current = Some(Active {
-            instance,
-            forwarder,
-            source_spec: prepared.source_spec,
-            revision: prepared.revision,
-            capabilities: prepared.capabilities,
-            runtime_features: prepared.runtime_features,
-            source_document: prepared.source_document,
-            effective_document: prepared.effective_document,
-        });
+        self.inner
+            .publish_instance(instance.as_ref(), CoreState::Running { epoch, pid }, &plan);
+        self.install(ctrl, instance, plan);
         Ok(())
     }
 
@@ -490,11 +502,7 @@ impl CoreManager {
         let Active {
             instance,
             forwarder,
-            source_spec,
-            revision,
-            capabilities,
-            runtime_features,
-            ..
+            plan,
         } = active;
         let captured_status = instance.state().borrow().clone();
         abort_and_await(forwarder).await;
@@ -502,9 +510,7 @@ impl CoreManager {
             let epoch = instance.epoch();
             self.inner.publish(
                 instance_core_state(epoch, &captured_status.state),
-                Some(spec_summary(&source_spec, capabilities, runtime_features)),
-                Some(instance.controller().host.clone()),
-                Some(revision),
+                Some(&plan),
             );
             if let Err(error) = instance
                 .stop_and_confirm_dead(self.inner.options.stop_timeout)
@@ -522,12 +528,8 @@ impl CoreManager {
             return Err(Error::NotStarted);
         }
         let epoch = instance.epoch();
-        self.inner.publish(
-            CoreState::Stopping { epoch },
-            Some(spec_summary(&source_spec, capabilities, runtime_features)),
-            Some(instance.controller().host.clone()),
-            Some(revision),
-        );
+        self.inner
+            .publish(CoreState::Stopping { epoch }, Some(&plan));
         if let Err(error) = instance
             .stop_and_confirm_dead(self.inner.options.stop_timeout)
             .await
@@ -546,8 +548,6 @@ impl CoreManager {
             CoreState::Stopped {
                 reason: Some(StopReason::User),
             },
-            None,
-            None,
             None,
         );
         Ok(())
@@ -596,20 +596,12 @@ impl CoreManager {
                 let Active {
                     instance,
                     forwarder,
-                    source_spec,
-                    revision,
-                    capabilities,
-                    runtime_features,
-                    ..
+                    plan,
                 } = active;
                 abort_and_await(forwarder).await;
                 let epoch = instance.epoch();
-                self.inner.publish(
-                    CoreState::Stopping { epoch },
-                    Some(spec_summary(&source_spec, capabilities, runtime_features)),
-                    Some(instance.controller().host.clone()),
-                    Some(revision),
-                );
+                self.inner
+                    .publish(CoreState::Stopping { epoch }, Some(&plan));
                 if let Err(error) = instance
                     .stop_and_confirm_dead(self.inner.options.stop_timeout)
                     .await
@@ -629,8 +621,6 @@ impl CoreManager {
                         reason: Some(StopReason::User),
                     },
                     None,
-                    None,
-                    None,
                 );
             }
             Ok(())
@@ -643,25 +633,76 @@ impl CoreManager {
         result
     }
 
-    fn next_epoch(&self) -> u64 {
-        self.inner.epoch.fetch_add(1, Ordering::Relaxed) + 1
-    }
-
-    async fn spawn_instance(
-        &self,
-        effective_spec: InstanceSpec,
-        epoch: u64,
-        controller: ResolvedController,
-    ) -> Result<Box<dyn RuntimeInstance>, Error> {
+    async fn spawn_instance(&self, plan: &EpochPlan) -> Result<Box<dyn RuntimeInstance>, Error> {
         self.inner
             .backend
             .launch(RuntimeLaunchRequest {
-                effective_spec,
-                epoch,
-                controller,
+                effective_spec: plan.effective_spec.clone(),
+                epoch: plan.revision.epoch,
+                controller: plan.controller.clone(),
                 log_tx: self.inner.log_tx.clone(),
             })
             .await
+    }
+
+    /// The one place an epoch enters the slot: forwarder, retained spec,
+    /// current. Publishes nothing. Every caller keeps its own `Running`
+    /// publication where it is today — before this call in `start` and the
+    /// graceful switch, after it in the apply compensations. The forwarder
+    /// publishes without the control lock, so which frame reaches the watch
+    /// first is observable downstream and is not this function's to decide.
+    fn install<'c>(
+        &self,
+        ctrl: &'c mut Ctrl,
+        instance: Box<dyn RuntimeInstance>,
+        plan: EpochPlan,
+    ) -> &'c mut Active {
+        let forwarder = spawn_forwarder(&self.inner, instance.state(), plan.revision.epoch);
+        ctrl.last_spec = Some(plan.source_spec.clone());
+        ctrl.current.insert(Active {
+            instance,
+            forwarder,
+            plan,
+        })
+    }
+
+    /// The mechanics every stop shares: take the epoch out of the slot, silence
+    /// its forwarder, prove the process dead. Publishes nothing and latches no
+    /// quarantine — an unproven stop comes back as [`RetireFailure`] for the
+    /// caller to place in its own sequence.
+    async fn retire_current(&self, ctrl: &mut Ctrl) -> Result<Option<EpochPlan>, RetireFailure> {
+        let Some(Active {
+            instance,
+            forwarder,
+            plan,
+        }) = ctrl.current.take()
+        else {
+            return Ok(None);
+        };
+        abort_and_await(forwarder).await;
+        let epoch = plan.revision.epoch;
+        instance
+            .stop_and_confirm_dead(self.inner.options.stop_timeout)
+            .await
+            .map_err(|error| RetireFailure { epoch, error })?;
+        Ok(Some(plan))
+    }
+
+    /// Stale-epoch hygiene shared by start, switch and reconcile: a terminal
+    /// epoch still sitting in the slot is retired and its artifacts removed
+    /// before the slot is reused.
+    async fn discard_stale(&self, ctrl: &mut Ctrl) -> Result<(), Error> {
+        match self.retire_current(ctrl).await {
+            Ok(None) => Ok(()),
+            Ok(Some(plan)) => self.inner.store.cleanup_epoch(plan.revision.epoch).await,
+            Err(RetireFailure { epoch, error }) => {
+                Err(if matches!(error, Error::StopUnconfirmed(_)) {
+                    self.latch_quarantine(ctrl, epoch, error)
+                } else {
+                    error
+                })
+            }
+        }
     }
 }
 
@@ -673,7 +714,7 @@ async fn abort_and_await(mut forwarder: tokio::task::JoinHandle<()>) {
 fn spawn_forwarder(
     inner: &Arc<Inner>,
     mut state_rx: watch::Receiver<InstanceStatus>,
-    epoch: u64,
+    epoch: Epoch,
 ) -> tokio::task::JoinHandle<()> {
     let inner = Arc::downgrade(inner);
     tokio::spawn(async move {
@@ -689,4 +730,24 @@ fn spawn_forwarder(
             }
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EpochAllocator;
+    use crate::epoch::epoch;
+
+    #[test]
+    fn epochs_are_monotone_past_the_seed_and_never_zero() {
+        let mut fresh = EpochAllocator::seeded(0);
+        assert_eq!(fresh.next(), epoch(1));
+        let mut seeded = EpochAllocator::seeded(7);
+        assert_eq!((seeded.next(), seeded.next()), (epoch(8), epoch(9)));
+    }
+
+    #[test]
+    #[should_panic(expected = "epoch space exhausted")]
+    fn epoch_exhaustion_is_an_invariant_violation_not_a_wrap() {
+        EpochAllocator::seeded(u64::MAX).next();
+    }
 }

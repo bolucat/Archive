@@ -8,19 +8,16 @@ use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_core_manager::{
     ApplyOutcome, ConfigInput, ConfigRevision, ControlOptions, CoreCommand, CoreCommandEnvelope,
     CoreControl, CoreError as ControlError, CoreErrorKind, CoreKind, CoreManager as Manager,
-    CoreSpec, CoreState as ManagerCoreState, CoreStatus, Error as ManagerError, ExecutorExit,
-    HealthState, HealthStatus, Host, InstanceOptions, InstanceSpec, LocalIpcPolicy, LogFrame,
-    LogLevel, ManagerOptions, OperationHandle, OperationId, OperationOutput, OperationState,
-    ReconcileRequest, RevisionId,
+    CoreSpec, CoreState as ManagerCoreState, CoreStatus, Epoch, Error as ManagerError,
+    ExecutorExit, HealthState, HealthStatus, Host, InstanceOptions, InstanceSpec, LocalIpcPolicy,
+    LogFrame, LogLevel, ManagerOptions, OperationHandle, OperationId, OperationOutput,
+    OperationState, ReconcileRequest, RevisionId,
 };
 use nyanpasu_ipc::api::{
     R, RBuilder,
-    core::{
-        apply::{ApplyOutcomeKind, CoreApplyData},
-        v2::{
-            CoreCommandInfo, CoreOperationReq, CoreSubmitReq, OperationErrorInfo, OperationInfo,
-            OperationOutputInfo, OperationPhase, ReconcileOutcomeInfo, ReconcileOutcomeKind,
-        },
+    core::v2::{
+        CoreCommandInfo, CoreOperationReq, CoreSubmitReq, OperationErrorInfo, OperationInfo,
+        OperationOutputInfo, OperationPhase, ReconcileOutcomeInfo, ReconcileOutcomeKind,
     },
     status::{
         ConfigRevisionInfo, CoreControllerInfo, CoreHealthInfo, CoreHealthState, CoreInfos,
@@ -173,21 +170,30 @@ pub struct CoreManagerService {
     inner: Arc<Inner>,
 }
 
+/// The two directories the service runs out of. They are both `Utf8PathBuf`
+/// and were passed on either side of the IPC policy, so only a name says
+/// which root the manager owns and which one belongs to the application.
+pub struct ServiceDirs {
+    /// Where the core manager keeps its runtime state and staged sources.
+    pub runtime: Utf8PathBuf,
+    /// The Nyanpasu application data directory.
+    pub data: Utf8PathBuf,
+}
+
 impl CoreManagerService {
     pub async fn new(
-        runtime_dir: Utf8PathBuf,
+        dirs: ServiceDirs,
         local_ipc_policy: LocalIpcPolicy,
-        data_dir: Utf8PathBuf,
     ) -> Result<Self, anyhow::Error> {
-        let source_dir = runtime_dir.join("v2-sources");
+        let source_dir = dirs.runtime.join("v2-sources");
         let manager = Manager::new(ManagerOptions {
-            runtime_dir: Some(runtime_dir),
+            runtime_dir: Some(dirs.runtime),
             local_ipc_policy,
             ..ManagerOptions::default()
         })
         .await?;
         let core_control =
-            CoreControl::spawn(manager.clone(), ControlOptions::new(source_dir, data_dir));
+            CoreControl::spawn(manager.clone(), ControlOptions::new(source_dir, dirs.data));
         Ok(Self {
             inner: Arc::new(Inner {
                 manager,
@@ -326,59 +332,6 @@ impl CoreManagerService {
         }
     }
 
-    pub async fn restart(&self) -> Result<(), anyhow::Error> {
-        let control = self.inner.control_state.lock().await;
-        if control.closing {
-            anyhow::bail!("service is shutting down");
-        }
-        match self.inner.manager.restart().await {
-            Ok(_outcome) => Ok(()),
-            Err(ManagerError::NotStarted) => anyhow::bail!(MSG_CORE_NOT_STARTED),
-            Err(error) => Err(error.into()),
-        }
-    }
-
-    /// Apply `config_file` to the running core.
-    ///
-    /// The manager classifies the change and routes it: in-place patch, reload,
-    /// same-epoch restart with rollback, or a full core switch when the process
-    /// spec changed (which is what a different `core_type` produces). A stopped
-    /// core is an error, never an implicit start (report §7 R2).
-    #[instrument(skip(self, infos))]
-    pub async fn apply(
-        &self,
-        infos: &RuntimeInfos,
-        core_type: &CoreType,
-        config_file: &Path,
-        expected_revision: Option<&RevisionIdInfo>,
-    ) -> Result<CoreApplyData, OpError> {
-        let control = self.inner.control_state.lock().await;
-        if control.closing {
-            return Err(OpError::plain("service is shutting down"));
-        }
-        let config_path = canonical_config_path(config_file).await?;
-        let spec = self.instance_spec(infos, core_type, config_path)?;
-        let outcome = self
-            .inner
-            .manager
-            .apply_config(spec, expected_revision.map(map_revision_id))
-            .await?;
-        let data = map_apply_outcome(&outcome);
-        tracing::info!(
-            outcome = ?data.outcome,
-            epoch = data.revision.epoch,
-            generation = data.revision.generation,
-            "Applied config"
-        );
-        // A rollback put the *old* spec back, so the wire echo must not claim
-        // the core type that was asked for — but the snapshot still moved, so
-        // publish either way.
-        self.publish_requested_core(
-            (data.outcome != ApplyOutcomeKind::RolledBack).then_some(core_type),
-        );
-        Ok(data)
-    }
-
     /// Dry-run a config against a core binary. Never touches the running core.
     #[instrument(skip(self, infos))]
     pub async fn check(
@@ -410,16 +363,13 @@ impl CoreManagerService {
         Ok(())
     }
 
-    /// Clear the quarantine latch left by an epoch whose death could not be
-    /// confirmed. Idempotent: succeeds when nothing was quarantined.
-    #[instrument(skip(self))]
-    pub async fn recover(&self) -> Result<(), OpError> {
-        let control = self.inner.control_state.lock().await;
-        if control.closing {
-            return Err(OpError::plain("service is shutting down"));
-        }
-        self.inner.manager.recover_quarantine().await?;
-        Ok(())
+    pub async fn api_connection(&self) -> Option<nyanpasu_ipc::api::core::v2::CoreApiConnection> {
+        let connection = self.inner.manager.api_connection().await?;
+        Some(nyanpasu_ipc::api::core::v2::CoreApiConnection {
+            instance_id: connection.instance_id.to_string(),
+            controller: map_controller(&connection.controller.host)?,
+            secret: connection.controller.secret,
+        })
     }
 
     pub async fn status(&self) -> CoreInfos {
@@ -471,7 +421,7 @@ impl CoreManagerService {
                         expected_digest: expected_digest.as_ref().map(|digest| digest.to_string()),
                     },
                     options: spec.options,
-                    expected_applied: expected_applied.as_ref().map(map_revision_id),
+                    expected_applied: expected_applied.as_ref().map(map_revision_id).transpose()?,
                 }))
             }
             CoreCommandInfo::Stop => CoreCommand::Stop,
@@ -779,20 +729,25 @@ fn map_health(health: &HealthStatus) -> CoreHealthInfo {
 /// 0o700 runtime directory, which the client cannot read.
 fn map_revision(revision: &ConfigRevision) -> ConfigRevisionInfo {
     ConfigRevisionInfo {
-        epoch: revision.epoch,
+        epoch: revision.epoch.get(),
         generation: revision.generation,
         source_hash: revision.source_hash.clone(),
         effective_hash: revision.effective_hash.clone(),
     }
 }
 
-/// The wire CAS token, as the manager compares it.
-fn map_revision_id(info: &RevisionIdInfo) -> RevisionId {
-    RevisionId {
-        epoch: info.epoch,
+/// The wire CAS token, as the manager compares it. The epoch arrives from a
+/// client, so it is validated rather than trusted: zero names no epoch the
+/// allocator can ever have issued, and a token that cannot match is a
+/// malformed request, not a mismatch.
+fn map_revision_id(info: &RevisionIdInfo) -> Result<RevisionId, OpError> {
+    let epoch = Epoch::try_from(info.epoch)
+        .map_err(|_| OpError::plain("expected revision epoch must be nonzero"))?;
+    Ok(RevisionId {
+        epoch,
         generation: info.generation,
         effective_hash: info.effective_hash.clone(),
-    }
+    })
 }
 
 /// Project an apply result onto the wire.
@@ -864,8 +819,6 @@ fn map_operation_output(output: OperationOutput) -> OperationOutputInfo {
     }
 }
 
-/// The v2 sibling of [`map_apply_outcome`]: same durability unwrapping, plus
-/// the `Started` variant only `reconcile` produces.
 fn map_reconcile_outcome(outcome: &ApplyOutcome) -> ReconcileOutcomeInfo {
     let mut warnings = Vec::new();
     let mut current = outcome;
@@ -900,67 +853,30 @@ fn map_reconcile_outcome(outcome: &ApplyOutcome) -> ReconcileOutcomeInfo {
     }
 }
 
-fn map_apply_outcome(outcome: &ApplyOutcome) -> CoreApplyData {
-    let mut warnings = Vec::new();
-    let mut current = outcome;
-    while let ApplyOutcome::DurabilityUncertain { outcome, warning } = current {
-        warnings.push(warning.clone());
-        current = &**outcome;
-    }
-    let (kind, revision, failed_apply) = match current {
-        ApplyOutcome::Noop { revision } => (ApplyOutcomeKind::Noop, revision, None),
-        ApplyOutcome::Patched { revision } => (ApplyOutcomeKind::Patched, revision, None),
-        ApplyOutcome::Reloaded { revision } => (ApplyOutcomeKind::Reloaded, revision, None),
-        ApplyOutcome::Restarted { revision } => (ApplyOutcomeKind::Restarted, revision, None),
-        // Live since S10: the manager reports the core-switch path separately
-        // from a same-epoch restart, so the wire value S8 declared and never
-        // sent is finally produced here.
-        ApplyOutcome::Switched { revision } => (ApplyOutcomeKind::Switched, revision, None),
-        ApplyOutcome::RolledBack {
-            revision,
-            failed_apply,
-        } => (
-            ApplyOutcomeKind::RolledBack,
-            revision,
-            Some(failed_apply.clone()),
-        ),
-        ApplyOutcome::DurabilityUncertain { .. } => {
-            unreachable!("unwrapped by the loop above")
-        }
-        // The v1 apply handler feeds this from `apply_config`, which requires
-        // a running core; only the v2 `reconcile` path can cold-start.
-        ApplyOutcome::Started { .. } => {
-            unreachable!("apply_config never cold-starts a core")
-        }
-    };
-    CoreApplyData {
-        outcome: kind,
-        revision: map_revision(revision),
-        warning: (!warnings.is_empty()).then(|| warnings.join("; ")),
-        failed_apply,
-    }
-}
-
 /// The lossless counterpart to `map_core_state`.
 fn map_state_detail(state: &ManagerCoreState) -> Option<CoreStateDetail> {
     match state {
         ManagerCoreState::Stopped { reason } => Some(CoreStateDetail::Stopped {
             reason: reason.as_ref().map(ToString::to_string),
         }),
-        ManagerCoreState::Starting { epoch } => Some(CoreStateDetail::Starting { epoch: *epoch }),
+        ManagerCoreState::Starting { epoch } => {
+            Some(CoreStateDetail::Starting { epoch: epoch.get() })
+        }
         ManagerCoreState::Running { epoch, pid } => Some(CoreStateDetail::Running {
-            epoch: *epoch,
+            epoch: epoch.get(),
             pid: *pid,
         }),
         ManagerCoreState::Restarting { epoch, attempt } => Some(CoreStateDetail::Restarting {
-            epoch: *epoch,
+            epoch: epoch.get(),
             attempt: *attempt,
         }),
         ManagerCoreState::Switching { from, to } => Some(CoreStateDetail::Switching {
-            from: *from,
-            to: *to,
+            from: from.map(Epoch::get),
+            to: to.get(),
         }),
-        ManagerCoreState::Stopping { epoch } => Some(CoreStateDetail::Stopping { epoch: *epoch }),
+        ManagerCoreState::Stopping { epoch } => {
+            Some(CoreStateDetail::Stopping { epoch: epoch.get() })
+        }
         // `CoreState` is `#[non_exhaustive]`; an unknown state has no faithful
         // projection, so it is reported as absent.
         _ => None,
@@ -984,6 +900,7 @@ fn same_ipc_state(previous: &CoreState, next: &CoreState) -> bool {
 /// six-state view beside it.
 fn project_core_infos(status: &CoreStatus, requested_core: Option<CoreType>) -> CoreInfos {
     CoreInfos {
+        instance_id: status.instance_id.map(|id| id.to_string()),
         r#type: requested_core,
         state: map_core_state(&status.state),
         state_changed_at: status.changed_at,
@@ -1076,6 +993,12 @@ async fn canonical_config_path(config_file: &Path) -> Result<Utf8PathBuf, OpErro
 
 #[cfg(test)]
 mod tests {
+    /// The epoch a test means when it writes a number. Production code keeps
+    /// paying the nonzero check at every boundary; a test that skipped it
+    /// would stop exercising the barrier it is meant to prove.
+    fn epoch(value: u64) -> Epoch {
+        Epoch::new(value).expect("a test epoch must be nonzero")
+    }
     use std::time::Duration;
 
     use nyanpasu_core_manager::StopReason;
@@ -1119,14 +1042,17 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                map_core_state(&ManagerCoreState::Starting { epoch: 1 })
+                map_core_state(&ManagerCoreState::Starting { epoch: epoch(1) })
             ),
             "Stopped(None)"
         );
         assert_eq!(
             format!(
                 "{:?}",
-                map_core_state(&ManagerCoreState::Running { epoch: 1, pid: 42 })
+                map_core_state(&ManagerCoreState::Running {
+                    epoch: epoch(1),
+                    pid: 42
+                })
             ),
             "Running"
         );
@@ -1134,7 +1060,7 @@ mod tests {
             format!(
                 "{:?}",
                 map_core_state(&ManagerCoreState::Restarting {
-                    epoch: 1,
+                    epoch: epoch(1),
                     attempt: 2,
                 })
             ),
@@ -1144,8 +1070,8 @@ mod tests {
             format!(
                 "{:?}",
                 map_core_state(&ManagerCoreState::Switching {
-                    from: Some(1),
-                    to: 2,
+                    from: Some(epoch(1)),
+                    to: epoch(2),
                 })
             ),
             "Running"
@@ -1153,7 +1079,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{:?}",
-                map_core_state(&ManagerCoreState::Stopping { epoch: 2 })
+                map_core_state(&ManagerCoreState::Stopping { epoch: epoch(2) })
             ),
             "Running"
         );
@@ -1205,14 +1131,20 @@ mod tests {
     #[test]
     fn the_state_bridge_forwards_only_real_transitions() {
         let states = [
-            ManagerCoreState::Starting { epoch: 1 },
-            ManagerCoreState::Running { epoch: 1, pid: 42 },
-            ManagerCoreState::Switching {
-                from: Some(1),
-                to: 2,
+            ManagerCoreState::Starting { epoch: epoch(1) },
+            ManagerCoreState::Running {
+                epoch: epoch(1),
+                pid: 42,
             },
-            ManagerCoreState::Stopping { epoch: 2 },
-            ManagerCoreState::Running { epoch: 2, pid: 43 },
+            ManagerCoreState::Switching {
+                from: Some(epoch(1)),
+                to: epoch(2),
+            },
+            ManagerCoreState::Stopping { epoch: epoch(2) },
+            ManagerCoreState::Running {
+                epoch: epoch(2),
+                pid: 43,
+            },
             ManagerCoreState::Stopped {
                 reason: Some(StopReason::User),
             },
@@ -1234,11 +1166,14 @@ mod tests {
     #[test]
     fn terminal_stop_is_not_resurrected_by_shutdown() {
         let states = [
-            ManagerCoreState::Running { epoch: 1, pid: 42 },
+            ManagerCoreState::Running {
+                epoch: epoch(1),
+                pid: 42,
+            },
             ManagerCoreState::Stopped {
                 reason: Some(StopReason::Error("boom".to_owned())),
             },
-            ManagerCoreState::Stopping { epoch: 1 },
+            ManagerCoreState::Stopping { epoch: epoch(1) },
             ManagerCoreState::Stopped {
                 reason: Some(StopReason::User),
             },
@@ -1270,16 +1205,19 @@ mod tests {
                 },
             ),
             (
-                ManagerCoreState::Starting { epoch: 1 },
+                ManagerCoreState::Starting { epoch: epoch(1) },
                 CoreStateDetail::Starting { epoch: 1 },
             ),
             (
-                ManagerCoreState::Running { epoch: 1, pid: 42 },
+                ManagerCoreState::Running {
+                    epoch: epoch(1),
+                    pid: 42,
+                },
                 CoreStateDetail::Running { epoch: 1, pid: 42 },
             ),
             (
                 ManagerCoreState::Restarting {
-                    epoch: 1,
+                    epoch: epoch(1),
                     attempt: 2,
                 },
                 CoreStateDetail::Restarting {
@@ -1289,8 +1227,8 @@ mod tests {
             ),
             (
                 ManagerCoreState::Switching {
-                    from: Some(1),
-                    to: 2,
+                    from: Some(epoch(1)),
+                    to: epoch(2),
                 },
                 CoreStateDetail::Switching {
                     from: Some(1),
@@ -1298,7 +1236,7 @@ mod tests {
                 },
             ),
             (
-                ManagerCoreState::Stopping { epoch: 2 },
+                ManagerCoreState::Stopping { epoch: epoch(2) },
                 CoreStateDetail::Stopping { epoch: 2 },
             ),
         ];
@@ -1313,7 +1251,7 @@ mod tests {
     #[test]
     fn the_detail_field_recovers_what_the_wire_state_flattens() {
         let restarting = ManagerCoreState::Restarting {
-            epoch: 1,
+            epoch: epoch(1),
             attempt: 3,
         };
         assert!(matches!(
@@ -1372,7 +1310,7 @@ mod tests {
     #[test]
     fn the_revision_projection_drops_the_runtime_path() {
         let revision = ConfigRevision {
-            epoch: 3,
+            epoch: epoch(3),
             generation: 7,
             source_hash: "0123456789abcdef".to_owned(),
             effective_hash: "fedcba9876543210".to_owned(),
@@ -1411,7 +1349,7 @@ mod tests {
 
     fn revision(generation: u64) -> ConfigRevision {
         ConfigRevision {
-            epoch: 3,
+            epoch: epoch(3),
             generation,
             source_hash: "0123456789abcdef".to_owned(),
             effective_hash: "fedcba9876543210".to_owned(),
@@ -1420,41 +1358,47 @@ mod tests {
     }
 
     #[test]
-    fn apply_outcomes_map_onto_the_wire_kinds() {
+    fn reconcile_outcomes_map_onto_the_wire_kinds() {
         let cases = [
+            (
+                ApplyOutcome::Started {
+                    revision: revision(6),
+                },
+                ReconcileOutcomeKind::Started,
+            ),
             (
                 ApplyOutcome::Noop {
                     revision: revision(7),
                 },
-                ApplyOutcomeKind::Noop,
+                ReconcileOutcomeKind::Noop,
             ),
             (
                 ApplyOutcome::Patched {
                     revision: revision(8),
                 },
-                ApplyOutcomeKind::Patched,
+                ReconcileOutcomeKind::Patched,
             ),
             (
                 ApplyOutcome::Reloaded {
                     revision: revision(9),
                 },
-                ApplyOutcomeKind::Reloaded,
+                ReconcileOutcomeKind::Reloaded,
             ),
             (
                 ApplyOutcome::Restarted {
                     revision: revision(10),
                 },
-                ApplyOutcomeKind::Restarted,
+                ReconcileOutcomeKind::Restarted,
             ),
             (
                 ApplyOutcome::Switched {
                     revision: revision(11),
                 },
-                ApplyOutcomeKind::Switched,
+                ReconcileOutcomeKind::Switched,
             ),
         ];
         for (outcome, expected) in cases {
-            let data = map_apply_outcome(&outcome);
+            let data = map_reconcile_outcome(&outcome);
             assert_eq!(data.outcome, expected);
             assert_eq!(data.revision.effective_hash, "fedcba9876543210");
             assert!(data.warning.is_none());
@@ -1468,11 +1412,11 @@ mod tests {
     /// it.
     #[test]
     fn a_rolled_back_apply_reports_the_old_revision_and_the_failure() {
-        let data = map_apply_outcome(&ApplyOutcome::RolledBack {
+        let data = map_reconcile_outcome(&ApplyOutcome::RolledBack {
             revision: revision(7),
             failed_apply: "core failed to start".to_owned(),
         });
-        assert_eq!(data.outcome, ApplyOutcomeKind::RolledBack);
+        assert_eq!(data.outcome, ReconcileOutcomeKind::RolledBack);
         assert_eq!(data.revision.generation, 7);
         assert_eq!(data.failed_apply.as_deref(), Some("core failed to start"));
     }
@@ -1488,8 +1432,8 @@ mod tests {
             }),
             warning: "directory sync failed".to_owned(),
         };
-        let data = map_apply_outcome(&single);
-        assert_eq!(data.outcome, ApplyOutcomeKind::Patched);
+        let data = map_reconcile_outcome(&single);
+        assert_eq!(data.outcome, ReconcileOutcomeKind::Patched);
         assert_eq!(data.warning.as_deref(), Some("directory sync failed"));
 
         let nested = ApplyOutcome::DurabilityUncertain {
@@ -1502,8 +1446,8 @@ mod tests {
             }),
             warning: "commit sync failed".to_owned(),
         };
-        let data = map_apply_outcome(&nested);
-        assert_eq!(data.outcome, ApplyOutcomeKind::RolledBack);
+        let data = map_reconcile_outcome(&nested);
+        assert_eq!(data.outcome, ReconcileOutcomeKind::RolledBack);
         assert_eq!(
             data.warning.as_deref(),
             Some("commit sync failed; restore sync failed")
@@ -1527,17 +1471,39 @@ mod tests {
                 epoch: 3,
                 generation: 7,
                 effective_hash: "fedcba9876543210".to_owned(),
-            }),
+            })
+            .unwrap_or_else(|_| panic!("a nonzero wire epoch is a revision id")),
             RevisionId {
-                epoch: 3,
+                epoch: epoch(3),
                 generation: 7,
                 effective_hash: "fedcba9876543210".to_owned(),
             }
         );
     }
 
+    /// Zero names no epoch the allocator can ever have issued, so a CAS token
+    /// carrying it is malformed rather than merely stale — and a client that
+    /// sends one gets told which field is wrong instead of a mismatch.
+    #[test]
+    fn a_zero_expected_epoch_is_rejected_rather_than_compared() {
+        let error = map_revision_id(&RevisionIdInfo {
+            epoch: 0,
+            generation: 7,
+            effective_hash: "fedcba9876543210".to_owned(),
+        })
+        .expect_err("zero is not an epoch");
+
+        assert_eq!(error.message, "expected revision epoch must be nonzero");
+        // Rejected while promoting wire data, so it never reaches the operation
+        // registry: no kind, no retry advice, and the operation id stays free
+        // for a corrected resubmission.
+        assert_eq!(error.kind, None);
+        assert_eq!(error.retryable, None);
+    }
+
     fn status_of(state: ManagerCoreState) -> CoreStatus {
         CoreStatus {
+            instance_id: None,
             state,
             changed_at: 42,
             health: None,
@@ -1566,9 +1532,15 @@ mod tests {
             .expect("temp path is UTF-8");
         let data_dir = Utf8PathBuf::from_path_buf(dir.path().join("nyanpasu-data"))
             .expect("temp path is UTF-8");
-        let service = CoreManagerService::new(runtime_dir, LocalIpcPolicy::Disable, data_dir)
-            .await
-            .expect("the manager builds on a fresh runtime dir");
+        let service = CoreManagerService::new(
+            ServiceDirs {
+                runtime: runtime_dir,
+                data: data_dir,
+            },
+            LocalIpcPolicy::Disable,
+        )
+        .await
+        .expect("the manager builds on a fresh runtime dir");
         (dir, service)
     }
 
@@ -1609,7 +1581,10 @@ mod tests {
 
         // A manager transition with no echo yet: the snapshot leads, the legacy
         // state follows.
-        states.send_replace(status_of(ManagerCoreState::Running { epoch: 1, pid: 7 }));
+        states.send_replace(status_of(ManagerCoreState::Running {
+            epoch: epoch(1),
+            pid: 7,
+        }));
         let status = tokio::time::timeout(Duration::from_secs(5), events.recv())
             .await
             .expect("timed out waiting for the manager status snapshot")
@@ -1652,7 +1627,10 @@ mod tests {
     /// adapter republishes the unchanged value, which `send_modify` notifies on.
     #[tokio::test]
     async fn republishing_an_unchanged_echo_still_refreshes_the_snapshot() {
-        let states = watch::Sender::new(status_of(ManagerCoreState::Running { epoch: 1, pid: 7 }));
+        let states = watch::Sender::new(status_of(ManagerCoreState::Running {
+            epoch: epoch(1),
+            pid: 7,
+        }));
         let requested = watch::Sender::new(Some(mihomo()));
         let hub = EventHub::new();
         let mut events = hub.subscribe();
@@ -1810,14 +1788,20 @@ mod tests {
     #[test]
     fn the_snapshot_stream_carries_every_transition_the_legacy_stream_suppresses() {
         let states = [
-            ManagerCoreState::Starting { epoch: 1 },
-            ManagerCoreState::Running { epoch: 1, pid: 42 },
+            ManagerCoreState::Starting { epoch: epoch(1) },
+            ManagerCoreState::Running {
+                epoch: epoch(1),
+                pid: 42,
+            },
             ManagerCoreState::Restarting {
-                epoch: 1,
+                epoch: epoch(1),
                 attempt: 2,
             },
-            ManagerCoreState::Running { epoch: 1, pid: 43 },
-            ManagerCoreState::Stopping { epoch: 1 },
+            ManagerCoreState::Running {
+                epoch: epoch(1),
+                pid: 43,
+            },
+            ManagerCoreState::Stopping { epoch: epoch(1) },
             ManagerCoreState::Stopped {
                 reason: Some(StopReason::User),
             },
@@ -1864,7 +1848,7 @@ mod tests {
     fn the_snapshot_payload_keeps_the_lossy_state_and_adds_the_faithful_detail() {
         let infos = project_core_infos(
             &status_of(ManagerCoreState::Restarting {
-                epoch: 3,
+                epoch: epoch(3),
                 attempt: 2,
             }),
             Some(CoreType::Clash(ClashCoreType::MihomoAlpha)),

@@ -16,7 +16,7 @@ use serde_yaml_ng::{Mapping, Value};
 
 pub(crate) use clash::LOCAL_TRANSPORT_FEATURE;
 
-use crate::{capability::RuntimeFeature, error::Error, spec::ResolvedController};
+use crate::{Epoch, capability::RuntimeFeature, error::Error, spec::ResolvedController};
 
 #[derive(Debug, Clone)]
 pub(crate) struct ConfigSnapshot {
@@ -88,7 +88,7 @@ impl ConfigSnapshot {
         &self,
         controller_template: Option<&str>,
         runtime_dir: &Utf8Path,
-        epoch: u64,
+        epoch: Epoch,
         runtime: EnumSet<RuntimeFeature>,
     ) -> Result<PreparedConfig, Error> {
         self.prepare(controller_template, runtime_dir, epoch, runtime, false)
@@ -98,7 +98,7 @@ impl ConfigSnapshot {
         &self,
         controller_template: Option<&str>,
         runtime_dir: &Utf8Path,
-        epoch: u64,
+        epoch: Epoch,
         runtime: EnumSet<RuntimeFeature>,
     ) -> Result<PreparedConfig, Error> {
         self.prepare(controller_template, runtime_dir, epoch, runtime, true)
@@ -108,7 +108,7 @@ impl ConfigSnapshot {
         &self,
         controller_template: Option<&str>,
         runtime_dir: &Utf8Path,
-        epoch: u64,
+        epoch: Epoch,
         runtime: EnumSet<RuntimeFeature>,
         zero_inbounds: bool,
     ) -> Result<PreparedConfig, Error> {
@@ -232,7 +232,30 @@ pub(crate) fn validate_controller_template(template: Option<&str>) -> Result<(),
     Ok(())
 }
 
+/// Manager construction validates the controller template before any epoch
+/// exists. A template may put `{epoch}` in a parent component, and the
+/// rendered parent is canonicalized and checked for containment, so which
+/// number renders is observable: `runtime/0/` and `runtime/1/` need not both
+/// exist, nor resolve through the same symlink. Zero therefore stays the probe
+/// rendering it has always been — a number, never promoted to an `Epoch`.
+const TEMPLATE_PROBE_RENDERING: u64 = 0;
+
+pub(crate) fn validate_managed_endpoint(
+    runtime_dir: &Utf8Path,
+    template: Option<&str>,
+) -> Result<(), Error> {
+    render_endpoint_path(runtime_dir, template, TEMPLATE_PROBE_RENDERING).map(|_| ())
+}
+
 pub(crate) fn managed_endpoint_path(
+    runtime_dir: &Utf8Path,
+    template: Option<&str>,
+    epoch: Epoch,
+) -> Result<String, Error> {
+    render_endpoint_path(runtime_dir, template, epoch.get())
+}
+
+fn render_endpoint_path(
     runtime_dir: &Utf8Path,
     template: Option<&str>,
     epoch: u64,
@@ -289,6 +312,7 @@ fn managed_unix_endpoint(runtime_dir: &Utf8Path, endpoint: &str) -> Result<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::epoch::epoch;
 
     fn snapshot(yaml: &str) -> ConfigSnapshot {
         ConfigSnapshot::from_bytes(Utf8PathBuf::from("config.yaml"), yaml.as_bytes()).unwrap()
@@ -312,7 +336,7 @@ mod tests {
         let source = snapshot("external-controller-unix: /tmp/source.sock");
 
         let error = source
-            .prepare_full(None, Utf8Path::new("runtime"), 1, EnumSet::new())
+            .prepare_full(None, Utf8Path::new("runtime"), epoch(1), EnumSet::new())
             .unwrap_err();
 
         assert!(matches!(error, Error::ControllerMissing));
@@ -344,7 +368,7 @@ mod tests {
             .prepare_bootstrap(
                 Some(r"\\.\pipe\ny-{epoch}"),
                 Utf8Path::new("runtime"),
-                7,
+                epoch(7),
                 EnumSet::only(RuntimeFeature::LocalIpc),
             )
             .unwrap();
@@ -374,13 +398,17 @@ mod tests {
     #[test]
     fn endpoint_template_requires_and_substitutes_epoch() {
         let dir = Utf8Path::new("/tmp/x");
-        assert!(managed_endpoint_path(dir, Some("fixed"), 1).is_err());
+        assert!(managed_endpoint_path(dir, Some("fixed"), epoch(1)).is_err());
         #[cfg(windows)]
         assert_eq!(
-            managed_endpoint_path(dir, Some(r"\\.\pipe\ny-{epoch}"), 42).unwrap(),
+            managed_endpoint_path(dir, Some(r"\\.\pipe\ny-{epoch}"), epoch(42)).unwrap(),
             r"\\.\pipe\ny-42"
         );
-        assert!(managed_endpoint_path(dir, None, 42).unwrap().contains("42"));
+        assert!(
+            managed_endpoint_path(dir, None, epoch(42))
+                .unwrap()
+                .contains("42")
+        );
     }
 
     #[cfg(unix)]
@@ -389,10 +417,10 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let runtime = Utf8PathBuf::from_path_buf(root.path().join("runtime")).unwrap();
         std::fs::create_dir(&runtime).unwrap();
-        assert!(managed_endpoint_path(&runtime, Some("core-{epoch}.sock"), 4).is_ok());
+        assert!(managed_endpoint_path(&runtime, Some("core-{epoch}.sock"), epoch(4)).is_ok());
         let outside = root.path().join("escaped-{epoch}.sock");
         let outside = outside.to_str().unwrap();
-        let error = managed_endpoint_path(&runtime, Some(outside), 4).unwrap_err();
+        let error = managed_endpoint_path(&runtime, Some(outside), epoch(4)).unwrap_err();
         assert!(error.to_string().contains("escapes runtime directory"));
     }
 
@@ -410,7 +438,7 @@ mod tests {
         let runtime = Utf8PathBuf::from_path_buf(runtime.canonicalize().unwrap()).unwrap();
         let template = runtime.join("link/core-{epoch}.sock");
 
-        let error = managed_endpoint_path(&runtime, Some(template.as_str()), 5).unwrap_err();
+        let error = managed_endpoint_path(&runtime, Some(template.as_str()), epoch(5)).unwrap_err();
         assert!(error.to_string().contains("escapes runtime directory"));
     }
 }

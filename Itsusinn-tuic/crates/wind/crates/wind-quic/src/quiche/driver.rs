@@ -102,8 +102,8 @@ pub(crate) enum DriverCommand {
 		context: Vec<u8>,
 		reply: oneshot::Sender<Option<Vec<u8>>>,
 	},
-	/// Read the current TLS resumption session (may be `None` until the server's
-	/// NewSessionTicket has arrived and been processed).
+	/// Read the current TLS resumption session (may be `None` until the
+	/// server's NewSessionTicket has arrived and been processed).
 	Session(oneshot::Sender<Option<Vec<u8>>>),
 	/// Shut down one direction of a stream with an error code.
 	StreamShutdown { sid: u64, write: bool, code: u64 },
@@ -405,10 +405,10 @@ impl BridgeDriver {
 				}
 				Err(quiche::Error::Done) => break,
 				Err(quiche::Error::StreamReset(code)) => {
-					// The peer aborted the stream. Record the code so the handle
-					// sees an error after any already-buffered bytes drain, rather
-					// than a clean EOF that would make a truncated stream look
-					// complete.
+					// The peer aborted the stream. Record the code so the
+					// handle sees an error after any already-buffered
+					// bytes drain, rather than a clean EOF that would make
+					// a truncated stream look complete.
 					trace!(stream = sid, code, "stream reset by peer");
 					if let Some(st) = self.streams.get_mut(&sid) {
 						st.in_reset = Some(code);
@@ -449,11 +449,12 @@ impl BridgeDriver {
 				}
 			}
 			if st.in_fin && st.pending_in.is_empty() {
-				// All buffered data delivered. If the stream was reset, deliver the
-				// reset code as a final `Err` before closing the channel; otherwise
-				// a dropped sender = clean EOF. If the channel is momentarily full,
-				// keep the sender and retry on the next flush (the handle nudges us
-				// via `FlushInbound` when it drains).
+				// All buffered data delivered. If the stream was reset, deliver
+				// the reset code as a final `Err` before closing the
+				// channel; otherwise a dropped sender = clean EOF. If the
+				// channel is momentarily full, keep the sender and retry on
+				// the next flush (the handle nudges us via `FlushInbound`
+				// when it drains).
 				match st.in_reset {
 					Some(code) => {
 						if let Some(tx) = st.inbound_tx.clone() {
@@ -500,18 +501,20 @@ impl BridgeDriver {
 					}
 					Err(quiche::Error::Done) => break,
 					Err(e) => {
-						// The peer refused our send half (STOP_SENDING) or the stream
-						// is otherwise unwritable. Drop the queued data and mark the
-						// send side failed so the back-channel is closed rather than
-						// re-armed — the local writer's next `poll_write` then fails
+						// The peer refused our send half (STOP_SENDING) or the
+						// stream is otherwise unwritable. Drop the queued
+						// data and mark the send side failed so the
+						// back-channel is closed rather than re-armed —
+						// the local writer's next `poll_write` then fails
 						// instead of silently succeeding into a black hole.
 						debug!(stream = sid, "stream_send error: {e}");
 						st.out_queue.clear();
 						st.out_queue_len = 0;
 						st.out_done = true;
 						st.send_failed = true;
-						// If the back-channel was parked, close it now; otherwise the
-						// `Ev::Out` handler drops it when the next write arrives.
+						// If the back-channel was parked, close it now;
+						// otherwise the `Ev::Out` handler drops it when
+						// the next write arrives.
 						st.parked_out_rx = None;
 						break;
 					}
@@ -527,8 +530,8 @@ impl BridgeDriver {
 					}
 				}
 			}
-			// Resume draining the handle's back-channel now that we're back under
-			// the outbound cap (see `MAX_PENDING_OUT`).
+			// Resume draining the handle's back-channel now that we're back
+			// under the outbound cap (see `MAX_PENDING_OUT`).
 			if st.out_queue_len < MAX_PENDING_OUT
 				&& let Some(rx) = st.parked_out_rx.take()
 			{
@@ -560,8 +563,9 @@ impl BridgeDriver {
 			DriverCommand::OpenUni(reply) => self.pending_opens.push_back(PendingOpen::Uni(reply)),
 			DriverCommand::SendDatagram(b) => {
 				self.out_datagrams.push_back(b);
-				// Bound queued datagrams: drop the oldest past the cap (datagrams
-				// are unreliable, and the command channel is unbounded).
+				// Bound queued datagrams: drop the oldest past the cap
+				// (datagrams are unreliable, and the command channel is
+				// unbounded).
 				while self.out_datagrams.len() > MAX_OUT_DATAGRAMS {
 					self.out_datagrams.pop_front();
 				}
@@ -668,12 +672,13 @@ impl ApplicationOverQuic for BridgeDriver {
 		match ev {
 			Ev::Out((sid, data, rx)) => match data {
 				Some(b) => {
-					// Buffer the chunk; re-arm the back-channel only while under
-					// the outbound cap. At/over the cap we park `rx` (stop
-					// draining) so the local writer back-pressures; `write_stream`
-					// re-arms once the queue drains. If the stream is gone or its
-					// send side has failed, drop both `b` and `rx` — dropping `rx`
-					// closes the channel so the writer's next `poll_write` fails.
+					// Buffer the chunk; re-arm the back-channel only while
+					// under the outbound cap. At/over the cap we park `rx`
+					// (stop draining) so the local writer back-pressures;
+					// `write_stream` re-arms once the queue drains. If the
+					// stream is gone or its send side has failed, drop
+					// both `b` and `rx` — dropping `rx` closes the channel
+					// so the writer's next `poll_write` fails.
 					let rearm = match self.streams.get_mut(&sid) {
 						Some(st) if !st.send_failed => {
 							st.out_queue_len += b.len();
@@ -752,8 +757,9 @@ impl ApplicationOverQuic for BridgeDriver {
 			let _ = reply.send(qconn.session().map(|s| s.to_vec()));
 		}
 
-		// Cache cumulative wire byte counters into `shared` so handles read them
-		// without a driver round-trip — and so the final counts survive close.
+		// Cache cumulative wire byte counters into `shared` so handles read
+		// them without a driver round-trip — and so the final counts survive
+		// close.
 		let stats = qconn.stats();
 		self.shared.sent_bytes.store(stats.sent_bytes, Ordering::Relaxed);
 		self.shared.recv_bytes.store(stats.recv_bytes, Ordering::Relaxed);
@@ -776,8 +782,8 @@ impl ApplicationOverQuic for BridgeDriver {
 			let _ = qconn.stream_shutdown(sid, dir, code);
 			// A write-direction reset supersedes any pending FIN. Mark the send
 			// side finished/failed so `write_stream` doesn't later emit a clean
-			// FIN (which would race the RESET and could surface as a clean EOF at
-			// the peer).
+			// FIN (which would race the RESET and could surface as a clean EOF
+			// at the peer).
 			if write && let Some(st) = self.streams.get_mut(&sid) {
 				st.out_queue.clear();
 				st.out_queue_len = 0;
@@ -814,7 +820,8 @@ impl ApplicationOverQuic for BridgeDriver {
 	fn on_conn_close<M: Metrics>(&mut self, qconn: &mut QuicheConnection, _metrics: &M, _result: &QuicResult<()>) {
 		// Capture the final byte counts *before* waking `closed()` waiters: the
 		// traffic sampler's close-path read runs after this worker loop has
-		// exited, so this cached snapshot is its only source for the last window.
+		// exited, so this cached snapshot is its only source for the last
+		// window.
 		let stats = qconn.stats();
 		self.shared.sent_bytes.store(stats.sent_bytes, Ordering::Relaxed);
 		self.shared.recv_bytes.store(stats.recv_bytes, Ordering::Relaxed);

@@ -173,7 +173,8 @@ impl LoadBalanceOutbound {
 				cache.retain(|_, (ts, _)| now.duration_since(*ts) < ttl);
 
 				if let Some((_, idx)) = cache.get(target) {
-					// If the cached index is no longer in the alive set, pick a new one.
+					// If the cached index is no longer in the alive set, pick a
+					// new one.
 					if alive.contains(idx) {
 						return *idx;
 					}

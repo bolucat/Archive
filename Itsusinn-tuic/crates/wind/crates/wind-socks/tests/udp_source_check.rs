@@ -84,7 +84,8 @@ async fn rejects_packet_from_unexpected_source_ip() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn accepts_packet_from_expected_source_ip() {
-	// Relay expects the client on 127.0.0.1 — the same IP our sender will bind to.
+	// Relay expects the client on 127.0.0.1 — the same IP our sender will bind
+	// to.
 	let (relay_addr, mut rx_at_upstream, _tx_at_upstream) = spawn_relay(Some(IpAddr::V4(Ipv4Addr::LOCALHOST))).await;
 
 	let sender = UdpSocket::bind("127.0.0.1:0").await.expect("bind sender");
@@ -166,8 +167,8 @@ async fn reply_header_origin_is_remote_not_client() {
 		.expect("recv_from");
 	assert_eq!(from, relay_addr, "reply must come from the relay's UDP port");
 
-	// Parse the SOCKS5 UDP header in the reply: RSV(2) FRAG(1) ATYP(1) ADDR PORT
-	// payload.
+	// Parse the SOCKS5 UDP header in the reply: RSV(2) FRAG(1) ATYP(1) ADDR
+	// PORT payload.
 	let frame = &buf[..n];
 	assert_eq!(&frame[0..2], &[0, 0], "RSV must be 00 00");
 	assert_eq!(frame[2], 0, "FRAG must be 0");
@@ -205,8 +206,8 @@ async fn reply_header_origin_is_remote_not_client() {
 async fn malformed_packet_does_not_displace_latched_source() {
 	let (relay_addr, mut rx_at_upstream, tx_at_upstream) = spawn_relay(Some(IpAddr::V4(Ipv4Addr::LOCALHOST))).await;
 
-	// 1) Send a well-formed packet from a legitimate sender. This both passes the
-	//    IP check and (with the fix) sets `source_addr` to its `(127.0.0.1,
+	// 1) Send a well-formed packet from a legitimate sender. This both passes
+	//    the IP check and (with the fix) sets `source_addr` to its `(127.0.0.1,
 	//    legit_port)`.
 	let legit = UdpSocket::bind("127.0.0.1:0").await.expect("bind legit");
 	let legit_addr = legit.local_addr().unwrap();

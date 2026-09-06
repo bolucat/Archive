@@ -144,8 +144,48 @@ async fn hard_killed_manager_is_reaped_and_all_epoch_artifacts_are_swept() {
         panic!("recovery core is not running")
     };
     assert!(
-        epoch > swept_epoch,
+        epoch.get() > swept_epoch,
         "epoch {epoch} must exceed {swept_epoch}"
     );
     manager.shutdown().await.expect("shutdown recovery core");
+}
+
+/// A runtime directory can carry `config-0.yaml` from an interrupted write, and
+/// zero is not a number the allocator can ever issue. Discovery therefore reads
+/// artifact numbers back from filenames as plain integers rather than as
+/// epochs — and must still clean them, because a zero nothing is willing to
+/// name is a zero that leaks forever.
+#[tokio::test]
+async fn zero_named_artifacts_are_swept_without_becoming_an_epoch() {
+    let (_guard, dir) = common::utf8_tempdir();
+    let runtime_dir = dir.join("runtime");
+    std::fs::create_dir_all(&runtime_dir).unwrap();
+    for name in [
+        "config-0.yaml",
+        "config-0.yaml.backup-3",
+        "core-0.pid.tmp-1",
+        "config-4.yaml",
+    ] {
+        std::fs::write(runtime_dir.join(name), b"stale\n").unwrap();
+    }
+
+    let manager = CoreManager::new(ManagerOptions {
+        runtime_dir: Some(runtime_dir.clone()),
+        ..ManagerOptions::default()
+    })
+    .await
+    .expect("construct a manager over a zero-named artifact");
+
+    let mut entries = tokio::fs::read_dir(&runtime_dir).await.unwrap();
+    let mut leftovers = Vec::new();
+    while let Some(entry) = entries.next_entry().await.unwrap() {
+        leftovers.push(entry.file_name().to_string_lossy().into_owned());
+    }
+    leftovers.sort();
+    assert_eq!(leftovers, [".manager.lock", "logs"], "unswept artifacts");
+
+    // The seed a zero artifact contributes is still zero, so the first epoch
+    // the domain sees is one — proven against the allocator directly by
+    // `epochs_are_monotone_past_the_seed_and_never_zero`.
+    assert!(matches!(manager.status().state, CoreState::Stopped { .. }));
 }

@@ -53,7 +53,7 @@ async fn reconcile_with_a_stale_expectation_changes_nothing() {
     let running = manager.status();
 
     let stale = RevisionId {
-        epoch: 99,
+        epoch: common::epoch(99),
         generation: 9,
         effective_hash: "deadbeefdeadbeef".to_owned(),
     };
@@ -85,7 +85,7 @@ async fn reconcile_against_a_stopped_manager_rejects_a_believed_revision() {
     let spec = common::mihomo_spec(&dir, config);
 
     let expected = RevisionId {
-        epoch: 1,
+        epoch: common::epoch(1),
         generation: 1,
         effective_hash: "0123456789abcdef".to_owned(),
     };

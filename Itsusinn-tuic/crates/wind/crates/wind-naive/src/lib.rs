@@ -449,12 +449,12 @@ async fn naive_async_bridge(
 			}
 		}
 
-		// Do not `join` the I/O thread from this async task: it may be parked in
-		// a blocking `naive.read()` with no traffic, and `join()` would pin a
-		// tokio worker thread until the remote finally speaks or times out.
-		// Dropping the channels instead makes the thread's next send/recv fail,
-		// and the `NaiveConn` is cancelled when the thread unwinds and drops it
-		// (same strategy as the UoT relay above).
+		// Do not `join` the I/O thread from this async task: it may be parked
+		// in a blocking `naive.read()` with no traffic, and `join()` would
+		// pin a tokio worker thread until the remote finally speaks or times
+		// out. Dropping the channels instead makes the thread's next
+		// send/recv fail, and the `NaiveConn` is cancelled when the thread
+		// unwinds and drops it (same strategy as the UoT relay above).
 		drop(io_handle);
 		Ok(())
 	}
@@ -476,8 +476,8 @@ const CRONET_SEARCH_PATHS: &[&str] = &[
 /// If `path` is `Some(...)`, that exact path is tried first.  On failure, or
 /// when `path` is `None`, the default search paths are tried.
 fn load_cronet(path: Option<String>) -> eyre::Result<()> {
-	// With `static-link`, libcronet is linked at compile time — there is nothing
-	// to dlopen, so skip the search entirely.
+	// With `static-link`, libcronet is linked at compile time — there is
+	// nothing to dlopen, so skip the search entirely.
 	#[cfg(not(feature = "dynamic"))]
 	{
 		let _ = path;

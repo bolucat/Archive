@@ -9,6 +9,8 @@ pub struct Version {
     #[serde(default)]
     pub meta: bool,
     pub version: String,
+    #[serde(default)]
+    pub premium: Option<bool>,
 }
 
 impl Client {
@@ -18,5 +20,19 @@ impl Client {
             self.get("/version")
         })
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn versions_accept_clash_rs_and_preserve_premium_flag() {
+        let minimal: Version = serde_json::from_str(r#"{"version":"1"}"#).unwrap();
+        assert!(!minimal.meta);
+        assert_eq!(minimal.premium, None);
+        let premium: Version = serde_json::from_str(r#"{"version":"1","premium":true}"#).unwrap();
+        assert_eq!(premium.premium, Some(true));
     }
 }

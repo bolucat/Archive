@@ -9,7 +9,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_utils::io::atomic_fs;
 use tokio::io::AsyncWriteExt;
 
-use crate::Error;
+use crate::{Epoch, Error};
 
 static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -48,7 +48,7 @@ impl Drop for StagedRuntimeConfig {
 #[derive(Debug, Clone)]
 pub struct RuntimeConfigBackup {
     path: Utf8PathBuf,
-    epoch: u64,
+    epoch: Epoch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,16 +124,32 @@ impl RuntimeConfigStore {
         &self.dir
     }
 
-    pub fn runtime_path(&self, epoch: u64) -> Utf8PathBuf {
-        self.dir.join(format!("config-{epoch}.yaml"))
+    pub fn runtime_path(&self, epoch: Epoch) -> Utf8PathBuf {
+        self.artifact_runtime_path(epoch.get())
     }
 
-    pub fn pid_path(&self, epoch: u64) -> Utf8PathBuf {
-        self.dir.join(format!("core-{epoch}.pid"))
+    pub fn pid_path(&self, epoch: Epoch) -> Utf8PathBuf {
+        self.artifact_pid_path(epoch.get())
     }
 
-    pub fn socket_path(&self, epoch: u64) -> Utf8PathBuf {
-        self.dir.join(format!("core-{epoch}.sock"))
+    pub fn socket_path(&self, epoch: Epoch) -> Utf8PathBuf {
+        self.artifact_socket_path(epoch.get())
+    }
+
+    // Artifact naming keyed by a number recovered from a filename rather than
+    // by a live epoch. Only the orphan sweep holds such a number: a directory
+    // can carry `config-0.yaml` from an interrupted write, and a zero that
+    // cannot be named is a zero that leaks forever.
+    fn artifact_runtime_path(&self, discovered: u64) -> Utf8PathBuf {
+        self.dir.join(format!("config-{discovered}.yaml"))
+    }
+
+    pub(crate) fn artifact_pid_path(&self, discovered: u64) -> Utf8PathBuf {
+        self.dir.join(format!("core-{discovered}.pid"))
+    }
+
+    fn artifact_socket_path(&self, discovered: u64) -> Utf8PathBuf {
+        self.dir.join(format!("core-{discovered}.sock"))
     }
 
     #[cfg(feature = "test-hooks")]
@@ -149,7 +165,7 @@ impl RuntimeConfigStore {
             .map_err(std::io::Error::other)?
     }
 
-    pub async fn stage(&self, epoch: u64, contents: &[u8]) -> Result<StagedRuntimeConfig, Error> {
+    pub async fn stage(&self, epoch: Epoch, contents: &[u8]) -> Result<StagedRuntimeConfig, Error> {
         let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
         let path = self.dir.join(format!(
             ".config-{epoch}.yaml.tmp-{}-{counter}",
@@ -194,7 +210,7 @@ impl RuntimeConfigStore {
     pub async fn commit_new(
         &self,
         mut staged: StagedRuntimeConfig,
-        epoch: u64,
+        epoch: Epoch,
     ) -> Result<Utf8PathBuf, Error> {
         self.validate_staged(&staged, epoch).await?;
         let target = self.runtime_path(epoch);
@@ -205,7 +221,11 @@ impl RuntimeConfigStore {
         Ok(target)
     }
 
-    pub async fn replace(&self, epoch: u64, contents: &[u8]) -> Result<RuntimeConfigCommit, Error> {
+    pub async fn replace(
+        &self,
+        epoch: Epoch,
+        contents: &[u8],
+    ) -> Result<RuntimeConfigCommit, Error> {
         let staged = self.stage(epoch, contents).await?;
         self.commit_replace(staged, epoch).await
     }
@@ -216,12 +236,16 @@ impl RuntimeConfigStore {
     pub async fn commit_replace(
         &self,
         mut staged: StagedRuntimeConfig,
-        epoch: u64,
+        epoch: Epoch,
     ) -> Result<RuntimeConfigCommit, Error> {
         self.validate_staged(&staged, epoch).await?;
         let target = self.runtime_path(epoch);
         atomic_fs::validate_existing_regular_target(&target).await?;
-        atomic_fs::atomic_replace(&staged.path, &target).await?;
+        atomic_fs::atomic_replace(atomic_fs::AtomicReplacement {
+            replacement: staged.path.as_std_path(),
+            destination: target.as_std_path(),
+        })
+        .await?;
         staged.consumed = true;
         #[cfg(feature = "test-hooks")]
         let injected_failure = self
@@ -243,7 +267,11 @@ impl RuntimeConfigStore {
         Ok(installed_commit(target, parent_sync))
     }
 
-    pub async fn backup(&self, epoch: u64, generation: u64) -> Result<RuntimeConfigBackup, Error> {
+    pub async fn backup(
+        &self,
+        epoch: Epoch,
+        generation: u64,
+    ) -> Result<RuntimeConfigBackup, Error> {
         let target = self.runtime_path(epoch);
         atomic_fs::validate_existing_regular_target(&target).await?;
         let contents = tokio::fs::read(&target).await?;
@@ -276,15 +304,24 @@ impl RuntimeConfigStore {
             .map_err(Error::from)
     }
 
-    pub async fn cleanup_epoch(&self, epoch: u64) -> Result<(), Error> {
-        for path in [self.runtime_path(epoch), self.pid_path(epoch)] {
+    pub async fn cleanup_epoch(&self, epoch: Epoch) -> Result<(), Error> {
+        self.cleanup_artifacts(epoch.get()).await
+    }
+
+    /// Removes every artifact named for `discovered`, which the orphan sweep
+    /// reads back from filenames and therefore cannot vouch for as an epoch.
+    pub(crate) async fn cleanup_artifacts(&self, discovered: u64) -> Result<(), Error> {
+        for path in [
+            self.artifact_runtime_path(discovered),
+            self.artifact_pid_path(discovered),
+        ] {
             atomic_fs::remove_regular_file(&path).await?;
         }
-        remove_socket_artifact(&self.socket_path(epoch)).await?;
+        remove_socket_artifact(&self.artifact_socket_path(discovered)).await?;
 
-        let prefix = format!("config-{epoch}.yaml.backup-");
-        let temp_prefix = format!(".config-{epoch}.yaml.tmp-");
-        let pid_temp_prefix = format!("core-{epoch}.pid.tmp-");
+        let prefix = format!("config-{discovered}.yaml.backup-");
+        let temp_prefix = format!(".config-{discovered}.yaml.tmp-");
+        let pid_temp_prefix = format!("core-{discovered}.pid.tmp-");
         let mut entries = tokio::fs::read_dir(&self.dir).await?;
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name();
@@ -320,7 +357,11 @@ impl RuntimeConfigStore {
         Ok(epochs)
     }
 
-    async fn validate_staged(&self, staged: &StagedRuntimeConfig, epoch: u64) -> Result<(), Error> {
+    async fn validate_staged(
+        &self,
+        staged: &StagedRuntimeConfig,
+        epoch: Epoch,
+    ) -> Result<(), Error> {
         if staged.path.parent() != Some(self.dir.as_path())
             || !staged
                 .path
@@ -415,6 +456,7 @@ async fn remove_socket_artifact(path: &Utf8Path) -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::epoch::epoch;
 
     fn temp_store_dir() -> (tempfile::TempDir, Utf8PathBuf) {
         let dir = tempfile::tempdir().unwrap();
@@ -428,8 +470,8 @@ mod tests {
         let store = RuntimeConfigStore::new(dir).await.unwrap();
         let old = b"marker: old\npayload: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n";
         let new = b"marker: new\npayload: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n";
-        let staged = store.stage(7, old).await.unwrap();
-        let path = store.commit_new(staged, 7).await.unwrap();
+        let staged = store.stage(epoch(7), old).await.unwrap();
+        let path = store.commit_new(staged, epoch(7)).await.unwrap();
 
         let mut readers = Vec::new();
         for _ in 0..8 {
@@ -459,7 +501,7 @@ mod tests {
         }
         for round in 0..100 {
             store
-                .replace(7, if round % 2 == 0 { new } else { old })
+                .replace(epoch(7), if round % 2 == 0 { new } else { old })
                 .await
                 .unwrap();
         }
@@ -472,17 +514,17 @@ mod tests {
     async fn backup_restore_and_cleanup_preserve_complete_versions() {
         let (_guard, dir) = temp_store_dir();
         let store = RuntimeConfigStore::new(dir).await.unwrap();
-        let staged = store.stage(3, b"value: old\n").await.unwrap();
-        let path = store.commit_new(staged, 3).await.unwrap();
-        let backup = store.backup(3, 1).await.unwrap();
-        store.replace(3, b"value: new\n").await.unwrap();
+        let staged = store.stage(epoch(3), b"value: old\n").await.unwrap();
+        let path = store.commit_new(staged, epoch(3)).await.unwrap();
+        let backup = store.backup(epoch(3), 1).await.unwrap();
+        store.replace(epoch(3), b"value: new\n").await.unwrap();
         store.restore(&backup).await.unwrap();
         assert_eq!(
             tokio::fs::read_to_string(&path).await.unwrap(),
             "value: old\n"
         );
         store.remove_backup(backup).await.unwrap();
-        store.cleanup_epoch(3).await.unwrap();
+        store.cleanup_epoch(epoch(3)).await.unwrap();
         assert!(!path.exists());
     }
 
@@ -493,7 +535,7 @@ mod tests {
 
         let (_guard, dir) = temp_store_dir();
         let store = RuntimeConfigStore::new(dir).await.unwrap();
-        let socket_path = store.socket_path(9);
+        let socket_path = store.socket_path(epoch(9));
         let listener = UnixListener::bind(&socket_path).unwrap();
         assert!(
             std::fs::symlink_metadata(&socket_path)
@@ -503,7 +545,7 @@ mod tests {
         );
         drop(listener);
 
-        store.cleanup_epoch(9).await.unwrap();
+        store.cleanup_epoch(epoch(9)).await.unwrap();
         assert!(!socket_path.exists());
     }
 

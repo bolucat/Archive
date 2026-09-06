@@ -1,0 +1,745 @@
+//! Control-protocol helpers owned by the application lifecycle workflow.
+
+use std::time::Duration;
+
+use futures::future::{BoxFuture, FutureExt, Shared};
+use nyanpasu_config::application::ClashCore;
+use nyanpasu_core_manager::{
+    ConfigInput, CoreCommand, CoreCommandEnvelope, CoreError, CoreErrorKind, CoreSpec, Epoch,
+    InstanceOptions, OperationId, ReconcileRequest, RevisionId,
+};
+use nyanpasu_ipc::api::core::v2::{
+    OperationInfo, OperationOutputInfo, OperationPhase, ReconcileOutcomeKind,
+};
+use tokio::sync::OnceCell;
+
+use super::{
+    CoreClient, CoreStatusProjection, HandoffReport, ShutdownReport,
+    endpoint::{CoreSubmission, ExecutionHost},
+    intent::RuntimeIntentBuilder,
+    service_actor::{ServiceClient, ServiceHostStatus},
+};
+
+const OPERATION_WAIT: Duration = Duration::from_secs(60);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReconcileReport {
+    pub output: OperationOutputInfo,
+    pub status: CoreStatusProjection,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StopReport {
+    pub output: OperationOutputInfo,
+    pub status: CoreStatusProjection,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RecoverReport {
+    pub output: OperationOutputInfo,
+    pub status: CoreStatusProjection,
+}
+
+type SharedShutdown = Shared<BoxFuture<'static, ShutdownReport>>;
+
+pub struct CoreFacade {
+    core: CoreClient,
+    service: ServiceClient,
+    shutdown: OnceCell<SharedShutdown>,
+    // Lost mutation replies must not release the application's execution domain.
+    // Terminal operation failures and failed read-only preflights do not set this.
+    outcome_uncertain: bool,
+}
+
+impl CoreFacade {
+    pub fn new(core: CoreClient, service: ServiceClient) -> Self {
+        Self {
+            core,
+            service,
+            shutdown: OnceCell::new(),
+            outcome_uncertain: false,
+        }
+    }
+
+    pub(crate) fn outcome_uncertain(&self) -> bool {
+        self.outcome_uncertain
+    }
+
+    fn observe_mutation<T>(&mut self, result: Result<T, CoreError>) -> Result<T, CoreError> {
+        if let Err(error) = &result
+            && matches!(
+                error.kind,
+                Some(CoreErrorKind::BackendUnavailable | CoreErrorKind::Internal)
+            )
+        {
+            self.outcome_uncertain = true;
+        }
+        result
+    }
+
+    pub async fn reconcile(
+        &mut self,
+        core: ClashCore,
+        document: &serde_yaml::Mapping,
+        core_spec: CoreSpec,
+    ) -> Result<ReconcileReport, CoreError> {
+        // Admission-time authoritative read (F2), not the router's cached
+        // projection: the cache is refreshed only by the 2s pump, so a
+        // second reconcile inside one pump interval would otherwise submit
+        // the pre-first-reconcile revision and the runtime would answer
+        // `RevisionConflict`.
+        let expected_applied = self
+            .core
+            .refresh_status()
+            .await?
+            .snapshot
+            .and_then(|snapshot| snapshot.revision);
+        let core_type: nyanpasu_utils::core::CoreType = (&core).into();
+        let intent = RuntimeIntentBuilder::build(core_type.clone(), document, expected_applied)
+            .map_err(|error| {
+                CoreError::new(
+                    CoreErrorKind::InvalidConfig,
+                    format!("failed to serialize runtime config: {error}"),
+                    false,
+                )
+            })?;
+        // `expected_applied` is the optimistic-concurrency guard: apply only if
+        // the manager is still on this revision. The wire carries the epoch as a
+        // plain `u64`, and `Epoch` rejects zero. Dropping the guard on a zero
+        // would turn a guarded apply into an unguarded one, so a value we cannot
+        // express is an error rather than `None`.
+        let expected_applied = intent
+            .expected_applied
+            .map(|revision| {
+                let epoch = Epoch::new(revision.epoch).ok_or_else(|| {
+                    CoreError::new(
+                        CoreErrorKind::Internal,
+                        "the applied revision reported epoch 0, which is not a valid epoch"
+                            .to_owned(),
+                        false,
+                    )
+                })?;
+                Ok::<_, CoreError>(RevisionId {
+                    epoch,
+                    generation: revision.generation,
+                    effective_hash: revision.effective_hash,
+                })
+            })
+            .transpose()?;
+        let submission = CoreSubmission {
+            envelope: CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command: CoreCommand::Reconcile(Box::new(ReconcileRequest {
+                    core: core_spec,
+                    config: ConfigInput::Inline {
+                        bytes: intent.config_text.into_bytes(),
+                        expected_digest: Some(intent.digest),
+                    },
+                    options: InstanceOptions::default(),
+                    expected_applied,
+                })),
+            },
+            core_type: Some(core_type),
+        };
+        let output = self.submit_and_wait(submission).await?;
+        let outcome = match &output {
+            OperationOutputInfo::Reconciled(outcome) => outcome,
+            _ => return Err(unexpected_output("reconcile", &output)),
+        };
+        if let Some(warning) = &outcome.warning {
+            tracing::warn!("core reconcile completed with a durability warning: {warning}");
+        }
+        // `RolledBack` is an `Ok` transaction from the runtime's point of view
+        // (the manager cleanly restored the previous revision), but the
+        // caller's desired config never took effect. Reporting it as success
+        // here would let profile activation and config patches claim success
+        // while the old config keeps running, so this is the choke point that
+        // turns it into a non-retryable error instead.
+        if outcome.outcome == ReconcileOutcomeKind::RolledBack {
+            return Err(CoreError::new(
+                CoreErrorKind::ApplyFailed,
+                format!(
+                    "core reconcile was rolled back to the previous revision: {}",
+                    outcome.failed_apply.as_deref().unwrap_or("unknown reason")
+                ),
+                false,
+            ));
+        }
+        Ok(ReconcileReport {
+            output,
+            status: self.core.status(),
+        })
+    }
+
+    pub async fn stop(&mut self) -> Result<StopReport, CoreError> {
+        let output = self.command(CoreCommand::Stop).await?;
+        if output != OperationOutputInfo::Stopped {
+            return Err(unexpected_output("stop", &output));
+        }
+        Ok(StopReport {
+            output,
+            status: self.core.status(),
+        })
+    }
+
+    pub async fn recover(&mut self) -> Result<RecoverReport, CoreError> {
+        let output = self.command(CoreCommand::Recover).await?;
+        if output != OperationOutputInfo::Recovered {
+            return Err(unexpected_output("recover", &output));
+        }
+        Ok(RecoverReport {
+            output,
+            status: self.core.status(),
+        })
+    }
+
+    pub async fn change_execution_host(
+        &mut self,
+        host: ExecutionHost,
+    ) -> Result<HandoffReport, CoreError> {
+        let target = match host {
+            ExecutionHost::Local => self.core.initial_endpoint(),
+            ExecutionHost::Service => {
+                let result = self.service.ensure_ready().await;
+                self.observe_mutation(result)?
+            }
+        };
+        let result = self.core.change_host(target).await;
+        self.observe_mutation(result)
+    }
+
+    /// Move to the Service host only if the daemon is already `Ready`, never
+    /// by converging one. Boot uses this to restore a persisted host without
+    /// installing or starting a service on the user's behalf.
+    pub async fn adopt_service_host(&mut self) -> Result<HandoffReport, CoreError> {
+        let target = self.service.adopt_if_ready().await?;
+        let result = self.core.change_host(target).await;
+        self.observe_mutation(result)
+    }
+
+    pub fn core_status(&self) -> CoreStatusProjection {
+        self.core.status()
+    }
+
+    /// Authoritative status read for callers that must decide from the
+    /// host's *applied* identity rather than the router's cached projection
+    /// (R5): the same in-mailbox endpoint read `reconcile`'s CAS token uses,
+    /// exposed for `replace_core_binary`'s stop decision.
+    pub async fn refresh_status(&self) -> Result<CoreStatusProjection, CoreError> {
+        self.core.refresh_status().await
+    }
+
+    pub fn service_status(&self) -> ServiceHostStatus {
+        self.service.status()
+    }
+
+    pub async fn probe_service(&self) -> Result<ServiceHostStatus, CoreError> {
+        self.service.probe().await
+    }
+
+    pub async fn install_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.install().await;
+        self.observe_mutation(result)
+    }
+
+    pub async fn start_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.start_daemon().await;
+        self.observe_mutation(result)
+    }
+
+    pub async fn stop_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.stop_daemon().await;
+        self.observe_mutation(result)
+    }
+
+    pub async fn uninstall_service(&mut self) -> Result<(), CoreError> {
+        let result = self.service.uninstall().await;
+        self.observe_mutation(result)
+    }
+
+    pub async fn shutdown(&self) -> ShutdownReport {
+        self.shutdown
+            .get_or_init(|| {
+                let core = self.core.clone();
+                std::future::ready(
+                    async move {
+                        match core.shutdown().await {
+                            Ok(report) => report,
+                            Err(error) => ShutdownReport {
+                                stop: Err(error),
+                                final_status: core.status().snapshot,
+                            },
+                        }
+                    }
+                    .boxed()
+                    .shared(),
+                )
+            })
+            .await
+            .clone()
+            .await
+    }
+
+    async fn command(&mut self, command: CoreCommand) -> Result<OperationOutputInfo, CoreError> {
+        self.submit_and_wait(CoreSubmission {
+            envelope: CoreCommandEnvelope {
+                operation_id: OperationId::generate(),
+                command,
+            },
+            core_type: None,
+        })
+        .await
+    }
+
+    async fn submit_and_wait(
+        &mut self,
+        submission: CoreSubmission,
+    ) -> Result<OperationOutputInfo, CoreError> {
+        let result = self.core.submit(submission).await;
+        let ticket = self.observe_mutation(result)?;
+        let info = ticket
+            .endpoint
+            .wait_operation(ticket.id, OPERATION_WAIT)
+            .await
+            .ok_or_else(|| {
+                self.outcome_uncertain = true;
+                CoreError::new(
+                    CoreErrorKind::BackendUnavailable,
+                    "the admitted core operation disappeared before reaching a terminal state",
+                    true,
+                )
+                .with_operation(ticket.id)
+            })?;
+        if matches!(info.phase, OperationPhase::Queued | OperationPhase::Running) {
+            self.outcome_uncertain = true;
+        }
+        terminal_output(info, ticket.id)
+    }
+}
+
+fn terminal_output(info: OperationInfo, id: OperationId) -> Result<OperationOutputInfo, CoreError> {
+    match info.phase {
+        OperationPhase::Succeeded => info.output.ok_or_else(|| {
+            CoreError::new(
+                CoreErrorKind::Internal,
+                "a successful core operation had no output",
+                false,
+            )
+            .with_operation(id)
+        }),
+        OperationPhase::Failed => {
+            let error =
+                info.error
+                    .unwrap_or_else(|| nyanpasu_ipc::api::core::v2::OperationErrorInfo {
+                        kind: None,
+                        message: "the core operation failed without an error payload".into(),
+                        retryable: false,
+                    });
+            Err(CoreError {
+                kind: error.kind.as_deref().and_then(CoreErrorKind::from_wire),
+                message: error.message,
+                retryable: error.retryable,
+                operation_id: Some(id),
+            })
+        }
+        OperationPhase::Queued | OperationPhase::Running => Err(CoreError::new(
+            CoreErrorKind::BackendUnavailable,
+            "the core operation did not reach a terminal state before the wait elapsed",
+            true,
+        )
+        .with_operation(id)),
+    }
+}
+
+fn unexpected_output(command: &str, output: &OperationOutputInfo) -> CoreError {
+    CoreError::new(
+        CoreErrorKind::Internal,
+        format!("{command} returned an unexpected operation output: {output:?}"),
+        false,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        borrow::Cow,
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+        },
+    };
+
+    use camino::Utf8PathBuf;
+    use nyanpasu_core_manager::{CoreKind, CoreSpec};
+    use nyanpasu_ipc::{
+        api::{
+            core::v2::{
+                OperationInfo, OperationOutputInfo, OperationPhase, ReconcileOutcomeInfo,
+                ReconcileOutcomeKind,
+            },
+            status::{
+                ConfigRevisionInfo, CoreInfos, CoreState, CoreStateDetail, RevisionIdInfo,
+                RuntimeInfos, StatusResBody,
+            },
+        },
+        types::{ServiceStatus, StatusInfo},
+    };
+
+    use super::*;
+    use crate::core::actor_v2::{
+        endpoint::{ControlEndpoint, CoreStatusSnapshot},
+        service_actor::ServiceHostAdapter,
+    };
+
+    struct RecordingEndpoint {
+        host: ExecutionHost,
+        status: CoreStatusSnapshot,
+        submissions: Mutex<Vec<CoreSubmission>>,
+        stops: AtomicUsize,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+        reconcile_outcome: Mutex<ReconcileOutcomeInfo>,
+    }
+
+    impl RecordingEndpoint {
+        fn new(host: ExecutionHost, revision: Option<RevisionIdInfo>) -> Arc<Self> {
+            Arc::new(Self {
+                host,
+                status: CoreStatusSnapshot {
+                    state: Some(CoreStateDetail::Running { pid: 7, epoch: 1 }),
+                    state_changed_at: 1,
+                    revision,
+                    healthy: Some(true),
+                    applied_kind: None,
+                },
+                submissions: Mutex::new(Vec::new()),
+                stops: AtomicUsize::new(0),
+                calls: Arc::new(Mutex::new(Vec::new())),
+                reconcile_outcome: Mutex::new(ReconcileOutcomeInfo {
+                    outcome: ReconcileOutcomeKind::Noop,
+                    revision: ConfigRevisionInfo {
+                        epoch: 1,
+                        generation: 2,
+                        source_hash: "source".into(),
+                        effective_hash: "effective".into(),
+                    },
+                    warning: None,
+                    failed_apply: None,
+                }),
+            })
+        }
+
+        /// Overrides the outcome the next `Reconcile` submissions answer with,
+        /// so a test can drive the facade through a non-default terminal
+        /// outcome such as `RolledBack`.
+        fn set_reconcile_outcome(&self, outcome: ReconcileOutcomeInfo) {
+            *self.reconcile_outcome.lock().unwrap() = outcome;
+        }
+
+        fn operation(&self, submission: &CoreSubmission) -> OperationInfo {
+            let output = match submission.envelope.command {
+                CoreCommand::Reconcile(_) => {
+                    OperationOutputInfo::Reconciled(self.reconcile_outcome.lock().unwrap().clone())
+                }
+                CoreCommand::Stop => OperationOutputInfo::Stopped,
+                CoreCommand::Recover => OperationOutputInfo::Recovered,
+                CoreCommand::Shutdown => OperationOutputInfo::ShutDown,
+            };
+            OperationInfo {
+                id: submission.envelope.operation_id.to_string(),
+                phase: OperationPhase::Succeeded,
+                output: Some(output),
+                error: None,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ControlEndpoint for RecordingEndpoint {
+        fn host(&self) -> ExecutionHost {
+            self.host
+        }
+
+        async fn submit(&self, submission: CoreSubmission) -> Result<OperationInfo, CoreError> {
+            if matches!(submission.envelope.command, CoreCommand::Stop) {
+                self.stops.fetch_add(1, Ordering::SeqCst);
+            }
+            let info = self.operation(&submission);
+            self.submissions.lock().unwrap().push(submission);
+            Ok(info)
+        }
+
+        async fn wait_operation(
+            &self,
+            id: OperationId,
+            _timeout: Duration,
+        ) -> Option<OperationInfo> {
+            self.submissions
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|submission| submission.envelope.operation_id == id)
+                .map(|submission| self.operation(submission))
+        }
+
+        async fn status(&self) -> Result<CoreStatusSnapshot, CoreError> {
+            if self.host == ExecutionHost::Service {
+                self.calls.lock().unwrap().push("change_host");
+            }
+            Ok(self.status.clone())
+        }
+    }
+
+    struct ReadyService {
+        endpoint: Arc<RecordingEndpoint>,
+        calls: Arc<Mutex<Vec<&'static str>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ServiceHostAdapter for ReadyService {
+        async fn probe(&self) -> Result<StatusInfo<'static>, String> {
+            self.calls.lock().unwrap().push("ensure_ready");
+            Ok(StatusInfo {
+                name: Cow::Borrowed("nyanpasu-service"),
+                version: Cow::Borrowed("test"),
+                status: ServiceStatus::Running,
+                server: Some(StatusResBody {
+                    version: Cow::Borrowed("2.0.0"),
+                    core_infos: CoreInfos {
+                        instance_id: None,
+                        r#type: None,
+                        state: CoreState::Running,
+                        state_changed_at: 1,
+                        config_path: None,
+                        controller: None,
+                        health: None,
+                        revision: None,
+                        detail: Some(CoreStateDetail::Stopped { reason: None }),
+                    },
+                    runtime_infos: RuntimeInfos {
+                        service_data_dir: Cow::Owned(Default::default()),
+                        service_config_dir: Cow::Owned(Default::default()),
+                        nyanpasu_config_dir: Cow::Owned(Default::default()),
+                        nyanpasu_data_dir: Cow::Owned(Default::default()),
+                    },
+                    logs: None,
+                }),
+            })
+        }
+
+        async fn install(&self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn uninstall(&self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn start_daemon(&self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn stop_daemon(&self) -> Result<(), String> {
+            Ok(())
+        }
+        async fn update(&self) -> Result<(), String> {
+            Ok(())
+        }
+        fn endpoint(&self) -> crate::core::actor_v2::endpoint::EndpointHandle {
+            self.endpoint.clone()
+        }
+    }
+
+    async fn facade(local: Arc<RecordingEndpoint>) -> (CoreFacade, Arc<Mutex<Vec<&'static str>>>) {
+        let core = CoreClient::spawn(local).await.unwrap();
+        let service_endpoint = RecordingEndpoint::new(ExecutionHost::Service, None);
+        let calls = service_endpoint.calls.clone();
+        let service = ServiceClient::spawn(
+            Arc::new(ReadyService {
+                calls: calls.clone(),
+                endpoint: service_endpoint,
+            }),
+            1,
+        )
+        .await
+        .unwrap();
+        calls.lock().unwrap().clear();
+        (CoreFacade::new(core, service), calls)
+    }
+
+    async fn wait_for_snapshot(core: &CoreClient) {
+        let mut status = core.subscribe();
+        while status.borrow().snapshot.is_none() {
+            status.changed().await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn reconcile_builds_an_inline_intent_with_the_status_revision_as_cas_token() {
+        let expected = RevisionIdInfo {
+            epoch: 4,
+            generation: 9,
+            effective_hash: "old-effective".into(),
+        };
+        let local = RecordingEndpoint::new(ExecutionHost::Local, Some(expected.clone()));
+        let (mut facade, _) = facade(local.clone()).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap();
+
+        let submissions = local.submissions.lock().unwrap();
+        let CoreCommand::Reconcile(request) = &submissions[0].envelope.command else {
+            panic!("expected reconcile");
+        };
+        let ConfigInput::Inline {
+            bytes,
+            expected_digest,
+        } = &request.config;
+        let digest = nyanpasu_core_manager::payload_digest(bytes);
+        assert_eq!(expected_digest.as_deref(), Some(digest.as_str()));
+        assert_eq!(
+            request.expected_applied,
+            Some(RevisionId {
+                epoch: Epoch::new(expected.epoch).expect("the fixture epoch is nonzero"),
+                generation: expected.generation,
+                effective_hash: expected.effective_hash,
+            })
+        );
+        assert_eq!(submissions[0].core_type, Some((&ClashCore::Mihomo).into()));
+    }
+
+    #[tokio::test]
+    async fn reconcile_reports_a_rolled_back_outcome_as_an_apply_failed_error() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        local.set_reconcile_outcome(ReconcileOutcomeInfo {
+            outcome: ReconcileOutcomeKind::RolledBack,
+            revision: ConfigRevisionInfo {
+                epoch: 1,
+                generation: 2,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: None,
+            failed_apply: Some("boom".into()),
+        });
+        let (mut facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        let error = facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.kind, Some(CoreErrorKind::ApplyFailed));
+        assert!(!error.retryable);
+        assert!(error.message.contains("boom"));
+    }
+
+    #[tokio::test]
+    async fn reconcile_still_succeeds_when_the_outcome_only_carries_a_durability_warning() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        local.set_reconcile_outcome(ReconcileOutcomeInfo {
+            outcome: ReconcileOutcomeKind::Patched,
+            revision: ConfigRevisionInfo {
+                epoch: 1,
+                generation: 2,
+                source_hash: "source".into(),
+                effective_hash: "effective".into(),
+            },
+            warning: Some("durability uncertain".into()),
+            failed_apply: None,
+        });
+        let (mut facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reconcile_reports_a_zero_epoch_status_revision_as_an_internal_error() {
+        let zero_epoch = RevisionIdInfo {
+            epoch: 0,
+            generation: 9,
+            effective_hash: "effective".into(),
+        };
+        let local = RecordingEndpoint::new(ExecutionHost::Local, Some(zero_epoch));
+        let (mut facade, _) = facade(local).await;
+        wait_for_snapshot(&facade.core).await;
+        let document = serde_yaml::from_str("mode: rule\n").unwrap();
+        let spec = CoreSpec {
+            kind: CoreKind::Mihomo,
+            binary_path: Utf8PathBuf::from("fake-mihomo"),
+            version: None,
+            features: vec![],
+        };
+
+        let error = facade
+            .reconcile(ClashCore::Mihomo, &document, spec)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.kind, Some(CoreErrorKind::Internal));
+        assert!(!error.retryable);
+        assert!(
+            !facade.outcome_uncertain(),
+            "validation failed before any mutation was submitted"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_second_shutdown_awaits_the_same_future() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        let (facade, _) = facade(local.clone()).await;
+        let facade = Arc::new(facade);
+
+        let (first, second) = tokio::join!(facade.shutdown(), facade.shutdown());
+
+        assert_eq!(first.stop, second.stop);
+        assert_eq!(local.stops.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn change_execution_host_to_service_ensures_ready_first() {
+        let local = RecordingEndpoint::new(ExecutionHost::Local, None);
+        let (mut facade, calls) = facade(local).await;
+
+        facade
+            .change_execution_host(ExecutionHost::Service)
+            .await
+            .unwrap();
+
+        let calls = calls.lock().unwrap();
+        let ensure = calls
+            .iter()
+            .position(|call| *call == "ensure_ready")
+            .unwrap();
+        let handoff = calls
+            .iter()
+            .position(|call| *call == "change_host")
+            .unwrap();
+        assert!(ensure < handoff);
+    }
+}

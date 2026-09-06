@@ -75,16 +75,17 @@ impl GeoData {
 		}
 		let snapshot = rkyv::access::<ArchivedGeoDataSnapshot, rkyv::rancor::Error>(&bytes[HEADER_LEN..])
 			.map_err(|e| GeoDataError::Validate(e.to_string()))?;
-		// rkyv confirms the archive is structurally sound; additionally check the
-		// application-level slice-offset invariants so a corrupt cache can't cause
-		// an out-of-bounds panic at query time.
+		// rkyv confirms the archive is structurally sound; additionally check
+		// the application-level slice-offset invariants so a corrupt cache
+		// can't cause an out-of-bounds panic at query time.
 		snapshot.validate_offsets().map_err(GeoDataError::Validate)?;
 		Ok(())
 	}
 
 	fn snapshot(&self) -> &ArchivedGeoDataSnapshot {
-		// Safety: the archive was validated by `validate()` in `open`/`build_and_open`,
-		// and the payload starts at a 16-byte boundary (page-aligned base + 16).
+		// Safety: the archive was validated by `validate()` in
+		// `open`/`build_and_open`, and the payload starts at a 16-byte
+		// boundary (page-aligned base + 16).
 		unsafe { rkyv::access_unchecked(&self.mmap[HEADER_LEN..]) }
 	}
 
@@ -209,8 +210,9 @@ mod tests {
 
 	#[test]
 	fn geosite_miss_does_not_panic() {
-		// Regression: a matched category with a domain that misses exact/suffix/keyword
-		// used to walk past the end of the byte buffer and panic.
+		// Regression: a matched category with a domain that misses
+		// exact/suffix/keyword used to walk past the end of the byte buffer
+		// and panic.
 		let (_tmp, geo) = open_fixture();
 		let site = geo.geosite_lookup();
 		assert!(!site("google", "example.org"));

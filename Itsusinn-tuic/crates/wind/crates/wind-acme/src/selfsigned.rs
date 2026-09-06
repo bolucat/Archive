@@ -10,9 +10,9 @@ use tokio::fs;
 /// already exist. The QUIC listener loads TLS material from file paths, so both
 /// backends consume the same on-disk PEMs.
 pub async fn ensure_self_signed_cert_files(hostname: &str, cert_path: &Path, key_path: &Path) -> Result<()> {
-	// Reuse the existing pair only if the cert is still fresh. These certs have a
-	// ~45-day validity, so returning early merely because the files exist would
-	// serve an expired cert forever after the first 45 days.
+	// Reuse the existing pair only if the cert is still fresh. These certs have
+	// a ~45-day validity, so returning early merely because the files exist
+	// would serve an expired cert forever after the first 45 days.
 	if cert_path.exists()
 		&& key_path.exists()
 		&& let Ok(cert_pem) = fs::read(cert_path).await

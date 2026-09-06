@@ -7,6 +7,7 @@ mod capability;
 mod config;
 pub mod control;
 pub mod dns;
+mod epoch;
 mod error;
 mod health;
 pub mod instance;
@@ -27,8 +28,9 @@ pub use control::{
     ReconcileRequest, payload_digest,
 };
 pub use dns::{DnsController, DnsError, DnsIntent, DnsOverrideRecord, DnsOverrideState};
+pub use epoch::Epoch;
 pub use error::{CoreErrorKind, Error};
-pub use health::{HealthPolicy, probe};
+pub use health::{HealthPolicy, HealthPolicySpec, HealthThresholds, probe};
 pub use instance::{Instance, InstanceBuilder};
 pub use kind::CoreKind;
 pub use log::{LogField, LogFrame, LogLevel, LogStream, LogTimestamp};
@@ -43,7 +45,8 @@ pub use runtime_store::{
     StagedRuntimeConfig,
 };
 pub use spec::{
-    CoreSpec, InstanceOptions, InstanceSpec, LocalIpcPolicy, ManagerOptions, ResolvedController,
+    ApiConnection, CoreSpec, InstanceOptions, InstanceSpec, LocalIpcPolicy, ManagerOptions,
+    ResolvedController,
 };
 pub use state::{
     ConfigRevision, CoreState, CoreStatus, HealthState, HealthStatus, InstanceState,

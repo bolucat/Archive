@@ -348,7 +348,8 @@ async fn byte_stats_survives_close<C: QuicConnection>(server: C, client: C) {
 		s_send.write_all(&buf).await.expect("server echo payload");
 		s_send.finish().expect("server finish");
 
-		// Sample exactly as the traffic sampler does: only after the peer closes.
+		// Sample exactly as the traffic sampler does: only after the peer
+		// closes.
 		tokio::time::timeout(Duration::from_secs(2), server.closed())
 			.await
 			.expect("server.closed() should resolve");
@@ -370,8 +371,8 @@ async fn byte_stats_survives_close<C: QuicConnection>(server: C, client: C) {
 	let stats = server_task.await.expect("server task");
 	let (sent, recv) = stats.expect("byte_stats must still return Some(..) after the connection closed");
 	// The pre-fix quiche bug surfaced as `None` here; the substantive check is
-	// that the final window is accounted, so both directions must be non-zero and
-	// cover at least the payload the server received and echoed back.
+	// that the final window is accounted, so both directions must be non-zero
+	// and cover at least the payload the server received and echoed back.
 	assert!(
 		recv as usize >= PAYLOAD.len(),
 		"recv wire bytes should cover the received payload: recv={recv} payload={}",

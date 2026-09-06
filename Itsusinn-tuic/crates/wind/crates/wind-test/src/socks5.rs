@@ -129,8 +129,8 @@ pub async fn test_socks5_udp(proxy_addr: &str, target_host: &str, target_port: u
 		.map_err(|e| eyre::eyre!("Failed to connect to proxy: {}", e))?;
 	println!("✓ TCP connection established with proxy");
 
-	// Use 127.0.0.1:0 to bind to any available interface and let the system choose
-	// an available port
+	// Use 127.0.0.1:0 to bind to any available interface and let the system
+	// choose an available port
 	let udp_socket_addr = "127.0.0.1:0".parse::<SocketAddr>()?;
 	let socket = Socks5Datagram::bind(backing_socket, udp_socket_addr)
 		.await
@@ -756,7 +756,8 @@ mod tests {
 
 		tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-		// First, test the echo server directly (without proxy) to ensure it works
+		// First, test the echo server directly (without proxy) to ensure it
+		// works
 		println!("\n=== Testing echo server directly (no proxy) ===");
 		let direct_test_result = test_direct_udp_with_echo_server("127.0.0.1", echo_port, 512).await;
 		match &direct_test_result {

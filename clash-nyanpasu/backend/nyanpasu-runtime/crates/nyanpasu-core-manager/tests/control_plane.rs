@@ -140,7 +140,8 @@ async fn an_idempotent_resubmit_attaches_to_the_original_operation() {
         panic!("expected a cold start, got {first:?}");
     };
     assert_eq!(
-        revision.epoch, 1,
+        revision.epoch,
+        common::epoch(1),
         "a second start would have bumped the epoch"
     );
 

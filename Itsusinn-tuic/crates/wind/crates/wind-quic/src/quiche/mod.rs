@@ -94,10 +94,11 @@ fn quic_settings(t: &TransportConfig) -> QuicSettings {
 	s.initial_max_streams_bidi = t.max_concurrent_bidi_streams;
 	s.initial_max_streams_uni = t.max_concurrent_uni_streams;
 	s.cc_algorithm = cc_name(t.congestion).to_string();
-	// Size the flow-control windows. The per-direction overrides take precedence;
-	// each falls back to the legacy single `receive_window`. The `max_*` windows
-	// are quiche's auto-tuning ceilings — only set when explicitly configured so
-	// the default leaves quiche's built-in ceiling in place.
+	// Size the flow-control windows. The per-direction overrides take
+	// precedence; each falls back to the legacy single `receive_window`. The
+	// `max_*` windows are quiche's auto-tuning ceilings — only set when
+	// explicitly configured so the default leaves quiche's built-in ceiling in
+	// place.
 	let conn_init = t.init_conn_receive_window.unwrap_or(t.receive_window);
 	let stream_init = t.init_stream_receive_window.unwrap_or(t.receive_window);
 	s.initial_max_data = conn_init;
@@ -322,8 +323,8 @@ mod tests {
 			..Default::default()
 		};
 		let s = quic_settings(&t);
-		// Connection window from the conn overrides; stream windows from the stream
-		// overrides — independently.
+		// Connection window from the conn overrides; stream windows from the
+		// stream overrides — independently.
 		assert_eq!(s.initial_max_data, 20 * MIB);
 		assert_eq!(s.initial_max_stream_data_bidi_local, 8 * MIB);
 		assert_eq!(s.initial_max_stream_data_bidi_remote, 8 * MIB);
@@ -334,8 +335,9 @@ mod tests {
 
 	#[test]
 	fn quic_settings_window_fallback_to_receive_window() {
-		// No per-direction override: init windows fall back to `receive_window`;
-		// the auto-tuning ceilings stay at quiche's built-in defaults.
+		// No per-direction override: init windows fall back to
+		// `receive_window`; the auto-tuning ceilings stay at quiche's
+		// built-in defaults.
 		let defaults = QuicSettings::default();
 		let t = TransportConfig {
 			receive_window: 5 * MIB,

@@ -6,10 +6,7 @@ use clap::{
     Subcommand, ValueEnum,
     builder::{PossibleValue, TypedValueParser},
 };
-use nyanpasu_ipc::{
-    api::{network::set_dns::NetworkSetDnsReq, status::RevisionIdInfo},
-    client::shortcuts::Client,
-};
+use nyanpasu_ipc::{api::network::set_dns::NetworkSetDnsReq, client::shortcuts::Client};
 use nyanpasu_utils::core::{ClashCoreType, CoreType};
 
 /// The core names `--core-type` accepts, spelled exactly as they are on the
@@ -85,24 +82,6 @@ fn legacy_json_core_type(value: &str) -> Option<CoreType> {
 /// `--expected-revision 3:7:fedcba9876543210`, i.e. the three fields the
 /// manager's compare-and-swap actually compares, in the order `/status` prints
 /// them.
-fn parse_revision_id(value: &str) -> Result<RevisionIdInfo, String> {
-    let parts: Vec<&str> = value.split(':').collect();
-    let [epoch, generation, effective_hash] = parts.as_slice() else {
-        return Err(format!(
-            "`{value}` is not <epoch>:<generation>:<effective-hash>"
-        ));
-    };
-    Ok(RevisionIdInfo {
-        epoch: epoch
-            .parse()
-            .map_err(|_| format!("`{epoch}` is not an epoch"))?,
-        generation: generation
-            .parse()
-            .map_err(|_| format!("`{generation}` is not a generation"))?,
-        effective_hash: (*effective_hash).to_owned(),
-    })
-}
-
 #[derive(Debug, Subcommand)]
 pub enum RpcCommand {
     /// Start specific core with the given config file
@@ -118,27 +97,6 @@ pub enum RpcCommand {
     },
     /// Stop the running core
     StopCore,
-    /// Restart the running core
-    RestartCore,
-    /// Apply a config to the running core (patch/reload/restart/switch, as the
-    /// manager classifies it)
-    ApplyConfig {
-        /// The core type to run the config with. A different core than the
-        /// running one switches cores.
-        #[clap(long)]
-        #[arg(value_parser = CoreTypeParser)]
-        core_type: nyanpasu_utils::core::CoreType,
-
-        /// The path to the core config file
-        #[clap(long)]
-        config_file: std::path::PathBuf,
-
-        /// Only apply if the running revision still matches, as
-        /// `<epoch>:<generation>:<effective-hash>`
-        #[clap(long)]
-        #[arg(value_parser = parse_revision_id)]
-        expected_revision: Option<RevisionIdInfo>,
-    },
     /// Dry-run a config against a core binary without touching the running core
     CheckConfig {
         /// The core type to check the config against
@@ -150,8 +108,6 @@ pub enum RpcCommand {
         #[clap(long)]
         config_file: std::path::PathBuf,
     },
-    /// Clear the manager's quarantine latch
-    RecoverCore,
     /// Get the logs of the service
     InspectLogs,
     /// Set the dns servers
@@ -183,36 +139,6 @@ pub async fn rpc(commands: RpcCommand) -> Result<(), crate::cmds::CommandError> 
                 .await
                 .map_err(|e| crate::cmds::CommandError::Other(e.into()))?;
         }
-        RpcCommand::RestartCore => {
-            let client = Client::service_default();
-            client
-                .restart_core()
-                .await
-                .map_err(|e| crate::cmds::CommandError::Other(e.into()))?;
-        }
-        RpcCommand::ApplyConfig {
-            core_type,
-            config_file,
-            expected_revision,
-        } => {
-            let client = Client::service_default();
-            let payload = nyanpasu_ipc::api::core::apply::CoreApplyReq {
-                core_type: Cow::Borrowed(&core_type),
-                config_file: Cow::Borrowed(&config_file),
-                expected_revision,
-            };
-            let data = client
-                .apply_config(&payload)
-                .await
-                .map_err(|e| crate::cmds::CommandError::Other(e.into()))?;
-            // The response is the point of the operation — a rolled-back apply
-            // is a success at the transport level and must be visible.
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&data)
-                    .map_err(|e| crate::cmds::CommandError::Other(e.into()))?
-            );
-        }
         RpcCommand::CheckConfig {
             core_type,
             config_file,
@@ -224,13 +150,6 @@ pub async fn rpc(commands: RpcCommand) -> Result<(), crate::cmds::CommandError> 
             };
             client
                 .check_config(&payload)
-                .await
-                .map_err(|e| crate::cmds::CommandError::Other(e.into()))?;
-        }
-        RpcCommand::RecoverCore => {
-            let client = Client::service_default();
-            client
-                .recover_core()
                 .await
                 .map_err(|e| crate::cmds::CommandError::Other(e.into()))?;
         }
@@ -331,24 +250,5 @@ mod tests {
                 "meow"
             ]
         );
-    }
-
-    #[test]
-    fn the_revision_parser_accepts_the_status_triple() {
-        assert_eq!(
-            parse_revision_id("3:7:fedcba9876543210").unwrap(),
-            RevisionIdInfo {
-                epoch: 3,
-                generation: 7,
-                effective_hash: "fedcba9876543210".to_owned(),
-            }
-        );
-    }
-
-    #[test]
-    fn the_revision_parser_rejects_anything_else() {
-        for value in ["", "3", "3:7", "3:7:hash:extra", "x:7:hash", "3:y:hash"] {
-            assert!(parse_revision_id(value).is_err(), "{value}");
-        }
     }
 }

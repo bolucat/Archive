@@ -89,8 +89,8 @@ fn bench_geosite_exact(c: &mut Criterion) {
 	let geo = load_geo();
 	let lookup = geo.geosite_lookup();
 
-	// Guard against silently benchmarking a miss when the data doesn't contain the
-	// expected entry.
+	// Guard against silently benchmarking a miss when the data doesn't contain
+	// the expected entry.
 	assert!(lookup("cn", "www.baidu.com"), "expected geosite exact hit");
 	assert!(!lookup("cn", "this-domain-does-not-exist.xyz"), "expected geosite exact miss");
 
@@ -120,8 +120,8 @@ fn bench_geosite_keyword(c: &mut Criterion) {
 	let lookup = geo.geosite_lookup();
 
 	// "onedrive" is a Plain/keyword entry in the ONEDRIVE category; the domain
-	// matches only as a substring (no exact/suffix entry), so this exercises the
-	// keyword path.
+	// matches only as a substring (no exact/suffix entry), so this exercises
+	// the keyword path.
 	assert!(lookup("onedrive", "myonedrivelogin.invalid"), "expected geosite keyword hit");
 
 	c.bench_function("geosite/keyword/hit", |b| {

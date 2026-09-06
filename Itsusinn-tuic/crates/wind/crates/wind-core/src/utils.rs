@@ -150,7 +150,8 @@ mod tests {
 	#[test]
 	fn ipv4_mapped_ipv6_is_canonicalized_before_check() {
 		// A private IPv4 target written in IPv4-mapped IPv6 form must still be
-		// classified as private, otherwise `drop_private` guards are bypassable.
+		// classified as private, otherwise `drop_private` guards are
+		// bypassable.
 		for s in ["::ffff:10.0.0.1", "::ffff:192.168.1.1", "::ffff:169.254.0.1"] {
 			assert!(is_private_ip(&ip(s)), "{s} should be private");
 		}

@@ -13,11 +13,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument as _, info};
 use uuid::Uuid;
-use wind_core::{
-	InboundHooks, Router,
-	dispatcher::Dispatcher,
-	inbound::{AbstractInbound, InboundCallback},
-};
+use wind_core::{InboundHooks, Router, dispatcher::Dispatcher, inbound::AbstractInbound};
 use wind_quic::{
 	QuicConnection as _, ServerTlsConfig,
 	quiche::{CertStore, bind_server},
@@ -122,15 +118,17 @@ impl<R: Router> AbstractInbound<R> for TuicheInbound {
 		}
 
 		let users = Arc::new(self.users.clone());
-		// Root of every per-connection token: cancelling `self.cancel` (e.g. from
-		// a ctrl-c handler via `TuicheInboundBuilder::cancel_token`) stops the
-		// accept loop *and* winds down every spawned connection handler, whose
-		// `serve_connection` closes its QUIC connection on cancellation.
+		// Root of every per-connection token: cancelling `self.cancel` (e.g.
+		// from a ctrl-c handler via `TuicheInboundBuilder::cancel_token`)
+		// stops the accept loop *and* winds down every spawned connection
+		// handler, whose `serve_connection` closes its QUIC connection on
+		// cancellation.
 		let root_cancel = self.cancel.clone();
 		// Track connection handlers so shutdown can wait for them to finish
-		// closing — `serve_connection` returns right after issuing `conn.close`,
-		// and waiting here keeps the tokio-quiche workers alive long enough to
-		// flush the CONNECTION_CLOSE frames before the caller drops the runtime.
+		// closing — `serve_connection` returns right after issuing
+		// `conn.close`, and waiting here keeps the tokio-quiche workers alive
+		// long enough to flush the CONNECTION_CLOSE frames before the caller
+		// drops the runtime.
 		let conn_tasks = tokio_util::task::TaskTracker::new();
 
 		info!("wind-tuic (quiche) listening loop started");

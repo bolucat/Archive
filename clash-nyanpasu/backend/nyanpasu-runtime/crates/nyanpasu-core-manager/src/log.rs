@@ -288,8 +288,17 @@ pub(crate) fn format_tail<T: Borrow<LogFrame>>(frames: &[T]) -> String {
         .join("\n")
 }
 
+/// The two streams a one-shot run produced. They are both `&str`, so a
+/// transposed call parses stderr as stdout and reports the wrong stream's
+/// last error as the cause of a failed config check.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CapturedOutput<'a> {
+    pub stdout: &'a str,
+    pub stderr: &'a str,
+}
+
 /// Condenses the buffered output of a one-shot run into a single cause.
-pub(crate) fn summarize_output(kind: CoreKind, stdout: &str, stderr: &str) -> String {
+pub(crate) fn summarize_output(kind: CoreKind, output: CapturedOutput<'_>) -> String {
     let mut parser = LogParser::new(kind, 0);
     let mut frames = Vec::new();
     let mut drain = |stream, text: &str| {
@@ -297,22 +306,22 @@ pub(crate) fn summarize_output(kind: CoreKind, stdout: &str, stderr: &str) -> St
             frames.extend(parser.push(stream, line.to_owned()).into_iter().flatten());
         }
     };
-    drain(LogStream::Stdout, stdout);
-    drain(LogStream::Stderr, stderr);
+    drain(LogStream::Stdout, output.stdout);
+    drain(LogStream::Stderr, output.stderr);
     frames.extend(parser.finish().into_iter().flatten());
-    error_summary(&frames).unwrap_or_else(|| verbatim_output(stdout, stderr))
+    error_summary(&frames).unwrap_or_else(|| verbatim_output(output))
 }
 
-fn verbatim_output(stdout: &str, stderr: &str) -> String {
-    let output = [stdout.trim(), stderr.trim()]
+fn verbatim_output(output: CapturedOutput<'_>) -> String {
+    let text = [output.stdout.trim(), output.stderr.trim()]
         .into_iter()
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("\n");
-    if output.is_empty() {
+    if text.is_empty() {
         "core reported no output".to_owned()
     } else {
-        output
+        text
     }
 }
 
@@ -1299,8 +1308,10 @@ mod tests {
         assert_eq!(
             summarize_output(
                 CoreKind::Mihomo,
-                r#"time="2026-07-29T00:17:26.518376100+08:00" level=fatal msg="Parse config error: yaml: line 2: did not find expected node content""#,
-                "",
+                CapturedOutput {
+                    stdout: r#"time="2026-07-29T00:17:26.518376100+08:00" level=fatal msg="Parse config error: yaml: line 2: did not find expected node content""#,
+                    stderr: "",
+                },
             ),
             "Parse config error: yaml: line 2: did not find expected node content"
         );
@@ -1308,16 +1319,20 @@ mod tests {
         assert_eq!(
             summarize_output(
                 CoreKind::ClashPremium,
-                "00:16:30 INF [MMDB] can't find DB\n00:17:26 FTL [Config] parse config failed error=yaml: line 2: did not find expected node content",
-                "",
+                CapturedOutput {
+                    stdout: "00:16:30 INF [MMDB] can't find DB\n00:17:26 FTL [Config] parse config failed error=yaml: line 2: did not find expected node content",
+                    stderr: "",
+                },
             ),
             "parse config failed error=yaml: line 2: did not find expected node content"
         );
 
         let meow = summarize_output(
             CoreKind::Meow,
-            "\u{1b}[2m2026-07-28T16:17:26.719459Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mmeow\u{1b}[0m\u{1b}[2m:\u{1b}[0m meow-rs stopped with an error \u{1b}[3merror\u{1b}[0m\u{1b}[2m=\u{1b}[0mdid not find expected node content at line 3 column 1",
-            "warning: --geodata-mode is not supported and will be ignored\nError: did not find expected node content at line 3 column 1, while parsing a flow node",
+            CapturedOutput {
+                stdout: "\u{1b}[2m2026-07-28T16:17:26.719459Z\u{1b}[0m \u{1b}[31mERROR\u{1b}[0m \u{1b}[2mmeow\u{1b}[0m\u{1b}[2m:\u{1b}[0m meow-rs stopped with an error \u{1b}[3merror\u{1b}[0m\u{1b}[2m=\u{1b}[0mdid not find expected node content at line 3 column 1",
+                stderr: "warning: --geodata-mode is not supported and will be ignored\nError: did not find expected node content at line 3 column 1, while parsing a flow node",
+            },
         );
         assert!(
             meow.contains("did not find expected node content"),
@@ -1326,8 +1341,10 @@ mod tests {
 
         let clash_rs = summarize_output(
             CoreKind::ClashRust,
-            "",
-            "Error: invalid config: couldn't not parse config content mixed-port: not-a-port\nproxies: [[[\n: did not find expected node content at line 3 column 1, while parsing a flow node",
+            CapturedOutput {
+                stdout: "",
+                stderr: "Error: invalid config: couldn't not parse config content mixed-port: not-a-port\nproxies: [[[\n: did not find expected node content at line 3 column 1, while parsing a flow node",
+            },
         );
         assert!(clash_rs.contains("invalid config"), "{clash_rs}");
         assert!(clash_rs.contains("proxies: [[["), "{clash_rs}");
@@ -1336,11 +1353,23 @@ mod tests {
     #[test]
     fn summary_falls_back_to_verbatim_output() {
         assert_eq!(
-            summarize_output(CoreKind::Mihomo, "  ", ""),
+            summarize_output(
+                CoreKind::Mihomo,
+                CapturedOutput {
+                    stdout: "  ",
+                    stderr: "",
+                },
+            ),
             "core reported no output"
         );
         assert_eq!(
-            summarize_output(CoreKind::Mihomo, "unstructured note", ""),
+            summarize_output(
+                CoreKind::Mihomo,
+                CapturedOutput {
+                    stdout: "unstructured note",
+                    stderr: "",
+                },
+            ),
             "unstructured note"
         );
     }

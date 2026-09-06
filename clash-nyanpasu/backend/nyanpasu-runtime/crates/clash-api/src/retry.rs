@@ -68,6 +68,16 @@ pub struct ExponentialRetry {
     jitter: bool,
 }
 
+/// The two ends of an exponential schedule, before jitter. Both are
+/// `Duration`, so only a name says which end a value belongs to.
+#[derive(Debug, Clone, Copy)]
+pub struct DelayRange {
+    /// The base delay before the first retry.
+    pub min: Duration,
+    /// The cap that the doubling base delay saturates at.
+    pub max: Duration,
+}
+
 impl ExponentialRetry {
     /// A conservative policy suitable for a controller running on the same machine.
     pub const fn conservative() -> Self {
@@ -79,11 +89,15 @@ impl ExponentialRetry {
         }
     }
 
-    pub const fn new(max_retries: usize, min_delay: Duration, max_delay: Duration) -> Self {
+    pub const fn new(max_retries: usize, delay: DelayRange) -> Self {
+        debug_assert!(
+            delay.min.as_nanos() <= delay.max.as_nanos(),
+            "retry delay ceiling is below its floor"
+        );
         Self {
             max_retries,
-            min_delay,
-            max_delay,
+            min_delay: delay.min,
+            max_delay: delay.max,
             jitter: false,
         }
     }
@@ -156,7 +170,13 @@ mod tests {
 
     #[test]
     fn exponential_retry_produces_exactly_the_configured_extra_attempts() {
-        let policy = ExponentialRetry::new(2, Duration::from_millis(1), Duration::from_millis(2));
+        let policy = ExponentialRetry::new(
+            2,
+            DelayRange {
+                min: Duration::from_millis(1),
+                max: Duration::from_millis(2),
+            },
+        );
         let metadata = RequestMetadata::new("version", Method::GET, true);
 
         assert_eq!(policy.delays(&metadata).count(), 2);

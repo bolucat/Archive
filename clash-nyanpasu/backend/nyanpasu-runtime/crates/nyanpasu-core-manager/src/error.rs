@@ -1,7 +1,7 @@
 use camino::Utf8PathBuf;
 pub use nyanpasu_core_metadata::CoreErrorKind;
 
-use crate::{kind::CoreKind, state::RevisionId};
+use crate::{Epoch, kind::CoreKind, state::RevisionId};
 
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
@@ -40,7 +40,7 @@ pub enum Error {
     #[error("core process death could not be confirmed: {0}")]
     StopUnconfirmed(String),
     #[error("manager is quarantined by uncertain epoch {epoch}: {reason}")]
-    ManagerQuarantined { epoch: u64, reason: String },
+    ManagerQuarantined { epoch: Epoch, reason: String },
     #[error("config revision conflict: expected {expected}, actual {actual:?}")]
     RevisionConflict {
         expected: RevisionId,
@@ -137,6 +137,7 @@ fn utf8_lossy(path: std::path::PathBuf) -> Utf8PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::epoch::epoch;
 
     #[test]
     fn manager_errors_carry_their_wire_kind() {
@@ -146,7 +147,7 @@ mod tests {
             (
                 Error::RevisionConflict {
                     expected: RevisionId {
-                        epoch: 3,
+                        epoch: epoch(3),
                         generation: 7,
                         effective_hash: "fedcba9876543210".to_owned(),
                     },
@@ -156,7 +157,7 @@ mod tests {
             ),
             (
                 Error::ManagerQuarantined {
-                    epoch: 3,
+                    epoch: epoch(3),
                     reason: "death unconfirmed".to_owned(),
                 },
                 Some(CoreErrorKind::Quarantined),
@@ -203,7 +204,7 @@ mod tests {
             source: Box::new(Error::DurabilityUncertain {
                 source: Box::new(Error::RevisionConflict {
                     expected: RevisionId {
-                        epoch: 3,
+                        epoch: epoch(3),
                         generation: 7,
                         effective_hash: "fedcba9876543210".to_owned(),
                     },

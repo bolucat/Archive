@@ -200,7 +200,8 @@ fn parse_address(s: &str) -> eyre::Result<AclAddress> {
 
 	// Reject a degenerate empty address (e.g. `direct(.)`). Upstream would
 	// compile this to a never-matching exact-domain rule; surfacing it as a
-	// config error is friendlier and keeps `direct(.)` / `direct( )` consistent.
+	// config error is friendlier and keeps `direct(.)` / `direct( )`
+	// consistent.
 	if addr.is_empty() {
 		return Err(eyre::eyre!("empty address"));
 	}
@@ -229,7 +230,8 @@ fn parse_address(s: &str) -> eyre::Result<AclAddress> {
 		return Ok(AclAddress::Suffix(suf.to_string()));
 	}
 	if addr.contains('/') {
-		// Validate now so malformed CIDRs fail at parse time (matching apernet).
+		// Validate now so malformed CIDRs fail at parse time (matching
+		// apernet).
 		addr.parse::<ipnet::IpNet>()
 			.map_err(|e| eyre::eyre!("invalid CIDR {:?}: {}", addr, e))?;
 		return Ok(AclAddress::Cidr(addr));
@@ -336,18 +338,19 @@ pub fn acl_to_rules(acl: &[AclRule]) -> Vec<wrule::Rule> {
 }
 
 fn acl_rule_to_rules(acl: &AclRule) -> Vec<wrule::Rule> {
-	// Outbound is passed through verbatim: `reject`/`block`/`deny` are mapped to
-	// a reject verdict (case-insensitively) by the IR embedding, and every other
-	// name is a forward target resolved by the engine's outbound registry.
+	// Outbound is passed through verbatim: `reject`/`block`/`deny` are mapped
+	// to a reject verdict (case-insensitively) by the IR embedding, and every
+	// other name is a forward target resolved by the engine's outbound
+	// registry.
 	let target = acl.outbound.clone();
 
 	let addr_rules = address_to_rule_types(&acl.address);
 	let port_conds = proto_port_to_conditions(&acl.proto_port);
 
-	// If the address failed to compile (an inner warning already fired), drop the
-	// whole rule explicitly. Without this guard the cross-product loop below would
-	// silently emit nothing even when a port condition is present — a confusing,
-	// fail-open disappearance of the rule's port filter.
+	// If the address failed to compile (an inner warning already fired), drop
+	// the whole rule explicitly. Without this guard the cross-product loop
+	// below would silently emit nothing even when a port condition is present
+	// — a confusing, fail-open disappearance of the rule's port filter.
 	if addr_rules.is_empty() {
 		tracing::warn!(
 			"apernet rule {acl} produced no address condition; the whole rule (including any port filter) is dropped"
@@ -366,7 +369,8 @@ fn acl_rule_to_rules(acl: &AclRule) -> Vec<wrule::Rule> {
 			.collect();
 	}
 
-	// `all`/`*` address is match-everything, so only the port conditions matter.
+	// `all`/`*` address is match-everything, so only the port conditions
+	// matter.
 	if matches!(acl.address, AclAddress::All) {
 		return port_conds
 			.into_iter()
@@ -536,9 +540,10 @@ impl fmt::Display for AclProtoPort {
 impl fmt::Display for AclRule {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		write!(f, "{}({}", self.outbound, self.address)?;
-		// hijack is positional (arg 3), so it requires a proto/port slot (arg 2).
-		// When a hijack is set without an explicit proto/port, emit the `*`
-		// (both protocols, any port) placeholder so the surface form round-trips.
+		// hijack is positional (arg 3), so it requires a proto/port slot (arg
+		// 2). When a hijack is set without an explicit proto/port, emit the
+		// `*` (both protocols, any port) placeholder so the surface form
+		// round-trips.
 		if let Some(h) = &self.hijack {
 			let pp = self.proto_port.unwrap_or(AclProtoPort {
 				proto: AclProto::Both,
@@ -762,7 +767,8 @@ mod tests {
 				port: AclPort::Any
 			})
 		);
-		// A range starting at 0 disables the port check entirely (apernet sentinel).
+		// A range starting at 0 disables the port check entirely (apernet
+		// sentinel).
 		assert_eq!(
 			one("direct(all, */0-100)").proto_port,
 			Some(AclProtoPort {
@@ -1058,7 +1064,8 @@ mod tests {
 	#[test]
 	fn dispatch_checks_slash_before_star() {
 		// `/` (CIDR) is tested before `*` (wildcard), mirroring apernet — so an
-		// address with both is treated as a (here invalid) CIDR, not a wildcard.
+		// address with both is treated as a (here invalid) CIDR, not a
+		// wildcard.
 		assert!(parse_rule("direct(*.ex/ample.com)").is_err());
 	}
 
@@ -1109,8 +1116,9 @@ mod tests {
 
 	#[test]
 	fn display_couples_hijack_with_protoport_slot() {
-		// A hand-built rule with a hijack but no proto/port must still round-trip:
-		// the `*` placeholder fills the positional proto/port slot.
+		// A hand-built rule with a hijack but no proto/port must still
+		// round-trip: the `*` placeholder fills the positional proto/port
+		// slot.
 		let rule = AclRule {
 			outbound: "default".into(),
 			address: AclAddress::Ip("8.8.8.8".into()),
@@ -1123,8 +1131,9 @@ mod tests {
 
 	#[test]
 	fn port_zero_sentinel_round_trips_to_star() {
-		// `*/0-100` collapses to "any port" at parse time, so Display normalizes
-		// it to `*`; the normalized form must re-parse to an equal rule.
+		// `*/0-100` collapses to "any port" at parse time, so Display
+		// normalizes it to `*`; the normalized form must re-parse to an equal
+		// rule.
 		let parsed = one("direct(all, */0-100)");
 		assert_eq!(
 			parsed.proto_port,

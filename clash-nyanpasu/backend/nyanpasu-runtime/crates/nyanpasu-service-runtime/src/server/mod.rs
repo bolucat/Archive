@@ -9,7 +9,7 @@ use std::sync::Arc;
 use consts::RuntimeInfos;
 pub use events::EventHub;
 pub use logger::Logger;
-pub use manager_bridge::CoreManagerService as CoreManager;
+pub use manager_bridge::{CoreManagerService as CoreManager, ServiceDirs};
 use nyanpasu_core_manager::{ExecutorExit, LocalIpcPolicy};
 use nyanpasu_ipc::{SERVICE_PLACEHOLDER, server::create_server};
 use routing::{AppState, create_router};
@@ -31,7 +31,14 @@ pub async fn run(
             .map_err(|path| anyhow::anyhow!("core runtime dir is not UTF-8: {}", path.display()))?;
     let data_dir = camino::Utf8PathBuf::from_path_buf(runtime.nyanpasu_data_dir.clone())
         .map_err(|path| anyhow::anyhow!("nyanpasu data dir is not UTF-8: {}", path.display()))?;
-    let core_manager = CoreManager::new(runtime_dir, local_ipc_policy, data_dir).await?;
+    let core_manager = CoreManager::new(
+        ServiceDirs {
+            runtime: runtime_dir,
+            data: data_dir,
+        },
+        local_ipc_policy,
+    )
+    .await?;
     let hub = EventHub::new();
     core_manager.spawn_bridges(hub.clone());
 

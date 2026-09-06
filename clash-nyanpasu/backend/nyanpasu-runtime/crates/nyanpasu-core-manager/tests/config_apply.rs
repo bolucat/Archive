@@ -10,8 +10,8 @@ use std::{
 };
 
 use nyanpasu_core_manager::{
-    ApplyOutcome, ControllerVersionProbe, CoreManager, CoreState, Error, HealthProbe, InstanceSpec,
-    LocalIpcPolicy, ManagerOptions, ProbeHandle, ProbePhase, ProbeResult, RevisionId,
+    ApplyOutcome, ControllerVersionProbe, CoreManager, CoreState, Epoch, Error, HealthProbe,
+    InstanceSpec, LocalIpcPolicy, ManagerOptions, ProbeHandle, ProbePhase, ProbeResult, RevisionId,
 };
 use parking_lot::Mutex;
 
@@ -32,7 +32,7 @@ fn write_named(dir: &camino::Utf8Path, name: &str, body: &str) -> camino::Utf8Pa
     path
 }
 
-fn running(manager: &CoreManager) -> (u64, u32) {
+fn running(manager: &CoreManager) -> (Epoch, u32) {
     match manager.status().state {
         CoreState::Running { epoch, pid } => (epoch, pid),
         state => panic!("expected running, got {state:?}"),
@@ -61,13 +61,13 @@ async fn custom_probe_plan_reaches_desired_replacement_and_rollback() {
         "probe-desired.yaml",
         &http_controller_yaml(port, "x-setting: desired\n"),
     );
-    let attempts = Arc::new(Mutex::new(Vec::<(u64, u32)>::new()));
+    let attempts = Arc::new(Mutex::new(Vec::<(Epoch, u32)>::new()));
     let readiness = ProbeHandle::from_fn("recorded-readiness", {
         let attempts = attempts.clone();
         move |context| {
             attempts.lock().push((context.epoch, context.pid));
             async move {
-                if context.epoch == 2 {
+                if context.epoch == common::epoch(2) {
                     return ProbeResult::Unhealthy {
                         detail: Some("reject desired epoch".into()),
                     };
@@ -100,11 +100,11 @@ async fn custom_probe_plan_reaches_desired_replacement_and_rollback() {
         (
             attempts
                 .iter()
-                .filter_map(|(epoch, pid)| (*epoch == 1).then_some(*pid))
+                .filter_map(|(observed, pid)| (*observed == common::epoch(1)).then_some(*pid))
                 .collect(),
             attempts
                 .iter()
-                .filter_map(|(epoch, pid)| (*epoch == 2).then_some(*pid))
+                .filter_map(|(observed, pid)| (*observed == common::epoch(2)).then_some(*pid))
                 .collect(),
         )
     };
@@ -246,6 +246,8 @@ async fn installed_apply_with_parent_sync_failure_reports_real_outcome() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
+    let api_before = manager.api_connection().await.expect("running API");
+    assert_eq!(manager.status().instance_id, Some(api_before.instance_id));
     manager.inject_runtime_parent_sync_failure_once_for_test();
 
     let outcome = manager
@@ -259,7 +261,15 @@ async fn installed_apply_with_parent_sync_failure_reports_real_outcome() {
     assert!(matches!(*outcome, ApplyOutcome::Patched { .. }));
     assert!(warning.contains("injected"), "{warning}");
     assert_eq!(running(&manager), before);
+    let api_after = manager.api_connection().await.expect("applied API");
+    assert_eq!(api_before.instance_id, api_after.instance_id);
+    assert_eq!(
+        running(&manager).0,
+        before.0,
+        "runtime epoch does not identify a process"
+    );
     manager.shutdown().await.expect("shutdown");
+    assert!(manager.api_connection().await.is_none());
 }
 
 #[tokio::test]
@@ -279,6 +289,8 @@ async fn apply_reload_uses_put_without_restarting() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
+    let api_before = manager.api_connection().await.expect("running API");
+    assert_eq!(manager.status().instance_id, Some(api_before.instance_id));
 
     let outcome = manager
         .apply_config(spec(&dir, desired), None)
@@ -290,7 +302,15 @@ async fn apply_reload_uses_put_without_restarting() {
         "got {outcome:?}"
     );
     assert_eq!(running(&manager), before);
+    let api_after = manager.api_connection().await.expect("applied API");
+    assert_eq!(api_before.instance_id, api_after.instance_id);
+    assert_eq!(
+        running(&manager).0,
+        before.0,
+        "runtime epoch does not identify a process"
+    );
     manager.shutdown().await.expect("shutdown");
+    assert!(manager.api_connection().await.is_none());
 }
 
 #[tokio::test]
@@ -446,6 +466,73 @@ async fn failed_desired_restart_restores_and_restarts_the_old_revision() {
 }
 
 #[tokio::test]
+async fn failed_restart_after_an_in_place_apply_rolls_back_to_the_latest_generation() {
+    let (_guard, dir) = common::utf8_tempdir();
+    let port = common::free_port();
+    // The behavior block is identical in all three configs; changing it would
+    // classify as a switch. `patch-no-effect` keeps the final apply from
+    // reconciling in place, so it falls back to the restart path, and
+    // `allow-lan` makes that replacement fail to start.
+    let behavior = "x-fake-core:\n  patch-no-effect: true\n  fail-start-when-allow-lan: true\n";
+    let first = write_named(&dir, "first.yaml", &http_controller_yaml(port, behavior));
+    let second = write_named(
+        &dir,
+        "second.yaml",
+        &http_controller_yaml(port, &format!("rules:\n  - MATCH,DIRECT\n{behavior}")),
+    );
+    let desired = write_named(
+        &dir,
+        "desired.yaml",
+        &http_controller_yaml(
+            port,
+            &format!("allow-lan: true\nrules:\n  - MATCH,DIRECT\n{behavior}"),
+        ),
+    );
+    let manager = manager(&dir, Duration::from_secs(1)).await;
+    manager.start(spec(&dir, first)).await.expect("start");
+    let (epoch, _) = running(&manager);
+
+    let reloaded = manager
+        .apply_config(spec(&dir, second), None)
+        .await
+        .expect("reload");
+    assert!(
+        matches!(reloaded, ApplyOutcome::Reloaded { .. }),
+        "got {reloaded:?}"
+    );
+    let generation_two = manager.status().revision.expect("reloaded revision");
+    assert_eq!(generation_two.generation, 2);
+
+    let outcome = manager
+        .apply_config(spec(&dir, desired), None)
+        .await
+        .expect("rollback succeeds");
+
+    let ApplyOutcome::RolledBack { revision, .. } = outcome else {
+        panic!("expected RolledBack, got {outcome:?}")
+    };
+    // Not generation 1: the rollback relaunches the whole plan the last
+    // successful in-place apply left behind.
+    assert_eq!(revision, generation_two);
+    let restored: serde_yaml_ng::Mapping =
+        serde_yaml_ng::from_str(&std::fs::read_to_string(&revision.runtime_path).unwrap()).unwrap();
+    assert!(
+        restored
+            .get(serde_yaml_ng::Value::String("rules".into()))
+            .is_some(),
+        "generation 2 was not the restored runtime config"
+    );
+    assert_ne!(
+        restored
+            .get(serde_yaml_ng::Value::String("allow-lan".into()))
+            .and_then(serde_yaml_ng::Value::as_bool),
+        Some(true)
+    );
+    assert_eq!(running(&manager).0, epoch);
+    manager.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test]
 async fn desired_and_rollback_commits_preserve_both_durability_warnings() {
     let (_guard, dir) = common::utf8_tempdir();
     let port = common::free_port();
@@ -565,6 +652,8 @@ async fn patch_success_with_get_mismatch_restarts_desired() {
     let manager = manager(&dir, Duration::from_secs(1)).await;
     manager.start(spec(&dir, first)).await.expect("start");
     let before = running(&manager);
+    let api_before = manager.api_connection().await.expect("running API");
+    assert_eq!(manager.status().instance_id, Some(api_before.instance_id));
 
     let outcome = manager
         .apply_config(spec(&dir, desired), None)
@@ -573,17 +662,25 @@ async fn patch_success_with_get_mismatch_restarts_desired() {
 
     assert!(matches!(outcome, ApplyOutcome::Restarted { .. }));
     assert_ne!(running(&manager).1, before.1);
+    let api_after = manager.api_connection().await.expect("applied API");
+    assert_ne!(api_before.instance_id, api_after.instance_id);
+    assert_eq!(
+        running(&manager).0,
+        before.0,
+        "runtime epoch does not identify a process"
+    );
     manager.shutdown().await.expect("shutdown");
+    assert!(manager.api_connection().await.is_none());
 }
 
 #[test]
 fn revision_id_is_an_explicit_cas_token() {
     let token = RevisionId {
-        epoch: 4,
+        epoch: common::epoch(4),
         generation: 8,
         effective_hash: "hash".into(),
     };
-    assert_eq!(token.epoch, 4);
+    assert_eq!(token.epoch, common::epoch(4));
 }
 
 #[tokio::test]

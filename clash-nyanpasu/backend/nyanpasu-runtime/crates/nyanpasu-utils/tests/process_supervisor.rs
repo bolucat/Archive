@@ -9,8 +9,8 @@ use std::{
 };
 
 use nyanpasu_utils::process::{
-    Backoff, Command, ProcessError, ProcessEvent, ReadinessProbe, RestartPolicy, Supervisor,
-    SupervisorEvent,
+    Backoff, BackoffRange, Command, ProcessError, ProcessEvent, ReadinessProbe, RestartPolicy,
+    Supervisor, SupervisorEvent,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -50,10 +50,10 @@ async fn restarts_on_failure_then_gives_up() {
     let log2 = log.clone();
     let _sup = Supervisor::builder(|| Command::new(child()).args(["exit-with", "1"]))
         .restart_policy(RestartPolicy::OnFailure { max_restarts: 2 })
-        .backoff(Backoff::exponential(
-            Duration::from_millis(10),
-            Duration::from_millis(40),
-        ))
+        .backoff(Backoff::exponential(BackoffRange {
+            initial: Duration::from_millis(10),
+            max: Duration::from_millis(40),
+        }))
         .readiness(ReadinessProbe::AliveAfter(Duration::from_millis(5000))) // never ready
         .on_event(move |e| log2.push(e))
         .spawn()
@@ -115,10 +115,10 @@ async fn restart_storm_gives_up_even_when_alive_after_resets_attempts() {
     let _supervisor =
         Supervisor::builder(|| Command::new(child()).args(["sleep-then-exit", "100", "1"]))
             .restart_policy(RestartPolicy::OnFailure { max_restarts: 2 })
-            .backoff(Backoff::exponential(
-                Duration::from_millis(5),
-                Duration::from_millis(5),
-            ))
+            .backoff(Backoff::exponential(BackoffRange {
+                initial: Duration::from_millis(5),
+                max: Duration::from_millis(5),
+            }))
             .readiness(ReadinessProbe::AliveAfter(Duration::from_millis(25)))
             .on_event(move |event| log2.push(event))
             .spawn()

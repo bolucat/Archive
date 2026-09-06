@@ -262,16 +262,19 @@ authoritative and never probes the binary.
 ```rust
 use std::{num::NonZeroU32, time::Duration};
 use nyanpasu_core_manager::{
-    CoreManager, HealthPolicy, ProbeHandle, ProbeResult,
+    CoreManager, HealthPolicy, HealthPolicySpec, HealthThresholds, ProbeHandle,
+    ProbeResult,
 };
 
-spec.options.health = HealthPolicy::new(
-    Duration::from_millis(250),
-    Duration::from_secs(1),
-    NonZeroU32::new(3).unwrap(), // failures before Unhealthy
-    NonZeroU32::new(2).unwrap(), // successes before Healthy/ready
-    Duration::from_secs(2),      // initial failure grace per process run
-)?;
+spec.options.health = HealthPolicy::new(HealthPolicySpec {
+    interval: Duration::from_millis(250),
+    timeout: Duration::from_secs(1),
+    thresholds: HealthThresholds {
+        failure: NonZeroU32::new(3).unwrap(), // failures before Unhealthy
+        success: NonZeroU32::new(2).unwrap(), // successes before Healthy/ready
+    },
+    start_period: Duration::from_secs(2),     // initial failure grace per process run
+})?;
 
 let tcp_liveness = ProbeHandle::from_fn("proxy-tcp", |context| async move {
     match tokio::net::TcpStream::connect(("127.0.0.1", 7890)).await {
@@ -492,22 +495,29 @@ nyanpasu_core_manager::kind::check_config(spec).await?;
 ```rust
 use std::time::Duration;
 use std::num::NonZeroU32;
-use nyanpasu_core_manager::{HealthPolicy, InstanceOptions};
-use nyanpasu_utils::process::{Backoff, RestartPolicy};
+use nyanpasu_core_manager::{
+    HealthPolicy, HealthPolicySpec, HealthThresholds, InstanceOptions,
+};
+use nyanpasu_utils::process::{Backoff, BackoffRange, RestartPolicy};
 
 let options = InstanceOptions {
     // Total budget for the initial start, crash retries included.
     startup_timeout: Duration::from_secs(30),
-    health: HealthPolicy::new(
-        Duration::from_millis(250), // delay after each completed probe
-        Duration::from_secs(1),     // per-attempt timeout
-        NonZeroU32::new(3).unwrap(),// failures before Unhealthy
-        NonZeroU32::MIN,            // successes before Healthy/ready
-        Duration::ZERO,             // failure grace per child run
-    )?,
+    health: HealthPolicy::new(HealthPolicySpec {
+        interval: Duration::from_millis(250), // delay after each completed probe
+        timeout: Duration::from_secs(1),      // per-attempt timeout
+        thresholds: HealthThresholds {
+            failure: NonZeroU32::new(3).unwrap(), // failures before Unhealthy
+            success: NonZeroU32::MIN,             // successes before Healthy/ready
+        },
+        start_period: Duration::ZERO,         // failure grace per child run
+    })?,
     restart_policy: RestartPolicy::OnFailure { max_restarts: 5 },
-    backoff: Backoff::exponential(Duration::from_secs(1), Duration::from_secs(30))
-        .with_jitter(),
+    backoff: Backoff::exponential(BackoffRange {
+        initial: Duration::from_secs(1),
+        max: Duration::from_secs(30),
+    })
+    .with_jitter(),
 };
 ```
 

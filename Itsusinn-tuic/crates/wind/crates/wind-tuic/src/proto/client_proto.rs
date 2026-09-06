@@ -34,10 +34,11 @@ pub async fn encode_and_send_uni<C: QuicConnection>(
 	}
 	let mut send = conn.open_uni().await?;
 	send.write_all(&buf).await?;
-	// Finish the stream so the peer's `read_to_end` (or equivalent EOF detector)
-	// observes a clean end-of-stream marker. Without this, dropping `send` resets
-	// the stream and the receiver sees a RESET_STREAM frame racing the payload,
-	// which intermittently breaks auth/dissociate/uni-UDP paths.
+	// Finish the stream so the peer's `read_to_end` (or equivalent EOF
+	// detector) observes a clean end-of-stream marker. Without this, dropping
+	// `send` resets the stream and the receiver sees a RESET_STREAM frame
+	// racing the payload, which intermittently breaks auth/dissociate/uni-UDP
+	// paths.
 	send.finish()?;
 	Ok(())
 }
@@ -67,8 +68,8 @@ pub trait ClientProtoExt: QuicConnection {
 
 impl<C: QuicConnection> ClientProtoExt for C {
 	async fn send_auth(&self, uuid: &uuid::Uuid, secret: &[u8]) -> Result<(), Error> {
-		// Generate the authentication token from the TLS keying-material exporter
-		// (RFC 5705): label = UUID bytes, context = password.
+		// Generate the authentication token from the TLS keying-material
+		// exporter (RFC 5705): label = UUID bytes, context = password.
 		let mut token = [0u8; 32];
 		self.export_keying_material(&mut token, uuid.as_bytes(), secret)
 			.await
@@ -95,8 +96,8 @@ impl<C: QuicConnection> ClientProtoExt for C {
 		CmdCodec(CmdType::Connect).encode(Command::Connect, &mut buf)?;
 		AddressCodec.encode(addr.to_owned().into(), &mut buf)?;
 		send.write_all(&buf).await?;
-		// Join the recv/send halves into one duplex stream for the bidirectional
-		// relay (replaces the quinn-specific `QuinnCompat`).
+		// Join the recv/send halves into one duplex stream for the
+		// bidirectional relay (replaces the quinn-specific `QuinnCompat`).
 		let mut duplex = tokio::io::join(recv, send);
 		let (a, b, err) = wind_core::io::copy_io(&mut stream, &mut duplex).await;
 		if let Some(e) = err {
@@ -113,8 +114,9 @@ impl<C: QuicConnection> ClientProtoExt for C {
 		payload: bytes::Bytes,
 		datagram: bool,
 	) -> Result<(), Error> {
-		// Pre-size for header (2) + Packet command (8) + address + payload so the
-		// datagram branch ships a single `Bytes` without a second allocation.
+		// Pre-size for header (2) + Packet command (8) + address + payload so
+		// the datagram branch ships a single `Bytes` without a second
+		// allocation.
 		let addr_size = match addr {
 			TargetAddr::IPv4(..) => 1 + 4 + 2,
 			TargetAddr::IPv6(..) => 1 + 16 + 2,

@@ -122,8 +122,8 @@ pub async fn serve_udp_with_client(
 				Ok((len, addr)) => {
 					// Enforce RFC 1928 §6: drop datagrams whose source does not
 					// match the expected client. The expected client is either
-					// supplied by the caller (from the TCP control connection) or
-					// latched in on the first observed packet.
+					// supplied by the caller (from the TCP control connection)
+					// or latched in on the first observed packet.
 					//
 					// The relay socket may be bound as IPv6 dual-stack (the
 					// default in `ext::udp_bind_random_port`), in which case an
@@ -202,8 +202,9 @@ pub async fn serve_udp_with_client(
 			}
 
 			// RFC 1928 §7: the reply's ATYP/DST.ADDR/DST.PORT MUST identify the
-			// REMOTE host that sent the data, not the client. Prefer the packet's
-			// recorded source; fall back to its target if the source is unknown.
+			// REMOTE host that sent the data, not the client. Prefer the
+			// packet's recorded source; fall back to its target if the
+			// source is unknown.
 			let reply_origin = match &packet.source {
 				Some(src) => target_addr_to_socket(src),
 				None => target_addr_to_socket(&packet.target),

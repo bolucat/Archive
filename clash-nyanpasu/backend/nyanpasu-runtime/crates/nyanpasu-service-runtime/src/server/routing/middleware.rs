@@ -27,7 +27,7 @@ const REQUEST_ID_HEADER: &str = "x-request-id";
 /// forever, NOT a policy timeout: the core manager already bounds its own work
 /// at `reconcile_timeout(30s) + stop_timeout(10s) + startup_timeout(30s) +
 /// stop_timeout(10s) = 80s` worst case (`nyanpasu_core_manager::spec`), so this
-/// sits above anything a working `/core/start` or `/core/restart` can take.
+/// sits above anything a working `/core/start` or `Reconcile` submission can take.
 /// The ws endpoint is a long-lived stream and is deliberately not bounded.
 pub(super) const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 

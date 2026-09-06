@@ -18,30 +18,49 @@ pub struct HealthPolicy {
     start_period: Duration,
 }
 
+/// How many consecutive probe results flip the tracker each way. Both are
+/// `NonZeroU32`, so only a name says which direction one belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HealthThresholds {
+    /// Consecutive failures before a healthy instance is called unhealthy.
+    pub failure: NonZeroU32,
+    /// Consecutive successes before an unhealthy instance is called healthy.
+    pub success: NonZeroU32,
+}
+
+/// The five inputs of a [`HealthPolicy`]. They were five positional
+/// parameters over two types — three `Duration`s and two `NonZeroU32` — so
+/// any ordering within either group compiles, and the constructor validates
+/// each value on its own rather than against the slot it landed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HealthPolicySpec {
+    /// How often the probe runs.
+    pub interval: Duration,
+    /// The budget for a single probe run.
+    pub timeout: Duration,
+    pub thresholds: HealthThresholds,
+    /// A grace window after start during which failures do not count.
+    pub start_period: Duration,
+}
+
 impl HealthPolicy {
-    pub fn new(
-        interval: Duration,
-        timeout: Duration,
-        failure_threshold: NonZeroU32,
-        success_threshold: NonZeroU32,
-        start_period: Duration,
-    ) -> Result<Self, Error> {
-        if interval.is_zero() {
+    pub fn new(spec: HealthPolicySpec) -> Result<Self, Error> {
+        if spec.interval.is_zero() {
             return Err(Error::InvalidHealthPolicy(
                 "interval must be greater than zero".into(),
             ));
         }
-        if timeout.is_zero() {
+        if spec.timeout.is_zero() {
             return Err(Error::InvalidHealthPolicy(
                 "timeout must be greater than zero".into(),
             ));
         }
         Ok(Self {
-            interval,
-            timeout,
-            failure_threshold,
-            success_threshold,
-            start_period,
+            interval: spec.interval,
+            timeout: spec.timeout,
+            failure_threshold: spec.thresholds.failure,
+            success_threshold: spec.thresholds.success,
+            start_period: spec.start_period,
         })
     }
 
@@ -190,36 +209,62 @@ mod tests {
     use std::num::NonZeroU32;
 
     fn policy(failures: u32, successes: u32, start_period: Duration) -> HealthPolicy {
-        HealthPolicy::new(
-            Duration::from_millis(10),
-            Duration::from_millis(20),
-            NonZeroU32::new(failures).unwrap(),
-            NonZeroU32::new(successes).unwrap(),
+        HealthPolicy::new(HealthPolicySpec {
+            interval: Duration::from_millis(10),
+            timeout: Duration::from_millis(20),
+            thresholds: HealthThresholds {
+                failure: NonZeroU32::new(failures).unwrap(),
+                success: NonZeroU32::new(successes).unwrap(),
+            },
             start_period,
-        )
+        })
         .unwrap()
+    }
+
+    #[test]
+    fn policy_keeps_every_input_in_its_own_field() {
+        let policy = HealthPolicy::new(HealthPolicySpec {
+            interval: Duration::from_millis(10),
+            timeout: Duration::from_millis(20),
+            thresholds: HealthThresholds {
+                failure: NonZeroU32::new(3).unwrap(),
+                success: NonZeroU32::new(2).unwrap(),
+            },
+            start_period: Duration::from_millis(30),
+        })
+        .unwrap();
+
+        assert_eq!(policy.interval(), Duration::from_millis(10));
+        assert_eq!(policy.timeout(), Duration::from_millis(20));
+        assert_eq!(policy.failure_threshold(), NonZeroU32::new(3).unwrap());
+        assert_eq!(policy.success_threshold(), NonZeroU32::new(2).unwrap());
+        assert_eq!(policy.start_period(), Duration::from_millis(30));
     }
 
     #[test]
     fn policy_rejects_zero_interval_and_timeout() {
         assert!(
-            HealthPolicy::new(
-                Duration::ZERO,
-                Duration::from_secs(1),
-                NonZeroU32::MIN,
-                NonZeroU32::MIN,
-                Duration::ZERO,
-            )
+            HealthPolicy::new(HealthPolicySpec {
+                interval: Duration::ZERO,
+                timeout: Duration::from_secs(1),
+                thresholds: HealthThresholds {
+                    failure: NonZeroU32::MIN,
+                    success: NonZeroU32::MIN,
+                },
+                start_period: Duration::ZERO,
+            })
             .is_err()
         );
         assert!(
-            HealthPolicy::new(
-                Duration::from_secs(1),
-                Duration::ZERO,
-                NonZeroU32::MIN,
-                NonZeroU32::MIN,
-                Duration::ZERO,
-            )
+            HealthPolicy::new(HealthPolicySpec {
+                interval: Duration::from_secs(1),
+                timeout: Duration::ZERO,
+                thresholds: HealthThresholds {
+                    failure: NonZeroU32::MIN,
+                    success: NonZeroU32::MIN,
+                },
+                start_period: Duration::ZERO,
+            })
             .is_err()
         );
     }

@@ -1,7 +1,7 @@
 #![cfg(feature = "process")]
 
 use nyanpasu_utils::process::{
-    Command, EpochPidFile, OrphanReapOutcome, ProcessEvent, read_epoch_pid_file,
+    Command, EpochPidFile, EpochPidFileSpec, OrphanReapOutcome, ProcessEvent, read_epoch_pid_file,
     reap_epoch_pid_file,
 };
 
@@ -48,7 +48,11 @@ async fn epoch_pid_file_written_and_cleaned_up() {
     std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
     let (handle, mut events) = Command::new(child())
         .args(["sleep-then-exit", "500", "0"])
-        .epoch_pid_file(EpochPidFile::new(&pid_path, 6, &runtime_path))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 6,
+        }))
         .spawn()
         .await
         .unwrap();
@@ -65,7 +69,13 @@ async fn residual_process_is_killed_before_spawn() {
     let pid_path = dir.path().join("core-1.pid");
     let runtime_path = dir.path().join("config-1.yaml");
     std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
-    let epoch_pid = || EpochPidFile::new(&pid_path, 1, &runtime_path);
+    let epoch_pid = || {
+        EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 1,
+        })
+    };
 
     let (h1, mut rx1) = Command::new(child())
         .args(["sleep-forever"])
@@ -141,22 +151,22 @@ async fn different_epoch_pid_files_do_not_kill_overlapping_process() {
 
     let (first, _first_events) = Command::new(child())
         .args(["sleep-forever"])
-        .epoch_pid_file(EpochPidFile::new(
-            dir.path().join("core-1.pid"),
-            1,
-            &runtime_1,
-        ))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &dir.path().join("core-1.pid"),
+            runtime_config: &runtime_1,
+            epoch: 1,
+        }))
         .spawn()
         .await
         .unwrap();
     let first_pid = first.pid();
     let (second, _second_events) = Command::new(child())
         .args(["sleep-forever"])
-        .epoch_pid_file(EpochPidFile::new(
-            dir.path().join("core-2.pid"),
-            2,
-            &runtime_2,
-        ))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &dir.path().join("core-2.pid"),
+            runtime_config: &runtime_2,
+            epoch: 2,
+        }))
         .spawn()
         .await
         .unwrap();
@@ -195,7 +205,11 @@ async fn validated_orphan_reap_kills_matching_epoch_record() {
     std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
     let (handle, _events) = Command::new(child())
         .args(["sleep-forever"])
-        .epoch_pid_file(EpochPidFile::new(&pid_path, 9, &runtime_path))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 9,
+        }))
         .spawn()
         .await
         .unwrap();
@@ -217,7 +231,11 @@ async fn validated_orphan_reap_kills_captured_descendant_tree() {
     std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
     let (handle, mut events) = Command::new(child())
         .args(["spawn-grandchild"])
-        .epoch_pid_file(EpochPidFile::new(&pid_path, 10, &runtime_path))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 10,
+        }))
         .spawn()
         .await
         .unwrap();
@@ -255,7 +273,11 @@ async fn orphan_reap_rejects_unproven_start_identity_without_killing() {
     std::fs::write(&runtime_path, "mixed-port: 0\n").unwrap();
     let (handle, _events) = Command::new(child())
         .args(["sleep-forever"])
-        .epoch_pid_file(EpochPidFile::new(&pid_path, 4, &runtime_path))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 4,
+        }))
         .spawn()
         .await
         .unwrap();
@@ -290,7 +312,11 @@ async fn epoch_pid_file_rejects_runtime_path_escape() {
 
     let error = Command::new(child())
         .args(["sleep-forever"])
-        .epoch_pid_file(EpochPidFile::new(pid_path, 3, runtime_path))
+        .epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+            pid_path: &pid_path,
+            runtime_config: &runtime_path,
+            epoch: 3,
+        }))
         .spawn()
         .await
         .err()

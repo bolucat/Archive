@@ -2,7 +2,7 @@
 
 use camino::Utf8PathBuf;
 
-use crate::{Feature, RuntimeFeature, kind::CoreKind};
+use crate::{Epoch, Feature, RuntimeFeature, kind::CoreKind};
 
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -72,6 +72,8 @@ impl InstanceState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstanceStatus {
+    /// New for each OS process start, including respawn inside one epoch.
+    pub instance_id: Option<uuid::Uuid>,
     pub state: InstanceState,
     pub health: Option<HealthStatus>,
 }
@@ -79,6 +81,7 @@ pub struct InstanceStatus {
 impl InstanceStatus {
     pub(crate) fn initial() -> Self {
         Self {
+            instance_id: None,
             state: InstanceState::Starting,
             health: Some(HealthStatus::starting()),
         }
@@ -110,23 +113,23 @@ pub enum CoreState {
         reason: Option<StopReason>,
     },
     Starting {
-        epoch: u64,
+        epoch: Epoch,
     },
     Running {
-        epoch: u64,
+        epoch: Epoch,
         pid: u32,
     },
     Restarting {
-        epoch: u64,
+        epoch: Epoch,
         attempt: u32,
     },
     /// A hard or graceful switch is in flight.
     Switching {
-        from: Option<u64>,
-        to: u64,
+        from: Option<Epoch>,
+        to: Epoch,
     },
     Stopping {
-        epoch: u64,
+        epoch: Epoch,
     },
 }
 
@@ -142,7 +145,7 @@ pub struct SpecSummary {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigRevision {
-    pub epoch: u64,
+    pub epoch: Epoch,
     pub generation: u64,
     pub source_hash: String,
     pub effective_hash: String,
@@ -151,7 +154,7 @@ pub struct ConfigRevision {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RevisionId {
-    pub epoch: u64,
+    pub epoch: Epoch,
     pub generation: u64,
     pub effective_hash: String,
 }
@@ -179,6 +182,8 @@ impl std::fmt::Display for RevisionId {
 /// Snapshot published on the manager's watch channel.
 #[derive(Debug, Clone)]
 pub struct CoreStatus {
+    /// Identity of the process, independent of config revision and runtime epoch.
+    pub instance_id: Option<uuid::Uuid>,
     pub state: CoreState,
     /// Unix milliseconds of the last state transition (feeds IPC `state_changed_at`).
     pub changed_at: i64,
@@ -192,6 +197,7 @@ pub struct CoreStatus {
 impl CoreStatus {
     pub(crate) fn initial() -> Self {
         Self {
+            instance_id: None,
             state: CoreState::Stopped { reason: None },
             changed_at: now_ms(),
             health: None,

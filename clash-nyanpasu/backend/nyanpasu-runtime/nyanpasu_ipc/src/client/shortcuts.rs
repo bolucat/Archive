@@ -9,15 +9,11 @@ use reqwest_websocket::{Message, Upgrade};
 use crate::api::{
     self,
     contract::{
-        CoreApply, CoreCheck, CoreRecover, CoreRestart, CoreStart, CoreStop, CoreV2Operation,
-        CoreV2Status, CoreV2Submit, LogsInspect, LogsRetrieve, NetworkSetDns, Status,
+        CoreCheck, CoreStart, CoreStop, CoreV2Operation, CoreV2Status, CoreV2Submit, LogsInspect,
+        LogsRetrieve, NetworkSetDns, Status,
     },
-    core::{
-        apply::{CORE_APPLY_ENDPOINT, CoreApplyData},
-        v2::{
-            CORE_V2_OPERATION_ENDPOINT, CORE_V2_STATUS_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT,
-            OperationInfo,
-        },
+    core::v2::{
+        CORE_V2_OPERATION_ENDPOINT, CORE_V2_STATUS_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT, OperationInfo,
     },
     log::{LOGS_INSPECT_ENDPOINT, LOGS_RETRIEVE_ENDPOINT},
     status::STATUS_ENDPOINT,
@@ -44,26 +40,6 @@ impl Client {
 
     pub async fn stop_core(&self) -> Result<()> {
         self.call::<CoreStop>(None).await.map(|_| ())
-    }
-
-    pub async fn restart_core(&self) -> Result<()> {
-        self.call::<CoreRestart>(None).await.map(|_| ())
-    }
-
-    /// Apply a config to the running core. See
-    /// [`CoreApplyData::outcome`](api::core::apply::CoreApplyData::outcome):
-    /// `rolled_back` is a successful call reporting that the **old** config is
-    /// what runs.
-    pub async fn apply_config(
-        &self,
-        payload: &api::core::apply::CoreApplyReq<'_>,
-    ) -> Result<CoreApplyData> {
-        self.call::<CoreApply>(Some(payload))
-            .await?
-            .data
-            .ok_or(ClientError::EmptyData {
-                operation: CORE_APPLY_ENDPOINT,
-            })
     }
 
     /// Dry-run a config against a core binary without touching the running one.
@@ -98,6 +74,15 @@ impl Client {
             })
     }
 
+    /// Read the applied process's API credentials over the protected IPC socket.
+    pub async fn core_api_connection(&self) -> Result<Option<api::core::v2::CoreApiConnection>> {
+        Ok(self
+            .call::<api::contract::CoreV2ApiConnection>(None)
+            .await?
+            .data
+            .flatten())
+    }
+
     /// The daemon's canonical core status projection.
     pub async fn core_status_v2(&self) -> Result<api::status::CoreInfos> {
         self.call::<CoreV2Status>(None)
@@ -106,11 +91,6 @@ impl Client {
             .ok_or(ClientError::EmptyData {
                 operation: CORE_V2_STATUS_ENDPOINT,
             })
-    }
-
-    /// Clear the manager's quarantine latch. Idempotent.
-    pub async fn recover_core(&self) -> Result<()> {
-        self.call::<CoreRecover>(None).await.map(|_| ())
     }
 
     pub async fn inspect_logs(&self) -> Result<api::log::LogsResBody<'static>> {
@@ -211,5 +191,44 @@ impl Stream for EventStream {
 impl std::fmt::Debug for EventStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EventStream").finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod api_connection_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn applied_binding_and_unavailable_binding_decode_through_the_contract() {
+        use api::{RBuilder, core::v2::CoreApiConnection, status::CoreControllerInfo};
+        use axum::{Json, Router, routing::get};
+        for connection in [
+            None,
+            Some(CoreApiConnection {
+                instance_id: "process-id".into(),
+                controller: CoreControllerInfo::Http("http://127.0.0.1:9090/".into()),
+                secret: Some("controller-secret".into()),
+            }),
+        ] {
+            let expected = connection.clone();
+            let router = Router::new().route(
+                api::core::v2::CORE_V2_API_CONNECTION_ENDPOINT,
+                get(move || {
+                    let connection = connection.clone();
+                    async move { Json(RBuilder::success(connection)) }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, router).await.unwrap();
+            });
+            let client = Client {
+                client: reqwest::Client::builder().no_proxy().build().unwrap(),
+                base_url: format!("http://{address}/").parse().unwrap(),
+            };
+            assert_eq!(client.core_api_connection().await.unwrap(), expected);
+            server.abort();
+        }
     }
 }

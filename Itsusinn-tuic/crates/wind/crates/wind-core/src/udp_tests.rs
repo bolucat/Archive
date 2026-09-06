@@ -130,7 +130,8 @@ mod tests {
 		let send_state = UdpSocketState::new(send.into()).unwrap();
 		let recv_state = UdpSocketState::new(recv.into()).unwrap();
 
-		// Reverse non-blocking flag set by `UdpSocketState` to make the test non-racy
+		// Reverse non-blocking flag set by `UdpSocketState` to make the test
+		// non-racy
 		recv.set_nonblocking(false).unwrap();
 
 		send_state.try_send(send.into(), &transmit).unwrap();

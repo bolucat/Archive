@@ -1,5 +1,5 @@
 use crate::{
-    RuntimeFeature,
+    Epoch, RuntimeFeature,
     capability::ResolvedFeatures,
     config::{
         ConfigSnapshot,
@@ -9,16 +9,13 @@ use crate::{
     kind::CoreKind,
     probe::ProbePhase,
     runtime::RuntimeInstance,
-    spec::{InstanceSpec, ResolvedController},
+    spec::InstanceSpec,
     state::{ConfigRevision, CoreState},
 };
 
 use super::{
-    Active, CoreManager, Ctrl, DegradeReason, PreparedGraceful, PreparedLaunch, SwitchOutcome,
-    abort_and_await,
-    publish::spec_summary,
+    CoreManager, Ctrl, DegradeReason, EpochPlan, PreparedGraceful, RetireFailure, SwitchOutcome,
     quarantine::{record_quarantine, reject_quarantine},
-    spawn_forwarder,
 };
 
 fn graceful_degrade_reason(
@@ -65,21 +62,7 @@ impl CoreManager {
             .as_ref()
             .is_some_and(|active| !active.instance.state().borrow().state.is_terminal());
         if !running {
-            if let Some(stale) = ctrl.current.take() {
-                abort_and_await(stale.forwarder).await;
-                let epoch = stale.instance.epoch();
-                if let Err(error) = stale
-                    .instance
-                    .stop_and_confirm_dead(self.inner.options.stop_timeout)
-                    .await
-                {
-                    if matches!(error, Error::StopUnconfirmed(_)) {
-                        return Err(self.latch_quarantine(ctrl, epoch, error));
-                    }
-                    return Err(error);
-                }
-                self.inner.store.cleanup_epoch(epoch).await?;
-            }
+            self.discard_stale(ctrl).await?;
             self.start_locked(ctrl, spec).await?;
             return Ok(SwitchOutcome::Hard {
                 reason: DegradeReason::NotRunning,
@@ -110,12 +93,12 @@ impl CoreManager {
         snapshot: ConfigSnapshot,
         resolved: ResolvedFeatures,
     ) -> Result<(), Error> {
-        let epoch = self.next_epoch();
-        let prepared = match self
+        let epoch = ctrl.epochs.next();
+        let plan = match self
             .prepare_launch_with_features(&spec, epoch, &snapshot, resolved)
             .await
         {
-            Ok(prepared) => prepared,
+            Ok(plan) => plan,
             Err(error) => {
                 let _ = self.inner.store.cleanup_epoch(epoch).await;
                 self.republish_retained(ctrl);
@@ -128,35 +111,28 @@ impl CoreManager {
                 from: old_epoch,
                 to: epoch,
             },
-            Some(spec_summary(
-                &prepared.source_spec,
-                prepared.capabilities,
-                prepared.runtime_features,
-            )),
-            Some(prepared.controller.host.clone()),
-            Some(prepared.revision.clone()),
+            Some(&plan),
         );
 
-        let old = ctrl.current.take().expect("running checked by caller");
-        abort_and_await(old.forwarder).await;
-        let old_epoch = old.instance.epoch();
-        if let Err(error) = old
-            .instance
-            .stop_and_confirm_dead(self.inner.options.stop_timeout)
-            .await
-        {
-            let _ = self.inner.store.cleanup_epoch(epoch).await;
-            if matches!(error, Error::StopUnconfirmed(_)) {
-                return Err(self.latch_quarantine(ctrl, old_epoch, error));
+        let old_epoch = match self.retire_current(ctrl).await {
+            Ok(retired) => retired.expect("running checked by caller").revision.epoch,
+            Err(RetireFailure {
+                epoch: retired_epoch,
+                error,
+            }) => {
+                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                if matches!(error, Error::StopUnconfirmed(_)) {
+                    return Err(self.latch_quarantine(ctrl, retired_epoch, error));
+                }
+                self.publish_terminal_error(&error);
+                return Err(error);
             }
-            self.publish_terminal_error(&error);
-            return Err(error);
-        }
+        };
         if let Err(error) = self.inner.store.cleanup_epoch(old_epoch).await {
             self.publish_terminal_error(&error);
             return Err(error);
         }
-        self.start_prepared(ctrl, prepared).await
+        self.start_prepared(ctrl, plan).await
     }
 
     async fn graceful_switch(
@@ -167,7 +143,7 @@ impl CoreManager {
         resolved: ResolvedFeatures,
     ) -> Result<SwitchOutcome, Error> {
         let old_epoch = ctrl.current.as_ref().map(|active| active.instance.epoch());
-        let epoch = self.next_epoch();
+        let epoch = ctrl.epochs.next();
         let prepared = match self
             .prepare_graceful(&spec, epoch, &snapshot, resolved)
             .await
@@ -180,7 +156,7 @@ impl CoreManager {
             }
         };
         let PreparedGraceful {
-            launch,
+            plan: launch,
             full_staged,
             restoration,
         } = prepared;
@@ -189,23 +165,10 @@ impl CoreManager {
                 from: old_epoch,
                 to: epoch,
             },
-            Some(spec_summary(
-                &launch.source_spec,
-                launch.capabilities,
-                launch.runtime_features,
-            )),
-            Some(launch.controller.host.clone()),
-            Some(launch.revision.clone()),
+            Some(&launch),
         );
 
-        let instance = match self
-            .spawn_instance(
-                launch.effective_spec.clone(),
-                epoch,
-                launch.controller.clone(),
-            )
-            .await
-        {
+        let instance = match self.spawn_instance(&launch).await {
             Ok(instance) => instance,
             Err(error) => {
                 drop(full_staged);
@@ -234,40 +197,39 @@ impl CoreManager {
             }
         }
 
-        let old = ctrl.current.take().expect("running checked by caller");
-        abort_and_await(old.forwarder).await;
-        let old_epoch = old.instance.epoch();
-        if let Err(error) = old
-            .instance
-            .stop_and_confirm_dead(self.inner.options.stop_timeout)
-            .await
-        {
-            drop(full_staged);
-            let old_uncertain = matches!(error, Error::StopUnconfirmed(_));
-            let old_reason = error.to_string();
-            let new_stop = instance
-                .stop_and_confirm_dead(self.inner.options.stop_timeout)
-                .await;
-            match new_stop {
-                Ok(()) => {
-                    let _ = self.inner.store.cleanup_epoch(epoch).await;
-                    if old_uncertain {
-                        return Err(self.latch_quarantine(ctrl, old_epoch, error));
+        let old_epoch = match self.retire_current(ctrl).await {
+            Ok(retired) => retired.expect("running checked by caller").revision.epoch,
+            Err(RetireFailure {
+                epoch: retired_epoch,
+                error,
+            }) => {
+                drop(full_staged);
+                let old_uncertain = matches!(error, Error::StopUnconfirmed(_));
+                let old_reason = error.to_string();
+                let new_stop = instance
+                    .stop_and_confirm_dead(self.inner.options.stop_timeout)
+                    .await;
+                match new_stop {
+                    Ok(()) => {
+                        let _ = self.inner.store.cleanup_epoch(epoch).await;
+                        if old_uncertain {
+                            return Err(self.latch_quarantine(ctrl, retired_epoch, error));
+                        }
+                        self.publish_terminal_error(&error);
+                        return Err(error);
                     }
-                    self.publish_terminal_error(&error);
-                    return Err(error);
-                }
-                Err(new_error) => {
-                    if old_uncertain {
-                        record_quarantine(ctrl, old_epoch, old_reason);
+                    Err(new_error) => {
+                        if old_uncertain {
+                            record_quarantine(ctrl, retired_epoch, old_reason);
+                        }
+                        let error = Error::StopUnconfirmed(format!(
+                            "old epoch stop failed: {error}; new bootstrap stop also failed: {new_error}"
+                        ));
+                        return Err(self.latch_quarantine(ctrl, epoch, error));
                     }
-                    let error = Error::StopUnconfirmed(format!(
-                        "old epoch stop failed: {error}; new bootstrap stop also failed: {new_error}"
-                    ));
-                    return Err(self.latch_quarantine(ctrl, epoch, error));
                 }
             }
-        }
+        };
 
         let commit = match self.inner.store.commit_replace(full_staged, epoch).await {
             Ok(commit) => commit,
@@ -308,7 +270,13 @@ impl CoreManager {
         .await
         .unwrap_or(false);
         if reconciled {
-            self.install_switched(ctrl, instance, launch);
+            let pid = instance.pid().unwrap_or_default();
+            self.inner.publish_instance(
+                instance.as_ref(),
+                CoreState::Running { epoch, pid },
+                &launch,
+            );
+            self.install(ctrl, instance, launch);
             let result = self
                 .inner
                 .store
@@ -318,8 +286,6 @@ impl CoreManager {
             return with_switch_durability_result(result, durability_warning);
         }
 
-        let effective_spec = launch.effective_spec.clone();
-        let controller = launch.controller.clone();
         if let Err(error) = instance
             .stop_and_confirm_dead(self.inner.options.stop_timeout)
             .await
@@ -332,10 +298,7 @@ impl CoreManager {
             };
             return with_switch_durability_result(Err(error), durability_warning);
         }
-        let replacement = match self
-            .spawn_replacement(effective_spec, epoch, controller)
-            .await
-        {
+        let replacement = match self.spawn_replacement(&launch).await {
             Ok(replacement) => replacement,
             Err(error @ Error::StopUnconfirmed(_)) => {
                 let error = self.latch_quarantine(ctrl, epoch, error);
@@ -347,7 +310,13 @@ impl CoreManager {
                 return with_switch_durability_result(Err(error), durability_warning);
             }
         };
-        self.install_switched(ctrl, replacement, launch);
+        let pid = replacement.pid().unwrap_or_default();
+        self.inner.publish_instance(
+            replacement.as_ref(),
+            CoreState::Running { epoch, pid },
+            &launch,
+        );
+        self.install(ctrl, replacement, launch);
         let result =
             self.inner
                 .store
@@ -359,52 +328,22 @@ impl CoreManager {
         with_switch_durability_result(result, durability_warning)
     }
 
-    fn install_switched(
-        &self,
-        ctrl: &mut Ctrl,
-        instance: Box<dyn RuntimeInstance>,
-        prepared: PreparedLaunch,
-    ) {
-        let epoch = prepared.revision.epoch;
-        let pid = instance.pid().unwrap_or_default();
-        self.inner.publish_instance(
-            instance.as_ref(),
-            CoreState::Running { epoch, pid },
-            &prepared.source_spec,
-            &prepared.revision,
-            prepared.capabilities,
-            prepared.runtime_features,
-        );
-        let forwarder = spawn_forwarder(&self.inner, instance.state(), epoch);
-        ctrl.last_spec = Some(prepared.source_spec.clone());
-        ctrl.current = Some(Active {
-            instance,
-            forwarder,
-            source_spec: prepared.source_spec,
-            revision: prepared.revision,
-            capabilities: prepared.capabilities,
-            runtime_features: prepared.runtime_features,
-            source_document: prepared.source_document,
-            effective_document: prepared.effective_document,
-        });
-    }
-
     /// Launchability comes before capability: an unlaunchable kind or missing
     /// binary must fail as such, never as a missing local transport.
     pub(super) async fn validate_launchable(&self, spec: &InstanceSpec) -> Result<(), Error> {
         if tokio::fs::metadata(&spec.core.binary_path).await.is_err() {
             return Err(Error::BinaryNotFound(spec.core.binary_path.clone()));
         }
-        crate::kind::run_args(spec.core.kind, &spec.working_dir, &spec.config_path)?;
+        crate::kind::run_args(spec.core.kind, spec.core_paths())?;
         Ok(())
     }
 
     pub(super) async fn prepare_launch(
         &self,
         spec: &InstanceSpec,
-        epoch: u64,
+        epoch: Epoch,
         snapshot: &ConfigSnapshot,
-    ) -> Result<PreparedLaunch, Error> {
+    ) -> Result<EpochPlan, Error> {
         self.validate_launchable(spec).await?;
         let resolved = self.resolve_features(&spec.core).await?;
         self.prepare_launch_with_features(spec, epoch, snapshot, resolved)
@@ -414,10 +353,10 @@ impl CoreManager {
     async fn prepare_launch_with_features(
         &self,
         spec: &InstanceSpec,
-        epoch: u64,
+        epoch: Epoch,
         snapshot: &ConfigSnapshot,
         resolved: ResolvedFeatures,
-    ) -> Result<PreparedLaunch, Error> {
+    ) -> Result<EpochPlan, Error> {
         debug_assert_eq!(snapshot.source_path(), spec.config_path);
         let prepared = snapshot.prepare_full(
             self.inner.options.controller_template.as_deref(),
@@ -440,7 +379,7 @@ impl CoreManager {
         let mut effective_spec = spec.clone();
         effective_spec.config_path = runtime_path.clone();
         effective_spec.pid_file = Some(self.inner.store.pid_path(epoch));
-        Ok(PreparedLaunch {
+        Ok(EpochPlan {
             source_spec: spec.clone(),
             effective_spec,
             controller: prepared.controller,
@@ -461,7 +400,7 @@ impl CoreManager {
     async fn prepare_graceful(
         &self,
         spec: &InstanceSpec,
-        epoch: u64,
+        epoch: Epoch,
         snapshot: &ConfigSnapshot,
         resolved: ResolvedFeatures,
     ) -> Result<PreparedGraceful, Error> {
@@ -506,7 +445,7 @@ impl CoreManager {
         effective_spec.config_path = runtime_path.clone();
         effective_spec.pid_file = Some(self.inner.store.pid_path(epoch));
         Ok(PreparedGraceful {
-            launch: PreparedLaunch {
+            plan: EpochPlan {
                 source_spec: spec.clone(),
                 effective_spec,
                 controller: full.controller,
@@ -529,13 +468,9 @@ impl CoreManager {
 
     pub(super) async fn spawn_replacement(
         &self,
-        effective_spec: InstanceSpec,
-        epoch: u64,
-        controller: ResolvedController,
+        plan: &EpochPlan,
     ) -> Result<Box<dyn RuntimeInstance>, Error> {
-        let instance = self
-            .spawn_instance(effective_spec, epoch, controller)
-            .await?;
+        let instance = self.spawn_instance(plan).await?;
         if let Err(error) = instance.wait_ready().await {
             return match instance
                 .stop_and_confirm_dead(self.inner.options.stop_timeout)

@@ -9,16 +9,12 @@ use crate::{
 };
 use anyhow::Context;
 use chrono::Local;
+use indexmap::IndexMap;
 use log::debug;
-use nyanpasu_ipc::api::status::CoreState;
 use serde::{Deserialize, Serialize};
-use std::{
-    borrow::Cow,
-    collections::{HashMap, VecDeque},
-    path::PathBuf,
-    result::Result as StdResult,
-};
+use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
+use struct_patch::Patch as _;
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
@@ -41,6 +37,8 @@ pub enum IpcError {
     Anyhow(#[from] anyhow::Error),
     #[error(transparent)]
     Profiles(#[from] crate::state::profiles::actor::ProfilesError),
+    #[error(transparent)]
+    Core(#[from] nyanpasu_core_manager::CoreError),
     #[error("{0}")]
     Custom(String),
 }
@@ -137,7 +135,7 @@ pub fn is_portable() -> Result<bool> {
 #[tauri::command]
 #[specta::specta]
 pub async fn enhance_profiles(client: State<'_, NyanpasuClient>) -> Result {
-    client.rebuild_running_config().await?;
+    client.reconcile_core().await?;
     Ok(())
 }
 
@@ -396,11 +394,10 @@ pub async fn get_postprocessing_output(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_core_status() -> Result<(Cow<'static, CoreState>, i64, RunType)> {
-    // TODO(actor-migration): compatibility bridge for legacy core manager status.
-    // Reason: core lifecycle/status is not yet owned by an injected typed client here.
-    // Remove when: CoreClient exposes typed status through NyanpasuClient or command adapters.
-    Ok(CoreManager::global().status().await)
+pub async fn get_core_status(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::core::actor_v2::CoreStatusInfo> {
+    Ok(client.core_status().into())
 }
 
 #[tauri::command]
@@ -449,12 +446,19 @@ pub async fn patch_clash_config(
         "patch_clash_config"
     );
 
-    let mapping = match serde_yaml::to_value(&payload)? {
-        serde_yaml::Value::Mapping(m) => m,
-        _ => return Err(IpcError::Custom("Expected a mapping".to_string())),
-    };
-
-    client.patch_running_config(mapping).await?;
+    let overrides = serde_yaml::from_value::<
+        nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+    >(serde_yaml::to_value(payload)?)?;
+    let mut clash = client.get_clash_config().await?;
+    clash.overrides.apply(overrides);
+    let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
+    patch.overrides = Some(clash.overrides);
+    client.patch_clash_config(patch).await?;
+    client.reconcile_core().await?;
+    // A mode change rewrites the proxy groups; warm the cache the same way the
+    // pre-facade patch path did, or the next read serves the old groups until
+    // the actor cache's freshness window lapses.
+    client.request_proxy_refresh();
     Ok(())
 }
 
@@ -481,26 +485,27 @@ pub async fn patch_verge_config(legacy: State<'_, LegacyVergeBridge>, payload: I
 #[specta::specta]
 pub async fn change_clash_core(
     client: State<'_, NyanpasuClient>,
-    legacy: State<'_, LegacyVergeBridge>,
     clash_core: Option<nyanpasu::ClashCore>,
 ) -> Result {
     let clash_core =
         clash_core.ok_or_else(|| IpcError::Custom("clash core is null".to_string()))?;
-    // reseed wrapper 语义不变:核心切换动了 legacy verge,须回灌 typed actors。
-    let client = client.inner().clone();
-    legacy
-        .run_legacy_verge_mutation(move || async move {
-            client.change_core(clash_core).await.map_err(Into::into)
-        })
-        .await?;
+    let clash_core = match clash_core {
+        nyanpasu::ClashCore::ClashPremium => nyanpasu_config::application::ClashCore::ClashPremium,
+        nyanpasu::ClashCore::ClashRs => nyanpasu_config::application::ClashCore::ClashRs,
+        nyanpasu::ClashCore::Mihomo => nyanpasu_config::application::ClashCore::Mihomo,
+        nyanpasu::ClashCore::MihomoAlpha => nyanpasu_config::application::ClashCore::MihomoAlpha,
+        nyanpasu::ClashCore::ClashRsAlpha => nyanpasu_config::application::ClashCore::ClashRsAlpha,
+        nyanpasu::ClashCore::Meow => nyanpasu_config::application::ClashCore::Meow,
+    };
+    client.update_core(clash_core).await?;
     Ok(())
 }
 
 /// restart the sidecar
 #[tauri::command]
 #[specta::specta]
-pub async fn restart_sidecar() -> Result {
-    (CoreManager::global().run_core().await)?;
+pub async fn restart_sidecar(client: State<'_, NyanpasuClient>) -> Result {
+    client.reconcile_core().await?;
     Ok(())
 }
 
@@ -636,11 +641,14 @@ pub async fn collect_logs(app_handle: AppHandle) -> Result {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_core(core_type: nyanpasu::ClashCore) -> Result<usize> {
+pub async fn update_core(
+    client: State<'_, NyanpasuClient>,
+    core_type: nyanpasu::ClashCore,
+) -> Result<usize> {
     let event_id = (updater::UpdaterManager::global()
         .write()
         .await
-        .update_core(&core_type)
+        .update_core(&core_type, client.inner().clone())
         .await)?;
     Ok(event_id)
 }
@@ -659,117 +667,112 @@ pub async fn inspect_updater(updater_id: usize) -> Result<updater::UpdaterSummar
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_proxy_delay(
+    client: State<'_, NyanpasuClient>,
     name: String,
     provider: Option<String>,
     url: Option<String>,
 ) -> Result<clash::api::DelayRes> {
-    match clash::api::get_proxy_delay(name, provider, url).await {
-        Ok(res) => Ok(res),
-        Err(err) => Err(err.into()),
-    }
+    Ok(client.proxy_delay(name, provider, url).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_configs() -> Result<clash::api::ClashConfig> {
-    Ok(clash::api::get_configs().await?)
+pub async fn clash_api_get_configs(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ClashConfig> {
+    Ok(client.clash_configs().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_delete_connections(id: Option<String>) -> Result<()> {
-    Ok(clash::api::delete_connections(id.as_deref()).await?)
+pub async fn clash_api_delete_connections(
+    client: State<'_, NyanpasuClient>,
+    id: Option<String>,
+) -> Result<()> {
+    Ok(client.close_clash_connections(id).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_version() -> Result<clash::api::ClashVersion> {
-    Ok(clash::api::get_version().await?)
+pub async fn clash_api_get_version(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ClashVersion> {
+    Ok(client.clash_version().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_rules() -> Result<clash::api::RulesRes> {
-    Ok(clash::api::get_rules().await?)
+pub async fn clash_api_get_rules(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::RulesRes> {
+    Ok(client.clash_rules().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_providers_rules() -> Result<clash::api::ProvidersRulesRes> {
-    Ok(clash::api::get_providers_rules().await?)
+pub async fn clash_api_get_providers_rules(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ProvidersRulesRes> {
+    Ok(client.clash_rule_providers().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_update_providers_rules(name: String) -> Result<()> {
-    Ok(clash::api::update_providers_rules_group(&name).await?)
+pub async fn clash_api_update_providers_rules(
+    client: State<'_, NyanpasuClient>,
+    name: String,
+) -> Result<()> {
+    Ok(client.update_clash_rule_provider(name).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn clash_api_get_group_delay(
+    client: State<'_, NyanpasuClient>,
     group: String,
     url: Option<String>,
-) -> Result<HashMap<String, u32>> {
-    Ok(clash::api::get_group_delay(group, url).await?)
+) -> Result<IndexMap<String, u32>> {
+    Ok(client.group_delay(group, url).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn clash_api_get_providers_proxies() -> Result<clash::api::ProvidersProxiesRes> {
-    Ok(clash::api::get_providers_proxies().await?)
+pub async fn clash_api_get_providers_proxies(
+    client: State<'_, NyanpasuClient>,
+) -> Result<clash::api::ProvidersProxiesRes> {
+    Ok(client.proxy_providers().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_proxies() -> Result<crate::core::clash::proxies::Proxies> {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-    {
-        let guard = ProxiesGuard::global().read();
-        if guard.is_updated() {
-            return Ok(guard.inner().clone());
-        }
-    }
-    match ProxiesGuard::global().update().await {
-        Ok(_) => {
-            let proxies = ProxiesGuard::global().read().inner().clone();
-            Ok(proxies)
-        }
-        Err(err) => Err(err.into()),
-    }
+pub async fn get_proxies(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::core::clash::proxies::Proxies> {
+    Ok(client.get_proxies().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn mutate_proxies() -> Result<crate::core::clash::proxies::Proxies> {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-    (ProxiesGuard::global().update().await)?;
-    Ok(ProxiesGuard::global().read().inner().clone())
+pub async fn mutate_proxies(
+    client: State<'_, NyanpasuClient>,
+) -> Result<crate::core::clash::proxies::Proxies> {
+    Ok(client.refresh_proxies().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn select_proxy(group: String, name: String) -> Result<()> {
-    use crate::core::clash::proxies::{ProxiesGuard, ProxiesGuardExt};
-    (ProxiesGuard::global().select_proxy(&group, &name).await)?;
-
-    // Interrupt connections based on configuration
-    let _ = crate::core::connection_interruption::ConnectionInterruptionService::on_proxy_change()
-        .await;
-
-    Ok(())
+pub async fn select_proxy(
+    client: State<'_, NyanpasuClient>,
+    group: String,
+    name: String,
+) -> Result<()> {
+    Ok(client.select_proxy(group, name).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_proxy_provider(name: String) -> Result<()> {
-    use crate::core::clash::{
-        api,
-        proxies::{ProxiesGuard, ProxiesGuardExt},
-    };
-    (api::update_providers_proxies_group(&name).await)?;
-    (ProxiesGuard::global().update().await)?;
-    Ok(())
+pub async fn update_proxy_provider(client: State<'_, NyanpasuClient>, name: String) -> Result<()> {
+    Ok(client.update_proxy_provider(name).await?)
 }
 
 #[tauri::command]
@@ -903,98 +906,71 @@ pub async fn is_tray_icon_set(mode: TrayIcon) -> Result<bool> {
 }
 
 pub mod service {
-    use super::Result;
-    use crate::core::service;
+    use super::{NyanpasuClient, Result};
+    use tauri::State;
 
     /// `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
-    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+    /// 见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
     /// wire 是原结构的严格超集，前端既有消费点不受影响。
     #[derive(serde::Serialize, specta::Type)]
-    pub struct ServiceStatusInfo<'a> {
-        pub name: std::borrow::Cow<'a, str>,
-        pub version: std::borrow::Cow<'a, str>,
+    pub struct ServiceStatusInfo {
+        pub name: std::borrow::Cow<'static, str>,
+        pub version: std::borrow::Cow<'static, str>,
         pub status: nyanpasu_ipc::types::ServiceStatus,
-        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'a>>,
+        pub server: Option<nyanpasu_ipc::api::status::StatusResBody<'static>>,
         pub compat: crate::core::service::compat::ServiceCompat,
+        pub phase: crate::core::actor_v2::service_actor::ServicePhase,
+        pub restart_attempts: u8,
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn status_service<'a>() -> Result<ServiceStatusInfo<'a>> {
-        let info = (service::control::status().await)?;
-        let compat = crate::core::service::compat::ServiceCompat::classify(&info);
+    pub async fn status_service(client: State<'_, NyanpasuClient>) -> Result<ServiceStatusInfo> {
+        let info = client.service_status();
         Ok(ServiceStatusInfo {
             name: info.name,
             version: info.version,
             status: info.status,
             server: info.server,
-            compat,
+            compat: info.compat,
+            phase: info.phase,
+            restart_attempts: info.restart_attempts,
         })
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn install_service() -> Result {
-        (service::control::install_service().await)?;
+    pub async fn install_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.install_service().await?;
         Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn uninstall_service() -> Result {
-        (service::control::uninstall_service().await)?;
+    pub async fn uninstall_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.uninstall_service().await?;
         Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn start_service() -> Result {
-        let res = service::control::start_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn start_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.start_service().await?;
+        Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn stop_service() -> Result {
-        let res = service::control::stop_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn stop_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.stop_service().await?;
+        Ok(())
     }
 
     #[tauri::command]
     #[specta::specta]
-    pub async fn restart_service() -> Result {
-        let res = service::control::restart_service().await;
-        let enabled_service = {
-            *crate::config::Config::verge()
-                .latest()
-                .enable_service_mode
-                .as_ref()
-                .unwrap_or(&false)
-        };
-        if enabled_service && let Err(e) = crate::core::CoreManager::global().run_core().await {
-            log::error!(target: "app", "{e}");
-        }
-        Ok(res?)
+    pub async fn restart_service(client: State<'_, NyanpasuClient>) -> Result {
+        client.restart_service().await?;
+        Ok(())
     }
 }
 

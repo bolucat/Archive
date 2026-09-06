@@ -362,9 +362,9 @@ mod utils {
         let source_text = script.trim_matches(['\t', '\n', '\r', ' ']);
         let result = Parser::new(&allocator, source_text, source_type).parse();
 
-        if !result.errors.is_empty() {
+        if !result.diagnostics.is_empty() {
             let mut errors = String::new();
-            for error in result.errors {
+            for error in result.diagnostics {
                 errors.push_str(&format!(
                     "{:?}\n",
                     error.with_source_code(source_text.to_string())
@@ -400,6 +400,28 @@ mod utils {
 
 #[cfg(test)]
 mod test {
+    #[tokio::test]
+    async fn yaml_template_preserves_nested_config_through_runner() {
+        use super::{super::runner::Runner, JSRunner};
+
+        let runner = JSRunner::try_new().unwrap();
+        let input = serde_yaml::from_str("existing: true").unwrap();
+        let script = r#"
+            import { yaml } from 'nyan:utils';
+            export default function main(config) {
+                config.a = yaml`nested:
+  b: 1
+  c: 2
+`.nested;
+                return config;
+            }
+        "#;
+        let (result, _) = runner.process_honey(input, script).await;
+        let expected: serde_yaml::Mapping =
+            serde_yaml::from_str("existing: true\na:\n  b: 1\n  c: 2\n").unwrap();
+        assert_eq!(result.unwrap(), expected);
+    }
+
     #[test]
     fn test_wrap_script_if_not_esm() {
         let script = r#"function main(config) {

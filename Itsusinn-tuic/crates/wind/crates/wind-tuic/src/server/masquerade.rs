@@ -168,10 +168,11 @@ where
 		));
 	}
 
-	// From here the response head is committed to the h3 stream. A later failure
-	// (over-cap body, send error) must NOT become a second `502` response on a
-	// stream that already sent `200` — that yields a truncated-but-"successful"
-	// reply. Reset the stream instead, so the prober sees an aborted response.
+	// From here the response head is committed to the h3 stream. A later
+	// failure (over-cap body, send error) must NOT become a second `502`
+	// response on a stream that already sent `200` — that yields a
+	// truncated-but-"successful" reply. Reset the stream instead, so the
+	// prober sees an aborted response.
 	if let Err(e) = relay_response(stream, resp).await {
 		debug!("masquerade response failed after the head was sent; resetting h3 stream: {e}");
 		stream.stop_stream(h3::error::Code::H3_INTERNAL_ERROR);

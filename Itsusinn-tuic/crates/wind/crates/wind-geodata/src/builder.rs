@@ -78,8 +78,8 @@ fn build_geosite(list: &GeoSiteList) -> GeoSiteIndex {
 }
 
 fn build_geoip(list: &GeoIpList) -> GeoIpIndex {
-	// Accumulate ranges per country (uppercased). A BTreeMap keeps names sorted and
-	// merges duplicate country entries deterministically.
+	// Accumulate ranges per country (uppercased). A BTreeMap keeps names sorted
+	// and merges duplicate country entries deterministically.
 	let mut v4_by_country: BTreeMap<String, Vec<(u32, u32)>> = BTreeMap::new();
 	let mut v6_by_country: BTreeMap<String, Vec<(u128, u128)>> = BTreeMap::new();
 
@@ -110,7 +110,8 @@ fn build_geoip(list: &GeoIpList) -> GeoIpIndex {
 	let mut v4_ranges: Vec<RangeV4> = Vec::new();
 	let mut v6_ranges: Vec<RangeV6> = Vec::new();
 
-	// BTreeMap iteration is sorted by key, so `countries` ends up sorted by name.
+	// BTreeMap iteration is sorted by key, so `countries` ends up sorted by
+	// name.
 	for (name, v4) in v4_by_country {
 		let v6 = v6_by_country.remove(&name).unwrap_or_default();
 		let v4 = merge_ranges_v4(v4);

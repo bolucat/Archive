@@ -16,7 +16,7 @@
 use serde::{Deserialize, Serialize};
 use serde_yaml_ng::Mapping;
 
-use crate::runtime::BoxFuture;
+use crate::{Epoch, runtime::BoxFuture};
 
 /// The override one host should hold while a given effective config runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,7 +90,7 @@ pub trait DnsController: Send + Sync {
     fn apply<'a>(
         &'a self,
         intent: &'a DnsIntent,
-        runtime_epoch: u64,
+        runtime_epoch: Epoch,
     ) -> BoxFuture<'a, Result<DnsOverrideRecord, DnsError>>;
 
     /// Restores `record.previous` and reads the result back. Also the orphan
@@ -195,7 +195,7 @@ pub mod macos {
         fn apply<'a>(
             &'a self,
             intent: &'a DnsIntent,
-            runtime_epoch: u64,
+            runtime_epoch: Epoch,
         ) -> BoxFuture<'a, Result<DnsOverrideRecord, DnsError>> {
             Box::pin(async move {
                 let previous = self.read_back().await?.unwrap_or_default();
@@ -215,7 +215,7 @@ pub mod macos {
                     interface: self.store_key.clone(),
                     previous,
                     applied: intent.servers.clone(),
-                    runtime_epoch,
+                    runtime_epoch: runtime_epoch.get(),
                     owner_generation: None,
                     state: DnsOverrideState::Applied,
                 })

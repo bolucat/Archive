@@ -1,32 +1,27 @@
 use crate::{
-    Feature, RuntimeFeature,
+    epoch::Epoch,
     error::Error,
     runtime::RuntimeInstance,
-    spec::InstanceSpec,
     state::{
-        ConfigRevision, CoreState, CoreStatus, HealthStatus, InstanceState, InstanceStatus,
-        SpecSummary, StopReason, now_ms,
+        CoreState, CoreStatus, HealthStatus, InstanceState, InstanceStatus, SpecSummary,
+        StopReason, now_ms,
     },
 };
 
-use super::{Active, CoreManager, Ctrl, Inner};
+use super::{Active, CoreManager, Ctrl, EpochPlan, Inner};
 
 impl Inner {
-    pub(super) fn publish(
-        &self,
-        state: CoreState,
-        spec: Option<SpecSummary>,
-        controller: Option<clash_api::Host>,
-        revision: Option<ConfigRevision>,
-    ) {
+    /// `None` publishes a state with no epoch behind it (stopped, quarantined).
+    pub(super) fn publish(&self, state: CoreState, plan: Option<&EpochPlan>) {
         self.status_tx.send_modify(|status| {
             let lifecycle_changed = status.state != state;
             let health = default_health_for_state(status.health.as_ref(), &state);
             status.state = state;
+            status.instance_id = None;
             status.health = health;
-            status.spec = spec;
-            status.controller = controller;
-            status.revision = revision;
+            status.spec = plan.map(spec_summary);
+            status.controller = plan.map(|plan| plan.controller.host.clone());
+            status.revision = plan.map(|plan| plan.revision.clone());
             if lifecycle_changed {
                 status.changed_at = now_ms();
             }
@@ -34,40 +29,34 @@ impl Inner {
     }
 
     pub(super) fn publish_active(&self, active: &Active, state: CoreState) {
-        self.publish_instance(
-            active.instance.as_ref(),
-            state,
-            &active.source_spec,
-            &active.revision,
-            active.capabilities,
-            active.runtime_features,
-        );
+        self.publish_instance(active.instance.as_ref(), state, &active.plan);
     }
 
+    /// Health and controller still come from the live instance; the epoch's own
+    /// description comes from its plan.
     pub(super) fn publish_instance(
         &self,
         instance: &dyn RuntimeInstance,
         state: CoreState,
-        source_spec: &InstanceSpec,
-        revision: &ConfigRevision,
-        capabilities: enumset::EnumSet<Feature>,
-        runtime_features: enumset::EnumSet<RuntimeFeature>,
+        plan: &EpochPlan,
     ) {
-        let health = instance.state().borrow().health.clone();
+        let snapshot = instance.state().borrow().clone();
+        let health = snapshot.health;
         self.status_tx.send_modify(|status| {
             let lifecycle_changed = status.state != state;
             status.state = state;
+            status.instance_id = snapshot.instance_id;
             status.health = health;
-            status.spec = Some(spec_summary(source_spec, capabilities, runtime_features));
+            status.spec = Some(spec_summary(plan));
             status.controller = Some(instance.controller().host.clone());
-            status.revision = Some(revision.clone());
+            status.revision = Some(plan.revision.clone());
             if lifecycle_changed {
                 status.changed_at = now_ms();
             }
         });
     }
 
-    pub(super) fn publish_epoch_status(&self, epoch: u64, instance: InstanceStatus) {
+    pub(super) fn publish_epoch_status(&self, epoch: Epoch, instance: InstanceStatus) {
         self.status_tx
             .send_if_modified(|status| apply_epoch_status(status, epoch, &instance));
     }
@@ -95,34 +84,31 @@ fn default_health_for_state(
     Some(health)
 }
 
-fn apply_epoch_status(status: &mut CoreStatus, epoch: u64, instance: &InstanceStatus) -> bool {
+fn apply_epoch_status(status: &mut CoreStatus, epoch: Epoch, instance: &InstanceStatus) -> bool {
     if status.revision.as_ref().map(|revision| revision.epoch) != Some(epoch) {
         return false;
     }
     let state = instance_core_state(epoch, &instance.state);
     let lifecycle_changed = status.state != state;
     let health_changed = status.health != instance.health;
-    if !lifecycle_changed && !health_changed {
+    if !lifecycle_changed && !health_changed && status.instance_id == instance.instance_id {
         return false;
     }
     status.state = state;
     status.health = instance.health.clone();
+    status.instance_id = instance.instance_id;
     if lifecycle_changed {
         status.changed_at = now_ms();
     }
     true
 }
 
-pub(super) fn spec_summary(
-    spec: &InstanceSpec,
-    capabilities: enumset::EnumSet<Feature>,
-    runtime_features: enumset::EnumSet<RuntimeFeature>,
-) -> SpecSummary {
+fn spec_summary(plan: &EpochPlan) -> SpecSummary {
     SpecSummary {
-        kind: spec.core.kind,
-        config_path: spec.config_path.clone(),
-        capabilities: capabilities.iter().collect(),
-        runtime_features: runtime_features.iter().collect(),
+        kind: plan.source_spec.core.kind,
+        config_path: plan.source_spec.config_path.clone(),
+        capabilities: plan.capabilities.iter().collect(),
+        runtime_features: plan.runtime_features.iter().collect(),
     }
 }
 
@@ -132,8 +118,6 @@ impl CoreManager {
             CoreState::Stopped {
                 reason: Some(StopReason::Error(error.to_string())),
             },
-            None,
-            None,
             None,
         );
     }
@@ -150,7 +134,7 @@ impl CoreManager {
     }
 }
 
-pub(super) fn instance_core_state(epoch: u64, state: &InstanceState) -> CoreState {
+pub(super) fn instance_core_state(epoch: Epoch, state: &InstanceState) -> CoreState {
     match state {
         InstanceState::Starting => CoreState::Starting { epoch },
         InstanceState::Running { pid } => CoreState::Running { epoch, pid: *pid },
@@ -167,6 +151,7 @@ pub(super) fn instance_core_state(epoch: u64, state: &InstanceState) -> CoreStat
 
 #[cfg(test)]
 mod tests {
+    use crate::epoch::epoch;
     use tokio::sync::watch;
 
     use super::*;
@@ -176,17 +161,23 @@ mod tests {
     fn old_epoch_events_cannot_overwrite_new_epoch_status() {
         let mut status = CoreStatus::initial();
         status.revision = Some(ConfigRevision {
-            epoch: 9,
+            epoch: epoch(9),
             generation: 1,
             source_hash: "source".into(),
             effective_hash: "effective".into(),
             runtime_path: "config-9.yaml".into(),
         });
-        status.state = CoreState::Running { epoch: 9, pid: 90 };
+        status.state = CoreState::Running {
+            epoch: epoch(9),
+            pid: 90,
+        };
         for stale in [
-            CoreState::Running { epoch: 8, pid: 80 },
+            CoreState::Running {
+                epoch: epoch(8),
+                pid: 80,
+            },
             CoreState::Restarting {
-                epoch: 8,
+                epoch: epoch(8),
                 attempt: 2,
             },
             CoreState::Stopped {
@@ -194,6 +185,7 @@ mod tests {
             },
         ] {
             let stale_status = InstanceStatus {
+                instance_id: None,
                 state: match stale {
                     CoreState::Running { pid, .. } => InstanceState::Running { pid },
                     CoreState::Restarting { attempt, .. } => InstanceState::Restarting { attempt },
@@ -204,10 +196,10 @@ mod tests {
                 },
                 health: None,
             };
-            assert!(!apply_epoch_status(&mut status, 8, &stale_status));
+            assert!(!apply_epoch_status(&mut status, epoch(8), &stale_status));
             assert!(matches!(
                 status.state,
-                CoreState::Running { epoch: 9, pid: 90 }
+                CoreState::Running { epoch: observed, pid: 90 } if observed == epoch(9)
             ));
         }
     }
@@ -216,26 +208,30 @@ mod tests {
     fn stale_epoch_status_neither_mutates_nor_wakes_watchers() {
         let mut status = CoreStatus::initial();
         status.revision = Some(ConfigRevision {
-            epoch: 9,
+            epoch: epoch(9),
             generation: 1,
             source_hash: "source".into(),
             effective_hash: "effective".into(),
             runtime_path: "config-9.yaml".into(),
         });
-        status.state = CoreState::Running { epoch: 9, pid: 90 };
+        status.state = CoreState::Running {
+            epoch: epoch(9),
+            pid: 90,
+        };
         let (tx, rx) = watch::channel(status);
         let stale = InstanceStatus {
+            instance_id: None,
             state: InstanceState::Running { pid: 80 },
             health: Some(HealthStatus::starting()),
         };
 
-        let sent = tx.send_if_modified(|status| apply_epoch_status(status, 8, &stale));
+        let sent = tx.send_if_modified(|status| apply_epoch_status(status, epoch(8), &stale));
 
         assert!(!sent);
         assert!(!rx.has_changed().unwrap());
         assert!(matches!(
             rx.borrow().state,
-            CoreState::Running { epoch: 9, pid: 90 }
+            CoreState::Running { epoch: observed, pid: 90 } if observed == epoch(9)
         ));
     }
 
@@ -243,23 +239,52 @@ mod tests {
     fn pure_health_transition_preserves_lifecycle_changed_at() {
         let mut status = CoreStatus::initial();
         status.revision = Some(ConfigRevision {
-            epoch: 3,
+            epoch: epoch(3),
             generation: 1,
             source_hash: "source".into(),
             effective_hash: "effective".into(),
             runtime_path: "config-3.yaml".into(),
         });
-        status.state = CoreState::Running { epoch: 3, pid: 30 };
+        status.state = CoreState::Running {
+            epoch: epoch(3),
+            pid: 30,
+        };
         status.changed_at = 7;
         let mut health = HealthStatus::starting();
         health.state = crate::state::HealthState::Unhealthy;
         let instance = InstanceStatus {
+            instance_id: None,
             state: InstanceState::Running { pid: 30 },
             health: Some(health.clone()),
         };
 
-        assert!(apply_epoch_status(&mut status, 3, &instance));
+        assert!(apply_epoch_status(&mut status, epoch(3), &instance));
         assert_eq!(status.changed_at, 7);
         assert_eq!(status.health, Some(health));
+    }
+    #[test]
+    fn process_identity_change_wakes_watchers_even_if_pid_and_epoch_are_reused() {
+        let mut status = CoreStatus::initial();
+        status.state = CoreState::Running {
+            epoch: epoch(3),
+            pid: 30,
+        };
+        status.instance_id = Some(uuid::Uuid::new_v4());
+        status.revision = Some(ConfigRevision {
+            epoch: epoch(3),
+            generation: 1,
+            source_hash: "source".into(),
+            effective_hash: "effective".into(),
+            runtime_path: "config-3.yaml".into(),
+        });
+        let replacement = InstanceStatus {
+            instance_id: Some(uuid::Uuid::new_v4()),
+            state: InstanceState::Running { pid: 30 },
+            health: None,
+        };
+        let (tx, rx) = watch::channel(status);
+        assert!(tx.send_if_modified(|status| apply_epoch_status(status, epoch(3), &replacement)));
+        assert!(rx.has_changed().unwrap());
+        assert_eq!(rx.borrow().instance_id, replacement.instance_id);
     }
 }

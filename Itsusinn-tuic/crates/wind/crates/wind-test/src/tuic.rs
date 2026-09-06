@@ -341,7 +341,8 @@ mod tests {
 			tokio::time::sleep(Duration::from_millis(100)).await;
 			drop(tx_to_client);
 
-			// `handle_udp` must now return promptly; before the fix it spun forever.
+			// `handle_udp` must now return promptly; before the fix it spun
+			// forever.
 			tokio::time::timeout(Duration::from_secs(5), handle)
 				.await
 				.expect("handle_udp did not return after the local stream closed")
@@ -457,8 +458,8 @@ mod tests {
 		let setup = setup_tuic_server().await.expect("Failed to start TUIC server");
 		let client: std::sync::Arc<TuicOutbound> = connect_tuic_client(&setup).await.expect("Failed to connect TUIC client");
 
-		// `local` is the test end; `remote` is passed to handle_tcp as the local
-		// stream.
+		// `local` is the test end; `remote` is passed to handle_tcp as the
+		// local stream.
 		let (mut local, remote) = tokio::io::duplex(4096);
 		let target = TargetAddr::IPv4(std::net::Ipv4Addr::LOCALHOST, echo_addr.port());
 
@@ -760,7 +761,8 @@ mod tests {
 			}
 		});
 
-		// Reserve a fixed UDP port for the relay so the second server can rebind it.
+		// Reserve a fixed UDP port for the relay so the second server can
+		// rebind it.
 		let probe = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
 		let server_addr = probe.local_addr().unwrap();
 		drop(probe);
@@ -783,8 +785,8 @@ mod tests {
 		// Server #2 on the SAME address with the same credentials.
 		let (ctx2, _handle2) = spawn_server_on(server_addr, uuid).await;
 
-		// The supervisor should reconnect within a few backoff cycles; retry the
-		// proxied echo until it succeeds (or give up after ~15s).
+		// The supervisor should reconnect within a few backoff cycles; retry
+		// the proxied echo until it succeeds (or give up after ~15s).
 		let mut reconnected = false;
 		for _ in 0..60 {
 			if let Ok(got) = proxy_echo_once(&client, echo_port, b"after").await
@@ -1029,7 +1031,8 @@ mod tests {
 			.expect("relay read failed");
 		assert_eq!(recv, payload, "echoed payload must match");
 
-		// Let at least one sampler tick fold the QUIC byte counters into the collector.
+		// Let at least one sampler tick fold the QUIC byte counters into the
+		// collector.
 		tokio::time::sleep(Duration::from_millis(500)).await;
 
 		let user = UserId::from(uuid);

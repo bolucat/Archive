@@ -378,9 +378,10 @@ async fn relay_udp_direct(opts: DirectOutboundOpts, resolver: Arc<dyn Resolver>,
 				Ok((len, src_addr)) => {
 					use bytes::Bytes;
 					// A dual-stack relay socket reports an IPv4 responder as an
-					// IPv4-mapped IPv6 address (`::ffff:a.b.c.d`). Unmap it so the
-					// reply the client receives is attributed to the same address
-					// family as the target it originally sent to.
+					// IPv4-mapped IPv6 address (`::ffff:a.b.c.d`). Unmap it so
+					// the reply the client receives is attributed to the
+					// same address family as the target it originally sent
+					// to.
 					let src_addr = unmap_source(src_addr);
 					let payload = Bytes::copy_from_slice(&buf[..len]);
 					let pkt = UdpPacket {

@@ -74,7 +74,7 @@ export const useClashProxies = () => {
           ])
         },
         mutateSelect: async () => {
-          await commands.selectProxy(groupName, proxy.name)
+          unwrapResult(await commands.selectProxy(groupName, proxy.name))
           await proxies.refetch()
         },
       })
@@ -110,8 +110,7 @@ export const useClashProxies = () => {
 
   const getQueryData = () => {
     return queryClient.getQueryData([CLASH_PROXIES_QUERY_KEY]) as
-      | ClashProxiesQuery
-      | undefined
+      ClashProxiesQuery | undefined
   }
 
   const setQueryData = (data: ClashProxiesQuery) => {

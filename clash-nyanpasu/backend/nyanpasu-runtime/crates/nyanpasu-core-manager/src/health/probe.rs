@@ -4,7 +4,7 @@ use std::{future::Future, pin::Pin, sync::Arc, time::Duration};
 
 use tokio_util::sync::CancellationToken;
 
-use crate::{Error, ResolvedController};
+use crate::{Epoch, Error, ResolvedController};
 
 /// The boxed future returned by an object-safe [`HealthProbe`].
 pub type ProbeFuture<'a> = Pin<Box<dyn Future<Output = ProbeResult> + Send + 'a>>;
@@ -36,7 +36,7 @@ pub enum ProbePhase {
 /// may carry an authentication secret.
 #[derive(Clone)]
 pub struct ProbeContext {
-    pub epoch: u64,
+    pub epoch: Epoch,
     pub pid: u32,
     pub phase: ProbePhase,
     pub controller: Arc<ResolvedController>,
@@ -140,6 +140,7 @@ impl HealthProbe for ControllerVersionProbe {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::epoch::epoch;
 
     fn controller(port: u16) -> ResolvedController {
         ResolvedController {
@@ -150,7 +151,7 @@ mod tests {
 
     fn context(controller: ResolvedController) -> ProbeContext {
         ProbeContext {
-            epoch: 1,
+            epoch: epoch(1),
             pid: 1,
             phase: ProbePhase::Readiness,
             controller: Arc::new(controller),

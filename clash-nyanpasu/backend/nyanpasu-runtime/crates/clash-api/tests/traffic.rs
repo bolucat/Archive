@@ -15,7 +15,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use clash_api::{Client, Error, ExponentialRetry, Host, Traffic};
+use clash_api::{Client, DelayRange, Error, ExponentialRetry, Host, Traffic};
 use futures_util::{StreamExt, stream};
 use reqwest_websocket::Message;
 
@@ -117,8 +117,10 @@ async fn retry_policy_retries_only_transient_request_errors() {
     let client = Client::builder(Host::http(address).unwrap())
         .retry_policy(ExponentialRetry::new(
             2,
-            Duration::from_millis(1),
-            Duration::from_millis(1),
+            DelayRange {
+                min: Duration::from_millis(1),
+                max: Duration::from_millis(1),
+            },
         ))
         .build()
         .unwrap();
@@ -157,8 +159,10 @@ async fn retry_policy_covers_the_websocket_handshake_but_not_the_open_socket() {
     let client = Client::builder(Host::http(address).unwrap())
         .retry_policy(ExponentialRetry::new(
             2,
-            Duration::from_millis(1),
-            Duration::from_millis(1),
+            DelayRange {
+                min: Duration::from_millis(1),
+                max: Duration::from_millis(1),
+            },
         ))
         .build()
         .unwrap();
@@ -187,8 +191,10 @@ async fn unauthorized_response_is_not_retried_and_retains_mihomo_message() {
     let client = Client::builder(Host::http(address).unwrap())
         .retry_policy(ExponentialRetry::new(
             3,
-            Duration::from_millis(1),
-            Duration::from_millis(1),
+            DelayRange {
+                min: Duration::from_millis(1),
+                max: Duration::from_millis(1),
+            },
         ))
         .build()
         .unwrap();

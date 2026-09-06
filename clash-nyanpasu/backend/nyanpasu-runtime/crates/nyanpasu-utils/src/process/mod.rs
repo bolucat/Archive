@@ -48,9 +48,10 @@ pub use error::{ProcessError, ProcessOutput};
 pub use event::{ProcessEvent, TerminatedPayload};
 pub use handle::{Containment, ProcessHandle};
 pub use pid_file::{
-    EpochPidFile, EpochPidRecord, OrphanReapOutcome, read_epoch_pid_file, reap_epoch_pid_file,
+    EpochPidFile, EpochPidFileSpec, EpochPidRecord, OrphanReapOutcome, read_epoch_pid_file,
+    reap_epoch_pid_file,
 };
 pub use supervisor::{
-    Backoff, ReadinessProbe, RestartPolicy, RestartStormPolicy, Supervisor, SupervisorBuilder,
-    SupervisorEvent,
+    Backoff, BackoffRange, ReadinessProbe, RestartPolicy, RestartStormPolicy, Supervisor,
+    SupervisorBuilder, SupervisorEvent,
 };

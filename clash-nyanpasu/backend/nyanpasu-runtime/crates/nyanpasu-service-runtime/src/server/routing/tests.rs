@@ -15,13 +15,11 @@ use nyanpasu_core_manager::LocalIpcPolicy;
 use nyanpasu_ipc::api::{
     ResponseCode,
     contract::{
-        CoreApply, CoreCheck, CoreRecover, CoreRestart, CoreStart, CoreStop, IpcOperation,
+        CoreCheck, CoreStart, CoreStop, CoreV2Operation, CoreV2Status, CoreV2Submit, IpcOperation,
         LogsInspect, LogsRetrieve, NetworkSetDns, Status as StatusOp,
     },
     core::{
-        apply::{CoreApplyReq, CoreApplyRes},
         check::{CoreCheckReq, CoreCheckRes},
-        recover::CoreRecoverRes,
         stop::{CORE_STOP_ENDPOINT, CoreStopRes},
     },
     status::{CoreState, CoreStateDetail, STATUS_ENDPOINT, StatusRes},
@@ -33,7 +31,7 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use super::{AppState, create_router};
-use crate::server::{CoreManager, EventHub, Logger, consts::RuntimeInfos};
+use crate::server::{CoreManager, EventHub, Logger, ServiceDirs, consts::RuntimeInfos};
 
 struct TestEnv {
     state: AppState,
@@ -48,9 +46,15 @@ impl TestEnv {
             Utf8PathBuf::from_path_buf(root.join("core-runtime")).expect("temp path is UTF-8");
         let data_dir =
             Utf8PathBuf::from_path_buf(root.join("nyanpasu-data")).expect("temp path is UTF-8");
-        let core_manager = CoreManager::new(runtime_dir, LocalIpcPolicy::Disable, data_dir)
-            .await
-            .unwrap();
+        let core_manager = CoreManager::new(
+            ServiceDirs {
+                runtime: runtime_dir,
+                data: data_dir,
+            },
+            LocalIpcPolicy::Disable,
+        )
+        .await
+        .unwrap();
         let runtime = Arc::new(RuntimeInfos {
             service_data_dir: root.join("service-data"),
             service_config_dir: root.join("service-config"),
@@ -136,27 +140,6 @@ async fn stopping_an_idle_core_keeps_the_legacy_error_envelope() {
 }
 
 #[tokio::test]
-async fn restart_before_any_start_reports_the_legacy_error() {
-    let env = TestEnv::new().await;
-    let response = create_router(env.state.clone())
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(CoreRestart::PATH)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let envelope: CoreStopRes<'static> = body_of(response).await;
-    assert_eq!(envelope.code, ResponseCode::OtherError);
-    assert_eq!(envelope.msg, "core have not been started yet");
-    assert!(envelope.data.is_none());
-}
-
-#[tokio::test]
 async fn two_states_are_independent() {
     let first = TestEnv::new().await;
     let second = TestEnv::new().await;
@@ -225,10 +208,10 @@ async fn every_operation_is_mounted_where_its_contract_says() {
         (StatusOp::METHOD, StatusOp::PATH),
         (CoreStart::METHOD, CoreStart::PATH),
         (CoreStop::METHOD, CoreStop::PATH),
-        (CoreRestart::METHOD, CoreRestart::PATH),
-        (CoreApply::METHOD, CoreApply::PATH),
         (CoreCheck::METHOD, CoreCheck::PATH),
-        (CoreRecover::METHOD, CoreRecover::PATH),
+        (CoreV2Submit::METHOD, CoreV2Submit::PATH),
+        (CoreV2Operation::METHOD, CoreV2Operation::PATH),
+        (CoreV2Status::METHOD, CoreV2Status::PATH),
         (LogsRetrieve::METHOD, LogsRetrieve::PATH),
         (LogsInspect::METHOD, LogsInspect::PATH),
         (NetworkSetDns::METHOD, NetworkSetDns::PATH),
@@ -356,41 +339,6 @@ async fn post_json<T: serde::Serialize>(state: AppState, path: &str, payload: &T
         .unwrap()
 }
 
-/// `apply` refuses a stopped core instead of starting one, and the refusal
-/// carries both the legacy string and the new machine-readable kind.
-///
-/// The manager rejects a stopped core before it reads either file
-/// (`manager/apply.rs:25-26`), but the bridge resolves both first, so both have
-/// to exist — the "binary" only has to be findable, never runnable.
-#[tokio::test]
-async fn applying_to_a_stopped_core_reports_not_started_with_its_kind() {
-    let env = TestEnv::new().await;
-    let core_type = CoreType::Clash(ClashCoreType::Mihomo);
-    let data_dir = &env.state.runtime.nyanpasu_data_dir;
-    std::fs::create_dir_all(data_dir).unwrap();
-    std::fs::write(data_dir.join(core_type.get_executable_name()), b"").unwrap();
-    let config = data_dir.join("config.yaml");
-    std::fs::write(&config, b"mixed-port: 7890\n").unwrap();
-
-    let response = post_json(
-        env.state.clone(),
-        CoreApply::PATH,
-        &CoreApplyReq {
-            core_type: Cow::Borrowed(&core_type),
-            config_file: Cow::Borrowed(&config),
-            expected_revision: None,
-        },
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let envelope: CoreApplyRes<'static> = body_of(response).await;
-    assert_eq!(envelope.code, ResponseCode::OtherError);
-    assert_eq!(envelope.msg, "core have not been started yet");
-    assert_eq!(envelope.error_kind.as_deref(), Some("not_started"));
-    assert!(envelope.data.is_none());
-}
-
 /// An unresolvable config path is answered in the envelope, not by a panic the
 /// catch layer has to convert — and with the kind that says which of the two
 /// paths in the request was the bad one.
@@ -426,28 +374,38 @@ async fn checking_an_unresolvable_config_answers_in_the_envelope() {
 /// kind is what tells them apart without parsing the message.
 #[tokio::test]
 async fn applying_without_a_core_binary_reports_binary_not_found() {
+    use nyanpasu_ipc::api::core::v2::{
+        CORE_V2_SUBMIT_ENDPOINT, CoreCommandInfo, CoreSubmitReq, CoreSubmitRes,
+    };
     let env = TestEnv::new().await;
     let core_type = CoreType::Clash(ClashCoreType::Mihomo);
     let data_dir = &env.state.runtime.nyanpasu_data_dir;
     std::fs::create_dir_all(data_dir).unwrap();
-    let config = data_dir.join("config.yaml");
-    std::fs::write(&config, b"mixed-port: 7890\n").unwrap();
+    let id = "1021324354657687-98a9bacb-dcedfe0f";
 
     let response = post_json(
         env.state.clone(),
-        CoreApply::PATH,
-        &CoreApplyReq {
-            core_type: Cow::Borrowed(&core_type),
-            config_file: Cow::Borrowed(&config),
-            expected_revision: None,
+        CORE_V2_SUBMIT_ENDPOINT,
+        &CoreSubmitReq {
+            operation_id: Cow::Borrowed(id),
+            command: CoreCommandInfo::Reconcile {
+                core_type: Cow::Borrowed(&core_type),
+                config: Cow::Borrowed("mixed-port: 7890\n"),
+                expected_digest: None,
+                expected_applied: None,
+            },
         },
     )
     .await;
-
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    let envelope: CoreApplyRes<'static> = body_of(response).await;
+    let envelope: CoreSubmitRes<'static> = body_of(response).await;
     assert_eq!(envelope.code, ResponseCode::OtherError);
-    assert_eq!(envelope.error_kind.as_deref(), Some("binary_not_found"));
+    assert_eq!(
+        envelope.error_kind.as_deref(),
+        Some("binary_not_found"),
+        "{}",
+        envelope.msg
+    );
     assert!(
         envelope.msg.contains(core_type.get_executable_name()),
         "the failure must name the binary: {}",
@@ -459,23 +417,41 @@ async fn applying_without_a_core_binary_reports_binary_not_found() {
 /// makes it safe for a client to call before retrying an operation.
 #[tokio::test]
 async fn recovering_without_a_quarantine_succeeds() {
+    use nyanpasu_ipc::api::core::v2::{
+        CORE_V2_OPERATION_ENDPOINT, CORE_V2_SUBMIT_ENDPOINT, CoreCommandInfo, CoreOperationReq,
+        CoreOperationRes, CoreSubmitReq, CoreSubmitRes, OperationOutputInfo, OperationPhase,
+    };
     let env = TestEnv::new().await;
-    let response = create_router(env.state.clone())
-        .oneshot(
-            Request::builder()
-                .method(Method::POST)
-                .uri(CoreRecover::PATH)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+    let id = "2031425364758697-a8b9cadb-ecfd0e1f";
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_SUBMIT_ENDPOINT,
+        &CoreSubmitReq {
+            operation_id: Cow::Borrowed(id),
+            command: CoreCommandInfo::Recover,
+        },
+    )
+    .await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    let envelope: CoreRecoverRes<'static> = body_of(response).await;
+    let envelope: CoreSubmitRes<'static> = body_of(response).await;
     assert_eq!(envelope.code, ResponseCode::Ok);
-    assert!(envelope.error_kind.is_none());
-    assert!(envelope.data.is_none());
+
+    let response = post_json(
+        env.state.clone(),
+        CORE_V2_OPERATION_ENDPOINT,
+        &CoreOperationReq {
+            operation_id: Cow::Borrowed(id),
+            wait_ms: Some(5_000),
+        },
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope: CoreOperationRes<'static> = body_of(response).await;
+    let info = envelope.data.expect("query returns the operation");
+    assert_eq!(info.phase, OperationPhase::Succeeded);
+    assert_eq!(info.output, Some(OperationOutputInfo::Recovered));
+    assert!(info.error.is_none());
 }
 
 /// The query string is not protocol: `/ws/events` takes no parameters and must
@@ -709,4 +685,24 @@ async fn shutdown_closes_the_v2_control_plane_to_new_work() {
     assert_eq!(envelope.code, ResponseCode::OtherError);
     assert_eq!(envelope.error_kind.as_deref(), Some("shutting_down"));
     assert_eq!(envelope.retryable, Some(false));
+}
+
+#[tokio::test]
+async fn api_connection_is_unavailable_when_no_process_is_running() {
+    use nyanpasu_ipc::api::core::v2::{CORE_V2_API_CONNECTION_ENDPOINT, CoreApiConnection};
+    let env = TestEnv::new().await;
+    let response = create_router(env.state.clone())
+        .oneshot(
+            Request::builder()
+                .uri(CORE_V2_API_CONNECTION_ENDPOINT)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope: nyanpasu_ipc::api::R<'static, Option<CoreApiConnection>> =
+        body_of(response).await;
+    assert_eq!(envelope.code, ResponseCode::Ok);
+    assert!(envelope.data.flatten().is_none());
 }

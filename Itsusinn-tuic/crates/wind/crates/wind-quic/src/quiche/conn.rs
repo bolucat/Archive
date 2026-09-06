@@ -169,7 +169,8 @@ impl QuicConnection for QuicheConnection {
 
 	async fn closed(&self) {
 		// Standard `Notify` pattern: register interest, re-check the flag, then
-		// await — so a close racing between the check and the await is not lost.
+		// await — so a close racing between the check and the await is not
+		// lost.
 		loop {
 			if self.0.shared.closed.load(Ordering::SeqCst) {
 				return;
@@ -187,8 +188,9 @@ impl QuicConnection for QuicheConnection {
 	}
 
 	async fn byte_stats(&self) -> Option<(u64, u64)> {
-		// Read the counters the driver caches in `shared`; no round-trip, so this
-		// still works during the close path after the driver's worker loop exits.
+		// Read the counters the driver caches in `shared`; no round-trip, so
+		// this still works during the close path after the driver's worker
+		// loop exits.
 		let shared = &self.0.shared;
 		Some((
 			shared.sent_bytes.load(Ordering::Relaxed),

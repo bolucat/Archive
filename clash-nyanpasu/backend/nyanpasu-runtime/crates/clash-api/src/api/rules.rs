@@ -8,12 +8,15 @@ use crate::{Client, ProviderType, Result, VehicleType, retry::RequestMetadata};
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct Rule {
-    pub index: i64,
+    /// Core-specific rule index; absence must not be treated as index zero.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<i64>,
     #[serde(rename = "type")]
     pub rule_type: String,
     pub payload: String,
     pub proxy: String,
-    pub size: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<i64>,
     #[serde(default)]
     pub extra: Option<RuleExtra>,
 }
@@ -74,36 +77,64 @@ impl From<String> for RuleProviderName {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub enum RuleProviderBehavior {
     Domain,
     #[serde(rename = "IPCIDR")]
     IpCidr,
     Classical,
-    #[serde(other)]
-    Unknown,
+    #[serde(untagged)]
+    Unknown(String),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+impl RuleProviderBehavior {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Domain => "Domain",
+            Self::IpCidr => "IPCIDR",
+            Self::Classical => "Classical",
+            Self::Unknown(value) => value,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub enum RuleFormat {
     YamlRule,
     TextRule,
     MrsRule,
-    #[serde(other)]
-    Unknown,
+    #[serde(untagged)]
+    Unknown(String),
+}
+
+impl RuleFormat {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::YamlRule => "YamlRule",
+            Self::TextRule => "TextRule",
+            Self::MrsRule => "MrsRule",
+            Self::Unknown(value) => value,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct RuleProvider {
-    pub behavior: RuleProviderBehavior,
-    pub format: RuleFormat,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub behavior: Option<RuleProviderBehavior>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<RuleFormat>,
     pub name: RuleProviderName,
-    pub rule_count: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rule_count: Option<i64>,
     #[serde(rename = "type")]
-    pub provider_type: ProviderType,
-    pub vehicle_type: VehicleType,
-    pub updated_at: DateTime<FixedOffset>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_type: Option<ProviderType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vehicle_type: Option<VehicleType>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<DateTime<FixedOffset>>,
     #[serde(default)]
     pub payload: Option<Vec<String>>,
 }
@@ -168,5 +199,30 @@ mod tests {
             serde_json::to_value(patch).unwrap(),
             serde_json::json!({"3": false, "12": true})
         );
+    }
+}
+
+#[cfg(test)]
+mod provider_tests {
+    use super::RuleProvider;
+
+    #[test]
+    fn optional_metadata_does_not_accept_invalid_present_values() {
+        for (key, value) in [
+            ("behavior", serde_json::json!(42)),
+            ("format", serde_json::json!({})),
+            ("type", serde_json::json!(false)),
+            ("vehicleType", serde_json::json!([])),
+            ("updatedAt", serde_json::json!("invalid")),
+            ("ruleCount", serde_json::json!("zero")),
+        ] {
+            let mut body = serde_json::json!({"name":"provider"});
+            body[key] = value;
+            assert!(
+                serde_json::from_value::<RuleProvider>(body).is_err(),
+                "{key}"
+            );
+        }
+        assert!(serde_json::from_value::<RuleProvider>(serde_json::json!({})).is_err());
     }
 }

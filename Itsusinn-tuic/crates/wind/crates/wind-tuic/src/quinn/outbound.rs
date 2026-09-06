@@ -110,9 +110,9 @@ impl TuicOutbound {
 			client_config
 		};
 		// Bind the local socket in the same address family as the peer. A quinn
-		// endpoint bound to 0.0.0.0 cannot dial an IPv6 peer -- `connect` returns
-		// `InvalidRemoteAddress` -- so an IPv6 server (`[::1]:8444`) was
-		// unreachable when we always bound IPv4.
+		// endpoint bound to 0.0.0.0 cannot dial an IPv6 peer -- `connect`
+		// returns `InvalidRemoteAddress` -- so an IPv6 server (`[::1]:8444`)
+		// was unreachable when we always bound IPv4.
 		let socket_addr = if peer_addr.is_ipv6() {
 			SocketAddr::from((Ipv6Addr::UNSPECIFIED, 0))
 		} else {
@@ -127,7 +127,8 @@ impl TuicOutbound {
 		endpoint.set_default_client_config(client_config);
 
 		// Establish and authenticate the initial connection. The reconnect
-		// supervisor reuses the same configured endpoint via `connect_and_auth`.
+		// supervisor reuses the same configured endpoint via
+		// `connect_and_auth`.
 		let connection = connect_and_auth(&endpoint, peer_addr, &server_name, &opts.auth).await?;
 
 		Ok(Self {
@@ -155,13 +156,13 @@ impl TuicOutbound {
 		let ctx = self.ctx.clone();
 		let udp_session = self.udp_session.clone();
 
-		// Connection supervisor: run one session (heartbeat + incoming handling)
-		// over the live connection until it drops or we shut down. On an
-		// unexpected drop, reconnect with backoff and swap the fresh connection
-		// into `connection_cell` so `handle_tcp` / `handle_udp` transparently use
-		// it. In-flight streams on the old connection are NOT resurrected —
-		// callers see them close and retry, getting new streams on the new
-		// connection.
+		// Connection supervisor: run one session (heartbeat + incoming
+		// handling) over the live connection until it drops or we shut down.
+		// On an unexpected drop, reconnect with backoff and swap the fresh
+		// connection into `connection_cell` so `handle_tcp` / `handle_udp`
+		// transparently use it. In-flight streams on the old connection are
+		// NOT resurrected — callers see them close and retry, getting new
+		// streams on the new connection.
 		let supervisor = async move {
 			loop {
 				let session_cancel = shutdown.child_token();
@@ -174,8 +175,8 @@ impl TuicOutbound {
 				match end {
 					Ok(SessionEnd::Shutdown) => {
 						// Tell the server we are going away so it can reap the
-						// connection immediately instead of waiting out its idle
-						// timeout.
+						// connection immediately instead of waiting out its
+						// idle timeout.
 						conn.close(0, b"client shutdown");
 						return eyre::Ok(());
 					}
@@ -192,14 +193,16 @@ impl TuicOutbound {
 					conn.close(0, b"client shutdown");
 					return eyre::Ok(());
 				}
-				// Reconnect disabled: close and stop, mirroring the pre-reconnect
-				// behaviour where a dropped connection ended the poll task.
+				// Reconnect disabled: close and stop, mirroring the
+				// pre-reconnect behaviour where a dropped connection ended
+				// the poll task.
 				if !reconnect.enabled {
 					warn!(target: "tuic_out", "Reconnect disabled; connection to {} will not be re-established", peer_addr);
 					conn.close(0, b"client connection lost");
 					return eyre::Ok(());
 				}
-				// Abandon the dead connection explicitly so the server reaps it.
+				// Abandon the dead connection explicitly so the server reaps
+				// it.
 				conn.close(0, b"reconnecting");
 
 				match reconnect_loop(&endpoint, peer_addr, &sni, &auth, &reconnect, &shutdown).await {
@@ -438,11 +441,12 @@ impl Outbound for TuicOutbound {
 		let cancel = self.token.child_token();
 
 		// Allocate a u16 association id, skipping ids that already have a live
-		// session. Plain `fetch_add` would wrap silently into an active slot and
-		// `udp_session.insert` would overwrite the previous Arc<UdpStream>,
-		// dropping any in-flight packets for the original session and confusing
-		// the peer (which still routes by the now-stolen id). We probe up to
-		// `u16::MAX` candidates and refuse to allocate if every slot is in use.
+		// session. Plain `fetch_add` would wrap silently into an active slot
+		// and `udp_session.insert` would overwrite the previous
+		// Arc<UdpStream>, dropping any in-flight packets for the original
+		// session and confusing the peer (which still routes by the
+		// now-stolen id). We probe up to `u16::MAX` candidates and refuse to
+		// allocate if every slot is in use.
 		let assoc_id = {
 			let mut id = self.udp_assoc_counter.fetch_add(1, Ordering::SeqCst);
 			let mut probes = 0u32;
@@ -460,8 +464,9 @@ impl Outbound for TuicOutbound {
 		};
 		info!(target: "tuic_out", "Creating new UDP association: {:#06x}", assoc_id);
 
-		// Snapshot the live connection for this association. If a reconnect swaps
-		// the connection later, this session's streams die and the caller retries.
+		// Snapshot the live connection for this association. If a reconnect
+		// swaps the connection later, this session's streams die and the
+		// caller retries.
 		let connection = self.connection.load_full().as_ref().clone();
 		let (receive_tx, receive_rx) = crossfire::mpmc::bounded_async(256);
 		let tuic_stream = Arc::new(crate::proto::UdpStream::new(connection.clone(), assoc_id, receive_tx));
@@ -524,21 +529,22 @@ impl Outbound for TuicOutbound {
 		};
 		let handle = self.ctx.tasks.spawn(udp_task.in_current_span());
 
-		// Wait for the session to end: either the bridge task finished (the local
-		// UDP channel closed, the remote errored, or `cancel` fired) or the
-		// process is shutting down. The previous version looped forever on the
-		// global token only, so once a session's bridge task exited on its own,
-		// `handle_udp` kept spinning — pinning the `udp_session` cache entry and
-		// never sending a `Dissociate`. A long-lived client that churns UDP
-		// associations thus leaked one task slot and one assoc id per dead
-		// session until the u16 assoc space was exhausted.
+		// Wait for the session to end: either the bridge task finished (the
+		// local UDP channel closed, the remote errored, or `cancel` fired) or
+		// the process is shutting down. The previous version looped forever
+		// on the global token only, so once a session's bridge task exited on
+		// its own, `handle_udp` kept spinning — pinning the `udp_session`
+		// cache entry and never sending a `Dissociate`. A long-lived client
+		// that churns UDP associations thus leaked one task slot and one
+		// assoc id per dead session until the u16 assoc space was exhausted.
 		tokio::select! {
 			_ = handle => {}
 			_ = self.ctx.token.cancelled() => {}
 		}
 
-		// Tear down: stop the bridge task if it is still running (global-shutdown
-		// path), release the association id, and tell the peer to dissociate.
+		// Tear down: stop the bridge task if it is still running
+		// (global-shutdown path), release the association id, and tell the
+		// peer to dissociate.
 		cancel.cancel();
 		self.udp_session.remove(&assoc_id).await;
 		let connection = self.connection.load_full();

@@ -3,7 +3,7 @@ mod common;
 use std::time::Duration;
 
 use nyanpasu_core_manager::{
-    ControllerVersionProbe, CoreState, DegradeReason, Error, HealthProbe, LocalIpcPolicy,
+    ControllerVersionProbe, CoreState, DegradeReason, Epoch, Error, HealthProbe, LocalIpcPolicy,
     ManagerOptions, ProbeHandle, ProbeResult, StopReason, manager::CoreManager,
 };
 
@@ -225,7 +225,7 @@ async fn graceful_switch_overlaps_and_restores_listeners() {
     let CoreState::Running { epoch, .. } = status.state else {
         panic!("not running after switch")
     };
-    assert_eq!(epoch, 2);
+    assert_eq!(epoch, common::epoch(2));
     assert_eq!(
         status
             .spec
@@ -235,7 +235,7 @@ async fn graceful_switch_overlaps_and_restores_listeners() {
     );
     assert_eq!(
         status.revision.as_ref().map(|revision| revision.epoch),
-        Some(2)
+        Some(common::epoch(2))
     );
     assert!(status.controller.is_some());
     assert!(
@@ -312,7 +312,7 @@ async fn graceful_respawn_loads_the_full_committed_runtime_config() {
     else {
         panic!("new core is not running")
     };
-    assert_eq!(epoch, 2);
+    assert_eq!(epoch, common::epoch(2));
     nyanpasu_utils::os::kill_pid::<String>(first_pid, None)
         .await
         .expect("kill new core process");
@@ -320,7 +320,8 @@ async fn graceful_respawn_loads_the_full_committed_runtime_config() {
     let second_pid = tokio::time::timeout(Duration::from_secs(10), async {
         loop {
             let state = status_rx.borrow_and_update().state.clone();
-            if let CoreState::Running { epoch: 2, pid } = state
+            if let CoreState::Running { epoch, pid } = state
+                && epoch == common::epoch(2)
                 && pid != first_pid
             {
                 break pid;
@@ -339,12 +340,15 @@ async fn graceful_respawn_loads_the_full_committed_runtime_config() {
         .build()
         .unwrap();
     let runtime = client.configs().await.expect("GET respawned config");
-    assert_eq!(runtime.port, i64::from(port));
-    assert_eq!(runtime.socks_port, i64::from(socks));
-    assert_eq!(runtime.redir_port, i64::from(redir));
-    assert_eq!(runtime.tproxy_port, i64::from(tproxy));
-    assert_eq!(runtime.mixed_port, i64::from(mixed));
-    assert!(runtime.tun.enable, "respawn must restore TUN enablement");
+    assert_eq!(runtime.port, Some(i64::from(port)));
+    assert_eq!(runtime.socks_port, Some(i64::from(socks)));
+    assert_eq!(runtime.redir_port, Some(i64::from(redir)));
+    assert_eq!(runtime.tproxy_port, Some(i64::from(tproxy)));
+    assert_eq!(runtime.mixed_port, Some(i64::from(mixed)));
+    assert!(
+        runtime.tun.expect("respawn must report TUN state").enable,
+        "respawn must restore TUN enablement"
+    );
 
     let runtime_file = std::fs::read_to_string(runtime_dir.join("config-2.yaml")).unwrap();
     assert!(runtime_file.contains(&format!("port: {port}")));
@@ -396,9 +400,9 @@ async fn graceful_success_publishes_only_the_new_epoch_context() {
     );
     assert_eq!(
         status.revision.as_ref().map(|revision| revision.epoch),
-        Some(2)
+        Some(common::epoch(2))
     );
-    assert!(matches!(status.state, CoreState::Running { epoch: 2, .. }));
+    assert!(matches!(status.state, CoreState::Running { epoch, .. } if epoch == common::epoch(2)));
     for status in observed.lock().iter() {
         let published_epoch = match status.state {
             CoreState::Running { epoch, .. }
@@ -409,11 +413,11 @@ async fn graceful_success_publishes_only_the_new_epoch_context() {
             CoreState::Stopped { .. } => None,
             _ => None,
         };
-        if published_epoch == Some(2) {
+        if published_epoch == Some(common::epoch(2)) {
             assert_eq!(status.controller.as_ref(), Some(&new_controller));
             assert_eq!(
                 status.revision.as_ref().map(|revision| revision.epoch),
-                Some(2)
+                Some(common::epoch(2))
             );
         }
     }
@@ -462,7 +466,7 @@ async fn graceful_patch_timeout_with_matching_get_is_success() {
     let CoreState::Running { epoch, pid } = manager.status().state else {
         panic!("new core is not running")
     };
-    assert_eq!(epoch, 2);
+    assert_eq!(epoch, common::epoch(2));
     assert_ne!(pid, before_pid);
     tokio::net::TcpStream::connect(("127.0.0.1", mixed))
         .await
@@ -706,7 +710,7 @@ async fn hard_switch_removes_the_old_runtime_config() {
     assert!(runtime_dir.join("config-2.yaml").exists());
     assert!(matches!(
         manager.status().state,
-        CoreState::Running { epoch: 2, .. }
+        CoreState::Running { epoch, .. } if epoch == common::epoch(2)
     ));
     manager.shutdown().await.expect("shutdown");
 }
@@ -751,7 +755,7 @@ async fn prefer_http_fallback_degrades_switch_to_hard() {
     );
     assert!(matches!(
         manager.status().state,
-        CoreState::Running { epoch: 2, .. }
+        CoreState::Running { epoch, .. } if epoch == common::epoch(2)
     ));
     assert!(matches!(
         manager.status().controller,
@@ -824,10 +828,11 @@ async fn failed_new_core_while_old_restarting_republishes_actual_state() {
     .await
     .expect("construct manager");
     let mut spec_a = common::mihomo_spec(&dir, config_a);
-    spec_a.options.backoff = nyanpasu_utils::process::Backoff::exponential(
-        Duration::from_secs(60),
-        Duration::from_secs(60),
-    );
+    spec_a.options.backoff =
+        nyanpasu_utils::process::Backoff::exponential(nyanpasu_utils::process::BackoffRange {
+            initial: Duration::from_secs(60),
+            max: Duration::from_secs(60),
+        });
     let mut rx = manager.subscribe();
 
     manager.start(spec_a).await.expect("start A");
@@ -928,7 +933,7 @@ async fn rejected_patch_falls_back_to_a_hard_restart() {
     )
     .unwrap();
 
-    let attempts = Arc::new(Mutex::new(Vec::<(u64, u32)>::new()));
+    let attempts = Arc::new(Mutex::new(Vec::<(Epoch, u32)>::new()));
     let readiness = ProbeHandle::from_fn("graceful-recorded-readiness", {
         let attempts = attempts.clone();
         move |context| {
@@ -980,11 +985,11 @@ async fn rejected_patch_falls_back_to_a_hard_restart() {
         (
             attempts
                 .iter()
-                .filter_map(|(epoch, pid)| (*epoch == 1).then_some(*pid))
+                .filter_map(|(observed, pid)| (*observed == common::epoch(1)).then_some(*pid))
                 .collect(),
             attempts
                 .iter()
-                .filter_map(|(epoch, pid)| (*epoch == 2).then_some(*pid))
+                .filter_map(|(observed, pid)| (*observed == common::epoch(2)).then_some(*pid))
                 .collect(),
         )
     };

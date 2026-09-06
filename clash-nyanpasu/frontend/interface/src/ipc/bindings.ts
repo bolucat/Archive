@@ -251,10 +251,7 @@ export const commands = {
   isTrayIconSet: (mode: TrayIcon) =>
     typedError<boolean, string>(__TAURI_INVOKE('is_tray_icon_set', { mode })),
   getCoreStatus: () =>
-    typedError<
-      ['Running' | { Stopped: string | null }, number, RunType],
-      string
-    >(__TAURI_INVOKE('get_core_status')),
+    typedError<CoreStatusInfo, string>(__TAURI_INVOKE('get_core_status')),
   urlDelayTest: (url: string, expectedStatus: number) =>
     typedError<number | null, string>(
       __TAURI_INVOKE('url_delay_test', { url, expectedStatus }),
@@ -351,8 +348,14 @@ export const events = {
     'clash-connections-event',
   ),
   clashWsEvent: makeEvent<ClashWsEvent>('clash-ws-event'),
+  coreStatusChangedEvent: makeEvent<CoreStatusChangedEvent>(
+    'core-status-changed-event',
+  ),
   schemeRequestReceivedEvent: makeEvent<SchemeRequestReceivedEvent>(
     'scheme-request-received-event',
+  ),
+  serviceStatusChangedEvent: makeEvent<ServiceStatusChangedEvent_Deserialize>(
+    'service-status-changed-event',
   ),
   storageValueChangedEvent: makeEvent<StorageValueChangedEvent>(
     'storage-value-changed-event',
@@ -398,9 +401,7 @@ export type ClashConnectionsConnectorEvent =
   | { kind: 'update'; data: ClashConnectionsInfo }
 
 export type ClashConnectionsConnectorState =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
+  'disconnected' | 'connecting' | 'connected'
 
 export type ClashConnectionsEvent = ClashConnectionsConnectorEvent
 
@@ -414,12 +415,7 @@ export type ClashConnectionsInfo = {
 export type ClashCore = ClashCore_Serialize | ClashCore_Deserialize
 
 export type ClashCoreType =
-  | 'mihomo'
-  | 'mihomo-alpha'
-  | 'clash-rs'
-  | 'clash-rs-alpha'
-  | 'clash'
-  | 'meow'
+  'mihomo' | 'mihomo-alpha' | 'clash-rs' | 'clash-rs-alpha' | 'clash' | 'meow'
 
 export type ClashCore_Deserialize =
   | 'clash'
@@ -432,12 +428,7 @@ export type ClashCore_Deserialize =
   | 'meow'
 
 export type ClashCore_Serialize =
-  | 'clash'
-  | 'clash-rs'
-  | 'mihomo'
-  | 'mihomo-alpha'
-  | 'clash-rs-alpha'
-  | 'meow'
+  'clash' | 'clash-rs' | 'mihomo' | 'mihomo-alpha' | 'clash-rs-alpha' | 'meow'
 
 export type ClashInfo = {
   /**  clash core port */
@@ -517,8 +508,7 @@ export type ClashWsTraffic = {
 }
 
 export type CompositionConfig =
-  | CompositionConfig_Serialize
-  | CompositionConfig_Deserialize
+  CompositionConfig_Serialize | CompositionConfig_Deserialize
 
 export type CompositionConfig_Deserialize = {
   /**
@@ -554,8 +544,7 @@ export type CompositionMemberRole = 'base' | 'contributor'
 
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition =
-  | ConfigDefinition_Serialize
-  | ConfigDefinition_Deserialize
+  ConfigDefinition_Serialize | ConfigDefinition_Deserialize
 
 /**  A profile that can produce a complete config and can be selected by current. */
 export type ConfigDefinition_Deserialize =
@@ -614,9 +603,9 @@ export type CopyEnvOption = 'shell' | 'cmd' | 'pwsh'
  *
  *  A deliberately separate type from `clash_api::Host`: clash-api is an
  *  internal dependency of the core manager and must not leak into the wire
- *  dependency tree. The controller secret is never carried here — it comes
- *  from the caller's own config, and the IPC transport's only gate is the
- *  socket ACL.
+ *  dependency tree. The controller secret is never carried here. Clients read
+ *  applied credentials through the private `/v2/core/api-connection` endpoint;
+ *  the IPC transport's authorization gate is the socket ACL.
  */
 export type CoreControllerInfo =
   | ({ NamedPipe: string } & { Http?: never; UnixSocket?: never })
@@ -645,6 +634,7 @@ export type CoreHealthState = 'Starting' | 'Healthy' | 'Unhealthy'
 export type CoreInfos = CoreInfos_Serialize | CoreInfos_Deserialize
 
 export type CoreInfos_Deserialize = {
+  instance_id?: string | null
   type: CoreType | null
   state: CoreState
   state_changed_at: number
@@ -660,6 +650,7 @@ export type CoreInfos_Deserialize = {
 }
 
 export type CoreInfos_Serialize = {
+  instance_id?: string | null
   type: CoreType | null
   state: CoreState
   state_changed_at: number
@@ -755,6 +746,18 @@ export type CoreStateDetail =
       Switching?: never
     })
 
+export type CoreStatusChangedEvent = CoreStatusInfo
+
+export type CoreStatusInfo = {
+  host: ExecutionHost
+  connectivity: EndpointConnectivity
+  generation: number
+  state: CoreStateDetail | null
+  state_changed_at: number
+  revision: RevisionIdInfo | null
+  healthy: boolean | null
+}
+
 export type CoreType = { clash: ClashCoreType } | 'singbox'
 
 /**  Structured committed-degraded detail surfaced over IPC / Specta. */
@@ -803,16 +806,23 @@ export type DownloadStatus = {
 
 /**  The high-level state of a download session. */
 export type DownloaderState =
-  | 'idle'
-  | 'downloading'
-  | { failed: string }
-  | 'finished'
+  'idle' | 'downloading' | { failed: string } | 'finished'
 
 /**
  *  Type of content the editor window displays.
  *  Used to derive the window label (for singleton logic) and URL path params.
  */
 export type EditorWindowType = 'profile' | 'css-editor'
+
+export type EndpointConnectivity =
+  | { kind: 'connected' }
+  | { kind: 'shut_down' }
+  | { kind: 'handing_off'; from: ExecutionHost; to: ExecutionHost }
+  /**
+   *  The endpoint is unreachable. `desired` names the committed host; the
+   *  router never falls back on its own.
+   */
+  | { kind: 'degraded'; desired: ExecutionHost; reason: string }
 
 export type EnvInfo = {
   os: string
@@ -834,10 +844,15 @@ export type EnvInfo = {
   }
 }
 
+/**
+ *  Which controller owns the runtime. The app perceives the difference in
+ *  exactly two places: this tag on the endpoint slot, and the handoff
+ *  protocol.
+ */
+export type ExecutionHost = 'local' | 'service'
+
 export type ExternalControllerPortStrategy =
-  | 'fixed'
-  | 'random'
-  | 'allow_fallback'
+  'fixed' | 'random' | 'allow_fallback'
 
 export type ExternalMode = 'symlink' | 'mirror'
 
@@ -1295,12 +1310,7 @@ export type LoggingLevel_Deserialize =
   | 'error'
 
 export type LoggingLevel_Serialize =
-  | 'silent'
-  | 'trace'
-  | 'debug'
-  | 'info'
-  | 'warn'
-  | 'error'
+  'silent' | 'trace' | 'debug' | 'info' | 'warn' | 'error'
 
 /**  A path relative to the application-managed profile directory. */
 export type ManagedProfilePath = string
@@ -1316,8 +1326,7 @@ export type ManifestVersionLatest = {
 
 /**  Stable read location used by parsers and processors. */
 export type MaterializedFile =
-  | MaterializedFile_Serialize
-  | MaterializedFile_Deserialize
+  MaterializedFile_Serialize | MaterializedFile_Deserialize
 
 /**  Stable read location used by parsers and processors. */
 export type MaterializedFile_Deserialize = {
@@ -1346,8 +1355,7 @@ export type MutationOutcome<T> =
 export type NetworkStatisticWidgetConfig = 'disabled' | 'large' | 'small'
 
 export type NewProfileRequest =
-  | NewProfileRequest_Serialize
-  | NewProfileRequest_Deserialize
+  NewProfileRequest_Serialize | NewProfileRequest_Deserialize
 
 export type NewProfileRequest_Deserialize = {
   metadata: ProfileMetadata_Deserialize
@@ -1362,8 +1370,7 @@ export type NewProfileRequest_Serialize = {
 }
 
 export type OverlayTransform =
-  | OverlayTransform_Serialize
-  | OverlayTransform_Deserialize
+  OverlayTransform_Serialize | OverlayTransform_Deserialize
 
 export type OverlayTransform_Deserialize = {
   source: ProfileSource_Deserialize
@@ -1374,8 +1381,7 @@ export type OverlayTransform_Serialize = {
 }
 
 export type PatchRuntimeConfig =
-  | PatchRuntimeConfig_Serialize
-  | PatchRuntimeConfig_Deserialize
+  PatchRuntimeConfig_Serialize | PatchRuntimeConfig_Deserialize
 
 export type PatchRuntimeConfig_Deserialize = {
   'allow-lan'?: boolean | null
@@ -1403,8 +1409,7 @@ export type PostProcessingOutput = {
 
 /**  Top-level semantic split. */
 export type ProfileDefinition =
-  | ProfileDefinition_Serialize
-  | ProfileDefinition_Deserialize
+  ProfileDefinition_Serialize | ProfileDefinition_Deserialize
 
 /**  Top-level semantic split. */
 export type ProfileDefinition_Deserialize =
@@ -1425,8 +1430,7 @@ export type ProfileDefinition_Serialize =
     })
 
 export type ProfileDocument =
-  | ProfileDocument_Serialize
-  | ProfileDocument_Deserialize
+  ProfileDocument_Serialize | ProfileDocument_Deserialize
 
 export type ProfileDocument_Deserialize = {
   current?: ProfileId | null
@@ -1462,12 +1466,10 @@ export type ProfileItem_Serialize = {
 
 /**  Public, user-editable profile metadata. */
 export type ProfileMetadata =
-  | ProfileMetadata_Serialize
-  | ProfileMetadata_Deserialize
+  ProfileMetadata_Serialize | ProfileMetadata_Deserialize
 
 export type ProfileMetadataPatch =
-  | ProfileMetadataPatch_Serialize
-  | ProfileMetadataPatch_Deserialize
+  ProfileMetadataPatch_Serialize | ProfileMetadataPatch_Deserialize
 
 export type ProfileMetadataPatch_Deserialize = {
   name: string | null
@@ -1858,11 +1860,10 @@ export type ProfileValidationError =
       UnsupportedRemoteUrlScheme?: never
     })
 
-export type ProviderType = 'Proxy' | 'Rule' | 'Unknown'
+export type ProviderType = 'Proxy' | 'Rule' | string
 
 export type ProvidersProxiesRes =
-  | ProvidersProxiesRes_Serialize
-  | ProvidersProxiesRes_Deserialize
+  ProvidersProxiesRes_Serialize | ProvidersProxiesRes_Deserialize
 
 export type ProvidersProxiesRes_Deserialize = {
   providers?: { [key in string]: ProxyProviderItem_Deserialize }
@@ -1897,8 +1898,7 @@ export type Proxies_Serialize = {
 }
 
 export type ProxyGroupItem =
-  | ProxyGroupItem_Serialize
-  | ProxyGroupItem_Deserialize
+  ProxyGroupItem_Serialize | ProxyGroupItem_Deserialize
 
 export type ProxyGroupItem_Deserialize = {
   name: string
@@ -1968,8 +1968,7 @@ export type ProxyItem_Serialize = {
 }
 
 export type ProxyProviderItem =
-  | ProxyProviderItem_Serialize
-  | ProxyProviderItem_Deserialize
+  ProxyProviderItem_Serialize | ProxyProviderItem_Deserialize
 
 export type ProxyProviderItem_Deserialize = {
   name: string
@@ -1994,8 +1993,7 @@ export type ProxyProviderItem_Serialize = {
 }
 
 export type RemoteProfileOptionsPatch =
-  | RemoteProfileOptionsPatch_Serialize
-  | RemoteProfileOptionsPatch_Deserialize
+  RemoteProfileOptionsPatch_Serialize | RemoteProfileOptionsPatch_Deserialize
 
 export type RemoteProfileOptionsPatch_Deserialize = {
   user_agent?: string | null
@@ -2011,6 +2009,19 @@ export type RemoteProfileOptionsPatch_Serialize = {
   update_interval_minutes?: number | null
 }
 
+/**
+ *  The compare-and-swap identity of a config revision.
+ *
+ *  Deliberately a subset of [`ConfigRevisionInfo`]: the manager's CAS compares
+ *  epoch, generation and `effective_hash` only, so carrying `source_hash` here
+ *  would imply it takes part.
+ */
+export type RevisionIdInfo = {
+  epoch: number
+  generation: number
+  effective_hash: string
+}
+
 export type RuleProviderItem = {
   behavior: string | null
   format: string | null
@@ -2024,14 +2035,6 @@ export type RuleProviderItem = {
 export type RulesRes = {
   rules: ClashRule[]
 }
-
-export type RunType =
-  /**  Run as child process directly */
-  | 'normal'
-  /**  Run by Nyanpasu Service via a ipc call */
-  | 'service'
-  /**  Run as elevated process, if profile advice to run as elevated */
-  | 'elevated'
 
 export type RuntimeInfos = {
   service_data_dir: string
@@ -2059,8 +2062,7 @@ export type SchemeRequestReceivedEvent = {
 export type ScriptRuntime = 'javascript' | 'lua'
 
 export type ScriptTransform =
-  | ScriptTransform_Serialize
-  | ScriptTransform_Deserialize
+  ScriptTransform_Serialize | ScriptTransform_Deserialize
 
 export type ScriptTransform_Deserialize = {
   source: ProfileSource_Deserialize
@@ -2077,25 +2079,101 @@ export type ServiceCompat =
   | { kind: 'unknown' }
   /**  主版本匹配，允许进入 Service backend。 */
   | { kind: 'compatible'; server_version: string }
-  /**  主版本不匹配（典型：v1.4.5）。fail-closed。 */
-  | { kind: 'incompatible'; server_version: string; required_major: number }
+  /**
+   *  主版本不匹配（典型：v1.4.5），或主版本对但低于最低版本（典型：
+   *  v2.0.0-rc.1）。fail-closed。
+   */
+  | {
+      kind: 'incompatible'
+      server_version: string
+      required_major: number
+      /**
+       *  供 UI 展示：只说"需要 v2.x"无法解释一台 major 正确却被拒的
+       *  daemon，它装的**就是** v2.x。
+       */
+      required_min: string
+    }
   /**  server 上报的版本不是合法 semver。fail-closed。 */
   | { kind: 'unparsable'; server_version: string }
 
+/**
+ *  The watch projection (UI settings page + facade). Daemon state, never a
+ *  second copy of core state.
+ */
+export type ServiceHostStatus =
+  ServiceHostStatus_Serialize | ServiceHostStatus_Deserialize
+
+/**
+ *  The watch projection (UI settings page + facade). Daemon state, never a
+ *  second copy of core state.
+ */
+export type ServiceHostStatus_Deserialize = {
+  name: string
+  version: string
+  status: ServiceStatus
+  server: StatusResBody_Deserialize | null
+  phase: ServicePhase
+  compat: ServiceCompat
+  restart_attempts: number
+}
+
+/**
+ *  The watch projection (UI settings page + facade). Daemon state, never a
+ *  second copy of core state.
+ */
+export type ServiceHostStatus_Serialize = {
+  name: string
+  version: string
+  status: ServiceStatus
+  server: StatusResBody_Serialize | null
+  phase: ServicePhase
+  compat: ServiceCompat
+  restart_attempts: number
+}
+
+export type ServicePhase =
+  | 'probing'
+  | 'not_installed'
+  | 'daemon_stopped'
+  | 'installing'
+  | 'starting_daemon'
+  | 'ready'
+  /**  Version gate failed closed: upgrade required, never downgraded to. */
+  | 'incompatible'
+  | 'restarting'
+  /**  Auto-restart budget spent; waits for an explicit `EnsureReady`. */
+  | 'exhausted'
+  | 'uninstalling'
+  /**
+   *  The probe itself failed or timed out (F5): what the daemon actually
+   *  is cannot be determined. Never treated as `DaemonStopped` -- an
+   *  unreachable daemon might still be holding a core open, so callers
+   *  that gate on "no core held" (the uninstall guard, `EndpointDown`'s
+   *  restart) must refuse rather than proceed.
+   */
+  | 'unknown'
+
 export type ServiceStatus = 'not_installed' | 'stopped' | 'running'
+
+export type ServiceStatusChangedEvent =
+  ServiceStatusChangedEvent_Serialize | ServiceStatusChangedEvent_Deserialize
+
+export type ServiceStatusChangedEvent_Deserialize =
+  ServiceHostStatus_Deserialize
+
+export type ServiceStatusChangedEvent_Serialize = ServiceHostStatus_Serialize
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
- *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo =
-  | ServiceStatusInfo_Serialize
-  | ServiceStatusInfo_Deserialize
+  ServiceStatusInfo_Serialize | ServiceStatusInfo_Deserialize
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
- *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo_Deserialize = {
@@ -2104,11 +2182,13 @@ export type ServiceStatusInfo_Deserialize = {
   status: ServiceStatus
   server: StatusResBody_Deserialize | null
   compat: ServiceCompat
+  phase: ServicePhase
+  restart_attempts: number
 }
 
 /**
  *  `StatusInfo` 的 additive 镜像：字段逐一复制（specta 不支持 `serde(flatten)`，
- *  见本文件 `GetSysProxyResponse` 的同款处理），追加 `compat`。
+ *  见本文件 `GetSysProxyResponse` 的同款处理），追加 actor 投影字段。
  *  wire 是原结构的严格超集，前端既有消费点不受影响。
  */
 export type ServiceStatusInfo_Serialize = {
@@ -2117,6 +2197,8 @@ export type ServiceStatusInfo_Serialize = {
   status: ServiceStatus
   server: StatusResBody_Serialize | null
   compat: ServiceCompat
+  phase: ServicePhase
+  restart_attempts: number
 }
 
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
@@ -2164,8 +2246,7 @@ export type StorageValueChangedEvent = {
 }
 
 export type SubscriptionInfo =
-  | SubscriptionInfo_Serialize
-  | SubscriptionInfo_Deserialize
+  SubscriptionInfo_Serialize | SubscriptionInfo_Deserialize
 
 export type SubscriptionInfo_Deserialize =
   | {
@@ -2199,8 +2280,7 @@ export type SubscriptionInfo_Serialize = {
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition =
-  | TransformDefinition_Serialize
-  | TransformDefinition_Deserialize
+  TransformDefinition_Serialize | TransformDefinition_Deserialize
 
 /**  A named config transformer. Transform profiles are reusable but not activatable. */
 export type TransformDefinition_Deserialize =
@@ -2223,8 +2303,7 @@ export type TransformDefinition_Serialize =
   | { type: 'script'; source: ProfileSource_Serialize; runtime: ScriptRuntime }
 
 export type TransformOwner =
-  | { type: 'global' }
-  | { type: 'config'; uid: ProfileId }
+  { type: 'global' } | { type: 'config'; uid: ProfileId }
 
 export type TrayIcon = 'normal' | 'tun' | 'system_proxy'
 
@@ -2259,7 +2338,7 @@ export type UpdaterSummary = {
   downloader: DownloadStatus
 }
 
-export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Unknown'
+export type VehicleType = 'File' | 'HTTP' | 'Compatible' | 'Inline' | string
 
 /**  Message for inter-window communication */
 export type WindowMessageEvent = {

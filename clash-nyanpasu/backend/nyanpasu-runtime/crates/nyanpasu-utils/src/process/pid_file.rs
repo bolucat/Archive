@@ -21,12 +21,24 @@ pub struct EpochPidFile {
     runtime_config: PathBuf,
 }
 
+/// The inputs one [`EpochPidFile`] is built from. The two paths have the same
+/// type and sit either side of the epoch, so only a name says which is the pid
+/// record and which is the runtime config it belongs to.
+#[derive(Debug, Clone, Copy)]
+pub struct EpochPidFileSpec<'a> {
+    /// Where the pid record is written.
+    pub pid_path: &'a Path,
+    /// The runtime config this epoch was launched with.
+    pub runtime_config: &'a Path,
+    pub epoch: u64,
+}
+
 impl EpochPidFile {
-    pub fn new(path: impl Into<PathBuf>, epoch: u64, runtime_config: impl Into<PathBuf>) -> Self {
+    pub fn new(spec: EpochPidFileSpec<'_>) -> Self {
         Self {
-            path: path.into(),
-            epoch,
-            runtime_config: runtime_config.into(),
+            path: spec.pid_path.to_owned(),
+            epoch: spec.epoch,
+            runtime_config: spec.runtime_config.to_owned(),
         }
     }
 
@@ -303,12 +315,9 @@ async fn validate_pid_target(path: &Path) -> std::io::Result<()> {
             "pid file must be a regular file: {}",
             path.display()
         ))),
-        Ok(metadata) if crate::io::atomic_fs::is_reparse_point(&metadata) => {
-            Err(invalid_input(format!(
-                "pid file must not be a reparse point: {}",
-                path.display()
-            )))
-        }
+        Ok(metadata) if crate::io::atomic_fs::is_reparse_point(&metadata) => Err(invalid_input(
+            format!("pid file must not be a reparse point: {}", path.display()),
+        )),
         Ok(_) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(error) => Err(error),
@@ -1000,12 +1009,9 @@ async fn write_epoch_record(path: &Path, record: &EpochPidRecord) -> std::io::Re
                 }
                 crate::io::atomic_fs::AtomicFsError::Io(error) => error,
                 crate::io::atomic_fs::AtomicFsError::UnsafePath(path)
-                | crate::io::atomic_fs::AtomicFsError::Contended(path) => {
-                    std::io::Error::other(format!(
-                        "unexpected atomic filesystem error for {}",
-                        path.display()
-                    ))
-                }
+                | crate::io::atomic_fs::AtomicFsError::Contended(path) => std::io::Error::other(
+                    format!("unexpected atomic filesystem error for {}", path.display()),
+                ),
             })
     }
     .await;

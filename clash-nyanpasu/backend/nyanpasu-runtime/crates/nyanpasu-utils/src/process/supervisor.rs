@@ -61,6 +61,16 @@ pub struct Backoff {
     jitter: bool,
 }
 
+/// The two ends of a backoff schedule. Both are `Duration`, so only a name
+/// distinguishes the first delay from the ceiling it grows towards.
+#[derive(Debug, Clone, Copy)]
+pub struct BackoffRange {
+    /// The delay before the first retry.
+    pub initial: Duration,
+    /// The ceiling that doubling saturates at.
+    pub max: Duration,
+}
+
 fn time_entropy() -> u64 {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -79,10 +89,14 @@ fn time_entropy() -> u64 {
 }
 
 impl Backoff {
-    pub fn exponential(initial: Duration, max: Duration) -> Self {
+    pub fn exponential(range: BackoffRange) -> Self {
+        debug_assert!(
+            range.initial <= range.max,
+            "backoff ceiling is below its first delay"
+        );
         Self {
-            initial,
-            max,
+            initial: range.initial,
+            max: range.max,
             jitter: false,
         }
     }
@@ -177,8 +191,11 @@ impl Supervisor {
         SupervisorBuilder {
             factory: Arc::new(factory),
             policy: RestartPolicy::OnFailure { max_restarts: 5 },
-            backoff: Backoff::exponential(Duration::from_secs(1), Duration::from_secs(30))
-                .with_jitter(),
+            backoff: Backoff::exponential(BackoffRange {
+                initial: Duration::from_secs(1),
+                max: Duration::from_secs(30),
+            })
+            .with_jitter(),
             readiness: ReadinessProbe::AliveAfter(Duration::from_millis(1500)),
             storm_policy: RestartStormPolicy::default(),
             on_event: None,
@@ -506,19 +523,29 @@ mod tests {
 
     #[test]
     fn backoff_doubles_and_caps() {
-        let b = Backoff::exponential(Duration::from_secs(1), Duration::from_secs(30));
+        let b = Backoff::exponential(BackoffRange {
+            initial: Duration::from_secs(1),
+            max: Duration::from_secs(30),
+        });
         assert_eq!(b.delay_for(0), Duration::from_secs(1));
         assert_eq!(b.delay_for(1), Duration::from_secs(2));
         assert_eq!(b.delay_for(4), Duration::from_secs(16));
         assert_eq!(b.delay_for(10), Duration::from_secs(30)); // capped
 
-        let long = Backoff::exponential(Duration::from_millis(1), Duration::from_secs(600));
+        let long = Backoff::exponential(BackoffRange {
+            initial: Duration::from_millis(1),
+            max: Duration::from_secs(600),
+        });
         assert_eq!(long.delay_for(25), Duration::from_secs(600));
     }
 
     #[test]
     fn jitter_stays_within_25_percent() {
-        let b = Backoff::exponential(Duration::from_secs(4), Duration::from_secs(60)).with_jitter();
+        let b = Backoff::exponential(BackoffRange {
+            initial: Duration::from_secs(4),
+            max: Duration::from_secs(60),
+        })
+        .with_jitter();
         let samples: Vec<_> = (0..1000).map(|_| b.delay_for(0)).collect();
 
         for d in &samples {

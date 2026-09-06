@@ -69,8 +69,9 @@ impl<R: Router> AbstractInbound<R> for SocksInbound {
 			let _ = tx.send_replace(Some(listener.local_addr()?));
 		}
 		// Track per-connection tasks so shutdown can wait for them instead of
-		// leaving in-flight sessions to be killed by runtime teardown. Each task
-		// also gets a child token so cancellation aborts the session promptly.
+		// leaving in-flight sessions to be killed by runtime teardown. Each
+		// task also gets a child token so cancellation aborts the session
+		// promptly.
 		let conn_tasks = tokio_util::task::TaskTracker::new();
 		loop {
 			tokio::select! {
@@ -165,12 +166,12 @@ async fn serve_socks<C: InboundCallback>(
 	cancel: &CancellationToken,
 	user: &mut Option<UserId>,
 ) -> Result<(), Error> {
-	// Authenticate. If a `UserPassAuthenticator` hook is set it takes precedence:
-	// the client's credentials are captured during the SOCKS5 password sub-
-	// negotiation and validated via the hook (NB: fast_socks5 has already replied
-	// "auth success" by then, so a rejected user simply has its session dropped).
-	// Otherwise the static `AuthMode` is used and the username becomes the
-	// identity.
+	// Authenticate. If a `UserPassAuthenticator` hook is set it takes
+	// precedence: the client's credentials are captured during the SOCKS5
+	// password sub- negotiation and validated via the hook (NB: fast_socks5
+	// has already replied "auth success" by then, so a rejected user simply
+	// has its session dropped). Otherwise the static `AuthMode` is used and
+	// the username becomes the identity.
 	let proto = if let Some(auth) = &opts.hooks.userpass_auth {
 		let captured: Arc<std::sync::Mutex<Option<(String, String)>>> = Arc::new(std::sync::Mutex::new(None));
 		let cap = captured.clone();
@@ -233,8 +234,8 @@ async fn serve_socks<C: InboundCallback>(
 				inbound_type: Some(InboundType::Socks),
 			};
 
-			// Count per-user TCP traffic when stats are enabled and the client is
-			// identified (anonymous NoAuth sessions are not metered).
+			// Count per-user TCP traffic when stats are enabled and the client
+			// is identified (anonymous NoAuth sessions are not metered).
 			match (&opts.hooks.stats, user.as_ref()) {
 				(Some(stats), Some(uid)) => {
 					stats.record_request(uid);
@@ -268,8 +269,8 @@ async fn serve_socks<C: InboundCallback>(
 			};
 			let expected_client_ip = client_addr.ip();
 
-			// Per-user UDP accounting (only when stats are enabled and the client
-			// is identified). One associate ≈ one request.
+			// Per-user UDP accounting (only when stats are enabled and the
+			// client is identified). One associate ≈ one request.
 			let stats = opts.hooks.stats.clone();
 			let stats_user = user.clone();
 			if let (Some(s), Some(u)) = (&stats, &stats_user) {
@@ -312,7 +313,8 @@ async fn serve_socks<C: InboundCallback>(
 
 				let cb = cb.clone();
 				// Detached from the session task, so it needs its own cancel
-				// guard — otherwise it would outlive shutdown until runtime drop.
+				// guard — otherwise it would outlive shutdown until runtime
+				// drop.
 				let udp_cancel = cancel.clone();
 				tokio::spawn(
 					async move {

@@ -21,10 +21,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use super::{
     R,
     core::{
-        apply::{CORE_APPLY_ENDPOINT, CoreApplyData},
         check::CORE_CHECK_ENDPOINT,
-        recover::CORE_RECOVER_ENDPOINT,
-        restart::CORE_RESTART_ENDPOINT,
         start::CORE_START_ENDPOINT,
         stop::CORE_STOP_ENDPOINT,
         v2::{
@@ -83,26 +80,6 @@ impl IpcOperation for CoreStop {
     type Data = ();
 }
 
-/// `POST /core/restart`
-pub struct CoreRestart;
-
-impl IpcOperation for CoreRestart {
-    const METHOD: Method = Method::POST;
-    const PATH: &'static str = CORE_RESTART_ENDPOINT;
-    type Req<'a> = ();
-    type Data = ();
-}
-
-/// `POST /core/apply`
-pub struct CoreApply;
-
-impl IpcOperation for CoreApply {
-    const METHOD: Method = Method::POST;
-    const PATH: &'static str = CORE_APPLY_ENDPOINT;
-    type Req<'a> = super::core::apply::CoreApplyReq<'a>;
-    type Data = CoreApplyData;
-}
-
 /// `POST /core/check`
 pub struct CoreCheck;
 
@@ -110,16 +87,6 @@ impl IpcOperation for CoreCheck {
     const METHOD: Method = Method::POST;
     const PATH: &'static str = CORE_CHECK_ENDPOINT;
     type Req<'a> = super::core::check::CoreCheckReq<'a>;
-    type Data = ();
-}
-
-/// `POST /core/recover`
-pub struct CoreRecover;
-
-impl IpcOperation for CoreRecover {
-    const METHOD: Method = Method::POST;
-    const PATH: &'static str = CORE_RECOVER_ENDPOINT;
-    type Req<'a> = ();
     type Data = ();
 }
 
@@ -163,6 +130,16 @@ impl IpcOperation for CoreV2Operation {
     type Data = OperationInfo;
 }
 
+/// Internal credentials for the currently applied process, or None if stopped.
+pub struct CoreV2ApiConnection;
+
+impl IpcOperation for CoreV2ApiConnection {
+    const METHOD: Method = Method::GET;
+    const PATH: &'static str = super::core::v2::CORE_V2_API_CONNECTION_ENDPOINT;
+    type Req<'a> = ();
+    type Data = Option<super::core::v2::CoreApiConnection>;
+}
+
 /// `GET /v2/core/status`
 pub struct CoreV2Status;
 
@@ -202,10 +179,6 @@ mod tests {
             (Method::POST, "/core/stop")
         );
         assert_eq!(
-            (CoreRestart::METHOD, CoreRestart::PATH),
-            (Method::POST, "/core/restart")
-        );
-        assert_eq!(
             (LogsRetrieve::METHOD, LogsRetrieve::PATH),
             (Method::GET, "/logs/retrieve")
         );
@@ -216,6 +189,10 @@ mod tests {
         assert_eq!(
             (NetworkSetDns::METHOD, NetworkSetDns::PATH),
             (Method::POST, "/network/set_dns")
+        );
+        assert_eq!(
+            (CoreCheck::METHOD, CoreCheck::PATH),
+            (Method::POST, "/core/check")
         );
     }
 
@@ -233,24 +210,6 @@ mod tests {
         assert_eq!(
             (CoreV2Status::METHOD, CoreV2Status::PATH),
             (Method::GET, "/v2/core/status")
-        );
-    }
-
-    /// The S8 additions pin the report's addresses rather than legacy
-    /// behaviour, but for the same reason: a path typo is a protocol break.
-    #[test]
-    fn every_s8_operation_is_addressed_as_the_report_says() {
-        assert_eq!(
-            (CoreApply::METHOD, CoreApply::PATH),
-            (Method::POST, "/core/apply")
-        );
-        assert_eq!(
-            (CoreCheck::METHOD, CoreCheck::PATH),
-            (Method::POST, "/core/check")
-        );
-        assert_eq!(
-            (CoreRecover::METHOD, CoreRecover::PATH),
-            (Method::POST, "/core/recover")
         );
     }
 }

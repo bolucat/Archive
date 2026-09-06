@@ -10,6 +10,14 @@ use crate::{Client, Error, Result, retry::RequestMetadata};
 #[serde(transparent)]
 pub struct ProxyName(String);
 
+/// Which node to select, and in which group. Both sides are `ProxyName`, so
+/// only a name tells the group apart from the node inside it.
+#[derive(Debug, Clone, Copy)]
+pub struct ProxySelection<'a> {
+    pub group: &'a ProxyName,
+    pub target: &'a ProxyName,
+}
+
 impl ProxyName {
     pub fn new(value: impl Into<String>) -> Self {
         Self(value.into())
@@ -73,7 +81,7 @@ impl std::fmt::Display for ProviderName {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct DelayHistory {
     pub time: DateTime<FixedOffset>,
-    pub delay: u16,
+    pub delay: i64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
@@ -82,7 +90,7 @@ pub struct ProxyExtra {
     pub history: Vec<DelayHistory>,
 }
 
-/// Common and group-specific fields emitted by Mihomo's proxy wrappers.
+/// Common proxy fields with optional core-specific and group metadata.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct Proxy {
@@ -90,21 +98,32 @@ pub struct Proxy {
     #[serde(rename = "type")]
     pub proxy_type: String,
     pub history: Vec<DelayHistory>,
-    pub extra: IndexMap<String, ProxyExtra>,
-    pub alive: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra: Option<IndexMap<String, ProxyExtra>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alive: Option<bool>,
     pub udp: bool,
-    pub uot: bool,
-    pub xudp: bool,
-    pub tfo: bool,
-    pub mptcp: bool,
-    pub smux: bool,
-    pub interface: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uot: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xudp: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tfo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mptcp: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub smux: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface: Option<String>,
     #[serde(rename = "routing-mark")]
-    pub routing_mark: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_mark: Option<i64>,
     #[serde(rename = "provider-name")]
-    pub provider_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_name: Option<String>,
     #[serde(rename = "dialer-proxy")]
-    pub dialer_proxy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialer_proxy: Option<String>,
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
@@ -123,33 +142,61 @@ pub struct Proxy {
     pub icon: Option<String>,
     #[serde(default)]
     pub empty_fallback: Option<ProxyName>,
+    #[serde(default)]
+    pub provider: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub enum ProviderType {
     Proxy,
     Rule,
-    #[serde(other)]
-    Unknown,
+    #[serde(untagged)]
+    Unknown(String),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
+impl ProviderType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Proxy => "Proxy",
+            Self::Rule => "Rule",
+            Self::Unknown(value) => value,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub enum VehicleType {
     File,
     #[serde(rename = "HTTP")]
     Http,
     Compatible,
     Inline,
-    #[serde(other)]
-    Unknown,
+    #[serde(untagged)]
+    Unknown(String),
+}
+
+impl VehicleType {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::File => "File",
+            Self::Http => "HTTP",
+            Self::Compatible => "Compatible",
+            Self::Inline => "Inline",
+            Self::Unknown(value) => value,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 #[serde(rename_all = "PascalCase")]
 pub struct SubscriptionInfo {
+    #[serde(default, alias = "upload")]
     pub upload: i64,
+    #[serde(default, alias = "download")]
     pub download: i64,
+    #[serde(default, alias = "total")]
     pub total: i64,
+    #[serde(default, alias = "expire")]
     pub expire: i64,
 }
 
@@ -161,8 +208,8 @@ pub struct ProxyProvider {
     pub provider_type: ProviderType,
     pub vehicle_type: VehicleType,
     pub proxies: Vec<Proxy>,
-    pub test_url: String,
-    pub expected_status: String,
+    pub test_url: Option<String>,
+    pub expected_status: Option<String>,
     #[serde(default)]
     pub updated_at: Option<DateTime<FixedOffset>>,
     #[serde(default)]
@@ -335,7 +382,8 @@ impl Client {
         .await
     }
 
-    pub async fn select_proxy(&self, group: &ProxyName, target: &ProxyName) -> Result<()> {
+    pub async fn select_proxy(&self, selection: ProxySelection<'_>) -> Result<()> {
+        let ProxySelection { group, target } = selection;
         let url = self.endpoint_with_segments("/proxies", [group.as_str(), ""])?;
         self.send_empty(
             RequestMetadata::new("select_proxy", Method::PUT, false),

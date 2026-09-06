@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use camino::Utf8PathBuf;
-use nyanpasu_utils::process::{Backoff, RestartPolicy};
+use nyanpasu_utils::process::{Backoff, BackoffRange, RestartPolicy};
 use tokio_util::sync::CancellationToken;
 
 use crate::{health::HealthPolicy, kind::CoreKind};
@@ -28,6 +28,15 @@ pub struct InstanceSpec {
     pub options: InstanceOptions,
 }
 
+impl InstanceSpec {
+    pub(crate) fn core_paths(&self) -> crate::kind::CorePaths<'_> {
+        crate::kind::CorePaths {
+            working_dir: &self.working_dir,
+            config_path: &self.config_path,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct InstanceOptions {
     /// Total limit for the initial start (spawn → readiness threshold).
@@ -43,8 +52,11 @@ impl Default for InstanceOptions {
             startup_timeout: Duration::from_secs(30),
             health: HealthPolicy::default(),
             restart_policy: RestartPolicy::OnFailure { max_restarts: 5 },
-            backoff: Backoff::exponential(Duration::from_secs(1), Duration::from_secs(30))
-                .with_jitter(),
+            backoff: Backoff::exponential(BackoffRange {
+                initial: Duration::from_secs(1),
+                max: Duration::from_secs(30),
+            })
+            .with_jitter(),
         }
     }
 }
@@ -54,6 +66,21 @@ impl Default for InstanceOptions {
 pub struct ResolvedController {
     pub host: clash_api::Host,
     pub secret: Option<String>,
+}
+
+/// A point-in-time API binding read under the manager control lock.
+#[derive(Clone)]
+pub struct ApiConnection {
+    pub instance_id: uuid::Uuid,
+    pub controller: ResolvedController,
+}
+
+impl std::fmt::Debug for ApiConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ApiConnection")
+            .field("instance_id", &self.instance_id)
+            .finish_non_exhaustive()
+    }
 }
 
 /// How the manager selects the core's primary controller transport.

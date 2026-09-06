@@ -9,8 +9,8 @@ use std::{
 };
 
 use nyanpasu_utils::process::{
-    Command, EpochPidFile, OrphanReapOutcome, ProcessError, ProcessEvent, ReadinessProbe,
-    Supervisor, SupervisorEvent, TerminatedPayload, reap_epoch_pid_file,
+    Command, EpochPidFile, EpochPidFileSpec, OrphanReapOutcome, ProcessError, ProcessEvent,
+    ReadinessProbe, Supervisor, SupervisorEvent, TerminatedPayload, reap_epoch_pid_file,
 };
 use tokio::{
     sync::{broadcast, mpsc, oneshot, watch},
@@ -19,6 +19,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    epoch::Epoch,
     error::Error,
     health::{
         HealthTracker, TrackerState,
@@ -39,7 +40,7 @@ const LOG_TAIL_FRAMES: usize = 32;
 /// One epoch of a running core. The spec is immutable; a config change means a
 /// new `Instance` with a new epoch (created by `CoreManager`).
 pub struct Instance {
-    epoch: u64,
+    epoch: Epoch,
     spec: Arc<InstanceSpec>,
     controller: Arc<ResolvedController>,
     state_rx: watch::Receiver<InstanceStatus>,
@@ -66,6 +67,7 @@ impl Shared {
             status.state = state.clone();
             if matches!(state, InstanceState::Stopping | InstanceState::Stopped(_)) {
                 status.health = None;
+                status.instance_id = None;
             }
         });
     }
@@ -136,7 +138,7 @@ struct ProbeNowRequest {
 
 pub struct InstanceBuilder {
     spec: InstanceSpec,
-    epoch: u64,
+    epoch: Epoch,
     controller: ResolvedController,
     parent: CancellationToken,
     readiness_probe: Option<ProbeHandle>,
@@ -148,7 +150,7 @@ pub struct InstanceBuilder {
 impl Instance {
     pub fn builder(
         spec: InstanceSpec,
-        epoch: u64,
+        epoch: Epoch,
         controller: ResolvedController,
         parent: CancellationToken,
     ) -> InstanceBuilder {
@@ -166,7 +168,7 @@ impl Instance {
 
     pub async fn spawn(
         spec: InstanceSpec,
-        epoch: u64,
+        epoch: Epoch,
         controller: ResolvedController,
         parent: CancellationToken,
     ) -> Result<Instance, Error> {
@@ -190,7 +192,7 @@ impl Instance {
         if tokio::fs::metadata(&spec.core.binary_path).await.is_err() {
             return Err(Error::BinaryNotFound(spec.core.binary_path.clone()));
         }
-        kind::run_args(spec.core.kind, &spec.working_dir, &spec.config_path)?;
+        kind::run_args(spec.core.kind, spec.core_paths())?;
 
         let readiness_probe = match readiness_probe {
             Some(probe) => probe,
@@ -215,7 +217,7 @@ impl Instance {
             state_tx,
             user_stop: AtomicBool::new(false),
             probe_timeout: AtomicBool::new(false),
-            parser: parking_lot::Mutex::new(LogParser::new(spec.core.kind, epoch)),
+            parser: parking_lot::Mutex::new(LogParser::new(spec.core.kind, epoch.get())),
             log_tail: parking_lot::Mutex::new(VecDeque::with_capacity(LOG_TAIL_FRAMES)),
             log_tx: log_tx.unwrap_or_else(|| broadcast::channel(LOG_CHANNEL_CAPACITY).0),
             cancel: cancel.clone(),
@@ -260,17 +262,17 @@ impl Instance {
         .await?;
         *shared.supervisor.lock().await = Some(supervisor);
 
-        let monitor = tokio::spawn(monitor_loop(
-            event_rx,
-            shared.clone(),
+        let monitor = tokio::spawn(monitor_loop(MonitorLoopArgs {
+            events: event_rx,
+            shared: shared.clone(),
             epoch,
-            spec.options.clone(),
-            controller.clone(),
+            options: spec.options.clone(),
+            controller: controller.clone(),
             readiness_probe,
             liveness_probe,
             initial_deadline,
-            probe_request_rx,
-        ));
+            probe_requests: probe_request_rx,
+        }));
         *shared.monitor.lock().await = Some(monitor);
 
         Ok(Instance {
@@ -290,7 +292,7 @@ impl Instance {
         self.shared.log_tx.subscribe()
     }
 
-    pub fn epoch(&self) -> u64 {
+    pub fn epoch(&self) -> Epoch {
         self.epoch
     }
 
@@ -499,8 +501,8 @@ impl Drop for Instance {
     }
 }
 
-fn build_command(spec: &InstanceSpec, epoch: u64, controller: &ResolvedController) -> Command {
-    let mut args = kind::run_args(spec.core.kind, &spec.working_dir, &spec.config_path)
+fn build_command(spec: &InstanceSpec, epoch: Epoch, controller: &ResolvedController) -> Command {
+    let mut args = kind::run_args(spec.core.kind, spec.core_paths())
         .expect("kind validated in Instance::spawn");
     args.extend(kind::controller_args(spec.core.kind, &controller.host));
     let config_dir = spec
@@ -517,11 +519,11 @@ fn build_command(spec: &InstanceSpec, epoch: u64, controller: &ResolvedControlle
         .current_dir(spec.working_dir.as_str());
     if let Some(pid_file) = &spec.pid_file {
         command = if epoch_pid_path(spec, epoch).is_some() {
-            command.epoch_pid_file(EpochPidFile::new(
-                pid_file.as_std_path(),
-                epoch,
-                spec.config_path.as_std_path(),
-            ))
+            command.epoch_pid_file(EpochPidFile::new(EpochPidFileSpec {
+                pid_path: pid_file.as_std_path(),
+                runtime_config: spec.config_path.as_std_path(),
+                epoch: epoch.get(),
+            }))
         } else {
             command.pid_file(pid_file.as_std_path())
         };
@@ -529,7 +531,7 @@ fn build_command(spec: &InstanceSpec, epoch: u64, controller: &ResolvedControlle
     command
 }
 
-fn epoch_pid_path(spec: &InstanceSpec, epoch: u64) -> Option<&camino::Utf8Path> {
+fn epoch_pid_path(spec: &InstanceSpec, epoch: Epoch) -> Option<&camino::Utf8Path> {
     let pid_file = spec.pid_file.as_deref()?;
     let expected_pid = format!("core-{epoch}.pid");
     let expected_config = format!("config-{epoch}.yaml");
@@ -547,18 +549,32 @@ struct RunState {
     tracker: HealthTracker,
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn monitor_loop(
-    mut events: mpsc::UnboundedReceiver<SupervisorEvent>,
+/// Everything the monitor task is started with, so that adding to the set does
+/// not mean threading one more positional argument through the spawn site.
+struct MonitorLoopArgs {
+    events: mpsc::UnboundedReceiver<SupervisorEvent>,
     shared: Arc<Shared>,
-    epoch: u64,
+    epoch: Epoch,
     options: InstanceOptions,
     controller: Arc<ResolvedController>,
     readiness_probe: ProbeHandle,
     liveness_probe: Option<ProbeHandle>,
     initial_deadline: Instant,
-    mut probe_requests: mpsc::UnboundedReceiver<ProbeNowRequest>,
-) {
+    probe_requests: mpsc::UnboundedReceiver<ProbeNowRequest>,
+}
+
+async fn monitor_loop(args: MonitorLoopArgs) {
+    let MonitorLoopArgs {
+        mut events,
+        shared,
+        epoch,
+        options,
+        controller,
+        readiness_probe,
+        liveness_probe,
+        initial_deadline,
+        mut probe_requests,
+    } = args;
     let (observation_tx, mut observations) = mpsc::unbounded_channel();
     let mut ever_ready = false;
     let mut timeout_fired = false;
@@ -587,6 +603,7 @@ async fn monitor_loop(
                     let previous_health = shared.state_tx.borrow().health.clone();
                     let lifecycle = shared.state_tx.borrow().state.clone();
                     shared.publish_status(InstanceStatus {
+                        instance_id: Some(uuid::Uuid::new_v4()),
                         state: lifecycle,
                         health: Some(reset_starting_health(previous_health.as_ref())),
                     });
@@ -618,6 +635,7 @@ async fn monitor_loop(
                     respawn_deadline = None;
                     let previous_health = shared.state_tx.borrow().health.clone();
                     shared.publish_status(InstanceStatus {
+                        instance_id: None,
                         state: InstanceState::Restarting { attempt },
                         health: Some(reset_starting_health(previous_health.as_ref())),
                     });
@@ -631,6 +649,7 @@ async fn monitor_loop(
                 Some(SupervisorEvent::GaveUp) => {
                     stop_probe_driver(&mut driver).await;
                     shared.publish_status(InstanceStatus {
+                        instance_id: None,
                         state: InstanceState::Stopped(StopReason::Error(format!(
                         "core kept crashing; restart budget exhausted\n{}",
                         shared.diagnostics()
@@ -652,16 +671,17 @@ async fn monitor_loop(
             },
             _ = tokio::time::sleep_until(initial_deadline), if !ever_ready && !timeout_fired => {
                 // Total limit for the initial start, crash-retries included.
-                let became_ready = drain_probe_observations(
-                    &mut observations,
-                    &mut current,
-                    &mut ever_ready,
-                    &mut respawn_deadline,
+                let became_ready = ProbeReconcile {
+                    current: &mut current,
+                    ever_ready: &mut ever_ready,
+                    respawn_deadline: &mut respawn_deadline,
                     initial_deadline,
-                    &shared,
-                    driver.as_ref(),
+                    shared: &shared,
+                    driver: driver.as_ref(),
                     epoch,
-                ).await;
+                }
+                .drain(&mut observations)
+                .await;
                 if !became_ready && !ever_ready {
                     timeout_fired = true;
                     current = None;
@@ -673,16 +693,17 @@ async fn monitor_loop(
                 }
             }
             _ = tokio::time::sleep_until(respawn_deadline_for_select), if respawn_deadline.is_some() => {
-                let became_ready = drain_probe_observations(
-                    &mut observations,
-                    &mut current,
-                    &mut ever_ready,
-                    &mut respawn_deadline,
+                let became_ready = ProbeReconcile {
+                    current: &mut current,
+                    ever_ready: &mut ever_ready,
+                    respawn_deadline: &mut respawn_deadline,
                     initial_deadline,
-                    &shared,
-                    driver.as_ref(),
+                    shared: &shared,
+                    driver: driver.as_ref(),
                     epoch,
-                ).await;
+                }
+                .drain(&mut observations)
+                .await;
                 if !became_ready && respawn_deadline.is_some() {
                     current = None;
                     respawn_deadline = None;
@@ -711,16 +732,17 @@ async fn monitor_loop(
             },
             observation = observations.recv() => {
                 let Some(observation) = observation else { continue };
-                apply_probe_observation(
-                    observation,
-                    &mut current,
-                    &mut ever_ready,
-                    &mut respawn_deadline,
+                ProbeReconcile {
+                    current: &mut current,
+                    ever_ready: &mut ever_ready,
+                    respawn_deadline: &mut respawn_deadline,
                     initial_deadline,
-                    &shared,
-                    driver.as_ref(),
+                    shared: &shared,
+                    driver: driver.as_ref(),
                     epoch,
-                ).await;
+                }
+                .apply(observation)
+                .await;
             }
         }
     }
@@ -730,106 +752,101 @@ fn observation_applies(observation: &ProbeObservation, run: &RunState) -> bool {
     observation.run_id == run.run_id && observation.pid == run.pid
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn apply_probe_observation(
-    observation: ProbeObservation,
-    current: &mut Option<RunState>,
-    ever_ready: &mut bool,
-    respawn_deadline: &mut Option<Instant>,
+/// The state one probe observation reconciles. The three `&mut` fields were
+/// separate parameters that every call site had to keep in the same order;
+/// grouping them makes the loop hand over its readiness state as one thing.
+///
+/// Built per observation inside a `select!` arm and dropped at the end of the
+/// statement, so the borrows never outlive the arm that took them.
+struct ProbeReconcile<'a> {
+    current: &'a mut Option<RunState>,
+    ever_ready: &'a mut bool,
+    respawn_deadline: &'a mut Option<Instant>,
     initial_deadline: Instant,
-    shared: &Shared,
-    driver: Option<&ProbeDriver>,
-    epoch: u64,
-) -> bool {
-    let Some(run) = current.as_mut() else {
-        return false;
-    };
-    if !observation_applies(&observation, run) {
-        return false;
-    }
-    let beyond_initial_deadline =
-        !*ever_ready && observation.completed_at > initial_deadline.into_std();
-    let beyond_respawn_deadline =
-        respawn_deadline.is_some_and(|deadline| observation.completed_at > deadline.into_std());
-    if beyond_initial_deadline || beyond_respawn_deadline {
-        return false;
-    }
-
-    tracing::trace!(
-        epoch,
-        run_id = observation.run_id,
-        pid = observation.pid,
-        phase = ?observation.phase,
-        "applying health probe observation"
-    );
-    let update = run
-        .tracker
-        .observe(observation.completed_at, &observation.result);
-    let should_ack = !run.ack_attempted && update.state == TrackerState::Healthy;
-    if should_ack {
-        run.ack_attempted = true;
-        let pid = run.pid;
-        let supervisor = shared.supervisor.lock().await;
-        let acknowledged = match supervisor.as_ref() {
-            Some(supervisor) => supervisor.acknowledge_ready(pid).await,
-            None => false,
-        };
-        drop(supervisor);
-        if acknowledged {
-            *ever_ready = true;
-            *respawn_deadline = None;
-            if let Some(run) = current.as_mut() {
-                run.ready = true;
-            }
-            if let Some(driver) = driver {
-                driver.use_liveness();
-            }
-            let previous = shared.state_tx.borrow().health.clone();
-            shared.publish_status(InstanceStatus {
-                state: InstanceState::Running { pid },
-                health: Some(health_status(previous.as_ref(), &update, &observation)),
-            });
-        }
-        return acknowledged;
-    }
-
-    let previous = shared.state_tx.borrow().health.clone();
-    let lifecycle = shared.state_tx.borrow().state.clone();
-    shared.publish_status(InstanceStatus {
-        state: lifecycle,
-        health: Some(health_status(previous.as_ref(), &update, &observation)),
-    });
-    false
+    shared: &'a Shared,
+    driver: Option<&'a ProbeDriver>,
+    epoch: Epoch,
 }
 
-#[allow(clippy::too_many_arguments)]
-async fn drain_probe_observations(
-    observations: &mut mpsc::UnboundedReceiver<ProbeObservation>,
-    current: &mut Option<RunState>,
-    ever_ready: &mut bool,
-    respawn_deadline: &mut Option<Instant>,
-    initial_deadline: Instant,
-    shared: &Shared,
-    driver: Option<&ProbeDriver>,
-    epoch: u64,
-) -> bool {
-    while let Ok(observation) = observations.try_recv() {
-        let became_ready = apply_probe_observation(
-            observation,
-            current,
-            ever_ready,
-            respawn_deadline,
-            initial_deadline,
-            shared,
-            driver,
-            epoch,
-        )
-        .await;
-        if became_ready {
-            return true;
+impl ProbeReconcile<'_> {
+    async fn apply(&mut self, observation: ProbeObservation) -> bool {
+        let Some(run) = self.current.as_mut() else {
+            return false;
+        };
+        if !observation_applies(&observation, run) {
+            return false;
         }
+        let beyond_initial_deadline =
+            !*self.ever_ready && observation.completed_at > self.initial_deadline.into_std();
+        let beyond_respawn_deadline = self
+            .respawn_deadline
+            .is_some_and(|deadline| observation.completed_at > deadline.into_std());
+        if beyond_initial_deadline || beyond_respawn_deadline {
+            return false;
+        }
+
+        tracing::trace!(
+            epoch = self.epoch.get(),
+            run_id = observation.run_id,
+            pid = observation.pid,
+            phase = ?observation.phase,
+            "applying health probe observation"
+        );
+        let update = run
+            .tracker
+            .observe(observation.completed_at, &observation.result);
+        let should_ack = !run.ack_attempted && update.state == TrackerState::Healthy;
+        if should_ack {
+            run.ack_attempted = true;
+            let pid = run.pid;
+            let supervisor = self.shared.supervisor.lock().await;
+            let acknowledged = match supervisor.as_ref() {
+                Some(supervisor) => supervisor.acknowledge_ready(pid).await,
+                None => false,
+            };
+            drop(supervisor);
+            if acknowledged {
+                *self.ever_ready = true;
+                *self.respawn_deadline = None;
+                if let Some(run) = self.current.as_mut() {
+                    run.ready = true;
+                }
+                if let Some(driver) = self.driver {
+                    driver.use_liveness();
+                }
+                let previous = self.shared.state_tx.borrow().health.clone();
+                let instance_id = self.shared.state_tx.borrow().instance_id;
+                self.shared.publish_status(InstanceStatus {
+                    instance_id,
+                    state: InstanceState::Running { pid },
+                    health: Some(health_status(previous.as_ref(), &update, &observation)),
+                });
+            }
+            return acknowledged;
+        }
+
+        let previous = self.shared.state_tx.borrow().health.clone();
+        let instance_id = self.shared.state_tx.borrow().instance_id;
+        let lifecycle = self.shared.state_tx.borrow().state.clone();
+        self.shared.publish_status(InstanceStatus {
+            instance_id,
+            state: lifecycle,
+            health: Some(health_status(previous.as_ref(), &update, &observation)),
+        });
+        false
     }
-    false
+
+    async fn drain(
+        &mut self,
+        observations: &mut mpsc::UnboundedReceiver<ProbeObservation>,
+    ) -> bool {
+        while let Ok(observation) = observations.try_recv() {
+            if self.apply(observation).await {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 async fn stop_probe_driver(driver: &mut Option<ProbeDriver>) {
@@ -894,6 +911,7 @@ fn publish_terminal(shared: &Shared, last_exit: Option<&TerminatedPayload>) {
         ))
     };
     let _ = shared.state_tx.send(InstanceStatus {
+        instance_id: None,
         state: InstanceState::Stopped(reason),
         health: None,
     });
@@ -901,6 +919,7 @@ fn publish_terminal(shared: &Shared, last_exit: Option<&TerminatedPayload>) {
 
 #[cfg(test)]
 mod tests {
+    use crate::epoch::epoch;
     use std::time::Duration;
 
     use super::*;
@@ -1064,16 +1083,16 @@ mod tests {
         tokio::time::sleep_until(initial_deadline + Duration::from_millis(1)).await;
 
         assert!(
-            drain_probe_observations(
-                &mut observations,
-                &mut current,
-                &mut ever_ready,
-                &mut respawn_deadline,
+            ProbeReconcile {
+                current: &mut current,
+                ever_ready: &mut ever_ready,
+                respawn_deadline: &mut respawn_deadline,
                 initial_deadline,
-                &shared,
-                None,
-                1,
-            )
+                shared: &shared,
+                driver: None,
+                epoch: epoch(1),
+            }
+            .drain(&mut observations)
             .await
         );
         assert!(ever_ready);

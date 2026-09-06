@@ -198,8 +198,8 @@ impl<R: Router> App<R> {
 			dispatcher.add_handler(name.clone(), handler.clone());
 		}
 
-		// Periodic traffic flush (drains the collector → sink, restore on error,
-		// final flush on shutdown).
+		// Periodic traffic flush (drains the collector → sink, restore on
+		// error, final flush on shutdown).
 		if let (Some(stats), Some(sink)) = (stats.clone(), traffic_sink.clone()) {
 			let token = ctx.token.clone();
 			let interval = flush_interval;

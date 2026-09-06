@@ -83,8 +83,9 @@ mod tests {
 
 	#[test]
 	fn partial_table_fills_missing_fields_from_default() {
-		// Omitting `stack_prefer` (and everything but `mode`) must not fail with
-		// "missing field"; the container `#[serde(default)]` fills the rest.
+		// Omitting `stack_prefer` (and everything but `mode`) must not fail
+		// with "missing field"; the container `#[serde(default)]` fills the
+		// rest.
 		let cfg: DnsConfig = toml::from_str("mode = \"google\"").unwrap();
 		assert_eq!(cfg.mode, DnsMode::Google);
 		assert_eq!(cfg.stack_prefer, StackPrefer::V4first);

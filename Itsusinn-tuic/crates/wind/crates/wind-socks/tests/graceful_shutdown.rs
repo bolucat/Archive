@@ -96,8 +96,8 @@ async fn active_session_is_drained_on_cancel() {
 	let (addr, handle) = spawn_inbound(cancel.clone()).await;
 
 	// Open a connection so the inbound spawns a tracked session task. We don't
-	// drive the SOCKS handshake — the handler is parked reading from the stream,
-	// which is exactly the in-flight state shutdown must abort.
+	// drive the SOCKS handshake — the handler is parked reading from the
+	// stream, which is exactly the in-flight state shutdown must abort.
 	let _client = tokio::net::TcpStream::connect(addr).await.expect("connect to inbound");
 	tokio::time::sleep(Duration::from_millis(200)).await;
 

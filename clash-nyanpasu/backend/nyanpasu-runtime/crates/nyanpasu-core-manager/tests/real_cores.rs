@@ -198,7 +198,7 @@ async fn config_update(core: RealCore) {
 
     // CAS: a stale expected revision is rejected.
     let bogus = RevisionId {
-        epoch: u64::MAX,
+        epoch: common::epoch(u64::MAX),
         generation: u64::MAX,
         effective_hash: "bogus".into(),
     };

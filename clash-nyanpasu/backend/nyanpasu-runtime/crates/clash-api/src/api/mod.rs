@@ -11,7 +11,7 @@ mod traffic;
 mod version;
 
 pub use configs::{
-    BrutalOptions, ConfigPatch, FindProcessMode, GeoUrls, MuxOptions, RuntimeConfig,
+    BrutalOptions, ConfigEnum, ConfigPatch, FindProcessMode, GeoUrls, MuxOptions, RuntimeConfig,
     RuntimeTuicServer, RuntimeTun, TuicServerPatch, TunPatch, TunStack, TunnelMode,
     UpdateConfigOptions, UpdateConfigRequest,
 };
@@ -25,7 +25,7 @@ pub use maintenance::{Hello, StatusResponse, UpgradeOptions};
 pub use memory::Memory;
 pub use proxies::{
     Delay, DelayHistory, DelayQuery, ExpectedStatus, ProviderName, ProviderType, Proxy, ProxyExtra,
-    ProxyName, ProxyProvider, SubscriptionInfo, VehicleType,
+    ProxyName, ProxyProvider, ProxySelection, SubscriptionInfo, VehicleType,
 };
 pub use rules::{
     Rule, RuleExtra, RuleFormat, RulePatch, RuleProvider, RuleProviderBehavior, RuleProviderName,

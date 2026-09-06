@@ -94,8 +94,9 @@ async fn connect_socks5_tcp(
 			.map_err(|e| eyre::eyre!("SOCKS5 connect failed: {}", e))?,
 	};
 
-	// Disable Nagle on the hop to the SOCKS proxy — the same small-write latency
-	// concern as the direct path (see `wind_base::direct::connect_direct_tcp`).
+	// Disable Nagle on the hop to the SOCKS proxy — the same small-write
+	// latency concern as the direct path (see
+	// `wind_base::direct::connect_direct_tcp`).
 	if let Err(e) = stream.get_socket_ref().set_nodelay(true) {
 		tracing::debug!(error = %e, "failed to set TCP_NODELAY on socks5 outbound");
 	}

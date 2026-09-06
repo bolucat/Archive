@@ -53,8 +53,8 @@ An IPC bridge crate between the service and the client. It defines the local IPC
 
 Structure:
 
-- `api` — the protocol contract (`IpcOperation`), response envelope `R<'a, T>`, request/response bodies for core lifecycle (`/core/start|stop|restart|apply|check|recover`), logs, `set_dns`, `status`, and a WebSocket event stream (`/ws/events`).
-- `client` (feature `client`) — a reqwest-based `Client` plus a `shortcuts` mod for swift client rpc calls (`status()`, `start_core()`, `apply_config()`, ...).
+- `api` — the protocol contract (`IpcOperation`), response envelope `R<'a, T>`, request/response bodies for core lifecycle (`/core/start|stop|check`, and the v2 control plane `/v2/core/submit|operation|status`), logs, `set_dns`, `status`, and a WebSocket event stream (`/ws/events`).
+- `client` (feature `client`) — a reqwest-based `Client` plus a `shortcuts` mod for swift client rpc calls (`status()`, `start_core()`, `submit_core()`, ...).
 - `server` (feature `server`) — a `create_server` fn to hold an axum server on the local transport.
 - `types` — wire status types (`CoreState`, `CoreInfos`, ...).
 - `utils` — socket path resolution and endpoint permissions.

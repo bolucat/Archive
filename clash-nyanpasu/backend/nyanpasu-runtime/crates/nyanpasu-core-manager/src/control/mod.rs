@@ -492,6 +492,10 @@ impl CoreControl {
         self.work_tx.is_closed()
     }
 
+    pub async fn api_connection(&self) -> Option<crate::ApiConnection> {
+        self.manager.api_connection().await
+    }
+
     /// Zero-mailbox snapshot read.
     pub fn status(&self) -> CoreStatus {
         self.manager.status()

@@ -4,6 +4,7 @@ use tokio::{sync::mpsc, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    epoch::Epoch,
     health::HealthPolicy,
     probe::{ProbeContext, ProbeHandle, ProbePhase, ProbeResult},
     spec::ResolvedController,
@@ -35,7 +36,7 @@ pub(crate) struct ProbeDriver {
 impl ProbeDriver {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn start(
-        epoch: u64,
+        epoch: Epoch,
         run_id: u64,
         pid: u32,
         controller: Arc<ResolvedController>,
@@ -133,7 +134,7 @@ impl Drop for ProbeDriver {
 #[allow(clippy::too_many_arguments)]
 async fn run_attempt(
     probe: &ProbeHandle,
-    epoch: u64,
+    epoch: Epoch,
     run_id: u64,
     pid: u32,
     phase: ProbePhase,
@@ -179,6 +180,7 @@ async fn run_attempt(
 
 #[cfg(test)]
 mod tests {
+    use crate::epoch::epoch;
     use std::{
         future::Future,
         pin::Pin,
@@ -190,7 +192,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::probe::{HealthProbe, ProbeFuture};
+    use crate::{
+        health::{HealthPolicySpec, HealthThresholds},
+        probe::{HealthProbe, ProbeFuture},
+    };
 
     fn controller() -> Arc<ResolvedController> {
         Arc::new(ResolvedController {
@@ -200,13 +205,15 @@ mod tests {
     }
 
     fn policy(interval: Duration, timeout: Duration) -> HealthPolicy {
-        HealthPolicy::new(
+        HealthPolicy::new(HealthPolicySpec {
             interval,
             timeout,
-            std::num::NonZeroU32::MIN,
-            std::num::NonZeroU32::MIN,
-            Duration::ZERO,
-        )
+            thresholds: HealthThresholds {
+                failure: std::num::NonZeroU32::MIN,
+                success: std::num::NonZeroU32::MIN,
+            },
+            start_period: Duration::ZERO,
+        })
         .unwrap()
     }
 
@@ -239,7 +246,7 @@ mod tests {
         });
         let (observation_tx, mut observation_rx) = mpsc::unbounded_channel();
         let driver = ProbeDriver::start(
-            1,
+            epoch(1),
             1,
             10,
             controller(),
@@ -326,7 +333,7 @@ mod tests {
         );
         let (observation_tx, mut observation_rx) = mpsc::unbounded_channel();
         let driver = ProbeDriver::start(
-            1,
+            epoch(1),
             1,
             10,
             controller(),
@@ -359,7 +366,7 @@ mod tests {
         );
         let (observation_tx, mut observation_rx) = mpsc::unbounded_channel();
         let driver = ProbeDriver::start(
-            1,
+            epoch(1),
             1,
             10,
             controller(),
@@ -400,7 +407,7 @@ mod tests {
         });
         let (tx, _rx) = mpsc::unbounded_channel();
         let first = ProbeDriver::start(
-            1,
+            epoch(1),
             1,
             10,
             controller(),
@@ -410,7 +417,7 @@ mod tests {
             tx.clone(),
         );
         let second = ProbeDriver::start(
-            2,
+            epoch(2),
             1,
             20,
             controller(),

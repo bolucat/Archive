@@ -41,18 +41,18 @@ use nyanpasu_ipc::{
     api::{
         CoreErrorKind, RBuilder, ResponseCode,
         core::{
-            apply::{
-                ApplyOutcomeKind, CORE_APPLY_ENDPOINT, CoreApplyData, CoreApplyReq, CoreApplyRes,
-            },
-            restart::{CORE_RESTART_ENDPOINT, CoreRestartRes},
             start::{CORE_START_ENDPOINT, CoreStartReq, CoreStartRes},
             stop::{CORE_STOP_ENDPOINT, CoreStopRes},
+            v2::{
+                CORE_V2_OPERATION_ENDPOINT, CoreOperationReq, CoreOperationRes, OperationInfo,
+                OperationOutputInfo, OperationPhase, ReconcileOutcomeInfo, ReconcileOutcomeKind,
+            },
         },
         log::{LOGS_INSPECT_ENDPOINT, LOGS_RETRIEVE_ENDPOINT, LogsRes, LogsResBody},
         network::set_dns::{NETWORK_SET_DNS_ENDPOINT, NetworkSetDnsReq, NetworkSetDnsRes},
         status::{
-            ConfigRevisionInfo, CoreInfos, CoreState, CoreStateDetail, RevisionIdInfo,
-            RuntimeInfos, STATUS_ENDPOINT, StatusRes, StatusResBody,
+            ConfigRevisionInfo, CoreInfos, CoreState, CoreStateDetail, RuntimeInfos,
+            STATUS_ENDPOINT, StatusRes, StatusResBody,
         },
         ws::events::{
             ClashCoreKind, EVENT_URI, Event, LogFrame, LogLevel, LogStream, LogTimestamp,
@@ -189,7 +189,6 @@ async fn run_server(
 struct Received {
     start_core: Option<(CoreType, PathBuf)>,
     stop_core_calls: usize,
-    restart_core_calls: usize,
     set_dns_calls: Vec<Option<Vec<IpAddr>>>,
 }
 
@@ -206,6 +205,7 @@ fn test_status_body() -> StatusResBody<'static> {
     StatusResBody {
         version: Cow::Borrowed(TEST_VERSION),
         core_infos: CoreInfos {
+            instance_id: None,
             r#type: None,
             state: CoreState::Running,
             state_changed_at: 42,
@@ -266,13 +266,6 @@ async fn capture_start_core_handler(
         content_type: headers.get(CONTENT_TYPE).cloned(),
         body,
     });
-    (StatusCode::OK, Json(RBuilder::success(())))
-}
-
-async fn restart_core_handler(
-    State(state): State<Shared>,
-) -> (StatusCode, Json<CoreRestartRes<'static>>) {
-    state.lock().unwrap().restart_core_calls += 1;
     (StatusCode::OK, Json(RBuilder::success(())))
 }
 
@@ -342,6 +335,7 @@ async fn ws_handler(ws: WebSocketUpgrade) -> Response {
 /// restarting.
 fn test_snapshot() -> CoreInfos {
     CoreInfos {
+        instance_id: None,
         r#type: Some(CoreType::Clash(ClashCoreType::Mihomo)),
         state: CoreState::Stopped(None),
         state_changed_at: 42,
@@ -370,32 +364,37 @@ async fn status_fails_in_envelope() -> (StatusCode, Json<StatusRes<'static>>) {
     )
 }
 
-async fn apply_config_handler(
+async fn reconcile_operation_handler(
     State(capture): State<SharedCapture>,
     headers: HeaderMap,
     body: Bytes,
-) -> (StatusCode, Json<CoreApplyRes<'static>>) {
+) -> (StatusCode, Json<CoreOperationRes<'static>>) {
     *capture.lock().unwrap() = Some(CapturedRequest {
         content_type: headers.get(CONTENT_TYPE).cloned(),
         body,
     });
     (
         StatusCode::OK,
-        Json(RBuilder::success(CoreApplyData {
-            outcome: ApplyOutcomeKind::RolledBack,
-            revision: ConfigRevisionInfo {
-                epoch: 3,
-                generation: 7,
-                source_hash: "src".to_owned(),
-                effective_hash: "eff".to_owned(),
-            },
-            warning: Some("directory sync failed".to_owned()),
-            failed_apply: Some("core failed to start".to_owned()),
+        Json(RBuilder::success(OperationInfo {
+            id: "00112233445566778899aabbccddeeff".to_owned(),
+            phase: OperationPhase::Succeeded,
+            output: Some(OperationOutputInfo::Reconciled(ReconcileOutcomeInfo {
+                outcome: ReconcileOutcomeKind::RolledBack,
+                revision: ConfigRevisionInfo {
+                    epoch: 3,
+                    generation: 7,
+                    source_hash: "src".to_owned(),
+                    effective_hash: "eff".to_owned(),
+                },
+                warning: Some("directory sync failed".to_owned()),
+                failed_apply: Some("core failed to start".to_owned()),
+            })),
+            error: None,
         })),
     )
 }
 
-async fn apply_config_conflict_handler() -> (StatusCode, Json<CoreApplyRes<'static>>) {
+async fn operation_conflict_handler() -> (StatusCode, Json<CoreOperationRes<'static>>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(RBuilder::other_error_with_kind(
@@ -406,15 +405,10 @@ async fn apply_config_conflict_handler() -> (StatusCode, Json<CoreApplyRes<'stat
     )
 }
 
-fn apply_payload() -> CoreApplyReq<'static> {
-    CoreApplyReq {
-        core_type: Cow::Owned(CoreType::Clash(ClashCoreType::Mihomo)),
-        config_file: Cow::Owned(PathBuf::from("/etc/nyanpasu/config.yaml")),
-        expected_revision: Some(RevisionIdInfo {
-            epoch: 3,
-            generation: 7,
-            effective_hash: "eff".to_owned(),
-        }),
+fn operation_payload() -> CoreOperationReq<'static> {
+    CoreOperationReq {
+        operation_id: Cow::Borrowed("00112233445566778899aabbccddeeff"),
+        wait_ms: Some(5_000),
     }
 }
 
@@ -423,7 +417,6 @@ fn test_router(state: Shared) -> Router {
         .route(STATUS_ENDPOINT, get(status_handler))
         .route(CORE_START_ENDPOINT, post(start_core_handler))
         .route(CORE_STOP_ENDPOINT, post(stop_core_handler))
-        .route(CORE_RESTART_ENDPOINT, post(restart_core_handler))
         .route(LOGS_INSPECT_ENDPOINT, get(inspect_logs_handler))
         .route(LOGS_RETRIEVE_ENDPOINT, get(retrieve_logs_handler))
         .route(NETWORK_SET_DNS_ENDPOINT, post(set_dns_handler))
@@ -465,10 +458,6 @@ async fn rest_roundtrip() {
         .await
         .expect("start_core should succeed");
     client.stop_core().await.expect("stop_core should succeed");
-    client
-        .restart_core()
-        .await
-        .expect("restart_core should succeed");
 
     let inspect = client.inspect_logs().await.expect("inspect_logs");
     assert_eq!(
@@ -513,7 +502,6 @@ async fn rest_roundtrip() {
         ))
     );
     assert_eq!(received.stop_core_calls, 1);
-    assert_eq!(received.restart_core_calls, 1);
     assert_eq!(received.set_dns_calls, [Some(servers.to_vec()), None]);
 
     let _ = shutdown.send(());
@@ -716,26 +704,33 @@ async fn json_posts_send_the_exact_payload() {
     cleanup(&placeholder);
 }
 
-/// A rolled-back apply crosses the transport as a success carrying the old
+/// A rolled-back reconcile crosses the transport as a success carrying the old
 /// revision — the client must not need the envelope code to tell it apart.
 #[tokio::test]
-async fn apply_config_roundtrip() {
-    let placeholder = format!("nyanpasu-ipc-test-{}-apply", std::process::id());
+async fn reconciled_operation_roundtrip() {
+    let placeholder = format!("nyanpasu-ipc-test-{}-reconcile", std::process::id());
     let capture = SharedCapture::default();
     let router = Router::new()
         .route(STATUS_ENDPOINT, get(status_handler))
-        .route(CORE_APPLY_ENDPOINT, post(apply_config_handler))
+        .route(
+            CORE_V2_OPERATION_ENDPOINT,
+            post(reconcile_operation_handler),
+        )
         .with_state(capture.clone());
     let Some((shutdown, client)) = run_server(&placeholder, router).await else {
         return;
     };
-    let payload = apply_payload();
+    let payload = operation_payload();
 
-    let data = client
-        .apply_config(&payload)
+    let info = client
+        .core_operation(&payload)
         .await
-        .expect("apply_config should succeed");
-    assert_eq!(data.outcome, ApplyOutcomeKind::RolledBack);
+        .expect("operation query should succeed");
+    assert_eq!(info.phase, OperationPhase::Succeeded);
+    let Some(OperationOutputInfo::Reconciled(data)) = info.output else {
+        panic!("operation should carry a reconcile outcome");
+    };
+    assert_eq!(data.outcome, ReconcileOutcomeKind::RolledBack);
     assert_eq!(data.revision.generation, 7);
     assert_eq!(data.warning.as_deref(), Some("directory sync failed"));
     assert_eq!(data.failed_apply.as_deref(), Some("core failed to start"));
@@ -766,9 +761,9 @@ async fn v2_server_error_roundtrips_kind_and_retryability() {
         let router = Router::new()
             .route(STATUS_ENDPOINT, get(status_handler))
             .route(
-                CORE_APPLY_ENDPOINT,
+                CORE_V2_OPERATION_ENDPOINT,
                 post(move || async move {
-                    let envelope: CoreApplyRes<'static> = RBuilder::other_error_with_kind(
+                    let envelope: CoreOperationRes<'static> = RBuilder::other_error_with_kind(
                         Cow::Borrowed("classified failure"),
                         Some(kind),
                         Some(retryable),
@@ -780,7 +775,10 @@ async fn v2_server_error_roundtrips_kind_and_retryability() {
             return;
         };
 
-        let error = client.apply_config(&apply_payload()).await.unwrap_err();
+        let error = client
+            .core_operation(&operation_payload())
+            .await
+            .unwrap_err();
         assert_eq!(error.core_error_kind(), Some(kind));
         assert_eq!(error.retryable(), retryable);
         match error {
@@ -807,12 +805,15 @@ async fn a_server_error_kind_reaches_the_client() {
     let placeholder = format!("nyanpasu-ipc-test-{}-kind", std::process::id());
     let router = Router::new()
         .route(STATUS_ENDPOINT, get(status_handler))
-        .route(CORE_APPLY_ENDPOINT, post(apply_config_conflict_handler));
+        .route(CORE_V2_OPERATION_ENDPOINT, post(operation_conflict_handler));
     let Some((shutdown, client)) = run_server(&placeholder, router).await else {
         return;
     };
 
-    let error = client.apply_config(&apply_payload()).await.unwrap_err();
+    let error = client
+        .core_operation(&operation_payload())
+        .await
+        .unwrap_err();
     assert_eq!(
         error.core_error_kind(),
         Some(CoreErrorKind::RevisionConflict)

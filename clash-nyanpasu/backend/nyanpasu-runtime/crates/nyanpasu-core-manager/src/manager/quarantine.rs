@@ -1,11 +1,11 @@
 use nyanpasu_utils::process::{OrphanReapOutcome, reap_epoch_pid_file};
 
-use crate::{error::Error, runtime_store::RuntimeConfigStore, state::CoreState};
+use crate::{Epoch, error::Error, runtime_store::RuntimeConfigStore, state::CoreState};
 
 use super::{CoreManager, Ctrl, QuarantinedEpoch};
 
 impl CoreManager {
-    pub(super) fn latch_quarantine(&self, ctrl: &mut Ctrl, epoch: u64, error: Error) -> Error {
+    pub(super) fn latch_quarantine(&self, ctrl: &mut Ctrl, epoch: Epoch, error: Error) -> Error {
         record_quarantine(ctrl, epoch, error.to_string());
         let quarantine = quarantine_error(ctrl).expect("quarantine was just inserted");
         self.publish_terminal_error(&quarantine);
@@ -68,11 +68,13 @@ impl CoreManager {
             }
         }
         if !failures.is_empty() {
+            // Every failure arm above leaves its entry in place: the retain
+            // that removes an entry runs only after its cleanup succeeded.
             let first_epoch = ctrl
                 .quarantine
                 .first()
                 .map(|entry| entry.epoch)
-                .unwrap_or_default();
+                .expect("a failed recovery leaves its epoch quarantined");
             let error = Error::ManagerQuarantined {
                 epoch: first_epoch,
                 reason: failures.join(" | "),
@@ -80,7 +82,7 @@ impl CoreManager {
             return Err(error);
         }
         self.inner
-            .publish(CoreState::Stopped { reason: None }, None, None, None);
+            .publish(CoreState::Stopped { reason: None }, None);
         // Every uncertain epoch is now proven dead; nothing may keep holding
         // the DNS override.
         self.dns_restore(&mut ctrl).await;
@@ -107,7 +109,7 @@ fn quarantine_error(ctrl: &Ctrl) -> Option<Error> {
     })
 }
 
-pub(super) fn record_quarantine(ctrl: &mut Ctrl, epoch: u64, reason: String) {
+pub(super) fn record_quarantine(ctrl: &mut Ctrl, epoch: Epoch, reason: String) {
     if let Some(existing) = ctrl
         .quarantine
         .iter_mut()
@@ -131,14 +133,18 @@ pub(super) fn reject_quarantine(ctrl: &Ctrl) -> Result<(), Error> {
 }
 
 pub(super) async fn sweep_orphans(store: &RuntimeConfigStore) -> Result<u64, Error> {
-    let epochs = store.artifact_epochs().await?;
-    let max_epoch = epochs.iter().copied().max().unwrap_or(0);
-    for epoch in epochs {
-        let pid_path = store.pid_path(epoch);
+    // Artifact numbers are read back from filenames, so they are not epochs:
+    // a directory can carry `config-0.yaml`, and a zero that cannot be named
+    // is a zero that leaks forever. Discovery and cleanup stay raw; only the
+    // allocator seed crosses into the domain, one increment later.
+    let discovered = store.artifact_epochs().await?;
+    let max_seen = discovered.iter().copied().max().unwrap_or(0);
+    for artifact in discovered {
+        let pid_path = store.artifact_pid_path(artifact);
         if tokio::fs::try_exists(&pid_path).await? {
             reap_epoch_pid_file(pid_path.as_std_path(), store.dir().as_std_path()).await?;
         }
-        store.cleanup_epoch(epoch).await?;
+        store.cleanup_artifacts(artifact).await?;
     }
-    Ok(max_epoch)
+    Ok(max_seen)
 }

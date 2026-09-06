@@ -172,11 +172,11 @@ pub struct CoreStatus {              // watch 载荷,manager 对外快照
 #[non_exhaustive]
 pub enum CoreState {
     Stopped { reason: Option<StopReason> },   // 初始值 reason=None
-    Starting   { epoch: u64 },
-    Running    { epoch: u64, pid: u32 },
-    Restarting { epoch: u64, attempt: u32 },
-    Switching  { from: Option<u64>, to: u64 }, // 切换窗口(平滑/硬共用)
-    Stopping   { epoch: u64 },
+    Starting   { epoch: Epoch },
+    Running    { epoch: Epoch, pid: u32 },
+    Restarting { epoch: Epoch, attempt: u32 },
+    Switching  { from: Option<Epoch>, to: Epoch }, // 切换窗口(平滑/硬共用)
+    Stopping   { epoch: Epoch },
 }
 ```
 
@@ -225,10 +225,10 @@ pub enum Error {
 
 ```rust
 impl Instance {
-    pub async fn spawn(spec: InstanceSpec, epoch: u64, controller: ResolvedController,
+    pub async fn spawn(spec: InstanceSpec, epoch: Epoch, controller: ResolvedController,
                        token: CancellationToken) -> Result<Instance, Error>;
     pub fn state(&self) -> watch::Receiver<InstanceState>;
-    pub fn epoch(&self) -> u64;
+    pub fn epoch(&self) -> Epoch;
     pub fn spec(&self) -> &InstanceSpec;
     pub async fn wait_ready(&self) -> Result<(), Error>;   // 等到 Running 或 Stopped
     pub async fn stop(self) -> Result<(), Error>;
@@ -259,7 +259,7 @@ impl CoreManager {
 ```
 
 - 控制面方法由一把 async Mutex 串行化;`switch` 进行中到达的控制命令排队等待。
-- **epoch**:`AtomicU64` 自增,0 保留表示"无"。进程内单调即满足路径唯一性(named pipe 随 server 关闭消失;unix socket 残留文件由启动清扫处理)。
+- **epoch**:控制锁内的单调分配器(`EpochAllocator`)发放 `Epoch(NonZeroU64)`,由控制面 Mutex 串行化;"无"由 `Option<Epoch>` 表达而非 0 哨兵。类型止步于本 crate——文件名、pid 记录、`LogFrame`、DNS 记录与 IPC 仍是裸 `u64`,产物发现读回的数字亦然。进程内单调即满足路径唯一性(named pipe 随 server 关闭消失;unix socket 残留文件由启动清扫处理)。
 - 状态聚合:manager 的转发 task 订阅当前 Instance 的 `watch<InstanceState>`,映射为 `CoreState`(补 epoch)写入对外 watch;切换流程期间由流程直接发布 `Switching`。
 - `stop` 后 manager 保留 last spec(旧实现同语义:stop 后可 restart)。
 

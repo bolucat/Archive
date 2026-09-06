@@ -342,7 +342,8 @@ mod tests {
 
 	#[tokio::test]
 	async fn dispatcher_unknown_handler_falls_back_to_default() {
-		// Router returns a name that isn't registered — should fall back to "default"
+		// Router returns a name that isn't registered — should fall back to
+		// "default"
 		let default_handler = Arc::new(MockHandler::new());
 		let mut dispatcher = Dispatcher::new(StubRouter::new(RouteAction::Forward("nonexistent_handler".into())));
 		dispatcher.add_handler("default", default_handler.clone());

@@ -75,7 +75,7 @@ async fn real_core_starts_probes_and_stops() {
         host: clash_api::Host::http(format!("127.0.0.1:{ctrl_port}")).unwrap(),
         secret: None,
     };
-    let instance = Instance::spawn(spec, 1, controller, CancellationToken::new())
+    let instance = Instance::spawn(spec, common::epoch(1), controller, CancellationToken::new())
         .await
         .expect("spawn");
     instance

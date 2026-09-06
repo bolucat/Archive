@@ -8,12 +8,21 @@ use std::{sync::Arc, time::Duration};
 
 use camino::{Utf8Path, Utf8PathBuf};
 use nyanpasu_core_manager::{
-    CoreKind, CoreSpec, HealthPolicy, InstanceOptions, InstanceSpec,
+    CoreKind, CoreSpec, Epoch, HealthPolicy, HealthPolicySpec, HealthThresholds, InstanceOptions,
+    InstanceSpec,
     state::{HealthState, InstanceState, InstanceStatus},
 };
-use nyanpasu_utils::process::{Backoff, RestartPolicy};
+use nyanpasu_utils::process::{Backoff, BackoffRange, RestartPolicy};
 use parking_lot::Mutex;
 use tokio::sync::watch;
+
+/// The epoch a test means when it writes a number. Deliberately not a
+/// `From<u64>` on the type itself: production code must keep paying the
+/// nonzero check at every boundary, and a test that skips it stops exercising
+/// the barrier it is meant to prove.
+pub fn epoch(value: u64) -> Epoch {
+    Epoch::new(value).expect("a test epoch must be nonzero")
+}
 
 pub fn fake_core_bin() -> Utf8PathBuf {
     Utf8PathBuf::from(env!("CARGO_BIN_EXE_nyanpasu-fake-core"))
@@ -31,16 +40,21 @@ pub fn free_port() -> u16 {
 pub fn fast_options() -> InstanceOptions {
     InstanceOptions {
         startup_timeout: Duration::from_secs(5),
-        health: HealthPolicy::new(
-            Duration::from_millis(50),
-            Duration::from_secs(1),
-            std::num::NonZeroU32::new(3).unwrap(),
-            std::num::NonZeroU32::MIN,
-            Duration::ZERO,
-        )
+        health: HealthPolicy::new(HealthPolicySpec {
+            interval: Duration::from_millis(50),
+            timeout: Duration::from_secs(1),
+            thresholds: HealthThresholds {
+                failure: std::num::NonZeroU32::new(3).unwrap(),
+                success: std::num::NonZeroU32::MIN,
+            },
+            start_period: Duration::ZERO,
+        })
         .unwrap(),
         restart_policy: RestartPolicy::OnFailure { max_restarts: 2 },
-        backoff: Backoff::exponential(Duration::from_millis(50), Duration::from_millis(200)),
+        backoff: Backoff::exponential(BackoffRange {
+            initial: Duration::from_millis(50),
+            max: Duration::from_millis(200),
+        }),
     }
 }
 

@@ -214,8 +214,9 @@ impl TuicInbound {
 		crypto.alpn_protocols = self.opts.alpn.iter().map(|alpn| alpn.as_bytes().to_vec()).collect();
 
 		if self.opts.zero_rtt {
-			// Operators wanting strict replay resistance should leave `zero_rtt`
-			// disabled until application-layer nonce/anti-replay is implemented.
+			// Operators wanting strict replay resistance should leave
+			// `zero_rtt` disabled until application-layer nonce/anti-replay
+			// is implemented.
 			warn!(
 				"zero_rtt=true: 0-RTT early data is accepted. TUIC has no application-layer replay protection — \
 				 Connect/Packet commands sent as 0-RTT can be replayed."
@@ -232,9 +233,9 @@ impl TuicInbound {
 				.map_err(|e| eyre::eyre!("Failed to create QUIC server config: {}", e))?,
 		));
 
-		// Per-stream receive window: prefer the override, else the legacy single
-		// window. quinn's windows are fixed (no init/max auto-tuning), so the
-		// `max_*` values map straight onto them.
+		// Per-stream receive window: prefer the override, else the legacy
+		// single window. quinn's windows are fixed (no init/max auto-tuning),
+		// so the `max_*` values map straight onto them.
 		let stream_window = self.opts.max_stream_receive_window.unwrap_or(self.opts.receive_window as u64);
 		let stream_window = VarInt::from_u64(stream_window).map_err(|_| eyre::eyre!("stream receive window out of range"))?;
 
@@ -252,7 +253,8 @@ impl TuicInbound {
 			.enable_segmentation_offload(self.opts.gso)
 			.congestion_controller_factory(self.congestion_controller_factory());
 
-		// Connection-level receive window (quinn leaves its default unless set).
+		// Connection-level receive window (quinn leaves its default unless
+		// set).
 		if let Some(conn_window) = self.opts.max_conn_receive_window {
 			let conn_window =
 				VarInt::from_u64(conn_window).map_err(|_| eyre::eyre!("connection receive window out of range"))?;
@@ -313,9 +315,10 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 		let users = Arc::new(self.opts.users.clone());
 
 		loop {
-			// `endpoint.accept()` returns `None` once the endpoint is shut down;
-			// the `else =>` arm catches that as a normal shutdown so the
-			// `tokio::select!` doesn't panic when every branch is disabled.
+			// `endpoint.accept()` returns `None` once the endpoint is shut
+			// down; the `else =>` arm catches that as a normal shutdown so
+			// the `tokio::select!` doesn't panic when every branch is
+			// disabled.
 			tokio::select! {
 				_ = self.cancel.cancelled() => {
 					info!("TUIC server shutting down");

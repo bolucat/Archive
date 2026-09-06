@@ -375,7 +375,8 @@ mod tests {
 	#[test]
 	fn display_hexes_binary_ids_without_emitting_control_bytes() {
 		// The panel-id encoding (`b'P'` + big-endian i64) is valid UTF-8 for
-		// small ids (mostly NUL bytes) — it must NOT print as raw control bytes.
+		// small ids (mostly NUL bytes) — it must NOT print as raw control
+		// bytes.
 		let mut panel = vec![b'P'];
 		panel.extend_from_slice(&42i64.to_be_bytes());
 		let shown = UserId::from(panel).to_string();

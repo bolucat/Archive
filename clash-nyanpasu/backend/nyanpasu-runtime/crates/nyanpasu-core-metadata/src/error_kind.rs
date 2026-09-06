@@ -19,7 +19,7 @@ pub enum CoreErrorKind {
     /// applied; re-read `/status` for the current one and retry.
     RevisionConflict,
     /// An epoch whose death could not be confirmed has latched the manager.
-    /// Every lifecycle operation is refused until `POST /core/recover` clears it.
+    /// Every lifecycle operation is refused until a `Recover` submission clears it.
     Quarantined,
     /// The core itself rejected the config in a dry run.
     ConfigCheckFailed,

@@ -127,7 +127,8 @@ fn suffix_match(v: &ArchivedVec<Archived<String>>, start: usize, len: usize, dom
 	if len == 0 {
 		return false;
 	}
-	// The full domain is a candidate ("google.com" matches the entry "google.com").
+	// The full domain is a candidate ("google.com" matches the entry
+	// "google.com").
 	if binary_search_str_suffix(v, start, len, domain) {
 		return true;
 	}
@@ -224,7 +225,8 @@ fn range_contains_v4(ranges: &ArchivedVec<ArchivedRangeV4>, start: usize, len: u
 		}
 	}
 	if lo > start {
-		// `ranges[lo - 1].start <= addr` by construction; check the upper bound.
+		// `ranges[lo - 1].start <= addr` by construction; check the upper
+		// bound.
 		addr <= ranges[lo - 1].end.to_native()
 	} else {
 		false

@@ -5,7 +5,7 @@
 
 use crate::{error::Error, spec::InstanceSpec, state::RevisionId};
 
-use super::{ApplyOutcome, CoreManager, abort_and_await, quarantine::reject_quarantine};
+use super::{ApplyOutcome, CoreManager, quarantine::reject_quarantine};
 
 impl CoreManager {
     /// Converges the runtime toward `spec`.
@@ -83,26 +83,13 @@ impl CoreManager {
         }
 
         // Same stale-epoch hygiene as `start`: prove death before reuse.
-        if let Some(stale) = ctrl.current.take() {
-            abort_and_await(stale.forwarder).await;
-            let epoch = stale.instance.epoch();
-            if let Err(error) = stale
-                .instance
-                .stop_and_confirm_dead(self.inner.options.stop_timeout)
-                .await
-            {
-                if matches!(error, Error::StopUnconfirmed(_)) {
-                    return Err(self.latch_quarantine(ctrl, epoch, error));
-                }
-                return Err(error);
-            }
-            self.inner.store.cleanup_epoch(epoch).await?;
-        }
+        self.discard_stale(ctrl).await?;
         self.start_locked(ctrl, spec).await?;
         let revision = ctrl
             .current
             .as_ref()
             .expect("start_locked installed the active runtime")
+            .plan
             .revision
             .clone();
         Ok(ApplyOutcome::Started { revision })

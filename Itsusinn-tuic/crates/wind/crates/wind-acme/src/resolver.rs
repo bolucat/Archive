@@ -48,7 +48,8 @@ impl CertCache for CapturingCache {
 	}
 
 	async fn store_cert(&self, domains: &[String], directory_url: &str, cert: &[u8]) -> Result<(), Self::EC> {
-		// Publish before persisting so a waiter is unblocked as early as possible.
+		// Publish before persisting so a waiter is unblocked as early as
+		// possible.
 		let _ = self.tx.send(Some(Arc::new(cert.to_vec())));
 		self.inner.store_cert(domains, directory_url, cert).await
 	}

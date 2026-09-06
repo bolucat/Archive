@@ -31,19 +31,20 @@ pub(crate) fn tls_config(_servername: &str, opts: &TuicOutboundOpts) -> Result<r
 			.with_no_client_auth()
 	};
 
-	// Honour caller-supplied ALPN list. Empty list falls back to "h3" for backward
-	// compatibility with existing deployments; previously this was hardcoded and
-	// silently ignored `opts.alpn`.
+	// Honour caller-supplied ALPN list. Empty list falls back to "h3" for
+	// backward compatibility with existing deployments; previously this was
+	// hardcoded and silently ignored `opts.alpn`.
 	let mut alpn: Vec<Vec<u8>> = opts.alpn.iter().map(|a| a.as_bytes().to_vec()).collect();
 	if alpn.is_empty() {
 		alpn.push(b"h3".to_vec());
 	}
 	config.alpn_protocols = alpn;
 
-	// 0-RTT: without `enable_early_data` on the rustls client config, quinn never
-	// attempts to send early data even when the server accepts it (see the quinn
-	// `QuicClientConfig` docs). Wire the caller's `zero_rtt_handshake` flag through
-	// so a resumed handshake can actually replay early data.
+	// 0-RTT: without `enable_early_data` on the rustls client config, quinn
+	// never attempts to send early data even when the server accepts it (see
+	// the quinn `QuicClientConfig` docs). Wire the caller's
+	// `zero_rtt_handshake` flag through so a resumed handshake can actually
+	// replay early data.
 	config.enable_early_data = opts.zero_rtt_handshake;
 
 	Ok(config)

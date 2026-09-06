@@ -84,7 +84,8 @@ impl AclEngine {
 	}
 
 	async fn do_route(&self, ctx: &FlowContext) -> eyre::Result<RouteAction> {
-		// 1. Guards — resolve the destination and drop loopback / private space.
+		// 1. Guards — resolve the destination and drop loopback / private
+		//    space.
 		if self.guards.enabled() {
 			let resolver = self
 				.resolver
@@ -109,8 +110,9 @@ impl AclEngine {
 		ctx.apply_to_match_context(&mut match_ctx);
 
 		// Bind the geodata lookup closures to locals so their borrows of
-		// `self.geodata` outlive the `MatchContext` that references them. Without
-		// this wiring `GEOIP` / `GEOSITE` rules would silently never match.
+		// `self.geodata` outlive the `MatchContext` that references them.
+		// Without this wiring `GEOIP` / `GEOSITE` rules would silently never
+		// match.
 		let geoip_fn = self.geodata.as_ref().map(|gd| gd.geoip_lookup());
 		let geosite_fn = self.geodata.as_ref().map(|gd| gd.geosite_lookup());
 		match_ctx.geoip_lookup = geoip_fn.as_ref().map(|f| f as &dyn Fn(&str, std::net::IpAddr) -> bool);

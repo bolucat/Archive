@@ -13,7 +13,7 @@ use std::{
 };
 
 use nyanpasu_core_manager::{
-    CoreState, Error, ManagerOptions, RevisionId,
+    CoreState, Epoch, Error, ManagerOptions, RevisionId,
     dns::{DnsController, DnsError, DnsIntent, DnsOverrideRecord, DnsOverrideState},
     manager::{ApplyOutcome, CoreManager},
     runtime::BoxFuture,
@@ -25,7 +25,7 @@ use tokio::sync::Notify;
 /// with the original resolver would prove the baseline was kept even when the
 /// orchestrator overwrote it.
 struct FakeDns {
-    applied: Mutex<Vec<(DnsIntent, u64)>>,
+    applied: Mutex<Vec<(DnsIntent, Epoch)>>,
     restored: Mutex<Vec<DnsOverrideRecord>>,
     /// What the interface currently resolves through.
     current: Mutex<Vec<String>>,
@@ -62,7 +62,7 @@ impl DnsController for FakeDns {
     fn apply<'a>(
         &'a self,
         intent: &'a DnsIntent,
-        runtime_epoch: u64,
+        runtime_epoch: Epoch,
     ) -> BoxFuture<'a, Result<DnsOverrideRecord, DnsError>> {
         Box::pin(async move {
             if self.hang_apply.load(Ordering::SeqCst) {
@@ -81,7 +81,7 @@ impl DnsController for FakeDns {
                 interface: "Wi-Fi".to_owned(),
                 previous,
                 applied: intent.servers.clone(),
-                runtime_epoch,
+                runtime_epoch: runtime_epoch.get(),
                 owner_generation: None,
                 state: DnsOverrideState::Applied,
             })
@@ -149,13 +149,22 @@ async fn reconcile_applies_the_override_and_stop_restores_it_first() {
         let applied = dns.applied.lock().unwrap();
         assert_eq!(applied.len(), 1, "start tail applies exactly once");
         assert_eq!(applied[0].0.servers, vec!["198.18.0.2".to_owned()]);
-        assert_eq!(applied[0].1, 1, "the record names the running epoch");
+        assert_eq!(
+            applied[0].1,
+            common::epoch(1),
+            "the record names the running epoch"
+        );
     }
     // The record survived to disk with the controller's read-back data.
-    let record: DnsOverrideRecord =
-        serde_json::from_slice(&std::fs::read(record_path(&dir)).unwrap()).unwrap();
+    let raw = std::fs::read(record_path(&dir)).unwrap();
+    let record: DnsOverrideRecord = serde_json::from_slice(&raw).unwrap();
     assert_eq!(record.state, DnsOverrideState::Applied);
     assert_eq!(record.previous, vec!["10.0.0.1".to_owned()]);
+    // The persisted epoch is a bare number, not a wrapper object or a string:
+    // `Epoch` stops at this boundary so an older record stays readable and a
+    // future validation policy cannot turn one into a load failure.
+    let json: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    assert_eq!(json["runtime_epoch"], serde_json::json!(1));
 
     manager.stop().await.unwrap();
     {
@@ -431,7 +440,7 @@ async fn a_revision_conflict_never_touches_dns() {
     let before = std::fs::read(record_path(&dir)).unwrap();
 
     let stale = RevisionId {
-        epoch: 99,
+        epoch: common::epoch(99),
         generation: 99,
         effective_hash: "deadbeef".to_owned(),
     };

@@ -7,6 +7,7 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    epoch::Epoch,
     error::Error,
     instance::Instance,
     probe::{ProbeHandle, ProbePhase, ProbeResult},
@@ -74,7 +75,7 @@ impl RuntimeBackend for ProcessRuntimeBackend {
 }
 
 impl RuntimeInstance for Instance {
-    fn epoch(&self) -> u64 {
+    fn epoch(&self) -> Epoch {
         Instance::epoch(self)
     }
 

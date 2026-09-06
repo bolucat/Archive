@@ -14,11 +14,7 @@ use std::{
 
 use nyanpasu_ipc::api::{
     CoreErrorKind, R, RBuilder, ResponseCode,
-    core::{
-        apply::{ApplyOutcomeKind, CoreApplyData, CoreApplyReq},
-        check::CoreCheckReq,
-        start::CoreStartReq,
-    },
+    core::{check::CoreCheckReq, start::CoreStartReq, v2::ReconcileOutcomeKind},
     log::LogsResBody,
     network::set_dns::NetworkSetDnsReq,
     status::{
@@ -71,6 +67,7 @@ where
 /// that fell behind.
 fn enriched_core_infos() -> CoreInfos {
     CoreInfos {
+        instance_id: None,
         r#type: Some(CoreType::Clash(ClashCoreType::Mihomo)),
         state: CoreState::Running,
         state_changed_at: 42,
@@ -101,6 +98,7 @@ fn enriched_core_infos() -> CoreInfos {
 /// A never-started core: every S7 field absent, `detail` still populated.
 fn minimal_core_infos() -> CoreInfos {
     CoreInfos {
+        instance_id: None,
         r#type: None,
         state: CoreState::Stopped(None),
         state_changed_at: 42,
@@ -316,6 +314,7 @@ fn the_status_response_is_pinned() {
     let body = StatusResBody {
         version: Cow::Borrowed("9.9.9-golden"),
         core_infos: CoreInfos {
+            instance_id: None,
             r#type: Some(CoreType::Clash(ClashCoreType::Mihomo)),
             state: CoreState::Running,
             state_changed_at: 42,
@@ -584,6 +583,7 @@ fn the_enriched_status_response_is_pinned() {
     let body = StatusResBody {
         version: Cow::Borrowed("9.9.9-golden"),
         core_infos: CoreInfos {
+            instance_id: None,
             r#type: Some(CoreType::Clash(ClashCoreType::Mihomo)),
             state: CoreState::Running,
             state_changed_at: 42,
@@ -688,16 +688,17 @@ fn a_pre_s7_status_payload_still_decodes() {
 }
 
 #[test]
-fn the_apply_outcome_kinds_are_pinned() {
+fn the_reconcile_outcome_kinds_are_pinned() {
     for (value, expected) in [
-        (ApplyOutcomeKind::Noop, r#""noop""#),
-        (ApplyOutcomeKind::Patched, r#""patched""#),
-        (ApplyOutcomeKind::Reloaded, r#""reloaded""#),
-        (ApplyOutcomeKind::Restarted, r#""restarted""#),
+        (ReconcileOutcomeKind::Started, r#""started""#),
+        (ReconcileOutcomeKind::Noop, r#""noop""#),
+        (ReconcileOutcomeKind::Patched, r#""patched""#),
+        (ReconcileOutcomeKind::Reloaded, r#""reloaded""#),
+        (ReconcileOutcomeKind::Restarted, r#""restarted""#),
         // Produced since S10 by the manager's core-switch path; the spelling was
         // pinned a stage before it was reachable.
-        (ApplyOutcomeKind::Switched, r#""switched""#),
-        (ApplyOutcomeKind::RolledBack, r#""rolled_back""#),
+        (ReconcileOutcomeKind::Switched, r#""switched""#),
+        (ReconcileOutcomeKind::RolledBack, r#""rolled_back""#),
     ] {
         assert_eq!(serde_json::to_string(&value).unwrap(), expected);
     }
@@ -810,37 +811,6 @@ fn the_revision_id_info_is_pinned() {
 }
 
 #[test]
-fn the_core_apply_request_is_pinned() {
-    let without = CoreApplyReq {
-        core_type: Cow::Owned(CoreType::Clash(ClashCoreType::Mihomo)),
-        config_file: Cow::Owned(PathBuf::from("/etc/nyanpasu/config.yaml")),
-        expected_revision: None,
-    };
-    // No CAS token: the key is omitted, not sent as null.
-    assert_eq!(
-        serde_json::to_string(&without).unwrap(),
-        r#"{"core_type":{"clash":"mihomo"},"config_file":"/etc/nyanpasu/config.yaml"}"#
-    );
-    let with = CoreApplyReq {
-        expected_revision: Some(RevisionIdInfo {
-            epoch: 3,
-            generation: 7,
-            effective_hash: "fedcba9876543210".to_owned(),
-        }),
-        ..without
-    };
-    assert_eq!(
-        serde_json::to_string(&with).unwrap(),
-        concat!(
-            r#"{"core_type":{"clash":"mihomo"},"#,
-            r#""config_file":"/etc/nyanpasu/config.yaml","#,
-            r#""expected_revision":{"epoch":3,"generation":7,"#,
-            r#""effective_hash":"fedcba9876543210"}}"#
-        )
-    );
-}
-
-#[test]
 fn the_core_check_request_is_pinned() {
     let request = CoreCheckReq {
         core_type: Cow::Owned(CoreType::Clash(ClashCoreType::Mihomo)),
@@ -849,48 +819,5 @@ fn the_core_check_request_is_pinned() {
     assert_eq!(
         serde_json::to_string(&request).unwrap(),
         r#"{"core_type":{"clash":"mihomo"},"config_file":"/etc/nyanpasu/config.yaml"}"#
-    );
-}
-
-#[test]
-fn the_core_apply_response_is_pinned() {
-    let revision = ConfigRevisionInfo {
-        epoch: 3,
-        generation: 7,
-        source_hash: "0123456789abcdef".to_owned(),
-        effective_hash: "fedcba9876543210".to_owned(),
-    };
-    let clean = CoreApplyData {
-        outcome: ApplyOutcomeKind::Patched,
-        revision: revision.clone(),
-        warning: None,
-        failed_apply: None,
-    };
-    assert_eq!(
-        serde_json::to_string(&ok_envelope(clean)).unwrap(),
-        concat!(
-            r#"{"code":"Ok","msg":"ok","data":{"outcome":"patched","#,
-            r#""revision":{"epoch":3,"generation":7,"#,
-            r#""source_hash":"0123456789abcdef","#,
-            r#""effective_hash":"fedcba9876543210"}},"ts":1700000000}"#
-        )
-    );
-    // A rollback is a *successful* call reporting that the old config runs.
-    let rolled_back = CoreApplyData {
-        outcome: ApplyOutcomeKind::RolledBack,
-        revision,
-        warning: Some("runtime directory sync failed".to_owned()),
-        failed_apply: Some("core failed to start".to_owned()),
-    };
-    assert_eq!(
-        serde_json::to_string(&ok_envelope(rolled_back)).unwrap(),
-        concat!(
-            r#"{"code":"Ok","msg":"ok","data":{"outcome":"rolled_back","#,
-            r#""revision":{"epoch":3,"generation":7,"#,
-            r#""source_hash":"0123456789abcdef","#,
-            r#""effective_hash":"fedcba9876543210"},"#,
-            r#""warning":"runtime directory sync failed","#,
-            r#""failed_apply":"core failed to start"},"ts":1700000000}"#
-        )
     );
 }

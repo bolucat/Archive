@@ -46,11 +46,11 @@ pub enum ProtoError {
 impl From<std::io::Error> for ProtoError {
 	#[inline(always)]
 	fn from(source: std::io::Error) -> Self {
-		// `Decoder::Error: From<io::Error>` is required by tokio-util's `Framed*`,
-		// and the underlying transport's IO errors (e.g. a peer reset) flow
-		// through here. The previous debug-build `panic!` turned any such error
-		// into a crash the moment these codecs were driven over real IO, so map
-		// it to the `Io` variant in all builds instead.
+		// `Decoder::Error: From<io::Error>` is required by tokio-util's
+		// `Framed*`, and the underlying transport's IO errors (e.g. a peer
+		// reset) flow through here. The previous debug-build `panic!` turned
+		// any such error into a crash the moment these codecs were driven
+		// over real IO, so map it to the `Io` variant in all builds instead.
 		use snafu::IntoError as _;
 		IoSnafu.into_error(source)
 	}

@@ -25,32 +25,6 @@ include $(INCLUDE_DIR)/package.mk
 RSTRIP:=:
 STRIP:=:
 
-ATH11K_IPQ6018_FW_DATE:=2024-10-14
-ATH11K_IPQ6018_FW_RELEASE:=15f05012
-ATH11K_IPQ6018_FW_SUBDIR:=ath11k-ipq6018-firmware-$(ATH11K_IPQ6018_FW_DATE)~$(ATH11K_IPQ6018_FW_RELEASE)
-ATH11K_IPQ6018_FW_SOURCE:=$(ATH11K_IPQ6018_FW_SUBDIR).tar.zst
-
-define Download/ath11k-ipq6018-firmware
-	FILE:=$(ATH11K_IPQ6018_FW_SOURCE)
-	VERSION:=15f050122da5ef5bef2cc8c7c19dfb7f98060a49
-	PROTO:=git
-	URL:=https://git.codelinaro.org/clo/ath-firmware/ath11k-firmware.git
-	SOURCE_VERSION:=15f050122da5ef5bef2cc8c7c19dfb7f98060a49
-	MIRROR_HASH:=e7a89d1570f32552ade539376181494724b5eafb31d00451ff2dcf5a2922a0cb
-	SUBDIR:=$(ATH11K_IPQ6018_FW_SUBDIR)
-endef
-$(eval $(call Download,ath11k-ipq6018-firmware))
-
-define Build/Prepare
-	$(call Build/Prepare/Default,)
-	$(TAR) -C $(BUILD_DIR) -xf $(DL_DIR)/$(ATH11K_IPQ6018_FW_SOURCE)
-endef
-
-define Build/Clean
-	$(call Build/Clean/Default,)
-	rm -rf $(BUILD_DIR)/$(ATH11K_IPQ6018_FW_SUBDIR)
-endef
-
 define Package/ath11k-firmware-default
   SECTION:=firmware
   CATEGORY:=Firmware
@@ -98,7 +72,7 @@ endef
 define Package/ath11k-firmware-ipq6018/install
 	$(INSTALL_DIR) $(1)/lib/firmware/IPQ6018
 	$(INSTALL_DATA) \
-		$(BUILD_DIR)/$(ATH11K_IPQ6018_FW_SUBDIR)/IPQ6018/hw1.0/2.5.0.1/WLAN.HK.2.5.0.1-03982-QCAHKSWPL_SILICONZ-3/* \
+		$(PKG_BUILD_DIR)/ath11k-firmware/IPQ6018/hw1.0/2.5.0.1/WLAN.HK.2.5.0.1-01208-QCAHKSWPL_SILICONZ-1/* \
 		$(1)/lib/firmware/IPQ6018/
 endef
 

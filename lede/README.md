@@ -137,7 +137,13 @@ PS > git clone https://github.com/coolsnowwolf/lede <your_local_lede_path>
 
 ### macOS 原生系统进行编译
 
-1. 在 AppStore 中安装 Xcode
+1. 安装 macOS Command Line Tools（无需安装完整 Xcode）：
+
+   ```bash
+   xcode-select --install
+   ```
+
+   如果系统已安装 Xcode，可跳过此步骤。
 
 2. 安装 Homebrew：
 

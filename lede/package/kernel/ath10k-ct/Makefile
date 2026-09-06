@@ -27,6 +27,12 @@ STAMP_CONFIGURED_DEPENDS := $(STAGING_DIR)/usr/include/mac80211-backport/backpor
 include $(INCLUDE_DIR)/kernel.mk
 
 ifeq ($(KERNEL_PATCHVER),6.18)
+PATCH_DIR:=./patches
+else
+PATCH_DIR:=./patches-5.15
+endif
+
+ifeq ($(KERNEL_PATCHVER),6.18)
 PKG_SOURCE_DATE:=2026-07-31
 PKG_SOURCE_VERSION:=fcbdb70debc261f9df6734bbb76d81cdc88e0e26
 PKG_MIRROR_HASH:=3bfcb2c8bc08902b95de16593b9d757e8c48f8891bd8ecd0934af14789294f37

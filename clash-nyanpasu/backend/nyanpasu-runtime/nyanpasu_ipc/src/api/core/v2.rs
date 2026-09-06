@@ -24,6 +24,24 @@ use crate::api::{
 pub const CORE_V2_SUBMIT_ENDPOINT: &str = "/v2/core/submit";
 pub const CORE_V2_OPERATION_ENDPOINT: &str = "/v2/core/operation";
 pub const CORE_V2_STATUS_ENDPOINT: &str = "/v2/core/status";
+pub const CORE_V2_API_CONNECTION_ENDPOINT: &str = "/v2/core/api-connection";
+
+/// Private local-IPC response. Never forward this credential-bearing object to
+/// status events or the UI. The service socket's ACL is the authorization gate.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+pub struct CoreApiConnection {
+    pub instance_id: String,
+    pub controller: crate::api::status::CoreControllerInfo,
+    pub secret: Option<String>,
+}
+
+impl std::fmt::Debug for CoreApiConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CoreApiConnection")
+            .field("instance_id", &self.instance_id)
+            .finish_non_exhaustive()
+    }
+}
 
 /// Submit one mutating operation. The reply is the operation's registry
 /// snapshot at admission time — usually `queued` — not its result; poll or
@@ -246,5 +264,27 @@ mod tests {
             serde_json::from_str::<OperationInfo>(&encoded).unwrap(),
             failed
         );
+    }
+}
+
+#[cfg(test)]
+mod api_connection_tests {
+    use super::*;
+
+    #[test]
+    fn credentials_roundtrip_but_debug_is_redacted() {
+        let binding = CoreApiConnection {
+            instance_id: "opaque-process-id".into(),
+            controller: crate::api::status::CoreControllerInfo::Http(
+                "http://localhost:9090/".into(),
+            ),
+            secret: Some("private-controller-secret".into()),
+        };
+        let json = serde_json::to_string(&binding).unwrap();
+        assert_eq!(
+            serde_json::from_str::<CoreApiConnection>(&json).unwrap(),
+            binding
+        );
+        assert!(!format!("{binding:?}").contains("private-controller-secret"));
     }
 }

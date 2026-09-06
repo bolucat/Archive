@@ -17,6 +17,18 @@ pub enum LogLevel {
     Silent,
 }
 
+impl AsRef<str> for LogLevel {
+    fn as_ref(&self) -> &str {
+        match self {
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Warning => "warning",
+            Self::Error => "error",
+            Self::Silent => "silent",
+        }
+    }
+}
+
 /// Query shared by regular and structured log subscriptions.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, specta::Type)]
 pub struct LogQuery {

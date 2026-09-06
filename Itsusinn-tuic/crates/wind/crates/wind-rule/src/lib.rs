@@ -443,7 +443,8 @@ impl Rule {
 			return Err(RuleParseError::EmptyOrComment);
 		}
 
-		// Split respecting parenthesised groups (for AND/OR/NOT compound rules).
+		// Split respecting parenthesised groups (for AND/OR/NOT compound
+		// rules).
 		let parts = split_top_level(line);
 		if parts.len() < 2 {
 			return Err(RuleParseError::InvalidFormat(
