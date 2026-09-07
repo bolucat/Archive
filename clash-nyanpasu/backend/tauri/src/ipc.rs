@@ -14,7 +14,6 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, path::PathBuf, result::Result as StdResult};
 use storage::{StorageOperationError, WebStorage};
-use struct_patch::Patch as _;
 use sysproxy::Sysproxy;
 use tauri::{AppHandle, Manager, State};
 use tray::icon::TrayIcon;
@@ -370,6 +369,24 @@ pub async fn get_runtime_yaml(client: State<'_, NyanpasuClient>) -> Result<Strin
 
 #[tauri::command]
 #[specta::specta]
+pub async fn inspect_runtime(
+    client: State<'_, NyanpasuClient>,
+) -> Result<Option<crate::client::runtime_inspection::RuntimeInspection>> {
+    Ok(client.inspect_runtime().await)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn inspect_runtime_node(
+    client: State<'_, NyanpasuClient>,
+    snapshot_id: String,
+    node_id: u32,
+) -> Result<crate::client::runtime_inspection::RuntimeInspectionContent> {
+    Ok(client.inspect_runtime_node(&snapshot_id, node_id).await?)
+}
+
+#[tauri::command]
+#[specta::specta]
 pub async fn get_runtime_exists(client: State<'_, NyanpasuClient>) -> Result<Vec<String>> {
     Ok(client
         .promoted_runtime()
@@ -436,7 +453,7 @@ pub struct PatchRuntimeConfig {
 pub async fn patch_clash_config(
     client: State<'_, NyanpasuClient>,
     payload: PatchRuntimeConfig,
-) -> Result {
+) -> Result<crate::client::runtime::MutationOutcome<()>> {
     // Explicit-field whitelist so future DTO fields never auto-leak into logs.
     tracing::debug!(
         allow_lan = ?payload.allow_lan,
@@ -449,17 +466,7 @@ pub async fn patch_clash_config(
     let overrides = serde_yaml::from_value::<
         nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
     >(serde_yaml::to_value(payload)?)?;
-    let mut clash = client.get_clash_config().await?;
-    clash.overrides.apply(overrides);
-    let mut patch = nyanpasu_config::clash::config::ClashConfig::new_empty_patch();
-    patch.overrides = Some(clash.overrides);
-    client.patch_clash_config(patch).await?;
-    client.reconcile_core().await?;
-    // A mode change rewrites the proxy groups; warm the cache the same way the
-    // pre-facade patch path did, or the next read serves the old groups until
-    // the actor cache's freshness window lapses.
-    client.request_proxy_refresh();
-    Ok(())
+    Ok(client.patch_runtime_overrides(overrides).await?)
 }
 
 #[tauri::command]
@@ -1109,40 +1116,36 @@ pub fn clear_storage(app_handle: AppHandle) -> Result {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_clash_ws_connections_state(
-    app_handle: AppHandle,
+    client: tauri::State<'_, NyanpasuClient>,
 ) -> Result<crate::core::clash::ws::ClashConnectionsConnectorState> {
-    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
-    Ok(ws_connector.state())
+    Ok(client.clash_ws_snapshot().await?.state)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn get_clash_ws_snapshot(
-    app_handle: AppHandle,
+    client: tauri::State<'_, NyanpasuClient>,
 ) -> Result<crate::core::clash::ws::ClashWsSnapshot> {
-    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
-    Ok(ws_connector.snapshot())
+    Ok(client.clash_ws_snapshot().await?)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn set_clash_ws_recording(
-    app_handle: AppHandle,
+    client: tauri::State<'_, NyanpasuClient>,
     kind: crate::core::clash::ws::ClashWsKind,
     enabled: bool,
 ) -> Result<crate::core::clash::ws::ClashWsRecording> {
-    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
-    Ok(ws_connector.set_recording(kind, enabled))
+    Ok(client.set_clash_ws_recording(kind, enabled).await?)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn clear_clash_ws_history(
-    app_handle: AppHandle,
+    client: tauri::State<'_, NyanpasuClient>,
     kind: crate::core::clash::ws::ClashWsKind,
 ) -> Result {
-    let ws_connector = app_handle.state::<crate::core::clash::ws::ClashConnectionsConnector>();
-    ws_connector.clear_history(kind);
+    client.clear_clash_ws_history(kind).await?;
     Ok(())
 }
 

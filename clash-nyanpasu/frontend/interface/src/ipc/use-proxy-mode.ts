@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { commands } from './bindings'
 import { useClashConfig } from './use-clash-config'
 import { useSetting } from './use-settings'
 
@@ -15,7 +14,7 @@ export type ProxyMode = 'rule' | 'global' | 'direct' | 'script'
  * @remarks
  * - Script mode is only available when using Clash Premium
  * - Default mode is 'rule' if current mode is invalid or not set
- * - Changes to proxy mode will clear all existing connections
+ * - The backend applies the configured connection-interruption policy
  */
 export const useProxyMode = () => {
   const clashConfig = useClashConfig()
@@ -55,8 +54,6 @@ export const useProxyMode = () => {
     if (clashCore.value !== 'clash' && mode === 'script') {
       throw new Error('Script mode is only available for Clash Premium')
     }
-
-    await commands.clashApiDeleteConnections(null)
 
     await clashConfig.upsert.mutateAsync({ mode })
   }

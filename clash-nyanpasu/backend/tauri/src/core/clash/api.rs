@@ -1,16 +1,8 @@
-use crate::config::Config;
-use anyhow::{Context, Result};
 use indexmap::IndexMap;
-use reqwest::{Method, StatusCode, header::HeaderMap};
 use serde::{Deserialize, Serialize};
-use serde_yaml::Mapping;
 use specta::Type;
-use std::{
-    collections::HashMap,
-    fmt::{self, Display, Formatter},
-};
+use std::fmt::{self, Display, Formatter};
 use tracing_attributes::instrument;
-use url::Url;
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, Type)]
 pub struct ClashConfig {
@@ -72,28 +64,6 @@ pub struct RuleProviderItem {
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
 pub struct ProvidersRulesRes {
     pub providers: IndexMap<String, RuleProviderItem>,
-}
-
-/// PUT /configs
-/// path 是绝对路径
-#[instrument]
-pub async fn put_configs(config_path: &str) -> Result<()> {
-    let path = "/configs";
-
-    let mut data = HashMap::new();
-    data.insert("path", config_path);
-
-    let _ = perform_request((Method::PUT, path, Data(data))).await?;
-
-    Ok(())
-}
-
-/// PATCH /configs
-#[instrument]
-pub async fn patch_configs(config: &Mapping) -> Result<()> {
-    let path = "/configs";
-    let _ = perform_request((Method::PATCH, path, Data(config))).await?;
-    Ok(())
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Type)]
@@ -243,117 +213,6 @@ pub struct ProvidersProxiesRes {
 #[derive(Default, Debug, Clone, Deserialize, Serialize, Type)]
 pub struct DelayRes {
     pub delay: u64,
-}
-
-/// 根据clash info获取clash服务地址和请求头
-#[instrument]
-fn clash_client_info() -> Result<(String, HeaderMap)> {
-    // TODO(actor-migration): temporary bridge to legacy controller configuration.
-    // Reason: config writes and connection-interruption policies still need
-    // lifecycle/config reconciliation migration before using the bound API.
-    // Remove when: those callers use the injected instance-bound ApiClient.
-    let client = { Config::clash().data().get_client_info() };
-
-    let server = format!("http://{}", client.server);
-
-    let mut headers = HeaderMap::new();
-    headers.insert("Content-Type", "application/json".parse()?);
-
-    if let Some(secret) = client.secret {
-        let secret = format!("Bearer {secret}").parse()?;
-        headers.insert("Authorization", secret);
-    }
-
-    Ok((server, headers))
-}
-
-/// The Request Parameters
-struct PerformRequest<D = ()> {
-    method: reqwest::Method,
-    path: String,
-    data: Option<D>,
-}
-/// A newtype wrapper for request body
-struct Data<T>(T);
-
-impl From<(reqwest::Method, &str)> for PerformRequest<()> {
-    fn from((method, path): (reqwest::Method, &str)) -> Self {
-        Self {
-            method,
-            path: path.to_string(),
-            data: None,
-        }
-    }
-}
-
-impl<T> From<(reqwest::Method, &str, Data<T>)> for PerformRequest<T>
-where
-    T: Serialize,
-{
-    fn from((method, path, Data(data)): (reqwest::Method, &str, Data<T>)) -> Self {
-        Self {
-            method,
-            path: path.to_string(),
-            data: Some(data),
-        }
-    }
-}
-
-#[instrument(skip_all, fields(
-    method = tracing::field::Empty,
-    url = tracing::field::Empty,
-    data = tracing::field::Empty,
-))]
-async fn perform_request<D>(param: impl Into<PerformRequest<D>>) -> Result<reqwest::Response>
-where
-    D: Serialize + core::fmt::Debug,
-{
-    let PerformRequest { method, path, data } = param.into();
-    let (host, headers) = clash_client_info().context("failed to get clash client info")?;
-    let base_url = Url::parse(&host).context("failed to parse host")?;
-    let opts = url::Url::options().base_url(Some(&base_url));
-    let url = opts.parse(&path).context("failed to parse path")?;
-
-    let span = tracing::Span::current();
-    span.record("method", tracing::field::display(&method));
-    span.record("url", tracing::field::display(&url));
-    span.record("data", tracing::field::debug(&data));
-
-    async {
-        let client = reqwest::ClientBuilder::new().no_proxy().build()?;
-        let mut builder = client.request(method.clone(), url.clone()).headers(headers);
-
-        if let Some(data) = &data {
-            builder = builder.json(data);
-        }
-
-        let resp = builder.send().await?;
-
-        if let Err(err) = resp.error_for_status_ref() {
-            match err.status() {
-                // Try To parse error message
-                Some(StatusCode::BAD_REQUEST) => {
-                    let Ok(bytes) = resp.bytes().await else {
-                        return Err(err.into());
-                    };
-
-                    let message: serde_json::Value = match serde_json::from_slice(&bytes) {
-                        Ok(v) => v,
-                        Err(_) => {
-                            let s = String::from_utf8_lossy(&bytes);
-                            serde_json::Value::String(s.to_string())
-                        }
-                    };
-
-                    return Err(err).context(format!("message: {message}"));
-                }
-                _ => return Err(err).context("clash api error"),
-            }
-        }
-        Ok(resp)
-    }
-    .await
-    .inspect_err(|e| tracing::error!(method = %method, url = %url, data = ?data, "failed to perform request: {:?}", e))
 }
 
 /// 缩短clash的日志
@@ -561,19 +420,6 @@ mod tests {
     }
 }
 
-/// DELETE /connections
-/// Close all connections or a specific connection by ID
-#[instrument]
-pub async fn delete_connections(id: Option<&str>) -> Result<()> {
-    let path = match id {
-        Some(id) => format!("/connections/{}", id),
-        None => "/connections".to_string(),
-    };
-
-    let _ = perform_request((Method::DELETE, path.as_str())).await?;
-    Ok(())
-}
-
 #[test]
 fn test_parse_check_output() {
     let str1 = r#"xxxx\n time="2022-11-18T20:42:58+08:00" level=error msg="proxy 0: 'alpn' expected type 'string', got unconvertible type '[]interface {}'""#;
@@ -593,25 +439,4 @@ fn test_parse_check_output() {
     println!("res3: {res3}");
 
     assert_eq!(res1, res3);
-}
-
-#[test]
-fn test_path() {
-    let host = "http://127.0.0.1:9090";
-    let path_with_prefix = "/configs";
-
-    let base_url = Url::parse(host).context("failed to parse host").unwrap();
-    let opts = url::Url::options().base_url(Some(&base_url));
-    let url = opts
-        .parse(path_with_prefix)
-        .context("failed to parse path")
-        .unwrap();
-    assert_eq!(url.to_string(), "http://127.0.0.1:9090/configs");
-
-    let path_without_prefix = "configs";
-    let url = opts
-        .parse(path_without_prefix)
-        .context("failed to parse path")
-        .unwrap();
-    assert_eq!(url.to_string(), "http://127.0.0.1:9090/configs");
 }

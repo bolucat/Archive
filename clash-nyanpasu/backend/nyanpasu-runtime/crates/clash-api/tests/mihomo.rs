@@ -28,7 +28,6 @@ use clash_api::{
     TunnelMode, UpdateConfigOptions, UpdateConfigRequest, UpgradeOptions,
 };
 use futures_util::{StreamExt, stream};
-use reqwest_websocket::Message;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::{sync::oneshot, task::JoinHandle, time::timeout};
 
@@ -693,26 +692,12 @@ where
         .unwrap()
 }
 
-async fn next_ws_json<T>(websocket: &mut reqwest_websocket::WebSocket) -> T
-where
-    T: DeserializeOwned,
-{
-    timeout(Duration::from_secs(4), async {
-        loop {
-            match websocket
-                .next()
-                .await
-                .expect("mihomo closed WebSocket")
-                .unwrap()
-            {
-                Message::Text(text) => return serde_json::from_str(&text).unwrap(),
-                Message::Binary(bytes) => return serde_json::from_slice(&bytes).unwrap(),
-                _ => {}
-            }
-        }
-    })
-    .await
-    .expect("mihomo WebSocket did not produce a JSON frame")
+async fn next_ws_json<T>(websocket: &mut clash_api::WebSocketStream<T>) -> T {
+    timeout(Duration::from_secs(4), websocket.next())
+        .await
+        .expect("mihomo WebSocket did not produce a JSON frame")
+        .expect("mihomo closed WebSocket")
+        .unwrap()
 }
 
 async fn wait_for_connection(client: &Client) -> Connection {

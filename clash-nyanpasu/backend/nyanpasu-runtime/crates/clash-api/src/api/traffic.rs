@@ -64,7 +64,7 @@ impl fmt::Display for Bytes {
     specta::Type,
 )]
 #[serde(transparent)]
-pub struct BytesPerSecond(i64);
+pub struct BytesPerSecond(#[serde(deserialize_with = "crate::stream::deserialize_number")] i64);
 
 impl BytesPerSecond {
     pub const fn new(value: i64) -> Self {
@@ -102,8 +102,8 @@ impl fmt::Display for BytesPerSecond {
 pub struct Traffic {
     pub up: BytesPerSecond,
     pub down: BytesPerSecond,
-    pub up_total: Bytes,
-    pub down_total: Bytes,
+    pub up_total: Option<Bytes>,
+    pub down_total: Option<Bytes>,
 }
 
 impl Client {
@@ -115,15 +115,17 @@ impl Client {
         Ok(HttpStream::from_response(response, OPERATION))
     }
 
-    /// Complete the `/traffic` WebSocket handshake and return the raw socket.
+    /// Open the typed `/traffic` WebSocket.
     ///
     /// This method retries only the handshake according to the injected policy.
-    /// Once returned, reconnection and frame decoding belong to the caller.
-    pub async fn traffic_ws(&self) -> Result<reqwest_websocket::WebSocket> {
+    /// Once returned, reconnection belongs to the caller.
+    pub async fn traffic_ws(&self) -> Result<crate::WebSocketStream<Traffic>> {
         const OPERATION: &str = "traffic_ws";
         let metadata = RequestMetadata::new(OPERATION, Method::GET, true);
 
-        self.websocket(metadata, || self.get("/traffic")).await
+        self.websocket(metadata, || self.get("/traffic"))
+            .await
+            .map(|socket| crate::WebSocketStream::new(socket, "traffic_ws"))
     }
 }
 
@@ -138,7 +140,7 @@ mod tests {
 
         assert_eq!(traffic.up.get(), -1);
         assert_eq!(traffic.down.get(), 2);
-        assert_eq!(traffic.up_total.get(), 3);
-        assert_eq!(traffic.down_total.get(), 4);
+        assert_eq!(traffic.up_total.unwrap().get(), 3);
+        assert_eq!(traffic.down_total.unwrap().get(), 4);
     }
 }

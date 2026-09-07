@@ -1,6 +1,7 @@
 mod application;
 mod clash_api;
 mod clash_config;
+mod clash_streams;
 pub mod core_lifecycle;
 mod error;
 mod event_sink;
@@ -8,6 +9,7 @@ mod ports;
 pub mod profiles;
 pub mod rebuild;
 pub mod runtime;
+pub mod runtime_inspection;
 mod session_state;
 mod system_dns;
 
@@ -260,6 +262,7 @@ struct NyanpasuClientInner {
     core_lifecycle: core_lifecycle::CoreLifecycleClient,
     core_api: CoreClientV2,
     proxies: crate::core::proxies::ProxiesClient,
+    streams: crate::core::clash::ws::StreamsClient,
     system_dns: Arc<dyn SystemDnsCache>,
 }
 
@@ -372,6 +375,7 @@ impl NyanpasuClient {
             })
             .await?;
         let proxies = crate::core::proxies::ProxiesClient::spawn(core_v2.clone()).await?;
+        let streams = crate::core::clash::ws::StreamsClient::spawn(core_v2.clone()).await?;
         Ok(Self {
             inner: Arc::new(NyanpasuClientInner {
                 application,
@@ -386,6 +390,7 @@ impl NyanpasuClient {
                 core_lifecycle,
                 core_api: core_v2,
                 proxies,
+                streams,
                 system_dns,
             }),
         })
@@ -556,6 +561,20 @@ impl NyanpasuClient {
     pub async fn get_clash_config(&self) -> Result<ClashConfig> {
         let client = self.inner.clash_config.clone();
         Ok(client.get().await?.state)
+    }
+
+    pub async fn patch_runtime_overrides(
+        &self,
+        patch: nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch,
+    ) -> Result<runtime::MutationOutcome<()>> {
+        let outcome = self
+            .inner
+            .core_lifecycle
+            .patch_runtime_overrides(patch)
+            .await
+            .map_err(client_error_from_core)?;
+        self.request_proxy_refresh();
+        Ok(outcome)
     }
 
     pub async fn patch_clash_config(&self, patch: ClashConfigPatch) -> Result<()> {
@@ -2599,6 +2618,51 @@ pub(crate) mod tests {
         client.reconcile_core().await.unwrap();
         assert!(client.promoted_runtime().await.is_some());
         assert!(client.runtime_product_path().exists());
+    }
+
+    #[tokio::test]
+    async fn runtime_inspection_tracks_promoted_builds() {
+        let dir = tempdir().unwrap();
+        let client = test_client(&dir).await;
+        assert!(client.inspect_runtime().await.is_none());
+        assert!(client.inspect_runtime_node("missing", 0).await.is_err());
+        client.reconcile_core().await.unwrap();
+        let first = client.inspect_runtime().await.unwrap();
+        assert!(!first.nodes.is_empty());
+        let final_node = first
+            .nodes
+            .iter()
+            .find(|node| {
+                matches!(
+                    node.tag,
+                    nyanpasu_config::runtime::snapshot::OperatorTag::BuiltinStep {
+                        step: nyanpasu_config::runtime::snapshot::BuiltinStepKind::Finalizing,
+                        ..
+                    }
+                )
+            })
+            .unwrap();
+        let content = client
+            .inspect_runtime_node(&first.snapshot_id, final_node.id)
+            .await
+            .unwrap();
+        let config: serde_yaml::Mapping = serde_yaml::from_str(&content.yaml).unwrap();
+        assert_eq!(config, client.promoted_runtime().await.unwrap().config);
+        client.reconcile_core().await.unwrap();
+        let second = client.inspect_runtime().await.unwrap();
+        assert_ne!(first.snapshot_id, second.snapshot_id);
+        assert!(
+            client
+                .inspect_runtime_node(&first.snapshot_id, first.root_id)
+                .await
+                .is_err()
+        );
+        assert!(
+            client
+                .inspect_runtime_node(&second.snapshot_id, second.root_id)
+                .await
+                .is_ok()
+        );
     }
 
     #[tokio::test]

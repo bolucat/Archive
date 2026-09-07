@@ -20,8 +20,4 @@ pub use client::{Client, ClientBuilder, ControllerEndpoint, Host, Secret};
 pub use error::{Error, ErrorBody, Result};
 pub use indexmap::IndexMap;
 pub use retry::{DelayRange, ExponentialRetry, NoRetry, RequestMetadata, RetryPolicy};
-pub use stream::HttpStream;
-
-// TODO(ws-typed-stream): consider an opt-in typed frame adapter after raw
-// WebSocket callers have migrated. The endpoint methods intentionally return
-// `reqwest_websocket::WebSocket` directly in this implementation.
+pub use stream::{HttpStream, WebSocketStream};

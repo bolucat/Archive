@@ -14,7 +14,7 @@ pub struct ConnectionsSnapshot {
     pub upload_total: i64,
     /// Mihomo serializes this field as `null` when no connections exist.
     pub connections: Option<Vec<Connection>>,
-    pub memory: u64,
+    pub memory: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
@@ -26,9 +26,12 @@ pub struct Connection {
     pub download: i64,
     pub start: DateTime<FixedOffset>,
     pub chains: Vec<String>,
-    pub provider_chains: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_chains: Option<Vec<String>>,
     pub rule: String,
     pub rule_payload: String,
+    #[serde(flatten)]
+    pub extra: indexmap::IndexMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
@@ -71,7 +74,6 @@ pub enum ConnectionType {
     TrustTunnel,
     ShadowQuic,
     Inner,
-    #[serde(other)]
     Unknown,
 }
 
@@ -85,60 +87,86 @@ pub enum DnsMode {
     RedirHost,
     #[serde(rename = "hosts")]
     Hosts,
-    #[serde(other)]
     Unknown,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct ConnectionMetadata {
-    pub network: ConnectionNetwork,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network: Option<crate::ConfigEnum<ConnectionNetwork>>,
     #[serde(rename = "type")]
-    pub connection_type: ConnectionType,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub connection_type: Option<crate::ConfigEnum<ConnectionType>>,
     #[serde(rename = "sourceIP")]
-    pub source_ip: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ip: Option<String>,
     #[serde(rename = "destinationIP")]
-    pub destination_ip: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination_ip: Option<String>,
     #[serde(rename = "sourceGeoIP")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_geo_ip: Option<Vec<String>>,
     #[serde(rename = "destinationGeoIP")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destination_geo_ip: Option<Vec<String>>,
     #[serde(rename = "sourceIPASN")]
-    pub source_ip_asn: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ip_asn: Option<String>,
     #[serde(rename = "destinationIPASN")]
-    pub destination_ip_asn: String,
-    #[serde(rename = "sourcePort", with = "string_u16")]
-    #[specta(type = String)]
-    pub source_port: u16,
-    #[serde(rename = "destinationPort", with = "string_u16")]
-    #[specta(type = String)]
-    pub destination_port: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination_ip_asn: Option<String>,
+    #[serde(rename = "sourcePort", with = "optional_port")]
+    #[specta(type = Option<String>)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_port: Option<u16>,
+    #[serde(rename = "destinationPort", with = "optional_port")]
+    #[specta(type = Option<String>)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destination_port: Option<u16>,
     #[serde(rename = "inboundIP")]
-    pub inbound_ip: String,
-    #[serde(rename = "inboundPort", with = "string_u16")]
-    #[specta(type = String)]
-    pub inbound_port: u16,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbound_ip: Option<String>,
+    #[serde(rename = "inboundPort", with = "optional_port")]
+    #[specta(type = Option<String>)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbound_port: Option<u16>,
     #[serde(rename = "inboundName")]
-    pub inbound_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbound_name: Option<String>,
     #[serde(rename = "inboundUser")]
-    pub inbound_user: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbound_user: Option<String>,
     #[serde(rename = "rematchName")]
-    pub rematch_name: String,
-    pub host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rematch_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
     #[serde(rename = "dnsMode")]
-    pub dns_mode: DnsMode,
-    pub uid: u32,
-    pub process: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns_mode: Option<crate::ConfigEnum<DnsMode>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uid: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process: Option<String>,
     #[serde(rename = "processPath")]
-    pub process_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_path: Option<String>,
     #[serde(rename = "specialProxy")]
-    pub special_proxy: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub special_proxy: Option<String>,
     #[serde(rename = "specialRules")]
-    pub special_rules: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub special_rules: Option<String>,
     #[serde(rename = "remoteDestination")]
-    pub remote_destination: String,
-    pub dscp: u8,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_destination: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dscp: Option<u8>,
     #[serde(rename = "sniffHost")]
-    pub sniff_host: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sniff_host: Option<String>,
+    #[serde(flatten)]
+    pub extra: indexmap::IndexMap<String, serde_json::Value>,
 }
 
 /// WebSocket sampling interval. Mihomo interprets it as decimal milliseconds.
@@ -191,17 +219,18 @@ impl Client {
         .await
     }
 
-    /// Open the sampled connections WebSocket and return it without wrapping.
+    /// Open the sampled, typed connections WebSocket.
     pub async fn connections_ws(
         &self,
         query: ConnectionStreamQuery,
-    ) -> Result<reqwest_websocket::WebSocket> {
+    ) -> Result<crate::WebSocketStream<ConnectionsSnapshot>> {
         let interval = query.milliseconds().to_string();
         self.websocket(
             RequestMetadata::new("connections_ws", Method::GET, true),
             || Ok(self.get("/connections")?.query(&[("interval", &interval)])),
         )
         .await
+        .map(|socket| crate::WebSocketStream::new(socket, "connections_ws"))
     }
 
     /// Close a connection. Mihomo also returns success when the id is absent.
@@ -224,22 +253,26 @@ impl Client {
     }
 }
 
-mod string_u16 {
-    use serde::{Deserialize, Deserializer, Serializer, de::Error as _};
-
-    pub fn serialize<S>(value: &u16, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(&value.to_string())
+mod optional_port {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+    pub fn serialize<S: Serializer>(value: &Option<u16>, serializer: S) -> Result<S::Ok, S::Error> {
+        value.map(|port| port.to_string()).serialize(serializer)
     }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<u16, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        value.parse().map_err(D::Error::custom)
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<u16>, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Port {
+            Text(String),
+            Number(u16),
+        }
+        Option::<Port>::deserialize(deserializer)?
+            .map(|port| match port {
+                Port::Text(text) => text.parse().map_err(D::Error::custom),
+                Port::Number(port) => Ok(port),
+            })
+            .transpose()
     }
 }
 
@@ -265,8 +298,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(metadata.source_port, 1234);
-        assert_eq!(metadata.destination_port, 443);
+        assert_eq!(metadata.source_port, Some(1234));
+        assert_eq!(metadata.destination_port, Some(443));
         assert_eq!(metadata.source_geo_ip, None);
     }
 

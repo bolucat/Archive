@@ -107,6 +107,8 @@ A strongly-typed async client for the Mihomo/Clash External Controller (REST + W
 - `Client` / `ClientBuilder` with `Host` transports: `Http`, `NamedPipe` (Windows only), `UnixSocket` (Unix only); supports bearer `secret` and pluggable `RetryPolicy`.
 - Typed endpoint methods grouped by domain: configs, proxies/providers, rules, connections, DNS, logs/traffic/memory streams, maintenance (restart/upgrade).
 - DTOs derive `specta::Type` so TypeScript bindings can be generated for the frontend.
+- WebSocket endpoints return owned `WebSocketStream<T>` values (a breaking replacement for raw sockets). `StreamExt::next()` yields decoded text/binary JSON samples; control frames stay internal, decode errors affect one sample, and dropping the stream releases its transport. Reconnection and instance fencing belong to the application.
+- Connection metadata and traffic totals retain absent fields as `Option`; open response enums and ordered extension maps preserve fields from compatible controllers. Request enums remain strict.
 
 ### nyanpasu-utils (`crates/nyanpasu-utils`)
 

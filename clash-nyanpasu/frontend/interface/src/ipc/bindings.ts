@@ -32,7 +32,9 @@ export const commands = {
     typedError<string[], string>(__TAURI_INVOKE('get_clash_logs')),
   /**  patch clash runtime config */
   patchClashConfig: (payload: PatchRuntimeConfig_Deserialize) =>
-    typedError<null, string>(__TAURI_INVOKE('patch_clash_config', { payload })),
+    typedError<MutationOutcome<null>, string>(
+      __TAURI_INVOKE('patch_clash_config', { payload }),
+    ),
   changeClashCore: (
     clashCore:
       | 'clash'
@@ -55,6 +57,21 @@ export const commands = {
     typedError<string, string>(__TAURI_INVOKE('get_runtime_yaml')),
   getRuntimeExists: () =>
     typedError<string[], string>(__TAURI_INVOKE('get_runtime_exists')),
+  inspectRuntime: () =>
+    typedError<
+      {
+        snapshot_id: string
+        revision: string
+        target_core: string
+        root_id: number
+        nodes: RuntimeInspectionNode[]
+      } | null,
+      string
+    >(__TAURI_INVOKE('inspect_runtime')),
+  inspectRuntimeNode: (snapshotId: string, nodeId: number) =>
+    typedError<RuntimeInspectionContent, string>(
+      __TAURI_INVOKE('inspect_runtime_node', { snapshotId, nodeId }),
+    ),
   getPostprocessingOutput: () =>
     typedError<PostProcessingOutput, string>(
       __TAURI_INVOKE('get_postprocessing_output'),
@@ -381,6 +398,10 @@ export type BuildInfo = {
   llvm_version: string
 }
 
+/**  Built-in post-processing steps applied to the selected config. */
+export type BuiltinStepKind =
+  'guard_overrides' | 'whitelist_field_filter' | 'finalizing'
+
 export type ClashConfig = {
   port: number | null
   mode: string | null
@@ -464,14 +485,10 @@ export type ClashWsConnectionSnapshot = {
   connections: any | null
 }
 
-export type ClashWsEvent =
-  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
-  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
-  | { kind: 'log_appended'; data: ClashWsLog }
-  | { kind: 'traffic_updated'; data: ClashWsTraffic }
-  | { kind: 'memory_updated'; data: ClashWsMemory }
-  | { kind: 'recording_changed'; data: ClashWsRecording }
-  | { kind: 'history_cleared'; data: ClashWsKind }
+export type ClashWsEvent = {
+  sequence: number
+  update: ClashWsUpdate
+}
 
 export type ClashWsKind = 'connections' | 'logs' | 'traffic' | 'memory'
 
@@ -494,6 +511,7 @@ export type ClashWsRecording = {
 }
 
 export type ClashWsSnapshot = {
+  sequence: number
   state: ClashConnectionsConnectorState
   recording: ClashWsRecording
   connections: ClashWsConnectionSnapshot[]
@@ -506,6 +524,16 @@ export type ClashWsTraffic = {
   up: number
   down: number
 }
+
+export type ClashWsUpdate =
+  | { kind: 'reset'; data: ClashWsSnapshot }
+  | { kind: 'state_changed'; data: ClashConnectionsConnectorState }
+  | { kind: 'connections_updated'; data: ClashWsConnectionSnapshot }
+  | { kind: 'log_appended'; data: ClashWsLog }
+  | { kind: 'traffic_updated'; data: ClashWsTraffic }
+  | { kind: 'memory_updated'; data: ClashWsMemory }
+  | { kind: 'recording_changed'; data: ClashWsRecording }
+  | { kind: 'history_cleared'; data: ClashWsKind }
 
 export type CompositionConfig =
   CompositionConfig_Serialize | CompositionConfig_Deserialize
@@ -577,6 +605,26 @@ export type ConfigDefinition_Serialize =
       extend_proxies_from?: ProfileId[]
       transforms?: ProfileId[]
     } & { source?: never })
+
+/**  Why a config pipeline is being executed. */
+export type ConfigExecutionRole =
+  /**  The final config selected by `Profiles.current`. */
+  | { kind: 'selected' }
+  /**  Built as the base member of a composition. */
+  | {
+      kind: 'composition_base'
+      data: {
+        composition_id: ProfileId
+      }
+    }
+  /**  Built as a proxies contributor of a composition. */
+  | {
+      kind: 'composition_contributor'
+      data: {
+        composition_id: ProfileId
+        contributor_index: number
+      }
+    }
 
 /**
  *  Identity of the config the running core actually adopted.
@@ -1369,6 +1417,70 @@ export type NewProfileRequest_Serialize = {
   definition: ProfileDefinition_Serialize
 }
 
+/**  The pipeline operator that produced a snapshot node. */
+export type OperatorTag =
+  | {
+      kind: 'file_config_root'
+      data: {
+        profile_id: ProfileId
+        role: ConfigExecutionRole
+      }
+    }
+  /**  `base: None` is the clean seed (`proxies: []`). */
+  | {
+      kind: 'composition_root'
+      data: {
+        profile_id: ProfileId
+        base: ProfileId | null
+      }
+    }
+  | {
+      kind: 'extend_proxies_step'
+      data: {
+        composition_id: ProfileId
+        contributor_profile_id: ProfileId
+        contributor_index: number
+      }
+    }
+  | {
+      kind: 'scoped_transform'
+      data: {
+        host_profile_id: ProfileId
+        role: ConfigExecutionRole
+        transform_profile_id: ProfileId
+        transform_kind: TransformKind
+        step_index: number
+      }
+    }
+  /**  `selected_profile_id: None` = bare 模式（current 为空，spec §2 目标 6）。 */
+  | {
+      kind: 'global_transform'
+      data: {
+        selected_profile_id: ProfileId | null
+        transform_profile_id: ProfileId
+        transform_kind: TransformKind
+        step_index: number
+      }
+    }
+  | {
+      kind: 'builtin_step'
+      data: {
+        selected_profile_id: ProfileId | null
+        step: BuiltinStepKind
+      }
+    }
+  /**  current = None 的裸配置管线根（spec §8.2）。 */
+  | { kind: 'bare_root' }
+  /**  内建增强脚本步骤；`name` 为展示性字段，`node_key()` 丢弃。 */
+  | {
+      kind: 'builtin_transform'
+      data: {
+        selected_profile_id: ProfileId | null
+        name: string
+        step_index: number
+      }
+    }
+
 export type OverlayTransform =
   OverlayTransform_Serialize | OverlayTransform_Deserialize
 
@@ -2043,6 +2155,34 @@ export type RuntimeInfos = {
   nyanpasu_data_dir: string
 }
 
+export type RuntimeInspection = {
+  snapshot_id: string
+  revision: string
+  target_core: string
+  root_id: number
+  nodes: RuntimeInspectionNode[]
+}
+
+export type RuntimeInspectionContent = {
+  yaml: string
+  diff: RuntimeInspectionDiff | null
+  logs: StepLogEntry[]
+}
+
+export type RuntimeInspectionDiff = {
+  parent_id: number
+  hunks: SnapshotDiffHunk[]
+}
+
+export type RuntimeInspectionNode = {
+  id: number
+  tag: OperatorTag
+  next: number[]
+  has_logs: boolean
+  /**  None means unchanged or no comparison baseline (including independent roots). */
+  changed_fields: string[] | null
+}
+
 /**
  *  Emitted to the frontend when a `clash-nyanpasu`/`clash` custom-scheme deep
  *  link is received: either from a secondary instance while the app is already
@@ -2201,6 +2341,15 @@ export type ServiceStatusInfo_Serialize = {
   restart_attempts: number
 }
 
+export type SnapshotDiffHunk = {
+  old_start: number
+  old_lines: number
+  new_start: number
+  new_lines: number
+  /**  Unified diff lines, including their space, plus, or minus prefix. */
+  lines: string[]
+}
+
 export type StatusResBody = StatusResBody_Serialize | StatusResBody_Deserialize
 
 export type StatusResBody_Deserialize = {
@@ -2228,6 +2377,14 @@ export type StatusResBody_Serialize = {
    */
   logs?: LogPathsInfo_Serialize | null
 }
+
+export type StepLogEntry = {
+  level: StepLogLevel
+  message: string
+}
+
+/**  1:1 with the legacy `LogSpan` wire shape (enhance/utils.rs:18-25). */
+export type StepLogLevel = 'log' | 'info' | 'warn' | 'error'
 
 export type StorageEntry = {
   key: string
@@ -2301,6 +2458,9 @@ export type TransformDefinition_Serialize =
   | ({ type: 'overlay'; source: ProfileSource_Serialize } & { runtime?: never })
   /**  Imperative JS/Lua transform. */
   | { type: 'script'; source: ProfileSource_Serialize; runtime: ScriptRuntime }
+
+export type TransformKind =
+  { type: 'overlay' } | { type: 'script'; runtime: ScriptRuntime }
 
 export type TransformOwner =
   { type: 'global' } | { type: 'config'; uid: ProfileId }

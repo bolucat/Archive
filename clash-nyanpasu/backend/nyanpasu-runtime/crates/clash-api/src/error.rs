@@ -117,6 +117,13 @@ pub enum Error {
         source: LinesCodecError,
     },
 
+    #[error("Clash API WebSocket read `{operation}` failed: {source}")]
+    WebSocketRead {
+        operation: &'static str,
+        #[source]
+        source: reqwest_websocket::Error,
+    },
+
     #[error("Clash API WebSocket handshake `{operation}` failed: {source}")]
     WebSocket {
         operation: &'static str,

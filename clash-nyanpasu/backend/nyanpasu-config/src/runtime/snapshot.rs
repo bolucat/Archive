@@ -1,5 +1,8 @@
 //! A snapshot of the clash config processing.
 
+mod diff;
+pub use diff::SnapshotDiffHunk;
+
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -231,6 +234,7 @@ pub enum SnapshotBaseline {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct ConfigSnapshotState<C> {
     pub snapshot: ConfigSnapshot,
+    pub baseline: SnapshotBaseline,
     /// The operator that generated this snapshot.
     pub tag: OperatorTag,
     /// Semantic position key derived from `tag` at materialization time.
@@ -239,10 +243,16 @@ pub struct ConfigSnapshotState<C> {
 }
 
 impl<C> ConfigSnapshotState<C> {
-    pub fn new(snapshot: ConfigSnapshot, tag: OperatorTag, next: Option<Vec<C>>) -> Self {
+    pub fn new(
+        snapshot: ConfigSnapshot,
+        tag: OperatorTag,
+        baseline: SnapshotBaseline,
+        next: Option<Vec<C>>,
+    ) -> Self {
         let key = tag.node_key();
         Self {
             snapshot,
+            baseline,
             tag,
             key,
             next,
@@ -255,6 +265,25 @@ impl<C> ConfigSnapshotState<C> {
 pub struct ConfigSnapshotsGraph {
     pub nodes: Vec<ConfigSnapshotState<Idx>>,
     pub root_id: Idx,
+}
+
+impl ConfigSnapshotsGraph {
+    /// The comparison parent, excluding an independent branch's attachment point.
+    pub fn comparison_parent(&self, node_id: Idx) -> Option<Idx> {
+        let node = self.nodes.get(node_id as usize)?;
+        if node.baseline == SnapshotBaseline::Independent {
+            return None;
+        }
+        self.nodes
+            .iter()
+            .position(|parent| {
+                parent
+                    .next
+                    .as_ref()
+                    .is_some_and(|children| children.contains(&node_id))
+            })
+            .map(|id| id as Idx)
+    }
 }
 
 /// Storage payload: keyframe (`Full`) or relative `Delta` against the parent node.
@@ -324,17 +353,41 @@ impl Default for KeyframePolicy {
 
 impl KeyframePolicy {
     fn encode(&self, parent: &ConfigValue, current: Arc<ConfigValue>) -> SnapshotPayload {
-        let parent_json = parent.to_json();
+        let mut parent_json = parent.to_json();
         let current_json = current.to_json();
         let patch = json_patch::diff(&parent_json, &current_json);
         let patch_len = serialized_len(&patch);
         let full_len = serialized_len(&current_json).max(1);
 
         if (patch_len as f32) > (full_len as f32 * self.delta_to_full_ratio) {
+            return SnapshotPayload::Full(current);
+        }
+        // JSON Patch ignores object order, and remove uses swap_remove.
+        // Keep a keyframe if replay would misrepresent the executor's YAML.
+        if json_patch::patch(&mut parent_json, &patch).is_err()
+            || !same_object_order(&parent_json, &current_json)
+        {
             SnapshotPayload::Full(current)
         } else {
             SnapshotPayload::Delta(patch)
         }
+    }
+}
+
+fn same_object_order(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    match (left, right) {
+        (serde_json::Value::Object(left), serde_json::Value::Object(right)) => {
+            left.len() == right.len()
+                && left
+                    .iter()
+                    .zip(right)
+                    .all(|((lk, lv), (rk, rv))| lk == rk && same_object_order(lv, rv))
+        }
+        (serde_json::Value::Array(left), serde_json::Value::Array(right)) => {
+            left.len() == right.len()
+                && left.iter().zip(right).all(|(l, r)| same_object_order(l, r))
+        }
+        _ => left == right,
     }
 }
 
@@ -794,6 +847,7 @@ impl StoredConfigSnapshotsGraph {
                 config: config.clone(),
                 changed_fields,
             },
+            baseline: state.baseline,
             tag: state.tag.clone(),
             key: state.tag.node_key(),
             next: next.clone(),
@@ -1200,6 +1254,50 @@ mod tests {
     }
 
     #[test]
+    fn materialization_preserves_order_after_removal_and_reordering() {
+        let original = json!({"mode": "rule", "proxies": ["a", "b"], "rules": ["MATCH,DIRECT"]});
+        for (parent, current) in [
+            (
+                original.clone(),
+                json!({"proxies": ["a", "b"], "rules": ["MATCH,DIRECT"]}),
+            ),
+            (
+                original,
+                json!({"rules": ["MATCH,DIRECT"], "proxies": ["a", "b"], "mode": "rule"}),
+            ),
+            (
+                json!({"proxies": [{"a": 1, "b": 2, "c": 3}]}),
+                json!({"proxies": [{"b": 2, "c": 3}]}),
+            ),
+            (
+                json!({"proxies": [{"b": 2, "c": 3}]}),
+                json!({"proxies": [{"b": 2, "a": 1, "c": 3}]}),
+            ),
+        ] {
+            let parent = value(parent);
+            let current = value(current);
+            let mut builder = ConfigSnapshotsBuilder::new_root_with_keyframe_policy(
+                parent.clone(),
+                OperatorTag::BareRoot,
+                KeyframePolicy {
+                    delta_to_full_ratio: 10.0,
+                },
+            );
+            builder
+                .push(
+                    builtin_step("primary", BuiltinStepKind::Finalizing),
+                    current.clone(),
+                )
+                .unwrap();
+            let graph = builder.build().unwrap();
+            assert_eq!(
+                serde_json::to_string(&graph.nodes[1].snapshot.config).unwrap(),
+                serde_json::to_string(&current.to_json()).unwrap(),
+            );
+        }
+    }
+
+    #[test]
     fn keyframe_threshold_selects_full_when_patch_is_too_large() {
         let parent = value(json!({ "a": 1 }));
         let current = value(json!({ "a": 2 }));
@@ -1223,6 +1321,23 @@ mod tests {
         let patch = json_patch::diff(&before, &after);
         let fields = changed_fields_from_patch(&patch).unwrap();
         assert!(fields.contains("a/b.~1"));
+    }
+
+    #[test]
+    fn comparison_parent_distinguishes_unchanged_from_independent() {
+        let config = value(json!({"mode": "rule"}));
+        let mut builder =
+            ConfigSnapshotsBuilder::new_root(config.clone(), selected_file_root("primary"));
+        builder
+            .push(builtin_step("primary", BuiltinStepKind::Finalizing), config)
+            .unwrap();
+        let graph = builder.build().unwrap();
+        assert_eq!(graph.comparison_parent(graph.root_id), None);
+        assert_eq!(graph.comparison_parent(1), Some(graph.root_id));
+        assert_eq!(
+            graph.nodes[1].snapshot.config,
+            graph.nodes[0].snapshot.config
+        );
     }
 
     #[test]

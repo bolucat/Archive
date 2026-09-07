@@ -10,11 +10,10 @@ use axum::{
     response::{IntoResponse, Response},
     routing::get,
 };
-use clash_api::{Client, Host, Traffic};
+use clash_api::{Client, Host};
 use futures_util::StreamExt;
 use hyper::server::conn::http1;
 use hyper_util::{rt::TokioIo, service::TowerToHyperService};
-use reqwest_websocket::Message;
 use tokio::net::windows::named_pipe::ServerOptions;
 
 struct OptionalWebSocket(Option<WebSocketUpgrade>);
@@ -101,13 +100,20 @@ async fn named_pipe_supports_http_and_websocket_without_bearer_auth() {
         .unwrap();
 
     let mut stream = client.traffic().await.unwrap();
-    assert_eq!(stream.next().await.unwrap().unwrap().up_total.get(), 3);
+    assert_eq!(
+        stream
+            .next()
+            .await
+            .unwrap()
+            .unwrap()
+            .up_total
+            .unwrap()
+            .get(),
+        3
+    );
 
     let mut websocket = client.traffic_ws().await.unwrap();
-    let Message::Text(text) = websocket.next().await.unwrap().unwrap() else {
-        panic!("expected a text frame");
-    };
-    let traffic: Traffic = serde_json::from_str(&text).unwrap();
-    assert_eq!(traffic.down_total.get(), 4);
+    let traffic = websocket.next().await.unwrap().unwrap();
+    assert_eq!(traffic.down_total.unwrap().get(), 4);
     accept_loop.abort();
 }

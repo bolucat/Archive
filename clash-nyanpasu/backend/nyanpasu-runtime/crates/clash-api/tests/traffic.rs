@@ -17,7 +17,6 @@ use axum::{
 };
 use clash_api::{Client, DelayRange, Error, ExponentialRetry, Host, Traffic};
 use futures_util::{StreamExt, stream};
-use reqwest_websocket::Message;
 
 const TRAFFIC_ONE: &str = r#"{"up":1,"down":2,"upTotal":3,"downTotal":4}"#;
 
@@ -59,14 +58,14 @@ async fn traffic_http_decodes_json_across_arbitrary_chunks() {
     let second = stream.next().await.unwrap().unwrap();
 
     assert_eq!(first.up.get(), 1);
-    assert_eq!(first.down_total.get(), 4);
-    assert_eq!(second.up_total.get(), 7);
+    assert_eq!(first.down_total.unwrap().get(), 4);
+    assert_eq!(second.up_total.unwrap().get(), 7);
     assert!(stream.next().await.is_none());
     server.abort();
 }
 
 #[tokio::test]
-async fn traffic_ws_returns_the_raw_socket_and_preserves_the_frame() {
+async fn traffic_ws_decodes_a_typed_frame() {
     async fn handler(ws: WebSocketUpgrade, headers: HeaderMap) -> impl IntoResponse {
         assert_eq!(headers["authorization"], "Bearer controller-secret");
         ws.on_upgrade(|mut socket| async move {
@@ -83,15 +82,11 @@ async fn traffic_ws_returns_the_raw_socket_and_preserves_the_frame() {
         .build()
         .unwrap();
 
-    let mut websocket: reqwest_websocket::WebSocket = client.traffic_ws().await.unwrap();
-    let message = websocket.next().await.unwrap().unwrap();
-    let Message::Text(text) = message else {
-        panic!("expected a text frame");
-    };
-    let traffic: Traffic = serde_json::from_str(&text).unwrap();
+    let mut websocket: clash_api::WebSocketStream<Traffic> = client.traffic_ws().await.unwrap();
+    let traffic = websocket.next().await.unwrap().unwrap();
 
     assert_eq!(traffic.up.get(), 1);
-    assert_eq!(traffic.down_total.get(), 4);
+    assert_eq!(traffic.down_total.unwrap().get(), 4);
     server.abort();
 }
 
@@ -168,10 +163,7 @@ async fn retry_policy_covers_the_websocket_handshake_but_not_the_open_socket() {
         .unwrap();
 
     let mut websocket = client.traffic_ws().await.unwrap();
-    assert!(matches!(
-        websocket.next().await.unwrap().unwrap(),
-        Message::Text(_)
-    ));
+    assert_eq!(websocket.next().await.unwrap().unwrap().up.get(), 1);
     assert_eq!(attempts.load(Ordering::SeqCst), 3);
     server.abort();
 }

@@ -556,7 +556,7 @@ define KernelPackage/crypto-lib-chacha20
   $(call AddDepends/crypto)
 endef
 
-ifneq ($(KERNEL_PATCHVER),6.18)
+ifeq ($(KERNEL_PATCHVER),6.12)
 ifndef CONFIG_TARGET_uml
 define KernelPackage/crypto-lib-chacha20/x86_64
   KCONFIG+=CONFIG_CRYPTO_CHACHA20_X86_64
@@ -618,7 +618,7 @@ define KernelPackage/crypto-lib-curve25519
   $(call AddDepends/crypto,+kmod-crypto-kpp)
 endef
 
-ifneq ($(KERNEL_PATCHVER),6.18)
+ifeq ($(KERNEL_PATCHVER),6.12)
 ifndef CONFIG_TARGET_uml
 define KernelPackage/crypto-lib-curve25519/x86_64
   KCONFIG+=CONFIG_CRYPTO_CURVE25519_X86
@@ -653,7 +653,7 @@ define KernelPackage/crypto-lib-poly1305
   $(call AddDepends/crypto,+kmod-crypto-hash)
 endef
 
-ifneq ($(KERNEL_PATCHVER),6.18)
+ifeq ($(KERNEL_PATCHVER),6.12)
 ifndef CONFIG_TARGET_uml
 define KernelPackage/crypto-lib-poly1305/x86_64
   KCONFIG+=CONFIG_CRYPTO_POLY1305_X86_64
@@ -975,7 +975,7 @@ define KernelPackage/crypto-sha1
   $(call AddDepends/crypto)
 endef
 
-ifneq ($(KERNEL_PATCHVER),6.18)
+ifeq ($(KERNEL_PATCHVER),6.12)
 define KernelPackage/crypto-sha1/arm
   FILES+=$(LINUX_DIR)/arch/arm/crypto/sha1-arm.ko
   AUTOLOAD+=$(call AutoLoad,09,sha1-arm)
@@ -1061,7 +1061,7 @@ define KernelPackage/crypto-sha256
   $(call AddDepends/crypto)
 endef
 
-ifneq ($(KERNEL_PATCHVER),6.18)
+ifeq ($(KERNEL_PATCHVER),6.12)
 define KernelPackage/crypto-sha256/aarch64
   FILES+=$(LINUX_DIR)/arch/arm64/crypto/sha256-arm64.ko
   AUTOLOAD+=$(call AutoLoad,09,sha256-arm64)
@@ -1122,7 +1122,7 @@ define KernelPackage/crypto-sha512
   $(call AddDepends/crypto)
 endef
 
-ifneq ($(KERNEL_PATCHVER),6.18)
+ifeq ($(KERNEL_PATCHVER),6.12)
 define KernelPackage/crypto-sha512/arm
   FILES+=$(LINUX_DIR)/arch/arm/crypto/sha512-arm.ko
   AUTOLOAD+=$(call AutoLoad,09,sha512-arm)

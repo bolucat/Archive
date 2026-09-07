@@ -45,7 +45,7 @@ impl LogQuery {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize, specta::Type)]
 pub struct LogEntry {
     #[serde(rename = "type")]
-    pub level: LogLevel,
+    pub level: crate::ConfigEnum<LogLevel>,
     pub payload: String,
 }
 
@@ -85,11 +85,12 @@ impl Client {
         Ok(HttpStream::from_response(response, OPERATION))
     }
 
-    pub async fn logs_ws(&self, query: LogQuery) -> Result<reqwest_websocket::WebSocket> {
+    pub async fn logs_ws(&self, query: LogQuery) -> Result<crate::WebSocketStream<LogEntry>> {
         self.websocket(RequestMetadata::new("logs_ws", Method::GET, true), || {
             Ok(self.get("/logs")?.query(&query))
         })
         .await
+        .map(|socket| crate::WebSocketStream::new(socket, "logs_ws"))
     }
 
     pub async fn structured_logs(&self, query: LogQuery) -> Result<HttpStream<StructuredLogEntry>> {
@@ -108,7 +109,7 @@ impl Client {
     pub async fn structured_logs_ws(
         &self,
         query: LogQuery,
-    ) -> Result<reqwest_websocket::WebSocket> {
+    ) -> Result<crate::WebSocketStream<StructuredLogEntry>> {
         self.websocket(
             RequestMetadata::new("structured_logs_ws", Method::GET, true),
             || {
@@ -119,6 +120,7 @@ impl Client {
             },
         )
         .await
+        .map(|socket| crate::WebSocketStream::new(socket, "structured_logs_ws"))
     }
 }
 
