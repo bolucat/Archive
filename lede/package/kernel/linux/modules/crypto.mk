@@ -556,14 +556,16 @@ define KernelPackage/crypto-lib-chacha20
   $(call AddDepends/crypto)
 endef
 
-ifeq ($(KERNEL_PATCHVER),6.12)
+ifneq ($(KERNEL_PATCHVER),6.18)
 ifndef CONFIG_TARGET_uml
 define KernelPackage/crypto-lib-chacha20/x86_64
   KCONFIG+=CONFIG_CRYPTO_CHACHA20_X86_64
   FILES+=$(LINUX_DIR)/arch/x86/crypto/chacha-x86_64.ko
 endef
 endif
+endif
 
+ifeq ($(KERNEL_PATCHVER),6.12)
 # Note that a non-neon fallback implementation is available on arm32 when
 # NEON is not supported, hence all arm targets can utilize lib-chacha20/arm
 define KernelPackage/crypto-lib-chacha20/arm
@@ -588,10 +590,11 @@ ifeq ($(CONFIG_CPU_MIPS32_R2),y)
 	  $(KernelPackage/crypto-lib-chacha20/mips32r2)
 endif
 
+endif
+
 ifdef KernelPackage/crypto-lib-chacha20/$(ARCH)
   KernelPackage/crypto-lib-chacha20/$(CRYPTO_TARGET)=\
 	  $(KernelPackage/crypto-lib-chacha20/$(ARCH))
-endif
 endif
 
 $(eval $(call KernelPackage,crypto-lib-chacha20))
@@ -618,14 +621,16 @@ define KernelPackage/crypto-lib-curve25519
   $(call AddDepends/crypto,+kmod-crypto-kpp)
 endef
 
-ifeq ($(KERNEL_PATCHVER),6.12)
+ifneq ($(KERNEL_PATCHVER),6.18)
 ifndef CONFIG_TARGET_uml
 define KernelPackage/crypto-lib-curve25519/x86_64
   KCONFIG+=CONFIG_CRYPTO_CURVE25519_X86
   FILES+=$(LINUX_DIR)/arch/x86/crypto/curve25519-x86_64.ko
 endef
 endif
+endif
 
+ifeq ($(KERNEL_PATCHVER),6.12)
 define KernelPackage/crypto-lib-curve25519/arm-neon
   KCONFIG+=CONFIG_CRYPTO_CURVE25519_NEON
   FILES+=$(LINUX_DIR)/arch/arm/crypto/curve25519-neon.ko
@@ -636,10 +641,11 @@ ifeq ($(ARCH)-$(CONFIG_KERNEL_MODE_NEON),arm-y)
 	  $(KernelPackage/crypto-lib-curve25519/arm-neon)
 endif
 
+endif
+
 ifdef KernelPackage/crypto-lib-curve25519/$(ARCH)
   KernelPackage/crypto-lib-curve25519/$(CRYPTO_TARGET)=\
 	  $(KernelPackage/crypto-lib-curve25519/$(ARCH))
-endif
 endif
 
 $(eval $(call KernelPackage,crypto-lib-curve25519))
@@ -653,14 +659,16 @@ define KernelPackage/crypto-lib-poly1305
   $(call AddDepends/crypto,+kmod-crypto-hash)
 endef
 
-ifeq ($(KERNEL_PATCHVER),6.12)
+ifneq ($(KERNEL_PATCHVER),6.18)
 ifndef CONFIG_TARGET_uml
 define KernelPackage/crypto-lib-poly1305/x86_64
   KCONFIG+=CONFIG_CRYPTO_POLY1305_X86_64
   FILES+=$(LINUX_DIR)/arch/x86/crypto/poly1305-x86_64.ko
 endef
 endif
+endif
 
+ifeq ($(KERNEL_PATCHVER),6.12)
 define KernelPackage/crypto-lib-poly1305/arm
   KCONFIG+=CONFIG_CRYPTO_POLY1305_ARM
   FILES:=$(LINUX_DIR)/arch/arm/crypto/poly1305-arm.ko
@@ -682,10 +690,11 @@ KernelPackage/crypto-lib-poly1305/mipsel=$(KernelPackage/crypto-lib-poly1305/mip
 KernelPackage/crypto-lib-poly1305/mips64=$(KernelPackage/crypto-lib-poly1305/mips)
 KernelPackage/crypto-lib-poly1305/mips64el=$(KernelPackage/crypto-lib-poly1305/mips)
 
+endif
+
 ifdef KernelPackage/crypto-lib-poly1305/$(ARCH)
   KernelPackage/crypto-lib-poly1305/$(CRYPTO_TARGET)=\
 	  $(KernelPackage/crypto-lib-poly1305/$(ARCH))
-endif
 endif
 
 $(eval $(call KernelPackage,crypto-lib-poly1305))

@@ -695,7 +695,7 @@ public partial class MainWindowViewModel : MyReactiveObject
                 {
                     return;
                 }
-               
+
                 await ProfilesViewModel.SetSpeedTestResult(new()
                 {
                     IndexId = profileItem.IndexId,
@@ -739,7 +739,10 @@ public partial class MainWindowViewModel : MyReactiveObject
         RxSchedulers.MainThreadScheduler.Schedule(() =>
         {
             ShowClashUI = showClashUI;
-            TabMainSelectedIndex = showClashUI ? TabMainSelectedIndex : 0;
+            if (!showClashUI || TabMainSelectedIndex < 0)
+            {
+                TabMainSelectedIndex = 0;
+            }
         });
     }
 

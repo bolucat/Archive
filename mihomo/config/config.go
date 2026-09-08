@@ -1499,14 +1499,14 @@ func parseDNS(rawCfg *RawConfig, ruleProviders map[string]P.RuleProvider) (*DNS,
 	}
 
 	if cfg.EnhancedMode == C.DNSFakeIP {
-		var fakeIPTrie *trie.DomainTrie[struct{}]
-		if len(dnsCfg.Fallback) != 0 {
-			fakeIPTrie = trie.New[struct{}]()
+		var fakeIPDomainSetBuilder *trie.DomainSetBuilder
+		if cfg.FakeIPFilterMode != C.FilterRule && len(dnsCfg.Fallback) != 0 {
+			fakeIPDomainSetBuilder = &trie.DomainSetBuilder{}
 			for _, fb := range dnsCfg.Fallback {
 				if net.ParseIP(fb.Addr) != nil {
 					continue
 				}
-				if err := fakeIPTrie.Insert(fb.Addr, struct{}{}); err != nil {
+				if err := fakeIPDomainSetBuilder.Insert(fb.Addr); err != nil {
 					log.Warnln("skip fallback nameserver in fake-ip filter: %s", err)
 				}
 			}
@@ -1521,7 +1521,7 @@ func parseDNS(rawCfg *RawConfig, ruleProviders map[string]P.RuleProvider) (*DNS,
 			}
 			skipper.Rules = rules
 		} else {
-			host, err := parseDomain(cfg.FakeIPFilter, fakeIPTrie, "dns.fake-ip-filter", ruleProviders)
+			host, err := parseDomain(cfg.FakeIPFilter, fakeIPDomainSetBuilder, "dns.fake-ip-filter", ruleProviders)
 			if err != nil {
 				return nil, err
 			}
@@ -1584,14 +1584,14 @@ func parseDNS(rawCfg *RawConfig, ruleProviders map[string]P.RuleProvider) (*DNS,
 			dnsCfg.FallbackIPFilter = append(dnsCfg.FallbackIPFilter, matcher)
 		}
 		if len(cfg.FallbackFilter.Domain) > 0 {
-			domainTrie := trie.New[struct{}]()
+			var domainSetBuilder trie.DomainSetBuilder
 			for idx, domain := range cfg.FallbackFilter.Domain {
-				err = domainTrie.Insert(domain, struct{}{})
+				err = domainSetBuilder.Insert(domain)
 				if err != nil {
 					return nil, fmt.Errorf("DNS FallbackDomain[%d] format error: %w", idx, err)
 				}
 			}
-			matcher := domainTrie.NewDomainSet() // dns.fallback-filter.domain
+			matcher := domainSetBuilder.Build() // dns.fallback-filter.domain
 			dnsCfg.FallbackDomainFilter = append(dnsCfg.FallbackDomainFilter, matcher)
 		}
 		if len(cfg.FallbackFilter.GeoSite) > 0 {
@@ -1898,7 +1898,7 @@ func parseIPCIDR(addresses []string, cidrSet *cidr.IpCidrSet, adapterName string
 	return
 }
 
-func parseDomain(domains []string, domainTrie *trie.DomainTrie[struct{}], adapterName string, ruleProviders map[string]P.RuleProvider) (matchers []C.DomainMatcher, err error) {
+func parseDomain(domains []string, domainSetBuilder *trie.DomainSetBuilder, adapterName string, ruleProviders map[string]P.RuleProvider) (matchers []C.DomainMatcher, err error) {
 	var matcher C.DomainMatcher
 	for idx, domain := range domains {
 		domainLower := strings.ToLower(domain)
@@ -1925,17 +1925,17 @@ func parseDomain(domains []string, domainTrie *trie.DomainTrie[struct{}], adapte
 				matchers = append(matchers, matcher)
 			}
 		} else {
-			if domainTrie == nil {
-				domainTrie = trie.New[struct{}]()
+			if domainSetBuilder == nil {
+				domainSetBuilder = &trie.DomainSetBuilder{}
 			}
-			err = domainTrie.Insert(domain, struct{}{})
+			err = domainSetBuilder.Insert(domain)
 			if err != nil {
 				return nil, fmt.Errorf("%s[%d]: %w", adapterName, idx, err)
 			}
 		}
 	}
-	if !domainTrie.IsEmpty() {
-		matcher = domainTrie.NewDomainSet()
+	if !domainSetBuilder.IsEmpty() {
+		matcher = domainSetBuilder.Build()
 		matchers = append(matchers, matcher)
 	}
 	return

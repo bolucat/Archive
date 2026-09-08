@@ -4,7 +4,8 @@ icon: material/new-box
 
 !!! quote "sing-box 1.15.0 中的更改"
 
-    :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)
+    :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
+    :material-alert-decagram: [stack](#stack)
 
 !!! quote "sing-box 1.14.0 中的更改"
 
@@ -554,6 +555,10 @@ sing-box DNS 模块，等价于一条
 
 #### stack
 
+!!! quote "sing-box 1.15.0 中的更改"
+
+    :material-plus: 新增 `go` 栈，且它现在是默认值。
+
 !!! quote "sing-box 1.8.0 中的更改"
 
     :material-delete-alert: 旧的 LWIP 栈已被弃用并移除。
@@ -562,11 +567,14 @@ TCP/IP 栈。
 
 | 栈       | 描述                                                                                                  | 
 |----------|-------------------------------------------------------------------------------------------------------|
+| `go`     | 基于内置的用户态网络栈执行 L3 到 L4 转换                                                                |
 | `system` | 基于系统网络栈执行 L3 到 L4 转换                                                                        |
 | `gvisor` | 基于 [gVisor](https://github.com/google/gvisor) 虚拟网络栈执行 L3 到 L4 转换                            |
 | `mixed`  | 混合 `system` TCP 栈与 `gvisor` UDP 栈                                                                 |
 
-默认使用 `mixed` 栈如果 gVisor 构建标记已启用，否则默认使用 `system` 栈。
+`go` 栈为 sing-box 编写，不依赖 gVisor，且内存占用显著低于 `gvisor` 与 `mixed` 栈。
+
+默认使用 `go` 栈。
 
 #### include_interface
 

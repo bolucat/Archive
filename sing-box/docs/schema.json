@@ -7962,6 +7962,7 @@
             "stack": {
               "type": "string",
               "enum": [
+                "go",
                 "system",
                 "gvisor",
                 "mixed"
