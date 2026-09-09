@@ -1,4 +1,5 @@
 import {
+  getAppUptime,
   getRuntimeState,
   type RunState,
   type RunningMode,
@@ -8,6 +9,7 @@ import { useQuery } from '@/services/query-client'
 import { useVisibility } from './use-visibility'
 
 export const runStateQueryKey = ['getRuntimeState'] as const
+const appUptimeQueryKey = ['appUptime'] as const
 
 /** Fail closed until the first snapshot so TUN never flashes as available. */
 const unknownRunState: RunState = {
@@ -51,4 +53,18 @@ export function useSystemState() {
     mutateSystemState,
     isLoading,
   }
+}
+
+export function useAppUptime() {
+  const { data: uptime = 0 } = useQuery({
+    queryKey: appUptimeQueryKey,
+    queryFn: getAppUptime,
+    staleTime: 5000,
+    refetchInterval: 3000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  })
+
+  return uptime
 }

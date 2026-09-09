@@ -21,7 +21,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, error, info, warn};
 use uuid::Uuid;
 use wind_core::{AbstractInbound, AppContext, Dispatcher, InboundCallback, InboundHooks, Router};
-use wind_quic::quinn::QuinnConnection;
+use wind_quic::quinn::{QuinnConnection, wrap_server_socket};
 
 use crate::quinn::CongestionControl;
 
@@ -304,8 +304,10 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 		let socket = std::net::UdpSocket::bind(self.opts.listen_addr)
 			.with_context(|| format!("Failed to bind socket on {}", self.opts.listen_addr))?;
 
-		let endpoint = Endpoint::new(EndpointConfig::default(), Some(config), socket, Arc::new(TokioRuntime))
-			.wrap_err("Failed to create QUIC endpoint")?;
+		let socket = wrap_server_socket(socket).wrap_err("Failed to wrap QUIC server socket")?;
+		let endpoint =
+			Endpoint::new_with_abstract_socket(EndpointConfig::default(), Some(config), socket, Arc::new(TokioRuntime))
+				.wrap_err("Failed to create QUIC endpoint")?;
 
 		info!("TUIC server listening on {}", endpoint.local_addr().unwrap());
 		if let Some(tx) = &self.opts.bound_addr {
@@ -314,49 +316,48 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 
 		let users = Arc::new(self.opts.users.clone());
 
-		loop {
-			// `endpoint.accept()` returns `None` once the endpoint is shut
-			// down; the `else =>` arm catches that as a normal shutdown so
-			// the `tokio::select!` doesn't panic when every branch is
-			// disabled.
-			tokio::select! {
-				_ = self.cancel.cancelled() => {
-					info!("TUIC server shutting down");
-					break;
-				}
-				Some(incoming) = endpoint.accept() => {
-					let opts = &self.opts;
-					let users = users.clone();
-					let auth_timeout = opts.auth_timeout;
-					let zero_rtt = opts.zero_rtt;
-					let masquerade = opts.masquerade.clone();
-					let hooks = opts.hooks.clone();
-					let active = opts.active.clone();
-					let inbound_tag = opts.inbound_tag.clone();
-					let cb = cb.clone();
-					let conn_cancel = self.cancel.child_token();
-					let remote = incoming.remote_address();
-					let span = tracing::info_span!(
-						"conn",
-						peer = %remote,
-						id = tracing::field::Empty,
-						user = tracing::field::Empty,
-					);
+		while let Some(incoming) = accept_incoming(&endpoint, &self.cancel).await? {
+			let opts = &self.opts;
+			let users = users.clone();
+			let auth_timeout = opts.auth_timeout;
+			let zero_rtt = opts.zero_rtt;
+			let masquerade = opts.masquerade.clone();
+			let hooks = opts.hooks.clone();
+			let active = opts.active.clone();
+			let inbound_tag = opts.inbound_tag.clone();
+			let cb = cb.clone();
+			let conn_cancel = self.cancel.child_token();
+			let remote = incoming.remote_address();
+			let span = tracing::info_span!(
+				"conn",
+				peer = %remote,
+				id = tracing::field::Empty,
+				user = tracing::field::Empty,
+			);
 
-					// Spawn into the shared TaskTracker so the context owner can
-					// drain connection handlers on shutdown (e.g. wind's
-					// `tasks.close()` + `tasks.wait()` after cancelling).
-					self.ctx.tasks.spawn(spawn_logged(
-						"Connection handler",
-						handle_connection(incoming, users, auth_timeout, zero_rtt, masquerade, cb, conn_cancel, hooks, active, inbound_tag),
-					).instrument(span));
-				}
-				else => {
-					info!("TUIC endpoint closed; shutting down listen loop");
-					break;
-				}
-			}
+			// Spawn into the shared TaskTracker so the context owner can
+			// drain connection handlers on shutdown (e.g. wind's
+			// `tasks.close()` + `tasks.wait()` after cancelling).
+			self.ctx.tasks.spawn(
+				spawn_logged(
+					"Connection handler",
+					handle_connection(
+						incoming,
+						users,
+						auth_timeout,
+						zero_rtt,
+						masquerade,
+						cb,
+						conn_cancel,
+						hooks,
+						active,
+						inbound_tag,
+					),
+				)
+				.instrument(span),
+			);
 		}
+		info!("TUIC server shutting down");
 
 		// Close every remaining connection (CONNECTION_CLOSE, code 0) and wait
 		// for the close packets to flush. Without this, returning here lets the
@@ -366,6 +367,20 @@ impl<R: Router> AbstractInbound<R> for TuicInbound {
 		endpoint.wait_idle().await;
 
 		Ok(())
+	}
+}
+
+// Keep endpoint failure observable even while the cancellation token is
+// pending.
+async fn accept_incoming(endpoint: &Endpoint, cancel: &CancellationToken) -> eyre::Result<Option<quinn::Incoming>> {
+	tokio::select! {
+		biased;
+		_ = cancel.cancelled() => Ok(None),
+		// A `Some(...)` pattern here disables this branch when the driver exits;
+		// `else` cannot run because cancellation is still enabled.
+		incoming = endpoint.accept() => {
+			incoming.map(Some).ok_or_else(|| eyre::eyre!("TUIC endpoint closed unexpectedly"))
+		}
 	}
 }
 
@@ -437,4 +452,31 @@ async fn handle_connection<C: InboundCallback + Clone>(
 	.await;
 
 	Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn closed_endpoint_does_not_wait_for_cancellation() {
+		let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
+		let cancel = CancellationToken::new();
+		endpoint.close(0u32.into(), b"test driver shutdown");
+		let result = tokio::time::timeout(Duration::from_secs(1), accept_incoming(&endpoint, &cancel))
+			.await
+			.expect("closed endpoint must not hang the listener");
+		assert!(result.is_err());
+		assert!(!cancel.is_cancelled());
+	}
+
+	#[tokio::test]
+	async fn cancellation_is_a_clean_listener_shutdown() {
+		let endpoint = Endpoint::client("127.0.0.1:0".parse().unwrap()).unwrap();
+		let cancel = CancellationToken::new();
+		cancel.cancel();
+		assert!(accept_incoming(&endpoint, &cancel).await.unwrap().is_none());
+		endpoint.close(0u32.into(), b"test shutdown");
+		assert!(accept_incoming(&endpoint, &cancel).await.unwrap().is_none());
+	}
 }

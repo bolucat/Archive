@@ -7968,6 +7968,9 @@
                 "mixed"
               ]
             },
+            "multi_queue": {
+              "type": "boolean"
+            },
             "platform": {
               "$ref": "#/$defs/TunPlatformOptions"
             }

@@ -5,6 +5,7 @@ icon: material/new-box
 !!! quote "Changes in sing-box 1.15.0"
 
     :material-plus: [auto_redirect_tproxy_mark](#auto_redirect_tproxy_mark)  
+    :material-plus: [multi_queue](#multi_queue)  
     :material-alert-decagram: [stack](#stack)
 
 !!! quote "Changes in sing-box 1.14.0"
@@ -125,6 +126,7 @@ icon: material/new-box
   ... // UDP NAT Fields
 
   "stack": "system",
+  "multi_queue": false,
   "include_interface": [
     "lan0"
   ],
@@ -594,6 +596,14 @@ The `go` stack is written for sing-box, does not depend on gVisor, and uses sign
 than the `gvisor` and `mixed` stacks.
 
 Defaults to the `go` stack.
+
+#### multi_queue
+
+!!! quote ""
+
+    Only supported on Linux, and requires the `go` stack.
+
+Enable multi-queue support based on `IFF_MULTI_QUEUE`, allowing throughput to scale with the number of CPU cores.
 
 #### include_interface
 

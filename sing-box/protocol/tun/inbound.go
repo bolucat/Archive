@@ -128,6 +128,16 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			enableGSO = tunMTU < 49152
 		}
 	}
+	if options.MultiQueue {
+		if !C.IsLinux || platformInterface != nil {
+			return nil, E.New("`multi_queue` is only supported on Linux")
+		}
+		switch options.Stack {
+		case "", "go":
+		default:
+			return nil, E.New("`multi_queue` is only supported by the `go` stack")
+		}
+	}
 	var udpTimeout time.Duration
 	if options.UDPTimeout != 0 {
 		udpTimeout = time.Duration(options.UDPTimeout)
@@ -194,6 +204,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			NetNs:                                 options.NetNs,
 			MTU:                                   tunMTU,
 			GSO:                                   enableGSO,
+			MultiQueue:                            options.MultiQueue,
 			Inet4Address:                          inet4Address,
 			Inet6Address:                          inet6Address,
 			DNSMode:                               options.DNSMode,

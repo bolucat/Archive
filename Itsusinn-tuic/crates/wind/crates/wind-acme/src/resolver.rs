@@ -8,7 +8,6 @@ use std::{
 	sync::Arc,
 };
 
-use arc_swap::ArcSwapOption;
 use async_trait::async_trait;
 use axum::Router;
 use eyre::{Context, Result};
@@ -125,7 +124,6 @@ pub async fn start_acme_with_cert(
 	let default_config = state.default_rustls_config();
 	let resolver = default_config.cert_resolver.clone();
 
-	let axum_cancel: ArcSwapOption<CancellationToken> = None.into();
 	let hostname = hostname.to_string();
 
 	// Drive the ACME state machine in background. Previously this task was
@@ -139,12 +137,13 @@ pub async fn start_acme_with_cert(
 	tokio::spawn(async move {
 		let mut consecutive_errors: u32 = 0;
 		let mut total_errors: u64 = 0;
+		let mut http_server: Option<HttpServer> = None;
 		loop {
 			tokio::select! {
 				biased;
 				_ = cancel.cancelled() => {
 					info!("ACME: cancellation requested for domain {hostname}, shutting down state machine");
-					axum_cancel.swap(None).inspect(|v| v.cancel());
+					shutdown_http_server(&mut http_server).await;
 					break;
 				}
 				event = state.next() => match event {
@@ -157,18 +156,28 @@ pub async fn start_acme_with_cert(
 							}
 							rustls_acme::EventOk::ValidationChallenge(challenge) => {
 								info!("ACME event: ValidationChallenge for {}", challenge.url);
-								let child = Arc::new(cancel.child_token());
-								axum_cancel.swap(Some(child.clone())).inspect(|v| v.cancel());
-								let http01_service = state.http01_challenge_tower_service();
-								let axum_app =
-									Router::new().route_service("/.well-known/acme-challenge/{challenge_token}", http01_service);
-								if let Err(e) = spawn_axum(child.child_token(), axum_app).await {
-									error!("Failed to start ACME HTTP-01 challenge server: {:?}", e);
+								if http_server.is_some() {
+									info!("ACME HTTP-01 challenge server already running, reusing it for {}", challenge.url);
+								} else {
+									let server_cancel = cancel.child_token();
+									let http01_service = state.http01_challenge_tower_service();
+									let axum_app = Router::new().route_service(
+										"/.well-known/acme-challenge/{challenge_token}",
+										http01_service,
+									);
+									match spawn_axum(server_cancel.clone(), axum_app).await {
+										Ok(task) => http_server = Some((server_cancel, task)),
+										Err(e) => {
+											// Keep `http_server == None` so the next
+											// ValidationChallenge event retries the bind.
+											error!("Failed to start ACME HTTP-01 challenge server: {:?}", e);
+										}
+									}
 								}
 							}
 							rustls_acme::EventOk::DeployedNewCert(_) => {
 								info!("ACME event: DeployedNewCert");
-								axum_cancel.swap(None).inspect(|v| v.cancel());
+								shutdown_http_server(&mut http_server).await;
 							}
 							rustls_acme::EventOk::DeployedCachedCert(_) => {
 								info!("ACME event: DeployedCachedCert");
@@ -193,7 +202,7 @@ pub async fn start_acme_with_cert(
 							"ACME state machine stream ended for {hostname} ({total_errors} errors total). \
 							 No further renewals will be attempted until the process is restarted."
 						);
-						axum_cancel.swap(None).inspect(|v| v.cancel());
+						shutdown_http_server(&mut http_server).await;
 						break;
 					}
 				}
@@ -205,12 +214,34 @@ pub async fn start_acme_with_cert(
 	Ok((resolver, cert_rx))
 }
 
-async fn spawn_axum(cancel: CancellationToken, router: Router) -> eyre::Result<()> {
-	let listener = tokio::net::TcpListener::bind("[::]:80")
-		.await
-		.context("Failed to bind to port 80 for ACME HTTP-01 challenges")?;
+/// The running HTTP-01 challenge server: its cancellation token (to ask it to
+/// stop) plus the task handle (to await its exit, which guarantees port 80 has
+/// been released before the next bind).
+type HttpServer = (CancellationToken, tokio::task::JoinHandle<()>);
+
+/// Cancel the running HTTP-01 challenge server (if any) and wait for it to
+/// actually exit, so the listener is dropped and port 80 is freed before any
+/// subsequent bind attempt.
+async fn shutdown_http_server(server: &mut Option<HttpServer>) {
+	if let Some((cancel, task)) = server.take() {
+		cancel.cancel();
+		let _ = task.await;
+		info!("ACME HTTP-01 challenge server shut down");
+	}
+}
+
+async fn spawn_axum(cancel: CancellationToken, router: Router) -> eyre::Result<tokio::task::JoinHandle<()>> {
+	// Bind `[::]` (dual-stack on Linux, the ACME deployment target) and fall
+	// back to IPv4-only `0.0.0.0` on hosts without an IPv6 stack — mirrors the
+	// one-shot flow in `crate::http01`.
+	let listener = match tokio::net::TcpListener::bind("[::]:80").await {
+		Ok(listener) => listener,
+		Err(_) => tokio::net::TcpListener::bind("0.0.0.0:80")
+			.await
+			.context("Failed to bind to port 80 for ACME HTTP-01 challenges")?,
+	};
 	info!("Started ACME HTTP-01 challenge server on port 80");
-	tokio::spawn(async move {
+	let task = tokio::spawn(async move {
 		tokio::select! {
 			Err(e) = axum::serve(listener, router) => {
 				error!("ACME HTTP-01 challenge server error: {:?}", e);
@@ -219,7 +250,7 @@ async fn spawn_axum(cancel: CancellationToken, router: Router) -> eyre::Result<(
 				info!("ACME HTTP-01 challenge server cancellation requested");
 			}
 		}
-		info!("ACME certificate deployed, shutting down HTTP-01 challenge server");
+		info!("ACME HTTP-01 challenge server stopped");
 	});
-	Ok(())
+	Ok(task)
 }

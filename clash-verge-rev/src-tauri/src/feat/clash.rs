@@ -31,7 +31,7 @@ pub async fn restart_clash_core() {
         }
         Err(err) => {
             handle::Handle::notice_message("set_config::error", format!("{err:#}"));
-            logging!(error, Type::Core, "{err:#}");
+            logging!(error, Type::Core, "restart core failed: {err:#}");
         }
     }
 }
@@ -42,7 +42,6 @@ pub async fn restart_app() {
 
     Config::apply_all_and_save_file().await;
 
-    logging!(info, Type::System, "开始异步清理资源");
     let cleanup_result = clean_async().await;
 
     logging!(
@@ -68,18 +67,12 @@ pub async fn restart_app() {
 
 fn after_change_clash_mode() {
     AsyncHandler::spawn(move || async {
-        let mihomo = handle::Handle::mihomo();
-        match mihomo.get_connections().await {
-            Ok(connections) => {
-                if let Some(connections_array) = connections.connections {
-                    for connection in connections_array {
-                        let _ = mihomo.close_connection(&connection.id).await;
-                    }
-                }
-            }
-            Err(err) => {
-                logging!(error, Type::Core, "Failed to get connections: {err}");
-            }
+        if let Err(err) = handle::Handle::mihomo().close_all_connections().await {
+            logging!(
+                error,
+                Type::Core,
+                "Failed to close all connections after changing clash mode: {err}"
+            );
         }
     });
 }
@@ -91,9 +84,8 @@ pub async fn change_clash_mode(mode: String) -> Result<(), String> {
     let json_value = serde_json::json!({
         "mode": mode
     });
-    logging!(debug, Type::Core, "change clash mode to {mode}");
     if let Err(err) = handle::Handle::mihomo().patch_base_config(&json_value).await {
-        logging!(error, Type::Core, "{err}");
+        logging!(error, Type::Core, "change clash mode failed: {err}");
         return Err(err.to_string().into());
     }
 
@@ -117,6 +109,7 @@ pub async fn change_clash_mode(mode: String) -> Result<(), String> {
 
 /// Test delay to a URL through proxy.
 /// HTTPS: measures TLS handshake time. HTTP: measures HEAD round-trip time.
+#[tracing::instrument(skip_all, level = "trace", fields(url = %url))]
 pub async fn test_delay(url: String) -> anyhow::Result<u32> {
     use std::sync::Arc;
     use std::time::Duration;

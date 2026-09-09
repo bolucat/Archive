@@ -844,6 +844,11 @@ export const EnhancedCanvasTrafficGraph = memo(
       )
 
       clearCanvas(hoverCanvasRef.current)
+      if (
+        import.meta.env.MODE === 'perf' &&
+        canvas.dataset.perfDraw !== String(displayData.at(-1)?.timestamp ?? 0)
+      )
+        canvas.dataset.perfDraw = String(displayData.at(-1)?.timestamp ?? 0)
     }, [
       displayData,
       colors,

@@ -40,7 +40,7 @@ jobs:
         run: bash ./scripts/extract_update_logs.sh
         shell: bash
 
-      - uses: pnpm/action-setup@v6.0.10
+      - uses: pnpm/action-setup@v6.1.0
         name: Install pnpm
         with:
           run_install: false
@@ -151,7 +151,7 @@ jobs:
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.98.0'
+          toolchain: '1.98.1'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -174,7 +174,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxslt1.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
-      - uses: pnpm/action-setup@v6.0.10
+      - uses: pnpm/action-setup@v6.1.0
         name: Install pnpm
         with:
           run_install: false
@@ -203,7 +203,7 @@ jobs:
 
       - name: Add Rust Target
         run: |
-          rustup target add ${{ matrix.target }} --toolchain 1.98.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.98.1 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
@@ -254,7 +254,7 @@ jobs:
       - name: Install Rust Stable
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.98.0'
+          toolchain: '1.98.1'
           targets: ${{ matrix.target }}
 
       - name: Add Rust Target
@@ -272,7 +272,7 @@ jobs:
           cache-workspace-crates: true
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6.0.10
+        uses: pnpm/action-setup@v6.1.0
         with:
           run_install: false
 
@@ -344,7 +344,7 @@ jobs:
 
       - name: Add Rust Target
         run: |
-          rustup target add ${{ matrix.target }} --toolchain 1.98.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.98.1 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
@@ -416,7 +416,7 @@ jobs:
           cache-workspace-crates: true
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v6.0.10
+        uses: pnpm/action-setup@v6.1.0
         with:
           run_install: false
 
@@ -451,7 +451,7 @@ jobs:
 
       - name: Add Rust Target
         run: |
-          rustup target add ${{ matrix.target }} --toolchain 1.98.0 || rustup target add ${{ matrix.target }}
+          rustup target add ${{ matrix.target }} --toolchain 1.98.1 || rustup target add ${{ matrix.target }}
           rustup target list --installed
           echo "Rust target ${{ matrix.target }} installed."
 
@@ -520,7 +520,7 @@ jobs:
         with:
           node-version: '24.20.0'
 
-      - uses: pnpm/action-setup@v6.0.10
+      - uses: pnpm/action-setup@v6.1.0
         name: Install pnpm
         with:
           run_install: false

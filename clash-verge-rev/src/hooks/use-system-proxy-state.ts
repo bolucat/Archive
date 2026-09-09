@@ -10,7 +10,6 @@ import {
   patchVergeConfig,
 } from '@/services/cmds'
 import {
-  getCacheData,
   removeCacheData,
   revalidateQueries,
   useQuery,
@@ -51,9 +50,7 @@ export const useSystemProxyState = () => {
 
   const toggleSystemProxy = async (enabled: boolean) => {
     // Roll failed optimistic writes back to the latest confirmed state.
-    let confirmed =
-      getCacheData<IVergeConfig>(['getVergeConfig'])?.enable_system_proxy ??
-      false
+    let confirmed = verge?.enable_system_proxy ?? false
     mutateVerge(
       (prev) => (prev ? { ...prev, enable_system_proxy: enabled } : prev),
       false,

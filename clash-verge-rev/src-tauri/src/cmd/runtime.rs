@@ -4,7 +4,7 @@ use anyhow::{Context as _, anyhow};
 use clash_verge_logging::{Type, logging};
 use serde_yaml_ng::Mapping;
 use smartstring::alias::String;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[tauri::command]
 pub async fn get_runtime_config() -> CmdResult<Option<Mapping>> {
@@ -25,11 +25,6 @@ pub async fn get_runtime_yaml() -> CmdResult<String> {
                 .map(|s| s.into())
         })
         .stringify_err()
-}
-
-#[tauri::command]
-pub async fn get_runtime_exists() -> CmdResult<HashSet<String>> {
-    Ok(Config::runtime().await.latest_arc().exists_keys.clone())
 }
 
 #[tauri::command]
@@ -99,7 +94,7 @@ pub async fn update_proxy_chain_config_in_runtime(proxy_chain_config: Option<ser
             "Failed to apply runtime proxy chain config: {}",
             outcome
         ),
-        Err(err) => logging!(error, Type::Core, "Failed to apply runtime proxy chain config: {}", err),
+        Err(err) => logging!(error, Type::Core, "Failed to apply runtime proxy chain config: {err:#}"),
     }
 
     Ok(())

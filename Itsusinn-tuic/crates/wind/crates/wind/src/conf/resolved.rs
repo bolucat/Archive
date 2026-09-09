@@ -115,12 +115,10 @@ fn resolve_inbounds(inbounds: Vec<InboundConfig>) -> eyre::Result<Vec<ResolvedIn
 	let mut resolved = Vec::with_capacity(inbounds.len());
 
 	for ib in inbounds {
-		let InboundConfig::Socks(s) = ib else {
-			// Future inbound variants must be resolved here too; a hard
-			// error beats a silent skip (or a compile error surfaced as a
-			// pattern-matching failure far from the config).
-			return Err(eyre::eyre!("unsupported inbound type in configuration"));
-		};
+		// Single-variant today; a future inbound type must be resolved here
+		// too, and the compiler will force that by making this match
+		// non-exhaustive.
+		let InboundConfig::Socks(s) = ib;
 		if !tags.insert(s.tag.clone()) {
 			return Err(eyre::eyre!("duplicate inbound tag '{}'", s.tag));
 		}

@@ -6,6 +6,7 @@
 //! [`TransportConfig`] / TLS configs onto quinn + rustls).
 
 mod tls;
+mod udp;
 
 use std::{
 	io,
@@ -20,6 +21,7 @@ use quinn::{
 	ClientConfig, Endpoint, EndpointConfig, IdleTimeout, ServerConfig, TokioRuntime, TransportConfig as QuinnTransport, VarInt,
 };
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+pub use udp::wrap_server_socket;
 
 use crate::{
 	config::{ClientTlsConfig, ServerTlsConfig, TransportConfig},
@@ -208,8 +210,10 @@ pub fn bind_server(
 	server_config.transport_config(Arc::new(build_transport(transport)?));
 
 	let socket = std::net::UdpSocket::bind(addr).map_err(|e| QuicError::Endpoint(format!("bind {addr}: {e}")))?;
-	let endpoint = Endpoint::new(EndpointConfig::default(), Some(server_config), socket, Arc::new(TokioRuntime))
-		.map_err(|e| QuicError::Endpoint(format!("create endpoint: {e}")))?;
+	let socket = wrap_server_socket(socket).map_err(|e| QuicError::Endpoint(format!("wrap server socket: {e}")))?;
+	let endpoint =
+		Endpoint::new_with_abstract_socket(EndpointConfig::default(), Some(server_config), socket, Arc::new(TokioRuntime))
+			.map_err(|e| QuicError::Endpoint(format!("create endpoint: {e}")))?;
 	Ok(QuinnAcceptor { endpoint })
 }
 

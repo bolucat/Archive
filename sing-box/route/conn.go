@@ -49,6 +49,8 @@ func (m *ConnectionManager) Start(stage adapter.StartStage) error {
 }
 
 func (m *ConnectionManager) Count() int {
+	m.access.Lock()
+	defer m.access.Unlock()
 	return m.connections.Len()
 }
 
@@ -73,25 +75,25 @@ func (m *ConnectionManager) Close() error {
 }
 
 func (m *ConnectionManager) TrackConn(conn net.Conn) net.Conn {
-	m.access.Lock()
-	element := m.connections.PushBack(conn)
-	m.access.Unlock()
-	return &trackedConn{
+	tracked := &trackedConn{
 		Conn:    conn,
 		manager: m,
-		element: element,
 	}
+	m.access.Lock()
+	tracked.element = m.connections.PushBack(tracked)
+	m.access.Unlock()
+	return tracked
 }
 
 func (m *ConnectionManager) TrackPacketConn(conn net.PacketConn) net.PacketConn {
-	m.access.Lock()
-	element := m.connections.PushBack(conn)
-	m.access.Unlock()
-	return &trackedPacketConn{
+	tracked := &trackedPacketConn{
 		NetPacketConn: bufio.NewPacketConn(conn),
 		manager:       m,
-		element:       element,
 	}
+	m.access.Lock()
+	tracked.element = m.connections.PushBack(tracked)
+	m.access.Unlock()
+	return tracked
 }
 
 func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {

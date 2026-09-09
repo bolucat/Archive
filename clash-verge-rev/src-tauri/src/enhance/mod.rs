@@ -13,6 +13,7 @@ use self::{
     seq::{SeqMap, use_seq},
     tun::use_tun,
 };
+use crate::config::dns::{DnsOverrideState, dns_override_source};
 use crate::utils::dirs;
 use crate::{
     config::{Config, IProfiles, IVerge, PrfItem},
@@ -36,6 +37,7 @@ struct ConfigValues {
     socks_enabled: bool,
     http_enabled: bool,
     enable_dns_settings: bool,
+    dns_override_confirmation: Option<String>,
     enable_external_controller: bool,
     #[cfg(not(target_os = "windows"))]
     redir_enabled: bool,
@@ -121,6 +123,7 @@ async fn get_config_values() -> ConfigValues {
         ..
     } = **verge_arc;
     let enable_external_controller = enable_external_controller.unwrap_or(false);
+    let dns_override_confirmation = verge_arc.dns_override_confirmation.clone();
 
     let (clash_core, enable_tun, enable_builtin, socks_enabled, http_enabled, enable_dns_settings) = (
         Some(verge_arc.get_valid_clash_core()),
@@ -148,6 +151,7 @@ async fn get_config_values() -> ConfigValues {
         socks_enabled,
         http_enabled,
         enable_dns_settings,
+        dns_override_confirmation,
         enable_external_controller,
         #[cfg(not(target_os = "windows"))]
         redir_enabled,
@@ -551,7 +555,7 @@ async fn apply_builtin_scripts(mut config: Mapping, clash_core: Option<String>, 
                         config = res_config;
                     }
                     Err(err) => {
-                        logging!(error, Type::Core, "builtin script error `{err}`");
+                        logging!(error, Type::Core, "builtin script error `{err:#}`");
                     }
                 }
             }
@@ -562,7 +566,8 @@ async fn apply_builtin_scripts(mut config: Mapping, clash_core: Option<String>, 
 }
 
 fn cleanup_proxy_groups(mut config: Mapping) -> Mapping {
-    const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS"];
+    // built-in proxies docs: https://wiki.metacubex.one/config/proxies/built-in
+    const BUILTIN_POLICIES: &[&str] = &["DIRECT", "REJECT", "REJECT-DROP", "PASS", "PASS-RULE"];
 
     let proxy_names = config
         .get("proxies")
@@ -678,7 +683,7 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
                 && hosts_value.is_mapping()
             {
                 config.insert("hosts".into(), hosts_value.clone());
-                logging!(info, Type::Core, "apply hosts configuration");
+                logging!(debug, Type::Core, "apply hosts configuration");
             }
 
             if let Some(dns_value) = dns_config.get("dns") {
@@ -686,13 +691,13 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
                     let mut dns_mapping = dns_mapping.clone();
                     ensure_fake_ip_range6(&mut dns_mapping);
                     config.insert("dns".into(), dns_mapping.into());
-                    logging!(info, Type::Core, "apply dns_config.yaml (dns section)");
+                    logging!(debug, Type::Core, "apply dns_config.yaml (dns section)");
                 }
             } else {
                 let mut dns_config = dns_config;
                 ensure_fake_ip_range6(&mut dns_config);
                 config.insert("dns".into(), dns_config.into());
-                logging!(info, Type::Core, "apply dns_config.yaml");
+                logging!(debug, Type::Core, "apply dns_config.yaml");
             }
         }
     }
@@ -700,8 +705,10 @@ async fn apply_dns_settings(mut config: Mapping, enable_dns_settings: bool) -> M
     config
 }
 
-/// Returns the enhanced profile, its original keys, and script logs.
-pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, HashMap<String, ResultLog>)> {
+/// Returns the enhanced profile, its original keys, script logs, and DNS override decision.
+pub async fn enhance(
+    profiles: &IProfiles,
+) -> Result<(Mapping, HashSet<String>, HashMap<String, ResultLog>, DnsOverrideState)> {
     let cfg_vals = get_config_values().await;
     let ConfigValues {
         clash_config,
@@ -711,6 +718,7 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
         socks_enabled,
         http_enabled,
         enable_dns_settings,
+        dns_override_confirmation,
         enable_external_controller,
         #[cfg(not(target_os = "windows"))]
         redir_enabled,
@@ -719,6 +727,12 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
     } = cfg_vals;
 
     let profile = collect_profile_items(profiles).await?;
+    let dns_override = DnsOverrideState::new(
+        dns_override_source(profiles.current.as_deref().unwrap_or_default(), &profile.config)?,
+        enable_dns_settings,
+        dns_override_confirmation,
+    );
+    let enable_dns_settings = dns_override.enabled;
     let config = profile.config;
     let merge_item = profile.merge_item;
     let script_item = profile.script_item;
@@ -774,7 +788,7 @@ pub async fn enhance(profiles: &IProfiles) -> Result<(Mapping, HashSet<String>, 
     let mut exists_keys_set = HashSet::new();
     exists_keys_set.extend(exists_keys);
 
-    Ok((config, exists_keys_set, result_map))
+    Ok((config, exists_keys_set, result_map, dns_override))
 }
 
 #[cfg(test)]

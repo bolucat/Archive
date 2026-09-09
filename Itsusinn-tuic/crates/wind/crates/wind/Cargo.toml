@@ -35,7 +35,7 @@ figment = { version = "0.10", features = ["yaml", "env", "toml"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9.34-deprecated"
 toml = "1.1.2+spec-1.1.0"
-educe = { version = "0.6", features = ["Default"] }
+educe = { version = "0.7", features = ["Default"] }
 humantime-serde = "1"
 
 [features]

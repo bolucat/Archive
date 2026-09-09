@@ -40,12 +40,11 @@ import {
 } from '@/components/profile/profile-viewer'
 import { ConfigViewer } from '@/components/setting/mods/config-viewer'
 import { useListen } from '@/hooks/use-listen'
-import { useProfiles } from '@/hooks/use-profiles'
+import { fetchProfilesIntoCache, useProfiles } from '@/hooks/use-profiles'
 import {
   createProfile,
   deleteProfile,
   enhanceProfiles,
-  getProfiles,
   getRuntimeLogs,
   importProfile,
   reorderProfile,
@@ -53,11 +52,7 @@ import {
 } from '@/services/cmds'
 import { subscribeVergeEvents } from '@/services/events'
 import { errorDetail, showNotice } from '@/services/notice-service'
-import {
-  fetchCacheData,
-  revalidateQueries,
-  useQuery,
-} from '@/services/query-client'
+import { revalidateQuery, useQuery } from '@/services/query-client'
 import {
   useLoadingCache,
   useSetLoadingCache,
@@ -175,9 +170,7 @@ const ProfilePage = () => {
     debugLog('[紧急刷新] 开始强制刷新所有数据')
 
     try {
-      await revalidateQueries([['getProfiles'], ['getRuntimeLogs']])
-
-      await mutateProfiles()
+      await Promise.all([revalidateQuery(['getRuntimeLogs']), mutateProfiles()])
 
       await new Promise((resolve) => setTimeout(resolve, 500))
       await onEnhance(false)
@@ -294,7 +287,7 @@ const ProfilePage = () => {
 
     console.warn(`[导入刷新] 常规刷新失败，尝试清除缓存重新获取`)
     try {
-      await fetchCacheData(['getProfiles'], getProfiles)
+      await fetchProfilesIntoCache()
       await onEnhance(false)
       showNotice.error(
         'profiles.page.feedback.notifications.importNeedsRefresh',
