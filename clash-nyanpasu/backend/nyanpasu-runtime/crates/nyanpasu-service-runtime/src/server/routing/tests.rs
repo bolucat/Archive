@@ -389,6 +389,7 @@ async fn applying_without_a_core_binary_reports_binary_not_found() {
         &CoreSubmitReq {
             operation_id: Cow::Borrowed(id),
             command: CoreCommandInfo::Reconcile {
+                local_ipc: None,
                 core_type: Cow::Borrowed(&core_type),
                 config: Cow::Borrowed("mixed-port: 7890\n"),
                 expected_digest: None,
@@ -703,6 +704,29 @@ async fn api_connection_is_unavailable_when_no_process_is_running() {
     assert_eq!(response.status(), StatusCode::OK);
     let envelope: nyanpasu_ipc::api::R<'static, Option<CoreApiConnection>> =
         body_of(response).await;
+    assert_eq!(envelope.code, ResponseCode::Ok);
+    assert!(envelope.data.flatten().is_none());
+}
+
+#[tokio::test]
+async fn effective_config_contract_returns_no_snapshot_when_stopped() {
+    use nyanpasu_ipc::api::contract::CoreV2EffectiveConfig;
+    let env = TestEnv::new().await;
+    let response = create_router(env.state)
+        .oneshot(
+            Request::builder()
+                .method(CoreV2EffectiveConfig::METHOD)
+                .uri(CoreV2EffectiveConfig::PATH)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let envelope: nyanpasu_ipc::api::R<
+        'static,
+        Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>,
+    > = body_of(response).await;
     assert_eq!(envelope.code, ResponseCode::Ok);
     assert!(envelope.data.flatten().is_none());
 }

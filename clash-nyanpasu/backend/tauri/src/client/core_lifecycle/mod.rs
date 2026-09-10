@@ -27,6 +27,7 @@ use workflow::CoreLifecycleWorkflow;
 
 const MAX_PENDING: usize = 32;
 const CALL_WAIT: Duration = Duration::from_secs(180);
+const RECOVERY_INTERVAL: Duration = Duration::from_secs(5);
 const DIRTY_WINDOW: Duration = Duration::from_millis(500);
 
 #[derive(Clone)]
@@ -66,6 +67,7 @@ pub struct CoreLifecycleOperationResult {
 
 pub(super) enum Command {
     Reconcile,
+    ApplyControlChannel,
     PatchRuntimeOverrides(nyanpasu_config::clash::config::overrides::ClashGuardOverridesPatch),
     SelectCore(ClashCore),
     ChangeHost(ExecutionHost),
@@ -81,6 +83,7 @@ pub(super) enum Command {
     RestartService,
     UninstallService,
     RuntimeDirty,
+    RecoverServiceEndpoint,
     Shutdown,
 }
 
@@ -113,6 +116,7 @@ enum Message {
         result: Result<Output, CoreError>,
     },
     DirtyTick,
+    RecoveryTick,
     Close,
     #[cfg(test)]
     Barrier(RpcReplyPort<()>),
@@ -133,6 +137,9 @@ struct CoreLifecycleState {
     dirty_rx: watch::Receiver<()>,
     dirty: bool,
     timer: Option<tokio::task::JoinHandle<()>>,
+    recovery_timer: Option<tokio::task::JoinHandle<()>>,
+    recovery_due: bool,
+    closing_token: tokio_util::sync::CancellationToken,
     status: watch::Sender<CoreLifecycleStatus>,
     shutdown: Option<ShutdownReport>,
     closing: bool,
@@ -141,6 +148,7 @@ struct CoreLifecycleState {
 }
 
 pub(super) struct CoreLifecycleArgs {
+    pub snapshots: runtime::RuntimeSnapshotStore,
     pub application: super::application::ApplicationClient,
     pub clash: super::clash_config::ClashConfigClient,
     pub profiles: super::profiles::ProfilesClient,
@@ -211,6 +219,11 @@ impl CoreLifecycleState {
 
     fn close(&mut self) {
         self.closing = true;
+        self.closing_token.cancel();
+        self.recovery_due = false;
+        if let Some(timer) = self.recovery_timer.take() {
+            timer.abort();
+        }
         if let Some(timer) = self.timer.take() {
             timer.abort();
         }
@@ -253,6 +266,17 @@ impl CoreLifecycleState {
             })
         } else if let Some(request) = self.pending.pop_front() {
             Some(request)
+        } else if std::mem::take(&mut self.recovery_due)
+            && !uncertain
+            && self.workflow.as_ref().is_some_and(|w| w.recovery_due())
+        {
+            Some(Request {
+                command: Command::RecoverServiceEndpoint,
+                response: Response {
+                    id: OperationId::generate(),
+                    reply: None,
+                },
+            })
         } else if self.dirty && !uncertain {
             self.dirty = false;
             Some(Request {
@@ -332,12 +356,17 @@ impl Actor for CoreLifecycleActor {
             .schedule_dirty_ticks
             .then(|| myself.send_interval(DIRTY_WINDOW, || Message::DirtyTick));
         Ok(CoreLifecycleState {
+            closing_token: args.workflow.closing.clone(),
             workflow: Some(Box::new(args.workflow)),
             active: None,
             pending: VecDeque::new(),
             dirty_rx: args.dirty,
             dirty: false,
             timer,
+            recovery_timer: args
+                .schedule_dirty_ticks
+                .then(|| myself.send_interval(RECOVERY_INTERVAL, || Message::RecoveryTick)),
+            recovery_due: false,
             status: args.status,
             shutdown: None,
             closing: false,
@@ -415,6 +444,11 @@ impl Actor for CoreLifecycleActor {
                     state.dirty = true;
                 }
             }
+            Message::RecoveryTick => {
+                if !state.closing {
+                    state.recovery_due = true;
+                }
+            }
             Message::Close => {
                 state.abandoned = true;
                 state.close();
@@ -436,6 +470,10 @@ impl Actor for CoreLifecycleActor {
         if let Some(timer) = state.timer.take() {
             timer.abort();
         }
+        state.closing_token.cancel();
+        if let Some(timer) = state.recovery_timer.take() {
+            timer.abort();
+        }
         // An admitted task is allowed to finish even if the actor is stopped.
         // In particular, never cancel installation while its blocking copy runs.
         if let Some(active) = state.active.take() {
@@ -447,7 +485,7 @@ impl Actor for CoreLifecycleActor {
 
 struct ClientInner {
     actor: ActorRef<Message>,
-    runtime: watch::Receiver<runtime::RuntimeLifecycleState>,
+    runtime: runtime::RuntimeSnapshotStore,
     status: watch::Receiver<CoreLifecycleStatus>,
     core: crate::core::actor_v2::CoreObserver,
     service_status: watch::Receiver<ServiceHostStatus>,
@@ -483,7 +521,7 @@ impl CoreLifecycleClient {
         args: CoreLifecycleArgs,
         schedule_dirty_ticks: bool,
     ) -> anyhow::Result<Self> {
-        let (runtime_tx, runtime) = watch::channel(runtime::RuntimeLifecycleState::default());
+        let runtime = args.snapshots;
         let (status_tx, status) = watch::channel(CoreLifecycleStatus::default());
         let service_status = args.service.subscribe();
         let core = args.core.observer();
@@ -495,9 +533,11 @@ impl CoreLifecycleClient {
             builder: args.builder,
             installer: args.installer,
             ui: args.ui,
-            runtime: runtime_tx,
+            runtime: runtime.clone(),
             revisions: runtime::RuntimeRevisionAllocator::new(),
             uncertain: false,
+            recovery: workflow::ServiceRecovery::default(),
+            closing: tokio_util::sync::CancellationToken::new(),
         };
         let (actor, _) = Actor::spawn(
             None,
@@ -540,8 +580,16 @@ impl CoreLifecycleClient {
     pub fn status(&self) -> CoreLifecycleStatus {
         self.0.status.borrow().clone()
     }
+    pub async fn apply_control_channel(&self) -> Result<(), CoreError> {
+        self.call(Command::ApplyControlChannel).await.map(|_| ())
+    }
+
+    pub(super) fn snapshot_store(&self) -> &runtime::RuntimeSnapshotStore {
+        &self.0.runtime
+    }
+
     pub fn runtime(&self) -> runtime::RuntimeLifecycleState {
-        self.0.runtime.borrow().clone()
+        self.0.runtime.read()
     }
     pub fn core_status(&self) -> CoreStatusProjection {
         self.0.core.status()

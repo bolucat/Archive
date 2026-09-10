@@ -181,16 +181,42 @@ pub struct ServiceDirs {
 }
 
 impl CoreManagerService {
+    #[cfg(test)]
     pub async fn new(
         dirs: ServiceDirs,
         local_ipc_policy: LocalIpcPolicy,
     ) -> Result<Self, anyhow::Error> {
+        Self::with_controller_access(
+            dirs,
+            local_ipc_policy,
+            None,
+            Arc::new(super::controller_access::UnavailableControllerAccess),
+        )
+        .await
+    }
+
+    pub async fn with_controller_access(
+        dirs: ServiceDirs,
+        local_ipc_policy: LocalIpcPolicy,
+        controller_dir: Option<Utf8PathBuf>,
+        access: Arc<dyn nyanpasu_core_manager::ControllerAccess>,
+    ) -> Result<Self, anyhow::Error> {
+        let digest = nyanpasu_core_manager::payload_digest(dirs.runtime.as_str().as_bytes());
+        // Leave room for the directory and epoch within sockaddr_un on macOS.
+        let namespace = &digest[..16];
         let source_dir = dirs.runtime.join("v2-sources");
-        let manager = Manager::new(ManagerOptions {
+        let manager = Manager::builder(ManagerOptions {
+            controller_dir,
+            #[cfg(unix)]
+            controller_template: Some(format!("core-{namespace}-{{epoch}}.sock")),
+            #[cfg(windows)]
+            controller_template: Some(format!(r"\\.\pipe\nyanpasu-service-{namespace}-{{epoch}}")),
             runtime_dir: Some(dirs.runtime),
             local_ipc_policy,
             ..ManagerOptions::default()
         })
+        .controller_access(access)
+        .build()
         .await?;
         let core_control =
             CoreControl::spawn(manager.clone(), ControlOptions::new(source_dir, dirs.data));
@@ -363,6 +389,24 @@ impl CoreManagerService {
         Ok(())
     }
 
+    pub async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, serde_yaml_ng::Error>
+    {
+        self.inner
+            .control
+            .effective_config()
+            .await
+            .map(|snapshot| {
+                Ok(nyanpasu_ipc::api::core::v2::CoreEffectiveConfig {
+                    instance_id: snapshot.instance_id.to_string(),
+                    revision: map_revision(&snapshot.revision),
+                    config: serde_yaml_ng::to_string(snapshot.config.as_ref())?,
+                })
+            })
+            .transpose()
+    }
+
     pub async fn api_connection(&self) -> Option<nyanpasu_ipc::api::core::v2::CoreApiConnection> {
         let connection = self.inner.manager.api_connection().await?;
         Some(nyanpasu_ipc::api::core::v2::CoreApiConnection {
@@ -404,6 +448,7 @@ impl CoreManagerService {
         let command = match &request.command {
             CoreCommandInfo::Reconcile {
                 core_type,
+                local_ipc,
                 config,
                 expected_digest,
                 expected_applied,
@@ -412,7 +457,22 @@ impl CoreManagerService {
                 // the v1 spec builder for both. The placeholder config path is
                 // never read — the config ships as bytes and the control plane
                 // materializes it itself.
-                let spec = self.instance_spec(infos, core_type, Utf8PathBuf::new())?;
+                let mut spec = self.instance_spec(infos, core_type, Utf8PathBuf::new())?;
+                spec.options.local_ipc =
+                    local_ipc.map(|settings| nyanpasu_core_manager::LocalIpcSettings {
+                        policy: match settings.policy {
+                            nyanpasu_ipc::api::core::v2::LocalIpcPolicyInfo::Force => {
+                                LocalIpcPolicy::Force
+                            }
+                            nyanpasu_ipc::api::core::v2::LocalIpcPolicyInfo::Prefer => {
+                                LocalIpcPolicy::Prefer
+                            }
+                            nyanpasu_ipc::api::core::v2::LocalIpcPolicyInfo::Disable => {
+                                LocalIpcPolicy::Disable
+                            }
+                        },
+                        keep_http_controller: settings.keep_http_controller,
+                    });
                 echoed_core = Some(core_type.clone().into_owned());
                 CoreCommand::Reconcile(Box::new(ReconcileRequest {
                     core: spec.core,

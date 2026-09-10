@@ -256,7 +256,10 @@ fn process_spec_changed(current: &InstanceSpec, desired: &InstanceSpec) -> bool 
         || current.core.version != desired.core.version
         || current.core.features != desired.core.features
         || current.working_dir != desired.working_dir
-        || format!("{:?}", current.options) != format!("{:?}", desired.options)
+        || current.options.startup_timeout != desired.options.startup_timeout
+        || current.options.health != desired.options.health
+        || current.options.restart_policy != desired.options.restart_policy
+        || current.options.backoff != desired.options.backoff
 }
 
 fn classify_documents(current: &Mapping, desired: &Mapping) -> Result<ConfigChange, Error> {
@@ -483,6 +486,23 @@ mod tests {
             pid_file: None,
             options: InstanceOptions::default(),
         }
+    }
+
+    #[test]
+    fn policy_is_not_a_process_option_but_backoff_still_is() {
+        let current = spec(CoreKind::Mihomo, "mihomo");
+        let mut desired = current.clone();
+        desired.options.local_ipc = Some(crate::LocalIpcSettings {
+            policy: crate::LocalIpcPolicy::Disable,
+            keep_http_controller: false,
+        });
+        assert!(!process_spec_changed(&current, &desired));
+        desired.options.backoff =
+            nyanpasu_utils::process::Backoff::exponential(nyanpasu_utils::process::BackoffRange {
+                initial: std::time::Duration::from_millis(10),
+                max: std::time::Duration::from_secs(2),
+            });
+        assert!(process_spec_changed(&current, &desired));
     }
 
     #[test]

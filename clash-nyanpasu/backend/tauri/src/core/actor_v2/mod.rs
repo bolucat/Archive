@@ -152,6 +152,7 @@ pub enum EndpointConnectivity {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
 pub struct CoreStatusInfo {
+    pub controller: Option<nyanpasu_ipc::api::status::CoreControllerInfo>,
     pub host: ExecutionHost,
     pub connectivity: EndpointConnectivity,
     pub generation: u64,
@@ -165,6 +166,7 @@ impl From<CoreStatusProjection> for CoreStatusInfo {
     fn from(status: CoreStatusProjection) -> Self {
         let snapshot = status.snapshot;
         Self {
+            controller: snapshot.as_ref().and_then(|s| s.controller.clone()),
             host: status.host,
             connectivity: status.connectivity,
             generation: status.generation,
@@ -194,7 +196,30 @@ pub enum HandoffReport {
     NoChange,
     /// Ownership moved: the source's death is proven, the generation is
     /// advanced, and the runtime is *stopped* awaiting the facade's reconcile.
-    Completed { generation: ControllerGeneration },
+    Completed {
+        generation: ControllerGeneration,
+        /// The replaced owner was degraded and last seen running: its runtime
+        /// was lost, not stopped. Adoption clears the snapshot that said so,
+        /// and the pump can publish the degradation at any point during a
+        /// caller's handoff, so this reply is the only race-free record that
+        /// the caller still owes that core a restart. A proven stop is a
+        /// deliberate one and reports `false`.
+        interrupted_running: bool,
+    },
+}
+
+impl HandoffReport {
+    /// Whether this handoff replaced an owner that never proved it stopped
+    /// while it was last seen running.
+    pub fn interrupted_running(&self) -> bool {
+        matches!(
+            self,
+            Self::Completed {
+                interrupted_running: true,
+                ..
+            }
+        )
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -231,6 +256,11 @@ impl std::fmt::Debug for SubmitTicket {
 }
 
 pub enum CoreActorMessage {
+    EffectiveConfig {
+        reply: RpcReplyPort<
+            Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError>,
+        >,
+    },
     ApiClient {
         reply: RpcReplyPort<Result<api::ApiClient, api::ApiError>>,
     },
@@ -618,6 +648,29 @@ impl Actor for CoreActor {
         state: &mut Self::State,
     ) -> Result<(), ActorProcessingErr> {
         match message {
+            CoreActorMessage::EffectiveConfig { reply } => {
+                let result = match &state.slot {
+                    EndpointSlot::Connected(endpoint) => match tokio::time::timeout(
+                        state.status_timeout,
+                        endpoint.effective_config(),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => Err(CoreError::new(
+                            CoreErrorKind::BackendUnavailable,
+                            "effective config read timed out",
+                            true,
+                        )),
+                    },
+                    _ => Err(CoreError::new(
+                        CoreErrorKind::BackendUnavailable,
+                        "core endpoint is not connected",
+                        true,
+                    )),
+                };
+                let _ = reply.send(result);
+            }
             CoreActorMessage::ApiClient { reply } => {
                 let result = match &state.slot {
                     EndpointSlot::Connected(endpoint) => {
@@ -952,9 +1005,17 @@ impl CoreActor {
         };
 
         let Some(source) = source else {
+            // Read before adopting: this is the last turn in which the
+            // replaced owner's own snapshot still exists.
+            let interrupted_running = matches!(state.slot, EndpointSlot::Degraded { .. })
+                && matches!(
+                    state.snapshot.as_ref().and_then(|s| s.state.as_ref()),
+                    Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { .. })
+                );
             self.adopt(myself, state, target);
             let _ = reply.send(Ok(HandoffReport::Completed {
                 generation: state.generation,
+                interrupted_running,
             }));
             return;
         };
@@ -1034,6 +1095,8 @@ impl CoreActor {
                 self.adopt(myself, state, target);
                 let _ = reply.send(Ok(HandoffReport::Completed {
                     generation: state.generation,
+                    // This leg exists because the source proved it stopped.
+                    interrupted_running: false,
                 }));
             }
             Err(error) => {
@@ -1112,6 +1175,26 @@ impl CoreObserver {
 }
 
 impl CoreClient {
+    pub async fn effective_config(
+        &self,
+    ) -> Result<Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>, CoreError> {
+        match self
+            .actor
+            .call(
+                |reply| CoreActorMessage::EffectiveConfig { reply },
+                Some(self.submit_budget),
+            )
+            .await
+        {
+            Ok(ractor::rpc::CallResult::Success(result)) => result,
+            _ => Err(CoreError::new(
+                CoreErrorKind::BackendUnavailable,
+                "core actor did not answer effective config query",
+                true,
+            )),
+        }
+    }
+
     pub async fn api_client(&self) -> Result<api::ApiClient, api::ApiError> {
         let reply = self
             .actor

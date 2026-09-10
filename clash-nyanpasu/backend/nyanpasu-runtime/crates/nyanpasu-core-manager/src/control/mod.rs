@@ -177,7 +177,7 @@ impl CoreCommand {
     /// The identity digest the idempotency registry compares: two envelopes
     /// with the same [`OperationId`] must describe the same work. Config
     /// bytes, the desired core, the CAS token, and the declared config digest
-    /// are identity; tuning fields ([`InstanceOptions`]) deliberately are not.
+    /// are identity; controller settings are identity too; other tuning fields in [`InstanceOptions`] are not.
     ///
     /// A corrected `expected_digest` is therefore a *different* envelope: the
     /// two describe different claims about the same bytes, and re-submitting
@@ -201,7 +201,7 @@ impl CoreCommand {
                 if let Some(expected) = &request.expected_applied {
                     let _ = write!(identity, "{expected}");
                 }
-                identity.push('\0');
+                let _ = write!(identity, "\0controller:{:?}\0", request.options.local_ipc);
                 let mut payload = identity.into_bytes();
                 let ConfigInput::Inline {
                     bytes,
@@ -399,7 +399,7 @@ impl CoreControl {
     /// Admission is synchronous: closing latch, idempotency, then the bounded
     /// queue. The returned handle names the operation; dropping it never
     /// cancels the work.
-    pub fn submit(&self, envelope: CoreCommandEnvelope) -> Result<OperationHandle, CoreError> {
+    pub fn submit(&self, mut envelope: CoreCommandEnvelope) -> Result<OperationHandle, CoreError> {
         let id = envelope.operation_id;
         if self.closing.load(Ordering::Acquire) {
             return Err(CoreError::new(
@@ -408,6 +408,12 @@ impl CoreControl {
                 false,
             )
             .with_operation(id));
+        }
+        if let CoreCommand::Reconcile(request) = &mut envelope.command {
+            request
+                .options
+                .local_ipc
+                .get_or_insert(self.manager.default_local_ipc_settings());
         }
         let digest = envelope.command.payload_digest();
         let is_shutdown = matches!(envelope.command, CoreCommand::Shutdown);
@@ -494,6 +500,10 @@ impl CoreControl {
 
     pub async fn api_connection(&self) -> Option<crate::ApiConnection> {
         self.manager.api_connection().await
+    }
+
+    pub async fn effective_config(&self) -> Option<crate::EffectiveConfigSnapshot> {
+        self.manager.effective_config().await
     }
 
     /// Zero-mailbox snapshot read.

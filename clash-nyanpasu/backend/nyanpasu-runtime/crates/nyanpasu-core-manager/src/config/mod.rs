@@ -90,8 +90,16 @@ impl ConfigSnapshot {
         runtime_dir: &Utf8Path,
         epoch: Epoch,
         runtime: EnumSet<RuntimeFeature>,
+        settings: Option<crate::LocalIpcSettings>,
     ) -> Result<PreparedConfig, Error> {
-        self.prepare(controller_template, runtime_dir, epoch, runtime, false)
+        self.prepare(
+            controller_template,
+            runtime_dir,
+            epoch,
+            runtime,
+            settings,
+            false,
+        )
     }
 
     pub(crate) fn prepare_bootstrap(
@@ -100,8 +108,16 @@ impl ConfigSnapshot {
         runtime_dir: &Utf8Path,
         epoch: Epoch,
         runtime: EnumSet<RuntimeFeature>,
+        settings: Option<crate::LocalIpcSettings>,
     ) -> Result<PreparedConfig, Error> {
-        self.prepare(controller_template, runtime_dir, epoch, runtime, true)
+        self.prepare(
+            controller_template,
+            runtime_dir,
+            epoch,
+            runtime,
+            settings,
+            true,
+        )
     }
 
     fn prepare(
@@ -110,6 +126,7 @@ impl ConfigSnapshot {
         runtime_dir: &Utf8Path,
         epoch: Epoch,
         runtime: EnumSet<RuntimeFeature>,
+        settings: Option<crate::LocalIpcSettings>,
         zero_inbounds: bool,
     ) -> Result<PreparedConfig, Error> {
         let mut document = self.document.clone();
@@ -126,9 +143,21 @@ impl ConfigSnapshot {
         let rewrote_controller = runtime.contains(RuntimeFeature::LocalIpc);
         if rewrote_controller {
             let endpoint = managed_endpoint_path(runtime_dir, controller_template, epoch)?;
-            clash::rewrite_managed_controller(&mut document, endpoint);
+            // HTTP-only hosts never bind this path; enforce the OS limit only
+            // when local IPC is selected, before writing or spawning anything.
+            #[cfg(unix)]
+            validate_socket_path(&endpoint)?;
+            clash::rewrite_managed_controller(
+                &mut document,
+                endpoint,
+                settings.is_some_and(|s| s.keep_http_controller),
+            );
         }
 
+        if !rewrote_controller && settings.is_some() {
+            document.remove(Value::String("external-controller-pipe".into()));
+            document.remove(Value::String("external-controller-unix".into()));
+        }
         let Value::Mapping(document) = canonicalize(Value::Mapping(document))? else {
             unreachable!("canonical mapping remains a mapping")
         };
@@ -270,12 +299,13 @@ fn render_endpoint_path(
     }
     #[cfg(windows)]
     {
-        let _ = runtime_dir;
-        Ok(format!(r"\\.\pipe\nyanpasu\core-{epoch}"))
+        let namespace = crate::payload_digest(runtime_dir.as_str().as_bytes());
+        Ok(format!(r"\\.\pipe\nyanpasu-{namespace}-core-{epoch}"))
     }
     #[cfg(not(windows))]
     {
-        Ok(runtime_dir.join(format!("core-{epoch}.sock")).to_string())
+        let endpoint = runtime_dir.join(format!("core-{epoch}.sock")).to_string();
+        Ok(endpoint)
     }
 }
 
@@ -298,7 +328,8 @@ fn managed_unix_endpoint(runtime_dir: &Utf8Path, endpoint: &str) -> Result<Strin
     let canonical_parent = Utf8PathBuf::from_path_buf(canonical_parent).map_err(|_| {
         Error::InvalidManagerOptions("managed Unix controller path is not UTF-8".into())
     })?;
-    if !canonical_parent.starts_with(runtime_dir) {
+    let canonical_root = std::fs::canonicalize(runtime_dir)?;
+    if !canonical_parent.as_std_path().starts_with(&canonical_root) {
         return Err(Error::InvalidManagerOptions(format!(
             "managed Unix controller `{candidate}` escapes runtime directory `{runtime_dir}`"
         )));
@@ -306,7 +337,17 @@ fn managed_unix_endpoint(runtime_dir: &Utf8Path, endpoint: &str) -> Result<Strin
     let file_name = candidate.file_name().ok_or_else(|| {
         Error::InvalidManagerOptions("managed Unix controller must name a socket file".into())
     })?;
-    Ok(canonical_parent.join(file_name).to_string())
+    let endpoint = canonical_parent.join(file_name).to_string();
+    Ok(endpoint)
+}
+
+#[cfg(unix)]
+fn validate_socket_path(path: &str) -> Result<(), Error> {
+    std::os::unix::net::SocketAddr::from_pathname(path)
+        .map(|_| ())
+        .map_err(|error| {
+            Error::InvalidManagerOptions(format!("invalid controller socket path: {error}"))
+        })
 }
 
 #[cfg(test)]
@@ -316,6 +357,53 @@ mod tests {
 
     fn snapshot(yaml: &str) -> ConfigSnapshot {
         ConfigSnapshot::from_bytes(Utf8PathBuf::from("config.yaml"), yaml.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn explicit_channel_settings_normalize_controller_fields() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = Utf8PathBuf::from_path_buf(root.path().canonicalize().unwrap()).unwrap();
+        let source = snapshot(
+            "external-controller: 127.0.0.1:9090\nexternal-controller-tls: 127.0.0.1:9443\nexternal-controller-unix: /tmp/unmanaged.sock\nexternal-controller-pipe: unmanaged\nsecret: private\n",
+        );
+        for ipc in [false, true] {
+            for keep_http in [false, true] {
+                let prepared = source
+                    .prepare_full(
+                        None,
+                        &runtime,
+                        epoch(1),
+                        if ipc {
+                            EnumSet::only(RuntimeFeature::LocalIpc)
+                        } else {
+                            EnumSet::new()
+                        },
+                        Some(crate::LocalIpcSettings {
+                            policy: crate::LocalIpcPolicy::Prefer,
+                            keep_http_controller: keep_http,
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    prepared.document.contains_key("external-controller"),
+                    !ipc || keep_http
+                );
+                assert_eq!(
+                    prepared.document.contains_key("external-controller-tls"),
+                    !ipc || keep_http
+                );
+                assert_eq!(
+                    prepared.document.contains_key("external-controller-unix"),
+                    ipc && cfg!(unix)
+                );
+                assert_eq!(
+                    prepared.document.contains_key("external-controller-pipe"),
+                    ipc && cfg!(windows)
+                );
+                assert_eq!(prepared.controller.secret.as_deref(), Some("private"));
+            }
+        }
+        assert!(source.document().contains_key("external-controller-unix"));
     }
 
     #[test]
@@ -336,7 +424,13 @@ mod tests {
         let source = snapshot("external-controller-unix: /tmp/source.sock");
 
         let error = source
-            .prepare_full(None, Utf8Path::new("runtime"), epoch(1), EnumSet::new())
+            .prepare_full(
+                None,
+                Utf8Path::new("runtime"),
+                epoch(1),
+                EnumSet::new(),
+                None,
+            )
             .unwrap_err();
 
         assert!(matches!(error, Error::ControllerMissing));
@@ -364,12 +458,15 @@ mod tests {
         let source = snapshot(
             "mixed-port: 7890\nexternal-controller: 127.0.0.1:9090\nsecret: sc\ntun:\n  enable: true\n",
         );
+        let root = tempfile::tempdir().unwrap();
+        let runtime = Utf8PathBuf::from_path_buf(root.path().canonicalize().unwrap()).unwrap();
         let prepared = source
             .prepare_bootstrap(
-                Some(r"\\.\pipe\ny-{epoch}"),
-                Utf8Path::new("runtime"),
+                None,
+                &runtime,
                 epoch(7),
                 EnumSet::only(RuntimeFeature::LocalIpc),
+                None,
             )
             .unwrap();
         assert_eq!(

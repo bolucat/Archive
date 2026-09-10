@@ -130,6 +130,16 @@ impl IpcOperation for CoreV2Operation {
     type Data = OperationInfo;
 }
 
+/// Private full configuration for the currently applied process.
+pub struct CoreV2EffectiveConfig;
+
+impl IpcOperation for CoreV2EffectiveConfig {
+    const METHOD: Method = Method::GET;
+    const PATH: &'static str = super::core::v2::CORE_V2_EFFECTIVE_CONFIG_ENDPOINT;
+    type Req<'a> = ();
+    type Data = Option<super::core::v2::CoreEffectiveConfig>;
+}
+
 /// Internal credentials for the currently applied process, or None if stopped.
 pub struct CoreV2ApiConnection;
 

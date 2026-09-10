@@ -43,6 +43,43 @@ impl std::fmt::Debug for CoreApiConnection {
     }
 }
 
+/// Per-request controller settings; omission is reserved for older clients.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct LocalIpcSettingsInfo {
+    pub policy: LocalIpcPolicyInfo,
+    pub keep_http_controller: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[serde(rename_all = "snake_case")]
+pub enum LocalIpcPolicyInfo {
+    Force,
+    Prefer,
+    Disable,
+}
+
+pub const CORE_V2_EFFECTIVE_CONFIG_ENDPOINT: &str = "/v2/core/effective-config";
+
+/// Private on-demand response, never a status broadcast.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+pub struct CoreEffectiveConfig {
+    pub instance_id: String,
+    pub revision: ConfigRevisionInfo,
+    pub config: String,
+}
+
+impl std::fmt::Debug for CoreEffectiveConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CoreEffectiveConfig")
+            .field("instance_id", &self.instance_id)
+            .field("revision", &self.revision)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Submit one mutating operation. The reply is the operation's registry
 /// snapshot at admission time — usually `queued` — not its result; poll or
 /// long-poll [`CoreOperationReq`] for that.
@@ -67,6 +104,8 @@ pub enum CoreCommandInfo<'n> {
     /// check runs inside it too (a rejection is a clean abort with
     /// `error_kind = "invalid_config"` or `"config_check_failed"`).
     Reconcile {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        local_ipc: Option<LocalIpcSettingsInfo>,
         core_type: Cow<'n, nyanpasu_utils::core::CoreType>,
         /// The full config document, as text. Never a path.
         config: Cow<'n, str>,
@@ -188,6 +227,7 @@ mod tests {
         let request = CoreSubmitReq {
             operation_id: Cow::Borrowed("00112233445566778899aabbccddeeff"),
             command: CoreCommandInfo::Reconcile {
+                local_ipc: None,
                 core_type: Cow::Owned(nyanpasu_utils::core::CoreType::Clash(
                     nyanpasu_utils::core::ClashCoreType::Mihomo,
                 )),

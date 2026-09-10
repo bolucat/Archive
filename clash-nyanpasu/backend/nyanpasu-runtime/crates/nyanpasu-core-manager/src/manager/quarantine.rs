@@ -57,7 +57,7 @@ impl CoreManager {
                 }
             }
 
-            match self.inner.store.cleanup_epoch(entry.epoch).await {
+            match self.cleanup_epoch(entry.epoch).await {
                 Ok(()) => ctrl
                     .quarantine
                     .retain(|quarantine| quarantine.epoch != entry.epoch),
@@ -132,7 +132,10 @@ pub(super) fn reject_quarantine(ctrl: &Ctrl) -> Result<(), Error> {
     }
 }
 
-pub(super) async fn sweep_orphans(store: &RuntimeConfigStore) -> Result<u64, Error> {
+pub(super) async fn sweep_orphans(
+    store: &RuntimeConfigStore,
+    options: &crate::ManagerOptions,
+) -> Result<u64, Error> {
     // Artifact numbers are read back from filenames, so they are not epochs:
     // a directory can carry `config-0.yaml`, and a zero that cannot be named
     // is a zero that leaks forever. Discovery and cleanup stay raw; only the
@@ -144,7 +147,75 @@ pub(super) async fn sweep_orphans(store: &RuntimeConfigStore) -> Result<u64, Err
         if tokio::fs::try_exists(&pid_path).await? {
             reap_epoch_pid_file(pid_path.as_std_path(), store.dir().as_std_path()).await?;
         }
+        if let Some(epoch) = Epoch::new(artifact) {
+            cleanup_controller(options, epoch).await?;
+        }
         store.cleanup_artifacts(artifact).await?;
     }
     Ok(max_seen)
+}
+
+pub(super) async fn cleanup_controller(
+    options: &crate::ManagerOptions,
+    epoch: Epoch,
+) -> Result<(), Error> {
+    if options.controller_dir.is_some() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileTypeExt;
+            let endpoint = crate::config::managed_endpoint_path(
+                options.controller_dir.as_deref().expect("checked above"),
+                options.controller_template.as_deref(),
+                epoch,
+            )?;
+            match tokio::fs::symlink_metadata(&endpoint).await {
+                Ok(metadata) if metadata.file_type().is_socket() => {
+                    tokio::fs::remove_file(endpoint).await?
+                }
+                Ok(_) => {
+                    return Err(Error::InvalidManagerOptions(
+                        "refusing to remove a non-socket controller".into(),
+                    ));
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(all(test, unix))]
+mod controller_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn orphan_sweep_cleans_only_recorded_controller_sockets() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = camino::Utf8PathBuf::from_path_buf(temp.path().to_path_buf()).unwrap();
+        let store = RuntimeConfigStore::new(root.join("runtime")).await.unwrap();
+        let dir = root.join("controllers");
+        std::fs::create_dir(&dir).unwrap();
+        let options = crate::ManagerOptions {
+            controller_dir: Some(dir.clone()),
+            ..Default::default()
+        };
+        let endpoint =
+            crate::config::managed_endpoint_path(&dir, None, Epoch::new(7).unwrap()).unwrap();
+        let listener = std::os::unix::net::UnixListener::bind(&endpoint).unwrap();
+        drop(listener);
+        std::fs::write(store.dir().join("config-7.yaml"), "secret: private").unwrap();
+        let foreign = dir.join("unrelated.sock");
+        let _foreign = std::os::unix::net::UnixListener::bind(&foreign).unwrap();
+        assert_eq!(sweep_orphans(&store, &options).await.unwrap(), 7);
+        assert!(!std::path::Path::new(&endpoint).exists());
+        assert!(foreign.exists());
+        std::fs::write(&endpoint, "not a socket").unwrap();
+        assert!(
+            cleanup_controller(&options, Epoch::new(7).unwrap())
+                .await
+                .is_err()
+        );
+        assert!(std::path::Path::new(&endpoint).exists());
+    }
 }

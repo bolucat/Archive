@@ -1,4 +1,5 @@
 pub mod consts;
+mod controller_access;
 mod events;
 mod logger;
 mod manager_bridge;
@@ -31,12 +32,16 @@ pub async fn run(
             .map_err(|path| anyhow::anyhow!("core runtime dir is not UTF-8: {}", path.display()))?;
     let data_dir = camino::Utf8PathBuf::from_path_buf(runtime.nyanpasu_data_dir.clone())
         .map_err(|path| anyhow::anyhow!("nyanpasu data dir is not UTF-8: {}", path.display()))?;
-    let core_manager = CoreManager::new(
+    let (controller_dir, access): (_, Arc<dyn nyanpasu_core_manager::ControllerAccess>) =
+        controller_access_for_host();
+    let core_manager = CoreManager::with_controller_access(
         ServiceDirs {
             runtime: runtime_dir,
             data: data_dir,
         },
         local_ipc_policy,
+        controller_dir,
+        access,
     )
     .await?;
     let hub = EventHub::new();
@@ -104,4 +109,47 @@ async fn drain<E: std::error::Error + Send + Sync + 'static>(
         ),
     }
     Ok(())
+}
+
+fn controller_access_for_host() -> (
+    Option<camino::Utf8PathBuf>,
+    Arc<dyn nyanpasu_core_manager::ControllerAccess>,
+) {
+    #[cfg(unix)]
+    {
+        // The installation establishes this authorization group for GUI users.
+        let mut group = std::mem::MaybeUninit::<libc::group>::uninit();
+        let mut result = std::ptr::null_mut();
+        let mut buffer = vec![0u8; 16 * 1024];
+        let error = unsafe {
+            libc::getgrnam_r(
+                c"nyanpasu".as_ptr(),
+                group.as_mut_ptr(),
+                buffer.as_mut_ptr().cast(),
+                buffer.len(),
+                &mut result,
+            )
+        };
+        if error == 0 && !result.is_null() {
+            let gid = unsafe { group.assume_init().gr_gid };
+            let root = std::path::Path::new("/var/run/nyanpasu-core");
+            match controller_access::UnixControllerAccess::prepare(root, gid) {
+                Ok(access) => {
+                    let path = root
+                        .canonicalize()
+                        .ok()
+                        .and_then(|path| camino::Utf8PathBuf::from_path_buf(path).ok());
+                    if path.is_some() {
+                        return (path, Arc::new(access));
+                    }
+                }
+                Err(error) => tracing::warn!("service core IPC is unavailable: {error}"),
+            }
+        }
+    }
+    // Windows core-owned pipe ACLs have not yet passed the non-elevated GUI gate.
+    (
+        None,
+        Arc::new(controller_access::UnavailableControllerAccess),
+    )
 }

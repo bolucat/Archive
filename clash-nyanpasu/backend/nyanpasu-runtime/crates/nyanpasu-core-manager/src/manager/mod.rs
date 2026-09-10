@@ -28,7 +28,7 @@ use crate::{
         process::{ProbePlan, ProcessRuntimeBackend},
     },
     runtime_store::{RuntimeConfigStore, RuntimeDirectoryLock, StagedRuntimeConfig},
-    spec::{CoreSpec, InstanceSpec, LocalIpcPolicy, ManagerOptions, ResolvedController},
+    spec::{InstanceSpec, LocalIpcPolicy, ManagerOptions, ResolvedController},
     state::{ConfigRevision, CoreState, CoreStatus, InstanceStatus, StopReason},
 };
 
@@ -104,12 +104,15 @@ pub struct CoreManagerBuilder {
     probes: ProbePlan,
     backend: Option<Arc<dyn RuntimeBackend>>,
     dns: Option<Arc<dyn DnsController>>,
+    controller_access: Option<Arc<dyn crate::ControllerAccess>>,
 }
 
 struct Inner {
     options: ManagerOptions,
     backend: Arc<dyn RuntimeBackend>,
     dns: Option<Arc<dyn DnsController>>,
+    config_commits: watch::Sender<Option<crate::EffectiveConfigSnapshot>>,
+    controller_access: Option<Arc<dyn crate::ControllerAccess>>,
     store: RuntimeConfigStore,
     ctrl: tokio::sync::Mutex<Ctrl>,
     status_tx: watch::Sender<CoreStatus>,
@@ -265,6 +268,11 @@ impl CoreManagerBuilder {
         self
     }
 
+    pub fn controller_access(mut self, access: Arc<dyn crate::ControllerAccess>) -> Self {
+        self.controller_access = Some(access);
+        self
+    }
+
     pub async fn build(self) -> Result<CoreManager, Error> {
         CoreManager::build_configured(self).await
     }
@@ -277,6 +285,7 @@ impl CoreManager {
             probes: ProbePlan::default(),
             backend: None,
             dns: None,
+            controller_access: None,
         }
     }
 
@@ -287,9 +296,10 @@ impl CoreManager {
     async fn build_configured(builder: CoreManagerBuilder) -> Result<Self, Error> {
         let CoreManagerBuilder {
             options,
-            probes,
+            mut probes,
             backend,
             dns,
+            controller_access,
         } = builder;
         let runtime_dir = options
             .runtime_dir
@@ -302,7 +312,10 @@ impl CoreManager {
         // endpoint is a configuration error whether or not this core ends up
         // selecting local IPC, and construction is the caller's last chance to
         // fix it.
-        config::validate_managed_endpoint(store.dir(), options.controller_template.as_deref())?;
+        config::validate_managed_endpoint(
+            options.controller_dir.as_deref().unwrap_or(store.dir()),
+            options.controller_template.as_deref(),
+        )?;
         for (name, timeout) in [
             ("control_timeout", options.control_timeout),
             ("reconcile_timeout", options.reconcile_timeout),
@@ -328,7 +341,7 @@ impl CoreManager {
                 "log_max_files must be greater than zero".into(),
             ));
         }
-        let max_epoch = sweep_orphans(&store).await?;
+        let max_epoch = sweep_orphans(&store, &options).await?;
         dns_sync::reconcile_orphan_record(&store, dns.as_deref(), options.dns_timeout).await;
         let (status_tx, _) = watch::channel(CoreStatus::initial());
         let (log_tx, _) = broadcast::channel(LOG_CHANNEL_CAPACITY);
@@ -350,6 +363,7 @@ impl CoreManager {
         } else {
             (None, None)
         };
+        probes.controller_access = controller_access.clone();
         let backend = backend.unwrap_or_else(|| {
             Arc::new(ProcessRuntimeBackend::new(
                 probes,
@@ -361,6 +375,8 @@ impl CoreManager {
                 options,
                 backend,
                 dns,
+                config_commits: watch::Sender::new(None),
+                controller_access,
                 store,
                 ctrl: tokio::sync::Mutex::new(Ctrl::new(max_epoch)),
                 status_tx,
@@ -440,7 +456,7 @@ impl CoreManager {
         let prepared = match self.prepare_launch(&spec, epoch, &snapshot).await {
             Ok(prepared) => prepared,
             Err(error) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 self.publish_terminal_error(&error);
                 return Err(error);
             }
@@ -455,7 +471,7 @@ impl CoreManager {
         let instance = match self.spawn_instance(&plan).await {
             Ok(instance) => instance,
             Err(error) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 self.publish_terminal_error(&error);
                 return Err(error);
             }
@@ -467,7 +483,7 @@ impl CoreManager {
                 .await
             {
                 Ok(()) => {
-                    let _ = self.inner.store.cleanup_epoch(epoch).await;
+                    let _ = self.cleanup_epoch(epoch).await;
                     self.publish_terminal_error(&readiness_error);
                     return Err(readiness_error);
                 }
@@ -521,7 +537,7 @@ impl CoreManager {
                 }
                 return Err(error);
             }
-            if let Err(error) = self.inner.store.cleanup_epoch(epoch).await {
+            if let Err(error) = self.cleanup_epoch(epoch).await {
                 self.publish_terminal_error(&error);
                 return Err(error);
             }
@@ -540,7 +556,7 @@ impl CoreManager {
             self.publish_terminal_error(&error);
             return Err(error);
         }
-        if let Err(error) = self.inner.store.cleanup_epoch(epoch).await {
+        if let Err(error) = self.cleanup_epoch(epoch).await {
             self.publish_terminal_error(&error);
             return Err(error);
         }
@@ -553,30 +569,97 @@ impl CoreManager {
         Ok(())
     }
 
+    /// Reads identity and the full committed document under one transaction lock.
+    pub async fn effective_config(&self) -> Option<crate::EffectiveConfigSnapshot> {
+        let ctrl = self.inner.ctrl.lock().await;
+        let active = ctrl.current.as_ref()?;
+        let instance = active.instance.state().borrow().clone();
+        if !matches!(instance.state, crate::InstanceState::Running { .. }) {
+            return None;
+        }
+        Some(crate::EffectiveConfigSnapshot {
+            instance_id: instance.instance_id?,
+            revision: active.plan.revision.clone(),
+            config: Arc::new(active.plan.effective_document.clone()),
+        })
+    }
+
     pub async fn check_config(&self, spec: &InstanceSpec) -> Result<(), Error> {
         self.inner.backend.check_config(spec).await
     }
 
-    async fn resolve_features(&self, core: &CoreSpec) -> Result<ResolvedFeatures, Error> {
+    fn controller_dir(&self) -> &camino::Utf8Path {
+        self.inner
+            .options
+            .controller_dir
+            .as_deref()
+            .unwrap_or(self.inner.store.dir())
+    }
+
+    async fn cleanup_epoch(&self, epoch: Epoch) -> Result<(), Error> {
+        quarantine::cleanup_controller(&self.inner.options, epoch).await?;
+        self.inner.store.cleanup_epoch(epoch).await?;
+        Ok(())
+    }
+
+    /// Latest committed full configuration, retained after stop. Intermediate
+    /// commits may coalesce. Consumers run outside manager transactions and must
+    /// use `effective_config()` to resynchronize current running state.
+    pub fn subscribe_config_commits(&self) -> crate::ConfigCommitSubscription {
+        crate::ConfigCommitSubscription {
+            receiver: self.inner.config_commits.subscribe(),
+        }
+    }
+
+    pub(crate) fn default_local_ipc_settings(&self) -> crate::LocalIpcSettings {
+        crate::LocalIpcSettings {
+            policy: self.inner.options.local_ipc_policy,
+            keep_http_controller: false,
+        }
+    }
+
+    fn local_ipc_settings(&self, spec: &InstanceSpec) -> crate::LocalIpcSettings {
+        spec.options
+            .local_ipc
+            .unwrap_or_else(|| self.default_local_ipc_settings())
+    }
+
+    async fn resolve_features(&self, spec: &InstanceSpec) -> Result<ResolvedFeatures, Error> {
+        let policy = self.local_ipc_settings(spec).policy;
+        let available = self
+            .inner
+            .controller_access
+            .as_ref()
+            .is_none_or(|access| access.supports_local_ipc());
+        if !available && policy == LocalIpcPolicy::Force {
+            return Err(Error::InvalidManagerOptions(
+                "the host cannot authorize local IPC".into(),
+            ));
+        }
         crate::capability::resolve_features(
             &self.inner.version_cache,
-            core,
-            self.inner.options.local_ipc_policy,
+            &spec.core,
+            if available {
+                policy
+            } else {
+                LocalIpcPolicy::Disable
+            },
         )
         .await
     }
 
     fn warn_http_fallback(
         &self,
-        core: &CoreSpec,
+        spec: &InstanceSpec,
         resolved_version: Option<&str>,
         rewrote_controller: bool,
     ) {
-        if self.inner.options.local_ipc_policy == LocalIpcPolicy::Prefer && !rewrote_controller {
+        let core = &spec.core;
+        if self.local_ipc_settings(spec).policy == LocalIpcPolicy::Prefer && !rewrote_controller {
             tracing::warn!(
                 kind = %core.kind,
                 version = resolved_version.or(core.version.as_deref()).unwrap_or("unknown"),
-                "local IPC is unsupported; falling back to the configured HTTP controller"
+                "local IPC is unavailable for this core or host; falling back to the configured HTTP controller"
             );
         }
     }
@@ -612,7 +695,7 @@ impl CoreManager {
                     self.publish_terminal_error(&error);
                     return Err(error);
                 }
-                if let Err(error) = self.inner.store.cleanup_epoch(epoch).await {
+                if let Err(error) = self.cleanup_epoch(epoch).await {
                     self.publish_terminal_error(&error);
                     return Err(error);
                 }
@@ -694,7 +777,7 @@ impl CoreManager {
     async fn discard_stale(&self, ctrl: &mut Ctrl) -> Result<(), Error> {
         match self.retire_current(ctrl).await {
             Ok(None) => Ok(()),
-            Ok(Some(plan)) => self.inner.store.cleanup_epoch(plan.revision.epoch).await,
+            Ok(Some(plan)) => self.cleanup_epoch(plan.revision.epoch).await,
             Err(RetireFailure { epoch, error }) => {
                 Err(if matches!(error, Error::StopUnconfirmed(_)) {
                     self.latch_quarantine(ctrl, epoch, error)

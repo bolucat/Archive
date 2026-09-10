@@ -182,12 +182,12 @@ display-info = "0.5.0"  # should be removed after upgrading to tauri v2
 
 # OXC (The Oxidation Compiler)
 # We use it to parse and transpile the old script profile to esm based script profile
-oxc_parser = "0.148"
-oxc_allocator = "0.148"
-oxc_span = "0.148"
-oxc_ast = "0.148"
-oxc_syntax = "0.148"
-oxc_ast_visit = "0.148"
+oxc_parser = "0.149"
+oxc_allocator = "0.149"
+oxc_span = "0.149"
+oxc_ast = "0.149"
+oxc_syntax = "0.149"
+oxc_ast_visit = "0.149"
 
 # Lua Integration
 mlua = { version = "0.12", features = [
@@ -223,8 +223,14 @@ tauri-plugin-opener = "2.5"
 window-vibrancy = { version = "0.8.0" }
 
 # Strong typed api binding between typescript and rust
+# tauri-specta-query's current release line targets Specta rc26; this revision
+# is the compatible rc25 line used by the project today.
 specta-typescript = { version = "0.0.12", features = ["serde"] }
-tauri-specta = { version = "^2.0.0-rc.25", features = ["derive", "typescript"] }
+tauri-specta = { git = "https://github.com/specta-rs/tauri-specta.git", rev = "373c25d080aa0ba909bd23b2b559947079e8dc75", version = "2.0.0-rc.25", features = [
+  "derive",
+  "typescript",
+] }
+tauri-specta-query = { git = "https://github.com/specta-rs/tauri-specta.git", rev = "373c25d080aa0ba909bd23b2b559947079e8dc75", version = "0.0.0" }
 specta = { version = "^2.0.0-rc.25", features = [
   "serde_json",
   "serde_yaml",

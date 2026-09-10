@@ -160,6 +160,7 @@ impl FakeEndpoint {
 
 fn snapshot(state: CoreStateDetail) -> CoreStatusSnapshot {
     CoreStatusSnapshot {
+        controller: None,
         state: Some(state),
         state_changed_at: 0,
         revision: None,
@@ -319,7 +320,13 @@ async fn a_completed_handoff_advances_the_generation_and_moves_routing() {
     let client = CoreClient::spawn(local.clone()).await.unwrap();
 
     let report = client.change_host(service.clone()).await.unwrap();
-    assert_eq!(report, HandoffReport::Completed { generation: 1 });
+    assert_eq!(
+        report,
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: false,
+        }
+    );
     // The source was stopped exactly once, with proof demanded.
     assert_eq!(local.stops.load(Ordering::SeqCst), 1);
 
@@ -445,7 +452,13 @@ async fn endpoint_down_degrades_honestly_and_stale_reports_are_fenced() {
         CoreStateDetail::Stopped { reason: None },
     );
     let report = client.change_host(fresh).await.unwrap();
-    assert_eq!(report, HandoffReport::Completed { generation: 1 });
+    assert_eq!(
+        report,
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: true,
+        }
+    );
 
     client.shutdown().await.unwrap();
 }
@@ -461,6 +474,7 @@ async fn a_lost_stop_result_with_an_unknown_status_is_not_a_stop_proof() {
     );
     local.script_stop(StopScript::Lost);
     *local.status.lock().unwrap() = Ok(CoreStatusSnapshot {
+        controller: None,
         state: None,
         state_changed_at: 0,
         revision: None,
@@ -503,7 +517,13 @@ async fn a_lost_stop_result_with_a_stopped_status_is_accepted() {
     let client = CoreClient::spawn(local.clone()).await.unwrap();
 
     let report = client.change_host(service).await.unwrap();
-    assert_eq!(report, HandoffReport::Completed { generation: 1 });
+    assert_eq!(
+        report,
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: false,
+        }
+    );
 
     client.shutdown().await.unwrap();
 }
@@ -698,7 +718,10 @@ async fn a_submit_during_a_handoff_is_refused_with_operation_conflict() {
     local.release_stop();
     assert_eq!(
         handoff.await.unwrap().unwrap(),
-        HandoffReport::Completed { generation: 1 }
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: false,
+        }
     );
 
     let ticket = client.submit(reconcile_envelope()).await.unwrap();
@@ -779,7 +802,10 @@ async fn a_stale_handoff_completion_is_fenced() {
     local.release_stop();
     assert_eq!(
         handoff.await.unwrap().unwrap(),
-        HandoffReport::Completed { generation: 1 }
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: false,
+        }
     );
 
     client.shutdown().await.unwrap();
@@ -885,7 +911,10 @@ async fn a_degraded_source_cannot_be_replaced_by_another_host_without_proof() {
     );
     assert_eq!(
         client.change_host(fresh).await.unwrap(),
-        HandoffReport::Completed { generation: 1 }
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: true,
+        }
     );
 
     client.shutdown().await.unwrap();
@@ -913,7 +942,10 @@ async fn adoption_publishes_no_snapshot_from_the_previous_host() {
     let mut events = client.subscribe_events();
     assert_eq!(
         client.change_host(service).await.unwrap(),
-        HandoffReport::Completed { generation: 1 }
+        HandoffReport::Completed {
+            generation: 1,
+            interrupted_running: false,
+        }
     );
 
     let frame = tokio::time::timeout(Duration::from_secs(5), async {

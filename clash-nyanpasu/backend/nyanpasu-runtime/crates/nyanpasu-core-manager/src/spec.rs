@@ -39,6 +39,11 @@ impl InstanceSpec {
 
 #[derive(Debug, Clone)]
 pub struct InstanceOptions {
+    /// Immutable controller policy for this request and every respawn of its epoch.
+    /// TODO(actor-migration): compatibility bridge for callers without channel settings.
+    /// Reason: standalone CLI and older wire clients use the host construction default.
+    /// Remove when: those callers supply explicit settings. CoreControl resolves at admission.
+    pub local_ipc: Option<LocalIpcSettings>,
     /// Total limit for the initial start (spawn → readiness threshold).
     pub startup_timeout: Duration,
     pub health: HealthPolicy,
@@ -49,6 +54,7 @@ pub struct InstanceOptions {
 impl Default for InstanceOptions {
     fn default() -> Self {
         Self {
+            local_ipc: None,
             startup_timeout: Duration::from_secs(30),
             health: HealthPolicy::default(),
             restart_policy: RestartPolicy::OnFailure { max_restarts: 5 },
@@ -103,6 +109,12 @@ pub enum LocalIpcPolicy {
     Disable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalIpcSettings {
+    pub policy: LocalIpcPolicy,
+    pub keep_http_controller: bool,
+}
+
 #[derive(Debug, Clone)]
 pub struct ManagerOptions {
     /// Manager-owned runtime artifact directory: effective configs, pid files,
@@ -114,6 +126,8 @@ pub struct ManagerOptions {
     /// Only consulted when the policy selects local IPC, but validated at
     /// construction under every policy.
     pub controller_template: Option<String>,
+    /// Host-owned socket-only directory, separate from private runtime artifacts.
+    pub controller_dir: Option<Utf8PathBuf>,
     pub control_timeout: Duration,
     pub reconcile_timeout: Duration,
     pub stop_timeout: Duration,
@@ -145,6 +159,7 @@ impl Default for ManagerOptions {
             // transport ask for it.
             local_ipc_policy: LocalIpcPolicy::Disable,
             controller_template: None,
+            controller_dir: None,
             control_timeout: Duration::from_secs(10),
             reconcile_timeout: Duration::from_secs(30),
             stop_timeout: Duration::from_secs(10),

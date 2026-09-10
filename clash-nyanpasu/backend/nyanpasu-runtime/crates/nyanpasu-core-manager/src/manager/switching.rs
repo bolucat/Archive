@@ -71,10 +71,25 @@ impl CoreManager {
 
         let snapshot = ConfigSnapshot::load(&spec.config_path).await?;
         self.validate_launchable(&spec).await?;
-        let resolved = self.resolve_features(&spec.core).await?;
+        let resolved = self.resolve_features(&spec).await?;
         let local_controller = resolved.runtime.contains(RuntimeFeature::LocalIpc);
+        let has_http = |doc: &serde_yaml_ng::Mapping| {
+            ["external-controller", "external-controller-tls"]
+                .iter()
+                .any(|field| {
+                    doc.get(*field)
+                        .and_then(serde_yaml_ng::Value::as_str)
+                        .is_some_and(|value| !value.is_empty())
+                })
+        };
+        let http_listener = ctrl
+            .current
+            .as_ref()
+            .is_some_and(|active| has_http(&active.plan.effective_document))
+            || (self.local_ipc_settings(&spec).keep_http_controller
+                && has_http(snapshot.document()));
         match graceful_degrade_reason(
-            local_controller,
+            local_controller && !http_listener,
             spec.core.kind,
             mihomo::overlap_block(snapshot.document()),
         ) {
@@ -100,7 +115,7 @@ impl CoreManager {
         {
             Ok(plan) => plan,
             Err(error) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 self.republish_retained(ctrl);
                 return Err(error);
             }
@@ -120,7 +135,7 @@ impl CoreManager {
                 epoch: retired_epoch,
                 error,
             }) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 if matches!(error, Error::StopUnconfirmed(_)) {
                     return Err(self.latch_quarantine(ctrl, retired_epoch, error));
                 }
@@ -128,7 +143,7 @@ impl CoreManager {
                 return Err(error);
             }
         };
-        if let Err(error) = self.inner.store.cleanup_epoch(old_epoch).await {
+        if let Err(error) = self.cleanup_epoch(old_epoch).await {
             self.publish_terminal_error(&error);
             return Err(error);
         }
@@ -150,7 +165,7 @@ impl CoreManager {
         {
             Ok(prepared) => prepared,
             Err(error) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 self.republish_retained(ctrl);
                 return Err(error);
             }
@@ -172,7 +187,7 @@ impl CoreManager {
             Ok(instance) => instance,
             Err(error) => {
                 drop(full_staged);
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 self.republish_retained(ctrl);
                 return Err(error);
             }
@@ -184,7 +199,7 @@ impl CoreManager {
                 .await
             {
                 Ok(()) => {
-                    let _ = self.inner.store.cleanup_epoch(epoch).await;
+                    let _ = self.cleanup_epoch(epoch).await;
                     self.republish_retained(ctrl);
                     return Err(error);
                 }
@@ -211,7 +226,7 @@ impl CoreManager {
                     .await;
                 match new_stop {
                     Ok(()) => {
-                        let _ = self.inner.store.cleanup_epoch(epoch).await;
+                        let _ = self.cleanup_epoch(epoch).await;
                         if old_uncertain {
                             return Err(self.latch_quarantine(ctrl, retired_epoch, error));
                         }
@@ -238,7 +253,7 @@ impl CoreManager {
                     .stop_and_confirm_dead(self.inner.options.stop_timeout)
                     .await;
                 if new_stop.is_ok() {
-                    let _ = self.inner.store.cleanup_epoch(epoch).await;
+                    let _ = self.cleanup_epoch(epoch).await;
                 }
                 let error = match new_stop {
                     Ok(()) => error,
@@ -278,8 +293,6 @@ impl CoreManager {
             );
             self.install(ctrl, instance, launch);
             let result = self
-                .inner
-                .store
                 .cleanup_epoch(old_epoch)
                 .await
                 .map(|()| SwitchOutcome::Graceful);
@@ -305,7 +318,7 @@ impl CoreManager {
                 return with_switch_durability_result(Err(error), durability_warning);
             }
             Err(error) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 self.publish_terminal_error(&error);
                 return with_switch_durability_result(Err(error), durability_warning);
             }
@@ -317,14 +330,12 @@ impl CoreManager {
             &launch,
         );
         self.install(ctrl, replacement, launch);
-        let result =
-            self.inner
-                .store
-                .cleanup_epoch(old_epoch)
-                .await
-                .map(|()| SwitchOutcome::Hard {
-                    reason: DegradeReason::PatchFailed,
-                });
+        let result = self
+            .cleanup_epoch(old_epoch)
+            .await
+            .map(|()| SwitchOutcome::Hard {
+                reason: DegradeReason::PatchFailed,
+            });
         with_switch_durability_result(result, durability_warning)
     }
 
@@ -345,7 +356,7 @@ impl CoreManager {
         snapshot: &ConfigSnapshot,
     ) -> Result<EpochPlan, Error> {
         self.validate_launchable(spec).await?;
-        let resolved = self.resolve_features(&spec.core).await?;
+        let resolved = self.resolve_features(&spec).await?;
         self.prepare_launch_with_features(spec, epoch, snapshot, resolved)
             .await
     }
@@ -360,12 +371,13 @@ impl CoreManager {
         debug_assert_eq!(snapshot.source_path(), spec.config_path);
         let prepared = snapshot.prepare_full(
             self.inner.options.controller_template.as_deref(),
-            self.inner.store.dir(),
+            self.controller_dir(),
             epoch,
             resolved.runtime,
+            Some(self.local_ipc_settings(&spec)),
         )?;
         self.warn_http_fallback(
-            &spec.core,
+            &spec,
             resolved.version.as_deref(),
             prepared.rewrote_controller,
         );
@@ -407,21 +419,19 @@ impl CoreManager {
         debug_assert_eq!(snapshot.source_path(), spec.config_path);
         let full = snapshot.prepare_full(
             self.inner.options.controller_template.as_deref(),
-            self.inner.store.dir(),
+            self.controller_dir(),
             epoch,
             resolved.runtime,
+            Some(self.local_ipc_settings(&spec)),
         )?;
         let bootstrap = snapshot.prepare_bootstrap(
             self.inner.options.controller_template.as_deref(),
-            self.inner.store.dir(),
+            self.controller_dir(),
             epoch,
             resolved.runtime,
+            Some(self.local_ipc_settings(&spec)),
         )?;
-        self.warn_http_fallback(
-            &spec.core,
-            resolved.version.as_deref(),
-            full.rewrote_controller,
-        );
+        self.warn_http_fallback(&spec, resolved.version.as_deref(), full.rewrote_controller);
         if full.controller.host != bootstrap.controller.host
             || full.controller.secret != bootstrap.controller.secret
         {

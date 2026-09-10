@@ -41,6 +41,16 @@ impl Inner {
         plan: &EpochPlan,
     ) {
         let snapshot = instance.state().borrow().clone();
+        if matches!(state, CoreState::Running { .. })
+            && let Some(instance_id) = snapshot.instance_id
+        {
+            self.config_commits
+                .send_replace(Some(crate::EffectiveConfigSnapshot {
+                    instance_id,
+                    revision: plan.revision.clone(),
+                    config: std::sync::Arc::new(plan.effective_document.clone()),
+                }));
+        }
         let health = snapshot.health;
         self.status_tx.send_modify(|status| {
             let lifecycle_changed = status.state != state;

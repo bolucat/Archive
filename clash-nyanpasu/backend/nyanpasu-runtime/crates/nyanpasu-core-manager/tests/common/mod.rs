@@ -39,6 +39,7 @@ pub fn free_port() -> u16 {
 /// Small budgets so failure paths finish in test time.
 pub fn fast_options() -> InstanceOptions {
     InstanceOptions {
+        local_ipc: None,
         startup_timeout: Duration::from_secs(5),
         health: HealthPolicy::new(HealthPolicySpec {
             interval: Duration::from_millis(50),

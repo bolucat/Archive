@@ -7,11 +7,12 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { m } from '@/paraglide/messages'
 import {
-  commands,
-  unwrapResult,
+  queries,
+  unwrapQueryOptions,
   type ConfigExecutionRole,
   type OperatorTag,
   type RuntimeInspection,
+  type RuntimeInspectionContent,
 } from '@nyanpasu/interface'
 import { skipToken, useQuery } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
@@ -55,6 +56,8 @@ function stepLabel(tag: OperatorTag): string {
           return m.inspect_overrides()
         case 'whitelist_field_filter':
           return m.inspect_filter()
+        case 'core_controller':
+          return m.inspect_core_controller()
         case 'finalizing':
           return m.inspect_finalizing()
       }
@@ -62,9 +65,12 @@ function stepLabel(tag: OperatorTag): string {
 }
 
 function RouteComponent() {
+  const [appliedView, setAppliedView] = useState(false)
+  const inspectionQuery = appliedView
+    ? queries.inspectAppliedRuntime()
+    : queries.inspectRuntime()
   const inspection = useQuery({
-    queryKey: ['runtime-inspection'],
-    queryFn: async () => unwrapResult(await commands.inspectRuntime()),
+    ...unwrapQueryOptions(inspectionQuery, inspectionQuery.queryFn!),
     refetchOnWindowFocus: false,
     retry: false,
   })
@@ -86,6 +92,10 @@ function RouteComponent() {
           {m.inspect_refresh()}
         </Button>
       </header>
+      <label className="flex items-center gap-2 text-sm">
+        <Switch checked={appliedView} onCheckedChange={setAppliedView} />
+        {m.inspect_last_applied()}
+      </label>
       {inspection.isPending && <p role="status">{m.inspect_loading()}</p>}
       {inspection.isError && (
         <p role="alert">
@@ -115,16 +125,17 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
         (node) => node.has_logs || (node.changed_fields?.length ?? 0) > 0,
       )
   const selected = nodes.find((node) => node.id === selectedId) ?? nodes[0]
-  const content = useQuery({
-    queryKey: ['runtime-inspection-node', snapshot.snapshot_id, selected?.id],
-    queryFn: selected
-      ? async () =>
-          unwrapResult(
-            await commands.inspectRuntimeNode(
-              snapshot.snapshot_id,
-              selected.id,
-            ),
-          )
+  const contentQuery = selected
+    ? queries.inspectRuntimeNode(snapshot.snapshot_id, selected.id)
+    : null
+  const content = useQuery<RuntimeInspectionContent>({
+    queryKey: contentQuery?.queryKey ?? [
+      'runtime-inspection-node',
+      snapshot.snapshot_id,
+      selected?.id,
+    ],
+    queryFn: contentQuery
+      ? unwrapQueryOptions(contentQuery, contentQuery.queryFn!).queryFn
       : skipToken,
     retry: false,
     refetchOnWindowFocus: false,
@@ -134,8 +145,12 @@ function SnapshotBrowser({ snapshot }: { snapshot: RuntimeInspection }) {
   return (
     <>
       <p className="text-on-surface-variant text-sm">
-        {m.inspect_generated()} · {snapshot.target_core} ·{' '}
-        {m.inspect_revision()} {snapshot.revision}
+        {snapshot.effective_pending
+          ? m.inspect_effective_pending()
+          : snapshot.applied
+            ? m.inspect_applied()
+            : m.inspect_generated()}{' '}
+        · {snapshot.target_core} · {m.inspect_revision()} {snapshot.revision}
       </p>
       <div className="grid min-w-0 gap-4 @[40rem]:grid-cols-[minmax(12rem,1fr)_minmax(0,3fr)]">
         <div className="flex min-w-0 flex-col gap-3">

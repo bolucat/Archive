@@ -51,3 +51,21 @@ pub async fn api_connection(
     let connection = state.core_manager.api_connection().await;
     (StatusCode::OK, Json(RBuilder::success(connection)))
 }
+
+/// Full config is only read over the same private authorization boundary as credentials.
+pub async fn effective_config(
+    State(state): State<AppState>,
+) -> (
+    StatusCode,
+    Json<R<'static, Option<nyanpasu_ipc::api::core::v2::CoreEffectiveConfig>>>,
+) {
+    match state.core_manager.effective_config().await {
+        Ok(snapshot) => (StatusCode::OK, Json(RBuilder::success(snapshot))),
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(RBuilder::other_error(
+                "failed to serialize effective configuration".into(),
+            )),
+        ),
+    }
+}

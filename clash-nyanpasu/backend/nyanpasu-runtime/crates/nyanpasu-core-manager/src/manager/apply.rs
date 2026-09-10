@@ -57,9 +57,13 @@ impl CoreManager {
             prepared.plan.classification_view(),
         )?;
         if matches!(change, ConfigChange::Noop) {
-            return Ok(ApplyOutcome::Noop {
-                revision: current.plan.revision.clone(),
-            });
+            let revision = current.plan.revision.clone();
+            // Policy can change while the resolved controller stays identical.
+            // Retain it for explicit restarts without changing the live revision.
+            let current = ctrl.current.as_mut().expect("checked above");
+            current.plan.source_spec = input.clone();
+            ctrl.last_spec = Some(input);
+            return Ok(ApplyOutcome::Noop { revision });
         }
         if matches!(change, ConfigChange::Switch) {
             drop(prepared);
@@ -136,16 +140,17 @@ impl CoreManager {
         snapshot: &ConfigSnapshot,
     ) -> Result<PreparedApply, Error> {
         self.validate_launchable(&input).await?;
-        let resolved = self.resolve_features(&input.core).await?;
+        let resolved = self.resolve_features(&input).await?;
         let epoch = current.plan.revision.epoch;
         let prepared = snapshot.prepare_full(
             self.inner.options.controller_template.as_deref(),
-            self.inner.store.dir(),
+            self.controller_dir(),
             epoch,
             resolved.runtime,
+            Some(self.local_ipc_settings(&input)),
         )?;
         self.warn_http_fallback(
-            &input.core,
+            &input,
             resolved.version.as_deref(),
             prepared.rewrote_controller,
         );
@@ -390,7 +395,7 @@ impl CoreManager {
                 epoch: retired_epoch,
                 error,
             }) => {
-                let _ = self.inner.store.cleanup_epoch(epoch).await;
+                let _ = self.cleanup_epoch(epoch).await;
                 if matches!(error, Error::StopUnconfirmed(_)) {
                     return Err(self.latch_quarantine(ctrl, retired_epoch, error));
                 }
@@ -420,12 +425,7 @@ impl CoreManager {
                         pid,
                     },
                 );
-                if let Err(error) = self
-                    .inner
-                    .store
-                    .cleanup_epoch(old_plan.revision.epoch)
-                    .await
-                {
+                if let Err(error) = self.cleanup_epoch(old_plan.revision.epoch).await {
                     tracing::warn!("failed to clean switched-out epoch: {error}");
                 }
                 Ok(ApplyOutcome::Switched { revision })
@@ -435,7 +435,7 @@ impl CoreManager {
             }
             Err(apply_error) => {
                 let apply_text = apply_error.to_string();
-                if let Err(error) = self.inner.store.cleanup_epoch(epoch).await {
+                if let Err(error) = self.cleanup_epoch(epoch).await {
                     tracing::warn!("failed to clean rejected desired epoch: {error}");
                 }
                 self.inner.publish(

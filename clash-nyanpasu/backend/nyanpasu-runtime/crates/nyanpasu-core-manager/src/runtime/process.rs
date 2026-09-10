@@ -21,6 +21,7 @@ use super::{BoxFuture, RuntimeBackend, RuntimeInstance, RuntimeLaunchRequest};
 /// manager builder; a custom backend owns its own probing instead.
 #[derive(Clone, Default)]
 pub(crate) struct ProbePlan {
+    pub(crate) controller_access: Option<std::sync::Arc<dyn crate::ControllerAccess>>,
     pub(crate) readiness: Option<ProbeHandle>,
     pub(crate) liveness: Option<ProbeHandle>,
     pub(crate) liveness_with_readiness: bool,
@@ -52,10 +53,31 @@ impl RuntimeBackend for ProcessRuntimeBackend {
                 controller,
                 log_tx,
             } = request;
+            let authorized_probe = self
+                .probes
+                .controller_access
+                .as_ref()
+                .map(|access| {
+                    let inner = match self.probes.readiness.clone() {
+                        Some(probe) => probe,
+                        None => ProbeHandle::new(
+                            "controller-version",
+                            crate::ControllerVersionProbe::new(&controller)?,
+                        ),
+                    };
+                    Ok::<_, Error>(ProbeHandle::new(
+                        "authorized-controller",
+                        crate::controller_access::AuthorizedProbe {
+                            access: access.clone(),
+                            inner,
+                        },
+                    ))
+                })
+                .transpose()?;
             let mut builder =
                 Instance::builder(effective_spec, epoch, controller, self.cancel_token.clone())
                     .log_sender(log_tx);
-            if let Some(probe) = self.probes.readiness.clone() {
+            if let Some(probe) = authorized_probe.or_else(|| self.probes.readiness.clone()) {
                 builder = builder.readiness_probe(probe);
             }
             if let Some(probe) = self.probes.liveness.clone() {

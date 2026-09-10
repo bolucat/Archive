@@ -4,6 +4,8 @@
 //! Design: docs/superpowers/specs/2026-07-18-nyanpasu-core-manager-design.md
 
 mod capability;
+pub mod controller_access;
+pub use controller_access::ControllerAccess;
 mod config;
 pub mod control;
 pub mod dns;
@@ -16,7 +18,9 @@ mod log;
 mod log_sink;
 pub mod manager;
 pub mod runtime;
+pub mod snapshot;
 pub mod spec;
+pub use snapshot::{ConfigCommitSubscription, EffectiveConfigSnapshot};
 pub mod state;
 
 pub use capability::{Feature, RuntimeFeature};
@@ -45,8 +49,8 @@ pub use runtime_store::{
     StagedRuntimeConfig,
 };
 pub use spec::{
-    ApiConnection, CoreSpec, InstanceOptions, InstanceSpec, LocalIpcPolicy, ManagerOptions,
-    ResolvedController,
+    ApiConnection, CoreSpec, InstanceOptions, InstanceSpec, LocalIpcPolicy, LocalIpcSettings,
+    ManagerOptions, ResolvedController,
 };
 pub use state::{
     ConfigRevision, CoreState, CoreStatus, HealthState, HealthStatus, InstanceState,

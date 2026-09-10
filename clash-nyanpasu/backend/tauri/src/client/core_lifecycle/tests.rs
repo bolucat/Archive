@@ -15,6 +15,9 @@ struct BlockingBuilder {
     calls: AtomicUsize,
     entered: Notify,
     release: Notify,
+    /// Scripts a runtime build that fails outright, so a test can drive a
+    /// caller through a non-retryable apply failure.
+    fail: AtomicBool,
 }
 
 #[async_trait::async_trait]
@@ -33,6 +36,7 @@ impl ports::RuntimeBuildPort for BlockingBuilder {
             self.entered.notify_one();
             self.release.notified().await;
         }
+        anyhow::ensure!(!self.fail.load(Ordering::SeqCst), "scripted build failure");
         self.delegate.build(revision, profiles, clash, app).await
     }
     async fn publish(&self, snapshot: &runtime::RuntimeSnapshot) -> anyhow::Result<()> {
@@ -49,9 +53,65 @@ async fn dirty_graph(
     super::super::application::ApplicationClient,
     super::super::clash_config::ClashConfigClient,
 ) {
-    use super::super::tests::{
-        IdleServiceAdapter, test_materialization_port, test_typed_config_clients,
-    };
+    dirty_graph_with_store(dir, runtime::RuntimeSnapshotStore::default()).await
+}
+
+#[tokio::test]
+async fn injected_snapshot_store_is_shared_by_workflow_and_reader() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = runtime::RuntimeSnapshotStore::default();
+    let (client, notifier, builder, _, _) = dirty_graph_with_store(&dir, store.clone()).await;
+    notifier.request_rebuild();
+    tick(&client).await;
+    builder.entered.notified().await;
+    builder.release.notify_one();
+    let mut status = client.0.status.clone();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        status.wait_for(|s| !s.completed.is_empty() && s.active.is_none()),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let written = store.read().promoted.unwrap();
+    let observed = client.runtime().promoted.unwrap();
+    assert!(Arc::ptr_eq(&written, &observed));
+    client.shutdown().await.unwrap();
+}
+
+async fn dirty_graph_with_store(
+    dir: &tempfile::TempDir,
+    snapshots: runtime::RuntimeSnapshotStore,
+) -> (
+    CoreLifecycleClient,
+    DirtyNotifier,
+    Arc<BlockingBuilder>,
+    super::super::application::ApplicationClient,
+    super::super::clash_config::ClashConfigClient,
+) {
+    let core = CoreClient::spawn(TestControlEndpoint::succeeding())
+        .await
+        .unwrap();
+    let service = ServiceClient::spawn(Arc::new(super::super::tests::IdleServiceAdapter), 0)
+        .await
+        .unwrap();
+    dirty_graph_with_clients(dir, snapshots, core, service, false).await
+}
+
+async fn dirty_graph_with_clients(
+    dir: &tempfile::TempDir,
+    snapshots: runtime::RuntimeSnapshotStore,
+    core: CoreClient,
+    service: ServiceClient,
+    schedule_ticks: bool,
+) -> (
+    CoreLifecycleClient,
+    DirtyNotifier,
+    Arc<BlockingBuilder>,
+    super::super::application::ApplicationClient,
+    super::super::clash_config::ClashConfigClient,
+) {
+    use super::super::tests::{test_materialization_port, test_typed_config_clients};
     use crate::state::profiles::ports::{MockProfileFsPort, MockSubscriptionFetcher};
     let (application, _, clash) = test_typed_config_clients(dir).await;
     let (notifier, dirty) = DirtyNotifier::channel();
@@ -64,11 +124,6 @@ async fn dirty_graph(
     )
     .await
     .unwrap();
-    let endpoint = TestControlEndpoint::succeeding();
-    let core = CoreClient::spawn(endpoint).await.unwrap();
-    let service = ServiceClient::spawn(Arc::new(IdleServiceAdapter), 0)
-        .await
-        .unwrap();
     let paths =
         runtime::RuntimePaths::from_resolver(&crate::utils::path::PathResolver::with_base_dirs(
             dir.path().into(),
@@ -84,9 +139,11 @@ async fn dirty_graph(
         calls: AtomicUsize::new(0),
         entered: Notify::new(),
         release: Notify::new(),
+        fail: AtomicBool::new(false),
     });
     let client = CoreLifecycleClient::spawn_with_ticks(
         CoreLifecycleArgs {
+            snapshots,
             application: application.clone(),
             clash: clash.clone(),
             profiles,
@@ -97,7 +154,7 @@ async fn dirty_graph(
             ui: Arc::new(super::super::NoopUiEventSink),
             dirty,
         },
-        false,
+        schedule_ticks,
     )
     .await
     .unwrap();
@@ -873,3 +930,52 @@ fn config_ui_failure_is_degraded_after_successful_reconcile() {
         );
     });
 }
+
+#[test]
+fn control_channel_reconcile_reads_committed_clash_config() {
+    use nyanpasu_config::clash::config::{ClashConfig, ClashControlChannel};
+    use nyanpasu_core_manager::LocalIpcPolicy;
+
+    let f = Fixture::new(false, false, false);
+    tauri::async_runtime::block_on(async {
+        for (channel, disable_http, policy) in [
+            (ClashControlChannel::HttpOnly, true, LocalIpcPolicy::Disable),
+            (
+                ClashControlChannel::PreferIpc,
+                false,
+                LocalIpcPolicy::Prefer,
+            ),
+        ] {
+            let mut patch = ClashConfig::new_empty_patch();
+            patch.clash_control_channel = Some(channel);
+            patch.clash_ipc_disable_http_controller = Some(disable_http);
+            f.client.patch_clash_config(patch).await.unwrap();
+            f.client.apply_control_channel().await.unwrap();
+            let settings = f.endpoint.local_ipc.lock().unwrap().unwrap();
+            assert_eq!(settings.policy, policy);
+            assert_eq!(settings.keep_http_controller, !disable_http);
+        }
+    });
+}
+
+#[test]
+fn control_channel_application_does_not_start_a_stopped_core() {
+    let f = Fixture::new(false, false, false);
+    tauri::async_runtime::block_on(async {
+        f.endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Stopped { reason: None }),
+            None,
+        );
+        f.client.apply_control_channel().await.unwrap();
+        assert_eq!(f.endpoint.submissions(), 0);
+        f.endpoint.set_status(
+            Some(nyanpasu_ipc::api::status::CoreStateDetail::Running { epoch: 1, pid: 7 }),
+            Some(nyanpasu_core_manager::CoreKind::Mihomo),
+        );
+        f.client.apply_control_channel().await.unwrap();
+        assert_eq!(f.endpoint.submissions(), 1);
+    });
+}
+
+#[path = "service_recovery_tests.rs"]
+mod service_recovery;

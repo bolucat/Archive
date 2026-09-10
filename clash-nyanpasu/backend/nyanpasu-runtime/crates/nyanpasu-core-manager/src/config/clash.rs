@@ -16,6 +16,7 @@ use super::{ConfigInfo, RawController, str_value};
 pub(super) const EXTERNAL_CONTROLLER: &str = "external-controller";
 pub(super) const EXTERNAL_CONTROLLER_PIPE: &str = "external-controller-pipe";
 pub(super) const EXTERNAL_CONTROLLER_UNIX: &str = "external-controller-unix";
+pub(super) const EXTERNAL_CONTROLLER_TLS: &str = "external-controller-tls";
 pub(super) const SECRET: &str = "secret";
 
 // Keep these cfgs strictly dual to the local key selected below.
@@ -29,6 +30,7 @@ pub(crate) const LOCAL_TRANSPORT_FEATURE: Feature = Feature::UnixSocketIpc;
 /// place.
 pub(super) const CONTROLLER_FIELDS: &[&str] = &[
     EXTERNAL_CONTROLLER,
+    EXTERNAL_CONTROLLER_TLS,
     EXTERNAL_CONTROLLER_PIPE,
     EXTERNAL_CONTROLLER_UNIX,
     SECRET,
@@ -58,15 +60,22 @@ pub(super) fn inspect_http(document: &Mapping) -> ConfigInfo {
 }
 
 /// Repoints the controller at the manager-owned local endpoint.
-pub(super) fn rewrite_managed_controller(document: &mut Mapping, endpoint: String) {
-    // Unconditional removal isolates overlapping epochs: each must expose only
-    // its own epoch-templated local control channel during a graceful switch.
+pub(super) fn rewrite_managed_controller(
+    document: &mut Mapping,
+    endpoint: String,
+    keep_http: bool,
+) {
+    // Epoch-scoped IPC isolates controllers. Keeping HTTP requires a hard
+    // switch; the manager rejects overlapping epochs with an HTTP listener.
     for field in [
         EXTERNAL_CONTROLLER,
+        EXTERNAL_CONTROLLER_TLS,
         EXTERNAL_CONTROLLER_PIPE,
         EXTERNAL_CONTROLLER_UNIX,
     ] {
-        document.remove(Value::String(field.to_owned()));
+        if !matches!(field, EXTERNAL_CONTROLLER | EXTERNAL_CONTROLLER_TLS) || !keep_http {
+            document.remove(Value::String(field.to_owned()));
+        }
     }
     #[cfg(windows)]
     let field = EXTERNAL_CONTROLLER_PIPE;
